@@ -30,9 +30,8 @@
 
 - branch, PR, commit의 상세 규칙은 `docs/collaboration/README.md`를 따른다.
 - 사용자가 명시적으로 요청하기 전에는 stage, commit, push, PR 생성, dependency 설치를 하지 않는다.
-- 사용자가 commit message 작성을 요청하면 `git diff --cached`와 최근 commit subject 최대 5개를 확인하고, 실제 staged 변경만 설명하는 `<type>(<scope>): <summary>` 형식의 초안을 작성한다.
-- type과 scope는 영문 소문자로 유지하고 summary와 필요한 body는 한국어로 작성한다.
-- staged 변경이 없으면 commit message를 추측하지 않고 먼저 알린다. commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
+- commit message 작성 요청에는 `.agents/skills/draft-commit-message/SKILL.md`를 적용한다.
+- commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
 
 ## 데이터와 프로젝트 구조
 
@@ -51,7 +50,7 @@
 ## 지침 관리
 
 - 이 파일은 AI 작업·응답 품질 규칙의 원본으로 사용하고, 사람이 참고하는 Git 절차는 `docs/collaboration/README.md`에서 관리한다.
-- root `AGENTS.md`는 Codex 자동 인식을 위해 이 위치에 두며 별도 AI 도구별 지침 폴더는 만들지 않는다.
+- root `AGENTS.md`는 항상 적용할 원칙을 관리하고, 반복 작업 절차만 `.agents/skills`에서 관리한다.
 
 ## 완료 보고
 

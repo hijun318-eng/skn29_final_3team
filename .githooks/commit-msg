@@ -1,0 +1,79 @@
+#!/bin/sh
+
+set -u
+export LC_ALL=C.UTF-8
+
+message_file=$1
+subject=
+IFS= read -r subject < "$message_file" || :
+carriage_return=$(printf '\r')
+subject=${subject%"$carriage_return"}
+
+case "$subject" in
+    Merge\ *|Revert\ \"*|fixup!\ *|squash!\ *|amend!\ *)
+        exit 0
+        ;;
+esac
+
+subject_length=${#subject}
+if [ "$subject_length" -gt 72 ]; then
+    printf '%s\n' "[commit-msg] subject는 72자 이하여야 합니다. 현재: ${subject_length}자" >&2
+    exit 1
+fi
+
+case "$subject" in
+    *': '*) ;;
+    *)
+        printf '%s\n' '[commit-msg] 형식: <type>(<scope>): <한국어 summary>' >&2
+        exit 1
+        ;;
+esac
+
+prefix=${subject%%:*}
+summary=${subject#*: }
+
+case "$prefix" in
+    feat\(*\)) type=feat ;;
+    fix\(*\)) type=fix ;;
+    docs\(*\)) type=docs ;;
+    refactor\(*\)) type=refactor ;;
+    test\(*\)) type=test ;;
+    chore\(*\)) type=chore ;;
+    build\(*\)) type=build ;;
+    ci\(*\)) type=ci ;;
+    perf\(*\)) type=perf ;;
+    style\(*\)) type=style ;;
+    data\(*\)) type=data ;;
+    eval\(*\)) type=eval ;;
+    *)
+        printf '%s\n' '[commit-msg] 형식: <type>(<scope>): <한국어 summary>' >&2
+        printf '%s\n' '[commit-msg] type: feat, fix, docs, refactor, test, chore, build, ci, perf, style, data, eval' >&2
+        exit 1
+        ;;
+esac
+
+scope_with_closing=${prefix#"$type("}
+scope=${scope_with_closing%?}
+case "$scope" in
+    ''|*[!a-z0-9._/-]*)
+        printf '%s\n' '[commit-msg] scope는 영문 소문자, 숫자, `.`, `_`, `/`, `-`만 사용합니다.' >&2
+        exit 1
+        ;;
+esac
+
+case "$summary" in
+    *[가-힣]*) ;;
+    *)
+        printf '%s\n' '[commit-msg] summary에는 한국어 설명이 포함되어야 합니다.' >&2
+        exit 1
+        ;;
+esac
+
+case "$subject" in
+    *.)
+        printf '%s\n' '[commit-msg] subject 끝에는 마침표를 붙이지 않습니다.' >&2
+        exit 1
+        ;;
+esac
+
+exit 0

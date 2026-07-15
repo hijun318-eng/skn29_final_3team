@@ -28,8 +28,8 @@
 
 ## Git 협업 규칙
 
-- branch, PR, commit의 상세 규칙은 `docs/collaboration/README.md`를 따른다.
-- 사용자가 명시적으로 요청하기 전에는 stage, commit, push, PR 생성, dependency 설치를 하지 않는다.
+- branch와 commit의 상세 규칙은 `docs/collaboration/README.md`를 따른다.
+- 사용자가 명시적으로 요청하기 전에는 stage, commit, push, dependency 설치를 하지 않는다.
 - commit message 작성 요청에는 `.agents/skills/draft-commit-message/SKILL.md`를 적용한다.
 - commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
 

@@ -12,9 +12,11 @@
 2. 기존 변경은 사용자 작업으로 취급하고 관련 없는 파일을 수정하거나 정리하지 않는다.
 3. 코드와 문서 변경은 담당 개인 branch에서 수행하고 PR은 개인 branch에서 `dev`로 연다.
 4. 사용자가 명시적으로 요청하기 전에는 stage, commit, push, PR 생성, dependency 설치를 하지 않는다.
-5. `.env`, API key, 실제 고객 데이터와 `data/raw`, `data/processed` 생성 파일은 commit하지 않는다.
-6. 실제 code가 생길 때만 하위 module을 만들고 RAG 채택 전 `src/embeddings`, `src/retrieval`을 만들지 않는다.
-7. 확인한 사실과 가정·제안을 구분하고, 실행하지 않은 검증을 통과했다고 쓰지 않는다.
+5. 사용자가 commit message 작성을 요청하면 `git diff --cached`와 최근 commit subject 최대 5개를 확인하고, 실제 staged 변경만 설명하는 `<type>(<scope>): <summary>` 형식의 초안을 작성한다. type과 scope는 영문 소문자로 유지하고 summary와 필요한 body는 한국어로 작성한다. staged 변경이 없으면 추측하지 않고 먼저 알려준다.
+6. commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
+7. `.env`, API key, 실제 고객 데이터와 `data/raw`, `data/processed` 생성 파일은 commit하지 않는다.
+8. 실제 code가 생길 때만 하위 module을 만들고 RAG 채택 전 `src/embeddings`, `src/retrieval`을 만들지 않는다.
+9. 확인한 사실과 가정·제안을 구분하고, 실행하지 않은 검증을 통과했다고 쓰지 않는다.
 
 ## 협업 원본
 

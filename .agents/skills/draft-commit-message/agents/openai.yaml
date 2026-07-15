@@ -1,4 +1,0 @@
-interface:
-  display_name: "Diff-based Commit Message"
-  short_description: "Generate consistent commit messages from staged diffs"
-  default_prompt: "Use $draft-commit-message to draft a commit message from the staged diff."

@@ -1,2 +1,0 @@
-# Add only confirmed and tested Python runtime dependencies.
-# Pin versions when the application stack is selected.

@@ -1,1 +1,70 @@
+# Secrets and local environment
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node and frontend
+node_modules/
+.next/
+dist/
+coverage/
+
+# Local tools and logs
+.codex-log/
+*.log
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Shared AI guidance and engineering docs are intentionally versioned
+!.agents/
+!.agents/**
+!.claude/
+!.claude/**
+!.github/
+!.github/**
+!docs/
+!docs/**
+
+# Generated data and reports
+data/raw/**
+data/interim/**
+data/processed/**
+data/mart/**
+data/ground_truth/**
+reports/generated/**
+!data/**/README.md
+!data/**/.gitkeep
+!data/samples/**
+
+# Versioned eval assets vs. local raw runs
+evals/runs/**
+!evals/runs/.gitkeep
+!evals/testsets/**
+!evals/baselines/**
+!evals/reports/**
+
+# Model and notebook artifacts
+.ipynb_checkpoints/
+chroma/
+*.faiss
+*.pkl
+*.bin
+models/cache/
+mlruns/

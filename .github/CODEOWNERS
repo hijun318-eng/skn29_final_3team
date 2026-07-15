@@ -1,0 +1,10 @@
+# Project owner: replace the examples with real GitHub usernames, then uncomment.
+# Do not enable "Require review from Code Owners" before valid owners are present.
+#
+# * @project-owner
+# /AGENTS.md @project-owner
+# /.agents/ @ai-owner
+# /.claude/ @ai-owner
+# /.github/ @project-owner
+# /docs/engineering/ @project-owner
+# /evals/ @eval-owner

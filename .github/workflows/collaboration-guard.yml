@@ -1,0 +1,49 @@
+name: collaboration-guard
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  push:
+    branches:
+      - dev
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  repository-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate collaboration assets
+        run: python scripts/validate_collaboration_setup.py
+
+      - name: Validate PR branch and title
+        if: github.event_name == 'pull_request'
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+          BASE_BRANCH: ${{ github.base_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          python scripts/validate_branch_name.py --branch "$HEAD_BRANCH"
+          python scripts/validate_pr_flow.py --head "$HEAD_BRANCH" --base "$BASE_BRANCH"
+          python scripts/validate_commit_message.py --message "$PR_TITLE"
+
+      - name: Validate PR commit subjects
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python scripts/validate_commit_range.py --base "$BASE_SHA" --head "$HEAD_SHA"

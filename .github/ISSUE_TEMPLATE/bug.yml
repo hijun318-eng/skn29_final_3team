@@ -1,0 +1,43 @@
+name: 버그
+description: 재현 가능한 오류와 기대 동작을 기록합니다.
+title: "[Bug] "
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: 실제 동작
+      description: 오류 메시지와 현재 결과를 원문으로 작성합니다.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 재현 절차
+      description: 최소 단계와 입력을 작성합니다. secret이나 개인정보는 제외합니다.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 환경
+      description: branch, commit, OS, 관련 version을 작성합니다.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 증거와 범위
+      description: log, screenshot, 관련 파일, 영향 범위를 작성합니다.
+  - type: textarea
+    id: regression
+    attributes:
+      label: 회귀 test
+      description: 수정 후 추가할 test와 확인 방법을 작성합니다.
+    validations:
+      required: true

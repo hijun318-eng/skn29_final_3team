@@ -8,14 +8,14 @@
 
 ## 응답과 판단 원칙
 
-- 답변 전에 사용자의 목표, 확인된 현재 상태, 제약 조건, 결정이 필요한 항목을 구분한다.
+- 판단이 필요한 작업은 `목표와 완료 조건 -> 확인된 사실과 현재 상태 -> 제약과 위험 -> 대안과 trade-off -> 결정 -> 검증 방법` 순서로 정리한다.
 - 먼저 결론과 현재 상태를 말하고, 필요한 근거와 다음 행동만 짧게 덧붙인다.
 - 자연어 설명은 한국어로 작성하고 code, command, path, API, library, error string은 원문을 유지한다.
 - 사용자가 요청한 범위를 임의로 넓히지 않고, 범위 변경이 필요하면 추가되는 작업을 먼저 알린다.
 - `확인된 사실`, `결정`, `가정`, `제안`, `추가 확인 필요`를 구분한다.
 - 확인하지 않은 내용을 확정적으로 말하지 않고, 불확실하면 확인 방법과 한계를 함께 제시한다.
 - 여러 대안이 있으면 같은 기준으로 장점, 단점, 위험, 검증 방법을 비교하고 권장안을 하나 제시한다.
-- 판단이 필요한 답변은 `결론 -> 근거 -> 대안과 trade-off -> 다음 행동` 순서를 기본으로 한다.
+- 사용자에게 보여주는 답변은 `결론과 현재 상태 -> 핵심 근거 -> 필요한 대안과 trade-off -> 검증 결과와 남은 위험 -> 다음 행동` 순서를 기본으로 한다.
 - 단순한 질문에는 단순하게 답하고, 결과를 크게 바꾸는 위험한 모호성만 질문한다.
 - 제목과 목록은 이해에 필요한 만큼만 사용하며 같은 내용을 반복하지 않는다.
 - 최종 답변은 앞선 진행 메시지 없이도 이해할 수 있도록 작성한다.
@@ -25,12 +25,20 @@
 1. `git rev-parse --show-toplevel`, `git status --short`, 현재 branch를 먼저 확인한다.
 2. 기존 변경은 사용자 작업으로 취급하고 관련 없는 파일을 수정하거나 정리하지 않는다.
 3. 작업 전에 목표, in-scope, out-of-scope, 권한, 완료 조건, 검증 방법을 확인한다.
-4. 코드와 문서 변경은 담당 개인 branch에서 수행하고 PR은 개인 branch에서 `dev`로 연다.
-5. 사용자가 명시적으로 요청하기 전에는 stage, commit, push, PR 생성, dependency 설치를 하지 않는다.
-6. 사용자가 commit message 작성을 요청하면 `git diff --cached`와 최근 commit subject 최대 5개를 확인하고, 실제 staged 변경만 설명하는 `<type>(<scope>): <summary>` 형식의 초안을 작성한다. type과 scope는 영문 소문자로 유지하고 summary와 필요한 body는 한국어로 작성한다. staged 변경이 없으면 추측하지 않고 먼저 알려준다.
-7. commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
-8. `.env`, API key, 실제 고객 데이터와 `data/raw`, `data/processed` 생성 파일은 commit하지 않는다.
-9. 실제 code가 생길 때만 하위 module을 만들고 RAG 채택 전 `src/embeddings`, `src/retrieval`을 만들지 않는다.
+
+## Git 협업 규칙
+
+- branch, PR, commit의 상세 규칙은 `docs/collaboration/README.md`를 따른다.
+- 사용자가 명시적으로 요청하기 전에는 stage, commit, push, PR 생성, dependency 설치를 하지 않는다.
+- 사용자가 commit message 작성을 요청하면 `git diff --cached`와 최근 commit subject 최대 5개를 확인하고, 실제 staged 변경만 설명하는 `<type>(<scope>): <summary>` 형식의 초안을 작성한다.
+- type과 scope는 영문 소문자로 유지하고 summary와 필요한 body는 한국어로 작성한다.
+- staged 변경이 없으면 commit message를 추측하지 않고 먼저 알린다. commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
+
+## 데이터와 프로젝트 구조
+
+- `.env`, API key, 실제 고객 데이터와 `data/raw`, `data/processed` 생성 파일은 commit하지 않는다.
+- `src`에는 핵심 로직(데이터 처리, agent, 공용 module)을 두고, `app`에는 사용자에게 노출되는 서비스 실행 code(web app, API 진입점)만 둔다.
+- 실제 code가 생길 때만 하위 module을 만들고 RAG 채택 전 `src/embeddings`, `src/retrieval`을 만들지 않는다.
 
 ## 작업 품질 기준
 
@@ -40,10 +48,10 @@
 - 변경 위험에 맞는 검증을 실행하고, 실행하지 않은 검증은 통과했다고 쓰지 않는다.
 - 외부 시스템 변경, 비용 발생, 데이터 전송, 저장소 밖 쓰기는 사용자 승인을 받은 뒤 수행한다.
 
-## 협업 원본
+## 지침 관리
 
-- 사람이 읽는 협업 절차와 commit 규칙은 `docs/collaboration/README.md` 한 곳에서 관리한다.
-- root `AGENTS.md`는 Codex 자동 인식을 위해 이 위치에 둔다. 별도 `.agents` 또는 `.claude` 공유 지침은 만들지 않는다.
+- 이 파일은 AI 작업·응답 품질 규칙의 원본으로 사용하고, 사람이 참고하는 Git 절차는 `docs/collaboration/README.md`에서 관리한다.
+- root `AGENTS.md`는 Codex 자동 인식을 위해 이 위치에 두며 별도 AI 도구별 지침 폴더는 만들지 않는다.
 
 ## 완료 보고
 

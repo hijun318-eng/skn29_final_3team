@@ -6,6 +6,15 @@
 - 기술 스택과 frontend/backend 구조는 실제 결정 전까지 임의로 만들지 않는다.
 - 호텔 실데이터 확보 전 합성 데이터는 `synthetic`으로 표시하고 seed와 schema version을 기록한다.
 
+## 응답 원칙
+
+- 먼저 결론과 현재 상태를 말하고, 필요한 근거와 다음 행동만 짧게 덧붙인다.
+- 자연어 설명은 한국어로 작성하고 code, command, path, API, library, error string은 원문을 유지한다.
+- `확인된 사실`, `결정`, `가정`, `제안`, `추가 확인 필요`를 구분한다.
+- 확인하지 않은 내용을 확정적으로 말하지 않고, 실행하지 않은 검증을 통과했다고 쓰지 않는다.
+- 제목과 목록은 이해에 필요한 만큼만 사용하며 같은 내용을 반복하지 않는다.
+- 최종 답변은 앞선 진행 메시지 없이도 이해할 수 있도록 작성한다.
+
 ## 작업 규칙
 
 1. `git rev-parse --show-toplevel`, `git status --short`, 현재 branch를 먼저 확인한다.
@@ -16,7 +25,6 @@
 6. commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
 7. `.env`, API key, 실제 고객 데이터와 `data/raw`, `data/processed` 생성 파일은 commit하지 않는다.
 8. 실제 code가 생길 때만 하위 module을 만들고 RAG 채택 전 `src/embeddings`, `src/retrieval`을 만들지 않는다.
-9. 확인한 사실과 가정·제안을 구분하고, 실행하지 않은 검증을 통과했다고 쓰지 않는다.
 
 ## 협업 원본
 
@@ -25,6 +33,7 @@
 
 ## 완료 보고
 
+- 결과 요약
 - 변경 파일
 - 실행한 검증과 결과
 - 실행하지 못한 검증

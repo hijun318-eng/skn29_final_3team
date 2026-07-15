@@ -1,0 +1,66 @@
+#!/bin/sh
+
+set -u
+
+max_file_size=10485760
+failed=0
+staged_files=$(git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR --)
+
+if [ -z "$staged_files" ]; then
+    exit 0
+fi
+
+while IFS= read -r path; do
+    [ -z "$path" ] && continue
+    basename=${path##*/}
+
+    case "$path" in
+        .env|*/.env|.env.*|*/.env.*)
+            if [ "$basename" != ".env.example" ]; then
+                printf '%s\n' "[pre-commit] 실제 환경 파일은 commit할 수 없습니다: $path" >&2
+                failed=1
+            fi
+            ;;
+        *.pem|*.key)
+            printf '%s\n' "[pre-commit] 비밀키 파일은 commit할 수 없습니다: $path" >&2
+            failed=1
+            ;;
+    esac
+
+    case "$path" in
+        data/raw/*|data/interim/*|data/processed/*|data/mart/*|data/ground_truth/*)
+            case "$basename" in
+                .gitkeep|README.md) ;;
+                *)
+                    printf '%s\n' "[pre-commit] 생성·실데이터 파일은 commit할 수 없습니다: $path" >&2
+                    failed=1
+                    ;;
+            esac
+            ;;
+    esac
+
+    size=$(git cat-file -s ":$path" 2>/dev/null || printf '0')
+    case "$size" in
+        *[!0-9]*) size=0 ;;
+    esac
+    if [ "$size" -gt "$max_file_size" ]; then
+        printf '%s\n' "[pre-commit] 10MB를 초과한 파일은 확인이 필요합니다: $path" >&2
+        failed=1
+    fi
+done <<EOF
+$staged_files
+EOF
+
+if git grep --cached -I -q -E \
+    '(sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN ([A-Z0-9]+ )?PRIVATE KEY-----)' \
+    -- . ':(exclude).githooks/pre-commit'; then
+    printf '%s\n' '[pre-commit] staged 변경에서 secret으로 의심되는 문자열을 발견했습니다.' >&2
+    failed=1
+fi
+
+if [ "$failed" -ne 0 ]; then
+    printf '%s\n' '[pre-commit] commit을 중단했습니다. 위 항목을 확인하세요.' >&2
+    exit 1
+fi
+
+exit 0

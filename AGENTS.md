@@ -6,12 +6,17 @@
 - 기술 스택과 frontend/backend 구조는 실제 결정 전까지 임의로 만들지 않는다.
 - 호텔 실데이터 확보 전 합성 데이터는 `synthetic`으로 표시하고 seed와 schema version을 기록한다.
 
-## 응답 원칙
+## 응답과 판단 원칙
 
+- 답변 전에 사용자의 목표, 확인된 현재 상태, 제약 조건, 결정이 필요한 항목을 구분한다.
 - 먼저 결론과 현재 상태를 말하고, 필요한 근거와 다음 행동만 짧게 덧붙인다.
 - 자연어 설명은 한국어로 작성하고 code, command, path, API, library, error string은 원문을 유지한다.
+- 사용자가 요청한 범위를 임의로 넓히지 않고, 범위 변경이 필요하면 추가되는 작업을 먼저 알린다.
 - `확인된 사실`, `결정`, `가정`, `제안`, `추가 확인 필요`를 구분한다.
-- 확인하지 않은 내용을 확정적으로 말하지 않고, 실행하지 않은 검증을 통과했다고 쓰지 않는다.
+- 확인하지 않은 내용을 확정적으로 말하지 않고, 불확실하면 확인 방법과 한계를 함께 제시한다.
+- 여러 대안이 있으면 같은 기준으로 장점, 단점, 위험, 검증 방법을 비교하고 권장안을 하나 제시한다.
+- 판단이 필요한 답변은 `결론 -> 근거 -> 대안과 trade-off -> 다음 행동` 순서를 기본으로 한다.
+- 단순한 질문에는 단순하게 답하고, 결과를 크게 바꾸는 위험한 모호성만 질문한다.
 - 제목과 목록은 이해에 필요한 만큼만 사용하며 같은 내용을 반복하지 않는다.
 - 최종 답변은 앞선 진행 메시지 없이도 이해할 수 있도록 작성한다.
 
@@ -19,12 +24,21 @@
 
 1. `git rev-parse --show-toplevel`, `git status --short`, 현재 branch를 먼저 확인한다.
 2. 기존 변경은 사용자 작업으로 취급하고 관련 없는 파일을 수정하거나 정리하지 않는다.
-3. 코드와 문서 변경은 담당 개인 branch에서 수행하고 PR은 개인 branch에서 `dev`로 연다.
-4. 사용자가 명시적으로 요청하기 전에는 stage, commit, push, PR 생성, dependency 설치를 하지 않는다.
-5. 사용자가 commit message 작성을 요청하면 `git diff --cached`와 최근 commit subject 최대 5개를 확인하고, 실제 staged 변경만 설명하는 `<type>(<scope>): <summary>` 형식의 초안을 작성한다. type과 scope는 영문 소문자로 유지하고 summary와 필요한 body는 한국어로 작성한다. staged 변경이 없으면 추측하지 않고 먼저 알려준다.
-6. commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
-7. `.env`, API key, 실제 고객 데이터와 `data/raw`, `data/processed` 생성 파일은 commit하지 않는다.
-8. 실제 code가 생길 때만 하위 module을 만들고 RAG 채택 전 `src/embeddings`, `src/retrieval`을 만들지 않는다.
+3. 작업 전에 목표, in-scope, out-of-scope, 권한, 완료 조건, 검증 방법을 확인한다.
+4. 코드와 문서 변경은 담당 개인 branch에서 수행하고 PR은 개인 branch에서 `dev`로 연다.
+5. 사용자가 명시적으로 요청하기 전에는 stage, commit, push, PR 생성, dependency 설치를 하지 않는다.
+6. 사용자가 commit message 작성을 요청하면 `git diff --cached`와 최근 commit subject 최대 5개를 확인하고, 실제 staged 변경만 설명하는 `<type>(<scope>): <summary>` 형식의 초안을 작성한다. type과 scope는 영문 소문자로 유지하고 summary와 필요한 body는 한국어로 작성한다. staged 변경이 없으면 추측하지 않고 먼저 알려준다.
+7. commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
+8. `.env`, API key, 실제 고객 데이터와 `data/raw`, `data/processed` 생성 파일은 commit하지 않는다.
+9. 실제 code가 생길 때만 하위 module을 만들고 RAG 채택 전 `src/embeddings`, `src/retrieval`을 만들지 않는다.
+
+## 작업 품질 기준
+
+- 문서나 결과를 만들기 전에 현재 파일, 실제 동작, 관련 contract를 먼저 확인한다.
+- 파일을 만들거나 유지할 때 실제 목적에 필요한지 확인하고, 가장 작은 일관된 변경을 적용한다.
+- 계산, 집계, formatting, 정책 검사는 가능한 한 결정론적 script와 test로 확인한다.
+- 변경 위험에 맞는 검증을 실행하고, 실행하지 않은 검증은 통과했다고 쓰지 않는다.
+- 외부 시스템 변경, 비용 발생, 데이터 전송, 저장소 밖 쓰기는 사용자 승인을 받은 뒤 수행한다.
 
 ## 협업 원본
 

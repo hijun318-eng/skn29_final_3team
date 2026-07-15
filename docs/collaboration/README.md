@@ -26,6 +26,21 @@ git status
 
 예를 들어 대성은 `git switch daesung`을 실행한다.
 
+## Git Hook 활성화
+
+clone한 뒤 또는 `.githooks`를 처음 받은 뒤 repository root에서 최초 한 번 실행한다. 이 설정은 branch가 아니라 해당 local repository 전체에 적용된다.
+
+```powershell
+git config --local core.hooksPath .githooks
+git config --local --get core.hooksPath
+```
+
+출력이 `.githooks`이면 활성화된 상태다.
+
+- `pre-commit`: secret, 실제·생성 데이터, 10MB 초과 파일을 검사한다.
+- `commit-msg`: `<type>(<scope>): <한국어 summary>` 형식과 72자 제한을 검사한다.
+- 검사가 실패하면 표시된 항목을 수정한 뒤 다시 commit한다. `--no-verify`로 우회하지 않는다.
+
 ## 이미 clone한 팀원
 
 먼저 미완료 변경이 없는지 확인한다.
@@ -71,6 +86,8 @@ Codex에 다음처럼 요청할 수 있다.
 ```text
 현재 staged diff를 확인해서 한국어 commit message 초안을 작성해줘.
 ```
+
+Codex가 Skill을 표시하는 환경에서는 `$draft-commit-message`를 직접 선택해도 된다. Skill이 보이지 않으면 repository root에서 Codex를 다시 시작한다.
 
 제안된 메시지가 실제 변경과 일치하는지 확인한 뒤 commit한다.
 

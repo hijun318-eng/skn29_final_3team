@@ -16,4 +16,4 @@ git switch <본인 branch>
 | 대성 | `daesung` |
 | 재홍 | `jaehong` |
 
-작업 시작, commit, push, PR 방법은 [팀원 Git branch 사용 가이드](./docs/collaboration/README.md)를 확인한다.
+작업 시작, `dev` 반영, commit, push 방법은 [팀원 Git branch 사용 가이드](./docs/collaboration/README.md)를 확인한다.

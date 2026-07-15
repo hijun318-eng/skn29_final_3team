@@ -25,4 +25,4 @@ description: Inspect the current repository's staged Git changes and draft one K
 
 - Return one recommended commit message in a code block.
 - Put warnings outside the code block only when staged changes need user attention.
-- Do not stage files or run `git commit`, `git push`, or create a PR unless the user separately authorizes it.
+- Do not stage files or run `git commit` or `git push` unless the user separately authorizes it.

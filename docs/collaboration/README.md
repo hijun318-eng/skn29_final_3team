@@ -1,6 +1,6 @@
 # 팀원 Git branch 사용 가이드
 
-각 팀원은 본인 개인 branch에서만 작업하고, 완료한 변경을 PR로 `dev`에 요청한다. PR(Pull Request)은 한 branch의 변경을 다른 branch에 합치기 전에 GitHub에서 검토를 요청하는 기능이다.
+각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다.
 
 ## Branch 역할
 
@@ -61,17 +61,16 @@ git pull --ff-only origin <본인 branch>
 
 ## 새 작업 시작
 
-본인 branch에 최신 `dev`를 반영한 뒤 작업한다.
+현재 branch가 본인 개인 branch이고 미완료 변경이 없을 때 최신 `dev`를 반영한다.
 
 ```powershell
-git switch <본인 branch>
+git branch --show-current
 git status --short
-git fetch origin
-git pull --ff-only origin <본인 branch>
-git merge origin/dev
+git pull --no-rebase origin dev
+git push origin <본인 branch>
 ```
 
-merge conflict가 발생하면 파일을 임의로 삭제하지 말고 충돌 내용을 확인한 뒤 해결한다.
+첫 번째 출력이 본인 branch가 아니거나 `git status --short`에 내용이 표시되면 pull하지 않는다. merge conflict가 발생하면 push하지 말고 관리자에게 알린다.
 
 ## 변경 확인과 commit
 
@@ -98,23 +97,27 @@ git push origin <본인 branch>
 
 commit 형식은 `<type>(<scope>): <한국어 summary>`이며 subject는 72자 이하로 작성한다. 하나의 commit에는 하나의 주된 의도만 담는다.
 
-## GitHub에서 PR 만들기
+## 관리자 통합
 
-1. GitHub repository에서 `Pull requests`를 연다.
-2. `New pull request`를 선택한다.
-3. `base`는 `dev`, `compare`는 본인 개인 branch로 선택한다.
-4. 변경 목적, 주요 변경, 실행한 검증, 남은 위험을 작성한다.
-5. 팀원 검토 후 `dev`에 merge한다.
-
-최종 반영은 프로젝트 관리자가 `dev -> main` PR로 진행한다. 개인 branch에서 `main`으로 직접 PR을 만들지 않는다.
-
-## PR merge 후 개인 branch 갱신
+팀원은 개인 branch push가 끝나면 관리자에게 branch 이름과 변경 내용을 알린다. 관리자는 다음 순서로 검증된 개인 branch를 `dev`에 반영한다.
 
 ```powershell
+git switch dev
+git status --short
 git fetch origin
-git switch <본인 branch>
-git merge origin/dev
-git push origin <본인 branch>
+git pull --ff-only origin dev
+git merge origin/<팀원 branch>
+git push origin dev
+```
+
+최종 검증이 끝나면 관리자가 `dev`를 `main`에 반영한다.
+
+```powershell
+git switch main
+git status --short
+git pull --ff-only origin main
+git merge dev
+git push origin main
 ```
 
 ## 금지 사항

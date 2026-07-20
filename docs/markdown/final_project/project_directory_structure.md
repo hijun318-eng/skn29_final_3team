@@ -41,12 +41,12 @@ repository/
 ```text
 repository/
 ├─ app/
-│  ├─ react/       # 관리자 UI가 실제로 구현될 때 생성
-│  ├─ django/      # 업무 API·권한·DB가 실제로 구현될 때 생성
-│  └─ fastapi/     # AI 분석 API가 실제로 분리될 때 생성
+│  ├─ react/       # 관리자 UI 공용 경계, 실제 code는 구현 시 추가
+│  ├─ django/      # 업무 API·권한·DB 공용 경계, 실제 code는 구현 시 추가
+│  └─ fastapi/     # AI 분석 API 공용 경계, 분리 결정 후 실제 code 추가
 ├─ src/
-│  ├─ analysis/    # 결정론적 분석 로직이 생길 때 생성
-│  └─ common/      # 공유 enum·schema가 코드로 생길 때 생성
+│  ├─ analysis/    # 결정론적 분석 로직 공용 경계
+│  └─ common/      # 공유 enum·schema 공용 경계
 ├─ data/
 │  ├─ raw/
 │  ├─ processed/
@@ -62,7 +62,17 @@ repository/
 
 ## 4. 이번 작업에서 실제 생성한 폴더
 
-없음. 필요한 문서는 기존 `docs/markdown/final_project/`에 작성했다. 실행 코드가 없으므로 `app/react/`, `app/django/`, `app/fastapi/`, `src/analysis/`, `src/common/`을 빈 폴더로 만들지 않았다.
+팀별 작업 경계를 Git에서 공용으로 유지하기 위해 다음 폴더를 생성하고 각각 `.gitkeep`만 두었다.
+
+```text
+app/react/
+app/django/
+app/fastapi/
+src/analysis/
+src/common/
+```
+
+이는 구현 완료를 뜻하지 않는다. framework 초기화, dependency, 실행 진입점, 설정과 실제 코드는 아직 없다.
 
 ## 5. 생성하지 않은 확장 폴더
 

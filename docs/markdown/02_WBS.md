@@ -2,7 +2,7 @@
 
 > 2026-07-10~09-03 · 5인(박준희·송민지·김재홍·정승·윤대성) · 실행 일정 61개 태스크 · 공식 산출물 21건 + 옵션 1건
 > 실행 추적, 기획·요구사항 추적, 8주 개발 일정의 세 관점을 한 문서에 통합했다.
-> 최종 갱신: 2026-07-20 12:44 KST · 갱신자: Codex
+> 최종 갱신: 2026-07-20 15:44 KST · 갱신자: Codex
 
 ## 통합 운영 기준
 
@@ -21,6 +21,22 @@
 4. 일정이나 현황이 바뀌면 **8주 핵심 개발 일정**, **Mermaid 일정 가시화**, **산출물 제출 일정**의 관련 항목을 동기화한다.
 5. 작업 종료 시 문서 하단 **WBS 작업 로그** 맨 위에 일시, 실행 WBS ID, 변경 결과, 검증과 관련 파일을 기록한다.
 6. 단순 조사·설명처럼 저장소 변경이 없는 작업은 WBS와 작업 로그를 갱신하지 않는다.
+
+### 공용 ID·산출물·검증 연계
+
+기존 실행 WBS ID는 유지한다. 공용 개발 작업은 아래 결과 단위로 `DOC-*`, `REQ-*`, `TC-*`, 실제 evidence path를 연결하며 test evidence가 없으면 완료로 표시하지 않는다.
+
+| wbs_id | 검증 가능한 결과 | deliverable_id | requirement_ids | owner | start_date | due_date | status | dependency | evidence_path |
+|---|---|---|---|---|---|---|---|---|---|
+| `1.5` | P0 범위와 기획서의 backlog 경계 검토 | `DOC-003` | 전체 P0 | 박준희·송민지 | 07/13 | 07/24 | 진행 | `DEC-005`~`009` 검토 | `docs/markdown/03_프로젝트기획서.md` |
+| `1.6` | P0 4화면과 API·상태·권한 계약 정합 | `DOC-013` | `REQ-F-003`~`007`, `REQ-NF-001` | 송민지 | 07/13 | 07/24 | 진행 | `API-001`~`008` | `docs/markdown/05_화면설계서_초안.md` |
+| `1.7` | 공용 통제·개발·data·API·test 명세와 구현 경계 확정 | `DOC-010`, `DOC-015` | 전체 P0 | 김재홍·정승 | 07/20 | 07/24 | 진행 | 없음 | `docs/markdown/final_project/00_project_control.md` 외 공용 문서 5개 |
+| `2.2`, `2.3` | V1·V2 합성 fixture·manifest와 `TC-DQ-*` 통과 | `DOC-004` | `REQ-F-001`, `REQ-NF-001` | 정승·윤대성·김재홍 | 07/15 | 07/23 | 대기 | `02_data_standard_guide.md` | 미생성 |
+| `2.7`, `2.8` | Django 단일 migration과 P0 8개 data 계약 검증 | `DOC-005` | `REQ-F-001`~`007` | 정승·김재홍 | 07/20 | 07/31 | 대기 | 합성 fixture | 미생성 |
+| `4.4`, `4.5` | `RULE-001` signal·evidence와 `TC-UNIT-001` 통과 | `DOC-010` | `REQ-F-002`~`004` | 김재홍 | 08/10 | 08/14 | 대기 | `DATA-001`~`006` | 미생성 |
+| `6.3`, `6.5` | `API-*` contract와 report fallback test 통과 | `DOC-014` | `REQ-F-003`~`007`, `REQ-NF-002` | 김재홍·윤대성·송민지·박준희 | 08/10 | 08/21 | 대기 | rule·evidence | 미생성 |
+| `7.1`~`7.3` | P0 dashboard·signal detail·report 화면의 상태·권한 test 통과 | `DOC-013`, `DOC-014` | `REQ-F-003`~`007` | 송민지 | 08/18 | 08/21 | 대기 | 업무 API | 미생성 |
+| `9.1` | `TC-E2E-001` V1→V2 Golden Path evidence 생성 | `DOC-016` | 전체 P0 | 전원 | 08/24 | 08/28 | 대기 | P0 구현 완료 | 미생성 |
 
 ## 🗓️ 8주 핵심 개발 일정
 
@@ -395,6 +411,7 @@ gantt
 
 | 일시(KST) | 실행 WBS ID | 변경 결과 | 검증 | 관련 파일 |
 |---|---|---|---|---|
+| 2026-07-20 15:44 | 1.3, 1.7, 9.1 | 공용 통제·data·API/AI·산출물 추적·test 인수 문서를 생성하고 기존 요구사항·WBS ID를 P0 `REQ-*`·`DOC-*`·`TC-*`에 mapping, 구현 경계 5개를 `.gitkeep`으로 추적 | 공용 문서 6개 제한과 기존 공통 명세 재사용, P0/확장·미도입 기술 상태·evidence 미생성 표기, 구현 경계만 생성하고 code·migration 미생성 확인 | `README.md`, `app/`, `src/`, `docs/markdown/01_요구사항정의서.md`, `docs/markdown/02_WBS.md`, `docs/markdown/final_project/` |
 | 2026-07-20 15:23 | 1.6, 1.7 | 최소 MVP Golden Path, 4개 화면, 서비스별 책임, 공통 상태·API·데이터 계약과 저장소 구조 기준을 확정하고 기존 화면설계서에 P0 우선 규칙 반영 | 구현 파일·dependency 없음 확인, P0와 확장 분리, 빈 framework 폴더 미생성, 내부 문서 링크 점검 | `README.md`, `docs/markdown/05_화면설계서_초안.md`, `docs/markdown/final_project/` |
 | 2026-07-20 12:44 | 8.2 | 전체 문서의 용도를 검토해 질문 주제별 기존 문서 참고 기준·작업별 참고 문서·충돌 처리 우선순위를 문서관리규칙에 추가 | Markdown 21개·템플릿 18개·제출본 2개·보조 이미지 1개 분류와 경로 확인, 새 문서 생성 지시 없음 확인 | `docs/문서관리규칙.md`, `docs/markdown/02_WBS.md` |
 | 2026-07-20 12:17 | 1.4 | 별도 WBS·요구사항 검증 결과 문서를 삭제해 WBS 관리 문서를 정리 | 삭제 대상 1건과 잔여 참조 0건 확인 | `docs/markdown/02_WBS.md` |

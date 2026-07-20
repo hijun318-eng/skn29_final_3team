@@ -411,6 +411,7 @@ gantt
 
 | 일시(KST) | 실행 WBS ID | 변경 결과 | 검증 | 관련 파일 |
 |---|---|---|---|---|
+| 2026-07-20 17:16 | 1.6 | 최신 중간발표 기획에 맞춰 화면 Baseline을 6개 화면·2개 독립 경로로 개정하고 역할별 대화형 분석, 이상징후 조사, 이슈 브리프와 보고 승인 계약을 동기화 | 화면 ID·흐름·공통 필드·합성 fixture·권한 차이·자동 조치 금지 문구 대조 및 Markdown 구조 확인 | `docs/markdown/05_화면설계서_초안.md`, `docs/markdown/SensePlace_기획서_초안.md`, `docs/markdown/02_WBS.md` |
 | 2026-07-20 | 1.5 | 합성 데이터 기반 Hotel Signal AI 기획서 초안의 사용자·범위·제외 범위, 중간발표 목업·기능 Baseline 경계, API·데이터·검증 기준을 병합 | 기획서의 사용자·시스템 경계, 합성 데이터 원칙, 단계별 완료 조건 확인 | `docs/markdown/SensePlace_기획서_초안.md`, `docs/deliverables/02_WBS_29기_3팀.xlsx`, `docs/markdown/02_WBS.md` |
 | 2026-07-20 15:58 | 8.2 | `docs/markdown/final_project/`와 `docs/templates/`를 읽기 전용 보호 폴더로 지정하고 상충하는 일정 스냅샷 갱신 문구 정리 | 두 보호 폴더 변경 없음, 금지 작업 6종과 변경 필요 시 처리 경로 명시 확인 | `AGENTS.md`, `docs/문서관리규칙.md`, `docs/markdown/02_WBS.md` |
 | 2026-07-20 15:56 | 1.5 | 프로젝트 기획서에서 화면설계서 초안 관련 참고 내용 제거 | 해당 파일명·경로·비교 문구 잔존 0건과 최상위 목차 7개 유지 확인 | `docs/markdown/03_프로젝트기획서.md`, `docs/markdown/02_WBS.md` |

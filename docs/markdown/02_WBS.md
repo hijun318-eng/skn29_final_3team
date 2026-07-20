@@ -413,6 +413,7 @@ gantt
 |---|---|---|---|---|
 | 2026-07-20 18:05 | 1.4 | 개인 branch의 `dev` 병합 요청 시 병합 직후 날짜별 팀 일일보고와 주간보고를 통합·검증하고 보고 변경만 별도 commit한 뒤 `dev`를 push하도록 규칙 개선 | 병합→보고 통합→검증→push 순서, 대상 날짜·주차 누적 범위·원격 일치·권한 경계·순환 기록 방지·중단 조건 대조 | `AGENTS.md`, `docs/markdown/daily_reports/README.md`, `docs/markdown/collaboration/README.md` |
 | 2026-07-20 17:37 | 1.4 | 팀원 5명의 일일보고를 `team_summaries/N주차/YYYYMMDD.md`로 통합하고 주차별 `주간보고.md`를 같은 폴더에 배치했으며 07/20 멘토링·팀 회의 결과 반영 | 공식 주차 매핑 2개·원본 날짜 5개·팀원 매핑 5명·주간보고 2개·40줄 제한·기존 경로 잔존 여부 확인 | `AGENTS.md`, `docs/문서관리규칙.md`, `docs/markdown/daily_reports/README.md`, `docs/markdown/daily_reports/team_summaries/` |
+| 2026-07-20 17:16 | 1.6 | 최신 중간발표 기획에 맞춰 화면 Baseline을 6개 화면·2개 독립 경로로 개정하고 역할별 대화형 분석, 이상징후 조사, 이슈 브리프와 보고 승인 계약을 동기화 | 화면 ID·흐름·공통 필드·합성 fixture·권한 차이·자동 조치 금지 문구 대조 및 Markdown 구조 확인 | `docs/markdown/05_화면설계서_초안.md`, `docs/markdown/SensePlace_기획서_초안.md`, `docs/markdown/02_WBS.md` |
 | 2026-07-20 | 1.5 | 합성 데이터 기반 Hotel Signal AI 기획서 초안의 사용자·범위·제외 범위, 중간발표 목업·기능 Baseline 경계, API·데이터·검증 기준을 병합 | 기획서의 사용자·시스템 경계, 합성 데이터 원칙, 단계별 완료 조건 확인 | `docs/markdown/SensePlace_기획서_초안.md`, `docs/deliverables/02_WBS_29기_3팀.xlsx`, `docs/markdown/02_WBS.md` |
 | 2026-07-20 15:58 | 8.2 | `docs/markdown/final_project/`와 `docs/templates/`를 읽기 전용 보호 폴더로 지정하고 상충하는 일정 스냅샷 갱신 문구 정리 | 두 보호 폴더 변경 없음, 금지 작업 6종과 변경 필요 시 처리 경로 명시 확인 | `AGENTS.md`, `docs/문서관리규칙.md`, `docs/markdown/02_WBS.md` |
 | 2026-07-20 15:56 | 1.5 | 프로젝트 기획서에서 화면설계서 초안 관련 참고 내용 제거 | 해당 파일명·경로·비교 문구 잔존 0건과 최상위 목차 7개 유지 확인 | `docs/markdown/03_프로젝트기획서.md`, `docs/markdown/02_WBS.md` |

@@ -2,12 +2,12 @@
 
 ## 1. 결론
 
-P0 완료는 `TC-E2E-001`의 V1→V2 변화 시나리오와 관련 unit·contract·data quality·AI·security test가 실제로 통과하고 evidence가 저장된 상태다. 문서·폴더·코드 존재만으로 완료 처리하지 않는다. ML/DL을 구현하지 않았으면 ML 결과와 metric을 작성하지 않는다.
+Baseline 완료는 `TC-BL-001`~`TC-BL-005`와 `TC-E2E-001`의 6개 test가 실제로 통과한 상태다. 기존의 세부 unit·contract·data quality·AI·security inventory는 P0 강화 대상이며 첫 프로토타입을 차단하지 않는다. 문서·폴더·코드 존재만으로 완료 처리하지 않는다.
 
 ## 2. 사람이 판단해야 할 사항
 
 - [ ] P0 합격 threshold
-  - 권장안: P0 필수 test 100% 통과, 미해결 severity 1·2 defect 0건
+  - 권장안: Baseline 필수 6개 test 100% 통과, 미해결 severity 1·2 defect 0건
   - 선택 시 영향: release gate가 명확해짐
   - 미선택 시 영향: 발표 직전 완료 판단이 주관적이 됨
 
@@ -32,13 +32,12 @@ P0 완료는 `TC-E2E-001`의 V1→V2 변화 시나리오와 관련 unit·contrac
 
 ## 4. 필수 최소 기능 구현 방향
 
-- unit: schema·집계·rule·상태 전이
-- contract: API envelope·권한·AI JSON
-- data quality: ID·version·PII·V1/V2 manifest
-- AI evaluation: evidence 연결·확정 표현·fallback
-- security: secret·권한·PII log
-- E2E: V1→V2→signal→note→report→approval
-- UAT: 2개 역할의 핵심 과업
+- `TC-BL-001`: V1·V2 fixture·manifest·PII 최소 검증
+- `TC-BL-002`: V1과 V2의 `RULE-001` 결과 변화
+- `TC-BL-003`: signal과 VOC·운영지표 evidence ID 연결
+- `TC-BL-004`: AI 미사용·실패 시 rule·evidence·template report 유지
+- `TC-BL-005`: 현장 메모 반영과 관리자 decision 역할 검사
+- `TC-E2E-001`: V1→V2→signal→note→report→approval 전체 흐름
 
 ## 5. 확장 방향
 
@@ -135,7 +134,20 @@ V1 데이터 적재
 9. V2 report는 V1과 달라진 section과 version을 표시한다.
 10. repository에 secret과 실제 고객 data가 없다.
 
-## 9. P0 test inventory
+## 9. Baseline 필수 test
+
+| test_case_id | 검증 | 완료 조건 |
+|---|---|---|
+| `TC-BL-001` | fixture·manifest·필수 schema·PII | 두 version 모두 검증 통과 |
+| `TC-BL-002` | `RULE-001` 재현 | V1 정상·낮음, V2 trigger |
+| `TC-BL-003` | evidence 연결 | VOC와 metric evidence ID 존재 |
+| `TC-BL-004` | AI fallback | AI 없이도 signal·evidence·report 작업본 유지 |
+| `TC-BL-005` | note·decision | note 반영, reviewer 승인 거부, manager 승인 허용 |
+| `TC-E2E-001` | 전체 Golden Path | 화면 또는 API 시연과 실행 evidence 존재 |
+
+## 10. P0 강화 test inventory
+
+아래 세부 test는 Baseline 통과 뒤 해당 기능을 실제로 강화할 때 활성화한다. Baseline 단계에서는 `NOT_RUN`이 정상이며 완료 실패로 계산하지 않는다.
 
 | test_case_id | requirement_ids | 검증 | 상태 | evidence |
 |---|---|---|---|---|
@@ -165,7 +177,7 @@ V1 데이터 적재
 | `TC-SEC-003` | `REQ-NF-001` | prompt injection data 격리 | `NOT_RUN` | 미생성 |
 | `TC-E2E-001` | 전체 P0 | V1→V2 Golden Path | `NOT_RUN` | 미생성 |
 
-## 10. 정상·empty·error·권한
+## 11. 정상·empty·error·권한
 
 각 P0 화면과 API는 다음을 검증한다.
 
@@ -176,7 +188,7 @@ V1 데이터 적재
 - conflict: stale report version·중복 note 처리
 - recovery: 사용자가 입력한 field note 보존
 
-## 11. AI 평가
+## 12. AI 평가
 
 | 평가 | 지표·assertion |
 |---|---|
@@ -190,7 +202,7 @@ V1 데이터 적재
 
 정답률 기준은 eval dataset과 reviewer 합의 후 version으로 고정한다. 기준이 없으면 임의 합격 수치를 만들지 않는다.
 
-## 12. ML/DL 평가
+## 13. ML/DL 평가
 
 실제 ML/DL 구현이 승인된 경우에만 작성한다.
 
@@ -206,7 +218,7 @@ V1 데이터 적재
 
 구현하지 않으면 `MODEL-001=NOT_ADOPTED` 또는 `DECISION_REQUIRED`로 두고 결과를 작성하지 않는다.
 
-## 13. evidence 저장
+## 14. evidence 저장
 
 test 결과가 생길 때 다음 기준을 사용한다.
 
@@ -218,7 +230,7 @@ evals/reports/<test_run_id>/screenshots/
 
 실행 전에는 위 폴더를 만들지 않는다. evidence에는 commit SHA, 환경, data·schema·rule·model·analysis version과 실행 시각을 포함한다. 실제 개인정보와 secret은 저장하지 않는다.
 
-## 14. 결함 관리
+## 15. 결함 관리
 
 | field | 설명 |
 |---|---|
@@ -231,20 +243,23 @@ evals/reports/<test_run_id>/screenshots/
 | `status` | OPEN·FIXED·VERIFIED·DEFERRED |
 | `evidence_path` | log·capture·result |
 
-## 15. P0 인수 기준
+## 16. Baseline 인수 기준
 
-- 필수 P0 test 100% `PASS`
+- `TC-BL-001`~`005`, `TC-E2E-001` 100% `PASS`
 - severity 1·2 미해결 defect 0건
 - `TC-E2E-001` 실제 실행 evidence 존재
-- 모든 P0 requirement와 test mapping 존재
+- Baseline Golden Path의 requirement와 test mapping 존재
 - 합성 데이터·version·근거·한계가 화면과 report에 표시
 - manager 승인 전 report 미확정
 - LLM failure fallback 통과
 - Git secret·실제 고객 data 0건
 - 미구현 ML·VectorDB·GraphDB·sLLM·멀티 에이전트 결과 조작 0건
 
-## 16. 변경 이력
+P0 강화 인수는 실제로 구현한 세부 계약에 해당하는 기존 `TC-UNIT-*`, `TC-DQ-*`, `TC-CT-*`, `TC-AI-*`, `TC-AUTH-*`, `TC-SEC-*`만 추가 적용한다.
+
+## 17. 변경 이력
 
 | version | 날짜 | 변경 |
 |---|---|---|
 | `1.0` | 2026-07-20 | P0 test ID, V1→V2 E2E, data·API·AI·security test와 인수 gate 정의 |
+| `1.1` | 2026-07-20 | Baseline 필수 test를 6개로 제한하고 기존 상세 inventory를 P0 강화 단계로 이동 |

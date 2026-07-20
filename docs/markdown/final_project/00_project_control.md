@@ -2,7 +2,9 @@
 
 ## 1. 결론
 
-Hotel Signal AI의 P0는 합성 데이터 V1·V2를 이용한 단일 Golden Path로 고정한다. 다른 Codex 세션과 담당자는 이 문서를 `AGENTS.md` 다음으로 읽고, 기존의 넓은 요구사항·기획 문서는 backlog와 평가 검토 자료로만 사용한다.
+Hotel Signal AI의 P0는 합성 데이터 V1·V2를 이용한 단일 Golden Path로 고정한다. 다만 문서 재검증 결과, 기존 P0 계약 전체를 첫 구현 단위로 적용하면 독립 FastAPI, 운영 수준 인증·감사, 8개 API·데이터 그룹과 전체 시험을 동시에 요구하는 것으로 오해할 수 있어 베이스라인 프로토타입보다 크다. 따라서 첫 실행 단위를 `Baseline`으로 별도 고정하고, 나머지 P0 계약은 Baseline 통과 후 강화 범위로 적용한다.
+
+`Baseline`은 P0를 대체하지 않는다. 조식 대기 시나리오 하나로 Golden Path를 끝까지 실행하기 위한 가장 작은 수직 슬라이스이며, 다른 Codex 세션은 Baseline을 먼저 구현하고 명시적 승인 없이 P0 강화 항목을 선행하지 않는다.
 
 요청안의 문서 수에는 “5개 제한”과 6개 파일 목록이 함께 있어 그대로 적용할 수 없다. 기존 `common_project_specification.md`가 `01_common_development_specification.md`와 같은 역할을 이미 수행하므로 중복 파일을 만들지 않고, 아래 6개만 공용 개발 기준으로 지정한다.
 
@@ -67,11 +69,29 @@ P0 사용자는 `HOTEL_MANAGER`, `DEPARTMENT_REVIEWER`로 결정됐다. `SYSTEM_
 
 P0는 고객 대상 서비스나 실제 워커힐 운영 시스템이 아니다. 공개 참고정보와 합성 데이터만 사용하며, 결과를 실제 호텔 문제·성과로 표현하지 않는다.
 
+Baseline 구현은 아래로 제한한다.
+
+| 구분 | Baseline 확정 범위 |
+|---|---|
+| 시나리오 | 조식 대기 이상 1개 |
+| 데이터 | 같은 schema의 `synthetic-v1`, `synthetic-v2` fixture와 manifest |
+| 분석 | `RULE-001` 1개, 대표 VOC·대기시간·방문객 수·근무 인원 evidence |
+| 설명 | 결정론적 template 우선, LLM은 선택적 1회 호출과 실패 fallback |
+| 화면 | 역할 선택, dashboard, signal 상세·현장 메모, report 검토의 4개 화면 |
+| 실행 구조 | React thin UI, Django 단일 업무 API·로컬 persistence, `src/analysis`, `src/common` |
+| FastAPI | 폴더 경계만 유지하고 별도 process는 실행하지 않음 |
+| 권한 | 두 역할을 선택하는 demo mock과 server-side 역할 검사 |
+| 저장 | 교육용 local DB 또는 fixture 저장; 운영 DB·SSO·배포 구성 제외 |
+| 검증 | Baseline 필수 test 6개: `TC-BL-001`~`005`, `TC-E2E-001` |
+
+Baseline에서 구현하지 않는 항목은 운영 계정·SSO, 완전한 객체 권한 체계, 독립 FastAPI, 8개 물리 테이블, 전체 8개 공개 endpoint 분리, 운영 수준 감사·관측성, ML·VectorDB·GraphDB·멀티 에이전트·sLLM·STT다.
+
 ## 5. 확장 방향
 
 | 우선순위 | 범위 | 진입 조건 |
 |---|---|---|
-| P0 | 단일 Golden Path, 2개 역할, 4개 화면, 결정론적 trigger·evidence·보고 승인 | 현재 구현 기준 |
+| Baseline | 조식 대기 1개 시나리오, rule 1개, V1·V2, 통합 API 5개, 4개 화면 | 첫 실행 가능한 프로토타입 |
+| P0 강화 | 공통 상태·세분 endpoint·권한·감사·품질 계약 강화 | Baseline E2E 통과 후 필요 항목만 승인 |
 | P1 | 평가상 필요한 최소 ML, 저장소 검증, 3단계 workflow, STT 파일 변환 | P0 test 통과와 사람의 결정 |
 | P2 | 실제 PMS·POS·CRM, 조직 권한, 운영 배포, 실제 데이터 거버넌스 | 호텔·법무·보안·운영 승인 |
 
@@ -121,18 +141,25 @@ AGENTS.md
 
 ## 9. P0 기능과 제외 기능
 
-### 9.1 P0
+### 9.1 Baseline 필수
 
-- versioned 합성 데이터 V1·V2
-- 스키마·품질 검증과 최소 topic·aspect·sentiment
-- 규칙 기반 이상 신호
-- 마스킹된 VOC·운영지표 evidence
-- 원인 후보·반대 근거·missing data 분리
-- 현장 확인 메모
-- 긍정 VOC를 포함한 주간 보고서 초안
-- 호텔 관리자 결정과 감사 로그
+- 조식 대기 시나리오의 versioned 합성 데이터 V1·V2
+- `RULE-001` 기반 이상 신호와 연결된 VOC·운영지표 evidence
+- 원인 후보·반대 근거·missing data를 구분한 template 또는 선택적 LLM 설명
+- 현장 확인 메모와 긍정 VOC가 포함된 주간 보고서 작업본
+- demo 역할 검사와 호텔 관리자 승인·보류·반려
+- V1→V2 결과 변화의 재현 가능한 E2E
 
-### 9.2 제외
+### 9.2 P0 강화
+
+- 8개 논리 데이터 그룹의 독립 persistence
+- 8개 공개 endpoint의 물리적 분리
+- 전체 상태 전이·오류 code·객체 권한·감사 log
+- 추가 topic·aspect·sentiment와 복수 signal rule
+
+위 항목은 Baseline 통과 뒤 실제 필요성이 확인된 경우에만 구현한다. 이 목록 전체를 첫 프로토타입 완료 조건으로 사용하지 않는다.
+
+### 9.3 제외
 
 - 고객 챗봇, 고객 자동 응답, 예약 대행
 - 본사·경영진 별도 화면
@@ -185,9 +212,11 @@ AGENTS.md
 | `DEC-007` | 멀티 에이전트 | 판단 필요 | P0 3단계 workflow |
 | `DEC-008` | sLLM | 판단 필요 | P0 제외 |
 | `DEC-009` | STT | 판단 필요 | P0 제외 |
+| `DEC-010` | 첫 Baseline 구현 단위 | 확정 | React thin UI + Django 단일 API·local persistence + `src`; FastAPI 별도 process 제외 |
 
 ## 13. 변경 이력
 
 | version | 날짜 | 변경 | 상태 |
 |---|---|---|---|
 | `1.0` | 2026-07-20 | 기존 공통 명세를 보존한 6개 공용 문서 체계, ID 호환, 결정 gate 정의 | 사용자 검토 전 |
+| `1.1` | 2026-07-20 | P0 전체 계약과 첫 Baseline 구현 단위를 분리하고 독립 FastAPI·운영 수준 통제를 후속 강화로 축소 | 사용자 검토 전 |

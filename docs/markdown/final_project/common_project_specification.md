@@ -10,15 +10,17 @@
 
 | 항목 | 값 |
 |---|---|
-| 문서 상태 | P0 구현 기준 |
+| 문서 상태 | Baseline 우선, P0 강화 계약 |
 | 기준일 | 2026-07-20 |
-| 대상 브랜치 시작 기준 | `jaehong` at `306ac3a9600c28cc2711c0f7546429f69a1e886f` |
+| 대상 브랜치 시작 기준 | `jaehong` at `9cfe54335aba1295cc3110a7ad6fbb7ed5fd1343` |
 | 프로젝트명 | Hotel Signal AI |
 | 데이터 성격 | 공개 참고정보와 합성 데이터 기반 교육용 프로토타입 |
 
 ## 1. 결론
 
-React·Django·FastAPI·`src/analysis`는 하나의 상태·데이터·API·version 계약을 공유한다. Django가 인증·업무 DB·migration을 소유하고, 이상 signal은 결정론적 rule이 생성하며, LLM은 evidence에 연결된 제한적 설명과 보고서 초안만 만든다.
+첫 Baseline은 React thin UI, Django 단일 업무 API·local persistence, `src/analysis`, `src/common`만 실행한다. `app/fastapi/`는 책임 경계만 유지하고 별도 process로 실행하지 않는다. 이상 signal은 `RULE-001`이 결정론적으로 생성하며, 설명과 보고서 문장은 template을 기본으로 하고 LLM을 사용하더라도 evidence에 연결된 선택적 1회 호출로 제한한다.
+
+이 문서의 상세 상태·API·감사·권한 계약은 P0 목표 계약이다. Baseline 완료 전 모든 항목을 물리적으로 구현해야 한다는 뜻이 아니다.
 
 기존 파일 경로를 공용 개발 명세의 정식 경로로 유지한다. 같은 목적의 `01_common_development_specification.md`는 만들지 않는다.
 
@@ -50,13 +52,26 @@ React·Django·FastAPI·`src/analysis`는 하나의 상태·데이터·API·vers
 
 ## 4. 필수 최소 기능 구현 방향
 
-- React: P0 4화면과 상태·근거·합성 version 표시
-- Django: 인증·권한·업무 API·migration·현장 메모·보고 결정·감사 로그
-- FastAPI: 분류·원인 후보 문장·보고 초안과 model·prompt version
-- `src/analysis`: schema, aggregation, rule, evidence의 framework 독립 로직
-- `src/common`: enum, schema, 식별자, 오류 계약의 코드 원본
+- React: 4개 화면을 얇게 연결하고 합성 데이터·version·evidence 표시
+- Django: 하나의 demo 업무 module, 통합 API 5개, local persistence, 현장 메모·보고 결정 저장
+- FastAPI: Baseline에서는 실행하지 않고 폴더 경계와 향후 책임만 유지
+- `src/analysis`: V1·V2 schema 검사, `RULE-001`, 집계, evidence 구성
+- `src/common`: Baseline 응답 schema, 두 역할, 최소 상태·식별자의 코드 원본
 
 실제 구현 경계는 `app/react/`, `app/django/`, `app/fastapi/`, `src/analysis/`, `src/common/`이며 현재는 `.gitkeep`만 존재한다.
+
+Baseline 고정값:
+
+| 항목 | 구현 제한 |
+|---|---|
+| business scenario | `BREAKFAST_WAITING` 1개 |
+| rule | `RULE-001` 1개 |
+| dataset | `synthetic-v1`, `synthetic-v2` |
+| persistence | Django local DB 또는 fixture; 운영 PostgreSQL 필수 아님 |
+| role | mock `HOTEL_MANAGER`, `DEPARTMENT_REVIEWER` |
+| AI | template 우선, 선택적 LLM 호출 1개, 실패 시 template 유지 |
+| API | 5개 통합 demo endpoint |
+| test | `TC-BL-001`~`005`, `TC-E2E-001` |
 
 ## 5. 확장 방향
 
@@ -66,7 +81,7 @@ React·Django·FastAPI·`src/analysis`는 하나의 상태·데이터·API·vers
 
 ## 6. 문서 역할
 
-이 문서는 다른 Codex 작업과 팀원이 P0를 구현할 때 사용하는 Single Source of Truth다. 기존 기획·요구사항·화면설계서의 넓은 범위 중 이번 최소 MVP가 실행할 계약만 좁혀 정의한다. 이 문서에 없는 확장 기능은 명시적 승인 전 구현하지 않는다.
+이 문서는 다른 Codex 작업과 팀원이 Baseline과 P0를 구현할 때 사용하는 Single Source of Truth다. 구현 순서는 `Baseline → P0 강화 → P1 → P2`다. 기존 기획·요구사항·화면설계서의 넓은 범위는 명시적 승인 전 구현하지 않는다.
 
 ## 7. 프로젝트 정의
 
@@ -118,6 +133,8 @@ P0 사용자 흐름은 하나만 구현한다.
 8. 긍정 VOC를 포함한 주간 보고서 초안
 9. 호텔 관리자의 문장 수정과 승인·보류·반려
 10. V1·V2 차이와 분석 version 재현
+
+Baseline은 위 10개 기능을 조식 대기 시나리오 1개에서 얇게 관통한다. 각 기능을 독립 subsystem·table·service로 완성하는 것은 P0 강화이며 Baseline 선행조건이 아니다.
 
 ### 8.2 P0 고정 질문
 
@@ -416,9 +433,9 @@ load_demo_dataset --version synthetic-v2
 
 | 영역 | 책임 | 책임 아님 |
 |---|---|---|
-| React | 4개 P0 화면, 상태·근거·version 표시 | 권한 최종 판단, 분석 계산 |
-| Django | 인증·권한·업무 API·DB·migration·승인·감사 | 모델 추론 자체 |
-| FastAPI | 분류·설명·초안 생성과 model version | 사용자 DB, migration, 원시 SQL |
+| React | Baseline 4개 화면, 상태·근거·version 표시 | 권한 최종 판단, 분석 계산 |
+| Django | demo 역할 검사·통합 API·local DB·승인; P0 강화 시 인증·감사 | 모델 추론 자체 |
+| FastAPI | P1 승인 시 분류·설명·초안 생성과 model version | Baseline 실행, 사용자 DB, migration, 원시 SQL |
 | `src/analysis` | schema·집계·rule·evidence·V1/V2 비교 | HTTP·UI |
 | `src/common` | enum·schema·오류·식별자 계약 | framework별 중복 정의 |
 
@@ -435,13 +452,15 @@ FastAPI를 별도 배포할 필요가 아직 없으면 Django에서 `src`를 직
 - 감사 로그는 actor, action, target, before/after status, request_id, timestamp, version을 기록한다.
 - 승인된 보고서와 현장 메모는 덮어쓰지 않고 새 version 또는 superseding record로 보존한다.
 
-## 22. 완료 기준
+## 22. P0 강화 완료 기준
+
+Baseline 완료 여부는 `05_test_acceptance_guide.md`의 필수 6개 test로 판단한다. 아래는 해당 기능을 실제로 확장했을 때 적용하는 목표 계약이며 첫 프로토타입의 선행조건이 아니다.
 
 - [ ] P0와 확장이 분리됨
 - [ ] Golden Path가 한 개임
 - [ ] 화면 역할이 `HOTEL_MANAGER`, `DEPARTMENT_REVIEWER` 두 개임
 - [ ] 공통 enum과 API envelope가 코드·문서에서 일치함
-- [ ] 8개 최소 데이터 그룹의 fixture와 schema 검증이 있음
+- [ ] 8개 논리 데이터 그룹의 계약과 실제 선택한 persistence schema 검증이 있음
 - [ ] trigger가 결정론적이며 LLM이 threshold를 결정하지 않음
 - [ ] ontology-lite의 alias·metric mapping version이 있음
 - [ ] 동일 fixture·version으로 결과가 재현됨
@@ -453,13 +472,13 @@ FastAPI를 별도 배포할 필요가 아직 없으면 Django에서 `src`를 직
 - [ ] 실제 호텔 데이터·성과를 주장하지 않음
 - [ ] React·Django·FastAPI·`src` 책임이 중복되지 않음
 
-## 23. 구현 착수 전 결정 필요
+## 23. P0 강화·P1 착수 전 결정 필요
 
 - dependency·runtime version과 lock file 정책
-- 운영 DBMS와 Django project/app 최소 경계
+- 운영 DBMS와 Django project/app 강화 경계
 - V1·V2 fixture schema, seed, 기대 signal 정답
 - 분류를 규칙 baseline으로 시작할지 ML 모델을 함께 둘지 여부
-- FastAPI를 중간 데모에 실제 분리할 필요가 있는지 여부
+- P1에서 FastAPI를 독립 service로 분리할 필요가 있는지 여부
 - 보고서 section JSON schema와 React 편집 범위
 
 이 결정이 끝나기 전에는 인프라·RAG·멀티에이전트·MCP를 추가하지 않는다.
@@ -498,7 +517,9 @@ LOG_LEVEL=
 - 실제 secret, raw·processed 생성 데이터, 대형 model artifact를 stage하지 않는다.
 - 문서만으로 구현 완료를 주장하지 않는다.
 
-## 27. 공통 Definition of Done
+## 27. P0 강화 Definition of Done
+
+이 절은 Baseline 통과 뒤 실제로 강화한 기능에 적용한다. Baseline 완료 조건은 `05_test_acceptance_guide.md`의 6개 필수 test가 우선한다.
 
 - [ ] 요구사항 ID와 WBS 결과가 연결됨
 - [ ] 코드 또는 문서 위치가 기록됨
@@ -515,5 +536,6 @@ LOG_LEVEL=
 
 | version | 날짜 | 변경 |
 |---|---|---|
+| `1.2` | 2026-07-20 | 첫 Baseline을 React·Django·`src` 수직 슬라이스로 축소하고 FastAPI·운영 통제를 P0 강화로 분리 |
 | `1.1` | 2026-07-20 | 프로젝트 통제 문서와 경로 호환, 상단 의사결정, 환경·Git·log·DoD 공용 기준 추가 |
 | `1.0` | 2026-07-20 | P0 Golden Path와 공통 상태·데이터·API·권한 계약 확정 |

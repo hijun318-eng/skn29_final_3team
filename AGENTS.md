@@ -28,7 +28,7 @@
 
 ## Git 협업 규칙
 
-- branch와 commit의 상세 규칙은 `docs/collaboration/README.md`를 따른다.
+- branch와 commit의 상세 규칙은 `docs/markdown/collaboration/README.md`를 따른다.
 - 사용자가 명시적으로 요청하기 전에는 stage, commit, push, dependency 설치를 하지 않는다.
 - commit message 작성 요청에는 `.agents/skills/draft-commit-message/SKILL.md`를 적용한다.
 - commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
@@ -49,8 +49,20 @@
 
 ## 지침 관리
 
-- 이 파일은 AI 작업·응답 품질 규칙의 원본으로 사용하고, 사람이 참고하는 Git 절차는 `docs/collaboration/README.md`에서 관리한다.
+- 이 파일은 AI 작업·응답 품질 규칙의 원본으로 사용하고, 사람이 참고하는 Git 절차는 `docs/markdown/collaboration/README.md`에서 관리한다.
 - root `AGENTS.md`는 항상 적용할 원칙을 관리하고, 반복 작업 절차만 `.agents/skills`에서 관리한다.
+
+## 문서 저장 규칙
+
+- `docs/` 바로 아래에는 기본적으로 `markdown/`과 `deliverables/`만 둔다. 현재 `서비스흐름도.png`는 공식 산출물이 아닌 초안 이미지 예외로 `docs/` 바로 아래에 둔다.
+- `docs/`에서 관리하는 모든 Markdown 문서는 `docs/markdown/`에 저장한다. 협업·보고처럼 기존 하위 구조가 필요한 문서는 해당 폴더를 유지한다.
+- 제출용 `.xlsx`, `.docx`, `.pptx`, `.png`, `.mp4`와 모델·소스 묶음은 `docs/deliverables/`에 저장한다.
+- 제공받은 원본 양식은 파일명을 바꾸지 않고 `docs/deliverables/templates/`에 저장한다.
+- 공식 산출물 파일명은 일정 순서에 따라 `두 자리 번호_문서이름_29기_3팀.확장자` 형식을 사용한다.
+- 위 파일명 규칙은 `docs/deliverables/`의 공식 산출물에만 적용하며 `docs/markdown/` 문서에는 적용하지 않는다.
+- 산출물 번호는 `docs/markdown/최종_프로젝트_산출물_및_전체_일정.md`의 마감일 순서를 기준으로 하며, 임의로 새 번호를 만들지 않는다.
+- 파일을 이동하거나 이름을 바꾸면 저장소 안의 관련 링크와 참조 경로도 같은 작업에서 갱신한다.
+- 상세 번호와 예시는 `docs/markdown/문서관리규칙.md`를 따른다.
 
 ## 완료 보고
 
@@ -62,22 +74,22 @@
 
 ## WBS 갱신
 
-- 저장소 파일을 변경한 작업을 마칠 때 `docs/AI_AGENT_WBS.md`의 관련 작업 행과 작업 로그를 갱신한다.
+- 저장소 파일을 변경한 작업을 마칠 때 `docs/markdown/AI_AGENT_WBS.md`의 관련 작업 행과 작업 로그를 갱신한다.
 - 기존 작업이 없으면 문서의 단계 코드 및 ID 규칙에 따라 새 행을 추가한다.
 - 단순 조사·설명처럼 저장소 파일을 변경하지 않은 작업은 갱신하지 않는다.
 - 완료 보고에 갱신한 WBS 작업 ID를 포함한다.
 
 ## 일일보고 갱신
 
-- Codex가 저장소 파일을 변경한 작업을 마칠 때 현재 개인 branch에 대응하는 `docs/daily_reports/<branch>/일일보고.md`를 갱신한다.
+- Codex가 저장소 파일을 변경한 작업을 마칠 때 현재 개인 branch에 대응하는 `docs/markdown/daily_reports/<branch>/일일보고.md`를 갱신한다.
 - 같은 날짜의 보고가 있으면 그 날짜 아래에 수행 내용을 추가하고, 없으면 파일 상단 안내문 아래에 새 날짜 블록을 추가한다.
-- 일일보고를 추가·수정한 뒤 프로젝트 일정에서 해당 주차를 확인하고 같은 주차의 `docs/daily_reports/주간보고.md`를 함께 갱신한다.
-- 세부 작성 방법과 branch 매핑은 `docs/daily_reports/README.md`를 따른다.
+- 일일보고를 추가·수정한 뒤 프로젝트 일정에서 해당 주차를 확인하고 같은 주차의 `docs/markdown/daily_reports/주간보고.md`를 함께 갱신한다.
+- 세부 작성 방법과 branch 매핑은 `docs/markdown/daily_reports/README.md`를 따른다.
 - 조사·설명처럼 저장소 파일을 변경하지 않은 작업과 일일보고만 갱신하는 작업은 중복 기록하지 않는다.
 
 ## 주간보고 작성
 
-- 일일보고가 갱신되거나 사용자가 날짜·기간을 지정해 주간보고 작성을 요청하면 팀원 5명의 `docs/daily_reports/<branch>/일일보고.md`를 읽고 `docs/daily_reports/주간보고.md`에 통합한다.
-- 보고 기간의 해석, 통합 기준과 출력 형식은 `docs/daily_reports/README.md`의 `주간보고 작성 규칙`을 따른다.
+- 일일보고가 갱신되거나 사용자가 날짜·기간을 지정해 주간보고 작성을 요청하면 팀원 5명의 `docs/markdown/daily_reports/<branch>/일일보고.md`를 읽고 `docs/markdown/daily_reports/주간보고.md`에 통합한다.
+- 보고 기간의 해석, 통합 기준과 출력 형식은 `docs/markdown/daily_reports/README.md`의 `주간보고 작성 규칙`을 따른다.
 - 일일보고에 없는 작업이나 상태를 추정하지 않고, 중복 작업은 의미를 보존해 하나의 상위 항목으로 정리한다.
 - 같은 주차의 유사 항목을 합쳐 요약하고, 해당 주차 보고 블록이 50줄을 넘으면 핵심 결과·결정·이슈 중심으로 다시 요약한다.

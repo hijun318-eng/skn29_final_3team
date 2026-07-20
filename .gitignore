@@ -23,6 +23,8 @@ node_modules/
 .next/
 dist/
 coverage/
+# Personal local frontend workspace
+frontend/
 
 # Local tools and logs
 .codex-log/

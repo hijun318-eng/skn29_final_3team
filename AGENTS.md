@@ -30,6 +30,8 @@
 
 - branch와 commit의 상세 규칙은 `docs/markdown/collaboration/README.md`를 따른다.
 - 사용자가 명시적으로 요청하기 전에는 stage, commit, push, dependency 설치를 하지 않는다.
+- 사용자가 개인 branch의 `dev` 병합을 명시적으로 요청하면 해당 branch를 최신 `dev`에 병합한 뒤 `origin/dev`에 push하기 전에 `docs/markdown/daily_reports/README.md`의 `dev 병합 요청 시 보고 통합` 절차를 수행한다.
+- `dev` 병합 요청은 대상 개인 branch push, `dev` 최신화·병합·push와 이번 통합에서 생성·수정한 `docs/markdown/daily_reports/team_summaries/` 파일의 stage·commit까지 승인한 것으로 본다. 기존 미커밋 변경과 그 밖의 파일은 포함하지 않으며, 작업 트리가 깨끗하지 않거나 로컬·원격 commit이 일치하지 않거나 병합·보고 검증이 실패하면 중단한다.
 - commit message 작성 요청에는 `.agents/skills/draft-commit-message/SKILL.md`를 적용한다.
 - commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
 
@@ -82,21 +84,23 @@
 - 기존 작업이 없으면 `02_WBS.md`의 실행 단계와 ID 체계에 따라 새 행을 추가하고 전체 태스크 수·단계별 요약을 함께 수정한다.
 - 일정·상태가 바뀌면 실행 WBS, 8주 핵심 개발 일정, Mermaid Gantt와 산출물 제출 일정의 관련 항목을 동기화한다.
 - 단순 조사·설명처럼 저장소 파일을 변경하지 않은 작업은 갱신하지 않는다.
-- 완료 보고에 갱신한 WBS 작업 ID를 포함한다.
+- 개인 일일보고·날짜별 팀 요약·주간보고만 보완한 보고 전용 변경은 순환 기록을 막기 위해 WBS 갱신 대상에서 제외한다.
+- 완료 보고에 갱신한 WBS 작업 ID를 포함하고, 위 보고 전용 변경이면 `WBS 갱신 제외(보고 전용)`로 표기한다.
 
 ## 일일보고 갱신
 
 - Codex가 저장소 파일을 변경한 작업을 마칠 때 현재 개인 branch에 대응하는 `docs/markdown/daily_reports/<branch>/일일보고.md`를 갱신한다.
 - 같은 날짜의 보고가 있으면 그 날짜 아래에 수행 내용을 추가하고, 없으면 파일 상단 안내문 아래에 새 날짜 블록을 추가한다.
 - 새로 추가하거나 수정하는 날짜 블록은 제목과 빈 줄을 포함해 5줄 이내로 작성한다.
-- 일일보고를 추가·수정한 뒤 프로젝트 일정에서 해당 주차를 확인하고 같은 주차의 `docs/markdown/daily_reports/주간보고.md`를 함께 갱신한다.
+- 개인 branch에서는 개인 일일보고까지만 갱신한다. 날짜별 팀 요약과 주간보고의 자동 통합은 `dev` 병합 후 수행하며, 사용자가 날짜·기간을 지정해 별도로 작성을 요청한 경우만 예외로 한다.
+- `dev`에서는 개인 작성자를 추정해 일일보고를 수정하지 않고, 보고 통합 commit 자체를 개인 일일보고·날짜별 팀 요약·주간보고에 다시 기록하지 않는다.
 - 세부 작성 방법과 branch 매핑은 `docs/markdown/daily_reports/README.md`를 따른다.
-- 조사·설명처럼 저장소 파일을 변경하지 않은 작업과 일일보고만 갱신하는 작업은 중복 기록하지 않는다.
+- 조사·설명처럼 저장소 파일을 변경하지 않은 작업과 일일보고·날짜별 팀 요약·주간보고만 보완하는 작업은 중복 기록하지 않는다.
 
 ## 주간보고 작성
 
-- 일일보고가 갱신되거나 사용자가 날짜·기간을 지정해 주간보고 작성을 요청하면 팀원 5명의 `docs/markdown/daily_reports/<branch>/일일보고.md`를 읽고 `docs/markdown/daily_reports/주간보고.md`에 통합한다.
+- 사용자가 날짜·기간을 지정해 주간보고 작성을 요청하거나 개인 branch의 `dev` 병합을 요청하면 팀원 5명의 `docs/markdown/daily_reports/<branch>/일일보고.md`를 읽고 해당 `docs/markdown/daily_reports/team_summaries/<N주차>/주간보고.md`에 통합한다.
 - 보고 기간의 해석, 통합 기준과 출력 형식은 `docs/markdown/daily_reports/README.md`의 `주간보고 작성 규칙`을 따른다.
 - 일일보고에 없는 작업이나 상태를 추정하지 않고, 중복 작업은 의미를 보존해 하나의 상위 항목으로 정리한다.
 - branch 최신화, fetch·pull·merge, commit·push와 commit hash 같은 Git 운영 이력은 주간보고에서 제외하고 실제 작업 결과만 기록한다.
-- 같은 주차의 유사 항목을 합쳐 요약하고, 새로 추가하거나 수정하는 주차 보고 블록이 40줄을 넘으면 핵심 결과·결정·이슈 중심으로 다시 요약한다.
+- 같은 주차의 유사 항목을 합쳐 요약하고, 새로 추가하거나 수정하는 `주간보고.md`가 40줄을 넘으면 핵심 결과·결정·이슈 중심으로 다시 요약한다.

@@ -1,224 +1,174 @@
 # Hotel Signal AI 프로젝트 통제 문서
 
-## 1. 결론
+## 결론
 
-Hotel Signal AI의 P0는 합성 데이터 V1·V2를 이용한 단일 Golden Path로 고정한다. 다만 문서 재검증 결과, 기존 P0 계약 전체를 첫 구현 단위로 적용하면 독립 FastAPI, 운영 수준 인증·감사, 8개 API·데이터 그룹과 전체 시험을 동시에 요구하는 것으로 오해할 수 있어 베이스라인 프로토타입보다 크다. 따라서 첫 실행 단위를 `Baseline`으로 별도 고정하고, 나머지 P0 계약은 Baseline 통과 후 강화 범위로 적용한다.
+Hotel Signal AI의 Baseline은 다음 두 핵심 기능이 합성 데이터에서 실제로 끝까지 동작하는 상태다.
 
-`Baseline`은 P0를 대체하지 않는다. 조식 대기 시나리오 하나로 Golden Path를 끝까지 실행하기 위한 가장 작은 수직 슬라이스이며, 다른 Codex 세션은 Baseline을 먼저 구현하고 명시적 승인 없이 P0 강화 항목을 선행하지 않는다.
+1. 권한 기반 대화형 분석: 자연어 질문 → semantic query plan → 안전한 Text-to-SQL → 표·차트·설명
+2. 이상 감지·자동 분석·주간 보고: 품질 Gate → 결정론적 감지 → 근거 조사 → 보고서 초안 → 관리자 결정
 
-요청안의 문서 수에는 “5개 제한”과 6개 파일 목록이 함께 있어 그대로 적용할 수 없다. 기존 `common_project_specification.md`가 `01_common_development_specification.md`와 같은 역할을 이미 수행하므로 중복 파일을 만들지 않고, 아래 6개만 공용 개발 기준으로 지정한다.
+2026-08-06 중간발표는 위 두 경로를 동일한 응답 계약을 사용하는 비연동 프론트엔드 fixture로 시연한다. 실제 Django·FastAPI·PostgreSQL·LLM 연결은 2026-08-07~14 Baseline에서 완성한다. 기존 문서의 `조식 대기 단일 경로·4화면·통합 API 5개·FastAPI 미실행` 축소안은 최종 Baseline 기획서와 충돌하므로 폐기한다.
 
-1. `00_project_control.md`
-2. `common_project_specification.md` — 요청안의 `01_common_development_specification.md` 역할
-3. `02_data_standard_guide.md`
-4. `03_api_ai_integration_contract.md`
-5. `04_deliverable_traceability_matrix.md`
-6. `05_test_acceptance_guide.md`
+## 사람이 판단해야 할 사항
 
-## 2. 사람이 판단해야 할 사항
+- [ ] API 응답 JSON schema v0 동결 승인
+  - 권장안: 2026-07-26까지 job·query·incident·report 계약을 동결한다.
+  - 선택 시 영향: 목업 fixture를 실제 Baseline에서도 재사용할 수 있다.
+  - 미선택 시 영향: 화면과 backend 계약 재작업 위험이 크다.
 
-- [ ] ML/DL 학습결과서와 모델 파일의 실제 평가 필수 여부
-  - 권장안: 필수라면 VOC 감정 또는 카테고리 분류 1개 과제에서 baseline 1개와 후보 모델 1개만 비교한다.
-  - 선택 시 영향: `MODEL-001`과 ML 평가 test를 P1에서 구현한다.
-  - 미선택 시 영향: P0는 규칙·LLM 보조 분류만 사용하고 ML 결과를 생성하지 않는다.
+- [ ] 프로젝트별 보정값 승인
+  - 권장안: 탐지 임계값·timeout·retry·minimum sample을 `PROJECT_CALIBRATION`으로 별도 version 관리한다.
+  - 선택 시 영향: 실제 호텔 기준으로 오인하지 않고 재현 가능하다.
+  - 미선택 시 영향: 합성 결과를 실제 운영 기준처럼 해석할 위험이 있다.
 
-- [ ] VectorDB·GraphDB 실제 구축 의무
-  - 권장안: P0는 PostgreSQL ontology-lite만 사용하고, 평가 의무가 확인될 때만 작은 검증 저장소를 P1로 둔다.
-  - 선택 시 영향: 별도 검증 범위·성능 기준·산출물 증거가 필요하다.
-  - 미선택 시 영향: 미도입 결정과 대체 구조를 산출물 추적표에 남긴다.
+- [ ] 모델·검색 실험 제출 범위 확인
+  - 권장안: VOC ML/DL 비교, pgvector, sLLM, 멀티 에이전트 비교는 Baseline 런타임과 분리된 실험 트랙으로 수행한다.
+  - 선택 시 영향: 평가 산출물을 만들면서 Golden Path 안정성을 보존한다.
+  - 미선택 시 영향: 불필요한 런타임 의존성이 늘어날 수 있다.
 
-- [ ] 멀티 에이전트의 물리적 분리 의무
-  - 권장안: `Detect → Analyze Evidence → Generate Report`의 결정론적 workflow를 사용한다.
-  - 선택 시 영향: 분리된 agent 간 상태·timeout·fallback test가 추가된다.
-  - 미선택 시 영향: 하나의 orchestration workflow 안에서 논리적 역할만 분리한다.
+## 판단 체크리스트
 
-- [ ] 자체 sLLM 적용 대상 여부
-  - 권장안: 평가 필수가 아니면 제외하고, 필수일 때도 별도 실험으로 분리한다.
-  - 선택 시 영향: base 모델과 tuning 모델의 데이터·평가·비용 관리가 추가된다.
-  - 미선택 시 영향: P0 웹 Golden Path에 sLLM을 연결하지 않는다.
+- [ ] 요청이 8월 6일 비연동 목업, 기능 Baseline, 실험 트랙, 확장 중 어디에 속하는가
+- [ ] 두 Baseline 경로 중 영향을 받는 경로와 계약 ID를 확인했는가
+- [ ] 실제 호텔 데이터·권한·KPI를 사용한 것처럼 표현하지 않았는가
+- [ ] `is_synthetic`, dataset·schema·generator version, scenario·seed를 보존했는가
+- [ ] 수치 계산·품질 Gate·trigger가 결정론적으로 실행되는가
+- [ ] LLM 문장에 `evidence_id`가 있고 원인을 확정하지 않는가
+- [ ] Browser가 FastAPI를 직접 호출하지 않는가
+- [ ] Django만 인증·권한·job·보고서·결정 상태와 migration을 소유하는가
+- [ ] Baseline Gate 통과 전 확장을 실행 경로에 추가하지 않았는가
 
-- [ ] STT 적용 여부
-  - 권장안: P0 제외, P1에서 파일 업로드·변환·사용자 확인까지만 검토한다.
-  - 선택 시 영향: 음성 개인정보·저작권·보관 정책이 추가된다.
-  - 미선택 시 영향: 텍스트 VOC만 처리한다.
+## 필수 최소 기능 구현 방향
 
-P0 사용자는 `HOTEL_MANAGER`, `DEPARTMENT_REVIEWER`로 결정됐다. `SYSTEM_ADMIN`, 본사·경영진·고객 계정은 P0에서 제외한다.
+### 단계와 완료 시점
 
-## 3. 판단 체크리스트
+| 단계 | 기간 | 구현 수준 | 완료 기준 |
+|---|---|---|---|
+| 계약·데이터·골격 선행 | ~2026-08-05 | schema v0, 합성 데이터, 권한표, manifest, 서비스 골격 | fixture schema 검증과 데이터 품질 Gate 통과 |
+| 중간발표 목업 | 2026-08-06 | React fixture, 가상 역할 선택, backend·DB·LLM 미연결 | 두 사용자 경로를 6개 화면으로 시연 |
+| 기능 Baseline | 2026-08-07~14 | Django·worker·FastAPI·PostgreSQL·LLM 실제 연결 | §테스트 Gate와 반례 16건 통과 |
 
-- [ ] 교육 담당자에게 ML/DL, VectorDB·GraphDB, 멀티 에이전트, sLLM의 실제 제출 의무를 확인했는가
-- [ ] 미확정 기술을 WBS나 산출물에서 완료로 표시하지 않았는가
-- [ ] 선택한 기술이 단일 Golden Path의 검증 가능성을 높이는가
-- [ ] 새 dependency·서비스·저장소의 소유자와 test가 정해졌는가
-- [ ] 선택 결과를 `DEC-*`와 `04_deliverable_traceability_matrix.md`에 기록했는가
-
-## 4. 필수 최소 기능 구현 방향
+### P0 Baseline 경로
 
 ```text
-합성 데이터 V1 적재
-→ 데이터 정형화
-→ 규칙 기반 이상 징후 감지
-→ 관련 리뷰·운영지표 근거 조회
-→ 원인 후보·반대 근거·데이터 부족 구분
-→ 현장 확인 메모
-→ 주간 운영 보고서 초안
-→ 호텔 관리자 승인·보류·반려
-→ 합성 데이터 V2 반영
-→ 분석 결과와 보고서 변화 확인
+경로 A: 로그인·역할 확인 → 자연어 질문 → job/polling → query plan → SQL Guard
+       → read-only 조회 → 표·차트·설명·근거
+
+경로 B: 합성 batch READY → 품질 Gate → versioned rule 감지 → Incident workflow
+       → 이슈 브리프·보고서 초안 → 호텔 관리자 승인·보류·반려
 ```
 
-P0는 고객 대상 서비스나 실제 워커힐 운영 시스템이 아니다. 공개 참고정보와 합성 데이터만 사용하며, 결과를 실제 호텔 문제·성과로 표현하지 않는다.
+두 경로는 운영 홈을 공유하지만 서로 억지로 합치지 않는다. 경로 A는 질의 결과에서 끝나고 경로 B는 호텔 관리자 결정에서 끝난다.
 
-Baseline 구현은 아래로 제한한다.
+### 사용자·권한
 
-| 구분 | Baseline 확정 범위 |
+| 역할 | Baseline 범위 |
 |---|---|
-| 시나리오 | 조식 대기 이상 1개 |
-| 데이터 | 같은 schema의 `synthetic-v1`, `synthetic-v2` fixture와 manifest |
-| 분석 | `RULE-001` 1개, 대표 VOC·대기시간·방문객 수·근무 인원 evidence |
-| 설명 | 결정론적 template 우선, LLM은 선택적 1회 호출과 실패 fallback |
-| 화면 | 역할 선택, dashboard, signal 상세·현장 메모, report 검토의 4개 화면 |
-| 실행 구조 | React thin UI, Django 단일 업무 API·로컬 persistence, `src/analysis`, `src/common` |
-| FastAPI | 폴더 경계만 유지하고 별도 process는 실행하지 않음 |
-| 권한 | 두 역할을 선택하는 demo mock과 server-side 역할 검사 |
-| 저장 | 교육용 local DB 또는 fixture 저장; 운영 DB·SSO·배포 구성 제외 |
-| 검증 | Baseline 필수 test 6개: `TC-BL-001`~`005`, `TC-E2E-001` |
+| `HOTEL_MANAGER` | 모든 합성 집계 지표, 이슈, 보고서 검토·결정 |
+| `FNB_MANAGER` | 조식 운영·인력·VOC 질의와 이슈 확인 |
+| `ROOMS_MANAGER` | 객실 집계·객실 VOC·제한된 조식 수요 요약 |
 
-Baseline에서 구현하지 않는 항목은 운영 계정·SSO, 완전한 객체 권한 체계, 독립 FastAPI, 8개 물리 테이블, 전체 8개 공개 endpoint 분리, 운영 수준 감사·관측성, ML·VectorDB·GraphDB·멀티 에이전트·sLLM·STT다.
+`FNB_MANAGER`, `ROOMS_MANAGER`는 실제 조직 직책을 복제한 것이 아니라 권한 차이를 검증하는 데모 역할이다. 본사·경영진·고객 사용자는 시스템 밖이다.
 
-## 5. 확장 방향
+### 중간발표 화면 6개
 
-| 우선순위 | 범위 | 진입 조건 |
+| ID | 화면 | 핵심 목적 |
 |---|---|---|
-| Baseline | 조식 대기 1개 시나리오, rule 1개, V1·V2, 통합 API 5개, 4개 화면 | 첫 실행 가능한 프로토타입 |
-| P0 강화 | 공통 상태·세분 endpoint·권한·감사·품질 계약 강화 | Baseline E2E 통과 후 필요 항목만 승인 |
-| P1 | 평가상 필요한 최소 ML, 저장소 검증, 3단계 workflow, STT 파일 변환 | P0 test 통과와 사람의 결정 |
-| P2 | 실제 PMS·POS·CRM, 조직 권한, 운영 배포, 실제 데이터 거버넌스 | 호텔·법무·보안·운영 승인 |
+| `P0-001` | 가상 로그인·역할 선택 | 세 역할과 합성·목업 표시 |
+| `P0-010` | 운영 홈 | 질의 진입, 이상징후 카드, dataset 상태 |
+| `P0-020` | 대화형 분석 | 질문, 처리 상태, SQL·표·차트·설명·권한 범위 |
+| `P0-030` | 이상징후 상세 | trigger, 비교 기간, 지표, 데이터 상태 |
+| `P0-040` | 이슈 브리프 | 관측 사실, 원인 후보, 반대 근거, 부족 데이터, 확인 과제 |
+| `P0-050` | 주간 보고서 | 초안, evidence, 한계, 승인·보류·반려 |
 
-자유형 Text-to-SQL, swarm, GraphRAG, 실시간 streaming, 자동 보상·업무 배정은 P0에 추가하지 않는다.
+현장 확인 메모는 `P0-040` 안의 form 또는 drawer로 둔다.
 
-## 6. 공용 문서 적용 범위
+### 공통 실행 계약
 
-상단의 다섯 섹션 순서 규칙은 이 문서를 포함한 6개 공용 개발 기준에 적용한다. 기존 형식을 유지해야 하는 `README.md`, 요구사항 정의서, WBS, 화면설계서, 일일·주간보고와 조사·일정 문서는 해당 고유 형식을 유지하고 공용 문서 링크만 최소 반영한다.
+- Client 호출 방향: `React → Django → Django worker → FastAPI → PostgreSQL/LLM`
+- 외부 공개 backend: Django 하나
+- 분석 DB 접근: FastAPI read-only role 하나
+- job 상태: `PENDING`, `RUNNING`, `SUCCEEDED`, `PARTIAL`, `NEEDS_DATA`, `FAILED`
+- report 상태: `DRAFT`, `APPROVED`, `ON_HOLD`, `REJECTED`
+- 공통 context: `request_id`, `run_id`, `actor_id`, `role_code`, `scope_snapshot`, `dataset_version`, `virtual_as_of_date`
 
-지원 문서는 공용 기준 6개 수에 포함하지 않는다.
+### Baseline 데이터 범위
 
-- `codex_공용작업_가이드.md`: 다른 Codex 세션의 탐색·인계 진입점
-- `dev_repository_structure_audit.md`: 특정 commit의 감사 기록
-- `project_directory_structure.md`: 폴더 책임 상세
-- `최종_프로젝트_산출물_및_전체_일정.md`: 교육 일정 근거
-- `최종_프로젝트_오프닝_자료_요약_3팀.md`: 오프닝 자료 요약
+- 객실 운영
+- 조식 운영
+- 조식 인력
+- VOC
+- platform metadata·catalog·run·evidence·report·decision
 
-## 7. 다른 Codex 세션의 필수 읽기 순서
+실제 서비스 구역명 대신 `GW_BREAKFAST_DEMO`를 사용한다. timestamp는 UTC 저장, `Asia/Seoul` 표시다.
 
-```text
-1. /AGENTS.md
-2. /docs/markdown/final_project/codex_공용작업_가이드.md
-3. /docs/markdown/final_project/00_project_control.md
-4. /docs/markdown/final_project/common_project_specification.md
-5. 담당 작업 관련 공용 문서
+## 확장 방향
+
+Baseline 실행 경로에서 제외한다.
+
+- 실제 PMS·POS·CRM·근태·VOC 연동과 실시간 수집
+- 본사·경영진 계정·대시보드·자동 전송
+- 고객 메시지·보상·인력 배치 등 자동 조치
+- GraphDB·GraphRAG·OWL, 범용 MCP, agent swarm
+- 수요·매출·이탈 예측과 다호텔 비교
+
+실험 트랙은 런타임과 분리한다.
+
+- VOC 분류 ML/DL 2종 비교
+- pgvector 기반 유사 VOC 검색
+- API LLM과 sLLM 비교
+- 단일 Incident Agent와 계획·조사·작성 3역할 구성 비교
+
+## 기준 문서와 읽기 순서
+
+1. `/AGENTS.md`
+2. `/docs/markdown/final_project/00_project_control.md`
+3. `/docs/markdown/final_project/common_project_specification.md`
+4. 담당 영역의 데이터·API·테스트 계약
+5. `/docs/markdown/05_화면설계서_초안.md`
 6. 개별 작업 지시서
-```
 
-담당별 추가 문서:
+제품 방향의 원본은 2026-07-20 `Hotel Signal AI 최종 방향성 및 Baseline 기획서`다. 화면설계서는 이를 UI 계약으로 구체화하고, 공용 명세는 코드·데이터·API·시험 계약으로 전개한다. 충돌 시 `AGENTS.md → 00_project_control.md → 공용 계약 → 화면 상세 → 개별 프롬프트` 순서로 적용한다.
 
-| 담당 | 추가로 읽을 문서 |
-|---|---|
-| 데이터·DB | `02_data_standard_guide.md` |
-| React·Django·FastAPI | `03_api_ai_integration_contract.md` |
-| AI·ML | `02_data_standard_guide.md`, `03_api_ai_integration_contract.md`, `05_test_acceptance_guide.md` |
-| QA·산출물 | `04_deliverable_traceability_matrix.md`, `05_test_acceptance_guide.md` |
+## 공통 ID 규칙
 
-## 8. 문서 충돌 우선순위
-
-```text
-AGENTS.md
-→ 00_project_control.md
-→ 공용 명세 5개
-→ 개별 산출물 명세
-→ 개별 Codex 프롬프트
-```
-
-기존 `01_요구사항정의서.md`, `02_WBS.md`, `03_프로젝트기획서.md`, `05_화면설계서_초안.md`에 P0보다 넓은 기술이 있으면 삭제하지 않고 P1·P2 backlog 또는 평가 확인 대상으로 해석한다.
-
-## 9. P0 기능과 제외 기능
-
-### 9.1 Baseline 필수
-
-- 조식 대기 시나리오의 versioned 합성 데이터 V1·V2
-- `RULE-001` 기반 이상 신호와 연결된 VOC·운영지표 evidence
-- 원인 후보·반대 근거·missing data를 구분한 template 또는 선택적 LLM 설명
-- 현장 확인 메모와 긍정 VOC가 포함된 주간 보고서 작업본
-- demo 역할 검사와 호텔 관리자 승인·보류·반려
-- V1→V2 결과 변화의 재현 가능한 E2E
-
-### 9.2 P0 강화
-
-- 8개 논리 데이터 그룹의 독립 persistence
-- 8개 공개 endpoint의 물리적 분리
-- 전체 상태 전이·오류 code·객체 권한·감사 log
-- 추가 topic·aspect·sentiment와 복수 signal rule
-
-위 항목은 Baseline 통과 뒤 실제 필요성이 확인된 경우에만 구현한다. 이 목록 전체를 첫 프로토타입 완료 조건으로 사용하지 않는다.
-
-### 9.3 제외
-
-- 고객 챗봇, 고객 자동 응답, 예약 대행
-- 본사·경영진 별도 화면
-- 실제 PMS·POS·CRM·실시간 리뷰 연동
-- 자동 보상·환불·객실 업그레이드·직원 평가
-- 자유형 SQL 실행과 LLM trigger 판단
-
-## 10. 공통 ID 규칙
-
-| ID family | 용도 | 예시 |
+| 접두사 | 의미 | 예시 |
 |---|---|---|
-| `REQ-F-*` | 기능 요구사항 | `REQ-F-001` |
-| `REQ-NF-*` | 비기능 요구사항 | `REQ-NF-001` |
-| `DATA-*` | 데이터셋·데이터 계약 | `DATA-001` |
-| `DB-*` | 테이블·저장소 | `DB-001` |
-| `API-*` | 외부 업무 API | `API-001` |
-| `API-AI-*` | Django↔AI 내부 API | `API-AI-001` |
-| `MODEL-*` | ML·DL·LLM model | `MODEL-001` |
-| `RULE-*` | trigger·업무 규칙 | `RULE-001` |
-| `ARCH-*` | 아키텍처 구성요소 | `ARCH-001` |
-| `TC-{LEVEL}-*` | test case | `TC-E2E-001`, `TC-DQ-001` |
-| `BUG-*` | 결함 | `BUG-001` |
-| `DEC-*` | 의사결정 | `DEC-001` |
-| `DOC-*` | 산출물 | `DOC-001` |
+| `REQ-F-*`, `REQ-NF-*` | 기능·비기능 요구사항 | `REQ-F-001` |
+| `DATA-*` | 데이터 계약 | `DATA-001` |
+| `DB-*` | table·view | `DB-001` |
+| `API-*` | Django 외부 API | `API-001` |
+| `API-AI-*` | FastAPI 내부 API | `API-AI-001` |
+| `UI-*` | 화면 요구사항 | `UI-001` |
+| `P0-*` | Baseline 화면 | `P0-020` |
+| `MODEL-*` | 모델·프롬프트 | `MODEL-001` |
+| `RULE-*` | 결정론 규칙 | `RULE-001` |
+| `TC-*` | 테스트 | `TC-E2E-001` |
+| `DEC-*`, `DOC-*` | 결정·산출물 | `DEC-001`, `DOC-001` |
 
-기존 `BIZ-*`, `DAT-*`, `FUN-*`, `AI-*`, `UI-*` 등 62개 요구사항 ID는 이미 의미가 부여됐으므로 재번호화·재사용하지 않는다. 새 `REQ-*`는 P0 공용 추적을 위한 상위 계약이며 `legacy_requirement_ids`로 기존 ID와 연결한다.
+ID는 재사용하거나 의미를 바꾸지 않는다.
 
-기존 `UI-*`는 화면 ID가 아니라 UI 요구사항 ID다. 실제 P0 화면은 화면설계서의 `P0-001`, `P0-010`, `P0-020`, `P0-030`을 유지한다.
+## 현재 결정 상태
 
-## 11. 변경 승인 규칙
+| ID | 결정 | 상태 |
+|---|---|---|
+| `DEC-001` | Baseline은 기능 A·B 두 경로 | 확정 |
+| `DEC-002` | 중간발표는 비연동 6화면 fixture | 확정 |
+| `DEC-003` | Django 외부 경계·FastAPI 분석 경계 | 확정 |
+| `DEC-004` | 실제 서비스 구역명 대신 `GW_BREAKFAST_DEMO` | 확정 |
+| `DEC-005` | VectorDB·sLLM·멀티 에이전트 비교는 분리 실험 | 평가 의무 확인 필요 |
+| `DEC-006` | schema v0 동결일과 PROJECT_CALIBRATION 값 | 사람 승인 필요 |
 
-1. 변경 대상 ID와 현재 version을 확인한다.
-2. P0·P1·P2 중 영향 범위를 표시한다.
-3. data·API·UI·test·deliverable 영향 ID를 기록한다.
-4. 기존 의미 변경이 필요하면 기존 ID를 폐기 상태로 두고 새 ID를 발급한다.
-5. `DEC-*`에 선택·근거·승인자를 기록한다.
-6. 공용 문서, 요구사항, WBS, test와 evidence path를 같은 변경에서 갱신한다.
-7. 코드·DB migration·외부 연동은 별도 구현 승인을 받는다.
+## 변경 승인 규칙
 
-## 12. 현재 결정 상태
+1. 변경할 요구사항·data·API·화면·test ID를 명시한다.
+2. React·Django·FastAPI·데이터·시험 소비자 영향을 확인한다.
+3. schema·role·status·endpoint 변경은 공용 계약과 fixture를 함께 갱신한다.
+4. 승인 전 기존 ID 의미를 바꾸거나 확장 기술을 런타임 의존성으로 추가하지 않는다.
+5. 실제 구현·시험 evidence가 없으면 완료로 표시하지 않는다.
 
-| decision_id | 항목 | 상태 | 현재 결정 |
-|---|---|---|---|
-| `DEC-001` | 공용 문서 수·경로 | 확정 | 기존 공통 명세를 포함한 6개, 신규 `01` 중복 생성 금지 |
-| `DEC-002` | 기존 요구사항 ID | 확정 | 유지하고 `REQ-*`와 mapping |
-| `DEC-003` | P0 사용자 | 확정 | `HOTEL_MANAGER`, `DEPARTMENT_REVIEWER` |
-| `DEC-004` | V1·V2 전환 | 확정 | Django management command 한 가지 |
-| `DEC-005` | ML/DL | 판단 필요 | 평가 의무 확인 전 P1 |
-| `DEC-006` | VectorDB·GraphDB | 판단 필요 | P0 미도입 |
-| `DEC-007` | 멀티 에이전트 | 판단 필요 | P0 3단계 workflow |
-| `DEC-008` | sLLM | 판단 필요 | P0 제외 |
-| `DEC-009` | STT | 판단 필요 | P0 제외 |
-| `DEC-010` | 첫 Baseline 구현 단위 | 확정 | React thin UI + Django 단일 API·local persistence + `src`; FastAPI 별도 process 제외 |
+## 변경 이력
 
-## 13. 변경 이력
-
-| version | 날짜 | 변경 | 상태 |
-|---|---|---|---|
-| `1.0` | 2026-07-20 | 기존 공통 명세를 보존한 6개 공용 문서 체계, ID 호환, 결정 gate 정의 | 사용자 검토 전 |
-| `1.1` | 2026-07-20 | P0 전체 계약과 첫 Baseline 구현 단위를 분리하고 독립 FastAPI·운영 수준 통제를 후속 강화로 축소 | 사용자 검토 전 |
+| version | date | 변경 |
+|---|---|---|
+| `2.0` | 2026-07-20 | 최종 Baseline 기획서 기준으로 단일 축소 경로를 폐기하고 두 기능·6화면·Django/FastAPI 실제 연결 계약으로 재정렬 |

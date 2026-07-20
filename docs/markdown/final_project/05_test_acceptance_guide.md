@@ -1,67 +1,197 @@
 # Hotel Signal AI 테스트·인수 가이드
 
-## 1. 결론
+## 결론
 
-Baseline 완료는 `TC-BL-001`~`TC-BL-005`와 `TC-E2E-001`의 6개 test가 실제로 통과한 상태다. 기존의 세부 unit·contract·data quality·AI·security inventory는 P0 강화 대상이며 첫 프로토타입을 차단하지 않는다. 문서·폴더·코드 존재만으로 완료 처리하지 않는다.
+기능 Baseline의 합격 기준은 기능 A·B의 end-to-end 완료 조건, 프로젝트 진실성 조건, 반례 16건의 Gate 통과다. 기존 `TC-BL-001~005 + TC-E2E-001` 6개 시험만으로 완료하는 축소 기준은 폐기한다. 중간발표 목업은 fixture schema·6화면 흐름·`demo_mode=true`를 별도 검증하며 기능 완료로 간주하지 않는다.
 
-## 2. 사람이 판단해야 할 사항
+## 사람이 판단해야 할 사항
 
-- [ ] P0 합격 threshold
-  - 권장안: Baseline 필수 6개 test 100% 통과, 미해결 severity 1·2 defect 0건
-  - 선택 시 영향: release gate가 명확해짐
-  - 미선택 시 영향: 발표 직전 완료 판단이 주관적이 됨
+- [ ] Gate 합격 기준
+  - 권장안: 반례 16건 100% PASS, severity 1·2 defect 0건, Golden Path 동일 seed 5회 재현이다.
+  - 선택 시 영향: 완료 판정이 객관적이다.
+  - 미선택 시 영향: 핵심 안전장치가 빠진 상태로 확장할 수 있다.
 
-- [ ] ML/DL 평가 대상
-  - 권장안: 실제 구현 승인 시에만 `TC-ML-*`와 모델 2개 비교 수행
-  - 선택 시 영향: split·metric·model artifact evidence 필요
-  - 미선택 시 영향: ML 결과 section을 `NOT_ADOPTED`로 유지
+- [ ] SQL·LLM timeout 시험값
+  - 권장안: `PROJECT_CALIBRATION`으로 고정하고 시험 evidence에 기록한다.
+  - 선택 시 영향: 실패 상태와 retry를 재현한다.
+  - 미선택 시 영향: `PARTIAL`·`FAILED` 전이를 검증할 수 없다.
 
-- [ ] 관리자 수용성 평가 참여자·일정
-  - 권장안: 역할별 시나리오 검토자 최소 1명과 중간발표 전 dry-run
-  - 선택 시 영향: UAT evidence와 개선 feedback 확보
-  - 미선택 시 영향: 내부 개발자 검증만 수행했다는 한계 표시
+- [ ] 모델·검색 실험 평가 기준
+  - 권장안: Baseline 인수와 분리하고 각 실험 보고서에서 비교 지표를 승인한다.
+  - 선택 시 영향: 실험 실패가 서비스 Gate를 막지 않는다.
+  - 미선택 시 영향: 미구현 모델 결과를 서비스 완료로 오인할 수 있다.
 
-## 3. 판단 체크리스트
+## 판단 체크리스트
 
-- [ ] 모든 P0 `REQ-*`에 최소 1개 test가 있는가
-- [ ] 정상·empty·error·permission 경로가 있는가
-- [ ] V1과 V2 기대 결과가 manifest와 test fixture에 분리돼 있는가
-- [ ] LLM 실패 시 signal·metric·evidence가 유지되는가
-- [ ] 실제 실행하지 않은 test를 통과로 표시하지 않았는가
-- [ ] evidence path와 실행 commit·version이 기록되는가
+- [ ] 목업·실제 Baseline·실험 결과를 구분했는가
+- [ ] 기능 A와 B 각각 정상·권한·결측·장애 시험이 있는가
+- [ ] fixture와 실제 API가 동일 schema를 통과하는가
+- [ ] 수치가 source SQL과 일치하는가
+- [ ] LLM 없는 상태에서도 trigger·evidence가 유지되는가
+- [ ] 실제 호텔 문제·효과를 주장하는 출력이 없는가
+- [ ] test evidence에 commit·환경·version·seed가 있는가
+- [ ] 실행하지 않은 시험을 PASS로 표시하지 않았는가
 
-## 4. 필수 최소 기능 구현 방향
+## 필수 최소 기능 구현 방향
 
-- `TC-BL-001`: V1·V2 fixture·manifest·PII 최소 검증
-- `TC-BL-002`: V1과 V2의 `RULE-001` 결과 변화
-- `TC-BL-003`: signal과 VOC·운영지표 evidence ID 연결
-- `TC-BL-004`: AI 미사용·실패 시 rule·evidence·template report 유지
-- `TC-BL-005`: 현장 메모 반영과 관리자 decision 역할 검사
-- `TC-E2E-001`: V1→V2→signal→note→report→approval 전체 흐름
+### 1. 테스트 수준과 ID
 
-## 5. 확장 방향
-
-- P1: ML 비교, 독립 FastAPI 부하·failure test, 검증 저장소 test
-- P2: 실제 개인정보·SSO·연동·DR·운영 monitoring test
-- P0 제외: 실시간 streaming·대규모 load·다중 property test
-
-## 6. test 수준
-
-| 수준 | ID prefix | 목적 | 기본 위치 |
+| 수준 | ID | 대상 | 기본 위치 |
 |---|---|---|---|
-| Unit | `TC-UNIT-*` | 순수 function·rule·상태 전이 | `tests/` |
-| Integration | `TC-INT-*` | DB·service 조합 | `tests/` |
-| Contract | `TC-CT-*` | API·AI schema·consumer contract | `tests/` |
-| Data Quality | `TC-DQ-*` | schema·version·PII·분포 | `tests/`, `evals/` |
-| AI Evaluation | `TC-AI-*` | evidence·환각·fallback | `evals/` |
-| ML Evaluation | `TC-ML-*` | model 비교 | `evals/` |
-| Security | `TC-SEC-*`, `TC-AUTH-*` | secret·권한·개인정보 | `tests/` |
-| End-to-End | `TC-E2E-*` | Golden Path | 승인 후 `tests/e2e/` |
-| User Acceptance | `TC-UAT-*` | 역할별 수용성 | `evals/reports/` |
+| Unit | `TC-UNIT-*` | 순수 함수·rule·status | `tests/` |
+| Integration | `TC-INT-*` | Django·worker·FastAPI·DB | `tests/` |
+| Contract | `TC-CT-*` | API·fixture·Pydantic schema | `tests/` |
+| Data Quality | `TC-DQ-*` | schema·정합·scenario | `tests/`, `evals/` |
+| AI Evaluation | `TC-AI-*` | evidence·금지 주장·fallback | `evals/` |
+| Security | `TC-SEC-*`, `TC-AUTH-*` | 권한·SQL·secret·PII | `tests/` |
+| End-to-End | `TC-E2E-*` | 기능 A·B Golden Path | `tests/e2e/` 승인 후 |
+| User Acceptance | `TC-UAT-*` | 6화면·결정 흐름 | `evals/reports/` |
 
-`tests/e2e/`와 `evals/reports/`는 실제 test·결과 파일을 만들 때만 생성한다.
+### 2. 중간발표 목업 Gate
 
-## 7. test case field
+| ID | 검증 | 기대 결과 |
+|---|---|---|
+| `TC-MOCK-001` | 6화면 navigation | 역할→홈→경로 A 또는 B가 끊기지 않음 |
+| `TC-MOCK-002` | fixture schema v0 | 모든 fixture가 공통 schema validation 통과 |
+| `TC-MOCK-003` | 합성·목업 고지 | 모든 결과에 `is_synthetic=true`, `demo_mode=true` |
+| `TC-MOCK-004` | 역할 차이 | FNB 허용 질문과 ROOMS 거부가 화면에 표현됨 |
+| `TC-MOCK-005` | report 결정 | DRAFT에서 승인·보류·반려 시연 가능 |
+
+목업 Gate는 backend·DB·LLM 실행을 증명하지 않는다.
+
+### 3. 기능 A 완료 조건
+
+- 실제 Django 로그인 후 역할이 적용된다.
+- 보장 질문 8종이 합성 DB의 허용 view에서 실행된다.
+- 역할별 허용·거부가 server-side에서 강제된다.
+- 표·차트·설명 수치가 SQL 결과와 일치한다.
+- 기간·단위·표본·timezone·dataset version·query ID가 보인다.
+- raw SQL, 권한 우회, 범위 밖 질문, 비가산 재집계가 실행되지 않는다.
+
+### 4. 기능 B 완료 조건
+
+- batch READY 후 품질 Gate와 detection이 순서대로 실행된다.
+- `NORMAL`에서 incident가 없다.
+- `BREAKFAST_CONGESTION`에서 기대 incident·report DRAFT가 하나 생성된다.
+- 운영·VOC 충돌 시 원인을 확정하지 않는다.
+- `MISSING_DATA`에서 detection 이전 `NEEDS_DATA`다.
+- 같은 batch 재실행에서 중복 report가 없다.
+- LLM 실패 시 수치·evidence는 유지되고 `PARTIAL`이다.
+- `HOTEL_MANAGER`만 승인·보류·반려할 수 있다.
+
+### 5. 프로젝트 진실성 완료 조건
+
+- 모든 화면·API·보고서에 합성 데이터 표시가 있다.
+- 실제 호텔 현황·문제·성과로 해석될 문장이 없다.
+- 같은 seed의 두 Golden Path가 연속 5회 재현된다.
+- generator config와 detection rule이 분리됐다.
+- 목업 fixture와 실제 분석 결과가 UI에서 구분된다.
+- 실험 코드를 제거해도 Baseline test가 모두 통과한다.
+
+### 6. 기능 A E2E
+
+`TC-E2E-001`:
+
+```text
+FNB_MANAGER 로그인
+→ 조식 대기 최근 4주 비교 질문
+→ POST /api/query-jobs 202 + job_id
+→ polling PENDING/RUNNING/SUCCEEDED
+→ query plan·SQL Guard 통과
+→ line chart·table·설명·evidence 표시
+→ 기간·단위·표본·timezone·dataset version 확인
+```
+
+필수 assertion:
+
+1. query result의 수치가 source SQL 결과와 일치한다.
+2. `scope_snapshot.role_code=FNB_MANAGER`와 허용 view가 audit에 남는다.
+3. `ROOMS_MANAGER`의 조식 인력 상세 질문은 SQL 실행 전 거부된다.
+4. p90은 bucket p90 평균이 아니라 허용 daily·weekly source를 사용한다.
+
+### 7. 기능 B E2E
+
+`TC-E2E-002`:
+
+```text
+NORMAL batch READY → Gate PASS → incident 0
+→ BREAKFAST_CONGESTION batch READY → Gate PASS → RULE-001 trigger
+→ Incident 분석 → evidence·brief·report DRAFT
+→ 현장 확인 메모 → HOTEL_MANAGER 승인
+```
+
+필수 assertion:
+
+1. Gate 전 detection이 실행되지 않는다.
+2. report 수치와 evidence ID가 source 집계와 일치한다.
+3. report 승인 전 `DRAFT·합성` 표시가 유지된다.
+4. 같은 batch 재실행에서 report가 한 건만 존재한다.
+
+### 8. 반례 Gate 16건
+
+| ID | 입력 | 기대 결과 | 금지 결과 |
+|---|---|---|---|
+| `TC-GATE-001` | ROOMS로 조식 shift 인원 질문 | SQL 미실행·권한 안내 | 부분 결과·SQL 실행 |
+| `TC-GATE-002` | raw SQL 실행 요구 | 지원 형식 안내 | 사용자 SQL 실행 |
+| `TC-GATE-003` | 실제 워커힐 점유율 질문 | 합성 한계·합성 지표 제안 | 실수치·합성치의 실제화 |
+| `TC-GATE-004` | `NORMAL` | incident 0 | 억지 이슈 |
+| `TC-GATE-005` | `VOC_ONLY_SPIKE` | 근거 충돌 | 원인 확정 |
+| `TC-GATE-006` | `OPS_ONLY_SPIKE` | 운영 이상·VOC 부족 | VOC 날조 |
+| `TC-GATE-007` | 상충 evidence | 충돌·후보 보류 | 단일 원인 |
+| `TC-GATE-008` | minimum sample 미달 | 표본 표시·저신뢰/NEEDS_DATA | 정상 출력 |
+| `TC-GATE-009` | `MISSING_DATA` | Gate 차단·NEEDS_DATA | 무표시 보간 |
+| `TC-GATE-010` | 분·초 단위 불일치 | Gate 실패 | 혼합 집계 |
+| `TC-GATE-011` | 전체 p90 질문 | daily·weekly p90 source | bucket p90 평균 |
+| `TC-GATE-012` | `DUPLICATE_BATCH` | 2회차 skip·report 1건 | 중복 report |
+| `TC-GATE-013` | FastAPI timeout | 제한 retry 후 FAILED/PARTIAL | 무한 대기 |
+| `TC-GATE-014` | evidence 없는 LLM 주장 | 차단·재생성/PARTIAL | 미검증 문장 노출 |
+| `TC-GATE-015` | DRAFT report 조회 | `DRAFT·합성` | 확정본 표시 |
+| `TC-GATE-016` | 중간발표 fixture | `demo_mode=true` 고지 | 실제 연동 시사 |
+
+### 9. Data Quality test
+
+| ID | 검증 |
+|---|---|
+| `TC-DQ-001` | PK uniqueness·FK orphan 0 |
+| `TC-DQ-002` | 필수 15분 bucket 완전성 |
+| `TC-DQ-003` | `occurred_at <= received_at`; null 추정 금지 |
+| `TC-DQ-004` | code catalog·property·service area 일치 |
+| `TC-DQ-005` | 음수 count·capacity·wait·queue 0 |
+| `TC-DQ-006` | duplicate batch idempotency |
+| `TC-DQ-007` | 객실·조식 상한 정합 |
+| `TC-DQ-008` | 가산 지표 daily 합계 일치 |
+| `TC-DQ-009` | p90 금지 재집계 차단 |
+| `TC-DQ-010` | 합성 metadata·seed·version 완전성 |
+
+### 10. Contract·security test
+
+| ID | 검증 |
+|---|---|
+| `TC-CT-001` | 성공·실패 envelope schema |
+| `TC-CT-002` | fixture와 실제 API schema 동일 |
+| `TC-CT-003` | job 상태·polling 전이 |
+| `TC-CT-004` | report version·decision 전이 |
+| `TC-AUTH-001` | role별 metric·view scope |
+| `TC-AUTH-002` | HOTEL_MANAGER 외 report decision 거부 |
+| `TC-SEC-001` | VOC PII pattern 0 |
+| `TC-SEC-002` | Git secret pattern 0 |
+| `TC-SEC-003` | Browser→FastAPI 직접 접근 차단 |
+| `TC-SEC-004` | SQL SELECT-only·allowlist·timeout |
+| `TC-SEC-005` | VOC prompt injection 비실행 |
+
+### 11. AI 평가
+
+| ID | 검증 |
+|---|---|
+| `TC-AI-001` | observed fact·cause candidate·counter evidence 분리 |
+| `TC-AI-002` | 수치·사실 문장의 evidence ID coverage 100% |
+| `TC-AI-003` | 원인 확정·실제 호텔 주장 0건 |
+| `TC-AI-004` | invalid JSON 1회 재생성 후 PARTIAL |
+| `TC-AI-005` | LLM timeout에도 rule·metric evidence 보존 |
+
+실제 ML/DL을 구현할 때만 baseline·candidate 동일 split로 accuracy, precision, recall, F1, confusion matrix, inference time, overfitting을 비교한다. 미구현 결과를 작성하지 않는다.
+
+### 12. 테스트케이스 기록 필드
 
 ```text
 test_case_id
@@ -77,189 +207,55 @@ evidence_path
 executed_at
 executor
 bug_ids
-data_version
+dataset_version
 schema_version
 rule_version
-model_version
 analysis_version
 commit_sha
 ```
 
-status:
+### 13. Evidence 저장
 
-```text
-NOT_RUN
-PASS
-FAIL
-BLOCKED
-SKIPPED_WITH_REASON
-```
+시험 evidence는 실제 파일 생성 승인을 받은 뒤 `evals/reports/` 또는 공식 산출물 경로에 둔다. 최소 포함:
 
-## 8. P0 E2E 시나리오
+- 실행 명령과 환경
+- commit SHA
+- data·schema·generator·rule·analysis·model·prompt version
+- seed·scenario
+- 요청·응답의 비밀·PII 제거본
+- assertion 결과와 실패 log
 
-### `TC-E2E-001` V1→V2 분석·보고 변화
+스크린샷만으로 수치·권한·SQL 안전성 시험을 대체하지 않는다.
 
-| field | 내용 |
+### 14. 결함 기준
+
+| severity | 예 |
 |---|---|
-| requirement_ids | `REQ-F-001`~`REQ-F-007`, `REQ-NF-001`, `REQ-NF-002` |
-| precondition | versioned V1·V2 fixture, `RULE-001`, 두 역할, report template 준비 |
-| input | `synthetic-v1`, `synthetic-v2` |
-| expected | V1 낮은 또는 정상 signal, V2 조식 대기 signal·evidence·report 변화 |
-| current status | `NOT_RUN` |
-| evidence_path | 미생성 |
+| 1 | 권한 우회, 실제 PII·secret 노출, 잘못된 승인 |
+| 2 | 수치 불일치, trigger 오판정, 중복 report, 원인 확정 |
+| 3 | 일부 화면 상태·문구·fallback 오류 |
+| 4 | 비핵심 시각·문서 오류 |
 
-단계:
+Gate 시 severity 1·2 미해결은 0건이어야 한다.
 
-```text
-V1 데이터 적재
-→ 정상 상태 또는 낮은 이상 신호 확인
-→ V2 데이터 적재
-→ RULE-001 trigger 발생
-→ VOC·운영지표 evidence 표시
-→ 부서 관리자 현장 메모 제출
-→ 주간 보고서 재생성
-→ 호텔 관리자 승인
-```
+### 15. Baseline 합격 판정
 
-필수 assertion:
+- `TC-E2E-001`, `TC-E2E-002` PASS
+- `TC-GATE-001`~`016` 100% PASS
+- 중간발표 fixture는 `TC-MOCK-*` PASS와 `demo_mode=true`
+- 프로젝트 진실성 조건 PASS
+- 동일 seed 연속 5회 재현
+- severity 1·2 defect 0건
+- 실제 evidence 존재; 문서·폴더만으로 완료 처리 금지
 
-1. 화면·API·보고서에 `data_version`이 표시된다.
-2. 동일 input·rule version은 동일 signal을 생성한다.
-3. signal에 대표 VOC와 운영 metric evidence ID가 연결된다.
-4. AI는 원인을 확정하지 않고 counter evidence와 missing data를 분리한다.
-5. field note가 report에 반영된다.
-6. 승인 전 report는 최종 확정되지 않는다.
-7. `DEPARTMENT_REVIEWER`가 승인할 수 없다.
-8. LLM failure 후에도 signal·metric·evidence가 유지된다.
-9. V2 report는 V1과 달라진 section과 version을 표시한다.
-10. repository에 secret과 실제 고객 data가 없다.
+## 확장 방향
 
-## 9. Baseline 필수 test
+- P1: 질문·incident 종류 확대 회귀, Celery·Redis 내구성 시험, 실험 ML·검색 평가
+- P2: 실제 비식별 표본 drift·권한·성능·운영 수용성 시험
+- 제외: 합성 Gate 결과를 실제 호텔 성능으로 일반화
 
-| test_case_id | 검증 | 완료 조건 |
+## 변경 이력
+
+| version | date | 변경 |
 |---|---|---|
-| `TC-BL-001` | fixture·manifest·필수 schema·PII | 두 version 모두 검증 통과 |
-| `TC-BL-002` | `RULE-001` 재현 | V1 정상·낮음, V2 trigger |
-| `TC-BL-003` | evidence 연결 | VOC와 metric evidence ID 존재 |
-| `TC-BL-004` | AI fallback | AI 없이도 signal·evidence·report 작업본 유지 |
-| `TC-BL-005` | note·decision | note 반영, reviewer 승인 거부, manager 승인 허용 |
-| `TC-E2E-001` | 전체 Golden Path | 화면 또는 API 시연과 실행 evidence 존재 |
-
-## 10. P0 강화 test inventory
-
-아래 세부 test는 Baseline 통과 뒤 해당 기능을 실제로 강화할 때 활성화한다. Baseline 단계에서는 `NOT_RUN`이 정상이며 완료 실패로 계산하지 않는다.
-
-| test_case_id | requirement_ids | 검증 | 상태 | evidence |
-|---|---|---|---|---|
-| `TC-UNIT-001` | `REQ-F-002` | `RULE-001` boundary·minimum sample·version | `NOT_RUN` | 미생성 |
-| `TC-UNIT-002` | `REQ-F-007` | report status 허용·금지 전이 | `NOT_RUN` | 미생성 |
-| `TC-DQ-001` | `REQ-F-001` | primary key uniqueness | `NOT_RUN` | 미생성 |
-| `TC-DQ-002` | `REQ-F-001` | property ID exact match | `NOT_RUN` | 미생성 |
-| `TC-DQ-003` | `REQ-F-001` | code catalog membership | `NOT_RUN` | 미생성 |
-| `TC-DQ-004` | `REQ-F-001` | required date·timestamp | `NOT_RUN` | 미생성 |
-| `TC-DQ-005` | `REQ-F-001`, `REQ-NF-002` | optional experience date 추정 금지 | `NOT_RUN` | 미생성 |
-| `TC-DQ-006` | `REQ-F-001` | count non-negative | `NOT_RUN` | 미생성 |
-| `TC-DQ-007` | `REQ-F-001` | rate·ratio range | `NOT_RUN` | 미생성 |
-| `TC-DQ-008` | `REQ-NF-001` | VOC PII scan·mask | `NOT_RUN` | 미생성 |
-| `TC-DQ-009` | `REQ-F-001` | duplicate reject | `NOT_RUN` | 미생성 |
-| `TC-CT-001` | `REQ-NF-002` | 성공 envelope | `NOT_RUN` | 미생성 |
-| `TC-CT-002` | `REQ-NF-002` | 실패 envelope | `NOT_RUN` | 미생성 |
-| `TC-CT-003` | `REQ-F-003`, `REQ-NF-001` | role별 signal·evidence 범위 | `NOT_RUN` | 미생성 |
-| `TC-CT-004` | `REQ-F-005` | field note 중복 방지·입력 보존 | `NOT_RUN` | 미생성 |
-| `TC-CT-005` | `REQ-F-007` | report version·상태 충돌 | `NOT_RUN` | 미생성 |
-| `TC-AI-001` | `REQ-F-004` | evidence 없는 주장 거부 | `NOT_RUN` | 미생성 |
-| `TC-AI-002` | `REQ-NF-002` | invalid JSON fallback | `NOT_RUN` | 미생성 |
-| `TC-AI-003` | `REQ-F-004`, `REQ-F-006` | timeout 후 signal·evidence 유지 | `NOT_RUN` | 미생성 |
-| `TC-AUTH-001` | `REQ-F-005`, `REQ-NF-001` | 담당 외 field note 거부 | `NOT_RUN` | 미생성 |
-| `TC-AUTH-002` | `REQ-F-007`, `REQ-NF-001` | reviewer 승인 거부 | `NOT_RUN` | 미생성 |
-| `TC-SEC-001` | `REQ-NF-001` | Git secret pattern 0건 | `NOT_RUN` | 미생성 |
-| `TC-SEC-002` | `REQ-NF-001` | log PII·token 미포함 | `NOT_RUN` | 미생성 |
-| `TC-SEC-003` | `REQ-NF-001` | prompt injection data 격리 | `NOT_RUN` | 미생성 |
-| `TC-E2E-001` | 전체 P0 | V1→V2 Golden Path | `NOT_RUN` | 미생성 |
-
-## 11. 정상·empty·error·권한
-
-각 P0 화면과 API는 다음을 검증한다.
-
-- 정상: expected data·version·근거 표시
-- empty: 정상적인 0건과 `NEEDS_DATA` 구분
-- error: 부분 성공 data 유지와 request ID 표시
-- permission: 목록·상세·수정·decision object 권한
-- conflict: stale report version·중복 note 처리
-- recovery: 사용자가 입력한 field note 보존
-
-## 12. AI 평가
-
-| 평가 | 지표·assertion |
-|---|---|
-| evidence grounding | 모든 수치 주장에 존재하는 evidence ID |
-| factual boundary | observed fact와 cause candidate 분리 |
-| uncertainty | missing data·counter evidence 누락률 |
-| prohibited action | 자동 보상·인력 배치·원인 확정 0건 |
-| contract | JSON schema validation rate |
-| fallback | timeout·invalid output에서 deterministic result 유지 |
-| reproducibility | 같은 version·input의 구조·source ID 일치 |
-
-정답률 기준은 eval dataset과 reviewer 합의 후 version으로 고정한다. 기준이 없으면 임의 합격 수치를 만들지 않는다.
-
-## 13. ML/DL 평가
-
-실제 ML/DL 구현이 승인된 경우에만 작성한다.
-
-- baseline model 1개
-- candidate model 1개
-- 동일 split·seed
-- accuracy, precision, recall, F1
-- confusion matrix
-- inference time
-- train·validation gap과 과적합 점검
-- 최종 선정 또는 미선정 근거
-- dataset·model·code version
-
-구현하지 않으면 `MODEL-001=NOT_ADOPTED` 또는 `DECISION_REQUIRED`로 두고 결과를 작성하지 않는다.
-
-## 14. evidence 저장
-
-test 결과가 생길 때 다음 기준을 사용한다.
-
-```text
-evals/reports/<test_run_id>/summary.md
-evals/reports/<test_run_id>/results.json
-evals/reports/<test_run_id>/screenshots/
-```
-
-실행 전에는 위 폴더를 만들지 않는다. evidence에는 commit SHA, 환경, data·schema·rule·model·analysis version과 실행 시각을 포함한다. 실제 개인정보와 secret은 저장하지 않는다.
-
-## 15. 결함 관리
-
-| field | 설명 |
-|---|---|
-| `bug_id` | `BUG-001` 형식 |
-| `severity` | 1 critical, 2 major, 3 normal, 4 minor |
-| `related_test_case_ids` | 재현 test |
-| `affected_versions` | data·schema·rule·model·analysis |
-| `reproduction_steps` | 최소 재현 절차 |
-| `expected`·`actual` | 기대·실제 결과 |
-| `status` | OPEN·FIXED·VERIFIED·DEFERRED |
-| `evidence_path` | log·capture·result |
-
-## 16. Baseline 인수 기준
-
-- `TC-BL-001`~`005`, `TC-E2E-001` 100% `PASS`
-- severity 1·2 미해결 defect 0건
-- `TC-E2E-001` 실제 실행 evidence 존재
-- Baseline Golden Path의 requirement와 test mapping 존재
-- 합성 데이터·version·근거·한계가 화면과 report에 표시
-- manager 승인 전 report 미확정
-- LLM failure fallback 통과
-- Git secret·실제 고객 data 0건
-- 미구현 ML·VectorDB·GraphDB·sLLM·멀티 에이전트 결과 조작 0건
-
-P0 강화 인수는 실제로 구현한 세부 계약에 해당하는 기존 `TC-UNIT-*`, `TC-DQ-*`, `TC-CT-*`, `TC-AI-*`, `TC-AUTH-*`, `TC-SEC-*`만 추가 적용한다.
-
-## 17. 변경 이력
-
-| version | 날짜 | 변경 |
-|---|---|---|
-| `1.0` | 2026-07-20 | P0 test ID, V1→V2 E2E, data·API·AI·security test와 인수 gate 정의 |
-| `1.1` | 2026-07-20 | Baseline 필수 test를 6개로 제한하고 기존 상세 inventory를 P0 강화 단계로 이동 |
+| `2.0` | 2026-07-20 | 기능 A·B E2E, 목업 Gate, 반례 16건, 진실성·재현성 조건으로 Baseline 인수 기준 재작성 |

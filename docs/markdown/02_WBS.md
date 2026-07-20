@@ -2,7 +2,7 @@
 
 > 2026-07-10~09-03 · 5인(박준희·송민지·김재홍·정승·윤대성) · 실행 일정 61개 태스크 · 공식 산출물 21건 + 옵션 1건
 > 실행 추적, 기획·요구사항 추적, 8주 개발 일정의 세 관점을 한 문서에 통합했다.
-> 최종 갱신: 2026-07-20 15:44 KST · 갱신자: Codex
+> 최종 갱신: 2026-07-20 16:43 KST · 갱신자: Codex
 
 ## 통합 운영 기준
 
@@ -29,25 +29,25 @@
 | wbs_id | 검증 가능한 결과 | deliverable_id | requirement_ids | owner | start_date | due_date | status | dependency | evidence_path |
 |---|---|---|---|---|---|---|---|---|---|
 | `1.5` | P0 범위와 기획서의 backlog 경계 검토 | `DOC-003` | 전체 P0 | 박준희·송민지 | 07/13 | 07/24 | 진행 | `DEC-005`~`009` 검토 | `docs/markdown/03_프로젝트기획서.md` |
-| `1.6` | P0 4화면과 API·상태·권한 계약 정합 | `DOC-013` | `REQ-F-003`~`007`, `REQ-NF-001` | 송민지 | 07/13 | 07/24 | 진행 | `API-001`~`008` | `docs/markdown/05_화면설계서_초안.md` |
-| `1.7` | 공용 통제·개발·data·API·test 명세와 구현 경계 확정 | `DOC-010`, `DOC-015` | 전체 P0 | 김재홍·정승 | 07/20 | 07/24 | 진행 | 없음 | `docs/markdown/final_project/00_project_control.md` 외 공용 문서 5개 |
-| `2.2`, `2.3` | V1·V2 합성 fixture·manifest와 `TC-DQ-*` 통과 | `DOC-004` | `REQ-F-001`, `REQ-NF-001` | 정승·윤대성·김재홍 | 07/15 | 07/23 | 대기 | `02_data_standard_guide.md` | 미생성 |
-| `2.7`, `2.8` | Django 단일 migration과 P0 8개 data 계약 검증 | `DOC-005` | `REQ-F-001`~`007` | 정승·김재홍 | 07/20 | 07/31 | 대기 | 합성 fixture | 미생성 |
+| `1.6` | 중간발표 6화면과 기능 A·B의 API·상태·권한 계약 정합 | `DOC-013` | `REQ-F-002`~`007`, `REQ-NF-001` | 송민지 | 07/13 | 07/24 | 진행 | `API-001`~`007`, `API-AI-001`~`005` | `docs/markdown/05_화면설계서_초안.md` |
+| `1.7` | 공용 통제·개발·data·API·test 명세를 최종 Baseline 두 경로로 확정 | `DOC-010`, `DOC-015` | 전체 P0 | 김재홍·정승 | 07/20 | 07/26 | 진행 | 최종 Baseline 기획서 | `docs/markdown/final_project/00_project_control.md` 외 공용 문서 5개 |
+| `2.2`, `2.3` | 합성 12주·scenario 8종 fixture·manifest와 `TC-DQ-*` 통과 | `DOC-004` | `REQ-F-001`, `REQ-NF-001` | 정승·윤대성·김재홍 | 07/21 | 08/05 | 대기 | `02_data_standard_guide.md` | 미생성 |
+| `2.7`, `2.8` | Django 단일 migration과 metadata 3·fact 5·platform 8 table·analysis view 검증 | `DOC-005` | `REQ-F-001`~`007` | 정승·김재홍 | 07/21 | 08/05 | 대기 | 합성 fixture·schema v0 | 미생성 |
 | `4.4`, `4.5` | `RULE-001` signal·evidence와 `TC-UNIT-001` 통과 | `DOC-010` | `REQ-F-002`~`004` | 김재홍 | 08/10 | 08/14 | 대기 | `DATA-001`~`006` | 미생성 |
-| `6.3`, `6.5` | `API-*` contract와 report fallback test 통과 | `DOC-014` | `REQ-F-003`~`007`, `REQ-NF-002` | 김재홍·윤대성·송민지·박준희 | 08/10 | 08/21 | 대기 | rule·evidence | 미생성 |
-| `7.1`~`7.3` | P0 dashboard·signal detail·report 화면의 상태·권한 test 통과 | `DOC-013`, `DOC-014` | `REQ-F-003`~`007` | 송민지 | 08/18 | 08/21 | 대기 | 업무 API | 미생성 |
-| `9.1` | `TC-E2E-001` V1→V2 Golden Path evidence 생성 | `DOC-016` | 전체 P0 | 전원 | 08/24 | 08/28 | 대기 | P0 구현 완료 | 미생성 |
+| `6.3`, `6.5` | Django 공개 7개·FastAPI 내부 5개 contract와 job·LLM fallback test 통과 | `DOC-014` | `REQ-F-003`~`007`, `REQ-NF-002` | 김재홍·윤대성·송민지·박준희 | 08/07 | 08/14 | 대기 | rule·evidence·scope | 미생성 |
+| `7.1`~`7.3` | 6개 Baseline 화면의 mock·실연동 상태·권한 test 통과 | `DOC-013`, `DOC-014` | `REQ-F-002`~`007` | 송민지 | 07/27 | 08/14 | 대기 | schema v0·업무 API | 미생성 |
+| `9.1` | `TC-E2E-001`·`002`와 `TC-GATE-001`~`016` evidence 생성 | `DOC-016` | 전체 P0 | 전원 | 08/07 | 08/14 | 대기 | 기능 A·B 구현 완료 | 미생성 |
 
 ## 🗓️ 8주 핵심 개발 일정
 
 | 주차 | 기간 | 목표 | 마감 산출물 |
 |---|---|---|---|
 | **1주** | 07/10~16 | 기획·요구사항·데이터 착수 | 요구사항 정의서 · WBS |
-| **2주** | 07/20~24 | 데이터 합성·수집·화면설계 | 프로젝트 기획서 · 수집 데이터 보고서 · 화면설계서 |
-| **3주** | 07/27~31 | 전처리·DB·온톨로지 | DB/저장소 설계 문서 · 데이터 전처리 결과서 |
-| 🎤 **4주** | 08/03~08/07 | 분류·이상탐지·통계·중간발표 | 중간 발표 PT(08/06) · ML/DL 학습결과서·모델 · 벡터DB/GraphDB 구축 결과서 |
-| **5주** | 08/10~14 | 교차분석·원인후보·에이전트·text-to-SQL·아키텍처 | AI 시스템 아키텍처 · LLM 활용 소프트웨어 · 자체 sLLM |
-| **6주** | 08/18~21 | 에이전트·대시보드·리포트·구성도 | 멀티 에이전트 테스트 보고서 · 시스템 구성도 |
+| **2주** | 07/20~24 | 최종 방향·화면·공통 data/API 계약 정합 | 프로젝트 기획서 · 수집 데이터 보고서 · 화면설계서 |
+| **3주** | 07/27~31 | schema v0·합성 generator·auth/job/FastAPI 골격 | DB/저장소 설계 문서 · 데이터 전처리 결과서 |
+| 🎤 **4주** | 08/03~08/07 | 비연동 6화면 목업·데이터 Gate·중간발표 | 중간 발표 PT(08/06) · 목업 demo · 실험 중간 산출물 |
+| **5주** | 08/10~14 | 기능 A·B 실제 연결과 Baseline Gate | AI 시스템 아키텍처 · LLM 활용 소프트웨어 · 반례 16건 결과 |
+| **6주** | 08/18~21 | 피드백·모델/검색 실험·선택 확장 | 멀티 에이전트·sLLM·ML/DL·VectorDB 실험 보고서 · 시스템 구성도 |
 | **7주** | 08/24~28 | 웹앱 통합·서비스 테스트 | LLM 연동 웹 애플리케이션 · 서비스 테스트 결과 보고서 |
 | 🏁 **8주** | 08/31~09/03 | 최종 발표·시연 | 최종 발표 PT · 소스코드 · 시연영상 |
 
@@ -411,6 +411,7 @@ gantt
 
 | 일시(KST) | 실행 WBS ID | 변경 결과 | 검증 | 관련 파일 |
 |---|---|---|---|---|
+| 2026-07-20 16:43 | 1.6, 1.7, 2.2, 2.3, 2.7, 2.8, 6.3, 6.5, 7.1~7.3, 9.1 | 최종 Baseline 기획서와 화면설계서를 기준으로 공용 계약을 두 서비스 경로·중간발표 6화면·Django/FastAPI 실제 연결·metadata 3/fact 5/platform 8 schema·반례 16건으로 정합화 | 기준 기획서의 사용자·화면·service boundary·table·API·scenario·Gate와 공용 문서 mapping 대조, Markdown·링크·Git diff 검증 예정 | `README.md`, `docs/markdown/05_화면설계서_초안.md`, `docs/markdown/final_project/`, `docs/markdown/02_WBS.md` |
 | 2026-07-20 16:11 | 1.7, 9.1 | 다른 Codex 세션이 필수 문서·담당별 계약·Baseline 경계·작업 절차·인계 형식을 한 곳에서 확인하도록 공용 작업 진입 가이드를 추가하고 README·통제 문서에 연결 | 로컬 Markdown 링크·문서 우선순위·Baseline 4화면·API 5개·test 6개·보호 문서 규칙 확인 | `README.md`, `docs/markdown/final_project/codex_공용작업_가이드.md`, `docs/markdown/final_project/00_project_control.md` |
 | 2026-07-20 15:59 | 1.6, 1.7, 9.1 | 공용 문서와 화면·구조 기준을 Baseline 프로토타입 관점으로 재검증해 조식 대기 1개 시나리오·rule 1개·통합 API 5개·필수 test 6개로 첫 구현 단위를 축소하고 독립 FastAPI·운영 수준 통제를 후속 강화로 분리 | Golden Path·4화면·2역할 유지, 8개 data/API 계약은 논리 계약으로 보존, 공식 산출물 16개와 기존 Core 화면이 Baseline 완료를 차단하지 않도록 gate 분리 | `README.md`, `docs/markdown/05_화면설계서_초안.md`, `docs/markdown/final_project/`, `docs/markdown/02_WBS.md` |
 | 2026-07-20 15:44 | 1.3, 1.7, 9.1 | 공용 통제·data·API/AI·산출물 추적·test 인수 문서를 생성하고 기존 요구사항·WBS ID를 P0 `REQ-*`·`DOC-*`·`TC-*`에 mapping, 구현 경계 5개를 `.gitkeep`으로 추적 | 공용 문서 6개 제한과 기존 공통 명세 재사용, P0/확장·미도입 기술 상태·evidence 미생성 표기, 구현 경계만 생성하고 code·migration 미생성 확인 | `README.md`, `app/`, `src/`, `docs/markdown/01_요구사항정의서.md`, `docs/markdown/02_WBS.md`, `docs/markdown/final_project/` |

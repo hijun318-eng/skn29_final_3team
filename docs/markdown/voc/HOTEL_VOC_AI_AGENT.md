@@ -700,7 +700,7 @@ AND 평균 대기시간 증가율 >= 20%
 ## 17. 발표 자료
 
 - 발표용 HTML: `hotel_voc_final_presentation.html`
-- 프로젝트 기준 문서: `docs/markdown/HOTEL_VOC_AI_AGENT.md`
+- 프로젝트 기준 문서: `docs/markdown/voc/HOTEL_VOC_AI_AGENT.md`
 
 ---
 

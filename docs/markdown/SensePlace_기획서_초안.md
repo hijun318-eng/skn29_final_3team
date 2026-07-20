@@ -1,4 +1,4 @@
-# SensePlace 제품·Baseline 기획서 (v1.2)
+# SensePlace 제품·Baseline 기획서 (v1.3)
 
 > 작성 기준일: 2026-07-21
 > 공식 서비스명: **SensePlace**
@@ -860,7 +860,7 @@ Gate는 반례 세트 v2 21건 100% PASS, 최소 3개 seed의 `NORMAL` 무경보
 | **7주** | 08/24~28 | 선택 확장·회귀·서비스 테스트 | LLM 연동 웹 애플리케이션 · 서비스 테스트 결과 보고서 |
 | 🏁 **8주** | 08/31~09/03 | Golden Path 5회·최종 발표 | 최종 발표 PT · 소스코드 · 시연영상 |
 
-일정 검증상 5주차는 기능 A/B 연결과 Gate가 같은 주에 있어 가장 위험하다. 따라서 4주차까지 FastAPI·Django job 골격, contract fixture, rule·query plan 단위 모듈을 준비하고 5주차에는 실제 합성 DB 연결과 회귀에 집중한다. Baseline Gate 미통과 시 7주차 선택 확장은 자동 취소하고, 승인 UI·근거 추적·read-only 안전성·합성 표시·2단계 품질 검사는 축소하지 않는다. sLLM 등 독립 실험은 Gate를 차단하지 않으며 제출에 필요한 최소 비교와 한계 기록만 보장한다.
+일정 검증상 5주차는 기능 A/B 연결과 Gate가 같은 주에 있어 가장 위험하다. 따라서 4주차까지 FastAPI·Django job 골격, 합의된 fixture, rule·query plan 단위 모듈을 준비하고 5주차에는 실제 합성 DB 연결과 회귀에 집중한다. Baseline Gate 미통과 시 7주차 선택 확장은 자동 취소하고, 승인 UI·근거 추적·read-only 안전성·합성 표시·2단계 품질 검사는 축소하지 않는다. sLLM 등 독립 실험은 Gate를 차단하지 않으며 제출에 필요한 최소 비교와 한계 기록만 보장한다.
 
 ---
 

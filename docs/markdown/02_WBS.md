@@ -411,6 +411,7 @@ gantt
 
 | 일시(KST) | 실행 WBS ID | 변경 결과 | 검증 | 관련 파일 |
 |---|---|---|---|---|
+| 2026-07-20 16:11 | 1.7, 9.1 | 다른 Codex 세션이 필수 문서·담당별 계약·Baseline 경계·작업 절차·인계 형식을 한 곳에서 확인하도록 공용 작업 진입 가이드를 추가하고 README·통제 문서에 연결 | 로컬 Markdown 링크·문서 우선순위·Baseline 4화면·API 5개·test 6개·보호 문서 규칙 확인 | `README.md`, `docs/markdown/final_project/codex_공용작업_가이드.md`, `docs/markdown/final_project/00_project_control.md` |
 | 2026-07-20 15:59 | 1.6, 1.7, 9.1 | 공용 문서와 화면·구조 기준을 Baseline 프로토타입 관점으로 재검증해 조식 대기 1개 시나리오·rule 1개·통합 API 5개·필수 test 6개로 첫 구현 단위를 축소하고 독립 FastAPI·운영 수준 통제를 후속 강화로 분리 | Golden Path·4화면·2역할 유지, 8개 data/API 계약은 논리 계약으로 보존, 공식 산출물 16개와 기존 Core 화면이 Baseline 완료를 차단하지 않도록 gate 분리 | `README.md`, `docs/markdown/05_화면설계서_초안.md`, `docs/markdown/final_project/`, `docs/markdown/02_WBS.md` |
 | 2026-07-20 15:44 | 1.3, 1.7, 9.1 | 공용 통제·data·API/AI·산출물 추적·test 인수 문서를 생성하고 기존 요구사항·WBS ID를 P0 `REQ-*`·`DOC-*`·`TC-*`에 mapping, 구현 경계 5개를 `.gitkeep`으로 추적 | 공용 문서 6개 제한과 기존 공통 명세 재사용, P0/확장·미도입 기술 상태·evidence 미생성 표기, 구현 경계만 생성하고 code·migration 미생성 확인 | `README.md`, `app/`, `src/`, `docs/markdown/01_요구사항정의서.md`, `docs/markdown/02_WBS.md`, `docs/markdown/final_project/` |
 | 2026-07-20 15:23 | 1.6, 1.7 | 최소 MVP Golden Path, 4개 화면, 서비스별 책임, 공통 상태·API·데이터 계약과 저장소 구조 기준을 확정하고 기존 화면설계서에 P0 우선 규칙 반영 | 구현 파일·dependency 없음 확인, P0와 확장 분리, 빈 framework 폴더 미생성, 내부 문서 링크 점검 | `README.md`, `docs/markdown/05_화면설계서_초안.md`, `docs/markdown/final_project/` |

@@ -8,14 +8,12 @@ P0 Golden Path는 `합성 데이터 V1·V2 → 규칙 기반 이상 감지 → V
 
 ## MVP 공통 문서
 
-다른 Codex 세션과 담당자는 아래 순서로 공용 기준을 읽는다. 기존 공통 명세가 `01_common_development_specification.md` 역할을 하므로 같은 목적의 파일을 추가로 만들지 않는다.
+다른 Codex 세션은 먼저 [Codex 공용 작업 가이드](./docs/markdown/final_project/codex_공용작업_가이드.md)에서 작업별 필수 문서와 Baseline 범위를 확인한다. 기존 공통 명세가 `01_common_development_specification.md` 역할을 하므로 같은 목적의 파일을 추가로 만들지 않는다.
 
-1. [프로젝트 통제 문서](./docs/markdown/final_project/00_project_control.md)
-2. [Hotel Signal AI 공통 개발 명세](./docs/markdown/final_project/common_project_specification.md)
-3. [데이터 표준 가이드](./docs/markdown/final_project/02_data_standard_guide.md)
-4. [API·AI 통합 계약](./docs/markdown/final_project/03_api_ai_integration_contract.md)
-5. [산출물 추적 매트릭스](./docs/markdown/final_project/04_deliverable_traceability_matrix.md)
-6. [테스트·인수 가이드](./docs/markdown/final_project/05_test_acceptance_guide.md)
+1. [Codex 공용 작업 가이드](./docs/markdown/final_project/codex_공용작업_가이드.md)
+2. [프로젝트 통제 문서](./docs/markdown/final_project/00_project_control.md)
+3. [Hotel Signal AI 공통 개발 명세](./docs/markdown/final_project/common_project_specification.md)
+4. 담당별 공용 문서
 
 구조·화면 지원 문서:
 

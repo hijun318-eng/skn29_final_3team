@@ -445,6 +445,7 @@ gantt
 
 | 일시(KST) | 실행 WBS ID | 변경 결과 | 검증 | 관련 파일 |
 |---|---|---|---|---|
+| 2026-07-21 12:31 | 1.6 | Git 이력에서 화면설계 기준본을 구분할 수 있도록 문서 버전을 `2.0`으로 변경 | YAML front matter의 `version: 2.0` 확인, 화면 내용·범위·일정 무변경 | `docs/markdown/05_화면설계서_초안.md`, `docs/markdown/02_WBS.md` |
 | 2026-07-21 11:54 | 1.3, 1.5, 1.7, 6.2, 6.3 | 공식 제목·감성 P0 활용·Gate 21건과 8주차 Golden Path·VOC 분리 schema와 `job`·`audit_event`·API version·Incident 보고 DRAFT 경계를 활성 단일 기준으로 정리 | 화면설계서와 Excel 제외, 보호 문서 무변경, 요구사항·제품 기획·실행 WBS의 현재 기준 대조 | `README.md`, `docs/markdown/SensePlace_기획서_초안.md`, `docs/markdown/01_요구사항정의서.md`, `docs/markdown/02_WBS.md`, `docs/markdown/03_프로젝트기획서.md` |
 | 2026-07-21 11:29 | 1.3, 6.13, 7.3 | 2차 역검토에서 요구사항 요약·상세 메타 4건을 일치시키고, `UI-004` 단위·기간 Gate와 색상 외 비차단 검증을 실행 작업으로 분리하며 `OPS-001` 7주차 최종 검증과 조회 수단을 실행·제품 정의에 연결 | 화면설계서 내용·Excel 제출본 제외, 요구사항 62건의 우선순위·범위·성격·AI 활용·담당과 실행 WBS·Planning View·제품 완료 조건 대조 | `docs/markdown/SensePlace_기획서_초안.md`, `docs/markdown/01_요구사항정의서.md`, `docs/markdown/02_WBS.md` |
 | 2026-07-21 11:12 | 1.3, 1.5, 3.6, 6.1, 6.2, 6.6, 6.11, 7.1, 7.6, 8.4 | Baseline 43개 최종 범위와 5주차 Gate 차단 기준을 분리하고 Gate 전 필수 연결·비차단 최종 검증·단계형 회귀 일정을 동기화했으며, 공식 산출물명은 유지한 채 pgvector 수행과 GraphDB 미도입 범위를 명시 | 요구사항 62=43+8+11, Baseline 43=Must 39+Should 4, Gate 이후 허용 단계 5건·예상 밖 배치 0건, 실행 WBS 63건과 3개 주차표 대조, 화면설계서·보호 폴더 무변경 | `docs/markdown/SensePlace_기획서_초안.md`, `docs/markdown/01_요구사항정의서.md`, `docs/markdown/02_WBS.md`, `docs/markdown/03_프로젝트기획서.md` |

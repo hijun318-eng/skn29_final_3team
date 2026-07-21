@@ -440,6 +440,7 @@ gantt
 
 | 일시(KST) | 실행 WBS ID | 변경 결과 | 검증 | 관련 파일 |
 |---|---|---|---|---|
+| 2026-07-21 10:30 | 1.6 | 호텔 관리자 의사결정 중심으로 운영 브리핑·주요 이슈·VOC/운영 비교·원인 후보·대응 옵션·보고 검토의 정보 우선순위와 안전 표현을 화면설계서에 반영 | Executive Summary 4개 판단 질문, 주요 이슈 카드, 미승인 종합 점수·예상 효과·자동 실행·다운로드 제한, UI QA 2건과 화면 요약 대조 | `docs/markdown/05_화면설계서_초안.md`, `docs/markdown/02_WBS.md` |
 | 2026-07-21 09:39 | 1.4 | AI 작업 원칙, Git 협업, 보고 작성, commit 메시지 생성과 프로젝트 안내의 문서별 책임을 분리하고 중복 지침과 잘못된 제공 양식 저장 안내 제거 | 보호 WBS 양식 2종의 시트 구조 확인, 지침 원본·참조 경계·branch 및 보고 흐름·Markdown 링크·형식 대조 | `AGENTS.md`, `README.md`, `.agents/skills/draft-commit-message/SKILL.md`, `docs/markdown/collaboration/README.md`, `docs/markdown/daily_reports/README.md` |
 | 2026-07-21 09:15 | 1.3, 1.7 | 요구사항 62건의 담당 표기를 PM·A·B·C·D 트랙 코드, 역할, 실명 형식으로 통일하고 실행 리드와 Baseline Owner 책임을 구분 | 요약표 62건·상세 메타 62건의 담당 형식 및 확정 역할표 대조, 요구사항 수·범위·일정 무변경 | `docs/markdown/01_요구사항정의서.md`, `docs/markdown/02_WBS.md` |
 | 2026-07-21 09:12 | 1.3 | `FUN-003`, `FUN-004`의 모호한 외부 파일 입력 표현을 관리자 파일 업로드를 통한 데이터 일괄 적재로 명확화 | 요구사항 요약표·상세 정의·입출력·수용 기준의 용어 일치 확인, 우선순위·상태·일정 무변경 | `docs/markdown/01_요구사항정의서.md`, `docs/markdown/02_WBS.md` |

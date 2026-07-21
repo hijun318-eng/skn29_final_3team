@@ -33,11 +33,11 @@
 |---|---|---|---|---|---|---|---|---|---|
 | `1.5` | SensePlace 기획·요구사항·WBS 범위 동기화 | `DOC-003` | 전체 Baseline | 박준희·송민지 | 07/13 | 07/24 | 검토 | SensePlace 결정 적용 | `docs/markdown/03_프로젝트기획서.md` |
 | `1.6` | 공식 화면설계서 제출·후속 동기화 보류 | `DOC-013` | 화면 요구사항 | 송민지 | 07/13 | 07/24 | 진행 | 없음 | `docs/markdown/05_화면설계서_초안.md`는 이번 작업에서 변경하지 않음 |
-| `1.7` | 데이터 항목·시간/grain·권한·8 intent(핵심 4종 P0 우선 E2E: 기간 KPI·전주 비교·시간대 도착·근거 조회)·평가 분리·LLM 모델 최소 합의 | `DOC-003`, `DOC-010` | 전체 Baseline | 박준희·김재홍·정승·윤대성 | 07/27 | 07/28 | 검토 | SensePlace 기획 | `docs/markdown/01_요구사항정의서.md` |
+| `1.7` | 데이터 항목·시간/grain·권한·8 intent(핵심 4종 P0 우선 E2E: 기간 KPI·전주 비교·시간대 도착·근거 조회)·평가 분리·LLM 모델 최소 합의 | `DOC-003`, `DOC-010` | 전체 Baseline | 박준희·김재홍·정승·윤대성 | 07/27 | 07/28 | 검토 | SensePlace 기획 | `docs/markdown/01_요구사항정의서.md`, `docs/markdown/walkerhill/워커힐_WISE_벤치마킹_적용안.md`, `docs/markdown/SensePlace_FastAPI_내부외부_연동범위.md` |
 | `2.2`, `2.3`, `2.5`, `2.10` | 전량 합성 VOC·운영 fixture·manifest와 적재 전 validation | `DOC-004` | `REQ-F-001`, `REQ-NF-001` | 정승·박준희 | 07/29 | 08/05 | 대기 | `1.7` 최소 합의·LLM 모델 선택 완료 | 미생성 |
 | `2.7`, `2.8`, `2.9` | PostgreSQL 합성 analytics view·metric catalog 설계 초안·검증 | `DOC-005` | `REQ-F-001`~`005` | 정승·김재홍 | 07/21 | 08/05 | 대기 | `2.9` 초안은 선행 가능, `1.7` 승인 후 전체 검증·validation 통과 fixture | 미생성 |
 | `5.2`~`5.4`, `5.9`, `5.10` | 결정론적 KPI·적재 후 Gate·감지·교차분석·Incident 입력 완성 | `DOC-010` | `REQ-F-001`,`004`,`005` | 김재홍·정승·윤대성·박준희 | 08/07 | 08/12 | 대기 | analytics view | 미생성 |
-| `6.1`~`6.4`, `6.9`, `6.12`~`6.14` | 기능 A 로그인·권한·job·plan·SQL Guard·차트 연결 | `DOC-014` | `REQ-F-002`,`003`, `REQ-NF-001` | 김재홍·윤대성·송민지 | 07/28 | 08/12 | 대기 | `1.7` 최소 합의 | 미생성 |
+| `6.1`~`6.4`, `6.9`, `6.12`~`6.14` | 기능 A 로그인·권한·job·plan·SQL Guard·차트 연결 | `DOC-014` | `REQ-F-002`,`003`, `REQ-NF-001` | 김재홍·윤대성·송민지 | 07/28 | 08/12 | 대기 | `1.7` 최소 합의 | 연동 경계 작업본: `docs/markdown/SensePlace_FastAPI_내부외부_연동범위.md` |
 | `6.3`, `6.6` | 기능 B Incident workflow·evidence·DRAFT·결정 연결 | `DOC-014` | `REQ-F-004`~`007`, `REQ-NF-002` | 김재홍·윤대성·송민지·박준희 | 08/12 | 08/12 | 대기 | detection·evidence | 미생성 |
 | `7.1` | 반례 세트 v2 21건 Baseline Gate evidence | `DOC-016` | Gate 차단 Baseline | 전원 | 08/13 | 08/14 | 대기 | 기능 A/B 완료 | 미생성 |
 | `7.6` | 반례 Gate 자동 채점·후속 회귀 결과와 결함 조율 | `DOC-016` | `TST-001`, `TST-003` | 박준희·윤대성·김재홍 | 08/13 | 08/28 | 대기 | 기능 A/B 완료·Gate 판정 | 미생성 |
@@ -445,6 +445,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 관련 파일 |
 |---|---|---|---|
+| 2026-07-21 | 1.7, 2.9, 5.7, 6.14 | 보호 폴더에 잘못 배치된 WISE 벤치마킹·FastAPI HTML/Markdown 기준 자료를 건드리지 않고, 최신 SensePlace 계약과 문서관리 규칙에 맞는 편집 가능 Markdown 작업 문서 2건으로 정리 | `docs/markdown/walkerhill/워커힐_WISE_벤치마킹_적용안.md`, `docs/markdown/SensePlace_FastAPI_내부외부_연동범위.md`, WBS |
 | 2026-07-21 | 1.7, 3.7, 6.3, 7.1 | 마감 보완 4건: §15 완료형→계획·조건형, `VOC_PROMPT_INJECTION` 반례·테스트 전용 데이터 예외 추가, Incident 최소 식별자(`business_key`·단순 status) 정의, intent 핵심 4종 P0 우선 순서. "21건" 표기 불변, window 병합·lifecycle은 Scenario Pack 유보 | 기획서·프로젝트기획서·WBS |
 | 2026-07-21 | 1.3, 1.5, 1.7, 6.x, 7.x | 활성 단일기준 정리: 공식 제목·감성 P0·Gate 21건+8주차 Golden Path·VOC 분리 schema·`job`/`audit_event`·API version·Incident DRAFT 경계, UI-004·OPS-001 검증 분리 | 기획 4문서 |
 | 2026-07-21 | 1.3, 1.5, 3.6, 6.x, 7.x, 8.4 | Baseline 43 최종 범위와 5주차 Gate 차단 기준 분리, 비차단 최종검증·단계형 회귀 동기화, pgvector 수행·GraphDB 미도입 명시 | 기획 4문서 |

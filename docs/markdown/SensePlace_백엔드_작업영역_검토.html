@@ -1,0 +1,1429 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SensePlace — 호텔 VOC·운영 지원 플랫폼 백엔드 작업영역 검토</title><style>
+:root{--bg:#f5f7fa;--surface:#fff;--line:#d9e1ea;--text:#17212b;--muted:#64748b;--accent:#2856c7;--soft:#edf3ff;--code:#111827;--shadow:0 10px 30px rgba(15,23,42,.08)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font-family:"Pretendard","Noto Sans KR","Malgun Gothic",system-ui,sans-serif;line-height:1.72}.layout{display:grid;grid-template-columns:290px minmax(0,1fr);gap:28px;max-width:1480px;margin:0 auto;padding:28px}.sidebar{position:sticky;top:20px;align-self:start;max-height:calc(100vh - 40px);overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:20px 18px}.sidebar h2{margin:0 0 14px;font-size:1rem}.sidebar ul{list-style:none;margin:0;padding:0}.sidebar li{margin:5px 0}.sidebar .lvl-3{padding-left:14px}.sidebar a{color:var(--muted);text-decoration:none;font-size:.9rem}.sidebar a:hover{color:var(--accent);text-decoration:underline}.main{min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:40px 44px 64px}.main>h1:first-of-type{margin-top:0;font-size:clamp(1.8rem,3vw,2.55rem);line-height:1.25;letter-spacing:-.02em;padding-bottom:20px;border-bottom:2px solid var(--line)}h1,h2,h3{scroll-margin-top:24px;line-height:1.35}h2{margin-top:2.2em;padding-bottom:.45em;border-bottom:1px solid var(--line)}h3{margin-top:1.8em}p,li{word-break:keep-all;overflow-wrap:anywhere}blockquote{margin:1.25em 0;padding:14px 18px;border-left:4px solid var(--accent);background:var(--soft);color:#28426d}code{font-family:"Cascadia Code","D2Coding",Consolas,monospace;font-size:.92em}:not(pre)>code{background:#f1f5f9;border:1px solid var(--line);border-radius:6px;padding:.12em .38em;color:#173d8f}pre{overflow:auto;padding:18px 20px;border-radius:12px;background:var(--code);color:#e9eef7;line-height:1.55;border:1px solid #263143}pre code{color:inherit;background:transparent;border:0;padding:0}.table-wrap{overflow-x:auto;margin:1.2em 0 1.6em;border:1px solid var(--line);border-radius:12px}table{width:100%;border-collapse:collapse;min-width:760px;background:var(--surface)}th,td{padding:11px 12px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:left;vertical-align:top}th:last-child,td:last-child{border-right:0}tr:last-child td{border-bottom:0}th{background:#f1f5f9;font-weight:700;white-space:nowrap}tbody tr:nth-child(even){background:#fbfcfd}input[type=checkbox]{transform:scale(1.08);margin-right:.45em}hr{border:0;border-top:1px solid var(--line);margin:2em 0}a{color:var(--accent)}.meta{color:var(--muted);font-size:.88rem;margin-top:18px}.top-link{display:inline-block;margin-bottom:14px;font-size:.9rem;color:var(--muted);text-decoration:none}@media(max-width:980px){.layout{grid-template-columns:1fr;padding:14px}.sidebar{position:static;max-height:none}.main{padding:26px 20px 48px}}@media print{body{background:#fff}.layout{display:block;max-width:none;padding:0}.sidebar{display:none}.main{box-shadow:none;border:0;border-radius:0;padding:0}a{color:inherit;text-decoration:none}pre,table{break-inside:avoid}}
+</style></head><body id="top"><div class="layout"><aside class="sidebar"><h2>문서 목차</h2><ul><li class="lvl-2"><a href="#0-결론">0. 결론</a></li>
+<li class="lvl-3"><a href="#01-사람이-판단해야-할-사항">0.1 사람이 판단해야 할 사항</a></li>
+<li class="lvl-3"><a href="#02-판단-체크리스트">0.2 판단 체크리스트</a></li>
+<li class="lvl-3"><a href="#03-고정된-팀-결정">0.3 고정된 팀 결정</a></li>
+<li class="lvl-3"><a href="#04-백엔드-최우선-업무">0.4 백엔드 최우선 업무</a></li>
+<li class="lvl-3"><a href="#05-최소-기능-구현-방향">0.5 최소 기능 구현 방향</a></li>
+<li class="lvl-2"><a href="#1-검토-범위와-현재-상태">1. 검토 범위와 현재 상태</a></li>
+<li class="lvl-3"><a href="#11-기준-문서">1.1 기준 문서</a></li>
+<li class="lvl-3"><a href="#12-실제-저장소-상태">1.2 실제 저장소 상태</a></li>
+<li class="lvl-3"><a href="#13-문서-템플릿번호-적용">1.3 문서 템플릿·번호 적용</a></li>
+<li class="lvl-2"><a href="#2-공식-제목-불일치와-최소-패치-대상">2. 공식 제목 불일치와 최소 패치 대상</a></li>
+<li class="lvl-2"><a href="#3-백엔드-요구사항wbs-매핑">3. 백엔드 요구사항·WBS 매핑</a></li>
+<li class="lvl-2"><a href="#4-문서-충돌과-변경-영향">4. 문서 충돌과 변경 영향</a></li>
+<li class="lvl-2"><a href="#5-최소-백엔드-아키텍처">5. 최소 백엔드 아키텍처</a></li>
+<li class="lvl-2"><a href="#6-서비스-책임과-금지-경계">6. 서비스 책임과 금지 경계</a></li>
+<li class="lvl-2"><a href="#7-db상태버전-설계-검토">7. DB·상태·버전 설계 검토</a></li>
+<li class="lvl-3"><a href="#71-p0-논리-entity">7.1 P0 논리 entity</a></li>
+<li class="lvl-3"><a href="#72-감성-계약">7.2 감성 계약</a></li>
+<li class="lvl-3"><a href="#73-상태">7.3 상태</a></li>
+<li class="lvl-3"><a href="#74-추적-version">7.4 추적 version</a></li>
+<li class="lvl-2"><a href="#8-외부내부-api-계약-초안">8. 외부·내부 API 계약 초안</a></li>
+<li class="lvl-3"><a href="#81-공통-envelope">8.1 공통 envelope</a></li>
+<li class="lvl-3"><a href="#82-django-외부-api">8.2 Django 외부 API</a></li>
+<li class="lvl-3"><a href="#83-djangofastapi-내부-api">8.3 Django→FastAPI 내부 API</a></li>
+<li class="lvl-3"><a href="#84-오류-코드">8.4 오류 코드</a></li>
+<li class="lvl-2"><a href="#9-권한scope-설계">9. 권한·scope 설계</a></li>
+<li class="lvl-2"><a href="#10-jobworkerpolling-설계">10. job·worker·polling 설계</a></li>
+<li class="lvl-2"><a href="#11-결정론적-sql-builderguard">11. 결정론적 SQL builder·Guard</a></li>
+<li class="lvl-2"><a href="#12-llmfallback">12. LLM·Fallback</a></li>
+<li class="lvl-2"><a href="#13-보고서decisionaudit">13. 보고서·decision·audit</a></li>
+<li class="lvl-2"><a href="#14-테스트gate">14. 테스트·Gate</a></li>
+<li class="lvl-2"><a href="#15-구현-순서">15. 구현 순서</a></li>
+<li class="lvl-2"><a href="#16-p1p2-확장">16. P1·P2 확장</a></li>
+<li class="lvl-3"><a href="#p1">P1</a></li>
+<li class="lvl-3"><a href="#p2-또는-프로젝트-밖">P2 또는 프로젝트 밖</a></li>
+<li class="lvl-2"><a href="#17-변경-이력">17. 변경 이력</a></li>
+<li class="lvl-2"><a href="#18-최종-판정">18. 최종 판정</a></li></ul><p class="meta">원본: SensePlace_백엔드_작업영역_검토.md</p></aside><main class="main"><a class="top-link" href="#top">맨 위로</a><h1 id="senseplace-호텔-voc운영-지원-플랫폼-백엔드-작업영역-검토">SensePlace — 호텔 VOC·운영 지원 플랫폼 백엔드 작업영역 검토</h1>
+<blockquote>
+<p>문서 유형: 일반 작업 문서(공식 산출물 아님)
+작성 기준일: 2026-07-21
+검토 대상 commit: <code>f29f5ad8942c4a6b829c7d134f7dfcc99c71ddb0</code>
+상태: 사람 결정 후 구현 가능
+담당 기준: 김재홍(B 백엔드·통합)
+사용 템플릿: 전용 템플릿 없음. <code>docs/문서관리규칙.md</code>의 일반 문서 규칙과 작업 프롬프트 목차를 적용함</p>
+</blockquote>
+<h2 id="0-결론">0. 결론</h2>
+<p>백엔드 P0는 <code>Django 외부 게이트웨이 + Django worker + 내부 FastAPI + PostgreSQL</code>의 한 방향 호출 경계를 유지하고, 기능 A와 기능 B의 최소 vertical slice를 2026-08-13~14 Gate 전에 실제 연결하는 범위다. Browser는 Django만 호출하며, Django는 인증·RBAC·<code>scope_snapshot</code>·job·report·decision·audit·migration의 원본이고 FastAPI는 품질 Gate·결정론적 감지·query·Incident·LLM 연동을 내부 API로 제공한다.</p>
+<p>현재 저장소에는 <code>app/django</code>, <code>app/fastapi</code>, <code>src/analysis</code>, <code>src/common</code>, <code>tests</code>의 <code>.gitkeep</code>만 있고 실행 코드·dependency·migration·test evidence가 없다. 따라서 현재 완료 상태는 <strong>구현 전 계약 검토</strong>이며 기능 완료로 판정할 수 없다.</p>
+<p>가장 먼저 할 일은 역할 코드, 8개 intent, 상태 enum, 감성 정책, API schema v0, DB migration 소유권, worker 방식, report version 규칙을 동결하는 것이다. 이 결정 없이 framework를 초기화하면 React fixture·Django·FastAPI·데이터 schema가 서로 달라질 위험이 크다.</p>
+<h3 id="01-사람이-판단해야-할-사항">0.1 사람이 판단해야 할 사항</h3>
+<ul>
+<li class="task-list-item"><p><input class="task-list-item-checkbox" type="checkbox" disabled/>역할 코드를 <code>HOTEL_MANAGER</code>, <code>FNB_MANAGER</code>, <code>ROOMS_MANAGER</code>로 동결한다.</p>
+<ul>
+<li>현재 문서 상태: 요구사항·기획서는 <code>ROOMS_MANAGER</code>, 화면설계서 P0는 <code>ROOM_MANAGER</code>를 사용한다.</li>
+<li>충돌 또는 위험: session·fixture·API enum·권한 test가 불일치한다.</li>
+<li>권장안: <code>ROOMS_MANAGER</code>를 단일 코드로 사용한다.</li>
+<li>선택 시 영향: 역할 matrix와 <code>scope_snapshot</code> schema를 고정할 수 있다.</li>
+<li>보류 시 영향: 로그인·권한·fixture 병렬 작업을 시작할 수 없다.</li>
+<li>결정 기한: framework 초기화 전, WBS <code>1.7</code> 종료 전</li>
+<li>관련 요구사항·WBS: <code>REQ-F-002</code>, <code>FUN-002</code>, <code>SEC-002</code>, <code>1.7</code>, <code>6.1</code>, <code>PV-6.1</code></li>
+</ul>
+</li>
+<li class="task-list-item"><p><input class="task-list-item-checkbox" type="checkbox" disabled/>백엔드 Baseline API를 중간발표 6개 화면의 기능 A·B 흐름으로 제한한다.</p>
+<ul>
+<li>현재 문서 상태: 최신 기획·요구사항은 6개 흐름을 우선하지만 화면설계서 본문에는 전체 Core 화면과 업로드·관리 기능이 남아 있다.</li>
+<li>충돌 또는 위험: Gate 전에 전체 Core API를 구현하면 일정과 보안 검증 범위가 급증한다.</li>
+<li>권장안: 6개 화면의 실제 연결에 필요한 API만 P0로 구현하고 나머지는 Gate 후 확장으로 둔다.</li>
+<li>선택 시 영향: 기능 A·B E2E와 21개 반례에 집중할 수 있다.</li>
+<li>보류 시 영향: API 수와 migration 범위를 확정할 수 없다.</li>
+<li>결정 기한: API schema v0 승인 전</li>
+<li>관련 요구사항·WBS: <code>REQ-F-003</code>~<code>007</code>, <code>UI-001</code>~<code>005</code>, <code>6.2</code>~<code>6.6</code>, <code>7.1</code></li>
+</ul>
+</li>
+<li class="task-list-item"><p><input class="task-list-item-checkbox" type="checkbox" disabled/>보장 intent 8종의 최종 계약을 승인한다.</p>
+<ul>
+<li>현재 문서 상태: 요구사항·기획서는 8종, 화면설계서 구 본문은 10종을 요구한다.</li>
+<li>충돌 또는 위험: query plan·fixture·회귀 matrix의 개수가 달라진다.</li>
+<li>권장안: 8종을 유지하고 7번을 <code>주제별 부정 VOC 조회</code>로 변경하며 자유형 Text-to-SQL은 금지한다.</li>
+<li>선택 시 영향: <code>8 intent × 3 roles × 3 utterances</code> 회귀 계약을 만들 수 있다.</li>
+<li>보류 시 영향: SQL builder·Guard와 UI 추천 질문을 구현할 수 없다.</li>
+<li>결정 기한: WBS <code>1.7</code>, <code>6.9</code> 시작 전</li>
+<li>관련 요구사항·WBS: <code>REQ-F-003</code>, <code>FUN-006</code>, <code>AI-010</code>, <code>1.7</code>, <code>6.9</code>, <code>6.12</code></li>
+</ul>
+</li>
+<li class="task-list-item"><p><input class="task-list-item-checkbox" type="checkbox" disabled/>Django worker 실행 방식을 정한다.</p>
+<ul>
+<li>현재 문서 상태: job+polling과 Django worker 책임은 확정됐으나 process 형태는 미정이다.</li>
+<li>충돌 또는 위험: 별도 queue 도입 시 일정·장애 지점·배포 복잡도가 늘어난다.</li>
+<li>권장안: P0는 DB job table을 polling하는 Django management command 한 개로 시작한다.</li>
+<li>선택 시 영향: Redis·Celery 없이 transaction·idempotency를 검증할 수 있다.</li>
+<li>보류 시 영향: job 상태와 재시도 책임을 구현할 수 없다.</li>
+<li>결정 기한: <code>6.2</code> 구현 전</li>
+<li>관련 요구사항·WBS: <code>REQ-F-003</code>, <code>OPS-001</code>, <code>6.2</code>, <code>PV-6.2</code></li>
+</ul>
+</li>
+<li class="task-list-item"><p><input class="task-list-item-checkbox" type="checkbox" disabled/>DB migration과 analytics DDL 소유권을 승인한다.</p>
+<ul>
+<li>현재 문서 상태: 보호 계약은 Django 단일 migration을 요구하지만 analytics schema의 데이터 담당 경계가 구현 수준으로 확정되지 않았다.</li>
+<li>충돌 또는 위험: Django와 FastAPI가 같은 table을 중복 생성하거나 FastAPI에 write 권한이 생길 수 있다.</li>
+<li>권장안: Django가 platform table migration의 단일 주체이고 analytics table·view DDL은 데이터 담당과 공동 검토하며 FastAPI는 allowlist view read-only role만 사용한다.</li>
+<li>선택 시 영향: table owner와 배포 순서를 고정할 수 있다.</li>
+<li>보류 시 영향: migration과 DB credential을 만들면 안 된다.</li>
+<li>결정 기한: WBS <code>2.8</code> 완료 전</li>
+<li>관련 요구사항·WBS: <code>DAT-007</code>, <code>DAT-008</code>, <code>REQ-NF-001</code>, <code>2.7</code>~<code>2.9</code>, <code>PV-6.3</code></li>
+</ul>
+</li>
+<li class="task-list-item"><p><input class="task-list-item-checkbox" type="checkbox" disabled/>report 상태·version·decision 규칙을 승인한다.</p>
+<ul>
+<li>현재 문서 상태: <code>DRAFT</code>, <code>APPROVED</code>, <code>ON_HOLD</code>, <code>REJECTED</code>와 승인본 불변 원칙은 일치하지만 반려 후 재생성·동일 주차 unique key·decision comment 필수 여부는 미정이다.</li>
+<li>충돌 또는 위험: 승인본 덮어쓰기와 중복 보고서가 발생할 수 있다.</li>
+<li>권장안: 승인본은 immutable, <code>ON_HOLD</code>·<code>REJECTED</code> 후 새 <code>DRAFT</code> version, <code>(virtual_week_id, analysis scope, template_version)</code> 기반 unique 정책, 보류·반려 comment 필수로 한다.</li>
+<li>선택 시 영향: 낙관적 잠금과 audit test를 확정할 수 있다.</li>
+<li>보류 시 영향: report migration·decision API를 구현할 수 없다.</li>
+<li>결정 기한: <code>6.2</code>, <code>6.6</code> 구현 전</li>
+<li>관련 요구사항·WBS: <code>REQ-F-006</code>, <code>REQ-F-007</code>, <code>RPT-001</code>, <code>SEC-003</code>, <code>6.2</code>, <code>6.6</code></li>
+</ul>
+</li>
+<li class="task-list-item"><p><input class="task-list-item-checkbox" type="checkbox" disabled/>LLM 공급자·모델·실행 제한을 승인한다.</p>
+<ul>
+<li>현재 문서 상태: 실행당 최대 1회와 template Fallback은 확정됐지만 공급자·모델·timeout·비용 상한·재시도 정의가 미정이다.</li>
+<li>충돌 또는 위험: <code>최대 1회</code>와 기존 계약의 <code>1회 retry</code> 권장이 동시에 적용되면 실제 호출 수가 달라진다.</li>
+<li>권장안: P0는 한 실행당 실제 호출 총 1회, retry 0회로 시작하고 timeout은 <code>PROJECT_CALIBRATION</code>으로 측정·version 관리한다. 실패·invalid JSON은 즉시 <code>PARTIAL</code> template Fallback으로 전환한다.</li>
+<li>선택 시 영향: 비용·지연·장애 test가 결정론적으로 재현된다.</li>
+<li>보류 시 영향: LLM gateway와 장애 test를 완료할 수 없다.</li>
+<li>결정 기한: 합성 VOC 생성·<code>PV-6.4</code> 시작 전</li>
+<li>관련 요구사항·WBS: <code>INT-001</code>, <code>NFR-002</code>, <code>1.7</code>, <code>5.7</code>, <code>PV-6.4</code></li>
+</ul>
+</li>
+<li class="task-list-item"><p><input class="task-list-item-checkbox" type="checkbox" disabled/>VectorDB 독립 실험 경계를 재확인한다.</p>
+<ul>
+<li>현재 문서 상태: <code>DAT-006</code>, <code>INT-002</code>, WBS <code>3.6</code>은 독립 실험이며 Baseline runtime 의존성이 아니다.</li>
+<li>충돌 또는 위험: 검색 실패가 Incident·report를 중단하면 Gate 범위가 바뀐다.</li>
+<li>권장안: pgvector 실험은 별도 결과서로 유지하고 Baseline은 SQL evidence만으로 완결한다.</li>
+<li>선택 시 영향: 교육 산출물과 P0 안정성을 함께 유지한다.</li>
+<li>보류 시 영향: runtime dependency graph를 동결할 수 없다.</li>
+<li>결정 기한: <code>3.6</code> 시작 전</li>
+<li>관련 요구사항·WBS: <code>DAT-006</code>, <code>INT-002</code>, <code>3.6</code></li>
+</ul>
+</li>
+<li class="task-list-item"><p><input class="task-list-item-checkbox" type="checkbox" disabled/>관리자·업로드·외부 전달 기능을 Gate 이후로 보류한다.</p>
+<ul>
+<li>현재 문서 상태: 요구사항은 승인 후 후보이나 화면설계서 구 Core에는 업로드·관리 화면이 남아 있다.</li>
+<li>충돌 또는 위험: upload validation·파일 보안·외부 채널 연동이 P0에 유입된다.</li>
+<li>권장안: <code>FUN-003</code>, <code>FUN-004</code>, <code>FUN-009</code>~<code>011</code>, <code>INT-003</code>, <code>OPS-002</code>, <code>OPS-003</code>은 P0 구현 금지로 유지한다.</li>
+<li>선택 시 영향: P0가 고정 합성 fixture와 내부 승인 흐름으로 제한된다.</li>
+<li>보류 시 영향: 화면·API·보안 범위가 계속 흔들린다.</li>
+<li>결정 기한: P0 backlog 승인 전</li>
+<li>관련 요구사항·WBS: 위 요구사항, <code>6.10</code>, <code>7.4</code>, <code>7.7</code></li>
+</ul>
+</li>
+</ul>
+<h3 id="02-판단-체크리스트">0.2 판단 체크리스트</h3>
+<ul>
+<li class="task-list-item"><input class="task-list-item-checkbox" type="checkbox" disabled/>공식 제목이 <code>SensePlace — 호텔 VOC·운영 지원 플랫폼</code>으로 승인됐다.</li>
+<li class="task-list-item"><input class="task-list-item-checkbox" type="checkbox" disabled/><code>ROOMS_MANAGER</code>와 8개 intent가 fixture·API·test에서 동일하다.</li>
+<li class="task-list-item"><input class="task-list-item-checkbox" type="checkbox" disabled/>API schema v0와 공통 envelope·오류 코드가 승인됐다.</li>
+<li class="task-list-item"><input class="task-list-item-checkbox" type="checkbox" disabled/>Browser→Django→worker→FastAPI 외의 호출 경로가 없다.</li>
+<li class="task-list-item"><input class="task-list-item-checkbox" type="checkbox" disabled/>Django가 <code>scope_snapshot</code>·job·report·decision·audit·migration의 원본이다.</li>
+<li class="task-list-item"><input class="task-list-item-checkbox" type="checkbox" disabled/>FastAPI가 allowlist analytics view만 read-only로 조회한다.</li>
+<li class="task-list-item"><input class="task-list-item-checkbox" type="checkbox" disabled/><code>POSITIVE</code>, <code>NEUTRAL</code>, <code>NEGATIVE</code> 저장 계약과 <code>NEGATIVE</code> 전용 Baseline 활용 정책이 분리됐다.</li>
+<li class="task-list-item"><input class="task-list-item-checkbox" type="checkbox" disabled/>job·report 상태와 낙관적 잠금·idempotency가 정의됐다.</li>
+<li class="task-list-item"><input class="task-list-item-checkbox" type="checkbox" disabled/>LLM 없이 KPI·trigger·evidence·template DRAFT가 생성된다.</li>
+<li class="task-list-item"><input class="task-list-item-checkbox" type="checkbox" disabled/>21개 반례 Gate와 8 intent 역할 matrix가 구현 완료 조건에 연결됐다.</li>
+</ul>
+<h3 id="03-고정된-팀-결정">0.3 고정된 팀 결정</h3>
+<table>
+<thead>
+<tr>
+  <th>항목</th>
+  <th>단일 기준</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>공식 제목</td>
+  <td><code>SensePlace — 호텔 VOC·운영 지원 플랫폼</code></td>
+</tr>
+<tr>
+  <td>호출 경계</td>
+  <td><code>Browser → Django → Django worker → FastAPI → PostgreSQL/LLM</code></td>
+</tr>
+<tr>
+  <td>외부 backend</td>
+  <td>Django 하나</td>
+</tr>
+<tr>
+  <td>인증·권한 원본</td>
+  <td>Django session·RBAC·server-side <code>scope_snapshot</code></td>
+</tr>
+<tr>
+  <td>분석 경계</td>
+  <td>FastAPI 내부 API, analytics view read-only</td>
+</tr>
+<tr>
+  <td>migration</td>
+  <td>Django 단일 소유</td>
+</tr>
+<tr>
+  <td>KPI·품질·trigger</td>
+  <td>SQL·Python·versioned rule</td>
+</tr>
+<tr>
+  <td>LLM</td>
+  <td>질문 해석 또는 evidence 기반 서술, 실행당 최대 1회</td>
+</tr>
+<tr>
+  <td>LLM 장애</td>
+  <td>수치·trigger·evidence 보존, template Fallback, <code>PARTIAL</code></td>
+</tr>
+<tr>
+  <td>semantic 계층</td>
+  <td>PostgreSQL <code>metric_catalog</code>; 정식 ontology·GraphDB 제외</td>
+</tr>
+<tr>
+  <td>감성 저장 enum</td>
+  <td><code>POSITIVE</code>, <code>NEUTRAL</code>, <code>NEGATIVE</code></td>
+</tr>
+<tr>
+  <td>Baseline 감성 활용</td>
+  <td><code>NEGATIVE</code>만 KPI·trigger·evidence·report에 사용</td>
+</tr>
+<tr>
+  <td>Positive·Neutral</td>
+  <td>저장·독립 실험만 허용, P1 전까지 UI·API·보고 판단에 사용 금지</td>
+</tr>
+<tr>
+  <td>중간발표</td>
+  <td>backend 미연동 6화면 fixture</td>
+</tr>
+<tr>
+  <td>기능 Baseline</td>
+  <td>2026-08-13~14 Gate 전 실제 기능 A·B 연결</td>
+</tr>
+</tbody>
+</table>
+<h3 id="04-백엔드-최우선-업무">0.4 백엔드 최우선 업무</h3>
+<table>
+<thead>
+<tr>
+  <th style="text-align:right">순위</th>
+  <th>업무</th>
+  <th>이유</th>
+  <th>선행 결정</th>
+  <th>완료 기준</th>
+  <th>관련 ID</th>
+  <th>P0 여부</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td style="text-align:right">1</td>
+  <td>공통 계약 동결</td>
+  <td>모든 연동의 선행조건</td>
+  <td>역할·상태·감성·intent</td>
+  <td>계약 검토 완료</td>
+  <td><code>1.7</code>, <code>REQ-*</code></td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td style="text-align:right">2</td>
+  <td>Django session·RBAC·scope</td>
+  <td>보안 경계</td>
+  <td>역할 코드</td>
+  <td>권한 matrix test 설계</td>
+  <td><code>6.1</code>, <code>PV-6.1</code></td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td style="text-align:right">3</td>
+  <td>Platform DB·상태 설계</td>
+  <td>job·report 기반</td>
+  <td>migration·version</td>
+  <td>ERD·상태표 review</td>
+  <td><code>2.8</code>, <code>6.2</code></td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td style="text-align:right">4</td>
+  <td>job·worker·polling</td>
+  <td>기능 A/B 공통</td>
+  <td>worker 방식</td>
+  <td>상태 전이·idempotency test</td>
+  <td><code>6.2</code>, <code>PV-6.2</code></td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td style="text-align:right">5</td>
+  <td>FastAPI 내부 계약</td>
+  <td>Django·AI 연동</td>
+  <td>endpoint·timeout</td>
+  <td>schema stub 계약</td>
+  <td><code>6.14</code>, <code>PV-6.3</code></td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td style="text-align:right">6</td>
+  <td>SQL builder·Guard</td>
+  <td>기능 A 안전성</td>
+  <td>8 intent</td>
+  <td>공격·scope 차단 test</td>
+  <td><code>6.9</code>, <code>6.12</code></td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td style="text-align:right">7</td>
+  <td>Incident·report·decision</td>
+  <td>기능 B 종료 흐름</td>
+  <td>상태·version</td>
+  <td>E2E 1건</td>
+  <td><code>6.3</code>, <code>6.6</code>, <code>PV-6.5</code></td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td style="text-align:right">8</td>
+  <td>LLM Fallback</td>
+  <td>부분 장애 대응</td>
+  <td>모델·timeout</td>
+  <td>수치 유지·<code>PARTIAL</code></td>
+  <td><code>5.7</code>, <code>PV-6.4</code></td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td style="text-align:right">9</td>
+  <td>통합·보안 Gate</td>
+  <td>완료 판정</td>
+  <td>fixture·test</td>
+  <td>21건 PASS·차단 결함 0</td>
+  <td><code>7.1</code>, <code>TST-001</code></td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td style="text-align:right">10</td>
+  <td>VectorDB 실험</td>
+  <td>교육 산출물</td>
+  <td>평가 범위</td>
+  <td>독립 결과서</td>
+  <td><code>3.6</code>, <code>INT-002</code></td>
+  <td>P1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="05-최소-기능-구현-방향">0.5 최소 기능 구현 방향</h3>
+<p>첫 vertical slice는 다음 두 경로만 끝까지 연결한다.</p>
+<pre><code class="language-text">기능 A
+Django 로그인 → FNB_MANAGER scope → 조식 대기 질문 1종
+→ job 생성 → worker → FastAPI query run → SQL Guard
+→ read-only 조회 → 표·차트·결정론 설명 → Django 저장 → polling
+
+기능 B
+BREAKFAST_CONGESTION batch READY → analytical Gate
+→ RULE-001 → Incident 1건 → evidence → template report DRAFT
+→ HOTEL_MANAGER 승인·보류·반려 → audit
+</code></pre>
+<p>첫 slice에서 LLM은 필수 의존성이 아니다. LLM을 끈 상태에서도 기능 A 수치 결과와 기능 B Incident·evidence·template DRAFT·decision이 완료돼야 한다.</p>
+<h2 id="1-검토-범위와-현재-상태">1. 검토 범위와 현재 상태</h2>
+<h3 id="11-기준-문서">1.1 기준 문서</h3>
+<p>내용 판단 우선순위는 <code>AGENTS.md</code>와 <code>docs/문서관리규칙.md</code>에 따라 다음처럼 적용했다.</p>
+<ol>
+<li>사용자 제공 최종 프롬프트의 고정 결정</li>
+<li><code>docs/markdown/01_요구사항정의서.md</code> v2.4</li>
+<li><code>docs/markdown/02_WBS.md</code> v2.3</li>
+<li><code>docs/markdown/SensePlace_기획서_초안.md</code> v1.3</li>
+<li><code>docs/markdown/03_프로젝트기획서.md</code> v3.5</li>
+<li><code>docs/markdown/05_화면설계서_초안.md</code></li>
+<li>보호 기준 자료 <code>docs/markdown/final_project/</code></li>
+<li><code>README.md</code>, 실제 저장소 구조</li>
+</ol>
+<h3 id="12-실제-저장소-상태">1.2 실제 저장소 상태</h3>
+<table>
+<thead>
+<tr>
+  <th>경로</th>
+  <th>확인 결과</th>
+  <th>판정</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>app/django/</code></td>
+  <td><code>.gitkeep</code>만 존재</td>
+  <td>Django project·model·migration·worker 미구현</td>
+</tr>
+<tr>
+  <td><code>app/fastapi/</code></td>
+  <td><code>.gitkeep</code>만 존재</td>
+  <td>FastAPI app·route·Pydantic schema 미구현</td>
+</tr>
+<tr>
+  <td><code>app/react/</code></td>
+  <td><code>.gitkeep</code>만 존재</td>
+  <td>목업·fixture 미구현</td>
+</tr>
+<tr>
+  <td><code>src/analysis/</code></td>
+  <td><code>.gitkeep</code>만 존재</td>
+  <td>품질·KPI·rule·evidence 미구현</td>
+</tr>
+<tr>
+  <td><code>src/common/</code></td>
+  <td><code>.gitkeep</code>만 존재</td>
+  <td>enum·계약·오류 원본 미구현</td>
+</tr>
+<tr>
+  <td><code>tests/</code>, <code>evals/</code></td>
+  <td><code>.gitkeep</code>만 존재</td>
+  <td>test evidence 없음</td>
+</tr>
+</tbody>
+</table>
+<p>확인된 사실은 구현 경계만 존재한다는 것이다. framework 버전, dependency 관리, DB connection, Docker, migration, API 응답의 실제 동작은 확인되지 않았다.</p>
+<h3 id="13-문서-템플릿번호-적용">1.3 문서 템플릿·번호 적용</h3>
+<table>
+<thead>
+<tr>
+  <th>항목</th>
+  <th>결과</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>문서 분류</td>
+  <td>공식 산출물과 직접 연결되지 않은 일반 검토 문서</td>
+</tr>
+<tr>
+  <td>저장 위치</td>
+  <td><code>docs/markdown/</code></td>
+</tr>
+<tr>
+  <td>전용 템플릿</td>
+  <td>없음</td>
+</tr>
+<tr>
+  <td>최상위 목차</td>
+  <td>사용자 프롬프트의 필수 구조 적용</td>
+</tr>
+<tr>
+  <td>추가 하위 절</td>
+  <td>서비스 경계·DB·API·권한·worker·Guard·Fallback·Gate</td>
+</tr>
+<tr>
+  <td>번호 충돌</td>
+  <td>공식 산출물 번호를 사용하지 않아 없음</td>
+</tr>
+<tr>
+  <td>보호 문서</td>
+  <td><code>docs/markdown/final_project/</code>, <code>docs/templates/</code> 수정 금지 유지</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-공식-제목-불일치와-최소-패치-대상">2. 공식 제목 불일치와 최소 패치 대상</h2>
+<table>
+<thead>
+<tr>
+  <th>문서</th>
+  <th>현재 제목·명칭</th>
+  <th>변경 권장 제목</th>
+  <th>본문 영향</th>
+  <th>코드·API 영향</th>
+  <th>우선순위</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>README.md</code></td>
+  <td><code>Hotel Signal AI</code></td>
+  <td><code>SensePlace — 호텔 VOC·운영 지원 플랫폼</code></td>
+  <td>첫 정의·공통 문서명</td>
+  <td>API 문서 title·OpenAPI metadata</td>
+  <td>높음</td>
+</tr>
+<tr>
+  <td><code>01_요구사항정의서.md</code></td>
+  <td>SensePlace 호텔 VOC·운영 지원 서비스</td>
+  <td>공식 제목</td>
+  <td>표지·서비스 설명</td>
+  <td>enum·path 영향 없음</td>
+  <td>중간</td>
+</tr>
+<tr>
+  <td><code>02_WBS.md</code></td>
+  <td>SensePlace 호텔 VOC·운영 지원 PoC</td>
+  <td>공식 제목</td>
+  <td>문서 제목</td>
+  <td>없음</td>
+  <td>중간</td>
+</tr>
+<tr>
+  <td><code>03_프로젝트기획서.md</code></td>
+  <td>SensePlace 호텔 VOC·운영 지원 PoC</td>
+  <td>공식 제목</td>
+  <td>문서 제목·한 줄 정의</td>
+  <td>OpenAPI·화면 공통 header</td>
+  <td>높음</td>
+</tr>
+<tr>
+  <td><code>05_화면설계서_초안.md</code></td>
+  <td>Hotel Signal AI 화면설계서</td>
+  <td>공식 제목 + 화면설계서</td>
+  <td>header·본문 legacy 명칭</td>
+  <td>frontend header</td>
+  <td>높음</td>
+</tr>
+<tr>
+  <td><code>final_project/*</code></td>
+  <td>Hotel Signal AI</td>
+  <td>공식 제목으로 후속 개정 필요</td>
+  <td>보호 문서 전체</td>
+  <td>계약 문서 title</td>
+  <td>높음·사용자 승인 필요</td>
+</tr>
+</tbody>
+</table>
+<p>이번 작업에서는 기존 문서를 일괄 수정하지 않는다. 최소 패치는 title·공통 header·OpenAPI title·화면 header부터 적용하고, 과거 변경 이력의 legacy 명칭은 유지한다.</p>
+<h2 id="3-백엔드-요구사항wbs-매핑">3. 백엔드 요구사항·WBS 매핑</h2>
+<table>
+<thead>
+<tr>
+  <th>백엔드 결과</th>
+  <th>요구사항</th>
+  <th>실행 WBS</th>
+  <th>완료 evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>계약 동결</td>
+  <td><code>REQ-F-001</code>~<code>007</code>, <code>REQ-NF-001</code>,<code>002</code></td>
+  <td><code>1.7</code></td>
+  <td>승인된 역할·상태·intent·API·schema 표</td>
+</tr>
+<tr>
+  <td>Django 인증·권한</td>
+  <td><code>FUN-001</code>,<code>FUN-002</code>,<code>SEC-002</code></td>
+  <td><code>6.1</code>, <code>PV-6.1</code></td>
+  <td>비로그인·역할별 허용/거부 test</td>
+</tr>
+<tr>
+  <td>job·polling·worker</td>
+  <td><code>REQ-F-003</code>,<code>OPS-001</code>,<code>NFR-002</code></td>
+  <td><code>6.2</code>, <code>PV-6.2</code></td>
+  <td>상태 전이·timeout·stale job·중복 test</td>
+</tr>
+<tr>
+  <td>DB·catalog·migration</td>
+  <td><code>DAT-007</code>,<code>DAT-008</code>,<code>REQ-NF-001</code></td>
+  <td><code>2.8</code>,<code>2.9</code></td>
+  <td>ERD·migration review·read-only role test</td>
+</tr>
+<tr>
+  <td>FastAPI 내부 API</td>
+  <td><code>REQ-F-001</code>,<code>003</code>~<code>006</code></td>
+  <td><code>6.14</code>,<code>5.7</code>,<code>PV-6.3</code></td>
+  <td>contract test·Django 외 직접 접근 차단</td>
+</tr>
+<tr>
+  <td>query plan·SQL Guard</td>
+  <td><code>FUN-006</code>,<code>AI-010</code>,<code>SEC-002</code></td>
+  <td><code>6.9</code>,<code>6.12</code></td>
+  <td>8 intent matrix·SQL 공격 suite</td>
+</tr>
+<tr>
+  <td>quality·detection</td>
+  <td><code>REQ-F-001</code>,<code>004</code></td>
+  <td><code>5.3</code>,<code>5.9</code>,<code>5.10</code></td>
+  <td>정상·이상·결측·중복 scenario</td>
+</tr>
+<tr>
+  <td>Incident·evidence</td>
+  <td><code>REQ-F-005</code>,<code>AI-003</code>,<code>AI-009</code></td>
+  <td><code>5.4</code>,<code>6.3</code></td>
+  <td>관측·후보·반대·부족 데이터 분리 test</td>
+</tr>
+<tr>
+  <td>report·decision·audit</td>
+  <td><code>REQ-F-006</code>,<code>007</code>,<code>RPT-001</code>,<code>SEC-003</code></td>
+  <td><code>6.2</code>,<code>6.6</code>,<code>PV-6.5</code></td>
+  <td>immutable 승인본·version conflict test</td>
+</tr>
+<tr>
+  <td>LLM Fallback</td>
+  <td><code>INT-001</code>,<code>NFR-002</code></td>
+  <td><code>5.7</code>,<code>PV-6.4</code></td>
+  <td>timeout에도 수치·evidence 유지</td>
+</tr>
+<tr>
+  <td>통합 Gate</td>
+  <td><code>TST-001</code>,<code>TST-003</code></td>
+  <td><code>7.1</code>,<code>7.6</code></td>
+  <td>반례 21건·복수 seed·차단 결함 0</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4-문서-충돌과-변경-영향">4. 문서 충돌과 변경 영향</h2>
+<table>
+<thead>
+<tr>
+  <th>conflict_id</th>
+  <th>항목</th>
+  <th>문서 A</th>
+  <th>문서 B</th>
+  <th>현재 내용</th>
+  <th>권장 단일 기준</th>
+  <th>백엔드 영향</th>
+  <th>사람 결정</th>
+  <th>우선순위</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>CF-001</code></td>
+  <td>공식 제목</td>
+  <td>요구사항·WBS</td>
+  <td>README·화면·보호 문서</td>
+  <td>SensePlace 변형과 Hotel Signal AI 혼재</td>
+  <td>공식 제목 사용</td>
+  <td>OpenAPI·로그·report title</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-002</code></td>
+  <td>역할 코드</td>
+  <td>요구사항·기획서</td>
+  <td>화면설계서 P0</td>
+  <td><code>ROOMS_MANAGER</code> vs <code>ROOM_MANAGER</code></td>
+  <td><code>ROOMS_MANAGER</code></td>
+  <td>enum·RBAC·fixture·test</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-003</code></td>
+  <td>질문 수</td>
+  <td>요구사항·기획서</td>
+  <td>화면설계서 구 Core</td>
+  <td>8 intent vs 10 질문</td>
+  <td>8 intent</td>
+  <td>plan·Guard·회귀 수</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-004</code></td>
+  <td>감성 활용</td>
+  <td>사용자 고정 결정</td>
+  <td>화면설계서</td>
+  <td>NEGATIVE 전용 vs 다중 감성 filter·표시</td>
+  <td>저장 3종, P0 활용 NEGATIVE만</td>
+  <td>API filter·KPI·trigger·report</td>
+  <td>확정 반영</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-005</code></td>
+  <td>감성 intent</td>
+  <td>사용자 고정 결정</td>
+  <td>기획서·공통 명세</td>
+  <td>주제·감성별 VOC</td>
+  <td>주제별 부정 VOC</td>
+  <td>intent 7 schema·fixture</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-006</code></td>
+  <td>report 긍정 절</td>
+  <td>사용자 고정 결정</td>
+  <td>보호 API 계약</td>
+  <td>Positive 사용 금지 vs <code>positive_voc</code> section</td>
+  <td>P0 section 제거</td>
+  <td>report schema</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-007</code></td>
+  <td>화면 범위</td>
+  <td>최신 기획</td>
+  <td>화면설계서 구 Core</td>
+  <td>6화면 vs 전체 Core</td>
+  <td>6화면 기능 A·B</td>
+  <td>공개 API·migration 범위</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-008</code></td>
+  <td>업로드</td>
+  <td>요구사항</td>
+  <td>화면설계서 Core</td>
+  <td>승인 후 후보 vs Core 업로드</td>
+  <td>P0 제외</td>
+  <td>upload API·file security 제거</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-009</code></td>
+  <td>Gate 반례</td>
+  <td>요구사항 v2.4</td>
+  <td>보호 test 가이드</td>
+  <td>21건 vs 16건</td>
+  <td>21건</td>
+  <td>test ID·합격 판정</td>
+  <td>아니오</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-010</code></td>
+  <td>Golden Path 시점</td>
+  <td>최신 기획·WBS</td>
+  <td>보호 test 가이드</td>
+  <td>8주차 5회 vs Gate 5회</td>
+  <td>Gate는 21건, 5회는 8주차</td>
+  <td>일정·완료 판정</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-011</code></td>
+  <td>VOC schema</td>
+  <td>최신 기획·요구사항</td>
+  <td>보호 data 가이드</td>
+  <td><code>fact_voc_topic</code> 분리 vs <code>fact_voc.sentiment_label</code></td>
+  <td><code>fact_voc_topic</code> 분리</td>
+  <td>migration·join·label enum</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-012</code></td>
+  <td>platform table</td>
+  <td>백엔드 고정 책임</td>
+  <td>보호 data 가이드</td>
+  <td>job·audit 책임은 있으나 table 목록에 없음</td>
+  <td>Django <code>job</code>, <code>audit_event</code> 논리 entity 추가 검토</td>
+  <td>migration·retention</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-013</code></td>
+  <td>API version path</td>
+  <td>사용자 프롬프트</td>
+  <td>보호 API 계약</td>
+  <td><code>/api/v1/*</code> vs <code>/api/*</code></td>
+  <td><code>/api/v1/*</code> 권장</td>
+  <td>frontend client·OpenAPI</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-014</code></td>
+  <td>내부 report 서술</td>
+  <td>사용자 프롬프트</td>
+  <td>보호 API 계약</td>
+  <td>별도 <code>report-narratives</code> 후보 vs Incident 내 draft</td>
+  <td>별도 endpoint 권장</td>
+  <td>LLM timeout·재사용 경계</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-015</code></td>
+  <td>job 상태</td>
+  <td>최신 기획·요구사항</td>
+  <td>legacy 표현 검색</td>
+  <td>최신은 <code>SUCCEEDED</code>; <code>SUCCESS</code>·<code>COMPLETED</code> 금지</td>
+  <td>6개 enum 동결</td>
+  <td>polling·DB check</td>
+  <td>예</td>
+  <td>P0</td>
+</tr>
+<tr>
+  <td><code>CF-016</code></td>
+  <td>VectorDB·GraphDB</td>
+  <td>최신 기획·요구사항</td>
+  <td>과거 기술 지향 표현</td>
+  <td>독립 실험 vs runtime 오해</td>
+  <td>P0 runtime 비의존</td>
+  <td>dependency·장애 경로</td>
+  <td>아니오</td>
+  <td>P1</td>
+</tr>
+</tbody>
+</table>
+<h2 id="5-최소-백엔드-아키텍처">5. 최소 백엔드 아키텍처</h2>
+<pre><code class="language-mermaid">flowchart LR
+    B[&quot;Browser / React&quot;] --&gt;|&quot;public /api/v1&quot;| D[&quot;Django + DRF&quot;]
+    D --&gt; P[(&quot;PostgreSQL platform tables&quot;)]
+    W[&quot;Django worker&quot;] --&gt;|&quot;internal request + scope_snapshot&quot;| F[&quot;FastAPI internal service&quot;]
+    D --&gt; W
+    F --&gt;|&quot;read-only allowlist views&quot;| A[(&quot;PostgreSQL analytics views&quot;)]
+    F --&gt;|&quot;최대 1회, 서술만&quot;| L[&quot;External LLM&quot;]
+    F --&gt; S[&quot;src/analysis deterministic modules&quot;]
+    W --&gt;|&quot;result·status·audit 저장&quot;| D
+</code></pre>
+<p>의존 방향은 <code>app → src</code>다. <code>src</code>는 Django·FastAPI를 import하지 않으며 품질·KPI·rule·evidence 같은 framework 독립 로직만 포함한다.</p>
+<h2 id="6-서비스-책임과-금지-경계">6. 서비스 책임과 금지 경계</h2>
+<table>
+<thead>
+<tr>
+  <th>소유자</th>
+  <th>반드시 소유</th>
+  <th>금지</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Django</td>
+  <td>session·CSRF·RBAC·scope·job·report·decision·audit·platform migration</td>
+  <td>KPI·trigger·LLM 판정 중복 구현</td>
+</tr>
+<tr>
+  <td>Django worker</td>
+  <td>job claim·상태·timeout·retry·idempotency·FastAPI orchestration·결과 저장</td>
+  <td>analytics view 직접 계산·Browser 노출</td>
+</tr>
+<tr>
+  <td>FastAPI</td>
+  <td>quality Gate·detection·query plan·SQL Guard·read-only query·Incident·LLM gateway</td>
+  <td>사용자 인증 원본·report decision·migration</td>
+</tr>
+<tr>
+  <td><code>src/analysis</code></td>
+  <td>순수 quality·metric·rule·evidence</td>
+  <td>HTTP·ORM migration·framework 설정</td>
+</tr>
+<tr>
+  <td><code>src/common</code></td>
+  <td>role/job/report enum·contract·ID·error</td>
+  <td>consumer별 상충 schema</td>
+</tr>
+<tr>
+  <td>PostgreSQL</td>
+  <td>analytics view와 platform persistence</td>
+  <td>LLM 임의 접근·FastAPI write role</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7-db상태버전-설계-검토">7. DB·상태·버전 설계 검토</h2>
+<h3 id="71-p0-논리-entity">7.1 P0 논리 entity</h3>
+<table>
+<thead>
+<tr>
+  <th>entity</th>
+  <th>소유</th>
+  <th>목적</th>
+  <th>핵심 제약</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>job</code></td>
+  <td>Django</td>
+  <td>query·analysis 비동기 작업</td>
+  <td>idempotency, 상태 전이, stale recovery</td>
+</tr>
+<tr>
+  <td><code>query_run</code></td>
+  <td>Django 저장 / FastAPI 결과</td>
+  <td>질문 plan·SQL hash·결과 이력</td>
+  <td>actor·scope·dataset version 추적</td>
+</tr>
+<tr>
+  <td><code>analysis_run</code></td>
+  <td>Django 저장 / FastAPI 결과</td>
+  <td>Incident 실행</td>
+  <td>batch·rule별 중복 방지</td>
+</tr>
+<tr>
+  <td><code>evidence</code></td>
+  <td>Django persistence</td>
+  <td>수치·원문 근거 연결</td>
+  <td>source key·기간·단위·표본 필수</td>
+</tr>
+<tr>
+  <td><code>report</code></td>
+  <td>Django</td>
+  <td>versioned DRAFT·승인본</td>
+  <td>승인본 immutable</td>
+</tr>
+<tr>
+  <td><code>report_decision</code></td>
+  <td>Django</td>
+  <td>승인·보류·반려 이력</td>
+  <td>HOTEL_MANAGER만 생성</td>
+</tr>
+<tr>
+  <td><code>field_note</code></td>
+  <td>Django</td>
+  <td>현장 확인 메모</td>
+  <td>PII pattern·version 검사</td>
+</tr>
+<tr>
+  <td><code>audit_event</code></td>
+  <td>Django</td>
+  <td>로그인·거부·조회·상태·결정</td>
+  <td>append-only 원칙</td>
+</tr>
+</tbody>
+</table>
+<p>실제 table명과 DB ID는 데이터 담당과 migration review에서 확정한다. 보호 data 가이드의 DB ID를 임의 재사용하지 않는다.</p>
+<h3 id="72-감성-계약">7.2 감성 계약</h3>
+<pre><code class="language-text">fact_voc_topic.sentiment_label ∈ {POSITIVE, NEUTRAL, NEGATIVE}
+</code></pre>
+<ul>
+<li><code>NEGATIVE</code>: P0 KPI·trigger·query·Incident evidence·report에 사용한다.</li>
+<li><code>POSITIVE</code>, <code>NEUTRAL</code>: 저장 또는 독립 분류 실험만 허용한다.</li>
+<li>P0 API는 감성 다중 filter를 받지 않는다. 필요한 경우 <code>sentiment=NEGATIVE</code>를 서버 고정값으로 처리한다.</li>
+<li>부정 VOC 비율의 분모는 유효한 전체 분류 건수로 정의할 수 있지만 Positive·Neutral 자체를 원인·유지 요인·추천 근거로 사용하지 않는다.</li>
+</ul>
+<h3 id="73-상태">7.3 상태</h3>
+<pre><code class="language-text">Job: PENDING → RUNNING → SUCCEEDED | PARTIAL | NEEDS_DATA | FAILED
+Report: DRAFT → APPROVED | ON_HOLD | REJECTED
+</code></pre>
+<ul>
+<li><code>ON_HOLD</code>, <code>REJECTED</code> 보완은 기존 row를 덮어쓰지 않고 새 <code>DRAFT</code> version을 생성한다.</li>
+<li><code>APPROVED</code> version은 immutable이다.</li>
+<li><code>READY_FOR_REVIEW</code>는 Incident 화면 상태이며 report 상태로 저장하지 않는다.</li>
+<li><code>SUCCESS</code>, <code>COMPLETED</code>는 사용하지 않는다.</li>
+</ul>
+<h3 id="74-추적-version">7.4 추적 version</h3>
+<p><code>dataset_version</code>, <code>schema_version</code>, <code>generator_version</code>, <code>scope_version</code>, <code>metric_catalog_version</code>, <code>rule_version</code>, <code>gate_version</code>, <code>analysis_version</code>, <code>model_version</code>, <code>prompt_version</code>, <code>template_version</code>, <code>report_version</code>을 결과 또는 추적 가능한 parent에 기록한다.</p>
+<h2 id="8-외부내부-api-계약-초안">8. 외부·내부 API 계약 초안</h2>
+<h3 id="81-공통-envelope">8.1 공통 envelope</h3>
+<pre><code class="language-json">{
+  &quot;data&quot;: {},
+  &quot;meta&quot;: {
+    &quot;request_id&quot;: &quot;uuid&quot;,
+    &quot;timestamp&quot;: &quot;ISO-8601 UTC&quot;,
+    &quot;dataset_version&quot;: &quot;string&quot;,
+    &quot;schema_version&quot;: &quot;string&quot;,
+    &quot;analysis_version&quot;: &quot;string&quot;,
+    &quot;is_synthetic&quot;: true
+  },
+  &quot;error&quot;: null
+}
+</code></pre>
+<p>실패 응답은 <code>data=null</code>과 <code>error.code</code>, 사용자용 <code>message</code>, 구조화된 <code>details[]</code>를 사용한다. 내부 stack·SQL·secret은 노출하지 않는다.</p>
+<h3 id="82-django-외부-api">8.2 Django 외부 API</h3>
+<table>
+<thead>
+<tr>
+  <th>분류</th>
+  <th>method·path</th>
+  <th>목적</th>
+  <th>P0 판정</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>Gate 필수</td>
+  <td><code>POST /api/v1/auth/login</code></td>
+  <td>session 생성</td>
+  <td>필수</td>
+</tr>
+<tr>
+  <td>Gate 필수</td>
+  <td><code>POST /api/v1/auth/logout</code></td>
+  <td>session 종료</td>
+  <td>필수</td>
+</tr>
+<tr>
+  <td>Gate 필수</td>
+  <td><code>GET /api/v1/session</code></td>
+  <td>actor·role·허용 scope 요약</td>
+  <td>필수</td>
+</tr>
+<tr>
+  <td>첫 vertical slice</td>
+  <td><code>POST /api/v1/query-jobs</code></td>
+  <td>query job 생성·202 반환</td>
+  <td>필수</td>
+</tr>
+<tr>
+  <td>첫 vertical slice</td>
+  <td><code>GET /api/v1/jobs/{job_id}</code></td>
+  <td>상태·결과 polling</td>
+  <td>필수</td>
+</tr>
+<tr>
+  <td>Gate 필수</td>
+  <td><code>GET /api/v1/incidents</code></td>
+  <td>허용 scope 이슈 목록</td>
+  <td>필수</td>
+</tr>
+<tr>
+  <td>Gate 필수</td>
+  <td><code>GET /api/v1/incidents/{incident_id}</code></td>
+  <td>이슈 브리프</td>
+  <td>필수</td>
+</tr>
+<tr>
+  <td>Gate 필수</td>
+  <td><code>GET /api/v1/incidents/{incident_id}/evidence</code></td>
+  <td>근거·반대 근거</td>
+  <td>필수</td>
+</tr>
+<tr>
+  <td>Gate 필수</td>
+  <td><code>POST /api/v1/incidents/{incident_id}/field-notes</code></td>
+  <td>현장 확인 메모</td>
+  <td>6화면 계약 승인 시 필수</td>
+</tr>
+<tr>
+  <td>Gate 필수</td>
+  <td><code>GET /api/v1/reports</code></td>
+  <td>report 목록·version</td>
+  <td>필수</td>
+</tr>
+<tr>
+  <td>Gate 필수</td>
+  <td><code>GET /api/v1/reports/{report_id}</code></td>
+  <td>특정 version 조회</td>
+  <td>필수</td>
+</tr>
+<tr>
+  <td>Gate 필수</td>
+  <td><code>POST /api/v1/reports/{report_id}/decisions</code></td>
+  <td>승인·보류·반려</td>
+  <td>필수</td>
+</tr>
+<tr>
+  <td>Gate 후</td>
+  <td>upload·download·rule admin·external delivery</td>
+  <td>선택 확장</td>
+  <td>P0 금지</td>
+</tr>
+</tbody>
+</table>
+<h3 id="83-djangofastapi-내부-api">8.3 Django→FastAPI 내부 API</h3>
+<table>
+<thead>
+<tr>
+  <th>endpoint</th>
+  <th>목적·caller</th>
+  <th>request·response 핵심</th>
+  <th>상태·timeout·retry</th>
+  <th>idempotency·DB·LLM</th>
+  <th>Fallback</th>
+  <th>관련 ID·test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>POST /internal/v1/quality-gates</code></td>
+  <td>worker가 batch 검증</td>
+  <td>dataset·gate version → checks·gate status</td>
+  <td><code>PROJECT_CALIBRATION</code>, retry 0 권장</td>
+  <td>batch+gate version; read-only; LLM 없음</td>
+  <td><code>NEEDS_DATA</code>, detection 중단</td>
+  <td><code>REQ-F-001</code>, <code>TC-DQ-*</code></td>
+</tr>
+<tr>
+  <td><code>POST /internal/v1/detection-runs</code></td>
+  <td>worker가 versioned rule 실행</td>
+  <td>dataset·rule version → trigger·evidence IDs</td>
+  <td>timeout versioned, retry 0 권장</td>
+  <td>batch+rule unique; read-only; LLM 없음</td>
+  <td><code>FAILED</code> 또는 보존 결과 <code>PARTIAL</code></td>
+  <td><code>REQ-F-004</code>, <code>TC-GATE-004</code>~<code>012</code></td>
+</tr>
+<tr>
+  <td><code>POST /internal/v1/query-runs</code></td>
+  <td>worker가 기능 A 실행</td>
+  <td>question·intent·scope·dataset → plan·table·chart·evidence</td>
+  <td>job 상태 사용, retry는 idempotency 있을 때만</td>
+  <td>query hash; read-only; 해석에 최대 1회</td>
+  <td>승인 utterance matcher 또는 <code>UNSUPPORTED_INTENT</code></td>
+  <td><code>REQ-F-003</code>, <code>TC-E2E-001</code></td>
+</tr>
+<tr>
+  <td><code>POST /internal/v1/incident-runs</code></td>
+  <td>worker가 기능 B 조사</td>
+  <td>detection·scope·dataset → facts·candidates·counter evidence</td>
+  <td>job 상태 사용, retry는 unique key 필요</td>
+  <td>batch+rule; read-only; 서술 최대 1회</td>
+  <td>결정론 brief·<code>PARTIAL</code></td>
+  <td><code>REQ-F-005</code>, <code>TC-E2E-002</code></td>
+</tr>
+<tr>
+  <td><code>POST /internal/v1/report-narratives</code></td>
+  <td>worker가 evidence 서술 요청</td>
+  <td>section schema·evidence IDs → 검증된 문장</td>
+  <td>LLM timeout versioned, 총 호출 1회 권장</td>
+  <td>report draft key; DB 직접 쓰기 금지; LLM 사용</td>
+  <td>template DRAFT·<code>PARTIAL</code></td>
+  <td><code>REQ-F-006</code>, <code>TC-AI-002</code>~<code>005</code></td>
+</tr>
+<tr>
+  <td><code>GET /internal/v1/health</code></td>
+  <td>worker·운영 점검</td>
+  <td>service·contract version</td>
+  <td>짧은 timeout, retry 0</td>
+  <td>DB deep check는 별도; LLM 없음</td>
+  <td>unavailable로 job 시작 차단</td>
+  <td><code>OPS-001</code>, <code>TC-INT-*</code></td>
+</tr>
+</tbody>
+</table>
+<p>내부 API는 service credential과 network restriction을 함께 사용한다. Browser가 내부 endpoint를 호출하거나 role·scope를 직접 제출하는 경로는 허용하지 않는다.</p>
+<h3 id="84-오류-코드">8.4 오류 코드</h3>
+<p><code>AUTHENTICATION_REQUIRED</code>, <code>PERMISSION_DENIED</code>, <code>UNSUPPORTED_INTENT</code>, <code>INVALID_SCOPE</code>, <code>INVALID_DATASET_VERSION</code>, <code>DATA_QUALITY_FAILED</code>, <code>NEEDS_DATA</code>, <code>SQL_GUARD_REJECTED</code>, <code>QUERY_TIMEOUT</code>, <code>LLM_TIMEOUT</code>, <code>LLM_INVALID_RESPONSE</code>, <code>STATE_CONFLICT</code>, <code>DUPLICATE_REQUEST</code>, <code>INTERNAL_SERVICE_UNAVAILABLE</code>를 P0 후보로 동결한다. HTTP status와 사용자 문구는 API schema review에서 확정한다.</p>
+<h2 id="9-권한scope-설계">9. 권한·scope 설계</h2>
+<table>
+<thead>
+<tr>
+  <th>기능</th>
+  <th>HOTEL_MANAGER</th>
+  <th>FNB_MANAGER</th>
+  <th>ROOMS_MANAGER</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>전체 합성 운영 집계</td>
+  <td>가능</td>
+  <td>F&amp;B 범위</td>
+  <td>객실 범위</td>
+</tr>
+<tr>
+  <td>조식 인력 상세</td>
+  <td>가능</td>
+  <td>가능</td>
+  <td>불가</td>
+</tr>
+<tr>
+  <td>객실 집계</td>
+  <td>가능</td>
+  <td>제한</td>
+  <td>가능</td>
+</tr>
+<tr>
+  <td>조식 부정 VOC</td>
+  <td>가능</td>
+  <td>가능</td>
+  <td>허용 요약만</td>
+</tr>
+<tr>
+  <td>이슈 브리프</td>
+  <td>전체</td>
+  <td>F&amp;B</td>
+  <td>객실·허용 요약</td>
+</tr>
+<tr>
+  <td>field note</td>
+  <td>가능</td>
+  <td>담당 이슈</td>
+  <td>담당 이슈</td>
+</tr>
+<tr>
+  <td>report 조회</td>
+  <td>전체</td>
+  <td>담당 scope DRAFT 조회</td>
+  <td>담당 scope DRAFT 조회</td>
+</tr>
+<tr>
+  <td>report decision</td>
+  <td>가능</td>
+  <td>불가</td>
+  <td>불가</td>
+</tr>
+</tbody>
+</table>
+<p><code>scope_snapshot</code>은 Django가 로그인 시점의 role과 요청 시점의 허용 resource를 서버에서 계산해 job에 저장한다. FastAPI는 저장된 snapshot과 DB <code>role_scope</code>를 이중 검사하되 새로운 권한 원본을 만들지 않는다.</p>
+<h2 id="10-jobworkerpolling-설계">10. job·worker·polling 설계</h2>
+<pre><code class="language-text">POST request
+→ Django transaction에서 job(PENDING) 생성
+→ 202 + job_id 반환
+→ worker가 lock/claim 후 RUNNING
+→ 내부 FastAPI 호출
+→ 결과·오류·audit 저장
+→ terminal status
+→ UI polling 종료
+</code></pre>
+<p>필수 규칙:</p>
+<ul>
+<li><code>idempotency_key</code>가 같으면 기존 job 또는 결과를 반환한다.</li>
+<li>worker는 DB row lock 또는 동등한 claim 전략으로 중복 실행을 막는다.</li>
+<li>stale <code>RUNNING</code>의 기준 시간은 <code>PROJECT_CALIBRATION</code>으로 관리한다.</li>
+<li>무한 polling·무한 retry를 금지한다.</li>
+<li>사용자 취소는 P0에서 제외한다.</li>
+<li><code>PARTIAL</code>은 성공한 결정론 결과가 존재할 때만 사용한다.</li>
+<li><code>NEEDS_DATA</code>는 품질·표본·필수 bucket 부족을 나타내며 일반 오류와 분리한다.</li>
+</ul>
+<h2 id="11-결정론적-sql-builderguard">11. 결정론적 SQL builder·Guard</h2>
+<p>Guard 순서는 다음으로 고정한다.</p>
+<ol>
+<li>intent allowlist와 필수 parameter 확인</li>
+<li>Django <code>scope_snapshot</code>과 <code>role_scope</code> 일치 확인</li>
+<li>metric·dimension·grain을 <code>metric_catalog</code>로 검증</li>
+<li>P0 감성 조건을 <code>NEGATIVE</code>로 고정</li>
+<li>승인된 query template 선택과 parameter binding</li>
+<li>SELECT-only·single statement·schema/view/column allowlist 검사</li>
+<li>금지 keyword·주석·<code>UNION</code>·다중 statement·system catalog·금지 함수 차단</li>
+<li>비가산 지표 재집계 차단</li>
+<li>row limit·statement timeout·read-only transaction 적용</li>
+<li>plan hash·SQL hash·row count·거부 사유 audit 저장</li>
+</ol>
+<p>미지원 intent나 scope 위반은 SQL 생성·실행 0건이어야 한다. 사용자 입력 raw SQL을 실행하거나 LLM이 SQL 문자열을 자유 생성하는 endpoint는 만들지 않는다.</p>
+<h2 id="12-llmfallback">12. LLM·Fallback</h2>
+<table>
+<thead>
+<tr>
+  <th>단계</th>
+  <th>LLM 허용</th>
+  <th>결정론 원본</th>
+  <th>실패 처리</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>질문 해석</td>
+  <td>승인된 8 intent parameter 후보</td>
+  <td>intent allowlist·utterance fixture</td>
+  <td>미지원 안내 또는 승인 matcher</td>
+</tr>
+<tr>
+  <td>query 설명</td>
+  <td>evidence 기반 문장</td>
+  <td>SQL 결과·기간·단위·표본</td>
+  <td>template 설명·<code>PARTIAL</code></td>
+</tr>
+<tr>
+  <td>Incident 설명</td>
+  <td>후보·반대 근거 서술</td>
+  <td>rule·evidence 구조</td>
+  <td>결정론 brief·<code>PARTIAL</code></td>
+</tr>
+<tr>
+  <td>report narrative</td>
+  <td>evidence ID가 있는 section 문장</td>
+  <td>report section JSON</td>
+  <td>template DRAFT·<code>PARTIAL</code></td>
+</tr>
+<tr>
+  <td>KPI·품질·trigger</td>
+  <td>금지</td>
+  <td>SQL·Python·versioned rule</td>
+  <td>해당 없음</td>
+</tr>
+</tbody>
+</table>
+<p>LLM 출력은 JSON schema를 통과하고 모든 수치·사실 문장이 <code>evidence_id</code>와 연결돼야 한다. 실제 호출 총 1회 원칙과 재시도 정책이 충돌하므로 P0 권장안은 retry 0회다. 팀이 retry 1회를 승인하려면 <code>실행당 최대 1회</code> 정의와 비용·timeout test를 함께 수정해야 한다.</p>
+<h2 id="13-보고서decisionaudit">13. 보고서·decision·audit</h2>
+<p>P0 report section은 <code>summary</code>, <code>key_incidents</code>, <code>negative_voc</code>, <code>evidence</code>, <code>cause_candidates</code>, <code>counter_evidence</code>, <code>field_checks</code>, <code>response_options</code>, <code>limitations</code>으로 제안한다. <code>positive_voc</code>와 만족·유지 요인 절은 P0에서 제외한다.</p>
+<p>필수 transaction 규칙:</p>
+<ul>
+<li>decision 요청은 <code>expected_report_version</code>을 포함한다.</li>
+<li><code>HOTEL_MANAGER</code> 권한과 report scope를 같은 transaction에서 검사한다.</li>
+<li>최신 version이 아니면 <code>STATE_CONFLICT</code>를 반환한다.</li>
+<li>승인·보류·반려와 audit event를 원자적으로 저장한다.</li>
+<li>승인 version은 수정하지 않는다.</li>
+<li>새 DRAFT는 이전 version과 evidence lineage를 참조한다.</li>
+<li>같은 batch·rule·virtual week의 report 중복을 unique key로 차단한다.</li>
+</ul>
+<p>audit 최소 필드:</p>
+<pre><code class="language-text">request_id, run_id, job_id, actor_id, role_code, scope_snapshot_hash,
+dataset_version, schema_version, rule_version, analysis_version,
+query_plan_hash, sql_hash, row_count, evidence_ids,
+job_status, report_id, report_version, decision, error_code, timestamps
+</code></pre>
+<p>질문 원문·VOC 원문·token·secret은 일반 로그에 저장하지 않는다. 필요한 질문은 redacted form 또는 hash만 보존한다.</p>
+<h2 id="14-테스트gate">14. 테스트·Gate</h2>
+<p>P0 완료는 코드·폴더 존재가 아니라 실제 evidence로 판정한다.</p>
+<table>
+<thead>
+<tr>
+  <th>영역</th>
+  <th>필수 검증</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>인증</td>
+  <td>비로그인 접근 차단, session·CSRF, 로그인 실패 정책</td>
+</tr>
+<tr>
+  <td>권한</td>
+  <td>3역할 metric·view·object matrix, 직접 URL 차단</td>
+</tr>
+<tr>
+  <td>내부 경계</td>
+  <td>Browser→FastAPI 차단, service credential 실패</td>
+</tr>
+<tr>
+  <td>SQL</td>
+  <td>injection·prompt injection·raw SQL·scope 우회·비가산 재집계 차단</td>
+</tr>
+<tr>
+  <td>job</td>
+  <td>중복 요청, stale RUNNING, timeout, terminal polling</td>
+</tr>
+<tr>
+  <td>데이터</td>
+  <td>적재 전 validation, analytical Gate, 결측·단위·시간·PII</td>
+</tr>
+<tr>
+  <td>감성</td>
+  <td><code>POSITIVE</code>·<code>NEUTRAL</code>이 KPI·trigger·Incident·report에 사용되지 않음</td>
+</tr>
+<tr>
+  <td>report</td>
+  <td>상태 충돌, 승인 권한, 승인본 불변, 중복 report 차단</td>
+</tr>
+<tr>
+  <td>LLM</td>
+  <td>timeout·invalid JSON에도 수치·trigger·evidence 유지</td>
+</tr>
+<tr>
+  <td>E2E</td>
+  <td>기능 A 조식 질문 1종, 기능 B 정상·이상·결측·LLM 장애</td>
+</tr>
+</tbody>
+</table>
+<p>Gate 기준은 최신 요구사항의 반례 세트 v2 21건 100% PASS, 최소 3개 seed의 <code>NORMAL</code> 무경보와 <code>BREAKFAST_CONGESTION</code> 기대 trigger, severity 1·2 미해결 결함 0건이다. Golden Path 연속 5회는 최신 기획·WBS에 따라 8주차 최종 안정화에서 검증한다.</p>
+<h2 id="15-구현-순서">15. 구현 순서</h2>
+<table>
+<thead>
+<tr>
+  <th style="text-align:right">단계</th>
+  <th>결과</th>
+  <th>진행 조건</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td style="text-align:right">1</td>
+  <td>role·status·intent·sentiment·error enum 동결</td>
+  <td>사람 결정 완료</td>
+</tr>
+<tr>
+  <td style="text-align:right">2</td>
+  <td>공통 envelope·context·fixture schema v0</td>
+  <td>frontend·data·AI review</td>
+</tr>
+<tr>
+  <td style="text-align:right">3</td>
+  <td>Django auth·RBAC·scope·job model</td>
+  <td>migration ownership 승인</td>
+</tr>
+<tr>
+  <td style="text-align:right">4</td>
+  <td>worker management command·polling</td>
+  <td>상태·idempotency test 작성</td>
+</tr>
+<tr>
+  <td style="text-align:right">5</td>
+  <td>FastAPI health·query stub</td>
+  <td>내부 인증·contract test</td>
+</tr>
+<tr>
+  <td style="text-align:right">6</td>
+  <td>조식 질문 1종 SQL builder·Guard</td>
+  <td>catalog·view 준비</td>
+</tr>
+<tr>
+  <td style="text-align:right">7</td>
+  <td>quality Gate·RULE-001·Incident</td>
+  <td>scenario fixture 준비</td>
+</tr>
+<tr>
+  <td style="text-align:right">8</td>
+  <td>report DRAFT·decision·audit</td>
+  <td>report version 승인</td>
+</tr>
+<tr>
+  <td style="text-align:right">9</td>
+  <td>LLM gateway·template Fallback</td>
+  <td>기본 모델·timeout 승인</td>
+</tr>
+<tr>
+  <td style="text-align:right">10</td>
+  <td>기능 A/B E2E·21개 Gate</td>
+  <td>단위·통합 test 통과</td>
+</tr>
+</tbody>
+</table>
+<p>각 단계는 실패 test를 먼저 식별하고 evidence가 없으면 완료로 표시하지 않는다.</p>
+<h2 id="16-p1p2-확장">16. P1·P2 확장</h2>
+<h3 id="p1">P1</h3>
+<ul>
+<li>Positive·Neutral 조회·filter·차트·보고 section</li>
+<li>VectorDB 유사 VOC 검색 독립 실험 결과의 참고 노출</li>
+<li>추가 intent·시설·이상 규칙</li>
+<li>Celery·Redis는 측정된 동시성·내구성 요구가 있을 때만 검토</li>
+<li>분류 보정·관리자 rule UI·download</li>
+</ul>
+<h3 id="p2-또는-프로젝트-밖">P2 또는 프로젝트 밖</h3>
+<ul>
+<li>실제 PMS·POS·CRM·근태·VOC read-only adapter</li>
+<li>SSO·실제 조직 권한</li>
+<li>외부 보고 전달</li>
+<li>정식 ontology·GraphDB·RAG·MCP runtime</li>
+<li>자동 고객 응대·보상·인력 배치·운영 조치</li>
+<li>실데이터 개인정보 처리·보존·삭제 정책</li>
+</ul>
+<h2 id="17-변경-이력">17. 변경 이력</h2>
+<table>
+<thead>
+<tr>
+  <th>version</th>
+  <th>일자</th>
+  <th>변경 내용</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td><code>0.1</code></td>
+  <td>2026-07-21</td>
+  <td>최신 기획·요구사항·WBS·화면설계·보호 계약·실제 저장소를 대조해 백엔드 P0 경계, 판단 항목, API·상태·권한·DB·Fallback·Gate 기준을 최초 정리</td>
+</tr>
+</tbody>
+</table>
+<h2 id="18-최종-판정">18. 최종 판정</h2>
+<p><strong>사람 결정 후 구현 가능</strong></p>
+<ul>
+<li>백엔드 P0 범위: 기능 A·B의 6화면 실제 연결에 필요한 Django·worker·FastAPI·PostgreSQL 경계</li>
+<li>가장 먼저 해야 할 일: WBS <code>1.7</code>의 역할·8 intent·상태·감성·API·migration·worker·LLM 계약 승인</li>
+<li>현재 최대 위험: 화면설계서 legacy 범위와 보호 계약의 구 버전이 최신 요구사항·21개 Gate·NEGATIVE 전용 정책과 충돌함</li>
+<li>코드 구현 여부: 없음</li>
+<li>migration·dependency·Docker 변경: 없음</li>
+<li>구현 시작 조건: 0.1의 사람 판단 항목 중 P0 계약 항목 승인</li>
+</ul>
+</main></div><script>document.querySelectorAll('table').forEach(function(t){if(!t.parentElement.classList.contains('table-wrap')){const w=document.createElement('div');w.className='table-wrap';t.parentNode.insertBefore(w,t);w.appendChild(t);}});</script></body></html>

@@ -411,6 +411,7 @@ gantt
 
 | 일시(KST) | 실행 WBS ID | 변경 결과 | 검증 | 관련 파일 |
 |---|---|---|---|---|
+| 2026-07-21 09:39 | 1.4 | AI 작업 원칙, Git 협업, 보고 작성, commit 메시지 생성과 프로젝트 안내의 문서별 책임을 분리하고 중복 지침과 잘못된 제공 양식 저장 안내 제거 | 보호 WBS 양식 2종의 시트 구조 확인, 지침 원본·참조 경계·branch 및 보고 흐름·Markdown 링크·형식 대조 | `AGENTS.md`, `README.md`, `.agents/skills/draft-commit-message/SKILL.md`, `docs/markdown/collaboration/README.md`, `docs/markdown/daily_reports/README.md` |
 | 2026-07-20 18:05 | 1.4 | 개인 branch의 `dev` 병합 요청 시 병합 직후 날짜별 팀 일일보고와 주간보고를 통합·검증하고 보고 변경만 별도 commit한 뒤 `dev`를 push하도록 규칙 개선 | 병합→보고 통합→검증→push 순서, 대상 날짜·주차 누적 범위·원격 일치·권한 경계·순환 기록 방지·중단 조건 대조 | `AGENTS.md`, `docs/markdown/daily_reports/README.md`, `docs/markdown/collaboration/README.md` |
 | 2026-07-20 17:37 | 1.4 | 팀원 5명의 일일보고를 `team_summaries/N주차/YYYYMMDD.md`로 통합하고 주차별 `주간보고.md`를 같은 폴더에 배치했으며 07/20 멘토링·팀 회의 결과 반영 | 공식 주차 매핑 2개·원본 날짜 5개·팀원 매핑 5명·주간보고 2개·40줄 제한·기존 경로 잔존 여부 확인 | `AGENTS.md`, `docs/문서관리규칙.md`, `docs/markdown/daily_reports/README.md`, `docs/markdown/daily_reports/team_summaries/` |
 | 2026-07-20 | 1.5 | 합성 데이터 기반 Hotel Signal AI 기획서 초안의 사용자·범위·제외 범위, 중간발표 목업·기능 Baseline 경계, API·데이터·검증 기준을 병합 | 기획서의 사용자·시스템 경계, 합성 데이터 원칙, 단계별 완료 조건 확인 | `docs/markdown/SensePlace_기획서_초안.md`, `docs/deliverables/02_WBS_29기_3팀.xlsx`, `docs/markdown/02_WBS.md` |

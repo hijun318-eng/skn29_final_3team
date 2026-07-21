@@ -8,17 +8,13 @@
 
 ## 응답과 판단 원칙
 
-- 판단이 필요한 작업은 `목표와 완료 조건 -> 확인된 사실과 현재 상태 -> 제약과 위험 -> 대안과 trade-off -> 결정 -> 검증 방법` 순서로 정리한다.
-- 먼저 결론과 현재 상태를 말하고, 필요한 근거와 다음 행동만 짧게 덧붙인다.
+- 판단이 필요한 작업은 `결론과 현재 상태 -> 확인된 사실 -> 제약과 위험 -> 대안과 trade-off -> 결정 -> 검증 방법 -> 다음 행동` 순서로 정리한다.
 - 자연어 설명은 한국어로 작성하고 code, command, path, API, library, error string은 원문을 유지한다.
 - 사용자가 요청한 범위를 임의로 넓히지 않고, 범위 변경이 필요하면 추가되는 작업을 먼저 알린다.
-- `확인된 사실`, `결정`, `가정`, `제안`, `추가 확인 필요`를 구분한다.
-- 확인하지 않은 내용을 확정적으로 말하지 않고, 불확실하면 확인 방법과 한계를 함께 제시한다.
+- `확인된 사실`, `결정`, `가정`, `제안`, `추가 확인 필요`를 구분하고, 불확실하면 확인 방법과 한계를 함께 제시한다.
 - 여러 대안이 있으면 같은 기준으로 장점, 단점, 위험, 검증 방법을 비교하고 권장안을 하나 제시한다.
-- 사용자에게 보여주는 답변은 `결론과 현재 상태 -> 핵심 근거 -> 필요한 대안과 trade-off -> 검증 결과와 남은 위험 -> 다음 행동` 순서를 기본으로 한다.
 - 단순한 질문에는 단순하게 답하고, 결과를 크게 바꾸는 위험한 모호성만 질문한다.
-- 제목과 목록은 이해에 필요한 만큼만 사용하며 같은 내용을 반복하지 않는다.
-- 최종 답변은 앞선 진행 메시지 없이도 이해할 수 있도록 작성한다.
+- 제목과 목록은 이해에 필요한 만큼만 사용하며, 최종 답변은 앞선 진행 메시지 없이도 이해되도록 작성한다.
 
 ## 작업 규칙
 
@@ -28,10 +24,9 @@
 
 ## Git 협업 규칙
 
-- branch와 commit의 상세 규칙은 `docs/markdown/collaboration/README.md`를 따른다.
+- branch, commit과 `dev` 병합의 상세 절차는 `docs/markdown/collaboration/README.md`를 따른다.
 - 사용자가 명시적으로 요청하기 전에는 stage, commit, push, dependency 설치를 하지 않는다.
-- 사용자가 개인 branch의 `dev` 병합을 명시적으로 요청하면 해당 branch를 최신 `dev`에 병합한 뒤 `origin/dev`에 push하기 전에 `docs/markdown/daily_reports/README.md`의 `dev 병합 요청 시 보고 통합` 절차를 수행한다.
-- `dev` 병합 요청은 대상 개인 branch push, `dev` 최신화·병합·push와 이번 통합에서 생성·수정한 `docs/markdown/daily_reports/team_summaries/` 파일의 stage·commit까지 승인한 것으로 본다. 기존 미커밋 변경과 그 밖의 파일은 포함하지 않으며, 작업 트리가 깨끗하지 않거나 로컬·원격 commit이 일치하지 않거나 병합·보고 검증이 실패하면 중단한다.
+- 개인 branch의 `dev` 병합 요청에 따른 권한 범위와 중단 조건은 위 협업 가이드에 한정하며, 보고 생성 규칙은 `docs/markdown/daily_reports/README.md`를 따른다.
 - commit message 작성 요청에는 `.agents/skills/draft-commit-message/SKILL.md`를 적용한다.
 - commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
 
@@ -52,7 +47,7 @@
 ## 지침 관리
 
 - 이 파일은 AI 작업·응답 품질 규칙의 원본으로 사용하고, 사람이 참고하는 Git 절차는 `docs/markdown/collaboration/README.md`에서 관리한다.
-- root `AGENTS.md`는 항상 적용할 원칙을 관리하고, 반복 작업 절차만 `.agents/skills`에서 관리한다.
+- root `AGENTS.md`는 항상 적용할 원칙과 권한 경계를 관리하고, 상세 반복 절차는 전용 `README.md`나 `.agents/skills`에서 관리한다.
 
 ## 문서 저장 규칙
 
@@ -89,18 +84,11 @@
 
 ## 일일보고 갱신
 
-- Codex가 저장소 파일을 변경한 작업을 마칠 때 현재 개인 branch에 대응하는 `docs/markdown/daily_reports/<branch>/일일보고.md`를 갱신한다.
-- 같은 날짜의 보고가 있으면 그 날짜 아래에 수행 내용을 추가하고, 없으면 파일 상단 안내문 아래에 새 날짜 블록을 추가한다.
-- 새로 추가하거나 수정하는 날짜 블록은 제목과 빈 줄을 포함해 5줄 이내로 작성한다.
-- 개인 branch에서는 개인 일일보고까지만 갱신한다. 날짜별 팀 요약과 주간보고의 자동 통합은 `dev` 병합 후 수행하며, 사용자가 날짜·기간을 지정해 별도로 작성을 요청한 경우만 예외로 한다.
-- `dev`에서는 개인 작성자를 추정해 일일보고를 수정하지 않고, 보고 통합 commit 자체를 개인 일일보고·날짜별 팀 요약·주간보고에 다시 기록하지 않는다.
-- 세부 작성 방법과 branch 매핑은 `docs/markdown/daily_reports/README.md`를 따른다.
-- 조사·설명처럼 저장소 파일을 변경하지 않은 작업과 일일보고·날짜별 팀 요약·주간보고만 보완하는 작업은 중복 기록하지 않는다.
+- 저장소 파일을 변경한 작업을 마치면 개인 branch에서만 해당 `docs/markdown/daily_reports/<branch>/일일보고.md`를 갱신한다.
+- `dev`에서는 작성자를 추정하지 않으며, 조사·설명 또는 보고 전용 변경은 다시 기록하지 않는다.
+- branch 매핑, 형식, 분량과 예외 조건은 `docs/markdown/daily_reports/README.md`를 따른다.
 
 ## 주간보고 작성
 
-- 사용자가 날짜·기간을 지정해 주간보고 작성을 요청하거나 개인 branch의 `dev` 병합을 요청하면 팀원 5명의 `docs/markdown/daily_reports/<branch>/일일보고.md`를 읽고 해당 `docs/markdown/daily_reports/team_summaries/<N주차>/주간보고.md`에 통합한다.
-- 보고 기간의 해석, 통합 기준과 출력 형식은 `docs/markdown/daily_reports/README.md`의 `주간보고 작성 규칙`을 따른다.
-- 일일보고에 없는 작업이나 상태를 추정하지 않고, 중복 작업은 의미를 보존해 하나의 상위 항목으로 정리한다.
-- branch 최신화, fetch·pull·merge, commit·push와 commit hash 같은 Git 운영 이력은 주간보고에서 제외하고 실제 작업 결과만 기록한다.
-- 같은 주차의 유사 항목을 합쳐 요약하고, 새로 추가하거나 수정하는 `주간보고.md`가 40줄을 넘으면 핵심 결과·결정·이슈 중심으로 다시 요약한다.
+- 날짜·기간이 지정된 요청이나 개인 branch의 `dev` 병합 후에는 팀원 5명의 개인 일일보고를 근거로 해당 주차의 팀 요약과 주간보고를 갱신한다.
+- 기간 해석, 통합 범위, 제외 대상, 형식과 분량은 `docs/markdown/daily_reports/README.md`를 따른다.

@@ -1,6 +1,6 @@
 ---
 name: manage-project-documents
-description: Apply this repository's document placement, protected-folder, template, filename, metadata-header, change-history, and validation rules. Use when Codex creates, edits, moves, renames, or reviews files under docs/, especially numbered deliverable Markdown or official artifacts. Do not use for report-only updates handled by update-project-reports.
+description: Apply this repository's document placement, protected-folder, template, filename, metadata-header, change-history, and validation rules. Use when an AI agent creates, edits, moves, renames, or reviews files under docs/, especially numbered deliverable Markdown or official artifacts. Do not use for report-only updates handled by update-project-reports.
 ---
 
 # Manage Project Documents

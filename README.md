@@ -1,18 +1,18 @@
-# SKN29 Final 3Team
+# SensePlace — 호텔 VOC·운영 지원 플랫폼
 
-Hotel Signal AI는 그랜드 워커힐 서울을 모델링한 합성 운영 데이터와 합성 VOC를 이용해 권한 기반 대화형 분석과 이상 감지·근거 조사·주간 보고를 검증하는 내부 의사결정 지원 플랫폼이다. 결과는 실제 호텔의 현황·문제·성과를 의미하지 않는다.
+SensePlace는 그랜드 워커힐 서울을 모델링한 합성 운영 데이터와 합성 VOC를 이용해 권한 기반 대화형 분석과 이상 감지·근거 조사·주간 보고를 검증하는 내부 의사결정 지원 플랫폼이다. 결과는 실제 호텔의 현황·문제·성과를 의미하지 않는다.
 
 2026-08-06 중간발표는 두 핵심 경로를 backend·DB·LLM과 연결하지 않은 6화면 frontend fixture로 시연한다. 기능 Baseline은 중간발표 이후 Django 인증·job 계층, FastAPI 분석 계층, PostgreSQL, LLM을 실제 연결해 `대화형 분석`과 `이상 감지→보고서→관리자 결정`을 각각 end-to-end로 완성한다.
 
 VectorDB·sLLM·ML/DL·멀티 에이전트 비교는 Baseline 런타임과 분리된 실험 트랙으로 관리하며, 승인 전 실행 경로의 필수 dependency로 추가하지 않는다.
 
-## MVP 공통 문서
+## Baseline 기준 문서
 
-다른 Codex 세션은 먼저 [Codex 공용 작업 가이드](./docs/markdown/final_project/codex_공용작업_가이드.md)에서 작업별 필수 문서와 Baseline 범위를 확인한다. 기존 공통 명세가 `01_common_development_specification.md` 역할을 하므로 같은 목적의 파일을 추가로 만들지 않는다.
+다른 Codex 세션은 먼저 [Codex 공용 작업 가이드](./docs/markdown/final_project/codex_공용작업_가이드.md)에서 작업별 필수 문서와 Baseline 범위를 확인한다. 제품·기능·데이터·일정의 활성 기준은 `SensePlace_기획서_초안.md`, `01_요구사항정의서.md`, `03_프로젝트기획서.md`, `02_WBS.md` 순으로 확인한다. `final_project/` 문서는 과거 제목·계약을 보존하는 보호 문서이므로 충돌 시 활성 기준 문서를 우선한다.
 
 1. [Codex 공용 작업 가이드](./docs/markdown/final_project/codex_공용작업_가이드.md)
 2. [프로젝트 통제 문서](./docs/markdown/final_project/00_project_control.md)
-3. [Hotel Signal AI 공통 개발 명세](./docs/markdown/final_project/common_project_specification.md)
+3. [공통 개발 명세(보호 문서·과거 제목 유지)](./docs/markdown/final_project/common_project_specification.md)
 4. 담당별 공용 문서
 
 구조·화면 지원 문서:

@@ -97,18 +97,35 @@ git push origin <본인 branch>
 
 commit 형식은 `<type>(<scope>): <한국어 summary>`이며 subject는 72자 이하로 작성한다. 하나의 commit에는 하나의 주된 의도만 담는다.
 
+## dev 병합 요청 시 보고 통합
+
+사용자가 개인 branch의 `dev` 병합을 요청하면 다음을 하나의 통합 작업으로 수행한다.
+
+1. 사용자가 branch를 지정하지 않으면 현재 branch가 다섯 개인 branch 중 하나일 때만 그것을 대상으로 정한다. 현재 branch가 `main`, `dev`, 기타 branch이거나 대상이 모호하면 확인 전까지 중단한다.
+2. 대상 개인 branch의 작업 결과가 모두 commit됐고 작업 트리가 깨끗한지 확인한 뒤 해당 branch를 push한다. fetch 후 로컬 branch와 `origin/<대상 branch>`의 commit이 같은지 확인한다.
+3. `dev`를 최신화한 뒤 로컬 `dev`와 `origin/dev`의 commit이 정확히 같은지 확인한다. ahead 또는 diverged이면 동일한 미완료 통합 재개를 사용자가 명시한 경우가 아니면 중단한다.
+4. 병합 직전 commit을 기록한 뒤 `origin/<대상 branch>`를 병합한다. 충돌이 발생하면 보고 생성과 push를 중단한다.
+5. 병합된 `dev`에서 `docs/markdown/daily_reports/README.md`의 `dev 병합 요청 시 보고 통합` 절차로 보고를 생성·검증한다.
+6. 위 절차가 반환한 `team_summaries/` 변경 파일만 stage해 staged diff를 확인하고, 변경이 있으면 보고 전용 commit 하나를 만든다. 변경이 없으면 생략한다.
+7. 병합 결과와 보고 전용 commit을 함께 `origin/dev`에 push한다.
+
+`dev` 병합 요청은 위 통합에 필요한 개인 branch push, `dev` fetch·pull·merge·push와 `team_summaries/` 파일의 stage·commit을 승인한 것으로 본다. 기존 미커밋 변경과 다른 파일은 포함하지 않으며, 작업 트리가 깨끗하지 않거나 로컬·원격 commit이 일치하지 않거나 병합·보고 검증이 실패하면 stash·reset·임의 commit 없이 중단하고 사용자에게 알린다.
+
 ## 관리자 통합
 
-팀원은 개인 branch push가 끝나면 관리자에게 branch 이름과 변경 내용을 알린다. 관리자는 다음 순서로 검증된 개인 branch를 `dev`에 반영한다.
+팀원은 개인 branch push가 끝나면 관리자에게 branch 이름과 변경 내용을 알린다. 관리자는 다음 순서로 검증된 개인 branch를 `dev`에 반영하며, 병합 후 보고 통합·검증을 마친 뒤 마지막에 push한다.
 
 ```powershell
 git switch dev
 git status --short
 git fetch origin
 git pull --ff-only origin dev
+git rev-parse dev
+git rev-parse origin/dev
 git merge origin/<팀원 branch>
-git push origin dev
 ```
+
+두 `git rev-parse` 출력은 병합 전에 같아야 하며 첫 번째 값을 병합 직전 commit으로 기록한다. 이후 작업은 위 `dev 병합 요청 시 보고 통합` 절차를 그대로 따른다.
 
 최종 검증이 끝나면 관리자가 `dev`를 `main`에 반영한다.
 
@@ -122,7 +139,8 @@ git push origin main
 
 ## 금지 사항
 
-- `main`과 `dev`에서 직접 작업하거나 push하지 않는다.
+- `main`과 `dev`에서 기능·기획 작업을 직접 하지 않는다. 관리자의 branch 병합과 병합 직후 규칙에 따른 `team_summaries/` 보고 통합 commit·push만 허용한다.
+- `dev`에서 개인 일일보고를 수정하지 않는다.
 - 다른 팀원의 개인 branch에서 작업하지 않는다.
 - force push, 임의 rebase, history rewrite를 하지 않는다.
 - `.env`, API key, 실제 고객 데이터, `data/raw`, `data/processed` 생성 파일을 commit하지 않는다.

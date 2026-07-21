@@ -1,5 +1,5 @@
 ---
-title: 호텔 VOC·운영 이슈 분석 AI Agent
+title: SensePlace — 호텔 VOC·운영 지원 플랫폼
 document_type: project_specification
 version: 1.1
 status: active
@@ -13,7 +13,7 @@ intended_readers:
 source_of_truth: true
 ---
 
-# 호텔 VOC·운영 이슈 분석 AI Agent
+# SensePlace — 호텔 VOC·운영 지원 플랫폼
 
 > 글로벌 호텔 체인이 이미 활용 중인 VOC·CX·AI 플랫폼을 참고해,  
 > 고객 불만과 운영 데이터를 연결하는 내부 운영자용 AI Agent를 제안합니다.
@@ -486,7 +486,7 @@ AI 또는 개발자는 작업 전 아래 원칙을 우선 적용해야 합니다
 
 ### 9.1 서비스 가칭
 
-**Hotel Signal AI**
+**SensePlace — 호텔 VOC·운영 지원 플랫폼**
 
 ### 9.2 주요 메뉴
 

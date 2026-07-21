@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Document Manager"
+  short_description: "Validate project document policy and structure"
+  default_prompt: "Use $manage-project-documents to create or edit a project document with the repository rules."

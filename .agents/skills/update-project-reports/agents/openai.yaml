@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Report Updater"
+  short_description: "Update and validate project reports from evidence"
+  default_prompt: "Use $update-project-reports to update the applicable daily and weekly project reports."

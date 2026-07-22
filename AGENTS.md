@@ -24,9 +24,9 @@
 
 ## Git 협업 규칙
 
-- branch, commit과 `dev` 병합의 상세 절차는 `docs/markdown/collaboration/README.md`를 따른다.
+- branch와 commit 정책은 `docs/markdown/collaboration/README.md`를 따른다.
 - 사용자가 명시적으로 요청하기 전에는 stage, commit, push, dependency 설치를 하지 않는다.
-- 개인 branch의 `dev` 병합 요청에 따른 권한 범위와 중단 조건은 위 협업 가이드에 한정하며, 보고 생성 규칙은 `docs/markdown/daily_reports/README.md`를 따른다.
+- 개인 branch의 `dev` 병합을 명시적으로 요청하면 `.agents/skills/merge-branch-to-dev/SKILL.md`를 적용한다. 이 요청의 권한은 해당 Skill에 명시된 Git 통합과 보고 전용 변경으로만 제한한다.
 - commit message 작성 요청에는 `.agents/skills/draft-commit-message/SKILL.md`를 적용한다.
 - commit message 초안 요청은 stage, commit, push 승인으로 간주하지 않는다.
 
@@ -47,25 +47,14 @@
 ## 지침 관리
 
 - 이 파일은 AI 작업·응답 품질 규칙의 원본으로 사용하고, 사람이 참고하는 Git 절차는 `docs/markdown/collaboration/README.md`에서 관리한다.
-- root `AGENTS.md`는 항상 적용할 원칙과 권한 경계를 관리하고, 상세 반복 절차는 전용 `README.md`나 `.agents/skills`에서 관리한다.
+- root `AGENTS.md`는 항상 적용할 원칙과 권한 경계를 관리하고, 정책 데이터는 전용 문서, 조건부 실행 절차는 `.agents/skills`에서 관리한다.
 
 ## 문서 저장 규칙
 
-- `docs/` 바로 아래에는 `markdown/`, `deliverables/`, `templates/` 폴더와 `문서관리규칙.md`, 그리고 `서비스흐름도.png` 같은 소수의 보조 파일만 둔다.
-- `docs/`에서 관리하는 모든 Markdown 문서는 `docs/markdown/`에 저장한다. 협업·보고처럼 기존 하위 구조가 필요한 문서는 해당 폴더를 유지한다.
-- 제출용 `.xlsx`, `.docx`, `.pptx`, `.png`, `.mp4`와 모델·소스 묶음은 `docs/deliverables/`에 저장한다.
-- 제공받은 원본 양식은 파일명을 바꾸지 않고 `docs/templates/`에 저장한다.
+- 문서 위치·번호·파일명·헤더·템플릿 매핑의 단일 기준은 `docs/문서관리규칙.md`다. 문서를 생성·편집·이동·검토할 때 `.agents/skills/manage-project-documents/SKILL.md`를 적용한다.
+- Markdown 작업본은 `docs/markdown/`, 공식 제출물은 `docs/deliverables/`, 제공받은 원본 양식은 `docs/templates/`에서 관리한다.
 - `docs/markdown/final_project/`와 `docs/templates/`는 읽기 전용 기준 자료 폴더다. 이 두 폴더의 파일은 생성·수정·삭제·이동·이름 변경·덮어쓰기를 하지 않는다.
-- 두 보호 폴더의 내용 변경이 필요해 보여도 원본을 건드리지 않고 사용자에게 알리며, 필요한 보완 내용은 `docs/markdown/final_project/` 밖의 편집 가능한 작업 문서나 `docs/deliverables/` 산출물에 반영한다.
-- 파일명이 `두 자리 번호_`로 시작하는 Markdown 작업본과 공식 제출 문서는 편집 전에 `docs/templates/`의 번호별 대응 양식을 직접 확인하고, 양식 목차의 제목·순서·계층을 그대로 유지한다. 팀 고유 내용은 가장 가까운 양식 항목의 하위 절로만 확장한다.
-- 양식에 명시적 목차가 없으면 DOCX 본문 섹션 순서, XLSX 시트·필드 구조, PPTX 슬라이드 섹션 순서를 대응 구조로 사용한다. 대응 양식이 없거나 둘 이상이거나 매핑이 불명확하면 임의 양식을 정하지 않고 `docs/문서관리규칙.md`의 번호별 매핑과 공식 일정 문서의 작성 요건을 따른다.
-- 공식 산출물 파일명은 일정 순서에 따라 `두 자리 번호_문서이름_29기_3팀.확장자` 형식을 사용한다.
-- 위 파일명 규칙은 `docs/deliverables/`의 공식 산출물에만 적용하며 `docs/markdown/` 문서에는 적용하지 않는다.
-- 산출물 번호는 `docs/markdown/final_project/최종_프로젝트_산출물_및_전체_일정.md`의 마감일 순서를 기준으로 하며, 임의로 새 번호를 만들지 않는다.
-- 파일을 이동하거나 이름을 바꾸면 저장소 안의 관련 링크와 참조 경로도 같은 작업에서 갱신한다.
-- `docs/` 아래 Markdown은 제목(`#`) 바로 아래에 `docs/문서관리규칙.md`의 `문서 헤더 규칙`에 따른 헤더 표를 두고, 문서를 만들거나 편집할 때 `버전`·`문서 기준일`을 갱신하며 하단 변경 내역에 한 줄을 더한다. `작성·수정`에는 실제 편집자 이름만 적는다.
-- 헤더 유무는 `.githooks/pre-commit`이 검사하며, 보호 폴더(`docs/markdown/final_project/`)와 규칙 문서(`docs/문서관리규칙.md`)는 제외한다.
-- 상세 번호와 예시는 `docs/문서관리규칙.md`를 따른다.
+- 보호 자료의 보완은 원본 밖의 편집 가능한 작업 문서나 제출물에 반영하며, `작성·수정`에 실제 편집자가 아닌 이름을 만들거나 추정하지 않는다.
 
 ## 완료 보고
 
@@ -78,6 +67,7 @@
 ## WBS 갱신
 
 - 저장소 파일을 변경한 작업을 마칠 때 일정 관리의 단일 기준인 `docs/markdown/02_WBS.md`의 관련 실행 WBS 행과 작업 로그를 갱신한다.
+- WBS 편집에도 `.agents/skills/manage-project-documents/SKILL.md`의 번호 문서·템플릿·헤더 검증을 적용한다.
 - 기존 작업이 없으면 `02_WBS.md`의 실행 단계와 ID 체계에 따라 새 행을 추가하고 전체 태스크 수·단계별 요약을 함께 수정한다.
 - 일정·상태가 바뀌면 실행 WBS, 8주 핵심 개발 일정, Mermaid Gantt와 산출물 제출 일정의 관련 항목을 동기화한다.
 - 단순 조사·설명처럼 저장소 파일을 변경하지 않은 작업은 갱신하지 않는다.
@@ -86,11 +76,9 @@
 
 ## 일일보고 갱신
 
-- 저장소 파일을 변경한 작업을 마치면 개인 branch에서만 해당 `docs/markdown/daily_reports/<branch>/일일보고.md`를 갱신한다.
-- `dev`에서는 작성자를 추정하지 않으며, 조사·설명 또는 보고 전용 변경은 다시 기록하지 않는다.
-- branch 매핑, 형식, 분량과 예외 조건은 `docs/markdown/daily_reports/README.md`를 따른다.
+- 저장소 파일을 변경한 작업을 마치면 개인 branch에서 `.agents/skills/update-project-reports/SKILL.md`를 적용한다.
+- `dev`에서는 작성자를 추정하지 않으며, 조사·설명 또는 보고 전용 변경은 다시 기록하지 않는다. 보고 정책과 형식의 단일 기준은 `docs/markdown/daily_reports/README.md`다.
 
 ## 주간보고 작성
 
-- 날짜·기간이 지정된 요청이나 개인 branch의 `dev` 병합 후에는 팀원 5명의 개인 일일보고를 근거로 해당 주차의 팀 요약과 주간보고를 갱신한다.
-- 기간 해석, 통합 범위, 제외 대상, 형식과 분량은 `docs/markdown/daily_reports/README.md`를 따른다.
+- 날짜·기간이 지정된 요청이나 개인 branch의 `dev` 병합 후에는 `.agents/skills/update-project-reports/SKILL.md`를 적용한다.

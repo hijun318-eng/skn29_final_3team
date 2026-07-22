@@ -4,9 +4,9 @@
 |---|---|
 | 문서 설명 | SensePlace의 실행 작업, 담당, 상태, 일정, 산출물과 요구사항 추적 관계를 관리하는 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v2.7 |
-| 문서 기준일 | 2026-07-21 15:50 |
-| 작성·수정 | 김재홍 |
+| 버전 | v2.9 |
+| 문서 기준일 | 2026-07-22 09:19 |
+| 작성·수정 | 박준희 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
 | 대응 템플릿 | `templates/[기획] WBS_양식 (1)_27기_0팀.xlsx`, `templates/[기획] WBS_양식(2)_27기_0팀.xlsx` |
@@ -471,6 +471,8 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 관련 파일 |
 |---|---|---|---|
+| 2026-07-22 09:19 | 1.4, 8.2 | Skill 실행 위치·제품 중립 호출, 보고 검증과 Git preflight를 보강하고 Claude Code가 AGENTS 지침을 공유하도록 연결했으며 기존 보호 문서 변경 이력을 제거 | `.agents/skills/`, `CLAUDE.md`, `docs/markdown/collaboration/README.md`, `docs/markdown/daily_reports/README.md` |
+| 2026-07-21 17:32 | 1.4, 8.2 | 문서 관리·보고 갱신·개인 branch→dev 통합 Skill 3종과 읽기 전용 검증 script를 추가하고 AGENTS·전용 README의 반복 실행 절차를 Skill 호출로 전환 | `.agents/skills/`, `AGENTS.md`, `README.md`, `docs/문서관리규칙.md`, `docs/markdown/collaboration/README.md`, `docs/markdown/daily_reports/README.md` |
 | 2026-07-21 | 8.2 | `docs/markdown` 하위 HTML preview를 local-only로 분류해 Git 목록·업로드 대상에서 제외하고 보호 폴더의 기존 파일은 수정·삭제하지 않음 | `.gitignore`, `docs/markdown/02_WBS.md` |
 | 2026-07-21 | 1.4, 8.2 | WBS 제목·표준 메타데이터·산출물 번호·제출일·대응 양식·최근 변경 내역을 문서관리 규칙에 맞게 추가하고 `Codex` 갱신자 표기를 제거 | `docs/markdown/02_WBS.md`, `docs/문서관리규칙.md`, WBS 양식 2종(읽기 전용) |
 | 2026-07-21 | 1.7, 2.9, 5.7, 6.9, 6.14 | 구현 전 백엔드 상태·계약 충돌과 FastAPI 내부·외부 연동 경계를 검토하고, WISE 공개 방향·적용 경계 및 최신 SensePlace 계약에 맞는 편집 가능 Markdown 작업 문서 2건으로 정리 | `docs/markdown/walkerhill/워커힐_WISE_벤치마킹_적용안.md`, `docs/markdown/SensePlace_FastAPI_내부외부_연동범위.md`, 백엔드 작업영역 검토 문서, WBS |
@@ -489,5 +491,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.9 | 2026-07-22 09:19 | Skill 범용 실행 경로·검증 안전성과 AI 에이전트 지침 연결 보강, 기존 보호 문서 변경 이력 제거 |
+| v2.8 | 2026-07-21 17:32 | 프로젝트 반복 절차를 Skill 3종과 결정론적 검증 script로 분리 |
 | v2.7 | 2026-07-21 15:50 | `docs/markdown` 하위 HTML preview의 local-only Git 제외 정책 반영 |
 | v2.6 | 2026-07-21 15:44 | 문서관리 규칙에 맞춰 표준 메타데이터·산출물 정보·대응 WBS 양식과 최근 변경 내역을 추가 |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | SensePlace의 실행 작업, 담당, 상태, 일정, 산출물과 요구사항 추적 관계를 관리하는 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v3.0 |
-| 문서 기준일 | 2026-07-22 15:08 |
+| 버전 | v3.3 |
+| 문서 기준일 | 2026-07-22 16:16 |
 | 작성·수정 | 박준희 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -471,6 +471,9 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 관련 파일 |
 |---|---|---|---|
+| 2026-07-22 16:16 | 1.4, 8.2 | Git pre-commit이 staged Markdown 본문을 기준으로 문서관리규칙 준수 여부를 자동 검사하도록 hook과 검증기를 연결 | `.githooks/pre-commit`, `.agents/skills/manage-project-documents/scripts/check_document_policy.py`, `docs/markdown/collaboration/README.md` |
+| 2026-07-22 16:06 | 1.4, 8.2 | AI 에이전트 상시 지침을 권한·라우팅 중심으로 축약하고 WBS 절차를 전용 Skill로 분리했으며 산출물 01~21 상세 규격을 조건부 참조 문서로 이동 | `AGENTS.md`, `README.md`, `.agents/skills/`, `docs/문서관리규칙.md`, `docs/markdown/document_specs/산출물작성규격.md` |
+| 2026-07-22 15:51 | 1.4, 8.2 | README의 활성 기준·보호 자료 우선순위와 기술 스택 계획 표현을 명확히 하고 문서 검증기의 규칙 문서 분류를 호환 | `README.md`, `.agents/skills/manage-project-documents/scripts/check_document_policy.py`, `docs/markdown/02_WBS.md` |
 | 2026-07-22 15:08 | 1.4, 1.5 | 문서관리규칙의 화면설계서 기준 경로·작성자·변경 이력과 자동 검증 적용 범위를 실제 저장소 기준으로 정합화 | `docs/문서관리규칙.md`, `docs/markdown/02_WBS.md` |
 | 2026-07-22 09:19 | 1.4, 8.2 | Skill 실행 위치·제품 중립 호출, 보고 검증과 Git preflight를 보강하고 Claude Code가 AGENTS 지침을 공유하도록 연결했으며 기존 보호 문서 변경 이력을 제거 | `.agents/skills/`, `CLAUDE.md`, `docs/markdown/collaboration/README.md`, `docs/markdown/daily_reports/README.md` |
 | 2026-07-21 17:32 | 1.4, 8.2 | 문서 관리·보고 갱신·개인 branch→dev 통합 Skill 3종과 읽기 전용 검증 script를 추가하고 AGENTS·전용 README의 반복 실행 절차를 Skill 호출로 전환 | `.agents/skills/`, `AGENTS.md`, `README.md`, `docs/문서관리규칙.md`, `docs/markdown/collaboration/README.md`, `docs/markdown/daily_reports/README.md` |
@@ -492,6 +495,9 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.3 | 2026-07-22 16:16 | staged Markdown 문서 정책을 강제하는 pre-commit 검증 연결 |
+| v3.2 | 2026-07-22 16:06 | AI 에이전트 상시 지침 축약과 WBS Skill·산출물 상세 규격의 조건부 참조 구조 반영 |
+| v3.1 | 2026-07-22 15:51 | AI 에이전트 기준 문서 우선순위·기술 계획 표현과 검증기 분류 호환성 보강 |
 | v3.0 | 2026-07-22 15:08 | 문서관리규칙의 실제 경로·작성자·자동 검증 적용 범위 정합화 작업 기록 |
 | v2.9 | 2026-07-22 09:19 | Skill 범용 실행 경로·검증 안전성과 AI 에이전트 지침 연결 보강, 기존 보호 문서 변경 이력 제거 |
 | v2.8 | 2026-07-21 17:32 | 프로젝트 반복 절차를 Skill 3종과 결정론적 검증 script로 분리 |

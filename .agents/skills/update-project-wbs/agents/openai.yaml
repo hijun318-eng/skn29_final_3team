@@ -1,0 +1,4 @@
+interface:
+  display_name: "프로젝트 WBS 갱신"
+  short_description: "저장소 변경에 맞춰 실행 WBS와 작업 로그를 일관되게 갱신"
+  default_prompt: "Use $update-project-wbs to update the project WBS for the completed repository changes."

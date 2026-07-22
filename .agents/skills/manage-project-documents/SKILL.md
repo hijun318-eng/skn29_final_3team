@@ -10,7 +10,7 @@ Use `docs/문서관리규칙.md` as the canonical policy. Keep policy tables the
 ## Workflow
 
 1. Run `git rev-parse --show-toplevel`, make that repository root the working directory for every later command, then run `git status --short` and `git branch --show-current`. Require Git and a Python 3.10+ launcher (`python` or `python3`) before using bundled scripts.
-2. Read `docs/문서관리규칙.md` before deciding a document path, number, template, or header.
+2. Read `docs/문서관리규칙.md` before deciding a document path, number, template, or header. For an official artifact numbered 01 through 21, also read only its matching section in `docs/markdown/document_specs/산출물작성규격.md`.
 3. Classify the target as a Markdown working document, official deliverable, source template, or auxiliary file.
 4. Refuse writes under `docs/markdown/final_project/` and `docs/templates/`. Report the required correction and use an editable working document or `docs/deliverables/` instead.
 5. For a filename beginning with two digits and `_`, inspect the mapped template directly before editing. Preserve its top-level title order and hierarchy. If the mapping is ambiguous, stop for direction.

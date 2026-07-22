@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#08100c" />
+  <title>SensePlace | Interactive Web Presentation v2</title>
+  <style>
+    :root{
+      --bg:#08100c;
+      --bg2:#0f1b14;
+      --ivory:#f6f1e7;
+      --cream:#ded3bd;
+      --muted:#9aa99f;
+      --gold:#d9b46c;
+      --blue:#8fc4d7;
+      --red:#d68b7d;
+      --line:rgba(255,255,255,.14);
+      --panel:rgba(255,255,255,.065);
+      --shadow:0 28px 80px rgba(0,0,0,.34);
+      --radius:26px;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;min-width:320px;height:100%;overflow:hidden;background:var(--bg);color:var(--ivory)}
+    body{
+      font-family:Pretendard,"Noto Sans KR","Apple SD Gothic Neo",system-ui,sans-serif;
+      background:
+        radial-gradient(circle at 18% 14%,rgba(36,93,67,.23),transparent 29%),
+        radial-gradient(circle at 84% 84%,rgba(217,180,108,.12),transparent 23%),
+        var(--bg);
+    }
+    button{font:inherit;color:inherit}
+    .deck{
+      height:100svh;
+      overflow-y:auto;
+      overflow-x:hidden;
+      scroll-snap-type:y mandatory;
+      overscroll-behavior:none;
+      scrollbar-width:none;
+      touch-action:pan-y;
+    }
+    .deck::-webkit-scrollbar{display:none}
+    .scene{
+      position:relative;
+      min-height:100svh;
+      scroll-snap-align:start;
+      scroll-snap-stop:always;
+      display:grid;
+      place-items:center;
+      overflow:hidden;
+      padding:max(76px,env(safe-area-inset-top)) clamp(26px,6vw,86px) max(58px,env(safe-area-inset-bottom));
+      isolation:isolate;
+    }
+    .scene::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      z-index:-3;
+      background:
+        linear-gradient(120deg,rgba(255,255,255,.02),transparent 42%),
+        radial-gradient(circle at 82% 14%,rgba(255,255,255,.04),transparent 24%);
+    }
+    .scene::after{
+      content:"";
+      position:absolute;
+      inset:12px;
+      border:1px solid rgba(255,255,255,.035);
+      z-index:-2;
+      pointer-events:none;
+    }
+    .scene-glow{
+      position:absolute;
+      width:min(68vw,960px);
+      aspect-ratio:1;
+      right:-27%;
+      top:-39%;
+      border-radius:50%;
+      background:radial-gradient(circle,rgba(36,93,67,.31),rgba(36,93,67,0) 68%);
+      filter:blur(18px);
+      z-index:-1;
+    }
+    .inner{
+      width:min(1160px,100%);
+      max-height:calc(100svh - 138px);
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      gap:clamp(18px,3.4vh,36px);
+    }
+    .eyebrow{
+      display:inline-flex;
+      align-items:center;
+      gap:9px;
+      width:max-content;
+      padding:8px 12px;
+      border:1px solid var(--line);
+      border-radius:999px;
+      background:rgba(255,255,255,.04);
+      color:var(--cream);
+      font-size:11px;
+      font-weight:700;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+      backdrop-filter:blur(10px);
+    }
+    .eyebrow::before{
+      content:"";
+      width:7px;height:7px;border-radius:50%;
+      background:var(--gold);
+      box-shadow:0 0 14px var(--gold);
+    }
+    h1,h2,h3,p,blockquote{margin:0}
+    h2{
+      margin-top:15px;
+      font-family:Georgia,"Times New Roman","Noto Serif KR",serif;
+      font-size:clamp(38px,5.2vw,72px);
+      line-height:1.07;
+      letter-spacing:-.045em;
+      font-weight:600;
+    }
+    .subtitle{
+      margin-top:16px;
+      color:var(--cream);
+      font-size:clamp(17px,1.7vw,23px);
+      line-height:1.6;
+      letter-spacing:-.02em;
+    }
+    .gold{color:var(--gold)}
+    .reveal{opacity:0;translate:0 28px}
+    .scene.active .reveal{animation:reveal 1.12s cubic-bezier(.16,.82,.22,1) forwards}
+    .scene.active .d1{animation-delay:.18s}
+    .scene.active .d2{animation-delay:.42s}
+    .scene.active .d3{animation-delay:.66s}
+    .scene.active .d4{animation-delay:.90s}
+    .scene.active .d5{animation-delay:1.14s}
+    @keyframes reveal{to{opacity:1;translate:0 0}}
+    .topbar{
+      position:fixed;
+      z-index:40;
+      top:max(18px,env(safe-area-inset-top));
+      left:clamp(16px,3vw,40px);
+      right:clamp(16px,3vw,40px);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      pointer-events:none;
+    }
+    .brand,.top-actions button{
+      pointer-events:auto;
+      border:1px solid var(--line);
+      background:rgba(7,15,11,.56);
+      backdrop-filter:blur(14px);
+      border-radius:999px;
+      cursor:pointer;
+    }
+    .brand{
+      display:flex;align-items:center;gap:9px;padding:7px 12px 7px 7px;
+    }
+    .brand span{
+      width:29px;height:29px;border-radius:50%;
+      display:grid;place-items:center;
+      background:var(--gold);color:#102016;
+      font-family:Georgia,serif;font-weight:800;
+    }
+    .brand strong{font-size:13px}
+    .top-actions{display:flex;gap:8px}
+    .top-actions button{padding:10px 13px;color:var(--cream);font-size:12px}
+    .progress{
+      position:fixed;
+      z-index:35;
+      top:50%;right:clamp(14px,2.5vw,32px);
+      transform:translateY(-50%);
+      display:flex;flex-direction:column;align-items:flex-end;gap:13px;
+    }
+    .counter{font-size:11px;color:var(--muted)}
+    .counter strong{font-size:18px;color:var(--ivory)}
+    .dots{display:flex;flex-direction:column;gap:5px;align-items:flex-end}
+    .dots button{
+      width:42px;height:18px;border:0;background:transparent;
+      display:flex;justify-content:flex-end;align-items:center;cursor:pointer;
+    }
+    .dots span{
+      width:8px;height:2px;border-radius:999px;background:rgba(255,255,255,.3);
+      transition:.25s ease;
+    }
+    .dots button.active span{width:32px;background:var(--gold)}
+    .swipe-cue{
+      display:none;
+      position:fixed;
+      z-index:35;
+      left:50%;bottom:max(14px,env(safe-area-inset-bottom));
+      transform:translateX(-50%);
+      border:0;background:transparent;
+      flex-direction:column;align-items:center;gap:6px;
+      color:var(--muted);font-size:10px;letter-spacing:.16em;
+    }
+    .swipe-cue i{
+      width:1px;height:18px;background:linear-gradient(var(--gold),transparent);
+      animation:cue 1.4s ease-in-out infinite;
+    }
+    @keyframes cue{0%,100%{transform:scaleY(.5);opacity:.35}50%{transform:scaleY(1);opacity:1}}
+    .panel{
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      background:var(--panel);
+      box-shadow:var(--shadow);
+      backdrop-filter:blur(14px);
+    }
+    .footnote{text-align:center;color:var(--muted);font-size:12px}
+
+    /* Click-to-focus presentation mode */
+    .focusable{
+      position:relative;
+      z-index:1;
+      cursor:pointer;
+      transform-origin:center;
+      transition:
+        scale .62s cubic-bezier(.16,.84,.22,1),
+        translate .62s cubic-bezier(.16,.84,.22,1),
+        filter .62s ease,
+        opacity .62s ease,
+        box-shadow .62s ease,
+        border-color .62s ease;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .focusable::before{
+      content:"";
+      position:absolute;
+      inset:-1px;
+      border-radius:inherit;
+      border:1px solid transparent;
+      pointer-events:none;
+      transition:border-color .62s ease, box-shadow .62s ease;
+    }
+    .focusable:hover{
+      border-color:rgba(217,180,108,.32);
+    }
+    .scene.is-focusing .focusable:not(.is-focused){
+      scale:.94;
+      opacity:.23;
+      filter:blur(5px) saturate(.58);
+      pointer-events:auto;
+    }
+    .scene.is-focusing .focusable.is-focused{
+      z-index:25;
+      scale:1.075;
+      translate:0 -10px;
+      opacity:1;
+      filter:none;
+      border-color:rgba(217,180,108,.72);
+      box-shadow:
+        0 42px 110px rgba(0,0,0,.58),
+        0 0 0 1px rgba(217,180,108,.22),
+        0 0 62px rgba(217,180,108,.16);
+    }
+    .scene.is-focusing .focusable.is-focused::before{
+      border-color:rgba(217,180,108,.62);
+      box-shadow:inset 0 0 34px rgba(217,180,108,.08);
+    }
+    .focusable.is-focused::after{
+      content:"다시 누르면 해제";
+      position:absolute;
+      top:10px;
+      right:10px;
+      z-index:30;
+      padding:6px 9px;
+      border-radius:999px;
+      background:rgba(7,15,11,.86);
+      border:1px solid rgba(217,180,108,.45);
+      color:var(--gold);
+      font-size:9px;
+      font-weight:800;
+      letter-spacing:.04em;
+      pointer-events:none;
+      backdrop-filter:blur(10px);
+    }
+    .focus-hint{
+      position:absolute;
+      z-index:16;
+      left:50%;
+      bottom:max(18px,env(safe-area-inset-bottom));
+      translate:-50% 0;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      padding:7px 11px;
+      border:1px solid rgba(255,255,255,.11);
+      border-radius:999px;
+      background:rgba(7,15,11,.54);
+      color:var(--muted);
+      font-size:9px;
+      font-weight:700;
+      letter-spacing:.08em;
+      backdrop-filter:blur(10px);
+      opacity:.72;
+      pointer-events:none;
+      transition:opacity .35s ease;
+    }
+    .focus-hint::before{
+      content:"";
+      width:6px;
+      height:6px;
+      border-radius:50%;
+      background:var(--gold);
+      box-shadow:0 0 10px rgba(217,180,108,.7);
+    }
+    .scene.is-focusing .focus-hint{opacity:0}
+
+    /* scene 1 */
+    .s1{
+      text-align:center;
+      background:
+        radial-gradient(circle at 50% 24%,rgba(217,180,108,.13),transparent 20%),
+        linear-gradient(150deg,#07100b 10%,#12231a 56%,#09110d 100%);
+    }
+    .mist{
+      position:absolute;inset:0;z-index:-1;
+      background:
+        linear-gradient(120deg,transparent 20%,rgba(246,241,231,.04) 50%,transparent 75%),
+        radial-gradient(ellipse at 50% 85%,rgba(36,93,67,.38),transparent 46%);
+      animation:mist 8s ease-in-out infinite alternate;
+    }
+    @keyframes mist{to{transform:scale(1.05) translateY(-1%)}}
+    .hero{display:flex;flex-direction:column;align-items:center}
+    .hero h1{
+      margin-top:22px;
+      font-family:Georgia,"Times New Roman",serif;
+      font-size:clamp(58px,9.7vw,130px);
+      line-height:.9;letter-spacing:-.065em;font-weight:500;
+    }
+    .hero h1 span{color:var(--gold)}
+    .hero h1 small{display:block;margin:.18em 0;color:rgba(255,255,255,.5);font-size:.28em;letter-spacing:.15em}
+    .hero p{margin-top:clamp(24px,5vh,52px);color:var(--cream);font-size:clamp(18px,2vw,27px);line-height:1.6}
+    .scroll{margin-top:clamp(24px,5vh,50px);display:flex;flex-direction:column;align-items:center;gap:11px;color:var(--muted);font-size:10px;letter-spacing:.2em}
+    .scroll i{width:1px;height:38px;background:linear-gradient(var(--gold),transparent)}
+    /* scene 2 */
+    .voice-stage{position:relative;min-height:350px}
+    .bubble{
+      position:absolute;max-width:360px;padding:20px 22px;border:1px solid var(--line);
+      border-radius:22px;background:rgba(255,255,255,.07);backdrop-filter:blur(14px);box-shadow:var(--shadow)
+    }
+    .bubble span{color:var(--gold);font-size:11px;font-weight:800;letter-spacing:.15em}
+    .bubble p{margin-top:8px;color:var(--ivory);font-size:clamp(16px,1.5vw,21px);line-height:1.55}
+    .b1{left:2%;top:8%;transform:rotate(-2deg)}
+    .b2{right:4%;top:3%;transform:rotate(2deg)}
+    .b3{left:12%;bottom:3%;transform:rotate(1deg)}
+    .b4{right:10%;bottom:4%;transform:rotate(-1deg)}
+    .voice-core{
+      position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+      width:260px;aspect-ratio:1;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;gap:7px;
+      border:1px solid rgba(217,180,108,.35);
+      background:radial-gradient(circle,rgba(217,180,108,.13),rgba(255,255,255,.035) 68%);
+    }
+    .voice-core strong{font-size:13px}.voice-core i{width:8px;height:1px;background:var(--gold)}
+    .closing-line{text-align:center;color:var(--cream);font-size:clamp(18px,2vw,26px)}
+    /* scene 3 */
+    .platform-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+    .pair{padding:24px 18px;text-align:center}
+    .wordmark{
+      min-height:92px;display:flex;flex-direction:column;justify-content:center;align-items:center;
+      border:1px solid rgba(255,255,255,.12);border-radius:18px;background:rgba(255,255,255,.05);padding:18px
+    }
+    .wordmark strong{font-family:Georgia,serif;font-size:clamp(21px,2.1vw,30px)}
+    .wordmark span{margin-top:7px;color:var(--muted);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+    .connector{height:54px;display:grid;place-items:center;color:var(--gold);font-size:22px}
+    .upgrade{
+      display:grid;grid-template-columns:auto 1fr;align-items:center;gap:22px;
+      padding:20px 24px;border:1px solid rgba(217,180,108,.28);border-radius:22px;
+      background:linear-gradient(90deg,rgba(217,180,108,.12),rgba(255,255,255,.035))
+    }
+    .upgrade>span{font-family:Georgia,serif;font-size:clamp(38px,5vw,64px);color:var(--gold)}
+    .upgrade strong{display:block;font-size:clamp(18px,2vw,26px)}
+    .upgrade p{margin-top:5px;color:var(--muted);line-height:1.55}
+    /* scene 4 */
+    .ai-split{display:grid;grid-template-columns:1fr auto 1fr;gap:clamp(20px,3vw,38px);align-items:center}
+    .ai-card{padding:24px}
+    .product-index{color:var(--gold);font-size:10px;font-weight:800;letter-spacing:.18em}
+    .mock{margin:18px 0 22px;min-height:215px;padding:18px;border-radius:19px;background:#101814;border:1px solid rgba(255,255,255,.1)}
+    .mock-top{display:flex;gap:5px;margin-bottom:24px}.mock-top span{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.25)}
+    .chat{max-width:86%;padding:13px 15px;border-radius:16px;line-height:1.45;font-size:13px}
+    .chat.user{margin-left:auto;background:rgba(217,180,108,.18)}
+    .chat.bot{margin-top:14px;background:rgba(143,196,215,.13)}
+    .mini-metric{display:flex;justify-content:space-between;padding:13px 14px;margin-bottom:10px;border-radius:13px;background:rgba(255,255,255,.055)}
+    .mini-metric b{color:var(--muted);font-size:12px}.mini-metric strong{color:var(--blue)}
+    .query{margin-top:16px;padding:12px;border:1px solid rgba(255,255,255,.12);border-radius:999px;color:var(--muted);font-size:12px}
+    .ai-card h3{font-family:Georgia,serif;font-size:clamp(26px,3vw,38px)}
+    .ai-card>p{margin-top:9px;color:var(--cream);line-height:1.55}
+    .ai-orb{width:74px;height:74px;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(217,180,108,.34);background:rgba(217,180,108,.09);color:var(--gold);font-family:Georgia,serif}
+    /* scene 5 */
+    .bridge{display:grid;grid-template-columns:1fr auto 1fr;gap:24px;align-items:stretch}
+    .bridge-card{min-height:295px;padding:clamp(24px,3vw,38px)}
+    .label{color:var(--gold);font-size:10px;font-weight:800;letter-spacing:.18em}
+    .metrics{display:grid;gap:10px;margin:24px 0}
+    .metric{display:flex;justify-content:space-between;align-items:baseline;padding:13px 0;border-bottom:1px solid rgba(255,255,255,.09)}
+    .metric span{color:var(--muted)}.metric strong{font-family:Georgia,serif;font-size:28px}
+    .bridge-card>p{color:var(--cream);line-height:1.6}
+    .voc-card blockquote{margin:38px 0 30px;font-family:Georgia,"Noto Serif KR",serif;font-size:clamp(23px,2.8vw,36px);line-height:1.45}
+    .plus{align-self:center;width:68px;height:68px;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(217,180,108,.36);background:rgba(217,180,108,.13);color:var(--gold);font-size:36px}
+    .question{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:center;padding:18px 23px;border-radius:18px;background:var(--gold);color:#122016}
+    .question span{font-size:10px;font-weight:900;letter-spacing:.16em;text-transform:uppercase}
+    .question strong{font-size:clamp(18px,2.2vw,28px)}
+    /* scene 6 */
+    .s6{text-align:center;background:radial-gradient(circle at 50% 45%,rgba(217,180,108,.13),transparent 26%),linear-gradient(145deg,#08100c,#0e1a13 68%,#080d0a)}
+    .merge{display:grid;grid-template-columns:1fr 110px 1fr;align-items:center;gap:20px}
+    .part span{display:block;font-family:Georgia,serif;font-size:clamp(36px,5vw,72px);letter-spacing:.08em}
+    .part p{margin-top:10px;color:var(--muted);font-size:13px}
+    .merge-line{display:flex;justify-content:center}.merge-line i{width:78px;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}
+    .sense h1{margin-top:14px;font-family:Georgia,serif;font-size:clamp(62px,10vw,138px);line-height:.95;letter-spacing:-.06em;color:var(--gold)}
+    .sense>p{margin-top:20px;color:var(--cream);font-size:clamp(16px,1.6vw,22px);line-height:1.65}
+    .key{display:grid;grid-template-columns:auto auto 1px auto auto;align-items:center;justify-content:center;gap:14px;color:var(--muted);font-size:13px}
+    .key span{color:var(--ivory);font-weight:900}.key i{width:1px;height:22px;background:var(--line)}
+    /* scene 7 */
+    .analysis{display:grid;grid-template-columns:1fr 170px 1.15fr;gap:24px;align-items:center}
+    .voc-list{display:grid;gap:11px}.voc-item{display:grid;grid-template-columns:auto 1fr;gap:12px;padding:16px;border-radius:16px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.09)}
+    .voc-item span{color:var(--gold);font-size:11px;font-weight:800}.voc-item p{color:var(--cream);line-height:1.5;font-size:13px}
+    .engine{display:grid;place-items:center}.engine-ring{width:150px;aspect-ratio:1;border-radius:50%;display:grid;place-items:center;align-content:center;border:1px solid rgba(217,180,108,.36);background:radial-gradient(circle,rgba(217,180,108,.15),rgba(255,255,255,.025) 65%)}
+    .engine-ring span{font-family:Georgia,serif;color:var(--gold);font-size:42px}.engine-ring small{margin-top:6px;color:var(--muted);font-size:9px}
+    .topic-panel{padding:24px}.topic+.topic{margin-top:20px}.topic>div{display:flex;justify-content:space-between;margin-bottom:8px}.topic strong{color:var(--gold)}
+    .topic i{display:block;height:8px;overflow:hidden;border-radius:999px;background:rgba(255,255,255,.08)}.topic b{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--gold),#f0d89f)}
+    /* scene 8 */
+    .chart{padding:20px 22px 8px}.chart svg{display:block;width:100%;max-height:320px}
+    .gridline{stroke:rgba(255,255,255,.08);stroke-width:1}.focus{fill:rgba(217,180,108,.08);stroke:rgba(217,180,108,.28)}
+    .vocline{fill:none;stroke:#d9b46c;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+    .waitline{fill:none;stroke:#8fc4d7;stroke-width:5;stroke-linecap:round;stroke-linejoin:round}
+    .axis{fill:#819187;font-size:11px;text-anchor:middle}.focuslabel{fill:#d9b46c;font-size:12px;text-anchor:middle}
+    .signals{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:center;gap:14px}
+    .signals>div{padding:18px;border-radius:17px;border:1px solid var(--line);background:var(--panel)}
+    .signals span{display:block;color:var(--gold);font-size:10px;margin-bottom:7px}.signals>i{color:var(--gold);font-style:normal;font-size:22px}
+    /* scene 9 */
+    .issue-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+    .issue{min-height:250px;padding:23px}
+    .issue>span{display:inline-block;padding:6px 9px;border-radius:999px;background:rgba(255,255,255,.07);color:var(--gold);font-size:10px;font-weight:800}
+    .issue h3{margin-top:20px;font-size:clamp(18px,1.8vw,24px);line-height:1.35}
+    .issue p{margin-top:14px;color:var(--muted);font-size:13px;line-height:1.65}
+    .issue:nth-child(1){border-top:3px solid var(--blue)}.issue:nth-child(2){border-top:3px solid var(--gold)}.issue:nth-child(3){border-top:3px solid #aab6af}.issue:nth-child(4){border-top:3px solid var(--red)}
+    .guard{display:flex;justify-content:center;gap:18px;color:var(--muted);font-size:13px}.guard strong{color:var(--red);letter-spacing:.12em}
+    /* scene 10 */
+    .conversation{display:grid;grid-template-columns:.78fr 1.4fr;gap:22px}
+    .questions{display:grid;gap:11px}.questions button{display:grid;grid-template-columns:auto 1fr;gap:12px;text-align:left;padding:18px;border-radius:17px;border:1px solid var(--line);background:rgba(255,255,255,.04);cursor:pointer}
+    .questions button.active{border-color:rgba(217,180,108,.42);background:rgba(217,180,108,.1)}
+    .questions span{color:var(--gold);font-size:11px;font-weight:900}.questions p{color:var(--cream);font-size:13px;line-height:1.55}
+    .answer{padding:24px}.answer-head{display:flex;justify-content:space-between;gap:20px;align-items:flex-start}
+    .answer-head span{display:block;color:var(--gold);font-size:10px;letter-spacing:.12em;text-transform:uppercase}.answer-head strong{display:block;margin-top:7px;font-size:20px}.answer-head>b{font-family:Georgia,serif;font-size:clamp(24px,3vw,38px);color:var(--blue)}
+    .answer-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:22px 0}.answer-metrics>div{padding:14px;border-radius:14px;background:rgba(255,255,255,.055)}
+    .answer-metrics span{display:block;color:var(--muted);font-size:11px}.answer-metrics strong{display:block;margin-top:6px;font-size:23px}
+    .bars{height:165px;display:grid;grid-template-columns:repeat(4,1fr);align-items:end;gap:16px;padding:8px 8px 0;border-bottom:1px solid var(--line)}
+    .bars>div{height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:8px}.bars i{width:56%;min-height:8px;border-radius:8px 8px 0 0;background:rgba(143,196,215,.54)}.bars>div:last-child i{background:var(--gold)}
+    .bars span{color:var(--muted);font-size:10px}.evidence{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}.evidence span{padding:6px 9px;border-radius:999px;background:rgba(255,255,255,.055);color:var(--muted);font-size:10px}
+    /* scene 11 */
+    .report-layout{display:grid;grid-template-columns:1.45fr .65fr;gap:22px}
+    .report,.decision{padding:24px}.report-top{display:flex;justify-content:space-between;gap:18px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+    .report-top span{color:var(--gold);font-size:10px;letter-spacing:.13em}.report-top h3{margin-top:7px}.report-top>b{height:max-content;padding:6px 10px;border-radius:999px;background:rgba(217,180,108,.14);color:var(--gold);font-size:11px}
+    .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}.summary>div{padding:13px;border-radius:13px;background:rgba(255,255,255,.05)}.summary span{display:block;color:var(--muted);font-size:10px}.summary strong{display:block;margin-top:6px;font-size:14px}
+    .rows{display:grid;gap:8px}.rows p{display:grid;grid-template-columns:95px 1fr;gap:12px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:12px;line-height:1.55}.rows span{color:var(--muted)}
+    .decision{display:flex;flex-direction:column;justify-content:center}.decision h3{margin-top:18px;font-size:26px}.decision p{margin-top:13px;color:var(--muted);line-height:1.65;font-size:13px}
+    .decision-buttons{display:grid;gap:9px;margin-top:24px}.decision-buttons button{padding:13px;border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.05);cursor:pointer}.decision-buttons button:first-child{background:var(--gold);border-color:var(--gold);color:#102016;font-weight:900}
+    /* scene 12 */
+    .s12{text-align:center;background:radial-gradient(circle at 50% 52%,rgba(217,180,108,.13),transparent 28%),linear-gradient(140deg,#07100b,#102016 62%,#080d0a)}
+    .flow{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;align-items:center}.flow>div{position:relative;display:grid;place-items:center;gap:7px}.flow span{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(217,180,108,.32);color:var(--gold);font-size:10px}.flow strong{color:var(--cream);font-size:11px}.flow i{position:absolute;right:-8px;top:10px;color:rgba(255,255,255,.25);font-style:normal}
+    .closing{display:flex;flex-direction:column;align-items:center}.closing p{margin-top:20px;color:var(--cream);font-size:clamp(16px,1.6vw,22px);line-height:1.65}
+    .poc{display:flex;justify-content:center;gap:14px;color:var(--muted);font-size:11px}.poc strong{color:var(--gold);letter-spacing:.12em}
+    /* modal */
+    .modal-backdrop{position:fixed;inset:0;z-index:90;display:none;place-items:center;padding:20px;background:rgba(0,0,0,.62);backdrop-filter:blur(8px)}
+    .modal-backdrop.open{display:grid}.modal{width:min(640px,100%);padding:26px}.modal-head{display:flex;justify-content:space-between;gap:20px}.modal h3{margin-top:12px;font-size:28px}
+    .close{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.05);cursor:pointer;font-size:24px}
+    .shortcuts{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:24px}.shortcut{display:flex;align-items:center;gap:12px;padding:12px;border-radius:13px;background:rgba(255,255,255,.05)}
+    kbd{min-width:52px;padding:7px 8px;border:1px solid rgba(255,255,255,.16);border-bottom-width:3px;border-radius:8px;background:#17221c;color:var(--gold);text-align:center;font-size:11px}
+    .modal-note{margin-top:18px;color:var(--muted);line-height:1.6;font-size:12px}
+    .speaker-note{position:fixed;left:50%;bottom:max(24px,env(safe-area-inset-bottom));z-index:50;transform:translateX(-50%);width:min(680px,calc(100% - 36px));padding:14px 18px;border:1px solid var(--line);border-radius:16px;background:rgba(7,14,10,.88);backdrop-filter:blur(16px);box-shadow:var(--shadow);display:none}
+    .speaker-note.open{display:block}.speaker-note span{color:var(--gold);font-size:10px;font-weight:900}.speaker-note p{margin-top:6px;color:var(--cream);font-size:12px;line-height:1.5}
+    @media (max-width:980px){
+      .issue-grid{grid-template-columns:repeat(2,1fr)}
+      .flow{grid-template-columns:repeat(4,1fr);row-gap:18px}.flow i{display:none}
+      .analysis{grid-template-columns:.9fr 130px 1fr}.engine-ring{width:120px}
+    }
+    @media (max-width:760px){
+      .scene{min-height:100dvh;padding:max(72px,env(safe-area-inset-top)) 18px max(66px,env(safe-area-inset-bottom))}
+      .scene::after{inset:7px}.inner{max-height:calc(100dvh - 128px);gap:17px}
+      h2{font-size:clamp(30px,9vw,42px);margin-top:11px}.subtitle{font-size:15px;margin-top:10px}.eyebrow{font-size:9px;padding:6px 9px}
+      .topbar{top:max(12px,env(safe-area-inset-top));left:12px;right:12px}.brand strong{display:none}.top-actions button:first-child{display:none}
+      .progress{display:none}.swipe-cue{display:flex}
+      .scene.is-focusing .focusable:not(.is-focused){scale:.97;filter:blur(3px);opacity:.2}
+      .scene.is-focusing .focusable.is-focused{scale:1.025;translate:0 -4px}
+      .focusable.is-focused::after{top:6px;right:6px;padding:5px 7px;font-size:8px}
+      .focus-hint{bottom:max(46px,env(safe-area-inset-bottom));font-size:8px}
+
+      .hero h1{font-size:clamp(52px,15vw,78px)}.hero p{font-size:16px}.scroll{margin-top:24px}
+      .voice-stage{min-height:300px;display:grid;align-content:center;gap:4px}.bubble{position:relative;max-width:none;inset:auto!important;transform:none!important;padding:13px 15px;margin-top:-5px}.bubble p{font-size:14px}.voice-core{display:none}.b4{display:none}.closing-line{font-size:15px}
+      .platform-grid{grid-template-columns:1fr;gap:8px}.pair{display:grid;grid-template-columns:1fr 34px 1fr;align-items:center;padding:10px;border-radius:17px}.wordmark{min-height:66px;padding:9px}.wordmark strong{font-size:16px}.wordmark span{display:none}.connector{transform:rotate(-90deg);height:auto}.upgrade{padding:12px 15px;gap:14px}.upgrade>span{font-size:34px}.upgrade strong{font-size:15px}.upgrade p{font-size:11px}
+      .ai-split{grid-template-columns:1fr;gap:9px}.ai-card{display:grid;grid-template-columns:90px 1fr;gap:12px;align-items:center;padding:14px}.ai-card .product-index{grid-column:1/-1}.mock{min-height:104px;margin:0;padding:10px}.mock-top{margin-bottom:10px}.chat{padding:8px;font-size:9px}.chat.bot{margin-top:5px}.mini-metric{padding:7px;margin-bottom:4px}.mini-metric b,.query{font-size:8px}.query{margin-top:6px;padding:6px}.ai-card h3{font-size:20px}.ai-card>p{font-size:11px}.ai-orb{width:40px;height:40px;margin:auto}
+      .bridge{grid-template-columns:1fr;gap:10px}.bridge-card{min-height:0;padding:16px}.metrics{margin:10px 0}.metric{padding:7px 0}.metric strong{font-size:20px}.bridge-card>p{font-size:11px}.voc-card blockquote{margin:14px 0;font-size:21px}.plus{width:42px;height:42px;margin:-4px auto;font-size:24px}.question{grid-template-columns:1fr;gap:4px;padding:12px 15px}.question strong{font-size:15px}
+      .merge{grid-template-columns:1fr 30px 1fr;gap:6px}.part span{font-size:26px}.part p{font-size:9px}.merge-line i{width:30px}.sense h1{font-size:clamp(58px,16vw,84px)}.sense>p{font-size:13px}.sense>p br{display:none}.key{grid-template-columns:1fr;gap:4px;padding:13px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.035)}.key i{width:44px;height:1px;margin:4px auto}
+      .analysis{grid-template-columns:1fr;gap:10px}.voc-list{gap:6px}.voc-item{padding:10px}.voc-item p{font-size:11px}.engine{display:none}.topic-panel{padding:15px}.topic+.topic{margin-top:11px}.topic{font-size:12px}
+      .chart{padding:10px}.chart svg{max-height:250px}.signals{grid-template-columns:1fr;gap:5px}.signals>div{padding:10px}.signals>i{display:none}.signals strong{font-size:12px}
+      .issue-grid{grid-template-columns:1fr 1fr;gap:8px}.issue{min-height:0;padding:14px}.issue h3{margin-top:11px;font-size:14px}.issue p{margin-top:8px;font-size:10px;line-height:1.5}.guard{flex-direction:column;gap:4px;font-size:11px}
+      .conversation{grid-template-columns:1fr;gap:10px}.questions{gap:5px}.questions button{padding:9px 11px}.questions button:not(.active){display:none}.questions p{font-size:11px}.answer{padding:14px}.answer-head strong{font-size:15px}.answer-head>b{font-size:20px}.answer-metrics{margin:12px 0}.answer-metrics>div{padding:8px}.answer-metrics strong{font-size:18px}.bars{height:130px}.evidence{margin-top:10px}
+      .report-layout{grid-template-columns:1fr;gap:9px}.report,.decision{padding:14px}.report-top h3{font-size:16px}.summary{margin:10px 0}.summary>div{padding:8px}.summary strong{font-size:11px}.rows p{grid-template-columns:72px 1fr;padding:7px 0;font-size:9px}.decision h3{margin-top:8px;font-size:16px}.decision p{margin-top:7px;font-size:10px}.decision-buttons{grid-template-columns:repeat(3,1fr);margin-top:10px}.decision-buttons button{padding:9px}
+      .flow{grid-template-columns:repeat(4,1fr);gap:10px 4px}.flow span{width:30px;height:30px}.flow strong{font-size:9px}.closing p{font-size:13px}.closing p br{display:none}.poc{flex-direction:column;gap:4px;font-size:9px}
+      .speaker-note{bottom:58px}.shortcuts{grid-template-columns:1fr}
+    }
+    @media (max-height:720px) and (min-width:761px){
+      .scene{padding-top:70px;padding-bottom:46px}.inner{max-height:calc(100svh - 104px);gap:15px}h2{font-size:clamp(32px,4.5vw,56px)}.subtitle{margin-top:10px;font-size:16px}.mock{min-height:170px}.issue{min-height:205px;padding:18px}.chart svg{max-height:245px}.hero h1{font-size:clamp(52px,8.5vw,98px)}.hero p,.scroll{margin-top:20px}
+    }
+    @media (prefers-reduced-motion:reduce){
+      *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+      .reveal{opacity:1!important;transform:none!important}
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <button class="brand" id="brandBtn"><span>S</span><strong>SensePlace</strong></button>
+    <div class="top-actions">
+      <button id="noteBtn">N · 발표노트</button>
+      <button id="helpBtn">? · 조작법</button>
+    </div>
+  </div>
+
+  <nav class="progress" aria-label="발표 장면 이동">
+    <div class="counter"><strong id="currentNum">01</strong> / 12</div>
+    <div class="dots" id="dots"></div>
+  </nav>
+
+  <button class="swipe-cue" id="swipeCue" aria-label="다음 장면">
+    <span>SWIPE</span><i></i>
+  </button>
+
+  <main class="deck" id="deck">
+    <section class="scene s1" id="scene-1" data-scene="1">
+      <div class="mist"></div>
+      <div class="scene-glow"></div>
+      <div class="inner hero">
+        <span class="eyebrow reveal d1">SENSE PLACE brand philosophy</span>
+        <h1 class="reveal d2">Inspiring <span>Sense</span><small>&</small>Touching <span>Place</span></h1>
+        <p class="reveal d3">고객의 마음을 움직이는 경험은<br><strong>고객의 목소리를 듣는 것</strong>에서 시작됩니다.</p>
+        <div class="scroll reveal d4"><span>SCROLL TO BEGIN</span><i></i></div>
+      </div>
+    </section>
+
+    <section class="scene" id="scene-2" data-scene="2">
+      <div class="scene-glow"></div>
+      <div class="inner">
+        <header class="reveal"><span class="eyebrow">01 · Customer voice</span><h2>고객은 계속 <span class="gold">말하고 있습니다.</span></h2><p class="subtitle">하지만 수많은 VOC 속에서 중요한 신호를 빠르게 찾는 일은 쉽지 않습니다.</p></header>
+        <div class="voice-stage">
+          <article class="bubble b1 reveal d1"><span>VOC 01</span><p>“조식 대기가 너무 길었습니다.”</p></article>
+          <article class="bubble b2 reveal d2"><span>VOC 02</span><p>“사람이 한꺼번에 몰려 너무 복잡했습니다.”</p></article>
+          <article class="bubble b3 reveal d3"><span>VOC 03</span><p>“직원은 친절했지만 자리 안내가 늦었습니다.”</p></article>
+          <article class="bubble b4 reveal d4"><span>VOC 04</span><p>“음식은 만족스러웠지만 기다림이 아쉬웠습니다.”</p></article>
+          <div class="voice-core reveal d4"><strong>읽기</strong><i></i><strong>분류</strong><i></i><strong>조회</strong><i></i><strong>보고</strong></div>
+        </div>
+        <p class="closing-line reveal d5">고객은 말하고 있지만, <strong>관리자가 모든 목소리를 듣기는 어렵습니다.</strong></p>
+      </div>
+    </section>
+
+    <section class="scene" id="scene-3" data-scene="3">
+      <div class="scene-glow"></div>
+      <div class="inner">
+        <header class="reveal"><span class="eyebrow">02 · Global movement</span><h2>글로벌 호텔은 이미<br><span class="gold">고객경험 플랫폼</span>을 활용하고 있습니다.</h2></header>
+        <div class="platform-grid">
+          <article class="pair panel reveal d1"><div class="wordmark"><strong>Hilton</strong><span>Hotel Group</span></div><div class="connector">↓</div><div class="wordmark"><strong>Qualtrics</strong><span>Customer Experience Platform</span></div></article>
+          <article class="pair panel reveal d2"><div class="wordmark"><strong>Marriott International</strong><span>Hotel Group</span></div><div class="connector">↓</div><div class="wordmark"><strong>Medallia</strong><span>Customer Experience Platform</span></div></article>
+          <article class="pair panel reveal d3"><div class="wordmark"><strong>Radisson Hotel Group</strong><span>Hotel Group</span></div><div class="connector">↓</div><div class="wordmark"><strong>ReviewPro</strong><span>Customer Experience Platform</span></div></article>
+        </div>
+        <div class="upgrade reveal d4"><span>2024</span><div><strong>AI 분석으로 서비스 고도화</strong><p>고객의 목소리를 데이터로 분석하고, 관리자와 현장 대응으로 연결하는 변화</p></div></div>
+      </div>
+    </section>
+
+    <section class="scene" id="scene-4" data-scene="4">
+      <div class="scene-glow"></div>
+      <div class="inner">
+        <header class="reveal"><span class="eyebrow">03 · SENSE PLACE AI</span><h2>SENSE PLACE도 고객 경험과 내부 운영에<br><span class="gold">AI를 활용한 변화</span>를 추진하고 있습니다.</h2></header>
+        <div class="ai-split">
+          <article class="ai-card panel reveal d1"><span class="product-index">CUSTOMER</span><div class="mock"><div class="mock-top"><span></span><span></span><span></span></div><div class="chat user">오늘 이용 가능한 액티비티 알려줘</div><div class="chat bot">가족 고객에게 추천할 수 있는 프로그램을 안내해드릴게요.</div></div><div><h3>SENSE PLACE AI Guide</h3><p>고객의 호텔 정보 탐색과 이용 편의 지원</p></div></article>
+          <div class="ai-orb reveal d2">AI</div>
+          <article class="ai-card panel reveal d3"><span class="product-index">EMPLOYEE</span><div class="mock"><div class="mock-top"><span></span><span></span><span></span></div><div class="mini-metric"><b>F&amp;B</b><strong>+12.4%</strong></div><div class="mini-metric"><b>ROOMS</b><strong>₩ 8.6B</strong></div><div class="query">지난주 객실과 F&amp;B 실적을 보여줘</div></div><div><h3>WISE</h3><p>구성원의 내부 데이터 조회와 분석 지원</p></div></article>
+        </div>
+        <p class="footnote reveal d4">WISE는 호텔 내부의 숫자를 구성원에게 더 쉽게 전달하는 시스템으로 이해했습니다.</p>
+      </div>
+    </section>
+
+    <section class="scene" id="scene-5" data-scene="5">
+      <div class="scene-glow"></div>
+      <div class="inner">
+        <header class="reveal"><span class="eyebrow">04 · The missing connection</span><h2>숫자는 상황을 말하고,<br><span class="gold">VOC는 경험을 말합니다.</span></h2></header>
+        <div class="bridge">
+          <article class="bridge-card panel reveal d1"><span class="label">OPERATION DATA</span><div class="metrics"><div class="metric"><span>조식 이용객</span><strong>286명</strong></div><div class="metric"><span>평균 대기시간</span><strong>14분</strong></div><div class="metric"><span>최대 대기열</span><strong>37명</strong></div></div><p>호텔의 숫자는 운영 상황을 보여줍니다.</p></article>
+          <div class="plus reveal d2">+</div>
+          <article class="bridge-card voc-card panel reveal d3"><span class="label">CUSTOMER VOICE</span><blockquote>“음식은 좋았지만<br>조식 입장 대기가 너무 길었습니다.”</blockquote><p>고객의 목소리는 그 상황이 어떻게 느껴졌는지를 보여줍니다.</p></article>
+        </div>
+        <div class="question reveal d4"><span>Question</span><strong>이 두 가지를 관리자가 함께 볼 수는 없을까?</strong></div>
+      </div>
+    </section>
+
+    <section class="scene s6" id="scene-6" data-scene="6">
+      <div class="scene-glow"></div>
+      <div class="inner">
+        <div class="merge">
+          <div class="part reveal d1"><span>SENSE</span><p>고객이 호텔에서 느낀 경험과 감정</p></div>
+          <div class="merge-line reveal d2"><i></i></div>
+          <div class="part reveal d1"><span>PLACE</span><p>그 경험이 발생한 호텔 운영 현장</p></div>
+        </div>
+        <div class="sense reveal d3"><span class="eyebrow">Introducing</span><h1>SensePlace</h1><p>VOC와 운영데이터를 연결해 반복되는 고객 불편을 발견하고,<br>관리자가 검토할 수 있는 운영 보고서 초안을 제공합니다.</p></div>
+        <div class="key reveal d4"><span>WISE</span><p>호텔의 숫자를 말한다면</p><i></i><span>SensePlace</span><p>그 숫자에 담긴 고객의 목소리를 들려줍니다.</p></div>
+      </div>
+    </section>
+
+    <section class="scene" id="scene-7" data-scene="7">
+      <div class="scene-glow"></div>
+      <div class="inner">
+        <header class="reveal"><span class="eyebrow">05 · VOC analysis</span><h2>고객이 무엇을 불편해했는지,<br><span class="gold">언제 반복됐는지 찾습니다.</span></h2></header>
+        <div class="analysis">
+          <div class="voc-list reveal d1"><div class="voc-item"><span>01</span><p>조식 대기가 너무 길었습니다.</p></div><div class="voc-item"><span>02</span><p>사람이 한꺼번에 몰려 너무 복잡했습니다.</p></div><div class="voc-item"><span>03</span><p>직원은 친절했지만 자리 안내가 늦었습니다.</p></div></div>
+          <div class="engine reveal d2"><div class="engine-ring"><span>AI</span><small>감정 · 주제 · 시간대</small></div></div>
+          <div class="topic-panel panel reveal d3">
+            <div class="topic"><div><span>조식 대기</span><strong>42%</strong></div><i><b style="width:42%"></b></i></div>
+            <div class="topic"><div><span>혼잡</span><strong>27%</strong></div><i><b style="width:27%"></b></i></div>
+            <div class="topic"><div><span>직원 응대</span><strong>18%</strong></div><i><b style="width:18%"></b></i></div>
+            <div class="topic"><div><span>음식</span><strong>13%</strong></div><i><b style="width:13%"></b></i></div>
+          </div>
+        </div>
+        <p class="footnote reveal d4">화면 시연을 위한 합성 VOC 비율</p>
+      </div>
+    </section>
+
+    <section class="scene" id="scene-8" data-scene="8">
+      <div class="scene-glow"></div>
+      <div class="inner">
+        <header class="reveal"><span class="eyebrow">06 · Cross analysis</span><h2>VOC가 증가한 시간대에<br><span class="gold">운영에서는 어떤 일이 있었을까?</span></h2></header>
+        <div class="chart panel reveal d1">
+          <svg viewBox="0 0 800 330" role="img" aria-label="VOC와 대기시간 비교 차트">
+            <line x1="40" x2="770" y1="55" y2="55" class="gridline"/><line x1="40" x2="770" y1="110" y2="110" class="gridline"/><line x1="40" x2="770" y1="165" y2="165" class="gridline"/><line x1="40" x2="770" y1="220" y2="220" class="gridline"/><line x1="40" x2="770" y1="275" y2="275" class="gridline"/>
+            <rect x="390" y="18" width="175" height="280" rx="18" class="focus"/>
+            <text x="477" y="44" class="focuslabel">08:00–08:30</text>
+            <path d="M 50 250 L 166 232 L 283 190 L 400 120 L 516 88 L 633 175 L 750 216" class="vocline"/>
+            <path d="M 50 240 L 166 230 L 283 220 L 400 175 L 516 115 L 633 196 L 750 230" class="waitline"/>
+            <text x="50" y="318" class="axis">07:00</text><text x="166" y="318" class="axis">07:30</text><text x="283" y="318" class="axis">08:00</text><text x="400" y="318" class="axis">08:15</text><text x="516" y="318" class="axis">08:30</text><text x="633" y="318" class="axis">09:00</text><text x="750" y="318" class="axis">09:30</text>
+          </svg>
+        </div>
+        <div class="signals reveal d2"><div><span>01</span><strong>부정 VOC 증가</strong></div><i>+</i><div><span>02</span><strong>고객 도착 집중</strong></div><i>+</i><div><span>03</span><strong>실제 대기 증가</strong></div></div>
+      </div>
+    </section>
+
+    <section class="scene" id="scene-9" data-scene="9">
+      <div class="scene-glow"></div>
+      <div class="inner">
+        <header class="reveal"><span class="eyebrow">07 · Evidence first</span><h2>AI는 원인을 단정하지 않고,<br><span class="gold">사실과 가능성을 구분합니다.</span></h2></header>
+        <div class="issue-grid">
+          <article class="issue panel reveal d1"><span>관측 사실</span><h3>VOC와 실제 대기시간이 함께 증가</h3><p>오전 8시부터 8시 30분 사이 조식 대기 관련 부정 VOC와 실제 대기시간이 함께 증가했습니다.</p></article>
+          <article class="issue panel reveal d2"><span>원인 후보</span><h3>도착 집중과 처리량 변화</h3><p>같은 시간대에 고객 도착 증가와 처리량 변화가 함께 관측됐습니다.</p></article>
+          <article class="issue panel reveal d3"><span>반대 근거</span><h3>전체 인력은 계획과 동일</h3><p>전체 근무 인원은 계획 인원과 큰 차이가 없었습니다.</p></article>
+          <article class="issue panel reveal d4"><span>추가 확인</span><h3>입장·착석 동선 확인 필요</h3><p>입장 동선과 착석 안내 과정에 병목이 있었는지 현장 확인이 필요합니다.</p></article>
+        </div>
+        <div class="guard reveal d5"><strong>NO AUTO DECISION</strong><span>관리자가 판단할 수 있도록 근거를 구분합니다.</span></div>
+      </div>
+    </section>
+
+    <section class="scene" id="scene-10" data-scene="10">
+      <div class="scene-glow"></div>
+      <div class="inner">
+        <header class="reveal"><span class="eyebrow">08 · Conversational analysis</span><h2>관리자는 궁금한 내용을<br><span class="gold">자연어로 추가 확인합니다.</span></h2></header>
+        <div class="conversation">
+          <div class="questions reveal d1"><button class="active"><span>01</span><p>이번 주 조식 대기 관련 VOC가 가장 많았던 시간대를 보여줘.</p></button><button><span>02</span><p>그 시간대의 대기시간이 최근 4주보다 높았어?</p></button><button><span>03</span><p>대기시간은 증가했지만 VOC는 증가하지 않은 날도 있어?</p></button></div>
+          <article class="answer panel reveal d2">
+            <div class="answer-head"><div><span>SensePlace answer</span><strong>조식 대기 VOC 집중 시간대</strong></div><b>08:00–08:30</b></div>
+            <div class="answer-metrics"><div><span>부정 VOC</span><strong>42%</strong></div><div><span>평균 대기</span><strong>14분</strong></div><div><span>P90 대기</span><strong>22분</strong></div></div>
+            <div class="bars"><div><i style="height:35%"></i><span>3주 전</span></div><div><i style="height:44%"></i><span>2주 전</span></div><div><i style="height:40%"></i><span>1주 전</span></div><div><i style="height:72%"></i><span>이번 주</span></div></div>
+            <div class="evidence"><span>근거: 합성 VOC 84건</span><span>비교: 최근 4주</span><span>한계: 현장 동선 데이터 없음</span></div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="scene" id="scene-11" data-scene="11">
+      <div class="scene-glow"></div>
+      <div class="inner">
+        <header class="reveal"><span class="eyebrow">09 · Manager review</span><h2>분석은 보고서 초안이 되고,<br><span class="gold">최종 판단은 관리자가 합니다.</span></h2></header>
+        <div class="report-layout">
+          <article class="report panel reveal d1">
+            <div class="report-top"><div><span>WEEKLY OPERATIONS BRIEF</span><h3>조식 대기 VOC 및 운영 이슈</h3></div><b>Draft</b></div>
+            <div class="summary"><div><span>핵심 VOC</span><strong>조식 대기</strong></div><div><span>집중 시간</span><strong>08:00–08:30</strong></div><div><span>상태</span><strong>현장 확인 필요</strong></div></div>
+            <div class="rows"><p><b>관측 사실</b><span>부정 VOC와 실제 대기시간이 함께 증가했습니다.</span></p><p><b>원인 후보</b><span>고객 도착 집중과 처리량 변화가 관측됐습니다.</span></p><p><b>반대 근거</b><span>계획 인력과 실제 인력은 동일했습니다.</span></p><p><b>추가 확인</b><span>입장 및 착석 동선의 병목 확인이 필요합니다.</span></p></div>
+          </article>
+          <aside class="decision panel reveal d2"><span class="label">MANAGER DECISION</span><h3>관리자의 검토가 필요합니다.</h3><p>AI는 보고서 초안을 제공하며, 운영 조치를 자동으로 결정하지 않습니다.</p><div class="decision-buttons"><button>승인</button><button>보류</button><button>반려</button></div></aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="scene s12" id="scene-12" data-scene="12">
+      <div class="scene-glow"></div>
+      <div class="inner">
+        <div class="flow reveal d1">
+          <div><span>01</span><strong>고객 VOC</strong><i>→</i></div><div><span>02</span><strong>감정·주제 분석</strong><i>→</i></div><div><span>03</span><strong>운영데이터 연결</strong><i>→</i></div><div><span>04</span><strong>이상징후 발견</strong><i>→</i></div><div><span>05</span><strong>근거 구분</strong><i>→</i></div><div><span>06</span><strong>이슈 브리프</strong><i>→</i></div><div><span>07</span><strong>보고서 초안</strong><i>→</i></div><div><span>08</span><strong>관리자 판단</strong></div>
+        </div>
+        <div class="closing reveal d2"><span class="eyebrow">SensePlace</span><h2>고객의 경험이<br><span class="gold">관리자의 판단까지 닿는 곳.</span></h2><p>고객의 목소리를 듣고, 호텔의 운영 근거와 연결하며,<br>관리자의 더 나은 판단을 돕겠습니다.</p></div>
+        <footer class="poc reveal d3"><strong>EDUCATIONAL PoC</strong><span>합성 VOC 및 합성 운영데이터 사용 · 실제 SENSE PLACE 공식 서비스 및 WISE 연동 아님</span></footer>
+      </div>
+    </section>
+  </main>
+
+  <aside class="speaker-note" id="speakerNote"><span id="noteTitle">발표자 노트 · 01</span><p id="noteText"></p></aside>
+
+  <div class="modal-backdrop" id="modalBackdrop">
+    <section class="modal panel" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+      <div class="modal-head"><div><span class="eyebrow">Presentation controls</span><h3 id="helpTitle">발표 조작 방법</h3></div><button class="close" id="closeModal" aria-label="닫기">×</button></div>
+      <div class="shortcuts">
+        <div class="shortcut"><kbd>↓</kbd><span>다음 장면</span></div>
+        <div class="shortcut"><kbd>↑</kbd><span>이전 장면</span></div>
+        <div class="shortcut"><kbd>Space</kbd><span>다음 장면</span></div>
+        <div class="shortcut"><kbd>F</kbd><span>전체화면</span></div>
+        <div class="shortcut"><kbd>Home</kbd><span>첫 장면</span></div>
+        <div class="shortcut"><kbd>End</kbd><span>마지막 장면</span></div>
+      </div>
+      <p class="modal-note">모바일에서는 위아래로 스와이프하세요. 버튼 터치는 장면 이동과 충돌하지 않습니다.</p>
+    </section>
+  </div>
+
+  <script>
+    (() => {
+      const deck = document.getElementById("deck");
+      const scenes = [...document.querySelectorAll(".scene")];
+      const total = scenes.length;
+      const currentNum = document.getElementById("currentNum");
+      const dotsWrap = document.getElementById("dots");
+      const helpBtn = document.getElementById("helpBtn");
+      const noteBtn = document.getElementById("noteBtn");
+      const modalBackdrop = document.getElementById("modalBackdrop");
+      const closeModal = document.getElementById("closeModal");
+      const brandBtn = document.getElementById("brandBtn");
+      const swipeCue = document.getElementById("swipeCue");
+      const speakerNote = document.getElementById("speakerNote");
+      const noteTitle = document.getElementById("noteTitle");
+      const noteText = document.getElementById("noteText");
+
+      const notes = {
+        1:"브랜드 철학에서 프로젝트가 출발했다는 점을 설명합니다.",
+        2:"VOC가 많아질수록 관리자의 반복 검토 업무가 커진다는 문제를 보여줍니다.",
+        3:"타사 기능 비교가 아니라 시장 흐름만 간단히 설명합니다.",
+        4:"WISE는 숫자를 쉽게 조회하는 내부 AI 정도로 설명합니다.",
+        5:"운영 숫자와 고객 경험을 함께 봐야 한다는 핵심 질문을 던집니다.",
+        6:"Sense와 Place의 의미를 연결해 서비스명을 설명합니다.",
+        7:"VOC의 감정·주제·시간대를 분석하는 기능을 소개합니다.",
+        8:"VOC가 집중된 시간대와 운영지표를 함께 확인하는 장면입니다.",
+        9:"AI가 원인을 단정하지 않고 근거를 나눠 제시한다는 점을 강조합니다.",
+        10:"관리자가 자연어로 분석 결과를 추가 확인하는 기능을 보여줍니다.",
+        11:"보고서 초안 이후 최종 판단은 관리자가 한다는 점을 강조합니다.",
+        12:"합성 데이터 기반 교육용 PoC라는 점을 마지막에 다시 알립니다."
+      };
+
+      let current = 0;
+      let wheelLocked = false;
+      let touchStartY = null;
+      let notesOpen = false;
+
+      const getInitial = () => {
+        const match = location.hash.match(/scene-(\d+)/);
+        if (!match) return 0;
+        return Math.min(Math.max(Number(match[1]) - 1, 0), total - 1);
+      };
+
+      let scrollFrame = 0;
+
+      function clearFocus(scene = null) {
+        const targets = scene ? [scene] : scenes;
+        targets.forEach(target => {
+          target.classList.remove("is-focusing");
+          target.querySelectorAll(".focusable.is-focused").forEach(item => {
+            item.classList.remove("is-focused");
+            item.setAttribute("aria-pressed", "false");
+          });
+        });
+      }
+
+      function animateDeckScroll(targetTop, duration = 920) {
+        cancelAnimationFrame(scrollFrame);
+        const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        if (reduced) {
+          deck.scrollTop = targetTop;
+          return;
+        }
+
+        const startTop = deck.scrollTop;
+        const distance = targetTop - startTop;
+        const startedAt = performance.now();
+
+        const easeInOut = value =>
+          value < .5
+            ? 4 * value * value * value
+            : 1 - Math.pow(-2 * value + 2, 3) / 2;
+
+        const step = now => {
+          const progress = Math.min((now - startedAt) / duration, 1);
+          deck.scrollTop = startTop + distance * easeInOut(progress);
+          if (progress < 1) scrollFrame = requestAnimationFrame(step);
+        };
+        scrollFrame = requestAnimationFrame(step);
+      }
+
+      function moveTo(index, behavior = "smooth") {
+        const next = Math.min(Math.max(index, 0), total - 1);
+        clearFocus();
+        current = next;
+        const targetTop = scenes[current].offsetTop;
+        if (behavior === "auto") {
+          cancelAnimationFrame(scrollFrame);
+          deck.scrollTop = targetTop;
+        } else {
+          animateDeckScroll(targetTop, 920);
+        }
+        history.replaceState(null,"",`#scene-${current+1}`);
+        updateUI();
+      }
+
+      function updateUI(){
+        currentNum.textContent = String(current+1).padStart(2,"0");
+        [...dotsWrap.children].forEach((btn,i)=>btn.classList.toggle("active",i===current));
+        speakerNote.classList.toggle("open", notesOpen);
+        noteTitle.textContent = `발표자 노트 · ${String(current+1).padStart(2,"0")}`;
+        noteText.textContent = notes[current+1];
+        swipeCue.querySelector("span").textContent = current === total-1 ? "처음으로" : "SWIPE";
+      }
+
+      scenes.forEach((_,i)=>{
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.setAttribute("aria-label",`${i+1}번째 장면`);
+        btn.innerHTML = "<span></span>";
+        btn.addEventListener("click",()=>moveTo(i));
+        dotsWrap.appendChild(btn);
+      });
+
+
+      const focusSelectors = [
+        ".bubble",
+        ".pair",
+        ".ai-card",
+        ".bridge-card",
+        ".part",
+        ".voc-item",
+        ".topic",
+        ".signals > div",
+        ".issue",
+        ".questions button",
+        ".answer",
+        ".report",
+        ".decision",
+        ".summary > div",
+        ".decision-buttons button",
+        ".flow > div"
+      ].join(",");
+
+      scenes.forEach(scene => {
+        const candidates = [...scene.querySelectorAll(focusSelectors)];
+        if (candidates.length < 2) return;
+
+        const hint = document.createElement("div");
+        hint.className = "focus-hint";
+        hint.textContent = "카드를 눌러 하나씩 강조";
+        scene.appendChild(hint);
+
+        candidates.forEach(item => {
+          item.classList.add("focusable");
+          item.setAttribute("aria-pressed", "false");
+
+          const isNativeInteractive = item.matches("button, a, input, textarea, select");
+          if (!isNativeInteractive) {
+            item.tabIndex = 0;
+            item.setAttribute("role", "button");
+          }
+
+          const toggle = event => {
+            event.stopPropagation();
+            const alreadyFocused = item.classList.contains("is-focused");
+            clearFocus(scene);
+            if (!alreadyFocused) {
+              scene.classList.add("is-focusing");
+              item.classList.add("is-focused");
+              item.setAttribute("aria-pressed", "true");
+            }
+          };
+
+          item.addEventListener("click", toggle);
+
+          if (!isNativeInteractive) {
+            item.addEventListener("keydown", event => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                toggle(event);
+              }
+            });
+          }
+        });
+
+        scene.addEventListener("click", event => {
+          if (!event.target.closest(".focusable")) clearFocus(scene);
+        });
+      });
+
+      const observer = new IntersectionObserver(entries=>{
+        const visible = entries.filter(e=>e.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio)[0];
+        if(!visible) return;
+        current = Number(visible.target.dataset.scene)-1;
+        scenes.forEach(s=>s.classList.toggle("active",s===visible.target));
+        history.replaceState(null,"",`#scene-${current+1}`);
+        updateUI();
+      },{threshold:[.52,.7,.9]});
+      scenes.forEach(s=>observer.observe(s));
+
+      deck.addEventListener("wheel",e=>{
+        if(Math.abs(e.deltaY)<12) return;
+        e.preventDefault();
+        if(wheelLocked) return;
+        wheelLocked = true;
+        moveTo(current + (e.deltaY>0 ? 1 : -1));
+        setTimeout(()=>wheelLocked=false,1040);
+      },{passive:false});
+
+      deck.addEventListener("touchstart",e=>{
+        if(e.target.closest("button,a,input,textarea,select")){touchStartY=null;return}
+        touchStartY=e.touches[0].clientY;
+      },{passive:true});
+
+      deck.addEventListener("touchend",e=>{
+        if(touchStartY===null) return;
+        const delta = touchStartY - e.changedTouches[0].clientY;
+        touchStartY = null;
+        if(Math.abs(delta)<55) return;
+        moveTo(current + (delta>0 ? 1 : -1));
+      },{passive:true});
+
+      document.addEventListener("keydown",async e=>{
+        if(modalBackdrop.classList.contains("open")){
+          if(e.key==="Escape") modalBackdrop.classList.remove("open");
+          return;
+        }
+        if(e.key==="Escape" && document.querySelector(".scene.is-focusing")){
+          clearFocus();
+          return;
+        }
+        if(e.target.closest && e.target.closest("button,input,textarea,select,a")) return;
+        if(["ArrowDown","ArrowRight","PageDown"," "].includes(e.key)){e.preventDefault();moveTo(current+1)}
+        else if(["ArrowUp","ArrowLeft","PageUp"].includes(e.key)){e.preventDefault();moveTo(current-1)}
+        else if(e.key==="Home"){e.preventDefault();moveTo(0)}
+        else if(e.key==="End"){e.preventDefault();moveTo(total-1)}
+        else if(e.key.toLowerCase()==="f"){e.preventDefault();if(!document.fullscreenElement) await document.documentElement.requestFullscreen?.(); else await document.exitFullscreen?.()}
+        else if(e.key.toLowerCase()==="n"){notesOpen=!notesOpen;updateUI()}
+        else if(e.key==="?"){modalBackdrop.classList.add("open")}
+      });
+
+      helpBtn.addEventListener("click",()=>modalBackdrop.classList.add("open"));
+      closeModal.addEventListener("click",()=>modalBackdrop.classList.remove("open"));
+      modalBackdrop.addEventListener("click",e=>{if(e.target===modalBackdrop)modalBackdrop.classList.remove("open")});
+      noteBtn.addEventListener("click",()=>{notesOpen=!notesOpen;updateUI()});
+      brandBtn.addEventListener("click",()=>moveTo(0));
+      swipeCue.addEventListener("click",()=>moveTo(current===total-1?0:current+1));
+
+      requestAnimationFrame(()=>moveTo(getInitial(),"auto"));
+    })();
+  </script>
+</body>
+</html>

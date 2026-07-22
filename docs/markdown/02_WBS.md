@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | SensePlace의 실행 작업, 담당, 상태, 일정, 산출물과 요구사항 추적 관계를 관리하는 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v2.9 |
-| 문서 기준일 | 2026-07-22 09:19 |
+| 버전 | v3.1 |
+| 문서 기준일 | 2026-07-22 10:39 |
 | 작성·수정 | 박준희 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -471,6 +471,8 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 관련 파일 |
 |---|---|---|---|
+| 2026-07-22 10:39 | 1.5 | 프로젝트기획서의 공통 파일 관리 헤더와 대응 템플릿 기본 정보 표를 분리 | `docs/markdown/03_프로젝트기획서.md` |
+| 2026-07-22 10:27 | 1.3, 1.4, 1.5 | 번호형 산출물 작업본 3건의 표준 헤더·기준일·최근 변경 내역 형식을 문서관리규칙에 맞춰 정리 | `docs/markdown/01_요구사항정의서.md`, `docs/markdown/02_WBS.md`, `docs/markdown/03_프로젝트기획서.md` |
 | 2026-07-22 09:19 | 1.4, 8.2 | Skill 실행 위치·제품 중립 호출, 보고 검증과 Git preflight를 보강하고 Claude Code가 AGENTS 지침을 공유하도록 연결했으며 기존 보호 문서 변경 이력을 제거 | `.agents/skills/`, `CLAUDE.md`, `docs/markdown/collaboration/README.md`, `docs/markdown/daily_reports/README.md` |
 | 2026-07-21 17:32 | 1.4, 8.2 | 문서 관리·보고 갱신·개인 branch→dev 통합 Skill 3종과 읽기 전용 검증 script를 추가하고 AGENTS·전용 README의 반복 실행 절차를 Skill 호출로 전환 | `.agents/skills/`, `AGENTS.md`, `README.md`, `docs/문서관리규칙.md`, `docs/markdown/collaboration/README.md`, `docs/markdown/daily_reports/README.md` |
 | 2026-07-21 | 8.2 | `docs/markdown` 하위 HTML preview를 local-only로 분류해 Git 목록·업로드 대상에서 제외하고 보호 폴더의 기존 파일은 수정·삭제하지 않음 | `.gitignore`, `docs/markdown/02_WBS.md` |
@@ -491,6 +493,8 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.1 | 2026-07-22 10:39 | 프로젝트기획서 공통 헤더와 대응 템플릿 기본 정보 표 분리 |
+| v3.0 | 2026-07-22 10:27 | 01·02·03 번호형 산출물 작업본의 표준 헤더·최근 변경 내역 형식 정리 |
 | v2.9 | 2026-07-22 09:19 | Skill 범용 실행 경로·검증 안전성과 AI 에이전트 지침 연결 보강, 기존 보호 문서 변경 이력 제거 |
 | v2.8 | 2026-07-21 17:32 | 프로젝트 반복 절차를 Skill 3종과 결정론적 검증 script로 분리 |
 | v2.7 | 2026-07-21 15:50 | `docs/markdown` 하위 HTML preview의 local-only Git 제외 정책 반영 |

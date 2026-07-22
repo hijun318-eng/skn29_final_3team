@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | SensePlace의 실행 작업, 담당, 상태, 일정, 산출물과 요구사항 추적 관계를 관리하는 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v3.5 |
-| 문서 기준일 | 2026-07-22 16:16 |
+| 버전 | v3.6 |
+| 문서 기준일 | 2026-07-22 16:31 |
 | 작성·수정 | 박준희 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -471,6 +471,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 관련 파일 |
 |---|---|---|---|
+| 2026-07-22 16:31 | 1.4, 8.2 | AI 에이전트가 산출물 01~21 상세 규격을 참고할 조건·생략 범위·확인 순서·충돌 우선순위를 문서관리규칙에 요약 | `docs/문서관리규칙.md`, `docs/markdown/02_WBS.md` |
 | 2026-07-22 16:16 | 1.4, 8.2 | Git pre-commit이 staged Markdown 본문을 기준으로 문서관리규칙 준수 여부를 자동 검사하도록 hook과 검증기를 연결 | `.githooks/pre-commit`, `.agents/skills/manage-project-documents/scripts/check_document_policy.py`, `docs/markdown/collaboration/README.md` |
 | 2026-07-22 16:06 | 1.4, 8.2 | AI 에이전트 상시 지침을 권한·라우팅 중심으로 축약하고 WBS 절차를 전용 Skill로 분리했으며 산출물 01~21 상세 규격을 조건부 참조 문서로 이동 | `AGENTS.md`, `README.md`, `.agents/skills/`, `docs/문서관리규칙.md`, `docs/markdown/document_specs/산출물작성규격.md` |
 | 2026-07-22 15:51 | 1.4, 8.2 | README의 활성 기준·보호 자료 우선순위와 기술 스택 계획 표현을 명확히 하고 문서 검증기의 규칙 문서 분류를 호환 | `README.md`, `.agents/skills/manage-project-documents/scripts/check_document_policy.py`, `docs/markdown/02_WBS.md` |
@@ -497,6 +498,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.6 | 2026-07-22 16:31 | 산출물 01~21 상세 규격의 AI 에이전트 참고 조건 명문화 |
 | v3.5 | 2026-07-22 16:16 | staged Markdown 문서 정책을 강제하는 pre-commit 검증 연결 |
 | v3.4 | 2026-07-22 16:06 | AI 에이전트 상시 지침 축약과 WBS Skill·산출물 상세 규격의 조건부 참조 구조 반영 |
 | v3.3 | 2026-07-22 15:51 | AI 에이전트 기준 문서 우선순위·기술 계획 표현과 검증기 분류 호환성 보강 |

@@ -14,6 +14,14 @@ if hasattr(sys.stdout, "reconfigure"):
 
 
 PERSONAL_BRANCHES = {"junhee", "minji", "seung", "daesung", "jaehong"}
+OPERATION_MARKERS = {
+    "MERGE_HEAD": "merge",
+    "REBASE_HEAD": "rebase",
+    "CHERRY_PICK_HEAD": "cherry-pick",
+    "REVERT_HEAD": "revert",
+    "BISECT_HEAD": "bisect",
+    "BISECT_START": "bisect",
+}
 
 
 def git(*args: str, check: bool = True) -> str:
@@ -48,8 +56,9 @@ def main() -> int:
     status = git("status", "--porcelain")
     if status:
         errors.append("working tree가 깨끗하지 않습니다.")
-    if ref("MERGE_HEAD"):
-        errors.append("진행 중인 merge가 있습니다.")
+    operations = sorted({label for marker, label in OPERATION_MARKERS.items() if ref(marker)})
+    if operations:
+        errors.append(f"진행 중인 Git 작업이 있습니다: {', '.join(operations)}")
 
     source_local = ref(args.source)
     source_remote = ref(f"origin/{args.source}")
@@ -79,6 +88,7 @@ def main() -> int:
         "dev_local": dev_local,
         "dev_remote": dev_remote,
         "clean": not status,
+        "operations": operations,
         "errors": errors,
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))

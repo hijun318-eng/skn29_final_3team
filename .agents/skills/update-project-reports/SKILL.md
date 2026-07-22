@@ -7,6 +7,8 @@ description: Update and validate personal daily reports, date-based team summari
 
 Use `docs/markdown/daily_reports/README.md` as the canonical source for branch mapping, report evidence, formats, periods, and limits.
 
+Resolve the repository root with `git rev-parse --show-toplevel` and use it as the working directory for every command. Require Git and a Python 3.10+ launcher (`python` or `python3`) before using bundled scripts.
+
 ## Select the mode
 
 - **Personal completion:** After a non-report repository change on a recognized personal branch, update only that branch's `일일보고.md`.
@@ -19,7 +21,7 @@ Use `docs/markdown/daily_reports/README.md` as the canonical source for branch m
 2. Use the current KST date unless the user explicitly supplies another date.
 3. Record only repository results that remain after the task. Exclude investigation-only answers, commit-message drafting, Git operations, and report-only maintenance.
 4. Add to the existing date block or create the newest block below the file notice. Consolidate related work rather than duplicating entries.
-5. Validate the changed file with `validate_reports.py` and `git diff --check`.
+5. From the repository root, validate the changed file with `<python> .agents/skills/update-project-reports/scripts/validate_reports.py <changed report path>` and `git diff --check`.
 
 ## Team and weekly workflow
 
@@ -29,5 +31,5 @@ Use `docs/markdown/daily_reports/README.md` as the canonical source for branch m
 4. Rebuild each affected weekly report from all source dates in its applicable range. Merge similar work without inventing status, owners, schedules, or completion.
 5. Remove branch synchronization, fetch, merge, commit, push, and commit-hash history while preserving actual work results.
 6. Do not write a report entry about report integration itself and do not update WBS for report-only changes.
-7. Run `python .agents/skills/update-project-reports/scripts/validate_reports.py <changed report paths>` and `git diff --check`.
+7. From the repository root, run `<python> .agents/skills/update-project-reports/scripts/validate_reports.py <changed report paths>` and `git diff --check`.
 8. In post-merge mode, return the changed `team_summaries/` paths and validation result to `merge-branch-to-dev`; do not stage or commit them here.

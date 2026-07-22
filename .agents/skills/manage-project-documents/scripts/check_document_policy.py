@@ -111,11 +111,16 @@ def main() -> int:
         except ValueError as exc:
             errors.append(str(exc))
             continue
-        if relative.startswith("docs/markdown/final_project/") or relative.startswith("docs/templates/"):
+        if relative in {"docs/markdown/final_project", "docs/templates"} or relative.startswith(
+            ("docs/markdown/final_project/", "docs/templates/")
+        ):
             errors.append(f"{relative}: 읽기 전용 보호 경로입니다.")
             continue
         if not path.exists():
             errors.append(f"{relative}: 파일이 없습니다.")
+            continue
+        if path.is_dir():
+            errors.append(f"{relative}: 파일 경로를 지정해야 합니다.")
             continue
         if path.suffix.lower() != ".md" or not relative.startswith("docs/"):
             continue

@@ -20,16 +20,27 @@ MEMBERS = {
     "정승": "seung",
     "윤대성": "daesung",
 }
-GIT_HISTORY = re.compile(r"\b(fetch|pull|merge|push|commit hash|commit [0-9a-f]{7,40})\b", re.IGNORECASE)
+GIT_HISTORY = re.compile(
+    r"\b(?:git\s+)?(?:fetch|pull|push|checkout|switch)\b"
+    r"|\bgit\s+merge\b"
+    r"|\bmerge(?:d)?\s+(?:origin(?:/[\w.-]+)?|dev|main|junhee|minji|seung|daesung|jaehong|branch)\b"
+    r"|\b(?:origin(?:/[\w.-]+)?|dev|main|junhee|minji|seung|daesung|jaehong|branch)\s+merge(?:d)?\b"
+    r"|\bcommit(?:\s+hash|\s+[0-9a-f]{7,40})\b"
+    r"|(?:브랜치|branch)\s*(?:최신화|동기화)"
+    r"|(?:브랜치|branch|dev|main|origin(?:/[\w.-]+)?)\s*(?:병합|머지|푸시)"
+    r"|(?:병합|머지|푸시|커밋)\s*(?:완료|진행|반영|이력|해시)"
+    r"|(?:커밋|commit)\s*(?:해시|hash)?\s*[0-9a-f]{7,40}",
+    re.IGNORECASE,
+)
 
 
-def newest_daily_block(lines: list[str]) -> tuple[str | None, int]:
+def newest_daily_block(lines: list[str]) -> tuple[str | None, int, str]:
     starts = [i for i, line in enumerate(lines) if re.fullmatch(r"## \d{8}", line)]
     if not starts:
-        return None, 0
+        return None, 0, ""
     start = starts[0]
     end = next((i for i in starts[1:] if i > start), len(lines))
-    return lines[start][3:], end - start
+    return lines[start][3:], end - start, "\n".join(lines[start:end])
 
 
 def validate(path: Path) -> list[str]:
@@ -37,11 +48,12 @@ def validate(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8-sig")
     lines = text.splitlines()
     display = path.as_posix()
+    history_scope = text
     if re.search(r"^(<<<<<<<|=======|>>>>>>>)", text, re.MULTILINE):
         errors.append(f"{display}: merge conflict 표식이 있습니다.")
 
     if path.name == "일일보고.md":
-        date, count = newest_daily_block(lines)
+        date, count, history_scope = newest_daily_block(lines)
         if not date:
             errors.append(f"{display}: YYYYMMDD 날짜 블록이 없습니다.")
         elif count > 5:
@@ -58,10 +70,10 @@ def validate(path: Path) -> list[str]:
             errors.append(f"{display}: 주간보고 기간 제목 형식이 올바르지 않습니다.")
         if "작성자: 3팀" not in text:
             errors.append(f"{display}: 기본 작성자 `3팀` 표기가 없습니다.")
-        if GIT_HISTORY.search(text):
-            errors.append(f"{display}: Git 운영 이력이 포함되어 있습니다.")
     else:
         errors.append(f"{display}: 지원하는 보고 파일이 아닙니다.")
+    if GIT_HISTORY.search(history_scope):
+        errors.append(f"{display}: Git 운영 이력이 포함되어 있습니다.")
     return errors
 
 

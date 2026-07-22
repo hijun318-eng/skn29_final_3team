@@ -6,20 +6,25 @@ SensePlace는 그랜드 워커힐 서울을 모델링한 합성 운영 데이터
 
 VectorDB·sLLM·ML/DL·멀티 에이전트 비교는 Baseline 런타임과 분리된 실험 트랙으로 관리하며, 승인 전 실행 경로의 필수 dependency로 추가하지 않는다.
 
-## Baseline 기준 문서
+## 활성 기준 문서
 
-다른 AI 에이전트 세션은 제품·기능·데이터·일정 판단에 `SensePlace_기획서_초안.md`, `01_요구사항정의서.md`, `03_프로젝트기획서.md`, `02_WBS.md`의 활성 기준을 먼저 확인한다. [AI 에이전트 공용 작업 가이드](./docs/markdown/final_project/codex_공용작업_가이드.md)와 다른 `final_project/` 문서는 작업 역할·과거 계약 참고용 보호 자료이며, 활성 기준과 충돌하면 이를 덮어쓰지 않는다.
+제품·기능·데이터·일정은 다음 편집 가능한 문서를 먼저 확인한다. 실제 구현 여부는 코드와 테스트를 함께 확인한다.
 
-1. [AI 에이전트 공용 작업 가이드](./docs/markdown/final_project/codex_공용작업_가이드.md)
-2. [프로젝트 통제 문서](./docs/markdown/final_project/00_project_control.md)
-3. [공통 개발 명세(보호 문서·과거 제목 유지)](./docs/markdown/final_project/common_project_specification.md)
-4. 담당별 공용 문서
+- [통합 기획서](./docs/markdown/SensePlace_기획서_초안.md)
+- [요구사항정의서](./docs/markdown/01_요구사항정의서.md)
+- [WBS](./docs/markdown/02_WBS.md)
+- [프로젝트기획서](./docs/markdown/03_프로젝트기획서.md)
+- [화면설계서 초안](./docs/markdown/05_화면설계서_초안.md)
 
-구조·화면 지원 문서:
+## 보호 참고 자료
 
+`docs/markdown/final_project/`는 과거 계약·역할·일정 스냅샷을 보관하는 읽기 전용 폴더다. 다음 자료는 활성 기준과 충돌할 때 이를 덮어쓰지 않는다.
+
+- [AI 에이전트 공용 작업 가이드](./docs/markdown/final_project/codex_공용작업_가이드.md)
+- [프로젝트 통제 문서](./docs/markdown/final_project/00_project_control.md)
+- [공통 개발 명세(과거 제목 유지)](./docs/markdown/final_project/common_project_specification.md)
 - [최신 저장소 구조 감사](./docs/markdown/final_project/dev_repository_structure_audit.md)
 - [프로젝트 디렉터리 구조](./docs/markdown/final_project/project_directory_structure.md)
-- [화면설계서 초안](./docs/markdown/05_화면설계서_초안.md)
 
 ## 개인 branch 시작
 
@@ -38,7 +43,7 @@ git switch <본인 branch>
 ## AI 에이전트 반복 작업
 
 - 문서 생성·편집·이동·검증: [`manage-project-documents`](./.agents/skills/manage-project-documents/SKILL.md)
-- 저장소 변경 후 WBS 갱신: [`update-project-wbs`](./.agents/skills/update-project-wbs/SKILL.md)
+- 실행 일정·상태·담당·산출물 변경 시 WBS 갱신: [`update-project-wbs`](./.agents/skills/update-project-wbs/SKILL.md)
 - 개인·팀·주간보고 갱신: [`update-project-reports`](./.agents/skills/update-project-reports/SKILL.md)
 - 개인 branch의 `dev` 통합: [`merge-branch-to-dev`](./.agents/skills/merge-branch-to-dev/SKILL.md)
 - staged diff 기반 commit message: [`draft-commit-message`](./.agents/skills/draft-commit-message/SKILL.md)

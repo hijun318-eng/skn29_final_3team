@@ -131,6 +131,8 @@ def main() -> int:
     root = git_root()
     errors: list[str] = []
     values = args.paths or (staged_paths(root) if args.staged else [])
+    checked = 0
+    skipped = 0
 
     if not values:
         parser.error("검사할 경로가 없습니다. 경로를 지정하거나 --staged를 사용하세요.")
@@ -153,9 +155,12 @@ def main() -> int:
             errors.append(f"{relative}: 파일 경로를 지정해야 합니다.")
             continue
         if path.suffix.lower() != ".md" or not relative.startswith("docs/"):
+            skipped += 1
             continue
-        if relative == "docs/문서관리규칙.md" or relative.startswith("docs/markdown/daily_reports/"):
+        if relative.startswith("docs/markdown/daily_reports/"):
+            skipped += 1
             continue
+        checked += 1
         try:
             text = staged_text(root, relative) if args.staged else None
         except (subprocess.CalledProcessError, UnicodeDecodeError):
@@ -167,7 +172,7 @@ def main() -> int:
         for error in errors:
             print(f"[document-policy] {error}", file=sys.stderr)
         return 1
-    print(f"[document-policy] OK: {len(values)} path(s)")
+    print(f"[document-policy] OK: {checked} checked, {skipped} skipped")
     return 0
 
 

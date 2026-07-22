@@ -10,10 +10,10 @@ Use `docs/문서관리규칙.md` as the canonical policy. Keep policy tables the
 ## Workflow
 
 1. Run `git rev-parse --show-toplevel`, make that repository root the working directory for every later command, then run `git status --short` and `git branch --show-current`. Require Git and a Python 3.10+ launcher (`python` or `python3`) before using bundled scripts.
-2. Read `docs/문서관리규칙.md` before deciding a document path, number, template, or header. For an official artifact numbered 01 through 21, also read only its matching section in `docs/markdown/document_specs/산출물작성규격.md`.
+2. Read `docs/문서관리규칙.md` before deciding a document path, number, template, or header. For an artifact numbered 01 through 21, read only its matching section in `docs/markdown/document_specs/산출물작성규격.md` when creating it or changing, reviewing, converting, or validating its structure, fields, or headings.
 3. Classify the target as a Markdown working document, official deliverable, source template, or auxiliary file.
 4. Refuse writes under `docs/markdown/final_project/` and `docs/templates/`. Report the required correction and use an editable working document or `docs/deliverables/` instead.
-5. For a filename beginning with two digits and `_`, inspect the mapped template directly before editing. Preserve its top-level title order and hierarchy. If the mapping is ambiguous, stop for direction.
+5. For a filename beginning with two digits and `_`, inspect the mapped template when the task can affect structure, fields, headings, conversion, or submission. Preserve its top-level title order and hierarchy. Skip this step only for a text-only edit that cannot affect template structure; if the mapping is ambiguous, stop for direction.
 6. Before editing an existing document, inspect its current header, version, basis date, change history, links, and referenced contracts.
 7. Apply the smallest coherent change. When moving or renaming, update repository links in the same task.
 8. For an edited `docs/**/*.md` file outside the exempt paths, update the metadata header and recent change history according to the canonical rule. Record the actual human editor; never invent a name.

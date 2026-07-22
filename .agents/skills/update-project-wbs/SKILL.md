@@ -1,6 +1,6 @@
 ---
 name: update-project-wbs
-description: Update and validate this repository's execution WBS, schedule views, and work log after repository file changes. Use when a non-report file-changing task finishes and AGENTS.md requires docs/markdown/02_WBS.md to reflect it. Do not use for read-only investigation, report-only changes, Git integration, or speculative schedule changes.
+description: Update and validate this repository's execution WBS, schedule views, and work log when completed work changes a mapped task's schedule, status, owner, deliverable, or evidence, or when the user explicitly requests a WBS update. Do not use for routine code, document, or configuration edits with no execution-schedule impact; read-only investigation; report-only changes; Git integration; or speculative schedule changes.
 ---
 
 # Update Project WBS
@@ -9,11 +9,12 @@ Keep `docs/markdown/02_WBS.md` aligned with completed repository work without in
 
 ## Decide whether to run
 
-Run this skill after a repository file-changing task. Skip it when:
+Run this skill when verified work changes the schedule, status, owner, deliverable, or evidence of an execution WBS task, or when the user explicitly requests a WBS update. Skip it when:
 
 - no repository file changed;
 - only a personal daily report, date-based team summary, or weekly report changed;
 - the requested work is investigation or explanation only.
+- a routine document, code, or configuration change has no effect on an execution WBS task.
 
 This skill updates WBS content only. It does not stage, commit, push, merge, or update project reports.
 
@@ -39,4 +40,4 @@ This skill updates WBS content only. It does not stage, commit, push, merge, or 
 
 ## Completion report
 
-Report the updated WBS ID, whether schedule views changed, validation results, and any unresolved schedule decision. For report-only work, state `WBS 갱신 제외(보고 전용)` instead of editing the WBS.
+Report the updated WBS ID, whether schedule views changed, validation results, and any unresolved schedule decision. When skipped, state `WBS 갱신 제외(영향 없음/보고 전용/읽기 전용)` with the applicable reason instead of editing the WBS.

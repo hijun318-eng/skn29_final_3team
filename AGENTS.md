@@ -33,7 +33,7 @@
 - 문서 위치·번호·파일명·헤더·템플릿 매핑의 단일 기준은 `docs/문서관리규칙.md`다.
 - `docs/`의 문서를 생성·편집·이동·검토할 때 `.agents/skills/manage-project-documents/SKILL.md`를 적용한다.
 - `docs/markdown/final_project/`와 `docs/templates/`는 읽기 전용이다. 생성·수정·삭제·이동·이름 변경·덮어쓰기를 하지 않는다.
-- 저장소 파일을 변경한 작업을 마치면 `.agents/skills/update-project-wbs/SKILL.md`를 적용한다. 조사·설명과 보고 전용 변경은 제외한다.
+- 실행 WBS 행과 연결된 일정·상태·담당·산출물·근거가 바뀌거나 사용자가 WBS 갱신을 요청하면 `.agents/skills/update-project-wbs/SKILL.md`를 적용한다. 단순 조사·설명, 보고 전용 변경, 실행 일정에 영향 없는 문서·코드·설정 정리는 제외한다.
 - 개인 branch에서 파일 변경을 마치거나 날짜·기간이 지정된 보고 요청을 받으면 `.agents/skills/update-project-reports/SKILL.md`를 적용한다. `dev`에서는 작성자를 추정하지 않는다.
 - 정책 데이터는 전용 문서, 조건부 절차는 `.agents/skills`, 항상 적용할 원칙과 권한 경계는 이 파일에서 관리한다.
 
@@ -43,5 +43,5 @@
 - 변경 파일
 - 실행한 검증과 결과
 - 실행하지 못한 검증
-- 갱신한 WBS ID 또는 `WBS 갱신 제외(보고 전용)`
+- 갱신한 WBS ID 또는 `WBS 갱신 제외(영향 없음/보고 전용/읽기 전용)`
 - 남은 위험 또는 결정 필요 항목

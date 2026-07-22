@@ -16,7 +16,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 COMMON_ROWS = ["문서 설명", "문서 분류", "버전", "문서 기준일", "작성·수정"]
 NUMBERED_ROWS = ["산출물 번호", "제출 일자", "대응 템플릿"]
-CLASSIFICATIONS = {"산출물 작업본", "일반 문서"}
+CLASSIFICATIONS = {"산출물 작업본", "일반 문서", "규칙 문서"}
 
 
 def git_root() -> Path:
@@ -54,9 +54,10 @@ def table_rows(lines: list[str], start: int) -> tuple[list[str], dict[str, str]]
     return order, values
 
 
-def validate_markdown(root: Path, path: Path, relative: str) -> list[str]:
+def validate_markdown(root: Path, path: Path, relative: str, text: str | None = None) -> list[str]:
     errors: list[str] = []
-    text = path.read_text(encoding="utf-8-sig")
+    if text is None:
+        text = path.read_text(encoding="utf-8-sig")
     lines = text.splitlines()
     if not lines or not lines[0].startswith("# "):
         return [f"{relative}: 첫 줄에 최상위 제목(`# `)이 필요합니다."]
@@ -98,14 +99,43 @@ def validate_markdown(root: Path, path: Path, relative: str) -> list[str]:
     return errors
 
 
+def staged_paths(root: Path) -> list[str]:
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    return [item.decode("utf-8") for item in result.stdout.split(b"\0") if item]
+
+
+def staged_text(root: Path, relative: str) -> str:
+    result = subprocess.run(
+        ["git", "show", f":{relative}"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    return result.stdout.decode("utf-8-sig")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("paths", nargs="+", help="검사할 저장소 상대 또는 절대 경로")
+    parser.add_argument("paths", nargs="*", help="검사할 저장소 상대 또는 절대 경로")
+    parser.add_argument(
+        "--staged",
+        action="store_true",
+        help="경로를 생략하면 staged 파일을 찾고 Git index의 내용을 검사합니다.",
+    )
     args = parser.parse_args()
     root = git_root()
     errors: list[str] = []
+    values = args.paths or (staged_paths(root) if args.staged else [])
 
-    for value in args.paths:
+    if not values:
+        parser.error("검사할 경로가 없습니다. 경로를 지정하거나 --staged를 사용하세요.")
+
+    for value in values:
         try:
             path, relative = normalize(root, value)
         except ValueError as exc:
@@ -116,23 +146,28 @@ def main() -> int:
         ):
             errors.append(f"{relative}: 읽기 전용 보호 경로입니다.")
             continue
-        if not path.exists():
+        if not args.staged and not path.exists():
             errors.append(f"{relative}: 파일이 없습니다.")
             continue
-        if path.is_dir():
+        if not args.staged and path.is_dir():
             errors.append(f"{relative}: 파일 경로를 지정해야 합니다.")
             continue
         if path.suffix.lower() != ".md" or not relative.startswith("docs/"):
             continue
         if relative == "docs/문서관리규칙.md" or relative.startswith("docs/markdown/daily_reports/"):
             continue
-        errors.extend(validate_markdown(root, path, relative))
+        try:
+            text = staged_text(root, relative) if args.staged else None
+        except (subprocess.CalledProcessError, UnicodeDecodeError):
+            errors.append(f"{relative}: staged 내용을 UTF-8 Markdown으로 읽을 수 없습니다.")
+            continue
+        errors.extend(validate_markdown(root, path, relative, text))
 
     if errors:
         for error in errors:
             print(f"[document-policy] {error}", file=sys.stderr)
         return 1
-    print(f"[document-policy] OK: {len(args.paths)} path(s)")
+    print(f"[document-policy] OK: {len(values)} path(s)")
     return 0
 
 

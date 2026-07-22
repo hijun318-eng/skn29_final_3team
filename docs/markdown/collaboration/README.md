@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 팀원 개인 branch와 dev·main 통합 정책 및 사람이 수행하는 Git 절차 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.2 |
-| 문서 기준일 | 2026-07-22 09:19 |
+| 버전 | v1.3 |
+| 문서 기준일 | 2026-07-22 16:16 |
 | 작성·수정 | 박준희 |
 
 각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다.
@@ -45,7 +45,7 @@ git config --local --get core.hooksPath
 
 출력이 `.githooks`이면 활성화된 상태다.
 
-- `pre-commit`: secret, 실제·생성 데이터, 10MB 초과 파일을 검사한다.
+- `pre-commit`: secret, 실제·생성 데이터, 10MB 초과 파일과 staged Markdown의 문서관리규칙 준수 여부를 검사한다.
 - `commit-msg`: `<type>(<scope>): <한국어 summary>` 형식과 72자 제한을 검사한다.
 - 검사가 실패하면 표시된 항목을 수정한 뒤 다시 commit한다. `--no-verify`로 우회하지 않는다.
 
@@ -150,5 +150,6 @@ git push origin main
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.3 | 2026-07-22 16:16 | pre-commit의 staged Markdown 문서관리규칙 자동 검증 추가 |
 | v1.2 | 2026-07-22 09:19 | AI 에이전트 범용 표현 반영과 문서 버전·변경 이력 동기화 |
 | v1.1 | 2026-07-21 17:32 | AI 에이전트의 개인 branch→dev 반복 절차를 `merge-branch-to-dev` Skill로 분리 |

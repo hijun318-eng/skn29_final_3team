@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | SensePlace의 실행 작업, 담당, 상태, 일정, 산출물과 요구사항 추적 관계를 관리하는 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v3.8 |
-| 문서 기준일 | 2026-07-23 10:14 |
+| 버전 | v4.0 |
+| 문서 기준일 | 2026-07-23 11:26 |
 | 작성·수정 | 박준희 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -471,6 +471,8 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 관련 파일 |
 |---|---|---|---|
+| 2026-07-23 11:26 | 1.4, 8.2 | OpenWiki를 API key workflow 대신 로컬 ChatGPT/Codex OAuth provider로 초기화하고 실제 저장소 기준 위키 5개와 credential·외부 전송 운영 경계를 생성 | `openwiki/`, `AGENTS.md`, `CLAUDE.md`, `README.md` |
+| 2026-07-23 11:08 | 1.4, 8.2 | OpenWiki code mode의 수동 갱신 workflow, 저장소 전용 OKF 안내와 AI 에이전트 진입 지침을 추가하고 자동 비용·외부 전송 방지 경계를 명시 | `.github/workflows/openwiki-update.yml`, `openwiki/`, `AGENTS.md`, `CLAUDE.md`, `README.md` |
 | 2026-07-23 10:14 | 1.4, 1.6, 1.7, 8.2 | 공식 번호 문서와 AI 참고 자료를 분리하고 `ai_docs/`·확정 화면설계서 경로로 문서·실행 지침·검증기를 정합화 | `AGENTS.md`, `README.md`, `docs/문서관리규칙.md`, `docs/markdown/01_요구사항정의서.md`, `docs/markdown/02_WBS.md`, `docs/markdown/03_프로젝트기획서.md`, `docs/markdown/05_화면설계서.md`, `.agents/skills/` |
 | 2026-07-22 16:50 | 1.4, 8.2 | AI 문서의 근거 우선순위·활성/보호 자료를 명확히 하고 중복 지침을 축약했으며 WBS 실행 조건·문서 검증 결과·Skill 메타데이터를 정비 | `AGENTS.md`, `README.md`, `docs/문서관리규칙.md`, `.agents/skills/` |
 | 2026-07-22 16:31 | 1.4, 8.2 | AI 에이전트가 산출물 01~21 상세 규격을 참고할 조건·생략 범위·확인 순서·충돌 우선순위를 문서관리규칙에 요약 | `docs/문서관리규칙.md`, `docs/markdown/02_WBS.md` |
@@ -500,6 +502,8 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v4.0 | 2026-07-23 11:26 | ChatGPT/Codex OAuth 기반 OpenWiki 초기화와 생성 위키 근거 기록 |
+| v3.9 | 2026-07-23 11:08 | OpenWiki 수동 갱신 workflow와 저장소 보조 위키 적용 근거 기록 |
 | v3.8 | 2026-07-23 10:14 | 문서 폴더 분류에 맞춰 AI 참고 자료·화면설계서 근거 경로와 작업 로그 정합화 |
 | v3.7 | 2026-07-22 16:50 | AI 에이전트 문서·Skill 중복 축약과 WBS 실행 조건·검증 범위 정비 기록 |
 | v3.6 | 2026-07-22 16:31 | 산출물 01~21 상세 규격의 AI 에이전트 참고 조건 명문화 |

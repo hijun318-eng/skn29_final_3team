@@ -34,6 +34,10 @@ frontend/
 .DS_Store
 Thumbs.db
 
+# OpenCode plugin runtime state
+.omo/
+.sisyphus/
+
 # Shared repository guidance and collaboration docs are intentionally versioned
 !docs/
 !docs/**

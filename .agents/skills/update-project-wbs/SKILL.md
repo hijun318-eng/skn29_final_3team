@@ -35,7 +35,7 @@ This skill updates WBS content only. It does not stage, commit, push, merge, or 
 - Treat `docs/markdown/02_WBS.md` as the schedule source of truth; do not duplicate its task table inside this skill.
 - Keep template-required structure intact and inspect the mapped WBS template when structural fields change.
 - Do not infer an author, owner, completion percentage, schedule shift, or deliverable state.
-- Do not edit protected references under `docs/markdown/final_project/` or `docs/templates/`.
+- Treat `docs/markdown/ai_docs/` as reference material and do not use it to override the active WBS; do not edit protected originals under `docs/templates/`.
 - Avoid recursive records: WBS updates caused solely by report maintenance are excluded.
 
 ## Completion report

@@ -26,7 +26,7 @@ Resolve the repository root with `git rev-parse --show-toplevel` and use it as t
 ## Team and weekly workflow
 
 1. Read all five personal `일일보고.md` files directly. Do not use a date summary as the source of truth.
-2. Resolve the official week from `docs/markdown/final_project/최종_프로젝트_산출물_및_전체_일정.md`.
+2. Resolve the official week from `docs/markdown/ai_docs/최종_프로젝트_산출물_및_전체_일정.md`.
 3. For each target date, preserve the existing team-summary structure, include all five mapped members, and mark missing source blocks as `보고 없음`.
 4. Rebuild each affected weekly report from all source dates in its applicable range. Merge similar work without inventing status, owners, schedules, or completion.
 5. Remove branch synchronization, fetch, merge, commit, push, and commit-hash history while preserving actual work results.

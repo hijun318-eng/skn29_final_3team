@@ -143,9 +143,7 @@ def main() -> int:
         except ValueError as exc:
             errors.append(str(exc))
             continue
-        if relative in {"docs/markdown/final_project", "docs/templates"} or relative.startswith(
-            ("docs/markdown/final_project/", "docs/templates/")
-        ):
+        if relative == "docs/templates" or relative.startswith("docs/templates/"):
             errors.append(f"{relative}: 읽기 전용 보호 경로입니다.")
             continue
         if not args.staged and not path.exists():
@@ -157,7 +155,7 @@ def main() -> int:
         if path.suffix.lower() != ".md" or not relative.startswith("docs/"):
             skipped += 1
             continue
-        if relative.startswith("docs/markdown/daily_reports/"):
+        if relative.startswith(("docs/markdown/ai_docs/", "docs/markdown/daily_reports/")):
             skipped += 1
             continue
         checked += 1

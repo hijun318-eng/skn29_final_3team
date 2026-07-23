@@ -4,15 +4,15 @@
 |---|---|
 | 문서 설명 | SensePlace의 실행 작업, 담당, 상태, 일정, 산출물과 요구사항 추적 관계를 관리하는 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v3.7 |
-| 문서 기준일 | 2026-07-22 16:50 |
+| 버전 | v3.8 |
+| 문서 기준일 | 2026-07-23 10:14 |
 | 작성·수정 | 박준희 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
 | 대응 템플릿 | `templates/[기획] WBS_양식 (1)_27기_0팀.xlsx`, `templates/[기획] WBS_양식(2)_27기_0팀.xlsx` |
 
 > 2026-07-10~09-03 · 5인(박준희·송민지·김재홍·정승·윤대성(파랑새)) · 실행 일정 63개 태스크 · 공식 산출물 21건 + 옵션 1건
-> 공식 서비스명 **SensePlace** · `SensePlace_기획서_초안.md`의 Baseline·실험·Gate 일정을 실행 기준으로 사용한다.
+> 공식 서비스명 **SensePlace** · `ai_docs/SensePlace_기획서_초안.md`의 Baseline·실험·Gate는 참고하되 일정·상태는 이 문서를 실행 기준으로 사용한다.
 > 실행 추적, 기획·요구사항 추적, 8주 개발 일정의 세 관점을 한 문서에 통합했다.
 
 ## 대응 양식 구조
@@ -58,12 +58,12 @@
 | wbs_id | 검증 가능한 결과 | deliverable_id | requirement_ids | owner | start_date | due_date | status | dependency | evidence_path |
 |---|---|---|---|---|---|---|---|---|---|
 | `1.5` | SensePlace 기획·요구사항·WBS 범위 동기화 | `DOC-003` | 전체 Baseline | 박준희·송민지 | 07/13 | 07/24 | 검토 | SensePlace 결정 적용 | `docs/markdown/03_프로젝트기획서.md` |
-| `1.6` | 공식 화면설계서 제출·후속 동기화 보류 | `DOC-013` | 화면 요구사항 | 송민지 | 07/13 | 07/24 | 진행 | 없음 | `docs/markdown/05_화면설계서_초안.md`는 이번 작업에서 변경하지 않음 |
-| `1.7` | 데이터 항목·시간/grain·권한·8 intent(핵심 4종 P0 우선 E2E: 기간 KPI·전주 비교·시간대 도착·근거 조회)·평가 분리·LLM 모델 최소 합의 | `DOC-003`, `DOC-010` | 전체 Baseline | 박준희·김재홍·정승·윤대성 | 07/27 | 07/28 | 검토 | SensePlace 기획 | `docs/markdown/01_요구사항정의서.md`, `docs/markdown/walkerhill/워커힐_WISE_벤치마킹_적용안.md`, `docs/markdown/SensePlace_FastAPI_내부외부_연동범위.md` |
+| `1.6` | 공식 화면설계서 제출·후속 동기화 보류 | `DOC-013` | 화면 요구사항 | 송민지 | 07/13 | 07/24 | 진행 | 없음 | `docs/markdown/05_화면설계서.md`는 이번 작업에서 경로·표준 헤더만 정합화 |
+| `1.7` | 데이터 항목·시간/grain·권한·8 intent(핵심 4종 P0 우선 E2E: 기간 KPI·전주 비교·시간대 도착·근거 조회)·평가 분리·LLM 모델 최소 합의 | `DOC-003`, `DOC-010` | 전체 Baseline | 박준희·김재홍·정승·윤대성 | 07/27 | 07/28 | 검토 | SensePlace 기획 | `docs/markdown/01_요구사항정의서.md`, `docs/markdown/ai_docs/워커힐_WISE_벤치마킹_적용안.md`, `docs/markdown/ai_docs/SensePlace_FastAPI_내부외부_연동범위.md` |
 | `2.2`, `2.3`, `2.5`, `2.10` | 전량 합성 VOC·운영 fixture·manifest와 적재 전 validation | `DOC-004` | `REQ-F-001`, `REQ-NF-001` | 정승·박준희 | 07/29 | 08/05 | 대기 | `1.7` 최소 합의·LLM 모델 선택 완료 | 미생성 |
 | `2.7`, `2.8`, `2.9` | PostgreSQL 합성 analytics view·metric catalog 설계 초안·검증 | `DOC-005` | `REQ-F-001`~`005` | 정승·김재홍 | 07/21 | 08/05 | 대기 | `2.9` 초안은 선행 가능, `1.7` 승인 후 전체 검증·validation 통과 fixture | 미생성 |
 | `5.2`~`5.4`, `5.9`, `5.10` | 결정론적 KPI·적재 후 Gate·감지·교차분석·Incident 입력 완성 | `DOC-010` | `REQ-F-001`,`004`,`005` | 김재홍·정승·윤대성·박준희 | 08/07 | 08/12 | 대기 | analytics view | 미생성 |
-| `6.1`~`6.4`, `6.9`, `6.12`~`6.14` | 기능 A 로그인·권한·job·plan·SQL Guard·차트 연결 | `DOC-014` | `REQ-F-002`,`003`, `REQ-NF-001` | 김재홍·윤대성·송민지 | 07/28 | 08/12 | 대기 | `1.7` 최소 합의 | 연동 경계 작업본: `docs/markdown/SensePlace_FastAPI_내부외부_연동범위.md` |
+| `6.1`~`6.4`, `6.9`, `6.12`~`6.14` | 기능 A 로그인·권한·job·plan·SQL Guard·차트 연결 | `DOC-014` | `REQ-F-002`,`003`, `REQ-NF-001` | 김재홍·윤대성·송민지 | 07/28 | 08/12 | 대기 | `1.7` 최소 합의 | 연동 경계 참고: `docs/markdown/ai_docs/SensePlace_FastAPI_내부외부_연동범위.md` |
 | `6.3`, `6.6` | 기능 B Incident workflow·evidence·DRAFT·결정 연결 | `DOC-014` | `REQ-F-004`~`007`, `REQ-NF-002` | 김재홍·윤대성·송민지·박준희 | 08/12 | 08/12 | 대기 | detection·evidence | 미생성 |
 | `7.1` | 반례 세트 v2 21건 Baseline Gate evidence | `DOC-016` | Gate 차단 Baseline | 전원 | 08/13 | 08/14 | 대기 | 기능 A/B 완료 | 미생성 |
 | `7.6` | 반례 Gate 자동 채점·후속 회귀 결과와 결함 조율 | `DOC-016` | `TST-001`, `TST-003` | 박준희·윤대성·김재홍 | 08/13 | 08/28 | 대기 | 기능 A/B 완료·Gate 판정 | 미생성 |
@@ -471,6 +471,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 관련 파일 |
 |---|---|---|---|
+| 2026-07-23 10:14 | 1.4, 1.6, 1.7, 8.2 | 공식 번호 문서와 AI 참고 자료를 분리하고 `ai_docs/`·확정 화면설계서 경로로 문서·실행 지침·검증기를 정합화 | `AGENTS.md`, `README.md`, `docs/문서관리규칙.md`, `docs/markdown/01_요구사항정의서.md`, `docs/markdown/02_WBS.md`, `docs/markdown/03_프로젝트기획서.md`, `docs/markdown/05_화면설계서.md`, `.agents/skills/` |
 | 2026-07-22 16:50 | 1.4, 8.2 | AI 문서의 근거 우선순위·활성/보호 자료를 명확히 하고 중복 지침을 축약했으며 WBS 실행 조건·문서 검증 결과·Skill 메타데이터를 정비 | `AGENTS.md`, `README.md`, `docs/문서관리규칙.md`, `.agents/skills/` |
 | 2026-07-22 16:31 | 1.4, 8.2 | AI 에이전트가 산출물 01~21 상세 규격을 참고할 조건·생략 범위·확인 순서·충돌 우선순위를 문서관리규칙에 요약 | `docs/문서관리규칙.md`, `docs/markdown/02_WBS.md` |
 | 2026-07-22 16:16 | 1.4, 8.2 | Git pre-commit이 staged Markdown 본문을 기준으로 문서관리규칙 준수 여부를 자동 검사하도록 hook과 검증기를 연결 | `.githooks/pre-commit`, `.agents/skills/manage-project-documents/scripts/check_document_policy.py`, `docs/markdown/collaboration/README.md` |
@@ -483,7 +484,7 @@ gantt
 | 2026-07-21 17:32 | 1.4, 8.2 | 문서 관리·보고 갱신·개인 branch→dev 통합 Skill 3종과 읽기 전용 검증 script를 추가하고 AGENTS·전용 README의 반복 실행 절차를 Skill 호출로 전환 | `.agents/skills/`, `AGENTS.md`, `README.md`, `docs/문서관리규칙.md`, `docs/markdown/collaboration/README.md`, `docs/markdown/daily_reports/README.md` |
 | 2026-07-21 | 8.2 | `docs/markdown` 하위 HTML preview를 local-only로 분류해 Git 목록·업로드 대상에서 제외하고 보호 폴더의 기존 파일은 수정·삭제하지 않음 | `.gitignore`, `docs/markdown/02_WBS.md` |
 | 2026-07-21 | 1.4, 8.2 | WBS 제목·표준 메타데이터·산출물 번호·제출일·대응 양식·최근 변경 내역을 문서관리 규칙에 맞게 추가하고 `Codex` 갱신자 표기를 제거 | `docs/markdown/02_WBS.md`, `docs/문서관리규칙.md`, WBS 양식 2종(읽기 전용) |
-| 2026-07-21 | 1.7, 2.9, 5.7, 6.9, 6.14 | 구현 전 백엔드 상태·계약 충돌과 FastAPI 내부·외부 연동 경계를 검토하고, WISE 공개 방향·적용 경계 및 최신 SensePlace 계약에 맞는 편집 가능 Markdown 작업 문서 2건으로 정리 | `docs/markdown/walkerhill/워커힐_WISE_벤치마킹_적용안.md`, `docs/markdown/SensePlace_FastAPI_내부외부_연동범위.md`, 백엔드 작업영역 검토 문서, WBS |
+| 2026-07-21 | 1.7, 2.9, 5.7, 6.9, 6.14 | 구현 전 백엔드 상태·계약 충돌과 FastAPI 내부·외부 연동 경계를 검토하고, WISE 공개 방향·적용 경계 및 최신 SensePlace 계약에 맞는 참고 Markdown 2건으로 정리 | `docs/markdown/ai_docs/워커힐_WISE_벤치마킹_적용안.md`, `docs/markdown/ai_docs/SensePlace_FastAPI_내부외부_연동범위.md`, 백엔드 작업영역 검토 문서, WBS |
 | 2026-07-21 | 1.7, 3.7, 6.3, 7.1 | 마감 보완 4건: §15 완료형→계획·조건형, `VOC_PROMPT_INJECTION` 반례·테스트 전용 데이터 예외 추가, Incident 최소 식별자(`business_key`·단순 status) 정의, intent 핵심 4종 P0 우선 순서. "21건" 표기 불변, window 병합·lifecycle은 Scenario Pack 유보 | 기획서·프로젝트기획서·WBS |
 | 2026-07-21 | 1.3, 1.5, 1.7, 6.x, 7.x | 활성 단일기준 정리: 공식 제목·감성 P0·Gate 21건+8주차 Golden Path·VOC 분리 schema·`job`/`audit_event`·API version·Incident DRAFT 경계, UI-004·OPS-001 검증 분리 | 기획 4문서 |
 | 2026-07-21 | 1.3, 1.5, 3.6, 6.x, 7.x, 8.4 | Baseline 43 최종 범위와 5주차 Gate 차단 기준 분리, 비차단 최종검증·단계형 회귀 동기화, pgvector 수행·GraphDB 미도입 명시 | 기획 4문서 |
@@ -491,7 +492,7 @@ gantt
 | 2026-07-21 | 1.3~8.5 | 네 기획 문서 동기화: 서비스 범위·최소 데이터/연동 합의·21건 반례·평가 분리·역할·8주 일정, 실행 ID/Planning View ID 분리 | 기획 4문서 |
 | 2026-07-20 | 1.3, 1.5, 1.7 | SensePlace 기획 통합: 단일 호텔·전량 합성, 기능 A/B, Django 세션 인증, 8 intent, 초기 반례 Gate, 독립 실험, 5회 최종 재현. 요구사항 62(=43+8+11) 분류·담당 트랙 표기 통일 | 기획 4문서 |
 | 2026-07-20 | 1.5, 1.6 | 프로젝트 기획서 27기 양식 7목차 동기화, 화면설계서 관리자 의사결정 중심 정보 우선순위·MVP Golden Path·4화면·서비스 책임 확정 | 프로젝트기획서·화면설계서 |
-| 2026-07-20 | 1.4, 8.2, 9.1 | 운영 기반 정리: WBS 단일기준 `02_WBS.md` 전환·작업 로그 신설, 일일/주간보고 통합·branch 병합 규칙, 보호 폴더(`final_project/`·`templates/`) 지정, 공용 작업 가이드·문서관리규칙 | AGENTS·문서관리규칙·collaboration·final_project |
+| 2026-07-20 | 1.4, 8.2, 9.1 | 운영 기반 정리: WBS 단일기준 `02_WBS.md` 전환·작업 로그 신설, 일일/주간보고 통합·branch 병합 규칙, 참고 자료와 템플릿의 관리 경계 지정, 공용 작업 가이드·문서관리규칙 | AGENTS·문서관리규칙·collaboration·AI 참고 자료 |
 
 > 2026-07-20 이전의 개별 편집 단위 기록은 위 항목으로 통합했다. 세부 diff는 git 이력에서 확인한다.
 
@@ -499,6 +500,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.8 | 2026-07-23 10:14 | 문서 폴더 분류에 맞춰 AI 참고 자료·화면설계서 근거 경로와 작업 로그 정합화 |
 | v3.7 | 2026-07-22 16:50 | AI 에이전트 문서·Skill 중복 축약과 WBS 실행 조건·검증 범위 정비 기록 |
 | v3.6 | 2026-07-22 16:31 | 산출물 01~21 상세 규격의 AI 에이전트 참고 조건 명문화 |
 | v3.5 | 2026-07-22 16:16 | staged Markdown 문서 정책을 강제하는 pre-commit 검증 연결 |

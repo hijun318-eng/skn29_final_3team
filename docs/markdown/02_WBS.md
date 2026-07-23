@@ -4,9 +4,9 @@
 |---|---|
 | 문서 설명 | SensePlace의 실행 작업, 담당, 상태, 일정, 산출물과 요구사항 추적 관계를 관리하는 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v2.7 |
-| 문서 기준일 | 2026-07-21 15:50 |
-| 작성·수정 | 김재홍 |
+| 버전 | v3.6 |
+| 문서 기준일 | 2026-07-23 |
+| 작성·수정 | 송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
 | 대응 템플릿 | `templates/[기획] WBS_양식 (1)_27기_0팀.xlsx`, `templates/[기획] WBS_양식(2)_27기_0팀.xlsx` |
@@ -235,7 +235,7 @@ gantt
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 제출일 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
 | 4.1★ | React 목업 6종 기본 흐름·역할 선택 | UI 프로토타입 | 송민지 | 대기 | 07/28 | 08/03 |  |
-| 4.2★ | 합의된 역할·상태·근거·합성 표시를 반영한 fixture·차트·DRAFT 흐름 | 중간발표 화면 | 송민지·박준희 | 대기 | 07/29 | 08/05 |  |
+| 4.2★ | 합의된 역할·상태·근거·합성 표시를 반영한 fixture·차트·DRAFT 흐름 | 중간발표 화면 | 송민지·박준희 | 진행 | 07/29 | 08/05 | React 목업에 합성 시나리오 운영 맵·대응안 비교·관리자 결정 흐름 구현 |
 | 4.3 | 중간발표 자료·대본·시연·리허설 통합 | 중간 발표 PT 자료 | 정승 | 대기 | 08/03 | 08/06 | **08/06** |
 | 4.4 | 중간발표 진행 및 피드백 수집 | 피드백 목록 | 정승 | 대기 | 08/06 | 08/07 |  |
 
@@ -471,6 +471,14 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 관련 파일 |
 |---|---|---|---|
+| 2026-07-23 | 4.2 | 공통 운영 알림에 항목별 확인·삭제를 추가하고 미확인 알림 수 배지를 유지하며 확인한 동일 상태 알림의 재등록을 방지 | `frontend/src/components/common/NotificationBell.jsx`, `frontend/src/services/operationAlerts.js`, `frontend/src/styles/global.css` |
+| 2026-07-23 | 4.2 | 관리자 로그인 화면의 메인 카피를 SENSE PLACE와 OPERATION INTELLIGENCE 영문 워드마크 조합으로 변경하고 로그인·운영 화면의 브랜드 설명을 Operation Intelligence로 통일 | `frontend/src/pages/LoginPage.jsx`, `frontend/src/components/layout/Sidebar.jsx` |
+| 2026-07-23 | 4.2 | 실시간 모니터링의 위험·주의 시설 감지를 공통 알림으로 발행하고 종 아이콘 배지·자동 알림 패널·탭 동기화·시설 상세 이동을 연결 | `frontend/src/services/operationAlerts.js`, `frontend/src/components/common/NotificationBell.jsx`, `frontend/src/pages/MonitoringPage.jsx`, `frontend/src/components/map/OperationMapSection.jsx`, `frontend/src/components/layout/Header.jsx`, `frontend/src/styles/global.css` |
+| 2026-07-23 | 4.2 | 관리자 로그인 화면, 브라우저 세션 기반 데모 인증, 보호 라우트, 헤더 프로필 메뉴와 로그아웃 흐름을 React 목업에 추가 | `frontend/src/pages/LoginPage.jsx`, `frontend/src/services/demoAuth.js`, `frontend/src/app/App.jsx`, `frontend/src/components/layout/Header.jsx`, `frontend/src/styles/global.css` |
+| 2026-07-23 | 4.2 | 관리자 사이드바의 SENSE PLACE 브랜드를 운영 대시보드 첫 화면으로 이동하는 공통 홈 링크로 변경하고 키보드 포커스를 보완 | `frontend/src/components/layout/Sidebar.jsx`, `frontend/src/styles/global.css` |
+| 2026-07-23 | 4.2 | 영상 레퍼런스의 질문→분석 과정→요약→추세→예측→대응 흐름을 호텔 VOC 이슈 분석 화면에 적용하고 합성 데이터 표시·근거 상태·반응형 레이아웃을 보완 | `frontend/src/pages/IssueAnalysisPage.jsx`, `frontend/src/styles/global.css` |
+| 2026-07-22 | 4.2 | 단순 도형 지도를 산림·진입도로·호텔 건물군·강변도로의 공간 관계가 보이는 캠퍼스형 SVG 운영 맵으로 보완하고 시설·혼잡 오버레이 위치를 재배치 | `frontend/src/components/map/HotelOperationMap.jsx`, `frontend/src/components/map/operationMapData.js`, `frontend/src/styles/global.css` |
+| 2026-07-21 | 4.2 | React 운영 홈에 간소화 호텔 맵, TMAP식 혼잡 상태, 대응 옵션, 시간 변화 시뮬레이션과 승인·보류·반려 목업을 통합하고 자동 실행 금지·합성 데이터 한계 표시 | `frontend/src/components/map/`, `frontend/src/components/simulation/`, `frontend/src/pages/DashboardPage.jsx`, `frontend/src/styles/global.css` |
 | 2026-07-21 | 1.4 | 실행 WBS 63개와 공식 산출물 21건+옵션 1건을 현재 Markdown 기준으로 동기화하고, 드롭다운·상태색·진척률·38일 평일 간트가 포함된 공식 Excel 산출물 생성 | `docs/deliverables/02_WBS_29기_3팀.xlsx`, `docs/markdown/02_WBS.md` |
 | 2026-07-21 | 8.2 | `docs/markdown` 하위 HTML preview를 local-only로 분류해 Git 목록·업로드 대상에서 제외하고 보호 폴더의 기존 파일은 수정·삭제하지 않음 | `.gitignore`, `docs/markdown/02_WBS.md` |
 | 2026-07-21 | 1.4, 8.2 | WBS 제목·표준 메타데이터·산출물 번호·제출일·대응 양식·최근 변경 내역을 문서관리 규칙에 맞게 추가하고 `Codex` 갱신자 표기를 제거 | `docs/markdown/02_WBS.md`, `docs/문서관리규칙.md`, WBS 양식 2종(읽기 전용) |
@@ -490,6 +498,14 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.6 | 2026-07-23 | WBS 4.2 알림별 확인·삭제, 잔여 알림 수 배지와 동일 상태 재등록 방지 적용 |
+| v3.5 | 2026-07-23 | WBS 4.2 로그인 메인 카피와 로그인·운영 화면 브랜드 설명을 Operation Intelligence로 통일 |
+| v3.4 | 2026-07-23 | WBS 4.2 실시간 모니터링 위험 감지와 공통 알림 배지·목록·시설 이동 연동 |
+| v3.3 | 2026-07-23 | WBS 4.2 프런트엔드 데모 로그인·세션 보호·프로필 로그아웃 흐름 구현 |
+| v3.2 | 2026-07-23 | WBS 4.2 SENSE PLACE 브랜드의 운영 대시보드 홈 이동 추가 |
+| v3.1 | 2026-07-23 | WBS 4.2 이슈 분석의 대화형 분석 리포트·추세·예측 시나리오·반응형 화면 구현 |
+| v3.0 | 2026-07-22 | WBS 4.2 운영 맵의 캠퍼스형 공간 구조·시설 배치·혼잡 오버레이 보완 |
+| v2.9 | 2026-07-21 21:47 | WBS 4.2 React 운영 맵·대응 시뮬레이션 목업 진행 상태와 구현 이력 반영 |
 | v2.8 | 2026-07-21 16:30 | 실행 WBS와 공식 산출물 일정을 Excel 산출물로 동기화 |
 | v2.7 | 2026-07-21 15:50 | `docs/markdown` 하위 HTML preview의 local-only Git 제외 정책 반영 |
 | v2.6 | 2026-07-21 15:44 | 문서관리 규칙에 맞춰 표준 메타데이터·산출물 정보·대응 WBS 양식과 최근 변경 내역을 추가 |

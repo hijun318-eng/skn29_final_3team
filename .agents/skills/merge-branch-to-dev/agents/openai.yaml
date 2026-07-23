@@ -1,0 +1,4 @@
+interface:
+  display_name: "Branch to Dev Integrator"
+  short_description: "Safely merge a personal branch into dev"
+  default_prompt: "Use $merge-branch-to-dev to safely merge a personal branch into dev and update reports."

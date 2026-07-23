@@ -1,0 +1,4 @@
+interface:
+  display_name: "Commit Message Drafter"
+  short_description: "Draft a Korean commit message from staged changes"
+  default_prompt: "Use $draft-commit-message to draft one Korean commit message from the staged diff."

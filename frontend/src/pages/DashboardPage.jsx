@@ -4,6 +4,7 @@ import { Header } from "../components/layout/Header";
 import { Sidebar } from "../components/layout/Sidebar";
 import { KpiCard } from "../components/cards/KpiCard";
 import { VocTrendChart } from "../components/charts/VocTrendChart";
+import { HotelComparisonChart } from "../components/charts/HotelComparisonChart";
 import { PriorityIssues } from "../components/cards/PriorityIssues";
 import { RootCauses } from "../components/cards/RootCauses";
 import { InspectionChecklist } from "../components/cards/InspectionChecklist";
@@ -45,6 +46,7 @@ export function DashboardPage() {
             <KpiCard icon={Clock3} title="평균 대기시간" value="26" unit="분" subtext="체크인 기준" delta="8분" deltaText="전주 대비" trend="down" tone="brown" />
           </section>
 
+          <HotelComparisonChart />
           <section className="main-grid"><VocTrendChart /><PriorityIssues /></section>
           <section className="bottom-grid"><RootCauses /><InspectionChecklist /><EvidenceReviewTable /></section>
         </main>

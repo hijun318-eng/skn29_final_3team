@@ -4,6 +4,7 @@
   --feedback-gold: #b4935e;
   --feedback-ivory: #f8f4ed;
   min-height: 100vh;
+  color-scheme: only light;
   color: var(--feedback-deep);
   background:
     radial-gradient(circle at 15% 4%, rgba(180,147,94,.11), transparent 27rem),

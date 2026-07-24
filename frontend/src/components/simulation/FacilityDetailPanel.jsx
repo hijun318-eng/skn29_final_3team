@@ -1,7 +1,6 @@
-import { AlertCircle, Check, Clock3, Database, FileSearch, Info, MessageSquareText, ShieldCheck, Users } from "lucide-react";
-import { ImpactComparison } from "./ImpactComparison";
+import { AlertCircle, ArrowRight, Clock3, Database, FileSearch, Info, MessageSquareText, Users } from "lucide-react";
 
-export function FacilityDetailPanel({ facility, detail, options, selectedOptions, onToggleOption, simulated, result, cost, memo, onMemoChange, decision, onDecision }) {
+export function FacilityDetailPanel({ facility, detail, simulated }) {
   const isBreakfast = facility.id === "breakfast";
   const effectiveStatus = isBreakfast && simulated ? "주의" : facility.statusLabel;
   const tone = effectiveStatus === "위험" ? "danger" : effectiveStatus === "주의" ? "warning" : "normal";
@@ -20,11 +19,8 @@ export function FacilityDetailPanel({ facility, detail, options, selectedOptions
 
     <section className="facility-voc-block"><div className="panel-subheading"><div><span>RECENT VOC</span><h4>최근 고객 의견</h4></div><MessageSquareText size={17} /></div><blockquote>“{detail.recentVoc}”</blockquote></section>
 
-    {isBreakfast ? <>
-      <section className="response-options"><div className="panel-subheading"><div><span>RESPONSE OPTIONS</span><h4>대응안 선택</h4></div><small>복수 선택 가능</small></div><div className="option-grid">{options.map((option) => { const selected = selectedOptions.includes(option.id); return <button type="button" className={`response-option ${selected ? "is-selected" : ""}`} aria-pressed={selected} onClick={() => onToggleOption(option.id)} key={option.id}><span className="option-check">{selected && <Check size={13} />}</span><span><b>{option.label}</b><small>{option.description}</small></span></button>; })}</div></section>
-      <ImpactComparison result={result} cost={cost} />
-    </> : <section className="facility-action-block"><div className="panel-subheading"><div><span>RECOMMENDED CHECK</span><h4>권장 확인·조치</h4></div><Users size={17} /></div><ol>{detail.actions.map((action, index) => <li key={action}><span>{index + 1}</span>{action}</li>)}</ol></section>}
+    <section className="facility-action-block"><div className="panel-subheading"><div><span>RECOMMENDED CHECK</span><h4>권장 확인·조치</h4></div><Users size={17} /></div><ol>{detail.actions.map((action, index) => <li key={action}><span>{index + 1}</span>{action}</li>)}</ol></section>
 
-    <section className="decision-block"><div className="panel-subheading"><div><span>MANAGER DECISION</span><h4>관리자 결정</h4></div><ShieldCheck size={18} /></div><label htmlFor={`decision-memo-${facility.id}`}>관리자 메모</label><textarea id={`decision-memo-${facility.id}`} value={memo} onChange={(event) => onMemoChange(event.target.value)} placeholder={`${facility.name} 현장 확인 내용이나 결정 사유를 입력하세요.`} /><p className="execution-boundary"><Info size={13} /> 승인은 실행 후보 등록이며 실제 운영 조치를 자동 실행하지 않습니다.</p><div className="decision-actions"><button type="button" onClick={() => onDecision("승인")}>승인</button><button type="button" onClick={() => onDecision("보류")}>보류</button><button type="button" onClick={() => onDecision("반려")}>반려</button></div>{decision && <div className={`decision-result decision-result--${decision.type}`} role="status"><b>{decision.label}</b><span>{decision.message}</span><small>{decision.time}</small></div>}</section>
+    {isBreakfast && <section className="analysis-handoff"><Info size={15} /><div><b>관리자 검토는 정기 보고서에서 진행합니다.</b><p>대응안 선택, 예상 효과 비교와 승인·보류는 보고서의 운영 대응안 검토에서 확인할 수 있습니다.</p><a href="/reports#response-review">정기 보고서에서 검토 <ArrowRight size={13} /></a></div></section>}
   </aside>;
 }

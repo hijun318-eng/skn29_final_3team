@@ -3,7 +3,7 @@ import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, FileSearch, LayoutD
 const navigation = [
   { label: "운영 대시보드", icon: LayoutDashboard, href: "/" },
   { label: "실시간 모니터링", icon: Map, href: "/monitoring" },
-  { label: "이슈 분석", icon: BarChart3, href: "/issues" },
+  { label: "이슈 분석 AGENT", icon: BarChart3, href: "/issues" },
   { label: "정기 보고서", icon: CalendarDays, href: "/reports" },
   { label: "리뷰 데이터", icon: FileSearch, href: "/evidence-review" },
 ];

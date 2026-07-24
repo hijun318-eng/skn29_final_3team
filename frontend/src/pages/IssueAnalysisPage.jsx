@@ -54,7 +54,7 @@ const scenarios = [
 export function IssueAnalysisPage() {
   const [collapsed, setCollapsed] = useState(false);
   const [thinkingOpen, setThinkingOpen] = useState(true);
-  const initialQuery = useMemo(() => new URLSearchParams(window.location.search).get("q")?.trim() || "이번 주 위험 이슈와 다음 주 영향을 분석해줘", []);
+  const initialQuery = useMemo(() => new URLSearchParams(window.location.search).get("q")?.trim() || "이번 주 위험 이슈 요약", []);
   const [query, setQuery] = useState(initialQuery);
   const [activeQuery, setActiveQuery] = useState(initialQuery);
   const [briefing, setBriefing] = useState(true);
@@ -149,7 +149,7 @@ export function IssueAnalysisPage() {
             <section className="issue-actions card">
               <div className="issue-section-title"><div><p>MANAGER ACTION</p><h2>권장 확인 순서</h2><span>승인이나 실행이 아닌 현장 확인용 제안입니다.</span></div><CheckCircle2 size={20} /></div>
               <ol><li><span>1</span><div><b>단체 입장 시간 10분 분산 가능 여부</b><small>예약팀 · 오늘 14:00까지 확인</small></div></li><li><span>2</span><div><b>좌석 회전 지연 구간 현장 점검</b><small>식음팀 · 다음 피크 시간 관찰</small></div></li><li><span>3</span><div><b>임시 좌석 운영 안전 기준 검토</b><small>시설팀 · 동선과 비상구 우선 확인</small></div></li></ol>
-              <a href="/monitoring">실시간 운영 맵에서 근거 확인 <ArrowRight size={15} /></a>
+              <a href="/monitoring">실시간 운영 맵에서 확인 <ArrowRight size={15} /></a>
             </section>
           </>}
         </main>

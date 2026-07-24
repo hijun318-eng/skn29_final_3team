@@ -9,7 +9,10 @@ import {
   Clock3,
   Database,
   FileSearch,
+  Hexagon,
+  MessageCircle,
   MessageSquareText,
+  Plus,
   Search,
   Send,
   ShieldCheck,
@@ -20,6 +23,7 @@ import {
 } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Sidebar } from "../components/layout/Sidebar";
+import { HeaderUtilities } from "../components/layout/Header";
 
 const dailyTrend = [
   { day: "월", voc: 19, wait: 8 },
@@ -51,19 +55,29 @@ const scenarios = [
   { name: "수요 증가", wait: "19~23분", voc: "+24%", effect: "주말 투숙률 8%p 상승 가정", tone: "danger" },
 ];
 
+const conversationHistory = [
+  ["피자힐 대기시간 분석", "오늘 14:20"],
+  ["구역별 미해결 현황", "오늘 11:05"],
+  ["주간 VOC 추이", "어제 17:40"],
+];
+
+const suggestedQueries = ["지난주 피자힐 평균 대기시간 보여줘", "이번 주 VOC 추이", "구역별 미해결 현황", "어제 위험 VOC 건수"];
+
 export function IssueAnalysisPage() {
   const [collapsed, setCollapsed] = useState(false);
   const [thinkingOpen, setThinkingOpen] = useState(true);
-  const initialQuery = useMemo(() => new URLSearchParams(window.location.search).get("q")?.trim() || "이번 주 위험 이슈 요약", []);
+  const initialQuery = useMemo(() => new URLSearchParams(window.location.search).get("q")?.trim() || "", []);
   const [query, setQuery] = useState(initialQuery);
-  const [activeQuery, setActiveQuery] = useState(initialQuery);
+  const [activeQuery, setActiveQuery] = useState(initialQuery || "이번 주 위험 이슈 요약");
   const [briefing, setBriefing] = useState(true);
+  const [hasAnalysis, setHasAnalysis] = useState(Boolean(initialQuery));
 
-  const submit = (event) => {
-    event.preventDefault();
-    const normalizedQuery = query.trim();
+  const runAnalysis = (nextQuery) => {
+    const normalizedQuery = nextQuery.trim();
     if (!normalizedQuery) return;
+    setQuery(normalizedQuery);
     setBriefing(false);
+    setHasAnalysis(true);
     window.setTimeout(() => {
       setActiveQuery(normalizedQuery);
       window.history.replaceState({}, "", `/issues?q=${encodeURIComponent(normalizedQuery)}`);
@@ -72,13 +86,41 @@ export function IssueAnalysisPage() {
     }, 450);
   };
 
+  const submit = (event) => {
+    event.preventDefault();
+    runAnalysis(query);
+  };
+
+  if (!hasAnalysis) return (
+    <div className={`app-shell ${collapsed ? "app-shell--collapsed" : ""}`}>
+      <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
+      <div className="workspace issue-agent-workspace">
+        <header className="issue-agent-header admin-page-header"><div><p>AI ISSUE ANALYSIS</p><h1>대화형 조회 · 내부 운영/VOC 분석</h1><span>운영 데이터와 고객 VOC를 자연어로 조회하세요.</span></div><HeaderUtilities /></header>
+        <div className="issue-agent-layout">
+          <aside className="issue-chat-history">
+            <button className="issue-new-chat" type="button" onClick={() => setQuery("")}><Plus size={16} />새 대화</button>
+            <p>대화 이력 <span>(세션 유지)</span></p>
+            <div>{conversationHistory.map(([title, time]) => <button type="button" onClick={() => runAnalysis(title)} key={title}><MessageCircle size={15} /><span><b>{title}</b><small>{time}</small></span></button>)}</div>
+            <small>새 창 분리 여부는 논의 예정</small>
+          </aside>
+          <section className="issue-chat-main">
+            <div className="issue-chat-welcome">
+              <div>{suggestedQueries.map((suggestion) => <button type="button" onClick={() => runAnalysis(suggestion)} key={suggestion}><MessageCircle size={15} />{suggestion}</button>)}</div>
+            </div>
+            <form className="issue-chat-composer" onSubmit={submit}><input aria-label="이슈 분석 질문" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="질문 입력 (/ 로 포커스) · 예: 이번 주 VOC 추이" /><button type="submit">전송 <Send size={15} /></button></form>
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className={`app-shell ${collapsed ? "app-shell--collapsed" : ""}`}>
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
       <div className="workspace issue-workspace">
         <header className="issue-header admin-page-header">
           <div><p>AI ISSUE ANALYSIS</p><h1>이슈 분석</h1><span>흩어진 VOC와 운영 데이터를 질문 한 번으로 조회하고, 근거·영향·대응안까지 이어서 확인합니다.</span></div>
-          <div className="issue-analysis-meta"><span><Database size={14} /> Synthetic data · schema v1.0</span><b>분석 ID · SP-260723-015</b></div>
+          <HeaderUtilities />
         </header>
 
         <main className="issue-main">

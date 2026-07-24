@@ -1,17 +1,17 @@
 import { BarChart3, CalendarDays, ChevronLeft, ChevronRight, FileSearch, LayoutDashboard, Map } from "lucide-react";
 
 const navigation = [
-  { label: "운영 대시보드", icon: LayoutDashboard, href: "/" },
   { label: "실시간 모니터링", icon: Map, href: "/monitoring" },
   { label: "이슈 분석 AGENT", icon: BarChart3, href: "/issues" },
   { label: "정기 보고서", icon: CalendarDays, href: "/reports" },
-  { label: "리뷰 데이터", icon: FileSearch, href: "/evidence-review" },
+  { label: "내부 리뷰 데이터", icon: FileSearch, href: "/evidence-review" },
+  { label: "외부 리뷰 데이터", icon: LayoutDashboard, href: "/" },
 ];
 
 export function Sidebar({ collapsed, onToggle }) {
   const currentPath = window.location.pathname;
   return <aside className={`sidebar ${collapsed ? "sidebar--collapsed" : ""}`}>
-    <a className="brand" href="/" aria-label="Sense Place 운영 대시보드로 이동"><span className="brand__mark"><span className="brand__monogram">SP</span><i aria-hidden="true" /></span>{!collapsed && <span><b>SENSE PLACE</b><small>Operation Intelligence</small></span>}</a>
+    <a className="brand" href="/" aria-label="Sense Place 외부 리뷰 데이터로 이동"><span className="brand__mark"><span className="brand__monogram">SP</span><i aria-hidden="true" /></span>{!collapsed && <span><b>SENSE PLACE</b><small>Operation Intelligence</small></span>}</a>
     <nav className="navigation" aria-label="Primary navigation">
       {navigation.map(({ label, icon: Icon, href }) => {
         const active = href ? (href === "/" ? currentPath === "/" : currentPath.startsWith(href)) : false;

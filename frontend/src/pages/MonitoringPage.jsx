@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Activity, Clock3, Radio, ShieldCheck } from "lucide-react";
 import { Sidebar } from "../components/layout/Sidebar";
 import { OperationMapSection } from "../components/map/OperationMapSection";
-import { NotificationBell } from "../components/common/NotificationBell";
+import { HeaderUtilities } from "../components/layout/Header";
 import { facilities } from "../components/map/operationMapData";
 import { publishOperationAlerts } from "../services/operationAlerts";
 
@@ -31,11 +31,7 @@ export function MonitoringPage() {
             <span>시설 혼잡도와 운영 상태를 실시간으로 확인하고 대응 시나리오를 검토합니다.</span>
           </div>
           <div className="monitoring-header-actions">
-            <NotificationBell />
-            <div className="monitoring-live-status">
-              <i />
-              <div><b>실시간 연결</b><small>마지막 갱신 10:42:18</small></div>
-            </div>
+            <HeaderUtilities />
           </div>
         </header>
 

@@ -19,6 +19,7 @@ export function LoginPage() {
   };
 
   return <main className="login-page">
+    <span className="login-version">ver 1.0</span>
     <section className="login-brand-panel">
       <a className="login-brand" href="/login" aria-label="Sense Place 로그인"><span><b>SP</b><i /></span><div><strong>SENSE PLACE</strong><small>Operation Intelligence</small></div></a>
       <div className="login-brand-copy"><p>OPERATION INTELLIGENCE</p><h1>SENSE PLACE<br />OPERATION INTELLIGENCE</h1><span>VOC와 운영 데이터를 연결해 중요한 이슈를 더 빠르게 발견하고 판단합니다.</span></div>

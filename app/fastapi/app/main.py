@@ -8,6 +8,10 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.detections import router as detections_router
+from app.api.incident_runs import router as incident_runs_router
+from app.api.quality_gates import router as quality_gates_router
+from app.api.query_runs import router as query_runs_router
 from app.llm.gateway import LLMGateway
 from app.settings import DATABASE_URL, DJANGO_API_URL, SENSEPLACE_LLM_PROVIDER
 
@@ -78,3 +82,13 @@ async def health() -> dict[str, str | dict[str, str]]:
         "db": db_status,
         "django_api_url": DJANGO_API_URL,
     }
+
+
+# ---------------------------------------------------------------------------
+# 내부 API 라우터 등록
+# ---------------------------------------------------------------------------
+
+app.include_router(quality_gates_router)
+app.include_router(detections_router)
+app.include_router(query_runs_router)
+app.include_router(incident_runs_router)

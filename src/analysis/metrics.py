@@ -14,7 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.common.enums import SentimentLabel
+from common.enums import SentimentLabel
 
 # ---------------------------------------------------------------------------
 # KPI 임계값 상수

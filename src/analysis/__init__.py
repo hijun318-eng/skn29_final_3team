@@ -15,10 +15,10 @@ References:
     - docs/markdown/ai_docs/02_data_standard_guide.md (DSG v2.0)
 """
 
-from src.analysis.detection import detect_anomalies
-from src.analysis.evidence import build_evidence
-from src.analysis.metrics import calculate_kpis
-from src.analysis.quality import run_quality_gate
+from analysis.detection import detect_anomalies
+from analysis.evidence import build_evidence
+from analysis.metrics import calculate_kpis
+from analysis.quality import run_quality_gate
 
 __all__ = [
     "run_quality_gate",

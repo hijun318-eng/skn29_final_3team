@@ -12,7 +12,7 @@ Usage::
     from src.common.errors import SensePlaceError, AuthError
 """
 
-from src.common import contracts, enums, errors, identifiers
+from common import contracts, enums, errors, identifiers
 
 __all__ = [
     "contracts",

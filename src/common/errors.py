@@ -23,7 +23,7 @@ References:
 
 from __future__ import annotations
 
-from src.common.contracts import ErrorCode
+from common.contracts import ErrorCode
 
 
 class SensePlaceError(Exception):

@@ -5,6 +5,7 @@ PostgreSQL 우선, SQLite fallback 개발 환경 설정.
 """
 
 import os
+import sys
 from pathlib import Path
 
 import dj_database_url
@@ -13,6 +14,10 @@ import dj_database_url
 # Path
 # ---------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = BASE_DIR.parent.parent  # skn29_final_3team/
+
+# src/ 패키지를 import 가능하도록 Python path에 추가
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 # ---------------------------------------------------------------------------
 # Security

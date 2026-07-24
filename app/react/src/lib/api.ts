@@ -160,10 +160,20 @@ export interface ExternalReview {
   severity: Severity;
 }
 
+// ===== Django 로그인 응답 데이터 =====
+
+export interface DjangoLoginData {
+  user_id: string;
+  username: string;
+  role_code: string;
+  display_name: string;
+  scope_snapshot?: Record<string, unknown>;
+}
+
 // ===== API 호출 함수 =====
 
-export async function apiLogin(staffId: string, password: string): Promise<APIResponse<{ user: User; session_id: string }>> {
-  const res = await api.post<APIResponse<{ user: User; session_id: string }>>('/auth/login/', { staff_id: staffId, password });
+export async function apiLogin(staffId: string, password: string): Promise<APIResponse<DjangoLoginData>> {
+  const res = await api.post<APIResponse<DjangoLoginData>>('/auth/login/', { username: staffId, password });
   return res.data;
 }
 

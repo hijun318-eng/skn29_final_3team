@@ -1,10 +1,23 @@
 import { useState, useCallback, useEffect } from 'react';
-import { apiLogin, apiLogout, type User } from '../lib/api';
+import { apiLogin, apiLogout, type User, type UserRole } from '../lib/api';
 
 interface AuthState {
   user: User | null;
   loading: boolean;
   error: string | null;
+}
+
+function mapRoleCode(roleCode: string): UserRole {
+  switch (roleCode) {
+    case 'OPERATIONS_MANAGER':
+      return 'admin';
+    case 'FACILITY_MANAGER':
+      return 'staff';
+    case 'EXTERNAL_REVIEWER':
+      return 'guest';
+    default:
+      return 'guest';
+  }
 }
 
 export function useAuth() {
@@ -19,11 +32,19 @@ export function useAuth() {
     try {
       const res = await apiLogin(staffId, password);
       if (res.error) {
+        const isLocked = String(res.error.code).toUpperCase() === 'LOCKED';
         setState({ user: null, loading: false, error: res.error.message });
-        return { success: false, locked: res.error.code === 'E_AUTH' };
+        return { success: false, locked: isLocked };
       }
-      setState({ user: res.data.user, loading: false, error: null });
-      sessionStorage.setItem('sp_user', JSON.stringify(res.data.user));
+      const d = res.data;
+      const user: User = {
+        id: d.user_id,
+        name: d.display_name,
+        email: '',
+        role: mapRoleCode(d.role_code),
+      };
+      setState({ user, loading: false, error: null });
+      sessionStorage.setItem('sp_user', JSON.stringify(user));
       return { success: true, locked: false };
     } catch {
       setState({ user: null, loading: false, error: '로그인 실패' });

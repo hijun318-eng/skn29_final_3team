@@ -2,8 +2,18 @@
 
 from __future__ import annotations
 
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncIterator
+
+# 프로젝트 루트와 src/를 sys.path에 추가하여 src.* import 가능
+# main.py 위치: skn29_final_3team/app/fastapi/app/main.py → 3번 parent = skn29_final_3team/
+_root = Path(__file__).resolve().parent.parent.parent.parent
+_src = _root / "src"
+for p in (_root, _src):
+    if str(p) not in sys.path:
+        sys.path.insert(0, str(p))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

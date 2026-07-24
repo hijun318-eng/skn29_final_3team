@@ -6,44 +6,36 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout.tsx';
+import { useAuth } from '../hooks/useAuth.ts';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [userId, setUserId] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const [locked, setLocked] = useState(false);
-  const [tries, setTries] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
   const canSubmit = userId.trim().length > 0 && password.trim().length > 0;
 
-  const handleLogin = useCallback(() => {
+  const handleLogin = useCallback(async () => {
     if (submitting) return;
+    if (!canSubmit) return;
     setSubmitting(true);
+    setError('');
 
-    if (userId.trim().toLowerCase() === 'lock') {
-      setLocked(true);
-      setError('');
-      setSubmitting(false);
-      return;
+    const result = await login(userId.trim(), password);
+
+    if (result.success) {
+      navigate('/monitoring');
+    } else {
+      setError('아이디 또는 비밀번호가 올바르지 않습니다');
+      setLocked(result.locked);
     }
-
-    const nextTries = tries + 1;
-    setTries(nextTries);
-
-    if (nextTries >= 2) {
-      setTimeout(() => {
-        navigate('/monitoring');
-        setSubmitting(false);
-      }, 300);
-      return;
-    }
-
-    setError(`아이디 또는 비밀번호가 올바르지 않습니다 (${nextTries}/5)`);
     setSubmitting(false);
-  }, [userId, password, tries, submitting, navigate]);
+  }, [userId, password, submitting, canSubmit, login, navigate]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && canSubmit) {

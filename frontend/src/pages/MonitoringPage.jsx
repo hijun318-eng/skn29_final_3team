@@ -1,24 +1,37 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Activity, Clock3, Radio, ShieldCheck } from "lucide-react";
 import { Sidebar } from "../components/layout/Sidebar";
 import { OperationMapSection } from "../components/map/OperationMapSection";
+import { HeaderUtilities } from "../components/layout/Header";
+import { facilities } from "../components/map/operationMapData";
+import { publishOperationAlerts } from "../services/operationAlerts";
 
 export function MonitoringPage() {
   const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    const detectedAlerts = facilities.filter((facility) => facility.status !== "normal").map((facility) => ({
+      id: `facility-${facility.id}-${facility.status}`,
+      facilityId: facility.id,
+      severity: facility.status,
+      title: `${facility.name} ${facility.statusLabel} 상태 감지`,
+      message: `${facility.metric} · 운영 맵에서 현장 상태를 확인하세요.`,
+    }));
+    publishOperationAlerts(detectedAlerts);
+  }, []);
 
   return (
     <div className={`app-shell ${collapsed ? "app-shell--collapsed" : ""}`}>
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((value) => !value)} />
       <div className="workspace monitoring-workspace">
-        <header className="monitoring-header">
+        <header className="monitoring-header admin-page-header">
           <div>
             <p>LIVE OPERATION INTELLIGENCE</p>
             <h1>호텔 실시간 운영 모니터링</h1>
             <span>시설 혼잡도와 운영 상태를 실시간으로 확인하고 대응 시나리오를 검토합니다.</span>
           </div>
-          <div className="monitoring-live-status">
-            <i />
-            <div><b>실시간 연결</b><small>마지막 갱신 10:42:18</small></div>
+          <div className="monitoring-header-actions">
+            <HeaderUtilities />
           </div>
         </header>
 

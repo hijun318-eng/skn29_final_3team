@@ -1,21 +1,11 @@
 import { useState } from "react";
-import { Bell, ChevronDown } from "lucide-react";
+import { ChevronDown, LogIn, LogOut, UserRound } from "lucide-react";
+import { getDemoSession, signOutDemo } from "../../services/demoAuth";
+import { NotificationBell } from "../common/NotificationBell";
 
-function SelectFilter({ label, value, options }) {
-  return (
-    <label className="filter-control">
-      <span>{label}</span>
-      <div className="select-wrap">
-        <select defaultValue={value} aria-label={label}>
-          {options.map((option) => <option key={option}>{option}</option>)}
-        </select>
-        <ChevronDown size={15} />
-      </div>
-    </label>
-  );
-}
-
-export function Header() {
+export function HeaderUtilities() {
+  const [profileOpen, setProfileOpen] = useState(false);
+  const session = getDemoSession();
   const [language, setLanguage] = useState("KOR");
 
   const selectLanguage = (nextLanguage) => {
@@ -23,24 +13,8 @@ export function Header() {
     document.documentElement.lang = nextLanguage === "KOR" ? "ko" : "en";
   };
 
-  return (
-    <header className="top-header">
-      <div className="headline">
-        <p>OPERATION INTELLIGENCE</p>
-        <h1>호텔 VOC 운영 대시보드</h1>
-        <span>2026년 7월 2주차 — 7월 7일 ~ 7월 13일</span>
-      </div>
-
-      <div className="header-actions">
-        <div className="filters">
-          <SelectFilter label="호텔" value="SENSE PLACE 서울" options={["SENSE PLACE 서울", "비스타 SENSE PLACE", "그랜드 SENSE PLACE", "더글라스 하우스"]} />
-          <SelectFilter label="시설" value="전체 시설" options={["전체 시설", "프론트 데스크", "객실", "레스토랑"]} />
-          <label className="filter-control date-filter">
-            <span>기간</span>
-            <input type="text" defaultValue="2026년 7월 2주차" aria-label="기간" />
-          </label>
-          <SelectFilter label="채널" value="전체 채널" options={["전체 채널", "OTA", "네이버", "구글", "카카오"]} />
-        </div>
+  return <div className="header-utilities">
+        <div className="header-live-status"><i /><span><b>실시간 연결</b><small>마지막 갱신 10:42:18</small></span></div>
         <div className="language-switch" role="group" aria-label="언어 선택">
           {['KOR', 'ENG'].map((option) => (
             <button
@@ -54,9 +28,24 @@ export function Header() {
             </button>
           ))}
         </div>
-        <button className="icon-button" aria-label="Notifications"><Bell size={20} /><i /></button>
-        <button className="profile" aria-label="Open profile"><span>MS</span><div><b>Minji Song</b><small>Operations Manager</small></div></button>
+        <NotificationBell />
+        <div className="profile-wrap">
+          {session ? <><button className="profile" type="button" aria-label="프로필 메뉴 열기" aria-expanded={profileOpen} onClick={() => setProfileOpen((value) => !value)}><span>MS</span><ChevronDown size={14} /></button>
+          {profileOpen && <div className="profile-menu"><div><UserRound size={16} /><span><b>{session.name || "Minji Song"}</b><small>{session.email || "manager@senseplace.kr"}</small></span></div><button type="button" onClick={() => { signOutDemo(); window.location.replace("/login"); }}><LogOut size={15} />로그아웃</button></div>}</> : <a className="header-login" href="/login"><LogIn size={14} />로그인</a>}
+        </div>
+        <span className="app-version">ver 1.0</span>
+      </div>;
+}
+
+export function Header({ eyebrow = "EXTERNAL REVIEW INTELLIGENCE", title = "외부 리뷰 데이터", description }) {
+  return (
+    <header className="top-header admin-page-header">
+      <div className="headline">
+        <p>{eyebrow}</p>
+        <h1>{title}</h1>
+        <span>{description}</span>
       </div>
+      <HeaderUtilities />
     </header>
   );
 }

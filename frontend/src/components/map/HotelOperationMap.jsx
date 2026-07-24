@@ -1,10 +1,6 @@
 import { Activity, AlertCircle, AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import { FacilityMarker } from "./FacilityMarker";
 
-function QueueMarkers({ count }) {
-  return <div className="queue-markers" aria-label={`대기열 표시 ${count}개`}>{Array.from({ length: count }, (_, index) => <i key={index} />)}</div>;
-}
-
 export function HotelOperationMap({ facilities, selectedId, onSelect, simulated, timelineState }) {
   return (
     <div className={`operation-map ${simulated ? "is-simulating" : ""}`}>
@@ -15,23 +11,21 @@ export function HotelOperationMap({ facilities, selectedId, onSelect, simulated,
           <defs>
             <pattern id="map-grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#ded8cf" strokeWidth=".6" opacity=".42" /></pattern>
             <filter id="soft-blur"><feGaussianBlur stdDeviation="13" /></filter>
-            <filter id="building-shadow" x="-25%" y="-25%" width="150%" height="170%"><feDropShadow dx="0" dy="7" stdDeviation="6" floodColor="#52613d" floodOpacity=".22" /></filter>
-            <linearGradient id="hotel-front" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#f8f1df" /><stop offset="1" stopColor="#d7b98b" /></linearGradient>
-            <linearGradient id="hotel-side" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#c9955d" /><stop offset="1" stopColor="#9d6d45" /></linearGradient>
-            <linearGradient id="glass-front" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#b8d8d8" /><stop offset="1" stopColor="#6ba5ae" /></linearGradient>
+            <filter id="building-shadow" x="-25%" y="-25%" width="150%" height="170%"><feDropShadow dx="0" dy="5" stdDeviation="5" floodColor="#46503d" floodOpacity=".16" /></filter>
+            <linearGradient id="hotel-front" x1="0" y1="0" x2="0" y2="1"><stop stopColor="#eee9df" /><stop offset="1" stopColor="#d8d0c3" /></linearGradient>
+            <linearGradient id="hotel-side" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#c7b8a4" /><stop offset="1" stopColor="#a99a87" /></linearGradient>
+            <linearGradient id="glass-front" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#c5d7d4" /><stop offset="1" stopColor="#8ba9a7" /></linearGradient>
           </defs>
           <rect width="900" height="560" rx="24" fill="#d8dfb0" />
           <path className="terrain terrain--hill" d="M0 0H900v145c-95-22-151-101-257-89C543 67 507 144 395 107 270 65 223 163 90 108 49 91 22 89 0 95Z" />
           <path className="terrain terrain--forest" d="M0 65c97-36 150 46 240 18 112-35 112 80 225 52 101-25 133 50 245 28 87-17 126 27 190-4V0H0Z" />
           <path className="terrain terrain--meadow" d="M0 128c92-31 161 37 259 23 86-13 157 10 246 48 122 53 221-6 395 47v196c-107 24-214-17-301 24-79 37-131 17-218-12-119-39-175 33-381-4Z" />
           <path className="river" d="M0 485c129-39 183 5 289 22 161 26 251-20 390-5 91 10 146 39 221 18v40H0Z" />
-          <path className="riverside-road" d="M-20 458c146-28 201 23 331 24 130 1 206-39 350-17 102 16 141 51 259 20" />
-          <path className="campus-road" d="M-10 280C88 250 108 194 168 182c56-11 99 11 121 54 34 67 7 111 75 140 67 29 88-19 133-5 47 15 37 69 90 72 64 4 65-61 128-69 62-8 96 44 185 16" />
-          <path className="campus-road campus-road--branch" d="M182 178c18 72 93 87 147 73 47-12 58-66 123-71 44-4 67 30 113 19 49-12 80-61 135-38 36 15 49 61 102 72" />
-          <path className="campus-road campus-road--branch" d="M298 417c-20 39-1 84 46 100 72 25 109-12 167-10 81 3 121 53 210 31" />
-          <path d="M90 166c40 16 75 25 111 18" className="route route--warning route--small" />
-          <path d="M295 397c72 35 109-16 166 6 55 22 84 69 139 42" className="route route--normal route--small" />
-          <path d="M448 420c39-20 76-30 119-17 57 16 70 65 130 48" className={`route route--${simulated ? "warning" : "danger"}`} />
+          <path className="riverside-road" d="M-25 467C95 434 177 454 259 478c88 26 155 28 221 2 82-33 154-28 229-5 78 24 137 15 216-20" />
+          <path className="campus-road" d="M-15 276C47 260 78 215 126 190c58-30 111-18 160-5 50 13 88 0 129-25 54-32 99-38 151-15 54 23 78 62 133 61 60-1 85-47 142-57 58-10 100 26 154 53" />
+          <path className="campus-road campus-road--lower" d="M-20 405C72 384 142 403 214 420c65 16 111 9 154-16 51-30 88-40 137-23 52 18 76 53 129 50 51-3 73-37 123-34 61 3 89 47 168 28" />
+          <path className="campus-road campus-road--branch" d="M244 181c22 27 31 61 29 98-2 43 13 78 49 105" />
+          <path className="campus-road campus-road--branch" d="M595 199c-17 34-20 65-6 93 12 25 39 40 70 48" />
           <ellipse cx="530" cy="323" rx={112 * timelineState.heat} ry={71 * timelineState.heat} className={`heat-zone heat-zone--${simulated && timelineState.status === "주의" ? "warning" : "danger"}`} filter="url(#soft-blur)" />
           <ellipse cx="225" cy="210" rx="55" ry="36" className="heat-zone heat-zone--warning" filter="url(#soft-blur)" />
           <ellipse cx="355" cy="385" rx="48" ry="31" className="heat-zone heat-zone--warning" filter="url(#soft-blur)" />
@@ -81,7 +75,6 @@ export function HotelOperationMap({ facilities, selectedId, onSelect, simulated,
             })}
           </g>
         </svg>
-        <QueueMarkers count={timelineState.queue} />
         {facilities.map((facility) => <FacilityMarker key={facility.id} facility={facility} selected={selectedId === facility.id} simulated={simulated} onSelect={onSelect} />)}
         <div className="map-legend" aria-label="운영 상태 범례">
           <span><CheckCircle2 size={13} /> 정상</span><span><AlertTriangle size={13} /> 주의</span><span><AlertCircle size={13} /> 위험</span>

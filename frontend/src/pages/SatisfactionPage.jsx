@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { Check, ChevronDown, LockKeyhole, Send, Sparkles } from "lucide-react";
 
 import "../styles/satisfaction.css";
+import { publishLiveVoc } from "../services/liveVoc";
+import { VocPhotoUpload } from "../components/common/VocPhotoUpload";
 
 const FACILITIES = {
   breakfast: { icon: "🥐", name: "조식 레스토랑", location: "비스타 SENSE PLACE 서울 · 2F" },
@@ -46,6 +48,7 @@ export function SatisfactionPage() {
   const [rating, setRating] = useState(null);
   const [reasons, setReasons] = useState([]);
   const [comment, setComment] = useState("");
+  const [photos, setPhotos] = useState([]);
   const [submitted, setSubmitted] = useState(false);
 
   const toggleReason = (reason) => {
@@ -65,6 +68,8 @@ export function SatisfactionPage() {
   const submitFeedback = (event) => {
     event.preventDefault();
     if (!rating) return;
+    const facilityMap = { breakfast: "breakfast", forestPark: "lobby", walkerhillLibrary: "lobby", riverPark: "lobby", skyard: "lobby", wellnessProgram: "rooms", douglasGarden: "lobby", walkee: "lobby", walkingTrail: "lobby", vistaFitness: "rooms", vistaPool: "rooms", vSpa: "rooms", grandFitness: "rooms", grandPool: "rooms", tennisPark: "lobby", douglasLibrary: "lobby", multiRoom: "lobby", cu: "lobby", blooming: "lobby", pharmacy: "lobby", evCharger: "parking", casino: "lobby" };
+    publishLiveVoc({ facilityId: facilityMap[facilityKey] || "lobby", facilityName: facility.name, rating, comment, reasons, photos, source: "facility-feedback" });
     setSubmitted(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -77,7 +82,7 @@ export function SatisfactionPage() {
           <p className="feedback-eyebrow">THANK YOU</p>
           <h1>소중한 의견을<br />전해주셔서 감사합니다.</h1>
           <p>{facility.name}에서의 다음 경험이<br />더욱 특별할 수 있도록 세심히 살피겠습니다.</p>
-          <button type="button" onClick={() => { setSubmitted(false); setRating(null); setReasons([]); setComment(""); }}>
+          <button type="button" onClick={() => { setSubmitted(false); setRating(null); setReasons([]); setComment(""); setPhotos([]); }}>
             새로운 의견 남기기
           </button>
         </section>
@@ -175,6 +180,8 @@ export function SatisfactionPage() {
               <span>{comment.length} / 300</span>
             </div>
           </section>
+
+          <VocPhotoUpload id="feedback-photos" files={photos} onChange={setPhotos} />
 
           <button className="feedback-submit" type="submit" disabled={!rating}>
             <span>피드백 보내기</span><Send size={17} strokeWidth={1.8} />

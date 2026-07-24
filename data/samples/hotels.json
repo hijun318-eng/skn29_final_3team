@@ -1,0 +1,128 @@
+[
+  {
+    "hotel_id": "HTL-001",
+    "name": "그랜드 워커힐",
+    "zone": "객실동",
+    "capacity": 130,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "HTL-002",
+    "name": "비스타 워커힐",
+    "zone": "객실동",
+    "capacity": 78,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "HTL-003",
+    "name": "더글라스 하우스",
+    "zone": "객실동",
+    "capacity": 50,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "HTL-004",
+    "name": "애스톤 하우스",
+    "zone": "객실동",
+    "capacity": 53,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "DIN-005",
+    "name": "피자힐",
+    "zone": "다이닝",
+    "capacity": 91,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "DIN-006",
+    "name": "명월관",
+    "zone": "다이닝",
+    "capacity": 88,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "LWR-007",
+    "name": "리버파크",
+    "zone": "레저·웰니스",
+    "capacity": 65,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "LWR-008",
+    "name": "테네즈 파크",
+    "zone": "레저·웰니스",
+    "capacity": 56,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "LWR-009",
+    "name": "포레스트 파크",
+    "zone": "레저·웰니스",
+    "capacity": 169,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "LWR-010",
+    "name": "힐링 포레스트",
+    "zone": "레저·웰니스",
+    "capacity": 52,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "LWR-011",
+    "name": "더글라스 가든",
+    "zone": "레저·웰니스",
+    "capacity": 181,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "LWR-012",
+    "name": "워커힐 골프클럽",
+    "zone": "레저·웰니스",
+    "capacity": 138,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "MCE-013",
+    "name": "컨벤션 센터",
+    "zone": "MICE·엔터",
+    "capacity": 116,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "MCE-014",
+    "name": "빛의 시어터",
+    "zone": "MICE·엔터",
+    "capacity": 115,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "MCE-015",
+    "name": "Casino",
+    "zone": "MICE·엔터",
+    "capacity": 147,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "INF-016",
+    "name": "주차타워",
+    "zone": "인프라",
+    "capacity": 105,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "INF-017",
+    "name": "South Gate",
+    "zone": "인프라",
+    "capacity": 109,
+    "is_synthetic": true
+  },
+  {
+    "hotel_id": "INF-018",
+    "name": "East Gate",
+    "zone": "인프라",
+    "capacity": 179,
+    "is_synthetic": true
+  }
+]

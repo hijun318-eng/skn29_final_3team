@@ -1,0 +1,20 @@
+{
+  "scenario_id": "NORMAL",
+  "dataset_version": "gw-synthetic-0.1.0",
+  "schema_version": "2.0",
+  "generator_version": "0.1.0",
+  "seed": 42,
+  "description": "정상 운영 시나리오 - NEGATIVE 감성 20% 미만",
+  "expected_trigger": false,
+  "expected_status": "SUCCEEDED",
+  "sentiment_distribution": {
+    "NEGATIVE": "< 0.20",
+    "NEUTRAL": "~ 0.30",
+    "POSITIVE": "> 0.50"
+  },
+  "required_evidence": [],
+  "forbidden_claims": [
+    "이상 감지가 트리거되었다",
+    "VOC 급증이 발생했다"
+  ]
+}

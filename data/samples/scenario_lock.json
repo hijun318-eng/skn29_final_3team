@@ -1,0 +1,43 @@
+{
+  "scenario_id": "LOCK",
+  "dataset_version": "gw-synthetic-0.1.0",
+  "schema_version": "2.0",
+  "generator_version": "0.1.0",
+  "seed": 42,
+  "description": "로그인 잠금 시나리오 - 연속 5회 실패 후 계정 잠금 (423)",
+  "expected_trigger": true,
+  "expected_status": "LOCKED",
+  "lockout": {
+    "max_attempts": 5,
+    "lockout_http_status": 423,
+    "lockout_duration_min": 30,
+    "test_actor_id": "STAFF-TEST-001"
+  },
+  "events": [
+    {
+      "attempt": 1,
+      "result": "FAIL",
+      "error": "INVALID_CREDENTIALS"
+    },
+    {
+      "attempt": 2,
+      "result": "FAIL",
+      "error": "INVALID_CREDENTIALS"
+    },
+    {
+      "attempt": 3,
+      "result": "FAIL",
+      "error": "INVALID_CREDENTIALS"
+    },
+    {
+      "attempt": 4,
+      "result": "FAIL",
+      "error": "INVALID_CREDENTIALS"
+    },
+    {
+      "attempt": 5,
+      "result": "FAIL",
+      "error": "ACCOUNT_LOCKED"
+    }
+  ]
+}

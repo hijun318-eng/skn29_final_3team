@@ -1,0 +1,98 @@
+[
+  {
+    "incident_id": "INC-0001",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "voc_id": "VOC-0003",
+    "service_area_id": "MCE-013",
+    "topic_code": "소음",
+    "severity": "warn",
+    "status": "prog",
+    "opened_at": "2026-07-26T17:54:00Z",
+    "resolved_at": null,
+    "is_synthetic": true
+  },
+  {
+    "incident_id": "INC-0002",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "voc_id": "VOC-0042",
+    "service_area_id": "MCE-014",
+    "topic_code": "청결·위생",
+    "severity": "danger",
+    "status": "recv",
+    "opened_at": "2026-08-18T07:00:00Z",
+    "resolved_at": null,
+    "is_synthetic": true
+  },
+  {
+    "incident_id": "INC-0003",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "voc_id": "VOC-0073",
+    "service_area_id": "MCE-013",
+    "topic_code": "예약·안내",
+    "severity": "warn",
+    "status": "done",
+    "opened_at": "2026-09-27T06:05:00Z",
+    "resolved_at": "2026-09-27T07:38:00Z",
+    "is_synthetic": true
+  },
+  {
+    "incident_id": "INC-0004",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "voc_id": "VOC-0072",
+    "service_area_id": "LWR-011",
+    "topic_code": "가격·결제",
+    "severity": "danger",
+    "status": "check",
+    "opened_at": "2026-09-03T11:53:00Z",
+    "resolved_at": null,
+    "is_synthetic": true
+  },
+  {
+    "incident_id": "INC-0005",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "voc_id": "VOC-0082",
+    "service_area_id": "MCE-014",
+    "topic_code": "소음",
+    "severity": "warn",
+    "status": "done",
+    "opened_at": "2026-09-14T09:27:00Z",
+    "resolved_at": "2026-09-14T10:31:00Z",
+    "is_synthetic": true
+  },
+  {
+    "incident_id": "INC-0006",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "voc_id": "VOC-0037",
+    "service_area_id": "HTL-004",
+    "topic_code": "안전",
+    "severity": "warn",
+    "status": "prog",
+    "opened_at": "2026-07-23T12:32:00Z",
+    "resolved_at": null,
+    "is_synthetic": true
+  },
+  {
+    "incident_id": "INC-0007",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "voc_id": "VOC-0023",
+    "service_area_id": "HTL-002",
+    "topic_code": "직원 서비스",
+    "severity": "danger",
+    "status": "prog",
+    "opened_at": "2026-08-12T08:57:00Z",
+    "resolved_at": null,
+    "is_synthetic": true
+  },
+  {
+    "incident_id": "INC-0008",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "voc_id": "VOC-0019",
+    "service_area_id": "INF-016",
+    "topic_code": "안전",
+    "severity": "warn",
+    "status": "prog",
+    "opened_at": "2026-07-22T10:08:00Z",
+    "resolved_at": null,
+    "is_synthetic": true
+  }
+]

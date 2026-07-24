@@ -1,0 +1,57 @@
+[
+  {
+    "detection_id": "DET-0001",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "detection_code": "WAIT_P90_EXCEED",
+    "description": "P90 대기시간 초과",
+    "severity": "warn",
+    "triggered_at": "2026-08-18T15:00:00Z",
+    "metric_value": 34.4,
+    "threshold": 30.0,
+    "is_synthetic": true
+  },
+  {
+    "detection_id": "DET-0002",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "detection_code": "VOC_SPIKE",
+    "description": "부정 VOC 급증",
+    "severity": "danger",
+    "triggered_at": "2026-09-19T15:00:00Z",
+    "metric_value": 38.8,
+    "threshold": 30.0,
+    "is_synthetic": true
+  },
+  {
+    "detection_id": "DET-0003",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "detection_code": "CAPACITY_DROP",
+    "description": "수용량 급감",
+    "severity": "danger",
+    "triggered_at": "2026-07-30T12:00:00Z",
+    "metric_value": 21.6,
+    "threshold": 30.0,
+    "is_synthetic": true
+  },
+  {
+    "detection_id": "DET-0004",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "detection_code": "STAFF_SHORTAGE",
+    "description": "인력 부족 감지",
+    "severity": "warn",
+    "triggered_at": "2026-08-19T12:00:00Z",
+    "metric_value": 34.9,
+    "threshold": 30.0,
+    "is_synthetic": true
+  },
+  {
+    "detection_id": "DET-0005",
+    "dataset_version": "gw-synthetic-0.1.0",
+    "detection_code": "QUEUE_OVERFLOW",
+    "description": "대기열 초과",
+    "severity": "danger",
+    "triggered_at": "2026-09-04T15:00:00Z",
+    "metric_value": 31.6,
+    "threshold": 30.0,
+    "is_synthetic": true
+  }
+]

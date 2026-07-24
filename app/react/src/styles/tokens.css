@@ -1,0 +1,96 @@
+/**
+ * SensePlace 디자인 토큰
+ * 목업 v1.2 CSS 변수 추출
+ * @see docs/markdown/ai_docs/SensePlace_목업_v1.2.html
+ */
+
+:root {
+  /* ===== 기본 색상 ===== */
+  --bg: #f1f5f9;
+  --panel: #ffffff;
+  --panel-2: #f8fafc;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --line-2: #cbd5e1;
+
+  /* ===== 브랜드 색상 (Cyan) ===== */
+  --brand: #0e7490;
+  --brand-2: #155e75;
+  --brand-soft: #ecfeff;
+
+  /* ===== 심각도 (Severity) ===== */
+  --sev-danger: #dc2626;
+  --sev-warn: #f59e0b;
+  --sev-ok: #10b981;
+  --sev-danger-soft: #fef2f2;
+  --sev-warn-soft: #fffbeb;
+  --sev-ok-soft: #ecfdf5;
+
+  /* ===== 상태 (Status) ===== */
+  --st-recv: #94a3b8;
+  --st-check: #3b82f6;
+  --st-prog: #8b5cf6;
+  --st-done: #059669;
+
+  /* ===== 테두리 반경 ===== */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 12px;
+  --radius-md: 8px;
+
+  /* ===== 그림자 ===== */
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 10px 30px rgba(15, 23, 42, 0.14);
+
+  /* ===== 폰트 ===== */
+  --font: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, -apple-system, sans-serif;
+
+  /* ===== 레일 (사이드바) ===== */
+  --rail-bg: #0b1120;
+  --rail-text: #cbd5e1;
+  --rail-border: #1e293b;
+  --rail-muted: #64748b;
+  --rail-dim: #475569;
+  --rail-hover: #1e293b;
+}
+
+/* ===== 글로벌 리셋 ===== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

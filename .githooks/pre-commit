@@ -60,10 +60,10 @@ EOF
 
 if [ -n "$staged_documents" ]; then
     python_command=
-    if command -v python3 >/dev/null 2>&1; then
-        python_command=python3
-    elif command -v python >/dev/null 2>&1; then
+    if command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
         python_command=python
+    elif command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
+        python_command=python3
     else
         printf '%s\n' '[pre-commit] Markdown 문서 정책 검사에 Python 3.10+가 필요합니다.' >&2
         failed=1

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo '{\"cwd\":\"C:\\\\\\\\Users\\\\\\\\Playdata\\\\\\\\Desktop\\\\\\\\SKN_FINAL\\\\\\\\skn29_final_3team\",\"model\":{\"display_name\":\"Sonnet 5\"},\"transcript_path\":\"/nonexistent\"}')",
+      "Bash(node -e 'let d=\"\";process.stdin.on\\(\"data\",c=>d+=c\\);process.stdin.on\\(\"end\",\\(\\)=>{console.log\\(JSON.stringify\\(JSON.parse\\(d\\)\\)\\)}\\)')"
+    ]
+  }
+}

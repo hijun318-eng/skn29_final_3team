@@ -1,0 +1,1686 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SensePlace 목업 · v1.7</title>
+<style>
+:root{
+  /* base */
+  --bg:#eef2f7; --panel:#ffffff; --panel-2:#f8fafc; --ink:#0f172a; --muted:#64748b;
+  --line:#e5e9f0; --line-2:#cbd5e1; --brand:#3b5b8c; --brand-2:#2a4368; --brand-soft:#eef2f7;
+  /* severity */
+  --sev-danger:#dc2626; --sev-warn:#f59e0b; --sev-ok:#10b981;
+  --sev-danger-soft:#fef2f2; --sev-warn-soft:#fffbeb; --sev-ok-soft:#ecfdf5;
+  /* status */
+  --st-recv:#94a3b8; --st-check:#3b82f6; --st-prog:#8b5cf6; --st-done:#059669;
+  --radius:12px; --radius-sm:8px;
+  --shadow-sm:0 1px 2px rgba(15,23,42,.06);
+  --shadow:0 1px 2px rgba(15,23,42,.04),0 2px 6px rgba(15,23,42,.06);
+  --shadow-lg:0 12px 32px -8px rgba(15,23,42,.18),0 4px 12px -4px rgba(15,23,42,.08);
+  --ring:0 0 0 3px rgba(59,91,140,.28);
+  --font:'Pretendard Variable','Pretendard','Apple SD Gothic Neo','Malgun Gothic','Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--font);background:var(--bg);color:var(--ink);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;letter-spacing:-.01em}
+h1,h2,h3,h4{letter-spacing:-.02em}
+button{font-family:inherit;cursor:pointer}
+input,textarea,select{font-family:inherit}
+
+/* ---------- Prototype shell ---------- */
+.app{display:grid;grid-template-columns:232px 1fr;height:100vh}
+.rail{background:#0b1120;color:#cbd5e1;display:flex;flex-direction:column;overflow-y:auto}
+.rail-brand{padding:20px 18px 14px;border-bottom:1px solid #1e293b}
+.rail-brand .logo{font-size:17px;font-weight:800;letter-spacing:-.3px;color:#fff;display:flex;align-items:center;gap:8px}
+.rail-brand .dot{width:9px;height:9px;border-radius:2px;background:#5b7db0}
+.rail-brand .sub{font-size:11px;color:#64748b;margin-top:4px}
+.rail-sec{padding:14px 12px 6px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#475569}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 14px;margin:2px 8px;border-radius:9px;color:#cbd5e1;font-size:13px;transition:.15s;border:none;background:none;width:calc(100% - 16px);text-align:left}
+.nav-item:hover{background:#1e293b;color:#fff}
+.nav-item.on{background:#334e73;color:#fff;font-weight:600;box-shadow:inset 3px 0 0 #6b8fc0}
+.nav-item .code{font-size:10.5px;font-weight:700;background:rgba(255,255,255,.12);padding:2px 6px;border-radius:5px;min-width:44px;text-align:center}
+.nav-item.on .code{background:rgba(255,255,255,.22)}
+.rail-foot{margin-top:auto;padding:14px 16px;font-size:11px;color:#475569;border-top:1px solid #1e293b}
+
+.stage{overflow:auto;position:relative;background:
+  radial-gradient(circle at 1px 1px,#dbe2ec 1px,transparent 0);background-size:22px 22px}
+.stage-head{position:sticky;top:0;z-index:5;background:rgba(238,242,247,.86);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:12px 24px;display:flex;align-items:center;gap:12px}
+.stage-head h2{font-size:15px;font-weight:700}
+.stage-head .meta{font-size:12px;color:var(--muted)}
+.stage-head .spec{margin-left:auto;font-size:11.5px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.viewport-tag{font-size:11px;background:#fff;border:1px solid var(--line);padding:3px 9px;border-radius:20px;color:var(--muted)}
+.stage-body{padding:28px 24px 60px;display:flex;justify-content:center}
+
+.screen{display:none;width:100%}
+.screen.on{display:block}
+
+/* ---------- shared bits ---------- */
+.synthetic{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:#a16207;background:#fef9c3;border:1px solid #fde68a;padding:3px 9px;border-radius:20px}
+.synthetic::before{content:"⬡";font-size:12px}
+.demo-tag{font-size:11px;font-weight:600;color:var(--brand-2);background:var(--brand-soft);border:1px solid #a5f3fc;padding:3px 9px;border-radius:20px}
+.sev{display:inline-flex;align-items:center;gap:5px;font-weight:600;font-size:12px}
+.sev .g{font-size:13px;line-height:1}
+.sev.danger{color:var(--sev-danger)} .sev.warn{color:#b45309} .sev.ok{color:#047857}
+.badge-st{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:20px;border:1px solid transparent}
+.badge-st::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.st-recv{color:#475569;background:#f1f5f9;border-color:#e2e8f0}
+.st-check{color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe}
+.st-prog{color:#6d28d9;background:#f5f3ff;border-color:#ddd6fe}
+.st-done{color:#047857;background:#ecfdf5;border-color:#a7f3d0}
+.btn{border:1px solid var(--line-2);background:#fff;color:var(--ink);padding:8px 14px;border-radius:9px;font-size:13px;font-weight:600;transition:background .15s,border-color .15s,box-shadow .15s,transform .06s;box-shadow:var(--shadow-sm)}
+.btn:hover{background:#f8fafc;border-color:#94a3b8;box-shadow:var(--shadow)}
+.btn:active{transform:translateY(.5px)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.primary:hover{background:var(--brand-2);border-color:var(--brand-2);box-shadow:0 4px 12px -3px rgba(59,91,140,.45)}
+.btn.primary:disabled{background:#cbd5e1;border-color:#cbd5e1;cursor:not-allowed;box-shadow:none}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:7px}
+.pill{font-size:11px;padding:2px 8px;border-radius:6px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);transition:box-shadow .18s,border-color .18s}
+.muted{color:var(--muted)}
+.note{font-size:12px;color:var(--muted);margin-top:6px}
+.kbd{font-family:ui-monospace,monospace;font-size:11px;background:#f1f5f9;border:1px solid #e2e8f0;border-bottom-width:2px;border-radius:5px;padding:1px 5px}
+
+/* device frames */
+.frame-desktop{width:100%;max-width:1180px;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden}
+.frame-mobile{width:390px;background:#fff;border:1px solid var(--line);border-radius:28px;box-shadow:var(--shadow-lg);overflow:hidden;padding:10px}
+.frame-mobile .notch{width:110px;height:6px;background:#e2e8f0;border-radius:6px;margin:2px auto 10px}
+.frame-narrow{width:100%;max-width:820px}
+.center-wrap{min-height:520px;display:flex;align-items:center;justify-content:center;padding:24px;background:#e6ebf1;border:1px solid var(--line);border-radius:16px}
+
+/* app topbar for employee screens */
+.topbar{height:52px;display:flex;align-items:center;gap:18px;padding:0 18px;border-bottom:1px solid var(--line);background:#fff}
+.topbar .brand{font-weight:800;font-size:15px;color:var(--brand-2);letter-spacing:-.3px}
+.topbar nav{display:flex;gap:2px}
+.topnav{padding:7px 13px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted);border:none;background:none;transition:background .15s,color .15s}
+.topnav:hover{background:#f1f5f9;color:var(--ink)}
+.topnav.on{background:var(--brand-soft);color:var(--brand-2)}
+.topbar .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.user-chip{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border:1px solid var(--line);border-radius:20px;font-size:12.5px;transition:border-color .15s,box-shadow .15s}
+.user-chip:hover{border-color:#94a3b8;box-shadow:var(--shadow-sm)}
+.avatar{width:26px;height:26px;border-radius:5px;background:#5b7db0;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.role-badge{font-size:10.5px;font-weight:700;color:#0369a1;background:#e0f2fe;padding:1px 7px;border-radius:6px}
+.conn{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#047857;font-weight:600}
+.conn .live{width:8px;height:8px;border-radius:50%;background:#10b981;box-shadow:0 0 0 0 rgba(16,185,129,.5);animation:livePulse 2s infinite}
+@keyframes livePulse{0%{box-shadow:0 0 0 0 rgba(16,185,129,.5)}70%{box-shadow:0 0 0 6px rgba(16,185,129,0)}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}
+.env-tag{font-size:10px;font-weight:800;letter-spacing:.08em;color:#b45309;background:#fef3c7;border:1px solid #fde68a;padding:2px 7px;border-radius:5px}
+/* report editor DnD */
+.rblk{transition:box-shadow .2s,transform .15s,border-color .15s;background:#fff}
+.rblk:hover{border-color:#94a3b8}
+.rblk.hl{animation:hl 1.3s ease}
+@keyframes hl{0%{box-shadow:0 0 0 2px var(--brand)}60%{box-shadow:0 0 0 2px var(--brand)}100%{box-shadow:0 0 0 0 transparent}}
+.rblk.dragging{opacity:.4}
+.rhandle{cursor:grab}
+.dropline{flex:0 0 100%;width:100%;height:0;border-top:2px dashed var(--brand);margin:2px 4px;position:relative;pointer-events:none}
+.dropline::after{content:'여기에 놓기';position:absolute;left:50%;top:-9px;transform:translateX(-50%);background:var(--brand);color:#fff;font-size:10px;font-weight:600;padding:1px 9px;border-radius:8px;white-space:nowrap}
+.dcard{cursor:grab;transition:border-color .15s,box-shadow .15s,transform .12s}
+.dcard:hover{border-color:var(--brand)!important;box-shadow:var(--shadow);transform:translateY(-1px)}
+.dcard.used{opacity:.45}
+.dcard.used::after{content:' ✓ 사용됨';font-size:10px;color:#047857}
+.nlbox{border:1px solid var(--brand);background:var(--brand-soft);border-radius:10px;padding:10px;margin-bottom:14px}
+.spinny{display:inline-block;width:13px;height:13px;border:2px solid #cbd5e1;border-top-color:var(--brand);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.mk{transition:filter .15s}
+.mk:hover{filter:drop-shadow(0 3px 5px rgba(15,23,42,.32))}
+.mk.pulse circle:first-child{animation:mpulse 1.2s ease 2}
+@keyframes mpulse{0%{opacity:1}50%{opacity:.35}100%{opacity:1}}
+.sidehlL{box-shadow:-5px 0 0 0 var(--brand) !important}
+.sidehlR{box-shadow:5px 0 0 0 var(--brand) !important}
+
+/* ---------- polish: focus states, forms, scrollbars, motion ---------- */
+input,textarea,select{transition:border-color .15s,box-shadow .15s;color:var(--ink)}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand)!important;box-shadow:var(--ring)}
+input::placeholder,textarea::placeholder{color:#94a3b8}
+select{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2364748b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")!important;background-repeat:no-repeat!important;background-position:right 10px center!important;padding-right:28px!important}
+a:focus-visible,button:focus-visible,[tabindex]:focus-visible,.nav-item:focus-visible,.topnav:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:8px}
+.btn:focus-visible{outline:none;box-shadow:var(--ring)}
+[contenteditable]:focus{outline:none;box-shadow:0 0 0 2px rgba(59,91,140,.18);border-radius:6px}
+.rec4,.h4item{transition:border-color .15s,box-shadow .15s,transform .12s}
+.rec4:hover,.h4item:hover{border-color:var(--brand)!important;box-shadow:var(--shadow);transform:translateY(-1px)}
+.alertItem,.revItem,.inboxItem{transition:border-color .15s,box-shadow .15s,background .15s}
+.alertItem:hover,.revItem:hover,.inboxItem:hover{border-color:#94a3b8!important;box-shadow:var(--shadow)}
+.rptRow{transition:background .15s}
+.rptRow:hover{background:var(--panel-2)}
+.vocimg{transition:transform .15s,box-shadow .15s}
+.vocimg:hover{transform:scale(1.05);box-shadow:var(--shadow);z-index:1}
+.pill{transition:background .15s,color .15s}
+*{scrollbar-width:thin;scrollbar-color:#c3ccd8 transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:8px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:#94a3b8;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+.rail{scrollbar-color:#334155 transparent}
+.rail::-webkit-scrollbar-thumb{background:#334155;background-clip:content-box}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="rail-brand">
+      <div class="logo"><span class="dot"></span>SensePlace</div>
+      <div class="sub">호텔 운영 지원 · 화면 목업 v1.7</div>
+    </div>
+    <div class="rail-sec">고객 화면</div>
+    <button class="nav-item" data-screen="sp02"><span class="code">SP-02</span>고객 VOC 제출</button>
+    <div class="rail-sec">직원 화면</div>
+    <button class="nav-item" data-screen="sp01"><span class="code">SP-01</span>로그인</button>
+    <button class="nav-item on" data-screen="sp03"><span class="code">SP-03</span>실시간 모니터링</button>
+    <button class="nav-item" data-screen="sp04"><span class="code">SP-04</span>대화형 조회</button>
+    <button class="nav-item" data-screen="sp05a"><span class="code">SP-05a</span>보고서 목록</button>
+    <button class="nav-item" data-screen="sp05b"><span class="code">SP-05b</span>보고서 에디터</button>
+    <button class="nav-item" data-screen="sp06"><span class="code">SP-06</span>외부 리뷰</button>
+    <div class="rail-sec">시연 흐름 (E2E)</div>
+    <div style="padding:2px 16px 10px;font-size:11px;line-height:1.95;color:#7d8ba1">
+      ① SP-02 고객 VOC 제출<br>
+      ② SP-03 15초 내 지도 반영<br>
+      ③ 비동기 감성·심각도 판정<br>
+      ④ 매뉴얼 확인·상태 변경<br>
+      ⑤ SP-04 자연어 조회·담기<br>
+      ⑥ SP-05b 보고서·PDF<br>
+      ⑦ SP-06 외부 리뷰 연결
+    </div>
+    <div class="rail-foot">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span class="env-tag">STAGING</span>
+        <span class="conn" style="font-size:11px"><span class="live"></span>배포 준비</span>
+      </div>
+      build 2026.07.24 · v1.7.0-rc<br>사진 첨부 · 스마트 레이아웃 · AI 에이전트
+    </div>
+  </aside>
+
+  <main class="stage">
+    <div class="stage-head">
+      <h2 id="scrTitle">실시간 모니터링</h2>
+      <span class="meta" id="scrMeta">SP-03 · 운영자·실무자 기본 화면</span>
+      <div class="spec">
+        <span class="viewport-tag" id="scrView">1280px+</span>
+      </div>
+    </div>
+    <div class="stage-body" id="stageBody"><!-- screens injected below --></div>
+  </main>
+</div>
+
+<!-- ============================================================= -->
+<!-- The screens live directly in the DOM below and are toggled.   -->
+<!-- ============================================================= -->
+<div id="screens" style="display:none"></div>
+
+<script>
+/* ---------------- ontology (0.6) ---------------- */
+const ZONES = {
+  "객실동":["그랜드 워커힐","비스타 워커힐","더글라스 하우스","애스톤 하우스"],
+  "다이닝":["피자힐","명월관"],
+  "레저·웰니스":["리버파크","테네즈 파크","포레스트 파크","힐링 포레스트","더글라스 가든","워커힐 골프클럽"],
+  "MICE·엔터":["컨벤션 센터","빛의 시어터","Casino"],
+  "인프라":["주차타워","South Gate","East Gate"]
+};
+const CATS = ["청결·위생","안전","대기·혼잡","직원 서비스","시설 고장","소음","온도·환경","가격·결제","예약·안내"];
+
+/* ---------------- screen meta ---------------- */
+const META = {
+  sp01:{t:"로그인",m:"SP-01 · 직원 인증 · role 기반 라우팅",v:"데스크톱 · 400px 카드"},
+  sp02:{t:"고객 VOC 제출",m:"SP-02 · 비로그인 · 링크 직접 진입 · 발송 전략",v:"모바일 360~480px"},
+  sp03:{t:"실시간 모니터링",m:"SP-03 · 운영자·실무자 기본 화면",v:"1280px+"},
+  sp04:{t:"대화형 조회",m:"SP-04 · AI 에이전트 · text-to-SQL (방식 B)",v:"중앙 800px"},
+  sp05a:{t:"보고서 목록",m:"SP-05a · 탐색·생성·사본 허브",v:"1280px+"},
+  sp05b:{t:"보고서 에디터",m:"SP-05b · 블록 에디터 · 7종 블록 자유 배치",v:"1280px+"},
+  sp06:{t:"외부 리뷰",m:"SP-06 · 관리자 · 목록+대시보드 · 외부↔내부 연결",v:"1280px+"}
+};
+
+/* ============================================================= */
+/* build all screens                                              */
+/* ============================================================= */
+const S = document.getElementById('screens');
+
+/* -------- SP-01 로그인 -------- */
+S.insertAdjacentHTML('beforeend', `
+<section class="screen" id="sp01">
+  <div class="center-wrap">
+    <div class="card" style="width:400px;padding:34px 30px">
+      <div style="text-align:center;margin-bottom:26px">
+        <div style="font-size:24px;font-weight:800;color:var(--brand-2);letter-spacing:-.5px">SensePlace</div>
+        <div class="muted" style="font-size:13px;margin-top:4px">호텔 운영 지원 서비스</div>
+      </div>
+      <div id="lockBanner" style="display:none;font-size:12.5px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;padding:9px 12px;border-radius:8px;margin-bottom:14px"></div>
+      <label style="font-size:12.5px;font-weight:600;color:#475569">아이디</label>
+      <input id="loginId" placeholder="staff.id" style="width:100%;margin:6px 0 14px;padding:11px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:14px">
+      <label style="font-size:12.5px;font-weight:600;color:#475569;display:flex;justify-content:space-between">비밀번호
+        <span id="pwToggle" style="cursor:pointer;color:var(--muted);font-weight:500">👁 표시</span></label>
+      <input id="loginPw" type="password" placeholder="••••••••" style="width:100%;margin:6px 0 8px;padding:11px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:14px">
+      <div id="loginErr" style="display:none;font-size:12px;color:#dc2626;margin:2px 0 8px">⚠ 아이디 또는 비밀번호가 올바르지 않습니다 <span id="tryCount">(3/5)</span></div>
+      <button class="btn primary" id="loginBtn" style="width:100%;padding:12px;margin-top:8px" disabled>로그인</button>
+      <div style="margin-top:18px;padding-top:14px;border-top:1px dashed var(--line)">
+        <div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:8px">데모 계정 — role 기반 화면·권한 체험</div>
+        <div style="display:flex;gap:6px">
+          <button class="btn sm roleChip" data-role="op" style="flex:1;line-height:1.35">운영자<br><span style="font-weight:400;font-size:10px;opacity:.75">정승현</span></button>
+          <button class="btn sm roleChip" data-role="worker" style="flex:1;line-height:1.35">실무자<br><span style="font-weight:400;font-size:10px;opacity:.75">이민호 · 다이닝</span></button>
+          <button class="btn sm roleChip" data-role="admin" style="flex:1;line-height:1.35">관리자<br><span style="font-weight:400;font-size:10px;opacity:.75">김관리</span></button>
+        </div>
+      </div>
+      <div class="note" style="text-align:center;margin-top:12px">계정 선택 → 로그인 · 역할별 메뉴/권한/기본 화면 상이<br>"lock" 입력 시 잠금(423) 미리보기</div>
+    </div>
+  </div>
+</section>`);
+
+/* -------- SP-02 고객 VOC 제출 -------- */
+S.insertAdjacentHTML('beforeend', `
+<section class="screen" id="sp02">
+  <div style="display:flex;gap:26px;justify-content:center;align-items:flex-start;flex-wrap:wrap">
+  <div class="frame-mobile">
+    <div class="notch"></div>
+    <div style="background:var(--brand-2);color:#fff;padding:13px 16px;border-radius:16px 16px 0 0;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-weight:700;font-size:14px">SensePlace · 고객 안내</div>
+      <span class="demo-tag" style="background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3);color:#dbeafe">데모</span>
+    </div>
+    <div style="border:1px solid var(--line);border-top:none;border-radius:0 0 16px 16px">
+      <!-- reservation card -->
+      <div style="padding:14px 16px 12px;border-bottom:1px solid var(--line);background:var(--panel-2)">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:6px">▣ 내 예약</div>
+        <div style="font-weight:700;font-size:15px">그랜드 워커힐 · 객실 1203</div>
+        <div style="display:flex;gap:14px;margin-top:8px">
+          <div><div class="muted" style="font-size:10.5px">체크인</div><div style="font-weight:600;font-size:12.5px">07/23(목) 15:00</div></div>
+          <div style="color:#cbd5e1;align-self:center">→</div>
+          <div><div class="muted" style="font-size:10.5px">체크아웃</div><div style="font-weight:600;font-size:12.5px">07/25(토) 11:00</div></div>
+          <div style="margin-left:auto;align-self:center"><span class="pill">2박</span></div>
+        </div>
+      </div>
+      <!-- tabs -->
+      <div style="display:flex;border-bottom:1px solid var(--line)">
+        <button class="v2tab on" data-t="guide" style="flex:1;padding:11px 0;font-size:13px;font-weight:600;border:none;background:none;color:var(--brand-2);border-bottom:2px solid var(--brand)">투숙 안내</button>
+        <button class="v2tab" data-t="voc" style="flex:1;padding:11px 0;font-size:13px;font-weight:600;border:none;background:none;color:var(--muted);border-bottom:2px solid transparent">불편 남기기</button>
+      </div>
+      <!-- guide pane -->
+      <div class="v2pane" data-p="guide" style="padding:16px">
+        <div style="border:1px solid #dbe4f0;background:#f4f8fc;border-radius:12px;padding:13px 14px;margin-bottom:16px">
+          <div style="font-size:11px;font-weight:700;color:var(--brand-2);display:flex;align-items:center;gap:5px">✨ 맞춤 추천 <span class="muted" style="font-weight:400">· 이용 데이터 기반</span></div>
+          <div style="font-size:12.5px;line-height:1.65;margin-top:8px;color:#334155">지난 3회 방문 분석 결과, <b>다이닝·웰니스</b> 이용률이 높으셨어요.<br>· 저녁은 <b>피자힐</b> 리버뷰 디너를 추천드려요 (예약 여유 있음)<br>· 오전 <b>힐링 포레스트</b> 산책 코스가 잘 맞아요</div>
+        </div>
+        <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">🗺 추천 코스 · 오늘</div>
+        <div style="margin-bottom:16px">
+          ${[['09:30','힐링 포레스트 산책','웰니스'],['12:30','명월관 점심','다이닝'],['15:00','리버파크 물놀이','레저'],['18:30','피자힐 디너','다이닝']].map((c,i,a)=>`
+            <div style="display:flex;gap:10px">
+              <div style="display:flex;flex-direction:column;align-items:center">
+                <div style="width:9px;height:9px;border-radius:50%;background:var(--brand);margin-top:4px"></div>
+                ${i<a.length-1?'<div style="width:2px;flex:1;background:var(--line)"></div>':''}
+              </div>
+              <div style="padding-bottom:${i<a.length-1?'12px':'0'}">
+                <div style="font-size:12.5px;font-weight:600">${c[0]} · ${c[1]}</div>
+                <div class="muted" style="font-size:11px">${c[2]}</div></div>
+            </div>`).join('')}
+        </div>
+        <div style="font-size:12.5px;font-weight:700;margin-bottom:8px">📖 호텔 가이드</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          ${[['🍳 조식','06:30–10:00 · 더뷰'],['🚌 셔틀','정시 30분 간격'],['📶 WiFi','WalkerhillGuest'],['☎ 프런트','내선 0']].map(g=>`<div style="border:1px solid var(--line);border-radius:9px;padding:10px"><div style="font-size:12px;font-weight:600">${g[0]}</div><div class="muted" style="font-size:11px;margin-top:2px">${g[1]}</div></div>`).join('')}
+        </div>
+        <div class="note" style="text-align:center">이 링크는 체크아웃(07/25) +24시간 후 만료됩니다.</div>
+      </div>
+      <!-- voc pane -->
+      <div class="v2pane" data-p="voc" style="padding:16px;display:none">
+        <div id="vocFormWrap">
+          <label style="font-size:13px;font-weight:600">어떤 점이 불편하셨나요?</label>
+          <div style="position:relative;margin:8px 0 16px">
+            <textarea id="vocText" maxlength="1000" rows="4" placeholder="자유롭게 남겨 주세요" style="width:100%;padding:11px 12px;border:1px solid var(--line-2);border-radius:10px;font-size:14px;resize:none"></textarea>
+            <span id="vocCount" style="position:absolute;right:10px;bottom:8px;font-size:11px;color:var(--muted)">0/1000</span>
+          </div>
+          <label style="font-size:13px;font-weight:600">사진 첨부 <span style="font-weight:400;color:var(--muted);font-size:11.5px">선택 · 최대 3장 · 장당 10MB</span></label>
+          <div id="vocPhotos" style="display:flex;gap:8px;margin:8px 0 16px;flex-wrap:wrap"></div>
+          <input type="file" id="vocFile" accept="image/*" multiple style="display:none">
+          <label style="font-size:13px;font-weight:600">장소</label>
+          <select id="vocZone" style="width:100%;margin:8px 0;padding:11px 12px;border:1px solid var(--line-2);border-radius:10px;font-size:14px;background:#fff"><option value="">구역 선택</option></select>
+          <select id="vocFac" style="width:100%;margin-bottom:18px;padding:11px 12px;border:1px solid var(--line-2);border-radius:10px;font-size:14px;background:#fff;color:#94a3b8" disabled><option value="">시설 선택</option></select>
+          <button class="btn primary" id="vocSubmit" style="width:100%;padding:13px" disabled>제출하기</button>
+          <div class="note" style="text-align:center;margin-top:10px">제출 시 3초 내 접수 확인 · 감성/심각도 비동기 산정 · 영문 입력 시 AI 자동 번역</div>
+        </div>
+        <div id="vocDone" style="display:none;padding:30px 12px;text-align:center">
+          <div style="width:60px;height:60px;border-radius:50%;background:var(--sev-ok-soft);color:var(--sev-ok);display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 14px">✓</div>
+          <div style="font-weight:700;font-size:15px">접수되었습니다. 감사합니다.</div>
+          <div class="muted" style="font-size:12.5px;margin-top:8px">담당 부서가 확인 후 조치합니다.</div>
+          <div style="display:flex;gap:8px;justify-content:center;margin-top:20px">
+            <button class="btn" id="vocAgain">추가로 남기기</button>
+            <button class="btn primary" data-goto="sp03">운영자 지도에서 확인 →</button>
+          </div>
+          <div class="note" style="margin-top:10px">제출한 VOC가 15초 내 모니터링 지도에 반영됩니다 (E2E 데모)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- 개인 링크 발송 전략 -->
+  <div class="card" style="width:400px;padding:18px 20px">
+    <div style="font-weight:800;font-size:14px">📮 개인 링크 발송 전략</div>
+    <div class="muted" style="font-size:11.5px;margin:4px 0 14px">예약 1건 = 고유 토큰 1개 · 알림톡/문자에 시설 가이드와 함께 동봉</div>
+    <div style="background:#b2c7da;border-radius:12px;padding:12px 12px 8px;margin-bottom:14px">
+      <div style="font-size:10.5px;color:#41586d;font-weight:700;margin-bottom:7px">카카오 알림톡 미리보기 (체크인 시 발송)</div>
+      <div style="background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.12)">
+        <div style="background:#f7c600;padding:7px 12px;font-size:11px;font-weight:800;color:#3a2f10">워커힐 호텔앤리조트</div>
+        <div style="padding:11px 12px;font-size:12px;line-height:1.7"><b>윤대성</b>님, 체크인을 환영합니다 🏨<br>투숙 기간 동안 아래 링크에서 이용하세요.<br>· 호텔 시설 가이드 · 맞춤 추천 코스<br>· 불편사항 실시간 접수 (로그인 불필요)</div>
+        <button class="btn" id="ktLink" style="width:calc(100% - 20px);margin:0 10px 10px;font-size:11.5px;background:#fef9e7;border-color:#f0e0a8">🔗 senseplace.io/voc/tk_8f3aXq…</button>
+      </div>
+      <div style="font-size:10px;color:#54697a;margin-top:6px;text-align:right">알림톡 실패 시 LMS 문자 폴백 · 객실 QR 카드 병행</div>
+    </div>
+    <div style="font-size:12px;font-weight:700;margin-bottom:8px">발송 시점 · 링크 수명주기</div>
+    <div style="margin-bottom:14px">
+      <div style="display:flex;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px dashed var(--line)"><span style="min-width:88px;font-weight:700;color:var(--brand-2)">예약 확정</span><span style="color:#475569">문자(LMS) — 예약 요약 + 링크 발급 안내</span></div>
+      <div style="display:flex;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px dashed var(--line)"><span style="min-width:88px;font-weight:700;color:var(--brand-2)">체크인 시</span><span style="color:#475569">알림톡 — 가이드·추천 코스 (기본 탭: 투숙 안내)</span></div>
+      <div style="display:flex;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px dashed var(--line)"><span style="min-width:88px;font-weight:700;color:var(--brand-2)">투숙 중</span><span style="color:#475569">같은 링크로 불편 즉시 접수 (탭: 불편 남기기)</span></div>
+      <div style="display:flex;gap:10px;font-size:11.5px;padding:5px 0;border-bottom:1px dashed var(--line)"><span style="min-width:88px;font-weight:700;color:var(--brand-2)">체크아웃 시</span><span style="color:#475569">알림톡 — "이용은 어떠셨나요?" 마지막 피드백 유도</span></div>
+      <div style="display:flex;gap:10px;font-size:11.5px;padding:5px 0"><span style="min-width:88px;font-weight:700;color:#b45309">체크아웃+24h</span><span style="color:#475569">토큰 자동 만료(410) — 조회·제출 차단, 프런트 안내</span></div>
+    </div>
+    <div style="font-size:12px;font-weight:700;margin-bottom:6px">링크 정책 (명세 1.2)</div>
+    <div style="font-size:11.5px;line-height:1.8;color:#475569">
+      · 토큰 43자 무작위(secrets) — URL 추측 불가<br>
+      · 로그인 불필요 · 실패 응답에 예약정보 미노출<br>
+      · 재제출 60초 간격 · IP 분당 10회 rate limit<br>
+      · 같은 링크 재방문 시 접수 이력 기반 맞춤 추천 갱신
+    </div>
+  </div>
+  </div>
+</section>`);
+
+/* -------- SP-03 모니터링 -------- (built by JS below) */
+S.insertAdjacentHTML('beforeend', `<section class="screen on" id="sp03"></section>`);
+
+/* -------- SP-04 조회 -------- */
+S.insertAdjacentHTML('beforeend', `<section class="screen" id="sp04"></section>`);
+
+/* -------- SP-05a 목록 -------- */
+S.insertAdjacentHTML('beforeend', `<section class="screen" id="sp05a"></section>`);
+
+/* -------- SP-05b 에디터 -------- */
+S.insertAdjacentHTML('beforeend', `<section class="screen" id="sp05b"></section>`);
+
+/* -------- SP-06 외부 리뷰 -------- */
+S.insertAdjacentHTML('beforeend', `<section class="screen" id="sp06"></section>`);
+
+/* move screens into stage body */
+document.getElementById('stageBody').append(...document.querySelectorAll('#screens .screen'));
+</script>
+
+<script>
+/* ============================================================= */
+/*  Shared helpers                                                */
+/* ============================================================= */
+const $ = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>[...r.querySelectorAll(s)];
+
+/* ---------------- role 기반 접근 제어 (회의: 직원권한 기반 역할·화면 제공) ---------------- */
+const ROLES={
+  op:{key:'op',name:'정승현',label:'운영자',badge:'#0369a1',bg:'#e0f2fe',zone:null,menus:['sp03','sp04','sp05a'],home:'sp03'},
+  worker:{key:'worker',name:'이민호',label:'실무자',badge:'#92400e',bg:'#fef3c7',zone:'다이닝',menus:['sp03','sp05a'],home:'sp03'},
+  admin:{key:'admin',name:'김관리',label:'관리자',badge:'#6d28d9',bg:'#f5f3ff',zone:null,menus:['sp03','sp04','sp05a','sp06'],home:'sp06'}
+};
+let ROLE=ROLES.op;
+function setRole(k){
+  ROLE=ROLES[k]||ROLES.op;
+  Object.keys(built).forEach(x=>built[x]=false); /* role 반영 위해 화면 재구성 */
+  toast('역할 전환: '+ROLE.label+(ROLE.zone?' · 담당 '+ROLE.zone:'')+(ROLE.key==='worker'?' — 담당 구역 외 상태 변경 불가':''));
+}
+function topbar(active){
+  const all=[["모니터링","sp03"],["대화형 조회","sp04"],["보고서","sp05a"],["외부 리뷰","sp06"]];
+  const items=all.filter(it=>ROLE.menus.includes(it[1])); /* role에 없는 메뉴는 렌더하지 않음 (0.9) */
+  return `<div class="topbar">
+    <div class="brand">SensePlace</div>
+    <nav>${items.map(([l,id])=>`<button class="topnav ${active.startsWith(id.slice(0,4))?'on':''}" data-goto="${id}">${l}</button>`).join('')}</nav>
+    <div class="right">
+      <span class="conn"><span class="live"></span>실시간 연결</span>
+      <span class="synthetic">합성 데이터 v1.0</span>
+      <span class="user-chip roleSwitch" title="클릭 시 역할 전환 (데모: 운영자 → 실무자 → 관리자)" style="cursor:pointer"><span class="avatar">${ROLE.name[0]}</span>${ROLE.name} <span class="role-badge" style="color:${ROLE.badge};background:${ROLE.bg}">${ROLE.label}${ROLE.zone?' · '+ROLE.zone:''}</span> <span class="muted" style="font-size:11px">⇄</span></span>
+    </div>
+  </div>`;
+}
+
+let toastT;
+function toast(msg,kind){
+  let t=$('#toast'); if(!t){t=document.createElement('div');t.id='toast';t.style.cssText='position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);background:#0f172a;color:#fff;padding:11px 18px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.25);z-index:999;opacity:0;transition:.25s;pointer-events:none';document.body.appendChild(t);}
+  t.textContent=msg; t.style.background = kind==='err'?'#b91c1c':(kind==='ok'?'#047857':'#0f172a');
+  requestAnimationFrame(()=>{t.style.opacity='1';t.style.transform='translateX(-50%) translateY(0)';});
+  clearTimeout(toastT); toastT=setTimeout(()=>{t.style.opacity='0';t.style.transform='translateX(-50%) translateY(20px)';},4000);
+}
+
+const SEVG = {danger:'●',warn:'◐',ok:'○'};
+const SEVLABEL={danger:'위험',warn:'주의',ok:'정상'};
+const STLABEL={recv:'접수',check:'확인',prog:'진행중',done:'완료'};
+
+/* ============================================================= */
+/*  Data (synthetic)                                              */
+/* ============================================================= */
+/* 첨부 사진 플레이스홀더 (합성) */
+function phSVG(label){
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="240" height="180"><rect width="240" height="180" fill="#e2e8f0"/><rect x="8" y="8" width="224" height="164" fill="none" stroke="#94a3b8" stroke-dasharray="6 5" rx="8"/><text x="120" y="84" text-anchor="middle" font-size="30">📷</text><text x="120" y="116" text-anchor="middle" font-size="12" fill="#475569" font-family="sans-serif">'+label+'</text></svg>';
+  return 'data:image/svg+xml;utf8,'+encodeURIComponent(svg);
+}
+const INC = [
+  {id:'v1',fac:'피자힐',zone:'다이닝',x:340,y:250,sev:'danger',status:'prog',open:2,
+   text:'대기 40분째입니다. 예약했는데 자리가 없다고 하네요.',sent:'부정',conf:0.91,cat:'대기·혼잡',ago:'3분 전',elapsed:28,
+   hist:[['14:02','접수 (자동)'],['14:10','확인 · 이OO'],['14:15','진행중 · 이OO']]},
+  {id:'v2',fac:'리버파크',zone:'레저·웰니스',x:520,y:180,sev:'warn',status:'check',open:1,
+   text:'수영장 물이 조금 차가운 편이에요.',sent:'부정',conf:0.68,cat:'온도·환경',ago:'12분 전',elapsed:12,
+   hist:[['13:58','접수 (자동)'],['14:06','확인 · 박OO']]},
+  {id:'v3',fac:'컨벤션 센터',zone:'MICE·엔터',x:250,y:400,sev:'ok',status:'done',open:0,
+   text:'행사장 안내가 친절했습니다. 감사합니다!',sent:'긍정',conf:0.95,cat:'직원 서비스',ago:'1시간 전',elapsed:62,
+   hist:[['12:40','접수 (자동)'],['12:52','확인 · 김OO'],['13:05','완료 · 김OO']]},
+  {id:'v4',fac:'그랜드 워커힐',zone:'객실동',x:180,y:150,sev:'warn',status:'recv',open:3,
+   text:'객실 에어컨에서 소음이 납니다.',sent:'부정',conf:0.74,cat:'시설 고장',ago:'6분 전',elapsed:6,photos:[phSVG('에어컨 실외기'),phSVG('객실 1203 침실')],
+   hist:[['14:12','접수 (자동)']]},
+  {id:'v5',fac:'주차타워',zone:'인프라',x:600,y:420,sev:'ok',status:'check',open:1,
+   text:'주차 자리 안내가 헷갈렸어요.',sent:'중립',conf:0.55,cat:'예약·안내',ago:'20분 전',elapsed:20,
+   hist:[['13:52','접수 (자동)'],['14:00','확인 · 최OO']]},
+  {id:'v6',fac:'빛의 시어터',zone:'MICE·엔터',x:430,y:410,sev:'ok',status:'done',open:0,
+   text:'공연 음향이 훌륭했습니다.',sent:'긍정',conf:0.93,cat:'소음',ago:'2시간 전',elapsed:120,
+   hist:[['12:00','접수 (자동)'],['12:20','완료 · 김OO']]},
+  {id:'v0e',fac:'컨벤션 센터',zone:'MICE·엔터',x:290,y:385,sev:'warn',status:'recv',open:1,
+   text:'회의실 프로젝터가 작동하지 않습니다.',orig:'The projector in the meeting room is not working. Please fix it before our 3PM session.',
+   sent:'부정',conf:0.82,cat:'시설 고장',ago:'9분 전',elapsed:9,by:'sLLM + LLM 번역',
+   hist:[['14:09','접수 (자동) · EN 감지 → AI 번역'],['14:09','판정 완료 · 부정 0.82 · 시설 고장 → 주의']]}
+];
+</script>
+
+<script>
+/* 시설별 담당 직원 최소 정보 + 근무표 (관리자 열람 범위) */
+const STAFF = {
+  '피자힐':{dept:'다이닝운영팀',oncall:'이민호',phone:'010-2841-77##',shift:'주간 09:00–21:00',
+    today:[['이민호','주간','09:00–21:00','근무중'],['정하늘','야간','21:00–24:00','대기']]},
+  '명월관':{dept:'다이닝운영팀',oncall:'김서연',phone:'010-3392-10##',shift:'주간 10:00–22:00',
+    today:[['김서연','주간','10:00–22:00','근무중']]},
+  '리버파크':{dept:'레저·웰니스팀',oncall:'박도윤',phone:'010-5521-88##',shift:'주간 08:00–20:00',
+    today:[['박도윤','주간','08:00–20:00','근무중'],['최유나','오후','13:00–20:00','근무중']]},
+  '그랜드 워커힐':{dept:'객실운영팀',oncall:'한지우',phone:'010-7742-31##',shift:'교대 3교대',
+    today:[['한지우','주간','07:00–15:00','근무중'],['오세훈','오후','15:00–23:00','대기']]},
+  '컨벤션 센터':{dept:'MICE운영팀',oncall:'김태호',phone:'010-2210-44##',shift:'행사 대응',
+    today:[['김태호','주간','09:00–18:00','근무중']]},
+  '빛의 시어터':{dept:'엔터운영팀',oncall:'이수민',phone:'010-6614-90##',shift:'공연 시간 대응',
+    today:[['이수민','주간','13:00–22:00','근무중']]},
+  '주차타워':{dept:'인프라운영팀',oncall:'최민재',phone:'010-9931-27##',shift:'주간 06:00–22:00',
+    today:[['최민재','주간','06:00–14:00','근무중'],['서준영','오후','14:00–22:00','대기']]}
+};
+/* 카테고리별 내부 대응 매뉴얼 (위험/주의 시 제시) */
+const MANUAL = {
+  '대기·혼잡':{steps:['현장 인력 추가 배치 요청(부서장 승인)','대기 고객 예상 시간 안내·사과','예약/좌석 재배치 또는 웨이팅 보상 제공'],ref:'운영매뉴얼 §4.2 혼잡 대응 · SLA 위험 30분'},
+  '안전':{steps:['현장 즉시 안전 확보·구역 통제','안전관리자 및 시설팀 긴급 호출','상황 종료까지 관리자 실시간 보고'],ref:'안전관리지침 §1.1 · 위험 즉시 에스컬레이션'},
+  '청결·위생':{steps:['해당 구역 청소·소독 인력 즉시 배정','원인 확인(식음/시설) 및 재발 방지','고객 사과 및 조치 결과 회신'],ref:'위생관리매뉴얼 §3.4 · HACCP 준수'},
+  '온도·환경':{steps:['설비팀에 온도/공조 점검 요청','임시 냉난방 대체 수단 제공','정상화 시점 고객 안내'],ref:'시설운영매뉴얼 §5.1 공조 대응'},
+  '시설 고장':{steps:['시설팀 긴급 점검 요청·티켓 발행','대체 시설/객실 안내','수리 완료 후 상태 확인'],ref:'시설유지보수 SOP §2.3'},
+  '예약·안내':{steps:['예약 시스템 기록 대조·확인','정확한 안내 및 재배정 처리','필요 시 등급 상향/보상 검토'],ref:'프런트운영매뉴얼 §2.1'},
+  '직원 서비스':{steps:['담당 부서장 확인·사실관계 파악','고객 사과 및 재발 방지 교육','서비스 회복 조치'],ref:'CS응대매뉴얼 §6.2'},
+  '소음':{steps:['소음원 확인 및 저감 조치','인접 고객 안내·객실 이동 제안','야간 소음 규정 점검'],ref:'객실운영매뉴얼 §4.5'},
+  _default:{steps:['담당 부서 확인 및 현장 조치','고객 안내 및 경과 공유','조치 완료 후 상태 갱신'],ref:'통합 운영매뉴얼'}
+};
+
+/* ---------------- 시설 상대 좌표 + 간이 판정 (E2E 데모) ---------------- */
+const FACPOS={'그랜드 워커힐':[180,150],'비스타 워커힐':[250,125],'더글라스 하우스':[150,195],'애스톤 하우스':[290,180],
+  '피자힐':[340,250],'명월관':[400,270],
+  '리버파크':[520,180],'테네즈 파크':[575,145],'포레스트 파크':[610,205],'힐링 포레스트':[470,225],'더글라스 가든':[545,220],'워커힐 골프클럽':[620,165],
+  '컨벤션 센터':[250,400],'빛의 시어터':[430,410],'Casino':[330,435],
+  '주차타워':[600,420],'South Gate':[660,465],'East Gate':[690,395]};
+function timeStr(){const d=new Date();return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+/* 감성×카테고리 → 심각도 매핑 (0.8 규칙: 부정×(안전|청결·위생)→위험, 그 외 부정→주의) */
+function judge(text){
+  const has=w=>w.some(k=>text.includes(k));
+  let sent='중립',conf=0.62;
+  if(has(['불편','늦','대기','고장','소음','차가','더러','불만','아쉬','최악','기다','짜증','실망'])){sent='부정';conf=0.87;}
+  else if(has(['좋','감사','친절','만족','훌륭','최고','맛있'])){sent='긍정';conf=0.93;}
+  let cat='예약·안내';
+  if(has(['대기','줄','기다','혼잡']))cat='대기·혼잡';
+  else if(has(['소음','시끄']))cat='소음';
+  else if(has(['청소','더러','위생','벌레','먼지']))cat='청결·위생';
+  else if(has(['고장','작동']))cat='시설 고장';
+  else if(has(['춥','덥','차가','온도','에어컨','히터']))cat='온도·환경';
+  else if(has(['가격','비싸','결제','요금']))cat='가격·결제';
+  else if(has(['직원','서비스','응대','불친절']))cat='직원 서비스';
+  else if(has(['위험','다쳤','안전','미끄']))cat='안전';
+  const sev=sent==='긍정'?'ok':sent==='중립'?'warn':(cat==='안전'||cat==='청결·위생')?'danger':'warn';
+  return {sent,conf,cat,sev};
+}
+</script>
+
+<script>
+/* ============================================================= */
+/*  SP-03 monitoring                                              */
+/* ============================================================= */
+function zonePoly(pts,fill){return `<polygon points="${pts}" fill="${fill}" fill-opacity="0.10" stroke="${fill}" stroke-opacity="0.35" stroke-width="1.5"/>`;}
+function marker(i){
+  const col=i.sev==='danger'?'var(--sev-danger)':i.sev==='warn'?'var(--sev-warn)':'var(--sev-ok)';
+  const shape=i.sev==='danger'?`<circle r="15" fill="${col}"/>`
+    :i.sev==='warn'?`<circle r="15" fill="${col}"/><path d="M0,-15 A15,15 0 0,1 0,15 Z" fill="#00000022"/>`
+    :`<circle r="15" fill="#fff" stroke="${col}" stroke-width="3"/>`;
+  const badge=i.open>0?`<g transform="translate(11,-13)"><circle r="8" fill="#0f172a"/><text y="3" text-anchor="middle" fill="#fff" font-size="10" font-weight="700">${i.open}</text></g>`:'';
+  const txtcol=i.sev==='ok'?col:'#fff';
+  return `<g class="mk" data-id="${i.id}" transform="translate(${i.x},${i.y})" style="cursor:pointer">
+    ${shape}<text text-anchor="middle" y="4" font-size="11" font-weight="700" fill="${txtcol}">${SEVG[i.sev]}</text>${badge}
+    <text text-anchor="middle" y="30" font-size="11" font-weight="600" fill="#334155">${i.fac}</text></g>`;
+}
+
+function buildSP03(){
+  const map=`<svg viewBox="0 0 800 520" style="width:100%;height:100%;display:block">
+    <rect width="800" height="520" fill="#eef4f2"/>
+    <path d="M0,300 Q200,270 400,300 T800,290" stroke="#bfdbfe" stroke-width="26" fill="none" opacity=".7"/>
+    <text x="60" y="295" font-size="11" fill="#60a5fa">한강</text>
+    ${zonePoly('120,90 320,90 320,220 120,220','#0ea5e9')}
+    <text x="130" y="108" font-size="11" font-weight="700" fill="#0369a1">객실동</text>
+    ${zonePoly('280,200 470,200 470,300 280,300','#f59e0b')}
+    <text x="290" y="218" font-size="11" font-weight="700" fill="#b45309">다이닝</text>
+    ${zonePoly('440,120 640,120 640,240 440,240','#10b981')}
+    <text x="450" y="138" font-size="11" font-weight="700" fill="#047857">레저·웰니스</text>
+    ${zonePoly('190,350 500,350 500,460 190,460','#8b5cf6')}
+    <text x="200" y="368" font-size="11" font-weight="700" fill="#6d28d9">MICE·엔터</text>
+    ${zonePoly('540,360 700,360 700,470 540,470','#64748b')}
+    <text x="550" y="378" font-size="11" font-weight="700" fill="#475569">인프라</text>
+    <path d="M40,500 L760,500" stroke="#cbd5e1" stroke-width="8" stroke-dasharray="2 10" fill="none"/>
+    <text x="700" y="495" font-size="10" fill="#94a3b8">South Gate ▸</text>
+    ${INC.map(marker).join('')}
+  </svg>`;
+
+  $('#sp03').innerHTML = topbar('sp03') + `
+  <div style="height:48px;display:flex;align-items:center;gap:22px;padding:0 20px;border-bottom:1px solid var(--line);background:var(--panel-2);font-size:13px">
+    <span><b>오늘 VOC</b> <span id="kToday">24</span></span><span style="color:#cbd5e1">·</span>
+    <span><b>미해결</b> <span id="kOpen">7</span></span><span style="color:#cbd5e1">·</span>
+    <span><b>평균 처리</b> 41분</span><span style="color:#cbd5e1">·</span>
+    <button class="kpiDanger" style="border:none;background:none;font:inherit;color:var(--sev-danger);font-weight:700;cursor:pointer">위험 미처리 1 ⚠</button>
+    <span style="margin-left:auto;font-size:11.5px;color:var(--muted)" id="lastSync">마지막 갱신 14:23:05 · polling 12s</span>
+    <button class="btn sm" id="refresh3" style="margin-left:4px">지금 새로고침</button>
+  </div>
+  <div style="display:grid;grid-template-columns:300px 1fr 0;transition:.3s" id="sp03grid">
+    <!-- left -->
+    <div style="border-right:1px solid var(--line);min-height:560px;display:flex;flex-direction:column">
+      <div style="display:flex;border-bottom:1px solid var(--line)">
+        ${['알림','알림함','근무표'].map((t,i)=>`<button class="l3tab ${i===0?'on':''}" data-tab="${i}" style="flex:1;padding:11px 0;font-size:12.5px;font-weight:600;border:none;background:none;color:${i===0?'var(--brand-2)':'var(--muted)'};border-bottom:2px solid ${i===0?'var(--brand)':'transparent'};position:relative">${t}${i===1?'<span id="inboxBadge" style="position:absolute;top:7px;right:22px;background:var(--sev-danger);color:#fff;font-size:9px;padding:0 5px;border-radius:8px">2</span>':''}</button>`).join('')}
+      </div>
+      <div class="l3pane" data-pane="0" style="padding:10px;overflow-y:auto"></div>
+      <div class="l3pane" data-pane="1" style="padding:10px;display:none">
+        <div class="muted" id="unreadCnt" style="font-size:11px;font-weight:700;margin:4px 6px 8px">읽지 않음 2 · 클릭 시 읽음 처리</div>
+        <div class="inboxItem" data-unread="1" style="padding:11px 12px;border:1px solid var(--line);border-radius:9px;margin-bottom:8px;background:#fff;cursor:pointer">
+          <div style="font-size:12px"><span class="sev danger"><span class="g">●</span></span> 피자힐 위험 알림 <span class="muted">· 3분 전</span></div>
+          <div class="muted" style="font-size:11.5px;margin-top:3px">"대기 40분째입니다"</div></div>
+        <div class="inboxItem" data-unread="1" style="padding:11px 12px;border:1px solid var(--line);border-radius:9px;margin-bottom:8px;background:#fff;cursor:pointer">
+          <div style="font-size:12px">🌐 외부 리뷰 위험 <span class="muted">· 3시간 전</span></div>
+          <div class="muted" style="font-size:11.5px;margin-top:3px">네이버 "예약과 다른 객실 배정"</div></div>
+        <div style="padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);opacity:.7">
+          <div style="font-size:12px"><span class="sev warn"><span class="g">◐</span></span> 리버파크 주의 <span class="muted">· 12분 전</span> <span class="muted" style="float:right">읽음</span></div></div>
+      </div>
+      <div class="l3pane" data-pane="2" style="padding:14px;display:none">
+        <div style="font-size:12.5px;font-weight:700;margin-bottom:10px">건물별 근무·담당 <span class="muted" style="font-weight:400">(관리자 열람)</span></div>
+        <select id="sched3Fac" style="width:100%;padding:8px;border:1px solid var(--line-2);border-radius:8px;margin-bottom:12px">${Object.keys(STAFF).map(f=>`<option>${f}</option>`).join('')}</select>
+        <div id="sched3Body"></div>
+      </div>
+    </div>
+    <!-- center map -->
+    <div style="position:relative;padding:12px 12px 0">
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <select id="fZone" style="padding:7px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px"><option value="">구역: 전체</option>${Object.keys(ZONES).map(z=>`<option>${z}</option>`).join('')}</select>
+        <select id="fSev" style="padding:7px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px"><option value="">심각도: 전체</option><option value="danger">위험</option><option value="warn">주의</option><option value="ok">정상</option></select>
+        <select id="fSt" style="padding:7px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px"><option value="">상태: 전체</option>${Object.entries(STLABEL).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+        <div style="margin-left:auto;display:flex;gap:14px;align-items:center;font-size:11.5px;color:var(--muted)">
+          <span class="sev danger"><span class="g">●</span>위험</span><span class="sev warn"><span class="g">◐</span>주의</span><span class="sev ok"><span class="g">○</span>정상</span>
+        </div>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:12px;overflow:hidden;height:520px;background:#eef4f2">${map}</div>
+      <div class="note" style="text-align:center">변형 가이드맵 (Leaflet CRS.Simple + ImageOverlay 대체 시안) · 마커 클릭 → 상세 · 온톨로지: 구역·카테고리 기반 (GraphDB 미도입)</div>
+    </div>
+    <!-- right detail -->
+    <div id="detail3" style="border-left:1px solid var(--line);width:360px;overflow:hidden;transition:.3s"></div>
+  </div>`;
+
+  renderAlerts();
+  bindSP03();
+  updateKPI();
+  startPolling3();
+}
+
+function renderAlerts(){
+  const root=$('#sp03');
+  const pane=$('.l3pane[data-pane="0"]',root); if(!pane)return;
+  const fz=$('#fZone',root),fs=$('#fSev',root),fst=$('#fSt',root);
+  let open=INC.filter(i=>i.open>0);
+  if(fz&&fz.value)open=open.filter(i=>i.zone===fz.value);
+  if(fs&&fs.value)open=open.filter(i=>i.sev===fs.value);
+  if(fst&&fst.value)open=open.filter(i=>i.status===fst.value);
+  open=open.sort((a,b)=>({danger:0,warn:1,ok:2}[a.sev]-{danger:0,warn:1,ok:2}[b.sev]));
+  pane.innerHTML = open.map(i=>{
+    const cls=i.sev==='danger'?'danger':i.sev==='warn'?'warn':'ok';
+    return `<button class="alertItem" data-id="${i.id}" style="width:100%;text-align:left;border:1px solid ${i.sev==='danger'?'#fecaca':'var(--line)'};background:${i.sev==='danger'?'var(--sev-danger-soft)':'#fff'};border-radius:10px;padding:11px 12px;margin-bottom:8px;cursor:pointer">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="sev ${cls}"><span class="g">${SEVG[i.sev]}</span>${i.fac} ${SEVLABEL[i.sev]}</span>
+        <span class="muted" style="font-size:11px">${i.ago}</span></div>
+      <div class="muted" style="font-size:11.5px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">"${i.text}"${i.photos&&i.photos.length?' <span title="사진 첨부">📎'+i.photos.length+'</span>':''}</div>
+      ${i.sev==='danger'?`<div style="font-size:11px;color:var(--sev-danger);font-weight:600;margin-top:5px">⏱ 접수 후 ${i.elapsed}분 · SLA 주의</div>`:''}
+    </button>`;}).join('') || '<div class="muted" style="padding:20px;text-align:center;font-size:12.5px">오늘 접수된 VOC가 없습니다</div>';
+}
+</script>
+
+<script>
+function openDetail3(id){
+  const i=INC.find(x=>x.id===id); if(!i)return;
+  const canAct=ROLE.key!=='worker'||i.zone===ROLE.zone; /* 상태 변경 권한: 담당 구역 실무자 또는 운영자 이상 */
+  const cls=i.sev==='danger'?'danger':i.sev==='warn'?'warn':'ok';
+  const grid=$('#sp03grid'); grid.style.gridTemplateColumns='300px 1fr 360px';
+  const d=$('#detail3'); d.dataset.cur=id;
+  d.innerHTML=`<div style="padding:16px;height:100%;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-weight:700;font-size:14px">VOC 상세</div>
+      <button id="closeD3" class="btn sm">✕</button></div>
+    <div class="sev ${cls}" style="font-size:13px"><span class="g">${SEVG[i.sev]}</span>${i.fac} · ${SEVLABEL[i.sev]}</div>
+    <div style="background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:12px;margin:10px 0;font-size:13.5px;line-height:1.6">"${i.text}"
+      ${i.orig?`<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line-2);font-size:12px;color:var(--muted)">🌐 원문(EN): "${i.orig}"</div><div style="margin-top:6px"><span class="pill" style="background:var(--brand-soft);color:var(--brand-2)">AI 자동 번역 · LLM</span></div>`:''}</div>
+    ${i.photos&&i.photos.length?`<div style="display:flex;gap:6px;margin:0 0 10px;flex-wrap:wrap;align-items:flex-end">${i.photos.map(p=>`<img src="${p}" class="vocimg" style="width:76px;height:76px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in">`).join('')}<span class="muted" style="font-size:10.5px">📎 고객 첨부 ${i.photos.length}장 · 클릭 확대</span></div>`:''}
+    <div style="margin:0 0 10px"><button class="btn sm" onclick="takeQuote('${i.id}')">▣ 원문 보고서 담기</button></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+      ${i.pending?'<span class="pill" style="background:#fffbeb;color:#b45309;border:1px solid #fde68a">⏳ 감성·심각도 분석 중… (기본: 주의)</span>':`<span class="pill">${i.sent} ${(i.conf||0).toFixed(2)}</span><span class="pill">${i.cat}</span><span class="pill">확신도 ${((i.conf||0)*100)|0}%</span><span class="pill" style="background:var(--brand-soft);color:var(--brand-2)">판정: ${i.by||'sLLM'}</span>`}</div>
+    ${manualHTML(i)}
+    <hr style="border:none;border-top:1px solid var(--line);margin:12px 0">
+    <label style="font-size:12px;font-weight:700;color:#475569">상태</label>
+    <select id="stSel3" ${canAct?'':'disabled'} title="${canAct?'':'담당 구역 외 — 상태 변경 권한 없음 (서버 강제)'}" style="width:100%;margin:6px 0 4px;padding:9px 10px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;${canAct?'':'background:#f1f5f9;color:#94a3b8;cursor:not-allowed'}">
+      ${Object.entries(STLABEL).map(([k,v])=>`<option value="${k}" ${i.status===k?'selected':''}>${v}</option>`).join('')}</select>
+    ${canAct?'':'<div style="font-size:11px;color:#b45309;margin:2px 0 8px">🔒 실무자('+ROLE.zone+' 담당) — 담당 구역 외 VOC는 보기만 가능합니다</div>'}
+    <div style="font-size:11.5px;color:var(--sev-danger);margin-bottom:12px">⏱ 접수 후 ${i.elapsed}분 경과${i.sev==='danger'&&i.status==='recv'?' · 30분 초과 시 재알림':''}</div>
+    <label style="font-size:12px;font-weight:700;color:#475569">처리 메모</label>
+    <div style="display:flex;gap:6px;margin:6px 0 14px"><input id="memo3" ${canAct?'':'disabled'} placeholder="${canAct?'메모 입력 후 Enter':'권한 없음 — 담당 구역 외'}" style="flex:1;padding:9px 10px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;${canAct?'':'background:#f1f5f9'}"></div>
+    ${staffHTML(i)}
+    <label style="font-size:12px;font-weight:700;color:#475569">이력</label>
+    <div id="hist3" style="margin-top:8px">${histHTML(i)}</div>
+  </div>`;
+  $('#closeD3').onclick=()=>{grid.style.gridTemplateColumns='300px 1fr 0';};
+  $$('.vocimg',d).forEach(im=>im.onclick=()=>viewPhoto(im.src));
+  $('#stSel3').onchange=e=>{
+    const ns=e.target.value; i.status=ns;
+    const now=new Date(); const hh=String(now.getHours()).padStart(2,'0'), mm=String(now.getMinutes()).padStart(2,'0');
+    i.hist.push([`${hh}:${mm}`,`${STLABEL[ns]} · 정승현`]);
+    $('#hist3').innerHTML=histHTML(i);
+    toast(`상태를 '${STLABEL[ns]}'(으)로 변경했습니다`,'ok');
+  };
+  $('#memo3').onkeydown=e=>{ if(e.key==='Enter'&&e.target.value.trim()){
+    const now=new Date(); const hh=String(now.getHours()).padStart(2,'0'), mm=String(now.getMinutes()).padStart(2,'0');
+    i.hist.push([`${hh}:${mm}`,`메모: ${e.target.value.trim()} · 정승현`]); $('#hist3').innerHTML=histHTML(i); e.target.value=''; toast('메모를 저장했습니다','ok');
+  }};
+}
+function histHTML(i){return i.hist.map(h=>`<div style="display:flex;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px solid var(--line)"><span class="muted" style="min-width:38px">${h[0]}</span><span>${h[1]}</span></div>`).join('');}
+function manualHTML(i){
+  if(i.sev==='ok'||i.pending)return '';
+  const m=MANUAL[i.cat]||MANUAL._default;
+  const c=i.sev==='danger'?['#fecaca','var(--sev-danger-soft)','var(--sev-danger)','위험']:['#fde68a','var(--sev-warn-soft)','#b45309','주의'];
+  return `<div style="border:1px solid ${c[0]};background:${c[1]};border-radius:10px;padding:12px;margin-bottom:4px">
+    <div style="font-size:12px;font-weight:700;color:${c[2]};margin-bottom:8px">🛡 내부 대응 매뉴얼 · ${c[3]} 등급</div>
+    <ol style="margin:0 0 8px 16px;padding:0;font-size:12.5px;line-height:1.7;color:#334155">${m.steps.map(s=>`<li>${s}</li>`).join('')}</ol>
+    <div style="font-size:11px;color:${c[2]};font-weight:600;border-top:1px dashed ${c[0]};padding-top:7px">근거: ${m.ref}</div>
+  </div>`;
+}
+function staffHTML(i){
+  const s=STAFF[i.fac]; if(!s)return '';
+  return `<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:14px;background:var(--panel-2)">
+    <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:8px">👤 담당 · 근무 <span class="muted" style="font-weight:400;font-size:10.5px">(관리자 열람)</span></div>
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12.5px">
+      <span class="muted">담당자</span><span style="font-weight:600">${s.oncall}</span>
+      <span class="muted">부서</span><span>${s.dept}</span>
+      <span class="muted">연락처</span><span>${s.phone}</span>
+      <span class="muted">근무</span><span>${s.shift}</span>
+    </div>
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">
+      ${s.today.map(t=>`<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;padding:3px 0">
+        <span style="min-width:44px;font-weight:600">${t[0]}</span><span class="muted" style="flex:1">${t[1]} ${t[2]}</span>
+        <span class="pill" style="background:${t[3]==='근무중'?'var(--sev-ok-soft)':'#f1f5f9'};color:${t[3]==='근무중'?'#047857':'#64748b'}">${t[3]}</span></div>`).join('')}
+    </div>
+  </div>`;
+}
+</script>
+
+<script>
+function bindSP03(){
+  const root=$('#sp03');
+  $$('.l3tab',root).forEach(b=>b.onclick=()=>{
+    $$('.l3tab',root).forEach(x=>{x.classList.remove('on');x.style.color='var(--muted)';x.style.borderBottomColor='transparent';});
+    b.classList.add('on');b.style.color='var(--brand-2)';b.style.borderBottomColor='var(--brand)';
+    $$('.l3pane',root).forEach(p=>p.style.display='none');
+    $(`.l3pane[data-pane="${b.dataset.tab}"]`,root).style.display='block';
+  });
+  $$('.mk',root).forEach(m=>m.addEventListener('click',()=>openDetail3(m.dataset.id)));
+  root.addEventListener('click',e=>{const a=e.target.closest('.alertItem'); if(a)openDetail3(a.dataset.id);});
+  $('.kpiDanger',root).onclick=()=>{$('#fSev',root).value='danger';applyFilter3();toast('위험 미처리로 필터를 적용했습니다');};
+  ['fZone','fSev','fSt'].forEach(id=>$('#'+id,root).onchange=applyFilter3);
+  $('#refresh3',root).onclick=e=>{const b=e.target;b.innerHTML='<span class="spinny"></span>';setTimeout(()=>{b.textContent='지금 새로고침';const d=new Date();$('#lastSync',root).textContent=`마지막 갱신 ${d.toTimeString().slice(0,8)} · polling 12s`;simulateIncoming();},700);};
+  const sf=$('#sched3Fac',root); sf.onchange=()=>renderSched3(sf.value); renderSched3(sf.value);
+  $$('.inboxItem',root).forEach(c=>c.onclick=()=>{
+    if(!c.dataset.unread)return;
+    c.dataset.unread=''; c.style.opacity='.65';
+    c.insertAdjacentHTML('beforeend','<div class="muted" style="font-size:10.5px;margin-top:5px;text-align:right">✓ 읽음 처리됨</div>');
+    const badge=$('#inboxBadge',root);
+    let n=badge?Math.max(0,parseInt(badge.textContent||'0',10)-1):0;
+    if(badge){badge.textContent=n; if(!n)badge.style.display='none';}
+    const cnt=$('#unreadCnt',root); if(cnt)cnt.textContent='읽지 않음 '+n+(n?' · 클릭 시 읽음 처리':'');
+    toast('알림을 읽음 처리했습니다');
+  });
+}
+function renderSched3(fac){
+  const s=STAFF[fac]; const b=$('#sched3Body'); if(!b||!s)return;
+  b.innerHTML=`<div style="border:1px solid var(--line);border-radius:9px;padding:11px;margin-bottom:10px;background:#fff">
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12px">
+      <span class="muted">담당자</span><span style="font-weight:600">${s.oncall}</span>
+      <span class="muted">부서</span><span>${s.dept}</span>
+      <span class="muted">연락처</span><span>${s.phone}</span></div></div>
+    <div class="muted" style="font-size:11px;font-weight:700;margin:4px 2px 6px">오늘 근무</div>
+    ${s.today.map(t=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid var(--line);font-size:12px">
+      <span style="min-width:46px;font-weight:600">${t[0]}</span><span class="muted" style="flex:1">${t[1]} · ${t[2]}</span>
+      <span class="pill" style="background:${t[3]==='근무중'?'var(--sev-ok-soft)':'#f1f5f9'};color:${t[3]==='근무중'?'#047857':'#64748b'}">${t[3]}</span></div>`).join('')}`;
+}
+let simed=false;
+function simulateIncoming(){
+  const root=$('#sp03');
+  if(simed){toast('신규 VOC 없음 — 최신 상태입니다');return;}
+  simed=true;
+  const nv={id:'v7',fac:'명월관',zone:'다이닝',x:400,y:270,sev:'danger',status:'recv',open:1,
+    text:'음식이 너무 늦게 나와요. 30분 넘게 기다렸습니다.',sent:'부정',conf:0.88,cat:'대기·혼잡',ago:'방금',elapsed:0,
+    hist:[[new Date().toTimeString().slice(0,5),'접수 (자동)']]};
+  INC.push(nv);
+  const svg=$('#sp03 svg'); if(svg)svg.insertAdjacentHTML('beforeend',marker(nv));
+  const mk=$(`#sp03 .mk[data-id="v7"]`); if(mk){mk.classList.add('pulse');mk.addEventListener('click',()=>openDetail3('v7'));}
+  renderAlerts();
+  root.addEventListener('click',e=>{const a=e.target.closest('.alertItem[data-id="v7"]');if(a)openDetail3('v7');},{once:true});
+  toast('🔴 신규 위험 VOC — 명월관 "음식 지연"','err');
+}
+function applyFilter3(){
+  const root=$('#sp03');
+  const z=$('#fZone',root).value, s=$('#fSev',root).value, st=$('#fSt',root).value;
+  $$('.mk',root).forEach(m=>{const i=INC.find(x=>x.id===m.dataset.id);
+    const ok=(!z||i.zone===z)&&(!s||i.sev===s)&&(!st||i.status===st);
+    m.style.opacity=ok?'1':'.18';m.style.pointerEvents=ok?'auto':'none';});
+  renderAlerts(); /* 필터를 알림 목록에도 동기 적용 */
+}
+
+/* ---- KPI 동적 계산 ---- */
+function updateKPI(){
+  const r=$('#sp03'); if(!r||!built.sp03)return;
+  const open=3+INC.filter(i=>i.status!=='done').length;
+  const dz=INC.filter(i=>i.sev==='danger'&&i.status!=='done').length;
+  const t=$('#kToday',r),o=$('#kOpen',r),d=$('.kpiDanger',r);
+  if(t)t.textContent=18+INC.length; if(o)o.textContent=open;
+  if(d)d.textContent='위험 미처리 '+dz+' ⚠';
+}
+
+/* ---- polling 카운트다운 (TanStack Query refetchInterval 시각화) ---- */
+let pollT=null,pollC=12;
+function startPolling3(){
+  if(pollT)return;
+  pollT=setInterval(()=>{
+    const el=$('#lastSync'); if(!el)return;
+    pollC--;
+    if(pollC<=0){pollC=12;el.textContent='마지막 갱신 '+new Date().toTimeString().slice(0,8)+' · 다음 폴링 12s';}
+    else el.textContent=el.textContent.replace(/다음 폴링 \d+s|polling 12s/,'다음 폴링 '+pollC+'s');
+  },1000);
+}
+
+/* ---- SP-02 제출 → SP-03 실시간 반영 (E2E 데모: 접수 즉시 표시 → 5초 후 비동기 판정) ---- */
+let liveN=0;
+function injectLiveVOC(text,zone,fac,photos){
+  liveN++;
+  const pos=FACPOS[fac]||[400,320];
+  const en=isEN(text), ktext=en?mockTranslate(text):text;
+  const nv={id:'live'+liveN,fac,zone,x:pos[0],y:pos[1],sev:'warn',status:'recv',open:1,
+    text:ktext,orig:en?text:null,sent:'분석 중',conf:null,cat:'분석 중',ago:'방금',elapsed:0,pending:true,photos:photos||[],
+    hist:[[timeStr(),en?'접수 (자동) · EN 감지 → AI 번역':'접수 (자동) · 고객 링크 제출']]};
+  INC.push(nv);
+  syncLive(nv);
+  toast('🟡 신규 VOC 접수 — '+fac+' (기본 심각도: 주의 · 판정 대기)');
+  setTimeout(()=>{
+    const j=judge(nv.text);
+    nv.sent=j.sent; nv.conf=j.conf; nv.cat=j.cat; nv.sev=j.sev; nv.pending=false; nv.by='sLLM (A.X 4.0 Light)';
+    nv.hist.push([timeStr(),'판정 완료 · '+j.sent+' '+j.conf+' · '+j.cat+' → '+SEVLABEL[j.sev]]);
+    syncLive(nv);
+    toast((j.sev==='danger'?'🔴':'🟠')+' 판정 완료 — '+fac+' · '+j.sent+' '+j.conf+' · '+j.cat+' → '+SEVLABEL[j.sev], j.sev==='danger'?'err':'ok');
+  },5000);
+}
+function syncLive(nv){
+  if(!built.sp03)return;
+  const svg=$('#sp03 svg'); if(!svg)return;
+  const old=$('#sp03 .mk[data-id="'+nv.id+'"]'); if(old)old.remove();
+  svg.insertAdjacentHTML('beforeend',marker(nv));
+  const mk=$('#sp03 .mk[data-id="'+nv.id+'"]');
+  if(mk){mk.classList.add('pulse');mk.addEventListener('click',()=>openDetail3(nv.id));}
+  renderAlerts(); updateKPI();
+  const det=$('#detail3'); if(det&&det.dataset.cur===nv.id&&det.innerHTML)openDetail3(nv.id);
+}
+
+/* ---- AI 번역 (EN→KO 데모 — 실제 서비스는 LLM 번역 API) ---- */
+function isEN(t){const en=(t.match(/[A-Za-z]/g)||[]).length,ko=(t.match(/[가-힣]/g)||[]).length;return en>ko&&en>5;}
+const ENMAP=[[/wait|queue|slow|delay/i,'대기가 너무 깁니다'],[/dirty|clean|hygien/i,'객실 위생이 더러워 불편합니다'],[/noise|loud/i,'소음이 심해 불편합니다'],[/cold|hot|temperature|air ?con/i,'에어컨 온도에 문제가 있어 불편합니다'],[/broken|not work|fix/i,'시설이 고장 났습니다'],[/expensive|price|charge/i,'가격이 비싸 불만입니다'],[/staff|service|rude/i,'직원 응대에 불만이 있습니다'],[/danger|hurt|slip|unsafe/i,'안전이 우려되어 불편합니다'],[/reserv|booking|check ?in/i,'예약 안내가 잘못되어 불편합니다'],[/good|great|thank|excellent|nice|kind/i,'친절하고 만족스러웠습니다']];
+function mockTranslate(t){for(const p of ENMAP){if(p[0].test(t))return p[1]+' (자동 번역)';}return '고객 불편 접수 (자동 번역)';}
+
+/* ---- 모니터링·리뷰 어디서든 보고서 서랍으로 담기 ---- */
+function takeQuote(id){
+  const i=INC.find(x=>x.id===id); if(!i)return;
+  TAKEN.push({key:'q'+id+Date.now(),kind:'quote',title:'VOC 인용 · '+i.fac,meta:i.cat+' · '+SEVLABEL[i.sev]+' · '+i.ago,body:'"'+i.text+'"',src:i.fac+' 고객 VOC ('+STLABEL[i.status]+')'});
+  updateTray(); toast('보고서 서랍에 담았습니다 — 에디터 [조회 결과]에서 배치하세요','ok');
+}
+function takeReview(id){
+  const r=REVIEWS.find(x=>x.id===id); if(!r)return;
+  TAKEN.push({key:'r'+id+Date.now(),kind:'quote',title:'외부 리뷰 · '+r.src,meta:r.cat+' · '+r.sent+' · '+r.ago,body:'"'+(r.ko||r.full)+'"',src:r.src+' @'+r.user+' · '+r.time});
+  updateTray(); toast('보고서 서랍에 담았습니다','ok');
+}
+/* 첨부 사진 확대 보기 */
+function viewPhoto(src){
+  const m=document.createElement('div');
+  m.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.75);display:flex;align-items:center;justify-content:center;z-index:950;cursor:zoom-out';
+  m.innerHTML='<img src="'+src+'" style="max-width:82vw;max-height:82vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5)">';
+  m.onclick=()=>m.remove();
+  document.body.appendChild(m);
+}
+</script>
+
+<script>
+/* ============================================================= */
+/*  SP-04 conversational query                                    */
+/* ============================================================= */
+let trayCount=0; const TAKEN=[]; const BLOCKREG={};
+const QA = {
+  '지난주 피자힐 평균 대기시간 보여줘':{intent:'avg_wait_time',period:'07/14~07/20',place:'피자힐',n:'표본 7일',
+    bars:[8,10,14,18,14,11,9],summary:'평균 대기 12.4분 (전주 대비 +2.1분)',unit:'분',
+    talk:'지난주 피자힐의 평균 대기시간을 조회했어요. 평균 12.4분으로 전주보다 2.1분 늘었습니다. 특히 목요일 저녁 피크(18분)가 두드러지니, 해당 시간대 주방·홀 인력 배치를 점검해 보시길 권해요.'},
+  '이번 주 VOC 추이':{intent:'voc_trend',period:'07/14~07/20',place:'전체',n:'표본 7일',
+    bars:[12,18,15,24,20,16,22],summary:'일 평균 18.1건, 목요일 피크(24건)',unit:'건',
+    talk:'이번 주 VOC는 총 127건, 일 평균 18.1건 접수됐어요. 목요일에 24건으로 피크였고, 다이닝 대기·혼잡 카테고리 비중이 가장 컸습니다.'},
+  '구역별 미해결 현황':{intent:'unresolved_by_zone',period:'실시간',place:'전체 구역',n:'5개 구역',
+    bars:[3,2,1,1,0],labels:['객실동','다이닝','레저','MICE','인프라'],summary:'미해결 7건, 객실동 최다(3건)',unit:'건',
+    talk:'지금 기준 미해결 VOC는 7건이에요. 객실동이 3건으로 가장 많고 시설 고장이 주 원인입니다. 위험 1건은 SLA 30분 기준에 근접해 있어 우선 처리가 필요해요.'},
+  '어제 위험 VOC 건수':{intent:'danger_count',period:'07/23',place:'전체',n:'표본 1일',
+    bars:[1,0,2,1,0],summary:'위험 4건 발생, 다이닝·객실동 집중',unit:'건',
+    talk:'어제는 위험 등급 VOC가 4건 발생했어요. 다이닝·객실동에 집중됐고 모두 당일 완료 처리됐습니다. 반복 발생 시설은 피자힐(2건)이에요.'},
+  '그럼 지난달은?':{intent:'avg_wait_time',period:'06/23~07/22',place:'피자힐',n:'표본 30일 · 직전 질의 승계(기간만 변경)',noFollow:true,
+    bars:[11,9,13,12,10,14,11],summary:'월 평균 대기 11.6분 — 직전 질문의 intent·장소 승계, 기간만 갱신',unit:'분',
+    talk:'직전 질문을 이어받아 기간만 최근 30일로 바꿔 조회했어요. 월 평균 대기 11.6분으로, 지난주(12.4분)보다는 낮은 수준이에요.'}
+};
+
+function chartSVG(bars,labels,opt){
+  opt=opt||{};
+  const max=Math.max(...bars,1),w=44,gap=14,H=120;
+  const style=opt.report?'width:auto;height:116px;max-width:100%;display:block;margin:0 auto':'width:100%;max-width:360px';
+  return `<svg viewBox="0 0 ${bars.length*(w+gap)} 150" style="${style}">
+    ${bars.map((b,i)=>{const h=b/max*H;const x=i*(w+gap);const y=H-h+10;
+      return `<g><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="var(--brand)"/>
+      <text x="${x+w/2}" y="${y-5}" text-anchor="middle" font-size="10" fill="#475569" font-weight="600">${b}</text>
+      <text x="${x+w/2}" y="145" text-anchor="middle" font-size="9.5" fill="#94a3b8">${labels?labels[i]:(i+1)}</text></g>`;}).join('')}
+  </svg>`;
+}
+function tableHTML(bars,labels,unit){
+  return `<table style="width:100%;border-collapse:collapse;font-size:12px;margin:4px 0">
+    <tr style="background:var(--panel-2)"><th style="text-align:left;padding:6px 9px;border:1px solid var(--line)">구분</th><th style="text-align:right;padding:6px 9px;border:1px solid var(--line)">값${unit?' ('+unit+')':''}</th></tr>
+    ${bars.map((b,i)=>`<tr><td style="padding:5px 9px;border:1px solid var(--line)">${labels?labels[i]:'D'+(i+1)}</td><td style="text-align:right;padding:5px 9px;border:1px solid var(--line);font-weight:600">${b}</td></tr>`).join('')}
+  </table>`;
+}
+function toggleView4(bid,btn){
+  const el=document.getElementById(bid+'v'); const a=BLOCKREG[bid]; if(!el||!a)return;
+  const toTable=el.dataset.view!=='table';
+  el.innerHTML=toTable?tableHTML(a.bars,a.labels,a.unit):chartSVG(a.bars,a.labels,a.unit);
+  el.dataset.view=toTable?'table':'chart';
+  btn.textContent=toTable?'▦ 차트로 보기':'⊞ 표로 보기';
+}
+
+const HIST4=[
+  {id:'h1',title:'피자힐 대기시간 분석',time:'오늘 14:20',q:'지난주 피자힐 평균 대기시간 보여줘'},
+  {id:'h2',title:'구역별 미해결 현황',time:'오늘 11:05',q:'구역별 미해결 현황'},
+  {id:'h3',title:'주간 VOC 추이',time:'어제 17:40',q:'이번 주 VOC 추이'}
+];
+function buildSP04(){
+  $('#sp04').innerHTML = topbar('sp04') + `
+  <div style="max-width:1040px;margin:0 auto;padding:0 16px;display:grid;grid-template-columns:230px 1fr;gap:18px;align-items:start">
+    <!-- history -->
+    <aside style="position:sticky;top:14px;padding-top:14px">
+      <button class="btn primary sm" id="newChat4" style="width:100%;margin-bottom:12px">＋ 새 대화</button>
+      <div class="muted" style="font-size:11px;font-weight:700;letter-spacing:.05em;margin:0 2px 8px">대화 이력 <span style="font-weight:400">(세션 유지)</span></div>
+      <div id="hist4">${HIST4.map(h=>`<button class="h4item" data-q="${h.q}" style="width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:9px;padding:10px 11px;margin-bottom:7px;cursor:pointer">
+        <div style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">💬 ${h.title}</div>
+        <div class="muted" style="font-size:10.5px;margin-top:2px">${h.time}</div></button>`).join('')}</div>
+      <div class="note">새 창 분리 여부는 논의 예정</div>
+    </aside>
+    <!-- chat -->
+    <div>
+      <div style="display:flex;align-items:center;padding:14px 4px 10px"><h3 style="font-size:15px">AI 운영 분석 에이전트 <span class="muted" style="font-size:11px;font-weight:400">검증 쿼리 기반 · SQL 자동 생성 없음</span></h3><span class="synthetic" style="margin-left:auto">합성 데이터 v1.0</span></div>
+      <div id="chat4" style="min-height:340px;display:flex;flex-direction:column;gap:14px;padding-bottom:14px"></div>
+      <div id="tray4" style="position:sticky;bottom:64px;display:none;background:#243b53;color:#fff;border-radius:10px;padding:10px 14px;font-size:13px;align-items:center;justify-content:space-between">
+        <span>▣ 담긴 지표 블록 <b id="trayN">0</b></span>
+        <button class="btn sm" data-goto="sp05b" style="background:#fff">보고서에서 열기 →</button></div>
+      <div style="position:sticky;bottom:16px;display:flex;gap:8px;background:var(--bg);padding:10px 0">
+        <input id="q4" placeholder="질문 입력 (/ 로 포커스) · 예: 이번 주 VOC 추이" style="flex:1;padding:12px 14px;border:1px solid var(--line-2);border-radius:10px;font-size:14px">
+        <button class="btn primary" id="send4" style="padding:12px 22px">전송</button>
+      </div>
+    </div>
+  </div>`;
+  renderEmpty4();
+  $('#send4').onclick=()=>submit4($('#q4').value.trim());
+  $('#q4').onkeydown=e=>{if(e.key==='Enter')submit4(e.target.value.trim());};
+  $('#newChat4').onclick=()=>{$('#chat4').innerHTML='';renderEmpty4();toast('새 대화를 시작했습니다');};
+  $$('.h4item',$('#sp04')).forEach(b=>b.onclick=()=>{$('#chat4').innerHTML='';submit4(b.dataset.q);toast('이전 대화를 불러왔습니다');});
+}
+function renderEmpty4(){
+  $('#chat4').innerHTML=`<div style="text-align:center;padding:30px 0;color:var(--muted)">
+    <div style="width:44px;height:44px;border-radius:12px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;margin:0 auto 10px">✦</div>
+    <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px">안녕하세요, SensePlace 운영 분석 에이전트예요</div>
+    <div style="font-size:12.5px;margin-bottom:18px">지표 조회·비교·요약을 자연어로 요청하세요. 결과는 그대로 보고서 블록으로 담을 수 있어요.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:560px;margin:0 auto">
+      ${Object.keys(QA).filter(q=>!QA[q].noFollow).map(q=>`<button class="rec4 card" data-q="${q}" style="padding:14px;text-align:left;font-size:13px;font-weight:600;color:var(--ink)">💬 ${q}</button>`).join('')}
+    </div></div>`;
+  $$('.rec4').forEach(b=>b.onclick=()=>submit4(b.dataset.q));
+}
+function submit4(q){
+  if(!q)return;
+  const chat=$('#chat4');
+  if($('.rec4'))chat.innerHTML='';
+  chat.insertAdjacentHTML('beforeend',`<div style="align-self:flex-end;max-width:70%;background:var(--brand);color:#fff;padding:10px 14px;border-radius:14px 14px 4px 14px;font-size:13.5px">${q}</div>`);
+  const a0=QA[q];
+  const steps=a0?['질문 의도 해석','검증 카탈로그 매핑 → '+a0.intent+' (유사도 0.92)','파라미터 추출 → '+a0.period+' · '+a0.place,'검증 쿼리 실행 (read-only · LIMIT · 감사 로그)','결과 해석 · 요약 생성']
+               :['질문 의도 해석','임베딩 → 검증 카탈로그 후보 검색 (top-5)','매핑 실패 — 지원 질문 제안'];
+  const think=document.createElement('div');
+  think.className='card'; think.style.cssText='align-self:flex-start;max-width:88%;padding:11px 14px;font-size:12px;color:#475569';
+  think.innerHTML='<div style="font-weight:700;color:var(--brand-2);font-size:12px;display:flex;align-items:center;gap:7px"><span style="width:22px;height:22px;border-radius:6px;background:var(--brand);color:#fff;display:inline-flex;align-items:center;justify-content:center">✦</span>SensePlace 에이전트 <span class="spinny"></span></div><div class="tsteps" style="margin-top:6px"></div>';
+  chat.appendChild(think); chat.scrollIntoView&&chat.scrollIntoView(false);
+  const tbox=think.querySelector('.tsteps');
+  steps.forEach((s,i)=>setTimeout(()=>{tbox.insertAdjacentHTML('beforeend','<div style="padding:2.5px 0"><span style="color:#047857">✓</span> '+s+'</div>');},200+i*330));
+  setTimeout(()=>{
+    think.innerHTML='<button style="border:none;background:none;font-size:11px;color:var(--muted);cursor:pointer;padding:0" onclick="toggleTrace(this)">⚙ 에이전트 실행 과정 '+steps.length+'단계 완료 — 펼치기</button><div style="display:none;margin-top:5px">'+steps.map(s=>'<div style="padding:2px 0"><span style="color:#047857">✓</span> '+s+'</div>').join('')+'</div>';
+    const a=QA[q];
+    if(!a){
+      agentSay('죄송해요, 이 질문은 아직 검증 쿼리 카탈로그에 없어서 실행하지 않았어요. 안전을 위해 SQL을 임의로 생성하지 않거든요. 아래 지원 질문을 이용해 주세요.');
+      chat.insertAdjacentHTML('beforeend',`<div class="card" style="align-self:flex-start;max-width:88%;padding:14px">
+        <div class="muted" style="font-size:12.5px;margin-bottom:8px">지원 질문:</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${Object.keys(QA).map(x=>`<button class="rec4b btn sm" data-q="${x}">${x}</button>`).join('')}</div></div>`);
+      $$('.rec4b').forEach(b=>b.onclick=()=>submit4(b.dataset.q));
+    } else {
+      agentSay(a.talk||a.summary);
+      const bid='b'+Date.now();
+      chat.insertAdjacentHTML('beforeend',`<div class="card" style="align-self:flex-start;max-width:88%;padding:16px;width:100%">
+        <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line)">
+          <b style="color:var(--brand-2)">${a.intent}</b> · ${a.period} · ${a.place} · ${a.n} <span class="synthetic" style="float:right">합성</span></div>
+        <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
+          <div style="flex:1;min-width:220px" id="${bid}v" data-view="chart">${chartSVG(a.bars,a.labels,a.unit)}</div>
+          <button class="take4 btn sm" data-b="${bid}c">＋ 차트 담기</button></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+          <span style="font-size:13.5px;font-weight:600;flex:1">${a.summary}</span>
+          <button class="take4 btn sm" data-b="${bid}t">＋ 요약 담기</button>
+          <button class="btn sm" onclick="toggleView4('${bid}',this)">⊞ 표로 보기</button></div>
+      </div>`);
+      BLOCKREG[bid]=a;
+      if(!a.noFollow){
+        chat.insertAdjacentHTML('beforeend',`<div class="fu4" style="align-self:flex-start;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="muted" style="font-size:11px">후속 질문 제안:</span><button class="rec4f pill" data-q="그럼 지난달은?" style="cursor:pointer">💬 그럼 지난달은?</button></div>`);
+        $$('.rec4f').forEach(x=>x.onclick=()=>{x.closest('.fu4').remove();submit4(x.dataset.q);});
+      }
+      $$('.take4').forEach(b=>b.onclick=()=>{
+        const key=b.dataset.b, aid=key.slice(0,-1), typ=key.slice(-1), qa=BLOCKREG[aid]; if(!qa)return;
+        const ex=TAKEN.findIndex(x=>x.key===key);
+        if(ex>=0){TAKEN.splice(ex,1);b.classList.remove('on');b.textContent=typ==='c'?'＋ 차트 담기':'＋ 요약 담기';b.style.background='';b.style.color='';}
+        else{
+          TAKEN.push(typ==='c'
+            ?{key,kind:'chart',title:qa.intent,meta:qa.place+' · '+qa.period,chart:{bars:qa.bars,labels:qa.labels,summary:qa.summary,intent:qa.intent}}
+            :{key,kind:'text',title:'요약 텍스트',meta:qa.summary.slice(0,28)+'…',body:qa.summary});
+          b.classList.add('on');b.textContent='✓ 담김';b.style.background='var(--sev-ok-soft)';b.style.color='#047857';}
+        updateTray();
+      });
+    }
+    $('#q4').value=''; chat.scrollIntoView&&chat.scrollIntoView(false);
+  },200+steps.length*330+260);
+}
+function updateTray(){
+  trayCount=TAKEN.length;
+  const t=$('#tray4');
+  if(t){$('#trayN').textContent=trayCount; t.style.display=trayCount>0?'flex':'none';}
+  const dc=$('#drawerCount'); if(dc)dc.textContent=trayCount;
+}
+/* 에이전트 발화 (타이핑 효과) */
+function agentSay(text){
+  const chat=$('#chat4'); if(!chat)return;
+  const nb=document.createElement('div');
+  nb.style.cssText='align-self:flex-start;max-width:88%;background:var(--brand-soft);border:1px solid #dbe4f0;padding:11px 14px;border-radius:4px 14px 14px 14px;font-size:13.5px;line-height:1.65;white-space:pre-wrap';
+  chat.appendChild(nb);
+  let i=0; const iv=setInterval(()=>{nb.textContent=text.slice(0,++i);if(i>=text.length)clearInterval(iv);},14);
+}
+function toggleTrace(b){const d=b.nextElementSibling;d.style.display=d.style.display==='none'?'block':'none';}
+</script>
+
+<script>
+/* ============================================================= */
+/*  SP-05a report list                                            */
+/* ============================================================= */
+function buildSP05a(){
+  const rows=[
+    ['주간','07/14~07/20','draft','윤OO','10분 전 수정'],
+    ['주간','07/07~07/13','done','윤OO',''],
+    ['월간','06월','done','박OO',''],
+    ['분기','2026 Q2','done','정OO','']
+  ];
+  const stmap={draft:['초안','st-check'],done:['확정','st-done']};
+  $('#sp05a').innerHTML = topbar('sp05a') + `
+  <div style="max-width:1000px;margin:0 auto;padding:20px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <h3 style="font-size:16px">보고서</h3>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <select class="btn sm"><option>유형: 전체</option><option>주간</option><option>월간</option><option>분기</option></select>
+        <select class="btn sm"><option>기간: 전체</option></select>
+        <select class="btn sm"><option>상태: 전체</option><option>초안</option><option>확정</option></select>
+        <button class="btn primary sm" data-goto="sp05b">＋ 새 보고서</button>
+      </div>
+    </div>
+    <div class="card" style="overflow:hidden">
+      <div style="display:grid;grid-template-columns:80px 1fr 90px 90px 1fr;gap:8px;padding:11px 16px;background:var(--panel-2);font-size:12px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--line)">
+        <span>유형</span><span>기간</span><span>상태</span><span>작성자</span><span style="text-align:right">동작</span></div>
+      ${rows.map((r,i)=>`<div class="rptRow" data-i="${i}" style="display:grid;grid-template-columns:80px 1fr 90px 90px 1fr;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line);font-size:13px;align-items:center;cursor:pointer">
+        <span style="font-weight:600">${r[0]}</span><span>${r[1]}</span>
+        <span><span class="badge-st ${stmap[r[2]][1]}">${stmap[r[2]][0]}</span></span>
+        <span class="muted">${r[3]}</span>
+        <span style="text-align:right">${r[4]?`<span class="muted" style="font-size:12px">${r[4]}</span>`:`<button class="btn sm" data-goto="sp05b">열람</button> <button class="btn sm">사본</button>`}</span>
+      </div>`).join('')}
+    </div>
+    <div class="note">행 클릭 = 열람 · 초안은 이어서 편집, 확정은 읽기 전용 + [사본]</div>
+  </div>`;
+  $$('.rptRow',$('#sp05a')).forEach(r=>r.onclick=e=>{if(!e.target.closest('button'))go('sp05b');});
+}
+
+/* ============================================================= */
+/*  SP-05b editor                                                 */
+/* ============================================================= */
+let rptBlocks=[], drawerItems=[], drag5=null, uid5=100;
+function nid(){return 'k'+(uid5++);}
+
+function nlToBlock(text){
+  text=text.trim();
+  // known catalog match
+  for(const q in QA){ const key=q.replace(/[^가-힣a-z0-9]/gi,''); const t=text.replace(/[^가-힣a-z0-9]/gi,'');
+    if(t && (key.includes(t)||t.includes(key.slice(0,6)))){ const a=QA[q];
+      return {id:nid(),kind:'chart',title:a.intent,meta:`${a.place} · ${a.period} · ${a.n}`,chart:{bars:a.bars,labels:a.labels,summary:a.summary,intent:a.intent}}; } }
+  // parse place
+  let place='전체 구역';
+  for(const z in ZONES){ if(text.includes(z))place=z; for(const f of ZONES[z]){ if(text.includes(f))place=f; } }
+  // parse period
+  let period='최근 7일'; if(text.includes('지난달')||text.includes('한달')||text.includes('월간'))period='최근 30일';
+  else if(text.includes('지난주'))period='지난주'; else if(text.includes('오늘'))period='오늘';
+  // metric guess
+  let intent='voc_trend',unit='건';
+  if(text.includes('대기')){intent='avg_wait_time';unit='분';}
+  else if(text.includes('미해결')){intent='unresolved_by_zone';unit='건';}
+  else if(text.includes('심각도')||text.includes('위험')){intent='severity_dist';unit='건';}
+  else if(text.includes('감성')||text.includes('만족')){intent='sentiment_ratio';unit='%';}
+  const n = intent==='unresolved_by_zone'?5:7;
+  const bars=Array.from({length:n},()=>intent==='sentiment_ratio'?40+Math.floor(Math.random()*55):3+Math.floor(Math.random()*22));
+  const labels = intent==='unresolved_by_zone'?['객실동','다이닝','레저','MICE','인프라']:null;
+  return {id:nid(),kind:'chart',title:intent,meta:`${place} · ${period} · AI 생성`,
+    chart:{bars,labels,summary:`${place} ${intent} 결과 (합성 · AI 생성)`,intent}};
+}
+
+function buildSP05b(){
+  drawerItems=[
+    ...TAKEN.map(t=>({id:nid(),kind:t.kind,title:t.title,meta:t.meta+' · 담기',used:false,chart:t.chart?{...t.chart}:null,body:t.body,src:t.src})),
+    {id:'d1',kind:'chart',title:'대기시간 차트',meta:'피자힐 · 7일 · avg_wait_time',used:false,chart:{bars:[8,10,14,18,14,11,9],summary:'평균 대기 12.4분 (+2.1분)',intent:'avg_wait_time'}},
+    {id:'d2',kind:'text',title:'요약 텍스트',meta:'평균 대기 12.4분 (+2.1분)',used:false,body:'이번 주 다이닝 대기시간이 전주 대비 2.1분 증가했습니다.'}
+  ];
+  rptBlocks=[
+    {id:'b1',kind:'text',w:'full',title:'요약 (자동 작성)',body:'이번 주 다이닝 구역 평균 대기시간이 전주 대비 2.1분 증가했습니다. 목요일 저녁 피자힐에서 피크가 관찰되었으며, 주방 인력 보강이 권장됩니다.'},
+    {id:'b2',kind:'chart',w:'half',title:'대기시간 차트',chart:{bars:[8,10,14,18,14,11,9],intent:'avg_wait_time',summary:'평균 대기 12.4분'}},
+    {id:'b3',kind:'chart',w:'half',title:'VOC 추이 차트',chart:{bars:[12,18,15,24,20,16,22],intent:'voc_trend',summary:'일 평균 18.1건'}},
+    {id:'b4',kind:'fail',w:'full',title:'구역 섹션: 다이닝'}
+  ];
+  $('#sp05b').innerHTML = topbar('sp05a') + `
+  <div style="display:grid;grid-template-columns:300px 1fr;min-height:640px">
+    <!-- drawer -->
+    <div style="border-right:1px solid var(--line);padding:14px;background:var(--panel-2);overflow-y:auto">
+      <div class="nlbox">
+        <div style="font-size:12px;font-weight:700;color:var(--brand-2);margin-bottom:7px">✨ 자연어로 차트 만들기</div>
+        <textarea id="nl5" rows="2" placeholder="예: 지난달 객실동 소음 VOC 추이 차트 만들어줘" style="width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px;resize:none"></textarea>
+        <button class="btn primary sm" id="nlGen" style="width:100%;margin-top:7px">차트 생성</button>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">
+          ${['지난주 피자힐 대기시간','구역별 미해결 현황','이번 주 감성 비율'].map(s=>`<button class="nlEx pill" data-q="${s}" style="cursor:pointer">${s}</button>`).join('')}
+        </div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;margin-bottom:8px">─ 조회 결과 <span class="muted">(담긴 블록 <span id="drawerCount">${trayCount}</span>)</span> ─</div>
+      <button class="btn sm" id="loadMetrics" style="width:100%;margin-bottom:8px">↓ 대화형 에이전트 지표 불러오기</button>
+      <div id="drawerList"></div>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;margin:16px 0 8px">─ 기본 블록 ─</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+        <div class="dcard" draggable="true" data-basic="heading" style="border:1px dashed var(--line-2);border-radius:9px;padding:10px;font-size:12px;background:#fff;text-align:center">𝐇 제목</div>
+        <div class="dcard" draggable="true" data-basic="text" style="border:1px dashed var(--line-2);border-radius:9px;padding:10px;font-size:12px;background:#fff;text-align:center">≡ 텍스트</div>
+        <div class="dcard" draggable="true" data-basic="quote" style="border:1px dashed var(--line-2);border-radius:9px;padding:10px;font-size:12px;background:#fff;text-align:center">❝ 인용</div>
+        <div class="dcard" draggable="true" data-basic="kpi" style="border:1px dashed var(--line-2);border-radius:9px;padding:10px;font-size:12px;background:#fff;text-align:center">▤ KPI 카드</div>
+        <div class="dcard" draggable="true" data-basic="table" style="border:1px dashed var(--line-2);border-radius:9px;padding:10px;font-size:12px;background:#fff;text-align:center">⊞ 표</div>
+        <div class="dcard" draggable="true" data-basic="divider" style="border:1px dashed var(--line-2);border-radius:9px;padding:10px;font-size:12px;background:#fff;text-align:center">— 구분선</div>
+        <div class="dcard" draggable="true" data-basic="zone" style="border:1px dashed var(--line-2);border-radius:9px;padding:10px;font-size:12px;background:#fff;text-align:center;grid-column:span 2">▣ 구역 섹션</div>
+      </div>
+      <div class="note">모든 블록 드래그 배치 · 클릭 시 문서 끝 삽입 · 블록마다 1칸/2칸 폭 전환</div>
+    </div>
+    <!-- canvas -->
+    <div style="padding:18px 24px;background:#fff">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--line)">
+        <div><div style="font-weight:700;font-size:15px">주간 보고서 · 07/14~07/20</div>
+          <div style="display:flex;gap:6px;margin-top:5px;align-items:center"><span class="badge-st st-check">초안</span><span class="pill" style="background:var(--brand-soft);color:var(--brand-2)">▤ 스마트 레이아웃 — 블록 옆에 놓으면 2칸, 행 사이에 놓으면 1칸 자동</span></div></div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <span class="muted" style="font-size:12px" id="saveStamp">✓ 자동 저장 14:32</span>
+          <button class="btn sm" id="pdfBtn">PDF</button><button class="btn primary sm" id="confirmBtn">확정</button></div>
+      </div>
+      <div id="canvas5" style="max-width:780px;min-height:400px"></div>
+    </div>
+  </div>`;
+  renderDrawer5(); renderCanvas5();
+  $('#confirmBtn').onclick=confirmModal;
+  $('#pdfBtn').onclick=e=>{const b=e.target;b.innerHTML='<span class="spinny"></span>';setTimeout(()=>{b.textContent='PDF';toast('PDF를 생성했습니다 (차트 이미지 변환 포함)','ok');},1100);};
+  $('#nlGen').onclick=genFromNL;
+  $$('.nlEx',$('#sp05b')).forEach(x=>x.onclick=()=>{$('#nl5').value=x.dataset.q;genFromNL();});
+  $('#loadMetrics').onclick=e=>{const b=e.target;b.innerHTML='<span class="spinny"></span> 불러오는 중…';
+    setTimeout(()=>{b.textContent='↓ 대화형 에이전트 지표 불러오기';
+      const picks=[['이번 주 VOC 추이','voc_trend'],['구역별 미해결 현황','unresolved_by_zone']];
+      let added=0;
+      picks.forEach(([q])=>{const a=QA[q];if(!a)return;if(drawerItems.some(d=>d.chart&&d.chart.intent===a.intent))return;
+        drawerItems.unshift({id:nid(),kind:'chart',title:a.intent,meta:`${a.place} · ${a.period} · 에이전트`,used:false,chart:{bars:a.bars,labels:a.labels,summary:a.summary,intent:a.intent}});added++;});
+      renderDrawer5();bindDnD5();
+      toast(added?`에이전트 지표 ${added}건을 불러왔습니다`:'이미 최신 지표입니다','ok');
+    },800);};
+  bindDnD5();
+}
+</script>
+
+<script>
+function genFromNL(){
+  const inp=$('#nl5'), btn=$('#nlGen'); const text=inp.value.trim();
+  if(!text){inp.focus();return;}
+  btn.innerHTML='<span class="spinny"></span> 생성 중…'; btn.disabled=true;
+  setTimeout(()=>{
+    const blk=nlToBlock(text); blk.used=false;
+    drawerItems.unshift(blk); renderDrawer5(); bindDnD5();
+    inp.value=''; btn.innerHTML='차트 생성'; btn.disabled=false;
+    toast('차트를 생성했어요 — 드래그해 보고서에 배치하세요','ok');
+    // flash the new card
+    const el=$(`.dcard[data-id="${blk.id}"]`); if(el){el.classList.add('hl');setTimeout(()=>el.classList.remove('hl'),1300);}
+  },900);
+}
+
+function thumb(bars,labels){const max=Math.max(...bars,1);return `<svg viewBox="0 0 ${bars.length*10} 30" style="width:100%;height:30px">${bars.map((b,i)=>`<rect x="${i*10}" y="${30-b/max*28}" width="7" height="${b/max*28}" rx="1.5" fill="var(--brand)" opacity=".85"/>`).join('')}</svg>`;}
+
+function renderDrawer5(){
+  const list=$('#drawerList'); if(!list)return;
+  list.innerHTML = drawerItems.map(it=>`
+    <div class="dcard ${it.used?'used':''}" draggable="${!it.used}" data-id="${it.id}" style="border:1px solid var(--line);background:#fff;border-radius:9px;padding:11px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700">${it.kind==='chart'?'▦':it.kind==='quote'?'❝':'≡'} ${it.title}</div>
+      <div class="muted" style="font-size:11px;margin-top:3px">${it.meta}</div>
+      ${it.kind==='chart'?`<div style="margin-top:7px;opacity:.8">${thumb(it.chart.bars,it.chart.labels)}</div>`:''}
+    </div>`).join('') || '<div class="muted" style="font-size:12px;padding:6px">담긴 블록이 없습니다. 위에서 차트를 생성해 보세요.</div>';
+}
+
+function renderCanvas5(hlId){
+  const cv=$('#canvas5'); if(!cv)return;
+  cv.style.display='flex'; cv.style.flexWrap='wrap'; cv.style.alignItems='stretch'; cv.style.gap='12px';
+  cv.innerHTML = rptBlocks.map((b,idx)=>{
+    const half=b.w==='half';
+    const icon={chart:'▦',table:'⊞',quote:'❝',kpi:'▤',heading:'𝐇',divider:'—'}[b.kind]||'≡';
+    let inner;
+    if(b.kind==='text')inner=`<div contenteditable="true" style="font-size:13.5px;line-height:1.7;outline:none;flex:1" onblur="markSaved()">${b.body||''}</div>`;
+    else if(b.kind==='heading')inner=`<div contenteditable="true" style="font-size:19px;font-weight:800;letter-spacing:-.3px;outline:none;flex:1;display:flex;align-items:center" onblur="markSaved()">${b.body||''}</div>`;
+    else if(b.kind==='quote')inner=`<div style="flex:1;border-left:3px solid var(--brand);padding-left:12px;display:flex;flex-direction:column;justify-content:center">
+        <div contenteditable="true" style="font-size:13.5px;line-height:1.7;font-style:italic;color:#334155;outline:none" onblur="markSaved()">${b.body||''}</div>
+        <div contenteditable="true" class="muted" style="font-size:11px;margin-top:7px;outline:none" onblur="markSaved()">— ${b.src||'출처'}</div></div>`;
+    else if(b.kind==='kpi')inner=`<div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px">${(b.kpis||[]).map(k=>`<div style="border:1px solid var(--line);border-radius:8px;padding:9px;text-align:center;display:flex;flex-direction:column;justify-content:center"><div class="muted" style="font-size:10.5px">${k[0]}</div><div contenteditable="true" style="font-size:17px;font-weight:800;outline:none" onblur="markSaved()">${k[1]}</div></div>`).join('')}</div>`;
+    else if(b.kind==='table')inner=`<div style="flex:1;overflow:auto">${tableHTML(b.table.vals,b.table.labels,b.table.unit)}</div>`;
+    else if(b.kind==='divider')inner=`<div style="flex:1;display:flex;align-items:center"><div style="width:100%;border-top:2px solid var(--line-2)"></div></div>`;
+    else if(b.kind==='chart')inner=`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex:1">
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center">${b.view==='table'?tableHTML(b.chart.bars,b.chart.labels):chartSVG(b.chart.bars,b.chart.labels,{report:true})}${b.chart.summary?`<div class="muted" style="font-size:11.5px;margin-top:6px;text-align:center">${b.chart.summary} · <span style="color:var(--brand-2)">${b.chart.intent||''}</span></div>`:''}</div>
+        <div style="display:flex;gap:4px;flex-direction:column">
+          <button class="btn sm" onclick="toggleBlkView('${b.id}')" title="차트↔표 전환">${b.view==='table'?'▦':'⊞'}</button>
+          <button class="btn sm" onclick="refreshBlk('${b.id}',this)" title="데이터 새로고침">⟳</button></div></div>`;
+    else inner=`<div style="flex:1"><div style="color:var(--sev-warn);font-size:13px;font-weight:600">⚠ 자동 작성 실패 — 직접 입력</div>
+        <div contenteditable="true" class="muted" style="font-size:13px;margin-top:6px;outline:none" onblur="markSaved()">클릭해 다이닝 구역 내용을 입력하세요…</div></div>`;
+    const minh=b.kind==='divider'?'54px':b.kind==='heading'?'64px':'170px';
+    return `<div class="rblk ${b.id===hlId?'hl':''}" data-id="${b.id}" draggable="true" style="border:1px solid var(--line);border-radius:10px;padding:12px 16px;flex:0 0 ${half?'calc(50% - 6px)':'100%'};max-width:${half?'calc(50% - 6px)':'100%'};min-height:${minh};box-sizing:border-box;display:flex;flex-direction:column">
+      <div class="rhandle" style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px">
+        <span style="cursor:grab">⠿</span> ${idx+1}. ${icon} ${b.title}
+        <button class="btn sm wtog" onclick="toggleW('${b.id}')" title="한 행에 1칸/2칸 배치" style="margin-left:auto;padding:2px 7px;font-size:10.5px">${half?'◨ 2칸':'▭ 1칸'}</button>
+        <button class="btn sm" onclick="delBlk('${b.id}')" title="블록 삭제" style="padding:2px 7px;font-size:10.5px">🗑</button></div>${inner}</div>`;
+  }).join('');
+}
+function toggleW(id){const b=rptBlocks.find(x=>x.id===id);if(!b)return;b.w=b.w==='half'?'full':'half';renderCanvas5(id);markSaved();
+  toast(b.w==='half'?'2칸(반폭)으로 배치 — 한 행에 두 블록':'1칸(전체 폭)으로 배치');}
+function toggleBlkView(id){const b=rptBlocks.find(x=>x.id===id);if(!b)return;b.view=b.view==='table'?'chart':'table';renderCanvas5(id);markSaved();toast(b.view==='table'?'표 보기로 전환':'차트 보기로 전환');}
+
+function markSaved(){const s=$('#saveStamp');if(s){const d=new Date();s.textContent=`✓ 자동 저장 ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;}}
+function refreshBlk(id,btn){btn.innerHTML='<span class="spinny"></span>';const b=rptBlocks.find(x=>x.id===id);
+  setTimeout(()=>{if(b&&b.chart)b.chart.bars=b.chart.bars.map(v=>Math.max(2,v+Math.round((Math.random()-.5)*6)));renderCanvas5(id);toast('출처 파라미터로 재조회했습니다','ok');},700);}
+function delBlk(id){rptBlocks=rptBlocks.filter(x=>x.id!==id);normalizeLayout();renderCanvas5();markSaved();toast('블록을 삭제했습니다');}
+
+/* 드롭 타깃 판정: 블록 좌/우 28% 영역 = 나란히(2칸), 그 외 = 행 사이(1칸) */
+function dropTarget5(x,y){
+  const blks=$$('#canvas5 .rblk');
+  if(!blks.length)return {idx:0,side:null};
+  for(let i=0;i<blks.length;i++){
+    const r=blks[i].getBoundingClientRect();
+    if(y>=r.top&&y<=r.bottom){
+      if(x>=r.left-10&&x<=r.left+r.width*0.28)return {idx:i,side:'L',tid:blks[i].dataset.id};
+      if(x>=r.left+r.width*0.72&&x<=r.right+10)return {idx:i+1,side:'R',tid:blks[i].dataset.id};
+    }
+  }
+  let best=blks.length,bestD=Infinity;
+  blks.forEach((b,i)=>{const r=b.getBoundingClientRect();const cx=r.left+r.width/2,cy=r.top+r.height/2;
+    const d=Math.hypot(x-cx,y-cy);
+    if(d<bestD){bestD=d;best=(y<cy)?i:i+1;}});
+  return {idx:best,side:null};
+}
+function showGuide5(t){
+  hideSideHl();
+  if(t.side&&(!drag5||drag5.source!=='canvas'||t.tid!==drag5.id)){
+    hideGuide5();
+    const el=$('#canvas5 .rblk[data-id="'+t.tid+'"]');
+    if(el)el.classList.add(t.side==='L'?'sidehlL':'sidehlR');
+  }else{
+    const cv=$('#canvas5'); let g=$('#dropline5');
+    if(!g){g=document.createElement('div');g.id='dropline5';g.className='dropline';}
+    const blks=$$('#canvas5 .rblk'); cv.insertBefore(g, blks[t.idx]||null); g.style.display='block';
+  }
+}
+function hideSideHl(){$$('#canvas5 .sidehlL, #canvas5 .sidehlR').forEach(e=>e.classList.remove('sidehlL','sidehlR'));}
+function hideGuide5(){const g=$('#dropline5');if(g)g.remove();}
+/* 스마트 레이아웃: 반폭 블록이 행에 홀로 남으면 전폭으로 자동 승격 */
+function normalizeLayout(){
+  let run=[];
+  const flush=()=>{ if(run.length===1)run[0].w='full';
+    else if(run.length>1&&run.length%2===1)run[run.length-1].w='full';
+    run=[]; };
+  rptBlocks.forEach(b=>{ if(b.w==='half')run.push(b); else flush(); });
+  flush();
+}
+
+function insertBlock5(spec,idx,t){
+  let blk;
+  if(spec.basic==='text')blk={id:nid(),kind:'text',w:'full',title:'텍스트',body:'내용을 입력하세요…'};
+  else if(spec.basic==='zone')blk={id:nid(),kind:'text',w:'full',title:'구역 섹션',body:'구역 요약을 입력하세요…'};
+  else if(spec.basic==='heading')blk={id:nid(),kind:'heading',w:'full',title:'제목',body:'섹션 제목을 입력하세요'};
+  else if(spec.basic==='quote')blk={id:nid(),kind:'quote',w:'full',title:'인용',body:'"인용할 VOC·리뷰 원문을 입력하세요"',src:'출처'};
+  else if(spec.basic==='kpi')blk={id:nid(),kind:'kpi',w:'half',title:'KPI 카드',kpis:[['오늘 VOC','25'],['미해결','8'],['평균 처리','41분'],['위험 미처리','1']]};
+  else if(spec.basic==='table')blk={id:nid(),kind:'table',w:'half',title:'표',table:{labels:['월','화','수','목','금','토','일'],vals:[8,10,14,18,14,11,9],unit:'분'}};
+  else if(spec.basic==='divider')blk={id:nid(),kind:'divider',w:'full',title:'구분선'};
+  else{const it=drawerItems.find(x=>x.id===spec.id); if(!it)return;
+    blk = it.kind==='chart'?{id:nid(),kind:'chart',w:'half',title:it.title,chart:{...it.chart}}
+        : it.kind==='quote'?{id:nid(),kind:'quote',w:'full',title:it.title,body:it.body,src:it.src}
+        : {id:nid(),kind:'text',w:'full',title:it.title,body:it.body};
+    it.used=true; renderDrawer5(); bindDnD5();}
+  if(t){ if(t.side){const tgt=rptBlocks.find(b=>b.id===t.tid); if(tgt)tgt.w='half'; blk.w='half';} else blk.w='full'; }
+  rptBlocks.splice(idx,0,blk); if(t)normalizeLayout(); renderCanvas5(blk.id); markSaved();
+}
+
+function bindDnD5(){
+  const root=$('#sp05b'); if(!root)return;
+  // drawer cards
+  $$('.dcard',root).forEach(c=>{
+    if(c.classList.contains('used'))return;
+    c.ondragstart=e=>{drag5={source:'drawer',id:c.dataset.id,basic:c.dataset.basic};e.dataTransfer.effectAllowed='copy';};
+    c.ondragend=()=>{hideGuide5();hideSideHl();drag5=null;};
+    c.onclick=()=>{ // click = append at end (1단계 폴백)
+      insertBlock5({id:c.dataset.id,basic:c.dataset.basic}, rptBlocks.length);
+      toast('문서 끝에 삽입했습니다','ok');
+    };
+  });
+  const cv=$('#canvas5');
+  cv.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect=drag5&&drag5.source==='canvas'?'move':'copy';showGuide5(dropTarget5(e.clientX,e.clientY));};
+  cv.ondragleave=e=>{if(!cv.contains(e.relatedTarget)){hideGuide5();hideSideHl();}};
+  cv.ondrop=e=>{e.preventDefault();const t=dropTarget5(e.clientX,e.clientY);hideGuide5();hideSideHl();
+    if(!drag5)return;
+    if(drag5.source==='drawer'){
+      insertBlock5(drag5,t.idx,t);
+      toast(t.side?'나란히 배치 — 2칸(반폭) 자동 전환':'단독 행 배치 — 1칸(전폭) 자동 전환','ok');
+    }
+    else if(drag5.source==='canvas'){
+      const from=rptBlocks.findIndex(b=>b.id===drag5.id);if(from<0)return;
+      if(t.side&&t.tid===drag5.id){drag5=null;return;}
+      const [m]=rptBlocks.splice(from,1);let ti=t.idx;if(from<ti)ti--;
+      if(t.side){const tgt=rptBlocks.find(b=>b.id===t.tid);if(tgt)tgt.w='half';m.w='half';}
+      else m.w='full';
+      rptBlocks.splice(ti,0,m);normalizeLayout();renderCanvas5(m.id);markSaved();
+      toast(t.side?'나란히 배치 — 2칸(반폭) 자동 전환':'단독 행 배치 — 1칸(전폭) 자동 전환');
+    }
+    drag5=null;
+  };
+  // canvas block reorder (delegated)
+  cv.addEventListener('dragstart',e=>{const bl=e.target.closest('.rblk');if(bl){drag5={source:'canvas',id:bl.dataset.id};bl.classList.add('dragging');}});
+  cv.addEventListener('dragend',e=>{const bl=e.target.closest('.rblk');if(bl)bl.classList.remove('dragging');hideGuide5();hideSideHl();});
+}
+
+function confirmModal(){
+  const m=document.createElement('div');
+  m.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:900';
+  m.innerHTML=`<div class="card" style="width:360px;padding:24px"><div style="font-weight:700;font-size:15px;margin-bottom:8px">보고서 확정</div>
+    <div class="muted" style="font-size:13px;line-height:1.6">확정 후에는 수정할 수 없습니다. 사본 생성만 가능합니다.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+      <button class="btn" id="mCancel">취소</button><button class="btn primary" id="mOk">확정</button></div></div>`;
+  document.body.appendChild(m);
+  m.querySelector('#mCancel').onclick=()=>m.remove();
+  m.querySelector('#mOk').onclick=()=>{m.remove();toast('보고서를 확정했습니다','ok');};
+  document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){m.remove();document.removeEventListener('keydown',esc);}});
+}
+</script>
+
+<script>
+/* ============================================================= */
+/*  SP-06 external reviews                                        */
+/* ============================================================= */
+const SRC_COLORS={'네이버':'#03c75a','카카오':'#f7c600','트립어드바이저':'#00aa6c','구글':'#4285f4'};
+const PLATSTAT={
+  '네이버':{n:86,avg:4.1,neg:18,neu:20,trend:[12,14,11,16,13,10,12],delta:'+6%'},
+  '카카오':{n:54,avg:4.3,neg:12,neu:22,trend:[7,9,8,6,10,8,6],delta:'-3%'},
+  '트립어드바이저':{n:41,avg:3.9,neg:24,neu:18,trend:[5,6,7,4,8,6,5],delta:'+18%'},
+  '구글':{n:63,avg:4.0,neg:20,neu:21,trend:[8,9,10,7,11,9,9],delta:'+2%'}
+};
+const REVIEWS=[
+  {id:'r1',src:'네이버',user:'family_kim',rating:2,sev:'danger',sent:'부정',conf:0.94,cat:'예약·안내',time:'07/22 14:00',ago:'3시간 전',
+   text:'예약과 다른 객실 배정',full:'예약할 때 시티뷰로 했는데 체크인하니 다른 방으로 배정됐어요. 확인 요청했지만 대기가 길었습니다.',
+   others:[['객실이 넓고 좋았어요','07/10','★★★★☆'],['조식 종류가 다양','07/11','★★★★★']],
+   sim:[['객실동 "배정 착오"','07/18','완료'],['객실동 "룸타입 문의"','07/15','완료']]},
+  {id:'r2',src:'구글',user:'jhpark',rating:3,sev:'warn',sent:'부정',conf:0.71,cat:'대기·혼잡',time:'07/23 10:20',ago:'어제',
+   text:'체크인 대기 김',full:'주말이라 그런지 체크인 줄이 길어서 20분 넘게 기다렸습니다.',
+   others:[['위치는 최고입니다','07/09','★★★★★']],
+   sim:[['로비 "체크인 혼잡"','07/20','진행중']]},
+  {id:'r3',src:'트립어드바이저',user:'Traveler_M',rating:5,sev:'ok',sent:'긍정',conf:0.96,cat:'직원 서비스',time:'07/23 09:00',ago:'어제',
+   text:'조식 만족 / Great breakfast',full:'The breakfast buffet had a great variety and tasted amazing. Staff were very kind. Will definitely come back!',
+   ko:'조식 뷔페 종류가 다양하고 정말 맛있었어요. 직원들도 매우 친절했습니다. 꼭 재방문할게요!',
+   others:[['Amazing river view','07/12','★★★★★']],sim:[]},
+  {id:'r4',src:'카카오',user:'댕댕이맘',rating:4,sev:'ok',sent:'긍정',conf:0.88,cat:'직원 서비스',time:'07/22 20:10',ago:'어제',
+   text:'가족 행사하기 좋아요',full:'돌잔치로 컨벤션 이용했는데 직원분들이 세심하게 챙겨주셨어요. 만족합니다.',
+   others:[],sim:[['MICE "행사 문의"','07/19','완료']]},
+  {id:'r5',src:'네이버',user:'미식가2020',rating:2,sev:'warn',sent:'부정',conf:0.77,cat:'가격·결제',time:'07/21 19:30',ago:'2일 전',
+   text:'다이닝 가격대 아쉬움',full:'음식은 맛있는데 가격이 다소 부담스러웠어요.',
+   others:[],sim:[['다이닝 "가격 문의"','07/17','완료']]},
+  {id:'r6',src:'트립어드바이저',user:'ForeignGuest',rating:2,sev:'warn',sent:'부정',conf:0.73,cat:'예약·안내',time:'07/21 11:00',ago:'2일 전',
+   text:'Language support limited',full:'There were not enough English signs and instructions for foreign guests. It was hard to communicate with staff in English.',
+   ko:'외국인 고객을 위한 영어 안내 표지와 설명이 부족했습니다. 직원과 영어로 소통하기 어려웠습니다.',
+   others:[],sim:[['안내 "외국어 안내 요청"','07/16','진행중']]},
+  {id:'r7',src:'구글',user:'서울사람',rating:5,sev:'ok',sent:'긍정',conf:0.92,cat:'시설 고장',time:'07/20 16:00',ago:'3일 전',
+   text:'수영장 시설 훌륭',full:'리버파크 수영장 시설이 깨끗하고 관리가 잘 되어 있었습니다.',others:[],sim:[]},
+  {id:'r8',src:'카카오',user:'주말여행러',rating:3,sev:'ok',sent:'중립',conf:0.6,cat:'주차',time:'07/20 09:40',ago:'3일 전',
+   text:'주차는 무난',full:'주차 공간은 충분한데 안내가 조금 헷갈렸어요.',others:[],sim:[['인프라 "주차 안내"','07/18','완료']]}
+];
+const LLM_INSIGHTS=[
+  {up:true,txt:'이번 주 <b>네이버</b> 가족 행사 관련 <b>만족</b> 리뷰가 전주 대비 <b>+32%</b> 증가했습니다.'},
+  {up:true,txt:'이번 주 <b>트립어드바이저</b> 외국인 <b>불만</b> 리뷰가 <b>+18%</b> — 예약·안내 카테고리 집중.'},
+  {up:false,txt:'<b>카카오</b> 다이닝 대기 관련 부정 리뷰는 <b>-12%</b> 감소세입니다.'}
+];
+
+function donut(seg){
+  const total=seg.reduce((s,x)=>s+x.v,0)||1;const R=46,C=2*Math.PI*R;let off=0;
+  const circ=seg.map(s=>{const len=s.v/total*C;const c=`<circle cx="64" cy="64" r="${R}" fill="none" stroke="${s.color}" stroke-width="19" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 64 64)"/>`;off+=len;return c;}).join('');
+  return `<svg viewBox="0 0 128 128" style="width:120px;height:120px">${circ}<text x="64" y="60" text-anchor="middle" font-size="19" font-weight="800" fill="#0f172a">${total}</text><text x="64" y="78" text-anchor="middle" font-size="9.5" fill="#64748b">총 리뷰</text></svg>`;
+}
+const stars=r=>'★'.repeat(r)+'<span style="color:#cbd5e1">'+'★'.repeat(5-r)+'</span>';
+let rev6={src:'전체',period:'주'};
+
+function buildSP06(){
+  $('#sp06').innerHTML = topbar('sp06') + `
+  <div id="sp06dash">
+    <div style="display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap">
+      <h3 style="font-size:16px">외부 리뷰 통합 관리</h3>
+      <span class="pill" style="background:#fff7ed;color:#c2410c;border-color:#fed7aa">외부 API 연동 예정 · 현재 합성 데이터 적재</span>
+      <div style="display:flex;gap:4px;margin-left:10px;background:#f1f5f9;border-radius:9px;padding:3px">
+        <button class="btn sm v6t primary" data-v="list">☰ 목록</button>
+        <button class="btn sm v6t" data-v="dash">▤ 대시보드</button>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:6px" id="periodSeg">
+        ${['주','월','분기'].map(p=>`<button class="pseg btn sm ${p==='주'?'primary':''}" data-p="${p}">${p}간</button>`).join('')}
+      </div>
+    </div>
+    <!-- source filter -->
+    <div style="display:flex;gap:6px;padding:12px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap" id="srcChips">
+      ${['전체','네이버','카카오','트립어드바이저','구글'].map(s=>`<button class="srcchip btn sm ${s==='전체'?'primary':''}" data-s="${s}">${s==='전체'?'전체':'●&nbsp;'+s}</button>`).join('')}
+    </div>
+    <!-- LLM insight -->
+    <div style="margin:16px 20px 0;border:1px solid #dbe4f0;background:#f4f8fc;border-radius:12px;padding:14px 16px">
+      <div style="font-size:12px;font-weight:700;color:var(--brand-2);margin-bottom:9px">✨ LLM 자동 제안 <span class="muted" style="font-weight:400">· 적재 데이터 기반 관리자 인지 지원</span></div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        ${LLM_INSIGHTS.map(x=>`<div style="font-size:12.5px;color:#334155;display:flex;gap:8px;align-items:flex-start"><span style="color:${x.up?'var(--sev-danger)':'#047857'};font-weight:700">${x.up?'▲':'▼'}</span><span>${x.txt}</span></div>`).join('')}
+      </div>
+    </div>
+    <!-- stats + list -->
+    <div id="listWrap" style="display:grid;grid-template-columns:300px 1fr;gap:18px;padding:18px 20px">
+      <div>
+        <div class="card" style="padding:16px;text-align:center;margin-bottom:14px">
+          <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:10px;text-align:left">감성 분포</div>
+          <div id="pie6" style="display:flex;justify-content:center"></div>
+          <div id="pieLeg" style="margin-top:12px"></div>
+        </div>
+        <div id="kpi6" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;margin-bottom:10px"><div style="font-size:13px;font-weight:700">리뷰 목록 <span class="muted" id="revCount"></span></div>
+          <span class="muted" style="margin-left:auto;font-size:11.5px">⏱ 다음 수집 15:00 · 1시간 주기</span></div>
+        <div id="revList"></div>
+      </div>
+    </div>
+    <div id="board6" style="display:none"></div>
+  </div>
+  <div id="sp06detail" style="display:none"></div>`;
+  bindFilters6(); render6();
+}
+function filtered6(){return REVIEWS.filter(r=>rev6.src==='전체'||r.src===rev6.src);}
+function bindFilters6(){
+  const root=$('#sp06');
+  $$('.v6t',root).forEach(b=>b.onclick=()=>{
+    $$('.v6t',root).forEach(x=>x.classList.toggle('primary',x===b));
+    const dash=b.dataset.v==='dash';
+    $('#listWrap',root).style.display=dash?'none':'grid';
+    $('#srcChips',root).style.display=dash?'none':'flex';
+    $('#board6',root).style.display=dash?'block':'none';
+    if(dash)renderBoard6();
+  });
+  $$('.srcchip',root).forEach(b=>b.onclick=()=>{rev6.src=b.dataset.s;
+    $$('.srcchip',root).forEach(x=>x.classList.toggle('primary',x===b));render6();});
+  $$('.pseg',root).forEach(b=>b.onclick=()=>{rev6.period=b.dataset.p;
+    $$('.pseg',root).forEach(x=>x.classList.toggle('primary',x===b));toast(`${b.dataset.p}간 집계로 전환`);render6();
+    const bd=$('#board6',root); if(bd&&bd.style.display!=='none')renderBoard6();});
+}
+</script>
+
+<script>
+function render6(){
+  const list=filtered6();
+  const pos=list.filter(r=>r.sent==='긍정').length,neu=list.filter(r=>r.sent==='중립').length,neg=list.filter(r=>r.sent==='부정').length;
+  const avg=(list.reduce((s,r)=>s+r.rating,0)/(list.length||1)).toFixed(1);
+  const dangerN=list.filter(r=>r.sev==='danger').length;
+  $('#pie6').innerHTML=donut([{v:pos,color:'#10b981'},{v:neu,color:'#94a3b8'},{v:neg,color:'#dc2626'}]);
+  $('#pieLeg').innerHTML=[['긍정',pos,'#10b981'],['중립',neu,'#94a3b8'],['부정',neg,'#dc2626']].map(l=>`<div style="display:flex;align-items:center;gap:7px;font-size:12px;padding:2px 0"><span style="width:10px;height:10px;border-radius:2px;background:${l[2]}"></span><span style="flex:1;text-align:left">${l[0]}</span><b>${l[1]}</b> <span class="muted">${list.length?Math.round(l[1]/list.length*100):0}%</span></div>`).join('');
+  $('#kpi6').innerHTML=[['총 리뷰',list.length,''],['평균 평점',avg,'★'],['부정 비율',(list.length?Math.round(neg/list.length*100):0)+'%',''],['위험 알림',dangerN,'⚠']].map(k=>`<div class="card" style="padding:12px"><div class="muted" style="font-size:11px">${k[0]}</div><div style="font-size:20px;font-weight:800;margin-top:3px">${k[1]}<span style="font-size:12px;color:${k[2]==='⚠'?'var(--sev-danger)':'var(--sev-warn)'}"> ${k[2]}</span></div></div>`).join('');
+  $('#revCount').textContent=`(${list.length}건 · ${rev6.src} · ${rev6.period}간)`;
+  const cls=s=>s==='danger'?'danger':s==='warn'?'warn':'ok';
+  $('#revList').innerHTML=list.map(r=>`<button class="revItem" data-id="${r.id}" style="width:100%;text-align:left;border:1px solid var(--line);border-radius:10px;background:#fff;padding:12px 14px;margin-bottom:8px;cursor:pointer">
+    <div style="display:flex;align-items:center;gap:8px;font-size:12px">
+      <span style="font-weight:700;color:${SRC_COLORS[r.src]}">● ${r.src}</span>
+      <span class="sev ${cls(r.sev)}"><span class="g">${SEVG[r.sev]}</span>${SEVLABEL[r.sev]}</span>
+      <span style="color:#f59e0b;font-size:11px">${stars(r.rating)}</span>
+      <span class="muted" style="margin-left:auto">${r.ago}</span></div>
+    <div style="font-weight:600;margin-top:6px">"${r.text}"</div>
+    <div class="muted" style="font-size:11.5px;margin-top:3px">${r.cat} · @${r.user}${r.ko?' · <span style="color:var(--brand-2)">🌐 자동 번역</span>':''}</div></button>`).join('') || '<div class="muted" style="padding:24px;text-align:center">해당 조건의 리뷰가 없습니다.</div>';
+  $$('.revItem',$('#sp06')).forEach(b=>b.onclick=()=>openRev(b.dataset.id));
+}
+function renderBoard6(){
+  const el=$('#board6'); if(!el)return;
+  const f=rev6.period==='월'?4.3:rev6.period==='분기'?13:1;
+  const R=v=>Math.round(v*f);
+  el.innerHTML=`
+  <div style="padding:16px 20px">
+    <div style="display:flex;align-items:center;margin-bottom:12px">
+      <div style="font-size:13.5px;font-weight:700">플랫폼 통합 대시보드 <span class="muted" style="font-weight:400;font-size:11.5px">· ${rev6.period}간 집계 · 합성 데이터</span></div>
+      <span class="muted" style="margin-left:auto;font-size:11px">수집 주기 1시간 · 마지막 수집 14:00</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px">
+      ${Object.entries(PLATSTAT).map(([k,s])=>`<div class="card" style="padding:13px 14px">
+        <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700"><span style="color:${SRC_COLORS[k]}">●</span>${k}
+          <span style="margin-left:auto;font-size:11px;font-weight:700;color:${s.delta.startsWith('+')?'#b45309':'#047857'}">${s.delta.startsWith('+')?'▲':'▼'} ${s.delta.slice(1)}</span></div>
+        <div style="display:flex;gap:12px;margin:9px 0 7px">
+          <div><div class="muted" style="font-size:10px">리뷰</div><div style="font-size:16px;font-weight:800">${R(s.n)}</div></div>
+          <div><div class="muted" style="font-size:10px">평점</div><div style="font-size:16px;font-weight:800;color:#b45309">${s.avg}<span style="font-size:10px">★</span></div></div>
+          <div><div class="muted" style="font-size:10px">부정률</div><div style="font-size:16px;font-weight:800;color:${s.neg>=20?'var(--sev-danger)':'var(--ink)'}">${s.neg}%</div></div>
+        </div>
+        <div style="opacity:.75">${thumb(s.trend)}</div>
+      </div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="card" style="padding:15px 16px">
+        <div style="font-size:12.5px;font-weight:700;margin-bottom:12px">플랫폼별 감성 구성</div>
+        ${Object.entries(PLATSTAT).map(([k,s])=>{const pos=100-s.neg-s.neu;return `<div style="margin-bottom:11px">
+          <div style="display:flex;font-size:11px;margin-bottom:4px"><span style="font-weight:600;color:${SRC_COLORS[k]}">● ${k}</span><span class="muted" style="margin-left:auto">긍정 ${pos}% · 중립 ${s.neu}% · 부정 ${s.neg}%</span></div>
+          <div style="display:flex;height:11px;border-radius:6px;overflow:hidden">
+            <div style="width:${pos}%;background:#10b981"></div><div style="width:${s.neu}%;background:#cbd5e1"></div><div style="width:${s.neg}%;background:#dc2626"></div></div></div>`;}).join('')}
+        <div style="display:flex;gap:12px;font-size:10.5px;margin-top:4px"><span style="color:#047857">■ 긍정</span><span style="color:#94a3b8">■ 중립</span><span style="color:#dc2626">■ 부정</span></div>
+      </div>
+      <div class="card" style="padding:15px 16px">
+        <div style="font-size:12.5px;font-weight:700;margin-bottom:12px">부정 리뷰 카테고리 TOP 5 <span class="muted" style="font-weight:400">(전 플랫폼)</span></div>
+        ${[['대기·혼잡',14],['예약·안내',11],['가격·결제',8],['청결·위생',6],['직원 서비스',5]].map(c=>`<div style="display:flex;align-items:center;gap:9px;margin-bottom:9px;font-size:11.5px">
+          <span style="min-width:78px">${c[0]}</span>
+          <div style="flex:1;background:#f1f5f9;border-radius:4px;height:12px"><div style="width:${c[1]/14*100}%;height:12px;border-radius:4px;background:var(--sev-danger);opacity:.75"></div></div>
+          <b style="min-width:36px;text-align:right">${R(c[1])}건</b></div>`).join('')}
+        <div class="note">항목 클릭 → 해당 카테고리 리뷰 목록 (확장 예정)</div>
+      </div>
+    </div>
+    <div class="card" style="padding:15px 16px;margin-top:12px">
+      <div style="font-size:12.5px;font-weight:700;margin-bottom:4px">전체 리뷰 추이 <span class="muted" style="font-weight:400">(일별 · 전 플랫폼 합계)</span></div>
+      ${chartSVG([32,38,36,33,42,33,32].map(R),['월','화','수','목','금','토','일'])}
+    </div>
+  </div>`;
+}
+function openRev(id){
+  const r=REVIEWS.find(x=>x.id===id);const cls=r.sev==='danger'?'danger':r.sev==='warn'?'warn':'ok';
+  $('#sp06dash').style.display='none';
+  const dv=$('#sp06detail'); dv.style.display='block';
+  dv.innerHTML=`<div style="padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px">
+      <button class="btn sm" id="backRev">← 목록</button><h3 style="font-size:15px">리뷰 상세보기</h3>
+      <span class="muted" style="font-size:11.5px">별도 상세 레이아웃</span></div>
+    <div style="display:grid;grid-template-columns:1fr 360px;gap:20px;padding:20px;align-items:start">
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <span style="font-weight:700;color:${SRC_COLORS[r.src]}">● ${r.src}</span>
+          <span style="color:#f59e0b">${stars(r.rating)}</span>
+          <span class="muted" style="font-size:12.5px">@${r.user} · ${r.time}</span></div>
+        <div style="background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:16px;font-size:14px;line-height:1.7;margin-bottom:12px">
+          "${r.ko||r.full}"
+          ${r.ko?`<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-2);font-size:12.5px;color:var(--muted)">🌐 원문: "${r.full}"</div><div style="margin-top:8px"><span class="pill" style="background:var(--brand-soft);color:var(--brand-2)">AI 자동 번역 · LLM</span></div>`:''}
+        </div>
+        <div style="margin-bottom:12px"><button class="btn sm" onclick="takeReview('${r.id}')">▣ 보고서 담기</button></div>
+        <div style="display:flex;gap:6px;margin-bottom:22px">
+          <span class="pill"><span class="sev ${cls}" style="font-size:11px"><span class="g">${SEVG[r.sev]}</span>${SEVLABEL[r.sev]}</span></span>
+          <span class="pill">${r.sent} ${r.conf.toFixed(2)}</span><span class="pill">${r.cat}</span></div>
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px">👤 @${r.user} 님의 다른 리뷰 (${r.others.length})</div>
+        ${r.others.length?r.others.map(o=>`<div style="border:1px solid var(--line);border-radius:9px;padding:11px 13px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:#f59e0b">${o[2]}</span><span class="muted">${o[1]}</span></div>
+          <div style="font-size:13px;margin-top:4px">"${o[0]}"</div></div>`).join(''):'<div class="muted" style="font-size:12.5px;padding:6px">수집된 다른 리뷰가 없습니다.</div>'}
+      </div>
+      <div>
+        <div class="card" style="padding:14px;margin-bottom:14px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:10px">유사 내부 VOC (${r.sim.length}) <span class="muted" style="font-weight:400;font-size:11px">· pgvector</span></div>
+          ${r.sim.length?r.sim.map(s=>`<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)">
+            <div style="flex:1"><div style="font-size:12.5px;font-weight:600">${s[0]}</div><div class="muted" style="font-size:11px">${s[1]} · ${s[2]}</div></div>
+            <button class="btn sm" data-goto="sp03">보기 →</button></div>`).join(''):'<div class="muted" style="font-size:12px">연관 내부 VOC 없음</div>'}
+        </div>
+        <div style="border:1px solid #fed7aa;background:#fff7ed;border-radius:10px;padding:12px;font-size:11.5px;color:#9a3412;line-height:1.6">
+          🔌 <b>외부 API 연동</b>: 실제 서비스에서는 네이버·카카오·트립어드바이저 등 리뷰 API/수집 파이프라인과 연동됩니다. 현 목업은 합성 데이터만 적재하며 실제 크롤링은 범위 외입니다.</div>
+      </div>
+    </div>`;
+  $('#backRev').onclick=()=>{dv.style.display='none';$('#sp06dash').style.display='block';};
+}
+</script>
+
+<script>
+/* ============================================================= */
+/*  SP-01 / SP-02 interactivity                                   */
+/* ============================================================= */
+function bindSP01(){
+  const id=$('#loginId'),pw=$('#loginPw'),btn=$('#loginBtn');
+  let pendingRole=null;
+  const chk=()=>{btn.disabled=!(id.value.trim()&&pw.value.trim());};
+  id.oninput=chk; pw.oninput=chk;
+  $$('.roleChip').forEach(c=>c.onclick=()=>{
+    pendingRole=c.dataset.role;
+    $$('.roleChip').forEach(x=>x.classList.toggle('primary',x===c));
+    id.value='staff.'+pendingRole; pw.value='demo1234'; chk();
+  });
+  $('#pwToggle').onclick=()=>{pw.type=pw.type==='password'?'text':'password';$('#pwToggle').textContent=pw.type==='password'?'👁 표시':'🙈 숨김';};
+  let tries=0;
+  btn.onclick=()=>{
+    if(id.value.trim().toLowerCase()==='lock'){$('#lockBanner').style.display='block';$('#lockBanner').textContent='🔒 5회 연속 실패로 잠금되었습니다 — 4:32 남음';$('#loginErr').style.display='none';return;}
+    if(pendingRole||tries>=1){
+      setRole(pendingRole||'op');
+      toast('로그인 성공 — '+ROLE.label+' 기본 화면으로 이동 (role 기반 라우팅)','ok');
+      go(ROLE.home); tries=0; pendingRole=null; $('#loginErr').style.display='none';
+      $$('.roleChip').forEach(x=>x.classList.remove('primary'));
+      return;
+    }
+    tries++; $('#loginErr').style.display='block'; $('#tryCount').textContent='('+tries+'/5)';
+  };
+  const enter=e=>{if(e.key==='Enter'&&!btn.disabled)btn.click();};
+  id.onkeydown=enter; pw.onkeydown=enter;
+}
+function bindSP02(){
+  $$('.v2tab').forEach(b=>b.onclick=()=>{
+    $$('.v2tab').forEach(x=>{x.classList.remove('on');x.style.color='var(--muted)';x.style.borderBottomColor='transparent';});
+    b.classList.add('on');b.style.color='var(--brand-2)';b.style.borderBottomColor='var(--brand)';
+    $$('.v2pane').forEach(p=>p.style.display=p.dataset.p===b.dataset.t?'block':'none');
+  });
+  const z=$('#vocZone'),f=$('#vocFac'),t=$('#vocText'),sub=$('#vocSubmit');
+  z.innerHTML='<option value="">구역 선택</option>'+Object.keys(ZONES).map(x=>`<option>${x}</option>`).join('');
+  const chk=()=>{sub.disabled=!(t.value.trim()&&f.value);};
+  t.oninput=()=>{$('#vocCount').textContent=`${t.value.length}/1000`;chk();};
+  z.onchange=()=>{const arr=ZONES[z.value]||[];f.innerHTML='<option value="">시설 선택</option>'+arr.map(x=>`<option>${x}</option>`).join('');
+    f.disabled=!z.value; f.style.color=z.value?'var(--ink)':'#94a3b8'; f.value=''; chk();};
+  f.onchange=chk;
+  /* 사진 첨부 (최대 3장 · 미리보기 · 삭제) */
+  let photos=[];
+  const fi=$('#vocFile'), ph=$('#vocPhotos');
+  function renderPhotos(){
+    if(!ph)return;
+    ph.innerHTML=photos.map((p,i)=>'<div style="position:relative"><img src="'+p+'" style="width:64px;height:64px;object-fit:cover;border-radius:9px;border:1px solid var(--line-2)"><button data-rm="'+i+'" style="position:absolute;top:-6px;right:-6px;width:19px;height:19px;border-radius:50%;border:none;background:#0f172a;color:#fff;font-size:10px;cursor:pointer;line-height:1">✕</button></div>').join('')
+      +(photos.length<3?'<button id="phAdd" style="width:64px;height:64px;border:1.5px dashed var(--line-2);border-radius:9px;background:#fff;color:var(--muted);font-size:11px;cursor:pointer;line-height:1.5">📷<br>추가</button>':'');
+    const add=$('#phAdd'); if(add)add.onclick=()=>fi.click();
+    $$('button[data-rm]',ph).forEach(b=>b.onclick=()=>{photos.splice(+b.dataset.rm,1);renderPhotos();});
+  }
+  renderPhotos();
+  fi.onchange=e=>{
+    [...e.target.files].slice(0,3-photos.length).forEach(file=>{
+      if(!file.type.startsWith('image/'))return;
+      const r=new FileReader();
+      r.onload=()=>{photos.push(r.result);renderPhotos();};
+      r.readAsDataURL(file);
+    });
+    fi.value='';
+  };
+  sub.onclick=()=>{sub.disabled=true;sub.textContent='제출 중…';
+    const vtext=t.value.trim(), vzone=z.value, vfac=f.value, vphotos=photos.slice();
+    setTimeout(()=>{$('#vocFormWrap').style.display='none';$('#vocDone').style.display='block';
+      toast('접수되었습니다 (3초 내 확인 · 감성/심각도는 비동기 판정)','ok');
+      injectLiveVOC(vtext,vzone,vfac,vphotos);
+      photos=[];renderPhotos();},900);};
+  $('#vocAgain').onclick=()=>{$('#vocDone').style.display='none';$('#vocFormWrap').style.display='block';
+    t.value='';z.value='';f.innerHTML='<option value="">시설 선택</option>';f.disabled=true;$('#vocCount').textContent='0/1000';sub.textContent='제출하기';photos=[];renderPhotos();chk();};
+  const kt=$('#ktLink');
+  if(kt)kt.onclick=()=>{const fm=$('#sp02 .frame-mobile');
+    if(fm){fm.style.transition='.3s';fm.style.boxShadow='0 0 0 3px var(--brand), var(--shadow-lg)';setTimeout(()=>fm.style.boxShadow='',900);}
+    toast('고객이 링크를 열면 좌측 화면(SP-02)이 표시됩니다');};
+}
+
+/* ============================================================= */
+/*  Navigation                                                    */
+/* ============================================================= */
+const built={};
+function build(id){
+  if(built[id])return;
+  ({sp03:buildSP03,sp04:buildSP04,sp05a:buildSP05a,sp05b:buildSP05b,sp06:buildSP06}[id]||(()=>{}))();
+  built[id]=true;
+}
+function go(id){
+  build(id);
+  $$('.screen').forEach(s=>s.classList.toggle('on',s.id===id));
+  $$('.nav-item').forEach(n=>n.classList.toggle('on',n.dataset.screen===id));
+  const m=META[id]||{};
+  $('#scrTitle').textContent=m.t||''; $('#scrMeta').textContent=m.m||''; $('#scrView').textContent=m.v||'';
+  document.querySelector('.stage').scrollTop=0;
+}
+document.addEventListener('click',e=>{
+  const rs=e.target.closest('.roleSwitch');
+  if(rs){const order=['op','worker','admin'];setRole(order[(order.indexOf(ROLE.key)+1)%order.length]);
+    const cur=$$('.screen').find(s=>s.classList.contains('on'));
+    const id=cur?cur.id:'sp03';
+    go((ROLE.menus.includes(id)||id==='sp05b')?id:ROLE.home);return;}
+  const nav=e.target.closest('[data-screen]'); if(nav){go(nav.dataset.screen);return;}
+  const gt=e.target.closest('[data-goto]'); if(gt){go(gt.dataset.goto);}
+});
+// keyboard '/' focus for SP-04
+document.addEventListener('keydown',e=>{if(e.key==='/'&&$('#sp04').classList.contains('on')){const q=$('#q4');if(q&&document.activeElement!==q){e.preventDefault();q.focus();}}});
+
+/* init */
+bindSP01(); bindSP02();
+build('sp03');
+go('sp03');
+</script>
+</body>
+</html>

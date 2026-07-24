@@ -86,12 +86,12 @@ VOC_TEMPLATES: dict[str, list[dict[str, str]]] = {
         {"text": "레스토랑 대기 없이 바로 입장했습니다.", "sentiment": "POSITIVE"},
     ],
     "직원 서비스": [
-        {"text": "직원 응대가 친절하고專業적이었습니다.", "sentiment": "POSITIVE"},
+        {"text": "직원 응대가 친절하고 전문적이었습니다.", "sentiment": "POSITIVE"},
         {"text": "직원 문의 응답이 느렸습니다.", "sentiment": "NEGATIVE"},
     ],
     "시설 고장": [
         {"text": "에어컨 온도 조절이 되지 않았습니다.", "sentiment": "NEGATIVE"},
-        {"text": "设施이 모두 정상 작동했습니다.", "sentiment": "POSITIVE"},
+        {"text": "시설이 모두 정상 작동했습니다.", "sentiment": "POSITIVE"},
     ],
     "소음": [
         {"text": "옆 객실 소음이 심해서 숙면을 취하기 어려웠습니다.", "sentiment": "NEGATIVE"},
@@ -145,7 +145,7 @@ def gen_manifest() -> dict[str, Any]:
         "data_cutoff": "2026-07-20T23:59:59Z",
         "created_at": "2026-07-20T12:00:00Z",
         "scenarios": ["NORMAL", "CRITICAL", "LOCK"],
-        "piI_check": "passed",
+        "pii_check": "passed",
         "total_tables": 16,
     }
 

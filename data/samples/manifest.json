@@ -18,6 +18,6 @@
     "CRITICAL",
     "LOCK"
   ],
-  "piI_check": "passed",
+  "pii_check": "passed",
   "total_tables": 16
 }

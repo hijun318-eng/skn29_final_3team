@@ -67,7 +67,7 @@
     "service_area_id": "MCE-013",
     "topic_code": "직원 서비스",
     "sentiment_label": "POSITIVE",
-    "review_text": "직원 응대가 친절하고專業적이었습니다.",
+    "review_text": "직원 응대가 친절하고 전문적이었습니다.",
     "confidence": 0.74,
     "is_synthetic": true
   },
@@ -91,7 +91,7 @@
     "service_area_id": "MCE-013",
     "topic_code": "직원 서비스",
     "sentiment_label": "POSITIVE",
-    "review_text": "직원 응대가 친절하고專業적이었습니다.",
+    "review_text": "직원 응대가 친절하고 전문적이었습니다.",
     "confidence": 0.92,
     "is_synthetic": true
   },
@@ -175,7 +175,7 @@
     "service_area_id": "MCE-015",
     "topic_code": "시설 고장",
     "sentiment_label": "POSITIVE",
-    "review_text": "设施이 모두 정상 작동했습니다.",
+    "review_text": "시설이 모두 정상 작동했습니다.",
     "confidence": 0.67,
     "is_synthetic": true
   },
@@ -247,7 +247,7 @@
     "service_area_id": "MCE-013",
     "topic_code": "직원 서비스",
     "sentiment_label": "POSITIVE",
-    "review_text": "직원 응대가 친절하고專業적이었습니다.",
+    "review_text": "직원 응대가 친절하고 전문적이었습니다.",
     "confidence": 0.8,
     "is_synthetic": true
   },
@@ -463,7 +463,7 @@
     "service_area_id": "INF-017",
     "topic_code": "시설 고장",
     "sentiment_label": "POSITIVE",
-    "review_text": "设施이 모두 정상 작동했습니다.",
+    "review_text": "시설이 모두 정상 작동했습니다.",
     "confidence": 0.64,
     "is_synthetic": true
   },
@@ -511,7 +511,7 @@
     "service_area_id": "MCE-015",
     "topic_code": "시설 고장",
     "sentiment_label": "POSITIVE",
-    "review_text": "设施이 모두 정상 작동했습니다.",
+    "review_text": "시설이 모두 정상 작동했습니다.",
     "confidence": 0.64,
     "is_synthetic": true
   },
@@ -595,7 +595,7 @@
     "service_area_id": "LWR-007",
     "topic_code": "직원 서비스",
     "sentiment_label": "POSITIVE",
-    "review_text": "직원 응대가 친절하고專業적이었습니다.",
+    "review_text": "직원 응대가 친절하고 전문적이었습니다.",
     "confidence": 0.63,
     "is_synthetic": true
   },
@@ -607,7 +607,7 @@
     "service_area_id": "INF-017",
     "topic_code": "시설 고장",
     "sentiment_label": "POSITIVE",
-    "review_text": "设施이 모두 정상 작동했습니다.",
+    "review_text": "시설이 모두 정상 작동했습니다.",
     "confidence": 0.93,
     "is_synthetic": true
   },
@@ -619,7 +619,7 @@
     "service_area_id": "LWR-009",
     "topic_code": "시설 고장",
     "sentiment_label": "POSITIVE",
-    "review_text": "设施이 모두 정상 작동했습니다.",
+    "review_text": "시설이 모두 정상 작동했습니다.",
     "confidence": 0.73,
     "is_synthetic": true
   },
@@ -715,7 +715,7 @@
     "service_area_id": "LWR-008",
     "topic_code": "직원 서비스",
     "sentiment_label": "POSITIVE",
-    "review_text": "직원 응대가 친절하고專業적이었습니다.",
+    "review_text": "직원 응대가 친절하고 전문적이었습니다.",
     "confidence": 0.69,
     "is_synthetic": true
   },
@@ -787,7 +787,7 @@
     "service_area_id": "LWR-009",
     "topic_code": "시설 고장",
     "sentiment_label": "POSITIVE",
-    "review_text": "设施이 모두 정상 작동했습니다.",
+    "review_text": "시설이 모두 정상 작동했습니다.",
     "confidence": 0.7,
     "is_synthetic": true
   },

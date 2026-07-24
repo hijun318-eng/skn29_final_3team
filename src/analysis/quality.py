@@ -11,6 +11,7 @@ References:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -28,11 +29,21 @@ SENTIMENT_COVERAGE_MIN: float = 0.90
 #: PK 중복 허용 건수
 PK_DUPLICATE_MAX: int = 0
 
+#: FK 고아 허용 건수
+FK_ORPHAN_MAX: int = 0
+
 #: 음수 값 허용 건수 (count, wait, queue, capacity 등)
 NEGATIVE_VALUE_MAX: int = 0
 
 #: 필수 bucket 비율 임계값 (누락 없는 bucket 비율, 0~1)
 BUCKET_COMPLETENESS_MIN: float = 1.0
+
+#: 허용 PII 패턴 목록 (이메일, 전화번호 등)
+_PII_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"),
+    re.compile(r"(?<!\d)\b\d{2,3}-\d{3,4}-\d{4}(?!\d)"),
+    re.compile(r"(?<!\d)01[01678]-\d{3,4}-\d{4}(?!\d)"),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +248,199 @@ def _check_negative_values(
     )
 
 
+def _check_fk_orphans(
+    voc_items: list[dict[str, Any]],
+    valid_area_ids: set[str] | None = None,
+) -> QualityCheck:
+    """DSG §11.1: FK 고아 0건 검사.
+
+    VOC 레코드의 service_area_id가 유효한 service_area 목록에 존재하는지 확인한다.
+
+    Args:
+        voc_items: VOC 레코드 리스트 (service_area_id 필드)
+        valid_area_ids: 유효한 service_area_id 집합. None이면 검사 건너뜀
+
+    Returns:
+        FK 고아 검사 결과
+    """
+    if valid_area_ids is None:
+        return QualityCheck(
+            gate="fk_orphan",
+            passed=True,
+            message="FK 고아 검사 건너뜀 (valid_area_ids 미제공)",
+            details={"skipped": True},
+        )
+
+    orphans: list[str] = []
+    for item in voc_items:
+        area_id = item.get("service_area_id")
+        if area_id is not None and str(area_id) not in valid_area_ids:
+            orphans.append(str(area_id))
+
+    passed = len(orphans) <= FK_ORPHAN_MAX
+    return QualityCheck(
+        gate="fk_orphan",
+        passed=passed,
+        message=(
+            "FK 고아 없음"
+            if passed
+            else f"FK 고아 {len(orphans)}건 발견"
+        ),
+        details={"orphan_ids": orphans, "count": len(orphans)},
+    )
+
+
+def _check_room_inventory_formula(
+    room_items: list[dict[str, Any]],
+) -> QualityCheck:
+    """DSG §11.2: 객실 재고 산식 검사.
+
+    rooms_available = room_inventory - rooms_out_of_order
+    rooms_sold <= rooms_available
+
+    Args:
+        room_items: 객실 레코드 리스트 (room_inventory, rooms_out_of_order,
+            rooms_available, rooms_sold 필드)
+
+    Returns:
+        산식 검사 결과
+    """
+    violations: list[dict[str, Any]] = []
+    for item in room_items:
+        inventory = item.get("room_inventory")
+        out_of_order = item.get("rooms_out_of_order")
+        available = item.get("rooms_available")
+        sold = item.get("rooms_sold")
+
+        if not all(
+            v is not None and isinstance(v, (int, float))
+            for v in (inventory, out_of_order, available, sold)
+        ):
+            continue
+
+        expected_available = inventory - out_of_order
+        if available != expected_available:
+            violations.append(
+                {
+                    "service_date": item.get("service_date", "?"),
+                    "expected_available": expected_available,
+                    "actual_available": available,
+                    "rule": "rooms_available = inventory - out_of_order",
+                }
+            )
+        if sold > available:
+            violations.append(
+                {
+                    "service_date": item.get("service_date", "?"),
+                    "sold": sold,
+                    "available": available,
+                    "rule": "rooms_sold <= rooms_available",
+                }
+            )
+
+    passed = len(violations) == 0
+    return QualityCheck(
+        gate="room_inventory_formula",
+        passed=passed,
+        message=(
+            "객실 산식 일치"
+            if passed
+            else f"객실 산식 위반 {len(violations)}건"
+        ),
+        details={"violations": violations},
+    )
+
+
+def _check_15m_daily_aggregation(
+    bucket_15m_totals: dict[str, float],
+    daily_arrivals: dict[str, float],
+) -> QualityCheck:
+    """DSG §11.5: 15분 가산 지표 합계와 daily 합계 일치 검사.
+
+    15분 단위 actual_arrivals 합계가 daily arrivals_total과 일치하는지 확인한다.
+
+    Args:
+        bucket_15m_totals: service_area_id → 15분 actual_arrivals 합계
+        daily_arrivals: service_area_id → daily arrivals_total
+
+    Returns:
+        합계 일치 검사 결과
+    """
+    violations: list[dict[str, Any]] = []
+    all_areas = set(bucket_15m_totals.keys()) | set(daily_arrivals.keys())
+
+    for area_id in sorted(all_areas):
+        bucket_sum = bucket_15m_totals.get(area_id, 0.0)
+        daily_total = daily_arrivals.get(area_id, 0.0)
+        if bucket_sum != daily_total:
+            violations.append(
+                {
+                    "service_area_id": area_id,
+                    "bucket_15m_sum": bucket_sum,
+                    "daily_total": daily_total,
+                    "diff": bucket_sum - daily_total,
+                }
+            )
+
+    passed = len(violations) == 0
+    return QualityCheck(
+        gate="15m_daily_aggregation",
+        passed=passed,
+        message=(
+            "15분/daily 합계 일치"
+            if passed
+            else f"15분/daily 합계 불일치 {len(violations)}건"
+        ),
+        details={"violations": violations},
+    )
+
+
+def _check_pii_pattern(
+    text_items: list[dict[str, Any]],
+    text_fields: tuple[str, ...] = ("review_text", "note_redacted"),
+) -> QualityCheck:
+    """DSG §11.9: 금지 PII pattern 0건 검사.
+
+    review_text, note_redacted 등 텍스트 필드에서 이메일, 전화번호,
+    고객 이름 등의 PII 패턴이 존재하는지 검사한다.
+
+    Args:
+        text_items: 텍스트 필드를 포함한 레코드 리스트
+        text_fields: 검사할 텍스트 필드명 목록
+
+    Returns:
+        PII 패턴 검사 결과
+    """
+    violations: list[dict[str, str]] = []
+    for item in text_items:
+        for field_name in text_fields:
+            text = item.get(field_name)
+            if text is None or not isinstance(text, str):
+                continue
+            for pattern in _PII_PATTERNS:
+                match = pattern.search(text)
+                if match:
+                    violations.append(
+                        {
+                            "field": field_name,
+                            "matched": match.group(),
+                            "voc_id": str(item.get("voc_id", "?")),
+                        }
+                    )
+
+    passed = len(violations) == 0
+    return QualityCheck(
+        gate="pii_pattern",
+        passed=passed,
+        message=(
+            "PII 패턴 없음"
+            if passed
+            else f"PII 패턴 {len(violations)}건 발견"
+        ),
+        details={"violations": violations, "count": len(violations)},
+    )
+
+
 def _check_occurred_at_order(
     voc_items: list[dict[str, Any]],
 ) -> QualityCheck:
@@ -360,6 +564,10 @@ def run_quality_gate(
     numeric_items: list[dict[str, Any]] | None = None,
     expected_buckets: int | None = None,
     actual_buckets: int | None = None,
+    valid_area_ids: set[str] | None = None,
+    room_items: list[dict[str, Any]] | None = None,
+    bucket_15m_totals: dict[str, float] | None = None,
+    daily_arrivals: dict[str, float] | None = None,
 ) -> QualityGateResult:
     """전체 품질 게이트를 실행한다.
 
@@ -372,6 +580,13 @@ def run_quality_gate(
             None이면 numeric 검사를 건너뛴다.
         expected_buckets: 기대 bucket 수. None이면 bucket 검사를 건너뛴다.
         actual_buckets: 실제 유효 bucket 수. None이면 bucket 검사를 건너뛴다.
+        valid_area_ids: 유효한 service_area_id 집합. None이면 FK 검사 건너뜀.
+        room_items: 객실 레코드 리스트 (fact_rooms_daily 기반).
+            None이면 객실 산식 검사를 건너뛴다.
+        bucket_15m_totals: service_area_id → 15분 actual_arrivals 합계.
+            None이면 15분/daily 합계 검사를 건너뛴다.
+        daily_arrivals: service_area_id → daily arrivals_total.
+            None이면 15분/daily 합계 검사를 건너뛴다.
 
     Returns:
         QualityGateResult: 전체 판정 결과
@@ -381,15 +596,26 @@ def run_quality_gate(
     # §11.1: PK 중복
     checks.append(_check_pk_duplicates(voc_items))
 
+    # §11.1: FK 고아
+    checks.append(_check_fk_orphans(voc_items, valid_area_ids))
+
     # 완전성 검사
     checks.append(_check_voc_completeness(voc_items))
 
     # 감성 커버리지 검사
     checks.append(_check_sentiment_coverage(voc_items))
 
+    # §11.2: 객실 재고 산식
+    if room_items is not None:
+        checks.append(_check_room_inventory_formula(room_items))
+
     # §11.4: 음수 값
     if numeric_items is not None:
         checks.append(_check_negative_values(numeric_items))
+
+    # §11.5: 15분/daily 합계
+    if bucket_15m_totals is not None and daily_arrivals is not None:
+        checks.append(_check_15m_daily_aggregation(bucket_15m_totals, daily_arrivals))
 
     # §11.6: occurred_at <= received_at
     checks.append(_check_occurred_at_order(voc_items))
@@ -397,6 +623,9 @@ def run_quality_gate(
     # §11.7: bucket 완전성
     if expected_buckets is not None and actual_buckets is not None:
         checks.append(_check_bucket_completeness(expected_buckets, actual_buckets))
+
+    # §11.9: PII 패턴
+    checks.append(_check_pii_pattern(voc_items))
 
     all_passed = all(check.passed for check in checks)
     passed_count = sum(1 for check in checks if check.passed)

@@ -241,23 +241,208 @@ class TestOverallResult:
         assert "실패" in result.summary
 
     def test_checks_count(self) -> None:
-        """기본 호출 시 4개 검사 (pk, 완전성, 커버리지, occurred_at)."""
+        """기본 호출 시 6개 검사 (pk, fk_orphan, 완전성, 커버리지, occurred_at, pii)."""
         result = run_quality_gate(_VALID_VOC_ITEMS)
-        assert len(result.checks) == 4
+        assert len(result.checks) == 6
 
     def test_with_all_options(self) -> None:
-        """numeric_items와 bucket까지 포함하면 6개 검사."""
+        """numeric_items, bucket, room, 15m/daily까지 포함하면 9개 검사."""
         items = [{"avg_wait_min": 5.0}]
+        room = [
+            {
+                "service_date": "2026-07-20",
+                "room_inventory": 100,
+                "rooms_out_of_order": 5,
+                "rooms_available": 95,
+                "rooms_sold": 80,
+            }
+        ]
         result = run_quality_gate(
             _VALID_VOC_ITEMS,
             numeric_items=items,
             expected_buckets=10,
             actual_buckets=10,
+            valid_area_ids={"GW_BREAKFAST_DEMO"},
+            room_items=room,
+            bucket_15m_totals={"GW_BREAKFAST_DEMO": 42.0},
+            daily_arrivals={"GW_BREAKFAST_DEMO": 42.0},
         )
-        assert len(result.checks) == 6
+        assert len(result.checks) == 10
 
     def test_result_is_frozen_dataclass(self) -> None:
         """QualityGateResult는 frozen dataclass여야 한다."""
         result = run_quality_gate(_VALID_VOC_ITEMS)
         assert isinstance(result, QualityGateResult)
         assert isinstance(result.checks[0], QualityCheck)
+
+
+# ---------------------------------------------------------------------------
+# FK 고아 검사
+# ---------------------------------------------------------------------------
+
+
+class TestFkOrphanCheck:
+    """§11.1: FK 고아 0건 검사."""
+
+    def test_no_orphans_passes(self) -> None:
+        items = [
+            {"voc_id": "voc-001", "service_area_id": "GW_BREAKFAST_DEMO"},
+        ]
+        result = run_quality_gate(
+            items, valid_area_ids={"GW_BREAKFAST_DEMO"}
+        )
+        check = next(c for c in result.checks if c.gate == "fk_orphan")
+        assert check.passed is True
+
+    def test_orphan_detected(self) -> None:
+        items = [
+            {"voc_id": "voc-001", "service_area_id": "UNKNOWN_AREA"},
+        ]
+        result = run_quality_gate(
+            items, valid_area_ids={"GW_BREAKFAST_DEMO"}
+        )
+        check = next(c for c in result.checks if c.gate == "fk_orphan")
+        assert check.passed is False
+        assert "1건 발견" in check.message
+
+    def test_skipped_when_no_valid_ids(self) -> None:
+        items = [
+            {"voc_id": "voc-001", "service_area_id": "ANY"},
+        ]
+        result = run_quality_gate(items)
+        check = next(c for c in result.checks if c.gate == "fk_orphan")
+        assert check.passed is True
+        assert check.details["skipped"] is True
+
+
+# ---------------------------------------------------------------------------
+# 객실 재고 산식 검사
+# ---------------------------------------------------------------------------
+
+
+class TestRoomInventoryFormula:
+    """§11.2: 객실 재고 산식 검사."""
+
+    def test_valid_formula_passes(self) -> None:
+        room = [
+            {
+                "service_date": "2026-07-20",
+                "room_inventory": 100,
+                "rooms_out_of_order": 5,
+                "rooms_available": 95,
+                "rooms_sold": 80,
+            }
+        ]
+        result = run_quality_gate(_VALID_VOC_ITEMS, room_items=room)
+        check = next(c for c in result.checks if c.gate == "room_inventory_formula")
+        assert check.passed is True
+
+    def test_invalid_formula_fails(self) -> None:
+        """rooms_available != room_inventory - rooms_out_of_order."""
+        room = [
+            {
+                "service_date": "2026-07-20",
+                "room_inventory": 100,
+                "rooms_out_of_order": 5,
+                "rooms_available": 90,  # 95여야 함
+                "rooms_sold": 80,
+            }
+        ]
+        result = run_quality_gate(_VALID_VOC_ITEMS, room_items=room)
+        check = next(c for c in result.checks if c.gate == "room_inventory_formula")
+        assert check.passed is False
+
+    def test_sold_exceeds_available_fails(self) -> None:
+        """rooms_sold > rooms_available."""
+        room = [
+            {
+                "service_date": "2026-07-20",
+                "room_inventory": 100,
+                "rooms_out_of_order": 5,
+                "rooms_available": 95,
+                "rooms_sold": 100,  # 95 이하여야 함
+            }
+        ]
+        result = run_quality_gate(_VALID_VOC_ITEMS, room_items=room)
+        check = next(c for c in result.checks if c.gate == "room_inventory_formula")
+        assert check.passed is False
+
+    def test_skipped_when_none(self) -> None:
+        result = run_quality_gate(_VALID_VOC_ITEMS)
+        gates = [c.gate for c in result.checks]
+        assert "room_inventory_formula" not in gates
+
+
+# ---------------------------------------------------------------------------
+# 15분/daily 합계 일치 검사
+# ---------------------------------------------------------------------------
+
+
+class Test15mDailyAggregation:
+    """§11.5: 15분 가산 합계와 daily 합계 일치 검사."""
+
+    def test_matching_sums_passes(self) -> None:
+        result = run_quality_gate(
+            _VALID_VOC_ITEMS,
+            bucket_15m_totals={"GW_BREAKFAST_DEMO": 42.0},
+            daily_arrivals={"GW_BREAKFAST_DEMO": 42.0},
+        )
+        check = next(c for c in result.checks if c.gate == "15m_daily_aggregation")
+        assert check.passed is True
+
+    def test_mismatched_sums_fails(self) -> None:
+        result = run_quality_gate(
+            _VALID_VOC_ITEMS,
+            bucket_15m_totals={"GW_BREAKFAST_DEMO": 42.0},
+            daily_arrivals={"GW_BREAKFAST_DEMO": 40.0},
+        )
+        check = next(c for c in result.checks if c.gate == "15m_daily_aggregation")
+        assert check.passed is False
+        assert len(check.details["violations"]) == 1
+
+    def test_skipped_when_none(self) -> None:
+        result = run_quality_gate(_VALID_VOC_ITEMS)
+        gates = [c.gate for c in result.checks]
+        assert "15m_daily_aggregation" not in gates
+
+
+# ---------------------------------------------------------------------------
+# PII 패턴 검사
+# ---------------------------------------------------------------------------
+
+
+class TestPiiPattern:
+    """§11.9: 금지 PII pattern 0건 검사."""
+
+    def test_clean_text_passes(self) -> None:
+        items = [
+            {"voc_id": "voc-001", "review_text": "조식 대기가 너무 길었습니다"},
+        ]
+        result = run_quality_gate(items)
+        check = next(c for c in result.checks if c.gate == "pii_pattern")
+        assert check.passed is True
+
+    def test_email_detected(self) -> None:
+        items = [
+            {"voc_id": "voc-001", "review_text": "contact me at test@example.com"},
+        ]
+        result = run_quality_gate(items)
+        check = next(c for c in result.checks if c.gate == "pii_pattern")
+        assert check.passed is False
+        assert check.details["count"] >= 1
+
+    def test_phone_detected(self) -> None:
+        items = [
+            {"voc_id": "voc-001", "review_text": "전화 010-1234-5678로 연락주세요"},
+        ]
+        result = run_quality_gate(items)
+        check = next(c for c in result.checks if c.gate == "pii_pattern")
+        assert check.passed is False
+
+    def test_skipped_when_no_text_fields(self) -> None:
+        items = [
+            {"voc_id": "voc-001", "sentiment_label": "NEGATIVE"},
+        ]
+        result = run_quality_gate(items)
+        check = next(c for c in result.checks if c.gate == "pii_pattern")
+        assert check.passed is True

@@ -159,3 +159,39 @@ export interface ExternalReview {
   sentiment: 'positive' | 'negative' | 'neutral';
   severity: Severity;
 }
+
+// ===== API 호출 함수 =====
+
+export async function apiLogin(staffId: string, password: string): Promise<APIResponse<{ user: User; session_id: string }>> {
+  const res = await api.post<APIResponse<{ user: User; session_id: string }>>('/auth/login/', { staff_id: staffId, password });
+  return res.data;
+}
+
+export async function apiLogout(): Promise<void> {
+  await api.post('/auth/logout/');
+}
+
+export async function apiFetchVocs(params?: { page?: number; limit?: number }): Promise<APIResponse<VOCEntity[]>> {
+  const res = await api.get<APIResponse<VOCEntity[]>>('/vocs/', { params });
+  return res.data;
+}
+
+export async function apiFetchVocDetail(id: string): Promise<APIResponse<VOCEntity>> {
+  const res = await api.get<APIResponse<VOCEntity>>(`/vocs/${id}/`);
+  return res.data;
+}
+
+export async function apiCreateJob(type: string, payload: Record<string, unknown>): Promise<APIResponse<{ job_id: string; status: string }>> {
+  const res = await api.post<APIResponse<{ job_id: string; status: string }>>('/jobs/', { type, payload });
+  return res.data;
+}
+
+export async function apiFetchJobDetail(id: string): Promise<APIResponse<{ id: string; status: string; result?: unknown }>> {
+  const res = await api.get<APIResponse<{ id: string; status: string; result?: unknown }>>(`/jobs/${id}/`);
+  return res.data;
+}
+
+export async function apiFetchReports(): Promise<APIResponse<Report[]>> {
+  const res = await api.get<APIResponse<Report[]>>('/reports/');
+  return res.data;
+}

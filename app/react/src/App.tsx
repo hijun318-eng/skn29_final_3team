@@ -7,17 +7,23 @@ import ReportListPage from './pages/ReportListPage.tsx';
 import ReportEditorPage from './pages/ReportEditorPage.tsx';
 import ExternalReviewPage from './pages/ExternalReviewPage.tsx';
 
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const user = sessionStorage.getItem('sp_user');
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/voc" element={<VocCustomerPage />} />
-        <Route path="/monitoring" element={<MonitoringPage />} />
-        <Route path="/chat" element={<ChatQueryPage />} />
-        <Route path="/reports" element={<ReportListPage />} />
-        <Route path="/reports/editor" element={<ReportEditorPage />} />
-        <Route path="/external-review" element={<ExternalReviewPage />} />
+        <Route path="/monitoring" element={<ProtectedRoute><MonitoringPage /></ProtectedRoute>} />
+        <Route path="/chat" element={<ProtectedRoute><ChatQueryPage /></ProtectedRoute>} />
+        <Route path="/reports" element={<ProtectedRoute><ReportListPage /></ProtectedRoute>} />
+        <Route path="/reports/editor" element={<ProtectedRoute><ReportEditorPage /></ProtectedRoute>} />
+        <Route path="/external-review" element={<ProtectedRoute><ExternalReviewPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>

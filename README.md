@@ -46,3 +46,22 @@ git switch <본인 branch>
 - 개인·팀·주간보고 갱신: [`update-project-reports`](./.agents/skills/update-project-reports/SKILL.md)
 - 개인 branch의 `dev` 통합: [`merge-branch-to-dev`](./.agents/skills/merge-branch-to-dev/SKILL.md)
 - staged diff 기반 commit message: [`draft-commit-message`](./.agents/skills/draft-commit-message/SKILL.md)
+
+## OpenWiki
+
+[OpenWiki](https://github.com/langchain-ai/openwiki) code mode를 저장소 보조 위키에 적용한다.
+
+- 시작 문서: [OpenWiki Quickstart](./openwiki/quickstart.md)
+- 생성 범위 지침: [OpenWiki Instructions](./openwiki/INSTRUCTIONS.md)
+- 요구 환경: Node.js 22+, OpenWiki 0.2.2
+- 인증 방식: `openai-chatgpt` provider의 ChatGPT/Codex OAuth
+
+최초 설정은 PowerShell에서 다음과 같이 실행한다.
+
+```powershell
+$env:OPENWIKI_PROVIDER = "openai-chatgpt"
+$env:OPENWIKI_TELEMETRY_DISABLED = "1"
+openwiki code --init
+```
+
+이후 갱신은 같은 환경 변수에서 `openwiki code --update --print`를 사용한다. OAuth credential은 사용자 경로 `~/.openwiki/.env`에 저장되며 저장소에 복사하거나 CI Secret으로 전용하지 않는다. 실행 시 저장소 내용이 Codex backend로 전송되고 ChatGPT plan의 Codex 사용량이 차감될 수 있다. 생성 결과는 공식 산출물이나 구현 완료 근거가 아니므로 검토 후 반영한다.

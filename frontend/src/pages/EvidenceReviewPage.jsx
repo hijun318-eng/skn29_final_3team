@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Activity, Clock3, Database, MessageSquareHeart, Smartphone, Star, UserRound } from "lucide-react";
+import { Activity, Clock3, Database, Link2, MessageSquareHeart, ShieldCheck, Smartphone, Star, UserRound } from "lucide-react";
 import { Sidebar } from "../components/layout/Sidebar";
 import { HeaderUtilities } from "../components/layout/Header";
 import "../styles/evidence-review.css";
@@ -59,6 +59,58 @@ export function EvidenceReviewPage() {
       <div><Activity size={18} /><span><b>3개 고객 접점</b><small>이용 직후 · 투숙 중 · 체크아웃</small></span></div>
       <div><Database size={18} /><span><b>통합 VOC Schema</b><small>채널·시설·시점·평가·의견</small></span></div>
       <div><Clock3 size={18} /><span><b>실시간 분석 지향</b><small>저장 API 연결 후 스트림 반영</small></span></div>
+    </section>
+
+    <section className="personal-link-strategy">
+      <div className="link-strategy-heading">
+        <span><Link2 size={19} /></span>
+        <div>
+          <p>PERSONAL LINK DELIVERY</p>
+          <h2>개인 링크 발송 전략</h2>
+          <small>예약 1건 = 고유 토큰 1개 · 알림톡/문자에 시설 가이드와 함께 동봉</small>
+        </div>
+      </div>
+
+      <div className="link-strategy-grid">
+        <article className="alimtalk-preview">
+          <div className="alimtalk-preview__label">카카오 알림톡 미리보기 <small>체크인 시 발송</small></div>
+          <div className="alimtalk-message">
+            <strong>SENSE PLACE HOTEL</strong>
+            <div>
+              <p><b>윤대성님</b>, 체크인을 환영합니다. 🏨</p>
+              <p>투숙 기간 동안 아래 링크에서 이용하세요.</p>
+              <ul>
+                <li>호텔 시설 가이드 · 맞춤 추천 코스</li>
+                <li>불편사항 실시간 접수 (로그인 불필요)</li>
+              </ul>
+              <span className="alimtalk-link"><Link2 size={14} /> senseplace.io/voc/tk_8f3aXq...</span>
+            </div>
+          </div>
+          <p className="alimtalk-fallback">알림톡 실패 시 LMS 문자 폴백 · 객실 QR 카드 병행</p>
+        </article>
+
+        <div className="link-strategy-details">
+          <article className="link-lifecycle">
+            <h3>발송 시점 · 링크 수명주기</h3>
+            <dl>
+              <div><dt>예약 확정</dt><dd>문자(LMS) — 예약 요약 + 링크 발급 안내</dd></div>
+              <div><dt>체크인 시</dt><dd>알림톡 — 가이드·추천 코스 (기본 탭: 투숙 안내)</dd></div>
+              <div><dt>투숙 중</dt><dd>같은 링크로 불편 즉시 접수 (탭: 불편 남기기)</dd></div>
+              <div><dt>체크아웃 시</dt><dd>알림톡 — “이용은 어떠셨나요?” 마지막 피드백 유도</dd></div>
+              <div className="is-expiry"><dt>체크아웃+24h</dt><dd>토큰 자동 만료(410) — 조회·제출 차단, 프런트 안내</dd></div>
+            </dl>
+          </article>
+          <article className="link-policy">
+            <h3><ShieldCheck size={16} /> 링크 정책 <small>명세 1.2</small></h3>
+            <ul>
+              <li>토큰 43자 무작위(secrets) — URL 추측 불가</li>
+              <li>로그인 불필요 · 실패 응답에 예약정보 미노출</li>
+              <li>재제출 60초 간격 · IP 분당 10회 rate limit</li>
+              <li>같은 링크 재방문 시 접수 이력 기반 맞춤 추천 갱신</li>
+            </ul>
+          </article>
+        </div>
+      </div>
     </section>
 
     <nav className="voc-channel-tabs" aria-label="VOC 수집 화면">

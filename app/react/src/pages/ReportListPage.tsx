@@ -3,12 +3,14 @@
  * @see SensePlace_목업_v1.2.html — #sp05a
  */
 
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout.tsx';
 import { StatusBadge } from '../components/Badge.tsx';
+import { apiFetchReports } from '../lib/api.ts';
 
 /* ------------------------------------------------------------------ */
-/*  합성 보고서 데이터                                                   */
+/*  목업 fallback (DB에 보고서 데이터가 없을 때)                          */
 /* ------------------------------------------------------------------ */
 
 interface ReportRow {
@@ -19,12 +21,29 @@ interface ReportRow {
   modified: string;
 }
 
-const REPORTS: ReportRow[] = [
+const FALLBACK_REPORTS: ReportRow[] = [
   { type: '주간', period: '07/14~07/20', status: 'draft', author: '윤OO', modified: '10분 전 수정' },
   { type: '주간', period: '07/07~07/13', status: 'done', author: '윤OO', modified: '' },
   { type: '월간', period: '06월', status: 'done', author: '박OO', modified: '' },
   { type: '분기', period: '2026 Q2', status: 'done', author: '정OO', modified: '' },
 ];
+
+function mapApiReport(r: {
+  report_id: string;
+  report_version: string;
+  virtual_week_id: string;
+  status: string;
+  created_at: string | null;
+}): ReportRow {
+  const isDraft = r.status === 'DRAFT' || r.status === 'READY_FOR_REVIEW';
+  return {
+    type: '주간',
+    period: r.virtual_week_id || r.report_version,
+    status: isDraft ? 'draft' : 'done',
+    author: '',
+    modified: r.created_at ? `${r.created_at.slice(0, 10)} 생성` : '',
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /*  메인 화면                                                           */
@@ -32,6 +51,29 @@ const REPORTS: ReportRow[] = [
 
 export default function ReportListPage() {
   const navigate = useNavigate();
+  const [reports, setReports] = useState<ReportRow[]>(FALLBACK_REPORTS);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetchReports()
+      .then((res) => {
+        if (cancelled) return;
+        if (!res.error && res.data && res.data.length > 0) {
+          setReports(res.data.map(mapApiReport));
+        }
+        // 빈 응답 또는 에러 시 fallback 유지
+      })
+      .catch(() => {
+        // 에러 시 fallback 유지
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <Layout>
@@ -72,7 +114,7 @@ export default function ReportListPage() {
             <span>작성자</span>
             <span style={{ textAlign: 'right' }}>동작</span>
           </div>
-          {REPORTS.map((r, idx) => (
+          {reports.map((r, idx) => (
             <div
               key={idx}
               className="rpt-row"

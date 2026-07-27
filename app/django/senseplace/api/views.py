@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from typing import Any
 
@@ -41,11 +42,57 @@ from senseplace.api.envelope import (
     error_validation,
 )
 from senseplace.auth.views import login_view, logout_view
-from senseplace.models import FactVoc, QueryRun, Report
-from senseplace.models.enums import JobStatusCode, RoleCode
+from senseplace.models import DimServiceArea, FactVoc, QueryRun, Report
+from senseplace.models.enums import JobStatusCode, RoleCode, VocCategoryCode
 from senseplace.rbac.decorators import require_role, require_scope
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# VOC 응답 변환 헬퍼
+# ---------------------------------------------------------------------------
+
+_TOPIC_NAMES: dict[str, str] = dict(VocCategoryCode.CHOICES)
+_SEVERITY_MAP: dict[str, str] = {
+    "NEGATIVE": "danger",
+    "NEUTRAL": "warn",
+    "POSITIVE": "ok",
+}
+
+
+def _build_area_map() -> dict[str, tuple[str, str]]:
+    """service_area_id → (facility_name, zone) 매핑.
+
+    display_name 예: "피자힐 (다이닝)" → ("피자힐", "다이닝")
+    """
+    area_map: dict[str, tuple[str, str]] = {}
+    for area in DimServiceArea.objects.all():
+        m = re.match(r"^(.+?)\s*\((.+?)\)$", area.display_name)
+        if m:
+            area_map[area.service_area_id] = (m.group(1), m.group(2))
+        else:
+            area_map[area.service_area_id] = (area.display_name, "")
+    return area_map
+
+
+def _voc_to_dict(v: FactVoc, area_map: dict[str, tuple[str, str]]) -> dict[str, Any]:
+    """FactVoc → API 응답 dict (monitoring UI 호환 필드 포함)."""
+    facility, zone = area_map.get(v.service_area_id, (v.service_area_id, ""))
+    return {
+        "voc_id": str(v.voc_id),
+        "dataset_version": v.dataset_version,
+        "received_at": v.received_at.isoformat() if v.received_at else None,
+        "occurred_at": v.occurred_at.isoformat() if v.occurred_at else None,
+        "service_area_id": v.service_area_id,
+        "service_area_name": facility,
+        "zone": zone,
+        "topic_code": v.topic_code,
+        "topic_name": _TOPIC_NAMES.get(v.topic_code, v.topic_code),
+        "sentiment_label": v.sentiment_label,
+        "severity": _SEVERITY_MAP.get(v.sentiment_label, "warn"),
+        "review_text": v.review_text,
+        "is_synthetic": v.is_synthetic,
+    }
 
 # ---------------------------------------------------------------------------
 # JOB 상태머신 허용 전이
@@ -140,12 +187,12 @@ def voc_list(request: HttpRequest) -> JsonResponse:
 
     # scope_snapshot metric_groups → topic_code 매핑
     _GROUP_TOPIC_MAP: dict[str, list[str]] = {
-        "BREAKFAST": ["food_beverage"],
-        "FNB_VOC": ["food_beverage", "service"],
-        "GUEST_ROOM": ["guest_room"],
-        "GUEST_ROOM_SUMMARY": ["guest_room"],
-        "STAFF": [],
-        "INCIDENTS": [],
+        "BREAKFAST": ["대기·혼잡", "청결·위생", "직원 서비스"],
+        "FNB_VOC": ["대기·혼잡", "청결·위생", "직원 서비스", "가격·결제"],
+        "GUEST_ROOM": ["시설 고장", "소음", "온도·환경", "청결·위생"],
+        "GUEST_ROOM_SUMMARY": ["시설 고장", "소음", "온도·환경", "청결·위생"],
+        "STAFF": ["직원 서비스"],
+        "INCIDENTS": ["안전", "시설 고장", "소음"],
         "REPORTS": [],
     }
 
@@ -171,20 +218,8 @@ def voc_list(request: HttpRequest) -> JsonResponse:
     offset = (page - 1) * limit
     items = qs.order_by("-received_at")[offset : offset + limit]
 
-    vocs_data = [
-        {
-            "voc_id": str(v.voc_id),
-            "dataset_version": v.dataset_version,
-            "received_at": v.received_at.isoformat() if v.received_at else None,
-            "occurred_at": v.occurred_at.isoformat() if v.occurred_at else None,
-            "service_area_id": v.service_area_id,
-            "topic_code": v.topic_code,
-            "sentiment_label": v.sentiment_label,
-            "review_text": v.review_text,
-            "is_synthetic": v.is_synthetic,
-        }
-        for v in items
-    ]
+    area_map = _build_area_map()
+    vocs_data = [_voc_to_dict(v, area_map) for v in items]
 
     return envelope_ok(
         vocs_data,
@@ -220,12 +255,12 @@ def voc_detail(request: HttpRequest, voc_id: str) -> JsonResponse:
     allowed_groups: list[str] = scope.get("metric_groups", [])
 
     _GROUP_TOPIC_MAP: dict[str, list[str]] = {
-        "BREAKFAST": ["food_beverage"],
-        "FNB_VOC": ["food_beverage", "service"],
-        "GUEST_ROOM": ["guest_room"],
-        "GUEST_ROOM_SUMMARY": ["guest_room"],
-        "STAFF": [],
-        "INCIDENTS": [],
+        "BREAKFAST": ["대기·혼잡", "청결·위생", "직원 서비스"],
+        "FNB_VOC": ["대기·혼잡", "청결·위생", "직원 서비스", "가격·결제"],
+        "GUEST_ROOM": ["시설 고장", "소음", "온도·환경", "청결·위생"],
+        "GUEST_ROOM_SUMMARY": ["시설 고장", "소음", "온도·환경", "청결·위생"],
+        "STAFF": ["직원 서비스"],
+        "INCIDENTS": ["안전", "시설 고장", "소음"],
         "REPORTS": [],
     }
 
@@ -236,18 +271,9 @@ def voc_detail(request: HttpRequest, voc_id: str) -> JsonResponse:
     if allowed_topics and voc.topic_code not in allowed_topics:
         return error_not_found("해당 VOC를 찾을 수 없습니다.")
 
+    area_map = _build_area_map()
     return envelope_ok(
-        {
-            "voc_id": str(voc.voc_id),
-            "dataset_version": voc.dataset_version,
-            "received_at": voc.received_at.isoformat() if voc.received_at else None,
-            "occurred_at": voc.occurred_at.isoformat() if voc.occurred_at else None,
-            "service_area_id": voc.service_area_id,
-            "topic_code": voc.topic_code,
-            "sentiment_label": voc.sentiment_label,
-            "review_text": voc.review_text,
-            "is_synthetic": voc.is_synthetic,
-        },
+        _voc_to_dict(voc, area_map),
         status=200,
     )
 

@@ -18,7 +18,7 @@ urlpatterns = [
     path("auth/logout/", views.api_logout, name="api-logout"),
     # VOC
     path("vocs/", views.voc_list, name="voc-list"),
-    path("vocs/<uuid:voc_id>/", views.voc_detail, name="voc-detail"),
+    path("vocs/<str:voc_id>/", views.voc_detail, name="voc-detail"),
     # Job
     path("jobs/", views.job_create, name="job-create"),
     path("jobs/<uuid:job_id>/", views.job_detail, name="job-detail"),

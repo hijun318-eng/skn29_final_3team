@@ -170,6 +170,24 @@ export interface DjangoLoginData {
   scope_snapshot?: Record<string, unknown>;
 }
 
+// ===== Django VOC 응답 데이터 =====
+
+export interface DjangoVocData {
+  voc_id: string;
+  dataset_version: string;
+  received_at: string | null;
+  occurred_at: string | null;
+  service_area_id: string;
+  service_area_name: string;
+  zone: string;
+  topic_code: string;
+  topic_name: string;
+  sentiment_label: string;
+  severity: 'danger' | 'warn' | 'ok';
+  review_text: string;
+  is_synthetic: boolean;
+}
+
 // ===== API 호출 함수 =====
 
 export async function apiLogin(staffId: string, password: string): Promise<APIResponse<DjangoLoginData>> {
@@ -181,8 +199,8 @@ export async function apiLogout(): Promise<void> {
   await api.post('/auth/logout/');
 }
 
-export async function apiFetchVocs(params?: { page?: number; limit?: number }): Promise<APIResponse<VOCEntity[]>> {
-  const res = await api.get<APIResponse<VOCEntity[]>>('/vocs/', { params });
+export async function apiFetchVocs(params?: { page?: number; limit?: number }): Promise<APIResponse<DjangoVocData[]>> {
+  const res = await api.get<APIResponse<DjangoVocData[]>>('/vocs/', { params });
   return res.data;
 }
 

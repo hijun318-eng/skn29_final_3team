@@ -9,8 +9,6 @@
 
 from __future__ import annotations
 
-import uuid
-
 from django.db import models
 
 from .enums import SentimentLabelCode, ShiftCode, VocCategoryCode
@@ -249,10 +247,9 @@ class FactVoc(models.Model):
     occurred_at <= received_at
     """
 
-    voc_id = models.UUIDField(
+    voc_id = models.CharField(
+        max_length=64,
         primary_key=True,
-        default=uuid.uuid4,
-        editable=False,
         help_text="VOC 고유 ID",
     )
     dataset_version = models.CharField(

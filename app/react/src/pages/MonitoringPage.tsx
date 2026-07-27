@@ -7,7 +7,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { Layout } from '../components/Layout.tsx';
 import { SevBadge } from '../components/Badge.tsx';
 import { EmptyState } from '../components/EmptyState.tsx';
-import { INC, KPI } from '../data/mockData.ts';
+import { useVocs } from '../hooks/useVocs.ts';
 import { ZONES } from '../data/ontology.ts';
 import type { Incident } from '../data/mockData.ts';
 import type { Severity, VOCStatus } from '../lib/api.ts';
@@ -200,12 +200,13 @@ function DetailPanel({
 type TabKey = 'alert' | 'inbox' | 'schedule';
 
 export default function MonitoringPage() {
+  const { incidents: INC, kpi: KPI, loading, error, refetch } = useVocs();
   const [activeTab, setActiveTab] = useState<TabKey>('alert');
   const [filterZone, setFilterZone] = useState('');
   const [filterSev, setFilterSev] = useState<Severity | ''>('');
   const [filterSt, setFilterSt] = useState<VOCStatus | ''>('');
   const [detailItem, setDetailItem] = useState<Incident | null>(null);
-  const [lastSync, setLastSync] = useState('14:23:05');
+  const [lastSync, setLastSync] = useState('--:--:--');
   const [refreshing, setRefreshing] = useState(false);
 
   const filteredItems = useMemo(() => {
@@ -215,23 +216,23 @@ export default function MonitoringPage() {
       if (filterSt && i.status !== filterSt) return false;
       return true;
     });
-  }, [filterZone, filterSev, filterSt]);
+  }, [INC, filterZone, filterSev, filterSt]);
 
   const openItems = useMemo(
     () => INC.filter((i) => i.open > 0).sort((a, b) => ({ danger: 0, warn: 1, ok: 2 }[a.sev] - { danger: 0, warn: 1, ok: 2 }[b.sev])),
-    [],
+    [INC],
   );
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => {
+    refetch().finally(() => {
       const d = new Date();
       setLastSync(
         `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`,
       );
       setRefreshing(false);
-    }, 700);
-  }, []);
+    });
+  }, [refetch]);
 
   const handleDangerFilter = useCallback(() => {
     setFilterSev('danger');
@@ -241,6 +242,22 @@ export default function MonitoringPage() {
     const found = INC.find((i) => i.id === id);
     if (found) setDetailItem(found);
   }, []);
+
+  if (loading) {
+    return (
+      <Layout>
+        <EmptyState message="VOC 데이터를 불러오는 중..." />
+      </Layout>
+    );
+  }
+
+  if (error) {
+    return (
+      <Layout>
+        <EmptyState message={`데이터 조회 실패: ${error}`} />
+      </Layout>
+    );
+  }
 
   if (INC.length === 0) {
     return (

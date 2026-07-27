@@ -18,11 +18,11 @@ An explicit personal-branch-to-`dev` request authorizes only the target branch p
 3. Confirm the source work is committed and the working tree is clean. Push the source, fetch origin, then run:
    `<python> .agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py --source <branch> --phase source`
 4. Switch to `dev`, require a clean tree, fetch origin, and run `git pull --ff-only origin dev`.
-5. Require exact local/remote `dev` equality and record the pre-merge commit. Run the preflight script with `--phase dev`.
-6. Merge `origin/<branch>`. On any conflict, stop before report generation or push and report the conflicted paths. Do not resolve without a new explicit instruction.
-7. Load `.agents/skills/update-project-reports/SKILL.md` and apply its post-merge mode. Validate the affected date summaries and cumulative weekly reports.
+5. Require exact local/remote `dev` equality and record `base=$(git rev-parse dev)`. Run the preflight script with `--phase dev`.
+6. Merge `origin/<branch>` and record `head=$(git rev-parse HEAD)`. On any conflict, stop before report generation or push and report the conflicted paths. Do not resolve without a new explicit instruction.
+7. Load `.agents/skills/update-project-reports/SKILL.md` and apply its post-merge mode with `source=<branch>`, `base=<base>`, and `head=<head>`. Validate the affected date summaries and cumulative weekly reports.
 8. Stage only the returned `docs/markdown/daily_reports/team_summaries/` paths. Review the staged diff. If it is non-empty, create one report-only team-format commit; otherwise skip it.
-9. Recheck `git diff --check`, working-tree state, report limits, and that `origin/dev` is still an ancestor of local `dev` after a final fetch.
+9. Recheck `git diff --check` and report limits. Fetch origin, then run `<python> .agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py --source <branch> --phase final --base <base>`.
 10. Push `dev`, then verify `dev` and `origin/dev` resolve to the same commit.
 
 ## Stop conditions

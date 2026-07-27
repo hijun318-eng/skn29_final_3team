@@ -8,9 +8,9 @@ description: Inspect the current repository's staged Git changes and draft one K
 ## Workflow
 
 1. Run `git rev-parse --show-toplevel`, `git branch --show-current`, and `git status --short`.
-2. Run `git diff --cached --stat`, `git diff --cached`, and `git log -5 --pretty=format:%s`.
-3. Stop and report that no message can be drafted when the staged diff is empty.
-4. Describe only staged changes. Report unrelated or risky staged files before drafting the message.
+2. Run `git diff --cached --name-status`, `git diff --cached --numstat`, `git diff --cached --check`, and `git log -5 --pretty=format:%s` before loading the full diff.
+3. Stop when the staged diff is empty or contains unmerged paths. Warn about binary, oversized, secret-like, generated-data, protected-template, or unrelated staged paths.
+4. Run `git diff --cached` only after the staged scope is safe to inspect. Describe only staged changes.
 5. Choose the type and scope from the actual change, then produce one best message.
 
 ## Message Format

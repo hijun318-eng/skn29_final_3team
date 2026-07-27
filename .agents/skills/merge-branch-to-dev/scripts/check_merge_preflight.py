@@ -45,10 +45,19 @@ def ref(name: str) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def is_ancestor(ancestor: str, descendant: str) -> bool:
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True, choices=sorted(PERSONAL_BRANCHES))
-    parser.add_argument("--phase", required=True, choices=["source", "dev"])
+    parser.add_argument("--phase", required=True, choices=["source", "dev", "final"])
+    parser.add_argument("--base", help="병합 직전 dev commit; final 단계에서 필수")
     args = parser.parse_args()
 
     errors: list[str] = []
@@ -78,10 +87,25 @@ def main() -> int:
             errors.append("dev local/remote ref를 모두 확인할 수 없습니다.")
         elif dev_local != dev_remote:
             errors.append("병합 전 dev와 origin/dev가 정확히 같지 않습니다.")
+        elif source_remote and is_ancestor(source_remote, dev_local):
+            errors.append("source branch가 이미 dev에 반영되어 있습니다.")
+    if args.phase == "final":
+        if current != "dev":
+            errors.append("final 단계의 현재 branch가 dev가 아닙니다.")
+        base_ref = ref(args.base) if args.base else None
+        if not args.base or not base_ref:
+            errors.append("final 단계에는 유효한 --base commit이 필요합니다.")
+        elif not dev_remote or dev_remote != base_ref:
+            errors.append("origin/dev가 병합 직전 base에서 변경되었습니다.")
+        elif not dev_local or not is_ancestor(base_ref, dev_local):
+            errors.append("병합 직전 base가 local dev의 ancestor가 아닙니다.")
+        if source_remote and dev_local and not is_ancestor(source_remote, dev_local):
+            errors.append("source branch가 local dev에 반영되지 않았습니다.")
 
     payload = {
         "phase": args.phase,
         "source": args.source,
+        "base": args.base,
         "current_branch": current,
         "source_local": source_local,
         "source_remote": source_remote,

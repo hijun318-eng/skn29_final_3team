@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Bot, Check, ChevronRight, Clock3, DoorOpen, LockKeyhole, MapPin, Send, Sparkles } from "lucide-react";
+import { Bot, BusFront, Check, ChevronRight, Clock3, Coffee, DoorOpen, LockKeyhole, MapPin, PhoneCall, Route, Send, Sparkles, Wifi } from "lucide-react";
 import "../styles/hospitality.css";
 import { publishLiveVoc } from "../services/liveVoc";
 import { VocPhotoUpload } from "../components/common/VocPhotoUpload";
@@ -38,6 +38,20 @@ const FACILITIES = [
   { icon: "🚗", name: "Parking", time: "24 Hours", location: "주차타워 · 발렛 데스크" },
 ];
 
+const RECOMMENDED_COURSE = [
+  { time: "09:30", title: "힐링 포레스트 산책", category: "웰니스" },
+  { time: "12:30", title: "명월관 점심", category: "다이닝" },
+  { time: "15:00", title: "리버파크 물놀이", category: "레저" },
+  { time: "18:30", title: "피자힐 디너", category: "다이닝" },
+];
+
+const HOTEL_QUICK_GUIDE = [
+  { icon: Coffee, label: "조식", value: "06:30–10:00 · 더뷔페" },
+  { icon: BusFront, label: "셔틀", value: "정시 30분 간격" },
+  { icon: Wifi, label: "Wi-Fi", value: "SensePlaceGuest" },
+  { icon: PhoneCall, label: "프런트", value: "내선 0" },
+];
+
 function BrandHeader({ step }) {
   return <header className="hospitality-brand"><a href="/">SENSE PLACE</a><span>{step}</span></header>;
 }
@@ -52,7 +66,12 @@ export function GuestGuidePage() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const guest = params.get("name") || "Guest Name";
   const room = params.get("room") || "1208";
+  const visits = params.get("visits") || "3";
+  const from = params.get("from") || "2026.08.07";
+  const to = params.get("to") || "2026.08.10";
+  const hotel = params.get("hotel") || "Grand SENSE PLACE Seoul";
   const checkoutAt = parseAccessTime(params.get("checkoutAt"), Date.now() + (72 * HOUR_IN_MS));
+  const [activeTab, setActiveTab] = useState("guide");
   const [score, setScore] = useState(null);
   const [comment, setComment] = useState("");
   const [photos, setPhotos] = useState([]);
@@ -63,15 +82,34 @@ export function GuestGuidePage() {
   return <main className="hospitality-page"><div className="hospitality-shell">
     <BrandHeader step="YOUR STAY" />
     <section className="welcome-block"><p>Good Afternoon,</p><h1>{guest}</h1><div className="checkin-status"><span><Check size={13} /> 체크인 완료</span><strong><DoorOpen size={14} /> {room}호</strong></div><small>SENSE PLACE에서의 편안한 여정을 시작해 보세요.</small></section>
+    <section className="booking-card guest-booking-card"><div><span>ROOM</span><strong>{room}</strong></div><div><span>STAY</span><strong>{from} <i>—</i> {to}</strong></div><p>{hotel}</p></section>
+    <nav className="guest-guide-tabs" role="tablist" aria-label="투숙객 서비스 메뉴"><button type="button" role="tab" aria-selected={activeTab === "guide"} className={activeTab === "guide" ? "is-active" : ""} onClick={() => setActiveTab("guide")}>호텔 안내</button><button type="button" role="tab" aria-selected={activeTab === "survey"} className={activeTab === "survey" ? "is-active" : ""} onClick={() => setActiveTab("survey")}>서비스 만족도</button></nav>
+    {activeTab === "guide" && <div className="guest-tab-panel" role="tabpanel">
+    <section className="guest-recommendation-card">
+      <div className="guest-recommendation-kicker"><Sparkles size={15} /><b>맞춤 추천</b><span>· 이용 데이터 기반</span></div>
+      <p>지난 {visits}회 방문 분석 결과, <strong>다이닝·웰니스</strong> 이용률이 높았어요.<br />저녁은 <strong>피자힐</strong> 리버뷰 디너를 추천드려요. 예약 여유가 있으며, 오전에는 <strong>힐링 포레스트</strong> 산책 코스가 잘 맞아요.</p>
+      <small>Synthetic recommendation · seed 20260727 · guest-guide-v1</small>
+    </section>
+    <section className="guest-course-section">
+      <div className="guest-section-heading"><Route size={18} /><h2>추천 코스 · 오늘</h2></div>
+      <ol>{RECOMMENDED_COURSE.map((item) => <li key={`${item.time}-${item.title}`}><i /><div><b>{item.time} · {item.title}</b><span>{item.category}</span></div></li>)}</ol>
+    </section>
+    <section className="guest-quick-guide">
+      <div className="guest-section-heading"><MapPin size={18} /><h2>호텔 가이드</h2></div>
+      <div>{HOTEL_QUICK_GUIDE.map(({ icon: Icon, label, value }) => <article key={label}><Icon size={16} /><b>{label}</b><span>{value}</span></article>)}</div>
+    </section>
     <section className="app-section"><div className="app-section__title"><div><p>EXPLORE SENSE PLACE</p><h2>호텔 시설 안내</h2></div><span>Today</span></div>
       <div className="facility-guide-grid">{FACILITIES.map((facility) => <article className="guide-facility-card" key={facility.name}><div className="guide-facility-icon">{facility.icon}</div><div><h3>{facility.name}</h3><p><Clock3 size={11} />{facility.time}</p><p><MapPin size={11} />{facility.location}</p></div><ChevronRight size={16} /></article>)}</div>
     </section>
     <section className="concierge-card"><div className="concierge-heading"><span><Bot size={19} /></span><div><p>AI CONCIERGE</p><h2>지금, 이렇게 이용해 보세요</h2></div><i>LIVE</i></div>
       <ul><li><span>01</span><p><b>현재 수영장이 가장 한산합니다.</b><small>여유로운 이용을 원하시면 지금 방문해 보세요.</small></p></li><li><span>02</span><p><b>조식 혼잡 예상 시간은 오전 8:00~9:00입니다.</b><small>오전 7:30 이전 이용을 추천드립니다.</small></p></li><li><span>03</span><p><b>라운지 Happy Hour는 오후 6시부터입니다.</b><small>한강 전망 좌석은 조기 마감될 수 있습니다.</small></p></li></ul>
     </section>
+    </div>}
+    {activeTab === "survey" && <div className="guest-tab-panel guest-survey-panel" role="tabpanel">
     <section className="quick-survey-card"><div className="survey-kicker"><Sparkles size={15} /><span>TODAY'S EXPERIENCE</span></div><h2>현재까지 호텔 이용은<br />만족스러우신가요?</h2><ExperienceScale value={score} onChange={setScore} compact />
       <div className="quick-comment"><label htmlFor="today-comment">의견 남기기 <span>(선택)</span></label><textarea id="today-comment" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="더 나은 경험을 위해 의견을 들려주세요." maxLength={300} /><VocPhotoUpload id="guest-guide-photos" files={photos} onChange={setPhotos} /><button type="button" disabled={!score || sent} onClick={() => { publishLiveVoc({ facilityId: "rooms", facilityName: `객실 ${room}호`, rating: score, comment, photos, source: "guest-guide" }); setSent(true); }}>{sent ? <><Check size={16} /> 전달 완료</> : <><Send size={15} /> 의견 보내기</>}</button>{!score && <small className="quick-comment__hint">만족도를 선택하면 의견을 전달할 수 있습니다.</small>}</div>
-    </section><footer className="hospitality-footer">SENSE PLACE HOTELS &amp; RESORTS · SEOUL</footer>
+    </section>
+    </div>}<footer className="hospitality-footer">SENSE PLACE HOTELS &amp; RESORTS · SEOUL</footer>
   </div></main>;
 }
 

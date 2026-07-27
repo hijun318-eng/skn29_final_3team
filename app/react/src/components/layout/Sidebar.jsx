@@ -11,7 +11,7 @@ const navigation = [
 export function Sidebar({ collapsed, onToggle }) {
   const currentPath = window.location.pathname;
   return <aside className={`sidebar ${collapsed ? "sidebar--collapsed" : ""}`}>
-    <a className="brand" href="/" aria-label="Sense Place 외부 리뷰 데이터로 이동"><span className="brand__mark"><span className="brand__monogram">SP</span><i aria-hidden="true" /></span>{!collapsed && <span><b>SENSE PLACE</b><small>Operation Intelligence</small></span>}</a>
+    <a className="brand" href="/monitoring" aria-label="Sense Place 실시간 모니터링으로 이동"><span className="brand__mark"><span className="brand__monogram">SP</span><i aria-hidden="true" /></span>{!collapsed && <span><b>SENSE PLACE</b><small>Operation Intelligence</small></span>}</a>
     <nav className="navigation" aria-label="Primary navigation">
       {navigation.map(({ label, icon: Icon, href }) => {
         const active = href ? (href === "/" ? currentPath === "/" : currentPath.startsWith(href)) : false;

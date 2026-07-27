@@ -7,7 +7,8 @@ export function HotelOperationMap({ facilities, selectedId, onSelect, simulated,
       <div className="map-notice"><Info size={14} /><span><b>합성 데이터 기반 예상 시나리오</b> · 실제 호텔 운영 현황이나 정밀 예측 결과를 의미하지 않습니다.</span></div>
       {simulated && <div className="simulation-flag"><Activity size={14} /> SIMULATION · 합성 데이터 기반 예상 상태</div>}
       <div className="map-canvas" role="group" aria-label="호텔 시설 운영 상태 지도">
-        <svg className="map-base" viewBox="0 0 900 560" aria-hidden="true">
+        <img className="map-illustration" src="/images/resort-operations-map.png" alt="" aria-hidden="true" />
+        <svg className="map-base map-overlay" viewBox="0 0 900 560" aria-hidden="true">
           <defs>
             <pattern id="map-grid" width="28" height="28" patternUnits="userSpaceOnUse"><path d="M28 0H0V28" fill="none" stroke="#ded8cf" strokeWidth=".6" opacity=".42" /></pattern>
             <filter id="soft-blur"><feGaussianBlur stdDeviation="13" /></filter>
@@ -76,6 +77,12 @@ export function HotelOperationMap({ facilities, selectedId, onSelect, simulated,
           </g>
         </svg>
         {facilities.map((facility) => <FacilityMarker key={facility.id} facility={facility} selected={selectedId === facility.id} simulated={simulated} onSelect={onSelect} />)}
+        <div className="voc-alert-layer" aria-hidden="true">
+          {facilities.filter((facility) => (facility.id === "breakfast" && simulated ? "warning" : facility.status) !== "normal").map((facility) => {
+            const effectiveStatus = facility.id === "breakfast" && simulated ? "warning" : facility.status;
+            return <span key={facility.id} className={`voc-alert-badge voc-alert-badge--${effectiveStatus}`} style={{ left: `${facility.x}%`, top: `${facility.y}%` }}>!</span>;
+          })}
+        </div>
         <div className="map-legend" aria-label="운영 상태 범례">
           <span><CheckCircle2 size={13} /> 정상</span><span><AlertTriangle size={13} /> 주의</span><span><AlertCircle size={13} /> 위험</span>
         </div>

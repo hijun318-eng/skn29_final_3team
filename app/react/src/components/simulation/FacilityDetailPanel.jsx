@@ -1,9 +1,11 @@
 import { AlertCircle, ArrowRight, Clock3, Database, FileSearch, Info, MessageSquareText, Users } from "lucide-react";
+import { facilityStaffing, facilityStaffingMeta } from "../map/operationMapData";
 
 export function FacilityDetailPanel({ facility, detail, simulated }) {
   const isBreakfast = facility.id === "breakfast";
   const effectiveStatus = isBreakfast && simulated ? "주의" : facility.statusLabel;
   const tone = effectiveStatus === "위험" ? "danger" : effectiveStatus === "주의" ? "warning" : "normal";
+  const staffing = facilityStaffing[facility.id];
 
   return <aside className="facility-panel" aria-label={`${facility.name} 운영 상세`}>
     <div className="facility-summary">
@@ -12,6 +14,13 @@ export function FacilityDetailPanel({ facility, detail, simulated }) {
     </div>
 
     <div className="current-metric"><div><span>{detail.metricLabel}</span><strong>{detail.metricValue}<small>{detail.metricUnit}</small></strong></div><div><Clock3 size={14} /><span>{detail.observedAt}</span><em>Synthetic data</em></div></div>
+
+    {staffing && <section className="facility-staffing-block">
+      <div className="panel-subheading"><div><span>FACILITY DUTY</span><h4>건물별 근무 담당</h4></div><small>관리자 열람 · Synthetic</small></div>
+      <div className="staffing-manager"><dl><div><dt>담당자</dt><dd>{staffing.manager}</dd></div><div><dt>부서</dt><dd>{staffing.department}</dd></div><div><dt>연락처</dt><dd>{staffing.contact}</dd></div></dl></div>
+      <div className="staffing-shift-title"><span>오늘 근무</span><small>seed {facilityStaffingMeta.seed} · {facilityStaffingMeta.schemaVersion}</small></div>
+      <ul className="staffing-shifts">{staffing.shifts.map((shift) => <li key={`${facility.id}-${shift.name}-${shift.type}`}><b>{shift.name}</b><span>{shift.type} · {shift.time}</span><em className={shift.status === "근무중" ? "is-active" : ""}>{shift.status}</em></li>)}</ul>
+    </section>}
 
     <section className="evidence-block"><div className="panel-subheading"><div><span>OBSERVED FACTS</span><h4>관측 사실</h4></div><small>{detail.owner}</small></div><ul>{detail.facts.map((fact, index) => <li key={fact}>{index === 0 ? <Database size={14} /> : index === 1 ? <Clock3 size={14} /> : <FileSearch size={14} />}<span>{fact}</span></li>)}</ul></section>
 

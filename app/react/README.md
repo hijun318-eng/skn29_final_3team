@@ -7,13 +7,13 @@
 - 이 폴더에서 만든 파일은 로컬에 먼저 저장됩니다.
 - `git pull`은 파일을 원격에 업로드하지 않습니다.
 - `git push`는 미커밋 파일이 아니라 commit된 변경만 원격에 업로드합니다.
-- 공유할 준비가 되었을 때만 `git add frontend`, `git commit`, `git push origin minji` 순서로 반영합니다.
+- 공유할 준비가 되었을 때만 `git add app/react`, `git commit`, `git push origin minji` 순서로 반영합니다.
 - `.env.local`, `node_modules/`, `dist/`, test coverage는 `.gitignore`로 제외합니다.
 
 ## 디렉터리 역할
 
 ```text
-frontend/
+app/react/
 ├─ public/                 # 정적 파일
 ├─ src/
 │  ├─ app/                # 앱 조립, route와 provider

@@ -4,6 +4,7 @@ import { GuestGuidePage, StayReviewPage } from "../pages/HospitalityPages";
 import { EvidenceReviewPage } from "../pages/EvidenceReviewPage";
 import { ExecutiveBriefingPage } from "../pages/ExecutiveBriefingPage";
 import { MonitoringPage } from "../pages/MonitoringPage";
+import { RoomOperationsPage } from "../pages/RoomOperationsPage";
 import { IssueAnalysisPage } from "../pages/IssueAnalysisPage";
 import { LoginPage } from "../pages/LoginPage";
 import { getDemoSession } from "../services/demoAuth";
@@ -40,6 +41,9 @@ export function App() {
   }
   if (window.location.pathname.startsWith("/reports")) {
     return <ExecutiveBriefingPage />;
+  }
+  if (window.location.pathname.startsWith("/monitoring/rooms")) {
+    return <RoomOperationsPage />;
   }
   if (window.location.pathname.startsWith("/monitoring")) {
     return <MonitoringPage />;

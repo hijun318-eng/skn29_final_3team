@@ -1,11 +1,42 @@
 export const facilities = [
-  { id: "breakfast", name: "조식당", status: "danger", statusLabel: "위험", x: 59, y: 57, labelX: 67, labelY: 49, metric: "대기 18분" },
-  { id: "front", name: "프런트", status: "normal", statusLabel: "정상", x: 47, y: 67, labelX: 42, labelY: 76, metric: "대기 4분" },
-  { id: "parking", name: "주차장", status: "warning", statusLabel: "주의", x: 27, y: 38, labelX: 25, labelY: 29, metric: "입차 지연 9분" },
-  { id: "rooms", name: "객실층", status: "normal", statusLabel: "정상", x: 49, y: 55, labelX: 43, labelY: 47, metric: "운영 안정" },
-  { id: "lobby", name: "로비", status: "normal", statusLabel: "정상", x: 53, y: 70, labelX: 61, labelY: 76, metric: "운영 안정" },
-  { id: "convention", name: "컨벤션", status: "warning", statusLabel: "주의", x: 39, y: 68, labelX: 29, labelY: 60, metric: "행사 입장 집중" },
+  { id: "breakfast", name: "조식당", status: "danger", statusLabel: "위험", x: 57, y: 64, labelX: 67, labelY: 57, metric: "대기 18분" },
+  { id: "front", name: "프런트", status: "normal", statusLabel: "정상", x: 50, y: 65, labelX: 43, labelY: 74, metric: "대기 4분" },
+  { id: "parking", name: "주차장", status: "warning", statusLabel: "주의", x: 19, y: 17, labelX: 25, labelY: 20, metric: "입차 지연 9분" },
+  { id: "rooms", name: "객실층", status: "normal", statusLabel: "정상", x: 49, y: 57, labelX: 43, labelY: 49, metric: "운영 안정" },
+  { id: "lobby", name: "로비", status: "normal", statusLabel: "정상", x: 53, y: 67, labelX: 61, labelY: 74, metric: "운영 안정" },
+  { id: "convention", name: "컨벤션", status: "warning", statusLabel: "주의", x: 36, y: 68, labelX: 28, labelY: 61, metric: "행사 입장 집중" },
 ];
+
+export const facilityStaffingMeta = {
+  synthetic: true,
+  seed: 20260727,
+  schemaVersion: "facility-staffing-v1",
+};
+
+export const facilityStaffing = {
+  breakfast: {
+    manager: "이민호",
+    department: "다이닝운영팀",
+    contact: "010-2841-77##",
+    shifts: [
+      { name: "이민호", type: "매니저", time: "05:30–14:30", status: "근무중" },
+      { name: "정하늘", type: "호스트", time: "06:00–15:00", status: "근무중" },
+      { name: "김도윤", type: "홀 서비스", time: "06:00–15:00", status: "근무중" },
+      { name: "박서연", type: "홀 서비스", time: "06:00–15:00", status: "근무중" },
+      { name: "최지우", type: "홀 서비스", time: "06:30–15:30", status: "근무중" },
+      { name: "윤민재", type: "뷔페 관리", time: "05:30–14:30", status: "근무중" },
+      { name: "한유진", type: "뷔페 관리", time: "06:30–15:30", status: "근무중" },
+      { name: "오세훈", type: "주방 지원", time: "05:00–14:00", status: "근무중" },
+      { name: "송예린", type: "음료 서비스", time: "07:00–16:00", status: "근무중" },
+      { name: "강현우", type: "정리 지원", time: "07:00–16:00", status: "근무중" },
+    ],
+  },
+  front: { manager: "김서연", department: "프런트운영팀", contact: "010-4275-31##", shifts: [{ name: "김서연", type: "주간", time: "08:00–20:00", status: "근무중" }, { name: "박도현", type: "야간", time: "20:00–08:00", status: "대기" }] },
+  parking: { manager: "박준호", department: "주차운영팀", contact: "010-5930-62##", shifts: [{ name: "박준호", type: "주간", time: "07:00–19:00", status: "근무중" }, { name: "오지훈", type: "야간", time: "19:00–07:00", status: "대기" }] },
+  rooms: { manager: "최민지", department: "객실운영팀", contact: "010-7184-45##", shifts: [{ name: "최민지", type: "주간", time: "09:00–21:00", status: "근무중" }, { name: "한유진", type: "야간", time: "21:00–09:00", status: "대기" }] },
+  lobby: { manager: "한도윤", department: "고객서비스팀", contact: "010-3662-18##", shifts: [{ name: "한도윤", type: "주간", time: "08:00–20:00", status: "근무중" }, { name: "서가은", type: "야간", time: "20:00–08:00", status: "대기" }] },
+  convention: { manager: "윤지후", department: "연회운영팀", contact: "010-8527-90##", shifts: [{ name: "윤지후", type: "주간", time: "08:00–20:00", status: "근무중" }, { name: "송예린", type: "야간", time: "20:00–24:00", status: "대기" }] },
+};
 
 export const facilityDetails = {
   breakfast: {

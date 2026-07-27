@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import posixpath
 import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -54,7 +56,61 @@ def table_rows(lines: list[str], start: int) -> tuple[list[str], dict[str, str]]
     return order, values
 
 
-def validate_markdown(root: Path, path: Path, relative: str, text: str | None = None) -> list[str]:
+def without_fenced_code(text: str) -> str:
+    kept: list[str] = []
+    fence: str | None = None
+    for line in text.splitlines():
+        marker = line.lstrip()[:3]
+        if marker in {"```", "~~~"}:
+            if fence is None:
+                fence = marker
+            elif fence == marker:
+                fence = None
+            continue
+        if fence is None:
+            kept.append(line)
+    return "\n".join(kept)
+
+
+def local_link_targets(text: str) -> list[str]:
+    targets: list[str] = []
+    for raw in re.findall(
+        r"\[[^\]]+\]\((?!(?:https?|mailto|data):|#)([^)]+)\)",
+        without_fenced_code(text),
+    ):
+        value = raw.strip()
+        if value.startswith("<") and ">" in value:
+            value = value[1 : value.index(">")]
+        else:
+            value = value.split(maxsplit=1)[0]
+        value = unquote(value).split("#", 1)[0].split("?", 1)[0]
+        if value:
+            targets.append(value)
+    return targets
+
+
+def resolved_link(relative: str, target: str) -> str | None:
+    resolved = posixpath.normpath(posixpath.join(posixpath.dirname(relative), target))
+    return None if resolved == ".." or resolved.startswith("../") else resolved
+
+
+def index_exists(root: Path, relative: str) -> bool:
+    result = subprocess.run(
+        ["git", "cat-file", "-e", f":{relative}"],
+        cwd=root,
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def validate_markdown(
+    root: Path,
+    path: Path,
+    relative: str,
+    text: str | None = None,
+    *,
+    staged: bool = False,
+) -> list[str]:
     errors: list[str] = []
     if text is None:
         text = path.read_text(encoding="utf-8-sig")
@@ -84,24 +140,34 @@ def validate_markdown(root: Path, path: Path, relative: str, text: str | None = 
 
     match = re.match(r"^(\d{2})_", path.name)
     if match:
-        missing = [row for row in NUMBERED_ROWS if row not in values]
-        if missing:
-            errors.append(f"{relative}: 번호 문서 헤더 누락: {', '.join(missing)}")
-        if values.get("산출물 번호") != match.group(1):
+        expected = COMMON_ROWS + NUMBERED_ROWS
+        if order[: len(expected)] != expected:
+            errors.append(f"{relative}: 번호 문서 헤더 행과 순서가 올바르지 않습니다.")
+        number = match.group(1)
+        if not 1 <= int(number) <= 21:
+            errors.append(f"{relative}: 산출물 번호는 01~21이어야 합니다.")
+        if values.get("산출물 번호") != number:
             errors.append(f"{relative}: 산출물 번호가 파일명과 다릅니다.")
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}|—", values.get("제출 일자", "")):
+            errors.append(f"{relative}: 제출 일자는 YYYY-MM-DD 또는 — 형식이어야 합니다.")
+        if values.get("대응 템플릿", "").strip() in {"", "—"}:
+            errors.append(f"{relative}: 대응 템플릿은 경로 또는 `없음`이어야 합니다.")
     if "## 변경 내역" not in text:
         errors.append(f"{relative}: 하단 `## 변경 내역`이 필요합니다.")
 
-    for target in re.findall(r"\[[^\]]+\]\((?!https?://|#)([^)]+)\)", text):
-        cleaned = target.strip().strip("<>").split("#", 1)[0]
-        if cleaned and not (path.parent / cleaned).resolve().exists():
+    for target in local_link_targets(text):
+        resolved = resolved_link(relative, target)
+        exists = resolved is not None and (
+            index_exists(root, resolved) if staged else (root / resolved).exists()
+        )
+        if not exists:
             errors.append(f"{relative}: 깨진 로컬 링크: {target}")
     return errors
 
 
 def staged_paths(root: Path) -> list[str]:
     result = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--"],
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMRD", "-z", "--"],
         cwd=root,
         check=True,
         capture_output=True,
@@ -119,6 +185,36 @@ def staged_text(root: Path, relative: str) -> str:
     return result.stdout.decode("utf-8-sig")
 
 
+def index_markdown_paths(root: Path) -> list[str]:
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    return [
+        item.decode("utf-8")
+        for item in result.stdout.split(b"\0")
+        if item and item.decode("utf-8").lower().endswith(".md")
+    ]
+
+
+def deleted_link_errors(root: Path, deleted: set[str]) -> list[str]:
+    errors: list[str] = []
+    if not deleted:
+        return errors
+    for relative in index_markdown_paths(root):
+        try:
+            text = staged_text(root, relative)
+        except (subprocess.CalledProcessError, UnicodeDecodeError):
+            continue
+        for target in local_link_targets(text):
+            resolved = resolved_link(relative, target)
+            if resolved in deleted:
+                errors.append(f"{relative}: 삭제된 경로를 참조합니다: {target}")
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("paths", nargs="*", help="검사할 저장소 상대 또는 절대 경로")
@@ -131,6 +227,11 @@ def main() -> int:
     root = git_root()
     errors: list[str] = []
     values = args.paths or (staged_paths(root) if args.staged else [])
+    deleted = {
+        value.replace("\\", "/")
+        for value in values
+        if args.staged and not index_exists(root, value.replace("\\", "/"))
+    }
     checked = 0
     skipped = 0
 
@@ -145,6 +246,9 @@ def main() -> int:
             continue
         if relative == "docs/templates" or relative.startswith("docs/templates/"):
             errors.append(f"{relative}: 읽기 전용 보호 경로입니다.")
+            continue
+        if args.staged and relative in deleted:
+            skipped += 1
             continue
         if not args.staged and not path.exists():
             errors.append(f"{relative}: 파일이 없습니다.")
@@ -164,7 +268,10 @@ def main() -> int:
         except (subprocess.CalledProcessError, UnicodeDecodeError):
             errors.append(f"{relative}: staged 내용을 UTF-8 Markdown으로 읽을 수 없습니다.")
             continue
-        errors.extend(validate_markdown(root, path, relative, text))
+        errors.extend(validate_markdown(root, path, relative, text, staged=args.staged))
+
+    if args.staged:
+        errors.extend(deleted_link_errors(root, deleted))
 
     if errors:
         for error in errors:

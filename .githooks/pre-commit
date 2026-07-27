@@ -4,7 +4,7 @@ set -u
 
 max_file_size=10485760
 failed=0
-staged_files=$(git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR --)
+staged_files=$(git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMRD --)
 staged_documents=
 
 if [ -z "$staged_files" ]; then
@@ -16,7 +16,7 @@ while IFS= read -r path; do
     basename=${path##*/}
 
     case "$path" in
-        docs/*.md)
+        docs/*)
             staged_documents=1
             ;;
     esac

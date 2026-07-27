@@ -1,0 +1,150 @@
+import { useMemo, useState } from "react";
+import { Bot, BusFront, Check, ChevronRight, Clock3, Coffee, DoorOpen, LockKeyhole, MapPin, PhoneCall, Route, Send, Sparkles, Wifi } from "lucide-react";
+import "../styles/hospitality.css";
+import { publishLiveVoc } from "../services/liveVoc";
+import { VocPhotoUpload } from "../components/common/VocPhotoUpload";
+
+const HOUR_IN_MS = 60 * 60 * 1000;
+
+function parseAccessTime(value, fallback) {
+  const timestamp = value ? Date.parse(value) : fallback;
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function AccessUnavailable({ type, reason }) {
+  const isGuestGuide = type === "guest-guide";
+  return <main className="hospitality-page hospitality-access-unavailable"><section>
+    <div><LockKeyhole size={29} /></div>
+    <p>LINK UNAVAILABLE</p>
+    <h1>{isGuestGuide ? "투숙객 안내가 종료되었습니다." : reason === "not-open" ? "리뷰 링크가 아직 열리지 않았습니다." : "리뷰 작성 기간이 종료되었습니다."}</h1>
+    <span>{isGuestGuide ? "체크아웃이 완료되어 투숙객 전용 안내에 더 이상 접속할 수 없습니다." : reason === "not-open" ? "체크아웃 완료 후부터 숙박 리뷰를 작성할 수 있습니다." : "숙박 리뷰 링크는 체크아웃 후 24시간 동안만 이용할 수 있습니다."}</span>
+    <small>도움이 필요하시면 SENSE PLACE 고객센터로 문의해 주세요.</small>
+  </section></main>;
+}
+
+const EXPERIENCES = [
+  { score: 5, emoji: "😍", label: "매우 만족" }, { score: 4, emoji: "😊", label: "만족" },
+  { score: 3, emoji: "😐", label: "보통" }, { score: 2, emoji: "😕", label: "불편" },
+  { score: 1, emoji: "😡", label: "매우 불만" },
+];
+
+const FACILITIES = [
+  { icon: "🥐", name: "Breakfast", time: "06:30 – 10:00", location: "비스타 2F · 더뷔페" },
+  { icon: "💪", name: "Fitness", time: "06:00 – 22:00", location: "비스타 3F · 웰니스 클럽" },
+  { icon: "🏊", name: "Pool", time: "06:00 – 21:30", location: "비스타 3F · 실내 수영장" },
+  { icon: "☕", name: "Lounge", time: "10:00 – 22:00", location: "그랜드 Lobby · 더파빌리온" },
+  { icon: "💆", name: "Spa", time: "10:00 – 21:00", location: "비스타 3F · V SPA" },
+  { icon: "🍽️", name: "Restaurant", time: "12:00 – 22:00", location: "SENSE PLACE 다이닝" },
+  { icon: "🚗", name: "Parking", time: "24 Hours", location: "주차타워 · 발렛 데스크" },
+];
+
+const RECOMMENDED_COURSE = [
+  { time: "09:30", title: "힐링 포레스트 산책", category: "웰니스" },
+  { time: "12:30", title: "명월관 점심", category: "다이닝" },
+  { time: "15:00", title: "리버파크 물놀이", category: "레저" },
+  { time: "18:30", title: "피자힐 디너", category: "다이닝" },
+];
+
+const HOTEL_QUICK_GUIDE = [
+  { icon: Coffee, label: "조식", value: "06:30–10:00 · 더뷔페" },
+  { icon: BusFront, label: "셔틀", value: "정시 30분 간격" },
+  { icon: Wifi, label: "Wi-Fi", value: "SensePlaceGuest" },
+  { icon: PhoneCall, label: "프런트", value: "내선 0" },
+];
+
+function BrandHeader({ step }) {
+  return <header className="hospitality-brand"><a href="/">SENSE PLACE</a><span>{step}</span></header>;
+}
+
+function ExperienceScale({ value, onChange, compact = false }) {
+  return <div className={`experience-scale ${compact ? "is-compact" : ""}`}>
+    {EXPERIENCES.map((item) => <button type="button" key={item.score} className={value === item.score ? "is-selected" : ""} aria-pressed={value === item.score} onClick={() => onChange(item.score)}><span>{item.emoji}</span>{!compact && <small>{item.label}</small>}</button>)}
+  </div>;
+}
+
+export function GuestGuidePage() {
+  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const guest = params.get("name") || "Guest Name";
+  const room = params.get("room") || "1208";
+  const visits = params.get("visits") || "3";
+  const from = params.get("from") || "2026.08.07";
+  const to = params.get("to") || "2026.08.10";
+  const hotel = params.get("hotel") || "Grand SENSE PLACE Seoul";
+  const checkoutAt = parseAccessTime(params.get("checkoutAt"), Date.now() + (72 * HOUR_IN_MS));
+  const [activeTab, setActiveTab] = useState("guide");
+  const [score, setScore] = useState(null);
+  const [comment, setComment] = useState("");
+  const [photos, setPhotos] = useState([]);
+  const [sent, setSent] = useState(false);
+
+  if (checkoutAt === null || Date.now() >= checkoutAt) return <AccessUnavailable type="guest-guide" reason="expired" />;
+
+  return <main className="hospitality-page"><div className="hospitality-shell">
+    <BrandHeader step="YOUR STAY" />
+    <section className="welcome-block"><p>Good Afternoon,</p><h1>{guest}</h1><div className="checkin-status"><span><Check size={13} /> 체크인 완료</span><strong><DoorOpen size={14} /> {room}호</strong></div><small>SENSE PLACE에서의 편안한 여정을 시작해 보세요.</small></section>
+    <section className="booking-card guest-booking-card"><div><span>ROOM</span><strong>{room}</strong></div><div><span>STAY</span><strong>{from} <i>—</i> {to}</strong></div><p>{hotel}</p></section>
+    <nav className="guest-guide-tabs" role="tablist" aria-label="투숙객 서비스 메뉴"><button type="button" role="tab" aria-selected={activeTab === "guide"} className={activeTab === "guide" ? "is-active" : ""} onClick={() => setActiveTab("guide")}>호텔 안내</button><button type="button" role="tab" aria-selected={activeTab === "survey"} className={activeTab === "survey" ? "is-active" : ""} onClick={() => setActiveTab("survey")}>서비스 만족도</button></nav>
+    {activeTab === "guide" && <div className="guest-tab-panel" role="tabpanel">
+    <section className="guest-recommendation-card">
+      <div className="guest-recommendation-kicker"><Sparkles size={15} /><b>맞춤 추천</b><span>· 이용 데이터 기반</span></div>
+      <p>지난 {visits}회 방문 분석 결과, <strong>다이닝·웰니스</strong> 이용률이 높았어요.<br />저녁은 <strong>피자힐</strong> 리버뷰 디너를 추천드려요. 예약 여유가 있으며, 오전에는 <strong>힐링 포레스트</strong> 산책 코스가 잘 맞아요.</p>
+      <small>Synthetic recommendation · seed 20260727 · guest-guide-v1</small>
+    </section>
+    <section className="guest-course-section">
+      <div className="guest-section-heading"><Route size={18} /><h2>추천 코스 · 오늘</h2></div>
+      <ol>{RECOMMENDED_COURSE.map((item) => <li key={`${item.time}-${item.title}`}><i /><div><b>{item.time} · {item.title}</b><span>{item.category}</span></div></li>)}</ol>
+    </section>
+    <section className="guest-quick-guide">
+      <div className="guest-section-heading"><MapPin size={18} /><h2>호텔 가이드</h2></div>
+      <div>{HOTEL_QUICK_GUIDE.map(({ icon: Icon, label, value }) => <article key={label}><Icon size={16} /><b>{label}</b><span>{value}</span></article>)}</div>
+    </section>
+    <section className="app-section"><div className="app-section__title"><div><p>EXPLORE SENSE PLACE</p><h2>호텔 시설 안내</h2></div><span>Today</span></div>
+      <div className="facility-guide-grid">{FACILITIES.map((facility) => <article className="guide-facility-card" key={facility.name}><div className="guide-facility-icon">{facility.icon}</div><div><h3>{facility.name}</h3><p><Clock3 size={11} />{facility.time}</p><p><MapPin size={11} />{facility.location}</p></div><ChevronRight size={16} /></article>)}</div>
+    </section>
+    <section className="concierge-card"><div className="concierge-heading"><span><Bot size={19} /></span><div><p>AI CONCIERGE</p><h2>지금, 이렇게 이용해 보세요</h2></div><i>LIVE</i></div>
+      <ul><li><span>01</span><p><b>현재 수영장이 가장 한산합니다.</b><small>여유로운 이용을 원하시면 지금 방문해 보세요.</small></p></li><li><span>02</span><p><b>조식 혼잡 예상 시간은 오전 8:00~9:00입니다.</b><small>오전 7:30 이전 이용을 추천드립니다.</small></p></li><li><span>03</span><p><b>라운지 Happy Hour는 오후 6시부터입니다.</b><small>한강 전망 좌석은 조기 마감될 수 있습니다.</small></p></li></ul>
+    </section>
+    </div>}
+    {activeTab === "survey" && <div className="guest-tab-panel guest-survey-panel" role="tabpanel">
+    <section className="quick-survey-card"><div className="survey-kicker"><Sparkles size={15} /><span>TODAY'S EXPERIENCE</span></div><h2>현재까지 호텔 이용은<br />만족스러우신가요?</h2><ExperienceScale value={score} onChange={setScore} compact />
+      <div className="quick-comment"><label htmlFor="today-comment">의견 남기기 <span>(선택)</span></label><textarea id="today-comment" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="더 나은 경험을 위해 의견을 들려주세요." maxLength={300} /><VocPhotoUpload id="guest-guide-photos" files={photos} onChange={setPhotos} /><button type="button" disabled={!score || sent} onClick={() => { publishLiveVoc({ facilityId: "rooms", facilityName: `객실 ${room}호`, rating: score, comment, photos, source: "guest-guide" }); setSent(true); }}>{sent ? <><Check size={16} /> 전달 완료</> : <><Send size={15} /> 의견 보내기</>}</button>{!score && <small className="quick-comment__hint">만족도를 선택하면 의견을 전달할 수 있습니다.</small>}</div>
+    </section>
+    </div>}<footer className="hospitality-footer">SENSE PLACE HOTELS &amp; RESORTS · SEOUL</footer>
+  </div></main>;
+}
+
+const RATING_ITEMS = ["Breakfast", "Room", "Pool", "Fitness", "Staff", "Cleanliness"];
+const ISSUE_ITEMS = ["체크인", "조식", "객실", "시설", "주차", "직원 응대", "청결", "기타"];
+
+function StarRating({ value, onChange, label }) {
+  return <div className="star-rating" aria-label={`${label} 별점`}>{[1,2,3,4,5].map((star) => <button type="button" key={star} aria-label={`${star}점`} className={star <= value ? "is-filled" : ""} onClick={() => onChange(star)}>★</button>)}</div>;
+}
+
+export function StayReviewPage() {
+  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const room = params.get("room") || "1208"; const from = params.get("from") || "2026.08.07"; const to = params.get("to") || "2026.08.10"; const hotel = params.get("hotel") || "Grand SENSE PLACE Seoul";
+  const checkoutAt = parseAccessTime(params.get("checkoutAt"), Date.now() - HOUR_IN_MS);
+  const reviewExpiresAt = checkoutAt === null ? null : checkoutAt + (24 * HOUR_IN_MS);
+  const [overall, setOverall] = useState(null);
+  const [ratings, setRatings] = useState({ Breakfast:5, Room:5, Pool:4, Fitness:4, Staff:5, Cleanliness:5 });
+  const [issues, setIssues] = useState([]); const [comment, setComment] = useState(""); const [submitted, setSubmitted] = useState(false);
+  const [photos, setPhotos] = useState([]);
+  const toggleIssue = (issue) => setIssues((items) => items.includes(issue) ? items.filter((item) => item !== issue) : [...items, issue]);
+
+  if (checkoutAt === null) return <AccessUnavailable type="stay-review" reason="expired" />;
+  if (Date.now() < checkoutAt) return <AccessUnavailable type="stay-review" reason="not-open" />;
+  if (Date.now() >= reviewExpiresAt) return <AccessUnavailable type="stay-review" reason="expired" />;
+
+  if (submitted) return <main className="hospitality-page hospitality-complete"><section><div><Check size={30} /></div><p>THANK YOU</p><h1>소중한 리뷰를<br />남겨주셔서 감사합니다.</h1><span>고객님의 의견을 세심히 살펴<br />더 나은 SENSE PLACE 경험으로 보답하겠습니다.</span></section></main>;
+
+  return <main className="hospitality-page"><div className="hospitality-shell review-shell"><BrandHeader step="STAY REVIEW" />
+    <section className="review-thanks"><p>Thank You</p><h1>호텔을 이용해 주셔서<br />감사합니다.</h1><small>고객님의 소중한 경험을 들려주세요. · 체크아웃 후 24시간 동안 작성 가능</small></section>
+    <section className="booking-card"><div><span>ROOM</span><strong>{room}</strong></div><div><span>STAY</span><strong>{from} <i>—</i> {to}</strong></div><p>{hotel}</p></section>
+    <section className="overall-card"><p>OVERALL EXPERIENCE</p><h2>이번 숙박은 어떠셨나요?</h2><ExperienceScale value={overall} onChange={setOverall} /></section>
+    <section className="detailed-card"><div className="review-section-title"><span>01</span><div><p>DETAILS</p><h2>시설별 만족도</h2></div></div><div className="rating-list">{RATING_ITEMS.map((item) => <div key={item}><span>{item}</span><StarRating label={item} value={ratings[item]} onChange={(value) => setRatings((current) => ({...current,[item]:value}))} /></div>)}</div></section>
+    <section className="detailed-card"><div className="review-section-title"><span>02</span><div><p>IMPROVEMENT</p><h2>불편했던 점</h2><small>해당 항목을 모두 선택해 주세요.</small></div></div><div className="issue-grid">{ISSUE_ITEMS.map((issue) => <button type="button" key={issue} className={issues.includes(issue) ? "is-selected" : ""} onClick={() => toggleIssue(issue)}><i>{issues.includes(issue) && <Check size={13} />}</i>{issue}</button>)}</div></section>
+    <section className="detailed-card review-comment"><div className="review-section-title"><span>03</span><div><p>YOUR VOICE</p><h2>추가 의견 작성</h2></div></div><textarea value={comment} onChange={(e) => setComment(e.target.value)} maxLength={500} placeholder="기억에 남은 순간이나 개선되었으면 하는 점을 자유롭게 남겨주세요." /><small>{comment.length} / 500</small></section>
+    <VocPhotoUpload id="stay-review-photos" files={photos} onChange={setPhotos} />
+    <button className="review-submit" type="button" disabled={!overall} onClick={() => { const issueFacility = issues.includes("주차") ? "parking" : issues.includes("조식") ? "breakfast" : issues.includes("체크인") ? "front" : "rooms"; publishLiveVoc({ facilityId: issueFacility, facilityName: issueFacility === "breakfast" ? "조식당" : issueFacility === "parking" ? "주차장" : issueFacility === "front" ? "프런트" : `객실 ${room}호`, rating: overall, comment, reasons: issues, photos, source: "stay-review" }); setSubmitted(true); }}>리뷰 제출 <Send size={17} /></button><p className="review-privacy">작성하신 리뷰는 서비스 개선 목적으로 안전하게 관리됩니다.</p><footer className="hospitality-footer">SENSE PLACE HOTELS &amp; RESORTS · SEOUL</footer>
+  </div></main>;
+}

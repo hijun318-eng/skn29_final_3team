@@ -7,6 +7,7 @@ import { MonitoringPage } from "../pages/MonitoringPage";
 import { RoomOperationsPage } from "../pages/RoomOperationsPage";
 import { IssueAnalysisPage } from "../pages/IssueAnalysisPage";
 import { LoginPage } from "../pages/LoginPage";
+import { Console } from "../console/Console";
 import { getDemoSession } from "../services/demoAuth";
 
 export function App() {
@@ -25,6 +26,10 @@ export function App() {
   if (!isPublicPath && !getDemoSession()) {
     window.location.replace(`/login?next=${encodeURIComponent(`${currentPath}${window.location.search}`)}`);
     return null;
+  }
+
+  if (currentPath.startsWith("/console")) {
+    return <Console />;
   }
 
   if (window.location.pathname.startsWith("/feedback")) {

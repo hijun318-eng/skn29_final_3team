@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SensePlace 구조도</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css">
+<style>
+:root{
+--bg:#faf9f7;--surf:#fff;--surf2:#f2f0ec;--surf3:#e9e6e0;--line:#ddd9d1;--line2:#c2beb4;
+--tx:#1a1917;--tx2:#4a4844;--tx3:#7a7770;
+--ac:#4a41ab;--acbg:#eeedfe;--acln:#c5c1f2;
+--tl:#0d6350;--tlbg:#e1f5ee;--tlln:#93ddc6;
+--co:#8f3618;--cobg:#faece7;--coln:#f2bfad;
+--r:8px;
+}
+@media(prefers-color-scheme:dark){:root{
+--bg:#1b1a18;--surf:#2b2a27;--surf3:#403e3a;--surf2:#373532;--line:#474540;--line2:#5f5c56;
+--tx:#f7f5f1;--tx2:#cfccc5;--tx3:#9d9a93;
+--ac:#b8b3f2;--acbg:#332c78;--acln:#4d449e;
+--tl:#6ed6b2;--tlbg:#0a5544;--tlln:#0f7a61;
+--co:#f5a98d;--cobg:#6b2812;--coln:#8f3a1d;
+}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font-family:Pretendard,-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Malgun Gothic",sans-serif;line-height:1.68;font-size:15px;-webkit-font-smoothing:antialiased;font-feature-settings:"tnum"}
+.wrap{max-width:1280px;margin:0 auto;padding:30px 20px 90px}
+header{padding-bottom:4px}
+header h1{font-size:25px;font-weight:700;letter-spacing:-.6px}
+header p{color:var(--tx3);font-size:13px;margin-top:5px;letter-spacing:-.1px}
+nav{display:flex;gap:2px;margin:24px 0 24px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+nav button{background:none;border:none;border-bottom:2px solid transparent;padding:10px 15px;font:inherit;font-size:14px;font-weight:500;color:var(--tx3);cursor:pointer;margin-bottom:-1px;letter-spacing:-.2px;transition:.12s}
+nav button:hover{color:var(--tx)}
+nav button.on{color:var(--ac);border-bottom-color:var(--ac);font-weight:700}
+.view{display:none}.view.on{display:block}
+.scrollx{overflow-x:auto;background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:20px 18px}
+.scrollx svg{min-width:960px;display:block}
+.layout{display:grid;grid-template-columns:1fr 400px;gap:18px;align-items:start}
+@media(max-width:980px){.layout{grid-template-columns:1fr}}
+.ly{background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+.ly.dash{border-style:dashed;background:var(--acbg);border-color:var(--acln)}
+.ly.dash .lt{color:var(--ac)}
+.lt{font-size:14px;font-weight:600}
+.lm{font-size:11.5px;color:var(--tx3);margin-bottom:9px}
+.cw{display:flex;flex-wrap:wrap;gap:6px}
+.ch{background:var(--surf2);border:1px solid var(--line);border-radius:var(--r);padding:6px 10px;font-size:12.5px;color:var(--tx2);cursor:pointer;transition:.12s;font-family:inherit;text-align:left}
+.ch:hover{border-color:var(--line2);color:var(--tx)}
+.ch.sel{background:var(--ac);border-color:var(--ac);color:#fff}
+@media(prefers-color-scheme:dark){.ch.sel{color:#15132e}}
+.ch.t{background:var(--tlbg);border-color:var(--tlln);color:var(--tl)}
+.ch.t.sel{background:var(--tl);border-color:var(--tl);color:#04302a}
+.ch.n::after{content:"NEW";font-size:9px;margin-left:5px;opacity:.8;font-weight:700;letter-spacing:.5px}
+.arw{text-align:center;padding:5px 0}
+.arw button{background:none;border:none;color:var(--tx3);font:inherit;font-size:11.5px;cursor:pointer;padding:3px 9px;border-radius:20px}
+.arw button:hover{color:var(--ac);background:var(--surf2)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:620px){.grid2{grid-template-columns:1fr}}
+.panel{background:var(--surf);border:1px solid var(--line);border-radius:14px;padding:20px 22px;position:sticky;top:18px;max-height:calc(100vh - 36px);overflow-y:auto}
+@media(max-width:980px){.panel{position:static;max-height:none;margin-top:14px}}
+.pk{font-size:11px;color:var(--tx3);letter-spacing:.6px;font-weight:700}
+.pt{font-size:19px;font-weight:700;margin:3px 0 9px;letter-spacing:-.4px}
+.pd{font-size:13.5px;color:var(--tx2);margin-bottom:16px}
+.sec{margin-top:18px}
+.sh{font-size:10.5px;font-weight:700;color:var(--ac);letter-spacing:.8px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+.sec ul{list-style:none;font-size:12.5px;color:var(--tx2)}
+.sec li{padding:3px 0 3px 13px;position:relative}
+.sec li::before{content:"·";position:absolute;left:2px;color:var(--tx3)}
+.st{font-size:12.5px;color:var(--tx2);white-space:pre-line}
+.tr{display:grid;grid-template-columns:132px 1fr;gap:9px;font-size:12.5px;padding:4px 0}
+.tr b{color:var(--tx);font-weight:600}
+.tr span{color:var(--tx2)}
+.ep{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;background:var(--surf2);border:1px solid var(--line);border-radius:5px;padding:4px 7px;margin:3px 0;color:var(--tx2);display:block;word-break:break-all}
+.ep em{font-style:normal;font-weight:700;color:var(--ac);margin-right:6px}
+.warn{background:var(--cobg);border:1px solid var(--coln);border-radius:var(--r);padding:10px 12px;font-size:12.5px;color:var(--co);margin-top:15px}
+.hint{color:var(--tx3);font-size:13px;text-align:center;padding:40px 10px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--tx3);font-weight:600;font-size:12px}
+.tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;background:var(--surf2);border:1px solid var(--line);color:var(--tx2);white-space:nowrap}
+.note{background:var(--surf2);border:1px solid var(--line);border-radius:var(--r);padding:11px 13px;font-size:12.5px;color:var(--tx2);margin-top:14px}
+.fl{background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:8px}
+.flh{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:6px}
+.flnum{width:24px;height:24px;border-radius:50%;background:var(--ac);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+@media(prefers-color-scheme:dark){.flnum{color:#15132e}}
+.flt{font-size:15px;font-weight:600}
+.fld{font-size:13px;color:var(--tx2);margin:0 0 9px 33px}
+.flg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-left:33px}
+@media(max-width:700px){.flg{grid-template-columns:1fr}}
+.flb{background:var(--surf2);border:1px solid var(--line);border-radius:var(--r);padding:8px 10px}
+.flb b{font-size:10.5px;color:var(--tx3);letter-spacing:.5px;display:block;margin-bottom:3px}
+.flb span{font-size:12px;color:var(--tx2)}
+.fla{text-align:center;color:var(--tx3);font-size:14px;padding:1px 0}
+.ph{background:var(--surf);border:1px solid var(--line);border-radius:12px;margin-bottom:6px;overflow:hidden}
+.phh{background:var(--surf2);padding:9px 16px;font-size:13px;font-weight:600;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+.phh span{font-size:11px;color:var(--tx3);font-weight:400}
+.phb{padding:2px 16px 10px}
+.stp{padding:11px 0;border-top:1px solid var(--line)}
+.stp:first-child{border-top:none}
+.sth{display:flex;gap:9px;align-items:center;flex-wrap:wrap}
+.stn{width:22px;height:22px;border-radius:50%;background:var(--ac);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+@media(prefers-color-scheme:dark){.stn{color:#15132e}}
+.stt{font-size:14px;font-weight:600}
+.std{font-size:12.5px;color:var(--tx2);margin:5px 0 7px 31px}
+.stg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-left:31px}
+@media(max-width:640px){.stg{grid-template-columns:1fr}}
+.stg div{background:var(--surf2);border:1px solid var(--line);border-radius:6px;padding:6px 9px;font-size:11.5px;color:var(--tx2)}
+.stg b{color:var(--tx3);font-weight:600;display:block;font-size:10px;letter-spacing:.4px;margin-bottom:2px}
+.who{font-size:10.5px;padding:1px 8px;border-radius:20px;border:1px solid var(--line);background:var(--surf2);color:var(--tx2)}
+.who.g{background:var(--tlbg);border-color:var(--tlln);color:var(--tl)}
+.who.s{background:var(--acbg);border-color:var(--acln);color:var(--ac)}
+.fsteps{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+@media(max-width:900px){.fsteps{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.fsteps{grid-template-columns:1fr}}
+.fs{background:var(--surf);border:1px solid var(--line);border-radius:11px;padding:13px 15px}
+.fs .n{display:inline-flex;width:21px;height:21px;border-radius:50%;background:var(--ac);color:#fff;font-size:11px;font-weight:700;align-items:center;justify-content:center;margin-right:8px;vertical-align:middle}
+@media(prefers-color-scheme:dark){.fs .n{color:#15132e}}
+.fs b{font-size:14px;font-weight:700;letter-spacing:-.2px}
+.fs p{font-size:12px;color:var(--tx2);margin-top:7px;line-height:1.6}
+.sgrp{margin-bottom:22px}
+.sgrph{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+.sgrpt{font-size:16px;font-weight:700;letter-spacing:-.4px}
+.sgrpc{font-size:11px;color:var(--tx3);background:var(--surf2);border:1px solid var(--line);border-radius:20px;padding:1px 9px}
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:820px){.sgrid{grid-template-columns:1fr}}
+.sc{background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:15px 17px}
+.sc.pend{border-color:var(--coln);background:var(--cobg)}
+.scr{font-size:11px;color:var(--tx3);letter-spacing:.3px;margin-bottom:4px}
+.scn{font-size:15.5px;font-weight:700;letter-spacing:-.3px;line-height:1.4}
+.scv{font-size:11px;color:var(--tx3);font-family:ui-monospace,Menlo,monospace;margin-top:3px}
+.scw{font-size:12.5px;color:var(--tx2);margin-top:10px;line-height:1.6}
+.sca{font-size:11.5px;color:var(--tx3);margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+.sc.pend .scr,.sc.pend .sca{color:var(--co)}
+.sc.pend .sca{border-top-color:var(--coln)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1>SensePlace 구조도</h1>
+<p>2026-07-27 확정 · Temporal과 LangGraph는 정식 구성요소로 반영</p>
+</header>
+
+<nav>
+<button class="on" data-v="all">전체 한눈에</button>
+<button data-v="arch">계층별 상세</button>
+<button data-v="flow">서비스 · 데이터 흐름</button>
+<button data-v="stack">기술 스택</button>
+<button data-v="dec">확정 사항</button>
+</nav>
+
+<div class="view on" id="v-all">
+<div class="scrollx">
+<svg id="ovsvg" viewBox="0 0 1110 690" width="100%" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SensePlace 전체 아키텍처">
+<defs>
+<marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</marker>
+</defs>
+<style>
+.bx{fill:var(--surf2);stroke:var(--line2);stroke-width:1.2}
+.bxa{fill:var(--acbg);stroke:var(--acln);stroke-width:1.2}
+.bxt{fill:var(--tlbg);stroke:var(--tlln);stroke-width:1.2}
+.bxd{fill:var(--acbg);stroke:var(--acln);stroke-width:1.2;stroke-dasharray:6 4}
+.h{fill:var(--tx);font-size:14.5px;font-weight:700;letter-spacing:-.3px}
+.s{fill:var(--tx2);font-size:12px}
+.m{fill:var(--tx3);font-size:11px}
+.ln{stroke:var(--line2);stroke-width:1.7;fill:none}
+.lnd{stroke:var(--ac);stroke-width:1.7;fill:none;stroke-dasharray:5 4;opacity:.75}
+.lh{fill:var(--tx);font-size:13.5px;font-weight:600}
+.ck{cursor:pointer}
+.ck rect{fill:var(--surf2);stroke:var(--line);stroke-width:1}
+.ck text{fill:var(--tx2);font-size:11.5px}
+.ck:hover rect{fill:var(--acbg);stroke:var(--ac)}
+.ck:hover text{fill:var(--ac)}
+.cyl{fill:var(--surf);stroke:var(--line2);stroke-width:1.2}
+.cylt{fill:var(--surf2);stroke:var(--line2);stroke-width:1.2}
+.zone{fill:none;stroke:var(--line2);stroke-width:1.2;stroke-dasharray:7 5}
+.zoneh{fill:var(--acbg);stroke:var(--acln);stroke-width:1.2;stroke-dasharray:7 5}
+.act{fill:var(--surf2);stroke:var(--line2);stroke-width:1.2}
+.dot{fill:var(--line2)}
+.hair{stroke:var(--line);stroke-width:1}
+.num circle{fill:var(--ac);stroke:var(--bg);stroke-width:2}
+.num text{fill:#fff;font-size:11px;font-weight:700}
+@media(prefers-color-scheme:dark){.num text{fill:#15132e}}
+.g2{cursor:pointer}
+.g2:hover rect,.g2:hover path,.g2:hover ellipse{stroke:var(--ac);stroke-width:1.8}
+</style>
+
+<circle class="act" cx="70" cy="115" r="10"/>
+<path class="act" d="M52 145 a18 18 0 0 1 36 0 z"/>
+<text class="h" x="70" y="168" text-anchor="middle">손님</text>
+<text class="m" x="70" y="185" text-anchor="middle">토큰 링크 · 로그인 없음</text>
+
+<circle class="act" cx="70" cy="235" r="10"/>
+<path class="act" d="M52 265 a18 18 0 0 1 36 0 z"/>
+<text class="h" x="70" y="288" text-anchor="middle">직원</text>
+<text class="m" x="70" y="305" text-anchor="middle">로그인 · 역할 3종</text>
+
+<g class="g2" data-k="screen" data-i="2">
+<rect class="bx" x="150" y="85" width="190" height="215" rx="10"/>
+<line class="hair" x1="150" y1="113" x2="340" y2="113"/>
+<circle class="dot" cx="164" cy="99" r="3.5"/><circle class="dot" cx="176" cy="99" r="3.5"/><circle class="dot" cx="188" cy="99" r="3.5"/>
+<text class="h" x="245" y="137" text-anchor="middle">React SPA</text>
+<text class="m" x="245" y="155" text-anchor="middle">TypeScript · Vite · Tailwind</text>
+<text class="s" x="166" y="182">SP-01 로그인</text>
+<text class="s" x="166" y="202">SP-02 VOC 제출 · 손님</text>
+<text class="s" x="166" y="222">SP-03 실시간 모니터링</text>
+<text class="s" x="166" y="242">SP-04 대화형 조회</text>
+<text class="s" x="166" y="262">SP-05 보고서 목록 · 편집</text>
+<text class="s" x="166" y="282">SP-06 리뷰 · 07 기준 · 08 검토</text>
+</g>
+
+<rect class="zone" x="380" y="45" width="360" height="615" rx="14"/>
+<text class="m" x="398" y="66">서버 · Docker Compose 한 번에 기동</text>
+
+<g class="g2" data-k="api" data-i="0">
+<rect class="bxa" x="400" y="85" width="320" height="155" rx="10"/>
+<text class="h" x="560" y="110" text-anchor="middle">FastAPI</text>
+<text class="m" x="560" y="127" text-anchor="middle">Python 3.13 · 단일 워커</text>
+<text class="s" x="418" y="155">인증 · 권한 · 토큰 링크</text>
+<text class="s" x="418" y="177">VOC 접수 · 규칙 엔진 · 상태 전이</text>
+<text class="s" x="418" y="199">지표 조회 · 매뉴얼 검색 · 보고서</text>
+<text class="s" x="418" y="221">파일 업로드</text>
+</g>
+
+<g class="g2" data-k="batch" data-i="3">
+<rect class="bxt" x="400" y="275" width="320" height="95" rx="10"/>
+<text class="h" x="560" y="300" text-anchor="middle">AI 판정 워커</text>
+<text class="m" x="560" y="317" text-anchor="middle">API와 별도 프로세스 · ai_jobs 큐 소비</text>
+<text class="s" x="418" y="342">분류 xlm-roberta · 임베딩 e5</text>
+<text class="s" x="418" y="361">재판정 흐름 LangGraph</text>
+</g>
+
+<g class="g2" data-k="batch" data-i="4">
+<rect class="bxt" x="400" y="405" width="320" height="95" rx="10"/>
+<text class="h" x="560" y="430" text-anchor="middle">Temporal 워커</text>
+<text class="m" x="560" y="447" text-anchor="middle">작업지시 흐름 전담 · 자체 저장소</text>
+<text class="s" x="418" y="472">수락 대기 · 에스컬레이션 · 재배정</text>
+<text class="s" x="418" y="491">Signal로 직원 수락 수신</text>
+</g>
+
+<g class="g2" data-k="batch" data-i="0">
+<rect class="bxt" x="400" y="535" width="320" height="105" rx="10"/>
+<text class="h" x="560" y="560" text-anchor="middle">배치 · APScheduler</text>
+<text class="s" x="418" y="587">정의 변경 시 — DataHub 발행</text>
+<text class="s" x="418" y="607">하루 1회 — DataHub 동기화</text>
+<text class="s" x="418" y="627">새벽 — 집계 · 외부 리뷰 적재</text>
+</g>
+
+<rect class="zone" x="790" y="60" width="280" height="345" rx="14"/>
+<text class="m" x="806" y="81">데이터</text>
+
+<g class="g2" data-k="db" data-i="0">
+<path class="cyl" d="M812 116 V259 A118 16 0 0 0 1048 259 V116"/>
+<ellipse class="cylt" cx="930" cy="116" rx="118" ry="16"/>
+<text class="h" x="930" y="150" text-anchor="middle">PostgreSQL 18</text>
+<text class="m" x="930" y="169" text-anchor="middle">PGroonga · pgvector</text>
+<text class="s" x="930" y="199" text-anchor="middle">운영 · 마스터 · AI 결과</text>
+<text class="s" x="930" y="220" text-anchor="middle">보고서 스냅샷 · 메타 캐시</text>
+</g>
+
+<g class="g2" data-k="db" data-i="6">
+<path class="cyl" d="M812 314 V376 A118 14 0 0 0 1048 376 V314"/>
+<ellipse class="cylt" cx="930" cy="314" rx="118" ry="14"/>
+<text class="h" x="930" y="346" text-anchor="middle">파일 볼륨</text>
+<text class="m" x="930" y="365" text-anchor="middle">사진 첨부 · Docker volume</text>
+</g>
+
+<g class="g2" data-k="hub" data-i="3">
+<rect class="zoneh" x="790" y="445" width="280" height="175" rx="14"/>
+<text class="h" x="930" y="478" text-anchor="middle">DataHub</text>
+<text class="m" x="930" y="496" text-anchor="middle">별도 실행 · 꺼져도 서비스는 정상</text>
+<text class="s" x="930" y="527" text-anchor="middle">용어집 · 지표 정의</text>
+<text class="s" x="930" y="548" text-anchor="middle">계보 · 영향도 분석</text>
+<text class="m" x="930" y="583" text-anchor="middle">화면과 API는 직접 부르지 않는다</text>
+</g>
+
+<line class="ln" x1="92" y1="130" x2="144" y2="130" marker-end="url(#ar)"/>
+<line class="ln" x1="92" y1="250" x2="144" y2="250" marker-end="url(#ar)"/>
+<line class="ln" x1="344" y1="150" x2="394" y2="150" marker-end="url(#ar)"/>
+<text class="m" x="369" y="133" text-anchor="middle">REST · 동작</text>
+<line class="ln" x1="394" y1="210" x2="344" y2="210" marker-end="url(#ar)"/>
+<text class="m" x="369" y="231" text-anchor="middle">SSE 스트림</text>
+<line class="ln" x1="724" y1="150" x2="784" y2="150" marker-start="url(#ar)" marker-end="url(#ar)"/>
+<text class="m" x="754" y="133" text-anchor="middle">읽기 · 쓰기</text>
+<line class="ln" x1="560" y1="244" x2="560" y2="271" marker-start="url(#ar)" marker-end="url(#ar)"/>
+<text class="m" x="574" y="261" text-anchor="start">ai_jobs 큐</text>
+<line class="ln" x1="724" y1="330" x2="784" y2="330" marker-start="url(#ar)" marker-end="url(#ar)"/>
+<text class="m" x="754" y="313" text-anchor="middle">판정 저장</text>
+<path class="ln" d="M724 450 L762 450 L762 200 L784 200" marker-end="url(#ar)"/>
+<line class="lnd" x1="724" y1="570" x2="784" y2="570" marker-end="url(#ar)"/>
+<text class="m" x="754" y="553" text-anchor="middle">발행</text>
+<line class="lnd" x1="784" y1="605" x2="724" y2="605" marker-end="url(#ar)"/>
+<text class="m" x="754" y="626" text-anchor="middle">동기화</text>
+
+<g class="num"><circle cx="369" cy="150" r="11"/><text x="369" y="150" text-anchor="middle" dominant-baseline="central">1</text></g>
+<g class="num"><circle cx="754" cy="150" r="11"/><text x="754" y="150" text-anchor="middle" dominant-baseline="central">2</text></g>
+<g class="num"><circle cx="560" cy="258" r="11"/><text x="560" y="258" text-anchor="middle" dominant-baseline="central">3</text></g>
+<g class="num"><circle cx="369" cy="210" r="11"/><text x="369" y="210" text-anchor="middle" dominant-baseline="central">4</text></g>
+<g class="num"><circle cx="762" cy="450" r="11"/><text x="762" y="450" text-anchor="middle" dominant-baseline="central">5</text></g>
+<g class="num"><circle cx="754" cy="588" r="11"/><text x="754" y="588" text-anchor="middle" dominant-baseline="central">6</text></g>
+</svg>
+</div>
+<div class="fsteps" id="ovsteps"></div>
+<div class="note">상자를 누르면 <b>계층별 상세</b>로 넘어갑니다. 가로로 넘치면 그림을 좌우로 스크롤하세요.</div>
+</div>
+
+<div class="view" id="v-arch">
+<div class="layout">
+<div>
+<div class="ly"><div class="lt">화면</div><div class="lm">React · TypeScript · Vite · Tailwind</div><div class="cw" id="c-screen"></div></div>
+<div class="arw"><button data-x="proto">↓ REST · 동작 엔드포인트 · SSE · multipart</button></div>
+<div class="ly"><div class="lt">API</div><div class="lm">FastAPI · Python 3.13</div><div class="cw" id="c-api"></div></div>
+<div class="arw"><button data-x="none">↓</button></div>
+<div class="grid2">
+<div class="ly"><div class="lt">AI 계층</div><div class="lm">로컬 CPU · 총 4GB 이내</div><div class="cw" id="c-ai"></div></div>
+<div class="ly"><div class="lt">워크플로 · 배치</div><div class="lm">APScheduler · Temporal</div><div class="cw" id="c-batch"></div></div>
+</div>
+<div class="arw"><button data-x="none">↓</button></div>
+<div class="ly"><div class="lt">저장</div><div class="lm">PostgreSQL 18 · PGroonga · pgvector · 로컬 볼륨</div><div class="cw" id="c-db"></div></div>
+<div class="arw"><button data-x="sync">⇅ 발행 배치가 올리고 · 동기화 배치가 받아옴</button></div>
+<div class="ly dash"><div class="lt">DataHub</div><div class="lm">별도 실행 · 화면과 API는 직접 호출하지 않음</div><div class="cw" id="c-hub"></div></div>
+</div>
+<aside><div class="panel" id="panel"><div class="hint">왼쪽에서 항목을 선택하세요</div></div></aside>
+</div>
+</div>
+
+<div class="view" id="v-flow"><div id="flowbox"></div></div>
+
+<div class="view" id="v-stack">
+<div class="note" style="margin-top:0;margin-bottom:20px">역할마다 하나씩만 골랐습니다. Pydantic · psycopg처럼 자동으로 딸려오는 것과 Ruff · uv처럼 없어도 되는 것은 뺐습니다.</div>
+<div id="stackbody"></div>
+</div>
+
+<div class="view" id="v-dec">
+<table><thead><tr><th style="width:150px">항목</th><th style="width:180px">결정</th><th>이유</th></tr></thead><tbody id="decbody"></tbody></table>
+</div>
+</div>
+
+<script>
+const D={
+screen:[
+{k:"SP-01",n:"로그인",who:"직원 전원",p:"P0",
+d:"직원이 아이디와 비밀번호로 들어옵니다. 역할에 따라 보이는 메뉴가 달라집니다.",
+comp:["아이디·비밀번호 입력, 표시 토글","실패 횟수 표시 (3/5)","데모 계정 3개 선택 버튼","역할 배지 — 운영자 / 실무자 / 관리자"],
+struct:"로그인 성공 → 서버가 세션을 만들고 HttpOnly 쿠키 발급 → 이후 모든 요청에 쿠키가 자동으로 붙음 → 서버가 매 요청마다 역할과 담당 구역을 확인.\n토큰을 자바스크립트에서 다루지 않으므로 화면 코드가 털려도 세션이 새지 않습니다.",
+tech:[["React Hook Form","입력 검증을 화면에서 먼저 걸러냄"],["세션 쿠키","HttpOnly · Secure · SameSite=Lax"],["CSRF 토큰","상태를 바꾸는 요청에만 헤더로 요구"],["bcrypt","비밀번호를 그대로 저장하지 않음"]],
+api:[["POST","/auth/login"],["POST","/auth/logout"],["GET","/auth/me"]],
+data:["users — 계정, 역할, 담당 구역","sessions — 세션 키, 만료 시각","login_attempts — 실패 횟수, 잠금 시각"],
+warn:"역할 검사는 화면에서만 하면 안 됩니다. 메뉴를 숨겨도 API를 직접 부르면 뚫리므로 서버에서 다시 확인합니다."},
+
+{k:"SP-02",n:"VOC 제출",who:"손님",p:"P0",
+d:"손님이 문자로 받은 링크로 들어와 불편을 남깁니다. 로그인이 없습니다.",
+comp:["예약 카드 — 체크인·체크아웃·객실","투숙 안내 탭 — 조식·셔틀·WiFi·프런트","맞춤 추천 — 화면만, 고정 데이터","불편 입력 — 1000자","사진 첨부 — 최대 3장, 장당 10MB","장소 선택 — 구역 고르면 시설 목록이 바뀜","제출 완료 화면 — 접수번호"],
+struct:"토큰 링크 접속 → 서버가 토큰의 만료·사용횟수를 확인 → 예약 정보를 돌려줌 → 손님이 제출 → VOC 저장 후 3초 안에 접수번호 반환 → AI 판정은 뒤에서 따로 돌림.\nAI 판정을 기다리지 않고 먼저 응답합니다. 판정이 늦어도 손님은 기다리지 않습니다.",
+tech:[["React","단일 페이지, 탭 전환"],["secrets 43자 토큰","URL을 찍어서 맞출 수 없게"],["multipart 업로드","사진은 JSON으로 못 보냄"],["rate limit","재제출 60초 · IP 분당 10회"]],
+api:[["GET","/voc/{token}"],["POST","/voc/{token}/submit"],["POST","/voc/{token}/files"]],
+data:["reservations — 예약, 객실, 기간","access_tokens — 토큰 해시, 만료, 사용횟수","voc — 원문, 장소, 접수 시각","voc_files — 파일 경로, 크기, 형식"],
+warn:"만료된 토큰에 410을 주되 예약 정보는 절대 담지 않습니다. 오류 메시지로 남의 예약을 확인할 수 있으면 안 됩니다."},
+
+{k:"SP-03",n:"실시간 모니터링",who:"직원 전원",p:"P0",
+d:"접수된 건을 평면도와 목록으로 봅니다. 여기서 상태를 바꿉니다.",
+comp:["KPI 4장 — 오늘 건수·미해결·평균 처리·위험 미처리","평면도 — 시설 마커, 심각도 색","VOC 목록 — 정렬, 무한 스크롤","필터 3종 — 구역·심각도·상태","상세 패널 — 원문, 사진, 판정, 이력","알림함 — 읽음 처리","근무표 — 관리자만"],
+struct:"들어오면 전체를 한 번 조회 → 그다음부터 SSE 스트림을 구독하거나 12초 polling → 새 이벤트가 오면 목록과 마커만 갱신 → 마커를 누르면 상세를 따로 조회 → 상태 변경은 별도 POST.\nSSE와 polling 두 방식을 모두 만들어 비교합니다. 화면 코드는 같고 갱신 계층만 바꿔 끼웁니다.",
+tech:[["SVG 좌표 오버레이","지도 라이브러리 없이 평면도. 위경도가 필요 없음"],["EventSource","SSE 구독. 브라우저 기본 기능"],["setInterval","polling 방식. 12초"],["TanStack Query","서버 데이터 캐시와 갱신"]],
+api:[["GET","/cases?zone=&sev=&status="],["GET","/cases/{id}"],["POST","/cases/{id}/transition"],["GET","/events (SSE 스트림)"]],
+data:["voc — 현재 상태, 심각도","voc_events — 상태 변경 이력","locations — 구역·시설·평면도 좌표","notifications — 알림, 읽음 여부"],
+warn:"SSE 자체의 한계가 아니라 지금 이벤트를 서버 메모리로 전달하기 때문에 워커 1개로 띄웁니다. 상태 변경 이력은 voc_events에 남으므로, 연결이 끊기면 Last-Event-ID 이후 변경을 다시 조회해 복구합니다."},
+
+{k:"SP-04",n:"대화형 조회",who:"운영자 · 관리자",p:"P1",
+d:"자연어로 지표를 물어보면 미리 정해둔 쿼리로 답합니다. 답을 그대로 보고서에 담습니다.",
+comp:["대화 이력 목록","질문 입력창","추천 질문 버튼","에이전트 실행 5단계 표시","답변 — 요약 문장 + 차트","담기 버튼","담긴 블록 개수 표시"],
+struct:"질문 입력 → 문장을 숫자로 바꿔 지표 카탈로그에서 가까운 후보 검색 → 유사도가 기준을 넘으면 metric_key 확정 → 기간과 구역을 문장에서 뽑아 허용 목록과 대조 → FastAPI 코드에 있는 그 key의 쿼리에 값만 끼워 실행 → 결과와 요약 반환.\n기준을 못 넘으면 답하지 않고 지원 가능한 질문을 대신 보여줍니다. 모르면 지어내지 않고 모른다고 합니다.",
+tech:[["pgvector","질문과 지표 설명의 뜻 비교"],["코드 내 쿼리 맵","metric_key → 미리 작성한 SQL. 카탈로그가 SQL을 들고 있지 않음"],["허용값 검증","기간·구역 등 화이트리스트만 통과"],["Recharts","답변 차트"]],
+api:[["POST","/query"],["GET","/query/catalog"],["POST","/reports/{id}/blocks"]],
+data:["metric_catalog — 지표 이름, 뜻, 단위, 소유자, 버전 (SQL 없음)","query_audit_log — 누가 뭘 물었고 뭘 실행했는지","chat_sessions — 대화 이력"],
+warn:"안전장치는 다섯입니다. 등록된 지표만 · 코드에 있는 쿼리만 · 허용값만 · 읽기 전용 계정 · 실행 제한과 기록. 자세한 내용은 API의 지표 조회 항목에 있습니다."},
+
+{k:"SP-05a",n:"보고서 목록",who:"직원 전원",p:"P0",
+d:"주간·월간·분기 보고서 목록입니다. 초안은 이어서 쓰고 확정본은 읽기 전용입니다.",
+comp:["필터 — 유형·기간·상태","목록 표 — 유형·기간·상태·작성자","새 보고서 버튼","사본 만들기","정의 변경 경고 배지"],
+struct:"목록을 부를 때 확정본마다 참조한 지표 정의 버전과 지금 버전을 비교 → 다르면 경고 배지를 붙임 → 배지를 누르면 옛 정의와 새 정의로 계산한 값을 나란히 보여줌.\n이 비교는 배치가 미리 계산해 캐시에 넣어둡니다. 목록을 열 때마다 DataHub를 부르지 않습니다.",
+tech:[["React","목록과 필터"],["메타 캐시 조회","영향도 결과를 미리 계산해둠"]],
+api:[["GET","/reports"],["POST","/reports"],["POST","/reports/{id}/duplicate"],["GET","/reports/{id}/impact"]],
+data:["reports — 유형, 기간, 상태, 작성자","metric_impact_cache — 어떤 정의 변경이 어떤 보고서에 영향"],
+warn:""},
+
+{k:"SP-05b",n:"보고서 편집",who:"운영자 · 관리자",p:"P0",
+d:"블록을 끌어다 놓아 보고서를 만듭니다. 담아둔 지표를 꺼내 쓰고 PDF로 뽑습니다.",
+comp:["좌측 서랍 — SP-04에서 담아둔 항목","캔버스 — 블록 배치","블록 종류 — 차트·글·구역 섹션","블록 폭 — 전체 / 절반","자연어로 블록 만들기","PDF 내보내기","확정 버튼"],
+struct:"블록을 끌어 놓으면 순서와 폭만 저장 → 확정을 누르면 각 블록의 계산 결과와 그때 쓴 지표 정의 버전을 별도 스냅샷 표에 복사 → 이후 원본 데이터나 정의가 바뀌어도 확정본 숫자는 그대로.\n확정본이 PDF 캡처가 아니라 다시 계산할 수 있는 기록이라는 게 핵심입니다.",
+tech:[["HTML5 드래그앤드롭","외부 라이브러리 없이"],["Recharts","차트 블록"],["브라우저 인쇄 API","PDF 출력"]],
+api:[["PATCH","/reports/{id}/blocks"],["POST","/reports/{id}/finalize"],["GET","/reports/{id}/export.pdf"]],
+data:["report_blocks — 블록 종류, 순서, 폭, 내용","report_snapshots — 확정 시점 값, 기준 시각, 정의 버전, 시간대"],
+warn:"확정하면 수정할 수 없습니다. 고치려면 사본을 떠야 합니다."},
+
+{k:"SP-06",n:"외부 리뷰",who:"관리자",p:"P2",
+d:"네이버·구글 등에 올라온 리뷰를 채널별로 보고 감성 분포를 확인합니다.",
+comp:["채널 필터 — 네이버·카카오·트립어드바이저·구글","목록 / 대시보드 전환","기간 — 주·월·분기","감성 분포 원형 차트","통계 기반 개선 제안 카드","리뷰 카드 — 평점, 원문, 주제"],
+struct:"합성 리뷰를 배치로 적재 → SP-03이 쓰는 것과 같은 분류 모델을 리뷰 글에 그대로 적용 → 내부 VOC와 같은 카테고리 축으로 집계.\n주제 모델을 따로 만들지 않습니다. 축이 같아야 손님이 밖에 쓴 불만과 안에 접수된 불만을 비교할 수 있습니다.",
+tech:[["분류 모델 재사용","내부 VOC와 같은 카테고리"],["Recharts","감성 분포"],["합성 데이터","크롤링하지 않음"]],
+api:[["GET","/reviews?src=&period="],["GET","/reviews/stats"]],
+data:["external_reviews — 채널, 평점, 원문, 감성, 주제, 게시 시각"],
+warn:"크롤링하지 않습니다. 화면에 합성 데이터라는 배지를 계속 띄웁니다."},
+
+{k:"SP-07",n:"기준 관리",who:"관리자",p:"P1",
+d:"카테고리와 지표의 뜻을 고칩니다. 저장 전에 어떤 보고서가 영향받는지 보여줍니다.",
+comp:["카테고리 트리 편집기","지표 정의 편집기 — 계산식·설명·소유자","영향 범위 미리보기","변경 이력","버전 비교"],
+struct:"편집 → 저장 전에 메타 캐시의 계보를 뒤져 영향받는 보고서를 보여줌 → 확인하면 PostgreSQL에 새 버전을 추가 (기존 정의는 덮어쓰지 않음) → 발행 배치가 그 정의를 DataHub에 등록 → 동기화 배치가 DataHub에서 계보와 영향도를 다시 받아옴.\n화면은 DataHub를 직접 부르지 않습니다. 두 배치가 각각 한 방향씩 맡습니다.",
+tech:[["React","트리 편집"],["메타 캐시 계보 조회","영향 범위 계산"],["버전 테이블","덮어쓰기 없이 추가만"]],
+api:[["GET","/taxonomy"],["POST","/taxonomy/versions"],["GET","/metrics"],["POST","/metrics/{id}/versions"],["GET","/metrics/{id}/impact"]],
+data:["taxonomy_versions — 카테고리 트리, 버전, 효력 시점","metric_definitions — 지표 계산식, 설명, 버전","metric_lineage_cache — DataHub에서 받은 계보"],
+warn:"신규 화면입니다. DataHub 연결의 출발점이라 이게 먼저 있어야 SP-05a의 경고 배지가 의미를 갖습니다."},
+
+{k:"SP-08",n:"AI 검토 대기",who:"운영자",p:"P1",
+d:"AI가 헷갈려한 건만 모아 사람이 고칩니다.",
+comp:["대기 큐 목록 — 이유별 정렬","원문 표시","AI 판정값과 확신도","항목별 승인 / 수정 / 반려","일괄 처리","처리한 사람과 시각"],
+struct:"판정을 저장할 때 확신도가 기준보다 낮거나 규칙끼리 충돌하면 검토 과제를 만듦 → 사람이 카테고리만, 감성만 따로 고침 → 고친 값은 AI 결과를 덮어쓰지 않고 새 버전으로 저장 → 나중에 학습 데이터로 씀.\n건 전체를 통으로 반려하지 않고 항목 단위로 고칩니다. 카테고리는 맞는데 감성만 틀린 경우가 많습니다.",
+tech:[["React","큐 목록과 항목 편집"],["확신도 임계값","긴급 요청 후보와 카테고리에 서로 다른 값"]],
+api:[["GET","/review-tasks?reason="],["POST","/review-tasks/{id}/resolve"],["POST","/review-tasks/bulk"]],
+data:["review_tasks — 대상 항목, 이유, 상태, 검토자","classification_results — 판정값, 확신도, 모델 버전, 현재값 여부"],
+warn:"신규 화면입니다. 이게 없으면 AI 판정이 사람 손을 안 거치고 그대로 확정됩니다."}
+],
+
+api:[
+{k:"API",n:"인증 · 권한",p:"P0",
+d:"세션을 확인하고 역할과 담당 구역을 검사합니다.",
+comp:["로그인 · 로그아웃 · 내 정보","세션 확인 미들웨어","역할 검사","담당 구역 검사","CSRF 토큰 검증"],
+struct:"모든 요청이 미들웨어를 먼저 지납니다. 세션 쿠키를 확인하고 사용자를 붙인 뒤, 각 엔드포인트에서 역할과 구역을 다시 봅니다.\n실무자는 자기 구역 밖의 건을 조회는 해도 상태는 못 바꿉니다. 두 검사가 다릅니다.",
+tech:[["FastAPI Depends","의존성으로 권한 검사를 주입"],["세션 쿠키","HttpOnly · Secure · SameSite=Lax"],["CSRF 토큰","POST·PATCH·DELETE에 헤더로 요구"],["Origin 검사","요청 출처 확인"]],
+api:[["POST","/auth/login"],["GET","/auth/me"]],
+data:["users","sessions","login_attempts"],
+warn:"GET 요청은 절대 상태를 바꾸지 않게 합니다. 링크만 눌러도 데이터가 바뀌면 안 됩니다."},
+
+{k:"API",n:"토큰 링크",p:"P0",
+d:"예약 1건에 링크 하나를 발급하고 체크아웃 24시간 뒤 만료시킵니다.",
+comp:["토큰 발급","토큰 검증","만료 처리","재발급","사용 횟수 제한"],
+struct:"예약이 확정되면 43자 무작위 토큰을 만들어 예약에 연결합니다. 링크로 들어오면 만료 시각과 사용 횟수를 확인하고 통과하면 예약 정보를 돌려줍니다.\n체크아웃 24시간 뒤에는 410을 주고 조회와 제출을 모두 막습니다.",
+tech:[["secrets 모듈","예측 불가능한 난수. random 모듈은 안 씀"],["rate limit","재제출 60초 · IP 분당 10회"],["토큰 해시 저장","평문으로 저장하지 않음"]],
+api:[["GET","/voc/{token}"],["POST","/admin/tokens/{id}/reissue"]],
+data:["access_tokens — 토큰 해시, 만료, 사용횟수, 회수 여부"],
+warn:"토큰을 해시로 저장합니다. DB가 새도 링크를 그대로 쓸 수 없게."},
+
+{k:"API",n:"VOC 접수",p:"P0",
+d:"손님이 보낸 글·사진·장소를 받아 저장하고 AI 판정을 요청합니다.",
+comp:["입력 검증 — 길이, 필수값","장소 존재 확인","VOC 저장","파일 연결","ai_jobs 작업 등록","접수번호 반환"],
+struct:"VOC 저장과 ai_jobs 작업 등록을 한 트랜잭션으로 묶고 접수번호를 3초 안에 돌려줍니다. 판정은 별도 AI 워커가 큐를 집어 처리합니다.\nFastAPI 백그라운드 태스크로 돌리지 않는 이유는 두 가지입니다. 판정 도중 서버가 죽으면 접수는 남고 판정만 사라지며, 모델이 CPU를 오래 쓰면 다른 API 응답까지 느려집니다. 큐를 DB에 두면 워커가 죽어도 작업이 남아 다시 집어갑니다.",
+tech:[["Pydantic","입력 형식 검증"],["SQLAlchemy","저장"],["ai_jobs 테이블","작업 큐. Redis도 Celery도 필요 없음"]],
+api:[["POST","/voc/{token}/submit"]],
+data:["voc","voc_files","voc_events","ai_jobs — 상태, 시도 횟수, 마지막 오류"],
+warn:"존재하지 않는 시설 코드가 오면 거부합니다. 합성 데이터 생성기도 같은 검사를 통과해야 합니다."},
+
+{k:"API",n:"규칙 엔진",p:"P0",
+d:"AI 판정과 장소·이력을 합쳐 심각도와 우선순위를 계산하고 담당을 정합니다.",
+comp:["긴급 요청 후보 판정","우선순위 계산","담당 조직 후보 뽑기","근무 여부 확인","에스컬레이션 조건"],
+struct:"AI는 글에서 보이는 단서만 제안합니다. 실제 우선순위와 담당은 규칙이 정합니다.\n키워드로 긴급 가능성이 높다고 판단되면 전체 분류를 기다리지 않고 우선순위를 올려 운영자 확인 목록 맨 위에 띄웁니다. 그 다음 AI 카테고리와 장소·반복 이력을 합쳐 우선순위를 확정하고, 자산 전담 조직 → 위치 책임 조직 → 카테고리 전문 조직 순으로 후보를 뽑아 근무 여부를 확인합니다.",
+tech:[["일반 파이썬 코드","규칙 엔진 라이브러리를 쓰지 않음"],["정책 버전 테이블","규칙을 바꿔도 과거 판정이 안 흔들림"]],
+api:[["내부 호출 (엔드포인트 없음)"]],
+data:["policy_versions — 규칙 버전, 효력 시작·종료","voc — 계산된 우선순위","work_orders — 배정 결과, 제외 사유"],
+warn:"이 제품은 고객 불편 접수와 운영 지원입니다. 호텔의 시설 안전 시스템을 대신하지 않고 자동으로 긴급 출동을 지시하지도 않습니다. 긴급 요청 후보는 운영자가 먼저 보도록 순서를 올리는 것까지입니다. AI가 DB를 직접 바꾸지도 않습니다."},
+
+{k:"API",n:"상태 전이",p:"P0",
+d:"접수에서 완료까지 상태를 옮기고 누가 언제 왜 바꿨는지 남깁니다.",
+comp:["허용 전이 검사","권한 검사","이력 기록","동시 수정 방지"],
+struct:"접수 → 확인 → 진행중 → 완료 네 단계입니다. 어떤 상태에서 어디로 갈 수 있는지는 코드 한 곳에만 정의하고 화면과 API가 그걸 참조합니다.\n이력은 덮어쓰지 않고 계속 쌓기만 합니다. 지금 상태는 마지막 줄이 아니라 별도 컬럼으로 들고 있습니다.",
+tech:[["상태 머신 정의","허용 전이를 한 곳에만"],["SELECT FOR UPDATE","두 사람이 동시에 바꾸는 것 방지"]],
+api:[["POST","/cases/{id}/transition"]],
+data:["voc — 현재 상태","voc_events — 이전 상태, 이후 상태, 행위자, 사유, 시각"],
+warn:"실무자는 자기 담당 구역만 바꿀 수 있습니다. 화면에서 버튼을 숨기는 것과 별개로 서버에서 막습니다."},
+
+{k:"API",n:"지표 조회",p:"P1",
+d:"자연어 질문을 카탈로그에 맞춰보고 미리 정해둔 읽기 전용 쿼리를 실행합니다.",
+comp:["질문 임베딩","카탈로그 후보 검색","유사도 기준 판정","기간·장소 추출","허용 파라미터 검증","쿼리 실행","요약 생성","감사 로그"],
+struct:"질문을 숫자로 바꿔 카탈로그에서 가장 가까운 지표를 찾습니다. 유사도가 기준 아래면 답하지 않고 지원 질문을 제안합니다.\n중요한 건 쿼리가 어디 있느냐입니다. DataHub에서 받아오는 건 지표의 이름·뜻·단위·소유자·버전뿐이고, 실제 실행할 SQL은 FastAPI 코드 안에 metric_key별로 미리 작성해 둡니다. 사용자 입력에서는 기간과 구역처럼 허용 목록에 있는 값만 파라미터로 넘어갑니다.",
+tech:[["pgvector","질문과 지표 설명 비교"],["코드 내 쿼리 맵","metric_key → 미리 작성한 SQL. DataHub가 SQL을 결정하지 않음"],["허용값 검증","기간·구역 등 화이트리스트만 통과"],["읽기 전용 계정","쓰기 권한이 없는 DB 연결"],["실행 제한","시간 상한 · 결과 행 수 상한"]],
+api:[["POST","/query"],["GET","/query/catalog"]],
+data:["metric_catalog — 이름·뜻·단위·소유자·버전 (SQL 없음)","query_audit_log — 누가 무엇을 언제 실행했는지"],
+warn:"안전장치는 하나가 아니라 다섯입니다. 등록된 지표만 · 코드에 있는 쿼리만 · 허용값만 · 읽기 전용 계정 · 실행 제한과 기록. DataHub 쪽 메타데이터가 SQL 실행 내용을 결정하지 않게 분리하는 것이 핵심입니다."},
+
+{k:"API",n:"매뉴얼 검색",p:"P2",
+d:"단어 검색과 뜻 검색을 같이 돌리고 결과를 합쳐 근거 문장을 돌려줍니다.",
+comp:["질의 정규화","단어 검색","뜻 검색","결과 합치기","필터 적용","근거 문단 반환"],
+struct:"같은 질의로 두 검색을 동시에 돌립니다. 단어 검색은 정확한 설비명을 잡고, 뜻 검색은 표현이 달라도 잡습니다.\n두 결과를 순위 기준으로 합칩니다. 점수 크기를 맞추는 것보다 순위를 합치는 쪽이 두 검색의 척도가 달라도 안정적입니다.",
+tech:[["PGroonga","한국어 단어 검색. 내장 검색은 조사 때문에 못 씀"],["pgvector","뜻이 비슷한 문단"],["순위 합산","두 결과를 섞는 방식"]],
+api:[["GET","/manuals/search?q="]],
+data:["manuals — 문서, 버전, 효력 시점","manual_chunks — 문단, 임베딩, 임베딩 모델 버전"],
+warn:"매뉴얼은 문단 단위로 자릅니다. 글자 수로 기계적으로 자르면 조치 단계가 중간에서 끊깁니다."},
+
+{k:"API",n:"보고서",p:"P0",
+d:"블록을 저장하고 확정합니다. 확정하면 지표 정의 버전까지 함께 얼립니다.",
+comp:["보고서 생성·조회·사본","블록 부분 저장","확정 처리","스냅샷 생성","PDF 내보내기","영향도 조회"],
+struct:"초안일 때는 블록만 저장합니다. 확정을 누르면 각 블록을 그 시점에 다시 계산하고, 결과값·조회 기준 시각·적용 필터·지표 정의 버전·계산 시간대를 스냅샷 표에 복사합니다.\n재현을 보장하려면 값만으로는 부족합니다. 원본 데이터는 계속 들어오므로, 스냅샷에 남긴 조회 기준 시각까지 써야 나중에 같은 값이 다시 나옵니다.",
+tech:[["트랜잭션","확정은 전부 되거나 전부 안 되거나"],["스냅샷 테이블","확정본 전용 저장소"]],
+api:[["GET","/reports"],["PATCH","/reports/{id}/blocks"],["POST","/reports/{id}/finalize"],["GET","/reports/{id}/impact"]],
+data:["reports","report_blocks","report_snapshots"],
+warn:"모델이 관여하지 않은 단순 건수 지표에 모델 버전을 억지로 붙이지 않습니다."},
+
+{k:"API",n:"파일 업로드",p:"P2",
+d:"사진을 받아 크기와 형식을 확인하고 저장합니다.",
+comp:["크기 제한","형식 확인","파일명 변경","이미지 다시 인코딩","경로 반환"],
+struct:"확장자만 믿지 않고 파일 내용의 앞부분을 읽어 실제 형식을 확인합니다. 원본 파일명은 버리고 UUID로 저장합니다.\n이미지를 한 번 다시 저장해 촬영 위치 같은 메타데이터를 지웁니다.",
+tech:[["로컬 볼륨","오브젝트 스토리지 없이. 이 규모엔 충분"],["Pillow","이미지 재인코딩"],["UUID 파일명","경로 추측과 덮어쓰기 방지"]],
+api:[["POST","/voc/{token}/files"],["GET","/files/{id}"]],
+data:["voc_files — 경로, 원본명, 크기, 형식, 업로드 시각"],
+warn:"원본 파일명을 경로에 쓰면 상위 폴더로 빠져나가는 공격이 가능합니다."}
+],
+
+ai:[
+{k:"AI",n:"분류 xlm-roberta",p:"P0",
+d:"글을 읽고 카테고리·감성·긴급도를 한 번에 찍습니다. AI 워커 프로세스 안에서 돕니다.",
+comp:["백본 1개 — xlm-roberta-base","머리 3개 — 긴급 요청 후보 · 카테고리 · 감성","확신도 보정 계층","임계값 — 과제별로 다름"],
+struct:"백본 하나가 문장을 읽어 뜻을 숫자로 압축하고, 그 위에 머리 세 개가 각자 다른 답을 냅니다. 모델을 세 개 띄우는 것보다 메모리와 속도가 유리합니다.\n출력은 글이 아니라 항목별 확률입니다. 그래서 확신도를 그대로 쓸 수 있고 SP-08로 보낼 기준을 정할 수 있습니다.\nAPI 프로세스가 아니라 AI 워커에서 로드합니다. 모델이 CPU를 오래 써도 API 응답이 느려지지 않습니다.",
+tech:[["xlm-roberta-base","2.7억 개 · 100개 언어 사전학습 · 1GB"],["멀티헤드","백본 공유로 메모리 절약"],["온도 보정","확률이 실제 정확도와 맞게 조정. 파라미터가 하나라 데이터가 적어도 됨"],["PyTorch","학습과 추론"]],
+api:[["내부 호출"]],
+data:["classification_results — 판정값, 확률, 모델 버전, 생성 시각"],
+warn:"글은 못 씁니다. 읽고 분류만 합니다. 지연 목표는 노트북 CPU 기준 건당 0.1초이며, 실제 값은 측정해서 확인해야 합니다."},
+
+{k:"AI",n:"임베딩 e5",p:"P1",
+d:"문장을 숫자 목록으로 바꿉니다. 숫자가 비슷하면 뜻이 비슷하다고 봅니다.",
+comp:["매뉴얼 문단 임베딩","질문 임베딩","지표 설명 임베딩"],
+struct:"미리 매뉴얼 문단을 전부 숫자로 바꿔 DB에 넣어둡니다. 검색할 때는 질문만 숫자로 바꿔 가장 가까운 문단을 찾습니다.\n매뉴얼이 수백 문단 규모라 전부 훑어도 빠릅니다. 근사 검색 색인은 나중에 느려지면 넣습니다.",
+tech:[["multilingual-e5-base","다국어. 한국어 질문으로 영어 문서도 찾음"],["pgvector","숫자 목록 저장과 비교"],["모델 버전 기록","모델을 바꾸면 다시 만들 대상을 찾을 수 있게"]],
+api:[["내부 호출"]],
+data:["manual_chunks — 문단별 임베딩","metric_catalog — 지표 설명 임베딩"],
+warn:"모델을 바꾸면 저장된 숫자를 전부 다시 만들어야 합니다. 섞이면 검색 결과가 망가집니다."},
+
+{k:"AI",n:"재판정 흐름 LangGraph",p:"P1",
+d:"과거 판정을 다시 매기는 흐름입니다. 사람 승인에서 멈췄다가 이어집니다.",
+comp:["재판정 후보 뽑기","근거 수집 단계","옛 판정과 새 판정 비교","사람 승인 중단점","결과 저장"],
+struct:"실시간 접수 처리 경로가 아닙니다. 필요할 때 돌리는 별도 기능이라 외부 모델 API를 써도 되고, 실패해도 본 흐름에 영향이 없습니다.\n중간 지점을 DB에 저장합니다. 메모리에만 저장하면 프로세스를 껐을 때 이어서 못 합니다. 사람이 승인할 때까지 며칠이 걸려도 그 자리에서 다시 시작됩니다.",
+tech:[["LangGraph 1.2","단계와 분기 정의, 중단점"],["PostgreSQL 체크포인터","중간 지점을 DB에 저장. 메모리 저장은 안 씀"],["별도 엔드포인트","본 흐름과 완전히 분리"]],
+api:[["POST","/rejudge/start"],["POST","/rejudge/{thread}/resume"]],
+data:["langgraph_checkpoints — 중간 상태","classification_results — 새 판정을 새 버전으로 추가"],
+warn:"결과가 현재 운영 판정을 자동으로 바꾸지 않습니다. 사람이 승인한 것만 현재값으로 올라갑니다."},
+
+{k:"실험",n:"생성형 비교",p:"실험",
+d:"RunPod에서 생성형 모델도 학습시켜 같은 평가 세트로 비교합니다. 제품에는 넣지 않습니다.",
+comp:["학습 스크립트","같은 평가 세트","비교표 — 정확도·속도·메모리"],
+struct:"제품 경로와 완전히 분리해서 오프라인으로만 돌립니다. 결과는 비교표 한 장으로 남기고, encoder보다 나빠도 그대로 씁니다.\n실패해도 발표에 아무 영향이 없습니다.",
+tech:[["RunPod","GPU 대여"],["LoRA","전체가 아니라 일부만 학습해 비용 절감"]],
+api:[["없음"]],
+data:["평가 결과 CSV"],
+warn:"제품이 완성된 뒤에 착수합니다. 이걸 먼저 하면 제품이 안 끝납니다."}
+],
+
+batch:[
+{k:"배치",n:"야간 집계 · 리뷰 적재",p:"P2",
+d:"정해진 시각에 도는 반복 작업입니다. 사람을 기다리는 흐름은 Temporal이 맡습니다.",
+comp:["일별·구역별·카테고리별 집계","합성 외부 리뷰 적재와 분류","오래된 임시 파일 정리"],
+struct:"낮에 조회할 때마다 전체를 훑지 않도록 새벽에 미리 계산해 표에 넣어둡니다. 집계 결과에도 계산 시각과 기준 시간대를 함께 남깁니다.\n작업지시 수락 대기 같은 흐름은 여기 넣지 않습니다. 그건 Temporal 담당입니다.",
+tech:[["APScheduler 3.11.3","매일 새벽 실행"],["PostgreSQL JobStore","서버를 껐다 켜도 예약이 살아 있음"],["SQL 집계","별도 도구 없이"],["분류 모델 재사용","리뷰에도 같은 카테고리 적용"]],
+api:[["없음"]],
+data:["daily_metrics — 집계값, 계산 시각, 시간대","external_reviews"],
+warn:"집계 기준 시간대는 사업장 시간대입니다. UTC로 자르면 하루 경계가 어긋납니다."},
+
+{k:"배치",n:"메타데이터 발행",p:"P1",
+d:"SP-07에서 저장한 새 정의를 DataHub에 등록합니다. 나가는 방향입니다.",
+comp:["새 버전 정의 조회","DataHub에 설명·단위·소유자 등록","우리 표 사이의 계보 등록","발행 결과 기록"],
+struct:"PostgreSQL → DataHub 방향입니다. SP-07에서 지표 뜻을 고치면 그 내용이 DataHub에 올라가야 계보와 영향도가 계산됩니다.\n이 배치가 없으면 기준 관리 화면에서 저장한 변경이 DataHub에 전달될 방법이 없고, 그러면 영향도 경고가 영원히 발동하지 않습니다.",
+tech:[["APScheduler","정의 변경 후 실행"],["DataHub 수집 API","쓰기"],["멱등 처리","같은 버전을 두 번 올려도 안전"]],
+api:[["없음"]],
+data:["metric_definitions 읽기 · publish_log 기록"],
+warn:"화면과 API는 여전히 DataHub를 직접 부르지 않습니다. 이 배치만 씁니다."},
+
+{k:"배치",n:"메타 동기화",p:"P1",
+d:"하루 한 번 DataHub에서 계보와 영향도를 가져와 우리 DB에 저장합니다. 들어오는 방향입니다.",
+comp:["용어집 가져오기","계보 가져오기","영향도 미리 계산","동기화 시각 기록"],
+struct:"DataHub → PostgreSQL 방향입니다. 발행 배치가 올린 정의로 DataHub가 계보와 영향 범위를 계산해 두면, 이 배치가 그 결과를 받아 캐시 표에 넣습니다.\n화면과 API는 이 캐시만 읽습니다. 그래서 DataHub가 꺼져 있어도 서비스가 마지막 동기화 시점 기준으로 정상 동작합니다.",
+tech:[["APScheduler","하루 1회"],["DataHub REST API","읽기만"],["캐시 테이블","화면이 읽는 유일한 곳"]],
+api:[["없음"]],
+data:["metric_catalog","metric_lineage_cache","metric_impact_cache","sync_log — 마지막 동기화 시각"],
+warn:"발행과 동기화는 서로 다른 정보를 나릅니다. 발행은 우리가 정한 뜻을 올리고, 동기화는 DataHub가 계산한 계보와 영향도를 받아옵니다. 한 배치로 합치지 않습니다."},
+
+{k:"워커",n:"AI 판정 워커",p:"P0",
+d:"ai_jobs 큐에서 작업을 하나씩 집어 판정하고 결과를 저장합니다. API와 별도 프로세스입니다.",
+comp:["대기 작업 집기","모델 로드 (프로세스당 1회)","판정 실행","결과 저장","화면 갱신 이벤트 생성","실패 시 재시도"],
+struct:"API가 VOC와 함께 ai_jobs에 작업을 넣어두면 이 워커가 집어갑니다. 여러 워커가 같은 작업을 집지 않도록 잠금을 걸고 가져옵니다.\n워커가 죽어도 작업은 큐에 남아 다음 워커가 다시 집습니다. FastAPI 백그라운드 태스크였다면 프로세스와 함께 사라집니다.",
+tech:[["SELECT FOR UPDATE SKIP LOCKED","중복 처리 방지"],["ai_jobs 테이블","Redis도 Celery도 없이 DB만으로"],["재시도 횟수 상한","무한 재시도 방지"]],
+api:[["없음"]],
+data:["ai_jobs — 상태, 시도 횟수, 마지막 오류","classification_results 저장"],
+warn:"모델이 이 프로세스에 로드됩니다. API 프로세스는 가벼워지고, 판정이 오래 걸려도 화면 응답이 느려지지 않습니다."},
+
+{k:"워크플로",n:"작업지시 Temporal",p:"P1",
+d:"작업지시의 생애 전체를 맡습니다. 선택 기능이 아니라 이 흐름의 담당입니다.",
+comp:["Temporal 서버 컨테이너","워커 프로세스","case_work_order 워크플로 하나","사람 신호 수신 · 타이머 · 재배정"],
+struct:"작업지시 생성 → 담당자 수락 대기 → 시간 초과 → 상위 담당자 통보 → 재배정 → 완료 또는 취소. 이 한 흐름을 Temporal이 처음부터 끝까지 들고 갑니다.\n같은 흐름을 APScheduler로 중복 구현하지 않고 기능 플래그도 두지 않습니다. 역할이 겹치면 취소와 재시도의 의미가 서로 달라 추상화가 새고, 어느 쪽이 진짜인지 알 수 없게 됩니다.",
+tech:[["Temporal Server 1.31","여러 단계 중간 상태를 서버가 보관"],["Temporal Python SDK","워크플로와 Activity 작성"],["Signal","직원 수락·완료를 워크플로에 전달"],["Timer","수락 기한과 에스컬레이션"]],
+api:[["POST","/work-orders/{id}/accept (Signal 전달)"]],
+data:["work_orders — 현재 상태, 조회용","Temporal 자체 저장소 — 진행 위치와 이력"],
+warn:"APScheduler와 역할이 다릅니다. Temporal은 여러 단계로 이어지고 사람을 기다리는 흐름, APScheduler는 정해진 시각에 도는 반복 작업. 겹치지 않습니다."}
+],
+
+db:[
+{k:"DB",n:"운영 데이터",p:"P0",
+d:"VOC 원문, 현재 상태, 처리 이력, 담당자가 들어갑니다.",
+comp:["voc — 원문, 장소, 상태, 심각도","voc_events — 상태 변경 이력","work_orders — 배정, 기한","notifications — 알림"],
+struct:"이 제품의 진짜 원본입니다. 다른 어디에도 복사본을 두지 않습니다.\n모든 표에 UUID와 생성·수정 시각이 있고, 시각은 UTC로 저장한 뒤 화면에서 사업장 시간대로 바꿉니다.",
+tech:[["PostgreSQL 18","트랜잭션과 참조 무결성"],["timestamptz","시간대를 함께 저장"],["외래키 제약","존재하지 않는 시설 참조 차단"]],
+api:[],data:[],
+warn:"상태 이력은 절대 지우거나 고치지 않고 추가만 합니다."},
+
+{k:"DB",n:"마스터 데이터",p:"P0",
+d:"구역과 시설 목록, 카테고리 분류, 직원과 권한이 들어갑니다.",
+comp:["locations — 구역·시설·평면도 좌표","assets — 설비","taxonomy_versions — 카테고리 트리","users — 계정, 역할, 담당 구역"],
+struct:"위치는 상위·하위로 이어지는 구조입니다. 모든 유형이 같은 깊이일 필요가 없어서, 객실과 레스토랑이 나란히 올 수 있습니다.\n좌표는 위경도가 아니라 층 평면도 안의 x·y입니다.",
+tech:[["재귀 참조","상위 위치를 자기 표에서 참조"],["버전 테이블","카테고리를 바꿔도 과거 판정이 유지됨"]],
+api:[],data:[],
+warn:"SP-07에서 편집합니다. 여기가 바뀌면 영향도가 발생합니다."},
+
+{k:"DB",n:"AI 결과",p:"P0",
+d:"판정값, 확신도, 어느 모델이 언제 판정했는지가 들어갑니다.",
+comp:["classification_results — 과제별 판정","review_tasks — 검토 대기"],
+struct:"덮어쓰지 않고 버전별로 계속 추가합니다. 지금 값은 현재값 표시로 구분합니다.\n모델을 바꾸거나 사람이 고쳐도 예전 판정이 남아 있어서 무엇이 어떻게 바뀌었는지 볼 수 있습니다.",
+tech:[["현재값 플래그","조회는 기본적으로 현재값만"],["모델 버전 컬럼","어느 모델의 판정인지 추적"]],
+api:[],data:[],
+warn:""},
+
+{k:"DB",n:"매뉴얼 · 임베딩",p:"P2",
+d:"매뉴얼 문단과 그 문단을 숫자로 바꾼 값이 같이 들어갑니다.",
+comp:["manuals — 문서, 버전, 효력 시점","manual_chunks — 문단, 임베딩"],
+struct:"문단 단위로 나눠 저장합니다. 적용 조건, 금지 행동, 조치 단계 같은 항목이 각각 하나의 문단입니다.\n검색 결과에 문서명과 항목명을 같이 보여주려고 문단마다 상위 정보를 함께 넣습니다.",
+tech:[["pgvector","숫자 목록 컬럼과 거리 비교"],["PGroonga","같은 본문에 단어 색인"]],
+api:[],data:[],
+warn:"임베딩 차원은 모델에 따라 다릅니다. 표 정의에 숫자를 박아넣지 말고 설정으로 뺍니다."},
+
+{k:"DB",n:"보고서 · 스냅샷",p:"P0",
+d:"보고서 블록 내용과 확정 시점의 값·정의 버전이 들어갑니다.",
+comp:["reports — 유형, 기간, 상태","report_blocks — 블록 순서, 폭, 내용","report_snapshots — 확정 시점 값"],
+struct:"초안은 블록만 저장하고, 확정하면 계산 결과를 스냅샷으로 복사합니다.\n스냅샷에는 값뿐 아니라 기준 시각, 적용 필터, 지표 정의 버전, 데이터 버전, 계산 시간대가 함께 들어갑니다. 나중에 그대로 다시 계산해 검증할 수 있어야 합니다.",
+tech:[["별도 스냅샷 테이블","원본과 분리"],["정의 버전 참조","확정 시점 버전을 직접 가리킴"]],
+api:[],data:[],
+warn:"확정본이 원본 표를 다시 조회하면 안 됩니다. 그러면 나중에 값이 바뀝니다."},
+
+{k:"DB",n:"메타 캐시",p:"P1",
+d:"DataHub에서 하루 한 번 받아온 지표 뜻과 영향도 결과가 들어갑니다.",
+comp:["metric_catalog — 지표 이름, 뜻, 단위, 소유자, 버전","metric_lineage_cache — 계보","metric_impact_cache — 영향받는 보고서","sync_log — 동기화 시각"],
+struct:"화면과 API는 항상 이 표만 읽습니다. DataHub를 직접 부르는 코드는 발행 배치와 동기화 배치 둘뿐입니다.\nDataHub가 꺼져 있어도 마지막 동기화 시점 기준으로 정상 동작하고, 화면에 동기화 시각만 표시됩니다.",
+tech:[["캐시 테이블","런타임 의존 차단"],["동기화 시각 표시","데이터가 언제 것인지 화면에 명시"]],
+api:[],data:[],
+warn:"여기에 실행할 SQL을 넣지 않습니다. 쿼리는 FastAPI 코드 안에 metric_key별로 두고, 이 표에는 이름·뜻·단위·소유자·버전만 둡니다. 그래야 DataHub 쪽 메타데이터가 SQL 실행 내용을 결정하지 못합니다."},
+
+{k:"저장",n:"파일 저장소",p:"P2",
+d:"손님이 올린 사진을 저장합니다. DB에는 경로만 둡니다.",
+comp:["로컬 볼륨 디렉터리","UUID 파일명","이미지 재인코딩본"],
+struct:"파일 자체는 DB에 넣지 않고 볼륨에 두고, DB에는 경로와 크기와 형식만 기록합니다.\n오브젝트 스토리지를 따로 세우지 않습니다. 사진이 건당 최대 3장이라 이 규모에는 볼륨으로 충분합니다.",
+tech:[["Docker 볼륨","컨테이너를 지워도 파일이 남음"],["Pillow","재인코딩으로 촬영 위치 메타데이터 제거"]],
+api:[],data:[],
+warn:"발표 시연 뒤 파일이 남습니다. 초기화 스크립트에 볼륨 비우기를 넣어둡니다."}
+],
+
+hub:[
+{k:"DataHub",n:"용어집",p:"P1",
+d:"카테고리와 구역 용어의 뜻을 한 곳에 모읍니다.",
+comp:["용어 정의","동의어","금지된 혼용 표현","소유자"],
+struct:"내부 VOC와 외부 리뷰가 같은 용어를 쓰게 만듭니다. 한 곳만 고치면 양쪽이 따라옵니다.\n지표와는 다른 대상입니다. 카테고리·구역 용어는 지표 카탈로그가 아니라 별도 용어 캐시로 들어옵니다.",
+tech:[["DataHub Business Glossary","용어집 기능"],["발행 배치","taxonomy_versions에서 올림"]],
+api:[["발행 배치가 쓰고 동기화 배치가 읽음"]],
+data:["glossary_cache — 용어 정의, 동의어, 금지 표현","taxonomy_cache — 카테고리 계층과 버전"],
+warn:"metric_catalog는 지표용입니다. 카테고리와 구역 용어는 여기 넣지 않습니다."},
+
+{k:"DataHub",n:"지표 정의",p:"P1",
+d:"평균 처리시간이 접수부터인지 확인부터인지 같은 걸 명확히 적어둡니다.",
+comp:["설명 — 사람이 읽는 정의","단위","소유 조직","버전과 효력 시점"],
+struct:"이 제품의 차별점이 시작되는 곳입니다. 화면에 뜬 숫자가 무슨 뜻인지 답할 수 있게 만듭니다.\n같은 41분이라도 접수부터인지 확인부터인지에 따라 완전히 다른 숫자입니다.\nSP-07에서 고치면 발행 배치가 여기 올리고, 동기화 배치가 계보와 영향도를 받아옵니다.",
+tech:[["DataHub 데이터셋 속성","지표 메타데이터"],["발행 배치","PostgreSQL에서 올림"]],
+api:[["발행 배치가 쓰고 동기화 배치가 읽음"]],data:["metric_definitions ↔ metric_catalog"],
+warn:"실행할 SQL은 여기 두지 않습니다. 뜻과 소유자만 둡니다. 쿼리는 FastAPI 코드 안에 있습니다."},
+
+{k:"DataHub",n:"계보",p:"P1",
+d:"원천 표에서 집계를 거쳐 보고서 지표까지 어떤 경로로 만들어졌는지 추적합니다.",
+comp:["표 사이 연결","컬럼 사이 연결","변환 단계"],
+struct:"voc 표의 접수 시각 컬럼이 일별 집계를 거쳐 보고서의 평균 처리시간이 되는 경로를 컬럼 단위로 기록합니다.\n이게 있어야 거꾸로 영향도를 찾을 수 있습니다.",
+tech:[["DataHub Lineage","컬럼 수준 계보"]],
+api:[["배치가 읽기만"]],data:["metric_lineage_cache로 동기화"],
+warn:""},
+
+{k:"DataHub",n:"영향도 분석",p:"P1",
+d:"지표 뜻을 바꾸면 어떤 보고서가 영향받는지 거꾸로 찾아냅니다.",
+comp:["하위 자산 조회","영향 보고서 목록","영향 블록 개수"],
+struct:"계보를 반대 방향으로 타고 내려가 이 컬럼이나 지표를 쓰는 모든 것을 찾습니다. 배치가 미리 계산해 캐시에 넣고, SP-05a가 그 캐시를 읽어 경고 배지를 띄웁니다.\n이 한 줄이 DataHub를 쓴 이유 전부입니다.",
+tech:[["DataHub Impact Analysis","역방향 계보 조회"]],
+api:[["배치가 읽기만"]],data:["metric_impact_cache로 동기화"],
+warn:""}
+],
+
+extra:{
+proto:{k:"통신",n:"화면과 API 사이",p:"—",
+d:"REST가 기본이지만 전부 REST는 아닙니다.",
+comp:["자원 조회·생성 — REST","상태 변경 — 동작 엔드포인트","대화형 조회 — 질문을 보내는 방식","실시간 갱신 — SSE 스트림","사진 업로드 — multipart"],
+struct:"VOC·보고서·사용자처럼 자원이 명확한 건 REST가 맞습니다.\n상태 변경은 자원이 아니라 동작이라 POST /cases/{id}/transition 같은 형태를 씁니다. 순수 REST는 아니지만 이게 더 명확합니다.\n대화형 조회는 질문을 보내고 답을 받는 형태라 POST /query입니다.\n실시간은 서버가 밀어주는 거라 REST가 아닙니다.",
+tech:[["REST + JSON","FastAPI가 문서를 자동으로 만들어줌"],["OpenAPI 타입 생성","서버 스키마로 프론트 타입을 자동 생성. 필드명이 바뀌면 빌드가 깨져 알려줌"],["동작 엔드포인트","상태 전이처럼 자원이 아닌 것"],["SSE","서버가 브라우저로 밀어줌"],["multipart","파일 업로드"],["GraphQL 미채택","화면마다 필요한 필드가 크게 다르지 않아 이득이 없음"],["gRPC 미채택","브라우저에서 직접 쓰기 어려움. 프록시가 하나 더 필요"],["tRPC 미채택","백엔드가 TypeScript여야 함. 우리는 Python"]],
+api:[["GET","/cases  (조회 · REST)"],["POST","/cases/{id}/transition  (동작)"],["POST","/query  (질문)"],["GET","/events  (SSE 스트림)"],["POST","/voc/{token}/files  (multipart)"]],
+data:[],
+warn:"GET은 절대 상태를 바꾸지 않습니다."},
+sync:{k:"연결",n:"DataHub 연동 — 배치 2개",p:"P1",
+d:"방향이 서로 다른 두 배치가 각각 한 쪽씩 맡습니다.",
+comp:["발행 배치 — PostgreSQL에서 DataHub로","동기화 배치 — DataHub에서 PostgreSQL로","화면과 API는 캐시만 읽음","동기화 시각을 화면에 표시"],
+struct:"나가는 방향\nSP-07 기준 관리 → PostgreSQL에 새 정의 버전 저장 → 발행 배치 → DataHub에 설명·소유자·계보 등록\n\n들어오는 방향\nDataHub가 계보와 영향 범위 계산 → 동기화 배치 → PostgreSQL 캐시 → 보고서 화면 경고 배지\n\n두 배치를 한 개로 합치지 않습니다. 나르는 정보가 서로 다릅니다. 발행은 우리가 정한 뜻을 올리고, 동기화는 DataHub가 계산한 결과를 받아옵니다.",
+tech:[["APScheduler","정의 변경 후 발행 · 하루 1회 동기화"],["DataHub 수집 API","발행 배치가 씀"],["DataHub REST API","동기화 배치가 읽음"],["캐시 테이블","화면이 읽는 유일한 곳"]],
+api:[["두 배치 내부에서만"]],
+data:["metric_definitions → publish_log","metric_catalog · metric_lineage_cache · metric_impact_cache · sync_log"],
+warn:"화면과 API가 DataHub를 직접 부르지 않는 원칙은 그대로입니다. 다만 읽기만 하는 단방향이 아니라 방향이 다른 두 흐름입니다. 발행 배치가 없으면 SP-07에서 저장한 변경이 DataHub에 갈 방법이 없어 영향도가 영원히 발동하지 않습니다."}
+}
+};
+
+const FLOW=[
+{ph:"접수",sub:"손님이 불편을 남긴다",steps:[
+ {t:"링크 발급",a:"시스템",w:"배치",
+  d:"예약이 확정되면 그 예약 전용 링크를 만들어 문자로 보냅니다. 체크인 때 다시 한 번 보냅니다.",
+  data:"access_tokens 생성 — 토큰 해시, 만료 시각",tech:"secrets 43자 · 체크아웃 +24시간 만료"},
+ {t:"불편 제출",a:"손님",w:"SP-02",
+  d:"링크로 들어와 글·사진·장소를 남깁니다. 로그인이 없습니다. 저장이 끝나면 3초 안에 접수번호를 돌려줍니다.",
+  data:"voc · voc_files 저장 · voc_events 첫 줄",tech:"REST + multipart · 재제출 60초 제한"}
+]},
+{ph:"판정",sub:"AI가 읽고 규칙이 정한다",steps:[
+ {t:"AI 판정",a:"시스템",w:"AI 워커",
+  d:"API가 아니라 별도 워커가 ai_jobs 큐에서 작업을 집어 처리합니다. 카테고리·감성·긴급도를 한 번에 찍고 확신도를 함께 냅니다. 워커가 죽어도 작업이 큐에 남아 다시 집힙니다.",
+  data:"ai_jobs 소비 · classification_results 추가 · 확신도 낮으면 review_tasks 생성",tech:"xlm-roberta 멀티헤드 · SKIP LOCKED로 중복 방지"},
+ {t:"규칙 계산",a:"시스템",w:"API",
+  d:"AI 판정과 장소·반복 이력을 합쳐 우선순위를 정하고 담당 조직을 배정합니다. 긴급 요청 후보는 전체 분류를 기다리지 않고 확인 목록 맨 위로 올립니다.",
+  data:"voc 갱신 · work_orders · notifications 생성",tech:"파이썬 규칙 코드 · policy_versions 참조"}
+]},
+{ph:"처리",sub:"직원이 조치한다",steps:[
+ {t:"화면 반영",a:"시스템",w:"SP-03",
+  d:"새 접수가 모니터링 화면의 목록과 평면도에 나타납니다. 목표는 15초 이내입니다.",
+  data:"읽기만",tech:"SSE 스트림 또는 12초 polling · 두 방식 비교"},
+ {t:"직원이 처리",a:"직원",w:"SP-03",
+  d:"평면도에서 마커를 눌러 상세를 보고, 필요하면 매뉴얼을 검색해 조치 방법을 확인한 뒤 상태를 바꿉니다.",
+  data:"voc 상태 갱신 · voc_events 추가 · work_orders 갱신",tech:"매뉴얼 검색은 pgvector + PGroonga"},
+ {t:"수락 대기와 에스컬레이션",a:"시스템",w:"Temporal",
+  d:"작업지시가 만들어지면 워크플로가 시작됩니다. 담당자 수락을 기다리다가 기한이 지나면 상위 담당자에게 넘기고 재배정합니다. 워커를 껐다 켜도 진행 위치가 그대로 남습니다.",
+  data:"work_orders 상태 갱신 · notifications 생성",tech:"Temporal Timer와 Signal · 직원 수락은 Signal로 전달"}
+]},
+{ph:"보정",sub:"사람이 AI를 고친다",steps:[
+ {t:"AI 검토",a:"직원",w:"SP-08",
+  d:"확신도가 낮았던 건을 사람이 항목 단위로 고칩니다. 카테고리는 맞는데 감성만 틀린 경우가 많아 통으로 반려하지 않습니다.",
+  data:"classification_results 새 버전 · review_tasks 종료",tech:"고친 값은 다음 학습 데이터로 표시"}
+]},
+{ph:"분석",sub:"물어보고 보고서로 만든다",steps:[
+ {t:"지표 조회",a:"직원",w:"SP-04",
+  d:"자연어로 물어보면 지표 카탈로그에서 가장 가까운 항목을 찾아 미리 정해둔 쿼리를 실행합니다. 못 찾으면 답하지 않습니다.",
+  data:"metric_catalog 조회 · query_audit_log 기록",tech:"pgvector 유사도 · 파라미터 바인딩 · 읽기 전용 계정"},
+ {t:"보고서 확정",a:"직원",w:"SP-05b",
+  d:"조회한 결과를 담아 블록으로 배치합니다. 확정하면 그 시점의 값과 지표 정의 버전이 함께 얼어붙습니다.",
+  data:"report_blocks 저장 · 확정 시 report_snapshots 복사",tech:"트랜잭션 · 기준 시각과 시간대 함께 기록"}
+]},
+{ph:"관리",sub:"기준을 바꾸고 그 여파를 확인한다",steps:[
+ {t:"정의 변경",a:"직원",w:"SP-07",
+  d:"지표의 뜻이나 카테고리를 고칩니다. 저장 전에 어떤 보고서가 영향받는지 미리 보여줍니다. 기존 정의는 덮어쓰지 않고 새 버전으로 쌓입니다.",
+  data:"metric_definitions · taxonomy_versions 새 버전",tech:"저장 전 metric_lineage_cache 조회"},
+ {t:"DataHub 발행과 동기화",a:"시스템",w:"배치 2개",
+  d:"발행 배치가 새 정의를 DataHub에 올리고, 동기화 배치가 DataHub가 계산한 계보와 영향 범위를 받아옵니다. 방향이 다른 두 흐름입니다.",
+  data:"publish_log 기록 → metric_impact_cache 갱신",tech:"발행은 수집 API로 쓰기 · 동기화는 REST로 읽기"},
+ {t:"영향도 경고",a:"직원",w:"SP-05a",
+  d:"확정 보고서 목록에 경고 배지가 뜹니다. 누르면 옛 정의와 새 정의로 계산한 값을 나란히 비교합니다.",
+  data:"metric_impact_cache 조회 · report_snapshots와 대조",tech:"화면은 캐시만 읽음. DataHub를 직접 부르지 않음"}
+]},
+{ph:"재판정",sub:"기준이 바뀐 뒤 과거를 다시 본다",steps:[
+ {t:"재판정 대상 선택",a:"직원",w:"SP-07 → 재판정",
+  d:"바뀐 기준의 영향을 받는 과거 건을 고릅니다. 기간·카테고리·구역으로 범위를 좁힙니다.",
+  data:"voc 조회 · rejudge_runs 생성",tech:"LangGraph 실행 시작 · thread_id 발급"},
+ {t:"새 판정과 비교",a:"시스템",w:"LangGraph",
+  d:"당시 판정과 새 기준을 같이 불러와 다시 판정하고 둘을 비교합니다. 차이가 크거나 확신도가 낮으면 사람 검토로 넘깁니다.",
+  data:"classification_results 후보 생성 (현재값 아님)",tech:"PostgreSQL 체크포인터에 중간 지점 저장"},
+ {t:"사람 승인과 반영",a:"직원",w:"SP-08",
+  d:"흐름이 여기서 멈춥니다. 며칠 뒤 사람이 승인하면 그 자리에서 이어져 새 판정을 현재값으로 올리고 우선순위와 담당 조직을 다시 계산합니다.",
+  data:"classification_results 현재값 승격 · voc 우선순위 재계산",tech:"interrupt로 중단 · 같은 thread_id로 재개"}
+]}
+];
+
+const OVSTEP=[
+["요청","브라우저가 API로 보낸다. 자원 조회는 REST, 상태 변경은 동작 엔드포인트"],
+["저장","API가 VOC와 ai_jobs 작업을 함께 쓰고 3초 안에 접수번호를 돌려준다"],
+["판정","별도 AI 워커가 큐를 집어 판정한다. 워커가 죽어도 작업은 큐에 남는다"],
+["알림","판정이 끝나면 SSE로 모니터링 화면에 밀어준다"],
+["작업지시","Temporal이 수락 대기와 에스컬레이션을 끝까지 들고 간다"],
+["메타 연동","정의를 바꾸면 발행 배치가 DataHub로 올리고, 동기화 배치가 계보와 영향도를 받아온다"]
+];
+
+const STACK=[
+{g:"프론트엔드",items:[
+ {r:"화면 프레임워크",n:"React + TypeScript + Vite",v:"19.2 · 5.x · 8.1",alt:"Vue · Next.js",
+  w:"목업이 이미 React라 그대로 이어갑니다. 화면 9개에 서버 렌더링이 필요 없습니다."},
+ {r:"차트",n:"Recharts",v:"3.x",alt:"Chart.js · ECharts",
+  w:"보고서와 대시보드가 막대 · 선 · 누적 수준이면 이걸로 충분합니다."}
+]},
+{g:"백엔드",items:[
+ {r:"API 서버",n:"FastAPI",v:"0.139 · Python 3.13",alt:"Django · Spring",
+  w:"AI를 같은 언어로 붙일 수 있습니다. 0.135부터 SSE가 내장이라 추가 라이브러리가 필요 없습니다. 최신은 0.140.0이지만 릴리스 직후라 4주 지난 뒤 올립니다."},
+ {r:"AI 작업 큐",n:"PostgreSQL 테이블",v:"ai_jobs",alt:"Redis · Celery · RabbitMQ",
+  w:"API가 작업만 넣고 별도 워커가 집어갑니다. 서버가 죽어도 판정이 사라지지 않고 API 응답도 느려지지 않습니다. 새 미들웨어가 필요 없습니다."},
+ {r:"반복 작업 스케줄러",n:"APScheduler",v:"3.11.3",alt:"Celery · Airflow",
+  w:"정해진 시각에 도는 작업만 맡습니다. 야간 집계, DataHub 발행과 동기화, 리뷰 적재."},
+ {r:"업무 오케스트레이션",n:"Temporal",v:"1.31",alt:"APScheduler만 · Airflow",
+  w:"작업지시 생성부터 수락 대기 · 에스컬레이션 · 재배정 · 완료까지 한 흐름을 통째로 맡습니다. 기능 플래그 없이 이 흐름의 담당입니다."}
+]},
+{g:"데이터베이스",items:[
+ {r:"운영 데이터",n:"PostgreSQL",v:"18.4",alt:"MySQL · MongoDB",
+  w:"트랜잭션과 참조 무결성이 필요합니다. 확장으로 검색까지 한 곳에서 해결됩니다."},
+ {r:"의미 검색",n:"pgvector",v:"0.8.2",alt:"Elasticsearch · 별도 벡터 DB",
+  w:"매뉴얼이 수백 문단 규모라 DB 확장으로 충분합니다. 0.8.2는 보안 수정본입니다."},
+ {r:"한국어 단어 검색",n:"PGroonga",v:"4.0.4 이상 (PG18 지원)",alt:"pg_trgm · 앱에서 형태소 분석",pend:1,
+  w:"아직 확정하지 않았습니다. 내장 검색은 조사 때문에 못 쓰지만, 매뉴얼이 8개 규모면 pgvector만으로 충분할 수 있습니다. 검색 평가를 먼저 하고 결정합니다."},
+ {r:"파일 저장",n:"Docker 볼륨",v:"—",alt:"MinIO · S3",
+  w:"사진이 건당 최대 3장이라 오브젝트 스토리지는 과합니다."}
+]},
+{g:"AI",items:[
+ {r:"분류 모델",n:"xlm-roberta (encoder)",v:"base · 2.7억 개",alt:"생성형 sLLM",
+  w:"지연 목표는 노트북 CPU 기준 0.1초입니다. 항목별 확률이 그대로 나오므로, 보정을 거쳐 검증하면 사람 검토로 보낼 기준을 세울 수 있습니다."},
+ {r:"검색용 임베딩",n:"multilingual-e5",v:"base",alt:"OpenAI 임베딩 API",
+  w:"한국어 질문으로 영어 문서도 찾습니다. 외부 API는 발표 중 네트워크 의존이 생깁니다."},
+ {r:"AI 오케스트레이션",n:"LangGraph",v:"1.2",alt:"순차 함수만",
+  w:"재판정 흐름. 사람 승인에서 멈췄다가 며칠 뒤 그 자리에서 이어집니다."}
+]},
+{g:"온톨로지 · 메타데이터",items:[
+ {r:"용어집 · 계보 · 영향도",n:"DataHub",v:"1.6.0",alt:"GraphDB(RDF/OWL) · 내부 테이블만",
+  w:"지표의 뜻과 계보를 적어두고, 뜻이 바뀌면 어떤 보고서가 영향받는지 역추적합니다. 화면 이름은 도메인 기준 관리입니다."}
+]},
+{g:"인프라",items:[
+ {r:"실행",n:"Docker Compose",v:"—",alt:"Kubernetes",
+  w:"발표용 로컬 재현. 오케스트레이션 플랫폼은 이 규모에 불필요합니다."},
+ {r:"학습 GPU",n:"RunPod",v:"—",alt:"로컬 GPU · Colab",
+  w:"파인튜닝 실험 전용입니다. 발표 경로에는 쓰지 않습니다."}
+]}
+];
+
+const DEC=[
+["Temporal","작업지시 흐름 전담","기능 플래그 없이 고정 역할. APScheduler와 중복 구현하지 않음"],
+["LangGraph","재판정 흐름 전담","서비스 흐름 6단계에 정식 포함. 사람 승인에서 멈췄다 이어짐"],
+["AI 판정 실행","별도 워커 + ai_jobs 큐","같은 프로세스 백그라운드는 서버가 죽으면 판정이 유실됨. Redis 없이 DB 테이블로"],
+["DataHub 연동","발행 배치 + 동기화 배치","방향이 다른 두 흐름. 발행이 없으면 영향도가 영원히 발동하지 않음"],
+["지표 쿼리 위치","FastAPI 코드 안","DataHub는 뜻만. 메타데이터가 SQL 실행 내용을 결정하지 않게"],
+["긴급 신호 범위","긴급 요청 후보로 축소","확인 목록 상단 노출까지. 시설 안전 시스템을 대신하지 않음"],
+["화면 수","9개 확정","목업 7개 + 기준 관리 + AI 검토"],
+["화면 갱신","SSE와 polling 둘 다","화면 코드는 같고 갱신 계층만 교체해 비교"],
+["맞춤 추천","화면만 유지","추천은 별도 AI 과제라 범위가 커짐"],
+["분류 모델","encoder 탑재 + 생성형 비교","제품은 빠른 encoder, 생성형은 오프라인 비교만"],
+["호텔 이름","가상 브랜드명","실제 기업과 무관함을 분명히 함"],
+["번역","한국어 · 영어만","기능 경계를 정확히 하고 메모리를 아낌"],
+["외부 리뷰","합성 데이터 적재","크롤링하지 않음. 야간 배치에서 적재"],
+["통신 방식","REST + 동작 엔드포인트 + SSE","자원은 REST, 상태 변경은 동작, 실시간은 SSE"],
+["타입 공유","OpenAPI 자동 생성","서버 필드가 바뀌면 프론트 빌드가 깨져서 알려줌"],
+["DataHub 연결","발행 배치 + 동기화 배치","방향이 다른 두 흐름. 화면과 API는 여전히 DataHub를 직접 부르지 않음"],
+["파일 저장","로컬 Docker 볼륨","사진 3장 규모에 오브젝트 스토리지는 과함"]
+];
+
+const REF={};
+function chip(item,cls){
+  const b=document.createElement("button");
+  b.className="ch"+(cls?" "+cls:"")+((item.k==="SP-07"||item.k==="SP-08")?" n":"");
+  b.textContent=(item.k.indexOf("SP-")===0?item.k+" ":"")+item.n;
+  b.onclick=()=>sel(b,item);
+  return b;
+}
+
+function wireOV(){
+  document.querySelectorAll(".g2").forEach(el=>{
+    el.onclick=()=>{
+      document.querySelectorAll("nav button").forEach(x=>x.classList.remove("on"));
+      document.querySelectorAll(".view").forEach(x=>x.classList.remove("on"));
+      document.querySelector('nav button[data-v="arch"]').classList.add("on");
+      document.getElementById("v-arch").classList.add("on");
+      REF[el.dataset.k][+el.dataset.i].click();
+      window.scrollTo({top:0,behavior:"smooth"});
+    };
+  });
+}
+function sel(btn,item){
+  document.querySelectorAll(".ch.sel").forEach(x=>x.classList.remove("sel"));
+  if(btn)btn.classList.add("sel");
+  show(item);
+  if(window.innerWidth<=980)document.getElementById("panel").scrollIntoView({behavior:"smooth",block:"start"});
+}
+function fill(id,key,arr,cls){const el=document.getElementById(id);REF[key]=[];arr.forEach(i=>{const b=chip(i,cls);REF[key].push(b);el.appendChild(b);});}
+fill("c-screen","screen",D.screen);fill("c-api","api",D.api);fill("c-ai","ai",D.ai,"t");
+fill("c-batch","batch",D.batch,"t");fill("c-db","db",D.db);fill("c-hub","hub",D.hub);
+wireOV();
+
+function ul(a){return "<ul>"+a.map(x=>"<li>"+x+"</li>").join("")+"</ul>";}
+function show(i){
+  let h='<div class="pk">'+i.k+'</div><div class="pt">'+i.n+'</div><div class="pd">'+i.d+'</div>';
+  if(i.who||i.p){
+    h+='<div class="sec"><div class="sh">기본 정보</div>';
+    if(i.who)h+='<div class="tr"><b>보는 사람</b><span>'+i.who+'</span></div>';
+    if(i.p)h+='<div class="tr"><b>우선순위</b><span>'+i.p+'</span></div>';
+    h+='</div>';
+  }
+  if(i.comp&&i.comp.length)h+='<div class="sec"><div class="sh">구성</div>'+ul(i.comp)+'</div>';
+  if(i.struct)h+='<div class="sec"><div class="sh">구조 · 동작</div><div class="st">'+i.struct+'</div></div>';
+  if(i.tech&&i.tech.length)h+='<div class="sec"><div class="sh">기술 스택</div>'+
+    i.tech.map(t=>'<div class="tr"><b>'+t[0]+'</b><span>'+t[1]+'</span></div>').join('')+'</div>';
+  if(i.api&&i.api.length)h+='<div class="sec"><div class="sh">API</div>'+
+    i.api.map(a=>'<div class="ep">'+(a.length>1?'<em>'+a[0]+'</em>'+a[1]:a[0])+'</div>').join('')+'</div>';
+  if(i.data&&i.data.length)h+='<div class="sec"><div class="sh">데이터</div>'+ul(i.data)+'</div>';
+  if(i.warn)h+='<div class="warn">'+i.warn+'</div>';
+  document.getElementById("panel").innerHTML=h;
+}
+
+document.querySelectorAll(".arw button").forEach(b=>{
+  const x=b.dataset.x;
+  if(x==="none"){b.style.cursor="default";return;}
+  b.onclick=()=>sel(null,D.extra[x]);
+});
+
+let sn=0;
+document.getElementById("flowbox").innerHTML=FLOW.map((p,pi)=>{
+  const body=p.steps.map(s=>{
+    sn++;
+    const wc=s.a==="손님"?"g":(s.a==="직원"?"s":"");
+    return '<div class="stp"><div class="sth"><div class="stn">'+sn+'</div><div class="stt">'+s.t+'</div>'+
+      '<span class="who '+wc+'">'+s.a+'</span><span class="tag">'+s.w+'</span></div>'+
+      '<div class="std">'+s.d+'</div><div class="stg">'+
+      '<div><b>데이터</b>'+s.data+'</div><div><b>기술</b>'+s.tech+'</div></div></div>';
+  }).join('');
+  return '<div class="ph"><div class="phh">'+p.ph+'<span>'+p.sub+'</span></div><div class="phb">'+body+'</div></div>'+
+    (pi<FLOW.length-1?'<div class="fla">↓</div>':'');
+}).join('');
+
+document.getElementById("ovsteps").innerHTML=OVSTEP.map((s,i)=>
+  '<div class="fs"><b><span class="n">'+(i+1)+'</span>'+s[0]+'</b><p>'+s[1]+'</p></div>').join('');
+
+document.getElementById("stackbody").innerHTML=STACK.map(g=>
+  '<div class="sgrp"><div class="sgrph"><div class="sgrpt">'+g.g+'</div><span class="sgrpc">'+g.items.length+'</span></div>'+
+  '<div class="sgrid">'+g.items.map(i=>
+    '<div class="sc'+(i.pend?' pend':'')+'">'+
+    '<div class="scr">'+i.r+(i.pend?' · 미확정':'')+'</div>'+
+    '<div class="scn">'+i.n+'</div><div class="scv">'+i.v+'</div>'+
+    '<div class="scw">'+i.w+'</div>'+
+    '<div class="sca">안 고른 것 — '+i.alt+'</div></div>').join('')+
+  '</div></div>').join('');
+
+document.getElementById("decbody").innerHTML=DEC.map(s=>
+  '<tr><td><b>'+s[0]+'</b></td><td>'+s[1]+'</td><td>'+s[2]+'</td></tr>').join('');
+
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("nav button").forEach(x=>x.classList.remove("on"));
+  document.querySelectorAll(".view").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on");document.getElementById("v-"+b.dataset.v).classList.add("on");
+});
+</script>
+</body>
+</html>

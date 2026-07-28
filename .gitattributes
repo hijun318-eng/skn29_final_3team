@@ -7,3 +7,4 @@
 *.docx binary
 *.xlsx binary
 *.pptx binary
+docs/markdown/ai_docs/legacy/** -whitespace

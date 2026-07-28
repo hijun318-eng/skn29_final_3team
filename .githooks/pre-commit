@@ -4,7 +4,7 @@ set -u
 
 max_file_size=10485760
 failed=0
-staged_files=$(git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR --)
+staged_files=$(git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMRD --)
 staged_documents=
 
 if [ -z "$staged_files" ]; then
@@ -16,7 +16,7 @@ while IFS= read -r path; do
     basename=${path##*/}
 
     case "$path" in
-        docs/*.md)
+        docs/*)
             staged_documents=1
             ;;
     esac
@@ -60,10 +60,10 @@ EOF
 
 if [ -n "$staged_documents" ]; then
     python_command=
-    if command -v python3 >/dev/null 2>&1; then
-        python_command=python3
-    elif command -v python >/dev/null 2>&1; then
+    if command -v python >/dev/null 2>&1 && python --version >/dev/null 2>&1; then
         python_command=python
+    elif command -v python3 >/dev/null 2>&1 && python3 --version >/dev/null 2>&1; then
+        python_command=python3
     else
         printf '%s\n' '[pre-commit] Markdown 문서 정책 검사에 Python 3.10+가 필요합니다.' >&2
         failed=1

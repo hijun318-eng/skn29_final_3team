@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 팀원 개인 branch와 dev·main 통합 정책 및 사람이 수행하는 Git 절차 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.3 |
-| 문서 기준일 | 2026-07-22 16:16 |
+| 버전 | v1.4 |
+| 문서 기준일 | 2026-07-27 17:07 |
 | 작성·수정 | 박준희 |
 
 각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다.
@@ -107,7 +107,7 @@ commit 형식은 `<type>(<scope>): <한국어 summary>`이며 subject는 72자 �
 
 ## dev 병합 요청 시 보고 통합
 
-AI 에이전트가 개인 branch의 `dev` 병합을 수행할 때는 `.agents/skills/merge-branch-to-dev/SKILL.md`를 적용한다. Skill은 이 문서의 Git 정책과 `docs/markdown/daily_reports/README.md`의 보고 정책을 읽고 source push, local/remote 일치, 최신 `dev`, merge, 보고 통합·검증, 최종 push를 순서대로 수행한다.
+AI 에이전트가 개인 branch의 `dev` 병합을 수행할 때는 `.agents/skills/merge-branch-to-dev/SKILL.md`를 적용한다. Skill은 이 문서의 Git 정책과 `docs/markdown/daily_reports/README.md`의 보고 정책을 읽고 source push, local/remote 일치, 최신 `dev`, 병합 직전 `base` SHA 기록, merge, 병합 직후 `head` SHA 기반 보고 통합·검증, 최종 push를 순서대로 수행한다.
 
 `dev` 병합 요청은 위 통합에 필요한 개인 branch push, `dev` fetch·pull·merge·push와 `team_summaries/` 파일의 stage·commit을 승인한 것으로 본다. 기존 미커밋 변경과 다른 파일은 포함하지 않으며, 작업 트리가 깨끗하지 않거나 로컬·원격 commit이 일치하지 않거나 병합·보고 검증이 실패하면 stash·reset·임의 commit 없이 중단하고 사용자에게 알린다.
 
@@ -125,7 +125,7 @@ git rev-parse origin/dev
 git merge origin/<팀원 branch>
 ```
 
-두 `git rev-parse` 출력은 병합 전에 같아야 하며 첫 번째 값을 병합 직전 commit으로 기록한다. 이후 작업은 위 `dev 병합 요청 시 보고 통합` 절차를 그대로 따른다.
+두 `git rev-parse` 출력은 병합 전에 같아야 하며 첫 번째 값을 병합 직전 `base` SHA로 기록한다. 병합 직후 `head` SHA도 기록해 source branch와 함께 보고 통합 절차에 전달한다. 이후 작업은 위 `dev 병합 요청 시 보고 통합` 절차를 그대로 따른다.
 
 최종 검증이 끝나면 관리자가 `dev`를 `main`에 반영한다.
 
@@ -150,6 +150,7 @@ git push origin main
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.4 | 2026-07-27 17:07 | 개인 branch 병합 전후 SHA 기반 보고 통합 계약과 최종 사전검사 기준 추가 |
 | v1.3 | 2026-07-22 16:16 | pre-commit의 staged Markdown 문서관리규칙 자동 검증 추가 |
 | v1.2 | 2026-07-22 09:19 | AI 에이전트 범용 표현 반영과 문서 버전·변경 이력 동기화 |
 | v1.1 | 2026-07-21 17:32 | AI 에이전트의 개인 branch→dev 반복 절차를 `merge-branch-to-dev` Skill로 분리 |

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import {
+  ArrowRight,
   BookOpen,
   Building2,
   CalendarDays,
@@ -41,6 +42,119 @@ const RELATIONSHIPS = [
   ["WRITES", "Review"],
 ];
 
+const SOURCE_GROUPS = [
+  ["PMS", "예약·객실", "pms"],
+  ["POS", "F&B·구매", "pos"],
+  ["CRM", "고객·멤버십", "crm"],
+  ["VOC", "리뷰·문의", "voc"],
+  ["ERP · API", "재무·외부", "finance"],
+];
+
+const DATA_CONSUMERS = [
+  [MessageSquareText, "분석 Agent", "근거 기반 질의"],
+  [TableProperties, "정기 보고서", "일·주·월 자동화"],
+  [UserRound, "고객 VOC 360", "통합 고객 분석"],
+  [TrendingUp, "수요 예측", "ONNX ML Tool"],
+];
+
+function CatalogOverview({ onManageConnections }) {
+  const connectedCount = connections.filter((item) => item.status === "connected").length;
+  const issueCount = connections.length - connectedCount;
+
+  return (
+    <div className="catalog-overview">
+      <section className="card federation-card">
+        <SectionTitle
+          eyebrow="FEDERATED DATA FOUNDATION"
+          title="사일로 데이터를 하나의 비즈니스 맥락으로"
+          description="분산된 원천을 물리적으로 복제하지 않고 연결해 Agent가 필요한 데이터를 한 번에 조회합니다."
+          action={(
+            <button className="primary" onClick={onManageConnections}>
+              <Plus size={14} />데이터 소스 연결
+            </button>
+          )}
+        />
+
+        <div className="catalog-metrics" aria-label="카탈로그 요약">
+          <span><small>등록 소스</small><b>{connections.length}</b><em>{connectedCount}개 정상</em></span>
+          <span><small>데이터 제품</small><b>{dataProducts.length}</b><em>표준화·정제 완료</em></span>
+          <span><small>Agent Tool</small><b>{mcpTools.length}</b><em>MCP contract 기반</em></span>
+          <span className={issueCount ? "has-issue" : ""}><small>확인 필요</small><b>{issueCount}</b><em>지연·오류 연결</em></span>
+        </div>
+
+        <div className="federation-flow">
+          <div className="flow-column source-column">
+            <p>분산 데이터 소스</p>
+            <div className="source-stack">
+              {SOURCE_GROUPS.map(([name, domain, catalog]) => (
+                <article key={name}>
+                  <span><Database size={15} /></span>
+                  <div><b>{name}</b><small>{domain}</small></div>
+                  <em>{catalog}</em>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <span className="flow-arrow" aria-hidden="true"><ArrowRight size={24} /></span>
+
+          <article className="query-engine">
+            <span><Network size={25} /></span>
+            <small>FEDERATED QUERY</small>
+            <strong>통합 쿼리 레이어</strong>
+            <p>Trino 연합 조회<br />DuckDB 로컬 분석</p>
+            <em>단일 SQL · 이기종 DB JOIN</em>
+          </article>
+
+          <span className="flow-arrow" aria-hidden="true"><ArrowRight size={24} /></span>
+
+          <div className="flow-column consumer-column">
+            <p>비즈니스 활용</p>
+            <div className="consumer-grid">
+              {DATA_CONSUMERS.map(([Icon, name, description]) => (
+                <article key={name}>
+                  <span><Icon size={16} /></span>
+                  <div><b>{name}</b><small>{description}</small></div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="card source-status-card">
+        <SectionTitle
+          eyebrow="CONNECTED SOURCES"
+          title="연결된 데이터 소스"
+          description="Catalog 등록 상태와 최근 동기화 현황을 조회합니다. 연결 설정과 인증 정보는 관리자 화면에서 관리합니다."
+          action={(
+            <button className="secondary" onClick={onManageConnections}>
+              <CloudCog size={14} />DB 연결 관리
+            </button>
+          )}
+        />
+        <div className="data-table source-status-table">
+          <div className="table-row table-head">
+            <span>소스명</span><span>업무 영역</span><span>Catalog</span><span>연결 상태</span>
+            <span>레코드</span><span>최근 동기화</span><span>담당 조직</span>
+          </div>
+          {connections.map((item) => (
+            <div className="table-row" key={item.name}>
+              <span><b>{item.name}</b><small>{item.vendor}</small></span>
+              <span>{item.domain}</span>
+              <span><em className="catalog-code">{item.catalog}</em></span>
+              <span><StatusBadge status={item.status} /></span>
+              <span>{item.records}</span>
+              <span>{item.sync}</span>
+              <span>{item.owner}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function CatalogExplorer({ products, search, onSearch }) {
   return (
     <div className="catalog-layout">
@@ -70,8 +184,8 @@ function CatalogExplorer({ products, search, onSearch }) {
       <main className="card catalog-main">
         <SectionTitle
           eyebrow="DATA PRODUCTS"
-          title="기업 데이터 카탈로그"
-          description={`${products.length}개 제품 · metadata 기반 탐색`}
+          title="정제된 데이터 제품"
+          description={`${products.length}개 제품 · 원천 데이터를 표준화한 분석용 dataset`}
           action={<button className="secondary"><RefreshCw size={14} />Metadata 수집</button>}
         />
         <div className="data-table">
@@ -179,11 +293,14 @@ function ToolRegistry() {
   );
 }
 
-export function CatalogPage({ activeTab = "catalog", onTabChange }) {
+export function CatalogPage({ activeTab = "catalog", onTabChange, onManageConnections }) {
   const [search, setSearch] = useState("");
   const products = useMemo(
     () => dataProducts.filter((item) => (
-      item.product.toLowerCase().includes(search.toLowerCase()) || item.domain.includes(search)
+      item.product.toLowerCase().includes(search.toLowerCase())
+      || item.domain.includes(search)
+      || item.source.toLowerCase().includes(search.toLowerCase())
+      || item.catalog.toLowerCase().includes(search.toLowerCase())
     )),
     [search],
   );
@@ -202,7 +319,12 @@ export function CatalogPage({ activeTab = "catalog", onTabChange }) {
           <Wrench size={16} />MCP Tool
         </button>
       </div>
-      {activeTab === "catalog" && <CatalogExplorer products={products} search={search} onSearch={setSearch} />}
+      {activeTab === "catalog" && (
+        <>
+          <CatalogOverview onManageConnections={onManageConnections} />
+          <CatalogExplorer products={products} search={search} onSearch={setSearch} />
+        </>
+      )}
       {activeTab === "ontology" && <OntologyView />}
       {activeTab === "tools" && <ToolRegistry />}
     </div>

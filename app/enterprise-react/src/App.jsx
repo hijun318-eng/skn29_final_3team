@@ -57,6 +57,7 @@ export function App() {
         <CatalogPage
           activeTab={route.catalogTab}
           onTabChange={(tab) => navigate(CATALOG_TAB_PATHS[tab])}
+          onManageConnections={() => navigate("/connections")}
         />
       );
     }

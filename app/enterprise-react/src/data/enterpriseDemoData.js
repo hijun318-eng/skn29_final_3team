@@ -5,14 +5,14 @@ export const SYNTHETIC_META = {
 };
 
 export const connections = [
-  { name: "PMS Core", vendor: "Oracle", catalog: "pms", domain: "예약·투숙", status: "connected", health: 99, endpoint: "pms••••.internal:1521", sync: "1분 전" },
-  { name: "POS Commerce", vendor: "SQL Server", catalog: "pos", domain: "식음·구매", status: "connected", health: 96, endpoint: "pos••••.internal:1433", sync: "3분 전" },
-  { name: "Customer CRM", vendor: "Salesforce", catalog: "crm", domain: "고객", status: "connected", health: 98, endpoint: "walker••••.salesforce.com", sync: "5분 전" },
-  { name: "Finance ERP", vendor: "PostgreSQL", catalog: "finance", domain: "재무", status: "connected", health: 97, endpoint: "fin••••.internal:5432", sync: "8분 전" },
-  { name: "VOC Platform", vendor: "MongoDB", catalog: "voc", domain: "고객경험", status: "connected", health: 94, endpoint: "voc••••.internal:27017", sync: "12분 전" },
-  { name: "Workforce", vendor: "MySQL", catalog: "workforce", domain: "인력", status: "delayed", health: 78, endpoint: "wfm••••.internal:3306", sync: "41분 전" },
-  { name: "Document Lake", vendor: "S3 · Parquet", catalog: "documents", domain: "문서", status: "connected", health: 95, endpoint: "s3://walker••••/docs", sync: "15분 전" },
-  { name: "Legacy Sales", vendor: "Legacy DB", catalog: "legacy_sales", domain: "과거매출", status: "error", health: 0, endpoint: "legacy••••.internal", sync: "2일 전" },
+  { name: "PMS Core", vendor: "Oracle", catalog: "pms", domain: "예약·투숙", status: "connected", health: 99, records: "4.2M", owner: "객실운영팀", endpoint: "pms••••.internal:1521", sync: "1분 전" },
+  { name: "POS Commerce", vendor: "SQL Server", catalog: "pos", domain: "식음·구매", status: "connected", health: 96, records: "18.7M", owner: "F&B팀", endpoint: "pos••••.internal:1433", sync: "3분 전" },
+  { name: "Customer CRM", vendor: "Salesforce", catalog: "crm", domain: "고객", status: "connected", health: 98, records: "620K", owner: "마케팅팀", endpoint: "walker••••.salesforce.com", sync: "5분 전" },
+  { name: "Finance ERP", vendor: "PostgreSQL", catalog: "finance", domain: "재무", status: "connected", health: 97, records: "8.3M", owner: "재무팀", endpoint: "fin••••.internal:5432", sync: "8분 전" },
+  { name: "VOC Platform", vendor: "MongoDB", catalog: "voc", domain: "고객경험", status: "connected", health: 94, records: "1.9M", owner: "CX전략팀", endpoint: "voc••••.internal:27017", sync: "12분 전" },
+  { name: "Workforce", vendor: "MySQL", catalog: "workforce", domain: "인력", status: "delayed", health: 78, records: "84K", owner: "인사운영팀", endpoint: "wfm••••.internal:3306", sync: "41분 전" },
+  { name: "Document Lake", vendor: "S3 · Parquet", catalog: "documents", domain: "문서", status: "connected", health: 95, records: "42K", owner: "데이터전략팀", endpoint: "s3://walker••••/docs", sync: "15분 전" },
+  { name: "Legacy Sales", vendor: "Legacy DB", catalog: "legacy_sales", domain: "과거매출", status: "error", health: 0, records: "—", owner: "디지털전략팀", endpoint: "legacy••••.internal", sync: "2일 전" },
 ];
 
 export const dataProducts = [

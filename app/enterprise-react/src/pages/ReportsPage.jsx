@@ -44,7 +44,7 @@ const ACTIONS = [
 ];
 
 const HOTELS = [
-  ["SENSE PLACE 서울", 18.2, 8, 4.7, 86, 1240],
+  ["ANSWERVICE 서울", 18.2, 8, 4.7, 86, 1240],
   ["그랜드 플레이스", 24.8, 13, 4.4, 74, 986],
   ["비스타 플레이스", 15.1, 7, 4.8, 91, 812],
   ["리버사이드", 27.4, 16, 4.2, 69, 678],
@@ -144,7 +144,7 @@ export function ReportsPage() {
 
   return <div className="page-content legacy-report-document">
     <div className="legacy-document-actions"><button className="secondary" onClick={() => setView("list")}><ArrowLeft size={14} />보고서 목록</button><div><button onClick={() => notify("보고서를 다시 생성했습니다.")}><Sparkles size={14} />보고서 갱신</button><button onClick={() => notify("PDF 내보내기를 준비했습니다.")}><Download size={14} />PDF</button><button onClick={() => notify("PPT 내보내기를 준비했습니다.")}><FileOutput size={14} />PPT</button><button onClick={() => notify("경영진 공유 링크를 생성했습니다.")}><Share2 size={14} />공유</button></div></div>
-    <section className="card legacy-cover-strip"><div><span>보고서 유형</span><nav>{["Daily Report", "Weekly Report", "Monthly Report"].map((item) => <button className={period === item ? "active" : ""} onClick={() => setPeriod(item)} key={item}>{item}</button>)}</nav></div><div><span>보고 기간</span><strong>{selectedReport.period}</strong></div><div><span>작성 기준</span><strong>2026.08.10 08:45</strong></div><div><span>검토 대상</span><strong>SENSE PLACE 서울 · 전체 시설</strong></div></section>
+    <section className="card legacy-cover-strip"><div><span>보고서 유형</span><nav>{["Daily Report", "Weekly Report", "Monthly Report"].map((item) => <button className={period === item ? "active" : ""} onClick={() => setPeriod(item)} key={item}>{item}</button>)}</nav></div><div><span>보고 기간</span><strong>{selectedReport.period}</strong></div><div><span>작성 기준</span><strong>2026.08.10 08:45</strong></div><div><span>검토 대상</span><strong>ANSWERVICE 서울 · 전체 시설</strong></div></section>
 
     <section className="card legacy-conclusion"><div className="legacy-number">01</div><div><p>EXECUTIVE CONCLUSION</p><h2>경영진 종합 결론</h2><article><Sparkles size={19} /><p>이번 주 호텔 운영은 전반적으로 안정적이었으며 고객 만족도는 전주보다 0.2점 상승했습니다. 다만 주말 조식 피크 시간대의 좌석 부족과 단체 고객 동시 입장이 반복적인 부정 VOC를 유발하고 있습니다. 현장 인력 추가 배치는 대기시간을 평균 7분 단축해 효과가 확인되었으므로, <b>주말 탄력 인력 운영을 정규 정책으로 전환하는 결정을 권고합니다.</b></p></article></div><aside><small>종합 운영 판단</small><strong>안정 · 일부 개선 필요</strong><span>AI 신뢰도 96% · 관리자 검토 필요</span></aside></section>
 

@@ -44,9 +44,9 @@ export function AppSidebar({ page, onNavigate, open, onClose }) {
       {open && <button className="scrim" aria-label="메뉴 닫기" onClick={onClose} />}
       <aside className={`sidebar ${open ? "sidebar--open" : ""}`}>
         <div className="brand">
-          <div className="brand-mark">SP</div>
+          <div className="brand-mark">AS</div>
           <div>
-            <b>SENSE PLACE</b>
+            <b>ANSWERVICE</b>
             <small>Enterprise Intelligence</small>
           </div>
           <button onClick={onClose} aria-label="메뉴 닫기">

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 개인 일일보고와 날짜별 팀 요약·주간보고의 근거 및 형식 정책 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.3 |
-| 문서 기준일 | 2026-07-23 10:14 |
+| 버전 | v1.4 |
+| 문서 기준일 | 2026-07-27 17:07 |
 | 작성·수정 | 박준희 |
 
 이 문서는 개인 일일보고, 날짜별 팀 요약과 주간보고의 근거·형식 정책을 관리한다. AI 에이전트의 실행 절차는 `.agents/skills/update-project-reports/SKILL.md`, Git 통합은 `docs/markdown/collaboration/README.md`를 따른다.
@@ -67,7 +67,7 @@ team_summaries/
 
 ## dev 병합 요청 시 보고 통합
 
-`merge-branch-to-dev`가 개인 branch를 `dev`에 병합한 직후 `.agents/skills/update-project-reports/SKILL.md`의 post-merge mode를 적용한다. 대상 날짜는 사용자 지정 범위를 우선하고, 지정이 없으면 병합으로 바뀐 개인보고 날짜와 아직 팀 요약이 없는 날짜를 사용한다. Skill은 변경된 `team_summaries/` 경로와 검증 결과만 Git 통합 절차에 반환하며 보고 통합 자체를 다른 보고나 WBS에 기록하지 않는다.
+`merge-branch-to-dev`가 개인 branch를 `dev`에 병합한 직후 `.agents/skills/update-project-reports/SKILL.md`의 post-merge mode를 적용한다. 병합 절차는 source branch, 병합 직전 `base` SHA, 병합 직후 `head` SHA를 전달한다. 대상 날짜는 사용자 지정 범위를 우선하고, 지정이 없으면 두 SHA의 source 개인보고에서 전체 날짜 블록 내용이 달라진 날짜와 아직 팀 요약이 없는 날짜를 사용한다. Skill은 입력 SHA, 대상 날짜, 변경된 `team_summaries/` 경로와 검증 결과를 Git 통합 절차에 반환하며 보고 통합 자체를 다른 보고나 WBS에 기록하지 않는다.
 
 ## 주간보고 작성 규칙
 
@@ -102,6 +102,7 @@ team_summaries/
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.4 | 2026-07-27 17:07 | 보고 날짜 블록 검증과 병합 전후 SHA 기반 post-merge 입력 계약 명확화 |
 | v1.3 | 2026-07-23 10:14 | 공식 일정 스냅샷의 `ai_docs/` 분류 경로 반영 |
 | v1.2 | 2026-07-22 09:19 | AI 에이전트 공용 표현과 제품 중립적인 Skill 연결 방식으로 정리 |
 | v1.1 | 2026-07-21 17:32 | Codex의 보고 실행·검증 절차를 `update-project-reports` Skill로 분리 |

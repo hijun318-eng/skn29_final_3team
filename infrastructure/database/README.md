@@ -25,6 +25,13 @@ Copy-Item .env.example .env
 
 업무 DB는 `*_READONLY_USER` 계정으로 DataHub와 Trino에 연결한다. 이 계정은 `SELECT` 및 시스템 메타데이터 조회만 허용하며 DML·DDL은 거부한다. `app-postgres`의 `APP_DB_USER`는 앱 읽기·쓰기, `APP_MIGRATION_USER`는 migration 전용이다.
 
-이미지는 `postgres:16.13-bookworm`, `mysql:8.4.6`, `mcr.microsoft.com/mssql/server:2022-CU17-ubuntu-22.04`, `clickhouse/clickhouse-server:24.8.4.13`으로 고정했다. 배포 시 `docker image inspect --format '{{index .RepoDigests 0}}' <image>`로 실제 digest를 릴리스 기록에 남긴다.
+이미지는 태그와 manifest digest를 함께 고정했다.
+
+| 엔진 | 이미지 |
+| --- | --- |
+| PostgreSQL | `postgres:16.13-bookworm@sha256:472efd9a66f2b2f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60` |
+| MySQL | `mysql:8.4.6@sha256:869218921e61d6c3c89820955d63cca42971f0e3e6c1e2792247bbd944ebc6e9` |
+| SQL Server | `mcr.microsoft.com/mssql/server:2022-CU17-ubuntu-22.04@sha256:d252932ef839c24c61c1139cc98f69c85ca774fa7c6bfaaa0015b7eb02b9dc87` |
+| ClickHouse | `clickhouse/clickhouse-server:24.8.4.13@sha256:b2c51583a6df9c19d613b579a03f237b92e0dfc63433b3fdb567ce223e0fb0f7` |
 
 SQL Server는 `ACCEPT_EULA=Y`, `MSSQL_PID=Developer`로 개발·테스트·시연에만 사용한다. 상용 운영에는 적절한 라이선스와 edition이 필요하다. SQL Server 비밀번호는 복잡성 정책을 만족해야 한다.

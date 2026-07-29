@@ -1,3 +1,5 @@
+[CmdletBinding()]
+param()
+
 $ErrorActionPreference = 'Stop'
-Set-Location $PSScriptRoot
-docker compose --env-file .env -f compose.yml down
+& (Join-Path $PSScriptRoot 'scripts\stop.ps1')

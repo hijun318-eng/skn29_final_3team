@@ -31,6 +31,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File stop.ps1
 
 실행 원본은 `sql/ddl`, `sql/data`, `sql/app`, `security`에만 둔다. `releases/`는 배포 아카이브이며 Compose 초기화 경로에서 사용하지 않는다.
 
+PowerShell은 루트의 공개 진입점과 `scripts`의 실제 구현을 분리한다.
+
+```text
+infrastructure/database/
+├─ start.ps1, stop.ps1, reset.ps1, verify.ps1  # 팀원 실행 진입점
+└─ scripts/
+   ├─ initialize.ps1
+   ├─ stop.ps1
+   ├─ reset.ps1
+   └─ verify.ps1
+```
+
 이미지는 태그와 manifest digest를 함께 고정했다.
 
 | 엔진 | 이미지 |

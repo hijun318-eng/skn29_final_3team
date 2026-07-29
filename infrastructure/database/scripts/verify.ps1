@@ -10,7 +10,7 @@ $expectedContract = '1.0.0|20260729|synthetic'
 $probeTable = "verify_readonly_create_$PID"
 
 if (-not (Test-Path -LiteralPath $localEnv)) {
-    throw '.env is missing. Run start.ps1 after creating an environment file.'
+    throw '.env is missing. Run scripts/start.ps1 after creating an environment file.'
 }
 if (Select-String -LiteralPath $localEnv -Pattern '(^|=)CHANGE_ME_' -Quiet) {
     throw '.env contains CHANGE_ME_ values.'

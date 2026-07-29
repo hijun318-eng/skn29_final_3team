@@ -16,4 +16,4 @@ if (-not $Force) {
 
 & docker compose --env-file $localEnv -f $composeFile down --volumes --remove-orphans
 if ($LASTEXITCODE -ne 0) { throw 'docker compose down failed.' }
-& (Join-Path $databaseRoot 'scripts\initialize.ps1')
+& (Join-Path $PSScriptRoot 'start.ps1')

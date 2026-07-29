@@ -6,12 +6,12 @@
 cd infrastructure/database
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 # 최초 실행 전 .env의 모든 CHANGE_ME_ 값을 로컬 전용 비밀번호로 교체
-powershell -NoProfile -ExecutionPolicy Bypass -File start.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File verify.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File stop.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1
 ```
 
-`reset.ps1 -Force`는 현재 로컬 Docker DB 볼륨을 삭제하고 다시 생성한다. 보존할 데이터가 없는 synthetic 개발 환경인지 확인한 뒤에만 실행한다.
+`scripts/reset.ps1 -Force`는 현재 로컬 Docker DB 볼륨을 삭제하고 다시 생성한다. 보존할 데이터가 없는 synthetic 개발 환경인지 확인한 뒤에만 실행한다.
 
 최초 실행 시 POS synthetic seed 약 128만 행을 생성하므로 환경에 따라 최대 30분 정도 걸릴 수 있다. `DATABASE_STACK_READY`가 출력될 때까지 초기화 프로세스를 중단하지 않는다.
 
@@ -31,13 +31,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File stop.ps1
 
 실행 원본은 `sql/ddl`, `sql/data`, `sql/app`, `security`에만 둔다. `releases/`는 배포 아카이브이며 Compose 초기화 경로에서 사용하지 않는다.
 
-PowerShell은 루트의 공개 진입점과 `scripts`의 실제 구현을 분리한다.
+PowerShell 실행 파일은 `scripts`에 모아 관리한다.
 
 ```text
 infrastructure/database/
-├─ start.ps1, stop.ps1, reset.ps1, verify.ps1  # 팀원 실행 진입점
 └─ scripts/
-   ├─ initialize.ps1
+   ├─ start.ps1
    ├─ stop.ps1
    ├─ reset.ps1
    └─ verify.ps1

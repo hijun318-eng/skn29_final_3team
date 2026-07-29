@@ -1,16 +1,16 @@
 @echo off
 chcp 65001 >nul 2>&1
 cd /d "%~dp0"
-title SensePlace
+title Answervice
 
 if not exist "%~dp0logs" mkdir "%~dp0logs"
 
 echo ============================================
-echo   SensePlace Server Start
-echo   Django:8000 / FastAPI:8001 / React:5173
+echo   Answervice Server Start
+echo   Django:8000 / FastAPI:8001 / Enterprise:5173
 echo ============================================
 echo.
-echo Logs: app\logs\django.log / fastapi.log / react.log
+echo Logs: app\logs\django.log / fastapi.log / enterprise.log
 echo.
 
 echo [1/3] Django...
@@ -23,9 +23,9 @@ cd fastapi
 start /b cmd /c "call .venv\Scripts\activate.bat && python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 > %~dp0logs\fastapi.log 2>&1"
 cd ..
 
-echo [3/3] React...
-cd react
-start /b cmd /c "call npm run dev > %~dp0logs\react.log 2>&1"
+echo [3/3] Enterprise React...
+cd enterprise-react
+start /b cmd /c "call npm run dev > %~dp0logs\enterprise.log 2>&1"
 cd ..
 
 echo.
@@ -39,9 +39,9 @@ echo.
 
 echo ============================================
 echo   Running
-echo   Django:   http://localhost:8000
-echo   FastAPI:  http://localhost:8001
-echo   React:    http://localhost:5173
+echo   Django:     http://localhost:8000
+echo   FastAPI:    http://localhost:8001
+echo   Enterprise: http://localhost:5173
 echo ============================================
 echo.
 echo Close this window to stop all servers.

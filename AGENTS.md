@@ -3,8 +3,8 @@
 ## 프로젝트 계약
 
 - 프로젝트는 **DataHub Core 기반 대화형 데이터 분석·자동 리포팅 서비스 Answervice**로 구현한다.
-- 기능 범위·아키텍처의 기준은 `docs/Answervice_기획서.md`, 실행 일정·담당·상태의 기준은 `docs/markdown/02_WBS.md`, 화면 상세 기준은 `docs/markdown/05_화면설계서.md`다.
-- `docs/markdown/ai_docs/5인_병렬구현_*_매뉴얼_최종안.md`와 통합 일정은 AI 실행 참고서다. 기획서나 공식 WBS를 임의로 덮어쓰지 않으며 충돌은 R1의 I0 결정 원장으로 해결한다.
+- 기능 범위·아키텍처의 기준은 `docs/Answervice_기획서.md`, 실행 일정·담당·상태의 기준은 `docs/markdown/02_WBS.md`다. `docs/markdown/05_화면설계서.md`는 검토 중 참고자료이며, R1·R5가 작업 카드에서 승인한 화면 ID만 구현하고 route·API·권한·design token을 추정하지 않는다.
+- 각 역할은 `docs/markdown/ai_docs/5인_병렬구현_*_매뉴얼_최종안.md` 중 본인 역할 매뉴얼을 읽고, R1이 승인한 `TASK_CARD_ID` 하나만 수행한다. 매뉴얼과 통합 일정은 AI 실행 참고서이며 기획서나 공식 WBS를 덮어쓰지 않는다. 미확정·충돌 항목은 추정하지 말고 R1에게 반환한다.
 - DataHub는 메타데이터 기준 시스템, Trino는 읽기 전용 연합 조회 엔진, FastAPI Controller는 고정 상태 전이와 G1·G2·G3를 통제하는 Control Plane으로 둔다.
 - backend 기준은 FastAPI다. Django나 자유 ReAct loop를 별도 승인 없이 추가하지 않는다.
 - 실제 고객 데이터 대신 합성 데이터만 사용하고 `synthetic`, deterministic seed, schema·seed·scenario version을 기록한다.
@@ -46,9 +46,25 @@
 - 현재 파일·실제 동작·관련 contract를 확인한 뒤 가장 작은 일관된 변경을 적용하고, 위험에 맞는 결정론적 검증을 실행한다.
 - 외부 시스템 변경, 비용 발생, 데이터 전송, 저장소 밖 쓰기는 사용자 승인을 받은 뒤 수행한다.
 
+## AI 구현 도구와 코드 품질
+
+- 팀 공통 환경 설정은 `docs/markdown/collaboration/AI_개발_환경_설정.md`를 따른다.
+- Codex로 code 작성·수정·refactoring·bug fix·dependency 선택·code review를 수행할 때 Ponytail plugin `v4.8.4`의 `full` mode를 사용한다.
+- 팀원은 Ponytail을 임의로 `off`, `normal`, `lite`, `ultra`로 바꾸지 않는다. plugin 충돌로 일시 해제가 필요하면 작업을 중단하고 R1에게 사유와 재현 절차를 전달한다.
+- MCP server는 현재 도입하지 않으며, 추후 필요성과 권한을 검토해 R1 결정으로 확장한다. MCP 부재를 현재 작업 또는 검증 실패 사유로 삼지 않는다.
+- 구현 전에 관련 code와 호출 흐름을 확인하고, 기존 구현 → 표준 library·native 기능 → 이미 설치된 dependency → 최소 신규 구현 순서로 선택한다.
+- 요청되지 않은 추상화, 단일 구현용 interface·factory, 미래 대비 scaffold, 관련 없는 refactoring과 불필요한 production dependency를 추가하지 않는다.
+- 단순화를 이유로 trust boundary의 입력 검증, 권한·보안, 접근성, 데이터 손실 방지, 오류 처리, API·DB·event contract와 필수 test를 제거하지 않는다.
+- code 품질은 `정확성`, `검증 가능성`, `단순성`, `유지보수성`, `안전성`, `호환성`으로 판단한다. 이름과 흐름은 명확하게 유지하고 중복은 실제 반복이 확인된 뒤에만 추상화한다.
+- 작업 카드의 `TEST_COMMANDS`에 formatter·lint·type check·관련 test·build 중 적용 가능한 명령을 적고 실행한다. 해당 도구가 아직 없으면 임의로 새 dependency를 추가하지 말고 `Not Run` 또는 `Blocked`와 이유를 기록한다.
+- 완료 전 변경 기능을 직접 확인하고 Ponytail 관점의 과설계 검토와 정확성·보안·회귀 검토를 구분해 수행한다. 검증하지 않은 항목을 `Pass`로 기록하지 않는다.
+
 ## 권한과 Git
 
 - branch·commit 정책의 단일 기준은 `docs/markdown/collaboration/README.md`다.
+- PR은 팀 필수 절차로 사용하지 않는다. 팀원은 개인 branch를 push한 뒤 branch 이름·변경 요약·검증 결과를 관리자에게 전달하고, 관리자가 diff와 검증 결과를 확인해 `dev`에 병합한다.
+- GitHub Actions는 PR이 아니라 개인 branch와 `dev`의 push를 기준으로 실행한다. CI가 구성되지 않았거나 실행할 수 없으면 같은 검증 명령을 local에서 실행하고 결과를 전달한다.
+- 필수 local 검증 또는 GitHub Actions가 실패한 branch는 `dev`에 병합하지 않는다.
 - 명시적 요청 전에는 stage, commit, push, dependency 설치를 하지 않는다.
 - 개인 branch를 `dev`에 병합하라는 요청에는 `.agents/skills/merge-branch-to-dev/SKILL.md`를 적용한다.
 - commit message 요청에는 `.agents/skills/draft-commit-message/SKILL.md`를 적용하며, 초안 요청을 stage·commit·push 승인으로 해석하지 않는다.

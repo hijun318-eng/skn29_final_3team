@@ -61,13 +61,17 @@ R3는 공통 OpenAPI를 직접 수정하지 않고 R4에게 model contract 변�
 
 ## 3. AI 실행 방식
 
-### 3.1 AI 입력
+### 3.1 통합 Wave 시작 시 AI 입력
 
 ```text
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
-TASK_CARD_ID=R3-xx
+EXECUTION_BUNDLE_ID=R3-Wx
+TARGET_INTEGRATION_GATE=Ix
+CHECKPOINT_GATES=<Wave 안 중간 확인 Gate>
+TASK_CARD_RANGE=R3-xx~yy
+CURRENT_TASK_CARD_ID=<범위 안 현재 카드>
 REPOSITORY_ROOT=<절대 경로>
 BASE_BRANCH=dev
 BASE_SHA=<시작 SHA>
@@ -80,6 +84,8 @@ ALLOWED_PATHS=<R3 허용 경로>
 FORBIDDEN_PATHS=<다른 역할 소유 경로>
 EXTERNAL_ACTION_PERMISSION=<RunPod·download·비용 허용 여부>
 ACCEPTANCE_CRITERIA=<완료 조건>
+TEST_COMMANDS=<검증 명령>
+STOP_CONDITIONS=<Gate 도달·범위 밖 변경·계약 충돌·검증 실패>
 ```
 
 ### 3.2 R3 AI용 최종 프롬프트
@@ -89,7 +95,9 @@ ACCEPTANCE_CRITERIA=<완료 조건>
 담당자는 윤대성이고 개인 브랜치는 daesung이다.
 
 저장소 AGENTS.md, 기획서, 이 매뉴얼, 협업 규칙, 통합 일정을 읽고
-TASK_CARD_ID 한 개만 번호 순서대로 수행한다.
+승인된 EXECUTION_BUNDLE_ID 하나의 TASK_CARD_RANGE를 번호 순서대로 수행한다.
+범위 안에서는 카드 사이 별도 승인 없이 진행하고 CHECKPOINT_GATES에서는 계약·증거만 확인한다.
+TARGET_INTEGRATION_GATE 또는 STOP_CONDITIONS에 도달하면 멈추며 다음 Wave 카드는 선행하지 않는다.
 작업 전 branch, BASE_SHA, dirty worktree, contract/model/prompt/fixture version과
 현재 모델·GPU·비용 권한을 확인한다.
 AGENTS.md·공식 WBS·기획서 충돌이 I0 decision으로 해결되지 않았으면 구현하지 않고 Blocked로 보고한다.

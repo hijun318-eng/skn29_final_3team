@@ -4,16 +4,16 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v5.1 |
-| 문서 기준일 | 2026-07-29 10:48 |
-| 작성·수정 | 3팀 공동 |
+| 버전 | v5.4 |
+| 문서 기준일 | 2026-07-29 17:35 |
+| 작성·수정 | 박준희 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
 | 대응 템플릿 | `templates/[기획] WBS_양식 (1)_27기_0팀.xlsx`, `templates/[기획] WBS_양식(2)_27기_0팀.xlsx` |
 
 > 전체 프로젝트 기간 2026-07-10~09-03 · 역할 개편 적용일 2026-07-29 · 5인 · 실행 일정 99개 태스크 · 공식 산출물 21건 + 옵션 1건
 >
-> 기준 기획서는 `docs/Answervice_기획서.md`, 화면 기준은 `docs/markdown/05_화면설계서.md`, AI 실행 절차는 `docs/markdown/ai_docs/5인_병렬구현_*_매뉴얼_최종안.md`다.
+> 기준 기획서는 `docs/Answervice_기획서.md`, 화면 기준은 `docs/markdown/05_화면설계서.md`, AI 실행 절차는 `docs/markdown/ai_docs/5인_병렬구현_*_매뉴얼_최종안.md`, Gate별 발행 값은 `docs/markdown/collaboration/Gate_실행_카드_원장.md`다.
 
 ## 대응 양식 구조
 
@@ -44,23 +44,27 @@
 
 운영 규칙:
 
-1. 한 AI에는 한 번에 역할 매뉴얼의 작업 카드 하나만 준다.
-2. 작업 카드의 `ALLOWED_PATHS`만 수정하고 다른 역할 소유 파일은 change request로 넘긴다.
-3. 실제 연동 전에는 versioned fixture와 fake adapter로 병렬 개발한다.
-4. `fixture 통과`, `MERGED_DEV`, `VERIFIED_GATE`를 별도 상태로 관리한다.
-5. R1은 통합 실패를 원 소유 역할에 반환하고 기능 내부를 대신 고치지 않는다.
-6. `app/react`와 `app/enterprise-react` 중 활성 frontend 하나를 I0에서 결정하기 전에는 양쪽 구현을 병행하지 않는다.
-7. Django와 자유 ReAct loop는 범위에서 제외하고 FastAPI의 고정 상태 전이를 기준으로 한다.
+1. 한 AI에는 한 번에 현재 통합 Wave의 역할별 실행 묶음 하나를 준다.
+2. 담당자는 실행 묶음의 `TASK_CARD_RANGE`를 번호 순서대로 수행하며 카드 사이에 별도 승인을 기다리지 않는다.
+3. 실행 묶음의 `ALLOWED_PATHS`만 수정하고 다른 역할 소유 파일은 change request로 넘긴다.
+4. `CHECKPOINT_GATES`에서는 계약·증거만 확인하고, 목표 통합 Gate 또는 중단 조건에 도달할 때까지 역할 branch에서 계속 진행한다. 현재 일정의 단독 checkpoint는 I0다.
+5. 목표 통합 Gate 도달·카드 범위 완료·허용 경로 밖 변경·계약 충돌·필수 검증 실패 시 멈추고 통합 판정을 기다린다.
+6. 실제 연동 전에는 versioned fixture와 fake adapter로 병렬 개발한다.
+7. 달력상 checkpoint나 부분 구현만으로 병합하지 않고 소비 가능한 산출물·검증·handoff가 준비된 역할 결과만 통합한다.
+8. `fixture 통과`, `MERGED_DEV`, `VERIFIED_GATE`를 별도 상태로 관리한다.
+9. R1은 통합 실패를 원 소유 역할에 반환하고 기능 내부를 대신 고치지 않는다.
+10. `app/react`와 `app/enterprise-react` 중 활성 frontend 하나를 I0에서 결정하기 전에는 양쪽 구현을 병행하지 않는다.
+11. Django와 자유 ReAct loop는 범위에서 제외하고 FastAPI의 고정 상태 전이를 기준으로 한다.
 
 ## Gate·병합 일정
 
-| Gate | 기간 | 통과 기준 | 기본 `dev` 병합 순서 |
+| Gate | 기간 | 통과 기준 | 운영·`dev` 병합 기준 |
 |---|---|---|---|
-| I0 기준 정렬 | 07/29~07/31 | 역할·branch·P0/P1/P2·backend·frontend·파일 소유권 확정 | `junhee` 기준 문서 후 전원 rebase |
-| I1 Contract Freeze | 08/03~08/07 | metric·time·schema·API·model·Report·health 계약과 fake 소비 가능 | `junhee` → `seung` → `daesung` → `jaehong` → `minji` → `junhee` follow-up |
-| I2 Deterministic Slice | 08/10~08/14 | PMS+CRM 대표 질문의 Context→G1→G2→Trino→G3→Artifact→화면 trace | `seung` → `daesung` → `jaehong` → `minji` → `junhee` |
-| I3 General LLM | 08/17~08/21 | 5 catalog 단독·승인 JOIN·Node 통합·보안 기준선 | `seung` → `daesung` → `jaehong` → `minji` → `junhee` |
-| I4 Reporting | 08/24~08/28 | Chat→Artifact→Report→manual/schedule→history, partial·retry 검증 | `minji` proposal → `jaehong` 등록 → `minji` 실제 연결 → `seung` → `daesung` → `junhee` |
+| I0 기준 정렬 | 07/29~07/31 | 역할·branch·P0/P1/P2·backend·frontend·파일 소유권 확정 | checkpoint: R1 기준 결정만 공유하고 역할 구현은 branch에서 계속 |
+| I1 Contract Freeze | 08/03~08/07 | metric·time·schema·API·model·Report·health 계약과 fake 소비 가능 | Wave 1: 공통 계약·schema·fake·skeleton만 최소 병합 |
+| I2 Deterministic Slice | 08/10~08/14 | PMS+CRM 대표 질문의 Context→G1→G2→Trino→G3→Artifact→화면 trace | Wave 2: `seung` → `daesung` → `jaehong` → `minji` → `junhee` |
+| I3 General LLM | 08/17~08/21 | 5 catalog 단독·승인 JOIN·Node 통합·보안 기준선 | Wave 3: `seung` → `daesung` → `jaehong` → `minji` → `junhee` |
+| I4 Reporting | 08/24~08/28 | Chat→Artifact→Report→manual/schedule→history, partial·retry 검증 | Wave 4 시작: `minji` proposal → `jaehong` 등록 후 역할별 완료분 통합 |
 | RC1 | 08/31 | 필수 30건과 역할별 release 후보 판정 | Critical·High 결함만 소유 branch에서 수정 |
 | 리허설 1 | 09/01 | 빈 환경 기동·재적재·성공·차단·partial·재시작 시연 | 승인된 순서로 전 역할 확인 |
 | RC2·I5 | 09/02 | release SHA·runbook·code·data·model·prompt·policy 동결 | 승인 후 `dev`→`main`은 별도 승인 |
@@ -155,16 +159,16 @@ gantt
 | 2.1 | R2-00 공통 데이터 계약 확인 | source·engine·owner 표 | 정승 | 대기 | 07/29 | 07/31 | 높음 |
 | 2.2 | R2-01 5 source·4 engine registry | source registry | 정승 | 대기 | 07/29 | 07/31 | 높음 |
 | 2.3 | R2-02 논리 모델·grain 정의 | entity 관계·grain | 정승 | 대기 | 07/29 | 07/31 | 높음 |
-| 2.4 | R2-03 물리 schema·DDL·제약·index | versioned DDL | 정승 | 대기 | 08/03 | 08/07 | 높음 |
-| 2.5 | R2-04 deterministic synthetic seed·scenario | seed·scenario manifest | 정승 | 대기 | 08/03 | 08/07 | 높음 |
-| 2.6 | R2-05 customer identity bridge | `customer_identity_map` | 정승 | 대기 | 08/03 | 08/07 | 높음 |
-| 2.7 | R2-06 event-time 회원 등급 이력 | `member_grade_history` | 정승 | 대기 | 08/03 | 08/07 | 높음 |
+| 2.4 | R2-03 물리 schema·DDL·제약·index | versioned DDL | 정승 | 진행 | 08/03 | 08/07 | 높음 |
+| 2.5 | R2-04 deterministic synthetic seed·scenario | seed·scenario manifest | 정승 | 진행 | 08/03 | 08/07 | 높음 |
+| 2.6 | R2-05 customer identity bridge | `customer_identity_map` | 정승 | 진행 | 08/03 | 08/07 | 높음 |
+| 2.7 | R2-06 event-time 회원 등급 이력 | `member_grade_history` | 정승 | 진행 | 08/03 | 08/07 | 높음 |
 | 2.8 | R2-07 데이터 품질·전처리·reject 관리 | DQR·PREP 결과 | 정승 | 대기 | 08/03 | 08/07 | 높음 |
-| 2.9 | R2-08 source·application read-only 계정 요구 | account matrix | 정승 | 대기 | 08/03 | 08/07 | 높음 |
-| 2.10 | R2-09 DataHub ingestion recipe 5개 | versioned recipes | 정승 | 대기 | 08/10 | 08/21 | 높음 |
+| 2.9 | R2-08 source·application read-only 계정 요구 | account matrix | 정승 | 진행 | 08/03 | 08/07 | 높음 |
+| 2.10 | R2-09 DataHub ingestion recipe 5개 | versioned recipes | 정승 | 진행 | 08/10 | 08/21 | 높음 |
 | 2.11 | R2-10 Metadata·owner·domain·tag·lineage 보강 | URN·lineage manifest | 정승 | 대기 | 08/10 | 08/21 | 높음 |
 | 2.12 | R2-11 DataHub typed adapter | search·graph·health adapter | 정승 | 대기 | 08/10 | 08/21 | 높음 |
-| 2.13 | R2-12 Trino catalog 5개 | connector·catalog 설정 | 정승 | 대기 | 08/10 | 08/21 | 높음 |
+| 2.13 | R2-12 Trino catalog 5개 | connector·catalog 설정 | 정승 | 진행 | 08/10 | 08/21 | 높음 |
 | 2.14 | R2-13 source↔Trino type mapping | type mapping matrix | 정승 | 대기 | 08/10 | 08/21 | 높음 |
 | 2.15 | R2-14 승인 JOIN Registry | JOIN ID·cardinality·time 계약 | 정승 | 대기 | 08/10 | 08/21 | 높음 |
 | 2.16 | R2-15 대표 2·3-source 정답 조회 | 정답 SQL·result hash | 정승 | 대기 | 08/10 | 08/21 | 높음 |
@@ -340,6 +344,9 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-29 17:24 | 1.1 | 역할별 자율 진행량과 병합 충돌을 균형화해 I1·I2·I3·I4~I5의 4개 통합 Wave로 조정하고 역할별 상세 카드 원장을 보강 | 역할·일정 계약 |
+| 2026-07-29 17:07 | 1.1 | 역할별 실행을 단일 카드 승인 방식에서 Gate별 카드 범위 자율 실행·Gate 중단·통합 방식으로 변경하고 AGENTS·역할 매뉴얼·통합 일정·실행 카드 원장과 동기화 | 역할·일정 계약 |
+| 2026-07-29 11:15 | 2.4~2.7, 2.9, 2.10, 2.13 | 6개 격리 DB Compose와 18개 source table·Application bootstrap, deterministic manifest, identity·등급 이력, read-only 계정, DataHub recipe 5개·Trino catalog 5개를 구성하고 health·권한·재시작·볼륨 재생성 fingerprint를 실구동 검증 | DB bootstrap·검증 자동화 |
 | 2026-07-29 10:48 | 2.4 | `origin/dev`의 `docs/deliverables/05_데이터베이스저장소설계서_29기_3팀.xlsx` 등록·구조 검증 근거를 새 역할 WBS에 통합하고 기존 일정·담당·상태는 유지 | 설계 산출물 |
 | 2026-07-29 10:33 | 1.1 | `AGENTS.md`와 `docs/markdown/02_WBS.md`를 기획서·최종 5인 매뉴얼의 역할·카드·Gate·병합·09/03 일정에 동기화하고 미결정 항목을 차단·결정 필요로 분리 | 역할·일정 계약 |
 | 2026-07-28 16:11 | 이전 1.5 | 공식 프로젝트명을 Answervice로 동기화 | 기획 계약 |
@@ -352,6 +359,9 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.4 | 2026-07-29 17:35 | R2 DB bootstrap 진행 근거를 보존하면서 4개 통합 Wave와 상세 실행 카드 운영 기준을 통합 |
+| v5.3 | 2026-07-29 17:24 | 역할별 자율 구현과 병합 충돌을 균형화한 4개 통합 Wave 및 상세 실행 카드 기준 반영 |
+| v5.2 | 2026-07-29 11:15 | v5.1 역할·일정 계약을 유지하고 DB Compose bootstrap의 DDL·seed·identity·등급 이력·계정·DataHub recipe·Trino catalog 실구동 근거를 새 R2 WBS ID에 연결 |
 | v5.1 | 2026-07-29 10:48 | `origin/dev`의 DB 설계 XLSX 제출본 등록·구조 검증 근거를 WBS 2.4 작업 로그에 통합하고 v5.0 역할·일정 계약 유지 |
 | v5.0 | 2026-07-29 10:33 | 프로젝트 계약을 DataHub 대화형 분석·자동 리포팅으로 바로잡고 5인 역할, 99개 작업, I0~I5, 병합 순서, 09/03 최종 일정, 공식 산출물 책임과 미결정 Gate를 동기화 |
 | v4.8 | 2026-07-28 16:11 | 공식 프로젝트명을 Answervice로 변경 |

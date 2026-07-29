@@ -4,7 +4,8 @@
 
 - 프로젝트는 **DataHub Core 기반 대화형 데이터 분석·자동 리포팅 서비스 Answervice**로 구현한다.
 - 기능 범위·아키텍처의 기준은 `docs/Answervice_기획서.md`, 실행 일정·담당·상태의 기준은 `docs/markdown/02_WBS.md`다. `docs/markdown/05_화면설계서.md`는 검토 중 참고자료이며, R1·R5가 작업 카드에서 승인한 화면 ID만 구현하고 route·API·권한·design token을 추정하지 않는다.
-- 각 역할은 `docs/markdown/ai_docs/5인_병렬구현_*_매뉴얼_최종안.md` 중 본인 역할 매뉴얼을 읽고, R1이 승인한 `TASK_CARD_ID` 하나만 수행한다. 매뉴얼과 통합 일정은 AI 실행 참고서이며 기획서나 공식 WBS를 덮어쓰지 않는다. 미확정·충돌 항목은 추정하지 말고 R1에게 반환한다.
+- 각 역할은 `docs/markdown/ai_docs/5인_병렬구현_*_매뉴얼_최종안.md` 중 본인 역할 매뉴얼을 읽고, R1이 통합 Wave별로 승인한 `EXECUTION_BUNDLE_ID`의 `TASK_CARD_RANGE`를 수행한다. 승인 범위 안에서는 카드 번호 순서대로 재승인 없이 자율 진행하며, 목표 통합 Gate·범위 밖 변경·계약 충돌 시 멈추고 R1에게 반환한다. 매뉴얼과 통합 일정은 AI 실행 참고서이며 기획서나 공식 WBS를 덮어쓰지 않는다.
+- 역할별 Gate 실행 묶음의 번호·범위·상태·발행 값은 `docs/markdown/collaboration/Gate_실행_카드_원장.md`에서 관리한다. `PLANNED`는 실행 승인이 아니며 R1이 기준 SHA와 버전을 채워 `READY`로 바꾼 묶음만 시작한다.
 - DataHub는 메타데이터 기준 시스템, Trino는 읽기 전용 연합 조회 엔진, FastAPI Controller는 고정 상태 전이와 G1·G2·G3를 통제하는 Control Plane으로 둔다.
 - backend 기준은 FastAPI다. Django나 자유 ReAct loop를 별도 승인 없이 추가하지 않는다.
 - 실제 고객 데이터 대신 합성 데이터만 사용하고 `synthetic`, deterministic seed, schema·seed·scenario version을 기록한다.
@@ -20,8 +21,9 @@
 | R4 백엔드 Control Plane | 김재홍 | `jaehong` | FastAPI·OpenAPI, Controller, Context, G1·G2·G3, cache·artifact·audit, worker·migration | 데이터 원천, AI model·prompt, frontend, root Compose |
 | R5 프론트엔드·자동 리포팅 | 송민지 | `minji` | 활성 frontend, Chat·Evidence·Chart·Report·Catalog·Audit UI, Report domain/router/migration proposal | root Compose, 공통 FastAPI entrypoint·Alembic chain, DB·AI 파일 |
 
-- 한 AI에는 한 번에 `TASK_CARD_ID` 하나만 주고 카드 번호 순서대로 수행한다.
-- 작업 카드의 `ALLOWED_PATHS`만 수정한다. 다른 역할 소유 파일 변경은 재현 절차·기대 계약·필요 변경을 적은 change request로 소유자에게 넘긴다.
+- 한 AI에는 한 번에 하나의 통합 Wave 실행 묶음만 준다. 실행 묶음에는 `EXECUTION_BUNDLE_ID`, `TARGET_INTEGRATION_GATE`, `CHECKPOINT_GATES`, `TASK_CARD_RANGE`, `BASE_SHA`, `ALLOWED_PATHS`, `ACCEPTANCE_CRITERIA`, `TEST_COMMANDS`, `STOP_CONDITIONS`를 기록한다.
+- 담당자는 승인된 `TASK_CARD_RANGE`를 번호 순서대로 수행하며 카드 사이에 별도 승인을 기다리지 않는다. 현재 카드의 완료 조건과 검증을 충족하지 못하면 다음 카드로 넘어가지 않는다.
+- 실행 묶음의 `ALLOWED_PATHS`만 수정한다. 다른 역할 소유 파일 변경은 재현 절차·기대 계약·필요 변경을 적은 change request로 소유자에게 넘긴다.
 - R1은 root Compose·공통 env·CI·통합 harness의 단일 작성자이며, 각 서비스의 내부 Dockerfile은 해당 서비스 소유자가 작성한다.
 - R4는 공통 FastAPI/OpenAPI/Alembic chain의 단일 작성자다. R5의 Report router·migration은 독립 proposal로 받고 contract test 후 R4가 공통 chain에 등록한다.
 - R5는 `app/react`와 `app/enterprise-react`를 동시에 개발하지 않는다. I0에서 활성 frontend 하나를 결정하고 다른 후보는 보존·제거 결정을 기록한다.
@@ -29,11 +31,16 @@
 
 ## 병렬 개발과 통합 Gate
 
+- R1은 각 통합 Wave 시작 전에 역할별 실행 묶음을 승인한다. 아직 동결되지 않은 계약 버전은 공란으로 두지 않고 `DRAFT` 또는 `N/A — 사유`로 기록하며, checkpoint에서 갱신하고 목표 통합 Gate에서 승인 버전으로 교체한다.
+- 각 역할은 자기 소유 경로와 승인된 카드 범위 안에서 독립 구현한다. fake adapter와 versioned fixture를 사용해 다른 역할의 미완료 구현을 기다리지 않는다.
+- `CHECKPOINT_GATES`는 계약·증거만 확인하는 지점이며 그 자체만으로 개인 branch의 전체 구현을 병합하지 않는다. 현재 일정에서는 I0를 Wave 1의 checkpoint로 사용한다.
+- 역할별 중단 조건은 `TARGET_INTEGRATION_GATE` 도달, `TASK_CARD_RANGE` 완료, `ALLOWED_PATHS` 밖 변경 필요, 계약·보안 충돌, 필수 검증 실패다. 중단 시 변경·검증·handoff를 보고하고 통합 판정을 기다린다.
 - I0 전에 역할·branch·P0/P1/P2·backend·frontend·파일 소유권을 확정하고 `I0_DECISION_VERSION`을 기록한다.
 - I1에서 metric·time·schema·API·model·Report·health 계약과 versioned fixture를 동결한다. 실제 연동 전에는 fake adapter와 fixture로 병렬 개발한다.
 - Gate는 `I0 기준 정렬 → I1 Contract Freeze → I2 Deterministic Slice → I3 General LLM → I4 Reporting → I5 Release` 순서로 통과한다.
 - 작업 상태는 `READY`, `IN_PROGRESS`, `REVIEW`, `BLOCKED`, `MERGED_DEV`, `VERIFIED_GATE`를 구분한다. fixture 통과나 `dev` 병합만으로 통합 Gate 통과라고 쓰지 않는다.
-- 개인 branch 병합은 `R1 공통 계약 → R2 데이터 계약 → R3 model 계약 → R4 backend 계약 → R5 frontend 계약 → R1 통합 follow-up` 순서를 기본으로 하며, 단계별 상세 순서는 `docs/markdown/ai_docs/5인_병렬구현_통합일정_20260729-20260903.md`를 따른다.
+- 통합은 `Wave 1 I1 기반 계약 → Wave 2 I2 deterministic slice → Wave 3 I3 핵심 기능 → Wave 4 I4~I5 Reporting·Release` 네 번을 기본으로 한다. 달력상 checkpoint 도달이나 부분 구현만으로 병합하지 않고, 역할 범위의 소비 가능 산출물·검증·handoff가 준비된 뒤 `R1 → R2 → R3 → R4 → R5 → R1 follow-up` 순서로 통합한다.
+- R1이 목표 통합 Gate 결과와 다음 Wave 실행 묶음을 승인하기 전에는 다음 Wave의 카드 범위로 넘어가지 않는다.
 - 병합마다 생산자 test와 소비자 contract test를 실행한다. 실행하지 않은 검증은 `Not Run`, 외부 환경 부족은 `Blocked`로 기록한다.
 - 2026-08-28 기능 동결, 2026-09-02 code·data·model·prompt·policy 동결, 2026-09-03 최종 발표를 기준으로 한다.
 

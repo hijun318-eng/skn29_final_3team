@@ -43,6 +43,13 @@ Thumbs.db
 docs/markdown/*.html
 docs/markdown/**/*.html
 
+# Personal local AI assistant setup guides
+/docs/markdown/collaboration/Antigravity_개발_환경_설정.md
+/docs/markdown/collaboration/Claude_Code_개발_환경_설정.md
+/CLAUDE.md
+/.claude/settings.local.json
+/.agents/rules/
+
 # Generated data and reports
 data/raw/**
 data/interim/**

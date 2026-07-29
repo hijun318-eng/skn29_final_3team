@@ -272,3 +272,52 @@ class HealthStatusCode:
         (DOWN, "Down"),
         (UNKNOWN, "Unknown"),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Tool type (T01 tool_registry, 기획서 P2 MCP Tool)
+# ---------------------------------------------------------------------------
+class ToolTypeCode:
+    SQL = "SQL"
+    DATAHUB = "DATAHUB"
+    RAG = "RAG"
+    ML = "ML"
+
+    CHOICES = [
+        (SQL, "Data"),
+        (DATAHUB, "Metadata"),
+        (RAG, "Knowledge"),
+        (ML, "ML · ONNX"),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Tool transport (T01 tool_registry)
+# ---------------------------------------------------------------------------
+class ToolTransportCode:
+    INTERNAL = "INTERNAL"
+    HTTP = "HTTP"
+    MCP_STDIO = "MCP_STDIO"
+    MCP_SSE = "MCP_SSE"
+
+    CHOICES = [
+        (INTERNAL, "Internal"),
+        (HTTP, "HTTP"),
+        (MCP_STDIO, "MCP stdio"),
+        (MCP_SSE, "MCP sse"),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Data sensitivity (데이터 제품 민감도)
+# ---------------------------------------------------------------------------
+class SensitivityCode:
+    INTERNAL = "INTERNAL"
+    RESTRICTED = "RESTRICTED"
+    CONFIDENTIAL = "CONFIDENTIAL"
+
+    CHOICES = [
+        (INTERNAL, "Internal"),
+        (RESTRICTED, "Restricted"),
+        (CONFIDENTIAL, "Confidential"),
+    ]

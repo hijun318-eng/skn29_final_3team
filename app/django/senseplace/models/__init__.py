@@ -19,11 +19,17 @@ from .enums import (  # noqa: F401
     ReportTypeCode,
     ResourceTypeCode,
     RoleCode,
+    SensitivityCode,
     SentimentLabelCode,
     SeverityCode,
     ShiftCode,
+    ToolTransportCode,
+    ToolTypeCode,
     VerificationStatusCode,
     VocCategoryCode,
+)
+from .catalog import (  # noqa: F401
+    DataProduct,
 )
 from .connection import (  # noqa: F401
     DataSource,
@@ -50,8 +56,13 @@ from .platform import (  # noqa: F401
     ReportDecision,
     RoleScope,
 )
+from .tooling import (  # noqa: F401
+    Tool,
+)
 
 __all__ = [
+    # Catalog (1)
+    "DataProduct",
     # Connection (1)
     "DataSource",
     # Metadata (3)
@@ -73,6 +84,8 @@ __all__ = [
     "Report",
     "ReportDecision",
     "FieldNote",
+    # Tooling (1)
+    "Tool",
     # Enums
     "RoleCode",
     "JobStatusCode",
@@ -89,4 +102,7 @@ __all__ = [
     "EngineTypeCode",
     "DataSourceStatusCode",
     "HealthStatusCode",
+    "ToolTypeCode",
+    "ToolTransportCode",
+    "SensitivityCode",
 ]

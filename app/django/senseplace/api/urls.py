@@ -26,4 +26,7 @@ urlpatterns = [
     path("reports/", views.report_list, name="report-list"),
     # Connection
     path("connections/", views.connection_list, name="connection-list"),
+    # Catalog
+    path("tools/", views.tool_list, name="tool-list"),
+    path("data-products/", views.data_product_list, name="data-product-list"),
 ]

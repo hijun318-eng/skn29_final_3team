@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -23,7 +23,14 @@ import {
   Wrench,
 } from "lucide-react";
 import { MetaStrip, SectionTitle, StatusBadge } from "../components/common/EnterpriseUi";
-import { connections, dataProducts, mcpTools } from "../data/enterpriseDemoData";
+import { connections as _fallbackConnections, dataProducts as _fallbackDataProducts, mcpTools as _fallbackMcpTools } from "../data/enterpriseDemoData";
+import { apiGet } from "../services/apiClient";
+
+// API 데이터로 교체 가능한 mutable 배열 (초기값은 fallback)
+const connections = [..._fallbackConnections];
+const dataProducts = [..._fallbackDataProducts];
+const mcpTools = [..._fallbackMcpTools];
+let _catalogLoaded = false;
 
 const ONTOLOGY_NODES = [
   [170, 110, "Customer", UserRound],
@@ -295,6 +302,37 @@ function ToolRegistry() {
 
 export function CatalogPage({ activeTab = "catalog", onTabChange, onManageConnections }) {
   const [search, setSearch] = useState("");
+  const [, setRefresh] = useState(0);
+
+  useEffect(() => {
+    if (_catalogLoaded) return;
+    _catalogLoaded = true;
+    Promise.all([
+      apiGet("/connections/").catch(() => null),
+      apiGet("/data-products/").catch(() => null),
+      apiGet("/tools/").catch(() => null),
+    ]).then(([conn, prod, tools]) => {
+      if (conn?.data?.length) {
+        connections.splice(0, connections.length, ...conn.data.map((c) => ({
+          name: c.name, vendor: c.vendor, catalog: c.catalog, domain: c.domain,
+          status: c.status, health: c.health, records: c.records, owner: c.owner,
+          endpoint: c.endpoint, sync: c.sync,
+        })));
+      }
+      if (prod?.data?.length) {
+        dataProducts.splice(0, dataProducts.length, ...prod.data);
+      }
+      if (tools?.data?.length) {
+        mcpTools.splice(0, mcpTools.length, ...tools.data.map((t) => ({
+          name: t.name, category: t.category, version: t.version,
+          health: t.health, success: t.success, agents: t.agents,
+          permission: t.permission, last: t.last,
+        })));
+      }
+      setRefresh((n) => n + 1);
+    });
+  }, []);
+
   const products = useMemo(
     () => dataProducts.filter((item) => (
       item.product.toLowerCase().includes(search.toLowerCase())

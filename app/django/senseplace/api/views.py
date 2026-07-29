@@ -43,7 +43,16 @@ from senseplace.api.envelope import (
     error_validation,
 )
 from senseplace.auth.views import login_view, logout_view
-from senseplace.models import DataSource, DimDate, DimServiceArea, FactVoc, QueryRun, Report
+from senseplace.models import (
+    DataProduct,
+    DataSource,
+    DimDate,
+    DimServiceArea,
+    FactVoc,
+    QueryRun,
+    Report,
+    Tool,
+)
 from senseplace.models.enums import (
     DataSourceStatusCode,
     EngineTypeCode,
@@ -52,6 +61,8 @@ from senseplace.models.enums import (
     ReportStatusCode,
     ReportTypeCode,
     RoleCode,
+    SensitivityCode,
+    ToolTypeCode,
     VocCategoryCode,
 )
 from senseplace.rbac.decorators import require_role, require_scope
@@ -170,6 +181,55 @@ def _datasource_to_dict(ds: DataSource) -> dict[str, Any]:
         "sync": _format_relative_time(ds.last_health_at),
         "engine_type": ds.engine_type,
         "platform_instance": ds.platform_instance,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tool / DataProduct 응답 변환 헬퍼 (CatalogPage 호환)
+# ---------------------------------------------------------------------------
+
+_TOOL_TYPE_LABELS: dict[str, str] = dict(ToolTypeCode.CHOICES)
+_TOOL_HEALTH_MAP: dict[str, str] = {
+    "HEALTHY": "healthy",
+    "DEGRADED": "degraded",
+    "DOWN": "down",
+    "UNKNOWN": "unknown",
+}
+_SENSITIVITY_LABELS: dict[str, str] = dict(SensitivityCode.CHOICES)
+
+
+def _tool_to_dict(t: Tool) -> dict[str, Any]:
+    """Tool → CatalogPage mcpTools 호환 응답 dict."""
+    roles = t.required_roles_json or []
+    hints = t.tool_hints_json or {}
+    permission = "Read only" if hints.get("readOnly") else "All roles"
+    return {
+        "tool_id": str(t.tool_id),
+        "name": t.name,
+        "category": _TOOL_TYPE_LABELS.get(t.tool_type, t.tool_type),
+        "version": t.semantic_version,
+        "health": _TOOL_HEALTH_MAP.get(t.health_status, "unknown"),
+        "success": f"{t.success_rate}%" if t.success_rate is not None else "—",
+        "agents": ", ".join(roles) if roles else "—",
+        "permission": permission,
+        "last": _format_relative_time(t.last_run_at),
+        "is_enabled": t.is_enabled,
+    }
+
+
+def _dataproduct_to_dict(p: DataProduct) -> dict[str, Any]:
+    """DataProduct → CatalogPage dataProducts 호환 응답 dict."""
+    return {
+        "data_product_id": str(p.data_product_id),
+        "product": p.product_name,
+        "source": p.source_name,
+        "catalog": p.catalog_ref,
+        "domain": p.domain,
+        "owner": p.owner_team,
+        "freshness": p.freshness_label,
+        "quality": p.quality_score,
+        "sensitivity": _SENSITIVITY_LABELS.get(p.sensitivity, p.sensitivity),
+        "tool": p.tool_name,
     }
 
 
@@ -598,6 +658,54 @@ def connection_list(request: HttpRequest) -> JsonResponse:
     """
     items = DataSource.objects.all().order_by("source_code")
     data = [_datasource_to_dict(ds) for ds in items]
+
+    return envelope_ok(
+        data,
+        status=200,
+        total=len(data),
+    )
+
+
+# ===========================================================================
+# 9. GET /api/v1/tools — MCP Tool 목록 (CatalogPage)
+# ===========================================================================
+@require_scope()
+def tool_list(request: HttpRequest) -> JsonResponse:
+    """MCP Tool 도구 등록 목록을 조회한다.
+
+    CatalogPage(엔터프라이즈 프론트엔드)의 Tools 탭에서 사용한다.
+
+    Returns:
+        200: Tool 목록
+        401: 미인증
+        403: scope 미허용
+    """
+    items = Tool.objects.all().order_by("tool_code")
+    data = [_tool_to_dict(t) for t in items]
+
+    return envelope_ok(
+        data,
+        status=200,
+        total=len(data),
+    )
+
+
+# ===========================================================================
+# 10. GET /api/v1/data-products — 데이터 제품 목록 (CatalogPage)
+# ===========================================================================
+@require_scope()
+def data_product_list(request: HttpRequest) -> JsonResponse:
+    """데이터 제품 카탈로그 목록을 조회한다.
+
+    CatalogPage(엔터프라이즈 프론트엔드)의 Data Products 탭에서 사용한다.
+
+    Returns:
+        200: 데이터 제품 목록
+        401: 미인증
+        403: scope 미허용
+    """
+    items = DataProduct.objects.all().order_by("domain", "product_name")
+    data = [_dataproduct_to_dict(p) for p in items]
 
     return envelope_ok(
         data,

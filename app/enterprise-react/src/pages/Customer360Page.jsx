@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
   CalendarDays,
@@ -10,7 +10,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { MetaStrip, SectionTitle, StatusBadge } from "../components/common/EnterpriseUi";
-import { customers } from "../data/enterpriseDemoData";
+import { customers as FALLBACK_CUSTOMERS } from "../data/enterpriseDemoData";
+import { apiGet } from "../services/apiClient";
 
 const CUSTOMER_JOURNEY = [
   [CalendarDays, "예약", "06.14", "River View"],
@@ -27,7 +28,23 @@ const PREFERENCES = [
 ];
 
 export function Customer360Page() {
-  const [selectedId, setSelectedId] = useState(customers[0].id);
+  const [customers, setCustomers] = useState(FALLBACK_CUSTOMERS);
+  const [selectedId, setSelectedId] = useState(FALLBACK_CUSTOMERS[0].id);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiGet("/customers/")
+      .then((res) => {
+        if (cancelled || !res?.data) return;
+        if (res.data.length > 0) {
+          setCustomers(res.data);
+          setSelectedId(res.data[0].id);
+        }
+      })
+      .catch((e) => console.warn("Customer API 실패, fallback 사용:", e.message));
+    return () => { cancelled = true; };
+  }, []);
+
   const customer = customers.find((item) => item.id === selectedId) || customers[0];
 
   const metrics = [

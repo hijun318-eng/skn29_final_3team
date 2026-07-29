@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Check,
   MessageSquareText,
@@ -8,7 +8,12 @@ import {
   TableProperties,
 } from "lucide-react";
 import { MetaStrip, SectionTitle } from "../components/common/EnterpriseUi";
-import { agentSteps, dataProducts } from "../data/enterpriseDemoData";
+import { agentSteps as _fallbackSteps, dataProducts as _fallbackProducts } from "../data/enterpriseDemoData";
+import { apiGet } from "../services/apiClient";
+
+const agentSteps = [..._fallbackSteps];
+const dataProducts = [..._fallbackProducts];
+let _agentLoaded = false;
 
 const RECENT_ANALYSES = [
   "지난달 객실 매출 하락 원인",
@@ -20,6 +25,24 @@ const RECENT_ANALYSES = [
 export function AgentPage() {
   const [question, setQuestion] = useState("");
   const [sent, setSent] = useState(false);
+  const [, setRefresh] = useState(0);
+
+  useEffect(() => {
+    if (_agentLoaded) return;
+    _agentLoaded = true;
+    Promise.all([
+      apiGet("/agent/workflow/").catch(() => null),
+      apiGet("/data-products/").catch(() => null),
+    ]).then(([workflow, products]) => {
+      if (workflow?.data?.length) {
+        agentSteps.splice(0, agentSteps.length, ...workflow.data);
+      }
+      if (products?.data?.length) {
+        dataProducts.splice(0, dataProducts.length, ...products.data);
+      }
+      setRefresh((n) => n + 1);
+    });
+  }, []);
 
   const submitQuestion = (event) => {
     event.preventDefault();

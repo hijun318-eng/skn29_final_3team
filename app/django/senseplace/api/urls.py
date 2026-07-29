@@ -29,4 +29,8 @@ urlpatterns = [
     # Catalog
     path("tools/", views.tool_list, name="tool-list"),
     path("data-products/", views.data_product_list, name="data-product-list"),
+    # Customer 360
+    path("customers/", views.customer_list, name="customer-list"),
+    # Agent
+    path("agent/workflow/", views.agent_workflow, name="agent-workflow"),
 ]

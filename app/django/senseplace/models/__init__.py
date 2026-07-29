@@ -28,11 +28,17 @@ from .enums import (  # noqa: F401
     VerificationStatusCode,
     VocCategoryCode,
 )
+from .agent import (  # noqa: F401
+    AgentWorkflowStep,
+)
 from .catalog import (  # noqa: F401
     DataProduct,
 )
 from .connection import (  # noqa: F401
     DataSource,
+)
+from .customer import (  # noqa: F401
+    CustomerProfile,
 )
 from .fact import (  # noqa: F401
     FactBreakfast15m,
@@ -61,10 +67,14 @@ from .tooling import (  # noqa: F401
 )
 
 __all__ = [
+    # Agent (1)
+    "AgentWorkflowStep",
     # Catalog (1)
     "DataProduct",
     # Connection (1)
     "DataSource",
+    # Customer (1)
+    "CustomerProfile",
     # Metadata (3)
     "DatasetManifest",
     "DimDate",

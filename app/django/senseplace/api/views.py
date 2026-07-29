@@ -44,6 +44,8 @@ from senseplace.api.envelope import (
 )
 from senseplace.auth.views import login_view, logout_view
 from senseplace.models import (
+    AgentWorkflowStep,
+    CustomerProfile,
     DataProduct,
     DataSource,
     DimDate,
@@ -231,6 +233,31 @@ def _dataproduct_to_dict(p: DataProduct) -> dict[str, Any]:
         "sensitivity": _SENSITIVITY_LABELS.get(p.sensitivity, p.sensitivity),
         "tool": p.tool_name,
     }
+
+
+# ---------------------------------------------------------------------------
+# Customer / AgentWorkflow 응답 변환 헬퍼
+# ---------------------------------------------------------------------------
+
+def _customer_to_dict(c: CustomerProfile) -> dict[str, Any]:
+    """CustomerProfile → Customer360Page customers 호환 응답 dict."""
+    return {
+        "id": c.customer_id,
+        "name": c.display_name,
+        "tier": c.tier_label,
+        "stays": c.stays_count,
+        "revenue": c.revenue_display,
+        "revisit": c.revisit_score,
+        "sentiment": c.sentiment_label,
+        "issue": c.last_issue,
+        "last": c.last_stay_date,
+        "room": c.preferred_room,
+    }
+
+
+def _workflow_step_to_tuple(s: AgentWorkflowStep) -> list[str]:
+    """AgentWorkflowStep → AgentPage agentSteps 호환 [name, status, desc]."""
+    return [s.step_name, s.get_status_display(), s.description]
 
 
 def _build_area_map() -> dict[str, tuple[str, str]]:
@@ -706,6 +733,54 @@ def data_product_list(request: HttpRequest) -> JsonResponse:
     """
     items = DataProduct.objects.all().order_by("domain", "product_name")
     data = [_dataproduct_to_dict(p) for p in items]
+
+    return envelope_ok(
+        data,
+        status=200,
+        total=len(data),
+    )
+
+
+# ===========================================================================
+# 11. GET /api/v1/customers — 고객 360 프로필 목록
+# ===========================================================================
+@require_scope()
+def customer_list(request: HttpRequest) -> JsonResponse:
+    """고객 360 프로필 목록을 조회한다.
+
+    Customer360Page(엔터프라이즈 프론트엔드)에서 사용한다.
+
+    Returns:
+        200: 고객 프로필 목록
+        401: 미인증
+        403: scope 미허용
+    """
+    items = CustomerProfile.objects.all().order_by("-revisit_score")
+    data = [_customer_to_dict(c) for c in items]
+
+    return envelope_ok(
+        data,
+        status=200,
+        total=len(data),
+    )
+
+
+# ===========================================================================
+# 12. GET /api/v1/agent/workflow — 분석 워크플로우 단계
+# ===========================================================================
+@require_scope()
+def agent_workflow(request: HttpRequest) -> JsonResponse:
+    """분석 Agent 워크플로우 단계를 조회한다.
+
+    AgentPage(엔터프라이즈 프론트엔드)의 분석 근거 패널에서 사용한다.
+
+    Returns:
+        200: 워크플로우 단계 목록
+        401: 미인증
+        403: scope 미허용
+    """
+    items = AgentWorkflowStep.objects.all().order_by("step_order")
+    data = [_workflow_step_to_tuple(s) for s in items]
 
     return envelope_ok(
         data,

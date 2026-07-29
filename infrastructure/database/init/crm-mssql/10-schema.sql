@@ -1,15 +1,14 @@
-IF DB_ID('$(CRM_DB_NAME)') IS NULL EXEC('CREATE DATABASE [$(CRM_DB_NAME)]');
+IF DB_ID('$(DB)') IS NULL EXEC('CREATE DATABASE [$(DB)] COLLATE Korean_100_CI_AS_SC_UTF8');
 GO
-USE [$(CRM_DB_NAME)];
+USE [$(DB)];
 GO
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'schema_version') CREATE TABLE dbo.schema_version (version nvarchar(64) NOT NULL PRIMARY KEY, applied_at datetime2 NOT NULL DEFAULT sysdatetime());
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'seed_metadata') CREATE TABLE dbo.seed_metadata (seed_name nvarchar(64) NOT NULL PRIMARY KEY, seed_value int NOT NULL, data_classification nvarchar(32) NOT NULL);
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'crm_members') CREATE TABLE dbo.crm_members (member_id nvarchar(32) NOT NULL PRIMARY KEY, member_name nvarchar(128) NOT NULL, created_at datetime2 NOT NULL DEFAULT sysdatetime());
-IF NOT EXISTS (SELECT 1 FROM dbo.schema_version WHERE version = 'crm-mssql/v1') INSERT INTO dbo.schema_version(version) VALUES ('crm-mssql/v1');
-IF NOT EXISTS (SELECT 1 FROM dbo.seed_metadata WHERE seed_name = 'synthetic-demo') INSERT INTO dbo.seed_metadata VALUES ('synthetic-demo', 20260729, 'synthetic');
-IF NOT EXISTS (SELECT 1 FROM dbo.crm_members WHERE member_id = 'CRM-0001') INSERT INTO dbo.crm_members(member_id, member_name) VALUES ('CRM-0001', 'Synthetic Member');
-IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = '$(CRM_RO_USERNAME)') EXEC('CREATE LOGIN [$(CRM_RO_USERNAME)] WITH PASSWORD = ''$(CRM_RO_PASSWORD)''');
-IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$(CRM_RO_USERNAME)') EXEC('CREATE USER [$(CRM_RO_USERNAME)] FOR LOGIN [$(CRM_RO_USERNAME)]');
-ALTER ROLE db_datareader ADD MEMBER [$(CRM_RO_USERNAME)];
-REVOKE CONTROL TO [$(CRM_RO_USERNAME)];
-DENY INSERT, UPDATE, DELETE, ALTER, CREATE TABLE, CREATE VIEW, CREATE PROCEDURE TO [$(CRM_RO_USERNAME)];
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'schema_version') CREATE TABLE dbo.schema_version (version nvarchar(16) PRIMARY KEY);
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'seed_metadata') CREATE TABLE dbo.seed_metadata (seed int PRIMARY KEY, classification nvarchar(32) NOT NULL);
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'crm_members') CREATE TABLE dbo.crm_members (member_id nvarchar(32) PRIMARY KEY, member_name nvarchar(128) NOT NULL);
+IF NOT EXISTS (SELECT 1 FROM dbo.schema_version WHERE version = '1.0.0') INSERT INTO dbo.schema_version VALUES ('1.0.0');
+IF NOT EXISTS (SELECT 1 FROM dbo.seed_metadata WHERE seed = 20260729) INSERT INTO dbo.seed_metadata VALUES (20260729, 'synthetic');
+IF NOT EXISTS (SELECT 1 FROM dbo.crm_members WHERE member_id = 'CRM-0001') INSERT INTO dbo.crm_members VALUES ('CRM-0001', 'Synthetic Member');
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = '$(RO)') EXEC('CREATE LOGIN [$(RO)] WITH PASSWORD = ''$(ROPASSWORD)''');
+IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$(RO)') EXEC('CREATE USER [$(RO)] FOR LOGIN [$(RO)]');
+IF NOT EXISTS (SELECT 1 FROM sys.database_role_members rm JOIN sys.database_principals r ON rm.role_principal_id = r.principal_id JOIN sys.database_principals m ON rm.member_principal_id = m.principal_id WHERE r.name = 'db_datareader' AND m.name = '$(RO)') ALTER ROLE db_datareader ADD MEMBER [$(RO)];
+DENY INSERT, UPDATE, DELETE, ALTER, CREATE TABLE, CREATE VIEW, CREATE PROCEDURE TO [$(RO)];

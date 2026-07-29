@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --protocol=socket <<SQL
+CREATE USER IF NOT EXISTS '$POS_RO_USERNAME'@'%' IDENTIFIED BY '$POS_RO_PASSWORD';
+GRANT SELECT, SHOW VIEW ON \`$MYSQL_DATABASE\`.* TO '$POS_RO_USERNAME'@'%';
+FLUSH PRIVILEGES;
+SQL

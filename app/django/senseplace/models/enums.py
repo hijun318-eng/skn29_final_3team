@@ -221,3 +221,54 @@ class ResourceTypeCode:
         (VIEW, "View"),
         (METRIC, "Metric"),
     ]
+
+
+# ---------------------------------------------------------------------------
+# Data source engine type (C01 data_sources, 기획서 4종 엔진)
+# ---------------------------------------------------------------------------
+class EngineTypeCode:
+    POSTGRESQL = "POSTGRESQL"
+    MYSQL = "MYSQL"
+    SQLSERVER = "SQLSERVER"
+    CLICKHOUSE = "CLICKHOUSE"
+
+    CHOICES = [
+        (POSTGRESQL, "PostgreSQL"),
+        (MYSQL, "MySQL"),
+        (SQLSERVER, "SQL Server"),
+        (CLICKHOUSE, "ClickHouse"),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Data source status (C01 data_sources)
+# ---------------------------------------------------------------------------
+class DataSourceStatusCode:
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    ERROR = "ERROR"
+    DISABLED = "DISABLED"
+
+    CHOICES = [
+        (DRAFT, "Draft"),
+        (ACTIVE, "Active"),
+        (ERROR, "Error"),
+        (DISABLED, "Disabled"),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Health status (C01 data_sources last_health_status)
+# ---------------------------------------------------------------------------
+class HealthStatusCode:
+    HEALTHY = "HEALTHY"
+    DEGRADED = "DEGRADED"
+    DOWN = "DOWN"
+    UNKNOWN = "UNKNOWN"
+
+    CHOICES = [
+        (HEALTHY, "Healthy"),
+        (DEGRADED, "Degraded"),
+        (DOWN, "Down"),
+        (UNKNOWN, "Unknown"),
+    ]

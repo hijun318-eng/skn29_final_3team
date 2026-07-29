@@ -9,10 +9,14 @@ Usage::
 """
 
 from .enums import (  # noqa: F401
+    DataSourceStatusCode,
     DecisionCode,
+    EngineTypeCode,
     EvidenceTypeCode,
+    HealthStatusCode,
     JobStatusCode,
     ReportStatusCode,
+    ReportTypeCode,
     ResourceTypeCode,
     RoleCode,
     SentimentLabelCode,
@@ -20,6 +24,9 @@ from .enums import (  # noqa: F401
     ShiftCode,
     VerificationStatusCode,
     VocCategoryCode,
+)
+from .connection import (  # noqa: F401
+    DataSource,
 )
 from .fact import (  # noqa: F401
     FactBreakfast15m,
@@ -45,6 +52,8 @@ from .platform import (  # noqa: F401
 )
 
 __all__ = [
+    # Connection (1)
+    "DataSource",
     # Metadata (3)
     "DatasetManifest",
     "DimDate",
@@ -72,8 +81,12 @@ __all__ = [
     "VocCategoryCode",
     "EvidenceTypeCode",
     "ReportStatusCode",
+    "ReportTypeCode",
     "VerificationStatusCode",
     "DecisionCode",
     "ShiftCode",
     "ResourceTypeCode",
+    "EngineTypeCode",
+    "DataSourceStatusCode",
+    "HealthStatusCode",
 ]

@@ -24,4 +24,6 @@ urlpatterns = [
     path("jobs/<uuid:job_id>/", views.job_detail, name="job-detail"),
     # Report
     path("reports/", views.report_list, name="report-list"),
+    # Connection
+    path("connections/", views.connection_list, name="connection-list"),
 ]

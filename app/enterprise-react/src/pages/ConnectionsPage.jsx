@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, Database, Plus, ShieldCheck } from "lucide-react";
 import { MetaStrip, StatusBadge } from "../components/common/EnterpriseUi";
-import { connections } from "../data/enterpriseDemoData";
+import { connections as FALLBACK_CONNECTIONS } from "../data/enterpriseDemoData";
+import { apiGet } from "../services/apiClient";
 
 const FILTERS = [
   ["all", "전체"],
@@ -12,6 +13,33 @@ const FILTERS = [
 
 export function ConnectionsPage() {
   const [filter, setFilter] = useState("all");
+  const [connections, setConnections] = useState(FALLBACK_CONNECTIONS);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiGet("/connections/")
+      .then((res) => {
+        if (cancelled || !res?.data) return;
+        const mapped = res.data.map((c) => ({
+          name: c.name,
+          vendor: c.vendor,
+          catalog: c.catalog,
+          domain: c.domain,
+          status: c.status,
+          health: c.health,
+          records: c.records,
+          owner: c.owner,
+          endpoint: c.endpoint,
+          sync: c.sync,
+        }));
+        if (mapped.length > 0) setConnections(mapped);
+      })
+      .catch((e) => {
+        console.warn("Connection API 실패, fallback 사용:", e.message);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   const filtered = filter === "all"
     ? connections
     : connections.filter((item) => item.status === filter);

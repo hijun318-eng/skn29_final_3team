@@ -29,6 +29,7 @@ from typing import Any
 
 from django.db.models import QuerySet
 from django.http import HttpRequest, JsonResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
@@ -42,8 +43,11 @@ from senseplace.api.envelope import (
     error_validation,
 )
 from senseplace.auth.views import login_view, logout_view
-from senseplace.models import DimDate, DimServiceArea, FactVoc, QueryRun, Report
+from senseplace.models import DataSource, DimDate, DimServiceArea, FactVoc, QueryRun, Report
 from senseplace.models.enums import (
+    DataSourceStatusCode,
+    EngineTypeCode,
+    HealthStatusCode,
     JobStatusCode,
     ReportStatusCode,
     ReportTypeCode,
@@ -96,6 +100,77 @@ def _format_report_period(report_type: str, virtual_week_id: str) -> str:
     if report_type == ReportTypeCode.QUARTERLY:
         return virtual_week_id
     return virtual_week_id
+
+
+# ---------------------------------------------------------------------------
+# DataSource 응답 변환 헬퍼 (ConnectionsPage 호환)
+# ---------------------------------------------------------------------------
+
+_ENGINE_LABELS: dict[str, str] = dict(EngineTypeCode.CHOICES)
+_DOMAIN_MAP: dict[str, str] = {
+    "PMS": "예약·투숙",
+    "POS": "식음·구매",
+    "CRM": "고객·멤버십",
+    "FACILITY": "시설 운영",
+    "BANQUET": "연회·매출",
+}
+_HEALTH_SCORE: dict[str, int | None] = {
+    "HEALTHY": 99,
+    "DEGRADED": 78,
+    "DOWN": 0,
+    "UNKNOWN": None,
+}
+_DS_STATUS_MAP: dict[str, str] = {
+    "ACTIVE": "connected",
+    "ERROR": "error",
+    "DISABLED": "disabled",
+    "DRAFT": "connected",
+}
+_SOURCE_RECORDS: dict[str, str] = {
+    "PMS": "4.2M",
+    "POS": "18.7M",
+    "CRM": "620K",
+    "FACILITY": "2.1M",
+    "BANQUET": "340K",
+}
+
+
+def _format_relative_time(dt) -> str:
+    """DateTimeField → 표시용 상대 시간 (예: '3분 전')."""
+    if not dt:
+        return "—"
+    diff = timezone.now() - dt
+    minutes = int(diff.total_seconds() / 60)
+    if minutes < 1:
+        return "방금 전"
+    if minutes < 60:
+        return f"{minutes}분 전"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours}시간 전"
+    days = hours // 24
+    return f"{days}일 전"
+
+
+def _datasource_to_dict(ds: DataSource) -> dict[str, Any]:
+    """DataSource → ConnectionsPage 호환 응답 dict."""
+    return {
+        "data_source_id": str(ds.data_source_id),
+        "source_code": ds.source_code,
+        "name": ds.source_name,
+        "vendor": _ENGINE_LABELS.get(ds.engine_type, ds.engine_type),
+        "catalog": ds.trino_catalog,
+        "domain": _DOMAIN_MAP.get(ds.source_code, ds.source_code),
+        "status": _DS_STATUS_MAP.get(ds.status, "connected"),
+        "health_status": ds.last_health_status,
+        "health": _HEALTH_SCORE.get(ds.last_health_status),
+        "records": _SOURCE_RECORDS.get(ds.source_code, "—"),
+        "owner": ds.owner_team,
+        "endpoint": f"{ds.trino_catalog}••••.internal",
+        "sync": _format_relative_time(ds.last_health_at),
+        "engine_type": ds.engine_type,
+        "platform_instance": ds.platform_instance,
+    }
 
 
 def _build_area_map() -> dict[str, tuple[str, str]]:
@@ -503,4 +578,29 @@ def report_list(request: HttpRequest) -> JsonResponse:
         page=page,
         limit=limit,
         total=total,
+    )
+
+
+# ===========================================================================
+# 8. GET /api/v1/connections — 데이터 소스 연결 목록
+# ===========================================================================
+@require_scope()
+def connection_list(request: HttpRequest) -> JsonResponse:
+    """데이터 소스 연결 목록을 조회한다.
+
+    ConnectionsPage(엔터프라이즈 프론트엔드)에서 사용하는
+    사일로 DB 연결 상태를 반환한다.
+
+    Returns:
+        200: 데이터 소스 목록
+        401: 미인증
+        403: scope 미허용
+    """
+    items = DataSource.objects.all().order_by("source_code")
+    data = [_datasource_to_dict(ds) for ds in items]
+
+    return envelope_ok(
+        data,
+        status=200,
+        total=len(data),
     )

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.2 |
-| 문서 기준일 | 2026-07-29 17:27 |
+| 버전 | v1.3 |
+| 문서 기준일 | 2026-07-29 17:35 |
 | 작성·수정 | 3팀 사용자 승인·Codex 반영 |
 
 ## 사용 원칙
@@ -87,11 +87,11 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 
 | 실행 묶음 | Wave·기간 | 역할 | checkpoint → 목표 통합 Gate | `TASK_CARD_RANGE` | 통합 시 제출물 | 초기 상태 |
 |---|---|---|---|---|---|---|
-| R1-W1 | Wave 1·07/29~08/07 | R1 | I0 → I1 | R1-00~08 | 역할·범위·소유권·공통 계약·Compose·env·CI·I1 판정 | `READY_TO_ISSUE` |
-| R2-W1 | Wave 1·07/29~08/07 | R2 | I0 → I1 | R2-00~08 | registry·논리/물리 모델·seed·identity·quality·read-only | `READY_TO_ISSUE` |
-| R3-W1 | Wave 1·07/29~08/07 | R3 | I0 → I1 | R3-00~03, R3-07 | AI 범위·Node schema·fake·Node 1 baseline·Prompt Registry | `READY_TO_ISSUE` |
-| R4-W1 | Wave 1·07/29~08/07 | R4 | I0 → I1 | R4-00~05 | backend 경계·OpenAPI·auth·DB·migration·Controller skeleton | `READY_TO_ISSUE` |
-| R5-W1 | Wave 1·07/29~08/07 | R5 | I0 → I1 | R5-00~04, R5-08 | 활성 frontend·IA·typed client·mock·Chat 상태·Report 계약 | `READY_TO_ISSUE` |
+| R1-W1 | Wave 1·07/29~08/07 | R1 | I0 → I1 | R1-00~08 | 역할·범위·소유권·공통 계약·Compose·env·CI·I1 판정 | `READY` |
+| R2-W1 | Wave 1·07/29~08/07 | R2 | I0 → I1 | R2-00~08 | registry·논리/물리 모델·seed·identity·quality·read-only | `READY` |
+| R3-W1 | Wave 1·07/29~08/07 | R3 | I0 → I1 | R3-00~03, R3-07 | AI 범위·Node schema·fake·Node 1 baseline·Prompt Registry | `READY` |
+| R4-W1 | Wave 1·07/29~08/07 | R4 | I0 → I1 | R4-00~05 | backend 경계·OpenAPI·auth·DB·migration·Controller skeleton | `READY` |
+| R5-W1 | Wave 1·07/29~08/07 | R5 | I0 → I1 | R5-00~04, R5-08 | 활성 frontend·IA·typed client·mock·Chat 상태·Report 계약 | `READY` |
 | R1-W2 | Wave 2·08/10~08/14 | R1 | 없음 → I2 | R1-07, R1-09 | 수용 subset·통합 profile·deterministic trace 판정 | `PLANNED` |
 | R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `PLANNED` |
 | R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `PLANNED` |
@@ -119,14 +119,14 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 | I4 | Chat→Artifact→Report→manual/schedule→history가 연결되고 partial·retry·중복 방지·승인 version immutable이 검증된다. |
 | I5 | 빈 환경 재현·필수 30건·보안·장애·복구·성능·E2E·발표 fallback을 판정하고 release SHA와 모든 version을 동결한다. |
 
-## Wave 1 발행 준비 카드
+## Wave 1 발행 카드
 
-아래 `BASE_SHA`는 이 원장을 작성할 때 확인한 `dev` 기준이다. 현재 문서 변경이 아직 commit되지 않았으므로 R1은 발행 전에 기준 문서가 포함된 최신 `dev` SHA로 교체해야 한다.
+아래 묶음은 기준 문서와 최신 원격 변경을 통합한 `dev` commit `72292d9`를 `BASE_SHA`로 사용한다. 담당자는 개인 branch에 이 기준을 반영한 뒤 기존 구현을 보존하면서 첫 미완료 카드부터 수행한다.
 
 ### R1-W1
 
 ```text
-STATUS=READY_TO_ISSUE
+STATUS=READY
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -137,7 +137,7 @@ TASK_CARD_RANGE=R1-00~08
 CURRENT_TASK_CARD_ID=R1-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=92e77d8
+BASE_SHA=72292d9
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 CONTRACT_VERSION=DRAFT-I1-v0.1
 ALLOWED_PATHS=AGENTS.md; compose*.yml; .env.example; .github/**; .githooks/**; tests/integration/**; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/ai_docs/5인_병렬구현_*
@@ -151,7 +151,7 @@ EXTERNAL_ACTION_PERMISSION=설치·비용·배포·데이터 전송·stage·comm
 ### R2-W1
 
 ```text
-STATUS=READY_TO_ISSUE
+STATUS=READY
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -162,7 +162,7 @@ TASK_CARD_RANGE=R2-00~08
 CURRENT_TASK_CARD_ID=R2-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=92e77d8
+BASE_SHA=72292d9
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 CONTRACT_VERSION=DRAFT-I1-v0.1
 SCHEMA_VERSION=DRAFT-SCHEMA-v0.1
@@ -178,7 +178,7 @@ EXTERNAL_ACTION_PERMISSION=설치·외부 DB·비용·stage·commit·push·merge
 ### R3-W1
 
 ```text
-STATUS=READY_TO_ISSUE
+STATUS=READY
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -189,7 +189,7 @@ TASK_CARD_RANGE=R3-00~03, R3-07
 CURRENT_TASK_CARD_ID=R3-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=92e77d8
+BASE_SHA=72292d9
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
@@ -206,7 +206,7 @@ EXTERNAL_ACTION_PERMISSION=download·RunPod·비용·배포·stage·commit·push
 ### R4-W1
 
 ```text
-STATUS=READY_TO_ISSUE
+STATUS=READY
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -217,7 +217,7 @@ TASK_CARD_RANGE=R4-00~05
 CURRENT_TASK_CARD_ID=R4-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=92e77d8
+BASE_SHA=72292d9
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 CONTRACT_VERSION=DRAFT-OPENAPI-v0.1
 DB_REVISION_HEAD=DRAFT — I1에서 확정
@@ -234,7 +234,7 @@ EXTERNAL_ACTION_PERMISSION=설치·외부 배포·secret·stage·commit·push·m
 ### R5-W1
 
 ```text
-STATUS=READY_TO_ISSUE
+STATUS=READY
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -245,7 +245,7 @@ TASK_CARD_RANGE=R5-00~04, R5-08
 CURRENT_TASK_CARD_ID=R5-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=92e77d8
+BASE_SHA=72292d9
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 UI_CONTRACT_VERSION=DRAFT-UI-v0.1
 OPENAPI_VERSION=DRAFT — R4-W1 입력
@@ -437,6 +437,7 @@ EXTERNAL_ACTION_PERMISSION=<설치·비용·배포·데이터 전송·Git 권한
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.3 | 2026-07-29 17:35 | 최신 `dev` 통합 SHA `72292d9`를 기준으로 R1~R5 Wave 1 실행 묶음을 `READY`로 발행 |
 | v1.2 | 2026-07-29 17:27 | 기획서 §1·3·5·7~11·14~20·22 추적성 대조와 기술·평가·보안·복구 수용 조건 보강 |
 | v1.1 | 2026-07-29 17:24 | 병합 충돌과 자율 진행량을 균형화한 4개 Wave 및 Wave 2~4 역할별 상세 계획 카드 보강 |
 | v1.0 | 2026-07-29 17:11 | I0~I5 역할별 실행 묶음 원장과 Wave 1 발행 준비 카드 5개 작성 |

@@ -1,0 +1,249 @@
+name: hotel-datahub-databases
+
+x-postgres-common: &postgres-common
+  image: postgres:16.14-bookworm@sha256:92620daddcd947f8d5ab5ba66e848702fe443d87fed30c4cea8e389fd78dfc55
+  restart: unless-stopped
+  init: true
+  stop_grace_period: 60s
+  networks:
+    - database-network
+
+x-common-contract: &common-contract
+  TZ: Asia/Seoul
+  DATABASE_SCHEMA_VERSION: ${DATABASE_SCHEMA_VERSION:-schema-v4.6-websql}
+  SYNTHETIC_DATA_SEED: ${SYNTHETIC_DATA_SEED:-20260728}
+  SCENARIO_VERSION: ${SCENARIO_VERSION:-scenario-v4.6}
+  FIXTURE_VERSION: ${FIXTURE_VERSION:-source-fixture-v4.6}
+  GENERATED_AT: ${GENERATED_AT:-2026-07-28T05:00:00Z}
+
+services:
+  app-postgres:
+    <<: *postgres-common
+    environment:
+      <<: *common-contract
+      PGTZ: Asia/Seoul
+      POSTGRES_DB: hotel_datahub_app
+      POSTGRES_USER: app_admin
+      POSTGRES_PASSWORD: ${APP_POSTGRES_ADMIN_PASSWORD:?APP_POSTGRES_ADMIN_PASSWORD is required}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C.UTF-8
+      APP_MIGRATION_PASSWORD: ${APP_MIGRATION_PASSWORD:?APP_MIGRATION_PASSWORD is required}
+      APP_RUNTIME_PASSWORD: ${APP_RUNTIME_PASSWORD:?APP_RUNTIME_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${APP_POSTGRES_PORT:-15430}:5432"
+    volumes:
+      - app-postgres-data:/var/lib/postgresql/data
+      - ./init/app-postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" &&
+          psql -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+          -Atqc "SELECT 1 FROM public.environment_manifest
+          WHERE schema_version = '$${DATABASE_SCHEMA_VERSION}'" | grep -qx 1
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  pms-postgres:
+    <<: *postgres-common
+    environment:
+      <<: *common-contract
+      PGTZ: Asia/Seoul
+      POSTGRES_DB: hotel_pms
+      POSTGRES_USER: pms_admin
+      POSTGRES_PASSWORD: ${PMS_POSTGRES_ADMIN_PASSWORD:?PMS_POSTGRES_ADMIN_PASSWORD is required}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C.UTF-8
+      PMS_DATAHUB_PASSWORD: ${PMS_DATAHUB_PASSWORD:?PMS_DATAHUB_PASSWORD is required}
+      PMS_TRINO_PASSWORD: ${PMS_TRINO_PASSWORD:?PMS_TRINO_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${PMS_POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - pms-postgres-data:/var/lib/postgresql/data
+      - ./init/pms-postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" &&
+          psql -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+          -Atqc "SELECT 1 FROM public.environment_manifest
+          WHERE schema_version = '$${DATABASE_SCHEMA_VERSION}'" | grep -qx 1
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  banquet-postgres:
+    <<: *postgres-common
+    environment:
+      <<: *common-contract
+      PGTZ: Asia/Seoul
+      POSTGRES_DB: hotel_banquet
+      POSTGRES_USER: banquet_admin
+      POSTGRES_PASSWORD: ${BANQUET_POSTGRES_ADMIN_PASSWORD:?BANQUET_POSTGRES_ADMIN_PASSWORD is required}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C.UTF-8
+      BANQUET_DATAHUB_PASSWORD: ${BANQUET_DATAHUB_PASSWORD:?BANQUET_DATAHUB_PASSWORD is required}
+      BANQUET_TRINO_PASSWORD: ${BANQUET_TRINO_PASSWORD:?BANQUET_TRINO_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${BANQUET_POSTGRES_PORT:-15433}:5432"
+    volumes:
+      - banquet-postgres-data:/var/lib/postgresql/data
+      - ./init/banquet-postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" &&
+          psql -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+          -Atqc "SELECT 1 FROM public.environment_manifest
+          WHERE schema_version = '$${DATABASE_SCHEMA_VERSION}'" | grep -qx 1
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  pos-mysql:
+    image: mysql:8.4.11-oraclelinux9@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
+    restart: unless-stopped
+    init: true
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+09:00
+    environment:
+      <<: *common-contract
+      MYSQL_DATABASE: hotel_pos
+      MYSQL_ROOT_PASSWORD: ${POS_MYSQL_ROOT_PASSWORD:?POS_MYSQL_ROOT_PASSWORD is required}
+      POS_DATAHUB_PASSWORD: ${POS_DATAHUB_PASSWORD:?POS_DATAHUB_PASSWORD is required}
+      POS_TRINO_PASSWORD: ${POS_TRINO_PASSWORD:?POS_TRINO_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${POS_MYSQL_PORT:-13306}:3306"
+    volumes:
+      - pos-mysql-data:/var/lib/mysql
+      - ./init/pos-mysql:/docker-entrypoint-initdb.d:ro
+    networks:
+      - database-network
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mysql --protocol=TCP -h 127.0.0.1 -uroot
+          -p"$${MYSQL_ROOT_PASSWORD}" --silent --skip-column-names
+          "$${MYSQL_DATABASE}" -e
+          "SELECT 1 FROM environment_manifest
+          WHERE schema_version = '$${DATABASE_SCHEMA_VERSION}'" | grep -qx 1
+      interval: 10s
+      timeout: 8s
+      retries: 30
+      start_period: 30s
+
+  crm-mssql:
+    image: mcr.microsoft.com/mssql/server:2022-CU26-ubuntu-22.04@sha256:ba4c8329f48fb8f02e1416be6a930ebfd71268caee78aa985f3af4315e457c89
+    restart: unless-stopped
+    init: true
+    environment:
+      <<: *common-contract
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${CRM_MSSQL_SA_PASSWORD:?CRM_MSSQL_SA_PASSWORD is required}
+      CRM_DATABASE: hotel_crm
+      CRM_DATAHUB_PASSWORD: ${CRM_DATAHUB_PASSWORD:?CRM_DATAHUB_PASSWORD is required}
+      CRM_TRINO_PASSWORD: ${CRM_TRINO_PASSWORD:?CRM_TRINO_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${CRM_MSSQL_PORT:-11433}:1433"
+    volumes:
+      - crm-mssql-data:/var/opt/mssql
+    networks:
+      - database-network
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          SQLCMD=/opt/mssql-tools18/bin/sqlcmd;
+          [ -x "$$SQLCMD" ] || SQLCMD=/opt/mssql-tools/bin/sqlcmd;
+          "$$SQLCMD" -S localhost -U sa -P "$${MSSQL_SA_PASSWORD}" -C -b
+          -d "$${CRM_DATABASE}" -Q
+          "SET NOCOUNT ON;
+          IF NOT EXISTS (
+            SELECT 1 FROM dbo.environment_manifest
+            WHERE schema_version = N'$${DATABASE_SCHEMA_VERSION}'
+          ) THROW 50001, 'SCHEMA_NOT_READY', 1;" -o /dev/null
+      interval: 10s
+      timeout: 10s
+      retries: 45
+      start_period: 30s
+
+  crm-mssql-init:
+    image: mcr.microsoft.com/mssql/server:2022-CU26-ubuntu-22.04@sha256:ba4c8329f48fb8f02e1416be6a930ebfd71268caee78aa985f3af4315e457c89
+    restart: "no"
+    depends_on:
+      crm-mssql:
+        condition: service_started
+    environment:
+      <<: *common-contract
+      MSSQL_SA_PASSWORD: ${CRM_MSSQL_SA_PASSWORD:?CRM_MSSQL_SA_PASSWORD is required}
+      CRM_DATABASE: hotel_crm
+      CRM_DATAHUB_PASSWORD: ${CRM_DATAHUB_PASSWORD:?CRM_DATAHUB_PASSWORD is required}
+      CRM_TRINO_PASSWORD: ${CRM_TRINO_PASSWORD:?CRM_TRINO_PASSWORD is required}
+    entrypoint:
+      - /bin/bash
+      - /init/00-init.sh
+    volumes:
+      - ./init/crm-mssql:/init:ro
+    networks:
+      - database-network
+
+  facility-clickhouse:
+    image: clickhouse/clickhouse-server:26.3.17.56@sha256:422be85ae7344058369cdd366ac0efea9daa8428b55c9cf50258e83a7d12fcb3
+    restart: unless-stopped
+    init: true
+    environment:
+      <<: *common-contract
+      CLICKHOUSE_DB: hotel_facility
+      CLICKHOUSE_USER: facility_admin
+      CLICKHOUSE_PASSWORD: ${FACILITY_CLICKHOUSE_ADMIN_PASSWORD:?FACILITY_CLICKHOUSE_ADMIN_PASSWORD is required}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      FACILITY_DATAHUB_PASSWORD: ${FACILITY_DATAHUB_PASSWORD:?FACILITY_DATAHUB_PASSWORD is required}
+      FACILITY_TRINO_PASSWORD: ${FACILITY_TRINO_PASSWORD:?FACILITY_TRINO_PASSWORD is required}
+    ports:
+      - "127.0.0.1:${FACILITY_CLICKHOUSE_HTTP_PORT:-18123}:8123"
+      - "127.0.0.1:${FACILITY_CLICKHOUSE_NATIVE_PORT:-19000}:9000"
+    volumes:
+      - facility-clickhouse-data:/var/lib/clickhouse
+      - ./init/facility-clickhouse:/docker-entrypoint-initdb.d:ro
+    networks:
+      - database-network
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          clickhouse-client --user "$${CLICKHOUSE_USER}"
+          --password "$${CLICKHOUSE_PASSWORD}" --database "$${CLICKHOUSE_DB}"
+          --query
+          "SELECT throwIf(
+            count() != 1,
+            'SCHEMA_NOT_READY'
+          ) FROM environment_manifest
+          WHERE schema_version = '$${DATABASE_SCHEMA_VERSION}'"
+      interval: 10s
+      timeout: 8s
+      retries: 30
+      start_period: 30s
+
+networks:
+  database-network:
+    driver: bridge
+
+volumes:
+  app-postgres-data:
+  pms-postgres-data:
+  banquet-postgres-data:
+  pos-mysql-data:
+  crm-mssql-data:
+  facility-clickhouse-data:

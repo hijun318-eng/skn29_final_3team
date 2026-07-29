@@ -1,0 +1,21 @@
+source:
+  type: clickhouse
+  config:
+    host_port: facility-clickhouse:9000
+    database: hotel_facility
+    username: facility_datahub
+    password: ${FACILITY_DATAHUB_PASSWORD}
+    platform_instance: facility
+    scheme: clickhouse+native
+    include_tables: true
+    include_views: true
+    include_query_log_lineage: false
+    include_query_log_operations: false
+    profiling:
+      enabled: false
+pipeline_name: hotel-facility-metadata
+sink:
+  type: datahub-rest
+  config:
+    server: ${DATAHUB_GMS_URL}
+    token: ${DATAHUB_TOKEN}

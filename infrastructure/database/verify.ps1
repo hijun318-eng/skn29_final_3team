@@ -48,8 +48,17 @@ function Assert-ComposeDenied {
         [scriptblock]$Cleanup
     )
 
-    & docker compose --env-file $localEnv -f $composeFile @Arguments *> $null
-    if ($LASTEXITCODE -eq 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & docker compose --env-file $localEnv -f $composeFile @Arguments *> $null
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($exitCode -eq 0) {
         & $Cleanup
         throw "$Name readonly account unexpectedly created a table."
     }
@@ -57,7 +66,7 @@ function Assert-ComposeDenied {
 
 Invoke-Compose config --quiet | Out-Null
 $services = 'app-postgres','pms-postgres','banquet-postgres','pos-mysql','crm-mssql','facility-clickhouse','trino'
-$status = Invoke-Compose ps -a --format json | ForEach-Object { $_ | ConvertFrom-Json }
+$status = Invoke-Compose -Arguments @('ps', '-a', '--format', 'json') | ForEach-Object { $_ | ConvertFrom-Json }
 foreach ($service in $services) {
     if (($status | Where-Object Service -eq $service).Health -ne 'healthy') {
         throw "$service is not healthy."

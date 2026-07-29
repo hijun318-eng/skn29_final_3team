@@ -1,4 +1,4 @@
--- CRM deterministic synthetic load v2.2
+-- CRM deterministic synthetic load v2.2 for contract 1.0.0
 -- seed=20260729; schema_version=1.0.0; scenario_version=1.0.0
 -- fixture_version=1.0.0; synthetic=true; property_id=SYNTHETIC_HOTEL_001
 USE crm_db;

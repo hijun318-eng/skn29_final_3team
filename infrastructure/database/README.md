@@ -1,6 +1,6 @@
 # Docker Compose 합성 운영 DB
 
-5개 업무 사일로와 애플리케이션 관리 DB를 독립 컨테이너·볼륨·계정으로 실행한다. 실제 고객 데이터는 사용하지 않으며 모든 seed는 `20260729`, schema version은 `1.0.0`이다.
+5개 업무 사일로와 애플리케이션 관리 DB를 독립 컨테이너·볼륨·계정으로 실행한다. 실제 고객 데이터는 사용하지 않으며 모든 seed는 `20260729`, schema version은 `1.0.0`이다. Trino는 5개 source catalog와 내부 `serving` catalog를 사용한다.
 
 ```powershell
 cd infrastructure/database
@@ -20,10 +20,13 @@ Copy-Item .env.example .env
 | pos-mysql | MySQL 8.4.6 | 13306 | pos | pos |
 | crm-mssql | SQL Server 2022 CU17 | 11433 | crm | crm |
 | facility-clickhouse | ClickHouse 24.8.4.13 | 18123 / 19000 | facility | facility |
+| trino | Trino 476 | 18080 | 제외 | `serving`(내부) + source 5개 |
 
 컨테이너 간 접속은 `app-postgres`, `pms-postgres` 등 서비스명과 내부 포트를 사용한다. 모든 외부 포트는 `127.0.0.1`에만 바인딩한다.
 
 업무 DB는 `*_READONLY_USER` 계정으로 DataHub와 Trino에 연결한다. 이 계정은 `SELECT` 및 시스템 메타데이터 조회만 허용하며 DML·DDL은 거부한다. `app-postgres`의 `APP_DB_USER`는 앱 읽기·쓰기, `APP_MIGRATION_USER`는 migration 전용이다.
+
+실행 원본은 `sql/ddl`, `sql/data`, `sql/app`, `security`에만 둔다. `releases/`는 배포 아카이브이며 Compose 초기화 경로에서 사용하지 않는다.
 
 이미지는 태그와 manifest digest를 함께 고정했다.
 

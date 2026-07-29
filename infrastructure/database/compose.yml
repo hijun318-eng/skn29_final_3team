@@ -51,7 +51,7 @@ services:
     volumes:
       - pms-postgres-data:/var/lib/postgresql/data
       - ./sql/ddl/01_hotel_pms_postgresql.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ./sql/data/260728_01_pms_postgresql_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
+      - ./sql/data/260729_01_pms_postgresql_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -79,7 +79,7 @@ services:
     volumes:
       - banquet-postgres-data:/var/lib/postgresql/data
       - ./sql/ddl/05_hotel_banquet_postgresql.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ./sql/data/260728_05_banquet_postgresql_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
+      - ./sql/data/260729_05_banquet_postgresql_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -103,7 +103,7 @@ services:
     volumes:
       - pos-mysql-data:/var/lib/mysql
       - ./sql/ddl/02_hotel_pos_mysql.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ./sql/data/260728_02_pos_mysql_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
+      - ./sql/data/260729_02_pos_mysql_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
@@ -129,7 +129,7 @@ services:
       - crm-mssql-data:/var/opt/mssql
       - ./mssql/entrypoint.sh:/bootstrap/entrypoint.sh:ro
       - ./sql/ddl/03_hotel_crm_sqlserver.sql:/bootstrap/00-ddl.sql:ro
-      - ./sql/data/260728_03_crm_sqlserver_2022_2026_v2.2.sql:/bootstrap/10-synthetic.sql:ro
+      - ./sql/data/260729_03_crm_sqlserver_2022_2026_v2.2.sql:/bootstrap/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" >/dev/null 2>&1"]
@@ -155,7 +155,7 @@ services:
       - facility-clickhouse-data:/var/lib/clickhouse
       - ./clickhouse/config.d/timezone.xml:/etc/clickhouse-server/config.d/timezone.xml:ro
       - ./sql/ddl/04_hotel_facility_clickhouse.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ./sql/data/260728_04_facility_clickhouse_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
+      - ./sql/data/260729_04_facility_clickhouse_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' >/dev/null"]

@@ -1,10 +1,10 @@
 -- Trino analytics views for 1.0.0.
--- Catalogs: app, pms, pos, crm, facility, banquet.
+-- Catalogs: serving (internal), pms, pos, crm, facility, banquet.
 -- Setup-only DDL. Runtime users remain read-only.
-CREATE SCHEMA IF NOT EXISTS app.analytics;
-CREATE SCHEMA IF NOT EXISTS app.reference;
+CREATE SCHEMA IF NOT EXISTS serving.analytics;
+CREATE SCHEMA IF NOT EXISTS serving.reference;
 
-CREATE OR REPLACE VIEW app.reference.market_benchmark_annual AS
+CREATE OR REPLACE VIEW serving.reference.market_benchmark_annual AS
 SELECT *
 FROM (
     VALUES
@@ -15,7 +15,7 @@ FROM (
       (2026,'HOTEL_INDUSTRY',cast(NULL AS decimal(10,6)),cast(NULL AS decimal(18,2)),cast(NULL AS decimal(18,2)))
 ) AS t(benchmark_year,population_code,occupancy_rate,adr_krw,revpar_krw);
 
-CREATE OR REPLACE VIEW app.analytics.hotel_daily_metrics AS
+CREATE OR REPLACE VIEW serving.analytics.hotel_daily_metrics AS
 WITH inventory AS (
     SELECT property_id,business_date,room_type_code,data_period_status,is_forecast,
            sum(available_room_nights) available_room_nights,
@@ -54,7 +54,7 @@ LEFT JOIN stay_days s
  AND i.room_type_code=s.room_type_code AND i.data_period_status=s.data_period_status
  AND i.is_forecast=s.is_forecast;
 
-CREATE OR REPLACE VIEW app.analytics.fnb_daypart_metrics AS
+CREATE OR REPLACE VIEW serving.analytics.fnb_daypart_metrics AS
 WITH orders AS (
     SELECT property_id,store_id,cast(ordered_at AS date) business_date,service_period,
            data_period_status,is_forecast=1 is_forecast,
@@ -88,7 +88,7 @@ LEFT JOIN orders o
  AND p.business_date=o.business_date AND p.service_period=o.service_period
  AND p.data_period_status=o.data_period_status AND p.is_forecast=o.is_forecast;
 
-CREATE OR REPLACE VIEW app.analytics.facility_daily_metrics AS
+CREATE OR REPLACE VIEW serving.analytics.facility_daily_metrics AS
 SELECT property_id,facility_id,cast(cast(event_at AS timestamp(3)) AS date) business_date,data_period_status,
        is_forecast=1 is_forecast,
        'FACILITY' business_unit_code,
@@ -106,7 +106,7 @@ SELECT property_id,facility_id,cast(cast(event_at AS timestamp(3)) AS date) busi
 FROM facility.facility.facility_events
 GROUP BY 1,2,3,4,5;
 
-CREATE OR REPLACE VIEW app.analytics.banquet_monthly_metrics AS
+CREATE OR REPLACE VIEW serving.analytics.banquet_monthly_metrics AS
 WITH bookings AS (
     SELECT property_id,date_trunc('month',cast(event_date AS timestamp)) year_month,
            product_category,data_period_status,is_forecast,
@@ -137,14 +137,14 @@ LEFT JOIN revenue r
   ON b.property_id=r.property_id AND b.year_month=r.year_month
  AND b.data_period_status=r.data_period_status AND b.is_forecast=r.is_forecast;
 
-CREATE OR REPLACE VIEW app.analytics.hotel_monthly_metrics AS
+CREATE OR REPLACE VIEW serving.analytics.hotel_monthly_metrics AS
 WITH rooms AS (
     SELECT property_id,date_trunc('month',cast(business_date AS timestamp)) year_month,
            data_period_status,is_forecast,'ROOMS' business_unit_code,
            sum(room_revenue) operating_revenue,sum(rooms_sold) rooms_sold,
            sum(available_room_nights) available_room_nights,
            greatest(max(pms_inventory_watermark),max(pms_stay_watermark)) source_watermark
-    FROM app.analytics.hotel_daily_metrics GROUP BY 1,2,3,4
+    FROM serving.analytics.hotel_daily_metrics GROUP BY 1,2,3,4
 ),
 fnb AS (
     SELECT property_id,date_trunc('month',cast(business_date AS timestamp)) year_month,
@@ -152,21 +152,21 @@ fnb AS (
            sum(fnb_net_revenue) operating_revenue,cast(NULL AS bigint) rooms_sold,
            cast(NULL AS bigint) available_room_nights,
            greatest(max(pos_order_watermark),max(pos_period_watermark)) source_watermark
-    FROM app.analytics.fnb_daypart_metrics GROUP BY 1,2,3,4
+    FROM serving.analytics.fnb_daypart_metrics GROUP BY 1,2,3,4
 ),
 facility_month AS (
     SELECT property_id,date_trunc('month',cast(business_date AS timestamp)) year_month,
            data_period_status,is_forecast,'FACILITY' business_unit_code,
            sum(facility_revenue) operating_revenue,cast(NULL AS bigint) rooms_sold,
            cast(NULL AS bigint) available_room_nights,max(facility_watermark) source_watermark
-    FROM app.analytics.facility_daily_metrics GROUP BY 1,2,3,4
+    FROM serving.analytics.facility_daily_metrics GROUP BY 1,2,3,4
 ),
 banquet_month AS (
     SELECT property_id,year_month,data_period_status,is_forecast,'BANQUET' business_unit_code,
            sum(recognized_revenue) operating_revenue,cast(NULL AS bigint) rooms_sold,
            cast(NULL AS bigint) available_room_nights,
            greatest(max(banquet_booking_watermark),max(banquet_revenue_watermark)) source_watermark
-    FROM app.analytics.banquet_monthly_metrics GROUP BY 1,2,3,4
+    FROM serving.analytics.banquet_monthly_metrics GROUP BY 1,2,3,4
 )
 SELECT property_id,year_month,business_unit_code,data_period_status,is_forecast,
        cast(sum(operating_revenue) AS decimal(18,2)) total_operating_revenue,
@@ -181,7 +181,7 @@ FROM (
 ) u
 GROUP BY 1,2,3,4,5;
 
-CREATE OR REPLACE VIEW app.analytics.hotel_yearly_metrics AS
+CREATE OR REPLACE VIEW serving.analytics.hotel_yearly_metrics AS
 SELECT m.property_id,year(m.year_month) year,m.business_unit_code,m.data_period_status,m.is_forecast,
        cast(sum(m.total_operating_revenue) AS decimal(18,2)) total_operating_revenue,
        sum(m.rooms_sold) rooms_sold,sum(m.available_room_nights) available_room_nights,
@@ -189,12 +189,12 @@ SELECT m.property_id,year(m.year_month) year,m.business_unit_code,m.data_period_
        b.occupancy_rate benchmark_occupancy_rate,b.adr_krw benchmark_adr_krw,b.revpar_krw benchmark_revpar_krw,
        if(sum(m.available_room_nights)=0,'ZERO_DENOMINATOR',NULL) reason_code,
        max(m.source_watermark) source_watermark
-FROM app.analytics.hotel_monthly_metrics m
-LEFT JOIN app.reference.market_benchmark_annual b
+FROM serving.analytics.hotel_monthly_metrics m
+LEFT JOIN serving.reference.market_benchmark_annual b
   ON b.benchmark_year=year(m.year_month) AND b.population_code='HOTEL_INDUSTRY'
 GROUP BY 1,2,3,4,5,10,11,12;
 
-CREATE OR REPLACE VIEW app.analytics.workforce_monthly_metrics AS
+CREATE OR REPLACE VIEW serving.analytics.workforce_monthly_metrics AS
 WITH staffing AS (
     SELECT property_id,date_trunc('month',cast(business_date AS timestamp)) year_month,
            department,data_period_status,is_forecast=1 is_forecast,
@@ -205,7 +205,7 @@ WITH staffing AS (
 rooms AS (
     SELECT property_id,date_trunc('month',cast(business_date AS timestamp)) year_month,
            data_period_status,is_forecast,sum(rooms_sold) rooms_sold,max(pms_stay_watermark) pms_watermark
-    FROM app.analytics.hotel_daily_metrics GROUP BY 1,2,3,4
+    FROM serving.analytics.hotel_daily_metrics GROUP BY 1,2,3,4
 )
 SELECT s.property_id,s.year_month,s.department,s.data_period_status,s.is_forecast,
        cast(s.worked_hours AS decimal(18,2)) worked_hours,
@@ -219,7 +219,7 @@ LEFT JOIN rooms r
   ON s.property_id=r.property_id AND s.year_month=r.year_month
  AND s.data_period_status=r.data_period_status AND s.is_forecast=r.is_forecast;
 
-CREATE OR REPLACE VIEW app.analytics.resource_monthly_metrics AS
+CREATE OR REPLACE VIEW serving.analytics.resource_monthly_metrics AS
 WITH resources AS (
     SELECT property_id,date_trunc('month',cast(business_date AS timestamp)) year_month,
            resource_scope,data_period_status,is_forecast=1 is_forecast,
@@ -231,7 +231,7 @@ rooms AS (
     SELECT property_id,date_trunc('month',cast(business_date AS timestamp)) year_month,
            data_period_status,is_forecast,sum(rooms_sold) occupied_room_nights,
            max(pms_stay_watermark) pms_watermark
-    FROM app.analytics.hotel_daily_metrics GROUP BY 1,2,3,4
+    FROM serving.analytics.hotel_daily_metrics GROUP BY 1,2,3,4
 )
 SELECT r.property_id,r.year_month,r.resource_scope,r.data_period_status,r.is_forecast,
        r.energy_kwh,r.water_m3,r.waste_kg,cast(r.resource_cost AS decimal(18,2)) resource_cost,
@@ -248,6 +248,6 @@ LEFT JOIN rooms s
  AND r.data_period_status=s.data_period_status AND r.is_forecast=s.is_forecast;
 
 SELECT table_schema,table_name
-FROM app.information_schema.views
+FROM serving.information_schema.views
 WHERE table_schema='analytics'
 ORDER BY table_name;

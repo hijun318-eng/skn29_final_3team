@@ -4,13 +4,14 @@
 
 ```powershell
 cd infrastructure/database
-Copy-Item .env.example .env
-# .env의 CHANGE_ME 비밀번호를 교체
-.\start.ps1
-.\verify.ps1
-.\stop.ps1
-.\reset.ps1 -Force
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+# 최초 실행 전 .env의 모든 CHANGE_ME_ 값을 로컬 전용 비밀번호로 교체
+powershell -NoProfile -ExecutionPolicy Bypass -File start.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File verify.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File stop.ps1
 ```
+
+`reset.ps1 -Force`는 현재 로컬 Docker DB 볼륨을 삭제하고 다시 생성한다. 보존할 데이터가 없는 synthetic 개발 환경인지 확인한 뒤에만 실행한다.
 
 | 서비스 | 엔진 | localhost 포트 | DataHub instance | Trino catalog |
 | --- | --- | ---: | --- | --- |

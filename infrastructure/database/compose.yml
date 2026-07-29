@@ -106,11 +106,11 @@ services:
       - ./sql/data/260729_02_pos_mysql_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      test: ["CMD-SHELL", "mysqladmin ping --protocol=tcp -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
       timeout: 5s
       retries: 15
-      start_period: 30s
+      start_period: 600s
 
   crm-mssql:
     <<: *db

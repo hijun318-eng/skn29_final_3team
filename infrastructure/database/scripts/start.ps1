@@ -1,7 +1,5 @@
 [CmdletBinding()]
-param(
-    [switch]$Reset
-)
+param()
 
 $ErrorActionPreference = 'Stop'
 $databaseRoot = Split-Path -Parent $PSScriptRoot
@@ -28,10 +26,6 @@ if (Select-String -LiteralPath $localEnv -Pattern '(^|=)CHANGE_ME_' -Quiet) {
 }
 
 Invoke-Compose config --quiet
-
-if ($Reset) {
-    Invoke-Compose down --volumes --remove-orphans
-}
 
 Invoke-Compose up -d --wait --wait-timeout 1800
 

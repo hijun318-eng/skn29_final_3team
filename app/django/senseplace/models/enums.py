@@ -149,6 +149,21 @@ class ReportStatusCode:
 
 
 # ---------------------------------------------------------------------------
+# Report type (엔터프라이즈 프론트엔드 보고서 분류)
+# ---------------------------------------------------------------------------
+class ReportTypeCode:
+    WEEKLY = "WEEKLY"
+    MONTHLY = "MONTHLY"
+    QUARTERLY = "QUARTERLY"
+
+    CHOICES = [
+        (WEEKLY, "주간"),
+        (MONTHLY, "월간"),
+        (QUARTERLY, "분기"),
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Verification status (field_note)
 # ---------------------------------------------------------------------------
 class VerificationStatusCode:

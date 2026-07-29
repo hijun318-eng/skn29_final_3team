@@ -42,8 +42,14 @@ from senseplace.api.envelope import (
     error_validation,
 )
 from senseplace.auth.views import login_view, logout_view
-from senseplace.models import DimServiceArea, FactVoc, QueryRun, Report
-from senseplace.models.enums import JobStatusCode, RoleCode, VocCategoryCode
+from senseplace.models import DimDate, DimServiceArea, FactVoc, QueryRun, Report
+from senseplace.models.enums import (
+    JobStatusCode,
+    ReportStatusCode,
+    ReportTypeCode,
+    RoleCode,
+    VocCategoryCode,
+)
 from senseplace.rbac.decorators import require_role, require_scope
 
 logger = logging.getLogger(__name__)
@@ -58,6 +64,38 @@ _SEVERITY_MAP: dict[str, str] = {
     "NEUTRAL": "warn",
     "POSITIVE": "ok",
 }
+
+_REPORT_TYPE_LABELS: dict[str, str] = dict(ReportTypeCode.CHOICES)
+_REPORT_STATUS_LABELS: dict[str, str] = {
+    ReportStatusCode.DRAFT: "초안",
+    ReportStatusCode.READY_FOR_REVIEW: "검토 중",
+    ReportStatusCode.APPROVED: "확정",
+    ReportStatusCode.REJECTED: "반려",
+}
+
+
+def _format_report_period(report_type: str, virtual_week_id: str) -> str:
+    """보고서 유형에 따라 표시용 기간 라벨을 생성한다.
+
+    - WEEKLY: DimDate에서 해당 주차의 시작일~종료일 (예: "07/20~07/26")
+    - MONTHLY: "2026-06" → "2026년 06월"
+    - QUARTERLY: "2026-Q2" → "2026 Q2"
+    """
+    if report_type == ReportTypeCode.WEEKLY:
+        dates = DimDate.objects.filter(virtual_week_id=virtual_week_id).order_by("service_date")
+        if dates.exists():
+            start = dates.first().service_date
+            end = dates.last().service_date
+            return f"{start.month:02d}/{start.day:02d}~{end.month:02d}/{end.day:02d}"
+        return virtual_week_id
+    if report_type == ReportTypeCode.MONTHLY:
+        parts = virtual_week_id.split("-")
+        if len(parts) == 2:
+            return f"{parts[0]}년 {parts[1]}월"
+        return virtual_week_id
+    if report_type == ReportTypeCode.QUARTERLY:
+        return virtual_week_id
+    return virtual_week_id
 
 
 def _build_area_map() -> dict[str, tuple[str, str]]:
@@ -447,7 +485,12 @@ def report_list(request: HttpRequest) -> JsonResponse:
             "report_id": str(r.report_id),
             "report_version": r.report_version,
             "virtual_week_id": r.virtual_week_id,
+            "report_type": r.report_type,
+            "report_type_label": _REPORT_TYPE_LABELS.get(r.report_type, r.report_type),
+            "period": _format_report_period(r.report_type, r.virtual_week_id),
             "status": r.status,
+            "status_label": _REPORT_STATUS_LABELS.get(r.status, r.status),
+            "author": r.author_name,
             "is_synthetic": r.is_synthetic,
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }

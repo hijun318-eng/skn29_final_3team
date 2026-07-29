@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle, ArrowLeft, BarChart3, Building2, Check, ChevronRight,
   Columns2, Download, FileOutput, FilePlus2, GripVertical, Info, Minus,
@@ -6,14 +6,27 @@ import {
   TrendingDown, TrendingUp, Type,
 } from "lucide-react";
 import { SYNTHETIC_META } from "../data/enterpriseDemoData";
+import { apiGet } from "../services/apiClient";
 
-const REPORTS = [
+const FALLBACK_REPORTS = [
   { id: 1, type: "주간", period: "07/21~07/27", status: "초안", author: "박준희", updated: "10분 전 수정" },
   { id: 2, type: "주간", period: "07/14~07/20", status: "확정", author: "박준희", updated: "07.21 확정" },
   { id: 3, type: "주간", period: "07/07~07/13", status: "확정", author: "박준희", updated: "07.14 확정" },
   { id: 4, type: "월간", period: "2026년 06월", status: "확정", author: "박준희", updated: "07.03 확정" },
   { id: 5, type: "분기", period: "2026 Q2", status: "확정", author: "CX 운영팀", updated: "07.05 확정" },
 ];
+
+function formatUpdated(isoString) {
+  if (!isoString) return "";
+  const now = new Date();
+  const past = new Date(isoString);
+  const diffMin = Math.floor((now - past) / 60000);
+  if (diffMin < 1) return "방금 전 수정";
+  if (diffMin < 60) return `${diffMin}분 전 수정`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}시간 전 수정`;
+  return past.toLocaleDateString("ko-KR");
+}
 
 const DECISIONS = [
   { id: 1, priority: "우선 결정", title: "주말 조식 탄력 인력 2명 상시 배치", reason: "최근 4주 중 3주간 08:00~09:00 평균 대기시간이 목표 10분을 초과했습니다.", impact: "대기시간 16분 → 9분", cost: "월 인건비 +320만원", evidence: "VOC 184건 · 운영 로그 28일", owner: "식음부" },
@@ -85,7 +98,8 @@ export function ReportsPage() {
   const [view, setView] = useState("list");
   const [typeFilter, setTypeFilter] = useState("전체");
   const [statusFilter, setStatusFilter] = useState("전체");
-  const [selectedReport, setSelectedReport] = useState(REPORTS[0]);
+  const [reports, setReports] = useState(FALLBACK_REPORTS);
+  const [selectedReport, setSelectedReport] = useState(FALLBACK_REPORTS[0]);
   const [period, setPeriod] = useState("Weekly Report");
   const [decisions, setDecisions] = useState({});
   const [selectedOptions, setSelectedOptions] = useState(["staff", "seats"]);
@@ -96,7 +110,31 @@ export function ReportsPage() {
   const [draggedBlockId, setDraggedBlockId] = useState(null);
   const [draggedLibraryItem, setDraggedLibraryItem] = useState(null);
   const notify = (message) => { setToast(message); window.setTimeout(() => setToast(""), 1800); };
-  const filteredReports = REPORTS.filter((report) => (typeFilter === "전체" || report.type === typeFilter) && (statusFilter === "전체" || report.status === statusFilter));
+  useEffect(() => {
+    let cancelled = false;
+    apiGet("/reports/?limit=20")
+      .then((res) => {
+        if (cancelled || !res?.data) return;
+        const mapped = res.data.map((r, index) => ({
+          id: index + 1,
+          type: r.report_type_label || r.report_type || "주간",
+          period: r.period || r.virtual_week_id,
+          status: r.status_label || (r.status === "DRAFT" ? "초안" : "확정"),
+          author: r.author || "박준희",
+          updated: formatUpdated(r.created_at),
+          _reportId: r.report_id,
+        }));
+        if (mapped.length > 0) {
+          setReports(mapped);
+          setSelectedReport(mapped[0]);
+        }
+      })
+      .catch((e) => {
+        console.warn("Report API 실패, fallback 사용:", e.message);
+      });
+    return () => { cancelled = true; };
+  }, []);
+  const filteredReports = reports.filter((report) => (typeFilter === "전체" || report.type === typeFilter) && (statusFilter === "전체" || report.status === statusFilter));
   const result = useMemo(() => {
     const options = RESPONSE_OPTIONS.filter((option) => selectedOptions.includes(option.id));
     return { wait: Math.max(7, 18 - options.reduce((sum, item) => sum + item.wait, 0)), voc: Math.max(4, 13 - options.reduce((sum, item) => sum + item.voc, 0)), cost: options.reduce((sum, item) => sum + item.cost, 0) };
@@ -132,7 +170,7 @@ export function ReportsPage() {
 
   if (view === "list") return <div className="page-content enterprise-reports-list">
     <div className="meta-strip"><Info size={13} />{SYNTHETIC_META.label}<span>seed {SYNTHETIC_META.seed}</span><span>schema {SYNTHETIC_META.schemaVersion}</span></div>
-    <div className="legacy-report-toolbar"><button className="primary" onClick={() => { setSelectedReport(REPORTS[0]); setView("editor"); }}><FilePlus2 size={15} />새 보고서</button><label>유형<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option>전체</option><option>주간</option><option>월간</option><option>분기</option></select></label><label>상태<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>전체</option><option>초안</option><option>확정</option></select></label></div>
+    <div className="legacy-report-toolbar"><button className="primary" onClick={() => { setSelectedReport(reports[0] || FALLBACK_REPORTS[0]); setView("editor"); }}><FilePlus2 size={15} />새 보고서</button><label>유형<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option>전체</option><option>주간</option><option>월간</option><option>분기</option></select></label><label>상태<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>전체</option><option>초안</option><option>확정</option></select></label></div>
     <section className="card legacy-report-list"><div className="legacy-report-row legacy-report-head"><span>유형</span><span>기간</span><span>상태</span><span>작성자</span><span>최근 변경</span><span>동작</span></div>{filteredReports.map((report) => <article className="legacy-report-row" key={report.id} onClick={() => openReport(report)}><strong>{report.type}</strong><b>{report.period}</b><span><i className={`legacy-report-status ${report.status === "초안" ? "draft" : "final"}`}><em />{report.status}</i></span><span>{report.author}</span><span>{report.updated}</span><button onClick={(event) => { event.stopPropagation(); openReport(report); }}>{report.status === "초안" ? "편집" : "열람"} <ChevronRight size={13} /></button></article>)}</section>
     <p className="legacy-report-guide">행을 선택해 보고서를 열람할 수 있습니다. 초안은 검토 후 확정하며, 확정 보고서는 읽기 전용입니다.</p>
   </div>;

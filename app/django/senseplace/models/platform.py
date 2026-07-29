@@ -21,6 +21,7 @@ from .enums import (
     EvidenceTypeCode,
     JobStatusCode,
     ReportStatusCode,
+    ReportTypeCode,
     ResourceTypeCode,
     RoleCode,
     VerificationStatusCode,
@@ -361,6 +362,18 @@ class Report(models.Model):
     virtual_week_id = models.CharField(
         max_length=16,
         help_text="가상 주차 ID",
+    )
+    report_type = models.CharField(
+        max_length=16,
+        choices=ReportTypeCode.CHOICES,
+        default=ReportTypeCode.WEEKLY,
+        help_text="보고서 유형 (주간/월간/분기)",
+    )
+    author_name = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="작성자 이름",
     )
     status = models.CharField(
         max_length=24,

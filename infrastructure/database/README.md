@@ -13,6 +13,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File stop.ps1
 
 `reset.ps1 -Force`는 현재 로컬 Docker DB 볼륨을 삭제하고 다시 생성한다. 보존할 데이터가 없는 synthetic 개발 환경인지 확인한 뒤에만 실행한다.
 
+최초 실행 시 POS synthetic seed 약 128만 행을 생성하므로 환경에 따라 최대 30분 정도 걸릴 수 있다. `DATABASE_STACK_READY`가 출력될 때까지 초기화 프로세스를 중단하지 않는다.
+
 | 서비스 | 엔진 | localhost 포트 | DataHub instance | Trino catalog |
 | --- | --- | ---: | --- | --- |
 | app-postgres | PostgreSQL 16.13 | 15432 | 제외 | 제외 |

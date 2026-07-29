@@ -4,9 +4,9 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v5.4 |
-| 문서 기준일 | 2026-07-29 17:35 |
-| 작성·수정 | 박준희 |
+| 버전 | v5.5 |
+| 문서 기준일 | 2026-07-29 18:41 |
+| 작성·수정 | 김재홍 / Codex |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
 | 대응 템플릿 | `templates/[기획] WBS_양식 (1)_27기_0팀.xlsx`, `templates/[기획] WBS_양식(2)_27기_0팀.xlsx` |
@@ -202,12 +202,12 @@ gantt
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 4.1 | R4-00 backend 경계·의존 방향 | architecture decision | 김재홍 | 대기 | 07/29 | 07/31 | 높음 |
-| 4.2 | R4-01 공통 객체·OpenAPI·오류 계약 | versioned API contract | 김재홍 | 대기 | 07/29 | 08/07 | 높음 |
-| 4.3 | R4-02 인증·request context middleware | role·as_of·trace context | 김재홍 | 대기 | 08/03 | 08/07 | 높음 |
-| 4.4 | R4-03 application DB model·Alembic | migration head | 김재홍 | 대기 | 08/03 | 08/07 | 높음 |
-| 4.5 | R4-04 Router·Template Binding | route decision | 김재홍 | 대기 | 08/03 | 08/10 | 높음 |
-| 4.6 | R4-05 Controller 고정 상태 머신 | transition table | 김재홍 | 대기 | 08/03 | 08/10 | 높음 |
+| 4.1 | R4-00 backend 경계·의존 방향 | architecture decision | 김재홍 | 진행 | 07/29 | 07/31 | 높음 |
+| 4.2 | R4-01 공통 객체·OpenAPI·오류 계약 | versioned API contract | 김재홍 | 진행 | 07/29 | 08/07 | 높음 |
+| 4.3 | R4-02 인증·request context middleware | role·as_of·trace context | 김재홍 | 진행 | 08/03 | 08/07 | 높음 |
+| 4.4 | R4-03 application DB model·Alembic | migration head | 김재홍 | 진행 | 08/03 | 08/07 | 높음 |
+| 4.5 | R4-04 Router·Template Binding | route decision | 김재홍 | 진행 | 08/03 | 08/10 | 높음 |
+| 4.6 | R4-05 Controller 고정 상태 머신 | transition table | 김재홍 | 진행 | 08/03 | 08/10 | 높음 |
 | 4.7 | R4-06 Context Registry·Builder | versioned Context Package | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
 | 4.8 | R4-07 G1 Context Gate | decision·evidence | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
 | 4.9 | R4-08 R3 Node typed client | model client·오류 처리 | 김재홍 | 대기 | 08/10 | 08/21 | 높음 |
@@ -344,6 +344,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-29 18:41 | 4.1~4.6 | R4 경계·공통 API/오류 계약, request/trace context, 단일 Alembic skeleton, Fake `/analysis` route와 최소 상태 전이 골격을 추가했다. 실제 DB migration·FastAPI 기동·R2/R3/R5 연동은 미완료로 유지한다. | Control Plane 골격 |
 | 2026-07-29 17:24 | 1.1 | 역할별 자율 진행량과 병합 충돌을 균형화해 I1·I2·I3·I4~I5의 4개 통합 Wave로 조정하고 역할별 상세 카드 원장을 보강 | 역할·일정 계약 |
 | 2026-07-29 17:07 | 1.1 | 역할별 실행을 단일 카드 승인 방식에서 Gate별 카드 범위 자율 실행·Gate 중단·통합 방식으로 변경하고 AGENTS·역할 매뉴얼·통합 일정·실행 카드 원장과 동기화 | 역할·일정 계약 |
 | 2026-07-29 11:15 | 2.4~2.7, 2.9, 2.10, 2.13 | 6개 격리 DB Compose와 18개 source table·Application bootstrap, deterministic manifest, identity·등급 이력, read-only 계정, DataHub recipe 5개·Trino catalog 5개를 구성하고 health·권한·재시작·볼륨 재생성 fingerprint를 실구동 검증 | DB bootstrap·검증 자동화 |
@@ -359,6 +360,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.5 | 2026-07-29 18:41 | R4 공통 계약·Fake Control Plane·Alembic 최소 골격의 실제 코드 추가에 맞춰 R4-00~05를 진행으로 기록 |
 | v5.4 | 2026-07-29 17:35 | R2 DB bootstrap 진행 근거를 보존하면서 4개 통합 Wave와 상세 실행 카드 운영 기준을 통합 |
 | v5.3 | 2026-07-29 17:24 | 역할별 자율 구현과 병합 충돌을 균형화한 4개 통합 Wave 및 상세 실행 카드 기준 반영 |
 | v5.2 | 2026-07-29 11:15 | v5.1 역할·일정 계약을 유지하고 DB Compose bootstrap의 DDL·seed·identity·등급 이력·계정·DataHub recipe·Trino catalog 실구동 근거를 새 R2 WBS ID에 연결 |

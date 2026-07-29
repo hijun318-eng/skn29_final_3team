@@ -1,0 +1,111 @@
+name: hotel-synthetic-db
+
+x-db: &db
+  restart: unless-stopped
+  networks: [database-network]
+
+services:
+  app-postgres:
+    <<: *db
+    container_name: app-postgres
+    image: "postgres:16.13-bookworm"
+    environment:
+      POSTGRES_DB: ${APP_DB_NAME}
+      POSTGRES_USER: ${APP_ADMIN_USER}
+      POSTGRES_PASSWORD: ${APP_ADMIN_PASSWORD}
+      TZ: Asia/Seoul
+      APP_MIGRATION_USER: ${APP_MIGRATION_USER}
+      APP_MIGRATION_PASSWORD: ${APP_MIGRATION_PASSWORD}
+      APP_DB_USER: ${APP_DB_USER}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+    command: ["postgres", "-c", "password_encryption=scram-sha-256"]
+    ports: ["127.0.0.1:15432:5432"]
+    volumes: ["app-postgres-data:/var/lib/postgresql/data", "./init/app-postgres:/docker-entrypoint-initdb.d:ro"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"], interval: 10s, timeout: 5s, retries: 10, start_period: 20s }
+  pms-postgres:
+    <<: *db
+    container_name: pms-postgres
+    image: "postgres:16.13-bookworm"
+    environment:
+      POSTGRES_DB: ${PMS_DB_NAME}
+      POSTGRES_USER: ${PMS_ADMIN_USER}
+      POSTGRES_PASSWORD: ${PMS_ADMIN_PASSWORD}
+      TZ: Asia/Seoul
+      RO_USER: ${PMS_READONLY_USER}
+      RO_PASSWORD: ${PMS_READONLY_PASSWORD}
+    command: ["postgres", "-c", "password_encryption=scram-sha-256"]
+    ports: ["127.0.0.1:15433:5432"]
+    volumes: ["pms-postgres-data:/var/lib/postgresql/data", "./init/pms-postgres:/docker-entrypoint-initdb.d:ro"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"], interval: 10s, timeout: 5s, retries: 10, start_period: 20s }
+  banquet-postgres:
+    <<: *db
+    container_name: banquet-postgres
+    image: "postgres:16.13-bookworm"
+    environment:
+      POSTGRES_DB: ${BANQUET_DB_NAME}
+      POSTGRES_USER: ${BANQUET_ADMIN_USER}
+      POSTGRES_PASSWORD: ${BANQUET_ADMIN_PASSWORD}
+      TZ: Asia/Seoul
+      RO_USER: ${BANQUET_READONLY_USER}
+      RO_PASSWORD: ${BANQUET_READONLY_PASSWORD}
+    command: ["postgres", "-c", "password_encryption=scram-sha-256"]
+    ports: ["127.0.0.1:15434:5432"]
+    volumes: ["banquet-postgres-data:/var/lib/postgresql/data", "./init/banquet-postgres:/docker-entrypoint-initdb.d:ro"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"], interval: 10s, timeout: 5s, retries: 10, start_period: 20s }
+  pos-mysql:
+    <<: *db
+    container_name: pos-mysql
+    image: "mysql:8.4.6"
+    environment:
+      MYSQL_DATABASE: ${POS_DB_NAME}
+      MYSQL_ROOT_PASSWORD: ${POS_ROOT_PASSWORD}
+      TZ: Asia/Seoul
+      RO_USER: ${POS_READONLY_USER}
+      RO_PASSWORD: ${POS_READONLY_PASSWORD}
+    command: ["mysqld", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_0900_ai_ci"]
+    ports: ["127.0.0.1:13306:3306"]
+    volumes: ["pos-mysql-data:/var/lib/mysql", "./init/pos-mysql:/docker-entrypoint-initdb.d:ro"]
+    healthcheck: { test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"], interval: 10s, timeout: 5s, retries: 15, start_period: 30s }
+  crm-mssql:
+    <<: *db
+    container_name: crm-mssql
+    image: "mcr.microsoft.com/mssql/server:2022-CU17-ubuntu-22.04"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${CRM_SA_PASSWORD}
+      TZ: Asia/Seoul
+    ports: ["127.0.0.1:11433:1433"]
+    volumes: ["crm-mssql-data:/var/opt/mssql"]
+    healthcheck: { test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" >/dev/null 2>&1"], interval: 10s, timeout: 5s, retries: 20, start_period: 40s }
+  crm-mssql-init:
+    image: "mcr.microsoft.com/mssql/server:2022-CU17-ubuntu-22.04"
+    environment:
+      CRM_SA_PASSWORD: ${CRM_SA_PASSWORD}
+      CRM_DB_NAME: ${CRM_DB_NAME}
+      CRM_READONLY_USER: ${CRM_READONLY_USER}
+      CRM_READONLY_PASSWORD: ${CRM_READONLY_PASSWORD}
+    networks: [database-network]
+    depends_on: { crm-mssql: { condition: service_healthy } }
+    volumes: ["./init/crm-mssql:/init:ro"]
+    entrypoint: ["/bin/bash", "/init/00-bootstrap.sh"]
+    restart: "no"
+    profiles: ["init"]
+  facility-clickhouse:
+    <<: *db
+    container_name: facility-clickhouse
+    image: "clickhouse/clickhouse-server:24.8.4.13"
+    environment:
+      CLICKHOUSE_DB: ${FACILITY_DB_NAME}
+      CLICKHOUSE_USER: ${FACILITY_ADMIN_USER}
+      CLICKHOUSE_PASSWORD: ${FACILITY_ADMIN_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      RO_USER: ${FACILITY_READONLY_USER}
+      RO_PASSWORD: ${FACILITY_READONLY_PASSWORD}
+      TZ: Asia/Seoul
+    ports: ["127.0.0.1:18123:8123", "127.0.0.1:19000:9000"]
+    volumes: ["facility-clickhouse-data:/var/lib/clickhouse", "./init/facility-clickhouse:/docker-entrypoint-initdb.d:ro"]
+    healthcheck: { test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' >/dev/null"], interval: 10s, timeout: 5s, retries: 15, start_period: 20s }
+
+networks: { database-network: { name: hotel-synthetic-db-network } }
+volumes: { app-postgres-data: {}, pms-postgres-data: {}, banquet-postgres-data: {}, pos-mysql-data: {}, crm-mssql-data: {}, facility-clickhouse-data: {} }

@@ -110,7 +110,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 15
-      start_period: 600s
+      start_period: 1800s
 
   crm-mssql:
     <<: *db

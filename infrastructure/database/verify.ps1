@@ -48,16 +48,25 @@ function Assert-ComposeDenied {
         [scriptblock]$Cleanup
     )
 
-    & docker compose --env-file $localEnv -f $composeFile @Arguments *> $null
-    if ($LASTEXITCODE -eq 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & docker compose --env-file $localEnv -f $composeFile @Arguments *> $null
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+
+    if ($exitCode -eq 0) {
         & $Cleanup
         throw "$Name readonly account unexpectedly created a table."
     }
 }
 
-Invoke-Compose config --quiet | Out-Null
+Invoke-Compose -Arguments @('config', '--quiet') | Out-Null
 $services = 'app-postgres','pms-postgres','banquet-postgres','pos-mysql','crm-mssql','facility-clickhouse','trino'
-$status = Invoke-Compose ps -a --format json | ForEach-Object { $_ | ConvertFrom-Json }
+$status = Invoke-Compose -Arguments @('ps', '-a', '--format', 'json') | ForEach-Object { $_ | ConvertFrom-Json }
 foreach ($service in $services) {
     if (($status | Where-Object Service -eq $service).Health -ne 'healthy') {
         throw "$service is not healthy."
@@ -96,7 +105,11 @@ Assert-Contract 'facility-clickhouse' (Invoke-Compose -Arguments @(
     '--query', "SELECT concat(v.version,'|',toString(s.seed),'|',s.data_class) FROM facility.schema_version v CROSS JOIN facility.seed_metadata s FORMAT TSVRaw"
 ))
 
-$catalogs = Invoke-Compose exec -T trino trino --server http://localhost:8080 --user hotel_synthetic_verify --output-format CSV_UNQUOTED --execute 'SHOW CATALOGS'
+$catalogs = Invoke-Compose -Arguments @(
+    'exec', '-T', 'trino', 'trino',
+    '--server', 'http://localhost:8080', '--user', 'hotel_synthetic_verify',
+    '--output-format', 'CSV_UNQUOTED', '--execute', 'SHOW CATALOGS'
+)
 $requiredCatalogs = 'serving','pms','banquet','pos','crm','facility'
 foreach ($catalog in $requiredCatalogs) {
     if ($catalogs -notcontains $catalog) { throw "Trino catalog is missing: $catalog" }

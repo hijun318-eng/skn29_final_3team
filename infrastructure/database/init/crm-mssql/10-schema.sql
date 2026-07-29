@@ -1,65 +1,14 @@
-USE [master];
+IF DB_ID('$(DB)') IS NULL EXEC('CREATE DATABASE [$(DB)] COLLATE Korean_100_CI_AS_SC_UTF8');
 GO
-
-IF DB_ID(N'$(CRM_DB_NAME)') IS NULL
-BEGIN
-    EXEC(N'CREATE DATABASE [$(CRM_DB_NAME)] COLLATE Korean_100_CI_AS_SC_UTF8');
-END;
+USE [$(DB)];
 GO
-
-USE [$(CRM_DB_NAME)];
-GO
-
-IF SCHEMA_ID(N'crm') IS NULL
-    EXEC(N'CREATE SCHEMA crm AUTHORIZATION dbo');
-GO
-
-IF OBJECT_ID(N'crm.member_tier', N'U') IS NULL
-BEGIN
-    CREATE TABLE crm.member_tier (
-        tier_code nvarchar(20) NOT NULL PRIMARY KEY,
-        tier_name nvarchar(80) NOT NULL,
-        minimum_points int NOT NULL,
-        CONSTRAINT chk_member_tier_points CHECK (minimum_points >= 0)
-    );
-END;
-GO
-
-IF OBJECT_ID(N'crm.member_profile', N'U') IS NULL
-BEGIN
-    CREATE TABLE crm.member_profile (
-        member_id bigint NOT NULL PRIMARY KEY,
-        member_token nvarchar(80) NOT NULL UNIQUE,
-        tier_code nvarchar(20) NOT NULL,
-        join_date date NOT NULL,
-        consent_marketing bit NOT NULL,
-        home_region nvarchar(50) NOT NULL,
-        CONSTRAINT fk_member_profile_tier
-            FOREIGN KEY (tier_code) REFERENCES crm.member_tier(tier_code)
-    );
-END;
-GO
-
-IF OBJECT_ID(N'crm.point_ledger', N'U') IS NULL
-BEGIN
-    CREATE TABLE crm.point_ledger (
-        ledger_id bigint NOT NULL PRIMARY KEY,
-        member_id bigint NOT NULL,
-        occurred_at datetime2(0) NOT NULL,
-        point_delta int NOT NULL,
-        reason_code nvarchar(30) NOT NULL,
-        CONSTRAINT fk_point_ledger_member
-            FOREIGN KEY (member_id) REFERENCES crm.member_profile(member_id)
-    );
-END;
-GO
-
-IF OBJECT_ID(N'crm.schema_version', N'U') IS NULL
-BEGIN
-    CREATE TABLE crm.schema_version (
-        version nvarchar(30) NOT NULL PRIMARY KEY,
-        seed bigint NOT NULL,
-        applied_at datetimeoffset(0) NOT NULL
-    );
-END;
-GO
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'schema_version') CREATE TABLE dbo.schema_version (version nvarchar(16) PRIMARY KEY);
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'seed_metadata') CREATE TABLE dbo.seed_metadata (seed int PRIMARY KEY, classification nvarchar(32) NOT NULL);
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'crm_members') CREATE TABLE dbo.crm_members (member_id nvarchar(32) PRIMARY KEY, member_name nvarchar(128) NOT NULL);
+IF NOT EXISTS (SELECT 1 FROM dbo.schema_version WHERE version = '1.0.0') INSERT INTO dbo.schema_version VALUES ('1.0.0');
+IF NOT EXISTS (SELECT 1 FROM dbo.seed_metadata WHERE seed = 20260729) INSERT INTO dbo.seed_metadata VALUES (20260729, 'synthetic');
+IF NOT EXISTS (SELECT 1 FROM dbo.crm_members WHERE member_id = 'CRM-0001') INSERT INTO dbo.crm_members VALUES ('CRM-0001', 'Synthetic Member');
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = '$(RO)') EXEC('CREATE LOGIN [$(RO)] WITH PASSWORD = ''$(ROPASSWORD)''');
+IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$(RO)') EXEC('CREATE USER [$(RO)] FOR LOGIN [$(RO)]');
+IF NOT EXISTS (SELECT 1 FROM sys.database_role_members rm JOIN sys.database_principals r ON rm.role_principal_id = r.principal_id JOIN sys.database_principals m ON rm.member_principal_id = m.principal_id WHERE r.name = 'db_datareader' AND m.name = '$(RO)') ALTER ROLE db_datareader ADD MEMBER [$(RO)];
+DENY INSERT, UPDATE, DELETE, ALTER, CREATE TABLE, CREATE VIEW, CREATE PROCEDURE TO [$(RO)];

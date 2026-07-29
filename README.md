@@ -1,19 +1,24 @@
-# SensePlace — 호텔 VOC·운영 지원 플랫폼
+# Answervice — 대화형 데이터 분석·자동 리포팅 플랫폼
 
-SensePlace는 그랜드 워커힐 서울을 모델링한 합성 운영 데이터와 합성 VOC를 이용해 권한 기반 대화형 분석과 이상 감지·근거 조사·주간 보고를 검증하는 내부 의사결정 지원 플랫폼이다. 결과는 실제 호텔의 현황·문제·성과를 의미하지 않는다.
+Answervice는 여러 업무 데이터 소스를 자연어로 조회하고, 사용한 데이터셋·지표·필터·기간·기준 시각을 근거와 함께 제시하며, 검증된 분석 결과를 반복 실행 가능한 보고서로 전환하는 서비스다.
 
-2026-08-06 중간발표는 두 핵심 경로를 backend·DB·LLM과 연결하지 않은 6화면 frontend fixture로 시연한다. 이후 기능 Baseline의 Django 인증·job 계층, FastAPI 분석 계층, PostgreSQL, LLM 연결은 현재 기획 기준이며 구현 확정 사실이 아니다. 실제 채택·연결 상태는 코드, 테스트와 활성 계약 문서를 확인한다.
+프로젝트는 실제 고객 데이터 대신 deterministic 합성 데이터를 사용한다. DataHub Core는 메타데이터 기준 시스템, Trino는 읽기 전용 연합 조회 엔진, FastAPI Controller는 Context와 G1·G2·G3를 통제하는 Control Plane으로 사용한다. 분석 결과는 Chat의 Artifact에서 Report definition·수동 실행·예약 실행·Run History로 연결한다.
 
-VectorDB·sLLM·ML/DL·멀티 에이전트 비교는 Baseline 런타임과 분리된 실험 트랙으로 관리하며, 승인 전 실행 경로의 필수 dependency로 추가하지 않는다.
+현재 목표 구조와 실제 구현 완료 상태는 다를 수 있다. 구현 여부와 Gate 통과 여부는 코드·테스트·공식 WBS의 증거를 함께 확인하며, P2 MCP·문서 RAG·ML-as-a-Tool·외부 Report 배포와 선택 고객 360은 별도 편입 결정 전까지 구현 범위에서 제외한다.
 
 ## 활성 기준 문서
 
-번호 산출물의 목표 경로와 우선순위는 [문서 관리 규칙](./docs/문서관리규칙.md)을 따른다. 실제로 존재하는 번호 문서만 현재 기준으로 사용하고, 구현 여부는 코드와 테스트를 함께 확인한다.
+- 프로젝트 범위·아키텍처: [최종 기획서](./docs/Answervice_기획서.md)
+- 실행 일정·담당·상태: [공식 WBS](./docs/markdown/02_WBS.md)
+- 화면·상태·사용자 흐름: [화면설계서](./docs/markdown/05_화면설계서.md)
+- AI 작업·권한·병합 원칙: [AGENTS.md](./AGENTS.md)
+- 문서 위치·번호·보호 규칙: [문서 관리 규칙](./docs/문서관리규칙.md)
 
 ## AI 참고 자료
 
 `docs/markdown/ai_docs/`는 AI 작성 자료, 외부 조사·분석, 과거 계약과 공식 일정 스냅샷을 모은 참고 폴더다. 공식 산출물이나 현재 구현 사실이 아니며 활성 번호 문서·코드·테스트와 충돌할 때 이를 덮어쓰지 않는다. 현재 파일과 사용 경계는 [AI 참고 문서 안내](./docs/markdown/ai_docs/README.md)를 확인한다.
 
+- [5인 병렬 구현 통합 일정](./docs/markdown/ai_docs/5인_병렬구현_통합일정_20260729-20260903.md)
 - [공식 산출물·전체 일정 스냅샷](./docs/markdown/ai_docs/최종_프로젝트_산출물_및_전체_일정.md)
 
 ## 개인 branch 시작

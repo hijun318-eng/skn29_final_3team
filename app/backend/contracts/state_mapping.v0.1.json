@@ -1,0 +1,59 @@
+{
+  "contract_version": "DRAFT-OPENAPI-v0.1",
+  "controller_to_api_ui": {
+    "BLOCKED": {
+      "api": "blocked",
+      "ui": "ERROR"
+    },
+    "CANCELLED": {
+      "api": "cancelled",
+      "ui": "CANCELLED"
+    },
+    "FAILED": {
+      "api": "failed",
+      "ui": "ERROR"
+    },
+    "PARTIAL": {
+      "api": "partial",
+      "ui": "PARTIAL"
+    },
+    "RECEIVED": {
+      "api": "queued",
+      "ui": "LOADING"
+    },
+    "ROUTED": {
+      "api": "running",
+      "ui": "LOADING"
+    },
+    "SUCCEEDED": {
+      "api": "success",
+      "ui": "READY"
+    }
+  },
+  "outcome_overrides": {
+    "ACCESS_DENIED": {
+      "api": "blocked",
+      "ui": "FORBIDDEN"
+    },
+    "CACHED": {
+      "api": "success",
+      "ui": "READY"
+    },
+    "CONTEXT_INCOMPLETE": {
+      "api": "blocked",
+      "ui": "EMPTY"
+    },
+    "EMPTY": {
+      "api": "success",
+      "ui": "EMPTY"
+    },
+    "RATE_LIMITED": {
+      "api": "queued",
+      "ui": "DELAYED"
+    },
+    "RESULT_EVIDENCE_MISSING": {
+      "api": "failed",
+      "ui": "INSUFFICIENT_EVIDENCE"
+    }
+  }
+}

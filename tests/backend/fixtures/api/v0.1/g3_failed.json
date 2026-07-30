@@ -1,0 +1,29 @@
+{
+  "data": {
+    "gates": {
+      "g1_required": true,
+      "g2_required": true
+    },
+    "result": null,
+    "route": "GENERAL",
+    "status": "FAILED",
+    "template_id": null,
+    "transitions": [
+      "RECEIVED",
+      "ROUTED",
+      "FAILED"
+    ]
+  },
+  "error": {
+    "code": "RESULT_EVIDENCE_MISSING",
+    "message": "결과 근거가 충분하지 않아 설명을 생성하지 않았습니다.",
+    "retryable": false
+  },
+  "meta": {
+    "as_of": "2026-07-30",
+    "contract_version": "DRAFT-OPENAPI-v0.1",
+    "request_id": "00000000-0000-0000-0000-000000000100",
+    "timestamp": "2026-07-30T00:00:00Z",
+    "trace_id": "fixture-g3-failed"
+  }
+}

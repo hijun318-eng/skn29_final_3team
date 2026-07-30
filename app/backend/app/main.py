@@ -8,7 +8,14 @@ from fastapi.responses import JSONResponse
 
 from app.api.router import router
 from app.context import ContextValidationError, request_context
-from app.contracts import CONTRACT_VERSION, ApiResponse, ErrorBody, ErrorCode, response_meta
+from app.contracts import (
+    CONTRACT_VERSION,
+    EmptyData,
+    ErrorBody,
+    ErrorCode,
+    ErrorResponse,
+    response_meta,
+)
 
 
 app = FastAPI(title="Answervice Control Plane", version=CONTRACT_VERSION)
@@ -27,14 +34,19 @@ async def request_context_header(request: Request, call_next):
 
 @app.exception_handler(ContextValidationError)
 async def context_error(request: Request, exc: ContextValidationError) -> JSONResponse:
-    body = ApiResponse(data={"status": "BLOCKED"}, meta=response_meta(request_context(request)), error=ErrorBody(code=exc.code, message=exc.message))
+    body = ErrorResponse(
+        data=EmptyData(),
+        meta=response_meta(request_context(request)),
+        error=ErrorBody(code=exc.code, message=exc.message),
+    )
     return JSONResponse(status_code=exc.status_code, content=body.model_dump(mode="json"))
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, _exc: RequestValidationError) -> JSONResponse:
     context = request_context(request)
-    body = ApiResponse(
+    body = ErrorResponse(
+        data=EmptyData(),
         meta=response_meta(context),
         error=ErrorBody(code=ErrorCode.CONTEXT_INCOMPLETE, message="요청 형식이 올바르지 않습니다."),
     )
@@ -44,7 +56,8 @@ async def validation_error(request: Request, _exc: RequestValidationError) -> JS
 @app.exception_handler(Exception)
 async def internal_error(request: Request, _exc: Exception) -> JSONResponse:
     context = request_context(request)
-    body = ApiResponse(
+    body = ErrorResponse(
+        data=EmptyData(),
         meta=response_meta(context),
         error=ErrorBody(code=ErrorCode.INTERNAL_ERROR, message="내부 오류가 발생했습니다."),
     )

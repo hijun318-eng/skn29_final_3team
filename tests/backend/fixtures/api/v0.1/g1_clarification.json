@@ -1,0 +1,28 @@
+{
+  "data": {
+    "gates": {
+      "g1_required": true,
+      "g2_required": true
+    },
+    "result": null,
+    "route": "GENERAL",
+    "status": "BLOCKED",
+    "template_id": null,
+    "transitions": [
+      "RECEIVED",
+      "BLOCKED"
+    ]
+  },
+  "error": {
+    "code": "CONTEXT_INCOMPLETE",
+    "message": "분석 기간을 입력해 주세요.",
+    "retryable": false
+  },
+  "meta": {
+    "as_of": "2026-07-30",
+    "contract_version": "DRAFT-OPENAPI-v0.1",
+    "request_id": "00000000-0000-0000-0000-000000000100",
+    "timestamp": "2026-07-30T00:00:00Z",
+    "trace_id": "fixture-g1-clarification"
+  }
+}

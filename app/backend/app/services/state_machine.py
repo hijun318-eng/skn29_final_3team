@@ -7,8 +7,19 @@ class InvalidTransitionError(ValueError):
 
 class AnalysisStateMachine:
     _allowed = {
-        AnalysisStatus.RECEIVED: {AnalysisStatus.ROUTED, AnalysisStatus.BLOCKED, AnalysisStatus.FAILED},
-        AnalysisStatus.ROUTED: {AnalysisStatus.SUCCEEDED, AnalysisStatus.BLOCKED, AnalysisStatus.PARTIAL, AnalysisStatus.FAILED},
+        AnalysisStatus.RECEIVED: {
+            AnalysisStatus.ROUTED,
+            AnalysisStatus.BLOCKED,
+            AnalysisStatus.FAILED,
+            AnalysisStatus.CANCELLED,
+        },
+        AnalysisStatus.ROUTED: {
+            AnalysisStatus.SUCCEEDED,
+            AnalysisStatus.BLOCKED,
+            AnalysisStatus.PARTIAL,
+            AnalysisStatus.FAILED,
+            AnalysisStatus.CANCELLED,
+        },
     }
 
     def __init__(self) -> None:

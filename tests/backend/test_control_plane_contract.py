@@ -67,6 +67,8 @@ class ControlPlaneContractTest(unittest.TestCase):
             "PARTIAL_FAILURE",
             "INSUFFICIENT_EVIDENCE",
             "RATE_LIMITED",
+            "CONTRACT_VERSION_MISMATCH",
+            "SCHEMA_VERSION_MISMATCH",
             "INTERNAL_ERROR",
         }
 

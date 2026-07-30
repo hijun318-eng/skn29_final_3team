@@ -1,0 +1,29 @@
+{
+  "data": {
+    "gates": {
+      "g1_required": true,
+      "g2_required": true
+    },
+    "result": null,
+    "route": "GENERAL",
+    "status": "CANCELLED",
+    "template_id": null,
+    "transitions": [
+      "RECEIVED",
+      "ROUTED",
+      "CANCELLED"
+    ]
+  },
+  "error": {
+    "code": "QUERY_SOURCE_FAILED",
+    "message": "요청이 취소되었습니다.",
+    "retryable": false
+  },
+  "meta": {
+    "as_of": "2026-07-30",
+    "contract_version": "DRAFT-OPENAPI-v0.1",
+    "request_id": "00000000-0000-0000-0000-000000000100",
+    "timestamp": "2026-07-30T00:00:00Z",
+    "trace_id": "fixture-cancelled"
+  }
+}

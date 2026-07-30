@@ -68,6 +68,10 @@ class FastApiRuntimeTest(unittest.TestCase):
         except subprocess.TimeoutExpired:
             cls.server.kill()
             cls.server.wait(timeout=5)
+        if cls.server.stdout is not None:
+            cls.server.stdout.close()
+        if cls.server.stderr is not None:
+            cls.server.stderr.close()
 
     @classmethod
     def request(
@@ -150,8 +154,22 @@ class FastApiRuntimeTest(unittest.TestCase):
             headers=headers,
             body={"question": "test"},
         )
-        self.assertEqual(422, status)
-        self.assertEqual("CONTEXT_INCOMPLETE", response["error"]["code"])
+        self.assertEqual(403, status)
+        self.assertEqual("ACCESS_DENIED", response["error"]["code"])
+
+        headers = self.context_headers()
+        headers["X-Contract-Version"] = "unsupported"
+        status, response = self.request(
+            "/analysis",
+            method="POST",
+            headers=headers,
+            body={"question": "test"},
+        )
+        self.assertEqual(409, status)
+        self.assertEqual(
+            "CONTRACT_VERSION_MISMATCH",
+            response["error"]["code"],
+        )
 
 
 if __name__ == "__main__":

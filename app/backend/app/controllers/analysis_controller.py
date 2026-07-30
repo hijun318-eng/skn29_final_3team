@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.contracts import AnalysisRequest, ApiResponse, ErrorBody, RequestContext
+from app.contracts import AnalysisRequest, AnalysisResponse, ErrorBody, RequestContext
 from app.services.analysis_service import AnalysisService
 from app.services.routing_service import RoutingError, RoutingService
 
@@ -10,7 +10,7 @@ class AnalysisController:
         self._service = service
         self._routing = routing
 
-    def submit(self, payload: AnalysisRequest, context: RequestContext) -> ApiResponse:
+    def submit(self, payload: AnalysisRequest, context: RequestContext) -> AnalysisResponse:
         try:
             decision = self._routing.decide(payload)
         except RoutingError as exc:

@@ -1,0 +1,18 @@
+services:
+  backend:
+    container_name: answervice-backend
+    build:
+      context: ../../app/backend
+      dockerfile: Dockerfile
+    environment:
+      APP_DB_HOST: app-postgres
+      APP_DB_PORT: "5432"
+      TZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:18000:8000"
+    networks:
+      - database-network
+    depends_on:
+      app-postgres:
+        condition: service_healthy
+    restart: unless-stopped

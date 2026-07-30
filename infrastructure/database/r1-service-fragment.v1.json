@@ -115,14 +115,18 @@
     {
       "service_name": "datahub-core",
       "kind": "official-quickstart-compose-stack",
-      "image_or_build": "DATAHUB_VERSION must be pinned to an immutable v* release or sha-* tag",
+      "image_or_build": "acryldata/datahub-gms:v1.6.0; acryldata/datahub-frontend-react:v1.6.0; acryldata/datahub-actions:v1.6.0-slim; acryldata/datahub-upgrade:v1.6.0",
       "ports": ["127.0.0.1:${DATAHUB_MAPPED_GMS_PORT:-18081}:8080", "127.0.0.1:${DATAHUB_MAPPED_GMS_MANAGEMENT_PORT:-14319}:4319", "127.0.0.1:${DATAHUB_MAPPED_FRONTEND_PORT:-19002}:9002"],
-      "env_keys": ["DATAHUB_VERSION", "DATAHUB_MAPPED_GMS_PORT", "DATAHUB_MAPPED_GMS_MANAGEMENT_PORT", "DATAHUB_MAPPED_FRONTEND_PORT", "DATAHUB_TOKEN_SERVICE_SALT", "DATAHUB_TOKEN_SERVICE_SIGNING_KEY", "DATAHUB_SECRET"],
+      "env_keys": ["DATAHUB_VERSION", "DATAHUB_MAPPED_GMS_PORT", "DATAHUB_MAPPED_GMS_MANAGEMENT_PORT", "DATAHUB_MAPPED_FRONTEND_PORT", "DATAHUB_TOKEN_SERVICE_SALT", "DATAHUB_TOKEN_SERVICE_SIGNING_KEY", "DATAHUB_SECRET", "DATAHUB_MYSQL_PASSWORD", "DATAHUB_MYSQL_ROOT_PASSWORD"],
       "health": "datahub-gms-quickstart: curl -fsS http://datahub-gms:8080/health; management: curl -fsS http://datahub-gms:4319/actuator/health",
       "depends_on": ["kafka-broker:service_healthy", "mysql:service_healthy", "opensearch:service_healthy", "system-update-quickstart:service_completed_successfully"],
       "profiles": ["full", "split-host"],
       "dev_eligibility": "excluded; dev uses fixture and minimum dependencies",
-      "compose_source": "DataHub official docker/quickstart/docker-compose.quickstart-profile.yml",
+      "datahub_version": "v1.6.0",
+      "compose_source": "https://raw.githubusercontent.com/datahub-project/datahub/059a36c0b035a6057de00114ccac0ea9003d6bc2/docker/quickstart/docker-compose.quickstart-profile.yml",
+      "compose_source_revision": "059a36c0b035a6057de00114ccac0ea9003d6bc2",
+      "compose_source_blob": "028473ea6f8466fb9db7042da1c3af026702ed9b",
+      "consumer_fragment": "datahub/compose.consumer.yml",
       "resource_requirement": "Docker Desktop memory at least 8 GB"
     }
   ]

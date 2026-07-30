@@ -1,10 +1,22 @@
 [CmdletBinding()]
-param()
+param(
+    [string]$ServiceFragmentPath,
+    [string]$DataHubConsumerPath
+)
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $databaseRoot = Split-Path -Parent $PSScriptRoot
-$fragmentPath = Join-Path $databaseRoot 'r1-service-fragment.v1.json'
+$fragmentPath = if ($ServiceFragmentPath) {
+    $ServiceFragmentPath
+} else {
+    Join-Path $databaseRoot 'r1-service-fragment.v1.json'
+}
+$consumerPath = if ($DataHubConsumerPath) {
+    $DataHubConsumerPath
+} else {
+    Join-Path $databaseRoot 'datahub/compose.consumer.yml'
+}
 $composePath = Join-Path $databaseRoot 'compose.yml'
 $localEnv = Join-Path $databaseRoot '.env'
 
@@ -20,8 +32,8 @@ if ($fragment.schema_version -ne '1.0.0' -or
     $fragment.scenario_version -ne '1.0.0') {
     throw 'R2 service fragment data contract version mismatch.'
 }
-if ($raw -match 'CHANGE_ME_') {
-    throw 'R2 service fragment contains a secret placeholder value.'
+if ($raw -match '(?i)CHANGE_ME_|placeholder|must be pinned|:latest|sha-\*|<[^>]+>') {
+    throw 'R2 service fragment contains a placeholder or mutable version.'
 }
 if (Compare-Object $expectedServices @($fragment.services.service_name)) {
     throw 'R2 service fragment service set mismatch.'
@@ -41,10 +53,53 @@ foreach ($service in $fragment.services) {
 }
 
 $datahub = $fragment.services | Where-Object service_name -eq 'datahub-core'
-if ($datahub.image_or_build -notmatch 'immutable v\* release or sha-\* tag' -or
+if ($datahub.datahub_version -notmatch '^v\d+\.\d+\.\d+(?:\.\d+)?$|^sha-[0-9a-f]{7,}$' -or
+    $datahub.compose_source_revision -notmatch '^[0-9a-f]{40}$' -or
+    $datahub.compose_source -notmatch "^https://raw\.githubusercontent\.com/datahub-project/datahub/$($datahub.compose_source_revision)/docker/quickstart/docker-compose\.quickstart-profile\.yml$" -or
+    $datahub.compose_source_blob -notmatch '^[0-9a-f]{40}$' -or
+    $datahub.consumer_fragment -ne 'datahub/compose.consumer.yml' -or
     $datahub.health -notmatch '/health' -or
+    $datahub.health -notmatch '4319/actuator/health' -or
     $datahub.profiles -contains 'dev') {
-    throw 'DataHub image, health, or profile requirement is unsafe.'
+    throw 'DataHub version, source, health, consumer, or profile requirement is unsafe.'
+}
+
+$consumerRaw = Get-Content -LiteralPath $consumerPath -Raw -Encoding UTF8
+if ($consumerRaw -match '(?i)CHANGE_ME_|placeholder|must be pinned|:latest|sha-\*|<[^>]+>|\$\{DATAHUB_VERSION') {
+    throw 'DataHub consumer fragment contains a placeholder or mutable version.'
+}
+if ($consumerRaw -notmatch [regex]::Escape($datahub.datahub_version) -or
+    $consumerRaw -notmatch [regex]::Escape($datahub.compose_source_revision) -or
+    $consumerRaw -notmatch [regex]::Escape($datahub.compose_source_blob) -or
+    $consumerRaw -notmatch [regex]::Escape($datahub.compose_source)) {
+    throw 'DataHub consumer source provenance drifted from the service fragment.'
+}
+$consumerOutput = & docker compose --env-file $localEnv -f $consumerPath --profile full config --format json
+if ($LASTEXITCODE -ne 0) {
+    throw 'DataHub consumer Compose config failed.'
+}
+$consumer = $consumerOutput | ConvertFrom-Json
+$expectedDataHubServices = @(
+    'kafka-broker', 'mysql', 'opensearch', 'system-update-quickstart',
+    'datahub-gms-quickstart', 'datahub-actions-quickstart', 'frontend-quickstart'
+)
+if (Compare-Object $expectedDataHubServices @($consumer.services.PSObject.Properties.Name)) {
+    throw 'DataHub consumer service set mismatch.'
+}
+foreach ($service in $consumer.services.PSObject.Properties.Value) {
+    if ($service.profiles -contains 'dev' -or
+        $service.profiles -notcontains 'full' -or
+        $service.profiles -notcontains 'split-host') {
+        throw 'DataHub consumer profile requirement is unsafe.'
+    }
+}
+$gms = $consumer.services.'datahub-gms-quickstart'
+$gmsHealth = @($gms.healthcheck.test) -join ' '
+if ($gms.image -ne 'acryldata/datahub-gms:v1.6.0' -or
+    $gms.environment.DATAHUB_VERSION -ne $datahub.datahub_version -or
+    $gmsHealth -notmatch '8080/health' -or
+    $gmsHealth -notmatch '4319/actuator/health') {
+    throw 'DataHub GMS image or health contract mismatch.'
 }
 
 $compose = & docker compose --env-file $localEnv -f $composePath config --format json |

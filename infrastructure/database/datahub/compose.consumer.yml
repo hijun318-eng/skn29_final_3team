@@ -1,0 +1,142 @@
+x-datahub-source:
+  release: v1.6.0
+  revision: 059a36c0b035a6057de00114ccac0ea9003d6bc2
+  compose_blob: 028473ea6f8466fb9db7042da1c3af026702ed9b
+  url: https://raw.githubusercontent.com/datahub-project/datahub/059a36c0b035a6057de00114ccac0ea9003d6bc2/docker/quickstart/docker-compose.quickstart-profile.yml
+
+x-datahub-service: &datahub-service
+  profiles: [full, split-host]
+  restart: unless-stopped
+  networks: [datahub-network]
+
+services:
+  kafka-broker:
+    <<: *datahub-service
+    image: confluentinc/cp-kafka:8.0.0
+    hostname: broker
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker:29093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://broker:29092,CONTROLLER://broker:29093
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+    volumes:
+      - datahub-kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z broker 29092"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mysql:
+    <<: *datahub-service
+    image: mysql:8.2
+    environment:
+      MYSQL_DATABASE: datahub
+      MYSQL_PASSWORD: ${DATAHUB_MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DATAHUB_MYSQL_ROOT_PASSWORD}
+      MYSQL_USER: datahub
+    volumes:
+      - datahub-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h mysql -u datahub --password=$$MYSQL_PASSWORD"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  opensearch:
+    <<: *datahub-service
+    image: opensearchproject/opensearch:2.19.3
+    environment:
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+      discovery.type: single-node
+    volumes:
+      - datahub-opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://opensearch:9200/_cluster/health?wait_for_status=yellow&timeout=1s'"]
+      interval: 5s
+      timeout: 15s
+      retries: 20
+
+  system-update-quickstart:
+    <<: *datahub-service
+    image: acryldata/datahub-upgrade:v1.6.0
+    command: ["-u", "SystemUpdate"]
+    depends_on:
+      kafka-broker: {condition: service_healthy}
+      mysql: {condition: service_healthy}
+      opensearch: {condition: service_healthy}
+    environment:
+      DATAHUB_VERSION: v1.6.0
+      DATAHUB_TOKEN_SERVICE_SALT: ${DATAHUB_TOKEN_SERVICE_SALT}
+      DATAHUB_TOKEN_SERVICE_SIGNING_KEY: ${DATAHUB_TOKEN_SERVICE_SIGNING_KEY}
+      EBEAN_DATASOURCE_HOST: mysql:3306
+      EBEAN_DATASOURCE_PASSWORD: ${DATAHUB_MYSQL_PASSWORD}
+      EBEAN_DATASOURCE_USERNAME: datahub
+      ELASTICSEARCH_HOST: opensearch
+      ELASTICSEARCH_PORT: "9200"
+      KAFKA_BOOTSTRAP_SERVER: broker:29092
+
+  datahub-gms-quickstart:
+    <<: *datahub-service
+    image: acryldata/datahub-gms:v1.6.0
+    hostname: datahub-gms
+    depends_on:
+      system-update-quickstart: {condition: service_completed_successfully}
+    environment:
+      DATAHUB_SERVER_TYPE: quickstart
+      DATAHUB_VERSION: v1.6.0
+      DATAHUB_TOKEN_SERVICE_SALT: ${DATAHUB_TOKEN_SERVICE_SALT}
+      DATAHUB_TOKEN_SERVICE_SIGNING_KEY: ${DATAHUB_TOKEN_SERVICE_SIGNING_KEY}
+      EBEAN_DATASOURCE_HOST: mysql:3306
+      EBEAN_DATASOURCE_PASSWORD: ${DATAHUB_MYSQL_PASSWORD}
+      EBEAN_DATASOURCE_USERNAME: datahub
+      ELASTICSEARCH_HOST: opensearch
+      ELASTICSEARCH_PORT: "9200"
+      KAFKA_BOOTSTRAP_SERVER: broker:29092
+    ports:
+      - "127.0.0.1:${DATAHUB_MAPPED_GMS_PORT:-18081}:8080"
+      - "127.0.0.1:${DATAHUB_MAPPED_GMS_MANAGEMENT_PORT:-14319}:4319"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health && curl -fsS http://localhost:4319/actuator/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+
+  datahub-actions-quickstart:
+    <<: *datahub-service
+    image: acryldata/datahub-actions:v1.6.0-slim
+    depends_on:
+      datahub-gms-quickstart: {condition: service_healthy}
+    environment:
+      DATAHUB_GMS_HOST: datahub-gms
+      DATAHUB_GMS_PORT: "8080"
+      DATAHUB_GMS_PROTOCOL: http
+      DATAHUB_VERSION: v1.6.0
+
+  frontend-quickstart:
+    <<: *datahub-service
+    image: acryldata/datahub-frontend-react:v1.6.0
+    depends_on:
+      datahub-gms-quickstart: {condition: service_healthy}
+    environment:
+      DATAHUB_APP_VERSION: v1.6.0
+      DATAHUB_GMS_HOST: datahub-gms
+      DATAHUB_GMS_PORT: "8080"
+      DATAHUB_SECRET: ${DATAHUB_SECRET}
+      DATAHUB_VERSION: v1.6.0
+    ports:
+      - "127.0.0.1:${DATAHUB_MAPPED_FRONTEND_PORT:-19002}:9002"
+
+networks:
+  datahub-network: {}
+
+volumes:
+  datahub-kafka-data: {}
+  datahub-mysql-data: {}
+  datahub-opensearch-data: {}

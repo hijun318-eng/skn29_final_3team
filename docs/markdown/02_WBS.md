@@ -4,14 +4,14 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v5.8 |
-| 문서 기준일 | 2026-07-30 10:49 |
-| 작성·수정 | 박준희 / 송민지 |
+| 버전 | v6.0 |
+| 문서 기준일 | 2026-07-30 11:55 |
+| 작성·수정 | 김재홍·박준희·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
 | 대응 템플릿 | `templates/[기획] WBS_양식 (1)_27기_0팀.xlsx`, `templates/[기획] WBS_양식(2)_27기_0팀.xlsx` |
 
-> 전체 프로젝트 기간 2026-07-10~09-03 · 역할 개편 적용일 2026-07-29 · 5인 · 실행 일정 99개 태스크 · 공식 산출물 21건 + 옵션 1건
+> 전체 프로젝트 기간 2026-07-10~09-03 · 역할 개편 적용일 2026-07-29 · 5인 · 실행 일정 99개 태스크 · I5 이후 비차단 후속 4건 · 공식 산출물 21건 + 옵션 1건
 >
 > 기준 기획서는 `docs/Answervice_기획서.md`, 화면 기준은 `docs/markdown/05_화면설계서.md`, AI 실행 절차는 `docs/markdown/ai_docs/5인_병렬구현_*_매뉴얼_최종안.md`, Gate별 발행 값은 `docs/markdown/collaboration/Gate_실행_카드_원장.md`다.
 
@@ -38,7 +38,7 @@
 |---|---|---|---|---|
 | R1 기술 PM·통합 플랫폼·품질·릴리스 | 박준희 | `junhee` | 계약·결정, root Compose·env·CI, 통합·보안·복구·release | 다른 역할의 서비스 내부를 대신 수정하지 않음 |
 | R2 데이터 플랫폼·메타데이터·연합조회 | 정승 | `seung` | 5 source·4 engine, 합성 DDL·seed, DataHub, Trino, adapter·gold fixture | 공통 FastAPI·AI·frontend를 수정하지 않음 |
-| R3 AI·모델·프롬프트·ModelOps | 윤대성 | `daesung` | Node 1·2·2′·3, prompt, 평가, serving, 조건부 LoRA | 권한·Gate·SQL 실행·결과 정답을 판정하지 않음 |
+| R3 AI·모델·프롬프트·ModelOps | 윤대성 | `daesung` | Node 1·2·2′·3, prompt, 평가, serving, 시간·횟수 제한 LoRA 비교·조건부 채택 | 권한·Gate·SQL 실행·결과 정답을 판정하지 않음 |
 | R4 백엔드 Control Plane | 김재홍 | `jaehong` | FastAPI, Controller, Context, G1·G2·G3, cache·artifact·audit, worker | 공통 OpenAPI·Alembic chain의 단일 작성자 |
 | R5 프론트엔드·자동 리포팅 | 송민지 | `minji` | 활성 frontend, Chat·Evidence·Report·Catalog·Audit UI | Report proposal은 R4가 공통 backend에 등록 |
 
@@ -53,7 +53,7 @@
 7. 달력상 checkpoint나 부분 구현만으로 병합하지 않고 소비 가능한 산출물·검증·handoff가 준비된 역할 결과만 통합한다.
 8. `fixture 통과`, `MERGED_DEV`, `VERIFIED_GATE`를 별도 상태로 관리한다.
 9. R1은 통합 실패를 원 소유 역할에 반환하고 기능 내부를 대신 고치지 않는다.
-10. `app/react`와 `app/enterprise-react` 중 활성 frontend 하나를 I0에서 결정하기 전에는 양쪽 구현을 병행하지 않는다.
+10. I0에서 `app/enterprise-react`를 활성 frontend로 확정했으며 `app/react`와 병행 개발하지 않는다.
 11. Django와 자유 ReAct loop는 범위에서 제외하고 FastAPI의 고정 상태 전이를 기준으로 한다.
 
 ## Gate·병합 일정
@@ -130,7 +130,7 @@ gantt
 - R2~R5는 I1 이전에도 fake·fixture를 사용할 수 있으나 실제 연동 완료로 표시하지 않는다.
 - I2의 대표 질문은 PMS PostgreSQL과 CRM SQL Server를 사용하는 2-source 경로로 고정하고, 이후 5 catalog 단독과 승인된 2~3-source JOIN으로 확장한다.
 - R4는 Report 공통 등록과 worker를, R5는 독립 Report domain·router·migration proposal과 UI를 담당해 Alembic·entrypoint 충돌을 피한다.
-- R3의 Base model 비교는 필수이고 LoRA/QLoRA 제품 채택은 조건부다. 기획서의 고정 LoRA 표현과 채택 Gate 표현이 충돌하면 R1이 I1 결정 원장에 채택 여부를 기록하기 전까지 Base를 기본값으로 유지한다.
+- 모든 Node는 Base를 기준선으로 유지한다. 평가 데이터·baseline·외부 비용 권한이 준비되면 R3가 시간·횟수를 제한한 LoRA/QLoRA 비교를 1회 수행하고, 선행 조건이 없으면 `Blocked` 또는 `Not Run` 사유를 남긴다. 제품 채택은 별도 Gate 통과 시에만 허용한다.
 - 08/28 이후 P0 신규 기능을 추가하지 않고, 09/02 승인 후 code·dependency·model·seed·설정을 변경하지 않는다.
 
 ## 실행 WBS
@@ -143,10 +143,10 @@ gantt
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 1.1 | R1-00 저장소·기획서·AGENTS·WBS·역할 기준 정렬 | 결정·충돌 원장 | 박준희 | 진행 | 07/29 | 07/31 | 높음 |
-| 1.2 | R1-01 P0/P1/P2·비목표·공식 산출물 대응 고정 | 범위표·제외 목록 | 박준희 | 진행 | 07/29 | 07/31 | 높음 |
-| 1.3 | R1-02 파일 소유권·서비스 경계 Freeze | ownership matrix | 박준희 | 진행 | 07/29 | 07/31 | 높음 |
-| 1.4 | R1-03 metric·time·schema·API·state·error 공통 계약 | contract version | 박준희 | 대기 | 08/03 | 08/07 | 높음 |
+| 1.1 | R1-00 저장소·기획서·AGENTS·WBS·역할 기준 정렬 | 결정·충돌 원장 | 박준희 | 완료 | 07/29 | 07/31 | 높음 |
+| 1.2 | R1-01 P0/P1/P2·비목표·공식 산출물 대응 고정 | 범위표·제외 목록 | 박준희 | 완료 | 07/29 | 07/31 | 높음 |
+| 1.3 | R1-02 파일 소유권·서비스 경계 Freeze | ownership matrix | 박준희 | 완료 | 07/29 | 07/31 | 높음 |
+| 1.4 | R1-03 metric·time·schema·API·state·error 공통 계약 | contract version | 박준희 | 차단 | 08/03 | 08/07 | 높음 |
 | 1.5 | R1-04 dev·full·split-host Compose skeleton | 통합 profile | 박준희 | 대기 | 08/03 | 08/07 | 높음 |
 | 1.6 | R1-05 환경변수·Secret 계약 | `.env.example`·secret matrix | 박준희 | 대기 | 08/03 | 08/07 | 높음 |
 | 1.7 | R1-06 역할별 CI·품질 Gate | CI jobs·fail policy | 박준희 | 대기 | 08/03 | 08/07 | 높음 |
@@ -159,16 +159,16 @@ gantt
 | 2.1 | R2-00 공통 데이터 계약 확인 | source·engine·owner 표 | 정승 | 대기 | 07/29 | 07/31 | 높음 |
 | 2.2 | R2-01 5 source·4 engine registry | source registry | 정승 | 대기 | 07/29 | 07/31 | 높음 |
 | 2.3 | R2-02 논리 모델·grain 정의 | entity 관계·grain | 정승 | 대기 | 07/29 | 07/31 | 높음 |
-| 2.4 | R2-03 물리 schema·DDL·제약·index | versioned DDL | 정승 | 진행 | 08/03 | 08/07 | 높음 |
-| 2.5 | R2-04 deterministic synthetic seed·scenario | seed·scenario manifest | 정승 | 진행 | 08/03 | 08/07 | 높음 |
-| 2.6 | R2-05 customer identity bridge | `customer_identity_map` | 정승 | 진행 | 08/03 | 08/07 | 높음 |
-| 2.7 | R2-06 event-time 회원 등급 이력 | `member_grade_history` | 정승 | 진행 | 08/03 | 08/07 | 높음 |
+| 2.4 | R2-03 물리 schema·DDL·제약·index | versioned DDL | 정승 | 진행 | 07/29 | 08/07 | 높음 |
+| 2.5 | R2-04 deterministic synthetic seed·scenario | seed·scenario manifest | 정승 | 진행 | 07/29 | 08/07 | 높음 |
+| 2.6 | R2-05 customer identity bridge | `customer_identity_map` | 정승 | 진행 | 07/29 | 08/07 | 높음 |
+| 2.7 | R2-06 event-time 회원 등급 이력 | `member_grade_history` | 정승 | 진행 | 07/29 | 08/07 | 높음 |
 | 2.8 | R2-07 데이터 품질·전처리·reject 관리 | DQR·PREP 결과 | 정승 | 대기 | 08/03 | 08/07 | 높음 |
-| 2.9 | R2-08 source·application read-only 계정 요구 | account matrix | 정승 | 진행 | 08/03 | 08/07 | 높음 |
-| 2.10 | R2-09 DataHub ingestion recipe 5개 | versioned recipes | 정승 | 진행 | 08/10 | 08/21 | 높음 |
+| 2.9 | R2-08 source·application read-only 계정 요구 | account matrix | 정승 | 진행 | 07/29 | 08/07 | 높음 |
+| 2.10 | R2-09 DataHub ingestion recipe 5개 | versioned recipes | 정승 | 진행 | 07/29 | 08/21 | 높음 |
 | 2.11 | R2-10 Metadata·owner·domain·tag·lineage 보강 | URN·lineage manifest | 정승 | 대기 | 08/10 | 08/21 | 높음 |
 | 2.12 | R2-11 DataHub typed adapter | search·graph·health adapter | 정승 | 대기 | 08/10 | 08/21 | 높음 |
-| 2.13 | R2-12 Trino catalog 5개 | connector·catalog 설정 | 정승 | 진행 | 08/10 | 08/21 | 높음 |
+| 2.13 | R2-12 Trino catalog 5개 | connector·catalog 설정 | 정승 | 진행 | 07/29 | 08/21 | 높음 |
 | 2.14 | R2-13 source↔Trino type mapping | type mapping matrix | 정승 | 대기 | 08/10 | 08/21 | 높음 |
 | 2.15 | R2-14 승인 JOIN Registry | JOIN ID·cardinality·time 계약 | 정승 | 대기 | 08/10 | 08/21 | 높음 |
 | 2.16 | R2-15 대표 2·3-source 정답 조회 | 정답 SQL·result hash | 정승 | 대기 | 08/10 | 08/21 | 높음 |
@@ -192,7 +192,7 @@ gantt
 | 3.9 | R3-08 필수 30건 평가 runner | schema·linking·SQL·result 평가 | 윤대성 | 대기 | 08/10 | 08/31 | 높음 |
 | 3.10 | R3-09 Base model·Analytics Agent 기준선 비교 | 정확도·p50·p95·자원 비교표 | 윤대성 | 대기 | 08/17 | 08/21 | 높음 |
 | 3.11 | R3-10 train·val·gold manifest 검수 | 학습 데이터 검수 기록 | 윤대성 | 대기 | 08/17 | 08/21 | 높음 |
-| 3.12 | R3-11 time-boxed LoRA/QLoRA 비교와 채택 Gate | adapter·rollback 증거 | 윤대성 | 대기 | 08/24 | 08/28 | 조건부 |
+| 3.12 | R3-11 time-boxed LoRA/QLoRA 1회 비교와 제품 채택 Gate | 비교 결과·adapter·rollback 증거 | 윤대성 | 대기 | 08/24 | 08/28 | 조건부 |
 | 3.13 | R3-12 vLLM·RunPod serving | endpoint·health·manifest | 윤대성 | 대기 | 08/17 | 08/28 | 높음 |
 | 3.14 | R3-13 production model client | retry·fallback·circuit 계약 | 윤대성 | 대기 | 08/17 | 08/28 | 높음 |
 | 3.15 | R3-14 model trace·비용·재현성 | version·token·cost trace | 윤대성 | 대기 | 08/17 | 08/28 | 중간 |
@@ -215,12 +215,12 @@ gantt
 | 4.11 | R4-10 Node 2′·G2′ 수정 1회 통제 | repair counter | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
 | 4.12 | R4-11 R2 Trino 실행 lifecycle 통제 | pass token·timeout·cancel | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
 | 4.13 | R4-12 Result Shaper·G3 | shaped result·evidence | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
-| 4.14 | R4-13 Node 3·immutable Artifact | artifact contract | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
+| 4.14 | R4-13 Node 3·승인 후 수정 불가 Artifact | artifact contract | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
 | 4.15 | R4-14 SQL Plan·Result Cache | versioned cache key | 김재홍 | 대기 | 08/17 | 08/21 | 중간 |
 | 4.16 | R4-15 Audit·Trace·관측 | linked request trace | 김재홍 | 대기 | 08/10 | 08/21 | 높음 |
 | 4.17 | R4-16 R5 Report module 공통 등록 | analysis run contract | 김재홍 | 대기 | 08/24 | 08/28 | 높음 |
-| 4.18 | R4-17 worker·schedule runtime | queue·idempotency·dead-letter | 김재홍 | 대기 | 08/24 | 08/28 | 높음 |
-| 4.19 | R4-18 권한·mask·redaction enforcement | 보안 검증 증거 | 김재홍 | 대기 | 08/17 | 08/28 | 높음 |
+| 4.18 | R4-17 worker·schedule runtime | 영속 job·같은 요청 한 번만 처리·실패 격리 | 김재홍 | 대기 | 08/24 | 08/28 | 높음 |
+| 4.19 | R4-18 권한·mask·민감정보 가림(redaction) | 보안 검증 증거 | 김재홍 | 대기 | 08/17 | 08/28 | 높음 |
 | 4.20 | R4-19 retention·backup·restore hook | 보존 job·복구 절차 | 김재홍 | 대기 | 08/24 | 09/02 | 높음 |
 | 4.21 | R4-20 health·backend Dockerfile·회귀 | service fragment | 김재홍 | 대기 | 08/24 | 09/02 | 높음 |
 | 4.22 | R4-21 API·migration·policy release 동결 | backend release manifest | 김재홍 | 대기 | 08/31 | 09/02 | 높음 |
@@ -279,9 +279,9 @@ gantt
 
 | 단계 | 산출물 | 제출일 | 내부검토 | WBS | 담당 | 현황 |
 |---|---|:--:|:--:|:--:|:--:|:--:|
-| 기획 | 요구사항 정의서 | **07/16** | 07/15 | 1.1 | 박준희 | 검토 |
-| 기획 | WBS | **07/16** | 07/15 | 1.1 | 박준희 | 진행 |
-| 기획 | 프로젝트 기획서 | **07/24** | 07/23 | 1.2 | 박준희 | 검토 |
+| 기획 | 요구사항 정의서 | **07/16** | 07/15 | 1.1 | 박준희 | 차단 |
+| 기획 | WBS | **07/16** | 07/15 | 1.1 | 박준희 | 차단 |
+| 기획 | 프로젝트 기획서 | **07/24** | 07/23 | 1.2 | 박준희 | 차단 |
 | 데이터 수집 및 저장 | 수집 데이터 보고서 | **07/24** | 07/23 | 2.5 | 정승 | 대기 |
 | 모델 배포 | 화면설계서 | **07/24** | 07/23 | 5.2 | 송민지 | 검토 |
 | 데이터 수집 및 저장 | 데이터베이스/저장소 설계 문서 | **07/31** | 07/30 | 2.4 | 정승 | 진행 |
@@ -302,6 +302,8 @@ gantt
 | 발표 및 시연 | 시연영상 | **09/03** | 09/02 | 7.5 | 송민지·박준희 | 대기 |
 | 모델링 및 평가 | AI 윤리/편향성 점검 결과서(옵션) | **옵션** | 08/26 | 3.11 | 윤대성·박준희 | 대기 |
 
+제출본 `docs/deliverables/01_요구사항정의서_29기_3팀.xlsx`, `docs/deliverables/02_WBS_29기_3팀.xlsx`, `docs/deliverables/03_프로젝트기획서_29기_3팀.docx`는 구형 SensePlace·VOC/Django 범위를 담고 있어 현재 Answervice의 요구·일정·기획 근거로 사용할 수 없다. 다음 공식 제출 전 현재 기획서·WBS와 내용이 맞도록 교정하기 전까지 세 산출물은 `차단`으로 둔다.
+
 `벡터DB/GraphDB 구축 결과서`는 공식 산출물 목록에는 있으나 현재 기획서의 P0/P1 구현 범위에는 VectorDB·GraphDB가 없다. R1·R3가 08/05까지 “미도입 근거와 비교 실험 보고로 제출 가능한지”를 확인하기 전까지 `차단`으로 유지하며, 확인 없이 P0에 신규 인프라를 추가하지 않는다.
 
 ## 기획서 추적성
@@ -312,31 +314,43 @@ gantt
 | §7 전체 아키텍처·추적 ID | R4 김재홍·R1 박준희 | 4.1~4.6, 4.16 | 고정 상태 전이·trace 계약 |
 | §8 DataHub·Trino | R2 정승 | 2.1~2.20 | 5 catalog 단독·승인 2~3-source JOIN |
 | §9 Context·Guarded Text-to-SQL | R4 김재홍 | 4.7~4.14 | G1·G2·G3 우회 0건 |
-| §10 sLLM·RunPod | R3 윤대성 | 3.2~3.16 | Base 필수, LoRA 채택 조건부 |
-| §11 자동 리포팅 | R5 송민지·R4 김재홍 | 5.8~5.14, 4.17~4.18 | definition/run 분리·partial·idempotency |
-| §12 MCP·문서 RAG | R1 박준희 | 1.2 | P2 후속, 별도 편입 전 미구현 |
-| §13 ML-as-a-Tool | R1 박준희 | 1.2 | P2 후속, 별도 편입 전 미구현 |
+| §10 sLLM·RunPod | R3 윤대성 | 3.2~3.16 | 전 Node Base 기준선, 제한된 1회 비교·LoRA 채택 조건부 |
+| §11 자동 리포팅 | R5 송민지·R4 김재홍 | 5.8~5.14, 4.17~4.18 | definition/run 분리·일부 실패·중복 실행 방지 |
+| §12 MCP·문서 RAG | R1 박준희 | 1.2, F-01~F-02 | I5 이후 P2 후속, 현재 완료선 비차단 |
+| §13 ML-as-a-Tool | R1 박준희 | 1.2, F-03 | I5 이후 P2 후속, 현재 완료선 비차단 |
 | §14 합성 데이터 | R2 정승 | 2.4~2.9, 2.19 | deterministic seed·참조·기간 무결성 |
 | §15 화면·메뉴 | R5 송민지 | 5.1~5.20 | P0/P1·접근성·오류 상태 |
 | §16 애플리케이션 구조 | R1·R4·R5 | 1.3~1.8, 4.1~4.6, 5.1~5.3 | I0/I1에서 단일 entrypoint·frontend 결정 |
-| §17 보안·권한·감사·복구 | R1·R2·R4·R5 | 2.9, 4.3, 4.16, 4.19~4.21, 6.5 | read-only·mask·redaction·restore |
+| §17 보안·권한·감사·복구 | R1·R2·R4·R5 | 2.9, 4.3, 4.16, 4.19~4.21, 6.5 | read-only·mask·민감정보 가림·restore |
 | §18 평가 | R1·R2·R3 | 2.19, 3.9~3.15, 6.1~6.5 | 필수 30건·gold 120건·재현 |
-| §19 MVP·후속 범위 | R1 박준희 | 1.2 | P2·고객 360 범위 통제 |
+| §19 MVP·후속 범위 | R1 박준희 | 1.2, F-01~F-04 | I5 이후 후속, 현재 완료선 비차단 |
 | §20 개발·산출물 | 전 역할 | 1.1~7.7 | 07/29~09/03 압축 일정 적용 |
 | §21 리스크 | R1 박준희 | 1.5~1.8, 6.5~6.6 | blocker·rollback·잔여 위험 기록 |
 | §22 결정·가정 | R1 박준희 | 1.1~1.4 | I0/I1 결정 원장에 version 기록 |
+
+## I5 이후 후속 단계 백로그
+
+아래 네 항목은 기획서에 이미 포함된 후속 범위다. 현재 99개 실행 태스크, I1~I5 Gate, 09/03 발표 완료율에는 포함하지 않는다. I5 이후 R1이 별도 일정·계약·비용·보안 Gate를 승인할 때만 새 실행 묶음으로 발행하며, 그 전 상태가 `대기`, `Blocked`, `Not Run`이어도 현재 릴리스 실패로 판정하지 않는다.
+
+| 후속 ID | 항목 | 착수 조건 | 주 책임 | 필수 인계 | 현재 상태 |
+|---|---|---|---|---|:--:|
+| F-01 | P2 MCP Tool Registry·호출 통제 | I5 완료, Tool I/O·권한·감사·오류 계약 승인 | R4 김재홍 | R3 adapter, R5 관리 UI, R1 보안 Gate | 대기 |
+| F-02 | P2 사내 운영 문서 RAG | I5 완료, 문서 권한·버전·발효일·인용·평가 계약 승인 | R3 윤대성 | R2 metadata, R4 authz·trace, R5 근거 UI | 대기 |
+| F-03 | P2 ML-as-a-Tool | I5 완료, feature·model I/O·버전·평가·표시 계약 승인 | R3 윤대성 | R2 feature data, R4 Tool Gate, R5 예측 표시 | 대기 |
+| F-04 | 고객 360 | I5 완료, identity·중복·mask·role·감사 Gate와 별도 수용 기준 승인 | R5 송민지 | R2 identity·mask, R4 authz·trace, R1 범위 Gate | 대기 |
 
 ## 추가 결정 필요
 
 | 항목 | 현재 운용 기준 | 결정 시점 | 결정 책임 |
 |---|---|---|---|
-| 활성 frontend | `app/react`와 `app/enterprise-react` 중 하나만 선택 | I0 | R1·R5 |
+| 활성 frontend | `app/enterprise-react` 활성, `app/react` 비활성 보존 | I0 결정 완료 | R1·R5 |
 | full·dev·split-host | dev로 병렬 개발, full 실패 시 split-host 전환 | I0/I1 | R1 |
 | DataHub·Trino·connector 고정 version | 실행 전 고정하고 manifest 기록 | I1 | R1·R2 |
 | Result Cache 구현 | versioned key 계약 우선, PostgreSQL·Redis는 profile 측정 후 선택 | I1/I3 | R1·R4 |
 | model checkpoint·RunPod profile | Base 기준선 우선, 비용·자원 승인 후 외부 실행 | I1/I3 | R1·R3 |
 | SQL LoRA 제품 채택 | time-boxed 비교 Gate 전에는 Base 유지 | I4 이전 | R1·R3 |
 | 공식 VectorDB/GraphDB 산출물 | 미도입 근거 제출 가능 여부 확인 전 `차단` | 08/05 | R1·R3 |
+| 공식 01·02·03 제출본 동기화 | 현재 Markdown 기획·WBS를 기준으로 사용하고, 구형 SensePlace 내용의 요구사항·WBS XLSX와 기획 DOCX는 현 근거로 사용하지 않음 | 다음 공식 제출 전 | R1·해당 산출물 담당 |
 
 ## WBS 작업 로그
 
@@ -344,10 +358,15 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-30 11:55 | 1.1~1.4, 5.2, F-01~F-04 | 기획서 v1.1을 기준으로 dev의 최신 일정·Gate·후속 백로그와 minji의 요구사항·화면설계 근거를 통합하고 문서 간 버전 참조를 동기화했다. 일정·담당·실행 상태는 dev v5.9를 유지했다. | 문서 계약 통합 |
 | 2026-07-30 10:49 | 1.1~1.2 | 재검토 결과를 반영해 `01_요구사항정의서.md`와 공식 XLSX의 대분류·75개 ID·본문을 v1.1로 양방향 동기화하고 최신 WBS·화면설계 참조와 XLSX 유효 데이터 범위 `A1:G79`·전체 시트 렌더링을 재검증 | 공식 요구사항 산출물 |
+| 2026-07-30 10:36 | 1.1~1.4 | `app/enterprise-react`를 활성 frontend로 확정하고 R1-00~02의 기준·범위·소유권 원장을 작성했다. R1-03은 R3 model과 R5 UI·Report contract 미도착으로 차단했다. | I0 결정·I1 계약 대기 |
+| 2026-07-30 10:25 | 1.1 | R1~R5 Wave 1 실행 묶음의 기준 SHA를 현재 `dev`의 `2c2779d23738038d5cd0560cffa70c5b509991c3`으로 교정하고 개인 branch 기준 포함 여부를 확인 | 역할·실행 기준 |
 | 2026-07-30 09:54 | 1.1~1.2 | 첨부 요구사항 템플릿의 1시트·7열·병합 헤더·그룹 형식을 유지해 요구사항 75개를 `docs/deliverables/01_요구사항정의서_29기_3팀.xlsx` v1.0으로 변환하고 전체 시트 렌더링·ID·값을 검증 | 공식 요구사항 산출물 |
 | 2026-07-30 09:49 | 5.2 | 기획 v1.0·요구사항 v1.0·활성 React 목업을 대조해 13개 공식 화면 ID와 IA·route·진입 조건·요구사항 추적·범위 제외 Gate·UI QA를 `05_화면설계서.md` v6.0으로 확정 | 화면설계 산출물 |
 | 2026-07-30 09:42 | 1.1~1.2 | 최종 기획 v1.0의 P0/P1/P2 경계와 기능·데이터·AI·보고서·UI·보안·운영·비기능 요구사항 75개를 `01_요구사항정의서.md` v1.0으로 구조화하고 R1 계약 검토 대상으로 등록 | 요구사항 계약 초안 |
+| 2026-07-30 09:32 | 1.1~1.4, F-01~F-04 | 기획·WBS·통합 일정·역할 매뉴얼·Gate 절차를 교차 검토해 LoRA 기준선, worker·trace·보안·복구·UI 상태 계약을 교정하고 P2·고객 360을 I5 이후 비차단 후속 단계로 명시 | 문서·절차 계약 |
+| 2026-07-29 18:41 | 4.1~4.6 | R4 경계·공통 API/오류 계약, request/trace context, 단일 Alembic skeleton, Fake `/analysis` route와 최소 상태 전이 골격을 추가했다. 실제 DB migration·FastAPI 기동·R2/R3/R5 연동은 미완료로 유지한다. | Control Plane 골격 |
 | 2026-07-29 17:24 | 1.1 | 역할별 자율 진행량과 병합 충돌을 균형화해 I1·I2·I3·I4~I5의 4개 통합 Wave로 조정하고 역할별 상세 카드 원장을 보강 | 역할·일정 계약 |
 | 2026-07-29 17:07 | 1.1 | 역할별 실행을 단일 카드 승인 방식에서 Gate별 카드 범위 자율 실행·Gate 중단·통합 방식으로 변경하고 AGENTS·역할 매뉴얼·통합 일정·실행 카드 원장과 동기화 | 역할·일정 계약 |
 | 2026-07-29 11:15 | 2.4~2.7, 2.9, 2.10, 2.13 | 6개 격리 DB Compose와 18개 source table·Application bootstrap, deterministic manifest, identity·등급 이력, read-only 계정, DataHub recipe 5개·Trino catalog 5개를 구성하고 health·권한·재시작·볼륨 재생성 fingerprint를 실구동 검증 | DB bootstrap·검증 자동화 |
@@ -363,8 +382,8 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
-| v5.8 | 2026-07-30 10:49 | 요구사항 Markdown·공식 XLSX v1.1의 분류 필드와 최신 문서 참조를 양방향 동기화하고 유효 데이터 범위·시각 QA 재검증 근거를 1.1~1.2 작업 로그에 연결; 일정·담당·상태는 유지 |
-| v5.7 | 2026-07-30 09:54 | 요구사항 Markdown v1.0의 75개 항목을 공식 XLSX 템플릿에 변환·검증한 근거를 1.1~1.2 작업 로그에 연결하고 기존 일정·담당·상태는 유지 |
-| v5.6 | 2026-07-30 09:49 | 화면설계서 v6.0의 기획·요구사항·목업 정합화 및 UI QA 근거를 5.2 작업 로그에 연결하고 기존 일정·담당·상태는 유지 |
-| v5.5 | 2026-07-30 09:42 | 최종 기획 기반 요구사항정의서 v1.0 작성 근거를 1.1~1.2 작업 로그에 연결하고 기존 일정·담당·상태는 유지 |
-| v5.4 | 2026-07-29 17:35 | R2 DB bootstrap 진행 근거를 보존하면서 4개 통합 Wave와 상세 실행 카드 운영 기준을 통합 |
+| v6.0 | 2026-07-30 11:55 | 기획 v1.1 방향에 맞춰 dev v5.9의 일정·Gate·I5 이후 후속 백로그와 요구사항·화면설계 산출물 근거를 통합하고 활성 frontend 및 문서 참조를 동기화 |
+| v5.9 | 2026-07-30 10:36 | 활성 frontend·범위·소유권 결정 완료와 R1-03 계약 입력 차단 상태를 WBS 1.1~1.4에 반영 |
+| v5.8 | 2026-07-30 10:25 | Wave 1 실행 묶음의 기준 SHA 교정 근거를 WBS 1.1 작업 로그에 반영 |
+| v5.7 | 2026-07-30 09:55 | 최신 dev의 R4 Control Plane 진행 근거와 기획·실행 절차 교정 및 I5 이후 후속 백로그를 충돌 없이 통합 |
+| v5.6 | 2026-07-30 09:32 | 실제 착수일을 작업 로그와 맞추고, 실행 절차 누락을 교정하며 P2·고객 360 후속 백로그와 구형 공식 제출본 동기화 필요를 명시 |

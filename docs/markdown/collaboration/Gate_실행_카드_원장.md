@@ -4,9 +4,11 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.3 |
-| 문서 기준일 | 2026-07-29 17:35 |
+| 버전 | v1.5 |
+| 문서 기준일 | 2026-07-30 10:25 |
 | 작성·수정 | 3팀 사용자 승인·Codex 반영 |
+
+> 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
 
 ## 사용 원칙
 
@@ -18,6 +20,7 @@
 6. R1이 통합 결과와 다음 실행 묶음을 승인하기 전에는 다음 Wave 범위로 넘어가지 않는다.
 7. `PLANNED` 묶음은 일정 예약이며 실행 승인이 아니다. Wave 시작 시 `BASE_SHA`와 계약 버전을 채워 `READY`로 바꾼다.
 8. 아직 동결되지 않은 계약은 공란 대신 `DRAFT` 또는 `N/A — 사유`로 기록한다.
+9. F-01~F-04는 I5 이후 후속 단계다. 현재 Wave 1~4와 I5 완료율에 포함하지 않으며, 새 실행 묶음이 `READY`로 발행되기 전에는 구현 완료로 표시하지 않는다.
 
 상태는 다음과 같이 사용한다.
 
@@ -57,7 +60,7 @@
 
 | 기획서 영역 | 실행 묶음 | 카드에 반영할 핵심 |
 |---|---|---|
-| §1·3·5·19 범위·우선순위 | R1-W1, 전 역할 | P0/P1 우선, P2·고객 360 별도 승인, 완료 증거 |
+| §1·3·5·19 범위·우선순위 | R1-W1, 전 역할 | P0/P1 우선, P2·고객 360은 I5 이후 후속, 현재 완료선 비차단 |
 | §7·9 실행 아키텍처·Guarded Text-to-SQL | R3-W1~W3, R4-W1~W3 | 결정론적 Controller, Node 책임 분리, G1·G2·G3, Context·Cache 계약 |
 | §8·14 DataHub·Trino·합성 데이터 | R2-W1~W4 | 5 source·4 engine, URN/FQN, read-only, seed·schema·identity·시간 무결성 |
 | §10 sLLM·RunPod | R3-W1~W4, R1-W3~W4 | 동일 조건 Base/adapter 비교, Node별 model 격리, 비용·fallback |
@@ -104,7 +107,7 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 | R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `PLANNED` |
 | R1-W4 | Wave 4·08/24~09/02 | R1 | I4·RC1 → I5 | R1-11~13 | Report 통합·보안·장애·복구·성능·release manifest | `PLANNED` |
 | R2-W4 | Wave 4·08/24~09/02 | R2 | I4·RC1 → I5 | R2-17~19 + R2-03~16 회귀 | 5번째 source·빈 환경 재생성·schema/seed/watermark/hash 동결 | `PLANNED` |
-| R3-W4 | Wave 4·08/24~09/02 | R3 | I4·RC1 → I5 | R3-11~15 + R3-01~10 회귀 | 조건부 LoRA·production client·전체 평가·fallback·release | `PLANNED` |
+| R3-W4 | Wave 4·08/24~09/02 | R3 | I4·RC1 → I5 | R3-11~15 + R3-01~10 회귀 | LoRA 1회 비교·조건부 채택·production client·전체 평가·fallback·release | `PLANNED` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
 
@@ -121,12 +124,12 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 
 ## Wave 1 발행 카드
 
-아래 묶음은 기준 문서와 최신 원격 변경을 통합한 `dev` commit `72292d9`를 `BASE_SHA`로 사용한다. 담당자는 개인 branch에 이 기준을 반영한 뒤 기존 구현을 보존하면서 첫 미완료 카드부터 수행한다.
+아래 묶음은 현재 `dev` commit `2c2779d23738038d5cd0560cffa70c5b509991c3`을 `BASE_SHA`로 사용한다. 담당자는 개인 branch에 이 기준을 반영한 뒤 기존 구현을 보존하면서 첫 미완료 카드부터 수행한다.
 
 ### R1-W1
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -134,12 +137,13 @@ EXECUTION_BUNDLE_ID=R1-W1
 TARGET_INTEGRATION_GATE=I1
 CHECKPOINT_GATES=I0
 TASK_CARD_RANGE=R1-00~08
-CURRENT_TASK_CARD_ID=R1-00
+CURRENT_TASK_CARD_ID=R1-03
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=72292d9
-I0_DECISION_VERSION=DRAFT-I0-v0.1
+BASE_SHA=2c2779d23738038d5cd0560cffa70c5b509991c3
+I0_DECISION_VERSION=DRAFT-I0-v0.2
 CONTRACT_VERSION=DRAFT-I1-v0.1
+BLOCKER=R3 model contract와 R5 UI·Report contract 미도착, R2~R5 root Compose service fragment 미도착
 ALLOWED_PATHS=AGENTS.md; compose*.yml; .env.example; .github/**; .githooks/**; tests/integration/**; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/ai_docs/5인_병렬구현_*
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=I0 역할·범위·소유권·full/dev/split-host 결정과 I1 공통 계약·Compose skeleton·env·CI·fake 소비 가능 판정, 필수 30·gold 120 원장 schema/reviewer/split 계획
@@ -162,7 +166,7 @@ TASK_CARD_RANGE=R2-00~08
 CURRENT_TASK_CARD_ID=R2-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=72292d9
+BASE_SHA=2c2779d23738038d5cd0560cffa70c5b509991c3
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 CONTRACT_VERSION=DRAFT-I1-v0.1
 SCHEMA_VERSION=DRAFT-SCHEMA-v0.1
@@ -189,7 +193,7 @@ TASK_CARD_RANGE=R3-00~03, R3-07
 CURRENT_TASK_CARD_ID=R3-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=72292d9
+BASE_SHA=2c2779d23738038d5cd0560cffa70c5b509991c3
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
@@ -217,7 +221,7 @@ TASK_CARD_RANGE=R4-00~05
 CURRENT_TASK_CARD_ID=R4-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=72292d9
+BASE_SHA=2c2779d23738038d5cd0560cffa70c5b509991c3
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 CONTRACT_VERSION=DRAFT-OPENAPI-v0.1
 DB_REVISION_HEAD=DRAFT — I1에서 확정
@@ -245,7 +249,7 @@ TASK_CARD_RANGE=R5-00~04, R5-08
 CURRENT_TASK_CARD_ID=R5-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=72292d9
+BASE_SHA=2c2779d23738038d5cd0560cffa70c5b509991c3
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 UI_CONTRACT_VERSION=DRAFT-UI-v0.1
 OPENAPI_VERSION=DRAFT — R4-W1 입력
@@ -348,7 +352,7 @@ Wave 3는 I2에서 검증한 전체 왕복을 5 source와 실제 general LLM 경
 
 - `CARD_PLAN`: R4-08~13 실제 model·G2·repair·Trino·G3·Artifact → R4-14 Cache → R4-15 Audit → R4-18 권한·mask·redaction
 - 입력: I2 backend trace, R2 5-source adapter, R3 production client
-- 완료 조건: SQL Plan Cache와 Result Cache를 분리하고 key에 context/policy/entitlement/as_of/watermark/mask가 반영되며 Hit도 G2·G3를 우회하지 않고, 최대 LLM 4회·동시 2건·초과 대기/429와 request→context→query→artifact trace가 재현됨
+- 완료 조건: SQL Plan Cache와 Result Cache를 분리하고 key에 context/policy/권한 범위(entitlement)/as_of/watermark/mask가 반영되며, Template·Plan·Result Cache도 G1·G2·G3와 권한 확인을 우회하지 않고, 최대 LLM 4회·동시 2건·초과 대기/429와 request→context→query/cache→artifact trace가 재현됨
 - 검증: compileall, `tests/backend/**` 전체 회귀, invalid schema·timeout·권한·Cache negative test
 - handoff: R5에 실제 OpenAPI/status/trace fixture, R1에 보안·Audit 증거 전달
 - 중단: Gate 우회, PII·secret 노출, repair 2회, Cache 권한 공유, backend 회귀 실패
@@ -384,17 +388,17 @@ Wave 4는 I4 Reporting 통합부터 RC1·리허설·I5 동결까지 포함한다
 
 ### R3-W4
 
-- `CARD_PLAN`: R3-11 조건부 LoRA → R3-12~14 serving/client/trace → R3-15 release 후보 → R3-01~10 전체 회귀
-- 완료 조건: 채택 Gate 또는 미채택 근거, Base/채택 model·prompt·adapter·fallback 전체 평가와 release manifest 동결
+- `CARD_PLAN`: R3-11 LoRA 1회 비교·조건부 채택 → R3-12~14 serving/client/trace → R3-15 release 후보 → R3-01~10 전체 회귀
+- 완료 조건: 외부 실행 조건 충족 시 1회 비교, 미충족 시 `Blocked`·`Not Run` 사유, 제품 채택·미채택 결정, Base/채택 model·prompt·adapter·fallback 전체 평가와 release manifest 동결
 - 검증: 전체 AI test·필수 평가·restart/fallback·manifest hash
 - handoff: R4에 동결 endpoint/client, R1에 model/prompt/adapter version·비용·rollback 전달
-- 중단: 비용 미승인, Base 대비 채택 근거 부족, fallback 실패, release hash drift
+- 중단: 비용 미승인은 비교를 `Blocked`·`Not Run`으로 기록하고 Base release는 계속함; fallback 실패, release hash drift, 승인 없는 제품 채택은 중단
 
 ### R4-W4
 
 - `CARD_PLAN`: R4-16 Report 등록 → R4-17 worker/schedule → R4-18~20 권한·복구·health → R4-21 release → R4-01~15 회귀
-- 완료 조건: Report 수동/예약 동일 경로, 수동 반복 성공 후 schedule 활성화, idempotency·dead-letter·partial, versioned role mapping·mask·redaction, migration 단일 head, RPO 24h·RTO 4h restore 증거와 API/policy/worker 동결
-- 검증: backend 전체 회귀, migration 빈/기존 DB upgrade, worker retry·duplicate, backup/restore, health smoke
+- 완료 조건: Report 수동/예약 동일 경로, 수동 반복 성공 후 schedule 활성화, 영속 job·같은 요청 한 번만 처리(idempotency)·retry·실패 격리·일부 실패(partial), versioned role mapping·mask·민감정보 가림(redaction), migration 단일 head, RPO 24h·RTO 4h restore 증거와 API/policy/worker 동결
+- 검증: backend 전체 회귀, migration 빈/기존 DB upgrade, worker retry·duplicate, 암호화 backup·분리 key·restore, health smoke
 - handoff: R5에 동결 Report/worker API, R1에 backend release manifest·복구 증거 전달
 - 중단: migration 다중 head, 중복 Artifact, 권한 우회, backup/restore 실패, release 회귀 실패
 
@@ -405,6 +409,17 @@ Wave 4는 I4 Reporting 통합부터 RC1·리허설·I5 동결까지 포함한다
 - 검증: 활성 frontend production build, 실제 API E2E, 접근성·반응형 수동 증거, mock/fallback 회귀
 - handoff: R1에 build artifact·E2E·발표 route, R4에 최종 response drift·결함 전달
 - 중단: 실제 API parity 실패, 접근성 Critical/High, production build 실패, 동결 후 신규 기능 요구
+
+## I5 이후 후속 단계 예약
+
+아래 항목은 기획에서 빠진 것이 아니라 현재 일정 뒤에 남겨 둔 작업이다. 아직 실행 Wave와 날짜를 정하지 않으며, 현재 상태는 `PLANNED`다. R1이 I5 이후 새 `BASE_SHA`, 담당 경로, 계약·비용·보안 기준을 채워 별도 실행 묶음을 `READY`로 발행해야 시작할 수 있다.
+
+| 후속 ID | 항목 | 주 책임 | 현재 I5 영향 |
+|---|---|---|---|
+| F-01 | MCP Tool Registry·호출 통제 | R4 | 없음 |
+| F-02 | 사내 운영 문서 RAG | R3 | 없음 |
+| F-03 | ML-as-a-Tool | R3 | 없음 |
+| F-04 | 고객 360 | R5 | 없음 |
 
 ## 미래 Wave 발행 템플릿
 
@@ -437,6 +452,8 @@ EXTERNAL_ACTION_PERMISSION=<설치·비용·배포·데이터 전송·Git 권한
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.5 | 2026-07-30 10:25 | R1~R5 Wave 1의 `BASE_SHA`를 현재 `dev` 기준 SHA `2c2779d23738038d5cd0560cffa70c5b509991c3`으로 교정하고, 활성 frontend 결정 후 R1-00~02 완료·R1-03 계약 입력 대기를 기록 |
+| v1.4 | 2026-07-30 09:32 | Wave 1 기준 SHA를 현재 `dev`로 교정하고 LoRA 비교·worker·backup 절차와 I5 이후 F-01~F-04 비차단 후속 단계를 동기화 |
 | v1.3 | 2026-07-29 17:35 | 최신 `dev` 통합 SHA `72292d9`를 기준으로 R1~R5 Wave 1 실행 묶음을 `READY`로 발행 |
 | v1.2 | 2026-07-29 17:27 | 기획서 §1·3·5·7~11·14~20·22 추적성 대조와 기술·평가·보안·복구 수용 조건 보강 |
 | v1.1 | 2026-07-29 17:24 | 병합 충돌과 자율 진행량을 균형화한 4개 Wave 및 Wave 2~4 역할별 상세 계획 카드 보강 |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v6.9 |
-| 문서 기준일 | 2026-07-30 13:58 |
+| 버전 | v6.8 |
+| 문서 기준일 | 2026-07-30 13:39 |
 | 작성·수정 | 김재홍·박준희·정승·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -208,8 +208,8 @@ gantt
 | 4.4 | R4-03 application DB model·Alembic | migration head | 김재홍 | 진행 | 08/03 | 08/07 | 높음 |
 | 4.5 | R4-04 Router·Template Binding | route decision | 김재홍 | 진행 | 08/03 | 08/10 | 높음 |
 | 4.6 | R4-05 Controller 고정 상태 머신 | transition table | 김재홍 | 진행 | 08/03 | 08/10 | 높음 |
-| 4.7 | R4-06 Context Registry·Builder | versioned Context Package | 김재홍 | 진행 | 08/10 | 08/14 | 높음 |
-| 4.8 | R4-07 G1 Context Gate | decision·evidence | 김재홍 | 진행 | 08/10 | 08/14 | 높음 |
+| 4.7 | R4-06 Context Registry·Builder | versioned Context Package | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
+| 4.8 | R4-07 G1 Context Gate | decision·evidence | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
 | 4.9 | R4-08 R3 Node typed client | model client·오류 처리 | 김재홍 | 대기 | 08/10 | 08/21 | 높음 |
 | 4.10 | R4-09 G2 SQL Policy Gate | AST·policy decision | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
 | 4.11 | R4-10 Node 2′·G2′ 수정 1회 통제 | repair counter | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
@@ -360,7 +360,6 @@ gantt
 |---|---|---|---|
 | 2026-07-30 13:39 | 1.4, 2.10 | R2-W1-F1 READY 카드 `9925a88`이 최신 `origin/dev=4527375`에 이미 포함된 것을 확인하고 보고된 fragment 3개 파일만 commit·seung push하도록 허가했다. 최신 `origin/seung=cd8fdfc`에는 아직 제출되지 않아 R2-09 진행과 R1-03 차단을 유지하며 일정·간트 날짜는 변경하지 않았다. | R2 제출 허가 |
 | 2026-07-30 12:56 | 1.4, 4.21 | `origin/jaehong` handoff `06632fa`의 backend image·non-root·health·OpenAPI와 backend 17건·AI 15건·data 7건·integration 1건을 R1이 독립 검토해 R4-20을 검토로 전환했다. 허용 경로 밖 application DDL 분리·dev 통합·combined database readiness와 R2·R5 follow-up 전 R1-03 차단은 유지하며 일정·간트 날짜는 변경하지 않았다. | R4 I1 제출 검토 |
-| 2026-07-30 12:52 | 4.7~4.8 | R1 전달 승인으로 R4-W2를 backend 소유 경로에 한해 READY로 발행하고, versioned Context Package와 role·release·policy·time·template·asset/column·metric·history·JOIN·크기 순서의 G1 decision/evidence를 실제 `/analysis` 흐름에 연결해 allow/block 상태 전이와 backend test 29건을 통과했다. | R4 Context·G1 진행 |
 | 2026-07-30 12:36 | 1.4, 2.10, 4.21, 5.2, 5.19 | R2-W1-F1·R4-W1-F1·R5-W1-F1을 READY로 발행해 역할별 허용 경로·완료 증거·검증·중단 조건을 고정했다. 대표 질문·metric은 승인 전 N/A로 유지하고 follow-up 결과 검증 전 기존 WBS 상태는 변경하지 않았다. | I1 보완 실행 허가 |
 | 2026-07-30 12:32 | 1.4 | R3 model serving Dockerfile·실행 manifest는 I1 필수가 아니며 in-process fake adapter로 계약을 검증하고 R3-W3에서 제출하도록 판정했다. R3 service fragment blocker만 해제하고 R2·R4·R5 보완 대기로 R1-03 차단은 유지한다. | I1 blocker 범위 정정 |
 | 2026-07-30 12:03 | 1.4 | R2 schema·seed·scenario와 R3 model I/O·prompt·fixture를 I1 입력으로 승인했다. R4·R5는 기존 Wave 1 계약 결함 재작업만 허가하고 clean package·runtime·typed contract·금지 route 차단·build 증거 도착 전 R1-03 차단과 Wave 2 불허를 유지한다. | R1 계약 승인·재작업 허가 |
@@ -390,7 +389,6 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
-| v6.9 | 2026-07-30 13:58 | 최신 dev의 R1 follow-up 판정을 보존하고 R4-W2 READY·Context Builder·G1 non-bypass·runtime 검증 근거를 4.7~4.8에 반영 |
 | v6.8 | 2026-07-30 13:39 | R2-W1-F1 지정 파일의 commit·seung push 허가 근거를 1.4·2.10에 연결하고 제출 전 상태와 일정은 유지 |
 | v6.7 | 2026-07-30 12:56 | R4 handoff 독립 검토 근거를 1.4·4.21에 연결하고 R4-20을 검토로 전환했으며 I1 차단과 기존 일정은 유지 |
 | v6.6 | 2026-07-30 12:36 | R2·R4·R5 I1 follow-up READY 발행 근거를 1.4·2.10·4.21·5.2·5.19에 연결하고 검증 전 상태 유지 |

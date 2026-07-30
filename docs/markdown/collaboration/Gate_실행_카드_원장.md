@@ -4,9 +4,9 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.3 |
-| 문서 기준일 | 2026-07-30 13:58 |
-| 작성·수정 | 박준희 / 김재홍 요청·Codex 반영 |
+| 버전 | v2.2 |
+| 문서 기준일 | 2026-07-30 13:39 |
+| 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
 
@@ -79,7 +79,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R1 | `AGENTS.md`, root Compose·env·CI, `.githooks/**`, `tests/integration/**`, 공통 계약·WBS·협업 문서 | R2~R5 서비스 내부 구현 |
 | R2 | source DDL·seed, `infrastructure/database/trino/**`, DataHub 설정, `src/data/**`, `tests/data/**` | app DB, 공통 FastAPI, AI model·prompt, frontend·Report |
 | R3 | `src/ai/**`, `src/modelops/**`, `evals/**`, `tests/ai/**`, model serving 설정 | DB 원천, G1·G2·G3, 공통 FastAPI, frontend |
-| R4 | `app/backend/**`, `tests/backend/**`, app DB·migration | source DDL·seed, AI model·prompt, frontend, root Compose |
+| R4 | `app/fastapi/**`, `src/backend/**`, `src/control_plane/**`, `tests/backend/**`, app DB·migration | source DDL·seed, AI model·prompt, frontend, root Compose |
 | R5 | I0의 frontend 후보, I0에서 확정한 활성 frontend, `src/report/**`, `tests/frontend/**`, `tests/report/**`, Report proposal | root Compose, 공통 FastAPI entrypoint·Alembic chain, source DB·AI model |
 
 R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사할 수 있다. 구현 변경은 결정된 활성 frontend 하나에만 적용한다.
@@ -101,7 +101,7 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 | R1-W2 | Wave 2·08/10~08/14 | R1 | 없음 → I2 | R1-07, R1-09 | 수용 subset·통합 profile·deterministic trace 판정 | `PLANNED` |
 | R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `PLANNED` |
 | R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `PLANNED` |
-| R4-W2 | Wave 2·08/10~08/14 | R4 | 없음 → I2 | R4-04~13, R4-15 | Template→Context→G1→G2→Trino→G3→Artifact trace | `READY` |
+| R4-W2 | Wave 2·08/10~08/14 | R4 | 없음 → I2 | R4-04~13, R4-15 | Template→Context→G1→G2→Trino→G3→Artifact trace | `PLANNED` |
 | R5-W2 | Wave 2·08/10~08/14 | R5 | 없음 → I2 | R5-03~07 | Chat·상태·Evidence·표·차트·Artifact bridge | `PLANNED` |
 | R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `PLANNED` |
 | R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `PLANNED` |
@@ -373,7 +373,7 @@ EXTERNAL_ACTION_PERMISSION=npm ci 또는 Docker build에 신규 download가 필�
 
 ## Wave 2 상세 계획 카드
 
-Wave 2는 I1에서 동결한 계약과 fake를 기준으로 대표 질문의 deterministic 전체 왕복을 완성한다. R1은 2026-07-30 사용자 전달 승인을 근거로 R4의 소유 경로 전체에 한해 선행 착수를 허가했다. 이는 I1 통합 Gate 통과 판정이 아니며, 다른 역할 계약의 완료를 대신하지 않는다.
+Wave 2는 I1에서 동결한 계약과 fake를 기준으로 대표 질문의 deterministic 전체 왕복을 완성한다. 각 카드는 Wave 1 통합 완료 `dev` SHA와 승인 version을 입력한 뒤 `READY`로 바꾼다.
 
 ### R1-W2
 
@@ -414,37 +414,6 @@ Wave 2는 I1에서 동결한 계약과 fake를 기준으로 대표 질문의 det
 - 검증: `python -m compileall app/fastapi src/backend src/control_plane`, `python -m unittest discover -s tests/backend -p "test_*.py"`, `git diff --check`
 - handoff: R5에 OpenAPI example·상태 fixture·Artifact contract, R1에 request→artifact trace 전달
 - 중단: R2/R3 contract 불일치, migration 다중 head, 불법 상태 전이 또는 contract test 실패
-
-```text
-STATUS=READY
-ROLE_ID=R4
-ASSIGNEE=김재홍
-PERSONAL_BRANCH=jaehong
-EXECUTION_BUNDLE_ID=R4-W2
-TARGET_INTEGRATION_GATE=I2
-CHECKPOINT_GATES=없음
-TASK_CARD_RANGE=R4-04~13, R4-15
-CURRENT_TASK_CARD_ID=R4-07
-REPOSITORY_ROOT=<팀원별 repository root>
-BASE_BRANCH=dev
-BASE_SHA=4527375161e40ac8b31b80eae3b38b3dcfb58b52
-I0_DECISION_VERSION=DRAFT-I0-v0.2
-CONTRACT_VERSION=DRAFT-I1-v0.1
-OPENAPI_VERSION=DRAFT-OPENAPI-v0.1
-SCHEMA_VERSION=1.0.0
-SEED_VERSION=20260729
-MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
-MODEL_FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
-UI_REPORT_CONTRACT=N/A — R4 단독 구현은 backend 고정 fixture를 사용하고 실제 소비자 통합은 I2 판정에서 검증
-REPRESENTATIVE_QUESTION=N/A — R1 승인 질문 미도착, 개발 fixture만 사용
-METRIC_CONTRACT=N/A — R1 승인 metric 미도착, 개발 fixture만 사용
-ALLOWED_PATHS=app/backend/**; tests/backend/**; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md; docs/markdown/02_WBS.md; docs/markdown/daily_reports/jaehong/일일보고.md
-FORBIDDEN_PATHS=infrastructure/database/**; src/data/**; src/ai/**; frontend; Report; root Compose; .env.example; CI
-ACCEPTANCE_CRITERIA=Context Package 8 dataset·60 column·6k token/25% 상한, G1 순서·decision·evidence, Gate 우회 0건, repair 최대 1회, G3 실패 Artifact 차단, request→artifact trace
-TEST_COMMANDS=D:\bootcamp\최종\.venv-jaehong-r4\Scripts\python.exe -m compileall app/backend/app; D:\bootcamp\최종\.venv-jaehong-r4\Scripts\python.exe -m unittest discover -s tests/backend -p "test_*.py"; powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1; git diff --check
-STOP_CONDITIONS=I2 제출 범위 완료; R2/R3/R5 소유 파일 변경 필요; producer contract 불일치; migration 다중 head; 불법 상태 전이·Gate 우회·필수 검증 실패
-EXTERNAL_ACTION_PERMISSION=기존 local Docker와 R4 전용 가상환경 사용 허가; 신규 dependency·외부 배포·secret·비용·데이터 전송·stage·commit·push·merge는 별도 승인
-```
 
 ### R5-W2
 
@@ -591,7 +560,6 @@ EXTERNAL_ACTION_PERMISSION=<설치·비용·배포·데이터 전송·Git 권한
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
-| v2.3 | 2026-07-30 13:58 | 최신 dev의 R1 follow-up 검토를 보존하면서 전달된 R4 전체 착수 승인을 반영해 실제 `app/backend/**` 구조의 R4-W2를 READY로 발행하고 기술 Gate 판정과 분리 |
 | v2.2 | 2026-07-30 13:39 | READY 카드 `9925a88`의 dev 포함을 확인하고 R2-W1-F1의 지정 3개 파일에 한해 commit·seung push를 허가했으며 원격 제출 전 상태는 READY로 유지 |
 | v2.1 | 2026-07-30 12:56 | `origin/jaehong`의 R4-W1-F1 handoff를 container·OpenAPI·role test로 독립 검토해 REVIEW로 전환하고 dev 통합·combined database readiness 재검증 전 I1 차단을 유지 |
 | v2.0 | 2026-07-30 12:36 | R2-W1-F1·R4-W1-F1·R5-W1-F1 follow-up을 READY로 발행하고 역할별 허용 경로·검증·중단·외부 권한을 고정했으며 대표 질문·metric은 승인 전 N/A로 유지 |

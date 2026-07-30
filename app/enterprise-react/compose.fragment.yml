@@ -1,5 +1,6 @@
 services:
   frontend:
+    profiles: [dev, full, split-host]
     container_name: answervice-frontend
     build:
       context: ../../app/enterprise-react

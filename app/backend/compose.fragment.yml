@@ -1,5 +1,6 @@
 services:
   backend:
+    profiles: [dev, full, split-host]
     container_name: answervice-backend
     build:
       context: ../../app/backend

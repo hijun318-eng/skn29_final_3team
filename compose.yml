@@ -1,28 +1,8 @@
 name: answervice
 
-# DataHub Core is added after R1 approves an immutable DATAHUB_VERSION and
-# the official quickstart Compose source. It is not part of the dev profile.
+# DataHub Core is restricted to full/split-host by its own fragment.
 include:
   - path: infrastructure/database/compose.yml
   - path: app/backend/compose.fragment.yml
   - path: app/enterprise-react/compose.fragment.yml
-
-services:
-  app-postgres:
-    profiles: [dev, full, split-host]
-  backend:
-    profiles: [dev, full, split-host]
-  frontend:
-    profiles: [dev, full, split-host]
-  pms-postgres:
-    profiles: [full, split-host]
-  banquet-postgres:
-    profiles: [full, split-host]
-  pos-mysql:
-    profiles: [full, split-host]
-  crm-mssql:
-    profiles: [full, split-host]
-  facility-clickhouse:
-    profiles: [full, split-host]
-  trino:
-    profiles: [full, split-host]
+  - path: infrastructure/database/datahub/compose.consumer.yml

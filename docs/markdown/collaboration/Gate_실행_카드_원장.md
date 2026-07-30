@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.8 |
-| 문서 기준일 | 2026-07-30 15:47 |
+| 버전 | v2.10 |
+| 문서 기준일 | 2026-07-30 17:09 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -34,6 +34,66 @@
 | `MERGED_DEV` | 개인 branch 결과가 `dev`에 병합됨 |
 | `VERIFIED_GATE` | 통합 Gate 검증 완료 |
 | `PLANNED` | 미래 Gate 예약, 실행 불가 |
+
+## GitHub Actions·Google Docs Gate 자동화 계약
+
+이 원장은 실행 권한과 Gate 판정 기준의 단일 기준이다. GitHub Actions와
+`.github/scripts/gate_scope.py`는 이 원장을 읽어 증거를 검사할 뿐 원장 상태,
+계약 version, `BASE_SHA`, `READY`, `VERIFIED_GATE`를 자동으로 변경하지 않는다.
+
+역할 branch는 `origin/dev...개인 branch SHA`의 merge-base diff를 검사하고,
+`dev`는 push 직전 SHA와 현재 SHA의 직접 diff를 검사한다. 개인 branch의
+허용 범위는 최신 non-`PLANNED` 실행 묶음의 `ALLOWED_PATHS`, 해당 역할의 개인
+일일보고, 정확히 일치하는 `handoffs/<EXECUTION_BUNDLE_ID>.json`이다. 제품
+구현과 무관한 공용 보고 자동화·팀 요약·보고 검증 경로는 모든 역할에 허용하되
+다른 역할의 개인 일일보고는 허용하지 않는다. `MERGED_DEV`·`VERIFIED_GATE`
+역할은 개인 일일보고와 공용 보고 경로 외 신규 구현을 차단한다.
+
+자동화 판정은 원장 상태와 구분해 다음처럼 사용한다.
+
+| 자동화 판정 | 자동 검사 기준 | 후속 처리 |
+|---|---|---|
+| `PASS` | 허용 경로, 실행 묶음·branch·`BASE_SHA`·결과 SHA, 실제 diff, 필수 handoff 필드와 실행 검증이 일치 | R1 승인 후보로 표시 |
+| `FAIL` | 허용 경로 침범, 필드 누락·형식 오류, SHA·diff 불일치, `FAIL`·`BLOCKED` 검증, `REVIEW` 상태의 handoff 누락 | 원 소유 역할에 반환하고 병합 차단 |
+| `REVIEW_REQUIRED` | `NOT_RUN`, change request, 잔여 위험, 외부 download·image pull·비용·secret·데이터 전송·배포·Git 권한 요청 | Google Docs의 R1 검토 큐에 표시 |
+| `NOT_RUN` | 아직 handoff를 제출하지 않은 `READY`·`IN_PROGRESS` 묶음 | 작업 또는 제출 대기이며 성공으로 계산하지 않음 |
+| `N/A` | `MERGED_DEV`·`VERIFIED_GATE`로 신규 handoff가 필요하지 않음 | 추가 구현 없이 유지 |
+
+handoff manifest는 역할이 `REVIEW`를 요청하기 전에 제출하며 다음 필드를 모두
+포함한다.
+
+```text
+EXECUTION_BUNDLE_ID
+ROLE
+BRANCH
+BASE_SHA
+RESULT_SHA
+COMPLETED_CARDS
+CHANGED_FILES
+CONTRACT_VERSIONS
+TEST_RESULTS
+NOT_RUN
+CHANGE_REQUESTS
+RESIDUAL_RISKS
+EXTERNAL_APPROVAL_REQUIRED
+```
+
+`gate_scope.py`는 권한·범위·증거 일치성만 검사한다. 기획서의 대표 질문 정답,
+업무 수용성, DataHub→G1→G2→Trino→G3→Artifact→Report 의미 정확성,
+UI·접근성 수동 증거, 계약 Freeze와 최종 Gate는 역할별 실제 test와 R1이
+별도로 판정한다. GitHub Actions Summary는 객관적 검사 결과를 제공하고,
+Google Docs는 R1이 `승인`, `보완 요청`, `보류`와 다음 실행 지시를 기록하는
+결정 채널로 사용한다.
+
+GitHub Actions의 최종 `quality-gate`는 역할 범위, Python unit·contract·
+integration test, frontend production build·contract, R2 DataHub service
+fragment, root Compose `dev`·`full`·`split-host`, 문서 정책·WBS·보고서
+검증 결과를 집계한다.
+실행 대상이 아닌 역할별 job의 `skipped`는 `N/A`로 취급하지만 `failure`와
+`cancelled`는 전체 자동 품질 Gate를 실패시킨다. 개인 branch의 handoff가
+`PASS` 또는 `N/A`가 아니어도 전체 자동 품질 Gate를 실패시킨다. 자동 품질 Gate 통과는
+기계 검증 완료를 뜻하며 R1의 제품 수용·계약 Freeze·최종 Gate 승인을
+대체하지 않는다.
 
 ## 카드 상세도 기준
 
@@ -96,7 +156,7 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 | R4-W1 | Wave 1·07/29~08/07 | R4 | I0 → I1 | R4-00~05 | backend 경계·OpenAPI·auth·DB·migration·Controller skeleton | `MERGED_DEV` |
 | R5-W1 | Wave 1·07/29~08/07 | R5 | I0 → I1 | R5-00~04, R5-08 | 활성 frontend·IA·typed client·mock·Chat 상태·Report 계약 | `MERGED_DEV` |
 | R2-W1-F1 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 I1 service fragment 보완 | DataHub/database fragment·health·env 요구 | `MERGED_DEV` |
-| R2-W1-F2 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 DataHub consumer fragment 보완 | immutable version·official Compose source·health·env | `READY` |
+| R2-W1-F2 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 DataHub consumer fragment 보완 | immutable version·official Compose source·health·env | `MERGED_DEV` |
 | R4-W1-F1 | Wave 1 follow-up | R4 | 없음 → I1 | R4-20의 I1 container subset | backend Dockerfile·container health·runtime 증거 | `MERGED_DEV` |
 | R4-W1-F2 | Wave 1 follow-up | R4 | 없음 → I1 | R4-W1-F1 cleanup 결함 수정 | container 검증 종료 코드·잔존 container 정리 | `MERGED_DEV` |
 | R5-W1-F1 | Wave 1 follow-up | R5 | 없음 → I1 | R5-01~04, R5-08, R5-18의 I1 보완 | 금지 route 차단·typed contract·lockfile·clean build | `MERGED_DEV` |
@@ -151,17 +211,20 @@ CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
 PROMPT_VERSION=DRAFT-PROMPT-v0.1
 MODEL_FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
-BLOCKER=R2 DataHub consumer fragment·immutable DATAHUB_VERSION·official Compose source 미제출, 대표 질문·metric 승인값 미확정
+BLOCKER=대표 질문·metric 승인값과 common I1·OpenAPI·UI/Report 최종 version 미동결
 R1_APPROVED_INPUTS=R2 schema 1.0.0·seed 20260729·scenario 1.0.0; R3 model I/O DRAFT-MODEL-v0.1·prompt DRAFT-PROMPT-v0.1·fixture DRAFT-MODEL-FIXTURE-v0.1
 R3_SERVICE_FRAGMENT=N/A — R3-W3에서 model serving Dockerfile 또는 실행 manifest 제출
-R1_REWORK_AUTHORIZATION=R2-W1-F2 DataHub consumer fragment 보완만 허가, R4·R5 추가 구현과 전 역할 Wave 2 불허
-INDEPENDENT_PROGRESS=R1-06 Python producer·integration·문서 검증 CI와 실행 카드 기반 role scope·R5 clean build 자동 검사, R1-07 필수 30·gold 120 평가 원장 schema
-ROLE_GATE_POLICY=개인 branch는 origin/dev 대비 고유 변경을 최신 비-PLANNED 실행 묶음의 ALLOWED_PATHS로 검사; MERGED_DEV·VERIFIED_GATE는 개인 일일보고 외 변경 차단; dev는 role scope 강제 없이 통합 검사
+R1_REWORK_AUTHORIZATION=R2-W1-F2 종료, common I1 Freeze 전 R4·R5 추가 구현과 전 역할 Wave 2 불허
+INDEPENDENT_PROGRESS=R1-04~06 root DataHub 통합 profile·env·재현 가능한 service fragment 검증과 Python·frontend·Compose·문서 품질 Gate, R1-07 필수 30·gold 120 평가 원장 schema
+ROLE_GATE_POLICY=개인 branch는 origin/dev 대비 고유 변경을 최신 비-PLANNED 실행 묶음의 ALLOWED_PATHS로 검사; 공용 보고 자동화·팀 요약·검증은 비제품 경로로 허용하고 다른 역할 개인 보고는 차단; MERGED_DEV·VERIFIED_GATE는 개인 보고·공용 보고 외 변경 차단; dev는 role scope 강제 없이 통합 검사
 ROLE_GATE_PERMISSION=GitHub Actions contents: read만 사용, 자동 상태 변경·commit·push·merge 금지
+HANDOFF_MANIFEST_POLICY=역할별 handoffs/<EXECUTION_BUNDLE_ID>.json을 REVIEW 요청 전 제출; 실제 diff·BASE_SHA·RESULT_SHA·완료 카드·계약 version·검증·Not Run·change request·잔여 위험·외부 승인 요청을 기록
+AUTOMATED_DECISION_BOUNDARY=경로·SHA·diff·manifest·검증 상태는 자동 판정; 기획 의미·업무 수용·계약 Freeze·Gate 승인·예외 승인은 R1 수동 판정
+GOOGLE_DOCS_DECISION_CHANNEL=GitHub Actions Summary의 PASS·FAIL·REVIEW_REQUIRED·NOT_RUN을 근거로 R1이 승인·보완 요청·보류와 다음 실행 지시를 기록
 ALLOWED_PATHS=AGENTS.md; compose*.yml; .env.example; .github/**; .githooks/**; tests/integration/**; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/ai_docs/5인_병렬구현_*
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=I0 역할·범위·소유권·full/dev/split-host 결정과 I1 공통 계약·Compose skeleton·env·CI·fake 소비 가능 판정, 필수 30·gold 120 원장 schema/reviewer/split 계획
-TEST_COMMANDS=python -m unittest tests.integration.test_gate_scope -v; python -m pytest -p no:cacheprovider tests; python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/02_WBS.md docs/markdown/collaboration/Gate_실행_카드_원장.md docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md docs/markdown/collaboration/I1_평가_원장.md; python .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md; python .agents/skills/update-project-reports/scripts/validate_reports.py docs/markdown/daily_reports/junhee/일일보고.md --date 20260730; git diff --check
+TEST_COMMANDS=python -m unittest tests.integration.test_gate_scope -v; powershell -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify-service-fragment.ps1 -EnvFilePath .env.example; docker compose -f compose.yml --env-file .env.example --profile dev config --quiet; docker compose -f compose.yml --env-file .env.example --profile full config --quiet; docker compose -f compose.yml --env-file .env.example --profile split-host config --quiet; python -m compileall -q .github/scripts app/backend src tests; python -m pytest -p no:cacheprovider tests; python .github/scripts/gate_scope.py --dashboard --next-gate I2; python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/02_WBS.md docs/markdown/collaboration/Gate_실행_카드_원장.md docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md docs/markdown/collaboration/I1_평가_원장.md; python .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md; python .agents/skills/update-project-reports/scripts/validate_reports.py docs/markdown/daily_reports/junhee/일일보고.md --date 20260730; git diff --check
 STOP_CONDITIONS=I1 종료 조건 도달; 역할 밖 구현 필요; 미해결 계약 충돌; 통합 검증 실패
 EXTERNAL_ACTION_PERMISSION=설치·비용·배포·데이터 전송·stage·commit·push·merge 불가
 ```
@@ -413,7 +476,7 @@ R1_INTEGRATION_EVIDENCE=origin/minji ca8beae를 dev에 병합; npm ci·productio
 ### R2-W1-F2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -436,7 +499,9 @@ FORBIDDEN_PATHS=root Compose·.env.example·CI·app/**·src/ai/**·src/backend/*
 ACCEPTANCE_CRITERIA=R1 root full·split-host profile이 직접 소비할 DataHub Compose fragment 제출, DATAHUB_VERSION을 immutable v* release 또는 sha-* tag로 고정하고 공식 source URL·revision 기록, GMS 8080 /health와 management 4319 /actuator/health·필수 env·dependency 검증, dev profile 제외 유지, root Compose 변경 0건, secret 값 기록 0건
 TEST_COMMANDS=powershell -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify-service-fragment.ps1; docker compose -f <DataHub consumer fragment> config --quiet; python -m unittest discover -s tests/data -p "test_*.py"; git diff --check
 STOP_CONDITIONS=DataHub consumer fragment 제출 완료; infrastructure/database/** 밖 변경 필요; immutable version 또는 공식 source provenance 확정 불가; Compose config·health 계약 검증 실패; 실제 secret 필요
-EXTERNAL_ACTION_PERMISSION=허용 경로의 정적 fragment·검증·개인 일일보고 commit·seung push 허용; image pull·외부 download·비용·배포·secret 등록·merge는 별도 승인 전 불가
+R1_REVIEW_EVIDENCE=origin/seung 731399d의 고유 변경이 consumer fragment·service manifest·검증 스크립트 3개로 한정되고 Actions role-scope·Python contracts 통과; 공식 DataHub source revision 059a36c와 blob 028473e 존재 확인; R1 local에서 R2_SERVICE_FRAGMENT_VERIFIED와 root dev·full·split-host Compose config 통과
+R1_INTEGRATION_EVIDENCE=origin/seung 731399d를 dev에 fast-forward 통합하고 root Compose include·profile 소유 위치·DataHub env·seung Compose CI를 R1 범위에서 보완
+EXTERNAL_ACTION_PERMISSION=추가 R2 구현 없음; image pull·실제 container runtime·비용·배포·secret 등록은 별도 승인 전 불가
 ```
 
 ## Wave 2 상세 계획 카드
@@ -618,16 +683,22 @@ I0_DECISION_VERSION=<승인 버전>
 CONTRACT_VERSION=<현재 Gate 승인 또는 DRAFT 버전>
 ALLOWED_PATHS=<역할 소유 경로 중 이번 Gate 범위>
 FORBIDDEN_PATHS=<다른 역할 소유 경로>
+HANDOFF_MANIFEST=handoffs/<EXECUTION_BUNDLE_ID>.json
+HANDOFF_REQUIRED_FIELDS=실행 묶음·역할·branch·BASE_SHA·RESULT_SHA·완료 카드·실제 변경 파일·계약 version·검증·Not Run·change request·잔여 위험·외부 승인 요청
 ACCEPTANCE_CRITERIA=<목표 통합 Gate 공통 조건 + 역할별 제출물>
 TEST_COMMANDS=<formatter·lint·type check·unit/contract test·build 중 적용 명령>
 STOP_CONDITIONS=<목표 통합 Gate 도달·범위 완료·역할 밖 변경·계약 충돌·필수 검증 실패>
 EXTERNAL_ACTION_PERMISSION=<설치·비용·배포·데이터 전송·Git 권한>
+AUTO_FAIL_CONDITIONS=<경로 침범·SHA/diff 불일치·manifest 누락/오류·필수 검증 실패>
+R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기획/계약 수동 수용 판단>
 ```
 
 ## 변경 내역
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.10 | 2026-07-30 17:09 | R2 DataHub consumer `731399d`를 dev에 통합하고 공식 source provenance·service fragment·root dev/full/split-host Compose 정적 소비를 검증해 R2-W1-F2를 MERGED_DEV로 전환했다. Git 한글 경로 raw 처리, 공용 보고 자동화 비제품 예외, seung Compose 검증, handoff 최종 차단을 CI에 반영했으며 실제 DataHub container 기동과 common I1 version·대표 질문·metric 동결은 남겼다. |
+| v2.9 | 2026-07-30 16:26 | GitHub Actions는 원장의 권한·SHA·diff·handoff 증거와 Python·frontend·Compose·문서/WBS 품질을 읽기 전용으로 집계하고 Google Docs는 R1 최종 결정 채널로 사용하는 자동화 계약, PASS·FAIL·REVIEW_REQUIRED·NOT_RUN·N/A 기준, handoff 필수 필드와 자동/수동 판정 경계를 추가 |
 | v2.8 | 2026-07-30 15:47 | R4 cleanup·R5 frontend handoff의 dev 통합과 root dev/full/split-host Compose 정적 소비를 확인해 R4·R5 follow-up을 MERGED_DEV로 전환하고, full profile에 남은 DataHub consumer fragment·immutable version·공식 source 보완을 R2-W1-F2 READY로 발행 |
 | v2.7 | 2026-07-30 14:57 | 기존 읽기 전용 CI에 실행 카드 기반 역할 경로 검사와 R5 clean build job을 추가하고 terminal 역할의 신규 구현 차단·개인 일일보고 허용·자동 Git 작업 금지 정책을 기록 |
 | v2.6 | 2026-07-30 14:52 | R2~R5 원격 작업을 재확인해 R4 cleanup 전용 R4-W1-F2를 READY로 발행하고, R5 clean handoff `ba5617b`의 npm ci·build·contract·container health를 독립 검증해 추가 구현을 중단시킴 |

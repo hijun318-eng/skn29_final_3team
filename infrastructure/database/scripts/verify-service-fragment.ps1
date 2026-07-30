@@ -1,12 +1,14 @@
 [CmdletBinding()]
 param(
     [string]$ServiceFragmentPath,
-    [string]$DataHubConsumerPath
+    [string]$DataHubConsumerPath,
+    [string]$EnvFilePath
 )
 
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $databaseRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $databaseRoot)
 $fragmentPath = if ($ServiceFragmentPath) {
     $ServiceFragmentPath
 } else {
@@ -18,7 +20,15 @@ $consumerPath = if ($DataHubConsumerPath) {
     Join-Path $databaseRoot 'datahub/compose.consumer.yml'
 }
 $composePath = Join-Path $databaseRoot 'compose.yml'
-$localEnv = Join-Path $databaseRoot '.env'
+$rootComposePath = Join-Path $repoRoot 'compose.yml'
+$privateEnv = Join-Path $databaseRoot '.env'
+$localEnv = if ($EnvFilePath) {
+    $EnvFilePath
+} elseif (Test-Path -LiteralPath $privateEnv) {
+    $privateEnv
+} else {
+    Join-Path $repoRoot '.env.example'
+}
 
 $raw = Get-Content -LiteralPath $fragmentPath -Raw -Encoding UTF8
 $fragment = $raw | ConvertFrom-Json
@@ -102,7 +112,7 @@ if ($gms.image -ne 'acryldata/datahub-gms:v1.6.0' -or
     throw 'DataHub GMS image or health contract mismatch.'
 }
 
-$compose = & docker compose --env-file $localEnv -f $composePath config --format json |
+$compose = & docker compose --env-file $localEnv -f $composePath --profile full config --format json |
     ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) {
     throw 'Database Compose config failed while verifying the R2 service fragment.'
@@ -112,6 +122,28 @@ foreach ($service in $fragment.services | Where-Object kind -ne 'official-quicks
     if ($null -eq $configured -or $configured.image -ne $service.image_or_build) {
         throw "$($service.service_name) image drifted from database Compose."
     }
+}
+
+$rootOutput = & docker compose --env-file $localEnv -f $rootComposePath --profile full config --format json
+if ($LASTEXITCODE -ne 0) {
+    throw 'Root full Compose config failed while verifying the R2 service fragment.'
+}
+$rootCompose = $rootOutput | ConvertFrom-Json
+if (Compare-Object $expectedDataHubServices @(
+        $rootCompose.services.PSObject.Properties.Name |
+            Where-Object { $_ -in $expectedDataHubServices }
+    )) {
+    throw 'Root full Compose does not include the complete DataHub consumer service set.'
+}
+
+$devOutput = & docker compose --env-file $localEnv -f $rootComposePath --profile dev config --format json
+if ($LASTEXITCODE -ne 0) {
+    throw 'Root dev Compose config failed while verifying the R2 service fragment.'
+}
+$devCompose = $devOutput | ConvertFrom-Json
+if (@($devCompose.services.PSObject.Properties.Name |
+        Where-Object { $_ -in $expectedDataHubServices }).Count -ne 0) {
+    throw 'Root dev Compose unexpectedly includes a DataHub consumer service.'
 }
 
 Write-Output 'R2_SERVICE_FRAGMENT_VERIFIED'

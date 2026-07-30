@@ -61,7 +61,34 @@ try {
 }
 finally {
     if ($RemoveAfterVerification) {
-        docker @composeArguments stop backend 2>$null | Out-Null
-        docker @composeArguments rm --force backend 2>$null | Out-Null
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            docker @composeArguments stop backend 2>&1 | Out-Null
+            $stopExitCode = $LASTEXITCODE
+            docker @composeArguments rm --force backend 2>&1 | Out-Null
+            $removeExitCode = $LASTEXITCODE
+            $remainingContainers = @(
+                docker ps -a --filter "name=^/$containerName$" --format '{{.Names}}' 2>&1
+            )
+            $inspectionExitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+
+        if ($stopExitCode -ne 0) {
+            throw 'Backend Compose service stop failed.'
+        }
+        if ($removeExitCode -ne 0) {
+            throw 'Backend Compose service removal failed.'
+        }
+        if ($inspectionExitCode -ne 0) {
+            throw 'Backend container removal verification failed.'
+        }
+        if ($remainingContainers -contains $containerName) {
+            throw 'Backend container remains after cleanup.'
+        }
+        Write-Output 'BACKEND_CONTAINER_REMOVED'
     }
 }

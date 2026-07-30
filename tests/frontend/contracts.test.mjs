@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
-import { normalizeApiResponse, resolveViewState } from "../../app/enterprise-react/src/contracts/analysis.ts";
+import { readFileSync } from "node:fs";
+import {
+  normalizeApiResponse,
+  OPENAPI_VERSION,
+  resolveViewState,
+} from "../../app/enterprise-react/src/contracts/analysis.ts";
 import { approveDraft, createDraft } from "../../app/enterprise-react/src/contracts/report.ts";
 import { analysisFixtures } from "../../app/enterprise-react/src/data/analysisFixtures.ts";
+import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
+
+const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/package.json", import.meta.url)));
+assert.equal(OPENAPI_VERSION, "DRAFT-OPENAPI-v0.1");
+assert.ok(Object.values({ ...packageJson.dependencies, ...packageJson.devDependencies }).every((version) => version !== "latest"));
+assert.equal(resolveRoute("/customers").page, "notFound");
+assert.equal(resolveRoute("/catalog/tools").page, "notFound");
 
 for (const [expected, run] of Object.entries(analysisFixtures)) {
   assert.equal(resolveViewState(run).toLowerCase(), expected);
@@ -9,7 +21,7 @@ for (const [expected, run] of Object.entries(analysisFixtures)) {
 
 const normalized = normalizeApiResponse({
   data: { status: "SUCCEEDED", transitions: ["RECEIVED", "ROUTED", "SUCCEEDED"], result: { summary: "Fake 분석 결과입니다.", assets: [{ name: "PMS guest fixture", urn: "urn:answervice:dataset:pms.public.pms_guests" }] } },
-  meta: { request_id: "req-api-001", trace_id: "trace-api-001", as_of: "2026-07-30", contract_version: "1.0.0-draft", timestamp: "2026-07-30T03:00:00Z" },
+  meta: { request_id: "req-api-001", trace_id: "trace-api-001", as_of: "2026-07-30", contract_version: OPENAPI_VERSION, timestamp: "2026-07-30T03:00:00Z" },
   error: null,
 }, "객실 분석", "conv-api-001");
 assert.equal(normalized.status, "success");

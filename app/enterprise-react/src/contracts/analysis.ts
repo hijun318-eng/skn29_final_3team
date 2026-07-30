@@ -1,5 +1,5 @@
 export const UI_CONTRACT_VERSION = "DRAFT-UI-v0.1";
-export const OPENAPI_VERSION = "1.0.0-draft";
+export const OPENAPI_VERSION = "DRAFT-OPENAPI-v0.1";
 
 export type AnalysisRunStatus =
   | "idle"
@@ -29,6 +29,8 @@ export type AnalysisErrorCode =
   | "QUERY_SOURCE_FAILED"
   | "RESULT_EVIDENCE_MISSING"
   | "PARTIAL_FAILURE"
+  | "INSUFFICIENT_EVIDENCE"
+  | "RATE_LIMITED"
   | "INTERNAL_ERROR";
 
 export type BackendAnalysisStatus =
@@ -101,7 +103,10 @@ export function resolveViewState(run: AnalysisRun): AnalysisViewState {
   if (run.status === "partial") return "PARTIAL";
   if (run.status === "failed") return "ERROR";
   if (run.status === "blocked" && run.error?.code === "ACCESS_DENIED") return "FORBIDDEN";
-  if (run.status === "blocked" && run.error?.code === "RESULT_EVIDENCE_MISSING") {
+  if (
+    run.status === "blocked"
+    && (run.error?.code === "RESULT_EVIDENCE_MISSING" || run.error?.code === "INSUFFICIENT_EVIDENCE")
+  ) {
     return "INSUFFICIENT_EVIDENCE";
   }
   if (run.status === "blocked") return "ERROR";

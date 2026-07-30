@@ -1,4 +1,4 @@
-import type { AnalysisRun, AnalysisViewState } from "../contracts/analysis";
+import { OPENAPI_VERSION, type AnalysisRun, type AnalysisViewState } from "../contracts/analysis.ts";
 
 export const FIXTURE_VERSION = "DRAFT-UI-FIXTURE-v0.1";
 
@@ -18,7 +18,7 @@ const baseRun: AnalysisRun = {
     synthetic: true,
     seed: "20260729",
     schemaVersion: "1.0.0",
-    contractVersion: "1.0.0-draft",
+    contractVersion: OPENAPI_VERSION,
   },
 };
 

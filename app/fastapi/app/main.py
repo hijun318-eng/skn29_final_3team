@@ -31,6 +31,7 @@ from app.api.incident_runs import router as incident_runs_router
 from app.api.public import router as public_router
 from app.api.quality_gates import router as quality_gates_router
 from app.api.query_runs import router as query_runs_router
+from app.api.report_runs import router as report_runs_router
 from app.database import Base, SessionLocal, engine
 from app.llm.gateway import LLMGateway
 from app.models import AuditEvent
@@ -155,6 +156,7 @@ async def health() -> dict[str, str | dict[str, str]]:
 
 app.include_router(public_router)
 app.include_router(agent_query_router)
+app.include_router(report_runs_router)
 app.include_router(quality_gates_router)
 app.include_router(detections_router)
 app.include_router(query_runs_router)

@@ -216,3 +216,20 @@ class AuditEvent(Base):
     status_code: Mapped[int] = mapped_column(Integer, default=200)
     timestamp: Mapped[str] = mapped_column(String(32), default="")
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class ReportRun(Base):
+    """R03 report_runs — 보고서 실행 (명세서 기반 간소화).
+
+    기획서 §11: 수동·스케줄 보고서 실행의 스냅샷을 보존한다.
+    """
+    __tablename__ = "report_run"
+
+    run_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    report_id: Mapped[str] = mapped_column(String(36))
+    trigger_type: Mapped[str] = mapped_column(String(16), default="MANUAL")
+    triggered_by: Mapped[str] = mapped_column(String(64), default="")
+    status: Mapped[str] = mapped_column(String(16), default="SUCCEEDED")
+    period_start: Mapped[str] = mapped_column(String(32), default="")
+    period_end: Mapped[str] = mapped_column(String(32), default="")
+    created_at: Mapped[str] = mapped_column(String(32))

@@ -15,11 +15,18 @@ description: Inspect the current repository's staged Git changes and draft one K
 
 ## Message Format
 
-- Use `<type>(<scope>): <한국어 summary>`.
+- Use `<type>: <한국어 summary>` or `<type>(<scope>): <한국어 summary>`.
 - Choose `type` from `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`, `ci`, `perf`, `style`, `data`, or `eval`.
-- Keep `type` and `scope` lowercase. Use a short repository component for `scope`.
+- Add a short lowercase repository component as `scope` when the staged change is centered on one clear component. Omit `scope` for cross-cutting, repository-wide, or naturally unscoped changes.
 - Include Korean in `summary`, keep the subject within 72 characters, and omit the final period.
 - Add a short Korean body only when the reason, validation, or risk cannot be understood from the subject.
+
+Examples:
+
+```text
+refactor: FastAPI 자체 저장소로 레거시 의존성 제거
+feat(catalog): CatalogPage API 연동 및 데이터 모델 추가
+```
 
 ## Output Rules
 

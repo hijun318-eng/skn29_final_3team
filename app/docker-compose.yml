@@ -1,0 +1,111 @@
+version: "3.8"
+
+# Answervice 인프라 — 기획서 §8.2 기준 5개 소스 DB + Trino 연합 쿼리
+# 사용: docker-compose up -d
+# 종료: docker-compose down
+# 데이터 초기화: docker-compose down -v
+
+services:
+  # =========================================================================
+  # PMS DB (PostgreSQL) — 예약, 객실, 투숙, 요금
+  # =========================================================================
+  pms-db:
+    image: postgres:16-alpine
+    container_name: answervice-pms
+    environment:
+      POSTGRES_DB: pms
+      POSTGRES_USER: pms_ro
+      POSTGRES_PASSWORD: pms_ro_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - pms-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pms_ro"]
+      interval: 5s
+      retries: 5
+
+  # =========================================================================
+  # 연회·매출 DB (PostgreSQL, PMS와 별도 DB)
+  # =========================================================================
+  banquet-db:
+    image: postgres:16-alpine
+    container_name: answervice-banquet
+    environment:
+      POSTGRES_DB: banquet
+      POSTGRES_USER: banquet_ro
+      POSTGRES_PASSWORD: banquet_ro_pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - banquet-data:/var/lib/postgresql/data
+
+  # =========================================================================
+  # POS DB (MySQL) — 주문, 매장, 상품, 결제
+  # =========================================================================
+  pos-db:
+    image: mysql:8
+    container_name: answervice-pos
+    environment:
+      MYSQL_DATABASE: pos
+      MYSQL_USER: pos_ro
+      MYSQL_PASSWORD: pos_ro_pass
+      MYSQL_ROOT_PASSWORD: root_pass
+    ports:
+      - "3307:3306"
+    volumes:
+      - pos-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      retries: 5
+
+  # =========================================================================
+  # CRM DB (SQL Server) — 회원, 등급, 포인트, 고객 매핑
+  # =========================================================================
+  crm-db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: answervice-crm
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: Answervice123!
+    ports:
+      - "1434:1433"
+    volumes:
+      - crm-data:/var/opt/mssql
+
+  # =========================================================================
+  # 시설 운영 DB (ClickHouse) — 시설 이용, 점검, 이벤트
+  # =========================================================================
+  facility-db:
+    image: clickhouse/clickhouse-server:latest
+    container_name: answervice-facility
+    ports:
+      - "8124:8123"
+      - "9001:9000"
+    volumes:
+      - facility-data:/var/lib/clickhouse
+
+  # =========================================================================
+  # Trino (연합 쿼리 엔진) — 5개 catalog 읽기 전용 조회
+  # =========================================================================
+  trino:
+    image: trinodb/trino:latest
+    container_name: answervice-trino
+    depends_on:
+      - pms-db
+      - pos-db
+      - crm-db
+      - facility-db
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/catalog:/etc/trino/catalog:ro
+      - ./trino/config/jvm.config:/etc/trino/jvm.config:ro
+
+volumes:
+  pms-data:
+  banquet-data:
+  pos-data:
+  crm-data:
+  facility-data:

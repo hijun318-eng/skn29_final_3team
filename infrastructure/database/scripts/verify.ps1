@@ -98,6 +98,12 @@ function Assert-ComposeDenied {
 }
 
 Invoke-Compose -Arguments @('config', '--quiet') | Out-Null
+& powershell -NoProfile -ExecutionPolicy Bypass -File (
+    Join-Path $PSScriptRoot 'verify-service-fragment.ps1'
+)
+if ($LASTEXITCODE -ne 0) {
+    throw 'R2 service fragment verification failed.'
+}
 $services = 'app-postgres','pms-postgres','banquet-postgres','pos-mysql','crm-mssql','facility-clickhouse','trino'
 $status = Invoke-Compose -Arguments @('ps', '-a', '--format', 'json') | ForEach-Object { $_ | ConvertFrom-Json }
 foreach ($service in $services) {

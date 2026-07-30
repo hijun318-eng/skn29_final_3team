@@ -79,7 +79,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R1 | `AGENTS.md`, root Compose·env·CI, `.githooks/**`, `tests/integration/**`, 공통 계약·WBS·협업 문서 | R2~R5 서비스 내부 구현 |
 | R2 | source DDL·seed, `infrastructure/database/trino/**`, DataHub 설정, `src/data/**`, `tests/data/**` | app DB, 공통 FastAPI, AI model·prompt, frontend·Report |
 | R3 | `src/ai/**`, `src/modelops/**`, `evals/**`, `tests/ai/**`, model serving 설정 | DB 원천, G1·G2·G3, 공통 FastAPI, frontend |
-| R4 | `app/fastapi/**`, `src/backend/**`, `src/control_plane/**`, `tests/backend/**`, app DB·migration | source DDL·seed, AI model·prompt, frontend, root Compose |
+| R4 | `app/backend/**`, `tests/backend/**`, app DB·migration | source DDL·seed, AI model·prompt, frontend, root Compose |
 | R5 | I0의 frontend 후보, I0에서 확정한 활성 frontend, `src/report/**`, `tests/frontend/**`, `tests/report/**`, Report proposal | root Compose, 공통 FastAPI entrypoint·Alembic chain, source DB·AI model |
 
 R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사할 수 있다. 구현 변경은 결정된 활성 frontend 하나에만 적용한다.
@@ -227,10 +227,10 @@ CONTRACT_VERSION=DRAFT-OPENAPI-v0.1
 DB_REVISION_HEAD=DRAFT — I1에서 확정
 ADAPTER_VERSION=DRAFT-R2-R3-v0.1
 FIXTURE_VERSION=DRAFT-BACKEND-FIXTURE-v0.1
-ALLOWED_PATHS=app/fastapi/**; src/backend/**; src/control_plane/**; tests/backend/**; infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql; infrastructure/database/security/provision-app-postgres.sh
+ALLOWED_PATHS=app/backend/**; tests/backend/**; infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql; infrastructure/database/security/provision-app-postgres.sh
 FORBIDDEN_PATHS=source DDL/seed·AI model/prompt·frontend·root Compose
 ACCEPTANCE_CRITERIA=순환 의존 없는 backend 경계, versioned OpenAPI·상태·오류, auth context, app DB migration, Router·Controller skeleton
-TEST_COMMANDS=python -m compileall app/fastapi src/backend src/control_plane; python -m unittest discover -s tests/backend -p "test_*.py"; git diff --check
+TEST_COMMANDS=python -m compileall app/backend; python -m unittest discover -s tests/backend -p "test_*.py"; git diff --check
 STOP_CONDITIONS=I1 종료 조건 도달; source/AI/frontend/root 변경 필요; 자유 ReAct 요구; OpenAPI·migration·상태 전이 검증 실패
 EXTERNAL_ACTION_PERMISSION=설치·외부 배포·secret·stage·commit·push·merge 불가
 ```

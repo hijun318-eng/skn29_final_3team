@@ -20,6 +20,17 @@ class AnalysisStatus(str, Enum):
     FAILED = "FAILED"
 
 
+class Role(str, Enum):
+    HOTEL_ANALYST = "hotel_analyst"
+    REPORT_ADMIN = "report_admin"
+    DATA_ADMIN = "data_admin"
+
+
+class RouteType(str, Enum):
+    GENERAL = "GENERAL"
+    TEMPLATE = "TEMPLATE"
+
+
 class ErrorCode(str, Enum):
     CONTEXT_INCOMPLETE = "CONTEXT_INCOMPLETE"
     ACCESS_DENIED = "ACCESS_DENIED"
@@ -36,8 +47,8 @@ class RequestContext(BaseModel):
     request_id: UUID = Field(default_factory=uuid4)
     trace_id: str = Field(default_factory=lambda: uuid4().hex)
     conversation_id: UUID | None = None
-    user_id: str | None = None
-    role: str = "ANALYST"
+    user_id: UUID = UUID(int=0)
+    role: Role = Role.HOTEL_ANALYST
     as_of: date = Field(default_factory=date.today)
     timezone: str = "Asia/Seoul"
     contract_version: str = CONTRACT_VERSION
@@ -45,7 +56,8 @@ class RequestContext(BaseModel):
 
 class AnalysisRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
-    context: RequestContext | None = None
+    template_id: str | None = Field(default=None, max_length=128)
+    parameters: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
 
 
 class ErrorBody(BaseModel):

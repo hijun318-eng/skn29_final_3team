@@ -131,6 +131,28 @@ CREATE TABLE IF NOT EXISTS chat.analysis_requests (
     CHECK (completed_at IS NULL OR completed_at >= started_at)
 );
 
+CREATE TABLE IF NOT EXISTS context.analysis_templates (
+    template_id varchar(128) PRIMARY KEY,
+    version varchar(64) NOT NULL,
+    status varchar(16) NOT NULL CHECK (status IN ('DRAFT','APPROVED','RETIRED')),
+    parameter_names_json jsonb NOT NULL,
+    requires_g1 boolean NOT NULL DEFAULT true CHECK (requires_g1),
+    requires_g2 boolean NOT NULL DEFAULT true CHECK (requires_g2),
+    approved_by uuid,
+    approved_at timestamptz,
+    UNIQUE (template_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS chat.analysis_state_transitions (
+    transition_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id uuid NOT NULL REFERENCES chat.analysis_requests(request_id),
+    sequence_no smallint NOT NULL CHECK (sequence_no > 0),
+    from_status varchar(20),
+    to_status varchar(20) NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (request_id, sequence_no)
+);
+
 CREATE TABLE IF NOT EXISTS context.context_packages (
     context_package_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id uuid NOT NULL UNIQUE REFERENCES chat.analysis_requests(request_id),
@@ -359,6 +381,7 @@ CREATE TABLE IF NOT EXISTS reference.calendar_daily (
 CREATE INDEX IF NOT EXISTS idx_ingestion_runs_source ON connection.ingestion_runs(data_source_id);
 CREATE INDEX IF NOT EXISTS idx_context_records_lookup ON context.context_records(record_type, status, record_key, version_no);
 CREATE INDEX IF NOT EXISTS idx_analysis_requests_status ON chat.analysis_requests(status, started_at);
+CREATE INDEX IF NOT EXISTS idx_analysis_transitions_request ON chat.analysis_state_transitions(request_id, sequence_no);
 CREATE INDEX IF NOT EXISTS idx_query_executions_request ON query.query_executions(request_id, execution_status);
 CREATE INDEX IF NOT EXISTS idx_artifacts_request ON artifact.analysis_artifacts(request_id, status);
 CREATE INDEX IF NOT EXISTS idx_report_runs_period ON report.report_runs(report_definition_id, period_start, status);

@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Request
 
 from app.adapters.fake_data_platform import FakeDataPlatformAdapter
-from app.context import request_context
-from app.contracts import AnalysisRequest, ApiResponse, response_meta
+from app.context import analysis_context, request_context
+from app.contracts import AnalysisRequest, ApiResponse, RequestContext, response_meta
 from app.controllers.analysis_controller import AnalysisController
 from app.services.analysis_service import AnalysisService
+from app.services.routing_service import RoutingService
 from app.services.readiness import AppDatabaseReadiness
 
 
 router = APIRouter()
-controller = AnalysisController(AnalysisService(FakeDataPlatformAdapter()))
+controller = AnalysisController(AnalysisService(FakeDataPlatformAdapter()), RoutingService())
 readiness = AppDatabaseReadiness()
 
 
@@ -30,5 +33,5 @@ def ready(request: Request) -> ApiResponse:
 
 
 @router.post("/analysis", response_model=ApiResponse)
-def analysis(payload: AnalysisRequest, request: Request) -> ApiResponse:
-    return controller.submit(payload, request_context(request))
+def analysis(payload: AnalysisRequest, context: Annotated[RequestContext, Depends(analysis_context)]) -> ApiResponse:
+    return controller.submit(payload, context)

@@ -17,9 +17,11 @@ for p in (_root, _src):
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.detections import router as detections_router
 from app.api.incident_runs import router as incident_runs_router
+from app.api.public import router as public_router
 from app.api.quality_gates import router as quality_gates_router
 from app.api.query_runs import router as query_runs_router
 from app.llm.gateway import LLMGateway
@@ -49,14 +51,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Django에서 호출할 때 CORS 허용
+# CORS + 세션 (엔터프라이즈 프론트엔드 공개 API용)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://localhost:4173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SessionMiddleware, secret_key="answervice-dev-secret-key")
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +101,7 @@ async def health() -> dict[str, str | dict[str, str]]:
 # 내부 API 라우터 등록
 # ---------------------------------------------------------------------------
 
+app.include_router(public_router)
 app.include_router(quality_gates_router)
 app.include_router(detections_router)
 app.include_router(query_runs_router)

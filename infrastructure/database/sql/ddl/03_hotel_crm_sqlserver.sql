@@ -128,6 +128,61 @@ CREATE UNIQUE INDEX uq_crm_active_banquet ON dbo.crm_customer_map(property_id, b
 WHERE mapping_status = 'ACTIVE' AND valid_to IS NULL AND banquet_customer_id IS NOT NULL;
 GO
 
+CREATE OR ALTER TRIGGER dbo.trg_crm_grade_history_no_overlap
+ON dbo.crm_member_grade_history
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN dbo.crm_member_grade_history h
+          ON h.property_id = i.property_id
+         AND h.member_no = i.member_no
+         AND h.grade_history_id <> i.grade_history_id
+         AND i.valid_from < COALESCE(h.valid_to, CONVERT(datetime2(3), '9999-12-31T23:59:59.999'))
+         AND h.valid_from < COALESCE(i.valid_to, CONVERT(datetime2(3), '9999-12-31T23:59:59.999'))
+    )
+        THROW 51001, 'CRM_GRADE_PERIOD_OVERLAP', 1;
+END;
+GO
+
+CREATE OR ALTER TRIGGER dbo.trg_crm_customer_map_no_overlap
+ON dbo.crm_customer_map
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF EXISTS (
+        SELECT 1
+        FROM inserted i
+        JOIN dbo.crm_customer_map m
+          ON m.property_id = i.property_id
+         AND m.customer_map_id <> i.customer_map_id
+         AND (
+              m.member_no = i.member_no
+              OR (i.pms_guest_id IS NOT NULL AND m.pms_guest_id = i.pms_guest_id)
+              OR (i.pos_customer_ref IS NOT NULL AND m.pos_customer_ref = i.pos_customer_ref)
+              OR (i.facility_user_ref IS NOT NULL AND m.facility_user_ref = i.facility_user_ref)
+              OR (i.banquet_customer_id IS NOT NULL AND m.banquet_customer_id = i.banquet_customer_id)
+         )
+         AND i.valid_from < COALESCE(m.valid_to, CONVERT(datetime2(3), '9999-12-31T23:59:59.999'))
+         AND m.valid_from < COALESCE(i.valid_to, CONVERT(datetime2(3), '9999-12-31T23:59:59.999'))
+    )
+        THROW 51002, 'CRM_IDENTITY_PERIOD_OVERLAP', 1;
+END;
+GO
+
+CREATE OR ALTER VIEW dbo.customer_identity_map
+AS
+SELECT
+    property_id, customer_map_id, member_no, pms_guest_id, pos_customer_ref,
+    facility_user_ref, banquet_customer_id, valid_from, valid_to, mapping_status,
+    mapping_confidence, is_synthetic, source_updated_at
+FROM dbo.crm_customer_map;
+GO
+
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'schema_version' AND schema_id = SCHEMA_ID(N'dbo'))
 CREATE TABLE dbo.schema_version (version nvarchar(32) NOT NULL PRIMARY KEY);
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'seed_metadata' AND schema_id = SCHEMA_ID(N'dbo'))

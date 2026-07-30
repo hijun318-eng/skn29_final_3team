@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.4 |
-| 문서 기준일 | 2026-07-30 09:32 |
+| 버전 | v1.5 |
+| 문서 기준일 | 2026-07-30 10:25 |
 | 작성·수정 | 3팀 사용자 승인·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -124,12 +124,12 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 
 ## Wave 1 발행 카드
 
-아래 묶음은 현재 `dev` commit `531ffee42461`을 `BASE_SHA`로 사용한다. 담당자는 개인 branch에 이 기준을 반영한 뒤 기존 구현을 보존하면서 첫 미완료 카드부터 수행한다.
+아래 묶음은 현재 `dev` commit `2c2779d23738038d5cd0560cffa70c5b509991c3`을 `BASE_SHA`로 사용한다. 담당자는 개인 branch에 이 기준을 반영한 뒤 기존 구현을 보존하면서 첫 미완료 카드부터 수행한다.
 
 ### R1-W1
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -137,12 +137,13 @@ EXECUTION_BUNDLE_ID=R1-W1
 TARGET_INTEGRATION_GATE=I1
 CHECKPOINT_GATES=I0
 TASK_CARD_RANGE=R1-00~08
-CURRENT_TASK_CARD_ID=R1-00
+CURRENT_TASK_CARD_ID=R1-03
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=531ffee42461
-I0_DECISION_VERSION=DRAFT-I0-v0.1
+BASE_SHA=2c2779d23738038d5cd0560cffa70c5b509991c3
+I0_DECISION_VERSION=DRAFT-I0-v0.2
 CONTRACT_VERSION=DRAFT-I1-v0.1
+BLOCKER=R3 model contract와 R5 UI·Report contract 미도착, R2~R5 root Compose service fragment 미도착
 ALLOWED_PATHS=AGENTS.md; compose*.yml; .env.example; .github/**; .githooks/**; tests/integration/**; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/ai_docs/5인_병렬구현_*
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=I0 역할·범위·소유권·full/dev/split-host 결정과 I1 공통 계약·Compose skeleton·env·CI·fake 소비 가능 판정, 필수 30·gold 120 원장 schema/reviewer/split 계획
@@ -165,7 +166,7 @@ TASK_CARD_RANGE=R2-00~08
 CURRENT_TASK_CARD_ID=R2-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=531ffee42461
+BASE_SHA=2c2779d23738038d5cd0560cffa70c5b509991c3
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 CONTRACT_VERSION=DRAFT-I1-v0.1
 SCHEMA_VERSION=DRAFT-SCHEMA-v0.1
@@ -192,7 +193,7 @@ TASK_CARD_RANGE=R3-00~03, R3-07
 CURRENT_TASK_CARD_ID=R3-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=531ffee42461
+BASE_SHA=2c2779d23738038d5cd0560cffa70c5b509991c3
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
@@ -220,7 +221,7 @@ TASK_CARD_RANGE=R4-00~05
 CURRENT_TASK_CARD_ID=R4-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=531ffee42461
+BASE_SHA=2c2779d23738038d5cd0560cffa70c5b509991c3
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 CONTRACT_VERSION=DRAFT-OPENAPI-v0.1
 DB_REVISION_HEAD=DRAFT — I1에서 확정
@@ -248,7 +249,7 @@ TASK_CARD_RANGE=R5-00~04, R5-08
 CURRENT_TASK_CARD_ID=R5-00
 REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=531ffee42461
+BASE_SHA=2c2779d23738038d5cd0560cffa70c5b509991c3
 I0_DECISION_VERSION=DRAFT-I0-v0.1
 UI_CONTRACT_VERSION=DRAFT-UI-v0.1
 OPENAPI_VERSION=DRAFT — R4-W1 입력
@@ -451,6 +452,7 @@ EXTERNAL_ACTION_PERMISSION=<설치·비용·배포·데이터 전송·Git 권한
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.5 | 2026-07-30 10:25 | R1~R5 Wave 1의 `BASE_SHA`를 현재 `dev` 기준 SHA `2c2779d23738038d5cd0560cffa70c5b509991c3`으로 교정하고, 활성 frontend 결정 후 R1-00~02 완료·R1-03 계약 입력 대기를 기록 |
 | v1.4 | 2026-07-30 09:32 | Wave 1 기준 SHA를 현재 `dev`로 교정하고 LoRA 비교·worker·backup 절차와 I5 이후 F-01~F-04 비차단 후속 단계를 동기화 |
 | v1.3 | 2026-07-29 17:35 | 최신 `dev` 통합 SHA `72292d9`를 기준으로 R1~R5 Wave 1 실행 묶음을 `READY`로 발행 |
 | v1.2 | 2026-07-29 17:27 | 기획서 §1·3·5·7~11·14~20·22 추적성 대조와 기술·평가·보안·복구 수용 조건 보강 |

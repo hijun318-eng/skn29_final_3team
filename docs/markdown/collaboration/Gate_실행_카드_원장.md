@@ -4,9 +4,9 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.6 |
-| 문서 기준일 | 2026-07-30 12:22 |
-| 작성·수정 | 3팀 사용자 승인·Codex 반영 |
+| 버전 | v2.0 |
+| 문서 기준일 | 2026-07-30 12:36 |
+| 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
 
@@ -21,7 +21,6 @@
 7. `PLANNED` 묶음은 일정 예약이며 실행 승인이 아니다. Wave 시작 시 `BASE_SHA`와 계약 버전을 채워 `READY`로 바꾼다.
 8. 아직 동결되지 않은 계약은 공란 대신 `DRAFT` 또는 `N/A — 사유`로 기록한다.
 9. F-01~F-04는 I5 이후 후속 단계다. 현재 Wave 1~4와 I5 완료율에 포함하지 않으며, 새 실행 묶음이 `READY`로 발행되기 전에는 구현 완료로 표시하지 않는다.
-10. Wave 1 follow-up의 `READY`는 해당 보완 작업의 실행 승인일 뿐 I1 통과나 Wave 2 실행 승인이 아니다.
 
 상태는 다음과 같이 사용한다.
 
@@ -80,7 +79,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R1 | `AGENTS.md`, root Compose·env·CI, `.githooks/**`, `tests/integration/**`, 공통 계약·WBS·협업 문서 | R2~R5 서비스 내부 구현 |
 | R2 | source DDL·seed, `infrastructure/database/trino/**`, DataHub 설정, `src/data/**`, `tests/data/**` | app DB, 공통 FastAPI, AI model·prompt, frontend·Report |
 | R3 | `src/ai/**`, `src/modelops/**`, `evals/**`, `tests/ai/**`, model serving 설정 | DB 원천, G1·G2·G3, 공통 FastAPI, frontend |
-| R4 | `app/backend/**`, `tests/backend/**`, app DB·migration | source DDL·seed, AI model·prompt, frontend, root Compose |
+| R4 | `app/fastapi/**`, `src/backend/**`, `src/control_plane/**`, `tests/backend/**`, app DB·migration | source DDL·seed, AI model·prompt, frontend, root Compose |
 | R5 | I0의 frontend 후보, I0에서 확정한 활성 frontend, `src/report/**`, `tests/frontend/**`, `tests/report/**`, Report proposal | root Compose, 공통 FastAPI entrypoint·Alembic chain, source DB·AI model |
 
 R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사할 수 있다. 구현 변경은 결정된 활성 frontend 하나에만 적용한다.
@@ -89,16 +88,16 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 
 카드 집합에 같은 세부 카드가 다시 나타나는 경우는 새 기능 재승인이 아니라 다음 Gate에서의 연결·회귀·동결 작업을 뜻한다.
 
-| 실행 묶음 | Wave·기간 | 역할 | checkpoint → 목표 통합 Gate | `TASK_CARD_RANGE` | 통합 시 제출물 | 현재 상태 |
+| 실행 묶음 | Wave·기간 | 역할 | checkpoint → 목표 통합 Gate | `TASK_CARD_RANGE` | 통합 시 제출물 | 초기 상태 |
 |---|---|---|---|---|---|---|
 | R1-W1 | Wave 1·07/29~08/07 | R1 | I0 → I1 | R1-00~08 | 역할·범위·소유권·공통 계약·Compose·env·CI·I1 판정 | `BLOCKED` |
-| R2-W1 | Wave 1·07/29~08/07 | R2 | I0 → I1 | R2-00~08 | registry·논리/물리 모델·seed·identity·quality·read-only | `READY` |
-| R3-W1 | Wave 1·07/29~08/07 | R3 | I0 → I1 | R3-00~03, R3-07 | AI 범위·Node schema·fake·Node 1 baseline·Prompt Registry | `READY` |
-| R4-W1 | Wave 1·07/29~08/07 | R4 | I0 → I1 | R4-00~05 | backend 경계·OpenAPI·auth·DB·migration·Controller skeleton | `READY` |
-| R5-W1 | Wave 1·07/29~08/07 | R5 | I0 → I1 | R5-00~04, R5-08 | 활성 frontend·IA·typed client·mock·Chat 상태·Report 계약 | `READY` |
-| R2-W1-F1 | Wave 1 follow-up·07/30~08/07 | R2 | I0 → I1 | R2-08-FU1 | R2 소유 경로의 service fragment·health·env 요구 | `READY` |
-| R4-W1-F1 | Wave 1 follow-up·07/30~08/07 | R4 | I0 → I1 | R4-20-FU1 | backend Dockerfile·컨테이너 runtime 증거·branch 역할 경계 정리 | `READY` |
-| R5-W1-F1 | Wave 1 follow-up·07/30~08/07 | R5 | I0 → I1 | R5-01-FU1, R5-18-FU1 | 금지 route 차단·lockfile·production build·service fragment | `READY` |
+| R2-W1 | Wave 1·07/29~08/07 | R2 | I0 → I1 | R2-00~08 | registry·논리/물리 모델·seed·identity·quality·read-only | `MERGED_DEV` |
+| R3-W1 | Wave 1·07/29~08/07 | R3 | I0 → I1 | R3-00~03, R3-07 | AI 범위·Node schema·fake·Node 1 baseline·Prompt Registry | `MERGED_DEV` |
+| R4-W1 | Wave 1·07/29~08/07 | R4 | I0 → I1 | R4-00~05 | backend 경계·OpenAPI·auth·DB·migration·Controller skeleton | `MERGED_DEV` |
+| R5-W1 | Wave 1·07/29~08/07 | R5 | I0 → I1 | R5-00~04, R5-08 | 활성 frontend·IA·typed client·mock·Chat 상태·Report 계약 | `MERGED_DEV` |
+| R2-W1-F1 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 I1 service fragment 보완 | DataHub/database fragment·health·env 요구 | `READY` |
+| R4-W1-F1 | Wave 1 follow-up | R4 | 없음 → I1 | R4-20의 I1 container subset | backend Dockerfile·container health·runtime 증거 | `READY` |
+| R5-W1-F1 | Wave 1 follow-up | R5 | 없음 → I1 | R5-01~04, R5-08, R5-18의 I1 보완 | 금지 route 차단·typed contract·lockfile·clean build | `READY` |
 | R1-W2 | Wave 2·08/10~08/14 | R1 | 없음 → I2 | R1-07, R1-09 | 수용 subset·통합 profile·deterministic trace 판정 | `PLANNED` |
 | R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `PLANNED` |
 | R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `PLANNED` |
@@ -128,7 +127,7 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 
 ## Wave 1 발행 카드
 
-아래 묶음은 현재 `dev` commit `2c2779d23738038d5cd0560cffa70c5b509991c3`을 `BASE_SHA`로 사용한다. 담당자는 개인 branch에 이 기준을 반영한 뒤 기존 구현을 보존하면서 첫 미완료 카드부터 수행한다.
+R2~R5의 최초 Wave 1 묶음은 `dev` commit `2c2779d23738038d5cd0560cffa70c5b509991c3`에서 시작했고 결과가 최신 `dev`에 병합됐다. R1-W1은 통합 후 `dev` commit `5df4e535eaa4abb01fe6721e3eacd13bd79d9d7a`에서 계약 입력을 재판정한다.
 
 ### R1-W1
 
@@ -142,16 +141,23 @@ TARGET_INTEGRATION_GATE=I1
 CHECKPOINT_GATES=I0
 TASK_CARD_RANGE=R1-00~08
 CURRENT_TASK_CARD_ID=R1-03
-REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=2c2779d23738038d5cd0560cffa70c5b509991c3
+BASE_SHA=858b0be4968ace64c8a9bcef2448616ce0daf2b7
 I0_DECISION_VERSION=DRAFT-I0-v0.2
 CONTRACT_VERSION=DRAFT-I1-v0.1
-BLOCKER=R3 model contract와 R5 UI·Report contract 미도착, R2·R4·R5 service fragment 미도착
+MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
+PROMPT_VERSION=DRAFT-PROMPT-v0.1
+MODEL_FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
+BLOCKER=R4 clean package·runtime 검증 및 R5 typed client·UI·Report contract·금지 route 차단·build 증거 미도착, R2·R4·R5 root Compose Dockerfile·health service fragment 미도착
+R1_APPROVED_INPUTS=R2 schema 1.0.0·seed 20260729·scenario 1.0.0; R3 model I/O DRAFT-MODEL-v0.1·prompt DRAFT-PROMPT-v0.1·fixture DRAFT-MODEL-FIXTURE-v0.1
+R3_SERVICE_FRAGMENT=N/A — R3-W3에서 model serving Dockerfile 또는 실행 manifest 제출
+R1_REWORK_AUTHORIZATION=R4-W1·R5-W1 기존 소유 경로의 계약 결함 수정·재제출만 허가, 신규 기능·Wave 2 불허
+INDEPENDENT_PROGRESS=R1-06 현재 Python producer·integration·문서 검증 CI baseline, R1-07 필수 30·gold 120 평가 원장 schema
 ALLOWED_PATHS=AGENTS.md; compose*.yml; .env.example; .github/**; .githooks/**; tests/integration/**; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/ai_docs/5인_병렬구현_*
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=I0 역할·범위·소유권·full/dev/split-host 결정과 I1 공통 계약·Compose skeleton·env·CI·fake 소비 가능 판정, 필수 30·gold 120 원장 schema/reviewer/split 계획
-TEST_COMMANDS=python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/02_WBS.md; python .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md; git diff --check
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests; python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/02_WBS.md docs/markdown/collaboration/Gate_실행_카드_원장.md docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md docs/markdown/collaboration/I1_평가_원장.md; python .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md; python .agents/skills/update-project-reports/scripts/validate_reports.py docs/markdown/daily_reports/junhee/일일보고.md --date 20260730; git diff --check
 STOP_CONDITIONS=I1 종료 조건 도달; 역할 밖 구현 필요; 미해결 계약 충돌; 통합 검증 실패
 EXTERNAL_ACTION_PERMISSION=설치·비용·배포·데이터 전송·stage·commit·push·merge 불가
 ```
@@ -159,7 +165,7 @@ EXTERNAL_ACTION_PERMISSION=설치·비용·배포·데이터 전송·stage·comm
 ### R2-W1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -186,7 +192,7 @@ EXTERNAL_ACTION_PERMISSION=설치·외부 DB·비용·stage·commit·push·merge
 ### R3-W1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -203,7 +209,7 @@ CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
 PROMPT_VERSION=DRAFT-PROMPT-v0.1
 FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
-RUNTIME_ARTIFACT=N/A — Wave 1은 in-process fake adapter를 사용하며 R3-W3 model serving 단계에서 Dockerfile 또는 실행 manifest 제출
+SERVICE_FRAGMENT=N/A — R3-W3에서 model serving Dockerfile 또는 실행 manifest 제출
 ALLOWED_PATHS=src/ai/**; src/modelops/**; evals/**; tests/ai/**
 FORBIDDEN_PATHS=DB 원천·G1/G2/G3·공통 FastAPI·frontend·root Compose
 ACCEPTANCE_CRITERIA=P0/P2 혼입 없는 AI 범위, versioned Node I/O schema, deterministic fake adapter, Node 1 baseline, Prompt Registry, Node 1·3 SQL LoRA 적용 0건
@@ -215,7 +221,7 @@ EXTERNAL_ACTION_PERMISSION=download·RunPod·비용·배포·stage·commit·push
 ### R4-W1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -232,10 +238,10 @@ CONTRACT_VERSION=DRAFT-OPENAPI-v0.1
 DB_REVISION_HEAD=DRAFT — I1에서 확정
 ADAPTER_VERSION=DRAFT-R2-R3-v0.1
 FIXTURE_VERSION=DRAFT-BACKEND-FIXTURE-v0.1
-ALLOWED_PATHS=app/backend/**; tests/backend/**; infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql; infrastructure/database/security/provision-app-postgres.sh
+ALLOWED_PATHS=app/fastapi/**; src/backend/**; src/control_plane/**; tests/backend/**; infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql; infrastructure/database/security/provision-app-postgres.sh
 FORBIDDEN_PATHS=source DDL/seed·AI model/prompt·frontend·root Compose
 ACCEPTANCE_CRITERIA=순환 의존 없는 backend 경계, versioned OpenAPI·상태·오류, auth context, app DB migration, Router·Controller skeleton
-TEST_COMMANDS=python -m compileall app/backend; python -m unittest discover -s tests/backend -p "test_*.py"; git diff --check
+TEST_COMMANDS=python -m compileall app/fastapi src/backend src/control_plane; python -m unittest discover -s tests/backend -p "test_*.py"; git diff --check
 STOP_CONDITIONS=I1 종료 조건 도달; source/AI/frontend/root 변경 필요; 자유 ReAct 요구; OpenAPI·migration·상태 전이 검증 실패
 EXTERNAL_ACTION_PERMISSION=설치·외부 배포·secret·stage·commit·push·merge 불가
 ```
@@ -243,7 +249,7 @@ EXTERNAL_ACTION_PERMISSION=설치·외부 배포·secret·stage·commit·push·m
 ### R5-W1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -270,7 +276,7 @@ EXTERNAL_ACTION_PERMISSION=dependency 설치·외부 배포·secret·stage·comm
 
 ## Wave 1 follow-up 발행 카드
 
-아래 세 묶음은 현재 확인된 `dev` SHA `980f8fbf23999f418e0ba6520ac15226654033c1`을 기준으로 보완 작업만 승인한다. 기존 Wave 1 범위를 넓히거나 I1·Wave 2 통과를 대신하지 않는다.
+세 묶음은 I1 blocker 보완만 허가한다. 대표 질문과 metric은 승인값이 없으므로 작성하지 않으며, R1-W1은 `BLOCKED`, R2-W2를 포함한 Wave 2 묶음은 `PLANNED`를 유지한다.
 
 ### R2-W1-F1
 
@@ -281,22 +287,24 @@ ASSIGNEE=정승
 PERSONAL_BRANCH=seung
 EXECUTION_BUNDLE_ID=R2-W1-F1
 TARGET_INTEGRATION_GATE=I1
-CHECKPOINT_GATES=I0
-TASK_CARD_RANGE=R2-08-FU1
-CURRENT_TASK_CARD_ID=R2-08-FU1
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R2-09의 I1 service fragment 보완
+CURRENT_TASK_CARD_ID=R2-09
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=980f8fbf23999f418e0ba6520ac15226654033c1
+BASE_SHA=858b0be4968ace64c8a9bcef2448616ce0daf2b7
 CONTRACT_VERSION=DRAFT-I1-v0.1
 SCHEMA_VERSION=1.0.0
 SEED_VERSION=20260729
 SCENARIO_VERSION=1.0.0
+REPRESENTATIVE_QUESTION=N/A — 승인값 미확정, I1 승인 전 작성 금지
+METRIC_CONTRACT=N/A — 승인값 미확정, I1 승인 전 작성 금지
 ALLOWED_PATHS=infrastructure/database/**
-FORBIDDEN_PATHS=root Compose·root .env.example·공통 FastAPI·AI model/prompt·frontend·Report
-ACCEPTANCE_CRITERIA=infrastructure/database/** 안에서 R1이 root Compose에 옮겨 적을 service fragment, health 조건, 필수·선택 env 목록과 재현 명령을 제출하고 기존 schema·seed·scenario version을 유지
-TEST_COMMANDS=docker compose -f infrastructure/database/compose.yml config; powershell -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify.ps1; git diff --check
-HANDOFF=R1에 service name·image/build·port·env·health·dependency·검증 명령만 전달하며 root Compose는 수정하지 않음
-STOP_CONDITIONS=infrastructure/database/** 밖 변경 필요; 기존 version drift; health·재현 검증 실패
-EXTERNAL_ACTION_PERMISSION=외부 DB·비용·데이터 전송·stage·commit·push·merge 불가
+FORBIDDEN_PATHS=root Compose·.env.example·CI·app/**·src/ai/**·src/backend/**·src/control_plane/**·frontend·Report·docs/markdown/collaboration/**·docs/markdown/02_WBS.md
+ACCEPTANCE_CRITERIA=DataHub와 database 서비스별 service name·image/build·port·env key·health·dependency·profile 요구를 R1이 소비 가능한 fragment로 제출, schema 1.0.0·seed 20260729·scenario 1.0.0 유지, root Compose 변경 0건, secret 값 기록 0건
+TEST_COMMANDS=docker compose -f infrastructure/database/compose.yml config; powershell -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify.ps1; python -m unittest discover -s tests/data -p "test_*.py"; git diff --check
+STOP_CONDITIONS=I1 fragment 제출 완료; infrastructure/database/** 밖 변경 필요; schema·seed·read-only 계약 drift; 전체 DB verify 실패
+EXTERNAL_ACTION_PERMISSION=기존 local image/container 사용만 허용, 신규 download·외부 DB·비용·데이터 전송·stage·commit·push·merge는 별도 승인
 ```
 
 ### R4-W1-F1
@@ -308,20 +316,23 @@ ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
 EXECUTION_BUNDLE_ID=R4-W1-F1
 TARGET_INTEGRATION_GATE=I1
-CHECKPOINT_GATES=I0
-TASK_CARD_RANGE=R4-20-FU1
-CURRENT_TASK_CARD_ID=R4-20-FU1
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R4-20의 I1 container subset
+CURRENT_TASK_CARD_ID=R4-20
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=980f8fbf23999f418e0ba6520ac15226654033c1
-CONTRACT_VERSION=DRAFT-OPENAPI-v0.1
-DB_REVISION_HEAD=20260730_02
-ALLOWED_PATHS=app/backend/**; tests/backend/**; docs/markdown/daily_reports/jaehong/일일보고.md; dev 기준으로 origin/jaehong의 R2 소유 문서·제출본 diff 제거
-FORBIDDEN_PATHS=source DDL/seed의 내용 변경·AI model/prompt·frontend·root Compose
-ACCEPTANCE_CRITERIA=backend Dockerfile과 /health 기반 컨테이너 기동 검증, Uvicorn HTTP·OpenAPI·Alembic 회귀 증거, dev...jaehong diff의 R2 소유 문서·제출본 0건
-TEST_COMMANDS=powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1; python -m compileall app/backend; python -m unittest discover -s tests/backend -p "test_*.py"; git diff --check
-HANDOFF=R1에 backend build context·port·health·env·migration head와 runtime 검증 결과 전달
-STOP_CONDITIONS=공개 계약 변경 필요; 다른 역할 산출물 내용 수정 필요; Docker·HTTP·migration·contract 검증 실패
-EXTERNAL_ACTION_PERMISSION=컨테이너 local build·run만 허용; 외부 배포·secret·stage·commit·push·merge 불가
+BASE_SHA=858b0be4968ace64c8a9bcef2448616ce0daf2b7
+CONTRACT_VERSION=DRAFT-I1-v0.1
+OPENAPI_VERSION=DRAFT-OPENAPI-v0.1
+EXPECTED_DB_REVISION_HEAD=20260730_02 — R4 보고값, branch 제출 후 검증
+REPRESENTATIVE_QUESTION=N/A — 승인값 미확정, I1 승인 전 작성 금지
+METRIC_CONTRACT=N/A — 승인값 미확정, I1 승인 전 작성 금지
+ALLOWED_PATHS=app/backend/**; tests/backend/**
+FORBIDDEN_PATHS=root Compose·.env.example·CI·infrastructure/database/**·src/data/**·src/ai/**·frontend·Report·docs/markdown/collaboration/**·docs/markdown/02_WBS.md·tests/integration/**
+ACCEPTANCE_CRITERIA=backend Dockerfile과 재현 가능한 container 검증 절차 제출, container에서 /health·/readiness 확인, Alembic head 20260730_02 확인, BACKEND_CONTAINER_READY 증거, 신규 production dependency 0건, R1·R2·R3·R5 소유 경로 변경 0건
+TEST_COMMANDS=python -m compileall app/backend/app; python -m unittest discover -s tests/backend -p "test_*.py"; powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1; git diff --check
+STOP_CONDITIONS=I1 container 증거 제출 완료; 허용 경로 밖 변경 필요; migration 다중 head; health·readiness·container 기동 실패; cross-role 변경 잔존
+EXTERNAL_ACTION_PERMISSION=기존 local Docker build·run만 허용, 신규 download·외부 배포·secret·비용·데이터 전송·stage·commit·push·merge는 별도 승인
 ```
 
 ### R5-W1-F1
@@ -333,35 +344,24 @@ ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
 EXECUTION_BUNDLE_ID=R5-W1-F1
 TARGET_INTEGRATION_GATE=I1
-CHECKPOINT_GATES=I0
-TASK_CARD_RANGE=R5-01-FU1, R5-18-FU1
-CURRENT_TASK_CARD_ID=R5-01-FU1
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R5-01~04, R5-08, R5-18의 I1 보완
+CURRENT_TASK_CARD_ID=R5-01
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=980f8fbf23999f418e0ba6520ac15226654033c1
+BASE_SHA=858b0be4968ace64c8a9bcef2448616ce0daf2b7
+CONTRACT_VERSION=DRAFT-I1-v0.1
 UI_CONTRACT_VERSION=DRAFT-UI-v0.1
 REPORT_CONTRACT_VERSION=DRAFT-REPORT-v0.1
-ALLOWED_PATHS=app/enterprise-react/**; tests/frontend/**; tests/report/**
-FORBIDDEN_PATHS=app/react/**·root Compose·공통 FastAPI entrypoint/Alembic chain·source DB·AI model
-ACCEPTANCE_CRITERIA=P2·고객 360 route/menu/direct navigation 차단, dependency lockfile 제출, clean npm ci 기반 production build 재현, frontend Dockerfile 또는 R1 전달용 service fragment·health 요구 제출
-TEST_COMMANDS=cmd /c npm --prefix app/enterprise-react ci; cmd /c npm --prefix app/enterprise-react run build; git diff --check
-HANDOFF=R4에 UI·Report 소비자 contract 검증 결과, R1에 lockfile·production build·service fragment·금지 route 차단 증거 전달
-STOP_CONDITIONS=app/react 병행 수정 필요; 공통 backend 직접 수정 필요; lockfile drift; 금지 route 접근 가능; clean production build 실패
-EXTERNAL_ACTION_PERMISSION=lockfile 검증용 npm ci만 허용; 외부 배포·secret·stage·commit·push·merge 불가
+REPRESENTATIVE_QUESTION=N/A — 승인값 미확정, I1 승인 전 작성 금지
+METRIC_CONTRACT=N/A — 승인값 미확정, I1 승인 전 작성 금지
+ALLOWED_PATHS=app/enterprise-react/**; src/report/**; tests/frontend/**; tests/report/**
+FORBIDDEN_PATHS=app/react/**·root Compose·.env.example·CI·공통 FastAPI entrypoint·Alembic chain·source DB·AI model·docs/markdown/collaboration/**·docs/markdown/02_WBS.md
+ACCEPTANCE_CRITERIA=/customers와 /catalog/tools route·메뉴 비활성, typed client·mock·UI/Report contract와 고정 lockfile 제출, npm ci 기반 clean production build 통과, frontend Dockerfile·health fragment 제출, 양쪽 frontend 동시 변경 0건
+TEST_COMMANDS=npm --prefix app/enterprise-react ci; npm --prefix app/enterprise-react run build; docker build -f app/enterprise-react/Dockerfile app/enterprise-react; git diff --check
+STOP_CONDITIONS=I1 frontend 증거 제출 완료; 활성 frontend 밖 변경 필요; 금지 route 노출; lockfile drift; clean production build·container build 실패
+EXTERNAL_ACTION_PERMISSION=npm ci 또는 Docker build에 신규 download가 필요하면 별도 승인, 외부 배포·secret·비용·데이터 전송·stage·commit·push·merge는 별도 승인
 ```
-
-## R2-W2 발행 전 필수 조건
-
-Wave 1 follow-up이 모두 병합되어도 `R2-W2`를 즉시 `READY`로 바꾸지 않는다. 다음 조건을 모두 확인한 뒤 R1이 새 기준값으로 발행한다.
-
-1. `R1-03` 공통 계약 완료
-2. `R1-08` I1 Contract Freeze 승인
-3. R4·R5 소비자 contract 검증 통과
-4. 최신 `dev` SHA 확정
-5. 대표 질문 승인
-6. metric·time 계약 승인
-7. role·권한 계약 승인
-
-대표 질문과 metric은 현재 승인 원장에 확정값이 없으므로 이 문서에서 임의로 작성하지 않는다. 권장 순서는 `R2/R4/R5 follow-up 발행 → 역할별 보완·병합 → I1 승인본 동결 → R2-W2 READY 발행`이며, 그 전까지 `R2-W2`는 `PLANNED`다.
 
 ## Wave 2 상세 계획 카드
 
@@ -403,7 +403,7 @@ Wave 2는 I1에서 동결한 계약과 fake를 기준으로 대표 질문의 det
 - 입력: I1 OpenAPI/state/error, R2 adapter, R3 fake, R5 상태 fixture
 - 수정 범위: R4 기본 경로
 - 완료 조건: 대표 질문과 재질문·차단·timeout·partial이 고정 상태 전이로 재현되고 Context Package가 최대 8 dataset·60 column·6k token/25% 상한을 지키며 Gate 우회·repair 2회·G3 실패 Artifact가 차단됨
-- 검증: `python -m compileall app/backend`, `python -m unittest discover -s tests/backend -p "test_*.py"`, `git diff --check`
+- 검증: `python -m compileall app/fastapi src/backend src/control_plane`, `python -m unittest discover -s tests/backend -p "test_*.py"`, `git diff --check`
 - handoff: R5에 OpenAPI example·상태 fixture·Artifact contract, R1에 request→artifact trace 전달
 - 중단: R2/R3 contract 불일치, migration 다중 head, 불법 상태 전이 또는 contract test 실패
 
@@ -552,7 +552,11 @@ EXTERNAL_ACTION_PERMISSION=<설치·비용·배포·데이터 전송·Git 권한
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
-| v1.6 | 2026-07-30 12:22 | R1-W1 `BLOCKED`·R2-W2 `PLANNED` 상태를 명확히 하고 R2·R4·R5 Wave 1 follow-up을 `READY`로 발행했으며 R3 Dockerfile의 I1 제외 사유와 Wave 2 발행 선행 조건을 기록 |
+| v2.0 | 2026-07-30 12:36 | R2-W1-F1·R4-W1-F1·R5-W1-F1 follow-up을 READY로 발행하고 역할별 허용 경로·검증·중단·외부 권한을 고정했으며 대표 질문·metric은 승인 전 N/A로 유지 |
+| v1.9 | 2026-07-30 12:32 | R3 Dockerfile·실행 manifest를 I1 비필수로 판정하고 R3-W3 제출로 이관해 R1-W1의 R3 service fragment blocker를 해제 |
+| v1.8 | 2026-07-30 12:03 | R2·R3 I1 입력을 승인하고 R4·R5 기존 Wave 1 재작업만 허가했으며 I1 Freeze·Wave 2는 보류 |
+| v1.7 | 2026-07-30 11:53 | R1-W1 기준을 최신 `dev` SHA로 갱신하고 R1-03 차단 중 독립 진행한 Python 통합 CI와 필수 30·gold 120 평가 원장 schema를 기록 |
+| v1.6 | 2026-07-30 11:35 | R1-W1 기준을 최신 통합 `dev` SHA로 갱신하고 R2~R5를 `MERGED_DEV`로 정합화했으며 R2·R3·R4 계약 도착과 R5 UI·Report·route 및 역할별 service fragment 차단 근거를 반영 |
 | v1.5 | 2026-07-30 10:25 | R1~R5 Wave 1의 `BASE_SHA`를 현재 `dev` 기준 SHA `2c2779d23738038d5cd0560cffa70c5b509991c3`으로 교정하고, 활성 frontend 결정 후 R1-00~02 완료·R1-03 계약 입력 대기를 기록 |
 | v1.4 | 2026-07-30 09:32 | Wave 1 기준 SHA를 현재 `dev`로 교정하고 LoRA 비교·worker·backup 절차와 I5 이후 F-01~F-04 비차단 후속 단계를 동기화 |
 | v1.3 | 2026-07-29 17:35 | 최신 `dev` 통합 SHA `72292d9`를 기준으로 R1~R5 Wave 1 실행 묶음을 `READY`로 발행 |

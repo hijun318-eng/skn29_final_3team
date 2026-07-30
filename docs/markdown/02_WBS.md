@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v6.2 |
-| 문서 기준일 | 2026-07-30 12:32 |
+| 버전 | v6.6 |
+| 문서 기준일 | 2026-07-30 12:36 |
 | 작성·수정 | 김재홍·박준희·정승·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -149,7 +149,7 @@ gantt
 | 1.4 | R1-03 metric·time·schema·API·state·error 공통 계약 | contract version | 박준희 | 차단 | 08/03 | 08/07 | 높음 |
 | 1.5 | R1-04 dev·full·split-host Compose skeleton | 통합 profile | 박준희 | 대기 | 08/03 | 08/07 | 높음 |
 | 1.6 | R1-05 환경변수·Secret 계약 | `.env.example`·secret matrix | 박준희 | 대기 | 08/03 | 08/07 | 높음 |
-| 1.7 | R1-06 역할별 CI·품질 Gate | CI jobs·fail policy | 박준희 | 대기 | 08/03 | 08/07 | 높음 |
+| 1.7 | R1-06 역할별 CI·품질 Gate | CI jobs·fail policy | 박준희 | 진행 | 08/03 | 08/07 | 높음 |
 | 1.8 | R1-08 I1 Contract Freeze 판정 | I1 판정서·fixture 소비 증거 | 박준희 | 대기 | 08/06 | 08/07 | 높음 |
 
 ### 데이터 플랫폼·메타데이터·연합조회
@@ -222,7 +222,7 @@ gantt
 | 4.18 | R4-17 worker·schedule runtime | 영속 job·같은 요청 한 번만 처리·실패 격리 | 김재홍 | 대기 | 08/24 | 08/28 | 높음 |
 | 4.19 | R4-18 권한·mask·민감정보 가림(redaction) | 보안 검증 증거 | 김재홍 | 대기 | 08/17 | 08/28 | 높음 |
 | 4.20 | R4-19 retention·backup·restore hook | 보존 job·복구 절차 | 김재홍 | 대기 | 08/24 | 09/02 | 높음 |
-| 4.21 | R4-20 health·backend Dockerfile·회귀 | service fragment | 김재홍 | 진행 | 07/30 | 09/02 | 높음 |
+| 4.21 | R4-20 health·backend Dockerfile·회귀 | service fragment | 김재홍 | 대기 | 08/24 | 09/02 | 높음 |
 | 4.22 | R4-21 API·migration·policy release 동결 | backend release manifest | 김재홍 | 대기 | 08/31 | 09/02 | 높음 |
 
 ### 프론트엔드·자동 리포팅
@@ -254,7 +254,7 @@ gantt
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 6.1 | R1-07 필수 30건·gold 120건 평가 원장 관리 | reviewer·split·expected 원장 | 박준희·정승·윤대성 | 대기 | 08/03 | 08/31 | 높음 |
+| 6.1 | R1-07 필수 30건·gold 120건 평가 원장 관리 | reviewer·split·expected 원장 | 박준희·정승·윤대성 | 진행 | 08/03 | 08/31 | 높음 |
 | 6.2 | R1-09 I2 Deterministic Slice 통합·판정 | 대표 질문 trace·result hash | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/10 | 08/14 | 높음 |
 | 6.3 | R1-10 I3 General LLM·보안 기준선 통합 | 일반 질문·model 비교·보안 결과 | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/17 | 08/21 | 높음 |
 | 6.4 | R1-11 I4 Reporting·worker·partial 통합 | Report 왕복 trace | 박준희·김재홍·송민지 | 대기 | 08/24 | 08/28 | 높음 |
@@ -358,7 +358,11 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
-| 2026-07-30 12:32 | 1.4, 2.9, 4.21, 5.2, 5.19 | R2·R4·R5 Wave 1 follow-up을 별도 `READY` 묶음으로 발행하고 R2 root Compose 금지, R3 Dockerfile I1 제외, R4 branch 역할 경계·database Compose 결합 backend 기동 검증, R5 금지 route·lockfile·production build 조건을 고정했다. R1-W1은 `BLOCKED`, R2-W2는 `PLANNED`로 유지한다. | I1 보완 실행 계약 |
+| 2026-07-30 12:36 | 1.4, 2.10, 4.21, 5.2, 5.19 | R2-W1-F1·R4-W1-F1·R5-W1-F1을 READY로 발행해 역할별 허용 경로·완료 증거·검증·중단 조건을 고정했다. 대표 질문·metric은 승인 전 N/A로 유지하고 follow-up 결과 검증 전 기존 WBS 상태는 변경하지 않았다. | I1 보완 실행 허가 |
+| 2026-07-30 12:32 | 1.4 | R3 model serving Dockerfile·실행 manifest는 I1 필수가 아니며 in-process fake adapter로 계약을 검증하고 R3-W3에서 제출하도록 판정했다. R3 service fragment blocker만 해제하고 R2·R4·R5 보완 대기로 R1-03 차단은 유지한다. | I1 blocker 범위 정정 |
+| 2026-07-30 12:03 | 1.4 | R2 schema·seed·scenario와 R3 model I/O·prompt·fixture를 I1 입력으로 승인했다. R4·R5는 기존 Wave 1 계약 결함 재작업만 허가하고 clean package·runtime·typed contract·금지 route 차단·build 증거 도착 전 R1-03 차단과 Wave 2 불허를 유지한다. | R1 계약 승인·재작업 허가 |
+| 2026-07-30 11:53 | 1.7, 6.1 | R1-03 차단 중 독립 진행 가능한 현재 Python producer·integration·문서 검증 CI baseline과 필수 30·gold 120 평가 원장 schema를 추가했다. 역할별 service build와 실제 평가 case는 handoff 대기로 남긴다. | R1 독립 기반 진행 |
+| 2026-07-30 11:35 | 1.4 | 최신 통합 SHA에서 R2 data, R3 model I/O·prompt·fixture, R4 OpenAPI/state/error 계약을 확인했다. R5 typed UI·Report 계약과 P2·고객 360 route 차단 증거, R2~R5 service fragment는 미도착으로 R1-03 차단을 유지한다. | I1 계약 부분 입력·차단 유지 |
 | 2026-07-30 10:49 | 1.1~1.2 | 재검토 결과를 반영해 `01_요구사항정의서.md`와 공식 XLSX의 대분류·75개 ID·본문을 v1.1로 양방향 동기화하고 최신 WBS·화면설계 참조와 XLSX 유효 데이터 범위 `A1:G79`·전체 시트 렌더링을 재검증 | 공식 요구사항 산출물 |
 | 2026-07-30 10:41 | 2.1~2.9 | R2-W1의 5 source·4 engine·18 entity registry, DDL·seed state manifest, CRM identity·event-time 중첩 차단, DQR/PREP·reject, Trino read-only 정책을 구현하고 정적 7건·live DB 계약 검증을 통과했다. I1 통합 판정은 R1 검토 대기로 유지한다. | R2-W1 생산자 검증 |
 | 2026-07-30 10:36 | 1.1~1.4 | `app/enterprise-react`를 활성 frontend로 확정하고 R1-00~02의 기준·범위·소유권 원장을 작성했다. R1-03은 R3 model과 R5 UI·Report contract 미도착으로 차단했다. | I0 결정·I1 계약 대기 |
@@ -383,7 +387,11 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
-| v6.2 | 2026-07-30 12:32 | Wave 1 follow-up 실행 계약과 R1-W1·R2-W2 상태 제한을 기록하고 R4-20 database Compose 결합 backend runtime 보완을 반영 |
+| v6.6 | 2026-07-30 12:36 | R2·R4·R5 I1 follow-up READY 발행 근거를 1.4·2.10·4.21·5.2·5.19에 연결하고 검증 전 상태 유지 |
+| v6.5 | 2026-07-30 12:32 | R3 Dockerfile·실행 manifest를 I1 비필수·R3-W3 제출로 판정하고 R1-03 blocker 범위를 R2·R4·R5 보완 대기로 정정 |
+| v6.4 | 2026-07-30 12:03 | R2·R3 I1 입력 승인과 R4·R5 Wave 1 재작업 허가, R1-03 차단·Wave 2 불허 판정을 작업 근거에 반영 |
+| v6.3 | 2026-07-30 11:53 | R1-03 차단 중 선행한 R1-06 Python CI baseline과 R1-07 평가 원장 schema를 진행 상태와 근거로 반영 |
+| v6.2 | 2026-07-30 11:35 | R1-03의 R2·R3·R4 계약 도착과 R5 UI·Report·route 및 역할별 service fragment 차단 근거를 최신 통합 SHA에서 재판정 |
 | v6.1 | 2026-07-30 11:28 | R1·R2 통합 WBS에 R5 요구사항·화면설계 산출물 근거를 시간순으로 통합 |
 | v6.0 | 2026-07-30 11:20 | R1 I0 결정·계약 대기 기록과 R2-W1 생산자 검증 결과를 시간순으로 통합 |
 | v5.9 | 2026-07-30 10:36 | 활성 frontend·범위·소유권 결정 완료와 R1-03 계약 입력 차단 상태를 WBS 1.1~1.4에 반영 |

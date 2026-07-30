@@ -21,6 +21,8 @@ MEMBERS = {
     "정승": "seung",
     "윤대성": "daesung",
 }
+PRESENTATION_FORMAT_FROM = "20260727"
+WEEKDAYS = ("월", "화", "수", "목", "금", "토", "일")
 GIT_HISTORY = re.compile(
     r"\b(?:git\s+)?(?:fetch|pull|push|checkout|switch)\b"
     r"|\bgit\s+merge\b"
@@ -92,11 +94,24 @@ def validate(path: Path, target_date: str | None = None) -> list[str]:
     elif re.fullmatch(r"\d{8}\.md", path.name):
         if not valid_date(path.stem):
             errors.append(f"{display}: 파일명의 날짜가 유효하지 않습니다.")
-        for name, branch in MEMBERS.items():
-            pattern = rf"^\| {re.escape(name)} \| `{branch}` \| .+ \|$"
-            count = len(re.findall(pattern, text, re.MULTILINE))
-            if count != 1:
-                errors.append(f"{display}: {name}({branch}) 행이 정확히 하나여야 합니다.")
+        if path.stem >= PRESENTATION_FORMAT_FROM:
+            if len(lines) > 40:
+                errors.append(f"{display}: {len(lines)}줄로 40줄을 초과합니다.")
+            if not lines or lines[0] != f"# {path.stem} 데일리 스크럼":
+                errors.append(f"{display}: 데일리 스크럼 제목 형식이 올바르지 않습니다.")
+            for section in ("## 오늘 팀 진행 상황", "## 팀원별 발표 메모"):
+                if lines.count(section) != 1:
+                    errors.append(f"{display}: `{section}` 제목이 정확히 하나여야 합니다.")
+            for name, branch in MEMBERS.items():
+                heading = f"### {name} (`{branch}`)"
+                if lines.count(heading) != 1:
+                    errors.append(f"{display}: `{heading}` 제목이 정확히 하나여야 합니다.")
+        else:
+            for name, branch in MEMBERS.items():
+                pattern = rf"^\| {re.escape(name)} \| `{branch}` \| .+ \|$"
+                count = len(re.findall(pattern, text, re.MULTILINE))
+                if count != 1:
+                    errors.append(f"{display}: {name}({branch}) 행이 정확히 하나여야 합니다.")
     elif path.name == "주간보고.md":
         if len(lines) > 40:
             errors.append(f"{display}: {len(lines)}줄로 40줄을 초과합니다.")
@@ -111,6 +126,27 @@ def validate(path: Path, target_date: str | None = None) -> list[str]:
                 errors.append(f"{display}: 주간보고 기간이 유효하지 않습니다.")
             if path.parent.name != f"{week}주차":
                 errors.append(f"{display}: 상위 폴더와 주차 제목이 다릅니다.")
+            if int(week) >= 3:
+                for section in (
+                    "## 이번 주 진행 상황",
+                    "## 이번 주에 진행한 것",
+                    "## 앞으로 진행할 내용",
+                ):
+                    if lines.count(section) != 1:
+                        errors.append(f"{display}: `{section}` 제목이 정확히 하나여야 합니다.")
+                day_blocks = re.findall(
+                    r"^### ([월화수목금토일])요일 \((\d{8})\)$", text, re.MULTILINE
+                )
+                if not day_blocks:
+                    errors.append(f"{display}: 요일별 작업 제목이 없습니다.")
+                dates = [date for _, date in day_blocks]
+                if len(dates) != len(set(dates)):
+                    errors.append(f"{display}: 중복된 요일별 작업 날짜가 있습니다.")
+                for weekday, date in day_blocks:
+                    if not valid_date(date) or not start <= date <= end:
+                        errors.append(f"{display}: 기간 밖의 요일별 작업 날짜입니다: {date}")
+                    elif WEEKDAYS[datetime.strptime(date, "%Y%m%d").weekday()] != weekday:
+                        errors.append(f"{display}: 날짜와 요일이 다릅니다: {weekday}요일 {date}")
         if "작성자: 3팀" not in text:
             errors.append(f"{display}: 기본 작성자 `3팀` 표기가 없습니다.")
     else:

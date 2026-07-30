@@ -1,12 +1,13 @@
 # 역할 3 — AI·모델·프롬프트·ModelOps 매뉴얼
 
 > 문서 상태: 팀 확정용 최종안
-> 작성 기준일: 2026-07-29
+> 작성 기준일: 2026-07-30
 > 담당자: 윤대성
 > 개인 브랜치: `daesung`
 > 역할 ID: `R3`
 > 기준 기획서: `docs/Answervice_기획서.md`
 > 통합 일정: `docs/markdown/ai_docs/5인_병렬구현_통합일정_20260729-20260903.md`
+> 쉬운 용어: Gate는 통과 검사, fixture는 고정 테스트 데이터, trace는 처리 기록, rollback은 이전 버전으로 되돌리기를 뜻한다.
 
 ## 0. 역할 한 문장
 
@@ -24,7 +25,7 @@
 - model adapter와 fake implementation
 - Base model 후보 비교와 평가 runner
 - 학습·validation·gold split 검증
-- 조건부 LoRA/QLoRA 1회 실험과 rollback
+- 시간·횟수를 제한한 LoRA/QLoRA 1회 비교와 조건부 제품 채택·되돌리기(rollback)
 - RunPod·vLLM model serving manifest·health·resource 측정
 - model/prompt/version/latency/token/cost trace
 - model endpoint 장애·timeout·잘못된 schema fallback
@@ -122,9 +123,10 @@ Node 3은 G3 pass shaped result만 설명하고 수치를 다시 계산하지 �
 3. JSON schema와 실패 응답 test를 먼저 만든다.
 4. fake adapter로 Node 로직과 Controller 소비 가능성을 검증한다.
 5. Base model을 동일 조건으로 비교한다.
-6. 채택 Gate가 충족될 때만 1회 LoRA/QLoRA를 수행한다.
-7. model server를 service fragment로 R1에게 전달한다.
-8. 전체 평가 결과와 rollback 대상을 versioned manifest로 남긴다.
+6. 평가·baseline·외부 실행 권한이 준비되면 LoRA/QLoRA 비교를 1회 수행한다. 조건이 없으면 `Blocked` 또는 `Not Run` 사유를 남긴다.
+7. 제품 채택은 비교와 별도로 승인하며, 승인 전에는 모든 Node가 Base를 사용한다.
+8. model server를 service fragment로 R1에게 전달한다.
+9. 전체 평가 결과와 되돌릴 Base 대상을 버전 목록(manifest)으로 남긴다.
 
 ## 4. 순차 작업 카드
 
@@ -141,7 +143,7 @@ Node 3은 G3 pass shaped result만 설명하고 수치를 다시 계산하지 �
 | R3-08 | 평가 runner | schema/linking/SQL/result 평가 | 필수 30건 자동 실행 |
 | R3-09 | Base model·Analytics Agent 기준선 비교 | 동일 조건 비교표 | 정확도·p50/p95·자원·기능 경계 측정 |
 | R3-10 | 학습 데이터 검수 | train/val/gold manifest | paraphrase group 누수 0건 |
-| R3-11 | 조건부 LoRA/QLoRA | adapter·비교 결과 | 채택 Gate와 rollback 증거 |
+| R3-11 | LoRA/QLoRA 1회 비교·조건부 채택 | 비교 결과·adapter·되돌리기 증거 | 실행·`Not Run` 사유와 채택 결정을 분리 |
 | R3-12 | vLLM·RunPod serving | endpoint·health·manifest | cold/warm·timeout·restart |
 | R3-13 | production model client | retry/fallback/circuit 계약 | 오류 redaction·schema fail |
 | R3-14 | Trace·비용·재현성 | version/cost/token trace | 동일 설정 재현 |
@@ -224,7 +226,7 @@ R3 평가는 SQL parse·schema linking·reference 일치까지 수행할 수 있
 - G3 pass shaped result
 - metric·기간·filter·단위
 - sampling·mask·partial 상태
-- source·query·artifact 식별자
+- source 식별자와 `query_execution_id` 또는 `result_cache_key`
 
 출력:
 
@@ -257,17 +259,17 @@ R3 평가는 SQL parse·schema linking·reference 일치까지 수행할 수 있
 
 DataHub Analytics Agent 비교는 동일 데이터·대표 질문·권한 조건을 사용한다. 문서 기능 비교와 실제 실행 비교를 분리하고, 본 프로젝트의 결정론적 Gate·상태·model serving·Artifact 재사용 경계가 무엇이 다른지 증거로 남긴다.
 
-### 6.2 LoRA/QLoRA 시작 Gate
+### 6.2 LoRA/QLoRA 1회 비교와 제품 채택 Gate
 
-다음이 모두 충족될 때만 시작한다.
+1회 비교는 다음이 모두 충족될 때 시작한다.
 
-- Base 오류가 prompt·schema·data 결함이 아니라 모델 한계로 분류됨
+- Context Package와 Base 평가가 안정됨
 - 학습·validation·gold 누수 검사가 완료됨
-- R1이 비용·시간·채택 기준을 승인함
+- R1이 외부 비용·시간·비교 기준을 승인함
 - R2 gold SQL·result가 검수됨
 - rollback 가능한 Base endpoint가 존재함
 
-기획서 원칙에 따라 반복 튜닝을 무한 수행하지 않고 비교 가능한 1회 실험을 우선한다.
+조건이 부족하거나 외부 실행 권한이 없으면 이유를 `Blocked` 또는 `Not Run`으로 남긴다. 이것만으로 I5 실패로 처리하지 않는다. 제품 채택은 비교 결과에서 모델 원인 오류가 실제로 줄고 안전·속도·비용이 나빠지지 않았을 때만 별도로 승인한다. 승인 전에는 Node 1·2·2′·3 모두 Base를 사용하고, 승인 후에도 SQL adapter는 Node 2·2′에만 적용한다.
 
 ### 6.3 Model Serving
 
@@ -279,6 +281,8 @@ R3가 작성:
 - GPU·CPU·memory 요구
 - timeout·concurrency·max token
 - model preload와 restart 절차
+- `/workspace` 영속 저장소와 외부 backup 위치
+- 실행 최대 시간·비용 한도, 한도 도달 시 중단과 Pod 종료 절차
 
 R1이 작성:
 
@@ -287,6 +291,14 @@ R1이 작성:
 - 통합 health·CI·release 실행
 
 외부 RunPod 작업은 사용자 승인 전까지 비용 없는 준비 작업만 수행한다.
+
+데모 동시 실행은 2건으로 제한한다. 이를 넘는 요청은 대기시키거나 `429`로 반환한다. model·dataset·checkpoint는 container disk에만 두지 않고 실험 종료 전에 외부로 백업한다.
+
+### 6.4 외부 모델에 보내는 데이터
+
+- 승인된 질문, Context Package와 필요한 최소 metadata만 보낸다.
+- 실제 고객 원문, credential, 민감 parameter, 불필요한 sample value는 보내지 않는다.
+- sample value가 꼭 필요하면 R1의 별도 데이터 전송 승인을 받고 합성·마스킹 여부와 전송 범위를 trace에 남긴다.
 
 ## 7. 평가와 인수인계
 
@@ -306,6 +318,8 @@ R1이 작성:
 | R2 정승 | gold 오류·schema linking 누락 목록 |
 | R4 김재홍 | Node schema, fake/real client, timeout/error, model/prompt version |
 | R5 송민지 | 사용자에게 노출 가능한 model 상태·설명 fixture |
+
+I5 이후 후속 단계에서는 R3가 F-01 MCP adapter 계약, F-02 문서 RAG, F-03 ML-as-a-Tool을 맡는다. F-04 고객 360은 별도 모델을 기본 전제로 하지 않고, 승인된 기존 Node 계약으로 처리 가능한지 먼저 확인한다. 이 후속 작업들은 현재 I5 완료 조건에 포함하지 않는다.
 
 ```text
 작업 카드:
@@ -327,7 +341,7 @@ R4/R1 handoff:
 | R3-M1 | Node schema·fake adapter | R4·R5 |
 | R3-M2 | Node 1·2·2′·3·prompt | R4 |
 | R3-M3 | 평가 runner·Base 비교·serving | R1·R4 |
-| R3-M4 | 조건부 LoRA·production client·release manifest | R1·R4 |
+| R3-M4 | 1회 LoRA 비교·조건부 채택, production client·release manifest | R1·R4 |
 
 공통 FastAPI·Gate·루트 Compose를 함께 수정한 R3 패키지는 병합하지 않는다.
 
@@ -341,6 +355,8 @@ R4/R1 handoff:
 - [ ] Node 3 수치 재계산·근거 없는 원인 단정이 0건이다.
 - [ ] 필수 30건 자동 평가와 gold split 누수 검사가 있다.
 - [ ] Base 비교가 동일 조건으로 수행됐다.
-- [ ] LoRA/QLoRA는 승인 Gate 후 수행되거나 `Not Run`으로 기록됐다.
+- [ ] LoRA/QLoRA 1회 비교는 승인 조건 아래 수행됐거나 `Blocked`·`Not Run` 사유가 기록됐다.
+- [ ] 제품 채택 전에는 모든 Node가 Base이고, 채택 후에도 Node 1·3에는 SQL adapter가 적용되지 않는다.
 - [ ] model server health·timeout·restart·fallback이 검증됐다.
+- [ ] 데모 동시 2건·초과 대기/`429`, 영속 저장·외부 backup·시간/비용 중단 조건이 기록됐다.
 - [ ] model/prompt/adapter version이 trace와 release manifest에 연결된다.

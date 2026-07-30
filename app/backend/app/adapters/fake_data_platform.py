@@ -8,9 +8,9 @@ class FakeDataPlatformAdapter:
     """Deterministic local implementation used until R2 supplies a real adapter."""
 
     _asset = {
-        "urn": "urn:answervice:dataset:pms.public.pms_guests",
-        "fqn": "pms.public.pms_guests",
-        "name": "PMS guest fixture",
+        "urn": "urn:answervice:dataset:pms.public.pms_reservations",
+        "fqn": "pms.public.pms_reservations",
+        "name": "PMS reservation fixture",
         "schema_version": "1.0.0",
         "seed_version": "20260729",
     }
@@ -22,7 +22,13 @@ class FakeDataPlatformAdapter:
         return [{**self._asset, "query": query, "context_timezone": context["timezone"]}]
 
     def get_asset_schema(self, urn: str) -> dict[str, Any]:
-        return {"urn": urn, "columns": [{"name": "guest_id", "type": "uuid"}]}
+        return {
+            "urn": urn,
+            "columns": [
+                {"name": "reservation_id", "type": "uuid"},
+                {"name": "check_in_date", "type": "date"},
+            ],
+        }
 
     def execute_query(
         self, sql: str, parameters: dict[str, Any], gate_token: str

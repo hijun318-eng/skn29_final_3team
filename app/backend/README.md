@@ -70,3 +70,5 @@ Context Package의 초기 제한은 다음과 같다.
 - 최대 `min(6,000 tokens, model context의 25%)`
 - 권한 없는 asset은 package와 model 입력 전에 제외
 - package는 release·policy·time·entitlement·URN/FQN·token과 결정론적 hash를 기록
+
+`POST /analysis`의 fake 경로도 G1을 우회하지 않는다. R2의 실제 registry adapter가 연결되기 전에는 `FakeContextPolicyProvider`가 고정된 개발용 release·policy·metric을 제공하고, `AnalysisService`는 role·entitlement부터 package 크기까지 순서대로 검증한다. G1이 차단되면 `ROUTED → BLOCKED`, 통과하면 응답 Evidence에 `context_release`와 `policy_version`을 기록한다.

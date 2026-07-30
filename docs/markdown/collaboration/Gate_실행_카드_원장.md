@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.2 |
-| 문서 기준일 | 2026-07-30 13:39 |
+| 버전 | v2.3 |
+| 문서 기준일 | 2026-07-30 14:01 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -97,7 +97,7 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 | R5-W1 | Wave 1·07/29~08/07 | R5 | I0 → I1 | R5-00~04, R5-08 | 활성 frontend·IA·typed client·mock·Chat 상태·Report 계약 | `MERGED_DEV` |
 | R2-W1-F1 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 I1 service fragment 보완 | DataHub/database fragment·health·env 요구 | `READY` |
 | R4-W1-F1 | Wave 1 follow-up | R4 | 없음 → I1 | R4-20의 I1 container subset | backend Dockerfile·container health·runtime 증거 | `REVIEW` |
-| R5-W1-F1 | Wave 1 follow-up | R5 | 없음 → I1 | R5-01~04, R5-08, R5-18의 I1 보완 | 금지 route 차단·typed contract·lockfile·clean build | `READY` |
+| R5-W1-F1 | Wave 1 follow-up | R5 | 없음 → I1 | R5-01~04, R5-08, R5-18의 I1 보완 | 금지 route 차단·typed contract·lockfile·clean build | `REVIEW` |
 | R1-W2 | Wave 2·08/10~08/14 | R1 | 없음 → I2 | R1-07, R1-09 | 수용 subset·통합 profile·deterministic trace 판정 | `PLANNED` |
 | R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `PLANNED` |
 | R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `PLANNED` |
@@ -149,7 +149,7 @@ CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
 PROMPT_VERSION=DRAFT-PROMPT-v0.1
 MODEL_FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
-BLOCKER=R2 DataHub/database service fragment와 R5 typed client·UI·Report contract·금지 route 차단·build·frontend fragment 미도착, R4 handoff의 허용 경로 밖 application DDL 분리·dev 통합·combined database /readiness 소비자 재검증 대기
+BLOCKER=R2 DataHub/database service fragment 미도착, R4 handoff의 허용 경로 밖 application DDL 분리·dev 통합·combined database /readiness 소비자 재검증 대기, R5 handoff의 branch 오염·lockfile/고정 dependency·clean build·frontend Dockerfile/health fragment·OpenAPI version 정합성 보완 대기
 R1_APPROVED_INPUTS=R2 schema 1.0.0·seed 20260729·scenario 1.0.0; R3 model I/O DRAFT-MODEL-v0.1·prompt DRAFT-PROMPT-v0.1·fixture DRAFT-MODEL-FIXTURE-v0.1
 R3_SERVICE_FRAGMENT=N/A — R3-W3에서 model serving Dockerfile 또는 실행 manifest 제출
 R1_REWORK_AUTHORIZATION=R4-W1·R5-W1 기존 소유 경로의 계약 결함 수정·재제출만 허가, 신규 기능·Wave 2 불허
@@ -346,7 +346,7 @@ EXTERNAL_ACTION_PERMISSION=기존 local Docker build·run만 허용, 신규 down
 ### R5-W1-F1
 
 ```text
-STATUS=READY
+STATUS=REVIEW
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -361,6 +361,9 @@ BASE_SHA=858b0be4968ace64c8a9bcef2448616ce0daf2b7
 CONTRACT_VERSION=DRAFT-I1-v0.1
 UI_CONTRACT_VERSION=DRAFT-UI-v0.1
 REPORT_CONTRACT_VERSION=DRAFT-REPORT-v0.1
+HANDOFF_SHA=140563f28add963af2981c1c7856836c0a8b5b8c
+R1_REVIEW_EVIDENCE=node tests/frontend/contracts.test.mjs 통과; /customers·/catalog/tools route 미등록; typed analysis·Report contract와 deterministic mock 확인
+R1_REVIEW_FINDINGS=origin/minji와 origin/dev의 net diff 56개 파일로 CI·R2·R3·R4 소유 파일 삭제/변경 혼재; package-lock.json·Dockerfile·health fragment 없음; package dependency가 latest; npm ci EUSAGE; production build는 vite 미설치로 실패; OPENAPI_VERSION 1.0.0-draft가 R4 DRAFT-OPENAPI-v0.1과 불일치
 REPRESENTATIVE_QUESTION=N/A — 승인값 미확정, I1 승인 전 작성 금지
 METRIC_CONTRACT=N/A — 승인값 미확정, I1 승인 전 작성 금지
 ALLOWED_PATHS=app/enterprise-react/**; src/report/**; tests/frontend/**; tests/report/**
@@ -560,6 +563,7 @@ EXTERNAL_ACTION_PERMISSION=<설치·비용·배포·데이터 전송·Git 권한
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.3 | 2026-07-30 14:01 | R5 handoff `140563f`의 typed contract·금지 route를 검토해 REVIEW로 전환하고 branch 오염·lockfile·clean build·frontend fragment·OpenAPI version 보완 전 I1 차단을 유지 |
 | v2.2 | 2026-07-30 13:39 | READY 카드 `9925a88`의 dev 포함을 확인하고 R2-W1-F1의 지정 3개 파일에 한해 commit·seung push를 허가했으며 원격 제출 전 상태는 READY로 유지 |
 | v2.1 | 2026-07-30 12:56 | `origin/jaehong`의 R4-W1-F1 handoff를 container·OpenAPI·role test로 독립 검토해 REVIEW로 전환하고 dev 통합·combined database readiness 재검증 전 I1 차단을 유지 |
 | v2.0 | 2026-07-30 12:36 | R2-W1-F1·R4-W1-F1·R5-W1-F1 follow-up을 READY로 발행하고 역할별 허용 경로·검증·중단·외부 권한을 고정했으며 대표 질문·metric은 승인 전 N/A로 유지 |

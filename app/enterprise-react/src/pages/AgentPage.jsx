@@ -1,29 +1,44 @@
-import { useState } from "react";
-import {
-  Check,
-  MessageSquareText,
-  Plus,
-  Send,
-  Sparkles,
-  TableProperties,
-} from "lucide-react";
+import { useMemo, useState } from "react";
+import { Check, MessageSquareText, Plus, Send, Sparkles, TableProperties } from "lucide-react";
+import { createMockAnalysisClient } from "../api/analysisClient";
+import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { MetaStrip, SectionTitle } from "../components/common/EnterpriseUi";
-import { agentSteps, dataProducts } from "../data/enterpriseDemoData";
+import { analysisFixtures } from "../data/analysisFixtures";
 
-const RECENT_ANALYSES = [
-  "지난달 객실 매출 하락 원인",
-  "다음 30일 객실 수요",
-  "프로모션 효과 분석",
-  "VIP 고객 재방문 요인",
+const RECENT_ANALYSES = ["지난달 객실 매출 하락 원인", "다음 30일 객실 수요", "프로모션 효과 분석"];
+const SCENARIOS = [
+  ["ready", "정상 완료"],
+  ["empty", "결과 없음"],
+  ["delayed", "응답 지연"],
+  ["partial", "부분 완료"],
+  ["error", "실패"],
+  ["forbidden", "접근 불가"],
+  ["insufficient_evidence", "근거 부족"],
+  ["cancelled", "취소"],
 ];
 
-export function AgentPage() {
-  const [question, setQuestion] = useState("");
-  const [sent, setSent] = useState(false);
+const client = createMockAnalysisClient();
 
-  const submitQuestion = (event) => {
+export function AgentPage() {
+  const [conversationId] = useState(() => crypto.randomUUID());
+  const [question, setQuestion] = useState("지난달 객실 매출 하락 원인을 알려줘.");
+  const [submittedQuestion, setSubmittedQuestion] = useState(analysisFixtures.ready.question);
+  const [scenario, setScenario] = useState("ready");
+  const [run, setRun] = useState(analysisFixtures.ready);
+  const [submitting, setSubmitting] = useState(false);
+  const viewMeta = useMemo(() => run.meta, [run.meta]);
+
+  const submitQuestion = async (event) => {
     event.preventDefault();
-    if (question.trim()) setSent(true);
+    const nextQuestion = question.trim();
+    if (!nextQuestion || submitting) return;
+
+    setSubmitting(true);
+    setSubmittedQuestion(nextQuestion);
+    setRun({ ...analysisFixtures.loading, question: nextQuestion, conversationId });
+    const result = await client.analyze(nextQuestion, conversationId, scenario);
+    setRun(result);
+    setSubmitting(false);
   };
 
   return (
@@ -40,80 +55,66 @@ export function AgentPage() {
       </aside>
 
       <main className="chat-main">
-        <MetaStrip />
+        <MetaStrip meta={viewMeta} />
         <div className="conversation">
           <div className="message message--user">
             <div className="avatar small">J</div>
-            <div>
-              <b>사용자</b>
-              <p>지난달 객실 매출이 하락한 원인을 분석하고 다음 달 대응 전략을 제안해줘.</p>
-            </div>
+            <div><b>사용자</b><p>{submittedQuestion}</p></div>
           </div>
           <div className="message message--agent">
             <span className="agent-avatar"><Sparkles size={17} /></span>
             <div>
-              <b>Analysis Agent <em>분석 완료</em></b>
-              <p>지난달 객실 매출은 전월 대비 <strong>6.8% 감소</strong>했습니다. 주된 영향은 주중 OCC 하락과 해외 OTA 채널의 취소율 증가입니다.</p>
-              <div className="fact-grid">
-                <article><small>확인된 사실</small><strong>-6.8%</strong><span>객실 매출 MoM</span></article>
-                <article><small>주요 원인</small><strong>-7.2%p</strong><span>주중 OCC</span></article>
-                <article><small>예측</small><strong>+4.3%p</strong><span>전략 적용 OCC</span></article>
-              </div>
-              <div className="answer-section">
-                <h3>전략 제안 <span>관리자 검토 필요</span></h3>
-                <ol>
-                  <li><b>주중 패키지 재구성</b><p>조식과 late checkout을 결합한 직접 예약 패키지를 우선 노출합니다.</p></li>
-                  <li><b>취소 위험 선제 대응</b><p>lead time 21일 이상 OTA 예약에 재확인 메시지를 적용합니다.</p></li>
-                </ol>
-              </div>
+              <b>Analysis Agent <em>{run.status}</em></b>
+              <AnalysisStatePanel run={run} />
             </div>
           </div>
-          {sent && (
-            <div className="message message--user">
-              <div className="avatar small">J</div>
-              <div><b>사용자</b><p>{question}</p></div>
-            </div>
-          )}
         </div>
         <form className="chat-input" onSubmit={submitQuestion}>
-          <input
-            value={question}
-            onChange={(event) => {
-              setQuestion(event.target.value);
-              setSent(false);
-            }}
-            placeholder="기업 데이터에 대해 질문하세요..."
-          />
-          <button aria-label="질문 전송"><Send size={17} /></button>
-          <small>Agent 결과는 의사결정 참고용이며 자동 실행되지 않습니다.</small>
+          <label className="scenario-picker">
+            <span>상태 fixture</span>
+            <select value={scenario} onChange={(event) => setScenario(event.target.value)}>
+              {SCENARIOS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+            </select>
+          </label>
+          <div className="question-field">
+            <input
+              aria-label="분석 질문"
+              value={question}
+              onChange={(event) => setQuestion(event.target.value)}
+              placeholder="승인된 데이터에 대해 질문하세요..."
+            />
+            <button aria-label="질문 전송" disabled={submitting}><Send size={17} /></button>
+          </div>
+          <small>표시된 값은 합성 fixture이며 Agent 결과는 자동 실행되지 않습니다.</small>
         </form>
       </main>
 
       <aside className="evidence-panel">
         <SectionTitle eyebrow="TRACEABILITY" title="분석 근거" />
         <div className="execution-list">
-          {agentSteps.map(([name, status, text], index) => (
+          {["요청 접수", "Controller 상태 확인", "결과·근거 표시"].map((name, index) => (
             <article key={name}>
               <span>{index + 1}</span>
-              <div><b>{name}<em><Check size={11} />{status}</em></b><small>{text}</small></div>
+              <div><b>{name}<em><Check size={11} />계약 기반</em></b><small>frontend는 API 상태를 재판정하지 않습니다.</small></div>
             </article>
           ))}
         </div>
         <div className="evidence-block">
-          <h3>사용 데이터 제품</h3>
-          {dataProducts.slice(0, 4).map((item) => (
-            <span key={item.product}>
-              <TableProperties size={13} />{item.product}<small>{item.freshness} 전</small>
+          <h3>사용 데이터 자산</h3>
+          {run.sources.length ? run.sources.map((source) => (
+            <span key={source.urn}>
+              <TableProperties size={13} />{source.name}<small>{source.status === "success" ? "정상" : "실패"}</small>
             </span>
-          ))}
+          )) : <p className="evidence-empty">표시 가능한 자산이 없습니다.</p>}
         </div>
         <div className="evidence-block">
           <h3>실행 정보</h3>
           <dl>
-            <div><dt>Query engine</dt><dd>Trino</dd></div>
-            <div><dt>Scanned</dt><dd>1.28M rows</dd></div>
-            <div><dt>Elapsed</dt><dd>2.4 sec</dd></div>
-            <div><dt>ML model</dt><dd>ONNX v2.3.1</dd></div>
+            <div><dt>conversation</dt><dd>{run.conversationId.slice(0, 8)}</dd></div>
+            <div><dt>request</dt><dd>{run.requestId.slice(0, 8)}</dd></div>
+            <div><dt>trace</dt><dd>{run.traceId.slice(0, 8)}</dd></div>
+            <div><dt>as_of</dt><dd>{run.meta.asOf}</dd></div>
+            <div><dt>timezone</dt><dd>{run.meta.timezone}</dd></div>
           </dl>
         </div>
       </aside>

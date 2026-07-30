@@ -5,14 +5,12 @@ import {
   Database,
   FileBarChart,
   MessageSquareText,
-  UsersRound,
   X,
 } from "lucide-react";
 import { PAGE_PATHS } from "../../routing";
 
 const NAVIGATION = [
   { id: "chat", path: PAGE_PATHS.chat, label: "분석 Agent", icon: MessageSquareText, group: "workspace" },
-  { id: "customer", path: PAGE_PATHS.customer, label: "Customer 360", icon: UsersRound, group: "workspace" },
   { id: "reports", path: PAGE_PATHS.reports, label: "보고서", icon: FileBarChart, group: "workspace" },
   { id: "catalog", path: PAGE_PATHS.catalog, label: "데이터 카탈로그", icon: BookOpen, group: "admin" },
   { id: "connections", path: PAGE_PATHS.connections, label: "DB 연결 관리", icon: Database, group: "admin" },

@@ -46,15 +46,13 @@ const SOURCE_GROUPS = [
   ["PMS", "예약·객실", "pms"],
   ["POS", "F&B·구매", "pos"],
   ["CRM", "고객·멤버십", "crm"],
-  ["VOC", "리뷰·문의", "voc"],
-  ["ERP · API", "재무·외부", "finance"],
+  ["FACILITY", "시설·센서", "facility"],
+  ["BANQUET", "연회·행사", "banquet"],
 ];
 
 const DATA_CONSUMERS = [
   [MessageSquareText, "분석 Agent", "근거 기반 질의"],
   [TableProperties, "정기 보고서", "일·주·월 자동화"],
-  [UserRound, "고객 VOC 360", "통합 고객 분석"],
-  [TrendingUp, "수요 예측", "ONNX ML Tool"],
 ];
 
 function CatalogOverview({ onManageConnections }) {
@@ -293,7 +291,7 @@ function ToolRegistry() {
   );
 }
 
-export function CatalogPage({ activeTab = "catalog", onTabChange, onManageConnections }) {
+export function CatalogPage({ onManageConnections }) {
   const [search, setSearch] = useState("");
   const products = useMemo(
     () => dataProducts.filter((item) => (
@@ -308,25 +306,8 @@ export function CatalogPage({ activeTab = "catalog", onTabChange, onManageConnec
   return (
     <div className="page-content">
       <MetaStrip />
-      <div className="catalog-tabs">
-        <button className={activeTab === "catalog" ? "active" : ""} onClick={() => onTabChange("catalog")}>
-          <BookOpen size={16} />데이터 카탈로그
-        </button>
-        <button className={activeTab === "ontology" ? "active" : ""} onClick={() => onTabChange("ontology")}>
-          <Network size={16} />온톨로지
-        </button>
-        <button className={activeTab === "tools" ? "active" : ""} onClick={() => onTabChange("tools")}>
-          <Wrench size={16} />MCP Tool
-        </button>
-      </div>
-      {activeTab === "catalog" && (
-        <>
-          <CatalogOverview onManageConnections={onManageConnections} />
-          <CatalogExplorer products={products} search={search} onSearch={setSearch} />
-        </>
-      )}
-      {activeTab === "ontology" && <OntologyView />}
-      {activeTab === "tools" && <ToolRegistry />}
+      <CatalogOverview onManageConnections={onManageConnections} />
+      <CatalogExplorer products={products} search={search} onSearch={setSearch} />
     </div>
   );
 }

@@ -18,13 +18,14 @@ export function StatusBadge({ status }) {
   );
 }
 
-export function MetaStrip() {
+export function MetaStrip({ meta = SYNTHETIC_META }) {
   return (
     <div className="meta-strip">
       <ShieldCheck size={13} />
-      {SYNTHETIC_META.label}
-      <span>seed {SYNTHETIC_META.seed}</span>
-      <span>schema {SYNTHETIC_META.schemaVersion}</span>
+      {meta.synthetic ? "Synthetic data" : SYNTHETIC_META.label}
+      <span>seed {meta.seed}</span>
+      <span>schema {meta.schemaVersion}</span>
+      {meta.asOf && <span>as_of {meta.asOf} · {meta.timezone}</span>}
     </div>
   );
 }

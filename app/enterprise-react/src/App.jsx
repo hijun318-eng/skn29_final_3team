@@ -1,21 +1,31 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { AppHeader } from "./components/layout/AppHeader";
 import { AppSidebar } from "./components/layout/AppSidebar";
-import { CATALOG_TAB_PATHS, resolveRoute } from "./routing";
+import { PAGE_PATHS, resolveRoute } from "./routing";
 
 const AgentPage = lazy(() => import("./pages/AgentPage").then((module) => ({ default: module.AgentPage })));
-const Customer360Page = lazy(() => import("./pages/Customer360Page").then((module) => ({ default: module.Customer360Page })));
 const ReportsPage = lazy(() => import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })));
 const CatalogPage = lazy(() => import("./pages/CatalogPage").then((module) => ({ default: module.CatalogPage })));
 const ConnectionsPage = lazy(() => import("./pages/ConnectionsPage").then((module) => ({ default: module.ConnectionsPage })));
 
 const PAGE_META = {
   chat: ["분석 Agent", "자연어 질문으로 승인된 기업 데이터를 수집·분석합니다."],
-  customer: ["Customer 360", "고객과 관련된 예약·투숙·구매·VOC·매출을 통합 분석합니다."],
   reports: ["정기 보고서", "일일·주간·월간 비즈니스 인사이트를 생성하고 검토합니다."],
   catalog: ["데이터 카탈로그", "사일로 DB의 연결 정보와 데이터 제품·온톨로지를 탐색합니다."],
   connections: ["DB 연결 관리", "이기종 데이터 소스의 connector와 catalog 상태를 관리합니다."],
+  notFound: ["페이지를 찾을 수 없습니다", "현재 승인된 P0/P1 경로만 이용할 수 있습니다."],
 };
+
+function NotFoundPage({ onNavigate }) {
+  return (
+    <section className="not-found" aria-labelledby="not-found-title">
+      <span>404</span>
+      <h2 id="not-found-title">승인되지 않은 경로입니다.</h2>
+      <p>P2 Tool과 고객 360은 I5 이후 별도 Gate 승인 전까지 제공하지 않습니다.</p>
+      <button className="primary" onClick={() => onNavigate(PAGE_PATHS.chat)}>분석 Agent로 이동</button>
+    </section>
+  );
+}
 
 export function App() {
   const [route, setRoute] = useState(() => resolveRoute(window.location.pathname));
@@ -49,20 +59,18 @@ export function App() {
   }, [route.path]);
 
   const content = useMemo(() => {
-    if (page === "customer") return <Customer360Page />;
+    if (page === "notFound") return <NotFoundPage onNavigate={navigate} />;
     if (page === "reports") return <ReportsPage />;
     if (page === "connections") return <ConnectionsPage />;
     if (page === "catalog") {
       return (
         <CatalogPage
-          activeTab={route.catalogTab}
-          onTabChange={(tab) => navigate(CATALOG_TAB_PATHS[tab])}
           onManageConnections={() => navigate("/connections")}
         />
       );
     }
     return <AgentPage />;
-  }, [navigate, page, route.catalogTab]);
+  }, [navigate, page]);
 
   return (
     <div className={`app-shell ${isPending ? "is-page-pending" : ""}`}>

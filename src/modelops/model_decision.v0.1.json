@@ -1,0 +1,34 @@
+{
+  "decision_version": "DRAFT-MODEL-v0.1",
+  "scope": {
+    "included": [
+      "node1_question_normalization",
+      "node2_sql_generation",
+      "node2_repair_once",
+      "node3_grounded_explanation",
+      "prompt_registry",
+      "deterministic_fake_adapter"
+    ],
+    "excluded_until_i5_followup": [
+      "mcp",
+      "document_rag",
+      "ml_as_a_tool",
+      "customer_360"
+    ]
+  },
+  "runtime_boundary": {
+    "all_nodes_use_base_model": true,
+    "base_model_version": "DRAFT-BASE-v0.1",
+    "sql_lora_enabled_nodes": [],
+    "node1_or_node3_sql_lora": false,
+    "model_may_decide_authorization": false,
+    "model_may_decide_sql_execution": false,
+    "model_may_decide_gates": false
+  },
+  "external_actions": {
+    "model_download": "not_permitted",
+    "gpu_or_runpod": "not_permitted",
+    "cost": "not_permitted",
+    "deployment": "not_permitted"
+  }
+}

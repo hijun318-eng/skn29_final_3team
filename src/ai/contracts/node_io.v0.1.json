@@ -1,0 +1,364 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:answervice:ai:node-io:v0.1",
+  "version": "DRAFT-MODEL-v0.1",
+  "$defs": {
+    "model_trace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt_id",
+        "version",
+        "node",
+        "environment",
+        "model_profile",
+        "adapter",
+        "model_version",
+        "fixture_version",
+        "hash"
+      ],
+      "properties": {
+        "prompt_id": {"type": "string", "minLength": 1},
+        "version": {"type": "string", "minLength": 1},
+        "node": {"type": "string", "minLength": 1},
+        "environment": {"type": "string", "enum": ["development", "test", "production"]},
+        "model_profile": {"type": "string", "const": "base"},
+        "adapter": {"type": ["string", "null"]},
+        "model_version": {"type": "string", "minLength": 1},
+        "fixture_version": {"type": ["string", "null"]},
+        "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "execution_time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "as_of",
+        "timezone",
+        "calendar_id",
+        "period_start",
+        "period_end_exclusive"
+      ],
+      "properties": {
+        "as_of": {"type": "string", "format": "date-time"},
+        "timezone": {"type": "string", "minLength": 1},
+        "calendar_id": {"type": "string", "const": "gregorian-kr"},
+        "period_start": {"type": "string", "format": "date-time"},
+        "period_end_exclusive": {"type": "string", "format": "date-time"}
+      }
+    },
+    "context_asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["urn", "trino_fqn", "columns"],
+      "properties": {
+        "urn": {"type": "string", "minLength": 1},
+        "trino_fqn": {"type": "string", "minLength": 1},
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "context_metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "field", "aggregation", "time_field"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "field": {"type": "string", "minLength": 1},
+        "aggregation": {"type": "string", "minLength": 1},
+        "time_field": {"type": "string", "minLength": 1}
+      }
+    },
+    "context_join": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "left", "right", "cardinality", "status"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "left": {"type": "string", "minLength": 1},
+        "right": {"type": "string", "minLength": 1},
+        "cardinality": {"type": "string", "minLength": 1},
+        "status": {"type": "string", "const": "approved"}
+      }
+    },
+    "context_package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context_version",
+        "policy_version",
+        "execution_time",
+        "assets",
+        "metrics",
+        "joins"
+      ],
+      "properties": {
+        "context_version": {"type": "string", "minLength": 1},
+        "policy_version": {"type": "string", "minLength": 1},
+        "execution_time": {"$ref": "#/$defs/execution_time"},
+        "assets": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/context_asset"}
+        },
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/context_metric"}
+        },
+        "joins": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/context_join"}
+        }
+      }
+    },
+    "sql_reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["urn", "trino_fqn", "columns", "join_ids", "metric_ids"],
+      "properties": {
+        "urn": {"type": "string", "minLength": 1},
+        "trino_fqn": {"type": "string", "minLength": 1},
+        "columns": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "join_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "metric_ids": {"type": "array", "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "parameter_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "value": {"type": ["string", "number", "boolean", "null"]}
+      }
+    },
+    "shaped_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["columns", "rows"],
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "type"],
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "type": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {"type": "object"}
+        }
+      }
+    },
+    "node1_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question",
+        "role_hint",
+        "as_of",
+        "timezone",
+        "calendar_id",
+        "allowed_routes",
+        "business_terms"
+      ],
+      "properties": {
+        "question": {"type": "string", "minLength": 1},
+        "role_hint": {"type": "string", "minLength": 1},
+        "as_of": {"type": "string", "format": "date-time"},
+        "timezone": {"type": "string", "minLength": 1},
+        "calendar_id": {"type": "string", "const": "gregorian-kr"},
+        "allowed_routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "business_terms": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "aliases"],
+            "properties": {
+              "kind": {"type": "string", "enum": ["metric", "dimension"]},
+              "aliases": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string", "minLength": 1}
+              }
+            }
+          }
+        }
+      }
+    },
+    "node1_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "normalized_question",
+        "intent_candidates",
+        "metric_candidates",
+        "dimension_candidates",
+        "period_candidates",
+        "ambiguity",
+        "model"
+      ],
+      "properties": {
+        "normalized_question": {"type": "string"},
+        "intent_candidates": {"type": "array", "items": {"type": "string"}},
+        "metric_candidates": {"type": "array", "items": {"type": "string"}},
+        "dimension_candidates": {"type": "array", "items": {"type": "string"}},
+        "period_candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start", "end_exclusive", "source_text"],
+            "properties": {
+              "start": {"type": "string", "format": "date-time"},
+              "end_exclusive": {"type": "string", "format": "date-time"},
+              "source_text": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "ambiguity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["is_ambiguous", "reasons", "clarification_question"],
+          "properties": {
+            "is_ambiguous": {"type": "boolean"},
+            "reasons": {"type": "array", "items": {"type": "string"}},
+            "clarification_question": {"type": ["string", "null"]}
+          }
+        },
+        "model": {"$ref": "#/$defs/model_trace"}
+      }
+    },
+    "node2_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question_id", "context_package"],
+      "properties": {
+        "question_id": {"type": "string"},
+        "context_package": {"$ref": "#/$defs/context_package"}
+      }
+    },
+    "node2_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sql", "references", "parameters", "model"],
+      "properties": {
+        "sql": {"type": "string"},
+        "references": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/sql_reference"}
+        },
+        "parameters": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/parameter_binding"}
+        },
+        "model": {"$ref": "#/$defs/model_trace"}
+      }
+    },
+    "node2_repair_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace_id",
+        "attempt",
+        "rejected_sql",
+        "context_package",
+        "normalized_error_code",
+        "repair_scope"
+      ],
+      "properties": {
+        "trace_id": {"type": "string"},
+        "attempt": {"type": "integer", "const": 1},
+        "rejected_sql": {"type": "string"},
+        "context_package": {"$ref": "#/$defs/context_package"},
+        "normalized_error_code": {"type": "string"},
+        "repair_scope": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "node2_repair_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trace_id", "attempt", "corrected_sql", "references", "parameters", "model"],
+      "properties": {
+        "trace_id": {"type": "string"},
+        "attempt": {"type": "integer", "const": 1},
+        "corrected_sql": {"type": "string"},
+        "references": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/sql_reference"}
+        },
+        "parameters": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/parameter_binding"}
+        },
+        "model": {"$ref": "#/$defs/model_trace"}
+      }
+    },
+    "node3_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "g3_result",
+        "shaped_result",
+        "metric",
+        "period",
+        "filters",
+        "unit",
+        "sampling",
+        "masking",
+        "partial",
+        "source_ids",
+        "result_reference"
+      ],
+      "properties": {
+        "g3_result": {"type": "string", "const": "pass"},
+        "shaped_result": {"$ref": "#/$defs/shaped_result"},
+        "metric": {"type": "string"},
+        "period": {"$ref": "#/$defs/execution_time"},
+        "filters": {"type": "array", "items": {"type": "string"}},
+        "unit": {"type": "string"},
+        "sampling": {"type": "boolean"},
+        "masking": {"type": "boolean"},
+        "partial": {"type": "boolean"},
+        "source_ids": {"type": "array", "items": {"type": "string"}},
+        "result_reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": {"type": "string", "enum": ["query_execution_id", "result_cache_key"]},
+            "value": {"type": "string"}
+          }
+        }
+      }
+    },
+    "node3_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["explanation", "conditions", "sources", "limitations", "model"],
+      "properties": {
+        "explanation": {"type": "string"},
+        "conditions": {"type": "array", "items": {"type": "string"}},
+        "sources": {"type": "array", "items": {"type": "string"}},
+        "limitations": {"type": "array", "items": {"type": "string"}},
+        "model": {"$ref": "#/$defs/model_trace"}
+      }
+    }
+  }
+}

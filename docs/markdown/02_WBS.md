@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.1 |
-| 문서 기준일 | 2026-07-30 14:39 |
+| 버전 | v7.3 |
+| 문서 기준일 | 2026-07-30 14:57 |
 | 작성·수정 | 김재홍·박준희·정승·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -358,6 +358,8 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-30 14:57 | 1.7 | 기존 읽기 전용 CI에 실행 카드 원장의 최신 비-PLANNED `ALLOWED_PATHS`를 사용하는 role scope 검사를 추가하고, terminal 역할의 신규 구현 차단·개인 일일보고 허용·R5 npm ci/build/contract job을 구성했다. 자동 상태 변경·commit·push·merge는 제외했으며 전체 tests 29건을 통과했다. | R1 역할 Gate 자동화 1단계 |
+| 2026-07-30 14:52 | 1.4, 4.21, 5.2, 5.19 | R2~R5 원격 작업을 확인해 R4 cleanup 전용 R4-W1-F2를 READY로 발행하고, R5 clean handoff `ba5617b`의 허용 경로·고정 lockfile·npm ci·production build·contract·container health·OpenAPI version을 독립 검증했다. R4·R5 dev 통합과 combined profile 검증 전 상태·일정·간트는 유지했다. | R4 READY·R5 재검토 |
 | 2026-07-30 14:39 | 1.4, 2.10 | R2 handoff `055b265`의 지정 3개 파일을 dev에 통합하고 `R2_SERVICE_FRAGMENT_VERIFIED`와 전체 tests 26건을 통과해 R2-W1-F1을 MERGED_DEV로 전환했다. R4·R5 보완과 combined root Compose 검증 전 R1-03 차단·R2-W2 PLANNED 및 일정·간트는 유지했다. | R2 I1 fragment 통합 |
 | 2026-07-30 14:16 | 1.4, 2.10, 4.21 | R2 handoff `055b265`의 service fragment·data 7건·Compose config를 검토해 REVIEW로 전환하고, R4 clean handoff `af6cc10`의 허용 경로 정리와 container readiness를 확인했다. R4 cleanup 결함·R2/R4 dev 통합·root Compose 소비자 검증과 R5 보완이 남아 상태·일정·간트는 유지했다. | R2·R4 I1 제출 재검토 |
 | 2026-07-30 14:01 | 1.4, 5.2, 5.19 | R5 handoff `140563f`의 typed analysis·Report contract, deterministic mock, 금지 route 차단과 frontend contract test를 R1이 검토해 R5-01을 검토로 전환했다. branch net diff 오염, lockfile·고정 dependency·`npm ci` build·Dockerfile/health fragment·OpenAPI version 보완 전 R1-03 차단과 R5-18 대기를 유지하며 일정·간트 날짜는 변경하지 않았다. | R5 I1 제출 검토 |
@@ -392,6 +394,8 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.3 | 2026-07-30 14:57 | R1-06 읽기 전용 역할 경로·R5 build 자동 검사와 검증 근거를 1.7에 연결하고 진행 상태·기존 일정·간트를 유지 |
+| v7.2 | 2026-07-30 14:52 | R4 cleanup 전용 READY와 R5 clean handoff 재검토 근거를 1.4·4.21·5.2·5.19에 연결하고 통합 전 기존 상태·일정·간트를 유지 |
 | v7.1 | 2026-07-30 14:39 | R2 I1 service fragment의 dev 통합·정적 소비 검증 근거를 1.4·2.10에 연결하고 common blocker 대기로 기존 상태·일정·간트를 유지 |
 | v7.0 | 2026-07-30 14:16 | R2 fragment 제출과 R4 clean handoff 재검토 근거를 1.4·2.10·4.21에 연결하고 기존 상태·일정·간트를 유지 |
 | v6.9 | 2026-07-30 14:01 | R5 handoff 부분 검토 근거를 1.4·5.2·5.19에 연결하고 R5-01을 검토로 전환했으며 R5-18과 기존 일정은 유지 |

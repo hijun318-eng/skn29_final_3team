@@ -8,6 +8,32 @@ permissions:
   contents: read
 
 jobs:
+  role-scope:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check role scope
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_NAME" == "dev" ]]; then
+            base="${{ github.event.before }}"
+            mode="direct"
+            if [[ "$base" =~ ^0+$ ]]; then
+              base="$(git rev-list --max-parents=0 HEAD)"
+            fi
+          else
+            git fetch origin dev
+            base="origin/dev"
+            mode="merge-base"
+          fi
+          python .github/scripts/gate_scope.py \
+            --branch "$GITHUB_REF_NAME" \
+            --base "$base" \
+            --head "$GITHUB_SHA" \
+            --mode "$mode"
+
   python-contracts:
     runs-on: ubuntu-latest
     steps:
@@ -22,3 +48,20 @@ jobs:
       - run: python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/01_요구사항정의서.md docs/markdown/02_WBS.md docs/markdown/05_화면설계서.md docs/markdown/collaboration/Gate_실행_카드_원장.md docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md docs/markdown/collaboration/I1_평가_원장.md
       - run: python .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md
       - run: python .agents/skills/update-project-reports/scripts/validate_reports.py docs/markdown/daily_reports/*/일일보고.md
+
+  frontend-contracts:
+    if: github.ref_name == 'minji'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/enterprise-react
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: app/enterprise-react/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: node --test ../../tests/frontend/contracts.test.mjs

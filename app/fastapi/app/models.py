@@ -125,3 +125,77 @@ class CustomerProfile(Base):
     preferred_room: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[str] = mapped_column(String(32))
     updated_at: Mapped[str] = mapped_column(String(32))
+
+
+# ===========================================================================
+# 소스 데이터 테이블 (명세서 S01-S18, 기획서 §14 합성 데이터)
+# ===========================================================================
+
+
+class PmsReservation(Base):
+    """S03 pms_reservations — PMS 예약 (PostgreSQL)."""
+    __tablename__ = "pms_reservations"
+
+    reservation_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    guest_id: Mapped[str] = mapped_column(String(36))
+    stay_date: Mapped[str] = mapped_column(String(10))
+    room_revenue: Mapped[int] = mapped_column(Integer, default=0)
+    room_type: Mapped[str] = mapped_column(String(32), default="")
+    status: Mapped[str] = mapped_column(String(16), default="CONFIRMED")
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class PmsStay(Base):
+    """S04 pms_stays — PMS 투숙 (PostgreSQL)."""
+    __tablename__ = "pms_stays"
+
+    stay_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    reservation_id: Mapped[str] = mapped_column(String(36))
+    guest_id: Mapped[str] = mapped_column(String(36))
+    check_in: Mapped[str] = mapped_column(String(10))
+    check_out: Mapped[str] = mapped_column(String(10), default="")
+    room_number: Mapped[str] = mapped_column(String(8), default="")
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class CrmMember(Base):
+    """S09 crm_members — CRM 회원 (SQL Server)."""
+    __tablename__ = "crm_members"
+
+    member_no: Mapped[str] = mapped_column(String(36), primary_key=True)
+    property_id: Mapped[str] = mapped_column(String(64), default="SYNTHETIC_HOTEL_001")
+    membership_grade: Mapped[str] = mapped_column(String(16), default="BASIC")
+    points_balance: Mapped[int] = mapped_column(Integer, default=0)
+    member_status: Mapped[str] = mapped_column(String(16), default="ACTIVE")
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class CrmMemberGradeHistory(Base):
+    """S18 crm_member_grade_history — 등급 이력 (SQL Server).
+
+    반개구간 [valid_from, valid_to) event-time JOIN용.
+    """
+    __tablename__ = "crm_member_grade_history"
+
+    grade_history_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    member_no: Mapped[str] = mapped_column(String(36))
+    grade_code: Mapped[str] = mapped_column(String(16), default="BASIC")
+    valid_from: Mapped[str] = mapped_column(String(10))
+    valid_to: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    change_reason_code: Mapped[str] = mapped_column(String(24), default="JOIN")
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class CrmCustomerMap(Base):
+    """S11 crm_customer_map — 교차 소스 고객 식별 bridge (SQL Server).
+
+    member_no ↔ PMS guest_id ↔ POS customer_ref 연결.
+    기획서 §14.3 공통키 관리.
+    """
+    __tablename__ = "crm_customer_map"
+
+    map_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    member_no: Mapped[str] = mapped_column(String(36))
+    pms_guest_id: Mapped[str] = mapped_column(String(36))
+    pos_customer_ref: Mapped[str] = mapped_column(String(36), default="")
+    is_synthetic: Mapped[bool] = mapped_column(Boolean, default=True)

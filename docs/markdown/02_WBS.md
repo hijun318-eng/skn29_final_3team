@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v6.8 |
-| 문서 기준일 | 2026-07-30 13:39 |
+| 버전 | v7.1 |
+| 문서 기준일 | 2026-07-30 14:39 |
 | 작성·수정 | 김재홍·박준희·정승·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -230,7 +230,7 @@ gantt
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
 | 5.1 | R5-00 frontend 후보·fixture 조사와 활성 app 결정안 | reuse·remove 결정표 | 송민지 | 대기 | 07/29 | 07/31 | 높음 |
-| 5.2 | R5-01 IA·routing·design token | route·layout | 송민지 | 대기 | 07/29 | 07/31 | 높음 |
+| 5.2 | R5-01 IA·routing·design token | route·layout | 송민지 | 검토 | 07/29 | 07/31 | 높음 |
 | 5.3 | R5-02 OpenAPI type·client·mock | typed client·fixture | 송민지 | 대기 | 08/03 | 08/07 | 높음 |
 | 5.4 | R5-03 Chat shell·질문 흐름 | conversation UI | 송민지 | 대기 | 08/03 | 08/14 | 높음 |
 | 5.5 | R5-04 실행 상태·오류 UI | state components | 송민지 | 대기 | 08/03 | 08/21 | 높음 |
@@ -358,6 +358,9 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-30 14:39 | 1.4, 2.10 | R2 handoff `055b265`의 지정 3개 파일을 dev에 통합하고 `R2_SERVICE_FRAGMENT_VERIFIED`와 전체 tests 26건을 통과해 R2-W1-F1을 MERGED_DEV로 전환했다. R4·R5 보완과 combined root Compose 검증 전 R1-03 차단·R2-W2 PLANNED 및 일정·간트는 유지했다. | R2 I1 fragment 통합 |
+| 2026-07-30 14:16 | 1.4, 2.10, 4.21 | R2 handoff `055b265`의 service fragment·data 7건·Compose config를 검토해 REVIEW로 전환하고, R4 clean handoff `af6cc10`의 허용 경로 정리와 container readiness를 확인했다. R4 cleanup 결함·R2/R4 dev 통합·root Compose 소비자 검증과 R5 보완이 남아 상태·일정·간트는 유지했다. | R2·R4 I1 제출 재검토 |
+| 2026-07-30 14:01 | 1.4, 5.2, 5.19 | R5 handoff `140563f`의 typed analysis·Report contract, deterministic mock, 금지 route 차단과 frontend contract test를 R1이 검토해 R5-01을 검토로 전환했다. branch net diff 오염, lockfile·고정 dependency·`npm ci` build·Dockerfile/health fragment·OpenAPI version 보완 전 R1-03 차단과 R5-18 대기를 유지하며 일정·간트 날짜는 변경하지 않았다. | R5 I1 제출 검토 |
 | 2026-07-30 13:39 | 1.4, 2.10 | R2-W1-F1 READY 카드 `9925a88`이 최신 `origin/dev=4527375`에 이미 포함된 것을 확인하고 보고된 fragment 3개 파일만 commit·seung push하도록 허가했다. 최신 `origin/seung=cd8fdfc`에는 아직 제출되지 않아 R2-09 진행과 R1-03 차단을 유지하며 일정·간트 날짜는 변경하지 않았다. | R2 제출 허가 |
 | 2026-07-30 12:56 | 1.4, 4.21 | `origin/jaehong` handoff `06632fa`의 backend image·non-root·health·OpenAPI와 backend 17건·AI 15건·data 7건·integration 1건을 R1이 독립 검토해 R4-20을 검토로 전환했다. 허용 경로 밖 application DDL 분리·dev 통합·combined database readiness와 R2·R5 follow-up 전 R1-03 차단은 유지하며 일정·간트 날짜는 변경하지 않았다. | R4 I1 제출 검토 |
 | 2026-07-30 12:36 | 1.4, 2.10, 4.21, 5.2, 5.19 | R2-W1-F1·R4-W1-F1·R5-W1-F1을 READY로 발행해 역할별 허용 경로·완료 증거·검증·중단 조건을 고정했다. 대표 질문·metric은 승인 전 N/A로 유지하고 follow-up 결과 검증 전 기존 WBS 상태는 변경하지 않았다. | I1 보완 실행 허가 |
@@ -389,6 +392,9 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.1 | 2026-07-30 14:39 | R2 I1 service fragment의 dev 통합·정적 소비 검증 근거를 1.4·2.10에 연결하고 common blocker 대기로 기존 상태·일정·간트를 유지 |
+| v7.0 | 2026-07-30 14:16 | R2 fragment 제출과 R4 clean handoff 재검토 근거를 1.4·2.10·4.21에 연결하고 기존 상태·일정·간트를 유지 |
+| v6.9 | 2026-07-30 14:01 | R5 handoff 부분 검토 근거를 1.4·5.2·5.19에 연결하고 R5-01을 검토로 전환했으며 R5-18과 기존 일정은 유지 |
 | v6.8 | 2026-07-30 13:39 | R2-W1-F1 지정 파일의 commit·seung push 허가 근거를 1.4·2.10에 연결하고 제출 전 상태와 일정은 유지 |
 | v6.7 | 2026-07-30 12:56 | R4 handoff 독립 검토 근거를 1.4·4.21에 연결하고 R4-20을 검토로 전환했으며 I1 차단과 기존 일정은 유지 |
 | v6.6 | 2026-07-30 12:36 | R2·R4·R5 I1 follow-up READY 발행 근거를 1.4·2.10·4.21·5.2·5.19에 연결하고 검증 전 상태 유지 |

@@ -75,6 +75,7 @@
 - 명시적 요청 전에는 stage, commit, push, dependency 설치를 하지 않는다.
 - 개인 branch를 `dev`에 병합하라는 요청에는 `.agents/skills/merge-branch-to-dev/SKILL.md`를 적용한다.
 - commit message 요청에는 `.agents/skills/draft-commit-message/SKILL.md`를 적용하며, 초안 요청을 stage·commit·push 승인으로 해석하지 않는다.
+- commit message는 72자 이내 한국어 제목과 상세 본문을 기본으로 한다. 본문은 staged 변경을 구체화한 `변경:`과 확인된 실행 결과만 적는 `검증:`을 포함하고, 소비자 영향이나 남은 위험이 있을 때만 `영향:`을 추가한다. 실행하지 않은 검증을 성공으로 기록하지 않는다.
 
 ## 데이터와 구조
 

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.2 |
-| 문서 기준일 | 2026-07-30 13:39 |
+| 버전 | v2.5 |
+| 문서 기준일 | 2026-07-30 14:39 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -95,9 +95,9 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 | R3-W1 | Wave 1·07/29~08/07 | R3 | I0 → I1 | R3-00~03, R3-07 | AI 범위·Node schema·fake·Node 1 baseline·Prompt Registry | `MERGED_DEV` |
 | R4-W1 | Wave 1·07/29~08/07 | R4 | I0 → I1 | R4-00~05 | backend 경계·OpenAPI·auth·DB·migration·Controller skeleton | `MERGED_DEV` |
 | R5-W1 | Wave 1·07/29~08/07 | R5 | I0 → I1 | R5-00~04, R5-08 | 활성 frontend·IA·typed client·mock·Chat 상태·Report 계약 | `MERGED_DEV` |
-| R2-W1-F1 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 I1 service fragment 보완 | DataHub/database fragment·health·env 요구 | `READY` |
+| R2-W1-F1 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 I1 service fragment 보완 | DataHub/database fragment·health·env 요구 | `MERGED_DEV` |
 | R4-W1-F1 | Wave 1 follow-up | R4 | 없음 → I1 | R4-20의 I1 container subset | backend Dockerfile·container health·runtime 증거 | `REVIEW` |
-| R5-W1-F1 | Wave 1 follow-up | R5 | 없음 → I1 | R5-01~04, R5-08, R5-18의 I1 보완 | 금지 route 차단·typed contract·lockfile·clean build | `READY` |
+| R5-W1-F1 | Wave 1 follow-up | R5 | 없음 → I1 | R5-01~04, R5-08, R5-18의 I1 보완 | 금지 route 차단·typed contract·lockfile·clean build | `REVIEW` |
 | R1-W2 | Wave 2·08/10~08/14 | R1 | 없음 → I2 | R1-07, R1-09 | 수용 subset·통합 profile·deterministic trace 판정 | `PLANNED` |
 | R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `PLANNED` |
 | R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `PLANNED` |
@@ -143,13 +143,13 @@ TASK_CARD_RANGE=R1-00~08
 CURRENT_TASK_CARD_ID=R1-03
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=858b0be4968ace64c8a9bcef2448616ce0daf2b7
+BASE_SHA=0b0e410d7b6c06d1cbc6298ac5230291e52caf4e
 I0_DECISION_VERSION=DRAFT-I0-v0.2
 CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
 PROMPT_VERSION=DRAFT-PROMPT-v0.1
 MODEL_FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
-BLOCKER=R2 DataHub/database service fragment와 R5 typed client·UI·Report contract·금지 route 차단·build·frontend fragment 미도착, R4 handoff의 허용 경로 밖 application DDL 분리·dev 통합·combined database /readiness 소비자 재검증 대기
+BLOCKER=R2 fragment의 combined root Compose 소비자 검증은 R4·R5 fragment 통합 시 수행, R4 clean handoff의 정리 절차 보완·dev 병합·combined database /readiness 소비자 재검증 대기, R5 handoff의 branch 오염·lockfile/고정 dependency·clean build·frontend Dockerfile/health fragment·OpenAPI version 정합성 보완 대기
 R1_APPROVED_INPUTS=R2 schema 1.0.0·seed 20260729·scenario 1.0.0; R3 model I/O DRAFT-MODEL-v0.1·prompt DRAFT-PROMPT-v0.1·fixture DRAFT-MODEL-FIXTURE-v0.1
 R3_SERVICE_FRAGMENT=N/A — R3-W3에서 model serving Dockerfile 또는 실행 manifest 제출
 R1_REWORK_AUTHORIZATION=R4-W1·R5-W1 기존 소유 경로의 계약 결함 수정·재제출만 허가, 신규 기능·Wave 2 불허
@@ -281,7 +281,7 @@ EXTERNAL_ACTION_PERMISSION=dependency 설치·외부 배포·secret·stage·comm
 ### R2-W1-F1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -308,7 +308,11 @@ SUBMISSION_PERMISSION_STATUS=APPROVED
 SUBMISSION_PERMISSION_BASIS=READY 카드 commit 9925a88이 origin/dev 4527375에 이미 포함됨
 SUBMISSION_PATHS=infrastructure/database/r1-service-fragment.v1.json; infrastructure/database/scripts/verify-service-fragment.ps1; infrastructure/database/scripts/verify.ps1
 EXPECTED_COMMIT_MESSAGE=feat(data): I1 서비스 fragment와 검증 추가
-EXTERNAL_ACTION_PERMISSION=SUBMISSION_PATHS의 stage·commit·seung push 허용, merge·force push·rebase·그 밖의 파일·신규 download·외부 DB·비용·데이터 전송은 불가
+HANDOFF_SHA=055b26578cbd17da0d0d4f116fb1b27af59e817e
+R1_REVIEW_EVIDENCE=허용 경로 밖 변경 0건; R2_SERVICE_FRAGMENT_VERIFIED; tests/data 7건 통과; docker compose config 통과; schema 1.0.0·seed 20260729·scenario 1.0.0과 full/split-host·DataHub dev 제외 요구 확인
+R1_INTEGRATION_EVIDENCE=origin/seung 055b265를 dev 0b0e410에 병합; R2_SERVICE_FRAGMENT_VERIFIED 재실행; 전체 tests 26건 통과
+R1_NOT_RUN=전체 live DB verify는 생산자 DATABASE_CONTRACT_VERIFIED 증거를 유지하며 combined root Compose profile 검증은 R4·R5 fragment 도착 후 실행
+EXTERNAL_ACTION_PERMISSION=R2-W1-F1 추가 작업 없음, R2-W2 READY 발행 전 구현 금지
 ```
 
 ### R4-W1-F1
@@ -329,10 +333,10 @@ BASE_SHA=858b0be4968ace64c8a9bcef2448616ce0daf2b7
 CONTRACT_VERSION=DRAFT-I1-v0.1
 OPENAPI_VERSION=DRAFT-OPENAPI-v0.1
 EXPECTED_DB_REVISION_HEAD=20260730_02 — R4 보고값, branch 제출 후 검증
-HANDOFF_SHA=06632fa312ea0af9babb831c6327437502eb9fea
-R1_REVIEW_EVIDENCE=Docker image build 통과; non-root UID 10001; /health와 Docker health healthy; backend 17건·AI 15건·data 7건·integration 1건 통과; OPENAPI_CONTRACT_VERIFIED
-R1_REVIEW_NOTE=branch diff에 follow-up FORBIDDEN_PATHS인 infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql 변경 1건이 남아 있어 전체 branch 병합 전 분리 또는 R2 인계 필요
-R1_NOT_RUN=combined database /readiness 소비자 재검증 — snapshot에 gitignored infrastructure/database/.env가 없어 미실행; 생산자 BACKEND_DATABASE_READY 보고는 별도 증거로 유지
+HANDOFF_SHA=af6cc10878493454cf1c7bc2cda5bf96454b54f0
+R1_REVIEW_EVIDENCE=origin/dev 대비 net diff가 app/backend/**·tests/backend/**·개인 일일보고로 정리됨; compileall 통과; local dependency 미설치로 backend test 10건 통과 후 2건 Blocked; container image build·/health·/readiness·app-postgres 연결이 BACKEND_CONTAINER_READY·BACKEND_DATABASE_READY로 통과
+R1_REVIEW_NOTE=verify-container.ps1 -RemoveAfterVerification가 Docker의 정상 stop stderr를 terminating error로 처리해 rm 단계가 실행되지 않으므로 cleanup 종료 코드·잔존 container 검증 보완 필요
+R1_NOT_RUN=dev 병합 후 R2 fragment를 root Compose에서 소비하는 combined profile 회귀는 미실행
 REPRESENTATIVE_QUESTION=N/A — 승인값 미확정, I1 승인 전 작성 금지
 METRIC_CONTRACT=N/A — 승인값 미확정, I1 승인 전 작성 금지
 ALLOWED_PATHS=app/backend/**; tests/backend/**
@@ -340,13 +344,13 @@ FORBIDDEN_PATHS=root Compose·.env.example·CI·infrastructure/database/**·src/
 ACCEPTANCE_CRITERIA=backend Dockerfile과 재현 가능한 container 검증 절차 제출, container에서 /health·/readiness 확인, Alembic head 20260730_02 확인, BACKEND_CONTAINER_READY 증거, 신규 production dependency 0건, R1·R2·R3·R5 소유 경로 변경 0건
 TEST_COMMANDS=python -m compileall app/backend/app; python -m unittest discover -s tests/backend -p "test_*.py"; powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1; git diff --check
 STOP_CONDITIONS=I1 container 증거 제출 완료; 허용 경로 밖 변경 필요; migration 다중 head; health·readiness·container 기동 실패; cross-role 변경 잔존
-EXTERNAL_ACTION_PERMISSION=기존 local Docker build·run만 허용, 신규 download·외부 배포·secret·비용·데이터 전송·stage·commit·push·merge는 별도 승인
+EXTERNAL_ACTION_PERMISSION=app/backend/scripts/verify-container.ps1의 cleanup 결함 수정·검증, 해당 파일과 개인 일일보고의 commit·jaehong push 허용; merge·신규 dependency·외부 배포·secret·비용·데이터 전송은 불가
 ```
 
 ### R5-W1-F1
 
 ```text
-STATUS=READY
+STATUS=REVIEW
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -361,6 +365,9 @@ BASE_SHA=858b0be4968ace64c8a9bcef2448616ce0daf2b7
 CONTRACT_VERSION=DRAFT-I1-v0.1
 UI_CONTRACT_VERSION=DRAFT-UI-v0.1
 REPORT_CONTRACT_VERSION=DRAFT-REPORT-v0.1
+HANDOFF_SHA=140563f28add963af2981c1c7856836c0a8b5b8c
+R1_REVIEW_EVIDENCE=node tests/frontend/contracts.test.mjs 통과; /customers·/catalog/tools route 미등록; typed analysis·Report contract와 deterministic mock 확인
+R1_REVIEW_FINDINGS=origin/minji와 origin/dev의 net diff 56개 파일로 CI·R2·R3·R4 소유 파일 삭제/변경 혼재; package-lock.json·Dockerfile·health fragment 없음; package dependency가 latest; npm ci EUSAGE; production build는 vite 미설치로 실패; OPENAPI_VERSION 1.0.0-draft가 R4 DRAFT-OPENAPI-v0.1과 불일치
 REPRESENTATIVE_QUESTION=N/A — 승인값 미확정, I1 승인 전 작성 금지
 METRIC_CONTRACT=N/A — 승인값 미확정, I1 승인 전 작성 금지
 ALLOWED_PATHS=app/enterprise-react/**; src/report/**; tests/frontend/**; tests/report/**
@@ -560,6 +567,9 @@ EXTERNAL_ACTION_PERMISSION=<설치·비용·배포·데이터 전송·Git 권한
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.5 | 2026-07-30 14:39 | R2 handoff `055b265`를 dev에 통합하고 service fragment 정적 소비 검증과 전체 테스트를 통과해 R2-W1-F1을 MERGED_DEV로 전환했으며 combined root Compose 검증은 R4·R5 fragment 도착까지 보류 |
+| v2.4 | 2026-07-30 14:16 | R2 handoff `055b265`를 fragment·data test·Compose config로 검토해 REVIEW로 전환하고, R4 clean handoff `af6cc10`의 container readiness 통과와 cleanup 결함을 기록해 정확한 보완 commit·push만 허가 |
+| v2.3 | 2026-07-30 14:01 | R5 handoff `140563f`의 typed contract·금지 route를 검토해 REVIEW로 전환하고 branch 오염·lockfile·clean build·frontend fragment·OpenAPI version 보완 전 I1 차단을 유지 |
 | v2.2 | 2026-07-30 13:39 | READY 카드 `9925a88`의 dev 포함을 확인하고 R2-W1-F1의 지정 3개 파일에 한해 commit·seung push를 허가했으며 원격 제출 전 상태는 READY로 유지 |
 | v2.1 | 2026-07-30 12:56 | `origin/jaehong`의 R4-W1-F1 handoff를 container·OpenAPI·role test로 독립 검토해 REVIEW로 전환하고 dev 통합·combined database readiness 재검증 전 I1 차단을 유지 |
 | v2.0 | 2026-07-30 12:36 | R2-W1-F1·R4-W1-F1·R5-W1-F1 follow-up을 READY로 발행하고 역할별 허용 경로·검증·중단·외부 권한을 고정했으며 대표 질문·metric은 승인 전 N/A로 유지 |

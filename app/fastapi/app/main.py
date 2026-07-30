@@ -19,6 +19,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.api.agent_query import router as agent_query_router
 from app.api.detections import router as detections_router
 from app.api.incident_runs import router as incident_runs_router
 from app.api.public import router as public_router
@@ -102,6 +103,7 @@ async def health() -> dict[str, str | dict[str, str]]:
 # ---------------------------------------------------------------------------
 
 app.include_router(public_router)
+app.include_router(agent_query_router)
 app.include_router(quality_gates_router)
 app.include_router(detections_router)
 app.include_router(query_runs_router)

@@ -16,34 +16,36 @@ class GateScopeTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.ledger = gate_scope.LEDGER.read_text(encoding="utf-8")
 
-    def test_latest_r4_ready_bundle_is_selected(self) -> None:
+    def test_latest_r4_merged_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "jaehong")
         self.assertEqual("R4-W1-F2", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("READY", bundle["STATUS"])
+        self.assertEqual("MERGED_DEV", bundle["STATUS"])
 
     def test_ready_bundle_uses_exact_allowed_paths(self) -> None:
+        bundle = gate_scope.current_bundle(self.ledger, "seung")
+        self.assertEqual("R2-W1-F2", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("READY", bundle["STATUS"])
+        patterns = gate_scope.allowed_paths(bundle, "seung")
+        self.assertTrue(
+            gate_scope.path_allowed(
+                "infrastructure/database/datahub/compose.fragment.yml", patterns
+            )
+        )
+        self.assertFalse(
+            gate_scope.path_allowed("compose.yml", patterns)
+        )
+
+    def test_merged_bundle_is_report_only(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "jaehong")
         patterns = gate_scope.allowed_paths(bundle, "jaehong")
         self.assertTrue(
             gate_scope.path_allowed(
+                "docs/markdown/daily_reports/jaehong/일일보고.md", patterns
+            )
+        )
+        self.assertFalse(
+            gate_scope.path_allowed(
                 "app/backend/scripts/verify-container.ps1", patterns
-            )
-        )
-        self.assertFalse(
-            gate_scope.path_allowed("app/backend/app/main.py", patterns)
-        )
-
-    def test_merged_bundle_is_report_only(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "seung")
-        patterns = gate_scope.allowed_paths(bundle, "seung")
-        self.assertTrue(
-            gate_scope.path_allowed(
-                "docs/markdown/daily_reports/seung/일일보고.md", patterns
-            )
-        )
-        self.assertFalse(
-            gate_scope.path_allowed(
-                "infrastructure/database/scripts/verify.ps1", patterns
             )
         )
 

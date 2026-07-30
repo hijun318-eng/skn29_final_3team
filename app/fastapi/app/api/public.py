@@ -1,39 +1,32 @@
 """공개 API 라우트 — 엔터프라이즈 프론트엔드용.
 
-Django에서 FastAPI로 이관한 10개 엔드포인트를 /api/v1/ prefix로 제공한다.
-데이터는 Django가 생성한 db.sqlite3에서 sqlite3 모듈로 직접 읽는다.
-향후 FastAPI 자체 DB(PostgreSQL)로 이전 예정.
+8개 엔드포인트를 /api/v1/ prefix로 제공한다.
+SQLAlchemy 2 ORM으로 data.db에서 데이터를 읽는다.
 """
 
 from __future__ import annotations
 
-import sqlite3
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy import select
+
+from app.database import SessionLocal
+from app.models import (
+    AgentWorkflowStep,
+    CustomerProfile,
+    DataProduct,
+    DataSource,
+    DimDate,
+    Report,
+    Tool,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["public"])
-
-# ---------------------------------------------------------------------------
-# DB 경로 (Django db.sqlite3)
-# ---------------------------------------------------------------------------
-
-# public.py: app/fastapi/app/api/public.py → parent x3 = app/fastapi/
-_FASTAPI_DIR = Path(__file__).resolve().parent.parent.parent
-_DB_PATH = _FASTAPI_DIR / "data.db"
-
-
-def _db() -> sqlite3.Connection:
-    """db.sqlite3 읽기 전용 연결을 반환한다."""
-    conn = sqlite3.connect(str(_DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
-
 
 # ---------------------------------------------------------------------------
 # Envelope 헬퍼
@@ -41,7 +34,6 @@ def _db() -> sqlite3.Connection:
 
 
 def _ok(data: Any, total: int | None = None) -> dict[str, Any]:
-    """성공 응답 envelope ({data, meta, error})."""
     meta: dict[str, Any] = {
         "request_id": str(uuid4()),
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -52,7 +44,6 @@ def _ok(data: Any, total: int | None = None) -> dict[str, Any]:
 
 
 def _err(code: str, message: str, status: int) -> JSONResponse:
-    """오류 응답 envelope."""
     return JSONResponse(
         {
             "data": None,
@@ -88,13 +79,7 @@ class LoginRequest(BaseModel):
     password: str
 
 
-def _build_scope(role_code: str) -> dict[str, Any]:
-    groups = _ROLE_METRIC_GROUPS.get(role_code, [])
-    return {"property_ids": ["GRAND_WALKERHILL_SEOUL"], "metric_groups": groups}
-
-
 def _check_auth(request: Request) -> bool:
-    """세션에 role_code가 있으면 인증됨."""
     return request.session.get("role_code") is not None
 
 
@@ -104,7 +89,8 @@ async def login(body: LoginRequest, request: Request):
     if cred is None or cred["password"] != body.password:
         return _err("AUTH_FAILED", "아이디 또는 비밀번호가 올바르지 않습니다.", 401)
 
-    scope = _build_scope(cred["role_code"])
+    groups = _ROLE_METRIC_GROUPS.get(cred["role_code"], [])
+    scope = {"property_ids": ["GRAND_WALKERHILL_SEOUL"], "metric_groups": groups}
     request.session["user_id"] = cred["user_id"]
     request.session["username"] = body.username
     request.session["role_code"] = cred["role_code"]
@@ -163,25 +149,21 @@ def _relative_time(dt_str: str | None) -> str:
     return f"{hours // 24}일 전"
 
 
-# ---------------------------------------------------------------------------
-# Reports
-# ---------------------------------------------------------------------------
-
-
 def _format_report_period(report_type: str, virtual_week_id: str) -> str:
     if report_type == "WEEKLY":
-        conn = _db()
+        db = SessionLocal()
         try:
-            rows = conn.execute(
-                "SELECT service_date FROM dim_date WHERE virtual_week_id = ? ORDER BY service_date",
-                (virtual_week_id,),
-            ).fetchall()
+            rows = db.execute(
+                select(DimDate.service_date)
+                .where(DimDate.virtual_week_id == virtual_week_id)
+                .order_by(DimDate.service_date)
+            ).scalars().all()
             if rows:
-                start = datetime.strptime(rows[0]["service_date"], "%Y-%m-%d")
-                end = datetime.strptime(rows[-1]["service_date"], "%Y-%m-%d")
+                start = datetime.strptime(rows[0], "%Y-%m-%d")
+                end = datetime.strptime(rows[-1], "%Y-%m-%d")
                 return f"{start.month:02d}/{start.day:02d}~{end.month:02d}/{end.day:02d}"
         finally:
-            conn.close()
+            db.close()
         return virtual_week_id
     if report_type == "MONTHLY":
         parts = virtual_week_id.split("-")
@@ -189,34 +171,37 @@ def _format_report_period(report_type: str, virtual_week_id: str) -> str:
     return virtual_week_id
 
 
+# ---------------------------------------------------------------------------
+# Reports
+# ---------------------------------------------------------------------------
+
+
 @router.get("/reports/")
 async def report_list(request: Request):
     if not _check_auth(request):
         return _err("NOT_AUTHENTICATED", "로그인이 필요합니다.", 401)
-    conn = _db()
+    db = SessionLocal()
     try:
-        rows = conn.execute(
-            "SELECT * FROM report ORDER BY created_at DESC LIMIT 100"
-        ).fetchall()
+        rows = db.execute(select(Report).order_by(Report.created_at.desc()).limit(100)).scalars().all()
         data = [
             {
-                "report_id": str(r["report_id"]),
-                "report_version": r["report_version"],
-                "virtual_week_id": r["virtual_week_id"],
-                "report_type": r["report_type"],
-                "report_type_label": _REPORT_TYPE_LABELS.get(r["report_type"], r["report_type"]),
-                "period": _format_report_period(r["report_type"], r["virtual_week_id"]),
-                "status": r["status"],
-                "status_label": _REPORT_STATUS_LABELS.get(r["status"], r["status"]),
-                "author": r["author_name"] or "",
-                "is_synthetic": bool(r["is_synthetic"]),
-                "created_at": r["created_at"],
+                "report_id": r.report_id,
+                "report_version": r.report_version,
+                "virtual_week_id": r.virtual_week_id,
+                "report_type": r.report_type,
+                "report_type_label": _REPORT_TYPE_LABELS.get(r.report_type, r.report_type),
+                "period": _format_report_period(r.report_type, r.virtual_week_id),
+                "status": r.status,
+                "status_label": _REPORT_STATUS_LABELS.get(r.status, r.status),
+                "author": r.author_name or "",
+                "is_synthetic": r.is_synthetic,
+                "created_at": r.created_at,
             }
             for r in rows
         ]
         return _ok(data, total=len(data))
     finally:
-        conn.close()
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -228,30 +213,30 @@ async def report_list(request: Request):
 async def connection_list(request: Request):
     if not _check_auth(request):
         return _err("NOT_AUTHENTICATED", "로그인이 필요합니다.", 401)
-    conn = _db()
+    db = SessionLocal()
     try:
-        rows = conn.execute("SELECT * FROM data_sources ORDER BY source_code").fetchall()
+        rows = db.execute(select(DataSource).order_by(DataSource.source_code)).scalars().all()
         data = [
             {
-                "data_source_id": str(r["data_source_id"]),
-                "source_code": r["source_code"],
-                "name": r["source_name"],
-                "vendor": _ENGINE_LABELS.get(r["engine_type"], r["engine_type"]),
-                "catalog": r["trino_catalog"],
-                "domain": _DOMAIN_MAP.get(r["source_code"], r["source_code"]),
-                "status": _DS_STATUS_MAP.get(r["status"], "connected"),
-                "health_status": r["last_health_status"],
-                "health": _HEALTH_SCORE.get(r["last_health_status"]),
-                "records": _SOURCE_RECORDS.get(r["source_code"], "—"),
-                "owner": r["owner_team"],
-                "endpoint": f"{r['trino_catalog']}••••.internal",
-                "sync": _relative_time(r["last_health_at"]),
+                "data_source_id": r.data_source_id,
+                "source_code": r.source_code,
+                "name": r.source_name,
+                "vendor": _ENGINE_LABELS.get(r.engine_type, r.engine_type),
+                "catalog": r.trino_catalog,
+                "domain": _DOMAIN_MAP.get(r.source_code, r.source_code),
+                "status": _DS_STATUS_MAP.get(r.status, "connected"),
+                "health_status": r.last_health_status,
+                "health": _HEALTH_SCORE.get(r.last_health_status),
+                "records": _SOURCE_RECORDS.get(r.source_code, "—"),
+                "owner": r.owner_team,
+                "endpoint": f"{r.trino_catalog}••••.internal",
+                "sync": _relative_time(r.last_health_at),
             }
             for r in rows
         ]
         return _ok(data, total=len(data))
     finally:
-        conn.close()
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -263,27 +248,27 @@ async def connection_list(request: Request):
 async def tool_list(request: Request):
     if not _check_auth(request):
         return _err("NOT_AUTHENTICATED", "로그인이 필요합니다.", 401)
-    conn = _db()
+    db = SessionLocal()
     try:
-        rows = conn.execute("SELECT * FROM tool_registry ORDER BY tool_code").fetchall()
+        rows = db.execute(select(Tool).order_by(Tool.tool_code)).scalars().all()
         data = [
             {
-                "tool_id": str(r["tool_id"]),
-                "name": r["name"],
-                "category": _TOOL_TYPE_LABELS.get(r["tool_type"], r["tool_type"]),
-                "version": r["semantic_version"],
-                "health": _TOOL_HEALTH_MAP.get(r["health_status"], "unknown"),
-                "success": f"{r['success_rate']}%" if r["success_rate"] is not None else "—",
+                "tool_id": r.tool_id,
+                "name": r.name,
+                "category": _TOOL_TYPE_LABELS.get(r.tool_type, r.tool_type),
+                "version": r.semantic_version,
+                "health": _TOOL_HEALTH_MAP.get(r.health_status, "unknown"),
+                "success": f"{r.success_rate}%" if r.success_rate is not None else "—",
                 "agents": "—",
                 "permission": "Read only",
-                "last": _relative_time(r["last_run_at"]),
-                "is_enabled": bool(r["is_enabled"]),
+                "last": _relative_time(r.last_run_at),
+                "is_enabled": r.is_enabled,
             }
             for r in rows
         ]
         return _ok(data, total=len(data))
     finally:
-        conn.close()
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -295,29 +280,27 @@ async def tool_list(request: Request):
 async def data_product_list(request: Request):
     if not _check_auth(request):
         return _err("NOT_AUTHENTICATED", "로그인이 필요합니다.", 401)
-    conn = _db()
+    db = SessionLocal()
     try:
-        rows = conn.execute(
-            "SELECT * FROM data_products ORDER BY domain, product_name"
-        ).fetchall()
+        rows = db.execute(select(DataProduct).order_by(DataProduct.domain, DataProduct.product_name)).scalars().all()
         data = [
             {
-                "data_product_id": str(r["data_product_id"]),
-                "product": r["product_name"],
-                "source": r["source_name"],
-                "catalog": r["catalog_ref"],
-                "domain": r["domain"],
-                "owner": r["owner_team"],
-                "freshness": r["freshness_label"],
-                "quality": r["quality_score"],
-                "sensitivity": _SENSITIVITY_LABELS.get(r["sensitivity"], r["sensitivity"]),
-                "tool": r["tool_name"],
+                "data_product_id": r.data_product_id,
+                "product": r.product_name,
+                "source": r.source_name,
+                "catalog": r.catalog_ref,
+                "domain": r.domain,
+                "owner": r.owner_team,
+                "freshness": r.freshness_label,
+                "quality": r.quality_score,
+                "sensitivity": _SENSITIVITY_LABELS.get(r.sensitivity, r.sensitivity),
+                "tool": r.tool_name,
             }
             for r in rows
         ]
         return _ok(data, total=len(data))
     finally:
-        conn.close()
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -329,29 +312,27 @@ async def data_product_list(request: Request):
 async def customer_list(request: Request):
     if not _check_auth(request):
         return _err("NOT_AUTHENTICATED", "로그인이 필요합니다.", 401)
-    conn = _db()
+    db = SessionLocal()
     try:
-        rows = conn.execute(
-            "SELECT * FROM customer_profile ORDER BY revisit_score DESC"
-        ).fetchall()
+        rows = db.execute(select(CustomerProfile).order_by(CustomerProfile.revisit_score.desc())).scalars().all()
         data = [
             {
-                "id": r["customer_id"],
-                "name": r["display_name"],
-                "tier": r["tier_label"],
-                "stays": r["stays_count"],
-                "revenue": r["revenue_display"],
-                "revisit": r["revisit_score"],
-                "sentiment": r["sentiment_label"],
-                "issue": r["last_issue"],
-                "last": r["last_stay_date"],
-                "room": r["preferred_room"],
+                "id": r.customer_id,
+                "name": r.display_name,
+                "tier": r.tier_label,
+                "stays": r.stays_count,
+                "revenue": r.revenue_display,
+                "revisit": r.revisit_score,
+                "sentiment": r.sentiment_label,
+                "issue": r.last_issue,
+                "last": r.last_stay_date,
+                "room": r.preferred_room,
             }
             for r in rows
         ]
         return _ok(data, total=len(data))
     finally:
-        conn.close()
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -363,16 +344,14 @@ async def customer_list(request: Request):
 async def agent_workflow(request: Request):
     if not _check_auth(request):
         return _err("NOT_AUTHENTICATED", "로그인이 필요합니다.", 401)
-    conn = _db()
+    db = SessionLocal()
     try:
-        rows = conn.execute(
-            "SELECT * FROM agent_workflow_step ORDER BY step_order"
-        ).fetchall()
+        rows = db.execute(select(AgentWorkflowStep).order_by(AgentWorkflowStep.step_order)).scalars().all()
         status_map = {"COMPLETED": "완료", "IN_PROGRESS": "진행 중", "PENDING": "대기"}
         data = [
-            [r["step_name"], status_map.get(r["status"], r["status"]), r["description"]]
+            [r.step_name, status_map.get(r.status, r.status), r.description]
             for r in rows
         ]
         return _ok(data, total=len(data))
     finally:
-        conn.close()
+        db.close()

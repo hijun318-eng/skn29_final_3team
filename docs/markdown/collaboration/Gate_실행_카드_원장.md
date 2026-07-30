@@ -4,9 +4,9 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.5 |
-| 문서 기준일 | 2026-07-30 10:25 |
-| 작성·수정 | 3팀 사용자 승인·Codex 반영 |
+| 버전 | v1.6 |
+| 문서 기준일 | 2026-07-30 11:35 |
+| 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
 
@@ -90,11 +90,11 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 
 | 실행 묶음 | Wave·기간 | 역할 | checkpoint → 목표 통합 Gate | `TASK_CARD_RANGE` | 통합 시 제출물 | 초기 상태 |
 |---|---|---|---|---|---|---|
-| R1-W1 | Wave 1·07/29~08/07 | R1 | I0 → I1 | R1-00~08 | 역할·범위·소유권·공통 계약·Compose·env·CI·I1 판정 | `READY` |
-| R2-W1 | Wave 1·07/29~08/07 | R2 | I0 → I1 | R2-00~08 | registry·논리/물리 모델·seed·identity·quality·read-only | `READY` |
-| R3-W1 | Wave 1·07/29~08/07 | R3 | I0 → I1 | R3-00~03, R3-07 | AI 범위·Node schema·fake·Node 1 baseline·Prompt Registry | `READY` |
-| R4-W1 | Wave 1·07/29~08/07 | R4 | I0 → I1 | R4-00~05 | backend 경계·OpenAPI·auth·DB·migration·Controller skeleton | `READY` |
-| R5-W1 | Wave 1·07/29~08/07 | R5 | I0 → I1 | R5-00~04, R5-08 | 활성 frontend·IA·typed client·mock·Chat 상태·Report 계약 | `READY` |
+| R1-W1 | Wave 1·07/29~08/07 | R1 | I0 → I1 | R1-00~08 | 역할·범위·소유권·공통 계약·Compose·env·CI·I1 판정 | `BLOCKED` |
+| R2-W1 | Wave 1·07/29~08/07 | R2 | I0 → I1 | R2-00~08 | registry·논리/물리 모델·seed·identity·quality·read-only | `MERGED_DEV` |
+| R3-W1 | Wave 1·07/29~08/07 | R3 | I0 → I1 | R3-00~03, R3-07 | AI 범위·Node schema·fake·Node 1 baseline·Prompt Registry | `MERGED_DEV` |
+| R4-W1 | Wave 1·07/29~08/07 | R4 | I0 → I1 | R4-00~05 | backend 경계·OpenAPI·auth·DB·migration·Controller skeleton | `MERGED_DEV` |
+| R5-W1 | Wave 1·07/29~08/07 | R5 | I0 → I1 | R5-00~04, R5-08 | 활성 frontend·IA·typed client·mock·Chat 상태·Report 계약 | `MERGED_DEV` |
 | R1-W2 | Wave 2·08/10~08/14 | R1 | 없음 → I2 | R1-07, R1-09 | 수용 subset·통합 profile·deterministic trace 판정 | `PLANNED` |
 | R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `PLANNED` |
 | R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `PLANNED` |
@@ -124,7 +124,7 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 
 ## Wave 1 발행 카드
 
-아래 묶음은 현재 `dev` commit `2c2779d23738038d5cd0560cffa70c5b509991c3`을 `BASE_SHA`로 사용한다. 담당자는 개인 branch에 이 기준을 반영한 뒤 기존 구현을 보존하면서 첫 미완료 카드부터 수행한다.
+R2~R5의 최초 Wave 1 묶음은 `dev` commit `2c2779d23738038d5cd0560cffa70c5b509991c3`에서 시작했고 결과가 최신 `dev`에 병합됐다. R1-W1은 통합 후 `dev` commit `5df4e535eaa4abb01fe6721e3eacd13bd79d9d7a`에서 계약 입력을 재판정한다.
 
 ### R1-W1
 
@@ -138,12 +138,15 @@ TARGET_INTEGRATION_GATE=I1
 CHECKPOINT_GATES=I0
 TASK_CARD_RANGE=R1-00~08
 CURRENT_TASK_CARD_ID=R1-03
-REPOSITORY_ROOT=C:\Users\Playdata\Desktop\SKN_FINAL\skn29_final_3team
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=2c2779d23738038d5cd0560cffa70c5b509991c3
+BASE_SHA=5df4e535eaa4abb01fe6721e3eacd13bd79d9d7a
 I0_DECISION_VERSION=DRAFT-I0-v0.2
 CONTRACT_VERSION=DRAFT-I1-v0.1
-BLOCKER=R3 model contract와 R5 UI·Report contract 미도착, R2~R5 root Compose service fragment 미도착
+MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
+PROMPT_VERSION=DRAFT-PROMPT-v0.1
+MODEL_FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
+BLOCKER=R5 typed client·UI·Report contract 및 P2·고객 360 route 차단 증거 미도착, R2~R5 root Compose Dockerfile·health service fragment 미도착
 ALLOWED_PATHS=AGENTS.md; compose*.yml; .env.example; .github/**; .githooks/**; tests/integration/**; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/ai_docs/5인_병렬구현_*
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=I0 역할·범위·소유권·full/dev/split-host 결정과 I1 공통 계약·Compose skeleton·env·CI·fake 소비 가능 판정, 필수 30·gold 120 원장 schema/reviewer/split 계획
@@ -155,7 +158,7 @@ EXTERNAL_ACTION_PERMISSION=설치·비용·배포·데이터 전송·stage·comm
 ### R2-W1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -182,7 +185,7 @@ EXTERNAL_ACTION_PERMISSION=설치·외부 DB·비용·stage·commit·push·merge
 ### R3-W1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -210,7 +213,7 @@ EXTERNAL_ACTION_PERMISSION=download·RunPod·비용·배포·stage·commit·push
 ### R4-W1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -238,7 +241,7 @@ EXTERNAL_ACTION_PERMISSION=설치·외부 배포·secret·stage·commit·push·m
 ### R5-W1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -452,6 +455,7 @@ EXTERNAL_ACTION_PERMISSION=<설치·비용·배포·데이터 전송·Git 권한
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.6 | 2026-07-30 11:35 | R1-W1 기준을 최신 통합 `dev` SHA로 갱신하고 R2~R5를 `MERGED_DEV`로 정합화했으며 R2·R3·R4 계약 도착과 R5 UI·Report·route 및 역할별 service fragment 차단 근거를 반영 |
 | v1.5 | 2026-07-30 10:25 | R1~R5 Wave 1의 `BASE_SHA`를 현재 `dev` 기준 SHA `2c2779d23738038d5cd0560cffa70c5b509991c3`으로 교정하고, 활성 frontend 결정 후 R1-00~02 완료·R1-03 계약 입력 대기를 기록 |
 | v1.4 | 2026-07-30 09:32 | Wave 1 기준 SHA를 현재 `dev`로 교정하고 LoRA 비교·worker·backup 절차와 I5 이후 F-01~F-04 비차단 후속 단계를 동기화 |
 | v1.3 | 2026-07-29 17:35 | 최신 `dev` 통합 SHA `72292d9`를 기준으로 R1~R5 Wave 1 실행 묶음을 `READY`로 발행 |

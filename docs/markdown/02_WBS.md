@@ -202,12 +202,12 @@ gantt
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 4.1 | R4-00 backend 경계·의존 방향 | architecture decision | 김재홍 | 대기 | 07/29 | 07/31 | 높음 |
-| 4.2 | R4-01 공통 객체·OpenAPI·오류 계약 | versioned API contract | 김재홍 | 대기 | 07/29 | 08/07 | 높음 |
-| 4.3 | R4-02 인증·request context middleware | role·as_of·trace context | 김재홍 | 대기 | 08/03 | 08/07 | 높음 |
-| 4.4 | R4-03 application DB model·Alembic | migration head | 김재홍 | 대기 | 08/03 | 08/07 | 높음 |
-| 4.5 | R4-04 Router·Template Binding | route decision | 김재홍 | 대기 | 08/03 | 08/10 | 높음 |
-| 4.6 | R4-05 Controller 고정 상태 머신 | transition table | 김재홍 | 대기 | 08/03 | 08/10 | 높음 |
+| 4.1 | R4-00 backend 경계·의존 방향 | architecture decision | 김재홍 | 진행 | 07/29 | 07/31 | 높음 |
+| 4.2 | R4-01 공통 객체·OpenAPI·오류 계약 | versioned API contract | 김재홍 | 진행 | 07/29 | 08/07 | 높음 |
+| 4.3 | R4-02 인증·request context middleware | role·as_of·trace context | 김재홍 | 진행 | 08/03 | 08/07 | 높음 |
+| 4.4 | R4-03 application DB model·Alembic | migration head | 김재홍 | 진행 | 08/03 | 08/07 | 높음 |
+| 4.5 | R4-04 Router·Template Binding | route decision | 김재홍 | 진행 | 08/03 | 08/10 | 높음 |
+| 4.6 | R4-05 Controller 고정 상태 머신 | transition table | 김재홍 | 진행 | 08/03 | 08/10 | 높음 |
 | 4.7 | R4-06 Context Registry·Builder | versioned Context Package | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
 | 4.8 | R4-07 G1 Context Gate | decision·evidence | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
 | 4.9 | R4-08 R3 Node typed client | model client·오류 처리 | 김재홍 | 대기 | 08/10 | 08/21 | 높음 |

@@ -25,7 +25,7 @@ function Invoke-Compose {
     param([Parameter(ValueFromRemainingArguments)] [string[]]$Arguments)
 
     $result = & docker compose --env-file $localEnv -f $composeFile @Arguments
-    if ($LASTEXITCODE -ne 0) { throw "docker compose failed: $($Arguments -join ' ')" }
+    if ($LASTEXITCODE -ne 0) { throw 'docker compose command failed. Inspect Compose logs; command arguments are intentionally omitted.' }
     return $result
 }
 
@@ -39,6 +39,39 @@ function Assert-Contract {
     if ($actual -ne $expectedContract) {
         throw "$Name contract mismatch. Expected $expectedContract, got $actual"
     }
+}
+
+function Assert-RowCount {
+    param(
+        [string]$Name,
+        [string]$Expected,
+        [string[]]$Result
+    )
+
+    $actual = (@($Result) -join "`n").Trim()
+    if ($actual -ne $Expected) {
+        throw "$Name row count mismatch. Expected $Expected, got $actual"
+    }
+    Write-Output "ROW_COUNT|$Name|$actual"
+}
+
+function Invoke-TrinoQuery {
+    param([Parameter(Mandatory)] [string[]]$Arguments)
+
+    for ($attempt = 1; $attempt -le 60; $attempt++) {
+        $previousErrorActionPreference = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $result = & docker compose --env-file $localEnv -f $composeFile @Arguments 2>$null
+            $exitCode = $LASTEXITCODE
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+        if ($exitCode -eq 0) { return $result }
+        Start-Sleep -Seconds 2
+    }
+    throw 'Trino is healthy but did not become query-ready within 120 seconds.'
 }
 
 function Assert-ComposeDenied {
@@ -105,7 +138,38 @@ Assert-Contract 'facility-clickhouse' (Invoke-Compose -Arguments @(
     '--query', "SELECT concat(v.version,'|',toString(s.seed),'|',s.data_class) FROM facility.schema_version v CROSS JOIN facility.seed_metadata s FORMAT TSVRaw"
 ))
 
-$catalogs = Invoke-Compose -Arguments @(
+Assert-RowCount 'app-postgres.reference.calendar_daily' '1826' (Invoke-Compose -Arguments @(
+    'exec', '-T', '--env', "PGPASSWORD=$($values.APP_DB_PASSWORD)",
+    'app-postgres', 'psql', '-U', $values.APP_DB_USER, '-d', $values.APP_DB_NAME, '-tAc',
+    'SELECT count(*) FROM reference.calendar_daily'
+))
+Assert-RowCount 'pms-postgres.pms_guests' '100000' (Invoke-Compose -Arguments @(
+    'exec', '-T', '--env', "PGPASSWORD=$($values.PMS_READONLY_PASSWORD)",
+    'pms-postgres', 'psql', '-U', $values.PMS_READONLY_USER, '-d', $values.PMS_DB_NAME, '-tAc',
+    'SELECT count(*) FROM pms_guests'
+))
+Assert-RowCount 'banquet-postgres.banquet_bookings' '6000' (Invoke-Compose -Arguments @(
+    'exec', '-T', '--env', "PGPASSWORD=$($values.BANQUET_READONLY_PASSWORD)",
+    'banquet-postgres', 'psql', '-U', $values.BANQUET_READONLY_USER, '-d', $values.BANQUET_DB_NAME, '-tAc',
+    'SELECT count(*) FROM banquet_bookings'
+))
+Assert-RowCount 'pos-mysql.pos_orders' '320000' (Invoke-Compose -Arguments @(
+    'exec', '-T', '--env', "MYSQL_PWD=$($values.POS_READONLY_PASSWORD)",
+    'pos-mysql', 'mysql', "-u$($values.POS_READONLY_USER)", "-D$($values.POS_DB_NAME)", '-N', '-B', '-e',
+    'SELECT count(*) FROM pos_orders'
+))
+Assert-RowCount 'crm-mssql.crm_members' '80000' (Invoke-Compose -Arguments @(
+    'exec', '-T', 'crm-mssql', '/opt/mssql-tools18/bin/sqlcmd',
+    '-S', 'localhost', '-U', $values.CRM_READONLY_USER, '-P', $values.CRM_READONLY_PASSWORD,
+    '-C', '-d', $values.CRM_DB_NAME, '-b', '-h', '-1', '-W', '-Q', 'SET NOCOUNT ON; SELECT count(*) FROM dbo.crm_members'
+))
+Assert-RowCount 'facility-clickhouse.facility_events' '700000' (Invoke-Compose -Arguments @(
+    'exec', '-T', 'facility-clickhouse', 'clickhouse-client',
+    '--user', $values.FACILITY_READONLY_USER, '--password', $values.FACILITY_READONLY_PASSWORD,
+    '--query', 'SELECT count(*) FROM facility.facility_events FORMAT TSVRaw'
+))
+
+$catalogs = Invoke-TrinoQuery -Arguments @(
     'exec', '-T', 'trino', 'trino',
     '--server', 'http://localhost:8080', '--user', 'hotel_synthetic_verify',
     '--output-format', 'CSV_UNQUOTED', '--execute', 'SHOW CATALOGS'
@@ -115,7 +179,7 @@ foreach ($catalog in $requiredCatalogs) {
     if ($catalogs -notcontains $catalog) { throw "Trino catalog is missing: $catalog" }
 }
 
-$viewCountResult = Invoke-Compose -Arguments @(
+$viewCountResult = Invoke-TrinoQuery -Arguments @(
     'exec', '-T', 'trino', 'trino',
     '--server', 'http://localhost:8080', '--user', 'hotel_synthetic_verify',
     '--output-format', 'CSV_UNQUOTED',

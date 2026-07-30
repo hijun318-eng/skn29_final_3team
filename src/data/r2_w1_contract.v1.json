@@ -1,0 +1,102 @@
+{
+  "contract_version": "DRAFT-I1-v0.1",
+  "schema_version": "1.0.0",
+  "seed_version": "20260729",
+  "scenario_version": "1.0.0",
+  "cards": {
+    "R2-00": "source_registry.v1.json",
+    "R2-01": "source_registry.v1.json",
+    "R2-02": "source_registry.v1.json",
+    "R2-03": "five versioned source DDL files with PK, FK, UK, check, and index evidence",
+    "R2-04": "five deterministic seed files and SHA-256 manifest",
+    "R2-05": "dbo.customer_identity_map compatibility view backed by constrained dbo.crm_customer_map",
+    "R2-06": "dbo.crm_member_grade_history half-open periods with overlap trigger",
+    "R2-07": "quality_rules and rejected_fixture assertions",
+    "R2-08": "account_matrix and Trino file-based read-only policy"
+  },
+  "seed_manifest": [
+    {
+      "source_id": "pms",
+      "file": "infrastructure/database/sql/data/260729_01_pms_postgresql_2022_2026_v2.2.sql",
+      "sha256": "5ff2eb4c371ac29a96c41b5c1f586f6f5e0a13ffe4bb1b2ed64918666bb469c9"
+    },
+    {
+      "source_id": "pos",
+      "file": "infrastructure/database/sql/data/260729_02_pos_mysql_2022_2026_v2.2.sql",
+      "sha256": "2864a743cc964074c1c8985b5615ac063a3b60eb2baa7bd169fe582a839eaa28"
+    },
+    {
+      "source_id": "crm",
+      "file": "infrastructure/database/sql/data/260729_03_crm_sqlserver_2022_2026_v2.2.sql",
+      "sha256": "506a8a7dd51104d313f907ff1e33932b9a777b5aebd55fd055ce574cbb2c8a66"
+    },
+    {
+      "source_id": "facility",
+      "file": "infrastructure/database/sql/data/260729_04_facility_clickhouse_2022_2026_v2.2.sql",
+      "sha256": "ae8bfc3893d323d7e286ffa0f4b8c7e0204b81b878829d5bdc6c7ef49d2ab36c"
+    },
+    {
+      "source_id": "banquet",
+      "file": "infrastructure/database/sql/data/260729_05_banquet_postgresql_2022_2026_v2.2.sql",
+      "sha256": "8b6c2d85973f16cfae82add7979516e54c7550e9fd6dfc155d8e3b4ae7295dab"
+    }
+  ],
+  "data_state_manifest": [
+    {"entity": "pms.pms_guests", "row_count": 100000, "checksum": "9437a7f9a554d0967dd1bff70977bc74"},
+    {"entity": "pms.pms_room_inventory_daily", "row_count": 7304, "checksum": "99301fa736dcb9cae4c5afbf674d5510"},
+    {"entity": "pms.pms_reservations", "row_count": 220000, "checksum": "b2e9a3ae8053cb3a131f1223506ebcbb"},
+    {"entity": "pms.pms_stays", "row_count": 167071, "checksum": "22e379405f50b1c12e66eb7c381530fa"},
+    {"entity": "pos.pos_stores", "row_count": 8, "checksum": "39a88285e5f5aebb9430c9fdd2bcecfc07e9f7e92817ebec340c31ca0b4b0897"},
+    {"entity": "pos.pos_service_periods", "row_count": 53440, "checksum": "ec4ad12c7057151a2555ca973861f0649304679e3ad33d0231621bd7caf8a601"},
+    {"entity": "pos.pos_orders", "row_count": 320000, "checksum": "fa7697414505bb38c728253a335fbd3b5b64127252974ddfac6aa434481ce5c0"},
+    {"entity": "pos.pos_order_items", "row_count": 960000, "checksum": "462236f462c3cc766aaf9a4926a888a5a4af82fe58ad7119ad9b009ac2e41e91"},
+    {"entity": "crm.crm_members", "row_count": 80000, "checksum": "134217728"},
+    {"entity": "crm.crm_member_grade_history", "row_count": 120000, "checksum": "-779886830"},
+    {"entity": "crm.crm_point_transactions", "row_count": 320000, "checksum": "-1380375293"},
+    {"entity": "crm.crm_customer_map", "row_count": 80000, "checksum": "-1962120753"},
+    {"entity": "facility.facility_master", "row_count": 20, "checksum": "A1B9F2E1D7941162"},
+    {"entity": "facility.facility_events", "row_count": 700000, "checksum": "98E8BF0E87A9E9E5"},
+    {"entity": "facility.hotel_staffing_daily", "row_count": 11690, "checksum": "7E87AE0F26700742"},
+    {"entity": "facility.facility_resource_daily", "row_count": 6680, "checksum": "1B1A48965CC193E2"},
+    {"entity": "banquet.banquet_bookings", "row_count": 6000, "checksum": "317cab91c761e15ede97749ff8e18e07"},
+    {"entity": "banquet.banquet_revenue", "row_count": 10902, "checksum": "d90ff20627a37f354cae864f7b22d155"}
+  ],
+  "quality_rules": [
+    {"id": "DQR-01", "scope": "all source entities", "rule": "is_synthetic is true", "reject_code": "NON_SYNTHETIC_ROW"},
+    {"id": "DQR-02", "scope": "all source entities", "rule": "primary key is unique and non-null", "reject_code": "INVALID_PRIMARY_KEY"},
+    {"id": "DQR-03", "scope": "CRM identity", "rule": "active local identity is unique and validity periods do not overlap", "reject_code": "IDENTITY_PERIOD_OVERLAP"},
+    {"id": "DQR-04", "scope": "CRM grade history", "rule": "validity uses [valid_from, valid_to) and periods do not overlap", "reject_code": "GRADE_PERIOD_OVERLAP"},
+    {"id": "DQR-05", "scope": "all seed SQL", "rule": "fixed seed, scenario, timestamp, and synthetic property identifiers only", "reject_code": "NON_DETERMINISTIC_SEED"},
+    {"id": "DQR-06", "scope": "all source DDL and seed SQL", "rule": "direct identifier column and value formats are absent", "reject_code": "DIRECT_IDENTIFIER_FORMAT"}
+  ],
+  "preprocessing_summary": [
+    {"source_id": "pms", "input_rows": 494375, "accepted_rows": 494375, "rejected_rows": 0},
+    {"source_id": "pos", "input_rows": 1333448, "accepted_rows": 1333448, "rejected_rows": 0},
+    {"source_id": "crm", "input_rows": 600000, "accepted_rows": 600000, "rejected_rows": 0},
+    {"source_id": "facility", "input_rows": 718390, "accepted_rows": 718390, "rejected_rows": 0},
+    {"source_id": "banquet", "input_rows": 16902, "accepted_rows": 16902, "rejected_rows": 0}
+  ],
+  "rejected_fixtures": [
+    {"id": "REJECT-IDENTITY-OVERLAP", "expected_error": "CRM_IDENTITY_PERIOD_OVERLAP"},
+    {"id": "REJECT-GRADE-OVERLAP", "expected_error": "CRM_GRADE_PERIOD_OVERLAP"},
+    {"id": "REJECT-READONLY-DDL", "expected_error": "Access Denied"},
+    {"id": "REJECT-TRINO-SYSTEM", "expected_error": "Cannot access catalog system"},
+    {"id": "REJECT-TRINO-PASSTHROUGH", "expected_error": "Cannot execute function"}
+  ],
+  "account_matrix": [
+    {"source_id": "pms", "query_account": "pms_readonly", "ingestion_account": "pms_ingest", "source_write": "deny", "trino": "select-only"},
+    {"source_id": "pos", "query_account": "pos_readonly", "ingestion_account": "pos_ingest", "source_write": "deny", "trino": "select-only"},
+    {"source_id": "crm", "query_account": "crm_query", "ingestion_account": "crm_ingest", "source_write": "deny", "trino": "select-only"},
+    {"source_id": "facility", "query_account": "facility_readonly", "ingestion_account": "facility_ingest", "source_write": "deny", "trino": "select-only"},
+    {"source_id": "banquet", "query_account": "banquet_readonly", "ingestion_account": "banquet_ingest", "source_write": "deny", "trino": "select-only"}
+  ],
+  "row_filter": {
+    "scope": "all source business tables",
+    "rule": "property_id = 'SYNTHETIC_HOTEL_001'",
+    "evidence": "all committed source rows are synthetic and belong to the single local property"
+  },
+  "column_mask": {
+    "status": "not_applicable",
+    "reason": "direct identifier columns and direct identifier value formats are prohibited and validated as zero occurrences"
+  }
+}

@@ -4,12 +4,12 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v6.0 |
-| 문서 기준일 | 2026-07-30 11:55 |
-| 작성·수정 | 김재홍·박준희·송민지 |
+| 버전 | v6.8 |
+| 문서 기준일 | 2026-07-30 13:39 |
+| 작성·수정 | 김재홍·박준희·정승·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
-| 대응 템플릿 | `templates/[기획] WBS_양식 (1)_27기_0팀.xlsx`, `templates/[기획] WBS_양식(2)_27기_0팀.xlsx` |
+| 대응 템플릿 | `docs/templates/[기획] WBS_양식 (1)_27기_0팀.xlsx`, `docs/templates/[기획] WBS_양식(2)_27기_0팀.xlsx` |
 
 > 전체 프로젝트 기간 2026-07-10~09-03 · 역할 개편 적용일 2026-07-29 · 5인 · 실행 일정 99개 태스크 · I5 이후 비차단 후속 4건 · 공식 산출물 21건 + 옵션 1건
 >
@@ -53,7 +53,7 @@
 7. 달력상 checkpoint나 부분 구현만으로 병합하지 않고 소비 가능한 산출물·검증·handoff가 준비된 역할 결과만 통합한다.
 8. `fixture 통과`, `MERGED_DEV`, `VERIFIED_GATE`를 별도 상태로 관리한다.
 9. R1은 통합 실패를 원 소유 역할에 반환하고 기능 내부를 대신 고치지 않는다.
-10. I0에서 `app/enterprise-react`를 활성 frontend로 확정했으며 `app/react`와 병행 개발하지 않는다.
+10. `app/react`와 `app/enterprise-react` 중 활성 frontend 하나를 I0에서 결정하기 전에는 양쪽 구현을 병행하지 않는다.
 11. Django와 자유 ReAct loop는 범위에서 제외하고 FastAPI의 고정 상태 전이를 기준으로 한다.
 
 ## Gate·병합 일정
@@ -149,22 +149,22 @@ gantt
 | 1.4 | R1-03 metric·time·schema·API·state·error 공통 계약 | contract version | 박준희 | 차단 | 08/03 | 08/07 | 높음 |
 | 1.5 | R1-04 dev·full·split-host Compose skeleton | 통합 profile | 박준희 | 대기 | 08/03 | 08/07 | 높음 |
 | 1.6 | R1-05 환경변수·Secret 계약 | `.env.example`·secret matrix | 박준희 | 대기 | 08/03 | 08/07 | 높음 |
-| 1.7 | R1-06 역할별 CI·품질 Gate | CI jobs·fail policy | 박준희 | 대기 | 08/03 | 08/07 | 높음 |
+| 1.7 | R1-06 역할별 CI·품질 Gate | CI jobs·fail policy | 박준희 | 진행 | 08/03 | 08/07 | 높음 |
 | 1.8 | R1-08 I1 Contract Freeze 판정 | I1 판정서·fixture 소비 증거 | 박준희 | 대기 | 08/06 | 08/07 | 높음 |
 
 ### 데이터 플랫폼·메타데이터·연합조회
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 2.1 | R2-00 공통 데이터 계약 확인 | source·engine·owner 표 | 정승 | 대기 | 07/29 | 07/31 | 높음 |
-| 2.2 | R2-01 5 source·4 engine registry | source registry | 정승 | 대기 | 07/29 | 07/31 | 높음 |
-| 2.3 | R2-02 논리 모델·grain 정의 | entity 관계·grain | 정승 | 대기 | 07/29 | 07/31 | 높음 |
-| 2.4 | R2-03 물리 schema·DDL·제약·index | versioned DDL | 정승 | 진행 | 07/29 | 08/07 | 높음 |
-| 2.5 | R2-04 deterministic synthetic seed·scenario | seed·scenario manifest | 정승 | 진행 | 07/29 | 08/07 | 높음 |
-| 2.6 | R2-05 customer identity bridge | `customer_identity_map` | 정승 | 진행 | 07/29 | 08/07 | 높음 |
-| 2.7 | R2-06 event-time 회원 등급 이력 | `member_grade_history` | 정승 | 진행 | 07/29 | 08/07 | 높음 |
-| 2.8 | R2-07 데이터 품질·전처리·reject 관리 | DQR·PREP 결과 | 정승 | 대기 | 08/03 | 08/07 | 높음 |
-| 2.9 | R2-08 source·application read-only 계정 요구 | account matrix | 정승 | 진행 | 07/29 | 08/07 | 높음 |
+| 2.1 | R2-00 공통 데이터 계약 확인 | source·engine·owner 표 | 정승 | 완료 | 07/29 | 07/31 | 높음 |
+| 2.2 | R2-01 5 source·4 engine registry | source registry | 정승 | 완료 | 07/29 | 07/31 | 높음 |
+| 2.3 | R2-02 논리 모델·grain 정의 | entity 관계·grain | 정승 | 완료 | 07/29 | 07/31 | 높음 |
+| 2.4 | R2-03 물리 schema·DDL·제약·index | versioned DDL | 정승 | 완료 | 07/29 | 08/07 | 높음 |
+| 2.5 | R2-04 deterministic synthetic seed·scenario | seed·scenario manifest | 정승 | 완료 | 07/29 | 08/07 | 높음 |
+| 2.6 | R2-05 customer identity bridge | `customer_identity_map` | 정승 | 완료 | 07/29 | 08/07 | 높음 |
+| 2.7 | R2-06 event-time 회원 등급 이력 | `member_grade_history` | 정승 | 완료 | 07/29 | 08/07 | 높음 |
+| 2.8 | R2-07 데이터 품질·전처리·reject 관리 | DQR·PREP 결과 | 정승 | 완료 | 07/30 | 08/07 | 높음 |
+| 2.9 | R2-08 source·application read-only 계정 요구 | account matrix | 정승 | 완료 | 07/29 | 08/07 | 높음 |
 | 2.10 | R2-09 DataHub ingestion recipe 5개 | versioned recipes | 정승 | 진행 | 07/29 | 08/21 | 높음 |
 | 2.11 | R2-10 Metadata·owner·domain·tag·lineage 보강 | URN·lineage manifest | 정승 | 대기 | 08/10 | 08/21 | 높음 |
 | 2.12 | R2-11 DataHub typed adapter | search·graph·health adapter | 정승 | 대기 | 08/10 | 08/21 | 높음 |
@@ -222,7 +222,7 @@ gantt
 | 4.18 | R4-17 worker·schedule runtime | 영속 job·같은 요청 한 번만 처리·실패 격리 | 김재홍 | 대기 | 08/24 | 08/28 | 높음 |
 | 4.19 | R4-18 권한·mask·민감정보 가림(redaction) | 보안 검증 증거 | 김재홍 | 대기 | 08/17 | 08/28 | 높음 |
 | 4.20 | R4-19 retention·backup·restore hook | 보존 job·복구 절차 | 김재홍 | 대기 | 08/24 | 09/02 | 높음 |
-| 4.21 | R4-20 health·backend Dockerfile·회귀 | service fragment | 김재홍 | 대기 | 08/24 | 09/02 | 높음 |
+| 4.21 | R4-20 health·backend Dockerfile·회귀 | service fragment | 김재홍 | 검토 | 08/24 | 09/02 | 높음 |
 | 4.22 | R4-21 API·migration·policy release 동결 | backend release manifest | 김재홍 | 대기 | 08/31 | 09/02 | 높음 |
 
 ### 프론트엔드·자동 리포팅
@@ -254,7 +254,7 @@ gantt
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 6.1 | R1-07 필수 30건·gold 120건 평가 원장 관리 | reviewer·split·expected 원장 | 박준희·정승·윤대성 | 대기 | 08/03 | 08/31 | 높음 |
+| 6.1 | R1-07 필수 30건·gold 120건 평가 원장 관리 | reviewer·split·expected 원장 | 박준희·정승·윤대성 | 진행 | 08/03 | 08/31 | 높음 |
 | 6.2 | R1-09 I2 Deterministic Slice 통합·판정 | 대표 질문 trace·result hash | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/10 | 08/14 | 높음 |
 | 6.3 | R1-10 I3 General LLM·보안 기준선 통합 | 일반 질문·model 비교·보안 결과 | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/17 | 08/21 | 높음 |
 | 6.4 | R1-11 I4 Reporting·worker·partial 통합 | Report 왕복 trace | 박준희·김재홍·송민지 | 대기 | 08/24 | 08/28 | 높음 |
@@ -284,8 +284,8 @@ gantt
 | 기획 | 프로젝트 기획서 | **07/24** | 07/23 | 1.2 | 박준희 | 차단 |
 | 데이터 수집 및 저장 | 수집 데이터 보고서 | **07/24** | 07/23 | 2.5 | 정승 | 대기 |
 | 모델 배포 | 화면설계서 | **07/24** | 07/23 | 5.2 | 송민지 | 검토 |
-| 데이터 수집 및 저장 | 데이터베이스/저장소 설계 문서 | **07/31** | 07/30 | 2.4 | 정승 | 진행 |
-| 데이터 전처리 | 데이터 전처리 결과서 | **07/31** | 07/30 | 2.8 | 정승 | 대기 |
+| 데이터 수집 및 저장 | 데이터베이스/저장소 설계 문서 | **07/31** | 07/30 | 2.4 | 정승 | 검토 |
+| 데이터 전처리 | 데이터 전처리 결과서 | **07/31** | 07/30 | 2.8 | 정승 | 검토 |
 | 발표 및 시연 | 중간 발표 PT 자료 | **08/06** | 08/05 | 7.1 | 박준희·전원 | 대기 |
 | 데이터 전처리 | 머신러닝/딥러닝 학습결과서 | **08/07** | 08/05 | 3.10 | 윤대성 | 대기 |
 | 데이터 전처리 | 학습한 ML/DL 모델 | **08/07** | 08/05 | 3.16 | 윤대성 | 대기 |
@@ -343,7 +343,7 @@ gantt
 
 | 항목 | 현재 운용 기준 | 결정 시점 | 결정 책임 |
 |---|---|---|---|
-| 활성 frontend | `app/enterprise-react` 활성, `app/react` 비활성 보존 | I0 결정 완료 | R1·R5 |
+| 활성 frontend | `app/react`와 `app/enterprise-react` 중 하나만 선택 | I0 | R1·R5 |
 | full·dev·split-host | dev로 병렬 개발, full 실패 시 split-host 전환 | I0/I1 | R1 |
 | DataHub·Trino·connector 고정 version | 실행 전 고정하고 manifest 기록 | I1 | R1·R2 |
 | Result Cache 구현 | versioned key 계약 우선, PostgreSQL·Redis는 profile 측정 후 선택 | I1/I3 | R1·R4 |
@@ -358,8 +358,15 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
-| 2026-07-30 11:55 | 1.1~1.4, 5.2, F-01~F-04 | 기획서 v1.1을 기준으로 dev의 최신 일정·Gate·후속 백로그와 minji의 요구사항·화면설계 근거를 통합하고 문서 간 버전 참조를 동기화했다. 일정·담당·실행 상태는 dev v5.9를 유지했다. | 문서 계약 통합 |
+| 2026-07-30 13:39 | 1.4, 2.10 | R2-W1-F1 READY 카드 `9925a88`이 최신 `origin/dev=4527375`에 이미 포함된 것을 확인하고 보고된 fragment 3개 파일만 commit·seung push하도록 허가했다. 최신 `origin/seung=cd8fdfc`에는 아직 제출되지 않아 R2-09 진행과 R1-03 차단을 유지하며 일정·간트 날짜는 변경하지 않았다. | R2 제출 허가 |
+| 2026-07-30 12:56 | 1.4, 4.21 | `origin/jaehong` handoff `06632fa`의 backend image·non-root·health·OpenAPI와 backend 17건·AI 15건·data 7건·integration 1건을 R1이 독립 검토해 R4-20을 검토로 전환했다. 허용 경로 밖 application DDL 분리·dev 통합·combined database readiness와 R2·R5 follow-up 전 R1-03 차단은 유지하며 일정·간트 날짜는 변경하지 않았다. | R4 I1 제출 검토 |
+| 2026-07-30 12:36 | 1.4, 2.10, 4.21, 5.2, 5.19 | R2-W1-F1·R4-W1-F1·R5-W1-F1을 READY로 발행해 역할별 허용 경로·완료 증거·검증·중단 조건을 고정했다. 대표 질문·metric은 승인 전 N/A로 유지하고 follow-up 결과 검증 전 기존 WBS 상태는 변경하지 않았다. | I1 보완 실행 허가 |
+| 2026-07-30 12:32 | 1.4 | R3 model serving Dockerfile·실행 manifest는 I1 필수가 아니며 in-process fake adapter로 계약을 검증하고 R3-W3에서 제출하도록 판정했다. R3 service fragment blocker만 해제하고 R2·R4·R5 보완 대기로 R1-03 차단은 유지한다. | I1 blocker 범위 정정 |
+| 2026-07-30 12:03 | 1.4 | R2 schema·seed·scenario와 R3 model I/O·prompt·fixture를 I1 입력으로 승인했다. R4·R5는 기존 Wave 1 계약 결함 재작업만 허가하고 clean package·runtime·typed contract·금지 route 차단·build 증거 도착 전 R1-03 차단과 Wave 2 불허를 유지한다. | R1 계약 승인·재작업 허가 |
+| 2026-07-30 11:53 | 1.7, 6.1 | R1-03 차단 중 독립 진행 가능한 현재 Python producer·integration·문서 검증 CI baseline과 필수 30·gold 120 평가 원장 schema를 추가했다. 역할별 service build와 실제 평가 case는 handoff 대기로 남긴다. | R1 독립 기반 진행 |
+| 2026-07-30 11:35 | 1.4 | 최신 통합 SHA에서 R2 data, R3 model I/O·prompt·fixture, R4 OpenAPI/state/error 계약을 확인했다. R5 typed UI·Report 계약과 P2·고객 360 route 차단 증거, R2~R5 service fragment는 미도착으로 R1-03 차단을 유지한다. | I1 계약 부분 입력·차단 유지 |
 | 2026-07-30 10:49 | 1.1~1.2 | 재검토 결과를 반영해 `01_요구사항정의서.md`와 공식 XLSX의 대분류·75개 ID·본문을 v1.1로 양방향 동기화하고 최신 WBS·화면설계 참조와 XLSX 유효 데이터 범위 `A1:G79`·전체 시트 렌더링을 재검증 | 공식 요구사항 산출물 |
+| 2026-07-30 10:41 | 2.1~2.9 | R2-W1의 5 source·4 engine·18 entity registry, DDL·seed state manifest, CRM identity·event-time 중첩 차단, DQR/PREP·reject, Trino read-only 정책을 구현하고 정적 7건·live DB 계약 검증을 통과했다. I1 통합 판정은 R1 검토 대기로 유지한다. | R2-W1 생산자 검증 |
 | 2026-07-30 10:36 | 1.1~1.4 | `app/enterprise-react`를 활성 frontend로 확정하고 R1-00~02의 기준·범위·소유권 원장을 작성했다. R1-03은 R3 model과 R5 UI·Report contract 미도착으로 차단했다. | I0 결정·I1 계약 대기 |
 | 2026-07-30 10:25 | 1.1 | R1~R5 Wave 1 실행 묶음의 기준 SHA를 현재 `dev`의 `2c2779d23738038d5cd0560cffa70c5b509991c3`으로 교정하고 개인 branch 기준 포함 여부를 확인 | 역할·실행 기준 |
 | 2026-07-30 09:54 | 1.1~1.2 | 첨부 요구사항 템플릿의 1시트·7열·병합 헤더·그룹 형식을 유지해 요구사항 75개를 `docs/deliverables/01_요구사항정의서_29기_3팀.xlsx` v1.0으로 변환하고 전체 시트 렌더링·ID·값을 검증 | 공식 요구사항 산출물 |
@@ -382,8 +389,16 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
-| v6.0 | 2026-07-30 11:55 | 기획 v1.1 방향에 맞춰 dev v5.9의 일정·Gate·I5 이후 후속 백로그와 요구사항·화면설계 산출물 근거를 통합하고 활성 frontend 및 문서 참조를 동기화 |
+| v6.8 | 2026-07-30 13:39 | R2-W1-F1 지정 파일의 commit·seung push 허가 근거를 1.4·2.10에 연결하고 제출 전 상태와 일정은 유지 |
+| v6.7 | 2026-07-30 12:56 | R4 handoff 독립 검토 근거를 1.4·4.21에 연결하고 R4-20을 검토로 전환했으며 I1 차단과 기존 일정은 유지 |
+| v6.6 | 2026-07-30 12:36 | R2·R4·R5 I1 follow-up READY 발행 근거를 1.4·2.10·4.21·5.2·5.19에 연결하고 검증 전 상태 유지 |
+| v6.5 | 2026-07-30 12:32 | R3 Dockerfile·실행 manifest를 I1 비필수·R3-W3 제출로 판정하고 R1-03 blocker 범위를 R2·R4·R5 보완 대기로 정정 |
+| v6.4 | 2026-07-30 12:03 | R2·R3 I1 입력 승인과 R4·R5 Wave 1 재작업 허가, R1-03 차단·Wave 2 불허 판정을 작업 근거에 반영 |
+| v6.3 | 2026-07-30 11:53 | R1-03 차단 중 선행한 R1-06 Python CI baseline과 R1-07 평가 원장 schema를 진행 상태와 근거로 반영 |
+| v6.2 | 2026-07-30 11:35 | R1-03의 R2·R3·R4 계약 도착과 R5 UI·Report·route 및 역할별 service fragment 차단 근거를 최신 통합 SHA에서 재판정 |
+| v6.1 | 2026-07-30 11:28 | R1·R2 통합 WBS에 R5 요구사항·화면설계 산출물 근거를 시간순으로 통합 |
+| v6.0 | 2026-07-30 11:20 | R1 I0 결정·계약 대기 기록과 R2-W1 생산자 검증 결과를 시간순으로 통합 |
 | v5.9 | 2026-07-30 10:36 | 활성 frontend·범위·소유권 결정 완료와 R1-03 계약 입력 차단 상태를 WBS 1.1~1.4에 반영 |
 | v5.8 | 2026-07-30 10:25 | Wave 1 실행 묶음의 기준 SHA 교정 근거를 WBS 1.1 작업 로그에 반영 |
 | v5.7 | 2026-07-30 09:55 | 최신 dev의 R4 Control Plane 진행 근거와 기획·실행 절차 교정 및 I5 이후 후속 백로그를 충돌 없이 통합 |
-| v5.6 | 2026-07-30 09:32 | 실제 착수일을 작업 로그와 맞추고, 실행 절차 누락을 교정하며 P2·고객 360 후속 백로그와 구형 공식 제출본 동기화 필요를 명시 |
+| v5.4 | 2026-07-29 17:35 | R2 DB bootstrap 진행 근거를 보존하면서 4개 통합 Wave와 상세 실행 카드 운영 기준을 통합 |

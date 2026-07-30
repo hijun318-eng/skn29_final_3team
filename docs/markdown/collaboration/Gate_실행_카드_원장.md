@@ -303,7 +303,7 @@ Wave 2는 I1에서 동결한 계약과 fake를 기준으로 대표 질문의 det
 - 입력: I1 OpenAPI/state/error, R2 adapter, R3 fake, R5 상태 fixture
 - 수정 범위: R4 기본 경로
 - 완료 조건: 대표 질문과 재질문·차단·timeout·partial이 고정 상태 전이로 재현되고 Context Package가 최대 8 dataset·60 column·6k token/25% 상한을 지키며 Gate 우회·repair 2회·G3 실패 Artifact가 차단됨
-- 검증: `python -m compileall app/fastapi src/backend src/control_plane`, `python -m unittest discover -s tests/backend -p "test_*.py"`, `git diff --check`
+- 검증: `python -m compileall app/backend`, `python -m unittest discover -s tests/backend -p "test_*.py"`, `git diff --check`
 - handoff: R5에 OpenAPI example·상태 fixture·Artifact contract, R1에 request→artifact trace 전달
 - 중단: R2/R3 contract 불일치, migration 다중 head, 불법 상태 전이 또는 contract test 실패
 

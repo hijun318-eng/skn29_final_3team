@@ -21,6 +21,8 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     connectable = engine_from_config(config.get_section(config.config_ini_section) or {}, prefix="sqlalchemy.", poolclass=pool.NullPool)
     with connectable.connect() as connection:
+        connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS governance")
+        connection.commit()
         context.configure(connection=connection, include_schemas=True, version_table_schema="governance")
         with context.begin_transaction():
             context.run_migrations()

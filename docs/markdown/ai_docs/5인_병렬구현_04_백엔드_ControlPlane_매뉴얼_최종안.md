@@ -1,12 +1,13 @@
 # 역할 4 — 백엔드 Control Plane 매뉴얼
 
 > 문서 상태: 팀 확정용 최종안
-> 작성 기준일: 2026-07-29
+> 작성 기준일: 2026-07-30
 > 담당자: 김재홍
 > 개인 브랜치: `jaehong`
 > 역할 ID: `R4`
 > 기준 기획서: `docs/Answervice_기획서.md`
 > 통합 일정: `docs/markdown/ai_docs/5인_병렬구현_통합일정_20260729-20260903.md`
+> 쉬운 용어: Gate는 통과 검사, fixture는 고정 테스트 데이터, Artifact는 검증 결과물, trace는 처리 기록을 뜻한다.
 
 ## 0. 역할 한 문장
 
@@ -29,7 +30,7 @@
 - SQL Plan Cache와 Result Cache
 - application PostgreSQL model과 단일 Alembic chain
 - R5 Report module 등록과 분석 실행 contract
-- Report worker runtime·queue·schedule trigger·idempotency
+- Report 영속 job store·worker 1개·schedule trigger·중복 실행 방지(idempotency)
 - backend·worker Dockerfile, health/readiness, service test command
 - 접근 정책 강제·mask/redaction 증거와 backend 보안 test
 
@@ -77,6 +78,7 @@ ADAPTER_VERSION=<R2/R3 adapter 계약>
 FIXTURE_VERSION=<test fixture>
 ALLOWED_PATHS=<R4 허용 경로>
 FORBIDDEN_PATHS=<다른 역할 소유 경로>
+EXTERNAL_ACTION_PERMISSION=<설치·외부 배포·데이터 전송·secret·Git 권한>
 ACCEPTANCE_CRITERIA=<완료 조건>
 TEST_COMMANDS=<검증 명령>
 STOP_CONDITIONS=<Gate 도달·범위 밖 변경·계약 충돌·검증 실패>
@@ -143,7 +145,7 @@ Node 2′ 수정은 한 번만 허용하며 Cache·Template·worker도 Gate를 �
 | R4-14 | SQL/Result Cache | versioned cache keys | Gate 우회·권한 공유 0건 |
 | R4-15 | Audit·Trace·관측 | linked trace | request→context→query→artifact |
 | R4-16 | Report integration | analysis run contract | R5 router/module 등록 |
-| R4-17 | Worker·schedule runtime | queue consumer·idempotency | retry·duplicate·dead-letter |
+| R4-17 | Worker·schedule runtime | 영속 job·worker·중복 실행 방지 | retry·중복·실패 격리; 외부 queue는 필요할 때만 |
 | R4-18 | 권한·mask·redaction | enforcement evidence | 원문 PII·secret 노출 0건 |
 | R4-19 | retention·backup/restore hook | 보존 job·백업/복구 절차 | 삭제·복구·RPO/RTO 측정 가능 |
 | R4-20 | health·Dockerfile·회귀 | service fragment | R1 profile smoke 가능 |
@@ -160,14 +162,26 @@ conversation_id
 user_id
 role
 entitlement_hash
+route_type
 as_of
 timezone
+time_policy_version
 contract_version
 context_release
 policy_version
+template_id 또는 sql_plan_cache_key
+sql_generation_model_version
+sql_policy_version
+g1_result
+g2_result
+query_execution_id 또는 result_cache_key
+g3_result
+artifact_id
 ```
 
 인증되지 않은 role, 누락된 `as_of`, 잘못된 contract version은 모델 호출 전에 차단한다.
+
+보고서 요청에는 `report_definition_version`, `report_plan_id`, `report_run_id`를 더한다. 아직 만들어지지 않은 ID는 미리 채우지 않고, 해당 단계가 끝날 때 같은 `request_id` trace에 연결한다.
 
 초기 role:
 
@@ -202,6 +216,8 @@ CONTEXT_BUILT
 G1_PASSED / G1_FAILED
 SQL_SELECTED
 G2_PASSED / G2_REPAIRABLE / G2_FAILED
+RESULT_CACHE_CHECKED
+RESULT_CACHE_HIT / RESULT_CACHE_MISS
 QUERY_RUNNING
 QUERY_SUCCEEDED / QUERY_PARTIAL / QUERY_FAILED
 SHAPED
@@ -213,11 +229,15 @@ ARTIFACT_SAVED
 필수 불변식:
 
 - G1 통과 전 SQL 선택 금지
-- G2 통과 전 실행·Cache result 사용 금지
+- G2 통과 전 실행·Result Cache 사용 금지
 - repair count는 최대 1
+- Result Cache miss에서만 Trino 실행
+- Result Cache hit도 권한 범위(entitlement)와 G3 재검증
 - G3 통과 전 Node 3 호출과 성공 Artifact 금지
 - 부분 실패를 전체 성공으로 전이 금지
 - timeout·cancel 뒤 query terminal state 확인
+- 한 요청의 LLM 호출은 최대 4회이며 데모 동시 실행은 2건으로 제한
+- 동시 실행 2건을 넘으면 대기시키거나 `429 RATE_LIMITED` 반환
 
 ### 5.3 Context Builder와 G1
 
@@ -227,7 +247,9 @@ Context Builder:
 2. 권한 없는 asset을 model 입력 전에 제거한다.
 3. metric, time, dimension history, JOIN, selected columns, examples 순으로 구성한다.
 4. `context_release`, policy/time version, entitlement hash, URN/FQN, token count, hash를 기록한다.
-5. token 한도 초과 시 권한·시간·JOIN 정책은 제거하지 않는다.
+5. 승인된 Context release는 수정하지 않는다. 변경이 필요하면 새 version을 만들고 approver·published_at·hash·rollback target을 기록한다.
+6. 초기 상한은 최대 8개 dataset, 60개 column, `min(6,000 tokens, 모델 유효 context의 25%)`다.
+7. token 한도 초과 시 권한·시간·JOIN 정책은 제거하지 않는다. asset 후보를 줄이거나 사용자에게 범위를 다시 묻는다.
 
 G1:
 
@@ -254,8 +276,9 @@ G2 검사:
 - Context의 catalog/schema/table/column allowlist
 - 승인 JOIN과 cardinality·temporal condition
 - parameter binding과 시간 함수 금지
+- DDL·DML·procedure·passthrough query·외부 함수·`system` catalog 차단
 - hard LIMIT·resource policy
-- 필요 시 EXPLAIN
+- 실행 전 Trino `EXPLAIN (TYPE VALIDATE|IO)` 검사
 - 내부 오류를 정규화한 안전 코드
 
 `G2_REPAIRABLE`만 R3 Node 2′에 전달하고 G2′ 재실패 시 종료한다.
@@ -295,7 +318,7 @@ Result Cache key:
 sql_hash + entitlement_hash + as_of + source_watermark_set + row_filter/mask
 ```
 
-Cache hit에서도 G1·G2·G3를 생략하지 않는다. role·policy·watermark가 바뀌면 공유하지 않는다.
+Template·SQL Plan Cache 경로도 G1·G2를 통과한다. Result Cache는 G1·G2 뒤에 확인하며, hit에서도 사용자 권한 범위와 G3를 다시 확인한다. role·policy·`as_of`·watermark·row filter·mask가 바뀌면 공유하지 않는다.
 
 ### 5.7 Artifact·Report·Worker
 
@@ -318,8 +341,10 @@ Report 연계:
 Worker:
 
 - manual과 schedule이 같은 실행 경로를 사용한다.
-- idempotency key 없이 비동기 job을 받지 않는다.
-- attempt·retry·dead-letter·cancel을 기록한다.
+- 영속 job store와 worker 1개로 시작한다.
+- 같은 요청을 여러 번 받아도 한 번만 처리하기 위한 idempotency key 없이 비동기 job을 받지 않는다.
+- attempt·retry·실패 격리(dead-letter와 같은 역할)·cancel을 기록한다.
+- 외부 queue는 동시 실행·재시도 병목이 실제로 확인될 때만 분리한다.
 - 같은 job 재전달로 중복 Artifact가 생기지 않게 한다.
 - 스케줄 시작 시 하나의 `as_of`를 모든 block에 고정한다.
 - block 실패를 전체 성공으로 저장하지 않는다.
@@ -331,6 +356,7 @@ Worker:
 - R1은 Compose profile에서 backup·restore를 실행하고 실제 RPO/RTO를 측정한다.
 - 삭제·mask·retention 변경은 role·policy version과 audit를 남긴다.
 - backup에는 secret을 포함하지 않고 checksum·schema version·migration head를 기록한다.
+- backup은 암호화하고 암호화 key는 backup 파일과 다른 위치·권한으로 관리한다.
 - restore 후 request→artifact→report trace와 대표 result checksum을 검증한다.
 
 ## 6. 보안·관측·장애
@@ -353,6 +379,10 @@ Worker:
 - 민감 SQL parameter
 - stack trace와 내부 allowlist
 
+외부 model endpoint에는 승인된 질문, Context Package와 꼭 필요한 최소 metadata만 전달한다. 실제 고객 원문, credential, 민감 parameter와 불필요한 sample value는 보내지 않는다. 별도 데이터 전송 승인이 있는 경우에만 합성·마스킹 여부와 전송 범위를 audit에 남긴다.
+
+OpenTelemetry trace·metric·log로 `request → context → model → Trino/cache → artifact → report`를 연결한다. 필수 Gate checkpoint는 먼저 저장하고, 세부 관측 로그는 나중에 비동기로 기록할 수 있다.
+
 장애 fixture:
 
 - DataHub 검색 지연·없음
@@ -363,7 +393,18 @@ Worker:
 - Cache stale watermark
 - Report block 일부 실패
 
-## 7. 인수인계
+## 7. I5 이후 후속 단계
+
+아래 작업은 현재 I5 완료 조건이 아니다. I5 이후 R1이 별도 실행 묶음을 발행할 때 시작한다.
+
+| 후속 ID | R4 책임 |
+|---|---|
+| F-01 MCP Tool Registry | Tool I/O·권한·timeout·오류·감사 계약과 호출 Gate |
+| F-02 문서 RAG | 문서별 권한 확인, 인용 trace, SQL 근거와 문서 근거 분리 |
+| F-03 ML-as-a-Tool | model·feature version 확인, Tool Gate, 예측 결과 trace |
+| F-04 고객 360 | 고객 scope 고정, role·row filter·column mask·감사 강제 |
+
+## 8. 인수인계
 
 | 받는 역할 | R4 전달물 |
 |---|---|
@@ -384,7 +425,7 @@ OpenAPI/consumer handoff:
 미실행·남은 위험:
 ```
 
-## 8. 병합 패키지
+## 9. 병합 패키지
 
 | 패키지 | 완료 범위 | 소비자 |
 |---|---|---|
@@ -396,18 +437,19 @@ OpenAPI/consumer handoff:
 
 R5 Report migration proposal은 먼저 독립 module로 병합하고, R4가 최신 `dev`에서 migration head와 router 등록을 별도 작은 패키지로 처리한다.
 
-## 9. 최종 체크리스트
+## 10. 최종 체크리스트
 
 - [ ] FastAPI/OpenAPI/state/error contract가 versioned다.
 - [ ] Controller가 고정 상태 전이이며 자유 Tool loop가 없다.
 - [ ] 모든 SQL 출처가 G1·G2를 통과한다.
+- [ ] DDL·DML·procedure·passthrough·`system` catalog가 차단되고 실행 전 `EXPLAIN`이 통과한다.
 - [ ] Node 2′ 수정은 최대 1회다.
 - [ ] timeout·cancel 뒤 query terminal state를 확인한다.
 - [ ] G3 실패 후 설명·성공 Artifact가 생성되지 않는다.
 - [ ] Cache hit가 Gate·권한·watermark를 우회하지 않는다.
-- [ ] request→context→model/policy→query→artifact→report trace가 연결된다.
+- [ ] 기획서 §7.5의 필수 ID와 request→context→model/policy→query/cache→artifact→report trace가 연결된다.
 - [ ] Report router와 migration이 단일 chain에 등록된다.
-- [ ] worker 중복·retry·dead-letter·부분 실패 test가 통과한다.
+- [ ] 영속 job·worker의 중복·retry·실패 격리·부분 실패 test가 통과한다.
 - [ ] read-only·mask·redaction negative test가 통과한다.
-- [ ] retention job과 backup/restore hook이 R1 통합 시험에서 재현된다.
+- [ ] 암호화 backup·분리 key·restore hook과 실제 RPO/RTO가 R1 통합 시험에서 재현된다.
 - [ ] backend·worker Dockerfile과 health가 R1 Compose에서 재현된다.

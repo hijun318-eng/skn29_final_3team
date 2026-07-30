@@ -199,3 +199,20 @@ class CrmCustomerMap(Base):
     pms_guest_id: Mapped[str] = mapped_column(String(36))
     pos_customer_ref: Mapped[str] = mapped_column(String(36), default="")
     is_synthetic: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class AuditEvent(Base):
+    """감사 이벤트 — 기획서 §17.2 감사 항목.
+
+    모든 /api/v1/ 요청에 대해 request_id, 사용자, 엔드포인트, 상태를 기록한다.
+    """
+    __tablename__ = "audit_event"
+
+    event_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    request_id: Mapped[str] = mapped_column(String(36), default="")
+    user_id: Mapped[str] = mapped_column(String(64), default="")
+    endpoint: Mapped[str] = mapped_column(String(128), default="")
+    method: Mapped[str] = mapped_column(String(8), default="GET")
+    status_code: Mapped[int] = mapped_column(Integer, default=200)
+    timestamp: Mapped[str] = mapped_column(String(32), default="")
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)

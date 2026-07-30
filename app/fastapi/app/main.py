@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+from __future__ import annotations
+
 import sys
+import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncIterator
+from uuid import uuid4
 
 # 프로젝트 루트와 src/를 sys.path에 추가하여 src.* import 가능
 # main.py 위치: skn29_final_3team/app/fastapi/app/main.py → 3번 parent = skn29_final_3team/
@@ -15,8 +20,9 @@ for p in (_root, _src):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.agent_query import router as agent_query_router
@@ -25,7 +31,9 @@ from app.api.incident_runs import router as incident_runs_router
 from app.api.public import router as public_router
 from app.api.quality_gates import router as quality_gates_router
 from app.api.query_runs import router as query_runs_router
+from app.database import Base, SessionLocal, engine
 from app.llm.gateway import LLMGateway
+from app.models import AuditEvent
 from app.settings import DATABASE_URL, DJANGO_API_URL, SENSEPLACE_LLM_PROVIDER
 
 # ---------------------------------------------------------------------------
@@ -39,7 +47,49 @@ llm_gateway: LLMGateway | None = None
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     global llm_gateway  # noqa: PLW0603
     llm_gateway = LLMGateway()
+    # 감사 로그 등 신규 테이블 자동 생성
+    Base.metadata.create_all(engine)
     yield
+
+
+# ---------------------------------------------------------------------------
+# FastAPI 앱
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# 감사 미들웨어 (기획서 §17.2)
+# ---------------------------------------------------------------------------
+
+
+class AuditMiddleware(BaseHTTPMiddleware):
+    """모든 /api/v1/ 요청을 audit_event 테이블에 기록한다."""
+
+    async def dispatch(self, request: Request, call_next):
+        start = time.monotonic()
+        response = await call_next(request)
+        duration_ms = int((time.monotonic() - start) * 1000)
+
+        if request.url.path.startswith("/api/v1/"):
+            session = request.scope.get("session", {})
+            db = SessionLocal()
+            try:
+                db.add(AuditEvent(
+                    event_id=str(uuid4()),
+                    request_id=response.headers.get("x-request-id", str(uuid4())),
+                    user_id=session.get("user_id", ""),
+                    endpoint=request.url.path,
+                    method=request.method,
+                    status_code=response.status_code,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    duration_ms=duration_ms,
+                ))
+                db.commit()
+            except Exception:
+                db.rollback()
+            finally:
+                db.close()
+
+        return response
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +102,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS + 세션 (엔터프라이즈 프론트엔드 공개 API용)
+# 미들웨어 (등록 역순 실행: Session → CORS → Audit → 앱)
+app.add_middleware(AuditMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:4173", "http://localhost:3000"],

@@ -23,9 +23,9 @@ router = APIRouter(prefix="/api/v1", tags=["public"])
 # DB 경로 (Django db.sqlite3)
 # ---------------------------------------------------------------------------
 
-# public.py: app/fastapi/app/api/public.py → parent x4 = app/ (skn29_final_3team/app/)
-_APP_DIR = Path(__file__).resolve().parent.parent.parent.parent
-_DB_PATH = _APP_DIR / "django" / "db.sqlite3"
+# public.py: app/fastapi/app/api/public.py → parent x3 = app/fastapi/
+_FASTAPI_DIR = Path(__file__).resolve().parent.parent.parent
+_DB_PATH = _FASTAPI_DIR / "data.db"
 
 
 def _db() -> sqlite3.Connection:

@@ -43,6 +43,7 @@ Thumbs.db
 # Local SQLite database (dev fallback)
 db.sqlite3
 db.sqlite3-journal
+app/fastapi/data.db
 
 # Code intelligence index
 .codegraph/

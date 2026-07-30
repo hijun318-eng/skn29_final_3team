@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.6 |
-| 문서 기준일 | 2026-07-30 11:35 |
+| 버전 | v1.8 |
+| 문서 기준일 | 2026-07-30 12:03 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -140,17 +140,20 @@ TASK_CARD_RANGE=R1-00~08
 CURRENT_TASK_CARD_ID=R1-03
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=5df4e535eaa4abb01fe6721e3eacd13bd79d9d7a
+BASE_SHA=980f8fbf23999f418e0ba6520ac15226654033c1
 I0_DECISION_VERSION=DRAFT-I0-v0.2
 CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
 PROMPT_VERSION=DRAFT-PROMPT-v0.1
 MODEL_FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
-BLOCKER=R5 typed client·UI·Report contract 및 P2·고객 360 route 차단 증거 미도착, R2~R5 root Compose Dockerfile·health service fragment 미도착
+BLOCKER=R4 clean package·runtime 검증 및 R5 typed client·UI·Report contract·금지 route 차단·build 증거 미도착, R2~R5 root Compose Dockerfile·health service fragment 미도착
+R1_APPROVED_INPUTS=R2 schema 1.0.0·seed 20260729·scenario 1.0.0; R3 model I/O DRAFT-MODEL-v0.1·prompt DRAFT-PROMPT-v0.1·fixture DRAFT-MODEL-FIXTURE-v0.1
+R1_REWORK_AUTHORIZATION=R4-W1·R5-W1 기존 소유 경로의 계약 결함 수정·재제출만 허가, 신규 기능·Wave 2 불허
+INDEPENDENT_PROGRESS=R1-06 현재 Python producer·integration·문서 검증 CI baseline, R1-07 필수 30·gold 120 평가 원장 schema
 ALLOWED_PATHS=AGENTS.md; compose*.yml; .env.example; .github/**; .githooks/**; tests/integration/**; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/ai_docs/5인_병렬구현_*
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=I0 역할·범위·소유권·full/dev/split-host 결정과 I1 공통 계약·Compose skeleton·env·CI·fake 소비 가능 판정, 필수 30·gold 120 원장 schema/reviewer/split 계획
-TEST_COMMANDS=python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/02_WBS.md; python .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md; git diff --check
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests; python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/02_WBS.md docs/markdown/collaboration/Gate_실행_카드_원장.md docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md docs/markdown/collaboration/I1_평가_원장.md; python .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md; python .agents/skills/update-project-reports/scripts/validate_reports.py docs/markdown/daily_reports/junhee/일일보고.md --date 20260730; git diff --check
 STOP_CONDITIONS=I1 종료 조건 도달; 역할 밖 구현 필요; 미해결 계약 충돌; 통합 검증 실패
 EXTERNAL_ACTION_PERMISSION=설치·비용·배포·데이터 전송·stage·commit·push·merge 불가
 ```
@@ -455,6 +458,8 @@ EXTERNAL_ACTION_PERMISSION=<설치·비용·배포·데이터 전송·Git 권한
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.8 | 2026-07-30 12:03 | R2·R3 I1 입력을 승인하고 R4·R5 기존 Wave 1 재작업만 허가했으며 I1 Freeze·Wave 2는 보류 |
+| v1.7 | 2026-07-30 11:53 | R1-W1 기준을 최신 `dev` SHA로 갱신하고 R1-03 차단 중 독립 진행한 Python 통합 CI와 필수 30·gold 120 평가 원장 schema를 기록 |
 | v1.6 | 2026-07-30 11:35 | R1-W1 기준을 최신 통합 `dev` SHA로 갱신하고 R2~R5를 `MERGED_DEV`로 정합화했으며 R2·R3·R4 계약 도착과 R5 UI·Report·route 및 역할별 service fragment 차단 근거를 반영 |
 | v1.5 | 2026-07-30 10:25 | R1~R5 Wave 1의 `BASE_SHA`를 현재 `dev` 기준 SHA `2c2779d23738038d5cd0560cffa70c5b509991c3`으로 교정하고, 활성 frontend 결정 후 R1-00~02 완료·R1-03 계약 입력 대기를 기록 |
 | v1.4 | 2026-07-30 09:32 | Wave 1 기준 SHA를 현재 `dev`로 교정하고 LoRA 비교·worker·backup 절차와 I5 이후 F-01~F-04 비차단 후속 단계를 동기화 |

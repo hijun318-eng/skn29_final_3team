@@ -4,13 +4,13 @@
 |---|---|
 | 문서 설명 | DataHub Core 기반 대화형 데이터 분석·자동 리포팅 서비스의 최종 기획서 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.0 |
-| 문서 기준일 | 2026-07-28 16:55 |
-| 작성·수정 | 윤대성 |
+| 버전 | v1.1 |
+| 문서 기준일 | 2026-07-30 09:32 |
+| 작성·수정 | 윤대성 / 3팀 사용자 요청·Codex 반영 |
 
 > 문서 상태: 최종 기획서  
-> 문서 버전: v1.0 — 최종 논리 아키텍처·런타임 Context 조회·Gate·Cache 계약 반영  
-> 작성 기준일: 2026-07-28  
+> 문서 버전: v1.1 — 후속 단계·LoRA 기준선·실행 절차 정합성 보정
+> 작성 기준일: 2026-07-30
 > 적용 데이터: 워커힐 호텔 앤 리조트 운영 환경을 모사한 합성 데이터  
 > 대상 독자: 기획자, 데이터 엔지니어, AI 엔지니어, 프론트엔드·백엔드 개발자, 프로젝트 심사자
 
@@ -20,6 +20,21 @@
 - **가정**: 구현 계획을 구체화하기 위해 둔 전제이며 검증 결과에 따라 변경 가능
 - **권고**: 현재 제약에서 가장 현실적인 우선안
 - **추가 결정**: 비교·실측 또는 권한 있는 이해관계자의 승인이 필요한 항목
+
+## 자주 쓰는 말을 쉽게 풀면
+
+| 용어 | 이 문서에서 뜻하는 것 |
+|---|---|
+| Context Package | 질문에 답할 때 써도 되는 데이터·지표·JOIN·권한 정보를 한 묶음으로 정리한 것 |
+| G1·G2·G3 | 각각 데이터 근거, SQL 안전성, 조회 결과를 확인하는 세 번의 검사 |
+| Artifact | 질문·조건·출처·검증 결과를 함께 보관한 분석 결과물 |
+| fixture | 같은 테스트를 반복할 수 있게 고정한 테스트 데이터 |
+| trace | 한 요청이 Context·SQL·조회·결과·보고서를 거친 기록 |
+| versioned | 누가 어떤 버전을 썼는지 다시 확인할 수 있게 버전 번호를 붙인 상태 |
+| immutable | 승인 뒤 기존 내용을 고치지 않고, 바꿀 때 새 버전을 만드는 방식 |
+| idempotency | 같은 요청이 여러 번 와도 결과를 한 번만 만드는 성질 |
+| rollback | 문제가 생겼을 때 이전에 검증된 버전으로 되돌리는 절차 |
+| Base·LoRA | Base는 기본 모델, LoRA는 SQL 생성 성능을 비교하기 위한 추가 학습 adapter |
 
 ---
 
@@ -44,8 +59,8 @@
 |---:|---|
 | P0 | 런타임 Context 조회, G1·G2·G3, 읽기 전용 Text-to-SQL, Cache·Result Shaper, 결과·출처·차트, 챗↔보고서 왕복, 수동·스케줄 실행 |
 | P1 | 5개 데이터 소스의 ingestion·카탈로그·커넥션 상태와 Context Layer 승인·버전 관리 |
-| P2 | MCP Tool 관리, 사내 운영 문서 RAG, ML-as-a-Tool |
-| 선택 | 고객 360은 공통키·마스킹·권한 준비와 핵심 일정 영향을 검토한 뒤 별도 결정 |
+| P2 후속 | MCP Tool 관리, 사내 운영 문서 RAG, ML-as-a-Tool은 I5 이후 별도 Gate로 착수하며 현재 P0/P1·I5 완료선에 포함하지 않음 |
+| 후속 | 고객 360은 공통키·마스킹·권한·감사 준비 후 I5 이후 별도 단계로 구현하며 현재 P0/P1·I5 완료선에 포함하지 않음 |
 
 워커힐 운영 환경은 실제 데이터가 아닌 합성 데이터로 모사하며, 특정 기업 성과를 주장하기 위한 사례가 아니라 이기종 데이터 연결 구조를 검증하기 위한 사례다.
 
@@ -82,9 +97,9 @@ DataHub 설치나 화면 시연이 아니라, 다음 경로가 추적 가능하�
 | Trino | 검증된 SQL로 5개 소스 읽기 | 5개 catalog·type mapping·읽기 계정 검증 후 | 단독 조회와 업무상 2~3개 소스 교차 조회 정확도·안정성 충족 |
 | 선택적 배치 적재 | 반복되는 고비용 교차 조회의 최소 파생 데이터셋 | p95·scan·원본 부하 병목을 실측한 뒤 | 해당 질의의 안정성·비용 개선 |
 | 보고서 스케줄 | 승인된 보고서 정의의 반복 실행 | 수동 실행과 부분 실패 처리가 안정된 뒤 | 동일 정의 버전의 재현 가능한 실행 |
-| MCP Tool 관리·문서 RAG·ML Tool | P2 선택 Tool 확장 | P0/P1 핵심 경로가 안정된 뒤 | Tool별 권한·버전·오류·평가 계약 통과 |
+| MCP Tool 관리·문서 RAG·ML Tool | P2 후속 Tool 확장 | I5 이후 별도 Gate 승인 시 | Tool별 권한·버전·오류·평가 계약 통과 |
 | ONNX | P2 ML 모델의 서빙 형식 후보 | 모델·런타임·입출력 계약이 확정된 뒤 | 동일 품질에서 지연·메모리·운영성 개선 |
-| 고객 360 | 선택 범위의 고객 단위 내부 분석 | 공통키·중복 식별·마스킹·권한·감사 완료 후 | 핵심 MVP를 지연하지 않을 때 별도 승인 |
+| 고객 360 | 후속 단계의 고객 단위 내부 분석 | I5 이후 공통키·중복 식별·마스킹·권한·감사 완료 후 | 별도 단계의 수용 기준과 일정을 승인 |
 
 ### 1.6 승인 시 확인할 핵심
 
@@ -93,7 +108,7 @@ DataHub 설치나 화면 시연이 아니라, 다음 경로가 추적 가능하�
 | 핵심 차별점 | DataHub 자체가 아니라 승인·버전·token 제한을 가진 Context Layer와 SQL Guardrail, 분석 산출물의 보고서 재사용 |
 | 데이터 구성 | 5개 논리 사일로, 4종 DB 엔진, 5개 DataHub recipe·Trino catalog |
 | 실행 엔진 | Trino 잠정 확정; 단계 0에서 connector·type·read-only·2~3-source JOIN 검증 |
-| AI 적용 | RunPod vLLM의 Base를 Node 1·3에, 사전 적재 SQL LoRA를 Node 2·2′에만 적용; 1회 파인튜닝 비교와 제품 채택을 분리 |
+| AI 적용 | 모든 Node는 Base를 기준선으로 사용; 1회 비교 실험 뒤 제품 채택 Gate를 통과한 경우에만 사전 적재 SQL LoRA를 Node 2·2′에 적용 |
 | 실행 통제 | 멀티 에이전트가 아닌 결정론적 Pipeline + 역할 분리 LLM Node 3개 + Gate 3개 |
 | 시간·고객 의미 | 요청별 `as_of`·timezone 고정, CRM identity bridge와 event-time 등급 이력 사용 |
 | 최대 병목 | full stack 자원 경합과 gold 120건 제작·검수 |
@@ -165,7 +180,7 @@ DataHub 설치나 화면 시연이 아니라, 다음 경로가 추적 가능하�
 | MCP Tool 관리 | P2 | SQL·문서·ML Tool의 메타정보, 활성 상태, 권한, 최근 실행 상태 |
 | 사내 운영 문서 RAG | P2 | 유효·권한 있는 합성 문서 검색, 버전·기준 시점·인용 위치 표시 |
 | ML-as-a-Tool | P2 | Feature Set부터 모델 Tool 호출까지 재현 가능한 1개 대표 경로 권고 |
-| 고객 360 | 선택 | MVP와 분리하여 공수·데모 가치 검토 후 포함 여부 결정 |
+| 고객 360 | 후속 | MVP와 분리하고 I5 이후 별도 Gate·일정으로 착수 |
 
 ---
 
@@ -178,7 +193,7 @@ DataHub 설치나 화면 시연이 아니라, 다음 경로가 추적 가능하�
 | 현업 실무자 | 데이터를 찾아 질문하고 결과를 이해 | 표·차트, 지표 정의, 필터, 기간, 기준 시각, 부분 실패 | 질문, 후속 질문, 보고서에 담기 |
 | 관리자 | 반복 보고서를 구성하고 실행 | 블록 출처, 실행 상태, 최신 실행 시각, 버전 | 블록 편집·승인, 수동 실행, 스케줄 설정 |
 | 데이터·시스템 관리자 | 데이터 연결·권한·감사와 P2 Tool 관리 | ingestion, 자산, 유효 role, trace, Tool 스키마·버전·오류 | 커넥션·role mapping 확인, audit 조회, P2 Tool 활성화/비활성화 |
-| 마케팅·CRM 사용자 | 고객 단위 내부 분석 | 마스킹된 프로필, 활동 이력, 파생 지표 | 선택 범위인 고객 360 조회·내부 분석 |
+| 마케팅·CRM 사용자 | 고객 단위 내부 분석 | 마스킹된 프로필, 활동 이력, 파생 지표 | 후속 단계의 고객 360 조회·내부 분석 |
 
 ### 4.2 시나리오 A — 정형 데이터 분석
 
@@ -238,7 +253,7 @@ DataHub 설치나 화면 시연이 아니라, 다음 경로가 추적 가능하�
 | P2 | MCP Tool 관리 | Tool 이름·설명·유형·버전·I/O 스키마·활성·권한·최근 오류 | SQL/RAG/ML Tool 레지스트리 화면과 호출 기록 |
 | P2 | 문서 RAG | 유효·권한 필터, 문서명·버전·시점·인용 위치, SQL과 분리 종합 | 만료·권한 없음 문서 제외 테스트 |
 | P2 | ML-as-a-Tool | Feature Set 버전, 기준 시점, 모델 변환·서빙·등록·호출, 예측 표시 | 동일 입력으로 재현되는 Tool 응답 |
-| 선택 | 고객 360 | 공통키, 중복 식별, 마스킹, 접근권한, 감사 | 별도 결정 후에만 수용 기준 확정 |
+| 후속 | 고객 360 | 공통키, 중복 식별, 마스킹, 접근권한, 감사 | I5 이후 별도 Gate에서 수용 기준 확정 |
 
 ### 5.2 공통 오류 계약
 
@@ -342,7 +357,7 @@ DataHub ingestion은 메타데이터 준비 파이프라인이고, Context Build
 
 ### 7.3 배포 경계와 자원 축소 프로파일
 
-DataHub Core quickstart만으로도 GMS·UI·Elasticsearch·MySQL·Kafka를 포함하고 공식 안내가 Docker 메모리 8GB 이상을 요구한다. 따라서 RunPod GPU Pod에는 vLLM 공유 endpoint와 사전 적재 adapter만 두고, 상태 저장 데이터 플랫폼과 분리한다. Node 1·3은 Base, Node 2·2′는 SQL LoRA를 사용하며 runtime dynamic adapter loading은 허용하지 않는다.
+DataHub Core quickstart만으로도 GMS·UI·Elasticsearch·MySQL·Kafka를 포함하고 공식 안내가 Docker 메모리 8GB 이상을 요구한다. 따라서 RunPod GPU Pod에는 vLLM 공유 endpoint와, 제품 채택 시 사용할 사전 적재 adapter만 두고 상태 저장 데이터 플랫폼과 분리한다. 기준선에서는 Node 1·2·2′·3 모두 Base를 사용한다. 비교 후 제품 채택 Gate를 통과한 경우에만 Node 2·2′가 SQL LoRA를 요청 단위로 선택하며 runtime dynamic adapter loading은 허용하지 않는다.
 
 | 프로파일 | 기동 구성 | 사용 시점 | 완료로 인정되는 범위 |
 |---|---|---|---|
@@ -633,7 +648,7 @@ Context Layer는 DataHub의 schema를 복제하는 저장소가 아니라, DataH
 - SQL Plan Cache key는 질문 정규화, `context_release`, `policy_version`, 필요 시 `authz_scope`를 포함한다. 권한 중립 SQL만 사용자 공통으로 재사용한다.
 - Result Cache key는 `sql_hash`, `entitlement_hash`, `as_of`, `catalog_watermark_set`, 적용된 row filter·mask를 포함한다.
 - Result Cache에는 shaped result와 G3 재검증에 필요한 증적을 함께 저장한다.
-- Cache Hit도 인증·entitlement, G2 또는 G3를 생략하지 않는다.
+- Template·SQL Plan Cache는 G1·G2를 통과한다. Result Cache는 G2 통과 뒤에만 확인하며, Hit여도 인증·entitlement와 G3를 다시 확인한다.
 - `catalog_watermark_set`은 이기종 5개 source의 완전한 동시 snapshot을 주장하지 않고, source별 고수위·기준 시각의 집합으로 기록한다.
 
 ### 9.4 SQL 표현 범위
@@ -734,7 +749,7 @@ Node별 prompt, typed I/O schema, 평가 세트, 로그를 분리한다. Node 2�
 
 RunPod 공식 문서상 container disk는 Pod 중지·재시작 시 유실될 수 있고, volume disk는 Pod lease 동안, network volume은 Pod와 독립적으로 유지된다. network volume은 지역에 따라 GPU 선택을 제한할 수 있으므로 GPU 가용성과 storage 위치를 함께 결정한다. checkpoint는 Pod 내부에만 두지 않고 실험 종료 전에 별도 백업한다.
 
-데모 서빙은 **RunPod의 공유 vLLM endpoint 1개**를 사용한다. Node 1·3은 Base, Node 2·2′는 같은 Base에 사전 적재한 SQL LoRA를 요청 단위로 선택한다. runtime dynamic LoRA loading은 비활성화하고 adapter 목록과 revision을 container image에 고정한다. SQL adapter를 Node 1·3에 적용하지 않아 질문 해석·설명 평가가 파인튜닝의 영향을 받지 않게 한다. 데모 동시 실행은 2건으로 제한하며 초과 요청은 대기 또는 `429`로 처리한다.
+데모 서빙은 **RunPod의 공유 vLLM endpoint 1개**를 사용한다. 기준선에서는 Node 1·2·2′·3 모두 같은 Base를 사용한다. 1회 비교 뒤 제품 채택 Gate를 통과한 경우에만 Node 2·2′가 사전 적재 SQL LoRA를 요청 단위로 선택한다. runtime dynamic LoRA loading은 비활성화하고 채택 adapter 목록과 revision을 container image에 고정한다. SQL adapter를 Node 1·3에 적용하지 않아 질문 해석·설명 평가가 파인튜닝의 영향을 받지 않게 한다. 데모 동시 실행은 2건으로 제한하며 초과 요청은 대기 또는 `429`로 처리한다.
 
 ### 10.4 GPU profile 선정
 
@@ -806,7 +821,7 @@ Unsloth는 우선 검토 도구이지 의무 기술이 아니다. 공개 VRAM �
 
 ### 10.9 파인튜닝 비교 실험과 제품 채택 게이트
 
-**비교 실험 수행**과 **제품 채택**을 분리한다. 평가 데이터와 baseline이 안정되면 한 번의 bounded LoRA/QLoRA 비교 실험은 산출물로 수행한다. 반복 튜닝과 제품 반영은 모델 원인 오류가 확인된 경우에만 진행한다.
+**비교 실험 수행**과 **제품 채택**을 분리한다. 평가 데이터와 baseline이 안정되고 외부 비용·실행 권한이 확보되면 시간·횟수를 제한한 LoRA/QLoRA 비교 실험을 한 번 수행한다. 선행 조건이나 외부 권한이 충족되지 않으면 사유를 `Blocked` 또는 `Not Run`으로 남기며 I5 실패로 간주하지 않는다. 반복 튜닝과 제품 반영은 모델 원인 오류와 실질 개선이 확인된 경우에만 진행한다.
 
 ```text
 DataHub ingestion·description·owner·tag 확인
@@ -816,7 +831,7 @@ DataHub ingestion·description·owner·tag 확인
 → 실패 원인 분류
    ├─ metadata·정책·connector 원인 → 해당 계층 수정 후 baseline 재측정
    └─ 반복적인 모델 생성 원인 → 추가 파인튜닝 후보
-→ 동일 checkpoint·GPU·조건으로 bounded fine-tuned 비교 실험
+→ 동일 checkpoint·GPU·조건으로 시간·횟수를 제한한 fine-tuned 비교 실험
 → 제품 채택 또는 baseline 유지
 ```
 
@@ -834,7 +849,7 @@ DataHub ingestion·description·owner·tag 확인
 - 필요한 공통키·지표·JOIN이 Context Layer에 등록되지 않았다.
 - connector·type mapping·목표 SQL 방언 구현이 잘못되었다.
 - 평가 데이터의 정답 SQL 또는 기대 결과가 신뢰할 수 없다.
-- baseline이 합의된 기준을 충족하고 bounded 실험이 의미 있는 개선을 보이지 않는다.
+- baseline이 합의된 기준을 충족하고 제한된 1회 실험이 의미 있는 개선을 보이지 않는다.
 
 #### 채택 조건
 
@@ -1160,7 +1175,7 @@ ML Tool은 사용자가 미래 상태, 위험도, 확률, 수요 등 **예측을
 | 데이터 카탈로그 | 커넥션 상태, DataHub 자산 검색 | 데이터·시스템 관리자 |
 | 운영·감사 | 사용자별 유효 role·policy version, request ID trace, 보존·백업 상태 | 데이터·시스템 관리자·감사자 |
 | Tool 관리(P2) | MCP Tool 목록·계약·상태 | 데이터·시스템 관리자 |
-| 고객 360 | 고객 검색, 프로필, 활동, 내부 분석 챗 | 선택 범위 사용자 |
+| 고객 360 | 고객 검색, 프로필, 활동, 내부 분석 챗 | 후속 단계 사용자 |
 
 ### 15.2 메인 챗
 
@@ -1188,7 +1203,7 @@ ML Tool은 사용자가 미래 상태, 위험도, 확률, 수요 등 **예측을
 
 ### 15.5 고객 360
 
-선택 범위로 승인된 경우에만 구현한다. 고객 프로필, 마스킹된 식별정보, 활동 타임라인, 파생 지표, 내부 분석 챗을 제공한다. 외부 고객 상담 챗으로 해석하지 않는다.
+I5 이후 후속 단계로 구현한다. 현재 P0/P1·I5 완료선에서는 메뉴와 직접 route를 비활성화하고, 별도 단계에서 공통키·중복 식별·마스킹·권한·감사 Gate를 통과한 뒤 고객 프로필, 마스킹된 식별정보, 활동 타임라인, 파생 지표, 내부 분석 챗을 제공한다. 외부 고객 상담 챗으로 해석하지 않는다.
 
 ### 15.6 디자인 원칙
 
@@ -1220,7 +1235,7 @@ ML Tool은 사용자가 미래 상태, 위험도, 확률, 수요 등 **예측을
 | 애플리케이션 DB | PostgreSQL, SQLAlchemy 2, Alembic | Context 승인본·artifact·report·audit 저장; P2에서 pgvector 추가 |
 | 실행 흐름 | Deterministic Controller + 명시적 상태 머신 | 자유 ReAct가 아니라 Router→Context→G1→SQL Source→G2→Trino/Cache→G3→설명 순서를 강제 |
 | SQL 검증·실행 | SQLGlot + Trino | G2의 Trino dialect AST·실행계획 검사와 Trino의 read-only·row filter·column mask를 분리 |
-| sLLM 서빙 | RunPod GPU Pod + vLLM 공유 endpoint | Node 1·3 Base, Node 2·2′ Preloaded SQL LoRA; runtime dynamic loading OFF, 데모 동시 실행 2건 |
+| sLLM 서빙 | RunPod GPU Pod + vLLM 공유 endpoint | 전 Node Base 기준선; 채택 Gate 통과 시에만 Node 2·2′ Preloaded SQL LoRA, runtime dynamic loading OFF, 데모 동시 실행 2건 |
 | 캐시 | PostgreSQL 또는 Redis-compatible cache를 구현 단계에서 고정 | SQL Plan Cache와 Result Cache를 분리하고 Gate 우회 금지·version/watermark 무효화 적용 |
 | 관측성 | OpenTelemetry trace·metric·log | request→context→model→Trino→artifact 경로 연결 |
 | 스케줄 실행 | 영속 job store와 worker 1개부터 시작 | 동시 실행·재시도 요구가 확인될 때 queue를 분리 |
@@ -1234,7 +1249,7 @@ ML Tool은 사용자가 미래 상태, 위험도, 확률, 수요 등 **예측을
 | Catalog | 커넥션 상태와 DataHub 검색 결과 |
 | Operations & Audit | 유효 role·policy 조회, request trace, 보존·백업·복구 상태 |
 | Tool Console(P2) | Tool schema·버전·권한·상태·호출 결과 |
-| Customer 360 | 선택 범위의 프로필·활동·내부 챗 |
+| Customer 360 | I5 이후 후속 단계의 프로필·활동·내부 챗 |
 | Shared Evidence | 데이터 근거와 기준 시각, P2 문서·모델 근거 표시 |
 | Shared Status | 지연·부분 실패·권한·빈 결과 상태 |
 
@@ -1331,7 +1346,7 @@ P0은 별도 IAM 제품을 만들지 않는다. 사용자·그룹·role mapping�
 | G1·G2·G3 | Context·SQL·결과의 판정, 1회 수정 상한, 즉시 종료 | Gate별 positive/negative·재검증 fixture | Gate 우회 0건, Node 2′ 2회 이상 호출 0건, G3 실패 후 Node 3 호출 0건 |
 | Guarded Text-to-SQL | AST, source·column·JOIN, 결과 정확도, 차단 | gold positive/negative 세트와 실제 실행 결과 비교 | 금지 실행 0건; 정확도 목표는 baseline 후 고정 |
 | Trino 연합 조회 | 단독·교차 조회 정확도, p50/p95, scan, timeout | 5개 catalog 단독과 업무상 2~3개 소스 JOIN | 결과 정답 일치; 성능 상한은 profile별 baseline 후 고정 |
-| Cache | SQL Plan·Result Cache key, 권한·version·watermark 무효화 | role·`as_of`·policy·source watermark를 바꿔 반복 조회 | 권한 간 결과 공유 0건, Cache Hit의 G2·G3 우회 0건 |
+| Cache | SQL Plan·Result Cache key, 권한·version·watermark 무효화 | role·`as_of`·policy·source watermark를 바꿔 반복 조회 | 권한 간 결과 공유 0건, Plan Cache의 G1·G2와 Result Cache의 G2 선행·entitlement·G3 우회 0건 |
 | LLM 역할 분리 | Node 1·2·3 입력·출력·평가 분리, adapter 영향 격리 | 역할별 평가 세트와 요청별 model/adapter trace 대조 | Node 1·3의 SQL LoRA 적용 0건, Node 3 CoT 수신 0건 |
 | 챗·보고서 | 시나리오 완료, 왕복 보존, 부분 실패 | 역할별 과업과 artifact/report ID 추적 | 필수 30건 trace·snapshot 유실 0건 |
 | RAG(P2) | 한국어 Recall@5, nDCG@10, 인용, 권한·유효기간 | 80건 이상 한국어 query와 악성·만료 문서 세트 | 권한 밖·만료 문서 검색 0건; 품질 목표는 baseline 후 고정 |
@@ -1379,23 +1394,25 @@ P1로 분류된 카탈로그 화면 전체보다 **DataHub ingestion과 API 연�
 
 ### 19.2 후속 범위
 
+아래 항목은 모두 I5 이후 별도 실행 단계로 남긴다. 현재 P0/P1·I5 완료 여부와 99개 실행 태스크 집계에는 영향을 주지 않으며, 미착수·`Not Run`·`Blocked` 상태를 현재 릴리스 실패로 처리하지 않는다.
+
 - P2 MCP Tool Registry와 관리 화면
 - P2 한국어 운영 문서 RAG
 - P2 ML-as-a-Tool 1개 대표 모델
+- 고객 360
 - 성능 병목이 확인된 분석의 최소 배치 적재
 - 검증된 신규 엔진 adapter
-- 승인 시 고객 360
 - VOC·외부 리뷰·감성분석, 외부 고객 챗, 실시간 스트리밍은 별도 사업 범위
 
-### 19.3 고객 360 결정 권고
+### 19.3 고객 360 후속 착수 조건
 
-| 항목 | MVP 포함 | MVP 제외 |
+| 항목 | 후속 단계의 가치 | 현재 MVP에서 제외하는 이유 |
 |---|---|---|
 | 데모 가치 | 한 고객의 횡단 데이터를 직관적으로 표현 | 핵심 질문→보고서 흐름에 집중 |
 | 공수 | identity resolution, 마스킹, 전용 UI·권한 증가 | 공통키는 분석 JOIN 검증 수준으로 제한 |
-| 위험 | 실제 개인정보 제품처럼 오해될 수 있음 | 선택 기능 설명이 필요 |
+| 위험 | 실제 개인정보 제품처럼 오해될 수 있음 | 후속 기능과 합성·마스킹 경계를 명시해야 함 |
 
-**권고:** 필수 MVP에서는 제외한다. 공통키·마스킹·감사 구조는 기반 설계에 반영하고, 핵심 시나리오가 안정화된 뒤 별도 시간상자(time-box)로 구현 여부를 결정한다.
+**결정:** 필수 MVP에서는 제외하되 후속 단계에서 구현한다. 공통키·마스킹·감사 구조는 기반 설계에 반영하고, I5 이후 별도 시간상자(time-box), 담당, 수용 기준을 승인한 뒤 착수한다.
 
 ---
 
@@ -1480,7 +1497,7 @@ gold 세트는 업무 도메인과 데이터 엔지니어가 공동 승인한다
 | 애플리케이션 DB 무기한 누적·복구 실패 | 비용·감사·운영 중단 | snapshot 증가, restore 미검증 | TTL·retention, 일일 encrypted backup, RPO 24h·RTO 4h restore 시험 |
 | 의존성·container 취약점 | 공급망 침해·release 지연 | critical/high CVE 또는 unsigned image | lockfile·digest·SBOM, SCA·image scan, 기한 있는 예외 승인 |
 | P2 RAG 문서 권한·prompt injection | 잘못된 정책 답변·Tool 오용 | 만료·무권한 문서 인용, 명령 유도 | retrieval 전 권한·유효기간 필터, 문서를 비신뢰 데이터로 처리, citation·negative test |
-| 고객 360 식별·권한 복잡도 | MVP 지연·정보 노출 | 중복 고객·마스킹 예외 | MVP 제외 권고, 별도 승인·감사 게이트 |
+| 고객 360 식별·권한 복잡도 | MVP 지연·정보 노출 | 중복 고객·마스킹 예외 | 현재 MVP 제외, I5 이후 별도 승인·감사 Gate |
 | 보고서 스케줄 부분 실패 | 잘못된 보고서 배포 | 일부 블록 stale | 블록별 상태, 기준 시각, 마지막 성공값 사용 여부 표시 |
 | 외부 모델 API 데이터 전송 | 정책 위반 | schema/sample value 외부 전송 | 최소 metadata, 값 비전송 기본, 전송 정책과 감사 |
 
@@ -1496,18 +1513,18 @@ gold 세트는 업무 도메인과 데이터 엔지니어가 공동 승인한다
 - 상대 기간은 요청 시작 시 `as_of`·timezone·calendar로 절대화하고 SQL의 실행 시각 의존 함수를 차단한다.
 - 교차 고객 식별은 CRM의 `customer_identity_map`, 등급은 `member_grade_history`의 event-time 이력으로 계산한다.
 - 메인 챗과 자동 리포팅은 P0다.
-- MCP Tool 관리, 사내 운영 문서 RAG, ML-as-a-Tool은 P2다.
+- MCP Tool 관리, 사내 운영 문서 RAG, ML-as-a-Tool은 I5 이후 P2 후속 단계다.
 - 실행 구조는 멀티 에이전트가 아니라 결정론적 Controller, 역할 분리 LLM Node 3개, Gate 3개다.
 - DataHub와 업무 정책 저장소를 질문마다 병렬 조회해 승인 Context Package를 구성하고, 템플릿·캐시·생성 SQL 모두 G1·G2를 통과한다.
 - LLM은 Node 1 질문 정규화, Node 2·2′ SQL 생성·1회 수정, Node 3 근거 설명만 담당하며 권한·합격 판정·SQL 실행·수치 계산을 맡지 않는다.
 - Result Cache Hit도 entitlement를 재확인하고 G3를 통과한다.
-- RunPod vLLM은 Node 1·3 Base와 Node 2·2′ Preloaded SQL LoRA를 요청 단위로 구분하며 runtime dynamic LoRA loading은 비활성화한다.
+- RunPod vLLM은 전 Node Base를 기준선으로 사용하고, 제품 채택 Gate 통과 시에만 Node 2·2′가 Preloaded SQL LoRA를 요청 단위로 선택하며 runtime dynamic LoRA loading은 비활성화한다.
 - 1회 time-boxed 파인튜닝 비교 실험은 수행하되, 제품 채택은 모델 원인 오류와 실질 개선이 확인될 때만 한다.
 - 기본 조회는 원본 이동 없는 연합 조회다.
 - 프론트엔드는 `React + TypeScript + Vite`다.
 - 실제 워커힐 데이터·개인정보를 사용하거나 실제 성과로 표현하지 않는다.
 - P0 role은 versioned policy로 부여하고 운영·감사 화면에서 유효 권한과 request trace를 조회한다.
-- 고객 360은 선택 범위다.
+- 고객 360은 I5 이후 후속 단계이며 현재 P0/P1·I5 완료선에는 포함하지 않는다.
 
 ### 22.2 가정
 
@@ -1526,7 +1543,7 @@ gold 세트는 업무 도메인과 데이터 엔지니어가 공동 승인한다
 | 연합/배치 경계 | p95, scan, 원본 부하, 재현성 | 연합 기본; 단계 2·6에서 실측 병목 질의만 배치 후보 |
 | SQL 허용 구조·노출 | 안전성, 질문 커버리지, parser·Trino 지원 | 단계 2에서 SELECT/CTE/서브쿼리/윈도 함수 allowlist와 관리자 SQL 노출 확정 |
 | 파인튜닝 제품 채택 | gold 결과 정확도, 차단률, p95, 비용, 오류 원인 | 단계 5 비교 후 채택·미채택 결정 |
-| 고객 360 | identity·권한 공수와 핵심 데모 영향 | MVP 이후 별도 승인 |
+| 고객 360 후속 착수 | identity·권한·마스킹·감사 준비와 별도 일정 | I5 이후 후속 단계 Gate 승인 |
 
 ### 22.4 구현 단계 선택
 
@@ -1566,7 +1583,7 @@ gold 세트는 업무 도메인과 데이터 엔지니어가 공동 승인한다
 4. **LLM을 에이전트가 아닌 세 역할 Node로 제한한다.** Node 1은 질문 정규화, Node 2·2′는 SQL 생성·1회 수정, Node 3은 G3 통과 결과 설명만 담당한다. 권한·합격 판정·실행·수치 계산은 결정론적 계층이 담당한다.
 5. **Context Layer를 핵심 제품 산출물로 관리한다.** DataHub 검색을 승인 지표·시간·dimension 이력·JOIN·권한과 결합해 versioned JSON package로 만들고, `as_of`·크기 제한·승인자·hash를 감사에 남긴다.
 6. **평가 세트 제작을 단계 1의 주 병목으로 둔다.** gold 120건을 LLM 보조로 초안하되 업무·데이터 담당자가 전수 검수하고, 표현 그룹 단위로 split한다.
-7. **RunPod는 플랫폼으로 고정하고 공유 vLLM endpoint의 역할 격리를 실측한다.** Node 1·3은 Base, Node 2·2′는 사전 적재 SQL LoRA를 사용한다. Qwen3.5-4B를 text-only checkpoint로 오인하지 않고 `--language-model-only`·hybrid adapter 호환성을 검증하며, 안정 릴리스 조건을 못 맞추면 Qwen3·Gemma로 돌아간다.
+7. **RunPod는 플랫폼으로 고정하고 공유 vLLM endpoint의 역할 격리를 실측한다.** 전 Node는 Base를 기준선으로 사용하고 제품 채택 Gate 통과 시에만 Node 2·2′가 사전 적재 SQL LoRA를 사용한다. Qwen3.5-4B를 text-only checkpoint로 오인하지 않고 `--language-model-only`·hybrid adapter 호환성을 검증하며, 안정 릴리스 조건을 못 맞추면 Qwen3·Gemma로 돌아간다.
 8. **파인튜닝 실험과 제품 채택을 분리한다.** 비교 실험은 1회 time-box로 수행하고, metadata·Context·connector를 수정한 뒤에도 남는 모델 오류를 개선할 때만 제품에 채택한다.
 9. **보고서는 분석 산출물의 재사용 계층으로 둔다.** 질문·조건·출처·`as_of`가 분리되지 않게 `artifact_id`를 유지하고 12-column grid·승인·버전·부분 실패를 우선한다.
 10. **MCP 관리·운영 문서 RAG·ML Tool은 P2에서 각각 독립 게이트로 도입한다.** P0/P1 자원과 일정에 선반영하지 않는다.
@@ -1602,4 +1619,5 @@ gold 세트는 업무 도메인과 데이터 엔지니어가 공동 승인한다
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.1 | 2026-07-30 09:32 | P2·고객 360을 I5 이후 비차단 후속 단계로 고정하고, 전 Node Base 기준선·1회 LoRA 비교·조건부 제품 채택의 모순을 교정 |
 | v1.0 | 2026-07-28 | DataHub Core 기반 대화형 분석·자동 리포팅 최종 기획서 작성 |

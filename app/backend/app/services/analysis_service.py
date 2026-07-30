@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from app.adapters.fake_data_platform import FakeDataPlatformAdapter
 from app.contracts import AnalysisStatus, ApiResponse, ErrorBody, ErrorCode, RequestContext, response_meta
+from app.ports.data_platform import DataPlatformAdapter
 
 
 class AnalysisService:
     """Fixed minimal transition: RECEIVED -> ROUTED -> terminal fake result."""
 
-    def __init__(self, adapter: FakeDataPlatformAdapter) -> None:
+    def __init__(self, adapter: DataPlatformAdapter) -> None:
         self._adapter = adapter
 
     def analyze(self, question: str, context: RequestContext) -> ApiResponse:

@@ -8,10 +8,10 @@ from fastapi.responses import JSONResponse
 
 from app.api.router import router
 from app.context import request_context
-from app.contracts import ApiResponse, ErrorBody, ErrorCode, response_meta
+from app.contracts import CONTRACT_VERSION, ApiResponse, ErrorBody, ErrorCode, response_meta
 
 
-app = FastAPI(title="Answervice Control Plane", version="1.0.0-draft")
+app = FastAPI(title="Answervice Control Plane", version=CONTRACT_VERSION)
 app.include_router(router)
 
 
@@ -43,4 +43,3 @@ async def internal_error(request: Request, _exc: Exception) -> JSONResponse:
         error=ErrorBody(code=ErrorCode.INTERNAL_ERROR, message="내부 오류가 발생했습니다."),
     )
     return JSONResponse(status_code=500, content=body.model_dump(mode="json"))
-

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v6.4 |
-| 문서 기준일 | 2026-07-30 12:03 |
+| 버전 | v6.6 |
+| 문서 기준일 | 2026-07-30 12:36 |
 | 작성·수정 | 김재홍·박준희·정승·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -358,6 +358,8 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-30 12:36 | 1.4, 2.10, 4.21, 5.2, 5.19 | R2-W1-F1·R4-W1-F1·R5-W1-F1을 READY로 발행해 역할별 허용 경로·완료 증거·검증·중단 조건을 고정했다. 대표 질문·metric은 승인 전 N/A로 유지하고 follow-up 결과 검증 전 기존 WBS 상태는 변경하지 않았다. | I1 보완 실행 허가 |
+| 2026-07-30 12:32 | 1.4 | R3 model serving Dockerfile·실행 manifest는 I1 필수가 아니며 in-process fake adapter로 계약을 검증하고 R3-W3에서 제출하도록 판정했다. R3 service fragment blocker만 해제하고 R2·R4·R5 보완 대기로 R1-03 차단은 유지한다. | I1 blocker 범위 정정 |
 | 2026-07-30 12:03 | 1.4 | R2 schema·seed·scenario와 R3 model I/O·prompt·fixture를 I1 입력으로 승인했다. R4·R5는 기존 Wave 1 계약 결함 재작업만 허가하고 clean package·runtime·typed contract·금지 route 차단·build 증거 도착 전 R1-03 차단과 Wave 2 불허를 유지한다. | R1 계약 승인·재작업 허가 |
 | 2026-07-30 11:53 | 1.7, 6.1 | R1-03 차단 중 독립 진행 가능한 현재 Python producer·integration·문서 검증 CI baseline과 필수 30·gold 120 평가 원장 schema를 추가했다. 역할별 service build와 실제 평가 case는 handoff 대기로 남긴다. | R1 독립 기반 진행 |
 | 2026-07-30 11:35 | 1.4 | 최신 통합 SHA에서 R2 data, R3 model I/O·prompt·fixture, R4 OpenAPI/state/error 계약을 확인했다. R5 typed UI·Report 계약과 P2·고객 360 route 차단 증거, R2~R5 service fragment는 미도착으로 R1-03 차단을 유지한다. | I1 계약 부분 입력·차단 유지 |
@@ -385,6 +387,8 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v6.6 | 2026-07-30 12:36 | R2·R4·R5 I1 follow-up READY 발행 근거를 1.4·2.10·4.21·5.2·5.19에 연결하고 검증 전 상태 유지 |
+| v6.5 | 2026-07-30 12:32 | R3 Dockerfile·실행 manifest를 I1 비필수·R3-W3 제출로 판정하고 R1-03 blocker 범위를 R2·R4·R5 보완 대기로 정정 |
 | v6.4 | 2026-07-30 12:03 | R2·R3 I1 입력 승인과 R4·R5 Wave 1 재작업 허가, R1-03 차단·Wave 2 불허 판정을 작업 근거에 반영 |
 | v6.3 | 2026-07-30 11:53 | R1-03 차단 중 선행한 R1-06 Python CI baseline과 R1-07 평가 원장 schema를 진행 상태와 근거로 반영 |
 | v6.2 | 2026-07-30 11:35 | R1-03의 R2·R3·R4 계약 도착과 R5 UI·Report·route 및 역할별 service fragment 차단 근거를 최신 통합 SHA에서 재판정 |

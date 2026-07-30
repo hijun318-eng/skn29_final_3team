@@ -4,9 +4,9 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.6 |
-| 문서 기준일 | 2026-07-30 11:35 |
-| 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
+| 버전 | v1.7 |
+| 문서 기준일 | 2026-07-30 12:32 |
+| 작성·수정 | 박준희 / 3팀 사용자 승인·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
 
@@ -146,7 +146,7 @@ CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
 PROMPT_VERSION=DRAFT-PROMPT-v0.1
 MODEL_FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
-BLOCKER=R5 typed client·UI·Report contract 및 P2·고객 360 route 차단 증거 미도착, R2~R5 root Compose Dockerfile·health service fragment 미도착
+BLOCKER=R5 typed client·UI·Report contract 및 P2·고객 360 route 차단 증거 미도착, R2·R4·R5 root Compose Dockerfile·health service fragment 미도착; R3 Dockerfile 또는 실행 manifest는 N/A — Wave 1 in-process fake adapter 사용, R3-W3 model serving 단계에서 제출
 ALLOWED_PATHS=AGENTS.md; compose*.yml; .env.example; .github/**; .githooks/**; tests/integration/**; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/ai_docs/5인_병렬구현_*
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=I0 역할·범위·소유권·full/dev/split-host 결정과 I1 공통 계약·Compose skeleton·env·CI·fake 소비 가능 판정, 필수 30·gold 120 원장 schema/reviewer/split 계획
@@ -455,6 +455,7 @@ EXTERNAL_ACTION_PERMISSION=<설치·비용·배포·데이터 전송·Git 권한
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.7 | 2026-07-30 12:32 | 사용자 승인에 따라 R3 Dockerfile·실행 manifest를 I1 blocker에서 제외하고 R3-W3 model serving 제출로 명시 |
 | v1.6 | 2026-07-30 11:35 | R1-W1 기준을 최신 통합 `dev` SHA로 갱신하고 R2~R5를 `MERGED_DEV`로 정합화했으며 R2·R3·R4 계약 도착과 R5 UI·Report·route 및 역할별 service fragment 차단 근거를 반영 |
 | v1.5 | 2026-07-30 10:25 | R1~R5 Wave 1의 `BASE_SHA`를 현재 `dev` 기준 SHA `2c2779d23738038d5cd0560cffa70c5b509991c3`으로 교정하고, 활성 frontend 결정 후 R1-00~02 완료·R1-03 계약 입력 대기를 기록 |
 | v1.4 | 2026-07-30 09:32 | Wave 1 기준 SHA를 현재 `dev`로 교정하고 LoRA 비교·worker·backup 절차와 I5 이후 F-01~F-04 비차단 후속 단계를 동기화 |

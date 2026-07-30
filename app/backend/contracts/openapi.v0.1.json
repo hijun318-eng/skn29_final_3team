@@ -1,0 +1,1453 @@
+{
+  "components": {
+    "schemas": {
+      "AnalysisData": {
+        "additionalProperties": false,
+        "properties": {
+          "gates": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateRequirements"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RouteType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/AnalysisStatus"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "transitions": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisStatus"
+            },
+            "title": "Transitions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "transitions"
+        ],
+        "title": "AnalysisData",
+        "type": "object"
+      },
+      "AnalysisRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Parameters",
+            "type": "object"
+          },
+          "question": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "AnalysisRequest",
+        "type": "object"
+      },
+      "AnalysisResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AnalysisData"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AnalysisResponse",
+        "type": "object"
+      },
+      "AnalysisResult": {
+        "additionalProperties": false,
+        "properties": {
+          "chart": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChartSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/Evidence"
+          },
+          "metrics": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MetricValue"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "table": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TableResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "summary",
+          "evidence"
+        ],
+        "title": "AnalysisResult",
+        "type": "object"
+      },
+      "AnalysisStatus": {
+        "enum": [
+          "RECEIVED",
+          "ROUTED",
+          "SUCCEEDED",
+          "BLOCKED",
+          "PARTIAL",
+          "FAILED",
+          "CANCELLED"
+        ],
+        "title": "AnalysisStatus",
+        "type": "string"
+      },
+      "ChartSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "chart_type": {
+            "title": "Chart Type",
+            "type": "string"
+          },
+          "x_field": {
+            "title": "X Field",
+            "type": "string"
+          },
+          "y_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Y Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "chart_type",
+          "x_field",
+          "y_fields"
+        ],
+        "title": "ChartSpec",
+        "type": "object"
+      },
+      "EmptyData": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "EmptyData",
+        "type": "object"
+      },
+      "ErrorBody": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
+      "ErrorCode": {
+        "enum": [
+          "CONTEXT_INCOMPLETE",
+          "ACCESS_DENIED",
+          "SQL_POLICY_BLOCKED",
+          "QUERY_SOURCE_FAILED",
+          "RESULT_EVIDENCE_MISSING",
+          "PARTIAL_FAILURE",
+          "INSUFFICIENT_EVIDENCE",
+          "RATE_LIMITED",
+          "CONTRACT_VERSION_MISMATCH",
+          "SCHEMA_VERSION_MISMATCH",
+          "INTERNAL_ERROR"
+        ],
+        "title": "ErrorCode",
+        "type": "string"
+      },
+      "ErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EmptyData"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "meta",
+          "error"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "Evidence": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "cached": {
+            "default": false,
+            "title": "Cached",
+            "type": "boolean"
+          },
+          "context_release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Release"
+          },
+          "filters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Filters",
+            "type": "object"
+          },
+          "masking": {
+            "$ref": "#/components/schemas/MaskingEvidence"
+          },
+          "model_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Version"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PeriodEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "policy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Version"
+          },
+          "query_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Id"
+          },
+          "sampling": {
+            "$ref": "#/components/schemas/SamplingEvidence"
+          },
+          "sources": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceReference"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "as_of"
+        ],
+        "title": "Evidence",
+        "type": "object"
+      },
+      "GateRequirements": {
+        "additionalProperties": false,
+        "properties": {
+          "g1_required": {
+            "title": "G1 Required",
+            "type": "boolean"
+          },
+          "g2_required": {
+            "title": "G2 Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "g1_required",
+          "g2_required"
+        ],
+        "title": "GateRequirements",
+        "type": "object"
+      },
+      "HealthData": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HealthData",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/HealthData"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "MaskingEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "applied": {
+            "default": false,
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "fields": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        "title": "MaskingEvidence",
+        "type": "object"
+      },
+      "MetricValue": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "metric_id": {
+            "title": "Metric Id",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "metric_id",
+          "label",
+          "value"
+        ],
+        "title": "MetricValue",
+        "type": "object"
+      },
+      "PeriodEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "end_exclusive": {
+            "format": "date",
+            "title": "End Exclusive",
+            "type": "string"
+          },
+          "start": {
+            "format": "date",
+            "title": "Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end_exclusive"
+        ],
+        "title": "PeriodEvidence",
+        "type": "object"
+      },
+      "ReadinessData": {
+        "additionalProperties": false,
+        "properties": {
+          "dependencies": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Dependencies",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "dependencies"
+        ],
+        "title": "ReadinessData",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ReadinessData"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "ResponseMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "trace_id",
+          "as_of",
+          "contract_version"
+        ],
+        "title": "ResponseMeta",
+        "type": "object"
+      },
+      "RouteType": {
+        "enum": [
+          "GENERAL",
+          "TEMPLATE"
+        ],
+        "title": "RouteType",
+        "type": "string"
+      },
+      "SamplingEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "applied": {
+            "default": false,
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "returned_rows": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Returned Rows",
+            "type": "integer"
+          },
+          "total_rows": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Rows"
+          }
+        },
+        "title": "SamplingEvidence",
+        "type": "object"
+      },
+      "SourceReference": {
+        "additionalProperties": false,
+        "properties": {
+          "fqn": {
+            "title": "Fqn",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "seed_version": {
+            "title": "Seed Version",
+            "type": "string"
+          },
+          "urn": {
+            "title": "Urn",
+            "type": "string"
+          }
+        },
+        "required": [
+          "urn",
+          "fqn",
+          "name",
+          "schema_version",
+          "seed_version"
+        ],
+        "title": "SourceReference",
+        "type": "object"
+      },
+      "TableResult": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Rows",
+            "type": "array"
+          }
+        },
+        "required": [
+          "columns",
+          "rows"
+        ],
+        "title": "TableResult",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Answervice Control Plane",
+    "version": "DRAFT-OPENAPI-v0.1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/analysis": {
+      "post": {
+        "operationId": "submitAnalysis",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Id",
+            "required": true,
+            "schema": {
+              "title": "X-User-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "examples": {
+                "general": {
+                  "summary": "일반 분석 질문",
+                  "value": {
+                    "question": "이번 달 객실 운영 상태를 요약해줘"
+                  }
+                },
+                "template": {
+                  "summary": "승인 Template 요청",
+                  "value": {
+                    "parameters": {
+                      "week_start": "2026-07-27"
+                    },
+                    "question": "주간 객실 운영 현황",
+                    "template_id": "weekly-room-operations"
+                  }
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "cached": {
+                    "summary": "cached",
+                    "value": {
+                      "data": {
+                        "gates": {
+                          "g1_required": true,
+                          "g2_required": true
+                        },
+                        "result": {
+                          "chart": {
+                            "chart_type": "line",
+                            "x_field": "business_date",
+                            "y_fields": [
+                              "occupied_rooms"
+                            ]
+                          },
+                          "evidence": {
+                            "as_of": "2026-07-30",
+                            "cached": true,
+                            "context_release": "context-v1",
+                            "filters": {
+                              "hotel": "synthetic"
+                            },
+                            "masking": {
+                              "applied": true,
+                              "fields": [
+                                "guest_id"
+                              ]
+                            },
+                            "period": {
+                              "end_exclusive": "2026-08-01",
+                              "start": "2026-07-01"
+                            },
+                            "policy_version": "policy-v1",
+                            "sampling": {
+                              "applied": false,
+                              "returned_rows": 0,
+                              "total_rows": 0
+                            },
+                            "sources": [
+                              {
+                                "fqn": "pms.public.reservations",
+                                "name": "PMS reservations",
+                                "schema_version": "1.0.0",
+                                "seed_version": "20260729",
+                                "urn": "urn:answervice:dataset:pms.public.reservations"
+                              }
+                            ]
+                          },
+                          "metrics": [],
+                          "summary": "검증된 합성 데이터 분석 결과입니다.",
+                          "table": {
+                            "columns": [
+                              "business_date",
+                              "occupied_rooms"
+                            ],
+                            "rows": []
+                          }
+                        },
+                        "route": "GENERAL",
+                        "status": "SUCCEEDED",
+                        "transitions": [
+                          "RECEIVED",
+                          "ROUTED",
+                          "SUCCEEDED"
+                        ]
+                      },
+                      "meta": {
+                        "as_of": "2026-07-30",
+                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "request_id": "00000000-0000-0000-0000-000000000100",
+                        "timestamp": "2026-07-30T00:00:00Z",
+                        "trace_id": "fixture-cached"
+                      }
+                    }
+                  },
+                  "cancelled": {
+                    "summary": "cancelled",
+                    "value": {
+                      "data": {
+                        "gates": {
+                          "g1_required": true,
+                          "g2_required": true
+                        },
+                        "route": "GENERAL",
+                        "status": "CANCELLED",
+                        "transitions": [
+                          "RECEIVED",
+                          "ROUTED",
+                          "CANCELLED"
+                        ]
+                      },
+                      "error": {
+                        "code": "QUERY_SOURCE_FAILED",
+                        "message": "요청이 취소되었습니다.",
+                        "retryable": false
+                      },
+                      "meta": {
+                        "as_of": "2026-07-30",
+                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "request_id": "00000000-0000-0000-0000-000000000100",
+                        "timestamp": "2026-07-30T00:00:00Z",
+                        "trace_id": "fixture-cancelled"
+                      }
+                    }
+                  },
+                  "empty": {
+                    "summary": "empty",
+                    "value": {
+                      "data": {
+                        "gates": {
+                          "g1_required": true,
+                          "g2_required": true
+                        },
+                        "result": {
+                          "chart": {
+                            "chart_type": "line",
+                            "x_field": "business_date",
+                            "y_fields": [
+                              "occupied_rooms"
+                            ]
+                          },
+                          "evidence": {
+                            "as_of": "2026-07-30",
+                            "cached": false,
+                            "context_release": "context-v1",
+                            "filters": {
+                              "hotel": "synthetic"
+                            },
+                            "masking": {
+                              "applied": true,
+                              "fields": [
+                                "guest_id"
+                              ]
+                            },
+                            "period": {
+                              "end_exclusive": "2026-08-01",
+                              "start": "2026-07-01"
+                            },
+                            "policy_version": "policy-v1",
+                            "sampling": {
+                              "applied": false,
+                              "returned_rows": 0,
+                              "total_rows": 0
+                            },
+                            "sources": [
+                              {
+                                "fqn": "pms.public.reservations",
+                                "name": "PMS reservations",
+                                "schema_version": "1.0.0",
+                                "seed_version": "20260729",
+                                "urn": "urn:answervice:dataset:pms.public.reservations"
+                              }
+                            ]
+                          },
+                          "metrics": [],
+                          "summary": "검증된 합성 데이터 분석 결과입니다.",
+                          "table": {
+                            "columns": [
+                              "business_date",
+                              "occupied_rooms"
+                            ],
+                            "rows": []
+                          }
+                        },
+                        "route": "GENERAL",
+                        "status": "SUCCEEDED",
+                        "transitions": [
+                          "RECEIVED",
+                          "ROUTED",
+                          "SUCCEEDED"
+                        ]
+                      },
+                      "meta": {
+                        "as_of": "2026-07-30",
+                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "request_id": "00000000-0000-0000-0000-000000000100",
+                        "timestamp": "2026-07-30T00:00:00Z",
+                        "trace_id": "fixture-empty"
+                      }
+                    }
+                  },
+                  "g1_clarification": {
+                    "summary": "g1 clarification",
+                    "value": {
+                      "data": {
+                        "gates": {
+                          "g1_required": true,
+                          "g2_required": true
+                        },
+                        "route": "GENERAL",
+                        "status": "BLOCKED",
+                        "transitions": [
+                          "RECEIVED",
+                          "BLOCKED"
+                        ]
+                      },
+                      "error": {
+                        "code": "CONTEXT_INCOMPLETE",
+                        "message": "분석 기간을 입력해 주세요.",
+                        "retryable": false
+                      },
+                      "meta": {
+                        "as_of": "2026-07-30",
+                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "request_id": "00000000-0000-0000-0000-000000000100",
+                        "timestamp": "2026-07-30T00:00:00Z",
+                        "trace_id": "fixture-g1-clarification"
+                      }
+                    }
+                  },
+                  "g2_blocked": {
+                    "summary": "g2 blocked",
+                    "value": {
+                      "data": {
+                        "gates": {
+                          "g1_required": true,
+                          "g2_required": true
+                        },
+                        "route": "GENERAL",
+                        "status": "BLOCKED",
+                        "transitions": [
+                          "RECEIVED",
+                          "ROUTED",
+                          "BLOCKED"
+                        ]
+                      },
+                      "error": {
+                        "code": "SQL_POLICY_BLOCKED",
+                        "message": "허용된 조회 범위에서 질문을 수정해 주세요.",
+                        "retryable": false
+                      },
+                      "meta": {
+                        "as_of": "2026-07-30",
+                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "request_id": "00000000-0000-0000-0000-000000000100",
+                        "timestamp": "2026-07-30T00:00:00Z",
+                        "trace_id": "fixture-g2-blocked"
+                      }
+                    }
+                  },
+                  "g3_failed": {
+                    "summary": "g3 failed",
+                    "value": {
+                      "data": {
+                        "gates": {
+                          "g1_required": true,
+                          "g2_required": true
+                        },
+                        "route": "GENERAL",
+                        "status": "FAILED",
+                        "transitions": [
+                          "RECEIVED",
+                          "ROUTED",
+                          "FAILED"
+                        ]
+                      },
+                      "error": {
+                        "code": "RESULT_EVIDENCE_MISSING",
+                        "message": "결과 근거가 충분하지 않아 설명을 생성하지 않았습니다.",
+                        "retryable": false
+                      },
+                      "meta": {
+                        "as_of": "2026-07-30",
+                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "request_id": "00000000-0000-0000-0000-000000000100",
+                        "timestamp": "2026-07-30T00:00:00Z",
+                        "trace_id": "fixture-g3-failed"
+                      }
+                    }
+                  },
+                  "partial": {
+                    "summary": "partial",
+                    "value": {
+                      "data": {
+                        "gates": {
+                          "g1_required": true,
+                          "g2_required": true
+                        },
+                        "result": {
+                          "chart": {
+                            "chart_type": "line",
+                            "x_field": "business_date",
+                            "y_fields": [
+                              "occupied_rooms"
+                            ]
+                          },
+                          "evidence": {
+                            "as_of": "2026-07-30",
+                            "cached": false,
+                            "context_release": "context-v1",
+                            "filters": {
+                              "hotel": "synthetic"
+                            },
+                            "masking": {
+                              "applied": true,
+                              "fields": [
+                                "guest_id"
+                              ]
+                            },
+                            "period": {
+                              "end_exclusive": "2026-08-01",
+                              "start": "2026-07-01"
+                            },
+                            "policy_version": "policy-v1",
+                            "sampling": {
+                              "applied": false,
+                              "returned_rows": 0,
+                              "total_rows": 0
+                            },
+                            "sources": [
+                              {
+                                "fqn": "pms.public.reservations",
+                                "name": "PMS reservations",
+                                "schema_version": "1.0.0",
+                                "seed_version": "20260729",
+                                "urn": "urn:answervice:dataset:pms.public.reservations"
+                              }
+                            ]
+                          },
+                          "metrics": [],
+                          "summary": "검증된 합성 데이터 분석 결과입니다.",
+                          "table": {
+                            "columns": [
+                              "business_date",
+                              "occupied_rooms"
+                            ],
+                            "rows": []
+                          }
+                        },
+                        "route": "GENERAL",
+                        "status": "PARTIAL",
+                        "transitions": [
+                          "RECEIVED",
+                          "ROUTED",
+                          "PARTIAL"
+                        ]
+                      },
+                      "error": {
+                        "code": "PARTIAL_FAILURE",
+                        "message": "일부 데이터 소스를 조회하지 못했습니다.",
+                        "retryable": true
+                      },
+                      "meta": {
+                        "as_of": "2026-07-30",
+                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "request_id": "00000000-0000-0000-0000-000000000100",
+                        "timestamp": "2026-07-30T00:00:00Z",
+                        "trace_id": "fixture-partial"
+                      }
+                    }
+                  },
+                  "success": {
+                    "summary": "success",
+                    "value": {
+                      "data": {
+                        "gates": {
+                          "g1_required": true,
+                          "g2_required": true
+                        },
+                        "result": {
+                          "chart": {
+                            "chart_type": "line",
+                            "x_field": "business_date",
+                            "y_fields": [
+                              "occupied_rooms"
+                            ]
+                          },
+                          "evidence": {
+                            "as_of": "2026-07-30",
+                            "cached": false,
+                            "context_release": "context-v1",
+                            "filters": {
+                              "hotel": "synthetic"
+                            },
+                            "masking": {
+                              "applied": true,
+                              "fields": [
+                                "guest_id"
+                              ]
+                            },
+                            "period": {
+                              "end_exclusive": "2026-08-01",
+                              "start": "2026-07-01"
+                            },
+                            "policy_version": "policy-v1",
+                            "sampling": {
+                              "applied": false,
+                              "returned_rows": 1,
+                              "total_rows": 1
+                            },
+                            "sources": [
+                              {
+                                "fqn": "pms.public.reservations",
+                                "name": "PMS reservations",
+                                "schema_version": "1.0.0",
+                                "seed_version": "20260729",
+                                "urn": "urn:answervice:dataset:pms.public.reservations"
+                              }
+                            ]
+                          },
+                          "metrics": [],
+                          "summary": "검증된 합성 데이터 분석 결과입니다.",
+                          "table": {
+                            "columns": [
+                              "business_date",
+                              "occupied_rooms"
+                            ],
+                            "rows": [
+                              {
+                                "business_date": "2026-07-29",
+                                "occupied_rooms": 120
+                              }
+                            ]
+                          }
+                        },
+                        "route": "GENERAL",
+                        "status": "SUCCEEDED",
+                        "transitions": [
+                          "RECEIVED",
+                          "ROUTED",
+                          "SUCCEEDED"
+                        ]
+                      },
+                      "meta": {
+                        "as_of": "2026-07-30",
+                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "request_id": "00000000-0000-0000-0000-000000000100",
+                        "timestamp": "2026-07-30T00:00:00Z",
+                        "trace_id": "fixture-success"
+                      }
+                    }
+                  },
+                  "timeout": {
+                    "summary": "timeout",
+                    "value": {
+                      "data": {
+                        "gates": {
+                          "g1_required": true,
+                          "g2_required": true
+                        },
+                        "route": "GENERAL",
+                        "status": "FAILED",
+                        "transitions": [
+                          "RECEIVED",
+                          "ROUTED",
+                          "FAILED"
+                        ]
+                      },
+                      "error": {
+                        "code": "QUERY_SOURCE_FAILED",
+                        "message": "조회 시간이 초과되었습니다.",
+                        "retryable": true
+                      },
+                      "meta": {
+                        "as_of": "2026-07-30",
+                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "request_id": "00000000-0000-0000-0000-000000000100",
+                        "timestamp": "2026-07-30T00:00:00Z",
+                        "trace_id": "fixture-timeout"
+                      }
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResponse"
+                }
+              }
+            },
+            "description": "분석 요청 처리 결과"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "인증 정보 누락"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "역할 또는 접근 권한 거부"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "계약 버전 불일치"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "요청 Context 또는 body 오류"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "동시 실행 제한"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "안전하게 정규화된 내부 오류"
+          }
+        },
+        "summary": "Analysis"
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/readiness": {
+      "get": {
+        "operationId": "getReadiness",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ready"
+      }
+    }
+  }
+}

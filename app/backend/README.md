@@ -24,4 +24,49 @@ uvicorn app.main:app --reload
 - Readiness: `GET /readiness`
 - Fake analysis: `POST /analysis`
 
-`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 Alembic version table만 만든다. Compose가 관리하는 application DDL의 소유권 이전이 승인되기 전에는 domain migration을 추가하지 않는다.
+## API 계약
+
+FastAPI·Pydantic code가 API 계약의 단일 원본이다. 현재 `DRAFT-OPENAPI-v0.1`은 실제 구현된 `/health`, `/readiness`, `/analysis`만 포함한다. 조회·취소·Artifact·Report endpoint는 구현 카드가 시작되기 전까지 명세에 추가하지 않는다.
+
+계약 파일과 상태별 fixture를 갱신하거나 drift를 확인하는 명령은 다음과 같다.
+
+```powershell
+python app/backend/scripts/export_openapi.py
+python app/backend/scripts/export_openapi.py --check
+```
+
+- 고정 명세: [openapi.v0.1.json](contracts/openapi.v0.1.json)
+- 상태 매핑: [state_mapping.v0.1.json](contracts/state_mapping.v0.1.json)
+- 상태 fixture: `tests/backend/fixtures/api/v0.1/`
+- 명세 파일과 fixture는 직접 수정하지 않고 exporter로 다시 생성한다.
+- pagination·sorting·filter·idempotency는 현재 세 endpoint에 적용되지 않으며, 이를 사용하는 endpoint 구현 시 별도 version으로 추가한다.
+
+`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 단일 migration chain이 application schema를 최신 head까지 적용한다. 현재 head는 `20260730_02`이며 기존 DB와 빈 DB upgrade를 모두 지원한다.
+
+## Container 검증
+
+repository root에서 다음 명령을 실행하면 기존 database Compose와 R4 backend service fragment를 결합해 `answervice-backend`를 기동한다. `/health`와 `/readiness`에서 application과 `app-postgres` 연결을 모두 검증하며, 성공한 container는 Docker Desktop에서 계속 확인할 수 있다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1
+```
+
+성공 출력은 `BACKEND_CONTAINER_READY`, `BACKEND_DATABASE_READY`다. 검증 후 container까지 제거하려면 `-RemoveAfterVerification`을 추가한다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1 -RemoveAfterVerification
+```
+
+backend는 `http://127.0.0.1:18000`에서 접근한다. root Compose 파일 자체는 R1 소유이므로 수정하지 않고 [compose.fragment.yml](compose.fragment.yml)만 결합한다.
+
+## 조건부 backend 선행 작업
+
+I1 전체 승인이 완료되기 전에도 R4는 producer draft와 fixture를 만들 수 있지만 `APPROVED` 또는 Gate 통과로 표시하지 않는다. R5는 고정된 draft fixture를 소비하고 변경이 필요하면 contract diff를 제출한다. UI·Report 구현과 다른 역할 소유 코드는 R4가 직접 변경하지 않는다.
+
+Context Package의 초기 제한은 다음과 같다.
+
+- 최대 dataset 8개
+- 최대 column 60개
+- 최대 `min(6,000 tokens, model context의 25%)`
+- 권한 없는 asset은 package와 model 입력 전에 제외
+- package는 release·policy·time·entitlement·URN/FQN·token과 결정론적 hash를 기록

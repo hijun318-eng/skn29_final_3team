@@ -50,7 +50,7 @@ jobs:
       - run: python .agents/skills/update-project-reports/scripts/validate_reports.py docs/markdown/daily_reports/*/일일보고.md
 
   frontend-contracts:
-    if: github.ref_name == 'minji'
+    if: github.ref_name == 'minji' || github.ref_name == 'dev'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -65,3 +65,12 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: node --test ../../tests/frontend/contracts.test.mjs
+
+  compose-config:
+    if: github.ref_name == 'junhee' || github.ref_name == 'dev'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose --env-file .env.example --profile dev config --quiet
+      - run: docker compose --env-file .env.example --profile full config --quiet
+      - run: docker compose --env-file .env.example --profile split-host config --quiet

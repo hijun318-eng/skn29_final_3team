@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.3 |
-| 문서 기준일 | 2026-07-30 14:57 |
+| 버전 | v7.4 |
+| 문서 기준일 | 2026-07-30 15:47 |
 | 작성·수정 | 김재홍·박준희·정승·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -147,8 +147,8 @@ gantt
 | 1.2 | R1-01 P0/P1/P2·비목표·공식 산출물 대응 고정 | 범위표·제외 목록 | 박준희 | 완료 | 07/29 | 07/31 | 높음 |
 | 1.3 | R1-02 파일 소유권·서비스 경계 Freeze | ownership matrix | 박준희 | 완료 | 07/29 | 07/31 | 높음 |
 | 1.4 | R1-03 metric·time·schema·API·state·error 공통 계약 | contract version | 박준희 | 차단 | 08/03 | 08/07 | 높음 |
-| 1.5 | R1-04 dev·full·split-host Compose skeleton | 통합 profile | 박준희 | 대기 | 08/03 | 08/07 | 높음 |
-| 1.6 | R1-05 환경변수·Secret 계약 | `.env.example`·secret matrix | 박준희 | 대기 | 08/03 | 08/07 | 높음 |
+| 1.5 | R1-04 dev·full·split-host Compose skeleton | 통합 profile | 박준희 | 진행 | 08/03 | 08/07 | 높음 |
+| 1.6 | R1-05 환경변수·Secret 계약 | `.env.example`·secret matrix | 박준희 | 진행 | 08/03 | 08/07 | 높음 |
 | 1.7 | R1-06 역할별 CI·품질 Gate | CI jobs·fail policy | 박준희 | 진행 | 08/03 | 08/07 | 높음 |
 | 1.8 | R1-08 I1 Contract Freeze 판정 | I1 판정서·fixture 소비 증거 | 박준희 | 대기 | 08/06 | 08/07 | 높음 |
 
@@ -358,6 +358,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-30 15:47 | 1.4~1.7, 2.10, 4.21, 5.2, 5.19 | R4·R5 handoff를 dev에 통합하고 root Compose가 dev 3개 service와 full·split-host 9개 service를 정적으로 소비하도록 구성했으며 root `.env.example`과 Compose CI를 추가했다. DataHub Core consumer fragment·immutable version·official source가 없어 1.5~1.6은 진행, R1-03은 차단을 유지하고 R2-W1-F2를 READY로 발행했다. | R1 통합 profile 진행·R2 보완 발행 |
 | 2026-07-30 14:57 | 1.7 | 기존 읽기 전용 CI에 실행 카드 원장의 최신 비-PLANNED `ALLOWED_PATHS`를 사용하는 role scope 검사를 추가하고, terminal 역할의 신규 구현 차단·개인 일일보고 허용·R5 npm ci/build/contract job을 구성했다. 자동 상태 변경·commit·push·merge는 제외했으며 전체 tests 29건을 통과했다. | R1 역할 Gate 자동화 1단계 |
 | 2026-07-30 14:52 | 1.4, 4.21, 5.2, 5.19 | R2~R5 원격 작업을 확인해 R4 cleanup 전용 R4-W1-F2를 READY로 발행하고, R5 clean handoff `ba5617b`의 허용 경로·고정 lockfile·npm ci·production build·contract·container health·OpenAPI version을 독립 검증했다. R4·R5 dev 통합과 combined profile 검증 전 상태·일정·간트는 유지했다. | R4 READY·R5 재검토 |
 | 2026-07-30 14:39 | 1.4, 2.10 | R2 handoff `055b265`의 지정 3개 파일을 dev에 통합하고 `R2_SERVICE_FRAGMENT_VERIFIED`와 전체 tests 26건을 통과해 R2-W1-F1을 MERGED_DEV로 전환했다. R4·R5 보완과 combined root Compose 검증 전 R1-03 차단·R2-W2 PLANNED 및 일정·간트는 유지했다. | R2 I1 fragment 통합 |
@@ -394,6 +395,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.4 | 2026-07-30 15:47 | R4·R5 dev 통합과 root Compose·env·CI 진행 근거를 1.4~1.7에 연결하고 1.5~1.6을 진행으로 전환했으며 DataHub consumer fragment 보완을 2.10의 R2-W1-F2 READY로 기록 |
 | v7.3 | 2026-07-30 14:57 | R1-06 읽기 전용 역할 경로·R5 build 자동 검사와 검증 근거를 1.7에 연결하고 진행 상태·기존 일정·간트를 유지 |
 | v7.2 | 2026-07-30 14:52 | R4 cleanup 전용 READY와 R5 clean handoff 재검토 근거를 1.4·4.21·5.2·5.19에 연결하고 통합 전 기존 상태·일정·간트를 유지 |
 | v7.1 | 2026-07-30 14:39 | R2 I1 service fragment의 dev 통합·정적 소비 검증 근거를 1.4·2.10에 연결하고 common blocker 대기로 기존 상태·일정·간트를 유지 |

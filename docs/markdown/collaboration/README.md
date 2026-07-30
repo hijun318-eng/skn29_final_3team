@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 팀원 개인 branch와 dev·main 통합 정책 및 사람이 수행하는 Git 절차 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.5 |
-| 문서 기준일 | 2026-07-30 10:56 |
+| 버전 | v1.6 |
+| 문서 기준일 | 2026-07-30 14:25 |
 | 작성·수정 | 박준희 |
 
 각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다.
@@ -91,7 +91,7 @@ git diff --cached
 AI 에이전트에 다음처럼 요청할 수 있다.
 
 ```text
-현재 staged diff를 확인해서 한국어 commit message 초안을 작성해줘.
+현재 staged diff를 확인해서 제목과 상세 본문이 포함된 한국어 commit message 초안을 작성해줘.
 ```
 
 AI 에이전트가 Skill을 표시하는 환경에서는 `$draft-commit-message`를 직접 선택해도 된다. Skill이 보이지 않으면 repository root에서 AI 에이전트를 다시 시작한다.
@@ -99,15 +99,30 @@ AI 에이전트가 Skill을 표시하는 환경에서는 `$draft-commit-message`
 제안된 메시지가 실제 변경과 일치하는지 확인한 뒤 commit한다.
 
 ```powershell
-git commit -m "<확인한 commit message>"
+git commit -m "<확인한 제목>" -m "<확인한 상세 본문>"
 git push origin <본인 branch>
 ```
 
-commit 형식은 `<type>: <한국어 summary>` 또는 `<type>(<scope>): <한국어 summary>`이며 subject는 72자 이하로 작성한다. 변경이 한 component에 명확히 모이면 짧은 영문 소문자 scope를 사용하고, 저장소 전반·여러 component·자연스러운 scope가 없는 변경은 scope를 생략한다. 하나의 commit에는 하나의 주된 의도만 담는다.
+commit 제목은 `<type>: <한국어 summary>` 또는 `<type>(<scope>): <한국어 summary>`이며 72자 이하로 작성한다. 변경이 한 component에 명확히 모이면 짧은 영문 소문자 scope를 사용하고, 저장소 전반·여러 component·자연스러운 scope가 없는 변경은 scope를 생략한다. 하나의 commit에는 하나의 주된 의도만 담는다.
+
+제목 아래 상세 본문을 기본으로 작성한다.
+
+- `변경:`에는 staged diff의 서로 다른 실제 작업을 1~5개 bullet로 묶어 contract·동작·경로 그룹·판정이 어떻게 바뀌었는지 적고, 한 변경을 반복 bullet로 부풀리지 않는다.
+- `검증:`에는 실제 실행해 확인한 command 또는 결과만 적고, 확인 근거가 없으면 `미실행`으로 기록한다.
+- 호환성·migration·Gate/status·배포·보안·남은 위험이 소비자에게 영향을 줄 때만 `영향:`을 추가한다.
+- 제목 반복, 파일명만 나열, 실행하지 않은 검증의 성공 표시는 금지한다.
 
 ```text
-refactor: FastAPI 자체 저장소로 레거시 의존성 제거
-feat(catalog): CatalogPage API 연동 및 데이터 모델 추가
+docs(gate): R2·R4 I1 제출 재검토 결과 반영
+
+변경:
+- R2 service fragment 제출을 REVIEW로 전환하고 소비자 검증 조건 기록
+- R4 clean handoff와 container readiness 증거 및 cleanup 보완 범위 반영
+- WBS와 일일보고에 R1 판정 근거 동기화
+
+검증:
+- 문서 정책·WBS·보고서 검사 통과
+- 전체 테스트 26건 통과
 ```
 
 ## dev 병합 요청 시 보고 통합
@@ -155,6 +170,7 @@ git push origin main
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.6 | 2026-07-30 14:25 | commit 제목 아래 변경·검증·선택적 영향 본문을 기본 작성하고 staged diff와 확인된 검증만 구체적으로 기록하도록 Skill·Git 절차를 동기화 |
 | v1.5 | 2026-07-30 10:56 | commit 제목의 선택적 scope 규칙과 staged 변경 범위에 따른 사용 기준을 추가하고 hook·Skill 형식을 동기화 |
 | v1.4 | 2026-07-27 17:07 | 개인 branch 병합 전후 SHA 기반 보고 통합 계약과 최종 사전검사 기준 추가 |
 | v1.3 | 2026-07-22 16:16 | pre-commit의 staged Markdown 문서관리규칙 자동 검증 추가 |

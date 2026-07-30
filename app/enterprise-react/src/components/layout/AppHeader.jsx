@@ -12,7 +12,7 @@ export function AppHeader({ title, description, onMenu }) {
         <span>{description}</span>
       </div>
       <div className="top-actions">
-        <span className="live"><i />7개 시스템 연결</span>
+        <span className="live"><i />5개 논리 소스</span>
         <button aria-label="새로고침"><RefreshCw size={16} /></button>
         <button aria-label="알림"><CircleAlert size={16} /></button>
         <div className="avatar">A</div>

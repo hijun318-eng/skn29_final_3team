@@ -4,9 +4,9 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v5.7 |
-| 문서 기준일 | 2026-07-30 09:55 |
-| 작성·수정 | 김재홍·박준희 / 3팀 사용자 요청·Codex 반영 |
+| 버전 | v5.8 |
+| 문서 기준일 | 2026-07-30 10:41 |
+| 작성·수정 | 김재홍·박준희·정승 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
 | 대응 템플릿 | `docs/templates/[기획] WBS_양식 (1)_27기_0팀.xlsx`, `docs/templates/[기획] WBS_양식(2)_27기_0팀.xlsx` |
@@ -156,15 +156,15 @@ gantt
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 2.1 | R2-00 공통 데이터 계약 확인 | source·engine·owner 표 | 정승 | 대기 | 07/29 | 07/31 | 높음 |
-| 2.2 | R2-01 5 source·4 engine registry | source registry | 정승 | 대기 | 07/29 | 07/31 | 높음 |
-| 2.3 | R2-02 논리 모델·grain 정의 | entity 관계·grain | 정승 | 대기 | 07/29 | 07/31 | 높음 |
-| 2.4 | R2-03 물리 schema·DDL·제약·index | versioned DDL | 정승 | 진행 | 07/29 | 08/07 | 높음 |
-| 2.5 | R2-04 deterministic synthetic seed·scenario | seed·scenario manifest | 정승 | 진행 | 07/29 | 08/07 | 높음 |
-| 2.6 | R2-05 customer identity bridge | `customer_identity_map` | 정승 | 진행 | 07/29 | 08/07 | 높음 |
-| 2.7 | R2-06 event-time 회원 등급 이력 | `member_grade_history` | 정승 | 진행 | 07/29 | 08/07 | 높음 |
-| 2.8 | R2-07 데이터 품질·전처리·reject 관리 | DQR·PREP 결과 | 정승 | 대기 | 08/03 | 08/07 | 높음 |
-| 2.9 | R2-08 source·application read-only 계정 요구 | account matrix | 정승 | 진행 | 07/29 | 08/07 | 높음 |
+| 2.1 | R2-00 공통 데이터 계약 확인 | source·engine·owner 표 | 정승 | 완료 | 07/29 | 07/31 | 높음 |
+| 2.2 | R2-01 5 source·4 engine registry | source registry | 정승 | 완료 | 07/29 | 07/31 | 높음 |
+| 2.3 | R2-02 논리 모델·grain 정의 | entity 관계·grain | 정승 | 완료 | 07/29 | 07/31 | 높음 |
+| 2.4 | R2-03 물리 schema·DDL·제약·index | versioned DDL | 정승 | 완료 | 07/29 | 08/07 | 높음 |
+| 2.5 | R2-04 deterministic synthetic seed·scenario | seed·scenario manifest | 정승 | 완료 | 07/29 | 08/07 | 높음 |
+| 2.6 | R2-05 customer identity bridge | `customer_identity_map` | 정승 | 완료 | 07/29 | 08/07 | 높음 |
+| 2.7 | R2-06 event-time 회원 등급 이력 | `member_grade_history` | 정승 | 완료 | 07/29 | 08/07 | 높음 |
+| 2.8 | R2-07 데이터 품질·전처리·reject 관리 | DQR·PREP 결과 | 정승 | 완료 | 07/30 | 08/07 | 높음 |
+| 2.9 | R2-08 source·application read-only 계정 요구 | account matrix | 정승 | 완료 | 07/29 | 08/07 | 높음 |
 | 2.10 | R2-09 DataHub ingestion recipe 5개 | versioned recipes | 정승 | 진행 | 07/29 | 08/21 | 높음 |
 | 2.11 | R2-10 Metadata·owner·domain·tag·lineage 보강 | URN·lineage manifest | 정승 | 대기 | 08/10 | 08/21 | 높음 |
 | 2.12 | R2-11 DataHub typed adapter | search·graph·health adapter | 정승 | 대기 | 08/10 | 08/21 | 높음 |
@@ -284,8 +284,8 @@ gantt
 | 기획 | 프로젝트 기획서 | **07/24** | 07/23 | 1.2 | 박준희 | 차단 |
 | 데이터 수집 및 저장 | 수집 데이터 보고서 | **07/24** | 07/23 | 2.5 | 정승 | 대기 |
 | 모델 배포 | 화면설계서 | **07/24** | 07/23 | 5.2 | 송민지 | 검토 |
-| 데이터 수집 및 저장 | 데이터베이스/저장소 설계 문서 | **07/31** | 07/30 | 2.4 | 정승 | 진행 |
-| 데이터 전처리 | 데이터 전처리 결과서 | **07/31** | 07/30 | 2.8 | 정승 | 대기 |
+| 데이터 수집 및 저장 | 데이터베이스/저장소 설계 문서 | **07/31** | 07/30 | 2.4 | 정승 | 검토 |
+| 데이터 전처리 | 데이터 전처리 결과서 | **07/31** | 07/30 | 2.8 | 정승 | 검토 |
 | 발표 및 시연 | 중간 발표 PT 자료 | **08/06** | 08/05 | 7.1 | 박준희·전원 | 대기 |
 | 데이터 전처리 | 머신러닝/딥러닝 학습결과서 | **08/07** | 08/05 | 3.10 | 윤대성 | 대기 |
 | 데이터 전처리 | 학습한 ML/DL 모델 | **08/07** | 08/05 | 3.16 | 윤대성 | 대기 |
@@ -358,6 +358,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-30 10:41 | 2.1~2.9 | R2-W1의 5 source·4 engine·18 entity registry, DDL·seed state manifest, CRM identity·event-time 중첩 차단, DQR/PREP·reject, Trino read-only 정책을 구현하고 정적 7건·live DB 계약 검증을 통과했다. I1 통합 판정은 R1 검토 대기로 유지한다. | R2-W1 생산자 검증 |
 | 2026-07-30 09:32 | 1.1~1.4, F-01~F-04 | 기획·WBS·통합 일정·역할 매뉴얼·Gate 절차를 교차 검토해 LoRA 기준선, worker·trace·보안·복구·UI 상태 계약을 교정하고 P2·고객 360을 I5 이후 비차단 후속 단계로 명시 | 문서·절차 계약 |
 | 2026-07-29 18:41 | 4.1~4.6 | R4 경계·공통 API/오류 계약, request/trace context, 단일 Alembic skeleton, Fake `/analysis` route와 최소 상태 전이 골격을 추가했다. 실제 DB migration·FastAPI 기동·R2/R3/R5 연동은 미완료로 유지한다. | Control Plane 골격 |
 | 2026-07-29 17:24 | 1.1 | 역할별 자율 진행량과 병합 충돌을 균형화해 I1·I2·I3·I4~I5의 4개 통합 Wave로 조정하고 역할별 상세 카드 원장을 보강 | 역할·일정 계약 |
@@ -375,6 +376,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.8 | 2026-07-30 10:41 | R2-W1 R2-00~08의 source registry·DDL/seed·identity/event-time·quality·read-only 생산자 검증 완료와 관련 공식 산출물 검토 상태 반영 |
 | v5.7 | 2026-07-30 09:55 | 최신 dev의 R4 Control Plane 진행 근거와 기획·실행 절차 교정 및 I5 이후 후속 백로그를 충돌 없이 통합 |
 | v5.6 | 2026-07-30 09:32 | 실제 착수일을 작업 로그와 맞추고, 실행 절차 누락을 교정하며 P2·고객 360 후속 백로그와 구형 공식 제출본 동기화 필요를 명시 |
 | v5.5 | 2026-07-29 18:41 | R4 공통 계약·Fake Control Plane·Alembic 최소 골격의 실제 코드 추가에 맞춰 R4-00~05를 진행으로 기록 |

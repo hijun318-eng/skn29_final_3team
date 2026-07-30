@@ -1,0 +1,44 @@
+{
+  "catalogs": [
+    {"user": "hotel_synthetic_setup", "catalog": "serving", "allow": "all"},
+    {"user": "hotel_synthetic_setup", "catalog": "(pms|pos|crm|facility|banquet)", "allow": "read-only"},
+    {"catalog": "system", "allow": "none"},
+    {"catalog": "(serving|pms|pos|crm|facility|banquet)", "allow": "read-only"},
+    {"catalog": ".*", "allow": "none"}
+  ],
+  "schemas": [
+    {"user": "hotel_synthetic_setup", "catalog": "serving", "schema": "(analytics|reference)", "owner": true},
+    {"owner": false}
+  ],
+  "tables": [
+    {
+      "user": "hotel_synthetic_setup",
+      "catalog": "serving",
+      "schema": "(analytics|reference)",
+      "table": ".*",
+      "privileges": ["SELECT", "INSERT", "DELETE", "UPDATE", "OWNERSHIP"]
+    },
+    {
+      "catalog": "(pms|pos|crm|facility|banquet)",
+      "schema": "system",
+      "table": ".*",
+      "privileges": []
+    },
+    {
+      "catalog": "(serving|pms|pos|crm|facility|banquet)",
+      "schema": ".*",
+      "table": ".*",
+      "privileges": ["SELECT"]
+    },
+    {"privileges": []}
+  ],
+  "procedures": [
+    {"privileges": []}
+  ],
+  "queries": [
+    {"allow": ["execute"]}
+  ],
+  "system_information": [
+    {"allow": []}
+  ]
+}

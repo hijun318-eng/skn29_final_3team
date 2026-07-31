@@ -19,7 +19,7 @@ from app.contracts import (
     StageOutcome,
 )
 from app.services.analysis_service import AnalysisService
-from app.services.routing_service import RoutingService
+from app.services.routing_service import ApprovedTemplate, RoutingService
 
 
 class CountingDataPlatformAdapter(FakeDataPlatformAdapter):
@@ -108,6 +108,31 @@ class AnalysisPipelineTest(unittest.TestCase):
             response.data.result.evidence.artifact_id,
         )
         self.assertEqual(1, self.adapter.execute_count)
+
+    def test_approved_template_reaches_template_route_and_both_gates(self) -> None:
+        template = ApprovedTemplate(
+            template_id="weekly-room-operations",
+            parameter_names=frozenset({"week_start"}),
+            sql_text=(
+                "SELECT 1 AS synthetic_value "
+                "FROM pms.public.pms_guests LIMIT 1"
+            ),
+            source_fqns=frozenset({"pms.public.pms_guests"}),
+        )
+        payload = AnalysisRequest(
+            question="weekly room operations",
+            template_id=template.template_id,
+            parameters={"week_start": "2026-07-27"},
+        )
+        decision = RoutingService((template,)).decide(payload)
+
+        response = self.service.analyze(payload, self.context, decision)
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual("TEMPLATE", response.data.route.value)
+        self.assertEqual(template.template_id, response.data.template_id)
+        self.assertTrue(response.data.gates.g1_required)
+        self.assertTrue(response.data.gates.g2_required)
 
     def test_g1_clarification_blocks_before_model_and_query(self) -> None:
         response = self.analyze("clarification")

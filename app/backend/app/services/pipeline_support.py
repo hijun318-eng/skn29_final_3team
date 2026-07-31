@@ -114,7 +114,7 @@ class PipelineSupport:
         }
         tokens = set(re.findall(r"[a-z_]+", normalized))
         if (
-            not normalized.startswith("select ")
+            re.match(r"select\b", normalized) is None
             or ";" in normalized
             or tokens.intersection(forbidden)
             or {"system", "information_schema"}.intersection(tokens)

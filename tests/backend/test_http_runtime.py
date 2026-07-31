@@ -127,6 +127,40 @@ class FastApiRuntimeTest(unittest.TestCase):
         }
         self.assertTrue(expected.issubset(names))
 
+    def test_browser_preflight_allows_only_configured_origin(self) -> None:
+        allowed_request = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/analysis",
+            method="OPTIONS",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": (
+                    "authorization,content-type,x-as-of,x-contract-version,"
+                    "x-role,x-timezone,x-trace-id,x-user-id"
+                ),
+            },
+        )
+        with urllib.request.urlopen(allowed_request, timeout=5) as response:
+            self.assertEqual(
+                "http://localhost:5173",
+                response.headers["Access-Control-Allow-Origin"],
+            )
+
+        denied_request = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/analysis",
+            method="OPTIONS",
+            headers={
+                "Origin": "https://untrusted.example",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        with self.assertRaises(urllib.error.HTTPError) as denied:
+            urllib.request.urlopen(denied_request, timeout=5)
+        self.assertEqual(400, denied.exception.code)
+        self.assertIsNone(
+            denied.exception.headers.get("Access-Control-Allow-Origin")
+        )
+
     def test_analysis_preserves_context(self) -> None:
         status, response = self.request(
             "/analysis",

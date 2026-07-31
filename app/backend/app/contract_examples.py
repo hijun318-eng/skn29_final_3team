@@ -36,7 +36,10 @@ ANALYSIS_REQUEST_EXAMPLES = {
         "value": {
             "question": "주간 객실 운영 현황",
             "template_id": "weekly-room-operations",
-            "parameters": {"week_start": "2026-07-27"},
+            "parameters": {
+                "period_start": "2026-05-01",
+                "period_end_exclusive": "2026-07-01",
+            },
         },
     },
 }

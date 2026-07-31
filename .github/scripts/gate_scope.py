@@ -70,7 +70,11 @@ def current_bundle(text: str, branch: str) -> dict[str, str] | None:
         and bundle["STATUS"] != "PLANNED"
         and "ALLOWED_PATHS" in bundle
     ]
-    return candidates[-1] if candidates else None
+    active = [
+        bundle for bundle in candidates
+        if bundle["STATUS"] not in TERMINAL_STATUSES
+    ]
+    return (active or candidates)[-1] if candidates else None
 
 
 def allowed_paths(bundle: dict[str, str], branch: str) -> list[str]:
@@ -127,6 +131,7 @@ def result_sha_matches_checked_head(
     manifest_sha: str,
     checked_head: str,
     output_path: str,
+    role_changed_paths: list[str],
 ) -> bool:
     if manifest_sha == checked_head:
         return True
@@ -135,10 +140,13 @@ def result_sha_matches_checked_head(
         check=False,
         capture_output=True,
     )
-    return (
-        ancestor.returncode == 0
-        and changed_paths(manifest_sha, checked_head, "direct") == [output_path]
-    )
+    if ancestor.returncode != 0:
+        return False
+    changed_after_result = changed_paths(manifest_sha, checked_head, "direct")
+    role_changes_after_result = [
+        path for path in changed_after_result if path in role_changed_paths
+    ]
+    return role_changes_after_result == [output_path]
 
 
 def handoff_template(
@@ -237,11 +245,12 @@ def validate_handoff(
             handoff["RESULT_SHA"],
             result_sha,
             str(manifest_path(bundle)).replace("\\", "/"),
+            changed or [],
         )
     ):
         errors.append(
             "RESULT_SHA must match the checked git head or precede only "
-            "its handoff manifest"
+            "its handoff manifest in the role diff"
         )
 
     if handoff["NOT_RUN"]:

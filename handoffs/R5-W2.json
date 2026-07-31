@@ -1,0 +1,83 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R5-W2",
+  "ROLE": "R5",
+  "BRANCH": "minji",
+  "BASE_SHA": "04e5e6dfb1ab66d41d8235275bfe5a30290c7181",
+  "DIRECTIVE_BASE_SHA": "04e5e6dfb1ab66d41d8235275bfe5a30290c7181",
+  "SYNCED_DEV_SHA": "bb131210646516a662fe9e702c6c3c1dca0e4d20",
+  "RESULT_SHA": "9a4d4e9a06669020f8e3c7f45cbb412300374ec1",
+  "PRODUCT_RESULT_SHA": "9a4d4e9a06669020f8e3c7f45cbb412300374ec1",
+  "DIRECTIVE_TOKEN": "R5-W2@04e5e6d",
+  "COMPLETED_CARDS": [
+    "R5-03",
+    "R5-04",
+    "R5-05",
+    "R5-06",
+    "R5-07"
+  ],
+  "CHANGED_FILES": [
+    "app/enterprise-react/src/api/analysisClient.ts",
+    "app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx",
+    "app/enterprise-react/src/contracts/analysis.ts",
+    "app/enterprise-react/src/data/analysisFixtures.ts",
+    "app/enterprise-react/src/pages/AgentPage.jsx",
+    "app/enterprise-react/src/styles.css",
+    "tests/frontend/contracts.test.mjs",
+    "docs/markdown/daily_reports/minji/일일보고.md"
+  ],
+  "CONTRACT_VERSIONS": {
+    "UI_VERSION": "UI-v1.0.0",
+    "REPORT_VERSION": "REPORT-v1.0.0",
+    "UI_FIXTURE_VERSION": "UI-FIXTURE-v1.0.0",
+    "OPENAPI_VERSION": "OPENAPI-v1.0.0"
+  },
+  "TEST_RESULTS": [
+    {
+      "name": "npm --prefix app/enterprise-react run build",
+      "status": "PASS",
+      "detail": "production build"
+    },
+    {
+      "name": "node --test tests/frontend/contracts.test.mjs",
+      "status": "PASS",
+      "detail": "1 passed"
+    },
+    {
+      "name": "python -m compileall -q .github/scripts tests/integration",
+      "status": "PASS"
+    },
+    {
+      "name": "python -m unittest tests.integration.test_gate_scope -v",
+      "status": "PASS",
+      "detail": "13 passed"
+    },
+    {
+      "name": "python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS"
+    },
+    {
+      "name": "python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260731 docs/markdown/daily_reports/minji/일일보고.md",
+      "status": "PASS"
+    },
+    {
+      "name": "git diff --check",
+      "status": "PASS"
+    },
+    {
+      "name": "conflict marker scan",
+      "status": "PASS",
+      "detail": "0 markers"
+    },
+    {
+      "name": "local browser READY·PARTIAL·FORBIDDEN·ERROR and Artifact bridge",
+      "status": "PASS",
+      "detail": "render, state transition, Artifact selection, browser console"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "dev 병합"
+}

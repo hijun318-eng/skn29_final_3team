@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.30 |
-| 문서 기준일 | 2026-07-31 14:20 |
+| 버전 | v2.31 |
+| 문서 기준일 | 2026-07-31 14:30 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -815,7 +815,7 @@ BASE_SHA=04e5e6dfb1ab66d41d8235275bfe5a30290c7181
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W2@04e5e6d
 CONTRACT_VERSION=I1-v1.0.0
-R1_PROGRESS=I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 trace 근거를 평가 원장 v0.4에 고정; R2 GOLD hash·source와 R3 runner 도착, R4 trace·R5 화면 증거 대기
+R1_PROGRESS=I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 trace 근거를 평가 원장 v0.5에 고정; R2 GOLD hash·source, R3 runner, R4 request→artifact trace 도착, R5 화면 증거 대기
 ALLOWED_PATHS=.github/**; compose*.yml; .env.example; tests/integration/**; docs/Answervice_기획서.md; docs/deliverables/02_WBS_29기_3팀.xlsx; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 R1_SCOPE_AUTHORIZATION=사용자 요청에 따라 기획서 v1.2와 동기화한 공식 WBS XLSX 단일 경로의 작성·덮어쓰기·commit·junhee push를 승인; 다른 deliverable 경로는 승인하지 않음
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
@@ -893,7 +893,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고·handoff mani
 ### R4-W2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -901,11 +901,11 @@ EXECUTION_BUNDLE_ID=R4-W2
 TARGET_INTEGRATION_GATE=I2
 CHECKPOINT_GATES=없음
 TASK_CARD_RANGE=R4-04~13·15
-CURRENT_TASK_CARD_ID=R4-04
+CURRENT_TASK_CARD_ID=R4-15
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=04e5e6dfb1ab66d41d8235275bfe5a30290c7181
-DIRECTIVE=ACTION
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R4-W2@04e5e6d
 OPENAPI_VERSION=OPENAPI-v1.0.0
 ALLOWED_PATHS=app/backend/**; tests/backend/**
@@ -914,6 +914,8 @@ ACCEPTANCE_CRITERIA=Router→Controller→Context→G1→model→G2→repair 최
 TEST_COMMANDS=python -m compileall -q app/backend tests/backend; python -m pytest -p no:cacheprovider tests/backend; python app/backend/scripts/export_openapi.py --check; git diff --check
 STOP_CONDITIONS=R2/R3 contract 불일치; migration 다중 head; 불법 상태 전이; 허용 경로 밖 변경 필요; 필수 contract test 실패
 HANDOFF=R5에 OpenAPI example·상태 fixture·Artifact contract, R1에 request→artifact trace와 manifest 전달
+R1_REVIEW_EVIDENCE=origin/jaehong b671ca5와 handoff 2924d0b의 허용 경로·11개 완료 카드·OPENAPI-v1.0.0·Context/Policy version·branch CI run 30606533152 PASS·Not Run/잔여 위험/외부 승인 0건 확인
+R1_INTEGRATION_EVIDENCE=e34442d로 제품을 dev에 병합하고 pipeline 8건·integration 16건을 독립 실행했으며 보고 통합 1789ba2와 dev CI run 30606915908 PASS 확인
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R4 개인 일일보고·handoff manifest의 commit·jaehong push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
 ```
 
@@ -1086,6 +1088,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.31 | 2026-07-31 14:30 | R4-W2 제품 `cd9e9c6`·handoff `2924d0b`의 Context→G1→model→G2→repair 1회→query→G3→Artifact 고정 흐름, 11개 완료 카드, branch CI run `30606533152` PASS를 확인해 `e34442d`로 dev에 통합했다. pipeline 8건·integration 16건과 dev CI run `30606915908` PASS를 확인하고 R4-W2를 MERGED_DEV·WAIT로 전환했으며 R1 평가 원장에 네 결과 trace 근거를 연결했다. |
 | v2.30 | 2026-07-31 14:20 | 사용자 요청으로 기획서 v1.2와 동기화한 공식 `02_WBS_29기_3팀.xlsx`가 R1-W2 허용 범위에서 누락돼 junhee CI run `30606452633`의 role-scope만 실패한 것을 확인했다. 문서·Python·Compose 검증은 PASS였으므로 해당 XLSX 단일 경로의 작성·덮어쓰기·commit·junhee push를 승인하고 다른 deliverable은 계속 금지했다. |
 | v2.29 | 2026-07-31 14:05 | R2-W2 제품 `75f148b`·handoff `de0a26f`의 `I2-v1.0.0`, GOLD hash `e6c2d1e…08fd`, 승인 JOIN, typed DataHub/Trino adapter, data 14건·통합 16건·role scope와 branch CI run `30605617536` PASS를 확인해 `5afb90b`으로 dev에 통합하고 dev CI run `30605760842` PASS를 확인했다. R2-W2를 MERGED_DEV·WAIT로 전환하고 R1 평가 원장에 정답 hash·source 근거를 연결했다. |
 | v2.28 | 2026-07-31 13:58 | R3-W2 제품 `345a788`·handoff `f4f2563`의 허용 경로, G3 pass 전용 Node 3, deterministic 평가 runner, AI 20건·통합 14건·role scope와 branch CI run `30605387557` PASS를 확인해 `f2817a0`으로 dev에 통합하고 dev CI run `30605486384` PASS를 확인했다. R3-W2를 MERGED_DEV·WAIT로 전환하고 R1 평가 원장에 runner 도착 근거를 연결했다. |

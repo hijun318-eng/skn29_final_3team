@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from .gates import gate_g1, gate_g2, gate_g2_prime, gate_g3
 from .nodes import node1_normalize, node2_fix, node2_generate_sql, node3_explain
+from .trino_executor import execute_trino
 from .types import (
     AssetRef,
     ContextPackage,
@@ -18,13 +19,7 @@ from .types import (
     PipelineResult,
     PipelineState,
     RouteType,
-    ShapedResult,
 )
-
-
-# ---------------------------------------------------------------------------
-# Stub: Context Builder (DataHub + 정책 저장소 대체)
-# ---------------------------------------------------------------------------
 
 
 def _build_context_stub(
@@ -33,11 +28,7 @@ def _build_context_stub(
     as_of: str,
     question: str,
 ) -> ContextPackage:
-    """DataHub 검색·업무 정책 병합 stub.
-
-    실제 구현에서는 DataHub API 검색 + 승인 지표·공통키·JOIN 결합으로
-    versioned Context Package를 구성한다 (기획서 §9.2).
-    """
+    """DataHub 검색·업무 정책 병합 stub."""
     now = datetime.now(timezone.utc).isoformat()
     return ContextPackage(
         context_release="ctx-stub-v1",
@@ -69,48 +60,12 @@ def _build_context_stub(
     )
 
 
-# ---------------------------------------------------------------------------
-# Stub: Execute + Result Shaper (Trino 대체)
-# ---------------------------------------------------------------------------
-
-
-def _execute_stub(sql: str) -> ShapedResult:
-    """Trino 읽기 전용 실행 + Result Shaper stub.
-
-    실제 구현에서는 검증된 SQL을 Trino에서 실행하고,
-    Result Shaper가 집계·샘플링·표시 상한을 적용한다 (기횅서 §9.3).
-    """
-    return ShapedResult(
-        columns=["time_bucket", "wait_p90_min"],
-        rows=[
-            ["2026-07-20T08:00", 12.4],
-            ["2026-07-21T08:00", 15.2],
-            ["2026-07-22T08:00", 9.8],
-        ],
-        row_count=3,
-        sampling_evidence={"sampled": False, "source": "stub"},
-    )
-
-
-# ---------------------------------------------------------------------------
-# 결정론적 Pipeline 실행
-# ---------------------------------------------------------------------------
-
-
 async def run_pipeline(
     question: str,
     role: str = "OPERATIONS_MANAGER",
     as_of: str = "",
 ) -> PipelineResult:
-    """Guarded Text-to-SQL Pipeline을 결정론적으로 실행한다.
-
-    기획서 §9.3 순서:
-    Router → Node 1 → Context → G1 → SQL 출처 선택 → G2
-    → (실패 시 Node 2' → G2') → 실행/Cache → G3 → Node 3 → artifact 저장
-
-    Returns:
-        PipelineResult: 최종 상태 + 모든 Gate/Node 결과
-    """
+    """Guarded Text-to-SQL Pipeline을 결정론적으로 실행한다."""
     rid = str(uuid.uuid4())
     result = PipelineResult(
         request_id=rid,
@@ -130,7 +85,7 @@ async def run_pipeline(
         result.error = normalized.clarify_question or "질문이 모호합니다. 지표와 기간을 명시해 주세요."
         return result
 
-    # 3. Context Build (DataHub + 정책 병합)
+    # 3. Context Build
     result.state = PipelineState.CONTEXT_BUILD
     context = _build_context_stub(normalized.metrics, role, as_of, question)
     result.context = context
@@ -151,7 +106,7 @@ async def run_pipeline(
     result.state = PipelineState.G2_SQL_POLICY
     result.g2 = gate_g2(result.sql, context)
     if not result.g2.passed:
-        # Node 2' — SQL 수정 (1회만 허용, 기획서 §9.3)
+        # Node 2' — SQL 수정 (1회만 허용)
         result.state = PipelineState.NODE2_FIX
         result.sql = await node2_fix(result.sql, result.g2.error_code, context)
 
@@ -163,9 +118,9 @@ async def run_pipeline(
             result.error = f"SQL 수정 후에도 정책을 통과하지 못했습니다: {result.g2.message}"
             return result
 
-    # 7. 실행 + Result Shaper (Trino stub)
+    # 7. 실행 + Result Shaper (Trino 연합 쿼리, 미연결 시 stub fallback)
     result.state = PipelineState.EXECUTE
-    result.result = _execute_stub(result.sql.sql)
+    result.result = await execute_trino(result.sql.sql)
 
     # 8. G3 — Result Check
     result.state = PipelineState.G3_RESULT
@@ -175,7 +130,7 @@ async def run_pipeline(
         result.error = result.g3.message
         return result
 
-    # 9. Node 3 — 근거 기반 설명 (G3 통과 결과만 설명)
+    # 9. Node 3 — 근거 기반 설명
     result.state = PipelineState.NODE3_EXPLAIN
     result.explanation = await node3_explain(result.result, context)
 

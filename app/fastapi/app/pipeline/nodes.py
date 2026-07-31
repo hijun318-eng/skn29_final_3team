@@ -126,25 +126,40 @@ async def node3_explain(
     result: ShapedResult,
     context: ContextPackage,
 ) -> ExplanationResult:
-    """검증된 shaped result를 지표·기간·필터와 함께 설명한다.
+    """검증된 shaped result를 LLM으로 설명한다 (G3 통과 결과만).
 
-    stub: 결과 요약만 생성.
-    실제 구현에서는 RunPod vLLM Base 모델이 담당한다.
+    LLM Gateway의 기본 provider(stub/ollama/openai)를 사용한다.
     Node 2의 추론 과정은 전달받지 않는다 (기획서 §10.2).
+    LLM 실패 시 결정론적 fallback 설명을 반환한다.
     """
     metric_names = ", ".join(m.metric_id for m in context.metrics) or "지표"
-    explanation = (
-        f"{context.period_start} ~ {context.period_end_exclusive} 기간의 "
-        f"{metric_names} 분석 결과 {result.row_count}건을 확인했습니다."
-    )
 
-    return ExplanationResult(
-        explanation=explanation,
-        evidence_summary=f"자산 {len(context.assets)}개, JOIN {len(context.joins)}개 사용",
-        limitations=[
-            "합성 데이터 기반 분석",
-            "LLM 미연결 (stub-v1)",
-            "관리자 검토 필요",
-        ],
-        model_version="stub-v1",
-    )
+    try:
+        from app.llm.gateway import LLMGateway
+
+        gw = LLMGateway()
+        provider = gw.get_provider()
+        prompt = (
+            f"다음 호텔 운영 데이터 분석 결과를 한국어로 간략히 설명하세요.\n"
+            f"기간: {context.period_start} ~ {context.period_end_exclusive}\n"
+            f"지표: {metric_names}\n"
+            f"데이터 건수: {result.row_count}건\n"
+            f"샘플 데이터: {result.rows[:3]}"
+        )
+        llm_response = await provider.complete(prompt)
+        return ExplanationResult(
+            explanation=llm_response.text,
+            evidence_summary=f"자산 {len(context.assets)}개, JOIN {len(context.joins)}개 사용",
+            limitations=["관리자 검토 필요"],
+            model_version=llm_response.model_name,
+        )
+    except Exception:
+        return ExplanationResult(
+            explanation=(
+                f"{context.period_start} ~ {context.period_end_exclusive} 기간의 "
+                f"{metric_names} 분석 결과 {result.row_count}건을 확인했습니다."
+            ),
+            evidence_summary=f"자산 {len(context.assets)}개 사용",
+            limitations=["LLM 미연결 (fallback)", "관리자 검토 필요"],
+            model_version="fallback-v1",
+        )

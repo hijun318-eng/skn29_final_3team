@@ -44,10 +44,12 @@ class Wave1ContractTest(unittest.TestCase):
                 data["scenario_version"],
             ),
         )
+        self.assertEqual("I1-v1.0.0", data["candidate_contract_version"])
         self.assertEqual("DRAFT-MODEL-v0.1", model["version"])
         self.assertEqual("OPENAPI-v1.0.0", backend_version)
         for version in (
             data["contract_version"],
+            data["candidate_contract_version"],
             model["version"],
             backend_version,
         ):

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.17 |
-| 문서 기준일 | 2026-07-31 11:44 |
+| 버전 | v2.18 |
+| 문서 기준일 | 2026-07-31 11:55 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -161,7 +161,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R5-W1 | Wave 1·07/29~08/07 | R5 | I0 → I1 | R5-00~04, R5-08 | 활성 frontend·IA·typed client·mock·Chat 상태·Report 계약 | `MERGED_DEV` |
 | R2-W1-F1 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 I1 service fragment 보완 | DataHub/database fragment·health·env 요구 | `MERGED_DEV` |
 | R2-W1-F2 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 DataHub consumer fragment 보완 | immutable version·official Compose source·health·env | `MERGED_DEV` |
-| R2-W1-F3 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 대표 질문 metric·JOIN 계약 보완 | 실제 PMS 수익 인식 필드·event-time CRM JOIN·I1 data version | `READY` |
+| R2-W1-F3 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 대표 질문 metric·JOIN 계약 보완 | 실제 PMS 수익 인식 필드·event-time CRM JOIN·I1 data version | `MERGED_DEV` |
 | R4-W1-F1 | Wave 1 follow-up | R4 | 없음 → I1 | R4-20의 I1 container subset | backend Dockerfile·container health·runtime 증거 | `MERGED_DEV` |
 | R4-W1-F2 | Wave 1 follow-up | R4 | 없음 → I1 | R4-W1-F1 cleanup 결함 수정 | container 검증 종료 코드·잔존 container 정리 | `MERGED_DEV` |
 | R4-W1-F3 | Wave 1 follow-up | R4 | 없음 → I1 | R4-01의 OpenAPI/state/error version 동결 | 최종 OpenAPI version·동일 상태/오류 contract | `MERGED_DEV` |
@@ -214,18 +214,19 @@ CURRENT_TASK_CARD_ID=R1-03
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=e5eea6057468a7d3ababb3a4cc432924fc4cc207
-REMOTE_DEV_SHA=9da78aae7ea73e4cc82955c90fec108ba6a758b9
-REMOTE_CI_EVIDENCE=R4 GitHub Actions run 30599636125 PASS; R1 후속 dev CI 갱신 예정
+REMOTE_DEV_SHA=47c1f9489c8b38c35c4c3766e5cbac86fbac0079
+REMOTE_CI_EVIDENCE=R2 GitHub Actions run 30599951597 PASS; R1 후속 dev CI 갱신 예정
 REMOTE_SYNC_STATE=VERIFIED
 I0_DECISION_VERSION=DRAFT-I0-v0.2
 CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
 PROMPT_VERSION=DRAFT-PROMPT-v0.1
 MODEL_FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
-BLOCKER=R2-W1-F3 handoff manifest 재제출과 dev 통합, R5 UI/Report 최종 version 미동결
+BLOCKER=R5 UI/Report/fixture 최종 version 미동결
 R1_APPROVED_INPUTS=R2 schema 1.0.0·seed 20260729·scenario 1.0.0; R3 model I/O DRAFT-MODEL-v0.1·prompt DRAFT-PROMPT-v0.1·fixture DRAFT-MODEL-FIXTURE-v0.1
 R3_SERVICE_FRAGMENT=N/A — R3-W3에서 model serving Dockerfile 또는 실행 manifest 제출
-R1_REWORK_AUTHORIZATION=R2-W1-F3은 제품 결과 SHA 뒤 handoff manifest-only commit·seung push만 REWORK, R4-W1-F3은 MERGED_DEV·WAIT, R5-W1-F2는 ACTION, 전 역할 Wave 2는 I1 VERIFIED_GATE 전 불허
+R1_REWORK_AUTHORIZATION=R2-W1-F3·R4-W1-F3은 MERGED_DEV·WAIT, R5-W1-F2는 ACTION, 전 역할 Wave 2는 I1 VERIFIED_GATE 전 불허
+R3_BRANCH_REJECTION=origin/daesung d044fb7은 terminal 역할 허용 범위 밖 docs 2개 추가와 CI failure로 dev 병합 불가; R3는 작업 중단·R1 지시 대기
 INDEPENDENT_PROGRESS=R1-04~06 root DataHub 통합 profile·env·재현 가능한 service fragment 검증과 Python·frontend·Compose·문서 품질 Gate, R1-07 필수 30·gold 120 평가 원장 schema
 ROLE_GATE_POLICY=개인 branch는 origin/dev 대비 고유 변경을 최신 비-PLANNED 실행 묶음의 ALLOWED_PATHS로 검사; 공용 보고 자동화·팀 요약·검증은 비제품 경로로 허용하고 다른 역할 개인 보고는 차단; MERGED_DEV·VERIFIED_GATE는 개인 보고·공용 보고 외 변경 차단; dev는 role scope 강제 없이 통합 검사
 ROLE_GATE_PERMISSION=GitHub Actions contents: read만 사용, 자동 상태 변경·commit·push·merge 금지
@@ -524,7 +525,7 @@ Wave 2 구현은 시작하지 않는다.
 ### R2-W1-F3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -536,11 +537,11 @@ CURRENT_TASK_CARD_ID=R2-09
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=e2ecee3afbc7fa9d0e05d3973e607bed6b1d62cb
-DIRECTIVE=ACTION
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R2-W1-F3@e2ecee3
 SUBMISSION_PERMISSION_STATUS=APPROVED
-SUBMISSION_STATE=PRODUCT_RESULT_READY; HANDOFF_MANIFEST_REWORK
-CONTRACT_VERSION=DRAFT-I1-v0.1 → I1-v1.0.0 후보
+SUBMISSION_STATE=ACCEPTED_AND_MERGED_DEV
+CONTRACT_VERSION=DRAFT-I1-v0.1; DATA_CANDIDATE_VERSION=I1-v1.0.0
 SCHEMA_VERSION=1.0.0
 SEED_VERSION=20260729
 SCENARIO_VERSION=1.0.0
@@ -552,9 +553,10 @@ ACCEPTANCE_CRITERIA=pms.public.pms_stays.room_revenue를 수익 인식 필드로
 TEST_COMMANDS=python -m unittest discover -s tests/data -p "test_*.py" -v; python -m json.tool src/data/r2_w1_contract.v1.json > NUL; python -m json.tool src/data/source_registry.v1.json > NUL; git diff --check
 STOP_CONDITIONS=실제 컬럼으로 승인 JOIN을 표현할 수 없음; DDL·seed 변경 필요; 기존 schema·seed·scenario 또는 checksum 변경; 허용 경로 밖 변경 필요; 필수 검증 실패
 HANDOFF=R1에 metric ID·time field·JOIN ID·cardinality·temporal predicate·변경된 contract version과 검증 결과 전달
-R1_REVIEW_EVIDENCE=origin/seung 23059a6의 고유 변경은 승인된 data contract·registry·test 3개이고 CI run 30597402020의 제품·범위·Compose·문서 검사는 PASS; handoff self-reference만 R1 validator e5eea60에서 수정
-R1_REWORK_AUTHORIZATION=origin/dev e5eea60을 반영하고 RESULT_SHA=23059a62957b2baec7ba1e7113d08bc63f621364인 handoffs/R2-W1-F3.json 하나만 commit·seung push
-EXTERNAL_ACTION_PERMISSION=기존 제품 3개 파일의 추가 변경 없이 handoffs/R2-W1-F3.json manifest-only commit·seung push 승인; dependency 설치·download·image pull·비용·배포·secret·데이터 전송·dev merge 불가
+R1_REVIEW_EVIDENCE=고유 변경 4개가 허용 경로와 manifest에 일치하고 role Gate·handoff PASS, data 8건·소비자 계약·JSON·diff와 CI run 30599951597 PASS
+HANDOFF_SHA=b8ec6b9692f8fbe2172775876ac9a3b8d50c1313
+INTEGRATION_SHA=47c1f9489c8b38c35c4c3766e5cbac86fbac0079
+EXTERNAL_ACTION_PERMISSION=추가 제품 변경·commit·push·Wave 2 착수 불가; R1의 다음 실행 묶음 발행 대기
 ```
 
 ### R4-W1-F3
@@ -845,6 +847,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.18 | 2026-07-31 11:55 | R2 제품 `23059a6`·handoff `b8ec6b9`의 scope·manifest·data 8건·소비자 계약·CI run `30599951597` PASS를 확인해 `47c1f94`로 dev에 통합하고 R2-W1-F3을 MERGED_DEV·WAIT로 전환했다. R1-W1 blocker는 R5 하나로 축소했으며, R3 `d044fb7`은 terminal 허용 범위 밖 문서 추가와 CI failure로 병합하지 않았다. |
 | v2.17 | 2026-07-31 11:44 | R4 제품 `c83809a`와 handoff `9da78aa`의 허용 경로·manifest·backend 55건·GitHub Actions run `30599636125` PASS를 확인해 dev에 통합하고 R4-W1-F3을 MERGED_DEV·WAIT로 전환했으며 OpenAPI를 `OPENAPI-v1.0.0`으로 동결하고 R1-W1 blocker를 R2·R5로 축소했다. |
 | v2.16 | 2026-07-31 11:30 | R4 제품 결과 `c83809a`의 역할 범위와 51개 회귀 통과를 수용하고, 실패 1건이 R1 통합 계약의 DRAFT 고정 기대임을 확인해 `OPENAPI-v1.0.0` 전환 계약을 반영했다. 제품 결과는 유지하고 최신 dev 반영 뒤 `handoffs/R4-W1-F3.json`만 추가하는 REWORK로 전환했으며 `origin/dev` `bb5f89d`·CI run `30599059380` PASS를 기록했다. |
 | v2.15 | 2026-07-31 11:24 | R1 경로 정합성 제안의 1·2·3·4·6·7번을 승인해 R4 기본 경로를 실제 `app/backend/**`로 교정하고 활성 frontend를 `app/enterprise-react/**`로 단일화했으며 R1 기획서·R5 요구사항·화면설계서 소유권을 지정했다. `app/react/**` 삭제는 별도 결정으로 보류했다. R4 follow-up 집계 상태를 현재 카드와 맞추고 `origin/dev` `4f08263`·CI run `30598777511` PASS를 반영했다. |

@@ -815,7 +815,7 @@ BASE_SHA=04e5e6dfb1ab66d41d8235275bfe5a30290c7181
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W2@04e5e6d
 CONTRACT_VERSION=I1-v1.0.0
-R1_PROGRESS=I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 trace 근거를 평가 원장 v0.5에 고정; R2 GOLD hash·source, R3 runner, R4 request→artifact trace 도착, R5 화면 증거 대기
+R1_PROGRESS=I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 trace 근거를 평가 원장 v0.6에 고정; R2 GOLD hash·source, R3 runner, R4 request→artifact trace 도착, 팀 저장소 dev bb13121 CI PASS, R5 화면 증거 대기
 ALLOWED_PATHS=.github/**; compose*.yml; .env.example; tests/integration/**; docs/Answervice_기획서.md; docs/deliverables/02_WBS_29기_3팀.xlsx; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 R1_SCOPE_AUTHORIZATION=사용자 요청에 따라 기획서 v1.2와 동기화한 공식 WBS XLSX 단일 경로의 작성·덮어쓰기·commit·junhee push를 승인; 다른 deliverable 경로는 승인하지 않음
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
@@ -945,7 +945,7 @@ FORBIDDEN_PATHS=app/react/**; app/backend/**; source DDL·seed·src/data/**; src
 ACCEPTANCE_CRITERIA=Chat shell·전체 상태 UI·Evidence·표·차트·Artifact bridge에서 request/run/artifact ID, metric·단위·기간·as_of·filter·source와 loading·blocked·partial·failed 상태를 API 결과 재계산 없이 표시
 TEST_COMMANDS=npm --prefix app/enterprise-react run build; node --test tests/frontend/contracts.test.mjs; git diff --check
 STOP_CONDITIONS=활성 frontend 밖 수정 필요; API 결과·권한·Gate 재계산 필요; 허용 경로 밖 변경 필요; build 또는 mock/contract 검증 실패
-HANDOFF=R1에 성공·재질문·차단·partial 화면 증거, R4에 response drift·필요 contract diff와 manifest 전달
+HANDOFF=R1에 성공·재질문·차단·partial·source 실패 화면 증거, R4에 response drift·필요 contract diff와 manifest 전달
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R5 개인 일일보고·handoff manifest의 commit·minji push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
 ```
 
@@ -1088,6 +1088,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.33 | 2026-07-31 14:47 | 팀 저장소 dev `bb13121`의 CI run `30607588406` 전체 PASS를 확인하고 R1 평가 원장을 v0.6으로 정합화했다. R5-W2 HANDOFF가 source 실패 화면 증거를 누락하지 않도록 제출 기준을 명확히 했으며, R2·R3·R4는 MERGED_DEV·WAIT, R5만 READY·ACTION을 유지한다. |
 | v2.32 | 2026-07-31 14:34 | R4-W2를 MERGED_DEV로 전환한 뒤 junhee CI run `30607094428`에서 실행 묶음 선택 회귀 테스트가 과거 `READY` 상태를 고정 기대해 1건 실패한 것을 확인했다. 현재 원장 상태를 기대하도록 R1 소유 통합 테스트 한 줄을 교정했으며 제품·계약·다른 역할 경로는 변경하지 않았다. |
 | v2.31 | 2026-07-31 14:30 | R4-W2 제품 `cd9e9c6`·handoff `2924d0b`의 Context→G1→model→G2→repair 1회→query→G3→Artifact 고정 흐름, 11개 완료 카드, branch CI run `30606533152` PASS를 확인해 `e34442d`로 dev에 통합했다. pipeline 8건·integration 16건과 dev CI run `30606915908` PASS를 확인하고 R4-W2를 MERGED_DEV·WAIT로 전환했으며 R1 평가 원장에 네 결과 trace 근거를 연결했다. |
 | v2.30 | 2026-07-31 14:20 | 사용자 요청으로 기획서 v1.2와 동기화한 공식 `02_WBS_29기_3팀.xlsx`가 R1-W2 허용 범위에서 누락돼 junhee CI run `30606452633`의 role-scope만 실패한 것을 확인했다. 문서·Python·Compose 검증은 PASS였으므로 해당 XLSX 단일 경로의 작성·덮어쓰기·commit·junhee push를 승인하고 다른 deliverable은 계속 금지했다. |

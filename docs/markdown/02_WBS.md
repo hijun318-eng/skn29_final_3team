@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.26 |
-| 문서 기준일 | 2026-07-31 14:20 |
+| 버전 | v7.28 |
+| 문서 기준일 | 2026-07-31 14:34 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -209,18 +209,18 @@ gantt
 | 4.2 | R4-01 공통 객체·OpenAPI·오류 계약 | versioned API contract | 김재홍 | 완료 | 07/29 | 08/07 | 높음 |
 | 4.3 | R4-02 인증·request context middleware | role·as_of·trace context | 김재홍 | 완료 | 08/03 | 08/07 | 높음 |
 | 4.4 | R4-03 application DB model·Alembic | migration head | 김재홍 | 완료 | 08/03 | 08/07 | 높음 |
-| 4.5 | R4-04 Router·Template Binding | route decision | 김재홍 | 진행 | 08/03 | 08/10 | 높음 |
-| 4.6 | R4-05 Controller 고정 상태 머신 | transition table | 김재홍 | 진행 | 08/03 | 08/10 | 높음 |
-| 4.7 | R4-06 Context Registry·Builder | versioned Context Package | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
-| 4.8 | R4-07 G1 Context Gate | decision·evidence | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
-| 4.9 | R4-08 R3 Node typed client | model client·오류 처리 | 김재홍 | 대기 | 08/10 | 08/21 | 높음 |
-| 4.10 | R4-09 G2 SQL Policy Gate | AST·policy decision | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
-| 4.11 | R4-10 Node 2′·G2′ 수정 1회 통제 | repair counter | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
-| 4.12 | R4-11 R2 Trino 실행 lifecycle 통제 | pass token·timeout·cancel | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
-| 4.13 | R4-12 Result Shaper·G3 | shaped result·evidence | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
-| 4.14 | R4-13 Node 3·승인 후 수정 불가 Artifact | artifact contract | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
+| 4.5 | R4-04 Router·Template Binding | route decision | 김재홍 | 완료 | 08/03 | 08/10 | 높음 |
+| 4.6 | R4-05 Controller 고정 상태 머신 | transition table | 김재홍 | 완료 | 08/03 | 08/10 | 높음 |
+| 4.7 | R4-06 Context Registry·Builder | versioned Context Package | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
+| 4.8 | R4-07 G1 Context Gate | decision·evidence | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
+| 4.9 | R4-08 R3 Node typed client | model client·오류 처리 | 김재홍 | 완료 | 08/10 | 08/21 | 높음 |
+| 4.10 | R4-09 G2 SQL Policy Gate | AST·policy decision | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
+| 4.11 | R4-10 Node 2′·G2′ 수정 1회 통제 | repair counter | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
+| 4.12 | R4-11 R2 Trino 실행 lifecycle 통제 | pass token·timeout·cancel | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
+| 4.13 | R4-12 Result Shaper·G3 | shaped result·evidence | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
+| 4.14 | R4-13 Node 3·승인 후 수정 불가 Artifact | artifact contract | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
 | 4.15 | R4-14 SQL Plan·Result Cache | versioned cache key | 김재홍 | 대기 | 08/17 | 08/21 | 중간 |
-| 4.16 | R4-15 Audit·Trace·관측 | linked request trace | 김재홍 | 대기 | 08/10 | 08/21 | 높음 |
+| 4.16 | R4-15 Audit·Trace·관측 | linked request trace | 김재홍 | 완료 | 08/10 | 08/21 | 높음 |
 | 4.17 | R4-16 R5 Report module 공통 등록 | analysis run contract | 김재홍 | 대기 | 08/24 | 08/28 | 높음 |
 | 4.18 | R4-17 worker·schedule runtime | 영속 job·같은 요청 한 번만 처리·실패 격리 | 김재홍 | 대기 | 08/24 | 08/28 | 높음 |
 | 4.19 | R4-18 권한·mask·민감정보 가림(redaction) | 보안 검증 증거 | 김재홍 | 대기 | 08/17 | 08/28 | 높음 |
@@ -361,6 +361,8 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-31 14:34 | 1.7, 4.5~4.14, 4.16 | R4-W2의 MERGED_DEV 전환 뒤 junhee CI run `30607094428`에서 실행 묶음 선택 테스트가 과거 `READY`를 고정 기대해 1건 실패한 것을 확인했다. 현재 원장 상태 `MERGED_DEV`를 기대하도록 R1 통합 테스트 한 줄을 교정했으며 R4 제품·계약과 WBS 일정·상태는 유지했다. | R4 상태 회귀 테스트 교정 |
+| 2026-07-31 14:30 | 4.5~4.14, 4.16, 6.2 | R4-W2 제품 `cd9e9c6`·handoff `2924d0b`의 Context→G1→model→G2→repair 1회→query→G3→Artifact 흐름과 네 결과 trace, branch CI run `30606533152` PASS를 확인해 `e34442d`로 dev에 통합했다. pipeline 8건·integration 16건과 dev CI run `30606915908` PASS를 근거로 완료 카드를 완료로 전환하고 R1 평가 원장에 trace 근거를 연결했다. | R4-W2 dev 통합 |
 | 2026-07-31 14:20 | 1.1, 1.7 | 기획서 v1.2와 동기화한 공식 WBS XLSX 단일 경로가 R1-W2 허용 범위에서 누락돼 junhee CI run `30606452633`의 role-scope만 실패한 것을 확인했다. 사용자 요청 범위인 해당 XLSX 경로만 Gate 원장에 승인하고 다른 deliverable은 계속 금지했으며 문서·Python·Compose PASS 결과는 유지했다. | 공식 WBS 경로 승인 |
 | 2026-07-31 14:12 | 1.1~1.2, 3.10, 7.1~7.7 | 기획서 v1.2를 우선 기준으로 다시 대조해 10주 참조 모델과 5.4주 확정 실행 기간을 분리하고, 압축을 기간 중첩이 아닌 범위 축소로 명시했다. 실제 5인 역할·React/Vite 실측·미도입 frontend 후보·결정론적 역할 분리 Node·Git/CI 운영 경계를 유지했으며, 공식 WBS XLSX를 현행 99개 작업으로 교정하는 근거를 연결했다. | 기획서 v1.2·공식 WBS 동기화 |
 | 2026-07-31 14:05 | 2.10~2.17, 6.2 | R2-W2 제품 `75f148b`·handoff `de0a26f`의 PMS/CRM metadata·adapter·승인 JOIN·GOLD hash·query lifecycle, data 14건·통합 16건·branch CI run `30605617536` PASS를 확인해 `5afb90b`으로 dev에 통합하고 dev CI run `30605760842` PASS를 확인했다. R2-W2는 완료했지만 WBS 행은 후속 5-source·3-source 확장이 남아 진행으로 전환하고 R1 평가 원장에 data 근거를 연결했다. | R2-W2 dev 통합 |
@@ -420,6 +422,8 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.28 | 2026-07-31 14:34 | R4-W2 MERGED_DEV 전환에 맞춰 R1 실행 묶음 선택 회귀 테스트의 과거 READY 고정 기대를 교정한 근거를 1.7에 연결 |
+| v7.27 | 2026-07-31 14:30 | R4-W2 고정 제어 흐름·네 결과 trace의 제품·handoff·branch/dev CI와 dev 통합 근거를 4.5~4.14·4.16·6.2에 연결하고 완료 카드를 완료로 전환 |
 | v7.26 | 2026-07-31 14:20 | 공식 WBS XLSX 단일 경로의 R1-W2 scope 누락으로 발생한 junhee CI role-scope 실패를 기록하고 사용자 요청 범위에 맞춰 해당 경로만 승인 |
 | v7.25 | 2026-07-31 14:12 | 기획서 v1.2 우선 대조 결과를 반영해 5.4주 실행 기간과 선행 산출물 구간을 분리하고, 범위 축소 원칙·현재 frontend 실측·결정론적 Node 비교·공식 01~03 제출본 상태를 교정했으며 공식 WBS XLSX 갱신 근거를 연결 |
 | v7.24 | 2026-07-31 14:05 | R2-W2 data 계약·GOLD hash·adapter의 제품·handoff·branch/dev CI와 dev 통합 근거를 2.10~2.17·6.2에 연결하고 후속 확장 대상 행을 진행으로 전환 |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.20 |
-| 문서 기준일 | 2026-07-31 12:14 |
+| 버전 | v2.21 |
+| 문서 기준일 | 2026-07-31 12:21 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -157,7 +157,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R1-W1 | Wave 1·07/29~08/07 | R1 | I0 → I1 | R1-00~08 | 역할·범위·소유권·공통 계약·Compose·env·CI·I1 판정 | `BLOCKED` |
 | R2-W1 | Wave 1·07/29~08/07 | R2 | I0 → I1 | R2-00~08 | registry·논리/물리 모델·seed·identity·quality·read-only | `MERGED_DEV` |
 | R3-W1 | Wave 1·07/29~08/07 | R3 | I0 → I1 | R3-00~03, R3-07 | AI 범위·Node schema·fake·Node 1 baseline·Prompt Registry | `MERGED_DEV` |
-| R3-W1-CLEAN | Wave 1 follow-up | R3 | 없음 → I1 | R3 개인 branch 허용 범위 복구 | 승인되지 않은 문서 2개를 `origin/dev` 상태로 복구 | `READY` |
+| R3-W1-CLEAN | Wave 1 follow-up | R3 | 없음 → I1 | R3 문서 제출 재판정 | 사용자 override에 따라 R3 최신 기획 문서를 우선 통합하고 복구 작업 종료 | `MERGED_DEV` |
 | R4-W1 | Wave 1·07/29~08/07 | R4 | I0 → I1 | R4-00~05 | backend 경계·OpenAPI·auth·DB·migration·Controller skeleton | `MERGED_DEV` |
 | R5-W1 | Wave 1·07/29~08/07 | R5 | I0 → I1 | R5-00~04, R5-08 | 활성 frontend·IA·typed client·mock·Chat 상태·Report 계약 | `MERGED_DEV` |
 | R2-W1-F1 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 I1 service fragment 보완 | DataHub/database fragment·health·env 요구 | `MERGED_DEV` |
@@ -227,7 +227,7 @@ BLOCKER=R5 UI/Report/fixture 최종 version 미동결
 R1_APPROVED_INPUTS=R2 schema 1.0.0·seed 20260729·scenario 1.0.0; R3 model I/O DRAFT-MODEL-v0.1·prompt DRAFT-PROMPT-v0.1·fixture DRAFT-MODEL-FIXTURE-v0.1
 R3_SERVICE_FRAGMENT=N/A — R3-W3에서 model serving Dockerfile 또는 실행 manifest 제출
 R1_REWORK_AUTHORIZATION=R2-W1-F3·R4-W1-F3은 MERGED_DEV·WAIT, R5-W1-F2는 ACTION, 전 역할 Wave 2는 I1 VERIFIED_GATE 전 불허
-R3_BRANCH_REWORK=origin/daesung 733307c은 terminal 역할 허용 범위 밖 요약본 추가·공식 03 DOCX 수정과 CI failure로 dev 병합 불가; R3-W1-CLEAN에서 현재 고유 diff 두 경로를 origin/dev 상태로 복구하는 commit·daesung push만 허가
+R3_USER_OVERRIDE=사용자가 origin/daesung 733307c의 최신 기획 문서를 충돌 시 R3 우선으로 dev 병합하도록 지시; 역할 scope failure는 명시적 override로 수용하고 요약본·공식 03 DOCX를 a0ac7ed로 통합
 INDEPENDENT_PROGRESS=R1-04~06 root DataHub 통합 profile·env·재현 가능한 service fragment 검증과 Python·frontend·Compose·문서 품질 Gate, R1-07 필수 30·gold 120 평가 원장 schema
 ROLE_GATE_POLICY=개인 branch는 origin/dev 대비 고유 변경을 최신 비-PLANNED 실행 묶음의 ALLOWED_PATHS로 검사; 공용 보고 자동화·팀 요약·검증은 비제품 경로로 허용하고 다른 역할 개인 보고는 차단; MERGED_DEV·VERIFIED_GATE는 개인 보고·공용 보고 외 변경 차단; dev는 role scope 강제 없이 통합 검사
 ROLE_GATE_PERMISSION=GitHub Actions contents: read만 사용, 자동 상태 변경·commit·push·merge 금지
@@ -301,7 +301,7 @@ EXTERNAL_ACTION_PERMISSION=download·RunPod·비용·배포·stage·commit·push
 ### R3-W1-CLEAN
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -313,16 +313,19 @@ CURRENT_TASK_CARD_ID=R3-W1-CLEAN
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=aa605543a0395db4042b779e05a277932568449f
-DIRECTIVE=REWORK
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R3-W1-CLEAN@aa60554
-SUBMISSION_PERMISSION_STATUS=APPROVED
+SUBMISSION_PERMISSION_STATUS=CLOSED_BY_USER_OVERRIDE
 ALLOWED_PATHS=docs/Answervice_기획서_요약본.md; docs/deliverables/03_프로젝트기획서_29기_3팀.docx
 FORBIDDEN_PATHS=위 2개 외 전체 경로
-ACCEPTANCE_CRITERIA=두 파일을 origin/dev 상태로 복구하고 origin/dev 대비 제품·문서 고유 diff 0건, R3-W1 결과와 기존 개인 보고 유지
-TEST_COMMANDS=git diff --exit-code origin/dev...daesung -- docs/Answervice_기획서_요약본.md docs/deliverables/03_프로젝트기획서_29기_3팀.docx; git diff --check
-STOP_CONDITIONS=두 파일 외 변경 필요; 기존 R3-W1 결과 변경; 필수 검증 실패
-HANDOFF=Google Docs에 복구 commit SHA·origin/dev 대비 고유 diff 0건·검증 결과 전달
-EXTERNAL_ACTION_PERMISSION=733307c의 현재 고유 diff 두 파일을 origin/dev 상태로 복구하는 commit·daesung push만 승인; 신규 문서·기능·Wave 2·dependency·외부 작업·dev merge 불가
+ACCEPTANCE_CRITERIA=사용자 지시에 따라 R3 최신 요약본과 공식 03 DOCX를 충돌 시 R3 우선으로 dev 통합
+TEST_COMMANDS=문서 정책 검사; DOCX ZIP·python-docx 구조 검사; git diff --check; GitHub Actions
+STOP_CONDITIONS=추가 작업 없음
+HANDOFF=완료 — origin/daesung 733307c의 두 고유 문서를 a0ac7ed로 dev 통합
+USER_OVERRIDE=R3 최신 문서를 dev에 병합하고 내용 충돌 시 R3 작성물을 우선하라는 2026-07-31 사용자 지시
+VALIDATION_EVIDENCE=document-quality PASS; python-contracts PASS; DOCX ZIP 정상·142 paragraphs·24 tables·3 sections; LibreOffice 부재로 PNG render Not Run
+INTEGRATION_SHA=a0ac7ed644e15028dc0417c9b477cee679727b5c
+EXTERNAL_ACTION_PERMISSION=추가 문서·기능·Wave 2 변경·commit·push 불가; 다음 R1 READY 대기
 ```
 
 ### R4-W1
@@ -875,6 +878,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.21 | 2026-07-31 12:21 | 사용자가 R3 최신 문서를 dev에 병합하고 충돌 시 R3 작성물을 우선하도록 지시해 기존 cleanup 방침을 종료했다. origin/daesung `733307c`의 요약본과 공식 03 DOCX를 `a0ac7ed`로 dev에 통합하고 문서 정책·DOCX ZIP/구조·diff를 통과했으며, R3 CI의 문서 품질·Python job PASS와 역할 scope failure의 사용자 override를 기록했다. |
 | v2.20 | 2026-07-31 12:14 | R3가 기존 복구 지시를 읽은 뒤 제출한 `733307c`에서 요약본 추가와 공식 `03_프로젝트기획서` DOCX 수정이 고유 diff로 남고 CI run `30600969172`가 실패한 것을 확인했다. `R3-W1-CLEAN`의 허용 경로를 현재 두 고유 diff로 교정하고 두 파일을 `origin/dev` 상태로 복구하는 commit·push만 재허가했다. |
 | v2.19 | 2026-07-31 12:01 | R3 `d044fb7`의 terminal 허용 범위 밖 기획 요약·DOCX 추가와 CI failure를 확인해 dev 병합을 거부하고, 두 파일만 `origin/dev` 상태로 복구하는 `R3-W1-CLEAN`을 READY·REWORK로 발행했다. 기능·Wave 2·다른 경로 변경은 계속 금지했다. |
 | v2.18 | 2026-07-31 11:55 | R2 제품 `23059a6`·handoff `b8ec6b9`의 scope·manifest·data 8건·소비자 계약·CI run `30599951597` PASS를 확인해 `47c1f94`로 dev에 통합하고 R2-W1-F3을 MERGED_DEV·WAIT로 전환했다. R1-W1 blocker는 R5 하나로 축소했으며, R3 `d044fb7`은 terminal 허용 범위 밖 문서 추가와 CI failure로 병합하지 않았다. |

@@ -8,7 +8,7 @@
 - `services`는 `ports`의 계약에만 의존하며 `adapters`의 구체 구현을 직접 가져오지 않는다.
 - `adapters`만 외부 시스템 계약을 구현한다.
 - PMS, POS, CRM, Facility, Banquet DB에 직접 연결하지 않는다. 실제 데이터 플랫폼 구현은 R2가 제공한다.
-- 공통 API 계약 버전은 `DRAFT-OPENAPI-v0.1`이다.
+- 공통 API 계약 버전은 `OPENAPI-v1.0.0`이다.
 
 ## 실행
 
@@ -26,7 +26,7 @@ uvicorn app.main:app --reload
 
 ## API 계약
 
-FastAPI·Pydantic code가 API 계약의 단일 원본이다. 현재 `DRAFT-OPENAPI-v0.1`은 실제 구현된 `/health`, `/readiness`, `/analysis`만 포함한다. 조회·취소·Artifact·Report endpoint는 구현 카드가 시작되기 전까지 명세에 추가하지 않는다.
+FastAPI·Pydantic code가 API 계약의 단일 원본이다. 현재 `OPENAPI-v1.0.0`은 실제 구현된 `/health`, `/readiness`, `/analysis`만 포함한다. 조회·취소·Artifact·Report endpoint는 구현 카드가 시작되기 전까지 명세에 추가하지 않는다.
 
 계약 파일과 상태별 fixture를 갱신하거나 drift를 확인하는 명령은 다음과 같다.
 

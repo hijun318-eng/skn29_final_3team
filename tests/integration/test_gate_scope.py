@@ -144,7 +144,34 @@ class GateScopeTest(unittest.TestCase):
             [],
             "b" * 40,
         )
-        self.assertIn("RESULT_SHA does not match the checked git head", errors)
+        self.assertIn(
+            "RESULT_SHA must match the checked git head or precede only "
+            "its handoff manifest",
+            errors,
+        )
+
+    def test_result_sha_allows_only_a_following_handoff_manifest(self) -> None:
+        manifest = "handoffs/R2-W1-F3.json"
+        with (
+            patch.object(gate_scope.subprocess, "run") as run,
+            patch.object(gate_scope, "changed_paths", return_value=[manifest]) as changed,
+        ):
+            run.return_value.returncode = 0
+            self.assertTrue(
+                gate_scope.result_sha_matches_checked_head(
+                    "a" * 40,
+                    "b" * 40,
+                    manifest,
+                )
+            )
+            changed.return_value = [manifest, "src/data/r2_w1_contract.v1.json"]
+            self.assertFalse(
+                gate_scope.result_sha_matches_checked_head(
+                    "a" * 40,
+                    "b" * 40,
+                    manifest,
+                )
+            )
 
     def test_review_bundle_requires_manifest(self) -> None:
         bundle = {

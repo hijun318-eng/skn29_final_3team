@@ -48,6 +48,14 @@ class MisleadingReferenceModel(FakeModelAdapter):
         return response
 
 
+class MissingLimitModel(FakeModelAdapter):
+    def generate(self, node, payload):
+        response = super().generate(node, payload)
+        if node == "node2":
+            response["sql"] = "SELECT 1 FROM pms.public.pms_guests"
+        return response
+
+
 class AnalysisPipelineTest(unittest.TestCase):
     def setUp(self) -> None:
         self.adapter = CountingDataPlatformAdapter()
@@ -110,6 +118,28 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertIsNone(response.data.artifact)
         self.assertEqual(0, self.adapter.execute_count)
 
+    def test_g1_distinguishes_access_and_inactive_context(self) -> None:
+        expected = {
+            "access_denied": "ACCESS_DENIED",
+            "inactive_context": "CONTEXT_INCOMPLETE",
+        }
+        for scenario, error_code in expected.items():
+            with self.subTest(scenario=scenario):
+                response = self.analyze(scenario)
+                self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+                self.assertEqual(error_code, response.error.code.value)
+                self.assertEqual(0, self.adapter.execute_count)
+
+    def test_invalid_or_timed_out_model_response_is_safe_failure(self) -> None:
+        for scenario in ("invalid_model_schema", "model_timeout"):
+            with self.subTest(scenario=scenario):
+                response = self.analyze(scenario)
+                self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+                self.assertEqual("INTERNAL_ERROR", response.error.code.value)
+                self.assertEqual(PipelineStage.MODEL, response.data.trace[-1].stage)
+                self.assertIsNone(response.data.artifact)
+                self.assertEqual(0, self.adapter.execute_count)
+
     def test_g2_blocks_unsafe_sql_without_query(self) -> None:
         response = self.analyze("g2_blocked")
 
@@ -120,6 +150,16 @@ class AnalysisPipelineTest(unittest.TestCase):
 
     def test_g2_repairs_sql_that_hides_an_out_of_context_table(self) -> None:
         service = AnalysisService(self.adapter, MisleadingReferenceModel())
+        payload = AnalysisRequest(question="합성 객실 운영 현황")
+
+        response = service.analyze(payload, self.context, self.decision(payload))
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(1, response.data.repair_count)
+        self.assertEqual(1, self.adapter.execute_count)
+
+    def test_g2_requires_a_hard_limit_before_query(self) -> None:
+        service = AnalysisService(self.adapter, MissingLimitModel())
         payload = AnalysisRequest(question="합성 객실 운영 현황")
 
         response = service.analyze(payload, self.context, self.decision(payload))
@@ -162,6 +202,42 @@ class AnalysisPipelineTest(unittest.TestCase):
                 self.assertEqual(AnalysisStatus.FAILED, response.data.status)
                 self.assertEqual(last_stage, response.data.trace[-1].stage)
                 self.assertIsNone(response.data.artifact)
+                if scenario == "query_failed":
+                    self.assertTrue(
+                        any(
+                            step.stage == PipelineStage.QUERY
+                            and (step.detail or "").startswith("fake-")
+                            for step in response.data.trace
+                        )
+                    )
+
+    def test_query_timeout_is_cancelled_and_terminally_verified(self) -> None:
+        response = self.analyze("query_timeout")
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual("QUERY_SOURCE_FAILED", response.error.code.value)
+        self.assertEqual(1, len(self.adapter.cancelled_query_ids))
+        query_id = self.adapter.cancelled_query_ids[0]
+        self.assertEqual(
+            "CANCELLED",
+            self.adapter.get_query_status(query_id)["status"],
+        )
+        self.assertIsNone(response.data.artifact)
+
+    def test_cancelled_query_is_not_reported_as_success(self) -> None:
+        response = self.analyze("query_cancelled")
+
+        self.assertEqual(AnalysisStatus.CANCELLED, response.data.status)
+        self.assertIsNone(response.data.artifact)
+
+    def test_normal_empty_and_suspicious_empty_are_distinguished(self) -> None:
+        empty = self.analyze("empty")
+        suspicious = self.analyze("suspicious_zero")
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, empty.data.status)
+        self.assertIsNotNone(empty.data.artifact)
+        self.assertEqual(AnalysisStatus.FAILED, suspicious.data.status)
+        self.assertIsNone(suspicious.data.artifact)
 
     def test_partial_result_keeps_artifact_and_error(self) -> None:
         response = self.analyze("partial")
@@ -169,6 +245,36 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual(AnalysisStatus.PARTIAL, response.data.status)
         self.assertIsNotNone(response.data.artifact)
         self.assertEqual("PARTIAL_FAILURE", response.error.code.value)
+
+    def test_success_exposes_wave2_display_evidence_and_linked_trace(self) -> None:
+        response = self.analyze()
+        result = response.data.result
+
+        self.assertEqual("건", result.metrics[0].unit)
+        self.assertEqual(date(2026, 7, 1), result.evidence.period.start)
+        self.assertEqual(self.context.as_of, result.evidence.period.end_exclusive)
+        self.assertEqual({"dataset": "synthetic"}, result.evidence.filters)
+        self.assertEqual(1, result.evidence.sampling.returned_rows)
+        self.assertEqual(
+            response.data.artifact.context_hash,
+            next(
+                step.detail
+                for step in response.data.trace
+                if step.stage == PipelineStage.CONTEXT
+            ),
+        )
+        self.assertEqual(
+            response.data.artifact.query_id,
+            next(
+                step.detail
+                for step in response.data.trace
+                if step.stage == PipelineStage.QUERY
+            ),
+        )
+        self.assertEqual(
+            str(response.data.artifact.artifact_id),
+            response.data.trace[-1].detail,
+        )
 
 
 if __name__ == "__main__":

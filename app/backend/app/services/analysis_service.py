@@ -1,25 +1,20 @@
 from __future__ import annotations
 
 from app.contracts import (
-    AnalysisData,
     AnalysisRequest,
     AnalysisResponse,
-    AnalysisResult,
     AnalysisStatus,
     ArtifactReference,
     ErrorBody,
     ErrorCode,
-    Evidence,
-    GateRequirements,
     PipelineStage,
     RequestContext,
     StageOutcome,
-    TableResult,
     TraceStep,
-    response_meta,
 )
 from app.ports.data_platform import DataPlatformAdapter
 from app.ports.model import ModelAdapter
+from app.services.analysis_responses import AnalysisResponseFactory
 from app.services.context_builder import ContextPackageBuilder
 from app.services.pipeline_support import PipelineSupport
 from app.services.routing_service import RouteDecision
@@ -41,6 +36,7 @@ class AnalysisService:
             adapter,
             context_builder or ContextPackageBuilder(),
         )
+        self._responses = AnalysisResponseFactory()
 
     def analyze(
         self,
@@ -51,44 +47,51 @@ class AnalysisService:
         machine = AnalysisStateMachine()
         trace: list[TraceStep] = []
         machine.transition(AnalysisStatus.ROUTED)
-        self._record(trace, PipelineStage.ROUTER)
-        self._record(trace, PipelineStage.CONTROLLER)
+        self._responses.record(trace, PipelineStage.ROUTER)
+        self._responses.record(trace, PipelineStage.CONTROLLER)
 
         assets = self._adapter.search_assets(
             payload.question,
             context.model_dump(mode="json"),
         )
         package = self._support.build_context(payload, context, assets)
-        self._record(trace, PipelineStage.CONTEXT, package.package_hash)
+        self._responses.record(trace, PipelineStage.CONTEXT, package.package_hash)
 
         scenario = str(payload.parameters.get("scenario") or "")
-        if scenario == "clarification":
-            return self._error(
+        g1_error = self._support.g1_error(scenario)
+        if g1_error:
+            error_code, message = g1_error
+            return self._responses.error(
                 context,
                 machine,
                 trace,
                 PipelineStage.G1,
                 AnalysisStatus.BLOCKED,
-                ErrorCode.CONTEXT_INCOMPLETE,
-                "분석 기간 또는 기준을 보완해 주세요.",
+                error_code,
+                message,
                 decision,
             )
-        self._record(trace, PipelineStage.G1)
+        self._responses.record(trace, PipelineStage.G1)
 
         references = [
             {"urn": item.urn, "fqn": item.fqn, "columns": list(item.columns)}
             for item in package.assets
         ]
-        plan = self._model.generate(
-            "node2",
-            {"scenario": scenario, "references": references},
-        )
-        self._record(trace, PipelineStage.MODEL, plan.get("model_version"))
+        try:
+            plan = self._model.generate(
+                "node2",
+                {"scenario": scenario, "references": references},
+            )
+        except (TimeoutError, TypeError, ValueError):
+            return self._responses.model_error(context, machine, trace, decision)
+        if self._support.model_plan_violation(plan):
+            return self._responses.model_error(context, machine, trace, decision)
+        self._responses.record(trace, PipelineStage.MODEL, plan.get("model_version"))
 
         repair_count = 0
         violation = self._support.g2_violation(plan, package)
         if violation == "UNSAFE_SQL":
-            return self._error(
+            return self._responses.error(
                 context,
                 machine,
                 trace,
@@ -99,19 +102,36 @@ class AnalysisService:
                 decision,
             )
         if violation:
-            self._record(trace, PipelineStage.G2, violation, StageOutcome.BLOCKED)
-            repair_count = 1
-            plan = self._model.generate(
-                "node2_repair",
-                {
-                    "scenario": scenario,
-                    "attempt": repair_count,
-                    "references": references,
-                },
+            self._responses.record(
+                trace,
+                PipelineStage.G2,
+                violation,
+                StageOutcome.BLOCKED,
             )
-            self._record(trace, PipelineStage.REPAIR, "attempt=1")
-            if self._support.g2_violation(plan, package):
-                return self._error(
+            repair_count = 1
+            try:
+                plan = self._model.generate(
+                    "node2_repair",
+                    {
+                        "scenario": scenario,
+                        "attempt": repair_count,
+                        "references": references,
+                    },
+                )
+            except (TimeoutError, TypeError, ValueError):
+                return self._responses.model_error(
+                    context,
+                    machine,
+                    trace,
+                    decision,
+                    repair_count,
+                )
+            self._responses.record(trace, PipelineStage.REPAIR, "attempt=1")
+            if (
+                self._support.model_plan_violation(plan)
+                or self._support.g2_violation(plan, package)
+            ):
+                return self._responses.error(
                     context,
                     machine,
                     trace,
@@ -122,17 +142,75 @@ class AnalysisService:
                     decision,
                     repair_count,
                 )
-        self._record(trace, PipelineStage.G2)
+        self._responses.record(trace, PipelineStage.G2)
 
         gate_token = self._support.gate_token(package, str(plan["sql"]))
-        query = self._adapter.execute_query(
-            plan["sql"],
-            plan.get("parameters", {}),
-            gate_token,
-        )
-        query = self._adapter.get_query_status(query["query_id"])
-        if query["status"] == "FAILED":
-            return self._error(
+        try:
+            query = self._adapter.execute_query(
+                plan["sql"],
+                plan.get("parameters", {}),
+                gate_token,
+            )
+            query = self._adapter.get_query_status(query["query_id"])
+        except (KeyError, TimeoutError, TypeError, ValueError):
+            return self._responses.error(
+                context,
+                machine,
+                trace,
+                PipelineStage.QUERY,
+                AnalysisStatus.FAILED,
+                ErrorCode.QUERY_SOURCE_FAILED,
+                "원천 조회 상태를 확인할 수 없습니다.",
+                decision,
+                repair_count,
+                retryable=True,
+            )
+        query_id = str(query.get("query_id", ""))
+        self._responses.record(trace, PipelineStage.QUERY, query_id)
+        query_status = query.get("status")
+        if query_status == "TIMEOUT":
+            try:
+                terminal = self._adapter.cancel_query(query_id)
+            except (KeyError, TimeoutError, TypeError, ValueError):
+                terminal = {}
+            if terminal.get("status") != "CANCELLED":
+                return self._responses.error(
+                    context,
+                    machine,
+                    trace,
+                    PipelineStage.QUERY,
+                    AnalysisStatus.FAILED,
+                    ErrorCode.INTERNAL_ERROR,
+                    "시간 초과 조회의 종료 상태를 확인할 수 없습니다.",
+                    decision,
+                    repair_count,
+                )
+            return self._responses.error(
+                context,
+                machine,
+                trace,
+                PipelineStage.QUERY,
+                AnalysisStatus.FAILED,
+                ErrorCode.QUERY_SOURCE_FAILED,
+                "조회 시간이 초과되어 취소했습니다.",
+                decision,
+                repair_count,
+                retryable=True,
+            )
+        if query_status == "CANCELLED":
+            return self._responses.error(
+                context,
+                machine,
+                trace,
+                PipelineStage.QUERY,
+                AnalysisStatus.CANCELLED,
+                ErrorCode.QUERY_SOURCE_FAILED,
+                "요청이 취소되었습니다.",
+                decision,
+                repair_count,
+            )
+        if query_status == "FAILED":
+            return self._responses.error(
                 context,
                 machine,
                 trace,
@@ -144,23 +222,51 @@ class AnalysisService:
                 repair_count,
                 retryable=True,
             )
-        self._record(trace, PipelineStage.QUERY, query["query_id"])
+        if query_status not in {"SUCCEEDED", "PARTIAL"}:
+            return self._responses.error(
+                context,
+                machine,
+                trace,
+                PipelineStage.QUERY,
+                AnalysisStatus.FAILED,
+                ErrorCode.QUERY_SOURCE_FAILED,
+                "원천 조회가 정상 종료 상태가 아닙니다.",
+                decision,
+                repair_count,
+                retryable=True,
+            )
 
-        if not query.get("evidence_complete"):
-            return self._error(
+        g3_violation = self._support.g3_violation(query)
+        if g3_violation:
+            return self._responses.error(
                 context,
                 machine,
                 trace,
                 PipelineStage.G3,
                 AnalysisStatus.FAILED,
                 ErrorCode.RESULT_EVIDENCE_MISSING,
-                "근거가 완전하지 않아 Artifact를 생성하지 않았습니다.",
+                "근거 또는 결과 범위가 유효하지 않아 Artifact를 생성하지 않았습니다.",
                 decision,
                 repair_count,
             )
-        self._record(trace, PipelineStage.G3)
+        self._responses.record(trace, PipelineStage.G3)
 
-        explanation = self._model.generate("node3", {"scenario": scenario})
+        try:
+            explanation = self._model.generate("node3", {"scenario": scenario})
+            if (
+                not isinstance(explanation, dict)
+                or not isinstance(explanation.get("summary"), str)
+                or not isinstance(explanation.get("model_version"), str)
+            ):
+                raise ValueError("invalid node3 response")
+        except (TimeoutError, TypeError, ValueError):
+            return self._responses.model_error(
+                context,
+                machine,
+                trace,
+                decision,
+                repair_count,
+            )
         artifact_id = self._support.artifact_id(
             context.trace_id,
             query["query_id"],
@@ -171,127 +277,21 @@ class AnalysisService:
             query_id=query["query_id"],
             context_hash=package.package_hash,
         )
-        self._record(trace, PipelineStage.ARTIFACT, str(artifact_id))
+        self._responses.record(trace, PipelineStage.ARTIFACT, str(artifact_id))
 
-        status = (
-            AnalysisStatus.PARTIAL
-            if query["status"] == "PARTIAL"
-            else AnalysisStatus.SUCCEEDED
-        )
-        machine.transition(status)
-        rows = tuple(query["rows"])
-        result = AnalysisResult(
-            summary=explanation["summary"],
-            table=TableResult(
-                columns=tuple(rows[0]) if rows else (),
-                rows=rows,
-            ),
-            evidence=Evidence(
-                as_of=context.as_of,
-                sources=self._support.sources(assets),
-                query_id=query["query_id"],
-                artifact_id=artifact_id,
-                context_release=package.context_release,
-                policy_version=package.policy_version,
-                model_version=explanation["model_version"],
-            ),
-        )
-        error = (
-            ErrorBody(
-                code=ErrorCode.PARTIAL_FAILURE,
-                message="일부 원천 결과만 반환했습니다.",
-                retryable=True,
-            )
-            if status == AnalysisStatus.PARTIAL
-            else None
-        )
-        return AnalysisResponse(
-            data=AnalysisData(
-                status=status,
-                transitions=machine.history,
-                route=decision.route_type,
-                template_id=decision.template_id,
-                gates=self._gates(decision),
-                result=result,
-                trace=tuple(trace),
-                repair_count=repair_count,
-                artifact=artifact,
-            ),
-            meta=response_meta(context),
-            error=error,
+        return self._responses.success(
+            support=self._support,
+            context=context,
+            machine=machine,
+            trace=trace,
+            decision=decision,
+            package=package,
+            assets=assets,
+            query=query,
+            explanation=explanation,
+            artifact=artifact,
+            repair_count=repair_count,
         )
 
     def blocked(self, context: RequestContext, error: ErrorBody) -> AnalysisResponse:
-        machine = AnalysisStateMachine()
-        machine.transition(AnalysisStatus.BLOCKED)
-        return AnalysisResponse(
-            data=AnalysisData(
-                status=AnalysisStatus.BLOCKED,
-                transitions=machine.history,
-                trace=(
-                    TraceStep(
-                        stage=PipelineStage.ROUTER,
-                        outcome=StageOutcome.BLOCKED,
-                        detail=error.code.value,
-                    ),
-                ),
-            ),
-            meta=response_meta(context),
-            error=error,
-        )
-
-    def _error(
-        self,
-        context: RequestContext,
-        machine: AnalysisStateMachine,
-        trace: list[TraceStep],
-        stage: PipelineStage,
-        status: AnalysisStatus,
-        code: ErrorCode,
-        message: str,
-        decision: RouteDecision,
-        repair_count: int = 0,
-        retryable: bool = False,
-    ) -> AnalysisResponse:
-        self._record(
-            trace,
-            stage,
-            code.value,
-            StageOutcome.BLOCKED
-            if status == AnalysisStatus.BLOCKED
-            else StageOutcome.FAILED,
-        )
-        machine.transition(status)
-        return AnalysisResponse(
-            data=AnalysisData(
-                status=status,
-                transitions=machine.history,
-                route=decision.route_type,
-                template_id=decision.template_id,
-                gates=self._gates(decision),
-                trace=tuple(trace),
-                repair_count=repair_count,
-            ),
-            meta=response_meta(context),
-            error=ErrorBody(
-                code=code,
-                message=message,
-                retryable=retryable,
-            ),
-        )
-
-    @staticmethod
-    def _record(
-        trace: list[TraceStep],
-        stage: PipelineStage,
-        detail: str | None = None,
-        outcome: StageOutcome = StageOutcome.PASSED,
-    ) -> None:
-        trace.append(TraceStep(stage=stage, outcome=outcome, detail=detail))
-
-    @staticmethod
-    def _gates(decision: RouteDecision) -> GateRequirements:
-        return GateRequirements(
-            g1_required=decision.requires_g1,
-            g2_required=decision.requires_g2,
-        )
+        return self._responses.blocked(context, error)

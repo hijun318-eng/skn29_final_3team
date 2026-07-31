@@ -9,6 +9,10 @@ class FakeModelAdapter:
     def generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
         scenario = payload.get("scenario")
         if node == "node2":
+            if scenario == "model_timeout":
+                raise TimeoutError("synthetic model timeout")
+            if scenario == "invalid_model_schema":
+                return {"model_version": "DRAFT-FAKE-BASE-v0.1"}
             if scenario == "g2_blocked":
                 sql = "DELETE FROM pms.public.pms_stays"
             elif scenario == "repair_once":

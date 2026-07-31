@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.17 |
-| 문서 기준일 | 2026-07-31 12:46 |
+| 버전 | v7.22 |
+| 문서 기준일 | 2026-07-31 13:49 |
 | 작성·수정 | 김재홍·박준희·정승·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -146,11 +146,11 @@ gantt
 | 1.1 | R1-00 저장소·기획서·AGENTS·WBS·역할 기준 정렬 | 결정·충돌 원장 | 박준희 | 완료 | 07/29 | 07/31 | 높음 |
 | 1.2 | R1-01 P0/P1/P2·비목표·공식 산출물 대응 고정 | 범위표·제외 목록 | 박준희 | 완료 | 07/29 | 07/31 | 높음 |
 | 1.3 | R1-02 파일 소유권·서비스 경계 Freeze | ownership matrix | 박준희 | 완료 | 07/29 | 07/31 | 높음 |
-| 1.4 | R1-03 metric·time·schema·API·state·error 공통 계약 | contract version | 박준희 | 차단 | 08/03 | 08/07 | 높음 |
-| 1.5 | R1-04 dev·full·split-host Compose skeleton | 통합 profile | 박준희 | 진행 | 08/03 | 08/07 | 높음 |
-| 1.6 | R1-05 환경변수·Secret 계약 | `.env.example`·secret matrix | 박준희 | 진행 | 08/03 | 08/07 | 높음 |
-| 1.7 | R1-06 역할별 CI·품질 Gate | CI jobs·fail policy | 박준희 | 진행 | 08/03 | 08/07 | 높음 |
-| 1.8 | R1-08 I1 Contract Freeze 판정 | I1 판정서·fixture 소비 증거 | 박준희 | 대기 | 08/06 | 08/07 | 높음 |
+| 1.4 | R1-03 metric·time·schema·API·state·error 공통 계약 | contract version | 박준희 | 완료 | 08/03 | 08/07 | 높음 |
+| 1.5 | R1-04 dev·full·split-host Compose skeleton | 통합 profile | 박준희 | 완료 | 08/03 | 08/07 | 높음 |
+| 1.6 | R1-05 환경변수·Secret 계약 | `.env.example`·secret matrix | 박준희 | 완료 | 08/03 | 08/07 | 높음 |
+| 1.7 | R1-06 역할별 CI·품질 Gate | CI jobs·fail policy | 박준희 | 완료 | 08/03 | 08/07 | 높음 |
+| 1.8 | R1-08 I1 Contract Freeze 판정 | I1 판정서·fixture 소비 증거 | 박준희 | 완료 | 08/06 | 08/07 | 높음 |
 
 ### 데이터 플랫폼·메타데이터·연합조회
 
@@ -181,14 +181,14 @@ gantt
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 3.1 | R3-00 AI P0/P2·공식 모델 산출물 대응 범위 확인 | model decision 초안 | 윤대성 | 대기 | 07/29 | 07/31 | 높음 |
-| 3.2 | R3-01 Node 1·2·2′·3 I/O schema | versioned JSON schema | 윤대성 | 대기 | 08/03 | 08/07 | 높음 |
-| 3.3 | R3-02 deterministic fake model adapter | fake adapter | 윤대성 | 대기 | 08/03 | 08/10 | 높음 |
-| 3.4 | R3-03 Node 1 질문 정규화 | intent·metric·time 후보 | 윤대성 | 대기 | 08/03 | 08/21 | 높음 |
+| 3.1 | R3-00 AI P0/P2·공식 모델 산출물 대응 범위 확인 | model decision 초안 | 윤대성 | 완료 | 07/29 | 07/31 | 높음 |
+| 3.2 | R3-01 Node 1·2·2′·3 I/O schema | versioned JSON schema | 윤대성 | 완료 | 08/03 | 08/07 | 높음 |
+| 3.3 | R3-02 deterministic fake model adapter | fake adapter | 윤대성 | 완료 | 08/03 | 08/10 | 높음 |
+| 3.4 | R3-03 Node 1 질문 정규화 | intent·metric·time 후보 | 윤대성 | 완료 | 08/03 | 08/21 | 높음 |
 | 3.5 | R3-04 Node 2 Context 제한 SQL 생성 | Trino SQL·참조 목록 | 윤대성 | 대기 | 08/17 | 08/21 | 높음 |
 | 3.6 | R3-05 Node 2′ 정규화 오류 1회 수정 | corrected SQL | 윤대성 | 대기 | 08/17 | 08/21 | 높음 |
 | 3.7 | R3-06 G3 통과 결과의 Node 3 설명 | 근거·조건·주의 설명 | 윤대성 | 대기 | 08/10 | 08/21 | 높음 |
-| 3.8 | R3-07 Prompt Registry | prompt ID·version·hash | 윤대성 | 대기 | 08/03 | 08/07 | 높음 |
+| 3.8 | R3-07 Prompt Registry | prompt ID·version·hash | 윤대성 | 완료 | 08/03 | 08/07 | 높음 |
 | 3.9 | R3-08 필수 30건 평가 runner | schema·linking·SQL·result 평가 | 윤대성 | 대기 | 08/10 | 08/31 | 높음 |
 | 3.10 | R3-09 Base model·Analytics Agent 기준선 비교 | 정확도·p50·p95·자원 비교표 | 윤대성 | 대기 | 08/17 | 08/21 | 높음 |
 | 3.11 | R3-10 train·val·gold manifest 검수 | 학습 데이터 검수 기록 | 윤대성 | 대기 | 08/17 | 08/21 | 높음 |
@@ -202,10 +202,10 @@ gantt
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 4.1 | R4-00 backend 경계·의존 방향 | architecture decision | 김재홍 | 진행 | 07/29 | 07/31 | 높음 |
-| 4.2 | R4-01 공통 객체·OpenAPI·오류 계약 | versioned API contract | 김재홍 | 진행 | 07/29 | 08/07 | 높음 |
-| 4.3 | R4-02 인증·request context middleware | role·as_of·trace context | 김재홍 | 진행 | 08/03 | 08/07 | 높음 |
-| 4.4 | R4-03 application DB model·Alembic | migration head | 김재홍 | 진행 | 08/03 | 08/07 | 높음 |
+| 4.1 | R4-00 backend 경계·의존 방향 | architecture decision | 김재홍 | 완료 | 07/29 | 07/31 | 높음 |
+| 4.2 | R4-01 공통 객체·OpenAPI·오류 계약 | versioned API contract | 김재홍 | 완료 | 07/29 | 08/07 | 높음 |
+| 4.3 | R4-02 인증·request context middleware | role·as_of·trace context | 김재홍 | 완료 | 08/03 | 08/07 | 높음 |
+| 4.4 | R4-03 application DB model·Alembic | migration head | 김재홍 | 완료 | 08/03 | 08/07 | 높음 |
 | 4.5 | R4-04 Router·Template Binding | route decision | 김재홍 | 진행 | 08/03 | 08/10 | 높음 |
 | 4.6 | R4-05 Controller 고정 상태 머신 | transition table | 김재홍 | 진행 | 08/03 | 08/10 | 높음 |
 | 4.7 | R4-06 Context Registry·Builder | versioned Context Package | 김재홍 | 대기 | 08/10 | 08/14 | 높음 |
@@ -229,15 +229,15 @@ gantt
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 5.1 | R5-00 frontend 후보·fixture 조사와 활성 app 결정안 | reuse·remove 결정표 | 송민지 | 대기 | 07/29 | 07/31 | 높음 |
-| 5.2 | R5-01 IA·routing·design token | route·layout | 송민지 | 검토 | 07/29 | 07/31 | 높음 |
-| 5.3 | R5-02 OpenAPI type·client·mock | typed client·fixture | 송민지 | 대기 | 08/03 | 08/07 | 높음 |
+| 5.1 | R5-00 frontend 후보·fixture 조사와 활성 app 결정안 | reuse·remove 결정표 | 송민지 | 완료 | 07/29 | 07/31 | 높음 |
+| 5.2 | R5-01 IA·routing·design token | route·layout | 송민지 | 완료 | 07/29 | 07/31 | 높음 |
+| 5.3 | R5-02 OpenAPI type·client·mock | typed client·fixture | 송민지 | 완료 | 08/03 | 08/07 | 높음 |
 | 5.4 | R5-03 Chat shell·질문 흐름 | conversation UI | 송민지 | 대기 | 08/03 | 08/14 | 높음 |
 | 5.5 | R5-04 실행 상태·오류 UI | state components | 송민지 | 대기 | 08/03 | 08/21 | 높음 |
 | 5.6 | R5-05 Evidence·출처·조건 panel | URN·metric·filter·as_of UI | 송민지 | 대기 | 08/10 | 08/14 | 높음 |
 | 5.7 | R5-06 결과 표·차트 | result components | 송민지 | 대기 | 08/10 | 08/14 | 높음 |
 | 5.8 | R5-07 Chat→Report Artifact bridge | artifact action | 송민지 | 대기 | 08/10 | 08/14 | 높음 |
-| 5.9 | R5-08 Report definition·version·run·block domain | Report contract | 송민지 | 대기 | 08/03 | 08/24 | 높음 |
+| 5.9 | R5-08 Report definition·version·run·block domain | Report contract | 송민지 | 완료 | 08/03 | 08/24 | 높음 |
 | 5.10 | R5-09 독립 Report router·API module | router·contract test | 송민지 | 대기 | 08/17 | 08/24 | 높음 |
 | 5.11 | R5-10 Report migration proposal | 단일 migration proposal | 송민지 | 대기 | 08/17 | 08/24 | 높음 |
 | 5.12 | R5-11 12-column Report editor | add·move·resize·draft | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
@@ -255,7 +255,7 @@ gantt
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
 | 6.1 | R1-07 필수 30건·gold 120건 평가 원장 관리 | reviewer·split·expected 원장 | 박준희·정승·윤대성 | 진행 | 08/03 | 08/31 | 높음 |
-| 6.2 | R1-09 I2 Deterministic Slice 통합·판정 | 대표 질문 trace·result hash | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/10 | 08/14 | 높음 |
+| 6.2 | R1-09 I2 Deterministic Slice 통합·판정 | 대표 질문 trace·result hash | 박준희·정승·윤대성·김재홍·송민지 | 진행 | 08/10 | 08/14 | 높음 |
 | 6.3 | R1-10 I3 General LLM·보안 기준선 통합 | 일반 질문·model 비교·보안 결과 | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/17 | 08/21 | 높음 |
 | 6.4 | R1-11 I4 Reporting·worker·partial 통합 | Report 왕복 trace | 박준희·김재홍·송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 6.5 | R1-12 read-only·mask·장애·복구·성능 검증 | 수용 시험 증거 | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/24 | 09/02 | 높음 |
@@ -358,6 +358,11 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-31 13:49 | 6.2 | 승인된 R1-W2를 시작하고 평가 원장 v0.2에 I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 필수 trace 근거를 고정했다. R2~R5 Wave 2 제품·handoff가 아직 없어 질문·SQL·hash·runner 출력은 만들지 않고 생산자 입력 대기를 유지했으며 일정·간트 날짜는 변경하지 않았다. | R1-W2 수용 기준 준비 |
+| 2026-07-31 13:36 | 1.4~1.8, 3.1~3.4, 3.8, 4.1~4.4, 5.1~5.3, 5.9 | R3 제품 `4c8eedf`·handoff `cb10eca`와 R4 제품 `2fa5b49`·handoff `825a0c2`의 최종 version·범위·회귀·branch CI를 확인해 각각 `14259c8`·`04e5e6d`로 dev에 통합했다. data 8건·AI 15건·integration 16건·frontend build/contract·dev/full/split-host Compose·service fragment와 dev CI run `30604495881` PASS를 근거로 I0 `I0-v1.0.0`, common I1 `I1-v1.0.0`을 동결하고 R1-W1을 `VERIFIED_GATE`로 승인했다. Wave 1에서 완료 증거가 확정된 R1·R3·R4·R5 작업 상태를 완료로 갱신하고 기준 `04e5e6d`의 전 역할 Wave 2를 READY로 발행했다. 일정·간트 날짜는 유지했다. | I1 VERIFIED_GATE·Wave 2 승인 |
+| 2026-07-31 13:14 | 1.4, 1.7, 2.1 | R2 제품 `7051f91`·handoff `510981b`의 data actual version `I1-v1.0.0`, 허용 범위, data·integration 회귀와 branch CI run `30603374739` PASS를 확인해 `7e5e16c`로 dev에 통합하고 dev CI run `30603556566` PASS를 확인했다. R2-W1-F4는 MERGED_DEV·WAIT로 전환하고 R1-03 blocker를 R3·R4로 축소했으며 기존 일정·간트와 Wave 2 PLANNED 상태는 유지했다. | R2 I1 최종 version 통합 |
+| 2026-07-31 13:01 | 1.4, 1.7, 2.1 | R1의 data/model version 전환 테스트와 최신 R4 bundle 선택 보완을 `f3038c9`로 dev에 통합하고 GitHub Actions run `30603031072` PASS를 확인했다. 보관된 R2 변경을 새 기준에서 재검증하도록 `R2-W1-F4@f3038c9`를 재발행했으며 다른 역할 범위와 Wave 2는 변경하지 않았다. 기존 WBS 상태·일정·간트는 유지했다. | R2 finalization 재승인 |
+| 2026-07-31 12:59 | 1.4, 1.7, 2.1, 3.2, 4.2 | R2-W1-F4의 data 8건은 통과했지만 R1 통합 테스트가 과거 DRAFT data version을 단일 기대해 중단된 것을 확인했다. R2 변경은 commit·push 없이 보관하고, R1 소유 통합 테스트가 승인된 data·model 최종 version의 전환 기간을 검증하도록 최소 수정했으며 새 R4-W1-F4 선택 기대도 원장과 정합화해 통합 14건을 통과했다. 새 dev 기준 SHA와 token 발행 전 기존 WBS 상태·일정·간트는 변경하지 않았다. | I1 version 전환 테스트 보완 |
 | 2026-07-31 12:46 | 1.4, 1.7, 2.1, 3.1~3.3, 3.8, 4.2, 5.2, 5.9 | R5 제품 `c600f65`·handoff `3f143af`의 허용 경로·version·clean install·build·contract·role gate와 branch CI run `30602136889` PASS를 확인해 `5a52c8f`로 dev에 통합하고 dev CI run `30602295894` PASS를 확인했다. I1 최종 동결 전 실제 DRAFT를 재점검해 R2 data actual version, R3 model I/O·prompt·fixture version, R4 README OpenAPI 표기만 승격하는 `R2-W1-F4`·`R3-W1-F1`·`R4-W1-F4`를 READY로 발행했으며 Wave 2는 보류했다. 기존 WBS 상태·일정·간트는 변경하지 않았다. | R5 최종 version 통합·I1 승격 승인 |
 | 2026-07-31 12:25 | 1.4, 1.7, 5.2 | 최신 `origin/dev` `b81f8e1`과 GitHub Actions run `30601436187` PASS를 확인해 남은 I1 차단 항목인 `R5-W1-F2`의 기준 SHA와 실행 token을 갱신하고 기존 허용 경로의 commit·minji push 승인을 유지했다. R2·R3·R4는 추가 작업 없이 대기하고 Wave 2는 I1 `VERIFIED_GATE` 전까지 `PLANNED`를 유지한다. 기존 WBS 상태·일정·간트는 변경하지 않았다. | R5 I1 동결 승인 갱신 |
 | 2026-07-31 12:21 | 1.7, 3.1 | 사용자가 R3 최신 기획 문서를 dev에 병합하고 충돌 시 R3 작성물을 우선하도록 지시해 기존 cleanup 방침을 종료했다. origin/daesung `733307c`의 요약본과 공식 03 DOCX를 `a0ac7ed`로 dev에 통합하고 문서 정책·DOCX ZIP/구조·diff를 통과했으며, LibreOffice 부재로 PNG render는 Not Run으로 기록했다. 기존 상태·일정·간트는 변경하지 않았다. | R3 최신 기획 문서 사용자 override 통합 |
@@ -408,6 +413,11 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.22 | 2026-07-31 13:49 | R1-W2 착수와 I2 수용 슬롯·trace 근거 고정을 6.2에 연결하고 상태를 진행으로 전환했으며 생산자 handoff 전 실제 fixture·trace 생성은 보류 |
+| v7.21 | 2026-07-31 13:36 | R3·R4 최종 version 통합과 전체 I1 회귀·dev CI PASS를 근거로 R1-W1을 VERIFIED_GATE로 승인하고 Wave 1 완료 증거가 확정된 R1·R3·R4·R5 행을 완료로 갱신했으며 기준 `04e5e6d`의 전 역할 Wave 2 READY 발행을 연결 |
+| v7.20 | 2026-07-31 13:14 | R2 data actual version `I1-v1.0.0`의 제품·handoff·branch/dev CI와 dev 통합 근거를 1.4·1.7·2.1에 연결하고 R1-03 blocker를 R3·R4로 축소했으며 기존 일정·간트와 Wave 2 상태는 유지 |
+| v7.19 | 2026-07-31 13:01 | R1 전환 테스트 보완의 dev 통합·CI PASS와 새 기준의 R2-W1-F4 재발행 근거를 1.4·1.7·2.1에 연결했으며 다른 역할과 Wave 2 상태는 유지 |
+| v7.18 | 2026-07-31 12:59 | R2 finalization 중 발견한 R1 DRAFT 단일 기대를 전환 허용 통합 테스트로 보완하고 최신 R4 READY 선택 기대를 정합화한 근거를 1.4·1.7·2.1·3.2·4.2에 연결했으며 새 승인 발행 전 기존 상태·일정·간트는 유지 |
 | v7.17 | 2026-07-31 12:46 | R5 UI·Report·fixture 최종 version 통합과 branch/dev CI 근거를 연결하고 I1 최종 승격만 수행하는 R2·R3·R4 follow-up 발행을 1.4·1.7·2.1·3.1~3.3·3.8·4.2·5.2·5.9에 기록했으며 기존 상태·일정·간트는 유지 |
 | v7.16 | 2026-07-31 12:25 | 최신 dev·CI 기준으로 유일한 실행 가능 follow-up인 R5-W1-F2의 기준 SHA와 token을 갱신하고 R2·R3·R4 대기·Wave 2 PLANNED 판정을 1.4·1.7·5.2에 연결했으며 기존 상태·일정·간트는 유지 |
 | v7.15 | 2026-07-31 12:21 | 사용자 override에 따라 R3 최신 요약본·공식 03 DOCX를 R3 우선으로 dev에 통합한 근거와 검증을 1.7·3.1에 연결했으며 기존 상태·일정·간트는 유지 |

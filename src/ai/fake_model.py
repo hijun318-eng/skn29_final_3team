@@ -6,12 +6,13 @@ from copy import deepcopy
 from typing import Any
 
 from .node1 import normalize_question
+from .node3 import explain_result
 from .prompt_registry import get_prompt
 from .schema import validate_payload
 
 
 class FakeModelAdapter:
-    version = "DRAFT-MODEL-FIXTURE-v0.1"
+    version = "MODEL-FIXTURE-v1.0.0"
     model_version = "DRAFT-FAKE-BASE-v0.1"
 
     def generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -38,13 +39,7 @@ class FakeModelAdapter:
                 "model": get_prompt("node2.repair").metadata(),
             }
         elif node == "node3":
-            response = {
-                "explanation": "검증된 합성 fixture 결과입니다.",
-                "conditions": [payload["metric"], payload["unit"]],
-                "sources": deepcopy(payload["source_ids"]),
-                "limitations": ["partial"] if payload["partial"] else [],
-                "model": get_prompt("node3.explain").metadata(),
-            }
+            response = explain_result(payload)
         else:
             raise ValueError(f"unsupported node: {node}")
 

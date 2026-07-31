@@ -28,7 +28,7 @@ class PromptRecord:
 _PROMPTS = {
     "node1.normalize": PromptRecord(
         "node1.normalize",
-        "DRAFT-PROMPT-v0.1",
+        "PROMPT-v1.0.0",
         "node1",
         "development",
         "base",
@@ -39,7 +39,7 @@ _PROMPTS = {
     ),
     "node2.sql": PromptRecord(
         "node2.sql",
-        "DRAFT-PROMPT-v0.1",
+        "PROMPT-v1.0.0",
         "node2",
         "development",
         "base",
@@ -50,7 +50,7 @@ _PROMPTS = {
     ),
     "node2.repair": PromptRecord(
         "node2.repair",
-        "DRAFT-PROMPT-v0.1",
+        "PROMPT-v1.0.0",
         "node2_repair",
         "development",
         "base",
@@ -61,7 +61,7 @@ _PROMPTS = {
     ),
     "node3.explain": PromptRecord(
         "node3.explain",
-        "DRAFT-PROMPT-v0.1",
+        "PROMPT-v1.0.0",
         "node3",
         "development",
         "base",

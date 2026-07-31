@@ -19,10 +19,10 @@ class GateScopeTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.ledger = gate_scope.LEDGER.read_text(encoding="utf-8")
 
-    def test_latest_r4_terminal_bundle_is_selected(self) -> None:
+    def test_latest_r4_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "jaehong")
-        self.assertEqual("R4-W1-F3-CLEAN", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("MERGED_DEV", bundle["STATUS"])
+        self.assertEqual("R4-W2", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("READY", bundle["STATUS"])
 
     def test_ready_bundle_uses_exact_allowed_paths(self) -> None:
         bundle = {

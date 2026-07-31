@@ -4,8 +4,8 @@
   "ROLE": "R4",
   "BRANCH": "jaehong",
   "BASE_SHA": "5a52c8f957614c2ea28cf8cfde84e15f35126d0d",
-  "SYNCED_DEV_SHA": "bf356e1594f957bca489642392484eea96783f95",
-  "RESULT_SHA": "933b8ec90d908c967a30b47ba078d23cfe1e0baa",
+  "SYNCED_DEV_SHA": "14259c8dc27cb6d6e00b5428beced8ad950b7701",
+  "RESULT_SHA": "2fa5b49f897c70df2ea255e227af2d01c1383baa",
   "DIRECTIVE_TOKEN": "R4-W1-F4@5a52c8f",
   "COMPLETED_CARDS": [
     "R4-W1-F4"
@@ -32,6 +32,15 @@
       "name": "python -m unittest tests.integration.test_wave1_contracts -v",
       "status": "PASS",
       "detail": "1 passed"
+    },
+    {
+      "name": "python -m unittest tests.integration.test_gate_scope -v",
+      "status": "PASS",
+      "detail": "13 passed"
+    },
+    {
+      "name": "python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS"
     },
     {
       "name": "python .agents/skills/update-project-reports/scripts/validate_reports.py docs/markdown/daily_reports/jaehong/일일보고.md",

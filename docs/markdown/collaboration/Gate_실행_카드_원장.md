@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.12 |
-| 문서 기준일 | 2026-07-31 10:25 |
+| 버전 | v2.13 |
+| 문서 기준일 | 2026-07-31 11:05 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -209,23 +209,23 @@ TASK_CARD_RANGE=R1-00~08
 CURRENT_TASK_CARD_ID=R1-03
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=e2ecee3afbc7fa9d0e05d3973e607bed6b1d62cb
-REMOTE_DEV_SHA=e2ecee3afbc7fa9d0e05d3973e607bed6b1d62cb
-REMOTE_CI_EVIDENCE=GitHub Actions run 30596060168 PASS
+BASE_SHA=e5eea6057468a7d3ababb3a4cc432924fc4cc207
+REMOTE_DEV_SHA=e5eea6057468a7d3ababb3a4cc432924fc4cc207
+REMOTE_CI_EVIDENCE=GitHub Actions run 30598022457 PASS
 REMOTE_SYNC_STATE=VERIFIED
 I0_DECISION_VERSION=DRAFT-I0-v0.2
 CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
 PROMPT_VERSION=DRAFT-PROMPT-v0.1
 MODEL_FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
-BLOCKER=실제 pms_stays 수익 인식 필드와 CRM event-time 관계를 잇는 승인 JOIN ID·time field 미등록, common I1·OpenAPI·UI/Report 최종 version 미동결
+BLOCKER=R2-W1-F3 handoff manifest 재제출과 dev 통합, R4 OpenAPI·R5 UI/Report 최종 version 미동결
 R1_APPROVED_INPUTS=R2 schema 1.0.0·seed 20260729·scenario 1.0.0; R3 model I/O DRAFT-MODEL-v0.1·prompt DRAFT-PROMPT-v0.1·fixture DRAFT-MODEL-FIXTURE-v0.1
 R3_SERVICE_FRAGMENT=N/A — R3-W3에서 model serving Dockerfile 또는 실행 manifest 제출
-R1_REWORK_AUTHORIZATION=R2-W1-F3·R5-W1-F2는 즉시 ACTION, R4-W1-F3-CLEAN branch 복구만 REWORK 허가, 복구 전 R4-W1-F3과 전 역할 Wave 2 불허
+R1_REWORK_AUTHORIZATION=R2-W1-F3은 제품 결과 SHA 뒤 handoff manifest-only commit·seung push만 REWORK, R4-W1-F3·R5-W1-F2는 ACTION, 전 역할 Wave 2는 I1 VERIFIED_GATE 전 불허
 INDEPENDENT_PROGRESS=R1-04~06 root DataHub 통합 profile·env·재현 가능한 service fragment 검증과 Python·frontend·Compose·문서 품질 Gate, R1-07 필수 30·gold 120 평가 원장 schema
 ROLE_GATE_POLICY=개인 branch는 origin/dev 대비 고유 변경을 최신 비-PLANNED 실행 묶음의 ALLOWED_PATHS로 검사; 공용 보고 자동화·팀 요약·검증은 비제품 경로로 허용하고 다른 역할 개인 보고는 차단; MERGED_DEV·VERIFIED_GATE는 개인 보고·공용 보고 외 변경 차단; dev는 role scope 강제 없이 통합 검사
 ROLE_GATE_PERMISSION=GitHub Actions contents: read만 사용, 자동 상태 변경·commit·push·merge 금지
-HANDOFF_MANIFEST_POLICY=역할별 handoffs/<EXECUTION_BUNDLE_ID>.json을 REVIEW 요청 전 제출; 실제 diff·BASE_SHA·RESULT_SHA·완료 카드·계약 version·검증·Not Run·change request·잔여 위험·외부 승인 요청을 기록
+HANDOFF_MANIFEST_POLICY=역할별 handoffs/<EXECUTION_BUNDLE_ID>.json을 REVIEW 요청 전 제출; RESULT_SHA는 제품 결과 HEAD 또는 최신 dev를 제외한 역할 고유 diff에서 그 뒤 변경이 해당 manifest 하나뿐인 조상 SHA를 허용하고 실제 diff·완료 카드·계약 version·검증·Not Run·change request·잔여 위험·외부 승인 요청을 기록
 AUTOMATED_DECISION_BOUNDARY=경로·SHA·diff·manifest·검증 상태는 자동 판정; 기획 의미·업무 수용·계약 Freeze·Gate 승인·예외 승인은 R1 수동 판정
 GOOGLE_DOCS_DECISION_CHANNEL=GitHub Actions Summary의 PASS·FAIL·REVIEW_REQUIRED·NOT_RUN을 근거로 R1이 승인·보완 요청·보류와 다음 실행 지시를 기록
 ALLOWED_PATHS=AGENTS.md; compose*.yml; .env.example; .github/**; .githooks/**; tests/integration/**; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/ai_docs/5인_병렬구현_*
@@ -535,6 +535,7 @@ BASE_SHA=e2ecee3afbc7fa9d0e05d3973e607bed6b1d62cb
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R2-W1-F3@e2ecee3
 SUBMISSION_PERMISSION_STATUS=APPROVED
+SUBMISSION_STATE=PRODUCT_RESULT_READY; HANDOFF_MANIFEST_REWORK
 CONTRACT_VERSION=DRAFT-I1-v0.1 → I1-v1.0.0 후보
 SCHEMA_VERSION=1.0.0
 SEED_VERSION=20260729
@@ -547,13 +548,15 @@ ACCEPTANCE_CRITERIA=pms.public.pms_stays.room_revenue를 수익 인식 필드로
 TEST_COMMANDS=python -m unittest discover -s tests/data -p "test_*.py" -v; python -m json.tool src/data/r2_w1_contract.v1.json > NUL; python -m json.tool src/data/source_registry.v1.json > NUL; git diff --check
 STOP_CONDITIONS=실제 컬럼으로 승인 JOIN을 표현할 수 없음; DDL·seed 변경 필요; 기존 schema·seed·scenario 또는 checksum 변경; 허용 경로 밖 변경 필요; 필수 검증 실패
 HANDOFF=R1에 metric ID·time field·JOIN ID·cardinality·temporal predicate·변경된 contract version과 검증 결과 전달
-EXTERNAL_ACTION_PERMISSION=이 묶음의 허용 경로에 한해 commit·seung push 승인; dependency 설치·download·image pull·비용·배포·secret·데이터 전송·dev merge 불가
+R1_REVIEW_EVIDENCE=origin/seung 23059a6의 고유 변경은 승인된 data contract·registry·test 3개이고 CI run 30597402020의 제품·범위·Compose·문서 검사는 PASS; handoff self-reference만 R1 validator e5eea60에서 수정
+R1_REWORK_AUTHORIZATION=origin/dev e5eea60을 반영하고 RESULT_SHA=23059a62957b2baec7ba1e7113d08bc63f621364인 handoffs/R2-W1-F3.json 하나만 commit·seung push
+EXTERNAL_ACTION_PERMISSION=기존 제품 3개 파일의 추가 변경 없이 handoffs/R2-W1-F3.json manifest-only commit·seung push 승인; dependency 설치·download·image pull·비용·배포·secret·데이터 전송·dev merge 불가
 ```
 
 ### R4-W1-F3
 
 ```text
-STATUS=BLOCKED
+STATUS=READY
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -564,10 +567,11 @@ TASK_CARD_RANGE=R4-01의 OpenAPI·state·error version 동결
 CURRENT_TASK_CARD_ID=R4-01
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=e2ecee3afbc7fa9d0e05d3973e607bed6b1d62cb
-DIRECTIVE=WAIT
-BLOCKER=origin/jaehong에 origin/dev 기준 허용 범위 밖 docs/deliverables 변경 4개가 남아 R4-W1-F3-CLEAN 완료 전 실행 불가
-ACTIVATION_CONDITION=R4-W1-F3-CLEAN 결과가 origin/dev와 동일하고 R1이 본 묶음을 READY로 재발행
+BASE_SHA=e5eea6057468a7d3ababb3a4cc432924fc4cc207
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W1-F3@e5eea60
+SUBMISSION_PERMISSION_STATUS=APPROVED
+ACTIVATION_EVIDENCE=origin/jaehong 14bedf8의 tree가 origin/dev e4c4651과 동일해 고유 diff 0건; R4-W1-F3-CLEAN 수용
 OPENAPI_VERSION=DRAFT-OPENAPI-v0.1 → OPENAPI-v1.0.0 후보
 ALLOWED_PATHS=app/backend/app/contracts.py; app/backend/contracts/**; tests/backend/**
 FORBIDDEN_PATHS=root Compose·.env.example·CI·source DDL·seed·src/data/**·src/ai/**·frontend·Report·docs/markdown/collaboration/**·docs/markdown/02_WBS.md
@@ -575,7 +579,7 @@ ACCEPTANCE_CRITERIA=producer constant·committed OpenAPI·state mapping·source 
 TEST_COMMANDS=python -m compileall -q app/backend tests/backend; python -m pytest -p no:cacheprovider tests/backend; python app/backend/scripts/export_openapi.py --check; git diff --check
 STOP_CONDITIONS=version 치환 외 API·상태·오류·migration 동작 변경 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
 HANDOFF=R1과 R5에 최종 OpenAPI 후보 version·변경 파일·회귀 결과 전달
-EXTERNAL_ACTION_PERMISSION=R4-W1-F3-CLEAN 완료 전 구현·commit·push 불가
+EXTERNAL_ACTION_PERMISSION=origin/dev e5eea60 반영 후 이 묶음의 허용 경로에 한해 commit·jaehong push 승인; dependency 설치·외부 배포·secret·dev merge 불가
 ```
 
 ### R5-W1-F2
@@ -612,7 +616,7 @@ EXTERNAL_ACTION_PERMISSION=이 묶음의 허용 경로에 한해 commit·minji p
 ### R4-W1-F3-CLEAN
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -634,7 +638,9 @@ ACCEPTANCE_CRITERIA=지정 5개 경로가 origin/dev와 byte·존재 상태까�
 TEST_COMMANDS=git diff --exit-code origin/dev -- docs/deliverables/04_수집데이터보고서_29기_3팀.docx docs/deliverables/05_데이터베이스저장소설계서_29기_3팀.xlsx ":(literal)docs/deliverables/05_[별첨]데이터테이블명세서.xlsx" docs/deliverables/05_데이터베이스저장소설계서_29기_3팀.docx docs/deliverables/06_데이터전처리결과서_29기_3팀.docx; git diff --name-only origin/dev...HEAD; git diff --check
 STOP_CONDITIONS=지정 경로 외 변경 필요; 제출본 내용을 새로 편집해야 함; origin/dev와 동일 상태를 만들 수 없음; 검증 실패
 HANDOFF=R1에 복구 commit SHA·origin/dev 병합 SHA·고유 diff 0건·검증 결과 전달, R4-W1-F3 READY 재발행 전 backend 구현 금지
-EXTERNAL_ACTION_PERMISSION=지정 경로를 origin/dev 상태로 복구하는 commit·jaehong push와 origin/dev merge만 승인; force push·rebase·reset·새 제출본 편집·dev merge 불가
+R1_REVIEW_EVIDENCE=origin/jaehong 14bedf8 확인; git diff dev origin/jaehong과 git diff --name-status dev origin/jaehong 모두 0건
+R1_INTEGRATION_EVIDENCE=N/A — 결과 tree가 dev와 이미 동일해 별도 merge 대상 없음
+EXTERNAL_ACTION_PERMISSION=추가 cleanup·제출본 편집·force push·rebase·reset·dev merge 불가
 ```
 
 ## Wave 2 상세 계획 카드
@@ -830,6 +836,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.13 | 2026-07-31 11:05 | `origin/dev` `e5eea60`과 CI run `30598022457` PASS를 확인하고 handoff manifest-only 후속 commit을 허용하도록 R1 validator 계약을 수정했다. R2 제품 결과 `23059a6`은 manifest 재제출만 REWORK로 허가했으며, `origin/jaehong` `14bedf8`의 dev 대비 고유 diff 0건을 수용해 R4-W1-F3을 READY/ACTION으로 재발행했다. |
 | v2.12 | 2026-07-31 10:25 | 최신 `origin/dev` `e2ecee3`과 CI run `30596060168` PASS를 기준으로 R2-W1-F3·R5-W1-F2의 commit·개인 branch push를 ACTION 승인했다. 허용 범위 밖 제출본 변경이 남은 R4는 R4-W1-F3을 차단하고 원상복구 전용 R4-W1-F3-CLEAN만 REWORK 승인했으며 R3·Wave 2는 WAIT를 유지했다. |
 | v2.11 | 2026-07-31 10:12 | `origin/dev` `68fc068`과 GitHub Actions run `30528089815` PASS를 확인해 원격 동기화 차단을 해제했다. 실제 schema에 없는 PMS 수익 필드와 PMS↔CRM event-time 승인 JOIN 미등록, OpenAPI·UI·Report 초안 version을 I1 차단 원인으로 확정하고 R2-W1-F3·R4-W1-F3·R5-W1-F2를 동결 전용 READY로 발행 |
 | v2.10 | 2026-07-30 17:09 | R2 DataHub consumer `731399d`를 dev에 통합하고 공식 source provenance·service fragment·root dev/full/split-host Compose 정적 소비를 검증해 R2-W1-F2를 MERGED_DEV로 전환했다. Git 한글 경로 raw 처리, 공용 보고 자동화 비제품 예외, seung Compose 검증, handoff 최종 차단을 CI에 반영했으며 실제 DataHub container 기동과 common I1 version·대표 질문·metric 동결은 남겼다. |

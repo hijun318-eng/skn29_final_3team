@@ -21,7 +21,7 @@ class GateScopeTest(unittest.TestCase):
 
     def test_latest_r4_executable_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "jaehong")
-        self.assertEqual("R4-W1-F3-CLEAN", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("R4-W1-F3", bundle["EXECUTION_BUNDLE_ID"])
         self.assertEqual("READY", bundle["STATUS"])
 
     def test_ready_bundle_uses_exact_allowed_paths(self) -> None:
@@ -144,7 +144,45 @@ class GateScopeTest(unittest.TestCase):
             [],
             "b" * 40,
         )
-        self.assertIn("RESULT_SHA does not match the checked git head", errors)
+        self.assertIn(
+            "RESULT_SHA must match the checked git head or precede only "
+            "its handoff manifest in the role diff",
+            errors,
+        )
+
+    def test_result_sha_allows_only_a_following_handoff_manifest(self) -> None:
+        manifest = "handoffs/R2-W1-F3.json"
+        product = "src/data/r2_w1_contract.v1.json"
+        with (
+            patch.object(gate_scope.subprocess, "run") as run,
+            patch.object(
+                gate_scope,
+                "changed_paths",
+                return_value=[".github/scripts/gate_scope.py", manifest],
+            ) as changed,
+        ):
+            run.return_value.returncode = 0
+            self.assertTrue(
+                gate_scope.result_sha_matches_checked_head(
+                    "a" * 40,
+                    "b" * 40,
+                    manifest,
+                    [product, manifest],
+                )
+            )
+            changed.return_value = [
+                ".github/scripts/gate_scope.py",
+                manifest,
+                product,
+            ]
+            self.assertFalse(
+                gate_scope.result_sha_matches_checked_head(
+                    "a" * 40,
+                    "b" * 40,
+                    manifest,
+                    [product, manifest],
+                )
+            )
 
     def test_review_bundle_requires_manifest(self) -> None:
         bundle = {

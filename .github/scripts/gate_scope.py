@@ -70,7 +70,11 @@ def current_bundle(text: str, branch: str) -> dict[str, str] | None:
         and bundle["STATUS"] != "PLANNED"
         and "ALLOWED_PATHS" in bundle
     ]
-    return candidates[-1] if candidates else None
+    active = [
+        bundle for bundle in candidates
+        if bundle["STATUS"] not in TERMINAL_STATUSES
+    ]
+    return (active or candidates)[-1] if candidates else None
 
 
 def allowed_paths(bundle: dict[str, str], branch: str) -> list[str]:
@@ -121,6 +125,28 @@ def git_sha(ref: str) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def result_sha_matches_checked_head(
+    manifest_sha: str,
+    checked_head: str,
+    output_path: str,
+    role_changed_paths: list[str],
+) -> bool:
+    if manifest_sha == checked_head:
+        return True
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", manifest_sha, checked_head],
+        check=False,
+        capture_output=True,
+    )
+    if ancestor.returncode != 0:
+        return False
+    changed_after_result = changed_paths(manifest_sha, checked_head, "direct")
+    role_changes_after_result = [
+        path for path in changed_after_result if path in role_changed_paths
+    ]
+    return role_changes_after_result == [output_path]
 
 
 def handoff_template(
@@ -177,7 +203,8 @@ def validate_handoff(
         if handoff[field] != value:
             errors.append(f"{field} must be {value}")
 
-    if not re.fullmatch(r"[0-9a-f]{40}", handoff["RESULT_SHA"]):
+    valid_result_sha = bool(re.fullmatch(r"[0-9a-f]{40}", handoff["RESULT_SHA"]))
+    if not valid_result_sha:
         errors.append("RESULT_SHA must be a 40-character lowercase git SHA")
     if not handoff["COMPLETED_CARDS"]:
         errors.append("COMPLETED_CARDS must not be empty")
@@ -211,8 +238,20 @@ def validate_handoff(
         expected_paths = sorted(path for path in changed if path != output_path)
         if sorted(handoff["CHANGED_FILES"]) != expected_paths:
             errors.append("CHANGED_FILES does not match the git diff")
-    if result_sha is not None and handoff["RESULT_SHA"] != result_sha:
-        errors.append("RESULT_SHA does not match the checked git head")
+    if (
+        result_sha is not None
+        and valid_result_sha
+        and not result_sha_matches_checked_head(
+            handoff["RESULT_SHA"],
+            result_sha,
+            str(manifest_path(bundle)).replace("\\", "/"),
+            changed or [],
+        )
+    ):
+        errors.append(
+            "RESULT_SHA must match the checked git head or precede only "
+            "its handoff manifest in the role diff"
+        )
 
     if handoff["NOT_RUN"]:
         reviews.append("Not Run verification exists")

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.23 |
-| 문서 기준일 | 2026-07-31 13:58 |
+| 버전 | v7.24 |
+| 문서 기준일 | 2026-07-31 14:05 |
 | 작성·수정 | 김재홍·박준희·정승·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -166,13 +166,13 @@ gantt
 | 2.8 | R2-07 데이터 품질·전처리·reject 관리 | DQR·PREP 결과 | 정승 | 완료 | 07/30 | 08/07 | 높음 |
 | 2.9 | R2-08 source·application read-only 계정 요구 | account matrix | 정승 | 완료 | 07/29 | 08/07 | 높음 |
 | 2.10 | R2-09 DataHub ingestion recipe 5개 | versioned recipes | 정승 | 진행 | 07/29 | 08/21 | 높음 |
-| 2.11 | R2-10 Metadata·owner·domain·tag·lineage 보강 | URN·lineage manifest | 정승 | 대기 | 08/10 | 08/21 | 높음 |
-| 2.12 | R2-11 DataHub typed adapter | search·graph·health adapter | 정승 | 대기 | 08/10 | 08/21 | 높음 |
+| 2.11 | R2-10 Metadata·owner·domain·tag·lineage 보강 | URN·lineage manifest | 정승 | 진행 | 08/10 | 08/21 | 높음 |
+| 2.12 | R2-11 DataHub typed adapter | search·graph·health adapter | 정승 | 진행 | 08/10 | 08/21 | 높음 |
 | 2.13 | R2-12 Trino catalog 5개 | connector·catalog 설정 | 정승 | 진행 | 07/29 | 08/21 | 높음 |
-| 2.14 | R2-13 source↔Trino type mapping | type mapping matrix | 정승 | 대기 | 08/10 | 08/21 | 높음 |
-| 2.15 | R2-14 승인 JOIN Registry | JOIN ID·cardinality·time 계약 | 정승 | 대기 | 08/10 | 08/21 | 높음 |
-| 2.16 | R2-15 대표 2·3-source 정답 조회 | 정답 SQL·result hash | 정승 | 대기 | 08/10 | 08/21 | 높음 |
-| 2.17 | R2-16 Trino/source 실행 adapter | query·status·cancel·health | 정승 | 대기 | 08/10 | 08/21 | 높음 |
+| 2.14 | R2-13 source↔Trino type mapping | type mapping matrix | 정승 | 진행 | 08/10 | 08/21 | 높음 |
+| 2.15 | R2-14 승인 JOIN Registry | JOIN ID·cardinality·time 계약 | 정승 | 진행 | 08/10 | 08/21 | 높음 |
+| 2.16 | R2-15 대표 2·3-source 정답 조회 | 정답 SQL·result hash | 정승 | 진행 | 08/10 | 08/21 | 높음 |
+| 2.17 | R2-16 Trino/source 실행 adapter | query·status·cancel·health | 정승 | 진행 | 08/10 | 08/21 | 높음 |
 | 2.18 | R2-17 source watermark·cache 무효화 입력 | watermark set | 정승 | 대기 | 08/17 | 08/28 | 높음 |
 | 2.19 | R2-18 필수 30건·gold용 데이터 fixture | 평가 fixture | 정승 | 대기 | 08/17 | 08/28 | 높음 |
 | 2.20 | R2-19 5번째 source 온보딩·재현 | runbook·URN→FQN trace | 정승 | 대기 | 08/24 | 08/28 | 높음 |
@@ -358,6 +358,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-31 14:05 | 2.10~2.17, 6.2 | R2-W2 제품 `75f148b`·handoff `de0a26f`의 PMS/CRM metadata·adapter·승인 JOIN·GOLD hash·query lifecycle, data 14건·통합 16건·branch CI run `30605617536` PASS를 확인해 `5afb90b`으로 dev에 통합하고 dev CI run `30605760842` PASS를 확인했다. R2-W2는 완료했지만 WBS 행은 후속 5-source·3-source 확장이 남아 진행으로 전환하고 R1 평가 원장에 data 근거를 연결했다. | R2-W2 dev 통합 |
 | 2026-07-31 13:58 | 3.7, 3.9, 6.2 | R3-W2 제품 `345a788`·handoff `f4f2563`의 G3 pass 전용 Node 3, deterministic 평가 runner, 허용 경로, AI 20건·통합 14건·branch CI run `30605387557` PASS를 확인해 `f2817a0`으로 dev에 통합하고 dev CI run `30605486384` PASS를 확인했다. R3-06·08을 완료로 전환하고 R1 평가 원장에 runner 도착 근거를 연결했으며 일정·간트 날짜는 유지했다. | R3-W2 dev 통합 |
 | 2026-07-31 13:49 | 6.2 | 승인된 R1-W2를 시작하고 평가 원장 v0.2에 I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 필수 trace 근거를 고정했다. R2~R5 Wave 2 제품·handoff가 아직 없어 질문·SQL·hash·runner 출력은 만들지 않고 생산자 입력 대기를 유지했으며 일정·간트 날짜는 변경하지 않았다. | R1-W2 수용 기준 준비 |
 | 2026-07-31 13:36 | 1.4~1.8, 3.1~3.4, 3.8, 4.1~4.4, 5.1~5.3, 5.9 | R3 제품 `4c8eedf`·handoff `cb10eca`와 R4 제품 `2fa5b49`·handoff `825a0c2`의 최종 version·범위·회귀·branch CI를 확인해 각각 `14259c8`·`04e5e6d`로 dev에 통합했다. data 8건·AI 15건·integration 16건·frontend build/contract·dev/full/split-host Compose·service fragment와 dev CI run `30604495881` PASS를 근거로 I0 `I0-v1.0.0`, common I1 `I1-v1.0.0`을 동결하고 R1-W1을 `VERIFIED_GATE`로 승인했다. Wave 1에서 완료 증거가 확정된 R1·R3·R4·R5 작업 상태를 완료로 갱신하고 기준 `04e5e6d`의 전 역할 Wave 2를 READY로 발행했다. 일정·간트 날짜는 유지했다. | I1 VERIFIED_GATE·Wave 2 승인 |
@@ -414,6 +415,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.24 | 2026-07-31 14:05 | R2-W2 data 계약·GOLD hash·adapter의 제품·handoff·branch/dev CI와 dev 통합 근거를 2.10~2.17·6.2에 연결하고 후속 확장 대상 행을 진행으로 전환 |
 | v7.23 | 2026-07-31 13:58 | R3-W2 Node 3·평가 runner의 제품·handoff·branch/dev CI와 dev 통합 근거를 3.7·3.9·6.2에 연결하고 R3-06·08을 완료로 전환 |
 | v7.22 | 2026-07-31 13:49 | R1-W2 착수와 I2 수용 슬롯·trace 근거 고정을 6.2에 연결하고 상태를 진행으로 전환했으며 생산자 handoff 전 실제 fixture·trace 생성은 보류 |
 | v7.21 | 2026-07-31 13:36 | R3·R4 최종 version 통합과 전체 I1 회귀·dev CI PASS를 근거로 R1-W1을 VERIFIED_GATE로 승인하고 Wave 1 완료 증거가 확정된 R1·R3·R4·R5 행을 완료로 갱신했으며 기준 `04e5e6d`의 전 역할 Wave 2 READY 발행을 연결 |

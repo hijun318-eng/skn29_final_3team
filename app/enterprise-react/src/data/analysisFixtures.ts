@@ -1,6 +1,6 @@
 import { OPENAPI_VERSION, type AnalysisRun, type AnalysisViewState } from "../contracts/analysis.ts";
 
-export const FIXTURE_VERSION = "DRAFT-UI-FIXTURE-v0.1";
+export const FIXTURE_VERSION = "UI-FIXTURE-v1.0.0";
 
 const baseRun: AnalysisRun = {
   conversationId: "conv-demo-001",

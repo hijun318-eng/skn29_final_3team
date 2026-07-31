@@ -1,5 +1,5 @@
-export const UI_CONTRACT_VERSION = "DRAFT-UI-v0.1";
-export const OPENAPI_VERSION = "DRAFT-OPENAPI-v0.1";
+export const UI_CONTRACT_VERSION = "UI-v1.0.0";
+export const OPENAPI_VERSION = "OPENAPI-v1.0.0";
 
 export type AnalysisRunStatus =
   | "idle"

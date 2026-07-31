@@ -4,13 +4,24 @@ import {
   normalizeApiResponse,
   OPENAPI_VERSION,
   resolveViewState,
+  UI_CONTRACT_VERSION,
 } from "../../app/enterprise-react/src/contracts/analysis.ts";
-import { approveDraft, createDraft } from "../../app/enterprise-react/src/contracts/report.ts";
-import { analysisFixtures } from "../../app/enterprise-react/src/data/analysisFixtures.ts";
+import {
+  approveDraft,
+  createDraft,
+  REPORT_CONTRACT_VERSION,
+} from "../../app/enterprise-react/src/contracts/report.ts";
+import {
+  analysisFixtures,
+  FIXTURE_VERSION,
+} from "../../app/enterprise-react/src/data/analysisFixtures.ts";
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
 
 const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/package.json", import.meta.url)));
-assert.equal(OPENAPI_VERSION, "DRAFT-OPENAPI-v0.1");
+assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
+assert.equal(REPORT_CONTRACT_VERSION, "REPORT-v1.0.0");
+assert.equal(FIXTURE_VERSION, "UI-FIXTURE-v1.0.0");
+assert.equal(OPENAPI_VERSION, "OPENAPI-v1.0.0");
 assert.ok(Object.values({ ...packageJson.dependencies, ...packageJson.devDependencies }).every((version) => version !== "latest"));
 assert.equal(resolveRoute("/customers").page, "notFound");
 assert.equal(resolveRoute("/catalog/tools").page, "notFound");

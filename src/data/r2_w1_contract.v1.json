@@ -1,5 +1,6 @@
 {
-  "contract_version": "DRAFT-I1-v0.1",
+  "contract_version": "I1-v1.0.0",
+  "candidate_contract_version": "I1-v1.0.0",
   "schema_version": "1.0.0",
   "seed_version": "20260729",
   "scenario_version": "1.0.0",
@@ -12,8 +13,35 @@
     "R2-05": "dbo.customer_identity_map compatibility view backed by constrained dbo.crm_customer_map",
     "R2-06": "dbo.crm_member_grade_history half-open periods with overlap trigger",
     "R2-07": "quality_rules and rejected_fixture assertions",
-    "R2-08": "account_matrix and Trino file-based read-only policy"
+    "R2-08": "account_matrix and Trino file-based read-only policy",
+    "R2-09": "recognized_room_revenue metric and approved PMS-to-CRM event-time join"
   },
+  "representative_question": {
+    "id": "gold_recognized_room_revenue_mom",
+    "text": "지난달 GOLD 회원의 인식 객실 매출은 전월 대비 얼마나 변했어?",
+    "metric_id": "recognized_room_revenue",
+    "dimension_filter": "membership_grade = 'GOLD'",
+    "period": "previous_calendar_month_vs_prior_calendar_month",
+    "timezone": "Asia/Seoul"
+  },
+  "metrics": [
+    {
+      "id": "recognized_room_revenue",
+      "source_field": "pms.public.pms_stays.room_revenue",
+      "unit": "KRW",
+      "aggregation": "SUM",
+      "time_grain": "month",
+      "event_time_field": "pms.public.pms_stays.actual_checkout_at",
+      "approved_join_id": "pms_stay_to_crm_membership_grade_event_time_v1",
+      "filters": [
+        "pms.public.pms_stays.stay_status = 'COMPLETED'",
+        "pms.public.pms_stays.room_revenue > 0",
+        "pms.public.pms_stays.complimentary_flag = false",
+        "pms.public.pms_stays.house_use_flag = false",
+        "pms.public.pms_stays.is_forecast = false"
+      ]
+    }
+  ],
   "seed_manifest": [
     {
       "source_id": "pms",

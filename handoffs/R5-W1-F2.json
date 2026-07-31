@@ -1,0 +1,53 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R5-W1-F2",
+  "ROLE": "R5",
+  "BRANCH": "minji",
+  "BASE_SHA": "b81f8e15ec3bb7c54ac7f921bb5a62a1efc83e63",
+  "SYNCED_DEV_SHA": "e8093b0043921eccccd528551d24312945556e48",
+  "RESULT_SHA": "c600f65248bf9dbe93e63ef60a104993737658be",
+  "DIRECTIVE_TOKEN": "R5-W1-F2@b81f8e1",
+  "COMPLETED_CARDS": [
+    "R5-W1-F2"
+  ],
+  "CHANGED_FILES": [
+    "app/enterprise-react/src/contracts/analysis.ts",
+    "app/enterprise-react/src/contracts/report.ts",
+    "app/enterprise-react/src/data/analysisFixtures.ts",
+    "tests/frontend/contracts.test.mjs",
+    "docs/markdown/daily_reports/minji/일일보고.md"
+  ],
+  "CONTRACT_VERSIONS": {
+    "UI_CONTRACT_VERSION": "UI-v1.0.0",
+    "REPORT_CONTRACT_VERSION": "REPORT-v1.0.0",
+    "FIXTURE_VERSION": "UI-FIXTURE-v1.0.0",
+    "OPENAPI_VERSION": "OPENAPI-v1.0.0"
+  },
+  "TEST_RESULTS": [
+    {
+      "name": "npm --prefix app/enterprise-react ci",
+      "status": "PASS"
+    },
+    {
+      "name": "npm --prefix app/enterprise-react run build",
+      "status": "PASS"
+    },
+    {
+      "name": "node --test tests/frontend/contracts.test.mjs",
+      "status": "PASS"
+    },
+    {
+      "name": "python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260731 docs/markdown/daily_reports/minji/일일보고.md",
+      "status": "PASS"
+    },
+    {
+      "name": "git diff --check",
+      "status": "PASS"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "dev 병합"
+}

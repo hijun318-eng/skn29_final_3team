@@ -1,4 +1,4 @@
-export const REPORT_CONTRACT_VERSION = "DRAFT-REPORT-v0.1";
+export const REPORT_CONTRACT_VERSION = "REPORT-v1.0.0";
 
 export interface ReportBlock {
   readonly id: string;

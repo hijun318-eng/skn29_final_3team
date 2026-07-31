@@ -773,7 +773,7 @@
   },
   "info": {
     "title": "Answervice Control Plane",
-    "version": "DRAFT-OPENAPI-v0.1"
+    "version": "OPENAPI-v1.0.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -947,7 +947,7 @@
                       },
                       "meta": {
                         "as_of": "2026-07-30",
-                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "contract_version": "OPENAPI-v1.0.0",
                         "request_id": "00000000-0000-0000-0000-000000000100",
                         "timestamp": "2026-07-30T00:00:00Z",
                         "trace_id": "fixture-cached"
@@ -977,7 +977,7 @@
                       },
                       "meta": {
                         "as_of": "2026-07-30",
-                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "contract_version": "OPENAPI-v1.0.0",
                         "request_id": "00000000-0000-0000-0000-000000000100",
                         "timestamp": "2026-07-30T00:00:00Z",
                         "trace_id": "fixture-cancelled"
@@ -1053,7 +1053,7 @@
                       },
                       "meta": {
                         "as_of": "2026-07-30",
-                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "contract_version": "OPENAPI-v1.0.0",
                         "request_id": "00000000-0000-0000-0000-000000000100",
                         "timestamp": "2026-07-30T00:00:00Z",
                         "trace_id": "fixture-empty"
@@ -1082,7 +1082,7 @@
                       },
                       "meta": {
                         "as_of": "2026-07-30",
-                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "contract_version": "OPENAPI-v1.0.0",
                         "request_id": "00000000-0000-0000-0000-000000000100",
                         "timestamp": "2026-07-30T00:00:00Z",
                         "trace_id": "fixture-g1-clarification"
@@ -1112,7 +1112,7 @@
                       },
                       "meta": {
                         "as_of": "2026-07-30",
-                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "contract_version": "OPENAPI-v1.0.0",
                         "request_id": "00000000-0000-0000-0000-000000000100",
                         "timestamp": "2026-07-30T00:00:00Z",
                         "trace_id": "fixture-g2-blocked"
@@ -1142,7 +1142,7 @@
                       },
                       "meta": {
                         "as_of": "2026-07-30",
-                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "contract_version": "OPENAPI-v1.0.0",
                         "request_id": "00000000-0000-0000-0000-000000000100",
                         "timestamp": "2026-07-30T00:00:00Z",
                         "trace_id": "fixture-g3-failed"
@@ -1223,7 +1223,7 @@
                       },
                       "meta": {
                         "as_of": "2026-07-30",
-                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "contract_version": "OPENAPI-v1.0.0",
                         "request_id": "00000000-0000-0000-0000-000000000100",
                         "timestamp": "2026-07-30T00:00:00Z",
                         "trace_id": "fixture-partial"
@@ -1304,7 +1304,7 @@
                       },
                       "meta": {
                         "as_of": "2026-07-30",
-                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "contract_version": "OPENAPI-v1.0.0",
                         "request_id": "00000000-0000-0000-0000-000000000100",
                         "timestamp": "2026-07-30T00:00:00Z",
                         "trace_id": "fixture-success"
@@ -1334,7 +1334,7 @@
                       },
                       "meta": {
                         "as_of": "2026-07-30",
-                        "contract_version": "DRAFT-OPENAPI-v0.1",
+                        "contract_version": "OPENAPI-v1.0.0",
                         "request_id": "00000000-0000-0000-0000-000000000100",
                         "timestamp": "2026-07-30T00:00:00Z",
                         "trace_id": "fixture-timeout"

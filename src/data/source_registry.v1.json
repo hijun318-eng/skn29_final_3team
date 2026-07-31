@@ -1,5 +1,6 @@
 {
-  "contract_version": "DRAFT-I1-v0.1",
+  "contract_version": "I1-v1.0.0",
+  "candidate_contract_version": "I1-v1.0.0",
   "schema_version": "1.0.0",
   "seed_version": "20260729",
   "scenario_version": "1.0.0",
@@ -89,6 +90,30 @@
     {"from": "facility.facility_events.facility_id", "to": "facility.facility_master.facility_id", "cardinality": "many_to_one"},
     {"from": "facility.facility_resource_daily.facility_id", "to": "facility.facility_master.facility_id", "cardinality": "many_to_one"},
     {"from": "banquet.banquet_revenue.banquet_event_id", "to": "banquet.banquet_bookings.banquet_event_id", "cardinality": "many_to_one"}
+  ],
+  "approved_joins": [
+    {
+      "join_id": "pms_stay_to_crm_membership_grade_event_time_v1",
+      "cardinality": "many_to_zero_or_one",
+      "event_time_field": "pms.public.pms_stays.actual_checkout_at",
+      "timezone": "Asia/Seoul",
+      "steps": [
+        {"from": "pms.public.pms_stays.reservation_id", "to": "pms.public.pms_reservations.reservation_id", "cardinality": "one_to_one"},
+        {"from": "pms.public.pms_reservations.guest_id", "to": "pms.public.pms_guests.guest_id", "cardinality": "many_to_one"},
+        {"from": "pms.public.pms_guests.guest_id", "to": "crm.dbo.crm_customer_map.pms_guest_id", "cardinality": "one_to_zero_or_one_temporal"},
+        {"from": "crm.dbo.crm_customer_map.member_no", "to": "crm.dbo.crm_member_grade_history.member_no", "cardinality": "many_to_one_temporal"}
+      ],
+      "predicates": [
+        "pms.public.pms_stays.property_id = pms.public.pms_reservations.property_id",
+        "pms.public.pms_reservations.property_id = pms.public.pms_guests.property_id",
+        "pms.public.pms_guests.property_id = crm.dbo.crm_customer_map.property_id",
+        "crm.dbo.crm_customer_map.property_id = crm.dbo.crm_member_grade_history.property_id",
+        "crm.dbo.crm_customer_map.valid_from <= pms.public.pms_stays.actual_checkout_at",
+        "(crm.dbo.crm_customer_map.valid_to IS NULL OR pms.public.pms_stays.actual_checkout_at < crm.dbo.crm_customer_map.valid_to)",
+        "crm.dbo.crm_member_grade_history.valid_from <= pms.public.pms_stays.actual_checkout_at",
+        "(crm.dbo.crm_member_grade_history.valid_to IS NULL OR pms.public.pms_stays.actual_checkout_at < crm.dbo.crm_member_grade_history.valid_to)"
+      ]
+    }
   ],
   "p0_capabilities": [
     {"id": "rooms_occupancy_revenue", "entities": ["pms.pms_room_inventory_daily", "pms.pms_stays"]},

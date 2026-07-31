@@ -220,6 +220,53 @@ class GateScopeTest(unittest.TestCase):
         self.assertEqual("PASS", status)
         self.assertEqual([], notes)
 
+    def test_only_fail_blocks_the_automated_quality_gate(self) -> None:
+        """미제출·잔여 위험 보고는 R1 검토 대상이며 CI 차단 대상이 아니다."""
+        self.assertEqual({"FAIL"}, gate_scope.BLOCKING_HANDOFF_STATUSES)
+        for status in ("NOT_RUN", "REVIEW_REQUIRED", "PASS", "N/A"):
+            self.assertNotIn(status, gate_scope.BLOCKING_HANDOFF_STATUSES)
+
+    def test_unsubmitted_manifest_is_not_run_and_does_not_block(self) -> None:
+        """READY·BLOCKED 묶음이 manifest 제출 전 상시 실패하지 않아야 한다."""
+        for branch in gate_scope.ROLES:
+            bundle = gate_scope.current_bundle(self.ledger, branch)
+            if bundle is None or bundle["STATUS"] in gate_scope.TERMINAL_STATUSES:
+                continue
+            with self.subTest(branch=branch):
+                with tempfile.TemporaryDirectory() as directory:
+                    with patch.object(gate_scope, "HANDOFFS", Path(directory)):
+                        status, notes = gate_scope.handoff_status(bundle, branch)
+                expected = "FAIL" if bundle["STATUS"] == "REVIEW" else "NOT_RUN"
+                self.assertEqual(expected, status)
+                self.assertTrue(notes)
+                if expected == "NOT_RUN":
+                    self.assertNotIn(
+                        status, gate_scope.BLOCKING_HANDOFF_STATUSES
+                    )
+
+    def test_residual_risk_report_is_review_not_block(self) -> None:
+        """잔여 위험을 적어도 REVIEW_REQUIRED일 뿐 Gate를 차단하지 않는다."""
+        bundle = dict(gate_scope.current_bundle(self.ledger, "seung"))
+        bundle["STATUS"] = "REVIEW"
+        changed = ["tests/data/test_source_registry.py"]
+        handoff = gate_scope.handoff_template(bundle, "seung", "a" * 40, changed)
+        handoff["COMPLETED_CARDS"] = ["R2-09"]
+        handoff["TEST_RESULTS"] = [{"name": "data tests", "status": "PASS"}]
+        handoff["NOT_RUN"] = []
+        handoff["RESIDUAL_RISKS"] = ["DataHub container 실기동 미검증"]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / f"{bundle['EXECUTION_BUNDLE_ID']}.json"
+            path.write_text(json.dumps(handoff), encoding="utf-8")
+            with patch.object(gate_scope, "HANDOFFS", Path(directory)):
+                status, notes = gate_scope.handoff_status(
+                    bundle,
+                    "seung",
+                    changed,
+                )
+        self.assertEqual("REVIEW_REQUIRED", status)
+        self.assertIn("residual risk exists", notes)
+        self.assertNotIn(status, gate_scope.BLOCKING_HANDOFF_STATUSES)
+
 
 if __name__ == "__main__":
     unittest.main()

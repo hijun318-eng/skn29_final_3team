@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.27 |
-| 문서 기준일 | 2026-07-31 13:49 |
+| 버전 | v2.28 |
+| 문서 기준일 | 2026-07-31 13:58 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -815,7 +815,7 @@ BASE_SHA=04e5e6dfb1ab66d41d8235275bfe5a30290c7181
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W2@04e5e6d
 CONTRACT_VERSION=I1-v1.0.0
-R1_PROGRESS=I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 trace 근거를 평가 원장 v0.2에 고정; 실제 fixture·runner·전체 trace는 R2~R5 handoff 대기
+R1_PROGRESS=I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 trace 근거를 평가 원장 v0.3에 고정; R3 runner 도착, R2 정답 hash·R4 trace·R5 화면 증거 대기
 ALLOWED_PATHS=.github/**; compose*.yml; .env.example; tests/integration/**; docs/Answervice_기획서.md; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=필수 평가 subset·gold 원장을 확인하고 대표 질문의 Context→G1→G2→Trino→G3→Artifact→화면 trace에서 성공·재질문·차단·source 실패를 판정, 역할별 실패는 원 소유자에게 반환
@@ -855,7 +855,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff mani
 ### R3-W2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -863,12 +863,16 @@ EXECUTION_BUNDLE_ID=R3-W2
 TARGET_INTEGRATION_GATE=I2
 CHECKPOINT_GATES=없음
 TASK_CARD_RANGE=R3-02·06·08
-CURRENT_TASK_CARD_ID=R3-02
+CURRENT_TASK_CARD_ID=R3-08
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=04e5e6dfb1ab66d41d8235275bfe5a30290c7181
-DIRECTIVE=ACTION
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R3-W2@04e5e6d
+RESULT_SHA=345a788ebfb095786b70034476e304b549e2e54e
+HANDOFF_SHA=f4f25631fa7cce7af7640ba30d216fd481786929
+MERGED_DEV_SHA=f2817a0b7c041ba296184334350341c7a00c381f
+CI_EVIDENCE=branch run 30605387557 PASS; dev run 30605486384 PASS
 MODEL_CONTRACT_VERSION=MODEL-v1.0.0
 PROMPT_VERSION=PROMPT-v1.0.0
 MODEL_FIXTURE_VERSION=MODEL-FIXTURE-v1.0.0
@@ -1077,6 +1081,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.28 | 2026-07-31 13:58 | R3-W2 제품 `345a788`·handoff `f4f2563`의 허용 경로, G3 pass 전용 Node 3, deterministic 평가 runner, AI 20건·통합 14건·role scope와 branch CI run `30605387557` PASS를 확인해 `f2817a0`으로 dev에 통합하고 dev CI run `30605486384` PASS를 확인했다. R3-W2를 MERGED_DEV·WAIT로 전환하고 R1 평가 원장에 runner 도착 근거를 연결했다. |
 | v2.27 | 2026-07-31 13:49 | R1-W2를 IN_PROGRESS로 전환하고 평가 원장 v0.2에 I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 필수 trace 근거를 고정했다. R2~R5 Wave 2 제품·handoff가 아직 없어 실제 fixture·runner·통합 trace는 생성하지 않고 producer 입력 대기를 기록했다. |
 | v2.26 | 2026-07-31 13:36 | R3 제품 `4c8eedf`·handoff `cb10eca`와 R4 제품 `2fa5b49`·handoff `825a0c2`를 각각 `14259c8`·`04e5e6d`로 dev에 통합하고 branch/dev CI PASS를 확인했다. data·model·prompt·fixture·OpenAPI·UI·Report 계약을 최종 version으로 단일 고정하고 로컬 data 8건·AI 15건·integration 16건·frontend·Compose와 dev CI run `30604495881` PASS를 근거로 R1-W1을 I1 `VERIFIED_GATE`로 승인했으며, 기준 `04e5e6d`의 R1~R5 Wave 2 실행 묶음을 READY로 발행했다. |
 | v2.25 | 2026-07-31 13:14 | R2 제품 `7051f91`·handoff `510981b`의 data actual version·허용 범위·회귀·branch CI run `30603374739` PASS를 확인해 `7e5e16c`로 dev에 통합하고 dev CI run `30603556566` PASS를 확인했다. R2-W1-F4를 MERGED_DEV·WAIT로 전환하고 R1-W1 blocker를 R3·R4 최종 승격으로 축소했으며 Wave 2는 계속 보류했다. |

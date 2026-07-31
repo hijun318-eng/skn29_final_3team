@@ -10,7 +10,7 @@ $exampleEnv = Join-Path $databaseRoot '.env.example'
 function Invoke-Compose {
     param([Parameter(ValueFromRemainingArguments)] [string[]]$Arguments)
 
-    & docker compose --env-file $localEnv -f $composeFile @Arguments
+    & docker compose --env-file $localEnv -f $composeFile --profile full @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "docker compose failed: $($Arguments -join ' ')"
     }
@@ -38,7 +38,7 @@ Invoke-Compose exec -T facility-clickhouse sh /security/provision-facility-click
 
 $trinoReady = $false
 for ($attempt = 1; $attempt -le 60; $attempt++) {
-    & docker compose --env-file $localEnv -f $composeFile exec -T trino trino --server http://localhost:8080 --user hotel_synthetic_setup --execute 'SELECT 1' | Out-Null
+    & docker compose --env-file $localEnv -f $composeFile --profile full exec -T trino trino --server http://localhost:8080 --user hotel_synthetic_setup --execute 'SELECT 1' | Out-Null
     if ($LASTEXITCODE -eq 0) {
         $trinoReady = $true
         break

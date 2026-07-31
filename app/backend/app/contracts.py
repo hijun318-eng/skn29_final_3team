@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
 
-CONTRACT_VERSION = "DRAFT-OPENAPI-v0.1"
+CONTRACT_VERSION = "OPENAPI-v1.0.0"
 Scalar: TypeAlias = str | int | float | bool | None
 
 

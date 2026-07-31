@@ -45,7 +45,10 @@ class Wave1ContractTest(unittest.TestCase):
             ),
         )
         self.assertEqual("DRAFT-MODEL-v0.1", model["version"])
-        self.assertEqual("DRAFT-OPENAPI-v0.1", backend_version)
+        self.assertIn(
+            backend_version,
+            {"DRAFT-OPENAPI-v0.1", "OPENAPI-v1.0.0"},
+        )
         for version in (
             data["contract_version"],
             model["version"],

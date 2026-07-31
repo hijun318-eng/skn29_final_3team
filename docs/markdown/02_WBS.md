@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.6 |
-| 문서 기준일 | 2026-07-31 10:12 |
+| 버전 | v7.10 |
+| 문서 기준일 | 2026-07-31 11:30 |
 | 작성·수정 | 김재홍·박준희·정승·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -358,6 +358,10 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-31 11:30 | 1.4, 1.7, 4.2 | R4 제품 결과 `c83809a`의 역할 범위와 전체 52건 중 51건 통과를 확인했다. 남은 1건은 R1 공통 계약이 기존 OpenAPI 초안 version만 기대한 전환 오류로 판정해 원장·통합 test에 `OPENAPI-v1.0.0` 후보를 추가하고, R4에는 제품 변경 없이 최신 dev와 handoff manifest만 재제출하도록 허가했다. R4 dev 통합 전까지 기존 상태·일정·간트는 변경하지 않았다. | R4 OpenAPI 전환 계약 보완 |
+| 2026-07-31 11:24 | 1.4, 1.7, 4.2, 5.2 | R1 변경 `4f08263`을 `dev`에 통합하고 CI run `30598777511` PASS를 확인했다. 경로 정합성 제안의 안전한 항목을 승인해 R4 기본 경로를 실제 backend로 교정하고 활성 frontend·기획서·요구사항·화면설계서 소유권을 고정했으며, `app/react/**` 삭제는 별도 결정으로 보류했다. R2·R4·R5 후속 제출 전까지 기존 WBS 상태·일정·간트는 변경하지 않았다. | R1 경로·소유권 정합화 |
+| 2026-07-31 11:05 | 1.4, 1.7, 2.10, 4.2 | `origin/dev` `e5eea60`과 CI run `30598022457` PASS를 확인하고 결과 전달 파일만 뒤따르는 commit을 허용하도록 R1 자동 검사를 수정했다. R2 제품 결과 `23059a6`은 전달 manifest 재제출만 허가하고, R4 복구 결과 `14bedf8`은 dev 대비 고유 diff 0건으로 수용해 OpenAPI version 동결 작업을 재발행했다. R2 통합과 R4·R5 version 동결 전까지 기존 WBS 행 상태·일정·간트는 변경하지 않았다. | R1 Gate 보완·R4 재발행 |
+| 2026-07-31 10:25 | 1.4, 2.10, 4.2, 5.2 | 최신 `origin/dev` `e2ecee3`과 CI run `30596060168` PASS를 기준으로 R2 데이터 계약과 R5 화면·보고서 version 동결의 commit·개인 branch push를 승인했다. R4는 개인 branch의 허용 범위 밖 제출본 변경을 `origin/dev` 상태로 복구하는 작업만 승인하고 backend 동결은 보류했으며 R3와 Wave 2는 대기를 유지했다. 기존 WBS 행 상태·일정·간트는 변경하지 않았다. | I1 역할별 실행 허가 |
 | 2026-07-31 10:12 | 1.4, 2.10, 4.2, 5.2 | `origin/dev` `68fc068`과 GitHub Actions run `30528089815` PASS를 확인해 원격 동기화 차단을 해제했다. I1 입력을 실제 schema와 대조해 기획 예시의 존재하지 않는 PMS 수익 필드와 PMS↔CRM event-time 승인 JOIN 미등록, OpenAPI·UI·Report의 `DRAFT` version을 남은 차단 원인으로 확정했다. R2·R4·R5에 version 동결만 수행하는 follow-up을 발행했으며 기존 상태·일정·간트는 유지했다. | I1 동결 보완 발행 |
 | 2026-07-30 17:09 | 1.4~1.7, 2.10 | R2 DataHub consumer `731399d`를 dev에 통합하고 공식 source revision·blob, root dev 3개와 full·split-host 16개 service의 정적 구성을 검증했다. R1이 profile 소유 위치·env·seung Compose CI·한글 경로·공용 보고 예외를 보완했으며 실제 DataHub container 기동과 대표 질문·metric·최종 계약 version 동결 전까지 기존 진행·차단 상태와 일정은 유지했다. | R2 DataHub 통합·R1 Gate 보완 |
 | 2026-07-30 15:47 | 1.4~1.7, 2.10, 4.21, 5.2, 5.19 | R4·R5 handoff를 dev에 통합하고 root Compose가 dev 3개 service와 full·split-host 9개 service를 정적으로 소비하도록 구성했으며 root `.env.example`과 Compose CI를 추가했다. DataHub Core consumer fragment·immutable version·official source가 없어 1.5~1.6은 진행, R1-03은 차단을 유지하고 R2-W1-F2를 READY로 발행했다. | R1 통합 profile 진행·R2 보완 발행 |
@@ -397,6 +401,10 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.10 | 2026-07-31 11:30 | R4 OpenAPI 후보의 교차 역할 test 1건 실패를 R1 전환 계약 결함으로 판정하고 원장·통합 test 보완과 manifest-only 재제출 근거를 1.4·1.7·4.2에 연결했으며 기존 상태·일정·간트는 유지 |
+| v7.9 | 2026-07-31 11:24 | R1 변경의 dev 통합·CI PASS와 R4/R5 실제 경로·문서 소유권 정합화 근거를 1.4·1.7·4.2·5.2에 연결했으며 기존 상태·일정·간트는 유지 |
+| v7.8 | 2026-07-31 11:05 | R1 handoff 자동 검사의 self-reference 결함 수정, R2 manifest-only 재제출 허가와 R4 branch 복구 수용·OpenAPI 동결 재발행 근거를 1.4·1.7·2.10·4.2에 연결했으며 기존 상태·일정·간트는 유지 |
+| v7.7 | 2026-07-31 10:25 | 최신 dev·CI 기준으로 R2·R5의 I1 동결 보완 실행과 개인 branch push를 승인하고 R4 branch 원상복구 전용 REWORK를 분리했으며 R3·Wave 2 대기와 기존 상태·일정·간트를 유지 |
 | v7.6 | 2026-07-31 10:12 | `origin/dev` `68fc068`·GitHub Actions run `30528089815` PASS로 원격 동기화 차단을 해제하고, I1 차단 원인을 실제 PMS 수익 필드·PMS↔CRM event-time JOIN·최종 계약 version으로 좁혀 R2/R4/R5 동결 follow-up 발행 근거를 1.4·2.10·4.2·5.2에 연결했으며 상태·일정·간트는 유지 |
 | v7.5 | 2026-07-30 17:09 | R2 DataHub consumer의 dev 통합과 root 3-profile 정적 검증, R1 Gate 오탐·Compose CI 보완 근거를 1.4~1.7·2.10에 연결하고 실제 runtime·I1 계약 동결 전 기존 상태·일정·간트를 유지 |
 | v7.4 | 2026-07-30 15:47 | R4·R5 dev 통합과 root Compose·env·CI 진행 근거를 1.4~1.7에 연결하고 1.5~1.6을 진행으로 전환했으며 DataHub consumer fragment 보완을 2.10의 R2-W1-F2 READY로 기록 |

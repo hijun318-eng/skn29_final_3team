@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.23 |
-| 문서 기준일 | 2026-07-31 12:46 |
+| 버전 | v2.24 |
+| 문서 기준일 | 2026-07-31 13:01 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -217,9 +217,9 @@ TASK_CARD_RANGE=R1-00~08
 CURRENT_TASK_CARD_ID=R1-03
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=5a52c8f957614c2ea28cf8cfde84e15f35126d0d
-REMOTE_DEV_SHA=5a52c8f957614c2ea28cf8cfde84e15f35126d0d
-REMOTE_CI_EVIDENCE=GitHub Actions run 30602295894 PASS
+BASE_SHA=f3038c9b44f06db75597933057a72e42502a00c8
+REMOTE_DEV_SHA=f3038c9b44f06db75597933057a72e42502a00c8
+REMOTE_CI_EVIDENCE=GitHub Actions run 30603031072 PASS
 REMOTE_SYNC_STATE=VERIFIED
 I0_DECISION_VERSION=DRAFT-I0-v0.2
 CONTRACT_VERSION=DRAFT-I1-v0.1
@@ -676,9 +676,9 @@ TASK_CARD_RANGE=R2-00·09의 data contract actual version 승격
 CURRENT_TASK_CARD_ID=R2-00
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=5a52c8f957614c2ea28cf8cfde84e15f35126d0d
+BASE_SHA=f3038c9b44f06db75597933057a72e42502a00c8
 DIRECTIVE=ACTION
-DIRECTIVE_TOKEN=R2-W1-F4@5a52c8f
+DIRECTIVE_TOKEN=R2-W1-F4@f3038c9
 SUBMISSION_PERMISSION_STATUS=APPROVED
 CONTRACT_VERSION=DRAFT-I1-v0.1 → I1-v1.0.0
 ALLOWED_PATHS=src/data/r2_w1_contract.v1.json; src/data/source_registry.v1.json; tests/data/test_source_registry.py
@@ -972,6 +972,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.24 | 2026-07-31 13:01 | R2-W1-F4의 data 8건 PASS 후 R1 통합 테스트가 과거 DRAFT data version을 단일 기대해 중단된 것을 확인했다. R2 변경은 commit·push 없이 보관하고 R1 전환 테스트와 최신 R4 bundle 기대를 보완해 통합 14건 및 dev CI run `30603031072` PASS를 확인했으며, R2-W1-F4를 새 기준 `f3038c9`·token으로 재발행했다. |
 | v2.23 | 2026-07-31 12:46 | R5 제품 `c600f65`·handoff `3f143af`의 scope·version·build·contract·role gate와 branch CI run `30602136889` PASS를 확인해 `5a52c8f`로 dev에 통합하고 dev CI run `30602295894` PASS를 확인했다. I1 최종 동결을 위해 R2 data actual version, R3 model/prompt/fixture version, R4 README OpenAPI 정합만 수행하는 `R2-W1-F4`·`R3-W1-F1`·`R4-W1-F4`를 READY로 발행했으며 Wave 2는 계속 보류했다. |
 | v2.22 | 2026-07-31 12:25 | 최신 `origin/dev` `b81f8e1`과 GitHub Actions run `30601436187` PASS를 확인해 유일한 실행 가능 follow-up인 `R5-W1-F2`의 기준 SHA와 token을 갱신하고 commit·minji push 승인을 유지했다. R2·R3·R4는 `MERGED_DEV/WAIT`, Wave 2는 I1 `VERIFIED_GATE` 전 `PLANNED`를 유지한다. |
 | v2.21 | 2026-07-31 12:21 | 사용자가 R3 최신 문서를 dev에 병합하고 충돌 시 R3 작성물을 우선하도록 지시해 기존 cleanup 방침을 종료했다. origin/daesung `733307c`의 요약본과 공식 03 DOCX를 `a0ac7ed`로 dev에 통합하고 문서 정책·DOCX ZIP/구조·diff를 통과했으며, R3 CI의 문서 품질·Python job PASS와 역할 scope failure의 사용자 override를 기록했다. |

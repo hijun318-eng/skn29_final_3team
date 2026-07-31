@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
-from uuid import uuid4
+import hashlib
 
 
 class FakeDataPlatformAdapter:
@@ -27,8 +27,25 @@ class FakeDataPlatformAdapter:
     def execute_query(
         self, sql: str, parameters: dict[str, Any], gate_token: str
     ) -> dict[str, Any]:
-        query_id = f"fake-{uuid4().hex}"
-        result = {"query_id": query_id, "status": "SUCCEEDED", "rows": [{"value": 1}]}
+        digest = hashlib.sha256(
+            f"{sql}|{sorted(parameters.items())}|{gate_token}".encode()
+        ).hexdigest()[:16]
+        query_id = f"fake-{digest}"
+        scenario = parameters.get("scenario")
+        if scenario == "query_failed":
+            result = {
+                "query_id": query_id,
+                "status": "FAILED",
+                "rows": [],
+                "evidence_complete": False,
+            }
+        else:
+            result = {
+                "query_id": query_id,
+                "status": "PARTIAL" if scenario == "partial" else "SUCCEEDED",
+                "rows": [{"synthetic_value": 1}],
+                "evidence_complete": scenario != "g3_failed",
+            }
         self._queries[query_id] = result
         return result
 

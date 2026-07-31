@@ -26,6 +26,25 @@ class AnalysisStatus(str, Enum):
     CANCELLED = "CANCELLED"
 
 
+class PipelineStage(str, Enum):
+    ROUTER = "ROUTER"
+    CONTROLLER = "CONTROLLER"
+    CONTEXT = "CONTEXT"
+    G1 = "G1"
+    MODEL = "MODEL"
+    G2 = "G2"
+    REPAIR = "REPAIR"
+    QUERY = "QUERY"
+    G3 = "G3"
+    ARTIFACT = "ARTIFACT"
+
+
+class StageOutcome(str, Enum):
+    PASSED = "PASSED"
+    BLOCKED = "BLOCKED"
+    FAILED = "FAILED"
+
+
 class Role(str, Enum):
     HOTEL_ANALYST = "hotel_analyst"
     REPORT_ADMIN = "report_admin"
@@ -152,6 +171,18 @@ class GateRequirements(ContractModel):
     g2_required: bool
 
 
+class TraceStep(ContractModel):
+    stage: PipelineStage
+    outcome: StageOutcome
+    detail: str | None = None
+
+
+class ArtifactReference(ContractModel):
+    artifact_id: UUID
+    query_id: str
+    context_hash: str
+
+
 class AnalysisData(ContractModel):
     status: AnalysisStatus
     transitions: tuple[AnalysisStatus, ...]
@@ -159,6 +190,9 @@ class AnalysisData(ContractModel):
     template_id: str | None = None
     gates: GateRequirements | None = None
     result: AnalysisResult | None = None
+    trace: tuple[TraceStep, ...] = ()
+    repair_count: int = Field(default=0, ge=0, le=1)
+    artifact: ArtifactReference | None = None
 
 
 class HealthData(ContractModel):

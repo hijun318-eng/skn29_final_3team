@@ -1,13 +1,62 @@
 {
   "data": {
+    "artifact": null,
     "gates": {
       "g1_required": true,
       "g2_required": true
     },
+    "repair_count": 0,
     "result": null,
     "route": "GENERAL",
     "status": "FAILED",
     "template_id": null,
+    "trace": [
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "ROUTER"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "CONTROLLER"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "CONTEXT"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "G1"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "MODEL"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "G2"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "QUERY"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "G3"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "ARTIFACT"
+      }
+    ],
     "transitions": [
       "RECEIVED",
       "ROUTED",

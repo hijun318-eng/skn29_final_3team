@@ -11,7 +11,7 @@ from .schema import validate_payload
 
 
 class FakeModelAdapter:
-    version = "DRAFT-MODEL-FIXTURE-v0.1"
+    version = "MODEL-FIXTURE-v1.0.0"
     model_version = "DRAFT-FAKE-BASE-v0.1"
 
     def generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:

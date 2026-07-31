@@ -1,5 +1,5 @@
 {
-  "decision_version": "DRAFT-MODEL-v0.1",
+  "decision_version": "MODEL-v1.0.0",
   "scope": {
     "included": [
       "node1_question_normalization",

@@ -31,13 +31,62 @@ for (const [expected, run] of Object.entries(analysisFixtures)) {
 }
 
 const normalized = normalizeApiResponse({
-  data: { status: "SUCCEEDED", transitions: ["RECEIVED", "ROUTED", "SUCCEEDED"], result: { summary: "Fake 분석 결과입니다.", assets: [{ name: "PMS guest fixture", urn: "urn:answervice:dataset:pms.public.pms_guests" }] } },
+  data: {
+    status: "SUCCEEDED",
+    transitions: ["RECEIVED", "ROUTED", "SUCCEEDED"],
+    artifact: {
+      artifact_id: "artifact-api-001",
+      query_id: "query-api-001",
+      context_hash: "context-api-001",
+    },
+    result: {
+      summary: "Fake 분석 결과입니다.",
+      metrics: [{ metric_id: "recognized_room_revenue", label: "인식 객실 매출", value: 128400000, unit: "KRW" }],
+      table: { columns: ["business_date", "recognized_room_revenue"], rows: [{ business_date: "2026-07-30", recognized_room_revenue: 128400000 }] },
+      chart: { chart_type: "line", x_field: "business_date", y_fields: ["recognized_room_revenue"] },
+      evidence: {
+        artifact_id: "artifact-api-001",
+        query_id: "query-api-001",
+        as_of: "2026-07-30",
+        period: { start: "2026-07-01", end_exclusive: "2026-08-01" },
+        filters: { hotel: "synthetic" },
+        cached: false,
+        sampling: { applied: false, returned_rows: 1, total_rows: 1 },
+        sources: [{
+          name: "PMS guest fixture",
+          urn: "urn:answervice:dataset:pms.public.pms_guests",
+          fqn: "pms.public.pms_guests",
+          schema_version: "1.0.0",
+          seed_version: "20260729",
+        }],
+      },
+    },
+  },
   meta: { request_id: "req-api-001", trace_id: "trace-api-001", as_of: "2026-07-30", contract_version: OPENAPI_VERSION, timestamp: "2026-07-30T03:00:00Z" },
   error: null,
 }, "객실 분석", "conv-api-001");
 assert.equal(normalized.status, "success");
 assert.equal(normalized.requestId, "req-api-001");
+assert.equal(normalized.traceId, "trace-api-001");
+assert.equal(normalized.artifact.artifactId, "artifact-api-001");
+assert.equal(normalized.artifact.queryId, "query-api-001");
+assert.deepEqual(normalized.metrics[0], {
+  metricId: "recognized_room_revenue",
+  label: "인식 객실 매출",
+  value: 128400000,
+  unit: "KRW",
+});
+assert.equal(normalized.table.rows[0].recognized_room_revenue, 128400000);
+assert.equal(normalized.chart.xField, "business_date");
+assert.deepEqual(normalized.evidence.filters, { hotel: "synthetic" });
+assert.deepEqual(normalized.evidence.period, { start: "2026-07-01", endExclusive: "2026-08-01" });
 assert.equal(normalized.sources[0].urn, "urn:answervice:dataset:pms.public.pms_guests");
+assert.equal(normalized.sources[0].schemaVersion, "1.0.0");
+assert.equal(normalized.meta.seed, "20260729");
+assert.equal(normalized.rowCount, 1);
+assert.equal(analysisFixtures.ready.artifact.artifactId, analysisFixtures.ready.evidence.artifactId);
+assert.equal(analysisFixtures.ready.metrics[0].unit, "KRW");
+assert.ok(analysisFixtures.ready.table.rows.length > 0);
 
 const approved = Object.freeze({
   definitionId: "report-001",

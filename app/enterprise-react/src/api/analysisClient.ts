@@ -14,8 +14,6 @@ export function createMockAnalysisClient(): AnalysisClient {
         ...selected,
         question,
         conversationId,
-        requestId: crypto.randomUUID(),
-        traceId: crypto.randomUUID().replaceAll("-", ""),
       };
     },
   };

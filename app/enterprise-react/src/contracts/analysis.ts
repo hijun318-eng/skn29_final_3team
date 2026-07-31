@@ -31,6 +31,8 @@ export type AnalysisErrorCode =
   | "PARTIAL_FAILURE"
   | "INSUFFICIENT_EVIDENCE"
   | "RATE_LIMITED"
+  | "CONTRACT_VERSION_MISMATCH"
+  | "SCHEMA_VERSION_MISMATCH"
   | "INTERNAL_ERROR";
 
 export type BackendAnalysisStatus =
@@ -39,16 +41,102 @@ export type BackendAnalysisStatus =
   | "SUCCEEDED"
   | "BLOCKED"
   | "PARTIAL"
-  | "FAILED";
+  | "FAILED"
+  | "CANCELLED";
+
+export type AnalysisValue = string | number | boolean | null;
+
+export interface AnalysisMetric {
+  metricId: string;
+  label: string;
+  value: AnalysisValue;
+  unit: string | null;
+}
+
+export interface AnalysisTable {
+  columns: string[];
+  rows: Array<Record<string, AnalysisValue>>;
+}
+
+export interface AnalysisChart {
+  chartType: string;
+  xField: string;
+  yFields: string[];
+}
+
+export interface AnalysisArtifact {
+  artifactId: string;
+  queryId: string;
+  contextHash: string;
+}
+
+export interface AnalysisEvidence {
+  artifactId?: string | null;
+  queryId?: string | null;
+  asOf: string;
+  period?: {
+    start: string;
+    endExclusive: string;
+  } | null;
+  filters: Record<string, AnalysisValue>;
+  cached: boolean;
+  sampling: {
+    applied: boolean;
+    returnedRows: number;
+    totalRows: number | null;
+  };
+}
 
 export interface AnalysisApiResponse {
   data: {
     status?: BackendAnalysisStatus;
     transitions?: BackendAnalysisStatus[];
+    artifact?: {
+      artifact_id: string;
+      query_id: string;
+      context_hash: string;
+    } | null;
     result?: {
       summary?: string;
-      assets?: Array<{ name?: string; urn?: string }>;
-    };
+      metrics?: Array<{
+        metric_id: string;
+        label: string;
+        value: AnalysisValue;
+        unit?: string | null;
+      }>;
+      table?: {
+        columns: string[];
+        rows: Array<Record<string, AnalysisValue>>;
+      } | null;
+      chart?: {
+        chart_type: string;
+        x_field: string;
+        y_fields: string[];
+      } | null;
+      evidence: {
+        artifact_id?: string | null;
+        query_id?: string | null;
+        as_of: string;
+        period?: {
+          start: string;
+          end_exclusive: string;
+        } | null;
+        filters?: Record<string, AnalysisValue>;
+        cached?: boolean;
+        sampling?: {
+          applied?: boolean;
+          returned_rows?: number;
+          total_rows?: number | null;
+        };
+        sources?: Array<{
+          name: string;
+          urn: string;
+          fqn: string;
+          schema_version: string;
+          seed_version: string;
+        }>;
+      };
+    } | null;
   };
   meta: {
     request_id: string;
@@ -67,6 +155,9 @@ export interface AnalysisApiResponse {
 export interface AnalysisSource {
   name: string;
   urn: string;
+  fqn?: string;
+  schemaVersion?: string;
+  seedVersion?: string;
   status: "success" | "failed";
 }
 
@@ -80,6 +171,11 @@ export interface AnalysisRun {
   summary?: string;
   rowCount?: number;
   evidenceReady?: boolean;
+  artifact?: AnalysisArtifact;
+  metrics: AnalysisMetric[];
+  table?: AnalysisTable | null;
+  chart?: AnalysisChart | null;
+  evidence?: AnalysisEvidence;
   error?: {
     code: AnalysisErrorCode;
     message: string;
@@ -102,6 +198,7 @@ export function resolveViewState(run: AnalysisRun): AnalysisViewState {
   if (run.status === "cancelled") return "CANCELLED";
   if (run.status === "partial") return "PARTIAL";
   if (run.status === "failed") return "ERROR";
+  if (run.status === "blocked" && run.error?.code === "CONTEXT_INCOMPLETE") return "EMPTY";
   if (run.status === "blocked" && run.error?.code === "ACCESS_DENIED") return "FORBIDDEN";
   if (
     run.status === "blocked"
@@ -123,6 +220,7 @@ const BACKEND_STATUS_MAP: Record<BackendAnalysisStatus, AnalysisRunStatus> = {
   BLOCKED: "blocked",
   PARTIAL: "partial",
   FAILED: "failed",
+  CANCELLED: "cancelled",
 };
 
 export function normalizeApiResponse(
@@ -131,28 +229,67 @@ export function normalizeApiResponse(
   conversationId: string,
 ): AnalysisRun {
   const status = response.data.status ? BACKEND_STATUS_MAP[response.data.status] : "failed";
-  const assets = response.data.result?.assets ?? [];
+  const result = response.data.result ?? undefined;
+  const evidence = result?.evidence;
+  const sources = evidence?.sources ?? [];
+  const sampling = evidence?.sampling;
   return {
     conversationId,
     requestId: response.meta.request_id,
     traceId: response.meta.trace_id,
     status,
     question,
-    summary: response.data.result?.summary,
-    rowCount: status === "success" ? assets.length : undefined,
-    evidenceReady: status === "success" ? assets.length > 0 : undefined,
+    summary: result?.summary,
+    rowCount: sampling?.returned_rows,
+    evidenceReady: result ? Boolean(evidence) : undefined,
+    artifact: response.data.artifact ? {
+      artifactId: response.data.artifact.artifact_id,
+      queryId: response.data.artifact.query_id,
+      contextHash: response.data.artifact.context_hash,
+    } : undefined,
+    metrics: (result?.metrics ?? []).map((metric) => ({
+      metricId: metric.metric_id,
+      label: metric.label,
+      value: metric.value,
+      unit: metric.unit ?? null,
+    })),
+    table: result?.table,
+    chart: result?.chart ? {
+      chartType: result.chart.chart_type,
+      xField: result.chart.x_field,
+      yFields: result.chart.y_fields,
+    } : undefined,
+    evidence: evidence ? {
+      artifactId: evidence.artifact_id,
+      queryId: evidence.query_id,
+      asOf: evidence.as_of,
+      period: evidence.period ? {
+        start: evidence.period.start,
+        endExclusive: evidence.period.end_exclusive,
+      } : undefined,
+      filters: evidence.filters ?? {},
+      cached: evidence.cached ?? false,
+      sampling: {
+        applied: sampling?.applied ?? false,
+        returnedRows: sampling?.returned_rows ?? 0,
+        totalRows: sampling?.total_rows ?? null,
+      },
+    } : undefined,
     error: response.error ?? undefined,
-    sources: assets.map((asset) => ({
-      name: asset.name ?? "이름 없는 자산",
-      urn: asset.urn ?? "urn:unknown",
+    sources: sources.map((source) => ({
+      name: source.name,
+      urn: source.urn,
+      fqn: source.fqn,
+      schemaVersion: source.schema_version,
+      seedVersion: source.seed_version,
       status: "success",
     })),
     meta: {
       asOf: response.meta.as_of,
       timezone: "Asia/Seoul",
       synthetic: true,
-      seed: "20260729",
-      schemaVersion: "1.0.0",
+      seed: sources[0]?.seed_version ?? "—",
+      schemaVersion: sources[0]?.schema_version ?? "—",
       contractVersion: response.meta.contract_version,
     },
   };

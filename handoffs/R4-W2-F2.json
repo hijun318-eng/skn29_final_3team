@@ -1,0 +1,131 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W2-F2",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "0e756e7f1366e09fd084f655274e2add8778c68f",
+  "DIRECTIVE_BASE_SHA": "0e756e7f1366e09fd084f655274e2add8778c68f",
+  "SYNCED_DEV_SHA": "e023b0640020248ec35c998b9de637a67012cdaa",
+  "PRODUCT_RESULT_SHA": "4bec9d7fe032a91e6c5c60a74f1e2a7d0afe62ec",
+  "RESULT_SHA": "4bec9d7fe032a91e6c5c60a74f1e2a7d0afe62ec",
+  "DIRECTIVE_TOKEN": "R4-W2-F2@0e756e7",
+  "COMPLETED_CARDS": [
+    "R4-04·07·11·20 runtime 보완"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/Dockerfile",
+    "app/backend/app/adapters/contract_model.py",
+    "app/backend/app/adapters/i2_data_platform.py",
+    "app/backend/app/api/router.py",
+    "app/backend/app/contract_examples.py",
+    "app/backend/app/main.py",
+    "app/backend/app/services/analysis_service.py",
+    "app/backend/app/services/pipeline_support.py",
+    "app/backend/app/services/readiness.py",
+    "app/backend/app/services/routing_service.py",
+    "app/backend/compose.fragment.yml",
+    "app/backend/contracts/openapi.v0.1.json",
+    "app/backend/entrypoint.sh",
+    "app/backend/migrations/versions/20260730_02_application_schema.py",
+    "app/backend/migrations/versions/20260731_03_runtime_grants.py",
+    "app/backend/scripts/verify-container.ps1",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
+    "tests/backend/test_analysis_pipeline.py",
+    "tests/backend/test_http_runtime.py",
+    "tests/backend/test_i2_data_platform.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "OPENAPI_VERSION": "OPENAPI-v1.0.0",
+    "SCHEMA_VERSION": "1.0.0",
+    "SEED_VERSION": "20260729",
+    "TEMPLATE_VERSION": "I2-v1.0.0",
+    "MIGRATION_HEAD": "20260731_03"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_TEMPLATE_DB",
+      "status": "PASS",
+      "evidence": "context.analysis_templates 승인본은 TEMPLATE route로 실행되고 not-approved 요청은 ACCESS_DENIED·query 없음으로 차단"
+    },
+    {
+      "id": "AC2_TRINO_PORT",
+      "status": "PASS",
+      "evidence": "R4 I2DataPlatformAdapter가 R2 TrinoAdapter transport를 사용해 실제 Trino query_id를 반환"
+    },
+    {
+      "id": "AC3_MIGRATION_STARTUP",
+      "status": "PASS",
+      "evidence": "빈 임시 DB alembic upgrade head=20260731_03, runtime Template 조회, 컨테이너 BACKEND_DATABASE_READY 확인"
+    },
+    {
+      "id": "AC4_HTTP_TEMPLATE_TRACE",
+      "status": "PASS",
+      "evidence": "실제 POST /analysis가 TEMPLATE·G1·G2·QUERY·G3·ARTIFACT 순서와 동일 trace_id, query_id, artifact_id를 반환"
+    },
+    {
+      "id": "AC5_EXACT_CORS",
+      "status": "PASS",
+      "evidence": "localhost:5173 preflight 200·allow-origin 일치, untrusted.example 400·allow-origin header 없음"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_COMPILE",
+      "name": "python -m compileall -q app/backend tests/backend",
+      "status": "PASS",
+      "evidence": "exit code 0"
+    },
+    {
+      "id": "T2_BACKEND",
+      "name": "python -m pytest -p no:cacheprovider tests/backend",
+      "status": "PASS",
+      "evidence": "41 passed"
+    },
+    {
+      "id": "T3_OPENAPI",
+      "name": "python app/backend/scripts/export_openapi.py --check",
+      "status": "PASS",
+      "evidence": "OPENAPI_CONTRACT_VERIFIED"
+    },
+    {
+      "id": "T4_INTEGRATION",
+      "name": "python -m unittest discover -s tests/integration -p test_*.py",
+      "status": "PASS",
+      "evidence": "20 passed"
+    },
+    {
+      "id": "T5_ROLE_GATE",
+      "name": "python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS",
+      "evidence": "R4-W2-F2 manifest와 product SHA 기준 role gate PASS"
+    },
+    {
+      "id": "T6_DIFF_CHECK",
+      "name": "git diff --check",
+      "status": "PASS",
+      "evidence": "exit code 0"
+    }
+  ],
+  "ADDITIONAL_TEST_RESULTS": [
+    {
+      "name": "infrastructure/database/scripts/verify.ps1",
+      "status": "PASS",
+      "evidence": "I2_GOLD_HASH_VERIFIED·DATABASE_CONTRACT_VERIFIED"
+    },
+    {
+      "name": "app/backend/scripts/verify-container.ps1",
+      "status": "PASS",
+      "evidence": "BACKEND_CONTAINER_READY·BACKEND_DATABASE_READY"
+    },
+    {
+      "name": "personal daily report validation",
+      "status": "PASS",
+      "evidence": "[report-validation] OK"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R1 dev 병합 검토"
+}

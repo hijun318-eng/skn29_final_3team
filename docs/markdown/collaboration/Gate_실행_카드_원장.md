@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.24 |
-| 문서 기준일 | 2026-07-31 13:01 |
+| 버전 | v2.25 |
+| 문서 기준일 | 2026-07-31 13:14 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -169,7 +169,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R4-W1-F3-CLEAN | Wave 1 follow-up | R4 | 없음 → I1 | R4-W1-F3 사전 개인 branch 복구 | 허용 범위 밖 제출본 변경을 `origin/dev` 상태로 복구 | `MERGED_DEV` |
 | R5-W1-F1 | Wave 1 follow-up | R5 | 없음 → I1 | R5-01~04, R5-08, R5-18의 I1 보완 | 금지 route 차단·typed contract·lockfile·clean build | `MERGED_DEV` |
 | R5-W1-F2 | Wave 1 follow-up | R5 | 없음 → I1 | R5-01·08의 UI/Report version 동결 | 최종 UI·Report·fixture version·OpenAPI 정합 | `MERGED_DEV` |
-| R2-W1-F4 | Wave 1 finalization | R2 | 없음 → I1 | R2-00·09의 data contract 최종 승격 | `I1-v1.0.0` 실제 contract version·회귀 | `READY` |
+| R2-W1-F4 | Wave 1 finalization | R2 | 없음 → I1 | R2-00·09의 data contract 최종 승격 | `I1-v1.0.0` 실제 contract version·회귀 | `MERGED_DEV` |
 | R3-W1-F1 | Wave 1 finalization | R3 | 없음 → I1 | R3-00·01·02·07의 model/prompt/fixture 최종 승격 | 최종 model I/O·prompt·fixture version·회귀 | `READY` |
 | R4-W1-F4 | Wave 1 finalization | R4 | 없음 → I1 | R4-01의 OpenAPI 문서 정합 | README의 `OPENAPI-v1.0.0` 정합·회귀 | `READY` |
 | R1-W2 | Wave 2·08/10~08/14 | R1 | 없음 → I2 | R1-07, R1-09 | 수용 subset·통합 profile·deterministic trace 판정 | `PLANNED` |
@@ -217,19 +217,19 @@ TASK_CARD_RANGE=R1-00~08
 CURRENT_TASK_CARD_ID=R1-03
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=f3038c9b44f06db75597933057a72e42502a00c8
-REMOTE_DEV_SHA=f3038c9b44f06db75597933057a72e42502a00c8
-REMOTE_CI_EVIDENCE=GitHub Actions run 30603031072 PASS
+BASE_SHA=7e5e16cb89b8895d6594ae77a805360ea77cb37d
+REMOTE_DEV_SHA=7e5e16cb89b8895d6594ae77a805360ea77cb37d
+REMOTE_CI_EVIDENCE=GitHub Actions run 30603556566 PASS
 REMOTE_SYNC_STATE=VERIFIED
 I0_DECISION_VERSION=DRAFT-I0-v0.2
 CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
 PROMPT_VERSION=DRAFT-PROMPT-v0.1
 MODEL_FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
-BLOCKER=R2 data contract actual version, R3 model I/O·prompt·fixture, R4 README의 최종 version 승격 미완료
-R1_APPROVED_INPUTS=R2 schema 1.0.0·seed 20260729·scenario 1.0.0·candidate I1-v1.0.0; R3 model I/O·prompt·fixture의 v1.0.0 승격 대상; R4 OPENAPI-v1.0.0; R5 UI-v1.0.0·REPORT-v1.0.0·UI-FIXTURE-v1.0.0
+BLOCKER=R3 model I/O·prompt·fixture, R4 README의 최종 version 승격 미완료
+R1_APPROVED_INPUTS=R2 data contract I1-v1.0.0·schema 1.0.0·seed 20260729·scenario 1.0.0; R3 model I/O·prompt·fixture의 v1.0.0 승격 대상; R4 OPENAPI-v1.0.0; R5 UI-v1.0.0·REPORT-v1.0.0·UI-FIXTURE-v1.0.0
 R3_SERVICE_FRAGMENT=N/A — R3-W3에서 model serving Dockerfile 또는 실행 manifest 제출
-R1_REWORK_AUTHORIZATION=R5-W1-F2는 MERGED_DEV·WAIT, R2-W1-F4·R3-W1-F1·R4-W1-F4는 ACTION, 전 역할 Wave 2는 I1 VERIFIED_GATE 전 불허
+R1_REWORK_AUTHORIZATION=R2-W1-F4·R5-W1-F2는 MERGED_DEV·WAIT, R3-W1-F1·R4-W1-F4는 ACTION, 전 역할 Wave 2는 I1 VERIFIED_GATE 전 불허
 R3_USER_OVERRIDE=사용자가 origin/daesung 733307c의 최신 기획 문서를 충돌 시 R3 우선으로 dev 병합하도록 지시; 역할 scope failure는 명시적 override로 수용하고 요약본·공식 03 DOCX를 a0ac7ed로 통합
 INDEPENDENT_PROGRESS=R1-04~06 root DataHub 통합 profile·env·재현 가능한 service fragment 검증과 Python·frontend·Compose·문서 품질 Gate, R1-07 필수 30·gold 120 평가 원장 schema
 ROLE_GATE_POLICY=개인 branch는 origin/dev 대비 고유 변경을 최신 비-PLANNED 실행 묶음의 ALLOWED_PATHS로 검사; 공용 보고 자동화·팀 요약·검증은 비제품 경로로 허용하고 다른 역할 개인 보고는 차단; MERGED_DEV·VERIFIED_GATE는 개인 보고·공용 보고 외 변경 차단; dev는 role scope 강제 없이 통합 검사
@@ -665,7 +665,7 @@ EXTERNAL_ACTION_PERMISSION=추가 제품 변경·commit·push·Wave 2 착수 불
 ### R2-W1-F4
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -677,17 +677,21 @@ CURRENT_TASK_CARD_ID=R2-00
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=f3038c9b44f06db75597933057a72e42502a00c8
-DIRECTIVE=ACTION
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R2-W1-F4@f3038c9
-SUBMISSION_PERMISSION_STATUS=APPROVED
-CONTRACT_VERSION=DRAFT-I1-v0.1 → I1-v1.0.0
+SUBMISSION_PERMISSION_STATUS=ACCEPTED_AND_MERGED_DEV
+CONTRACT_VERSION=I1-v1.0.0
 ALLOWED_PATHS=src/data/r2_w1_contract.v1.json; src/data/source_registry.v1.json; tests/data/test_source_registry.py
 FORBIDDEN_PATHS=DDL·seed·manifest·row count·checksum·metric·JOIN·adapter 동작·R1/R3/R4/R5 소유 경로
 ACCEPTANCE_CRITERIA=두 JSON의 contract_version을 I1-v1.0.0으로 일치, candidate 값·schema·seed·scenario·metric·JOIN·data state 변경 0건, data·integration 소비자 회귀 통과
 TEST_COMMANDS=python -m unittest discover -s tests/data -p "test_*.py"; python -m unittest tests.integration.test_wave1_contracts -v; git diff --check
 STOP_CONDITIONS=version 치환 외 data 계약 변경 필요; DDL·seed·checksum drift; 허용 경로 밖 변경 필요; 필수 검증 실패
-HANDOFF=R1에 최종 data contract version·변경 파일·회귀 결과 전달
-EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff manifest에 한해 commit·seung push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
+HANDOFF=완료 — R1에 최종 data contract version·변경 파일·회귀 결과 전달
+PRODUCT_RESULT_SHA=7051f91fc6a142b46ce74b2de48f45203f38a607
+HANDOFF_SHA=510981bc798d8615ba8f839c218c61177f0a3fad
+R1_REVIEW_EVIDENCE=data 8건·integration 1건·role gate·보고·diff와 branch CI run 30603374739 PASS
+R1_INTEGRATION_EVIDENCE=origin/seung 510981b를 7e5e16c로 dev에 통합; dev CI run 30603556566 PASS
+EXTERNAL_ACTION_PERMISSION=추가 제품 변경·commit·push·Wave 2 착수 불가; R1의 다음 실행 묶음 발행 대기
 ```
 
 ### R3-W1-F1
@@ -972,6 +976,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.25 | 2026-07-31 13:14 | R2 제품 `7051f91`·handoff `510981b`의 data actual version·허용 범위·회귀·branch CI run `30603374739` PASS를 확인해 `7e5e16c`로 dev에 통합하고 dev CI run `30603556566` PASS를 확인했다. R2-W1-F4를 MERGED_DEV·WAIT로 전환하고 R1-W1 blocker를 R3·R4 최종 승격으로 축소했으며 Wave 2는 계속 보류했다. |
 | v2.24 | 2026-07-31 13:01 | R2-W1-F4의 data 8건 PASS 후 R1 통합 테스트가 과거 DRAFT data version을 단일 기대해 중단된 것을 확인했다. R2 변경은 commit·push 없이 보관하고 R1 전환 테스트와 최신 R4 bundle 기대를 보완해 통합 14건 및 dev CI run `30603031072` PASS를 확인했으며, R2-W1-F4를 새 기준 `f3038c9`·token으로 재발행했다. |
 | v2.23 | 2026-07-31 12:46 | R5 제품 `c600f65`·handoff `3f143af`의 scope·version·build·contract·role gate와 branch CI run `30602136889` PASS를 확인해 `5a52c8f`로 dev에 통합하고 dev CI run `30602295894` PASS를 확인했다. I1 최종 동결을 위해 R2 data actual version, R3 model/prompt/fixture version, R4 README OpenAPI 정합만 수행하는 `R2-W1-F4`·`R3-W1-F1`·`R4-W1-F4`를 READY로 발행했으며 Wave 2는 계속 보류했다. |
 | v2.22 | 2026-07-31 12:25 | 최신 `origin/dev` `b81f8e1`과 GitHub Actions run `30601436187` PASS를 확인해 유일한 실행 가능 follow-up인 `R5-W1-F2`의 기준 SHA와 token을 갱신하고 commit·minji push 승인을 유지했다. R2·R3·R4는 `MERGED_DEV/WAIT`, Wave 2는 I1 `VERIFIED_GATE` 전 `PLANNED`를 유지한다. |

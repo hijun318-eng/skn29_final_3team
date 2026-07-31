@@ -103,6 +103,62 @@ class SourceRegistryTest(unittest.TestCase):
         for token in required:
             self.assertIn(token, ddl)
 
+    def test_i1_room_revenue_metric_and_event_time_join_are_frozen(self):
+        self.assertEqual("I1-v1.0.0", self.contract["contract_version"])
+        self.assertEqual(self.contract["contract_version"], self.registry["contract_version"])
+
+        metric = self.contract["metrics"][0]
+        self.assertEqual(
+            "지난달 GOLD 회원의 인식 객실 매출은 전월 대비 얼마나 변했어?",
+            self.contract["representative_question"]["text"],
+        )
+        self.assertEqual("recognized_room_revenue", metric["id"])
+        self.assertEqual("pms.public.pms_stays.room_revenue", metric["source_field"])
+        self.assertEqual(("KRW", "SUM", "month"), (
+            metric["unit"], metric["aggregation"], metric["time_grain"]
+        ))
+        self.assertEqual("pms.public.pms_stays.actual_checkout_at", metric["event_time_field"])
+        self.assertEqual(
+            "pms_stay_to_crm_membership_grade_event_time_v1",
+            metric["approved_join_id"],
+        )
+
+        approved_join = self.registry["approved_joins"][0]
+        self.assertEqual(metric["approved_join_id"], approved_join["join_id"])
+        self.assertEqual("many_to_zero_or_one", approved_join["cardinality"])
+        self.assertEqual(metric["event_time_field"], approved_join["event_time_field"])
+        self.assertEqual(
+            [
+                "pms.public.pms_stays.reservation_id",
+                "pms.public.pms_reservations.guest_id",
+                "pms.public.pms_guests.guest_id",
+                "crm.dbo.crm_customer_map.member_no",
+            ],
+            [step["from"] for step in approved_join["steps"]],
+        )
+        predicates = " ".join(approved_join["predicates"])
+        self.assertIn("crm.dbo.crm_customer_map.valid_from <=", predicates)
+        self.assertIn("actual_checkout_at < crm.dbo.crm_customer_map.valid_to", predicates)
+        self.assertIn("crm.dbo.crm_member_grade_history.valid_from <=", predicates)
+        self.assertIn("actual_checkout_at < crm.dbo.crm_member_grade_history.valid_to", predicates)
+        self.assertNotIn("crm.dbo.crm_members.membership_grade", predicates)
+
+        pms_ddl = (
+            ROOT / "infrastructure/database/sql/ddl/01_hotel_pms_postgresql.sql"
+        ).read_text(encoding="utf-8")
+        crm_ddl = (
+            ROOT / "infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql"
+        ).read_text(encoding="utf-8")
+        for column in ("room_revenue numeric", "actual_checkout_at timestamptz"):
+            self.assertIn(column, pms_ddl)
+        for column in (
+            "pms_guest_id varchar",
+            "valid_from datetime2",
+            "valid_to datetime2",
+            "grade_code varchar",
+        ):
+            self.assertIn(column, crm_ddl)
+
     def test_trino_policy_is_read_only_and_hides_system(self):
         rules = json.loads(
             (

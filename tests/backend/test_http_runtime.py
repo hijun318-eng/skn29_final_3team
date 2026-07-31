@@ -139,6 +139,41 @@ class FastApiRuntimeTest(unittest.TestCase):
         self.assertEqual("runtime-test-trace", response["meta"]["trace_id"])
         self.assertEqual(CONTRACT_VERSION, response["meta"]["contract_version"])
 
+    def test_analysis_exposes_repair_trace_and_blocks_g3_artifact(self) -> None:
+        status, repaired = self.request(
+            "/analysis",
+            method="POST",
+            headers=self.context_headers(),
+            body={
+                "question": "합성 객실 운영 현황",
+                "parameters": {"scenario": "repair_once"},
+            },
+        )
+        self.assertEqual(200, status)
+        self.assertEqual(1, repaired["data"]["repair_count"])
+        self.assertIn(
+            "REPAIR",
+            [step["stage"] for step in repaired["data"]["trace"]],
+        )
+        self.assertIsNotNone(repaired["data"]["artifact"])
+
+        status, failed = self.request(
+            "/analysis",
+            method="POST",
+            headers=self.context_headers(),
+            body={
+                "question": "합성 객실 운영 현황",
+                "parameters": {"scenario": "g3_failed"},
+            },
+        )
+        self.assertEqual(200, status)
+        self.assertEqual("FAILED", failed["data"]["status"])
+        self.assertIsNone(failed["data"]["artifact"])
+        self.assertEqual(
+            "RESULT_EVIDENCE_MISSING",
+            failed["error"]["code"],
+        )
+
     def test_missing_context_and_invalid_role_are_blocked(self) -> None:
         status, response = self.request(
             "/analysis", method="POST", body={"question": "test"}

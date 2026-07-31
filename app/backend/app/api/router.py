@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, Request
 
 from app.adapters.fake_data_platform import FakeDataPlatformAdapter
+from app.adapters.fake_model import FakeModelAdapter
 from app.contract_examples import (
     ANALYSIS_REQUEST_EXAMPLES,
     ANALYSIS_RESPONSE_EXAMPLES,
@@ -28,7 +29,10 @@ from app.services.readiness import AppDatabaseReadiness
 
 
 router = APIRouter()
-controller = AnalysisController(AnalysisService(FakeDataPlatformAdapter()), RoutingService())
+controller = AnalysisController(
+    AnalysisService(FakeDataPlatformAdapter(), FakeModelAdapter()),
+    RoutingService(),
+)
 readiness = AppDatabaseReadiness()
 
 

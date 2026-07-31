@@ -1,15 +1,15 @@
 {
   "data": {
     "artifact": {
-      "artifact_id": "00000000-0000-0000-0000-0000000002f9",
-      "context_hash": "fixture-context-success",
-      "query_id": "fixture-query-success"
+      "artifact_id": "00000000-0000-0000-0000-00000000034c",
+      "context_hash": "fixture-context-repaired",
+      "query_id": "fixture-query-repaired"
     },
     "gates": {
       "g1_required": true,
       "g2_required": true
     },
-    "repair_count": 0,
+    "repair_count": 1,
     "result": {
       "chart": {
         "chart_type": "line",
@@ -19,7 +19,7 @@
         ]
       },
       "evidence": {
-        "artifact_id": "00000000-0000-0000-0000-0000000002f9",
+        "artifact_id": "00000000-0000-0000-0000-00000000034c",
         "as_of": "2026-07-30",
         "cached": false,
         "context_release": "context-v1",
@@ -38,7 +38,7 @@
           "start": "2026-07-01"
         },
         "policy_version": "policy-v1",
-        "query_id": "fixture-query-success",
+        "query_id": "fixture-query-repaired",
         "sampling": {
           "applied": false,
           "returned_rows": 1,
@@ -100,6 +100,16 @@
       },
       {
         "detail": null,
+        "outcome": "BLOCKED",
+        "stage": "G2"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "REPAIR"
+      },
+      {
+        "detail": null,
         "outcome": "PASSED",
         "stage": "G2"
       },
@@ -131,6 +141,6 @@
     "contract_version": "OPENAPI-v1.0.0",
     "request_id": "00000000-0000-0000-0000-000000000100",
     "timestamp": "2026-07-30T00:00:00Z",
-    "trace_id": "fixture-success"
+    "trace_id": "fixture-repaired"
   }
 }

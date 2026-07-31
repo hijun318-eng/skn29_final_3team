@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.26 |
-| 문서 기준일 | 2026-07-31 13:36 |
+| 버전 | v2.30 |
+| 문서 기준일 | 2026-07-31 14:20 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -800,7 +800,7 @@ Wave 2는 I1에서 동결한 계약과 fake를 기준으로 대표 질문의 det
 ### R1-W2
 
 ```text
-STATUS=READY
+STATUS=IN_PROGRESS
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -815,7 +815,9 @@ BASE_SHA=04e5e6dfb1ab66d41d8235275bfe5a30290c7181
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W2@04e5e6d
 CONTRACT_VERSION=I1-v1.0.0
-ALLOWED_PATHS=.github/**; compose*.yml; .env.example; tests/integration/**; docs/Answervice_기획서.md; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
+R1_PROGRESS=I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 trace 근거를 평가 원장 v0.4에 고정; R2 GOLD hash·source와 R3 runner 도착, R4 trace·R5 화면 증거 대기
+ALLOWED_PATHS=.github/**; compose*.yml; .env.example; tests/integration/**; docs/Answervice_기획서.md; docs/deliverables/02_WBS_29기_3팀.xlsx; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
+R1_SCOPE_AUTHORIZATION=사용자 요청에 따라 기획서 v1.2와 동기화한 공식 WBS XLSX 단일 경로의 작성·덮어쓰기·commit·junhee push를 승인; 다른 deliverable 경로는 승인하지 않음
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=필수 평가 subset·gold 원장을 확인하고 대표 질문의 Context→G1→G2→Trino→G3→Artifact→화면 trace에서 성공·재질문·차단·source 실패를 판정, 역할별 실패는 원 소유자에게 반환
 TEST_COMMANDS=python -m unittest discover -s tests/integration -p "test_*.py"; python .github/scripts/gate_scope.py --dashboard --next-gate I3; python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/02_WBS.md docs/markdown/collaboration/Gate_실행_카드_원장.md; git diff --check
@@ -827,7 +829,7 @@ EXTERNAL_ACTION_PERMISSION=R1 허용 경로의 commit·junhee push와 검증만 
 ### R2-W2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -835,12 +837,16 @@ EXECUTION_BUNDLE_ID=R2-W2
 TARGET_INTEGRATION_GATE=I2
 CHECKPOINT_GATES=없음
 TASK_CARD_RANGE=R2-09~16
-CURRENT_TASK_CARD_ID=R2-09
+CURRENT_TASK_CARD_ID=R2-16
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=04e5e6dfb1ab66d41d8235275bfe5a30290c7181
-DIRECTIVE=ACTION
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R2-W2@04e5e6d
+RESULT_SHA=75f148b3d9cf8ac7c7bd2ba34cb46248e3927ee8
+HANDOFF_SHA=de0a26f7c3315a9d690068baa79f2aae920a1c72
+MERGED_DEV_SHA=5afb90bf994c6e0f76f1546a9ea90ccd8c2ea258
+CI_EVIDENCE=branch run 30605617536 PASS; dev run 30605760842 PASS
 CONTRACT_VERSION=I1-v1.0.0
 ALLOWED_PATHS=infrastructure/database/**; src/data/**; tests/data/**
 FORBIDDEN_PATHS=app/backend/**; src/ai/**; src/modelops/**; frontend·Report; root Compose·.env.example·CI; R1/R3/R4/R5 소유 문서
@@ -854,7 +860,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff mani
 ### R3-W2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -862,12 +868,16 @@ EXECUTION_BUNDLE_ID=R3-W2
 TARGET_INTEGRATION_GATE=I2
 CHECKPOINT_GATES=없음
 TASK_CARD_RANGE=R3-02·06·08
-CURRENT_TASK_CARD_ID=R3-02
+CURRENT_TASK_CARD_ID=R3-08
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=04e5e6dfb1ab66d41d8235275bfe5a30290c7181
-DIRECTIVE=ACTION
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R3-W2@04e5e6d
+RESULT_SHA=345a788ebfb095786b70034476e304b549e2e54e
+HANDOFF_SHA=f4f25631fa7cce7af7640ba30d216fd481786929
+MERGED_DEV_SHA=f2817a0b7c041ba296184334350341c7a00c381f
+CI_EVIDENCE=branch run 30605387557 PASS; dev run 30605486384 PASS
 MODEL_CONTRACT_VERSION=MODEL-v1.0.0
 PROMPT_VERSION=PROMPT-v1.0.0
 MODEL_FIXTURE_VERSION=MODEL-FIXTURE-v1.0.0
@@ -1076,6 +1086,10 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.30 | 2026-07-31 14:20 | 사용자 요청으로 기획서 v1.2와 동기화한 공식 `02_WBS_29기_3팀.xlsx`가 R1-W2 허용 범위에서 누락돼 junhee CI run `30606452633`의 role-scope만 실패한 것을 확인했다. 문서·Python·Compose 검증은 PASS였으므로 해당 XLSX 단일 경로의 작성·덮어쓰기·commit·junhee push를 승인하고 다른 deliverable은 계속 금지했다. |
+| v2.29 | 2026-07-31 14:05 | R2-W2 제품 `75f148b`·handoff `de0a26f`의 `I2-v1.0.0`, GOLD hash `e6c2d1e…08fd`, 승인 JOIN, typed DataHub/Trino adapter, data 14건·통합 16건·role scope와 branch CI run `30605617536` PASS를 확인해 `5afb90b`으로 dev에 통합하고 dev CI run `30605760842` PASS를 확인했다. R2-W2를 MERGED_DEV·WAIT로 전환하고 R1 평가 원장에 정답 hash·source 근거를 연결했다. |
+| v2.28 | 2026-07-31 13:58 | R3-W2 제품 `345a788`·handoff `f4f2563`의 허용 경로, G3 pass 전용 Node 3, deterministic 평가 runner, AI 20건·통합 14건·role scope와 branch CI run `30605387557` PASS를 확인해 `f2817a0`으로 dev에 통합하고 dev CI run `30605486384` PASS를 확인했다. R3-W2를 MERGED_DEV·WAIT로 전환하고 R1 평가 원장에 runner 도착 근거를 연결했다. |
+| v2.27 | 2026-07-31 13:49 | R1-W2를 IN_PROGRESS로 전환하고 평가 원장 v0.2에 I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 필수 trace 근거를 고정했다. R2~R5 Wave 2 제품·handoff가 아직 없어 실제 fixture·runner·통합 trace는 생성하지 않고 producer 입력 대기를 기록했다. |
 | v2.26 | 2026-07-31 13:36 | R3 제품 `4c8eedf`·handoff `cb10eca`와 R4 제품 `2fa5b49`·handoff `825a0c2`를 각각 `14259c8`·`04e5e6d`로 dev에 통합하고 branch/dev CI PASS를 확인했다. data·model·prompt·fixture·OpenAPI·UI·Report 계약을 최종 version으로 단일 고정하고 로컬 data 8건·AI 15건·integration 16건·frontend·Compose와 dev CI run `30604495881` PASS를 근거로 R1-W1을 I1 `VERIFIED_GATE`로 승인했으며, 기준 `04e5e6d`의 R1~R5 Wave 2 실행 묶음을 READY로 발행했다. |
 | v2.25 | 2026-07-31 13:14 | R2 제품 `7051f91`·handoff `510981b`의 data actual version·허용 범위·회귀·branch CI run `30603374739` PASS를 확인해 `7e5e16c`로 dev에 통합하고 dev CI run `30603556566` PASS를 확인했다. R2-W1-F4를 MERGED_DEV·WAIT로 전환하고 R1-W1 blocker를 R3·R4 최종 승격으로 축소했으며 Wave 2는 계속 보류했다. |
 | v2.24 | 2026-07-31 13:01 | R2-W1-F4의 data 8건 PASS 후 R1 통합 테스트가 과거 DRAFT data version을 단일 기대해 중단된 것을 확인했다. R2 변경은 commit·push 없이 보관하고 R1 전환 테스트와 최신 R4 bundle 기대를 보완해 통합 14건 및 dev CI run `30603031072` PASS를 확인했으며, R2-W1-F4를 새 기준 `f3038c9`·token으로 재발행했다. |

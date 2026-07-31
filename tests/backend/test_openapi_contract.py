@@ -44,6 +44,9 @@ class OpenApiContractTest(unittest.TestCase):
         analysis_result = schema["components"]["schemas"]["AnalysisResult"]
 
         self.assertIn("result", analysis_data["properties"])
+        self.assertIn("trace", analysis_data["properties"])
+        self.assertIn("repair_count", analysis_data["properties"])
+        self.assertIn("artifact", analysis_data["properties"])
         self.assertIn("evidence", analysis_result["properties"])
 
     def test_all_fixtures_match_typed_response(self) -> None:

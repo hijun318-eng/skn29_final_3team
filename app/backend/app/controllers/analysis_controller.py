@@ -15,4 +15,4 @@ class AnalysisController:
             decision = self._routing.decide(payload)
         except RoutingError as exc:
             return self._service.blocked(context, ErrorBody(code=exc.code, message=exc.message))
-        return self._service.analyze(payload.question, context, decision)
+        return self._service.analyze(payload, context, decision)

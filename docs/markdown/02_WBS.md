@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.13 |
-| 문서 기준일 | 2026-07-31 12:01 |
+| 버전 | v7.14 |
+| 문서 기준일 | 2026-07-31 12:14 |
 | 작성·수정 | 김재홍·박준희·정승·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -358,6 +358,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-31 12:14 | 1.7, 3.1 | R3가 복구 지시를 읽은 뒤 제출한 `733307c`에서 요약본 추가와 공식 `03_프로젝트기획서` DOCX 수정이 고유 diff로 남고 CI run `30600969172`가 실패한 것을 확인했다. `R3-W1-CLEAN`의 허용 경로를 현재 두 파일로 교정해 `origin/dev` 상태 복구 commit·push만 재허가했으며 기존 상태·일정·간트는 변경하지 않았다. | R3 branch 복구 범위 교정 |
 | 2026-07-31 12:01 | 1.7, 3.1 | R3 `d044fb7`이 terminal 역할 허용 범위 밖 기획 요약 Markdown과 공식 DOCX를 추가해 CI가 실패한 것을 확인하고 dev 병합을 거부했다. 해당 두 파일만 `origin/dev` 상태로 복구하는 `R3-W1-CLEAN`을 READY·REWORK로 발행했으며 기능·Wave 2·다른 경로 변경은 허가하지 않았다. 기존 WBS 상태·일정·간트는 변경하지 않았다. | R3 branch 복구 발행 |
 | 2026-07-31 11:55 | 1.4, 1.7, 2.10 | R2 제품 `23059a6`·handoff `b8ec6b9`의 허용 경로·manifest·data 8건·소비자 계약·CI run `30599951597` PASS를 확인해 `47c1f94`로 dev에 통합했다. `actual_checkout_at`, 승인 JOIN `pms_stay_to_crm_membership_grade_event_time_v1`, data candidate `I1-v1.0.0`을 I1 입력으로 승인했으며 R5 제출 전까지 기존 상태·일정·간트는 변경하지 않았다. R3 `d044fb7`은 terminal 허용 범위 밖 문서 추가와 CI failure로 병합하지 않았다. | R2 metric·JOIN 동결·dev 통합 |
 | 2026-07-31 11:44 | 1.4, 1.7, 4.2 | R4 제품 `c83809a`와 handoff `9da78aa`의 허용 경로·manifest·backend 55건·GitHub Actions run `30599636125` PASS를 확인해 dev에 통합했다. R1 통합 test를 `OPENAPI-v1.0.0` 단일 version으로 고정하고 R4-W1-F3을 MERGED_DEV로 전환했으며, R2 metric·JOIN과 R5 UI·Report version 제출 전까지 기존 상태·일정·간트는 변경하지 않았다. | R4 OpenAPI 동결·dev 통합 |
@@ -404,6 +405,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.14 | 2026-07-31 12:14 | R3 `733307c`의 최신 고유 diff와 CI failure를 재판정해 복구 허용 경로를 요약본·공식 03 DOCX로 교정한 근거를 1.7·3.1에 연결했으며 기존 상태·일정·간트는 유지 |
 | v7.13 | 2026-07-31 12:01 | R3 허용 범위 밖 문서 제출과 CI failure를 확인해 dev 병합을 거부하고 두 파일 복구 전용 `R3-W1-CLEAN` 발행 근거를 1.7·3.1에 연결했으며 기존 상태·일정·간트는 유지 |
 | v7.12 | 2026-07-31 11:55 | R2 metric·time field·event-time JOIN·data candidate 결과와 handoff·CI를 검증해 dev에 통합하고 근거를 1.4·1.7·2.10에 연결했으며 R5 제출 전까지 기존 상태·일정·간트는 유지 |
 | v7.11 | 2026-07-31 11:44 | R4 OpenAPI 동결 결과·handoff·CI를 검증해 dev에 통합하고 `OPENAPI-v1.0.0` 단일 version 고정 근거를 1.4·1.7·4.2에 연결했으며 R2·R5 제출 전까지 기존 상태·일정·간트는 유지 |

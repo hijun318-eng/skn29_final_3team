@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.21 |
-| 문서 기준일 | 2026-07-31 12:21 |
+| 버전 | v2.22 |
+| 문서 기준일 | 2026-07-31 12:25 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -638,9 +638,9 @@ TASK_CARD_RANGE=R5-01·08의 UI·Report·fixture version 동결
 CURRENT_TASK_CARD_ID=R5-01
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=e2ecee3afbc7fa9d0e05d3973e607bed6b1d62cb
+BASE_SHA=b81f8e15ec3bb7c54ac7f921bb5a62a1efc83e63
 DIRECTIVE=ACTION
-DIRECTIVE_TOKEN=R5-W1-F2@e2ecee3
+DIRECTIVE_TOKEN=R5-W1-F2@b81f8e1
 SUBMISSION_PERMISSION_STATUS=APPROVED
 OPENAPI_VERSION=OPENAPI-v1.0.0 후보
 UI_VERSION=DRAFT-UI-v0.1 → UI-v1.0.0 후보
@@ -878,6 +878,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.22 | 2026-07-31 12:25 | 최신 `origin/dev` `b81f8e1`과 GitHub Actions run `30601436187` PASS를 확인해 유일한 실행 가능 follow-up인 `R5-W1-F2`의 기준 SHA와 token을 갱신하고 commit·minji push 승인을 유지했다. R2·R3·R4는 `MERGED_DEV/WAIT`, Wave 2는 I1 `VERIFIED_GATE` 전 `PLANNED`를 유지한다. |
 | v2.21 | 2026-07-31 12:21 | 사용자가 R3 최신 문서를 dev에 병합하고 충돌 시 R3 작성물을 우선하도록 지시해 기존 cleanup 방침을 종료했다. origin/daesung `733307c`의 요약본과 공식 03 DOCX를 `a0ac7ed`로 dev에 통합하고 문서 정책·DOCX ZIP/구조·diff를 통과했으며, R3 CI의 문서 품질·Python job PASS와 역할 scope failure의 사용자 override를 기록했다. |
 | v2.20 | 2026-07-31 12:14 | R3가 기존 복구 지시를 읽은 뒤 제출한 `733307c`에서 요약본 추가와 공식 `03_프로젝트기획서` DOCX 수정이 고유 diff로 남고 CI run `30600969172`가 실패한 것을 확인했다. `R3-W1-CLEAN`의 허용 경로를 현재 두 고유 diff로 교정하고 두 파일을 `origin/dev` 상태로 복구하는 commit·push만 재허가했다. |
 | v2.19 | 2026-07-31 12:01 | R3 `d044fb7`의 terminal 허용 범위 밖 기획 요약·DOCX 추가와 CI failure를 확인해 dev 병합을 거부하고, 두 파일만 `origin/dev` 상태로 복구하는 `R3-W1-CLEAN`을 READY·REWORK로 발행했다. 기능·Wave 2·다른 경로 변경은 계속 금지했다. |

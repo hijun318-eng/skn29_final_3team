@@ -1,0 +1,56 @@
+{
+  "EXECUTION_BUNDLE_ID": "R4-W1-F3",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "e5eea6057468a7d3ababb3a4cc432924fc4cc207",
+  "RESULT_SHA": "c83809af317948095bfdc8a9a417de1bbc517160",
+  "COMPLETED_CARDS": [
+    "R4-01"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/app/contracts.py",
+    "app/backend/contracts/openapi.v0.1.json",
+    "app/backend/contracts/source_registry.v1.json",
+    "app/backend/contracts/state_mapping.v0.1.json",
+    "tests/backend/fixtures/api/v0.1/cached.json",
+    "tests/backend/fixtures/api/v0.1/cancelled.json",
+    "tests/backend/fixtures/api/v0.1/empty.json",
+    "tests/backend/fixtures/api/v0.1/g1_clarification.json",
+    "tests/backend/fixtures/api/v0.1/g2_blocked.json",
+    "tests/backend/fixtures/api/v0.1/g3_failed.json",
+    "tests/backend/fixtures/api/v0.1/partial.json",
+    "tests/backend/fixtures/api/v0.1/success.json",
+    "tests/backend/fixtures/api/v0.1/timeout.json",
+    "tests/backend/test_control_plane_contract.py",
+    "tests/backend/test_http_runtime.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "OPENAPI_VERSION": "OPENAPI-v1.0.0",
+    "STATE_VERSION": "OPENAPI-v1.0.0",
+    "ERROR_VERSION": "OPENAPI-v1.0.0",
+    "BACKEND_FIXTURE_VERSION": "OPENAPI-v1.0.0",
+    "DB_REVISION_HEAD": "20260730_02"
+  },
+  "TEST_RESULTS": [
+    {
+      "name": "python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS"
+    },
+    {
+      "name": "python -m pytest -p no:cacheprovider tests (55 passed)",
+      "status": "PASS"
+    },
+    {
+      "name": "python app/backend/scripts/export_openapi.py --check",
+      "status": "PASS"
+    },
+    {
+      "name": "git diff --check",
+      "status": "PASS"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": []
+}

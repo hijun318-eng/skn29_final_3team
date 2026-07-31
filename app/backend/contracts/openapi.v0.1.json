@@ -4,6 +4,16 @@
       "AnalysisData": {
         "additionalProperties": false,
         "properties": {
+          "artifact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "gates": {
             "anyOf": [
               {
@@ -13,6 +23,13 @@
                 "type": "null"
               }
             ]
+          },
+          "repair_count": {
+            "default": 0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Repair Count",
+            "type": "integer"
           },
           "result": {
             "anyOf": [
@@ -47,6 +64,14 @@
               }
             ],
             "title": "Template Id"
+          },
+          "trace": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TraceStep"
+            },
+            "title": "Trace",
+            "type": "array"
           },
           "transitions": {
             "items": {
@@ -199,6 +224,31 @@
         ],
         "title": "AnalysisStatus",
         "type": "string"
+      },
+      "ArtifactReference": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "context_hash": {
+            "title": "Context Hash",
+            "type": "string"
+          },
+          "query_id": {
+            "title": "Query Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "query_id",
+          "context_hash"
+        ],
+        "title": "ArtifactReference",
+        "type": "object"
       },
       "ChartSpec": {
         "additionalProperties": false,
@@ -568,6 +618,22 @@
         "title": "PeriodEvidence",
         "type": "object"
       },
+      "PipelineStage": {
+        "enum": [
+          "ROUTER",
+          "CONTROLLER",
+          "CONTEXT",
+          "G1",
+          "MODEL",
+          "G2",
+          "REPAIR",
+          "QUERY",
+          "G3",
+          "ARTIFACT"
+        ],
+        "title": "PipelineStage",
+        "type": "string"
+      },
       "ReadinessData": {
         "additionalProperties": false,
         "properties": {
@@ -725,6 +791,15 @@
         "title": "SourceReference",
         "type": "object"
       },
+      "StageOutcome": {
+        "enum": [
+          "PASSED",
+          "BLOCKED",
+          "FAILED"
+        ],
+        "title": "StageOutcome",
+        "type": "string"
+      },
       "TableResult": {
         "additionalProperties": false,
         "properties": {
@@ -767,6 +842,34 @@
           "rows"
         ],
         "title": "TableResult",
+        "type": "object"
+      },
+      "TraceStep": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/StageOutcome"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/PipelineStage"
+          }
+        },
+        "required": [
+          "stage",
+          "outcome"
+        ],
+        "title": "TraceStep",
         "type": "object"
       }
     }
@@ -882,10 +985,16 @@
                     "summary": "cached",
                     "value": {
                       "data": {
+                        "artifact": {
+                          "artifact_id": "00000000-0000-0000-0000-000000000258",
+                          "context_hash": "fixture-context-cached",
+                          "query_id": "fixture-query-cached"
+                        },
                         "gates": {
                           "g1_required": true,
                           "g2_required": true
                         },
+                        "repair_count": 0,
                         "result": {
                           "chart": {
                             "chart_type": "line",
@@ -895,6 +1004,7 @@
                             ]
                           },
                           "evidence": {
+                            "artifact_id": "00000000-0000-0000-0000-000000000258",
                             "as_of": "2026-07-30",
                             "cached": true,
                             "context_release": "context-v1",
@@ -912,6 +1022,7 @@
                               "start": "2026-07-01"
                             },
                             "policy_version": "policy-v1",
+                            "query_id": "fixture-query-cached",
                             "sampling": {
                               "applied": false,
                               "returned_rows": 0,
@@ -939,6 +1050,44 @@
                         },
                         "route": "GENERAL",
                         "status": "SUCCEEDED",
+                        "trace": [
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ROUTER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTROLLER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTEXT"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G1"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "MODEL"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G2"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "QUERY"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G3"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ARTIFACT"
+                          }
+                        ],
                         "transitions": [
                           "RECEIVED",
                           "ROUTED",
@@ -962,8 +1111,47 @@
                           "g1_required": true,
                           "g2_required": true
                         },
+                        "repair_count": 0,
                         "route": "GENERAL",
                         "status": "CANCELLED",
+                        "trace": [
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ROUTER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTROLLER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTEXT"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G1"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "MODEL"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G2"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "QUERY"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G3"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ARTIFACT"
+                          }
+                        ],
                         "transitions": [
                           "RECEIVED",
                           "ROUTED",
@@ -988,10 +1176,16 @@
                     "summary": "empty",
                     "value": {
                       "data": {
+                        "artifact": {
+                          "artifact_id": "00000000-0000-0000-0000-00000000022f",
+                          "context_hash": "fixture-context-empty",
+                          "query_id": "fixture-query-empty"
+                        },
                         "gates": {
                           "g1_required": true,
                           "g2_required": true
                         },
+                        "repair_count": 0,
                         "result": {
                           "chart": {
                             "chart_type": "line",
@@ -1001,6 +1195,7 @@
                             ]
                           },
                           "evidence": {
+                            "artifact_id": "00000000-0000-0000-0000-00000000022f",
                             "as_of": "2026-07-30",
                             "cached": false,
                             "context_release": "context-v1",
@@ -1018,6 +1213,7 @@
                               "start": "2026-07-01"
                             },
                             "policy_version": "policy-v1",
+                            "query_id": "fixture-query-empty",
                             "sampling": {
                               "applied": false,
                               "returned_rows": 0,
@@ -1045,6 +1241,44 @@
                         },
                         "route": "GENERAL",
                         "status": "SUCCEEDED",
+                        "trace": [
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ROUTER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTROLLER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTEXT"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G1"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "MODEL"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G2"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "QUERY"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G3"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ARTIFACT"
+                          }
+                        ],
                         "transitions": [
                           "RECEIVED",
                           "ROUTED",
@@ -1068,8 +1302,47 @@
                           "g1_required": true,
                           "g2_required": true
                         },
+                        "repair_count": 0,
                         "route": "GENERAL",
                         "status": "BLOCKED",
+                        "trace": [
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ROUTER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTROLLER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTEXT"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G1"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "MODEL"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G2"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "QUERY"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G3"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ARTIFACT"
+                          }
+                        ],
                         "transitions": [
                           "RECEIVED",
                           "BLOCKED"
@@ -1097,8 +1370,47 @@
                           "g1_required": true,
                           "g2_required": true
                         },
+                        "repair_count": 0,
                         "route": "GENERAL",
                         "status": "BLOCKED",
+                        "trace": [
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ROUTER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTROLLER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTEXT"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G1"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "MODEL"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G2"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "QUERY"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G3"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ARTIFACT"
+                          }
+                        ],
                         "transitions": [
                           "RECEIVED",
                           "ROUTED",
@@ -1127,8 +1439,47 @@
                           "g1_required": true,
                           "g2_required": true
                         },
+                        "repair_count": 0,
                         "route": "GENERAL",
                         "status": "FAILED",
+                        "trace": [
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ROUTER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTROLLER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTEXT"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G1"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "MODEL"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G2"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "QUERY"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G3"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ARTIFACT"
+                          }
+                        ],
                         "transitions": [
                           "RECEIVED",
                           "ROUTED",
@@ -1153,10 +1504,16 @@
                     "summary": "partial",
                     "value": {
                       "data": {
+                        "artifact": {
+                          "artifact_id": "00000000-0000-0000-0000-0000000002ed",
+                          "context_hash": "fixture-context-partial",
+                          "query_id": "fixture-query-partial"
+                        },
                         "gates": {
                           "g1_required": true,
                           "g2_required": true
                         },
+                        "repair_count": 0,
                         "result": {
                           "chart": {
                             "chart_type": "line",
@@ -1166,6 +1523,7 @@
                             ]
                           },
                           "evidence": {
+                            "artifact_id": "00000000-0000-0000-0000-0000000002ed",
                             "as_of": "2026-07-30",
                             "cached": false,
                             "context_release": "context-v1",
@@ -1183,6 +1541,7 @@
                               "start": "2026-07-01"
                             },
                             "policy_version": "policy-v1",
+                            "query_id": "fixture-query-partial",
                             "sampling": {
                               "applied": false,
                               "returned_rows": 0,
@@ -1210,6 +1569,44 @@
                         },
                         "route": "GENERAL",
                         "status": "PARTIAL",
+                        "trace": [
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ROUTER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTROLLER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTEXT"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G1"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "MODEL"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G2"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "QUERY"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G3"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ARTIFACT"
+                          }
+                        ],
                         "transitions": [
                           "RECEIVED",
                           "ROUTED",
@@ -1230,14 +1627,20 @@
                       }
                     }
                   },
-                  "success": {
-                    "summary": "success",
+                  "repaired": {
+                    "summary": "repaired",
                     "value": {
                       "data": {
+                        "artifact": {
+                          "artifact_id": "00000000-0000-0000-0000-00000000034c",
+                          "context_hash": "fixture-context-repaired",
+                          "query_id": "fixture-query-repaired"
+                        },
                         "gates": {
                           "g1_required": true,
                           "g2_required": true
                         },
+                        "repair_count": 1,
                         "result": {
                           "chart": {
                             "chart_type": "line",
@@ -1247,6 +1650,7 @@
                             ]
                           },
                           "evidence": {
+                            "artifact_id": "00000000-0000-0000-0000-00000000034c",
                             "as_of": "2026-07-30",
                             "cached": false,
                             "context_release": "context-v1",
@@ -1264,6 +1668,7 @@
                               "start": "2026-07-01"
                             },
                             "policy_version": "policy-v1",
+                            "query_id": "fixture-query-repaired",
                             "sampling": {
                               "applied": false,
                               "returned_rows": 1,
@@ -1296,6 +1701,179 @@
                         },
                         "route": "GENERAL",
                         "status": "SUCCEEDED",
+                        "trace": [
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ROUTER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTROLLER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTEXT"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G1"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "MODEL"
+                          },
+                          {
+                            "outcome": "BLOCKED",
+                            "stage": "G2"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "REPAIR"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G2"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "QUERY"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G3"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ARTIFACT"
+                          }
+                        ],
+                        "transitions": [
+                          "RECEIVED",
+                          "ROUTED",
+                          "SUCCEEDED"
+                        ]
+                      },
+                      "meta": {
+                        "as_of": "2026-07-30",
+                        "contract_version": "OPENAPI-v1.0.0",
+                        "request_id": "00000000-0000-0000-0000-000000000100",
+                        "timestamp": "2026-07-30T00:00:00Z",
+                        "trace_id": "fixture-repaired"
+                      }
+                    }
+                  },
+                  "success": {
+                    "summary": "success",
+                    "value": {
+                      "data": {
+                        "artifact": {
+                          "artifact_id": "00000000-0000-0000-0000-0000000002f9",
+                          "context_hash": "fixture-context-success",
+                          "query_id": "fixture-query-success"
+                        },
+                        "gates": {
+                          "g1_required": true,
+                          "g2_required": true
+                        },
+                        "repair_count": 0,
+                        "result": {
+                          "chart": {
+                            "chart_type": "line",
+                            "x_field": "business_date",
+                            "y_fields": [
+                              "occupied_rooms"
+                            ]
+                          },
+                          "evidence": {
+                            "artifact_id": "00000000-0000-0000-0000-0000000002f9",
+                            "as_of": "2026-07-30",
+                            "cached": false,
+                            "context_release": "context-v1",
+                            "filters": {
+                              "hotel": "synthetic"
+                            },
+                            "masking": {
+                              "applied": true,
+                              "fields": [
+                                "guest_id"
+                              ]
+                            },
+                            "period": {
+                              "end_exclusive": "2026-08-01",
+                              "start": "2026-07-01"
+                            },
+                            "policy_version": "policy-v1",
+                            "query_id": "fixture-query-success",
+                            "sampling": {
+                              "applied": false,
+                              "returned_rows": 1,
+                              "total_rows": 1
+                            },
+                            "sources": [
+                              {
+                                "fqn": "pms.public.reservations",
+                                "name": "PMS reservations",
+                                "schema_version": "1.0.0",
+                                "seed_version": "20260729",
+                                "urn": "urn:answervice:dataset:pms.public.reservations"
+                              }
+                            ]
+                          },
+                          "metrics": [],
+                          "summary": "검증된 합성 데이터 분석 결과입니다.",
+                          "table": {
+                            "columns": [
+                              "business_date",
+                              "occupied_rooms"
+                            ],
+                            "rows": [
+                              {
+                                "business_date": "2026-07-29",
+                                "occupied_rooms": 120
+                              }
+                            ]
+                          }
+                        },
+                        "route": "GENERAL",
+                        "status": "SUCCEEDED",
+                        "trace": [
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ROUTER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTROLLER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTEXT"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G1"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "MODEL"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G2"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "QUERY"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G3"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ARTIFACT"
+                          }
+                        ],
                         "transitions": [
                           "RECEIVED",
                           "ROUTED",
@@ -1319,8 +1897,39 @@
                           "g1_required": true,
                           "g2_required": true
                         },
+                        "repair_count": 0,
                         "route": "GENERAL",
                         "status": "FAILED",
+                        "trace": [
+                          {
+                            "outcome": "PASSED",
+                            "stage": "ROUTER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTROLLER"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "CONTEXT"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G1"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "MODEL"
+                          },
+                          {
+                            "outcome": "PASSED",
+                            "stage": "G2"
+                          },
+                          {
+                            "outcome": "FAILED",
+                            "stage": "QUERY"
+                          }
+                        ],
                         "transitions": [
                           "RECEIVED",
                           "ROUTED",

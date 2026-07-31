@@ -9,6 +9,7 @@ from app.contracts import (
     AnalysisResponse,
     AnalysisResult,
     AnalysisStatus,
+    ArtifactReference,
     ChartSpec,
     ErrorBody,
     ErrorCode,
@@ -22,6 +23,7 @@ from app.contracts import (
     SourceReference,
     TableResult,
 )
+from app.trace_examples import fixture_trace
 
 
 ANALYSIS_REQUEST_EXAMPLES = {
@@ -84,7 +86,13 @@ def _source() -> SourceReference:
     )
 
 
-def _result(*, rows: tuple[dict[str, object], ...], cached: bool = False) -> AnalysisResult:
+def _result(
+    name: str,
+    *,
+    rows: tuple[dict[str, object], ...],
+    cached: bool = False,
+) -> AnalysisResult:
+    artifact_id = UUID(int=sum(map(ord, name)))
     return AnalysisResult(
         summary="검증된 합성 데이터 분석 결과입니다.",
         table=TableResult(
@@ -104,6 +112,8 @@ def _result(*, rows: tuple[dict[str, object], ...], cached: bool = False) -> Ana
             ),
             filters={"hotel": "synthetic"},
             sources=(_source(),),
+            query_id=f"fixture-query-{name}",
+            artifact_id=artifact_id,
             context_release="context-v1",
             policy_version="policy-v1",
             sampling=SamplingEvidence(
@@ -125,6 +135,13 @@ def _response(
     result: AnalysisResult | None = None,
     error: ErrorBody | None = None,
 ) -> AnalysisResponse:
+    artifact = None
+    if result and result.evidence.artifact_id and result.evidence.query_id:
+        artifact = ArtifactReference(
+            artifact_id=result.evidence.artifact_id,
+            query_id=result.evidence.query_id,
+            context_hash=f"fixture-context-{name}",
+        )
     return AnalysisResponse(
         data=AnalysisData(
             status=status,
@@ -132,6 +149,9 @@ def _response(
             route=RouteType.GENERAL,
             gates=GateRequirements(g1_required=True, g2_required=True),
             result=result,
+            trace=fixture_trace(name),
+            repair_count=1 if name == "repaired" else 0,
+            artifact=artifact,
         ),
         meta=_meta(f"fixture-{name}"),
         error=error,
@@ -146,6 +166,7 @@ def contract_fixtures() -> dict[str, AnalysisResponse]:
             AnalysisStatus.SUCCEEDED,
             (*routed, AnalysisStatus.SUCCEEDED),
             result=_result(
+                "success",
                 rows=(
                     {
                         "business_date": "2026-07-29",
@@ -158,7 +179,7 @@ def contract_fixtures() -> dict[str, AnalysisResponse]:
             "empty",
             AnalysisStatus.SUCCEEDED,
             (*routed, AnalysisStatus.SUCCEEDED),
-            result=_result(rows=()),
+            result=_result("empty", rows=()),
         ),
         "g1_clarification": _response(
             "g1-clarification",
@@ -201,7 +222,7 @@ def contract_fixtures() -> dict[str, AnalysisResponse]:
             "partial",
             AnalysisStatus.PARTIAL,
             (*routed, AnalysisStatus.PARTIAL),
-            result=_result(rows=()),
+            result=_result("partial", rows=()),
             error=ErrorBody(
                 code=ErrorCode.PARTIAL_FAILURE,
                 message="일부 데이터 소스를 조회하지 못했습니다.",
@@ -221,7 +242,21 @@ def contract_fixtures() -> dict[str, AnalysisResponse]:
             "cached",
             AnalysisStatus.SUCCEEDED,
             (*routed, AnalysisStatus.SUCCEEDED),
-            result=_result(rows=(), cached=True),
+            result=_result("cached", rows=(), cached=True),
+        ),
+        "repaired": _response(
+            "repaired",
+            AnalysisStatus.SUCCEEDED,
+            (*routed, AnalysisStatus.SUCCEEDED),
+            result=_result(
+                "repaired",
+                rows=(
+                    {
+                        "business_date": "2026-07-29",
+                        "occupied_rooms": 120,
+                    },
+                ),
+            ),
         ),
     }
 

@@ -35,13 +35,13 @@ class Wave1ContractTest(unittest.TestCase):
             ROOT / "docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md"
         ).read_text(encoding="utf-8")
 
-        self.assertIn(data["contract_version"], ("DRAFT-I1-v0.1", "I1-v1.0.0"))
+        self.assertEqual("I1-v1.0.0", data["contract_version"])
         self.assertEqual(
             ("1.0.0", "20260729", "1.0.0"),
             (data["schema_version"], data["seed_version"], data["scenario_version"]),
         )
         self.assertEqual("I1-v1.0.0", data["candidate_contract_version"])
-        self.assertIn(model["version"], ("DRAFT-MODEL-v0.1", "MODEL-v1.0.0"))
+        self.assertEqual("MODEL-v1.0.0", model["version"])
         self.assertEqual("OPENAPI-v1.0.0", backend_version)
         for version in (
             data["contract_version"],

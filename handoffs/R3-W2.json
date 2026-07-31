@@ -1,0 +1,64 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R3-W2",
+  "ROLE": "R3",
+  "BRANCH": "daesung",
+  "BASE_SHA": "04e5e6dfb1ab66d41d8235275bfe5a30290c7181",
+  "SYNCED_DEV_SHA": "b5029560a72927d1d3531235e578648d98f039b5",
+  "RESULT_SHA": "345a788ebfb095786b70034476e304b549e2e54e",
+  "DIRECTIVE_TOKEN": "R3-W2@04e5e6d",
+  "COMPLETED_CARDS": [
+    "R3-02",
+    "R3-06",
+    "R3-08"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/daesung/일일보고.md",
+    "evals/__init__.py",
+    "evals/runner.py",
+    "src/ai/fake_model.py",
+    "src/ai/node3.py",
+    "tests/ai/test_eval_runner.py",
+    "tests/ai/test_node3.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "MODEL_CONTRACT_VERSION": "MODEL-v1.0.0",
+    "PROMPT_VERSION": "PROMPT-v1.0.0",
+    "MODEL_FIXTURE_VERSION": "MODEL-FIXTURE-v1.0.0"
+  },
+  "TEST_RESULTS": [
+    {
+      "name": "python -m compileall -q src/ai src/modelops evals tests/ai",
+      "status": "PASS"
+    },
+    {
+      "name": "python -m unittest discover -s tests/ai -p \"test_*.py\" (20 passed)",
+      "status": "PASS"
+    },
+    {
+      "name": "python -m unittest tests.integration.test_wave1_contracts -v (1 passed)",
+      "status": "PASS"
+    },
+    {
+      "name": "python -m unittest tests.integration.test_gate_scope -v (13 passed)",
+      "status": "PASS"
+    },
+    {
+      "name": "python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS"
+    },
+    {
+      "name": "python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260731 docs/markdown/daily_reports/daesung/일일보고.md",
+      "status": "PASS"
+    },
+    {
+      "name": "git diff --check",
+      "status": "PASS"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "dev 병합"
+}

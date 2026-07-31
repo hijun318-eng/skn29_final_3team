@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.10 |
-| 문서 기준일 | 2026-07-30 17:09 |
+| 버전 | v2.11 |
+| 문서 기준일 | 2026-07-31 10:12 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -157,9 +157,12 @@ R5는 I0에서만 `app/react/**`와 `app/enterprise-react/**`를 함께 조사�
 | R5-W1 | Wave 1·07/29~08/07 | R5 | I0 → I1 | R5-00~04, R5-08 | 활성 frontend·IA·typed client·mock·Chat 상태·Report 계약 | `MERGED_DEV` |
 | R2-W1-F1 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 I1 service fragment 보완 | DataHub/database fragment·health·env 요구 | `MERGED_DEV` |
 | R2-W1-F2 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 DataHub consumer fragment 보완 | immutable version·official Compose source·health·env | `MERGED_DEV` |
+| R2-W1-F3 | Wave 1 follow-up | R2 | 없음 → I1 | R2-09의 대표 질문 metric·JOIN 계약 보완 | 실제 PMS 수익 인식 필드·event-time CRM JOIN·I1 data version | `READY` |
 | R4-W1-F1 | Wave 1 follow-up | R4 | 없음 → I1 | R4-20의 I1 container subset | backend Dockerfile·container health·runtime 증거 | `MERGED_DEV` |
 | R4-W1-F2 | Wave 1 follow-up | R4 | 없음 → I1 | R4-W1-F1 cleanup 결함 수정 | container 검증 종료 코드·잔존 container 정리 | `MERGED_DEV` |
+| R4-W1-F3 | Wave 1 follow-up | R4 | 없음 → I1 | R4-01의 OpenAPI/state/error version 동결 | 최종 OpenAPI version·동일 상태/오류 contract | `READY` |
 | R5-W1-F1 | Wave 1 follow-up | R5 | 없음 → I1 | R5-01~04, R5-08, R5-18의 I1 보완 | 금지 route 차단·typed contract·lockfile·clean build | `MERGED_DEV` |
+| R5-W1-F2 | Wave 1 follow-up | R5 | 없음 → I1 | R5-01·08의 UI/Report version 동결 | 최종 UI·Report·fixture version·OpenAPI 정합 | `READY` |
 | R1-W2 | Wave 2·08/10~08/14 | R1 | 없음 → I2 | R1-07, R1-09 | 수용 subset·통합 profile·deterministic trace 판정 | `PLANNED` |
 | R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `PLANNED` |
 | R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `PLANNED` |
@@ -205,16 +208,19 @@ TASK_CARD_RANGE=R1-00~08
 CURRENT_TASK_CARD_ID=R1-03
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=2c7b72dbfb8b097982acde1d35c26e00112d15b5
+BASE_SHA=68fc0685727997397042ec7ba5a53933225da022
+REMOTE_DEV_SHA=68fc0685727997397042ec7ba5a53933225da022
+REMOTE_CI_EVIDENCE=GitHub Actions run 30528089815 PASS
+REMOTE_SYNC_STATE=VERIFIED
 I0_DECISION_VERSION=DRAFT-I0-v0.2
 CONTRACT_VERSION=DRAFT-I1-v0.1
 MODEL_CONTRACT_VERSION=DRAFT-MODEL-v0.1
 PROMPT_VERSION=DRAFT-PROMPT-v0.1
 MODEL_FIXTURE_VERSION=DRAFT-MODEL-FIXTURE-v0.1
-BLOCKER=대표 질문·metric 승인값과 common I1·OpenAPI·UI/Report 최종 version 미동결
+BLOCKER=실제 pms_stays 수익 인식 필드와 CRM event-time 관계를 잇는 승인 JOIN ID·time field 미등록, common I1·OpenAPI·UI/Report 최종 version 미동결
 R1_APPROVED_INPUTS=R2 schema 1.0.0·seed 20260729·scenario 1.0.0; R3 model I/O DRAFT-MODEL-v0.1·prompt DRAFT-PROMPT-v0.1·fixture DRAFT-MODEL-FIXTURE-v0.1
 R3_SERVICE_FRAGMENT=N/A — R3-W3에서 model serving Dockerfile 또는 실행 manifest 제출
-R1_REWORK_AUTHORIZATION=R2-W1-F2 종료, common I1 Freeze 전 R4·R5 추가 구현과 전 역할 Wave 2 불허
+R1_REWORK_AUTHORIZATION=R2-W1-F3·R4-W1-F3·R5-W1-F2의 I1 계약 동결 보완만 허가, 그 밖의 추가 구현과 전 역할 Wave 2 불허
 INDEPENDENT_PROGRESS=R1-04~06 root DataHub 통합 profile·env·재현 가능한 service fragment 검증과 Python·frontend·Compose·문서 품질 Gate, R1-07 필수 30·gold 120 평가 원장 schema
 ROLE_GATE_POLICY=개인 branch는 origin/dev 대비 고유 변경을 최신 비-PLANNED 실행 묶음의 ALLOWED_PATHS로 검사; 공용 보고 자동화·팀 요약·검증은 비제품 경로로 허용하고 다른 역할 개인 보고는 차단; MERGED_DEV·VERIFIED_GATE는 개인 보고·공용 보고 외 변경 차단; dev는 role scope 강제 없이 통합 검사
 ROLE_GATE_PERMISSION=GitHub Actions contents: read만 사용, 자동 상태 변경·commit·push·merge 금지
@@ -504,6 +510,95 @@ R1_INTEGRATION_EVIDENCE=origin/seung 731399d를 dev에 fast-forward 통합하고
 EXTERNAL_ACTION_PERMISSION=추가 R2 구현 없음; image pull·실제 container runtime·비용·배포·secret 등록은 별도 승인 전 불가
 ```
 
+## I1 계약 동결 follow-up
+
+아래 세 묶음은 새 기능이 아니라 병합된 Wave 1 계약의 잘못된 PMS 필드와
+`DRAFT` version을 고치는 최소 보완이다. 각 역할은 자기 묶음만 수행하며
+Wave 2 구현은 시작하지 않는다.
+
+### R2-W1-F3
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W1-F3
+TARGET_INTEGRATION_GATE=I1
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R2-09의 대표 질문 metric·JOIN 계약 보완
+CURRENT_TASK_CARD_ID=R2-09
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=68fc0685727997397042ec7ba5a53933225da022
+CONTRACT_VERSION=DRAFT-I1-v0.1 → I1-v1.0.0 후보
+SCHEMA_VERSION=1.0.0
+SEED_VERSION=20260729
+SCENARIO_VERSION=1.0.0
+REPRESENTATIVE_QUESTION=지난달 GOLD 회원의 인식 객실 매출은 전월 대비 얼마나 변했어?
+METRIC_CONTRACT=recognized_room_revenue; KRW; SUM; month; membership_grade(event-time); completed·paid·non-forecast stays
+ALLOWED_PATHS=src/data/r2_w1_contract.v1.json; src/data/source_registry.v1.json; tests/data/**
+FORBIDDEN_PATHS=source DDL·seed·root Compose·.env.example·CI·app/**·src/ai/**·frontend·Report·docs/markdown/collaboration/**·docs/markdown/02_WBS.md
+ACCEPTANCE_CRITERIA=pms.public.pms_stays.room_revenue를 수익 인식 필드로 사용하고 실제 스키마에 존재하는 PMS reservation·guest와 CRM customer map·grade history를 잇는 stable JOIN ID·cardinality·event-time predicate·time field를 registry에 기록, DDL·seed·row count·checksum 변경 0건, data contract와 registry version을 I1-v1.0.0 후보로 일치
+TEST_COMMANDS=python -m unittest discover -s tests/data -p "test_*.py" -v; python -m json.tool src/data/r2_w1_contract.v1.json > NUL; python -m json.tool src/data/source_registry.v1.json > NUL; git diff --check
+STOP_CONDITIONS=실제 컬럼으로 승인 JOIN을 표현할 수 없음; DDL·seed 변경 필요; 기존 schema·seed·scenario 또는 checksum 변경; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R1에 metric ID·time field·JOIN ID·cardinality·temporal predicate·변경된 contract version과 검증 결과 전달
+EXTERNAL_ACTION_PERMISSION=dependency 설치·download·image pull·비용·배포·secret·데이터 전송 불가, commit·push는 사용자 명시 승인 전 불가
+```
+
+### R4-W1-F3
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W1-F3
+TARGET_INTEGRATION_GATE=I1
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R4-01의 OpenAPI·state·error version 동결
+CURRENT_TASK_CARD_ID=R4-01
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=68fc0685727997397042ec7ba5a53933225da022
+OPENAPI_VERSION=DRAFT-OPENAPI-v0.1 → OPENAPI-v1.0.0 후보
+ALLOWED_PATHS=app/backend/app/contracts.py; app/backend/contracts/**; tests/backend/**
+FORBIDDEN_PATHS=root Compose·.env.example·CI·source DDL·seed·src/data/**·src/ai/**·frontend·Report·docs/markdown/collaboration/**·docs/markdown/02_WBS.md
+ACCEPTANCE_CRITERIA=producer constant·committed OpenAPI·state mapping·source registry·API fixture·backend test의 version을 OPENAPI-v1.0.0 후보로 일치, 기존 endpoint·schema·상태·오류·migration·runtime 동작 변경 0건
+TEST_COMMANDS=python -m compileall -q app/backend tests/backend; python -m pytest -p no:cacheprovider tests/backend; python app/backend/scripts/export_openapi.py --check; git diff --check
+STOP_CONDITIONS=version 치환 외 API·상태·오류·migration 동작 변경 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R1과 R5에 최종 OpenAPI 후보 version·변경 파일·회귀 결과 전달
+EXTERNAL_ACTION_PERMISSION=dependency 설치·download·image pull·비용·배포·secret·데이터 전송 불가, commit·push는 사용자 명시 승인 전 불가
+```
+
+### R5-W1-F2
+
+```text
+STATUS=READY
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W1-F2
+TARGET_INTEGRATION_GATE=I1
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R5-01·08의 UI·Report·fixture version 동결
+CURRENT_TASK_CARD_ID=R5-01
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=68fc0685727997397042ec7ba5a53933225da022
+OPENAPI_VERSION=OPENAPI-v1.0.0 후보
+UI_VERSION=DRAFT-UI-v0.1 → UI-v1.0.0 후보
+REPORT_VERSION=DRAFT-REPORT-v0.1 → REPORT-v1.0.0 후보
+UI_FIXTURE_VERSION=DRAFT-UI-FIXTURE-v0.1 → UI-FIXTURE-v1.0.0 후보
+ALLOWED_PATHS=app/enterprise-react/src/contracts/**; app/enterprise-react/src/data/analysisFixtures.ts; tests/frontend/**
+FORBIDDEN_PATHS=root Compose·.env.example·CI·app/backend/**·source DDL·seed·src/data/**·src/ai/**·docs/markdown/collaboration/**·docs/markdown/02_WBS.md
+ACCEPTANCE_CRITERIA=UI·Report·fixture version을 각 v1.0.0 후보로 고정하고 R4 OPENAPI-v1.0.0 후보와 typed client·fixture·contract test를 일치, route·화면·Report 동작·dependency 변경 0건
+TEST_COMMANDS=npm --prefix app/enterprise-react run build; node --test tests/frontend/contracts.test.mjs; git diff --check
+STOP_CONDITIONS=version 치환 외 UI·Report 동작 또는 dependency 변경 필요; R4 최종 OpenAPI 후보와 불일치; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R1에 UI·Report·fixture·OpenAPI 후보 version과 build·contract 결과 전달
+EXTERNAL_ACTION_PERMISSION=dependency 설치·download·비용·배포·secret·데이터 전송 불가, commit·push는 사용자 명시 승인 전 불가
+```
+
 ## Wave 2 상세 계획 카드
 
 Wave 2는 I1에서 동결한 계약과 fake를 기준으로 대표 질문의 deterministic 전체 왕복을 완성한다. 각 카드는 Wave 1 통합 완료 `dev` SHA와 승인 version을 입력한 뒤 `READY`로 바꾼다.
@@ -697,6 +792,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.11 | 2026-07-31 10:12 | `origin/dev` `68fc068`과 GitHub Actions run `30528089815` PASS를 확인해 원격 동기화 차단을 해제했다. 실제 schema에 없는 PMS 수익 필드와 PMS↔CRM event-time 승인 JOIN 미등록, OpenAPI·UI·Report 초안 version을 I1 차단 원인으로 확정하고 R2-W1-F3·R4-W1-F3·R5-W1-F2를 동결 전용 READY로 발행 |
 | v2.10 | 2026-07-30 17:09 | R2 DataHub consumer `731399d`를 dev에 통합하고 공식 source provenance·service fragment·root dev/full/split-host Compose 정적 소비를 검증해 R2-W1-F2를 MERGED_DEV로 전환했다. Git 한글 경로 raw 처리, 공용 보고 자동화 비제품 예외, seung Compose 검증, handoff 최종 차단을 CI에 반영했으며 실제 DataHub container 기동과 common I1 version·대표 질문·metric 동결은 남겼다. |
 | v2.9 | 2026-07-30 16:26 | GitHub Actions는 원장의 권한·SHA·diff·handoff 증거와 Python·frontend·Compose·문서/WBS 품질을 읽기 전용으로 집계하고 Google Docs는 R1 최종 결정 채널로 사용하는 자동화 계약, PASS·FAIL·REVIEW_REQUIRED·NOT_RUN·N/A 기준, handoff 필수 필드와 자동/수동 판정 경계를 추가 |
 | v2.8 | 2026-07-30 15:47 | R4 cleanup·R5 frontend handoff의 dev 통합과 root dev/full/split-host Compose 정적 소비를 확인해 R4·R5 follow-up을 MERGED_DEV로 전환하고, full profile에 남은 DataHub consumer fragment·immutable version·공식 source 보완을 R2-W1-F2 READY로 발행 |

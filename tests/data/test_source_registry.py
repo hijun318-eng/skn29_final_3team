@@ -104,8 +104,15 @@ class SourceRegistryTest(unittest.TestCase):
             self.assertIn(token, ddl)
 
     def test_i1_room_revenue_metric_and_event_time_join_are_frozen(self):
-        self.assertEqual("I1-v1.0.0", self.contract["contract_version"])
+        self.assertEqual("DRAFT-I1-v0.1", self.contract["contract_version"])
         self.assertEqual(self.contract["contract_version"], self.registry["contract_version"])
+        self.assertEqual(
+            "I1-v1.0.0", self.contract["candidate_contract_version"]
+        )
+        self.assertEqual(
+            self.contract["candidate_contract_version"],
+            self.registry["candidate_contract_version"],
+        )
 
         metric = self.contract["metrics"][0]
         self.assertEqual(

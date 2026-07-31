@@ -8,7 +8,7 @@ class ModelDecisionTests(unittest.TestCase):
         path = Path("src/modelops/model_decision.v0.1.json")
         decision = json.loads(path.read_text(encoding="utf-8"))
 
-        self.assertEqual(decision["decision_version"], "DRAFT-MODEL-v0.1")
+        self.assertEqual(decision["decision_version"], "MODEL-v1.0.0")
         self.assertEqual(
             decision["scope"]["excluded_until_i5_followup"],
             ["mcp", "document_rag", "ml_as_a_tool", "customer_360"],

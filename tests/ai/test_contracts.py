@@ -132,7 +132,7 @@ VALID_PAYLOADS = {
 
 class ContractTests(unittest.TestCase):
     def test_schema_version_is_explicit(self):
-        self.assertEqual(schema_version(), "DRAFT-MODEL-v0.1")
+        self.assertEqual(schema_version(), "MODEL-v1.0.0")
 
     def test_valid_examples(self):
         for definition, payload in VALID_PAYLOADS.items():

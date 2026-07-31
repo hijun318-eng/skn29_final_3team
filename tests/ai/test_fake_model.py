@@ -21,6 +21,7 @@ class FakeModelTests(unittest.TestCase):
     def test_output_tracks_fixture_version_and_context_references(self):
         adapter = FakeModelAdapter()
         output = adapter.generate("node2", VALID_PAYLOADS["node2_request"])
+        self.assertEqual(adapter.version, "MODEL-FIXTURE-v1.0.0")
         self.assertEqual(output["model"]["model_version"], adapter.model_version)
         self.assertEqual(output["model"]["fixture_version"], adapter.version)
         self.assertEqual(

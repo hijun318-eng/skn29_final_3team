@@ -10,7 +10,7 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(len(first), 4)
         for metadata in first:
-            self.assertEqual(metadata["version"], "DRAFT-PROMPT-v0.1")
+            self.assertEqual(metadata["version"], "PROMPT-v1.0.0")
             self.assertEqual(metadata["environment"], "development")
             self.assertEqual(metadata["model_version"], "DRAFT-BASE-v0.1")
             self.assertIsNone(metadata["fixture_version"])

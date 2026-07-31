@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "DRAFT-MODEL-v0.1",
+  "version": "MODEL-v1.0.0",
   "$defs": {
     "model_trace": {
       "type": "object",

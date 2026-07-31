@@ -198,6 +198,7 @@ export function resolveViewState(run: AnalysisRun): AnalysisViewState {
   if (run.status === "cancelled") return "CANCELLED";
   if (run.status === "partial") return "PARTIAL";
   if (run.status === "failed") return "ERROR";
+  if (run.status === "blocked" && run.error?.code === "CONTEXT_INCOMPLETE") return "EMPTY";
   if (run.status === "blocked" && run.error?.code === "ACCESS_DENIED") return "FORBIDDEN";
   if (
     run.status === "blocked"

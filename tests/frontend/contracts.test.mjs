@@ -18,6 +18,9 @@ import {
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
 
 const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/package.json", import.meta.url)));
+const g1ClarificationFixture = JSON.parse(
+  readFileSync(new URL("../backend/fixtures/api/v0.1/g1_clarification.json", import.meta.url)),
+);
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
 assert.equal(REPORT_CONTRACT_VERSION, "REPORT-v1.0.0");
 assert.equal(FIXTURE_VERSION, "UI-FIXTURE-v1.0.0");
@@ -27,8 +30,21 @@ assert.equal(resolveRoute("/customers").page, "notFound");
 assert.equal(resolveRoute("/catalog/tools").page, "notFound");
 
 for (const [expected, run] of Object.entries(analysisFixtures)) {
-  assert.equal(resolveViewState(run).toLowerCase(), expected);
+  assert.equal(resolveViewState(run).toLowerCase(), expected === "clarification" ? "empty" : expected);
 }
+
+const clarification = normalizeApiResponse(
+  g1ClarificationFixture,
+  "지난달 객실 매출을 알려줘.",
+  "conv-clarification-001",
+);
+assert.equal(clarification.status, "blocked");
+assert.equal(resolveViewState(clarification), "EMPTY");
+assert.equal(clarification.error.code, "CONTEXT_INCOMPLETE");
+assert.equal(clarification.error.message, "분석 기간을 입력해 주세요.");
+assert.equal(clarification.requestId, "00000000-0000-0000-0000-000000000100");
+assert.equal(clarification.traceId, "fixture-g1-clarification");
+assert.equal(clarification.artifact, undefined);
 
 const normalized = normalizeApiResponse({
   data: {

@@ -41,6 +41,7 @@ export function AnalysisStatePanel({
   const viewState = resolveViewState(run);
   const copy = VIEW_COPY[viewState];
   const Icon = copy.icon;
+  const needsClarification = run.error?.code === "CONTEXT_INCOMPLETE";
   const showResult = viewState === "READY" || viewState === "PARTIAL";
   const chart = showResult ? run.chart : null;
   const table = showResult ? run.table : null;
@@ -49,7 +50,10 @@ export function AnalysisStatePanel({
     <section className={`analysis-state analysis-state--${viewState.toLowerCase()}`} aria-live="polite">
       <header>
         <Icon size={18} aria-hidden="true" />
-        <div><b>{run.status === "blocked" ? "요청 차단" : copy.title}</b><span>{viewState}</span></div>
+        <div>
+          <b>{needsClarification ? "추가 정보 필요" : run.status === "blocked" ? "요청 차단" : copy.title}</b>
+          <span>{needsClarification ? "재질문" : viewState}</span>
+        </div>
       </header>
       <p>{run.error?.message ?? run.summary ?? copy.description}</p>
       {showResult && <div className="analysis-summary"><small>API 제공 요약</small><strong>{run.summary}</strong></div>}

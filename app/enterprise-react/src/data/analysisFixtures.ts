@@ -71,9 +71,16 @@ function fixture(overrides: Partial<AnalysisRun>): AnalysisRun {
   return { ...baseRun, ...overrides, sources: overrides.sources ?? baseRun.sources };
 }
 
-export const analysisFixtures: Record<Lowercase<AnalysisViewState>, AnalysisRun> = {
+export const analysisFixtures: Record<Lowercase<AnalysisViewState> | "clarification", AnalysisRun> = {
   loading: fixture({
     status: "queued", requestId: "req-loading-001", summary: "요청을 접수했습니다.",
+    sources: [], artifact: undefined, metrics: [], table: null, chart: null, evidence: undefined,
+  }),
+  clarification: fixture({
+    status: "blocked",
+    requestId: "00000000-0000-0000-0000-000000000100",
+    traceId: "fixture-g1-clarification",
+    error: { code: "CONTEXT_INCOMPLETE", message: "분석 기간을 입력해 주세요.", retryable: false },
     sources: [], artifact: undefined, metrics: [], table: null, chart: null, evidence: undefined,
   }),
   empty: fixture({

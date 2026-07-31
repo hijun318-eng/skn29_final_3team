@@ -8,6 +8,7 @@ import { analysisFixtures } from "../data/analysisFixtures";
 const RECENT_ANALYSES = ["지난달 객실 매출 하락 원인", "다음 30일 객실 수요", "프로모션 효과 분석"];
 const SCENARIOS = [
   ["loading", "분석 중"],
+  ["clarification", "추가 정보 필요"],
   ["ready", "정상 완료"],
   ["empty", "결과 없음"],
   ["delayed", "응답 지연"],

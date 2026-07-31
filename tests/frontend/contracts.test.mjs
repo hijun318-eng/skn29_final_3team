@@ -21,6 +21,13 @@ const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/
 const g1ClarificationFixture = JSON.parse(
   readFileSync(new URL("../backend/fixtures/api/v0.1/g1_clarification.json", import.meta.url)),
 );
+const timeoutFixture = JSON.parse(
+  readFileSync(new URL("../backend/fixtures/api/v0.1/timeout.json", import.meta.url)),
+);
+const analysisStatePanelSource = readFileSync(
+  new URL("../../app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx", import.meta.url),
+  "utf8",
+);
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
 assert.equal(REPORT_CONTRACT_VERSION, "REPORT-v1.0.0");
 assert.equal(FIXTURE_VERSION, "UI-FIXTURE-v1.0.0");
@@ -45,6 +52,18 @@ assert.equal(clarification.error.message, "분석 기간을 입력해 주세요.
 assert.equal(clarification.requestId, "00000000-0000-0000-0000-000000000100");
 assert.equal(clarification.traceId, "fixture-g1-clarification");
 assert.equal(clarification.artifact, undefined);
+
+const timeout = normalizeApiResponse(timeoutFixture, "객실 분석", "conv-timeout-001");
+assert.equal(timeout.status, "failed");
+assert.equal(resolveViewState(timeout), "ERROR");
+assert.equal(timeout.error.code, "QUERY_SOURCE_FAILED");
+assert.equal(timeout.error.message, "조회 시간이 초과되었습니다.");
+assert.equal(timeout.error.retryable, true);
+assert.equal(timeout.artifact, undefined);
+assert.equal(timeout.traceId, "fixture-timeout");
+assert.deepEqual(analysisFixtures.error.error, timeout.error);
+assert.equal(analysisFixtures.error.traceId, timeout.traceId);
+assert.match(analysisStatePanelSource, /run\.error\.retryable \? "다시 시도 가능" : "다시 시도 불가"/);
 
 const normalized = normalizeApiResponse({
   data: {

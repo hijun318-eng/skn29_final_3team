@@ -107,8 +107,10 @@ export const analysisFixtures: Record<Lowercase<AnalysisViewState> | "clarificat
     ],
   }),
   error: fixture({
-    status: "failed", requestId: "req-error-001",
-    error: { code: "QUERY_SOURCE_FAILED", message: "데이터 원천 조회에 실패했습니다.", retryable: true },
+    status: "failed",
+    requestId: "00000000-0000-0000-0000-000000000100",
+    traceId: "fixture-timeout",
+    error: { code: "QUERY_SOURCE_FAILED", message: "조회 시간이 초과되었습니다.", retryable: true },
     sources: [], artifact: undefined, metrics: [], table: null, chart: null, evidence: undefined,
   }),
   forbidden: fixture({

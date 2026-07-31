@@ -56,6 +56,12 @@ export function AnalysisStatePanel({
         </div>
       </header>
       <p>{run.error?.message ?? run.summary ?? copy.description}</p>
+      {run.error?.code === "QUERY_SOURCE_FAILED" && (
+        <p className="analysis-retry" data-retryable={String(run.error.retryable)}>
+          <b>재시도</b>
+          <span>{run.error.retryable ? "다시 시도 가능" : "다시 시도 불가"}</span>
+        </p>
+      )}
       {showResult && <div className="analysis-summary"><small>API 제공 요약</small><strong>{run.summary}</strong></div>}
       {viewState === "PARTIAL" && (
           <ul>{run.sources.map((source) => <li key={source.urn}>{source.name}: {source.status === "success" ? "성공" : "실패"}</li>)}</ul>

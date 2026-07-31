@@ -3,12 +3,12 @@
   "EXECUTION_BUNDLE_ID": "R5-W2",
   "ROLE": "R5",
   "BRANCH": "minji",
-  "BASE_SHA": "04e5e6dfb1ab66d41d8235275bfe5a30290c7181",
-  "DIRECTIVE_BASE_SHA": "04e5e6dfb1ab66d41d8235275bfe5a30290c7181",
-  "SYNCED_DEV_SHA": "bb131210646516a662fe9e702c6c3c1dca0e4d20",
-  "RESULT_SHA": "9a4d4e9a06669020f8e3c7f45cbb412300374ec1",
-  "PRODUCT_RESULT_SHA": "9a4d4e9a06669020f8e3c7f45cbb412300374ec1",
-  "DIRECTIVE_TOKEN": "R5-W2@04e5e6d",
+  "BASE_SHA": "6b37f5750e492be76d73c1034977fa0815f58773",
+  "DIRECTIVE_BASE_SHA": "6b37f5750e492be76d73c1034977fa0815f58773",
+  "SYNCED_DEV_SHA": "e8a26c6b95f8d48804a28fae2e1c2b05f5e383d1",
+  "RESULT_SHA": "58aa7069eeba3feaeecbfcaa76ebe4dea4031d6e",
+  "PRODUCT_RESULT_SHA": "58aa7069eeba3feaeecbfcaa76ebe4dea4031d6e",
+  "DIRECTIVE_TOKEN": "R5-W2@6b37f57",
   "COMPLETED_CARDS": [
     "R5-03",
     "R5-04",
@@ -44,13 +44,13 @@
       "detail": "1 passed"
     },
     {
-      "name": "python -m compileall -q .github/scripts tests/integration",
+      "name": "python -m compileall -q .github/scripts tests/integration app/enterprise-react",
       "status": "PASS"
     },
     {
-      "name": "python -m unittest tests.integration.test_gate_scope -v",
+      "name": "python -m unittest tests.integration.test_gate_scope tests.integration.test_report_validation -v",
       "status": "PASS",
-      "detail": "13 passed"
+      "detail": "15 passed"
     },
     {
       "name": "python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base",
@@ -70,9 +70,9 @@
       "detail": "0 markers"
     },
     {
-      "name": "local browser READY·PARTIAL·FORBIDDEN·ERROR and Artifact bridge",
+      "name": "local browser CLARIFICATION·READY·PARTIAL·FORBIDDEN·ERROR and Artifact bridge",
       "status": "PASS",
-      "detail": "render, state transition, Artifact selection, browser console"
+      "detail": "CONTEXT_INCOMPLETE rendered as 추가 정보 필요·재질문 with request 00000000-0000-0000-0000-000000000100 and trace fixture-g1-clarification; policy block remained 요청 차단; partial source failure and READY Artifact bridge preserved; browser console errors 0"
     }
   ],
   "NOT_RUN": [],

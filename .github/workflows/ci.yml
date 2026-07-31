@@ -127,7 +127,7 @@ jobs:
             echo "| Compose | ${COMPOSE_CONFIG} |"
             echo "| Handoff | ${HANDOFF:-NOT_RUN} |"
             echo
-            echo "Handoff \`FAIL\` blocks this gate. \`NOT_RUN\` and \`REVIEW_REQUIRED\` are R1 review items and do not block."
+            echo "Submitted handoff \`FAIL\` or \`REVIEW_REQUIRED\` blocks this gate. \`NOT_RUN\` means no handoff has been submitted yet and does not block."
             echo
             echo "R1 still decides product acceptance, contract freeze, exceptions, and the final Gate."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -144,14 +144,13 @@ jobs:
             fi
           done
 
-          # 차단 대상은 handoff 증거의 무결성 위반(FAIL)뿐이다.
-          # NOT_RUN(미제출)과 REVIEW_REQUIRED(미실행 검증·change request·
-          # 잔여 위험·외부 승인 요청)는 R1 검토 큐 항목이며 CI를 차단하지 않는다.
-          if [[ "$BRANCH" != "dev" && "$HANDOFF" == "FAIL" ]]; then
-            echo "Handoff evidence is invalid. See the role scope summary." >&2
+          # NOT_RUN은 아직 제출하지 않은 정상 작업 상태다. 제출된 handoff의
+          # FAIL·REVIEW_REQUIRED는 보완 또는 R1 예외 승인 전까지 수용하지 않는다.
+          if [[ "$BRANCH" != "dev" && ( "$HANDOFF" == "FAIL" || "$HANDOFF" == "REVIEW_REQUIRED" ) ]]; then
+            echo "Handoff is not acceptable yet. See the role scope summary." >&2
             exit 1
           fi
 
           if [[ "$BRANCH" != "dev" && "$HANDOFF" != "PASS" && "$HANDOFF" != "N/A" ]]; then
-            echo "::notice::Handoff is ${HANDOFF}. R1 review required; this does not block the gate."
+            echo "::notice::Handoff is ${HANDOFF}. Submit complete evidence before R1 acceptance."
           fi

@@ -32,13 +32,11 @@ ROLES = {
 }
 TERMINAL_STATUSES = {"MERGED_DEV", "VERIFIED_GATE"}
 TEST_STATUSES = {"PASS", "FAIL", "NOT_RUN", "BLOCKED", "REVIEW_REQUIRED"}
-# 자동 품질 Gate가 차단하는 handoff 판정은 FAIL 하나뿐이다.
-# NOT_RUN(아직 제출하지 않음)과 REVIEW_REQUIRED(미실행 검증·change request·
-# 잔여 위험·외부 승인 요청)는 R1 검토 큐에만 올리고 CI를 실패시키지 않는다.
-# 잔여 위험을 정직하게 적은 역할이 불이익을 받으면 Gate가 수집하려는 증거
-# 자체가 사라지므로, 차단은 증거의 무결성 위반(FAIL)에만 적용한다.
-# Gate_실행_카드_원장.md의 자동화 판정표와 같은 기준이다.
-BLOCKING_HANDOFF_STATUSES = {"FAIL"}
+# NOT_RUN은 아직 manifest를 제출하지 않은 작업 중 branch의 정상 상태다.
+# manifest가 제출됐지만 필수 검증·change request·잔여 위험·외부 승인이 남으면
+# REVIEW_REQUIRED가 되며 terminal 제출로 수용하지 않는다.
+BLOCKING_HANDOFF_STATUSES = {"FAIL", "REVIEW_REQUIRED"}
+PLACEHOLDER_EVIDENCE = {"미실행 사유 입력", "미검증 사유 입력"}
 REQUIRED_HANDOFF_FIELDS = {
     "EXECUTION_BUNDLE_ID": str,
     "ROLE": str,
@@ -108,7 +106,7 @@ def changed_paths(base: str, head: str, mode: str) -> list[str]:
             "diff",
             "--name-only",
             "-z",
-            "--diff-filter=ACMR",
+            "--diff-filter=ACMRD",
             f"{base}{separator}{head}",
         ],
         check=True,
@@ -163,7 +161,7 @@ def handoff_template(
     changed: list[str],
 ) -> dict[str, Any]:
     output_path = str(manifest_path(bundle)).replace("\\", "/")
-    return {
+    template = {
         "EXECUTION_BUNDLE_ID": bundle["EXECUTION_BUNDLE_ID"],
         "ROLE": ROLES[branch],
         "BRANCH": branch,
@@ -178,6 +176,72 @@ def handoff_template(
         "RESIDUAL_RISKS": [],
         "EXTERNAL_APPROVAL_REQUIRED": [],
     }
+    test_ids = expected_ids(bundle, "TEST_COMMAND_IDS")
+    if test_ids:
+        template["TEST_RESULTS"] = [
+            {"id": item_id, "name": "검증 명령과 결과 입력", "status": "NOT_RUN",
+             "evidence": "미실행 사유 입력"}
+            for item_id in test_ids
+        ]
+    acceptance_ids = expected_ids(bundle, "ACCEPTANCE_IDS")
+    if acceptance_ids:
+        template["ACCEPTANCE_RESULTS"] = [
+            {"id": item_id, "status": "NOT_RUN", "evidence": "미검증 사유 입력"}
+            for item_id in acceptance_ids
+        ]
+    return template
+
+
+def expected_ids(bundle: dict[str, str], field: str) -> list[str]:
+    return [
+        item.strip()
+        for item in bundle.get(field, "").split(";")
+        if item.strip()
+    ]
+
+
+def validate_result_coverage(
+    items: Any,
+    expected: list[str],
+    field: str,
+) -> list[str]:
+    if not isinstance(items, list):
+        return [f"{field} must be list"]
+    invalid_id_count = sum(
+        1
+        for item in items
+        if not isinstance(item, dict)
+        or not isinstance(item.get("id"), str)
+        or not item["id"].strip()
+    )
+    ids = [
+        item["id"]
+        for item in items
+        if isinstance(item, dict)
+        and isinstance(item.get("id"), str)
+        and item["id"].strip()
+    ]
+    errors = []
+    if invalid_id_count:
+        errors.append(f"{field} items need id")
+    missing = sorted(set(expected) - set(ids))
+    unknown = sorted(set(ids) - set(expected))
+    duplicates = sorted({item_id for item_id in ids if ids.count(item_id) > 1})
+    if missing:
+        errors.append(f"{field} missing ids: {', '.join(missing)}")
+    if unknown:
+        errors.append(f"{field} unknown ids: {', '.join(unknown)}")
+    if duplicates:
+        errors.append(f"{field} duplicate ids: {', '.join(duplicates)}")
+    return errors
+
+
+def has_real_evidence(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and value.strip() not in PLACEHOLDER_EVIDENCE
+    )
 
 
 def validate_handoff(
@@ -218,6 +282,11 @@ def validate_handoff(
     if not handoff["TEST_RESULTS"]:
         errors.append("TEST_RESULTS must not be empty")
 
+    test_ids = expected_ids(bundle, "TEST_COMMAND_IDS")
+    if test_ids:
+        errors.extend(
+            validate_result_coverage(handoff["TEST_RESULTS"], test_ids, "TEST_RESULTS")
+        )
     for result in handoff["TEST_RESULTS"]:
         if (
             not isinstance(result, dict)
@@ -227,12 +296,51 @@ def validate_handoff(
         ):
             errors.append("each TEST_RESULTS item needs name and status")
             continue
+        if (
+            test_ids
+            and not has_real_evidence(result.get("evidence"))
+        ):
+            errors.append("mapped TEST_RESULTS items need real evidence")
         if result["status"] not in TEST_STATUSES:
             errors.append(f"unsupported test status: {result['status']}")
         elif result["status"] in {"FAIL", "BLOCKED"}:
             errors.append(f"test {result['name']} is {result['status']}")
         elif result["status"] in {"NOT_RUN", "REVIEW_REQUIRED"}:
             reviews.append(f"test {result['name']} is {result['status']}")
+
+    acceptance_ids = expected_ids(bundle, "ACCEPTANCE_IDS")
+    if acceptance_ids:
+        acceptance_results = handoff.get("ACCEPTANCE_RESULTS")
+        errors.extend(
+            validate_result_coverage(
+                acceptance_results,
+                acceptance_ids,
+                "ACCEPTANCE_RESULTS",
+            )
+        )
+        if isinstance(acceptance_results, list):
+            for result in acceptance_results:
+                if (
+                    not isinstance(result, dict)
+                    or not isinstance(result.get("status"), str)
+                    or not has_real_evidence(result.get("evidence"))
+                ):
+                    errors.append(
+                        "each ACCEPTANCE_RESULTS item needs status and real evidence"
+                    )
+                    continue
+                if result["status"] not in TEST_STATUSES:
+                    errors.append(
+                        f"unsupported acceptance status: {result['status']}"
+                    )
+                elif result["status"] in {"FAIL", "BLOCKED"}:
+                    errors.append(
+                        f"acceptance {result.get('id')} is {result['status']}"
+                    )
+                elif result["status"] in {"NOT_RUN", "REVIEW_REQUIRED"}:
+                    reviews.append(
+                        f"acceptance {result.get('id')} is {result['status']}"
+                    )
 
     for field in ("COMPLETED_CARDS", "CHANGED_FILES", "NOT_RUN",
                   "CHANGE_REQUESTS", "RESIDUAL_RISKS",

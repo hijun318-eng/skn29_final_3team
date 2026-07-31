@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.37 |
-| 문서 기준일 | 2026-07-31 15:38 |
+| 버전 | v2.40 |
+| 문서 기준일 | 2026-07-31 17:11 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -55,7 +55,7 @@
 |---|---|---|
 | `PASS` | 허용 경로, 실행 묶음·branch·`BASE_SHA`·결과 SHA, 실제 diff, 필수 handoff 필드와 실행 검증이 일치 | R1 승인 후보로 표시 |
 | `FAIL` | 허용 경로 침범, 필드 누락·형식 오류, SHA·diff 불일치, `FAIL`·`BLOCKED` 검증, `REVIEW` 상태의 handoff 누락 | 원 소유 역할에 반환하고 병합 차단 |
-| `REVIEW_REQUIRED` | `NOT_RUN`, change request, 잔여 위험, 외부 download·image pull·비용·secret·데이터 전송·배포·Git 권한 요청 | Google Docs의 R1 검토 큐에 표시하며 Gate를 차단하지 않음 |
+| `REVIEW_REQUIRED` | 제출된 handoff에 `NOT_RUN`, change request, 잔여 위험, 외부 download·image pull·비용·secret·데이터 전송·배포·Git 권한 요청이 존재 | R1 검토 큐에 표시하고 해소·예외 승인 전 terminal 제출 수용을 차단 |
 | `NOT_RUN` | 아직 handoff를 제출하지 않은 `READY`·`IN_PROGRESS` 묶음 | 작업 또는 제출 대기이며 성공으로 계산하지 않되 Gate를 차단하지 않음 |
 | `N/A` | `MERGED_DEV`·`VERIFIED_GATE`로 신규 handoff가 필요하지 않음 | 추가 구현 없이 유지 |
 
@@ -90,12 +90,12 @@ integration test, frontend production build·contract, R2 DataHub service
 fragment, root Compose `dev`·`full`·`split-host`, 문서 정책·WBS·보고서
 검증 결과를 집계한다.
 실행 대상이 아닌 역할별 job의 `skipped`는 `N/A`로 취급하지만 `failure`와
-`cancelled`는 전체 자동 품질 Gate를 실패시킨다. 개인 branch의 handoff는
-`FAIL`일 때만 전체 자동 품질 Gate를 실패시킨다. `NOT_RUN`과 `REVIEW_REQUIRED`는
-R1 검토 큐에 표시하되 Gate를 차단하지 않는다. 미실행 검증·change request·
-잔여 위험·외부 승인 요청을 정직하게 기록한 역할이 CI 실패로 불이익을 받으면
-해당 항목을 비워 두는 편이 유리해져 Gate가 수집하려는 증거 자체가 사라지므로,
-차단은 증거의 무결성 위반에만 적용한다. 자동 품질 Gate 통과는
+`cancelled`는 전체 자동 품질 Gate를 실패시킨다. 개인 branch에서 handoff가
+제출된 뒤 `FAIL` 또는 `REVIEW_REQUIRED`이면 terminal 제출 수용을 차단한다.
+아직 handoff를 제출하지 않은 `READY`·`IN_PROGRESS`의 `NOT_RUN`은 정상 작업
+상태이므로 자동 실패로 만들지 않는다. 미실행 검증·change request·잔여 위험·
+외부 승인 요청은 manifest에서 삭제하지 않고 R1이 보완 완료 또는 명시적 예외를
+판정한 뒤 상태를 갱신한다. 자동 품질 Gate 통과는
 기계 검증 완료를 뜻하며 R1의 제품 수용·계약 Freeze·최종 Gate 승인을
 대체하지 않는다.
 
@@ -176,8 +176,10 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `MERGED_DEV` |
 | R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `MERGED_DEV` |
 | R4-W2 | Wave 2·08/10~08/14 | R4 | 없음 → I2 | R4-04~13, R4-15 | Template→Context→G1→G2→Trino→G3→Artifact trace | `MERGED_DEV` |
+| R4-W2-F2 | Wave 2 follow-up | R4 | 없음 → I2 | R4-04·07·11·20 보완 | DB Template·실제 Trino·migration·CORS runtime 연결 | `PLANNED` |
 | R5-W2 | Wave 2·08/10~08/14 | R5 | 없음 → I2 | R5-03~07 | Chat·상태·Evidence·표·차트·Artifact bridge | `MERGED_DEV` |
 | R5-W2-F1 | Wave 2 follow-up | R5 | 없음 → I2 | R5-04 source 실패 표시 보완 | API `retryable` 표시·R4 timeout fixture 소비 | `READY` |
+| R5-W2-F2 | Wave 2 follow-up | R5 | 없음 → I2 | R5-01·03~07 실제 API 보완 | production HTTP client·실제 backend 화면 trace | `PLANNED` |
 | R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `PLANNED` |
 | R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `PLANNED` |
 | R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `PLANNED` |
@@ -816,12 +818,14 @@ BASE_SHA=04e5e6dfb1ab66d41d8235275bfe5a30290c7181
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W2@04e5e6d
 CONTRACT_VERSION=I1-v1.0.0
-R1_PROGRESS=R2 GOLD hash·source, R3 runner, R4 request→artifact trace, R5 성공·재질문·차단·partial·source 실패 화면과 dev 79ba385·CI run 30610065590 PASS를 확인해 I2 subset 3/4 승인; source 실패 화면의 API retryable 표시 누락으로 I2 최종 판정 보류
+R1_PROGRESS=기존 R2~R5 컴포넌트·fixture 검증은 유지하되 정적 runtime 재검토에서 backend가 빈 RoutingService와 FakeDataPlatformAdapter를 사용하고 frontend가 mock client만 사용함을 확인해 실제 Template→Trino→화면 통합 판정을 0/4 NOT_RUN으로 재개방; R4-W2-F2→R5-W2-F2→R1 실제 E2E 순서로 보완
 ALLOWED_PATHS=.github/**; compose*.yml; .env.example; tests/integration/**; docs/Answervice_기획서.md; docs/deliverables/02_WBS_29기_3팀.xlsx; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 R1_SCOPE_AUTHORIZATION=사용자 요청에 따라 기획서 v1.2와 동기화한 공식 WBS XLSX 단일 경로의 작성·덮어쓰기·commit·junhee push를 승인; 다른 deliverable 경로는 승인하지 않음
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=필수 평가 subset·gold 원장을 확인하고 대표 질문의 Context→G1→G2→Trino→G3→Artifact→화면 trace에서 성공·재질문·차단·source 실패를 판정, 역할별 실패는 원 소유자에게 반환
+ACCEPTANCE_IDS=AC1_TEMPLATE_RUNTIME;AC2_TRINO_RUNTIME;AC3_BROWSER_RUNTIME;AC4_FAILURE_RUNTIME
 TEST_COMMANDS=python -m unittest discover -s tests/integration -p "test_*.py"; python .github/scripts/gate_scope.py --dashboard --next-gate I3; python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/02_WBS.md docs/markdown/collaboration/Gate_실행_카드_원장.md; git diff --check
+TEST_COMMAND_IDS=T1_INTEGRATION;T2_DASHBOARD;T3_DOCUMENT_POLICY;T4_DIFF_CHECK
 STOP_CONDITIONS=필수 producer contract 미도착; trace ID 단절; 소비자 contract test 실패; R2~R5 소유 경로 변경 필요
 HANDOFF=역할별 실패를 원 소유자에게 반환하고 I2 병합 순서·통합 회귀 결과를 전 역할에 전달
 EXTERNAL_ACTION_PERMISSION=R1 허용 경로의 commit·junhee push와 검증만 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge는 별도 통합 판정
@@ -952,6 +956,37 @@ R1_INTEGRATION_EVIDENCE=f8e4740으로 제품·R4 보고·handoff를 dev에 병�
 EXTERNAL_ACTION_PERMISSION=허용 6개 경로와 R4 개인 일일보고·handoff manifest의 commit·jaehong push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
 ```
 
+### R4-W2-F2
+
+R1 Gate 보강 변경이 `dev`에 반영된 뒤 정확한 `BASE_SHA`와 token을 채워 `READY`로 전환한다. 현재 `PLANNED`이므로 실행 승인이 아니다.
+
+```text
+STATUS=PLANNED
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W2-F2
+TARGET_INTEGRATION_GATE=I2
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R4-04·07·11·20 runtime 보완
+CURRENT_TASK_CARD_ID=R4-W2-F2
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=N/A — R1 Gate 보강 dev 반영 SHA 대기
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A — READY 발행 전 실행 금지
+OPENAPI_VERSION=OPENAPI-v1.0.0
+ALLOWED_PATHS=app/backend/**; tests/backend/**
+FORBIDDEN_PATHS=source DDL·seed·src/data/**; src/ai/**·src/modelops/**; frontend·Report; root Compose·.env.example·CI; R1/R2/R3/R5 소유 문서
+ACCEPTANCE_CRITERIA=context.analysis_templates의 승인 Template을 runtime에서 조회해 허용 role만 TEMPLATE route로 보내고, 기존 R2 TrinoAdapter를 R4 DataPlatformAdapter port에 연결하며, 빈 DB startup migration 뒤 HTTP template_id 요청이 실제 query_id·Artifact까지 이어지고 direct browser origin에는 환경변수 기반 정확한 CORS allowlist만 허용
+ACCEPTANCE_IDS=AC1_TEMPLATE_DB;AC2_TRINO_PORT;AC3_MIGRATION_STARTUP;AC4_HTTP_TEMPLATE_TRACE;AC5_EXACT_CORS
+TEST_COMMANDS=python -m compileall -q app/backend tests/backend; python -m pytest -p no:cacheprovider tests/backend; python app/backend/scripts/export_openapi.py --check; python -m unittest discover -s tests/integration -p "test_*.py"; git diff --check
+TEST_COMMAND_IDS=T1_COMPILE;T2_BACKEND;T3_OPENAPI;T4_INTEGRATION;T5_DIFF_CHECK
+STOP_CONDITIONS=R2 adapter 수정 필요; migration 다중 head; Template 권한·G1·G2·G3 우회; wildcard CORS 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R1에 Template 승인·거부 HTTP 증거, 빈 DB migration, 실제 Trino query_id와 request→artifact trace, CORS 허용·거부 origin 결과를 ID별 manifest로 제출
+EXTERNAL_ACTION_PERMISSION=READY 전 작업·commit·push 불가; READY 발행 뒤 허용 경로와 R4 개인 일일보고·handoff manifest만 별도 승인
+```
+
 ### R5-W2
 
 ```text
@@ -1015,6 +1050,38 @@ TEST_COMMANDS=npm --prefix app/enterprise-react run build; node --test tests/fro
 STOP_CONDITIONS=API contract 변경 필요; 활성 frontend 밖 수정 필요; retryable·권한·Gate를 frontend가 재계산해야 함; 허용 경로 밖 변경 필요; build 또는 contract 검증 실패
 HANDOFF=R1에 실제 R4 timeout fixture 기반 retryable contract 결과, source 실패·partial browser 문구와 console error, 기존 상태 회귀 결과를 manifest로 제출
 EXTERNAL_ACTION_PERMISSION=허용 4개 경로와 R5 개인 일일보고·handoff manifest의 commit·minji push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
+```
+
+### R5-W2-F2
+
+`R5-W2-F1`과 `R4-W2-F2`가 `MERGED_DEV`가 된 뒤 정확한 `BASE_SHA`와 token을 채워 `READY`로 전환한다. 현재 `PLANNED`이므로 실행 승인이 아니다.
+
+```text
+STATUS=PLANNED
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W2-F2
+TARGET_INTEGRATION_GATE=I2
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R5-01·03~07 실제 API 보완
+CURRENT_TASK_CARD_ID=R5-W2-F2
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=N/A — R4-W2-F2 dev 통합 SHA 대기
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A — READY 발행 전 실행 금지
+OPENAPI_VERSION=OPENAPI-v1.0.0
+UI_VERSION=UI-v1.0.0
+ALLOWED_PATHS=app/enterprise-react/**; tests/frontend/**
+FORBIDDEN_PATHS=app/react/**; app/backend/**; source DDL·seed·src/data/**; src/ai/**·src/modelops/**; root Compose·.env.example·CI; R1/R2/R3/R4 소유 문서
+ACCEPTANCE_CRITERIA=production 화면은 환경변수의 backend base URL을 사용하는 실제 HTTP client로 /analysis를 호출하고 mock은 test·발표 fallback에서만 사용하며, Template 성공·재질문·차단·source 실패 응답의 request_id·trace_id·query_id·artifact_id·retryable을 재계산 없이 화면에 표시
+ACCEPTANCE_IDS=AC1_REAL_HTTP_CLIENT;AC2_NO_PRODUCTION_MOCK;AC3_TEMPLATE_BROWSER_TRACE;AC4_FAILURE_BROWSER_TRACE
+TEST_COMMANDS=npm --prefix app/enterprise-react run build; node --test tests/frontend/contracts.test.mjs; python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_BUILD;T2_FRONTEND_CONTRACT;T3_ROLE_GATE;T4_DIFF_CHECK
+STOP_CONDITIONS=OpenAPI drift; frontend가 권한·Gate·retryable을 재계산해야 함; backend 수정 필요; 양쪽 frontend 수정 필요; 허용 경로 밖 변경 필요; build·contract 실패
+HANDOFF=R1에 실제 backend를 사용한 Template·실패 browser trace, network request/response, console error 0건과 ID별 manifest를 제출
+EXTERNAL_ACTION_PERMISSION=READY 전 작업·commit·push 불가; READY 발행 뒤 허용 경로와 R5 개인 일일보고·handoff manifest만 별도 승인
 ```
 
 ## Wave 3 상세 계획 카드
@@ -1143,9 +1210,11 @@ CONTRACT_VERSION=<현재 Gate 승인 또는 DRAFT 버전>
 ALLOWED_PATHS=<역할 소유 경로 중 이번 Gate 범위>
 FORBIDDEN_PATHS=<다른 역할 소유 경로>
 HANDOFF_MANIFEST=handoffs/<EXECUTION_BUNDLE_ID>.json
-HANDOFF_REQUIRED_FIELDS=실행 묶음·역할·branch·BASE_SHA·RESULT_SHA·완료 카드·실제 변경 파일·계약 version·검증·Not Run·change request·잔여 위험·외부 승인 요청
+HANDOFF_REQUIRED_FIELDS=실행 묶음·역할·branch·BASE_SHA·RESULT_SHA·완료 카드·실제 변경 파일·계약 version·수용 결과 ID/증거·검증 결과 ID/증거·Not Run·change request·잔여 위험·외부 승인 요청
 ACCEPTANCE_CRITERIA=<목표 통합 Gate 공통 조건 + 역할별 제출물>
+ACCEPTANCE_IDS=<AC1;AC2;... 고유 ID>
 TEST_COMMANDS=<formatter·lint·type check·unit/contract test·build 중 적용 명령>
+TEST_COMMAND_IDS=<T1;T2;... TEST_COMMANDS 순서와 일치하는 고유 ID>
 STOP_CONDITIONS=<목표 통합 Gate 도달·범위 완료·역할 밖 변경·계약 충돌·필수 검증 실패>
 EXTERNAL_ACTION_PERMISSION=<설치·비용·배포·데이터 전송·Git 권한>
 AUTO_FAIL_CONDITIONS=<경로 침범·SHA/diff 불일치·manifest 누락/오류·필수 검증 실패>
@@ -1156,6 +1225,9 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.40 | 2026-07-31 17:11 | 독립 코드 리뷰에서 확인한 증거 우회를 차단하기 위해 ID 없는 추가 결과와 자동 생성 placeholder 증거를 거부하고, 제출된 `REVIEW_REQUIRED`의 차단 정책을 CI Summary·최종 quality 판정과 회귀 test에 동기화했다. |
+| v2.39 | 2026-07-31 17:03 | handoff의 빈 `NOT_RUN`을 강제로 채우지 않고 새 실행 묶음의 `ACCEPTANCE_IDS`·`TEST_COMMAND_IDS`를 제출 증거와 전수 대조하도록 R1 Gate를 보강했다. 정적 runtime 검토에서 빈 Template registry·fake data adapter·frontend mock client를 확인해 I2 통합 판정을 재개방하고, R4 실제 Template·Trino·migration·정확한 CORS 연결과 후속 R5 실제 HTTP 연결을 순차 `PLANNED`로 등록했다. |
+| v2.38 | 2026-07-31 17:01 | 독립 검증 권고를 반영해 역할 diff가 삭제 파일도 검사하도록 `ACMRD`로 확장하고, 작업 중 manifest 미제출 `NOT_RUN`은 허용하되 제출된 handoff의 `REVIEW_REQUIRED`는 보완·예외 승인 전 terminal 수용을 차단하도록 자동 Gate 정책과 통합 test를 동기화했다. |
 | v2.37 | 2026-07-31 15:38 | R5-W2 제품 `58aa706`·handoff `d1f6a74`의 재질문 구분, R4 fixture 계약, build·role gate·branch CI와 독립 browser 증거를 확인해 제품 `555ea14`·팀 보고 `79ba385`로 dev에 통합하고 dev CI run `30610065590` PASS를 확인했다. I2 subset의 성공·재질문·차단은 승인했으나 source 실패 화면이 API `retryable`을 표시하지 않아 I2를 3/4로 유지하고, 기준 `79ba385`의 최소 `R5-W2-F1` REWORK와 minji commit·push 권한을 발행했다. |
 | v2.36 | 2026-07-31 15:21 | R4-W2-F1 제품 `0549dbb`·terminal/handoff `08c8db2`의 최신 dev 기준 8개 고유 경로, model 계약 오류·timeout, query timeout·cancel, G2 hard LIMIT, G3 결과 범위·정상/의심 0건 검증과 branch CI run `30609007535` PASS를 확인했다. `f8e4740`으로 dev에 병합하고 pipeline 15건·integration 16건·compileall·보고 validator, 팀 보고 `4db0503`, dev CI run `30609351155` 전체 PASS를 확인해 R4-W2-F1을 MERGED_DEV·WAIT로 전환했다. |
 | v2.35 | 2026-07-31 15:05 | Google Docs의 R4 보강 HANDOFF를 읽었으나 후보 `caaa94a`는 현재 R1 저장소와 origin/jaehong에서 조회되지 않았다. 제품 수용 없이 전달된 6개 제품·테스트 경로에 한정해 최신 dev `6a82fff` 기준의 `R4-W2-F1@6a82fff` REWORK와 개인 branch 제출 권한을 발행했으며 실제 diff·목적·전후 동작·필수 검증을 다시 handoff하도록 했다. |

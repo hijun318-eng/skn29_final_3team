@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.26 |
-| 문서 기준일 | 2026-07-31 13:36 |
+| 버전 | v2.27 |
+| 문서 기준일 | 2026-07-31 13:49 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -800,7 +800,7 @@ Wave 2는 I1에서 동결한 계약과 fake를 기준으로 대표 질문의 det
 ### R1-W2
 
 ```text
-STATUS=READY
+STATUS=IN_PROGRESS
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -815,6 +815,7 @@ BASE_SHA=04e5e6dfb1ab66d41d8235275bfe5a30290c7181
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W2@04e5e6d
 CONTRACT_VERSION=I1-v1.0.0
+R1_PROGRESS=I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 trace 근거를 평가 원장 v0.2에 고정; 실제 fixture·runner·전체 trace는 R2~R5 handoff 대기
 ALLOWED_PATHS=.github/**; compose*.yml; .env.example; tests/integration/**; docs/Answervice_기획서.md; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=필수 평가 subset·gold 원장을 확인하고 대표 질문의 Context→G1→G2→Trino→G3→Artifact→화면 trace에서 성공·재질문·차단·source 실패를 판정, 역할별 실패는 원 소유자에게 반환
@@ -1076,6 +1077,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.27 | 2026-07-31 13:49 | R1-W2를 IN_PROGRESS로 전환하고 평가 원장 v0.2에 I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 필수 trace 근거를 고정했다. R2~R5 Wave 2 제품·handoff가 아직 없어 실제 fixture·runner·통합 trace는 생성하지 않고 producer 입력 대기를 기록했다. |
 | v2.26 | 2026-07-31 13:36 | R3 제품 `4c8eedf`·handoff `cb10eca`와 R4 제품 `2fa5b49`·handoff `825a0c2`를 각각 `14259c8`·`04e5e6d`로 dev에 통합하고 branch/dev CI PASS를 확인했다. data·model·prompt·fixture·OpenAPI·UI·Report 계약을 최종 version으로 단일 고정하고 로컬 data 8건·AI 15건·integration 16건·frontend·Compose와 dev CI run `30604495881` PASS를 근거로 R1-W1을 I1 `VERIFIED_GATE`로 승인했으며, 기준 `04e5e6d`의 R1~R5 Wave 2 실행 묶음을 READY로 발행했다. |
 | v2.25 | 2026-07-31 13:14 | R2 제품 `7051f91`·handoff `510981b`의 data actual version·허용 범위·회귀·branch CI run `30603374739` PASS를 확인해 `7e5e16c`로 dev에 통합하고 dev CI run `30603556566` PASS를 확인했다. R2-W1-F4를 MERGED_DEV·WAIT로 전환하고 R1-W1 blocker를 R3·R4 최종 승격으로 축소했으며 Wave 2는 계속 보류했다. |
 | v2.24 | 2026-07-31 13:01 | R2-W1-F4의 data 8건 PASS 후 R1 통합 테스트가 과거 DRAFT data version을 단일 기대해 중단된 것을 확인했다. R2 변경은 commit·push 없이 보관하고 R1 전환 테스트와 최신 R4 bundle 기대를 보완해 통합 14건 및 dev CI run `30603031072` PASS를 확인했으며, R2-W1-F4를 새 기준 `f3038c9`·token으로 재발행했다. |

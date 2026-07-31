@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.30 |
-| 문서 기준일 | 2026-07-31 15:21 |
+| 버전 | v7.31 |
+| 문서 기준일 | 2026-07-31 15:38 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-31 15:38 | 5.4~5.8, 6.2 | R5-W2 제품 `58aa706`·handoff `d1f6a74`의 재질문 구분, R4 fixture 계약, build·role gate·branch CI run `30609754303`과 독립 browser 증거를 확인해 제품 `555ea14`·팀 보고 `79ba385`로 dev에 통합하고 dev CI run `30610065590` PASS를 확인했다. I2 성공·재질문·차단은 승인했으나 source 실패 화면이 API `retryable`을 표시하지 않아 6.2와 5.4~5.8의 진행 상태를 유지하고 기준 `79ba385`의 최소 R5 follow-up을 발행했다. | R5-W2 통합·I2 3/4 판정 |
 | 2026-07-31 15:21 | 4.5~4.14, 4.16, 6.2 | R4-W2-F1의 model 계약 오류·timeout, query timeout·cancel 종료, G2 hard LIMIT, G3 결과 범위·정상/의심 0건 검증을 최신 dev 기준 role gate·handoff와 branch CI run `30609007535`로 확인했다. 제품을 `f8e4740`으로 통합하고 pipeline 15건·integration 16건·compileall·보고 validator와 팀 보고 `4db0503`, dev CI run `30609351155` 전체 PASS를 확인했으며 기존 완료 상태와 일정은 유지했다. | R4 안전성 보강 통합 |
 | 2026-07-31 14:55 | 5.4~5.8, 6.2 | R5-W2 제품 `9a4d4e9`·handoff `b7f26f9`의 build·contract·integration·role gate·branch CI는 통과했지만, R4 `CONTEXT_INCOMPLETE`를 정책 차단과 구분하는 재질문 화면·contract/browser 증거가 없어 dev 병합을 보류했다. 실제 착수한 5개 카드를 진행으로 전환하고 새 기준 `6b37f57`의 REWORK를 발행했으며 일정 날짜는 유지했다. | R5-W2 재질문 상태 보완 |
 | 2026-07-31 14:34 | 1.7, 4.5~4.14, 4.16 | R4-W2의 MERGED_DEV 전환 뒤 junhee CI run `30607094428`에서 실행 묶음 선택 테스트가 과거 `READY`를 고정 기대해 1건 실패한 것을 확인했다. 현재 원장 상태 `MERGED_DEV`를 기대하도록 R1 통합 테스트 한 줄을 교정했으며 R4 제품·계약과 WBS 일정·상태는 유지했다. | R4 상태 회귀 테스트 교정 |
@@ -424,6 +425,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.31 | 2026-07-31 15:38 | R5-W2 재질문·화면·Artifact 결과와 제품·branch/dev CI 통합 근거를 5.4~5.8·6.2에 연결했다. source 실패 화면의 API `retryable` 표시 누락으로 최소 follow-up을 발행하고 기존 진행 상태·일정·공식 XLSX 상태를 유지했다. |
 | v7.30 | 2026-07-31 15:21 | R4-W2-F1의 model·query 경계 오류, timeout·cancel, G2 hard LIMIT, G3 결과 범위·0건 구분 보강과 제품·branch/dev CI 통합 근거를 4.5~4.14·4.16·6.2에 연결하고 기존 완료 상태·일정은 유지 |
 | v7.29 | 2026-07-31 14:55 | R5-W2 제출의 build·contract·CI는 통과했으나 `CONTEXT_INCOMPLETE` 재질문 화면·증거 누락으로 병합을 보류하고 5.4~5.8을 진행으로 전환했으며 최소 REWORK 근거를 6.2에 연결 |
 | v7.28 | 2026-07-31 14:34 | R4-W2 MERGED_DEV 전환에 맞춰 R1 실행 묶음 선택 회귀 테스트의 과거 READY 고정 기대를 교정한 근거를 1.7에 연결 |

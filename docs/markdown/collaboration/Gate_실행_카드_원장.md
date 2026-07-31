@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.32 |
-| 문서 기준일 | 2026-07-31 14:34 |
+| 버전 | v2.37 |
+| 문서 기준일 | 2026-07-31 15:38 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -172,11 +172,12 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R2-W1-F4 | Wave 1 finalization | R2 | 없음 → I1 | R2-00·09의 data contract 최종 승격 | `I1-v1.0.0` 실제 contract version·회귀 | `MERGED_DEV` |
 | R3-W1-F1 | Wave 1 finalization | R3 | 없음 → I1 | R3-00·01·02·07의 model/prompt/fixture 최종 승격 | 최종 model I/O·prompt·fixture version·회귀 | `MERGED_DEV` |
 | R4-W1-F4 | Wave 1 finalization | R4 | 없음 → I1 | R4-01의 OpenAPI 문서 정합 | README의 `OPENAPI-v1.0.0` 정합·회귀 | `MERGED_DEV` |
-| R1-W2 | Wave 2·08/10~08/14 | R1 | 없음 → I2 | R1-07, R1-09 | 수용 subset·통합 profile·deterministic trace 판정 | `READY` |
-| R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `READY` |
-| R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `READY` |
-| R4-W2 | Wave 2·08/10~08/14 | R4 | 없음 → I2 | R4-04~13, R4-15 | Template→Context→G1→G2→Trino→G3→Artifact trace | `READY` |
-| R5-W2 | Wave 2·08/10~08/14 | R5 | 없음 → I2 | R5-03~07 | Chat·상태·Evidence·표·차트·Artifact bridge | `READY` |
+| R1-W2 | Wave 2·08/10~08/14 | R1 | 없음 → I2 | R1-07, R1-09 | 수용 subset·통합 profile·deterministic trace 판정 | `IN_PROGRESS` |
+| R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `MERGED_DEV` |
+| R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `MERGED_DEV` |
+| R4-W2 | Wave 2·08/10~08/14 | R4 | 없음 → I2 | R4-04~13, R4-15 | Template→Context→G1→G2→Trino→G3→Artifact trace | `MERGED_DEV` |
+| R5-W2 | Wave 2·08/10~08/14 | R5 | 없음 → I2 | R5-03~07 | Chat·상태·Evidence·표·차트·Artifact bridge | `MERGED_DEV` |
+| R5-W2-F1 | Wave 2 follow-up | R5 | 없음 → I2 | R5-04 source 실패 표시 보완 | API `retryable` 표시·R4 timeout fixture 소비 | `READY` |
 | R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `PLANNED` |
 | R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `PLANNED` |
 | R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `PLANNED` |
@@ -815,7 +816,7 @@ BASE_SHA=04e5e6dfb1ab66d41d8235275bfe5a30290c7181
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W2@04e5e6d
 CONTRACT_VERSION=I1-v1.0.0
-R1_PROGRESS=I2 성공·재질문·차단·source 실패 수용 슬롯과 역할별 trace 근거를 평가 원장 v0.6에 고정; R2 GOLD hash·source, R3 runner, R4 request→artifact trace 도착, 팀 저장소 dev bb13121 CI PASS, R5 화면 증거 대기
+R1_PROGRESS=R2 GOLD hash·source, R3 runner, R4 request→artifact trace, R5 성공·재질문·차단·partial·source 실패 화면과 dev 79ba385·CI run 30610065590 PASS를 확인해 I2 subset 3/4 승인; source 실패 화면의 API retryable 표시 누락으로 I2 최종 판정 보류
 ALLOWED_PATHS=.github/**; compose*.yml; .env.example; tests/integration/**; docs/Answervice_기획서.md; docs/deliverables/02_WBS_29기_3팀.xlsx; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 R1_SCOPE_AUTHORIZATION=사용자 요청에 따라 기획서 v1.2와 동기화한 공식 WBS XLSX 단일 경로의 작성·덮어쓰기·commit·junhee push를 승인; 다른 deliverable 경로는 승인하지 않음
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
@@ -954,7 +955,7 @@ EXTERNAL_ACTION_PERMISSION=허용 6개 경로와 R4 개인 일일보고·handoff
 ### R5-W2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -962,12 +963,16 @@ EXECUTION_BUNDLE_ID=R5-W2
 TARGET_INTEGRATION_GATE=I2
 CHECKPOINT_GATES=없음
 TASK_CARD_RANGE=R5-03~07
-CURRENT_TASK_CARD_ID=R5-04
+CURRENT_TASK_CARD_ID=R5-07
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=6b37f5750e492be76d73c1034977fa0815f58773
-SOURCE_HEAD=b7f26f9e4a99ad251b5e6e98b4389f22213f1191
-DIRECTIVE=REWORK
+SOURCE_HEAD=d1f6a74d1b316efe17f8b76a2aaa6e37548cc682
+PRODUCT_RESULT_SHA=58aa7069eeba3feaeecbfcaa76ebe4dea4031d6e
+HANDOFF_SHA=d1f6a74d1b316efe17f8b76a2aaa6e37548cc682
+MERGED_DEV_SHA=555ea14bd7b0b933129392ef9ca381fa0a5a6a0d
+REPORT_SHA=79ba385e5fc031d96b7e0c983844f66ad431d643
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R5-W2@6b37f57
 OPENAPI_VERSION=OPENAPI-v1.0.0
 UI_VERSION=UI-v1.0.0
@@ -979,9 +984,37 @@ ACCEPTANCE_CRITERIA=Chat shell·전체 상태 UI·Evidence·표·차트·Artifac
 TEST_COMMANDS=npm --prefix app/enterprise-react run build; node --test tests/frontend/contracts.test.mjs; git diff --check
 STOP_CONDITIONS=활성 frontend 밖 수정 필요; API 결과·권한·Gate 재계산 필요; 허용 경로 밖 변경 필요; build 또는 mock/contract 검증 실패
 HANDOFF=R1에 성공·재질문·차단·partial·source 실패 화면 증거, R4에 response drift·필요 contract diff와 manifest 전달
-R1_REVIEW_EVIDENCE=제품 9a4d4e9·handoff b7f26f9, branch CI run 30607885337, production build·frontend contract·integration 16건·role gate PASS; 실제 R4 CONTEXT_INCOMPLETE가 별도 재질문 화면 없이 일반 ERROR·요청 차단으로 표시되고 browser 증거도 READY·PARTIAL·FORBIDDEN·ERROR만 제출됨
-REWORK_REQUIRED=CONTEXT_INCOMPLETE를 정책 차단과 구분되는 재질문 상태·문구로 표시하고 R4 g1_clarification fixture 기반 contract test와 browser 증거를 handoff에 추가; 기존 성공·partial·source 실패·Artifact bridge는 보존
+R1_REVIEW_EVIDENCE=제품 58aa706·handoff d1f6a74의 허용 경로·R4 g1_clarification fixture 계약·production build·frontend contract·role gate·branch CI run 30609754303 PASS와 browser의 추가 정보 필요/재질문·요청 차단·정상·partial·source 실패·Artifact bridge·console error 0건을 확인
+R1_INTEGRATION_EVIDENCE=제품·R5 보고·handoff를 555ea14로 dev에 병합하고 팀 보고 79ba385, data·AI·backend·integration 51건·frontend build/contract·compileall과 dev CI run 30610065590 전체 PASS 확인
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R5 개인 일일보고·handoff manifest의 commit·minji push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
+```
+
+### R5-W2-F1
+
+```text
+STATUS=READY
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W2-F1
+TARGET_INTEGRATION_GATE=I2
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R5-04 source 실패 표시 보완
+CURRENT_TASK_CARD_ID=R5-W2-F1
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=79ba385e5fc031d96b7e0c983844f66ad431d643
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R5-W2-F1@79ba385
+OPENAPI_VERSION=OPENAPI-v1.0.0
+UI_VERSION=UI-v1.0.0
+ALLOWED_PATHS=app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx; app/enterprise-react/src/data/analysisFixtures.ts; app/enterprise-react/src/styles.css; tests/frontend/contracts.test.mjs
+FORBIDDEN_PATHS=그 밖의 app/enterprise-react/**; app/react/**; app/backend/**; source DDL·seed·src/data/**; src/ai/**·src/modelops/**; root Compose·.env.example·CI; R1/R2/R3/R4 소유 문서
+ACCEPTANCE_CRITERIA=QUERY_SOURCE_FAILED 화면이 API error.message와 retryable을 재계산 없이 보존해 각각 `다시 시도 가능` 또는 `다시 시도 불가`로 표시하고 Artifact를 만들지 않으며, R4 timeout fixture 기반 contract test와 source 실패·partial browser 증거를 제출하고 기존 성공·재질문·차단·Artifact bridge를 보존
+TEST_COMMANDS=npm --prefix app/enterprise-react run build; node --test tests/frontend/contracts.test.mjs; python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base; git diff --check
+STOP_CONDITIONS=API contract 변경 필요; 활성 frontend 밖 수정 필요; retryable·권한·Gate를 frontend가 재계산해야 함; 허용 경로 밖 변경 필요; build 또는 contract 검증 실패
+HANDOFF=R1에 실제 R4 timeout fixture 기반 retryable contract 결과, source 실패·partial browser 문구와 console error, 기존 상태 회귀 결과를 manifest로 제출
+EXTERNAL_ACTION_PERMISSION=허용 4개 경로와 R5 개인 일일보고·handoff manifest의 commit·minji push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
 ```
 
 ## Wave 3 상세 계획 카드
@@ -1123,6 +1156,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.37 | 2026-07-31 15:38 | R5-W2 제품 `58aa706`·handoff `d1f6a74`의 재질문 구분, R4 fixture 계약, build·role gate·branch CI와 독립 browser 증거를 확인해 제품 `555ea14`·팀 보고 `79ba385`로 dev에 통합하고 dev CI run `30610065590` PASS를 확인했다. I2 subset의 성공·재질문·차단은 승인했으나 source 실패 화면이 API `retryable`을 표시하지 않아 I2를 3/4로 유지하고, 기준 `79ba385`의 최소 `R5-W2-F1` REWORK와 minji commit·push 권한을 발행했다. |
 | v2.36 | 2026-07-31 15:21 | R4-W2-F1 제품 `0549dbb`·terminal/handoff `08c8db2`의 최신 dev 기준 8개 고유 경로, model 계약 오류·timeout, query timeout·cancel, G2 hard LIMIT, G3 결과 범위·정상/의심 0건 검증과 branch CI run `30609007535` PASS를 확인했다. `f8e4740`으로 dev에 병합하고 pipeline 15건·integration 16건·compileall·보고 validator, 팀 보고 `4db0503`, dev CI run `30609351155` 전체 PASS를 확인해 R4-W2-F1을 MERGED_DEV·WAIT로 전환했다. |
 | v2.35 | 2026-07-31 15:05 | Google Docs의 R4 보강 HANDOFF를 읽었으나 후보 `caaa94a`는 현재 R1 저장소와 origin/jaehong에서 조회되지 않았다. 제품 수용 없이 전달된 6개 제품·테스트 경로에 한정해 최신 dev `6a82fff` 기준의 `R4-W2-F1@6a82fff` REWORK와 개인 branch 제출 권한을 발행했으며 실제 diff·목적·전후 동작·필수 검증을 다시 handoff하도록 했다. |
 | v2.34 | 2026-07-31 14:55 | R5-W2 제품 `9a4d4e9`·handoff `b7f26f9`와 branch CI run `30607885337`, production build·frontend contract·integration 16건·role gate를 확인했다. 실제 R4 `CONTEXT_INCOMPLETE` 응답이 별도 재질문 화면 없이 일반 ERROR·“요청 차단”으로 표시되고 browser 증거에도 재질문 상태가 빠져 dev 병합을 보류했으며, 기준 `6b37f57`·token `R5-W2@6b37f57`로 해당 상태·fixture·증거만 보완하는 REWORK를 발행했다. |

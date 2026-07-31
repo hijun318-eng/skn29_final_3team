@@ -1,5 +1,3 @@
-version: "3.8"
-
 # Answervice 인프라 — 기획서 §8.2 기준 5개 소스 DB + Trino 연합 쿼리
 # 사용: docker-compose up -d
 # 종료: docker-compose down
@@ -20,10 +18,13 @@ services:
       - "5433:5432"
     volumes:
       - pms-data:/var/lib/postgresql/data
+      - ./init/pms-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pms_ro"]
       interval: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
+    restart: on-failure
 
   # =========================================================================
   # 연회·매출 DB (PostgreSQL, PMS와 별도 DB)
@@ -39,6 +40,8 @@ services:
       - "5434:5432"
     volumes:
       - banquet-data:/var/lib/postgresql/data
+      - ./init/banquet-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    restart: on-failure
 
   # =========================================================================
   # POS DB (MySQL) — 주문, 매장, 상품, 결제
@@ -55,10 +58,13 @@ services:
       - "3307:3306"
     volumes:
       - pos-data:/var/lib/mysql
+      - ./init/pos-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 5s
-      retries: 5
+      retries: 10
+      start_period: 15s
+    restart: on-failure
 
   # =========================================================================
   # CRM DB (SQL Server) — 회원, 등급, 포인트, 고객 매핑
@@ -73,6 +79,12 @@ services:
       - "1434:1433"
     volumes:
       - crm-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Answervice123! -Q 'SELECT 1' -C || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P Answervice123! -Q 'SELECT 1'"]
+      interval: 5s
+      retries: 10
+      start_period: 20s
+    restart: on-failure
 
   # =========================================================================
   # 시설 운영 DB (ClickHouse) — 시설 이용, 점검, 이벤트
@@ -85,6 +97,8 @@ services:
       - "9001:9000"
     volumes:
       - facility-data:/var/lib/clickhouse
+      - ./init/facility-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    restart: on-failure
 
   # =========================================================================
   # Trino (연합 쿼리 엔진) — 5개 catalog 읽기 전용 조회
@@ -93,15 +107,22 @@ services:
     image: trinodb/trino:latest
     container_name: answervice-trino
     depends_on:
-      - pms-db
-      - pos-db
-      - crm-db
-      - facility-db
+      pms-db:
+        condition: service_healthy
+      pos-db:
+        condition: service_healthy
+      crm-db:
+        condition: service_healthy
+      facility-db:
+        condition: service_started
+      banquet-db:
+        condition: service_started
     ports:
       - "8080:8080"
     volumes:
       - ./trino/catalog:/etc/trino/catalog:ro
       - ./trino/config/jvm.config:/etc/trino/jvm.config:ro
+    restart: on-failure
 
 volumes:
   pms-data:

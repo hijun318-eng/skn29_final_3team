@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.13 |
-| 문서 기준일 | 2026-07-31 11:05 |
+| 버전 | v2.14 |
+| 문서 기준일 | 2026-07-31 11:20 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -55,8 +55,8 @@
 |---|---|---|
 | `PASS` | 허용 경로, 실행 묶음·branch·`BASE_SHA`·결과 SHA, 실제 diff, 필수 handoff 필드와 실행 검증이 일치 | R1 승인 후보로 표시 |
 | `FAIL` | 허용 경로 침범, 필드 누락·형식 오류, SHA·diff 불일치, `FAIL`·`BLOCKED` 검증, `REVIEW` 상태의 handoff 누락 | 원 소유 역할에 반환하고 병합 차단 |
-| `REVIEW_REQUIRED` | `NOT_RUN`, change request, 잔여 위험, 외부 download·image pull·비용·secret·데이터 전송·배포·Git 권한 요청 | Google Docs의 R1 검토 큐에 표시 |
-| `NOT_RUN` | 아직 handoff를 제출하지 않은 `READY`·`IN_PROGRESS` 묶음 | 작업 또는 제출 대기이며 성공으로 계산하지 않음 |
+| `REVIEW_REQUIRED` | `NOT_RUN`, change request, 잔여 위험, 외부 download·image pull·비용·secret·데이터 전송·배포·Git 권한 요청 | Google Docs의 R1 검토 큐에 표시하며 Gate를 차단하지 않음 |
+| `NOT_RUN` | 아직 handoff를 제출하지 않은 `READY`·`IN_PROGRESS` 묶음 | 작업 또는 제출 대기이며 성공으로 계산하지 않되 Gate를 차단하지 않음 |
 | `N/A` | `MERGED_DEV`·`VERIFIED_GATE`로 신규 handoff가 필요하지 않음 | 추가 구현 없이 유지 |
 
 handoff manifest는 역할이 `REVIEW`를 요청하기 전에 제출하며 다음 필드를 모두
@@ -90,8 +90,12 @@ integration test, frontend production build·contract, R2 DataHub service
 fragment, root Compose `dev`·`full`·`split-host`, 문서 정책·WBS·보고서
 검증 결과를 집계한다.
 실행 대상이 아닌 역할별 job의 `skipped`는 `N/A`로 취급하지만 `failure`와
-`cancelled`는 전체 자동 품질 Gate를 실패시킨다. 개인 branch의 handoff가
-`PASS` 또는 `N/A`가 아니어도 전체 자동 품질 Gate를 실패시킨다. 자동 품질 Gate 통과는
+`cancelled`는 전체 자동 품질 Gate를 실패시킨다. 개인 branch의 handoff는
+`FAIL`일 때만 전체 자동 품질 Gate를 실패시킨다. `NOT_RUN`과 `REVIEW_REQUIRED`는
+R1 검토 큐에 표시하되 Gate를 차단하지 않는다. 미실행 검증·change request·
+잔여 위험·외부 승인 요청을 정직하게 기록한 역할이 CI 실패로 불이익을 받으면
+해당 항목을 비워 두는 편이 유리해져 Gate가 수집하려는 증거 자체가 사라지므로,
+차단은 증거의 무결성 위반에만 적용한다. 자동 품질 Gate 통과는
 기계 검증 완료를 뜻하며 R1의 제품 수용·계약 Freeze·최종 Gate 승인을
 대체하지 않는다.
 
@@ -228,7 +232,7 @@ ROLE_GATE_PERMISSION=GitHub Actions contents: read만 사용, 자동 상태 변�
 HANDOFF_MANIFEST_POLICY=역할별 handoffs/<EXECUTION_BUNDLE_ID>.json을 REVIEW 요청 전 제출; RESULT_SHA는 제품 결과 HEAD 또는 최신 dev를 제외한 역할 고유 diff에서 그 뒤 변경이 해당 manifest 하나뿐인 조상 SHA를 허용하고 실제 diff·완료 카드·계약 version·검증·Not Run·change request·잔여 위험·외부 승인 요청을 기록
 AUTOMATED_DECISION_BOUNDARY=경로·SHA·diff·manifest·검증 상태는 자동 판정; 기획 의미·업무 수용·계약 Freeze·Gate 승인·예외 승인은 R1 수동 판정
 GOOGLE_DOCS_DECISION_CHANNEL=GitHub Actions Summary의 PASS·FAIL·REVIEW_REQUIRED·NOT_RUN을 근거로 R1이 승인·보완 요청·보류와 다음 실행 지시를 기록
-ALLOWED_PATHS=AGENTS.md; compose*.yml; .env.example; .github/**; .githooks/**; tests/integration/**; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/ai_docs/5인_병렬구현_*
+ALLOWED_PATHS=AGENTS.md; compose*.yml; .env.example; .github/**; .githooks/**; tests/integration/**; docs/Answervice_기획서.md; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/ai_docs/5인_병렬구현_*
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=I0 역할·범위·소유권·full/dev/split-host 결정과 I1 공통 계약·Compose skeleton·env·CI·fake 소비 가능 판정, 필수 30·gold 120 원장 schema/reviewer/split 계획
 TEST_COMMANDS=python -m unittest tests.integration.test_gate_scope -v; powershell -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify-service-fragment.ps1 -EnvFilePath .env.example; docker compose -f compose.yml --env-file .env.example --profile dev config --quiet; docker compose -f compose.yml --env-file .env.example --profile full config --quiet; docker compose -f compose.yml --env-file .env.example --profile split-host config --quiet; python -m compileall -q .github/scripts app/backend src tests; python -m pytest -p no:cacheprovider tests; python .github/scripts/gate_scope.py --dashboard --next-gate I2; python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/02_WBS.md docs/markdown/collaboration/Gate_실행_카드_원장.md docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md docs/markdown/collaboration/I1_평가_원장.md; python .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md; python .agents/skills/update-project-reports/scripts/validate_reports.py docs/markdown/daily_reports/junhee/일일보고.md --date 20260731; git diff --check
@@ -836,6 +840,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.14 | 2026-07-31 11:20 | 기획 검토 결과를 반영해 자동 Gate의 차단 범위를 조정했다. `R2-W1-F3`·`R4-W1-F3-CLEAN`·`R5-W1-F2`를 `READY`로 발행하면서 manifest 미제출 상태의 `NOT_RUN`이 4개 개인 branch를 동시에 차단하는 현상을 확인해, handoff는 `FAIL`일 때만 자동 품질 Gate를 차단하도록 고쳤다. `NOT_RUN`과 `REVIEW_REQUIRED`는 R1 검토 큐에만 표시한다. R1-W1 `ALLOWED_PATHS`에 `docs/Answervice_기획서.md`를 추가해 소유자 공백을 해소했다. `RESULT_SHA` 닭-달걀은 v2.12~v2.13의 `result_sha_matches_checked_head`와 manifest-only 후속 commit 허용 계약을 그대로 유지한다. 나머지 경로 정합성 3건과 역할별 test 분기·`dev` 병합 경로는 `R1_Gate_원장_경로_정합성_패치_제안서.md`로 분리해 R1 승인 대기 중이다. |
 | v2.13 | 2026-07-31 11:05 | `origin/dev` `e5eea60`과 CI run `30598022457` PASS를 확인하고 handoff manifest-only 후속 commit을 허용하도록 R1 validator 계약을 수정했다. R2 제품 결과 `23059a6`은 manifest 재제출만 REWORK로 허가했으며, `origin/jaehong` `14bedf8`의 dev 대비 고유 diff 0건을 수용해 R4-W1-F3을 READY/ACTION으로 재발행했다. |
 | v2.12 | 2026-07-31 10:25 | 최신 `origin/dev` `e2ecee3`과 CI run `30596060168` PASS를 기준으로 R2-W1-F3·R5-W1-F2의 commit·개인 branch push를 ACTION 승인했다. 허용 범위 밖 제출본 변경이 남은 R4는 R4-W1-F3을 차단하고 원상복구 전용 R4-W1-F3-CLEAN만 REWORK 승인했으며 R3·Wave 2는 WAIT를 유지했다. |
 | v2.11 | 2026-07-31 10:12 | `origin/dev` `68fc068`과 GitHub Actions run `30528089815` PASS를 확인해 원격 동기화 차단을 해제했다. 실제 schema에 없는 PMS 수익 필드와 PMS↔CRM event-time 승인 JOIN 미등록, OpenAPI·UI·Report 초안 version을 I1 차단 원인으로 확정하고 R2-W1-F3·R4-W1-F3·R5-W1-F2를 동결 전용 READY로 발행 |

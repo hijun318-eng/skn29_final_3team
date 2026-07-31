@@ -32,6 +32,13 @@ ROLES = {
 }
 TERMINAL_STATUSES = {"MERGED_DEV", "VERIFIED_GATE"}
 TEST_STATUSES = {"PASS", "FAIL", "NOT_RUN", "BLOCKED", "REVIEW_REQUIRED"}
+# 자동 품질 Gate가 차단하는 handoff 판정은 FAIL 하나뿐이다.
+# NOT_RUN(아직 제출하지 않음)과 REVIEW_REQUIRED(미실행 검증·change request·
+# 잔여 위험·외부 승인 요청)는 R1 검토 큐에만 올리고 CI를 실패시키지 않는다.
+# 잔여 위험을 정직하게 적은 역할이 불이익을 받으면 Gate가 수집하려는 증거
+# 자체가 사라지므로, 차단은 증거의 무결성 위반(FAIL)에만 적용한다.
+# Gate_실행_카드_원장.md의 자동화 판정표와 같은 기준이다.
+BLOCKING_HANDOFF_STATUSES = {"FAIL"}
 REQUIRED_HANDOFF_FIELDS = {
     "EXECUTION_BUNDLE_ID": str,
     "ROLE": str,
@@ -457,7 +464,11 @@ def main() -> int:
         changed,
         git_sha(args.head),
     )
-    result = "FAIL" if violations or handoff == "FAIL" else "PASS"
+    result = (
+        "FAIL"
+        if violations or handoff in BLOCKING_HANDOFF_STATUSES
+        else "PASS"
+    )
     lines = [
         "## Role Gate scope",
         f"- Branch: `{args.branch}`",

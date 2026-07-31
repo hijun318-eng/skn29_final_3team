@@ -21,7 +21,7 @@
   },
   "meta": {
     "as_of": "2026-07-30",
-    "contract_version": "DRAFT-OPENAPI-v0.1",
+    "contract_version": "OPENAPI-v1.0.0",
     "request_id": "00000000-0000-0000-0000-000000000100",
     "timestamp": "2026-07-30T00:00:00Z",
     "trace_id": "fixture-timeout"

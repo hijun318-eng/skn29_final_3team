@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / "app" / "backend"
-CONTRACT_VERSION = "DRAFT-OPENAPI-v0.1"
+CONTRACT_VERSION = "OPENAPI-v1.0.0"
 
 
 class FastApiRuntimeTest(unittest.TestCase):

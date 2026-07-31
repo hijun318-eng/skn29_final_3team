@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.40 |
-| 문서 기준일 | 2026-07-31 17:11 |
+| 버전 | v2.41 |
+| 문서 기준일 | 2026-07-31 17:28 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -176,9 +176,9 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `MERGED_DEV` |
 | R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `MERGED_DEV` |
 | R4-W2 | Wave 2·08/10~08/14 | R4 | 없음 → I2 | R4-04~13, R4-15 | Template→Context→G1→G2→Trino→G3→Artifact trace | `MERGED_DEV` |
-| R4-W2-F2 | Wave 2 follow-up | R4 | 없음 → I2 | R4-04·07·11·20 보완 | DB Template·실제 Trino·migration·CORS runtime 연결 | `PLANNED` |
+| R4-W2-F2 | Wave 2 follow-up | R4 | 없음 → I2 | R4-04·07·11·20 보완 | DB Template·실제 Trino·migration·CORS runtime 연결 | `READY` |
 | R5-W2 | Wave 2·08/10~08/14 | R5 | 없음 → I2 | R5-03~07 | Chat·상태·Evidence·표·차트·Artifact bridge | `MERGED_DEV` |
-| R5-W2-F1 | Wave 2 follow-up | R5 | 없음 → I2 | R5-04 source 실패 표시 보완 | API `retryable` 표시·R4 timeout fixture 소비 | `READY` |
+| R5-W2-F1 | Wave 2 follow-up | R5 | 없음 → I2 | R5-04 source 실패 표시 보완 | API `retryable` 표시·R4 timeout fixture 소비 | `MERGED_DEV` |
 | R5-W2-F2 | Wave 2 follow-up | R5 | 없음 → I2 | R5-01·03~07 실제 API 보완 | production HTTP client·실제 backend 화면 trace | `PLANNED` |
 | R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `PLANNED` |
 | R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `PLANNED` |
@@ -958,10 +958,10 @@ EXTERNAL_ACTION_PERMISSION=허용 6개 경로와 R4 개인 일일보고·handoff
 
 ### R4-W2-F2
 
-R1 Gate 보강 변경이 `dev`에 반영된 뒤 정확한 `BASE_SHA`와 token을 채워 `READY`로 전환한다. 현재 `PLANNED`이므로 실행 승인이 아니다.
+R1 증거 Gate 보강이 `dev` `0e756e7`에 반영되고 CI run `30616159454`가 통과했으므로 아래 범위를 실행 승인한다.
 
 ```text
-STATUS=PLANNED
+STATUS=READY
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -972,19 +972,19 @@ TASK_CARD_RANGE=R4-04·07·11·20 runtime 보완
 CURRENT_TASK_CARD_ID=R4-W2-F2
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=N/A — R1 Gate 보강 dev 반영 SHA 대기
-DIRECTIVE=WAIT
-DIRECTIVE_TOKEN=N/A — READY 발행 전 실행 금지
+BASE_SHA=0e756e7f1366e09fd084f655274e2add8778c68f
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W2-F2@0e756e7
 OPENAPI_VERSION=OPENAPI-v1.0.0
 ALLOWED_PATHS=app/backend/**; tests/backend/**
 FORBIDDEN_PATHS=source DDL·seed·src/data/**; src/ai/**·src/modelops/**; frontend·Report; root Compose·.env.example·CI; R1/R2/R3/R5 소유 문서
 ACCEPTANCE_CRITERIA=context.analysis_templates의 승인 Template을 runtime에서 조회해 허용 role만 TEMPLATE route로 보내고, 기존 R2 TrinoAdapter를 R4 DataPlatformAdapter port에 연결하며, 빈 DB startup migration 뒤 HTTP template_id 요청이 실제 query_id·Artifact까지 이어지고 direct browser origin에는 환경변수 기반 정확한 CORS allowlist만 허용
 ACCEPTANCE_IDS=AC1_TEMPLATE_DB;AC2_TRINO_PORT;AC3_MIGRATION_STARTUP;AC4_HTTP_TEMPLATE_TRACE;AC5_EXACT_CORS
-TEST_COMMANDS=python -m compileall -q app/backend tests/backend; python -m pytest -p no:cacheprovider tests/backend; python app/backend/scripts/export_openapi.py --check; python -m unittest discover -s tests/integration -p "test_*.py"; git diff --check
-TEST_COMMAND_IDS=T1_COMPILE;T2_BACKEND;T3_OPENAPI;T4_INTEGRATION;T5_DIFF_CHECK
+TEST_COMMANDS=python -m compileall -q app/backend tests/backend; python -m pytest -p no:cacheprovider tests/backend; python app/backend/scripts/export_openapi.py --check; python -m unittest discover -s tests/integration -p "test_*.py"; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_COMPILE;T2_BACKEND;T3_OPENAPI;T4_INTEGRATION;T5_ROLE_GATE;T6_DIFF_CHECK
 STOP_CONDITIONS=R2 adapter 수정 필요; migration 다중 head; Template 권한·G1·G2·G3 우회; wildcard CORS 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
 HANDOFF=R1에 Template 승인·거부 HTTP 증거, 빈 DB migration, 실제 Trino query_id와 request→artifact trace, CORS 허용·거부 origin 결과를 ID별 manifest로 제출
-EXTERNAL_ACTION_PERMISSION=READY 전 작업·commit·push 불가; READY 발행 뒤 허용 경로와 R4 개인 일일보고·handoff manifest만 별도 승인
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R4 개인 일일보고·handoff manifest의 commit·jaehong push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
 ```
 
 ### R5-W2
@@ -1027,7 +1027,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R5 개인 일일보고·handoff mani
 ### R5-W2-F1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -1039,7 +1039,12 @@ CURRENT_TASK_CARD_ID=R5-W2-F1
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=79ba385e5fc031d96b7e0c983844f66ad431d643
-DIRECTIVE=REWORK
+SOURCE_HEAD=dce723bd845e8de91a99365e08f7df862071ec5c
+PRODUCT_RESULT_SHA=f356f1a28739ed1264e5a72282811256346d41e2
+HANDOFF_SHA=dce723bd845e8de91a99365e08f7df862071ec5c
+MERGED_DEV_SHA=6bd191c9519986e506cad2a17f11ebd92bf14533
+REPORT_SHA=5652e4e7aaf70a009610f03507c0d5c9eb2eba85
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R5-W2-F1@79ba385
 OPENAPI_VERSION=OPENAPI-v1.0.0
 UI_VERSION=UI-v1.0.0
@@ -1049,6 +1054,8 @@ ACCEPTANCE_CRITERIA=QUERY_SOURCE_FAILED 화면이 API error.message와 retryable
 TEST_COMMANDS=npm --prefix app/enterprise-react run build; node --test tests/frontend/contracts.test.mjs; python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base; git diff --check
 STOP_CONDITIONS=API contract 변경 필요; 활성 frontend 밖 수정 필요; retryable·권한·Gate를 frontend가 재계산해야 함; 허용 경로 밖 변경 필요; build 또는 contract 검증 실패
 HANDOFF=R1에 실제 R4 timeout fixture 기반 retryable contract 결과, source 실패·partial browser 문구와 console error, 기존 상태 회귀 결과를 manifest로 제출
+R1_REVIEW_EVIDENCE=제품 f356f1a·handoff dce723b의 허용 경로, API retryable 표시·Artifact 미생성·partial 보존 browser 증거, build·frontend contract·integration 17건·role gate와 branch CI run 30612008099 전체 PASS 확인
+R1_INTEGRATION_EVIDENCE=제품·R5 보고·handoff를 6bd191c로 dev에 병합하고 팀 보고 5652e4e와 dev CI run 30614284494 전체 PASS 확인
 EXTERNAL_ACTION_PERMISSION=허용 4개 경로와 R5 개인 일일보고·handoff manifest의 commit·minji push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
 ```
 

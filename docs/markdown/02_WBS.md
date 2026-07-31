@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.34 |
-| 문서 기준일 | 2026-07-31 17:19 |
+| 버전 | v7.35 |
+| 문서 기준일 | 2026-07-31 17:28 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-07-31 17:28 | 1.7, 4.4, 4.7, 4.11, 4.20, 5.4, 6.2 | R5-W2-F1 제품 `f356f1a`·handoff `dce723b`의 API `retryable` 표시, Artifact 미생성, partial 보존, build·contract·integration·role gate와 branch CI run `30612008099`를 확인해 `6bd191c`로 dev에 통합하고 dev CI run `30614284494`를 확인했다. 이어 R1 증거 Gate 보강 `0e756e7`의 dev CI run `30616159454` PASS를 기준으로 실제 DB Template·Trino port·migration startup·HTTP trace·정확한 CORS 연결 범위 `R4-W2-F2@0e756e7`을 READY로 발행했다. 실제 runtime 결과 전 기존 일정·행 상태는 유지했다. | R5 follow-up 통합·R4 runtime 보완 승인 |
 | 2026-07-31 17:19 | 1.1, 1.7 | 확장자만 XLSX이고 실제 바이트가 PNG였던 공식 WBS 제출본을 마지막 정상 workbook에서 복구하고, 현재 Markdown 기준 99개 작업의 제목·담당·기간·상태·완료율을 template 서식과 기간 수식을 보존해 다시 동기화했다. 재열기·99개 ID·수식·완료율·전체 시트 렌더를 검증했다. | 공식 WBS XLSX 복구·동기화 |
 | 2026-07-31 17:11 | 1.7 | 실행 묶음의 수용·검증 ID 전수 대조에서 ID 없는 추가 결과와 자동 생성 placeholder 증거를 거부하고, 제출된 `REVIEW_REQUIRED`가 CI Summary와 최종 quality 판정에서도 차단되도록 동기화했다. 일정·행 상태는 변경하지 않았다. | R1 증거 Gate 우회 차단 |
 | 2026-07-31 17:03 | 1.7, 4.4, 4.7, 4.11, 4.20, 5.1, 5.4~5.8, 6.2 | 독립 정적 runtime 검토에서 backend의 빈 Template registry·fake data adapter와 frontend mock client를 확인해 기존 component·fixture 검증과 실제 통합 승인을 분리했다. 새 실행 묶음은 필수 수용·검증 ID를 handoff 증거와 전수 대조하도록 R1 Gate를 보강하고, R4 실제 Template·Trino·migration·정확한 CORS 연결 뒤 R5 실제 HTTP 연결과 R1 E2E를 수행하는 순차 follow-up을 계획했다. 일정·행 상태는 진행으로 유지했다. | I2 통합 재검증·증거 Gate 보강 |
@@ -428,6 +429,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.35 | 2026-07-31 17:28 | R5-W2-F1의 제품·handoff·branch/dev CI 통합 근거와 R1 증거 Gate 보강 dev CI PASS를 연결하고, 실제 runtime 연결을 수행할 `R4-W2-F2@0e756e7` 승인 근거를 1.7·4.4·4.7·4.11·4.20·5.4·6.2에 기록했다. 실제 결과 전 일정·행 상태는 유지했다. |
 | v7.34 | 2026-07-31 17:19 | PNG로 잘못 저장된 공식 WBS 제출본을 마지막 정상 XLSX에서 복구하고 Markdown 기준 99개 작업을 재동기화했으며, 재열기·ID·기간 수식·완료율·전체 렌더 검증 근거를 1.1·1.7에 연결했다. |
 | v7.33 | 2026-07-31 17:11 | 1.7의 handoff 증거 Gate에서 ID 없는 결과와 placeholder 증거를 거부하고, 제출된 `REVIEW_REQUIRED` 차단 정책을 CI 최종 판정까지 동기화한 근거를 추가했다. 일정·행 상태는 유지했다. |
 | v7.32 | 2026-07-31 17:03 | 기존 component·fixture 검증과 실제 runtime 통합 승인을 분리해 I2를 재검증 대상으로 기록하고, 필수 수용·검증 ID 전수 대조 Gate와 R4→R5→R1 순차 follow-up 근거를 1.7·4.4·4.7·4.11·4.20·5.1·5.4~5.8·6.2에 연결했다. 기존 일정·행 상태는 유지했다. |

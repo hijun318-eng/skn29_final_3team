@@ -92,9 +92,7 @@
   ],
   "NOT_RUN": [],
   "CHANGE_REQUESTS": [],
-  "RESIDUAL_RISKS": [
-    "실제 R2 DataHub·Trino adapter와 R3 production model 연결은 승인된 후속 Wave에서 교체"
-  ],
+  "RESIDUAL_RISKS": [],
   "EXTERNAL_APPROVAL_REQUIRED": [],
   "REQUESTED_DECISION": "dev 병합"
 }

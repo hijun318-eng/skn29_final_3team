@@ -922,7 +922,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R4 개인 일일보고·handoff mani
 ### R4-W2-F1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -935,7 +935,8 @@ REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=6a82fff05ab489d9e18ab946551f0dfe098c0845
 SOURCE_CANDIDATE_SHA=caaa94a7d81390c9b674d713b8b56b873eb9a2ec
-DIRECTIVE=REWORK
+SOURCE_HEAD=08c8db23fe680e8d59919f1db67f1f1a67ff42ad
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R4-W2-F1@6a82fff
 OPENAPI_VERSION=OPENAPI-v1.0.0
 ALLOWED_PATHS=app/backend/app/adapters/fake_data_platform.py; app/backend/app/adapters/fake_model.py; app/backend/app/services/analysis_responses.py; app/backend/app/services/analysis_service.py; app/backend/app/services/pipeline_support.py; tests/backend/test_analysis_pipeline.py
@@ -945,6 +946,8 @@ TEST_COMMANDS=python -m compileall -q app/backend tests/backend; python -m pytes
 STOP_CONDITIONS=후보 SHA를 복구할 수 없음; 허용 6개 제품·테스트 경로 밖 변경 필요; OpenAPI drift; 불법 상태 전이; 필수 검증 실패
 HANDOFF=R1에 최신 dev 기준 RESULT_SHA·실제 diff·변경 목적·전후 동작·검증 결과·Not Run·잔여 위험을 manifest로 제출
 R1_REVIEW_NOTE=Google Docs HANDOFF의 후보 caaa94a는 현재 R1 저장소와 origin/jaehong에서 조회되지 않아 제품 수용이 아니라 제한된 개인 branch 제출·검토 권한만 발행
+R1_REVIEW_EVIDENCE=origin/jaehong 08c8db2·handoff R4-W2-F1의 최신 dev 기준 8개 고유 경로, 변경 목적·전후 동작, Not Run·잔여 위험·외부 승인 0건, branch CI run 30609007535 전체 PASS, role gate·handoff PASS 확인
+R1_INTEGRATION_EVIDENCE=f8e4740으로 제품·R4 보고·handoff를 dev에 병합하고 pipeline 15건·integration 16건·compileall·보고 validator를 독립 실행했으며 팀 보고 4db0503과 dev CI run 30609351155 전체 PASS 확인
 EXTERNAL_ACTION_PERMISSION=허용 6개 경로와 R4 개인 일일보고·handoff manifest의 commit·jaehong push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
 ```
 
@@ -1120,6 +1123,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.36 | 2026-07-31 15:21 | R4-W2-F1 제품 `0549dbb`·terminal/handoff `08c8db2`의 최신 dev 기준 8개 고유 경로, model 계약 오류·timeout, query timeout·cancel, G2 hard LIMIT, G3 결과 범위·정상/의심 0건 검증과 branch CI run `30609007535` PASS를 확인했다. `f8e4740`으로 dev에 병합하고 pipeline 15건·integration 16건·compileall·보고 validator, 팀 보고 `4db0503`, dev CI run `30609351155` 전체 PASS를 확인해 R4-W2-F1을 MERGED_DEV·WAIT로 전환했다. |
 | v2.35 | 2026-07-31 15:05 | Google Docs의 R4 보강 HANDOFF를 읽었으나 후보 `caaa94a`는 현재 R1 저장소와 origin/jaehong에서 조회되지 않았다. 제품 수용 없이 전달된 6개 제품·테스트 경로에 한정해 최신 dev `6a82fff` 기준의 `R4-W2-F1@6a82fff` REWORK와 개인 branch 제출 권한을 발행했으며 실제 diff·목적·전후 동작·필수 검증을 다시 handoff하도록 했다. |
 | v2.34 | 2026-07-31 14:55 | R5-W2 제품 `9a4d4e9`·handoff `b7f26f9`와 branch CI run `30607885337`, production build·frontend contract·integration 16건·role gate를 확인했다. 실제 R4 `CONTEXT_INCOMPLETE` 응답이 별도 재질문 화면 없이 일반 ERROR·“요청 차단”으로 표시되고 browser 증거에도 재질문 상태가 빠져 dev 병합을 보류했으며, 기준 `6b37f57`·token `R5-W2@6b37f57`로 해당 상태·fixture·증거만 보완하는 REWORK를 발행했다. |
 | v2.33 | 2026-07-31 14:47 | 팀 저장소 dev `bb13121`의 CI run `30607588406` 전체 PASS를 확인하고 R1 평가 원장을 v0.6으로 정합화했다. R5-W2 HANDOFF가 source 실패 화면 증거를 누락하지 않도록 제출 기준을 명확히 했으며, R2·R3·R4는 MERGED_DEV·WAIT, R5만 READY·ACTION을 유지한다. |

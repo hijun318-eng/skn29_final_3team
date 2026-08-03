@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.68 |
-| 문서 기준일 | 2026-08-03 18:49 |
+| 버전 | v2.69 |
+| 문서 기준일 | 2026-08-04 01:39 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1550,6 +1550,38 @@ DEV_CI_EVIDENCE=GitHub Actions run 30803015630 PASS — 전체 Python·frontend�
 EXTERNAL_ACTION_PERMISSION=제공된 2,000건 원장의 로컬 읽기와 임시 생성물, 이미 실행 중인 합성 DB·Trino의 setup 계정 검증, 허용 경로와 R3 개인 일일보고의 commit·daesung push 승인; dependency 설치·model download·RunPod resource·비용·배포·secret 사용·외부 데이터 전송·dev merge 불가
 ```
 
+### R3-W3-F4
+
+```text
+STATUS=REVIEW
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F4
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-11 time-boxed Qwen3-4B LoRA 1회 비교와 채택 판단 증거
+CURRENT_TASK_CARD_ID=R3-11
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=852e8c879b04ea3a41ad73e299d78a6173252e42
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F4@852e8c8
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.0
+EVALUATION_MANIFEST_VERSION=EVAL-DATA-I3-v1.1.0-DRAFT
+USER_APPROVAL_EVIDENCE=사용자가 RunPod A40 실행과 최대 비용 USD 15, 학습 외 남은 작업의 계속 진행, 완료 후 commit·push·dev 통합을 승인함
+ALLOWED_PATHS=src/ai/training/evaluate_lora.py; tests/ai/test_eval_runner.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=.env; API key; 학습·평가 JSONL 원본; model binary·adapter·checkpoint·평가 생성물; app/backend/**; src/data/**; infrastructure/database/**; frontend·Report; root Compose·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=Qwen3-4B Base와 같은 checkpoint·held-out 입력·decoding 조건에서 BF16 LoRA 학습을 1회만 수행한다. Gold 120건·Acceptance 30건의 JSON 구조·SQL 정확 일치와 로컬 G2·실제 Trino 결과 일치를 확인하고, Gold의 p50·p95 응답시간과 최대 VRAM을 기록한다. adapter·manifest·로그·평가 결과를 저장소 밖에 hash와 함께 회수하고 task Pod를 삭제하며 총 RunPod 비용을 USD 15 이하로 제한한다. 정확도·안전·지연시간·메모리·재현성 조건을 모두 확인하기 전에는 제품 기본값을 LoRA로 전환하지 않는다.
+ACCEPTANCE_IDS=AC1_SINGLE_LORA_RUN;AC2_SAME_CONDITION_BASELINE;AC3_HELD_OUT_150_EVALUATED;AC4_G2_TRINO_150;AC5_LATENCY_VRAM_EVIDENCE;AC6_ARTIFACT_HASH_ROLLBACK;AC7_POD_DELETED;AC8_COST_WITHIN_LIMIT;AC9_NO_DEFAULT_SWITCH
+TEST_COMMANDS=python -m unittest tests.ai.test_eval_runner -v; python -m compileall -q src/ai/training/evaluate_lora.py; python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/daesung/일일보고.md; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_EVAL_UNIT;T2_COMPILE;T3_REPORT;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=누적 RunPod 비용 USD 15 초과 예상; secret 출력·commit 필요; 다른 Pod·volume 변경 필요; 학습·평가 데이터 누수; G2·Trino 안전 검증 실패; 결과 artifact 회수·hash 확인 실패; task Pod 삭제 실패; 허용 경로 밖 변경; 필수 검증 실패; p95 SLO 미확정 상태의 제품 기본값 전환 요구
+HANDOFF=R1에 Base·LoRA 정확도, Trino 결과 일치율, p50·p95, 최대 VRAM, 학습 manifest·adapter hash, 실제 비용, Pod 삭제, rollback과 제품 기본값 보류 근거를 전달
+EXTERNAL_ACTION_PERMISSION=사용자 승인 한도 USD 15 안에서 task 전용 RunPod A40 Pod 생성·dependency 설치·Qwen3-4B 다운로드·합성 학습/평가 데이터 전송·BF16 LoRA 1회 학습·평가·결과 회수·정확한 task Pod 삭제와 허용 경로 commit·daesung push 승인; 다른 Pod·volume 변경, secret 출력·commit, 제품 기본값 전환, 외부 배포는 불가
+```
+
 ## Wave 4 상세 계획 카드
 
 Wave 4는 I4 Reporting 통합부터 RC1·리허설·I5 동결까지 포함한다. I4에서 기능 통합을 마친 뒤 신규 기능을 금지하고 Critical·High 결함과 release 회귀만 수행한다.
@@ -1642,6 +1674,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.69 | 2026-08-04 01:39 | 사용자 승인 한도 USD 15 안에서 Qwen3-4B Base·LoRA 1회 비교, held-out 150건 G2·Trino 검증, Gold 지연시간·VRAM 기록, artifact 회수·task Pod 삭제와 제품 기본값 보류를 수행한 R3-W3-F4를 REVIEW로 기록했다. |
 | v2.68 | 2026-08-03 18:49 | R3-W3-F3의 기본 Train·Validation 보존, held-out Gold 120건·Acceptance 30건 명시 승인, split 누수 0건, 로컬 G2·Trino 150건 전수 PASS와 compiled validate를 확인했다. branch CI `30802900472`와 dev CI `30803015630` PASS 뒤 `aede5a5`에 통합했으며 실제 model download·RunPod·Base/LoRA 실행은 계속 미승인이다. |
 | v2.67 | 2026-08-03 18:36 | 실제 Qwen compiled 1,350건에 Gold·Acceptance split이 없고 생성기도 Train·Validation만 선택해 Base·LoRA 평가 입력을 만들 수 없는 누락을 확인했다. 기존 기본 동작을 보존하면서 제공 원장의 Gold 120건·Acceptance 30건을 명시적으로 승인·생성하고 로컬 G2·Trino로 전수 검증하는 R3-W3-F3를 READY 발행했으며 외부 model·RunPod 승인은 계속 제외했다. |
 | v2.66 | 2026-08-03 18:20 | R1-W3의 required30·gold120 승인과 전 역할 Wave 3 dev 통합, dev·junhee 동일 SHA·CI PASS, 통합 23건과 Context·G1/G2·cache 격리·동시 실행 제한 보안 회귀 29건을 확인해 현재 카드를 R1-10으로 전환했다. 로컬 CUDA와 Qwen3-4B cache가 없고 model download·RunPod 비용이 미승인이라 실제 Base model 비교는 NOT_RUN으로 유지하며 I3·Wave 4는 승인하지 않았다. |

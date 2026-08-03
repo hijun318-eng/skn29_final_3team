@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.73 |
-| 문서 기준일 | 2026-08-04 02:37 |
+| 버전 | v2.74 |
+| 문서 기준일 | 2026-08-04 02:43 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1631,6 +1631,37 @@ DEV_CI_EVIDENCE=최종 R1 terminal 동기화 뒤 dev push CI 재검증 예정
 EXTERNAL_ACTION_PERMISSION=기존 누적 비용을 포함한 사용자 승인 한도 USD 15 안에서 task 전용 RunPod A40 Pod 생성·고정 serving image pull·Qwen3-4B 다운로드·합성 평가 요청 전송·Base vLLM 실측·결과 회수·정확한 task Pod 삭제와 허용 경로 commit·daesung push 승인; 다른 Pod·volume 변경, secret 출력·commit, LoRA 재학습·제품 기본값 전환, FastAPI 수정, 외부 공개 배포는 불가
 ```
 
+### R4-W3-F1
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W3-F1
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R4-08 실제 Base endpoint transport와 Control Plane 안전 실패 연결
+CURRENT_TASK_CARD_ID=R4-08
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=382b7f527191df4690f8d9e6e4c4cac73c120a0c
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W3-F1@382b7f5
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+SERVING_MANIFEST_VERSION=SERVING-v0.2
+OPENAPI_VERSION=0.1.0
+ALLOWED_PATHS=app/backend/app/adapters/contract_model.py; app/backend/app/api/router.py; app/backend/README.md; tests/backend/test_production_model.py; tests/backend/test_analysis_pipeline.py; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/ai/**; src/modelops/**; evals/**; .env; API key; root Compose·CI; infrastructure/database/**; frontend·Report; R1/R2/R3/R5 소유 문서
+ACCEPTANCE_CRITERIA=`MODEL_MODE=openai`에서만 `MODEL_ENDPOINT`와 선택적 `MODEL_API_TOKEN`을 읽어 SERVING-v0.2의 `/v1/chat/completions`를 호출하고 기존 fake·contract mode 동작을 보존한다. R3 prompt·payload를 JSON으로 전달하며 temperature 0, `enable_thinking=false`, 최대 출력 제한을 고정한다. 응답 JSON은 기존 `ProductionModelClient`와 R3 schema를 통과한 뒤에만 R4 plan으로 변환한다. timeout·HTTP 오류·잘못된 JSON·schema 불일치·circuit open·fallback은 fake 성공으로 숨기지 않고 기존 Control Plane `MODEL_RESPONSE_INVALID` 안전 실패로 반환한다. Authorization header와 오류 본문은 log·trace·응답에 남기지 않는다. R4 unit·analysis regression·OpenAPI 회귀를 통과하되 실제 RunPod 재기동과 I3 전체 통과는 주장하지 않는다.
+ACCEPTANCE_IDS=AC1_EXPLICIT_OPENAI_MODE;AC2_SERVING_V02_REQUEST;AC3_SCHEMA_BEFORE_PLAN;AC4_FAILURE_IS_SAFE;AC5_SECRET_REDACTED;AC6_FAKE_CONTRACT_COMPAT;AC7_NO_GATE_DELEGATION;AC8_BACKEND_REGRESSION
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_production_model.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py; python -m compileall -q app/backend/app/adapters/contract_model.py app/backend/app/api/router.py; python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/jaehong/일일보고.md; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check origin/dev..HEAD
+TEST_COMMAND_IDS=T1_PRODUCTION_MODEL;T2_ANALYSIS_REGRESSION;T3_OPENAPI;T4_COMPILE;T5_REPORT;T6_ROLE_GATE;T7_DIFF_CHECK
+STOP_CONDITIONS=R3 schema·prompt·ProductionModelClient 수정 필요; endpoint가 권한·G1/G2/G3·SQL 실행을 판정해야 함; fake fallback을 제품 성공으로 반환해야 함; secret 출력·commit 필요; 허용 경로 밖 변경; dependency 설치·RunPod·비용·외부 데이터 전송 필요; 필수 검증 실패
+HANDOFF=R1에 MODEL_MODE별 선택, 실제 HTTP request·response schema, retry·timeout·fallback·circuit의 안전 실패, secret 비기록, backend 회귀와 R1 live endpoint trace에 필요한 실행 env를 전달
+EXTERNAL_ACTION_PERMISSION=SERVING-v0.2와 R3 runtime의 로컬 읽기, 허용 경로와 R4 개인 일일보고의 commit·jaehong push 승인; dependency 설치·RunPod resource·비용·secret 사용·외부 호출·dev merge 불가
+```
+
 ## Wave 4 상세 계획 카드
 
 Wave 4는 I4 Reporting 통합부터 RC1·리허설·I5 동결까지 포함한다. I4에서 기능 통합을 마친 뒤 신규 기능을 금지하고 Critical·High 결함과 release 회귀만 수행한다.
@@ -1723,6 +1754,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.74 | 2026-08-04 02:43 | R3 Base serving과 최종 dev CI `30837830356` PASS를 기준으로 R4-W3-F1을 READY 발행했다. 기존 ContractModelAdapter·ProductionModelClient를 재사용해 명시적 openai mode만 실제 endpoint를 호출하고, timeout·schema·circuit·fallback을 fake 성공이 아닌 Control Plane 안전 실패로 처리하도록 범위를 제한했다. RunPod 재기동·비용·secret·I3 통과는 승인하지 않았다. |
 | v2.73 | 2026-08-04 02:37 | R3-W3-F5의 고정 Qwen3-4B Base vLLM endpoint, initial readiness 101.623초, warm p95 725.808ms, peak 39,280 MiB, 동시 2건, 동일 revision 재시작과 ProductionModelClient 실패 trace를 검수해 dev에 통합했다. Branch CI의 REVIEW_REQUIRED는 청구 확정 지연·R4 change request·잔여 위험을 R1이 수동 수용했으며, 예상 신규 비용 USD 0.062802·누적 USD 1.015075·Pod 404·활성 0개를 확인했다. FastAPI 제품 연결과 I3 통과는 후속이다. |
 | v2.72 | 2026-08-04 02:11 | Base·LoRA 비교 뒤 남은 실제 serving 병목을 해소하기 위해 R3-W3-F5를 READY로 발행했다. Qwen3-4B Base 고정 revision의 vLLM endpoint·cold/warm·VRAM·동시 2건·재시작·ProductionModelClient 실패 trace를 요구하고, 이전 비용 USD 0.9523을 포함한 누적 USD 15 한도와 task Pod 삭제를 고정했다. FastAPI 제품 연결·I3 통과·LoRA 채택은 승인하지 않았다. |
 | v2.71 | 2026-08-04 01:53 | R1 terminal 판정을 동기화한 daesung corrective CI `30834157984`와 최종 dev CI `30834138561`, junhee CI `30834174015`가 모두 PASS해 R3-W3-F4의 최종 CI 근거를 확정했다. 최초 REVIEW_REQUIRED와 Base 유지 결정은 v2.70 이력에 보존한다. |

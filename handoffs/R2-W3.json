@@ -1,0 +1,106 @@
+{
+  "EXECUTION_BUNDLE_ID": "R2-W3",
+  "ROLE": "R2",
+  "BRANCH": "seung",
+  "BASE_SHA": "744592ab129ed44c0cfcf5cf860b8945b011a324",
+  "RESULT_SHA": "33e17dfc326c130edb9f0257070b0c575dcca52d",
+  "DIRECTIVE_TOKEN": "R2-W3@744592a",
+  "SYNCED_DEV_SHA": "d78259eb30bf952f2ec8245ad5ddfc5382ea376d",
+  "COMPLETED_CARDS": [
+    "R2-09",
+    "R2-10",
+    "R2-11",
+    "R2-12",
+    "R2-13",
+    "R2-14",
+    "R2-15",
+    "R2-16",
+    "R2-17",
+    "R2-18"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/seung/일일보고.md",
+    "infrastructure/database/datahub/recipes/banquet.i3.yml",
+    "infrastructure/database/datahub/recipes/facility.i3.yml",
+    "infrastructure/database/datahub/recipes/pos.i3.yml",
+    "infrastructure/database/scripts/verify-i3.ps1",
+    "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql",
+    "src/data/evaluation_fixture_manifest.i3.v1.json",
+    "src/data/i3_contract.v1.json",
+    "src/data/i3_watermarks.py",
+    "tests/data/test_i3_contract.py",
+    "tests/data/test_i3_watermarks.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "INPUT_CONTRACT_VERSION": "I2-v1.0.0",
+    "CONTRACT_VERSION": "I3-DATA-v1.0.0",
+    "SCHEMA_VERSION": "1.0.0",
+    "SEED_VERSION": "20260729",
+    "SCENARIO_VERSION": "1.0.0",
+    "WATERMARK_SHA256": "0e181c3f9f70b6a90bad79c90be392e3640e3f3fe454b488b4b4b2f20c10f614",
+    "TWO_SOURCE_GOLD_SHA256": "e6c2d1ee3ef2246180c9d6985a10e78c44829443acbeaeef9a1ec37c6f1e08fd",
+    "THREE_SOURCE_GOLD_SHA256": "5333602fe9d11b9c23be1833ec316e894f6ee55359185a0f9ea0052b18e56865"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_FIVE_CATALOGS",
+      "status": "PASS",
+      "evidence": "verify-i3.ps1 verified deterministic hashes for pms, pos, crm, facility, and banquet"
+    },
+    {
+      "id": "AC2_APPROVED_JOINS",
+      "status": "PASS",
+      "evidence": "approved 2-source and preaggregated 3-source SQL returned fixed cardinality-safe Gold hashes"
+    },
+    {
+      "id": "AC3_WATERMARK_HASH",
+      "status": "PASS",
+      "evidence": "five-source watermark fingerprint and changed-source invalidation input passed unit tests"
+    },
+    {
+      "id": "AC4_EVAL_FIXTURE",
+      "status": "PASS",
+      "evidence": "required30 30 cases and gold120 partial 5 cases passed schema, category-count, and split-leak checks"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "name": "python -m unittest discover -s tests/data -p \"test_*.py\" (20 passed)",
+      "status": "PASS"
+    },
+    {
+      "name": "powershell -NoProfile -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify.ps1",
+      "status": "PASS",
+      "evidence": "R2_SERVICE_FRAGMENT_VERIFIED, source row counts, I2_GOLD_HASH_VERIFIED, DATABASE_CONTRACT_VERIFIED"
+    },
+    {
+      "name": "powershell -NoProfile -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify-i3.ps1",
+      "status": "PASS",
+      "evidence": "5 catalog hashes, 2 Gold hashes, I3_DATABASE_CONTRACT_VERIFIED"
+    },
+    {
+      "name": "docker compose -f infrastructure/database/compose.yml config",
+      "status": "PASS",
+      "evidence": "configuration rendered; unset local env variables emitted blank-value warnings"
+    },
+    {
+      "name": "python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260803 docs/markdown/daily_reports/seung/일일보고.md",
+      "status": "PASS"
+    },
+    {
+      "name": "git diff --check",
+      "status": "PASS"
+    }
+  ],
+  "NOT_RUN": [
+    "DataHub ingestion runtime was not run because external image pull is prohibited; all five recipes remain CONFIG_VALIDATED."
+  ],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [
+    "DataHub Search/Graph/health and ingestion asset counts require a later approved runtime with the accepted DataHub images."
+  ],
+  "EXTERNAL_APPROVAL_REQUIRED": [
+    "Approve DataHub image availability before executing ingestion; do not pull images as part of R2-W3."
+  ],
+  "REQUESTED_DECISION": "dev 병합"
+}

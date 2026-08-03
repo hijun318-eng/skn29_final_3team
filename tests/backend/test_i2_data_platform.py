@@ -38,6 +38,27 @@ def test_trino_transport_sends_required_user_header():
     assert payload["id"] == "query-1"
 
 
+def test_finished_query_with_warnings_is_preserved_as_partial():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._trino.transport = lambda _method, _url, _body: {
+        "id": "query-partial",
+        "stats": {"state": "FINISHED"},
+        "columns": [{"name": "synthetic_value"}],
+        "data": [[1]],
+        "warnings": [{"message": "one source returned partial data"}],
+    }
+
+    result = adapter.execute_query(
+        "SELECT 1 AS synthetic_value LIMIT 1",
+        {},
+        "g2-token",
+    )
+
+    assert result["query_id"] == "query-partial"
+    assert result["status"] == "PARTIAL"
+    assert result["rows"] == [{"synthetic_value": 1}]
+
+
 def test_approved_i2_template_passes_g2_contract():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     support = PipelineSupport(adapter, ContextPackageBuilder())

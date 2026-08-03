@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from app.contracts import AnalysisRequest, AnalysisResponse, ErrorBody, RequestContext
+from app.context import ContextValidationError
+from app.contracts import AnalysisRequest, AnalysisResponse, ErrorCode, RequestContext
 from app.services.analysis_service import AnalysisService
 from app.services.routing_service import RoutingError, RoutingService
 
@@ -12,7 +13,11 @@ class AnalysisController:
 
     def submit(self, payload: AnalysisRequest, context: RequestContext) -> AnalysisResponse:
         try:
-            decision = self._routing.decide(payload)
+            decision = self._routing.decide(payload, context.role)
         except RoutingError as exc:
-            return self._service.blocked(context, ErrorBody(code=exc.code, message=exc.message))
+            raise ContextValidationError(
+                exc.code,
+                exc.message,
+                403 if exc.code == ErrorCode.ACCESS_DENIED else 422,
+            ) from exc
         return self._service.analyze(payload, context, decision)

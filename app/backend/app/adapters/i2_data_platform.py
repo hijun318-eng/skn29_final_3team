@@ -15,6 +15,24 @@ from src.data.i2_adapters import (
 )
 
 
+class _PartialAwareTrinoAdapter(TrinoAdapter):
+    @staticmethod
+    def _page(payload: dict[str, Any]) -> QueryPage:
+        try:
+            return TrinoAdapter._page(payload)
+        except AdapterError as error:
+            if error.code != AdapterErrorCode.PARTIAL:
+                raise
+            return QueryPage(
+                payload["id"],
+                payload.get("stats", {}).get("state", "QUEUED"),
+                tuple(item["name"] for item in payload.get("columns", [])),
+                tuple(tuple(row) for row in payload.get("data", [])),
+                payload.get("nextUri"),
+                tuple(item.get("message", "") for item in payload.get("warnings", [])),
+            )
+
+
 class I2DataPlatformAdapter:
     """R2 I2 contract를 R4 DataPlatform port로 연결한다."""
 
@@ -74,7 +92,10 @@ class I2DataPlatformAdapter:
 
     def __init__(self, trino_url: str, trino_user: str) -> None:
         self._trino_user = trino_user
-        self._trino = TrinoAdapter(trino_url, transport=self._request)
+        self._trino = _PartialAwareTrinoAdapter(
+            trino_url,
+            transport=self._request,
+        )
         self._queries: dict[str, dict[str, Any]] = {}
         self._next_uris: dict[str, str] = {}
 
@@ -154,15 +175,9 @@ class I2DataPlatformAdapter:
             page = self._trino.execute(bound_sql)
             result = self._collect(page)
         except AdapterError as error:
-            if error.code == AdapterErrorCode.PARTIAL and isinstance(
-                error.payload,
-                QueryPage,
-            ):
-                result = self._collect(error.payload, partial=True)
-            elif error.code == AdapterErrorCode.TIMEOUT:
+            if error.code == AdapterErrorCode.TIMEOUT:
                 raise TimeoutError(str(error)) from error
-            else:
-                raise ValueError(str(error)) from error
+            raise ValueError(str(error)) from error
         self._queries[result["query_id"]] = result
         return result
 
@@ -201,13 +216,7 @@ class I2DataPlatformAdapter:
             try:
                 page = self._trino.next_page(page.next_uri)
             except AdapterError as error:
-                if error.code != AdapterErrorCode.PARTIAL or not isinstance(
-                    error.payload,
-                    QueryPage,
-                ):
-                    raise
-                page = error.payload
-                partial = True
+                raise ValueError(str(error)) from error
             columns = page.columns or columns
             rows.extend(page.rows)
             warnings.extend(page.warnings)

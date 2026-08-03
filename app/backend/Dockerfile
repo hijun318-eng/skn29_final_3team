@@ -13,6 +13,7 @@ RUN pip install --disable-pip-version-check -r requirements.txt \
 COPY --chown=appuser:appuser app/backend/ .
 COPY --chown=appuser:appuser infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql migrations/sql/00_answervice_app_postgresql.sql
 COPY --chown=appuser:appuser infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql migrations/sql/i2_gold_recognized_room_revenue.sql
+COPY --chown=appuser:appuser config/access-policy.yaml config/access-policy.yaml
 COPY --chown=appuser:appuser src/ ./src/
 
 USER appuser

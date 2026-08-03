@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.60 |
-| 문서 기준일 | 2026-08-03 17:21 |
+| 버전 | v2.61 |
+| 문서 기준일 | 2026-08-03 17:28 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -184,6 +184,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `IN_PROGRESS` |
 | R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `MERGED_DEV` |
 | R2-W3-F1 | Wave 3 follow-up | R2 | 없음 → I3 | R2-18 평가 fixture 보강 | required30 결과 hash 연결·gold120 완성 | `MERGED_DEV` |
+| R2-W3-F2 | Wave 3 review follow-up | R2 | 없음 → I3 | R2-18 평가 승인 상태 동기화 | R1·R2·R3 reviewer와 APPROVED 상태 반영 | `READY` |
 | R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `MERGED_DEV` |
 | R3-W3-F1C | Wave 3 compatibility follow-up | R3 | 없음 → I3 | R3-10 평가 manifest 소비 호환 | partial/full gold count consumer 검증 | `MERGED_DEV` |
 | R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
@@ -1434,6 +1435,37 @@ DEV_MERGE_SHA=4825c0c4157a168ea6f5add214cb936235605063
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R5 개인 일일보고·handoff manifest의 commit·minji push 승인; dependency 설치·비용·배포·secret·외부 데이터 전송·dev merge 불가
 ```
 
+### R2-W3-F2
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W3-F2
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R2-18 평가 승인 상태 동기화
+CURRENT_TASK_CARD_ID=R2-18
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=98b84364a16828cd1543397a5ee6662735d879b3
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R2-W3-F2@98b8436
+DATA_CONTRACT_VERSION=I3-DATA-v1.1.0-DRAFT
+EVALUATION_MANIFEST_VERSION=EVAL-DATA-I3-v1.1.0-DRAFT
+R1_R3_REVIEW_EVIDENCE=required30 30건·gold120 120건 전수 질문 검토; 중복 0·split 누수 0·필수 필드 누락 0; data 21건·AI 32건·integration 23건 PASS
+ALLOWED_PATHS=src/data/evaluation_fixture_manifest.i3.v1.json; tests/data/test_i3_contract.py
+FORBIDDEN_PATHS=질문·정답 SQL·result hash·category·split·evidence 내용; infrastructure/database/**; app/backend/**; src/ai/**; evals/**; frontend·Report; root Compose·CI; R1/R3/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=150건의 질문·정답·근거·version·분할을 변경하지 않고 reviewers를 R1:REVIEWED|R2:REVIEWED|R3:REVIEWED, status를 APPROVED로 동기화하며 data·AI consumer 회귀와 역할 범위를 통과
+ACCEPTANCE_IDS=AC1_REVIEWER_SYNC;AC2_APPROVED_STATUS;AC3_CONTENT_IMMUTABLE;AC4_CONSUMER_REGRESSION
+TEST_COMMANDS=python -m json.tool src/data/evaluation_fixture_manifest.i3.v1.json; python -m unittest discover -s tests/data -p "test_*.py"; python -m unittest discover -s tests/ai -p "test_*.py"; python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_JSON;T2_DATA_TESTS;T3_AI_TESTS;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=질문·정답·근거·version·분할 변경 필요; 일부 case 승인 불가; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R1에 reviewer/status 변경 수량, content 무변경 diff, data·AI·role gate 결과를 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff manifest의 commit·seung push 승인; dependency 설치·외부 image pull·model download·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
+
 ## Wave 4 상세 계획 카드
 
 Wave 4는 I4 Reporting 통합부터 RC1·리허설·I5 동결까지 포함한다. I4에서 기능 통합을 마친 뒤 신규 기능을 금지하고 Critical·High 결함과 release 회귀만 수행한다.
@@ -1526,6 +1558,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.61 | 2026-08-03 17:28 | 평가 150건의 전수 질문·범주·기대 결과와 자동 검증을 대조해 R1 업무 검토와 R3 계약 소비 검토를 승인했다. 질문·정답·근거는 보존하고 reviewer/status만 동기화하는 R2-W3-F2를 dev `98b8436` 기준으로 발행했으며 model download·비용 권한은 승인하지 않았다. |
 | v2.60 | 2026-08-03 17:21 | 구현·handoff·branch CI·dev 병합이 완료된 R2-W3-F1과 R3-W3-F1C의 요약·상세 상태를 `MERGED_DEV`로 정합화하고 실제 구현·CI·병합 SHA를 기록했다. I3 통합 판정과 외부 model 권한은 변경하지 않았다. |
 | v2.59 | 2026-08-03 17:15 | R5-W3-F1C에서 Catalog 계약 상수 한 곳을 `I3-DATA-v1.1.0-DRAFT`로 맞추고 minji CI `30796547226`의 production build·frontend contract·Python·문서·역할 범위 통과를 확인한 뒤 dev `4825c0c`에 통합했다. 제품 동작·R2 계약·외부 권한은 변경하지 않았다. |
 | v2.58 | 2026-08-03 17:05 | `origin/dev`가 minji 기획서 재구성 병합 `3d6bed7`로 전진했고 CI `30794421419`에서 같은 frontend I3 계약 상수 불일치가 재현됐다. R5-W3-F1C를 `R5-W3-F1C@3d6bed7`로 재발행하며 허용 경로·수용 조건·외부 권한은 변경하지 않았다. |

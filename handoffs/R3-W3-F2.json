@@ -1,0 +1,116 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R3-W3-F2",
+  "ROLE": "R3",
+  "BRANCH": "daesung",
+  "BASE_SHA": "65254239ee803369c846031d5cf45ee81aad7760",
+  "SYNCED_DEV_SHA": "956e566ca4186a8f67a3d7d8f15c3c447f76b564",
+  "RESULT_SHA": "45cf61c67208bf24c50f3370b46d985fc5349588",
+  "DIRECTIVE_TOKEN": "R3-W3-F2@6525423",
+  "COMPLETED_CARDS": [
+    "R3-10 학습 데이터 재생성·검증 도구 반입"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/daesung/일일보고.md",
+    "src/ai/training/README.md",
+    "src/ai/training/__init__.py",
+    "src/ai/training/build_case_specs.py",
+    "src/ai/training/case_specs.example.jsonl",
+    "src/ai/training/dataset.py",
+    "src/ai/training/evaluate_lora.py",
+    "src/ai/training/generate_scenarios.py",
+    "src/ai/training/requirements.txt",
+    "src/ai/training/train_lora.py",
+    "src/ai/training/verify_case_specs.py",
+    "tests/ai/test_training_dataset.py",
+    "tests/ai/test_training_scenarios.py",
+    "tests/ai/test_training_verification.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "MODEL_CONTRACT_VERSION": "MODEL-v1.0.0",
+    "PROMPT_VERSION": "PROMPT-v1.0.0",
+    "TRAINING_PACKAGE_SOURCE_SHA256": "694ddcf4fe2f5d912383f9d871f33e153fd44ed751c4cdc111e72a72311f7c5d",
+    "QWEN_DATASET_SHA256": "be7baa0c5e321c76d395fc7b88073b59a95cc791f0a5b3d32ffa275e4c55eb18"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_PACKAGE_CONTENTS",
+      "status": "PASS",
+      "evidence": "training source·README·example·requirements 10개를 src/ai/training에 반입"
+    },
+    {
+      "id": "AC2_NO_COMPILED_CACHE",
+      "status": "PASS",
+      "evidence": "archive의 __pycache__·pyc 8개를 제외하고 Git 변경 경로에 compiled cache 0건"
+    },
+    {
+      "id": "AC3_DATASET_VALIDATE",
+      "status": "PASS",
+      "evidence": "Qwen JSONL 1,350건, train 1,200·validation 150 validate 통과"
+    },
+    {
+      "id": "AC4_REPRODUCIBLE_BUILD",
+      "status": "PASS",
+      "evidence": "TrinoPASS 원본 재빌드 SHA-256이 제공 Qwen JSONL be7baa0c5e321c76d395fc7b88073b59a95cc791f0a5b3d32ffa275e4c55eb18과 일치"
+    },
+    {
+      "id": "AC5_AI_REGRESSION",
+      "status": "PASS",
+      "evidence": "training 전용 test를 포함한 AI unittest 41건 통과"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_AST",
+      "name": "Python AST parse src/ai/training/*.py",
+      "status": "PASS",
+      "evidence": "Python source 7개 파싱 통과"
+    },
+    {
+      "id": "T2_DATASET_VALIDATE",
+      "name": "python -m src.ai.training.dataset validate <Qwen JSONL>",
+      "status": "PASS",
+      "evidence": "1,350건 validate 통과"
+    },
+    {
+      "id": "T3_REBUILD_HASH",
+      "name": "python -m src.ai.training.dataset build <TrinoPASS JSONL> <temp output> 후 SHA-256 비교",
+      "status": "PASS",
+      "evidence": "재빌드와 제공 Qwen JSONL SHA-256 일치"
+    },
+    {
+      "id": "T4_TRAIN_HELP",
+      "name": "python -m src.ai.training.train_lora --help",
+      "status": "PASS",
+      "evidence": "CLI 인자 파싱 성공"
+    },
+    {
+      "id": "T5_EVAL_HELP",
+      "name": "python -m src.ai.training.evaluate_lora --help",
+      "status": "PASS",
+      "evidence": "CLI 인자 파싱 성공"
+    },
+    {
+      "id": "T6_AI_TESTS",
+      "name": "python -m unittest discover -s tests/ai -p test_*.py",
+      "status": "PASS",
+      "evidence": "41건 통과"
+    },
+    {
+      "id": "T7_ROLE_GATE",
+      "name": "python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS",
+      "evidence": "허용 경로 14개 역할 범위 통과"
+    },
+    {
+      "id": "T8_DIFF_CHECK",
+      "name": "git diff --check origin/dev..HEAD",
+      "status": "PASS",
+      "evidence": "공백 오류 없음"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": []
+}

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.48 |
-| 문서 기준일 | 2026-08-03 13:54 |
+| 버전 | v2.49 |
+| 문서 기준일 | 2026-08-03 14:18 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -181,7 +181,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R5-W2 | Wave 2·08/10~08/14 | R5 | 없음 → I2 | R5-03~07 | Chat·상태·Evidence·표·차트·Artifact bridge | `MERGED_DEV` |
 | R5-W2-F1 | Wave 2 follow-up | R5 | 없음 → I2 | R5-04 source 실패 표시 보완 | API `retryable` 표시·R4 timeout fixture 소비 | `MERGED_DEV` |
 | R5-W2-F2 | Wave 2 follow-up | R5 | 없음 → I2 | R5-01·03~07 실제 API 보완 | production HTTP client·실제 backend 화면 trace | `MERGED_DEV` |
-| R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `READY` |
+| R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `IN_PROGRESS` |
 | R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `READY` |
 | R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `READY` |
 | R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `READY` |
@@ -1153,7 +1153,7 @@ Wave 3는 I2에서 검증한 전체 왕복을 5 source와 실제 general LLM 경
 ### R1-W3
 
 ```text
-STATUS=READY
+STATUS=IN_PROGRESS
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1170,6 +1170,7 @@ DIRECTIVE_TOKEN=R1-W3@744592a
 I2_GATE_VERSION=I2-v1.0.0
 CONTRACT_VERSION=I1-v1.0.0
 BASE_DEV_CI_EVIDENCE=GitHub Actions run 30785580556 PASS
+R1_START_EVIDENCE=origin/dev 1c57797789b040932fc6a02c3f45294d99bc0347·GitHub Actions run 30786041244 PASS; integration 23건·Gate dashboard·문서 정책 PASS; required30 0/30·gold120 0/120으로 생산자 handoff 대기
 ALLOWED_PATHS=.github/**; compose*.yml; .env.example; .dockerignore; config/access-policy.yaml; tests/integration/**; docs/Answervice_기획서.md; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=필수 30건 expected 결과와 reviewer를 확인하고 일반 질문 subset에서 schema-only·DataHub metadata·승인 Context 세 조건 및 Base model을 동일 질문·데이터·권한으로 비교하며 repair 최대 1회, 비승인 SQL·Context 밖 참조·G3 실패 설명을 차단하고 I3 통합 trace를 판정
@@ -1398,6 +1399,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.49 | 2026-08-03 14:18 | 최신 dev `1c57797`·CI run `30786041244` PASS와 통합 23건·Gate dashboard·문서 정책 검증을 확인하고 R1-W3를 `IN_PROGRESS`로 전환했다. R2~R5 지시를 Google Docs 섹션 9에 역할별로 발행했으며 required30 0/30·gold120 0/120과 외부 model·비용·secret 미승인 상태를 유지했다. |
 | v2.48 | 2026-08-03 13:54 | I2 통합 dev 744592a와 CI run 30785580556 PASS를 기준으로 R1~R5 Wave 3 묶음을 READY 발행했다. 역할별 허용 경로·수용/검증 ID·중단 조건·개인 branch commit·push 권한을 고정하고 model download·RunPod·비용·secret·외부 배포·데이터 전송은 승인하지 않았다. |
 | v2.47 | 2026-08-03 13:30 | R5-W2-F2 제품 `dae606f`·최종 `ab1d725`의 production HTTP client, 실제 browser 성공·재질문·차단·source 실패 trace, build·contract·branch CI `30782796303` PASS를 확인해 dev `56cbf08`에 통합하고 dev CI `30784368551` PASS를 확인했다. R1 통합 22건과 DB·Trino·화면 네 runtime 근거를 전수 대조해 R5-W2-F2를 MERGED_DEV, R1-W2를 I2 VERIFIED_GATE로 전환했으며 필수 30·Gold 120 전체 세트는 0/30·0/120 진행 상태로 유지했다. |
 | v2.46 | 2026-08-03 12:28 | R4-W2-F3 제품 `3f8a2cf`·handoff `51947de`의 immutable migration, built image blank/existing DB normal entrypoint, readiness·실제 Trino·cleanup과 branch CI `30781472877`를 확인해 dev `158a493`에 통합했다. R5의 보존된 frontend diff를 최신 dev에 동기화해 browser trace를 재개하는 `R5-W2-F2-RESUME@158a493`을 발행했다. |

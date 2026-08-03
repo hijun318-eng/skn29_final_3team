@@ -97,8 +97,8 @@ class I3ContractTest(unittest.TestCase):
             self.assertTrue(item["evidence"])
             for path in item["evidence"]:
                 self.assertTrue((ROOT / path).is_file(), f"missing evidence: {path}")
-            self.assertEqual("REVIEW", item["status"])
-            self.assertEqual("R1:PENDING|R2:REVIEWED|R3:PENDING", item["reviewers"])
+            self.assertEqual("APPROVED", item["status"])
+            self.assertEqual("R1:REVIEWED|R2:REVIEWED|R3:REVIEWED", item["reviewers"])
         self.assertTrue(all(len(value) == 1 for value in splits.values()))
 
     def test_success_results_resolve_to_contract_sql_and_hashes(self):

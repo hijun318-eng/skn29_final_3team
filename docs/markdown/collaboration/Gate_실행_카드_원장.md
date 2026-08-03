@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.59 |
-| 문서 기준일 | 2026-08-03 17:15 |
+| 버전 | v2.60 |
+| 문서 기준일 | 2026-08-03 17:21 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -183,9 +183,9 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R5-W2-F2 | Wave 2 follow-up | R5 | 없음 → I2 | R5-01·03~07 실제 API 보완 | production HTTP client·실제 backend 화면 trace | `MERGED_DEV` |
 | R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `IN_PROGRESS` |
 | R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `MERGED_DEV` |
-| R2-W3-F1 | Wave 3 follow-up | R2 | 없음 → I3 | R2-18 평가 fixture 보강 | required30 결과 hash 연결·gold120 완성 | `READY` |
+| R2-W3-F1 | Wave 3 follow-up | R2 | 없음 → I3 | R2-18 평가 fixture 보강 | required30 결과 hash 연결·gold120 완성 | `MERGED_DEV` |
 | R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `MERGED_DEV` |
-| R3-W3-F1C | Wave 3 compatibility follow-up | R3 | 없음 → I3 | R3-10 평가 manifest 소비 호환 | partial/full gold count consumer 검증 | READY |
+| R3-W3-F1C | Wave 3 compatibility follow-up | R3 | 없음 → I3 | R3-10 평가 manifest 소비 호환 | partial/full gold count consumer 검증 | `MERGED_DEV` |
 | R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
 | R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
 | R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `MERGED_DEV` |
@@ -1251,13 +1251,16 @@ TEST_COMMANDS=python -m json.tool src/data/evaluation_fixture_manifest.i3.v1.jso
 TEST_COMMAND_IDS=T1_JSON;T2_DATA_TESTS;T3_AI_CONSUMER;T4_ROLE_GATE;T5_DIFF_CHECK
 STOP_CONDITIONS=실제 고객·외부 데이터 필요; 승인되지 않은 JOIN·새 원천·schema 변경 필요; expected result hash 불일치; category·split·evidence 검증 실패; 허용 경로 밖 변경 필요; 필수 검증 실패
 HANDOFF=R3에 EVAL-DATA-I3-v1.1.0 manifest와 case→SQL/result hash 해석 계약을, R1에 required30·gold120 범주별 수량·검증·미실행 항목을 전달
+IMPLEMENTATION_SHA=46bcb74faa3338f9917e586bd7a6fe38cbe45e5e
+SOURCE_CI_EVIDENCE=GitHub Actions run 30793635759 PASS
+DEV_MERGE_SHA=078651fb3b5c4df62c34ddd193d1dc718522ddfe
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff manifest의 commit·seung push 승인; dependency 설치·외부 image pull·비용·배포·secret·외부 데이터 전송·dev merge 불가
 ```
 
 ### R3-W3-F1C
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -1283,6 +1286,9 @@ TEST_COMMANDS=python -m compileall -q evals tests/ai; python -m unittest discove
 TEST_COMMAND_IDS=T1_COMPILE;T2_AI_TESTS;T3_DATA_CONSUMER;T4_ROLE_GATE;T5_DIFF_CHECK
 STOP_CONDITIONS=R2 manifest schema 변경 필요; required30=30·gold target=120 경계 완화 필요; runtime·Node 동작 변경 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
 HANDOFF=R2에 partial/full count를 모두 소비하는 검증 기준을, R1에 변경 전후 테스트와 runtime 무변경 증거를 전달
+IMPLEMENTATION_SHA=5ad22eeb366c5bda56ece201574d94255bfe1c0a
+SOURCE_CI_EVIDENCE=GitHub Actions run 30793002152 PASS
+DEV_MERGE_SHA=1ac9c5de4a6dd620bea00d5b787c16b9b0d7053e
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고·handoff manifest의 commit·daesung push 승인; dependency 설치·model download·RunPod·비용·배포·secret·외부 데이터 전송·dev merge 불가
 ```
 ### R3-W3
@@ -1520,6 +1526,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.60 | 2026-08-03 17:21 | 구현·handoff·branch CI·dev 병합이 완료된 R2-W3-F1과 R3-W3-F1C의 요약·상세 상태를 `MERGED_DEV`로 정합화하고 실제 구현·CI·병합 SHA를 기록했다. I3 통합 판정과 외부 model 권한은 변경하지 않았다. |
 | v2.59 | 2026-08-03 17:15 | R5-W3-F1C에서 Catalog 계약 상수 한 곳을 `I3-DATA-v1.1.0-DRAFT`로 맞추고 minji CI `30796547226`의 production build·frontend contract·Python·문서·역할 범위 통과를 확인한 뒤 dev `4825c0c`에 통합했다. 제품 동작·R2 계약·외부 권한은 변경하지 않았다. |
 | v2.58 | 2026-08-03 17:05 | `origin/dev`가 minji 기획서 재구성 병합 `3d6bed7`로 전진했고 CI `30794421419`에서 같은 frontend I3 계약 상수 불일치가 재현됐다. R5-W3-F1C를 `R5-W3-F1C@3d6bed7`로 재발행하며 허용 경로·수용 조건·외부 권한은 변경하지 않았다. |
 | v2.57 | 2026-08-03 16:57 | R2-W3-F1 통합 뒤 dev CI `30793737827`에서 R5 Catalog fixture의 I3 data contract 상수만 이전 버전으로 남은 소비자 호환 실패를 확인했다. dev `078651f` 기준 R5-W3-F1C를 READY 발행해 상수 동기화와 frontend contract·build 회귀만 승인하며 R2 계약과 UI 동작은 변경하지 않는다. |

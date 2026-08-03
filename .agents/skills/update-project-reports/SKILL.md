@@ -7,8 +7,6 @@ description: Update and validate plain-language personal daily reports, presenta
 
 Use `docs/markdown/daily_reports/README.md` as the canonical source for branch mapping, report evidence, formats, periods, and limits.
 
-Resolve the repository root with `git rev-parse --show-toplevel` and use it as the working directory for every command. Require Git and a Python 3.10+ launcher (`python` or `python3`) before using bundled scripts.
-
 ## Select the mode
 
 - **Personal completion:** After a non-report repository change on a recognized personal branch, update only that branch's `일일보고.md`.

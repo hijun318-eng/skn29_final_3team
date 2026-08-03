@@ -20,15 +20,14 @@ This skill updates WBS content only. It does not stage, commit, push, merge, or 
 
 ## Workflow
 
-1. Confirm the repository root, current branch, and working tree. Preserve unrelated changes.
-2. Require `docs/markdown/02_WBS.md` to exist. If it is missing, stop instead of recreating it. Read it and the relevant active contract or changed files.
-3. Apply `.agents/skills/manage-project-documents/SKILL.md` because the WBS is a numbered deliverable document.
-4. Map the completed work to the narrowest existing execution WBS row. Add a row only when no existing task represents the work, following the document's current phase and ID scheme.
-5. Record only verified status, actual dates, evidence, and deliverables. Do not mark a task complete merely because documentation changed.
-6. Add one concise work-log entry with the applicable WBS ID and changed paths.
-7. When a task row, date, or status changes, synchronize every affected view: execution WBS, phase summary and total count, eight-week schedule, Mermaid Gantt, and deliverable schedule. A work-log-only change does not require artificial schedule changes.
-8. Update the common metadata header and bottom change history with the actual editor and current Asia/Seoul time.
-9. Run the document-policy validator and `<python> .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md`, then run `git diff --check` and review the final diff.
+1. Require `docs/markdown/02_WBS.md` to exist. If it is missing, stop instead of recreating it. Read it and the relevant active contract or changed files.
+2. Apply `.agents/skills/manage-project-documents/SKILL.md` because the WBS is a numbered deliverable document.
+3. Map the completed work to the narrowest existing execution WBS row. Add a row only when no existing task represents the work, following the document's current phase and ID scheme.
+4. Record only verified status, actual dates, evidence, and deliverables. Do not mark a task complete merely because documentation changed.
+5. Add one concise work-log entry with the applicable WBS ID and changed paths.
+6. When a task row, date, or status changes, synchronize every affected view: execution WBS, phase summary and total count, eight-week schedule, Mermaid Gantt, and deliverable schedule. A work-log-only change does not require artificial schedule changes.
+7. Update the common metadata header and bottom change history with the actual editor and current Asia/Seoul time.
+8. Run the document-policy validator and `<python> .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md`, then run `git diff --check` and review the final diff.
 
 ## Guardrails
 

@@ -7,12 +7,11 @@ description: Inspect the current repository's staged Git changes and draft one d
 
 ## Workflow
 
-1. Run `git rev-parse --show-toplevel`, `git branch --show-current`, and `git status --short`.
-2. Run `git diff --cached --name-status`, `git diff --cached --numstat`, `git diff --cached --check`, and `git log -5 --pretty=format:%s` before loading the full diff.
-3. Stop when the staged diff is empty or contains unmerged paths. Warn about binary, oversized, secret-like, generated-data, protected-template, or unrelated staged paths.
-4. Run `git diff --cached` only after the staged scope is safe to inspect. Describe only staged changes.
-5. Group the staged diff into one to five distinct work items without splitting one change into repetitive bullets. Use verified test results from the current context only; otherwise record validation as `미실행`.
-6. Choose the type and scope from the primary intent, then produce one best message.
+1. Run `git diff --cached --name-status`, `git diff --cached --numstat`, `git diff --cached --check`, and `git log -5 --pretty=format:%s` before loading the full diff.
+2. Stop when the staged diff is empty or contains unmerged paths. Warn about binary, oversized, secret-like, generated-data, protected-template, or unrelated staged paths.
+3. Run `git diff --cached` only after the staged scope is safe to inspect. Describe only staged changes.
+4. Group the staged diff into one to five distinct work items without splitting one change into repetitive bullets. Use verified test results from the current context only; otherwise record validation as `미실행`.
+5. Choose the type and scope from the primary intent, then produce one best message.
 
 ## Message Format
 

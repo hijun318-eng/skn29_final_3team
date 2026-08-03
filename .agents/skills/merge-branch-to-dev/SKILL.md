@@ -13,13 +13,13 @@ An explicit personal-branch-to-`dev` request authorizes only the target branch p
 
 ## Workflow
 
-1. Resolve exactly one source from `junhee`, `minji`, `seung`, `daesung`, or `jaehong`. If the user did not name it, use the current branch only when it is one of those five; otherwise stop.
+1. Resolve exactly one source from the personal branches mapped in the canonical Git policy. If the user did not name it, use the current branch only when it is mapped there; otherwise stop.
 2. Confirm the source work is committed and the working tree is clean. Push the source, fetch origin, then run:
    `<python> .agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py --source <branch> --phase source`
 3. Switch to `dev`, require a clean tree, fetch origin, and run `git pull --ff-only origin dev`.
 4. Require exact local/remote `dev` equality and record `base=$(git rev-parse dev)`. Run the preflight script with `--phase dev`.
 5. Merge `origin/<branch>` and record `head=$(git rev-parse HEAD)`. On any conflict, stop before report generation or push and report the conflicted paths. Do not resolve without a new explicit instruction.
-6. Load `.agents/skills/update-project-reports/SKILL.md` and apply its post-merge mode with `source=<branch>`, `base=<base>`, and `head=<head>`. Validate the affected date summaries and cumulative weekly reports.
+6. Apply the report Skill's post-merge mode with `source=<branch>`, `base=<base>`, and `head=<head>`. Validate the affected date summaries and cumulative weekly reports.
 7. Stage only the returned `docs/markdown/daily_reports/team_summaries/` paths. Review the staged diff. If it is non-empty, create one report-only team-format commit; otherwise skip it.
 8. Recheck `git diff --check` and report limits. Fetch origin, then run `<python> .agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py --source <branch> --phase final --base <base>`.
 9. Push `dev`, then verify `dev` and `origin/dev` resolve to the same commit.

@@ -7,15 +7,6 @@ description: Update and validate this repository's execution WBS, schedule views
 
 Keep `docs/markdown/02_WBS.md` aligned with completed repository work without inventing progress, dates, owners, or scope.
 
-## Decide whether to run
-
-Run this skill when verified work changes the schedule, status, owner, deliverable, or evidence of an execution WBS task, or when the user explicitly requests a WBS update. Skip it when:
-
-- no repository file changed;
-- only a personal daily report, date-based team summary, or weekly report changed;
-- the requested work is investigation or explanation only.
-- a routine document, code, or configuration change has no effect on an execution WBS task.
-
 This skill updates WBS content only. It does not stage, commit, push, merge, or update project reports.
 
 ## Workflow
@@ -27,15 +18,7 @@ This skill updates WBS content only. It does not stage, commit, push, merge, or 
 5. Add one concise work-log entry with the applicable WBS ID and changed paths.
 6. When a task row, date, or status changes, synchronize every affected view: execution WBS, phase summary and total count, eight-week schedule, Mermaid Gantt, and deliverable schedule. A work-log-only change does not require artificial schedule changes.
 7. Update the common metadata header and bottom change history with the actual editor and current Asia/Seoul time.
-8. Run the document-policy validator and `<python> .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md`, then run `git diff --check` and review the final diff.
-
-## Guardrails
-
-- Treat `docs/markdown/02_WBS.md` as the schedule source of truth; do not duplicate its task table inside this skill.
-- Keep template-required structure intact and inspect the mapped WBS template when structural fields change.
-- Do not infer an author, owner, completion percentage, schedule shift, or deliverable state.
-- Treat `docs/markdown/ai_docs/` as reference material and do not use it to override the active WBS; do not edit protected originals under `docs/templates/`.
-- Avoid recursive records: WBS updates caused solely by report maintenance are excluded.
+8. After the document Skill validations, run `<python> .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md` and review the final diff.
 
 ## Completion report
 

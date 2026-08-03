@@ -1,0 +1,69 @@
+{
+  "contract_version": "I3-DATA-v1.0.0",
+  "input_contract_version": "I2-v1.0.0",
+  "schema_version": "1.0.0",
+  "seed_version": "20260729",
+  "scenario_version": "1.0.0",
+  "metadata": {
+    "owner": "R2",
+    "domain": "hotel-analytics",
+    "tags": ["synthetic", "I3-DATA-v1.0.0"],
+    "recipes": [
+      {"source_id":"pms","file":"infrastructure/database/datahub/recipes/pms.i2.yml","platform_instance":"pms","ingestion_id":"R2-W3-pms-I3-v1","status":"CONFIG_VALIDATED","dataset_urn":"urn:li:dataset:(urn:li:dataPlatform:postgres,pms.public.pms_stays,PROD)","fqn":"pms.public.pms_stays"},
+      {"source_id":"pos","file":"infrastructure/database/datahub/recipes/pos.i3.yml","platform_instance":"pos","ingestion_id":"R2-W3-pos-I3-v1","status":"CONFIG_VALIDATED","dataset_urn":"urn:li:dataset:(urn:li:dataPlatform:mysql,pos.pos_db.pos_orders,PROD)","fqn":"pos.pos_db.pos_orders"},
+      {"source_id":"crm","file":"infrastructure/database/datahub/recipes/crm.i2.yml","platform_instance":"crm","ingestion_id":"R2-W3-crm-I3-v1","status":"CONFIG_VALIDATED","dataset_urn":"urn:li:dataset:(urn:li:dataPlatform:mssql,crm.dbo.crm_member_grade_history,PROD)","fqn":"crm.dbo.crm_member_grade_history"},
+      {"source_id":"facility","file":"infrastructure/database/datahub/recipes/facility.i3.yml","platform_instance":"facility","ingestion_id":"R2-W3-facility-I3-v1","status":"CONFIG_VALIDATED","dataset_urn":"urn:li:dataset:(urn:li:dataPlatform:clickhouse,facility.facility.facility_events,PROD)","fqn":"facility.facility.facility_events"},
+      {"source_id":"banquet","file":"infrastructure/database/datahub/recipes/banquet.i3.yml","platform_instance":"banquet","ingestion_id":"R2-W3-banquet-I3-v1","status":"CONFIG_VALIDATED","dataset_urn":"urn:li:dataset:(urn:li:dataPlatform:postgres,banquet.public.banquet_bookings,PROD)","fqn":"banquet.public.banquet_bookings"}
+    ],
+    "lineage": [
+      {"downstream":"serving.analytics.gold_recognized_room_revenue_mom","upstream":["pms.public.pms_stays","pms.public.pms_reservations","pms.public.pms_guests","crm.dbo.crm_customer_map","crm.dbo.crm_member_grade_history"]},
+      {"downstream":"serving.analytics.gold_total_guest_revenue_mom","upstream":["pms.public.pms_stays","pms.public.pms_reservations","pms.public.pms_guests","crm.dbo.crm_customer_map","crm.dbo.crm_member_grade_history","pos.pos_db.pos_orders"]}
+    ]
+  },
+  "catalog_checks": [
+    {"source_id":"pms","fqn":"pms.public.pms_stays","query":"SELECT 'pms', count(*), cast(max(source_updated_at) AS varchar) FROM pms.public.pms_stays","canonical_row":"pms|167071|2026-07-28 05:00:00.000000 UTC","sha256":"f434a44615cd29f83505e1c3167ada3024b4da3c0ef0cc2d01bd4a137c1324eb"},
+    {"source_id":"pos","fqn":"pos.pos_db.pos_orders","query":"SELECT 'pos', count(*), cast(max(source_updated_at) AS varchar) FROM pos.pos_db.pos_orders","canonical_row":"pos|320000|2026-07-27 20:59:00.000","sha256":"109d654dc794f9b0ccb651a1a3528937448ad9b432741f77c7b216bb98faeb4d"},
+    {"source_id":"crm","fqn":"crm.dbo.crm_members","query":"SELECT 'crm', count(*), cast(max(source_updated_at) AS varchar) FROM crm.dbo.crm_members","canonical_row":"crm|80000|2026-07-28 05:00:00.000","sha256":"7550356043cb0a16dd6969888aed45f4c95239516f909e9bcc16498ed4644108"},
+    {"source_id":"facility","fqn":"facility.facility.facility_events","query":"SELECT 'facility', count(*), cast(max(source_updated_at) AS varchar) FROM facility.facility.facility_events","canonical_row":"facility|700000|2026-07-27 20:57:00","sha256":"590cd93ea8694c271324baa130c10b32ab12724d337164edd85bf295d27068aa"},
+    {"source_id":"banquet","fqn":"banquet.public.banquet_bookings","query":"SELECT 'banquet', count(*), cast(max(source_updated_at) AS varchar) FROM banquet.public.banquet_bookings","canonical_row":"banquet|6000|2026-07-28 05:00:00.000000 UTC","sha256":"9e88912ab147c6e8963c376e34eb7102e7249e27fc57822da69ffc9983eb9b85"}
+  ],
+  "type_mappings": [
+    {"source":"pms.public.pms_stays.room_revenue","source_type":"numeric(14,2)","trino_type":"decimal(14,2)","semantic_type":"money_krw","lossless":true},
+    {"source":"pms.public.pms_stays.actual_checkout_at","source_type":"timestamptz","trino_type":"timestamp(3) with time zone","semantic_type":"event_time","lossless":true},
+    {"source":"pos.pos_db.pos_orders.net_amount","source_type":"decimal(14,2)","trino_type":"decimal(14,2)","semantic_type":"money_krw","lossless":true},
+    {"source":"pos.pos_db.pos_orders.void_flag","source_type":"boolean","trino_type":"tinyint","semantic_type":"boolean_0_or_1","lossless":true},
+    {"source":"crm.dbo.crm_customer_map.member_no","source_type":"varchar(36)","trino_type":"varchar","semantic_type":"source_local_id","lossless":true},
+    {"source":"crm.dbo.crm_member_grade_history.valid_from","source_type":"datetime2(3)","trino_type":"timestamp(3)","semantic_type":"valid_time","lossless":true},
+    {"source":"facility.facility.facility_events.source_updated_at","source_type":"DateTime64(3, UTC)","trino_type":"timestamp(3)","semantic_type":"watermark_utc","lossless":true},
+    {"source":"banquet.public.banquet_revenue.revenue_amount","source_type":"numeric(14,2)","trino_type":"decimal(14,2)","semantic_type":"money_krw","lossless":true},
+    {"source":"banquet.public.banquet_bookings.source_updated_at","source_type":"timestamptz","trino_type":"timestamp(3) with time zone","semantic_type":"watermark_utc","lossless":true}
+  ],
+  "approved_joins": [
+    {"join_id":"pms_stay_to_crm_membership_grade_event_time_v1","sources":["pms","crm"],"cardinality":"many_to_zero_or_one","event_time_fields":["pms.public.pms_stays.actual_checkout_at"],"null_policy":"exclude rows without an event-time-valid GOLD grade","amplification_limit":1,"sql_file":"infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"},
+    {"join_id":"pms_crm_pos_gold_revenue_month_v1","sources":["pms","crm","pos"],"cardinality":"preaggregate_then_one_to_one_month","event_time_fields":["pms.public.pms_stays.actual_checkout_at","pos.pos_db.pos_orders.ordered_at"],"null_policy":"exclude source rows without an event-time-valid GOLD grade; retain a month present in either aggregate","amplification_limit":1,"sql_file":"infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"}
+  ],
+  "gold_fixtures": [
+    {"id":"gold_recognized_room_revenue_mom","join_id":"pms_stay_to_crm_membership_grade_event_time_v1","canonical_format":"month|recognized_room_revenue_krw\n","rows":[["2026-05","218275200.00"],["2026-06","180813600.00"]],"sha256":"e6c2d1ee3ef2246180c9d6985a10e78c44829443acbeaeef9a1ec37c6f1e08fd"},
+    {"id":"gold_total_guest_revenue_mom","join_id":"pms_crm_pos_gold_revenue_month_v1","canonical_format":"month|room_revenue_krw|fnb_revenue_krw|total_guest_revenue_krw\n","rows":[["2026-05","218275200.00","39326900.00","257602100.00"],["2026-06","180813600.00","37556700.00","218370300.00"]],"sha256":"5333602fe9d11b9c23be1833ec316e894f6ee55359185a0f9ea0052b18e56865"}
+  ],
+  "watermark_set": {
+    "canonical_format":"source_id|watermark_utc\n sorted by source_id",
+    "values":{"banquet":"2026-07-28T05:00:00.000Z","crm":"2026-07-28T05:00:00.000Z","facility":"2026-07-27T20:57:00.000Z","pms":"2026-07-28T05:00:00.000Z","pos":"2026-07-27T20:59:00.000Z"},
+    "sha256":"0e181c3f9f70b6a90bad79c90be392e3640e3f3fe454b488b4b4b2f20c10f614",
+    "cache_rule":"invalidate plan/result/report entries whose source set intersects changed_sources"
+  },
+  "failure_fixtures": [
+    {"id":"unapproved_join","expected_error":"UNAPPROVED_JOIN"},
+    {"id":"join_amplification","expected_error":"CARDINALITY_AMPLIFICATION"},
+    {"id":"null_identity","expected_error":"NULL_IDENTITY"},
+    {"id":"event_time_gap","expected_error":"NO_VALID_TIME_MATCH"},
+    {"id":"type_loss","expected_error":"TYPE_LOSS"},
+    {"id":"watermark_drift","expected_error":"WATERMARK_DRIFT"},
+    {"id":"datahub_not_found","expected_error":"NOT_FOUND"},
+    {"id":"datahub_forbidden","expected_error":"FORBIDDEN"},
+    {"id":"datahub_timeout","expected_error":"TIMEOUT"},
+    {"id":"query_cancelled","expected_error":"CANCELLED"},
+    {"id":"partial_result","expected_error":"PARTIAL"}
+  ],
+  "evaluation_manifest":"src/data/evaluation_fixture_manifest.i3.v1.json"
+}

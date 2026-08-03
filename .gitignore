@@ -48,6 +48,10 @@ docs/markdown/**/*.html
 /docs/markdown/collaboration/Claude_Code_개발_환경_설정.md
 /CLAUDE.md
 /.claude/settings.local.json
+
+# Git worktrees (independent branch working directories)
+/Final_project_refactor_docs/
+/origin/
 /.agents/rules/
 
 # Generated data and reports

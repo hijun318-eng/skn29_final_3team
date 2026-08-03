@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.57 |
-| 문서 기준일 | 2026-08-03 16:57 |
+| 버전 | v2.58 |
+| 문서 기준일 | 2026-08-03 17:05 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1408,10 +1408,11 @@ TASK_CARD_RANGE=R5-14 Catalog 계약 버전 호환
 CURRENT_TASK_CARD_ID=R5-14
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=078651fb3b5c4df62c34ddd193d1dc718522ddfe
+BASE_SHA=3d6bed7f29aec0c9610c4bfa054d3d57ef9b522e
 DIRECTIVE=ACTION
-DIRECTIVE_TOKEN=R5-W3-F1C@078651f
+DIRECTIVE_TOKEN=R5-W3-F1C@3d6bed7
 DATA_CONTRACT_VERSION=I3-DATA-v1.1.0-DRAFT
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30794421419 FAIL — frontend I3 data contract 상수 불일치가 동일하게 재현됐으며 본 카드의 교정 대상
 CHANGE_REQUEST_EVIDENCE=dev CI run 30793737827에서 tests/frontend/contracts.test.mjs:188이 frontend 상수 I3-DATA-v1.0.0과 실제 src/data/i3_contract.v1.json의 I3-DATA-v1.1.0-DRAFT 불일치로 실패함
 ALLOWED_PATHS=app/enterprise-react/src/data/catalogFixtures.ts; tests/frontend/contracts.test.mjs
 FORBIDDEN_PATHS=src/data/**; app/backend/**; src/ai/**; src/modelops/**; src/report/**; root Compose·.env.example·CI; R1/R2/R3/R4 소유 문서
@@ -1516,6 +1517,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.58 | 2026-08-03 17:05 | `origin/dev`가 minji 기획서 재구성 병합 `3d6bed7`로 전진했고 CI `30794421419`에서 같은 frontend I3 계약 상수 불일치가 재현됐다. R5-W3-F1C를 `R5-W3-F1C@3d6bed7`로 재발행하며 허용 경로·수용 조건·외부 권한은 변경하지 않았다. |
 | v2.57 | 2026-08-03 16:57 | R2-W3-F1 통합 뒤 dev CI `30793737827`에서 R5 Catalog fixture의 I3 data contract 상수만 이전 버전으로 남은 소비자 호환 실패를 확인했다. dev `078651f` 기준 R5-W3-F1C를 READY 발행해 상수 동기화와 frontend contract·build 회귀만 승인하며 R2 계약과 UI 동작은 변경하지 않는다. |
 | v2.56 | 2026-08-03 16:04 | R2-W3-F1 구현 중 R3 소비자 테스트가 gold partial 5건·REVIEW 35건을 하드코딩해 full 120건 manifest를 차단하는 change request를 확인했다. dev `c8a943b`·CI `30792024162` 기준으로 R3-W3-F1C를 READY 발행해 partial/full count 호환만 선행 보완하며 runtime·Node 변경과 외부 권한은 승인하지 않았다. |
 | v2.55 | 2026-08-03 15:56 | dev `e780b75`·CI `30791740474` PASS를 기준으로 R2-W3-F1을 READY 발행했다. required30 성공 case의 SQL·result hash 연결과 gold120 120건 완성을 우선하며, R3 후속은 이 manifest가 dev에 통합된 뒤 재발행한다. 외부 데이터·image pull·model download·비용·secret은 승인하지 않았다. |

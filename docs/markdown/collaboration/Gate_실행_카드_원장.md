@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.64 |
-| 문서 기준일 | 2026-08-03 17:55 |
+| 버전 | v2.65 |
+| 문서 기준일 | 2026-08-03 18:03 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -187,7 +187,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R2-W3-F2 | Wave 3 review follow-up | R2 | 없음 → I3 | R2-18 평가 승인 상태 동기화 | R1·R2·R3 reviewer와 APPROVED 상태 반영 | `MERGED_DEV` |
 | R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `MERGED_DEV` |
 | R3-W3-F1C | Wave 3 compatibility follow-up | R3 | 없음 → I3 | R3-10 평가 manifest 소비 호환 | partial/full gold count consumer 검증 | `MERGED_DEV` |
-| R3-W3-F2 | Wave 3 training package follow-up | R3 | 없음 → I3 | R3-10 학습 데이터 재생성·검증 도구 반입 | 제공된 training package 정적·재현성 검증 | `READY` |
+| R3-W3-F2 | Wave 3 training package follow-up | R3 | 없음 → I3 | R3-10 학습 데이터 재생성·검증 도구 반입 | 제공된 training package 정적·재현성 검증 | `MERGED_DEV` |
 | R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
 | R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
 | R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `MERGED_DEV` |
@@ -1476,7 +1476,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff mani
 ### R3-W3-F2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -1501,6 +1501,12 @@ TEST_COMMANDS=python AST parse src/ai/training/*.py; python -m src.ai.training.d
 TEST_COMMAND_IDS=T1_AST;T2_DATASET_VALIDATE;T3_REBUILD_HASH;T4_TRAIN_HELP;T5_EVAL_HELP;T6_AI_TESTS;T7_ROLE_GATE;T8_DIFF_CHECK
 STOP_CONDITIONS=압축 경로 탈출·secret·compiled cache 발견; 제공 JSONL 반입 필요; 재빌드 hash 불일치; 허용 경로 밖 변경; dependency 설치·model download·RunPod·비용·배포·외부 데이터 전송 필요; 필수 검증 실패
 HANDOFF=R1에 반입 파일 목록, archive hash, dataset validate·재빌드 hash·AI 회귀·role gate 결과와 RunPod 미실행을 전달
+IMPLEMENTATION_SHA=b78437e9845b896c38202060ddab99f99c93c41f
+REPORT_SHA=45cf61c67208bf24c50f3370b46d985fc5349588
+HANDOFF_SHA=fdb598849eeedf67923609e27f7009e78c498677
+SOURCE_CI_EVIDENCE=GitHub Actions run 30799546249 PASS — Python·문서·role scope·quality gate 통과
+DEV_MERGE_SHA=9b1fe34ff6dbfe7bc423e5879d4855b00879cfa9
+DEV_CI_EVIDENCE=GitHub Actions run 30799712073 PASS — 전체 Python·frontend·Compose·문서·role scope·quality gate 통과
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고·handoff manifest의 commit·daesung push 승인; dependency 설치·model download·RunPod resource·비용·배포·secret 사용·외부 데이터 전송·dev merge 불가
 ```
 

@@ -39,13 +39,14 @@ _PROMPTS = {
     ),
     "node2.sql": PromptRecord(
         "node2.sql",
-        "PROMPT-v1.0.2",
+        "PROMPT-v1.0.3",
         "node2",
         "development",
         "base",
         None,
         "DRAFT-BASE-v0.1",
         "승인 Context Package 안의 자산·컬럼·JOIN만 사용해 세미콜론 없는 단일 read-only Trino SELECT 후보를 만든다. "
+        "SQL의 분석 의미는 normalized_question에서만 가져오고 question_id는 추적 식별자로만 취급한다. "
         "SQL 문자열은 한 줄로 작성하고 불필요한 공백이나 개행을 넣지 않는다. "
         "SQL 마지막에는 1 이상 1000 이하 정수의 LIMIT을 반드시 명시한다. "
         "실행과 정책 통과를 판정하지 않는다.",

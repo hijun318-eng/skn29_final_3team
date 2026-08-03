@@ -5,9 +5,9 @@
   "BRANCH": "jaehong",
   "BASE_SHA": "744592ab129ed44c0cfcf5cf860b8945b011a324",
   "DIRECTIVE_BASE_SHA": "744592ab129ed44c0cfcf5cf860b8945b011a324",
-  "SYNCED_DEV_SHA": "d78259eb30bf952f2ec8245ad5ddfc5382ea376d",
-  "PRODUCT_RESULT_SHA": "3c2ee47897c3c88b549db3db2375e7425d75fd8d",
-  "RESULT_SHA": "f771995673ef4f28facb2ad0e6d82a32fe768a8f",
+  "SYNCED_DEV_SHA": "8bfcd8ca62455a4c234fe565eee9b18776379cd8",
+  "PRODUCT_RESULT_SHA": "2e363d813ace271df546539129d84b7d578c3024",
+  "RESULT_SHA": "2e363d813ace271df546539129d84b7d578c3024",
   "TERMINAL_SHA": "HEAD",
   "DIRECTIVE_TOKEN": "R4-W3@744592a",
   "COMPLETED_CARDS": [
@@ -92,6 +92,11 @@
       "name": "R4 개인 일일보고",
       "status": "PASS",
       "evidence": "20260803 report validator PASS"
+    },
+    {
+      "name": "최신 dev I3 데이터 회귀",
+      "status": "PASS",
+      "evidence": "tests/data 20 passed"
     }
   ],
   "NOT_RUN": [],

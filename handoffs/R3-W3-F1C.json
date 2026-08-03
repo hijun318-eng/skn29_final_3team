@@ -1,0 +1,108 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R3-W3-F1C",
+  "ROLE": "R3",
+  "BRANCH": "daesung",
+  "BASE_SHA": "c8a943be94827778fad48a626b0810adce86972b",
+  "DIRECTIVE_BASE_SHA": "c8a943be94827778fad48a626b0810adce86972b",
+  "SYNCED_DEV_SHA": "12e67bc65b34507f72f09ee0626d5c78eceab188",
+  "PRODUCT_RESULT_SHA": "5ad22eeb366c5bda56ece201574d94255bfe1c0a",
+  "RESULT_SHA": "5ad22eeb366c5bda56ece201574d94255bfe1c0a",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R3-W3-F1C@c8a943b",
+  "COMPLETED_CARDS": [
+    "R3-10 R2 평가 manifest partial/full count 소비 호환"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/daesung/일일보고.md",
+    "evals/runner.py",
+    "tests/ai/test_wave3.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "CONTRACT_VERSION": "I1-v1.0.0",
+    "INPUT_EVALUATION_MANIFEST_VERSION": "EVAL-DATA-I3-v1.0.0",
+    "TARGET_EVALUATION_MANIFEST_VERSION": "v1.1.0-DRAFT"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_DECLARED_COUNT",
+      "status": "PASS",
+      "evidence": "manifest counts의 required30·gold120_partial 선언값과 실제 set별 case 수를 직접 비교하고 불일치를 거부"
+    },
+    {
+      "id": "AC2_PARTIAL_AND_FULL_GOLD",
+      "status": "PASS",
+      "evidence": "현재 partial 5건은 선언값 기반으로 검증하고 합성 partial 0건·full 120건 및 121건 거부 회귀를 AI 32 tests에서 확인"
+    },
+    {
+      "id": "AC3_REQUIRED30_AND_TARGET",
+      "status": "PASS",
+      "evidence": "required30=30과 gold120_target=120 고정을 별도 검증하며 29·121 선언을 거부"
+    },
+    {
+      "id": "AC4_NO_RUNTIME_CHANGE",
+      "status": "PASS",
+      "evidence": "제품 diff는 evals/runner.py·tests/ai/test_wave3.py·개인 일일보고뿐이며 src/ai·src/modelops·Node·runtime 변경 0건"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_COMPILE",
+      "name": "python -m compileall -q evals tests/ai",
+      "status": "PASS",
+      "evidence": "exit code 0"
+    },
+    {
+      "id": "T2_AI_TESTS",
+      "name": "python -m unittest discover -s tests/ai -p \"test_*.py\"",
+      "status": "PASS",
+      "evidence": "32 tests passed"
+    },
+    {
+      "id": "T3_DATA_CONSUMER",
+      "name": "python -m unittest tests.data.test_i3_contract -v",
+      "status": "PASS",
+      "evidence": "5 tests passed"
+    },
+    {
+      "id": "T4_ROLE_GATE",
+      "name": "python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS",
+      "evidence": "제품 변경 3개가 R3 허용 경로와 개인 일일보고에 한정되고 product RESULT_SHA·BASE_SHA·token이 일치함. handoff-only terminal commit 후 동일 명령 재실행"
+    },
+    {
+      "id": "T5_DIFF_CHECK",
+      "name": "git diff --check",
+      "status": "PASS",
+      "evidence": "exit code 0"
+    }
+  ],
+  "ADDITIONAL_TEST_RESULTS": [
+    {
+      "name": "현재 partial 5 consumer",
+      "status": "PASS",
+      "evidence": "실제 EVAL-DATA-I3-v1.0.0의 declared required30=30·gold partial=5와 REVIEW status 분포를 하드코딩 없이 검증"
+    },
+    {
+      "name": "합성 full 120 consumer",
+      "status": "PASS",
+      "evidence": "required30 30건과 고유 gold case 120건을 합성해 declared count·split·status 집계를 검증"
+    },
+    {
+      "name": "R3 개인 일일보고",
+      "status": "PASS",
+      "evidence": "20260803 report validator PASS"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R3-W3-F1C consumer compatibility 수용 및 R2-W3-F1 재검증 재개",
+  "RUNTIME_CHANGE": "NONE",
+  "MODEL_EXECUTION": "NOT_RUN",
+  "DEFERRED_I3_EVIDENCE": [
+    "실제 Base model benchmark와 RunPod/vLLM runtime은 R3-W3-F1C 범위 밖이며 I3 R1/R3 별도 카드에서 계속 NOT_RUN",
+    "R2-W3-F1의 실제 full 120 manifest는 producer 통합 후 동일 consumer 검증을 재실행"
+  ]
+}

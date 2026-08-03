@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.45 |
-| 문서 기준일 | 2026-08-03 12:06 |
+| 버전 | v2.46 |
+| 문서 기준일 | 2026-08-03 12:28 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -177,10 +177,10 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `MERGED_DEV` |
 | R4-W2 | Wave 2·08/10~08/14 | R4 | 없음 → I2 | R4-04~13, R4-15 | Template→Context→G1→G2→Trino→G3→Artifact trace | `MERGED_DEV` |
 | R4-W2-F2 | Wave 2 follow-up | R4 | 없음 → I2 | R4-04·07·11·20 보완 | DB Template·실제 Trino·migration·CORS runtime 연결 | `MERGED_DEV` |
-| R4-W2-F3 | Wave 2 follow-up | R4 | 없음 → I2 | R4-20 container startup 보완 | immutable migration을 보존한 blank DB image startup | `READY` |
+| R4-W2-F3 | Wave 2 follow-up | R4 | 없음 → I2 | R4-20 container startup 보완 | immutable migration을 보존한 blank DB image startup | `MERGED_DEV` |
 | R5-W2 | Wave 2·08/10~08/14 | R5 | 없음 → I2 | R5-03~07 | Chat·상태·Evidence·표·차트·Artifact bridge | `MERGED_DEV` |
 | R5-W2-F1 | Wave 2 follow-up | R5 | 없음 → I2 | R5-04 source 실패 표시 보완 | API `retryable` 표시·R4 timeout fixture 소비 | `MERGED_DEV` |
-| R5-W2-F2 | Wave 2 follow-up | R5 | 없음 → I2 | R5-01·03~07 실제 API 보완 | production HTTP client·실제 backend 화면 trace | `BLOCKED` |
+| R5-W2-F2 | Wave 2 follow-up | R5 | 없음 → I2 | R5-01·03~07 실제 API 보완 | production HTTP client·실제 backend 화면 trace | `READY` |
 | R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `PLANNED` |
 | R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `PLANNED` |
 | R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `PLANNED` |
@@ -998,7 +998,7 @@ EXTERNAL_ACTION_PERMISSION=N/A — R4-W2-F2 완료; 다음 Wave 승인 전 WAIT
 ### R4-W2-F3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -1010,7 +1010,11 @@ CURRENT_TASK_CARD_ID=R4-W2-F3
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=cee1ca2e272f182159be7aff5ee9874ff0c6c85b
-DIRECTIVE=ACTION
+SOURCE_HEAD=51947de078da381de3158238588be15969b7bfbb
+PRODUCT_RESULT_SHA=3f8a2cfc8fdcd229af8f8e07d6b47deaf58bc3d5
+HANDOFF_SHA=51947de078da381de3158238588be15969b7bfbb
+MERGED_DEV_SHA=158a493349cf7fc7f20e5faec529852b61ec3562
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R4-W2-F3@cee1ca2
 OPENAPI_VERSION=OPENAPI-v1.0.0
 ALLOWED_PATHS=app/backend/Dockerfile; tests/backend/test_control_plane_contract.py
@@ -1022,7 +1026,8 @@ TEST_COMMAND_IDS=T1_MIGRATION_HASH;T2_IMAGE_BUILD;T3_BLANK_ENTRYPOINT;T4_READINE
 STOP_CONDITIONS=기존 migration 수정; backend runtime code 변경 필요; dependency 추가; root Compose 변경; 다른 Docker project·volume 변경; 허용 경로 밖 변경 필요; blank DB normal entrypoint 또는 readiness 실패
 HANDOFF=R1에 before/after image startup 결과, migration head, readiness dependency 값, 기존 migration hash, 임시 DB·container 삭제와 ID별 manifest를 제출
 R1_REVIEW_EVIDENCE=R5-W2-F2 실제 browser 준비 중 accepted image의 normal entrypoint가 빈 DB에서 20260730_02의 repository-relative DDL 경로를 찾지 못해 종료됨을 재현했다. bind mount·migration bypass는 production 수용 근거로 인정하지 않는다.
-EXTERNAL_ACTION_PERMISSION=허용 2개 경로와 R4 개인 일일보고·handoff manifest의 commit·jaehong push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
+R1_INTEGRATION_EVIDENCE=제품 3f8a2cf·handoff 51947de의 migration 무변경, built image blank DB normal entrypoint head 20260731_03, health·전체 readiness·existing DB·실제 Trino·cleanup, role Gate와 branch CI run 30781472877 PASS를 확인해 158a493으로 dev 통합
+EXTERNAL_ACTION_PERMISSION=N/A — R4-W2-F3 완료; 다음 Wave 승인 전 WAIT
 ```
 
 ### R5-W2
@@ -1102,7 +1107,7 @@ EXTERNAL_ACTION_PERMISSION=허용 4개 경로와 R5 개인 일일보고·handoff
 `R5-W2-F1`과 `R4-W2-F2`의 `MERGED_DEV`를 확인해 실제 backend 화면 연결 범위를 승인했다.
 
 ```text
-STATUS=BLOCKED
+STATUS=READY
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -1113,10 +1118,11 @@ TASK_CARD_RANGE=R5-01·03~07 실제 API 보완
 CURRENT_TASK_CARD_ID=R5-W2-F2
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=b1e33c6a5cc483172c3b46922318e99cffe906f6
-DIRECTIVE=WAIT
-DIRECTIVE_TOKEN=R5-W2-F2@b1e33c6
-BLOCKED_BY=R4-W2-F3 — accepted image의 blank DB normal entrypoint가 20260730_02 DDL 경로에서 종료
+ORIGINAL_BASE_SHA=b1e33c6a5cc483172c3b46922318e99cffe906f6
+BASE_SHA=158a493349cf7fc7f20e5faec529852b61ec3562
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R5-W2-F2-RESUME@158a493
+BLOCKER_RESOLVED_BY=R4-W2-F3 MERGED_DEV 158a493
 OPENAPI_VERSION=OPENAPI-v1.0.0
 UI_VERSION=UI-v1.0.0
 ALLOWED_PATHS=app/enterprise-react/**; tests/frontend/**
@@ -1127,7 +1133,7 @@ TEST_COMMANDS=npm --prefix app/enterprise-react run build; node --test tests/fro
 TEST_COMMAND_IDS=T1_BUILD;T2_FRONTEND_CONTRACT;T3_ROLE_GATE;T4_DIFF_CHECK
 STOP_CONDITIONS=OpenAPI drift; frontend가 권한·Gate·retryable을 재계산해야 함; backend 수정 필요; 양쪽 frontend 수정 필요; 허용 경로 밖 변경 필요; build·contract 실패
 HANDOFF=R1에 실제 backend를 사용한 Template·실패 browser trace, network request/response, console error 0건과 ID별 manifest를 제출
-EXTERNAL_ACTION_PERMISSION=worktree 변경 보존만 허용; R4-W2-F3 MERGED_DEV와 R1 재개 지시 전 commit·minji push·최종 handoff 불가
+EXTERNAL_ACTION_PERMISSION=보존된 4개 frontend/test 변경과 허용 경로 내 후속, R5 개인 일일보고·handoff manifest의 commit·minji push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
 ```
 
 ## Wave 3 상세 계획 카드
@@ -1271,6 +1277,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.46 | 2026-08-03 12:28 | R4-W2-F3 제품 `3f8a2cf`·handoff `51947de`의 immutable migration, built image blank/existing DB normal entrypoint, readiness·실제 Trino·cleanup과 branch CI `30781472877`를 확인해 dev `158a493`에 통합했다. R5의 보존된 frontend diff를 최신 dev에 동기화해 browser trace를 재개하는 `R5-W2-F2-RESUME@158a493`을 발행했다. |
 | v2.45 | 2026-08-03 12:06 | R5 실제 browser 준비 중 accepted backend image가 빈 DB에서 immutable `20260730_02`의 repository-relative DDL 경로를 찾지 못해 normal entrypoint가 종료되는 production blocker를 확인했다. R5-W2-F2를 일시 BLOCKED·WAIT로 전환하고 기존 migration을 보존한 Dockerfile layout과 blank DB startup만 보완하는 `R4-W2-F3@cee1ca2`를 발행했다. |
 | v2.44 | 2026-08-03 11:44 | R4-W2-F2 최종 `80c30ec`의 migration 불변성·역할 정책·실제 Trino PARTIAL·query_id·Artifact·exact CORS와 branch CI `30779910256`를 확인해 dev `b1e33c6`에 통합했다. 실제 production 화면 연결을 위한 `R5-W2-F2@b1e33c6`과 minji commit·push 권한을 발행했다. |
 | v2.43 | 2026-08-03 10:50 | R1 정책 commit의 role Gate에서 새 `.dockerignore`와 `config/access-policy.yaml`이 기존 R1-W2 허용 목록에 누락된 것을 확인했다. R1 소유 root build-context·공통 접근 정책 경로만 허용 목록에 추가하고 다른 service·deliverable 범위는 확장하지 않았다. |

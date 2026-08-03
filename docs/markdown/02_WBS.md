@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.39 |
-| 문서 기준일 | 2026-08-03 12:06 |
+| 버전 | v7.40 |
+| 문서 기준일 | 2026-08-03 12:28 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-03 12:28 | 1.6~1.7, 4.4, 4.20~4.21, 5.1, 5.4~5.8, 6.2 | R4-W2-F3 최종 `51947de`의 기존 migration 무변경, built image blank·기존 DB normal entrypoint, head `20260731_03`, health·전체 readiness·실제 Trino·cleanup, branch CI `30781472877` PASS를 확인해 dev `158a493`에 통합했다. Production image blocker를 해제하고 보존된 frontend diff로 실제 화면 검증을 재개하는 `R5-W2-F2-RESUME@158a493`을 승인했다. 화면 결과 전 일정·행 상태·간트는 유지했다. | R4 image startup 통합·R5 화면 재개 |
 | 2026-08-03 12:06 | 1.6~1.7, 4.4, 4.20~4.21, 5.1, 5.4~5.8, 6.2 | R5 실제 browser trace 준비에서 accepted backend image의 normal entrypoint가 빈 DB의 immutable `20260730_02` repository-relative DDL 경로에서 종료되는 것을 확인했다. bind mount·migration bypass는 수용하지 않고 R5-W2-F2를 일시 정지했으며, 기존 migration을 보존한 Dockerfile layout·blank DB startup·readiness만 보완하는 `R4-W2-F3@cee1ca2`를 승인했다. 실제 결과 전 일정·행 상태·간트는 유지했다. | production image startup blocker·R4 최소 보완 |
 | 2026-08-03 11:44 | 1.4, 1.7, 4.4~4.5, 4.8, 4.12, 4.16, 4.21, 5.1, 5.4~5.8, 6.2 | R4-W2-F2 최종 `80c30ec`의 기존 migration 불변성, 빈·기존 DB upgrade, `hotel_analyst` 전용 Template, 실제 Trino PARTIAL·query_id·Artifact, exact CORS와 branch CI `30779910256` PASS를 확인해 dev `b1e33c6`에 통합했다. 실제 backend runtime은 3/4를 통과했고 production 화면 연결 `R5-W2-F2@b1e33c6`을 승인했다. 화면 결과 전 일정·행 상태·간트는 유지했다. | R4 runtime 통합·R5 실제 화면 승인 |
 | 2026-08-03 10:50 | 1.7 | R1 정책 commit의 역할 범위 검사에서 새 root Docker 제외 파일과 공통 접근 정책 파일이 기존 R1-W2 허용 목록에 빠진 것을 확인했다. 두 R1 소유 경로만 원장에 추가하고 다른 역할 서비스·공식 제출본 범위는 확장하지 않았으며, 통합 테스트와 역할 범위 검사를 다시 실행하도록 정합화했다. 일정·행 상태·간트는 유지했다. | R1 역할 범위 원장 교정 |
@@ -433,6 +434,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.40 | 2026-08-03 12:28 | R4-W2-F3 production image의 blank·기존 DB normal entrypoint·전체 readiness·실제 Trino 통합 근거를 1.6~1.7·4.4·4.20~4.21·5.1·5.4~5.8·6.2에 연결하고 R5-W2-F2 화면 검증을 재개했다. 실제 결과 전 일정·행 상태·간트는 유지했다. |
 | v7.39 | 2026-08-03 12:06 | Production backend image의 빈 DB entrypoint 경로 결함과 R5 실제 화면 차단 근거를 1.6~1.7·4.4·4.20~4.21·5.1·5.4~5.8·6.2에 연결하고 R4-W2-F3 최소 보완을 승인했다. 실제 결과 전 일정·행 상태·간트는 유지했다. |
 | v7.38 | 2026-08-03 11:44 | R4-W2-F2의 migration·역할 정책·실제 Trino·PARTIAL·CORS 결과와 dev 통합 근거를 1.4·1.7·4.4~4.5·4.8·4.12·4.16·4.21·6.2에 연결하고, production 화면 연결을 위한 R5-W2-F2를 승인했다. 화면 결과 전 일정·행 상태·간트는 유지했다. |
 | v7.37 | 2026-08-03 10:50 | R1 정책 commit의 역할 범위 검사에서 확인된 `.dockerignore`·`config/access-policy.yaml` 허용 목록 누락을 1.7에 기록하고 두 R1 소유 경로만 교정했다. 일정·행 상태·간트는 유지했다. |

@@ -3,12 +3,12 @@
   "EXECUTION_BUNDLE_ID": "R4-W2-F2",
   "ROLE": "R4",
   "BRANCH": "jaehong",
-  "BASE_SHA": "0e756e7f1366e09fd084f655274e2add8778c68f",
-  "DIRECTIVE_BASE_SHA": "0e756e7f1366e09fd084f655274e2add8778c68f",
-  "SYNCED_DEV_SHA": "e023b0640020248ec35c998b9de637a67012cdaa",
-  "PRODUCT_RESULT_SHA": "4bec9d7fe032a91e6c5c60a74f1e2a7d0afe62ec",
-  "RESULT_SHA": "4bec9d7fe032a91e6c5c60a74f1e2a7d0afe62ec",
-  "DIRECTIVE_TOKEN": "R4-W2-F2@0e756e7",
+  "BASE_SHA": "e023b0640020248ec35c998b9de637a67012cdaa",
+  "DIRECTIVE_BASE_SHA": "e023b0640020248ec35c998b9de637a67012cdaa",
+  "SYNCED_DEV_SHA": "ca87004db91116353454d0597ac675fbaaa2edd8",
+  "PRODUCT_RESULT_SHA": "7f5c7c8a4f33037b0ac419868ac15ec177b4b0ed",
+  "RESULT_SHA": "7f5c7c8a4f33037b0ac419868ac15ec177b4b0ed",
+  "DIRECTIVE_TOKEN": "R4-W2-F2-REWORK@e023b06",
   "COMPLETED_CARDS": [
     "R4-04·07·11·20 runtime 보완"
   ],
@@ -18,6 +18,7 @@
     "app/backend/app/adapters/i2_data_platform.py",
     "app/backend/app/api/router.py",
     "app/backend/app/contract_examples.py",
+    "app/backend/app/controllers/analysis_controller.py",
     "app/backend/app/main.py",
     "app/backend/app/services/analysis_service.py",
     "app/backend/app/services/pipeline_support.py",
@@ -26,46 +27,53 @@
     "app/backend/compose.fragment.yml",
     "app/backend/contracts/openapi.v0.1.json",
     "app/backend/entrypoint.sh",
-    "app/backend/migrations/versions/20260730_02_application_schema.py",
     "app/backend/migrations/versions/20260731_03_runtime_grants.py",
     "app/backend/scripts/verify-container.ps1",
     "docs/markdown/daily_reports/jaehong/일일보고.md",
     "tests/backend/test_analysis_pipeline.py",
+    "tests/backend/test_control_plane_contract.py",
     "tests/backend/test_http_runtime.py",
     "tests/backend/test_i2_data_platform.py"
   ],
   "CONTRACT_VERSIONS": {
     "OPENAPI_VERSION": "OPENAPI-v1.0.0",
+    "ACCESS_POLICY_VERSION": "ACCESS-POLICY-v1.0.0",
     "SCHEMA_VERSION": "1.0.0",
     "SEED_VERSION": "20260729",
     "TEMPLATE_VERSION": "I2-v1.0.0",
-    "MIGRATION_HEAD": "20260731_03"
+    "MIGRATION_HEAD": "20260731_03",
+    "IMMUTABLE_MIGRATION_SHA256": "a468edca9b560c78afffc46876acb4d6b2ef1d6b42641d00fcc2db1c63c285ee"
   },
   "ACCEPTANCE_RESULTS": [
     {
-      "id": "AC1_TEMPLATE_DB",
+      "id": "AC1_IMMUTABLE_MIGRATION",
       "status": "PASS",
-      "evidence": "context.analysis_templates 승인본은 TEMPLATE route로 실행되고 not-approved 요청은 ACCESS_DENIED·query 없음으로 차단"
+      "evidence": "20260730_02 Git blob은 origin/dev와 동일한 feed5b9414f65141fff04bc16b471bc12f15ccbe이며 변경은 새 20260731_03에만 위치"
     },
     {
-      "id": "AC2_TRINO_PORT",
+      "id": "AC2_EXISTING_DB_UPGRADE",
       "status": "PASS",
-      "evidence": "R4 I2DataPlatformAdapter가 R2 TrinoAdapter transport를 사용해 실제 Trino query_id를 반환"
+      "evidence": "임시 빈 DB와 base DDL·20260730_02 적용 임시 DB 모두 head=20260731_03, sql_text/source_fqns_json NOT NULL, weekly Template APPROVED; legacy null 행은 backfill 후 RETIRED; runtime trace grant는 INSERT·SELECT만 확인; 임시 DB 삭제 확인"
     },
     {
-      "id": "AC3_MIGRATION_STARTUP",
+      "id": "AC3_TEMPLATE_ROLE_POLICY",
       "status": "PASS",
-      "evidence": "빈 임시 DB alembic upgrade head=20260731_03, runtime Template 조회, 컨테이너 BACKEND_DATABASE_READY 확인"
+      "evidence": "config/access-policy.yaml ACCESS-POLICY-v1.0.0을 단일 입력으로 읽고 hotel_analyst만 허용; report_admin/data_admin real HTTP는 403 ACCESS_DENIED이며 Trino 호출 수 증가 없음"
     },
     {
-      "id": "AC4_HTTP_TEMPLATE_TRACE",
+      "id": "AC4_TRINO_PARTIAL",
       "status": "PASS",
-      "evidence": "실제 POST /analysis가 TEMPLATE·G1·G2·QUERY·G3·ARTIFACT 순서와 동일 trace_id, query_id, artifact_id를 반환"
+      "evidence": "R2 AdapterError에는 payload가 없음을 반영해 기존 TrinoAdapter._page를 재사용·보완했고 FINISHED+warnings 실제 응답 구조가 HTTP 200 PARTIAL·PARTIAL_FAILURE·Artifact로 보존"
     },
     {
-      "id": "AC5_EXACT_CORS",
+      "id": "AC5_REAL_HTTP_TEMPLATE_TRACE",
       "status": "PASS",
-      "evidence": "localhost:5173 preflight 200·allow-origin 일치, untrusted.example 400·allow-origin header 없음"
+      "evidence": "healthy hotel-synthetic-db Trino 대상 stub 없는 real POST /analysis가 G1>G2>QUERY>G3>ARTIFACT로 완료되고 실제 query_id 20260803_022110_00020_7nsas와 Artifact 4e5c8a20-5c70-52ec-b36d-b12ea789c269를 반환; 임시 DB·컨테이너 삭제 확인"
+    },
+    {
+      "id": "AC6_EXACT_CORS",
+      "status": "PASS",
+      "evidence": "환경변수 exact origin localhost:5173 preflight만 허용하고 untrusted origin은 allow-origin 없이 400; wildcard는 startup에서 거부"
     }
   ],
   "TEST_RESULTS": [
@@ -79,7 +87,7 @@
       "id": "T2_BACKEND",
       "name": "python -m pytest -p no:cacheprovider tests/backend",
       "status": "PASS",
-      "evidence": "41 passed"
+      "evidence": "45 passed, 6 skipped; 6개는 별도 T6 환경변수 기반 real HTTP 전용 회귀이며 T6에서 실행"
     },
     {
       "id": "T3_OPENAPI",
@@ -91,16 +99,28 @@
       "id": "T4_INTEGRATION",
       "name": "python -m unittest discover -s tests/integration -p test_*.py",
       "status": "PASS",
-      "evidence": "20 passed"
+      "evidence": "22 tests passed"
     },
     {
-      "id": "T5_ROLE_GATE",
+      "id": "T5_MIGRATION_PATHS",
+      "name": "빈 DB와 기존 20260730_02 DB 각각 alembic upgrade head",
+      "status": "PASS",
+      "evidence": "두 경로 모두 20260731_03·NOT NULL·Template seed·최소 grant 검증, 명시적 임시 DB 부재 확인"
+    },
+    {
+      "id": "T6_REAL_HTTP_ROLE_PARTIAL",
+      "name": "real mode HTTP Template positive·report_admin/data_admin negative·FINISHED+warnings PARTIAL",
+      "status": "PASS",
+      "evidence": "자동 회귀 1 passed; 실제 hotel-synthetic-db Trino live smoke도 query_id·Artifact와 전체 Gate 순서를 확인"
+    },
+    {
+      "id": "T7_ROLE_GATE",
       "name": "python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base",
       "status": "PASS",
-      "evidence": "R4-W2-F2 manifest와 product SHA 기준 role gate PASS"
+      "evidence": "R4-W2-F2 role gate PASS"
     },
     {
-      "id": "T6_DIFF_CHECK",
+      "id": "T8_DIFF_CHECK",
       "name": "git diff --check",
       "status": "PASS",
       "evidence": "exit code 0"
@@ -108,19 +128,19 @@
   ],
   "ADDITIONAL_TEST_RESULTS": [
     {
-      "name": "infrastructure/database/scripts/verify.ps1",
+      "name": "Ponytail 과설계 검토",
       "status": "PASS",
-      "evidence": "I2_GOLD_HASH_VERIFIED·DATABASE_CONTRACT_VERIFIED"
+      "evidence": "새 dependency·R2 경로 복제 없이 stdlib JSON 정책 파서와 기존 TrinoAdapter 확장만 사용"
     },
     {
-      "name": "app/backend/scripts/verify-container.ps1",
+      "name": "임시 자원 정리",
       "status": "PASS",
-      "evidence": "BACKEND_CONTAINER_READY·BACKEND_DATABASE_READY"
+      "evidence": "r4_rework_* 임시 DB와 r4-rework-live-backend 컨테이너 잔존 0건; 다른 Docker 프로젝트·볼륨 변경 없음"
     },
     {
-      "name": "personal daily report validation",
+      "name": "R4 개인 일일보고 검증",
       "status": "PASS",
-      "evidence": "[report-validation] OK"
+      "evidence": "20260803 보고 형식 validator 통과"
     }
   ],
   "NOT_RUN": [],

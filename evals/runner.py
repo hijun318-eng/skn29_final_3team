@@ -125,14 +125,20 @@ def validate_data_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    declared = {
-        "required30": counts.get("required30"),
-        "gold120": counts.get("gold120_partial"),
-    }
-    if declared != set_counts or set_counts["required30"] != 30:
+    required_count = counts.get("required30")
+    gold_partial = counts.get("gold120_partial")
+    gold_target = counts.get("gold120_target")
+    if required_count != 30 or gold_target != 120:
+        raise EvaluationError("required30 count or gold120 target is invalid")
+    if (
+        not isinstance(gold_partial, int)
+        or isinstance(gold_partial, bool)
+        or not 0 <= gold_partial <= gold_target
+    ):
+        raise EvaluationError("gold120 partial count is invalid")
+    declared = {"required30": required_count, "gold120": gold_partial}
+    if declared != set_counts:
         raise EvaluationError("R2 evaluation manifest declared counts do not match cases")
-    if counts.get("gold120_target") != 120 or set_counts["gold120"] > 120:
-        raise EvaluationError("gold120 target or partial count is invalid")
     return {
         "manifest_version": manifest["manifest_version"],
         "set_counts": set_counts,

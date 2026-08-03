@@ -1,6 +1,7 @@
 import copy
 import json
 import unittest
+from collections import Counter
 from pathlib import Path
 
 from evals.runner import (
@@ -61,12 +62,26 @@ class Wave3EvaluationTests(unittest.TestCase):
             )
         )
         summary = validate_data_manifest(source)
-        self.assertEqual({"required30": 30, "gold120": 5}, summary["set_counts"])
+        declared = source["counts"]
         self.assertEqual(
-            {"gold": 5, "train": 0, "validation": 30},
+            {
+                "required30": declared["required30"],
+                "gold120": declared["gold120_partial"],
+            },
+            summary["set_counts"],
+        )
+        self.assertEqual(
+            {
+                "gold": declared["gold120_partial"],
+                "train": 0,
+                "validation": declared["required30"],
+            },
             summary["split_counts"],
         )
-        self.assertEqual({"REVIEW": 35}, summary["status_counts"])
+        self.assertEqual(
+            dict(Counter(case["status"] for case in source["cases"])),
+            summary["status_counts"],
+        )
         self.assertEqual("NOT_RUN", summary["model_execution"])
 
         leaked = copy.deepcopy(source)
@@ -76,8 +91,46 @@ class Wave3EvaluationTests(unittest.TestCase):
 
         wrong_count = copy.deepcopy(source)
         wrong_count["counts"]["required30"] = 29
-        with self.assertRaisesRegex(EvaluationError, "counts"):
+        with self.assertRaisesRegex(EvaluationError, "count"):
             validate_data_manifest(wrong_count)
+
+        wrong_target = copy.deepcopy(source)
+        wrong_target["counts"]["gold120_target"] = 121
+        with self.assertRaisesRegex(EvaluationError, "target"):
+            validate_data_manifest(wrong_target)
+
+    def test_r2_manifest_accepts_zero_and_full_gold_boundaries(self):
+        source = json.loads(
+            (ROOT / "src" / "data" / "evaluation_fixture_manifest.i3.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        required = [case for case in source["cases"] if case["set"] == "required30"]
+        gold_template = next(case for case in source["cases"] if case["set"] == "gold120")
+
+        empty = copy.deepcopy(source)
+        empty["counts"]["gold120_partial"] = 0
+        empty["cases"] = copy.deepcopy(required)
+        self.assertEqual(0, validate_data_manifest(empty)["set_counts"]["gold120"])
+
+        full = copy.deepcopy(source)
+        full["counts"]["gold120_partial"] = full["counts"]["gold120_target"]
+        full["cases"] = copy.deepcopy(required)
+        for number in range(full["counts"]["gold120_target"]):
+            case = copy.deepcopy(gold_template)
+            case["case_id"] = f"G120-SYN-{number:03d}"
+            case["paraphrase_group"] = f"gold-synthetic-{number:03d}"
+            full["cases"].append(case)
+        summary = validate_data_manifest(full)
+        self.assertEqual(full["counts"]["gold120_target"], summary["set_counts"]["gold120"])
+        self.assertEqual(
+            len(full["cases"]), sum(summary["status_counts"].values())
+        )
+
+        over_target = copy.deepcopy(full)
+        over_target["counts"]["gold120_partial"] += 1
+        with self.assertRaisesRegex(EvaluationError, "partial"):
+            validate_data_manifest(over_target)
 
     def test_external_results_are_explicitly_not_run(self):
         comparison = json.loads(

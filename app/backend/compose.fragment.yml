@@ -3,11 +3,19 @@ services:
     profiles: [dev, full, split-host]
     container_name: answervice-backend
     build:
-      context: ../../app/backend
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: app/backend/Dockerfile
     environment:
+      APP_DATABASE_URL: postgresql+psycopg://${APP_MIGRATION_USER}:${APP_MIGRATION_PASSWORD}@app-postgres:5432/${APP_DB_NAME:-app_db}
+      APP_RUNTIME_DATABASE_URL: postgresql+psycopg://${APP_DB_USER}:${APP_DB_PASSWORD}@app-postgres:5432/${APP_DB_NAME:-app_db}
+      APP_DB_USER: ${APP_DB_USER}
       APP_DB_HOST: app-postgres
       APP_DB_PORT: "5432"
+      TRINO_URL: http://trino:8080
+      TRINO_USER: ${APP_DB_USER}
+      DATA_PLATFORM_MODE: ${DATA_PLATFORM_MODE:-real}
+      MODEL_MODE: ${MODEL_MODE:-contract-fake}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:5173}
       TZ: Asia/Seoul
     ports:
       - "127.0.0.1:18000:8000"

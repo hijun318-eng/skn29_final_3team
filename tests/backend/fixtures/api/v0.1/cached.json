@@ -1,9 +1,15 @@
 {
   "data": {
+    "artifact": {
+      "artifact_id": "00000000-0000-0000-0000-000000000258",
+      "context_hash": "fixture-context-cached",
+      "query_id": "fixture-query-cached"
+    },
     "gates": {
       "g1_required": true,
       "g2_required": true
     },
+    "repair_count": 0,
     "result": {
       "chart": {
         "chart_type": "line",
@@ -13,7 +19,7 @@
         ]
       },
       "evidence": {
-        "artifact_id": null,
+        "artifact_id": "00000000-0000-0000-0000-000000000258",
         "as_of": "2026-07-30",
         "cached": true,
         "context_release": "context-v1",
@@ -32,7 +38,7 @@
           "start": "2026-07-01"
         },
         "policy_version": "policy-v1",
-        "query_id": null,
+        "query_id": "fixture-query-cached",
         "sampling": {
           "applied": false,
           "returned_rows": 0,
@@ -61,6 +67,53 @@
     "route": "GENERAL",
     "status": "SUCCEEDED",
     "template_id": null,
+    "trace": [
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "ROUTER"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "CONTROLLER"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "CONTEXT"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "G1"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "MODEL"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "G2"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "QUERY"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "G3"
+      },
+      {
+        "detail": null,
+        "outcome": "PASSED",
+        "stage": "ARTIFACT"
+      }
+    ],
     "transitions": [
       "RECEIVED",
       "ROUTED",

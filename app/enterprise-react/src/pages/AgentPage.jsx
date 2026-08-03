@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import { Check, MessageSquareText, Plus, Send, Sparkles, TableProperties } from "lucide-react";
-import { createMockAnalysisClient } from "../api/analysisClient";
+import { createAnalysisClient, showsAnalysisScenarios, usesMockAnalysisClient } from "../api/analysisClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { MetaStrip, SectionTitle } from "../components/common/EnterpriseUi";
 import { analysisFixtures } from "../data/analysisFixtures";
 
 const RECENT_ANALYSES = ["지난달 객실 매출 하락 원인", "다음 30일 객실 수요", "프로모션 효과 분석"];
 const SCENARIOS = [
+  ["loading", "분석 중"],
+  ["clarification", "추가 정보 필요"],
   ["ready", "정상 완료"],
   ["empty", "결과 없음"],
   ["delayed", "응답 지연"],
@@ -17,15 +19,33 @@ const SCENARIOS = [
   ["cancelled", "취소"],
 ];
 
-const client = createMockAnalysisClient();
+const client = createAnalysisClient();
+const initialRun = usesMockAnalysisClient ? analysisFixtures.ready : {
+  conversationId: "",
+  requestId: "—",
+  traceId: "—",
+  status: "idle",
+  question: "",
+  metrics: [],
+  sources: [],
+  meta: {
+    asOf: "—",
+    timezone: "Asia/Seoul",
+    synthetic: true,
+    seed: "—",
+    schemaVersion: "—",
+    contractVersion: "OPENAPI-v1.0.0",
+  },
+};
 
 export function AgentPage() {
   const [conversationId] = useState(() => crypto.randomUUID());
   const [question, setQuestion] = useState("지난달 객실 매출 하락 원인을 알려줘.");
-  const [submittedQuestion, setSubmittedQuestion] = useState(analysisFixtures.ready.question);
+  const [submittedQuestion, setSubmittedQuestion] = useState(initialRun.question);
   const [scenario, setScenario] = useState("ready");
-  const [run, setRun] = useState(analysisFixtures.ready);
+  const [run, setRun] = useState(initialRun);
   const [submitting, setSubmitting] = useState(false);
+  const [artifactNotice, setArtifactNotice] = useState("");
   const viewMeta = useMemo(() => run.meta, [run.meta]);
 
   const submitQuestion = async (event) => {
@@ -34,11 +54,27 @@ export function AgentPage() {
     if (!nextQuestion || submitting) return;
 
     setSubmitting(true);
+    setArtifactNotice("");
     setSubmittedQuestion(nextQuestion);
-    setRun({ ...analysisFixtures.loading, question: nextQuestion, conversationId });
-    const result = await client.analyze(nextQuestion, conversationId, scenario);
-    setRun(result);
-    setSubmitting(false);
+    setRun({
+      ...initialRun,
+      status: "queued",
+      question: nextQuestion,
+      conversationId,
+    });
+    try {
+      setRun(await client.analyze(nextQuestion, conversationId, scenario));
+    } catch {
+      setRun({
+        ...initialRun,
+        status: "failed",
+        question: nextQuestion,
+        conversationId,
+        error: { code: "INTERNAL_ERROR", message: "backend 요청을 완료하지 못했습니다." },
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -65,17 +101,23 @@ export function AgentPage() {
             <span className="agent-avatar"><Sparkles size={17} /></span>
             <div>
               <b>Analysis Agent <em>{run.status}</em></b>
-              <AnalysisStatePanel run={run} />
+              <AnalysisStatePanel
+                run={run}
+                onAddArtifact={(artifactId) => setArtifactNotice(`Artifact ${artifactId}를 보고서 초안 후보로 선택했습니다.`)}
+              />
+              {artifactNotice && <p className="artifact-notice" role="status">{artifactNotice}</p>}
             </div>
           </div>
         </div>
         <form className="chat-input" onSubmit={submitQuestion}>
-          <label className="scenario-picker">
-            <span>상태 fixture</span>
-            <select value={scenario} onChange={(event) => setScenario(event.target.value)}>
-              {SCENARIOS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-            </select>
-          </label>
+          {showsAnalysisScenarios && (
+            <label className="scenario-picker">
+              <span>{usesMockAnalysisClient ? "상태 fixture" : "backend 검증"}</span>
+              <select value={scenario} onChange={(event) => setScenario(event.target.value)}>
+                {SCENARIOS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+              </select>
+            </label>
+          )}
           <div className="question-field">
             <input
               aria-label="분석 질문"
@@ -85,7 +127,7 @@ export function AgentPage() {
             />
             <button aria-label="질문 전송" disabled={submitting}><Send size={17} /></button>
           </div>
-          <small>표시된 값은 합성 fixture이며 Agent 결과는 자동 실행되지 않습니다.</small>
+          <small>{usesMockAnalysisClient ? "표시된 값은 합성 fixture입니다." : "합성 데이터용 실제 backend 응답을 표시합니다."}</small>
         </form>
       </main>
 
@@ -102,17 +144,31 @@ export function AgentPage() {
         <div className="evidence-block">
           <h3>사용 데이터 자산</h3>
           {run.sources.length ? run.sources.map((source) => (
-            <span key={source.urn}>
-              <TableProperties size={13} />{source.name}<small>{source.status === "success" ? "정상" : "실패"}</small>
-            </span>
+            <article className="evidence-source" key={source.urn}>
+              <span><TableProperties size={13} />{source.name}<small>{source.status === "success" ? "정상" : "실패"}</small></span>
+              <code>{source.urn}</code>
+              {source.fqn && <small>{source.fqn} · schema {source.schemaVersion} · seed {source.seedVersion}</small>}
+            </article>
           )) : <p className="evidence-empty">표시 가능한 자산이 없습니다.</p>}
         </div>
+        {run.evidence && (
+          <div className="evidence-block">
+            <h3>조회 조건</h3>
+            <dl>
+              <div><dt>period</dt><dd>{run.evidence.period ? `${run.evidence.period.start} ~ ${run.evidence.period.endExclusive}` : "—"}</dd></div>
+              <div><dt>filter</dt><dd>{Object.entries(run.evidence.filters).map(([key, value]) => `${key}=${String(value)}`).join(", ") || "없음"}</dd></div>
+              <div><dt>sampling</dt><dd>{run.evidence.sampling.applied ? "적용" : "미적용"} · {run.evidence.sampling.returnedRows}/{run.evidence.sampling.totalRows ?? "unknown"}</dd></div>
+            </dl>
+          </div>
+        )}
         <div className="evidence-block">
           <h3>실행 정보</h3>
           <dl>
-            <div><dt>conversation</dt><dd>{run.conversationId.slice(0, 8)}</dd></div>
-            <div><dt>request</dt><dd>{run.requestId.slice(0, 8)}</dd></div>
-            <div><dt>trace</dt><dd>{run.traceId.slice(0, 8)}</dd></div>
+            <div><dt>conversation</dt><dd>{run.conversationId}</dd></div>
+            <div><dt>request</dt><dd>{run.requestId}</dd></div>
+            <div><dt>run/trace</dt><dd>{run.traceId}</dd></div>
+            <div><dt>artifact</dt><dd>{run.artifact?.artifactId ?? "—"}</dd></div>
+            <div><dt>query</dt><dd>{run.artifact?.queryId ?? run.evidence?.queryId ?? "—"}</dd></div>
             <div><dt>as_of</dt><dd>{run.meta.asOf}</dd></div>
             <div><dt>timezone</dt><dd>{run.meta.timezone}</dd></div>
           </dl>

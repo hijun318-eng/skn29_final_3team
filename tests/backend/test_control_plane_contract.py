@@ -1,4 +1,5 @@
 import ast
+import hashlib
 import json
 import unittest
 from pathlib import Path
@@ -10,6 +11,43 @@ CONTRACT_VERSION = "OPENAPI-v1.0.0"
 
 
 class ControlPlaneContractTest(unittest.TestCase):
+    def test_backend_image_preserves_repository_layout_for_migrations(self) -> None:
+        dockerfile = (BACKEND / "Dockerfile").read_text(encoding="utf-8")
+
+        self.assertIn("PYTHONPATH=/workspace", dockerfile)
+        self.assertIn("WORKDIR /workspace/app/backend", dockerfile)
+        self.assertIn(
+            "app/backend/ app/backend/",
+            dockerfile,
+        )
+        self.assertIn(
+            "infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql "
+            "infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql",
+            dockerfile,
+        )
+
+    def test_published_migration_is_immutable_and_followup_is_least_privilege(self) -> None:
+        versions = BACKEND / "migrations" / "versions"
+        published = (versions / "20260730_02_application_schema.py").read_bytes()
+        followup = (versions / "20260731_03_runtime_grants.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertEqual(
+            "a468edca9b560c78afffc46876acb4d6b2ef1d6b42641d00fcc2db1c63c285ee",
+            hashlib.sha256(published).hexdigest(),
+        )
+        self.assertLess(
+            followup.index("UPDATE context.analysis_templates"),
+            followup.index("ALTER COLUMN sql_text SET NOT NULL"),
+        )
+        self.assertIn(
+            "GRANT SELECT, INSERT ON chat.analysis_state_transitions",
+            followup,
+        )
+        self.assertNotIn("GRANT SELECT, INSERT, UPDATE", followup)
+        self.assertNotIn("GRANT SELECT, INSERT, DELETE", followup)
+
     def test_backend_import_graph_has_no_cycle(self) -> None:
         modules = {
             ".".join(path.relative_to(BACKEND).with_suffix("").parts): path

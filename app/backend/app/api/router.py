@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Request
 
 from app.adapters.fake_data_platform import FakeDataPlatformAdapter
+from app.adapters.fake_model import FakeModelAdapter
 from app.contract_examples import (
     ANALYSIS_REQUEST_EXAMPLES,
     ANALYSIS_RESPONSE_EXAMPLES,
@@ -27,8 +29,39 @@ from app.services.routing_service import RoutingService
 from app.services.readiness import AppDatabaseReadiness
 
 
+def _routing_service() -> RoutingService:
+    database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
+    return (
+        RoutingService.from_database(database_url)
+        if database_url
+        else RoutingService()
+    )
+
+
+def _data_platform():
+    if os.getenv("DATA_PLATFORM_MODE", "fake") == "fake":
+        return FakeDataPlatformAdapter()
+    from app.adapters.i2_data_platform import I2DataPlatformAdapter
+
+    return I2DataPlatformAdapter(
+        os.getenv("TRINO_URL", "http://trino:8080"),
+        os.getenv("TRINO_USER", "answervice"),
+    )
+
+
+def _model():
+    if os.getenv("MODEL_MODE", "fake") == "fake":
+        return FakeModelAdapter()
+    from app.adapters.contract_model import ContractModelAdapter
+
+    return ContractModelAdapter()
+
+
 router = APIRouter()
-controller = AnalysisController(AnalysisService(FakeDataPlatformAdapter()), RoutingService())
+controller = AnalysisController(
+    AnalysisService(_data_platform(), _model()),
+    _routing_service(),
+)
 readiness = AppDatabaseReadiness()
 
 
@@ -53,7 +86,11 @@ def health(request: Request) -> HealthResponse:
 def ready(request: Request) -> ReadinessResponse:
     context = request_context(request)
     probe = readiness.check()
-    status = "ready" if probe["app_postgres"] == "reachable" else "not_ready"
+    status = (
+        "ready"
+        if all(value in {"ready", "not_required"} for value in probe.values())
+        else "not_ready"
+    )
     return ReadinessResponse(
         data=ReadinessData(status=status, dependencies=probe),
         meta=response_meta(context),

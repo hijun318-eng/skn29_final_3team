@@ -8,6 +8,15 @@ import {
   LoaderCircle,
   SearchX,
 } from "lucide-react";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { resolveViewState, type AnalysisRun, type AnalysisViewState } from "../../contracts/analysis";
 
 const VIEW_COPY: Record<AnalysisViewState, { title: string; description: string; icon: typeof CheckCircle2 }> = {
@@ -22,24 +31,98 @@ const VIEW_COPY: Record<AnalysisViewState, { title: string; description: string;
   CANCELLED: { title: "분석 취소", description: "새 질문으로 다시 시작할 수 있습니다.", icon: CircleX },
 };
 
-export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
+export function AnalysisStatePanel({
+  run,
+  onAddArtifact,
+}: {
+  run: AnalysisRun;
+  onAddArtifact?: (artifactId: string) => void;
+}) {
   const viewState = resolveViewState(run);
   const copy = VIEW_COPY[viewState];
   const Icon = copy.icon;
+  const needsClarification = run.error?.code === "CONTEXT_INCOMPLETE";
   const showResult = viewState === "READY" || viewState === "PARTIAL";
+  const chart = showResult ? run.chart : null;
+  const table = showResult ? run.table : null;
 
   return (
     <section className={`analysis-state analysis-state--${viewState.toLowerCase()}`} aria-live="polite">
       <header>
         <Icon size={18} aria-hidden="true" />
-        <div><b>{copy.title}</b><span>{viewState}</span></div>
+        <div>
+          <b>{needsClarification ? "추가 정보 필요" : run.status === "blocked" ? "요청 차단" : copy.title}</b>
+          <span>{needsClarification ? "재질문" : viewState}</span>
+        </div>
       </header>
       <p>{run.error?.message ?? run.summary ?? copy.description}</p>
+      {run.error?.code === "QUERY_SOURCE_FAILED" && (
+        <p className="analysis-retry" data-retryable={String(run.error.retryable)}>
+          <b>재시도</b>
+          <span>{run.error.retryable ? "다시 시도 가능" : "다시 시도 불가"}</span>
+        </p>
+      )}
       {showResult && <div className="analysis-summary"><small>API 제공 요약</small><strong>{run.summary}</strong></div>}
       {viewState === "PARTIAL" && (
-        <ul>{run.sources.map((source) => <li key={source.urn}>{source.name}: {source.status === "success" ? "성공" : "실패"}</li>)}</ul>
+          <ul>{run.sources.map((source) => <li key={source.urn}>{source.name}: {source.status === "success" ? "성공" : "실패"}</li>)}</ul>
       )}
-      <footer><code>{run.status}</code><span>request {run.requestId}</span></footer>
+      {showResult && run.metrics.length > 0 && (
+        <div className="analysis-metrics" aria-label="API 제공 지표">
+          {run.metrics.map((metric) => (
+            <article key={metric.metricId}>
+              <small>{metric.label}</small>
+              <strong>{String(metric.value ?? "—")} {metric.unit ?? ""}</strong>
+              <code>{metric.metricId}</code>
+            </article>
+          ))}
+        </div>
+      )}
+      {chart && table?.rows.length ? (
+        <div className="analysis-chart" aria-label={`API 제공 ${chart.chartType} 차트`}>
+          <small>{chart.chartType} · x={chart.xField} · y={chart.yFields.join(", ")}</small>
+          <ResponsiveContainer width="100%" height={210}>
+            <LineChart data={table.rows}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey={chart.xField} />
+              <YAxis />
+              <Tooltip />
+              {chart.yFields.map((field) => (
+                <Line key={field} dataKey={field} name={field} type="monotone" stroke="#9d7b45" />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : null}
+      {table?.columns.length ? (
+        <div className="analysis-table">
+          <table>
+            <thead><tr>{table.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+            <tbody>
+              {table.rows.map((row, index) => (
+                <tr key={`${run.requestId}-${index}`}>
+                  {table.columns.map((column) => <td key={column}>{String(row[column] ?? "—")}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {run.artifact && (
+        <div className="artifact-bridge">
+          <div>
+            <small>Artifact</small>
+            <code>{run.artifact.artifactId}</code>
+          </div>
+          <button type="button" onClick={() => onAddArtifact?.(run.artifact!.artifactId)}>
+            보고서에 담기
+          </button>
+        </div>
+      )}
+      <footer>
+        <code>{run.status}</code>
+        <span>request {run.requestId}</span>
+        <span>run/trace {run.traceId}</span>
+      </footer>
     </section>
   );
 }

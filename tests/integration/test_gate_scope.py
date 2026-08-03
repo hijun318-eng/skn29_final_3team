@@ -19,10 +19,36 @@ class GateScopeTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.ledger = gate_scope.LEDGER.read_text(encoding="utf-8")
 
+    def generic_bundle(self) -> dict[str, str]:
+        bundle = dict(gate_scope.current_bundle(self.ledger, "seung"))
+        bundle.pop("TEST_COMMAND_IDS", None)
+        bundle.pop("ACCEPTANCE_IDS", None)
+        return bundle
+
     def test_latest_r4_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "jaehong")
-        self.assertEqual("R4-W2", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("R4-W3", bundle["EXECUTION_BUNDLE_ID"])
         self.assertEqual("READY", bundle["STATUS"])
+
+    def test_latest_r5_bundle_is_selected(self) -> None:
+        bundle = gate_scope.current_bundle(self.ledger, "minji")
+        self.assertEqual("R5-W3", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("READY", bundle["STATUS"])
+
+    def test_terminal_transition_uses_previous_bundle_scope(self) -> None:
+        current = {
+            "EXECUTION_BUNDLE_ID": "R1-W2",
+            "STATUS": "VERIFIED_GATE",
+        }
+        previous = {
+            "EXECUTION_BUNDLE_ID": "R1-W2",
+            "STATUS": "IN_PROGRESS",
+            "ALLOWED_PATHS": "docs/markdown/collaboration/**",
+        }
+        self.assertIs(
+            previous,
+            gate_scope.terminal_transition_scope(current, previous),
+        )
 
     def test_ready_bundle_uses_exact_allowed_paths(self) -> None:
         bundle = {
@@ -84,9 +110,10 @@ class GateScopeTest(unittest.TestCase):
         self.assertEqual([path], changed)
         command = run.call_args.args[0]
         self.assertIn("-z", command)
+        self.assertIn("--diff-filter=ACMRD", command)
 
     def test_valid_handoff_with_external_work_needs_review(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "seung")
+        bundle = self.generic_bundle()
         changed = ["infrastructure/database/datahub/compose.fragment.yml"]
         handoff = gate_scope.handoff_template(
             bundle,
@@ -108,7 +135,7 @@ class GateScopeTest(unittest.TestCase):
         self.assertIn("external approval is required", reviews)
 
     def test_handoff_changed_files_must_match_git_diff(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "seung")
+        bundle = self.generic_bundle()
         handoff = gate_scope.handoff_template(
             bundle,
             "seung",
@@ -126,8 +153,87 @@ class GateScopeTest(unittest.TestCase):
         )
         self.assertIn("CHANGED_FILES does not match the git diff", errors)
 
+    def test_declared_test_and_acceptance_ids_require_complete_evidence(self) -> None:
+        bundle = dict(gate_scope.current_bundle(self.ledger, "seung"))
+        bundle["TEST_COMMAND_IDS"] = "T1;T2"
+        bundle["ACCEPTANCE_IDS"] = "AC1;AC2"
+        handoff = gate_scope.handoff_template(
+            bundle,
+            "seung",
+            "a" * 40,
+            [],
+        )
+        handoff["COMPLETED_CARDS"] = ["R2-09"]
+        handoff["NOT_RUN"] = []
+        handoff["TEST_RESULTS"] = [
+            {"id": "T1", "name": "data tests", "status": "PASS", "evidence": ""}
+        ]
+        handoff["ACCEPTANCE_RESULTS"] = [
+            {"id": "AC1", "status": "PASS", "evidence": "query id q-1"}
+        ]
+        errors, _ = gate_scope.validate_handoff(handoff, bundle, "seung", [])
+        self.assertIn("TEST_RESULTS missing ids: T2", errors)
+        self.assertIn("mapped TEST_RESULTS items need real evidence", errors)
+        self.assertIn("ACCEPTANCE_RESULTS missing ids: AC2", errors)
+
+    def test_placeholder_evidence_and_missing_ids_are_rejected(self) -> None:
+        bundle = dict(gate_scope.current_bundle(self.ledger, "seung"))
+        bundle["TEST_COMMAND_IDS"] = "T1"
+        bundle["ACCEPTANCE_IDS"] = "AC1"
+        handoff = gate_scope.handoff_template(
+            bundle,
+            "seung",
+            "a" * 40,
+            [],
+        )
+        handoff["COMPLETED_CARDS"] = ["R2-09"]
+        handoff["NOT_RUN"] = []
+        handoff["TEST_RESULTS"] = [
+            {
+                "id": "T1",
+                "name": "data tests",
+                "status": "PASS",
+                "evidence": "미실행 사유 입력",
+            },
+            {"name": "unmapped", "status": "PASS", "evidence": "12 passed"},
+        ]
+        handoff["ACCEPTANCE_RESULTS"] = [
+            {"id": "AC1", "status": "PASS", "evidence": "미검증 사유 입력"},
+            {"status": "PASS", "evidence": "trace t-1"},
+        ]
+        errors, _ = gate_scope.validate_handoff(handoff, bundle, "seung", [])
+        self.assertIn("TEST_RESULTS items need id", errors)
+        self.assertIn("mapped TEST_RESULTS items need real evidence", errors)
+        self.assertIn("ACCEPTANCE_RESULTS items need id", errors)
+        self.assertIn(
+            "each ACCEPTANCE_RESULTS item needs status and real evidence",
+            errors,
+        )
+
+    def test_complete_evidence_allows_empty_not_run(self) -> None:
+        bundle = dict(gate_scope.current_bundle(self.ledger, "seung"))
+        bundle["TEST_COMMAND_IDS"] = "T1"
+        bundle["ACCEPTANCE_IDS"] = "AC1"
+        handoff = gate_scope.handoff_template(
+            bundle,
+            "seung",
+            "a" * 40,
+            [],
+        )
+        handoff["COMPLETED_CARDS"] = ["R2-09"]
+        handoff["NOT_RUN"] = []
+        handoff["TEST_RESULTS"] = [
+            {"id": "T1", "name": "data tests", "status": "PASS", "evidence": "12 passed"}
+        ]
+        handoff["ACCEPTANCE_RESULTS"] = [
+            {"id": "AC1", "status": "PASS", "evidence": "query id q-1"}
+        ]
+        errors, reviews = gate_scope.validate_handoff(handoff, bundle, "seung", [])
+        self.assertEqual([], errors)
+        self.assertEqual([], reviews)
+
     def test_handoff_result_sha_must_match_checked_head(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "seung")
+        bundle = self.generic_bundle()
         handoff = gate_scope.handoff_template(
             bundle,
             "seung",
@@ -196,7 +302,7 @@ class GateScopeTest(unittest.TestCase):
         self.assertIn("required manifest is missing", notes[0])
 
     def test_submitted_manifest_is_loaded_and_validated(self) -> None:
-        bundle = dict(gate_scope.current_bundle(self.ledger, "seung"))
+        bundle = self.generic_bundle()
         bundle["STATUS"] = "REVIEW"
         changed = ["tests/data/test_source_registry.py"]
         handoff = gate_scope.handoff_template(
@@ -220,10 +326,13 @@ class GateScopeTest(unittest.TestCase):
         self.assertEqual("PASS", status)
         self.assertEqual([], notes)
 
-    def test_only_fail_blocks_the_automated_quality_gate(self) -> None:
-        """미제출·잔여 위험 보고는 R1 검토 대상이며 CI 차단 대상이 아니다."""
-        self.assertEqual({"FAIL"}, gate_scope.BLOCKING_HANDOFF_STATUSES)
-        for status in ("NOT_RUN", "REVIEW_REQUIRED", "PASS", "N/A"):
+    def test_fail_and_submitted_review_block_the_quality_gate(self) -> None:
+        """제출된 handoff의 미실행·잔여 위험은 수용 전에 해소해야 한다."""
+        self.assertEqual(
+            {"FAIL", "REVIEW_REQUIRED"},
+            gate_scope.BLOCKING_HANDOFF_STATUSES,
+        )
+        for status in ("NOT_RUN", "PASS", "N/A"):
             self.assertNotIn(status, gate_scope.BLOCKING_HANDOFF_STATUSES)
 
     def test_unsubmitted_manifest_is_not_run_and_does_not_block(self) -> None:
@@ -244,9 +353,9 @@ class GateScopeTest(unittest.TestCase):
                         status, gate_scope.BLOCKING_HANDOFF_STATUSES
                     )
 
-    def test_residual_risk_report_is_review_not_block(self) -> None:
-        """잔여 위험을 적어도 REVIEW_REQUIRED일 뿐 Gate를 차단하지 않는다."""
-        bundle = dict(gate_scope.current_bundle(self.ledger, "seung"))
+    def test_residual_risk_report_requires_review_and_blocks_submission(self) -> None:
+        """잔여 위험은 보존하되 terminal 제출 수용 전에는 차단한다."""
+        bundle = self.generic_bundle()
         bundle["STATUS"] = "REVIEW"
         changed = ["tests/data/test_source_registry.py"]
         handoff = gate_scope.handoff_template(bundle, "seung", "a" * 40, changed)
@@ -265,7 +374,7 @@ class GateScopeTest(unittest.TestCase):
                 )
         self.assertEqual("REVIEW_REQUIRED", status)
         self.assertIn("residual risk exists", notes)
-        self.assertNotIn(status, gate_scope.BLOCKING_HANDOFF_STATUSES)
+        self.assertIn(status, gate_scope.BLOCKING_HANDOFF_STATUSES)
 
 
 if __name__ == "__main__":

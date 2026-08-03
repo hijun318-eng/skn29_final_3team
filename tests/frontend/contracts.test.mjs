@@ -16,8 +16,19 @@ import {
   FIXTURE_VERSION,
 } from "../../app/enterprise-react/src/data/analysisFixtures.ts";
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
+import { createHttpAnalysisClient, usesMockAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
 
 const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/package.json", import.meta.url)));
+const g1ClarificationFixture = JSON.parse(
+  readFileSync(new URL("../backend/fixtures/api/v0.1/g1_clarification.json", import.meta.url)),
+);
+const timeoutFixture = JSON.parse(
+  readFileSync(new URL("../backend/fixtures/api/v0.1/timeout.json", import.meta.url)),
+);
+const analysisStatePanelSource = readFileSync(
+  new URL("../../app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx", import.meta.url),
+  "utf8",
+);
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
 assert.equal(REPORT_CONTRACT_VERSION, "REPORT-v1.0.0");
 assert.equal(FIXTURE_VERSION, "UI-FIXTURE-v1.0.0");
@@ -27,17 +38,109 @@ assert.equal(resolveRoute("/customers").page, "notFound");
 assert.equal(resolveRoute("/catalog/tools").page, "notFound");
 
 for (const [expected, run] of Object.entries(analysisFixtures)) {
-  assert.equal(resolveViewState(run).toLowerCase(), expected);
+  assert.equal(resolveViewState(run).toLowerCase(), expected === "clarification" ? "empty" : expected);
 }
 
+const clarification = normalizeApiResponse(
+  g1ClarificationFixture,
+  "지난달 객실 매출을 알려줘.",
+  "conv-clarification-001",
+);
+assert.equal(clarification.status, "blocked");
+assert.equal(resolveViewState(clarification), "EMPTY");
+assert.equal(clarification.error.code, "CONTEXT_INCOMPLETE");
+assert.equal(clarification.error.message, "분석 기간을 입력해 주세요.");
+assert.equal(clarification.requestId, "00000000-0000-0000-0000-000000000100");
+assert.equal(clarification.traceId, "fixture-g1-clarification");
+assert.equal(clarification.artifact, undefined);
+
+const timeout = normalizeApiResponse(timeoutFixture, "객실 분석", "conv-timeout-001");
+assert.equal(timeout.status, "failed");
+assert.equal(resolveViewState(timeout), "ERROR");
+assert.equal(timeout.error.code, "QUERY_SOURCE_FAILED");
+assert.equal(timeout.error.message, "조회 시간이 초과되었습니다.");
+assert.equal(timeout.error.retryable, true);
+assert.equal(timeout.artifact, undefined);
+assert.equal(timeout.traceId, "fixture-timeout");
+assert.deepEqual(analysisFixtures.error.error, timeout.error);
+assert.equal(analysisFixtures.error.traceId, timeout.traceId);
+assert.match(analysisStatePanelSource, /run\.error\.retryable \? "다시 시도 가능" : "다시 시도 불가"/);
+
 const normalized = normalizeApiResponse({
-  data: { status: "SUCCEEDED", transitions: ["RECEIVED", "ROUTED", "SUCCEEDED"], result: { summary: "Fake 분석 결과입니다.", assets: [{ name: "PMS guest fixture", urn: "urn:answervice:dataset:pms.public.pms_guests" }] } },
+  data: {
+    status: "SUCCEEDED",
+    transitions: ["RECEIVED", "ROUTED", "SUCCEEDED"],
+    artifact: {
+      artifact_id: "artifact-api-001",
+      query_id: "query-api-001",
+      context_hash: "context-api-001",
+    },
+    result: {
+      summary: "Fake 분석 결과입니다.",
+      metrics: [{ metric_id: "recognized_room_revenue", label: "인식 객실 매출", value: 128400000, unit: "KRW" }],
+      table: { columns: ["business_date", "recognized_room_revenue"], rows: [{ business_date: "2026-07-30", recognized_room_revenue: 128400000 }] },
+      chart: { chart_type: "line", x_field: "business_date", y_fields: ["recognized_room_revenue"] },
+      evidence: {
+        artifact_id: "artifact-api-001",
+        query_id: "query-api-001",
+        as_of: "2026-07-30",
+        period: { start: "2026-07-01", end_exclusive: "2026-08-01" },
+        filters: { hotel: "synthetic" },
+        cached: false,
+        sampling: { applied: false, returned_rows: 1, total_rows: 1 },
+        sources: [{
+          name: "PMS guest fixture",
+          urn: "urn:answervice:dataset:pms.public.pms_guests",
+          fqn: "pms.public.pms_guests",
+          schema_version: "1.0.0",
+          seed_version: "20260729",
+        }],
+      },
+    },
+  },
   meta: { request_id: "req-api-001", trace_id: "trace-api-001", as_of: "2026-07-30", contract_version: OPENAPI_VERSION, timestamp: "2026-07-30T03:00:00Z" },
   error: null,
 }, "객실 분석", "conv-api-001");
 assert.equal(normalized.status, "success");
 assert.equal(normalized.requestId, "req-api-001");
+assert.equal(normalized.traceId, "trace-api-001");
+assert.equal(normalized.artifact.artifactId, "artifact-api-001");
+assert.equal(normalized.artifact.queryId, "query-api-001");
+assert.deepEqual(normalized.metrics[0], {
+  metricId: "recognized_room_revenue",
+  label: "인식 객실 매출",
+  value: 128400000,
+  unit: "KRW",
+});
+assert.equal(normalized.table.rows[0].recognized_room_revenue, 128400000);
+assert.equal(normalized.chart.xField, "business_date");
+assert.deepEqual(normalized.evidence.filters, { hotel: "synthetic" });
+assert.deepEqual(normalized.evidence.period, { start: "2026-07-01", endExclusive: "2026-08-01" });
 assert.equal(normalized.sources[0].urn, "urn:answervice:dataset:pms.public.pms_guests");
+assert.equal(normalized.sources[0].schemaVersion, "1.0.0");
+assert.equal(normalized.meta.seed, "20260729");
+assert.equal(normalized.rowCount, 1);
+assert.equal(analysisFixtures.ready.artifact.artifactId, analysisFixtures.ready.evidence.artifactId);
+assert.equal(analysisFixtures.ready.metrics[0].unit, "KRW");
+assert.ok(analysisFixtures.ready.table.rows.length > 0);
+assert.equal(usesMockAnalysisClient, false);
+
+let httpRequest;
+const httpClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
+  httpRequest = { url, init };
+  return new Response(JSON.stringify(g1ClarificationFixture), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+});
+const httpRun = await httpClient.analyze("기간 없는 질문", "conv-http-001", "ready");
+assert.equal(httpRequest.url, "http://backend.test/analysis");
+assert.equal(httpRequest.init.method, "POST");
+assert.equal(httpRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION);
+assert.equal(JSON.parse(httpRequest.init.body).template_id, "weekly-room-operations");
+assert.equal(httpRun.requestId, g1ClarificationFixture.meta.request_id);
+assert.equal(httpRun.traceId, g1ClarificationFixture.meta.trace_id);
+assert.equal(httpRun.error.retryable, false);
 
 const approved = Object.freeze({
   definitionId: "report-001",

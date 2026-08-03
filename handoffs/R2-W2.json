@@ -1,0 +1,78 @@
+{
+  "EXECUTION_BUNDLE_ID": "R2-W2",
+  "ROLE": "R2",
+  "BRANCH": "seung",
+  "BASE_SHA": "04e5e6dfb1ab66d41d8235275bfe5a30290c7181",
+  "RESULT_SHA": "75f148b3d9cf8ac7c7bd2ba34cb46248e3927ee8",
+  "DIRECTIVE_TOKEN": "R2-W2@04e5e6d",
+  "SYNCED_DEV_SHA": "b5029560a72927d1d3531235e578648d98f039b5",
+  "COMPLETED_CARDS": [
+    "R2-09",
+    "R2-10",
+    "R2-11",
+    "R2-12",
+    "R2-13",
+    "R2-14",
+    "R2-15",
+    "R2-16"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/seung/일일보고.md",
+    "infrastructure/database/datahub/recipes/crm.i2.yml",
+    "infrastructure/database/datahub/recipes/pms.i2.yml",
+    "infrastructure/database/scripts/start.ps1",
+    "infrastructure/database/scripts/verify.ps1",
+    "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql",
+    "src/data/i2_adapters.py",
+    "src/data/i2_contract.v1.json",
+    "tests/data/test_i2_adapters.py",
+    "tests/data/test_i2_contract.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "INPUT_CONTRACT_VERSION": "I1-v1.0.0",
+    "CONTRACT_VERSION": "I2-v1.0.0",
+    "SCHEMA_VERSION": "1.0.0",
+    "SEED_VERSION": "20260729",
+    "SCENARIO_VERSION": "1.0.0",
+    "GOLD_SHA256": "e6c2d1ee3ef2246180c9d6985a10e78c44829443acbeaeef9a1ec37c6f1e08fd"
+  },
+  "TEST_RESULTS": [
+    {
+      "name": "python -m unittest discover -s tests/data -p \"test_*.py\" (14 passed)",
+      "status": "PASS"
+    },
+    {
+      "name": "python -m unittest tests.integration.test_gate_scope -v (13 passed)",
+      "status": "PASS"
+    },
+    {
+      "name": "docker compose config",
+      "status": "PASS"
+    },
+    {
+      "name": "start.ps1 (DATABASE_STACK_READY)",
+      "status": "PASS"
+    },
+    {
+      "name": "verify.ps1 (I2_GOLD_HASH_VERIFIED, DATABASE_CONTRACT_VERIFIED)",
+      "status": "PASS"
+    },
+    {
+      "name": "report validation",
+      "status": "PASS"
+    },
+    {
+      "name": "role gate",
+      "status": "PASS"
+    },
+    {
+      "name": "git diff --check",
+      "status": "PASS"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "dev 병합"
+}

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.70 |
-| 문서 기준일 | 2026-08-04 04:17 |
+| 버전 | v7.71 |
+| 문서 기준일 | 2026-08-04 04:21 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 04:21 | 3.14, 4.9, 6.3 | R3의 optional normalized question·ID 비의미 prompt가 16건·전체 CI를 통과해 dev에 통합됐다. R4-W3-F3로 제품 원문 질문을 service→adapter→R3 request에 그대로 전달하는 최소 소비자 보완을 승인했다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R3 질문 계약 완료·R4 소비자 연결 승인 |
 | 2026-08-04 04:17 | 3.14, 4.9, 6.3 | raw 고정 UUID는 schema·한 줄 SQL·LIMIT을 통과했지만 실제 제품의 무작위 request UUID에서는 MODEL invalid와 circuit 안전 실패가 반복됐다. node2 request에 실제 질문이 없어 Base가 UUID에 반응하는 근본 계약 차이를 확인했고 QUERY·Artifact 없이 task resource를 제거했다. 신규 비용 상한은 약 USD0.090978이다. R3-W3-F8로 optional normalized question 계약을 호환 추가하며 상태·일정·간트는 유지한다. | 실제 질문 누락 계약 병목·R3 호환 보완 승인 |
 | 2026-08-04 04:03 | 3.14, 4.9, 6.3 | R3의 node2 한 줄 compact SQL PROMPT-v1.0.2가 15건·전체 CI를 통과해 dev에 통합됐다. raw finish/schema/LIMIT을 먼저 확인하고 동일 Base·I2 read-only 제품 전체 trace를 재검증하는 R1-W3-F4를 발행했다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | compact prompt 완료·최종 제품 재검증 승인 |
 | 2026-08-04 03:59 | 3.14, 4.9, 6.3 | 실제 PROMPT-v1.0.1 trace에서 LIMIT은 생성됐지만 SQL 문자열의 불필요한 개행 881줄로 completion 1,500 token에 도달해 JSON이 미완성으로 MODEL 안전 실패했다. QUERY·Artifact는 없고 task resource를 제거해 active Pods 0을 확인했다. 신규 비용 상한은 약 USD0.066224다. R3-W3-F7로 node2 한 줄 compact SQL 문구만 보완하며 상태·일정·간트는 유지한다. | MODEL 길이 병목 확인·R3 compact prompt 승인 |
@@ -464,6 +465,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.71 | 2026-08-04 04:21 | R3 normalized question 호환 계약을 dev에 통합하고 R4 service→adapter 소비자 연결을 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
 | v7.70 | 2026-08-04 04:17 | 실제 질문 없이 UUID만 전달하는 node2 계약 병목과 MODEL circuit 안전 실패·cleanup을 3.14·4.9·6.3에 연결하고 R3 optional normalized question 보완을 승인했다. 상태·일정·간트는 유지했다. |
 | v7.69 | 2026-08-04 04:03 | R3 PROMPT-v1.0.2를 dev에 통합하고 raw 응답과 동일 Base·I2 read-only 제품 전체 trace를 위한 R1-W3-F4를 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
 | v7.68 | 2026-08-04 03:59 | 실제 Base의 LIMIT 생성과 881줄 개행·completion length 미완성 JSON 병목, 안전 실패·cleanup을 3.14·4.9·6.3에 연결하고 R3 compact SQL prompt 보완을 승인했다. 상태·일정·간트는 유지했다. |

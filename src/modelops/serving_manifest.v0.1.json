@@ -1,0 +1,49 @@
+{
+  "manifest_version": "SERVING-v0.1",
+  "status": "NOT_RUN",
+  "reason": "model download, RunPod, secret, deployment, and external calls are not authorized in R3-W3",
+  "protocol": {
+    "generate_path": "/v1/generate",
+    "health_path": "/health",
+    "readiness_path": "/ready",
+    "port_env": "MODEL_PORT",
+    "endpoint_env": "MODEL_ENDPOINT",
+    "token_env": "MODEL_API_TOKEN"
+  },
+  "runtime": {
+    "engine": "vLLM",
+    "image": "NOT_SELECTED",
+    "model_revision": "NOT_SELECTED",
+    "adapter_revision": null,
+    "dynamic_adapter_loading": false,
+    "max_concurrency": 2,
+    "overflow": "queue_or_429",
+    "timeout_seconds": 15,
+    "max_output_tokens": 1024
+  },
+  "resources": {
+    "gpu": "Not Run",
+    "cpu": "Not Run",
+    "memory": "Not Run",
+    "peak_vram": "Not Run"
+  },
+  "storage": {
+    "persistent_path": "/workspace",
+    "external_backup_required_before_shutdown": true,
+    "backup_target": "NOT_CONFIGURED"
+  },
+  "operations": {
+    "preload": "required before readiness",
+    "restart": "restart process, reload fixed revision, then require readiness",
+    "time_limit": "NOT_APPROVED",
+    "cost_limit": "NOT_APPROVED",
+    "stop_on_limit": true
+  },
+  "verification": {
+    "cold_start": "Not Run",
+    "warm_latency": "Not Run",
+    "timeout": "local contract test only",
+    "restart": "Not Run",
+    "health": "schema only"
+  }
+}

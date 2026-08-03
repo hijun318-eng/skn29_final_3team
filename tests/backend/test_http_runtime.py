@@ -9,6 +9,7 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -209,6 +210,28 @@ class FastApiRuntimeTest(unittest.TestCase):
             failed["error"]["code"],
         )
 
+    def test_third_concurrent_analysis_receives_real_http_429(self) -> None:
+        def submit(index: int):
+            headers = self.context_headers()
+            headers["X-Trace-Id"] = f"rate-limit-{index}"
+            return self.request(
+                "/analysis",
+                method="POST",
+                headers=headers,
+                body={
+                    "question": f"slow room demand {index}",
+                    "parameters": {"scenario": "slow"},
+                },
+            )
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            results = list(pool.map(submit, range(3)))
+
+        statuses = sorted(status for status, _body in results)
+        self.assertEqual([200, 200, 429], statuses)
+        limited = next(body for status, body in results if status == 429)
+        self.assertEqual("RATE_LIMITED", limited["error"]["code"])
+
     def test_missing_context_and_invalid_role_are_blocked(self) -> None:
         status, response = self.request(
             "/analysis", method="POST", body={"question": "test"}
@@ -383,11 +406,18 @@ class RealTemplateHttpRuntimeTest(FastApiRuntimeTest):
             self.assertEqual("ACCESS_DENIED", denied["error"]["code"])
         self.assertEqual(query_count, _TrinoHandler.query_count)
 
+        partial_body = {
+            **body,
+            "parameters": {
+                "period_start": "2026-06-01",
+                "period_end_exclusive": "2026-07-01",
+            },
+        }
         status, partial = self.request(
             "/analysis",
             method="POST",
             headers=self.context_headers(),
-            body=body,
+            body=partial_body,
         )
         self.assertEqual(200, status)
         self.assertEqual("PARTIAL", partial["data"]["status"])

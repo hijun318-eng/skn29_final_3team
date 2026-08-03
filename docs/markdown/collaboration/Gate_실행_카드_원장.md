@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.51 |
-| 문서 기준일 | 2026-08-03 14:47 |
+| 버전 | v2.52 |
+| 문서 기준일 | 2026-08-03 15:10 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1220,7 +1220,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff mani
 ### R3-W3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -1228,12 +1228,17 @@ EXECUTION_BUNDLE_ID=R3-W3
 TARGET_INTEGRATION_GATE=I3
 CHECKPOINT_GATES=없음
 TASK_CARD_RANGE=R3-03~10·12~14
-CURRENT_TASK_CARD_ID=R3-03
+CURRENT_TASK_CARD_ID=R3-14
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=b06a0da59df2a2b3481aaae0ef7845207cedbd09
-DIRECTIVE=ACTION
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R3-W3@b06a0da
+RESULT_SHA=5b13828725cca58c0640484e9cc5b2185d9a2758
+HANDOFF_SHA=0ca009658bc6d12b10012a64aedd9217a8317c74
+MERGED_DEV_SHA=41f5788176f507f9b07c7bb3643234f9ffceaa23
+CI_EVIDENCE=branch run 30789043209 PASS; dev run 30789184985 PASS
+DEFERRED_GATE_EVIDENCE=실제 Base model·RunPod/vLLM·GPU·비용·cold/warm/restart와 Gold120 나머지 115건은 I3 통과 증거로 계산하지 않음
 MODEL_CONTRACT_VERSION=MODEL-v1.0.0
 PROMPT_VERSION=PROMPT-v1.0.0
 MODEL_FIXTURE_VERSION=MODEL-FIXTURE-v1.0.0
@@ -1264,11 +1269,12 @@ TASK_CARD_RANGE=R4-08~15·18
 CURRENT_TASK_CARD_ID=R4-08
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=744592ab129ed44c0cfcf5cf860b8945b011a324
+BASE_SHA=41f5788176f507f9b07c7bb3643234f9ffceaa23
 DIRECTIVE=ACTION
-DIRECTIVE_TOKEN=R4-W3@744592a
+DIRECTIVE_TOKEN=R4-W3@41f5788
 OPENAPI_VERSION=OPENAPI-v1.0.0
-BASE_DEV_CI_EVIDENCE=GitHub Actions run 30785580556 PASS
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30789184985 PASS
+R1_REISSUE_EVIDENCE=R2 5원천 계약과 R3 production model client·timeout·fallback·circuit·trace 계약이 dev 41f5788에 통합되고 CI PASS를 확인해 R4-W3를 재발행
 ALLOWED_PATHS=app/backend/**; tests/backend/**
 FORBIDDEN_PATHS=source DDL·seed·src/data/**; src/ai/**·src/modelops/**; frontend·Report; root Compose·.env.example·CI; R1/R2/R3/R5 소유 문서
 ACCEPTANCE_CRITERIA=실제 model client·repair 최대 1회·Trino·G3·Artifact를 고정 상태 전이로 유지하고 SQL Plan Cache와 Result Cache를 분리하며 key에 context·policy·entitlement·as_of·watermark·mask를 포함한다. Template·Cache도 G1·G2·G3·권한을 우회하지 않고 최대 LLM 4회·동시 2건·초과 대기/429와 request→context→query/cache→artifact trace를 재현
@@ -1405,6 +1411,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.52 | 2026-08-03 15:10 | R3-W3 제품 `5b13828`·최종 `0ca0096`의 Context 제한 Node2·1회 repair·R2 평가 manifest 소비·timeout/fallback/circuit/trace와 branch CI `30789043209` PASS를 확인해 dev `41f5788`에 통합하고 dev CI `30789184985` PASS를 확인했다. 외부 Base model·RunPod/GPU/비용과 Gold120 나머지는 I3 미완료 증거로 유지하고, R4-W3를 최신 R3 model client 소비 기준 `R4-W3@41f5788`로 재발행했다. |
 | v2.51 | 2026-08-03 14:47 | R2-W3의 5원천 catalog·2/3원천 JOIN·필수 30건 fixture를 dev `8bfcd8c`에 통합하고 CI run `30788112084` PASS를 확인했다. R5 부재가 I3 병목이 되지 않도록 R5-W3를 최신 R2 계약 기준 `R5-W3@8bfcd8c`로 재발행했으며, 기존 OpenAPI example·mock을 사용해 R4 완료 전 병렬 착수하도록 승인했다. |
 | v2.50 | 2026-08-03 14:26 | R3 신규 실행이 카드 `BASE_SHA=744592a`와 당시 최신 dev 불일치로 자동 차단된 것을 확인했다. R1 착수 커밋을 dev `b06a0da`에 통합하고 CI run `30787154375` PASS를 확인해 R3-W3만 `R3-W3@b06a0da`로 재발행했으며, 원격 R3 일일보고 commit 보존과 no-rebase dev merge를 요구했다. |
 | v2.49 | 2026-08-03 14:18 | 최신 dev `1c57797`·CI run `30786041244` PASS와 통합 23건·Gate dashboard·문서 정책 검증을 확인하고 R1-W3를 `IN_PROGRESS`로 전환했다. R2~R5 지시를 Google Docs 섹션 9에 역할별로 발행했으며 required30 0/30·gold120 0/120과 외부 model·비용·secret 미승인 상태를 유지했다. |

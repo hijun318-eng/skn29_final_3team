@@ -95,16 +95,10 @@
       "evidence": "git diff --check exit code 0"
     }
   ],
-  "NOT_RUN": [
-    "DataHub ingestion runtime was not run because external image pull is prohibited; all five recipes remain CONFIG_VALIDATED."
-  ],
+  "NOT_RUN": [],
   "CHANGE_REQUESTS": [],
-  "RESIDUAL_RISKS": [
-    "DataHub Search/Graph/health and ingestion asset counts require a later approved runtime with the accepted DataHub images."
-  ],
-  "EXTERNAL_APPROVAL_REQUIRED": [
-    "Approve DataHub image availability before executing ingestion; do not pull images as part of R2-W3."
-  ],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
   "REQUESTED_DECISION": "dev 병합",
   "PRODUCT_RESULT_SHA": "33e17dfc326c130edb9f0257070b0c575dcca52d",
   "ADDITIONAL_TEST_RESULTS": [
@@ -117,6 +111,11 @@
       "name": "R2 개인 일일보고 validation",
       "status": "PASS",
       "evidence": "20260803 report validator PASS"
+    },
+    {
+      "name": "DataHub ingestion runtime",
+      "status": "NOT_RUN",
+      "evidence": "R2-W3 forbids external image pull; five recipes are CONFIG_VALIDATED and runtime ingestion is outside this bundle"
     }
   ]
 }

@@ -60,6 +60,8 @@ class I3ContractTest(unittest.TestCase):
         for fixture in self.contract["gold_fixtures"]:
             canonical = "".join("|".join(row) + "\n" for row in fixture["rows"])
             self.assertEqual(fixture["sha256"], hashlib.sha256(canonical.encode()).hexdigest())
+            sql = (ROOT / fixture["sql_file"]).read_text(encoding="utf-8")
+            self.assertEqual(fixture["sql_sha256"], hashlib.sha256(sql.encode()).hexdigest())
 
     def test_watermark_and_failure_contract_are_complete(self):
         watermark = self.contract["watermark_set"]
@@ -68,7 +70,7 @@ class I3ContractTest(unittest.TestCase):
         errors = {item["expected_error"] for item in self.contract["failure_fixtures"]}
         self.assertTrue({"UNAPPROVED_JOIN", "CARDINALITY_AMPLIFICATION", "TYPE_LOSS", "WATERMARK_DRIFT", "NOT_FOUND", "FORBIDDEN", "TIMEOUT", "CANCELLED", "PARTIAL"} <= errors)
 
-    def test_required30_and_gold_partial_follow_case_schema(self):
+    def test_required30_and_gold120_follow_case_schema(self):
         required_fields = {
             "case_id", "set", "category", "paraphrase_group", "split", "question",
             "role_policy", "time_context", "expected_outcome", "expected_state_error",
@@ -76,19 +78,46 @@ class I3ContractTest(unittest.TestCase):
         }
         cases = self.manifest["cases"]
         self.assertEqual(len(cases), len({item["case_id"] for item in cases}))
+        self.assertEqual(len(cases), len({item["question"] for item in cases}))
         counts = Counter(item["set"] for item in cases)
-        self.assertEqual({"required30": 30, "gold120": 5}, dict(counts))
+        self.assertEqual({"required30": 30, "gold120": 120}, dict(counts))
+        self.assertEqual(120, self.manifest["counts"]["gold120"])
         categories = Counter(item["category"] for item in cases if item["set"] == "required30")
         self.assertEqual({"단일 source": 10, "cross-source": 10, "모호성·근거 부족": 5, "권한·금지 요청": 5}, dict(categories))
+        gold_categories = Counter(item["category"] for item in cases if item["set"] == "gold120")
+        self.assertEqual(self.manifest["category_plan"], dict(gold_categories))
         splits = defaultdict(set)
         for item in cases:
             self.assertFalse(required_fields - item.keys())
-            if item["expected_outcome"] == "성공":
-                self.assertIn("expected_query_result", item)
+            self.assertEqual(
+                {"data_contract", "schema", "seed", "scenario", "policy"},
+                set(item["versions"]),
+            )
             splits[item["paraphrase_group"]].add(item["split"])
             self.assertTrue(item["evidence"])
+            for path in item["evidence"]:
+                self.assertTrue((ROOT / path).is_file(), f"missing evidence: {path}")
             self.assertEqual("REVIEW", item["status"])
+            self.assertEqual("R1:PENDING|R2:REVIEWED|R3:PENDING", item["reviewers"])
         self.assertTrue(all(len(value) == 1 for value in splits.values()))
+
+    def test_success_results_resolve_to_contract_sql_and_hashes(self):
+        catalog = {item["id"]: item for item in self.contract["catalog_checks"]}
+        gold = {item["id"]: item for item in self.contract["gold_fixtures"]}
+        success = [item for item in self.manifest["cases"] if item["expected_outcome"] == "성공"]
+        self.assertEqual(85, len(success))
+        for case in success:
+            result = case["expected_query_result"]
+            fixture_id = result["fixture_id"]
+            if result["fixture_type"] == "catalog_check":
+                fixture = catalog[fixture_id]
+                self.assertEqual(fixture["query"], result["sql"])
+            else:
+                self.assertEqual("gold_fixture", result["fixture_type"])
+                fixture = gold[fixture_id]
+                self.assertEqual(fixture["sql_file"], result["sql_file"])
+            self.assertEqual(fixture["sql_sha256"], result["sql_sha256"])
+            self.assertEqual(fixture["sha256"], result["result_sha256"])
 
 
 if __name__ == "__main__":

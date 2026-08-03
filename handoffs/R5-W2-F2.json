@@ -92,15 +92,15 @@
       "name": "git diff --check",
       "status": "PASS",
       "evidence": "git diff --check exit code 0"
-    },
+    }
+  ],
+  "ADDITIONAL_TEST_RESULTS": [
     {
-      "id": "T5_BROWSER",
       "name": "production image normal entrypoint and browser",
       "status": "PASS",
       "evidence": "R4-F3 image가 blank 임시 DB를 20260731_03으로 migration한 뒤 real Trino success와 source failure, 재질문·차단을 실제 browser에서 검증"
     },
     {
-      "id": "T6_CLEANUP",
       "name": "cleanup",
       "status": "PASS",
       "evidence": "R5 임시 DB·backend container·frontend listener·DevTools listener·browser profile 잔존 0"

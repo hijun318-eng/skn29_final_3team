@@ -1,0 +1,65 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R2-W3-F1",
+  "ROLE": "R2",
+  "BRANCH": "seung",
+  "BASE_SHA": "e780b75798188331964e55c2437965b78b290211",
+  "DIRECTIVE_BASE_SHA": "e780b75798188331964e55c2437965b78b290211",
+  "SYNCED_DEV_SHA": "1ac9c5de4a6dd620bea00d5b787c16b9b0d7053e",
+  "PRODUCT_RESULT_SHA": "46bcb74faa3338f9917e586bd7a6fe38cbe45e5e",
+  "RESULT_SHA": "b85cf5bf2d1306971e81908ec0fa6a8db4394524",
+  "DIRECTIVE_TOKEN": "R2-W3-F1@e780b75",
+  "COMPLETED_CARDS": ["R2-18 required30 결과 계약 강화·gold120 완성"],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/seung/일일보고.md",
+    "src/data/evaluation_fixture_manifest.i3.v1.json",
+    "src/data/i3_contract.v1.json",
+    "tests/data/test_i3_contract.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "INPUT_CONTRACT_VERSION": "I2-v1.0.0",
+    "DATA_CONTRACT_VERSION": "I3-DATA-v1.1.0-DRAFT",
+    "EVALUATION_MANIFEST_VERSION": "EVAL-DATA-I3-v1.1.0-DRAFT",
+    "SCHEMA_VERSION": "1.0.0",
+    "SEED_VERSION": "20260729",
+    "SCENARIO_VERSION": "1.0.0",
+    "POLICY_VERSION": "ACCESS-POLICY-v1.0.0"
+  },
+  "FIXTURE_SUMMARY": {
+    "REQUIRED30": 30,
+    "GOLD120": 120,
+    "TOTAL": 150,
+    "SUCCESS_WITH_RESOLVED_RESULT": 85,
+    "GOLD_CATEGORY_COUNTS": {"단일 source": 25, "승인 2-source JOIN": 20, "승인 3-source JOIN": 20, "모호·근거 부족": 20, "권한·금지": 20, "source 실패·timeout·partial": 15},
+    "DUPLICATE_CASE_IDS": 0,
+    "DUPLICATE_QUESTIONS": 0,
+    "PARAPHRASE_GROUP_SPLIT_LEAKS": 0,
+    "CASE_STATUS": "REVIEW",
+    "REVIEWERS": "R1:PENDING|R2:REVIEWED|R3:PENDING"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_REQUIRED30_RESULT_HASH", "status": "PASS", "evidence": "required30 성공 case가 i3_contract의 catalog 또는 승인 JOIN fixture ID, SQL·SQL file, SQL SHA-256, 결과 SHA-256에 해석됨"},
+    {"id": "AC2_GOLD120_COMPLETE", "status": "PASS", "evidence": "gold120 120건과 전체 질문·case ID 중복 0건을 data unit test로 확인"},
+    {"id": "AC3_CATEGORY_AND_SPLIT", "status": "PASS", "evidence": "Gold 범주 25/20/20/20/20/15 및 paraphrase_group split 누수 0건 확인"},
+    {"id": "AC4_EVIDENCE_AND_VERSION", "status": "PASS", "evidence": "150건 모두 존재하는 evidence 파일과 data/schema/seed/scenario/policy version을 가지며 REVIEW 상태 유지"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_JSON", "name": "python -m json.tool src/data/evaluation_fixture_manifest.i3.v1.json", "status": "PASS", "evidence": "JSON parsing exit code 0"},
+    {"id": "T2_DATA_TESTS", "name": "python -m unittest discover -s tests/data -p \"test_*.py\"", "status": "PASS", "evidence": "21 tests passed"},
+    {"id": "T3_AI_CONSUMER", "name": "python -m unittest tests.ai.test_wave3 -v", "status": "PASS", "evidence": "9 tests passed; full gold120 boundary and manifest consumption included"},
+    {"id": "T4_ROLE_GATE", "name": "python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "R2-W3-F1 role scope and handoff validation passed before handoff-only commit; final commit에서 R1 재실행"},
+    {"id": "T5_DIFF_CHECK", "name": "git diff --check", "status": "PASS", "evidence": "exit code 0"}
+  ],
+  "ADDITIONAL_TEST_RESULTS": [
+    {"name": "R2 개인 일일보고 validation", "status": "PASS", "evidence": "20260803 report validator PASS"},
+    {"name": "Ponytail 과설계 검토", "status": "PASS", "evidence": "신규 실행 계층·dependency 없이 기존 JSON contract·SQL·stdlib hash 검증만 확장"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "DEFERRED_I3_EVIDENCE": [
+    {"owner": "R1/R3", "item": "실제 Base model 비교와 R1·R3 case 승인", "status": "OUTSIDE_R2_W3_F1", "reason": "R2 카드 완료 조건은 평가 데이터와 결과 hash 계약 생산이며 model 실행·최종 reviewer 승인은 R1/R3 소유 I3 증거임"}
+  ],
+  "REQUESTED_DECISION": "R1 dev 병합 검토"
+}

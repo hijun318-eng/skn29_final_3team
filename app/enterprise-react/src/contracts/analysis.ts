@@ -197,6 +197,12 @@ export function resolveViewState(run: AnalysisRun): AnalysisViewState {
   if (run.status === "running") return run.delayed ? "DELAYED" : "LOADING";
   if (run.status === "cancelled") return "CANCELLED";
   if (run.status === "partial") return "PARTIAL";
+  if (
+    run.status === "failed"
+    && (run.error?.code === "RESULT_EVIDENCE_MISSING" || run.error?.code === "INSUFFICIENT_EVIDENCE")
+  ) {
+    return "INSUFFICIENT_EVIDENCE";
+  }
   if (run.status === "failed") return "ERROR";
   if (run.status === "blocked" && run.error?.code === "CONTEXT_INCOMPLETE") return "EMPTY";
   if (run.status === "blocked" && run.error?.code === "ACCESS_DENIED") return "FORBIDDEN";

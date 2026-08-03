@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.52 |
-| 문서 기준일 | 2026-08-03 15:10 |
+| 버전 | v2.56 |
+| 문서 기준일 | 2026-08-03 16:04 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -182,10 +182,12 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R5-W2-F1 | Wave 2 follow-up | R5 | 없음 → I2 | R5-04 source 실패 표시 보완 | API `retryable` 표시·R4 timeout fixture 소비 | `MERGED_DEV` |
 | R5-W2-F2 | Wave 2 follow-up | R5 | 없음 → I2 | R5-01·03~07 실제 API 보완 | production HTTP client·실제 backend 화면 trace | `MERGED_DEV` |
 | R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `IN_PROGRESS` |
-| R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `READY` |
-| R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `READY` |
-| R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `READY` |
-| R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `READY` |
+| R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `MERGED_DEV` |
+| R2-W3-F1 | Wave 3 follow-up | R2 | 없음 → I3 | R2-18 평가 fixture 보강 | required30 결과 hash 연결·gold120 완성 | `READY` |
+| R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `MERGED_DEV` |
+| R3-W3-F1C | Wave 3 compatibility follow-up | R3 | 없음 → I3 | R3-10 평가 manifest 소비 호환 | partial/full gold count consumer 검증 | READY |
+| R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
+| R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
 | R1-W4 | Wave 4·08/24~09/02 | R1 | I4·RC1 → I5 | R1-11~13 | Report 통합·보안·장애·복구·성능·release manifest | `PLANNED` |
 | R2-W4 | Wave 4·08/24~09/02 | R2 | I4·RC1 → I5 | R2-17~19 + R2-03~16 회귀 | 5번째 source·빈 환경 재생성·schema/seed/watermark/hash 동결 | `PLANNED` |
 | R3-W4 | Wave 4·08/24~09/02 | R3 | I4·RC1 → I5 | R3-11~15 + R3-01~10 회귀 | LoRA 1회 비교·조건부 채택·production client·전체 평가·fallback·release | `PLANNED` |
@@ -1171,7 +1173,7 @@ I2_GATE_VERSION=I2-v1.0.0
 CONTRACT_VERSION=I1-v1.0.0
 BASE_DEV_CI_EVIDENCE=GitHub Actions run 30785580556 PASS
 R1_START_EVIDENCE=origin/dev 1c57797789b040932fc6a02c3f45294d99bc0347·GitHub Actions run 30786041244 PASS; integration 23건·Gate dashboard·문서 정책 PASS; required30 0/30·gold120 0/120으로 생산자 handoff 대기
-ALLOWED_PATHS=.github/**; compose*.yml; .env.example; .dockerignore; config/access-policy.yaml; tests/integration/**; docs/Answervice_기획서.md; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
+ALLOWED_PATHS=AGENTS.md; .github/**; compose*.yml; .env.example; .dockerignore; config/access-policy.yaml; tests/integration/**; docs/Answervice_기획서.md; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=필수 30건 expected 결과와 reviewer를 확인하고 일반 질문 subset에서 schema-only·DataHub metadata·승인 Context 세 조건 및 Base model을 동일 질문·데이터·권한으로 비교하며 repair 최대 1회, 비승인 SQL·Context 밖 참조·G3 실패 설명을 차단하고 I3 통합 trace를 판정
 ACCEPTANCE_IDS=AC1_REQUIRED30_EXPECTED;AC2_GENERAL_LLM_BASELINE;AC3_SECURITY_BASELINE;AC4_I3_INTEGRATED_TRACE
@@ -1217,6 +1219,71 @@ HANDOFF=R3/R4/R5에 5-source fixture·watermark·실패 case를, R1에 Gold mani
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff manifest의 commit·seung push 승인; dependency 설치·외부 image pull·비용·배포·secret·외부 데이터 전송·dev merge 불가
 ```
 
+### R2-W3-F1
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W3-F1
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R2-18 required30 결과 계약 강화·gold120 완성
+CURRENT_TASK_CARD_ID=R2-18
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=e780b75798188331964e55c2437965b78b290211
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R2-W3-F1@e780b75
+CONTRACT_VERSION=I1-v1.0.0
+DATA_CONTRACT_VERSION=I3-DATA-v1.1.0-DRAFT
+EVALUATION_MANIFEST_VERSION=EVAL-DATA-I3-v1.1.0-DRAFT
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30791740474 PASS
+R1_REVIEW_EVIDENCE=required30 30건과 gold 후보 5건의 수량·범주·split은 유효하지만 성공 case의 expected_query_result가 실제 SQL·result hash가 아닌 참조 문자열이고, 모든 35건이 REVIEW·R1/R3 PENDING이며 R3 runner는 inventory만 소비함
+GOLD_CATEGORY_PLAN=단일 source 25; 승인 2-source JOIN 20; 승인 3-source JOIN 20; 모호·근거 부족 20; 권한·금지 20; source 실패·timeout·partial 15 = 120
+ALLOWED_PATHS=infrastructure/database/sql/queries/**; infrastructure/database/scripts/**; src/data/**; tests/data/**
+FORBIDDEN_PATHS=app/backend/**; src/ai/**; src/modelops/**; evals/**; frontend·Report; root Compose·.env.example·CI; R1/R3/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=required30 30건과 gold120 120건을 중복 없이 제공하고 성공 case의 expected_query_result를 i3_contract의 catalog check 또는 승인 JOIN gold fixture ID·SQL·sha256으로 해석·검증하며 evidence 파일 존재, data/schema/seed/scenario/policy version, category 수량, paraphrase_group split 누수 0건을 자동 검사한다. R1·R3 승인 전 case status는 REVIEW를 유지하고 단순 문장 복제로 수량을 채우지 않는다.
+ACCEPTANCE_IDS=AC1_REQUIRED30_RESULT_HASH;AC2_GOLD120_COMPLETE;AC3_CATEGORY_AND_SPLIT;AC4_EVIDENCE_AND_VERSION
+TEST_COMMANDS=python -m json.tool src/data/evaluation_fixture_manifest.i3.v1.json; python -m unittest discover -s tests/data -p "test_*.py"; python -m unittest tests.ai.test_wave3 -v; python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_JSON;T2_DATA_TESTS;T3_AI_CONSUMER;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=실제 고객·외부 데이터 필요; 승인되지 않은 JOIN·새 원천·schema 변경 필요; expected result hash 불일치; category·split·evidence 검증 실패; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R3에 EVAL-DATA-I3-v1.1.0 manifest와 case→SQL/result hash 해석 계약을, R1에 required30·gold120 범주별 수량·검증·미실행 항목을 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff manifest의 commit·seung push 승인; dependency 설치·외부 image pull·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
+
+### R3-W3-F1C
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F1C
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-10 R2 평가 manifest partial/full count 소비 호환
+CURRENT_TASK_CARD_ID=R3-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=c8a943be94827778fad48a626b0810adce86972b
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F1C@c8a943b
+CONTRACT_VERSION=I1-v1.0.0
+INPUT_EVALUATION_MANIFEST_VERSION=EVAL-DATA-I3-v1.0.0→v1.1.0-DRAFT
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30792024162 PASS
+CHANGE_REQUEST_EVIDENCE=tests/ai/test_wave3.py가 gold120=5·REVIEW=35를 하드코딩해 R2-W3-F1 승인 결과 gold120=120·전체 150 case를 소비하면 필연적으로 실패함. R2는 tests/ai/** 금지이므로 R3 소유 경로에서 선행 호환 보완 필요
+ALLOWED_PATHS=evals/**; tests/ai/**
+FORBIDDEN_PATHS=source DDL·seed·src/data/**; app/backend/**·G1·G2·G3; frontend·Report; root Compose·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=R2 manifest의 declared required30·gold partial count와 실제 case 수를 비교하고 required30=30·gold target=120·gold partial 0~120 경계를 유지한다. 테스트는 현재 partial 5건과 full 120건을 모두 검증하며 특정 REVIEW 총수 35를 하드코딩하지 않는다. model runtime·Node 동작·평가 성공 판정은 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_DECLARED_COUNT;AC2_PARTIAL_AND_FULL_GOLD;AC3_REQUIRED30_AND_TARGET;AC4_NO_RUNTIME_CHANGE
+TEST_COMMANDS=python -m compileall -q evals tests/ai; python -m unittest discover -s tests/ai -p "test_*.py"; python -m unittest tests.data.test_i3_contract -v; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_COMPILE;T2_AI_TESTS;T3_DATA_CONSUMER;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=R2 manifest schema 변경 필요; required30=30·gold target=120 경계 완화 필요; runtime·Node 동작 변경 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R2에 partial/full count를 모두 소비하는 검증 기준을, R1에 변경 전후 테스트와 runtime 무변경 증거를 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고·handoff manifest의 commit·daesung push 승인; dependency 설치·model download·RunPod·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
 ### R3-W3
 
 ```text
@@ -1258,7 +1325,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고·handoff mani
 ### R4-W3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -1275,6 +1342,9 @@ DIRECTIVE_TOKEN=R4-W3@41f5788
 OPENAPI_VERSION=OPENAPI-v1.0.0
 BASE_DEV_CI_EVIDENCE=GitHub Actions run 30789184985 PASS
 R1_REISSUE_EVIDENCE=R2 5원천 계약과 R3 production model client·timeout·fallback·circuit·trace 계약이 dev 41f5788에 통합되고 CI PASS를 확인해 R4-W3를 재발행
+R1_REVIEW_EVIDENCE=제품 3c2ee47·최종 70d9e56의 model call budget·권한별 Cache·동시 2건·HTTP 429·Audit trace, role gate와 branch CI 30789842373 PASS를 확인
+MERGED_DEV_SHA=c89a1a03d462e04dcd86dd33766936033063313d
+DEV_CI_EVIDENCE=GitHub Actions run 30790048113 PASS
 ALLOWED_PATHS=app/backend/**; tests/backend/**
 FORBIDDEN_PATHS=source DDL·seed·src/data/**; src/ai/**·src/modelops/**; frontend·Report; root Compose·.env.example·CI; R1/R2/R3/R5 소유 문서
 ACCEPTANCE_CRITERIA=실제 model client·repair 최대 1회·Trino·G3·Artifact를 고정 상태 전이로 유지하고 SQL Plan Cache와 Result Cache를 분리하며 key에 context·policy·entitlement·as_of·watermark·mask를 포함한다. Template·Cache도 G1·G2·G3·권한을 우회하지 않고 최대 LLM 4회·동시 2건·초과 대기/429와 request→context→query/cache→artifact trace를 재현
@@ -1289,7 +1359,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R4 개인 일일보고·handoff mani
 ### R5-W3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -1308,6 +1378,10 @@ UI_VERSION=UI-v1.0.0
 REPORT_VERSION=REPORT-v1.0.0
 BASE_DEV_CI_EVIDENCE=GitHub Actions run 30788112084 PASS
 R1_REISSUE_EVIDENCE=R2-W3 5원천 계약이 dev 8bfcd8c에 통합되고 CI PASS를 확인해 R5가 R4 완료를 기다리지 않고 기존 OpenAPI example·mock과 R2 fixture로 병렬 착수하도록 재발행
+R1_REVIEW_EVIDENCE=제품 e6e527a·최종 1c33f1c의 전체 오류 UI·Artifact→Report·immutable Report proposal·5원천 Catalog, role gate와 branch CI 30790336427 PASS를 확인
+MERGED_DEV_SHA=4106b6d247b3f8cae7528a9915fb06b9dbcbae7f
+DEV_CI_EVIDENCE=GitHub Actions run 30790451402 PASS
+FOLLOW_UP=R4-16 실제 FastAPI·Alembic 등록과 R5-16 browser 접근성은 Wave 4 범위로 유지
 ALLOWED_PATHS=app/enterprise-react/**; src/report/**; tests/frontend/**; tests/report/**
 FORBIDDEN_PATHS=app/react/**; app/backend/**·공통 FastAPI·Alembic chain; source DDL·seed·src/data/**; src/ai/**·src/modelops/**; root Compose·.env.example·CI; R1/R2/R3/R4 소유 문서
 ACCEPTANCE_CRITERIA=전체 오류 상태를 API 값 그대로 표시하고 immutable Report definition/version/run/block domain, R4가 등록 가능한 독립 router·migration proposal과 contract test, 5-source Catalog·Connection mock을 활성 frontend 하나에서 제공
@@ -1411,6 +1485,10 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.56 | 2026-08-03 16:04 | R2-W3-F1 구현 중 R3 소비자 테스트가 gold partial 5건·REVIEW 35건을 하드코딩해 full 120건 manifest를 차단하는 change request를 확인했다. dev `c8a943b`·CI `30792024162` 기준으로 R3-W3-F1C를 READY 발행해 partial/full count 호환만 선행 보완하며 runtime·Node 변경과 외부 권한은 승인하지 않았다. |
+| v2.55 | 2026-08-03 15:56 | dev `e780b75`·CI `30791740474` PASS를 기준으로 R2-W3-F1을 READY 발행했다. required30 성공 case의 SQL·result hash 연결과 gold120 120건 완성을 우선하며, R3 후속은 이 manifest가 dev에 통합된 뒤 재발행한다. 외부 데이터·image pull·model download·비용·secret은 승인하지 않았다. |
+| v2.54 | 2026-08-03 15:50 | Wave 3 요약표와 상세 카드의 상태를 R2~R5 `MERGED_DEV`로 정합화하고, R1 기본 소유 파일인 `AGENTS.md`를 R1-W3 허용 경로에 반영했다. CI run `30791392982`는 Python·Compose·문서 검증 PASS였으나 이 상세 경로 누락으로 role-scope만 실패해 후속 CI 재검증 대상으로 기록했다. |
+| v2.53 | 2026-08-03 15:42 | R4 제품 `3c2ee47`·최종 `70d9e56`과 R5 제품 `e6e527a`·최종 `1c33f1c`의 role gate·branch CI를 확인해 순서대로 dev `c89a1a0`·`4106b6d`에 통합하고 dev CI `30790048113`·`30790451402` PASS를 확인했다. R4-W3·R5-W3는 `MERGED_DEV`로 전환했으며 Report 공통 등록·browser 접근성과 외부 Base model·Gold 잔여 근거가 남아 I3는 진행 상태를 유지한다. |
 | v2.52 | 2026-08-03 15:10 | R3-W3 제품 `5b13828`·최종 `0ca0096`의 Context 제한 Node2·1회 repair·R2 평가 manifest 소비·timeout/fallback/circuit/trace와 branch CI `30789043209` PASS를 확인해 dev `41f5788`에 통합하고 dev CI `30789184985` PASS를 확인했다. 외부 Base model·RunPod/GPU/비용과 Gold120 나머지는 I3 미완료 증거로 유지하고, R4-W3를 최신 R3 model client 소비 기준 `R4-W3@41f5788`로 재발행했다. |
 | v2.51 | 2026-08-03 14:47 | R2-W3의 5원천 catalog·2/3원천 JOIN·필수 30건 fixture를 dev `8bfcd8c`에 통합하고 CI run `30788112084` PASS를 확인했다. R5 부재가 I3 병목이 되지 않도록 R5-W3를 최신 R2 계약 기준 `R5-W3@8bfcd8c`로 재발행했으며, 기존 OpenAPI example·mock을 사용해 R4 완료 전 병렬 착수하도록 승인했다. |
 | v2.50 | 2026-08-03 14:26 | R3 신규 실행이 카드 `BASE_SHA=744592a`와 당시 최신 dev 불일치로 자동 차단된 것을 확인했다. R1 착수 커밋을 dev `b06a0da`에 통합하고 CI run `30787154375` PASS를 확인해 R3-W3만 `R3-W3@b06a0da`로 재발행했으며, 원격 R3 일일보고 commit 보존과 no-rebase dev merge를 요구했다. |

@@ -1,0 +1,121 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R5-W3",
+  "ROLE": "R5",
+  "BRANCH": "minji",
+  "BASE_SHA": "8bfcd8ca62455a4c234fe565eee9b18776379cd8",
+  "DIRECTIVE_BASE_SHA": "8bfcd8ca62455a4c234fe565eee9b18776379cd8",
+  "SYNCED_DEV_SHA": "c89a1a03d462e04dcd86dd33766936033063313d",
+  "PRODUCT_RESULT_SHA": "e6e527aaa8572a5c4496adb23801b0cbb3b47fad",
+  "RESULT_SHA": "290dfc35a75f8adcd3579bfc7eddb71d834ef4cf",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R5-W3@8bfcd8c",
+  "COMPLETED_CARDS": [
+    "R5-04~10·14 Wave 3 오류 UI·Report·5원천 Catalog"
+  ],
+  "CHANGED_FILES": [
+    "app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx",
+    "app/enterprise-react/src/contracts/analysis.ts",
+    "app/enterprise-react/src/contracts/report.ts",
+    "app/enterprise-react/src/data/catalogFixtures.ts",
+    "app/enterprise-react/src/data/enterpriseDemoData.js",
+    "app/enterprise-react/src/pages/AgentPage.jsx",
+    "app/enterprise-react/src/pages/CatalogPage.jsx",
+    "app/enterprise-react/src/pages/ConnectionsPage.jsx",
+    "app/enterprise-react/src/pages/ReportsPage.jsx",
+    "app/enterprise-react/src/styles.css",
+    "docs/markdown/daily_reports/minji/일일보고.md",
+    "src/report/README.md",
+    "src/report/__init__.py",
+    "src/report/domain.py",
+    "src/report/migration_proposal.sql",
+    "src/report/repository.py",
+    "src/report/router.py",
+    "tests/frontend/contracts.test.mjs",
+    "tests/report/test_domain.py",
+    "tests/report/test_migration_proposal.py",
+    "tests/report/test_router_contract.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "OPENAPI_VERSION": "OPENAPI-v1.0.0",
+    "UI_VERSION": "UI-v1.0.0",
+    "REPORT_VERSION": "REPORT-v1.0.0",
+    "DATA_CONTRACT_VERSION": "I3-DATA-v1.0.0"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_ERROR_STATES",
+      "status": "PASS",
+      "evidence": "g1 clarification·g2 blocked·g3 evidence failure·timeout·partial·cancelled fixture를 API error code/message/retryable 원문과 6개 view state로 검증"
+    },
+    {
+      "id": "AC2_REPORT_VERSION",
+      "status": "PASS",
+      "evidence": "definition draft→approved→next version, run의 definition_version·as_of·policy·context·watermark와 block artifact·query·snapshot 불변 계약 7 tests PASS"
+    },
+    {
+      "id": "AC3_ROUTER_MIGRATION_PROPOSAL",
+      "status": "PASS",
+      "evidence": "framework-neutral 5 route contract와 PostgreSQL 5개 version/run/block table proposal, overwrite·unknown field·duplicate run 거부 tests PASS"
+    },
+    {
+      "id": "AC4_FIVE_SOURCE_CATALOG",
+      "status": "PASS",
+      "evidence": "R2 I3-DATA-v1.0.0의 PMS·POS·CRM·Banquet·Facility source/engine/URN/FQN/watermark/hash를 exact fixture test로 검증"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_BUILD",
+      "name": "npm --prefix app/enterprise-react run build",
+      "status": "PASS",
+      "evidence": "R5 구현 작업자 production vite build exit code 0; 최신 branch CI에서 재확인 예정"
+    },
+    {
+      "id": "T2_FRONTEND_CONTRACT",
+      "name": "node --test tests/frontend/contracts.test.mjs",
+      "status": "PASS",
+      "evidence": "1 passed after latest R4 dev sync"
+    },
+    {
+      "id": "T3_REPORT_TESTS",
+      "name": "python -m unittest discover -s tests/report -p test_*.py",
+      "status": "PASS",
+      "evidence": "7 passed after latest R4 dev sync"
+    },
+    {
+      "id": "T4_ROLE_GATE",
+      "name": "python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS",
+      "evidence": "제품·보고 commit의 승인 경로와 SHA 관계 확인; 이 manifest-only commit에서 최종 재검증"
+    },
+    {
+      "id": "T5_DIFF_CHECK",
+      "name": "git diff --check",
+      "status": "PASS",
+      "evidence": "exit code 0"
+    }
+  ],
+  "ADDITIONAL_TEST_RESULTS": [
+    {
+      "name": "R4 backend 소비자 회귀",
+      "status": "PASS",
+      "evidence": "execution control·analysis pipeline·control plane contract 27 passed"
+    },
+    {
+      "name": "R4 FastAPI·Alembic 실제 등록",
+      "status": "NOT_RUN",
+      "evidence": "R5 소유 범위는 독립 router·migration proposal까지이며 공통 등록은 R4 후속 카드 대상"
+    },
+    {
+      "name": "browser·수동 접근성",
+      "status": "NOT_RUN",
+      "evidence": "현재 자동 contract 범위 밖이며 R1 통합 검토에서 확인 필요"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R1 I3 통합 및 R4 Report proposal 등록 후속 범위 결정"
+}

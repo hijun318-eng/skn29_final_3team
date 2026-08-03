@@ -6,7 +6,7 @@
   "BASE_SHA": "158a493349cf7fc7f20e5faec529852b61ec3562",
   "DIRECTIVE_BASE_SHA": "158a493349cf7fc7f20e5faec529852b61ec3562",
   "SYNCED_DEV_SHA": "3deab1a7d0b0212b01926741432040226205d572",
-  "RESULT_SHA": "dae606f7915c5d0cb9641dc4565bf74bf822c4f8",
+  "RESULT_SHA": "08335d41f0f42182c34ef85ca79e41fe3ec5e0ea",
   "PRODUCT_RESULT_SHA": "dae606f7915c5d0cb9641dc4565bf74bf822c4f8",
   "DIRECTIVE_TOKEN": "R5-W2-F2-RESUME@158a493",
   "COMPLETED_CARDS": [
@@ -85,19 +85,22 @@
       "id": "T3_ROLE_GATE",
       "name": "python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base",
       "status": "PASS",
-      "evidence": "R5-W2-F2 허용 경로와 handoff 정합"
+      "evidence": "origin/dev 대비 6개 변경 경로가 R5-W2-F2 허용 경로와 일치"
     },
     {
       "id": "T4_DIFF_CHECK",
       "name": "git diff --check",
-      "status": "PASS"
+      "status": "PASS",
+      "evidence": "git diff --check exit code 0"
     },
     {
+      "id": "T5_BROWSER",
       "name": "production image normal entrypoint and browser",
       "status": "PASS",
       "evidence": "R4-F3 image가 blank 임시 DB를 20260731_03으로 migration한 뒤 real Trino success와 source failure, 재질문·차단을 실제 browser에서 검증"
     },
     {
+      "id": "T6_CLEANUP",
       "name": "cleanup",
       "status": "PASS",
       "evidence": "R5 임시 DB·backend container·frontend listener·DevTools listener·browser profile 잔존 0"

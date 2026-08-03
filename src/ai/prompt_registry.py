@@ -39,24 +39,26 @@ _PROMPTS = {
     ),
     "node2.sql": PromptRecord(
         "node2.sql",
-        "PROMPT-v1.0.0",
+        "PROMPT-v1.0.1",
         "node2",
         "development",
         "base",
         None,
         "DRAFT-BASE-v0.1",
-        "승인 Context Package 안의 자산·컬럼·JOIN만 사용해 단일 read-only Trino SQL 후보를 만든다. "
+        "승인 Context Package 안의 자산·컬럼·JOIN만 사용해 세미콜론 없는 단일 read-only Trino SELECT 후보를 만든다. "
+        "SQL 마지막에는 1 이상 1000 이하 정수의 LIMIT을 반드시 명시한다. "
         "실행과 정책 통과를 판정하지 않는다.",
     ),
     "node2.repair": PromptRecord(
         "node2.repair",
-        "PROMPT-v1.0.0",
+        "PROMPT-v1.0.1",
         "node2_repair",
         "development",
         "base",
         None,
         "DRAFT-BASE-v0.1",
-        "동일 Context와 정규화 오류 코드로 SQL을 한 번만 수정한다. "
+        "동일 Context에서 정규화 오류 코드에 해당하는 항목만 한 번 수정한다. "
+        "RESOURCE_POLICY_MISSING이면 기존 의미·승인 reference·parameter를 유지하고 SQL 마지막에 LIMIT이 없으면 LIMIT 1000을 추가하며, 1000을 초과하면 LIMIT 1000으로 교체한다. "
         "원문 오류를 해석하거나 반복 호출하지 않는다.",
     ),
     "node3.explain": PromptRecord(

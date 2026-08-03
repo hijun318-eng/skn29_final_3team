@@ -13,7 +13,7 @@ class PromptRegistryTests(unittest.TestCase):
             {
                 "node1.normalize": "PROMPT-v1.0.0",
                 "node2.repair": "PROMPT-v1.0.1",
-                "node2.sql": "PROMPT-v1.0.1",
+                "node2.sql": "PROMPT-v1.0.2",
                 "node3.explain": "PROMPT-v1.0.0",
             },
             {item["prompt_id"]: item["version"] for item in first},
@@ -34,6 +34,8 @@ class PromptRegistryTests(unittest.TestCase):
         sql_prompt = get_prompt("node2.sql").text
         repair_prompt = get_prompt("node2.repair").text
 
+        self.assertIn("한 줄로 작성", sql_prompt)
+        self.assertIn("불필요한 공백이나 개행", sql_prompt)
         self.assertIn("1 이상 1000 이하 정수의 LIMIT", sql_prompt)
         self.assertIn("RESOURCE_POLICY_MISSING", repair_prompt)
         self.assertIn("LIMIT 1000을 추가", repair_prompt)

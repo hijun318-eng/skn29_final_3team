@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.69 |
-| 문서 기준일 | 2026-08-04 01:39 |
+| 버전 | v2.70 |
+| 문서 기준일 | 2026-08-04 01:49 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1553,7 +1553,7 @@ EXTERNAL_ACTION_PERMISSION=제공된 2,000건 원장의 로컬 읽기와 임시 
 ### R3-W3-F4
 
 ```text
-STATUS=REVIEW
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -1579,6 +1579,12 @@ TEST_COMMANDS=python -m unittest tests.ai.test_eval_runner -v; python -m compile
 TEST_COMMAND_IDS=T1_EVAL_UNIT;T2_COMPILE;T3_REPORT;T4_ROLE_GATE;T5_DIFF_CHECK
 STOP_CONDITIONS=누적 RunPod 비용 USD 15 초과 예상; secret 출력·commit 필요; 다른 Pod·volume 변경 필요; 학습·평가 데이터 누수; G2·Trino 안전 검증 실패; 결과 artifact 회수·hash 확인 실패; task Pod 삭제 실패; 허용 경로 밖 변경; 필수 검증 실패; p95 SLO 미확정 상태의 제품 기본값 전환 요구
 HANDOFF=R1에 Base·LoRA 정확도, Trino 결과 일치율, p50·p95, 최대 VRAM, 학습 manifest·adapter hash, 실제 비용, Pod 삭제, rollback과 제품 기본값 보류 근거를 전달
+R1_REVIEW_RESULT=코드·평가 증거의 dev 통합은 승인한다. serving 미실행과 p95 증가 위험은 후속 카드로 유지하며 LoRA 제품 기본값 전환은 승인하지 않고 Base를 유지한다.
+IMPLEMENTATION_SHA=b5afd4551f2d433f0e8da85d7bc050967d0ce808
+HANDOFF_SHA=bda5687c4aec07cdd924900a3440cdd64faa28af
+SOURCE_CI_EVIDENCE=GitHub Actions run 30833685964 FAIL — Python·문서 검증은 통과했고 role scope가 handoff의 serving 미실행·잔여 위험·외부 제품 채택 승인 요구를 REVIEW_REQUIRED로 분류했다. R1이 dev 통합과 제품 기본값 불승인을 분리 판정함
+DEV_MERGE_SHA=34facd695faf28f96036207823f03520e44069ae
+DEV_CI_EVIDENCE=GitHub Actions run 30833872760 QUEUED — 최신 dev push 검증 대기
 EXTERNAL_ACTION_PERMISSION=사용자 승인 한도 USD 15 안에서 task 전용 RunPod A40 Pod 생성·dependency 설치·Qwen3-4B 다운로드·합성 학습/평가 데이터 전송·BF16 LoRA 1회 학습·평가·결과 회수·정확한 task Pod 삭제와 허용 경로 commit·daesung push 승인; 다른 Pod·volume 변경, secret 출력·commit, 제품 기본값 전환, 외부 배포는 불가
 ```
 
@@ -1674,6 +1680,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.70 | 2026-08-04 01:49 | R3-W3-F4의 Qwen3-4B LoRA 1회 학습·Base 비교, held-out 150건 G2·Trino 검증, 지연시간·VRAM·artifact hash·실측 비용 USD 0.9523·task Pod 삭제를 검토해 dev `34facd6`에 통합했다. Branch CI `30833685964`의 REVIEW_REQUIRED는 serving 미실행·p95 증가·제품 채택 승인 요구에 따른 것으로, R1은 증거 통합만 승인하고 LoRA 제품 기본값 전환은 불승인해 Base를 유지한다. |
 | v2.69 | 2026-08-04 01:39 | 사용자 승인 한도 USD 15 안에서 Qwen3-4B Base·LoRA 1회 비교, held-out 150건 G2·Trino 검증, Gold 지연시간·VRAM 기록, artifact 회수·task Pod 삭제와 제품 기본값 보류를 수행한 R3-W3-F4를 REVIEW로 기록했다. |
 | v2.68 | 2026-08-03 18:49 | R3-W3-F3의 기본 Train·Validation 보존, held-out Gold 120건·Acceptance 30건 명시 승인, split 누수 0건, 로컬 G2·Trino 150건 전수 PASS와 compiled validate를 확인했다. branch CI `30802900472`와 dev CI `30803015630` PASS 뒤 `aede5a5`에 통합했으며 실제 model download·RunPod·Base/LoRA 실행은 계속 미승인이다. |
 | v2.67 | 2026-08-03 18:36 | 실제 Qwen compiled 1,350건에 Gold·Acceptance split이 없고 생성기도 Train·Validation만 선택해 Base·LoRA 평가 입력을 만들 수 없는 누락을 확인했다. 기존 기본 동작을 보존하면서 제공 원장의 Gold 120건·Acceptance 30건을 명시적으로 승인·생성하고 로컬 G2·Trino로 전수 검증하는 R3-W3-F3를 READY 발행했으며 외부 model·RunPod 승인은 계속 제외했다. |

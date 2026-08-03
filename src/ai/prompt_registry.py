@@ -39,7 +39,7 @@ _PROMPTS = {
     ),
     "node2.sql": PromptRecord(
         "node2.sql",
-        "PROMPT-v1.0.3",
+        "PROMPT-v1.0.4",
         "node2",
         "development",
         "base",
@@ -49,6 +49,8 @@ _PROMPTS = {
         "SQL의 분석 의미는 normalized_question에서만 가져오고 question_id는 추적 식별자로만 취급한다. "
         "SQL 문자열은 한 줄로 작성하고 불필요한 공백이나 개행을 넣지 않는다. "
         "SQL 마지막에는 1 이상 1000 이하 정수의 LIMIT을 반드시 명시한다. "
+        "parameters에는 SQL에서 실제 사용한 :name placeholder만 같은 이름으로 포함하고, placeholder가 없으면 빈 배열을 반환한다. "
+        "question_id와 normalized_question 등 request metadata는 parameters에 포함하지 않는다. "
         "실행과 정책 통과를 판정하지 않는다.",
     ),
     "node2.repair": PromptRecord(

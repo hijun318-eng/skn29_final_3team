@@ -82,6 +82,19 @@ def current_bundle(text: str, branch: str) -> dict[str, str] | None:
     return (active or candidates)[-1] if candidates else None
 
 
+def terminal_transition_scope(
+    current: dict[str, str], previous: dict[str, str] | None
+) -> dict[str, str]:
+    if (
+        current["STATUS"] in TERMINAL_STATUSES
+        and previous
+        and previous["EXECUTION_BUNDLE_ID"] == current["EXECUTION_BUNDLE_ID"]
+        and previous["STATUS"] not in TERMINAL_STATUSES
+    ):
+        return previous
+    return current
+
+
 def allowed_paths(bundle: dict[str, str], branch: str) -> list[str]:
     report = REPORTS[branch]
     if bundle["STATUS"] in TERMINAL_STATUSES:
@@ -117,6 +130,17 @@ def changed_paths(base: str, head: str, mode: str) -> list[str]:
         for path in result.stdout.split(b"\0")
         if path
     ]
+
+
+def ledger_at(ref: str) -> str:
+    result = subprocess.run(
+        ["git", "show", f"{ref}:{LEDGER.as_posix()}"],
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return ""
+    return result.stdout.decode("utf-8")
+
 
 
 def manifest_path(bundle: dict[str, str]) -> Path:
@@ -564,7 +588,9 @@ def main() -> int:
         print(f"Created draft handoff: {path}")
         return 0
 
-    patterns = allowed_paths(bundle, args.branch)
+    previous = current_bundle(ledger_at(args.base), args.branch)
+    scope_bundle = terminal_transition_scope(bundle, previous)
+    patterns = allowed_paths(scope_bundle, args.branch)
     violations = [path for path in changed if not path_allowed(path, patterns)]
     handoff, handoff_notes = handoff_status(
         bundle,

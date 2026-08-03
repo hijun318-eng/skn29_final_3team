@@ -29,6 +29,21 @@ class GateScopeTest(unittest.TestCase):
         self.assertEqual("R5-W2-F2", bundle["EXECUTION_BUNDLE_ID"])
         self.assertEqual("MERGED_DEV", bundle["STATUS"])
 
+    def test_terminal_transition_uses_previous_bundle_scope(self) -> None:
+        current = {
+            "EXECUTION_BUNDLE_ID": "R1-W2",
+            "STATUS": "VERIFIED_GATE",
+        }
+        previous = {
+            "EXECUTION_BUNDLE_ID": "R1-W2",
+            "STATUS": "IN_PROGRESS",
+            "ALLOWED_PATHS": "docs/markdown/collaboration/**",
+        }
+        self.assertIs(
+            previous,
+            gate_scope.terminal_transition_scope(current, previous),
+        )
+
     def test_ready_bundle_uses_exact_allowed_paths(self) -> None:
         bundle = {
             "EXECUTION_BUNDLE_ID": "R2-W2",

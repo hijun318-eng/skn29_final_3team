@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.75 |
-| 문서 기준일 | 2026-08-04 02:58 |
+| 버전 | v2.76 |
+| 문서 기준일 | 2026-08-04 03:01 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1668,6 +1668,38 @@ R1_REVIEW=실제 endpoint request의 temperature 0·max_tokens 1500·enable_thin
 CONTRACT_NOTE=카드의 MODEL_RESPONSE_INVALID 표기는 동결 OPENAPI-v1.0.0에 존재하지 않아 기존 model_error의 INTERNAL_ERROR를 유지했다. 신규 오류 code를 추정 추가하지 않고 같은 안전 실패 의미를 보존
 ```
 
+### R1-W3-F1
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F1
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 실제 Base endpoint와 FastAPI 제품 전체 trace 판정
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=7a52059f3bee2ad653daaa3099cc139c161ae567
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F1@7a52059
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+SERVING_MANIFEST_VERSION=SERVING-v0.2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume
+ACCEPTANCE_CRITERIA=dev CI `30839298442` PASS 기준으로 task 전용 RunPod A40에서 고정 Qwen/Qwen3-4B revision의 vLLM endpoint를 localhost 전용 tunnel로 기동하고, task 전용 FastAPI runtime을 `DATA_PLATFORM_MODE=fake`, `MODEL_MODE=openai`로 연결해 합성 일반 질문 `/analysis`를 실제 HTTP로 호출한다. 성공이면 MODEL→G2→QUERY→G3→ARTIFACT trace와 model version·evidence를 확인하고, 실패면 MODEL 단계 INTERNAL_ERROR·query/Artifact 없음·secret 비기록을 확인해 원인을 판정한다. 정상·timeout·invalid JSON·fallback·circuit 회귀와 endpoint 요청 옵션을 함께 검수한다. 결과·hash·비용·cleanup을 기록하고 정확한 task Pod와 task backend container만 삭제한다. 실제 성공 trace가 없으면 I3 VERIFIED_GATE로 전환하지 않는다.
+ACCEPTANCE_IDS=AC1_FIXED_BASE_ENDPOINT;AC2_PRODUCT_HTTP_TRACE;AC3_SAFE_FAILURE;AC4_SECRET_REDACTED;AC5_COST_LIMIT;AC6_EXACT_CLEANUP;AC7_I3_EVIDENCE_DECISION
+TEST_COMMANDS=task backend health·readiness; synthetic POST /analysis with fixed auth/context headers; python -m pytest -p no:cacheprovider tests/backend/test_production_model.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py; python -m unittest discover -s tests/integration -p "test_*.py"; docker inspect task container; RunPod GET exact Pod 404 and active Pods 0; document·WBS·report validation; git diff --check
+TEST_COMMAND_IDS=T1_BACKEND_READY;T2_LIVE_ANALYSIS;T3_BACKEND_REGRESSION;T4_INTEGRATION;T5_CONTAINER_SCOPE;T6_POD_CLEANUP;T7_DOCUMENTS;T8_DIFF_CHECK
+STOP_CONDITIONS=누적 비용 USD 15 도달 예상; task 외 Pod·container·volume 변경 필요; public model endpoint 노출 필요; secret 출력·commit 필요; 실제 고객 데이터 전송 필요; R2~R5 소유 code 변경 필요; 필수 안전 실패 위반
+HANDOFF=실제 product HTTP trace·model 응답 판정·latency·artifact/evidence·회귀·artifact hash·비용·task resource cleanup과 I3 승인 또는 후속 병목을 전 역할에 전달
+EXTERNAL_ACTION_PERMISSION=사용자가 승인한 누적 USD 15 한도 안에서 task 전용 RunPod A40 Pod 생성·고정 serving image와 Qwen3-4B 다운로드·합성 요청 전송·localhost SSH tunnel·task backend container build/run·결과 회수·정확한 task Pod와 task container 삭제, R1 허용 경로 commit·junhee/dev push 승인. 다른 Pod·Docker project·container·volume 변경, public endpoint·secret 출력/commit, 실제 고객 데이터, LoRA 재학습·제품 기본값 전환은 불가
+COST_BASELINE_USD=이전 실측·추정 누적 1.015075; 최종 provider billing 지연 시 예상값과 확정 여부를 분리 기록
+```
+
 ## Wave 4 상세 계획 카드
 
 Wave 4는 I4 Reporting 통합부터 RC1·리허설·I5 동결까지 포함한다. I4에서 기능 통합을 마친 뒤 신규 기능을 금지하고 Critical·High 결함과 release 회귀만 수행한다.
@@ -1760,6 +1792,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.76 | 2026-08-04 03:01 | R4 endpoint 연결과 dev CI `30839298442` PASS 뒤 남은 실제 제품 trace를 위해 R1-W3-F1을 READY 발행했다. 누적 USD 15 안에서 task 전용 A40 Base endpoint와 task backend만 사용하고 synthetic `/analysis`의 성공 또는 MODEL 안전 실패를 판정하며, 실제 성공 trace 없이는 I3를 승인하지 않도록 고정했다. |
 | v2.75 | 2026-08-04 02:58 | R4-W3-F1의 OpenAI 호환 Base endpoint transport, 고정 생성 옵션, R3 schema 선검증과 timeout·invalid JSON·fallback·circuit open 안전 실패를 검수해 dev에 통합했다. Source CI `30838961585`는 Python 150건·OpenAPI 4건과 역할·문서·quality gate를 통과했다. 동결 OpenAPI에 없는 `MODEL_RESPONSE_INVALID` 대신 기존 `INTERNAL_ERROR`를 유지했으며 실제 RunPod 제품 전체 trace 전 I3는 진행 상태다. |
 | v2.74 | 2026-08-04 02:43 | R3 Base serving과 최종 dev CI `30837830356` PASS를 기준으로 R4-W3-F1을 READY 발행했다. 기존 ContractModelAdapter·ProductionModelClient를 재사용해 명시적 openai mode만 실제 endpoint를 호출하고, timeout·schema·circuit·fallback을 fake 성공이 아닌 Control Plane 안전 실패로 처리하도록 범위를 제한했다. RunPod 재기동·비용·secret·I3 통과는 승인하지 않았다. |
 | v2.73 | 2026-08-04 02:37 | R3-W3-F5의 고정 Qwen3-4B Base vLLM endpoint, initial readiness 101.623초, warm p95 725.808ms, peak 39,280 MiB, 동시 2건, 동일 revision 재시작과 ProductionModelClient 실패 trace를 검수해 dev에 통합했다. Branch CI의 REVIEW_REQUIRED는 청구 확정 지연·R4 change request·잔여 위험을 R1이 수동 수용했으며, 예상 신규 비용 USD 0.062802·누적 USD 1.015075·Pod 404·활성 0개를 확인했다. FastAPI 제품 연결과 I3 통과는 후속이다. |

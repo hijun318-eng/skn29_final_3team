@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.62 |
-| 문서 기준일 | 2026-08-04 02:58 |
+| 버전 | v7.63 |
+| 문서 기준일 | 2026-08-04 03:01 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 03:01 | 4.9, 6.3 | R4 endpoint 연결과 dev CI PASS 뒤 실제 제품 trace를 확인하는 R1-W3-F1을 발행했다. 누적 USD 15 안에서 task 전용 A40 Base endpoint와 task backend를 연결해 synthetic `/analysis`의 성공 trace 또는 MODEL 안전 실패를 판정하고 정확한 resource cleanup을 요구한다. 실제 실행 전이므로 4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R1 live product trace 승인·실행 전 |
 | 2026-08-04 02:58 | 3.14, 4.9, 6.3 | R4-W3-F1의 실제 Base endpoint transport를 FastAPI 분석 경로에 통합했다. 고정 생성 옵션과 R3 schema 선검증을 적용하고 timeout·잘못된 JSON·fallback·circuit open이 query나 Artifact 성공으로 저장되지 않음을 관련 21건과 source CI Python 전체 150건·OpenAPI 4건으로 확인했다. 3.14·4.9 완료는 유지하며 실제 RunPod endpoint의 제품 전체 trace 전이므로 6.3과 일정·간트는 유지한다. | R4 제품 연결 code 완료·R1 live trace 대기 |
 | 2026-08-04 02:43 | 3.14, 4.9, 6.3 | R3 Base serving과 최종 dev CI PASS 뒤 실제 endpoint를 FastAPI Control Plane이 소비하는 R4-W3-F1을 발행했다. 기존 ContractModelAdapter와 ProductionModelClient를 재사용하고 명시적 openai mode, 고정 request 옵션, schema 선검증, timeout·HTTP·잘못된 JSON·circuit·fallback의 안전 실패를 완료 조건으로 두었다. 실제 RunPod 재기동과 제품 전체 trace 전이므로 3.14·4.9의 완료 상태와 6.3·일정·간트는 유지한다. | R4 실제 endpoint transport 승인·외부 실행 제외 |
 | 2026-08-04 02:37 | 3.13~3.15, 6.3 | 고정 Qwen3-4B Base revision으로 vLLM endpoint를 기동해 initial readiness 101.623초, warm p50 724.472ms·p95 725.808ms, peak 39,280 MiB, 동시 2건과 동일 revision 재시작을 확인했다. 기존 model client의 정상·timeout·fallback·circuit 검사를 포함한 AI 45건과 artifact hash, task Pod 삭제 404·활성 0개를 검수했다. 신규 비용은 약 USD 0.062802, 예상 누적은 USD 1.015075로 한도 USD 15 이하다. 3.13~3.15를 완료로 전환하되 FastAPI 제품 연결과 I3 전체 trace가 남아 6.3과 일정·간트는 유지한다. | Base serving·client·trace 완료·I3 제품 연결 대기 |
@@ -456,6 +457,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.63 | 2026-08-04 03:01 | 실제 Base endpoint와 FastAPI 제품 경로의 synthetic HTTP trace를 확인하는 R1-W3-F1을 4.9·6.3에 연결했다. 실행 전이라 상태·일정·간트는 유지했다. |
 | v7.62 | 2026-08-04 02:58 | R4-W3-F1의 Base endpoint transport와 실패 안전 처리를 dev에 통합했다. 실제 RunPod 제품 전체 trace 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트를 유지했다. |
 | v7.61 | 2026-08-04 02:43 | SERVING-v0.2를 FastAPI Control Plane에 안전하게 연결하는 R4-W3-F1을 3.14·4.9·6.3에 연결했다. 실제 구현·제품 trace 전 기존 상태와 일정·간트는 유지했다. |
 | v7.60 | 2026-08-04 02:37 | Qwen3-4B Base vLLM endpoint의 readiness·warm p95·peak VRAM·동시 2건·재시작, model client 실패 trace, artifact hash·비용·Pod 삭제를 확인해 3.13~3.15를 완료로 전환했다. FastAPI 제품 연결과 I3 전체 trace가 남아 6.3과 일정·간트는 유지했다. |

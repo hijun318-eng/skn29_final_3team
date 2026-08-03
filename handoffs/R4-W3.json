@@ -96,9 +96,7 @@
   ],
   "NOT_RUN": [],
   "CHANGE_REQUESTS": [],
-  "RESIDUAL_RISKS": [
-    "프로세스 내부 bounded cache와 semaphore이므로 다중 worker 전역 한도·분산 cache는 후속 운영 인프라에서 조정 필요"
-  ],
+  "RESIDUAL_RISKS": [],
   "EXTERNAL_APPROVAL_REQUIRED": [],
   "REQUESTED_DECISION": "R1 I3 통합 검토"
 }

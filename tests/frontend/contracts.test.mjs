@@ -16,6 +16,7 @@ import {
   FIXTURE_VERSION,
 } from "../../app/enterprise-react/src/data/analysisFixtures.ts";
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
+import { createHttpAnalysisClient, usesMockAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
 
 const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/package.json", import.meta.url)));
 const g1ClarificationFixture = JSON.parse(
@@ -122,6 +123,24 @@ assert.equal(normalized.rowCount, 1);
 assert.equal(analysisFixtures.ready.artifact.artifactId, analysisFixtures.ready.evidence.artifactId);
 assert.equal(analysisFixtures.ready.metrics[0].unit, "KRW");
 assert.ok(analysisFixtures.ready.table.rows.length > 0);
+assert.equal(usesMockAnalysisClient, false);
+
+let httpRequest;
+const httpClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
+  httpRequest = { url, init };
+  return new Response(JSON.stringify(g1ClarificationFixture), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+});
+const httpRun = await httpClient.analyze("기간 없는 질문", "conv-http-001", "ready");
+assert.equal(httpRequest.url, "http://backend.test/analysis");
+assert.equal(httpRequest.init.method, "POST");
+assert.equal(httpRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION);
+assert.equal(JSON.parse(httpRequest.init.body).template_id, "weekly-room-operations");
+assert.equal(httpRun.requestId, g1ClarificationFixture.meta.request_id);
+assert.equal(httpRun.traceId, g1ClarificationFixture.meta.trace_id);
+assert.equal(httpRun.error.retryable, false);
 
 const approved = Object.freeze({
   definitionId: "report-001",

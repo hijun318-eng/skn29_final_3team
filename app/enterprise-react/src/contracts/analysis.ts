@@ -179,7 +179,7 @@ export interface AnalysisRun {
   error?: {
     code: AnalysisErrorCode;
     message: string;
-    retryable: boolean;
+    retryable?: boolean;
   };
   sources: AnalysisSource[];
   meta: {
@@ -228,7 +228,11 @@ export function normalizeApiResponse(
   question: string,
   conversationId: string,
 ): AnalysisRun {
-  const status = response.data.status ? BACKEND_STATUS_MAP[response.data.status] : "failed";
+  const status = response.data.status
+    ? BACKEND_STATUS_MAP[response.data.status]
+    : response.error?.code === "CONTEXT_INCOMPLETE" || response.error?.code === "ACCESS_DENIED"
+      ? "blocked"
+      : "failed";
   const result = response.data.result ?? undefined;
   const evidence = result?.evidence;
   const sources = evidence?.sources ?? [];

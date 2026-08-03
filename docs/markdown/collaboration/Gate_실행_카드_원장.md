@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.86 |
-| 문서 기준일 | 2026-08-04 04:39 |
+| 버전 | v2.87 |
+| 문서 기준일 | 2026-08-04 04:47 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -2036,7 +2036,7 @@ BLOCKER=R3 node2 prompt가 response parameters를 SQL placeholder와 1:1로 제�
 ### R3-W3-F9
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -2061,6 +2061,42 @@ TEST_COMMAND_IDS=T1_PROMPT;T2_AI;T3_DIFF
 STOP_CONDITIONS=schema·dataset·backend 변경 필요; 날짜 값 생성 규칙 확장 필요; 기존 actual-question·LIMIT 규칙 회귀; test 실패
 HANDOFF=R1에 prompt version/hash·parameter 의미·metadata 제외·회귀 결과 전달
 EXTERNAL_ACTION_PERMISSION=없음 — local code·test·commit·daesung push만 승인
+RESULT=PROMPT-v1.0.4에서 parameters를 SQL의 실제 `:name` placeholder와 1:1로 제한하고 placeholder가 없으면 빈 배열, request metadata는 제외하도록 명시했다.
+EVIDENCE=daesung `d70821a`, harness sync `ea22ea7`, CI `30847080427` PASS, dev merge `15480fd`, AI local 47건·gate scope 19건 PASS
+R1_REVIEW=prompt 2문장과 assertion만 추가해 schema·dataset·backend를 보존한 최소 변경이며 전체 CI를 통과해 수용
+```
+
+### R1-W3-F6
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F6
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 parameter 보완 후 Base·I2 제품 전체 trace
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=15480fd20e3c2e55812d8c9e37f7a1159ea52630
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F6@15480fd
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.4
+OPENAPI_VERSION=OPENAPI-v1.0.0
+DATA_CONTRACT_VERSION=DATA-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume 변경
+ACCEPTANCE_CRITERIA=dev `15480fd`을 task A40 고정 Qwen3-4B·task backend·기존 synthetic Trino read-only에 localhost로 연결한다. raw node2의 parameters가 SQL placeholder와 일치하고 request metadata를 포함하지 않는지 확인한 뒤 동일 `/analysis`의 MODEL→G2→QUERY→G3→ARTIFACT와 evidence를 판정한다. 실패 시 exact blocker를 기록한다. 비용·회귀·task cleanup을 확인하고 성공 trace 전 I3를 승인하지 않는다.
+ACCEPTANCE_IDS=AC1_PARAMETER_OUTPUT;AC2_RAW_SCHEMA;AC3_G2_QUERY;AC4_G3_ARTIFACT;AC5_EVIDENCE;AC6_REGRESSION;AC7_COST;AC8_CLEANUP;AC9_I3
+TEST_COMMANDS=task health; raw node2 metadata; synthetic POST /analysis; trace/artifact/evidence; regressions; exact cleanup; Pod 404·active 0; Docker scope; docs validation
+TEST_COMMAND_IDS=T1_HEALTH;T2_RAW;T3_PRODUCT;T4_EVIDENCE;T5_REGRESSION;T6_CLEANUP;T7_SCOPE;T8_DOCS
+STOP_CONDITIONS=USD15 예상 도달; 다른 Docker 변경·public endpoint·secret·실제 고객 데이터·R2~R5 추가 code 필요; 안전 경계 위반
+HANDOFF=parameter raw·제품 trace·evidence·비용·cleanup과 I3 판정 또는 exact blocker 전달
+EXTERNAL_ACTION_PERMISSION=누적 USD15 안 task A40·고정 model·합성 localhost 요청·task backend·정확한 cleanup과 기존 synthetic Trino read-only 조회, R1 commit·junhee/dev push 승인. 다른 resource·public endpoint·secret·실제 고객 데이터·LoRA 변경 불가
+COST_BASELINE_USD=이전 실측·추정 누적 상한 1.417126
 ```
 
 ## Wave 4 상세 계획 카드
@@ -2155,6 +2191,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.87 | 2026-08-04 04:47 | R3-W3-F9의 SQL placeholder와 parameters 1:1·request metadata 제외 PROMPT-v1.0.4와 CI `30847080427` PASS를 검수해 dev에 통합했다. R1-W3-F6는 같은 Base·I2 read-only 제품 trace를 한 번 재검증하고 성공 전 I3 승인·다른 resource 변경을 금지했다. |
 | v2.86 | 2026-08-04 04:39 | R1-W3-F5에서 actual question·MODEL·G2는 통과했으나 Base가 request metadata를 SQL parameter로 반환해 안전한 날짜 바인더가 거부한 QUERY blocker를 확정했다. 비용·task cleanup·기존 Trino 무변경을 확인하고 R3-W3-F9로 SQL placeholder와 parameters의 1:1 의미만 PROMPT-v1.0.4에 고정했다. |
 | v2.85 | 2026-08-04 04:27 | R4-W3-F3의 제품 원문 question→normalized_question 전달과 CI `30845776821` PASS를 검수해 dev에 통합했다. R1-W3-F5는 actual question raw 입력과 동일 Base·I2 read-only 제품 trace를 판정하고 성공 전 I3 승인·다른 resource 변경을 금지했다. |
 | v2.84 | 2026-08-04 04:21 | R3-W3-F8의 optional normalized_question·ID 비의미 prompt와 CI `30845353451` PASS를 검수해 dev에 통합했다. R4-W3-F3는 제품 원문 질문을 service→adapter→R3 request로 그대로 전달하는 최소 변경만 READY 발행하며 schema·prompt·OpenAPI·generation option 변경을 금지했다. |

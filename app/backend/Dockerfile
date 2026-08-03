@@ -2,20 +2,22 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/workspace \
     PIP_NO_CACHE_DIR=1
 
-WORKDIR /app
+WORKDIR /workspace
 
-COPY app/backend/requirements.txt .
-RUN pip install --disable-pip-version-check -r requirements.txt \
+COPY app/backend/requirements.txt app/backend/requirements.txt
+RUN pip install --disable-pip-version-check -r app/backend/requirements.txt \
     && useradd --create-home --uid 10001 appuser
 
-COPY --chown=appuser:appuser app/backend/ .
-COPY --chown=appuser:appuser infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql migrations/sql/00_answervice_app_postgresql.sql
-COPY --chown=appuser:appuser infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql migrations/sql/i2_gold_recognized_room_revenue.sql
+COPY --chown=appuser:appuser app/backend/ app/backend/
+COPY --chown=appuser:appuser infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql
+COPY --chown=appuser:appuser infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql
 COPY --chown=appuser:appuser config/access-policy.yaml config/access-policy.yaml
 COPY --chown=appuser:appuser src/ ./src/
 
+WORKDIR /workspace/app/backend
 USER appuser
 EXPOSE 8000
 

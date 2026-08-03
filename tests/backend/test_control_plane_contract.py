@@ -11,6 +11,21 @@ CONTRACT_VERSION = "OPENAPI-v1.0.0"
 
 
 class ControlPlaneContractTest(unittest.TestCase):
+    def test_backend_image_preserves_repository_layout_for_migrations(self) -> None:
+        dockerfile = (BACKEND / "Dockerfile").read_text(encoding="utf-8")
+
+        self.assertIn("PYTHONPATH=/workspace", dockerfile)
+        self.assertIn("WORKDIR /workspace/app/backend", dockerfile)
+        self.assertIn(
+            "app/backend/ app/backend/",
+            dockerfile,
+        )
+        self.assertIn(
+            "infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql "
+            "infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql",
+            dockerfile,
+        )
+
     def test_published_migration_is_immutable_and_followup_is_least_privilege(self) -> None:
         versions = BACKEND / "migrations" / "versions"
         published = (versions / "20260730_02_application_schema.py").read_bytes()

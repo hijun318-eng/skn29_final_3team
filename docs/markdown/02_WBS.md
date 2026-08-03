@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.59 |
-| 문서 기준일 | 2026-08-04 02:11 |
+| 버전 | v7.60 |
+| 문서 기준일 | 2026-08-04 02:37 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -196,9 +196,9 @@ gantt
 | 3.10 | R3-09 Base model·Analytics Agent 기준선 비교 | 정확도·p50·p95·자원 비교표 | 윤대성 | 완료 | 08/17 | 08/21 | 높음 |
 | 3.11 | R3-10 train·val·gold manifest 검수 | 학습 데이터 검수 기록 | 윤대성 | 완료 | 08/17 | 08/21 | 높음 |
 | 3.12 | R3-11 time-boxed LoRA/QLoRA 1회 비교와 제품 채택 Gate | 비교 결과·adapter·rollback 증거 | 윤대성 | 완료 | 08/24 | 08/28 | 조건부 |
-| 3.13 | R3-12 vLLM·RunPod serving | endpoint·health·manifest | 윤대성 | 진행 | 08/17 | 08/28 | 높음 |
-| 3.14 | R3-13 production model client | retry·fallback·circuit 계약 | 윤대성 | 진행 | 08/17 | 08/28 | 높음 |
-| 3.15 | R3-14 model trace·비용·재현성 | version·token·cost trace | 윤대성 | 진행 | 08/17 | 08/28 | 중간 |
+| 3.13 | R3-12 vLLM·RunPod serving | endpoint·health·manifest | 윤대성 | 완료 | 08/17 | 08/28 | 높음 |
+| 3.14 | R3-13 production model client | retry·fallback·circuit 계약 | 윤대성 | 완료 | 08/17 | 08/28 | 높음 |
+| 3.15 | R3-14 model trace·비용·재현성 | version·token·cost trace | 윤대성 | 완료 | 08/17 | 08/28 | 중간 |
 | 3.16 | R3-15 model·prompt·adapter release 후보 고정 | model release manifest | 윤대성 | 대기 | 08/24 | 09/02 | 높음 |
 
 ### 백엔드 Control Plane
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 02:37 | 3.13~3.15, 6.3 | 고정 Qwen3-4B Base revision으로 vLLM endpoint를 기동해 initial readiness 101.623초, warm p50 724.472ms·p95 725.808ms, peak 39,280 MiB, 동시 2건과 동일 revision 재시작을 확인했다. 기존 model client의 정상·timeout·fallback·circuit 검사를 포함한 AI 45건과 artifact hash, task Pod 삭제 404·활성 0개를 검수했다. 신규 비용은 약 USD 0.062802, 예상 누적은 USD 1.015075로 한도 USD 15 이하다. 3.13~3.15를 완료로 전환하되 FastAPI 제품 연결과 I3 전체 trace가 남아 6.3과 일정·간트는 유지한다. | Base serving·client·trace 완료·I3 제품 연결 대기 |
 | 2026-08-04 02:11 | 3.13~3.15, 6.3 | Base·LoRA 비교 뒤 남은 실제 serving 증거를 위해 R3-W3-F5를 발행했다. 고정 Qwen3-4B Base revision의 vLLM endpoint, cold·warm p50/p95, 최대 VRAM·동시 2건·재시작과 기존 model client의 timeout·fallback·circuit trace를 완료 조건으로 두었다. 이전 USD 0.9523을 포함한 누적 비용은 USD 15 이하로 제한하고 결과 회수 뒤 task Pod 삭제를 요구했다. 실제 실행 전이므로 상태·일정·간트는 유지한다. | Base serving 실측 승인·제품 연결 미승인 |
 | 2026-08-04 01:49 | 3.10, 3.12, 3.13, 3.15, 6.3 | 같은 Qwen3-4B·held-out·decoding 조건에서 Base와 BF16 LoRA를 비교했다. LoRA는 Gold JSON 구조 120/120·SQL 정확 일치 85/120·실제 Trino 결과 일치 116/120을 기록했고 held-out 전체 G2·Trino 실행은 150/150 PASS였다. Gold p95는 Base 15.42초에서 LoRA 43.84초로 증가하고 peak VRAM은 8,511,364,096 bytes여서 3.10·3.12만 완료로 전환하고 제품 기본값은 Base로 유지한다. 실측 비용 USD 0.9523, artifact hash와 task Pod 삭제를 확인했으며 실제 serving·운영 trace·I3 전체 상태와 일정은 유지한다. | Base·LoRA 1회 비교 완료·제품 기본값 전환 보류 |
 | 2026-08-03 18:49 | 3.10~3.12, 3.15, 6.3 | R3-W3-F3가 기존 Train·Validation 생성을 보존하면서 Gold 120건·Acceptance 30건을 명시적으로 승인·생성했다. split 누수 0건, 로컬 G2·Trino 150건 전수 PASS, compiled validate·AI 42건과 branch/dev CI를 확인해 dev `aede5a5`에 통합했다. 실제 Base model·RunPod 미실행으로 관련 상태·일정은 유지한다. | held-out 150건 준비·검증 완료·dev 통합 |
@@ -453,6 +454,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.60 | 2026-08-04 02:37 | Qwen3-4B Base vLLM endpoint의 readiness·warm p95·peak VRAM·동시 2건·재시작, model client 실패 trace, artifact hash·비용·Pod 삭제를 확인해 3.13~3.15를 완료로 전환했다. FastAPI 제품 연결과 I3 전체 trace가 남아 6.3과 일정·간트는 유지했다. |
 | v7.59 | 2026-08-04 02:11 | Qwen3-4B Base serving endpoint의 cold·warm·VRAM·동시 실행·재시작·model client 실패 trace를 실측하는 R3-W3-F5를 3.13~3.15·6.3에 연결했다. 누적 RunPod 비용 USD 15 한도와 task Pod 삭제를 고정했으며 실제 결과 전 상태·일정·간트는 유지했다. |
 | v7.58 | 2026-08-04 01:49 | Qwen3-4B Base·LoRA 1회 비교와 held-out 150건 G2·Trino 검증, Gold 지연시간·VRAM, artifact hash, 실측 비용·Pod 삭제를 확인해 3.10·3.12를 완료로 전환했다. LoRA p95 증가로 제품 기본값은 Base를 유지하며 serving·I3 상태와 일정은 변경하지 않았다. |
 | v7.57 | 2026-08-03 18:49 | R3-W3-F3의 held-out Gold 120건·Acceptance 30건 생성, 누수 0건, 로컬 G2·Trino 150건 전수 PASS와 compiled validate·CI를 확인해 dev에 통합했다. 외부 model·RunPod 상태와 일정은 유지했다. |

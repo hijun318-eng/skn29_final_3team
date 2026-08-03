@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.72 |
-| 문서 기준일 | 2026-08-04 02:11 |
+| 버전 | v2.73 |
+| 문서 기준일 | 2026-08-04 02:37 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1591,7 +1591,7 @@ EXTERNAL_ACTION_PERMISSION=사용자 승인 한도 USD 15 안에서 task 전용 
 ### R3-W3-F5
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -1622,6 +1622,12 @@ TEST_COMMANDS=python -m unittest tests.ai.test_serving_benchmark -v; python -m u
 TEST_COMMAND_IDS=T1_SERVING_UNIT;T2_MODEL_CLIENT;T3_COMPILE;T4_REPORT;T5_ROLE_GATE;T6_DIFF_CHECK
 STOP_CONDITIONS=누적 비용 USD 15 초과 예상; secret 출력·commit 필요; 다른 Pod·volume 변경 필요; 고정 model revision 또는 endpoint readiness 불가; 결과 artifact 회수·hash 확인 실패; task Pod 삭제 실패; 허용 경로 밖 변경; 필수 검증 실패; FastAPI 제품 연결 또는 LoRA 제품 기본값 전환 필요
 HANDOFF=R1에 image·runtime·model revision, endpoint schema·readiness, cold·warm p50/p95·peak VRAM·동시 2건, restart, ProductionModelClient 정상·timeout·fallback·circuit trace, artifact hash·실측 누적 비용·Pod 삭제와 R4 제품 연결에 필요한 최소 endpoint 계약을 전달
+R1_REVIEW_RESULT=Python·문서 CI와 로컬 AI 45건, 고정 revision endpoint·restart·동시 2건·peak VRAM·artifact hash·Pod 404·활성 0개를 확인해 통합을 승인한다. role-scope CI 실패는 청구 확정 지연·R4 change request·잔여 위험을 수동 검토하라는 REVIEW_REQUIRED에 한정되며 구현 실패가 아니다. 비용은 실행시간 추정 신규 USD 0.062802·예상 누적 USD 1.015075로 한도 이내다. FastAPI 제품 연결과 I3 전체 통과는 후속으로 유지한다.
+IMPLEMENTATION_SHA=8125885d4614f440f4f5cdad3c39ab4f2ca026d5
+HANDOFF_SHA=5e2fa990ad72e0605e0cf141b0b75e86e41ecd6d
+SOURCE_CI_EVIDENCE=GitHub Actions run 30837382461 FAIL은 role-scope REVIEW_REQUIRED 때문이며 Python 전체·문서 품질은 PASS — R1이 Not Run·change request·잔여 위험·외부 승인 항목을 분리 검토해 수용
+DEV_MERGE_SHA=5e2fa990ad72e0605e0cf141b0b75e86e41ecd6d
+DEV_CI_EVIDENCE=최종 R1 terminal 동기화 뒤 dev push CI 재검증 예정
 EXTERNAL_ACTION_PERMISSION=기존 누적 비용을 포함한 사용자 승인 한도 USD 15 안에서 task 전용 RunPod A40 Pod 생성·고정 serving image pull·Qwen3-4B 다운로드·합성 평가 요청 전송·Base vLLM 실측·결과 회수·정확한 task Pod 삭제와 허용 경로 commit·daesung push 승인; 다른 Pod·volume 변경, secret 출력·commit, LoRA 재학습·제품 기본값 전환, FastAPI 수정, 외부 공개 배포는 불가
 ```
 
@@ -1717,6 +1723,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.73 | 2026-08-04 02:37 | R3-W3-F5의 고정 Qwen3-4B Base vLLM endpoint, initial readiness 101.623초, warm p95 725.808ms, peak 39,280 MiB, 동시 2건, 동일 revision 재시작과 ProductionModelClient 실패 trace를 검수해 dev에 통합했다. Branch CI의 REVIEW_REQUIRED는 청구 확정 지연·R4 change request·잔여 위험을 R1이 수동 수용했으며, 예상 신규 비용 USD 0.062802·누적 USD 1.015075·Pod 404·활성 0개를 확인했다. FastAPI 제품 연결과 I3 통과는 후속이다. |
 | v2.72 | 2026-08-04 02:11 | Base·LoRA 비교 뒤 남은 실제 serving 병목을 해소하기 위해 R3-W3-F5를 READY로 발행했다. Qwen3-4B Base 고정 revision의 vLLM endpoint·cold/warm·VRAM·동시 2건·재시작·ProductionModelClient 실패 trace를 요구하고, 이전 비용 USD 0.9523을 포함한 누적 USD 15 한도와 task Pod 삭제를 고정했다. FastAPI 제품 연결·I3 통과·LoRA 채택은 승인하지 않았다. |
 | v2.71 | 2026-08-04 01:53 | R1 terminal 판정을 동기화한 daesung corrective CI `30834157984`와 최종 dev CI `30834138561`, junhee CI `30834174015`가 모두 PASS해 R3-W3-F4의 최종 CI 근거를 확정했다. 최초 REVIEW_REQUIRED와 Base 유지 결정은 v2.70 이력에 보존한다. |
 | v2.70 | 2026-08-04 01:49 | R3-W3-F4의 Qwen3-4B LoRA 1회 학습·Base 비교, held-out 150건 G2·Trino 검증, 지연시간·VRAM·artifact hash·실측 비용 USD 0.9523·task Pod 삭제를 검토해 dev `34facd6`에 통합했다. Branch CI `30833685964`의 REVIEW_REQUIRED는 serving 미실행·p95 증가·제품 채택 승인 요구에 따른 것으로, R1은 증거 통합만 승인하고 LoRA 제품 기본값 전환은 불승인해 Base를 유지한다. |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.53 |
-| 문서 기준일 | 2026-08-03 17:55 |
+| 버전 | v7.54 |
+| 문서 기준일 | 2026-08-03 18:03 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-03 18:03 | 3.10~3.12, 3.15, 6.3 | R3-W3-F2의 training source 10개·전용 AI test 3개, 1,350건 validate·재빌드 SHA-256 일치·AI 41건·branch/dev CI를 확인해 dev에 통합했다. 학습 도구 반입은 완료됐지만 setup 계정 SQL 검증과 실제 Base model·RunPod·LoRA·serving 미실행이 남아 해당 작업 상태와 일정은 유지한다. | R3 학습 도구 dev 통합·외부 실행 대기 |
 | 2026-08-03 17:55 | 3.10~3.12, 3.15, 6.3 | 원격 R3 결과 `d15977f`가 training package source 10개와 그 동작을 고정하는 전용 AI test 3개를 함께 제출했음을 확인했다. R3-W3-F2의 허용 경로를 해당 test 3개로만 좁게 확장하고, 나머지 역할 경계와 dependency·model download·RunPod·비용·학습 실행 금지는 유지했다. 상태와 일정은 변경하지 않는다. | R3 학습 도구 전용 test 범위 정합화 |
 | 2026-08-03 17:46 | 3.10~3.12, 3.15, 6.3 | 사용자 제공 `training.zip`의 19개 entry를 검사해 경로 탈출 0건을 확인하고 source·README·example·requirements 10개만 `src/ai/training`에 반입하는 R3-W3-F2를 발행했다. compiled cache 8개는 제외하고 1,350건 validate·검증 원본 재빌드 SHA-256 일치·기존 AI 회귀를 완료 조건으로 고정했다. 이 카드는 코드 반입만 승인하며 dependency 설치·model download·RunPod·비용·학습 실행은 승인하지 않아 Base model·LoRA·I3 관련 상태와 일정은 유지한다. | R3 학습 도구 반입 승인·외부 실행 제외 |
 | 2026-08-03 17:42 | 1.7, 2.19, 3.11, 6.1, 6.3 | R2-W3-F2의 평가 150건 reviewer/status 동기화, 상태 제외 SHA-256 일치, data 21건·AI 32건과 branch/dev CI PASS를 확인해 평가 fixture·manifest 검수·평가 원장 관리를 완료로 전환했다. R5-W3-F1C의 실제 `MERGED_DEV` 상태와 어긋난 Gate 회귀 테스트 기대값도 교정했다. 저장소 밖 sLLM 데이터의 1,200/150 split·Trino PASS는 참고 근거로만 기록하고, `src/ai/training` 부재·setup 계정 검증·RunPod 미착수 때문에 실제 Base model·LoRA가 필요한 6.3은 진행으로 유지했다. | 평가 150건 최종 승인·Gate 회귀 교정·I3 model 비교 대기 |
@@ -447,6 +448,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.54 | 2026-08-03 18:03 | R3 학습 도구와 전용 test의 재현성·회귀·branch/dev CI를 확인해 dev에 통합했다. 실제 Base model·RunPod·LoRA·serving 미실행으로 관련 WBS 상태와 일정은 유지했다. |
 | v7.53 | 2026-08-03 17:55 | 원격 R3 결과에 포함된 training 전용 AI test 3개를 R3-W3-F2 허용 경로에 한정 추가했다. 제품·외부 실행 범위와 WBS 상태·일정은 변경하지 않았다. |
 | v7.52 | 2026-08-03 17:46 | 사용자 제공 training package를 R3 소유 경로에 반입·재현성 검증하는 R3-W3-F2를 발행했다. compiled cache와 외부 JSONL 반입, dependency·model download·RunPod·비용·학습 실행은 제외해 기존 Base model·LoRA·I3 상태와 일정은 유지했다. |
 | v7.51 | 2026-08-03 17:42 | 평가 150건의 최종 reviewer/status 승인과 내용 보존·소비자·CI 근거를 확인해 2.19·3.11·6.1을 완료로 전환하고 R5-W3-F1C Gate 상태 회귀 기대값을 교정했다. 외부 sLLM JSONL은 참고 근거로만 연결하고 재생성 코드·읽기 전용 권한·RunPod 학습·Base model 비교가 없어 6.3은 진행으로 유지했다. |

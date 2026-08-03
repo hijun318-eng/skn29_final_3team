@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.42 |
-| 문서 기준일 | 2026-08-03 13:54 |
+| 버전 | v7.43 |
+| 문서 기준일 | 2026-08-03 15:42 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -219,11 +219,11 @@ gantt
 | 4.12 | R4-11 R2 Trino 실행 lifecycle 통제 | pass token·timeout·cancel | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
 | 4.13 | R4-12 Result Shaper·G3 | shaped result·evidence | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
 | 4.14 | R4-13 Node 3·승인 후 수정 불가 Artifact | artifact contract | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
-| 4.15 | R4-14 SQL Plan·Result Cache | versioned cache key | 김재홍 | 진행 | 08/17 | 08/21 | 중간 |
+| 4.15 | R4-14 SQL Plan·Result Cache | versioned cache key | 김재홍 | 완료 | 08/17 | 08/21 | 중간 |
 | 4.16 | R4-15 Audit·Trace·관측 | linked request trace | 김재홍 | 완료 | 08/10 | 08/21 | 높음 |
 | 4.17 | R4-16 R5 Report module 공통 등록 | analysis run contract | 김재홍 | 대기 | 08/24 | 08/28 | 높음 |
 | 4.18 | R4-17 worker·schedule runtime | 영속 job·같은 요청 한 번만 처리·실패 격리 | 김재홍 | 대기 | 08/24 | 08/28 | 높음 |
-| 4.19 | R4-18 권한·mask·민감정보 가림(redaction) | 보안 검증 증거 | 김재홍 | 진행 | 08/17 | 08/28 | 높음 |
+| 4.19 | R4-18 권한·mask·민감정보 가림(redaction) | 보안 검증 증거 | 김재홍 | 완료 | 08/17 | 08/28 | 높음 |
 | 4.20 | R4-19 retention·backup·restore hook | 보존 job·복구 절차 | 김재홍 | 대기 | 08/24 | 09/02 | 높음 |
 | 4.21 | R4-20 health·backend Dockerfile·회귀 | service fragment | 김재홍 | 완료 | 08/24 | 09/02 | 높음 |
 | 4.22 | R4-21 API·migration·policy release 동결 | backend release manifest | 김재홍 | 대기 | 08/31 | 09/02 | 높음 |
@@ -236,17 +236,17 @@ gantt
 | 5.2 | R5-01 IA·routing·design token | route·layout | 송민지 | 완료 | 07/29 | 07/31 | 높음 |
 | 5.3 | R5-02 OpenAPI type·client·mock | typed client·fixture | 송민지 | 완료 | 08/03 | 08/07 | 높음 |
 | 5.4 | R5-03 Chat shell·질문 흐름 | conversation UI | 송민지 | 완료 | 08/03 | 08/14 | 높음 |
-| 5.5 | R5-04 실행 상태·오류 UI | state components | 송민지 | 진행 | 08/03 | 08/21 | 높음 |
+| 5.5 | R5-04 실행 상태·오류 UI | state components | 송민지 | 완료 | 08/03 | 08/21 | 높음 |
 | 5.6 | R5-05 Evidence·출처·조건 panel | URN·metric·filter·as_of UI | 송민지 | 완료 | 08/10 | 08/14 | 높음 |
 | 5.7 | R5-06 결과 표·차트 | result components | 송민지 | 완료 | 08/10 | 08/14 | 높음 |
 | 5.8 | R5-07 Chat→Report Artifact bridge | artifact action | 송민지 | 완료 | 08/10 | 08/14 | 높음 |
 | 5.9 | R5-08 Report definition·version·run·block domain | Report contract | 송민지 | 완료 | 08/03 | 08/24 | 높음 |
-| 5.10 | R5-09 독립 Report router·API module | router·contract test | 송민지 | 진행 | 08/17 | 08/24 | 높음 |
-| 5.11 | R5-10 Report migration proposal | 단일 migration proposal | 송민지 | 진행 | 08/17 | 08/24 | 높음 |
+| 5.10 | R5-09 독립 Report router·API module | router·contract test | 송민지 | 완료 | 08/17 | 08/24 | 높음 |
+| 5.11 | R5-10 Report migration proposal | 단일 migration proposal | 송민지 | 완료 | 08/17 | 08/24 | 높음 |
 | 5.12 | R5-11 12-column Report editor | add·move·resize·draft | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 5.13 | R5-12 수동 실행·Run History | run·status·history UI | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 5.14 | R5-13 daily·weekly·monthly schedule UI | schedule contract | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
-| 5.15 | R5-14 Catalog·Connection UI | source·asset·ingestion UI | 송민지 | 진행 | 08/17 | 08/28 | 중간 |
+| 5.15 | R5-14 Catalog·Connection UI | source·asset·ingestion UI | 송민지 | 완료 | 08/17 | 08/28 | 중간 |
 | 5.16 | R5-15 Operations·Audit trace UI | request trace UI | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 5.17 | R5-16 접근성·반응형·보안 상태 표시 | QA evidence | 송민지 | 대기 | 08/24 | 08/31 | 높음 |
 | 5.18 | R5-17 실제 API integration | production client | 송민지 | 대기 | 08/24 | 08/31 | 높음 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-03 15:42 | 4.15, 4.19, 5.5, 5.10~5.11, 5.15, 6.3~6.4 | R4-W3의 권한별 SQL Plan·Result Cache, model call budget, 동시 2건·HTTP 429·Audit trace와 R5-W3의 전체 오류 UI, Artifact→Report, immutable Report proposal, 5원천 Catalog를 branch/dev CI로 확인해 dev에 통합했다. 해당 역할 행은 완료로 전환하되 R4-16 실제 Report 등록·worker·browser 접근성과 외부 Base model·Gold 잔여 근거가 남아 I3·I4 통합 행과 일정·간트 날짜는 유지했다. | Wave 3 R4·R5 통합·후속 분리 |
 | 2026-08-03 13:54 | 2.18~2.19, 3.5~3.6, 3.10~3.11, 3.13~3.15, 4.15, 4.19, 5.10~5.11, 5.15, 6.3 | I2 통합 dev `744592a`·CI `30785580556` PASS를 기준으로 R1~R5 Wave 3 실행 묶음을 READY 발행했다. 5-source·평가 fixture, Node·Base 비교·serving client, Cache·권한, Report proposal·Catalog와 I3 통합 판정 행을 진행으로 전환했다. model download·RunPod·비용·secret·외부 배포·데이터 전송은 승인하지 않았고 일정·간트 날짜는 변경하지 않았다. | Wave 3 실행 승인 |
 | 2026-08-03 13:30 | 4.21, 5.4~5.8, 6.2 | R4 production image의 blank·기존 DB startup과 실제 Template→Trino runtime, R5 제품 `dae606f`·최종 `ab1d725`의 production HTTP client 및 성공·재질문·차단·source 실패 browser trace, branch CI `30782796303`, dev `56cbf08`·CI `30784368551`, R1 통합 22건 PASS를 확인했다. R4-20, R5-03·05~07과 I2 판정을 완료로 전환하되 W3까지 이어지는 R5-04와 필수 30·Gold 120 관리는 진행으로 유지했다. 일정·간트 날짜는 변경하지 않았다. | I2 실제 전체 왕복 완료 |
 | 2026-08-03 12:28 | 1.6~1.7, 4.4, 4.20~4.21, 5.1, 5.4~5.8, 6.2 | R4-W2-F3 최종 `51947de`의 기존 migration 무변경, built image blank·기존 DB normal entrypoint, head `20260731_03`, health·전체 readiness·실제 Trino·cleanup, branch CI `30781472877` PASS를 확인해 dev `158a493`에 통합했다. Production image blocker를 해제하고 보존된 frontend diff로 실제 화면 검증을 재개하는 `R5-W2-F2-RESUME@158a493`을 승인했다. 화면 결과 전 일정·행 상태·간트는 유지했다. | R4 image startup 통합·R5 화면 재개 |
@@ -436,6 +437,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.43 | 2026-08-03 15:42 | R4-W3·R5-W3 제품·handoff·branch/dev CI를 4.15·4.19·5.5·5.10~5.11·5.15에 연결해 완료로 전환했다. Report 공통 등록·worker·browser 접근성과 외부 Base model·Gold 잔여 근거가 남아 6.3~6.4는 진행·대기로 유지하고 일정·간트 날짜는 변경하지 않았다. |
 | v7.42 | 2026-08-03 13:54 | I2 검증 dev·CI를 기준으로 R1~R5 Wave 3를 READY 발행하고 5-source·model·Cache·Report·Catalog·I3 관련 행을 진행으로 전환했다. 외부 비용·model download·secret·배포는 승인하지 않았으며 일정·간트 날짜는 유지했다. |
 | v7.41 | 2026-08-03 13:30 | R4 실제 Template·Trino/image와 R5 production HTTP/browser 네 경로, 통합 22건 및 branch/dev CI PASS를 4.21·5.4~5.8·6.2에 연결해 해당 I2 완료분을 완료로 전환했다. W3 범위인 5.5와 필수 30·Gold 120 관리는 진행으로 유지하고 일정·간트 날짜는 변경하지 않았다. |
 | v7.40 | 2026-08-03 12:28 | R4-W2-F3 production image의 blank·기존 DB normal entrypoint·전체 readiness·실제 Trino 통합 근거를 1.6~1.7·4.4·4.20~4.21·5.1·5.4~5.8·6.2에 연결하고 R5-W2-F2 화면 검증을 재개했다. 실제 결과 전 일정·행 상태·간트는 유지했다. |

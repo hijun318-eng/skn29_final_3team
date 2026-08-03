@@ -1258,7 +1258,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고·handoff mani
 ### R4-W3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -1275,6 +1275,9 @@ DIRECTIVE_TOKEN=R4-W3@41f5788
 OPENAPI_VERSION=OPENAPI-v1.0.0
 BASE_DEV_CI_EVIDENCE=GitHub Actions run 30789184985 PASS
 R1_REISSUE_EVIDENCE=R2 5원천 계약과 R3 production model client·timeout·fallback·circuit·trace 계약이 dev 41f5788에 통합되고 CI PASS를 확인해 R4-W3를 재발행
+R1_REVIEW_EVIDENCE=제품 3c2ee47·최종 70d9e56의 model call budget·권한별 Cache·동시 2건·HTTP 429·Audit trace, role gate와 branch CI 30789842373 PASS를 확인
+MERGED_DEV_SHA=c89a1a03d462e04dcd86dd33766936033063313d
+DEV_CI_EVIDENCE=GitHub Actions run 30790048113 PASS
 ALLOWED_PATHS=app/backend/**; tests/backend/**
 FORBIDDEN_PATHS=source DDL·seed·src/data/**; src/ai/**·src/modelops/**; frontend·Report; root Compose·.env.example·CI; R1/R2/R3/R5 소유 문서
 ACCEPTANCE_CRITERIA=실제 model client·repair 최대 1회·Trino·G3·Artifact를 고정 상태 전이로 유지하고 SQL Plan Cache와 Result Cache를 분리하며 key에 context·policy·entitlement·as_of·watermark·mask를 포함한다. Template·Cache도 G1·G2·G3·권한을 우회하지 않고 최대 LLM 4회·동시 2건·초과 대기/429와 request→context→query/cache→artifact trace를 재현
@@ -1289,7 +1292,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R4 개인 일일보고·handoff mani
 ### R5-W3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -1308,6 +1311,10 @@ UI_VERSION=UI-v1.0.0
 REPORT_VERSION=REPORT-v1.0.0
 BASE_DEV_CI_EVIDENCE=GitHub Actions run 30788112084 PASS
 R1_REISSUE_EVIDENCE=R2-W3 5원천 계약이 dev 8bfcd8c에 통합되고 CI PASS를 확인해 R5가 R4 완료를 기다리지 않고 기존 OpenAPI example·mock과 R2 fixture로 병렬 착수하도록 재발행
+R1_REVIEW_EVIDENCE=제품 e6e527a·최종 1c33f1c의 전체 오류 UI·Artifact→Report·immutable Report proposal·5원천 Catalog, role gate와 branch CI 30790336427 PASS를 확인
+MERGED_DEV_SHA=4106b6d247b3f8cae7528a9915fb06b9dbcbae7f
+DEV_CI_EVIDENCE=GitHub Actions run 30790451402 PASS
+FOLLOW_UP=R4-16 실제 FastAPI·Alembic 등록과 R5-16 browser 접근성은 Wave 4 범위로 유지
 ALLOWED_PATHS=app/enterprise-react/**; src/report/**; tests/frontend/**; tests/report/**
 FORBIDDEN_PATHS=app/react/**; app/backend/**·공통 FastAPI·Alembic chain; source DDL·seed·src/data/**; src/ai/**·src/modelops/**; root Compose·.env.example·CI; R1/R2/R3/R4 소유 문서
 ACCEPTANCE_CRITERIA=전체 오류 상태를 API 값 그대로 표시하고 immutable Report definition/version/run/block domain, R4가 등록 가능한 독립 router·migration proposal과 contract test, 5-source Catalog·Connection mock을 활성 frontend 하나에서 제공
@@ -1411,6 +1418,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.53 | 2026-08-03 15:42 | R4 제품 `3c2ee47`·최종 `70d9e56`과 R5 제품 `e6e527a`·최종 `1c33f1c`의 role gate·branch CI를 확인해 순서대로 dev `c89a1a0`·`4106b6d`에 통합하고 dev CI `30790048113`·`30790451402` PASS를 확인했다. R4-W3·R5-W3는 `MERGED_DEV`로 전환했으며 Report 공통 등록·browser 접근성과 외부 Base model·Gold 잔여 근거가 남아 I3는 진행 상태를 유지한다. |
 | v2.52 | 2026-08-03 15:10 | R3-W3 제품 `5b13828`·최종 `0ca0096`의 Context 제한 Node2·1회 repair·R2 평가 manifest 소비·timeout/fallback/circuit/trace와 branch CI `30789043209` PASS를 확인해 dev `41f5788`에 통합하고 dev CI `30789184985` PASS를 확인했다. 외부 Base model·RunPod/GPU/비용과 Gold120 나머지는 I3 미완료 증거로 유지하고, R4-W3를 최신 R3 model client 소비 기준 `R4-W3@41f5788`로 재발행했다. |
 | v2.51 | 2026-08-03 14:47 | R2-W3의 5원천 catalog·2/3원천 JOIN·필수 30건 fixture를 dev `8bfcd8c`에 통합하고 CI run `30788112084` PASS를 확인했다. R5 부재가 I3 병목이 되지 않도록 R5-W3를 최신 R2 계약 기준 `R5-W3@8bfcd8c`로 재발행했으며, 기존 OpenAPI example·mock을 사용해 R4 완료 전 병렬 착수하도록 승인했다. |
 | v2.50 | 2026-08-03 14:26 | R3 신규 실행이 카드 `BASE_SHA=744592a`와 당시 최신 dev 불일치로 자동 차단된 것을 확인했다. R1 착수 커밋을 dev `b06a0da`에 통합하고 CI run `30787154375` PASS를 확인해 R3-W3만 `R3-W3@b06a0da`로 재발행했으며, 원격 R3 일일보고 commit 보존과 no-rebase dev merge를 요구했다. |

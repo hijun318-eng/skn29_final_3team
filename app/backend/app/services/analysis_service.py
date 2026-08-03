@@ -77,13 +77,31 @@ class AnalysisService:
             {"urn": item.urn, "fqn": item.fqn, "columns": list(item.columns)}
             for item in package.assets
         ]
-        try:
-            plan = self._model.generate(
-                "node2",
-                {"scenario": scenario, "references": references},
-            )
-        except (TimeoutError, TypeError, ValueError):
-            return self._responses.model_error(context, machine, trace, decision)
+        if decision.sql_text:
+            plan = {
+                "sql": decision.sql_text,
+                "references": [
+                    item
+                    for item in references
+                    if item["fqn"] in decision.source_fqns
+                ],
+                "parameters": payload.parameters,
+                "model_version": "TEMPLATE-I2-v1.0.0",
+            }
+        else:
+            try:
+                plan = self._model.generate(
+                    "node2",
+                    {
+                        "scenario": scenario,
+                        "references": references,
+                        "request_id": str(context.request_id),
+                        "package": package,
+                        "context": context,
+                    },
+                )
+            except (TimeoutError, TypeError, ValueError):
+                return self._responses.model_error(context, machine, trace, decision)
         if self._support.model_plan_violation(plan):
             return self._responses.model_error(context, machine, trace, decision)
         self._responses.record(trace, PipelineStage.MODEL, plan.get("model_version"))
@@ -116,6 +134,11 @@ class AnalysisService:
                         "scenario": scenario,
                         "attempt": repair_count,
                         "references": references,
+                        "trace_id": context.trace_id,
+                        "rejected_sql": str(plan["sql"]),
+                        "violation": violation,
+                        "package": package,
+                        "context": context,
                     },
                 )
             except (TimeoutError, TypeError, ValueError):
@@ -252,7 +275,15 @@ class AnalysisService:
         self._responses.record(trace, PipelineStage.G3)
 
         try:
-            explanation = self._model.generate("node3", {"scenario": scenario})
+            explanation = self._model.generate(
+                "node3",
+                {
+                    "scenario": scenario,
+                    "query": query,
+                    "assets": assets,
+                    "context": context,
+                },
+            )
             if (
                 not isinstance(explanation, dict)
                 or not isinstance(explanation.get("summary"), str)

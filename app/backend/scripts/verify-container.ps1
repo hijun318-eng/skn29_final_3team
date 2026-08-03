@@ -10,6 +10,8 @@ $databaseCompose = Join-Path $repositoryRoot 'infrastructure\database\compose.ym
 $backendCompose = Join-Path $backendPath 'compose.fragment.yml'
 $environmentFile = Join-Path $repositoryRoot 'infrastructure\database\.env'
 $containerName = 'answervice-backend'
+$previousDataPlatformMode = $env:DATA_PLATFORM_MODE
+$env:DATA_PLATFORM_MODE = 'fake'
 $composeArguments = @(
     'compose',
     '--env-file', $environmentFile,
@@ -43,9 +45,12 @@ try {
             }
             if (
                 $readinessResponse.data.status -ne 'ready' -or
-                $readinessResponse.data.dependencies.app_postgres -ne 'reachable'
+                $readinessResponse.data.dependencies.app_postgres -ne 'ready' -or
+                $readinessResponse.data.dependencies.migration -ne 'ready' -or
+                $readinessResponse.data.dependencies.approved_templates -ne 'ready' -or
+                $readinessResponse.data.dependencies.trino -ne 'not_required'
             ) {
-                throw 'Backend /readiness did not confirm app-postgres connectivity.'
+                throw 'Backend /readiness did not confirm database, migration, and approved templates.'
             }
             Write-Output 'BACKEND_CONTAINER_READY'
             Write-Output 'BACKEND_DATABASE_READY'
@@ -60,6 +65,7 @@ try {
     throw 'Backend container did not become healthy within 40 seconds.'
 }
 finally {
+    $env:DATA_PLATFORM_MODE = $previousDataPlatformMode
     if ($RemoveAfterVerification) {
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'

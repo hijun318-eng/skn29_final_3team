@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import os
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import router
@@ -18,7 +20,38 @@ from app.contracts import (
 )
 
 
+def _allowed_origins() -> list[str]:
+    origins = [
+        origin.strip()
+        for origin in os.getenv(
+            "CORS_ALLOW_ORIGINS",
+            "http://localhost:5173",
+        ).split(",")
+        if origin.strip()
+    ]
+    if "*" in origins:
+        raise RuntimeError("CORS_ALLOW_ORIGINS must contain exact origins")
+    return origins
+
+
 app = FastAPI(title="Answervice Control Plane", version=CONTRACT_VERSION)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins(),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-As-Of",
+        "X-Contract-Version",
+        "X-Role",
+        "X-Timezone",
+        "X-Trace-Id",
+        "X-User-Id",
+    ],
+    expose_headers=["X-Request-Id", "X-Trace-Id"],
+)
 app.include_router(router)
 
 

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.42 |
-| 문서 기준일 | 2026-08-03 10:41 |
+| 버전 | v2.43 |
+| 문서 기준일 | 2026-08-03 10:50 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -819,7 +819,7 @@ DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W2@04e5e6d
 CONTRACT_VERSION=I1-v1.0.0
 R1_PROGRESS=기존 R2~R5 컴포넌트·fixture 검증은 유지하되 정적 runtime 재검토에서 backend가 빈 RoutingService와 FakeDataPlatformAdapter를 사용하고 frontend가 mock client만 사용함을 확인해 실제 Template→Trino→화면 통합 판정을 0/4 NOT_RUN으로 재개방; R4-W2-F2→R5-W2-F2→R1 실제 E2E 순서로 보완
-ALLOWED_PATHS=.github/**; compose*.yml; .env.example; tests/integration/**; docs/Answervice_기획서.md; docs/deliverables/02_WBS_29기_3팀.xlsx; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
+ALLOWED_PATHS=.github/**; compose*.yml; .env.example; .dockerignore; config/access-policy.yaml; tests/integration/**; docs/Answervice_기획서.md; docs/deliverables/02_WBS_29기_3팀.xlsx; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 R1_SCOPE_AUTHORIZATION=사용자 요청에 따라 기획서 v1.2와 동기화한 공식 WBS XLSX 단일 경로의 작성·덮어쓰기·commit·junhee push를 승인; 다른 deliverable 경로는 승인하지 않음
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=필수 평가 subset·gold 원장을 확인하고 대표 질문의 Context→G1→G2→Trino→G3→Artifact→화면 trace에서 성공·재질문·차단·source 실패를 판정, 역할별 실패는 원 소유자에게 반환
@@ -1234,6 +1234,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.43 | 2026-08-03 10:50 | R1 정책 commit의 role Gate에서 새 `.dockerignore`와 `config/access-policy.yaml`이 기존 R1-W2 허용 목록에 누락된 것을 확인했다. R1 소유 root build-context·공통 접근 정책 경로만 허용 목록에 추가하고 다른 service·deliverable 범위는 확장하지 않았다. |
 | v2.42 | 2026-08-03 10:41 | `origin/jaehong` 제품 `4bec9d7`·handoff `b812122`의 CI는 통과했으나 기존 `20260730_02` 수정으로 기존 DB upgrade가 누락되고, Template role·entitlement 미검사, PARTIAL 오류 경로의 `AdapterError.payload` 오참조, real mode HTTP 증거 부재를 확인해 병합을 거부했다. `ACCESS-POLICY-v1.0.0`과 새 migration·실제 HTTP 회귀를 요구하는 `R4-W2-F2-REWORK@e023b06` 및 개인 branch commit·push 권한만 발행했다. |
 | v2.41 | 2026-07-31 17:28 | R5-W2-F1을 dev에 통합하고 R1 증거 Gate 보강 CI PASS를 확인한 뒤 실제 DB Template·Trino·migration·CORS runtime 연결을 위한 `R4-W2-F2@0e756e7`을 READY로 발행했다. |
 | v2.40 | 2026-07-31 17:11 | 독립 코드 리뷰에서 확인한 증거 우회를 차단하기 위해 ID 없는 추가 결과와 자동 생성 placeholder 증거를 거부하고, 제출된 `REVIEW_REQUIRED`의 차단 정책을 CI Summary·최종 quality 판정과 회귀 test에 동기화했다. |

@@ -132,23 +132,29 @@ class Wave3EvaluationTests(unittest.TestCase):
         with self.assertRaisesRegex(EvaluationError, "partial"):
             validate_data_manifest(over_target)
 
-    def test_external_results_are_explicitly_not_run(self):
+    def test_external_results_record_serving_and_keep_base_default(self):
         comparison = json.loads(
             (ROOT / "evals" / "base_comparison.v0.1.json").read_text(encoding="utf-8")
         )
         serving = json.loads(
             (ROOT / "src" / "modelops" / "serving_manifest.v0.1.json").read_text(encoding="utf-8")
         )
-        self.assertEqual("NOT_RUN", comparison["status"])
-        self.assertEqual("NOT_RUN", serving["status"])
+        self.assertEqual("PASS_BASE_SELECTED", comparison["status"])
+        self.assertEqual("PASS", serving["status"])
         split = json.loads(
             (ROOT / "evals" / "split_manifest.v0.1.json").read_text(
                 encoding="utf-8"
             )
         )
-        self.assertIn("checkpoint", comparison["reason"])
+        self.assertEqual("Base", comparison["decision"]["product_default"])
+        self.assertEqual("Base", serving["product_default"])
         self.assertEqual(2, serving["runtime"]["max_concurrency"])
-        self.assertTrue(serving["storage"]["external_backup_required_before_shutdown"])
+        self.assertTrue(serving["verification"]["restart_same_revision"])
+        self.assertTrue(serving["cost_and_cleanup"]["pod_deleted_404"])
+        self.assertLess(
+            serving["cost_and_cleanup"]["projected_cumulative_cost_usd"],
+            serving["cost_and_cleanup"]["cumulative_limit_usd"],
+        )
 
 
 class ProductionClientTests(unittest.TestCase):

@@ -1,0 +1,32 @@
+{
+  "comparison_version": "BASE-COMPARISON-v0.1",
+  "status": "NOT_RUN",
+  "reason": "R2 evaluation manifest is available, but no model checkpoint, endpoint, model download, GPU, or external execution is approved",
+  "evaluation_manifest": {
+    "path": "src/data/evaluation_fixture_manifest.i3.v1.json",
+    "version": "EVAL-DATA-I3-v1.0.0",
+    "required30": "30 REVIEW cases available",
+    "gold120": "5 of 120 REVIEW cases available"
+  },
+  "conditions": {
+    "evaluation_set": "R2 required30 plus available gold120 partial subset",
+    "prompt_version": "PROMPT-v1.0.0",
+    "temperature": 0,
+    "batch_size": 1,
+    "cold_warm_separated": true
+  },
+  "candidates": [
+    {
+      "model": "NOT_SELECTED_BASE_A",
+      "accuracy": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "resources": null,
+      "cost_usd": null
+    }
+  ],
+  "analytics_agent_comparison": {
+    "documentation_boundary": "separate from execution comparison",
+    "execution_result": "Not Run"
+  }
+}

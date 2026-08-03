@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.81 |
-| 문서 기준일 | 2026-08-04 03:59 |
+| 버전 | v2.82 |
+| 문서 기준일 | 2026-08-04 04:03 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1856,7 +1856,7 @@ BLOCKER=R3 node2 prompt가 SQL을 한 줄·불필요한 공백과 개행 없이 
 ### R3-W3-F7
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -1883,6 +1883,43 @@ TEST_COMMAND_IDS=T1_PROMPT_UNIT;T2_COMPILE;T3_REPORT;T4_ROLE_GATE;T5_DIFF_CHECK
 STOP_CONDITIONS=max_tokens·guided schema·backend transport·dataset 수정 필요; prompt만으로 compact SQL을 명시할 수 없음; RunPod·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
 HANDOFF=R1에 node2 prompt v1.0.2 hash·한 줄 compact SQL·LIMIT 보존·version mapping·unit regression과 후속 raw finish reason·제품 trace 조건을 전달
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고의 commit·daesung push 승인; dependency 설치·RunPod·비용·secret 사용·외부 model 호출·dev merge 불가
+RESULT_SHA=863cb373289af1d0ea917f175797094417dbf93a
+SOURCE_CI_EVIDENCE=GitHub Actions run 30843971371 PASS; Python 전체·document quality·role scope·quality gate PASS
+DEV_MERGE_SHA=80b91b068d83b8bc171542e912c0508ebd41a7b0
+R1_REVIEW=node2 prompt 한 문장과 version mapping만 바꿔 한 줄·불필요한 공백/개행 금지를 명시하고 기존 LIMIT·repair·schema·backend·dataset·max_tokens를 보존한 최소 변경과 15건 local·전체 CI를 수용
+```
+
+### R1-W3-F4
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F4
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 PROMPT-v1.0.2 Base·I2 synthetic 최종 제품 trace
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=80b91b068d83b8bc171542e912c0508ebd41a7b0
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F4@80b91b0
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+DATA_CONTRACT_VERSION=DATA-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume의 생성·수정·삭제·재시작
+ACCEPTANCE_CRITERIA=dev `80b91b0`의 PROMPT-v1.0.2·guided schema를 task A40 고정 Qwen3-4B와 task backend에 localhost로 연결한다. raw node2가 `finish_reason=stop`, 완전한 schema, 한 줄 SQL, LIMIT 1~1000을 반환하는지 먼저 확인한 뒤 동일 I2 synthetic `/analysis`의 MODEL→G2→read-only QUERY→G3→ARTIFACT와 evidence를 확인한다. 실패하면 exact stage·hash·query/Artifact 부재를 기록한다. 비용·회귀·정확한 cleanup을 확인하고 성공 trace와 필수 경계가 모두 충족될 때만 I3를 판정한다.
+ACCEPTANCE_IDS=AC1_RAW_STOP;AC2_SINGLE_LINE_LIMIT;AC3_SCHEMA;AC4_G2_QUERY;AC5_G3_ARTIFACT;AC6_EVIDENCE;AC7_REGRESSION;AC8_COST;AC9_CLEANUP;AC10_I3_DECISION
+TEST_COMMANDS=task backend·I2 health; raw node2 metadata diagnostic; synthetic POST /analysis; trace·artifact·evidence inspection; backend·integration regression; exact task resource cleanup; Pod 404·active 0; existing Docker unchanged; docs/WBS/report validation; git diff --check
+TEST_COMMAND_IDS=T1_HEALTH;T2_RAW_NODE2;T3_LIVE_ANALYSIS;T4_EVIDENCE;T5_REGRESSION;T6_TASK_CLEANUP;T7_POD_CLEANUP;T8_DOCKER_SCOPE;T9_DOCUMENTS
+STOP_CONDITIONS=누적 비용 USD 15 도달 예상; 다른 Docker project 변경 필요; public endpoint·secret 출력/commit·실제 고객 데이터 필요; R2~R5 code 추가 변경 필요; 필수 안전 경계 위반
+HANDOFF=PROMPT-v1.0.2 raw finish/schema/single-line/LIMIT와 제품 G2/query/G3/artifact·evidence·latency·비용·cleanup, I3 승인 또는 exact blocker 전달
+EXTERNAL_ACTION_PERMISSION=사용자 승인 누적 USD 15 안의 task 전용 A40·고정 model 다운로드·합성 localhost 요청·task backend·정확한 task cleanup과 기존 synthetic Trino read-only 조회, R1 허용 경로 commit·junhee/dev push 승인. 다른 Pod·Docker project·volume 변경, public endpoint·secret 출력/commit·실제 고객 데이터·LoRA 변경 불가
+COST_BASELINE_USD=이전 실측·추정 누적 상한 1.254945
 ```
 
 ## Wave 4 상세 계획 카드
@@ -1977,6 +2014,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.82 | 2026-08-04 04:03 | R3-W3-F7의 node2 한 줄 compact SQL PROMPT-v1.0.2와 CI `30843971371` PASS를 검수해 dev에 통합했다. 후속 R1-W3-F4는 raw finish/schema/LIMIT을 먼저 확인하고 동일 read-only 제품 trace의 G2·QUERY·G3·ARTIFACT를 판정하며, 다른 resource 변경과 성공 trace 없는 I3 승인을 금지했다. |
 | v2.81 | 2026-08-04 03:59 | R1-W3-F3 실제 Base trace에서 LIMIT은 생성됐지만 SQL 문자열의 881줄 불필요한 개행 때문에 completion 1,500 token에 도달해 JSON이 미완성으로 MODEL 안전 실패했다. QUERY·Artifact 부재와 cleanup·active Pods 0·예상 신규 상한 USD0.066224를 확인했다. node2 prompt에 한 줄 compact SQL만 추가하는 R3-W3-F7을 READY 발행했으며 실제 재검증 전 I3는 차단한다. |
 | v2.80 | 2026-08-04 03:48 | R3-W3-F6의 PROMPT-v1.0.1 resource limit·단일 repair 문구와 CI `30842808365` PASS를 검수해 dev에 통합했다. 후속 R1-W3-F3는 task A40·backend와 기존 synthetic Trino의 read-only 조회만 사용해 동일 제품 trace의 LIMIT·G2·QUERY·G3·ARTIFACT를 재판정하고, 다른 Docker resource 변경과 성공 trace 없는 I3 승인을 금지했다. |
 | v2.79 | 2026-08-04 03:42 | R1-W3-F2 실제 I2 product trace는 guided MODEL까지 통과했지만 node2가 `LIMIT` 없는 SQL을 생성하고 repair도 동일 SQL을 반환해 G2에서 안전 차단됐다. QUERY·Artifact 부재와 task resource cleanup·active Pods 0·예상 신규 상한 USD0.066601를 확인했다. `LIMIT <= 1000`과 `RESOURCE_POLICY_MISSING` 단일 수정 행동만 prompt에 명시하는 R3-W3-F6를 READY 발행했으며 실제 Base 재검증 전 I3는 차단한다. |

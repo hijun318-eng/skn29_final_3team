@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, time
-from functools import partial
+from functools import lru_cache, partial
+from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from src.ai import schema as ai_schema
 from src.ai.fake_model import FakeModelAdapter as R3FakeModelAdapter
 from src.ai.prompt_registry import get_prompt
 from src.ai.training.benchmark_serving import request_json
@@ -17,6 +19,14 @@ _PROMPT_IDS = {
     "node2_repair": "node2.repair",
     "node3": "node3.explain",
 }
+
+
+@lru_cache(maxsize=None)
+def _response_schema(node: str) -> dict[str, Any]:
+    path = Path(ai_schema.__file__).with_name("contracts") / "node_io.v0.1.json"
+    with path.open(encoding="utf-8") as schema_file:
+        bundle = json.load(schema_file)
+    return {"$defs": bundle["$defs"], **bundle["$defs"][f"{node}_response"]}
 
 
 def openai_transport(
@@ -46,6 +56,7 @@ def openai_transport(
             "temperature": 0,
             "max_tokens": 1_500,
             "chat_template_kwargs": {"enable_thinking": False},
+            "guided_json": _response_schema(node),
         },
         token,
         timeout,

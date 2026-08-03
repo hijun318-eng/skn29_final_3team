@@ -51,7 +51,28 @@ class ProductionModelTest(unittest.TestCase):
             {"enable_thinking": False},
             captured["payload"]["chat_template_kwargs"],
         )
+        guided = captured["payload"]["guided_json"]
+        self.assertEqual(
+            {"sql", "references", "parameters", "model"},
+            set(guided["required"]),
+        )
+        self.assertIn("model_trace", guided["$defs"])
         self.assertEqual(node_payload, json.loads(captured["payload"]["messages"][1]["content"]))
+
+    def test_every_product_node_uses_its_r3_response_schema(self) -> None:
+        expected = {
+            "node2": "sql",
+            "node2_repair": "corrected_sql",
+            "node3": "explanation",
+        }
+        for node, field in expected.items():
+            with self.subTest(node=node):
+                schema = contract_model._response_schema(node)
+                self.assertIn(field, schema["required"])
+                self.assertFalse(schema["additionalProperties"])
+
+        with self.assertRaises(KeyError):
+            contract_model._response_schema("unknown")
 
     def test_fallback_is_rejected_as_product_result(self) -> None:
         client = ProductionModelClient(

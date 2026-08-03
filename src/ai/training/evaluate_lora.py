@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,12 @@ from src.ai.training.dataset import DatasetError, load_compiled, validate_model_
 
 def _normalize_sql(sql: str) -> str:
     return re.sub(r"\s+", " ", sql.strip().rstrip(";")).casefold()
+
+
+def _percentile(values: list[float], percentile: int) -> float:
+    ordered = sorted(values)
+    index = max(0, (len(ordered) * percentile + 99) // 100 - 1)
+    return ordered[index]
 
 
 def main() -> int:
@@ -48,8 +55,10 @@ def main() -> int:
     if args.adapter:
         model = PeftModel.from_pretrained(model, args.adapter)
     model.eval()
+    torch.cuda.reset_peak_memory_stats()
 
     predictions = []
+    latencies_ms = []
     for record in records:
         prompt = tokenizer.apply_chat_template(
             record["messages"][:-1],
@@ -58,6 +67,8 @@ def main() -> int:
             enable_thinking=False,
         )
         inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        torch.cuda.synchronize()
+        started = time.perf_counter()
         with torch.inference_mode():
             generated = model.generate(
                 **inputs,
@@ -65,6 +76,9 @@ def main() -> int:
                 max_new_tokens=args.max_new_tokens,
                 pad_token_id=tokenizer.eos_token_id,
             )
+        torch.cuda.synchronize()
+        latency_ms = (time.perf_counter() - started) * 1_000
+        latencies_ms.append(latency_ms)
         text = tokenizer.decode(generated[0, inputs.input_ids.shape[1] :], skip_special_tokens=True).strip()
         expected = json.loads(record["messages"][2]["content"])
         valid_json = True
@@ -93,6 +107,7 @@ def main() -> int:
                 "valid_structure": valid_structure,
                 "sql_exact_match": sql_match,
                 "exact_match": exact_match,
+                "latency_ms": latency_ms,
                 "generated_text": text,
             }
         )
@@ -108,6 +123,9 @@ def main() -> int:
         "valid_structure": sum(item["valid_structure"] for item in predictions),
         "sql_exact_match": sum(item["sql_exact_match"] for item in predictions),
         "exact_match": sum(item["exact_match"] for item in predictions),
+        "latency_p50_ms": _percentile(latencies_ms, 50),
+        "latency_p95_ms": _percentile(latencies_ms, 95),
+        "peak_vram_bytes": torch.cuda.max_memory_allocated(),
     }
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True, indent=2))
     return 0

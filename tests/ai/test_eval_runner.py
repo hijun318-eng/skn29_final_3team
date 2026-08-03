@@ -3,6 +3,7 @@ import unittest
 
 from evals.runner import EvaluationError, evaluate_cases
 from src.ai.fake_model import FakeModelAdapter
+from src.ai.training.evaluate_lora import _percentile
 from tests.ai.test_contracts import VALID_PAYLOADS
 
 
@@ -18,6 +19,12 @@ def valid_case():
 
 
 class EvaluationRunnerTests(unittest.TestCase):
+    def test_nearest_rank_percentile_is_deterministic(self):
+        observations = [4.0, 1.0, 3.0, 2.0]
+
+        self.assertEqual(2.0, _percentile(observations, 50))
+        self.assertEqual(4.0, _percentile(observations, 95))
+
     def test_result_and_hash_are_reproducible(self):
         first = evaluate_cases([valid_case()])
         second = evaluate_cases([valid_case()])

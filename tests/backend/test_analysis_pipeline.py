@@ -63,6 +63,16 @@ class MissingLimitModel(FakeModelAdapter):
         return response
 
 
+class CapturingContractModel(ContractModelAdapter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests = []
+
+    def _generate(self, node, payload):
+        self.requests.append((node, payload))
+        return super()._generate(node, payload)
+
+
 class AnalysisPipelineTest(unittest.TestCase):
     def setUp(self) -> None:
         self.adapter = CountingDataPlatformAdapter()
@@ -115,6 +125,18 @@ class AnalysisPipelineTest(unittest.TestCase):
             response.data.result.evidence.artifact_id,
         )
         self.assertEqual(1, self.adapter.execute_count)
+
+    def test_general_question_reaches_node2_separately_from_request_id(self) -> None:
+        model = CapturingContractModel()
+        service = AnalysisService(self.adapter, model)
+        payload = AnalysisRequest(question="지난달 객실 매출을 알려줘")
+
+        service.analyze(payload, self.context, self.decision(payload))
+        node2 = next(item for node, item in model.requests if node == "node2")
+
+        self.assertEqual(payload.question, node2["normalized_question"])
+        self.assertEqual(str(self.context.request_id), node2["question_id"])
+        self.assertNotEqual(node2["normalized_question"], node2["question_id"])
 
     def test_approved_template_reaches_template_route_and_both_gates(self) -> None:
         template = ApprovedTemplate(

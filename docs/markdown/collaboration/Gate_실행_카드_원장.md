@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.50 |
-| 문서 기준일 | 2026-08-03 14:26 |
+| 버전 | v2.51 |
+| 문서 기준일 | 2026-08-03 14:47 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1185,7 +1185,7 @@ EXTERNAL_ACTION_PERMISSION=R1 허용 경로와 개인 일일보고의 commit·ju
 ### R2-W3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -1193,14 +1193,18 @@ EXECUTION_BUNDLE_ID=R2-W3
 TARGET_INTEGRATION_GATE=I3
 CHECKPOINT_GATES=없음
 TASK_CARD_RANGE=R2-09~18
-CURRENT_TASK_CARD_ID=R2-09
+CURRENT_TASK_CARD_ID=R2-18
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=744592ab129ed44c0cfcf5cf860b8945b011a324
-DIRECTIVE=ACTION
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R2-W3@744592a
+RESULT_SHA=33e17dfc326c130edb9f0257070b0c575dcca52d
+HANDOFF_SHA=7a509d5e72f1e0f79a1349c414005e6c1b999ffa
+MERGED_DEV_SHA=8bfcd8ca62455a4c234fe565eee9b18776379cd8
+CI_EVIDENCE=branch run 30787914002 PASS; dev run 30788112084 PASS
 CONTRACT_VERSION=I1-v1.0.0
-DATA_CONTRACT_VERSION=I2-v1.0.0
+DATA_CONTRACT_VERSION=I3-DATA-v1.0.0
 BASE_DEV_CI_EVIDENCE=GitHub Actions run 30785580556 PASS
 ALLOWED_PATHS=infrastructure/database/**; src/data/**; tests/data/**
 FORBIDDEN_PATHS=app/backend/**; src/ai/**; src/modelops/**; frontend·Report; root Compose·.env.example·CI; R1/R3/R4/R5 소유 문서
@@ -1290,13 +1294,14 @@ TASK_CARD_RANGE=R5-04~10·14
 CURRENT_TASK_CARD_ID=R5-04
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=744592ab129ed44c0cfcf5cf860b8945b011a324
+BASE_SHA=8bfcd8ca62455a4c234fe565eee9b18776379cd8
 DIRECTIVE=ACTION
-DIRECTIVE_TOKEN=R5-W3@744592a
+DIRECTIVE_TOKEN=R5-W3@8bfcd8c
 OPENAPI_VERSION=OPENAPI-v1.0.0
 UI_VERSION=UI-v1.0.0
 REPORT_VERSION=REPORT-v1.0.0
-BASE_DEV_CI_EVIDENCE=GitHub Actions run 30785580556 PASS
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30788112084 PASS
+R1_REISSUE_EVIDENCE=R2-W3 5원천 계약이 dev 8bfcd8c에 통합되고 CI PASS를 확인해 R5가 R4 완료를 기다리지 않고 기존 OpenAPI example·mock과 R2 fixture로 병렬 착수하도록 재발행
 ALLOWED_PATHS=app/enterprise-react/**; src/report/**; tests/frontend/**; tests/report/**
 FORBIDDEN_PATHS=app/react/**; app/backend/**·공통 FastAPI·Alembic chain; source DDL·seed·src/data/**; src/ai/**·src/modelops/**; root Compose·.env.example·CI; R1/R2/R3/R4 소유 문서
 ACCEPTANCE_CRITERIA=전체 오류 상태를 API 값 그대로 표시하고 immutable Report definition/version/run/block domain, R4가 등록 가능한 독립 router·migration proposal과 contract test, 5-source Catalog·Connection mock을 활성 frontend 하나에서 제공
@@ -1400,6 +1405,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.51 | 2026-08-03 14:47 | R2-W3의 5원천 catalog·2/3원천 JOIN·필수 30건 fixture를 dev `8bfcd8c`에 통합하고 CI run `30788112084` PASS를 확인했다. R5 부재가 I3 병목이 되지 않도록 R5-W3를 최신 R2 계약 기준 `R5-W3@8bfcd8c`로 재발행했으며, 기존 OpenAPI example·mock을 사용해 R4 완료 전 병렬 착수하도록 승인했다. |
 | v2.50 | 2026-08-03 14:26 | R3 신규 실행이 카드 `BASE_SHA=744592a`와 당시 최신 dev 불일치로 자동 차단된 것을 확인했다. R1 착수 커밋을 dev `b06a0da`에 통합하고 CI run `30787154375` PASS를 확인해 R3-W3만 `R3-W3@b06a0da`로 재발행했으며, 원격 R3 일일보고 commit 보존과 no-rebase dev merge를 요구했다. |
 | v2.49 | 2026-08-03 14:18 | 최신 dev `1c57797`·CI run `30786041244` PASS와 통합 23건·Gate dashboard·문서 정책 검증을 확인하고 R1-W3를 `IN_PROGRESS`로 전환했다. R2~R5 지시를 Google Docs 섹션 9에 역할별로 발행했으며 required30 0/30·gold120 0/120과 외부 model·비용·secret 미승인 상태를 유지했다. |
 | v2.48 | 2026-08-03 13:54 | I2 통합 dev 744592a와 CI run 30785580556 PASS를 기준으로 R1~R5 Wave 3 묶음을 READY 발행했다. 역할별 허용 경로·수용/검증 ID·중단 조건·개인 branch commit·push 권한을 고정하고 model download·RunPod·비용·secret·외부 배포·데이터 전송은 승인하지 않았다. |

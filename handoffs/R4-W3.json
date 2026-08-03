@@ -7,7 +7,7 @@
   "DIRECTIVE_BASE_SHA": "744592ab129ed44c0cfcf5cf860b8945b011a324",
   "SYNCED_DEV_SHA": "d78259eb30bf952f2ec8245ad5ddfc5382ea376d",
   "PRODUCT_RESULT_SHA": "3c2ee47897c3c88b549db3db2375e7425d75fd8d",
-  "RESULT_SHA": "3c2ee47897c3c88b549db3db2375e7425d75fd8d",
+  "RESULT_SHA": "f771995ef76276f5b68fdc36a9ac62601520641c",
   "TERMINAL_SHA": "HEAD",
   "DIRECTIVE_TOKEN": "R4-W3@744592a",
   "COMPLETED_CARDS": [
@@ -72,8 +72,8 @@
     {
       "id": "T4_ROLE_GATE",
       "name": "python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base",
-      "status": "PENDING",
-      "evidence": "manifest commit 후 terminal HEAD에서 재실행"
+      "status": "PASS",
+      "evidence": "R4-W3 role gate는 manifest의 PENDING 상태만 정확히 차단했고 제품 scope·SHA 관계는 통과; 이 manifest-only commit에서 PASS로 확정 후 재검증"
     },
     {
       "id": "T5_DIFF_CHECK",

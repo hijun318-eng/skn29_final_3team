@@ -1,4 +1,4 @@
 interface:
   display_name: "한국어 Commit 메시지 작성"
   short_description: "staged 변경을 근거로 상세한 한국어 commit 메시지 작성"
-  default_prompt: "$draft-commit-message를 사용해 staged 변경만 근거로 상세한 한국어 commit 메시지를 작성해줘."
+  default_prompt: "$draft-commit-message로 staged 변경의 한국어 commit message를 작성해줘."

@@ -1,4 +1,4 @@
 interface:
   display_name: "프로젝트 문서 관리"
   short_description: "저장소 규칙에 따라 프로젝트 문서 구조와 정책을 검증"
-  default_prompt: "$manage-project-documents를 사용해 저장소 규칙에 맞게 프로젝트 문서를 작성하거나 수정해줘."
+  default_prompt: "$manage-project-documents로 저장소 규칙에 맞게 프로젝트 문서를 작성·수정해줘."

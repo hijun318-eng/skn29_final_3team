@@ -46,7 +46,7 @@
 
 ## 응답과 작업 원칙
 
-- 자연어는 한국어로 작성하고 code, command, path, API, library, error string은 원문을 유지한다.
+- 자연어와 Skill 본문은 한국어로 작성하고 code, command, path, API, library, error string은 원문을 유지한다.
 - 확인된 사실·결정·가정·제안을 구분하고, 불확실한 내용은 한계와 검증 방법을 함께 제시한다.
 - 사용자의 범위와 권한을 임의로 넓히지 않는다. 위험한 모호성만 질문하고 대안이 있으면 같은 기준으로 비교해 권장안을 제시한다.
 - 시작할 때 repository root를 확인해 working directory로 삼고, current branch와 `git status --short`를 확인해 기존 변경을 사용자 작업으로 보존한다.
@@ -66,8 +66,6 @@
 
 - branch·commit message 형식·PR·CI 정책의 단일 기준은 `docs/markdown/collaboration/README.md`다.
 - 명시적 요청 전에는 stage, commit, push, dependency 설치를 하지 않는다.
-- 개인 branch를 `dev`에 병합하라는 요청에는 `.agents/skills/merge-branch-to-dev/SKILL.md`를 적용한다.
-- commit message 요청에는 `.agents/skills/draft-commit-message/SKILL.md`의 staged diff 검토 절차를 적용하며, 초안 요청을 stage·commit·push 승인으로 해석하지 않는다.
 
 ## 데이터와 구조
 
@@ -77,16 +75,14 @@
 - Node는 권한·SQL 실행 허용·Gate 통과·결과 정답을 판정하지 않는다. frontend는 수치·권한·Gate를 재계산하지 않고 API 결과를 표시한다.
 - 실제 code가 생길 때만 하위 module을 만들고 P2 편입 전 `src/embeddings`, `src/retrieval`을 만들지 않는다.
 
-## 문서와 스킬 라우팅
+## 문서와 스킬
 
 - 문서 위치·번호·파일명·헤더·템플릿 매핑의 단일 기준은 `docs/문서관리규칙.md`다.
 - `.agents/skills/**/scripts`를 실행할 때 Python 3.10+ launcher인 `python` 또는 `python3`를 사용한다.
-- `.agents/skills/**/SKILL.md`의 `description`에는 실제 한글·영어 호출 표현을 중복 없이 포함하고, 본문 자연어는 한국어로 작성한다. Skill `name`과 code, command, path, API, library, error string은 원문을 유지한다.
-- `docs/`의 문서를 생성·편집·이동·검토할 때 `.agents/skills/manage-project-documents/SKILL.md`를 적용한다.
+- Skill `description`에는 실제 한글·영어 호출 표현만 넣고 본문 절차를 반복하지 않으며, `name`은 원문을 유지한다.
+- 작업 완료 전 WBS·보고 갱신 여부를 `update-project-wbs`와 `update-project-reports`의 `description`으로 판정한다.
 - `docs/markdown/ai_docs/`는 AI 작성·외부 조사·과거 스냅샷을 모은 참고 폴더이며 공식 산출물이나 현재 구현 사실로 간주하지 않는다.
 - `docs/templates/`는 읽기 전용이다. 생성·수정·삭제·이동·이름 변경·덮어쓰기를 하지 않는다.
-- 실행 WBS 행과 연결된 일정·상태·담당·산출물·근거가 바뀌거나 사용자가 WBS 갱신을 요청하면 `.agents/skills/update-project-wbs/SKILL.md`를 적용한다. 단순 조사·설명, 보고 전용 변경, 실행 일정에 영향 없는 문서·코드·설정 정리는 제외한다.
-- 개인 branch에서 보고서 이외 파일 변경을 마치거나 날짜·기간이 지정된 보고 요청을 받으면 `.agents/skills/update-project-reports/SKILL.md`를 적용한다. `dev`에서는 작성자를 추정하지 않는다.
 - 정책 데이터는 전용 문서, 조건부 절차는 `.agents/skills`, 항상 적용할 원칙과 권한 경계는 이 파일에서 관리한다.
 
 ## 완료 보고

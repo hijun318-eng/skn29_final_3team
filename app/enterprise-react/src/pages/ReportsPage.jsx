@@ -73,6 +73,24 @@ const BASIC_BLOCKS = {
 
 const INITIAL_BLOCKS = BLOCK_CATALOG.slice(0, 5).map((block, index) => ({ ...block, id: `${block.key}-${index}` }));
 
+function initialEditorBlocks() {
+  try {
+    const candidate = JSON.parse(window.sessionStorage.getItem("answervice.report.artifact"));
+    if (!candidate?.artifactId) return INITIAL_BLOCKS;
+    return [{
+      id: `artifact-${candidate.artifactId}`,
+      key: "chat-artifact",
+      type: "text",
+      title: candidate.question || "Chat Artifact",
+      content: `Artifact ${candidate.artifactId}\nQuery ${candidate.queryId || "—"}\nSources ${(candidate.sourceUrns || []).join(", ") || "—"}`,
+      artifactId: candidate.artifactId,
+      span: 2,
+    }, ...INITIAL_BLOCKS];
+  } catch {
+    return INITIAL_BLOCKS;
+  }
+}
+
 function Toast({ message }) {
   return message ? <div className="enterprise-toast"><Check size={14} />{message}</div> : null;
 }
@@ -92,7 +110,7 @@ export function ReportsPage() {
   const [responseDecision, setResponseDecision] = useState("");
   const [memo, setMemo] = useState("");
   const [toast, setToast] = useState("");
-  const [editorBlocks, setEditorBlocks] = useState(INITIAL_BLOCKS);
+  const [editorBlocks, setEditorBlocks] = useState(initialEditorBlocks);
   const [draggedBlockId, setDraggedBlockId] = useState(null);
   const [draggedLibraryItem, setDraggedLibraryItem] = useState(null);
   const notify = (message) => { setToast(message); window.setTimeout(() => setToast(""), 1800); };

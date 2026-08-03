@@ -56,15 +56,15 @@ export function AnalysisStatePanel({
         </div>
       </header>
       <p>{run.error?.message ?? run.summary ?? copy.description}</p>
-      {run.error?.code === "QUERY_SOURCE_FAILED" && (
-        <p className="analysis-retry" data-retryable={String(run.error.retryable)}>
-          <b>재시도</b>
-          <span>{run.error.retryable ? "다시 시도 가능" : "다시 시도 불가"}</span>
-        </p>
+      {run.error && (
+        <dl className="analysis-error" data-error-code={run.error.code} data-retryable={String(run.error.retryable)}>
+          <div><dt>error.code</dt><dd>{run.error.code}</dd></div>
+          <div><dt>error.retryable</dt><dd>{String(run.error.retryable)}</dd></div>
+        </dl>
       )}
       {showResult && <div className="analysis-summary"><small>API 제공 요약</small><strong>{run.summary}</strong></div>}
       {viewState === "PARTIAL" && (
-          <ul>{run.sources.map((source) => <li key={source.urn}>{source.name}: {source.status === "success" ? "성공" : "실패"}</li>)}</ul>
+        <ul>{run.sources.map((source) => <li key={source.urn}>{source.name}: {source.status}</li>)}</ul>
       )}
       {showResult && run.metrics.length > 0 && (
         <div className="analysis-metrics" aria-label="API 제공 지표">
@@ -79,7 +79,12 @@ export function AnalysisStatePanel({
       )}
       {chart && table?.rows.length ? (
         <div className="analysis-chart" aria-label={`API 제공 ${chart.chartType} 차트`}>
-          <small>{chart.chartType} · x={chart.xField} · y={chart.yFields.join(", ")}</small>
+          <small>
+            {chart.chartType} · x={chart.xField} · y={chart.yFields.map((field) => {
+              const unit = run.metrics.find((metric) => metric.metricId === field)?.unit;
+              return unit ? `${field} (${unit})` : field;
+            }).join(", ")}
+          </small>
           <ResponsiveContainer width="100%" height={210}>
             <LineChart data={table.rows}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -96,7 +101,10 @@ export function AnalysisStatePanel({
       {table?.columns.length ? (
         <div className="analysis-table">
           <table>
-            <thead><tr>{table.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+            <thead><tr>{table.columns.map((column) => {
+              const unit = run.metrics.find((metric) => metric.metricId === column)?.unit;
+              return <th key={column}>{column}{unit ? ` (${unit})` : ""}</th>;
+            })}</tr></thead>
             <tbody>
               {table.rows.map((row, index) => (
                 <tr key={`${run.requestId}-${index}`}>
@@ -107,6 +115,12 @@ export function AnalysisStatePanel({
           </table>
         </div>
       ) : null}
+      {showResult && run.evidence && (
+        <p className="analysis-sampling">
+          sampling.applied={String(run.evidence.sampling.applied)} · returned_rows={run.evidence.sampling.returnedRows}
+          {" · "}total_rows={run.evidence.sampling.totalRows ?? "null"}
+        </p>
+      )}
       {run.artifact && (
         <div className="artifact-bridge">
           <div>

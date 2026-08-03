@@ -24,6 +24,16 @@ uvicorn app.main:app --reload
 - Readiness: `GET /readiness`
 - Fake analysis: `POST /analysis`
 
+실제 Base serving을 사용할 때는 OpenAI 호환 endpoint의 base URL만 환경 변수로 전달한다. token은 선택 사항이며 로그나 응답에 포함하지 않는다.
+
+```powershell
+$env:MODEL_MODE = "openai"
+$env:MODEL_ENDPOINT = "http://127.0.0.1:8001"
+$env:MODEL_TIMEOUT_SECONDS = "15"
+```
+
+`MODEL_MODE=fake`는 R4 fake adapter, `MODEL_MODE=contract-fake`는 R3 계약 fake adapter를 그대로 사용한다. 실제 endpoint 응답은 R3 schema를 통과해야 하며 timeout·HTTP 오류·잘못된 JSON·fallback·circuit open은 분석 성공이나 Artifact로 저장하지 않는다.
+
 ## API 계약
 
 FastAPI·Pydantic code가 API 계약의 단일 원본이다. 현재 `OPENAPI-v1.0.0`은 실제 구현된 `/health`, `/readiness`, `/analysis`만 포함한다. 조회·취소·Artifact·Report endpoint는 구현 카드가 시작되기 전까지 명세에 추가하지 않는다.

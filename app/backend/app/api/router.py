@@ -55,11 +55,20 @@ def _data_platform():
 
 
 def _model():
-    if os.getenv("MODEL_MODE", "fake") == "fake":
+    mode = os.getenv("MODEL_MODE", "fake")
+    if mode == "fake":
         return FakeModelAdapter()
     from app.adapters.contract_model import ContractModelAdapter
 
-    return ContractModelAdapter()
+    if mode == "contract-fake":
+        return ContractModelAdapter()
+    if mode == "openai":
+        return ContractModelAdapter.from_openai(
+            os.getenv("MODEL_ENDPOINT", ""),
+            os.getenv("MODEL_API_TOKEN"),
+            float(os.getenv("MODEL_TIMEOUT_SECONDS", "15")),
+        )
+    raise ValueError(f"unsupported MODEL_MODE: {mode}")
 
 
 router = APIRouter()

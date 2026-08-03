@@ -10,6 +10,7 @@ path.insert(0, str(BACKEND))
 
 from app.adapters.fake_data_platform import FakeDataPlatformAdapter
 from app.adapters.fake_model import FakeModelAdapter
+from app.adapters.contract_model import ContractModelAdapter
 from app.contracts import (
     AnalysisRequest,
     AnalysisStatus,
@@ -25,6 +26,7 @@ from app.services.routing_service import (
     RoutingService,
     _template_role_policy,
 )
+from src.modelops.runtime import ProductionModelClient
 
 
 class CountingDataPlatformAdapter(FakeDataPlatformAdapter):
@@ -198,6 +200,23 @@ class AnalysisPipelineTest(unittest.TestCase):
                 self.assertEqual(PipelineStage.MODEL, response.data.trace[-1].stage)
                 self.assertIsNone(response.data.artifact)
                 self.assertEqual(0, self.adapter.execute_count)
+
+    def test_production_fallback_is_not_accepted_as_analysis_success(self) -> None:
+        client = ProductionModelClient(
+            lambda _node, _payload, _timeout: (_ for _ in ()).throw(TimeoutError()),
+            failure_threshold=1,
+        )
+        service = AnalysisService(self.adapter, ContractModelAdapter(client))
+        payload = AnalysisRequest(question="합성 객실 운영 현황")
+
+        response = service.analyze(payload, self.context, self.decision(payload))
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual("INTERNAL_ERROR", response.error.code.value)
+        self.assertEqual(PipelineStage.MODEL, response.data.trace[-1].stage)
+        self.assertIsNone(response.data.artifact)
+        self.assertEqual(0, self.adapter.execute_count)
+        self.assertTrue(client.last_trace["fallback"])
 
     def test_g2_blocks_unsafe_sql_without_query(self) -> None:
         response = self.analyze("g2_blocked")

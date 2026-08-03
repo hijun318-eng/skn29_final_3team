@@ -1,21 +1,93 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, time
+from functools import partial
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from src.ai.fake_model import FakeModelAdapter as R3FakeModelAdapter
+from src.ai.prompt_registry import get_prompt
+from src.ai.training.benchmark_serving import request_json
+from src.modelops.runtime import ProductionModelClient
+
+
+_PROMPT_IDS = {
+    "node2": "node2.sql",
+    "node2_repair": "node2.repair",
+    "node3": "node3.explain",
+}
+
+
+def openai_transport(
+    endpoint: str,
+    token: str | None,
+    node: str,
+    payload: dict[str, Any],
+    timeout: float,
+) -> dict[str, Any]:
+    response = request_json(
+        "POST",
+        f"{endpoint.rstrip('/')}/v1/chat/completions",
+        {
+            "model": "Qwen/Qwen3-4B",
+            "messages": [
+                {"role": "system", "content": get_prompt(_PROMPT_IDS[node]).text},
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        payload,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                },
+            ],
+            "temperature": 0,
+            "max_tokens": 1_500,
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
+        token,
+        timeout,
+    )
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise ValueError("chat completion response has no choices")
+    message = choices[0].get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str):
+        raise ValueError("chat completion response has no text content")
+    result = json.loads(content)
+    if not isinstance(result, dict):
+        raise ValueError("model content must be a JSON object")
+    return result
 
 
 class ContractModelAdapter:
     """R3 동결 schema와 R4 내부 plan 형식을 연결한다."""
 
-    def __init__(self) -> None:
-        self._model = R3FakeModelAdapter()
+    def __init__(self, model=None) -> None:
+        self._model = model or R3FakeModelAdapter()
+
+    @classmethod
+    def from_openai(
+        cls,
+        endpoint: str,
+        token: str | None = None,
+        timeout_seconds: float = 15.0,
+    ) -> ContractModelAdapter:
+        if not endpoint:
+            raise ValueError("MODEL_ENDPOINT is required in openai mode")
+        return cls(
+            ProductionModelClient(
+                partial(openai_transport, endpoint, token),
+                timeout_seconds=timeout_seconds,
+            )
+        )
 
     def generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
         if node == "node2":
-            response = self._model.generate(
+            response = self._generate(
                 node,
                 {
                     "question_id": payload["request_id"],
@@ -24,7 +96,7 @@ class ContractModelAdapter:
             )
             return self._plan(response, "sql")
         if node == "node2_repair":
-            response = self._model.generate(
+            response = self._generate(
                 node,
                 {
                     "trace_id": payload["trace_id"],
@@ -40,7 +112,7 @@ class ContractModelAdapter:
             query = payload["query"]
             context = payload["context"]
             rows = query["rows"]
-            response = self._model.generate(
+            response = self._generate(
                 node,
                 {
                     "g3_result": "pass",
@@ -73,6 +145,12 @@ class ContractModelAdapter:
                 "model_version": response["model"]["model_version"],
             }
         raise ValueError(f"unsupported node: {node}")
+
+    def _generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
+        response = self._model.generate(node, payload)
+        if getattr(self._model, "last_trace", {}).get("fallback"):
+            raise TimeoutError("production model fallback is not a product result")
+        return response
 
     @staticmethod
     def _plan(response: dict[str, Any], sql_field: str) -> dict[str, Any]:

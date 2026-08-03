@@ -1,0 +1,124 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W2-F3",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "cee1ca2e272f182159be7aff5ee9874ff0c6c85b",
+  "DIRECTIVE_BASE_SHA": "cee1ca2e272f182159be7aff5ee9874ff0c6c85b",
+  "SYNCED_DEV_SHA": "8d7c2ef1730f295e81a20b3b380dc407e0614369",
+  "PRODUCT_RESULT_SHA": "3f8a2cfc8fdcd229af8f8e07d6b47deaf58bc3d5",
+  "RESULT_SHA": "3f8a2cfc8fdcd229af8f8e07d6b47deaf58bc3d5",
+  "DIRECTIVE_TOKEN": "R4-W2-F3@cee1ca2",
+  "COMPLETED_CARDS": [
+    "R4-20 container startup 보완"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/Dockerfile",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
+    "tests/backend/test_control_plane_contract.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "OPENAPI_VERSION": "OPENAPI-v1.0.0",
+    "MIGRATION_HEAD": "20260731_03",
+    "IMMUTABLE_MIGRATION_SHA256": "a468edca9b560c78afffc46876acb4d6b2ef1d6b42641d00fcc2db1c63c285ee"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_IMMUTABLE_MIGRATIONS",
+      "status": "PASS",
+      "evidence": "20260730_02 Git blob과 working tree hash가 origin/dev와 동일하며 migration 파일 변경 0건"
+    },
+    {
+      "id": "AC2_BLANK_DB_IMAGE_STARTUP",
+      "status": "PASS",
+      "evidence": "built image normal entrypoint가 임시 blank PostgreSQL에서 20260731_03까지 적용하고 APPROVED Template 1건을 생성"
+    },
+    {
+      "id": "AC3_READY_DEPENDENCIES",
+      "status": "PASS",
+      "evidence": "/health container healthcheck PASS; /readiness app_postgres·migration·approved_templates·실제 hotel-synthetic-db Trino 모두 ready"
+    },
+    {
+      "id": "AC4_EXISTING_DB_REGRESSION",
+      "status": "PASS",
+      "evidence": "임시 DB를 20260730_02로 만든 뒤 동일 image normal entrypoint로 20260731_03까지 upgrade하고 실제 Trino readiness 유지"
+    },
+    {
+      "id": "AC5_CLEANUP",
+      "status": "PASS",
+      "evidence": "r4-w2-f3 임시 DB·backend container·network 잔존 0건, 다른 Docker project·volume 변경 없음"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_MIGRATION_HASH",
+      "name": "기존 migration Git blob hash dev 일치",
+      "status": "PASS",
+      "evidence": "immutable migration comparison true"
+    },
+    {
+      "id": "T2_IMAGE_BUILD",
+      "name": "docker build -f app/backend/Dockerfile",
+      "status": "PASS",
+      "evidence": "docker build -f app/backend/Dockerfile -t r4-w2-f3-backend:8d7c2ef ."
+    },
+    {
+      "id": "T3_BLANK_ENTRYPOINT",
+      "name": "임시 blank DB와 built image normal entrypoint 기동",
+      "status": "PASS",
+      "evidence": "blank DB head=20260731_03, approved_templates=1"
+    },
+    {
+      "id": "T4_READINESS",
+      "name": "/health·/readiness dependency 검사",
+      "status": "PASS",
+      "evidence": "status=ready; app_postgres=migration=approved_templates=trino=ready"
+    },
+    {
+      "id": "T5_BACKEND",
+      "name": "python -m unittest discover -s tests/backend",
+      "status": "PASS",
+      "evidence": "pytest 46 passed, 6 skipped; unittest 45 passed, 6 skipped"
+    },
+    {
+      "id": "T6_INTEGRATION",
+      "name": "python -m unittest discover -s tests/integration",
+      "status": "PASS",
+      "evidence": "22 tests passed"
+    },
+    {
+      "id": "T7_ROLE_GATE",
+      "name": "python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS",
+      "evidence": "R4-W2-F3 role gate PASS"
+    },
+    {
+      "id": "T8_DIFF_CHECK",
+      "name": "git diff --check",
+      "status": "PASS",
+      "evidence": "git diff --check exit code 0"
+    }
+  ],
+  "ADDITIONAL_TEST_RESULTS": [
+    {
+      "name": "OpenAPI contract",
+      "status": "PASS",
+      "evidence": "OPENAPI_CONTRACT_VERIFIED"
+    },
+    {
+      "name": "R4 개인 일일보고",
+      "status": "PASS",
+      "evidence": "20260803 report validator PASS"
+    },
+    {
+      "name": "Ponytail 과설계 검토",
+      "status": "PASS",
+      "evidence": "runtime·migration·dependency 변경 없이 Dockerfile repository layout와 단일 회귀 테스트만 수정"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R1 dev 병합 검토"
+}

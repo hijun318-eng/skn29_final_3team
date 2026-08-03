@@ -13,7 +13,7 @@ class PromptRegistryTests(unittest.TestCase):
             {
                 "node1.normalize": "PROMPT-v1.0.0",
                 "node2.repair": "PROMPT-v1.0.1",
-                "node2.sql": "PROMPT-v1.0.3",
+                "node2.sql": "PROMPT-v1.0.4",
                 "node3.explain": "PROMPT-v1.0.0",
             },
             {item["prompt_id"]: item["version"] for item in first},
@@ -39,6 +39,9 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("한 줄로 작성", sql_prompt)
         self.assertIn("불필요한 공백이나 개행", sql_prompt)
         self.assertIn("1 이상 1000 이하 정수의 LIMIT", sql_prompt)
+        self.assertIn("실제 사용한 :name placeholder만 같은 이름", sql_prompt)
+        self.assertIn("placeholder가 없으면 빈 배열", sql_prompt)
+        self.assertIn("request metadata는 parameters에 포함하지 않는다", sql_prompt)
         self.assertIn("RESOURCE_POLICY_MISSING", repair_prompt)
         self.assertIn("LIMIT 1000을 추가", repair_prompt)
         self.assertIn("한 번 수정", repair_prompt)

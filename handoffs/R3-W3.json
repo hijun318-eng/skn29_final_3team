@@ -53,8 +53,8 @@
     },
     {
       "id": "AC3_BASE_COMPARISON",
-      "status": "REVIEW_REQUIRED",
-      "evidence": "same-condition comparison and R2 required30 inventory validation pass locally; actual Base checkpoint execution is NOT_RUN because model and endpoint are not approved"
+      "status": "PASS",
+      "evidence": "captured-run comparator enforces identical conditions and case IDs and reproduces accuracy, p50, p95, resources and cost fields; external model benchmark remains deferred Gate evidence"
     },
     {
       "id": "AC4_SERVING_CLIENT_TRACE",
@@ -78,8 +78,8 @@
     {
       "id": "T3_ROLE_GATE",
       "name": "python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base",
-      "status": "REVIEW_REQUIRED",
-      "evidence": "R1 review required for explicitly NOT_RUN external Base model and serving runtime"
+      "status": "PASS",
+      "evidence": "R1 accepted external model execution as deferred Gate evidence outside this no-download/no-cost bundle; final role gate rerun on manifest-only commit"
     },
     {
       "id": "T4_DIFF_CHECK",
@@ -98,19 +98,22 @@
       "name": "full backend unittest discovery",
       "status": "BLOCKED",
       "evidence": "local environment lacks fastapi; 2 import/runtime errors and 6 skips, while branch CI installs backend requirements"
+    },
+    {
+      "name": "actual Base model benchmark and serving runtime",
+      "status": "NOT_RUN",
+      "evidence": "checkpoint, endpoint, download, RunPod, GPU, secret and cost are not approved; this is not counted as I3 Gate evidence"
     }
   ],
-  "NOT_RUN": [
-    "Actual Base model accuracy/p50/p95/resources/cost comparison: checkpoint, endpoint, download, GPU, and external execution are not approved.",
-    "RunPod/vLLM cold start, warm latency, restart, health, GPU and cost measurements: deployment and external execution are not approved."
-  ],
+  "NOT_RUN": [],
   "CHANGE_REQUESTS": [],
-  "RESIDUAL_RISKS": [
-    "I3 model quality and real serving SLO remain unverified until R1 separately approves a model checkpoint, endpoint, GPU, time and cost limit.",
-    "Gold120 inventory currently contains 5 of target 120 REVIEW cases."
-  ],
-  "EXTERNAL_APPROVAL_REQUIRED": [
-    "R1 approval is required before any model download, RunPod/vLLM execution, GPU use, endpoint secret, or external cost."
-  ],
-  "REQUESTED_DECISION": "dev 병합 및 external Not Run 수용 여부 판정"
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "dev 병합; I3 외부 model 증거는 미완료 유지",
+  "R1_REVIEW_DECISION": "Approve R3 code integration only. External Base benchmark and serving SLO remain deferred and I3 stays IN_PROGRESS.",
+  "DEFERRED_GATE_EVIDENCE": [
+    "Actual Base model accuracy/p50/p95/resources/cost",
+    "RunPod/vLLM cold/warm/restart/health/GPU/cost",
+    "Gold120 remaining 115 reviewed cases"
+  ]
 }

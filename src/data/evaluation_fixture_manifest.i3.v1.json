@@ -40,11 +40,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-S02",
@@ -78,11 +78,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-S03",
@@ -116,11 +116,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-S04",
@@ -154,11 +154,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-S05",
@@ -192,11 +192,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-S06",
@@ -230,11 +230,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-S07",
@@ -268,11 +268,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-S08",
@@ -306,11 +306,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-S09",
@@ -344,11 +344,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-S10",
@@ -382,11 +382,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-X01",
@@ -421,12 +421,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-X02",
@@ -461,12 +461,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-X03",
@@ -501,12 +501,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-X04",
@@ -541,12 +541,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-X05",
@@ -581,12 +581,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-X06",
@@ -622,12 +622,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-X07",
@@ -663,12 +663,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-X08",
@@ -704,12 +704,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-X09",
@@ -745,12 +745,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-X10",
@@ -786,12 +786,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-A01",
@@ -816,11 +816,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/evaluation_fixture_manifest.i3.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-A02",
@@ -845,11 +845,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/evaluation_fixture_manifest.i3.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-A03",
@@ -874,11 +874,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/evaluation_fixture_manifest.i3.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-A04",
@@ -906,11 +906,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-A05",
@@ -935,11 +935,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-B01",
@@ -966,11 +966,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "infrastructure/database/trino/etc/access-control-rules.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-B02",
@@ -997,11 +997,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "infrastructure/database/trino/etc/access-control-rules.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-B03",
@@ -1026,11 +1026,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "infrastructure/database/trino/etc/access-control-rules.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-B04",
@@ -1055,11 +1055,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "infrastructure/database/trino/etc/access-control-rules.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "R30-B05",
@@ -1084,11 +1084,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/r2_w1_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-001",
@@ -1115,11 +1115,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_pms_count",
@@ -1153,11 +1153,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_pms_count",
@@ -1191,11 +1191,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_pms_count",
@@ -1229,11 +1229,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_pms_count",
@@ -1267,11 +1267,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_pms_count",
@@ -1305,11 +1305,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_pos_count",
@@ -1343,11 +1343,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_pos_count",
@@ -1381,11 +1381,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_pos_count",
@@ -1419,11 +1419,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_pos_count",
@@ -1457,11 +1457,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_pos_count",
@@ -1495,11 +1495,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_crm_count",
@@ -1533,11 +1533,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_crm_count",
@@ -1571,11 +1571,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_crm_count",
@@ -1609,11 +1609,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_crm_count",
@@ -1647,11 +1647,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_crm_count",
@@ -1685,11 +1685,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_facility_count",
@@ -1723,11 +1723,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_facility_count",
@@ -1761,11 +1761,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_facility_count",
@@ -1799,11 +1799,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_facility_count",
@@ -1837,11 +1837,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_facility_count",
@@ -1875,11 +1875,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_banquet_count",
@@ -1913,11 +1913,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_banquet_count",
@@ -1951,11 +1951,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_banquet_count",
@@ -1989,11 +1989,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_banquet_count",
@@ -2027,11 +2027,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "catalog_check",
         "fixture_id": "catalog_banquet_count",
@@ -2066,12 +2066,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2106,12 +2106,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2146,12 +2146,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2186,12 +2186,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2226,12 +2226,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2266,12 +2266,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2306,12 +2306,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2346,12 +2346,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2386,12 +2386,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2426,12 +2426,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2466,12 +2466,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2506,12 +2506,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2546,12 +2546,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2586,12 +2586,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2626,12 +2626,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2666,12 +2666,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2706,12 +2706,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2746,12 +2746,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2786,12 +2786,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2826,12 +2826,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_recognized_room_revenue_mom",
@@ -2867,12 +2867,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -2908,12 +2908,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -2949,12 +2949,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -2990,12 +2990,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3031,12 +3031,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3072,12 +3072,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3113,12 +3113,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3154,12 +3154,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3195,12 +3195,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3236,12 +3236,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3277,12 +3277,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3318,12 +3318,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3359,12 +3359,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3400,12 +3400,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3441,12 +3441,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3482,12 +3482,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3523,12 +3523,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3564,12 +3564,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3605,12 +3605,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3646,12 +3646,12 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json",
         "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
       ],
-      "status": "REVIEW",
+      "status": "APPROVED",
       "expected_query_result": {
         "fixture_type": "gold_fixture",
         "fixture_id": "gold_total_guest_revenue_mom",
@@ -3683,11 +3683,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-067",
@@ -3712,11 +3712,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-068",
@@ -3741,11 +3741,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-069",
@@ -3770,11 +3770,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-070",
@@ -3799,11 +3799,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-071",
@@ -3828,11 +3828,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-072",
@@ -3857,11 +3857,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-073",
@@ -3886,11 +3886,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-074",
@@ -3915,11 +3915,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-075",
@@ -3944,11 +3944,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-076",
@@ -3973,11 +3973,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-077",
@@ -4002,11 +4002,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-078",
@@ -4031,11 +4031,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-079",
@@ -4060,11 +4060,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-080",
@@ -4089,11 +4089,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-081",
@@ -4118,11 +4118,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-082",
@@ -4147,11 +4147,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-083",
@@ -4176,11 +4176,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-084",
@@ -4205,11 +4205,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-085",
@@ -4234,11 +4234,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-086",
@@ -4263,11 +4263,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-087",
@@ -4292,11 +4292,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-088",
@@ -4321,11 +4321,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-089",
@@ -4350,11 +4350,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-090",
@@ -4379,11 +4379,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-091",
@@ -4408,11 +4408,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-092",
@@ -4437,11 +4437,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-093",
@@ -4466,11 +4466,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-094",
@@ -4495,11 +4495,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-095",
@@ -4524,11 +4524,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-096",
@@ -4553,11 +4553,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-097",
@@ -4582,11 +4582,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-098",
@@ -4611,11 +4611,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-099",
@@ -4640,11 +4640,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-100",
@@ -4669,11 +4669,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-101",
@@ -4698,11 +4698,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-102",
@@ -4727,11 +4727,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-103",
@@ -4756,11 +4756,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-104",
@@ -4785,11 +4785,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-105",
@@ -4814,11 +4814,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-106",
@@ -4845,11 +4845,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-107",
@@ -4876,11 +4876,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-108",
@@ -4907,11 +4907,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-109",
@@ -4938,11 +4938,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-110",
@@ -4969,11 +4969,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-111",
@@ -5000,11 +5000,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-112",
@@ -5031,11 +5031,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-113",
@@ -5062,11 +5062,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-114",
@@ -5093,11 +5093,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-115",
@@ -5124,11 +5124,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-116",
@@ -5155,11 +5155,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-117",
@@ -5186,11 +5186,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-118",
@@ -5217,11 +5217,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-119",
@@ -5248,11 +5248,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     },
     {
       "case_id": "G120-120",
@@ -5279,11 +5279,11 @@
         "scenario": "1.0.0",
         "policy": "ACCESS-POLICY-v1.0.0"
       },
-      "reviewers": "R1:PENDING|R2:REVIEWED|R3:PENDING",
+      "reviewers": "R1:REVIEWED|R2:REVIEWED|R3:REVIEWED",
       "evidence": [
         "src/data/i3_contract.v1.json"
       ],
-      "status": "REVIEW"
+      "status": "APPROVED"
     }
   ],
   "category_plan": {

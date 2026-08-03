@@ -1,0 +1,19 @@
+{
+  "manifest_version": "SPLIT-v0.1",
+  "status": "VALIDATED_REVIEW_INPUT",
+  "source": {
+    "path": "src/data/evaluation_fixture_manifest.i3.v1.json",
+    "version": "EVAL-DATA-I3-v1.0.0",
+    "synthetic": true
+  },
+  "observed": {
+    "required30": 30,
+    "gold120_partial": 5,
+    "gold120_target": 120,
+    "validation": 30,
+    "gold": 5,
+    "paraphrase_group_leakage": 0
+  },
+  "review_state": "All 35 source cases are REVIEW; R1 and R3 approvals remain pending",
+  "model_execution": "NOT_RUN — checkpoint and endpoint are not approved"
+}

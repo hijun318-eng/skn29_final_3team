@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.65 |
-| 문서 기준일 | 2026-08-03 18:03 |
+| 버전 | v2.66 |
+| 문서 기준일 | 2026-08-03 18:20 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1166,7 +1166,7 @@ EXECUTION_BUNDLE_ID=R1-W3
 TARGET_INTEGRATION_GATE=I3
 CHECKPOINT_GATES=없음
 TASK_CARD_RANGE=R1-07·10
-CURRENT_TASK_CARD_ID=R1-07
+CURRENT_TASK_CARD_ID=R1-10
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=744592ab129ed44c0cfcf5cf860b8945b011a324
@@ -1176,6 +1176,8 @@ I2_GATE_VERSION=I2-v1.0.0
 CONTRACT_VERSION=I1-v1.0.0
 BASE_DEV_CI_EVIDENCE=GitHub Actions run 30785580556 PASS
 R1_START_EVIDENCE=origin/dev 1c57797789b040932fc6a02c3f45294d99bc0347·GitHub Actions run 30786041244 PASS; integration 23건·Gate dashboard·문서 정책 PASS; required30 0/30·gold120 0/120으로 생산자 handoff 대기
+R1_PROGRESS_EVIDENCE=required30 30/30·gold120 120/120·평가 150건 reviewer/status 승인 완료; R2-W3-F2·R3-W3-F2·R4-W3·R5-W3-F1C MERGED_DEV; dev·junhee 3a7ceec·CI 30800298617/30800328577 PASS; integration 23건·Context/G1/G2/cache/concurrency 보안 회귀 29건 PASS
+R1_LOCAL_MODEL_EVIDENCE=CUDA GPU 없음; 로컬 Hugging Face cache에 Qwen3-4B 없음; 실제 Base model·RunPod/LoRA·serving은 model download·비용 미승인으로 NOT_RUN
 ALLOWED_PATHS=AGENTS.md; .github/**; compose*.yml; .env.example; .dockerignore; config/access-policy.yaml; tests/integration/**; docs/Answervice_기획서.md; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=필수 30건 expected 결과와 reviewer를 확인하고 일반 질문 subset에서 schema-only·DataHub metadata·승인 Context 세 조건 및 Base model을 동일 질문·데이터·권한으로 비교하며 repair 최대 1회, 비승인 SQL·Context 밖 참조·G3 실패 설명을 차단하고 I3 통합 trace를 판정
@@ -1602,6 +1604,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.66 | 2026-08-03 18:20 | R1-W3의 required30·gold120 승인과 전 역할 Wave 3 dev 통합, dev·junhee 동일 SHA·CI PASS, 통합 23건과 Context·G1/G2·cache 격리·동시 실행 제한 보안 회귀 29건을 확인해 현재 카드를 R1-10으로 전환했다. 로컬 CUDA와 Qwen3-4B cache가 없고 model download·RunPod 비용이 미승인이라 실제 Base model 비교는 NOT_RUN으로 유지하며 I3·Wave 4는 승인하지 않았다. |
 | v2.61 | 2026-08-03 17:28 | 평가 150건의 전수 질문·범주·기대 결과와 자동 검증을 대조해 R1 업무 검토와 R3 계약 소비 검토를 승인했다. 질문·정답·근거는 보존하고 reviewer/status만 동기화하는 R2-W3-F2를 dev `98b8436` 기준으로 발행했으며 model download·비용 권한은 승인하지 않았다. |
 | v2.60 | 2026-08-03 17:21 | 구현·handoff·branch CI·dev 병합이 완료된 R2-W3-F1과 R3-W3-F1C의 요약·상세 상태를 `MERGED_DEV`로 정합화하고 실제 구현·CI·병합 SHA를 기록했다. I3 통합 판정과 외부 model 권한은 변경하지 않았다. |
 | v2.59 | 2026-08-03 17:15 | R5-W3-F1C에서 Catalog 계약 상수 한 곳을 `I3-DATA-v1.1.0-DRAFT`로 맞추고 minji CI `30796547226`의 production build·frontend contract·Python·문서·역할 범위 통과를 확인한 뒤 dev `4825c0c`에 통합했다. 제품 동작·R2 계약·외부 권한은 변경하지 않았다. |

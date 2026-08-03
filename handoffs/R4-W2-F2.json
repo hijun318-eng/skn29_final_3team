@@ -7,7 +7,8 @@
   "DIRECTIVE_BASE_SHA": "e023b0640020248ec35c998b9de637a67012cdaa",
   "SYNCED_DEV_SHA": "ca87004db91116353454d0597ac675fbaaa2edd8",
   "PRODUCT_RESULT_SHA": "7f5c7c8a4f33037b0ac419868ac15ec177b4b0ed",
-  "RESULT_SHA": "7f5c7c8a4f33037b0ac419868ac15ec177b4b0ed",
+  "INTEGRATED_REMOTE_SHA": "dc3c2de5a826cd39b97d813990dca062cf4d1e33",
+  "RESULT_SHA": "3fb5e142604cc18d45c35885beb7d0587c3ab213",
   "DIRECTIVE_TOKEN": "R4-W2-F2-REWORK@e023b06",
   "COMPLETED_CARDS": [
     "R4-04·07·11·20 runtime 보완"
@@ -53,7 +54,7 @@
     {
       "id": "AC2_EXISTING_DB_UPGRADE",
       "status": "PASS",
-      "evidence": "임시 빈 DB와 base DDL·20260730_02 적용 임시 DB 모두 head=20260731_03, sql_text/source_fqns_json NOT NULL, weekly Template APPROVED; legacy null 행은 backfill 후 RETIRED; runtime trace grant는 INSERT·SELECT만 확인; 임시 DB 삭제 확인"
+      "evidence": "병합 후 임시 빈 DB에서 head=20260731_03, sql_text/source_fqns_json NOT NULL, weekly Template APPROVED와 삭제를 재확인; 동일 product tree의 base DDL·20260730_02 기존 DB 경로에서 legacy null 행 RETIRED backfill과 INSERT·SELECT 전용 trace grant를 확인"
     },
     {
       "id": "AC3_TEMPLATE_ROLE_POLICY",
@@ -81,31 +82,31 @@
       "id": "T1_COMPILE",
       "name": "python -m compileall -q app/backend tests/backend",
       "status": "PASS",
-      "evidence": "exit code 0"
+      "evidence": "병합 후 독립 host 실행 exit code 0"
     },
     {
       "id": "T2_BACKEND",
       "name": "python -m pytest -p no:cacheprovider tests/backend",
       "status": "PASS",
-      "evidence": "45 passed, 6 skipped; 6개는 별도 T6 환경변수 기반 real HTTP 전용 회귀이며 T6에서 실행"
+      "evidence": "병합 후 hotel-synthetic-db-backend 이미지와 read-only source·host pytest package mount로 45 passed, 6 skipped; 6개는 별도 T6 환경변수 기반 real HTTP 전용 회귀"
     },
     {
       "id": "T3_OPENAPI",
       "name": "python app/backend/scripts/export_openapi.py --check",
       "status": "PASS",
-      "evidence": "OPENAPI_CONTRACT_VERIFIED"
+      "evidence": "병합 후 container 실행 OPENAPI_CONTRACT_VERIFIED"
     },
     {
       "id": "T4_INTEGRATION",
       "name": "python -m unittest discover -s tests/integration -p test_*.py",
       "status": "PASS",
-      "evidence": "22 tests passed"
+      "evidence": "병합 후 독립 host 실행 22 tests passed"
     },
     {
       "id": "T5_MIGRATION_PATHS",
       "name": "빈 DB와 기존 20260730_02 DB 각각 alembic upgrade head",
       "status": "PASS",
-      "evidence": "두 경로 모두 20260731_03·NOT NULL·Template seed·최소 grant 검증, 명시적 임시 DB 부재 확인"
+      "evidence": "병합 후 blank 경로 20260731_03·NOT NULL·Template seed 재검증 및 임시 DB 삭제; 동일 product tree의 existing 경로 legacy RETIRED backfill·최소 grant 검증 증거 유지"
     },
     {
       "id": "T6_REAL_HTTP_ROLE_PARTIAL",

@@ -43,6 +43,7 @@ class AnalysisResponseFactory:
         explanation: dict[str, object],
         artifact: ArtifactReference,
         repair_count: int,
+        cached: bool = False,
     ) -> AnalysisResponse:
         query_status = query.get("status")
         status = (
@@ -89,6 +90,7 @@ class AnalysisResponseFactory:
                 masking=MaskingEvidence.model_validate(
                     query.get("masking", {})
                 ),
+                cached=cached,
             ),
         )
         error = (

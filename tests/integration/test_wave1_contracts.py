@@ -51,6 +51,29 @@ class Wave1ContractTest(unittest.TestCase):
         ):
             self.assertIn(version, ledger)
 
+    def test_access_policy_is_versioned_and_least_privilege(self) -> None:
+        policy = json.loads(
+            (ROOT / "config/access-policy.yaml").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual("ACCESS-POLICY-v1.0.0", policy["policy_version"])
+        self.assertEqual(
+            ["hotel_analyst"],
+            policy["analysis_templates"]["weekly-room-operations"]["allowed_roles"],
+        )
+        ledger = (
+            ROOT / "docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn(policy["policy_version"], ledger)
+
+    def test_root_docker_context_excludes_local_state(self) -> None:
+        ignored = set((ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines())
+
+        self.assertTrue(
+            {".git", ".wt", ".env", "**/.env", ".env.*", "**/.env.*"}
+            <= ignored
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

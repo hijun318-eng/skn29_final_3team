@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.70 |
-| 문서 기준일 | 2026-08-04 01:49 |
+| 버전 | v2.72 |
+| 문서 기준일 | 2026-08-04 02:11 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1582,10 +1582,47 @@ HANDOFF=R1에 Base·LoRA 정확도, Trino 결과 일치율, p50·p95, 최대 VRA
 R1_REVIEW_RESULT=코드·평가 증거의 dev 통합은 승인한다. serving 미실행과 p95 증가 위험은 후속 카드로 유지하며 LoRA 제품 기본값 전환은 승인하지 않고 Base를 유지한다.
 IMPLEMENTATION_SHA=b5afd4551f2d433f0e8da85d7bc050967d0ce808
 HANDOFF_SHA=bda5687c4aec07cdd924900a3440cdd64faa28af
-SOURCE_CI_EVIDENCE=GitHub Actions run 30833685964 FAIL — Python·문서 검증은 통과했고 role scope가 handoff의 serving 미실행·잔여 위험·외부 제품 채택 승인 요구를 REVIEW_REQUIRED로 분류했다. R1이 dev 통합과 제품 기본값 불승인을 분리 판정함
+SOURCE_CI_EVIDENCE=GitHub Actions run 30833685964 FAIL은 handoff의 REVIEW_REQUIRED 때문이었고 R1 분리 판정·terminal 동기화 뒤 corrective run 30834157984 PASS — role scope·Python·문서·quality gate 통과
 DEV_MERGE_SHA=34facd695faf28f96036207823f03520e44069ae
-DEV_CI_EVIDENCE=GitHub Actions run 30833872760 QUEUED — 최신 dev push 검증 대기
+DEV_CI_EVIDENCE=GitHub Actions run 30834138561 PASS — 전체 Python·frontend·Compose·문서·role scope·quality gate 통과
 EXTERNAL_ACTION_PERMISSION=사용자 승인 한도 USD 15 안에서 task 전용 RunPod A40 Pod 생성·dependency 설치·Qwen3-4B 다운로드·합성 학습/평가 데이터 전송·BF16 LoRA 1회 학습·평가·결과 회수·정확한 task Pod 삭제와 허용 경로 commit·daesung push 승인; 다른 Pod·volume 변경, secret 출력·commit, 제품 기본값 전환, 외부 배포는 불가
+```
+
+### R3-W3-F5
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F5
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-12~14 Qwen3-4B Base vLLM endpoint 실측과 model client 운영 trace
+CURRENT_TASK_CARD_ID=R3-12
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=8a0e9c4382db2ccf7dca85accb5cc2b34385d9dc
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F5@8a0e9c4
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.0
+MODEL_ID=Qwen/Qwen3-4B
+MODEL_REVISION=1cfa9a7208912126459214e8b04321603b3df60c
+PRODUCT_DEFAULT=Base
+LORA_PRODUCT_ADOPTION=NOT_APPROVED
+USER_APPROVAL_EVIDENCE=사용자가 RunPod A40 실행과 모든 비용 합계 최대 USD 15, 학습 외 남은 작업의 계속 진행, 완료 후 commit·push·dev 통합을 승인함
+PREVIOUS_RUNPOD_COST_USD=0.9522728326846845
+CUMULATIVE_RUNPOD_COST_LIMIT_USD=15
+ALLOWED_PATHS=src/ai/training/benchmark_serving.py; src/modelops/serving_manifest.v0.1.json; evals/base_comparison.v0.1.json; tests/ai/test_serving_benchmark.py; tests/ai/test_wave3.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=.env; API key; model binary·adapter·checkpoint·평가 생성물; app/backend/**; src/data/**; infrastructure/database/**; frontend·Report; root Compose·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=고정 image·runtime·Qwen3-4B revision으로 OpenAI-compatible `/v1/models`와 `/v1/chat/completions` endpoint를 기동하고 readiness를 확인한다. 첫 요청 cold latency, 반복 warm p50·p95, 최대 VRAM, 최대 동시 2건, 동일 revision 재시작 후 readiness를 기록한다. 기존 `ProductionModelClient`로 정상·timeout·fallback·circuit trace를 재현하고 secret을 제거한 manifest와 artifact hash를 남긴다. 실행 전 누적 비용을 확인하고 총 RunPod 비용을 USD 15 이하로 제한하며 결과 회수 뒤 정확한 task Pod만 삭제한다. 이 카드는 R3 endpoint 증거만 승인하며 FastAPI 제품 연결·I3 전체 통과·LoRA 제품 채택을 주장하지 않는다.
+ACCEPTANCE_IDS=AC1_FIXED_RUNTIME_REVISION;AC2_OPENAI_ENDPOINT_READY;AC3_COLD_WARM_LATENCY;AC4_PEAK_VRAM_CONCURRENCY2;AC5_RESTART_READINESS;AC6_CLIENT_FAILURE_TRACE;AC7_REDACTED_MANIFEST_HASH;AC8_POD_DELETED;AC9_CUMULATIVE_COST_LIMIT;AC10_BASE_DEFAULT_PRESERVED
+TEST_COMMANDS=python -m unittest tests.ai.test_serving_benchmark -v; python -m unittest tests.ai.test_wave3 -v; python -m compileall -q src/ai/training/benchmark_serving.py; python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/daesung/일일보고.md; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_SERVING_UNIT;T2_MODEL_CLIENT;T3_COMPILE;T4_REPORT;T5_ROLE_GATE;T6_DIFF_CHECK
+STOP_CONDITIONS=누적 비용 USD 15 초과 예상; secret 출력·commit 필요; 다른 Pod·volume 변경 필요; 고정 model revision 또는 endpoint readiness 불가; 결과 artifact 회수·hash 확인 실패; task Pod 삭제 실패; 허용 경로 밖 변경; 필수 검증 실패; FastAPI 제품 연결 또는 LoRA 제품 기본값 전환 필요
+HANDOFF=R1에 image·runtime·model revision, endpoint schema·readiness, cold·warm p50/p95·peak VRAM·동시 2건, restart, ProductionModelClient 정상·timeout·fallback·circuit trace, artifact hash·실측 누적 비용·Pod 삭제와 R4 제품 연결에 필요한 최소 endpoint 계약을 전달
+EXTERNAL_ACTION_PERMISSION=기존 누적 비용을 포함한 사용자 승인 한도 USD 15 안에서 task 전용 RunPod A40 Pod 생성·고정 serving image pull·Qwen3-4B 다운로드·합성 평가 요청 전송·Base vLLM 실측·결과 회수·정확한 task Pod 삭제와 허용 경로 commit·daesung push 승인; 다른 Pod·volume 변경, secret 출력·commit, LoRA 재학습·제품 기본값 전환, FastAPI 수정, 외부 공개 배포는 불가
 ```
 
 ## Wave 4 상세 계획 카드
@@ -1680,6 +1717,8 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.72 | 2026-08-04 02:11 | Base·LoRA 비교 뒤 남은 실제 serving 병목을 해소하기 위해 R3-W3-F5를 READY로 발행했다. Qwen3-4B Base 고정 revision의 vLLM endpoint·cold/warm·VRAM·동시 2건·재시작·ProductionModelClient 실패 trace를 요구하고, 이전 비용 USD 0.9523을 포함한 누적 USD 15 한도와 task Pod 삭제를 고정했다. FastAPI 제품 연결·I3 통과·LoRA 채택은 승인하지 않았다. |
+| v2.71 | 2026-08-04 01:53 | R1 terminal 판정을 동기화한 daesung corrective CI `30834157984`와 최종 dev CI `30834138561`, junhee CI `30834174015`가 모두 PASS해 R3-W3-F4의 최종 CI 근거를 확정했다. 최초 REVIEW_REQUIRED와 Base 유지 결정은 v2.70 이력에 보존한다. |
 | v2.70 | 2026-08-04 01:49 | R3-W3-F4의 Qwen3-4B LoRA 1회 학습·Base 비교, held-out 150건 G2·Trino 검증, 지연시간·VRAM·artifact hash·실측 비용 USD 0.9523·task Pod 삭제를 검토해 dev `34facd6`에 통합했다. Branch CI `30833685964`의 REVIEW_REQUIRED는 serving 미실행·p95 증가·제품 채택 승인 요구에 따른 것으로, R1은 증거 통합만 승인하고 LoRA 제품 기본값 전환은 불승인해 Base를 유지한다. |
 | v2.69 | 2026-08-04 01:39 | 사용자 승인 한도 USD 15 안에서 Qwen3-4B Base·LoRA 1회 비교, held-out 150건 G2·Trino 검증, Gold 지연시간·VRAM 기록, artifact 회수·task Pod 삭제와 제품 기본값 보류를 수행한 R3-W3-F4를 REVIEW로 기록했다. |
 | v2.68 | 2026-08-03 18:49 | R3-W3-F3의 기본 Train·Validation 보존, held-out Gold 120건·Acceptance 30건 명시 승인, split 누수 0건, 로컬 G2·Trino 150건 전수 PASS와 compiled validate를 확인했다. branch CI `30802900472`와 dev CI `30803015630` PASS 뒤 `aede5a5`에 통합했으며 실제 model download·RunPod·Base/LoRA 실행은 계속 미승인이다. |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.61 |
-| 문서 기준일 | 2026-08-03 17:28 |
+| 버전 | v2.63 |
+| 문서 기준일 | 2026-08-03 17:46 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -184,9 +184,10 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `IN_PROGRESS` |
 | R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `MERGED_DEV` |
 | R2-W3-F1 | Wave 3 follow-up | R2 | 없음 → I3 | R2-18 평가 fixture 보강 | required30 결과 hash 연결·gold120 완성 | `MERGED_DEV` |
-| R2-W3-F2 | Wave 3 review follow-up | R2 | 없음 → I3 | R2-18 평가 승인 상태 동기화 | R1·R2·R3 reviewer와 APPROVED 상태 반영 | `READY` |
+| R2-W3-F2 | Wave 3 review follow-up | R2 | 없음 → I3 | R2-18 평가 승인 상태 동기화 | R1·R2·R3 reviewer와 APPROVED 상태 반영 | `MERGED_DEV` |
 | R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `MERGED_DEV` |
 | R3-W3-F1C | Wave 3 compatibility follow-up | R3 | 없음 → I3 | R3-10 평가 manifest 소비 호환 | partial/full gold count consumer 검증 | `MERGED_DEV` |
+| R3-W3-F2 | Wave 3 training package follow-up | R3 | 없음 → I3 | R3-10 학습 데이터 재생성·검증 도구 반입 | 제공된 training package 정적·재현성 검증 | `READY` |
 | R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
 | R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
 | R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `MERGED_DEV` |
@@ -1404,7 +1405,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R5 개인 일일보고·handoff mani
 ### R5-W3-F1C
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -1438,7 +1439,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R5 개인 일일보고·handoff mani
 ### R2-W3-F2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -1463,7 +1464,44 @@ TEST_COMMANDS=python -m json.tool src/data/evaluation_fixture_manifest.i3.v1.jso
 TEST_COMMAND_IDS=T1_JSON;T2_DATA_TESTS;T3_AI_TESTS;T4_ROLE_GATE;T5_DIFF_CHECK
 STOP_CONDITIONS=질문·정답·근거·version·분할 변경 필요; 일부 case 승인 불가; 허용 경로 밖 변경 필요; 필수 검증 실패
 HANDOFF=R1에 reviewer/status 변경 수량, content 무변경 diff, data·AI·role gate 결과를 전달
+IMPLEMENTATION_SHA=c9c7dc7920bf51ab4f4c4ec13050b130435dccc7
+HANDOFF_SHA=b798ee508d685609be444583d1d52a2782a72f1f
+SOURCE_CI_EVIDENCE=GitHub Actions run 30798132320 PASS — role scope·Python·Compose·문서·quality gate 통과
+CONTENT_IMMUTABILITY_EVIDENCE=reviewers·status 제외 SHA-256 8ffe1cdbdbdc460b2b5440e56fec31741c295195989ec904b320d4074d8e9a00 변경 전후 일치
+DEV_MERGE_SHA=81934046243b84890e0988f8f1faf701959676b1
+DEV_CI_EVIDENCE=GitHub Actions run 30798345089 PASS — 전체 Python·frontend·Compose·문서·role scope·quality gate 통과
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff manifest의 commit·seung push 승인; dependency 설치·외부 image pull·model download·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
+
+### R3-W3-F2
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F2
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-10 학습 데이터 재생성·검증 도구 반입
+CURRENT_TASK_CARD_ID=R3-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=65254239ee803369c846031d5cf45ee81aad7760
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F2@6525423
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.0
+TRAINING_PACKAGE_SOURCE_SHA256=694ddcf4fe2f5d912383f9d871f33e153fd44ed751c4cdc111e72a72311f7c5d
+ALLOWED_PATHS=src/ai/training/**
+FORBIDDEN_PATHS=__pycache__/**; *.pyc; 제공된 학습 JSONL 원본; app/backend/**; src/data/**; infrastructure/database/**; frontend·Report; root Compose·env·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=training.zip의 source·README·example·requirements 10개 파일을 src/ai/training에 반입하되 compiled cache를 제외하고, Python 7개 AST parse·Qwen 1,350건 validate·검증 원본 재빌드 SHA-256 일치·기존 AI 회귀를 통과
+ACCEPTANCE_IDS=AC1_PACKAGE_CONTENTS;AC2_NO_COMPILED_CACHE;AC3_DATASET_VALIDATE;AC4_REPRODUCIBLE_BUILD;AC5_AI_REGRESSION
+TEST_COMMANDS=python AST parse src/ai/training/*.py; python -m src.ai.training.dataset validate <Qwen JSONL>; python -m src.ai.training.dataset build <TrinoPASS JSONL> <temp output> 후 SHA-256 비교; python -m src.ai.training.train_lora --help; python -m src.ai.training.evaluate_lora --help; python -m unittest discover -s tests/ai -p "test_*.py"; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_AST;T2_DATASET_VALIDATE;T3_REBUILD_HASH;T4_TRAIN_HELP;T5_EVAL_HELP;T6_AI_TESTS;T7_ROLE_GATE;T8_DIFF_CHECK
+STOP_CONDITIONS=압축 경로 탈출·secret·compiled cache 발견; 제공 JSONL 반입 필요; 재빌드 hash 불일치; 허용 경로 밖 변경; dependency 설치·model download·RunPod·비용·배포·외부 데이터 전송 필요; 필수 검증 실패
+HANDOFF=R1에 반입 파일 목록, archive hash, dataset validate·재빌드 hash·AI 회귀·role gate 결과와 RunPod 미실행을 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고·handoff manifest의 commit·daesung push 승인; dependency 설치·model download·RunPod resource·비용·배포·secret 사용·외부 데이터 전송·dev merge 불가
 ```
 
 ## Wave 4 상세 계획 카드

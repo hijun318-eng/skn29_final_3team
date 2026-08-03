@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.50 |
-| 문서 기준일 | 2026-08-03 17:28 |
+| 버전 | v7.52 |
+| 문서 기준일 | 2026-08-03 17:46 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -177,7 +177,7 @@ gantt
 | 2.16 | R2-15 대표 2·3-source 정답 조회 | 정답 SQL·result hash | 정승 | 진행 | 08/10 | 08/21 | 높음 |
 | 2.17 | R2-16 Trino/source 실행 adapter | query·status·cancel·health | 정승 | 진행 | 08/10 | 08/21 | 높음 |
 | 2.18 | R2-17 source watermark·cache 무효화 입력 | watermark set | 정승 | 진행 | 08/17 | 08/28 | 높음 |
-| 2.19 | R2-18 필수 30건·gold용 데이터 fixture | 평가 fixture | 정승 | 진행 | 08/17 | 08/28 | 높음 |
+| 2.19 | R2-18 필수 30건·gold용 데이터 fixture | 평가 fixture | 정승 | 완료 | 08/17 | 08/28 | 높음 |
 | 2.20 | R2-19 5번째 source 온보딩·재현 | runbook·URN→FQN trace | 정승 | 대기 | 08/24 | 08/28 | 높음 |
 
 ### AI·모델·프롬프트·ModelOps
@@ -194,7 +194,7 @@ gantt
 | 3.8 | R3-07 Prompt Registry | prompt ID·version·hash | 윤대성 | 완료 | 08/03 | 08/07 | 높음 |
 | 3.9 | R3-08 필수 30건 평가 runner | schema·linking·SQL·result 평가 | 윤대성 | 완료 | 08/10 | 08/31 | 높음 |
 | 3.10 | R3-09 Base model·Analytics Agent 기준선 비교 | 정확도·p50·p95·자원 비교표 | 윤대성 | 진행 | 08/17 | 08/21 | 높음 |
-| 3.11 | R3-10 train·val·gold manifest 검수 | 학습 데이터 검수 기록 | 윤대성 | 진행 | 08/17 | 08/21 | 높음 |
+| 3.11 | R3-10 train·val·gold manifest 검수 | 학습 데이터 검수 기록 | 윤대성 | 완료 | 08/17 | 08/21 | 높음 |
 | 3.12 | R3-11 time-boxed LoRA/QLoRA 1회 비교와 제품 채택 Gate | 비교 결과·adapter·rollback 증거 | 윤대성 | 대기 | 08/24 | 08/28 | 조건부 |
 | 3.13 | R3-12 vLLM·RunPod serving | endpoint·health·manifest | 윤대성 | 진행 | 08/17 | 08/28 | 높음 |
 | 3.14 | R3-13 production model client | retry·fallback·circuit 계약 | 윤대성 | 진행 | 08/17 | 08/28 | 높음 |
@@ -257,7 +257,7 @@ gantt
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 6.1 | R1-07 필수 30건·gold 120건 평가 원장 관리 | reviewer·split·expected 원장 | 박준희·정승·윤대성 | 진행 | 08/03 | 08/31 | 높음 |
+| 6.1 | R1-07 필수 30건·gold 120건 평가 원장 관리 | reviewer·split·expected 원장 | 박준희·정승·윤대성 | 완료 | 08/03 | 08/31 | 높음 |
 | 6.2 | R1-09 I2 Deterministic Slice 통합·판정 | 대표 질문 trace·result hash | 박준희·정승·윤대성·김재홍·송민지 | 완료 | 08/10 | 08/14 | 높음 |
 | 6.3 | R1-10 I3 General LLM·보안 기준선 통합 | 일반 질문·model 비교·보안 결과 | 박준희·정승·윤대성·김재홍·송민지 | 진행 | 08/17 | 08/21 | 높음 |
 | 6.4 | R1-11 I4 Reporting·worker·partial 통합 | Report 왕복 trace | 박준희·김재홍·송민지 | 대기 | 08/24 | 08/28 | 높음 |
@@ -361,6 +361,8 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-03 17:46 | 3.10~3.12, 3.15, 6.3 | 사용자 제공 `training.zip`의 19개 entry를 검사해 경로 탈출 0건을 확인하고 source·README·example·requirements 10개만 `src/ai/training`에 반입하는 R3-W3-F2를 발행했다. compiled cache 8개는 제외하고 1,350건 validate·검증 원본 재빌드 SHA-256 일치·기존 AI 회귀를 완료 조건으로 고정했다. 이 카드는 코드 반입만 승인하며 dependency 설치·model download·RunPod·비용·학습 실행은 승인하지 않아 Base model·LoRA·I3 관련 상태와 일정은 유지한다. | R3 학습 도구 반입 승인·외부 실행 제외 |
+| 2026-08-03 17:42 | 1.7, 2.19, 3.11, 6.1, 6.3 | R2-W3-F2의 평가 150건 reviewer/status 동기화, 상태 제외 SHA-256 일치, data 21건·AI 32건과 branch/dev CI PASS를 확인해 평가 fixture·manifest 검수·평가 원장 관리를 완료로 전환했다. R5-W3-F1C의 실제 `MERGED_DEV` 상태와 어긋난 Gate 회귀 테스트 기대값도 교정했다. 저장소 밖 sLLM 데이터의 1,200/150 split·Trino PASS는 참고 근거로만 기록하고, `src/ai/training` 부재·setup 계정 검증·RunPod 미착수 때문에 실제 Base model·LoRA가 필요한 6.3은 진행으로 유지했다. | 평가 150건 최종 승인·Gate 회귀 교정·I3 model 비교 대기 |
 | 2026-08-03 17:28 | 2.19, 3.11, 6.1, 6.3 | 평가 150건의 전수 질문·범주·기대 결과와 중복·split·필수 필드·data/AI/integration 검증을 대조해 R1·R3 검토를 승인했다. 질문·정답·근거는 보존하고 reviewer/status만 동기화하는 R2-W3-F2를 발행했으며 실제 Base model 비교 전까지 3.11·6.3의 진행 상태와 일정은 유지한다. | 평가 reviewer 승인·상태 동기화 후속 |
 | 2026-08-03 17:21 | 2.19, 3.11, 6.1, 6.3 | 실제 구현·handoff·CI·dev 병합이 완료된 R2-W3-F1과 R3-W3-F1C의 Gate 요약 상태만 `MERGED_DEV`로 정합화했다. 평가 데이터 행의 완료와 I3 통합 행의 진행 상태·일정은 변경하지 않는다. | Wave 3 후속 상태 원장 정합화 |
 | 2026-08-03 17:15 | 5.15, 6.3 | R5-W3-F1C에서 Catalog 계약 상수를 실제 I3 계약과 일치시키고 minji CI `30796547226`의 production build·frontend contract·Python·문서·역할 범위 통과를 확인해 dev `4825c0c`에 통합했다. 5.15의 기존 완료 상태와 6.3의 진행 일정은 유지한다. | R5 계약 소비 호환 완료·dev 통합 |
@@ -444,6 +446,8 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.52 | 2026-08-03 17:46 | 사용자 제공 training package를 R3 소유 경로에 반입·재현성 검증하는 R3-W3-F2를 발행했다. compiled cache와 외부 JSONL 반입, dependency·model download·RunPod·비용·학습 실행은 제외해 기존 Base model·LoRA·I3 상태와 일정은 유지했다. |
+| v7.51 | 2026-08-03 17:42 | 평가 150건의 최종 reviewer/status 승인과 내용 보존·소비자·CI 근거를 확인해 2.19·3.11·6.1을 완료로 전환하고 R5-W3-F1C Gate 상태 회귀 기대값을 교정했다. 외부 sLLM JSONL은 참고 근거로만 연결하고 재생성 코드·읽기 전용 권한·RunPod 학습·Base model 비교가 없어 6.3은 진행으로 유지했다. |
 | v7.50 | 2026-08-03 17:28 | 평가 150건의 R1·R3 검토를 승인하고 reviewer/status 동기화를 R2-W3-F2로 분리했다. 실제 Base model 비교가 남아 관련 행의 진행 상태와 일정은 유지했다. |
 | v7.49 | 2026-08-03 17:21 | R2-W3-F1·R3-W3-F1C의 실제 dev 통합 결과와 Gate 요약 상태를 정합화했다. WBS 작업 상태와 일정은 변경하지 않았다. |
 | v7.48 | 2026-08-03 17:15 | R5 Catalog의 I3 계약 버전 상수를 원본 계약과 일치시키고 CI 전체 통과 후 dev에 통합했다. 5.15 완료와 6.3 진행 상태·일정은 유지했다. |

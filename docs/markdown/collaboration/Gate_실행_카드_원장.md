@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.41 |
-| 문서 기준일 | 2026-07-31 17:28 |
+| 버전 | v2.43 |
+| 문서 기준일 | 2026-08-03 10:50 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -176,7 +176,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `MERGED_DEV` |
 | R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `MERGED_DEV` |
 | R4-W2 | Wave 2·08/10~08/14 | R4 | 없음 → I2 | R4-04~13, R4-15 | Template→Context→G1→G2→Trino→G3→Artifact trace | `MERGED_DEV` |
-| R4-W2-F2 | Wave 2 follow-up | R4 | 없음 → I2 | R4-04·07·11·20 보완 | DB Template·실제 Trino·migration·CORS runtime 연결 | `READY` |
+| R4-W2-F2 | Wave 2 follow-up | R4 | 없음 → I2 | R4-04·07·11·20 보완 | DB Template·실제 Trino·migration·CORS runtime 연결 | `REWORK` |
 | R5-W2 | Wave 2·08/10~08/14 | R5 | 없음 → I2 | R5-03~07 | Chat·상태·Evidence·표·차트·Artifact bridge | `MERGED_DEV` |
 | R5-W2-F1 | Wave 2 follow-up | R5 | 없음 → I2 | R5-04 source 실패 표시 보완 | API `retryable` 표시·R4 timeout fixture 소비 | `MERGED_DEV` |
 | R5-W2-F2 | Wave 2 follow-up | R5 | 없음 → I2 | R5-01·03~07 실제 API 보완 | production HTTP client·실제 backend 화면 trace | `PLANNED` |
@@ -819,7 +819,7 @@ DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W2@04e5e6d
 CONTRACT_VERSION=I1-v1.0.0
 R1_PROGRESS=기존 R2~R5 컴포넌트·fixture 검증은 유지하되 정적 runtime 재검토에서 backend가 빈 RoutingService와 FakeDataPlatformAdapter를 사용하고 frontend가 mock client만 사용함을 확인해 실제 Template→Trino→화면 통합 판정을 0/4 NOT_RUN으로 재개방; R4-W2-F2→R5-W2-F2→R1 실제 E2E 순서로 보완
-ALLOWED_PATHS=.github/**; compose*.yml; .env.example; tests/integration/**; docs/Answervice_기획서.md; docs/deliverables/02_WBS_29기_3팀.xlsx; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
+ALLOWED_PATHS=.github/**; compose*.yml; .env.example; .dockerignore; config/access-policy.yaml; tests/integration/**; docs/Answervice_기획서.md; docs/deliverables/02_WBS_29기_3팀.xlsx; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 R1_SCOPE_AUTHORIZATION=사용자 요청에 따라 기획서 v1.2와 동기화한 공식 WBS XLSX 단일 경로의 작성·덮어쓰기·commit·junhee push를 승인; 다른 deliverable 경로는 승인하지 않음
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=필수 평가 subset·gold 원장을 확인하고 대표 질문의 Context→G1→G2→Trino→G3→Artifact→화면 trace에서 성공·재질문·차단·source 실패를 판정, 역할별 실패는 원 소유자에게 반환
@@ -958,10 +958,10 @@ EXTERNAL_ACTION_PERMISSION=허용 6개 경로와 R4 개인 일일보고·handoff
 
 ### R4-W2-F2
 
-R1 증거 Gate 보강이 `dev` `0e756e7`에 반영되고 CI run `30616159454`가 통과했으므로 아래 범위를 실행 승인한다.
+`origin/jaehong` 제품 `4bec9d7`·handoff `b812122`을 독립 검토한 결과 기존 migration upgrade, Template 역할 권한, Trino PARTIAL 오류 처리와 실제 HTTP 재현 증거가 수용 기준을 충족하지 못해 아래 최소 재작업만 승인한다.
 
 ```text
-STATUS=READY
+STATUS=REWORK
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -972,18 +972,20 @@ TASK_CARD_RANGE=R4-04·07·11·20 runtime 보완
 CURRENT_TASK_CARD_ID=R4-W2-F2
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=0e756e7f1366e09fd084f655274e2add8778c68f
-DIRECTIVE=ACTION
-DIRECTIVE_TOKEN=R4-W2-F2@0e756e7
+BASE_SHA=e023b0640020248ec35c998b9de637a67012cdaa
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W2-F2-REWORK@e023b06
 OPENAPI_VERSION=OPENAPI-v1.0.0
+ACCESS_POLICY_VERSION=ACCESS-POLICY-v1.0.0
 ALLOWED_PATHS=app/backend/**; tests/backend/**
 FORBIDDEN_PATHS=source DDL·seed·src/data/**; src/ai/**·src/modelops/**; frontend·Report; root Compose·.env.example·CI; R1/R2/R3/R5 소유 문서
-ACCEPTANCE_CRITERIA=context.analysis_templates의 승인 Template을 runtime에서 조회해 허용 role만 TEMPLATE route로 보내고, 기존 R2 TrinoAdapter를 R4 DataPlatformAdapter port에 연결하며, 빈 DB startup migration 뒤 HTTP template_id 요청이 실제 query_id·Artifact까지 이어지고 direct browser origin에는 환경변수 기반 정확한 CORS allowlist만 허용
-ACCEPTANCE_IDS=AC1_TEMPLATE_DB;AC2_TRINO_PORT;AC3_MIGRATION_STARTUP;AC4_HTTP_TEMPLATE_TRACE;AC5_EXACT_CORS
-TEST_COMMANDS=python -m compileall -q app/backend tests/backend; python -m pytest -p no:cacheprovider tests/backend; python app/backend/scripts/export_openapi.py --check; python -m unittest discover -s tests/integration -p "test_*.py"; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
-TEST_COMMAND_IDS=T1_COMPILE;T2_BACKEND;T3_OPENAPI;T4_INTEGRATION;T5_ROLE_GATE;T6_DIFF_CHECK
-STOP_CONDITIONS=R2 adapter 수정 필요; migration 다중 head; Template 권한·G1·G2·G3 우회; wildcard CORS 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
-HANDOFF=R1에 Template 승인·거부 HTTP 증거, 빈 DB migration, 실제 Trino query_id와 request→artifact trace, CORS 허용·거부 origin 결과를 ID별 manifest로 제출
+ACCEPTANCE_CRITERIA=기존 `20260730_02`를 dev와 byte-for-byte 동일하게 복구하고 새 후속 revision에서 기존 02 DB와 빈 DB 모두에 컬럼 backfill·NOT NULL·승인 Template seed·최소 runtime grant를 적용하며, `config/access-policy.yaml`의 `ACCESS-POLICY-v1.0.0`에 따라 `hotel_analyst`만 Template·자산을 통과시키고 다른 유효 role은 서버에서 403으로 거부한다. R2 AdapterError의 실제 구조로 FINISHED+warnings를 PARTIAL 응답에 보존하고, real mode HTTP template 요청이 G1→G2→Trino→G3→query_id·Artifact까지 이어져야 한다. exact CORS와 기존 R2 TrinoAdapter 재사용은 유지한다.
+ACCEPTANCE_IDS=AC1_IMMUTABLE_MIGRATION;AC2_EXISTING_DB_UPGRADE;AC3_TEMPLATE_ROLE_POLICY;AC4_TRINO_PARTIAL;AC5_REAL_HTTP_TEMPLATE_TRACE;AC6_EXACT_CORS
+TEST_COMMANDS=python -m compileall -q app/backend tests/backend; python -m pytest -p no:cacheprovider tests/backend; python app/backend/scripts/export_openapi.py --check; python -m unittest discover -s tests/integration -p "test_*.py"; 빈 DB와 기존 `20260730_02` DB 각각 `alembic upgrade head`; real mode HTTP Template positive·report_admin/data_admin negative·FINISHED+warnings PARTIAL; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_COMPILE;T2_BACKEND;T3_OPENAPI;T4_INTEGRATION;T5_MIGRATION_PATHS;T6_REAL_HTTP_ROLE_PARTIAL;T7_ROLE_GATE;T8_DIFF_CHECK
+STOP_CONDITIONS=기존 revision 수정; R2 adapter 수정 필요; migration 다중 head; role·entitlement·G1·G2·G3 우회; immutable trace에 UPDATE·DELETE 권한 필요; wildcard CORS 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R1에 기존 02 파일 hash 일치, 빈·기존 DB upgrade, hotel_analyst 승인과 report_admin/data_admin 거부, 실제 Trino PARTIAL, real HTTP query_id·Artifact trace, CORS 허용·거부 결과를 ID별 manifest로 제출
+R1_REVIEW_EVIDENCE=origin/jaehong 제품 4bec9d7·handoff b812122·branch CI run 30619550796 PASS를 검토했으나 기존 02 revision 수정과 grant-only 03으로 기존 DB upgrade가 누락되고, role/entitlement 없는 Template·자산 조회, AdapterError.payload 오참조, fake mode 중심 HTTP 증거를 확인해 병합 거부
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R4 개인 일일보고·handoff manifest의 commit·jaehong push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
 ```
 
@@ -1232,6 +1234,9 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.43 | 2026-08-03 10:50 | R1 정책 commit의 role Gate에서 새 `.dockerignore`와 `config/access-policy.yaml`이 기존 R1-W2 허용 목록에 누락된 것을 확인했다. R1 소유 root build-context·공통 접근 정책 경로만 허용 목록에 추가하고 다른 service·deliverable 범위는 확장하지 않았다. |
+| v2.42 | 2026-08-03 10:41 | `origin/jaehong` 제품 `4bec9d7`·handoff `b812122`의 CI는 통과했으나 기존 `20260730_02` 수정으로 기존 DB upgrade가 누락되고, Template role·entitlement 미검사, PARTIAL 오류 경로의 `AdapterError.payload` 오참조, real mode HTTP 증거 부재를 확인해 병합을 거부했다. `ACCESS-POLICY-v1.0.0`과 새 migration·실제 HTTP 회귀를 요구하는 `R4-W2-F2-REWORK@e023b06` 및 개인 branch commit·push 권한만 발행했다. |
+| v2.41 | 2026-07-31 17:28 | R5-W2-F1을 dev에 통합하고 R1 증거 Gate 보강 CI PASS를 확인한 뒤 실제 DB Template·Trino·migration·CORS runtime 연결을 위한 `R4-W2-F2@0e756e7`을 READY로 발행했다. |
 | v2.40 | 2026-07-31 17:11 | 독립 코드 리뷰에서 확인한 증거 우회를 차단하기 위해 ID 없는 추가 결과와 자동 생성 placeholder 증거를 거부하고, 제출된 `REVIEW_REQUIRED`의 차단 정책을 CI Summary·최종 quality 판정과 회귀 test에 동기화했다. |
 | v2.39 | 2026-07-31 17:03 | handoff의 빈 `NOT_RUN`을 강제로 채우지 않고 새 실행 묶음의 `ACCEPTANCE_IDS`·`TEST_COMMAND_IDS`를 제출 증거와 전수 대조하도록 R1 Gate를 보강했다. 정적 runtime 검토에서 빈 Template registry·fake data adapter·frontend mock client를 확인해 I2 통합 판정을 재개방하고, R4 실제 Template·Trino·migration·정확한 CORS 연결과 후속 R5 실제 HTTP 연결을 순차 `PLANNED`로 등록했다. |
 | v2.38 | 2026-07-31 17:01 | 독립 검증 권고를 반영해 역할 diff가 삭제 파일도 검사하도록 `ACMRD`로 확장하고, 작업 중 manifest 미제출 `NOT_RUN`은 허용하되 제출된 handoff의 `REVIEW_REQUIRED`는 보완·예외 승인 전 terminal 수용을 차단하도록 자동 Gate 정책과 통합 test를 동기화했다. |

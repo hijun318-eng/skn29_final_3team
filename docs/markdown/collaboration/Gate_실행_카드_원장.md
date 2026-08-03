@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.84 |
-| 문서 기준일 | 2026-08-04 04:21 |
+| 버전 | v2.85 |
+| 문서 기준일 | 2026-08-04 04:27 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1964,7 +1964,7 @@ R1_REVIEW=node2 request에 optional non-empty normalized_question만 추가하�
 ### R4-W3-F3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -1990,6 +1990,43 @@ TEST_COMMAND_IDS=T1_BACKEND;T2_COMPILE;T3_REPORT;T4_ROLE_GATE;T5_DIFF
 STOP_CONDITIONS=R3 schema·prompt 추가 변경 필요; normalized question 변형·요약 필요; OpenAPI·DB·data 변경 필요; dependency·RunPod·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
 HANDOFF=R1에 service→adapter→R3 request 실제 질문 전달·ID 분리·guided transport·회귀와 후속 Base 제품 trace 조건을 전달
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R4 개인 일일보고 commit·jaehong push 승인; dependency·RunPod·비용·secret·외부 model·dev merge 불가
+RESULT_SHA=f8140d0a8ca6fc4b11fc532eda6ce279b95502c6
+SOURCE_CI_EVIDENCE=GitHub Actions run 30845776821 PASS; Python 전체·OpenAPI·document quality·role scope·quality gate PASS
+DEV_MERGE_SHA=dcb00c362995e4593e70783c23f3c9e03825b2fd
+R1_REVIEW=제품 원문 question을 AnalysisService node2 payload와 ContractModelAdapter normalized_question에 그대로 전달하고 request ID·Context·guided schema·generation option·fallback 경계를 보존한 2줄 production 변경과 23건 local·전체 CI를 수용
+```
+
+### R1-W3-F5
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F5
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 실제 질문 Base·I2 synthetic 제품 전체 trace
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=dcb00c362995e4593e70783c23f3c9e03825b2fd
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F5@dcb00c3
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.3
+OPENAPI_VERSION=OPENAPI-v1.0.0
+DATA_CONTRACT_VERSION=DATA-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume 변경
+ACCEPTANCE_CRITERIA=dev `dcb00c3`을 task A40 고정 Qwen3-4B·task backend·기존 synthetic Trino read-only에 localhost로 연결한다. raw node2 request에 실제 normalized question과 별도 question_id가 포함되고 finish/schema/한 줄/LIMIT을 통과하는지 확인한 뒤 동일 `/analysis`의 MODEL→G2→QUERY→G3→ARTIFACT와 evidence를 판정한다. 실패 시 exact blocker를 기록한다. 비용·회귀·task cleanup을 확인하고 성공 trace 전 I3를 승인하지 않는다.
+ACCEPTANCE_IDS=AC1_QUESTION_INPUT;AC2_RAW_SCHEMA;AC3_G2_QUERY;AC4_G3_ARTIFACT;AC5_EVIDENCE;AC6_REGRESSION;AC7_COST;AC8_CLEANUP;AC9_I3
+TEST_COMMANDS=task health; raw node2 metadata; synthetic POST /analysis; trace/artifact/evidence; regressions; exact cleanup; Pod 404·active 0; Docker scope; docs validation
+TEST_COMMAND_IDS=T1_HEALTH;T2_RAW;T3_PRODUCT;T4_EVIDENCE;T5_REGRESSION;T6_CLEANUP;T7_SCOPE;T8_DOCS
+STOP_CONDITIONS=USD15 예상 도달; 다른 Docker 변경·public endpoint·secret·실제 고객 데이터·R2~R5 추가 code 필요; 안전 경계 위반
+HANDOFF=실제 질문 raw·제품 trace·evidence·비용·cleanup과 I3 판정 또는 exact blocker 전달
+EXTERNAL_ACTION_PERMISSION=누적 USD15 안 task A40·고정 model·합성 localhost 요청·task backend·정확한 cleanup과 기존 synthetic Trino read-only 조회, R1 commit·junhee/dev push 승인. 다른 resource·public endpoint·secret·실제 고객 데이터·LoRA 변경 불가
+COST_BASELINE_USD=이전 실측·추정 누적 상한 1.345923
 ```
 
 ## Wave 4 상세 계획 카드
@@ -2084,6 +2121,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.85 | 2026-08-04 04:27 | R4-W3-F3의 제품 원문 question→normalized_question 전달과 CI `30845776821` PASS를 검수해 dev에 통합했다. R1-W3-F5는 actual question raw 입력과 동일 Base·I2 read-only 제품 trace를 판정하고 성공 전 I3 승인·다른 resource 변경을 금지했다. |
 | v2.84 | 2026-08-04 04:21 | R3-W3-F8의 optional normalized_question·ID 비의미 prompt와 CI `30845353451` PASS를 검수해 dev에 통합했다. R4-W3-F3는 제품 원문 질문을 service→adapter→R3 request로 그대로 전달하는 최소 변경만 READY 발행하며 schema·prompt·OpenAPI·generation option 변경을 금지했다. |
 | v2.83 | 2026-08-04 04:17 | R1-W3-F4 raw 고정 UUID는 schema·한 줄·LIMIT을 통과했지만 실제 제품의 무작위 request UUID에서는 MODEL invalid·circuit 안전 실패가 반복됐다. node2 계약에 실제 질문이 없어 Base가 UUID에 반응하는 근본 병목과 QUERY·Artifact 부재, cleanup·active Pods 0·예상 신규 상한 USD0.090978을 기록했다. R3-W3-F8로 optional normalized_question·ID 비의미 prompt만 호환 추가하고 실제 제품 재검증 전 I3를 차단한다. |
 | v2.82 | 2026-08-04 04:03 | R3-W3-F7의 node2 한 줄 compact SQL PROMPT-v1.0.2와 CI `30843971371` PASS를 검수해 dev에 통합했다. 후속 R1-W3-F4는 raw finish/schema/LIMIT을 먼저 확인하고 동일 read-only 제품 trace의 G2·QUERY·G3·ARTIFACT를 판정하며, 다른 resource 변경과 성공 trace 없는 I3 승인을 금지했다. |

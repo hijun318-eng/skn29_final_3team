@@ -1,7 +1,7 @@
 import unittest
 from collections import Counter
 
-from src.ai.training.build_case_specs import build_case, select, select_coverage
+from src.ai.training.build_case_specs import build_case, select, select_coverage, select_held_out
 from src.ai.training.generate_scenarios import generate
 
 
@@ -59,6 +59,25 @@ class TrainingScenarioTests(unittest.TestCase):
             {record["repair_error_code"] for record in selected if record["node"] == "node2_repair"},
             {"RESOURCE_POLICY_MISSING", "REFERENCE_MISSING", "REFERENCE_OUTSIDE_CONTEXT", "SQL_REFERENCE_MISMATCH", "PARAMETERS_INVALID"},
         )
+
+    def test_held_out_selection_is_explicit_and_does_not_leak(self):
+        records = generate()
+        selected = select_held_out(records)
+        training_groups = {
+            record["scenario_group"]
+            for record in records
+            if record["target_split"] in {"train", "validation"}
+        }
+        cases = [build_case(record, approved=True) for record in selected]
+
+        self.assertEqual(
+            Counter(case["split"] for case in cases),
+            Counter({"gold": 120, "acceptance": 30}),
+        )
+        self.assertEqual({"APPROVED"}, {case["review_status"] for case in cases})
+        self.assertTrue(training_groups.isdisjoint(case["scenario_group"] for case in cases))
+        with self.assertRaisesRegex(ValueError, "only held-out"):
+            build_case(next(record for record in records if record["target_split"] == "train"), approved=True)
 
     def test_full_training_questions_are_korean_and_do_not_leak_across_splits(self):
         cases = [build_case(record) for record in select(generate(), 0)]

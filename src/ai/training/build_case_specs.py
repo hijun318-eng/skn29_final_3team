@@ -314,7 +314,9 @@ def _repair_sql(sql: str, code: str) -> str:
     return sql
 
 
-def build_case(record: dict[str, Any]) -> dict[str, Any]:
+def build_case(record: dict[str, Any], *, approved: bool = False) -> dict[str, Any]:
+    if approved and record["target_split"] not in {"gold", "acceptance"}:
+        raise ValueError("only held-out gold and acceptance cases can be approved here")
     start, end, label = _period(record)
     metric = str(record["metric_id"])
     if record["domain"] == "pms_crm":
@@ -353,7 +355,7 @@ def build_case(record: dict[str, Any]) -> dict[str, Any]:
         "synthetic": True,
         "schema_version": "1.0.0",
         "seed_version": "20260729",
-        "review_status": "AUTO_PASSED",
+        "review_status": "APPROVED" if approved else "AUTO_PASSED",
         "trino_status": "NOT_RUN",
         "result_sha256": None,
     }
@@ -388,18 +390,36 @@ def select_coverage(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return selected
 
 
+def select_held_out(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [row for row in records if row["target_split"] in {"gold", "acceptance"}]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("ledger", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--per-domain", type=int, default=4)
-    parser.add_argument("--coverage-smoke", action="store_true")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--coverage-smoke", action="store_true")
+    selection.add_argument(
+        "--held-out",
+        action="store_true",
+        help="build the reviewed Gold 120 and Acceptance 30 cases",
+    )
     args = parser.parse_args()
     if args.per_domain != 0 and (args.per_domain < 2 or args.per_domain % 2):
         raise ValueError("--per-domain must be 0 or an even number of at least 2")
+    if args.held_out and args.per_domain != 4:
+        raise ValueError("--per-domain cannot be combined with --held-out")
     ledger = _read_jsonl(args.ledger)
-    selected = select_coverage(ledger) if args.coverage_smoke else select(ledger, args.per_domain)
-    cases = [build_case(row) for row in selected]
+    selected = (
+        select_held_out(ledger)
+        if args.held_out
+        else select_coverage(ledger)
+        if args.coverage_smoke
+        else select(ledger, args.per_domain)
+    )
+    cases = [build_case(row, approved=args.held_out) for row in selected]
     write_jsonl(args.output, cases)
     load_specs(args.output)
     print(json.dumps({"total": len(cases), "domains": dict(Counter(case["domain"] for case in cases)), "nodes": dict(Counter(case["node"] for case in cases))}, ensure_ascii=False, sort_keys=True, indent=2))

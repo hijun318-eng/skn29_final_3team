@@ -38,6 +38,28 @@ def test_trino_transport_sends_required_user_header():
     assert payload["id"] == "query-1"
 
 
+def test_finished_query_with_warnings_preserves_rows_as_partial():
+    response = MagicMock()
+    response.read.return_value = json.dumps(
+        {
+            "id": "query-partial",
+            "stats": {"state": "FINISHED"},
+            "columns": [{"name": "value"}],
+            "data": [[7]],
+            "warnings": [{"message": "connector warning"}],
+        }
+    ).encode()
+    response.__enter__.return_value = response
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+
+    with patch("app.adapters.i2_data_platform.urlopen", return_value=response):
+        result = adapter.execute_query("SELECT 7", {}, "gate-token")
+
+    assert result["status"] == "PARTIAL"
+    assert result["query_id"] == "query-partial"
+    assert result["rows"] == [{"value": 7}]
+
+
 def test_approved_i2_template_passes_g2_contract():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     support = PipelineSupport(adapter, ContextPackageBuilder())

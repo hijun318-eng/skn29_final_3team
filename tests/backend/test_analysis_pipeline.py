@@ -19,7 +19,7 @@ from app.contracts import (
     StageOutcome,
 )
 from app.services.analysis_service import AnalysisService
-from app.services.routing_service import ApprovedTemplate, RoutingService
+from app.services.routing_service import ApprovedTemplate, RoutingError, RoutingService
 
 
 class CountingDataPlatformAdapter(FakeDataPlatformAdapter):
@@ -133,6 +133,32 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual(template.template_id, response.data.template_id)
         self.assertTrue(response.data.gates.g1_required)
         self.assertTrue(response.data.gates.g2_required)
+
+    def test_template_policy_allows_only_hotel_analyst(self) -> None:
+        template = ApprovedTemplate(
+            template_id="weekly-room-operations",
+            parameter_names=frozenset({"week_start"}),
+            sql_text="SELECT 1 FROM pms.public.pms_guests LIMIT 1",
+            source_fqns=frozenset({"pms.public.pms_guests"}),
+        )
+        payload = AnalysisRequest(
+            question="weekly room operations",
+            template_id=template.template_id,
+            parameters={"week_start": "2026-07-27"},
+        )
+        routing = RoutingService((template,))
+
+        routing.decide(payload, Role.HOTEL_ANALYST)
+        for denied_role in (Role.REPORT_ADMIN, Role.DATA_ADMIN):
+            with self.subTest(role=denied_role):
+                with self.assertRaises(RoutingError) as denied:
+                    routing.decide(payload, denied_role)
+                self.assertEqual(403, denied.exception.status_code)
+
+        self.assertEqual(
+            frozenset({Role.HOTEL_ANALYST.value}),
+            RoutingService._template_policy()[template.template_id],
+        )
 
     def test_g1_clarification_blocks_before_model_and_query(self) -> None:
         response = self.analyze("clarification")

@@ -12,7 +12,9 @@ class AnalysisController:
 
     def submit(self, payload: AnalysisRequest, context: RequestContext) -> AnalysisResponse:
         try:
-            decision = self._routing.decide(payload)
+            decision = self._routing.decide(payload, context.role)
         except RoutingError as exc:
+            if exc.status_code is not None:
+                raise
             return self._service.blocked(context, ErrorBody(code=exc.code, message=exc.message))
         return self._service.analyze(payload, context, decision)

@@ -18,6 +18,7 @@ from app.contracts import (
     ErrorResponse,
     response_meta,
 )
+from app.services.routing_service import RoutingError
 
 
 def _allowed_origins() -> list[str]:
@@ -73,6 +74,20 @@ async def context_error(request: Request, exc: ContextValidationError) -> JSONRe
         error=ErrorBody(code=exc.code, message=exc.message),
     )
     return JSONResponse(status_code=exc.status_code, content=body.model_dump(mode="json"))
+
+
+@app.exception_handler(RoutingError)
+async def routing_error(request: Request, exc: RoutingError) -> JSONResponse:
+    context = request_context(request)
+    body = ErrorResponse(
+        data=EmptyData(),
+        meta=response_meta(context),
+        error=ErrorBody(code=exc.code, message=exc.message),
+    )
+    return JSONResponse(
+        status_code=exc.status_code or 400,
+        content=body.model_dump(mode="json"),
+    )
 
 
 @app.exception_handler(RequestValidationError)

@@ -77,6 +77,7 @@ class I2DataPlatformAdapter:
         self._trino = TrinoAdapter(trino_url, transport=self._request)
         self._queries: dict[str, dict[str, Any]] = {}
         self._next_uris: dict[str, str] = {}
+        self._last_query_payload: dict[str, Any] = {}
 
     def _request(
         self,
@@ -118,7 +119,10 @@ class I2DataPlatformAdapter:
                 AdapterErrorCode.UPSTREAM,
                 "upstream request failed",
             ) from error
-        return {} if not raw else json.loads(raw)
+        payload = {} if not raw else json.loads(raw)
+        if isinstance(payload, dict) and "id" in payload:
+            self._last_query_payload = payload
+        return payload
 
     def search_assets(
         self,
@@ -154,11 +158,8 @@ class I2DataPlatformAdapter:
             page = self._trino.execute(bound_sql)
             result = self._collect(page)
         except AdapterError as error:
-            if error.code == AdapterErrorCode.PARTIAL and isinstance(
-                error.payload,
-                QueryPage,
-            ):
-                result = self._collect(error.payload, partial=True)
+            if error.code == AdapterErrorCode.PARTIAL:
+                result = self._collect(self._partial_page(), partial=True)
             elif error.code == AdapterErrorCode.TIMEOUT:
                 raise TimeoutError(str(error)) from error
             else:
@@ -201,12 +202,9 @@ class I2DataPlatformAdapter:
             try:
                 page = self._trino.next_page(page.next_uri)
             except AdapterError as error:
-                if error.code != AdapterErrorCode.PARTIAL or not isinstance(
-                    error.payload,
-                    QueryPage,
-                ):
+                if error.code != AdapterErrorCode.PARTIAL:
                     raise
-                page = error.payload
+                page = self._partial_page()
                 partial = True
             columns = page.columns or columns
             rows.extend(page.rows)
@@ -226,6 +224,21 @@ class I2DataPlatformAdapter:
             },
             "masking": {"applied": False, "fields": ()},
         }
+
+    def _partial_page(self) -> QueryPage:
+        payload = self._last_query_payload
+        if not payload:
+            raise ValueError("partial query payload is missing")
+        return QueryPage(
+            query_id=str(payload["id"]),
+            state=str(payload.get("stats", {}).get("state", "FINISHED")),
+            columns=tuple(item["name"] for item in payload.get("columns", [])),
+            rows=tuple(tuple(row) for row in payload.get("data", [])),
+            next_uri=payload.get("nextUri"),
+            warnings=tuple(
+                item.get("message", "") for item in payload.get("warnings", [])
+            ),
+        )
 
     def get_query_status(self, query_id: str) -> dict[str, Any]:
         return self._queries.get(

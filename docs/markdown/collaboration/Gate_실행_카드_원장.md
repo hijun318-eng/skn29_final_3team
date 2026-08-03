@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.78 |
-| 문서 기준일 | 2026-08-04 03:27 |
+| 버전 | v2.79 |
+| 문서 기준일 | 2026-08-04 03:42 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1741,7 +1741,7 @@ R1_REVIEW=node별 실제 R3 response schema를 contract bundle에서 읽어 cach
 ### R1-W3-F2
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1769,6 +1769,44 @@ STOP_CONDITIONS=누적 비용 USD 15 도달 예상; hotel-synthetic-db 또는 �
 HANDOFF=guided product HTTP trace·model/G2/query/G3/artifact evidence·latency·read-only Trino·회귀·비용·task cleanup과 I3 승인 또는 정확한 후속 병목을 전 역할에 전달
 EXTERNAL_ACTION_PERMISSION=사용자가 승인한 누적 USD 15 한도 안에서 task 전용 RunPod A40 Pod 생성·고정 serving image와 Qwen3-4B 다운로드·합성 요청 전송·localhost SSH tunnel·task backend container build/run·결과 회수·정확한 task Pod·container·image·tunnel 삭제와 기존 hotel-synthetic-db Trino의 read-only synthetic 조회, R1 허용 경로 commit·junhee/dev push 승인. 다른 Pod·Docker project·container·volume 변경, public endpoint·secret 출력/commit, 실제 고객 데이터, LoRA 재학습·제품 기본값 전환은 불가
 COST_BASELINE_USD=이전 실측·추정 누적 1.122120; 최종 provider billing 지연 시 예상값과 확정 여부를 분리 기록
+LIVE_TRACE_EVIDENCE=task Secure A40 `wzr7b1kcjpttug`·고정 Qwen3-4B revision·vLLM 0.10.2와 task backend `63b5ad6`을 localhost tunnel로 연결했다. backend health=healthy, readiness의 Trino=ready이며 앱 DB는 의도적으로 미설정했다. 실제 I2 Context의 synthetic `/analysis`는 HTTP 200·30,696.5ms·BLOCKED로 MODEL guided schema까지 PASS했지만 G2 `RESOURCE_POLICY_MISSING`, repair 1회 뒤 `SQL_POLICY_BLOCKED`로 종료됐고 QUERY·G3·ARTIFACT는 실행되지 않았다.
+ROOT_CAUSE=node2 SQL은 허용된 `pms.public.pms_stays`·`crm.dbo.crm_member_grade_history`만 정확히 참조했지만 필수 `LIMIT`가 없었다. node2와 repair SQL은 모두 708자·SHA-256 `4d579699523988ecf363def46678587c3f090aea71dfa55f98493e7967fa4619`로 동일해 `RESOURCE_POLICY_MISSING` repair가 실제로 수정되지 않았다. R3 `PROMPT-v1.0.0` 문구가 Control Plane의 `LIMIT <= 1000` resource policy와 오류별 repair 행동을 명시하지 않은 prompt 계약 병목이다.
+REGRESSION_EVIDENCE=production model·analysis pipeline 22건 PASS, integration 23건 PASS. OpenAPI local 재실행은 host Python에 FastAPI가 없어 collection BLOCKED였고 동일 R4 source CI run `30841201329`의 OpenAPI 4건 PASS를 기존 근거로 유지한다.
+RESOURCE_CLEANUP=task backend container·image·localhost tunnel·known_hosts 항목 제거, Pod exact GET 404·active Pods 0 확인. hotel-synthetic-db Trino ID `bafdc16362af...`·running·restart count 0 유지, 다른 Docker resource는 변경하지 않았다.
+COST_RESULT=Pod 실행 상한 544.915초·USD 0.066601 추정, 예상 누적 USD 1.188721로 승인 한도 USD 15 이내. provider billing 확정 지연 가능성이 있어 상한 추정값으로 기록한다.
+BLOCKER=R3 node2·node2_repair prompt가 G2 resource policy의 `LIMIT <= 1000`과 `RESOURCE_POLICY_MISSING`의 결정론적 수정 행동을 명시하고 Base endpoint에서 서로 다른 repaired SQL·G2 PASS를 증명하기 전 실제 QUERY·G3·ARTIFACT trace와 I3 승인이 불가하다.
+```
+
+### R3-W3-F6
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F6
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-15 node2 resource limit·단일 repair prompt 계약 보완
+CURRENT_TASK_CARD_ID=R3-15
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=63b5ad6c4366dafc86738f1ae4592590ee373f7c
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F6@63b5ad6
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.1
+MODEL_ID=Qwen/Qwen3-4B
+MODEL_REVISION=1cfa9a7208912126459214e8b04321603b3df60c
+ALLOWED_PATHS=src/ai/prompt_registry.py; tests/ai/test_prompt_registry.py; tests/ai/test_node2.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; infrastructure/database/**; .env; API key; model binary·adapter·checkpoint·평가 생성물; frontend·Report; root Compose·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=node2 prompt가 승인 Context의 단일 read-only Trino SELECT와 `LIMIT 1..1000`을 명시하고, node2_repair prompt가 정규화 오류 코드에 해당하는 항목만 한 번 수정하되 `RESOURCE_POLICY_MISSING`이면 기존 의미·허용 reference·parameter를 유지하며 `LIMIT 1000`을 추가하도록 명시한다. 두 prompt의 version을 `PROMPT-v1.0.1`로 올리고 hash metadata가 실제 문구를 반영한다. R3 schema·fake generation·다른 node prompt·model default는 변경하지 않는다. unit test는 resource limit·오류별 단일 repair 문구와 기존 node2 계약 회귀를 고정한다. 실제 Base endpoint·제품 trace는 R1 후속 카드에서 검증한다.
+ACCEPTANCE_IDS=AC1_NODE2_LIMIT_POLICY;AC2_RESOURCE_REPAIR_ACTION;AC3_PROMPT_VERSION_HASH;AC4_SINGLE_REPAIR;AC5_SCHEMA_UNCHANGED;AC6_REGRESSION
+TEST_COMMANDS=python -m unittest tests.ai.test_prompt_registry tests.ai.test_node2 tests.ai.test_contracts tests.ai.test_fake_model -v; python -m compileall -q src/ai/prompt_registry.py; python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/daesung/일일보고.md; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_PROMPT_UNIT;T2_COMPILE;T3_REPORT;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=R3 schema·backend G2 code·training dataset 수정 필요; prompt만으로 limit·repair 행동을 명시할 수 없음; model default·LoRA·RunPod 변경 필요; secret 출력·commit 필요; 허용 경로 밖 변경; 필수 검증 실패
+HANDOFF=R1에 node2·repair prompt version/hash·resource limit 문구·오류별 단일 repair 계약·unit regression과 후속 실제 Base I2 product trace 조건을 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고의 commit·daesung push 승인; dependency 설치·RunPod·비용·secret 사용·외부 model 호출·dev merge 불가
 ```
 
 ## Wave 4 상세 계획 카드
@@ -1863,6 +1901,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.79 | 2026-08-04 03:42 | R1-W3-F2 실제 I2 product trace는 guided MODEL까지 통과했지만 node2가 `LIMIT` 없는 SQL을 생성하고 repair도 동일 SQL을 반환해 G2에서 안전 차단됐다. QUERY·Artifact 부재와 task resource cleanup·active Pods 0·예상 신규 상한 USD0.066601를 확인했다. `LIMIT <= 1000`과 `RESOURCE_POLICY_MISSING` 단일 수정 행동만 prompt에 명시하는 R3-W3-F6를 READY 발행했으며 실제 Base 재검증 전 I3는 차단한다. |
 | v2.78 | 2026-08-04 03:27 | R4-W3-F2의 node별 R3 response schema guided transport와 전체 CI `30841201329` PASS를 검수해 dev에 통합했다. 후속 R1-W3-F2는 task A40·backend와 기존 hotel-synthetic-db Trino의 read-only synthetic 조회만 허용해 실제 MODEL→G2→QUERY→G3→ARTIFACT trace를 판정하고, 다른 Docker resource 변경과 I3 조기 승인을 금지했다. |
 | v2.77 | 2026-08-04 03:21 | R1-W3-F1 live product trace는 Base가 plain 응답·JSON object mode에서 R3 schema를 지키지 못해 MODEL 안전 실패했고, 실제 R3 schema의 guided_json은 schema PASS였지만 fake Context의 asset·metric 불일치로 G2 repair 뒤 차단됐다. task Pod·container·image·tunnel을 정확히 제거하고 예상 신규 USD0.107045를 기록했다. schema-guided transport만 보완하는 R4-W3-F2를 READY 발행했으며 실제 I2 synthetic trace 전 I3는 차단한다. |
 | v2.76 | 2026-08-04 03:01 | R4 endpoint 연결과 dev CI `30839298442` PASS 뒤 남은 실제 제품 trace를 위해 R1-W3-F1을 READY 발행했다. 누적 USD 15 안에서 task 전용 A40 Base endpoint와 task backend만 사용하고 synthetic `/analysis`의 성공 또는 MODEL 안전 실패를 판정하며, 실제 성공 trace 없이는 I3를 승인하지 않도록 고정했다. |

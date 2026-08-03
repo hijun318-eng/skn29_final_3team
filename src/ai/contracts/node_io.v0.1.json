@@ -249,6 +249,7 @@
       "required": ["question_id", "context_package"],
       "properties": {
         "question_id": {"type": "string"},
+        "normalized_question": {"type": "string", "minLength": 1},
         "context_package": {"$ref": "#/$defs/context_package"}
       }
     },

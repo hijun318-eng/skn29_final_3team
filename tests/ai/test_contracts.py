@@ -139,6 +139,18 @@ class ContractTests(unittest.TestCase):
             with self.subTest(definition=definition):
                 validate_payload(definition, payload)
 
+    def test_node2_accepts_optional_non_empty_normalized_question(self):
+        legacy = copy.deepcopy(VALID_PAYLOADS["node2_request"])
+        current = copy.deepcopy(legacy)
+        current["normalized_question"] = "지난달 객실 매출을 알려줘"
+        empty = copy.deepcopy(legacy)
+        empty["normalized_question"] = ""
+
+        validate_payload("node2_request", legacy)
+        validate_payload("node2_request", current)
+        with self.assertRaises(ContractError):
+            validate_payload("node2_request", empty)
+
     def test_missing_and_extra_fields_are_rejected(self):
         for definition, payload in VALID_PAYLOADS.items():
             required_key = next(iter(payload))

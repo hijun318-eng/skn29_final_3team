@@ -103,7 +103,16 @@ export function AgentPage() {
               <b>Analysis Agent <em>{run.status}</em></b>
               <AnalysisStatePanel
                 run={run}
-                onAddArtifact={(artifactId) => setArtifactNotice(`Artifact ${artifactId}를 보고서 초안 후보로 선택했습니다.`)}
+                onAddArtifact={(artifactId) => {
+                  const draftBlock = {
+                    artifactId,
+                    queryId: run.artifact?.queryId,
+                    question: run.question,
+                    sourceUrns: run.sources.map((source) => source.urn),
+                  };
+                  window.sessionStorage.setItem("answervice.report.artifact", JSON.stringify(draftBlock));
+                  setArtifactNotice(`Artifact ${artifactId}를 보고서 초안 후보로 선택했습니다.`);
+                }}
               />
               {artifactNotice && <p className="artifact-notice" role="status">{artifactNotice}</p>}
             </div>

@@ -81,6 +81,7 @@
 
 - 문서 위치·번호·파일명·헤더·템플릿 매핑의 단일 기준은 `docs/문서관리규칙.md`다.
 - `.agents/skills/**/scripts`를 실행할 때 Python 3.10+ launcher인 `python` 또는 `python3`를 사용한다.
+- `.agents/skills/**/SKILL.md`의 `description`에는 실제 한글·영어 호출 표현을 중복 없이 포함하고, 본문 자연어는 한국어로 작성한다. Skill `name`과 code, command, path, API, library, error string은 원문을 유지한다.
 - `docs/`의 문서를 생성·편집·이동·검토할 때 `.agents/skills/manage-project-documents/SKILL.md`를 적용한다.
 - `docs/markdown/ai_docs/`는 AI 작성·외부 조사·과거 스냅샷을 모은 참고 폴더이며 공식 산출물이나 현재 구현 사실로 간주하지 않는다.
 - `docs/templates/`는 읽기 전용이다. 생성·수정·삭제·이동·이름 변경·덮어쓰기를 하지 않는다.

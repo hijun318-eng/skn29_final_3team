@@ -1,4 +1,4 @@
 interface:
   display_name: "프로젝트 WBS 갱신"
   short_description: "실행 WBS 행에 영향 있는 검증된 작업만 갱신"
-  default_prompt: "Use $update-project-wbs only when verified work changes a mapped WBS task."
+  default_prompt: "$update-project-wbs를 사용해 검증된 작업이 연결된 WBS 행에 영향을 줄 때만 갱신해줘."

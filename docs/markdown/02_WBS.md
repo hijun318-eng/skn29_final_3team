@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.43 |
-| 문서 기준일 | 2026-08-03 15:42 |
+| 버전 | v7.44 |
+| 문서 기준일 | 2026-08-03 15:56 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-03 15:56 | 2.19, 3.9~3.11, 6.1, 6.3 | dev `e780b75`·CI `30791740474` PASS를 기준으로 R2-W3-F1을 발행했다. required30 성공 case를 실제 SQL·result hash에 연결하고 gold120을 범주별 120건으로 완성한 뒤 R3가 동일 manifest를 실제 Node chain으로 소비하도록 순서를 고정했다. 외부 model·비용·secret 미승인과 기존 일정은 유지했다. | I3 평가 fixture 후속 승인 |
 | 2026-08-03 15:42 | 4.15, 4.19, 5.5, 5.10~5.11, 5.15, 6.3~6.4 | R4-W3의 권한별 SQL Plan·Result Cache, model call budget, 동시 2건·HTTP 429·Audit trace와 R5-W3의 전체 오류 UI, Artifact→Report, immutable Report proposal, 5원천 Catalog를 branch/dev CI로 확인해 dev에 통합했다. 해당 역할 행은 완료로 전환하되 R4-16 실제 Report 등록·worker·browser 접근성과 외부 Base model·Gold 잔여 근거가 남아 I3·I4 통합 행과 일정·간트 날짜는 유지했다. | Wave 3 R4·R5 통합·후속 분리 |
 | 2026-08-03 13:54 | 2.18~2.19, 3.5~3.6, 3.10~3.11, 3.13~3.15, 4.15, 4.19, 5.10~5.11, 5.15, 6.3 | I2 통합 dev `744592a`·CI `30785580556` PASS를 기준으로 R1~R5 Wave 3 실행 묶음을 READY 발행했다. 5-source·평가 fixture, Node·Base 비교·serving client, Cache·권한, Report proposal·Catalog와 I3 통합 판정 행을 진행으로 전환했다. model download·RunPod·비용·secret·외부 배포·데이터 전송은 승인하지 않았고 일정·간트 날짜는 변경하지 않았다. | Wave 3 실행 승인 |
 | 2026-08-03 13:30 | 4.21, 5.4~5.8, 6.2 | R4 production image의 blank·기존 DB startup과 실제 Template→Trino runtime, R5 제품 `dae606f`·최종 `ab1d725`의 production HTTP client 및 성공·재질문·차단·source 실패 browser trace, branch CI `30782796303`, dev `56cbf08`·CI `30784368551`, R1 통합 22건 PASS를 확인했다. R4-20, R5-03·05~07과 I2 판정을 완료로 전환하되 W3까지 이어지는 R5-04와 필수 30·Gold 120 관리는 진행으로 유지했다. 일정·간트 날짜는 변경하지 않았다. | I2 실제 전체 왕복 완료 |
@@ -437,6 +438,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.44 | 2026-08-03 15:56 | R2-W3-F1을 READY로 발행해 required30 결과 hash 연결과 gold120 완성을 2.19·6.1·6.3에 연결했다. R3 실제 manifest 소비는 R2 통합 후로 순서를 고정했으며 일정과 외부 권한은 변경하지 않았다. |
 | v7.43 | 2026-08-03 15:42 | R4-W3·R5-W3 제품·handoff·branch/dev CI를 4.15·4.19·5.5·5.10~5.11·5.15에 연결해 완료로 전환했다. Report 공통 등록·worker·browser 접근성과 외부 Base model·Gold 잔여 근거가 남아 6.3~6.4는 진행·대기로 유지하고 일정·간트 날짜는 변경하지 않았다. |
 | v7.42 | 2026-08-03 13:54 | I2 검증 dev·CI를 기준으로 R1~R5 Wave 3를 READY 발행하고 5-source·model·Cache·Report·Catalog·I3 관련 행을 진행으로 전환했다. 외부 비용·model download·secret·배포는 승인하지 않았으며 일정·간트 날짜는 유지했다. |
 | v7.41 | 2026-08-03 13:30 | R4 실제 Template·Trino/image와 R5 production HTTP/browser 네 경로, 통합 22건 및 branch/dev CI PASS를 4.21·5.4~5.8·6.2에 연결해 해당 I2 완료분을 완료로 전환했다. W3 범위인 5.5와 필수 30·Gold 120 관리는 진행으로 유지하고 일정·간트 날짜는 변경하지 않았다. |

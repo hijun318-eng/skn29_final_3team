@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.54 |
-| 문서 기준일 | 2026-08-03 15:50 |
+| 버전 | v2.55 |
+| 문서 기준일 | 2026-08-03 15:56 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -183,6 +183,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R5-W2-F2 | Wave 2 follow-up | R5 | 없음 → I2 | R5-01·03~07 실제 API 보완 | production HTTP client·실제 backend 화면 trace | `MERGED_DEV` |
 | R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `IN_PROGRESS` |
 | R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `MERGED_DEV` |
+| R2-W3-F1 | Wave 3 follow-up | R2 | 없음 → I3 | R2-18 평가 fixture 보강 | required30 결과 hash 연결·gold120 완성 | `READY` |
 | R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `MERGED_DEV` |
 | R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
 | R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
@@ -1217,6 +1218,40 @@ HANDOFF=R3/R4/R5에 5-source fixture·watermark·실패 case를, R1에 Gold mani
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff manifest의 commit·seung push 승인; dependency 설치·외부 image pull·비용·배포·secret·외부 데이터 전송·dev merge 불가
 ```
 
+### R2-W3-F1
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W3-F1
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R2-18 required30 결과 계약 강화·gold120 완성
+CURRENT_TASK_CARD_ID=R2-18
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=e780b75798188331964e55c2437965b78b290211
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R2-W3-F1@e780b75
+CONTRACT_VERSION=I1-v1.0.0
+DATA_CONTRACT_VERSION=I3-DATA-v1.1.0-DRAFT
+EVALUATION_MANIFEST_VERSION=EVAL-DATA-I3-v1.1.0-DRAFT
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30791740474 PASS
+R1_REVIEW_EVIDENCE=required30 30건과 gold 후보 5건의 수량·범주·split은 유효하지만 성공 case의 expected_query_result가 실제 SQL·result hash가 아닌 참조 문자열이고, 모든 35건이 REVIEW·R1/R3 PENDING이며 R3 runner는 inventory만 소비함
+GOLD_CATEGORY_PLAN=단일 source 25; 승인 2-source JOIN 20; 승인 3-source JOIN 20; 모호·근거 부족 20; 권한·금지 20; source 실패·timeout·partial 15 = 120
+ALLOWED_PATHS=infrastructure/database/sql/queries/**; infrastructure/database/scripts/**; src/data/**; tests/data/**
+FORBIDDEN_PATHS=app/backend/**; src/ai/**; src/modelops/**; evals/**; frontend·Report; root Compose·.env.example·CI; R1/R3/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=required30 30건과 gold120 120건을 중복 없이 제공하고 성공 case의 expected_query_result를 i3_contract의 catalog check 또는 승인 JOIN gold fixture ID·SQL·sha256으로 해석·검증하며 evidence 파일 존재, data/schema/seed/scenario/policy version, category 수량, paraphrase_group split 누수 0건을 자동 검사한다. R1·R3 승인 전 case status는 REVIEW를 유지하고 단순 문장 복제로 수량을 채우지 않는다.
+ACCEPTANCE_IDS=AC1_REQUIRED30_RESULT_HASH;AC2_GOLD120_COMPLETE;AC3_CATEGORY_AND_SPLIT;AC4_EVIDENCE_AND_VERSION
+TEST_COMMANDS=python -m json.tool src/data/evaluation_fixture_manifest.i3.v1.json; python -m unittest discover -s tests/data -p "test_*.py"; python -m unittest tests.ai.test_wave3 -v; python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_JSON;T2_DATA_TESTS;T3_AI_CONSUMER;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=실제 고객·외부 데이터 필요; 승인되지 않은 JOIN·새 원천·schema 변경 필요; expected result hash 불일치; category·split·evidence 검증 실패; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R3에 EVAL-DATA-I3-v1.1.0 manifest와 case→SQL/result hash 해석 계약을, R1에 required30·gold120 범주별 수량·검증·미실행 항목을 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff manifest의 commit·seung push 승인; dependency 설치·외부 image pull·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
+
 ### R3-W3
 
 ```text
@@ -1418,6 +1453,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.55 | 2026-08-03 15:56 | dev `e780b75`·CI `30791740474` PASS를 기준으로 R2-W3-F1을 READY 발행했다. required30 성공 case의 SQL·result hash 연결과 gold120 120건 완성을 우선하며, R3 후속은 이 manifest가 dev에 통합된 뒤 재발행한다. 외부 데이터·image pull·model download·비용·secret은 승인하지 않았다. |
 | v2.54 | 2026-08-03 15:50 | Wave 3 요약표와 상세 카드의 상태를 R2~R5 `MERGED_DEV`로 정합화하고, R1 기본 소유 파일인 `AGENTS.md`를 R1-W3 허용 경로에 반영했다. CI run `30791392982`는 Python·Compose·문서 검증 PASS였으나 이 상세 경로 누락으로 role-scope만 실패해 후속 CI 재검증 대상으로 기록했다. |
 | v2.53 | 2026-08-03 15:42 | R4 제품 `3c2ee47`·최종 `70d9e56`과 R5 제품 `e6e527a`·최종 `1c33f1c`의 role gate·branch CI를 확인해 순서대로 dev `c89a1a0`·`4106b6d`에 통합하고 dev CI `30790048113`·`30790451402` PASS를 확인했다. R4-W3·R5-W3는 `MERGED_DEV`로 전환했으며 Report 공통 등록·browser 접근성과 외부 Base model·Gold 잔여 근거가 남아 I3는 진행 상태를 유지한다. |
 | v2.52 | 2026-08-03 15:10 | R3-W3 제품 `5b13828`·최종 `0ca0096`의 Context 제한 Node2·1회 repair·R2 평가 manifest 소비·timeout/fallback/circuit/trace와 branch CI `30789043209` PASS를 확인해 dev `41f5788`에 통합하고 dev CI `30789184985` PASS를 확인했다. 외부 Base model·RunPod/GPU/비용과 Gold120 나머지는 I3 미완료 증거로 유지하고, R4-W3를 최신 R3 model client 소비 기준 `R4-W3@41f5788`로 재발행했다. |

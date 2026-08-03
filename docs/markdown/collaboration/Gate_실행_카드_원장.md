@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.76 |
-| 문서 기준일 | 2026-08-04 03:01 |
+| 버전 | v2.77 |
+| 문서 기준일 | 2026-08-04 03:21 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1671,7 +1671,7 @@ CONTRACT_NOTE=카드의 MODEL_RESPONSE_INVALID 표기는 동결 OPENAPI-v1.0.0�
 ### R1-W3-F1
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1698,6 +1698,40 @@ STOP_CONDITIONS=누적 비용 USD 15 도달 예상; task 외 Pod·container·vol
 HANDOFF=실제 product HTTP trace·model 응답 판정·latency·artifact/evidence·회귀·artifact hash·비용·task resource cleanup과 I3 승인 또는 후속 병목을 전 역할에 전달
 EXTERNAL_ACTION_PERMISSION=사용자가 승인한 누적 USD 15 한도 안에서 task 전용 RunPod A40 Pod 생성·고정 serving image와 Qwen3-4B 다운로드·합성 요청 전송·localhost SSH tunnel·task backend container build/run·결과 회수·정확한 task Pod와 task container 삭제, R1 허용 경로 commit·junhee/dev push 승인. 다른 Pod·Docker project·container·volume 변경, public endpoint·secret 출력/commit, 실제 고객 데이터, LoRA 재학습·제품 기본값 전환은 불가
 COST_BASELINE_USD=이전 실측·추정 누적 1.015075; 최종 provider billing 지연 시 예상값과 확정 여부를 분리 기록
+RESULT_EVIDENCE=제품 기본 timeout 15초는 15,593.1ms에 MODEL INTERNAL_ERROR·query/Artifact 없음으로 안전 실패. 60초에서도 16,054.139ms로 동일해 timeout이 아님을 확인. Base 원응답 2건은 762/767자·SHA-256 0618feb1da5b.../f12f0d00ec2b...이며 JSON line1 col1 실패, JSON object mode는 `query` key만 생성해 node2 필수 field가 누락됐다. 실제 R3 node2 schema의 guided_json은 1,680자·SHA-256 0a938bc0eaf5...·schema PASS였으나 fake Context가 pms_guests.guest_id만 승인하고 metric은 pms_stays.room_revenue를 요구해 MODEL PASS 뒤 G2 RESOURCE_POLICY_MISSING, 1회 repair 뒤 SQL_POLICY_BLOCKED로 종료
+COST_AND_CLEANUP=task Pod fohruepmj5cjnt A40 USD0.44/h, 로컬 추적 875.833초로 신규 예상 USD0.107045·예상 누적 USD1.122120. provider billing row는 삭제 직후 pending. exact Pod GET 404·active Pods 0, task backend container·image·SSH tunnel·known_hosts task endpoint 제거 완료. 기존 Docker project·container·volume 변경 없음
+BLOCKER=R4 transport가 R3 response schema를 structured output으로 전달해야 하며 실제 제품 성공 trace는 fake data Context가 아니라 승인된 I2 synthetic Context와 read-only Trino로 재검증해야 한다. R4 code와 R2 data source를 R1이 대신 수정하지 않고 후속 카드로 분리
+```
+
+### R4-W3-F2
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W3-F2
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R4-08 R3 response schema 기반 structured output transport 보완
+CURRENT_TASK_CARD_ID=R4-08
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=95c0eff4cbac8fa550d0e98112b4a271141c2069
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W3-F2@95c0eff
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+SERVING_MANIFEST_VERSION=SERVING-v0.2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+ALLOWED_PATHS=app/backend/app/adapters/contract_model.py; app/backend/README.md; tests/backend/test_production_model.py; tests/backend/test_analysis_pipeline.py; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/ai/**; src/modelops/**; evals/**; app/backend/app/adapters/fake_data_platform.py; .env; API key; root Compose·CI; infrastructure/database/**; frontend·Report; R1/R2/R3/R5 소유 문서
+ACCEPTANCE_CRITERIA=각 node의 실제 R3 `<node>_response` JSON schema를 contract bundle에서 읽어 `$defs`와 함께 vLLM `guided_json`에 전달한다. node별 field를 R4에 복제·하드코딩하지 않고 기존 temperature 0·max_tokens 1500·enable_thinking false·prompt·payload·token 처리와 `ProductionModelClient` 선검증·fallback 차단을 보존한다. node2·node2_repair·node3 모두 올바른 response schema를 선택하고 schema 파일 누락·unknown node·HTTP·invalid JSON·schema 오류는 안전 실패한다. fake·contract-fake mode와 OpenAPI는 변경하지 않는다. 실제 RunPod·I2 Trino 재실행이나 I3 통과는 주장하지 않는다.
+ACCEPTANCE_IDS=AC1_SCHEMA_FROM_CONTRACT;AC2_ALL_NODE_GUIDANCE;AC3_NO_SCHEMA_DUPLICATION;AC4_EXISTING_OPTIONS;AC5_SAFE_FAILURE;AC6_MODE_COMPAT;AC7_BACKEND_REGRESSION
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_production_model.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py; python -m compileall -q app/backend/app/adapters/contract_model.py; python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/jaehong/일일보고.md; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check origin/dev..HEAD
+TEST_COMMAND_IDS=T1_PRODUCTION_MODEL;T2_ANALYSIS_REGRESSION;T3_OPENAPI;T4_COMPILE;T5_REPORT;T6_ROLE_GATE;T7_DIFF_CHECK
+STOP_CONDITIONS=R3 schema file 수정·별도 dependency 필요; response field를 R4에 하드코딩해야 함; guided output이 R3 validate_payload를 우회함; secret·오류 본문 출력 필요; 허용 경로 밖 변경; RunPod·비용·외부 호출 필요; 필수 검증 실패
+HANDOFF=R1에 node별 guided schema source·request option·R3 validation 순서·fallback 차단·backend/OpenAPI 회귀와 다음 실제 I2 synthetic product trace 조건을 전달
+EXTERNAL_ACTION_PERMISSION=R3 contract와 vLLM 0.10.2 공식 기능의 로컬 읽기, 허용 경로와 R4 개인 일일보고의 commit·jaehong push 승인; dependency 설치·RunPod·비용·secret 사용·외부 호출·dev merge 불가
 ```
 
 ## Wave 4 상세 계획 카드
@@ -1792,6 +1826,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.77 | 2026-08-04 03:21 | R1-W3-F1 live product trace는 Base가 plain 응답·JSON object mode에서 R3 schema를 지키지 못해 MODEL 안전 실패했고, 실제 R3 schema의 guided_json은 schema PASS였지만 fake Context의 asset·metric 불일치로 G2 repair 뒤 차단됐다. task Pod·container·image·tunnel을 정확히 제거하고 예상 신규 USD0.107045를 기록했다. schema-guided transport만 보완하는 R4-W3-F2를 READY 발행했으며 실제 I2 synthetic trace 전 I3는 차단한다. |
 | v2.76 | 2026-08-04 03:01 | R4 endpoint 연결과 dev CI `30839298442` PASS 뒤 남은 실제 제품 trace를 위해 R1-W3-F1을 READY 발행했다. 누적 USD 15 안에서 task 전용 A40 Base endpoint와 task backend만 사용하고 synthetic `/analysis`의 성공 또는 MODEL 안전 실패를 판정하며, 실제 성공 trace 없이는 I3를 승인하지 않도록 고정했다. |
 | v2.75 | 2026-08-04 02:58 | R4-W3-F1의 OpenAI 호환 Base endpoint transport, 고정 생성 옵션, R3 schema 선검증과 timeout·invalid JSON·fallback·circuit open 안전 실패를 검수해 dev에 통합했다. Source CI `30838961585`는 Python 150건·OpenAPI 4건과 역할·문서·quality gate를 통과했다. 동결 OpenAPI에 없는 `MODEL_RESPONSE_INVALID` 대신 기존 `INTERNAL_ERROR`를 유지했으며 실제 RunPod 제품 전체 trace 전 I3는 진행 상태다. |
 | v2.74 | 2026-08-04 02:43 | R3 Base serving과 최종 dev CI `30837830356` PASS를 기준으로 R4-W3-F1을 READY 발행했다. 기존 ContractModelAdapter·ProductionModelClient를 재사용해 명시적 openai mode만 실제 endpoint를 호출하고, timeout·schema·circuit·fallback을 fake 성공이 아닌 Control Plane 안전 실패로 처리하도록 범위를 제한했다. RunPod 재기동·비용·secret·I3 통과는 승인하지 않았다. |

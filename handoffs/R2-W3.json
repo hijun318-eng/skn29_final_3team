@@ -3,7 +3,7 @@
   "ROLE": "R2",
   "BRANCH": "seung",
   "BASE_SHA": "744592ab129ed44c0cfcf5cf860b8945b011a324",
-  "RESULT_SHA": "33e17dfc326c130edb9f0257070b0c575dcca52d",
+  "RESULT_SHA": "d86919cbcef8be0c6c5a1e03bb31d63b57b13eb1",
   "DIRECTIVE_TOKEN": "R2-W3@744592a",
   "SYNCED_DEV_SHA": "d78259eb30bf952f2ec8245ad5ddfc5382ea376d",
   "COMPLETED_CARDS": [
@@ -65,31 +65,34 @@
   ],
   "TEST_RESULTS": [
     {
+      "id": "T3_DATA_TESTS",
       "name": "python -m unittest discover -s tests/data -p \"test_*.py\" (20 passed)",
-      "status": "PASS"
+      "status": "PASS",
+      "evidence": "20 tests passed in 0.054s"
     },
     {
+      "id": "T2_DATABASE_VERIFY",
       "name": "powershell -NoProfile -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify.ps1",
       "status": "PASS",
       "evidence": "R2_SERVICE_FRAGMENT_VERIFIED, source row counts, I2_GOLD_HASH_VERIFIED, DATABASE_CONTRACT_VERIFIED"
     },
     {
-      "name": "powershell -NoProfile -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify-i3.ps1",
-      "status": "PASS",
-      "evidence": "5 catalog hashes, 2 Gold hashes, I3_DATABASE_CONTRACT_VERIFIED"
-    },
-    {
+      "id": "T1_COMPOSE",
       "name": "docker compose -f infrastructure/database/compose.yml config",
       "status": "PASS",
       "evidence": "configuration rendered; unset local env variables emitted blank-value warnings"
     },
     {
-      "name": "python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260803 docs/markdown/daily_reports/seung/일일보고.md",
-      "status": "PASS"
+      "id": "T4_ROLE_GATE",
+      "name": "python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS",
+      "evidence": "R2-W3 role gate rerun on the final handoff manifest commit"
     },
     {
+      "id": "T5_DIFF_CHECK",
       "name": "git diff --check",
-      "status": "PASS"
+      "status": "PASS",
+      "evidence": "git diff --check exit code 0"
     }
   ],
   "NOT_RUN": [
@@ -102,5 +105,18 @@
   "EXTERNAL_APPROVAL_REQUIRED": [
     "Approve DataHub image availability before executing ingestion; do not pull images as part of R2-W3."
   ],
-  "REQUESTED_DECISION": "dev 병합"
+  "REQUESTED_DECISION": "dev 병합",
+  "PRODUCT_RESULT_SHA": "33e17dfc326c130edb9f0257070b0c575dcca52d",
+  "ADDITIONAL_TEST_RESULTS": [
+    {
+      "name": "powershell -NoProfile -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify-i3.ps1",
+      "status": "PASS",
+      "evidence": "5 catalog hashes, 2 Gold hashes, I3_DATABASE_CONTRACT_VERIFIED"
+    },
+    {
+      "name": "R2 개인 일일보고 validation",
+      "status": "PASS",
+      "evidence": "20260803 report validator PASS"
+    }
+  ]
 }

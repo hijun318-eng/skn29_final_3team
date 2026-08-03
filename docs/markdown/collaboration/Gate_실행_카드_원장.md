@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.77 |
-| 문서 기준일 | 2026-08-04 03:21 |
+| 버전 | v2.78 |
+| 문서 기준일 | 2026-08-04 03:27 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1706,7 +1706,7 @@ BLOCKER=R4 transport가 R3 response schema를 structured output으로 전달해�
 ### R4-W3-F2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -1732,6 +1732,43 @@ TEST_COMMAND_IDS=T1_PRODUCTION_MODEL;T2_ANALYSIS_REGRESSION;T3_OPENAPI;T4_COMPIL
 STOP_CONDITIONS=R3 schema file 수정·별도 dependency 필요; response field를 R4에 하드코딩해야 함; guided output이 R3 validate_payload를 우회함; secret·오류 본문 출력 필요; 허용 경로 밖 변경; RunPod·비용·외부 호출 필요; 필수 검증 실패
 HANDOFF=R1에 node별 guided schema source·request option·R3 validation 순서·fallback 차단·backend/OpenAPI 회귀와 다음 실제 I2 synthetic product trace 조건을 전달
 EXTERNAL_ACTION_PERMISSION=R3 contract와 vLLM 0.10.2 공식 기능의 로컬 읽기, 허용 경로와 R4 개인 일일보고의 commit·jaehong push 승인; dependency 설치·RunPod·비용·secret 사용·외부 호출·dev merge 불가
+RESULT_SHA=b873ef3ce18807eb98fb859649c63439ed4f6e82
+SOURCE_CI_EVIDENCE=GitHub Actions run 30841201329 PASS; 전체 Python·OpenAPI·document quality·role scope·quality gate PASS
+DEV_MERGE_SHA=6ebee36a4de12bb147e4843ac370080a100dc486
+R1_REVIEW=node별 실제 R3 response schema를 contract bundle에서 읽어 cached guided_json으로 전달하고, schema field를 R4에 복제하지 않은 상태에서 기존 고정 생성 옵션·ProductionModelClient 검증·fallback 차단·fake mode·OpenAPI 보존을 code·22건 local test·전체 CI로 수용
+```
+
+### R1-W3-F2
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F2
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 guided Base endpoint와 실제 I2 synthetic Context·Trino 제품 trace
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=6ebee36a4de12bb147e4843ac370080a100dc486
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F2@6ebee36
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+SERVING_MANIFEST_VERSION=SERVING-v0.2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+DATA_CONTRACT_VERSION=DATA-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume의 생성·수정·삭제·재시작
+ACCEPTANCE_CRITERIA=dev `6ebee36`의 R3 schema guided transport를 task 전용 RunPod A40 고정 Qwen3-4B endpoint와 task backend container에 연결한다. backend는 `DATA_PLATFORM_MODE=i2`, `TRINO_URL=http://host.docker.internal:18080`, read-only `TRINO_USER=answervice`로 이미 검증된 hotel-synthetic-db Trino를 조회만 하며 해당 project·container·volume·설정을 변경하지 않는다. 합성 일반 질문 `/analysis`가 MODEL→G2→QUERY→G3→ARTIFACT까지 성공하면 model·source·query·artifact evidence와 latency를 확인하고, 실패하면 마지막 stage·오류·query/Artifact 부재와 guided schema·G2·Trino 원인을 분리한다. 정상·timeout·invalid JSON·fallback·circuit·OpenAPI·integration 회귀를 함께 검수한다. 결과·hash·비용·cleanup을 기록하고 task Pod·backend container·image·tunnel만 제거한다. 성공 trace와 필수 회귀·보안 확인 전 I3를 승인하지 않는다.
+ACCEPTANCE_IDS=AC1_GUIDED_BASE_ENDPOINT;AC2_I2_SYNTHETIC_CONTEXT;AC3_READ_ONLY_TRINO;AC4_PRODUCT_SUCCESS_OR_EXACT_BLOCKER;AC5_SECRET_REDACTED;AC6_REGRESSION;AC7_COST_LIMIT;AC8_EXACT_CLEANUP;AC9_I3_DECISION
+TEST_COMMANDS=task backend health; I2 data source health; synthetic POST /analysis fixed headers; response trace·artifact·evidence inspection; python -m pytest -p no:cacheprovider tests/backend/test_production_model.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py; python -m unittest discover -s tests/integration -p "test_*.py"; exact task container/image/tunnel cleanup; RunPod exact Pod GET 404 and active Pods 0; verify existing Docker container IDs·status unchanged; document·WBS·report validation; git diff --check
+TEST_COMMAND_IDS=T1_BACKEND_HEALTH;T2_I2_HEALTH;T3_LIVE_ANALYSIS;T4_EVIDENCE;T5_BACKEND_REGRESSION;T6_INTEGRATION;T7_TASK_CLEANUP;T8_POD_CLEANUP;T9_DOCKER_SCOPE;T10_DOCUMENTS
+STOP_CONDITIONS=누적 비용 USD 15 도달 예상; hotel-synthetic-db 또는 다른 project의 write·restart·configuration change 필요; public model endpoint 필요; secret 출력·commit 필요; 실제 고객 데이터 전송 필요; R2~R5 code 변경 필요; 필수 안전 경계 위반
+HANDOFF=guided product HTTP trace·model/G2/query/G3/artifact evidence·latency·read-only Trino·회귀·비용·task cleanup과 I3 승인 또는 정확한 후속 병목을 전 역할에 전달
+EXTERNAL_ACTION_PERMISSION=사용자가 승인한 누적 USD 15 한도 안에서 task 전용 RunPod A40 Pod 생성·고정 serving image와 Qwen3-4B 다운로드·합성 요청 전송·localhost SSH tunnel·task backend container build/run·결과 회수·정확한 task Pod·container·image·tunnel 삭제와 기존 hotel-synthetic-db Trino의 read-only synthetic 조회, R1 허용 경로 commit·junhee/dev push 승인. 다른 Pod·Docker project·container·volume 변경, public endpoint·secret 출력/commit, 실제 고객 데이터, LoRA 재학습·제품 기본값 전환은 불가
+COST_BASELINE_USD=이전 실측·추정 누적 1.122120; 최종 provider billing 지연 시 예상값과 확정 여부를 분리 기록
 ```
 
 ## Wave 4 상세 계획 카드
@@ -1826,6 +1863,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.78 | 2026-08-04 03:27 | R4-W3-F2의 node별 R3 response schema guided transport와 전체 CI `30841201329` PASS를 검수해 dev에 통합했다. 후속 R1-W3-F2는 task A40·backend와 기존 hotel-synthetic-db Trino의 read-only synthetic 조회만 허용해 실제 MODEL→G2→QUERY→G3→ARTIFACT trace를 판정하고, 다른 Docker resource 변경과 I3 조기 승인을 금지했다. |
 | v2.77 | 2026-08-04 03:21 | R1-W3-F1 live product trace는 Base가 plain 응답·JSON object mode에서 R3 schema를 지키지 못해 MODEL 안전 실패했고, 실제 R3 schema의 guided_json은 schema PASS였지만 fake Context의 asset·metric 불일치로 G2 repair 뒤 차단됐다. task Pod·container·image·tunnel을 정확히 제거하고 예상 신규 USD0.107045를 기록했다. schema-guided transport만 보완하는 R4-W3-F2를 READY 발행했으며 실제 I2 synthetic trace 전 I3는 차단한다. |
 | v2.76 | 2026-08-04 03:01 | R4 endpoint 연결과 dev CI `30839298442` PASS 뒤 남은 실제 제품 trace를 위해 R1-W3-F1을 READY 발행했다. 누적 USD 15 안에서 task 전용 A40 Base endpoint와 task backend만 사용하고 synthetic `/analysis`의 성공 또는 MODEL 안전 실패를 판정하며, 실제 성공 trace 없이는 I3를 승인하지 않도록 고정했다. |
 | v2.75 | 2026-08-04 02:58 | R4-W3-F1의 OpenAI 호환 Base endpoint transport, 고정 생성 옵션, R3 schema 선검증과 timeout·invalid JSON·fallback·circuit open 안전 실패를 검수해 dev에 통합했다. Source CI `30838961585`는 Python 150건·OpenAPI 4건과 역할·문서·quality gate를 통과했다. 동결 OpenAPI에 없는 `MODEL_RESPONSE_INVALID` 대신 기존 `INTERNAL_ERROR`를 유지했으며 실제 RunPod 제품 전체 trace 전 I3는 진행 상태다. |

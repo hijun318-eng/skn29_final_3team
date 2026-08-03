@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.64 |
-| 문서 기준일 | 2026-08-04 03:21 |
+| 버전 | v7.65 |
+| 문서 기준일 | 2026-08-04 03:27 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 03:27 | 3.14, 4.9, 6.3 | R4의 node별 R3 response schema guided transport가 관련 22건과 source 전체 CI를 통과해 dev에 통합됐다. task A40·backend와 기존 hotel-synthetic-db Trino의 read-only synthetic 조회만 사용하는 R1-W3-F2를 발행해 실제 MODEL→G2→QUERY→G3→ARTIFACT trace를 재검증한다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R4 schema 보완 완료·실제 I2 제품 trace 승인 |
 | 2026-08-04 03:21 | 3.14, 4.9, 6.3 | 실제 Base endpoint와 FastAPI 제품 trace에서 기본·60초 timeout 모두 MODEL 안전 실패를 확인했다. 원응답은 JSON이 아니었고 JSON object mode도 R3 필수 field를 누락했지만 실제 R3 schema의 guided_json은 schema PASS였다. 이후 fake Context의 asset·metric 불일치로 G2 repair 뒤 차단돼 R4-W3-F2 structured output 보완과 I2 synthetic Context 재검증으로 분리했다. task Pod·container·image·tunnel을 제거했고 신규 비용은 약 USD0.107045로 추정된다. 상태·일정·간트는 유지한다. | 안전 실패 확인·R4 transport 재작업 승인 |
 | 2026-08-04 03:01 | 4.9, 6.3 | R4 endpoint 연결과 dev CI PASS 뒤 실제 제품 trace를 확인하는 R1-W3-F1을 발행했다. 누적 USD 15 안에서 task 전용 A40 Base endpoint와 task backend를 연결해 synthetic `/analysis`의 성공 trace 또는 MODEL 안전 실패를 판정하고 정확한 resource cleanup을 요구한다. 실제 실행 전이므로 4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R1 live product trace 승인·실행 전 |
 | 2026-08-04 02:58 | 3.14, 4.9, 6.3 | R4-W3-F1의 실제 Base endpoint transport를 FastAPI 분석 경로에 통합했다. 고정 생성 옵션과 R3 schema 선검증을 적용하고 timeout·잘못된 JSON·fallback·circuit open이 query나 Artifact 성공으로 저장되지 않음을 관련 21건과 source CI Python 전체 150건·OpenAPI 4건으로 확인했다. 3.14·4.9 완료는 유지하며 실제 RunPod endpoint의 제품 전체 trace 전이므로 6.3과 일정·간트는 유지한다. | R4 제품 연결 code 완료·R1 live trace 대기 |
@@ -458,6 +459,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.65 | 2026-08-04 03:27 | R4 guided transport를 dev에 통합하고 실제 I2 synthetic Context·read-only Trino 제품 trace를 위한 R1-W3-F2를 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
 | v7.64 | 2026-08-04 03:21 | R1 live product trace의 Base schema 실패와 fake Context 불일치를 확인해 R4 structured output 보완과 실제 I2 synthetic trace로 분리했다. cleanup과 예상 비용을 기록하고 6.3 진행·일정·간트를 유지했다. |
 | v7.63 | 2026-08-04 03:01 | 실제 Base endpoint와 FastAPI 제품 경로의 synthetic HTTP trace를 확인하는 R1-W3-F1을 4.9·6.3에 연결했다. 실행 전이라 상태·일정·간트는 유지했다. |
 | v7.62 | 2026-08-04 02:58 | R4-W3-F1의 Base endpoint transport와 실패 안전 처리를 dev에 통합했다. 실제 RunPod 제품 전체 trace 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트를 유지했다. |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.63 |
-| 문서 기준일 | 2026-08-03 17:46 |
+| 버전 | v2.64 |
+| 문서 기준일 | 2026-08-03 17:55 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1493,9 +1493,9 @@ DIRECTIVE_TOKEN=R3-W3-F2@6525423
 MODEL_CONTRACT_VERSION=MODEL-v1.0.0
 PROMPT_VERSION=PROMPT-v1.0.0
 TRAINING_PACKAGE_SOURCE_SHA256=694ddcf4fe2f5d912383f9d871f33e153fd44ed751c4cdc111e72a72311f7c5d
-ALLOWED_PATHS=src/ai/training/**
+ALLOWED_PATHS=src/ai/training/**; tests/ai/test_training_dataset.py; tests/ai/test_training_scenarios.py; tests/ai/test_training_verification.py
 FORBIDDEN_PATHS=__pycache__/**; *.pyc; 제공된 학습 JSONL 원본; app/backend/**; src/data/**; infrastructure/database/**; frontend·Report; root Compose·env·CI; R1/R2/R4/R5 소유 문서
-ACCEPTANCE_CRITERIA=training.zip의 source·README·example·requirements 10개 파일을 src/ai/training에 반입하되 compiled cache를 제외하고, Python 7개 AST parse·Qwen 1,350건 validate·검증 원본 재빌드 SHA-256 일치·기존 AI 회귀를 통과
+ACCEPTANCE_CRITERIA=training.zip의 source·README·example·requirements 10개 파일을 src/ai/training에 반입하되 compiled cache를 제외하고, 동작을 고정하는 training 전용 AI test 3개와 Python 7개 AST parse·Qwen 1,350건 validate·검증 원본 재빌드 SHA-256 일치·기존 AI 회귀를 통과
 ACCEPTANCE_IDS=AC1_PACKAGE_CONTENTS;AC2_NO_COMPILED_CACHE;AC3_DATASET_VALIDATE;AC4_REPRODUCIBLE_BUILD;AC5_AI_REGRESSION
 TEST_COMMANDS=python AST parse src/ai/training/*.py; python -m src.ai.training.dataset validate <Qwen JSONL>; python -m src.ai.training.dataset build <TrinoPASS JSONL> <temp output> 후 SHA-256 비교; python -m src.ai.training.train_lora --help; python -m src.ai.training.evaluate_lora --help; python -m unittest discover -s tests/ai -p "test_*.py"; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
 TEST_COMMAND_IDS=T1_AST;T2_DATASET_VALIDATE;T3_REBUILD_HASH;T4_TRAIN_HELP;T5_EVAL_HELP;T6_AI_TESTS;T7_ROLE_GATE;T8_DIFF_CHECK

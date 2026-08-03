@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.55 |
-| 문서 기준일 | 2026-08-03 15:56 |
+| 버전 | v2.56 |
+| 문서 기준일 | 2026-08-03 16:04 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -185,6 +185,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `MERGED_DEV` |
 | R2-W3-F1 | Wave 3 follow-up | R2 | 없음 → I3 | R2-18 평가 fixture 보강 | required30 결과 hash 연결·gold120 완성 | `READY` |
 | R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `MERGED_DEV` |
+| R3-W3-F1C | Wave 3 compatibility follow-up | R3 | 없음 → I3 | R3-10 평가 manifest 소비 호환 | partial/full gold count consumer 검증 | READY |
 | R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
 | R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
 | R1-W4 | Wave 4·08/24~09/02 | R1 | I4·RC1 → I5 | R1-11~13 | Report 통합·보안·장애·복구·성능·release manifest | `PLANNED` |
@@ -1252,6 +1253,37 @@ HANDOFF=R3에 EVAL-DATA-I3-v1.1.0 manifest와 case→SQL/result hash 해석 계�
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff manifest의 commit·seung push 승인; dependency 설치·외부 image pull·비용·배포·secret·외부 데이터 전송·dev merge 불가
 ```
 
+### R3-W3-F1C
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F1C
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-10 R2 평가 manifest partial/full count 소비 호환
+CURRENT_TASK_CARD_ID=R3-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=c8a943be94827778fad48a626b0810adce86972b
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F1C@c8a943b
+CONTRACT_VERSION=I1-v1.0.0
+INPUT_EVALUATION_MANIFEST_VERSION=EVAL-DATA-I3-v1.0.0→v1.1.0-DRAFT
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30792024162 PASS
+CHANGE_REQUEST_EVIDENCE=tests/ai/test_wave3.py가 gold120=5·REVIEW=35를 하드코딩해 R2-W3-F1 승인 결과 gold120=120·전체 150 case를 소비하면 필연적으로 실패함. R2는 tests/ai/** 금지이므로 R3 소유 경로에서 선행 호환 보완 필요
+ALLOWED_PATHS=evals/**; tests/ai/**
+FORBIDDEN_PATHS=source DDL·seed·src/data/**; app/backend/**·G1·G2·G3; frontend·Report; root Compose·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=R2 manifest의 declared required30·gold partial count와 실제 case 수를 비교하고 required30=30·gold target=120·gold partial 0~120 경계를 유지한다. 테스트는 현재 partial 5건과 full 120건을 모두 검증하며 특정 REVIEW 총수 35를 하드코딩하지 않는다. model runtime·Node 동작·평가 성공 판정은 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_DECLARED_COUNT;AC2_PARTIAL_AND_FULL_GOLD;AC3_REQUIRED30_AND_TARGET;AC4_NO_RUNTIME_CHANGE
+TEST_COMMANDS=python -m compileall -q evals tests/ai; python -m unittest discover -s tests/ai -p "test_*.py"; python -m unittest tests.data.test_i3_contract -v; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_COMPILE;T2_AI_TESTS;T3_DATA_CONSUMER;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=R2 manifest schema 변경 필요; required30=30·gold target=120 경계 완화 필요; runtime·Node 동작 변경 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R2에 partial/full count를 모두 소비하는 검증 기준을, R1에 변경 전후 테스트와 runtime 무변경 증거를 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고·handoff manifest의 commit·daesung push 승인; dependency 설치·model download·RunPod·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
 ### R3-W3
 
 ```text
@@ -1453,6 +1485,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.56 | 2026-08-03 16:04 | R2-W3-F1 구현 중 R3 소비자 테스트가 gold partial 5건·REVIEW 35건을 하드코딩해 full 120건 manifest를 차단하는 change request를 확인했다. dev `c8a943b`·CI `30792024162` 기준으로 R3-W3-F1C를 READY 발행해 partial/full count 호환만 선행 보완하며 runtime·Node 변경과 외부 권한은 승인하지 않았다. |
 | v2.55 | 2026-08-03 15:56 | dev `e780b75`·CI `30791740474` PASS를 기준으로 R2-W3-F1을 READY 발행했다. required30 성공 case의 SQL·result hash 연결과 gold120 120건 완성을 우선하며, R3 후속은 이 manifest가 dev에 통합된 뒤 재발행한다. 외부 데이터·image pull·model download·비용·secret은 승인하지 않았다. |
 | v2.54 | 2026-08-03 15:50 | Wave 3 요약표와 상세 카드의 상태를 R2~R5 `MERGED_DEV`로 정합화하고, R1 기본 소유 파일인 `AGENTS.md`를 R1-W3 허용 경로에 반영했다. CI run `30791392982`는 Python·Compose·문서 검증 PASS였으나 이 상세 경로 누락으로 role-scope만 실패해 후속 CI 재검증 대상으로 기록했다. |
 | v2.53 | 2026-08-03 15:42 | R4 제품 `3c2ee47`·최종 `70d9e56`과 R5 제품 `e6e527a`·최종 `1c33f1c`의 role gate·branch CI를 확인해 순서대로 dev `c89a1a0`·`4106b6d`에 통합하고 dev CI `30790048113`·`30790451402` PASS를 확인했다. R4-W3·R5-W3는 `MERGED_DEV`로 전환했으며 Report 공통 등록·browser 접근성과 외부 Base model·Gold 잔여 근거가 남아 I3는 진행 상태를 유지한다. |

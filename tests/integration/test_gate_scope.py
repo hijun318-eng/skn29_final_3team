@@ -19,15 +19,21 @@ class GateScopeTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.ledger = gate_scope.LEDGER.read_text(encoding="utf-8")
 
+    def generic_bundle(self) -> dict[str, str]:
+        bundle = dict(gate_scope.current_bundle(self.ledger, "seung"))
+        bundle.pop("TEST_COMMAND_IDS", None)
+        bundle.pop("ACCEPTANCE_IDS", None)
+        return bundle
+
     def test_latest_r4_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "jaehong")
-        self.assertEqual("R4-W2-F3", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("MERGED_DEV", bundle["STATUS"])
+        self.assertEqual("R4-W3", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("READY", bundle["STATUS"])
 
     def test_latest_r5_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "minji")
-        self.assertEqual("R5-W2-F2", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("MERGED_DEV", bundle["STATUS"])
+        self.assertEqual("R5-W3", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("READY", bundle["STATUS"])
 
     def test_terminal_transition_uses_previous_bundle_scope(self) -> None:
         current = {
@@ -107,7 +113,7 @@ class GateScopeTest(unittest.TestCase):
         self.assertIn("--diff-filter=ACMRD", command)
 
     def test_valid_handoff_with_external_work_needs_review(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "seung")
+        bundle = self.generic_bundle()
         changed = ["infrastructure/database/datahub/compose.fragment.yml"]
         handoff = gate_scope.handoff_template(
             bundle,
@@ -129,7 +135,7 @@ class GateScopeTest(unittest.TestCase):
         self.assertIn("external approval is required", reviews)
 
     def test_handoff_changed_files_must_match_git_diff(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "seung")
+        bundle = self.generic_bundle()
         handoff = gate_scope.handoff_template(
             bundle,
             "seung",
@@ -227,7 +233,7 @@ class GateScopeTest(unittest.TestCase):
         self.assertEqual([], reviews)
 
     def test_handoff_result_sha_must_match_checked_head(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "seung")
+        bundle = self.generic_bundle()
         handoff = gate_scope.handoff_template(
             bundle,
             "seung",
@@ -296,7 +302,7 @@ class GateScopeTest(unittest.TestCase):
         self.assertIn("required manifest is missing", notes[0])
 
     def test_submitted_manifest_is_loaded_and_validated(self) -> None:
-        bundle = dict(gate_scope.current_bundle(self.ledger, "seung"))
+        bundle = self.generic_bundle()
         bundle["STATUS"] = "REVIEW"
         changed = ["tests/data/test_source_registry.py"]
         handoff = gate_scope.handoff_template(
@@ -349,7 +355,7 @@ class GateScopeTest(unittest.TestCase):
 
     def test_residual_risk_report_requires_review_and_blocks_submission(self) -> None:
         """잔여 위험은 보존하되 terminal 제출 수용 전에는 차단한다."""
-        bundle = dict(gate_scope.current_bundle(self.ledger, "seung"))
+        bundle = self.generic_bundle()
         bundle["STATUS"] = "REVIEW"
         changed = ["tests/data/test_source_registry.py"]
         handoff = gate_scope.handoff_template(bundle, "seung", "a" * 40, changed)

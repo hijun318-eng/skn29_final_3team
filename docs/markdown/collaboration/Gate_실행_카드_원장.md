@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.85 |
-| 문서 기준일 | 2026-08-04 04:27 |
+| 버전 | v2.86 |
+| 문서 기준일 | 2026-08-04 04:39 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1999,7 +1999,7 @@ R1_REVIEW=제품 원문 question을 AnalysisService node2 payload와 ContractMod
 ### R1-W3-F5
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -2027,6 +2027,40 @@ STOP_CONDITIONS=USD15 예상 도달; 다른 Docker 변경·public endpoint·secr
 HANDOFF=실제 질문 raw·제품 trace·evidence·비용·cleanup과 I3 판정 또는 exact blocker 전달
 EXTERNAL_ACTION_PERMISSION=누적 USD15 안 task A40·고정 model·합성 localhost 요청·task backend·정확한 cleanup과 기존 synthetic Trino read-only 조회, R1 commit·junhee/dev push 승인. 다른 resource·public endpoint·secret·실제 고객 데이터·LoRA 변경 불가
 COST_BASELINE_USD=이전 실측·추정 누적 상한 1.345923
+RESULT=raw node2는 실제 질문·별도 question_id·guided schema·한 줄 SQL·LIMIT을 통과했고 제품 `/analysis`도 MODEL·G2를 통과했으나 QUERY_SOURCE_FAILED로 종료되어 G3·Artifact·evidence가 생성되지 않았다.
+ROOT_CAUSE=Base가 SQL placeholder와 무관한 `normalized_question`·`question_id`를 response parameters로 반환했고 R4 날짜 바인더가 non-ISO 값을 안전하게 거부했다. 진단 SQL hash는 `63d6325bcbad42da9c3904591150bc1a27077f130f4125183f39f9f66b9be04a`, G2는 PASS였다.
+EVIDENCE=제품 request `a3924833-0718-4e78-b819-4e80b015e974`는 HTTP 200·FAILED·repair 0·ROUTER~G2 PASS·QUERY FAILED였다. task Pod `zql141iuw1xdda`는 582.566초 뒤 404, 활성 Pod 0, 비용 상한 USD 0.071203·누적 상한 USD 1.417126이며 task container·image·tunnel 0과 기존 Trino ID·running·restart 0을 확인했다.
+BLOCKER=R3 node2 prompt가 response parameters를 SQL placeholder와 1:1로 제한하고 request metadata를 parameter로 반환하지 않게 한 뒤 실제 제품 trace를 다시 확인하기 전 I3 승인 불가
+```
+
+### R3-W3-F9
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F9
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-07 node2 SQL parameter 의미 고정
+CURRENT_TASK_CARD_ID=R3-07
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team\.wt\r3_w3
+BASE_BRANCH=dev
+BASE_SHA=908d0b31d0f00034697f59c0497b9d7bd8ee7039
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F9@908d0b3
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.4
+ALLOWED_PATHS=src/ai/prompt_registry.py; tests/ai/test_prompt_registry.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=node schema·training dataset·backend·data adapter·frontend·root Compose·.env·model binary
+ACCEPTANCE_CRITERIA=node2 prompt의 parameters는 SQL에 실제로 사용한 `:name` placeholder만 포함하고 이름이 placeholder와 1:1로 일치해야 하며, `question_id`·`normalized_question` 등 request metadata를 포함하지 않는다. placeholder가 없으면 빈 배열을 반환한다. 기존 actual-question·한 줄 read-only SELECT·LIMIT 규칙과 다른 prompt·schema·dataset은 보존하고 node2 prompt만 PROMPT-v1.0.4로 올린다.
+ACCEPTANCE_IDS=AC1_PARAMETER_PLACEHOLDER;AC2_METADATA_EXCLUSION;AC3_EMPTY_PARAMETERS;AC4_PROMPT_REGRESSION;AC5_SCOPE
+TEST_COMMANDS=python -m unittest tests.ai.test_prompt_registry; python -m unittest discover -s tests/ai -p test_*.py; git diff --check
+TEST_COMMAND_IDS=T1_PROMPT;T2_AI;T3_DIFF
+STOP_CONDITIONS=schema·dataset·backend 변경 필요; 날짜 값 생성 규칙 확장 필요; 기존 actual-question·LIMIT 규칙 회귀; test 실패
+HANDOFF=R1에 prompt version/hash·parameter 의미·metadata 제외·회귀 결과 전달
+EXTERNAL_ACTION_PERMISSION=없음 — local code·test·commit·daesung push만 승인
 ```
 
 ## Wave 4 상세 계획 카드
@@ -2121,6 +2155,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.86 | 2026-08-04 04:39 | R1-W3-F5에서 actual question·MODEL·G2는 통과했으나 Base가 request metadata를 SQL parameter로 반환해 안전한 날짜 바인더가 거부한 QUERY blocker를 확정했다. 비용·task cleanup·기존 Trino 무변경을 확인하고 R3-W3-F9로 SQL placeholder와 parameters의 1:1 의미만 PROMPT-v1.0.4에 고정했다. |
 | v2.85 | 2026-08-04 04:27 | R4-W3-F3의 제품 원문 question→normalized_question 전달과 CI `30845776821` PASS를 검수해 dev에 통합했다. R1-W3-F5는 actual question raw 입력과 동일 Base·I2 read-only 제품 trace를 판정하고 성공 전 I3 승인·다른 resource 변경을 금지했다. |
 | v2.84 | 2026-08-04 04:21 | R3-W3-F8의 optional normalized_question·ID 비의미 prompt와 CI `30845353451` PASS를 검수해 dev에 통합했다. R4-W3-F3는 제품 원문 질문을 service→adapter→R3 request로 그대로 전달하는 최소 변경만 READY 발행하며 schema·prompt·OpenAPI·generation option 변경을 금지했다. |
 | v2.83 | 2026-08-04 04:17 | R1-W3-F4 raw 고정 UUID는 schema·한 줄·LIMIT을 통과했지만 실제 제품의 무작위 request UUID에서는 MODEL invalid·circuit 안전 실패가 반복됐다. node2 계약에 실제 질문이 없어 Base가 UUID에 반응하는 근본 병목과 QUERY·Artifact 부재, cleanup·active Pods 0·예상 신규 상한 USD0.090978을 기록했다. R3-W3-F8로 optional normalized_question·ID 비의미 prompt만 호환 추가하고 실제 제품 재검증 전 I3를 차단한다. |

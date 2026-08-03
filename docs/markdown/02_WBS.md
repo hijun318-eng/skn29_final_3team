@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.72 |
-| 문서 기준일 | 2026-08-04 04:27 |
+| 버전 | v7.73 |
+| 문서 기준일 | 2026-08-04 04:39 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 04:39 | 3.14, 4.9, 6.3 | 실제 질문 Base·I2 제품 trace는 MODEL·G2까지 통과했지만 모델이 request metadata를 SQL parameter로 반환해 QUERY에서 안전 차단됐다. 비용 상한 USD 0.071203·누적 USD 1.417126과 task cleanup·기존 Trino 무변경을 확인하고, R3-W3-F9로 parameter 의미만 보완한다. 성공 trace 전이므로 기존 상태·일정·간트는 유지한다. | R1-W3-F5 차단·R3 parameter prompt 승인 |
 | 2026-08-04 04:27 | 3.14, 4.9, 6.3 | R4의 제품 원문 question→normalized question 전달이 23건·전체 CI를 통과해 dev에 통합됐다. actual question raw 입력과 동일 Base·I2 read-only 제품 전체 trace를 확인하는 R1-W3-F5를 발행했다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R4 질문 전달 완료·실제 제품 추적 승인 |
 | 2026-08-04 04:21 | 3.14, 4.9, 6.3 | R3의 optional normalized question·ID 비의미 prompt가 16건·전체 CI를 통과해 dev에 통합됐다. R4-W3-F3로 제품 원문 질문을 service→adapter→R3 request에 그대로 전달하는 최소 소비자 보완을 승인했다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R3 질문 계약 완료·R4 소비자 연결 승인 |
 | 2026-08-04 04:17 | 3.14, 4.9, 6.3 | raw 고정 UUID는 schema·한 줄 SQL·LIMIT을 통과했지만 실제 제품의 무작위 request UUID에서는 MODEL invalid와 circuit 안전 실패가 반복됐다. node2 request에 실제 질문이 없어 Base가 UUID에 반응하는 근본 계약 차이를 확인했고 QUERY·Artifact 없이 task resource를 제거했다. 신규 비용 상한은 약 USD0.090978이다. R3-W3-F8로 optional normalized question 계약을 호환 추가하며 상태·일정·간트는 유지한다. | 실제 질문 누락 계약 병목·R3 호환 보완 승인 |
@@ -466,6 +467,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.73 | 2026-08-04 04:39 | 실제 질문 제품 trace의 QUERY blocker를 SQL placeholder와 무관한 모델 parameters로 확정하고 R3-W3-F9를 3.14·4.9·6.3에 연결했다. 실제 성공 전 상태·일정·간트는 유지했다. |
 | v7.72 | 2026-08-04 04:27 | R4 실제 질문 전달을 dev에 통합하고 Base·I2 read-only 제품 trace R1-W3-F5를 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
 | v7.71 | 2026-08-04 04:21 | R3 normalized question 호환 계약을 dev에 통합하고 R4 service→adapter 소비자 연결을 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
 | v7.70 | 2026-08-04 04:17 | 실제 질문 없이 UUID만 전달하는 node2 계약 병목과 MODEL circuit 안전 실패·cleanup을 3.14·4.9·6.3에 연결하고 R3 optional normalized question 보완을 승인했다. 상태·일정·간트는 유지했다. |

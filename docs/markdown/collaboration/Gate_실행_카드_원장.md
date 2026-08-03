@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.58 |
-| 문서 기준일 | 2026-08-03 17:05 |
+| 버전 | v2.59 |
+| 문서 기준일 | 2026-08-03 17:15 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -188,7 +188,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W3-F1C | Wave 3 compatibility follow-up | R3 | 없음 → I3 | R3-10 평가 manifest 소비 호환 | partial/full gold count consumer 검증 | READY |
 | R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
 | R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
-| R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `READY` |
+| R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `MERGED_DEV` |
 | R1-W4 | Wave 4·08/24~09/02 | R1 | I4·RC1 → I5 | R1-11~13 | Report 통합·보안·장애·복구·성능·release manifest | `PLANNED` |
 | R2-W4 | Wave 4·08/24~09/02 | R2 | I4·RC1 → I5 | R2-17~19 + R2-03~16 회귀 | 5번째 source·빈 환경 재생성·schema/seed/watermark/hash 동결 | `PLANNED` |
 | R3-W4 | Wave 4·08/24~09/02 | R3 | I4·RC1 → I5 | R3-11~15 + R3-01~10 회귀 | LoRA 1회 비교·조건부 채택·production client·전체 평가·fallback·release | `PLANNED` |
@@ -1223,7 +1223,7 @@ EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff mani
 ### R2-W3-F1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -1422,6 +1422,9 @@ TEST_COMMANDS=node --test tests/frontend/contracts.test.mjs; npm --prefix app/en
 TEST_COMMAND_IDS=T1_FRONTEND_CONTRACT;T2_BUILD;T3_ROLE_GATE;T4_DIFF_CHECK
 STOP_CONDITIONS=버전 상수 외 제품 동작 변경 필요; R2 계약 파일 수정 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
 HANDOFF=R1에 변경 파일·frontend contract·build·role gate 결과를 전달
+IMPLEMENTATION_SHA=aeb8bfa892d7f136646f89ba354e043a12373049
+SOURCE_CI_EVIDENCE=GitHub Actions run 30796547226 PASS — frontend production build·contract, Python, 문서, 역할 범위, quality gate 통과
+DEV_MERGE_SHA=4825c0c4157a168ea6f5add214cb936235605063
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R5 개인 일일보고·handoff manifest의 commit·minji push 승인; dependency 설치·비용·배포·secret·외부 데이터 전송·dev merge 불가
 ```
 
@@ -1517,6 +1520,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.59 | 2026-08-03 17:15 | R5-W3-F1C에서 Catalog 계약 상수 한 곳을 `I3-DATA-v1.1.0-DRAFT`로 맞추고 minji CI `30796547226`의 production build·frontend contract·Python·문서·역할 범위 통과를 확인한 뒤 dev `4825c0c`에 통합했다. 제품 동작·R2 계약·외부 권한은 변경하지 않았다. |
 | v2.58 | 2026-08-03 17:05 | `origin/dev`가 minji 기획서 재구성 병합 `3d6bed7`로 전진했고 CI `30794421419`에서 같은 frontend I3 계약 상수 불일치가 재현됐다. R5-W3-F1C를 `R5-W3-F1C@3d6bed7`로 재발행하며 허용 경로·수용 조건·외부 권한은 변경하지 않았다. |
 | v2.57 | 2026-08-03 16:57 | R2-W3-F1 통합 뒤 dev CI `30793737827`에서 R5 Catalog fixture의 I3 data contract 상수만 이전 버전으로 남은 소비자 호환 실패를 확인했다. dev `078651f` 기준 R5-W3-F1C를 READY 발행해 상수 동기화와 frontend contract·build 회귀만 승인하며 R2 계약과 UI 동작은 변경하지 않는다. |
 | v2.56 | 2026-08-03 16:04 | R2-W3-F1 구현 중 R3 소비자 테스트가 gold partial 5건·REVIEW 35건을 하드코딩해 full 120건 manifest를 차단하는 change request를 확인했다. dev `c8a943b`·CI `30792024162` 기준으로 R3-W3-F1C를 READY 발행해 partial/full count 호환만 선행 보완하며 runtime·Node 변경과 외부 권한은 승인하지 않았다. |

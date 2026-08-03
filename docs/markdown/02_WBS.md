@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.74 |
-| 문서 기준일 | 2026-08-04 04:47 |
+| 버전 | v7.75 |
+| 문서 기준일 | 2026-08-04 05:09 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 05:09 | 3.14, 4.9, 6.3 | PROMPT-v1.0.4 제품 재검증을 위해 세 task Secure A40을 시도했지만 모두 container uptime 0으로 시작되지 않아 모델·제품 요청은 Not Run이었다. 세 Pod 404·활성 0, 신규 비용 상한 USD 0.141859·누적 USD 1.558985, 기존 Trino 무변경과 임시 key 저장 제거를 확인했다. 외부 provisioning blocker이므로 기존 상태·일정·간트와 I3 진행을 유지한다. | RunPod container 시작 장애·제품 재검증 차단 |
 | 2026-08-04 04:47 | 3.14, 4.9, 6.3 | R3의 SQL placeholder·parameter 1:1 PROMPT-v1.0.4가 AI 47건·전체 CI를 통과해 dev에 통합됐다. 동일 Base·I2 제품 전체 trace를 확인하는 R1-W3-F6를 발행했다. 실행 전이므로 기존 상태·일정·간트는 유지한다. | R3 parameter prompt 완료·제품 재검증 승인 |
 | 2026-08-04 04:39 | 3.14, 4.9, 6.3 | 실제 질문 Base·I2 제품 trace는 MODEL·G2까지 통과했지만 모델이 request metadata를 SQL parameter로 반환해 QUERY에서 안전 차단됐다. 비용 상한 USD 0.071203·누적 USD 1.417126과 task cleanup·기존 Trino 무변경을 확인하고, R3-W3-F9로 parameter 의미만 보완한다. 성공 trace 전이므로 기존 상태·일정·간트는 유지한다. | R1-W3-F5 차단·R3 parameter prompt 승인 |
 | 2026-08-04 04:27 | 3.14, 4.9, 6.3 | R4의 제품 원문 question→normalized question 전달이 23건·전체 CI를 통과해 dev에 통합됐다. actual question raw 입력과 동일 Base·I2 read-only 제품 전체 trace를 확인하는 R1-W3-F5를 발행했다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R4 질문 전달 완료·실제 제품 추적 승인 |
@@ -468,6 +469,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.75 | 2026-08-04 05:09 | 세 task Secure A40의 container uptime 0 provisioning blocker와 cleanup·비용·기존 Trino 무변경을 3.14·4.9·6.3에 연결했다. 실제 제품 trace 전 상태·일정·간트는 유지했다. |
 | v7.74 | 2026-08-04 04:47 | R3 PROMPT-v1.0.4를 dev에 통합하고 동일 Base·I2 read-only 제품 trace R1-W3-F6를 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
 | v7.73 | 2026-08-04 04:39 | 실제 질문 제품 trace의 QUERY blocker를 SQL placeholder와 무관한 모델 parameters로 확정하고 R3-W3-F9를 3.14·4.9·6.3에 연결했다. 실제 성공 전 상태·일정·간트는 유지했다. |
 | v7.72 | 2026-08-04 04:27 | R4 실제 질문 전달을 dev에 통합하고 Base·I2 read-only 제품 trace R1-W3-F5를 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.87 |
-| 문서 기준일 | 2026-08-04 04:47 |
+| 버전 | v2.88 |
+| 문서 기준일 | 2026-08-04 05:09 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -2069,7 +2069,7 @@ R1_REVIEW=prompt 2문장과 assertion만 추가해 schema·dataset·backend를 �
 ### R1-W3-F6
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -2097,6 +2097,9 @@ STOP_CONDITIONS=USD15 예상 도달; 다른 Docker 변경·public endpoint·secr
 HANDOFF=parameter raw·제품 trace·evidence·비용·cleanup과 I3 판정 또는 exact blocker 전달
 EXTERNAL_ACTION_PERMISSION=누적 USD15 안 task A40·고정 model·합성 localhost 요청·task backend·정확한 cleanup과 기존 synthetic Trino read-only 조회, R1 commit·junhee/dev push 승인. 다른 resource·public endpoint·secret·실제 고객 데이터·LoRA 변경 불가
 COST_BASELINE_USD=이전 실측·추정 누적 상한 1.417126
+RESULT=세 task Secure A40 Pod를 직접 image, 기본 image, 공식 PyTorch template 순으로 시도했으나 모두 API `desiredStatus=RUNNING`과 달리 실제 container uptime이 0초에 머물러 SSH·모델·제품 요청을 실행하지 못했다. PROMPT-v1.0.4의 actual Base 제품 trace는 Not Run이다.
+EVIDENCE=task Pod `e1jptzudno78u4` 511.660초·USD 0.062536, `sa111ku9w2jc5s` 95.584초·USD 0.011682, `83oemzrl7x4ay8` 553.427초·USD 0.067641 상한으로 모두 GET 404, 활성 Pod 0을 확인했다. 신규 상한 USD 0.141859·누적 상한 USD 1.558985이며 task container·image 0, 기존 Trino ID 동일·running·restart 0, 임시 RunPod CLI config의 key 저장은 0 bytes로 제거했다.
+BLOCKER=RunPod host가 GPU를 할당한 뒤 container를 시작하지 않아 uptime 0에 머무는 외부 provisioning 장애. 정상 uptime이 가능한 task A40 확보 전 AC1~AC5·I3 판정 불가
 ```
 
 ## Wave 4 상세 계획 카드
@@ -2191,6 +2194,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.88 | 2026-08-04 05:09 | R1-W3-F6의 세 task Secure A40이 모두 desired RUNNING과 달리 container uptime 0에 머물러 PROMPT-v1.0.4 제품 trace를 실행하지 못했다. 세 Pod 404·활성 0·신규 비용 상한 USD 0.141859·누적 USD 1.558985, 기존 Trino 무변경과 임시 key 저장 제거를 확인하고 외부 provisioning blocker로 I3를 유지했다. |
 | v2.87 | 2026-08-04 04:47 | R3-W3-F9의 SQL placeholder와 parameters 1:1·request metadata 제외 PROMPT-v1.0.4와 CI `30847080427` PASS를 검수해 dev에 통합했다. R1-W3-F6는 같은 Base·I2 read-only 제품 trace를 한 번 재검증하고 성공 전 I3 승인·다른 resource 변경을 금지했다. |
 | v2.86 | 2026-08-04 04:39 | R1-W3-F5에서 actual question·MODEL·G2는 통과했으나 Base가 request metadata를 SQL parameter로 반환해 안전한 날짜 바인더가 거부한 QUERY blocker를 확정했다. 비용·task cleanup·기존 Trino 무변경을 확인하고 R3-W3-F9로 SQL placeholder와 parameters의 1:1 의미만 PROMPT-v1.0.4에 고정했다. |
 | v2.85 | 2026-08-04 04:27 | R4-W3-F3의 제품 원문 question→normalized_question 전달과 CI `30845776821` PASS를 검수해 dev에 통합했다. R1-W3-F5는 actual question raw 입력과 동일 Base·I2 read-only 제품 trace를 판정하고 성공 전 I3 승인·다른 resource 변경을 금지했다. |

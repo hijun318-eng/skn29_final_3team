@@ -1,4 +1,4 @@
-export const I3_DATA_CONTRACT_VERSION = "I3-DATA-v1.0.0";
+export const I3_DATA_CONTRACT_VERSION = "I3-DATA-v1.1.0-DRAFT";
 export const I3_SCHEMA_VERSION = "1.0.0";
 export const I3_SEED_VERSION = "20260729";
 

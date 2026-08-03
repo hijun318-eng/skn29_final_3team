@@ -143,6 +143,7 @@ class AnalysisService:
                     "node2",
                     {
                         "scenario": scenario,
+                        "question": payload.question,
                         "references": references,
                         "request_id": str(context.request_id),
                         "package": package,

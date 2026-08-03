@@ -102,6 +102,7 @@ class ContractModelAdapter:
                 node,
                 {
                     "question_id": payload["request_id"],
+                    "normalized_question": payload["question"],
                     "context_package": self._context_package(payload),
                 },
             )

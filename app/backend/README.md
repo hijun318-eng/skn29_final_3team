@@ -32,7 +32,7 @@ $env:MODEL_ENDPOINT = "http://127.0.0.1:8001"
 $env:MODEL_TIMEOUT_SECONDS = "15"
 ```
 
-`MODEL_MODE=fake`는 R4 fake adapter, `MODEL_MODE=contract-fake`는 R3 계약 fake adapter를 그대로 사용한다. 실제 endpoint에는 node별 R3 response schema를 `guided_json`으로 전달하고 동일 schema를 다시 검증한다. timeout·HTTP 오류·잘못된 JSON·schema 불일치·fallback·circuit open은 분석 성공이나 Artifact로 저장하지 않는다.
+`MODEL_MODE=fake`는 R4 fake adapter, `MODEL_MODE=contract-fake`는 R3 계약 fake adapter를 그대로 사용한다. 일반 분석은 원문 질문을 `normalized_question`으로 전달하고 request ID는 추적 식별자로 분리한다. 실제 endpoint에는 node별 R3 response schema를 `guided_json`으로 전달하고 동일 schema를 다시 검증한다. timeout·HTTP 오류·잘못된 JSON·schema 불일치·fallback·circuit open은 분석 성공이나 Artifact로 저장하지 않는다.
 
 ## API 계약
 

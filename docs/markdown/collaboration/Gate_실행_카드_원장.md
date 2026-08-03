@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.66 |
-| 문서 기준일 | 2026-08-03 18:20 |
+| 버전 | v2.67 |
+| 문서 기준일 | 2026-08-03 18:36 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -188,6 +188,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `MERGED_DEV` |
 | R3-W3-F1C | Wave 3 compatibility follow-up | R3 | 없음 → I3 | R3-10 평가 manifest 소비 호환 | partial/full gold count consumer 검증 | `MERGED_DEV` |
 | R3-W3-F2 | Wave 3 training package follow-up | R3 | 없음 → I3 | R3-10 학습 데이터 재생성·검증 도구 반입 | 제공된 training package 정적·재현성 검증 | `MERGED_DEV` |
+| R3-W3-F3 | Wave 3 held-out follow-up | R3 | 없음 → I3 | R3-10 Gold·Acceptance 실행 입력 완성 | 원장 Gold 120건·Acceptance 30건 명시 선택·승인·로컬 Trino 검증 | `READY` |
 | R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
 | R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
 | R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `MERGED_DEV` |
@@ -1512,6 +1513,38 @@ DEV_CI_EVIDENCE=GitHub Actions run 30799712073 PASS — 전체 Python·frontend�
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고·handoff manifest의 commit·daesung push 승인; dependency 설치·model download·RunPod resource·비용·배포·secret 사용·외부 데이터 전송·dev merge 불가
 ```
 
+### R3-W3-F3
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F3
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-10 Gold·Acceptance 실행 입력 완성
+CURRENT_TASK_CARD_ID=R3-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=a7c7aae196e960f1487c074877dd9a3996e3bbec
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F3@a7c7aae
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.0
+SCENARIO_LEDGER_SHA256=33d706e962970f07d227afd4c1b4a39115db7136bc709197aa34d4f88f6a93c6
+GAP_EVIDENCE=2,000건 원장에는 gold 120건·acceptance 30건이 있으나 build_case_specs.py는 train·validation만 선택하고 Qwen compiled 1,350건에도 held-out split이 없어 evaluate_lora.py의 gold·acceptance 실행 입력이 없음
+ALLOWED_PATHS=src/ai/training/build_case_specs.py; tests/ai/test_training_scenarios.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=제공 JSONL 원본; src/data/**; app/backend/**; infrastructure/database/**; frontend·Report; root Compose·env·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=기존 train 1,200건·validation 150건 생성 기본값을 보존하면서 명시적 held-out 옵션에서만 gold 120건·acceptance 30건을 선택하고 APPROVED로 표시한다. 150건의 case_id·scenario_group 중복과 train·validation 누수를 0건으로 확인하고 Python AST·AI 회귀를 통과한 뒤 제공 원장을 읽기 전용으로 사용해 임시 case spec을 생성한다. 로컬 G2·Trino 검증과 compiled 변환은 실제 150건 전수 PASS일 때만 성공으로 보고한다.
+ACCEPTANCE_IDS=AC1_DEFAULT_SPLITS_PRESERVED;AC2_EXPLICIT_HELD_OUT_150;AC3_APPROVAL_BOUNDARY;AC4_NO_SPLIT_LEAKAGE;AC5_LOCAL_TRINO_PASS;AC6_COMPILED_VALIDATE
+TEST_COMMANDS=python -m unittest tests.ai.test_training_scenarios -v; python -m unittest discover -s tests/ai -p "test_*.py"; python -m src.ai.training.build_case_specs <scenario-ledger> <temp-held-out-specs> --held-out; python -m src.ai.training.verify_case_specs <temp-held-out-specs> <temp-held-out-verified>; python -m src.ai.training.dataset build <temp-held-out-verified> <temp-held-out-compiled>; python -m src.ai.training.dataset validate <temp-held-out-compiled>; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_SCENARIO_TEST;T2_AI_REGRESSION;T3_HELD_OUT_BUILD;T4_LOCAL_TRINO;T5_COMPILED_BUILD;T6_COMPILED_VALIDATE;T7_ROLE_GATE;T8_DIFF_CHECK
+STOP_CONDITIONS=held-out 자동 승인 없이 생성 필요; 150건 수량·split·중복 불일치; G2·Trino 실패; 제공 원본 수정 필요; 허용 경로 밖 변경; dependency 설치·model download·RunPod·비용·secret·외부 데이터 전송 필요; 필수 검증 실패
+HANDOFF=R1에 기본 동작 보존, held-out 120/30 수량·승인 경계·누수 검사, 로컬 Trino 150건 전수 결과, compiled validate와 role gate 결과를 전달
+EXTERNAL_ACTION_PERMISSION=제공된 2,000건 원장의 로컬 읽기와 임시 생성물, 이미 실행 중인 합성 DB·Trino의 setup 계정 검증, 허용 경로와 R3 개인 일일보고의 commit·daesung push 승인; dependency 설치·model download·RunPod resource·비용·배포·secret 사용·외부 데이터 전송·dev merge 불가
+```
+
 ## Wave 4 상세 계획 카드
 
 Wave 4는 I4 Reporting 통합부터 RC1·리허설·I5 동결까지 포함한다. I4에서 기능 통합을 마친 뒤 신규 기능을 금지하고 Critical·High 결함과 release 회귀만 수행한다.
@@ -1604,6 +1637,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.67 | 2026-08-03 18:36 | 실제 Qwen compiled 1,350건에 Gold·Acceptance split이 없고 생성기도 Train·Validation만 선택해 Base·LoRA 평가 입력을 만들 수 없는 누락을 확인했다. 기존 기본 동작을 보존하면서 제공 원장의 Gold 120건·Acceptance 30건을 명시적으로 승인·생성하고 로컬 G2·Trino로 전수 검증하는 R3-W3-F3를 READY 발행했으며 외부 model·RunPod 승인은 계속 제외했다. |
 | v2.66 | 2026-08-03 18:20 | R1-W3의 required30·gold120 승인과 전 역할 Wave 3 dev 통합, dev·junhee 동일 SHA·CI PASS, 통합 23건과 Context·G1/G2·cache 격리·동시 실행 제한 보안 회귀 29건을 확인해 현재 카드를 R1-10으로 전환했다. 로컬 CUDA와 Qwen3-4B cache가 없고 model download·RunPod 비용이 미승인이라 실제 Base model 비교는 NOT_RUN으로 유지하며 I3·Wave 4는 승인하지 않았다. |
 | v2.61 | 2026-08-03 17:28 | 평가 150건의 전수 질문·범주·기대 결과와 자동 검증을 대조해 R1 업무 검토와 R3 계약 소비 검토를 승인했다. 질문·정답·근거는 보존하고 reviewer/status만 동기화하는 R2-W3-F2를 dev `98b8436` 기준으로 발행했으며 model download·비용 권한은 승인하지 않았다. |
 | v2.60 | 2026-08-03 17:21 | 구현·handoff·branch CI·dev 병합이 완료된 R2-W3-F1과 R3-W3-F1C의 요약·상세 상태를 `MERGED_DEV`로 정합화하고 실제 구현·CI·병합 SHA를 기록했다. I3 통합 판정과 외부 model 권한은 변경하지 않았다. |

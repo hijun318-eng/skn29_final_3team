@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.67 |
-| 문서 기준일 | 2026-08-04 03:48 |
+| 버전 | v7.68 |
+| 문서 기준일 | 2026-08-04 03:59 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 03:59 | 3.14, 4.9, 6.3 | 실제 PROMPT-v1.0.1 trace에서 LIMIT은 생성됐지만 SQL 문자열의 불필요한 개행 881줄로 completion 1,500 token에 도달해 JSON이 미완성으로 MODEL 안전 실패했다. QUERY·Artifact는 없고 task resource를 제거해 active Pods 0을 확인했다. 신규 비용 상한은 약 USD0.066224다. R3-W3-F7로 node2 한 줄 compact SQL 문구만 보완하며 상태·일정·간트는 유지한다. | MODEL 길이 병목 확인·R3 compact prompt 승인 |
 | 2026-08-04 03:48 | 3.14, 4.9, 6.3 | R3의 node2·repair PROMPT-v1.0.1이 LIMIT 1~1000과 RESOURCE_POLICY_MISSING 단일 수정 행동을 명시하고 15건·전체 CI를 통과해 dev에 통합됐다. 동일 Base·I2 synthetic read-only 제품 trace를 재검증하는 R1-W3-F3를 발행했다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R3 prompt 보완 완료·실제 제품 재검증 승인 |
 | 2026-08-04 03:42 | 3.14, 4.9, 6.3 | 실제 I2 Context·read-only Trino 제품 trace에서 guided MODEL은 통과했지만 node2 SQL에 필수 LIMIT가 없고 repair도 동일 SQL을 반환해 G2가 안전 차단했다. QUERY·Artifact는 실행되지 않았고 task Pod·container·image·tunnel을 제거해 active Pods 0을 확인했다. 신규 비용 상한은 약 USD0.066601이다. R3-W3-F6로 resource limit·단일 repair prompt 계약만 보완하며 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | G2 prompt 병목 확인·R3 최소 보완 승인 |
 | 2026-08-04 03:27 | 3.14, 4.9, 6.3 | R4의 node별 R3 response schema guided transport가 관련 22건과 source 전체 CI를 통과해 dev에 통합됐다. task A40·backend와 기존 hotel-synthetic-db Trino의 read-only synthetic 조회만 사용하는 R1-W3-F2를 발행해 실제 MODEL→G2→QUERY→G3→ARTIFACT trace를 재검증한다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R4 schema 보완 완료·실제 I2 제품 trace 승인 |
@@ -461,6 +462,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.68 | 2026-08-04 03:59 | 실제 Base의 LIMIT 생성과 881줄 개행·completion length 미완성 JSON 병목, 안전 실패·cleanup을 3.14·4.9·6.3에 연결하고 R3 compact SQL prompt 보완을 승인했다. 상태·일정·간트는 유지했다. |
 | v7.67 | 2026-08-04 03:48 | R3 PROMPT-v1.0.1을 dev에 통합하고 동일 Base·I2 read-only 제품 전체 trace를 위한 R1-W3-F3를 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
 | v7.66 | 2026-08-04 03:42 | 실제 I2 제품 trace의 LIMIT 누락·무효 repair G2 병목과 안전 차단·정확한 cleanup을 3.14·4.9·6.3에 연결하고 R3 prompt 최소 보완을 승인했다. 상태·일정·간트는 유지했다. |
 | v7.65 | 2026-08-04 03:27 | R4 guided transport를 dev에 통합하고 실제 I2 synthetic Context·read-only Trino 제품 trace를 위한 R1-W3-F2를 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |

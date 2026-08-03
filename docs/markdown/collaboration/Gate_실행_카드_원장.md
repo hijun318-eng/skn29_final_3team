@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.79 |
-| 문서 기준일 | 2026-08-04 03:42 |
+| 버전 | v2.80 |
+| 문서 기준일 | 2026-08-04 03:48 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -1780,7 +1780,7 @@ BLOCKER=R3 node2·node2_repair prompt가 G2 resource policy의 `LIMIT <= 1000`�
 ### R3-W3-F6
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -1807,6 +1807,44 @@ TEST_COMMAND_IDS=T1_PROMPT_UNIT;T2_COMPILE;T3_REPORT;T4_ROLE_GATE;T5_DIFF_CHECK
 STOP_CONDITIONS=R3 schema·backend G2 code·training dataset 수정 필요; prompt만으로 limit·repair 행동을 명시할 수 없음; model default·LoRA·RunPod 변경 필요; secret 출력·commit 필요; 허용 경로 밖 변경; 필수 검증 실패
 HANDOFF=R1에 node2·repair prompt version/hash·resource limit 문구·오류별 단일 repair 계약·unit regression과 후속 실제 Base I2 product trace 조건을 전달
 EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고의 commit·daesung push 승인; dependency 설치·RunPod·비용·secret 사용·외부 model 호출·dev merge 불가
+RESULT_SHA=f717058abbf3d0830ff94a3a4e1772f780d58a43
+SOURCE_CI_EVIDENCE=GitHub Actions run 30842808365 PASS; Python 전체·document quality·role scope·quality gate PASS
+DEV_MERGE_SHA=a57b2731fc43226ccd899af0d942acc2ee22968b
+R1_REVIEW=node2·node2_repair만 `PROMPT-v1.0.1`로 올려 LIMIT 1~1000과 RESOURCE_POLICY_MISSING의 단일 추가·교체 행동을 명시하고, schema·backend·dataset·다른 node를 보존한 최소 변경과 15건 local·전체 CI를 수용
+```
+
+### R1-W3-F3
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F3
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 prompt v1.0.1 Base·I2 synthetic 제품 전체 trace 재검증
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=a57b2731fc43226ccd899af0d942acc2ee22968b
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F3@a57b273
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.1
+SERVING_MANIFEST_VERSION=SERVING-v0.2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+DATA_CONTRACT_VERSION=DATA-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume의 생성·수정·삭제·재시작
+ACCEPTANCE_CRITERIA=dev `a57b273`의 PROMPT-v1.0.1과 R3 schema guided transport를 task 전용 RunPod A40 고정 Qwen3-4B endpoint·task backend에 연결한다. 기존 hotel-synthetic-db Trino는 `DATA_PLATFORM_MODE=i2`·read-only `TRINO_USER=answervice`로 조회만 하고 project·container·volume을 변경하지 않는다. 동일 synthetic `/analysis`에서 node2 SQL의 LIMIT 1~1000, G2 PASS, 실제 read-only QUERY, G3, ARTIFACT와 model/source/query/evidence/latency를 확인한다. 실패 시 마지막 stage·오류·SQL hash·query/Artifact 부재와 정확한 소유 병목을 기록한다. 회귀·비용·task cleanup을 확인하고 성공 trace와 필수 보안 경계가 모두 충족될 때만 I3 판정을 진행한다.
+ACCEPTANCE_IDS=AC1_PROMPT_V101_ENDPOINT;AC2_LIMIT_POLICY;AC3_G2_PASS;AC4_READ_ONLY_QUERY;AC5_G3_ARTIFACT;AC6_EVIDENCE;AC7_REGRESSION;AC8_COST_LIMIT;AC9_EXACT_CLEANUP;AC10_I3_DECISION
+TEST_COMMANDS=task backend health; I2 source health; synthetic POST /analysis fixed headers; LIMIT·trace·artifact·evidence inspection; production model·analysis·OpenAPI regression; integration regression; exact task container/image/tunnel cleanup; RunPod exact Pod GET 404 and active Pods 0; existing Docker IDs·status unchanged; document·WBS·report validation; git diff --check
+TEST_COMMAND_IDS=T1_BACKEND_HEALTH;T2_I2_HEALTH;T3_LIVE_ANALYSIS;T4_LIMIT_TRACE;T5_EVIDENCE;T6_BACKEND_REGRESSION;T7_INTEGRATION;T8_TASK_CLEANUP;T9_POD_CLEANUP;T10_DOCKER_SCOPE;T11_DOCUMENTS
+STOP_CONDITIONS=누적 비용 USD 15 도달 예상; 다른 Docker project write·restart·configuration change 필요; public model endpoint 필요; secret 출력·commit 필요; 실제 고객 데이터 전송 필요; R2~R5 code 추가 변경 필요; 필수 안전 경계 위반
+HANDOFF=PROMPT-v1.0.1 실제 node2·repair·G2·query·G3·artifact trace와 model/source/evidence·latency·비용·cleanup, I3 승인 또는 정확한 후속 병목을 전 역할에 전달
+EXTERNAL_ACTION_PERMISSION=사용자가 승인한 누적 USD 15 한도 안에서 task 전용 RunPod A40 Pod 생성·고정 serving image와 Qwen3-4B 다운로드·합성 요청 전송·localhost SSH tunnel·task backend build/run·결과 회수·정확한 task Pod·container·image·tunnel 삭제와 기존 hotel-synthetic-db Trino의 read-only synthetic 조회, R1 허용 경로 commit·junhee/dev push 승인. 다른 Pod·Docker project·container·volume 변경, public endpoint·secret 출력/commit, 실제 고객 데이터, LoRA 재학습·제품 기본값 전환은 불가
+COST_BASELINE_USD=이전 실측·추정 누적 상한 1.188721; 최종 provider billing 지연 시 예상값과 확정 여부를 분리 기록
 ```
 
 ## Wave 4 상세 계획 카드
@@ -1901,6 +1939,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.80 | 2026-08-04 03:48 | R3-W3-F6의 PROMPT-v1.0.1 resource limit·단일 repair 문구와 CI `30842808365` PASS를 검수해 dev에 통합했다. 후속 R1-W3-F3는 task A40·backend와 기존 synthetic Trino의 read-only 조회만 사용해 동일 제품 trace의 LIMIT·G2·QUERY·G3·ARTIFACT를 재판정하고, 다른 Docker resource 변경과 성공 trace 없는 I3 승인을 금지했다. |
 | v2.79 | 2026-08-04 03:42 | R1-W3-F2 실제 I2 product trace는 guided MODEL까지 통과했지만 node2가 `LIMIT` 없는 SQL을 생성하고 repair도 동일 SQL을 반환해 G2에서 안전 차단됐다. QUERY·Artifact 부재와 task resource cleanup·active Pods 0·예상 신규 상한 USD0.066601를 확인했다. `LIMIT <= 1000`과 `RESOURCE_POLICY_MISSING` 단일 수정 행동만 prompt에 명시하는 R3-W3-F6를 READY 발행했으며 실제 Base 재검증 전 I3는 차단한다. |
 | v2.78 | 2026-08-04 03:27 | R4-W3-F2의 node별 R3 response schema guided transport와 전체 CI `30841201329` PASS를 검수해 dev에 통합했다. 후속 R1-W3-F2는 task A40·backend와 기존 hotel-synthetic-db Trino의 read-only synthetic 조회만 허용해 실제 MODEL→G2→QUERY→G3→ARTIFACT trace를 판정하고, 다른 Docker resource 변경과 I3 조기 승인을 금지했다. |
 | v2.77 | 2026-08-04 03:21 | R1-W3-F1 live product trace는 Base가 plain 응답·JSON object mode에서 R3 schema를 지키지 못해 MODEL 안전 실패했고, 실제 R3 schema의 guided_json은 schema PASS였지만 fake Context의 asset·metric 불일치로 G2 repair 뒤 차단됐다. task Pod·container·image·tunnel을 정확히 제거하고 예상 신규 USD0.107045를 기록했다. schema-guided transport만 보완하는 R4-W3-F2를 READY 발행했으며 실제 I2 synthetic trace 전 I3는 차단한다. |

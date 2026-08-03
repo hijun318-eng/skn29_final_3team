@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.58 |
-| 문서 기준일 | 2026-08-04 01:49 |
+| 버전 | v7.59 |
+| 문서 기준일 | 2026-08-04 02:11 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 02:11 | 3.13~3.15, 6.3 | Base·LoRA 비교 뒤 남은 실제 serving 증거를 위해 R3-W3-F5를 발행했다. 고정 Qwen3-4B Base revision의 vLLM endpoint, cold·warm p50/p95, 최대 VRAM·동시 2건·재시작과 기존 model client의 timeout·fallback·circuit trace를 완료 조건으로 두었다. 이전 USD 0.9523을 포함한 누적 비용은 USD 15 이하로 제한하고 결과 회수 뒤 task Pod 삭제를 요구했다. 실제 실행 전이므로 상태·일정·간트는 유지한다. | Base serving 실측 승인·제품 연결 미승인 |
 | 2026-08-04 01:49 | 3.10, 3.12, 3.13, 3.15, 6.3 | 같은 Qwen3-4B·held-out·decoding 조건에서 Base와 BF16 LoRA를 비교했다. LoRA는 Gold JSON 구조 120/120·SQL 정확 일치 85/120·실제 Trino 결과 일치 116/120을 기록했고 held-out 전체 G2·Trino 실행은 150/150 PASS였다. Gold p95는 Base 15.42초에서 LoRA 43.84초로 증가하고 peak VRAM은 8,511,364,096 bytes여서 3.10·3.12만 완료로 전환하고 제품 기본값은 Base로 유지한다. 실측 비용 USD 0.9523, artifact hash와 task Pod 삭제를 확인했으며 실제 serving·운영 trace·I3 전체 상태와 일정은 유지한다. | Base·LoRA 1회 비교 완료·제품 기본값 전환 보류 |
 | 2026-08-03 18:49 | 3.10~3.12, 3.15, 6.3 | R3-W3-F3가 기존 Train·Validation 생성을 보존하면서 Gold 120건·Acceptance 30건을 명시적으로 승인·생성했다. split 누수 0건, 로컬 G2·Trino 150건 전수 PASS, compiled validate·AI 42건과 branch/dev CI를 확인해 dev `aede5a5`에 통합했다. 실제 Base model·RunPod 미실행으로 관련 상태·일정은 유지한다. | held-out 150건 준비·검증 완료·dev 통합 |
 | 2026-08-03 18:36 | 3.10~3.12, 3.15, 6.3 | 제공된 Qwen compiled 1,350건이 Train·Validation만 포함하고 현재 생성기도 held-out split을 만들 수 없어 실제 Base·LoRA 평가 입력이 없는 것을 확인했다. 기본 생성 동작을 유지하면서 2,000건 원장의 Gold 120건·Acceptance 30건을 명시적으로 승인·생성하고 로컬 G2·Trino로 전수 검증하는 R3-W3-F3를 발행했다. 외부 model·RunPod 작업과 상태·일정은 변경하지 않는다. | held-out 평가 입력 누락 해소 승인·외부 실행 제외 |
@@ -452,6 +453,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.59 | 2026-08-04 02:11 | Qwen3-4B Base serving endpoint의 cold·warm·VRAM·동시 실행·재시작·model client 실패 trace를 실측하는 R3-W3-F5를 3.13~3.15·6.3에 연결했다. 누적 RunPod 비용 USD 15 한도와 task Pod 삭제를 고정했으며 실제 결과 전 상태·일정·간트는 유지했다. |
 | v7.58 | 2026-08-04 01:49 | Qwen3-4B Base·LoRA 1회 비교와 held-out 150건 G2·Trino 검증, Gold 지연시간·VRAM, artifact hash, 실측 비용·Pod 삭제를 확인해 3.10·3.12를 완료로 전환했다. LoRA p95 증가로 제품 기본값은 Base를 유지하며 serving·I3 상태와 일정은 변경하지 않았다. |
 | v7.57 | 2026-08-03 18:49 | R3-W3-F3의 held-out Gold 120건·Acceptance 30건 생성, 누수 0건, 로컬 G2·Trino 150건 전수 PASS와 compiled validate·CI를 확인해 dev에 통합했다. 외부 model·RunPod 상태와 일정은 유지했다. |
 | v7.56 | 2026-08-03 18:36 | Qwen 학습용 데이터와 생성기의 held-out 입력 누락을 확인해 2,000건 원장의 Gold 120건·Acceptance 30건을 명시적으로 승인·생성하고 로컬 Trino로 검증하는 R3-W3-F3를 3.10~3.12·3.15·6.3에 연결했다. 외부 model·RunPod 상태와 일정은 유지했다. |

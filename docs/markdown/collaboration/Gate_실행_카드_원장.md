@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.11 |
-| 문서 기준일 | 2026-08-04 15:50 |
+| 버전 | v3.12 |
+| 문서 기준일 | 2026-08-04 16:20 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -204,6 +204,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R2-W4-F1A | Wave 4 serving metadata 권한 보완 | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | View 소유자 위임 조회 권한과 metadata 계약 동시 검증 | `MERGED_DEV` |
 | R2-W4-F2 | Wave 4 혼합 Context 계약 | R2 | Gate 0 → I4 | R2-10~14 승인 raw asset·JOIN 정합 | View 우선·CRM 단독·PMS–CRM JOIN의 명시적 live DataHub 계약 | `MERGED_DEV` |
 | R2-W4-F2A | Wave 4 raw URN 교정 | R2 | Gate 0 → I4 | R2-10 DataHub URN exact-match | platform instance·database를 포함한 실제 raw URN 7개 교정 | `MERGED_DEV` |
+| R2-W4-F3 | Wave 4 metric registry 생산 | R2 | Gate 0 → I4 | R2-10~14 metric semantic contract | 승인 asset별 metric·필수 필터를 versioned Context 계약으로 제공 | `READY` |
 | R4-W4-F1A | Wave 4 serving Context 소비 보완 | R4 | Gate 0 → I4 | R4-06~11 `LIVE_DATAHUB` Context·G2 정합 | 승인 View를 질문별 60-column 상한으로 선별하고 권한·G2를 fail-closed 검증 | `MERGED_DEV` |
 | R4-W4-F2 | Wave 4 혼합 Context 소비 | R4 | Gate 0 → I4 | R4-06~11 View·제한 raw Context·G2 정합 | 축약 raw URN이 live DataHub와 불일치해 생산자 교정 대기 | `BLOCKED` |
 | R4-W4-F2A | Wave 4 혼합 Context 재검증 | R4 | Gate 0 → I4 | R4-06~11 live raw Context 재검증 | R2 URN 교정 통합 후 실제 CRM·PMS–CRM Context·G2 재검증 | `MERGED_DEV` |
@@ -212,8 +213,11 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W4-F2 | Wave 4 Validation v2·Base 평가 | R3 | Gate 0 → I4 | R3-10~14 ID/OOD·Instruct-2507 Base | Validation-ID 75·OOD 75 잠금 완료, Base smoke 4/20로 중단 | `BLOCKED` |
 | R3-W4-F3 | Wave 4 Base smoke 재작업 | R3 | Gate 0 → I4 | R3-10~14 prompt·평가 harness·Instruct-2507 Base | 첫 균형 표본의 `timestamp(3) <= varchar(7)` 오류로 중단 | `BLOCKED` |
 | R3-W4-F4 | Wave 4 Base SQL 타입 재검증 | R3 | Gate 0 → I4 | R3-10~14 prompt 일반화·Instruct-2507 Base | 같은 균형 20건의 타입·범위·결과 동등성 재검증 | `READY` |
+| R3-W4-F5 | Wave 4 metric filter 계약 보완 | R3 | Gate 0 → I4 | R3-01·07·09~14 metric filter 계약 | 구조화 필터 schema·prompt·Validation Context 보존 | `MERGED_DEV` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
+| R4-W4-F3 | Wave 4 Report production 등록 | R4 | 없음 → I4 | R4-16 Report 공통 등록 | FastAPI·Alembic·권한·승인본 불변성·중복 실행 차단 | `READY` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
+| R5-W4-F1 | Wave 4 12-column Report editor | R5 | 없음 → I4 | R5-11 Report editor | draft layout·keyboard 대안·승인본 불변성 | `READY` |
 
 ## Gate 공통 완료 조건
 
@@ -2699,7 +2703,7 @@ R1_REVIEW_CONDITIONS=R3 smoke가 전부 통과해야 150건 전체 평가를 별
 ### R3-W4-F3
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -2827,7 +2831,7 @@ EXTERNAL_ACTION_PERMISSION=없음. RunPod·model download·endpoint·외부 비�
 ### R3-W4-F5
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -2854,6 +2858,40 @@ STOP_CONDITIONS=case ID·정답 SQL hardcode; unrestricted SQL filter string 추
 EXTERNAL_ACTION_PERMISSION=없음. local code·test·허용 경로 commit·daesung push만 승인한다.
 AUTO_FAIL_CONDITIONS=unrestricted predicate; hardcode; 외부 실행·비용; 기존 schema 비호환; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=구조화 필터 schema·생성 Context·prompt·AI test·branch CI를 제출한다. 통과해도 R4 소비자나 cloud smoke는 별도 발행 전까지 대기한다.
+RESULT_SHA=96d3d803ffdb0f9d886982888d3f5c5ccb792c3e
+RESULT_CI=branch 30885817084 PASS; dev 30885892814 PASS; junhee 30885949124 PASS
+```
+
+### R2-W4-F3
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W4-F3
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=metric semantic contract
+TASK_CARD_RANGE=R2-10~14 metric registry 생산
+CURRENT_TASK_CARD_ID=R2-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=96d3d803ffdb0f9d886982888d3f5c5ccb792c3e
+START_POINT=origin/seung에서 origin/dev 96d3d803ffdb0f9d886982888d3f5c5ccb792c3e를 merge한 뒤 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R2-W4-F3@96d3d80
+CONTRACT_VERSION=I4-CONTEXT-v2.1.0-DRAFT; PROMPT-v1.0.9-compatible
+ALLOWED_PATHS=src/data/analytics_context_contract.i4.v2.json; tests/data/test_analytics_context_contract.py; handoffs/R2-W4-F3.json; docs/markdown/daily_reports/seung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/ai/**; frontend/**; infrastructure/database/**; root Compose·env·CI; secret
+HANDOFF_MANIFEST=handoffs/R2-W4-F3.json
+ACCEPTANCE_CRITERIA=versioned Context 계약에 metric registry를 추가해 metric id·asset FQN·field·aggregation·time field와 optional required_filters(field·operator·string 또는 boolean value)를 제공한다. 각 metric field와 filter field가 해당 asset의 승인 column에 포함되는지 검증한다. expired_points에는 txn_type=EXPIRE와 is_forecast=false를, 분석 View metric에는 실제 View column에 맞는 ACTUAL·non-forecast 필터를 보존한다. 기존 raw asset·JOIN·selection policy는 호환 유지하며 case ID·정답 SQL·자유 SQL predicate는 넣지 않는다.
+ACCEPTANCE_IDS=AC1_VERSIONED_REGISTRY;AC2_ASSET_COLUMN;AC3_STRUCTURED_FILTER;AC4_CRM_FILTER;AC5_VIEW_FILTER;AC6_COMPATIBILITY;AC7_LOCAL_ONLY
+TEST_COMMANDS=python -m pytest tests/data/test_analytics_context_contract.py -q; python -m json.tool src/data/analytics_context_contract.i4.v2.json; python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_DATA;T2_JSON;T3_SCOPE;T4_DIFF
+STOP_CONDITIONS=case ID·정답 SQL hardcode; unrestricted SQL predicate; 승인 asset 밖 metric; 기존 계약 비호환; R4·R3 경로 변경; 외부 서비스·비용·secret 필요; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local contract·test·허용 경로 commit·seung push만 승인한다.
+AUTO_FAIL_CONDITIONS=filter field가 asset column 밖; unrestricted predicate; 기존 계약 비호환; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=metric registry·column 정합·CRM/View 필터·data test·branch CI를 제출한다. 통과해도 R4 소비자와 cloud smoke는 별도 발행 전까지 대기한다.
 ```
 
 ### R4-W4-F3
@@ -2968,6 +3006,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.12 | 2026-08-04 16:20 | R3-W4-F5의 구조화 metric 필터 계약과 branch·dev·junhee CI 통과를 확인해 MERGED_DEV로 전환했다. 제품 Context가 같은 의미 계약을 소비할 수 있도록 R2-W4-F3 metric registry 생산자를 local-only로 발행하고 R4 소비·cloud 재평가는 후속 판정으로 유지했다. |
 | v3.11 | 2026-08-04 15:50 | R3 F5의 누적 F3/F4 증거가 role scope에 걸리는 오탐을 이전 승인 경로와의 합집합으로 교정했다. I4의 독립 local-only 작업으로 R4-W4-F3 Report production 등록과 R5-W4-F1 12-column editor를 발행하고 worker·schedule·실제 API·외부 비용은 제외했다. |
 | v3.10 | 2026-08-04 15:40 | F4 CRM 실패가 모델에 전달되지 않은 metric 필수 필터 계약에서 시작됐음을 확인했다. field·operator·value 구조를 schema·prompt·Validation 생성기에 보존하는 비용 없는 R1-W4-F5·R3-W4-F5를 발행하고 R4 소비·cloud 재평가는 별도 판정으로 남겼다. |
 | v3.09 | 2026-08-04 15:34 | R3-W4-F4는 같은 균형 manifest의 첫 3건을 전 기준 통과했으나 4번째 CRM 소멸 포인트에서 필수 범위·지표 조건을 누락해 result hash가 달랐다. fail-fast·USD 0.0402·F3+F4 USD 0.0825·Pod 삭제·active 0·CI `30884334429`의 의도된 FAIL을 확인해 R1·R3 F4를 BLOCKED·WAIT로 전환하고 추가 cloud 실행을 금지했다. |

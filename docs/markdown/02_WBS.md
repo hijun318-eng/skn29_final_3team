@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.99 |
-| 문서 기준일 | 2026-08-04 15:50 |
+| 버전 | v8.00 |
+| 문서 기준일 | 2026-08-04 16:20 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -322,6 +322,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 16:20 | 2.11~2.14, 3.2, 3.8, 3.10~3.15 | R3가 metric 필수 필터를 구조화 schema·prompt·Validation Context에 보존하고 AI 55건·1,350개 Context schema·branch/dev/junhee CI를 통과해 dev에 통합했다. 다음 로컬 단계로 R2가 같은 구조를 versioned Context metric registry에 생산하고 asset column 정합을 검증하도록 발행했다. R4 제품 소비와 cloud 재평가는 생산자 통합 뒤 별도 승인한다. | R3 MERGED_DEV·R2 metric 생산 승인 |
 | 2026-08-04 15:50 | 1.7, 4.17, 5.12 | R3 F5의 실제 변경은 허용된 7개 경로뿐이지만 개인 branch가 보존하는 F3/F4 실패 증거가 origin/dev 대비 누적 diff에 포함돼 role scope가 오탐함을 확인했다. F5 범위를 기존 F3/F4 승인 경로와 새 F5 파일의 합집합으로 교정하고 cloud 금지는 유지했다. I4의 독립 local-only 작업으로 R4에는 기존 Report proposal의 FastAPI·새 Alembic revision 등록만, R5에는 fixture 기반 12-column editor만 발행했다. worker·schedule·실제 API·외부 실행은 제외한다. | R3 누적 scope 교정·R4/R5 I4 병렬 승인 |
 | 2026-08-04 15:40 | 3.2, 3.8, 3.10~3.15 | F4 CRM 실패를 재검토해 `expired_points`의 Context metric에는 `sum(-points_delta)`만 있고 정답 SQL이 요구하는 `txn_type='EXPIRE'` 필터가 전달되지 않는 계약 누락을 확인했다. 모델 prompt 재시도보다 metric 필수 필터를 field·operator·value 구조로 보존하고 schema·prompt·Validation 생성기를 동기화하는 R3-W4-F5를 로컬 전용으로 발행했다. RunPod·model download·endpoint·비용·전체 평가와 R4 경로 변경은 금지한다. | metric 필터 계약 보완 승인·외부 비용 0 |
 | 2026-08-04 15:34 | 3.10~3.15 | Instruct-2507 Base F4는 같은 균형 smoke manifest에서 첫 3건의 JSON·G2·합성 Trino·결과 동등성을 통과했으나 4번째 CRM `validation-0228`에서 결과 hash가 달라 즉시 중단했다. 생성 SQL은 소멸 포인트의 `property_id`·`txn_type='EXPIRE'`·`is_forecast=false`·음수 합산 조건을 누락하고 조회 기간을 잘못 확장했다. Pod 삭제·active 0, F4 약 USD 0.0402·F3+F4 약 USD 0.0825, R3 branch CI `30884334429`의 의도된 FAIL을 확인했다. 150건·LoRA·Blind Gold와 추가 cloud 실행은 금지하고 모델 전략 재판정 전 3.10·3.11·3.15 진행, 3.13·3.16 대기를 유지한다. | F4 의미 정확성 BLOCKED·추가 비용 차단 |
@@ -452,6 +453,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v8.00 | 2026-08-04 16:20 | 구조화 metric 필터 계약의 R3 구현·CI를 dev에 통합하고, 같은 의미 정보를 제품 Context에 공급하는 R2 metric registry 작업을 2.11~2.14에 local-only로 발행했다. |
 | v7.99 | 2026-08-04 15:50 | R3 F5의 누적 branch scope를 과거 승인 경로와 정합화하고, I4 독립 local-only 작업인 R4 Report 공통 등록과 R5 12-column editor를 4.17·5.12에 진행으로 발행했다. |
 | v7.98 | 2026-08-04 15:40 | CRM 지표의 필수 필터가 Context metric에서 누락된 근본 계약을 3.2·3.8·3.10~3.15에 연결하고, 구조화 필터를 schema·prompt·Validation 생성기에 보존하는 비용 없는 R3-W4-F5를 발행했다. |
 | v7.97 | 2026-08-04 15:34 | F4의 첫 3건 전 기준 PASS 뒤 CRM 소멸 포인트 의미·범위 조건 누락으로 4번째 결과 hash가 달라진 실패, USD 0.0402·Pod 삭제·의도된 CI FAIL을 3.10~3.15에 기록하고 추가 cloud 실행을 차단했다. |

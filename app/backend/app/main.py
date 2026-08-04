@@ -17,6 +17,7 @@ from app.contracts import (
     ErrorBody,
     ErrorCode,
     ErrorResponse,
+    OPENAPI_DOCUMENT_VERSION,
     response_meta,
 )
 
@@ -35,7 +36,7 @@ def _allowed_origins() -> list[str]:
     return origins
 
 
-app = FastAPI(title="Answervice Control Plane", version=CONTRACT_VERSION)
+app = FastAPI(title="Answervice Control Plane", version=OPENAPI_DOCUMENT_VERSION)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins(),

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 CONTRACT_VERSION = "OPENAPI-v1.0.0"
+OPENAPI_DOCUMENT_VERSION = "OPENAPI-v1.1.0-DRAFT"
 Scalar: TypeAlias = str | int | float | bool | None
 
 

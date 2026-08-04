@@ -36,7 +36,7 @@ $env:MODEL_TIMEOUT_SECONDS = "15"
 
 ## API 계약
 
-FastAPI·Pydantic code가 API 계약의 단일 원본이다. 현재 `OPENAPI-v1.0.0`은 실제 구현된 `/health`, `/readiness`, `/analysis`만 포함한다. 조회·취소·Artifact·Report endpoint는 구현 카드가 시작되기 전까지 명세에 추가하지 않는다.
+FastAPI·Pydantic code가 API 계약의 단일 원본이다. 분석 응답의 `OPENAPI-v1.0.0` 호환성은 유지하고 FastAPI 문서 버전은 `OPENAPI-v1.1.0-DRAFT`로 분리한다. 문서에는 기존 `/health`, `/readiness`, `/analysis`와 Report 관리자 endpoint만 포함한다.
 
 계약 파일과 상태별 fixture를 갱신하거나 drift를 확인하는 명령은 다음과 같다.
 
@@ -51,7 +51,7 @@ python app/backend/scripts/export_openapi.py --check
 - 명세 파일과 fixture는 직접 수정하지 않고 exporter로 다시 생성한다.
 - pagination·sorting·filter·idempotency는 현재 세 endpoint에 적용되지 않으며, 이를 사용하는 endpoint 구현 시 별도 version으로 추가한다.
 
-`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 단일 migration chain이 application schema를 최신 head까지 적용한다. 현재 head는 `20260804_05`이며 기존 DB와 빈 DB upgrade를 모두 지원한다. Report endpoint는 기존 `report` schema를 변경하지 않고 `REPORT-v1.0.0` 호환 및 `REPORT-v1.1.0-DRAFT` 등록본을 `report_v1` schema에 영속화하며, 기존 `OPENAPI-v1.0.0` 동결 범위에는 노출하지 않는다.
+`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 단일 migration chain이 application schema를 최신 head까지 적용한다. 현재 head는 `20260804_05`이며 기존 DB와 빈 DB upgrade를 모두 지원한다. Report endpoint는 기존 `report` schema를 변경하지 않고 `REPORT-v1.0.0` 호환 및 `REPORT-v1.1.0-DRAFT` 등록본을 `report_v1` schema에 영속화한다. 공개 요청·응답은 strict Pydantic schema와 고정 operation ID를 사용한다.
 
 Report HTTP는 owner 범위의 definition 목록·초안 block 교체·run 목록/상세와 `POST /reports/runs/manual`만 제공한다. 수동 실행 요청은 `definition_id`, `version`, `as_of`, `idempotency_key`만 받고 command ID와 `queued` 상태는 서버가 만든다. 실행 결과 전체를 저장하는 기존 `create_run` 연결은 신뢰된 내부 호출에만 남겨 두며 HTTP route로 공개하지 않는다. 실제 command 소비, worker, schedule, Artifact 생성은 후속 계약 전까지 구현하지 않는다.
 

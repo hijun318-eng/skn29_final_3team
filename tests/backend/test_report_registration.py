@@ -12,6 +12,7 @@ from uuid import UUID
 from uuid import uuid4
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,6 +22,12 @@ path.insert(0, str(BACKEND))
 from app.api import report_router as report_api  # noqa: E402
 from app.contracts import RequestContext, Role  # noqa: E402
 from app.main import app  # noqa: E402
+from app.report_contracts import (  # noqa: E402
+    ApproveReportVersionRequest,
+    CreateManualRunRequest,
+    CreateReportDefinitionRequest,
+    ReplaceReportBlocksRequest,
+)
 from src.report.repository import InMemoryReportRepository  # noqa: E402
 from src.report.router import create_report_router  # noqa: E402
 from src.report.domain import (  # noqa: E402
@@ -80,27 +87,39 @@ class ReportRegistrationTest(unittest.TestCase):
             }
 
             report_context = context()
-            self.assertEqual("draft", report_api.create_definition(definition, report_context)["status"])
+            self.assertEqual(
+                "draft",
+                report_api.create_definition(
+                    CreateReportDefinitionRequest.model_validate(definition), report_context
+                )["status"],
+            )
             with self.assertRaises(HTTPException) as draft_run:
                 report_api.create_run_internal(run, report_context)
             self.assertEqual(409, draft_run.exception.status_code)
             replaced = report_api.replace_draft_blocks(
                 "report-1",
                 1,
-                {"blocks": [{
+                ReplaceReportBlocksRequest.model_validate({"blocks": [{
                     "block_id": "text-1", "title": "해석", "type": "text",
                     "content": "관측 결과", "x": 0, "y": 0, "w": 12, "h": 2,
-                }]},
+                }]}),
                 report_context,
             )
             self.assertEqual("text", replaced["blocks"][0]["type"])
             self.assertEqual(1, len(report_api.list_definitions(report_context)["items"]))
             self.assertEqual(
                 "approved",
-                report_api.approve_version("report-1", 1, approved_at, report_context)["status"],
+                report_api.approve_version(
+                    "report-1",
+                    1,
+                    ApproveReportVersionRequest(approved_at=approved_at),
+                    report_context,
+                )["status"],
             )
             with self.assertRaises(HTTPException) as immutable:
-                report_api.replace_draft_blocks("report-1", 1, {"blocks": []}, report_context)
+                report_api.replace_draft_blocks(
+                    "report-1", 1, ReplaceReportBlocksRequest(blocks=[]), report_context
+                )
             self.assertEqual(409, immutable.exception.status_code)
             self.assertEqual("run-1", report_api.create_run_internal(run, report_context)["run_id"])
             self.assertEqual("run-1", report_api.list_runs(report_context)["items"][0]["run_id"])
@@ -113,26 +132,26 @@ class ReportRegistrationTest(unittest.TestCase):
                 "definition_id": "report-1", "version": 1,
                 "as_of": approved_at, "idempotency_key": "manual-1",
             }
-            command = report_api.create_manual_run_command(command_payload, report_context)
+            command = report_api.create_manual_run_command(
+                CreateManualRunRequest.model_validate(command_payload), report_context
+            )
             self.assertEqual("queued", command["status"])
             self.assertNotIn("run_id", command)
-            with self.assertRaises(HTTPException) as empty_idempotency:
-                report_api.create_manual_run_command(
-                    {**command_payload, "idempotency_key": " "}, report_context
+            with self.assertRaises(ValidationError):
+                CreateManualRunRequest.model_validate(
+                    {**command_payload, "idempotency_key": " "}
                 )
-            self.assertEqual(422, empty_idempotency.exception.status_code)
             for forbidden in (
                 "command_id", "run_id", "status", "policy_version", "context_hash",
                 "watermark", "blocks", "result",
             ):
                 with self.subTest(forbidden=forbidden):
-                    with self.assertRaises(HTTPException) as untrusted:
-                        report_api.create_manual_run_command(
-                            {**command_payload, forbidden: "client-value"}, report_context
+                    with self.assertRaises(ValidationError):
+                        CreateManualRunRequest.model_validate(
+                            {**command_payload, forbidden: "client-value"}
                         )
-                    self.assertEqual(422, untrusted.exception.status_code)
 
-    def test_report_routes_do_not_change_frozen_openapi_contract(self):
+    def test_report_routes_are_typed_without_public_result_ingestion(self):
         paths = {route.path for route in report_api.report_router.routes}
         self.assertIn("/reports/definitions", paths)
         self.assertIn("/reports/runs", paths)
@@ -141,7 +160,10 @@ class ReportRegistrationTest(unittest.TestCase):
             ("/reports/runs", "POST"),
             {(route.path, method) for route in report_api.report_router.routes for method in route.methods},
         )
-        self.assertFalse(any(path.startswith("/reports") for path in app.openapi()["paths"]))
+        schema = app.openapi()
+        self.assertIn("/reports/definitions", schema["paths"])
+        self.assertIn("/reports/runs/manual", schema["paths"])
+        self.assertNotIn("post", schema["paths"]["/reports/runs"])
 
 
 @unittest.skipUnless(os.getenv("REPORT_DATABASE_URL"), "temporary report DB is required")

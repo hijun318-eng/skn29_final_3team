@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.15 |
-| 문서 기준일 | 2026-08-04 17:00 |
+| 버전 | v3.16 |
+| 문서 기준일 | 2026-08-04 17:15 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -214,6 +214,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W4-F3 | Wave 4 Base smoke 재작업 | R3 | Gate 0 → I4 | R3-10~14 prompt·평가 harness·Instruct-2507 Base | 첫 균형 표본의 `timestamp(3) <= varchar(7)` 오류로 중단 | `BLOCKED` |
 | R3-W4-F4 | Wave 4 Base SQL 타입 재검증 | R3 | Gate 0 → I4 | R3-10~14 prompt 일반화·Instruct-2507 Base | 같은 균형 20건의 타입·범위·결과 동등성 재검증 | `READY` |
 | R3-W4-F5 | Wave 4 metric filter 계약 보완 | R3 | Gate 0 → I4 | R3-01·07·09~14 metric filter 계약 | 구조화 필터 schema·prompt·Validation Context 보존 | `MERGED_DEV` |
+| R3-W4-F6 | Wave 4 evaluation metric bridge | R3 | I4 → I5 | R3-09~14 evaluation bridge 회귀 | 제품 metric·필수 필터를 G2 평가 package에 무손실 보존 | `READY` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
 | R4-W4-F3 | Wave 4 Report production 등록 | R4 | 없음 → I4 | R4-16 Report 공통 등록 | FastAPI·Alembic·권한·승인본 불변성·중복 실행 차단 | `MERGED_DEV` |
 | R4-W4-F4 | Wave 4 metric registry 소비 | R4 | Gate 0 → I4 | R4-06~11 metric semantic Context·G2 | R2 registry를 권한별 Context·model payload·G2에 보존 | `MERGED_DEV` |
@@ -2867,6 +2868,38 @@ RESULT_SHA=96d3d803ffdb0f9d886982888d3f5c5ccb792c3e
 RESULT_CI=branch 30885817084 PASS; dev 30885892814 PASS; junhee 30885949124 PASS
 ```
 
+### R3-W4-F6
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W4-F6
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=evaluation metric bridge regression
+TASK_CARD_RANGE=R3-09~14 evaluation bridge metric regression only
+CURRENT_TASK_CARD_ID=R3-09
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=df2371ed8c08b710b17df8eef60dbc0b69932e1d
+START_POINT=origin/daesung 96d3d803ffdb0f9d886982888d3f5c5ccb792c3e에 origin/dev df2371ed8c08b710b17df8eef60dbc0b69932e1d를 병합해 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W4-F6@df2371e
+CONTRACT_VERSION=I4-CONTEXT-v2.0.0; G2-v1.0.0; EVAL-v2.0.0
+ALLOWED_PATHS=src/ai/training/verify_case_specs.py; tests/ai/test_validation_v2.py; tests/ai/test_training_verification.py; handoffs/R3-W4-F6.json; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=R2 metric registry; R4 Context·G2; evals dataset·manifest; modelops; Docker·Trino·endpoint·RunPod; dependency; secret
+HANDOFF_MANIFEST=handoffs/R3-W4-F6.json
+ACCEPTANCE_CRITERIA=_runtime_package가 입력 Context의 metric id·field·aggregation·time_field·typed required_filters를 R4 ContextPackage.metrics에 무손실 변환한다. 별도 G2를 복제하지 않고 PipelineSupport.g2_violation을 재사용한다. CRM EXPIRE/false와 serving View ACTUAL/false 정상 SQL은 통과하고 필터 누락·값 변조·OR 우회는 METRIC_FILTER_MISSING이 된다. evaluate_record의 non-empty metric Context 회귀와 기존 JSON·Trino 비교·early stop·legacy/join·6-domain·2-node·manifest hash 회귀를 유지한다. dataset·manifest 재생성이나 외부 실행은 하지 않는다.
+ACCEPTANCE_IDS=AC1_METRIC_BRIDGE;AC2_G2_REUSE;AC3_REQUIRED_FILTER_REGRESSION;AC4_EVALUATE_RECORD;AC5_LEGACY_REGRESSION;AC6_NO_EXTERNAL
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/ai/test_validation_v2.py tests/ai/test_training_verification.py -q; python -m pytest -p no:cacheprovider tests/ai -q; python -m compileall -q src/ai/training/verify_case_specs.py; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_TARGET;T2_AI;T3_COMPILE;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=R2 registry 또는 R4 Context·G2 schema 변경 필요; case ID·정답 SQL hardcode; multi-asset metric 의미 임의 결정; evals·dataset·modelops 변경 필요; Docker·Trino·model download·endpoint·RunPod·150건·LoRA·Blind Gold·외부 비용 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local bridge·test·허용 경로 commit·daesung push만 승인한다.
+AUTO_FAIL_CONDITIONS=metric 유실; G2 복제; required filter 우회 허용; legacy 회귀; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=metric bridge와 정상·누락·변조·OR 회귀, AI 전체 회귀, branch CI를 제출한다. 통과해도 23개 product metric registry 확대 전 150건 product-context 평가와 cloud 실행을 금지한다.
+```
+
 ### R2-W4-F3
 
 ```text
@@ -3117,6 +3150,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.16 | 2026-08-04 17:15 | R4 metric Context가 통합됐지만 R3 evaluation bridge가 metrics를 버려 필수 필터 누락 SQL을 G2가 통과시키는 결함을 확인했다. 기존 helper와 회귀만 고치는 R3-W4-F6을 local-only로 발행했으며, 제품 registry 23개 coverage 전 150건 평가와 모든 외부 비용 작업은 계속 차단한다. |
 | v3.15 | 2026-08-04 17:00 | R4 metric registry 제품 소비와 R5 상태·접근성 QA의 제품·handoff·branch/dev CI를 확인해 MERGED_DEV로 전환하고 R1-W4-F5 metric 계약 판정을 완료했다. 실제 API 신뢰 경계와 layout 보존을 먼저 동결하는 R5-W4-F3 REPORT-v1.1 proposal을 local-only로 발행했다. |
 | v3.14 | 2026-08-04 16:55 | R4 metric 소비와 독립적인 R5 fixture Run History·접근성·반응형·보안 상태 QA를 R5-W4-F2로 local-only 발행했다. 실제 API·schedule·share·export 성공 주장은 제외하고 6개 상태·partial·keyboard·aria-live·4 viewport만 검증한다. |
 | v3.13 | 2026-08-04 16:45 | R2 metric registry, R4 Report production 등록, R5 12-column editor의 제품·handoff·branch/dev CI를 확인해 MERGED_DEV로 전환했다. R2 registry를 권한별 Context·model payload·G2에 보존하고 hardcoded metric을 제거하는 R4-W4-F4를 local-only로 발행했다. |

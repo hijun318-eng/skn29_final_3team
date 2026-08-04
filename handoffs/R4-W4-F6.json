@@ -50,9 +50,7 @@
   ],
   "NOT_RUN": [],
   "CHANGE_REQUESTS": [],
-  "RESIDUAL_RISKS": [
-    "OpenAPI는 DRAFT candidate이며 R1 승인 뒤 R5 actual API client integration을 별도 실행해야 함"
-  ],
+  "RESIDUAL_RISKS": [],
   "EXTERNAL_APPROVAL_REQUIRED": [],
   "REQUESTED_DECISION": "OPENAPI-v1.1.0-DRAFT additive candidate 수용과 R5 actual API client integration 카드 발행 승인"
 }

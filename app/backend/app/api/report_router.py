@@ -47,6 +47,13 @@ def create_definition(
     return _call(lambda: _router(context).create_definition(payload))
 
 
+@report_router.get("/reports/definitions")
+def list_definitions(
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+) -> dict[str, Any]:
+    return _call(lambda: _router(context).list_definitions())
+
+
 @report_router.post("/reports/definitions/{definition_id}/versions/{version}/approve")
 def approve_version(
     definition_id: str,
@@ -77,9 +84,47 @@ def get_version(
     return _call(lambda: _router(context).get_version(definition_id, version))
 
 
-@report_router.post("/reports/runs")
-def create_run(
+@report_router.put("/reports/definitions/{definition_id}/versions/{version}/blocks")
+def replace_draft_blocks(
+    definition_id: str,
+    version: int,
     payload: Annotated[dict[str, Any], Body()],
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
+    return _call(
+        lambda: _router(context).replace_draft_blocks(definition_id, version, payload)
+    )
+
+
+@report_router.get("/reports/runs")
+def list_runs(
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+    definition_id: str | None = None,
+) -> dict[str, Any]:
+    return _call(lambda: _router(context).list_runs(definition_id))
+
+
+@report_router.post("/reports/runs/manual")
+def create_manual_run_command(
+    payload: Annotated[dict[str, Any], Body()],
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+) -> dict[str, Any]:
+    if not isinstance(payload.get("idempotency_key"), str) or not payload["idempotency_key"].strip():
+        raise HTTPException(status_code=422, detail="idempotency_key는 비어 있을 수 없습니다.")
+    return _call(lambda: _router(context).create_manual_run_command(payload))
+
+
+@report_router.get("/reports/runs/{run_id}")
+def get_run(
+    run_id: str,
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+) -> dict[str, Any]:
+    return _call(lambda: _router(context).get_run(run_id))
+
+
+def create_run_internal(
+    payload: dict[str, Any],
+    context: RequestContext,
+) -> dict[str, Any]:
+    """Trusted worker adapter hook; intentionally not registered as HTTP."""
     return _call(lambda: _router(context).create_run(payload))

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.93 |
-| 문서 기준일 | 2026-08-04 14:35 |
+| 버전 | v7.94 |
+| 문서 기준일 | 2026-08-04 14:20 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -322,6 +322,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 14:20 | 3.10~3.15 | `Qwen/Qwen3-4B-Instruct-2507` 고정 revision Base smoke 20건에서 JSON 12건, G2·합성 Trino·정답 SQL 각 4건만 통과했다. 오류는 JSON schema 미완성 8건과 `RESOURCE_POLICY_MISSING` 8건으로 분류했고, 150건 전체 평가와 LoRA는 실행하지 않았다. task Pod 삭제를 확인했으며 신규 비용은 USD 0.132로 추정했다. R3 commit `847ebc6`과 branch CI `30880359294`는 PASS했지만 모델 Gate 미달로 dev 병합하지 않는다. | Base smoke BLOCKED·비용 차단 |
 | 2026-08-04 14:35 | 3.10~3.15, 4.7~4.10 | 실제 DataHub의 PMS–CRM 5개·허용 26개 column Context와 G2 승인 JOIN PASS·누락 차단, branch CI `30878778928`, dev `23d27ac`, task 자원 0을 확인했다. Gold·Acceptance를 제외하고 Validation-ID 75·OOD 75를 새로 잠근 뒤 Instruct-2507 Base를 신규 USD 0.50 안에서 평가하도록 R3를 재개했다. | R4 MERGED_DEV·R3 Validation v2 READY |
 | 2026-08-04 14:20 | 2.11, 4.7~4.10 | R2가 raw 7개 URN을 실제 DataHub 값으로 교정해 data test 30건·branch CI `30878553003` PASS 후 dev `40776da`에 통합했다. View exact-match를 유지하면서 raw는 exact URN·원본 database schema name·허용 column 부분집합만 노출하는 R4 재검증을 승인했다. | R2 REWORK MERGED_DEV·R4 REWORK 승인 |
 | 2026-08-04 14:10 | 2.11, 4.7~4.10 | 실제 DataHub 수집에서 raw URN이 `crm.crm_db.dbo.*`, `pms.pms_db.public.*` 구조임을 확인했다. 축약 URN을 사용한 R2 계약을 R4 exact-match가 안전 차단해 R4를 대기로 전환하고, raw 7개 URN만 실제 값으로 교정하는 R2 재작업을 승인했다. | live URN 불일치 차단·R2 REWORK |
@@ -446,6 +447,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.94 | 2026-08-04 14:20 | Instruct-2507 Base smoke 20건의 JSON 12건·G2/Trino/정답 SQL 4건 결과와 schema·resource policy 실패, USD 0.132 비용·Pod 삭제·전체 평가 중단을 3.10~3.15에 기록했다. |
 | v7.93 | 2026-08-04 14:35 | R4 actual 혼합 Context·G2·CI·dev 통합을 4.7~4.10에 연결하고, Gold·Acceptance를 제외한 Validation-ID/OOD 재생성과 Instruct-2507 Base 평가를 3.10~3.15에 재개했다. |
 | v7.92 | 2026-08-04 14:20 | 실제 raw URN 교정의 data test·branch CI·dev 통합을 2.11에 연결하고, View 검증은 유지하며 raw 허용 column만 노출하는 R4 live 재검증을 승인했다. |
 | v7.91 | 2026-08-04 14:10 | 실제 DataHub platform instance·database 포함 raw URN과 축약 계약의 불일치를 2.11·4.7~4.10에 기록하고, R4 안전 차단 뒤 R2 URN-only 재작업을 승인했다. |

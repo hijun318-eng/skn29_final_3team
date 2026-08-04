@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.91 |
-| 문서 기준일 | 2026-08-04 09:49 |
+| 버전 | v2.92 |
+| 문서 기준일 | 2026-08-04 10:41 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -190,7 +190,9 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W3-F2 | Wave 3 training package follow-up | R3 | 없음 → I3 | R3-10 학습 데이터 재생성·검증 도구 반입 | 제공된 training package 정적·재현성 검증 | `MERGED_DEV` |
 | R3-W3-F3 | Wave 3 held-out follow-up | R3 | 없음 → I3 | R3-10 Gold·Acceptance 실행 입력 완성 | 원장 Gold 120건·Acceptance 30건 명시 선택·승인·로컬 Trino 검증 | `MERGED_DEV` |
 | R3-W3-F10 | Wave 3 reference follow-up | R3 | 없음 → I3 | R3-07 Node 2·2′ reference 정합 | SQL FROM/JOIN과 references 정확 일치·불일치 1회 repair | `MERGED_DEV` |
+| R3-W3-F11 | Wave 3 semantic SQL follow-up | R3 | 없음 → I3 | R3-07 승인 JOIN·기간·집계 의미 보완 | 승인 5-table JOIN·절대 기간·월 집계 PROMPT-v1.0.6 | `READY` |
 | R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
+| R4-W3-F4 | Wave 3 serving contract follow-up | R4 | 없음 → I3 | R4-08 실제 Base 응답 안정화 | SQL-only guided output·결정론적 metadata·전월 대비 기간 안전 검증 | `READY` |
 | R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
 | R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `MERGED_DEV` |
 | R1-W4 | Wave 4·08/24~09/02 | R1 | I4·RC1 → I5 | R1-11~13 | Report 통합·보안·장애·복구·성능·release manifest | `PLANNED` |
@@ -2172,6 +2174,66 @@ EXTERNAL_ACTION_PERMISSION=누적 USD15 안 task A40·고정 model·합성 local
 COST_BASELINE_USD=확인된 이전 상한 USD 1.783255 + 첫 SSH 진단 Pod 청구 확정 대기, 총 USD 15 미만 유지
 ```
 
+### R3-W3-F11
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F11
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-07 승인 JOIN·기간·집계 의미 보완
+CURRENT_TASK_CARD_ID=R3-07
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=11ff44e1d9a16fa73874d625cc4d0ecef1eeaf3f
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F11@11ff44e
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.6/PROMPT-v1.0.2
+ALLOWED_PATHS=src/ai/prompt_registry.py; tests/ai/test_prompt_registry.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; frontend/**; root Compose·env·CI; schema·training data·model binary
+ACCEPTANCE_CRITERIA=node2가 승인 PMS→CRM 5-table event-time JOIN을 metadata 식별자와 SQL table로 혼동하지 않고, Context asset 컬럼·metric 집계만 사용한다. 전월 대비 질문은 Context 절대 시각으로 직전 완료 2개월을 반개구간 조회해 월 2행을 반환하도록 PROMPT-v1.0.6에 명시한다. repair·schema·training data·generation option은 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_APPROVED_JOIN;AC2_APPROVED_COLUMNS;AC3_METRIC_AGGREGATION;AC4_ABSOLUTE_WINDOW;AC5_PROMPT_VERSION;AC6_REGRESSION
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/ai; python -m compileall -q src/ai/prompt_registry.py; git diff --check
+TEST_COMMAND_IDS=T1_AI;T2_COMPILE;T3_DIFF
+STOP_CONDITIONS=R3 경로 밖 변경 필요; schema·training data·model option 변경 필요; unit test 실패
+HANDOFF=PROMPT-v1.0.6 문구·version·AI regression과 R4 소비자 재검증 조건 전달
+EXTERNAL_ACTION_PERMISSION=없음. download·RunPod·비용·secret·배포·데이터 전송 불가
+```
+
+### R4-W3-F4
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W3-F4
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R4-08 실제 Base 응답 안정화
+CURRENT_TASK_CARD_ID=R4-08
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=11ff44e1d9a16fa73874d625cc4d0ecef1eeaf3f
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W3-F4@11ff44e
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+OPENAPI_VERSION=OPENAPI-v1.0.0
+ALLOWED_PATHS=app/backend/app/adapters/contract_model.py; tests/backend/test_production_model.py; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/ai/**; src/data/**; frontend/**; migration·OpenAPI·Controller·G1/G2/G3 상태 전이; root Compose·env·CI
+ACCEPTANCE_CRITERIA=실제 Base에는 node2 SQL 또는 repair SQL만 guided 생성시키고, references·prompt/model trace는 승인 Context와 registry에서 결정론적으로 복원한 뒤 기존 MODEL-v1.0.0 response schema 검증을 그대로 통과시킨다. SQL에 없는 잉여 parameter는 실행 계획에서 제외한다. 전월 대비 질문은 승인된 2개월 절대 기간·GROUP BY·ORDER BY가 없으면 모델 실패로 처리한다. G2·query·G3·OpenAPI·schema는 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_SQL_ONLY_GUIDE;AC2_DETERMINISTIC_METADATA;AC3_FULL_SCHEMA;AC4_PARAMETER_FILTER;AC5_MOM_FAIL_CLOSED;AC6_REGRESSION
+TEST_COMMANDS=python -m unittest tests.backend.test_production_model tests.backend.test_analysis_pipeline; python -m compileall -q app/backend/app/adapters/contract_model.py; git diff --check
+TEST_COMMAND_IDS=T1_BACKEND;T2_COMPILE;T3_DIFF
+STOP_CONDITIONS=R4 경로 밖 변경 필요; OpenAPI·schema·Gate 상태 전이 변경 필요; full schema 또는 안전 실패 회귀
+HANDOFF=SQL-only guided request·결정론적 full response·parameter/기간 fail-closed 회귀와 R1 제품 재검증 조건 전달
+EXTERNAL_ACTION_PERMISSION=없음. download·RunPod·비용·secret·배포·데이터 전송 불가
+```
+
 ## Wave 4 상세 계획 카드
 
 Wave 4는 I4 Reporting 통합부터 RC1·리허설·I5 동결까지 포함한다. I4에서 기능 통합을 마친 뒤 신규 기능을 금지하고 Critical·High 결함과 release 회귀만 수행한다.
@@ -2264,6 +2326,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.92 | 2026-08-04 10:41 | R1-W3-F7 실제 trace에서 G2 reference 보완 뒤 잉여 non-date parameter, 승인 JOIN 단축·타입 오류, verbose guided 응답 불안정과 전월 대비 기간 누락을 순서대로 확인했다. 안전 경계를 유지하는 R3-W3-F11 PROMPT-v1.0.6과 R4-W3-F4 SQL-only guided·결정론적 metadata·2개월 fail-closed를 READY 발행하며, 두 변경 통합 뒤 동일 trace를 최종 판정한다. |
 | v2.91 | 2026-08-04 09:49 | R3-W3-F10의 SQL FROM/JOIN·references 정확 일치 PROMPT-v1.0.5와 mismatch 단일 repair PROMPT-v1.0.2를 AI 47건·Gate 19건·CI `30866726434` PASS로 dev에 통합했다. 같은 Base·synthetic Trino read-only 제품 trace를 재판정하는 R1-W3-F7을 발행하며 성공 전 I3를 유지한다. |
 | v2.90 | 2026-08-04 09:37 | 정상 Secure A40 제품 trace가 MODEL 뒤 SQL-reference 불일치와 1회 repair 후 G2 정책 차단으로 종료된 사실, QUERY·Artifact 부재·cleanup·기존 Docker 무변경을 기록했다. R3-W3-F10으로 node2·repair의 SQL FROM/JOIN과 references 정확 일치 행동만 READY 발행하며 실제 성공 trace 전 I3를 유지한다. |
 | v2.89 | 2026-08-04 08:12 | 목표 재개 후 공식 PyTorch template Secure A40을 재시도했으나 474.937초 동안 uptime 0이 반복돼 실제 제품 trace는 Not Run이었다. Pod 404·활성 0·신규 비용 상한 USD 0.058048·누적 USD 1.617033, 기존 Trino 무변경과 임시 key 저장 제거를 확인하고 R1-W3-F6·I3 차단을 유지했다. |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.16 |
-| 문서 기준일 | 2026-08-04 17:15 |
+| 버전 | v3.17 |
+| 문서 기준일 | 2026-08-04 17:30 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -218,10 +218,11 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
 | R4-W4-F3 | Wave 4 Report production 등록 | R4 | 없음 → I4 | R4-16 Report 공통 등록 | FastAPI·Alembic·권한·승인본 불변성·중복 실행 차단 | `MERGED_DEV` |
 | R4-W4-F4 | Wave 4 metric registry 소비 | R4 | Gate 0 → I4 | R4-06~11 metric semantic Context·G2 | R2 registry를 권한별 Context·model payload·G2에 보존 | `MERGED_DEV` |
+| R4-W4-F5 | Wave 4 Report v1.1 제품 등록 | R4 | I4 → I5 | R4-16 Report API·DB queue 등록 | owner scope·draft replace·history·server-owned command | `READY` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
 | R5-W4-F1 | Wave 4 12-column Report editor | R5 | 없음 → I4 | R5-11 Report editor | draft layout·keyboard 대안·승인본 불변성 | `MERGED_DEV` |
 | R5-W4-F2 | Wave 4 Report 상태·접근성 QA | R5 | 없음 → I4 | R5-12·16 fixture history·QA | 상태·partial·keyboard·live region·반응형 회귀 | `MERGED_DEV` |
-| R5-W4-F3 | Wave 4 Report v1.1 proposal | R5 | 없음 → I4 | R5-08~10·12 Report 계약 보완 | layout 보존·draft replace·history·manual command 분리 | `READY` |
+| R5-W4-F3 | Wave 4 Report v1.1 proposal | R5 | 없음 → I4 | R5-08~10·12 Report 계약 보완 | layout 보존·draft replace·history·manual command 분리 | `MERGED_DEV` |
 
 ## Gate 공통 완료 조건
 
@@ -3002,6 +3003,38 @@ RESULT_SHA=f4871df852d606daf793414e9582aa48be49514e
 RESULT_CI=branch 30889083425 PASS; dev 30889141133 PASS
 ```
 
+### R4-W4-F5
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W4-F5
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=REPORT-v1.1 backend registration
+TASK_CARD_RANGE=R4-16 Report v1.1 API·DB queue 등록
+CURRENT_TASK_CARD_ID=R4-16
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=a808cfd651289eeb3437b162b7e032883b0479ac
+START_POINT=origin/jaehong f4871df852d606daf793414e9582aa48be49514e에 origin/dev a808cfd651289eeb3437b162b7e032883b0479ac를 병합해 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W4-F5@a808cfd
+CONTRACT_VERSION=REPORT-v1.1.0-DRAFT; REPORT-v1.0.0-compatible; API hidden until OpenAPI freeze
+ALLOWED_PATHS=app/backend/app/adapters/report_repository.py; app/backend/app/api/report_router.py; app/backend/migrations/versions/20260804_05_report_v11_registration.py; app/backend/README.md; tests/backend/test_report_registration.py; tests/backend/test_report_migration.py; handoffs/R4-W4-F5.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/report/**; app/main.py; OpenAPI contract·export; worker·schedule·compose; root Compose·env·CI; frontend; dependency; secret
+HANDOFF_MANIFEST=handoffs/R4-W4-F5.json
+ACCEPTANCE_CRITERIA=R5 REPORT-v1.1 proposal을 기존 v1 등록과 호환되게 common FastAPI·repository·Alembic에 등록한다. owner scope로 definition list, draft block 전체 replace, run list/detail을 제공하고 approved version 변경을 차단한다. manual command HTTP 입력은 definition_id·version·as_of·idempotency_key만 받으며 command_id·queued status와 실행 결과 필드는 서버가 소유한다. 기존 client result ingestion POST /reports/runs는 HTTP에서 제거하거나 trusted internal 전용으로 제한하되 src/report v1 호환은 보존한다. 신규 migration은 down_revision 20260804_04로 별도 추가하고 기존 migration을 수정하지 않으며 report_v1 schema qualification, block layout·backfill·bounds·artifact 제약, command table, approved trigger, unique idempotency, 필요한 GRANT와 draft DELETE 권한을 포함한다. route는 OpenAPI freeze 전 hidden으로 유지하고 worker·schedule·Artifact 실행은 구현하지 않는다.
+ACCEPTANCE_IDS=AC1_V1_COMPAT;AC2_OWNER_SCOPE;AC3_DRAFT_REPLACE;AC4_APPROVED_IMMUTABLE;AC5_HISTORY;AC6_MANUAL_TRUST_BOUNDARY;AC7_SERVER_OWNED;AC8_MIGRATION_CHAIN;AC9_DB_CONSTRAINTS;AC10_HIDDEN_API;AC11_NO_WORKER
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_report_registration.py tests/backend/test_report_migration.py tests/report -q; python -m pytest -p no:cacheprovider tests/backend tests/report -q; python -m compileall -q app/backend/app; blank DB migration; existing 20260804_04 to head migration; PostgreSQL owner isolation·draft replace·approved immutable·concurrent idempotency; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND_REPORT;T3_COMPILE;T4_BLANK_DB;T5_UPGRADE;T6_POSTGRES;T7_SCOPE;T8_DIFF
+STOP_CONDITIONS=OpenAPI version 변경 필요; worker command→run·claim/retry·Artifact 계약 필요; src/report 또는 기존 migration 수정 필요; client result/status/policy/context/watermark 신뢰; owner isolation·approved 불변성·idempotency 실패; 허용 경로 밖 변경; 외부 서비스·비용·secret 필요; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local backend code·test·허용 경로 commit·jaehong push와 기존 synthetic PostgreSQL의 비파괴 검증만 승인한다. volume reset·다른 Docker project·외부 비용은 금지한다.
+AUTO_FAIL_CONDITIONS=client 결과 주입; owner scope 누락; approved mutation; 기존 migration 수정; 공개 OpenAPI 무단 변경; worker 구현; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=proposal mapping, hidden route, trust boundary, 신규 migration, blank/existing DB, 실제 PostgreSQL 격리·불변·동시 idempotency, 전체 backend·report 회귀와 branch CI를 제출한다. worker·schedule은 후속 계약 전 대기한다.
+```
+
 ### R5-W4-F1
 
 ```text
@@ -3073,7 +3106,7 @@ RESULT_CI=branch 30889280089 PASS; dev 30889367777 PASS
 ### R5-W4-F3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -3100,6 +3133,8 @@ STOP_CONDITIONS=기존 migration proposal 수정; client result/status/policy/co
 EXTERNAL_ACTION_PERMISSION=없음. local proposal·test·허용 경로 commit·minji push만 승인한다.
 AUTO_FAIL_CONDITIONS=v1 비호환; layout 유실; decorative text 강제 artifact; client가 실행 결과를 결정; 승인본 변경; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=domain·router·repository·새 migration proposal·trust-boundary test와 branch CI를 제출한다. 통과 뒤 R4가 공통 FastAPI·Alembic·worker command에 등록하도록 별도 발행한다.
+RESULT_SHA=a808cfd651289eeb3437b162b7e032883b0479ac
+RESULT_CI=branch 30890571485 PASS; dev 30890664358 PASS
 ```
 
 ## I5 이후 후속 단계 예약
@@ -3150,6 +3185,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.17 | 2026-08-04 17:30 | R5 REPORT-v1.1 proposal의 layout·draft replace·history·manual command 신뢰 경계와 branch CI를 확인해 dev에 통합했다. owner-scoped API·DB queue·신규 migration만 제품에 등록하는 R4-W4-F5를 local-only로 발행하고, OpenAPI 공개·worker·schedule은 선행 계약 전까지 제외했다. |
 | v3.16 | 2026-08-04 17:15 | R4 metric Context가 통합됐지만 R3 evaluation bridge가 metrics를 버려 필수 필터 누락 SQL을 G2가 통과시키는 결함을 확인했다. 기존 helper와 회귀만 고치는 R3-W4-F6을 local-only로 발행했으며, 제품 registry 23개 coverage 전 150건 평가와 모든 외부 비용 작업은 계속 차단한다. |
 | v3.15 | 2026-08-04 17:00 | R4 metric registry 제품 소비와 R5 상태·접근성 QA의 제품·handoff·branch/dev CI를 확인해 MERGED_DEV로 전환하고 R1-W4-F5 metric 계약 판정을 완료했다. 실제 API 신뢰 경계와 layout 보존을 먼저 동결하는 R5-W4-F3 REPORT-v1.1 proposal을 local-only로 발행했다. |
 | v3.14 | 2026-08-04 16:55 | R4 metric 소비와 독립적인 R5 fixture Run History·접근성·반응형·보안 상태 QA를 R5-W4-F2로 local-only 발행했다. 실제 API·schedule·share·export 성공 주장은 제외하고 6개 상태·partial·keyboard·aria-live·4 viewport만 검증한다. |

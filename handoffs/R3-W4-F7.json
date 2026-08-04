@@ -110,15 +110,8 @@
     }
   ],
   "NOT_RUN": [],
-  "CHANGE_REQUESTS": [
-    {
-      "owner": "R4",
-      "request": "entitlement와 selected_metric_id를 교집합해 제품 Context와 Node3에 metric ID 하나만 전달하는 별도 카드 발행"
-    }
-  ],
-  "RESIDUAL_RISKS": [
-    "현재 제품 backend는 Node1 selected_metric_id를 아직 소비하지 않으므로 R4 후속 통합 전에는 동일 asset 복수 metric을 활성화하지 않는다."
-  ],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
   "EXTERNAL_APPROVAL_REQUIRED": [],
   "REQUESTED_DECISION": "R3-W4-F7 exact-one metric selection 계약을 수용하고 dev 통합 후 R4 entitlement consumer 카드를 별도 발행"
 }

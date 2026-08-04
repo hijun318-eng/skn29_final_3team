@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v8.01 |
-| 문서 기준일 | 2026-08-04 16:45 |
+| 버전 | v8.02 |
+| 문서 기준일 | 2026-08-04 16:55 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -207,11 +207,11 @@ gantt
 | 5.10 | R5-09 독립 Report router·API module | router·contract test | 송민지 | 완료 | 08/17 | 08/24 | 높음 |
 | 5.11 | R5-10 Report migration proposal | 단일 migration proposal | 송민지 | 완료 | 08/17 | 08/24 | 높음 |
 | 5.12 | R5-11 12-column Report editor | add·move·resize·draft | 송민지 | 완료 | 08/24 | 08/28 | 높음 |
-| 5.13 | R5-12 수동 실행·Run History | run·status·history UI | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
+| 5.13 | R5-12 수동 실행·Run History | run·status·history UI | 송민지 | 진행 | 08/24 | 08/28 | 높음 |
 | 5.14 | R5-13 daily·weekly·monthly schedule UI | schedule contract | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 5.15 | R5-14 Catalog·Connection UI | source·asset·ingestion UI | 송민지 | 완료 | 08/17 | 08/28 | 중간 |
 | 5.16 | R5-15 Operations·Audit trace UI | request trace UI | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
-| 5.17 | R5-16 접근성·반응형·보안 상태 표시 | QA evidence | 송민지 | 대기 | 08/24 | 08/31 | 높음 |
+| 5.17 | R5-16 접근성·반응형·보안 상태 표시 | QA evidence | 송민지 | 진행 | 08/24 | 08/31 | 높음 |
 | 5.18 | R5-17 실제 API integration | production client | 송민지 | 대기 | 08/24 | 08/31 | 높음 |
 | 5.19 | R5-18 frontend Dockerfile·build·E2E | service fragment | 송민지 | 대기 | 08/24 | 09/02 | 높음 |
 | 5.20 | R5-19 발표 route·fallback fixture | demo runbook | 송민지 | 대기 | 08/31 | 09/03 | 높음 |
@@ -322,6 +322,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 16:55 | 5.13, 5.17 | 실제 Report API는 draft 수정·history 조회·서버 주도 manual run 계약이 없어 연동을 보류했다. R4 metric 소비와 독립적인 local synthetic fixture 범위에서 6개 Run 상태·block partial·keyboard·aria-live·disabled/focus·권한/loading/empty/error·4개 viewport만 검증하는 R5-W4-F2를 발행했다. schedule·실제 API·share·export 성공 주장은 제외한다. | R5 상태·접근성 QA 승인 |
 | 2026-08-04 16:45 | 2.11~2.14, 4.7~4.11, 4.17, 5.12 | R2 metric registry, R4 Report 공통 등록, R5 12-column editor를 branch/dev CI까지 통과해 dev에 통합했다. Report는 승인본 불변·승인 definition만 실행·중복 run 차단과 빈/기존 DB migration, editor는 4개 viewport·keyboard 조작을 확인해 4.17·5.12를 완료로 전환했다. 다음 local-only 단계로 R4가 metric registry를 권한별 Context·model payload·G2에 보존하도록 발행했다. | R2·R4·R5 MERGED_DEV·R4 metric 소비 승인 |
 | 2026-08-04 16:20 | 2.11~2.14, 3.2, 3.8, 3.10~3.15 | R3가 metric 필수 필터를 구조화 schema·prompt·Validation Context에 보존하고 AI 55건·1,350개 Context schema·branch/dev/junhee CI를 통과해 dev에 통합했다. 다음 로컬 단계로 R2가 같은 구조를 versioned Context metric registry에 생산하고 asset column 정합을 검증하도록 발행했다. R4 제품 소비와 cloud 재평가는 생산자 통합 뒤 별도 승인한다. | R3 MERGED_DEV·R2 metric 생산 승인 |
 | 2026-08-04 15:50 | 1.7, 4.17, 5.12 | R3 F5의 실제 변경은 허용된 7개 경로뿐이지만 개인 branch가 보존하는 F3/F4 실패 증거가 origin/dev 대비 누적 diff에 포함돼 role scope가 오탐함을 확인했다. F5 범위를 기존 F3/F4 승인 경로와 새 F5 파일의 합집합으로 교정하고 cloud 금지는 유지했다. I4의 독립 local-only 작업으로 R4에는 기존 Report proposal의 FastAPI·새 Alembic revision 등록만, R5에는 fixture 기반 12-column editor만 발행했다. worker·schedule·실제 API·외부 실행은 제외한다. | R3 누적 scope 교정·R4/R5 I4 병렬 승인 |
@@ -454,6 +455,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v8.02 | 2026-08-04 16:55 | 실제 Report API 신뢰 경계는 보류하고, fixture Run History와 접근성·반응형·보안 상태 QA를 5.13·5.17에 진행으로 발행했다. |
 | v8.01 | 2026-08-04 16:45 | R2 metric 생산·R4 Report 등록·R5 editor를 dev에 통합해 4.17·5.12를 완료로 전환하고, R4 metric 소비 작업을 4.7~4.11에 local-only로 발행했다. |
 | v8.00 | 2026-08-04 16:20 | 구조화 metric 필터 계약의 R3 구현·CI를 dev에 통합하고, 같은 의미 정보를 제품 Context에 공급하는 R2 metric registry 작업을 2.11~2.14에 local-only로 발행했다. |
 | v7.99 | 2026-08-04 15:50 | R3 F5의 누적 branch scope를 과거 승인 경로와 정합화하고, I4 독립 local-only 작업인 R4 Report 공통 등록과 R5 12-column editor를 4.17·5.12에 진행으로 발행했다. |

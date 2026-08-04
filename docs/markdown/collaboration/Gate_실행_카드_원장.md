@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.13 |
-| 문서 기준일 | 2026-08-04 16:45 |
+| 버전 | v3.14 |
+| 문서 기준일 | 2026-08-04 16:55 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -219,6 +219,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R4-W4-F4 | Wave 4 metric registry 소비 | R4 | Gate 0 → I4 | R4-06~11 metric semantic Context·G2 | R2 registry를 권한별 Context·model payload·G2에 보존 | `READY` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
 | R5-W4-F1 | Wave 4 12-column Report editor | R5 | 없음 → I4 | R5-11 Report editor | draft layout·keyboard 대안·승인본 불변성 | `MERGED_DEV` |
+| R5-W4-F2 | Wave 4 Report 상태·접근성 QA | R5 | 없음 → I4 | R5-12·16 fixture history·QA | 상태·partial·keyboard·live region·반응형 회귀 | `READY` |
 
 ## Gate 공통 완료 조건
 
@@ -2997,6 +2998,38 @@ RESULT_SHA=5768aa3b29b06a383a81c33012828181b95b6a4d
 RESULT_CI=branch 30887190599 PASS; dev 30887264040 PASS
 ```
 
+### R5-W4-F2
+
+```text
+STATUS=READY
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W4-F2
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=Report state·accessibility QA
+TASK_CARD_RANGE=R5-12·16 fixture Run History·접근성·반응형·보안 상태
+CURRENT_TASK_CARD_ID=R5-12
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=a293194a039fa2ed5655ffa19f7b0494d8e5988f
+START_POINT=origin/minji 94e8d50에서 최신 origin/dev를 merge한 뒤 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R5-W4-F2@a293194
+CONTRACT_VERSION=REPORT-v1.0.0-compatible; SCR-RPT-003; RPE-09~15-DRAFT
+ALLOWED_PATHS=app/enterprise-react/src/contracts/report.ts; app/enterprise-react/src/pages/ReportsPage.jsx; app/enterprise-react/src/styles.css; tests/frontend/contracts.test.mjs; handoffs/R5-W4-F2.json; docs/markdown/daily_reports/minji/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/report/**; 다른 route·화면; 실제 API client; root Compose·env·CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R5-W4-F2.json
+ACCEPTANCE_CRITERIA=local synthetic fixture로 queued·running·success·partial·failed·cancelled Run History와 block별 partial 상태를 표시하고 fixture badge를 유지한다. 목록·상세 전환은 native keyboard semantics와 focus-visible을 제공하며 상태 변화·오류는 aria-live로 전달한다. 비동기 동작 중 button disabled와 완료·오류 후 focus 이동을 검증한다. 권한 차단·loading·empty·error를 색상만이 아닌 text·icon으로 구분하고 1440·1024·768·360px에서 overflow와 focus 순서를 확인한다. 현재 서버 승인 없이 finalize한 상태를 실제 승인으로 표시하거나 refresh·share·PDF/PPT·manual run 성공을 주장하지 않는다. schedule·actual API·새 route는 구현하지 않는다.
+ACCEPTANCE_IDS=AC1_HISTORY_STATES;AC2_PARTIAL_BLOCK;AC3_FIXTURE_LABEL;AC4_KEYBOARD;AC5_ARIA_LIVE;AC6_DISABLED_FOCUS;AC7_SECURITY_STATES;AC8_RESPONSIVE;AC9_NO_FAKE_SUCCESS;AC10_SCOPE
+TEST_COMMANDS=cd app/enterprise-react && npm run build; node tests/frontend/contracts.test.mjs; Edge actual renderer 1440·1024·768·360 keyboard·focus·overflow·aria-live 확인; python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_BUILD;T2_CONTRACT;T3_BROWSER;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=새 dependency·route·backend/API client 필요; local fixture를 실제 실행으로 표시; 승인본 자동 mutation; keyboard·live region 누락; schedule·share·export 성공 구현 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local fixture UI·test·허용 경로 commit·minji push만 승인한다.
+AUTO_FAIL_CONDITIONS=fake success; 상태를 색상만으로 표시; 비대화형 clickable row; focus 손실; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=6개 run 상태·partial·fixture 표시·keyboard·live region·4 viewport·build·contract·branch CI를 제출한다. actual API와 schedule은 R4 공개 계약·runtime 뒤 별도 발행 전까지 대기한다.
+```
+
 ## I5 이후 후속 단계 예약
 
 아래 항목은 기획에서 빠진 것이 아니라 현재 일정 뒤에 남겨 둔 작업이다. 아직 실행 Wave와 날짜를 정하지 않으며, 현재 상태는 `PLANNED`다. R1이 I5 이후 새 `BASE_SHA`, 담당 경로, 계약·비용·보안 기준을 채워 별도 실행 묶음을 `READY`로 발행해야 시작할 수 있다.
@@ -3045,6 +3078,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.14 | 2026-08-04 16:55 | R4 metric 소비와 독립적인 R5 fixture Run History·접근성·반응형·보안 상태 QA를 R5-W4-F2로 local-only 발행했다. 실제 API·schedule·share·export 성공 주장은 제외하고 6개 상태·partial·keyboard·aria-live·4 viewport만 검증한다. |
 | v3.13 | 2026-08-04 16:45 | R2 metric registry, R4 Report production 등록, R5 12-column editor의 제품·handoff·branch/dev CI를 확인해 MERGED_DEV로 전환했다. R2 registry를 권한별 Context·model payload·G2에 보존하고 hardcoded metric을 제거하는 R4-W4-F4를 local-only로 발행했다. |
 | v3.12 | 2026-08-04 16:20 | R3-W4-F5의 구조화 metric 필터 계약과 branch·dev·junhee CI 통과를 확인해 MERGED_DEV로 전환했다. 제품 Context가 같은 의미 계약을 소비할 수 있도록 R2-W4-F3 metric registry 생산자를 local-only로 발행하고 R4 소비·cloud 재평가는 후속 판정으로 유지했다. |
 | v3.11 | 2026-08-04 15:50 | R3 F5의 누적 F3/F4 증거가 role scope에 걸리는 오탐을 이전 승인 경로와의 합집합으로 교정했다. I4의 독립 local-only 작업으로 R4-W4-F3 Report production 등록과 R5-W4-F1 12-column editor를 발행하고 worker·schedule·실제 API·외부 비용은 제외했다. |

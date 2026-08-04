@@ -37,21 +37,15 @@
     {"id": "AC8_NO_WORKER", "status": "PASS", "evidence": "worker·schedule runtime을 추가하지 않고 수동 run 요청 기록까지만 구현"}
   ],
   "TEST_RESULTS": [
-    {"id": "T1_BACKEND_REPORT", "name": "python -m pytest tests/backend tests/report -q", "status": "NOT_RUN", "evidence": "로컬 system Python에는 FastAPI·pytest가 없고 기존 backend runtime image에는 pytest가 없어 exact 명령은 branch CI에서 확인 예정; 동일 코드의 unittest backend 63건·report 7건 통과"},
+    {"id": "T1_BACKEND_REPORT", "name": "python -m pytest tests/backend tests/report -q", "status": "PASS", "evidence": "GitHub Actions run 30887243614의 더 넓은 python -m pytest -p no:cacheprovider tests 전체 통과; 로컬 unittest backend 63건·report 7건도 통과"},
     {"id": "T2_MIGRATION", "name": "빈 DB와 기존 DB alembic upgrade head", "status": "PASS", "evidence": "임시 PostgreSQL에서 blank head·existing 20260731_03→head와 실제 DB 불변식 통과 후 임시 DB 제거"},
     {"id": "T3_COMPILE", "name": "python -m compileall -q app/backend/app", "status": "PASS", "evidence": "backend app과 신규 migration compile 통과"},
-    {"id": "T4_SCOPE", "name": "python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base", "status": "NOT_RUN", "evidence": "handoff manifest commit 후 실행"},
+    {"id": "T4_SCOPE", "name": "python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "제품 결과 뒤 handoff-only 후속 변경과 R4-W4-F3 허용 경로를 확인"},
     {"id": "T5_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
   ],
-  "NOT_RUN": [
-    "T1 exact pytest는 로컬 의존성 부재로 branch CI에서 실행 예정",
-    "T4 scope는 manifest-only 후속 commit 생성 뒤 실행 예정"
-  ],
+  "NOT_RUN": [],
   "CHANGE_REQUESTS": [],
-  "RESIDUAL_RISKS": [
-    "기존 migration의 동명 report schema를 보존하기 위해 production 등록은 report_v1 호환 namespace를 사용",
-    "Report 경로는 동결된 OPENAPI-v1.0.0을 변경하지 않도록 schema에서 숨겼으며 정식 공개 계약은 후속 버전 승격이 필요"
-  ],
+  "RESIDUAL_RISKS": [],
   "EXTERNAL_APPROVAL_REQUIRED": [],
-  "REQUESTED_DECISION": "R4-W4-F3 branch CI 확인 후 dev 통합; worker·schedule runtime은 별도 실행 묶음 전까지 대기"
+  "REQUESTED_DECISION": "기존 report schema를 보존하는 report_v1 호환 namespace와 동결 OPENAPI에서 숨긴 등록을 수용하고 R4-W4-F3를 dev에 통합; worker·schedule runtime과 공개 OpenAPI 승격은 별도 실행 묶음 전까지 대기"
 }

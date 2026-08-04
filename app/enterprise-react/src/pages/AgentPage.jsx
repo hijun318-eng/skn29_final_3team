@@ -12,9 +12,10 @@ const initialRun = analysisFixtures.ready;
 
 export function AgentPage() {
   const [conversationId] = useState(createUuid);
-  const [question, setQuestion] = useState("7월 마지막 주 객실 매출 감소 구간을 찾고, 예약 채널과 연회 일정 변화를 함께 비교해줘.");
-  const [submittedQuestion, setSubmittedQuestion] = useState(initialRun.question);
+  const [question, setQuestion] = useState("");
+  const [submittedQuestion, setSubmittedQuestion] = useState("");
   const [run, setRun] = useState(initialRun);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [artifactNotice, setArtifactNotice] = useState("");
   const viewMeta = useMemo(() => run.meta, [run.meta]);
@@ -25,6 +26,7 @@ export function AgentPage() {
     if (!nextQuestion || submitting) return;
 
     setSubmitting(true);
+    setHasSubmitted(true);
     setArtifactNotice("");
     setSubmittedQuestion(nextQuestion);
     setRun({
@@ -61,7 +63,7 @@ export function AgentPage() {
 
       <main className="chat-main">
         <MetaStrip meta={viewMeta} />
-        <div className="conversation">
+        {hasSubmitted && <div className="conversation">
           <div className="message message--user">
             <div className="avatar small">J</div>
             <div><b>사용자</b><p>{submittedQuestion}</p></div>
@@ -86,7 +88,7 @@ export function AgentPage() {
               {artifactNotice && <p className="artifact-notice" role="status">{artifactNotice}</p>}
             </div>
           </div>
-        </div>
+        </div>}
         <form className="chat-input" onSubmit={submitQuestion}>
           <div className="question-field">
             <input
@@ -103,6 +105,8 @@ export function AgentPage() {
 
       <aside className="evidence-panel">
         <SectionTitle eyebrow="TRACEABILITY" title="분석 근거" />
+        {!hasSubmitted && <p className="evidence-empty">질문을 입력하면 분석 결과와 근거가 표시됩니다.</p>}
+        {hasSubmitted && <>
         <div className="execution-list">
           {["분석 요청 확인", "메타데이터 근거 연결", "Artifact 생성"].map((name, index) => (
             <article key={name}>
@@ -143,6 +147,7 @@ export function AgentPage() {
             <div><dt>timezone</dt><dd>{run.meta.timezone}</dd></div>
           </dl>
         </div>
+        </>}
       </aside>
     </div>
   );

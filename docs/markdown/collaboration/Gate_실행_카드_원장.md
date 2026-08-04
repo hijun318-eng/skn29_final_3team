@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.95 |
-| 문서 기준일 | 2026-08-04 11:42 |
+| 버전 | v2.96 |
+| 문서 기준일 | 2026-08-04 12:48 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -2248,6 +2248,35 @@ EVIDENCE=jaehong code `fbac0b8`·handoff `7f05d9a`, backend 25건 PASS, branch C
 
 Wave 4는 I4 Reporting 통합부터 RC1·리허설·I5 동결까지 포함한다. I4에서 기능 통합을 마친 뒤 신규 기능을 금지하고 Critical·High 결함과 release 회귀만 수행한다.
 
+### R1-W4-F1A
+
+```text
+STATUS=IN_PROGRESS
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F1A
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=Gate 0 DataHub runtime
+TASK_CARD_RANGE=R1-11 DataHub health 통합 계약 교정
+CURRENT_TASK_CARD_ID=R1-11
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=d2c6fdc132b53c56c6d5e4d9ad714b22dd1cc538
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F1A@d2c6fdc
+ALLOWED_PATHS=infrastructure/database/r1-service-fragment.v1.json; infrastructure/database/scripts/verify-service-fragment.ps1; docs/markdown/02_WBS.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=infrastructure/database/datahub/**; src/data/**; app/backend/**; src/ai/**; frontend/**; .env; secret; 다른 Docker project·container·volume 변경
+ACCEPTANCE_CRITERIA=DataHub v1.6.0 공식 quickstart와 실제 task 환경에서 200을 반환한 GMS `/health`를 유일한 필수 health endpoint로 고정한다. 존재하지 않는 management `/actuator/health` 요구를 service fragment와 검증기에서 함께 제거하고 `R2_SERVICE_FRAGMENT_VERIFIED`를 확인한다. 이 교정을 dev에 통합한 뒤 R2-W4-F1A가 최신 dev를 받아 branch CI 전체 PASS를 확인하기 전에는 R2 결과를 병합하지 않는다.
+ACCEPTANCE_IDS=AC1_OFFICIAL_HEALTH;AC2_FRAGMENT_SYNC;AC3_LOCAL_VERIFY;AC4_DEV_INTEGRATION;AC5_R2_CI
+TEST_COMMANDS=powershell -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify-service-fragment.ps1 -EnvFilePath .env.example; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; document/WBS/report validation; git diff --check
+TEST_COMMAND_IDS=T1_FRAGMENT;T2_SCOPE;T3_DOCS;T4_DIFF
+STOP_CONDITIONS=공식 v1.6 health 계약과 불일치; R1 허용 경로 밖 변경 필요; R2 제품 경로 변경 필요; 필수 검증 실패
+HANDOFF=dev health 계약 commit·CI와 R2 최신 dev 재검증 조건 전달
+EXTERNAL_ACTION_PERMISSION=사용자의 작업 계속·commit·push·dev 통합 승인에 따라 위 허용 경로의 local 검증·commit·junhee push·dev 병합을 승인한다. 비용·외부 배포·secret·다른 Docker 변경은 불가하다.
+RESULT=task DataHub v1.6.0에서 GMS `/health` 200과 management `/actuator/health` 404를 확인해 service fragment와 검증기의 잘못된 management 필수 조건을 제거했다. dev 통합과 R2 corrective CI는 아직 진행 중이다.
+```
+
 ### R1-W4
 
 - `CARD_PLAN`: R1-11 Report 통합 → R1-12 보안·장애·복구·성능 → R1-13 RC1·RC2·Release
@@ -2408,6 +2437,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.96 | 2026-08-04 12:48 | R2 DataHub 실수집은 8개 URN·116개 column·17개 upstream edge·90개 column lineage로 PASS했으나, 실제 GMS에 없는 management actuator를 service fragment가 필수 health로 요구해 CI가 실패했다. R2 범위 위반을 되돌리고 공식 v1.6 `/health` 계약만 R1 경로에서 교정한 뒤 dev 통합·R2 재검증하는 R1-W4-F1A를 발행했다. |
 | v2.95 | 2026-08-04 11:42 | R2-W4-F1 사전 조회에서 원천 SELECT는 성공했지만 View 소유자의 `GRANT_SELECT` 부재로 `serving.analytics` 조회가 실패했다. 기존 카드의 경로 제한을 지키기 위해 F1을 BLOCKED로 전환하고, 소유자에게만 위임 조회 권한을 추가하되 일반 사용자는 SELECT 전용으로 유지하는 R2-W4-F1A를 같은 기준 SHA에서 READY 발행했다. |
 | v2.94 | 2026-08-04 11:20 | sLLM 학습데이터는 `serving.analytics` View를 사용하지만 DataHub에는 5개 원천 recipe만 있고 backend 제품 Context는 PMS·CRM 5개 원천 asset을 고정 반환하는 불일치를 확인했다. I3 Base 제품 통과는 유지하되 LoRA 제품 채택은 정합 전까지 보류했다. 제품 Context는 `LIVE_DATAHUB`로 확정하고 실제 조회·read-only trace를 요구하는 R2-W4-F1을 먼저 READY 발행했으며, R4 follow-up은 R2 dev 통합 뒤 발행한다. |
 | v2.93 | 2026-08-04 11:20 | R3-W3-F11·R4-W3-F4를 dev에 통합하고 최종 CI `30870270154` PASS를 확인했다. 고정 Qwen3-4B Base·synthetic Trino read-only 제품 trace가 2026-06·07 두 행, repair 0회, ROUTER부터 ARTIFACT까지 모두 PASS했고 Pod 404·active 0·secret 로그 0건·기존 Docker 무변경을 확인해 R1-W3·R1-W3-F7을 VERIFIED_GATE로 승인했다. Dashboard가 과거 BLOCKED 카드를 현재 카드로 오인하던 선택 로직도 마지막 발행 묶음 기준으로 교정했다. |

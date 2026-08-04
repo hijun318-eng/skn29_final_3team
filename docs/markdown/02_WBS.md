@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.88 |
-| 문서 기준일 | 2026-08-04 13:40 |
+| 버전 | v7.89 |
+| 문서 기준일 | 2026-08-04 13:45 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -156,12 +156,12 @@ gantt
 | 3.7 | R3-06 G3 통과 결과의 Node 3 설명 | 근거·조건·주의 설명 | 윤대성 | 완료 | 08/10 | 08/21 | 높음 |
 | 3.8 | R3-07 Prompt Registry | prompt ID·version·hash | 윤대성 | 완료 | 08/03 | 08/07 | 높음 |
 | 3.9 | R3-08 필수 30건 평가 runner | schema·linking·SQL·result 평가 | 윤대성 | 완료 | 08/10 | 08/31 | 높음 |
-| 3.10 | R3-09 Base model·Analytics Agent 기준선 비교 | 정확도·p50·p95·자원 비교표 | 윤대성 | 완료 | 08/17 | 08/21 | 높음 |
-| 3.11 | R3-10 train·val·gold manifest 검수 | 학습 데이터 검수 기록 | 윤대성 | 완료 | 08/17 | 08/21 | 높음 |
+| 3.10 | R3-09 Base model·Analytics Agent 기준선 비교 | 정확도·p50·p95·자원 비교표 | 윤대성 | 진행 | 08/17 | 08/21 | 높음 |
+| 3.11 | R3-10 train·val·gold manifest 검수 | 학습 데이터 검수 기록 | 윤대성 | 진행 | 08/17 | 08/21 | 높음 |
 | 3.12 | R3-11 time-boxed LoRA/QLoRA 1회 비교와 제품 채택 Gate | 비교 결과·adapter·rollback 증거 | 윤대성 | 완료 | 08/24 | 08/28 | 조건부 |
-| 3.13 | R3-12 vLLM·RunPod serving | endpoint·health·manifest | 윤대성 | 완료 | 08/17 | 08/28 | 높음 |
+| 3.13 | R3-12 vLLM·RunPod serving | endpoint·health·manifest | 윤대성 | 대기 | 08/17 | 08/28 | 높음 |
 | 3.14 | R3-13 production model client | retry·fallback·circuit 계약 | 윤대성 | 완료 | 08/17 | 08/28 | 높음 |
-| 3.15 | R3-14 model trace·비용·재현성 | version·token·cost trace | 윤대성 | 완료 | 08/17 | 08/28 | 중간 |
+| 3.15 | R3-14 model trace·비용·재현성 | version·token·cost trace | 윤대성 | 진행 | 08/17 | 08/28 | 중간 |
 | 3.16 | R3-15 model·prompt·adapter release 후보 고정 | model release manifest | 윤대성 | 대기 | 08/24 | 09/02 | 높음 |
 
 ### 백엔드 Control Plane
@@ -322,6 +322,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 13:45 | 2.11~2.14, 3.10~3.16, 4.7~4.11 | 실제 기존 Validation 150건이 `serving.analytics` 4개 외 raw FQN 7개를 포함하고 v2의 Validation-ID/OOD 분리 기준을 충족하지 못해 RunPod 실행을 중단했다. View 우선, CRM 단독 raw 3개, 승인 PMS–CRM JOIN raw 5개만 versioned 계약으로 고정하는 R2 작업을 먼저 승인하고 R4 소비·Validation v2·Instruct-2507 Base 평가 순서로 재배치했다. 모델 전환 후 신규 RunPod 비용은 USD 0이다. | 혼합 Context 생산자 승인·R3 비용 차단 |
 | 2026-08-04 13:40 | 3.11~3.16, 4.7~4.11 | R4가 live DataHub의 호텔 일별 View 1개·15개 column을 실제 Context에 포함하고 권한 없는 역할·계약 밖 metadata·외부 FQN을 차단했다. dev `db6d42f`·CI `30877055428` PASS로 Gate 0을 해제했다. 다음 제품 후보는 공식 non-thinking `Qwen/Qwen3-4B-Instruct-2507` revision `cdbee75…`로 고정하고 이전 LoRA adapter 없이 Base smoke 성공 후 Validation 150건만 신규 USD 0.50 안에서 실행하도록 승인했다. | Gate 0 PASS·새 Base 평가 승인 |
 | 2026-08-04 13:20 | 1.7, 2.10~2.12, 4.7~4.11 | R1 health 계약과 R2 DataHub 생산자 결과를 최종 dev `7ca7755`·CI `30876201074` PASS로 확정했다. live DataHub의 8개 View·116개 column을 질문별 최대 8 dataset·60 column으로 선별하고 entitlement·계약 불일치를 fail-closed 처리하며 Context 내부 `serving.analytics.*`만 G2가 허용하도록 R4-W4-F1A를 승인했다. 소비자 통합 전에는 Gate 0과 새 model 평가를 시작하지 않는다. | R2 생산자 MERGED_DEV·R4 소비자 승인 |
 | 2026-08-04 12:48 | 1.7, 2.10~2.12 | task DataHub v1.6.0에서 분석 View 8개·column 116개·upstream edge 17개·column lineage 90개를 실제 수집·조회해 Gate 0의 R2 생산자 조건을 확인했다. GMS `/health`는 200이지만 service fragment가 존재하지 않는 management actuator를 필수로 검사해 R2 CI가 실패했으므로, R2 범위 위반 변경을 되돌리고 R1-W4-F1A로 health 계약만 dev에 선행 교정한 뒤 R2를 재검증한다. 기존 상태·일정·간트는 dev와 R2 CI PASS 전까지 유지한다. | DataHub 실수집 PASS·R1 health 계약 교정 진행 |
@@ -441,6 +442,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.89 | 2026-08-04 13:45 | 기존 Validation 150건의 제품 Context 불일치와 v2 ID/OOD 미분리를 확인해 RunPod 평가를 차단하고, R2 혼합 Context 계약→R4 소비→Validation v2→Instruct-2507 Base 평가 순서로 2.11~2.14·3.10~3.16·4.7~4.11의 실행 상태를 재정렬했다. |
 | v7.88 | 2026-08-04 13:40 | 종료된 R1 health 묶음과 새 model 승인 작업을 분리해 R1-W4-F2의 문서·검증 권한을 명시하고 CI 역할 경로 오판을 교정했다. |
 | v7.87 | 2026-08-04 13:40 | live DataHub Context 소비자 정합과 최종 CI를 근거로 Gate 0을 해제하고, Qwen3-4B-Instruct-2507 Base smoke·Validation의 모델·revision·비용·중단 조건을 고정했다. |
 | v7.86 | 2026-08-04 13:20 | R1·R2 DataHub Gate 0 생산자 결과의 dev·CI 완료를 기록하고, Context 60-column·entitlement·G2 fail-closed 기준의 R4 소비자 작업을 승인했다. |

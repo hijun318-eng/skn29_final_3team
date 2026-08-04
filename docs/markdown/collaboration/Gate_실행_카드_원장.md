@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.20 |
-| 문서 기준일 | 2026-08-04 18:15 |
+| 버전 | v3.21 |
+| 문서 기준일 | 2026-08-04 18:30 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -222,11 +222,13 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R4-W4-F4 | Wave 4 metric registry 소비 | R4 | Gate 0 → I4 | R4-06~11 metric semantic Context·G2 | R2 registry를 권한별 Context·model payload·G2에 보존 | `MERGED_DEV` |
 | R4-W4-F5 | Wave 4 Report v1.1 제품 등록 | R4 | I4 → I5 | R4-16 Report API·DB queue 등록 | owner scope·draft replace·history·server-owned command | `MERGED_DEV` |
 | R4-W4-F6 | Wave 4 Report OpenAPI 후보 공개 | R4 | I4 → I5 | R4-01·16 typed Report API | v1.0 응답 호환·v1.1 additive OpenAPI·admin 권한 | `MERGED_DEV` |
-| R4-W4-F7 | Wave 4 Report browser 요청 허용 | R4 | I4 → I5 | R4-01·16 CORS PUT preflight | exact origin·admin header를 유지한 draft PUT 허용 | `READY` |
+| R4-W4-F7 | Wave 4 Report browser 요청 허용 | R4 | I4 → I5 | R4-01·16 CORS PUT preflight | exact origin·admin header를 유지한 draft PUT 허용 | `MERGED_DEV` |
+| R4-W4-F8 | Wave 4 selected metric 제품 소비 | R4 | I4 → I5 | R4-06·08 Context·Node1 소비 | entitlement 교집합 metric 1개만 Context·cache·Node2/3에 전달 | `READY` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
 | R5-W4-F1 | Wave 4 12-column Report editor | R5 | 없음 → I4 | R5-11 Report editor | draft layout·keyboard 대안·승인본 불변성 | `MERGED_DEV` |
 | R5-W4-F2 | Wave 4 Report 상태·접근성 QA | R5 | 없음 → I4 | R5-12·16 fixture history·QA | 상태·partial·keyboard·live region·반응형 회귀 | `MERGED_DEV` |
 | R5-W4-F3 | Wave 4 Report v1.1 proposal | R5 | 없음 → I4 | R5-08~10·12 Report 계약 보완 | layout 보존·draft replace·history·manual command 분리 | `MERGED_DEV` |
+| R5-W4-F4 | Wave 4 actual Report API integration | R5 | I4 → I5 | R5-12·17 actual HTTP consumer | HTTP 기본·fixture 명시·queued receipt·real history | `READY` |
 
 ## Gate 공통 완료 조건
 
@@ -3148,7 +3150,7 @@ RESULT_CI=branch 30893359718 PASS; dev 30893564400 PASS
 ### R4-W4-F7
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -3175,6 +3177,40 @@ STOP_CONDITIONS=wildcard origin·method·header 필요; frontend origin 추가 �
 EXTERNAL_ACTION_PERMISSION=없음. local CORS·test·허용 경로 commit·jaehong push만 승인한다.
 AUTO_FAIL_CONDITIONS=PUT preflight 차단; wildcard; 비승인 origin 허용; 기존 POST 회귀; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=승인·비승인 origin의 PUT OPTIONS와 필수 header, 기존 backend/report·frontend 회귀, branch CI를 제출한다. 통과 뒤 R5 actual API client integration을 발행한다.
+RESULT_SHA=2efa20cf48676e6e718e92637f702ba7fa3452d7
+RESULT_CI=branch 30894166773 PASS; dev 30894251403 PASS
+```
+
+### R4-W4-F8
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W4-F8
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=selected metric entitlement consumption
+TASK_CARD_RANGE=R4-06·08 Node1 selected metric Context 소비
+CURRENT_TASK_CARD_ID=R4-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=2efa20cf48676e6e718e92637f702ba7fa3452d7
+START_POINT=origin/jaehong 2efa20cf48676e6e718e92637f702ba7fa3452d7에서 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W4-F8@2efa20c
+CONTRACT_VERSION=MODEL-v1.0.0-compatible; MODEL-v1.1.0-DRAFT selected_metric_id; METRIC-GLOSSARY-v1.0.0-DRAFT; I4-CONTEXT-v2.2.0-DRAFT
+ALLOWED_PATHS=app/backend/app/services/analysis_service.py; app/backend/app/services/context_builder.py; app/backend/app/services/pipeline_support.py; app/backend/app/adapters/i2_data_platform.py; tests/backend/test_analysis_pipeline.py; tests/backend/test_context_builder.py; tests/backend/test_i2_data_platform.py; tests/backend/test_production_model.py; tests/backend/test_execution_control.py; handoffs/R4-W4-F8.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/ai/**; src/data/**; Report·OpenAPI·DB·migration; frontend; root Compose·env·CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R4-W4-F8.json
+ACCEPTANCE_CRITERIA=asset search와 entitlement로 만든 candidate Context의 metric ID와 R3 versioned glossary의 교집합만 Node1 business_terms에 전달하고 R3 normalize_question을 재사용한다. selected_metric_id가 정확히 1개이며 entitled registry와 선택 asset에 존재할 때만 final Context를 만들고, final Context·package hash·model payload·plan/result cache key에는 그 metric 1개만 보존한다. Node2 reference와 Node3 metric은 같은 selected ID를 사용한다. metric missing·ambiguous·미승인·중복은 SQL/model/query 전에 fail-closed 재질문 또는 계약 오류로 종료한다. R4에 alias·우선순위를 hardcode하지 않고 entitlement 전 metric을 노출하지 않는다. 기존 template·legacy single metric과 model call budget을 회귀 유지한다.
+ACCEPTANCE_IDS=AC1_ENTITLED_TERMS;AC2_NODE1_REUSE;AC3_EXACT_ONE;AC4_FINAL_CONTEXT;AC5_HASH_CACHE;AC6_NODE2_NODE3_MATCH;AC7_FAIL_CLOSED;AC8_NO_HARDCODE;AC9_LEGACY_COMPAT;AC10_BUDGET
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_i2_data_platform.py tests/backend/test_context_builder.py tests/backend/test_production_model.py tests/backend/test_analysis_pipeline.py tests/backend/test_execution_control.py -q; python -m pytest -p no:cacheprovider tests/backend -q; python -m compileall -q app/backend/app; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND;T3_COMPILE;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=R3 schema·glossary 또는 R2 registry 변경 필요; R4 alias·metric 우선순위 hardcode; entitlement 전 노출; 복수 metric을 Node2에 전달; 기존 template 계약 비호환; Report·frontend 변경 필요; 허용 경로 밖 변경; 외부 model·비용·secret 필요; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local backend·test·허용 경로 commit·jaehong push만 승인한다.
+AUTO_FAIL_CONDITIONS=임의 metric 선택; 권한 밖 metric; final Context 복수 metric; selected ID hash/cache 누락; SQL 전 fail-closed 누락; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=missing·ambiguous·unauthorized·exact-one과 Context/hash/cache/Node2/Node3 동일 ID, backend 전체 회귀와 branch CI를 제출한다. 통과 뒤 같은 asset의 두 번째 metric 등록을 재판정한다.
 ```
 
 ### R5-W4-F1
@@ -3279,6 +3315,38 @@ RESULT_SHA=a808cfd651289eeb3437b162b7e032883b0479ac
 RESULT_CI=branch 30890571485 PASS; dev 30890664358 PASS
 ```
 
+### R5-W4-F4
+
+```text
+STATUS=READY
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W4-F4
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=OPENAPI-v1.1 actual Report consumer
+TASK_CARD_RANGE=R5-12·17 actual Report definition·manual command·Run History integration
+CURRENT_TASK_CARD_ID=R5-17
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=2efa20cf48676e6e718e92637f702ba7fa3452d7
+START_POINT=origin/minji a808cfd651289eeb3437b162b7e032883b0479ac에 origin/dev 2efa20cf48676e6e718e92637f702ba7fa3452d7을 병합해 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R5-W4-F4@2efa20c
+CONTRACT_VERSION=OPENAPI-v1.1.0-DRAFT additive; OPENAPI-v1.0.0 request context; REPORT-v1.0.0 wire compatible; REPORT-v1.1.0-DRAFT behavior
+ALLOWED_PATHS=app/enterprise-react/src/api/reportClient.ts; app/enterprise-react/src/contracts/report.ts; app/enterprise-react/src/pages/ReportsPage.jsx; app/enterprise-react/src/styles.css; tests/frontend/contracts.test.mjs; handoffs/R5-W4-F4.json; docs/markdown/daily_reports/minji/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/report/**; migration·DB·worker·schedule; 다른 page·route; root Compose·env·CI; dependency; secret; share·export
+HANDOFF_MANIFEST=handoffs/R5-W4-F4.json
+ACCEPTANCE_CRITERIA=HTTP Report client를 기본으로 하고 fixture는 VITE_REPORT_MODE=fixture에서만 선택하며 API 오류 시 자동 fallback하지 않는다. 공개 9개 operation과 strict snake_case request·response를 typed contract로 소비하고 Bearer·X-User-Id·report_admin·X-As-Of·X-Trace-Id·Asia/Seoul·OPENAPI-v1.0.0 header를 보존한다. definition create/list/get, draft block replace, 명시적 approve, approved version의 next draft를 서버 응답으로만 갱신한다. API mode는 UUID와 table·chart·text block만 전송한다. manual request는 definition_id·version·as_of·idempotency_key만 보내고 queued command를 run으로 만들지 않는다. Run History/detail은 GET 실제 상태만 표시한다. loading·401/403·error·empty·queued receipt를 text·icon·aria-live로 구분한다. fixture badge·6상태·12-column·keyboard·focus·반응형을 유지하고 API mode에서 서버에 없는 성공·수치·작성자·기간·worker 진행을 표시하지 않는다.
+ACCEPTANCE_IDS=AC1_HTTP_DEFAULT;AC2_EXPLICIT_FIXTURE;AC3_TYPED_CONTRACT;AC4_ADMIN_CONTEXT;AC5_DEFINITION_FLOW;AC6_DRAFT_REPLACE;AC7_MANUAL_BOUNDARY;AC8_REAL_HISTORY;AC9_ASYNC_STATES;AC10_NO_FAKE_SUCCESS;AC11_FIXTURE_COMPAT
+TEST_COMMANDS=python app/backend/scripts/export_openapi.py --check; python -m pytest -p no:cacheprovider tests/backend/test_openapi_contract.py tests/backend/test_report_registration.py -q; node tests/frontend/contracts.test.mjs; npm --prefix app/enterprise-react run build; browser fixture mode badge·6상태·keyboard·1440·1024·768·360 확인; browser API mode local backend definition create→PUT replace→approve→next draft·manual queued receipt·real history empty/detail·401·403·409·422·503 확인; python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_OPENAPI;T2_BACKEND_CONSUMER;T3_FRONTEND_CONTRACT;T4_BUILD;T5_FIXTURE_BROWSER;T6_API_BROWSER;T7_SCOPE;T8_DIFF
+STOP_CONDITIONS=PUT preflight 실패; local Report runtime·migration 부재로 API browser 검증 불가; request·response version drift; fixture 자동 fallback 또는 fake success; worker·schedule·public result ingestion 필요; unsupported block에 backend 변경 필요; production secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local frontend·stub test·기존 local synthetic Report API/DB 검증·허용 경로 commit·minji push만 승인한다. 외부 배포·비용·secret·Docker resource 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=HTTP 비기본; 자동 fixture fallback; client 결과/status 생성; queued를 run으로 표시; server에 없는 success; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=typed client·headers·definition/draft/manual/history·fixture 경계, build·contract·두 browser mode·branch CI를 제출한다. worker 없는 queued 이후 상태는 미구현으로 명시한다.
+```
+
 ## I5 이후 후속 단계 예약
 
 아래 항목은 기획에서 빠진 것이 아니라 현재 일정 뒤에 남겨 둔 작업이다. 아직 실행 Wave와 날짜를 정하지 않으며, 현재 상태는 `PLANNED`다. R1이 I5 이후 새 `BASE_SHA`, 담당 경로, 계약·비용·보안 기준을 채워 별도 실행 묶음을 `READY`로 발행해야 시작할 수 있다.
@@ -3327,6 +3395,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.21 | 2026-08-04 18:30 | R4의 exact-origin PUT preflight를 branch CI로 확인해 dev에 통합했다. R5 actual Report HTTP consumer는 fixture 자동 fallback·가짜 run/status를 금지한 채 READY 발행하고, R4는 R3 selected_metric_id와 entitlement 교집합 1개만 final Context·hash·cache·Node2/3에 전달하는 R4-W4-F8을 병렬 발행했다. 외부 비용·worker·schedule은 제외한다. |
 | v3.20 | 2026-08-04 18:15 | R3 exact-one metric 선택과 5개 glossary, R4 typed Report OpenAPI additive 후보를 기존 v1.0 계약 호환 및 branch/dev CI로 수용했다. R5 browser actual API 연결 전에 draft block PUT preflight만 exact origin·header 정책으로 허용하는 R4-W4-F7을 local-only로 발행했다. wildcard·외부 호출·worker·schedule은 제외한다. |
 | v3.19 | 2026-08-04 18:00 | R2의 3개 single-asset metric 확대와 R4의 owner-scoped Report API·DB queue·신규 migration을 branch/dev CI 및 실제 PostgreSQL 증거로 수용했다. 동일 asset 복수 metric 전에 R3 exact-one 선택 계약을, R5 actual integration 전에 R4 typed Report OpenAPI additive 후보를 각각 local-only로 발행했다. ratio·count·multi-asset, worker·schedule, 외부 비용은 계속 차단한다. |
 | v3.18 | 2026-08-04 17:45 | R3 evaluation bridge의 metric·typed filter 보존과 누락·변조·OR 차단 회귀를 branch CI까지 확인해 dev에 통합했다. Validation 23개 metric 중 현 단일-asset 계약과 R4 단일 metric 소비를 동시에 만족하는 안전 범위를 재검토해, 기존 metric이 없는 서로 다른 View의 fnb_net_revenue·facility_revenue·actual_attendees만 추가하는 R2-W4-F4를 local-only로 발행했다. ratio·count·multi-asset 계약과 150건 평가는 계속 차단한다. |

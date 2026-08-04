@@ -5,7 +5,7 @@
   "BRANCH": "minji",
   "BASE_SHA": "2efa20cf48676e6e718e92637f702ba7fa3452d7",
   "SYNCED_DEV_SHA": "61506b27745759c29bcd7a58dbb288136794acd1",
-  "RESULT_SHA": "253a9c0d712d0b9079e510308f9d5bfd5adfbced",
+  "RESULT_SHA": "a19de0f2c1dc854f2b17e02777b77f4c49fd751c",
   "TERMINAL_SHA": "HEAD",
   "DIRECTIVE_TOKEN": "R5-W4-F4@2efa20c",
   "COMPLETED_CARDS": [
@@ -17,8 +17,7 @@
     "app/enterprise-react/src/pages/ReportsPage.jsx",
     "app/enterprise-react/src/styles.css",
     "tests/frontend/contracts.test.mjs",
-    "docs/markdown/daily_reports/minji/일일보고.md",
-    "handoffs/R5-W4-F4.json"
+    "docs/markdown/daily_reports/minji/일일보고.md"
   ],
   "CONTRACT_VERSIONS": {
     "OPENAPI": "OPENAPI-v1.1.0-DRAFT additive; OPENAPI-v1.0.0 request context",

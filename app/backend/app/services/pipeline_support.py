@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
-from datetime import date
+from datetime import date, datetime, time
+from functools import lru_cache
+from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid5
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from src.ai.node1 import normalize_question
 
 from app.contracts import (
     AnalysisRequest,
@@ -15,12 +21,43 @@ from app.contracts import (
 from app.ports.data_platform import DataPlatformAdapter
 from app.services.context_builder import (
     ContextAsset,
+    ContextBuildError,
+    ContextBuildErrorCode,
     ContextBuildRequest,
     ContextMetric,
     ContextPackage,
     ContextPackageBuilder,
     ContextRequiredFilter,
 )
+
+
+@lru_cache(maxsize=1)
+def _metric_glossary() -> dict[str, tuple[str, ...]]:
+    path = (
+        Path(__file__).resolve().parents[4]
+        / "src"
+        / "ai"
+        / "contracts"
+        / "metric_glossary.i5.v1.json"
+    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    metrics = payload.get("metrics")
+    if not isinstance(payload.get("version"), str) or not isinstance(metrics, dict):
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METRIC,
+            "R3 metric glossary 계약을 확인할 수 없습니다.",
+        )
+    glossary = {
+        str(metric_id): tuple(str(alias) for alias in aliases)
+        for metric_id, aliases in metrics.items()
+        if isinstance(aliases, list) and aliases
+    }
+    if len(glossary) != len(metrics):
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METRIC,
+            "R3 metric glossary alias 계약을 확인할 수 없습니다.",
+        )
+    return glossary
 
 
 class PipelineSupport:
@@ -95,6 +132,70 @@ class PipelineSupport:
         )
 
     @staticmethod
+    def select_metric(
+        payload: AnalysisRequest,
+        context: RequestContext,
+        assets: list[dict[str, object]],
+    ) -> tuple[list[dict[str, object]], str]:
+        if not any("metrics" in asset for asset in assets):
+            return assets, payload.question
+
+        candidates = [
+            metric
+            for asset in assets
+            for metric in asset.get("metrics", ())
+            if isinstance(metric, dict) and isinstance(metric.get("id"), str)
+        ]
+        candidate_ids = [str(metric["id"]) for metric in candidates]
+        if len(candidate_ids) != len(set(candidate_ids)):
+            raise ContextBuildError(
+                ContextBuildErrorCode.DUPLICATE_METRIC,
+                "동일한 metric id를 중복 선택할 수 없습니다.",
+            )
+        glossary = _metric_glossary()
+        business_terms = {
+            metric_id: {"kind": "metric", "aliases": list(glossary[metric_id])}
+            for metric_id in candidate_ids
+            if metric_id in glossary
+        }
+        try:
+            timezone = ZoneInfo(context.timezone)
+        except ZoneInfoNotFoundError as error:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Context timezone을 확인할 수 없습니다.",
+            ) from error
+        as_of = datetime.combine(context.as_of, time.min, timezone).isoformat()
+        normalized = normalize_question(
+            {
+                "question": payload.question,
+                "role_hint": context.role.value,
+                "as_of": as_of,
+                "timezone": context.timezone,
+                "calendar_id": "gregorian-kr",
+                "allowed_routes": ["general", "template"],
+                "business_terms": business_terms,
+            }
+        )
+        selected = normalized.get("selected_metric_id")
+        if not isinstance(selected, str) or selected not in candidate_ids:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "질문에서 권한이 있는 승인 metric 하나를 확인할 수 없습니다.",
+            )
+        selected_assets = []
+        for asset in assets:
+            item = dict(asset)
+            if "metrics" in item:
+                item["metrics"] = tuple(
+                    metric
+                    for metric in item.get("metrics", ())
+                    if isinstance(metric, dict) and metric.get("id") == selected
+                )
+            selected_assets.append(item)
+        return selected_assets, str(normalized["normalized_question"])
+
+    @staticmethod
     def g1_error(scenario: str) -> tuple[ErrorCode, str] | None:
         return {
             "clarification": (
@@ -159,6 +260,15 @@ class PipelineSupport:
         referenced = {str(item.get("fqn")) for item in references}
         if not referenced.issubset(allowed):
             return "REFERENCE_OUTSIDE_CONTEXT"
+        expected_metric_ids = {metric.id for metric in package.metrics}
+        if expected_metric_ids:
+            referenced_metric_ids = {
+                str(metric_id)
+                for item in references
+                for metric_id in item.get("metric_ids", ())
+            }
+            if referenced_metric_ids != expected_metric_ids:
+                return "METRIC_REFERENCE_MISMATCH"
         queried = {
             table.strip('"').lower()
             for table in re.findall(

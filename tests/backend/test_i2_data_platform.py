@@ -80,14 +80,13 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
-    payload = AnalysisRequest(
-        question="호텔 객실 점유와 매출을 분석해 줘",
-    )
+    payload = AnalysisRequest(question="호텔 객실 매출을 분석해 줘")
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
         as_of=date(2026, 7, 30),
     )
     assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+    assets, normalized_question = support.select_metric(payload, context, assets)
     package = support.build_context(payload, context, assets)
     sql = (
         "SELECT property_id, SUM(room_revenue) AS revenue "
@@ -99,13 +98,23 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
         "sql": sql,
         "parameters": {},
         "references": [
-            {"urn": item.urn, "fqn": item.fqn, "columns": list(item.columns)}
+            {
+                "urn": item.urn,
+                "fqn": item.fqn,
+                "columns": list(item.columns),
+                "metric_ids": [
+                    metric.id
+                    for metric in package.metrics
+                    if metric.asset_fqn == item.fqn
+                ],
+            }
             for item in package.assets
         ],
         "model_version": "TEMPLATE-I2-v1.0.0",
     }
 
     assert support.g2_violation(plan, package) is None
+    assert normalized_question == payload.question
     assert package.dataset_count == 1
     assert package.column_count <= 60
     assert package.assets[0].fqn == "serving.analytics.hotel_daily_metrics"
@@ -257,13 +266,16 @@ def test_g2_enforces_metric_required_filters_for_view_and_crm(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
         as_of=date(2026, 7, 30),
     )
-    package = support.build_context(
-        payload,
-        context,
-        adapter.search_assets(question, context.model_dump(mode="json")),
-    )
+    assets = adapter.search_assets(question, context.model_dump(mode="json"))
+    assets, _ = support.select_metric(payload, context, assets)
+    package = support.build_context(payload, context, assets)
     references = [
-        {"urn": item.urn, "fqn": item.fqn, "columns": list(item.columns)}
+        {
+            "urn": item.urn,
+            "fqn": item.fqn,
+            "columns": list(item.columns),
+            "metric_ids": [expected_metric],
+        }
         for item in package.assets
     ]
 
@@ -282,6 +294,44 @@ def test_g2_enforces_metric_required_filters_for_view_and_crm(
     assert support.g2_violation(
         {"sql": bypass, "parameters": {}, "references": references}, package
     ) == "METRIC_FILTER_MISSING"
+    without_metric = [{key: value for key, value in item.items() if key != "metric_ids"} for item in references]
+    assert support.g2_violation(
+        {"sql": sql, "parameters": {}, "references": without_metric}, package
+    ) == "METRIC_REFERENCE_MISMATCH"
+
+
+def test_node1_metric_selection_fails_closed_for_missing_ambiguous_and_duplicate():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    metrics = {item["id"]: item for item in adapter._metrics}
+    assets = [
+        {
+            "urn": "urn:hotel",
+            "fqn": "serving.analytics.hotel_daily_metrics",
+            "metrics": (metrics["recognized_room_revenue"],),
+        },
+        {
+            "urn": "urn:fnb",
+            "fqn": "serving.analytics.fnb_daypart_metrics",
+            "metrics": (metrics["fnb_net_revenue"],),
+        },
+    ]
+
+    for question, selected_assets in (
+        ("호텔 지표", assets),
+        ("객실 매출과 식음 순매출", assets),
+        ("소멸 포인트", assets[:1]),
+    ):
+        with pytest.raises(ContextBuildError):
+            support.select_metric(AnalysisRequest(question=question), context, selected_assets)
+
+    duplicate = [{**assets[0], "metrics": assets[0]["metrics"] * 2}]
+    with pytest.raises(ContextBuildError, match="중복"):
+        support.select_metric(AnalysisRequest(question="객실 매출"), context, duplicate)
 
 
 def test_metric_registry_missing_or_duplicate_id_fails_closed(tmp_path):

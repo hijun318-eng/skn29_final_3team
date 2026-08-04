@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import date
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -36,68 +37,64 @@ class _PartialAwareTrinoAdapter(TrinoAdapter):
 class I2DataPlatformAdapter:
     """R2 I2 contract를 R4 DataPlatform port로 연결한다."""
 
-    _assets = (
-        {
-            "urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,pms.public.pms_stays,PROD)",
-            "fqn": "pms.public.pms_stays",
-            "name": "PMS stays",
-            "columns": (
-                "actual_checkout_at",
-                "property_id",
-                "reservation_id",
-                "room_revenue",
-                "stay_status",
-                "complimentary_flag",
-                "house_use_flag",
-                "is_forecast",
-            ),
-        },
-        {
-            "urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,pms.public.pms_reservations,PROD)",
-            "fqn": "pms.public.pms_reservations",
-            "name": "PMS reservations",
-            "columns": ("property_id", "reservation_id", "guest_id"),
-        },
-        {
-            "urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,pms.public.pms_guests,PROD)",
-            "fqn": "pms.public.pms_guests",
-            "name": "PMS guests",
-            "columns": ("property_id", "guest_id"),
-        },
-        {
-            "urn": "urn:li:dataset:(urn:li:dataPlatform:mssql,crm.dbo.crm_customer_map,PROD)",
-            "fqn": "crm.dbo.crm_customer_map",
-            "name": "CRM customer map",
-            "columns": (
-                "property_id",
-                "pms_guest_id",
-                "member_no",
-                "valid_from",
-                "valid_to",
-            ),
-        },
-        {
-            "urn": "urn:li:dataset:(urn:li:dataPlatform:mssql,crm.dbo.crm_member_grade_history,PROD)",
-            "fqn": "crm.dbo.crm_member_grade_history",
-            "name": "CRM membership grade history",
-            "columns": (
-                "property_id",
-                "member_no",
-                "grade_code",
-                "valid_from",
-                "valid_to",
-            ),
-        },
-    )
+    _DATASET_QUERY = """
+query Dataset($urn: String!) {
+  dataset(urn: $urn) {
+    urn
+    name
+    schemaMetadata { name fields { fieldPath nativeDataType } }
+  }
+}
+""".strip()
+    _KOREAN_HINTS = {
+        "banquet_monthly_metrics": ("연회", "행사"),
+        "facility_daily_metrics": ("시설", "장애", "다운타임"),
+        "fnb_daypart_metrics": ("식음", "레스토랑", "주문", "객단가"),
+        "hotel_daily_metrics": ("호텔", "객실", "숙박", "점유", "adr", "revpar"),
+        "hotel_monthly_metrics": ("월간", "월별"),
+        "hotel_yearly_metrics": ("연간", "연별"),
+        "resource_monthly_metrics": ("자원", "자재"),
+        "workforce_monthly_metrics": ("인력", "직원", "근무"),
+    }
 
-    def __init__(self, trino_url: str, trino_user: str) -> None:
+    def __init__(
+        self,
+        trino_url: str,
+        trino_user: str,
+        datahub_url: str = "http://datahub-gms:8080",
+        datahub_token: str | None = None,
+        contract_path: Path | None = None,
+    ) -> None:
         self._trino_user = trino_user
+        self._datahub_url = datahub_url.rstrip("/")
+        self._datahub_token = datahub_token
         self._trino = _PartialAwareTrinoAdapter(
             trino_url,
             transport=self._request,
         )
         self._queries: dict[str, dict[str, Any]] = {}
         self._next_uris: dict[str, str] = {}
+        source = contract_path or (
+            Path(__file__).resolve().parents[4]
+            / "src"
+            / "data"
+            / "serving_analytics_contract.i4.v1.json"
+        )
+        contract = json.loads(source.read_text(encoding="utf-8"))
+        if contract.get("context_source") != "LIVE_DATAHUB":
+            raise ValueError("serving analytics contract must require LIVE_DATAHUB")
+        self._assets = tuple(
+            {
+                "urn": view["urn"],
+                "fqn": view["fqn"],
+                "name": view["name"],
+                "columns": tuple(view["columns"]),
+                "schema_version": view["schema_version"],
+                "seed_version": view["seed_version"],
+            }
+            for view in contract["views"]
+        )
+        self._live_schemas: dict[str, tuple[str, ...]] = {}
 
     def _request(
         self,
@@ -146,21 +143,70 @@ class I2DataPlatformAdapter:
         query: str,
         context: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        return [
-            {
-                **{key: value for key, value in asset.items() if key != "columns"},
-                "schema_version": "1.0.0",
-                "seed_version": "20260729",
-            }
-            for asset in self._assets
-        ]
+        if context.get("role") != "hotel_analyst":
+            return []
+        selected: list[dict[str, Any]] = []
+        column_count = 0
+        for asset in self._rank_assets(query):
+            if column_count + len(asset["columns"]) > 60:
+                continue
+            live = self._datahub_dataset(asset["urn"])
+            schema = live.get("schemaMetadata") or {}
+            columns = tuple(field["fieldPath"] for field in schema.get("fields") or ())
+            if (
+                live.get("urn") != asset["urn"]
+                or schema.get("name") != asset["fqn"]
+                or set(columns) != set(asset["columns"])
+            ):
+                raise ValueError("live DataHub metadata does not match the contract")
+            self._live_schemas[asset["urn"]] = columns
+            selected.append({key: value for key, value in asset.items() if key != "columns"})
+            column_count += len(columns)
+        return selected
 
     def get_asset_schema(self, urn: str) -> dict[str, Any]:
-        asset = next(item for item in self._assets if item["urn"] == urn)
+        columns = self._live_schemas.get(urn)
+        if columns is None:
+            raise ValueError("asset was not approved by live DataHub search")
         return {
             "urn": urn,
-            "columns": [{"name": name, "type": "contract"} for name in asset["columns"]],
+            "columns": [{"name": name, "type": "contract"} for name in columns],
         }
+
+    def _rank_assets(self, query: str) -> tuple[dict[str, Any], ...]:
+        lowered = query.lower()
+        words = set(re.findall(r"[a-z0-9_]{3,}", lowered))
+        ranked: list[tuple[int, dict[str, Any]]] = []
+        for asset in self._assets:
+            searchable = " ".join((asset["name"], asset["fqn"], *asset["columns"])).lower()
+            score = sum(word in searchable for word in words)
+            score += 3 * sum(
+                hint in lowered for hint in self._KOREAN_HINTS.get(asset["name"], ())
+            )
+            if score:
+                ranked.append((score, asset))
+        return tuple(asset for _score, asset in sorted(ranked, key=lambda item: (-item[0], item[1]["fqn"])))
+
+    def _datahub_dataset(self, urn: str) -> dict[str, Any]:
+        headers = {"Content-Type": "application/json"}
+        if self._datahub_token:
+            headers["Authorization"] = f"Bearer {self._datahub_token}"
+        request = Request(
+            f"{self._datahub_url}/api/graphql",
+            data=json.dumps(
+                {"query": self._DATASET_QUERY, "variables": {"urn": urn}}
+            ).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=10) as response:
+                payload = json.loads(response.read())
+        except (HTTPError, TimeoutError, URLError, json.JSONDecodeError) as error:
+            raise ValueError("live DataHub lookup failed") from error
+        if payload.get("errors") or not (payload.get("data") or {}).get("dataset"):
+            raise ValueError("live DataHub dataset is unavailable")
+        return payload["data"]["dataset"]
 
     def execute_query(
         self,

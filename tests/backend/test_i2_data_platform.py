@@ -17,6 +17,21 @@ from app.services.context_builder import ContextPackageBuilder
 from app.services.pipeline_support import PipelineSupport
 
 
+def live_dataset(adapter, urn):
+    asset = next(item for item in adapter._assets if item["urn"] == urn)
+    return {
+        "urn": urn,
+        "name": asset["name"],
+        "schemaMetadata": {
+            "name": asset["fqn"],
+            "fields": [
+                {"fieldPath": column, "nativeDataType": "contract"}
+                for column in asset["columns"]
+            ],
+        },
+    }
+
+
 def test_trino_transport_sends_required_user_header():
     response = MagicMock()
     response.read.return_value = json.dumps(
@@ -59,42 +74,27 @@ def test_finished_query_with_warnings_is_preserved_as_partial():
     assert result["rows"] == [{"synthetic_value": 1}]
 
 
-def test_approved_i2_template_passes_g2_contract():
+def test_live_datahub_serving_view_passes_context_and_g2_contract():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
     payload = AnalysisRequest(
-        question="Approved weekly room revenue template",
-        template_id="weekly-room-operations",
-        parameters={
-            "period_start": "2026-05-01",
-            "period_end_exclusive": "2026-07-01",
-        },
+        question="호텔 객실 점유와 매출을 분석해 줘",
     )
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
         as_of=date(2026, 7, 30),
     )
-    assets = adapter.search_assets(payload.question, context.model_dump())
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
     package = support.build_context(payload, context, assets)
     sql = (
-        (
-            BACKEND.parents[1]
-            / "infrastructure"
-            / "database"
-            / "sql"
-            / "queries"
-            / "i2_gold_recognized_room_revenue.sql"
-        )
-        .read_text(encoding="utf-8")
-        .replace("2026-05-01", ":period_start")
-        .replace("2026-07-01", ":period_end_exclusive")
-        .rstrip()
-        .rstrip(";")
-        + "\nLIMIT 1000"
+        "SELECT property_id, SUM(room_revenue) AS revenue "
+        "FROM serving.analytics.hotel_daily_metrics "
+        "GROUP BY property_id LIMIT 1000"
     )
     plan = {
         "sql": sql,
-        "parameters": payload.parameters,
+        "parameters": {},
         "references": [
             {"urn": item.urn, "fqn": item.fqn, "columns": list(item.columns)}
             for item in package.assets
@@ -103,6 +103,58 @@ def test_approved_i2_template_passes_g2_contract():
     }
 
     assert support.g2_violation(plan, package) is None
+    assert package.dataset_count == 1
+    assert package.column_count <= 60
+    assert package.assets[0].fqn == "serving.analytics.hotel_daily_metrics"
+
+
+def test_role_entitlement_excludes_serving_views_before_live_lookup():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._datahub_dataset = MagicMock()
+
+    assets = adapter.search_assets(
+        "호텔 객실 매출",
+        {"role": "data_admin"},
+    )
+
+    assert assets == []
+    adapter._datahub_dataset.assert_not_called()
+
+
+def test_live_datahub_contract_mismatch_fails_closed():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._datahub_dataset = lambda urn: {
+        **live_dataset(adapter, urn),
+        "schemaMetadata": {"name": "serving.analytics.unapproved", "fields": []},
+    }
+
+    with pytest.raises(ValueError, match="does not match"):
+        adapter.search_assets("호텔 객실 매출", {"role": "hotel_analyst"})
+
+
+def test_g2_rejects_fqn_outside_live_context():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(question="호텔 객실 매출")
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    package = support.build_context(
+        payload,
+        context,
+        adapter.search_assets(payload.question, context.model_dump(mode="json")),
+    )
+
+    plan = {
+        "sql": "SELECT * FROM serving.analytics.unapproved_view LIMIT 1000",
+        "parameters": {},
+        "references": [{"urn": "unapproved", "fqn": "serving.analytics.unapproved_view"}],
+        "model_version": "MODEL-v1.0.0",
+    }
+
+    assert support.g2_violation(plan, package) == "REFERENCE_OUTSIDE_CONTEXT"
 
 
 def test_template_dates_are_bound_without_changing_the_approved_query_shape():

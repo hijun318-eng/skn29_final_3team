@@ -51,6 +51,8 @@ def _data_platform():
     return I2DataPlatformAdapter(
         os.getenv("TRINO_URL", "http://trino:8080"),
         os.getenv("TRINO_USER", "answervice"),
+        os.getenv("DATAHUB_GMS_URL", "http://datahub-gms:8080"),
+        os.getenv("DATAHUB_API_TOKEN"),
     )
 
 

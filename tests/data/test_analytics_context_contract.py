@@ -62,8 +62,8 @@ def test_pms_crm_join_matches_frozen_source_registry():
 
 
 def test_metric_registry_is_versioned_and_references_approved_columns():
-    assert CONTRACT["contract_version"] == "I4-CONTEXT-v2.1.0-DRAFT"
-    assert CONTRACT["metric_registry_version"] == "I4-METRIC-v1.0.0-DRAFT"
+    assert CONTRACT["contract_version"] == "I4-CONTEXT-v2.2.0-DRAFT"
+    assert CONTRACT["metric_registry_version"] == "I4-METRIC-v1.1.0-DRAFT"
     metrics = CONTRACT["metrics"]
     assert len({metric["id"] for metric in metrics}) == len(metrics)
 
@@ -77,6 +77,42 @@ def test_metric_registry_is_versioned_and_references_approved_columns():
             assert required_filter["field"] in columns
             assert required_filter["operator"] == "eq"
             assert isinstance(required_filter["value"], (str, bool))
+
+
+def test_metric_registry_adds_only_the_three_approved_single_asset_metrics():
+    metrics = {metric["id"]: metric for metric in CONTRACT["metrics"]}
+    assert set(metrics) == {
+        "recognized_room_revenue",
+        "expired_points",
+        "fnb_net_revenue",
+        "facility_revenue",
+        "actual_attendees",
+    }
+    assert len({metric["asset_fqn"] for metric in metrics.values()}) == len(metrics)
+
+    expected = {
+        "fnb_net_revenue": (
+            "serving.analytics.fnb_daypart_metrics",
+            "fnb_net_revenue",
+            "business_date",
+        ),
+        "facility_revenue": (
+            "serving.analytics.facility_daily_metrics",
+            "facility_revenue",
+            "business_date",
+        ),
+        "actual_attendees": (
+            "serving.analytics.banquet_monthly_metrics",
+            "actual_attendees",
+            "year_month",
+        ),
+    }
+    for metric_id, (asset_fqn, field, time_field) in expected.items():
+        metric = metrics[metric_id]
+        assert metric["asset_fqn"] == asset_fqn
+        assert metric["field"] == field
+        assert metric["aggregation"] == "sum"
+        assert metric["time_field"] == time_field
 
 
 def test_expired_points_preserves_transaction_and_forecast_filters():

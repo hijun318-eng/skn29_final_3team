@@ -1,0 +1,70 @@
+{
+  "contract_version": "I4-CONTEXT-v2.0.0",
+  "context_source": "LIVE_DATAHUB",
+  "synthetic": true,
+  "view_contract": "src/data/serving_analytics_contract.i4.v1.json",
+  "selection_policy": {
+    "default": "serving_views",
+    "raw_allowed_for": ["crm_only", "approved_pms_crm_join"],
+    "max_datasets": 8,
+    "max_columns": 60
+  },
+  "raw_assets": [
+    {
+      "fqn": "crm.dbo.crm_members",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:mssql,crm.dbo.crm_members,PROD)",
+      "uses": ["crm_only"],
+      "columns": ["property_id", "member_no", "membership_grade", "points_balance", "joined_at", "member_status", "is_forecast"]
+    },
+    {
+      "fqn": "crm.dbo.crm_member_grade_history",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:mssql,crm.dbo.crm_member_grade_history,PROD)",
+      "uses": ["crm_only", "approved_pms_crm_join"],
+      "columns": ["property_id", "member_no", "grade_code", "valid_from", "valid_to", "change_reason_code"]
+    },
+    {
+      "fqn": "crm.dbo.crm_point_transactions",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:mssql,crm.dbo.crm_point_transactions,PROD)",
+      "uses": ["crm_only"],
+      "columns": ["property_id", "member_no", "event_at", "txn_type", "points_delta", "related_source", "is_forecast"]
+    },
+    {
+      "fqn": "pms.public.pms_stays",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,pms.public.pms_stays,PROD)",
+      "uses": ["approved_pms_crm_join"],
+      "columns": ["property_id", "stay_id", "reservation_id", "actual_checkout_at", "occupied_room_nights", "room_revenue", "stay_status", "complimentary_flag", "house_use_flag", "is_forecast"]
+    },
+    {
+      "fqn": "pms.public.pms_reservations",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,pms.public.pms_reservations,PROD)",
+      "uses": ["approved_pms_crm_join"],
+      "columns": ["property_id", "reservation_id", "guest_id"]
+    },
+    {
+      "fqn": "pms.public.pms_guests",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,pms.public.pms_guests,PROD)",
+      "uses": ["approved_pms_crm_join"],
+      "columns": ["property_id", "guest_id"]
+    },
+    {
+      "fqn": "crm.dbo.crm_customer_map",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:mssql,crm.dbo.crm_customer_map,PROD)",
+      "uses": ["approved_pms_crm_join"],
+      "columns": ["property_id", "pms_guest_id", "member_no", "valid_from", "valid_to"]
+    }
+  ],
+  "approved_joins": [
+    {
+      "id": "pms_stay_to_crm_membership_grade_event_time_v1",
+      "assets": [
+        "pms.public.pms_stays",
+        "pms.public.pms_reservations",
+        "pms.public.pms_guests",
+        "crm.dbo.crm_customer_map",
+        "crm.dbo.crm_member_grade_history"
+      ],
+      "event_time_field": "pms.public.pms_stays.actual_checkout_at",
+      "cardinality": "many_to_zero_or_one"
+    }
+  ]
+}

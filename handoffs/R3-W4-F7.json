@@ -5,7 +5,7 @@
   "BRANCH": "daesung",
   "BASE_SHA": "b99d1fb8c59fe0c7a44a783325ef8959848fc01e",
   "SYNCED_DEV_SHA": "d195b06fa63ab4d8eca4b1bb2c6250dae9ec0763",
-  "RESULT_SHA": "74c029e88fd38047232ef1200c6d13b72f2e758e",
+  "RESULT_SHA": "73a0dab8857b487437ce972c2a0418c0dfd0762a",
   "TERMINAL_SHA": "HEAD",
   "DIRECTIVE_TOKEN": "R3-W4-F7@b99d1fb",
   "COMPLETED_CARDS": [
@@ -20,8 +20,8 @@
     "tests/ai/test_node1.py"
   ],
   "CONTRACT_VERSIONS": {
-    "MODEL_VERSION": "MODEL-v1.1.0-DRAFT",
-    "COMPATIBLE_MODEL_VERSION": "MODEL-v1.0.0",
+    "MODEL_VERSION": "MODEL-v1.0.0",
+    "CANDIDATE_MODEL_VERSION": "MODEL-v1.1.0-DRAFT",
     "METRIC_GLOSSARY_VERSION": "METRIC-GLOSSARY-v1.0.0-DRAFT"
   },
   "ACCEPTANCE_RESULTS": [
@@ -100,7 +100,7 @@
       "id": "T5_SCOPE",
       "name": "python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base",
       "status": "PASS",
-      "evidence": "제품 결과 commit 74c029e 기준 허용 경로 6개와 scope PASS 확인"
+      "evidence": "제품 결과 commit 73a0dab 기준 허용 경로 6개와 scope PASS 확인"
     },
     {
       "id": "T6_DIFF",

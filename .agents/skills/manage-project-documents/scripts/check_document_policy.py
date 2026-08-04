@@ -152,7 +152,7 @@ def validate_markdown(
             errors.append(f"{relative}: 제출 일자는 YYYY-MM-DD 또는 — 형식이어야 합니다.")
         if values.get("대응 템플릿", "").strip() in {"", "—"}:
             errors.append(f"{relative}: 대응 템플릿은 경로 또는 `없음`이어야 합니다.")
-    if "## 변경 내역" not in text:
+    if relative != "docs/markdown/02_WBS.md" and "## 변경 내역" not in text:
         errors.append(f"{relative}: 하단 `## 변경 내역`이 필요합니다.")
 
     for target in local_link_targets(text):

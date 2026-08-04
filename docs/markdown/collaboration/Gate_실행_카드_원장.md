@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.17 |
-| 문서 기준일 | 2026-08-04 17:30 |
+| 버전 | v3.18 |
+| 문서 기준일 | 2026-08-04 17:45 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -205,6 +205,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R2-W4-F2 | Wave 4 혼합 Context 계약 | R2 | Gate 0 → I4 | R2-10~14 승인 raw asset·JOIN 정합 | View 우선·CRM 단독·PMS–CRM JOIN의 명시적 live DataHub 계약 | `MERGED_DEV` |
 | R2-W4-F2A | Wave 4 raw URN 교정 | R2 | Gate 0 → I4 | R2-10 DataHub URN exact-match | platform instance·database를 포함한 실제 raw URN 7개 교정 | `MERGED_DEV` |
 | R2-W4-F3 | Wave 4 metric registry 생산 | R2 | Gate 0 → I4 | R2-10~14 metric semantic contract | 승인 asset별 metric·필수 필터를 versioned Context 계약으로 제공 | `MERGED_DEV` |
+| R2-W4-F4 | Wave 4 metric registry 안전 확대 | R2 | I4 → I5 | R2-10~14 single-asset metric subset | 서로 다른 View의 검증 가능한 metric 3개만 추가 | `READY` |
 | R4-W4-F1A | Wave 4 serving Context 소비 보완 | R4 | Gate 0 → I4 | R4-06~11 `LIVE_DATAHUB` Context·G2 정합 | 승인 View를 질문별 60-column 상한으로 선별하고 권한·G2를 fail-closed 검증 | `MERGED_DEV` |
 | R4-W4-F2 | Wave 4 혼합 Context 소비 | R4 | Gate 0 → I4 | R4-06~11 View·제한 raw Context·G2 정합 | 축약 raw URN이 live DataHub와 불일치해 생산자 교정 대기 | `BLOCKED` |
 | R4-W4-F2A | Wave 4 혼합 Context 재검증 | R4 | Gate 0 → I4 | R4-06~11 live raw Context 재검증 | R2 URN 교정 통합 후 실제 CRM·PMS–CRM Context·G2 재검증 | `MERGED_DEV` |
@@ -214,7 +215,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W4-F3 | Wave 4 Base smoke 재작업 | R3 | Gate 0 → I4 | R3-10~14 prompt·평가 harness·Instruct-2507 Base | 첫 균형 표본의 `timestamp(3) <= varchar(7)` 오류로 중단 | `BLOCKED` |
 | R3-W4-F4 | Wave 4 Base SQL 타입 재검증 | R3 | Gate 0 → I4 | R3-10~14 prompt 일반화·Instruct-2507 Base | 같은 균형 20건의 타입·범위·결과 동등성 재검증 | `READY` |
 | R3-W4-F5 | Wave 4 metric filter 계약 보완 | R3 | Gate 0 → I4 | R3-01·07·09~14 metric filter 계약 | 구조화 필터 schema·prompt·Validation Context 보존 | `MERGED_DEV` |
-| R3-W4-F6 | Wave 4 evaluation metric bridge | R3 | I4 → I5 | R3-09~14 evaluation bridge 회귀 | 제품 metric·필수 필터를 G2 평가 package에 무손실 보존 | `READY` |
+| R3-W4-F6 | Wave 4 evaluation metric bridge | R3 | I4 → I5 | R3-09~14 evaluation bridge 회귀 | 제품 metric·필수 필터를 G2 평가 package에 무손실 보존 | `MERGED_DEV` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
 | R4-W4-F3 | Wave 4 Report production 등록 | R4 | 없음 → I4 | R4-16 Report 공통 등록 | FastAPI·Alembic·권한·승인본 불변성·중복 실행 차단 | `MERGED_DEV` |
 | R4-W4-F4 | Wave 4 metric registry 소비 | R4 | Gate 0 → I4 | R4-06~11 metric semantic Context·G2 | R2 registry를 권한별 Context·model payload·G2에 보존 | `MERGED_DEV` |
@@ -2872,7 +2873,7 @@ RESULT_CI=branch 30885817084 PASS; dev 30885892814 PASS; junhee 30885949124 PASS
 ### R3-W4-F6
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -2899,6 +2900,8 @@ STOP_CONDITIONS=R2 registry 또는 R4 Context·G2 schema 변경 필요; case ID�
 EXTERNAL_ACTION_PERMISSION=없음. local bridge·test·허용 경로 commit·daesung push만 승인한다.
 AUTO_FAIL_CONDITIONS=metric 유실; G2 복제; required filter 우회 허용; legacy 회귀; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=metric bridge와 정상·누락·변조·OR 회귀, AI 전체 회귀, branch CI를 제출한다. 통과해도 23개 product metric registry 확대 전 150건 product-context 평가와 cloud 실행을 금지한다.
+RESULT_SHA=54839415020ab35adc11fda9c419920cc16594a3
+RESULT_CI=branch 30890862456 PASS; dev 30891002416 PASS
 ```
 
 ### R2-W4-F3
@@ -2933,6 +2936,38 @@ AUTO_FAIL_CONDITIONS=filter field가 asset column 밖; unrestricted predicate; �
 R1_REVIEW_CONDITIONS=metric registry·column 정합·CRM/View 필터·data test·branch CI를 제출한다. 통과해도 R4 소비자와 cloud smoke는 별도 발행 전까지 대기한다.
 RESULT_SHA=e9a57ed41b83fdbdf90b1e467a12856581033705
 RESULT_CI=branch 30886662028 PASS; dev 30886729486 PASS
+```
+
+### R2-W4-F4
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W4-F4
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=single-asset metric registry coverage
+TASK_CARD_RANGE=R2-10~14 product metric registry safe subset
+CURRENT_TASK_CARD_ID=R2-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=c97c468b769bf9870cf39048e4916acfd410c156
+START_POINT=origin/seung e9a57ed41b83fdbdf90b1e467a12856581033705에 origin/dev c97c468b769bf9870cf39048e4916acfd410c156을 병합해 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R2-W4-F4@c97c468
+CONTRACT_VERSION=I4-CONTEXT-v2.2.0-DRAFT; I4-CONTEXT-v2.1.0-compatible
+ALLOWED_PATHS=src/data/analytics_context_contract.i4.v2.json; tests/data/test_analytics_context_contract.py; handoffs/R2-W4-F4.json; docs/markdown/daily_reports/seung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/ai/**; frontend/**; infrastructure/database/**; root Compose·env·CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R2-W4-F4.json
+ACCEPTANCE_CRITERIA=registry version을 올리고 기존 recognized_room_revenue·expired_points를 변경하지 않은 채, 기존 metric이 없는 서로 다른 승인 분석 View에 fnb_net_revenue·facility_revenue·actual_attendees를 각각 1개 추가한다. 각 metric은 실제 View field·time_field와 aggregation=sum을 사용하고 ACTUAL·false structured required_filters를 포함한다. 모든 field·time·filter field는 해당 승인 View column이어야 하며 asset_fqn당 metric은 정확히 1개를 유지한다. 기존 raw asset·JOIN·selection policy와 R4 consumer 회귀를 보존하고 전체 23개 coverage를 주장하지 않는다.
+ACCEPTANCE_IDS=AC1_VERSION_BUMP;AC2_THREE_METRICS;AC3_EXACT_COLUMNS;AC4_TYPED_FILTERS;AC5_ONE_PER_ASSET;AC6_EXISTING_COMPAT;AC7_R4_CONSUMER;AC8_LOCAL_ONLY
+TEST_COMMANDS=python -m json.tool src/data/analytics_context_contract.i4.v2.json; python -m pytest -p no:cacheprovider tests/data/test_analytics_context_contract.py -q; python -m pytest -p no:cacheprovider tests/data -q; python -m pytest -p no:cacheprovider tests/backend/test_i2_data_platform.py tests/backend/test_context_builder.py tests/backend/test_production_model.py -q; python -m pytest -p no:cacheprovider tests -q; python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_JSON;T2_TARGET;T3_DATA;T4_CONSUMER;T5_FULL;T6_SCOPE;T7_DIFF
+STOP_CONDITIONS=같은 FQN에 두 번째 metric 필요; weighted ratio·denominator·count와 SUM 정규화·expression field·multi-asset·empty required_filters·gt numeric filter 필요; R3·R4 경로 변경 필요; 승인 View column으로 정확히 표현 불가; 외부 서비스·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local contract·test·허용 경로 commit·seung push만 승인한다.
+AUTO_FAIL_CONDITIONS=전체 23개 무단 확대; 기존 2개 변경; asset당 복수 metric; column 불일치; empty filter; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=3개 metric의 실제 View column·ACTUAL/false·asset당 1개, 기존 registry와 R4 consumer 회귀, branch CI를 제출한다. 통과해도 150건 product-context 평가와 cloud 실행은 금지한다.
 ```
 
 ### R4-W4-F3
@@ -3185,6 +3220,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.18 | 2026-08-04 17:45 | R3 evaluation bridge의 metric·typed filter 보존과 누락·변조·OR 차단 회귀를 branch CI까지 확인해 dev에 통합했다. Validation 23개 metric 중 현 단일-asset 계약과 R4 단일 metric 소비를 동시에 만족하는 안전 범위를 재검토해, 기존 metric이 없는 서로 다른 View의 fnb_net_revenue·facility_revenue·actual_attendees만 추가하는 R2-W4-F4를 local-only로 발행했다. ratio·count·multi-asset 계약과 150건 평가는 계속 차단한다. |
 | v3.17 | 2026-08-04 17:30 | R5 REPORT-v1.1 proposal의 layout·draft replace·history·manual command 신뢰 경계와 branch CI를 확인해 dev에 통합했다. owner-scoped API·DB queue·신규 migration만 제품에 등록하는 R4-W4-F5를 local-only로 발행하고, OpenAPI 공개·worker·schedule은 선행 계약 전까지 제외했다. |
 | v3.16 | 2026-08-04 17:15 | R4 metric Context가 통합됐지만 R3 evaluation bridge가 metrics를 버려 필수 필터 누락 SQL을 G2가 통과시키는 결함을 확인했다. 기존 helper와 회귀만 고치는 R3-W4-F6을 local-only로 발행했으며, 제품 registry 23개 coverage 전 150건 평가와 모든 외부 비용 작업은 계속 차단한다. |
 | v3.15 | 2026-08-04 17:00 | R4 metric registry 제품 소비와 R5 상태·접근성 QA의 제품·handoff·branch/dev CI를 확인해 MERGED_DEV로 전환하고 R1-W4-F5 metric 계약 판정을 완료했다. 실제 API 신뢰 경계와 layout 보존을 먼저 동결하는 R5-W4-F3 REPORT-v1.1 proposal을 local-only로 발행했다. |

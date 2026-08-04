@@ -28,12 +28,12 @@ class GateScopeTest(unittest.TestCase):
     def test_latest_r3_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "daesung")
         self.assertEqual("R3-W4-F6", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("READY", bundle["STATUS"])
+        self.assertEqual("MERGED_DEV", bundle["STATUS"])
 
     def test_latest_r2_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "seung")
-        self.assertEqual("R2-W4-F3", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("MERGED_DEV", bundle["STATUS"])
+        self.assertEqual("R2-W4-F4", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("READY", bundle["STATUS"])
 
     def test_latest_r4_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "jaehong")

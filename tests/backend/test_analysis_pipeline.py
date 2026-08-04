@@ -39,6 +39,46 @@ class CountingDataPlatformAdapter(FakeDataPlatformAdapter):
         return super().execute_query(sql, parameters, gate_token)
 
 
+class MetricCandidateAdapter(CountingDataPlatformAdapter):
+    METRICS = {
+        "recognized_room_revenue": {
+            "id": "recognized_room_revenue",
+            "asset_fqn": "pms.public.pms_guests",
+            "field": "guest_id",
+            "aggregation": "sum",
+            "time_field": "guest_id",
+            "required_filters": (
+                {"field": "guest_id", "operator": "eq", "value": "synthetic"},
+            ),
+        },
+        "fnb_net_revenue": {
+            "id": "fnb_net_revenue",
+            "asset_fqn": "pms.public.pms_guests",
+            "field": "guest_id",
+            "aggregation": "sum",
+            "time_field": "guest_id",
+            "required_filters": (
+                {"field": "guest_id", "operator": "eq", "value": "synthetic"},
+            ),
+        },
+    }
+
+    def search_assets(self, query, context):
+        metrics = tuple(self.METRICS.values())
+        if query == "객실 매출":
+            metrics = (self.METRICS["recognized_room_revenue"],) * 2
+        return [{**self._asset, "metrics": metrics}]
+
+
+class CountingModel(FakeModelAdapter):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, node, payload):
+        self.calls += 1
+        return super().generate(node, payload)
+
+
 class InvalidRepairModel(FakeModelAdapter):
     def generate(self, node, payload):
         response = super().generate(node, payload)
@@ -200,6 +240,31 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual(StageOutcome.BLOCKED, response.data.trace[-1].outcome)
         self.assertIsNone(response.data.artifact)
         self.assertEqual(0, self.adapter.execute_count)
+
+    def test_invalid_metric_selection_blocks_before_model_and_query(self) -> None:
+        for question in (
+            "호텔 지표",
+            "객실 매출과 식음 순매출",
+            "소멸 포인트",
+            "객실 매출",
+        ):
+            with self.subTest(question=question):
+                adapter = MetricCandidateAdapter()
+                model = CountingModel()
+                service = AnalysisService(adapter, model)
+                payload = AnalysisRequest(question=question)
+
+                response = service.analyze(
+                    payload,
+                    self.context,
+                    self.decision(payload),
+                )
+
+                self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+                self.assertEqual(PipelineStage.CONTEXT, response.data.trace[-1].stage)
+                self.assertEqual("CONTEXT_INCOMPLETE", response.error.code.value)
+                self.assertEqual(0, model.calls)
+                self.assertEqual(0, adapter.execute_count)
 
     def test_g1_distinguishes_access_and_inactive_context(self) -> None:
         expected = {

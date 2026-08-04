@@ -37,10 +37,8 @@
     {"id": "T3_DATA", "name": "python -m pytest -p no:cacheprovider tests/data -q", "status": "PASS", "evidence": "34 passed"},
     {"id": "T4_CONSUMER", "name": "python -m pytest -p no:cacheprovider tests/backend/test_i2_data_platform.py tests/backend/test_context_builder.py tests/backend/test_production_model.py -q", "status": "PASS", "evidence": "34 passed, 3 subtests passed"},
     {"id": "T5_FULL", "name": "python -m pytest -p no:cacheprovider tests -q", "status": "PASS", "evidence": "branch CI 30891801354: 205 passed, 8 skipped"},
-    {"id": "T6_SCOPE", "name": "python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "branch CI role-scope PASS; terminal manifest 제출 후 local 재검증"},
-    {"id": "T7_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "제품 변경 공백 오류 없음; terminal manifest 제출 후 재검증"},
-    {"id": "T8_REPORT", "name": "python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/seung/일일보고.md", "status": "PASS", "evidence": "report-validation OK"},
-    {"id": "T9_BRANCH_CI", "name": "GitHub Actions CI", "status": "PASS", "evidence": "https://github.com/hijun318-eng/skn29_final_3team/actions/runs/30891801354"}
+    {"id": "T6_SCOPE", "name": "python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "branch CI 30891801354 role-scope PASS; terminal manifest 제출 후 local 재검증"},
+    {"id": "T7_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "제품 변경 공백 오류 없음; terminal manifest 제출 후 재검증"}
   ],
   "NOT_RUN": [],
   "CHANGE_REQUESTS": [],

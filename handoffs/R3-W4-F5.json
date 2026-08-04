@@ -1,0 +1,70 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R3-W4-F5",
+  "ROLE": "R3",
+  "BRANCH": "daesung",
+  "BASE_SHA": "bc08100d5d38a729b4b37e715afa4f5f9674b200",
+  "SYNCED_DEV_SHA": "6a46dcc0a2bb6f09843c47e1f5f16aa076e1c038",
+  "RESULT_SHA": "97fa73f29ad43d82010872ea4faf1d27c4e2aee2",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R3-W4-F5@bc08100",
+  "COMPLETED_CARDS": [
+    "R3-01·07·09~14 metric filter 계약 보완"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/daesung/일일보고.md",
+    "evals/instruct2507.smoke20.f3.failure.json",
+    "evals/instruct2507.smoke20.f3.jsonl",
+    "evals/instruct2507.smoke20.f4.failure.json",
+    "evals/instruct2507.smoke20.f4.jsonl",
+    "evals/instruct2507.smoke20.jsonl",
+    "evals/instruct2507.smoke20.v2.manifest.json",
+    "evals/validation_v2.manifest.json",
+    "handoffs/R3-W4-F3.json",
+    "handoffs/R3-W4-F4.json",
+    "src/ai/contracts/node_io.v0.1.json",
+    "src/ai/prompt_registry.py",
+    "src/ai/training/README.md",
+    "src/ai/training/benchmark_serving.py",
+    "src/ai/training/build_case_specs.py",
+    "src/ai/training/build_smoke_manifest.py",
+    "src/ai/training/build_validation_v2.py",
+    "src/ai/training/evaluate_endpoint.py",
+    "src/ai/training/evaluate_lora.py",
+    "src/ai/training/train_lora.py",
+    "src/ai/training/verify_case_specs.py",
+    "src/modelops/model_candidate.instruct2507.v0.1.json",
+    "tests/ai/test_contracts.py",
+    "tests/ai/test_eval_runner.py",
+    "tests/ai/test_prompt_registry.py",
+    "tests/ai/test_training_scenarios.py",
+    "tests/ai/test_validation_v2.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "MODEL_CANDIDATE": "MODEL-CANDIDATE-v0.1",
+    "NODE_IO": "NODE-IO-v0.1-compatible",
+    "PROMPT": "PROMPT-v1.0.9-DRAFT/PROMPT-v1.0.3"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_OPTIONAL_SCHEMA", "status": "PASS", "evidence": "context metric의 기존 required 목록을 바꾸지 않고 optional required_filters를 추가했으며 legacy payload validation PASS"},
+    {"id": "AC2_OPERATOR_VALUE", "status": "PASS", "evidence": "operator는 eq, value는 string 또는 boolean만 허용하고 empty·null·raw·추가 sql field를 schema test로 거부"},
+    {"id": "AC3_SOURCE_FILTERS", "status": "PASS", "evidence": "Source 필수 조건을 자유 SQL 문자열에서 구조화 tuple로 교체하고 생성 SQL과 Context metric이 같은 구조를 사용"},
+    {"id": "AC4_PROMPT_RULE", "status": "PASS", "evidence": "PROMPT-v1.0.9-DRAFT가 required_filters의 eq/string/boolean 변환과 AND 적용, 자유 predicate 해석 금지를 일반 규칙으로 명시"},
+    {"id": "AC5_CRM_REGRESSION", "status": "PASS", "evidence": "validation-0228 Context에 txn_type eq EXPIRE와 is_forecast eq false 포함 확인"},
+    {"id": "AC6_VIEW_REGRESSION", "status": "PASS", "evidence": "분석 View metric Context에 data_period_status eq ACTUAL과 is_forecast eq false 포함 확인"},
+    {"id": "AC7_COMPATIBILITY", "status": "PASS", "evidence": "기존 required_filters 없는 node2 payload와 전체 1,350개 생성 Context Package schema validation PASS"},
+    {"id": "AC8_LOCAL_ONLY", "status": "PASS", "evidence": "RunPod·model download·endpoint·150건 평가·LoRA·Blind Gold 호출 없이 local code와 test만 실행"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_AI", "name": "python -m pytest tests/ai -q", "status": "PASS", "evidence": "55 passed, 31 subtests passed"},
+    {"id": "T2_COMPILE", "name": "python -m compileall -q src/ai", "status": "PASS", "evidence": "compile 통과"},
+    {"id": "T3_CONTEXT", "name": "validation-0228 local context build 확인", "status": "PASS", "evidence": "case_id validation-0228, txn_type EXPIRE, is_forecast false 확인"},
+    {"id": "T4_SCOPE", "name": "python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "원장 교정 dev 6a46dcc merge 후 changed paths 27, scope PASS, 제출 전 handoff NOT_RUN"},
+    {"id": "T5_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R3-W4-F5 local metric filter 계약 보완 결과 수용 및 R4 소비자 작업 별도 발행"
+}

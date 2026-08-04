@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v8.00 |
-| 문서 기준일 | 2026-08-04 16:20 |
+| 버전 | v8.01 |
+| 문서 기준일 | 2026-08-04 16:45 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -184,7 +184,7 @@ gantt
 | 4.14 | R4-13 Node 3·승인 후 수정 불가 Artifact | artifact contract | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
 | 4.15 | R4-14 SQL Plan·Result Cache | versioned cache key | 김재홍 | 완료 | 08/17 | 08/21 | 중간 |
 | 4.16 | R4-15 Audit·Trace·관측 | linked request trace | 김재홍 | 완료 | 08/10 | 08/21 | 높음 |
-| 4.17 | R4-16 R5 Report module 공통 등록 | analysis run contract | 김재홍 | 진행 | 08/24 | 08/28 | 높음 |
+| 4.17 | R4-16 R5 Report module 공통 등록 | analysis run contract | 김재홍 | 완료 | 08/24 | 08/28 | 높음 |
 | 4.18 | R4-17 worker·schedule runtime | 영속 job·같은 요청 한 번만 처리·실패 격리 | 김재홍 | 대기 | 08/24 | 08/28 | 높음 |
 | 4.19 | R4-18 권한·mask·민감정보 가림(redaction) | 보안 검증 증거 | 김재홍 | 완료 | 08/17 | 08/28 | 높음 |
 | 4.20 | R4-19 retention·backup·restore hook | 보존 job·복구 절차 | 김재홍 | 대기 | 08/24 | 09/02 | 높음 |
@@ -206,7 +206,7 @@ gantt
 | 5.9 | R5-08 Report definition·version·run·block domain | Report contract | 송민지 | 완료 | 08/03 | 08/24 | 높음 |
 | 5.10 | R5-09 독립 Report router·API module | router·contract test | 송민지 | 완료 | 08/17 | 08/24 | 높음 |
 | 5.11 | R5-10 Report migration proposal | 단일 migration proposal | 송민지 | 완료 | 08/17 | 08/24 | 높음 |
-| 5.12 | R5-11 12-column Report editor | add·move·resize·draft | 송민지 | 진행 | 08/24 | 08/28 | 높음 |
+| 5.12 | R5-11 12-column Report editor | add·move·resize·draft | 송민지 | 완료 | 08/24 | 08/28 | 높음 |
 | 5.13 | R5-12 수동 실행·Run History | run·status·history UI | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 5.14 | R5-13 daily·weekly·monthly schedule UI | schedule contract | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 5.15 | R5-14 Catalog·Connection UI | source·asset·ingestion UI | 송민지 | 완료 | 08/17 | 08/28 | 중간 |
@@ -322,6 +322,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 16:45 | 2.11~2.14, 4.7~4.11, 4.17, 5.12 | R2 metric registry, R4 Report 공통 등록, R5 12-column editor를 branch/dev CI까지 통과해 dev에 통합했다. Report는 승인본 불변·승인 definition만 실행·중복 run 차단과 빈/기존 DB migration, editor는 4개 viewport·keyboard 조작을 확인해 4.17·5.12를 완료로 전환했다. 다음 local-only 단계로 R4가 metric registry를 권한별 Context·model payload·G2에 보존하도록 발행했다. | R2·R4·R5 MERGED_DEV·R4 metric 소비 승인 |
 | 2026-08-04 16:20 | 2.11~2.14, 3.2, 3.8, 3.10~3.15 | R3가 metric 필수 필터를 구조화 schema·prompt·Validation Context에 보존하고 AI 55건·1,350개 Context schema·branch/dev/junhee CI를 통과해 dev에 통합했다. 다음 로컬 단계로 R2가 같은 구조를 versioned Context metric registry에 생산하고 asset column 정합을 검증하도록 발행했다. R4 제품 소비와 cloud 재평가는 생산자 통합 뒤 별도 승인한다. | R3 MERGED_DEV·R2 metric 생산 승인 |
 | 2026-08-04 15:50 | 1.7, 4.17, 5.12 | R3 F5의 실제 변경은 허용된 7개 경로뿐이지만 개인 branch가 보존하는 F3/F4 실패 증거가 origin/dev 대비 누적 diff에 포함돼 role scope가 오탐함을 확인했다. F5 범위를 기존 F3/F4 승인 경로와 새 F5 파일의 합집합으로 교정하고 cloud 금지는 유지했다. I4의 독립 local-only 작업으로 R4에는 기존 Report proposal의 FastAPI·새 Alembic revision 등록만, R5에는 fixture 기반 12-column editor만 발행했다. worker·schedule·실제 API·외부 실행은 제외한다. | R3 누적 scope 교정·R4/R5 I4 병렬 승인 |
 | 2026-08-04 15:40 | 3.2, 3.8, 3.10~3.15 | F4 CRM 실패를 재검토해 `expired_points`의 Context metric에는 `sum(-points_delta)`만 있고 정답 SQL이 요구하는 `txn_type='EXPIRE'` 필터가 전달되지 않는 계약 누락을 확인했다. 모델 prompt 재시도보다 metric 필수 필터를 field·operator·value 구조로 보존하고 schema·prompt·Validation 생성기를 동기화하는 R3-W4-F5를 로컬 전용으로 발행했다. RunPod·model download·endpoint·비용·전체 평가와 R4 경로 변경은 금지한다. | metric 필터 계약 보완 승인·외부 비용 0 |
@@ -453,6 +454,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v8.01 | 2026-08-04 16:45 | R2 metric 생산·R4 Report 등록·R5 editor를 dev에 통합해 4.17·5.12를 완료로 전환하고, R4 metric 소비 작업을 4.7~4.11에 local-only로 발행했다. |
 | v8.00 | 2026-08-04 16:20 | 구조화 metric 필터 계약의 R3 구현·CI를 dev에 통합하고, 같은 의미 정보를 제품 Context에 공급하는 R2 metric registry 작업을 2.11~2.14에 local-only로 발행했다. |
 | v7.99 | 2026-08-04 15:50 | R3 F5의 누적 branch scope를 과거 승인 경로와 정합화하고, I4 독립 local-only 작업인 R4 Report 공통 등록과 R5 12-column editor를 4.17·5.12에 진행으로 발행했다. |
 | v7.98 | 2026-08-04 15:40 | CRM 지표의 필수 필터가 Context metric에서 누락된 근본 계약을 3.2·3.8·3.10~3.15에 연결하고, 구조화 필터를 schema·prompt·Validation 생성기에 보존하는 비용 없는 R3-W4-F5를 발행했다. |

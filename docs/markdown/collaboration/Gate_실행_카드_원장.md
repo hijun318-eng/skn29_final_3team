@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.12 |
-| 문서 기준일 | 2026-08-04 16:20 |
+| 버전 | v3.13 |
+| 문서 기준일 | 2026-08-04 16:45 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -204,7 +204,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R2-W4-F1A | Wave 4 serving metadata 권한 보완 | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | View 소유자 위임 조회 권한과 metadata 계약 동시 검증 | `MERGED_DEV` |
 | R2-W4-F2 | Wave 4 혼합 Context 계약 | R2 | Gate 0 → I4 | R2-10~14 승인 raw asset·JOIN 정합 | View 우선·CRM 단독·PMS–CRM JOIN의 명시적 live DataHub 계약 | `MERGED_DEV` |
 | R2-W4-F2A | Wave 4 raw URN 교정 | R2 | Gate 0 → I4 | R2-10 DataHub URN exact-match | platform instance·database를 포함한 실제 raw URN 7개 교정 | `MERGED_DEV` |
-| R2-W4-F3 | Wave 4 metric registry 생산 | R2 | Gate 0 → I4 | R2-10~14 metric semantic contract | 승인 asset별 metric·필수 필터를 versioned Context 계약으로 제공 | `READY` |
+| R2-W4-F3 | Wave 4 metric registry 생산 | R2 | Gate 0 → I4 | R2-10~14 metric semantic contract | 승인 asset별 metric·필수 필터를 versioned Context 계약으로 제공 | `MERGED_DEV` |
 | R4-W4-F1A | Wave 4 serving Context 소비 보완 | R4 | Gate 0 → I4 | R4-06~11 `LIVE_DATAHUB` Context·G2 정합 | 승인 View를 질문별 60-column 상한으로 선별하고 권한·G2를 fail-closed 검증 | `MERGED_DEV` |
 | R4-W4-F2 | Wave 4 혼합 Context 소비 | R4 | Gate 0 → I4 | R4-06~11 View·제한 raw Context·G2 정합 | 축약 raw URN이 live DataHub와 불일치해 생산자 교정 대기 | `BLOCKED` |
 | R4-W4-F2A | Wave 4 혼합 Context 재검증 | R4 | Gate 0 → I4 | R4-06~11 live raw Context 재검증 | R2 URN 교정 통합 후 실제 CRM·PMS–CRM Context·G2 재검증 | `MERGED_DEV` |
@@ -215,9 +215,10 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W4-F4 | Wave 4 Base SQL 타입 재검증 | R3 | Gate 0 → I4 | R3-10~14 prompt 일반화·Instruct-2507 Base | 같은 균형 20건의 타입·범위·결과 동등성 재검증 | `READY` |
 | R3-W4-F5 | Wave 4 metric filter 계약 보완 | R3 | Gate 0 → I4 | R3-01·07·09~14 metric filter 계약 | 구조화 필터 schema·prompt·Validation Context 보존 | `MERGED_DEV` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
-| R4-W4-F3 | Wave 4 Report production 등록 | R4 | 없음 → I4 | R4-16 Report 공통 등록 | FastAPI·Alembic·권한·승인본 불변성·중복 실행 차단 | `READY` |
+| R4-W4-F3 | Wave 4 Report production 등록 | R4 | 없음 → I4 | R4-16 Report 공통 등록 | FastAPI·Alembic·권한·승인본 불변성·중복 실행 차단 | `MERGED_DEV` |
+| R4-W4-F4 | Wave 4 metric registry 소비 | R4 | Gate 0 → I4 | R4-06~11 metric semantic Context·G2 | R2 registry를 권한별 Context·model payload·G2에 보존 | `READY` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
-| R5-W4-F1 | Wave 4 12-column Report editor | R5 | 없음 → I4 | R5-11 Report editor | draft layout·keyboard 대안·승인본 불변성 | `READY` |
+| R5-W4-F1 | Wave 4 12-column Report editor | R5 | 없음 → I4 | R5-11 Report editor | draft layout·keyboard 대안·승인본 불변성 | `MERGED_DEV` |
 
 ## Gate 공통 완료 조건
 
@@ -2865,7 +2866,7 @@ RESULT_CI=branch 30885817084 PASS; dev 30885892814 PASS; junhee 30885949124 PASS
 ### R2-W4-F3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -2892,12 +2893,14 @@ STOP_CONDITIONS=case ID·정답 SQL hardcode; unrestricted SQL predicate; 승인
 EXTERNAL_ACTION_PERMISSION=없음. local contract·test·허용 경로 commit·seung push만 승인한다.
 AUTO_FAIL_CONDITIONS=filter field가 asset column 밖; unrestricted predicate; 기존 계약 비호환; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=metric registry·column 정합·CRM/View 필터·data test·branch CI를 제출한다. 통과해도 R4 소비자와 cloud smoke는 별도 발행 전까지 대기한다.
+RESULT_SHA=e9a57ed41b83fdbdf90b1e467a12856581033705
+RESULT_CI=branch 30886662028 PASS; dev 30886729486 PASS
 ```
 
 ### R4-W4-F3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -2924,12 +2927,46 @@ STOP_CONDITIONS=기존 migration 수정; worker·schedule 구현 필요; R5 prop
 EXTERNAL_ACTION_PERMISSION=없음. local code·test·허용 경로 commit·jaehong push만 승인한다.
 AUTO_FAIL_CONDITIONS=인증 우회; 승인본 수정; 미승인 run; duplicate run 허용; migration chain 분기; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=새 migration·router·권한·불변성·중복 차단·branch CI를 제출한다. worker와 실제 schedule은 별도 발행 전 대기한다.
+RESULT_SHA=89d656f05783dc2394bdc816257de622e6ce20de
+RESULT_CI=branch 30887466759 PASS; dev 30887524951 PASS
+```
+
+### R4-W4-F4
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W4-F4
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=metric semantic Context·G2
+TASK_CARD_RANGE=R4-06~11 metric registry 소비
+CURRENT_TASK_CARD_ID=R4-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=89d656f05783dc2394bdc816257de622e6ce20de
+START_POINT=origin/jaehong 89d656f05783dc2394bdc816257de622e6ce20de에서 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W4-F4@89d656f
+CONTRACT_VERSION=I4-CONTEXT-v2.1.0-DRAFT; I4-METRIC-v1.0.0-DRAFT; PROMPT-v1.0.9-compatible
+ALLOWED_PATHS=app/backend/app/adapters/i2_data_platform.py; app/backend/app/adapters/contract_model.py; app/backend/app/services/context_builder.py; app/backend/app/services/pipeline_support.py; tests/backend/test_i2_data_platform.py; tests/backend/test_context_builder.py; tests/backend/test_production_model.py; handoffs/R4-W4-F4.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/data/**; src/ai/**; frontend/**; migrations/**; Report router·repository; root Compose·env·CI; secret
+HANDOFF_MANIFEST=handoffs/R4-W4-F4.json
+ACCEPTANCE_CRITERIA=R2 metric registry를 adapter에서 읽고 질문별로 선택된 승인 asset의 metric만 Context Package에 포함한다. metric id·asset FQN·field·aggregation·time field·required_filters를 entitlement 이후에도 보존하고 package hash와 model payload에 포함한다. registry가 없거나 선택 asset에 metric이 0개 또는 동일 id가 여러 개면 fail-closed한다. hardcoded recognized_room_revenue metric을 제거한다. G2는 SQL이 Context metric의 required_filters를 충족하는지 일반 규칙으로 확인해 누락·변조를 차단하며 CRM expired_points와 View ACTUAL/non-forecast 회귀를 검증한다. 기존 asset·JOIN·60-column·권한 계약과 1회 repair 상한은 유지한다.
+ACCEPTANCE_IDS=AC1_REGISTRY_LOAD;AC2_ENTITLED_METRICS;AC3_CONTEXT_HASH;AC4_MODEL_PAYLOAD;AC5_NO_HARDCODE;AC6_FAIL_CLOSED;AC7_G2_FILTER;AC8_CRM_VIEW_REGRESSION;AC9_COMPATIBILITY
+TEST_COMMANDS=python -m pytest tests/backend/test_i2_data_platform.py tests/backend/test_context_builder.py tests/backend/test_production_model.py -q; python -m pytest tests/backend -q; python -m compileall -q app/backend/app; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND;T3_COMPILE;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=metric case ID·정답 SQL hardcode; raw SQL predicate를 Context 입력으로 허용; entitlement 전 metric 노출; metric 0/중복을 묵인; R2·R3·frontend·migration·Report 경로 변경; 외부 서비스·비용·secret 필요; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local backend code·test·허용 경로 commit·jaehong push만 승인한다.
+AUTO_FAIL_CONDITIONS=hardcoded single metric; required filter 누락 허용; 권한 밖 metric; package hash 미포함; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=두 대표 metric의 Context·model payload·G2 차단, fail-closed, backend 회귀와 branch CI를 제출한다. 통과해도 cloud smoke는 별도 비용 승인 전까지 대기한다.
 ```
 
 ### R5-W4-F1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -2956,6 +2993,8 @@ STOP_CONDITIONS=새 dependency 필요; backend·route 변경 필요; 승인본 m
 EXTERNAL_ACTION_PERMISSION=없음. local code·test·허용 경로 commit·minji push만 승인한다.
 AUTO_FAIL_CONDITIONS=승인본 덮어쓰기; local fixture를 실제 API로 표시; 접근성 회귀; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=12-column state·keyboard·draft 불변성·Artifact ID·build·contract·branch CI를 제출한다. 실제 run/history/schedule/API는 R4 등록 뒤 별도 발행 전 대기한다.
+RESULT_SHA=5768aa3b29b06a383a81c33012828181b95b6a4d
+RESULT_CI=branch 30887190599 PASS; dev 30887264040 PASS
 ```
 
 ## I5 이후 후속 단계 예약
@@ -3006,6 +3045,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.13 | 2026-08-04 16:45 | R2 metric registry, R4 Report production 등록, R5 12-column editor의 제품·handoff·branch/dev CI를 확인해 MERGED_DEV로 전환했다. R2 registry를 권한별 Context·model payload·G2에 보존하고 hardcoded metric을 제거하는 R4-W4-F4를 local-only로 발행했다. |
 | v3.12 | 2026-08-04 16:20 | R3-W4-F5의 구조화 metric 필터 계약과 branch·dev·junhee CI 통과를 확인해 MERGED_DEV로 전환했다. 제품 Context가 같은 의미 계약을 소비할 수 있도록 R2-W4-F3 metric registry 생산자를 local-only로 발행하고 R4 소비·cloud 재평가는 후속 판정으로 유지했다. |
 | v3.11 | 2026-08-04 15:50 | R3 F5의 누적 F3/F4 증거가 role scope에 걸리는 오탐을 이전 승인 경로와의 합집합으로 교정했다. I4의 독립 local-only 작업으로 R4-W4-F3 Report production 등록과 R5-W4-F1 12-column editor를 발행하고 worker·schedule·실제 API·외부 비용은 제외했다. |
 | v3.10 | 2026-08-04 15:40 | F4 CRM 실패가 모델에 전달되지 않은 metric 필수 필터 계약에서 시작됐음을 확인했다. field·operator·value 구조를 schema·prompt·Validation 생성기에 보존하는 비용 없는 R1-W4-F5·R3-W4-F5를 발행하고 R4 소비·cloud 재평가는 별도 판정으로 남겼다. |

@@ -25,6 +25,7 @@ class ContextAsset:
     urn: str
     fqn: str
     columns: tuple[str, ...]
+    join_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.urn.strip() or not self.fqn.strip():
@@ -62,6 +63,7 @@ class ContextPackage:
     token_count: int
     token_limit: int
     package_hash: str
+    approved_join_ids: tuple[str, ...]
 
 
 class ContextPackageBuilder:
@@ -111,6 +113,7 @@ class ContextPackageBuilder:
                     "urn": asset.urn,
                     "fqn": asset.fqn,
                     "columns": list(asset.columns),
+                    "join_ids": list(asset.join_ids),
                 }
                 for asset in assets
             ],
@@ -135,6 +138,7 @@ class ContextPackageBuilder:
             token_count=request.token_count,
             token_limit=token_limit,
             package_hash=package_hash,
+            approved_join_ids=tuple(sorted({join_id for asset in assets for join_id in asset.join_ids})),
         )
 
     @staticmethod

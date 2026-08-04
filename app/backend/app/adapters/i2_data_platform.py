@@ -55,7 +55,13 @@ query Dataset($urn: String!) {
         "hotel_yearly_metrics": ("연간", "연별"),
         "resource_monthly_metrics": ("자원", "자재"),
         "workforce_monthly_metrics": ("인력", "직원", "근무"),
+        "crm_members": ("회원", "멤버", "등급", "잔여 포인트"),
+        "crm_member_grade_history": ("등급 변경", "등급 이력"),
+        "crm_point_transactions": ("포인트", "적립", "사용", "소멸"),
     }
+    _CRM_HINTS = ("crm", "회원", "멤버", "등급", "포인트", "적립", "소멸")
+    _PMS_HINTS = ("pms", "호텔", "객실", "숙박", "투숙", "매출")
+    _PMS_CRM_JOIN_ID = "pms_stay_to_crm_membership_grade_event_time_v1"
 
     def __init__(
         self,
@@ -74,16 +80,13 @@ query Dataset($urn: String!) {
         )
         self._queries: dict[str, dict[str, Any]] = {}
         self._next_uris: dict[str, str] = {}
-        source = contract_path or (
-            Path(__file__).resolve().parents[4]
-            / "src"
-            / "data"
-            / "serving_analytics_contract.i4.v1.json"
-        )
+        root = Path(__file__).resolve().parents[4]
+        source = contract_path or root / "src" / "data" / "analytics_context_contract.i4.v2.json"
         contract = json.loads(source.read_text(encoding="utf-8"))
         if contract.get("context_source") != "LIVE_DATAHUB":
-            raise ValueError("serving analytics contract must require LIVE_DATAHUB")
-        self._assets = tuple(
+            raise ValueError("analytics context contract must require LIVE_DATAHUB")
+        view_contract = json.loads((root / contract["view_contract"]).read_text(encoding="utf-8"))
+        views = [
             {
                 "urn": view["urn"],
                 "fqn": view["fqn"],
@@ -91,9 +94,23 @@ query Dataset($urn: String!) {
                 "columns": tuple(view["columns"]),
                 "schema_version": view["schema_version"],
                 "seed_version": view["seed_version"],
+                "uses": ("serving_views",),
             }
-            for view in contract["views"]
-        )
+            for view in view_contract["views"]
+        ]
+        raw_assets = [
+            {
+                "urn": asset["urn"],
+                "fqn": asset["fqn"],
+                "name": asset["fqn"].rsplit(".", 1)[-1],
+                "columns": tuple(asset["columns"]),
+                "schema_version": "1.0.0",
+                "seed_version": "20260729",
+                "uses": tuple(asset["uses"]),
+            }
+            for asset in contract["raw_assets"]
+        ]
+        self._assets = tuple(views + raw_assets)
         self._live_schemas: dict[str, tuple[str, ...]] = {}
 
     def _request(
@@ -147,6 +164,7 @@ query Dataset($urn: String!) {
             return []
         selected: list[dict[str, Any]] = []
         column_count = 0
+        query_use = self._query_use(query)
         for asset in self._rank_assets(query):
             if column_count + len(asset["columns"]) > 60:
                 continue
@@ -160,7 +178,13 @@ query Dataset($urn: String!) {
             ):
                 raise ValueError("live DataHub metadata does not match the contract")
             self._live_schemas[asset["urn"]] = columns
-            selected.append({key: value for key, value in asset.items() if key != "columns"})
+            item = {key: value for key, value in asset.items() if key != "columns"}
+            item["join_ids"] = (
+                (self._PMS_CRM_JOIN_ID,)
+                if query_use == "approved_pms_crm_join"
+                else ()
+            )
+            selected.append(item)
             column_count += len(columns)
         return selected
 
@@ -175,17 +199,28 @@ query Dataset($urn: String!) {
 
     def _rank_assets(self, query: str) -> tuple[dict[str, Any], ...]:
         lowered = query.lower()
+        use = self._query_use(query)
         words = set(re.findall(r"[a-z0-9_]{3,}", lowered))
         ranked: list[tuple[int, dict[str, Any]]] = []
         for asset in self._assets:
+            if use not in asset["uses"]:
+                continue
             searchable = " ".join((asset["name"], asset["fqn"], *asset["columns"])).lower()
             score = sum(word in searchable for word in words)
             score += 3 * sum(
                 hint in lowered for hint in self._KOREAN_HINTS.get(asset["name"], ())
             )
-            if score:
+            if score or use == "approved_pms_crm_join":
                 ranked.append((score, asset))
         return tuple(asset for _score, asset in sorted(ranked, key=lambda item: (-item[0], item[1]["fqn"])))
+
+    @classmethod
+    def _query_use(cls, query: str) -> str:
+        lowered = query.lower()
+        has_crm = any(hint in lowered for hint in cls._CRM_HINTS)
+        if has_crm and any(hint in lowered for hint in cls._PMS_HINTS):
+            return "approved_pms_crm_join"
+        return "crm_only" if has_crm else "serving_views"
 
     def _datahub_dataset(self, urn: str) -> dict[str, Any]:
         headers = {"Content-Type": "application/json"}

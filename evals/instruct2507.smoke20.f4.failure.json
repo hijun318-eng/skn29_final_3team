@@ -1,0 +1,89 @@
+{
+  "execution_bundle_id": "R3-W4-F4",
+  "status": "STOPPED_ON_FIRST_FAILURE",
+  "model": "Qwen/Qwen3-4B-Instruct-2507",
+  "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+  "mode": "non-thinking",
+  "adapter": null,
+  "transport": {
+    "response": "SQL-only guided JSON",
+    "max_tokens": 512,
+    "temperature": 0
+  },
+  "prompt_run": {
+    "version": "PROMPT-v1.0.8",
+    "sha256": "ba5bf3c46b5e53a96d9179e799b8d5b4cc1122dace3a1743b263bb253e33d5be"
+  },
+  "smoke_manifest": {
+    "path": "evals/instruct2507.smoke20.v2.manifest.json",
+    "file_sha256": "e1fff3ab55a718d1bf501c382780aca7ff77da76e5fe62047fd4d7e7b8baf85b",
+    "content_sha256": "ff164b8024b8650520e22522bec312d7a3eca1538d05fd810745b6202a4d5eb2",
+    "unchanged_from_f3": true,
+    "requested": 20
+  },
+  "summary": {
+    "evaluated": 4,
+    "valid_json": 4,
+    "g2_pass": 4,
+    "trino_pass": 4,
+    "result_match": 3,
+    "stopped_early": true
+  },
+  "f3_regression": {
+    "case_id": "validation-0151",
+    "valid_json": true,
+    "g2": "PASS",
+    "trino": "PASS",
+    "result_match": true,
+    "generated_result_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "expected_result_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "failure": {
+    "case_id": "validation-0228",
+    "domain": "crm",
+    "node": "node2",
+    "evaluation_slice": "ID",
+    "valid_json": true,
+    "g2": "PASS",
+    "trino": "PASS",
+    "result_match": false,
+    "generated_sql": "SELECT date_format(date_trunc('month', event_at AT TIME ZONE 'Asia/Seoul'), '%Y-%m') AS month, sum(points_delta) AS expired_points FROM crm.dbo.crm_point_transactions WHERE event_at >= date_add('month', -1, from_iso8601_timestamp('2024-01-13T00:00:00+09:00')) AND event_at < from_iso8601_timestamp('2024-01-14T00:00:00+09:00') GROUP BY date_format(date_trunc('month', event_at AT TIME ZONE 'Asia/Seoul'), '%Y-%m') ORDER BY month LIMIT 1000",
+    "expected_sql": "SELECT date_format(date_trunc('month', event_at), '%Y-%m') AS period, CAST(SUM(-points_delta) AS DECIMAL(18,2)) AS expired_points FROM crm.dbo.crm_point_transactions WHERE property_id = 'SYNTHETIC_HOTEL_001' AND txn_type = 'EXPIRE' AND is_forecast = false AND event_at >= DATE '2024-01-13' AND event_at < DATE '2024-01-14' GROUP BY 1 ORDER BY 1 LIMIT 1000",
+    "generated_rows": [
+      {"month": "2023-12", "expired_points": 2485200},
+      {"month": "2024-01", "expired_points": 1700400}
+    ],
+    "expected_rows": [
+      {"period": "2024-01", "expired_points": "10900.00"}
+    ],
+    "generated_result_sha256": "6a609f4d5789b1416206b713a075122e4c421a767873a12651039fcd7961a439",
+    "expected_result_sha256": "5dfed0691f727e4349b2692d5f0a600a24e4660522ced718370048f8d9348f91",
+    "classification": "MODEL_SEMANTIC_SCOPE_ERROR",
+    "observed_differences": [
+      "property_id scope omitted",
+      "txn_type EXPIRE filter omitted",
+      "is_forecast false filter omitted",
+      "one-day half-open interval changed to a preceding-month start",
+      "expired points sign inversion omitted"
+    ]
+  },
+  "runpod": {
+    "pod_id": "pj2tymgq5avzf0",
+    "image": "vllm/vllm-openai:v0.10.2",
+    "gpu": "NVIDIA A40 SECURE",
+    "cost_per_hour_usd": 0.44,
+    "elapsed_seconds": 329,
+    "f4_estimated_cost_usd": 0.0402,
+    "f3_f4_estimated_cost_usd": 0.0825,
+    "combined_cost_cap_usd": 0.35,
+    "pod_deleted": true,
+    "active_pods_after_cleanup": 0
+  },
+  "prohibited_work": {
+    "validation_150_run": false,
+    "lora_started": false,
+    "blind_gold_run": false,
+    "other_model_run": false
+  },
+  "decision": "STOP_AND_RETURN_TO_R1"
+}

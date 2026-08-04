@@ -1,0 +1,57 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W4-F3",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "f82df8d3fb1709347af80d45c07152e32f22b1ce",
+  "SYNCED_DEV_SHA": "e9a57ed41b83fdbdf90b1e467a12856581033705",
+  "RESULT_SHA": "62f3ef09aac5fb5bcbaf1ce73a1b400590ae28ae",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W4-F3@f82df8d",
+  "COMPLETED_CARDS": [
+    "R4-16 Report 공통 등록"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/README.md",
+    "app/backend/app/adapters/report_repository.py",
+    "app/backend/app/api/report_router.py",
+    "app/backend/app/main.py",
+    "app/backend/migrations/versions/20260804_04_report_registration.py",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
+    "tests/backend/test_report_migration.py",
+    "tests/backend/test_report_registration.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "REPORT_VERSION": "REPORT-v1.0.0-compatible",
+    "OPENAPI_VERSION": "OPENAPI-v1.0.0",
+    "MIGRATION_HEAD": "20260804_04"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_ROUTER", "status": "PASS", "evidence": "기존 src/report proposal을 수정하지 않고 definition·version·draft·approval·run FastAPI router로 등록"},
+    {"id": "AC2_AUTH", "status": "PASS", "evidence": "모든 Report 경로가 Bearer analysis_context와 report_admin 역할을 요구하고 hotel_analyst·data_admin을 403으로 거부"},
+    {"id": "AC3_NEW_MIGRATION", "status": "PASS", "evidence": "기존 20260731_03 뒤에 20260804_04 revision 하나로 definition·version·block·run·block_run 영속화"},
+    {"id": "AC4_IMMUTABLE_APPROVED", "status": "PASS", "evidence": "실제 PostgreSQL trigger가 승인 version과 block의 UPDATE·DELETE를 거부"},
+    {"id": "AC5_APPROVED_RUN_ONLY", "status": "PASS", "evidence": "repository 검사와 DB trigger가 draft definition의 run 삽입을 거부"},
+    {"id": "AC6_DUPLICATE_RUN", "status": "PASS", "evidence": "run_id PK와 API 오류 변환으로 같은 run_id 재등록을 거부"},
+    {"id": "AC7_EXISTING_MIGRATION", "status": "PASS", "evidence": "빈 DB의 head 직행과 기존 20260731_03 DB의 head upgrade를 모두 임시 PostgreSQL에서 확인"},
+    {"id": "AC8_NO_WORKER", "status": "PASS", "evidence": "worker·schedule runtime을 추가하지 않고 수동 run 요청 기록까지만 구현"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_BACKEND_REPORT", "name": "python -m pytest tests/backend tests/report -q", "status": "NOT_RUN", "evidence": "로컬 system Python에는 FastAPI·pytest가 없고 기존 backend runtime image에는 pytest가 없어 exact 명령은 branch CI에서 확인 예정; 동일 코드의 unittest backend 63건·report 7건 통과"},
+    {"id": "T2_MIGRATION", "name": "빈 DB와 기존 DB alembic upgrade head", "status": "PASS", "evidence": "임시 PostgreSQL에서 blank head·existing 20260731_03→head와 실제 DB 불변식 통과 후 임시 DB 제거"},
+    {"id": "T3_COMPILE", "name": "python -m compileall -q app/backend/app", "status": "PASS", "evidence": "backend app과 신규 migration compile 통과"},
+    {"id": "T4_SCOPE", "name": "python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base", "status": "NOT_RUN", "evidence": "handoff manifest commit 후 실행"},
+    {"id": "T5_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
+  ],
+  "NOT_RUN": [
+    "T1 exact pytest는 로컬 의존성 부재로 branch CI에서 실행 예정",
+    "T4 scope는 manifest-only 후속 commit 생성 뒤 실행 예정"
+  ],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [
+    "기존 migration의 동명 report schema를 보존하기 위해 production 등록은 report_v1 호환 namespace를 사용",
+    "Report 경로는 동결된 OPENAPI-v1.0.0을 변경하지 않도록 schema에서 숨겼으며 정식 공개 계약은 후속 버전 승격이 필요"
+  ],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R4-W4-F3 branch CI 확인 후 dev 통합; worker·schedule runtime은 별도 실행 묶음 전까지 대기"
+}

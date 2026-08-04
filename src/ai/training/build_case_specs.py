@@ -33,7 +33,7 @@ class Source:
     alias: str
     columns: tuple[str, ...]
     dimensions: dict[str, str]
-    required_filter: str
+    required_filters: tuple[tuple[str, str, str | bool], ...]
     denominator: str | None = None
 
     @property
@@ -41,39 +41,46 @@ class Source:
         return _urn(self.fqn)
 
 
+ACTUAL_ONLY = (("data_period_status", "eq", "ACTUAL"), ("is_forecast", "eq", False))
+ACTIVE_MEMBERS = (("member_status", "eq", "ACTIVE"), ("is_forecast", "eq", False))
+EARNED_POINTS = (("txn_type", "eq", "EARN"), ("is_forecast", "eq", False))
+USED_POINTS = (("txn_type", "eq", "USE"), ("is_forecast", "eq", False))
+EXPIRED_POINTS = (("txn_type", "eq", "EXPIRE"), ("is_forecast", "eq", False))
+
+
 SOURCES = {
-    "recognized_room_revenue": Source("serving.analytics.hotel_daily_metrics", "business_date", "room_revenue", "recognized_room_revenue_krw", ("property_id", "business_date", "room_type_code", "data_period_status", "is_forecast", "room_revenue"), {"room_type": "room_type_code"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "occupancy_rate": Source("serving.analytics.hotel_daily_metrics", "business_date", "rooms_sold", "occupancy_rate", ("property_id", "business_date", "room_type_code", "data_period_status", "is_forecast", "rooms_sold", "available_room_nights"), {"room_type": "room_type_code"}, "data_period_status = 'ACTUAL' AND is_forecast = false", "available_room_nights"),
-    "adr": Source("serving.analytics.hotel_daily_metrics", "business_date", "room_revenue", "adr_krw", ("property_id", "business_date", "room_type_code", "data_period_status", "is_forecast", "room_revenue", "rooms_sold"), {"room_type": "room_type_code"}, "data_period_status = 'ACTUAL' AND is_forecast = false", "rooms_sold"),
-    "revpar": Source("serving.analytics.hotel_daily_metrics", "business_date", "room_revenue", "revpar_krw", ("property_id", "business_date", "room_type_code", "data_period_status", "is_forecast", "room_revenue", "available_room_nights"), {"room_type": "room_type_code"}, "data_period_status = 'ACTUAL' AND is_forecast = false", "available_room_nights"),
-    "rooms_sold": Source("serving.analytics.hotel_daily_metrics", "business_date", "rooms_sold", "rooms_sold", ("property_id", "business_date", "room_type_code", "data_period_status", "is_forecast", "rooms_sold"), {"room_type": "room_type_code"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "available_room_nights": Source("serving.analytics.hotel_daily_metrics", "business_date", "available_room_nights", "available_room_nights", ("property_id", "business_date", "room_type_code", "data_period_status", "is_forecast", "available_room_nights"), {"room_type": "room_type_code"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "fnb_net_revenue": Source("serving.analytics.fnb_daypart_metrics", "business_date", "fnb_net_revenue", "fnb_net_revenue_krw", ("property_id", "business_date", "store_id", "service_period", "data_period_status", "is_forecast", "fnb_net_revenue"), {"store": "store_id", "daypart": "service_period"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "order_count": Source("serving.analytics.fnb_daypart_metrics", "business_date", "order_count", "order_count", ("property_id", "business_date", "store_id", "service_period", "data_period_status", "is_forecast", "order_count"), {"store": "store_id", "daypart": "service_period"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "covers": Source("serving.analytics.fnb_daypart_metrics", "business_date", "covers", "covers", ("property_id", "business_date", "store_id", "service_period", "data_period_status", "is_forecast", "covers"), {"store": "store_id", "daypart": "service_period"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "average_check": Source("serving.analytics.fnb_daypart_metrics", "business_date", "fnb_net_revenue", "average_check_krw", ("property_id", "business_date", "store_id", "service_period", "data_period_status", "is_forecast", "fnb_net_revenue", "covers"), {"store": "store_id", "daypart": "service_period"}, "data_period_status = 'ACTUAL' AND is_forecast = false", "covers"),
-    "revpash": Source("serving.analytics.fnb_daypart_metrics", "business_date", "fnb_net_revenue", "revpash_krw", ("property_id", "business_date", "store_id", "service_period", "data_period_status", "is_forecast", "fnb_net_revenue", "seat_hours_available"), {"store": "store_id", "daypart": "service_period"}, "data_period_status = 'ACTUAL' AND is_forecast = false", "seat_hours_available"),
-    "completed_usage_count": Source("serving.analytics.facility_daily_metrics", "business_date", "completed_usage_count", "completed_usage_count", ("property_id", "business_date", "facility_id", "data_period_status", "is_forecast", "completed_usage_count"), {"facility": "facility_id"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "incident_count": Source("serving.analytics.facility_daily_metrics", "business_date", "incident_count", "incident_count", ("property_id", "business_date", "facility_id", "data_period_status", "is_forecast", "incident_count"), {"facility": "facility_id"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "downtime_minutes": Source("serving.analytics.facility_daily_metrics", "business_date", "downtime_minutes", "downtime_minutes", ("property_id", "business_date", "facility_id", "data_period_status", "is_forecast", "downtime_minutes"), {"facility": "facility_id"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "facility_revenue": Source("serving.analytics.facility_daily_metrics", "business_date", "facility_revenue", "facility_revenue_krw", ("property_id", "business_date", "facility_id", "data_period_status", "is_forecast", "facility_revenue"), {"facility": "facility_id"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "revenue_per_usage": Source("serving.analytics.facility_daily_metrics", "business_date", "facility_revenue", "revenue_per_usage_krw", ("property_id", "business_date", "facility_id", "data_period_status", "is_forecast", "facility_revenue", "completed_usage_count"), {"facility": "facility_id"}, "data_period_status = 'ACTUAL' AND is_forecast = false", "completed_usage_count"),
-    "recognized_banquet_revenue": Source("serving.analytics.banquet_monthly_metrics", "year_month", "recognized_revenue", "recognized_banquet_revenue_krw", ("property_id", "year_month", "product_category", "data_period_status", "is_forecast", "recognized_revenue"), {"product_category": "product_category"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "expected_banquet_revenue": Source("serving.analytics.banquet_monthly_metrics", "year_month", "expected_revenue", "expected_banquet_revenue_krw", ("property_id", "year_month", "product_category", "data_period_status", "is_forecast", "expected_revenue"), {"product_category": "product_category"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "banquet_booking_count": Source("serving.analytics.banquet_monthly_metrics", "year_month", "booking_count", "banquet_booking_count", ("property_id", "year_month", "product_category", "data_period_status", "is_forecast", "booking_count"), {"product_category": "product_category"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "confirmed_banquet_count": Source("serving.analytics.banquet_monthly_metrics", "year_month", "confirmed_count", "confirmed_banquet_count", ("property_id", "year_month", "product_category", "data_period_status", "is_forecast", "confirmed_count"), {"product_category": "product_category"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "cancelled_banquet_count": Source("serving.analytics.banquet_monthly_metrics", "year_month", "cancelled_count", "cancelled_banquet_count", ("property_id", "year_month", "product_category", "data_period_status", "is_forecast", "cancelled_count"), {"product_category": "product_category"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
-    "actual_attendees": Source("serving.analytics.banquet_monthly_metrics", "year_month", "actual_attendees", "actual_attendees", ("property_id", "year_month", "product_category", "data_period_status", "is_forecast", "actual_attendees"), {"product_category": "product_category"}, "data_period_status = 'ACTUAL' AND is_forecast = false"),
+    "recognized_room_revenue": Source("serving.analytics.hotel_daily_metrics", "business_date", "room_revenue", "recognized_room_revenue_krw", ("property_id", "business_date", "room_type_code", "data_period_status", "is_forecast", "room_revenue"), {"room_type": "room_type_code"}, ACTUAL_ONLY),
+    "occupancy_rate": Source("serving.analytics.hotel_daily_metrics", "business_date", "rooms_sold", "occupancy_rate", ("property_id", "business_date", "room_type_code", "data_period_status", "is_forecast", "rooms_sold", "available_room_nights"), {"room_type": "room_type_code"}, ACTUAL_ONLY, "available_room_nights"),
+    "adr": Source("serving.analytics.hotel_daily_metrics", "business_date", "room_revenue", "adr_krw", ("property_id", "business_date", "room_type_code", "data_period_status", "is_forecast", "room_revenue", "rooms_sold"), {"room_type": "room_type_code"}, ACTUAL_ONLY, "rooms_sold"),
+    "revpar": Source("serving.analytics.hotel_daily_metrics", "business_date", "room_revenue", "revpar_krw", ("property_id", "business_date", "room_type_code", "data_period_status", "is_forecast", "room_revenue", "available_room_nights"), {"room_type": "room_type_code"}, ACTUAL_ONLY, "available_room_nights"),
+    "rooms_sold": Source("serving.analytics.hotel_daily_metrics", "business_date", "rooms_sold", "rooms_sold", ("property_id", "business_date", "room_type_code", "data_period_status", "is_forecast", "rooms_sold"), {"room_type": "room_type_code"}, ACTUAL_ONLY),
+    "available_room_nights": Source("serving.analytics.hotel_daily_metrics", "business_date", "available_room_nights", "available_room_nights", ("property_id", "business_date", "room_type_code", "data_period_status", "is_forecast", "available_room_nights"), {"room_type": "room_type_code"}, ACTUAL_ONLY),
+    "fnb_net_revenue": Source("serving.analytics.fnb_daypart_metrics", "business_date", "fnb_net_revenue", "fnb_net_revenue_krw", ("property_id", "business_date", "store_id", "service_period", "data_period_status", "is_forecast", "fnb_net_revenue"), {"store": "store_id", "daypart": "service_period"}, ACTUAL_ONLY),
+    "order_count": Source("serving.analytics.fnb_daypart_metrics", "business_date", "order_count", "order_count", ("property_id", "business_date", "store_id", "service_period", "data_period_status", "is_forecast", "order_count"), {"store": "store_id", "daypart": "service_period"}, ACTUAL_ONLY),
+    "covers": Source("serving.analytics.fnb_daypart_metrics", "business_date", "covers", "covers", ("property_id", "business_date", "store_id", "service_period", "data_period_status", "is_forecast", "covers"), {"store": "store_id", "daypart": "service_period"}, ACTUAL_ONLY),
+    "average_check": Source("serving.analytics.fnb_daypart_metrics", "business_date", "fnb_net_revenue", "average_check_krw", ("property_id", "business_date", "store_id", "service_period", "data_period_status", "is_forecast", "fnb_net_revenue", "covers"), {"store": "store_id", "daypart": "service_period"}, ACTUAL_ONLY, "covers"),
+    "revpash": Source("serving.analytics.fnb_daypart_metrics", "business_date", "fnb_net_revenue", "revpash_krw", ("property_id", "business_date", "store_id", "service_period", "data_period_status", "is_forecast", "fnb_net_revenue", "seat_hours_available"), {"store": "store_id", "daypart": "service_period"}, ACTUAL_ONLY, "seat_hours_available"),
+    "completed_usage_count": Source("serving.analytics.facility_daily_metrics", "business_date", "completed_usage_count", "completed_usage_count", ("property_id", "business_date", "facility_id", "data_period_status", "is_forecast", "completed_usage_count"), {"facility": "facility_id"}, ACTUAL_ONLY),
+    "incident_count": Source("serving.analytics.facility_daily_metrics", "business_date", "incident_count", "incident_count", ("property_id", "business_date", "facility_id", "data_period_status", "is_forecast", "incident_count"), {"facility": "facility_id"}, ACTUAL_ONLY),
+    "downtime_minutes": Source("serving.analytics.facility_daily_metrics", "business_date", "downtime_minutes", "downtime_minutes", ("property_id", "business_date", "facility_id", "data_period_status", "is_forecast", "downtime_minutes"), {"facility": "facility_id"}, ACTUAL_ONLY),
+    "facility_revenue": Source("serving.analytics.facility_daily_metrics", "business_date", "facility_revenue", "facility_revenue_krw", ("property_id", "business_date", "facility_id", "data_period_status", "is_forecast", "facility_revenue"), {"facility": "facility_id"}, ACTUAL_ONLY),
+    "revenue_per_usage": Source("serving.analytics.facility_daily_metrics", "business_date", "facility_revenue", "revenue_per_usage_krw", ("property_id", "business_date", "facility_id", "data_period_status", "is_forecast", "facility_revenue", "completed_usage_count"), {"facility": "facility_id"}, ACTUAL_ONLY, "completed_usage_count"),
+    "recognized_banquet_revenue": Source("serving.analytics.banquet_monthly_metrics", "year_month", "recognized_revenue", "recognized_banquet_revenue_krw", ("property_id", "year_month", "product_category", "data_period_status", "is_forecast", "recognized_revenue"), {"product_category": "product_category"}, ACTUAL_ONLY),
+    "expected_banquet_revenue": Source("serving.analytics.banquet_monthly_metrics", "year_month", "expected_revenue", "expected_banquet_revenue_krw", ("property_id", "year_month", "product_category", "data_period_status", "is_forecast", "expected_revenue"), {"product_category": "product_category"}, ACTUAL_ONLY),
+    "banquet_booking_count": Source("serving.analytics.banquet_monthly_metrics", "year_month", "booking_count", "banquet_booking_count", ("property_id", "year_month", "product_category", "data_period_status", "is_forecast", "booking_count"), {"product_category": "product_category"}, ACTUAL_ONLY),
+    "confirmed_banquet_count": Source("serving.analytics.banquet_monthly_metrics", "year_month", "confirmed_count", "confirmed_banquet_count", ("property_id", "year_month", "product_category", "data_period_status", "is_forecast", "confirmed_count"), {"product_category": "product_category"}, ACTUAL_ONLY),
+    "cancelled_banquet_count": Source("serving.analytics.banquet_monthly_metrics", "year_month", "cancelled_count", "cancelled_banquet_count", ("property_id", "year_month", "product_category", "data_period_status", "is_forecast", "cancelled_count"), {"product_category": "product_category"}, ACTUAL_ONLY),
+    "actual_attendees": Source("serving.analytics.banquet_monthly_metrics", "year_month", "actual_attendees", "actual_attendees", ("property_id", "year_month", "product_category", "data_period_status", "is_forecast", "actual_attendees"), {"product_category": "product_category"}, ACTUAL_ONLY),
 }
 
 
 CRM_SOURCES = {
-    "current_active_members": Source("crm.dbo.crm_members", "joined_at", "member_no", "current_active_members", ("property_id", "member_no", "membership_grade", "points_balance", "joined_at", "member_status", "is_forecast"), {"membership_grade": "membership_grade", "joined_month": "date_format(date_trunc('month', joined_at), '%Y-%m')", "joined_year": "CAST(year(joined_at) AS varchar)", "points_band": "CASE WHEN points_balance < 10000 THEN 'LOW' WHEN points_balance < 50000 THEN 'MID' ELSE 'HIGH' END"}, "member_status = 'ACTIVE' AND is_forecast = false"),
-    "current_points_balance": Source("crm.dbo.crm_members", "joined_at", "points_balance", "current_points_balance", ("property_id", "member_no", "membership_grade", "points_balance", "joined_at", "member_status", "is_forecast"), {"membership_grade": "membership_grade", "joined_year": "CAST(year(joined_at) AS varchar)", "points_band": "CASE WHEN points_balance < 10000 THEN 'LOW' WHEN points_balance < 50000 THEN 'MID' ELSE 'HIGH' END"}, "member_status = 'ACTIVE' AND is_forecast = false"),
-    "earned_points": Source("crm.dbo.crm_point_transactions", "event_at", "points_delta", "earned_points", ("property_id", "member_no", "event_at", "txn_type", "points_delta", "related_source", "is_forecast"), {"membership_grade": "related_source"}, "txn_type = 'EARN' AND is_forecast = false"),
-    "used_points": Source("crm.dbo.crm_point_transactions", "event_at", "-points_delta", "used_points", ("property_id", "member_no", "event_at", "txn_type", "points_delta", "related_source", "is_forecast"), {"membership_grade": "related_source"}, "txn_type = 'USE' AND is_forecast = false"),
-    "expired_points": Source("crm.dbo.crm_point_transactions", "event_at", "-points_delta", "expired_points", ("property_id", "member_no", "event_at", "txn_type", "points_delta", "related_source", "is_forecast"), {"membership_grade": "related_source"}, "txn_type = 'EXPIRE' AND is_forecast = false"),
-    "grade_change_count": Source("crm.dbo.crm_member_grade_history", "valid_from", "member_no", "grade_change_count", ("property_id", "member_no", "grade_code", "valid_from", "valid_to", "change_reason_code"), {"change_reason": "change_reason_code", "membership_grade": "grade_code"}, "1 = 1"),
+    "current_active_members": Source("crm.dbo.crm_members", "joined_at", "member_no", "current_active_members", ("property_id", "member_no", "membership_grade", "points_balance", "joined_at", "member_status", "is_forecast"), {"membership_grade": "membership_grade", "joined_month": "date_format(date_trunc('month', joined_at), '%Y-%m')", "joined_year": "CAST(year(joined_at) AS varchar)", "points_band": "CASE WHEN points_balance < 10000 THEN 'LOW' WHEN points_balance < 50000 THEN 'MID' ELSE 'HIGH' END"}, ACTIVE_MEMBERS),
+    "current_points_balance": Source("crm.dbo.crm_members", "joined_at", "points_balance", "current_points_balance", ("property_id", "member_no", "membership_grade", "points_balance", "joined_at", "member_status", "is_forecast"), {"membership_grade": "membership_grade", "joined_year": "CAST(year(joined_at) AS varchar)", "points_band": "CASE WHEN points_balance < 10000 THEN 'LOW' WHEN points_balance < 50000 THEN 'MID' ELSE 'HIGH' END"}, ACTIVE_MEMBERS),
+    "earned_points": Source("crm.dbo.crm_point_transactions", "event_at", "points_delta", "earned_points", ("property_id", "member_no", "event_at", "txn_type", "points_delta", "related_source", "is_forecast"), {"membership_grade": "related_source"}, EARNED_POINTS),
+    "used_points": Source("crm.dbo.crm_point_transactions", "event_at", "-points_delta", "used_points", ("property_id", "member_no", "event_at", "txn_type", "points_delta", "related_source", "is_forecast"), {"membership_grade": "related_source"}, USED_POINTS),
+    "expired_points": Source("crm.dbo.crm_point_transactions", "event_at", "-points_delta", "expired_points", ("property_id", "member_no", "event_at", "txn_type", "points_delta", "related_source", "is_forecast"), {"membership_grade": "related_source"}, EXPIRED_POINTS),
+    "grade_change_count": Source("crm.dbo.crm_member_grade_history", "valid_from", "member_no", "grade_change_count", ("property_id", "member_no", "grade_code", "valid_from", "valid_to", "change_reason_code"), {"change_reason": "change_reason_code", "membership_grade": "grade_code"}, ()),
 }
 
 METRIC_NAMES = {
@@ -221,9 +228,16 @@ def _value_expression(record: dict[str, Any], source: Source) -> str:
     return f"CAST(SUM({source.value}) AS DECIMAL(18,2))"
 
 
+def _filter_sql(item: tuple[str, str, str | bool]) -> str:
+    field, operator, value = item
+    assert operator == "eq"
+    literal = str(value).lower() if isinstance(value, bool) else f"'{value}'"
+    return f"{field} = {literal}"
+
+
 def _single_source(record: dict[str, Any], source: Source) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
     start, end, _ = _period(record)
-    where = [f"property_id = '{PROPERTY}'", source.required_filter]
+    where = [f"property_id = '{PROPERTY}'", *map(_filter_sql, source.required_filters)]
     if record["period_shape"] != "current_snapshot":
         where.extend((f"{source.time_field} >= DATE '{start}'", f"{source.time_field} < DATE '{end}'"))
     index = int(str(record["candidate_id"]).rsplit("-", 1)[1])
@@ -342,7 +356,16 @@ def build_case(record: dict[str, Any], *, approved: bool = False) -> dict[str, A
         "policy_version": "G2-v1.0.0",
         "execution_time": {"as_of": f"{end}T00:00:00+09:00", "timezone": "Asia/Seoul", "calendar_id": "gregorian-kr", "period_start": f"{start}T00:00:00+09:00", "period_end_exclusive": f"{end}T00:00:00+09:00"},
         "assets": assets,
-        "metrics": [{"id": metric, "field": field, "aggregation": str(record["aggregation"]), "time_field": time_field}],
+        "metrics": [{
+            "id": metric,
+            "field": field,
+            "aggregation": str(record["aggregation"]),
+            "time_field": time_field,
+            **({"required_filters": [
+                {"field": field, "operator": operator, "value": value}
+                for field, operator, value in source.required_filters
+            ]} if record["domain"] != "pms_crm" and source.required_filters else {}),
+        }],
         "joins": ([{"id": JOIN_ID, "left": "pms.public.pms_stays", "right": "crm.dbo.crm_member_grade_history", "cardinality": "many_to_zero_or_one", "status": "approved"}] if record["domain"] == "pms_crm" else []),
     }
     index = int(str(record["candidate_id"]).rsplit("-", 1)[1])

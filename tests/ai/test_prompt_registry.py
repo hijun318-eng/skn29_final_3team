@@ -13,7 +13,7 @@ class PromptRegistryTests(unittest.TestCase):
             {
                 "node1.normalize": "PROMPT-v1.0.0",
                 "node2.repair": "PROMPT-v1.0.3",
-                "node2.sql": "PROMPT-v1.0.8",
+                "node2.sql": "PROMPT-v1.0.9-DRAFT",
                 "node3.explain": "PROMPT-v1.0.0",
             },
             {item["prompt_id"]: item["version"] for item in first},
@@ -50,6 +50,9 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("SQL table 이름이 아니라 승인 JOIN 식별자", sql_prompt)
         self.assertIn("FROM pms.public.pms_stays s JOIN pms.public.pms_reservations r", sql_prompt)
         self.assertIn("Context metric의 field·aggregation·time_field", sql_prompt)
+        self.assertIn("required_filters", sql_prompt)
+        self.assertIn("operator eq를 =로 변환", sql_prompt)
+        self.assertIn("자유 형식 predicate로 해석하지 않는다", sql_prompt)
         self.assertIn("timestamp with time zone 기간만 TIMESTAMP", sql_prompt)
         self.assertIn("CURRENT_DATE·CURRENT_TIMESTAMP·now 함수는 쓰지 않고", sql_prompt)
         self.assertIn("직전 완료 월과 그 이전 월만 조회", sql_prompt)

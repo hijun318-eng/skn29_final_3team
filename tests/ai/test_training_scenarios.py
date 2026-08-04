@@ -93,6 +93,35 @@ class TrainingScenarioTests(unittest.TestCase):
 
         self.assertEqual(len(question_sql), len(set(question_sql)))
 
+    def test_source_required_filters_are_preserved_in_context_metrics(self):
+        records = generate()
+        expired = next(record for record in records if record["candidate_id"] == "candidate-0228")
+        expired_case = build_case({**expired, "target_split": "validation"})
+        expired_filters = expired_case["input"]["context_package"]["metrics"][0]["required_filters"]
+
+        self.assertEqual(expired_case["case_id"], "validation-0228")
+        self.assertEqual(
+            expired_filters,
+            [
+                {"field": "txn_type", "operator": "eq", "value": "EXPIRE"},
+                {"field": "is_forecast", "operator": "eq", "value": False},
+            ],
+        )
+
+        view_record = next(
+            record
+            for record in records
+            if record["domain"] == "pms" and record["node"] == "node2"
+        )
+        view_filters = build_case(view_record)["input"]["context_package"]["metrics"][0]["required_filters"]
+        self.assertEqual(
+            view_filters,
+            [
+                {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
+                {"field": "is_forecast", "operator": "eq", "value": False},
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -151,6 +151,32 @@ class ContractTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             validate_payload("node2_request", empty)
 
+    def test_context_metric_accepts_optional_typed_required_filters(self):
+        legacy = copy.deepcopy(VALID_PAYLOADS["node2_request"])
+        current = copy.deepcopy(legacy)
+        current["context_package"]["metrics"][0]["required_filters"] = [
+            {"field": "is_forecast", "operator": "eq", "value": False}
+        ]
+
+        validate_payload("node2_request", legacy)
+        validate_payload("node2_request", current)
+
+        for invalid_filter in (
+            {"field": "is_forecast", "operator": "raw", "value": False},
+            {"field": "is_forecast", "operator": "eq", "value": None},
+            {"field": "is_forecast", "operator": "eq", "value": False, "sql": "1 = 1"},
+        ):
+            invalid = copy.deepcopy(legacy)
+            invalid["context_package"]["metrics"][0]["required_filters"] = [invalid_filter]
+            with self.subTest(required_filter=invalid_filter):
+                with self.assertRaises(ContractError):
+                    validate_payload("node2_request", invalid)
+
+        empty = copy.deepcopy(legacy)
+        empty["context_package"]["metrics"][0]["required_filters"] = []
+        with self.assertRaises(ContractError):
+            validate_payload("node2_request", empty)
+
     def test_missing_and_extra_fields_are_rejected(self):
         for definition, payload in VALID_PAYLOADS.items():
             required_key = next(iter(payload))

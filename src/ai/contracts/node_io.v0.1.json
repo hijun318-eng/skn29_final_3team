@@ -69,7 +69,21 @@
         "id": {"type": "string", "minLength": 1},
         "field": {"type": "string", "minLength": 1},
         "aggregation": {"type": "string", "minLength": 1},
-        "time_field": {"type": "string", "minLength": 1}
+        "time_field": {"type": "string", "minLength": 1},
+        "required_filters": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["field", "operator", "value"],
+            "properties": {
+              "field": {"type": "string", "minLength": 1},
+              "operator": {"type": "string", "enum": ["eq"]},
+              "value": {"type": ["string", "boolean"]}
+            }
+          }
+        }
       }
     },
     "context_join": {

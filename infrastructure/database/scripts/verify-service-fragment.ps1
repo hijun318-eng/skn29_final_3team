@@ -69,6 +69,7 @@ if ($datahub.datahub_version -notmatch '^v\d+\.\d+\.\d+(?:\.\d+)?$|^sha-[0-9a-f]
     $datahub.compose_source_blob -notmatch '^[0-9a-f]{40}$' -or
     $datahub.consumer_fragment -ne 'datahub/compose.consumer.yml' -or
     $datahub.health -notmatch '/health' -or
+    $datahub.health -notmatch '4319/actuator/health' -or
     $datahub.profiles -contains 'dev') {
     throw 'DataHub version, source, health, consumer, or profile requirement is unsafe.'
 }
@@ -106,7 +107,8 @@ $gms = $consumer.services.'datahub-gms-quickstart'
 $gmsHealth = @($gms.healthcheck.test) -join ' '
 if ($gms.image -ne 'acryldata/datahub-gms:v1.6.0' -or
     $gms.environment.DATAHUB_VERSION -ne $datahub.datahub_version -or
-    $gmsHealth -notmatch '8080/health') {
+    $gmsHealth -notmatch '8080/health' -or
+    $gmsHealth -notmatch '4319/actuator/health') {
     throw 'DataHub GMS image or health contract mismatch.'
 }
 

@@ -1,5 +1,6 @@
 {
-  "contract_version": "I4-CONTEXT-v2.0.1",
+  "contract_version": "I4-CONTEXT-v2.1.0-DRAFT",
+  "metric_registry_version": "I4-METRIC-v1.0.0-DRAFT",
   "context_source": "LIVE_DATAHUB",
   "synthetic": true,
   "view_contract": "src/data/serving_analytics_contract.i4.v1.json",
@@ -9,6 +10,30 @@
     "max_datasets": 8,
     "max_columns": 60
   },
+  "metrics": [
+    {
+      "id": "recognized_room_revenue",
+      "asset_fqn": "serving.analytics.hotel_daily_metrics",
+      "field": "room_revenue",
+      "aggregation": "sum",
+      "time_field": "business_date",
+      "required_filters": [
+        {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
+        {"field": "is_forecast", "operator": "eq", "value": false}
+      ]
+    },
+    {
+      "id": "expired_points",
+      "asset_fqn": "crm.dbo.crm_point_transactions",
+      "field": "points_delta",
+      "aggregation": "negative_sum",
+      "time_field": "event_at",
+      "required_filters": [
+        {"field": "txn_type", "operator": "eq", "value": "EXPIRE"},
+        {"field": "is_forecast", "operator": "eq", "value": false}
+      ]
+    }
+  ],
   "raw_assets": [
     {
       "fqn": "crm.dbo.crm_members",

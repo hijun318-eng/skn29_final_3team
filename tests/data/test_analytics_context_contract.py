@@ -6,6 +6,16 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = json.loads(
     (ROOT / "src/data/analytics_context_contract.i4.v2.json").read_text(encoding="utf-8")
 )
+VIEW_CONTRACT = json.loads(
+    (ROOT / CONTRACT["view_contract"]).read_text(encoding="utf-8")
+)
+
+
+def _asset_columns():
+    return {
+        **{view["fqn"]: set(view["columns"]) for view in VIEW_CONTRACT["views"]},
+        **{asset["fqn"]: set(asset["columns"]) for asset in CONTRACT["raw_assets"]},
+    }
 
 
 def test_raw_allowlist_is_exact_and_bounded():
@@ -49,3 +59,48 @@ def test_pms_crm_join_matches_frozen_source_registry():
     assert actual[0]["cardinality"] == expected["cardinality"]
     assert actual[0]["event_time_field"] == expected["event_time_field"]
     assert len(actual[0]["assets"]) == 5
+
+
+def test_metric_registry_is_versioned_and_references_approved_columns():
+    assert CONTRACT["contract_version"] == "I4-CONTEXT-v2.1.0-DRAFT"
+    assert CONTRACT["metric_registry_version"] == "I4-METRIC-v1.0.0-DRAFT"
+    metrics = CONTRACT["metrics"]
+    assert len({metric["id"] for metric in metrics}) == len(metrics)
+
+    asset_columns = _asset_columns()
+    for metric in metrics:
+        columns = asset_columns[metric["asset_fqn"]]
+        assert metric["field"] in columns
+        assert metric["time_field"] in columns
+        for required_filter in metric.get("required_filters", []):
+            assert set(required_filter) == {"field", "operator", "value"}
+            assert required_filter["field"] in columns
+            assert required_filter["operator"] == "eq"
+            assert isinstance(required_filter["value"], (str, bool))
+
+
+def test_expired_points_preserves_transaction_and_forecast_filters():
+    metric = next(metric for metric in CONTRACT["metrics"] if metric["id"] == "expired_points")
+    assert metric == {
+        "id": "expired_points",
+        "asset_fqn": "crm.dbo.crm_point_transactions",
+        "field": "points_delta",
+        "aggregation": "negative_sum",
+        "time_field": "event_at",
+        "required_filters": [
+            {"field": "txn_type", "operator": "eq", "value": "EXPIRE"},
+            {"field": "is_forecast", "operator": "eq", "value": False},
+        ],
+    }
+
+
+def test_view_metrics_preserve_actual_non_forecast_filters_without_sql_predicates():
+    view_fqns = {view["fqn"] for view in VIEW_CONTRACT["views"]}
+    view_metrics = [metric for metric in CONTRACT["metrics"] if metric["asset_fqn"] in view_fqns]
+    assert view_metrics
+    expected = [
+        {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
+        {"field": "is_forecast", "operator": "eq", "value": False},
+    ]
+    assert all(metric["required_filters"] == expected for metric in view_metrics)
+    assert "predicate" not in json.dumps(CONTRACT).lower()

@@ -4,7 +4,7 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.81 |
+| 버전 | v7.82 |
 | 문서 기준일 | 2026-08-04 11:20 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 11:20 | 2.10~2.12, 3.16 | sLLM 학습데이터는 `serving.analytics` View를 사용하지만 DataHub recipe는 5개 원천만 수집하고 backend 제품 adapter는 PMS·CRM 원천 asset 5개를 고정 반환하는 불일치를 확인했다. Base 제품의 I3 통과는 유지하고 LoRA 제품 채택·release 고정은 보류한다. 제품 Context 공급은 `LIVE_DATAHUB`로 확정하고 versioned contract는 수집 결과 검증·fail-closed 기준으로만 사용한다. R2-W4-F1로 8개 View recipe·URN/FQN·column·lineage·synthetic/version과 실제 DataHub·read-only trace를 먼저 제공하고 통합 후 R4 Context 소비를 별도 발행하도록 승인했다. 기존 진행·대기 상태와 일정은 유지한다. | 학습·제품 Context 정합 R2 선행 승인 |
 | 2026-08-04 11:20 | 1.7, 3.14, 4.9, 6.3 | R3 PROMPT-v1.0.6과 R4 SQL-only guided·결정론적 metadata·2개월 fail-closed를 dev에 통합하고 CI `30870270154` PASS를 확인했다. 고정 Qwen3-4B Base·synthetic Trino read-only 제품 trace `r1-w3-f7-product-trace-retry7`은 2026-06 `843295200.00`, 2026-07 `843453600.00` 두 행과 ROUTER→CONTROLLER→CONTEXT→G1→MODEL→G2→QUERY→G3→ARTIFACT 전 단계 PASS, repair 0회를 반환했다. 비용 상한 USD 0.307711, Pod 404·active 0·secret 로그 0건·기존 Trino·app DB 무변경을 확인했다. 과거 BLOCKED 카드를 우선하던 dashboard 선택도 마지막 발행 묶음 기준으로 교정해 I4 `READY_TO_ISSUE`를 확인하고 6.3을 완료로 전환했다. | I3 VERIFIED_GATE·Wave 3 완료 |
 | 2026-08-04 10:41 | 3.14, 4.9, 6.3 | R1-W3-F7 실제 제품 trace에서 G2 reference 보완 뒤 잉여 parameter, 승인 JOIN 단축·timestamp 타입 오류, verbose guided 응답 불안정과 전월 대비 기간 누락을 확인했다. 실제 성공 경로는 두 달 2행과 MODEL→G2→QUERY→G3→ARTIFACT까지 재현했지만 변경 통합·CI 전이므로 R3-W3-F11과 R4-W3-F4를 승인하고 6.3 진행 상태·일정·간트는 유지한다. Pod 비용 상한 USD 0.307711, 활성 Pod 0, 기존 Trino·앱 DB 무변경을 확인했다. | 실제 의미 병목 분리·R3/R4 최소 보완 승인 |
 | 2026-08-04 09:49 | 3.14, 4.9, 6.3 | R3가 node2 SQL FROM·JOIN과 references의 승인 table 집합을 양방향 정확 일치시키고 mismatch repair도 한 번만 교정하도록 PROMPT-v1.0.5/PROMPT-v1.0.2를 보완했다. prompt 3건·AI 47건·Gate 19건과 dev CI `30866726434` PASS를 확인해 통합하고, 같은 Base·synthetic Trino read-only 제품 trace R1-W3-F7을 승인했다. 실행 전이므로 상태·일정·간트는 유지한다. | R3 reference prompt 완료·제품 재검증 승인 |
@@ -475,6 +476,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.82 | 2026-08-04 11:20 | sLLM 학습의 `serving.analytics` View와 DataHub·제품 Context 불일치를 2.10~2.12·3.16에 연결하고, 제품 Context는 `LIVE_DATAHUB`로 결정했으며 소유권별 R2→R4 정합 순서의 첫 R2-W4-F1만 승인했다. 기존 상태·일정은 유지했다. |
 | v7.81 | 2026-08-04 11:20 | R3·R4 의미 정확성 보완과 dev CI, 고정 Base·synthetic read-only 제품 trace의 두 달 2행·전 단계 PASS·자원 정리를 근거로 6.3을 완료로 전환하고 I3 VERIFIED_GATE를 연결했다. |
 | v7.80 | 2026-08-04 10:41 | 실제 Base 제품 trace의 잉여 parameter·JOIN/기간 의미·guided 응답 병목을 3.14·4.9·6.3에 연결하고 R3-W3-F11·R4-W3-F4를 승인했다. 통합·CI·최종 재검증 전 상태·일정·간트는 유지했다. |
 | v7.79 | 2026-08-04 09:49 | R3 PROMPT-v1.0.5/PROMPT-v1.0.2의 SQL-reference 정확 일치·단일 repair를 dev에 통합하고 제품 trace R1-W3-F7을 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |

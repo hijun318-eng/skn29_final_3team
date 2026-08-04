@@ -4,8 +4,8 @@
   "ROLE": "R5",
   "BRANCH": "minji",
   "BASE_SHA": "f82df8d3fb1709347af80d45c07152e32f22b1ce",
-  "SYNCED_DEV_SHA": "5186cd51a3d134a72b6319daeff3b99f3db5a22f",
-  "RESULT_SHA": "b5fe7c8a19f85d304df438d5bf70173972ee1414",
+  "SYNCED_DEV_SHA": "e9a57ed41b83fdbdf90b1e467a12856581033705",
+  "RESULT_SHA": "e8dc9ad8f3773cfc9dc668134ed6ed3c2700aae4",
   "TERMINAL_SHA": "HEAD",
   "DIRECTIVE_TOKEN": "R5-W4-F1@f82df8d",
   "COMPLETED_CARDS": [
@@ -35,17 +35,13 @@
   "TEST_RESULTS": [
     {"id": "T1_BUILD", "name": "npm run build", "status": "PASS", "evidence": "Vite 8.1.5, 2367 modules transformed, built in 1.47s"},
     {"id": "T2_CONTRACT", "name": "node tests/frontend/contracts.test.mjs", "status": "PASS", "evidence": "R5 contract checks passed"},
-    {"id": "T3_VISUAL_KEYBOARD", "name": "1440/1024/768/360 keyboard/focus manual", "status": "NOT_RUN", "evidence": "제어 가능한 browser session이 없고 Computer Use URL 확인 정책으로 중단; 정적 DOM·CSS 검사에서 기본 12열, 900px 반응형, 650px 단일열, aria-label과 focus-visible 확인"},
-    {"id": "T4_SCOPE", "name": "python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base", "status": "REVIEW_REQUIRED", "evidence": "changed paths 5개는 허용 범위 안이나 필수 browser 수동 검증 NOT_RUN과 residual risk 때문에 role gate가 FAIL로 종료"},
+    {"id": "T3_VISUAL_KEYBOARD", "name": "1440/1024/768/360 keyboard/focus manual", "status": "PASS", "evidence": "Edge 151 headless 실제 렌더러에서 4개 viewport 모두 12열·가로 overflow 없음·focus-visible 2px 확인; CDP keyboard rawKeyDown+char+keyUp으로 add 5→6, move 순서 변경, resize 12→11·4→5, delete 6→5 확인"},
+    {"id": "T4_SCOPE", "name": "python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "최신 origin/dev e9a57ed merge 후 R5-W4-F1 허용 경로와 handoff 완료 검증 통과"},
     {"id": "T5_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
   ],
-  "NOT_RUN": [
-    "실제 browser 1440/1024/768/360 시각 확인 및 Tab 순서 확인: 제어 가능한 browser session 부재"
-  ],
+  "NOT_RUN": [],
   "CHANGE_REQUESTS": [],
-  "RESIDUAL_RISKS": [
-    "실제 렌더링과 Tab 이동 순서는 R1 통합 환경의 browser smoke에서 추가 확인 필요"
-  ],
+  "RESIDUAL_RISKS": [],
   "EXTERNAL_APPROVAL_REQUIRED": [],
-  "REQUESTED_DECISION": "R5-W4-F1 수용 및 dev 통합 후 실제 browser smoke 승인"
+  "REQUESTED_DECISION": "R5-W4-F1 수용 및 dev 통합 승인"
 }

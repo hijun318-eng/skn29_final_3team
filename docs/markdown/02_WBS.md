@@ -4,7 +4,7 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.87 |
+| 버전 | v7.88 |
 | 문서 기준일 | 2026-08-04 13:40 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
@@ -441,6 +441,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.88 | 2026-08-04 13:40 | 종료된 R1 health 묶음과 새 model 승인 작업을 분리해 R1-W4-F2의 문서·검증 권한을 명시하고 CI 역할 경로 오판을 교정했다. |
 | v7.87 | 2026-08-04 13:40 | live DataHub Context 소비자 정합과 최종 CI를 근거로 Gate 0을 해제하고, Qwen3-4B-Instruct-2507 Base smoke·Validation의 모델·revision·비용·중단 조건을 고정했다. |
 | v7.86 | 2026-08-04 13:20 | R1·R2 DataHub Gate 0 생산자 결과의 dev·CI 완료를 기록하고, Context 60-column·entitlement·G2 fail-closed 기준의 R4 소비자 작업을 승인했다. |
 | v7.85 | 2026-08-04 12:48 | DataHub v1.6.0 실수집의 8개 View·116개 column·17개 upstream edge·90개 column lineage PASS를 2.10~2.12에 연결하고, 잘못된 management health 필수 조건을 R1-W4-F1A에서 교정한 뒤 dev·R2 CI를 재검증하도록 기록했다. 상태·일정·간트는 유지했다. |

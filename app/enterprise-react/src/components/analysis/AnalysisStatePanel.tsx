@@ -31,6 +31,10 @@ const VIEW_COPY: Record<AnalysisViewState, { title: string; description: string;
   CANCELLED: { title: "분석 취소", description: "새 질문으로 다시 시작할 수 있습니다.", icon: CircleX },
 };
 
+function formatValue(value: unknown) {
+  return typeof value === "number" ? value.toLocaleString("ko-KR") : String(value ?? "—");
+}
+
 export function AnalysisStatePanel({
   run,
   onAddArtifact,
@@ -62,23 +66,23 @@ export function AnalysisStatePanel({
           <div><dt>error.retryable</dt><dd>{String(run.error.retryable)}</dd></div>
         </dl>
       )}
-      {showResult && <div className="analysis-summary"><small>API 제공 요약</small><strong>{run.summary}</strong></div>}
+      {showResult && <div className="analysis-summary"><small>EXECUTIVE INSIGHT</small><strong>{run.summary}</strong></div>}
       {viewState === "PARTIAL" && (
         <ul>{run.sources.map((source) => <li key={source.urn}>{source.name}: {source.status}</li>)}</ul>
       )}
       {showResult && run.metrics.length > 0 && (
-        <div className="analysis-metrics" aria-label="API 제공 지표">
+        <div className="analysis-metrics" aria-label="검증된 핵심 지표">
           {run.metrics.map((metric) => (
             <article key={metric.metricId}>
               <small>{metric.label}</small>
-              <strong>{String(metric.value ?? "—")} {metric.unit ?? ""}</strong>
+              <strong>{formatValue(metric.value)} {metric.unit ?? ""}</strong>
               <code>{metric.metricId}</code>
             </article>
           ))}
         </div>
       )}
       {chart && table?.rows.length ? (
-        <div className="analysis-chart" aria-label={`API 제공 ${chart.chartType} 차트`}>
+        <div className="analysis-chart" aria-label={`검증 결과 ${chart.chartType} 차트`}>
           <small>
             {chart.chartType} · x={chart.xField} · y={chart.yFields.map((field) => {
               const unit = run.metrics.find((metric) => metric.metricId === field)?.unit;
@@ -108,7 +112,7 @@ export function AnalysisStatePanel({
             <tbody>
               {table.rows.map((row, index) => (
                 <tr key={`${run.requestId}-${index}`}>
-                  {table.columns.map((column) => <td key={column}>{String(row[column] ?? "—")}</td>)}
+                  {table.columns.map((column) => <td key={column}>{formatValue(row[column])}</td>)}
                 </tr>
               ))}
             </tbody>

@@ -7,7 +7,7 @@ const baseRun: AnalysisRun = {
   requestId: "req-demo-001",
   traceId: "trace-demo-001",
   status: "success",
-  question: "지난달 객실 매출 하락 원인을 알려줘.",
+  question: "7월 마지막 주 객실 매출 감소 구간을 찾고, 예약 채널과 연회 일정 변화를 함께 비교해줘.",
   sources: [
     {
       name: "PMS reservations",
@@ -25,6 +25,14 @@ const baseRun: AnalysisRun = {
       seedVersion: "20260729",
       status: "success",
     },
+    {
+      name: "Banquet bookings",
+      urn: "urn:answervice:dataset:banquet.public.banquet_bookings",
+      fqn: "banquet.public.banquet_bookings",
+      schemaVersion: "1.0.0",
+      seedVersion: "20260729",
+      status: "success",
+    },
   ],
   artifact: {
     artifactId: "00000000-0000-0000-0000-0000000002f9",
@@ -34,13 +42,16 @@ const baseRun: AnalysisRun = {
   metrics: [
     { metricId: "recognized_room_revenue", label: "인식 객실 매출", value: 128400000, unit: "KRW" },
     { metricId: "occupancy_rate", label: "객실 점유율", value: 72.5, unit: "%" },
+    { metricId: "direct_booking_share", label: "직접 예약 비중", value: 38.2, unit: "%" },
+    { metricId: "banquet_schedule_changes", label: "연회 일정 변경", value: 2, unit: "건" },
+    { metricId: "linked_room_nights_cancelled", label: "연계 객실 취소", value: 62, unit: "박" },
   ],
   table: {
-    columns: ["business_date", "recognized_room_revenue", "occupancy_rate"],
+    columns: ["business_date", "recognized_room_revenue", "occupancy_rate", "direct_booking_share", "banquet_changes", "cancelled_room_nights"],
     rows: [
-      { business_date: "2026-07-28", recognized_room_revenue: 45200000, occupancy_rate: 76.1 },
-      { business_date: "2026-07-29", recognized_room_revenue: 43100000, occupancy_rate: 72.8 },
-      { business_date: "2026-07-30", recognized_room_revenue: 40100000, occupancy_rate: 68.6 },
+      { business_date: "2026-07-28", recognized_room_revenue: 45200000, occupancy_rate: 76.1, direct_booking_share: 43.5, banquet_changes: 0, cancelled_room_nights: 0 },
+      { business_date: "2026-07-29", recognized_room_revenue: 43100000, occupancy_rate: 72.8, direct_booking_share: 40.4, banquet_changes: 1, cancelled_room_nights: 24 },
+      { business_date: "2026-07-30", recognized_room_revenue: 40100000, occupancy_rate: 68.6, direct_booking_share: 38.2, banquet_changes: 1, cancelled_room_nights: 38 },
     ],
   },
   chart: {
@@ -90,7 +101,7 @@ export const analysisFixtures: Record<Lowercase<AnalysisViewState> | "clarificat
   }),
   ready: fixture({
     status: "success", requestId: "req-ready-001", rowCount: 3, evidenceReady: true,
-    summary: "주중 객실 점유율과 직접 예약 비중 감소가 함께 관측됐습니다.",
+    summary: "7월 28~30일 객실 매출과 점유율이 낮아졌습니다. 같은 기간 직접 예약 비중이 43.5%에서 38.2%로 감소했고, 기업 연회 2건의 일정 변경과 연결된 객실 62박 취소가 함께 관측됐습니다.",
   }),
   delayed: fixture({
     status: "running", delayed: true, requestId: "req-delayed-001", summary: "일부 원천 응답이 지연되고 있습니다.",

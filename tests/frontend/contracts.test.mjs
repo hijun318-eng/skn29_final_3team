@@ -12,6 +12,7 @@ import {
   createReportRun,
   normalizeDraftLayout,
   REPORT_CONTRACT_VERSION,
+  REPORT_RUN_STATUSES,
   serializeDraftLayout,
 } from "../../app/enterprise-react/src/contracts/report.ts";
 import {
@@ -43,6 +44,7 @@ const analysisStatePanelSource = readFileSync(
 );
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
 assert.equal(REPORT_CONTRACT_VERSION, "REPORT-v1.0.0");
+assert.deepEqual(REPORT_RUN_STATUSES, ["queued", "running", "success", "partial", "failed", "cancelled"]);
 assert.equal(FIXTURE_VERSION, "UI-FIXTURE-v1.0.0");
 assert.equal(OPENAPI_VERSION, "OPENAPI-v1.0.0");
 assert.ok(Object.values({ ...packageJson.dependencies, ...packageJson.devDependencies }).every((version) => version !== "latest"));
@@ -144,12 +146,26 @@ assert.match(reportsPageSource, /aria-label={`\$\{block\.title} 앞으로 이동
 assert.match(reportsPageSource, /aria-label={`\$\{block\.title} 너비 늘리기`}/);
 assert.match(reportsPageSource, /aria-label={`\$\{block\.title} 높이 늘리기`}/);
 assert.match(reportsPageSource, /aria-label={`\$\{block\.title} 삭제`}/);
+for (const status of REPORT_RUN_STATUSES) assert.match(reportsPageSource, new RegExp(`status: "${status}"`));
+assert.match(reportsPageSource, /Run History 상태·접근성 점검/);
+assert.match(reportsPageSource, /성공·부분 성공·실패 블록/);
+assert.match(reportsPageSource, /aria-live="polite"/);
+assert.match(reportsPageSource, /aria-pressed=\{selectedRunId === run\.id\}/);
+assert.match(reportsPageSource, /detailRef\.current\?\.focus\(\)/);
+assert.match(reportsPageSource, /REPORT_ADMIN 권한이 없는 사용자/);
+assert.match(reportsPageSource, /로컬 실행 이력을 불러오는 중/);
+assert.match(reportsPageSource, /표시할 실행 이력이 없습니다/);
+assert.match(reportsPageSource, /실행 이력을 불러오지 못했습니다/);
+assert.doesNotMatch(reportsPageSource, /onClick=\{finalizeReport\}/);
+assert.doesNotMatch(reportsPageSource, /공유 링크를 생성했습니다/);
 assert.match(stylesSource, /grid-template-columns:repeat\(12,minmax\(0,1fr\)\)/);
 assert.match(stylesSource, /grid-column:var\(--block-x\)\/span var\(--block-w\)/);
 assert.match(stylesSource, /grid-row:var\(--block-y\)\/span var\(--block-h\)/);
 assert.match(stylesSource, /button:focus-visible/);
 assert.match(stylesSource, /@media\(max-width:900px\)/);
 assert.match(stylesSource, /@media\(max-width:650px\).*\.editor-block\{grid-column:1\/-1;grid-row:auto/s);
+assert.match(stylesSource, /\.report-run-fixture button:focus-visible/);
+assert.match(stylesSource, /@media\(max-width:480px\).*\.report-run-list,\.report-view-states\{grid-template-columns:1fr\}/s);
 
 let httpRequest;
 const httpClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {

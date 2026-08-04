@@ -1,4 +1,6 @@
 export const REPORT_CONTRACT_VERSION = "REPORT-v1.0.0";
+export const REPORT_RUN_STATUSES = ["queued", "running", "success", "partial", "failed", "cancelled"] as const;
+export type ReportRunStatus = typeof REPORT_RUN_STATUSES[number];
 
 export interface ReportBlock {
   readonly id: string;
@@ -69,7 +71,7 @@ export interface ReportRun {
   readonly policyVersion: string;
   readonly contextHash: string;
   readonly watermark: Readonly<Record<string, string>>;
-  readonly status: "queued" | "running" | "success" | "partial" | "failed" | "cancelled";
+  readonly status: ReportRunStatus;
   readonly blocks: readonly ReportBlockRun[];
 }
 

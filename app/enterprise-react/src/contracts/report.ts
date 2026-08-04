@@ -8,6 +8,40 @@ export interface ReportBlock {
   readonly question?: string;
   readonly sourceUrns?: readonly string[];
   readonly columns: number;
+  readonly x?: number;
+  readonly y?: number;
+  readonly w?: number;
+  readonly h?: number;
+}
+
+export type DraftLayoutBlock = ReportBlock & Required<Pick<ReportBlock, "x" | "y" | "w" | "h">>;
+
+export function normalizeDraftLayout(blocks: readonly ReportBlock[]): readonly DraftLayoutBlock[] {
+  let x = 0;
+  let y = 0;
+  let rowHeight = 0;
+  return blocks.map((block) => {
+    const w = Math.min(12, Math.max(1, block.w ?? block.columns));
+    const h = Math.max(1, block.h ?? 4);
+    if (x + w > 12) {
+      x = 0;
+      y += rowHeight;
+      rowHeight = 0;
+    }
+    const placed = { ...block, columns: w, x, y, w, h };
+    x += w;
+    rowHeight = Math.max(rowHeight, h);
+    if (x === 12) {
+      x = 0;
+      y += rowHeight;
+      rowHeight = 0;
+    }
+    return placed;
+  });
+}
+
+export function serializeDraftLayout(blocks: readonly ReportBlock[]): string {
+  return JSON.stringify(normalizeDraftLayout(blocks));
 }
 
 export interface ReportDefinitionVersion {
@@ -55,7 +89,11 @@ export function approveDraft(
   approvedAt: string,
 ): Readonly<ReportDefinitionVersion> {
   if (draft.status !== "draft") throw new Error("draft Report version만 승인할 수 있습니다.");
-  if (draft.blocks.some((block) => block.columns < 1 || block.columns > 12)) {
+  if (draft.blocks.some((block) => block.columns < 1 || block.columns > 12
+    || (block.x !== undefined && (block.x < 0 || block.x + (block.w ?? block.columns) > 12))
+    || (block.y !== undefined && block.y < 0)
+    || (block.w !== undefined && (block.w < 1 || block.w > 12))
+    || (block.h !== undefined && block.h < 1))) {
     throw new Error("Report block columns는 1~12 범위여야 합니다.");
   }
   const blocks = Object.freeze(draft.blocks.map((block) => Object.freeze({ ...block })));

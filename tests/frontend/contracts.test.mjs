@@ -10,7 +10,9 @@ import {
   approveDraft,
   createDraft,
   createReportRun,
+  normalizeDraftLayout,
   REPORT_CONTRACT_VERSION,
+  serializeDraftLayout,
 } from "../../app/enterprise-react/src/contracts/report.ts";
 import {
   analysisFixtures,
@@ -30,7 +32,12 @@ const timeoutFixture = JSON.parse(
 const reportsPageSource = readFileSync(
   new URL("../../app/enterprise-react/src/pages/ReportsPage.jsx", import.meta.url),
   "utf8",
-);const analysisStatePanelSource = readFileSync(
+);
+const stylesSource = readFileSync(
+  new URL("../../app/enterprise-react/src/styles.css", import.meta.url),
+  "utf8",
+);
+const analysisStatePanelSource = readFileSync(
   new URL("../../app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx", import.meta.url),
   "utf8",
 );
@@ -132,6 +139,17 @@ assert.ok(analysisFixtures.ready.table.rows.length > 0);
 assert.equal(usesMockAnalysisClient, false);
 assert.match(reportsPageSource, /candidate\.artifactId/);
 assert.match(reportsPageSource, /artifactId: candidate\.artifactId/);
+assert.match(reportsPageSource, /LOCAL SYNTHETIC FIXTURE/);
+assert.match(reportsPageSource, /aria-label={`\$\{block\.title} 앞으로 이동`}/);
+assert.match(reportsPageSource, /aria-label={`\$\{block\.title} 너비 늘리기`}/);
+assert.match(reportsPageSource, /aria-label={`\$\{block\.title} 높이 늘리기`}/);
+assert.match(reportsPageSource, /aria-label={`\$\{block\.title} 삭제`}/);
+assert.match(stylesSource, /grid-template-columns:repeat\(12,minmax\(0,1fr\)\)/);
+assert.match(stylesSource, /grid-column:var\(--block-x\)\/span var\(--block-w\)/);
+assert.match(stylesSource, /grid-row:var\(--block-y\)\/span var\(--block-h\)/);
+assert.match(stylesSource, /button:focus-visible/);
+assert.match(stylesSource, /@media\(max-width:900px\)/);
+assert.match(stylesSource, /@media\(max-width:650px\).*\.editor-block\{grid-column:1\/-1;grid-row:auto/s);
 
 let httpRequest;
 const httpClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
@@ -167,6 +185,22 @@ assert.equal(next.status, "approved");
 assert.ok(Object.isFrozen(next));
 assert.ok(Object.isFrozen(next.blocks));
 assert.throws(() => approveDraft(approved, "2026-07-30T12:00:00+09:00"), /draft Report version/);
+
+const layout = normalizeDraftLayout([
+  { id: "a", title: "A", artifactId: "artifact-a", columns: 8, w: 8, h: 3 },
+  { id: "b", title: "B", artifactId: "artifact-b", columns: 6, w: 6, h: 4 },
+]);
+assert.deepEqual(layout.map(({ x, y, w, h }) => ({ x, y, w, h })), [
+  { x: 0, y: 0, w: 8, h: 3 },
+  { x: 0, y: 3, w: 6, h: 4 },
+]);
+const serializedLayout = JSON.parse(serializeDraftLayout(layout));
+assert.equal(serializedLayout[0].artifactId, "artifact-a");
+assert.deepEqual(
+  Object.fromEntries(["x", "y", "w", "h"].map((key) => [key, serializedLayout[0][key]])),
+  { x: 0, y: 0, w: 8, h: 3 },
+);
+assert.throws(() => approveDraft({ ...draft, blocks: [{ ...draft.blocks[0], x: 8, w: 5 }] }, "2026-07-30T12:00:00+09:00"), /1~12 범위/);
 
 const reportRun = createReportRun({
   runId: "run-001",

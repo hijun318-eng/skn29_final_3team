@@ -294,9 +294,9 @@ def test_g2_enforces_metric_required_filters_for_view_and_crm(
     assert support.g2_violation(
         {"sql": bypass, "parameters": {}, "references": references}, package
     ) == "METRIC_FILTER_MISSING"
-    without_metric = [{key: value for key, value in item.items() if key != "metric_ids"} for item in references]
+    wrong_metric = [{**item, "metric_ids": ["unapproved_metric"]} for item in references]
     assert support.g2_violation(
-        {"sql": sql, "parameters": {}, "references": without_metric}, package
+        {"sql": sql, "parameters": {}, "references": wrong_metric}, package
     ) == "METRIC_REFERENCE_MISMATCH"
 
 

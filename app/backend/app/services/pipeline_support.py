@@ -9,8 +9,6 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid5
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from src.ai.node1 import normalize_question
-
 from app.contracts import (
     AnalysisRequest,
     ErrorCode,
@@ -58,6 +56,12 @@ def _metric_glossary() -> dict[str, tuple[str, ...]]:
             "R3 metric glossary alias 계약을 확인할 수 없습니다.",
         )
     return glossary
+
+
+def _normalize_question(payload: dict[str, object]) -> dict[str, object]:
+    from src.ai.node1 import normalize_question
+
+    return normalize_question(payload)
 
 
 class PipelineSupport:
@@ -166,7 +170,7 @@ class PipelineSupport:
                 "Context timezone을 확인할 수 없습니다.",
             ) from error
         as_of = datetime.combine(context.as_of, time.min, timezone).isoformat()
-        normalized = normalize_question(
+        normalized = _normalize_question(
             {
                 "question": payload.question,
                 "role_hint": context.role.value,
@@ -261,7 +265,8 @@ class PipelineSupport:
         if not referenced.issubset(allowed):
             return "REFERENCE_OUTSIDE_CONTEXT"
         expected_metric_ids = {metric.id for metric in package.metrics}
-        if expected_metric_ids:
+        has_metric_references = any("metric_ids" in item for item in references)
+        if expected_metric_ids and has_metric_references:
             referenced_metric_ids = {
                 str(metric_id)
                 for item in references

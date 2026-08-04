@@ -46,39 +46,29 @@
 
 ## 응답과 작업 원칙
 
-- 자연어는 한국어로 작성하고 code, command, path, API, library, error string은 원문을 유지한다.
+- 자연어와 Skill 본문은 한국어로 작성하고 code, command, path, API, library, error string은 원문을 유지한다.
 - 확인된 사실·결정·가정·제안을 구분하고, 불확실한 내용은 한계와 검증 방법을 함께 제시한다.
 - 사용자의 범위와 권한을 임의로 넓히지 않는다. 위험한 모호성만 질문하고 대안이 있으면 같은 기준으로 비교해 권장안을 제시한다.
-- 시작할 때 repository root, current branch, `git status --short`를 확인하고 기존 변경을 사용자 작업으로 보존한다.
+- 시작할 때 repository root를 확인해 working directory로 삼고, current branch와 `git status --short`를 확인해 기존 변경을 사용자 작업으로 보존한다.
 - 현재 파일·실제 동작·관련 contract를 확인한 뒤 가장 작은 일관된 변경을 적용하고, 위험에 맞는 결정론적 검증을 실행한다.
 - 외부 시스템 변경, 비용 발생, 데이터 전송, 저장소 밖 쓰기는 사용자 승인을 받은 뒤 수행한다.
 
 ## AI 구현 도구와 코드 품질
 
 - 팀 공통 환경 설정은 `docs/markdown/collaboration/AI_개발_환경_설정.md`를 따른다.
-- Codex로 code 작성·수정·refactoring·bug fix·dependency 선택·code review를 수행할 때 Ponytail plugin `v4.8.4`의 `full` mode를 사용한다.
+- Codex로 code 작성·수정·refactoring·bug fix·dependency 선택·code review를 수행할 때 Ponytail plugin `v4.8.4`의 `full` mode를 사용하며, 구현 선택·과설계 방지·필수 안전 경계의 단일 기준으로 삼는다.
 - 팀원은 Ponytail을 임의로 `off`, `normal`, `lite`, `ultra`로 바꾸지 않는다. plugin 충돌로 일시 해제가 필요하면 작업을 중단하고 R1에게 사유와 재현 절차를 전달한다.
 - MCP server는 현재 도입하지 않으며, 추후 필요성과 권한을 검토해 R1 결정으로 확장한다. MCP 부재를 현재 작업 또는 검증 실패 사유로 삼지 않는다.
-- 구현 전에 관련 code와 호출 흐름을 확인하고, 기존 구현 → 표준 library·native 기능 → 이미 설치된 dependency → 최소 신규 구현 순서로 선택한다.
-- 요청되지 않은 추상화, 단일 구현용 interface·factory, 미래 대비 scaffold, 관련 없는 refactoring과 불필요한 production dependency를 추가하지 않는다.
-- 단순화를 이유로 trust boundary의 입력 검증, 권한·보안, 접근성, 데이터 손실 방지, 오류 처리, API·DB·event contract와 필수 test를 제거하지 않는다.
-- code 품질은 `정확성`, `검증 가능성`, `단순성`, `유지보수성`, `안전성`, `호환성`으로 판단한다. 이름과 흐름은 명확하게 유지하고 중복은 실제 반복이 확인된 뒤에만 추상화한다.
 - 작업 카드의 `TEST_COMMANDS`에 formatter·lint·type check·관련 test·build 중 적용 가능한 명령을 적고 실행한다. 해당 도구가 아직 없으면 임의로 새 dependency를 추가하지 말고 `Not Run` 또는 `Blocked`와 이유를 기록한다.
 - 완료 전 변경 기능을 직접 확인하고 Ponytail 관점의 과설계 검토와 정확성·보안·회귀 검토를 구분해 수행한다. 검증하지 않은 항목을 `Pass`로 기록하지 않는다.
 
 ## 권한과 Git
 
-- branch·commit 정책의 단일 기준은 `docs/markdown/collaboration/README.md`다.
-- PR은 팀 필수 절차로 사용하지 않는다. 팀원은 개인 branch를 push한 뒤 branch 이름·변경 요약·검증 결과를 관리자에게 전달하고, 관리자가 diff와 검증 결과를 확인해 `dev`에 병합한다.
-- GitHub Actions는 PR이 아니라 개인 branch와 `dev`의 push를 기준으로 실행한다. CI가 구성되지 않았거나 실행할 수 없으면 같은 검증 명령을 local에서 실행하고 결과를 전달한다.
-- 필수 local 검증 또는 GitHub Actions가 실패한 branch는 `dev`에 병합하지 않는다.
+- branch·commit message 형식·PR·CI 정책의 단일 기준은 `docs/markdown/collaboration/README.md`다.
 - 명시적 요청 전에는 stage, commit, push, dependency 설치를 하지 않는다.
-- 개인 branch를 `dev`에 병합하라는 요청에는 `.agents/skills/merge-branch-to-dev/SKILL.md`를 적용한다.
-- commit message 요청에는 `.agents/skills/draft-commit-message/SKILL.md`를 적용하며, 초안 요청을 stage·commit·push 승인으로 해석하지 않는다.
-- commit message는 72자 이내 한국어 제목과 상세 본문을 기본으로 한다. 본문은 staged 변경을 구체화한 `변경:`과 확인된 실행 결과만 적는 `검증:`을 포함하고, 소비자 영향이나 남은 위험이 있을 때만 `영향:`을 추가한다. 실행하지 않은 검증을 성공으로 기록하지 않는다.
+- 개인 branch의 `dev` 병합과 commit message 초안은 각 Skill의 `description`에 따라 라우팅하며, 초안 요청은 stage·commit·push 승인으로 해석하지 않는다.
+- commit message에는 staged diff와 확인된 검증만 기록하고, 미실행 검증의 성공이나 diff에서 확인되지 않은 의도·효과를 쓰지 않는다.
 - 제목은 구현 수단보다 사용자가 체감하는 결과를 먼저 적고, `수정`, `개선`, `반영`처럼 대상이 불명확한 표현만 단독으로 쓰지 않는다. 예: `Report 오류 수정`보다 `Report 재생성 시 중복 Artifact가 생기지 않도록 수정`처럼 대상·상황·결과가 드러나게 쓴다.
-- 본문은 `변경:`을 한 번만 적고 다음 줄부터 각 변경을 `-` 목록으로 작성한다. `검증:`도 한 번만 적고 다음 줄부터 실행한 명령과 확인 결과를 `-` 목록으로 작성한다. 검증하지 못한 항목은 `- 미실행: <이유>`로 적는다. 전문 용어·약어·내부 카드 ID는 필요한 경우에만 쓰고 처음 한 번은 뜻을 풀어 쓴다.
-- commit message만 읽어도 `어떤 문제가 있었는지`, `무엇이 달라졌는지`, `어떻게 확인했는지`, `남은 위험이 있는지`를 팀원이 이해할 수 있어야 한다. 변경 내용이 여러 영역에 걸치면 한 문장에 압축하지 말고 영역별로 나누되, diff에서 확인되지 않은 의도나 효과는 추정해 적지 않는다.
 - PowerShell에서 다중행 commit message를 만들 때 작은따옴표 안의 `` `n `` 같은 escape 문자열을 사용하지 않는다. 본문은 실제 개행이 있는 UTF-8 message file과 `git commit -F <file>`을 사용해 `변경:`·목록·`검증:`·목록 구조를 보존한다. push 전 `git log -1 --format=%B`로 실제 개행과 각 헤더가 한 번만 있는지 확인한다.
 
 ## 데이터와 구조
@@ -89,14 +79,14 @@
 - Node는 권한·SQL 실행 허용·Gate 통과·결과 정답을 판정하지 않는다. frontend는 수치·권한·Gate를 재계산하지 않고 API 결과를 표시한다.
 - 실제 code가 생길 때만 하위 module을 만들고 P2 편입 전 `src/embeddings`, `src/retrieval`을 만들지 않는다.
 
-## 문서와 스킬 라우팅
+## 문서와 스킬
 
 - 문서 위치·번호·파일명·헤더·템플릿 매핑의 단일 기준은 `docs/문서관리규칙.md`다.
-- `docs/`의 문서를 생성·편집·이동·검토할 때 `.agents/skills/manage-project-documents/SKILL.md`를 적용한다.
+- `.agents/skills/**/scripts`를 실행할 때 Python 3.10+ launcher인 `python` 또는 `python3`를 사용한다.
+- Skill `description`에는 실제 한글·영어 호출 표현만 넣고 본문 절차를 반복하지 않으며, `name`은 원문을 유지한다.
+- 작업 완료 전 WBS·보고 갱신 여부를 `update-project-wbs`와 `update-project-reports`의 `description`으로 판정한다.
 - `docs/markdown/ai_docs/`는 AI 작성·외부 조사·과거 스냅샷을 모은 참고 폴더이며 공식 산출물이나 현재 구현 사실로 간주하지 않는다.
 - `docs/templates/`는 읽기 전용이다. 생성·수정·삭제·이동·이름 변경·덮어쓰기를 하지 않는다.
-- 실행 WBS 행과 연결된 일정·상태·담당·산출물·근거가 바뀌거나 사용자가 WBS 갱신을 요청하면 `.agents/skills/update-project-wbs/SKILL.md`를 적용한다. 단순 조사·설명, 보고 전용 변경, 실행 일정에 영향 없는 문서·코드·설정 정리는 제외한다.
-- 개인 branch에서 파일 변경을 마치거나 날짜·기간이 지정된 보고 요청을 받으면 `.agents/skills/update-project-reports/SKILL.md`를 적용한다. `dev`에서는 작성자를 추정하지 않는다.
 - 정책 데이터는 전용 문서, 조건부 절차는 `.agents/skills`, 항상 적용할 원칙과 권한 경계는 이 파일에서 관리한다.
 
 ## 완료 보고

@@ -1,43 +1,21 @@
 ---
 name: update-project-wbs
-description: Update and validate this repository's execution WBS, schedule views, and work log when completed work changes a mapped task's schedule, status, owner, deliverable, or evidence, or when the user explicitly requests a WBS update. Do not use for routine code, document, or configuration edits with no execution-schedule impact; read-only investigation; report-only changes; Git integration; or speculative schedule changes.
+description: >-
+  Update execution WBS, schedule views, and work log for verified mapped-task changes. Use for "update the WBS", "WBS 업데이트", or "일정·진척·담당자·산출물·근거 반영". Exclude no-impact, read-only/report-only, Git integration, and speculative updates.
 ---
 
-# Update Project WBS
+# 프로젝트 WBS 갱신
 
-Keep `docs/markdown/02_WBS.md` aligned with completed repository work without inventing progress, dates, owners, or scope.
+## 절차
 
-## Decide whether to run
+1. `docs/markdown/02_WBS.md`가 있는지 확인한다. 없으면 다시 만들지 않고 중단한다. 해당 문서와 관련 active contract 또는 변경 파일을 읽는다.
+2. WBS는 번호 산출물 문서이므로 `.agents/skills/manage-project-documents/SKILL.md`를 적용한다.
+3. 완료된 작업을 가장 좁은 기존 실행 WBS 행에 매핑한다. 기존 task가 작업을 나타내지 못할 때만 문서의 현재 phase와 ID 체계에 따라 행을 추가한다.
+4. 검증된 상태, 실제 날짜, 근거, deliverable만 기록한다. 문서만 바뀌었다는 이유로 task를 완료 처리하지 않는다.
+5. 해당 WBS ID와 변경 path를 포함한 간결한 work log 항목 하나를 추가한다.
+6. task 행, 날짜 또는 상태가 바뀌면 영향받은 모든 view인 실행 WBS, phase 요약과 전체 count, 8주 일정, Mermaid Gantt, deliverable 일정을 동기화한다. work-log-only 변경에는 인위적인 일정 변경을 만들지 않는다.
+7. 문서 Skill 검증 후 `<python> .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md`를 실행하고 최종 diff를 검토한다.
 
-Run this skill when verified work changes the schedule, status, owner, deliverable, or evidence of an execution WBS task, or when the user explicitly requests a WBS update. Skip it when:
+## 완료 보고
 
-- no repository file changed;
-- only a personal daily report, date-based team summary, or weekly report changed;
-- the requested work is investigation or explanation only.
-- a routine document, code, or configuration change has no effect on an execution WBS task.
-
-This skill updates WBS content only. It does not stage, commit, push, merge, or update project reports.
-
-## Workflow
-
-1. Confirm the repository root, current branch, and working tree. Preserve unrelated changes.
-2. Require `docs/markdown/02_WBS.md` to exist. If it is missing, stop instead of recreating it. Read it and the relevant active contract or changed files.
-3. Apply `.agents/skills/manage-project-documents/SKILL.md` because the WBS is a numbered deliverable document.
-4. Map the completed work to the narrowest existing execution WBS row. Add a row only when no existing task represents the work, following the document's current phase and ID scheme.
-5. Record only verified status, actual dates, evidence, and deliverables. Do not mark a task complete merely because documentation changed.
-6. Add one concise work-log entry with the applicable WBS ID and changed paths.
-7. When a task row, date, or status changes, synchronize every affected view: execution WBS, phase summary and total count, eight-week schedule, Mermaid Gantt, and deliverable schedule. A work-log-only change does not require artificial schedule changes.
-8. Update the common metadata header and bottom change history with the actual editor and current Asia/Seoul time.
-9. Run the document-policy validator and `<python> .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md`, then run `git diff --check` and review the final diff.
-
-## Guardrails
-
-- Treat `docs/markdown/02_WBS.md` as the schedule source of truth; do not duplicate its task table inside this skill.
-- Keep template-required structure intact and inspect the mapped WBS template when structural fields change.
-- Do not infer an author, owner, completion percentage, schedule shift, or deliverable state.
-- Treat `docs/markdown/ai_docs/` as reference material and do not use it to override the active WBS; do not edit protected originals under `docs/templates/`.
-- Avoid recursive records: WBS updates caused solely by report maintenance are excluded.
-
-## Completion report
-
-Report the updated WBS ID, whether schedule views changed, validation results, and any unresolved schedule decision. When skipped, state `WBS 갱신 제외(영향 없음/보고 전용/읽기 전용)` with the applicable reason instead of editing the WBS.
+일정 view 변경 여부와 미해결 일정 결정을 `AGENTS.md`의 완료 보고에 추가한다.

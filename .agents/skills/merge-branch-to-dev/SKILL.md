@@ -1,30 +1,28 @@
 ---
 name: merge-branch-to-dev
-description: Integrate one recognized personal team branch into dev using this repository's guarded workflow, including authorized branch push, exact local/remote checks, merge, post-merge team-report integration, an optional report-only commit, and final dev push. Use only when the user explicitly asks to merge or apply a personal branch to dev. Do not use for merely updating dev, syncing dev into a personal branch, dev-to-main integration, generic Git help, or commit-message drafting.
+description: >-
+  Safely merge a recognized personal branch into dev and integrate reports. Use only for "merge/apply my branch to dev" or "개인 branch를 dev에 병합·반영". Exclude dev updates, dev-to-personal sync, dev-to-main, generic Git help, and commit-message drafting.
 ---
 
-# Merge Branch To Dev
+# 개인 Branch를 dev에 병합
 
-Apply `docs/markdown/collaboration/README.md` as the Git-policy source. Load and follow `.agents/skills/update-project-reports/SKILL.md` for report integration. Never copy report rules into this Skill.
+작업 전 `docs/markdown/collaboration/README.md`를 Git 정책의 단일 기준으로 읽고, 보고서 통합에는 `.agents/skills/update-project-reports/SKILL.md`를 적용한다.
 
-## Authorization boundary
+## 권한 경계
 
-An explicit personal-branch-to-`dev` request authorizes only the target branch push, `dev` fetch/pull/merge/push, and a report-only commit containing the `team_summaries/` files returned by the report workflow. It does not authorize unrelated files, force push, rebase, reset, stash, or history rewriting.
+개인 branch를 `dev`에 병합하라는 명시적 요청은 대상 branch push, `dev` fetch/pull/merge/push, 보고서 절차가 반환한 `team_summaries/` 파일만 담은 보고 전용 commit만 승인한다. 무관한 파일, force push, rebase, reset, stash 또는 history rewriting은 승인하지 않는다.
 
-## Workflow
+## 절차
 
-1. Resolve the repository root with `git rev-parse --show-toplevel` and use it as the working directory for every command. Require Git and a Python 3.10+ launcher (`python` or `python3`).
-2. Resolve exactly one source from `junhee`, `minji`, `seung`, `daesung`, or `jaehong`. If the user did not name it, use the current branch only when it is one of those five; otherwise stop.
-3. Confirm the source work is committed and the working tree is clean. Push the source, fetch origin, then run:
+1. 단일 Git 정책에 매핑된 개인 branch 중 정확히 하나를 source로 정한다. 사용자가 이름을 지정하지 않았다면 현재 branch가 매핑된 경우에만 사용하고, 아니면 중단한다.
+2. source 작업이 commit되었고 working tree가 clean인지 확인한 뒤 source를 push하고 origin을 fetch해 실행한다.
    `<python> .agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py --source <branch> --phase source`
-4. Switch to `dev`, require a clean tree, fetch origin, and run `git pull --ff-only origin dev`.
-5. Require exact local/remote `dev` equality and record `base=$(git rev-parse dev)`. Run the preflight script with `--phase dev`.
-6. Merge `origin/<branch>` and record `head=$(git rev-parse HEAD)`. On any conflict, stop before report generation or push and report the conflicted paths. Do not resolve without a new explicit instruction.
-7. Load `.agents/skills/update-project-reports/SKILL.md` and apply its post-merge mode with `source=<branch>`, `base=<base>`, and `head=<head>`. Validate the affected date summaries and cumulative weekly reports.
-8. Stage only the returned `docs/markdown/daily_reports/team_summaries/` paths. Review the staged diff. If it is non-empty, create one report-only team-format commit; otherwise skip it.
-9. Recheck `git diff --check` and report limits. Fetch origin, then run `<python> .agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py --source <branch> --phase final --base <base>`.
-10. Push `dev`, then verify `dev` and `origin/dev` resolve to the same commit.
+3. `dev`로 전환해 origin을 fetch하고 `git pull --ff-only origin dev`를 실행한다. `base=$(git rev-parse dev)`를 기록하고 preflight script를 `--phase dev`로 실행한다.
+4. `origin/<branch>`를 merge하고 `head=$(git rev-parse HEAD)`를 기록한다. conflict가 생기면 보고서 생성이나 push 전에 중단하고 충돌 path를 보고하며, 새 지시 없이 해결하지 않는다.
+5. 보고서 Skill의 post-merge mode를 `source=<branch>`, `base=<base>`, `head=<head>`로 적용한다. 반환된 `docs/markdown/daily_reports/team_summaries/` path만 stage하고 staged diff를 검토해, 비어 있지 않으면 보고 전용 commit 하나를 만든다.
+6. origin을 fetch한 다음 `<python> .agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py --source <branch> --phase final --base <base>`를 실행한다.
+7. `dev`를 push한 뒤 `dev`와 `origin/dev`가 같은 commit인지 확인한다.
 
-## Stop conditions
+## 중단 조건
 
-Stop without cleanup when the tree is dirty, source or `dev` differs unexpectedly from origin, local `dev` is ahead/diverged before integration, a merge conflicts, report validation fails, or report changes cannot be isolated. Preserve evidence and ask for direction.
+preflight, merge 또는 보고서 검증이 실패하면 cleanup이나 임의 해결 없이 근거를 보존하고 중단한다.

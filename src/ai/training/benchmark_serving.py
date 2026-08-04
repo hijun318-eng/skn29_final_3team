@@ -26,7 +26,7 @@ def request_json(
     token: str | None,
     timeout: float,
 ) -> dict[str, Any]:
-    headers = {"Accept": "application/json"}
+    headers = {"Accept": "application/json", "User-Agent": "answervice-modelops/1.0"}
     body = None
     if payload is not None:
         headers["Content-Type"] = "application/json"

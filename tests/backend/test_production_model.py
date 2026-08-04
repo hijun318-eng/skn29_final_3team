@@ -8,7 +8,11 @@ BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
 from app.adapters import contract_model
-from app.adapters.contract_model import ContractModelAdapter, openai_transport
+from app.adapters.contract_model import (
+    ContractModelAdapter,
+    _validate_sql_semantics,
+    openai_transport,
+)
 from src.ai.fake_model import FakeModelAdapter
 from src.modelops.runtime import ProductionModelClient
 
@@ -52,11 +56,8 @@ class ProductionModelTest(unittest.TestCase):
             captured["payload"]["chat_template_kwargs"],
         )
         guided = captured["payload"]["guided_json"]
-        self.assertEqual(
-            {"sql", "references", "parameters", "model"},
-            set(guided["required"]),
-        )
-        self.assertIn("model_trace", guided["$defs"])
+        self.assertEqual({"sql"}, set(guided["required"]))
+        self.assertFalse(guided["additionalProperties"])
         self.assertEqual(node_payload, json.loads(captured["payload"]["messages"][1]["content"]))
 
     def test_every_product_node_uses_its_r3_response_schema(self) -> None:
@@ -88,6 +89,29 @@ class ProductionModelTest(unittest.TestCase):
         with self.assertRaisesRegex(TimeoutError, "fallback"):
             adapter._generate("node2", self._node2_payload())
         self.assertEqual("CIRCUIT_OPEN", client.last_trace["status"])
+
+    def test_plan_ignores_parameters_without_sql_placeholders(self) -> None:
+        response = FakeModelAdapter().generate("node2", self._node2_payload())
+        response["parameters"].append(
+            {"name": "grade_code", "type": "string", "value": "GOLD"}
+        )
+
+        plan = ContractModelAdapter._plan(response, "sql")
+
+        self.assertNotIn("grade_code", plan["parameters"])
+
+    def test_month_comparison_requires_two_month_window(self) -> None:
+        payload = {"normalized_question": "전월 대비 매출을 알려줘"}
+        with self.assertRaisesRegex(ValueError, "two-month window"):
+            _validate_sql_semantics("node2", payload, "SELECT 1 LIMIT 1")
+
+        _validate_sql_semantics(
+            "node2",
+            payload,
+            "SELECT 1 WHERE x >= date_add('month', -2, "
+            "from_iso8601_timestamp('2026-08-01T00:00:00+09:00')) "
+            "GROUP BY 1 ORDER BY 1 LIMIT 1",
+        )
 
     @staticmethod
     def _node2_payload():

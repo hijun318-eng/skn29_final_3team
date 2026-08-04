@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, time
 from functools import lru_cache, partial
 from pathlib import Path
@@ -27,6 +28,37 @@ def _response_schema(node: str) -> dict[str, Any]:
     with path.open(encoding="utf-8") as schema_file:
         bundle = json.load(schema_file)
     return {"$defs": bundle["$defs"], **bundle["$defs"][f"{node}_response"]}
+
+
+def _serving_schema(node: str) -> dict[str, Any]:
+    if node == "node2":
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["sql"],
+            "properties": {"sql": {"type": "string"}},
+        }
+    if node == "node2_repair":
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["corrected_sql"],
+            "properties": {"corrected_sql": {"type": "string"}},
+        }
+    return _response_schema(node)
+
+
+def _validate_sql_semantics(node: str, payload: dict[str, Any], sql: str) -> None:
+    if node != "node2" or "전월 대비" not in payload.get("normalized_question", ""):
+        return
+    required = (
+        r"date_add\s*\(\s*'month'\s*,\s*-2",
+        r"from_iso8601_timestamp\s*\(",
+        r"group\s+by\s+1",
+        r"order\s+by\s+1",
+    )
+    if any(re.search(pattern, sql, flags=re.IGNORECASE) is None for pattern in required):
+        raise ValueError("month-over-month SQL must use the approved two-month window")
 
 
 def openai_transport(
@@ -56,7 +88,7 @@ def openai_transport(
             "temperature": 0,
             "max_tokens": 1_500,
             "chat_template_kwargs": {"enable_thinking": False},
-            "guided_json": _response_schema(node),
+            "guided_json": _serving_schema(node),
         },
         token,
         timeout,
@@ -71,7 +103,41 @@ def openai_transport(
     result = json.loads(content)
     if not isinstance(result, dict):
         raise ValueError("model content must be a JSON object")
-    return result
+    if node not in {"node2", "node2_repair"}:
+        return result
+    sql_field = "sql" if node == "node2" else "corrected_sql"
+    sql = result[sql_field]
+    _validate_sql_semantics(node, payload, sql)
+    queried = {
+        table.strip('"').lower()
+        for table in re.findall(
+            r"\b(?:from|join)\s+([a-zA-Z0-9_.\"]+)",
+            sql,
+            flags=re.IGNORECASE,
+        )
+    }
+    package = payload["context_package"]
+    join_ids = [item["id"] for item in package["joins"]]
+    metric_ids = [item["id"] for item in package["metrics"]]
+    completed = {
+        sql_field: sql,
+        "references": [
+            {
+                "urn": asset["urn"],
+                "trino_fqn": asset["trino_fqn"],
+                "columns": asset["columns"],
+                "join_ids": join_ids,
+                "metric_ids": metric_ids,
+            }
+            for asset in package["assets"]
+            if asset["trino_fqn"].lower() in queried
+        ],
+        "parameters": [],
+        "model": get_prompt(_PROMPT_IDS[node]).metadata(),
+    }
+    if node == "node2_repair":
+        completed.update(trace_id=payload["trace_id"], attempt=payload["attempt"])
+    return completed
 
 
 class ContractModelAdapter:
@@ -166,8 +232,10 @@ class ContractModelAdapter:
 
     @staticmethod
     def _plan(response: dict[str, Any], sql_field: str) -> dict[str, Any]:
+        sql = response[sql_field]
+        placeholders = set(re.findall(r":([a-z_][a-z0-9_]*)", sql))
         return {
-            "sql": response[sql_field],
+            "sql": sql,
             "references": [
                 {
                     "urn": item["urn"],
@@ -179,6 +247,7 @@ class ContractModelAdapter:
             "parameters": {
                 item["name"]: item["value"]
                 for item in response["parameters"]
+                if item["name"] in placeholders
             },
             "model_version": response["model"]["model_version"],
         }

@@ -108,6 +108,95 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     assert package.assets[0].fqn == "serving.analytics.hotel_daily_metrics"
 
 
+def test_crm_question_uses_only_approved_raw_asset():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+
+    assets = adapter.search_assets(
+        "현재 등급별 활성 회원 수를 알려줘",
+        {"role": "hotel_analyst"},
+    )
+
+    assert [asset["fqn"] for asset in assets] == ["crm.dbo.crm_members"]
+
+
+def test_raw_live_extra_columns_are_not_exposed():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+
+    def raw_live_dataset(urn):
+        payload = live_dataset(adapter, urn)
+        asset = next(item for item in adapter._assets if item["urn"] == urn)
+        payload["schemaMetadata"]["name"] = "crm_db." + ".".join(asset["fqn"].split(".")[1:])
+        payload["schemaMetadata"]["fields"].append(
+            {"fieldPath": "source_updated_at", "nativeDataType": "timestamp"}
+        )
+        return payload
+
+    adapter._datahub_dataset = raw_live_dataset
+    assets = adapter.search_assets("crm active members", {"role": "hotel_analyst"})
+    schema = adapter.get_asset_schema(assets[0]["urn"])
+
+    assert "source_updated_at" not in {column["name"] for column in schema["columns"]}
+
+
+def test_pms_crm_question_uses_exact_approved_join_assets():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+
+    assets = adapter.search_assets(
+        "투숙 완료 객실 매출을 회원 등급별로 알려줘",
+        {"role": "hotel_analyst"},
+    )
+
+    assert {asset["fqn"] for asset in assets} == {
+        "pms.public.pms_stays",
+        "pms.public.pms_reservations",
+        "pms.public.pms_guests",
+        "crm.dbo.crm_customer_map",
+        "crm.dbo.crm_member_grade_history",
+    }
+    assert sum(len(adapter._live_schemas[asset["urn"]]) for asset in assets) <= 60
+    assert {join_id for asset in assets for join_id in asset["join_ids"]} == {
+        "pms_stay_to_crm_membership_grade_event_time_v1"
+    }
+
+
+def test_g2_allows_only_the_approved_pms_crm_join_id():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(question="투숙 완료 객실 매출을 회원 등급별로 알려줘")
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+    package = support.build_context(payload, context, assets)
+    join_id = "pms_stay_to_crm_membership_grade_event_time_v1"
+    sql = (
+        "SELECT gh.grade_code, SUM(s.room_revenue) FROM pms.public.pms_stays s "
+        "JOIN pms.public.pms_reservations r ON r.reservation_id = s.reservation_id "
+        "JOIN pms.public.pms_guests g ON g.guest_id = r.guest_id "
+        "JOIN crm.dbo.crm_customer_map cm ON cm.pms_guest_id = g.guest_id "
+        "JOIN crm.dbo.crm_member_grade_history gh ON gh.member_no = cm.member_no "
+        "GROUP BY gh.grade_code LIMIT 1000"
+    )
+    references = [
+        {
+            "urn": item.urn,
+            "fqn": item.fqn,
+            "columns": list(item.columns),
+            "join_ids": [join_id],
+        }
+        for item in package.assets
+    ]
+
+    assert support.g2_violation({"sql": sql, "parameters": {}, "references": references}, package) is None
+    for reference in references:
+        reference["join_ids"] = []
+    assert support.g2_violation({"sql": sql, "parameters": {}, "references": references}, package) == "UNAPPROVED_JOIN"
+
+
 def test_role_entitlement_excludes_serving_views_before_live_lookup():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     adapter._datahub_dataset = MagicMock()

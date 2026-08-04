@@ -53,6 +53,7 @@ class PipelineSupport:
                         str(asset["urn"])
                     )["columns"]
                 ),
+                join_ids=tuple(str(join_id) for join_id in asset.get("join_ids", ())),
             )
             for asset in assets
         )
@@ -147,6 +148,18 @@ class PipelineSupport:
         }
         if queried != {item.lower() for item in referenced}:
             return "SQL_REFERENCE_MISMATCH"
+        if len({table.split(".", 1)[0] for table in queried}) > 1:
+            referenced_join_ids = {
+                str(join_id)
+                for item in references
+                for join_id in item.get("join_ids", ())
+            }
+            if (
+                not package.approved_join_ids
+                or referenced_join_ids != set(package.approved_join_ids)
+                or queried != {item.fqn.lower() for item in package.assets}
+            ):
+                return "UNAPPROVED_JOIN"
         return None
 
     @staticmethod

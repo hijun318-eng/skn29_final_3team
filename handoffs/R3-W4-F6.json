@@ -1,0 +1,94 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R3-W4-F6",
+  "ROLE": "R3",
+  "BRANCH": "daesung",
+  "BASE_SHA": "df2371ed8c08b710b17df8eef60dbc0b69932e1d",
+  "SYNCED_DEV_SHA": "1c77d8b491da246201f9b345a404ee9d105cdb51",
+  "RESULT_SHA": "f424ca8e6b083b95fb89adcde9da1eebbf95400d",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R3-W4-F6@df2371e",
+  "COMPLETED_CARDS": [
+    "R3-09~14 evaluation bridge metric regression"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/daesung/일일보고.md",
+    "src/ai/training/verify_case_specs.py",
+    "tests/ai/test_training_verification.py",
+    "tests/ai/test_validation_v2.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "CONTEXT_VERSION": "I4-CONTEXT-v2.0.0",
+    "G2_VERSION": "G2-v1.0.0",
+    "EVAL_VERSION": "EVAL-v2.0.0"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_METRIC_BRIDGE",
+      "status": "PASS",
+      "evidence": "평가용 Context 변환기가 metric id·asset FQN·field·aggregation·time field와 string/boolean required filter를 ContextPackage.metrics에 보존"
+    },
+    {
+      "id": "AC2_G2_REUSE",
+      "status": "PASS",
+      "evidence": "평가 runner와 정답 SQL 검증기가 별도 정책 구현 없이 기존 PipelineSupport.g2_violation을 그대로 호출"
+    },
+    {
+      "id": "AC3_REQUIRED_FILTER_REGRESSION",
+      "status": "PASS",
+      "evidence": "CRM EXPIRE/false와 serving View ACTUAL/false 정상 SQL은 통과하고 누락·값 변조·OR 우회는 METRIC_FILTER_MISSING으로 차단"
+    },
+    {
+      "id": "AC4_EVALUATE_RECORD",
+      "status": "PASS",
+      "evidence": "non-empty metric Context를 사용한 endpoint 평가 회귀가 G2·Trino result hash 비교를 모두 통과"
+    },
+    {
+      "id": "AC5_LEGACY_REGRESSION",
+      "status": "PASS",
+      "evidence": "전체 AI 57건·33 subtest에서 기존 JSON·Trino 비교·early stop·legacy/join·6-domain·2-node·manifest hash 회귀 통과"
+    },
+    {
+      "id": "AC6_NO_EXTERNAL",
+      "status": "PASS",
+      "evidence": "dataset·evals·modelops·R2·R4를 변경하지 않고 Docker·Trino·model·endpoint·RunPod·외부 비용 호출 없이 local code와 test만 수행"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_TARGET",
+      "name": "python -m pytest -p no:cacheprovider tests/ai/test_validation_v2.py tests/ai/test_training_verification.py -q",
+      "status": "PASS",
+      "evidence": "8 passed, 2 subtests passed"
+    },
+    {
+      "id": "T2_AI",
+      "name": "python -m pytest -p no:cacheprovider tests/ai -q",
+      "status": "PASS",
+      "evidence": "57 passed, 33 subtests passed"
+    },
+    {
+      "id": "T3_COMPILE",
+      "name": "python -m compileall -q src/ai/training/verify_case_specs.py",
+      "status": "PASS",
+      "evidence": "compile 통과"
+    },
+    {
+      "id": "T4_SCOPE",
+      "name": "python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS",
+      "evidence": "제품 결과 commit f424ca8 기준 허용 경로 4개와 scope PASS 확인"
+    },
+    {
+      "id": "T5_DIFF",
+      "name": "git diff --check",
+      "status": "PASS",
+      "evidence": "공백 오류 없음"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R3-W4-F6의 local evaluation metric bridge 회귀를 수용하고 dev 통합; 23개 product metric registry 확대 전 150건 product-context 평가와 cloud 실행은 계속 금지"
+}

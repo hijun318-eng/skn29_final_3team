@@ -17,7 +17,12 @@ BACKEND = Path(__file__).resolve().parents[3] / "app" / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from app.services.context_builder import ContextAsset, ContextPackage  # noqa: E402
+from app.services.context_builder import (  # noqa: E402
+    ContextAsset,
+    ContextMetric,
+    ContextPackage,
+    ContextRequiredFilter,
+)
 from app.services.pipeline_support import PipelineSupport  # noqa: E402
 
 
@@ -32,6 +37,31 @@ def _runtime_package(context: dict[str, Any]) -> ContextPackage:
         )
         for asset in context["assets"]
     )
+    metrics = tuple(
+        ContextMetric(
+            id=metric["id"],
+            asset_fqn=next(
+                asset["trino_fqn"]
+                for asset in context["assets"]
+                if any(
+                    metric[field].startswith(f"{asset['trino_fqn']}.")
+                    for field in ("field", "time_field")
+                )
+            ),
+            field=metric["field"],
+            aggregation=metric["aggregation"],
+            time_field=metric["time_field"],
+            required_filters=tuple(
+                ContextRequiredFilter(
+                    field=item["field"],
+                    operator=item["operator"],
+                    value=item["value"],
+                )
+                for item in metric.get("required_filters", ())
+            ),
+        )
+        for metric in context["metrics"]
+    )
     return ContextPackage(
         context_release=context["context_version"],
         policy_version=context["policy_version"],
@@ -44,6 +74,7 @@ def _runtime_package(context: dict[str, Any]) -> ContextPackage:
         token_limit=6_000,
         package_hash="training-verification",
         approved_join_ids=join_ids,
+        metrics=metrics,
     )
 
 

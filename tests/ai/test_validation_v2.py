@@ -54,13 +54,33 @@ def test_endpoint_evaluator_applies_g2_and_compares_trino_results(monkeypatch):
             {
                 "urn": "urn:hotel",
                 "trino_fqn": "serving.analytics.hotel_daily_metrics",
-                "columns": ["property_id"],
+                "columns": [
+                    "property_id",
+                    "business_date",
+                    "data_period_status",
+                    "is_forecast",
+                    "room_revenue",
+                ],
             }
         ],
-        "metrics": [],
+        "metrics": [
+            {
+                "id": "recognized_room_revenue",
+                "field": "serving.analytics.hotel_daily_metrics.room_revenue",
+                "aggregation": "sum",
+                "time_field": "serving.analytics.hotel_daily_metrics.business_date",
+                "required_filters": [
+                    {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
+                    {"field": "is_forecast", "operator": "eq", "value": False},
+                ],
+            }
+        ],
         "joins": [],
     }
-    sql = "SELECT property_id FROM serving.analytics.hotel_daily_metrics LIMIT 1000"
+    sql = (
+        "SELECT SUM(room_revenue) FROM serving.analytics.hotel_daily_metrics "
+        "WHERE data_period_status = 'ACTUAL' AND is_forecast = false LIMIT 1000"
+    )
     record = {
         "case_id": "validation-1",
         "domain": "pms",

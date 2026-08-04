@@ -95,6 +95,7 @@ query Dataset($urn: String!) {
                 "schema_version": view["schema_version"],
                 "seed_version": view["seed_version"],
                 "uses": ("serving_views",),
+                "kind": "view",
             }
             for view in view_contract["views"]
         ]
@@ -107,6 +108,7 @@ query Dataset($urn: String!) {
                 "schema_version": "1.0.0",
                 "seed_version": "20260729",
                 "uses": tuple(asset["uses"]),
+                "kind": "raw",
             }
             for asset in contract["raw_assets"]
         ]
@@ -171,13 +173,25 @@ query Dataset($urn: String!) {
             live = self._datahub_dataset(asset["urn"])
             schema = live.get("schemaMetadata") or {}
             columns = tuple(field["fieldPath"] for field in schema.get("fields") or ())
+            live_name = str(schema.get("name", ""))
+            raw_name_suffix = "." + ".".join(asset["fqn"].split(".")[1:])
+            name_matches = (
+                live_name == asset["fqn"]
+                if asset["kind"] == "view"
+                else live_name.endswith(raw_name_suffix)
+            )
+            columns_match = (
+                set(columns) == set(asset["columns"])
+                if asset["kind"] == "view"
+                else set(asset["columns"]).issubset(columns)
+            )
             if (
                 live.get("urn") != asset["urn"]
-                or schema.get("name") != asset["fqn"]
-                or set(columns) != set(asset["columns"])
+                or not name_matches
+                or not columns_match
             ):
                 raise ValueError("live DataHub metadata does not match the contract")
-            self._live_schemas[asset["urn"]] = columns
+            self._live_schemas[asset["urn"]] = asset["columns"]
             item = {key: value for key, value in asset.items() if key != "columns"}
             item["join_ids"] = (
                 (self._PMS_CRM_JOIN_ID,)

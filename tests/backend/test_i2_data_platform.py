@@ -120,6 +120,25 @@ def test_crm_question_uses_only_approved_raw_asset():
     assert [asset["fqn"] for asset in assets] == ["crm.dbo.crm_members"]
 
 
+def test_raw_live_extra_columns_are_not_exposed():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+
+    def raw_live_dataset(urn):
+        payload = live_dataset(adapter, urn)
+        asset = next(item for item in adapter._assets if item["urn"] == urn)
+        payload["schemaMetadata"]["name"] = "crm_db." + ".".join(asset["fqn"].split(".")[1:])
+        payload["schemaMetadata"]["fields"].append(
+            {"fieldPath": "source_updated_at", "nativeDataType": "timestamp"}
+        )
+        return payload
+
+    adapter._datahub_dataset = raw_live_dataset
+    assets = adapter.search_assets("crm active members", {"role": "hotel_analyst"})
+    schema = adapter.get_asset_schema(assets[0]["urn"])
+
+    assert "source_updated_at" not in {column["name"] for column in schema["columns"]}
+
+
 def test_pms_crm_question_uses_exact_approved_join_assets():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)

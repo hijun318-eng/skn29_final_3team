@@ -21,6 +21,10 @@ def test_raw_allowlist_is_exact_and_bounded():
     }
     assert all(asset["columns"] for asset in assets.values())
     assert sum(len(asset["columns"]) for asset in assets.values()) <= 60
+    assert all(
+        ("crm.crm_db.dbo." in asset["urn"] if fqn.startswith("crm.") else "pms.pms_db.public." in asset["urn"])
+        for fqn, asset in assets.items()
+    )
 
 
 def test_only_crm_and_approved_join_can_use_raw_assets():

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from src.report.domain import (
     BlockRunStatus,
+    BlockType,
     DefinitionStatus,
     ReportBlock,
     ReportBlockRun,
@@ -48,6 +49,37 @@ class ReportDomainTest(unittest.TestCase):
             run.watermark["pms"] = "changed"
         self.assertEqual(3, run.definition_version)
         self.assertEqual("artifact-1", run.blocks[0].artifact_id)
+
+    def test_layout_and_artifact_rules_keep_v1_columns_compatible(self):
+        chart = ReportBlock(
+            "chart-1", "객실 추이", "artifact-1", 5, "query-1",
+            BlockType.CHART, 7, 2, 5, 3, "",
+        )
+        text = ReportBlock(
+            "text-1", "해석", None, 12, None,
+            BlockType.TEXT, 0, 5, 12, 2, "관측 결과만 설명합니다.",
+        )
+        self.assertEqual(chart.columns, chart.w)
+        self.assertIsNone(text.artifact_id)
+        with self.assertRaisesRegex(ValueError, "12-column bounds"):
+            ReportBlock("bad", "초과", "artifact-1", 6, None, BlockType.TABLE, 7, 0, 6, 1)
+        with self.assertRaisesRegex(ValueError, "positive height"):
+            ReportBlock("bad", "높이", "artifact-1", 6, None, BlockType.TABLE, 0, 0, 6, 0)
+        with self.assertRaisesRegex(ValueError, "artifact_id"):
+            ReportBlock("bad", "차트", None, 6, None, BlockType.CHART)
+        with self.assertRaisesRegex(ValueError, "빈 content"):
+            ReportBlock("bad", "텍스트", None, 6, None, BlockType.TEXT)
+
+    def test_only_draft_can_replace_the_complete_block_layout(self):
+        text = ReportBlock(
+            "text-1", "해석", None, 12, None,
+            BlockType.TEXT, 0, 0, 12, 2, "새 해석",
+        )
+        replaced = self.draft.replace_blocks((text,))
+        self.assertEqual((text,), replaced.blocks)
+        approved = self.draft.approve(datetime(2026, 8, 3, tzinfo=timezone.utc))
+        with self.assertRaisesRegex(ValueError, "draft Report version"):
+            approved.replace_blocks((text,))
 
 
 if __name__ == "__main__":

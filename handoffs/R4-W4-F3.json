@@ -11,16 +11,7 @@
   "COMPLETED_CARDS": [
     "R4-16 Report 공통 등록"
   ],
-  "CHANGED_FILES": [
-    "app/backend/README.md",
-    "app/backend/app/adapters/report_repository.py",
-    "app/backend/app/api/report_router.py",
-    "app/backend/app/main.py",
-    "app/backend/migrations/versions/20260804_04_report_registration.py",
-    "docs/markdown/daily_reports/jaehong/일일보고.md",
-    "tests/backend/test_report_migration.py",
-    "tests/backend/test_report_registration.py"
-  ],
+  "CHANGED_FILES": [],
   "CONTRACT_VERSIONS": {
     "REPORT_VERSION": "REPORT-v1.0.0-compatible",
     "OPENAPI_VERSION": "OPENAPI-v1.0.0",

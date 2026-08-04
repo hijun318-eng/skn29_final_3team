@@ -12,6 +12,10 @@ from typing import Any
 from src.ai.training.dataset import DatasetError, load_compiled, validate_model_output, write_jsonl
 
 
+DEFAULT_MODEL = "Qwen/Qwen3-4B-Instruct-2507"
+DEFAULT_REVISION = "cdbee75f17c01a7cc42f958dc650907174af0554"
+
+
 def _normalize_sql(sql: str) -> str:
     return re.sub(r"\s+", " ", sql.strip().rstrip(";")).casefold()
 
@@ -25,9 +29,13 @@ def _percentile(values: list[float], percentile: int) -> float:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, required=True)
-    parser.add_argument("--split", choices=("gold", "acceptance"), default="gold")
-    parser.add_argument("--model", default="Qwen/Qwen3-4B")
-    parser.add_argument("--revision", default="main")
+    parser.add_argument(
+        "--split",
+        choices=("validation", "gold", "acceptance"),
+        default="validation",
+    )
+    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--revision", default=DEFAULT_REVISION)
     parser.add_argument("--adapter")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-new-tokens", type=int, default=1_500)

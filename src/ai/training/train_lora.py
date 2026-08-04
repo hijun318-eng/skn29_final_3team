@@ -11,7 +11,8 @@ from typing import Any
 from src.ai.training.dataset import DatasetError, load_compiled
 
 
-DEFAULT_MODEL = "Qwen/Qwen3-4B"
+DEFAULT_MODEL = "Qwen/Qwen3-4B-Instruct-2507"
+DEFAULT_REVISION = "cdbee75f17c01a7cc42f958dc650907174af0554"
 DEFAULT_SEED = 20260729
 
 
@@ -54,7 +55,7 @@ def main() -> int:
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--model", default=DEFAULT_MODEL)
-    parser.add_argument("--revision", default="main")
+    parser.add_argument("--revision", default=DEFAULT_REVISION)
     parser.add_argument("--max-length", type=int, default=12_288)
     parser.add_argument("--epochs", type=float, default=2.0)
     parser.add_argument("--learning-rate", type=float, default=2e-4)

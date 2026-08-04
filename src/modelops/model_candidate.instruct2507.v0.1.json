@@ -1,0 +1,37 @@
+{
+  "candidate_version": "MODEL-CANDIDATE-v0.1",
+  "status": "BLOCKED_CONTEXT_CONTRACT",
+  "model": "Qwen/Qwen3-4B-Instruct-2507",
+  "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+  "mode": "non-thinking",
+  "parameter_count": 4022468096,
+  "adapter": null,
+  "previous_adapter_compatible": false,
+  "evaluation": {
+    "order": [
+      "validation_v2_context_audit",
+      "base_endpoint_smoke",
+      "validation_id_75",
+      "validation_ood_75",
+      "lora_decision"
+    ],
+    "blocked_reason": "기존 Validation 150건이 제품 View 계약 밖 raw FQN 7개를 포함하므로 승인된 혼합 Context와 v2 split이 필요함",
+    "blind_gold_allowed": false,
+    "new_cost_cap_usd": 0.5,
+    "cumulative_cost_cap_usd": 15
+  },
+  "previous_cost_assessment": {
+    "strict_model_specific_sunk_usd": 1.015075,
+    "upper_bound_all_old_model_experiments_usd": 2.090966,
+    "upper_bound_has_pending_billing_row": true,
+    "fully_wasted": false,
+    "reusable": [
+      "training_and_validation_data",
+      "Trino_execution_evidence",
+      "prompt_and_schema_contracts",
+      "G1_G2_G3_guards",
+      "OpenAI_compatible_transport",
+      "cleanup_and_cost_controls"
+    ]
+  }
+}

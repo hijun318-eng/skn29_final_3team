@@ -3,7 +3,7 @@ import unittest
 
 from evals.runner import EvaluationError, evaluate_cases
 from src.ai.fake_model import FakeModelAdapter
-from src.ai.training.evaluate_lora import _percentile
+from src.ai.training.evaluate_lora import DEFAULT_MODEL, DEFAULT_REVISION, _percentile
 from tests.ai.test_contracts import VALID_PAYLOADS
 
 
@@ -19,6 +19,10 @@ def valid_case():
 
 
 class EvaluationRunnerTests(unittest.TestCase):
+    def test_instruct_2507_checkpoint_is_pinned(self):
+        self.assertEqual("Qwen/Qwen3-4B-Instruct-2507", DEFAULT_MODEL)
+        self.assertEqual("cdbee75f17c01a7cc42f958dc650907174af0554", DEFAULT_REVISION)
+
     def test_nearest_rank_percentile_is_deterministic(self):
         observations = [4.0, 1.0, 3.0, 2.0]
 

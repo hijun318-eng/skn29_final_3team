@@ -1,6 +1,6 @@
 # Answervice SQL LoRA 학습 실행 가이드
 
-이 폴더는 `Qwen/Qwen3-4B`에 Node 2·2′용 SQL LoRA를 학습하기 위한 최소 실행 패키지다.
+이 폴더는 `Qwen/Qwen3-4B-Instruct-2507` Base를 먼저 평가하고, 필요한 경우에만 Node 2·2′용 SQL LoRA를 학습하기 위한 최소 실행 패키지다. 이전 `Qwen/Qwen3-4B` adapter는 새 checkpoint와 호환성이 검증되지 않았으므로 재사용하지 않는다.
 
 ## 1. 파일 역할
 
@@ -9,7 +9,7 @@
 | `case_specs.example.jsonl` | 사람이 작성하는 정답 사례 템플릿 |
 | `dataset.py` | 사례 검사 및 Qwen 대화형 학습데이터 변환 |
 | `train_lora.py` | RunPod A40 단일 GPU BF16 LoRA 학습 |
-| `evaluate_lora.py` | Gold·Acceptance 생성 결과의 JSON·SQL 일치율 확인 |
+| `evaluate_lora.py` | Validation·Gold·Acceptance 생성 결과의 JSON·SQL 일치율 확인 |
 | `requirements.txt` | RunPod에 추가 설치할 Python 패키지 |
 
 예제 데이터는 형식 설명용이며 `trino_status=NOT_RUN`이다. 실제 학습에는 사용할 수 없다.
@@ -189,7 +189,7 @@ python -m src.ai.training.train_lora \
 
 | 항목 | 값 |
 |---|---:|
-| Base model | `Qwen/Qwen3-4B` |
+| Base model | `Qwen/Qwen3-4B-Instruct-2507` |
 | 정밀도 | BF16 |
 | Thinking | 사용하지 않음 |
 | 최대 길이 | 12,288 tokens |
@@ -209,15 +209,15 @@ python -m src.ai.training.train_lora \
 
 ## 7. Base와 LoRA 평가
 
-같은 Gold 데이터에서 원본과 LoRA를 각각 실행한다.
+먼저 같은 Validation 데이터에서 새 Base를 실행한다. LoRA는 Base가 승인 기준에 미달하고 별도 승인을 받은 경우에만 비교한다.
 
 Base:
 
 ```bash
 python -m src.ai.training.evaluate_lora \
   --data /workspace/data/sllm/dataset.v1.jsonl \
-  --split gold \
-  --output /workspace/evals/base.gold.jsonl
+  --split validation \
+  --output /workspace/evals/base.validation.jsonl
 ```
 
 LoRA:

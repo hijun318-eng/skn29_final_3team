@@ -19,9 +19,11 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker:29093
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_LISTENERS: PLAINTEXT://broker:29092,CONTROLLER://broker:29093
       KAFKA_NODE_ID: "1"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
       KAFKA_PROCESS_ROLES: broker,controller
     volumes:
       - datahub-kafka-data:/var/lib/kafka/data
@@ -64,6 +66,7 @@ services:
 
   system-update-quickstart:
     <<: *datahub-service
+    restart: "no"
     image: acryldata/datahub-upgrade:v1.6.0
     command: ["-u", "SystemUpdate"]
     depends_on:
@@ -72,14 +75,29 @@ services:
       opensearch: {condition: service_healthy}
     environment:
       DATAHUB_VERSION: v1.6.0
+      DATAHUB_GMS_HOST: datahub-gms
+      DATAHUB_GMS_PORT: "8080"
+      DATAHUB_PRECREATE_TOPICS: "true"
+      DATAHUB_SQL_SETUP_ENABLED: "true"
       DATAHUB_TOKEN_SERVICE_SALT: ${DATAHUB_TOKEN_SERVICE_SALT}
       DATAHUB_TOKEN_SERVICE_SIGNING_KEY: ${DATAHUB_TOKEN_SERVICE_SIGNING_KEY}
+      EBEAN_DATASOURCE_DRIVER: com.mysql.jdbc.Driver
       EBEAN_DATASOURCE_HOST: mysql:3306
       EBEAN_DATASOURCE_PASSWORD: ${DATAHUB_MYSQL_PASSWORD}
+      EBEAN_DATASOURCE_URL: jdbc:mysql://mysql:3306/datahub?verifyServerCertificate=false&useSSL=true&useUnicode=yes&characterEncoding=UTF-8&enabledTLSProtocols=TLSv1.2
       EBEAN_DATASOURCE_USERNAME: datahub
       ELASTICSEARCH_HOST: opensearch
+      ELASTICSEARCH_IMPLEMENTATION: opensearch
       ELASTICSEARCH_PORT: "9200"
+      ELASTICSEARCH_PROTOCOL: http
+      ELASTICSEARCH_USE_SSL: "false"
+      ENTITY_REGISTRY_CONFIG_PATH: /datahub/datahub-gms/resources/entity-registry.yml
+      GRAPH_SERVICE_IMPL: elasticsearch
       KAFKA_BOOTSTRAP_SERVER: broker:29092
+      KAFKA_SCHEMAREGISTRY_URL: http://datahub-gms:8080/schema-registry/api/
+      SCHEMA_REGISTRY_SYSTEM_UPDATE: "true"
+      SCHEMA_REGISTRY_TYPE: INTERNAL
+      USE_CONFLUENT_SCHEMA_REGISTRY: "false"
 
   datahub-gms-quickstart:
     <<: *datahub-service
@@ -89,20 +107,37 @@ services:
       system-update-quickstart: {condition: service_completed_successfully}
     environment:
       DATAHUB_SERVER_TYPE: quickstart
+      DATAHUB_TELEMETRY_ENABLED: "false"
+      DATAHUB_UPGRADE_HISTORY_KAFKA_CONSUMER_GROUP_ID: generic-duhe-consumer-job-client-gms
       DATAHUB_VERSION: v1.6.0
       DATAHUB_TOKEN_SERVICE_SALT: ${DATAHUB_TOKEN_SERVICE_SALT}
       DATAHUB_TOKEN_SERVICE_SIGNING_KEY: ${DATAHUB_TOKEN_SERVICE_SIGNING_KEY}
+      EBEAN_DATASOURCE_DRIVER: com.mysql.jdbc.Driver
       EBEAN_DATASOURCE_HOST: mysql:3306
       EBEAN_DATASOURCE_PASSWORD: ${DATAHUB_MYSQL_PASSWORD}
+      EBEAN_DATASOURCE_URL: jdbc:mysql://mysql:3306/datahub?verifyServerCertificate=false&useSSL=true&useUnicode=yes&characterEncoding=UTF-8&enabledTLSProtocols=TLSv1.2
       EBEAN_DATASOURCE_USERNAME: datahub
       ELASTICSEARCH_HOST: opensearch
+      ELASTICSEARCH_IMPLEMENTATION: opensearch
       ELASTICSEARCH_PORT: "9200"
+      ELASTICSEARCH_PROTOCOL: http
+      ELASTICSEARCH_USE_SSL: "false"
+      ENTITY_REGISTRY_CONFIG_PATH: /datahub/datahub-gms/resources/entity-registry.yml
+      GRAPH_SERVICE_IMPL: elasticsearch
       KAFKA_BOOTSTRAP_SERVER: broker:29092
+      KAFKA_SCHEMAREGISTRY_URL: http://datahub-gms:8080/schema-registry/api/
+      MAE_CONSUMER_ENABLED: "true"
+      MCE_CONSUMER_ENABLED: "true"
+      METADATA_SERVICE_AUTH_ENABLED: "false"
+      MCL_CONSUMER_BATCH_ENABLED: "true"
+      MCP_CONSUMER_BATCH_ENABLED: "true"
+      PE_CONSUMER_ENABLED: "true"
+      SCHEMA_REGISTRY_TYPE: INTERNAL
     ports:
       - "127.0.0.1:${DATAHUB_MAPPED_GMS_PORT:-18081}:8080"
       - "127.0.0.1:${DATAHUB_MAPPED_GMS_MANAGEMENT_PORT:-14319}:4319"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health && curl -fsS http://localhost:4319/actuator/health"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health"]
       interval: 5s
       timeout: 5s
       retries: 20

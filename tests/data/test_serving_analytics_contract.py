@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "src/data/serving_analytics_contract.i4.v1.json"
 RECIPE_PATH = ROOT / "infrastructure/database/datahub/recipes/serving.i4.yml"
+DATAHUB_COMPOSE_PATH = ROOT / "infrastructure/database/datahub/compose.consumer.yml"
 ACCESS_PATH = ROOT / "infrastructure/database/trino/etc/access-control-rules.json"
 TRAINING_PATH = ROOT / "src/ai/training/build_case_specs.py"
 
@@ -19,6 +20,7 @@ class ServingAnalyticsContractTest(unittest.TestCase):
         cls.contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
         cls.views = {item["fqn"]: item for item in cls.contract["views"]}
         cls.recipe = RECIPE_PATH.read_text(encoding="utf-8")
+        cls.datahub_compose = DATAHUB_COMPOSE_PATH.read_text(encoding="utf-8")
         cls.access = json.loads(ACCESS_PATH.read_text(encoding="utf-8"))
 
     def test_recipe_allowlists_exactly_eight_views(self):
@@ -36,6 +38,23 @@ class ServingAnalyticsContractTest(unittest.TestCase):
         ):
             self.assertIn(setting, self.recipe)
         self.assertNotIn("platform_instance:", self.recipe)
+
+    def test_datahub_uses_internal_schema_registry(self):
+        for setting in (
+            "KAFKA_SCHEMAREGISTRY_URL: http://datahub-gms:8080/schema-registry/api/",
+            "DATAHUB_UPGRADE_HISTORY_KAFKA_CONSUMER_GROUP_ID: generic-duhe-consumer-job-client-gms",
+            'KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"',
+            'METADATA_SERVICE_AUTH_ENABLED: "false"',
+            'MCP_CONSUMER_BATCH_ENABLED: "true"',
+            'MCL_CONSUMER_BATCH_ENABLED: "true"',
+            "SCHEMA_REGISTRY_TYPE: INTERNAL",
+            'USE_CONFLUENT_SCHEMA_REGISTRY: "false"',
+            "GRAPH_SERVICE_IMPL: elasticsearch",
+            "ENTITY_REGISTRY_CONFIG_PATH: /datahub/datahub-gms/resources/entity-registry.yml",
+            "EBEAN_DATASOURCE_URL: jdbc:mysql://mysql:3306/datahub?",
+        ):
+            self.assertIn(setting, self.datahub_compose)
+        self.assertIn('system-update-quickstart:\n    <<: *datahub-service\n    restart: "no"', self.datahub_compose)
 
     def test_view_contract_has_stable_identity_columns_and_lineage(self):
         self.assertEqual("LIVE_DATAHUB", self.contract["context_source"])
@@ -119,8 +138,15 @@ class ServingAnalyticsContractTest(unittest.TestCase):
             verification["read_only_policy"]["sha256"],
             hashlib.sha256(ACCESS_PATH.read_bytes()).hexdigest(),
         )
-        self.assertEqual("NOT_RUN", verification["datahub_live"]["status"])
-        self.assertTrue(verification["datahub_live"]["required_before_gate_pass"])
+        datahub = verification["datahub_live"]
+        self.assertEqual("PASS", datahub["status"])
+        self.assertEqual("v1.6.0", datahub["datahub_version"])
+        self.assertEqual(len(self.views), datahub["view_count"])
+        self.assertEqual(sum(len(view["columns"]) for view in self.views.values()), datahub["column_count"])
+        self.assertGreater(datahub["upstream_edge_count"], 0)
+        self.assertGreater(datahub["fine_grained_lineage_count"], 0)
+        self.assertRegex(datahub["canonical_sha256"], r"^[0-9a-f]{64}$")
+        self.assertFalse(datahub["required_before_gate_pass"])
 
 
 if __name__ == "__main__":

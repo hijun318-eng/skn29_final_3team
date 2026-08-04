@@ -285,9 +285,15 @@
       }
     },
     "datahub_live": {
-      "status": "NOT_RUN",
-      "reason": "Local DataHub GMS is stopped and only v1.5.0.6 images are present; the approved v1.6.0 card prohibits image pull.",
-      "required_before_gate_pass": true
+      "status": "PASS",
+      "datahub_version": "v1.6.0",
+      "environment": "task-only answervice-gate0",
+      "view_count": 8,
+      "column_count": 116,
+      "upstream_edge_count": 17,
+      "fine_grained_lineage_count": 90,
+      "canonical_sha256": "b4e6774e2cd5c5655487d44b0d288d1216cb746fe8afab0388d09f9120388b02",
+      "required_before_gate_pass": false
     }
   }
 }

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.98 |
-| 문서 기준일 | 2026-08-04 13:20 |
+| 버전 | v3.00 |
+| 문서 기준일 | 2026-08-04 13:40 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -196,11 +196,13 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
 | R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `MERGED_DEV` |
 | R1-W4 | Wave 4·08/24~09/02 | R1 | I4·RC1 → I5 | R1-11~13 | Report 통합·보안·장애·복구·성능·release manifest | `PLANNED` |
+| R1-W4-F2 | Wave 4 model 전환 승인 | R1 | Gate 0 → I4 | R1-11 model checkpoint·비용 판정 | Instruct-2507 checkpoint·평가·비용·중단 조건 승인 | `IN_PROGRESS` |
 | R2-W4 | Wave 4·08/24~09/02 | R2 | I4·RC1 → I5 | R2-17~19 + R2-03~16 회귀 | 5번째 source·빈 환경 재생성·schema/seed/watermark/hash 동결 | `PLANNED` |
 | R2-W4-F1 | Wave 4 serving metadata follow-up | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | live DataHub View URN·column·lineage·read-only 계약 | `BLOCKED` |
 | R2-W4-F1A | Wave 4 serving metadata 권한 보완 | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | View 소유자 위임 조회 권한과 metadata 계약 동시 검증 | `MERGED_DEV` |
-| R4-W4-F1A | Wave 4 serving Context 소비 보완 | R4 | Gate 0 → I4 | R4-06~11 `LIVE_DATAHUB` Context·G2 정합 | 승인 View를 질문별 60-column 상한으로 선별하고 권한·G2를 fail-closed 검증 | `READY` |
+| R4-W4-F1A | Wave 4 serving Context 소비 보완 | R4 | Gate 0 → I4 | R4-06~11 `LIVE_DATAHUB` Context·G2 정합 | 승인 View를 질문별 60-column 상한으로 선별하고 권한·G2를 fail-closed 검증 | `MERGED_DEV` |
 | R3-W4 | Wave 4·08/24~09/02 | R3 | I4·RC1 → I5 | R3-11~15 + R3-01~10 회귀 | LoRA 1회 비교·조건부 채택·production client·전체 평가·fallback·release | `PLANNED` |
+| R3-W4-F1 | Wave 4 model checkpoint 전환 | R3 | Gate 0 → I4 | R3-10~14 Instruct-2507 Base smoke·Validation | 새 checkpoint 고정·Base 평가·LoRA 필요성 재판정 | `READY` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
 
@@ -2396,7 +2398,7 @@ EVIDENCE=seung `fefec52`; data test 27건 PASS; canonical SHA-256 `b4e6774e2cd5c
 ### R4-W4-F1A
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -2424,6 +2426,73 @@ HANDOFF=R3에 실제 제품 Context의 승인 View URN/FQN/column과 Node 2 입�
 EXTERNAL_ACTION_PERMISSION=사용자의 작업 계속·commit·push·dev 통합 승인에 따라 위 허용 경로의 local 검증·commit·jaehong push·dev 병합을 승인한다. dependency 설치·비용·RunPod·외부 데이터 전송·secret·다른 Docker project 변경은 불가하다.
 AUTO_FAIL_CONDITIONS=허용 경로 침범; raw asset 성공 fallback; 계약 밖 View·column 포함; 권한 우회; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=live DataHub container가 없으면 HTTP는 mock contract test로 검증하고 실제 통합 trace는 Not Run으로 명시한다. R4 결과가 dev에 통합되고 실제 제품 Context·Node 2·G2 trace가 확인되기 전에는 Gate 0을 PASS로 전환하거나 새 모델 평가를 시작하지 않는다.
+RESULT=DataHub v1.6.0 GraphQL exact URN 조회로 질문에 맞는 hotel_daily_metrics 1개·15개 column을 제품 Context에 포함했다. hotel_analyst 외 역할은 live 조회 전에 제외하고, 계약 불일치·DataHub 실패를 안전 실패로 처리했으며 Context 내부 FQN만 G2가 허용했다.
+EVIDENCE=jaehong code `f1211e3`·handoff `e6b5e8b`; targeted 17건 PASS; branch CI `30876986451` PASS; dev `db6d42f`; dev CI `30877055428` PASS; task DataHub 93 records·G2 내부 허용/외부 차단·task 자원 제거
+```
+
+### R3-W4-F1
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W4-F1
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=Gate 0 PASS·Base smoke
+TASK_CARD_RANGE=R3-10~14 Qwen3-4B-Instruct-2507 Base 전환·Validation
+CURRENT_TASK_CARD_ID=R3-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=db6d42fb7237580cc9e411e411794df4c92e7ed9
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W4-F1@db6d42f
+I0_DECISION_VERSION=I0-v1.0.0
+CONTRACT_VERSION=MODEL-v1.0.0-compatible; PROMPT-v1.0.6/PROMPT-v1.0.2; I4-DATA-v1.0.0-DRAFT
+MODEL_ID=Qwen/Qwen3-4B-Instruct-2507
+MODEL_REVISION=cdbee75f17c01a7cc42f958dc650907174af0554
+ALLOWED_PATHS=src/ai/training/**; src/modelops/**; evals/**; tests/ai/**; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; infrastructure/database/**; frontend/**; root Compose·env·CI; 기존 Qwen3-4B 실험 증거 덮어쓰기; secret
+HANDOFF_MANIFEST=handoffs/R3-W4-F1.json
+ACCEPTANCE_CRITERIA=제품 후보를 공식 `Qwen/Qwen3-4B-Instruct-2507` non-thinking checkpoint와 고정 revision으로 전환한다. 기존 `Qwen/Qwen3-4B` LoRA adapter는 checkpoint 호환성이 검증되지 않았으므로 재사용하지 않는다. 먼저 Base endpoint smoke에서 `/v1/models`, node2 guided schema, Context 내부 `serving.analytics.*` reference, G2 안전 계약을 확인하고 성공한 경우에만 동일 held-out Validation 150건을 실행한다. 결과·latency·VRAM·비용·cleanup을 이전 Base와 별도 manifest에 기록한다. LoRA 학습과 Blind Gold는 실행하지 않고 Validation 결과가 Gate에 미달할 때만 후속 승인 요청으로 남긴다.
+ACCEPTANCE_IDS=AC1_OFFICIAL_MODEL;AC2_PINNED_REVISION;AC3_NO_OLD_ADAPTER;AC4_BASE_SMOKE;AC5_CONTEXT_REFERENCE;AC6_VALIDATION_150;AC7_LATENCY_VRAM;AC8_COST_CLEANUP;AC9_LORA_DECISION
+TEST_COMMANDS=python -m pytest tests/ai -q; python -m compileall -q src/ai src/modelops; model endpoint smoke·Validation runner; git diff --check
+TEST_COMMAND_IDS=T1_AI;T2_COMPILE;T3_MODEL_EVAL;T4_DIFF
+STOP_CONDITIONS=smoke schema·Context·G2 실패; revision 불일치; 이전 adapter 로드; 누적 RunPod 비용 USD 15 초과 예상; 신규 비용 USD 0.50 도달; 실제 고객 데이터·secret 로그; 허용 경로 밖 변경 필요
+HANDOFF=R4에 새 model ID·revision·endpoint schema·latency, R1에 Validation·비용·cleanup·LoRA 필요성 판정 전달
+EXTERNAL_ACTION_PERMISSION=사용자가 지정한 model로 작업 계속을 승인했다. 기존 RunPod API key를 로그에 출력하지 않고 task 전용 Pod 1개·model download·최대 신규 USD 0.50·누적 USD 15 이내 Base smoke와 Validation 150건, task 자원 삭제, 허용 경로 commit·daesung push를 승인한다. LoRA 학습·Blind Gold·다른 cloud resource·외부 데이터 전송·dev 병합은 별도 R1 판정 전 불가하다.
+AUTO_FAIL_CONDITIONS=다른 checkpoint·main revision·old adapter 사용; Validation split 변경·누수; 비용 상한 초과; task Pod 미삭제; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=Base Validation 결과가 기존 제품 Gate에 미달하면 LoRA 또는 다른 model을 자동 실행하지 않고 정확도·속도·비용 근거와 함께 재승인을 요청한다.
+```
+
+### R1-W4-F2
+
+```text
+STATUS=IN_PROGRESS
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F2
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=Gate 0 PASS
+TASK_CARD_RANGE=R1-11 model checkpoint·평가 비용 판정
+CURRENT_TASK_CARD_ID=R1-11
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=db6d42fb7237580cc9e411e411794df4c92e7ed9
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F2@db6d42f
+ALLOWED_PATHS=docs/markdown/02_WBS.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/daily_reports/junhee/일일보고.md; tests/integration/test_gate_scope.py
+FORBIDDEN_PATHS=R2~R5 제품 경로; root Compose·env·CI; secret
+ACCEPTANCE_CRITERIA=R4 Gate 0 소비자 결과를 dev·CI로 확정하고 사용자가 지정한 Qwen3-4B-Instruct-2507의 공식 checkpoint·revision·Base 우선 평가·비용·cleanup·중단 조건을 R3 실행 묶음에 고정한다. 이전 Qwen3-4B 실험 증거는 덮어쓰지 않는다.
+ACCEPTANCE_IDS=AC1_GATE0;AC2_MODEL_ID;AC3_REVISION;AC4_BASE_FIRST;AC5_COST;AC6_R3_BUNDLE
+TEST_COMMANDS=python -m unittest tests.integration.test_gate_scope; document/WBS/report validation; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_GATE;T2_DOCS;T3_SCOPE;T4_DIFF
+STOP_CONDITIONS=공식 model 정보 불일치; 비용 상한 누락; R1 허용 경로 밖 변경; 필수 검증 실패
+HANDOFF=R3에 model ID·revision·Base smoke·Validation·비용 상한 전달
+EXTERNAL_ACTION_PERMISSION=사용자의 작업 계속·commit·push·dev 통합 승인에 따라 허용 경로 commit·junhee push·dev 병합을 승인한다. 실제 RunPod 비용은 R3-W4-F1 조건만 허용한다.
+AUTO_FAIL_CONDITIONS=허용 경로 침범; model·revision·비용 조건 누락; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=R3 Base 결과가 Gate 미달이면 LoRA 또는 다른 model을 자동 승인하지 않는다.
 ```
 
 ## I5 이후 후속 단계 예약
@@ -2474,6 +2543,8 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.00 | 2026-08-04 13:40 | R1 health 묶음을 닫은 뒤 발생한 새 checkpoint 승인 문서의 역할 경로 오판을 분리했다. R1-W4-F2에 Gate 0 수용·model/revision·Base 우선·비용 상한과 R3 발행 문서·테스트 경로만 허용해 제품 범위를 넓히지 않고 CI 선택 기준을 교정했다. |
+| v2.99 | 2026-08-04 13:40 | R4의 live DataHub Context·entitlement·60-column·G2 정합을 실제 v1.6 trace와 dev `db6d42f`·CI `30877055428` PASS로 확정해 Gate 0을 해제했다. 사용자가 지정한 `Qwen/Qwen3-4B-Instruct-2507`의 공식 non-thinking 특성과 revision을 고정하고, 이전 adapter 없이 Base smoke 성공 후 Validation 150건만 최대 신규 USD 0.50 안에서 실행하는 R3-W4-F1을 READY 발행했다. |
 | v2.98 | 2026-08-04 13:20 | R1 health 교정과 R2 DataHub 생산자 결과를 최종 dev `7ca7755`·CI `30876201074` PASS로 확정했다. R2의 8개 View·116개 column 계약을 live DataHub 검증 기준으로 소비하되 질문별 최대 60개 column과 entitlement를 유지하고 raw 5개 asset fallback을 금지하는 R4-W4-F1A를 READY 발행했다. |
 | v2.97 | 2026-08-04 12:51 | R1-W4-F1A branch CI에서 최신 R1 bundle을 과거 `R1-W3-F7`로 고정한 통합 테스트 한 건만 실패해, 현재 bundle ID·상태 기대값 교정을 허용 경로와 검증에 추가했다. Compose·문서·role scope는 PASS를 유지했다. |
 | v2.96 | 2026-08-04 12:48 | R2 DataHub 실수집은 8개 URN·116개 column·17개 upstream edge·90개 column lineage로 PASS했으나, 실제 GMS에 없는 management actuator를 service fragment가 필수 health로 요구해 CI가 실패했다. R2 범위 위반을 되돌리고 공식 v1.6 `/health` 계약만 R1 경로에서 교정한 뒤 dev 통합·R2 재검증하는 R1-W4-F1A를 발행했다. |

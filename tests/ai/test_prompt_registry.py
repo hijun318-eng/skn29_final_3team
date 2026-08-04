@@ -12,8 +12,8 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(
             {
                 "node1.normalize": "PROMPT-v1.0.0",
-                "node2.repair": "PROMPT-v1.0.2",
-                "node2.sql": "PROMPT-v1.0.6",
+                "node2.repair": "PROMPT-v1.0.3",
+                "node2.sql": "PROMPT-v1.0.8",
                 "node3.explain": "PROMPT-v1.0.0",
             },
             {item["prompt_id"]: item["version"] for item in first},
@@ -39,28 +39,30 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("한 줄로 작성", sql_prompt)
         self.assertIn("불필요한 공백이나 개행", sql_prompt)
         self.assertIn("1 이상 1000 이하 정수의 LIMIT", sql_prompt)
-        self.assertIn("FROM과 JOIN에 실제 사용한", sql_prompt)
-        self.assertIn("양방향 정확히 일치", sql_prompt)
-        self.assertIn("사용하지 않은 asset", sql_prompt)
-        self.assertIn("사용한 table을 누락하지 않는다", sql_prompt)
+        self.assertIn('{"sql":"한 줄 SQL"}', sql_prompt)
+        self.assertIn("설명·Markdown·references·parameters 없이", sql_prompt)
+        self.assertIn("실제 사용하는 승인 Context asset", sql_prompt)
         self.assertIn("없는 컬럼이나 JOIN 단축 경로를 만들지 않는다", sql_prompt)
+        self.assertIn("property_id = 'SYNTHETIC_HOTEL_001'", sql_prompt)
+        self.assertIn("data_period_status가 있으면 'ACTUAL'", sql_prompt)
+        self.assertIn("is_forecast가 있으면 false", sql_prompt)
+        self.assertIn("year_month도 월 첫날 DATE", sql_prompt)
         self.assertIn("SQL table 이름이 아니라 승인 JOIN 식별자", sql_prompt)
         self.assertIn("FROM pms.public.pms_stays s JOIN pms.public.pms_reservations r", sql_prompt)
-        self.assertIn("승인 metric의 aggregation", sql_prompt)
-        self.assertIn("문자열이나 BETWEEN이 아니라 TIMESTAMP", sql_prompt)
+        self.assertIn("Context metric의 field·aggregation·time_field", sql_prompt)
+        self.assertIn("timestamp with time zone 기간만 TIMESTAMP", sql_prompt)
         self.assertIn("CURRENT_DATE·CURRENT_TIMESTAMP·now 함수는 쓰지 않고", sql_prompt)
         self.assertIn("직전 완료 월과 그 이전 월만 조회", sql_prompt)
         self.assertIn("date_add('month', -2, from_iso8601_timestamp", sql_prompt)
         self.assertIn("GROUP BY 1 ORDER BY 1", sql_prompt)
-        self.assertIn("실제 사용한 :name placeholder만 같은 이름", sql_prompt)
-        self.assertIn("placeholder가 없으면 빈 배열", sql_prompt)
-        self.assertIn("request metadata는 parameters에 포함하지 않는다", sql_prompt)
+        self.assertIn("placeholder는 만들지 않는다", sql_prompt)
+        self.assertIn("없으면 LIMIT 1000", sql_prompt)
+        self.assertIn('{"corrected_sql":"한 줄 SQL"}', repair_prompt)
         self.assertIn("RESOURCE_POLICY_MISSING", repair_prompt)
         self.assertIn("LIMIT 1000을 추가", repair_prompt)
         self.assertIn("SQL_REFERENCE_MISMATCH", repair_prompt)
         self.assertIn("corrected_sql의 FROM·JOIN table 집합", repair_prompt)
-        self.assertIn("references의 trino_fqn 집합", repair_prompt)
-        self.assertIn("승인 asset 안에서 양방향 정확히 일치", repair_prompt)
+        self.assertIn("승인 Context asset 안으로 제한", repair_prompt)
         self.assertIn("한 번 수정", repair_prompt)
 
 

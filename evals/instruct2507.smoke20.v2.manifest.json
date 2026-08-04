@@ -1,0 +1,225 @@
+{
+  "manifest_version": "BASE-SMOKE-v2.0.0",
+  "source_manifest": "evals/validation_v2.manifest.json",
+  "source_content_sha256": "e3c541be315648b347706eae303e344a4f0b7718f1a5fdb8d7d50ee7faf05026",
+  "previous_failure_reproduction": {
+    "total": 20,
+    "valid_json": 12,
+    "g2_pass": 4,
+    "trino_pass": 4,
+    "failure_counts": {
+      "MODEL_SCHEMA_INVALID": 8,
+      "RESOURCE_POLICY_MISSING": 8
+    },
+    "domains": {
+      "banquet": 3,
+      "crm": 17
+    },
+    "nodes": {
+      "node2": 16,
+      "node2_repair": 4
+    }
+  },
+  "content_sha256": "ff164b8024b8650520e22522bec312d7a3eca1538d05fd810745b6202a4d5eb2",
+  "counts": {
+    "total": 20,
+    "domains": {
+      "banquet": 3,
+      "crm": 4,
+      "facility": 3,
+      "pms": 4,
+      "pms_crm": 3,
+      "pos": 3
+    },
+    "nodes": {
+      "node2": 10,
+      "node2_repair": 10
+    },
+    "slices": {
+      "ID": 10,
+      "OOD": 10
+    }
+  },
+  "cases": [
+    {
+      "case_id": "validation-0151",
+      "candidate_id": "candidate-0151",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "banquet",
+      "node": "node2",
+      "semantic_signature_sha256": "78cf8d256fff9476158135db6db996877019e72fdc2689ad94e547c50c41fc37"
+    },
+    {
+      "case_id": "validation-0157",
+      "candidate_id": "candidate-0157",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "banquet",
+      "node": "node2",
+      "semantic_signature_sha256": "c891c34ecb15365e305082685332578aa859c806bdc7de499a8893b600bcf581"
+    },
+    {
+      "case_id": "validation-0153",
+      "candidate_id": "candidate-0153",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "banquet",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "4a2beecf11a9b358bcbcc84ae06c22821b70fea5956fc1349038e786b2c61534"
+    },
+    {
+      "case_id": "validation-0228",
+      "candidate_id": "candidate-0228",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "3a62d5325f1c297ead8693d3e579c9da401a6f7864c5d6a2e8b662de16be1686"
+    },
+    {
+      "case_id": "validation-0179",
+      "candidate_id": "candidate-0179",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "8088715e74e1ed97f040c66fba5fb51bc2c0a4cf2757e3d50af6a71a27baed2d"
+    },
+    {
+      "case_id": "validation-0212",
+      "candidate_id": "candidate-0212",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "cd9eca83ff55c7fb99d53f56b2e98d449050878ea5087e5267b5c84e9288e271"
+    },
+    {
+      "case_id": "validation-0182",
+      "candidate_id": "candidate-0182",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "9bd5ac98acd7254872f0150e7bbd9355838673ccdd0cab4042984ccd4f671f13"
+    },
+    {
+      "case_id": "validation-0281",
+      "candidate_id": "candidate-0281",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "facility",
+      "node": "node2",
+      "semantic_signature_sha256": "8736abe9ad164809b5c1742ce17ee8f1beaf7af4152a34e386e83ccbe8209884"
+    },
+    {
+      "case_id": "validation-0284",
+      "candidate_id": "candidate-0284",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "facility",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "5bec9ee9aebdf6e9ed77eb1f0e10ae56b65a7b2486b3565be7e8af919b359e2d"
+    },
+    {
+      "case_id": "validation-0292",
+      "candidate_id": "candidate-0292",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "facility",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "700148a4ed7ad84f81dda522ab17d8f9898f8b5bf2124a8765aa27f6f89bbc82"
+    },
+    {
+      "case_id": "validation-0311",
+      "candidate_id": "candidate-0311",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "46b9b7254dc2eb4590950edf732dfa14c802fb8b776d4615bd0966c9ed08dc83"
+    },
+    {
+      "case_id": "validation-0467",
+      "candidate_id": "candidate-0467",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "26cd3c2f818a238976605b8ef2d6ea8c79814a44ba30cc775180ba019261e978"
+    },
+    {
+      "case_id": "validation-0312",
+      "candidate_id": "candidate-0312",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "1bbbf103cdd1f2b8925899fcf8de3352110e374d1d5eca508941948630f80dfb"
+    },
+    {
+      "case_id": "validation-0466",
+      "candidate_id": "candidate-0466",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "7094fb31139b87c9cc01cd4432ed3f3a22f5fc96b29eed21d38ae3e238d693b4"
+    },
+    {
+      "case_id": "validation-0507",
+      "candidate_id": "candidate-0507",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "daefeb3bd73fc7a4e887701e18ff5e2dc84fceb1c98ed83744f10563d8283c21"
+    },
+    {
+      "case_id": "validation-0502",
+      "candidate_id": "candidate-0502",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "e2e9dae053027a39433e3babb49104227dc7f1ea8781c04908ea5028198062b3"
+    },
+    {
+      "case_id": "validation-0543",
+      "candidate_id": "candidate-0543",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "f2ca981107a408a145cc31fa25cd1ed18fd1cc33e4251e444ad712cc22212e69"
+    },
+    {
+      "case_id": "validation-0637",
+      "candidate_id": "candidate-0637",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pos",
+      "node": "node2",
+      "semantic_signature_sha256": "78216f49b0cbd9a1fbb8950bafbcd0a27c9c42efd5e7e66303bf3386dabb69da"
+    },
+    {
+      "case_id": "validation-0590",
+      "candidate_id": "candidate-0590",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "7df463d5d8056ecde26e8f7d77ee9bda4e4115ad5e9206908a5f165127975855"
+    },
+    {
+      "case_id": "validation-0622",
+      "candidate_id": "candidate-0622",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "449be2deaadbd4a27ce4acd2391efd6c27707e03a719a3491fb18a77af4809d9"
+    }
+  ]
+}

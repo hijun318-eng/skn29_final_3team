@@ -1,0 +1,87 @@
+{
+  "execution_bundle_id": "R3-W4-F3",
+  "status": "STOPPED_ON_FIRST_FAILURE",
+  "model": "Qwen/Qwen3-4B-Instruct-2507",
+  "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
+  "mode": "non-thinking",
+  "adapter": null,
+  "transport": {
+    "response": "SQL-only guided JSON",
+    "max_tokens": 512,
+    "temperature": 0
+  },
+  "prompt_run": {
+    "version": "PROMPT-v1.0.7",
+    "sha256": "7183cdca587f9637bce63c7901a6f2b0145eeb4c2bb20b5d08522cc2fa0e497a"
+  },
+  "smoke_manifest": {
+    "path": "evals/instruct2507.smoke20.v2.manifest.json",
+    "file_sha256": "e1fff3ab55a718d1bf501c382780aca7ff77da76e5fe62047fd4d7e7b8baf85b",
+    "content_sha256": "ff164b8024b8650520e22522bec312d7a3eca1538d05fd810745b6202a4d5eb2",
+    "requested": 20,
+    "domains": {
+      "banquet": 3,
+      "crm": 4,
+      "facility": 3,
+      "pms": 4,
+      "pms_crm": 3,
+      "pos": 3
+    },
+    "nodes": {
+      "node2": 10,
+      "node2_repair": 10
+    },
+    "slices": {
+      "ID": 10,
+      "OOD": 10
+    }
+  },
+  "evaluated": 1,
+  "stopped_early": true,
+  "failure": {
+    "case_id": "validation-0151",
+    "domain": "banquet",
+    "node": "node2",
+    "evaluation_slice": "ID",
+    "valid_json": true,
+    "g2": "PASS",
+    "trino": "FAIL",
+    "result_match": "NOT_RUN",
+    "generated_sql": "SELECT year_month, SUM(actual_attendees) AS actual_attendees FROM serving.analytics.banquet_monthly_metrics WHERE year_month >= '2025-12' AND year_month < '2026-03' GROUP BY year_month ORDER BY year_month LIMIT 3",
+    "generated_error": "Query failed: line 1:126: Cannot apply operator: timestamp(3) <= varchar(7)",
+    "expected_sql": "SELECT date_format(date_trunc('month', year_month), '%Y-%m') AS period, CAST(SUM(actual_attendees) AS DECIMAL(18,2)) AS actual_attendees FROM serving.analytics.banquet_monthly_metrics WHERE property_id = 'SYNTHETIC_HOTEL_001' AND data_period_status = 'ACTUAL' AND is_forecast = false AND year_month >= DATE '2025-12-01' AND year_month < DATE '2026-03-01' GROUP BY 1 ORDER BY 1 LIMIT 1000",
+    "expected_trino": "PASS",
+    "manifest_expected_result_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "computed_expected_result_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "expected_result_hash_match": true,
+    "classification": "MODEL_SQL_TYPE_ERROR"
+  },
+  "runpod": {
+    "pod_id": "znxnnf6bckopu3",
+    "image": "vllm/vllm-openai:v0.10.2",
+    "gpu": "NVIDIA A40 SECURE",
+    "cost_per_hour_usd": 0.44,
+    "elapsed_seconds": 346,
+    "estimated_new_cost_usd": 0.0423,
+    "cost_cap_usd": 0.35,
+    "pod_deleted": true,
+    "active_pods_after_cleanup": 0
+  },
+  "prohibited_work": {
+    "validation_150_run": false,
+    "lora_started": false,
+    "blind_gold_run": false,
+    "other_model_run": false
+  },
+  "post_failure_local_change": {
+    "prompt_version": "PROMPT-v1.0.8",
+    "rules": [
+      "typed DATE half-open interval for date and timestamp without time zone",
+      "synthetic property scope",
+      "ACTUAL period and non-forecast scope",
+      "LIMIT 1000 unless an approved top N is requested"
+    ],
+    "endpoint_retest": false
+  },
+  "decision": "STOP_AND_RETURN_TO_R1"
+}

@@ -1,6 +1,6 @@
 {
   "candidate_version": "MODEL-CANDIDATE-v0.1",
-  "status": "BLOCKED_BASE_SMOKE",
+  "status": "BLOCKED_BASE_SMOKE_REWORK",
   "model": "Qwen/Qwen3-4B-Instruct-2507",
   "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
   "mode": "non-thinking",
@@ -39,6 +39,30 @@
     "lora_started": false,
     "endpoint_deleted": true,
     "estimated_new_cost_usd": 0.132,
+    "decision": "STOP"
+  },
+  "base_smoke_rework": {
+    "execution_bundle_id": "R3-W4-F3",
+    "evaluated_at": "2026-08-04",
+    "manifest": "evals/instruct2507.smoke20.v2.manifest.json",
+    "manifest_content_sha256": "ff164b8024b8650520e22522bec312d7a3eca1538d05fd810745b6202a4d5eb2",
+    "requested_cases": 20,
+    "evaluated_cases": 1,
+    "valid_json": 1,
+    "g2_pass": 1,
+    "trino_pass": 0,
+    "result_match": 0,
+    "failure": "MODEL_SQL_TYPE_ERROR",
+    "prompt_run_version": "PROMPT-v1.0.7",
+    "post_failure_prompt_version": "PROMPT-v1.0.8",
+    "post_failure_prompt_retested": false,
+    "evidence": "evals/instruct2507.smoke20.f3.failure.json",
+    "estimated_new_cost_usd": 0.0423,
+    "endpoint_deleted": true,
+    "active_pods_after_cleanup": 0,
+    "full_validation_run": false,
+    "lora_started": false,
+    "blind_gold_run": false,
     "decision": "STOP"
   },
   "previous_cost_assessment": {

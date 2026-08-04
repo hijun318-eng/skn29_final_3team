@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -13,7 +14,7 @@ from typing import Any, Callable
 from src.ai.training.benchmark_serving import request_json
 from src.ai.training.dataset import load_compiled, write_jsonl
 from src.ai.training.evaluate_lora import DEFAULT_MODEL, DEFAULT_REVISION, _normalize_sql, _percentile
-from src.ai.training.verify_case_specs import _runtime_package
+from src.ai.training.verify_case_specs import _result_hash, _runtime_package
 
 from app.services.pipeline_support import PipelineSupport
 
@@ -29,6 +30,33 @@ def _schema(node: str) -> dict[str, Any]:
         "required": [field],
         "properties": {field: {"type": "string"}},
     }
+
+
+def _run_trino(sql: str, container: str, user: str) -> tuple[str, str | None, str | None]:
+    completed = subprocess.run(
+        [
+            "docker",
+            "exec",
+            container,
+            "trino",
+            "--server",
+            "http://localhost:8080",
+            "--user",
+            user,
+            "--output-format",
+            "JSON",
+            "--execute",
+            sql,
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+    )
+    if completed.returncode:
+        lines = [line for line in (completed.stderr or completed.stdout).splitlines() if line.strip()]
+        return "FAIL", None, "\n".join(lines[-4:])
+    return "PASS", _result_hash(completed.stdout), None
 
 
 def evaluate_record(
@@ -57,15 +85,26 @@ def evaluate_record(
         timeout,
     )
     latency_ms = (time.perf_counter() - started) * 1_000
-    content = response["choices"][0]["message"]["content"]
+    choice = response["choices"][0]
+    content = choice["message"]["content"]
+    evidence = {
+        "case_id": record["case_id"],
+        "domain": record["domain"],
+        "node": record["node"],
+        "evaluation_slice": record.get("evaluation_slice"),
+        "latency_ms": latency_ms,
+        "finish_reason": choice.get("finish_reason"),
+        "completion_tokens": response.get("usage", {}).get("completion_tokens"),
+        "content_sha256": hashlib.sha256(str(content).encode()).hexdigest(),
+    }
     try:
         generated = json.loads(content)
     except (json.JSONDecodeError, TypeError):
-        return {"case_id": record["case_id"], "valid_json": False, "g2": "MODEL_SCHEMA_INVALID", "trino": "NOT_RUN", "sql_exact_match": False, "latency_ms": latency_ms}
+        return {**evidence, "valid_json": False, "g2": "MODEL_SCHEMA_INVALID", "trino": "NOT_RUN", "result_match": "NOT_RUN", "sql_exact_match": False}
     field = "sql" if record["node"] == "node2" else "corrected_sql"
     sql = generated.get(field) if isinstance(generated, dict) else None
     if not isinstance(sql, str) or not sql.strip():
-        return {"case_id": record["case_id"], "valid_json": True, "g2": "MODEL_SCHEMA_INVALID", "trino": "NOT_RUN", "sql_exact_match": False, "latency_ms": latency_ms}
+        return {**evidence, "valid_json": True, "g2": "MODEL_SCHEMA_INVALID", "trino": "NOT_RUN", "result_match": "NOT_RUN", "sql_exact_match": False}
 
     payload = json.loads(record["messages"][1]["content"])
     context = payload["context_package"]
@@ -88,24 +127,40 @@ def evaluate_record(
         {"sql": sql, "parameters": {}, "references": references},
         _runtime_package(context),
     )
-    trino = "NOT_RUN"
-    if g2 is None and trino_container:
-        completed = subprocess.run(
-            ["docker", "exec", trino_container, "trino", "--user", trino_user, "--execute", sql],
-            capture_output=True,
-            timeout=30,
-        )
-        trino = "PASS" if completed.returncode == 0 else "FAIL"
     expected = json.loads(record["messages"][2]["content"])[field]
+    trino = "NOT_RUN"
+    generated_hash = None
+    expected_hash = None
+    trino_error = None
+    result_match: bool | str = "NOT_RUN"
+    if g2 is None and trino_container:
+        trino, generated_hash, trino_error = _run_trino(sql, trino_container, trino_user)
+        if trino == "PASS":
+            expected_status, expected_hash, _ = _run_trino(expected, trino_container, trino_user)
+            result_match = expected_status == "PASS" and generated_hash == expected_hash
     return {
-        "case_id": record["case_id"],
+        **evidence,
         "valid_json": True,
         "g2": "PASS" if g2 is None else g2,
         "trino": trino,
+        "result_match": result_match,
+        "generated_result_sha256": generated_hash,
+        "expected_result_sha256": expected_hash,
+        "trino_error": trino_error,
         "sql_exact_match": _normalize_sql(sql) == _normalize_sql(expected),
-        "latency_ms": latency_ms,
         "sql": sql,
     }
+
+
+def _select_manifest_records(records: list[dict[str, Any]], manifest: dict[str, Any]) -> list[dict[str, Any]]:
+    by_id = {record["case_id"]: record for record in records}
+    selected = []
+    for case in manifest["cases"]:
+        record = by_id.get(case["case_id"])
+        if record is None:
+            raise ValueError(f"manifest case is absent from dataset: {case['case_id']}")
+        selected.append({**record, "evaluation_slice": case["evaluation_slice"]})
+    return selected
 
 
 def main() -> int:
@@ -114,6 +169,7 @@ def main() -> int:
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--revision", default=DEFAULT_REVISION)
+    parser.add_argument("--manifest", type=Path)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--trino-container")
@@ -121,33 +177,52 @@ def main() -> int:
     args = parser.parse_args()
 
     records = load_compiled(args.data, "validation")
+    if args.manifest:
+        records = _select_manifest_records(records, json.loads(args.manifest.read_text(encoding="utf-8")))
     if args.limit is not None:
         records = records[: args.limit]
-    predictions = [
-        evaluate_record(
+    predictions = []
+    for index, record in enumerate(records, 1):
+        prediction = evaluate_record(
             record,
             base_url=args.base_url,
             model=args.model,
             trino_container=args.trino_container,
             trino_user=args.trino_user,
         )
-        for record in records
-    ]
+        predictions.append(prediction)
+        print(
+            f"[{index}/{len(records)}] {record['case_id']} "
+            f"json={prediction['valid_json']} g2={prediction['g2']} "
+            f"trino={prediction['trino']} result_match={prediction['result_match']}",
+            flush=True,
+        )
+        if not (
+            prediction["valid_json"]
+            and prediction["g2"] == "PASS"
+            and prediction["trino"] == "PASS"
+            and prediction["result_match"] is True
+        ):
+            break
     write_jsonl(args.output, predictions)
     latencies = [prediction["latency_ms"] for prediction in predictions]
     summary = {
         "model": args.model,
         "revision": args.revision,
         "total": len(predictions),
+        "requested": len(records),
+        "stopped_early": len(predictions) < len(records),
         "valid_json": sum(prediction["valid_json"] for prediction in predictions),
         "g2_pass": sum(prediction["g2"] == "PASS" for prediction in predictions),
         "trino_pass": sum(prediction["trino"] == "PASS" for prediction in predictions),
+        "result_match": sum(prediction["result_match"] is True for prediction in predictions),
         "sql_exact_match": sum(prediction["sql_exact_match"] for prediction in predictions),
         "latency_p50_ms": _percentile(latencies, 50),
         "latency_p95_ms": _percentile(latencies, 95),
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
-    return 0 if summary["valid_json"] == summary["total"] else 1
+    required = ("valid_json", "g2_pass", "trino_pass", "result_match")
+    return 0 if all(summary[name] == summary["total"] for name in required) else 1
 
 
 if __name__ == "__main__":

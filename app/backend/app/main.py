@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import router
+from app.api.report_router import report_router
 from app.context import ContextValidationError, request_context
 from app.contracts import (
     CONTRACT_VERSION,
@@ -53,6 +54,7 @@ app.add_middleware(
     expose_headers=["X-Request-Id", "X-Trace-Id"],
 )
 app.include_router(router)
+app.include_router(report_router)
 
 
 @app.middleware("http")

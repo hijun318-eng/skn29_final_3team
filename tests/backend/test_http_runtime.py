@@ -130,30 +130,47 @@ class FastApiRuntimeTest(unittest.TestCase):
         self.assertTrue(expected.issubset(names))
 
     def test_browser_preflight_allows_only_configured_origin(self) -> None:
-        allowed_request = urllib.request.Request(
-            f"http://127.0.0.1:{self.port}/analysis",
-            method="OPTIONS",
-            headers={
-                "Origin": "http://localhost:5173",
-                "Access-Control-Request-Method": "POST",
-                "Access-Control-Request-Headers": (
-                    "authorization,content-type,x-as-of,x-contract-version,"
-                    "x-role,x-timezone,x-trace-id,x-user-id"
-                ),
-            },
-        )
-        with urllib.request.urlopen(allowed_request, timeout=5) as response:
-            self.assertEqual(
-                "http://localhost:5173",
-                response.headers["Access-Control-Allow-Origin"],
-            )
+        requested_headers = {
+            "authorization", "content-type", "x-as-of", "x-contract-version",
+            "x-role", "x-timezone", "x-trace-id", "x-user-id",
+        }
+        for path, method in (
+            ("/analysis", "POST"),
+            ("/reports/definitions/report-1/versions/1/blocks", "PUT"),
+        ):
+            with self.subTest(method=method):
+                allowed_request = urllib.request.Request(
+                    f"http://127.0.0.1:{self.port}{path}",
+                    method="OPTIONS",
+                    headers={
+                        "Origin": "http://localhost:5173",
+                        "Access-Control-Request-Method": method,
+                        "Access-Control-Request-Headers": ",".join(requested_headers),
+                    },
+                )
+                with urllib.request.urlopen(allowed_request, timeout=5) as response:
+                    self.assertEqual(
+                        "http://localhost:5173",
+                        response.headers["Access-Control-Allow-Origin"],
+                    )
+                    self.assertEqual("true", response.headers["Access-Control-Allow-Credentials"])
+                    allowed_methods = {
+                        item.strip() for item in response.headers["Access-Control-Allow-Methods"].split(",")
+                    }
+                    self.assertEqual({"GET", "POST", "PUT", "OPTIONS"}, allowed_methods)
+                    allowed_headers = {
+                        item.strip().lower()
+                        for item in response.headers["Access-Control-Allow-Headers"].split(",")
+                    }
+                    self.assertTrue(requested_headers.issubset(allowed_headers))
+                    self.assertNotIn("*", allowed_headers | allowed_methods)
 
         denied_request = urllib.request.Request(
-            f"http://127.0.0.1:{self.port}/analysis",
+            f"http://127.0.0.1:{self.port}/reports/definitions/report-1/versions/1/blocks",
             method="OPTIONS",
             headers={
                 "Origin": "https://untrusted.example",
-                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Method": "PUT",
             },
         )
         with self.assertRaises(urllib.error.HTTPError) as denied:

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.07 |
-| 문서 기준일 | 2026-08-04 14:30 |
+| 버전 | v3.08 |
+| 문서 기준일 | 2026-08-04 15:01 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -197,7 +197,8 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `MERGED_DEV` |
 | R1-W4 | Wave 4·08/24~09/02 | R1 | I4·RC1 → I5 | R1-11~13 | Report 통합·보안·장애·복구·성능·release manifest | `PLANNED` |
 | R1-W4-F2 | Wave 4 model 전환 승인 | R1 | Gate 0 → I4 | R1-11 model checkpoint·비용 판정 | Instruct-2507 checkpoint·평가·비용·중단 조건 승인 | `IN_PROGRESS` |
-| R1-W4-F3 | Wave 4 Base smoke 재작업 승인 | R1 | Gate 0 → I4 | R1-11 model 실패 분류·재평가 판정 | 편향 제거·G2 유지·결과 동등성·잔여 비용 승인 | `IN_PROGRESS` |
+| R1-W4-F3 | Wave 4 Base smoke 재작업 승인 | R1 | Gate 0 → I4 | R1-11 model 실패 분류·재평가 판정 | 첫 균형 표본의 Trino 타입 오류로 재평가 중단 | `BLOCKED` |
+| R1-W4-F4 | Wave 4 Base SQL 타입 재검증 승인 | R1 | Gate 0 → I4 | R1-11 model 타입·범위 규칙 판정 | 일반 타입·synthetic 범위 규칙과 남은 비용 승인 | `IN_PROGRESS` |
 | R2-W4 | Wave 4·08/24~09/02 | R2 | I4·RC1 → I5 | R2-17~19 + R2-03~16 회귀 | 5번째 source·빈 환경 재생성·schema/seed/watermark/hash 동결 | `PLANNED` |
 | R2-W4-F1 | Wave 4 serving metadata follow-up | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | live DataHub View URN·column·lineage·read-only 계약 | `BLOCKED` |
 | R2-W4-F1A | Wave 4 serving metadata 권한 보완 | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | View 소유자 위임 조회 권한과 metadata 계약 동시 검증 | `MERGED_DEV` |
@@ -209,7 +210,8 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W4 | Wave 4·08/24~09/02 | R3 | I4·RC1 → I5 | R3-11~15 + R3-01~10 회귀 | LoRA 1회 비교·조건부 채택·production client·전체 평가·fallback·release | `PLANNED` |
 | R3-W4-F1 | Wave 4 model checkpoint 전환 | R3 | Gate 0 → I4 | R3-10~14 Instruct-2507 Base smoke·Validation | checkpoint 고정 완료, Validation v2 Context 계약 대기 | `BLOCKED` |
 | R3-W4-F2 | Wave 4 Validation v2·Base 평가 | R3 | Gate 0 → I4 | R3-10~14 ID/OOD·Instruct-2507 Base | Validation-ID 75·OOD 75 잠금 완료, Base smoke 4/20로 중단 | `BLOCKED` |
-| R3-W4-F3 | Wave 4 Base smoke 재작업 | R3 | Gate 0 → I4 | R3-10~14 prompt·평가 harness·Instruct-2507 Base | 6개 도메인·두 node 20건으로 JSON·G2·Trino·결과 동등성 재검증 | `READY` |
+| R3-W4-F3 | Wave 4 Base smoke 재작업 | R3 | Gate 0 → I4 | R3-10~14 prompt·평가 harness·Instruct-2507 Base | 첫 균형 표본의 `timestamp(3) <= varchar(7)` 오류로 중단 | `BLOCKED` |
+| R3-W4-F4 | Wave 4 Base SQL 타입 재검증 | R3 | Gate 0 → I4 | R3-10~14 prompt 일반화·Instruct-2507 Base | 같은 균형 20건의 타입·범위·결과 동등성 재검증 | `READY` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
 
@@ -2728,6 +2730,70 @@ AUTO_FAIL_CONDITIONS=선두 20건 재사용; hardcode; G2 우회; 다른 model·
 R1_REVIEW_CONDITIONS=branch CI와 smoke 20건의 JSON·G2·Trino·result match·비용·cleanup 증거를 제출한다. 전부 통과해도 R1의 별도 150건 발행 전에는 대기한다.
 ```
 
+### R1-W4-F4
+
+```text
+STATUS=IN_PROGRESS
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F4
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=Base SQL 타입 재검증 승인
+TASK_CARD_RANGE=R1-11 model 타입·범위 규칙 판정
+CURRENT_TASK_CARD_ID=R1-11
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=c67612f93e50b8db8acea1b556b7627c86bd05e4
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F4@c67612f
+ALLOWED_PATHS=docs/markdown/02_WBS.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/daily_reports/junhee/일일보고.md; tests/integration/test_gate_scope.py
+FORBIDDEN_PATHS=R2~R5 제품 경로; root Compose·env·CI; secret
+ACCEPTANCE_CRITERIA=R3-W4-F3의 균형 표본 첫 건이 JSON·G2를 통과했으나 `timestamp(3) <= varchar(7)`로 Trino 실패했고 정답 SQL은 같은 Trino에서 결과 hash까지 일치했음을 기록한다. case별 정답을 넣지 않고 Context column type에 맞는 날짜 literal과 project-wide synthetic 범위만 prompt 일반 규칙으로 제한한다. F3의 USD 0.0423을 포함한 합계 USD 0.35 안에서 같은 manifest 20건을 한 번만 재검증하고 G2·model·revision·512 token·fail-fast·cleanup 조건을 유지한다.
+ACCEPTANCE_IDS=AC1_F3_EVIDENCE;AC2_GENERAL_RULE;AC3_SAME_MANIFEST;AC4_G2_UNCHANGED;AC5_COST_REMAINDER;AC6_R3_REWORK
+TEST_COMMANDS=document/WBS/report validation; python .github/scripts/gate_scope.py --dashboard --next-gate I4; git diff --check
+TEST_COMMAND_IDS=T1_DOCS;T2_DASHBOARD;T3_DIFF
+STOP_CONDITIONS=case별 SQL hardcode; G2 완화; 다른 model·revision; F3 증거 덮어쓰기; 합계 비용 상한 누락; R1 허용 경로 밖 변경; 필수 검증 실패
+HANDOFF=R3에 동일 manifest·일반 날짜 타입·synthetic 범위·남은 비용 USD 0.3077 전달
+EXTERNAL_ACTION_PERMISSION=기존 R3-W4-F3 승인 USD 0.35 중 사용한 USD 0.0423을 제외하고, 같은 smoke 목적의 task Pod 1개와 최대 신규 USD 0.30을 승인한다. F3+F4 합계는 USD 0.35를 넘지 않는다.
+AUTO_FAIL_CONDITIONS=case별 hardcode; G2 우회; 다른 model·revision; 합계 USD 0.35 초과; 150건·LoRA·Blind Gold 실행; task Pod 미삭제; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=R3 smoke 20건이 전부 통과해야 150건 전체 평가를 별도 발행한다. 미달이면 비용·오류를 기록하고 다시 STOP한다.
+```
+
+### R3-W4-F4
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W4-F4
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=Base SQL 타입 재검증
+TASK_CARD_RANGE=R3-10~14 prompt 일반화·Instruct-2507 Base
+CURRENT_TASK_CARD_ID=R3-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=c67612f93e50b8db8acea1b556b7627c86bd05e4
+START_POINT=origin/daesung 9b53d43cf76ae2c59e9ca10ccbff4b690b8101df; 승인 문서가 통합된 origin/dev를 merge한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R3-W4-F4@c67612f
+MODEL_ID=Qwen/Qwen3-4B-Instruct-2507
+MODEL_REVISION=cdbee75f17c01a7cc42f958dc650907174af0554
+CONTRACT_VERSION=I4-CONTEXT-v2.0.1; MODEL-CANDIDATE-v0.1; PROMPT-v1.0.8
+ALLOWED_PATHS=src/ai/**; src/modelops/**; evals/**; tests/ai/**; handoffs/R3-W4-F3.json; handoffs/R3-W4-F4.json; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; infrastructure/database/**; frontend/**; root Compose·env·CI; secret; G2 상한 완화; F3 실패 증거·기존 Gold·Acceptance·실험 증거 덮어쓰기
+HANDOFF_MANIFEST=handoffs/R3-W4-F4.json
+ACCEPTANCE_CRITERIA=R3-W4-F3의 동일 manifest SHA와 6개 domain·node2/node2_repair·ID/OOD 균형을 보존한다. 첫 실패 SQL과 정답 SQL을 local synthetic Trino에서 다시 재현하고, case ID·정답 SQL을 prompt·후처리에 hardcode하지 않은 채 날짜·timestamp column type에 맞는 DATE 또는 TIMESTAMP literal과 project-wide `SYNTHETIC_HOTEL_001`·ACTUAL·non-forecast 범위를 일반 prompt 규칙으로 고정한다. SQL-only guided JSON·512 token·G2 1000행 상한·동일 checkpoint/revision을 유지한다. 새 endpoint에서 같은 20건의 valid JSON·G2·합성 Trino·정답 결과 동등성을 모두 20/20으로 확인하며 첫 실패에서 즉시 중단한다. 성공해도 150건·LoRA·Blind Gold는 실행하지 않고 endpoint를 삭제한 뒤 R1 판정을 요청한다.
+ACCEPTANCE_IDS=AC1_SAME_MANIFEST;AC2_REPRODUCE;AC3_NO_CASE_HARDCODE;AC4_TYPE_SCOPE_RULE;AC5_JSON20;AC6_G2_20;AC7_TRINO20;AC8_RESULT_MATCH20;AC9_MODEL_REVISION;AC10_COST_CLEANUP
+TEST_COMMANDS=python -m pytest tests/ai -q; python -m compileall -q src/ai src/modelops; smoke manifest 재생성 동일 SHA; F3 generated·expected SQL local Trino 재현; Instruct-2507 endpoint smoke 20; git diff --check
+TEST_COMMAND_IDS=T1_AI;T2_COMPILE;T3_MANIFEST;T4_REPRO;T5_MODEL;T6_DIFF
+STOP_CONDITIONS=manifest 변경; 6개 domain 또는 두 node 누락; case·정답 SQL hardcode; G2 1000행 상한 완화; valid JSON·G2·Trino·result match 중 1건이라도 실패; revision 불일치; 이전 adapter 로드; F4 신규 USD 0.30 또는 F3+F4 합계 USD 0.35 도달; secret 로그; task Pod 미삭제; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=task RunPod Pod 1개·고정 model download·같은 smoke 20건만 신규 USD 0.30, F3+F4 합계 USD 0.35와 전체 누적 USD 15 이내에서 승인한다. 허용 경로 commit·daesung push와 task 자원 삭제를 승인한다. 150건 전체 평가·LoRA·Blind Gold·다른 model·다른 cloud resource·dev 병합은 불가하다.
+AUTO_FAIL_CONDITIONS=manifest 변경; case별 hardcode; G2 우회; 다른 model·revision; 비용 상한 초과; 150건·LoRA·Blind Gold 실행; task Pod 미삭제; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=branch CI와 smoke 20건의 JSON·G2·Trino·result match·비용·cleanup 증거를 제출한다. 전부 통과해도 R1의 별도 150건 발행 전에는 대기한다.
+```
+
 ## I5 이후 후속 단계 예약
 
 아래 항목은 기획에서 빠진 것이 아니라 현재 일정 뒤에 남겨 둔 작업이다. 아직 실행 Wave와 날짜를 정하지 않으며, 현재 상태는 `PLANNED`다. R1이 I5 이후 새 `BASE_SHA`, 담당 경로, 계약·비용·보안 기준을 채워 별도 실행 묶음을 `READY`로 발행해야 시작할 수 있다.
@@ -2776,6 +2842,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.08 | 2026-08-04 15:01 | 균형 smoke 첫 건은 JSON·G2를 통과했지만 생성 SQL의 `timestamp(3) <= varchar(7)` 타입 오류로 Trino에서 중단했고 정답 SQL은 결과 hash까지 일치했다. USD 0.0423·Pod 삭제·active 0과 의도된 CI 실패를 기록하고, 일반 날짜 타입·synthetic 범위 규칙만 보완해 같은 manifest를 F3+F4 합계 USD 0.35 안에서 한 번 재검증하는 R1-W4-F4·R3-W4-F4를 발행했다. |
 | v3.07 | 2026-08-04 14:30 | R3-W4-F2 실패를 편향된 선두 20건·JSON 미완성 8건·1000행 초과 8건·repair PASS 4건으로 분리했다. G2를 유지하면서 6개 domain·두 node·Trino 결과 동등성을 smoke 20건과 신규 USD 0.35 안에서 재검증하는 R1-W4-F3·R3-W4-F3를 발행했다. |
 | v3.06 | 2026-08-04 14:20 | Instruct-2507 Base smoke 20건이 JSON 12건·G2/Trino/정답 SQL 각 4건에 그쳐 R3-W4-F2를 BLOCKED로 전환했다. R3 branch CI `30880359294`는 PASS했지만 150건 전체 평가·LoRA·Blind Gold는 실행하지 않았고 task Pod 삭제와 신규 비용 USD 0.132 추정을 기록했다. |
 | v3.05 | 2026-08-04 14:35 | R4가 actual DataHub에서 PMS–CRM 5개·허용 26개 column만 Context에 포함하고 승인 JOIN은 G2 PASS, JOIN ID 누락은 `UNAPPROVED_JOIN`으로 차단했다. branch CI `30878778928`·dev `23d27ac`과 task 자원 0을 확인해 R4-W4-F2A를 MERGED_DEV로 전환하고, Gold·Acceptance를 제외한 Validation-ID 75·OOD 75 생성 후 Instruct-2507 Base를 최대 신규 USD 0.50 안에서 평가하는 R3-W4-F2를 READY 발행했다. |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.09 |
-| 문서 기준일 | 2026-08-04 15:34 |
+| 버전 | v3.10 |
+| 문서 기준일 | 2026-08-04 15:40 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -2796,6 +2796,66 @@ AUTO_FAIL_CONDITIONS=manifest 변경; case별 hardcode; G2 우회; 다른 model�
 R1_REVIEW_CONDITIONS=branch CI와 smoke 20건의 JSON·G2·Trino·result match·비용·cleanup 증거를 제출한다. 전부 통과해도 R1의 별도 150건 발행 전에는 대기한다.
 ```
 
+### R1-W4-F5
+
+```text
+STATUS=IN_PROGRESS
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F5
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=metric semantic contract
+TASK_CARD_RANGE=R1-11 Context metric 필터 계약 판정
+CURRENT_TASK_CARD_ID=R1-11
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=bc08100d5d38a729b4b37e715afa4f5f9674b200
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F5@bc08100
+ALLOWED_PATHS=docs/markdown/02_WBS.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/daily_reports/junhee/일일보고.md; tests/integration/test_gate_scope.py
+FORBIDDEN_PATHS=R2~R5 제품 경로; root Compose·env·CI; secret
+ACCEPTANCE_CRITERIA=F4 CRM 결과 불일치에서 지표 field·aggregation만으로는 txn_type 등 필수 의미 필터를 복원할 수 없는 계약 누락을 기록한다. R3가 metric required_filters를 구조화해 schema·prompt·Validation 생성기에 보존하는 local-only 작업을 발행하고, cloud 재실행과 R4 소비자 변경은 별도 판정으로 남긴다.
+ACCEPTANCE_IDS=AC1_ROOT_CAUSE;AC2_STRUCTURED_FILTER;AC3_LOCAL_ONLY;AC4_R3_ISSUE
+TEST_COMMANDS=document/WBS/report validation; python -m unittest tests.integration.test_gate_scope; python .github/scripts/gate_scope.py --dashboard --next-gate I4; git diff --check
+TEST_COMMAND_IDS=T1_DOCS;T2_GATE;T3_DASHBOARD;T4_DIFF
+STOP_CONDITIONS=case ID·정답 SQL hardcode; raw SQL filter 문자열을 model trust boundary에 그대로 허용; R4 경로 변경; 외부 비용·model 실행; R1 허용 경로 밖 변경; 필수 검증 실패
+HANDOFF=R3에 구조화 metric filter schema·일반 prompt 소비·validation-0228 회귀를 local-only로 전달
+EXTERNAL_ACTION_PERMISSION=없음. RunPod·model download·endpoint·외부 비용·150건·LoRA·Blind Gold를 금지한다.
+```
+
+### R3-W4-F5
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W4-F5
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=metric semantic contract
+TASK_CARD_RANGE=R3-01·07·09~14 metric filter 계약 보완
+CURRENT_TASK_CARD_ID=R3-01
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=bc08100d5d38a729b4b37e715afa4f5f9674b200
+START_POINT=origin/daesung 8c76f1eb1ccc2510fd6bec74b3eec5f65b3e3e48; origin/dev를 merge해 최신 승인 문서를 반영한 뒤 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W4-F5@bc08100
+CONTRACT_VERSION=MODEL-CANDIDATE-v0.1; PROMPT-v1.0.9-DRAFT; NODE-IO-v0.1-compatible
+ALLOWED_PATHS=src/ai/contracts/node_io.v0.1.json; src/ai/prompt_registry.py; src/ai/training/build_case_specs.py; tests/ai/**; handoffs/R3-W4-F5.json; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; infrastructure/database/**; frontend/**; root Compose·env·CI; eval 결과·Gold·Acceptance 덮어쓰기; secret
+HANDOFF_MANIFEST=handoffs/R3-W4-F5.json
+ACCEPTANCE_CRITERIA=context metric에 optional required_filters를 field·operator·value 구조로 추가하고 허용 operator·value type을 schema로 제한한다. build_case_specs가 Source의 필수 predicate를 case나 정답 SQL hardcode 없이 이 구조로 보존하며 prompt는 이 필터를 정확히 적용하도록 일반 규칙을 추가한다. validation-0228의 txn_type=EXPIRE·is_forecast=false와 기존 분석 View의 ACTUAL·non-forecast가 생성 Context에 포함됨을 test로 확인한다. 기존 required field와 payload는 호환 유지하고 raw SQL predicate를 새 trust-boundary 입력으로 허용하지 않는다.
+ACCEPTANCE_IDS=AC1_OPTIONAL_SCHEMA;AC2_OPERATOR_VALUE;AC3_SOURCE_FILTERS;AC4_PROMPT_RULE;AC5_CRM_REGRESSION;AC6_VIEW_REGRESSION;AC7_COMPATIBILITY;AC8_LOCAL_ONLY
+TEST_COMMANDS=python -m pytest tests/ai -q; python -m compileall -q src/ai; validation-0228 local context build 확인; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_AI;T2_COMPILE;T3_CONTEXT;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=case ID·정답 SQL hardcode; unrestricted SQL filter string 추가; 기존 payload 비호환; 허용 경로 밖 변경; RunPod·model download·endpoint·외부 비용; 150건·LoRA·Blind Gold; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local code·test·허용 경로 commit·daesung push만 승인한다.
+AUTO_FAIL_CONDITIONS=unrestricted predicate; hardcode; 외부 실행·비용; 기존 schema 비호환; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=구조화 필터 schema·생성 Context·prompt·AI test·branch CI를 제출한다. 통과해도 R4 소비자나 cloud smoke는 별도 발행 전까지 대기한다.
+```
+
 ## I5 이후 후속 단계 예약
 
 아래 항목은 기획에서 빠진 것이 아니라 현재 일정 뒤에 남겨 둔 작업이다. 아직 실행 Wave와 날짜를 정하지 않으며, 현재 상태는 `PLANNED`다. R1이 I5 이후 새 `BASE_SHA`, 담당 경로, 계약·비용·보안 기준을 채워 별도 실행 묶음을 `READY`로 발행해야 시작할 수 있다.
@@ -2844,6 +2904,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.10 | 2026-08-04 15:40 | F4 CRM 실패가 모델에 전달되지 않은 metric 필수 필터 계약에서 시작됐음을 확인했다. field·operator·value 구조를 schema·prompt·Validation 생성기에 보존하는 비용 없는 R1-W4-F5·R3-W4-F5를 발행하고 R4 소비·cloud 재평가는 별도 판정으로 남겼다. |
 | v3.09 | 2026-08-04 15:34 | R3-W4-F4는 같은 균형 manifest의 첫 3건을 전 기준 통과했으나 4번째 CRM 소멸 포인트에서 필수 범위·지표 조건을 누락해 result hash가 달랐다. fail-fast·USD 0.0402·F3+F4 USD 0.0825·Pod 삭제·active 0·CI `30884334429`의 의도된 FAIL을 확인해 R1·R3 F4를 BLOCKED·WAIT로 전환하고 추가 cloud 실행을 금지했다. |
 | v3.08 | 2026-08-04 15:01 | 균형 smoke 첫 건은 JSON·G2를 통과했지만 생성 SQL의 `timestamp(3) <= varchar(7)` 타입 오류로 Trino에서 중단했고 정답 SQL은 결과 hash까지 일치했다. USD 0.0423·Pod 삭제·active 0과 의도된 CI 실패를 기록하고, 일반 날짜 타입·synthetic 범위 규칙만 보완해 같은 manifest를 F3+F4 합계 USD 0.35 안에서 한 번 재검증하는 R1-W4-F4·R3-W4-F4를 발행했다. |
 | v3.07 | 2026-08-04 14:30 | R3-W4-F2 실패를 편향된 선두 20건·JSON 미완성 8건·1000행 초과 8건·repair PASS 4건으로 분리했다. G2를 유지하면서 6개 domain·두 node·Trino 결과 동등성을 smoke 20건과 신규 USD 0.35 안에서 재검증하는 R1-W4-F3·R3-W4-F3를 발행했다. |

@@ -37,8 +37,8 @@
     {"id": "AC11_FIXTURE_COMPAT", "status": "PASS", "evidence": "기존 fixture page와 6상태·12-column·keyboard source contract 보존"}
   ],
   "TEST_RESULTS": [
-    {"id": "T1_OPENAPI", "name": "python app/backend/scripts/export_openapi.py --check", "status": "BLOCKED", "evidence": "현재 Python 환경에 fastapi가 없어 ModuleNotFoundError"},
-    {"id": "T2_BACKEND_CONSUMER", "name": "python -m pytest -p no:cacheprovider tests/backend/test_openapi_contract.py tests/backend/test_report_registration.py -q", "status": "BLOCKED", "evidence": "fastapi 부재로 test collection 중단; dependency 설치는 승인 범위 밖"},
+    {"id": "T1_OPENAPI", "name": "python app/backend/scripts/export_openapi.py --check", "status": "PASS", "evidence": "GitHub Actions CI 30895691240 python-contracts job에서 committed OpenAPI와 FastAPI schema 일치 test 포함 전체 pytest 통과"},
+    {"id": "T2_BACKEND_CONSUMER", "name": "python -m pytest -p no:cacheprovider tests/backend/test_openapi_contract.py tests/backend/test_report_registration.py -q", "status": "PASS", "evidence": "GitHub Actions CI 30895691240 python-contracts job의 전체 pytest 통과로 해당 두 test 포함 확인"},
     {"id": "T3_FRONTEND_CONTRACT", "name": "node tests/frontend/contracts.test.mjs", "status": "PASS", "evidence": "R5 contract checks passed"},
     {"id": "T4_BUILD", "name": "npm --prefix app/enterprise-react run build", "status": "PASS", "evidence": "2368 modules transformed; built in 659ms"},
     {"id": "T5_FIXTURE_BROWSER", "name": "browser fixture 1440·1024·768·360, 6상태·keyboard", "status": "BLOCKED", "evidence": "Browser runtime discovery 결과 사용 가능한 browser 0개"},
@@ -47,7 +47,6 @@
     {"id": "T8_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
   ],
   "NOT_RUN": [
-    "OpenAPI/backend tests: fastapi dependency 부재",
     "fixture/API browser verification: Browser runtime과 local backend runtime 부재"
   ],
   "CHANGE_REQUESTS": [],

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.94 |
-| 문서 기준일 | 2026-08-04 11:20 |
+| 버전 | v2.95 |
+| 문서 기준일 | 2026-08-04 11:42 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -197,7 +197,8 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `MERGED_DEV` |
 | R1-W4 | Wave 4·08/24~09/02 | R1 | I4·RC1 → I5 | R1-11~13 | Report 통합·보안·장애·복구·성능·release manifest | `PLANNED` |
 | R2-W4 | Wave 4·08/24~09/02 | R2 | I4·RC1 → I5 | R2-17~19 + R2-03~16 회귀 | 5번째 source·빈 환경 재생성·schema/seed/watermark/hash 동결 | `PLANNED` |
-| R2-W4-F1 | Wave 4 serving metadata follow-up | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | live DataHub View URN·column·lineage·read-only 계약 | `READY` |
+| R2-W4-F1 | Wave 4 serving metadata follow-up | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | live DataHub View URN·column·lineage·read-only 계약 | `BLOCKED` |
+| R2-W4-F1A | Wave 4 serving metadata 권한 보완 | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | View 소유자 위임 조회 권한과 metadata 계약 동시 검증 | `READY` |
 | R3-W4 | Wave 4·08/24~09/02 | R3 | I4·RC1 → I5 | R3-11~15 + R3-01~10 회귀 | LoRA 1회 비교·조건부 채택·production client·전체 평가·fallback·release | `PLANNED` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
@@ -2290,7 +2291,7 @@ Wave 4는 I4 Reporting 통합부터 RC1·리허설·I5 동결까지 포함한다
 ### R2-W4-F1
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -2320,6 +2321,43 @@ HANDOFF=R4에 `LIVE_DATAHUB` View URN/FQN/column·lineage·어댑터 오류 계�
 EXTERNAL_ACTION_PERMISSION=로컬 정적 검증·현재 실행 중인 기존 DataHub·Trino container에 대한 read-only 조회·기존 설치 dependency 사용·R2 허용 경로 commit·seung push. dependency 설치·image pull·container 신규 생성·volume 삭제·외부 데이터 전송·비용·secret·dev 병합 불가
 AUTO_FAIL_CONDITIONS=허용 경로 침범; 학습 Context 자산·컬럼 누락; lineage·version·synthetic 필드 누락; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R2 환경에서 기존 container가 실행 중이지 않아 live trace를 만들 수 없을 때만 Not Run으로 전달하고, R1이 dev 통합 전에 기존 통합 환경에서 같은 trace를 실행한다. 실제 DataHub 조회·read-only trace가 없으면 Gate 0은 PASS로 전환하지 않는다.
+```
+
+차단 근거: `datahub_ingestion`의 원천 테이블 SELECT는 성공했지만 `serving.analytics` View SELECT가 `View owner does not have sufficient privileges`로 실패했다. Trino file access control에서 View 소유자 `hotel_synthetic_setup`에 원천 `SELECT`만 있고 `GRANT_SELECT`가 없어 다른 조회 전용 사용자의 View 실행이 차단됐다. 기존 허용 경로 밖의 Trino access rule 한 파일이 필요하므로 아래 보완 묶음으로 대체한다.
+
+### R2-W4-F1A
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W4-F1A
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R2-09~11 serving.analytics DataHub·lineage·adapter·read-only 권한 계약 정합
+CURRENT_TASK_CARD_ID=R2-09
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=90669192e5940f8f66b132e585937a24076fb6b6
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R2-W4-F1A@9066919
+I0_DECISION_VERSION=I0-v1.0.0
+CONTRACT_VERSION=I4-DATA-v1.0.0-DRAFT
+SCHEMA_VERSION=1.0.0
+SEED_VERSION=20260729
+ALLOWED_PATHS=infrastructure/database/datahub/**; infrastructure/database/trino/etc/access-control-rules.json; src/data/**; tests/data/**; docs/markdown/daily_reports/seung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/ai/**; app/enterprise-react/**; root Compose·env·CI; 기존 source DDL·seed 변경
+HANDOFF_MANIFEST=handoffs/R2-W4-F1A.json
+ACCEPTANCE_CRITERIA=R2-W4-F1의 전체 조건을 유지한다. 추가로 View 소유자 `hotel_synthetic_setup`에만 serving·원천 table의 `GRANT_SELECT`를 부여해 다른 조회 전용 사용자가 `serving.analytics` View를 실행할 수 있게 하되, 일반 사용자와 `datahub_ingestion`의 권한은 SELECT 전용으로 유지한다. 학습 JSONL이 사용하는 8개 View를 명시적 allowlist로 수집하고 URN·FQN·column·synthetic·schema/seed version·원천 lineage를 versioned validation contract로 제공한다. application read-only SELECT 성공과 DDL·DML 거부, DataHub 8개 View 조회 trace를 제출한다.
+ACCEPTANCE_IDS=AC1_OWNER_GRANT_SELECT;AC2_RUNTIME_READ_ONLY;AC3_RECIPE;AC4_VIEW_ALLOWLIST;AC5_COLUMNS;AC6_LINEAGE;AC7_SYNTHETIC_VERSION;AC8_TRAINING_SUBSET;AC9_DATAHUB_TRACE;AC10_READ_ONLY_TRACE;AC11_CONSUMER_HANDOFF
+TEST_COMMANDS=python -m unittest discover -s tests/data -p "test_*.py"; python -m compileall -q src/data; docker compose -f compose.yml --env-file .env.example --profile full config --quiet; git diff --check
+TEST_COMMAND_IDS=T1_DATA;T2_COMPILE;T3_COMPOSE_CONFIG;T4_DIFF
+STOP_CONDITIONS=일반 사용자 또는 `datahub_ingestion`에 `GRANT_SELECT`·write 권한이 생김; View 실제 column과 학습 Context 불일치; DataHub Trino source가 memory catalog View를 수집하지 못함; backend·AI·root 경로 변경 필요; 실제 고객 데이터·secret 필요; 필수 검증 또는 live trace 실패
+HANDOFF=R4에 `LIVE_DATAHUB` View URN/FQN/column·lineage·어댑터 오류 계약, R1에 View 권한·recipe 재현·DataHub 조회·read-only 실행 trace 전달
+EXTERNAL_ACTION_PERMISSION=로컬 정적 검증·현재 실행 중인 기존 Trino container에 대한 access rule 재적용을 위한 해당 container 재시작·기존 DataHub container의 read-only 조회·기존 설치 dependency 사용·R2 허용 경로 commit·seung push. dependency 설치·image pull·container 신규 생성·volume 삭제·외부 데이터 전송·비용·secret·dev 병합 불가
+AUTO_FAIL_CONDITIONS=허용 경로 침범; 일반 사용자 권한 상승; 학습 Context 자산·컬럼 누락; lineage·version·synthetic 필드 누락; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=현재 DataHub container가 실행 중이지 않거나 승인 버전 image가 없어 live DataHub trace를 만들 수 없을 때만 Not Run으로 전달하고, R1이 dev 통합 전에 승인된 통합 환경에서 같은 trace를 실행한다. 실제 DataHub 조회 trace가 없으면 Gate 0은 PASS로 전환하지 않는다.
 ```
 
 ## I5 이후 후속 단계 예약
@@ -2370,6 +2408,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.95 | 2026-08-04 11:42 | R2-W4-F1 사전 조회에서 원천 SELECT는 성공했지만 View 소유자의 `GRANT_SELECT` 부재로 `serving.analytics` 조회가 실패했다. 기존 카드의 경로 제한을 지키기 위해 F1을 BLOCKED로 전환하고, 소유자에게만 위임 조회 권한을 추가하되 일반 사용자는 SELECT 전용으로 유지하는 R2-W4-F1A를 같은 기준 SHA에서 READY 발행했다. |
 | v2.94 | 2026-08-04 11:20 | sLLM 학습데이터는 `serving.analytics` View를 사용하지만 DataHub에는 5개 원천 recipe만 있고 backend 제품 Context는 PMS·CRM 5개 원천 asset을 고정 반환하는 불일치를 확인했다. I3 Base 제품 통과는 유지하되 LoRA 제품 채택은 정합 전까지 보류했다. 제품 Context는 `LIVE_DATAHUB`로 확정하고 실제 조회·read-only trace를 요구하는 R2-W4-F1을 먼저 READY 발행했으며, R4 follow-up은 R2 dev 통합 뒤 발행한다. |
 | v2.93 | 2026-08-04 11:20 | R3-W3-F11·R4-W3-F4를 dev에 통합하고 최종 CI `30870270154` PASS를 확인했다. 고정 Qwen3-4B Base·synthetic Trino read-only 제품 trace가 2026-06·07 두 행, repair 0회, ROUTER부터 ARTIFACT까지 모두 PASS했고 Pod 404·active 0·secret 로그 0건·기존 Docker 무변경을 확인해 R1-W3·R1-W3-F7을 VERIFIED_GATE로 승인했다. Dashboard가 과거 BLOCKED 카드를 현재 카드로 오인하던 선택 로직도 마지막 발행 묶음 기준으로 교정했다. |
 | v2.92 | 2026-08-04 10:41 | R1-W3-F7 실제 trace에서 G2 reference 보완 뒤 잉여 non-date parameter, 승인 JOIN 단축·타입 오류, verbose guided 응답 불안정과 전월 대비 기간 누락을 순서대로 확인했다. 안전 경계를 유지하는 R3-W3-F11 PROMPT-v1.0.6과 R4-W3-F4 SQL-only guided·결정론적 metadata·2개월 fail-closed를 READY 발행하며, 두 변경 통합 뒤 동일 trace를 최종 판정한다. |

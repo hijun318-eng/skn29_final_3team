@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.83 |
-| 문서 기준일 | 2026-08-04 11:26 |
+| 버전 | v7.84 |
+| 문서 기준일 | 2026-08-04 11:42 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -322,6 +322,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 11:42 | 2.10~2.12 | `datahub_ingestion`으로 원천 테이블 조회는 성공했지만 `serving.analytics` View 조회는 소유자의 위임 조회 권한 부족으로 실패했다. Trino 공식 권한 기준에 따라 View 소유자 `hotel_synthetic_setup`에만 `GRANT_SELECT`를 추가하고 일반 사용자와 metadata 수집 사용자는 SELECT 전용을 유지하는 R2-W4-F1A를 승인했다. recipe·8개 View metadata 계약·실제 조회 증거를 함께 검증하기 전까지 관련 행은 진행 상태와 기존 일정을 유지한다. | 분석 View 조회 권한 병목·R2 보완 승인 |
 | 2026-08-04 11:20 | 2.10~2.12, 3.16 | sLLM 학습데이터는 `serving.analytics` View를 사용하지만 DataHub recipe는 5개 원천만 수집하고 backend 제품 adapter는 PMS·CRM 원천 asset 5개를 고정 반환하는 불일치를 확인했다. Base 제품의 I3 통과는 유지하고 LoRA 제품 채택·release 고정은 보류한다. 제품 Context 공급은 `LIVE_DATAHUB`로 확정하고 versioned contract는 수집 결과 검증·fail-closed 기준으로만 사용한다. R2-W4-F1로 8개 View recipe·URN/FQN·column·lineage·synthetic/version과 실제 DataHub·read-only trace를 먼저 제공하고 통합 후 R4 Context 소비를 별도 발행하도록 승인했다. 기존 진행·대기 상태와 일정은 유지한다. | 학습·제품 Context 정합 R2 선행 승인 |
 | 2026-08-04 11:20 | 1.7, 3.14, 4.9, 6.3 | R3 PROMPT-v1.0.6과 R4 SQL-only guided·결정론적 metadata·2개월 fail-closed를 dev에 통합하고 CI `30870270154` PASS를 확인했다. 고정 Qwen3-4B Base·synthetic Trino read-only 제품 trace `r1-w3-f7-product-trace-retry7`은 2026-06 `843295200.00`, 2026-07 `843453600.00` 두 행과 ROUTER→CONTROLLER→CONTEXT→G1→MODEL→G2→QUERY→G3→ARTIFACT 전 단계 PASS, repair 0회를 반환했다. 비용 상한 USD 0.307711, Pod 404·active 0·secret 로그 0건·기존 Trino·app DB 무변경을 확인했다. 과거 BLOCKED 카드를 우선하던 dashboard 선택도 마지막 발행 묶음 기준으로 교정해 I4 `READY_TO_ISSUE`를 확인하고 6.3을 완료로 전환했다. | I3 VERIFIED_GATE·Wave 3 완료 |
 | 2026-08-04 10:41 | 3.14, 4.9, 6.3 | R1-W3-F7 실제 제품 trace에서 G2 reference 보완 뒤 잉여 parameter, 승인 JOIN 단축·timestamp 타입 오류, verbose guided 응답 불안정과 전월 대비 기간 누락을 확인했다. 실제 성공 경로는 두 달 2행과 MODEL→G2→QUERY→G3→ARTIFACT까지 재현했지만 변경 통합·CI 전이므로 R3-W3-F11과 R4-W3-F4를 승인하고 6.3 진행 상태·일정·간트는 유지한다. Pod 비용 상한 USD 0.307711, 활성 Pod 0, 기존 Trino·앱 DB 무변경을 확인했다. | 실제 의미 병목 분리·R3/R4 최소 보완 승인 |
@@ -437,6 +438,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.84 | 2026-08-04 11:42 | 분석 View의 원천 직접 조회는 성공했지만 View 소유자 위임 조회 권한 부족으로 application 조회가 실패한 근거를 2.10~2.12에 연결하고, 소유자만 `GRANT_SELECT`를 갖도록 제한한 R2-W4-F1A를 승인했다. 구현·실제 DataHub 조회 전 상태·일정·간트는 유지했다. |
 | v7.83 | 2026-08-04 11:26 | `refactor_docs`의 중복 양식·역할·운영 설명 축약을 통합하고, 최신 dev의 I3 완료 상태와 sLLM `LIVE_DATAHUB` 정합 결정·작업 로그·변경 이력을 보존했다. |
 | v7.82 | 2026-08-04 11:20 | sLLM 학습의 `serving.analytics` View와 DataHub·제품 Context 불일치를 2.10~2.12·3.16에 연결하고, 제품 Context는 `LIVE_DATAHUB`로 결정했으며 소유권별 R2→R4 정합 순서의 첫 R2-W4-F1만 승인했다. 기존 상태·일정은 유지했다. |
 | v7.81 | 2026-08-04 11:20 | R3·R4 의미 정확성 보완과 dev CI, 고정 Base·synthetic read-only 제품 trace의 두 달 2행·전 단계 PASS·자원 정리를 근거로 6.3을 완료로 전환하고 I3 VERIFIED_GATE를 연결했다. |

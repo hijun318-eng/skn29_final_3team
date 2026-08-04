@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.97 |
-| 문서 기준일 | 2026-08-04 12:51 |
+| 버전 | v2.98 |
+| 문서 기준일 | 2026-08-04 13:20 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -198,7 +198,8 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R1-W4 | Wave 4·08/24~09/02 | R1 | I4·RC1 → I5 | R1-11~13 | Report 통합·보안·장애·복구·성능·release manifest | `PLANNED` |
 | R2-W4 | Wave 4·08/24~09/02 | R2 | I4·RC1 → I5 | R2-17~19 + R2-03~16 회귀 | 5번째 source·빈 환경 재생성·schema/seed/watermark/hash 동결 | `PLANNED` |
 | R2-W4-F1 | Wave 4 serving metadata follow-up | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | live DataHub View URN·column·lineage·read-only 계약 | `BLOCKED` |
-| R2-W4-F1A | Wave 4 serving metadata 권한 보완 | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | View 소유자 위임 조회 권한과 metadata 계약 동시 검증 | `READY` |
+| R2-W4-F1A | Wave 4 serving metadata 권한 보완 | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | View 소유자 위임 조회 권한과 metadata 계약 동시 검증 | `MERGED_DEV` |
+| R4-W4-F1A | Wave 4 serving Context 소비 보완 | R4 | Gate 0 → I4 | R4-06~11 `LIVE_DATAHUB` Context·G2 정합 | 승인 View를 질문별 60-column 상한으로 선별하고 권한·G2를 fail-closed 검증 | `READY` |
 | R3-W4 | Wave 4·08/24~09/02 | R3 | I4·RC1 → I5 | R3-11~15 + R3-01~10 회귀 | LoRA 1회 비교·조건부 채택·production client·전체 평가·fallback·release | `PLANNED` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
@@ -2251,7 +2252,7 @@ Wave 4는 I4 Reporting 통합부터 RC1·리허설·I5 동결까지 포함한다
 ### R1-W4-F1A
 
 ```text
-STATUS=IN_PROGRESS
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -2274,7 +2275,8 @@ TEST_COMMAND_IDS=T1_FRAGMENT;T2_SCOPE;T3_DOCS;T4_DIFF
 STOP_CONDITIONS=공식 v1.6 health 계약과 불일치; R1 허용 경로 밖 변경 필요; R2 제품 경로 변경 필요; 필수 검증 실패
 HANDOFF=dev health 계약 commit·CI와 R2 최신 dev 재검증 조건 전달
 EXTERNAL_ACTION_PERMISSION=사용자의 작업 계속·commit·push·dev 통합 승인에 따라 위 허용 경로의 local 검증·commit·junhee push·dev 병합을 승인한다. 비용·외부 배포·secret·다른 Docker 변경은 불가하다.
-RESULT=task DataHub v1.6.0에서 GMS `/health` 200과 management `/actuator/health` 404를 확인해 service fragment와 검증기의 잘못된 management 필수 조건을 제거했다. dev 통합과 R2 corrective CI는 아직 진행 중이다.
+RESULT=task DataHub v1.6.0에서 GMS `/health` 200과 management `/actuator/health` 404를 확인해 service fragment와 검증기의 잘못된 management 필수 조건을 제거했다. R2 결과를 최신 dev에서 재검증해 branch와 dev CI를 모두 통과했다.
+EVIDENCE=junhee `cdf6a24`; health 교정 dev `7ba5d40`; junhee CI `30875926545` PASS; R2 branch CI `30876089391` PASS; 최종 dev `7ca7755`; dev CI `30876201074` PASS
 ```
 
 ### R1-W4
@@ -2357,7 +2359,7 @@ R1_REVIEW_CONDITIONS=R2 환경에서 기존 container가 실행 중이지 않아
 ### R2-W4-F1A
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -2387,6 +2389,41 @@ HANDOFF=R4에 `LIVE_DATAHUB` View URN/FQN/column·lineage·어댑터 오류 계�
 EXTERNAL_ACTION_PERMISSION=로컬 정적 검증·현재 실행 중인 기존 Trino container에 대한 access rule 재적용을 위한 해당 container 재시작·기존 DataHub container의 read-only 조회·기존 설치 dependency 사용·R2 허용 경로 commit·seung push. dependency 설치·image pull·container 신규 생성·volume 삭제·외부 데이터 전송·비용·secret·dev 병합 불가
 AUTO_FAIL_CONDITIONS=허용 경로 침범; 일반 사용자 권한 상승; 학습 Context 자산·컬럼 누락; lineage·version·synthetic 필드 누락; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=현재 DataHub container가 실행 중이지 않거나 승인 버전 image가 없어 live DataHub trace를 만들 수 없을 때만 Not Run으로 전달하고, R1이 dev 통합 전에 승인된 통합 환경에서 같은 trace를 실행한다. 실제 DataHub 조회 trace가 없으면 Gate 0은 PASS로 전환하지 않는다.
+RESULT=task 전용 DataHub v1.6.0에 recipe를 실제 실행해 93 records를 적재했고, 계약과 live 결과가 8개 View·116개 column·17개 upstream edge·90개 column lineage에서 일치했다. View 소유자만 `GRANT_SELECT`를 갖고 application·ingestion 사용자는 read-only를 유지했으며 task 전용 자원은 제거했다.
+EVIDENCE=seung `fefec52`; data test 27건 PASS; canonical SHA-256 `b4e6774e2cd5c5655487d44b0d288d1216cb746fe8afab0388d09f9120388b02`; branch CI `30876089391` PASS; dev `7ca7755`; dev CI `30876201074` PASS
+```
+
+### R4-W4-F1A
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W4-F1A
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=Gate 0 Context consumer
+TASK_CARD_RANGE=R4-06~11 LIVE_DATAHUB Context·G2 정합
+CURRENT_TASK_CARD_ID=R4-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=7ca7755378c51501c824c6d2fe35afc7ba76fbbd
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W4-F1A@7ca7755
+I0_DECISION_VERSION=I0-v1.0.0
+CONTRACT_VERSION=I4-DATA-v1.0.0-DRAFT; OPENAPI-v1.0.0
+ALLOWED_PATHS=app/backend/app/adapters/i2_data_platform.py; app/backend/app/api/router.py; app/backend/compose.fragment.yml; tests/backend/test_i2_data_platform.py; tests/backend/test_context_builder.py; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=infrastructure/database/**; src/data/**; src/ai/**; src/modelops/**; app/enterprise-react/**; root Compose·env·CI; migration·OpenAPI·secret
+HANDOFF_MANIFEST=handoffs/R4-W4-F1A.json
+ACCEPTANCE_CRITERIA=제품 Context 공급은 `LIVE_DATAHUB`로 고정하고 `src/data/serving_analytics_contract.i4.v1.json`은 live 결과 검증·fail-closed 기준으로만 읽는다. backend는 DataHub에서 계약에 등록된 `serving.analytics` View의 URN·FQN·column을 조회하고, 질문과 entitlement에 맞는 후보만 Context Package에 포함한다. 기획서의 최대 8 dataset·60 column 상한은 유지하며 권한 없는 View, 계약 밖 URN/FQN/column, DataHub 조회 실패는 Context에 포함하지 않거나 안전 실패한다. Node 2의 Context 내부 `serving.analytics.*` FQN은 G2가 허용하고 외부 FQN은 차단하는 contract test를 추가한다. 기존 raw 5개 asset을 real mode의 성공 fallback으로 사용하지 않는다.
+ACCEPTANCE_IDS=AC1_LIVE_DATAHUB;AC2_CONTRACT_VALIDATION;AC3_ENTITLEMENT_FILTER;AC4_CONTEXT_LIMIT;AC5_SERVING_FQN_G2_ALLOW;AC6_EXTERNAL_FQN_G2_BLOCK;AC7_FAIL_CLOSED;AC8_REGRESSION
+TEST_COMMANDS=python -m pytest tests/backend/test_i2_data_platform.py tests/backend/test_context_builder.py -q; python -m compileall -q app/backend/app; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_BACKEND;T2_COMPILE;T3_SCOPE;T4_DIFF
+STOP_CONDITIONS=60-column 상한을 지키지 못함; DataHub live 결과를 versioned contract로 대체함; entitlement 이전에 자산 노출; R4 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R3에 실제 제품 Context의 승인 View URN/FQN/column과 Node 2 입력 계약, R1에 live DataHub 오류·권한·G2 contract trace 전달
+EXTERNAL_ACTION_PERMISSION=사용자의 작업 계속·commit·push·dev 통합 승인에 따라 위 허용 경로의 local 검증·commit·jaehong push·dev 병합을 승인한다. dependency 설치·비용·RunPod·외부 데이터 전송·secret·다른 Docker project 변경은 불가하다.
+AUTO_FAIL_CONDITIONS=허용 경로 침범; raw asset 성공 fallback; 계약 밖 View·column 포함; 권한 우회; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=live DataHub container가 없으면 HTTP는 mock contract test로 검증하고 실제 통합 trace는 Not Run으로 명시한다. R4 결과가 dev에 통합되고 실제 제품 Context·Node 2·G2 trace가 확인되기 전에는 Gate 0을 PASS로 전환하거나 새 모델 평가를 시작하지 않는다.
 ```
 
 ## I5 이후 후속 단계 예약
@@ -2437,6 +2474,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.98 | 2026-08-04 13:20 | R1 health 교정과 R2 DataHub 생산자 결과를 최종 dev `7ca7755`·CI `30876201074` PASS로 확정했다. R2의 8개 View·116개 column 계약을 live DataHub 검증 기준으로 소비하되 질문별 최대 60개 column과 entitlement를 유지하고 raw 5개 asset fallback을 금지하는 R4-W4-F1A를 READY 발행했다. |
 | v2.97 | 2026-08-04 12:51 | R1-W4-F1A branch CI에서 최신 R1 bundle을 과거 `R1-W3-F7`로 고정한 통합 테스트 한 건만 실패해, 현재 bundle ID·상태 기대값 교정을 허용 경로와 검증에 추가했다. Compose·문서·role scope는 PASS를 유지했다. |
 | v2.96 | 2026-08-04 12:48 | R2 DataHub 실수집은 8개 URN·116개 column·17개 upstream edge·90개 column lineage로 PASS했으나, 실제 GMS에 없는 management actuator를 service fragment가 필수 health로 요구해 CI가 실패했다. R2 범위 위반을 되돌리고 공식 v1.6 `/health` 계약만 R1 경로에서 교정한 뒤 dev 통합·R2 재검증하는 R1-W4-F1A를 발행했다. |
 | v2.95 | 2026-08-04 11:42 | R2-W4-F1 사전 조회에서 원천 SELECT는 성공했지만 View 소유자의 `GRANT_SELECT` 부재로 `serving.analytics` 조회가 실패했다. 기존 카드의 경로 제한을 지키기 위해 F1을 BLOCKED로 전환하고, 소유자에게만 위임 조회 권한을 추가하되 일반 사용자는 SELECT 전용으로 유지하는 R2-W4-F1A를 같은 기준 SHA에서 READY 발행했다. |

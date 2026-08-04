@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.85 |
-| 문서 기준일 | 2026-08-04 12:48 |
+| 버전 | v7.86 |
+| 문서 기준일 | 2026-08-04 13:20 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -322,6 +322,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 13:20 | 1.7, 2.10~2.12, 4.7~4.11 | R1 health 계약과 R2 DataHub 생산자 결과를 최종 dev `7ca7755`·CI `30876201074` PASS로 확정했다. live DataHub의 8개 View·116개 column을 질문별 최대 8 dataset·60 column으로 선별하고 entitlement·계약 불일치를 fail-closed 처리하며 Context 내부 `serving.analytics.*`만 G2가 허용하도록 R4-W4-F1A를 승인했다. 소비자 통합 전에는 Gate 0과 새 model 평가를 시작하지 않는다. | R2 생산자 MERGED_DEV·R4 소비자 승인 |
 | 2026-08-04 12:48 | 1.7, 2.10~2.12 | task DataHub v1.6.0에서 분석 View 8개·column 116개·upstream edge 17개·column lineage 90개를 실제 수집·조회해 Gate 0의 R2 생산자 조건을 확인했다. GMS `/health`는 200이지만 service fragment가 존재하지 않는 management actuator를 필수로 검사해 R2 CI가 실패했으므로, R2 범위 위반 변경을 되돌리고 R1-W4-F1A로 health 계약만 dev에 선행 교정한 뒤 R2를 재검증한다. 기존 상태·일정·간트는 dev와 R2 CI PASS 전까지 유지한다. | DataHub 실수집 PASS·R1 health 계약 교정 진행 |
 | 2026-08-04 11:42 | 2.10~2.12 | `datahub_ingestion`으로 원천 테이블 조회는 성공했지만 `serving.analytics` View 조회는 소유자의 위임 조회 권한 부족으로 실패했다. Trino 공식 권한 기준에 따라 View 소유자 `hotel_synthetic_setup`에만 `GRANT_SELECT`를 추가하고 일반 사용자와 metadata 수집 사용자는 SELECT 전용을 유지하는 R2-W4-F1A를 승인했다. recipe·8개 View metadata 계약·실제 조회 증거를 함께 검증하기 전까지 관련 행은 진행 상태와 기존 일정을 유지한다. | 분석 View 조회 권한 병목·R2 보완 승인 |
 | 2026-08-04 11:20 | 2.10~2.12, 3.16 | sLLM 학습데이터는 `serving.analytics` View를 사용하지만 DataHub recipe는 5개 원천만 수집하고 backend 제품 adapter는 PMS·CRM 원천 asset 5개를 고정 반환하는 불일치를 확인했다. Base 제품의 I3 통과는 유지하고 LoRA 제품 채택·release 고정은 보류한다. 제품 Context 공급은 `LIVE_DATAHUB`로 확정하고 versioned contract는 수집 결과 검증·fail-closed 기준으로만 사용한다. R2-W4-F1로 8개 View recipe·URN/FQN·column·lineage·synthetic/version과 실제 DataHub·read-only trace를 먼저 제공하고 통합 후 R4 Context 소비를 별도 발행하도록 승인했다. 기존 진행·대기 상태와 일정은 유지한다. | 학습·제품 Context 정합 R2 선행 승인 |
@@ -439,6 +440,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.86 | 2026-08-04 13:20 | R1·R2 DataHub Gate 0 생산자 결과의 dev·CI 완료를 기록하고, Context 60-column·entitlement·G2 fail-closed 기준의 R4 소비자 작업을 승인했다. |
 | v7.85 | 2026-08-04 12:48 | DataHub v1.6.0 실수집의 8개 View·116개 column·17개 upstream edge·90개 column lineage PASS를 2.10~2.12에 연결하고, 잘못된 management health 필수 조건을 R1-W4-F1A에서 교정한 뒤 dev·R2 CI를 재검증하도록 기록했다. 상태·일정·간트는 유지했다. |
 | v7.84 | 2026-08-04 11:42 | 분석 View의 원천 직접 조회는 성공했지만 View 소유자 위임 조회 권한 부족으로 application 조회가 실패한 근거를 2.10~2.12에 연결하고, 소유자만 `GRANT_SELECT`를 갖도록 제한한 R2-W4-F1A를 승인했다. 구현·실제 DataHub 조회 전 상태·일정·간트는 유지했다. |
 | v7.83 | 2026-08-04 11:26 | `refactor_docs`의 중복 양식·역할·운영 설명 축약을 통합하고, 최신 dev의 I3 완료 상태와 sLLM `LIVE_DATAHUB` 정합 결정·작업 로그·변경 이력을 보존했다. |

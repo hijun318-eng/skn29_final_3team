@@ -962,7 +962,8 @@
                   "summary": "승인 Template 요청",
                   "value": {
                     "parameters": {
-                      "week_start": "2026-07-27"
+                      "period_end_exclusive": "2026-07-01",
+                      "period_start": "2026-05-01"
                     },
                     "question": "주간 객실 운영 현황",
                     "template_id": "weekly-room-operations"

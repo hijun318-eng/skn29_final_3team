@@ -10,6 +10,7 @@ path.insert(0, str(BACKEND))
 
 from app.adapters.fake_data_platform import FakeDataPlatformAdapter
 from app.adapters.fake_model import FakeModelAdapter
+from app.adapters.contract_model import ContractModelAdapter
 from app.contracts import (
     AnalysisRequest,
     AnalysisStatus,
@@ -19,7 +20,13 @@ from app.contracts import (
     StageOutcome,
 )
 from app.services.analysis_service import AnalysisService
-from app.services.routing_service import RoutingService
+from app.services.routing_service import (
+    ACCESS_POLICY_VERSION,
+    ApprovedTemplate,
+    RoutingService,
+    _template_role_policy,
+)
+from src.modelops.runtime import ProductionModelClient
 
 
 class CountingDataPlatformAdapter(FakeDataPlatformAdapter):
@@ -54,6 +61,16 @@ class MissingLimitModel(FakeModelAdapter):
         if node == "node2":
             response["sql"] = "SELECT 1 FROM pms.public.pms_guests"
         return response
+
+
+class CapturingContractModel(ContractModelAdapter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests = []
+
+    def _generate(self, node, payload):
+        self.requests.append((node, payload))
+        return super()._generate(node, payload)
 
 
 class AnalysisPipelineTest(unittest.TestCase):
@@ -109,6 +126,72 @@ class AnalysisPipelineTest(unittest.TestCase):
         )
         self.assertEqual(1, self.adapter.execute_count)
 
+    def test_general_question_reaches_node2_separately_from_request_id(self) -> None:
+        model = CapturingContractModel()
+        service = AnalysisService(self.adapter, model)
+        payload = AnalysisRequest(question="지난달 객실 매출을 알려줘")
+
+        service.analyze(payload, self.context, self.decision(payload))
+        node2 = next(item for node, item in model.requests if node == "node2")
+
+        self.assertEqual(payload.question, node2["normalized_question"])
+        self.assertEqual(str(self.context.request_id), node2["question_id"])
+        self.assertNotEqual(node2["normalized_question"], node2["question_id"])
+
+    def test_approved_template_reaches_template_route_and_both_gates(self) -> None:
+        template = ApprovedTemplate(
+            template_id="weekly-room-operations",
+            parameter_names=frozenset({"week_start"}),
+            allowed_roles=frozenset({Role.HOTEL_ANALYST}),
+            sql_text=(
+                "SELECT 1 AS synthetic_value "
+                "FROM pms.public.pms_guests LIMIT 1"
+            ),
+            source_fqns=frozenset({"pms.public.pms_guests"}),
+        )
+        payload = AnalysisRequest(
+            question="weekly room operations",
+            template_id=template.template_id,
+            parameters={"week_start": "2026-07-27"},
+        )
+        decision = RoutingService((template,)).decide(payload)
+
+        response = self.service.analyze(payload, self.context, decision)
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual("TEMPLATE", response.data.route.value)
+        self.assertEqual(template.template_id, response.data.template_id)
+        self.assertTrue(response.data.gates.g1_required)
+        self.assertTrue(response.data.gates.g2_required)
+
+    def test_template_role_is_blocked_before_query(self) -> None:
+        template = ApprovedTemplate(
+            template_id="weekly-room-operations",
+            parameter_names=frozenset(),
+            allowed_roles=frozenset({Role.HOTEL_ANALYST}),
+            sql_text="SELECT 1 FROM pms.public.pms_guests LIMIT 1",
+            source_fqns=frozenset({"pms.public.pms_guests"}),
+        )
+
+        with self.assertRaisesRegex(ValueError, "권한"):
+            RoutingService((template,)).decide(
+                AnalysisRequest(
+                    question="weekly room operations",
+                    template_id=template.template_id,
+                ),
+                Role.DATA_ADMIN,
+            )
+        self.assertEqual(0, self.adapter.execute_count)
+
+    def test_template_role_policy_uses_the_approved_config(self) -> None:
+        policy = _template_role_policy()
+
+        self.assertEqual("ACCESS-POLICY-v1.0.0", ACCESS_POLICY_VERSION)
+        self.assertEqual(
+            {Role.HOTEL_ANALYST},
+            set(policy["weekly-room-operations"]),
+        )
+
     def test_g1_clarification_blocks_before_model_and_query(self) -> None:
         response = self.analyze("clarification")
 
@@ -139,6 +222,23 @@ class AnalysisPipelineTest(unittest.TestCase):
                 self.assertEqual(PipelineStage.MODEL, response.data.trace[-1].stage)
                 self.assertIsNone(response.data.artifact)
                 self.assertEqual(0, self.adapter.execute_count)
+
+    def test_production_fallback_is_not_accepted_as_analysis_success(self) -> None:
+        client = ProductionModelClient(
+            lambda _node, _payload, _timeout: (_ for _ in ()).throw(TimeoutError()),
+            failure_threshold=1,
+        )
+        service = AnalysisService(self.adapter, ContractModelAdapter(client))
+        payload = AnalysisRequest(question="합성 객실 운영 현황")
+
+        response = service.analyze(payload, self.context, self.decision(payload))
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual("INTERNAL_ERROR", response.error.code.value)
+        self.assertEqual(PipelineStage.MODEL, response.data.trace[-1].stage)
+        self.assertIsNone(response.data.artifact)
+        self.assertEqual(0, self.adapter.execute_count)
+        self.assertTrue(client.last_trace["fallback"])
 
     def test_g2_blocks_unsafe_sql_without_query(self) -> None:
         response = self.analyze("g2_blocked")

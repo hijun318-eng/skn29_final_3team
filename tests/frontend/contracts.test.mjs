@@ -9,6 +9,7 @@ import {
 import {
   approveDraft,
   createDraft,
+  createReportRun,
   REPORT_CONTRACT_VERSION,
 } from "../../app/enterprise-react/src/contracts/report.ts";
 import {
@@ -16,6 +17,8 @@ import {
   FIXTURE_VERSION,
 } from "../../app/enterprise-react/src/data/analysisFixtures.ts";
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
+import { catalogSources, I3_DATA_CONTRACT_VERSION } from "../../app/enterprise-react/src/data/catalogFixtures.ts";
+import { createHttpAnalysisClient, usesMockAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
 
 const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/package.json", import.meta.url)));
 const g1ClarificationFixture = JSON.parse(
@@ -24,7 +27,10 @@ const g1ClarificationFixture = JSON.parse(
 const timeoutFixture = JSON.parse(
   readFileSync(new URL("../backend/fixtures/api/v0.1/timeout.json", import.meta.url)),
 );
-const analysisStatePanelSource = readFileSync(
+const reportsPageSource = readFileSync(
+  new URL("../../app/enterprise-react/src/pages/ReportsPage.jsx", import.meta.url),
+  "utf8",
+);const analysisStatePanelSource = readFileSync(
   new URL("../../app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx", import.meta.url),
   "utf8",
 );
@@ -63,7 +69,8 @@ assert.equal(timeout.artifact, undefined);
 assert.equal(timeout.traceId, "fixture-timeout");
 assert.deepEqual(analysisFixtures.error.error, timeout.error);
 assert.equal(analysisFixtures.error.traceId, timeout.traceId);
-assert.match(analysisStatePanelSource, /run\.error\.retryable \? "다시 시도 가능" : "다시 시도 불가"/);
+assert.match(analysisStatePanelSource, /<dd>{run\.error\.code}<\/dd>/);
+assert.match(analysisStatePanelSource, /<dd>{String\(run\.error\.retryable\)}<\/dd>/);
 
 const normalized = normalizeApiResponse({
   data: {
@@ -122,6 +129,26 @@ assert.equal(normalized.rowCount, 1);
 assert.equal(analysisFixtures.ready.artifact.artifactId, analysisFixtures.ready.evidence.artifactId);
 assert.equal(analysisFixtures.ready.metrics[0].unit, "KRW");
 assert.ok(analysisFixtures.ready.table.rows.length > 0);
+assert.equal(usesMockAnalysisClient, false);
+assert.match(reportsPageSource, /candidate\.artifactId/);
+assert.match(reportsPageSource, /artifactId: candidate\.artifactId/);
+
+let httpRequest;
+const httpClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
+  httpRequest = { url, init };
+  return new Response(JSON.stringify(g1ClarificationFixture), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+});
+const httpRun = await httpClient.analyze("기간 없는 질문", "conv-http-001", "ready");
+assert.equal(httpRequest.url, "http://backend.test/analysis");
+assert.equal(httpRequest.init.method, "POST");
+assert.equal(httpRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION);
+assert.equal(JSON.parse(httpRequest.init.body).template_id, "weekly-room-operations");
+assert.equal(httpRun.requestId, g1ClarificationFixture.meta.request_id);
+assert.equal(httpRun.traceId, g1ClarificationFixture.meta.trace_id);
+assert.equal(httpRun.error.retryable, false);
 
 const approved = Object.freeze({
   definitionId: "report-001",
@@ -134,10 +161,60 @@ const draft = createDraft(approved);
 const next = approveDraft(draft, "2026-07-30T12:00:00+09:00");
 
 assert.equal(approved.version, 1);
+assert.equal(draft.version, 2);
 assert.equal(next.version, 2);
 assert.equal(next.status, "approved");
 assert.ok(Object.isFrozen(next));
 assert.ok(Object.isFrozen(next.blocks));
 assert.throws(() => approveDraft(approved, "2026-07-30T12:00:00+09:00"), /draft Report version/);
+
+const reportRun = createReportRun({
+  runId: "run-001",
+  definitionId: next.definitionId,
+  definitionVersion: next.version,
+  asOf: "2026-07-30T12:00:00+09:00",
+  policyVersion: "policy-v1",
+  contextHash: "context-001",
+  watermark: { pms: "2026-07-28T05:00:00.000Z" },
+  status: "partial",
+  blocks: [{ blockId: "block-001", artifactId: "artifact-001", queryId: "query-001", snapshotChecksum: "sha256-001", status: "partial" }],
+});
+assert.ok(Object.isFrozen(reportRun));
+assert.ok(Object.isFrozen(reportRun.watermark));
+assert.ok(Object.isFrozen(reportRun.blocks));
+assert.equal(reportRun.definitionVersion, 2);
+
+const i3Contract = JSON.parse(readFileSync(new URL("../../src/data/i3_contract.v1.json", import.meta.url)));
+assert.equal(I3_DATA_CONTRACT_VERSION, i3Contract.contract_version);
+assert.equal(catalogSources.length, 5);
+for (const source of catalogSources) {
+  const recipe = i3Contract.metadata.recipes.find((item) => item.source_id === source.sourceId);
+  const check = i3Contract.catalog_checks.find((item) => item.source_id === source.sourceId);
+  assert.ok(recipe, source.sourceId);
+  assert.ok(check, source.sourceId);
+  assert.equal(source.ingestionStatus, recipe.status);
+  assert.equal(source.ingestionId, recipe.ingestion_id);
+  assert.equal(source.datasetUrn, recipe.dataset_urn);
+  assert.equal(source.fqn, recipe.fqn);
+  assert.equal(source.catalogCheckFqn, check.fqn);
+  assert.equal(source.sha256, check.sha256);
+}
+
+const apiCases = [
+  ["g1_clarification", "EMPTY"],
+  ["g2_blocked", "ERROR"],
+  ["g3_failed", "INSUFFICIENT_EVIDENCE"],
+  ["timeout", "ERROR"],
+  ["partial", "PARTIAL"],
+  ["cancelled", "CANCELLED"],
+];
+for (const [name, expectedView] of apiCases) {
+  const fixtureResponse = JSON.parse(readFileSync(new URL(`../backend/fixtures/api/v0.1/${name}.json`, import.meta.url)));
+  const fixtureRun = normalizeApiResponse(fixtureResponse, name, `conv-${name}`);
+  assert.equal(resolveViewState(fixtureRun), expectedView);
+  assert.equal(fixtureRun.error.code, fixtureResponse.error.code);
+  assert.equal(fixtureRun.error.message, fixtureResponse.error.message);
+  assert.equal(fixtureRun.error.retryable, fixtureResponse.error.retryable);
+}
 
 console.log("R5 contract checks passed");

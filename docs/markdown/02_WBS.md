@@ -2,18 +2,23 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 설명 | Answervice 실행 작업, 담당, 상태, 일정, 산출물 관리 |
+| 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.35 |
-| 문서 기준일 | 2026-07-31 17:28 |
+| 버전 | v7.81 |
+| 문서 기준일 | 2026-08-04 10:58 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
-| 대응 템플릿 | 없음 |
+| 대응 템플릿 | `docs/templates/[기획] WBS_양식 (1)_27기_0팀.xlsx`, `docs/templates/[기획] WBS_양식(2)_27기_0팀.xlsx` |
 
-**프로젝트:** 2026-07-10 ~ 2026-09-03 | **실행:** 2026-07-29 ~ 2026-09-03 (5.4주) | **5인 · 99개 태스크 · 산출물 21건**
+**프로젝트:** 2026-07-10~09-03 | **실행:** 2026-07-29~09-03 (5.4주) | **규모:** 5인 · 실행 일정 99개 태스크 · I5 이후 비차단 후속 4건 · 공식 산출물 21건 + 옵션 1건
 
-**기준 문서:** `Answervice_기획서.md` · `05_화면설계서.md` · `Gate_실행_카드_원장.md`
+**기준 문서:** `docs/Answervice_기획서.md` · `docs/markdown/05_화면설계서.md` · `docs/markdown/collaboration/Gate_실행_카드_원장.md`
+
+## 대응 양식 구조
+
+- 필드 기준은 `docs/markdown/document_specs/산출물작성규격.md`의 `02 WBS`를 따른다.
+- 이 문서의 `ID`·단계 절·`작업 항목`·`담당`·`현황`·`시작`·`마감`·`우선순위`는 WBS 템플릿 필드에 대응하며, 기간·완료율·Gantt는 변환 시 계산한다.
 
 ## 역할 및 책임
 
@@ -24,6 +29,8 @@
 | R3 | 윤대성 | `daesung` | AI·모델·프롬프트·ModelOps |
 | R4 | 김재홍 | `jaehong` | 백엔드 Control Plane |
 | R5 | 송민지 | `minji` | 프론트엔드·자동 리포팅 |
+
+상세 역할 경계와 운영 원칙은 `AGENTS.md`, 실행 묶음과 상태는 `docs/markdown/collaboration/Gate_실행_카드_원장.md`를 따른다.
 
 ## Gate·병합 일정
 
@@ -39,7 +46,7 @@
 | RC2·I5 | 09/02 | release SHA·runbook·code·data·model·prompt·policy 동결 | 승인 후 `dev`→`main`은 별도 승인 |
 | 최종 발표 | 09/03 | 승인 SHA와 고정 fixture로 시연·질의응답 | 발표 중 code·설정 변경 금지 |
 
-## 🗓️ 개발 일정 (5.4주 실행)
+## 🗓️ 8주 핵심 개발 일정
 
 | 구간 | 기간 | 목표 | 마감·Gate |
 |---|---|---|---|
@@ -92,7 +99,11 @@ gantt
 | 발표·공식 산출물 | 7 | 08/03~09/03 |
 
 
-## 📋 전체 태스크 (99개)
+## 실행 WBS
+
+아래 표는 99개 실행 작업의 담당·상태·기간을 관리하며 첫 번째 담당자가 결과 책임자다.
+
+## 🗂️ 전체 태스크 (99개)
 
 ### 기준 정렬·통합 기반
 
@@ -128,8 +139,8 @@ gantt
 | 2.15 | R2-14 승인 JOIN Registry | JOIN ID·cardinality·time 계약 | 정승 | 진행 | 08/10 | 08/21 | 높음 |
 | 2.16 | R2-15 대표 2·3-source 정답 조회 | 정답 SQL·result hash | 정승 | 진행 | 08/10 | 08/21 | 높음 |
 | 2.17 | R2-16 Trino/source 실행 adapter | query·status·cancel·health | 정승 | 진행 | 08/10 | 08/21 | 높음 |
-| 2.18 | R2-17 source watermark·cache 무효화 입력 | watermark set | 정승 | 대기 | 08/17 | 08/28 | 높음 |
-| 2.19 | R2-18 필수 30건·gold용 데이터 fixture | 평가 fixture | 정승 | 대기 | 08/17 | 08/28 | 높음 |
+| 2.18 | R2-17 source watermark·cache 무효화 입력 | watermark set | 정승 | 진행 | 08/17 | 08/28 | 높음 |
+| 2.19 | R2-18 필수 30건·gold용 데이터 fixture | 평가 fixture | 정승 | 완료 | 08/17 | 08/28 | 높음 |
 | 2.20 | R2-19 5번째 source 온보딩·재현 | runbook·URN→FQN trace | 정승 | 대기 | 08/24 | 08/28 | 높음 |
 
 ### AI·모델·프롬프트·ModelOps
@@ -140,17 +151,17 @@ gantt
 | 3.2 | R3-01 Node 1·2·2′·3 I/O schema | versioned JSON schema | 윤대성 | 완료 | 08/03 | 08/07 | 높음 |
 | 3.3 | R3-02 deterministic fake model adapter | fake adapter | 윤대성 | 완료 | 08/03 | 08/10 | 높음 |
 | 3.4 | R3-03 Node 1 질문 정규화 | intent·metric·time 후보 | 윤대성 | 완료 | 08/03 | 08/21 | 높음 |
-| 3.5 | R3-04 Node 2 Context 제한 SQL 생성 | Trino SQL·참조 목록 | 윤대성 | 대기 | 08/17 | 08/21 | 높음 |
-| 3.6 | R3-05 Node 2′ 정규화 오류 1회 수정 | corrected SQL | 윤대성 | 대기 | 08/17 | 08/21 | 높음 |
+| 3.5 | R3-04 Node 2 Context 제한 SQL 생성 | Trino SQL·참조 목록 | 윤대성 | 진행 | 08/17 | 08/21 | 높음 |
+| 3.6 | R3-05 Node 2′ 정규화 오류 1회 수정 | corrected SQL | 윤대성 | 진행 | 08/17 | 08/21 | 높음 |
 | 3.7 | R3-06 G3 통과 결과의 Node 3 설명 | 근거·조건·주의 설명 | 윤대성 | 완료 | 08/10 | 08/21 | 높음 |
 | 3.8 | R3-07 Prompt Registry | prompt ID·version·hash | 윤대성 | 완료 | 08/03 | 08/07 | 높음 |
 | 3.9 | R3-08 필수 30건 평가 runner | schema·linking·SQL·result 평가 | 윤대성 | 완료 | 08/10 | 08/31 | 높음 |
-| 3.10 | R3-09 Base model·Analytics Agent 기준선 비교 | 정확도·p50·p95·자원 비교표 | 윤대성 | 대기 | 08/17 | 08/21 | 높음 |
-| 3.11 | R3-10 train·val·gold manifest 검수 | 학습 데이터 검수 기록 | 윤대성 | 대기 | 08/17 | 08/21 | 높음 |
-| 3.12 | R3-11 time-boxed LoRA/QLoRA 1회 비교와 제품 채택 Gate | 비교 결과·adapter·rollback 증거 | 윤대성 | 대기 | 08/24 | 08/28 | 조건부 |
-| 3.13 | R3-12 vLLM·RunPod serving | endpoint·health·manifest | 윤대성 | 대기 | 08/17 | 08/28 | 높음 |
-| 3.14 | R3-13 production model client | retry·fallback·circuit 계약 | 윤대성 | 대기 | 08/17 | 08/28 | 높음 |
-| 3.15 | R3-14 model trace·비용·재현성 | version·token·cost trace | 윤대성 | 대기 | 08/17 | 08/28 | 중간 |
+| 3.10 | R3-09 Base model·Analytics Agent 기준선 비교 | 정확도·p50·p95·자원 비교표 | 윤대성 | 완료 | 08/17 | 08/21 | 높음 |
+| 3.11 | R3-10 train·val·gold manifest 검수 | 학습 데이터 검수 기록 | 윤대성 | 완료 | 08/17 | 08/21 | 높음 |
+| 3.12 | R3-11 time-boxed LoRA/QLoRA 1회 비교와 제품 채택 Gate | 비교 결과·adapter·rollback 증거 | 윤대성 | 완료 | 08/24 | 08/28 | 조건부 |
+| 3.13 | R3-12 vLLM·RunPod serving | endpoint·health·manifest | 윤대성 | 완료 | 08/17 | 08/28 | 높음 |
+| 3.14 | R3-13 production model client | retry·fallback·circuit 계약 | 윤대성 | 완료 | 08/17 | 08/28 | 높음 |
+| 3.15 | R3-14 model trace·비용·재현성 | version·token·cost trace | 윤대성 | 완료 | 08/17 | 08/28 | 중간 |
 | 3.16 | R3-15 model·prompt·adapter release 후보 고정 | model release manifest | 윤대성 | 대기 | 08/24 | 09/02 | 높음 |
 
 ### 백엔드 Control Plane
@@ -171,13 +182,13 @@ gantt
 | 4.12 | R4-11 R2 Trino 실행 lifecycle 통제 | pass token·timeout·cancel | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
 | 4.13 | R4-12 Result Shaper·G3 | shaped result·evidence | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
 | 4.14 | R4-13 Node 3·승인 후 수정 불가 Artifact | artifact contract | 김재홍 | 완료 | 08/10 | 08/14 | 높음 |
-| 4.15 | R4-14 SQL Plan·Result Cache | versioned cache key | 김재홍 | 대기 | 08/17 | 08/21 | 중간 |
+| 4.15 | R4-14 SQL Plan·Result Cache | versioned cache key | 김재홍 | 완료 | 08/17 | 08/21 | 중간 |
 | 4.16 | R4-15 Audit·Trace·관측 | linked request trace | 김재홍 | 완료 | 08/10 | 08/21 | 높음 |
 | 4.17 | R4-16 R5 Report module 공통 등록 | analysis run contract | 김재홍 | 대기 | 08/24 | 08/28 | 높음 |
 | 4.18 | R4-17 worker·schedule runtime | 영속 job·같은 요청 한 번만 처리·실패 격리 | 김재홍 | 대기 | 08/24 | 08/28 | 높음 |
-| 4.19 | R4-18 권한·mask·민감정보 가림(redaction) | 보안 검증 증거 | 김재홍 | 대기 | 08/17 | 08/28 | 높음 |
+| 4.19 | R4-18 권한·mask·민감정보 가림(redaction) | 보안 검증 증거 | 김재홍 | 완료 | 08/17 | 08/28 | 높음 |
 | 4.20 | R4-19 retention·backup·restore hook | 보존 job·복구 절차 | 김재홍 | 대기 | 08/24 | 09/02 | 높음 |
-| 4.21 | R4-20 health·backend Dockerfile·회귀 | service fragment | 김재홍 | 검토 | 08/24 | 09/02 | 높음 |
+| 4.21 | R4-20 health·backend Dockerfile·회귀 | service fragment | 김재홍 | 완료 | 08/24 | 09/02 | 높음 |
 | 4.22 | R4-21 API·migration·policy release 동결 | backend release manifest | 김재홍 | 대기 | 08/31 | 09/02 | 높음 |
 
 ### 프론트엔드·자동 리포팅
@@ -187,18 +198,18 @@ gantt
 | 5.1 | R5-00 frontend 후보·fixture 조사와 활성 app 결정안 | reuse·remove 결정표 | 송민지 | 완료 | 07/29 | 07/31 | 높음 |
 | 5.2 | R5-01 IA·routing·design token | route·layout | 송민지 | 완료 | 07/29 | 07/31 | 높음 |
 | 5.3 | R5-02 OpenAPI type·client·mock | typed client·fixture | 송민지 | 완료 | 08/03 | 08/07 | 높음 |
-| 5.4 | R5-03 Chat shell·질문 흐름 | conversation UI | 송민지 | 진행 | 08/03 | 08/14 | 높음 |
-| 5.5 | R5-04 실행 상태·오류 UI | state components | 송민지 | 진행 | 08/03 | 08/21 | 높음 |
-| 5.6 | R5-05 Evidence·출처·조건 panel | URN·metric·filter·as_of UI | 송민지 | 진행 | 08/10 | 08/14 | 높음 |
-| 5.7 | R5-06 결과 표·차트 | result components | 송민지 | 진행 | 08/10 | 08/14 | 높음 |
-| 5.8 | R5-07 Chat→Report Artifact bridge | artifact action | 송민지 | 진행 | 08/10 | 08/14 | 높음 |
+| 5.4 | R5-03 Chat shell·질문 흐름 | conversation UI | 송민지 | 완료 | 08/03 | 08/14 | 높음 |
+| 5.5 | R5-04 실행 상태·오류 UI | state components | 송민지 | 완료 | 08/03 | 08/21 | 높음 |
+| 5.6 | R5-05 Evidence·출처·조건 panel | URN·metric·filter·as_of UI | 송민지 | 완료 | 08/10 | 08/14 | 높음 |
+| 5.7 | R5-06 결과 표·차트 | result components | 송민지 | 완료 | 08/10 | 08/14 | 높음 |
+| 5.8 | R5-07 Chat→Report Artifact bridge | artifact action | 송민지 | 완료 | 08/10 | 08/14 | 높음 |
 | 5.9 | R5-08 Report definition·version·run·block domain | Report contract | 송민지 | 완료 | 08/03 | 08/24 | 높음 |
-| 5.10 | R5-09 독립 Report router·API module | router·contract test | 송민지 | 대기 | 08/17 | 08/24 | 높음 |
-| 5.11 | R5-10 Report migration proposal | 단일 migration proposal | 송민지 | 대기 | 08/17 | 08/24 | 높음 |
+| 5.10 | R5-09 독립 Report router·API module | router·contract test | 송민지 | 완료 | 08/17 | 08/24 | 높음 |
+| 5.11 | R5-10 Report migration proposal | 단일 migration proposal | 송민지 | 완료 | 08/17 | 08/24 | 높음 |
 | 5.12 | R5-11 12-column Report editor | add·move·resize·draft | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 5.13 | R5-12 수동 실행·Run History | run·status·history UI | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 5.14 | R5-13 daily·weekly·monthly schedule UI | schedule contract | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
-| 5.15 | R5-14 Catalog·Connection UI | source·asset·ingestion UI | 송민지 | 대기 | 08/17 | 08/28 | 중간 |
+| 5.15 | R5-14 Catalog·Connection UI | source·asset·ingestion UI | 송민지 | 완료 | 08/17 | 08/28 | 중간 |
 | 5.16 | R5-15 Operations·Audit trace UI | request trace UI | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 5.17 | R5-16 접근성·반응형·보안 상태 표시 | QA evidence | 송민지 | 대기 | 08/24 | 08/31 | 높음 |
 | 5.18 | R5-17 실제 API integration | production client | 송민지 | 대기 | 08/24 | 08/31 | 높음 |
@@ -209,9 +220,9 @@ gantt
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 6.1 | R1-07 필수 30건·gold 120건 평가 원장 관리 | reviewer·split·expected 원장 | 박준희·정승·윤대성 | 진행 | 08/03 | 08/31 | 높음 |
-| 6.2 | R1-09 I2 Deterministic Slice 통합·판정 | 대표 질문 trace·result hash | 박준희·정승·윤대성·김재홍·송민지 | 진행 | 08/10 | 08/14 | 높음 |
-| 6.3 | R1-10 I3 General LLM·보안 기준선 통합 | 일반 질문·model 비교·보안 결과 | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/17 | 08/21 | 높음 |
+| 6.1 | R1-07 필수 30건·gold 120건 평가 원장 관리 | reviewer·split·expected 원장 | 박준희·정승·윤대성 | 완료 | 08/03 | 08/31 | 높음 |
+| 6.2 | R1-09 I2 Deterministic Slice 통합·판정 | 대표 질문 trace·result hash | 박준희·정승·윤대성·김재홍·송민지 | 완료 | 08/10 | 08/14 | 높음 |
+| 6.3 | R1-10 I3 General LLM·보안 기준선 통합 | 일반 질문·model 비교·보안 결과 | 박준희·정승·윤대성·김재홍·송민지 | 진행 | 08/17 | 08/21 | 높음 |
 | 6.4 | R1-11 I4 Reporting·worker·partial 통합 | Report 왕복 trace | 박준희·김재홍·송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 6.5 | R1-12 read-only·mask·장애·복구·성능 검증 | 수용 시험 증거 | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/24 | 09/02 | 높음 |
 | 6.6 | R1-13 RC1·RC2·I5·최종 Release | release manifest·runbook·승인 SHA | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/31 | 09/03 | 높음 |
@@ -220,7 +231,7 @@ gantt
 
 | ID | 작업 항목 | 산출물 | 담당 | 현황 | 시작 | 마감 | 우선순위 |
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
-| 7.1 | 중간 발표 자료·역할별 진행 근거·리허설 | 중간 발표 PT | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/03 | 08/06 | 높음 |
+| 7.1 | 중간 발표 자료·역할별 진행 근거·리허설 | 중간 발표 PT | 박준희·정승·윤대성·김재홍·송민지 | 진행 | 08/03 | 08/06 | 높음 |
 | 7.2 | 최종 발표 story·PT·시간 배분 | 최종 발표 PT | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/24 | 09/02 | 높음 |
 | 7.3 | 데이터·AI·Control Plane·UI 역할별 근거와 Q&A | 발표 근거 묶음 | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/31 | 09/02 | 높음 |
 | 7.4 | 승인 SHA 소스·README·version manifest 패키징 | 프로젝트 소스코드 | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/31 | 09/03 | 높음 |
@@ -228,7 +239,7 @@ gantt
 | 7.6 | 1차·2차 전체 리허설과 결함 회귀 | 리허설 기록 | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 09/01 | 09/02 | 높음 |
 | 7.7 | 승인 환경 최종 발표·질의응답 | 발표 결과 | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 09/03 | 09/03 | 높음 |
 
-## 📦 산출물 제출 일정 (21건)
+## 📦 산출물 제출 일정 (공식 21건 + 옵션 1건)
 
 | 단계 | 산출물 | 제출일 | 내부검토 | WBS | 담당 | 현황 |
 |---|---|:--:|:--:|:--:|:--:|:--:|
@@ -239,7 +250,7 @@ gantt
 | 모델 배포 | 화면설계서 | **07/24** | 07/23 | 5.2 | 송민지 | 검토 |
 | 데이터 수집 및 저장 | 데이터베이스/저장소 설계 문서 | **07/31** | 07/30 | 2.4 | 정승 | 검토 |
 | 데이터 전처리 | 데이터 전처리 결과서 | **07/31** | 07/30 | 2.8 | 정승 | 검토 |
-| 발표 및 시연 | 중간 발표 PT 자료 | **08/06** | 08/05 | 7.1 | 박준희·전원 | 대기 |
+| 발표 및 시연 | 중간 발표 PT 자료 | **08/06** | 08/05 | 7.1 | 박준희·전원 | 검토 |
 | 데이터 전처리 | 머신러닝/딥러닝 학습결과서 | **08/07** | 08/05 | 3.10 | 윤대성 | 대기 |
 | 데이터 전처리 | 학습한 ML/DL 모델 | **08/07** | 08/05 | 3.16 | 윤대성 | 대기 |
 | 모델링 및 평가 | 벡터DB/GraphDB 구축 결과서 | **08/07** | 08/05 | 3.1 | 윤대성·박준희 | 차단 |
@@ -301,7 +312,7 @@ gantt
 | DataHub·Trino·connector 고정 version | 실행 전 고정하고 manifest 기록 | I1 | R1·R2 |
 | Result Cache 구현 | versioned key 계약 우선, PostgreSQL·Redis는 profile 측정 후 선택 | I1/I3 | R1·R4 |
 | model checkpoint·RunPod profile | Base 기준선 우선, 비용·자원 승인 후 외부 실행 | I1/I3 | R1·R3 |
-| SQL LoRA 제품 채택 | time-boxed 비교 Gate 전에는 Base 유지 | I4 이전 | R1·R3 |
+| SQL LoRA 제품 채택 | 실제 결과 일치는 향상됐지만 p95가 증가해 Base 유지, serving 최적화·SLO 승인 뒤 재판정 | I4 이전 | R1·R3 |
 | 공식 VectorDB/GraphDB 산출물 | 미도입 근거 제출 가능 여부 확인 전 `차단` | 08/05 | R1·R3 |
 | 공식 03 제출본 시각 검증 | DOCX는 기획서 v1.2 내용으로 갱신됐으며 PNG render 전까지 `검토` | 다음 공식 제출 전 | R1·R3 |
 
@@ -311,6 +322,51 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 10:41 | 3.14, 4.9, 6.3 | R1-W3-F7 실제 제품 trace에서 G2 reference 보완 뒤 잉여 parameter, 승인 JOIN 단축·timestamp 타입 오류, verbose guided 응답 불안정과 전월 대비 기간 누락을 확인했다. 실제 성공 경로는 두 달 2행과 MODEL→G2→QUERY→G3→ARTIFACT까지 재현했지만 변경 통합·CI 전이므로 R3-W3-F11과 R4-W3-F4를 승인하고 6.3 진행 상태·일정·간트는 유지한다. Pod 비용 상한 USD 0.307711, 활성 Pod 0, 기존 Trino·앱 DB 무변경을 확인했다. | 실제 의미 병목 분리·R3/R4 최소 보완 승인 |
+| 2026-08-04 09:49 | 3.14, 4.9, 6.3 | R3가 node2 SQL FROM·JOIN과 references의 승인 table 집합을 양방향 정확 일치시키고 mismatch repair도 한 번만 교정하도록 PROMPT-v1.0.5/PROMPT-v1.0.2를 보완했다. prompt 3건·AI 47건·Gate 19건과 dev CI `30866726434` PASS를 확인해 통합하고, 같은 Base·synthetic Trino read-only 제품 trace R1-W3-F7을 승인했다. 실행 전이므로 상태·일정·간트는 유지한다. | R3 reference prompt 완료·제품 재검증 승인 |
+| 2026-08-04 09:37 | 3.14, 4.9, 6.3 | 정상 A40·고정 Qwen3-4B·task backend로 실제 합성 질문을 호출했다. MODEL까지 통과했지만 SQL-reference 불일치와 1회 repair 후 G2 정책 차단으로 QUERY·G3·Artifact가 생성되지 않았다. 제품 응답 hash, task 자원 제거·활성 Pod 0, 기존 Trino·앱 DB의 ID·restart count·health 무변경을 확인하고 R3-W3-F10으로 node2·repair reference 정확 일치 문구만 승인했다. 실제 성공 trace 전이므로 실행 상태·일정·간트는 유지한다. | 제품 G2 reference 병목·R3 최소 보완 승인 |
+| 2026-08-04 08:37 | 7.1 | 현재 Gate·구현·검증 근거를 12장 중간 발표 원고와 제공 템플릿 기반 PPTX에 반영하고 전 장 시각·구조를 확인했다. 리허설은 미실행이므로 실행 행은 진행, 제출본은 검토로 전환했다. | 중간 발표 자료 작성·검토 |
+| 2026-08-04 08:12 | 3.14, 4.9, 6.3 | 목표 재개 후 공식 PyTorch template Secure A40을 다시 할당했지만 474.937초 동안 실제 uptime이 0에 머물러 모델·제품 요청은 Not Run이었다. Pod 404·활성 0, 신규 비용 상한 USD 0.058048·누적 USD 1.617033, 기존 Trino 무변경과 임시 key 저장 제거를 확인했다. 같은 외부 blocker이므로 기존 상태·일정·간트와 I3 진행을 유지한다. | RunPod provisioning 재현·제품 재검증 차단 유지 |
+| 2026-08-04 05:09 | 3.14, 4.9, 6.3 | PROMPT-v1.0.4 제품 재검증을 위해 세 task Secure A40을 시도했지만 모두 container uptime 0으로 시작되지 않아 모델·제품 요청은 Not Run이었다. 세 Pod 404·활성 0, 신규 비용 상한 USD 0.141859·누적 USD 1.558985, 기존 Trino 무변경과 임시 key 저장 제거를 확인했다. 외부 provisioning blocker이므로 기존 상태·일정·간트와 I3 진행을 유지한다. | RunPod container 시작 장애·제품 재검증 차단 |
+| 2026-08-04 04:47 | 3.14, 4.9, 6.3 | R3의 SQL placeholder·parameter 1:1 PROMPT-v1.0.4가 AI 47건·전체 CI를 통과해 dev에 통합됐다. 동일 Base·I2 제품 전체 trace를 확인하는 R1-W3-F6를 발행했다. 실행 전이므로 기존 상태·일정·간트는 유지한다. | R3 parameter prompt 완료·제품 재검증 승인 |
+| 2026-08-04 04:39 | 3.14, 4.9, 6.3 | 실제 질문 Base·I2 제품 trace는 MODEL·G2까지 통과했지만 모델이 request metadata를 SQL parameter로 반환해 QUERY에서 안전 차단됐다. 비용 상한 USD 0.071203·누적 USD 1.417126과 task cleanup·기존 Trino 무변경을 확인하고, R3-W3-F9로 parameter 의미만 보완한다. 성공 trace 전이므로 기존 상태·일정·간트는 유지한다. | R1-W3-F5 차단·R3 parameter prompt 승인 |
+| 2026-08-04 04:27 | 3.14, 4.9, 6.3 | R4의 제품 원문 question→normalized question 전달이 23건·전체 CI를 통과해 dev에 통합됐다. actual question raw 입력과 동일 Base·I2 read-only 제품 전체 trace를 확인하는 R1-W3-F5를 발행했다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R4 질문 전달 완료·실제 제품 추적 승인 |
+| 2026-08-04 04:21 | 3.14, 4.9, 6.3 | R3의 optional normalized question·ID 비의미 prompt가 16건·전체 CI를 통과해 dev에 통합됐다. R4-W3-F3로 제품 원문 질문을 service→adapter→R3 request에 그대로 전달하는 최소 소비자 보완을 승인했다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R3 질문 계약 완료·R4 소비자 연결 승인 |
+| 2026-08-04 04:17 | 3.14, 4.9, 6.3 | raw 고정 UUID는 schema·한 줄 SQL·LIMIT을 통과했지만 실제 제품의 무작위 request UUID에서는 MODEL invalid와 circuit 안전 실패가 반복됐다. node2 request에 실제 질문이 없어 Base가 UUID에 반응하는 근본 계약 차이를 확인했고 QUERY·Artifact 없이 task resource를 제거했다. 신규 비용 상한은 약 USD0.090978이다. R3-W3-F8로 optional normalized question 계약을 호환 추가하며 상태·일정·간트는 유지한다. | 실제 질문 누락 계약 병목·R3 호환 보완 승인 |
+| 2026-08-04 04:03 | 3.14, 4.9, 6.3 | R3의 node2 한 줄 compact SQL PROMPT-v1.0.2가 15건·전체 CI를 통과해 dev에 통합됐다. raw finish/schema/LIMIT을 먼저 확인하고 동일 Base·I2 read-only 제품 전체 trace를 재검증하는 R1-W3-F4를 발행했다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | compact prompt 완료·최종 제품 재검증 승인 |
+| 2026-08-04 03:59 | 3.14, 4.9, 6.3 | 실제 PROMPT-v1.0.1 trace에서 LIMIT은 생성됐지만 SQL 문자열의 불필요한 개행 881줄로 completion 1,500 token에 도달해 JSON이 미완성으로 MODEL 안전 실패했다. QUERY·Artifact는 없고 task resource를 제거해 active Pods 0을 확인했다. 신규 비용 상한은 약 USD0.066224다. R3-W3-F7로 node2 한 줄 compact SQL 문구만 보완하며 상태·일정·간트는 유지한다. | MODEL 길이 병목 확인·R3 compact prompt 승인 |
+| 2026-08-04 03:48 | 3.14, 4.9, 6.3 | R3의 node2·repair PROMPT-v1.0.1이 LIMIT 1~1000과 RESOURCE_POLICY_MISSING 단일 수정 행동을 명시하고 15건·전체 CI를 통과해 dev에 통합됐다. 동일 Base·I2 synthetic read-only 제품 trace를 재검증하는 R1-W3-F3를 발행했다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R3 prompt 보완 완료·실제 제품 재검증 승인 |
+| 2026-08-04 03:42 | 3.14, 4.9, 6.3 | 실제 I2 Context·read-only Trino 제품 trace에서 guided MODEL은 통과했지만 node2 SQL에 필수 LIMIT가 없고 repair도 동일 SQL을 반환해 G2가 안전 차단했다. QUERY·Artifact는 실행되지 않았고 task Pod·container·image·tunnel을 제거해 active Pods 0을 확인했다. 신규 비용 상한은 약 USD0.066601이다. R3-W3-F6로 resource limit·단일 repair prompt 계약만 보완하며 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | G2 prompt 병목 확인·R3 최소 보완 승인 |
+| 2026-08-04 03:27 | 3.14, 4.9, 6.3 | R4의 node별 R3 response schema guided transport가 관련 22건과 source 전체 CI를 통과해 dev에 통합됐다. task A40·backend와 기존 hotel-synthetic-db Trino의 read-only synthetic 조회만 사용하는 R1-W3-F2를 발행해 실제 MODEL→G2→QUERY→G3→ARTIFACT trace를 재검증한다. 실행 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R4 schema 보완 완료·실제 I2 제품 trace 승인 |
+| 2026-08-04 03:21 | 3.14, 4.9, 6.3 | 실제 Base endpoint와 FastAPI 제품 trace에서 기본·60초 timeout 모두 MODEL 안전 실패를 확인했다. 원응답은 JSON이 아니었고 JSON object mode도 R3 필수 field를 누락했지만 실제 R3 schema의 guided_json은 schema PASS였다. 이후 fake Context의 asset·metric 불일치로 G2 repair 뒤 차단돼 R4-W3-F2 structured output 보완과 I2 synthetic Context 재검증으로 분리했다. task Pod·container·image·tunnel을 제거했고 신규 비용은 약 USD0.107045로 추정된다. 상태·일정·간트는 유지한다. | 안전 실패 확인·R4 transport 재작업 승인 |
+| 2026-08-04 03:01 | 4.9, 6.3 | R4 endpoint 연결과 dev CI PASS 뒤 실제 제품 trace를 확인하는 R1-W3-F1을 발행했다. 누적 USD 15 안에서 task 전용 A40 Base endpoint와 task backend를 연결해 synthetic `/analysis`의 성공 trace 또는 MODEL 안전 실패를 판정하고 정확한 resource cleanup을 요구한다. 실제 실행 전이므로 4.9 완료와 6.3 진행, 일정·간트는 유지한다. | R1 live product trace 승인·실행 전 |
+| 2026-08-04 02:58 | 3.14, 4.9, 6.3 | R4-W3-F1의 실제 Base endpoint transport를 FastAPI 분석 경로에 통합했다. 고정 생성 옵션과 R3 schema 선검증을 적용하고 timeout·잘못된 JSON·fallback·circuit open이 query나 Artifact 성공으로 저장되지 않음을 관련 21건과 source CI Python 전체 150건·OpenAPI 4건으로 확인했다. 3.14·4.9 완료는 유지하며 실제 RunPod endpoint의 제품 전체 trace 전이므로 6.3과 일정·간트는 유지한다. | R4 제품 연결 code 완료·R1 live trace 대기 |
+| 2026-08-04 02:43 | 3.14, 4.9, 6.3 | R3 Base serving과 최종 dev CI PASS 뒤 실제 endpoint를 FastAPI Control Plane이 소비하는 R4-W3-F1을 발행했다. 기존 ContractModelAdapter와 ProductionModelClient를 재사용하고 명시적 openai mode, 고정 request 옵션, schema 선검증, timeout·HTTP·잘못된 JSON·circuit·fallback의 안전 실패를 완료 조건으로 두었다. 실제 RunPod 재기동과 제품 전체 trace 전이므로 3.14·4.9의 완료 상태와 6.3·일정·간트는 유지한다. | R4 실제 endpoint transport 승인·외부 실행 제외 |
+| 2026-08-04 02:37 | 3.13~3.15, 6.3 | 고정 Qwen3-4B Base revision으로 vLLM endpoint를 기동해 initial readiness 101.623초, warm p50 724.472ms·p95 725.808ms, peak 39,280 MiB, 동시 2건과 동일 revision 재시작을 확인했다. 기존 model client의 정상·timeout·fallback·circuit 검사를 포함한 AI 45건과 artifact hash, task Pod 삭제 404·활성 0개를 검수했다. 신규 비용은 약 USD 0.062802, 예상 누적은 USD 1.015075로 한도 USD 15 이하다. 3.13~3.15를 완료로 전환하되 FastAPI 제품 연결과 I3 전체 trace가 남아 6.3과 일정·간트는 유지한다. | Base serving·client·trace 완료·I3 제품 연결 대기 |
+| 2026-08-04 02:11 | 3.13~3.15, 6.3 | Base·LoRA 비교 뒤 남은 실제 serving 증거를 위해 R3-W3-F5를 발행했다. 고정 Qwen3-4B Base revision의 vLLM endpoint, cold·warm p50/p95, 최대 VRAM·동시 2건·재시작과 기존 model client의 timeout·fallback·circuit trace를 완료 조건으로 두었다. 이전 USD 0.9523을 포함한 누적 비용은 USD 15 이하로 제한하고 결과 회수 뒤 task Pod 삭제를 요구했다. 실제 실행 전이므로 상태·일정·간트는 유지한다. | Base serving 실측 승인·제품 연결 미승인 |
+| 2026-08-04 01:49 | 3.10, 3.12, 3.13, 3.15, 6.3 | 같은 Qwen3-4B·held-out·decoding 조건에서 Base와 BF16 LoRA를 비교했다. LoRA는 Gold JSON 구조 120/120·SQL 정확 일치 85/120·실제 Trino 결과 일치 116/120을 기록했고 held-out 전체 G2·Trino 실행은 150/150 PASS였다. Gold p95는 Base 15.42초에서 LoRA 43.84초로 증가하고 peak VRAM은 8,511,364,096 bytes여서 3.10·3.12만 완료로 전환하고 제품 기본값은 Base로 유지한다. 실측 비용 USD 0.9523, artifact hash와 task Pod 삭제를 확인했으며 실제 serving·운영 trace·I3 전체 상태와 일정은 유지한다. | Base·LoRA 1회 비교 완료·제품 기본값 전환 보류 |
+| 2026-08-03 18:49 | 3.10~3.12, 3.15, 6.3 | R3-W3-F3가 기존 Train·Validation 생성을 보존하면서 Gold 120건·Acceptance 30건을 명시적으로 승인·생성했다. split 누수 0건, 로컬 G2·Trino 150건 전수 PASS, compiled validate·AI 42건과 branch/dev CI를 확인해 dev `aede5a5`에 통합했다. 실제 Base model·RunPod 미실행으로 관련 상태·일정은 유지한다. | held-out 150건 준비·검증 완료·dev 통합 |
+| 2026-08-03 18:36 | 3.10~3.12, 3.15, 6.3 | 제공된 Qwen compiled 1,350건이 Train·Validation만 포함하고 현재 생성기도 held-out split을 만들 수 없어 실제 Base·LoRA 평가 입력이 없는 것을 확인했다. 기본 생성 동작을 유지하면서 2,000건 원장의 Gold 120건·Acceptance 30건을 명시적으로 승인·생성하고 로컬 G2·Trino로 전수 검증하는 R3-W3-F3를 발행했다. 외부 model·RunPod 작업과 상태·일정은 변경하지 않는다. | held-out 평가 입력 누락 해소 승인·외부 실행 제외 |
+| 2026-08-03 18:20 | 3.10, 3.13~3.15, 6.3 | 평가 150건 승인과 R2~R5 Wave 3 통합 뒤 R1이 dev·junhee 동일 SHA·양쪽 CI, 통합 23건과 Context·G1/G2·repair·cache 격리·동시 실행 제한 보안 회귀 29건을 확인했다. 로컬 CUDA와 Qwen3-4B cache가 없고 model download·RunPod 비용은 미승인이므로 실제 Base model·LoRA·serving은 Not Run이며 관련 상태와 일정은 유지한다. | R1-W3 평가·보안 기준선 확인·외부 model 실행 대기 |
+| 2026-08-03 18:03 | 3.10~3.12, 3.15, 6.3 | R3-W3-F2의 training source 10개·전용 AI test 3개, 1,350건 validate·재빌드 SHA-256 일치·AI 41건·branch/dev CI를 확인해 dev에 통합했다. 학습 도구 반입은 완료됐지만 setup 계정 SQL 검증과 실제 Base model·RunPod·LoRA·serving 미실행이 남아 해당 작업 상태와 일정은 유지한다. | R3 학습 도구 dev 통합·외부 실행 대기 |
+| 2026-08-03 17:55 | 3.10~3.12, 3.15, 6.3 | 원격 R3 결과 `d15977f`가 training package source 10개와 그 동작을 고정하는 전용 AI test 3개를 함께 제출했음을 확인했다. R3-W3-F2의 허용 경로를 해당 test 3개로만 좁게 확장하고, 나머지 역할 경계와 dependency·model download·RunPod·비용·학습 실행 금지는 유지했다. 상태와 일정은 변경하지 않는다. | R3 학습 도구 전용 test 범위 정합화 |
+| 2026-08-03 17:46 | 3.10~3.12, 3.15, 6.3 | 사용자 제공 `training.zip`의 19개 entry를 검사해 경로 탈출 0건을 확인하고 source·README·example·requirements 10개만 `src/ai/training`에 반입하는 R3-W3-F2를 발행했다. compiled cache 8개는 제외하고 1,350건 validate·검증 원본 재빌드 SHA-256 일치·기존 AI 회귀를 완료 조건으로 고정했다. 이 카드는 코드 반입만 승인하며 dependency 설치·model download·RunPod·비용·학습 실행은 승인하지 않아 Base model·LoRA·I3 관련 상태와 일정은 유지한다. | R3 학습 도구 반입 승인·외부 실행 제외 |
+| 2026-08-03 17:42 | 1.7, 2.19, 3.11, 6.1, 6.3 | R2-W3-F2의 평가 150건 reviewer/status 동기화, 상태 제외 SHA-256 일치, data 21건·AI 32건과 branch/dev CI PASS를 확인해 평가 fixture·manifest 검수·평가 원장 관리를 완료로 전환했다. R5-W3-F1C의 실제 `MERGED_DEV` 상태와 어긋난 Gate 회귀 테스트 기대값도 교정했다. 저장소 밖 sLLM 데이터의 1,200/150 split·Trino PASS는 참고 근거로만 기록하고, `src/ai/training` 부재·setup 계정 검증·RunPod 미착수 때문에 실제 Base model·LoRA가 필요한 6.3은 진행으로 유지했다. | 평가 150건 최종 승인·Gate 회귀 교정·I3 model 비교 대기 |
+| 2026-08-03 17:28 | 2.19, 3.11, 6.1, 6.3 | 평가 150건의 전수 질문·범주·기대 결과와 중복·split·필수 필드·data/AI/integration 검증을 대조해 R1·R3 검토를 승인했다. 질문·정답·근거는 보존하고 reviewer/status만 동기화하는 R2-W3-F2를 발행했으며 실제 Base model 비교 전까지 3.11·6.3의 진행 상태와 일정은 유지한다. | 평가 reviewer 승인·상태 동기화 후속 |
+| 2026-08-03 17:21 | 2.19, 3.11, 6.1, 6.3 | 실제 구현·handoff·CI·dev 병합이 완료된 R2-W3-F1과 R3-W3-F1C의 Gate 요약 상태만 `MERGED_DEV`로 정합화했다. 평가 데이터 행의 완료와 I3 통합 행의 진행 상태·일정은 변경하지 않는다. | Wave 3 후속 상태 원장 정합화 |
+| 2026-08-03 17:15 | 5.15, 6.3 | R5-W3-F1C에서 Catalog 계약 상수를 실제 I3 계약과 일치시키고 minji CI `30796547226`의 production build·frontend contract·Python·문서·역할 범위 통과를 확인해 dev `4825c0c`에 통합했다. 5.15의 기존 완료 상태와 6.3의 진행 일정은 유지한다. | R5 계약 소비 호환 완료·dev 통합 |
+| 2026-08-03 17:05 | 5.15, 6.3 | `origin/dev`의 minji 기획서 재구성 병합 뒤에도 frontend I3 계약 상수 불일치가 동일하게 재현돼 R5-W3-F1C 기준을 `3d6bed7`로 갱신했다. 허용 경로·제품 동작·일정은 변경하지 않는다. | R5 계약 호환 기준 SHA 재발행 |
+| 2026-08-03 16:57 | 5.15, 6.3 | R2-W3-F1 통합 뒤 frontend contract test가 실제 I3 data contract `v1.1.0-DRAFT`와 R5 Catalog fixture의 이전 상수 `v1.0.0` 불일치로 실패해 R5-W3-F1C를 발행했다. 상수 한 곳과 소비자 회귀만 보완하고 R2 계약·Catalog 내용·UI·일정은 변경하지 않는다. | R5 계약 버전 소비 호환 승인 |
+| 2026-08-03 16:04 | 2.19, 3.11, 6.1, 6.3 | R2-W3-F1의 gold120 확장과 충돌하는 R3 consumer test 하드코딩을 확인해 R3-W3-F1C를 선행 발행했다. partial 5건과 full 120건을 같은 선언 count 계약으로 소비하도록 test만 보완하고 model runtime·Node·일정·외부 권한은 변경하지 않는다. | R3 평가 소비 호환 승인 |
+| 2026-08-03 15:56 | 2.19, 3.9~3.11, 6.1, 6.3 | dev `e780b75`·CI `30791740474` PASS를 기준으로 R2-W3-F1을 발행했다. required30 성공 case를 실제 SQL·result hash에 연결하고 gold120을 범주별 120건으로 완성한 뒤 R3가 동일 manifest를 실제 Node chain으로 소비하도록 순서를 고정했다. 외부 model·비용·secret 미승인과 기존 일정은 유지했다. | I3 평가 fixture 후속 승인 |
+| 2026-08-03 15:42 | 4.15, 4.19, 5.5, 5.10~5.11, 5.15, 6.3~6.4 | R4-W3의 권한별 SQL Plan·Result Cache, model call budget, 동시 2건·HTTP 429·Audit trace와 R5-W3의 전체 오류 UI, Artifact→Report, immutable Report proposal, 5원천 Catalog를 branch/dev CI로 확인해 dev에 통합했다. 해당 역할 행은 완료로 전환하되 R4-16 실제 Report 등록·worker·browser 접근성과 외부 Base model·Gold 잔여 근거가 남아 I3·I4 통합 행과 일정·간트 날짜는 유지했다. | Wave 3 R4·R5 통합·후속 분리 |
+| 2026-08-03 13:54 | 2.18~2.19, 3.5~3.6, 3.10~3.11, 3.13~3.15, 4.15, 4.19, 5.10~5.11, 5.15, 6.3 | I2 통합 dev `744592a`·CI `30785580556` PASS를 기준으로 R1~R5 Wave 3 실행 묶음을 READY 발행했다. 5-source·평가 fixture, Node·Base 비교·serving client, Cache·권한, Report proposal·Catalog와 I3 통합 판정 행을 진행으로 전환했다. model download·RunPod·비용·secret·외부 배포·데이터 전송은 승인하지 않았고 일정·간트 날짜는 변경하지 않았다. | Wave 3 실행 승인 |
+| 2026-08-03 13:30 | 4.21, 5.4~5.8, 6.2 | R4 production image의 blank·기존 DB startup과 실제 Template→Trino runtime, R5 제품 `dae606f`·최종 `ab1d725`의 production HTTP client 및 성공·재질문·차단·source 실패 browser trace, branch CI `30782796303`, dev `56cbf08`·CI `30784368551`, R1 통합 22건 PASS를 확인했다. R4-20, R5-03·05~07과 I2 판정을 완료로 전환하되 W3까지 이어지는 R5-04와 필수 30·Gold 120 관리는 진행으로 유지했다. 일정·간트 날짜는 변경하지 않았다. | I2 실제 전체 왕복 완료 |
+| 2026-08-03 12:28 | 1.6~1.7, 4.4, 4.20~4.21, 5.1, 5.4~5.8, 6.2 | R4-W2-F3 최종 `51947de`의 기존 migration 무변경, built image blank·기존 DB normal entrypoint, head `20260731_03`, health·전체 readiness·실제 Trino·cleanup, branch CI `30781472877` PASS를 확인해 dev `158a493`에 통합했다. Production image blocker를 해제하고 보존된 frontend diff로 실제 화면 검증을 재개하는 `R5-W2-F2-RESUME@158a493`을 승인했다. 화면 결과 전 일정·행 상태·간트는 유지했다. | R4 image startup 통합·R5 화면 재개 |
+| 2026-08-03 12:06 | 1.6~1.7, 4.4, 4.20~4.21, 5.1, 5.4~5.8, 6.2 | R5 실제 browser trace 준비에서 accepted backend image의 normal entrypoint가 빈 DB의 immutable `20260730_02` repository-relative DDL 경로에서 종료되는 것을 확인했다. bind mount·migration bypass는 수용하지 않고 R5-W2-F2를 일시 정지했으며, 기존 migration을 보존한 Dockerfile layout·blank DB startup·readiness만 보완하는 `R4-W2-F3@cee1ca2`를 승인했다. 실제 결과 전 일정·행 상태·간트는 유지했다. | production image startup blocker·R4 최소 보완 |
+| 2026-08-03 11:44 | 1.4, 1.7, 4.4~4.5, 4.8, 4.12, 4.16, 4.21, 5.1, 5.4~5.8, 6.2 | R4-W2-F2 최종 `80c30ec`의 기존 migration 불변성, 빈·기존 DB upgrade, `hotel_analyst` 전용 Template, 실제 Trino PARTIAL·query_id·Artifact, exact CORS와 branch CI `30779910256` PASS를 확인해 dev `b1e33c6`에 통합했다. 실제 backend runtime은 3/4를 통과했고 production 화면 연결 `R5-W2-F2@b1e33c6`을 승인했다. 화면 결과 전 일정·행 상태·간트는 유지했다. | R4 runtime 통합·R5 실제 화면 승인 |
+| 2026-08-03 10:50 | 1.7 | R1 정책 commit의 역할 범위 검사에서 새 root Docker 제외 파일과 공통 접근 정책 파일이 기존 R1-W2 허용 목록에 빠진 것을 확인했다. 두 R1 소유 경로만 원장에 추가하고 다른 역할 서비스·공식 제출본 범위는 확장하지 않았으며, 통합 테스트와 역할 범위 검사를 다시 실행하도록 정합화했다. 일정·행 상태·간트는 유지했다. | R1 역할 범위 원장 교정 |
+| 2026-08-03 10:41 | 1.4, 1.6~1.7, 4.4~4.5, 4.8, 4.12, 4.16, 4.21, 6.2 | R4-W2-F2 제출의 branch CI는 통과했지만 기존 Alembic revision 수정으로 기존 DB upgrade가 누락되고, Template 역할·권한 검사와 실제 Trino PARTIAL 처리, real mode HTTP 증거가 수용 기준을 충족하지 못해 dev 병합을 보류했다. R1은 `ACCESS-POLICY-v1.0.0`과 root Docker build-context secret 제외 기준을 고정하고, 기존 revision 원복·새 후속 migration·권한 거부·PARTIAL·실제 HTTP 회귀만 재작업 승인했다. 실제 결과 전 일정·행 상태·간트는 유지했다. | R4 runtime 제출 거부·최소 재작업 승인 |
 | 2026-07-31 17:28 | 1.7, 4.4, 4.7, 4.11, 4.20, 5.4, 6.2 | R5-W2-F1 제품 `f356f1a`·handoff `dce723b`의 API `retryable` 표시, Artifact 미생성, partial 보존, build·contract·integration·role gate와 branch CI run `30612008099`를 확인해 `6bd191c`로 dev에 통합하고 dev CI run `30614284494`를 확인했다. 이어 R1 증거 Gate 보강 `0e756e7`의 dev CI run `30616159454` PASS를 기준으로 실제 DB Template·Trino port·migration startup·HTTP trace·정확한 CORS 연결 범위 `R4-W2-F2@0e756e7`을 READY로 발행했다. 실제 runtime 결과 전 기존 일정·행 상태는 유지했다. | R5 follow-up 통합·R4 runtime 보완 승인 |
 | 2026-07-31 17:19 | 1.1, 1.7 | 확장자만 XLSX이고 실제 바이트가 PNG였던 공식 WBS 제출본을 마지막 정상 workbook에서 복구하고, 현재 Markdown 기준 99개 작업의 제목·담당·기간·상태·완료율을 template 서식과 기간 수식을 보존해 다시 동기화했다. 재열기·99개 ID·수식·완료율·전체 시트 렌더를 검증했다. | 공식 WBS XLSX 복구·동기화 |
 | 2026-07-31 17:11 | 1.7 | 실행 묶음의 수용·검증 ID 전수 대조에서 ID 없는 추가 결과와 자동 생성 placeholder 증거를 거부하고, 제출된 `REVIEW_REQUIRED`가 CI Summary와 최종 quality 판정에서도 차단되도록 동기화했다. 일정·행 상태는 변경하지 않았다. | R1 증거 Gate 우회 차단 |
@@ -379,6 +435,52 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.81 | 2026-08-04 10:58 | 최신 실행 상태·작업 로그·기존 변경 이력을 유지하고, 중복된 양식·역할·운영 설명을 단일 기준 참조와 축약 표로 정리 |
+| v7.80 | 2026-08-04 10:41 | 실제 Base 제품 trace의 잉여 parameter·JOIN/기간 의미·guided 응답 병목을 3.14·4.9·6.3에 연결하고 R3-W3-F11·R4-W3-F4를 승인했다. 통합·CI·최종 재검증 전 상태·일정·간트는 유지했다. |
+| v7.79 | 2026-08-04 09:49 | R3 PROMPT-v1.0.5/PROMPT-v1.0.2의 SQL-reference 정확 일치·단일 repair를 dev에 통합하고 제품 trace R1-W3-F7을 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
+| v7.78 | 2026-08-04 09:37 | 정상 A40 제품 trace의 MODEL 통과 뒤 SQL-reference 불일치·repair 후 G2 차단과 cleanup을 3.14·4.9·6.3에 연결하고 R3 prompt 최소 보완을 승인했다. 실제 성공 전 상태·일정·간트는 유지했다. |
+| v7.77 | 2026-08-04 08:37 | 7.1 중간 발표 원고·PPTX 작성과 12장 시각·템플릿 구조 검증을 반영해 실행 행을 진행, 제출본을 검토로 전환했다. 리허설은 미실행으로 유지했다. |
+| v7.76 | 2026-08-04 08:12 | 목표 재개 뒤 반복된 Secure A40 uptime 0과 cleanup·비용·기존 Trino 무변경을 3.14·4.9·6.3에 연결했다. 실제 제품 trace 전 상태·일정·간트는 유지했다. |
+| v7.75 | 2026-08-04 05:09 | 세 task Secure A40의 container uptime 0 provisioning blocker와 cleanup·비용·기존 Trino 무변경을 3.14·4.9·6.3에 연결했다. 실제 제품 trace 전 상태·일정·간트는 유지했다. |
+| v7.74 | 2026-08-04 04:47 | R3 PROMPT-v1.0.4를 dev에 통합하고 동일 Base·I2 read-only 제품 trace R1-W3-F6를 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
+| v7.73 | 2026-08-04 04:39 | 실제 질문 제품 trace의 QUERY blocker를 SQL placeholder와 무관한 모델 parameters로 확정하고 R3-W3-F9를 3.14·4.9·6.3에 연결했다. 실제 성공 전 상태·일정·간트는 유지했다. |
+| v7.72 | 2026-08-04 04:27 | R4 실제 질문 전달을 dev에 통합하고 Base·I2 read-only 제품 trace R1-W3-F5를 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
+| v7.71 | 2026-08-04 04:21 | R3 normalized question 호환 계약을 dev에 통합하고 R4 service→adapter 소비자 연결을 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
+| v7.70 | 2026-08-04 04:17 | 실제 질문 없이 UUID만 전달하는 node2 계약 병목과 MODEL circuit 안전 실패·cleanup을 3.14·4.9·6.3에 연결하고 R3 optional normalized question 보완을 승인했다. 상태·일정·간트는 유지했다. |
+| v7.69 | 2026-08-04 04:03 | R3 PROMPT-v1.0.2를 dev에 통합하고 raw 응답과 동일 Base·I2 read-only 제품 전체 trace를 위한 R1-W3-F4를 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
+| v7.68 | 2026-08-04 03:59 | 실제 Base의 LIMIT 생성과 881줄 개행·completion length 미완성 JSON 병목, 안전 실패·cleanup을 3.14·4.9·6.3에 연결하고 R3 compact SQL prompt 보완을 승인했다. 상태·일정·간트는 유지했다. |
+| v7.67 | 2026-08-04 03:48 | R3 PROMPT-v1.0.1을 dev에 통합하고 동일 Base·I2 read-only 제품 전체 trace를 위한 R1-W3-F3를 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
+| v7.66 | 2026-08-04 03:42 | 실제 I2 제품 trace의 LIMIT 누락·무효 repair G2 병목과 안전 차단·정확한 cleanup을 3.14·4.9·6.3에 연결하고 R3 prompt 최소 보완을 승인했다. 상태·일정·간트는 유지했다. |
+| v7.65 | 2026-08-04 03:27 | R4 guided transport를 dev에 통합하고 실제 I2 synthetic Context·read-only Trino 제품 trace를 위한 R1-W3-F2를 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
+| v7.64 | 2026-08-04 03:21 | R1 live product trace의 Base schema 실패와 fake Context 불일치를 확인해 R4 structured output 보완과 실제 I2 synthetic trace로 분리했다. cleanup과 예상 비용을 기록하고 6.3 진행·일정·간트를 유지했다. |
+| v7.63 | 2026-08-04 03:01 | 실제 Base endpoint와 FastAPI 제품 경로의 synthetic HTTP trace를 확인하는 R1-W3-F1을 4.9·6.3에 연결했다. 실행 전이라 상태·일정·간트는 유지했다. |
+| v7.62 | 2026-08-04 02:58 | R4-W3-F1의 Base endpoint transport와 실패 안전 처리를 dev에 통합했다. 실제 RunPod 제품 전체 trace 전이므로 3.14·4.9 완료와 6.3 진행, 일정·간트를 유지했다. |
+| v7.61 | 2026-08-04 02:43 | SERVING-v0.2를 FastAPI Control Plane에 안전하게 연결하는 R4-W3-F1을 3.14·4.9·6.3에 연결했다. 실제 구현·제품 trace 전 기존 상태와 일정·간트는 유지했다. |
+| v7.60 | 2026-08-04 02:37 | Qwen3-4B Base vLLM endpoint의 readiness·warm p95·peak VRAM·동시 2건·재시작, model client 실패 trace, artifact hash·비용·Pod 삭제를 확인해 3.13~3.15를 완료로 전환했다. FastAPI 제품 연결과 I3 전체 trace가 남아 6.3과 일정·간트는 유지했다. |
+| v7.59 | 2026-08-04 02:11 | Qwen3-4B Base serving endpoint의 cold·warm·VRAM·동시 실행·재시작·model client 실패 trace를 실측하는 R3-W3-F5를 3.13~3.15·6.3에 연결했다. 누적 RunPod 비용 USD 15 한도와 task Pod 삭제를 고정했으며 실제 결과 전 상태·일정·간트는 유지했다. |
+| v7.58 | 2026-08-04 01:49 | Qwen3-4B Base·LoRA 1회 비교와 held-out 150건 G2·Trino 검증, Gold 지연시간·VRAM, artifact hash, 실측 비용·Pod 삭제를 확인해 3.10·3.12를 완료로 전환했다. LoRA p95 증가로 제품 기본값은 Base를 유지하며 serving·I3 상태와 일정은 변경하지 않았다. |
+| v7.57 | 2026-08-03 18:49 | R3-W3-F3의 held-out Gold 120건·Acceptance 30건 생성, 누수 0건, 로컬 G2·Trino 150건 전수 PASS와 compiled validate·CI를 확인해 dev에 통합했다. 외부 model·RunPod 상태와 일정은 유지했다. |
+| v7.56 | 2026-08-03 18:36 | Qwen 학습용 데이터와 생성기의 held-out 입력 누락을 확인해 2,000건 원장의 Gold 120건·Acceptance 30건을 명시적으로 승인·생성하고 로컬 Trino로 검증하는 R3-W3-F3를 3.10~3.12·3.15·6.3에 연결했다. 외부 model·RunPod 상태와 일정은 유지했다. |
+| v7.55 | 2026-08-03 18:20 | R1-W3의 평가·보안·통합 근거를 3.10·3.13~3.15·6.3에 연결했다. 실제 Base model·RunPod 실행은 로컬 GPU·model 부재와 외부 비용 미승인으로 Not Run이므로 상태·일정·간트는 유지했다. |
+| v7.54 | 2026-08-03 18:03 | R3 학습 도구와 전용 test의 재현성·회귀·branch/dev CI를 확인해 dev에 통합했다. 실제 Base model·RunPod·LoRA·serving 미실행으로 관련 WBS 상태와 일정은 유지했다. |
+| v7.53 | 2026-08-03 17:55 | 원격 R3 결과에 포함된 training 전용 AI test 3개를 R3-W3-F2 허용 경로에 한정 추가했다. 제품·외부 실행 범위와 WBS 상태·일정은 변경하지 않았다. |
+| v7.52 | 2026-08-03 17:46 | 사용자 제공 training package를 R3 소유 경로에 반입·재현성 검증하는 R3-W3-F2를 발행했다. compiled cache와 외부 JSONL 반입, dependency·model download·RunPod·비용·학습 실행은 제외해 기존 Base model·LoRA·I3 상태와 일정은 유지했다. |
+| v7.51 | 2026-08-03 17:42 | 평가 150건의 최종 reviewer/status 승인과 내용 보존·소비자·CI 근거를 확인해 2.19·3.11·6.1을 완료로 전환하고 R5-W3-F1C Gate 상태 회귀 기대값을 교정했다. 외부 sLLM JSONL은 참고 근거로만 연결하고 재생성 코드·읽기 전용 권한·RunPod 학습·Base model 비교가 없어 6.3은 진행으로 유지했다. |
+| v7.50 | 2026-08-03 17:28 | 평가 150건의 R1·R3 검토를 승인하고 reviewer/status 동기화를 R2-W3-F2로 분리했다. 실제 Base model 비교가 남아 관련 행의 진행 상태와 일정은 유지했다. |
+| v7.49 | 2026-08-03 17:21 | R2-W3-F1·R3-W3-F1C의 실제 dev 통합 결과와 Gate 요약 상태를 정합화했다. WBS 작업 상태와 일정은 변경하지 않았다. |
+| v7.48 | 2026-08-03 17:15 | R5 Catalog의 I3 계약 버전 상수를 원본 계약과 일치시키고 CI 전체 통과 후 dev에 통합했다. 5.15 완료와 6.3 진행 상태·일정은 유지했다. |
+| v7.47 | 2026-08-03 17:05 | minji 기획서 재구성 병합 뒤 최신 dev `3d6bed7`에서도 재현된 R5 계약 상수 불일치를 기준으로 R5-W3-F1C를 재발행했다. 일정·상태·제품 범위는 변경하지 않았다. |
+| v7.46 | 2026-08-03 16:57 | R2 I3 data contract 갱신을 소비하지 못한 R5 Catalog fixture 상수 한 곳을 동기화하는 R5-W3-F1C를 5.15·6.3에 연결했다. 제품 동작·R2 계약·일정은 변경하지 않는다. |
+| v7.45 | 2026-08-03 16:04 | R2 gold120 확장을 차단하는 R3 consumer test의 5/35 하드코딩을 제거하는 R3-W3-F1C를 3.11·6.1·6.3에 연결했다. R2 구현은 유지하고 R3 호환 보완을 dev에 선반영한 뒤 재검증하도록 순서를 조정했으며 일정은 변경하지 않았다. |
+| v7.44 | 2026-08-03 15:56 | R2-W3-F1을 READY로 발행해 required30 결과 hash 연결과 gold120 완성을 2.19·6.1·6.3에 연결했다. R3 실제 manifest 소비는 R2 통합 후로 순서를 고정했으며 일정과 외부 권한은 변경하지 않았다. |
+| v7.43 | 2026-08-03 15:42 | R4-W3·R5-W3 제품·handoff·branch/dev CI를 4.15·4.19·5.5·5.10~5.11·5.15에 연결해 완료로 전환했다. Report 공통 등록·worker·browser 접근성과 외부 Base model·Gold 잔여 근거가 남아 6.3~6.4는 진행·대기로 유지하고 일정·간트 날짜는 변경하지 않았다. |
+| v7.42 | 2026-08-03 13:54 | I2 검증 dev·CI를 기준으로 R1~R5 Wave 3를 READY 발행하고 5-source·model·Cache·Report·Catalog·I3 관련 행을 진행으로 전환했다. 외부 비용·model download·secret·배포는 승인하지 않았으며 일정·간트 날짜는 유지했다. |
+| v7.41 | 2026-08-03 13:30 | R4 실제 Template·Trino/image와 R5 production HTTP/browser 네 경로, 통합 22건 및 branch/dev CI PASS를 4.21·5.4~5.8·6.2에 연결해 해당 I2 완료분을 완료로 전환했다. W3 범위인 5.5와 필수 30·Gold 120 관리는 진행으로 유지하고 일정·간트 날짜는 변경하지 않았다. |
+| v7.40 | 2026-08-03 12:28 | R4-W2-F3 production image의 blank·기존 DB normal entrypoint·전체 readiness·실제 Trino 통합 근거를 1.6~1.7·4.4·4.20~4.21·5.1·5.4~5.8·6.2에 연결하고 R5-W2-F2 화면 검증을 재개했다. 실제 결과 전 일정·행 상태·간트는 유지했다. |
+| v7.39 | 2026-08-03 12:06 | Production backend image의 빈 DB entrypoint 경로 결함과 R5 실제 화면 차단 근거를 1.6~1.7·4.4·4.20~4.21·5.1·5.4~5.8·6.2에 연결하고 R4-W2-F3 최소 보완을 승인했다. 실제 결과 전 일정·행 상태·간트는 유지했다. |
+| v7.38 | 2026-08-03 11:44 | R4-W2-F2의 migration·역할 정책·실제 Trino·PARTIAL·CORS 결과와 dev 통합 근거를 1.4·1.7·4.4~4.5·4.8·4.12·4.16·4.21·6.2에 연결하고, production 화면 연결을 위한 R5-W2-F2를 승인했다. 화면 결과 전 일정·행 상태·간트는 유지했다. |
+| v7.37 | 2026-08-03 10:50 | R1 정책 commit의 역할 범위 검사에서 확인된 `.dockerignore`·`config/access-policy.yaml` 허용 목록 누락을 1.7에 기록하고 두 R1 소유 경로만 교정했다. 일정·행 상태·간트는 유지했다. |
+| v7.36 | 2026-08-03 10:41 | R4-W2-F2 제출의 기존 DB migration·Template 역할 권한·Trino PARTIAL·real HTTP 증거 결함으로 dev 병합을 보류하고, R1 정책·Docker build-context 안전 기준과 최소 재작업 승인을 1.4·1.6~1.7·4.4~4.5·4.8·4.12·4.16·4.21·6.2에 연결했다. 실제 결과 전 일정·행 상태·간트는 유지했다. |
 | v7.35 | 2026-07-31 17:28 | R5-W2-F1의 제품·handoff·branch/dev CI 통합 근거와 R1 증거 Gate 보강 dev CI PASS를 연결하고, 실제 runtime 연결을 수행할 `R4-W2-F2@0e756e7` 승인 근거를 1.7·4.4·4.7·4.11·4.20·5.4·6.2에 기록했다. 실제 결과 전 일정·행 상태는 유지했다. |
 | v7.34 | 2026-07-31 17:19 | PNG로 잘못 저장된 공식 WBS 제출본을 마지막 정상 XLSX에서 복구하고 Markdown 기준 99개 작업을 재동기화했으며, 재열기·ID·기간 수식·완료율·전체 렌더 검증 근거를 1.1·1.7에 연결했다. |
 | v7.33 | 2026-07-31 17:11 | 1.7의 handoff 증거 Gate에서 ID 없는 결과와 placeholder 증거를 거부하고, 제출된 `REVIEW_REQUIRED` 차단 정책을 CI 최종 판정까지 동기화한 근거를 추가했다. 일정·행 상태는 유지했다. |

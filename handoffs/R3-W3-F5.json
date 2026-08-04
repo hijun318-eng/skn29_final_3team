@@ -1,0 +1,144 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R3-W3-F5",
+  "ROLE": "R3",
+  "BRANCH": "daesung",
+  "BASE_SHA": "8a0e9c4382db2ccf7dca85accb5cc2b34385d9dc",
+  "SYNCED_DEV_SHA": "f95f6ad220c375cf4f29747507ba5d3c61c7d7ca",
+  "RESULT_SHA": "8125885d4614f440f4f5cdad3c39ab4f2ca026d5",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R3-W3-F5@8a0e9c4",
+  "COMPLETED_CARDS": [
+    "R3-12~14 Qwen3-4B Base vLLM endpoint 실측과 model client 운영 trace"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/daesung/일일보고.md",
+    "evals/base_comparison.v0.1.json",
+    "src/ai/training/benchmark_serving.py",
+    "src/modelops/serving_manifest.v0.1.json",
+    "tests/ai/test_serving_benchmark.py",
+    "tests/ai/test_wave3.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "MODEL_CONTRACT_VERSION": "MODEL-v1.0.0",
+    "PROMPT_VERSION": "PROMPT-v1.0.0",
+    "SERVING_MANIFEST_VERSION": "SERVING-v0.2",
+    "BASE_MODEL": "Qwen/Qwen3-4B",
+    "BASE_MODEL_RESOLVED_REVISION": "1cfa9a7208912126459214e8b04321603b3df60c",
+    "VLLM_VERSION": "0.10.2",
+    "TORCH_VERSION": "2.8.0+cu128",
+    "TRANSFORMERS_VERSION": "4.57.6",
+    "FIRST_RUN_SHA256": "9e93979b7480480624c27f6feeee754f70ca9b82247b0d3042727d3e7e8f9a7a",
+    "WARM_RUN_SHA256": "fabc2707fda6091dbfd4ef7a9c39d03fa54395d3a912b5c9e3ea5903692e5413",
+    "RESTART_RUN_SHA256": "444c9d5943ae2034b17fba9837afa89942332332e8bd4782cd7d03f827446b7c",
+    "PEAK_VRAM_SHA256": "80eef996b9da61edfb2282d8de94d1193d327883929a423e3d1429ec0aabdf2a"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_FIXED_RUNTIME_REVISION",
+      "status": "PASS",
+      "evidence": "RunPod PyTorch 2.8/CUDA 12.8 image, vLLM 0.10.2, transformers 4.57.6과 Qwen3-4B resolved revision 고정"
+    },
+    {
+      "id": "AC2_OPENAI_ENDPOINT_READY",
+      "status": "PASS",
+      "evidence": "공개 HTTP 없이 SSH tunnel에서 /v1/models와 /v1/chat/completions 응답 확인"
+    },
+    {
+      "id": "AC3_COLD_WARM_LATENCY",
+      "status": "PASS",
+      "evidence": "초기 readiness 101.623초, cold 1634.672ms, warm 5회 p50 724.472ms·p95 725.808ms"
+    },
+    {
+      "id": "AC4_PEAK_VRAM_CONCURRENCY2",
+      "status": "PASS",
+      "evidence": "0.1초 sampling peak 39,280 MiB(41,188,065,280 bytes), 동시 2건 완료·최대 926.888ms"
+    },
+    {
+      "id": "AC5_RESTART_READINESS",
+      "status": "PASS",
+      "evidence": "동일 revision 재시작 readiness 29.062초, cold 1690.573ms, warm·동시 2건 재통과"
+    },
+    {
+      "id": "AC6_CLIENT_FAILURE_TRACE",
+      "status": "PASS",
+      "evidence": "ProductionModelClient 정상·timeout 1회 retry·fallback·2회 실패 뒤 circuit open 검사 통과"
+    },
+    {
+      "id": "AC7_REDACTED_MANIFEST_HASH",
+      "status": "PASS",
+      "evidence": "secret 없는 manifest와 외부 결과·로그 SHA-256 6건 기록"
+    },
+    {
+      "id": "AC8_POD_DELETED",
+      "status": "PASS",
+      "evidence": "task Pod 3oc6xib6qpn3gc 삭제 후 404, 활성 Pod 0개, 임시 SSH 키 제거 확인"
+    },
+    {
+      "id": "AC9_CUMULATIVE_COST_LIMIT",
+      "status": "PASS",
+      "evidence": "513.837초·USD 0.44/h 기준 신규 비용 약 USD 0.062802, 이전 비용 포함 예상 누적 USD 1.015075로 한도 USD 15 이하"
+    },
+    {
+      "id": "AC10_BASE_DEFAULT_PRESERVED",
+      "status": "PASS",
+      "evidence": "제품 기본값은 Base 유지, LoRA serving과 FastAPI 제품 연결은 미수행"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_SERVING_UNIT",
+      "name": "python -m unittest tests.ai.test_serving_benchmark -v",
+      "status": "PASS",
+      "evidence": "endpoint 계약·동시 2건·secret 비기록·nearest-rank 검사 2건 통과"
+    },
+    {
+      "id": "T2_MODEL_CLIENT",
+      "name": "python -m unittest tests.ai.test_wave3 -v",
+      "status": "PASS",
+      "evidence": "serving manifest와 ProductionModelClient 포함 9건 통과"
+    },
+    {
+      "id": "T3_COMPILE",
+      "name": "python -m compileall -q src/ai/training/benchmark_serving.py",
+      "status": "PASS",
+      "evidence": "benchmark CLI Python compile 통과"
+    },
+    {
+      "id": "T4_REPORT",
+      "name": "python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/daesung/일일보고.md",
+      "status": "PASS",
+      "evidence": "20260804 R3 개인 보고 검증 통과"
+    },
+    {
+      "id": "T5_ROLE_GATE",
+      "name": "python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS",
+      "evidence": "terminal handoff commit 후 실행"
+    },
+    {
+      "id": "T6_DIFF_CHECK",
+      "name": "git diff --check origin/dev..HEAD",
+      "status": "PASS",
+      "evidence": "diff whitespace 검사 통과"
+    }
+  ],
+  "NOT_RUN": [
+    "RunPod billing API는 Pod 삭제 직후 행을 반환하지 않아 신규 비용 확정값은 지연 중이며 실행시간 기반 추정값만 기록",
+    "FastAPI 제품 연결과 전체 I3 trace는 R4·R1 후속 범위",
+    "LoRA serving과 제품 기본값 전환은 승인되지 않아 미실행"
+  ],
+  "CHANGE_REQUESTS": [
+    "R4는 SERVING-v0.2의 /v1/models·/v1/chat/completions 계약을 소비하는 최소 FastAPI transport와 실제 제품 trace를 별도 카드에서 구현"
+  ],
+  "RESIDUAL_RISKS": [
+    "warm latency는 8-token readiness prompt 기준이며 실제 Node SQL 생성의 1500-token p95를 대체하지 않음",
+    "39,280 MiB는 gpu_memory_utilization 0.8의 vLLM 예약을 포함해 direct model 평가 VRAM과 직접 비교할 수 없음",
+    "청구 API 확정 행 반영 전 신규 비용은 USD 0.062802 추정"
+  ],
+  "EXTERNAL_APPROVAL_REQUIRED": [
+    "R4 FastAPI 제품 연결과 I3 통합 trace는 R1의 별도 실행 카드 필요"
+  ],
+  "REQUESTED_DECISION": "R3-W3-F5 serving 증거 수용·dev 통합 후 R4 제품 연결 follow-up 발행",
+  "LOCAL_ARTIFACT_ROOT": "C:/Users/Playdata/Downloads/answervice-runpod-serving-20260804"
+}

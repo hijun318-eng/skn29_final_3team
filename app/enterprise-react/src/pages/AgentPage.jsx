@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Check, MessageSquareText, Plus, Send, Sparkles, TableProperties } from "lucide-react";
-import { createMockAnalysisClient } from "../api/analysisClient";
+import { createAnalysisClient, showsAnalysisScenarios, usesMockAnalysisClient } from "../api/analysisClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { MetaStrip, SectionTitle } from "../components/common/EnterpriseUi";
 import { analysisFixtures } from "../data/analysisFixtures";
@@ -19,14 +19,31 @@ const SCENARIOS = [
   ["cancelled", "취소"],
 ];
 
-const client = createMockAnalysisClient();
+const client = createAnalysisClient();
+const initialRun = usesMockAnalysisClient ? analysisFixtures.ready : {
+  conversationId: "",
+  requestId: "—",
+  traceId: "—",
+  status: "idle",
+  question: "",
+  metrics: [],
+  sources: [],
+  meta: {
+    asOf: "—",
+    timezone: "Asia/Seoul",
+    synthetic: true,
+    seed: "—",
+    schemaVersion: "—",
+    contractVersion: "OPENAPI-v1.0.0",
+  },
+};
 
 export function AgentPage() {
   const [conversationId] = useState(() => crypto.randomUUID());
   const [question, setQuestion] = useState("지난달 객실 매출 하락 원인을 알려줘.");
-  const [submittedQuestion, setSubmittedQuestion] = useState(analysisFixtures.ready.question);
+  const [submittedQuestion, setSubmittedQuestion] = useState(initialRun.question);
   const [scenario, setScenario] = useState("ready");
-  const [run, setRun] = useState(analysisFixtures.ready);
+  const [run, setRun] = useState(initialRun);
   const [submitting, setSubmitting] = useState(false);
   const [artifactNotice, setArtifactNotice] = useState("");
   const viewMeta = useMemo(() => run.meta, [run.meta]);
@@ -39,10 +56,25 @@ export function AgentPage() {
     setSubmitting(true);
     setArtifactNotice("");
     setSubmittedQuestion(nextQuestion);
-    setRun({ ...analysisFixtures.loading, question: nextQuestion, conversationId });
-    const result = await client.analyze(nextQuestion, conversationId, scenario);
-    setRun(result);
-    setSubmitting(false);
+    setRun({
+      ...initialRun,
+      status: "queued",
+      question: nextQuestion,
+      conversationId,
+    });
+    try {
+      setRun(await client.analyze(nextQuestion, conversationId, scenario));
+    } catch {
+      setRun({
+        ...initialRun,
+        status: "failed",
+        question: nextQuestion,
+        conversationId,
+        error: { code: "INTERNAL_ERROR", message: "backend 요청을 완료하지 못했습니다." },
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -71,19 +103,30 @@ export function AgentPage() {
               <b>Analysis Agent <em>{run.status}</em></b>
               <AnalysisStatePanel
                 run={run}
-                onAddArtifact={(artifactId) => setArtifactNotice(`Artifact ${artifactId}를 보고서 초안 후보로 선택했습니다.`)}
+                onAddArtifact={(artifactId) => {
+                  const draftBlock = {
+                    artifactId,
+                    queryId: run.artifact?.queryId,
+                    question: run.question,
+                    sourceUrns: run.sources.map((source) => source.urn),
+                  };
+                  window.sessionStorage.setItem("answervice.report.artifact", JSON.stringify(draftBlock));
+                  setArtifactNotice(`Artifact ${artifactId}를 보고서 초안 후보로 선택했습니다.`);
+                }}
               />
               {artifactNotice && <p className="artifact-notice" role="status">{artifactNotice}</p>}
             </div>
           </div>
         </div>
         <form className="chat-input" onSubmit={submitQuestion}>
-          <label className="scenario-picker">
-            <span>상태 fixture</span>
-            <select value={scenario} onChange={(event) => setScenario(event.target.value)}>
-              {SCENARIOS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-            </select>
-          </label>
+          {showsAnalysisScenarios && (
+            <label className="scenario-picker">
+              <span>{usesMockAnalysisClient ? "상태 fixture" : "backend 검증"}</span>
+              <select value={scenario} onChange={(event) => setScenario(event.target.value)}>
+                {SCENARIOS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
+              </select>
+            </label>
+          )}
           <div className="question-field">
             <input
               aria-label="분석 질문"
@@ -93,7 +136,7 @@ export function AgentPage() {
             />
             <button aria-label="질문 전송" disabled={submitting}><Send size={17} /></button>
           </div>
-          <small>표시된 값은 합성 fixture이며 Agent 결과는 자동 실행되지 않습니다.</small>
+          <small>{usesMockAnalysisClient ? "표시된 값은 합성 fixture입니다." : "합성 데이터용 실제 backend 응답을 표시합니다."}</small>
         </form>
       </main>
 

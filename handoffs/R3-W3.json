@@ -1,0 +1,119 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R3-W3",
+  "ROLE": "R3",
+  "BRANCH": "daesung",
+  "BASE_SHA": "b06a0da59df2a2b3481aaae0ef7845207cedbd09",
+  "SYNCED_DEV_SHA": "9e67816c00e5441664ec636d3b3a85f7c3767b1f",
+  "PRODUCT_RESULT_SHA": "5b13828725cca58c0640484e9cc5b2185d9a2758",
+  "RESULT_SHA": "4893dc3f77a1b10cd81e197b51eb3c058d5999a1",
+  "DIRECTIVE_TOKEN": "R3-W3@b06a0da",
+  "COMPLETED_CARDS": [
+    "R3-03",
+    "R3-04",
+    "R3-05",
+    "R3-06",
+    "R3-07",
+    "R3-08",
+    "R3-09",
+    "R3-10",
+    "R3-12",
+    "R3-13",
+    "R3-14"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/daesung/일일보고.md",
+    "evals/base_comparison.v0.1.json",
+    "evals/runner.py",
+    "evals/split_manifest.v0.1.json",
+    "src/ai/fake_model.py",
+    "src/ai/node2.py",
+    "src/modelops/runtime.py",
+    "src/modelops/serving_manifest.v0.1.json",
+    "tests/ai/test_node2.py",
+    "tests/ai/test_wave3.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "MODEL_CONTRACT_VERSION": "MODEL-v1.0.0",
+    "PROMPT_VERSION": "PROMPT-v1.0.0",
+    "MODEL_FIXTURE_VERSION": "MODEL-FIXTURE-v1.0.0",
+    "EVALUATION_MANIFEST_VERSION": "EVAL-DATA-I3-v1.0.0",
+    "SERVING_MANIFEST_VERSION": "SERVING-v0.1"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_NODE_CHAIN",
+      "status": "PASS",
+      "evidence": "Node1·Node2·Node2-prime·Node3 fake chain validates typed schema and rejects fields outside approved Context"
+    },
+    {
+      "id": "AC2_REPAIR_LIMIT",
+      "status": "PASS",
+      "evidence": "Node2 repair accepts normalized errors only and returns attempt=1 without internal loop"
+    },
+    {
+      "id": "AC3_BASE_COMPARISON",
+      "status": "PASS",
+      "evidence": "captured-run comparator enforces identical conditions and case IDs and reproduces accuracy, p50, p95, resources and cost fields; external model benchmark remains deferred Gate evidence"
+    },
+    {
+      "id": "AC4_SERVING_CLIENT_TRACE",
+      "status": "PASS",
+      "evidence": "local injected transport reproduces timeout one retry, fallback, circuit open, schema validation, redacted trace, and null unknown cost"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_COMPILE",
+      "name": "python -m compileall -q src/ai src/modelops evals tests/ai",
+      "status": "PASS",
+      "evidence": "compileall exit code 0"
+    },
+    {
+      "id": "T2_AI_TESTS",
+      "name": "python -m unittest discover -s tests/ai -p \"test_*.py\"",
+      "status": "PASS",
+      "evidence": "31 tests passed in 0.334s"
+    },
+    {
+      "id": "T3_ROLE_GATE",
+      "name": "python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base",
+      "status": "PASS",
+      "evidence": "R1 accepted external model execution as deferred Gate evidence outside this no-download/no-cost bundle; final role gate rerun on manifest-only commit"
+    },
+    {
+      "id": "T4_DIFF_CHECK",
+      "name": "git diff --check",
+      "status": "PASS",
+      "evidence": "git diff --check exit code 0"
+    }
+  ],
+  "ADDITIONAL_TEST_RESULTS": [
+    {
+      "name": "backend consumer contracts",
+      "status": "PASS",
+      "evidence": "pytest test_analysis_pipeline.py and test_control_plane_contract.py: 23 passed"
+    },
+    {
+      "name": "full backend unittest discovery",
+      "status": "BLOCKED",
+      "evidence": "local environment lacks fastapi; 2 import/runtime errors and 6 skips, while branch CI installs backend requirements"
+    },
+    {
+      "name": "actual Base model benchmark and serving runtime",
+      "status": "NOT_RUN",
+      "evidence": "checkpoint, endpoint, download, RunPod, GPU, secret and cost are not approved; this is not counted as I3 Gate evidence"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "dev 병합; I3 외부 model 증거는 미완료 유지",
+  "R1_REVIEW_DECISION": "Approve R3 code integration only. External Base benchmark and serving SLO remain deferred and I3 stays IN_PROGRESS.",
+  "DEFERRED_GATE_EVIDENCE": [
+    "Actual Base model accuracy/p50/p95/resources/cost",
+    "RunPod/vLLM cold/warm/restart/health/GPU/cost",
+    "Gold120 remaining 115 reviewed cases"
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "manifest_version": "SERVING-v0.2",
+  "status": "PASS",
+  "product_default": "Base",
+  "protocol": {
+    "models_path": "/v1/models",
+    "chat_completions_path": "/v1/chat/completions",
+    "endpoint_env": "MODEL_ENDPOINT",
+    "token_env": "MODEL_API_TOKEN",
+    "exposure": "localhost over task-only SSH tunnel"
+  },
+  "runtime": {
+    "engine": "vLLM",
+    "engine_version": "0.10.2",
+    "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+    "torch_version": "2.8.0+cu128",
+    "transformers_version": "4.57.6",
+    "model": "Qwen/Qwen3-4B",
+    "model_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+    "adapter_revision": null,
+    "dynamic_adapter_loading": false,
+    "max_concurrency": 2,
+    "max_model_length": 4096,
+    "gpu_memory_utilization": 0.8,
+    "max_output_tokens": 8
+  },
+  "resources": {
+    "gpu": "NVIDIA A40",
+    "gpu_total_mib": 49140,
+    "peak_vram_mib": 39280,
+    "peak_vram_bytes": 41188065280,
+    "peak_sampling_interval_seconds": 0.1
+  },
+  "verification": {
+    "initial_readiness_seconds": 101.623,
+    "initial_cold_latency_ms": 1634.672,
+    "warm_requests": 5,
+    "warm_p50_ms": 724.472,
+    "warm_p95_ms": 725.808,
+    "concurrency_2_completed": 2,
+    "concurrency_2_max_latency_ms": 926.888,
+    "restart_readiness_seconds": 29.062,
+    "restart_cold_latency_ms": 1690.573,
+    "restart_same_revision": true,
+    "production_client_success_timeout_fallback_circuit": "PASS — tests.ai.test_wave3"
+  },
+  "cost_and_cleanup": {
+    "pod_id": "3oc6xib6qpn3gc",
+    "pod_deleted_404": true,
+    "active_pods_after_delete": 0,
+    "hourly_cost_usd": 0.44,
+    "measured_runtime_seconds": 513.837,
+    "estimated_new_cost_usd": 0.062802,
+    "billing_api_new_cost_usd": null,
+    "billing_api_status": "PENDING — no row returned immediately after Pod deletion",
+    "previous_cost_usd": 0.9522728326846845,
+    "projected_cumulative_cost_usd": 1.015075,
+    "cumulative_limit_usd": 15
+  },
+  "artifacts": {
+    "root": "C:/Users/Playdata/Downloads/answervice-runpod-serving-20260804",
+    "serving_first_run_sha256": "9e93979b7480480624c27f6feeee754f70ca9b82247b0d3042727d3e7e8f9a7a",
+    "serving_warm_run_sha256": "fabc2707fda6091dbfd4ef7a9c39d03fa54395d3a912b5c9e3ea5903692e5413",
+    "serving_restart_run_sha256": "444c9d5943ae2034b17fba9837afa89942332332e8bd4782cd7d03f827446b7c",
+    "peak_vram_sha256": "80eef996b9da61edfb2282d8de94d1193d327883929a423e3d1429ec0aabdf2a",
+    "first_start_log_sha256": "63c1c3bb909853886e9b0422e16749479a7648c81b17eafe799e845f5e1b601e",
+    "restart_log_sha256": "da0ccb8ad6482bb90cf446ee03ac6637ba88a76bd1d9b94e31e1bac176bda953"
+  }
+}

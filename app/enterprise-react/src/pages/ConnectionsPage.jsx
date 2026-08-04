@@ -1,62 +1,51 @@
 import { useState } from "react";
-import { ChevronDown, Database, Plus, ShieldCheck } from "lucide-react";
+import { Database, ShieldCheck } from "lucide-react";
 import { MetaStrip, StatusBadge } from "../components/common/EnterpriseUi";
-import { connections } from "../data/enterpriseDemoData";
-
-const FILTERS = [
-  ["all", "전체"],
-  ["connected", "연결됨"],
-  ["delayed", "지연"],
-  ["error", "오류"],
-];
+import {
+  catalogSources,
+  I3_DATA_CONTRACT_VERSION,
+  I3_SCHEMA_VERSION,
+  I3_SEED_VERSION,
+} from "../data/catalogFixtures";
 
 export function ConnectionsPage() {
-  const [filter, setFilter] = useState("all");
-  const filtered = filter === "all"
-    ? connections
-    : connections.filter((item) => item.status === filter);
-
-  const countByStatus = (status) => status === "all"
-    ? connections.length
-    : connections.filter((item) => item.status === status).length;
+  const [sourceId, setSourceId] = useState("all");
+  const sources = sourceId === "all"
+    ? catalogSources
+    : catalogSources.filter((source) => source.sourceId === sourceId);
 
   return (
     <div className="page-content">
-      <MetaStrip />
+      <MetaStrip meta={{ synthetic: true, seed: I3_SEED_VERSION, schemaVersion: I3_SCHEMA_VERSION }} />
       <div className="management-toolbar">
-        <div className="filter-tabs">
-          {FILTERS.map(([id, label]) => (
-            <button className={filter === id ? "active" : ""} onClick={() => setFilter(id)} key={id}>
-              {label}<span>{countByStatus(id)}</span>
-            </button>
-          ))}
-        </div>
-        <button className="primary"><Plus size={15} />새 연결 등록</button>
+        <label className="scenario-picker">
+          <span>source</span>
+          <select value={sourceId} onChange={(event) => setSourceId(event.target.value)}>
+            <option value="all">전체 5개</option>
+            {catalogSources.map((source) => <option value={source.sourceId} key={source.sourceId}>{source.sourceName}</option>)}
+          </select>
+        </label>
+        <code>{I3_DATA_CONTRACT_VERSION}</code>
       </div>
       <section className="connection-grid">
-        {filtered.map((item) => (
-          <article className="card connection-card" key={item.name}>
+        {sources.map((source) => (
+          <article className="card connection-card" key={source.sourceId}>
             <header>
               <span className="vendor-icon"><Database size={21} /></span>
-              <div><h3>{item.name}</h3><p>{item.vendor}</p></div>
-              <StatusBadge status={item.status} />
-              <button aria-label={`${item.name} 메뉴`}><ChevronDown size={16} /></button>
+              <div><h3>{source.sourceName}</h3><p>{source.engine}</p></div>
+              <StatusBadge status={source.ingestionStatus} />
             </header>
             <dl>
-              <div><dt>Catalog</dt><dd>{item.catalog}</dd></div>
-              <div><dt>Business domain</dt><dd>{item.domain}</dd></div>
-              <div><dt>Endpoint</dt><dd>{item.endpoint}</dd></div>
-              <div><dt>Last health check</dt><dd>{item.sync}</dd></div>
+              <div><dt>source_id</dt><dd>{source.sourceId}</dd></div>
+              <div><dt>Trino catalog</dt><dd>{source.catalog}</dd></div>
+              <div><dt>DataHub URN</dt><dd>{source.datasetUrn}</dd></div>
+              <div><dt>DataHub/Trino FQN</dt><dd>{source.fqn}</dd></div>
+              <div><dt>catalog check FQN</dt><dd>{source.catalogCheckFqn}</dd></div>
+              <div><dt>ingestion_id</dt><dd>{source.ingestionId}</dd></div>
+              <div><dt>watermark UTC</dt><dd>{source.watermark}</dd></div>
+              <div><dt>catalog SHA-256</dt><dd><code>{source.sha256}</code></dd></div>
             </dl>
-            <div className="health-meter">
-              <span><small>Health score</small><b>{item.health || "N/A"}{item.health ? "%" : ""}</b></span>
-              <i><em style={{ width: `${item.health}%` }} /></i>
-            </div>
-            <footer>
-              <span><ShieldCheck size={13} />Read only</span>
-              <button>연결 테스트</button>
-              <button>상세 관리</button>
-            </footer>
+            <footer><span><ShieldCheck size={13} />synthetic · read only</span></footer>
           </article>
         ))}
       </section>

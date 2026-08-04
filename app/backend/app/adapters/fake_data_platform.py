@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 import hashlib
+import time
 
 
 class FakeDataPlatformAdapter:
@@ -33,6 +34,8 @@ class FakeDataPlatformAdapter:
         ).hexdigest()[:16]
         query_id = f"fake-{digest}"
         scenario = parameters.get("scenario")
+        if scenario == "slow":
+            time.sleep(0.25)
         if scenario == "query_failed":
             result = {
                 "query_id": query_id,

@@ -179,7 +179,7 @@ export interface AnalysisRun {
   error?: {
     code: AnalysisErrorCode;
     message: string;
-    retryable: boolean;
+    retryable?: boolean;
   };
   sources: AnalysisSource[];
   meta: {
@@ -197,6 +197,12 @@ export function resolveViewState(run: AnalysisRun): AnalysisViewState {
   if (run.status === "running") return run.delayed ? "DELAYED" : "LOADING";
   if (run.status === "cancelled") return "CANCELLED";
   if (run.status === "partial") return "PARTIAL";
+  if (
+    run.status === "failed"
+    && (run.error?.code === "RESULT_EVIDENCE_MISSING" || run.error?.code === "INSUFFICIENT_EVIDENCE")
+  ) {
+    return "INSUFFICIENT_EVIDENCE";
+  }
   if (run.status === "failed") return "ERROR";
   if (run.status === "blocked" && run.error?.code === "CONTEXT_INCOMPLETE") return "EMPTY";
   if (run.status === "blocked" && run.error?.code === "ACCESS_DENIED") return "FORBIDDEN";
@@ -228,7 +234,11 @@ export function normalizeApiResponse(
   question: string,
   conversationId: string,
 ): AnalysisRun {
-  const status = response.data.status ? BACKEND_STATUS_MAP[response.data.status] : "failed";
+  const status = response.data.status
+    ? BACKEND_STATUS_MAP[response.data.status]
+    : response.error?.code === "CONTEXT_INCOMPLETE" || response.error?.code === "ACCESS_DENIED"
+      ? "blocked"
+      : "failed";
   const result = response.data.result ?? undefined;
   const evidence = result?.evidence;
   const sources = evidence?.sources ?? [];

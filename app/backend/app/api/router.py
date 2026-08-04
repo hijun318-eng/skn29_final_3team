@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Request
+from fastapi.responses import JSONResponse
 
 from app.adapters.fake_data_platform import FakeDataPlatformAdapter
 from app.adapters.fake_model import FakeModelAdapter
@@ -14,6 +16,9 @@ from app.context import analysis_context, request_context
 from app.contracts import (
     AnalysisRequest,
     AnalysisResponse,
+    EmptyData,
+    ErrorBody,
+    ErrorCode,
     ErrorResponse,
     HealthData,
     HealthResponse,
@@ -24,16 +29,55 @@ from app.contracts import (
 )
 from app.controllers.analysis_controller import AnalysisController
 from app.services.analysis_service import AnalysisService
+from app.services.execution_control import ConcurrentExecutionGate
 from app.services.routing_service import RoutingService
 from app.services.readiness import AppDatabaseReadiness
 
 
+def _routing_service() -> RoutingService:
+    database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
+    return (
+        RoutingService.from_database(database_url)
+        if database_url
+        else RoutingService()
+    )
+
+
+def _data_platform():
+    if os.getenv("DATA_PLATFORM_MODE", "fake") == "fake":
+        return FakeDataPlatformAdapter()
+    from app.adapters.i2_data_platform import I2DataPlatformAdapter
+
+    return I2DataPlatformAdapter(
+        os.getenv("TRINO_URL", "http://trino:8080"),
+        os.getenv("TRINO_USER", "answervice"),
+    )
+
+
+def _model():
+    mode = os.getenv("MODEL_MODE", "fake")
+    if mode == "fake":
+        return FakeModelAdapter()
+    from app.adapters.contract_model import ContractModelAdapter
+
+    if mode == "contract-fake":
+        return ContractModelAdapter()
+    if mode == "openai":
+        return ContractModelAdapter.from_openai(
+            os.getenv("MODEL_ENDPOINT", ""),
+            os.getenv("MODEL_API_TOKEN"),
+            float(os.getenv("MODEL_TIMEOUT_SECONDS", "15")),
+        )
+    raise ValueError(f"unsupported MODEL_MODE: {mode}")
+
+
 router = APIRouter()
 controller = AnalysisController(
-    AnalysisService(FakeDataPlatformAdapter(), FakeModelAdapter()),
-    RoutingService(),
+    AnalysisService(_data_platform(), _model()),
+    _routing_service(),
 )
 readiness = AppDatabaseReadiness()
+execution_gate = ConcurrentExecutionGate()
 
 
 @router.get(
@@ -57,7 +101,11 @@ def health(request: Request) -> HealthResponse:
 def ready(request: Request) -> ReadinessResponse:
     context = request_context(request)
     probe = readiness.check()
-    status = "ready" if probe["app_postgres"] == "reachable" else "not_ready"
+    status = (
+        "ready"
+        if all(value in {"ready", "not_required"} for value in probe.values())
+        else "not_ready"
+    )
     return ReadinessResponse(
         data=ReadinessData(status=status, dependencies=probe),
         meta=response_meta(context),
@@ -91,5 +139,20 @@ def analysis(
         Body(openapi_examples=ANALYSIS_REQUEST_EXAMPLES),
     ],
     context: Annotated[RequestContext, Depends(analysis_context)],
-) -> AnalysisResponse:
-    return controller.submit(payload, context)
+) -> AnalysisResponse | JSONResponse:
+    wait_seconds = float(os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0"))
+    if not execution_gate.acquire(wait_seconds):
+        response = ErrorResponse(
+            data=EmptyData(),
+            meta=response_meta(context),
+            error=ErrorBody(
+                code=ErrorCode.RATE_LIMITED,
+                message="동시 분석은 최대 2건까지 실행할 수 있습니다.",
+                retryable=True,
+            ),
+        )
+        return JSONResponse(status_code=429, content=response.model_dump(mode="json"))
+    try:
+        return controller.submit(payload, context)
+    finally:
+        execution_gate.release()

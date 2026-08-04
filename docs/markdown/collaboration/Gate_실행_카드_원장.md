@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.41 |
-| 문서 기준일 | 2026-07-31 17:28 |
+| 버전 | v2.92 |
+| 문서 기준일 | 2026-08-04 10:41 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -172,19 +172,29 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R2-W1-F4 | Wave 1 finalization | R2 | 없음 → I1 | R2-00·09의 data contract 최종 승격 | `I1-v1.0.0` 실제 contract version·회귀 | `MERGED_DEV` |
 | R3-W1-F1 | Wave 1 finalization | R3 | 없음 → I1 | R3-00·01·02·07의 model/prompt/fixture 최종 승격 | 최종 model I/O·prompt·fixture version·회귀 | `MERGED_DEV` |
 | R4-W1-F4 | Wave 1 finalization | R4 | 없음 → I1 | R4-01의 OpenAPI 문서 정합 | README의 `OPENAPI-v1.0.0` 정합·회귀 | `MERGED_DEV` |
-| R1-W2 | Wave 2·08/10~08/14 | R1 | 없음 → I2 | R1-07, R1-09 | 수용 subset·통합 profile·deterministic trace 판정 | `IN_PROGRESS` |
+| R1-W2 | Wave 2·08/10~08/14 | R1 | 없음 → I2 | R1-07, R1-09 | 수용 subset·통합 profile·deterministic trace 판정 | `VERIFIED_GATE` |
 | R2-W2 | Wave 2·08/10~08/14 | R2 | 없음 → I2 | R2-09~16 | PMS/CRM catalog·JOIN·adapter·정답 hash | `MERGED_DEV` |
 | R3-W2 | Wave 2·08/10~08/14 | R3 | 없음 → I2 | R3-02, R3-06, R3-08 | deterministic fake·설명 schema·평가 runner | `MERGED_DEV` |
 | R4-W2 | Wave 2·08/10~08/14 | R4 | 없음 → I2 | R4-04~13, R4-15 | Template→Context→G1→G2→Trino→G3→Artifact trace | `MERGED_DEV` |
-| R4-W2-F2 | Wave 2 follow-up | R4 | 없음 → I2 | R4-04·07·11·20 보완 | DB Template·실제 Trino·migration·CORS runtime 연결 | `READY` |
+| R4-W2-F2 | Wave 2 follow-up | R4 | 없음 → I2 | R4-04·07·11·20 보완 | DB Template·실제 Trino·migration·CORS runtime 연결 | `MERGED_DEV` |
+| R4-W2-F3 | Wave 2 follow-up | R4 | 없음 → I2 | R4-20 container startup 보완 | immutable migration을 보존한 blank DB image startup | `MERGED_DEV` |
 | R5-W2 | Wave 2·08/10~08/14 | R5 | 없음 → I2 | R5-03~07 | Chat·상태·Evidence·표·차트·Artifact bridge | `MERGED_DEV` |
 | R5-W2-F1 | Wave 2 follow-up | R5 | 없음 → I2 | R5-04 source 실패 표시 보완 | API `retryable` 표시·R4 timeout fixture 소비 | `MERGED_DEV` |
-| R5-W2-F2 | Wave 2 follow-up | R5 | 없음 → I2 | R5-01·03~07 실제 API 보완 | production HTTP client·실제 backend 화면 trace | `PLANNED` |
-| R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `PLANNED` |
-| R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `PLANNED` |
-| R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `PLANNED` |
-| R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `PLANNED` |
-| R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `PLANNED` |
+| R5-W2-F2 | Wave 2 follow-up | R5 | 없음 → I2 | R5-01·03~07 실제 API 보완 | production HTTP client·실제 backend 화면 trace | `MERGED_DEV` |
+| R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `IN_PROGRESS` |
+| R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `MERGED_DEV` |
+| R2-W3-F1 | Wave 3 follow-up | R2 | 없음 → I3 | R2-18 평가 fixture 보강 | required30 결과 hash 연결·gold120 완성 | `MERGED_DEV` |
+| R2-W3-F2 | Wave 3 review follow-up | R2 | 없음 → I3 | R2-18 평가 승인 상태 동기화 | R1·R2·R3 reviewer와 APPROVED 상태 반영 | `MERGED_DEV` |
+| R3-W3 | Wave 3·08/17~08/21 | R3 | 없음 → I3 | R3-03~10, R3-12~14 | Node 1·2·2′·3·Base 비교·serving·trace | `MERGED_DEV` |
+| R3-W3-F1C | Wave 3 compatibility follow-up | R3 | 없음 → I3 | R3-10 평가 manifest 소비 호환 | partial/full gold count consumer 검증 | `MERGED_DEV` |
+| R3-W3-F2 | Wave 3 training package follow-up | R3 | 없음 → I3 | R3-10 학습 데이터 재생성·검증 도구 반입 | 제공된 training package 정적·재현성 검증 | `MERGED_DEV` |
+| R3-W3-F3 | Wave 3 held-out follow-up | R3 | 없음 → I3 | R3-10 Gold·Acceptance 실행 입력 완성 | 원장 Gold 120건·Acceptance 30건 명시 선택·승인·로컬 Trino 검증 | `MERGED_DEV` |
+| R3-W3-F10 | Wave 3 reference follow-up | R3 | 없음 → I3 | R3-07 Node 2·2′ reference 정합 | SQL FROM/JOIN과 references 정확 일치·불일치 1회 repair | `MERGED_DEV` |
+| R3-W3-F11 | Wave 3 semantic SQL follow-up | R3 | 없음 → I3 | R3-07 승인 JOIN·기간·집계 의미 보완 | 승인 5-table JOIN·절대 기간·월 집계 PROMPT-v1.0.6 | `READY` |
+| R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
+| R4-W3-F4 | Wave 3 serving contract follow-up | R4 | 없음 → I3 | R4-08 실제 Base 응답 안정화 | SQL-only guided output·결정론적 metadata·전월 대비 기간 안전 검증 | `READY` |
+| R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
+| R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `MERGED_DEV` |
 | R1-W4 | Wave 4·08/24~09/02 | R1 | I4·RC1 → I5 | R1-11~13 | Report 통합·보안·장애·복구·성능·release manifest | `PLANNED` |
 | R2-W4 | Wave 4·08/24~09/02 | R2 | I4·RC1 → I5 | R2-17~19 + R2-03~16 회귀 | 5번째 source·빈 환경 재생성·schema/seed/watermark/hash 동결 | `PLANNED` |
 | R3-W4 | Wave 4·08/24~09/02 | R3 | I4·RC1 → I5 | R3-11~15 + R3-01~10 회귀 | LoRA 1회 비교·조건부 채택·production client·전체 평가·fallback·release | `PLANNED` |
@@ -803,7 +813,7 @@ Wave 2는 I1에서 동결한 계약과 fake를 기준으로 대표 질문의 det
 ### R1-W2
 
 ```text
-STATUS=IN_PROGRESS
+STATUS=VERIFIED_GATE
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -811,15 +821,21 @@ EXECUTION_BUNDLE_ID=R1-W2
 TARGET_INTEGRATION_GATE=I2
 CHECKPOINT_GATES=없음
 TASK_CARD_RANGE=R1-07·09
-CURRENT_TASK_CARD_ID=R1-07
+CURRENT_TASK_CARD_ID=R1-09
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=04e5e6dfb1ab66d41d8235275bfe5a30290c7181
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W2@04e5e6d
 CONTRACT_VERSION=I1-v1.0.0
-R1_PROGRESS=기존 R2~R5 컴포넌트·fixture 검증은 유지하되 정적 runtime 재검토에서 backend가 빈 RoutingService와 FakeDataPlatformAdapter를 사용하고 frontend가 mock client만 사용함을 확인해 실제 Template→Trino→화면 통합 판정을 0/4 NOT_RUN으로 재개방; R4-W2-F2→R5-W2-F2→R1 실제 E2E 순서로 보완
-ALLOWED_PATHS=.github/**; compose*.yml; .env.example; tests/integration/**; docs/Answervice_기획서.md; docs/deliverables/02_WBS_29기_3팀.xlsx; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
+REMOTE_DEV_SHA=56cbf08f70b984ca34c74361062a3c90883c209c
+REMOTE_CI_EVIDENCE=GitHub Actions run 30784368551 PASS
+REMOTE_SYNC_STATE=VERIFIED
+BLOCKER=없음
+R1_PROGRESS=R4 실제 DB Template·역할 정책·blank/existing DB migration·Trino runtime과 R5 production HTTP client를 순차 통합하고, 성공·재질문·차단·source 실패를 실제 browser에서 독립 확인해 I2 네 필수 runtime을 모두 승인; 필수 30건·Gold 120건 전체 세트는 R1-07 후속 범위로 0/30·0/120 유지
+I2_GATE_EVIDENCE=R2 GOLD hash e6c2d1e…08fd; R3 deterministic runner; R4 Template→G1→G2→실제 Trino→G3→Artifact·role 403·source failure; R5 production browser 성공·재질문·차단·source 실패와 retryable 표시; integration 22건 PASS; R5 branch CI 30782796303·dev CI 30784368551 PASS
+NEXT_WAVE_AUTHORIZATION=N/A — R1 I2 판정 commit을 dev에 통합한 SHA에서 Wave 3 역할별 묶음을 별도 READY 발행
+ALLOWED_PATHS=.github/**; compose*.yml; .env.example; .dockerignore; config/access-policy.yaml; tests/integration/**; docs/Answervice_기획서.md; docs/deliverables/02_WBS_29기_3팀.xlsx; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 R1_SCOPE_AUTHORIZATION=사용자 요청에 따라 기획서 v1.2와 동기화한 공식 WBS XLSX 단일 경로의 작성·덮어쓰기·commit·junhee push를 승인; 다른 deliverable 경로는 승인하지 않음
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=필수 평가 subset·gold 원장을 확인하고 대표 질문의 Context→G1→G2→Trino→G3→Artifact→화면 trace에서 성공·재질문·차단·source 실패를 판정, 역할별 실패는 원 소유자에게 반환
@@ -958,10 +974,10 @@ EXTERNAL_ACTION_PERMISSION=허용 6개 경로와 R4 개인 일일보고·handoff
 
 ### R4-W2-F2
 
-R1 증거 Gate 보강이 `dev` `0e756e7`에 반영되고 CI run `30616159454`가 통과했으므로 아래 범위를 실행 승인한다.
+`origin/jaehong` 제품 `4bec9d7`·handoff `b812122`을 독립 검토한 결과 기존 migration upgrade, Template 역할 권한, Trino PARTIAL 오류 처리와 실제 HTTP 재현 증거가 수용 기준을 충족하지 못해 아래 최소 재작업만 승인한다.
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -972,19 +988,61 @@ TASK_CARD_RANGE=R4-04·07·11·20 runtime 보완
 CURRENT_TASK_CARD_ID=R4-W2-F2
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=0e756e7f1366e09fd084f655274e2add8778c68f
-DIRECTIVE=ACTION
-DIRECTIVE_TOKEN=R4-W2-F2@0e756e7
+BASE_SHA=e023b0640020248ec35c998b9de637a67012cdaa
+SOURCE_HEAD=80c30ec1abd15078f035392ae7b5bb27123b6b5c
+PRODUCT_RESULT_SHA=3fb5e142604cc18d45c35885beb7d0587c3ab213
+HANDOFF_SHA=80c30ec1abd15078f035392ae7b5bb27123b6b5c
+MERGED_DEV_SHA=b1e33c6a5cc483172c3b46922318e99cffe906f6
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=R4-W2-F2-REWORK@e023b06
 OPENAPI_VERSION=OPENAPI-v1.0.0
+ACCESS_POLICY_VERSION=ACCESS-POLICY-v1.0.0
 ALLOWED_PATHS=app/backend/**; tests/backend/**
 FORBIDDEN_PATHS=source DDL·seed·src/data/**; src/ai/**·src/modelops/**; frontend·Report; root Compose·.env.example·CI; R1/R2/R3/R5 소유 문서
-ACCEPTANCE_CRITERIA=context.analysis_templates의 승인 Template을 runtime에서 조회해 허용 role만 TEMPLATE route로 보내고, 기존 R2 TrinoAdapter를 R4 DataPlatformAdapter port에 연결하며, 빈 DB startup migration 뒤 HTTP template_id 요청이 실제 query_id·Artifact까지 이어지고 direct browser origin에는 환경변수 기반 정확한 CORS allowlist만 허용
-ACCEPTANCE_IDS=AC1_TEMPLATE_DB;AC2_TRINO_PORT;AC3_MIGRATION_STARTUP;AC4_HTTP_TEMPLATE_TRACE;AC5_EXACT_CORS
-TEST_COMMANDS=python -m compileall -q app/backend tests/backend; python -m pytest -p no:cacheprovider tests/backend; python app/backend/scripts/export_openapi.py --check; python -m unittest discover -s tests/integration -p "test_*.py"; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
-TEST_COMMAND_IDS=T1_COMPILE;T2_BACKEND;T3_OPENAPI;T4_INTEGRATION;T5_ROLE_GATE;T6_DIFF_CHECK
-STOP_CONDITIONS=R2 adapter 수정 필요; migration 다중 head; Template 권한·G1·G2·G3 우회; wildcard CORS 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
-HANDOFF=R1에 Template 승인·거부 HTTP 증거, 빈 DB migration, 실제 Trino query_id와 request→artifact trace, CORS 허용·거부 origin 결과를 ID별 manifest로 제출
-EXTERNAL_ACTION_PERMISSION=허용 경로와 R4 개인 일일보고·handoff manifest의 commit·jaehong push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
+ACCEPTANCE_CRITERIA=기존 `20260730_02`를 dev와 byte-for-byte 동일하게 복구하고 새 후속 revision에서 기존 02 DB와 빈 DB 모두에 컬럼 backfill·NOT NULL·승인 Template seed·최소 runtime grant를 적용하며, `config/access-policy.yaml`의 `ACCESS-POLICY-v1.0.0`에 따라 `hotel_analyst`만 Template·자산을 통과시키고 다른 유효 role은 서버에서 403으로 거부한다. R2 AdapterError의 실제 구조로 FINISHED+warnings를 PARTIAL 응답에 보존하고, real mode HTTP template 요청이 G1→G2→Trino→G3→query_id·Artifact까지 이어져야 한다. exact CORS와 기존 R2 TrinoAdapter 재사용은 유지한다.
+ACCEPTANCE_IDS=AC1_IMMUTABLE_MIGRATION;AC2_EXISTING_DB_UPGRADE;AC3_TEMPLATE_ROLE_POLICY;AC4_TRINO_PARTIAL;AC5_REAL_HTTP_TEMPLATE_TRACE;AC6_EXACT_CORS
+TEST_COMMANDS=python -m compileall -q app/backend tests/backend; python -m pytest -p no:cacheprovider tests/backend; python app/backend/scripts/export_openapi.py --check; python -m unittest discover -s tests/integration -p "test_*.py"; 빈 DB와 기존 `20260730_02` DB 각각 `alembic upgrade head`; real mode HTTP Template positive·report_admin/data_admin negative·FINISHED+warnings PARTIAL; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_COMPILE;T2_BACKEND;T3_OPENAPI;T4_INTEGRATION;T5_MIGRATION_PATHS;T6_REAL_HTTP_ROLE_PARTIAL;T7_ROLE_GATE;T8_DIFF_CHECK
+STOP_CONDITIONS=기존 revision 수정; R2 adapter 수정 필요; migration 다중 head; role·entitlement·G1·G2·G3 우회; immutable trace에 UPDATE·DELETE 권한 필요; wildcard CORS 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R1에 기존 02 파일 hash 일치, 빈·기존 DB upgrade, hotel_analyst 승인과 report_admin/data_admin 거부, 실제 Trino PARTIAL, real HTTP query_id·Artifact trace, CORS 허용·거부 결과를 ID별 manifest로 제출
+R1_REVIEW_EVIDENCE=origin/jaehong 제품 4bec9d7·handoff b812122·branch CI run 30619550796 PASS를 검토했으나 기존 02 revision 수정과 grant-only 03으로 기존 DB upgrade가 누락되고, role/entitlement 없는 Template·자산 조회, AdapterError.payload 오참조, fake mode 중심 HTTP 증거를 확인해 병합 거부
+R1_INTEGRATION_EVIDENCE=최종 80c30ec의 기존 02 blob 불변, 새 03의 빈·기존 DB upgrade와 SELECT·INSERT 최소 grant, hotel_analyst 허용·report_admin/data_admin 403, 실제 Trino PARTIAL·query_id·Artifact, exact CORS, role Gate와 branch CI run 30779910256 PASS를 확인해 b1e33c6으로 dev 통합
+EXTERNAL_ACTION_PERMISSION=N/A — R4-W2-F2 완료; 다음 Wave 승인 전 WAIT
+```
+
+### R4-W2-F3
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W2-F3
+TARGET_INTEGRATION_GATE=I2
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R4-20 container startup 보완
+CURRENT_TASK_CARD_ID=R4-W2-F3
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=cee1ca2e272f182159be7aff5ee9874ff0c6c85b
+SOURCE_HEAD=51947de078da381de3158238588be15969b7bfbb
+PRODUCT_RESULT_SHA=3f8a2cfc8fdcd229af8f8e07d6b47deaf58bc3d5
+HANDOFF_SHA=51947de078da381de3158238588be15969b7bfbb
+MERGED_DEV_SHA=158a493349cf7fc7f20e5faec529852b61ec3562
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=R4-W2-F3@cee1ca2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+ALLOWED_PATHS=app/backend/Dockerfile; tests/backend/test_control_plane_contract.py
+FORBIDDEN_PATHS=app/backend/migrations/**; 그 밖의 app/backend/**·tests/backend/**; source DDL·seed·src/data/**; frontend·Report; root Compose·.env.example·CI; R1/R2/R3/R5 소유 문서
+ACCEPTANCE_CRITERIA=기존 migration 파일을 byte-for-byte 보존한 채 Docker image 안에 repository layout을 유지해 normal entrypoint의 `alembic upgrade head`가 빈 DB에서 20260730_02의 DDL과 20260731_03의 Template SQL·접근 정책을 모두 찾고 backend가 healthy·ready가 된다. 기존 DB upgrade와 real Trino 경로는 회귀하지 않으며 검증용 임시 DB·container를 삭제한다.
+ACCEPTANCE_IDS=AC1_IMMUTABLE_MIGRATIONS;AC2_BLANK_DB_IMAGE_STARTUP;AC3_READY_DEPENDENCIES;AC4_EXISTING_DB_REGRESSION;AC5_CLEANUP
+TEST_COMMANDS=기존 migration Git blob hash dev 일치; docker build -f app/backend/Dockerfile; 임시 blank DB에 built image normal entrypoint 기동; /health·/readiness의 migration·approved_templates·trino 상태 확인; python -m unittest discover -s tests/backend; python -m unittest discover -s tests/integration; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_MIGRATION_HASH;T2_IMAGE_BUILD;T3_BLANK_ENTRYPOINT;T4_READINESS;T5_BACKEND;T6_INTEGRATION;T7_ROLE_GATE;T8_DIFF_CHECK
+STOP_CONDITIONS=기존 migration 수정; backend runtime code 변경 필요; dependency 추가; root Compose 변경; 다른 Docker project·volume 변경; 허용 경로 밖 변경 필요; blank DB normal entrypoint 또는 readiness 실패
+HANDOFF=R1에 before/after image startup 결과, migration head, readiness dependency 값, 기존 migration hash, 임시 DB·container 삭제와 ID별 manifest를 제출
+R1_REVIEW_EVIDENCE=R5-W2-F2 실제 browser 준비 중 accepted image의 normal entrypoint가 빈 DB에서 20260730_02의 repository-relative DDL 경로를 찾지 못해 종료됨을 재현했다. bind mount·migration bypass는 production 수용 근거로 인정하지 않는다.
+R1_INTEGRATION_EVIDENCE=제품 3f8a2cf·handoff 51947de의 migration 무변경, built image blank DB normal entrypoint head 20260731_03, health·전체 readiness·existing DB·실제 Trino·cleanup, role Gate와 branch CI run 30781472877 PASS를 확인해 158a493으로 dev 통합
+EXTERNAL_ACTION_PERMISSION=N/A — R4-W2-F3 완료; 다음 Wave 승인 전 WAIT
 ```
 
 ### R5-W2
@@ -1061,10 +1119,10 @@ EXTERNAL_ACTION_PERMISSION=허용 4개 경로와 R5 개인 일일보고·handoff
 
 ### R5-W2-F2
 
-`R5-W2-F1`과 `R4-W2-F2`가 `MERGED_DEV`가 된 뒤 정확한 `BASE_SHA`와 token을 채워 `READY`로 전환한다. 현재 `PLANNED`이므로 실행 승인이 아니다.
+`R5-W2-F1`과 `R4-W2-F2`의 `MERGED_DEV`를 확인해 실제 backend 화면 연결 범위를 승인했다.
 
 ```text
-STATUS=PLANNED
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -1075,11 +1133,17 @@ TASK_CARD_RANGE=R5-01·03~07 실제 API 보완
 CURRENT_TASK_CARD_ID=R5-W2-F2
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=N/A — R4-W2-F2 dev 통합 SHA 대기
-DIRECTIVE=WAIT
-DIRECTIVE_TOKEN=N/A — READY 발행 전 실행 금지
+ORIGINAL_BASE_SHA=b1e33c6a5cc483172c3b46922318e99cffe906f6
+BASE_SHA=158a493349cf7fc7f20e5faec529852b61ec3562
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R5-W2-F2-RESUME@158a493
+BLOCKER_RESOLVED_BY=R4-W2-F3 MERGED_DEV 158a493
 OPENAPI_VERSION=OPENAPI-v1.0.0
 UI_VERSION=UI-v1.0.0
+PRODUCT_RESULT_SHA=dae606f7915c5d0cb9641dc4565bf74bf822c4f8
+FINAL_BRANCH_SHA=ab1d7252bbe4a07084915f9d4e20a723b39c0239
+BRANCH_CI_EVIDENCE=GitHub Actions run 30782796303 PASS
+DEV_INTEGRATION_EVIDENCE=dev 56cbf08f70b984ca34c74361062a3c90883c209c·GitHub Actions run 30784368551 PASS
 ALLOWED_PATHS=app/enterprise-react/**; tests/frontend/**
 FORBIDDEN_PATHS=app/react/**; app/backend/**; source DDL·seed·src/data/**; src/ai/**·src/modelops/**; root Compose·.env.example·CI; R1/R2/R3/R4 소유 문서
 ACCEPTANCE_CRITERIA=production 화면은 환경변수의 backend base URL을 사용하는 실제 HTTP client로 /analysis를 호출하고 mock은 test·발표 fallback에서만 사용하며, Template 성공·재질문·차단·source 실패 응답의 request_id·trace_id·query_id·artifact_id·retryable을 재계산 없이 화면에 표시
@@ -1088,7 +1152,7 @@ TEST_COMMANDS=npm --prefix app/enterprise-react run build; node --test tests/fro
 TEST_COMMAND_IDS=T1_BUILD;T2_FRONTEND_CONTRACT;T3_ROLE_GATE;T4_DIFF_CHECK
 STOP_CONDITIONS=OpenAPI drift; frontend가 권한·Gate·retryable을 재계산해야 함; backend 수정 필요; 양쪽 frontend 수정 필요; 허용 경로 밖 변경 필요; build·contract 실패
 HANDOFF=R1에 실제 backend를 사용한 Template·실패 browser trace, network request/response, console error 0건과 ID별 manifest를 제출
-EXTERNAL_ACTION_PERMISSION=READY 전 작업·commit·push 불가; READY 발행 뒤 허용 경로와 R5 개인 일일보고·handoff manifest만 별도 승인
+EXTERNAL_ACTION_PERMISSION=보존된 4개 frontend/test 변경과 허용 경로 내 후속, R5 개인 일일보고·handoff manifest의 commit·minji push 승인; dependency 설치·비용·배포·secret·데이터 전송·dev merge 불가
 ```
 
 ## Wave 3 상세 계획 카드
@@ -1097,48 +1161,1078 @@ Wave 3는 I2에서 검증한 전체 왕복을 5 source와 실제 general LLM 경
 
 ### R1-W3
 
-- `CARD_PLAN`: R1-07 gold·필수 30건 관리 → R1-10 General LLM·Analytics Agent 기준선·보안 통합
-- 입력: I2 통합 trace, R2 5-source fixture, R3 model 비교, R4 권한·Cache, R5 오류 상태
-- 완료 조건: 일반 질문 subset, repair 최대 1회, 비승인 SQL 차단, schema-only/DataHub metadata/승인 Context 3조건 비교와 Base 비교·보안 기준선 판정
-- 검증: 역할별 producer/consumer contract test와 `tests/integration/**` 회귀, 문서 정책 검사
-- handoff: I3 판정·미실행 model 후보·보안 결함을 소유 역할에 전달
-- 중단: 필수 30건 expected 결과 미확정, 보안 High 결함, 통합 회귀 실패
+```text
+STATUS=IN_PROGRESS
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-07·10
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=744592ab129ed44c0cfcf5cf860b8945b011a324
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3@744592a
+I2_GATE_VERSION=I2-v1.0.0
+CONTRACT_VERSION=I1-v1.0.0
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30785580556 PASS
+R1_START_EVIDENCE=origin/dev 1c57797789b040932fc6a02c3f45294d99bc0347·GitHub Actions run 30786041244 PASS; integration 23건·Gate dashboard·문서 정책 PASS; required30 0/30·gold120 0/120으로 생산자 handoff 대기
+R1_PROGRESS_EVIDENCE=required30 30/30·gold120 120/120·평가 150건 reviewer/status 승인 완료; R2-W3-F2·R3-W3-F2·R4-W3·R5-W3-F1C MERGED_DEV; dev·junhee 3a7ceec·CI 30800298617/30800328577 PASS; integration 23건·Context/G1/G2/cache/concurrency 보안 회귀 29건 PASS
+R1_LOCAL_MODEL_EVIDENCE=CUDA GPU 없음; 로컬 Hugging Face cache에 Qwen3-4B 없음; 실제 Base model·RunPod/LoRA·serving은 model download·비용 미승인으로 NOT_RUN
+ALLOWED_PATHS=AGENTS.md; .github/**; compose*.yml; .env.example; .dockerignore; config/access-policy.yaml; tests/integration/**; docs/Answervice_기획서.md; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
+ACCEPTANCE_CRITERIA=필수 30건 expected 결과와 reviewer를 확인하고 일반 질문 subset에서 schema-only·DataHub metadata·승인 Context 세 조건 및 Base model을 동일 질문·데이터·권한으로 비교하며 repair 최대 1회, 비승인 SQL·Context 밖 참조·G3 실패 설명을 차단하고 I3 통합 trace를 판정
+ACCEPTANCE_IDS=AC1_REQUIRED30_EXPECTED;AC2_GENERAL_LLM_BASELINE;AC3_SECURITY_BASELINE;AC4_I3_INTEGRATED_TRACE
+TEST_COMMANDS=python -m unittest discover -s tests/integration -p "test_*.py"; python .github/scripts/gate_scope.py --dashboard --next-gate I4; python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/02_WBS.md docs/markdown/collaboration/Gate_실행_카드_원장.md docs/markdown/collaboration/I1_평가_원장.md; git diff --check
+TEST_COMMAND_IDS=T1_INTEGRATION;T2_DASHBOARD;T3_DOCUMENT_POLICY;T4_DIFF_CHECK
+STOP_CONDITIONS=필수 30건 expected 결과 미확정; 보안 High 결함; 역할별 필수 handoff 미도착; 통합 회귀 실패; R2~R5 소유 경로 변경 필요
+HANDOFF=I3 판정·미실행 model 후보·보안 결함·다음 Wave 시작 조건을 전 역할에 전달
+EXTERNAL_ACTION_PERMISSION=R1 허용 경로와 개인 일일보고의 commit·junhee push 승인; dependency 설치·model download·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
 
 ### R2-W3
 
-- `CARD_PLAN`: R2-09~17을 5 source·watermark까지 확장 → R2-18 평가 fixture 고정
-- 입력: I2 승인 schema·adapter·정답 hash와 5-source 범위
-- 완료 조건: 5 catalog 단독 조회, 승인된 2·3-source JOIN, type·cardinality·watermark·gold fixture 재현
-- 검증: database compose config·verify, `tests/data/**` unit/contract test, 원천/Trino hash 비교
-- handoff: R3/R4/R5에 5-source fixture·watermark·실패 case, R1에 gold manifest 전달
-- 중단: 5번째 source 외부 권한 필요, JOIN 증폭·type 손실·watermark drift, hash 불일치
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W3
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R2-09~18
+CURRENT_TASK_CARD_ID=R2-18
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=744592ab129ed44c0cfcf5cf860b8945b011a324
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=R2-W3@744592a
+RESULT_SHA=33e17dfc326c130edb9f0257070b0c575dcca52d
+HANDOFF_SHA=7a509d5e72f1e0f79a1349c414005e6c1b999ffa
+MERGED_DEV_SHA=8bfcd8ca62455a4c234fe565eee9b18776379cd8
+CI_EVIDENCE=branch run 30787914002 PASS; dev run 30788112084 PASS
+CONTRACT_VERSION=I1-v1.0.0
+DATA_CONTRACT_VERSION=I3-DATA-v1.0.0
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30785580556 PASS
+ALLOWED_PATHS=infrastructure/database/**; src/data/**; tests/data/**
+FORBIDDEN_PATHS=app/backend/**; src/ai/**; src/modelops/**; frontend·Report; root Compose·.env.example·CI; R1/R3/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=5 source catalog 단독 조회와 승인된 2·3-source JOIN을 type·cardinality·event-time·watermark 계약으로 재현하고 원천·Trino 결과 hash, 실패 case와 필수 30·Gold용 fixture manifest를 제공
+ACCEPTANCE_IDS=AC1_FIVE_CATALOGS;AC2_APPROVED_JOINS;AC3_WATERMARK_HASH;AC4_EVAL_FIXTURE
+TEST_COMMANDS=docker compose -f infrastructure/database/compose.yml config; powershell -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify.ps1; python -m unittest discover -s tests/data -p "test_*.py"; python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_COMPOSE;T2_DATABASE_VERIFY;T3_DATA_TESTS;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=5번째 source 외부 권한 필요; JOIN 증폭·type 손실·watermark drift; 원천/Trino hash 불일치; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R3/R4/R5에 5-source fixture·watermark·실패 case를, R1에 Gold manifest와 ID별 증거를 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff manifest의 commit·seung push 승인; dependency 설치·외부 image pull·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
 
+### R2-W3-F1
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W3-F1
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R2-18 required30 결과 계약 강화·gold120 완성
+CURRENT_TASK_CARD_ID=R2-18
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=e780b75798188331964e55c2437965b78b290211
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R2-W3-F1@e780b75
+CONTRACT_VERSION=I1-v1.0.0
+DATA_CONTRACT_VERSION=I3-DATA-v1.1.0-DRAFT
+EVALUATION_MANIFEST_VERSION=EVAL-DATA-I3-v1.1.0-DRAFT
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30791740474 PASS
+R1_REVIEW_EVIDENCE=required30 30건과 gold 후보 5건의 수량·범주·split은 유효하지만 성공 case의 expected_query_result가 실제 SQL·result hash가 아닌 참조 문자열이고, 모든 35건이 REVIEW·R1/R3 PENDING이며 R3 runner는 inventory만 소비함
+GOLD_CATEGORY_PLAN=단일 source 25; 승인 2-source JOIN 20; 승인 3-source JOIN 20; 모호·근거 부족 20; 권한·금지 20; source 실패·timeout·partial 15 = 120
+ALLOWED_PATHS=infrastructure/database/sql/queries/**; infrastructure/database/scripts/**; src/data/**; tests/data/**
+FORBIDDEN_PATHS=app/backend/**; src/ai/**; src/modelops/**; evals/**; frontend·Report; root Compose·.env.example·CI; R1/R3/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=required30 30건과 gold120 120건을 중복 없이 제공하고 성공 case의 expected_query_result를 i3_contract의 catalog check 또는 승인 JOIN gold fixture ID·SQL·sha256으로 해석·검증하며 evidence 파일 존재, data/schema/seed/scenario/policy version, category 수량, paraphrase_group split 누수 0건을 자동 검사한다. R1·R3 승인 전 case status는 REVIEW를 유지하고 단순 문장 복제로 수량을 채우지 않는다.
+ACCEPTANCE_IDS=AC1_REQUIRED30_RESULT_HASH;AC2_GOLD120_COMPLETE;AC3_CATEGORY_AND_SPLIT;AC4_EVIDENCE_AND_VERSION
+TEST_COMMANDS=python -m json.tool src/data/evaluation_fixture_manifest.i3.v1.json; python -m unittest discover -s tests/data -p "test_*.py"; python -m unittest tests.ai.test_wave3 -v; python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_JSON;T2_DATA_TESTS;T3_AI_CONSUMER;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=실제 고객·외부 데이터 필요; 승인되지 않은 JOIN·새 원천·schema 변경 필요; expected result hash 불일치; category·split·evidence 검증 실패; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R3에 EVAL-DATA-I3-v1.1.0 manifest와 case→SQL/result hash 해석 계약을, R1에 required30·gold120 범주별 수량·검증·미실행 항목을 전달
+IMPLEMENTATION_SHA=46bcb74faa3338f9917e586bd7a6fe38cbe45e5e
+SOURCE_CI_EVIDENCE=GitHub Actions run 30793635759 PASS
+DEV_MERGE_SHA=078651fb3b5c4df62c34ddd193d1dc718522ddfe
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff manifest의 commit·seung push 승인; dependency 설치·외부 image pull·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
+
+### R3-W3-F1C
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F1C
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-10 R2 평가 manifest partial/full count 소비 호환
+CURRENT_TASK_CARD_ID=R3-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=c8a943be94827778fad48a626b0810adce86972b
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F1C@c8a943b
+CONTRACT_VERSION=I1-v1.0.0
+INPUT_EVALUATION_MANIFEST_VERSION=EVAL-DATA-I3-v1.0.0→v1.1.0-DRAFT
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30792024162 PASS
+CHANGE_REQUEST_EVIDENCE=tests/ai/test_wave3.py가 gold120=5·REVIEW=35를 하드코딩해 R2-W3-F1 승인 결과 gold120=120·전체 150 case를 소비하면 필연적으로 실패함. R2는 tests/ai/** 금지이므로 R3 소유 경로에서 선행 호환 보완 필요
+ALLOWED_PATHS=evals/**; tests/ai/**
+FORBIDDEN_PATHS=source DDL·seed·src/data/**; app/backend/**·G1·G2·G3; frontend·Report; root Compose·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=R2 manifest의 declared required30·gold partial count와 실제 case 수를 비교하고 required30=30·gold target=120·gold partial 0~120 경계를 유지한다. 테스트는 현재 partial 5건과 full 120건을 모두 검증하며 특정 REVIEW 총수 35를 하드코딩하지 않는다. model runtime·Node 동작·평가 성공 판정은 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_DECLARED_COUNT;AC2_PARTIAL_AND_FULL_GOLD;AC3_REQUIRED30_AND_TARGET;AC4_NO_RUNTIME_CHANGE
+TEST_COMMANDS=python -m compileall -q evals tests/ai; python -m unittest discover -s tests/ai -p "test_*.py"; python -m unittest tests.data.test_i3_contract -v; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_COMPILE;T2_AI_TESTS;T3_DATA_CONSUMER;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=R2 manifest schema 변경 필요; required30=30·gold target=120 경계 완화 필요; runtime·Node 동작 변경 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R2에 partial/full count를 모두 소비하는 검증 기준을, R1에 변경 전후 테스트와 runtime 무변경 증거를 전달
+IMPLEMENTATION_SHA=5ad22eeb366c5bda56ece201574d94255bfe1c0a
+SOURCE_CI_EVIDENCE=GitHub Actions run 30793002152 PASS
+DEV_MERGE_SHA=1ac9c5de4a6dd620bea00d5b787c16b9b0d7053e
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고·handoff manifest의 commit·daesung push 승인; dependency 설치·model download·RunPod·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
 ### R3-W3
 
-- `CARD_PLAN`: R3-03~06 Node 1·2·2′·3 → R3-07~10 prompt·평가·Base 비교·학습 데이터 검수 → R3-12~14 serving·production client·trace
-- 입력: I2 model schema·gold fixture·R4 호출/timeout/error 계약
-- 완료 조건: Context 밖 참조 0건, repair 1회, 동일 조건 Base 비교, serving timeout·fallback·trace 재현
-- 검증: compileall, `tests/ai/**`, 필수 평가 subset, serving manifest dry-run
-- handoff: R4에 production client·fallback 계약, R1에 정확도·p50/p95·자원·비용·미실행 결과 전달
-- 중단: model download·RunPod·비용 미승인, 학습 누수, schema/timeout/fallback 검증 실패
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-03~10·12~14
+CURRENT_TASK_CARD_ID=R3-14
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=b06a0da59df2a2b3481aaae0ef7845207cedbd09
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=R3-W3@b06a0da
+RESULT_SHA=5b13828725cca58c0640484e9cc5b2185d9a2758
+HANDOFF_SHA=0ca009658bc6d12b10012a64aedd9217a8317c74
+MERGED_DEV_SHA=41f5788176f507f9b07c7bb3643234f9ffceaa23
+CI_EVIDENCE=branch run 30789043209 PASS; dev run 30789184985 PASS
+DEFERRED_GATE_EVIDENCE=실제 Base model·RunPod/vLLM·GPU·비용·cold/warm/restart와 Gold120 나머지 115건은 I3 통과 증거로 계산하지 않음
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.0
+MODEL_FIXTURE_VERSION=MODEL-FIXTURE-v1.0.0
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30787154375 PASS
+R1_REISSUE_EVIDENCE=기존 BASE_SHA 744592a와 신규 실행 시점 origin/dev 1c57797 불일치로 자동 중단됨; R1 착수 통합 후 origin/dev b06a0da·CI 30787154375 PASS 기준으로 재발행; origin/daesung 1e07ca8의 개인 일일보고 commit은 보존하고 dev를 no-rebase merge
+ALLOWED_PATHS=src/ai/**; src/modelops/**; evals/**; tests/ai/**
+FORBIDDEN_PATHS=source DDL·seed·src/data/**; app/backend/**·G1·G2·G3; frontend·Report; root Compose·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=Node 1·2·2′·3이 승인 Context 밖 참조 없이 typed schema를 지키고 repair 최대 1회, 동일 질문·데이터·권한 조건의 Base 비교, production client timeout·fallback·circuit·trace와 평가 결과를 재현하며 Node가 권한·SQL 실행·Gate·정답을 재판정하지 않음
+ACCEPTANCE_IDS=AC1_NODE_CHAIN;AC2_REPAIR_LIMIT;AC3_BASE_COMPARISON;AC4_SERVING_CLIENT_TRACE
+TEST_COMMANDS=python -m compileall -q src/ai src/modelops evals tests/ai; python -m unittest discover -s tests/ai -p "test_*.py"; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_COMPILE;T2_AI_TESTS;T3_ROLE_GATE;T4_DIFF_CHECK
+STOP_CONDITIONS=model download·RunPod·비용·secret 필요; 학습 누수; Context 밖 참조; schema·timeout·fallback 검증 실패; 허용 경로 밖 변경 필요
+HANDOFF=R4에 production client·fallback·timeout 계약을, R1에 정확도·p50/p95·자원·비용·미실행 결과와 ID별 증거를 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고·handoff manifest의 commit·daesung push 승인; dependency 설치·model download·RunPod·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
 
 ### R4-W3
 
-- `CARD_PLAN`: R4-08~13 실제 model·G2·repair·Trino·G3·Artifact → R4-14 Cache → R4-15 Audit → R4-18 권한·mask·redaction
-- 입력: I2 backend trace, R2 5-source adapter, R3 production client
-- 완료 조건: SQL Plan Cache와 Result Cache를 분리하고 key에 context/policy/권한 범위(entitlement)/as_of/watermark/mask가 반영되며, Template·Plan·Result Cache도 G1·G2·G3와 권한 확인을 우회하지 않고, 최대 LLM 4회·동시 2건·초과 대기/429와 request→context→query/cache→artifact trace가 재현됨
-- 검증: compileall, `tests/backend/**` 전체 회귀, invalid schema·timeout·권한·Cache negative test
-- handoff: R5에 실제 OpenAPI/status/trace fixture, R1에 보안·Audit 증거 전달
-- 중단: Gate 우회, PII·secret 노출, repair 2회, Cache 권한 공유, backend 회귀 실패
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W3
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R4-08~15·18
+CURRENT_TASK_CARD_ID=R4-08
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=41f5788176f507f9b07c7bb3643234f9ffceaa23
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W3@41f5788
+OPENAPI_VERSION=OPENAPI-v1.0.0
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30789184985 PASS
+R1_REISSUE_EVIDENCE=R2 5원천 계약과 R3 production model client·timeout·fallback·circuit·trace 계약이 dev 41f5788에 통합되고 CI PASS를 확인해 R4-W3를 재발행
+R1_REVIEW_EVIDENCE=제품 3c2ee47·최종 70d9e56의 model call budget·권한별 Cache·동시 2건·HTTP 429·Audit trace, role gate와 branch CI 30789842373 PASS를 확인
+MERGED_DEV_SHA=c89a1a03d462e04dcd86dd33766936033063313d
+DEV_CI_EVIDENCE=GitHub Actions run 30790048113 PASS
+ALLOWED_PATHS=app/backend/**; tests/backend/**
+FORBIDDEN_PATHS=source DDL·seed·src/data/**; src/ai/**·src/modelops/**; frontend·Report; root Compose·.env.example·CI; R1/R2/R3/R5 소유 문서
+ACCEPTANCE_CRITERIA=실제 model client·repair 최대 1회·Trino·G3·Artifact를 고정 상태 전이로 유지하고 SQL Plan Cache와 Result Cache를 분리하며 key에 context·policy·entitlement·as_of·watermark·mask를 포함한다. Template·Cache도 G1·G2·G3·권한을 우회하지 않고 최대 LLM 4회·동시 2건·초과 대기/429와 request→context→query/cache→artifact trace를 재현
+ACCEPTANCE_IDS=AC1_MODEL_CLIENT;AC2_CACHE_ISOLATION;AC3_CONCURRENCY_LIMIT;AC4_AUTH_MASK_AUDIT
+TEST_COMMANDS=python -m compileall -q app/backend tests/backend; python -m pytest -p no:cacheprovider tests/backend; python app/backend/scripts/export_openapi.py --check; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_COMPILE;T2_BACKEND_TESTS;T3_OPENAPI;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=Gate 우회; PII·secret 노출; repair 2회; Cache 권한 공유; migration 다중 head; backend 회귀 실패; 허용 경로 밖 변경 필요
+HANDOFF=R5에 실제 OpenAPI·status·trace fixture를, R1에 Cache·권한·Audit 보안 증거와 ID별 manifest를 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R4 개인 일일보고·handoff manifest의 commit·jaehong push 승인; dependency 설치·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
 
 ### R5-W3
 
-- `CARD_PLAN`: R5-04 상태 UI 회귀 → R5-08~10 Report domain·router·migration proposal → R5-14 Catalog·Connection
-- 입력: I2 활성 frontend·Artifact contract, R2 catalog fixture, R4 실제 OpenAPI
-- 완료 조건: 전체 오류 상태, immutable Report version, R4가 등록 가능한 router/migration proposal, 5-source Catalog mock
-- 검증: 활성 frontend build, mock/real response parity 검사, Report contract test, `git diff --check`
-- handoff: R4에 router·migration proposal과 contract test, R1에 UI 상태·Catalog 증거 전달
-- 중단: 공통 FastAPI/Alembic 직접 수정 필요, 양쪽 frontend 수정, Report version 덮어쓰기, build 실패
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W3
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R5-04~10·14
+CURRENT_TASK_CARD_ID=R5-04
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=8bfcd8ca62455a4c234fe565eee9b18776379cd8
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R5-W3@8bfcd8c
+OPENAPI_VERSION=OPENAPI-v1.0.0
+UI_VERSION=UI-v1.0.0
+REPORT_VERSION=REPORT-v1.0.0
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30788112084 PASS
+R1_REISSUE_EVIDENCE=R2-W3 5원천 계약이 dev 8bfcd8c에 통합되고 CI PASS를 확인해 R5가 R4 완료를 기다리지 않고 기존 OpenAPI example·mock과 R2 fixture로 병렬 착수하도록 재발행
+R1_REVIEW_EVIDENCE=제품 e6e527a·최종 1c33f1c의 전체 오류 UI·Artifact→Report·immutable Report proposal·5원천 Catalog, role gate와 branch CI 30790336427 PASS를 확인
+MERGED_DEV_SHA=4106b6d247b3f8cae7528a9915fb06b9dbcbae7f
+DEV_CI_EVIDENCE=GitHub Actions run 30790451402 PASS
+FOLLOW_UP=R4-16 실제 FastAPI·Alembic 등록과 R5-16 browser 접근성은 Wave 4 범위로 유지
+ALLOWED_PATHS=app/enterprise-react/**; src/report/**; tests/frontend/**; tests/report/**
+FORBIDDEN_PATHS=app/react/**; app/backend/**·공통 FastAPI·Alembic chain; source DDL·seed·src/data/**; src/ai/**·src/modelops/**; root Compose·.env.example·CI; R1/R2/R3/R4 소유 문서
+ACCEPTANCE_CRITERIA=전체 오류 상태를 API 값 그대로 표시하고 immutable Report definition/version/run/block domain, R4가 등록 가능한 독립 router·migration proposal과 contract test, 5-source Catalog·Connection mock을 활성 frontend 하나에서 제공
+ACCEPTANCE_IDS=AC1_ERROR_STATES;AC2_REPORT_VERSION;AC3_ROUTER_MIGRATION_PROPOSAL;AC4_FIVE_SOURCE_CATALOG
+TEST_COMMANDS=npm --prefix app/enterprise-react run build; node --test tests/frontend/contracts.test.mjs; python -m unittest discover -s tests/report -p "test_*.py"; python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_BUILD;T2_FRONTEND_CONTRACT;T3_REPORT_TESTS;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=공통 FastAPI·Alembic 직접 수정 필요; 양쪽 frontend 수정; Report version 덮어쓰기; API 상태 재계산; build·contract 실패; 허용 경로 밖 변경 필요
+HANDOFF=R4에 router·migration proposal과 contract test를, R1에 전체 오류 UI·Catalog 증거와 ID별 manifest를 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R5 개인 일일보고·handoff manifest의 commit·minji push 승인; dependency 설치·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
+
+### R5-W3-F1C
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W3-F1C
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R5-14 Catalog 계약 버전 호환
+CURRENT_TASK_CARD_ID=R5-14
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=3d6bed7f29aec0c9610c4bfa054d3d57ef9b522e
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R5-W3-F1C@3d6bed7
+DATA_CONTRACT_VERSION=I3-DATA-v1.1.0-DRAFT
+BASE_DEV_CI_EVIDENCE=GitHub Actions run 30794421419 FAIL — frontend I3 data contract 상수 불일치가 동일하게 재현됐으며 본 카드의 교정 대상
+CHANGE_REQUEST_EVIDENCE=dev CI run 30793737827에서 tests/frontend/contracts.test.mjs:188이 frontend 상수 I3-DATA-v1.0.0과 실제 src/data/i3_contract.v1.json의 I3-DATA-v1.1.0-DRAFT 불일치로 실패함
+ALLOWED_PATHS=app/enterprise-react/src/data/catalogFixtures.ts; tests/frontend/contracts.test.mjs
+FORBIDDEN_PATHS=src/data/**; app/backend/**; src/ai/**; src/modelops/**; src/report/**; root Compose·.env.example·CI; R1/R2/R3/R4 소유 문서
+ACCEPTANCE_CRITERIA=frontend의 I3 data contract 상수를 실제 계약 버전 I3-DATA-v1.1.0-DRAFT와 일치시키고 Catalog 내용·UI 동작·R2 계약 파일은 변경하지 않으며 frontend contract test와 build를 통과
+ACCEPTANCE_IDS=AC1_CONTRACT_VERSION_SYNC;AC2_FRONTEND_CONTRACT;AC3_BUILD_REGRESSION
+TEST_COMMANDS=node --test tests/frontend/contracts.test.mjs; npm --prefix app/enterprise-react run build; python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_FRONTEND_CONTRACT;T2_BUILD;T3_ROLE_GATE;T4_DIFF_CHECK
+STOP_CONDITIONS=버전 상수 외 제품 동작 변경 필요; R2 계약 파일 수정 필요; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R1에 변경 파일·frontend contract·build·role gate 결과를 전달
+IMPLEMENTATION_SHA=aeb8bfa892d7f136646f89ba354e043a12373049
+SOURCE_CI_EVIDENCE=GitHub Actions run 30796547226 PASS — frontend production build·contract, Python, 문서, 역할 범위, quality gate 통과
+DEV_MERGE_SHA=4825c0c4157a168ea6f5add214cb936235605063
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R5 개인 일일보고·handoff manifest의 commit·minji push 승인; dependency 설치·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
+
+### R2-W3-F2
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W3-F2
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R2-18 평가 승인 상태 동기화
+CURRENT_TASK_CARD_ID=R2-18
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=98b84364a16828cd1543397a5ee6662735d879b3
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R2-W3-F2@98b8436
+DATA_CONTRACT_VERSION=I3-DATA-v1.1.0-DRAFT
+EVALUATION_MANIFEST_VERSION=EVAL-DATA-I3-v1.1.0-DRAFT
+R1_R3_REVIEW_EVIDENCE=required30 30건·gold120 120건 전수 질문 검토; 중복 0·split 누수 0·필수 필드 누락 0; data 21건·AI 32건·integration 23건 PASS
+ALLOWED_PATHS=src/data/evaluation_fixture_manifest.i3.v1.json; tests/data/test_i3_contract.py
+FORBIDDEN_PATHS=질문·정답 SQL·result hash·category·split·evidence 내용; infrastructure/database/**; app/backend/**; src/ai/**; evals/**; frontend·Report; root Compose·CI; R1/R3/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=150건의 질문·정답·근거·version·분할을 변경하지 않고 reviewers를 R1:REVIEWED|R2:REVIEWED|R3:REVIEWED, status를 APPROVED로 동기화하며 data·AI consumer 회귀와 역할 범위를 통과
+ACCEPTANCE_IDS=AC1_REVIEWER_SYNC;AC2_APPROVED_STATUS;AC3_CONTENT_IMMUTABLE;AC4_CONSUMER_REGRESSION
+TEST_COMMANDS=python -m json.tool src/data/evaluation_fixture_manifest.i3.v1.json; python -m unittest discover -s tests/data -p "test_*.py"; python -m unittest discover -s tests/ai -p "test_*.py"; python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_JSON;T2_DATA_TESTS;T3_AI_TESTS;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=질문·정답·근거·version·분할 변경 필요; 일부 case 승인 불가; 허용 경로 밖 변경 필요; 필수 검증 실패
+HANDOFF=R1에 reviewer/status 변경 수량, content 무변경 diff, data·AI·role gate 결과를 전달
+IMPLEMENTATION_SHA=c9c7dc7920bf51ab4f4c4ec13050b130435dccc7
+HANDOFF_SHA=b798ee508d685609be444583d1d52a2782a72f1f
+SOURCE_CI_EVIDENCE=GitHub Actions run 30798132320 PASS — role scope·Python·Compose·문서·quality gate 통과
+CONTENT_IMMUTABILITY_EVIDENCE=reviewers·status 제외 SHA-256 8ffe1cdbdbdc460b2b5440e56fec31741c295195989ec904b320d4074d8e9a00 변경 전후 일치
+DEV_MERGE_SHA=81934046243b84890e0988f8f1faf701959676b1
+DEV_CI_EVIDENCE=GitHub Actions run 30798345089 PASS — 전체 Python·frontend·Compose·문서·role scope·quality gate 통과
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R2 개인 일일보고·handoff manifest의 commit·seung push 승인; dependency 설치·외부 image pull·model download·비용·배포·secret·외부 데이터 전송·dev merge 불가
+```
+
+### R3-W3-F2
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F2
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-10 학습 데이터 재생성·검증 도구 반입
+CURRENT_TASK_CARD_ID=R3-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=65254239ee803369c846031d5cf45ee81aad7760
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F2@6525423
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.0
+TRAINING_PACKAGE_SOURCE_SHA256=694ddcf4fe2f5d912383f9d871f33e153fd44ed751c4cdc111e72a72311f7c5d
+ALLOWED_PATHS=src/ai/training/**; tests/ai/test_training_dataset.py; tests/ai/test_training_scenarios.py; tests/ai/test_training_verification.py
+FORBIDDEN_PATHS=__pycache__/**; *.pyc; 제공된 학습 JSONL 원본; app/backend/**; src/data/**; infrastructure/database/**; frontend·Report; root Compose·env·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=training.zip의 source·README·example·requirements 10개 파일을 src/ai/training에 반입하되 compiled cache를 제외하고, 동작을 고정하는 training 전용 AI test 3개와 Python 7개 AST parse·Qwen 1,350건 validate·검증 원본 재빌드 SHA-256 일치·기존 AI 회귀를 통과
+ACCEPTANCE_IDS=AC1_PACKAGE_CONTENTS;AC2_NO_COMPILED_CACHE;AC3_DATASET_VALIDATE;AC4_REPRODUCIBLE_BUILD;AC5_AI_REGRESSION
+TEST_COMMANDS=python AST parse src/ai/training/*.py; python -m src.ai.training.dataset validate <Qwen JSONL>; python -m src.ai.training.dataset build <TrinoPASS JSONL> <temp output> 후 SHA-256 비교; python -m src.ai.training.train_lora --help; python -m src.ai.training.evaluate_lora --help; python -m unittest discover -s tests/ai -p "test_*.py"; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_AST;T2_DATASET_VALIDATE;T3_REBUILD_HASH;T4_TRAIN_HELP;T5_EVAL_HELP;T6_AI_TESTS;T7_ROLE_GATE;T8_DIFF_CHECK
+STOP_CONDITIONS=압축 경로 탈출·secret·compiled cache 발견; 제공 JSONL 반입 필요; 재빌드 hash 불일치; 허용 경로 밖 변경; dependency 설치·model download·RunPod·비용·배포·외부 데이터 전송 필요; 필수 검증 실패
+HANDOFF=R1에 반입 파일 목록, archive hash, dataset validate·재빌드 hash·AI 회귀·role gate 결과와 RunPod 미실행을 전달
+IMPLEMENTATION_SHA=b78437e9845b896c38202060ddab99f99c93c41f
+REPORT_SHA=45cf61c67208bf24c50f3370b46d985fc5349588
+HANDOFF_SHA=fdb598849eeedf67923609e27f7009e78c498677
+SOURCE_CI_EVIDENCE=GitHub Actions run 30799546249 PASS — Python·문서·role scope·quality gate 통과
+DEV_MERGE_SHA=9b1fe34ff6dbfe7bc423e5879d4855b00879cfa9
+DEV_CI_EVIDENCE=GitHub Actions run 30799712073 PASS — 전체 Python·frontend·Compose·문서·role scope·quality gate 통과
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고·handoff manifest의 commit·daesung push 승인; dependency 설치·model download·RunPod resource·비용·배포·secret 사용·외부 데이터 전송·dev merge 불가
+```
+
+### R3-W3-F3
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F3
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-10 Gold·Acceptance 실행 입력 완성
+CURRENT_TASK_CARD_ID=R3-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=a7c7aae196e960f1487c074877dd9a3996e3bbec
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F3@a7c7aae
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.0
+SCENARIO_LEDGER_SHA256=33d706e962970f07d227afd4c1b4a39115db7136bc709197aa34d4f88f6a93c6
+GAP_EVIDENCE=2,000건 원장에는 gold 120건·acceptance 30건이 있으나 build_case_specs.py는 train·validation만 선택하고 Qwen compiled 1,350건에도 held-out split이 없어 evaluate_lora.py의 gold·acceptance 실행 입력이 없음
+ALLOWED_PATHS=src/ai/training/build_case_specs.py; tests/ai/test_training_scenarios.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=제공 JSONL 원본; src/data/**; app/backend/**; infrastructure/database/**; frontend·Report; root Compose·env·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=기존 train 1,200건·validation 150건 생성 기본값을 보존하면서 명시적 held-out 옵션에서만 gold 120건·acceptance 30건을 선택하고 APPROVED로 표시한다. 150건의 case_id·scenario_group 중복과 train·validation 누수를 0건으로 확인하고 Python AST·AI 회귀를 통과한 뒤 제공 원장을 읽기 전용으로 사용해 임시 case spec을 생성한다. 로컬 G2·Trino 검증과 compiled 변환은 실제 150건 전수 PASS일 때만 성공으로 보고한다.
+ACCEPTANCE_IDS=AC1_DEFAULT_SPLITS_PRESERVED;AC2_EXPLICIT_HELD_OUT_150;AC3_APPROVAL_BOUNDARY;AC4_NO_SPLIT_LEAKAGE;AC5_LOCAL_TRINO_PASS;AC6_COMPILED_VALIDATE
+TEST_COMMANDS=python -m unittest tests.ai.test_training_scenarios -v; python -m unittest discover -s tests/ai -p "test_*.py"; python -m src.ai.training.build_case_specs <scenario-ledger> <temp-held-out-specs> --held-out; python -m src.ai.training.verify_case_specs <temp-held-out-specs> <temp-held-out-verified>; python -m src.ai.training.dataset build <temp-held-out-verified> <temp-held-out-compiled>; python -m src.ai.training.dataset validate <temp-held-out-compiled>; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_SCENARIO_TEST;T2_AI_REGRESSION;T3_HELD_OUT_BUILD;T4_LOCAL_TRINO;T5_COMPILED_BUILD;T6_COMPILED_VALIDATE;T7_ROLE_GATE;T8_DIFF_CHECK
+STOP_CONDITIONS=held-out 자동 승인 없이 생성 필요; 150건 수량·split·중복 불일치; G2·Trino 실패; 제공 원본 수정 필요; 허용 경로 밖 변경; dependency 설치·model download·RunPod·비용·secret·외부 데이터 전송 필요; 필수 검증 실패
+HANDOFF=R1에 기본 동작 보존, held-out 120/30 수량·승인 경계·누수 검사, 로컬 Trino 150건 전수 결과, compiled validate와 role gate 결과를 전달
+IMPLEMENTATION_SHA=b781cfbc7a556498300784cb27ca10da6afaa5d5
+HANDOFF_SHA=c480c7de04f8eceb108c9f662da5babdff822574
+SOURCE_CI_EVIDENCE=GitHub Actions run 30802900472 PASS — role scope·Python·문서·quality gate 통과
+DEV_MERGE_SHA=aede5a5caba70a6b6ee64e0f8c85edb7e1c16a4b
+DEV_CI_EVIDENCE=GitHub Actions run 30803015630 PASS — 전체 Python·frontend·Compose·문서·role scope·quality gate 통과
+EXTERNAL_ACTION_PERMISSION=제공된 2,000건 원장의 로컬 읽기와 임시 생성물, 이미 실행 중인 합성 DB·Trino의 setup 계정 검증, 허용 경로와 R3 개인 일일보고의 commit·daesung push 승인; dependency 설치·model download·RunPod resource·비용·배포·secret 사용·외부 데이터 전송·dev merge 불가
+```
+
+### R3-W3-F4
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F4
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-11 time-boxed Qwen3-4B LoRA 1회 비교와 채택 판단 증거
+CURRENT_TASK_CARD_ID=R3-11
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=852e8c879b04ea3a41ad73e299d78a6173252e42
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F4@852e8c8
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.0
+EVALUATION_MANIFEST_VERSION=EVAL-DATA-I3-v1.1.0-DRAFT
+USER_APPROVAL_EVIDENCE=사용자가 RunPod A40 실행과 최대 비용 USD 15, 학습 외 남은 작업의 계속 진행, 완료 후 commit·push·dev 통합을 승인함
+ALLOWED_PATHS=src/ai/training/evaluate_lora.py; tests/ai/test_eval_runner.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=.env; API key; 학습·평가 JSONL 원본; model binary·adapter·checkpoint·평가 생성물; app/backend/**; src/data/**; infrastructure/database/**; frontend·Report; root Compose·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=Qwen3-4B Base와 같은 checkpoint·held-out 입력·decoding 조건에서 BF16 LoRA 학습을 1회만 수행한다. Gold 120건·Acceptance 30건의 JSON 구조·SQL 정확 일치와 로컬 G2·실제 Trino 결과 일치를 확인하고, Gold의 p50·p95 응답시간과 최대 VRAM을 기록한다. adapter·manifest·로그·평가 결과를 저장소 밖에 hash와 함께 회수하고 task Pod를 삭제하며 총 RunPod 비용을 USD 15 이하로 제한한다. 정확도·안전·지연시간·메모리·재현성 조건을 모두 확인하기 전에는 제품 기본값을 LoRA로 전환하지 않는다.
+ACCEPTANCE_IDS=AC1_SINGLE_LORA_RUN;AC2_SAME_CONDITION_BASELINE;AC3_HELD_OUT_150_EVALUATED;AC4_G2_TRINO_150;AC5_LATENCY_VRAM_EVIDENCE;AC6_ARTIFACT_HASH_ROLLBACK;AC7_POD_DELETED;AC8_COST_WITHIN_LIMIT;AC9_NO_DEFAULT_SWITCH
+TEST_COMMANDS=python -m unittest tests.ai.test_eval_runner -v; python -m compileall -q src/ai/training/evaluate_lora.py; python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/daesung/일일보고.md; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_EVAL_UNIT;T2_COMPILE;T3_REPORT;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=누적 RunPod 비용 USD 15 초과 예상; secret 출력·commit 필요; 다른 Pod·volume 변경 필요; 학습·평가 데이터 누수; G2·Trino 안전 검증 실패; 결과 artifact 회수·hash 확인 실패; task Pod 삭제 실패; 허용 경로 밖 변경; 필수 검증 실패; p95 SLO 미확정 상태의 제품 기본값 전환 요구
+HANDOFF=R1에 Base·LoRA 정확도, Trino 결과 일치율, p50·p95, 최대 VRAM, 학습 manifest·adapter hash, 실제 비용, Pod 삭제, rollback과 제품 기본값 보류 근거를 전달
+R1_REVIEW_RESULT=코드·평가 증거의 dev 통합은 승인한다. serving 미실행과 p95 증가 위험은 후속 카드로 유지하며 LoRA 제품 기본값 전환은 승인하지 않고 Base를 유지한다.
+IMPLEMENTATION_SHA=b5afd4551f2d433f0e8da85d7bc050967d0ce808
+HANDOFF_SHA=bda5687c4aec07cdd924900a3440cdd64faa28af
+SOURCE_CI_EVIDENCE=GitHub Actions run 30833685964 FAIL은 handoff의 REVIEW_REQUIRED 때문이었고 R1 분리 판정·terminal 동기화 뒤 corrective run 30834157984 PASS — role scope·Python·문서·quality gate 통과
+DEV_MERGE_SHA=34facd695faf28f96036207823f03520e44069ae
+DEV_CI_EVIDENCE=GitHub Actions run 30834138561 PASS — 전체 Python·frontend·Compose·문서·role scope·quality gate 통과
+EXTERNAL_ACTION_PERMISSION=사용자 승인 한도 USD 15 안에서 task 전용 RunPod A40 Pod 생성·dependency 설치·Qwen3-4B 다운로드·합성 학습/평가 데이터 전송·BF16 LoRA 1회 학습·평가·결과 회수·정확한 task Pod 삭제와 허용 경로 commit·daesung push 승인; 다른 Pod·volume 변경, secret 출력·commit, 제품 기본값 전환, 외부 배포는 불가
+```
+
+### R3-W3-F5
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F5
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-12~14 Qwen3-4B Base vLLM endpoint 실측과 model client 운영 trace
+CURRENT_TASK_CARD_ID=R3-12
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=8a0e9c4382db2ccf7dca85accb5cc2b34385d9dc
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F5@8a0e9c4
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.0
+MODEL_ID=Qwen/Qwen3-4B
+MODEL_REVISION=1cfa9a7208912126459214e8b04321603b3df60c
+PRODUCT_DEFAULT=Base
+LORA_PRODUCT_ADOPTION=NOT_APPROVED
+USER_APPROVAL_EVIDENCE=사용자가 RunPod A40 실행과 모든 비용 합계 최대 USD 15, 학습 외 남은 작업의 계속 진행, 완료 후 commit·push·dev 통합을 승인함
+PREVIOUS_RUNPOD_COST_USD=0.9522728326846845
+CUMULATIVE_RUNPOD_COST_LIMIT_USD=15
+ALLOWED_PATHS=src/ai/training/benchmark_serving.py; src/modelops/serving_manifest.v0.1.json; evals/base_comparison.v0.1.json; tests/ai/test_serving_benchmark.py; tests/ai/test_wave3.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=.env; API key; model binary·adapter·checkpoint·평가 생성물; app/backend/**; src/data/**; infrastructure/database/**; frontend·Report; root Compose·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=고정 image·runtime·Qwen3-4B revision으로 OpenAI-compatible `/v1/models`와 `/v1/chat/completions` endpoint를 기동하고 readiness를 확인한다. 첫 요청 cold latency, 반복 warm p50·p95, 최대 VRAM, 최대 동시 2건, 동일 revision 재시작 후 readiness를 기록한다. 기존 `ProductionModelClient`로 정상·timeout·fallback·circuit trace를 재현하고 secret을 제거한 manifest와 artifact hash를 남긴다. 실행 전 누적 비용을 확인하고 총 RunPod 비용을 USD 15 이하로 제한하며 결과 회수 뒤 정확한 task Pod만 삭제한다. 이 카드는 R3 endpoint 증거만 승인하며 FastAPI 제품 연결·I3 전체 통과·LoRA 제품 채택을 주장하지 않는다.
+ACCEPTANCE_IDS=AC1_FIXED_RUNTIME_REVISION;AC2_OPENAI_ENDPOINT_READY;AC3_COLD_WARM_LATENCY;AC4_PEAK_VRAM_CONCURRENCY2;AC5_RESTART_READINESS;AC6_CLIENT_FAILURE_TRACE;AC7_REDACTED_MANIFEST_HASH;AC8_POD_DELETED;AC9_CUMULATIVE_COST_LIMIT;AC10_BASE_DEFAULT_PRESERVED
+TEST_COMMANDS=python -m unittest tests.ai.test_serving_benchmark -v; python -m unittest tests.ai.test_wave3 -v; python -m compileall -q src/ai/training/benchmark_serving.py; python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/daesung/일일보고.md; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_SERVING_UNIT;T2_MODEL_CLIENT;T3_COMPILE;T4_REPORT;T5_ROLE_GATE;T6_DIFF_CHECK
+STOP_CONDITIONS=누적 비용 USD 15 초과 예상; secret 출력·commit 필요; 다른 Pod·volume 변경 필요; 고정 model revision 또는 endpoint readiness 불가; 결과 artifact 회수·hash 확인 실패; task Pod 삭제 실패; 허용 경로 밖 변경; 필수 검증 실패; FastAPI 제품 연결 또는 LoRA 제품 기본값 전환 필요
+HANDOFF=R1에 image·runtime·model revision, endpoint schema·readiness, cold·warm p50/p95·peak VRAM·동시 2건, restart, ProductionModelClient 정상·timeout·fallback·circuit trace, artifact hash·실측 누적 비용·Pod 삭제와 R4 제품 연결에 필요한 최소 endpoint 계약을 전달
+R1_REVIEW_RESULT=Python·문서 CI와 로컬 AI 45건, 고정 revision endpoint·restart·동시 2건·peak VRAM·artifact hash·Pod 404·활성 0개를 확인해 통합을 승인한다. role-scope CI 실패는 청구 확정 지연·R4 change request·잔여 위험을 수동 검토하라는 REVIEW_REQUIRED에 한정되며 구현 실패가 아니다. 비용은 실행시간 추정 신규 USD 0.062802·예상 누적 USD 1.015075로 한도 이내다. FastAPI 제품 연결과 I3 전체 통과는 후속으로 유지한다.
+IMPLEMENTATION_SHA=8125885d4614f440f4f5cdad3c39ab4f2ca026d5
+HANDOFF_SHA=5e2fa990ad72e0605e0cf141b0b75e86e41ecd6d
+SOURCE_CI_EVIDENCE=GitHub Actions run 30837382461 FAIL은 role-scope REVIEW_REQUIRED 때문이며 Python 전체·문서 품질은 PASS — R1이 Not Run·change request·잔여 위험·외부 승인 항목을 분리 검토해 수용
+DEV_MERGE_SHA=5e2fa990ad72e0605e0cf141b0b75e86e41ecd6d
+DEV_CI_EVIDENCE=최종 R1 terminal 동기화 뒤 dev push CI 재검증 예정
+EXTERNAL_ACTION_PERMISSION=기존 누적 비용을 포함한 사용자 승인 한도 USD 15 안에서 task 전용 RunPod A40 Pod 생성·고정 serving image pull·Qwen3-4B 다운로드·합성 평가 요청 전송·Base vLLM 실측·결과 회수·정확한 task Pod 삭제와 허용 경로 commit·daesung push 승인; 다른 Pod·volume 변경, secret 출력·commit, LoRA 재학습·제품 기본값 전환, FastAPI 수정, 외부 공개 배포는 불가
+```
+
+### R4-W3-F1
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W3-F1
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R4-08 실제 Base endpoint transport와 Control Plane 안전 실패 연결
+CURRENT_TASK_CARD_ID=R4-08
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=382b7f527191df4690f8d9e6e4c4cac73c120a0c
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W3-F1@382b7f5
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+SERVING_MANIFEST_VERSION=SERVING-v0.2
+OPENAPI_VERSION=0.1.0
+ALLOWED_PATHS=app/backend/app/adapters/contract_model.py; app/backend/app/api/router.py; app/backend/README.md; tests/backend/test_production_model.py; tests/backend/test_analysis_pipeline.py; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/ai/**; src/modelops/**; evals/**; .env; API key; root Compose·CI; infrastructure/database/**; frontend·Report; R1/R2/R3/R5 소유 문서
+ACCEPTANCE_CRITERIA=`MODEL_MODE=openai`에서만 `MODEL_ENDPOINT`와 선택적 `MODEL_API_TOKEN`을 읽어 SERVING-v0.2의 `/v1/chat/completions`를 호출하고 기존 fake·contract mode 동작을 보존한다. R3 prompt·payload를 JSON으로 전달하며 temperature 0, `enable_thinking=false`, 최대 출력 제한을 고정한다. 응답 JSON은 기존 `ProductionModelClient`와 R3 schema를 통과한 뒤에만 R4 plan으로 변환한다. timeout·HTTP 오류·잘못된 JSON·schema 불일치·circuit open·fallback은 fake 성공으로 숨기지 않고 기존 Control Plane `MODEL_RESPONSE_INVALID` 안전 실패로 반환한다. Authorization header와 오류 본문은 log·trace·응답에 남기지 않는다. R4 unit·analysis regression·OpenAPI 회귀를 통과하되 실제 RunPod 재기동과 I3 전체 통과는 주장하지 않는다.
+ACCEPTANCE_IDS=AC1_EXPLICIT_OPENAI_MODE;AC2_SERVING_V02_REQUEST;AC3_SCHEMA_BEFORE_PLAN;AC4_FAILURE_IS_SAFE;AC5_SECRET_REDACTED;AC6_FAKE_CONTRACT_COMPAT;AC7_NO_GATE_DELEGATION;AC8_BACKEND_REGRESSION
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_production_model.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py; python -m compileall -q app/backend/app/adapters/contract_model.py app/backend/app/api/router.py; python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/jaehong/일일보고.md; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check origin/dev..HEAD
+TEST_COMMAND_IDS=T1_PRODUCTION_MODEL;T2_ANALYSIS_REGRESSION;T3_OPENAPI;T4_COMPILE;T5_REPORT;T6_ROLE_GATE;T7_DIFF_CHECK
+STOP_CONDITIONS=R3 schema·prompt·ProductionModelClient 수정 필요; endpoint가 권한·G1/G2/G3·SQL 실행을 판정해야 함; fake fallback을 제품 성공으로 반환해야 함; secret 출력·commit 필요; 허용 경로 밖 변경; dependency 설치·RunPod·비용·외부 데이터 전송 필요; 필수 검증 실패
+HANDOFF=R1에 MODEL_MODE별 선택, 실제 HTTP request·response schema, retry·timeout·fallback·circuit의 안전 실패, secret 비기록, backend 회귀와 R1 live endpoint trace에 필요한 실행 env를 전달
+EXTERNAL_ACTION_PERMISSION=SERVING-v0.2와 R3 runtime의 로컬 읽기, 허용 경로와 R4 개인 일일보고의 commit·jaehong push 승인; dependency 설치·RunPod resource·비용·secret 사용·외부 호출·dev merge 불가
+RESULT_SHA=ba78870b73a79fcf868d428a4811d5f152043e95
+SOURCE_SYNC_SHA=5068ac160add72ec5658bf74fcc1fddbac175d78
+SOURCE_CI_EVIDENCE=GitHub Actions run 30838961585 PASS; Python 150 passed·7 environment skipped, OpenAPI 4 passed, role scope·document quality·quality gate PASS
+DEV_MERGE_SHA=39b8c886da5f368e7a68a7940f6f690385160cc8
+R1_REVIEW=실제 endpoint request의 temperature 0·max_tokens 1500·enable_thinking false, R3 schema 선검증, timeout·invalid JSON·fallback·circuit open의 query·Artifact 없는 안전 실패와 secret 비기록을 code·test·CI로 수용. Handoff manifest NOT_RUN은 카드가 handoffs 경로를 허용하지 않은 발행 누락으로 R4 일일보고·commit·CI 직접 검수로 대체
+CONTRACT_NOTE=카드의 MODEL_RESPONSE_INVALID 표기는 동결 OPENAPI-v1.0.0에 존재하지 않아 기존 model_error의 INTERNAL_ERROR를 유지했다. 신규 오류 code를 추정 추가하지 않고 같은 안전 실패 의미를 보존
+```
+
+### R1-W3-F1
+
+```text
+STATUS=BLOCKED
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F1
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 실제 Base endpoint와 FastAPI 제품 전체 trace 판정
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=7a52059f3bee2ad653daaa3099cc139c161ae567
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F1@7a52059
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+SERVING_MANIFEST_VERSION=SERVING-v0.2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume
+ACCEPTANCE_CRITERIA=dev CI `30839298442` PASS 기준으로 task 전용 RunPod A40에서 고정 Qwen/Qwen3-4B revision의 vLLM endpoint를 localhost 전용 tunnel로 기동하고, task 전용 FastAPI runtime을 `DATA_PLATFORM_MODE=fake`, `MODEL_MODE=openai`로 연결해 합성 일반 질문 `/analysis`를 실제 HTTP로 호출한다. 성공이면 MODEL→G2→QUERY→G3→ARTIFACT trace와 model version·evidence를 확인하고, 실패면 MODEL 단계 INTERNAL_ERROR·query/Artifact 없음·secret 비기록을 확인해 원인을 판정한다. 정상·timeout·invalid JSON·fallback·circuit 회귀와 endpoint 요청 옵션을 함께 검수한다. 결과·hash·비용·cleanup을 기록하고 정확한 task Pod와 task backend container만 삭제한다. 실제 성공 trace가 없으면 I3 VERIFIED_GATE로 전환하지 않는다.
+ACCEPTANCE_IDS=AC1_FIXED_BASE_ENDPOINT;AC2_PRODUCT_HTTP_TRACE;AC3_SAFE_FAILURE;AC4_SECRET_REDACTED;AC5_COST_LIMIT;AC6_EXACT_CLEANUP;AC7_I3_EVIDENCE_DECISION
+TEST_COMMANDS=task backend health·readiness; synthetic POST /analysis with fixed auth/context headers; python -m pytest -p no:cacheprovider tests/backend/test_production_model.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py; python -m unittest discover -s tests/integration -p "test_*.py"; docker inspect task container; RunPod GET exact Pod 404 and active Pods 0; document·WBS·report validation; git diff --check
+TEST_COMMAND_IDS=T1_BACKEND_READY;T2_LIVE_ANALYSIS;T3_BACKEND_REGRESSION;T4_INTEGRATION;T5_CONTAINER_SCOPE;T6_POD_CLEANUP;T7_DOCUMENTS;T8_DIFF_CHECK
+STOP_CONDITIONS=누적 비용 USD 15 도달 예상; task 외 Pod·container·volume 변경 필요; public model endpoint 노출 필요; secret 출력·commit 필요; 실제 고객 데이터 전송 필요; R2~R5 소유 code 변경 필요; 필수 안전 실패 위반
+HANDOFF=실제 product HTTP trace·model 응답 판정·latency·artifact/evidence·회귀·artifact hash·비용·task resource cleanup과 I3 승인 또는 후속 병목을 전 역할에 전달
+EXTERNAL_ACTION_PERMISSION=사용자가 승인한 누적 USD 15 한도 안에서 task 전용 RunPod A40 Pod 생성·고정 serving image와 Qwen3-4B 다운로드·합성 요청 전송·localhost SSH tunnel·task backend container build/run·결과 회수·정확한 task Pod와 task container 삭제, R1 허용 경로 commit·junhee/dev push 승인. 다른 Pod·Docker project·container·volume 변경, public endpoint·secret 출력/commit, 실제 고객 데이터, LoRA 재학습·제품 기본값 전환은 불가
+COST_BASELINE_USD=이전 실측·추정 누적 1.015075; 최종 provider billing 지연 시 예상값과 확정 여부를 분리 기록
+RESULT_EVIDENCE=제품 기본 timeout 15초는 15,593.1ms에 MODEL INTERNAL_ERROR·query/Artifact 없음으로 안전 실패. 60초에서도 16,054.139ms로 동일해 timeout이 아님을 확인. Base 원응답 2건은 762/767자·SHA-256 0618feb1da5b.../f12f0d00ec2b...이며 JSON line1 col1 실패, JSON object mode는 `query` key만 생성해 node2 필수 field가 누락됐다. 실제 R3 node2 schema의 guided_json은 1,680자·SHA-256 0a938bc0eaf5...·schema PASS였으나 fake Context가 pms_guests.guest_id만 승인하고 metric은 pms_stays.room_revenue를 요구해 MODEL PASS 뒤 G2 RESOURCE_POLICY_MISSING, 1회 repair 뒤 SQL_POLICY_BLOCKED로 종료
+COST_AND_CLEANUP=task Pod fohruepmj5cjnt A40 USD0.44/h, 로컬 추적 875.833초로 신규 예상 USD0.107045·예상 누적 USD1.122120. provider billing row는 삭제 직후 pending. exact Pod GET 404·active Pods 0, task backend container·image·SSH tunnel·known_hosts task endpoint 제거 완료. 기존 Docker project·container·volume 변경 없음
+BLOCKER=R4 transport가 R3 response schema를 structured output으로 전달해야 하며 실제 제품 성공 trace는 fake data Context가 아니라 승인된 I2 synthetic Context와 read-only Trino로 재검증해야 한다. R4 code와 R2 data source를 R1이 대신 수정하지 않고 후속 카드로 분리
+```
+
+### R4-W3-F2
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W3-F2
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R4-08 R3 response schema 기반 structured output transport 보완
+CURRENT_TASK_CARD_ID=R4-08
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=95c0eff4cbac8fa550d0e98112b4a271141c2069
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W3-F2@95c0eff
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+SERVING_MANIFEST_VERSION=SERVING-v0.2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+ALLOWED_PATHS=app/backend/app/adapters/contract_model.py; app/backend/README.md; tests/backend/test_production_model.py; tests/backend/test_analysis_pipeline.py; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/ai/**; src/modelops/**; evals/**; app/backend/app/adapters/fake_data_platform.py; .env; API key; root Compose·CI; infrastructure/database/**; frontend·Report; R1/R2/R3/R5 소유 문서
+ACCEPTANCE_CRITERIA=각 node의 실제 R3 `<node>_response` JSON schema를 contract bundle에서 읽어 `$defs`와 함께 vLLM `guided_json`에 전달한다. node별 field를 R4에 복제·하드코딩하지 않고 기존 temperature 0·max_tokens 1500·enable_thinking false·prompt·payload·token 처리와 `ProductionModelClient` 선검증·fallback 차단을 보존한다. node2·node2_repair·node3 모두 올바른 response schema를 선택하고 schema 파일 누락·unknown node·HTTP·invalid JSON·schema 오류는 안전 실패한다. fake·contract-fake mode와 OpenAPI는 변경하지 않는다. 실제 RunPod·I2 Trino 재실행이나 I3 통과는 주장하지 않는다.
+ACCEPTANCE_IDS=AC1_SCHEMA_FROM_CONTRACT;AC2_ALL_NODE_GUIDANCE;AC3_NO_SCHEMA_DUPLICATION;AC4_EXISTING_OPTIONS;AC5_SAFE_FAILURE;AC6_MODE_COMPAT;AC7_BACKEND_REGRESSION
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_production_model.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py; python -m compileall -q app/backend/app/adapters/contract_model.py; python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/jaehong/일일보고.md; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check origin/dev..HEAD
+TEST_COMMAND_IDS=T1_PRODUCTION_MODEL;T2_ANALYSIS_REGRESSION;T3_OPENAPI;T4_COMPILE;T5_REPORT;T6_ROLE_GATE;T7_DIFF_CHECK
+STOP_CONDITIONS=R3 schema file 수정·별도 dependency 필요; response field를 R4에 하드코딩해야 함; guided output이 R3 validate_payload를 우회함; secret·오류 본문 출력 필요; 허용 경로 밖 변경; RunPod·비용·외부 호출 필요; 필수 검증 실패
+HANDOFF=R1에 node별 guided schema source·request option·R3 validation 순서·fallback 차단·backend/OpenAPI 회귀와 다음 실제 I2 synthetic product trace 조건을 전달
+EXTERNAL_ACTION_PERMISSION=R3 contract와 vLLM 0.10.2 공식 기능의 로컬 읽기, 허용 경로와 R4 개인 일일보고의 commit·jaehong push 승인; dependency 설치·RunPod·비용·secret 사용·외부 호출·dev merge 불가
+RESULT_SHA=b873ef3ce18807eb98fb859649c63439ed4f6e82
+SOURCE_CI_EVIDENCE=GitHub Actions run 30841201329 PASS; 전체 Python·OpenAPI·document quality·role scope·quality gate PASS
+DEV_MERGE_SHA=6ebee36a4de12bb147e4843ac370080a100dc486
+R1_REVIEW=node별 실제 R3 response schema를 contract bundle에서 읽어 cached guided_json으로 전달하고, schema field를 R4에 복제하지 않은 상태에서 기존 고정 생성 옵션·ProductionModelClient 검증·fallback 차단·fake mode·OpenAPI 보존을 code·22건 local test·전체 CI로 수용
+```
+
+### R1-W3-F2
+
+```text
+STATUS=BLOCKED
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F2
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 guided Base endpoint와 실제 I2 synthetic Context·Trino 제품 trace
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=6ebee36a4de12bb147e4843ac370080a100dc486
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F2@6ebee36
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+SERVING_MANIFEST_VERSION=SERVING-v0.2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+DATA_CONTRACT_VERSION=DATA-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume의 생성·수정·삭제·재시작
+ACCEPTANCE_CRITERIA=dev `6ebee36`의 R3 schema guided transport를 task 전용 RunPod A40 고정 Qwen3-4B endpoint와 task backend container에 연결한다. backend는 `DATA_PLATFORM_MODE=i2`, `TRINO_URL=http://host.docker.internal:18080`, read-only `TRINO_USER=answervice`로 이미 검증된 hotel-synthetic-db Trino를 조회만 하며 해당 project·container·volume·설정을 변경하지 않는다. 합성 일반 질문 `/analysis`가 MODEL→G2→QUERY→G3→ARTIFACT까지 성공하면 model·source·query·artifact evidence와 latency를 확인하고, 실패하면 마지막 stage·오류·query/Artifact 부재와 guided schema·G2·Trino 원인을 분리한다. 정상·timeout·invalid JSON·fallback·circuit·OpenAPI·integration 회귀를 함께 검수한다. 결과·hash·비용·cleanup을 기록하고 task Pod·backend container·image·tunnel만 제거한다. 성공 trace와 필수 회귀·보안 확인 전 I3를 승인하지 않는다.
+ACCEPTANCE_IDS=AC1_GUIDED_BASE_ENDPOINT;AC2_I2_SYNTHETIC_CONTEXT;AC3_READ_ONLY_TRINO;AC4_PRODUCT_SUCCESS_OR_EXACT_BLOCKER;AC5_SECRET_REDACTED;AC6_REGRESSION;AC7_COST_LIMIT;AC8_EXACT_CLEANUP;AC9_I3_DECISION
+TEST_COMMANDS=task backend health; I2 data source health; synthetic POST /analysis fixed headers; response trace·artifact·evidence inspection; python -m pytest -p no:cacheprovider tests/backend/test_production_model.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py; python -m unittest discover -s tests/integration -p "test_*.py"; exact task container/image/tunnel cleanup; RunPod exact Pod GET 404 and active Pods 0; verify existing Docker container IDs·status unchanged; document·WBS·report validation; git diff --check
+TEST_COMMAND_IDS=T1_BACKEND_HEALTH;T2_I2_HEALTH;T3_LIVE_ANALYSIS;T4_EVIDENCE;T5_BACKEND_REGRESSION;T6_INTEGRATION;T7_TASK_CLEANUP;T8_POD_CLEANUP;T9_DOCKER_SCOPE;T10_DOCUMENTS
+STOP_CONDITIONS=누적 비용 USD 15 도달 예상; hotel-synthetic-db 또는 다른 project의 write·restart·configuration change 필요; public model endpoint 필요; secret 출력·commit 필요; 실제 고객 데이터 전송 필요; R2~R5 code 변경 필요; 필수 안전 경계 위반
+HANDOFF=guided product HTTP trace·model/G2/query/G3/artifact evidence·latency·read-only Trino·회귀·비용·task cleanup과 I3 승인 또는 정확한 후속 병목을 전 역할에 전달
+EXTERNAL_ACTION_PERMISSION=사용자가 승인한 누적 USD 15 한도 안에서 task 전용 RunPod A40 Pod 생성·고정 serving image와 Qwen3-4B 다운로드·합성 요청 전송·localhost SSH tunnel·task backend container build/run·결과 회수·정확한 task Pod·container·image·tunnel 삭제와 기존 hotel-synthetic-db Trino의 read-only synthetic 조회, R1 허용 경로 commit·junhee/dev push 승인. 다른 Pod·Docker project·container·volume 변경, public endpoint·secret 출력/commit, 실제 고객 데이터, LoRA 재학습·제품 기본값 전환은 불가
+COST_BASELINE_USD=이전 실측·추정 누적 1.122120; 최종 provider billing 지연 시 예상값과 확정 여부를 분리 기록
+LIVE_TRACE_EVIDENCE=task Secure A40 `wzr7b1kcjpttug`·고정 Qwen3-4B revision·vLLM 0.10.2와 task backend `63b5ad6`을 localhost tunnel로 연결했다. backend health=healthy, readiness의 Trino=ready이며 앱 DB는 의도적으로 미설정했다. 실제 I2 Context의 synthetic `/analysis`는 HTTP 200·30,696.5ms·BLOCKED로 MODEL guided schema까지 PASS했지만 G2 `RESOURCE_POLICY_MISSING`, repair 1회 뒤 `SQL_POLICY_BLOCKED`로 종료됐고 QUERY·G3·ARTIFACT는 실행되지 않았다.
+ROOT_CAUSE=node2 SQL은 허용된 `pms.public.pms_stays`·`crm.dbo.crm_member_grade_history`만 정확히 참조했지만 필수 `LIMIT`가 없었다. node2와 repair SQL은 모두 708자·SHA-256 `4d579699523988ecf363def46678587c3f090aea71dfa55f98493e7967fa4619`로 동일해 `RESOURCE_POLICY_MISSING` repair가 실제로 수정되지 않았다. R3 `PROMPT-v1.0.0` 문구가 Control Plane의 `LIMIT <= 1000` resource policy와 오류별 repair 행동을 명시하지 않은 prompt 계약 병목이다.
+REGRESSION_EVIDENCE=production model·analysis pipeline 22건 PASS, integration 23건 PASS. OpenAPI local 재실행은 host Python에 FastAPI가 없어 collection BLOCKED였고 동일 R4 source CI run `30841201329`의 OpenAPI 4건 PASS를 기존 근거로 유지한다.
+RESOURCE_CLEANUP=task backend container·image·localhost tunnel·known_hosts 항목 제거, Pod exact GET 404·active Pods 0 확인. hotel-synthetic-db Trino ID `bafdc16362af...`·running·restart count 0 유지, 다른 Docker resource는 변경하지 않았다.
+COST_RESULT=Pod 실행 상한 544.915초·USD 0.066601 추정, 예상 누적 USD 1.188721로 승인 한도 USD 15 이내. provider billing 확정 지연 가능성이 있어 상한 추정값으로 기록한다.
+BLOCKER=R3 node2·node2_repair prompt가 G2 resource policy의 `LIMIT <= 1000`과 `RESOURCE_POLICY_MISSING`의 결정론적 수정 행동을 명시하고 Base endpoint에서 서로 다른 repaired SQL·G2 PASS를 증명하기 전 실제 QUERY·G3·ARTIFACT trace와 I3 승인이 불가하다.
+```
+
+### R3-W3-F6
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F6
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-15 node2 resource limit·단일 repair prompt 계약 보완
+CURRENT_TASK_CARD_ID=R3-15
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=63b5ad6c4366dafc86738f1ae4592590ee373f7c
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F6@63b5ad6
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.1
+MODEL_ID=Qwen/Qwen3-4B
+MODEL_REVISION=1cfa9a7208912126459214e8b04321603b3df60c
+ALLOWED_PATHS=src/ai/prompt_registry.py; tests/ai/test_prompt_registry.py; tests/ai/test_node2.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; infrastructure/database/**; .env; API key; model binary·adapter·checkpoint·평가 생성물; frontend·Report; root Compose·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=node2 prompt가 승인 Context의 단일 read-only Trino SELECT와 `LIMIT 1..1000`을 명시하고, node2_repair prompt가 정규화 오류 코드에 해당하는 항목만 한 번 수정하되 `RESOURCE_POLICY_MISSING`이면 기존 의미·허용 reference·parameter를 유지하며 `LIMIT 1000`을 추가하도록 명시한다. 두 prompt의 version을 `PROMPT-v1.0.1`로 올리고 hash metadata가 실제 문구를 반영한다. R3 schema·fake generation·다른 node prompt·model default는 변경하지 않는다. unit test는 resource limit·오류별 단일 repair 문구와 기존 node2 계약 회귀를 고정한다. 실제 Base endpoint·제품 trace는 R1 후속 카드에서 검증한다.
+ACCEPTANCE_IDS=AC1_NODE2_LIMIT_POLICY;AC2_RESOURCE_REPAIR_ACTION;AC3_PROMPT_VERSION_HASH;AC4_SINGLE_REPAIR;AC5_SCHEMA_UNCHANGED;AC6_REGRESSION
+TEST_COMMANDS=python -m unittest tests.ai.test_prompt_registry tests.ai.test_node2 tests.ai.test_contracts tests.ai.test_fake_model -v; python -m compileall -q src/ai/prompt_registry.py; python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/daesung/일일보고.md; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_PROMPT_UNIT;T2_COMPILE;T3_REPORT;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=R3 schema·backend G2 code·training dataset 수정 필요; prompt만으로 limit·repair 행동을 명시할 수 없음; model default·LoRA·RunPod 변경 필요; secret 출력·commit 필요; 허용 경로 밖 변경; 필수 검증 실패
+HANDOFF=R1에 node2·repair prompt version/hash·resource limit 문구·오류별 단일 repair 계약·unit regression과 후속 실제 Base I2 product trace 조건을 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고의 commit·daesung push 승인; dependency 설치·RunPod·비용·secret 사용·외부 model 호출·dev merge 불가
+RESULT_SHA=f717058abbf3d0830ff94a3a4e1772f780d58a43
+SOURCE_CI_EVIDENCE=GitHub Actions run 30842808365 PASS; Python 전체·document quality·role scope·quality gate PASS
+DEV_MERGE_SHA=a57b2731fc43226ccd899af0d942acc2ee22968b
+R1_REVIEW=node2·node2_repair만 `PROMPT-v1.0.1`로 올려 LIMIT 1~1000과 RESOURCE_POLICY_MISSING의 단일 추가·교체 행동을 명시하고, schema·backend·dataset·다른 node를 보존한 최소 변경과 15건 local·전체 CI를 수용
+```
+
+### R1-W3-F3
+
+```text
+STATUS=BLOCKED
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F3
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 prompt v1.0.1 Base·I2 synthetic 제품 전체 trace 재검증
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=a57b2731fc43226ccd899af0d942acc2ee22968b
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F3@a57b273
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.1
+SERVING_MANIFEST_VERSION=SERVING-v0.2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+DATA_CONTRACT_VERSION=DATA-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume의 생성·수정·삭제·재시작
+ACCEPTANCE_CRITERIA=dev `a57b273`의 PROMPT-v1.0.1과 R3 schema guided transport를 task 전용 RunPod A40 고정 Qwen3-4B endpoint·task backend에 연결한다. 기존 hotel-synthetic-db Trino는 `DATA_PLATFORM_MODE=i2`·read-only `TRINO_USER=answervice`로 조회만 하고 project·container·volume을 변경하지 않는다. 동일 synthetic `/analysis`에서 node2 SQL의 LIMIT 1~1000, G2 PASS, 실제 read-only QUERY, G3, ARTIFACT와 model/source/query/evidence/latency를 확인한다. 실패 시 마지막 stage·오류·SQL hash·query/Artifact 부재와 정확한 소유 병목을 기록한다. 회귀·비용·task cleanup을 확인하고 성공 trace와 필수 보안 경계가 모두 충족될 때만 I3 판정을 진행한다.
+ACCEPTANCE_IDS=AC1_PROMPT_V101_ENDPOINT;AC2_LIMIT_POLICY;AC3_G2_PASS;AC4_READ_ONLY_QUERY;AC5_G3_ARTIFACT;AC6_EVIDENCE;AC7_REGRESSION;AC8_COST_LIMIT;AC9_EXACT_CLEANUP;AC10_I3_DECISION
+TEST_COMMANDS=task backend health; I2 source health; synthetic POST /analysis fixed headers; LIMIT·trace·artifact·evidence inspection; production model·analysis·OpenAPI regression; integration regression; exact task container/image/tunnel cleanup; RunPod exact Pod GET 404 and active Pods 0; existing Docker IDs·status unchanged; document·WBS·report validation; git diff --check
+TEST_COMMAND_IDS=T1_BACKEND_HEALTH;T2_I2_HEALTH;T3_LIVE_ANALYSIS;T4_LIMIT_TRACE;T5_EVIDENCE;T6_BACKEND_REGRESSION;T7_INTEGRATION;T8_TASK_CLEANUP;T9_POD_CLEANUP;T10_DOCKER_SCOPE;T11_DOCUMENTS
+STOP_CONDITIONS=누적 비용 USD 15 도달 예상; 다른 Docker project write·restart·configuration change 필요; public model endpoint 필요; secret 출력·commit 필요; 실제 고객 데이터 전송 필요; R2~R5 code 추가 변경 필요; 필수 안전 경계 위반
+HANDOFF=PROMPT-v1.0.1 실제 node2·repair·G2·query·G3·artifact trace와 model/source/evidence·latency·비용·cleanup, I3 승인 또는 정확한 후속 병목을 전 역할에 전달
+EXTERNAL_ACTION_PERMISSION=사용자가 승인한 누적 USD 15 한도 안에서 task 전용 RunPod A40 Pod 생성·고정 serving image와 Qwen3-4B 다운로드·합성 요청 전송·localhost SSH tunnel·task backend build/run·결과 회수·정확한 task Pod·container·image·tunnel 삭제와 기존 hotel-synthetic-db Trino의 read-only synthetic 조회, R1 허용 경로 commit·junhee/dev push 승인. 다른 Pod·Docker project·container·volume 변경, public endpoint·secret 출력/commit, 실제 고객 데이터, LoRA 재학습·제품 기본값 전환은 불가
+COST_BASELINE_USD=이전 실측·추정 누적 상한 1.188721; 최종 provider billing 지연 시 예상값과 확정 여부를 분리 기록
+LIVE_TRACE_EVIDENCE=task Secure A40 `0bkuseap7qtuyn`·고정 Qwen3-4B revision·vLLM 0.10.2와 task backend `91610c2`을 localhost tunnel로 연결했다. backend health=healthy, Trino=ready, app DB는 의도적으로 미설정했다. 동일 synthetic `/analysis`는 HTTP 200·57,108.0ms·FAILED/INTERNAL_ERROR로 MODEL에서 안전 종료했고 QUERY·G2·G3·ARTIFACT는 실행되지 않았다.
+ROOT_CAUSE=PROMPT-v1.0.1은 SQL에 LIMIT 1건을 생성했지만 한 node2 completion이 SQL 문자열 안에 881줄의 불필요한 개행을 만들었다. raw endpoint는 prompt 639·completion 1,500 token, content 2,854자, `finish_reason=length`였고 JSON은 line 881에서 종료되어 references·parameters·model field가 생성되지 않았다. content SHA-256은 `cb1a50b955b7293dd67dfc1edc4474b46621daec4bc12a08850eedcd75a9f430`이며 원문은 출력·저장하지 않았다.
+REGRESSION_EVIDENCE=production model·analysis pipeline 22건 PASS, integration 24건 PASS. OpenAPI local은 host FastAPI 부재로 이전과 같이 BLOCKED이며 R4 source CI run `30841201329`의 OpenAPI PASS를 유지한다.
+RESOURCE_CLEANUP=task backend container·image·localhost tunnel·known_hosts 제거, Pod exact GET 404·active Pods 0 확인. hotel-synthetic-db Trino ID `bafdc16362af...`·running·restart count 0 유지, 다른 Docker resource는 변경하지 않았다.
+COST_RESULT=Pod 실행 상한 541.834초·USD 0.066224 추정, 예상 누적 상한 USD 1.254945로 승인 한도 USD 15 이내다.
+BLOCKER=R3 node2 prompt가 SQL을 한 줄·불필요한 공백과 개행 없이 간결하게 생성하도록 제한하고 동일 raw endpoint에서 `finish_reason=stop`·완전한 schema·LIMIT을 확인하기 전 제품 G2·QUERY·G3·ARTIFACT와 I3 승인이 불가하다.
+```
+
+### R3-W3-F7
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F7
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-15 node2 단일 행 SQL 출력 prompt 보완
+CURRENT_TASK_CARD_ID=R3-15
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=91610c2e7fa43374532c7557a26cf9a2186834c7
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F7@91610c2
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.2
+MODEL_ID=Qwen/Qwen3-4B
+MODEL_REVISION=1cfa9a7208912126459214e8b04321603b3df60c
+ALLOWED_PATHS=src/ai/prompt_registry.py; tests/ai/test_prompt_registry.py; tests/ai/test_node2.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; infrastructure/database/**; .env; API key; model binary·adapter·checkpoint·평가 생성물; training dataset; frontend·Report; root Compose·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=node2 prompt에 SQL 문자열은 한 줄로 작성하고 불필요한 공백·개행을 넣지 않으며 기존 단일 read-only SELECT·LIMIT 1~1000을 유지하도록 명시한다. node2 prompt만 `PROMPT-v1.0.2`로 올리고 repair는 `PROMPT-v1.0.1`, 다른 node·schema·backend·dataset·max_tokens는 변경하지 않는다. unit test는 한 줄·간결 출력 문구와 node별 version mapping을 고정한다. 실제 Base `finish_reason=stop`·제품 trace는 R1 후속에서 검증한다.
+ACCEPTANCE_IDS=AC1_SINGLE_LINE_SQL;AC2_NO_REDUNDANT_WHITESPACE;AC3_LIMIT_PRESERVED;AC4_VERSION_MAPPING;AC5_SCOPE_PRESERVED;AC6_REGRESSION
+TEST_COMMANDS=python -m unittest tests.ai.test_prompt_registry tests.ai.test_node2 tests.ai.test_contracts tests.ai.test_fake_model -v; python -m compileall -q src/ai/prompt_registry.py; python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/daesung/일일보고.md; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_PROMPT_UNIT;T2_COMPILE;T3_REPORT;T4_ROLE_GATE;T5_DIFF_CHECK
+STOP_CONDITIONS=max_tokens·guided schema·backend transport·dataset 수정 필요; prompt만으로 compact SQL을 명시할 수 없음; RunPod·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+HANDOFF=R1에 node2 prompt v1.0.2 hash·한 줄 compact SQL·LIMIT 보존·version mapping·unit regression과 후속 raw finish reason·제품 trace 조건을 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고의 commit·daesung push 승인; dependency 설치·RunPod·비용·secret 사용·외부 model 호출·dev merge 불가
+RESULT_SHA=863cb373289af1d0ea917f175797094417dbf93a
+SOURCE_CI_EVIDENCE=GitHub Actions run 30843971371 PASS; Python 전체·document quality·role scope·quality gate PASS
+DEV_MERGE_SHA=80b91b068d83b8bc171542e912c0508ebd41a7b0
+R1_REVIEW=node2 prompt 한 문장과 version mapping만 바꿔 한 줄·불필요한 공백/개행 금지를 명시하고 기존 LIMIT·repair·schema·backend·dataset·max_tokens를 보존한 최소 변경과 15건 local·전체 CI를 수용
+```
+
+### R1-W3-F4
+
+```text
+STATUS=BLOCKED
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F4
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 PROMPT-v1.0.2 Base·I2 synthetic 최종 제품 trace
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=80b91b068d83b8bc171542e912c0508ebd41a7b0
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F4@80b91b0
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0
+PROMPT_VERSION=PROMPT-v1.0.2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+DATA_CONTRACT_VERSION=DATA-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume의 생성·수정·삭제·재시작
+ACCEPTANCE_CRITERIA=dev `80b91b0`의 PROMPT-v1.0.2·guided schema를 task A40 고정 Qwen3-4B와 task backend에 localhost로 연결한다. raw node2가 `finish_reason=stop`, 완전한 schema, 한 줄 SQL, LIMIT 1~1000을 반환하는지 먼저 확인한 뒤 동일 I2 synthetic `/analysis`의 MODEL→G2→read-only QUERY→G3→ARTIFACT와 evidence를 확인한다. 실패하면 exact stage·hash·query/Artifact 부재를 기록한다. 비용·회귀·정확한 cleanup을 확인하고 성공 trace와 필수 경계가 모두 충족될 때만 I3를 판정한다.
+ACCEPTANCE_IDS=AC1_RAW_STOP;AC2_SINGLE_LINE_LIMIT;AC3_SCHEMA;AC4_G2_QUERY;AC5_G3_ARTIFACT;AC6_EVIDENCE;AC7_REGRESSION;AC8_COST;AC9_CLEANUP;AC10_I3_DECISION
+TEST_COMMANDS=task backend·I2 health; raw node2 metadata diagnostic; synthetic POST /analysis; trace·artifact·evidence inspection; backend·integration regression; exact task resource cleanup; Pod 404·active 0; existing Docker unchanged; docs/WBS/report validation; git diff --check
+TEST_COMMAND_IDS=T1_HEALTH;T2_RAW_NODE2;T3_LIVE_ANALYSIS;T4_EVIDENCE;T5_REGRESSION;T6_TASK_CLEANUP;T7_POD_CLEANUP;T8_DOCKER_SCOPE;T9_DOCUMENTS
+STOP_CONDITIONS=누적 비용 USD 15 도달 예상; 다른 Docker project 변경 필요; public endpoint·secret 출력/commit·실제 고객 데이터 필요; R2~R5 code 추가 변경 필요; 필수 안전 경계 위반
+HANDOFF=PROMPT-v1.0.2 raw finish/schema/single-line/LIMIT와 제품 G2/query/G3/artifact·evidence·latency·비용·cleanup, I3 승인 또는 exact blocker 전달
+EXTERNAL_ACTION_PERMISSION=사용자 승인 누적 USD 15 안의 task 전용 A40·고정 model 다운로드·합성 localhost 요청·task backend·정확한 task cleanup과 기존 synthetic Trino read-only 조회, R1 허용 경로 commit·junhee/dev push 승인. 다른 Pod·Docker project·volume 변경, public endpoint·secret 출력/commit·실제 고객 데이터·LoRA 변경 불가
+COST_BASELINE_USD=이전 실측·추정 누적 상한 1.254945
+LIVE_TRACE_EVIDENCE=raw node2는 고정 합성 UUID에서 `finish_reason=stop`, schema PASS, SQL 1줄·644자·LIMIT 500·completion 971 token을 확인했다. 그러나 실제 제품의 무작위 request UUID 두 건은 각각 약 54.6초 뒤 MODEL/INTERNAL_ERROR로 종료됐고 QUERY·G2·G3·ARTIFACT가 없었다. task backend circuit 초기화 뒤에도 동일했다.
+ROOT_CAUSE=동일 실패 request UUID를 새 `ContractModelAdapter`로 직접 호출하면 schema·plan이 정상인 반면 제품 singleton의 두 transport attempt는 해당 UUID에서 연속 invalid 응답을 받아 circuit을 열었다. 현재 동결 node2 request는 실제 질문 없이 `question_id + context_package`만 전달해 Base가 분석 의미 대신 무작위 UUID에 반응한다. R3 training README도 `normalized_question` 누락을 실제 SQL 생성 계약 차이로 명시하고 있다.
+RESOURCE_CLEANUP=task backend container·image·localhost tunnel·known_hosts 제거, Pod exact GET 404·active Pods 0 확인. hotel-synthetic-db Trino ID `bafdc16362af...`·running·restart count 0 유지, 다른 Docker resource는 변경하지 않았다.
+COST_RESULT=Pod 실행 상한 744.369초·USD 0.090978 추정, 예상 누적 상한 USD 1.345923로 승인 한도 USD 15 이내다.
+BLOCKER=R3 node2 request가 실제 normalized question을 호환 수용하고 prompt가 question_id의 의미를 무시하도록 명시한 뒤 R4 제품 adapter가 실제 질문을 전달하기 전 Base 제품 trace와 I3 승인이 불가하다.
+```
+
+### R3-W3-F8
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F8
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-15 node2 normalized question 호환 계약
+CURRENT_TASK_CARD_ID=R3-15
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=b182fafe4ed123919f3d0e21329cbabc99fe0110
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F8@b182faf
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.3
+ALLOWED_PATHS=src/ai/contracts/node_io.v0.1.json; src/ai/prompt_registry.py; tests/ai/test_contracts.py; tests/ai/test_prompt_registry.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; infrastructure/database/**; .env; API key; model binary·adapter·checkpoint·평가 생성물; training dataset; frontend·Report; root Compose·CI; R1/R2/R4/R5 소유 문서
+ACCEPTANCE_CRITERIA=node2_request에 기존 소비자를 깨지 않는 optional non-empty `normalized_question` property를 추가한다. node2 prompt는 SQL 의미를 normalized_question에서만 가져오고 question_id는 추적 식별자일 뿐 분석 의미로 사용하지 않도록 명시하며 기존 한 줄 read-only SELECT·LIMIT 규칙을 유지한다. node2 prompt만 PROMPT-v1.0.3으로 올린다. 기존 payload와 새 payload 모두 schema PASS, empty question은 거부한다. backend·training dataset·다른 node contract는 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_OPTIONAL_QUESTION;AC2_NON_EMPTY;AC3_ID_IGNORED;AC4_LEGACY_COMPAT;AC5_PROMPT_VERSION;AC6_REGRESSION
+TEST_COMMANDS=python -m unittest tests.ai.test_prompt_registry tests.ai.test_contracts tests.ai.test_node2 tests.ai.test_fake_model -v; python -m compileall -q src/ai; report validation; role gate; git diff --check
+TEST_COMMAND_IDS=T1_AI_CONTRACT;T2_COMPILE;T3_REPORT;T4_ROLE_GATE;T5_DIFF
+STOP_CONDITIONS=required field로 즉시 전환해야 함; backend·dataset·다른 node 수정 필요; RunPod·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+HANDOFF=R1·R4에 optional normalized_question schema·legacy compatibility·prompt version/hash·question_id 비의미 규칙·test를 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R3 개인 일일보고 commit·daesung push 승인; dependency·RunPod·비용·secret·외부 model·dev merge 불가
+RESULT_SHA=01dd9130e60c371ad5898cb8e1ddcb0c44a3de78
+SOURCE_CI_EVIDENCE=GitHub Actions run 30845353451 PASS; Python 전체·document quality·role scope·quality gate PASS
+DEV_MERGE_SHA=cc200ee391075e022ef21c94fa49307bae08d54a
+R1_REVIEW=node2 request에 optional non-empty normalized_question만 추가하고 prompt가 질문만 SQL 의미로 사용하도록 명시해 legacy payload·다른 node·backend·dataset을 보존한 호환 변경과 16건 local·전체 CI를 수용
+```
+
+### R4-W3-F3
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W3-F3
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R4-08 제품 질문의 node2 normalized_question 전달
+CURRENT_TASK_CARD_ID=R4-08
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=cc200ee391075e022ef21c94fa49307bae08d54a
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W3-F3@cc200ee
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.3
+OPENAPI_VERSION=OPENAPI-v1.0.0
+ALLOWED_PATHS=app/backend/app/services/analysis_service.py; app/backend/app/adapters/contract_model.py; tests/backend/test_production_model.py; tests/backend/test_analysis_pipeline.py; app/backend/README.md; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/ai/**; src/data/**; infrastructure/database/**; .env; API key; frontend·Report; root Compose·CI; R1/R2/R3/R5 소유 문서
+ACCEPTANCE_CRITERIA=AnalysisService의 일반 질문 node2 payload에 원문 `payload.question`을 추가하고 ContractModelAdapter가 이를 R3 node2_request의 `normalized_question`으로 전달한다. question_id·Context·guided schema·fixed generation options·repair·fallback 차단·OpenAPI를 보존한다. 빈 질문은 기존 AnalysisRequest 경계가 거부한다. unit test는 실제 질문이 transport payload까지 동일하게 도달하고 request_id와 분리됨을 확인하며 fake·failure·analysis 회귀를 통과한다.
+ACCEPTANCE_IDS=AC1_SERVICE_QUESTION;AC2_ADAPTER_NORMALIZED;AC3_ID_SEPARATION;AC4_BOUNDARY;AC5_TRANSPORT_PRESERVED;AC6_REGRESSION
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_production_model.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py; python -m compileall -q app/backend; report validation; role gate; git diff --check
+TEST_COMMAND_IDS=T1_BACKEND;T2_COMPILE;T3_REPORT;T4_ROLE_GATE;T5_DIFF
+STOP_CONDITIONS=R3 schema·prompt 추가 변경 필요; normalized question 변형·요약 필요; OpenAPI·DB·data 변경 필요; dependency·RunPod·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+HANDOFF=R1에 service→adapter→R3 request 실제 질문 전달·ID 분리·guided transport·회귀와 후속 Base 제품 trace 조건을 전달
+EXTERNAL_ACTION_PERMISSION=허용 경로와 R4 개인 일일보고 commit·jaehong push 승인; dependency·RunPod·비용·secret·외부 model·dev merge 불가
+RESULT_SHA=f8140d0a8ca6fc4b11fc532eda6ce279b95502c6
+SOURCE_CI_EVIDENCE=GitHub Actions run 30845776821 PASS; Python 전체·OpenAPI·document quality·role scope·quality gate PASS
+DEV_MERGE_SHA=dcb00c362995e4593e70783c23f3c9e03825b2fd
+R1_REVIEW=제품 원문 question을 AnalysisService node2 payload와 ContractModelAdapter normalized_question에 그대로 전달하고 request ID·Context·guided schema·generation option·fallback 경계를 보존한 2줄 production 변경과 23건 local·전체 CI를 수용
+```
+
+### R1-W3-F5
+
+```text
+STATUS=BLOCKED
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F5
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 실제 질문 Base·I2 synthetic 제품 전체 trace
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=dcb00c362995e4593e70783c23f3c9e03825b2fd
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F5@dcb00c3
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.3
+OPENAPI_VERSION=OPENAPI-v1.0.0
+DATA_CONTRACT_VERSION=DATA-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume 변경
+ACCEPTANCE_CRITERIA=dev `dcb00c3`을 task A40 고정 Qwen3-4B·task backend·기존 synthetic Trino read-only에 localhost로 연결한다. raw node2 request에 실제 normalized question과 별도 question_id가 포함되고 finish/schema/한 줄/LIMIT을 통과하는지 확인한 뒤 동일 `/analysis`의 MODEL→G2→QUERY→G3→ARTIFACT와 evidence를 판정한다. 실패 시 exact blocker를 기록한다. 비용·회귀·task cleanup을 확인하고 성공 trace 전 I3를 승인하지 않는다.
+ACCEPTANCE_IDS=AC1_QUESTION_INPUT;AC2_RAW_SCHEMA;AC3_G2_QUERY;AC4_G3_ARTIFACT;AC5_EVIDENCE;AC6_REGRESSION;AC7_COST;AC8_CLEANUP;AC9_I3
+TEST_COMMANDS=task health; raw node2 metadata; synthetic POST /analysis; trace/artifact/evidence; regressions; exact cleanup; Pod 404·active 0; Docker scope; docs validation
+TEST_COMMAND_IDS=T1_HEALTH;T2_RAW;T3_PRODUCT;T4_EVIDENCE;T5_REGRESSION;T6_CLEANUP;T7_SCOPE;T8_DOCS
+STOP_CONDITIONS=USD15 예상 도달; 다른 Docker 변경·public endpoint·secret·실제 고객 데이터·R2~R5 추가 code 필요; 안전 경계 위반
+HANDOFF=실제 질문 raw·제품 trace·evidence·비용·cleanup과 I3 판정 또는 exact blocker 전달
+EXTERNAL_ACTION_PERMISSION=누적 USD15 안 task A40·고정 model·합성 localhost 요청·task backend·정확한 cleanup과 기존 synthetic Trino read-only 조회, R1 commit·junhee/dev push 승인. 다른 resource·public endpoint·secret·실제 고객 데이터·LoRA 변경 불가
+COST_BASELINE_USD=이전 실측·추정 누적 상한 1.345923
+RESULT=raw node2는 실제 질문·별도 question_id·guided schema·한 줄 SQL·LIMIT을 통과했고 제품 `/analysis`도 MODEL·G2를 통과했으나 QUERY_SOURCE_FAILED로 종료되어 G3·Artifact·evidence가 생성되지 않았다.
+ROOT_CAUSE=Base가 SQL placeholder와 무관한 `normalized_question`·`question_id`를 response parameters로 반환했고 R4 날짜 바인더가 non-ISO 값을 안전하게 거부했다. 진단 SQL hash는 `63d6325bcbad42da9c3904591150bc1a27077f130f4125183f39f9f66b9be04a`, G2는 PASS였다.
+EVIDENCE=제품 request `a3924833-0718-4e78-b819-4e80b015e974`는 HTTP 200·FAILED·repair 0·ROUTER~G2 PASS·QUERY FAILED였다. task Pod `zql141iuw1xdda`는 582.566초 뒤 404, 활성 Pod 0, 비용 상한 USD 0.071203·누적 상한 USD 1.417126이며 task container·image·tunnel 0과 기존 Trino ID·running·restart 0을 확인했다.
+BLOCKER=R3 node2 prompt가 response parameters를 SQL placeholder와 1:1로 제한하고 request metadata를 parameter로 반환하지 않게 한 뒤 실제 제품 trace를 다시 확인하기 전 I3 승인 불가
+```
+
+### R3-W3-F9
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F9
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-07 node2 SQL parameter 의미 고정
+CURRENT_TASK_CARD_ID=R3-07
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team\.wt\r3_w3
+BASE_BRANCH=dev
+BASE_SHA=908d0b31d0f00034697f59c0497b9d7bd8ee7039
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F9@908d0b3
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.4
+ALLOWED_PATHS=src/ai/prompt_registry.py; tests/ai/test_prompt_registry.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=node schema·training dataset·backend·data adapter·frontend·root Compose·.env·model binary
+ACCEPTANCE_CRITERIA=node2 prompt의 parameters는 SQL에 실제로 사용한 `:name` placeholder만 포함하고 이름이 placeholder와 1:1로 일치해야 하며, `question_id`·`normalized_question` 등 request metadata를 포함하지 않는다. placeholder가 없으면 빈 배열을 반환한다. 기존 actual-question·한 줄 read-only SELECT·LIMIT 규칙과 다른 prompt·schema·dataset은 보존하고 node2 prompt만 PROMPT-v1.0.4로 올린다.
+ACCEPTANCE_IDS=AC1_PARAMETER_PLACEHOLDER;AC2_METADATA_EXCLUSION;AC3_EMPTY_PARAMETERS;AC4_PROMPT_REGRESSION;AC5_SCOPE
+TEST_COMMANDS=python -m unittest tests.ai.test_prompt_registry; python -m unittest discover -s tests/ai -p test_*.py; git diff --check
+TEST_COMMAND_IDS=T1_PROMPT;T2_AI;T3_DIFF
+STOP_CONDITIONS=schema·dataset·backend 변경 필요; 날짜 값 생성 규칙 확장 필요; 기존 actual-question·LIMIT 규칙 회귀; test 실패
+HANDOFF=R1에 prompt version/hash·parameter 의미·metadata 제외·회귀 결과 전달
+EXTERNAL_ACTION_PERMISSION=없음 — local code·test·commit·daesung push만 승인
+RESULT=PROMPT-v1.0.4에서 parameters를 SQL의 실제 `:name` placeholder와 1:1로 제한하고 placeholder가 없으면 빈 배열, request metadata는 제외하도록 명시했다.
+EVIDENCE=daesung `d70821a`, harness sync `ea22ea7`, CI `30847080427` PASS, dev merge `15480fd`, AI local 47건·gate scope 19건 PASS
+R1_REVIEW=prompt 2문장과 assertion만 추가해 schema·dataset·backend를 보존한 최소 변경이며 전체 CI를 통과해 수용
+```
+
+### R1-W3-F6
+
+```text
+STATUS=BLOCKED
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F6
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 parameter 보완 후 Base·I2 제품 전체 trace
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=15480fd20e3c2e55812d8c9e37f7a1159ea52630
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F6@15480fd
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.4
+OPENAPI_VERSION=OPENAPI-v1.0.0
+DATA_CONTRACT_VERSION=DATA-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume 변경
+ACCEPTANCE_CRITERIA=dev `15480fd`을 task A40 고정 Qwen3-4B·task backend·기존 synthetic Trino read-only에 localhost로 연결한다. raw node2의 parameters가 SQL placeholder와 일치하고 request metadata를 포함하지 않는지 확인한 뒤 동일 `/analysis`의 MODEL→G2→QUERY→G3→ARTIFACT와 evidence를 판정한다. 실패 시 exact blocker를 기록한다. 비용·회귀·task cleanup을 확인하고 성공 trace 전 I3를 승인하지 않는다.
+ACCEPTANCE_IDS=AC1_PARAMETER_OUTPUT;AC2_RAW_SCHEMA;AC3_G2_QUERY;AC4_G3_ARTIFACT;AC5_EVIDENCE;AC6_REGRESSION;AC7_COST;AC8_CLEANUP;AC9_I3
+TEST_COMMANDS=task health; raw node2 metadata; synthetic POST /analysis; trace/artifact/evidence; regressions; exact cleanup; Pod 404·active 0; Docker scope; docs validation
+TEST_COMMAND_IDS=T1_HEALTH;T2_RAW;T3_PRODUCT;T4_EVIDENCE;T5_REGRESSION;T6_CLEANUP;T7_SCOPE;T8_DOCS
+STOP_CONDITIONS=USD15 예상 도달; 다른 Docker 변경·public endpoint·secret·실제 고객 데이터·R2~R5 추가 code 필요; 안전 경계 위반
+HANDOFF=parameter raw·제품 trace·evidence·비용·cleanup과 I3 판정 또는 exact blocker 전달
+EXTERNAL_ACTION_PERMISSION=누적 USD15 안 task A40·고정 model·합성 localhost 요청·task backend·정확한 cleanup과 기존 synthetic Trino read-only 조회, R1 commit·junhee/dev push 승인. 다른 resource·public endpoint·secret·실제 고객 데이터·LoRA 변경 불가
+COST_BASELINE_USD=이전 실측·추정 누적 상한 1.417126
+RESULT=정상 uptime의 Secure A40에서 고정 Qwen3-4B endpoint와 task backend를 기동해 실제 synthetic `/analysis`를 호출했다. HTTP 200이었지만 ROUTER→CONTROLLER→CONTEXT→G1→MODEL 뒤 첫 G2가 `SQL_REFERENCE_MISMATCH`, 허용된 1회 repair 뒤 두 번째 G2가 `SQL_POLICY_BLOCKED`로 차단돼 QUERY·G3·ARTIFACT는 생성되지 않았다.
+EVIDENCE=제품 응답 SHA-256 `5adeeaaa7f1a1bce2c725ee3f4c4c7738130caf8e9ff0505fd48a7ac1ce90758`, 두 번째 task Pod 상한 USD 0.166222, task Pod GET 404·활성 Pod 0, task backend·task PostgreSQL·image·tunnel 0을 확인했다. 기존 `hotel-synthetic-db-trino-1`과 `app-postgres`는 ID·restart count가 동일하고 healthy이며 secret은 응답·로그에 남기지 않았다. 첫 SSH 진단 Pod의 별도 청구 확정은 billing 반영 전이라 Not Run으로 유지한다.
+BLOCKER=Base node2가 반환한 SQL의 FROM/JOIN table 집합과 references의 `trino_fqn` 집합이 일치하지 않았고, `SQL_REFERENCE_MISMATCH` 1회 repair도 G2 정책을 통과하지 못했다. 두 집합의 정확 일치와 해당 오류의 단일 수정 행동을 prompt에 고정한 뒤 실제 제품 trace 재검증 전 I3 승인 불가
+RESUME_EVIDENCE=사용자 목표 재개 후 공식 PyTorch template Secure A40 `6xiz3gs3a68032`을 다시 할당했으나 474.937초 동안 실제 uptime이 계속 0이어서 SSH·모델·제품 요청을 실행하지 않았다. Pod GET 404·활성 0, 신규 비용 상한 USD 0.058048·누적 상한 USD 1.617033, 기존 Trino 동일 ID·running·restart 0과 임시 CLI config 0 bytes를 확인했다.
+RESUME_DECISION=동일 외부 provisioning blocker가 재현되어 I3와 R1-W3-F6 BLOCKED를 유지한다. R2~R5에 추가 구현 지시는 없으며 정상 uptime이 확인되는 task A40에서 동일 승인 조건으로 재검증한다.
+FOLLOWUP_DECISION=R3-W3-F10의 PROMPT-v1.0.5/PROMPT-v1.0.2가 SQL-reference 정확 일치와 단일 repair 행동을 dev `b316336`·CI `30866726434` PASS로 통합해 code blocker는 해제했다. 실제 성공 trace는 R1-W3-F7에서 재판정한다.
+```
+
+### R3-W3-F10
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F10
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-07 Node 2·2′ SQL-reference 정합 보완
+CURRENT_TASK_CARD_ID=R3-07
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=7a514905b6608a8a7399cb5b5c5cc63f37e632f1
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F10@7a51490
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.5/PROMPT-v1.0.2
+ALLOWED_PATHS=src/ai/prompt_registry.py; tests/ai/test_prompt_registry.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=node schema·training dataset·backend·G2 policy·data adapter·frontend·root Compose·.env·model binary
+ACCEPTANCE_CRITERIA=node2 prompt는 SQL의 FROM/JOIN에 실제 사용한 승인 Context asset의 `trino_fqn` 집합과 response references의 `trino_fqn` 집합을 양방향 정확 일치시키고, 사용하지 않은 asset을 references에 넣거나 사용한 table을 누락하지 않는다. node2_repair prompt는 `SQL_REFERENCE_MISMATCH`일 때 rejected SQL의 질문 의미·승인 Context·parameter를 보존하면서 corrected SQL과 references의 같은 집합을 한 번만 맞춘다. 기존 actual-question·한 줄 read-only SELECT·LIMIT 1~1000·placeholder 1:1·RESOURCE_POLICY_MISSING 행동과 schema·dataset은 보존한다.
+ACCEPTANCE_IDS=AC1_NODE2_REFERENCE_EXACT;AC2_REPAIR_REFERENCE_EXACT;AC3_CONTEXT_ONLY;AC4_EXISTING_POLICY;AC5_PROMPT_REGRESSION;AC6_SCOPE
+TEST_COMMANDS=python -m unittest tests.ai.test_prompt_registry; python -m unittest discover -s tests/ai -p "test_*.py"; git diff --check
+TEST_COMMAND_IDS=T1_PROMPT;T2_AI;T3_DIFF
+STOP_CONDITIONS=schema·training dataset·backend·G2 변경 필요; reference 정확 일치가 prompt만으로 표현 불가; 기존 LIMIT·parameter·actual-question 규칙 회귀; test 실패
+HANDOFF=R1에 node2·repair prompt version/hash·SQL-reference 정확 일치 문구·기존 정책 회귀 결과 전달
+EXTERNAL_ACTION_PERMISSION=없음 — local prompt·test·commit·daesung push만 승인
+RESULT=node2는 SQL FROM·JOIN과 references의 승인 `trino_fqn` 집합을 양방향 정확 일치시키고, node2_repair는 `SQL_REFERENCE_MISMATCH`에서 질문 의미·승인 Context·parameter를 보존해 한 번만 맞추도록 prompt를 보완했다. node2는 PROMPT-v1.0.5, repair는 PROMPT-v1.0.2로 올렸다.
+EVIDENCE=daesung `9d1b937`, dev `b316336`, CI `30866726434` PASS, prompt 3건·AI 47건·Gate scope 19건·보고 검증 PASS
+R1_REVIEW=schema·training dataset·backend·G2를 바꾸지 않고 prompt 두 문장과 문자열 회귀만 추가한 최소 변경으로 허용 경로와 기존 LIMIT·parameter·actual-question 규칙을 보존해 수용한다.
+```
+
+### R1-W3-F7
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F7
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 SQL-reference 보완 후 Base·I2 제품 전체 trace
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=b316336cb2b145f14737e77b4e3119c6fe8de80e
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F7@b316336
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.5/PROMPT-v1.0.2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+DATA_CONTRACT_VERSION=DATA-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume 변경
+ACCEPTANCE_CRITERIA=dev `b316336`·CI `30866726434` PASS의 PROMPT-v1.0.5/PROMPT-v1.0.2를 task A40 고정 Qwen3-4B·task backend·기존 synthetic Trino read-only에 localhost로 연결한다. raw node2의 SQL FROM/JOIN과 references `trino_fqn` 집합·parameters/placeholder를 확인하고 동일 synthetic `/analysis`의 MODEL→G2→QUERY→G3→ARTIFACT와 evidence를 판정한다. 실패 시 첫·repair plan의 exact G2 code와 query/Artifact 부재를 기록한다. 회귀·비용·secret 비기록·task cleanup을 확인하고 성공 trace와 필수 보안 경계가 모두 충족될 때만 I3를 승인한다.
+ACCEPTANCE_IDS=AC1_REFERENCE_OUTPUT;AC2_PARAMETER_OUTPUT;AC3_RAW_SCHEMA;AC4_G2_QUERY;AC5_G3_ARTIFACT;AC6_EVIDENCE;AC7_REGRESSION;AC8_SECRET_REDACTED;AC9_COST;AC10_CLEANUP;AC11_I3
+TEST_COMMANDS=task health; raw node2 reference/parameter; synthetic POST /analysis; trace/artifact/evidence; backend·integration regressions; exact cleanup; Pod 404·active 0; Docker scope; docs validation
+TEST_COMMAND_IDS=T1_HEALTH;T2_RAW;T3_PRODUCT;T4_EVIDENCE;T5_REGRESSION;T6_SECRET;T7_CLEANUP;T8_SCOPE;T9_DOCS
+STOP_CONDITIONS=USD15 예상 도달; 다른 Docker 변경·public endpoint·secret·실제 고객 데이터·R2~R5 추가 code 필요; 안전 경계 위반
+HANDOFF=reference/parameter raw·제품 trace·evidence·비용·cleanup과 I3 판정 또는 exact blocker 전달
+EXTERNAL_ACTION_PERMISSION=누적 USD15 안 task A40·고정 model·합성 localhost 요청·task backend·task 임시 PostgreSQL·정확한 cleanup과 기존 synthetic Trino read-only 조회, R1 commit·junhee/dev push 승인. 다른 resource·public endpoint·secret·실제 고객 데이터·LoRA 변경 불가
+COST_BASELINE_USD=확인된 이전 상한 USD 1.783255 + 첫 SSH 진단 Pod 청구 확정 대기, 총 USD 15 미만 유지
+```
+
+### R3-W3-F11
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W3-F11
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R3-07 승인 JOIN·기간·집계 의미 보완
+CURRENT_TASK_CARD_ID=R3-07
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=11ff44e1d9a16fa73874d625cc4d0ecef1eeaf3f
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W3-F11@11ff44e
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.6/PROMPT-v1.0.2
+ALLOWED_PATHS=src/ai/prompt_registry.py; tests/ai/test_prompt_registry.py; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; frontend/**; root Compose·env·CI; schema·training data·model binary
+ACCEPTANCE_CRITERIA=node2가 승인 PMS→CRM 5-table event-time JOIN을 metadata 식별자와 SQL table로 혼동하지 않고, Context asset 컬럼·metric 집계만 사용한다. 전월 대비 질문은 Context 절대 시각으로 직전 완료 2개월을 반개구간 조회해 월 2행을 반환하도록 PROMPT-v1.0.6에 명시한다. repair·schema·training data·generation option은 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_APPROVED_JOIN;AC2_APPROVED_COLUMNS;AC3_METRIC_AGGREGATION;AC4_ABSOLUTE_WINDOW;AC5_PROMPT_VERSION;AC6_REGRESSION
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/ai; python -m compileall -q src/ai/prompt_registry.py; git diff --check
+TEST_COMMAND_IDS=T1_AI;T2_COMPILE;T3_DIFF
+STOP_CONDITIONS=R3 경로 밖 변경 필요; schema·training data·model option 변경 필요; unit test 실패
+HANDOFF=PROMPT-v1.0.6 문구·version·AI regression과 R4 소비자 재검증 조건 전달
+EXTERNAL_ACTION_PERMISSION=없음. download·RunPod·비용·secret·배포·데이터 전송 불가
+```
+
+### R4-W3-F4
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W3-F4
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R4-08 실제 Base 응답 안정화
+CURRENT_TASK_CARD_ID=R4-08
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=11ff44e1d9a16fa73874d625cc4d0ecef1eeaf3f
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W3-F4@11ff44e
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+OPENAPI_VERSION=OPENAPI-v1.0.0
+ALLOWED_PATHS=app/backend/app/adapters/contract_model.py; tests/backend/test_production_model.py; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/ai/**; src/data/**; frontend/**; migration·OpenAPI·Controller·G1/G2/G3 상태 전이; root Compose·env·CI
+ACCEPTANCE_CRITERIA=실제 Base에는 node2 SQL 또는 repair SQL만 guided 생성시키고, references·prompt/model trace는 승인 Context와 registry에서 결정론적으로 복원한 뒤 기존 MODEL-v1.0.0 response schema 검증을 그대로 통과시킨다. SQL에 없는 잉여 parameter는 실행 계획에서 제외한다. 전월 대비 질문은 승인된 2개월 절대 기간·GROUP BY·ORDER BY가 없으면 모델 실패로 처리한다. G2·query·G3·OpenAPI·schema는 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_SQL_ONLY_GUIDE;AC2_DETERMINISTIC_METADATA;AC3_FULL_SCHEMA;AC4_PARAMETER_FILTER;AC5_MOM_FAIL_CLOSED;AC6_REGRESSION
+TEST_COMMANDS=python -m unittest tests.backend.test_production_model tests.backend.test_analysis_pipeline; python -m compileall -q app/backend/app/adapters/contract_model.py; git diff --check
+TEST_COMMAND_IDS=T1_BACKEND;T2_COMPILE;T3_DIFF
+STOP_CONDITIONS=R4 경로 밖 변경 필요; OpenAPI·schema·Gate 상태 전이 변경 필요; full schema 또는 안전 실패 회귀
+HANDOFF=SQL-only guided request·결정론적 full response·parameter/기간 fail-closed 회귀와 R1 제품 재검증 조건 전달
+EXTERNAL_ACTION_PERMISSION=없음. download·RunPod·비용·secret·배포·데이터 전송 불가
+```
 
 ## Wave 4 상세 계획 카드
 
@@ -1232,6 +2326,54 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.92 | 2026-08-04 10:41 | R1-W3-F7 실제 trace에서 G2 reference 보완 뒤 잉여 non-date parameter, 승인 JOIN 단축·타입 오류, verbose guided 응답 불안정과 전월 대비 기간 누락을 순서대로 확인했다. 안전 경계를 유지하는 R3-W3-F11 PROMPT-v1.0.6과 R4-W3-F4 SQL-only guided·결정론적 metadata·2개월 fail-closed를 READY 발행하며, 두 변경 통합 뒤 동일 trace를 최종 판정한다. |
+| v2.91 | 2026-08-04 09:49 | R3-W3-F10의 SQL FROM/JOIN·references 정확 일치 PROMPT-v1.0.5와 mismatch 단일 repair PROMPT-v1.0.2를 AI 47건·Gate 19건·CI `30866726434` PASS로 dev에 통합했다. 같은 Base·synthetic Trino read-only 제품 trace를 재판정하는 R1-W3-F7을 발행하며 성공 전 I3를 유지한다. |
+| v2.90 | 2026-08-04 09:37 | 정상 Secure A40 제품 trace가 MODEL 뒤 SQL-reference 불일치와 1회 repair 후 G2 정책 차단으로 종료된 사실, QUERY·Artifact 부재·cleanup·기존 Docker 무변경을 기록했다. R3-W3-F10으로 node2·repair의 SQL FROM/JOIN과 references 정확 일치 행동만 READY 발행하며 실제 성공 trace 전 I3를 유지한다. |
+| v2.89 | 2026-08-04 08:12 | 목표 재개 후 공식 PyTorch template Secure A40을 재시도했으나 474.937초 동안 uptime 0이 반복돼 실제 제품 trace는 Not Run이었다. Pod 404·활성 0·신규 비용 상한 USD 0.058048·누적 USD 1.617033, 기존 Trino 무변경과 임시 key 저장 제거를 확인하고 R1-W3-F6·I3 차단을 유지했다. |
+| v2.88 | 2026-08-04 05:09 | R1-W3-F6의 세 task Secure A40이 모두 desired RUNNING과 달리 container uptime 0에 머물러 PROMPT-v1.0.4 제품 trace를 실행하지 못했다. 세 Pod 404·활성 0·신규 비용 상한 USD 0.141859·누적 USD 1.558985, 기존 Trino 무변경과 임시 key 저장 제거를 확인하고 외부 provisioning blocker로 I3를 유지했다. |
+| v2.87 | 2026-08-04 04:47 | R3-W3-F9의 SQL placeholder와 parameters 1:1·request metadata 제외 PROMPT-v1.0.4와 CI `30847080427` PASS를 검수해 dev에 통합했다. R1-W3-F6는 같은 Base·I2 read-only 제품 trace를 한 번 재검증하고 성공 전 I3 승인·다른 resource 변경을 금지했다. |
+| v2.86 | 2026-08-04 04:39 | R1-W3-F5에서 actual question·MODEL·G2는 통과했으나 Base가 request metadata를 SQL parameter로 반환해 안전한 날짜 바인더가 거부한 QUERY blocker를 확정했다. 비용·task cleanup·기존 Trino 무변경을 확인하고 R3-W3-F9로 SQL placeholder와 parameters의 1:1 의미만 PROMPT-v1.0.4에 고정했다. |
+| v2.85 | 2026-08-04 04:27 | R4-W3-F3의 제품 원문 question→normalized_question 전달과 CI `30845776821` PASS를 검수해 dev에 통합했다. R1-W3-F5는 actual question raw 입력과 동일 Base·I2 read-only 제품 trace를 판정하고 성공 전 I3 승인·다른 resource 변경을 금지했다. |
+| v2.84 | 2026-08-04 04:21 | R3-W3-F8의 optional normalized_question·ID 비의미 prompt와 CI `30845353451` PASS를 검수해 dev에 통합했다. R4-W3-F3는 제품 원문 질문을 service→adapter→R3 request로 그대로 전달하는 최소 변경만 READY 발행하며 schema·prompt·OpenAPI·generation option 변경을 금지했다. |
+| v2.83 | 2026-08-04 04:17 | R1-W3-F4 raw 고정 UUID는 schema·한 줄·LIMIT을 통과했지만 실제 제품의 무작위 request UUID에서는 MODEL invalid·circuit 안전 실패가 반복됐다. node2 계약에 실제 질문이 없어 Base가 UUID에 반응하는 근본 병목과 QUERY·Artifact 부재, cleanup·active Pods 0·예상 신규 상한 USD0.090978을 기록했다. R3-W3-F8로 optional normalized_question·ID 비의미 prompt만 호환 추가하고 실제 제품 재검증 전 I3를 차단한다. |
+| v2.82 | 2026-08-04 04:03 | R3-W3-F7의 node2 한 줄 compact SQL PROMPT-v1.0.2와 CI `30843971371` PASS를 검수해 dev에 통합했다. 후속 R1-W3-F4는 raw finish/schema/LIMIT을 먼저 확인하고 동일 read-only 제품 trace의 G2·QUERY·G3·ARTIFACT를 판정하며, 다른 resource 변경과 성공 trace 없는 I3 승인을 금지했다. |
+| v2.81 | 2026-08-04 03:59 | R1-W3-F3 실제 Base trace에서 LIMIT은 생성됐지만 SQL 문자열의 881줄 불필요한 개행 때문에 completion 1,500 token에 도달해 JSON이 미완성으로 MODEL 안전 실패했다. QUERY·Artifact 부재와 cleanup·active Pods 0·예상 신규 상한 USD0.066224를 확인했다. node2 prompt에 한 줄 compact SQL만 추가하는 R3-W3-F7을 READY 발행했으며 실제 재검증 전 I3는 차단한다. |
+| v2.80 | 2026-08-04 03:48 | R3-W3-F6의 PROMPT-v1.0.1 resource limit·단일 repair 문구와 CI `30842808365` PASS를 검수해 dev에 통합했다. 후속 R1-W3-F3는 task A40·backend와 기존 synthetic Trino의 read-only 조회만 사용해 동일 제품 trace의 LIMIT·G2·QUERY·G3·ARTIFACT를 재판정하고, 다른 Docker resource 변경과 성공 trace 없는 I3 승인을 금지했다. |
+| v2.79 | 2026-08-04 03:42 | R1-W3-F2 실제 I2 product trace는 guided MODEL까지 통과했지만 node2가 `LIMIT` 없는 SQL을 생성하고 repair도 동일 SQL을 반환해 G2에서 안전 차단됐다. QUERY·Artifact 부재와 task resource cleanup·active Pods 0·예상 신규 상한 USD0.066601를 확인했다. `LIMIT <= 1000`과 `RESOURCE_POLICY_MISSING` 단일 수정 행동만 prompt에 명시하는 R3-W3-F6를 READY 발행했으며 실제 Base 재검증 전 I3는 차단한다. |
+| v2.78 | 2026-08-04 03:27 | R4-W3-F2의 node별 R3 response schema guided transport와 전체 CI `30841201329` PASS를 검수해 dev에 통합했다. 후속 R1-W3-F2는 task A40·backend와 기존 hotel-synthetic-db Trino의 read-only synthetic 조회만 허용해 실제 MODEL→G2→QUERY→G3→ARTIFACT trace를 판정하고, 다른 Docker resource 변경과 I3 조기 승인을 금지했다. |
+| v2.77 | 2026-08-04 03:21 | R1-W3-F1 live product trace는 Base가 plain 응답·JSON object mode에서 R3 schema를 지키지 못해 MODEL 안전 실패했고, 실제 R3 schema의 guided_json은 schema PASS였지만 fake Context의 asset·metric 불일치로 G2 repair 뒤 차단됐다. task Pod·container·image·tunnel을 정확히 제거하고 예상 신규 USD0.107045를 기록했다. schema-guided transport만 보완하는 R4-W3-F2를 READY 발행했으며 실제 I2 synthetic trace 전 I3는 차단한다. |
+| v2.76 | 2026-08-04 03:01 | R4 endpoint 연결과 dev CI `30839298442` PASS 뒤 남은 실제 제품 trace를 위해 R1-W3-F1을 READY 발행했다. 누적 USD 15 안에서 task 전용 A40 Base endpoint와 task backend만 사용하고 synthetic `/analysis`의 성공 또는 MODEL 안전 실패를 판정하며, 실제 성공 trace 없이는 I3를 승인하지 않도록 고정했다. |
+| v2.75 | 2026-08-04 02:58 | R4-W3-F1의 OpenAI 호환 Base endpoint transport, 고정 생성 옵션, R3 schema 선검증과 timeout·invalid JSON·fallback·circuit open 안전 실패를 검수해 dev에 통합했다. Source CI `30838961585`는 Python 150건·OpenAPI 4건과 역할·문서·quality gate를 통과했다. 동결 OpenAPI에 없는 `MODEL_RESPONSE_INVALID` 대신 기존 `INTERNAL_ERROR`를 유지했으며 실제 RunPod 제품 전체 trace 전 I3는 진행 상태다. |
+| v2.74 | 2026-08-04 02:43 | R3 Base serving과 최종 dev CI `30837830356` PASS를 기준으로 R4-W3-F1을 READY 발행했다. 기존 ContractModelAdapter·ProductionModelClient를 재사용해 명시적 openai mode만 실제 endpoint를 호출하고, timeout·schema·circuit·fallback을 fake 성공이 아닌 Control Plane 안전 실패로 처리하도록 범위를 제한했다. RunPod 재기동·비용·secret·I3 통과는 승인하지 않았다. |
+| v2.73 | 2026-08-04 02:37 | R3-W3-F5의 고정 Qwen3-4B Base vLLM endpoint, initial readiness 101.623초, warm p95 725.808ms, peak 39,280 MiB, 동시 2건, 동일 revision 재시작과 ProductionModelClient 실패 trace를 검수해 dev에 통합했다. Branch CI의 REVIEW_REQUIRED는 청구 확정 지연·R4 change request·잔여 위험을 R1이 수동 수용했으며, 예상 신규 비용 USD 0.062802·누적 USD 1.015075·Pod 404·활성 0개를 확인했다. FastAPI 제품 연결과 I3 통과는 후속이다. |
+| v2.72 | 2026-08-04 02:11 | Base·LoRA 비교 뒤 남은 실제 serving 병목을 해소하기 위해 R3-W3-F5를 READY로 발행했다. Qwen3-4B Base 고정 revision의 vLLM endpoint·cold/warm·VRAM·동시 2건·재시작·ProductionModelClient 실패 trace를 요구하고, 이전 비용 USD 0.9523을 포함한 누적 USD 15 한도와 task Pod 삭제를 고정했다. FastAPI 제품 연결·I3 통과·LoRA 채택은 승인하지 않았다. |
+| v2.71 | 2026-08-04 01:53 | R1 terminal 판정을 동기화한 daesung corrective CI `30834157984`와 최종 dev CI `30834138561`, junhee CI `30834174015`가 모두 PASS해 R3-W3-F4의 최종 CI 근거를 확정했다. 최초 REVIEW_REQUIRED와 Base 유지 결정은 v2.70 이력에 보존한다. |
+| v2.70 | 2026-08-04 01:49 | R3-W3-F4의 Qwen3-4B LoRA 1회 학습·Base 비교, held-out 150건 G2·Trino 검증, 지연시간·VRAM·artifact hash·실측 비용 USD 0.9523·task Pod 삭제를 검토해 dev `34facd6`에 통합했다. Branch CI `30833685964`의 REVIEW_REQUIRED는 serving 미실행·p95 증가·제품 채택 승인 요구에 따른 것으로, R1은 증거 통합만 승인하고 LoRA 제품 기본값 전환은 불승인해 Base를 유지한다. |
+| v2.69 | 2026-08-04 01:39 | 사용자 승인 한도 USD 15 안에서 Qwen3-4B Base·LoRA 1회 비교, held-out 150건 G2·Trino 검증, Gold 지연시간·VRAM 기록, artifact 회수·task Pod 삭제와 제품 기본값 보류를 수행한 R3-W3-F4를 REVIEW로 기록했다. |
+| v2.68 | 2026-08-03 18:49 | R3-W3-F3의 기본 Train·Validation 보존, held-out Gold 120건·Acceptance 30건 명시 승인, split 누수 0건, 로컬 G2·Trino 150건 전수 PASS와 compiled validate를 확인했다. branch CI `30802900472`와 dev CI `30803015630` PASS 뒤 `aede5a5`에 통합했으며 실제 model download·RunPod·Base/LoRA 실행은 계속 미승인이다. |
+| v2.67 | 2026-08-03 18:36 | 실제 Qwen compiled 1,350건에 Gold·Acceptance split이 없고 생성기도 Train·Validation만 선택해 Base·LoRA 평가 입력을 만들 수 없는 누락을 확인했다. 기존 기본 동작을 보존하면서 제공 원장의 Gold 120건·Acceptance 30건을 명시적으로 승인·생성하고 로컬 G2·Trino로 전수 검증하는 R3-W3-F3를 READY 발행했으며 외부 model·RunPod 승인은 계속 제외했다. |
+| v2.66 | 2026-08-03 18:20 | R1-W3의 required30·gold120 승인과 전 역할 Wave 3 dev 통합, dev·junhee 동일 SHA·CI PASS, 통합 23건과 Context·G1/G2·cache 격리·동시 실행 제한 보안 회귀 29건을 확인해 현재 카드를 R1-10으로 전환했다. 로컬 CUDA와 Qwen3-4B cache가 없고 model download·RunPod 비용이 미승인이라 실제 Base model 비교는 NOT_RUN으로 유지하며 I3·Wave 4는 승인하지 않았다. |
+| v2.61 | 2026-08-03 17:28 | 평가 150건의 전수 질문·범주·기대 결과와 자동 검증을 대조해 R1 업무 검토와 R3 계약 소비 검토를 승인했다. 질문·정답·근거는 보존하고 reviewer/status만 동기화하는 R2-W3-F2를 dev `98b8436` 기준으로 발행했으며 model download·비용 권한은 승인하지 않았다. |
+| v2.60 | 2026-08-03 17:21 | 구현·handoff·branch CI·dev 병합이 완료된 R2-W3-F1과 R3-W3-F1C의 요약·상세 상태를 `MERGED_DEV`로 정합화하고 실제 구현·CI·병합 SHA를 기록했다. I3 통합 판정과 외부 model 권한은 변경하지 않았다. |
+| v2.59 | 2026-08-03 17:15 | R5-W3-F1C에서 Catalog 계약 상수 한 곳을 `I3-DATA-v1.1.0-DRAFT`로 맞추고 minji CI `30796547226`의 production build·frontend contract·Python·문서·역할 범위 통과를 확인한 뒤 dev `4825c0c`에 통합했다. 제품 동작·R2 계약·외부 권한은 변경하지 않았다. |
+| v2.58 | 2026-08-03 17:05 | `origin/dev`가 minji 기획서 재구성 병합 `3d6bed7`로 전진했고 CI `30794421419`에서 같은 frontend I3 계약 상수 불일치가 재현됐다. R5-W3-F1C를 `R5-W3-F1C@3d6bed7`로 재발행하며 허용 경로·수용 조건·외부 권한은 변경하지 않았다. |
+| v2.57 | 2026-08-03 16:57 | R2-W3-F1 통합 뒤 dev CI `30793737827`에서 R5 Catalog fixture의 I3 data contract 상수만 이전 버전으로 남은 소비자 호환 실패를 확인했다. dev `078651f` 기준 R5-W3-F1C를 READY 발행해 상수 동기화와 frontend contract·build 회귀만 승인하며 R2 계약과 UI 동작은 변경하지 않는다. |
+| v2.56 | 2026-08-03 16:04 | R2-W3-F1 구현 중 R3 소비자 테스트가 gold partial 5건·REVIEW 35건을 하드코딩해 full 120건 manifest를 차단하는 change request를 확인했다. dev `c8a943b`·CI `30792024162` 기준으로 R3-W3-F1C를 READY 발행해 partial/full count 호환만 선행 보완하며 runtime·Node 변경과 외부 권한은 승인하지 않았다. |
+| v2.55 | 2026-08-03 15:56 | dev `e780b75`·CI `30791740474` PASS를 기준으로 R2-W3-F1을 READY 발행했다. required30 성공 case의 SQL·result hash 연결과 gold120 120건 완성을 우선하며, R3 후속은 이 manifest가 dev에 통합된 뒤 재발행한다. 외부 데이터·image pull·model download·비용·secret은 승인하지 않았다. |
+| v2.54 | 2026-08-03 15:50 | Wave 3 요약표와 상세 카드의 상태를 R2~R5 `MERGED_DEV`로 정합화하고, R1 기본 소유 파일인 `AGENTS.md`를 R1-W3 허용 경로에 반영했다. CI run `30791392982`는 Python·Compose·문서 검증 PASS였으나 이 상세 경로 누락으로 role-scope만 실패해 후속 CI 재검증 대상으로 기록했다. |
+| v2.53 | 2026-08-03 15:42 | R4 제품 `3c2ee47`·최종 `70d9e56`과 R5 제품 `e6e527a`·최종 `1c33f1c`의 role gate·branch CI를 확인해 순서대로 dev `c89a1a0`·`4106b6d`에 통합하고 dev CI `30790048113`·`30790451402` PASS를 확인했다. R4-W3·R5-W3는 `MERGED_DEV`로 전환했으며 Report 공통 등록·browser 접근성과 외부 Base model·Gold 잔여 근거가 남아 I3는 진행 상태를 유지한다. |
+| v2.52 | 2026-08-03 15:10 | R3-W3 제품 `5b13828`·최종 `0ca0096`의 Context 제한 Node2·1회 repair·R2 평가 manifest 소비·timeout/fallback/circuit/trace와 branch CI `30789043209` PASS를 확인해 dev `41f5788`에 통합하고 dev CI `30789184985` PASS를 확인했다. 외부 Base model·RunPod/GPU/비용과 Gold120 나머지는 I3 미완료 증거로 유지하고, R4-W3를 최신 R3 model client 소비 기준 `R4-W3@41f5788`로 재발행했다. |
+| v2.51 | 2026-08-03 14:47 | R2-W3의 5원천 catalog·2/3원천 JOIN·필수 30건 fixture를 dev `8bfcd8c`에 통합하고 CI run `30788112084` PASS를 확인했다. R5 부재가 I3 병목이 되지 않도록 R5-W3를 최신 R2 계약 기준 `R5-W3@8bfcd8c`로 재발행했으며, 기존 OpenAPI example·mock을 사용해 R4 완료 전 병렬 착수하도록 승인했다. |
+| v2.50 | 2026-08-03 14:26 | R3 신규 실행이 카드 `BASE_SHA=744592a`와 당시 최신 dev 불일치로 자동 차단된 것을 확인했다. R1 착수 커밋을 dev `b06a0da`에 통합하고 CI run `30787154375` PASS를 확인해 R3-W3만 `R3-W3@b06a0da`로 재발행했으며, 원격 R3 일일보고 commit 보존과 no-rebase dev merge를 요구했다. |
+| v2.49 | 2026-08-03 14:18 | 최신 dev `1c57797`·CI run `30786041244` PASS와 통합 23건·Gate dashboard·문서 정책 검증을 확인하고 R1-W3를 `IN_PROGRESS`로 전환했다. R2~R5 지시를 Google Docs 섹션 9에 역할별로 발행했으며 required30 0/30·gold120 0/120과 외부 model·비용·secret 미승인 상태를 유지했다. |
+| v2.48 | 2026-08-03 13:54 | I2 통합 dev 744592a와 CI run 30785580556 PASS를 기준으로 R1~R5 Wave 3 묶음을 READY 발행했다. 역할별 허용 경로·수용/검증 ID·중단 조건·개인 branch commit·push 권한을 고정하고 model download·RunPod·비용·secret·외부 배포·데이터 전송은 승인하지 않았다. |
+| v2.47 | 2026-08-03 13:30 | R5-W2-F2 제품 `dae606f`·최종 `ab1d725`의 production HTTP client, 실제 browser 성공·재질문·차단·source 실패 trace, build·contract·branch CI `30782796303` PASS를 확인해 dev `56cbf08`에 통합하고 dev CI `30784368551` PASS를 확인했다. R1 통합 22건과 DB·Trino·화면 네 runtime 근거를 전수 대조해 R5-W2-F2를 MERGED_DEV, R1-W2를 I2 VERIFIED_GATE로 전환했으며 필수 30·Gold 120 전체 세트는 0/30·0/120 진행 상태로 유지했다. |
+| v2.46 | 2026-08-03 12:28 | R4-W2-F3 제품 `3f8a2cf`·handoff `51947de`의 immutable migration, built image blank/existing DB normal entrypoint, readiness·실제 Trino·cleanup과 branch CI `30781472877`를 확인해 dev `158a493`에 통합했다. R5의 보존된 frontend diff를 최신 dev에 동기화해 browser trace를 재개하는 `R5-W2-F2-RESUME@158a493`을 발행했다. |
+| v2.45 | 2026-08-03 12:06 | R5 실제 browser 준비 중 accepted backend image가 빈 DB에서 immutable `20260730_02`의 repository-relative DDL 경로를 찾지 못해 normal entrypoint가 종료되는 production blocker를 확인했다. R5-W2-F2를 일시 BLOCKED·WAIT로 전환하고 기존 migration을 보존한 Dockerfile layout과 blank DB startup만 보완하는 `R4-W2-F3@cee1ca2`를 발행했다. |
+| v2.44 | 2026-08-03 11:44 | R4-W2-F2 최종 `80c30ec`의 migration 불변성·역할 정책·실제 Trino PARTIAL·query_id·Artifact·exact CORS와 branch CI `30779910256`를 확인해 dev `b1e33c6`에 통합했다. 실제 production 화면 연결을 위한 `R5-W2-F2@b1e33c6`과 minji commit·push 권한을 발행했다. |
+| v2.43 | 2026-08-03 10:50 | R1 정책 commit의 role Gate에서 새 `.dockerignore`와 `config/access-policy.yaml`이 기존 R1-W2 허용 목록에 누락된 것을 확인했다. R1 소유 root build-context·공통 접근 정책 경로만 허용 목록에 추가하고 다른 service·deliverable 범위는 확장하지 않았다. |
+| v2.42 | 2026-08-03 10:41 | `origin/jaehong` 제품 `4bec9d7`·handoff `b812122`의 CI는 통과했으나 기존 `20260730_02` 수정으로 기존 DB upgrade가 누락되고, Template role·entitlement 미검사, PARTIAL 오류 경로의 `AdapterError.payload` 오참조, real mode HTTP 증거 부재를 확인해 병합을 거부했다. `ACCESS-POLICY-v1.0.0`과 새 migration·실제 HTTP 회귀를 요구하는 `R4-W2-F2-REWORK@e023b06` 및 개인 branch commit·push 권한만 발행했다. |
+| v2.41 | 2026-07-31 17:28 | R5-W2-F1을 dev에 통합하고 R1 증거 Gate 보강 CI PASS를 확인한 뒤 실제 DB Template·Trino·migration·CORS runtime 연결을 위한 `R4-W2-F2@0e756e7`을 READY로 발행했다. |
 | v2.40 | 2026-07-31 17:11 | 독립 코드 리뷰에서 확인한 증거 우회를 차단하기 위해 ID 없는 추가 결과와 자동 생성 placeholder 증거를 거부하고, 제출된 `REVIEW_REQUIRED`의 차단 정책을 CI Summary·최종 quality 판정과 회귀 test에 동기화했다. |
 | v2.39 | 2026-07-31 17:03 | handoff의 빈 `NOT_RUN`을 강제로 채우지 않고 새 실행 묶음의 `ACCEPTANCE_IDS`·`TEST_COMMAND_IDS`를 제출 증거와 전수 대조하도록 R1 Gate를 보강했다. 정적 runtime 검토에서 빈 Template registry·fake data adapter·frontend mock client를 확인해 I2 통합 판정을 재개방하고, R4 실제 Template·Trino·migration·정확한 CORS 연결과 후속 R5 실제 HTTP 연결을 순차 `PLANNED`로 등록했다. |
 | v2.38 | 2026-07-31 17:01 | 독립 검증 권고를 반영해 역할 diff가 삭제 파일도 검사하도록 `ACMRD`로 확장하고, 작업 중 manifest 미제출 `NOT_RUN`은 허용하되 제출된 handoff의 `REVIEW_REQUIRED`는 보완·예외 승인 전 terminal 수용을 차단하도록 자동 Gate 정책과 통합 test를 동기화했다. |

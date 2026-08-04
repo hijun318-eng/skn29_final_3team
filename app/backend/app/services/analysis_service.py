@@ -16,6 +16,11 @@ from app.ports.data_platform import DataPlatformAdapter
 from app.ports.model import ModelAdapter
 from app.services.analysis_responses import AnalysisResponseFactory
 from app.services.context_builder import ContextPackageBuilder
+from app.services.execution_control import (
+    IsolatedExecutionCache,
+    ModelCallBudget,
+    secure_cache_key,
+)
 from app.services.pipeline_support import PipelineSupport
 from app.services.routing_service import RouteDecision
 from app.services.state_machine import AnalysisStateMachine
@@ -29,6 +34,7 @@ class AnalysisService:
         adapter: DataPlatformAdapter,
         model: ModelAdapter,
         context_builder: ContextPackageBuilder | None = None,
+        cache: IsolatedExecutionCache | None = None,
     ) -> None:
         self._adapter = adapter
         self._model = model
@@ -37,6 +43,7 @@ class AnalysisService:
             context_builder or ContextPackageBuilder(),
         )
         self._responses = AnalysisResponseFactory()
+        self._cache = cache or IsolatedExecutionCache()
 
     def analyze(
         self,
@@ -46,9 +53,19 @@ class AnalysisService:
     ) -> AnalysisResponse:
         machine = AnalysisStateMachine()
         trace: list[TraceStep] = []
+        budget = ModelCallBudget()
         machine.transition(AnalysisStatus.ROUTED)
         self._responses.record(trace, PipelineStage.ROUTER)
-        self._responses.record(trace, PipelineStage.CONTROLLER)
+        audit_id = secure_cache_key(
+            "audit",
+            trace_id=context.trace_id,
+            entitlement=f"{context.user_id}:{context.role.value}",
+            role=context.role.value,
+            as_of=context.as_of,
+            mask_scope=context.role.value,
+            policy="policy-v1",
+        )[:16]
+        self._responses.record(trace, PipelineStage.CONTROLLER, f"audit={audit_id}")
 
         assets = self._adapter.search_assets(
             payload.question,
@@ -77,16 +94,71 @@ class AnalysisService:
             {"urn": item.urn, "fqn": item.fqn, "columns": list(item.columns)}
             for item in package.assets
         ]
-        try:
-            plan = self._model.generate(
-                "node2",
-                {"scenario": scenario, "references": references},
-            )
-        except (TimeoutError, TypeError, ValueError):
-            return self._responses.model_error(context, machine, trace, decision)
+        watermark = secure_cache_key(
+            "watermark",
+            assets=[
+                (item.get("urn"), item.get("schema_version"), item.get("seed_version"))
+                for item in assets
+            ],
+        )
+        mask = secure_cache_key(
+            "mask",
+            role=context.role.value,
+            policy=package.policy_version,
+        )
+        common_key = {
+            "context": package.package_hash,
+            "policy": package.policy_version,
+            "entitlement": package.entitlement_hash,
+            "as_of": context.as_of,
+            "watermark": watermark,
+            "mask": mask,
+        }
+        plan_key = secure_cache_key(
+            "sql-plan",
+            question=payload.question,
+            template=decision.template_id,
+            parameters=payload.parameters,
+            **common_key,
+        )
+        plan = self._cache.get_plan(plan_key)
+        plan_cached = plan is not None
+        if plan is not None:
+            pass
+        elif decision.sql_text:
+            plan = {
+                "sql": decision.sql_text,
+                "references": [
+                    item
+                    for item in references
+                    if item["fqn"] in decision.source_fqns
+                ],
+                "parameters": payload.parameters,
+                "model_version": "TEMPLATE-I2-v1.0.0",
+            }
+        else:
+            try:
+                plan = budget.call(
+                    self._model,
+                    "node2",
+                    {
+                        "scenario": scenario,
+                        "question": payload.question,
+                        "references": references,
+                        "request_id": str(context.request_id),
+                        "package": package,
+                        "context": context,
+                    },
+                )
+            except (TimeoutError, TypeError, ValueError):
+                return self._responses.model_error(context, machine, trace, decision)
         if self._support.model_plan_violation(plan):
             return self._responses.model_error(context, machine, trace, decision)
-        self._responses.record(trace, PipelineStage.MODEL, plan.get("model_version"))
+        self._responses.record(
+            trace,
+            PipelineStage.MODEL,
+            f"{plan.get('model_version')};plan_cache={'hit' if plan_cached else 'miss'}",
+        )
 
         repair_count = 0
         violation = self._support.g2_violation(plan, package)
@@ -110,12 +182,18 @@ class AnalysisService:
             )
             repair_count = 1
             try:
-                plan = self._model.generate(
+                plan = budget.call(
+                    self._model,
                     "node2_repair",
                     {
                         "scenario": scenario,
                         "attempt": repair_count,
                         "references": references,
+                        "trace_id": context.trace_id,
+                        "rejected_sql": str(plan["sql"]),
+                        "violation": violation,
+                        "package": package,
+                        "context": context,
                     },
                 )
             except (TimeoutError, TypeError, ValueError):
@@ -144,14 +222,26 @@ class AnalysisService:
                 )
         self._responses.record(trace, PipelineStage.G2)
 
+        self._cache.put_plan(plan_key, plan)
         gate_token = self._support.gate_token(package, str(plan["sql"]))
+        result_key = secure_cache_key(
+            "query-result",
+            sql=plan["sql"],
+            parameters=plan.get("parameters", {}),
+            **common_key,
+        )
+        cached_query = self._cache.get_result(result_key)
+        result_cached = cached_query is not None
         try:
-            query = self._adapter.execute_query(
-                plan["sql"],
-                plan.get("parameters", {}),
-                gate_token,
-            )
-            query = self._adapter.get_query_status(query["query_id"])
+            if cached_query is None:
+                query = self._adapter.execute_query(
+                    plan["sql"],
+                    plan.get("parameters", {}),
+                    gate_token,
+                )
+                query = self._adapter.get_query_status(query["query_id"])
+            else:
+                query = cached_query
         except (KeyError, TimeoutError, TypeError, ValueError):
             return self._responses.error(
                 context,
@@ -250,9 +340,20 @@ class AnalysisService:
                 repair_count,
             )
         self._responses.record(trace, PipelineStage.G3)
+        if not result_cached:
+            self._cache.put_result(result_key, query)
 
         try:
-            explanation = self._model.generate("node3", {"scenario": scenario})
+            explanation = budget.call(
+                self._model,
+                "node3",
+                {
+                    "scenario": scenario,
+                    "query": query,
+                    "assets": assets,
+                    "context": context,
+                },
+            )
             if (
                 not isinstance(explanation, dict)
                 or not isinstance(explanation.get("summary"), str)
@@ -291,6 +392,7 @@ class AnalysisService:
             explanation=explanation,
             artifact=artifact,
             repair_count=repair_count,
+            cached=result_cached,
         )
 
     def blocked(self, context: RequestContext, error: ErrorBody) -> AnalysisResponse:

@@ -1,7 +1,7 @@
 export const SYNTHETIC_META = {
-  seed: "20260727",
-  schemaVersion: "enterprise-demo-v1",
-  label: "Synthetic demo data",
+  seed: "20260729",
+  schemaVersion: "1.0.0",
+  label: "Synthetic I3 data",
 };
 
 export const connections = [

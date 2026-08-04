@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.90 |
-| 문서 기준일 | 2026-08-04 09:37 |
+| 버전 | v2.91 |
+| 문서 기준일 | 2026-08-04 09:49 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -189,7 +189,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W3-F1C | Wave 3 compatibility follow-up | R3 | 없음 → I3 | R3-10 평가 manifest 소비 호환 | partial/full gold count consumer 검증 | `MERGED_DEV` |
 | R3-W3-F2 | Wave 3 training package follow-up | R3 | 없음 → I3 | R3-10 학습 데이터 재생성·검증 도구 반입 | 제공된 training package 정적·재현성 검증 | `MERGED_DEV` |
 | R3-W3-F3 | Wave 3 held-out follow-up | R3 | 없음 → I3 | R3-10 Gold·Acceptance 실행 입력 완성 | 원장 Gold 120건·Acceptance 30건 명시 선택·승인·로컬 Trino 검증 | `MERGED_DEV` |
-| R3-W3-F10 | Wave 3 reference follow-up | R3 | 없음 → I3 | R3-07 Node 2·2′ reference 정합 | SQL FROM/JOIN과 references 정확 일치·불일치 1회 repair | `READY` |
+| R3-W3-F10 | Wave 3 reference follow-up | R3 | 없음 → I3 | R3-07 Node 2·2′ reference 정합 | SQL FROM/JOIN과 references 정확 일치·불일치 1회 repair | `MERGED_DEV` |
 | R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
 | R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
 | R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `MERGED_DEV` |
@@ -2103,12 +2103,13 @@ EVIDENCE=제품 응답 SHA-256 `5adeeaaa7f1a1bce2c725ee3f4c4c7738130caf8e9ff0505
 BLOCKER=Base node2가 반환한 SQL의 FROM/JOIN table 집합과 references의 `trino_fqn` 집합이 일치하지 않았고, `SQL_REFERENCE_MISMATCH` 1회 repair도 G2 정책을 통과하지 못했다. 두 집합의 정확 일치와 해당 오류의 단일 수정 행동을 prompt에 고정한 뒤 실제 제품 trace 재검증 전 I3 승인 불가
 RESUME_EVIDENCE=사용자 목표 재개 후 공식 PyTorch template Secure A40 `6xiz3gs3a68032`을 다시 할당했으나 474.937초 동안 실제 uptime이 계속 0이어서 SSH·모델·제품 요청을 실행하지 않았다. Pod GET 404·활성 0, 신규 비용 상한 USD 0.058048·누적 상한 USD 1.617033, 기존 Trino 동일 ID·running·restart 0과 임시 CLI config 0 bytes를 확인했다.
 RESUME_DECISION=동일 외부 provisioning blocker가 재현되어 I3와 R1-W3-F6 BLOCKED를 유지한다. R2~R5에 추가 구현 지시는 없으며 정상 uptime이 확인되는 task A40에서 동일 승인 조건으로 재검증한다.
+FOLLOWUP_DECISION=R3-W3-F10의 PROMPT-v1.0.5/PROMPT-v1.0.2가 SQL-reference 정확 일치와 단일 repair 행동을 dev `b316336`·CI `30866726434` PASS로 통합해 code blocker는 해제했다. 실제 성공 trace는 R1-W3-F7에서 재판정한다.
 ```
 
 ### R3-W3-F10
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -2133,6 +2134,42 @@ TEST_COMMAND_IDS=T1_PROMPT;T2_AI;T3_DIFF
 STOP_CONDITIONS=schema·training dataset·backend·G2 변경 필요; reference 정확 일치가 prompt만으로 표현 불가; 기존 LIMIT·parameter·actual-question 규칙 회귀; test 실패
 HANDOFF=R1에 node2·repair prompt version/hash·SQL-reference 정확 일치 문구·기존 정책 회귀 결과 전달
 EXTERNAL_ACTION_PERMISSION=없음 — local prompt·test·commit·daesung push만 승인
+RESULT=node2는 SQL FROM·JOIN과 references의 승인 `trino_fqn` 집합을 양방향 정확 일치시키고, node2_repair는 `SQL_REFERENCE_MISMATCH`에서 질문 의미·승인 Context·parameter를 보존해 한 번만 맞추도록 prompt를 보완했다. node2는 PROMPT-v1.0.5, repair는 PROMPT-v1.0.2로 올렸다.
+EVIDENCE=daesung `9d1b937`, dev `b316336`, CI `30866726434` PASS, prompt 3건·AI 47건·Gate scope 19건·보고 검증 PASS
+R1_REVIEW=schema·training dataset·backend·G2를 바꾸지 않고 prompt 두 문장과 문자열 회귀만 추가한 최소 변경으로 허용 경로와 기존 LIMIT·parameter·actual-question 규칙을 보존해 수용한다.
+```
+
+### R1-W3-F7
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W3-F7
+TARGET_INTEGRATION_GATE=I3
+CHECKPOINT_GATES=없음
+TASK_CARD_RANGE=R1-10 SQL-reference 보완 후 Base·I2 제품 전체 trace
+CURRENT_TASK_CARD_ID=R1-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=b316336cb2b145f14737e77b4e3119c6fe8de80e
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W3-F7@b316336
+MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
+PROMPT_VERSION=PROMPT-v1.0.5/PROMPT-v1.0.2
+OPENAPI_VERSION=OPENAPI-v1.0.0
+DATA_CONTRACT_VERSION=DATA-v1.0.0
+ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 서비스 내부 구현; .env; API key; actual customer data; model binary·RunPod artifact commit; frontend·Report 변경; 다른 Docker project·container·volume 변경
+ACCEPTANCE_CRITERIA=dev `b316336`·CI `30866726434` PASS의 PROMPT-v1.0.5/PROMPT-v1.0.2를 task A40 고정 Qwen3-4B·task backend·기존 synthetic Trino read-only에 localhost로 연결한다. raw node2의 SQL FROM/JOIN과 references `trino_fqn` 집합·parameters/placeholder를 확인하고 동일 synthetic `/analysis`의 MODEL→G2→QUERY→G3→ARTIFACT와 evidence를 판정한다. 실패 시 첫·repair plan의 exact G2 code와 query/Artifact 부재를 기록한다. 회귀·비용·secret 비기록·task cleanup을 확인하고 성공 trace와 필수 보안 경계가 모두 충족될 때만 I3를 승인한다.
+ACCEPTANCE_IDS=AC1_REFERENCE_OUTPUT;AC2_PARAMETER_OUTPUT;AC3_RAW_SCHEMA;AC4_G2_QUERY;AC5_G3_ARTIFACT;AC6_EVIDENCE;AC7_REGRESSION;AC8_SECRET_REDACTED;AC9_COST;AC10_CLEANUP;AC11_I3
+TEST_COMMANDS=task health; raw node2 reference/parameter; synthetic POST /analysis; trace/artifact/evidence; backend·integration regressions; exact cleanup; Pod 404·active 0; Docker scope; docs validation
+TEST_COMMAND_IDS=T1_HEALTH;T2_RAW;T3_PRODUCT;T4_EVIDENCE;T5_REGRESSION;T6_SECRET;T7_CLEANUP;T8_SCOPE;T9_DOCS
+STOP_CONDITIONS=USD15 예상 도달; 다른 Docker 변경·public endpoint·secret·실제 고객 데이터·R2~R5 추가 code 필요; 안전 경계 위반
+HANDOFF=reference/parameter raw·제품 trace·evidence·비용·cleanup과 I3 판정 또는 exact blocker 전달
+EXTERNAL_ACTION_PERMISSION=누적 USD15 안 task A40·고정 model·합성 localhost 요청·task backend·task 임시 PostgreSQL·정확한 cleanup과 기존 synthetic Trino read-only 조회, R1 commit·junhee/dev push 승인. 다른 resource·public endpoint·secret·실제 고객 데이터·LoRA 변경 불가
+COST_BASELINE_USD=확인된 이전 상한 USD 1.783255 + 첫 SSH 진단 Pod 청구 확정 대기, 총 USD 15 미만 유지
 ```
 
 ## Wave 4 상세 계획 카드
@@ -2227,6 +2264,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.91 | 2026-08-04 09:49 | R3-W3-F10의 SQL FROM/JOIN·references 정확 일치 PROMPT-v1.0.5와 mismatch 단일 repair PROMPT-v1.0.2를 AI 47건·Gate 19건·CI `30866726434` PASS로 dev에 통합했다. 같은 Base·synthetic Trino read-only 제품 trace를 재판정하는 R1-W3-F7을 발행하며 성공 전 I3를 유지한다. |
 | v2.90 | 2026-08-04 09:37 | 정상 Secure A40 제품 trace가 MODEL 뒤 SQL-reference 불일치와 1회 repair 후 G2 정책 차단으로 종료된 사실, QUERY·Artifact 부재·cleanup·기존 Docker 무변경을 기록했다. R3-W3-F10으로 node2·repair의 SQL FROM/JOIN과 references 정확 일치 행동만 READY 발행하며 실제 성공 trace 전 I3를 유지한다. |
 | v2.89 | 2026-08-04 08:12 | 목표 재개 후 공식 PyTorch template Secure A40을 재시도했으나 474.937초 동안 uptime 0이 반복돼 실제 제품 trace는 Not Run이었다. Pod 404·활성 0·신규 비용 상한 USD 0.058048·누적 USD 1.617033, 기존 Trino 무변경과 임시 key 저장 제거를 확인하고 R1-W3-F6·I3 차단을 유지했다. |
 | v2.88 | 2026-08-04 05:09 | R1-W3-F6의 세 task Secure A40이 모두 desired RUNNING과 달리 container uptime 0에 머물러 PROMPT-v1.0.4 제품 trace를 실행하지 못했다. 세 Pod 404·활성 0·신규 비용 상한 USD 0.141859·누적 USD 1.558985, 기존 Trino 무변경과 임시 key 저장 제거를 확인하고 외부 provisioning blocker로 I3를 유지했다. |

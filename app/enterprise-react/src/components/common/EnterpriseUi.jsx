@@ -7,6 +7,7 @@ const STATUS_LABEL = {
   error: "오류",
   healthy: "정상",
   degraded: "주의",
+  CONFIG_VALIDATED: "검증 완료",
 };
 
 export function StatusBadge({ status }) {

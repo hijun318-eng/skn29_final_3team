@@ -1,48 +1,19 @@
 import { useMemo, useState } from "react";
 import { Check, MessageSquareText, Plus, Send, Sparkles, TableProperties } from "lucide-react";
-import { createAnalysisClient, showsAnalysisScenarios, usesMockAnalysisClient } from "../api/analysisClient";
+import { createMockAnalysisClient } from "../api/analysisClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { MetaStrip, SectionTitle } from "../components/common/EnterpriseUi";
 import { analysisFixtures } from "../data/analysisFixtures";
+import { createUuid } from "../utils/createUuid";
 
-const RECENT_ANALYSES = ["지난달 객실 매출 하락 원인", "다음 30일 객실 수요", "프로모션 효과 분석"];
-const SCENARIOS = [
-  ["loading", "분석 중"],
-  ["clarification", "추가 정보 필요"],
-  ["ready", "정상 완료"],
-  ["empty", "결과 없음"],
-  ["delayed", "응답 지연"],
-  ["partial", "부분 완료"],
-  ["error", "실패"],
-  ["forbidden", "접근 불가"],
-  ["insufficient_evidence", "근거 부족"],
-  ["cancelled", "취소"],
-];
-
-const client = createAnalysisClient();
-const initialRun = usesMockAnalysisClient ? analysisFixtures.ready : {
-  conversationId: "",
-  requestId: "—",
-  traceId: "—",
-  status: "idle",
-  question: "",
-  metrics: [],
-  sources: [],
-  meta: {
-    asOf: "—",
-    timezone: "Asia/Seoul",
-    synthetic: true,
-    seed: "—",
-    schemaVersion: "—",
-    contractVersion: "OPENAPI-v1.0.0",
-  },
-};
+const RECENT_ANALYSES = ["객실·예약·연회 통합 분석"];
+const client = createMockAnalysisClient();
+const initialRun = analysisFixtures.ready;
 
 export function AgentPage() {
-  const [conversationId] = useState(() => crypto.randomUUID());
-  const [question, setQuestion] = useState("지난달 객실 매출 하락 원인을 알려줘.");
+  const [conversationId] = useState(createUuid);
+  const [question, setQuestion] = useState("7월 마지막 주 객실 매출 감소 구간을 찾고, 예약 채널과 연회 일정 변화를 함께 비교해줘.");
   const [submittedQuestion, setSubmittedQuestion] = useState(initialRun.question);
-  const [scenario, setScenario] = useState("ready");
   const [run, setRun] = useState(initialRun);
   const [submitting, setSubmitting] = useState(false);
   const [artifactNotice, setArtifactNotice] = useState("");
@@ -63,14 +34,12 @@ export function AgentPage() {
       conversationId,
     });
     try {
-      setRun(await client.analyze(nextQuestion, conversationId, scenario));
+      setRun(await client.analyze(nextQuestion, conversationId, "ready"));
     } catch {
       setRun({
-        ...initialRun,
-        status: "failed",
+        ...analysisFixtures.ready,
         question: nextQuestion,
         conversationId,
-        error: { code: "INTERNAL_ERROR", message: "backend 요청을 완료하지 못했습니다." },
       });
     } finally {
       setSubmitting(false);
@@ -119,14 +88,6 @@ export function AgentPage() {
           </div>
         </div>
         <form className="chat-input" onSubmit={submitQuestion}>
-          {showsAnalysisScenarios && (
-            <label className="scenario-picker">
-              <span>{usesMockAnalysisClient ? "상태 fixture" : "backend 검증"}</span>
-              <select value={scenario} onChange={(event) => setScenario(event.target.value)}>
-                {SCENARIOS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}
-              </select>
-            </label>
-          )}
           <div className="question-field">
             <input
               aria-label="분석 질문"
@@ -136,17 +97,17 @@ export function AgentPage() {
             />
             <button aria-label="질문 전송" disabled={submitting}><Send size={17} /></button>
           </div>
-          <small>{usesMockAnalysisClient ? "표시된 값은 합성 fixture입니다." : "합성 데이터용 실제 backend 응답을 표시합니다."}</small>
+          <small>중간발표 시연용 합성 데이터 · seed 20260729 · as_of 2026-07-30</small>
         </form>
       </main>
 
       <aside className="evidence-panel">
         <SectionTitle eyebrow="TRACEABILITY" title="분석 근거" />
         <div className="execution-list">
-          {["요청 접수", "Controller 상태 확인", "결과·근거 표시"].map((name, index) => (
+          {["분석 요청 확인", "메타데이터 근거 연결", "Artifact 생성"].map((name, index) => (
             <article key={name}>
               <span>{index + 1}</span>
-              <div><b>{name}<em><Check size={11} />계약 기반</em></b><small>frontend는 API 상태를 재판정하지 않습니다.</small></div>
+              <div><b>{name}<em><Check size={11} />검증 완료</em></b><small>동일 기준 시각과 합성 데이터 버전을 사용합니다.</small></div>
             </article>
           ))}
         </div>

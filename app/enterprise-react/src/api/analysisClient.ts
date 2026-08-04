@@ -5,6 +5,7 @@ import {
   type AnalysisApiResponse,
   type AnalysisRun,
 } from "../contracts/analysis.ts";
+import { createUuid } from "../utils/createUuid.ts";
 
 export interface AnalysisClient {
   analyze(question: string, conversationId: string, fixtureKey: FixtureKey): Promise<AnalysisRun>;
@@ -39,7 +40,7 @@ export function createHttpAnalysisClient(
   return {
     async analyze(question, conversationId, fixtureKey) {
       const { body, role } = requestOptions(fixtureKey);
-      const traceId = crypto.randomUUID();
+      const traceId = createUuid();
       const response = await request(`${baseUrl.replace(/\/$/, "")}/analysis`, {
         method: "POST",
         headers: {

@@ -58,7 +58,7 @@ export function AppSidebar({ page, onNavigate, open, onClose }) {
         <div className="organization">
           <Building2 size={20} />
           <div>
-            <b>Walkerhill Hotels</b>
+            <b>Sense Place Hotel</b>
             <small>Demo Organization</small>
           </div>
           <ChevronDown size={15} />

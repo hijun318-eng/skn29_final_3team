@@ -1,0 +1,55 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W4-F5",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "a808cfd651289eeb3437b162b7e032883b0479ac",
+  "SYNCED_DEV_SHA": "507e2c6243e1e5a1a7875e9da7335ff1158cf494",
+  "RESULT_SHA": "d57858b1504eb7d387d6de1a10352670dbd760cf",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W4-F5@a808cfd",
+  "COMPLETED_CARDS": [
+    "R4-16 Report v1.1 API·DB queue 등록"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/README.md",
+    "app/backend/app/adapters/report_repository.py",
+    "app/backend/app/api/report_router.py",
+    "app/backend/migrations/versions/20260804_05_report_v11_registration.py",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
+    "tests/backend/test_report_migration.py",
+    "tests/backend/test_report_registration.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "REPORT": "REPORT-v1.1.0-DRAFT; REPORT-v1.0.0-compatible",
+    "OPENAPI": "OPENAPI-v1.0.0 unchanged; Report API hidden"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_V1_COMPAT", "status": "PASS", "evidence": "R5 domain/router를 수정하지 않고 기존 v1 payload·internal result 저장을 보존"},
+    {"id": "AC2_OWNER_SCOPE", "status": "PASS", "evidence": "definition/run 조회·교체·manual command를 RequestContext user_id owner로 제한하고 실제 DB의 타 owner 접근을 차단"},
+    {"id": "AC3_DRAFT_REPLACE", "status": "PASS", "evidence": "draft version row lock 뒤 block 전체 DELETE·INSERT를 단일 transaction으로 수행"},
+    {"id": "AC4_APPROVED_IMMUTABLE", "status": "PASS", "evidence": "API와 PostgreSQL trigger가 approved version·block 변경을 차단"},
+    {"id": "AC5_HISTORY", "status": "PASS", "evidence": "owner-scoped definition list와 run list/detail repository·hidden HTTP route 등록"},
+    {"id": "AC6_MANUAL_TRUST_BOUNDARY", "status": "PASS", "evidence": "manual HTTP는 definition_id·version·as_of·idempotency_key만 허용하고 client result/status/policy/context/watermark를 422로 거부"},
+    {"id": "AC7_SERVER_OWNED", "status": "PASS", "evidence": "command_id는 uuid4로 서버 생성하고 DB status는 queued 하나만 허용"},
+    {"id": "AC8_MIGRATION_CHAIN", "status": "PASS", "evidence": "기존 migration을 보존하고 20260804_04 뒤 신규 20260804_05를 추가"},
+    {"id": "AC9_DB_CONSTRAINTS", "status": "PASS", "evidence": "실제 PostgreSQL에서 backfill·bounds·artifact·approved trigger·GRANT·8-way concurrent idempotency 확인"},
+    {"id": "AC10_HIDDEN_API", "status": "PASS", "evidence": "APIRouter include_in_schema=False 유지, frozen app OpenAPI에 /reports 없음 확인"},
+    {"id": "AC11_NO_WORKER", "status": "PASS", "evidence": "worker·schedule·Artifact 실행·frontend·src/report를 변경하지 않음"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_TARGET", "name": "python -m pytest -p no:cacheprovider tests/backend/test_report_registration.py tests/backend/test_report_migration.py tests/report -q", "status": "PASS", "evidence": "16 passed, 1 environment-gated DB test skipped, 17 subtests passed; DB test는 T6에서 별도 PASS"},
+    {"id": "T2_BACKEND_REPORT", "name": "python -m pytest -p no:cacheprovider tests/backend tests/report -q", "status": "PASS", "evidence": "89 passed, 8 environment-gated tests skipped, 26 subtests passed"},
+    {"id": "T3_COMPILE", "name": "python -m compileall -q app/backend/app", "status": "PASS", "evidence": "compile error 없음"},
+    {"id": "T4_BLANK_DB", "name": "blank PostgreSQL alembic upgrade head", "status": "PASS", "evidence": "실제 app-postgres 임시 빈 DB가 20260804_05에 도달"},
+    {"id": "T5_UPGRADE", "name": "existing PostgreSQL 20260804_04 to head", "status": "PASS", "evidence": "v1 row를 가진 실제 app-postgres 임시 DB가 20260804_05로 upgrade되고 table:0:0:6:1 backfill 확인"},
+    {"id": "T6_POSTGRES", "name": "PostgreSQL owner isolation·draft replace·approved immutable·concurrent idempotency", "status": "PASS", "evidence": "owner 격리, bounds·approved DB 차단, draft DELETE 권한, 8개 동시 요청의 command_id 1개 확인; 임시 DB 제거 후 잔여 0"},
+    {"id": "T7_SCOPE", "name": "python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "최신 origin/dev 507e2c6 병합 뒤 승인 경로와 handoff 계약 확인"},
+    {"id": "T8_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R4-W4-F5 hidden REPORT-v1.1 backend registration 수용과 dev 통합 승인; worker·schedule은 후속 계약 전 대기"
+}

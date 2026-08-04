@@ -75,11 +75,7 @@ def current_bundle(text: str, branch: str) -> dict[str, str] | None:
         and bundle["STATUS"] != "PLANNED"
         and "ALLOWED_PATHS" in bundle
     ]
-    active = [
-        bundle for bundle in candidates
-        if bundle["STATUS"] not in TERMINAL_STATUSES
-    ]
-    return (active or candidates)[-1] if candidates else None
+    return candidates[-1] if candidates else None
 
 
 def terminal_transition_scope(

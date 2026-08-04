@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.92 |
-| 문서 기준일 | 2026-08-04 10:41 |
+| 버전 | v2.93 |
+| 문서 기준일 | 2026-08-04 11:20 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -181,7 +181,7 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R5-W2 | Wave 2·08/10~08/14 | R5 | 없음 → I2 | R5-03~07 | Chat·상태·Evidence·표·차트·Artifact bridge | `MERGED_DEV` |
 | R5-W2-F1 | Wave 2 follow-up | R5 | 없음 → I2 | R5-04 source 실패 표시 보완 | API `retryable` 표시·R4 timeout fixture 소비 | `MERGED_DEV` |
 | R5-W2-F2 | Wave 2 follow-up | R5 | 없음 → I2 | R5-01·03~07 실제 API 보완 | production HTTP client·실제 backend 화면 trace | `MERGED_DEV` |
-| R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `IN_PROGRESS` |
+| R1-W3 | Wave 3·08/17~08/21 | R1 | 없음 → I3 | R1-07, R1-10 | gold 관리·일반 질문·보안 기준선 판정 | `VERIFIED_GATE` |
 | R2-W3 | Wave 3·08/17~08/21 | R2 | 없음 → I3 | R2-09~18 | 5 source·recipe·catalog·JOIN·watermark·fixture | `MERGED_DEV` |
 | R2-W3-F1 | Wave 3 follow-up | R2 | 없음 → I3 | R2-18 평가 fixture 보강 | required30 결과 hash 연결·gold120 완성 | `MERGED_DEV` |
 | R2-W3-F2 | Wave 3 review follow-up | R2 | 없음 → I3 | R2-18 평가 승인 상태 동기화 | R1·R2·R3 reviewer와 APPROVED 상태 반영 | `MERGED_DEV` |
@@ -190,9 +190,9 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W3-F2 | Wave 3 training package follow-up | R3 | 없음 → I3 | R3-10 학습 데이터 재생성·검증 도구 반입 | 제공된 training package 정적·재현성 검증 | `MERGED_DEV` |
 | R3-W3-F3 | Wave 3 held-out follow-up | R3 | 없음 → I3 | R3-10 Gold·Acceptance 실행 입력 완성 | 원장 Gold 120건·Acceptance 30건 명시 선택·승인·로컬 Trino 검증 | `MERGED_DEV` |
 | R3-W3-F10 | Wave 3 reference follow-up | R3 | 없음 → I3 | R3-07 Node 2·2′ reference 정합 | SQL FROM/JOIN과 references 정확 일치·불일치 1회 repair | `MERGED_DEV` |
-| R3-W3-F11 | Wave 3 semantic SQL follow-up | R3 | 없음 → I3 | R3-07 승인 JOIN·기간·집계 의미 보완 | 승인 5-table JOIN·절대 기간·월 집계 PROMPT-v1.0.6 | `READY` |
+| R3-W3-F11 | Wave 3 semantic SQL follow-up | R3 | 없음 → I3 | R3-07 승인 JOIN·기간·집계 의미 보완 | 승인 5-table JOIN·절대 기간·월 집계 PROMPT-v1.0.6 | `MERGED_DEV` |
 | R4-W3 | Wave 3·08/17~08/21 | R4 | 없음 → I3 | R4-08~15, R4-18 | model client·repair 1회·Cache·Audit·권한 | `MERGED_DEV` |
-| R4-W3-F4 | Wave 3 serving contract follow-up | R4 | 없음 → I3 | R4-08 실제 Base 응답 안정화 | SQL-only guided output·결정론적 metadata·전월 대비 기간 안전 검증 | `READY` |
+| R4-W3-F4 | Wave 3 serving contract follow-up | R4 | 없음 → I3 | R4-08 실제 Base 응답 안정화 | SQL-only guided output·결정론적 metadata·전월 대비 기간 안전 검증 | `MERGED_DEV` |
 | R5-W3 | Wave 3·08/17~08/21 | R5 | 없음 → I3 | R5-04~10, R5-14 | 오류 상태·Report proposal·Catalog mock | `MERGED_DEV` |
 | R5-W3-F1C | Wave 3 compatibility follow-up | R5 | 없음 → I3 | R5-14 Catalog 계약 버전 호환 | frontend I3 data contract 상수 동기화 | `MERGED_DEV` |
 | R1-W4 | Wave 4·08/24~09/02 | R1 | I4·RC1 → I5 | R1-11~13 | Report 통합·보안·장애·복구·성능·release manifest | `PLANNED` |
@@ -1162,7 +1162,7 @@ Wave 3는 I2에서 검증한 전체 왕복을 5 source와 실제 general LLM 경
 ### R1-W3
 
 ```text
-STATUS=IN_PROGRESS
+STATUS=VERIFIED_GATE
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1182,6 +1182,7 @@ BASE_DEV_CI_EVIDENCE=GitHub Actions run 30785580556 PASS
 R1_START_EVIDENCE=origin/dev 1c57797789b040932fc6a02c3f45294d99bc0347·GitHub Actions run 30786041244 PASS; integration 23건·Gate dashboard·문서 정책 PASS; required30 0/30·gold120 0/120으로 생산자 handoff 대기
 R1_PROGRESS_EVIDENCE=required30 30/30·gold120 120/120·평가 150건 reviewer/status 승인 완료; R2-W3-F2·R3-W3-F2·R4-W3·R5-W3-F1C MERGED_DEV; dev·junhee 3a7ceec·CI 30800298617/30800328577 PASS; integration 23건·Context/G1/G2/cache/concurrency 보안 회귀 29건 PASS
 R1_LOCAL_MODEL_EVIDENCE=CUDA GPU 없음; 로컬 Hugging Face cache에 Qwen3-4B 없음; 실제 Base model·RunPod/LoRA·serving은 model download·비용 미승인으로 NOT_RUN
+R1_FINAL_EVIDENCE=Base·LoRA 비교와 Base serving 실측을 완료했고, dev `baeda49`·CI `30870270154` PASS 기준의 실제 synthetic read-only trace `r1-w3-f7-product-trace-retry7`에서 2026-06·07 두 행과 ROUTER→CONTROLLER→CONTEXT→G1→MODEL→G2→QUERY→G3→ARTIFACT 전 단계 PASS를 확인했다.
 ALLOWED_PATHS=AGENTS.md; .github/**; compose*.yml; .env.example; .dockerignore; config/access-policy.yaml; tests/integration/**; docs/Answervice_기획서.md; docs/markdown/02_WBS.md; docs/markdown/collaboration/**
 FORBIDDEN_PATHS=R2~R5 서비스 내부 구현
 ACCEPTANCE_CRITERIA=필수 30건 expected 결과와 reviewer를 확인하고 일반 질문 subset에서 schema-only·DataHub metadata·승인 Context 세 조건 및 Base model을 동일 질문·데이터·권한으로 비교하며 repair 최대 1회, 비승인 SQL·Context 밖 참조·G3 실패 설명을 차단하고 I3 통합 trace를 판정
@@ -2144,7 +2145,7 @@ R1_REVIEW=schema·training dataset·backend·G2를 바꾸지 않고 prompt 두 �
 ### R1-W3-F7
 
 ```text
-STATUS=READY
+STATUS=VERIFIED_GATE
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -2159,7 +2160,7 @@ BASE_SHA=b316336cb2b145f14737e77b4e3119c6fe8de80e
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W3-F7@b316336
 MODEL_CONTRACT_VERSION=MODEL-v1.0.0-compatible
-PROMPT_VERSION=PROMPT-v1.0.5/PROMPT-v1.0.2
+PROMPT_VERSION=PROMPT-v1.0.6/PROMPT-v1.0.2
 OPENAPI_VERSION=OPENAPI-v1.0.0
 DATA_CONTRACT_VERSION=DATA-v1.0.0
 ALLOWED_PATHS=tests/integration/**; .github/**; compose*.yml; docs/markdown/02_WBS.md; docs/markdown/collaboration/**; docs/markdown/daily_reports/junhee/일일보고.md
@@ -2172,12 +2173,15 @@ STOP_CONDITIONS=USD15 예상 도달; 다른 Docker 변경·public endpoint·secr
 HANDOFF=reference/parameter raw·제품 trace·evidence·비용·cleanup과 I3 판정 또는 exact blocker 전달
 EXTERNAL_ACTION_PERMISSION=누적 USD15 안 task A40·고정 model·합성 localhost 요청·task backend·task 임시 PostgreSQL·정확한 cleanup과 기존 synthetic Trino read-only 조회, R1 commit·junhee/dev push 승인. 다른 resource·public endpoint·secret·실제 고객 데이터·LoRA 변경 불가
 COST_BASELINE_USD=확인된 이전 상한 USD 1.783255 + 첫 SSH 진단 Pod 청구 확정 대기, 총 USD 15 미만 유지
+RESULT=trace `r1-w3-f7-product-trace-retry7`에서 2026-06 `843295200.00`, 2026-07 `843453600.00` 두 행을 반환했고 ROUTER→CONTROLLER→CONTEXT→G1→MODEL→G2→QUERY→G3→ARTIFACT가 모두 PASSED했다. repair_count=0, Trino query `20260804_013401_00004_7nsas`, artifact `5df73606-2419-51dc-94f4-0de6880745aa`를 확인했다.
+EVIDENCE=R3 dev merge `5ce29ff`·R4 dev merge `0007932`·보고 통합 dev `baeda49`, dev CI `30870270154` PASS, AI 52건·backend 25건·integration 24건 PASS, 신규 Pod 비용 상한 USD 0.307711, Pod 404·active 0·secret log 0건·기존 Trino·app DB 무변경
+I3_DECISION=5 catalog·승인 5-table JOIN·Node 연결·G1/G2/G3·read-only query·Artifact·보안 회귀와 전월 대비 2개월 의미 결과를 모두 확인해 I3를 VERIFIED_GATE로 승인한다.
 ```
 
 ### R3-W3-F11
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -2202,12 +2206,14 @@ TEST_COMMAND_IDS=T1_AI;T2_COMPILE;T3_DIFF
 STOP_CONDITIONS=R3 경로 밖 변경 필요; schema·training data·model option 변경 필요; unit test 실패
 HANDOFF=PROMPT-v1.0.6 문구·version·AI regression과 R4 소비자 재검증 조건 전달
 EXTERNAL_ACTION_PERMISSION=없음. download·RunPod·비용·secret·배포·데이터 전송 불가
+RESULT=PROMPT-v1.0.6에 승인 PMS→CRM 5-table event-time JOIN, 승인 컬럼·metric 집계, timestamp-safe 직전 완료 2개월 반개구간을 고정했다.
+EVIDENCE=daesung code `015b3de`·handoff `9ee776b`, AI 47건 PASS, branch CI `30870043448` PASS, dev merge `5ce29ff`
 ```
 
 ### R4-W3-F4
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -2232,6 +2238,8 @@ TEST_COMMAND_IDS=T1_BACKEND;T2_COMPILE;T3_DIFF
 STOP_CONDITIONS=R4 경로 밖 변경 필요; OpenAPI·schema·Gate 상태 전이 변경 필요; full schema 또는 안전 실패 회귀
 HANDOFF=SQL-only guided request·결정론적 full response·parameter/기간 fail-closed 회귀와 R1 제품 재검증 조건 전달
 EXTERNAL_ACTION_PERMISSION=없음. download·RunPod·비용·secret·배포·데이터 전송 불가
+RESULT=실제 serving에서 node2·repair는 SQL만 guided 생성하고 references·model trace는 승인 Context와 prompt registry로 복원하며, SQL placeholder가 아닌 parameter를 제거하고 2개월 질의를 fail-closed로 검증했다.
+EVIDENCE=jaehong code `fbac0b8`·handoff `7f05d9a`, backend 25건 PASS, branch CI `30870043591` PASS, dev merge `0007932`
 ```
 
 ## Wave 4 상세 계획 카드
@@ -2326,6 +2334,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.93 | 2026-08-04 11:20 | R3-W3-F11·R4-W3-F4를 dev에 통합하고 최종 CI `30870270154` PASS를 확인했다. 고정 Qwen3-4B Base·synthetic Trino read-only 제품 trace가 2026-06·07 두 행, repair 0회, ROUTER부터 ARTIFACT까지 모두 PASS했고 Pod 404·active 0·secret 로그 0건·기존 Docker 무변경을 확인해 R1-W3·R1-W3-F7을 VERIFIED_GATE로 승인했다. Dashboard가 과거 BLOCKED 카드를 현재 카드로 오인하던 선택 로직도 마지막 발행 묶음 기준으로 교정했다. |
 | v2.92 | 2026-08-04 10:41 | R1-W3-F7 실제 trace에서 G2 reference 보완 뒤 잉여 non-date parameter, 승인 JOIN 단축·타입 오류, verbose guided 응답 불안정과 전월 대비 기간 누락을 순서대로 확인했다. 안전 경계를 유지하는 R3-W3-F11 PROMPT-v1.0.6과 R4-W3-F4 SQL-only guided·결정론적 metadata·2개월 fail-closed를 READY 발행하며, 두 변경 통합 뒤 동일 trace를 최종 판정한다. |
 | v2.91 | 2026-08-04 09:49 | R3-W3-F10의 SQL FROM/JOIN·references 정확 일치 PROMPT-v1.0.5와 mismatch 단일 repair PROMPT-v1.0.2를 AI 47건·Gate 19건·CI `30866726434` PASS로 dev에 통합했다. 같은 Base·synthetic Trino read-only 제품 trace를 재판정하는 R1-W3-F7을 발행하며 성공 전 I3를 유지한다. |
 | v2.90 | 2026-08-04 09:37 | 정상 Secure A40 제품 trace가 MODEL 뒤 SQL-reference 불일치와 1회 repair 후 G2 정책 차단으로 종료된 사실, QUERY·Artifact 부재·cleanup·기존 Docker 무변경을 기록했다. R3-W3-F10으로 node2·repair의 SQL FROM/JOIN과 references 정확 일치 행동만 READY 발행하며 실제 성공 trace 전 I3를 유지한다. |

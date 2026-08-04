@@ -1,28 +1,21 @@
 ---
 name: manage-project-documents
-description: Apply this repository's document placement, protected-folder, template, filename, metadata-header, change-history, and validation rules. Use when an AI agent creates, edits, moves, renames, or reviews files under docs/, especially numbered deliverable Markdown or official artifacts. Do not use for report-only updates handled by update-project-reports.
+description: >-
+  Apply repository document rules to create, edit, move, rename, or review docs/. Use for "create/edit a project document", "문서 작성·수정·이동·이름 변경·검토", or "산출물 작성"; report-only work uses update-project-reports.
 ---
 
-# Manage Project Documents
+# 프로젝트 문서 관리
 
-Use `docs/문서관리규칙.md` as the canonical policy. Keep policy tables there; keep only the execution workflow here.
+세부 정책은 `docs/문서관리규칙.md`에 두고 이 Skill에는 절차만 둔다.
 
-## Workflow
+## 절차
 
-1. Run `git rev-parse --show-toplevel`, make that repository root the working directory for every later command, then run `git status --short` and `git branch --show-current`. Require Git and a Python 3.10+ launcher (`python` or `python3`) before using bundled scripts.
-2. Read `docs/문서관리규칙.md` before deciding a document path, number, template, or header. For an artifact numbered 01 through 21, read only its matching section in `docs/markdown/document_specs/산출물작성규격.md` when creating it or changing, reviewing, converting, or validating its structure, fields, or headings.
-3. Classify the target as a Markdown working document, official deliverable, source template, or auxiliary file.
-4. Treat `docs/markdown/ai_docs/` as auxiliary AI/external-reference material, not an official deliverable or current implementation fact. Refuse writes under `docs/templates/`; use an editable working document or `docs/deliverables/` instead.
-5. For a filename beginning with two digits and `_`, inspect the mapped template when the task can affect structure, fields, headings, conversion, or submission. Preserve its top-level title order and hierarchy. Skip this step only for a text-only edit that cannot affect template structure; if the mapping is ambiguous, stop for direction.
-6. Before editing an existing document, inspect its current header, version, basis date, change history, links, and referenced contracts.
-7. Apply the smallest coherent change. When moving or renaming, update repository links in the same task.
-8. For an edited `docs/**/*.md` file outside the exempt paths, update the metadata header and recent change history according to the canonical rule. Record the actual human editor; never invent a name.
-9. From the repository root, run `<python> .agents/skills/manage-project-documents/scripts/check_document_policy.py <changed paths>` and `git diff --check`.
-10. Follow `AGENTS.md` for WBS and personal-report updates. Do not stage, commit, or push without authorization.
+1. 문서 path, 번호, template, header를 정하기 전에 `docs/문서관리규칙.md`를 읽는다. 구조, field, heading, 변환 또는 제출에 영향을 주는 번호 산출물 작업이면 `docs/markdown/document_specs/산출물작성규격.md`의 해당 절과 매핑된 template을 읽고 필수 계층을 보존한다. 매핑이 모호하면 중단하며, 구조와 무관한 문구 수정이면 두 항목을 생략한다.
+2. 기존 문서를 편집하기 전에 현재 header, version, 기준일, 변경 이력, link, 참조 contract를 확인한다.
+3. 이동하거나 이름을 바꾸면 같은 작업에서 저장소 link도 갱신한다.
+4. 단일 기준에 따라 적용 대상의 metadata header와 변경 이력을 갱신한다.
+5. repository root에서 `<python> .agents/skills/manage-project-documents/scripts/check_document_policy.py <changed paths>`와 `git diff --check`를 실행한다.
 
-## Validation boundaries
+## 검증 경계
 
-- Treat `docs/문서관리규칙.md` as policy, not duplicated Skill content.
-- Treat templates and `docs/markdown/ai_docs/` as references, not current project facts.
-- Do not claim an artifact is synchronized with Markdown unless both were compared.
-- Do not bulk-add headers to untouched legacy documents.
+- artifact와 Markdown을 모두 비교하지 않았다면 동기화되었다고 쓰지 않는다.

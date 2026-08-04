@@ -4,11 +4,11 @@
 |---|---|
 | 문서 설명 | 팀원 개인 branch와 dev·main 통합 정책 및 사람이 수행하는 Git 절차 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.6 |
-| 문서 기준일 | 2026-07-30 14:25 |
+| 버전 | v1.7 |
+| 문서 기준일 | 2026-08-03 12:14 |
 | 작성·수정 | 박준희 |
 
-각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다.
+각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다. PR은 필수 절차가 아니며 GitHub Actions는 개인 branch와 `dev` push를 기준으로 실행한다. CI를 실행할 수 없으면 같은 검증을 local에서 수행하고, 필수 검증이 실패한 branch는 병합하지 않는다.
 
 ## Branch 역할
 
@@ -88,22 +88,14 @@ git add <변경한 파일>
 git diff --cached
 ```
 
-AI 에이전트에 다음처럼 요청할 수 있다.
-
-```text
-현재 staged diff를 확인해서 제목과 상세 본문이 포함된 한국어 commit message 초안을 작성해줘.
-```
-
-AI 에이전트가 Skill을 표시하는 환경에서는 `$draft-commit-message`를 직접 선택해도 된다. Skill이 보이지 않으면 repository root에서 AI 에이전트를 다시 시작한다.
-
-제안된 메시지가 실제 변경과 일치하는지 확인한 뒤 commit한다.
+Commit message 초안은 `.agents/skills/draft-commit-message/SKILL.md`로 staged diff만 검토해 작성한다. 제안된 메시지가 실제 변경과 일치하는지 확인한 뒤 commit한다.
 
 ```powershell
 git commit -m "<확인한 제목>" -m "<확인한 상세 본문>"
 git push origin <본인 branch>
 ```
 
-commit 제목은 `<type>: <한국어 summary>` 또는 `<type>(<scope>): <한국어 summary>`이며 72자 이하로 작성한다. 변경이 한 component에 명확히 모이면 짧은 영문 소문자 scope를 사용하고, 저장소 전반·여러 component·자연스러운 scope가 없는 변경은 scope를 생략한다. 하나의 commit에는 하나의 주된 의도만 담는다.
+commit 제목은 `<type>: <한국어 summary>` 또는 `<type>(<scope>): <한국어 summary>`이며 72자 이하로 작성한다. `type`은 `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`, `ci`, `perf`, `style`, `data`, `eval` 중 하나를 사용한다. `summary`에는 한국어를 포함하고 끝에 마침표를 붙이지 않는다. 변경이 한 component에 명확히 모이면 영문 소문자·숫자·`.`·`_`·`/`·`-`로 된 짧은 scope를 사용하고, 저장소 전반·여러 component·자연스러운 scope가 없는 변경은 scope를 생략한다. 하나의 commit에는 하나의 주된 의도만 담는다.
 
 제목 아래 상세 본문을 기본으로 작성한다.
 
@@ -112,22 +104,9 @@ commit 제목은 `<type>: <한국어 summary>` 또는 `<type>(<scope>): <한국�
 - 호환성·migration·Gate/status·배포·보안·남은 위험이 소비자에게 영향을 줄 때만 `영향:`을 추가한다.
 - 제목 반복, 파일명만 나열, 실행하지 않은 검증의 성공 표시는 금지한다.
 
-```text
-docs(gate): R2·R4 I1 제출 재검토 결과 반영
-
-변경:
-- R2 service fragment 제출을 REVIEW로 전환하고 소비자 검증 조건 기록
-- R4 clean handoff와 container readiness 증거 및 cleanup 보완 범위 반영
-- WBS와 일일보고에 R1 판정 근거 동기화
-
-검증:
-- 문서 정책·WBS·보고서 검사 통과
-- 전체 테스트 26건 통과
-```
-
 ## dev 병합 요청 시 보고 통합
 
-AI 에이전트가 개인 branch의 `dev` 병합을 수행할 때는 `.agents/skills/merge-branch-to-dev/SKILL.md`를 적용한다. Skill은 이 문서의 Git 정책과 `docs/markdown/daily_reports/README.md`의 보고 정책을 읽고 source push, local/remote 일치, 최신 `dev`, 병합 직전 `base` SHA 기록, merge, 병합 직후 `head` SHA 기반 보고 통합·검증, 최종 push를 순서대로 수행한다.
+AI 에이전트가 개인 branch의 `dev` 병합을 수행할 때는 이 문서의 정책과 `docs/markdown/daily_reports/README.md`를 기준으로 `.agents/skills/merge-branch-to-dev/SKILL.md`를 적용한다.
 
 `dev` 병합 요청은 위 통합에 필요한 개인 branch push, `dev` fetch·pull·merge·push와 `team_summaries/` 파일의 stage·commit을 승인한 것으로 본다. 기존 미커밋 변경과 다른 파일은 포함하지 않으며, 작업 트리가 깨끗하지 않거나 로컬·원격 commit이 일치하지 않거나 병합·보고 검증이 실패하면 stash·reset·임의 commit 없이 중단하고 사용자에게 알린다.
 
@@ -170,9 +149,8 @@ git push origin main
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.7 | 2026-08-03 12:14 | commit 형식은 Git 정책, staged 검토·병합 실행은 Skill로 단일화하고 중복 예시 제거 |
 | v1.6 | 2026-07-30 14:25 | commit 제목 아래 변경·검증·선택적 영향 본문을 기본 작성하고 staged diff와 확인된 검증만 구체적으로 기록하도록 Skill·Git 절차를 동기화 |
 | v1.5 | 2026-07-30 10:56 | commit 제목의 선택적 scope 규칙과 staged 변경 범위에 따른 사용 기준을 추가하고 hook·Skill 형식을 동기화 |
 | v1.4 | 2026-07-27 17:07 | 개인 branch 병합 전후 SHA 기반 보고 통합 계약과 최종 사전검사 기준 추가 |
 | v1.3 | 2026-07-22 16:16 | pre-commit의 staged Markdown 문서관리규칙 자동 검증 추가 |
-| v1.2 | 2026-07-22 09:19 | AI 에이전트 범용 표현 반영과 문서 버전·변경 이력 동기화 |
-| v1.1 | 2026-07-21 17:32 | AI 에이전트의 개인 branch→dev 반복 절차를 `merge-branch-to-dev` Skill로 분리 |

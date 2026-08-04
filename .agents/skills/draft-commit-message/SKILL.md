@@ -1,48 +1,21 @@
 ---
 name: draft-commit-message
-description: Inspect the current repository's staged Git changes and draft one detailed Korean commit message with a concise subject, concrete change body, and evidence-based validation or impact notes. Use when the user asks for a commit message, Korean commit title/body, or staged-diff summary. Do not stage, commit, push, or invent a message when no staged changes exist.
+description: >-
+  Draft one evidence-based Korean commit message from staged Git changes. Use for "draft a commit message", "커밋 메시지 작성", "커밋 제목·본문", or "staged diff 요약"; do not trigger without staged changes.
 ---
 
-# Draft Commit Message
+# 커밋 메시지 초안
 
-## Workflow
+commit message 형식은 `docs/markdown/collaboration/README.md`의 `변경 확인과 commit` 절을 따른다.
 
-1. Run `git rev-parse --show-toplevel`, `git branch --show-current`, and `git status --short`.
-2. Run `git diff --cached --name-status`, `git diff --cached --numstat`, `git diff --cached --check`, and `git log -5 --pretty=format:%s` before loading the full diff.
-3. Stop when the staged diff is empty or contains unmerged paths. Warn about binary, oversized, secret-like, generated-data, protected-template, or unrelated staged paths.
-4. Run `git diff --cached` only after the staged scope is safe to inspect. Describe only staged changes.
-5. Group the staged diff into one to five distinct work items without splitting one change into repetitive bullets. Use verified test results from the current context only; otherwise record validation as `미실행`.
-6. Choose the type and scope from the primary intent, then produce one best message.
+## 절차
 
-## Message Format
+1. 전체 diff를 읽기 전에 `git diff --cached --name-status`, `git diff --cached --numstat`, `git diff --cached --check`를 실행한다.
+2. staged diff가 비어 있거나 unmerged path가 있으면 중단한다. binary, 과대 파일, secret 의심 파일, 생성 data, 보호 template 또는 무관한 staged path가 있으면 경고한다.
+3. staged 범위가 안전한지 확인한 뒤에만 `git diff --cached`를 실행한다. staged 변경만 설명한다.
+4. staged 근거와 단일 기준만으로 type, scope, 변경, 검증 note를 정하고 가장 적합한 message 하나를 작성한다.
 
-- Use `<type>: <한국어 summary>` or `<type>(<scope>): <한국어 summary>`.
-- Choose `type` from `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`, `ci`, `perf`, `style`, `data`, or `eval`.
-- Add a short lowercase repository component as `scope` when the staged change is centered on one clear component. Omit `scope` for cross-cutting, repository-wide, or naturally unscoped changes.
-- Include Korean in `summary`, keep the subject within 72 characters, and omit the final period.
-- Add a Korean body by default. Keep one blank line between the subject and body.
-- Start the body with `변경:` and add one to five distinct `-` bullets that name the changed contract, behavior, path group, or decision. Do not repeat the subject or list filenames without explaining what changed.
-- Add `검증:` with commands or result summaries confirmed in the current context. When no verification evidence exists, write `- 미실행` instead of guessing.
-- Add `영향:` only for compatibility, migration, Gate/status, deployment, security, or remaining-risk information that materially affects consumers.
-- Keep each bullet concise and describe only staged changes.
+## 출력 규칙
 
-Examples:
-
-```text
-docs(gate): R2·R4 I1 제출 재검토 결과 반영
-
-변경:
-- R2 service fragment 제출을 REVIEW로 전환하고 소비자 검증 조건 기록
-- R4 clean handoff와 container readiness 증거 및 cleanup 보완 범위 반영
-- WBS와 일일보고에 R1 판정 근거 동기화
-
-검증:
-- 문서 정책·WBS·보고서 검사 통과
-- 전체 테스트 26건 통과
-```
-
-## Output Rules
-
-- Return one recommended multi-line commit message in a code block.
-- Put warnings outside the code block only when staged changes need user attention.
-- Do not stage files or run `git commit` or `git push` unless the user separately authorizes it.
+- 권장 multi-line commit message 하나를 code block으로 반환하고, 확인이 필요한 staged 변경만 밖에서 경고한다.
+- 별도 승인 없이 stage, `git commit`, `git push`를 실행하지 않는다.

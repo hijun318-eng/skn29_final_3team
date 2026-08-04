@@ -1,39 +1,32 @@
 ---
 name: update-project-reports
-description: Update and validate plain-language personal daily reports, presentation-ready team daily summaries, and weekday-based weekly reports in this repository. Use after a file-changing task on a recognized personal branch, when the user requests reporting for a date or period, or when merge-branch-to-dev invokes post-merge report integration. Never infer an author on dev/main, perform Git integration actions, update WBS, or create recursive entries for report-only changes.
+description: >-
+  Update personal daily, team summary, and weekly reports. Use after qualifying work on a mapped personal branch; for "update the daily/weekly report", "일일보고 작성", or "팀 요약·주간보고 갱신"; or for merge-branch-to-dev report integration. Exclude dev/main author inference, Git integration, WBS updates, and report-only recursion.
 ---
 
-# Update Project Reports
+# 프로젝트 보고서 갱신
 
-Use `docs/markdown/daily_reports/README.md` as the canonical source for branch mapping, report evidence, formats, periods, and limits.
+branch 매핑, 근거, 형식, 기간, 제한은 `docs/markdown/daily_reports/README.md`를 따른다.
 
-Resolve the repository root with `git rev-parse --show-toplevel` and use it as the working directory for every command. Require Git and a Python 3.10+ launcher (`python` or `python3`) before using bundled scripts.
+## 모드 선택
 
-## Select the mode
+- **개인 완료:** 매핑된 branch의 `일일보고.md`만 갱신한다.
+- **요청 기간:** 지정 날짜의 팀 요약과 주간보고를 갱신한다.
+- **Post-merge 통합:** `source`, `base`, `head`를 받아 영향받은 `team_summaries/`만 갱신한다.
 
-- **Personal completion:** After a non-report repository change on a recognized personal branch, update only that branch's `일일보고.md`.
-- **Requested period:** When the user specifies a date or period, update the applicable date summaries and weekly reports from the five personal reports.
-- **Post-merge integration:** Accept the source branch, pre-merge `base` SHA, and post-merge `head` SHA from `merge-branch-to-dev`; update only affected `team_summaries/` files and return their paths plus validation results.
+## 개인 보고서 절차
 
-## Personal report workflow
+1. 단일 기준 README에서 현재 branch의 보고서 매핑을 찾고, 없으면 중단한다.
+2. 사용자가 다른 날짜를 명시하지 않으면 현재 KST 날짜를 사용한다.
+3. 조건을 충족한 저장소 결과만 기록하고 단일 기준 README의 형식, 문구, 제한에 따라 날짜 block을 작성한다.
 
-1. Confirm the current branch and its mapped report file from the canonical README. On `main`, `dev`, or an unmapped branch, do not infer an author.
-2. Use the current KST date unless the user explicitly supplies another date.
-3. Record only repository results that remain after the task. Exclude investigation-only answers, commit-message drafting, Git operations, and report-only maintenance.
-4. Add to the existing date block or create the newest block below the file notice. Use up to three short bullets labeled `오늘 한 일`, `결과`, and `공유할 내용`; omit an empty label rather than inventing content.
-5. Write for a teammate who did not perform the work. Use one idea per sentence, explain necessary product names once, and replace internal English terms with ordinary Korean when the exact term is not needed.
-6. From the repository root, validate the changed file with `<python> .agents/skills/update-project-reports/scripts/validate_reports.py --date <YYYYMMDD> <changed report path>` and `git diff --check`.
+## 팀·주간보고 절차
 
-## Team and weekly workflow
+1. post-merge mode에서는 `source`, `base`, `head`를 필수로 받고 `base`가 `head`의 ancestor이며 `head`가 현재 commit인지 확인한다. 두 SHA에서 source 팀원의 개인 보고서를 비교해 전체 block이 바뀐 날짜를 고르고, 팀 요약이 없는 날짜를 추가한다. 사용자가 지정한 범위가 있으면 먼저 따른다.
+2. 5개 개인 `일일보고.md`를 직접 읽는다. 날짜 요약을 source of truth로 사용하지 않는다.
+3. 단일 기준 README에서 공식 주차를 정하고 해당 형식·문구·제한에 따라 날짜 요약과 주간보고를 작성한다.
+4. post-merge mode에서는 `source`, `base`, `head`, 변경된 `team_summaries/` path, 대상 날짜, 검증 결과를 `merge-branch-to-dev`에 반환한다. 여기서는 stage하거나 commit하지 않는다.
 
-1. In post-merge mode, require `source`, `base`, and `head`; verify that `base` is an ancestor of `head` and `head` is the current commit. Compare the source member's personal report at both SHAs and select dates whose complete blocks changed. Add dates with no team summary; honor an explicit user range first.
-2. Read all five personal `일일보고.md` files directly. Do not use a date summary as the source of truth.
-3. Resolve the official week from `docs/markdown/ai_docs/최종_프로젝트_산출물_및_전체_일정.md`.
-4. For each target date, write a presentation-ready team summary with `오늘 팀 진행 상황` and `팀원별 발표 메모`. Include all five mapped members as headings, give each member at most two short bullets, use `보고 없음` when the source block is missing, and do not use a dense summary table.
-5. Rebuild each affected weekly report with exactly three content sections: `이번 주 진행 상황`, `이번 주에 진행한 것`, and `앞으로 진행할 내용`. Under `이번 주에 진행한 것`, group source-backed results under `요일 (YYYYMMDD)` headings.
-6. Keep the weekly status brief, and include future work only when a personal report explicitly records a remaining, blocked, or next task. Otherwise write `확인된 다음 작업 없음`.
-7. Write all team and weekly content as speaking notes: one idea per sentence, ordinary Korean first, and no unexplained internal IDs or abbreviations. Preserve exact technical names only when teammates need them to identify a screen, service, or command.
-8. Merge similar work without inventing status, owners, schedules, or completion. Remove branch synchronization, fetch, merge, commit, push, and commit-hash history while preserving actual work results.
-9. Do not write a report entry about report integration itself and do not update WBS for report-only changes.
-10. From the repository root, run `<python> .agents/skills/update-project-reports/scripts/validate_reports.py <changed report paths>` and `git diff --check`.
-11. In post-merge mode, return `source`, `base`, `head`, changed `team_summaries/` paths, target dates, and validation results to `merge-branch-to-dev`; do not stage or commit them here.
+## 검증
+
+repository root에서 `<python> .agents/skills/update-project-reports/scripts/validate_reports.py <changed report paths>`와 `git diff --check`를 실행한다. 개인 완료 mode에서는 changed path 앞에 `--date <YYYYMMDD>`를 추가한다.

@@ -1,10 +1,6 @@
 # Answervice — 대화형 데이터 분석·자동 리포팅 플랫폼
 
-Answervice는 여러 업무 데이터 소스를 자연어로 조회하고, 사용한 데이터셋·지표·필터·기간·기준 시각을 근거와 함께 제시하며, 검증된 분석 결과를 반복 실행 가능한 보고서로 전환하는 서비스다.
-
-프로젝트는 실제 고객 데이터 대신 deterministic 합성 데이터를 사용한다. DataHub Core는 메타데이터 기준 시스템, Trino는 읽기 전용 연합 조회 엔진, FastAPI Controller는 Context와 G1·G2·G3를 통제하는 Control Plane으로 사용한다. 분석 결과는 Chat의 Artifact에서 Report definition·수동 실행·예약 실행·Run History로 연결한다.
-
-현재 목표 구조와 실제 구현 완료 상태는 다를 수 있다. 구현 여부와 Gate 통과 여부는 코드·테스트·공식 WBS의 증거를 함께 확인하며, P2 MCP·문서 RAG·ML-as-a-Tool·외부 Report 배포와 선택 고객 360은 별도 편입 결정 전까지 구현 범위에서 제외한다.
+Answervice는 여러 업무 데이터 소스를 자연어로 조회하고 근거가 있는 분석 결과를 반복 실행 가능한 보고서로 전환하는 서비스다. 상세 범위·아키텍처·현재 상태는 아래 활성 기준 문서와 실제 코드·테스트에서 확인한다.
 
 ## 활성 기준 문서
 
@@ -30,10 +26,6 @@ git switch <본인 branch>
 ```
 
 팀원별 branch와 작업 시작, `dev` 반영, commit, push 방법은 [팀원 Git branch 사용 가이드](./docs/markdown/collaboration/README.md)를 확인한다.
-
-## 문서 관리
-
-문서 위치, 보호 폴더, 공식 산출물 번호와 파일명은 [문서 관리 규칙](./docs/문서관리규칙.md)을 확인한다.
 
 ## AI 에이전트 반복 작업
 

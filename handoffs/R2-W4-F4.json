@@ -1,0 +1,50 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R2-W4-F4",
+  "ROLE": "R2",
+  "BRANCH": "seung",
+  "BASE_SHA": "c97c468b769bf9870cf39048e4916acfd410c156",
+  "SYNCED_DEV_SHA": "bf7527054e185dc7dc86be8aef46cb049658f327",
+  "RESULT_SHA": "1744e497e0533b677415d024fcc1f01aa4a4e090",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R2-W4-F4@c97c468",
+  "COMPLETED_CARDS": [
+    "R2-10~14 product metric registry safe subset"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/seung/일일보고.md",
+    "src/data/analytics_context_contract.i4.v2.json",
+    "tests/data/test_analytics_context_contract.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "CONTEXT": "I4-CONTEXT-v2.2.0-DRAFT",
+    "PREVIOUS_CONTEXT_COMPATIBILITY": "I4-CONTEXT-v2.1.0-compatible",
+    "METRIC_REGISTRY": "I4-METRIC-v1.1.0-DRAFT"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_VERSION_BUMP", "status": "PASS", "evidence": "Context를 v2.2.0-DRAFT, metric registry를 v1.1.0-DRAFT로 올림"},
+    {"id": "AC2_THREE_METRICS", "status": "PASS", "evidence": "fnb_net_revenue·facility_revenue·actual_attendees 3개만 추가하고 전체 metric 수를 5개로 고정"},
+    {"id": "AC3_EXACT_COLUMNS", "status": "PASS", "evidence": "각 field·time_field·filter field가 해당 serving View의 실제 column임을 target·data test로 검증"},
+    {"id": "AC4_TYPED_FILTERS", "status": "PASS", "evidence": "추가 3개 metric 모두 data_period_status eq ACTUAL과 is_forecast eq false structured filter를 보존"},
+    {"id": "AC5_ONE_PER_ASSET", "status": "PASS", "evidence": "5개 metric의 asset_fqn이 모두 고유하며 승인 asset당 정확히 하나임을 회귀로 고정"},
+    {"id": "AC6_EXISTING_COMPAT", "status": "PASS", "evidence": "recognized_room_revenue·expired_points와 raw asset·JOIN·selection policy를 변경하지 않고 data test 34건 PASS"},
+    {"id": "AC7_R4_CONSUMER", "status": "PASS", "evidence": "R4 소비자 대상 34건과 subtest 3건, branch CI 전체 205건 PASS"},
+    {"id": "AC8_LOCAL_ONLY", "status": "PASS", "evidence": "외부 서비스·비용·secret·R3/R4 제품 경로 변경과 150건 평가는 실행하지 않음"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_JSON", "name": "python -m json.tool src/data/analytics_context_contract.i4.v2.json", "status": "PASS", "evidence": "JSON parse 통과"},
+    {"id": "T2_TARGET", "name": "python -m pytest -p no:cacheprovider tests/data/test_analytics_context_contract.py -q", "status": "PASS", "evidence": "7 passed"},
+    {"id": "T3_DATA", "name": "python -m pytest -p no:cacheprovider tests/data -q", "status": "PASS", "evidence": "34 passed"},
+    {"id": "T4_CONSUMER", "name": "python -m pytest -p no:cacheprovider tests/backend/test_i2_data_platform.py tests/backend/test_context_builder.py tests/backend/test_production_model.py -q", "status": "PASS", "evidence": "34 passed, 3 subtests passed"},
+    {"id": "T5_FULL", "name": "python -m pytest -p no:cacheprovider tests -q", "status": "PASS", "evidence": "branch CI 30891801354: 205 passed, 8 skipped"},
+    {"id": "T6_SCOPE", "name": "python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "branch CI role-scope PASS; terminal manifest 제출 후 local 재검증"},
+    {"id": "T7_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "제품 변경 공백 오류 없음; terminal manifest 제출 후 재검증"},
+    {"id": "T8_REPORT", "name": "python .agents/skills/update-project-reports/scripts/validate_reports.py --date 20260804 docs/markdown/daily_reports/seung/일일보고.md", "status": "PASS", "evidence": "report-validation OK"},
+    {"id": "T9_BRANCH_CI", "name": "GitHub Actions CI", "status": "PASS", "evidence": "https://github.com/hijun318-eng/skn29_final_3team/actions/runs/30891801354"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R2-W4-F4의 3개 single-asset metric 안전 확대 수용 및 dev 통합 판정"
+}

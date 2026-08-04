@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.02 |
-| 문서 기준일 | 2026-08-04 13:55 |
+| 버전 | v3.03 |
+| 문서 기준일 | 2026-08-04 14:10 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -201,8 +201,10 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R2-W4-F1 | Wave 4 serving metadata follow-up | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | live DataHub View URN·column·lineage·read-only 계약 | `BLOCKED` |
 | R2-W4-F1A | Wave 4 serving metadata 권한 보완 | R2 | 없음 → I4 | R2-09~11 `serving.analytics` 정합 | View 소유자 위임 조회 권한과 metadata 계약 동시 검증 | `MERGED_DEV` |
 | R2-W4-F2 | Wave 4 혼합 Context 계약 | R2 | Gate 0 → I4 | R2-10~14 승인 raw asset·JOIN 정합 | View 우선·CRM 단독·PMS–CRM JOIN의 명시적 live DataHub 계약 | `MERGED_DEV` |
+| R2-W4-F2A | Wave 4 raw URN 교정 | R2 | Gate 0 → I4 | R2-10 DataHub URN exact-match | platform instance·database를 포함한 실제 raw URN 7개 교정 | `READY` |
 | R4-W4-F1A | Wave 4 serving Context 소비 보완 | R4 | Gate 0 → I4 | R4-06~11 `LIVE_DATAHUB` Context·G2 정합 | 승인 View를 질문별 60-column 상한으로 선별하고 권한·G2를 fail-closed 검증 | `MERGED_DEV` |
-| R4-W4-F2 | Wave 4 혼합 Context 소비 | R4 | Gate 0 → I4 | R4-06~11 View·제한 raw Context·G2 정합 | R2 계약 통합 후 질문별 승인 raw asset과 JOIN만 fail-closed 소비 | `READY` |
+| R4-W4-F2 | Wave 4 혼합 Context 소비 | R4 | Gate 0 → I4 | R4-06~11 View·제한 raw Context·G2 정합 | 축약 raw URN이 live DataHub와 불일치해 생산자 교정 대기 | `BLOCKED` |
+| R4-W4-F2A | Wave 4 혼합 Context 재검증 | R4 | Gate 0 → I4 | R4-06~11 live raw Context 재검증 | R2 URN 교정 통합 후 실제 CRM·PMS–CRM Context·G2 재검증 | `PLANNED` |
 | R3-W4 | Wave 4·08/24~09/02 | R3 | I4·RC1 → I5 | R3-11~15 + R3-01~10 회귀 | LoRA 1회 비교·조건부 채택·production client·전체 평가·fallback·release | `PLANNED` |
 | R3-W4-F1 | Wave 4 model checkpoint 전환 | R3 | Gate 0 → I4 | R3-10~14 Instruct-2507 Base smoke·Validation | checkpoint 고정 완료, Validation v2 Context 계약 대기 | `BLOCKED` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
@@ -2467,7 +2469,7 @@ R1_REVIEW_CONDITIONS=R2 제품·handoff·branch CI 수용 뒤 R4-W4-F2를 READY�
 ### R4-W4-F2
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -2494,6 +2496,53 @@ HANDOFF=R3에 질문 유형별 실제 Context와 G2 허용·차단 trace 전달
 EXTERNAL_ACTION_PERMISSION=사용자의 모든 역할 잔여 작업·commit·push·dev 통합 승인에 따라 허용 경로 commit·jaehong push를 승인한다. cloud 비용·DB 변경·신규 dependency 설치는 불가하다.
 AUTO_FAIL_CONDITIONS=질문과 무관한 raw asset 노출; 계약 밖 URN/FQN/column 허용; 권한 우회; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=제품·handoff·branch CI 수용 뒤 dev 병합하고 Validation v2·R3 Base 평가를 재발행한다.
+```
+
+차단 근거: 실제 DataHub v1.6 raw dataset URN은 `crm.crm_db.dbo.*`, `pms.pms_db.public.*`처럼 platform instance와 database를 포함하지만 R2 계약은 축약 URN을 사용했다. R4 exact-match가 이를 거부했으므로 아래 생산자 교정부터 수행한다.
+
+### R2-W4-F2A
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W4-F2A
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=raw URN exact-match
+TASK_CARD_RANGE=R2-10 DataHub URN 교정
+CURRENT_TASK_CARD_ID=R2-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=2f573d91b0a2ddc4dc60db690bf43b46cbe07fef
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R2-W4-F2A@2f573d9
+CONTRACT_VERSION=I4-CONTEXT-v2.0.1-DRAFT
+ALLOWED_PATHS=src/data/analytics_context_contract.i4.v2.json; tests/data/test_analytics_context_contract.py; docs/markdown/daily_reports/seung/일일보고.md
+FORBIDDEN_PATHS=그 외 전체 경로; secret
+HANDOFF_MANIFEST=handoffs/R2-W4-F2A.json
+ACCEPTANCE_CRITERIA=raw 7개 DataHub URN만 실제 v1.6 수집 결과의 platform instance·database 포함 값으로 교정한다. Trino FQN·column·용도·JOIN·View 계약은 변경하지 않고 test가 축약 URN 회귀를 차단한다.
+ACCEPTANCE_IDS=AC1_LIVE_URN;AC2_FQN_STABLE;AC3_COLUMNS_STABLE;AC4_REGRESSION
+TEST_COMMANDS=python -m pytest tests/data -q; python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_DATA;T2_SCOPE;T3_DIFF
+STOP_CONDITIONS=실제 URN 불명확; FQN·column·JOIN 변경 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=허용 경로 commit·seung push·task DataHub read-only 재검증을 승인한다. 다른 Docker 프로젝트·DB·cloud 비용 변경은 불가하다.
+AUTO_FAIL_CONDITIONS=축약 URN 잔존; FQN·column·JOIN 변경; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=R2 통합 뒤 R4-W4-F2A를 READY로 발행한다.
+```
+
+### R4-W4-F2A
+
+```text
+STATUS=PLANNED
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W4-F2A
+BASE_SHA=N/A — R2-W4-F2A dev 통합 후 발행
+DIRECTIVE=WAIT
+ALLOWED_PATHS=app/backend/**; tests/backend/**; docs/markdown/daily_reports/jaehong/일일보고.md
+STOP_CONDITIONS=R2 교정 미통합; live exact-match 실패
 ```
 
 ### R3-W4-F1
@@ -2609,6 +2658,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.03 | 2026-08-04 14:10 | 실제 DataHub raw URN이 platform instance·database를 포함해 R2 축약 계약과 불일치함을 R4 exact-match가 차단했다. R4-W4-F2를 BLOCKED로 전환하고 raw 7개 URN만 교정하는 R2-W4-F2A를 READY, 실제 재검증 R4-W4-F2A를 PLANNED로 발행했다. |
 | v3.02 | 2026-08-04 13:55 | R2의 `I4-CONTEXT-v2.0.0`이 View 기본·CRM raw 3개·승인 PMS–CRM JOIN 5개를 명시하고 data test 30건·branch CI `30877829305`·dev `115232e`로 통합됐다. 같은 계약을 live DataHub exact-match·entitlement·G2로 소비하는 R4-W4-F2를 READY 발행했다. |
 | v3.01 | 2026-08-04 13:45 | 기존 Validation 150건이 제품 View 계약 밖 raw FQN 7개를 포함하고 v2의 ID/OOD 분리·누수 차단 기준을 충족하지 못해 RunPod 실행을 중단했다. View 우선과 CRM 단독·승인 PMS–CRM JOIN만 명시하는 R2-W4-F2를 READY, 후속 R4-W4-F2를 PLANNED로 발행하고 R3-W4-F1을 Context 계약 대기로 전환했다. |
 | v3.00 | 2026-08-04 13:40 | R1 health 묶음을 닫은 뒤 발생한 새 checkpoint 승인 문서의 역할 경로 오판을 분리했다. R1-W4-F2에 Gate 0 수용·model/revision·Base 우선·비용 상한과 R3 발행 문서·테스트 경로만 허용해 제품 범위를 넓히지 않고 CI 선택 기준을 교정했다. |

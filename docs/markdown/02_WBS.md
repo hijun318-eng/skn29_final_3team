@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.90 |
-| 문서 기준일 | 2026-08-04 13:55 |
+| 버전 | v7.91 |
+| 문서 기준일 | 2026-08-04 14:10 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -322,6 +322,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 14:10 | 2.11, 4.7~4.10 | 실제 DataHub 수집에서 raw URN이 `crm.crm_db.dbo.*`, `pms.pms_db.public.*` 구조임을 확인했다. 축약 URN을 사용한 R2 계약을 R4 exact-match가 안전 차단해 R4를 대기로 전환하고, raw 7개 URN만 실제 값으로 교정하는 R2 재작업을 승인했다. | live URN 불일치 차단·R2 REWORK |
 | 2026-08-04 13:55 | 2.11~2.14, 4.7~4.11 | R2가 `I4-CONTEXT-v2.0.0`에 View 기본·CRM raw 3개·승인 PMS–CRM JOIN raw 5개의 exact URN·FQN·column·용도를 고정했다. data test 30건과 branch CI `30877829305` PASS 후 dev `115232e`에 통합하고, R4가 같은 계약을 live DataHub·entitlement·G2로 소비하는 작업을 승인했다. | R2 생산자 MERGED_DEV·R4 소비자 승인 |
 | 2026-08-04 13:45 | 2.11~2.14, 3.10~3.16, 4.7~4.11 | 실제 기존 Validation 150건이 `serving.analytics` 4개 외 raw FQN 7개를 포함하고 v2의 Validation-ID/OOD 분리 기준을 충족하지 못해 RunPod 실행을 중단했다. View 우선, CRM 단독 raw 3개, 승인 PMS–CRM JOIN raw 5개만 versioned 계약으로 고정하는 R2 작업을 먼저 승인하고 R4 소비·Validation v2·Instruct-2507 Base 평가 순서로 재배치했다. 모델 전환 후 신규 RunPod 비용은 USD 0이다. | 혼합 Context 생산자 승인·R3 비용 차단 |
 | 2026-08-04 13:40 | 3.11~3.16, 4.7~4.11 | R4가 live DataHub의 호텔 일별 View 1개·15개 column을 실제 Context에 포함하고 권한 없는 역할·계약 밖 metadata·외부 FQN을 차단했다. dev `db6d42f`·CI `30877055428` PASS로 Gate 0을 해제했다. 다음 제품 후보는 공식 non-thinking `Qwen/Qwen3-4B-Instruct-2507` revision `cdbee75…`로 고정하고 이전 LoRA adapter 없이 Base smoke 성공 후 Validation 150건만 신규 USD 0.50 안에서 실행하도록 승인했다. | Gate 0 PASS·새 Base 평가 승인 |
@@ -443,6 +444,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.91 | 2026-08-04 14:10 | 실제 DataHub platform instance·database 포함 raw URN과 축약 계약의 불일치를 2.11·4.7~4.10에 기록하고, R4 안전 차단 뒤 R2 URN-only 재작업을 승인했다. |
 | v7.90 | 2026-08-04 13:55 | R2 혼합 Context 계약의 data test·branch CI·dev 통합을 2.11~2.14에 연결하고, exact live DataHub·entitlement·G2 소비를 위한 R4 작업을 승인했다. |
 | v7.89 | 2026-08-04 13:45 | 기존 Validation 150건의 제품 Context 불일치와 v2 ID/OOD 미분리를 확인해 RunPod 평가를 차단하고, R2 혼합 Context 계약→R4 소비→Validation v2→Instruct-2507 Base 평가 순서로 2.11~2.14·3.10~3.16·4.7~4.11의 실행 상태를 재정렬했다. |
 | v7.88 | 2026-08-04 13:40 | 종료된 R1 health 묶음과 새 model 승인 작업을 분리해 R1-W4-F2의 문서·검증 권한을 명시하고 CI 역할 경로 오판을 교정했다. |

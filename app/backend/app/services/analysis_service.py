@@ -15,7 +15,7 @@ from app.contracts import (
 from app.ports.data_platform import DataPlatformAdapter
 from app.ports.model import ModelAdapter
 from app.services.analysis_responses import AnalysisResponseFactory
-from app.services.context_builder import ContextPackageBuilder
+from app.services.context_builder import ContextBuildError, ContextPackageBuilder
 from app.services.execution_control import (
     IsolatedExecutionCache,
     ModelCallBudget,
@@ -71,7 +71,22 @@ class AnalysisService:
             payload.question,
             context.model_dump(mode="json"),
         )
-        package = self._support.build_context(payload, context, assets)
+        try:
+            assets, normalized_question = self._support.select_metric(
+                payload, context, assets
+            )
+            package = self._support.build_context(payload, context, assets)
+        except ContextBuildError:
+            return self._responses.error(
+                context,
+                machine,
+                trace,
+                PipelineStage.CONTEXT,
+                AnalysisStatus.BLOCKED,
+                ErrorCode.CONTEXT_INCOMPLETE,
+                "질문에서 권한이 있는 승인 지표 하나를 선택해 주세요.",
+                decision,
+            )
         self._responses.record(trace, PipelineStage.CONTEXT, package.package_hash)
 
         scenario = str(payload.parameters.get("scenario") or "")
@@ -91,7 +106,16 @@ class AnalysisService:
         self._responses.record(trace, PipelineStage.G1)
 
         references = [
-            {"urn": item.urn, "fqn": item.fqn, "columns": list(item.columns)}
+            {
+                "urn": item.urn,
+                "fqn": item.fqn,
+                "columns": list(item.columns),
+                "metric_ids": [
+                    metric.id
+                    for metric in package.metrics
+                    if metric.asset_fqn == item.fqn
+                ],
+            }
             for item in package.assets
         ]
         watermark = secure_cache_key(
@@ -116,7 +140,7 @@ class AnalysisService:
         }
         plan_key = secure_cache_key(
             "sql-plan",
-            question=payload.question,
+            question=normalized_question,
             template=decision.template_id,
             parameters=payload.parameters,
             **common_key,
@@ -143,7 +167,7 @@ class AnalysisService:
                     "node2",
                     {
                         "scenario": scenario,
-                        "question": payload.question,
+                        "question": normalized_question,
                         "references": references,
                         "request_id": str(context.request_id),
                         "package": package,

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.96 |
-| 문서 기준일 | 2026-08-04 12:48 |
+| 버전 | v2.97 |
+| 문서 기준일 | 2026-08-04 12:51 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -2265,7 +2265,7 @@ BASE_BRANCH=dev
 BASE_SHA=d2c6fdc132b53c56c6d5e4d9ad714b22dd1cc538
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W4-F1A@d2c6fdc
-ALLOWED_PATHS=infrastructure/database/r1-service-fragment.v1.json; infrastructure/database/scripts/verify-service-fragment.ps1; docs/markdown/02_WBS.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/daily_reports/junhee/일일보고.md
+ALLOWED_PATHS=infrastructure/database/r1-service-fragment.v1.json; infrastructure/database/scripts/verify-service-fragment.ps1; tests/integration/test_gate_scope.py; docs/markdown/02_WBS.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/daily_reports/junhee/일일보고.md
 FORBIDDEN_PATHS=infrastructure/database/datahub/**; src/data/**; app/backend/**; src/ai/**; frontend/**; .env; secret; 다른 Docker project·container·volume 변경
 ACCEPTANCE_CRITERIA=DataHub v1.6.0 공식 quickstart와 실제 task 환경에서 200을 반환한 GMS `/health`를 유일한 필수 health endpoint로 고정한다. 존재하지 않는 management `/actuator/health` 요구를 service fragment와 검증기에서 함께 제거하고 `R2_SERVICE_FRAGMENT_VERIFIED`를 확인한다. 이 교정을 dev에 통합한 뒤 R2-W4-F1A가 최신 dev를 받아 branch CI 전체 PASS를 확인하기 전에는 R2 결과를 병합하지 않는다.
 ACCEPTANCE_IDS=AC1_OFFICIAL_HEALTH;AC2_FRAGMENT_SYNC;AC3_LOCAL_VERIFY;AC4_DEV_INTEGRATION;AC5_R2_CI
@@ -2437,6 +2437,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.97 | 2026-08-04 12:51 | R1-W4-F1A branch CI에서 최신 R1 bundle을 과거 `R1-W3-F7`로 고정한 통합 테스트 한 건만 실패해, 현재 bundle ID·상태 기대값 교정을 허용 경로와 검증에 추가했다. Compose·문서·role scope는 PASS를 유지했다. |
 | v2.96 | 2026-08-04 12:48 | R2 DataHub 실수집은 8개 URN·116개 column·17개 upstream edge·90개 column lineage로 PASS했으나, 실제 GMS에 없는 management actuator를 service fragment가 필수 health로 요구해 CI가 실패했다. R2 범위 위반을 되돌리고 공식 v1.6 `/health` 계약만 R1 경로에서 교정한 뒤 dev 통합·R2 재검증하는 R1-W4-F1A를 발행했다. |
 | v2.95 | 2026-08-04 11:42 | R2-W4-F1 사전 조회에서 원천 SELECT는 성공했지만 View 소유자의 `GRANT_SELECT` 부재로 `serving.analytics` 조회가 실패했다. 기존 카드의 경로 제한을 지키기 위해 F1을 BLOCKED로 전환하고, 소유자에게만 위임 조회 권한을 추가하되 일반 사용자는 SELECT 전용으로 유지하는 R2-W4-F1A를 같은 기준 SHA에서 READY 발행했다. |
 | v2.94 | 2026-08-04 11:20 | sLLM 학습데이터는 `serving.analytics` View를 사용하지만 DataHub에는 5개 원천 recipe만 있고 backend 제품 Context는 PMS·CRM 5개 원천 asset을 고정 반환하는 불일치를 확인했다. I3 Base 제품 통과는 유지하되 LoRA 제품 채택은 정합 전까지 보류했다. 제품 Context는 `LIVE_DATAHUB`로 확정하고 실제 조회·read-only trace를 요구하는 R2-W4-F1을 먼저 READY 발행했으며, R4 follow-up은 R2 dev 통합 뒤 발행한다. |

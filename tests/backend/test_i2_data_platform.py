@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import date
 from pathlib import Path
 from sys import path
@@ -14,6 +15,7 @@ path.insert(0, str(BACKEND))
 from app.adapters.i2_data_platform import I2DataPlatformAdapter
 from app.contracts import AnalysisRequest, RequestContext
 from app.services.context_builder import ContextPackageBuilder
+from app.services.context_builder import ContextBuildError
 from app.services.pipeline_support import PipelineSupport
 
 
@@ -90,6 +92,7 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     sql = (
         "SELECT property_id, SUM(room_revenue) AS revenue "
         "FROM serving.analytics.hotel_daily_metrics "
+        "WHERE data_period_status = 'ACTUAL' AND is_forecast = false "
         "GROUP BY property_id LIMIT 1000"
     )
     plan = {
@@ -106,6 +109,11 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     assert package.dataset_count == 1
     assert package.column_count <= 60
     assert package.assets[0].fqn == "serving.analytics.hotel_daily_metrics"
+    assert [metric.id for metric in package.metrics] == ["recognized_room_revenue"]
+    assert [(item.field, item.value) for item in package.metrics[0].required_filters] == [
+        ("data_period_status", "ACTUAL"),
+        ("is_forecast", False),
+    ]
 
 
 def test_crm_question_uses_only_approved_raw_asset():
@@ -133,7 +141,7 @@ def test_raw_live_extra_columns_are_not_exposed():
         return payload
 
     adapter._datahub_dataset = raw_live_dataset
-    assets = adapter.search_assets("crm active members", {"role": "hotel_analyst"})
+    assets = adapter.search_assets("포인트 소멸 내역", {"role": "hotel_analyst"})
     schema = adapter.get_asset_schema(assets[0]["urn"])
 
     assert "source_updated_at" not in {column["name"] for column in schema["columns"]}
@@ -171,6 +179,8 @@ def test_g2_allows_only_the_approved_pms_crm_join_id():
         as_of=date(2026, 7, 30),
     )
     assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+    for asset in assets:
+        asset.pop("metrics")
     package = support.build_context(payload, context, assets)
     join_id = "pms_stay_to_crm_membership_grade_event_time_v1"
     sql = (
@@ -195,6 +205,103 @@ def test_g2_allows_only_the_approved_pms_crm_join_id():
     for reference in references:
         reference["join_ids"] = []
     assert support.g2_violation({"sql": sql, "parameters": {}, "references": references}, package) == "UNAPPROVED_JOIN"
+
+
+def test_selected_assets_without_metric_fail_closed_when_context_is_built():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(question="현재 등급별 활성 회원 수를 알려줘")
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+
+    with pytest.raises(ContextBuildError, match="승인 metric"):
+        support.build_context(
+            payload,
+            context,
+            adapter.search_assets(payload.question, context.model_dump(mode="json")),
+        )
+
+
+@pytest.mark.parametrize(
+    ("question", "sql", "changed", "expected_metric"),
+    [
+        (
+            "호텔 객실 매출",
+            "SELECT SUM(room_revenue) FROM serving.analytics.hotel_daily_metrics "
+            "WHERE data_period_status = 'ACTUAL' AND is_forecast = false LIMIT 1000",
+            "SELECT SUM(room_revenue) FROM serving.analytics.hotel_daily_metrics "
+            "WHERE data_period_status = 'FORECAST' AND is_forecast = true LIMIT 1000",
+            "recognized_room_revenue",
+        ),
+        (
+            "소멸 포인트 합계",
+            "SELECT SUM(points_delta) FROM crm.dbo.crm_point_transactions "
+            "WHERE txn_type = 'EXPIRE' AND is_forecast = false LIMIT 1000",
+            "SELECT SUM(points_delta) FROM crm.dbo.crm_point_transactions "
+            "WHERE txn_type = 'EARN' AND is_forecast = true LIMIT 1000",
+            "expired_points",
+        ),
+    ],
+)
+def test_g2_enforces_metric_required_filters_for_view_and_crm(
+    question, sql, changed, expected_metric
+):
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(question=question)
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    package = support.build_context(
+        payload,
+        context,
+        adapter.search_assets(question, context.model_dump(mode="json")),
+    )
+    references = [
+        {"urn": item.urn, "fqn": item.fqn, "columns": list(item.columns)}
+        for item in package.assets
+    ]
+
+    assert [metric.id for metric in package.metrics] == [expected_metric]
+    assert support.g2_violation(
+        {"sql": sql, "parameters": {}, "references": references}, package
+    ) is None
+    assert support.g2_violation(
+        {"sql": changed, "parameters": {}, "references": references}, package
+    ) == "METRIC_FILTER_MISSING"
+    missing = re.sub(r"\s+AND\s+is_forecast\s*=\s*false", "", sql)
+    assert support.g2_violation(
+        {"sql": missing, "parameters": {}, "references": references}, package
+    ) == "METRIC_FILTER_MISSING"
+    bypass = sql.replace(" AND is_forecast = false", " OR is_forecast = false")
+    assert support.g2_violation(
+        {"sql": bypass, "parameters": {}, "references": references}, package
+    ) == "METRIC_FILTER_MISSING"
+
+
+def test_metric_registry_missing_or_duplicate_id_fails_closed(tmp_path):
+    source = Path(__file__).resolve().parents[2] / "src" / "data" / "analytics_context_contract.i4.v2.json"
+    contract = json.loads(source.read_text(encoding="utf-8"))
+    for name, metrics, message in (
+        ("missing.json", None, "include metric registry"),
+        ("duplicate.json", contract["metrics"] * 2, "must be unique"),
+    ):
+        broken = dict(contract)
+        if metrics is None:
+            broken.pop("metrics")
+        else:
+            broken["metrics"] = metrics
+        path = tmp_path / name
+        path.write_text(json.dumps(broken), encoding="utf-8")
+        with pytest.raises(ValueError, match=message):
+            I2DataPlatformAdapter(
+                "http://trino:8080", "runtime-user", contract_path=path
+            )
 
 
 def test_role_entitlement_excludes_serving_views_before_live_lookup():

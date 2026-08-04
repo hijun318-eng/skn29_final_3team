@@ -85,6 +85,13 @@ query Dataset($urn: String!) {
         contract = json.loads(source.read_text(encoding="utf-8"))
         if contract.get("context_source") != "LIVE_DATAHUB":
             raise ValueError("analytics context contract must require LIVE_DATAHUB")
+        metrics = contract.get("metrics")
+        if not isinstance(metrics, list) or not metrics:
+            raise ValueError("analytics context contract must include metric registry")
+        metric_ids = [metric.get("id") for metric in metrics if isinstance(metric, dict)]
+        if len(metric_ids) != len(metrics) or len(metric_ids) != len(set(metric_ids)):
+            raise ValueError("analytics context contract metric ids must be unique")
+        self._metrics = tuple(metrics)
         view_contract = json.loads((root / contract["view_contract"]).read_text(encoding="utf-8"))
         views = [
             {
@@ -200,6 +207,14 @@ query Dataset($urn: String!) {
             )
             selected.append(item)
             column_count += len(columns)
+        selected_fqns = {item["fqn"] for item in selected}
+        metrics = tuple(
+            metric for metric in self._metrics if metric.get("asset_fqn") in selected_fqns
+        )
+        for item in selected:
+            item["metrics"] = tuple(
+                metric for metric in metrics if metric["asset_fqn"] == item["fqn"]
+            )
         return selected
 
     def get_asset_schema(self, urn: str) -> dict[str, Any]:

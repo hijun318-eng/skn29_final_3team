@@ -190,6 +190,13 @@ class ContractModelAdapter:
             query = payload["query"]
             context = payload["context"]
             rows = query["rows"]
+            metric_ids = {
+                str(metric["id"])
+                for asset in payload["assets"]
+                for metric in asset.get("metrics", ())
+            }
+            if len(metric_ids) != 1:
+                raise ValueError("node3 requires exactly one entitled Context metric")
             response = self._generate(
                 node,
                 {
@@ -201,7 +208,7 @@ class ContractModelAdapter:
                         ],
                         "rows": rows,
                     },
-                    "metric": "recognized_room_revenue_krw",
+                    "metric": metric_ids.pop(),
                     "period": self._execution_time(context),
                     "filters": [
                         f"{key}={value}"
@@ -241,6 +248,8 @@ class ContractModelAdapter:
                     "urn": item["urn"],
                     "fqn": item["trino_fqn"],
                     "columns": item["columns"],
+                    "join_ids": item.get("join_ids", []),
+                    "metric_ids": item.get("metric_ids", []),
                 }
                 for item in response["references"]
             ],
@@ -264,6 +273,16 @@ class ContractModelAdapter:
             }
             for item in package.assets
         ]
+        metrics = list(package.metrics)
+        fixture_metric = None
+        if not metrics and package.assets:
+            asset = package.assets[0]
+            fixture_metric = {
+                "id": f"fixture_count_{asset.columns[0]}",
+                "field": f"{asset.fqn}.{asset.columns[0]}",
+                "aggregation": "count",
+                "time_field": f"{asset.fqn}.{asset.columns[0]}",
+            }
         return {
             "context_version": package.context_release,
             "policy_version": package.policy_version,
@@ -271,12 +290,21 @@ class ContractModelAdapter:
             "assets": assets,
             "metrics": [
                 {
-                    "id": "recognized_room_revenue_krw",
-                    "field": "pms.public.pms_stays.room_revenue",
-                    "aggregation": "sum",
-                    "time_field": "pms.public.pms_stays.actual_checkout_at",
+                    "id": metric.id,
+                    "field": f"{metric.asset_fqn}.{metric.field}",
+                    "aggregation": metric.aggregation,
+                    "time_field": f"{metric.asset_fqn}.{metric.time_field}",
+                    "required_filters": [
+                        {
+                            "field": item.field,
+                            "operator": item.operator,
+                            "value": item.value,
+                        }
+                        for item in metric.required_filters
+                    ],
                 }
-            ],
+                for metric in metrics
+            ] + ([fixture_metric] if fixture_metric else []),
             "joins": [
                 {
                     "id": "pms_stay_to_crm_membership_grade_event_time_v1",

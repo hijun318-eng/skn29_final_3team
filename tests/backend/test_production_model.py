@@ -1,7 +1,9 @@
 import json
 import unittest
+from datetime import date
 from pathlib import Path
 from sys import path
+from uuid import UUID
 
 
 BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
@@ -12,6 +14,14 @@ from app.adapters.contract_model import (
     ContractModelAdapter,
     _validate_sql_semantics,
     openai_transport,
+)
+from app.contracts import RequestContext
+from app.services.context_builder import (
+    ContextAsset,
+    ContextBuildRequest,
+    ContextMetric,
+    ContextPackageBuilder,
+    ContextRequiredFilter,
 )
 from src.ai.fake_model import FakeModelAdapter
 from src.modelops.runtime import ProductionModelClient
@@ -112,6 +122,97 @@ class ProductionModelTest(unittest.TestCase):
             "from_iso8601_timestamp('2026-08-01T00:00:00+09:00')) "
             "GROUP BY 1 ORDER BY 1 LIMIT 1",
         )
+
+    def test_context_metric_registry_reaches_model_payload(self) -> None:
+        metric = ContextMetric(
+            "recognized_room_revenue",
+            "serving.analytics.hotel_daily_metrics",
+            "room_revenue",
+            "sum",
+            "business_date",
+            (
+                ContextRequiredFilter("data_period_status", "eq", "ACTUAL"),
+                ContextRequiredFilter("is_forecast", "eq", False),
+            ),
+        )
+        asset = ContextAsset(
+            "urn:li:dataset:hotel_daily_metrics",
+            metric.asset_fqn,
+            (
+                "room_revenue",
+                "business_date",
+                "data_period_status",
+                "is_forecast",
+            ),
+            metrics=(metric,),
+            metric_registry_required=True,
+        )
+        package = ContextPackageBuilder().build(
+            ContextBuildRequest(
+                "I4-CONTEXT-v2.1.0-DRAFT",
+                "policy-v1",
+                "2026-08-04",
+                "entitlement-hash",
+                (asset,),
+                100,
+                24_000,
+            ),
+            frozenset({asset.urn}),
+        )
+        context = ContractModelAdapter._context_package(
+            {
+                "package": package,
+                "context": RequestContext(
+                    user_id=UUID("00000000-0000-0000-0000-000000000001"),
+                    as_of=date(2026, 8, 4),
+                ),
+            }
+        )
+
+        self.assertEqual("recognized_room_revenue", context["metrics"][0]["id"])
+        self.assertEqual(
+            "serving.analytics.hotel_daily_metrics.room_revenue",
+            context["metrics"][0]["field"],
+        )
+        self.assertEqual(
+            [
+                {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
+                {"field": "is_forecast", "operator": "eq", "value": False},
+            ],
+            context["metrics"][0]["required_filters"],
+        )
+
+    def test_node3_uses_entitled_metric_instead_of_a_fixed_metric(self) -> None:
+        captured = {}
+
+        class Model:
+            def generate(self, node, payload):
+                captured.update(payload)
+                return {
+                    "explanation": "검증된 결과",
+                    "model": {"model_version": "MODEL-v1"},
+                }
+
+        result = ContractModelAdapter(Model()).generate(
+            "node3",
+            {
+                "query": {
+                    "rows": [],
+                    "query_id": "query-1",
+                    "status": "SUCCEEDED",
+                },
+                "assets": [
+                    {
+                        "urn": "urn:li:dataset:crm-points",
+                        "metrics": ({"id": "expired_points"},),
+                    }
+                ],
+                "context": RequestContext(as_of=date(2026, 8, 4)),
+            },
+        )
+
+        self.assertEqual("expired_points", captured["metric"])
+        self.assertEqual("검증된 결과", result["summary"])
 
     @staticmethod
     def _node2_payload():

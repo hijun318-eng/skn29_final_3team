@@ -14,6 +14,15 @@ from src.ai.training.dataset import load_specs, write_jsonl
 
 PROPERTY = "SYNTHETIC_HOTEL_001"
 JOIN_ID = "pms_stay_to_crm_membership_grade_event_time_v1"
+CONTEXT_CONTRACT = Path(__file__).resolve().parents[2] / "data" / "analytics_context_contract.i4.v2.json"
+RAW_URNS = {
+    asset["fqn"]: asset["urn"]
+    for asset in json.loads(CONTEXT_CONTRACT.read_text(encoding="utf-8"))["raw_assets"]
+}
+
+
+def _urn(fqn: str) -> str:
+    return RAW_URNS.get(fqn, f"urn:li:dataset:(urn:li:dataPlatform:trino,{fqn},PROD)")
 
 
 @dataclass(frozen=True)
@@ -29,7 +38,7 @@ class Source:
 
     @property
     def urn(self) -> str:
-        return f"urn:li:dataset:(urn:li:dataPlatform:trino,{self.fqn},PROD)"
+        return _urn(self.fqn)
 
 
 SOURCES = {
@@ -290,7 +299,7 @@ def _pms_crm(record: dict[str, Any]) -> tuple[str, list[dict[str, Any]], list[di
     }
     assets, references = [], []
     for fqn, columns in tables.items():
-        urn = f"urn:li:dataset:(urn:li:dataPlatform:trino,{fqn},PROD)"
+        urn = _urn(fqn)
         assets.append({"urn": urn, "trino_fqn": fqn, "columns": list(columns)})
         references.append({"urn": urn, "trino_fqn": fqn, "columns": list(columns), "join_ids": [JOIN_ID], "metric_ids": [metric]})
     return sql, assets, references

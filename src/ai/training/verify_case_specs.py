@@ -22,8 +22,14 @@ from app.services.pipeline_support import PipelineSupport  # noqa: E402
 
 
 def _runtime_package(context: dict[str, Any]) -> ContextPackage:
+    join_ids = tuple(join["id"] for join in context["joins"])
     assets = tuple(
-        ContextAsset(asset["urn"], asset["trino_fqn"], tuple(asset["columns"]))
+        ContextAsset(
+            asset["urn"],
+            asset["trino_fqn"],
+            tuple(asset["columns"]),
+            join_ids,
+        )
         for asset in context["assets"]
     )
     return ContextPackage(
@@ -37,12 +43,18 @@ def _runtime_package(context: dict[str, Any]) -> ContextPackage:
         token_count=1,
         token_limit=6_000,
         package_hash="training-verification",
+        approved_join_ids=join_ids,
     )
 
 
 def _references(output: dict[str, Any]) -> list[dict[str, Any]]:
     return [
-        {"urn": item["urn"], "fqn": item["trino_fqn"], "columns": item["columns"]}
+        {
+            "urn": item["urn"],
+            "fqn": item["trino_fqn"],
+            "columns": item["columns"],
+            "join_ids": item["join_ids"],
+        }
         for item in output["references"]
     ]
 

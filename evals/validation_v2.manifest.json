@@ -1,0 +1,1380 @@
+{
+  "manifest_version": "VALIDATION-v2.0.0",
+  "signature_fields": [
+    "domain",
+    "metric_id",
+    "aggregation",
+    "dimension",
+    "filter_shape",
+    "output_shape",
+    "period_shape",
+    "node"
+  ],
+  "source_sha256": "33d706e962970f07d227afd4c1b4a39115db7136bc709197aa34d4f88f6a93c6",
+  "content_sha256": "e3c541be315648b347706eae303e344a4f0b7718f1a5fdb8d7d50ee7faf05026",
+  "counts": {
+    "total": 150,
+    "ID": 75,
+    "OOD": 75,
+    "domains": {
+      "banquet": 6,
+      "crm": 34,
+      "facility": 8,
+      "pms": 54,
+      "pms_crm": 28,
+      "pos": 20
+    }
+  },
+  "cases": [
+    {
+      "case_id": "validation-0151",
+      "candidate_id": "candidate-0151",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "banquet",
+      "node": "node2",
+      "semantic_signature_sha256": "78cf8d256fff9476158135db6db996877019e72fdc2689ad94e547c50c41fc37"
+    },
+    {
+      "case_id": "validation-0153",
+      "candidate_id": "candidate-0153",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "banquet",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "4a2beecf11a9b358bcbcc84ae06c22821b70fea5956fc1349038e786b2c61534"
+    },
+    {
+      "case_id": "validation-0154",
+      "candidate_id": "candidate-0154",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "banquet",
+      "node": "node2",
+      "semantic_signature_sha256": "9e9e4458cc9640a0e70d86c70283ff00ccd6f6cfbbf45c5676327b71f63ab615"
+    },
+    {
+      "case_id": "validation-0208",
+      "candidate_id": "candidate-0208",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "e6d4ca2d3d855848fd5c9dcfa68c7f3b22bc1a5ee4d46ef2a63f1f4337132d42"
+    },
+    {
+      "case_id": "validation-0209",
+      "candidate_id": "candidate-0209",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "e6d4ca2d3d855848fd5c9dcfa68c7f3b22bc1a5ee4d46ef2a63f1f4337132d42"
+    },
+    {
+      "case_id": "validation-0210",
+      "candidate_id": "candidate-0210",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "f4c337557d42351b93bf5b6045af0ce4ce938c6de033f9c56e4e5f183d26e3b7"
+    },
+    {
+      "case_id": "validation-0211",
+      "candidate_id": "candidate-0211",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "c3b25b870d14302778b62ba32a4b10c91fb3fd58c11d860326f99b60b6b5287f"
+    },
+    {
+      "case_id": "validation-0212",
+      "candidate_id": "candidate-0212",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "cd9eca83ff55c7fb99d53f56b2e98d449050878ea5087e5267b5c84e9288e271"
+    },
+    {
+      "case_id": "validation-0213",
+      "candidate_id": "candidate-0213",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "50835ed113ac287dee0affc28623fcaa8b487b92e512f70c7c7440778227b35e"
+    },
+    {
+      "case_id": "validation-0214",
+      "candidate_id": "candidate-0214",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "5763f58892c3d254278d339a3eca19383c24892a2cb70a815746db67cb918271"
+    },
+    {
+      "case_id": "validation-0215",
+      "candidate_id": "candidate-0215",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "ea52751925b4497521f73c11a8bcc3bbed65d6db0f2da1090a27ebb7d3f8205f"
+    },
+    {
+      "case_id": "validation-0219",
+      "candidate_id": "candidate-0219",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "affa9dcd79cc1713f001edb5b9bc5d4f8478c6424bb0fa1cede96599c718fa79"
+    },
+    {
+      "case_id": "validation-0221",
+      "candidate_id": "candidate-0221",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "f1e0e89a8fdfb2fa94e2e30bfc710d5baa042420489898032947b909688df15c"
+    },
+    {
+      "case_id": "validation-0222",
+      "candidate_id": "candidate-0222",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "bb45a2df9460377052ced46b596c89483e2af36e261832ee57f6a4c2ec22db3a"
+    },
+    {
+      "case_id": "validation-0223",
+      "candidate_id": "candidate-0223",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "f30ba7f6592b245de48438883360db01d054b8d84da6fc31a0c61c4d620992e2"
+    },
+    {
+      "case_id": "validation-0224",
+      "candidate_id": "candidate-0224",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "53ef37f8a4ae1ae108c96e07e9a34f28ec9375ca293b9307e6e37f2af34ea8fc"
+    },
+    {
+      "case_id": "validation-0225",
+      "candidate_id": "candidate-0225",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "67fac3d0ca4f28b0e9f30a8e343ffb04f8dcd0e8d0574bc9ea674e1a8a81a1a8"
+    },
+    {
+      "case_id": "validation-0226",
+      "candidate_id": "candidate-0226",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "9ff3ddb1b0d67c769425011573ca3b3093dd7fde3a1c4bac1ab39a000365fe85"
+    },
+    {
+      "case_id": "validation-0227",
+      "candidate_id": "candidate-0227",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "3a62d5325f1c297ead8693d3e579c9da401a6f7864c5d6a2e8b662de16be1686"
+    },
+    {
+      "case_id": "validation-0228",
+      "candidate_id": "candidate-0228",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "3a62d5325f1c297ead8693d3e579c9da401a6f7864c5d6a2e8b662de16be1686"
+    },
+    {
+      "case_id": "validation-0281",
+      "candidate_id": "candidate-0281",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "facility",
+      "node": "node2",
+      "semantic_signature_sha256": "8736abe9ad164809b5c1742ce17ee8f1beaf7af4152a34e386e83ccbe8209884"
+    },
+    {
+      "case_id": "validation-0282",
+      "candidate_id": "candidate-0282",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "facility",
+      "node": "node2",
+      "semantic_signature_sha256": "8736abe9ad164809b5c1742ce17ee8f1beaf7af4152a34e386e83ccbe8209884"
+    },
+    {
+      "case_id": "validation-0283",
+      "candidate_id": "candidate-0283",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "facility",
+      "node": "node2",
+      "semantic_signature_sha256": "906c783795e5b7dbffaceec5ec40c2f8ee1fcbba4f3f93b5c1615c0a8d1d3ce2"
+    },
+    {
+      "case_id": "validation-0284",
+      "candidate_id": "candidate-0284",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "facility",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "5bec9ee9aebdf6e9ed77eb1f0e10ae56b65a7b2486b3565be7e8af919b359e2d"
+    },
+    {
+      "case_id": "validation-0311",
+      "candidate_id": "candidate-0311",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "46b9b7254dc2eb4590950edf732dfa14c802fb8b776d4615bd0966c9ed08dc83"
+    },
+    {
+      "case_id": "validation-0312",
+      "candidate_id": "candidate-0312",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "1bbbf103cdd1f2b8925899fcf8de3352110e374d1d5eca508941948630f80dfb"
+    },
+    {
+      "case_id": "validation-0313",
+      "candidate_id": "candidate-0313",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "c743cf9b27616d46642d9ab095fdb062df3687af76c48a788f521999321fd247"
+    },
+    {
+      "case_id": "validation-0314",
+      "candidate_id": "candidate-0314",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "3389d8f158820e8c58e403082a6ccf9b6b3c60c98a4cc60b156f1208832878fe"
+    },
+    {
+      "case_id": "validation-0315",
+      "candidate_id": "candidate-0315",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "3fc9722da742329cce3b68bb2cbd471fec8376999a63dac67d590c69c62aeb57"
+    },
+    {
+      "case_id": "validation-0316",
+      "candidate_id": "candidate-0316",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "ee49fc146057271db04d9ad20f1103ee641a1bef16e5b46d47177487835cc4be"
+    },
+    {
+      "case_id": "validation-0318",
+      "candidate_id": "candidate-0318",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "9f15fd75ca41107bef862b2a0ef8217ecd1b8e7cd92a890a02fc547552ff0c8e"
+    },
+    {
+      "case_id": "validation-0319",
+      "candidate_id": "candidate-0319",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "9a2b309366a6acd7e17599639c8887c4c5e32ed8a23b52fcae3efc4d36cbf95e"
+    },
+    {
+      "case_id": "validation-0320",
+      "candidate_id": "candidate-0320",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "9a2b309366a6acd7e17599639c8887c4c5e32ed8a23b52fcae3efc4d36cbf95e"
+    },
+    {
+      "case_id": "validation-0323",
+      "candidate_id": "candidate-0323",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "bee6d6da4eeb2b2097e833b81d4aca3d62bff5768a0f1e1324ad35aa0b1010c0"
+    },
+    {
+      "case_id": "validation-0324",
+      "candidate_id": "candidate-0324",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "37bcdc1eb90ccc198360d73574c37d37faeed546f4b6e190197907ab8a8a8631"
+    },
+    {
+      "case_id": "validation-0325",
+      "candidate_id": "candidate-0325",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "37bcdc1eb90ccc198360d73574c37d37faeed546f4b6e190197907ab8a8a8631"
+    },
+    {
+      "case_id": "validation-0326",
+      "candidate_id": "candidate-0326",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "1eedc67a04fbe7fa1fd2b2e6976b59a80770f02b3709fd898e901e3a1f464a79"
+    },
+    {
+      "case_id": "validation-0327",
+      "candidate_id": "candidate-0327",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "1eedc67a04fbe7fa1fd2b2e6976b59a80770f02b3709fd898e901e3a1f464a79"
+    },
+    {
+      "case_id": "validation-0328",
+      "candidate_id": "candidate-0328",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "1eedc67a04fbe7fa1fd2b2e6976b59a80770f02b3709fd898e901e3a1f464a79"
+    },
+    {
+      "case_id": "validation-0329",
+      "candidate_id": "candidate-0329",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "36bcf140beb9ca42eac9eeb0497fc1ece265b29483a031babf98a222cbd50c32"
+    },
+    {
+      "case_id": "validation-0330",
+      "candidate_id": "candidate-0330",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "e52ad66b1a6997c00e376b503132c18cf67d56bf13e6cc7bd17bf947f6b2752a"
+    },
+    {
+      "case_id": "validation-0332",
+      "candidate_id": "candidate-0332",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "e52ad66b1a6997c00e376b503132c18cf67d56bf13e6cc7bd17bf947f6b2752a"
+    },
+    {
+      "case_id": "validation-0333",
+      "candidate_id": "candidate-0333",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "e624748b6af216a3110dbc40681d8cacf8b95bbb69a8dff8b973cc65e1b3aabc"
+    },
+    {
+      "case_id": "validation-0334",
+      "candidate_id": "candidate-0334",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "e624748b6af216a3110dbc40681d8cacf8b95bbb69a8dff8b973cc65e1b3aabc"
+    },
+    {
+      "case_id": "validation-0336",
+      "candidate_id": "candidate-0336",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "2ccdaa0dae619d993c84ca17f95816af3e19e3dd7f66e2468ad5b96e9eee0dc0"
+    },
+    {
+      "case_id": "validation-0337",
+      "candidate_id": "candidate-0337",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "a936999b8c5311e83abafae36620a3e86d1c0cd2231ead2dfdc23c07041253fd"
+    },
+    {
+      "case_id": "validation-0338",
+      "candidate_id": "candidate-0338",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "fac30cede5f97b24b57f7edef113c9f52746c5f258fba8848a9f1a39baa0afb1"
+    },
+    {
+      "case_id": "validation-0339",
+      "candidate_id": "candidate-0339",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "fac30cede5f97b24b57f7edef113c9f52746c5f258fba8848a9f1a39baa0afb1"
+    },
+    {
+      "case_id": "validation-0340",
+      "candidate_id": "candidate-0340",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "fac30cede5f97b24b57f7edef113c9f52746c5f258fba8848a9f1a39baa0afb1"
+    },
+    {
+      "case_id": "validation-0341",
+      "candidate_id": "candidate-0341",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "62fa73e8ef2b2672d0071768361b85682d29a551089d90ac6548a3f2655b4e20"
+    },
+    {
+      "case_id": "validation-0342",
+      "candidate_id": "candidate-0342",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "c62d5f420cac80d4301066646d722c24841c8a913cb98e52c508776db8ba8cc7"
+    },
+    {
+      "case_id": "validation-0495",
+      "candidate_id": "candidate-0495",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "524b97866a768a0da1ddce266eabffff20446294cf765fa729883f478dcb3a25"
+    },
+    {
+      "case_id": "validation-0496",
+      "candidate_id": "candidate-0496",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "b21aaf97fde266c96295ae4c09a2e454d489335f0b70d404abf02c3dc3bbdd48"
+    },
+    {
+      "case_id": "validation-0497",
+      "candidate_id": "candidate-0497",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "2d3065d81953b66fa3b0347403ae9ca56fb2221f9c0d2843d9c4ec1ca83f88d3"
+    },
+    {
+      "case_id": "validation-0498",
+      "candidate_id": "candidate-0498",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "10b6429bb61c9e29fde7cc1fcd2f5fc36eec44ed08f2fb1f09338178c5f59ed0"
+    },
+    {
+      "case_id": "validation-0499",
+      "candidate_id": "candidate-0499",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "dfaf14b6df844971a87523fcef1dee70374c38e66faab707dd9f2eedfaccb198"
+    },
+    {
+      "case_id": "validation-0501",
+      "candidate_id": "candidate-0501",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "cf4cf729d014ac8741a3241aa16a655f33cb64c0363e356d6d1fe67679eed65a"
+    },
+    {
+      "case_id": "validation-0503",
+      "candidate_id": "candidate-0503",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "88b1da44820c52f826f8df092b30dbce76d4b57631a003e5d50e0a1d3a57ed62"
+    },
+    {
+      "case_id": "validation-0504",
+      "candidate_id": "candidate-0504",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "f7fc0fb1a6cf9f9371cabd14c1fc19b4b620a67d0b6035357ff837ede8a0db61"
+    },
+    {
+      "case_id": "validation-0505",
+      "candidate_id": "candidate-0505",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "f7fc0fb1a6cf9f9371cabd14c1fc19b4b620a67d0b6035357ff837ede8a0db61"
+    },
+    {
+      "case_id": "validation-0506",
+      "candidate_id": "candidate-0506",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "c7ecba86b5c5453419b73eb604a73e981365a7a7cc497553bff5115ab88a9155"
+    },
+    {
+      "case_id": "validation-0507",
+      "candidate_id": "candidate-0507",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "daefeb3bd73fc7a4e887701e18ff5e2dc84fceb1c98ed83744f10563d8283c21"
+    },
+    {
+      "case_id": "validation-0508",
+      "candidate_id": "candidate-0508",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "06f55cef38c80304e12ff60ecac9f3bc4370174a03fa293570fd1dc3590dd9f0"
+    },
+    {
+      "case_id": "validation-0509",
+      "candidate_id": "candidate-0509",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "33e3d7c6cd2b607c00f3e0afd84126384c7a5bbb25aea6d7d73a677983d29f74"
+    },
+    {
+      "case_id": "validation-0510",
+      "candidate_id": "candidate-0510",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "33e3d7c6cd2b607c00f3e0afd84126384c7a5bbb25aea6d7d73a677983d29f74"
+    },
+    {
+      "case_id": "validation-0581",
+      "candidate_id": "candidate-0581",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pos",
+      "node": "node2",
+      "semantic_signature_sha256": "ae82578167c4ea073068495386645c965235cc813161d7bb30b1fdba6d5fb3cc"
+    },
+    {
+      "case_id": "validation-0583",
+      "candidate_id": "candidate-0583",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pos",
+      "node": "node2",
+      "semantic_signature_sha256": "847a6fc0bcc699849277846976c8c2e1ca792f1be7672ac3448d9ac0c42875a7"
+    },
+    {
+      "case_id": "validation-0584",
+      "candidate_id": "candidate-0584",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pos",
+      "node": "node2",
+      "semantic_signature_sha256": "dcdd5aaabd8ad7aad478fcd3b5aa48cf6f3853c74aad242659d4548aa33561f6"
+    },
+    {
+      "case_id": "validation-0585",
+      "candidate_id": "candidate-0585",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pos",
+      "node": "node2",
+      "semantic_signature_sha256": "dcdd5aaabd8ad7aad478fcd3b5aa48cf6f3853c74aad242659d4548aa33561f6"
+    },
+    {
+      "case_id": "validation-0586",
+      "candidate_id": "candidate-0586",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "140326053c9f04644723e77d540ef18177b66eb59eaaea52409c6149fecbef87"
+    },
+    {
+      "case_id": "validation-0587",
+      "candidate_id": "candidate-0587",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pos",
+      "node": "node2",
+      "semantic_signature_sha256": "9003229a2634da03a8d15efd0f5f5123c17795c41db64cad94599ba0b6d76914"
+    },
+    {
+      "case_id": "validation-0588",
+      "candidate_id": "candidate-0588",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pos",
+      "node": "node2",
+      "semantic_signature_sha256": "9003229a2634da03a8d15efd0f5f5123c17795c41db64cad94599ba0b6d76914"
+    },
+    {
+      "case_id": "validation-0589",
+      "candidate_id": "candidate-0589",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pos",
+      "node": "node2",
+      "semantic_signature_sha256": "b615f4a88f0a0e46679d6cbcc919764582aa258e5f723d7fab6c7b9fb8e096ff"
+    },
+    {
+      "case_id": "validation-0590",
+      "candidate_id": "candidate-0590",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "7df463d5d8056ecde26e8f7d77ee9bda4e4115ad5e9206908a5f165127975855"
+    },
+    {
+      "case_id": "validation-0591",
+      "candidate_id": "candidate-0591",
+      "source_split": "reserve",
+      "evaluation_slice": "ID",
+      "domain": "pos",
+      "node": "node2",
+      "semantic_signature_sha256": "6e346f6b9b632b79a7e189fa06ecf4741b3ec422618fc077ef0071d868cd3645"
+    },
+    {
+      "case_id": "validation-0152",
+      "candidate_id": "candidate-0152",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "banquet",
+      "node": "node2",
+      "semantic_signature_sha256": "0c0ccdcb3abd070df9f002e55b13f0de39594e50a8bc650ba299db39089b15fb"
+    },
+    {
+      "case_id": "validation-0157",
+      "candidate_id": "candidate-0157",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "banquet",
+      "node": "node2",
+      "semantic_signature_sha256": "c891c34ecb15365e305082685332578aa859c806bdc7de499a8893b600bcf581"
+    },
+    {
+      "case_id": "validation-0162",
+      "candidate_id": "candidate-0162",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "banquet",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "377839f5f8a1cb35e8399fe086156651efdd8e93fd781060ea221d2781f48319"
+    },
+    {
+      "case_id": "validation-0171",
+      "candidate_id": "candidate-0171",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "f810261ad4357e518976fa4c4d8c8f8effd2eb1c318f2bd3e64afac0a1b01376"
+    },
+    {
+      "case_id": "validation-0172",
+      "candidate_id": "candidate-0172",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "760f960892283434c0a98725c33b8e7e8cb484bafa902500901907fc081c56c0"
+    },
+    {
+      "case_id": "validation-0173",
+      "candidate_id": "candidate-0173",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "b2c55bb33faaee6647fc08b77317cbdc550dcc70a7941af51535e768d17f1bac"
+    },
+    {
+      "case_id": "validation-0174",
+      "candidate_id": "candidate-0174",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "7eff7f2d9e607a0afe687cb8134f81e04804b3e38740faceaa2c7a25f178f882"
+    },
+    {
+      "case_id": "validation-0175",
+      "candidate_id": "candidate-0175",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "66e289dbb2ff308928173649c5d019612160143c2b921ec23b4eb93eee2fa0b1"
+    },
+    {
+      "case_id": "validation-0176",
+      "candidate_id": "candidate-0176",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "44ce3098d171d0c9a2ce4f91f5a5ff02fc0dc3868cdb0c3a8522dd32edc96294"
+    },
+    {
+      "case_id": "validation-0177",
+      "candidate_id": "candidate-0177",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "e6795f0e32920527a769c192b64bc22649c660e233ccd1de18fb508e901a0c12"
+    },
+    {
+      "case_id": "validation-0178",
+      "candidate_id": "candidate-0178",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "8115f34d83417944266df59abfb7081391d00d1eb364491a955772a83028630c"
+    },
+    {
+      "case_id": "validation-0179",
+      "candidate_id": "candidate-0179",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "8088715e74e1ed97f040c66fba5fb51bc2c0a4cf2757e3d50af6a71a27baed2d"
+    },
+    {
+      "case_id": "validation-0180",
+      "candidate_id": "candidate-0180",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "dbe8e9aa5c7eecf1c05d746d1178d63b4d61f0770d12ec70036915079ca92146"
+    },
+    {
+      "case_id": "validation-0181",
+      "candidate_id": "candidate-0181",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "100c40e9c840c8e9d3ad82926b20ad5f13c224b5d44ee57e9a4e53f65f403a8b"
+    },
+    {
+      "case_id": "validation-0182",
+      "candidate_id": "candidate-0182",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "9bd5ac98acd7254872f0150e7bbd9355838673ccdd0cab4042984ccd4f671f13"
+    },
+    {
+      "case_id": "validation-0183",
+      "candidate_id": "candidate-0183",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "e6cdc905506379f5a8f32dd9fbad9bae564fa1b3f8832988eb6d16a1d926cb3f"
+    },
+    {
+      "case_id": "validation-0184",
+      "candidate_id": "candidate-0184",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "38f545d64ef2d0a66b0dddd3a52e34924be0c165ee12be79e253088e74ddfd0b"
+    },
+    {
+      "case_id": "validation-0185",
+      "candidate_id": "candidate-0185",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "1abe99d234426d5b6f393c0d0ac518feada8f7634a7c2ae45999b17f7b1eb246"
+    },
+    {
+      "case_id": "validation-0186",
+      "candidate_id": "candidate-0186",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "aac7c210e4952e29db5f1579dac339b58272b71f8cadab71f4329c685d29560e"
+    },
+    {
+      "case_id": "validation-0187",
+      "candidate_id": "candidate-0187",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "crm",
+      "node": "node2",
+      "semantic_signature_sha256": "a92fa62a1953c4fde9e1ba4a8578276cb1152ddb12915c7f25c9dc5259c1788b"
+    },
+    {
+      "case_id": "validation-0292",
+      "candidate_id": "candidate-0292",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "facility",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "700148a4ed7ad84f81dda522ab17d8f9898f8b5bf2124a8765aa27f6f89bbc82"
+    },
+    {
+      "case_id": "validation-0297",
+      "candidate_id": "candidate-0297",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "facility",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "9bbedde62f2cdc8eee088f39b6c42fb41aae8a22cdbba6e51f93632a6919cc3e"
+    },
+    {
+      "case_id": "validation-0298",
+      "candidate_id": "candidate-0298",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "facility",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "9bbedde62f2cdc8eee088f39b6c42fb41aae8a22cdbba6e51f93632a6919cc3e"
+    },
+    {
+      "case_id": "validation-0302",
+      "candidate_id": "candidate-0302",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "facility",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "6a6c89fa7c9667e56ea3bd805ae4425ccc8459cf103e9f055eec75c496af13f7"
+    },
+    {
+      "case_id": "validation-0317",
+      "candidate_id": "candidate-0317",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "cf3354cc121d2b2fdd32d83d03fc6325bb6c4fc598e0a16128ebd44dea07d099"
+    },
+    {
+      "case_id": "validation-0321",
+      "candidate_id": "candidate-0321",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "d7a52568a492ef6ed2b7d8e0e955d8958aa1f380d5e329d0cabf12c5b5de97c3"
+    },
+    {
+      "case_id": "validation-0322",
+      "candidate_id": "candidate-0322",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "d7a52568a492ef6ed2b7d8e0e955d8958aa1f380d5e329d0cabf12c5b5de97c3"
+    },
+    {
+      "case_id": "validation-0331",
+      "candidate_id": "candidate-0331",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "42965b6dcaee65e1b01cf55202af919ef51d39d6382091431633384b509b24f0"
+    },
+    {
+      "case_id": "validation-0335",
+      "candidate_id": "candidate-0335",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "fd45ca0400732e6b8939d1b84d23eea18c8c51b04d75b4913ac9a026d171ad15"
+    },
+    {
+      "case_id": "validation-0343",
+      "candidate_id": "candidate-0343",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "2ec32d7707c435e692527e4f908c8a330756111b3accb0481b2e4973011067e7"
+    },
+    {
+      "case_id": "validation-0345",
+      "candidate_id": "candidate-0345",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "8fa52aa127ede76802295e0e6635a4a1c1c4145dceb82b6bd5362adf9e237813"
+    },
+    {
+      "case_id": "validation-0350",
+      "candidate_id": "candidate-0350",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "9d2b233f58db3b58e7fb51223bd0b91c51a6862daf497c8f0bc06022617c3edc"
+    },
+    {
+      "case_id": "validation-0357",
+      "candidate_id": "candidate-0357",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "b53418edb94208d4f1a5fac946a2155f9ee1a3a4132fbd235c608e2050099699"
+    },
+    {
+      "case_id": "validation-0363",
+      "candidate_id": "candidate-0363",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "47314187c3e9b71dfb09566cfacf78c87343ced9d88a49ed527fdc160e4d1eb6"
+    },
+    {
+      "case_id": "validation-0364",
+      "candidate_id": "candidate-0364",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "47314187c3e9b71dfb09566cfacf78c87343ced9d88a49ed527fdc160e4d1eb6"
+    },
+    {
+      "case_id": "validation-0365",
+      "candidate_id": "candidate-0365",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "47314187c3e9b71dfb09566cfacf78c87343ced9d88a49ed527fdc160e4d1eb6"
+    },
+    {
+      "case_id": "validation-0370",
+      "candidate_id": "candidate-0370",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "ceb576aca76511a3fdeea2dd10d921037bb41ac9fafb050b0a95c89b44c47f7e"
+    },
+    {
+      "case_id": "validation-0378",
+      "candidate_id": "candidate-0378",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "f35b13273d1b2b6f0f19671152371f17f1ca70ff5f4d65a6fda182aacc98da5a"
+    },
+    {
+      "case_id": "validation-0380",
+      "candidate_id": "candidate-0380",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "c1b09737368aff69377da0e6f99eb3328b8f7682ca288c9d9f7be6d86594bd14"
+    },
+    {
+      "case_id": "validation-0385",
+      "candidate_id": "candidate-0385",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "4c7b9564cde2772da1f45bd4cab2e3413f47249e3f179938d134d86a4f30e60b"
+    },
+    {
+      "case_id": "validation-0387",
+      "candidate_id": "candidate-0387",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "429e9b258c2c095b1e6d0f1501651f38f49b3e7d59e9d72e48e2d7d41124d2cf"
+    },
+    {
+      "case_id": "validation-0388",
+      "candidate_id": "candidate-0388",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "429e9b258c2c095b1e6d0f1501651f38f49b3e7d59e9d72e48e2d7d41124d2cf"
+    },
+    {
+      "case_id": "validation-0409",
+      "candidate_id": "candidate-0409",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "7c7aa27dc6631daf9c3e67752a514c6ef3514641f4eac30bfa5c66cea6e2c26e"
+    },
+    {
+      "case_id": "validation-0415",
+      "candidate_id": "candidate-0415",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "bf8aaca7a02cb5ef5a9c4f90ad273706111ae60b43f8e4fb703e97e1d0a93d8b"
+    },
+    {
+      "case_id": "validation-0432",
+      "candidate_id": "candidate-0432",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "c9c026255266f4d188fd0f18184dd95877c6e66d92c6911cd14eabc510ba6304"
+    },
+    {
+      "case_id": "validation-0446",
+      "candidate_id": "candidate-0446",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "7c247c263cdbf6a4cb5ee72a1b34233ad93094aca3f0d4d4df879becbabbf74c"
+    },
+    {
+      "case_id": "validation-0458",
+      "candidate_id": "candidate-0458",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "a76f20f24cbda96c382c58094638342bfae0d8fc512cedbd86e5f689d2a78b7e"
+    },
+    {
+      "case_id": "validation-0459",
+      "candidate_id": "candidate-0459",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "a76f20f24cbda96c382c58094638342bfae0d8fc512cedbd86e5f689d2a78b7e"
+    },
+    {
+      "case_id": "validation-0466",
+      "candidate_id": "candidate-0466",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "7094fb31139b87c9cc01cd4432ed3f3a22f5fc96b29eed21d38ae3e238d693b4"
+    },
+    {
+      "case_id": "validation-0467",
+      "candidate_id": "candidate-0467",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "26cd3c2f818a238976605b8ef2d6ea8c79814a44ba30cc775180ba019261e978"
+    },
+    {
+      "case_id": "validation-0468",
+      "candidate_id": "candidate-0468",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms",
+      "node": "node2",
+      "semantic_signature_sha256": "26cd3c2f818a238976605b8ef2d6ea8c79814a44ba30cc775180ba019261e978"
+    },
+    {
+      "case_id": "validation-0491",
+      "candidate_id": "candidate-0491",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "f37ac6ef977192e3b8671a0193361644dfbb792d6b84af7b5e16b404481d5def"
+    },
+    {
+      "case_id": "validation-0492",
+      "candidate_id": "candidate-0492",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "f37ac6ef977192e3b8671a0193361644dfbb792d6b84af7b5e16b404481d5def"
+    },
+    {
+      "case_id": "validation-0493",
+      "candidate_id": "candidate-0493",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "f37ac6ef977192e3b8671a0193361644dfbb792d6b84af7b5e16b404481d5def"
+    },
+    {
+      "case_id": "validation-0494",
+      "candidate_id": "candidate-0494",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "f37ac6ef977192e3b8671a0193361644dfbb792d6b84af7b5e16b404481d5def"
+    },
+    {
+      "case_id": "validation-0500",
+      "candidate_id": "candidate-0500",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "e2e9dae053027a39433e3babb49104227dc7f1ea8781c04908ea5028198062b3"
+    },
+    {
+      "case_id": "validation-0502",
+      "candidate_id": "candidate-0502",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2",
+      "semantic_signature_sha256": "e2e9dae053027a39433e3babb49104227dc7f1ea8781c04908ea5028198062b3"
+    },
+    {
+      "case_id": "validation-0514",
+      "candidate_id": "candidate-0514",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "24f9bb72c3f263dbb4e8025061c89dd572ace05a257677dce6f1207505b6275a"
+    },
+    {
+      "case_id": "validation-0523",
+      "candidate_id": "candidate-0523",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "4f7e6ee3e0d833c97d89c64d3b5a098c4eeae23640697e1bfa53e4f09925745f"
+    },
+    {
+      "case_id": "validation-0531",
+      "candidate_id": "candidate-0531",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "2ce181a527322e714dc56300fe2fbcd10578cd02d470d0a67f8bbd7e93d96f4b"
+    },
+    {
+      "case_id": "validation-0537",
+      "candidate_id": "candidate-0537",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "ead7f019fb65f25de31050c83aa654feaf188bf4aeca77c378473849875998b3"
+    },
+    {
+      "case_id": "validation-0543",
+      "candidate_id": "candidate-0543",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "f2ca981107a408a145cc31fa25cd1ed18fd1cc33e4251e444ad712cc22212e69"
+    },
+    {
+      "case_id": "validation-0547",
+      "candidate_id": "candidate-0547",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "f06778805ad382fe0aded84670bc87b58c0e3e8e6349ba5902426512bc14d5ca"
+    },
+    {
+      "case_id": "validation-0577",
+      "candidate_id": "candidate-0577",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "fde51c282fc41e972d781ab233e5533f376c033490441087416dc2a0a6fc4e73"
+    },
+    {
+      "case_id": "validation-0578",
+      "candidate_id": "candidate-0578",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pms_crm",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "6ee844ecb1273c7e9a1de3bcaf664b0bbc425c29eae2ea0a7489124c306ead64"
+    },
+    {
+      "case_id": "validation-0582",
+      "candidate_id": "candidate-0582",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "1b4aaebda57d720f1e385a4c816746f9b643a7cfd508d1fb3e49643d10d2ea85"
+    },
+    {
+      "case_id": "validation-0609",
+      "candidate_id": "candidate-0609",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "f2aa2e63b653e05d2b75827f05a164eead68d2da43911553f3e85aa61e8b24bf"
+    },
+    {
+      "case_id": "validation-0610",
+      "candidate_id": "candidate-0610",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "6a5e80a3b48dac8be0160b04052a865552bc90069be4841197872a3a92ffcbc6"
+    },
+    {
+      "case_id": "validation-0612",
+      "candidate_id": "candidate-0612",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "5f6d31cf28cee48939479d30dc4ab8b74b3a444bfa29c96b6c263605f959da79"
+    },
+    {
+      "case_id": "validation-0613",
+      "candidate_id": "candidate-0613",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "5f6d31cf28cee48939479d30dc4ab8b74b3a444bfa29c96b6c263605f959da79"
+    },
+    {
+      "case_id": "validation-0620",
+      "candidate_id": "candidate-0620",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "65ab10e375d27ff627f8c936fbe21426ffe8028efb901868ee3deaf7465b03b2"
+    },
+    {
+      "case_id": "validation-0622",
+      "candidate_id": "candidate-0622",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "449be2deaadbd4a27ce4acd2391efd6c27707e03a719a3491fb18a77af4809d9"
+    },
+    {
+      "case_id": "validation-0633",
+      "candidate_id": "candidate-0633",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "b2a12b2579d893caaac0ced7d19ff065ff2fd648b5e42609f2c84de1e6aa9f69"
+    },
+    {
+      "case_id": "validation-0637",
+      "candidate_id": "candidate-0637",
+      "source_split": "reserve",
+      "evaluation_slice": "OOD",
+      "domain": "pos",
+      "node": "node2",
+      "semantic_signature_sha256": "78216f49b0cbd9a1fbb8950bafbcd0a27c9c42efd5e7e66303bf3386dabb69da"
+    },
+    {
+      "case_id": "validation-1986",
+      "candidate_id": "candidate-1986",
+      "source_split": "validation",
+      "evaluation_slice": "OOD",
+      "domain": "pos",
+      "node": "node2_repair",
+      "semantic_signature_sha256": "f2aa2e63b653e05d2b75827f05a164eead68d2da43911553f3e85aa61e8b24bf"
+    }
+  ]
+}

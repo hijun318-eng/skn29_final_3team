@@ -1,6 +1,6 @@
 {
   "candidate_version": "MODEL-CANDIDATE-v0.1",
-  "status": "BLOCKED_CONTEXT_CONTRACT",
+  "status": "READY_BASE_SMOKE",
   "model": "Qwen/Qwen3-4B-Instruct-2507",
   "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
   "mode": "non-thinking",
@@ -15,7 +15,8 @@
       "validation_ood_75",
       "lora_decision"
     ],
-    "blocked_reason": "기존 Validation 150건이 제품 View 계약 밖 raw FQN 7개를 포함하므로 승인된 혼합 Context와 v2 split이 필요함",
+    "validation_manifest": "evals/validation_v2.manifest.json",
+    "validation_content_sha256": "e3c541be315648b347706eae303e344a4f0b7718f1a5fdb8d7d50ee7faf05026",
     "blind_gold_allowed": false,
     "new_cost_cap_usd": 0.5,
     "cumulative_cost_cap_usd": 15

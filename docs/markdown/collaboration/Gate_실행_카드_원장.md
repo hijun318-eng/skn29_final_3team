@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.08 |
-| 문서 기준일 | 2026-08-04 15:01 |
+| 버전 | v3.09 |
+| 문서 기준일 | 2026-08-04 15:34 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -2733,7 +2733,7 @@ R1_REVIEW_CONDITIONS=branch CI와 smoke 20건의 JSON·G2·Trino·result match·
 ### R1-W4-F4
 
 ```text
-STATUS=IN_PROGRESS
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -2745,7 +2745,7 @@ CURRENT_TASK_CARD_ID=R1-11
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=c67612f93e50b8db8acea1b556b7627c86bd05e4
-DIRECTIVE=ACTION
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R1-W4-F4@c67612f
 ALLOWED_PATHS=docs/markdown/02_WBS.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/daily_reports/junhee/일일보고.md; tests/integration/test_gate_scope.py
 FORBIDDEN_PATHS=R2~R5 제품 경로; root Compose·env·CI; secret
@@ -2758,12 +2758,13 @@ HANDOFF=R3에 동일 manifest·일반 날짜 타입·synthetic 범위·남은 �
 EXTERNAL_ACTION_PERMISSION=기존 R3-W4-F3 승인 USD 0.35 중 사용한 USD 0.0423을 제외하고, 같은 smoke 목적의 task Pod 1개와 최대 신규 USD 0.30을 승인한다. F3+F4 합계는 USD 0.35를 넘지 않는다.
 AUTO_FAIL_CONDITIONS=case별 hardcode; G2 우회; 다른 model·revision; 합계 USD 0.35 초과; 150건·LoRA·Blind Gold 실행; task Pod 미삭제; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R3 smoke 20건이 전부 통과해야 150건 전체 평가를 별도 발행한다. 미달이면 비용·오류를 기록하고 다시 STOP한다.
+RESULT=R3-W4-F4는 첫 3건의 JSON·G2·합성 Trino·result match를 통과했으나 4번째 validation-0228에서 result match가 실패했다. F4 약 USD 0.0402·F3+F4 약 USD 0.0825, Pod 삭제·active 0, branch CI 30884334429 FAIL을 확인해 추가 cloud 실행을 금지하고 모델 전략 재판정으로 전환한다.
 ```
 
 ### R3-W4-F4
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -2776,7 +2777,7 @@ REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=c67612f93e50b8db8acea1b556b7627c86bd05e4
 START_POINT=origin/daesung 9b53d43cf76ae2c59e9ca10ccbff4b690b8101df; 승인 문서가 통합된 origin/dev를 merge한 뒤 시작한다.
-DIRECTIVE=REWORK
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R3-W4-F4@c67612f
 MODEL_ID=Qwen/Qwen3-4B-Instruct-2507
 MODEL_REVISION=cdbee75f17c01a7cc42f958dc650907174af0554
@@ -2790,6 +2791,7 @@ TEST_COMMANDS=python -m pytest tests/ai -q; python -m compileall -q src/ai src/m
 TEST_COMMAND_IDS=T1_AI;T2_COMPILE;T3_MANIFEST;T4_REPRO;T5_MODEL;T6_DIFF
 STOP_CONDITIONS=manifest 변경; 6개 domain 또는 두 node 누락; case·정답 SQL hardcode; G2 1000행 상한 완화; valid JSON·G2·Trino·result match 중 1건이라도 실패; revision 불일치; 이전 adapter 로드; F4 신규 USD 0.30 또는 F3+F4 합계 USD 0.35 도달; secret 로그; task Pod 미삭제; 필수 검증 실패
 EXTERNAL_ACTION_PERMISSION=task RunPod Pod 1개·고정 model download·같은 smoke 20건만 신규 USD 0.30, F3+F4 합계 USD 0.35와 전체 누적 USD 15 이내에서 승인한다. 허용 경로 commit·daesung push와 task 자원 삭제를 승인한다. 150건 전체 평가·LoRA·Blind Gold·다른 model·다른 cloud resource·dev 병합은 불가하다.
+RESULT=daesung 8c76f1e. 같은 manifest 첫 3건은 전 기준 PASS, 4번째 validation-0228은 JSON·G2·Trino PASS 뒤 result hash 불일치로 중단했다. 생성 SQL이 CRM 소멸 포인트의 property·txn_type·is_forecast·음수 합산 조건을 누락하고 기간을 확장했다. F4 약 USD 0.0402·F3+F4 약 USD 0.0825, Pod 삭제·active 0, CI 30884334429은 handoff FAIL을 정확히 반영해 의도대로 실패했다.
 AUTO_FAIL_CONDITIONS=manifest 변경; case별 hardcode; G2 우회; 다른 model·revision; 비용 상한 초과; 150건·LoRA·Blind Gold 실행; task Pod 미삭제; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=branch CI와 smoke 20건의 JSON·G2·Trino·result match·비용·cleanup 증거를 제출한다. 전부 통과해도 R1의 별도 150건 발행 전에는 대기한다.
 ```
@@ -2842,6 +2844,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.09 | 2026-08-04 15:34 | R3-W4-F4는 같은 균형 manifest의 첫 3건을 전 기준 통과했으나 4번째 CRM 소멸 포인트에서 필수 범위·지표 조건을 누락해 result hash가 달랐다. fail-fast·USD 0.0402·F3+F4 USD 0.0825·Pod 삭제·active 0·CI `30884334429`의 의도된 FAIL을 확인해 R1·R3 F4를 BLOCKED·WAIT로 전환하고 추가 cloud 실행을 금지했다. |
 | v3.08 | 2026-08-04 15:01 | 균형 smoke 첫 건은 JSON·G2를 통과했지만 생성 SQL의 `timestamp(3) <= varchar(7)` 타입 오류로 Trino에서 중단했고 정답 SQL은 결과 hash까지 일치했다. USD 0.0423·Pod 삭제·active 0과 의도된 CI 실패를 기록하고, 일반 날짜 타입·synthetic 범위 규칙만 보완해 같은 manifest를 F3+F4 합계 USD 0.35 안에서 한 번 재검증하는 R1-W4-F4·R3-W4-F4를 발행했다. |
 | v3.07 | 2026-08-04 14:30 | R3-W4-F2 실패를 편향된 선두 20건·JSON 미완성 8건·1000행 초과 8건·repair PASS 4건으로 분리했다. G2를 유지하면서 6개 domain·두 node·Trino 결과 동등성을 smoke 20건과 신규 USD 0.35 안에서 재검증하는 R1-W4-F3·R3-W4-F3를 발행했다. |
 | v3.06 | 2026-08-04 14:20 | Instruct-2507 Base smoke 20건이 JSON 12건·G2/Trino/정답 SQL 각 4건에 그쳐 R3-W4-F2를 BLOCKED로 전환했다. R3 branch CI `30880359294`는 PASS했지만 150건 전체 평가·LoRA·Blind Gold는 실행하지 않았고 task Pod 삭제와 신규 비용 USD 0.132 추정을 기록했다. |

@@ -6,7 +6,7 @@ import {
   ShieldAlert, Sparkles, Table2, Target, Trash2, Type,
 } from "lucide-react";
 import { SYNTHETIC_META } from "../data/enterpriseDemoData";
-import { createReportClient, ReportApiError, usesFixtureReportClient } from "../api/reportClient";
+import { createLatestRequestGuard, createReportClient, ReportApiError, usesFixtureReportClient, withBusy } from "../api/reportClient";
 import { normalizeDraftLayout, serializeDraftLayout, toReportBlockRequest } from "../contracts/report";
 import { createUuid } from "../utils/createUuid";
 
@@ -184,6 +184,7 @@ function apiError(error) {
 
 function ReportApiPage() {
   const client = useMemo(() => createReportClient(), []);
+  const nextDefinitionRequest = useMemo(() => createLatestRequestGuard(), []);
   const [definitions, setDefinitions] = useState([]);
   const [definitionState, setDefinitionState] = useState("loading");
   const [runs, setRuns] = useState([]);
@@ -192,7 +193,7 @@ function ReportApiPage() {
   const [apiBlocks, setApiBlocks] = useState([]);
   const [selectedRun, setSelectedRun] = useState(null);
   const [command, setCommand] = useState(null);
-  const [pending, setPending] = useState("");
+  const [pendingCount, setPendingCount] = useState(0);
   const [error, setError] = useState("");
 
   const upsertDefinition = (definition) => {
@@ -209,6 +210,7 @@ function ReportApiPage() {
       const items = await client.listDefinitions();
       setDefinitions(items);
       setDefinitionState(items.length ? "ready" : "empty");
+      setError("");
     } catch (nextError) {
       setError(apiError(nextError));
       setDefinitionState("error");
@@ -220,6 +222,7 @@ function ReportApiPage() {
       const items = await client.listRuns();
       setRuns(items);
       setRunState(items.length ? "ready" : "empty");
+      setError("");
     } catch (nextError) {
       setError(apiError(nextError));
       setRunState("error");
@@ -227,13 +230,13 @@ function ReportApiPage() {
   };
   useEffect(() => { void loadDefinitions(); void loadRuns(); }, []);
 
-  const mutate = async (name, action) => {
-    setPending(name);
+  const mutate = async (action, isCurrent = () => true) => {
     setError("");
-    try { return await action(); } catch (nextError) { setError(apiError(nextError)); return null; } finally { setPending(""); }
+    try { return await withBusy(action, (delta) => setPendingCount((count) => count + delta)); }
+    catch (nextError) { if (isCurrent()) setError(apiError(nextError)); return null; }
   };
   const createDefinition = async () => {
-    const definition = await mutate("create", () => client.createDefinition({
+    const definition = await mutate(() => client.createDefinition({
       definition_id: createUuid(),
       title: "새 Report 정의",
       blocks: [{
@@ -244,12 +247,13 @@ function ReportApiPage() {
     if (definition) { upsertDefinition(definition); setDefinitionState("ready"); }
   };
   const openDefinition = async (definition) => {
-    const current = await mutate("definition", () => client.getDefinition(definition.definitionId, definition.version));
-    if (current) upsertDefinition(current);
+    const isCurrent = nextDefinitionRequest();
+    const current = await mutate(() => client.getDefinition(definition.definitionId, definition.version), isCurrent);
+    if (current && isCurrent()) upsertDefinition(current);
   };
   const saveDraft = async () => {
     if (!selectedDefinition || selectedDefinition.status !== "draft") return;
-    const saved = await mutate("save", () => client.replaceDraftBlocks(
+    const saved = await mutate(() => client.replaceDraftBlocks(
       selectedDefinition.definitionId,
       selectedDefinition.version,
       apiBlocks.map(toReportBlockRequest),
@@ -258,19 +262,19 @@ function ReportApiPage() {
   };
   const approve = async () => {
     if (!selectedDefinition || selectedDefinition.status !== "draft") return;
-    const approved = await mutate("approve", () => client.approveDefinition(
+    const approved = await mutate(() => client.approveDefinition(
       selectedDefinition.definitionId, selectedDefinition.version, new Date().toISOString(),
     ));
     if (approved) upsertDefinition(approved);
   };
   const createNextDraft = async () => {
     if (!selectedDefinition || selectedDefinition.status !== "approved") return;
-    const draft = await mutate("draft", () => client.createNextDraft(selectedDefinition.definitionId, selectedDefinition.version));
+    const draft = await mutate(() => client.createNextDraft(selectedDefinition.definitionId, selectedDefinition.version));
     if (draft) upsertDefinition(draft);
   };
   const queueManualRun = async () => {
     if (!selectedDefinition || selectedDefinition.status !== "approved") return;
-    const receipt = await mutate("manual", () => client.createManualRun({
+    const receipt = await mutate(() => client.createManualRun({
       definition_id: selectedDefinition.definitionId,
       version: selectedDefinition.version,
       as_of: new Date().toISOString(),
@@ -279,13 +283,13 @@ function ReportApiPage() {
     if (receipt) setCommand(receipt);
   };
   const openRun = async (run) => {
-    const detail = await mutate("run", () => client.getRun(run.runId));
+    const detail = await mutate(() => client.getRun(run.runId));
     if (detail) setSelectedRun(detail);
   };
 
   return <div className="page-content report-api-page">
     <div className="meta-strip"><Info size={13} />ACTUAL LOCAL REPORT API<span>REPORT_ADMIN owner scope</span><span>worker 미연결</span></div>
-    <header className="card report-api-header"><div><p>REPORT API</p><h2>서버 Report 정의와 실행 이력</h2><small>화면은 API 응답 상태만 표시하며 오류 시 fixture로 전환하지 않습니다.</small></div><div><button onClick={() => void loadDefinitions()} disabled={definitionState === "loading"}><RotateCcw size={14} />정의 새로고침</button><button className="primary" onClick={() => void createDefinition()} disabled={Boolean(pending)}><FilePlus2 size={14} />초안 생성</button></div></header>
+    <header className="card report-api-header"><div><p>REPORT API</p><h2>서버 Report 정의와 실행 이력</h2><small>화면은 API 응답 상태만 표시하며 오류 시 fixture로 전환하지 않습니다.</small></div><div><button onClick={() => void loadDefinitions()} disabled={definitionState === "loading"}><RotateCcw size={14} />정의 새로고침</button><button className="primary" onClick={() => void createDefinition()} disabled={pendingCount > 0}><FilePlus2 size={14} />초안 생성</button></div></header>
     {error && <p className="report-api-state error" role="alert" aria-live="assertive">{/^40[13]/.test(error) ? <ShieldAlert size={17} /> : <AlertTriangle size={17} />}{error}</p>}
     <section className="report-api-grid">
       <article className="card report-api-panel"><header><h3>정의·버전</h3><small>서버가 반환한 title·version·status</small></header>
@@ -301,7 +305,7 @@ function ReportApiPage() {
         {runState === "ready" && <div className="report-api-list">{runs.map((run) => <button aria-pressed={selectedRun?.runId === run.runId} onClick={() => void openRun(run)} key={run.runId}><span><b>{run.status}</b><small>{run.runId}</small></span><em>definition v{run.definitionVersion}</em></button>)}</div>}
       </article>
     </section>
-    {selectedDefinition && <section className="card report-api-editor" aria-live="polite"><header><div><small>{selectedDefinition.definitionId}</small><h3>{selectedDefinition.title} · v{selectedDefinition.version}</h3><p>{selectedDefinition.status}{selectedDefinition.approvedAt ? ` · ${selectedDefinition.approvedAt}` : ""}</p></div><div>{selectedDefinition.status === "draft" ? <><button onClick={() => void saveDraft()} disabled={Boolean(pending)}><Save size={14} />초안 저장</button><button className="primary" onClick={() => void approve()} disabled={Boolean(pending)}><Check size={14} />명시적 승인</button></> : <><button onClick={() => void createNextDraft()} disabled={Boolean(pending)}><FilePlus2 size={14} />다음 초안</button><button className="primary" onClick={() => void queueManualRun()} disabled={Boolean(pending)}><Clock3 size={14} />수동 실행 요청</button></>}</div></header>
+    {selectedDefinition && <section className="card report-api-editor" aria-live="polite"><header><div><small>{selectedDefinition.definitionId}</small><h3>{selectedDefinition.title} · v{selectedDefinition.version}</h3><p>{selectedDefinition.status}{selectedDefinition.approvedAt ? ` · ${selectedDefinition.approvedAt}` : ""}</p></div><div>{selectedDefinition.status === "draft" ? <><button onClick={() => void saveDraft()} disabled={pendingCount > 0}><Save size={14} />초안 저장</button><button className="primary" onClick={() => void approve()} disabled={pendingCount > 0}><Check size={14} />명시적 승인</button></> : <><button onClick={() => void createNextDraft()} disabled={pendingCount > 0}><FilePlus2 size={14} />다음 초안</button><button className="primary" onClick={() => void queueManualRun()} disabled={pendingCount > 0}><Clock3 size={14} />수동 실행 요청</button></>}</div></header>
       <div className="report-api-blocks">{apiBlocks.map((block) => <article key={block.id}><header><b>{block.title}</b><small>{block.type} · x{block.x + 1} y{block.y + 1} · {block.w}×{block.h}</small></header>{block.type === "text" ? <textarea aria-label={`${block.title} 내용`} disabled={selectedDefinition.status !== "draft"} value={block.content || ""} onChange={(event) => setApiBlocks((current) => current.map((item) => item.id === block.id ? { ...item, content: event.target.value } : item))} /> : <p>Artifact {block.artifactId}<br />Query {block.queryId || "—"}</p>}</article>)}</div>
     </section>}
     {command && <section className="card report-command-receipt" role="status" aria-live="polite"><Clock3 size={18} /><div><b>서버가 수동 실행 명령을 queued로 접수했습니다.</b><p>command {command.command_id} · 이 응답에는 run_id가 없으며 worker 진행 상태를 나타내지 않습니다.</p></div></section>}

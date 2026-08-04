@@ -22,7 +22,7 @@ import {
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
 import { catalogSources, I3_DATA_CONTRACT_VERSION } from "../../app/enterprise-react/src/data/catalogFixtures.ts";
 import { createHttpAnalysisClient, usesMockAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
-import { createReportClient, ReportApiError, usesFixtureReportClient } from "../../app/enterprise-react/src/api/reportClient.ts";
+import { createLatestRequestGuard, createReportClient, ReportApiError, usesFixtureReportClient, withBusy } from "../../app/enterprise-react/src/api/reportClient.ts";
 
 const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/package.json", import.meta.url)));
 const g1ClarificationFixture = JSON.parse(
@@ -283,10 +283,13 @@ assert.equal(reportRequests.length, 9);
 assert.deepEqual(reportRequests.map(({ init }) => init.method), ["POST", "GET", "GET", "POST", "POST", "PUT", "GET", "GET", "POST"]);
 for (const { init } of reportRequests) {
   assert.equal(init.headers.Authorization, "Bearer synthetic-local");
+  assert.equal(init.headers["X-As-Of"], "2026-08-04");
   assert.equal(init.headers["X-Contract-Version"], "OPENAPI-v1.0.0");
   assert.equal(init.headers["X-Role"], "report_admin");
   assert.equal(init.headers["X-Timezone"], "Asia/Seoul");
   assert.match(init.headers["X-Trace-Id"], /^[0-9a-f-]{36}$/);
+  assert.equal(init.headers["X-User-Id"], "00000000-0000-0000-0000-000000000001");
+  assert.equal(init.headers["Content-Type"], init.body === undefined ? undefined : "application/json");
 }
 assert.deepEqual(Object.keys(JSON.parse(reportRequests[8].init.body)).sort(), ["as_of", "definition_id", "idempotency_key", "version"]);
 assert.equal(manualReceipt.status, "queued");
@@ -302,6 +305,42 @@ assert.equal(failedRequestCount, 1);
 
 const wrongVersionClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({ contract_version: "REPORT-v2.0.0", items: [] }), { status: 200 }));
 await assert.rejects(() => wrongVersionClient.listDefinitions(), /지원하지 않는 Report 계약/);
+
+const nextRequest = createLatestRequestGuard();
+let selectedDefinitionId;
+let resolveA;
+let resolveB;
+const selectDefinition = async (promise) => {
+  const isCurrent = nextRequest();
+  const definition = await promise;
+  if (isCurrent()) selectedDefinitionId = definition;
+};
+const requestA = selectDefinition(new Promise((resolve) => { resolveA = resolve; }));
+const requestB = selectDefinition(new Promise((resolve) => { resolveB = resolve; }));
+resolveB("definition-B");
+await requestB;
+resolveA("definition-A");
+await requestA;
+assert.equal(selectedDefinitionId, "definition-B");
+assert.match(reportsPageSource, /const isCurrent = nextDefinitionRequest\(\)/);
+assert.match(reportsPageSource, /if \(current && isCurrent\(\)\) upsertDefinition\(current\)/);
+
+let activeRequests = 0;
+let resolveBusyA;
+let resolveBusyB;
+const changeBusy = (delta) => { activeRequests += delta; };
+const busyA = withBusy(() => new Promise((resolve) => { resolveBusyA = resolve; }), changeBusy);
+const busyB = withBusy(() => new Promise((resolve) => { resolveBusyB = resolve; }), changeBusy);
+assert.equal(activeRequests, 2);
+resolveBusyA();
+await busyA;
+assert.equal(activeRequests, 1);
+resolveBusyB();
+await busyB;
+assert.equal(activeRequests, 0);
+assert.match(reportsPageSource, /disabled=\{pendingCount > 0\}/);
+assert.match(reportsPageSource, /setDefinitionState\(items\.length \? "ready" : "empty"\);\s+setError\(""\)/);
+assert.match(reportsPageSource, /setRunState\(items\.length \? "ready" : "empty"\);\s+setError\(""\)/);
 
 const approved = Object.freeze({
   definitionId: "report-001",

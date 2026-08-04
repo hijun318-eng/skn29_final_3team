@@ -19,6 +19,19 @@ const env = import.meta.env ?? {};
 
 export const usesFixtureReportClient = env.VITE_REPORT_MODE === "fixture";
 
+export function createLatestRequestGuard() {
+  let latest = 0;
+  return () => {
+    const request = ++latest;
+    return () => request === latest;
+  };
+}
+
+export async function withBusy<T>(action: () => Promise<T>, change: (delta: number) => void): Promise<T> {
+  change(1);
+  try { return await action(); } finally { change(-1); }
+}
+
 export class ReportApiError extends Error {
   readonly status: number;
   readonly code: string;

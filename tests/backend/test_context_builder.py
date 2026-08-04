@@ -12,7 +12,9 @@ from app.services.context_builder import (
     ContextBuildError,
     ContextBuildErrorCode,
     ContextBuildRequest,
+    ContextMetric,
     ContextPackageBuilder,
+    ContextRequiredFilter,
 )
 
 
@@ -67,6 +69,70 @@ class ContextPackageBuilderTest(unittest.TestCase):
 
         self.assertEqual(first.package_hash, second.package_hash)
         self.assertEqual(64, len(first.package_hash))
+
+    def test_entitled_metric_and_required_filters_change_package_hash(self) -> None:
+        base_filter = ContextRequiredFilter("is_forecast", "eq", False)
+        metric = ContextMetric(
+            "recognized_room_revenue",
+            "serving.analytics.hotel_daily_metrics",
+            "room_revenue",
+            "sum",
+            "business_date",
+            (base_filter,),
+        )
+        asset = ContextAsset(
+            urn="urn:li:dataset:hotel_daily_metrics",
+            fqn="serving.analytics.hotel_daily_metrics",
+            columns=("room_revenue", "business_date", "is_forecast"),
+            metrics=(metric,),
+            metric_registry_required=True,
+        )
+        first = self.builder.build(
+            self.request(assets=(asset,)), frozenset({asset.urn})
+        )
+        changed_metric = ContextMetric(
+            metric.id,
+            metric.asset_fqn,
+            metric.field,
+            metric.aggregation,
+            metric.time_field,
+            (ContextRequiredFilter("is_forecast", "eq", True),),
+        )
+        changed_asset = ContextAsset(
+            asset.urn,
+            asset.fqn,
+            asset.columns,
+            metrics=(changed_metric,),
+            metric_registry_required=True,
+        )
+        second = self.builder.build(
+            self.request(assets=(changed_asset,)), frozenset({asset.urn})
+        )
+
+        self.assertEqual((metric,), first.metrics)
+        self.assertNotEqual(first.package_hash, second.package_hash)
+
+    def test_duplicate_metric_id_fails_closed(self) -> None:
+        metric = ContextMetric(
+            "duplicate",
+            self.pms.fqn,
+            "reservation_id",
+            "count",
+            "check_in_date",
+            (ContextRequiredFilter("reservation_id", "eq", "synthetic"),),
+        )
+        duplicated = ContextAsset(
+            self.pms.urn,
+            self.pms.fqn,
+            self.pms.columns,
+            metrics=(metric, metric),
+            metric_registry_required=True,
+        )
+
+        with self.assertRaisesRegex(ContextBuildError, "중복"):
+            self.builder.build(
+                self.request(assets=(duplicated,)), frozenset({duplicated.urn})
+            )
 
     def test_package_is_immutable(self) -> None:
         package = self.builder.build(

@@ -16,8 +16,10 @@ from app.ports.data_platform import DataPlatformAdapter
 from app.services.context_builder import (
     ContextAsset,
     ContextBuildRequest,
+    ContextMetric,
     ContextPackage,
     ContextPackageBuilder,
+    ContextRequiredFilter,
 )
 
 
@@ -54,6 +56,25 @@ class PipelineSupport:
                     )["columns"]
                 ),
                 join_ids=tuple(str(join_id) for join_id in asset.get("join_ids", ())),
+                metrics=tuple(
+                    ContextMetric(
+                        id=str(metric["id"]),
+                        asset_fqn=str(metric["asset_fqn"]),
+                        field=str(metric["field"]),
+                        aggregation=str(metric["aggregation"]),
+                        time_field=str(metric["time_field"]),
+                        required_filters=tuple(
+                            ContextRequiredFilter(
+                                field=str(item["field"]),
+                                operator=str(item["operator"]),
+                                value=item["value"],
+                            )
+                            for item in metric["required_filters"]
+                        ),
+                    )
+                    for metric in asset.get("metrics", ())
+                ),
+                metric_registry_required="metrics" in asset,
             )
             for asset in assets
         )
@@ -160,7 +181,35 @@ class PipelineSupport:
                 or queried != {item.fqn.lower() for item in package.assets}
             ):
                 return "UNAPPROVED_JOIN"
+        if any(
+            not PipelineSupport._required_filter_matches(normalized, item)
+            for metric in package.metrics
+            for item in metric.required_filters
+        ):
+            return "METRIC_FILTER_MISSING"
         return None
+
+    @staticmethod
+    def _required_filter_matches(sql: str, required: ContextRequiredFilter) -> bool:
+        if required.operator != "eq":
+            return False
+        where = re.search(
+            r"\bwhere\b(.+?)(?:\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)",
+            sql,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if where is None or re.search(r"\bor\b", where.group(1), re.IGNORECASE):
+            return False
+        field = re.escape(required.field.lower())
+        values = re.findall(
+            rf"(?<![a-z0-9_])(?:[a-z_][a-z0-9_]*\.)?{field}\s*=\s*"
+            r"(?:'([^']*)'|(true|false))(?![a-z0-9_])",
+            where.group(1),
+            flags=re.IGNORECASE,
+        )
+        expected = str(required.value).lower()
+        normalized = [string.lower() if string else boolean.lower() for string, boolean in values]
+        return bool(normalized) and all(value == expected for value in normalized)
 
     @staticmethod
     def model_plan_violation(plan: object) -> str | None:

@@ -5,6 +5,7 @@ import {
   Quote, RotateCcw, Save, Send, Share2, Sparkles, Table2, Target, Trash2, Type,
 } from "lucide-react";
 import { SYNTHETIC_META } from "../data/enterpriseDemoData";
+import { normalizeDraftLayout, serializeDraftLayout } from "../contracts/report";
 
 const REPORTS = [
   { id: 1, type: "주간", period: "07/21~07/27", status: "초안", author: "박준희", updated: "10분 전 수정" },
@@ -70,21 +71,32 @@ const BASIC_BLOCKS = {
   divider: { type: "divider", title: "구분선", content: "", span: 2 },
 };
 
-const INITIAL_BLOCKS = BLOCK_CATALOG.slice(0, 5).map((block, index) => ({ ...block, id: `${block.key}-${index}` }));
+const toLayoutBlock = (block) => ({
+  ...block,
+  columns: block.w ?? (block.span ?? 2) * 6,
+  w: block.w ?? (block.span ?? 2) * 6,
+  h: block.h ?? 4,
+});
+
+const INITIAL_BLOCKS = normalizeDraftLayout(
+  BLOCK_CATALOG.slice(0, 5).map((block, index) => toLayoutBlock({ ...block, id: `${block.key}-${index}` })),
+);
 
 function initialEditorBlocks() {
   try {
     const candidate = JSON.parse(window.sessionStorage.getItem("answervice.report.artifact"));
     if (!candidate?.artifactId) return INITIAL_BLOCKS;
-    return [{
+    return normalizeDraftLayout([{
       id: `artifact-${candidate.artifactId}`,
       key: "chat-artifact",
       type: "text",
       title: candidate.question || "Chat Artifact",
       content: `Artifact ${candidate.artifactId}\nQuery ${candidate.queryId || "—"}\nSources ${(candidate.sourceUrns || []).join(", ") || "—"}`,
       artifactId: candidate.artifactId,
-      span: 2,
-    }, ...INITIAL_BLOCKS];
+      columns: 12,
+      w: 12,
+      h: 4,
+    }, ...INITIAL_BLOCKS]);
   } catch {
     return INITIAL_BLOCKS;
   }
@@ -92,7 +104,8 @@ function initialEditorBlocks() {
 
 function savedEditorBlocks(reportId) {
   try {
-    return JSON.parse(window.localStorage.getItem(`answervice.report.blocks.${reportId}`)) || initialEditorBlocks();
+    const saved = JSON.parse(window.localStorage.getItem(`answervice.report.blocks.${reportId}`));
+    return saved ? normalizeDraftLayout(saved.map(toLayoutBlock)) : initialEditorBlocks();
   } catch {
     return initialEditorBlocks();
   }
@@ -148,11 +161,12 @@ export function ReportsPage() {
     setReports((current) => [report, ...current]);
     setSelectedReport(report);
     setEditorBlocks(blocks);
-    window.localStorage.setItem(`answervice.report.blocks.${report.id}`, JSON.stringify(blocks));
+    window.localStorage.setItem(`answervice.report.blocks.${report.id}`, serializeDraftLayout(blocks));
     setView("editor");
   };
   const saveReport = () => {
-    window.localStorage.setItem(`answervice.report.blocks.${selectedReport.id}`, JSON.stringify(editorBlocks));
+    if (selectedReport.status !== "초안") return;
+    window.localStorage.setItem(`answervice.report.blocks.${selectedReport.id}`, serializeDraftLayout(editorBlocks));
     setReports((current) => current.map((report) => report.id === selectedReport.id ? { ...report, updated: "방금 저장" } : report));
     notify("보고서 초안을 저장했습니다.");
   };
@@ -164,21 +178,28 @@ export function ReportsPage() {
     setView("document");
   };
   useEffect(() => {
-    if (view === "editor") window.localStorage.setItem(`answervice.report.blocks.${selectedReport.id}`, JSON.stringify(editorBlocks));
-  }, [editorBlocks, selectedReport.id, view]);
+    if (view === "editor" && selectedReport.status === "초안") {
+      window.localStorage.setItem(`answervice.report.blocks.${selectedReport.id}`, serializeDraftLayout(editorBlocks));
+    }
+  }, [editorBlocks, selectedReport.id, selectedReport.status, view]);
   useEffect(() => {
     window.localStorage.setItem("answervice.reports", JSON.stringify(reports));
   }, [reports]);
-  const createBlock = (item) => ({ ...item, id: `${item.key || item.type}-${Date.now()}-${Math.random().toString(16).slice(2)}` });
+  const createBlock = (item) => toLayoutBlock({ ...item, id: `${item.key || item.type}-${Date.now()}-${Math.random().toString(16).slice(2)}` });
+  const addBlock = (item) => {
+    const block = createBlock(item);
+    setEditorBlocks((current) => normalizeDraftLayout([...current, block]));
+    notify(`${block.title} 블록을 추가했습니다.`);
+  };
   const dropLibraryItem = (targetId) => {
     if (!draggedLibraryItem) return false;
     const block = createBlock(draggedLibraryItem.kind === "catalog" ? draggedLibraryItem.value : BASIC_BLOCKS[draggedLibraryItem.value]);
     setEditorBlocks((current) => {
-      if (!targetId) return [...current, block];
+      if (!targetId) return normalizeDraftLayout([...current, block]);
       const targetIndex = current.findIndex((item) => item.id === targetId);
       const next = [...current];
       next.splice(targetIndex < 0 ? next.length : targetIndex, 0, block);
-      return next;
+      return normalizeDraftLayout(next);
     });
     setDraggedLibraryItem(null);
     notify(`${block.title} 블록을 배치했습니다.`);
@@ -192,9 +213,28 @@ export function ReportsPage() {
       const next = [...current];
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
-      return next;
+      return normalizeDraftLayout(next);
     });
     setDraggedBlockId(null);
+  };
+  const moveBlockBy = (blockId, offset) => {
+    setEditorBlocks((current) => {
+      const from = current.findIndex((block) => block.id === blockId);
+      const to = Math.max(0, Math.min(current.length - 1, from + offset));
+      if (from < 0 || from === to) return current;
+      const next = [...current];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return normalizeDraftLayout(next);
+    });
+  };
+  const resizeBlock = (blockId, dimension, amount) => {
+    setEditorBlocks((current) => normalizeDraftLayout(current.map((block) => {
+      if (block.id !== blockId) return block;
+      const limit = dimension === "w" ? 12 : 8;
+      const value = Math.max(1, Math.min(limit, block[dimension] + amount));
+      return dimension === "w" ? { ...block, w: value, columns: value } : { ...block, h: value };
+    })));
   };
 
   if (view === "list") return <div className="page-content enterprise-reports-list">
@@ -205,8 +245,8 @@ export function ReportsPage() {
   </div>;
 
   if (view === "editor") return <div className="enterprise-report-editor">
-    <aside className="card editor-library"><header><p>BLOCK LIBRARY</p><h2>보고서 에디터</h2><span>블록을 문서로 끌어 배치하세요.</span></header><section><h3><Sparkles size={14} />자연어로 차트 만들기</h3><textarea placeholder="예: 지난달 객실 매출과 점유율 추이 차트" /><button onClick={() => setEditorBlocks((current) => [...current, createBlock({ ...BASIC_BLOCKS.kpi, type: "chart", title: "AI 생성 차트", values: [8, 12, 10, 16, 13, 18, 14], caption: "자연어 요청 기반 synthetic chart" })])}><BarChart3 size={14} />차트 생성</button></section><div className="editor-catalog"><p>기존 보고서 구성</p>{BLOCK_CATALOG.map((block) => <button draggable onDragStart={() => setDraggedLibraryItem({ kind: "catalog", value: block })} onDragEnd={() => setDraggedLibraryItem(null)} key={block.key}><span>{block.type === "chart" ? <BarChart3 size={14} /> : <FileOutput size={14} />}</span><div><small>{block.group}</small><b>{block.title}</b><em>{block.description}</em></div><GripVertical size={14} /></button>)}</div><div className="editor-basic"><p>기본 블록</p>{[["heading",Type,"제목"],["text",FileOutput,"텍스트"],["quote",Quote,"인용"],["kpi",Target,"KPI"],["table",Table2,"표"],["divider",Minus,"구분선"]].map(([type,Icon,label]) => <button draggable onDragStart={() => setDraggedLibraryItem({ kind: "basic", value: type })} onDragEnd={() => setDraggedLibraryItem(null)} key={type}><Icon size={14} />{label}</button>)}</div></aside>
-    <main className="editor-workspace"><header className="card editor-topbar"><div><button onClick={() => setView("list")}><ArrowLeft size={14} />보고서 목록</button><p>REPORT BLOCK EDITOR</p><h2>{selectedReport.type} 보고서 · {selectedReport.period}</h2></div><div><span><Check size={13} />자동 저장됨</span><button onClick={() => notify("PDF 내보내기를 준비했습니다.")}><Download size={14} />PDF</button><button onClick={saveReport}><Save size={14} />저장</button><button className="primary" onClick={finalizeReport}><Check size={14} />확정</button></div></header><section className={`editor-canvas ${draggedLibraryItem ? "drop-ready" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropLibraryItem(); }}>{editorBlocks.map((block, index) => <article className={`card editor-block span-${block.span || 2} ${draggedBlockId === block.id ? "dragging" : ""}`} draggable onDragStart={() => { setDraggedLibraryItem(null); setDraggedBlockId(block.id); }} onDragEnd={() => setDraggedBlockId(null)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.stopPropagation(); if (!dropLibraryItem(block.id)) moveBlock(block.id); }} key={block.id}><header><div><GripVertical size={16} /><b>{index + 1}. {block.title}</b></div><nav><button onClick={() => setEditorBlocks((current) => current.map((item) => item.id === block.id ? { ...item, span: (item.span || 2) === 2 ? 1 : 2 } : item))}><Columns2 size={13} />{block.span || 2}칸</button><button onClick={() => setEditorBlocks((current) => current.filter((item) => item.id !== block.id))}><Trash2 size={13} /></button></nav></header>{block.type === "chart" ? <><div className="editor-chart">{block.values.map((value, valueIndex) => <div key={`${block.id}-${valueIndex}`}><b>{value}</b><i style={{ height: `${Math.max(24, (value / Math.max(...block.values)) * 118)}px` }} /><small>{valueIndex + 1}</small></div>)}</div><p>{block.caption}</p><button className="regenerate" onClick={() => notify(`${block.title} 블록을 다시 생성했습니다.`)}><RotateCcw size={13} /></button></> : block.type === "divider" ? <hr /> : <textarea aria-label={`${block.title} 내용`} className={`block-${block.type}`} value={block.content} onChange={(event) => setEditorBlocks((current) => current.map((item) => item.id === block.id ? { ...item, content: event.target.value } : item))} />}</article>)}</section></main><Toast message={toast} />
+    <aside className="card editor-library"><header><p>BLOCK LIBRARY</p><h2>보고서 에디터</h2><span>드래그하거나 버튼을 눌러 블록을 추가하세요.</span></header><section><h3><Sparkles size={14} />자연어로 차트 만들기</h3><textarea placeholder="예: 지난달 객실 매출과 점유율 추이 차트" /><button onClick={() => addBlock({ ...BASIC_BLOCKS.kpi, type: "chart", title: "AI 생성 차트", values: [8, 12, 10, 16, 13, 18, 14], caption: "자연어 요청 기반 synthetic chart" })}><BarChart3 size={14} />차트 생성</button></section><div className="editor-catalog"><p>기존 보고서 구성</p>{BLOCK_CATALOG.map((block) => <button draggable onClick={() => addBlock(block)} onDragStart={() => setDraggedLibraryItem({ kind: "catalog", value: block })} onDragEnd={() => setDraggedLibraryItem(null)} key={block.key}><span>{block.type === "chart" ? <BarChart3 size={14} /> : <FileOutput size={14} />}</span><div><small>{block.group}</small><b>{block.title}</b><em>{block.description}</em></div><GripVertical size={14} /></button>)}</div><div className="editor-basic"><p>기본 블록</p>{[["heading",Type,"제목"],["text",FileOutput,"텍스트"],["quote",Quote,"인용"],["kpi",Target,"KPI"],["table",Table2,"표"],["divider",Minus,"구분선"]].map(([type,Icon,label]) => <button draggable onClick={() => addBlock(BASIC_BLOCKS[type])} onDragStart={() => setDraggedLibraryItem({ kind: "basic", value: type })} onDragEnd={() => setDraggedLibraryItem(null)} key={type}><Icon size={14} />{label} 추가</button>)}</div></aside>
+    <main className="editor-workspace"><header className="card editor-topbar"><div><button onClick={() => setView("list")}><ArrowLeft size={14} />보고서 목록</button><p>REPORT BLOCK EDITOR</p><h2>{selectedReport.type} 보고서 · {selectedReport.period}</h2><small>LOCAL SYNTHETIC FIXTURE · 12-column draft</small></div><div><span role="status"><Check size={13} />로컬 초안 자동 저장</span><button onClick={() => notify("PDF 내보내기를 준비했습니다.")}><Download size={14} />PDF</button><button onClick={saveReport}><Save size={14} />저장</button><button className="primary" onClick={finalizeReport}><Check size={14} />확정</button></div></header><section className={`editor-canvas ${draggedLibraryItem ? "drop-ready" : ""}`} aria-label="12-column 보고서 초안 배치" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropLibraryItem(); }}>{editorBlocks.map((block, index) => <article className={`card editor-block ${draggedBlockId === block.id ? "dragging" : ""}`} style={{ "--block-x": block.x + 1, "--block-y": block.y + 1, "--block-w": block.w, "--block-h": block.h }} draggable onDragStart={() => { setDraggedLibraryItem(null); setDraggedBlockId(block.id); }} onDragEnd={() => setDraggedBlockId(null)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.stopPropagation(); if (!dropLibraryItem(block.id)) moveBlock(block.id); }} key={block.id}><header><div><GripVertical size={16} /><b>{index + 1}. {block.title}</b><small>x{block.x + 1} y{block.y + 1} · {block.w}×{block.h}</small></div><nav aria-label={`${block.title} 배치 조정`}><button aria-label={`${block.title} 앞으로 이동`} disabled={index === 0} onClick={() => moveBlockBy(block.id, -1)}>↑</button><button aria-label={`${block.title} 뒤로 이동`} disabled={index === editorBlocks.length - 1} onClick={() => moveBlockBy(block.id, 1)}>↓</button><button aria-label={`${block.title} 너비 줄이기`} onClick={() => resizeBlock(block.id, "w", -1)}>−</button><button aria-label={`${block.title} 너비 늘리기`} onClick={() => resizeBlock(block.id, "w", 1)}><Columns2 size={13} />{block.w}/12</button><button aria-label={`${block.title} 높이 줄이기`} onClick={() => resizeBlock(block.id, "h", -1)}>높이−</button><button aria-label={`${block.title} 높이 늘리기`} onClick={() => resizeBlock(block.id, "h", 1)}>높이+</button><button aria-label={`${block.title} 삭제`} onClick={() => setEditorBlocks((current) => normalizeDraftLayout(current.filter((item) => item.id !== block.id)))}><Trash2 size={13} /></button></nav></header>{block.type === "chart" ? <><div className="editor-chart">{block.values.map((value, valueIndex) => <div key={`${block.id}-${valueIndex}`}><b>{value}</b><i style={{ height: `${Math.max(24, (value / Math.max(...block.values)) * 118)}px` }} /><small>{valueIndex + 1}</small></div>)}</div><p>{block.caption}</p><button className="regenerate" onClick={() => notify(`${block.title} 블록을 다시 생성했습니다.`)}><RotateCcw size={13} /></button></> : block.type === "divider" ? <hr /> : <textarea aria-label={`${block.title} 내용`} className={`block-${block.type}`} value={block.content} onChange={(event) => setEditorBlocks((current) => current.map((item) => item.id === block.id ? { ...item, content: event.target.value } : item))} />}</article>)}</section></main><Toast message={toast} />
   </div>;
 
   return <div className="page-content legacy-report-document">

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.10 |
-| 문서 기준일 | 2026-08-04 15:40 |
+| 버전 | v3.11 |
+| 문서 기준일 | 2026-08-04 15:50 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -2843,7 +2843,7 @@ START_POINT=origin/daesung 8c76f1eb1ccc2510fd6bec74b3eec5f65b3e3e48; origin/dev�
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R3-W4-F5@bc08100
 CONTRACT_VERSION=MODEL-CANDIDATE-v0.1; PROMPT-v1.0.9-DRAFT; NODE-IO-v0.1-compatible
-ALLOWED_PATHS=src/ai/contracts/node_io.v0.1.json; src/ai/prompt_registry.py; src/ai/training/build_case_specs.py; tests/ai/**; handoffs/R3-W4-F5.json; docs/markdown/daily_reports/daesung/일일보고.md
+ALLOWED_PATHS=src/ai/**; src/modelops/**; evals/**; tests/ai/**; handoffs/R3-W4-F3.json; handoffs/R3-W4-F4.json; handoffs/R3-W4-F5.json; docs/markdown/daily_reports/daesung/일일보고.md
 FORBIDDEN_PATHS=app/backend/**; src/data/**; infrastructure/database/**; frontend/**; root Compose·env·CI; eval 결과·Gold·Acceptance 덮어쓰기; secret
 HANDOFF_MANIFEST=handoffs/R3-W4-F5.json
 ACCEPTANCE_CRITERIA=context metric에 optional required_filters를 field·operator·value 구조로 추가하고 허용 operator·value type을 schema로 제한한다. build_case_specs가 Source의 필수 predicate를 case나 정답 SQL hardcode 없이 이 구조로 보존하며 prompt는 이 필터를 정확히 적용하도록 일반 규칙을 추가한다. validation-0228의 txn_type=EXPIRE·is_forecast=false와 기존 분석 View의 ACTUAL·non-forecast가 생성 Context에 포함됨을 test로 확인한다. 기존 required field와 payload는 호환 유지하고 raw SQL predicate를 새 trust-boundary 입력으로 허용하지 않는다.
@@ -2854,6 +2854,70 @@ STOP_CONDITIONS=case ID·정답 SQL hardcode; unrestricted SQL filter string 추
 EXTERNAL_ACTION_PERMISSION=없음. local code·test·허용 경로 commit·daesung push만 승인한다.
 AUTO_FAIL_CONDITIONS=unrestricted predicate; hardcode; 외부 실행·비용; 기존 schema 비호환; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=구조화 필터 schema·생성 Context·prompt·AI test·branch CI를 제출한다. 통과해도 R4 소비자나 cloud smoke는 별도 발행 전까지 대기한다.
+```
+
+### R4-W4-F3
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W4-F3
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=Report production registration
+TASK_CARD_RANGE=R4-16 Report 공통 등록
+CURRENT_TASK_CARD_ID=R4-16
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=f82df8d3fb1709347af80d45c07152e32f22b1ce
+START_POINT=origin/jaehong 75807e51a8ffcb73336e657600059f41ca0ded39; origin/dev를 merge한 뒤 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W4-F3@f82df8d
+CONTRACT_VERSION=REPORT-v1.0.0-compatible; OPENAPI-v1.0.0; migration head new
+ALLOWED_PATHS=app/backend/app/**; app/backend/migrations/versions/**; app/backend/README.md; tests/backend/**; tests/report/**; handoffs/R4-W4-F3.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/report/**; src/data/**; src/ai/**; frontend/**; root Compose·env·CI; 기존 migration 수정; secret
+HANDOFF_MANIFEST=handoffs/R4-W4-F3.json
+ACCEPTANCE_CRITERIA=기존 src/report proposal 계약을 FastAPI Control Plane에 등록하고 인증·권한을 적용한다. Report definition·version·block·run·block_run을 기존 Alembic head 뒤의 새 revision 하나로 영속화한다. 승인 version은 불변이고 승인 definition만 run 가능하며 duplicate run_id를 차단한다. 기존 migration과 R5 proposal은 수정하지 않고 worker·schedule runtime은 구현하지 않는다. README migration head를 실제 값으로 갱신한다.
+ACCEPTANCE_IDS=AC1_ROUTER;AC2_AUTH;AC3_NEW_MIGRATION;AC4_IMMUTABLE_APPROVED;AC5_APPROVED_RUN_ONLY;AC6_DUPLICATE_RUN;AC7_EXISTING_MIGRATION;AC8_NO_WORKER
+TEST_COMMANDS=python -m pytest tests/backend tests/report -q; 빈 DB와 기존 DB alembic upgrade head; python -m compileall -q app/backend/app; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_BACKEND_REPORT;T2_MIGRATION;T3_COMPILE;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=기존 migration 수정; worker·schedule 구현 필요; R5 proposal 변경 필요; 허용 경로 밖 변경; 외부 서비스·비용·secret 필요; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local code·test·허용 경로 commit·jaehong push만 승인한다.
+AUTO_FAIL_CONDITIONS=인증 우회; 승인본 수정; 미승인 run; duplicate run 허용; migration chain 분기; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=새 migration·router·권한·불변성·중복 차단·branch CI를 제출한다. worker와 실제 schedule은 별도 발행 전 대기한다.
+```
+
+### R5-W4-F1
+
+```text
+STATUS=READY
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W4-F1
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=12-column Report editor
+TASK_CARD_RANGE=R5-11 Report editor
+CURRENT_TASK_CARD_ID=R5-11
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=f82df8d3fb1709347af80d45c07152e32f22b1ce
+START_POINT=origin/minji f8e9eb5c261a452e01a347039605d416b6fb4cc4; origin/dev를 merge한 뒤 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R5-W4-F1@f82df8d
+CONTRACT_VERSION=REPORT-v1.0.0-compatible; SCR-RPT-003; RPE-01~08
+ALLOWED_PATHS=app/enterprise-react/src/contracts/report.ts; app/enterprise-react/src/pages/ReportsPage.jsx; app/enterprise-react/src/styles.css; tests/frontend/contracts.test.mjs; handoffs/R5-W4-F1.json; docs/markdown/daily_reports/minji/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/report/**; src/data/**; src/ai/**; root Compose·env·CI; 다른 화면·route; secret
+HANDOFF_MANIFEST=handoffs/R5-W4-F1.json
+ACCEPTANCE_CRITERIA=SCR-RPT-003에서 block의 x·y·w·h를 사용하는 실제 12-column draft layout을 직렬화한다. add·move·resize·delete에는 keyboard 대안을 제공하고 draft만 변경할 수 있으며 승인본을 자동 덮어쓰지 않는다. Chat Artifact ID를 보존하고 local fixture임을 명시한다. manual run·history·schedule·실제 API 성공은 구현하거나 주장하지 않는다.
+ACCEPTANCE_IDS=AC1_12_COLUMN;AC2_SERIALIZE;AC3_ADD_MOVE_RESIZE_DELETE;AC4_KEYBOARD;AC5_DRAFT_ONLY;AC6_ARTIFACT_ID;AC7_FIXTURE_LABEL;AC8_SCOPE
+TEST_COMMANDS=cd app/enterprise-react && npm run build; node tests/frontend/contracts.test.mjs; 1440·1024·768·360px keyboard·focus 수동 확인; python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_BUILD;T2_CONTRACT;T3_VISUAL_KEYBOARD;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=새 dependency 필요; backend·route 변경 필요; 승인본 mutation; keyboard 대안 누락; manual run·history·schedule·API 구현 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local code·test·허용 경로 commit·minji push만 승인한다.
+AUTO_FAIL_CONDITIONS=승인본 덮어쓰기; local fixture를 실제 API로 표시; 접근성 회귀; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=12-column state·keyboard·draft 불변성·Artifact ID·build·contract·branch CI를 제출한다. 실제 run/history/schedule/API는 R4 등록 뒤 별도 발행 전 대기한다.
 ```
 
 ## I5 이후 후속 단계 예약
@@ -2904,6 +2968,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.11 | 2026-08-04 15:50 | R3 F5의 누적 F3/F4 증거가 role scope에 걸리는 오탐을 이전 승인 경로와의 합집합으로 교정했다. I4의 독립 local-only 작업으로 R4-W4-F3 Report production 등록과 R5-W4-F1 12-column editor를 발행하고 worker·schedule·실제 API·외부 비용은 제외했다. |
 | v3.10 | 2026-08-04 15:40 | F4 CRM 실패가 모델에 전달되지 않은 metric 필수 필터 계약에서 시작됐음을 확인했다. field·operator·value 구조를 schema·prompt·Validation 생성기에 보존하는 비용 없는 R1-W4-F5·R3-W4-F5를 발행하고 R4 소비·cloud 재평가는 별도 판정으로 남겼다. |
 | v3.09 | 2026-08-04 15:34 | R3-W4-F4는 같은 균형 manifest의 첫 3건을 전 기준 통과했으나 4번째 CRM 소멸 포인트에서 필수 범위·지표 조건을 누락해 result hash가 달랐다. fail-fast·USD 0.0402·F3+F4 USD 0.0825·Pod 삭제·active 0·CI `30884334429`의 의도된 FAIL을 확인해 R1·R3 F4를 BLOCKED·WAIT로 전환하고 추가 cloud 실행을 금지했다. |
 | v3.08 | 2026-08-04 15:01 | 균형 smoke 첫 건은 JSON·G2를 통과했지만 생성 SQL의 `timestamp(3) <= varchar(7)` 타입 오류로 Trino에서 중단했고 정답 SQL은 결과 hash까지 일치했다. USD 0.0423·Pod 삭제·active 0과 의도된 CI 실패를 기록하고, 일반 날짜 타입·synthetic 범위 규칙만 보완해 같은 manifest를 F3+F4 합계 USD 0.35 안에서 한 번 재검증하는 R1-W4-F4·R3-W4-F4를 발행했다. |

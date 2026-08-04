@@ -24,6 +24,8 @@ def normalize_question(payload: dict[str, Any]) -> dict[str, Any]:
     reasons = []
     if not metrics:
         reasons.append("metric_missing")
+    elif len(metrics) > 1:
+        reasons.append("metric_ambiguous")
     if not periods:
         reasons.append("period_missing")
 
@@ -31,6 +33,7 @@ def normalize_question(payload: dict[str, Any]) -> dict[str, Any]:
         "normalized_question": question,
         "intent_candidates": [_intent(question)],
         "metric_candidates": metrics,
+        "selected_metric_id": metrics[0] if len(metrics) == 1 else None,
         "dimension_candidates": dimensions,
         "period_candidates": periods,
         "ambiguity": {
@@ -86,6 +89,8 @@ def _period_candidates(question: str, as_of_text: str, timezone_name: str) -> li
 def _clarification(reasons: list[str]) -> str | None:
     if "metric_missing" in reasons:
         return "확인할 지표를 알려주세요."
+    if "metric_ambiguous" in reasons:
+        return "확인할 지표를 하나만 선택해 주세요."
     if "period_missing" in reasons:
         return "확인할 기간을 알려주세요."
     return None

@@ -221,6 +221,7 @@
         "normalized_question",
         "intent_candidates",
         "metric_candidates",
+        "selected_metric_id",
         "dimension_candidates",
         "period_candidates",
         "ambiguity",
@@ -230,6 +231,7 @@
         "normalized_question": {"type": "string"},
         "intent_candidates": {"type": "array", "items": {"type": "string"}},
         "metric_candidates": {"type": "array", "items": {"type": "string"}},
+        "selected_metric_id": {"type": ["string", "null"], "minLength": 1},
         "dimension_candidates": {"type": "array", "items": {"type": "string"}},
         "period_candidates": {
           "type": "array",

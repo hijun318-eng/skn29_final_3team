@@ -1,5 +1,7 @@
 import copy
+import json
 import unittest
+from pathlib import Path
 
 from src.ai.prompt_registry import get_prompt
 from src.ai.schema import ContractError, schema_version, validate_payload
@@ -66,6 +68,7 @@ VALID_PAYLOADS = {
         "normalized_question": "이번 달 객실 매출을 보여줘",
         "intent_candidates": ["aggregate"],
         "metric_candidates": ["room_revenue"],
+        "selected_metric_id": "room_revenue",
         "dimension_candidates": [],
         "period_candidates": [
             {
@@ -138,6 +141,44 @@ class ContractTests(unittest.TestCase):
         for definition, payload in VALID_PAYLOADS.items():
             with self.subTest(definition=definition):
                 validate_payload(definition, payload)
+
+    def test_node1_selected_metric_is_required_and_nullable(self):
+        missing = copy.deepcopy(VALID_PAYLOADS["node1_response"])
+        missing.pop("selected_metric_id")
+        with self.assertRaises(ContractError):
+            validate_payload("node1_response", missing)
+
+        ambiguous = copy.deepcopy(VALID_PAYLOADS["node1_response"])
+        ambiguous["selected_metric_id"] = None
+        validate_payload("node1_response", ambiguous)
+
+    def test_metric_glossary_contains_only_current_product_metric_aliases(self):
+        glossary = json.loads(
+            Path("src/ai/contracts/metric_glossary.i5.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        expected_ids = {
+            "recognized_room_revenue",
+            "expired_points",
+            "fnb_net_revenue",
+            "facility_revenue",
+            "actual_attendees",
+        }
+
+        self.assertEqual(glossary["version"], "METRIC-GLOSSARY-v1.0.0-DRAFT")
+        self.assertEqual(set(glossary), {"version", "metrics"})
+        self.assertEqual(set(glossary["metrics"]), expected_ids)
+        aliases = [
+            alias.casefold()
+            for values in glossary["metrics"].values()
+            for alias in values
+        ]
+        for values in glossary["metrics"].values():
+            self.assertTrue(all(isinstance(alias, str) and alias for alias in values))
+            self.assertTrue(any(any("가" <= char <= "힣" for char in alias) for alias in values))
+            self.assertTrue(any(any(char.isascii() and char.isalpha() for char in alias) for alias in values))
+        self.assertEqual(len(aliases), len(set(aliases)))
 
     def test_node2_accepts_optional_non_empty_normalized_question(self):
         legacy = copy.deepcopy(VALID_PAYLOADS["node2_request"])

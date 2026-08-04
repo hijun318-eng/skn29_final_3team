@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice의 실행 작업, 담당, 상태, 일정, 산출물, Gate와 병합 순서를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.80 |
-| 문서 기준일 | 2026-08-04 10:41 |
+| 버전 | v7.81 |
+| 문서 기준일 | 2026-08-04 11:20 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 / 3팀 사용자 요청·Codex 반영 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -259,7 +259,7 @@ gantt
 |---|---|---|:--:|:--:|:--:|:--:|:--:|
 | 6.1 | R1-07 필수 30건·gold 120건 평가 원장 관리 | reviewer·split·expected 원장 | 박준희·정승·윤대성 | 완료 | 08/03 | 08/31 | 높음 |
 | 6.2 | R1-09 I2 Deterministic Slice 통합·판정 | 대표 질문 trace·result hash | 박준희·정승·윤대성·김재홍·송민지 | 완료 | 08/10 | 08/14 | 높음 |
-| 6.3 | R1-10 I3 General LLM·보안 기준선 통합 | 일반 질문·model 비교·보안 결과 | 박준희·정승·윤대성·김재홍·송민지 | 진행 | 08/17 | 08/21 | 높음 |
+| 6.3 | R1-10 I3 General LLM·보안 기준선 통합 | 일반 질문·model 비교·보안 결과 | 박준희·정승·윤대성·김재홍·송민지 | 완료 | 08/17 | 08/21 | 높음 |
 | 6.4 | R1-11 I4 Reporting·worker·partial 통합 | Report 왕복 trace | 박준희·김재홍·송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 6.5 | R1-12 read-only·mask·장애·복구·성능 검증 | 수용 시험 증거 | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/24 | 09/02 | 높음 |
 | 6.6 | R1-13 RC1·RC2·I5·최종 Release | release manifest·runbook·승인 SHA | 박준희·정승·윤대성·김재홍·송민지 | 대기 | 08/31 | 09/03 | 높음 |
@@ -361,6 +361,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 11:20 | 1.7, 3.14, 4.9, 6.3 | R3 PROMPT-v1.0.6과 R4 SQL-only guided·결정론적 metadata·2개월 fail-closed를 dev에 통합하고 CI `30870270154` PASS를 확인했다. 고정 Qwen3-4B Base·synthetic Trino read-only 제품 trace `r1-w3-f7-product-trace-retry7`은 2026-06 `843295200.00`, 2026-07 `843453600.00` 두 행과 ROUTER→CONTROLLER→CONTEXT→G1→MODEL→G2→QUERY→G3→ARTIFACT 전 단계 PASS, repair 0회를 반환했다. 비용 상한 USD 0.307711, Pod 404·active 0·secret 로그 0건·기존 Trino·app DB 무변경을 확인했다. 과거 BLOCKED 카드를 우선하던 dashboard 선택도 마지막 발행 묶음 기준으로 교정해 I4 `READY_TO_ISSUE`를 확인하고 6.3을 완료로 전환했다. | I3 VERIFIED_GATE·Wave 3 완료 |
 | 2026-08-04 10:41 | 3.14, 4.9, 6.3 | R1-W3-F7 실제 제품 trace에서 G2 reference 보완 뒤 잉여 parameter, 승인 JOIN 단축·timestamp 타입 오류, verbose guided 응답 불안정과 전월 대비 기간 누락을 확인했다. 실제 성공 경로는 두 달 2행과 MODEL→G2→QUERY→G3→ARTIFACT까지 재현했지만 변경 통합·CI 전이므로 R3-W3-F11과 R4-W3-F4를 승인하고 6.3 진행 상태·일정·간트는 유지한다. Pod 비용 상한 USD 0.307711, 활성 Pod 0, 기존 Trino·앱 DB 무변경을 확인했다. | 실제 의미 병목 분리·R3/R4 최소 보완 승인 |
 | 2026-08-04 09:49 | 3.14, 4.9, 6.3 | R3가 node2 SQL FROM·JOIN과 references의 승인 table 집합을 양방향 정확 일치시키고 mismatch repair도 한 번만 교정하도록 PROMPT-v1.0.5/PROMPT-v1.0.2를 보완했다. prompt 3건·AI 47건·Gate 19건과 dev CI `30866726434` PASS를 확인해 통합하고, 같은 Base·synthetic Trino read-only 제품 trace R1-W3-F7을 승인했다. 실행 전이므로 상태·일정·간트는 유지한다. | R3 reference prompt 완료·제품 재검증 승인 |
 | 2026-08-04 09:37 | 3.14, 4.9, 6.3 | 정상 A40·고정 Qwen3-4B·task backend로 실제 합성 질문을 호출했다. MODEL까지 통과했지만 SQL-reference 불일치와 1회 repair 후 G2 정책 차단으로 QUERY·G3·Artifact가 생성되지 않았다. 제품 응답 hash, task 자원 제거·활성 Pod 0, 기존 Trino·앱 DB의 ID·restart count·health 무변경을 확인하고 R3-W3-F10으로 node2·repair reference 정확 일치 문구만 승인했다. 실제 성공 trace 전이므로 실행 상태·일정·간트는 유지한다. | 제품 G2 reference 병목·R3 최소 보완 승인 |
@@ -474,6 +475,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.81 | 2026-08-04 11:20 | R3·R4 의미 정확성 보완과 dev CI, 고정 Base·synthetic read-only 제품 trace의 두 달 2행·전 단계 PASS·자원 정리를 근거로 6.3을 완료로 전환하고 I3 VERIFIED_GATE를 연결했다. |
 | v7.80 | 2026-08-04 10:41 | 실제 Base 제품 trace의 잉여 parameter·JOIN/기간 의미·guided 응답 병목을 3.14·4.9·6.3에 연결하고 R3-W3-F11·R4-W3-F4를 승인했다. 통합·CI·최종 재검증 전 상태·일정·간트는 유지했다. |
 | v7.79 | 2026-08-04 09:49 | R3 PROMPT-v1.0.5/PROMPT-v1.0.2의 SQL-reference 정확 일치·단일 repair를 dev에 통합하고 제품 trace R1-W3-F7을 3.14·4.9·6.3에 연결했다. 실행 전 상태·일정·간트는 유지했다. |
 | v7.78 | 2026-08-04 09:37 | 정상 A40 제품 trace의 MODEL 통과 뒤 SQL-reference 불일치·repair 후 G2 차단과 cleanup을 3.14·4.9·6.3에 연결하고 R3 prompt 최소 보완을 승인했다. 실제 성공 전 상태·일정·간트는 유지했다. |

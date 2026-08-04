@@ -22,6 +22,7 @@ import {
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
 import { catalogSources, I3_DATA_CONTRACT_VERSION } from "../../app/enterprise-react/src/data/catalogFixtures.ts";
 import { createHttpAnalysisClient, usesMockAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
+import { createReportClient, ReportApiError, usesFixtureReportClient } from "../../app/enterprise-react/src/api/reportClient.ts";
 
 const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/package.json", import.meta.url)));
 const g1ClarificationFixture = JSON.parse(
@@ -139,6 +140,11 @@ assert.equal(analysisFixtures.ready.artifact.artifactId, analysisFixtures.ready.
 assert.equal(analysisFixtures.ready.metrics[0].unit, "KRW");
 assert.ok(analysisFixtures.ready.table.rows.length > 0);
 assert.equal(usesMockAnalysisClient, false);
+assert.equal(usesFixtureReportClient, false);
+assert.match(reportsPageSource, /usesFixtureReportClient \? <FixtureReportsPage \/> : <ReportApiPage \/>/);
+assert.match(reportsPageSource, /오류 시 fixture로 전환하지 않습니다/);
+assert.match(reportsPageSource, /401 · 로그인이 필요합니다/);
+assert.match(reportsPageSource, /403 · REPORT_ADMIN 권한이 필요합니다/);
 assert.match(reportsPageSource, /candidate\.artifactId/);
 assert.match(reportsPageSource, /artifactId: candidate\.artifactId/);
 assert.match(reportsPageSource, /LOCAL SYNTHETIC FIXTURE/);
@@ -183,6 +189,119 @@ assert.equal(JSON.parse(httpRequest.init.body).template_id, "weekly-room-operati
 assert.equal(httpRun.requestId, g1ClarificationFixture.meta.request_id);
 assert.equal(httpRun.traceId, g1ClarificationFixture.meta.trace_id);
 assert.equal(httpRun.error.retryable, false);
+
+const reportDefinitionResponse = {
+  contract_version: REPORT_CONTRACT_VERSION,
+  definition_id: "00000000-0000-0000-0000-000000000101",
+  version: 1,
+  status: "draft",
+  title: "주간 운영 보고서",
+  blocks: [{
+    block_id: "00000000-0000-0000-0000-000000000102",
+    title: "관리자 메모",
+    artifact_id: null,
+    query_id: null,
+    columns: 12,
+    type: "text",
+    x: 0,
+    y: 0,
+    w: 12,
+    h: 2,
+    content: "검토 내용",
+  }],
+  approved_at: null,
+};
+const reportRunResponse = {
+  contract_version: REPORT_CONTRACT_VERSION,
+  run_id: "00000000-0000-0000-0000-000000000103",
+  definition_id: reportDefinitionResponse.definition_id,
+  definition_version: 1,
+  as_of: "2026-08-04T00:00:00Z",
+  policy_version: "policy-v1",
+  context_hash: "sha256-context",
+  watermark: { pms: "2026-08-04T00:00:00Z" },
+  status: "success",
+  blocks: [{
+    block_id: reportDefinitionResponse.blocks[0].block_id,
+    artifact_id: "00000000-0000-0000-0000-000000000104",
+    query_id: "00000000-0000-0000-0000-000000000105",
+    snapshot_checksum: "sha256-snapshot",
+    status: "success",
+  }],
+};
+const manualCommandResponse = {
+  contract_version: REPORT_CONTRACT_VERSION,
+  command_id: "00000000-0000-0000-0000-000000000106",
+  definition_id: reportDefinitionResponse.definition_id,
+  version: 1,
+  as_of: "2026-08-04T00:00:00Z",
+  idempotency_key: "00000000-0000-0000-0000-000000000107",
+  status: "queued",
+};
+const reportResponses = [
+  reportDefinitionResponse,
+  { contract_version: REPORT_CONTRACT_VERSION, items: [reportDefinitionResponse] },
+  reportDefinitionResponse,
+  { ...reportDefinitionResponse, status: "approved", approved_at: "2026-08-04T00:00:00Z" },
+  { ...reportDefinitionResponse, version: 2 },
+  reportDefinitionResponse,
+  { contract_version: REPORT_CONTRACT_VERSION, items: [reportRunResponse] },
+  reportRunResponse,
+  manualCommandResponse,
+];
+const reportRequests = [];
+const reportClient = createReportClient("http://backend.test/", async (url, init) => {
+  reportRequests.push({ url, init });
+  return new Response(JSON.stringify(reportResponses.shift()), { status: 200, headers: { "Content-Type": "application/json" } });
+});
+const blockRequest = {
+  block_id: reportDefinitionResponse.blocks[0].block_id,
+  title: "관리자 메모",
+  columns: 12,
+  type: "text",
+  x: 0,
+  y: 0,
+  w: 12,
+  h: 2,
+  content: "검토 내용",
+};
+await reportClient.createDefinition({ definition_id: reportDefinitionResponse.definition_id, title: "주간 운영 보고서", blocks: [blockRequest] });
+await reportClient.listDefinitions();
+await reportClient.getDefinition(reportDefinitionResponse.definition_id, 1);
+await reportClient.approveDefinition(reportDefinitionResponse.definition_id, 1, "2026-08-04T00:00:00Z");
+await reportClient.createNextDraft(reportDefinitionResponse.definition_id, 1);
+await reportClient.replaceDraftBlocks(reportDefinitionResponse.definition_id, 1, [blockRequest]);
+await reportClient.listRuns(reportDefinitionResponse.definition_id);
+await reportClient.getRun(reportRunResponse.run_id);
+const manualReceipt = await reportClient.createManualRun({
+  definition_id: reportDefinitionResponse.definition_id,
+  version: 1,
+  as_of: manualCommandResponse.as_of,
+  idempotency_key: manualCommandResponse.idempotency_key,
+});
+assert.equal(reportRequests.length, 9);
+assert.deepEqual(reportRequests.map(({ init }) => init.method), ["POST", "GET", "GET", "POST", "POST", "PUT", "GET", "GET", "POST"]);
+for (const { init } of reportRequests) {
+  assert.equal(init.headers.Authorization, "Bearer synthetic-local");
+  assert.equal(init.headers["X-Contract-Version"], "OPENAPI-v1.0.0");
+  assert.equal(init.headers["X-Role"], "report_admin");
+  assert.equal(init.headers["X-Timezone"], "Asia/Seoul");
+  assert.match(init.headers["X-Trace-Id"], /^[0-9a-f-]{36}$/);
+}
+assert.deepEqual(Object.keys(JSON.parse(reportRequests[8].init.body)).sort(), ["as_of", "definition_id", "idempotency_key", "version"]);
+assert.equal(manualReceipt.status, "queued");
+assert.equal("run_id" in manualReceipt, false);
+
+let failedRequestCount = 0;
+const failingReportClient = createReportClient("http://backend.test", async () => {
+  failedRequestCount += 1;
+  return new Response(JSON.stringify({ error: { code: "REPORT_FORBIDDEN", message: "권한이 없습니다." } }), { status: 403 });
+});
+await assert.rejects(() => failingReportClient.listDefinitions(), (error) => error instanceof ReportApiError && error.status === 403 && error.code === "REPORT_FORBIDDEN");
+assert.equal(failedRequestCount, 1);
+
+const wrongVersionClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({ contract_version: "REPORT-v2.0.0", items: [] }), { status: 200 }));
+await assert.rejects(() => wrongVersionClient.listDefinitions(), /지원하지 않는 Report 계약/);
 
 const approved = Object.freeze({
   definitionId: "report-001",

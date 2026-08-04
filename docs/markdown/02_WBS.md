@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.92 |
-| 문서 기준일 | 2026-08-04 14:20 |
+| 버전 | v7.93 |
+| 문서 기준일 | 2026-08-04 14:35 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -322,6 +322,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 14:35 | 3.10~3.15, 4.7~4.10 | 실제 DataHub의 PMS–CRM 5개·허용 26개 column Context와 G2 승인 JOIN PASS·누락 차단, branch CI `30878778928`, dev `23d27ac`, task 자원 0을 확인했다. Gold·Acceptance를 제외하고 Validation-ID 75·OOD 75를 새로 잠근 뒤 Instruct-2507 Base를 신규 USD 0.50 안에서 평가하도록 R3를 재개했다. | R4 MERGED_DEV·R3 Validation v2 READY |
 | 2026-08-04 14:20 | 2.11, 4.7~4.10 | R2가 raw 7개 URN을 실제 DataHub 값으로 교정해 data test 30건·branch CI `30878553003` PASS 후 dev `40776da`에 통합했다. View exact-match를 유지하면서 raw는 exact URN·원본 database schema name·허용 column 부분집합만 노출하는 R4 재검증을 승인했다. | R2 REWORK MERGED_DEV·R4 REWORK 승인 |
 | 2026-08-04 14:10 | 2.11, 4.7~4.10 | 실제 DataHub 수집에서 raw URN이 `crm.crm_db.dbo.*`, `pms.pms_db.public.*` 구조임을 확인했다. 축약 URN을 사용한 R2 계약을 R4 exact-match가 안전 차단해 R4를 대기로 전환하고, raw 7개 URN만 실제 값으로 교정하는 R2 재작업을 승인했다. | live URN 불일치 차단·R2 REWORK |
 | 2026-08-04 13:55 | 2.11~2.14, 4.7~4.11 | R2가 `I4-CONTEXT-v2.0.0`에 View 기본·CRM raw 3개·승인 PMS–CRM JOIN raw 5개의 exact URN·FQN·column·용도를 고정했다. data test 30건과 branch CI `30877829305` PASS 후 dev `115232e`에 통합하고, R4가 같은 계약을 live DataHub·entitlement·G2로 소비하는 작업을 승인했다. | R2 생산자 MERGED_DEV·R4 소비자 승인 |
@@ -445,6 +446,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.93 | 2026-08-04 14:35 | R4 actual 혼합 Context·G2·CI·dev 통합을 4.7~4.10에 연결하고, Gold·Acceptance를 제외한 Validation-ID/OOD 재생성과 Instruct-2507 Base 평가를 3.10~3.15에 재개했다. |
 | v7.92 | 2026-08-04 14:20 | 실제 raw URN 교정의 data test·branch CI·dev 통합을 2.11에 연결하고, View 검증은 유지하며 raw 허용 column만 노출하는 R4 live 재검증을 승인했다. |
 | v7.91 | 2026-08-04 14:10 | 실제 DataHub platform instance·database 포함 raw URN과 축약 계약의 불일치를 2.11·4.7~4.10에 기록하고, R4 안전 차단 뒤 R2 URN-only 재작업을 승인했다. |
 | v7.90 | 2026-08-04 13:55 | R2 혼합 Context 계약의 data test·branch CI·dev 통합을 2.11~2.14에 연결하고, exact live DataHub·entitlement·G2 소비를 위한 R4 작업을 승인했다. |

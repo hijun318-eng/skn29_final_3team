@@ -12,8 +12,8 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(
             {
                 "node1.normalize": "PROMPT-v1.0.0",
-                "node2.repair": "PROMPT-v1.0.1",
-                "node2.sql": "PROMPT-v1.0.4",
+                "node2.repair": "PROMPT-v1.0.2",
+                "node2.sql": "PROMPT-v1.0.5",
                 "node3.explain": "PROMPT-v1.0.0",
             },
             {item["prompt_id"]: item["version"] for item in first},
@@ -39,11 +39,19 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("한 줄로 작성", sql_prompt)
         self.assertIn("불필요한 공백이나 개행", sql_prompt)
         self.assertIn("1 이상 1000 이하 정수의 LIMIT", sql_prompt)
+        self.assertIn("FROM과 JOIN에 실제 사용한", sql_prompt)
+        self.assertIn("양방향 정확히 일치", sql_prompt)
+        self.assertIn("사용하지 않은 asset", sql_prompt)
+        self.assertIn("사용한 table을 누락하지 않는다", sql_prompt)
         self.assertIn("실제 사용한 :name placeholder만 같은 이름", sql_prompt)
         self.assertIn("placeholder가 없으면 빈 배열", sql_prompt)
         self.assertIn("request metadata는 parameters에 포함하지 않는다", sql_prompt)
         self.assertIn("RESOURCE_POLICY_MISSING", repair_prompt)
         self.assertIn("LIMIT 1000을 추가", repair_prompt)
+        self.assertIn("SQL_REFERENCE_MISMATCH", repair_prompt)
+        self.assertIn("corrected_sql의 FROM·JOIN table 집합", repair_prompt)
+        self.assertIn("references의 trino_fqn 집합", repair_prompt)
+        self.assertIn("승인 asset 안에서 양방향 정확히 일치", repair_prompt)
         self.assertIn("한 번 수정", repair_prompt)
 
 

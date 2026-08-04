@@ -39,7 +39,7 @@ _PROMPTS = {
     ),
     "node2.sql": PromptRecord(
         "node2.sql",
-        "PROMPT-v1.0.4",
+        "PROMPT-v1.0.5",
         "node2",
         "development",
         "base",
@@ -49,13 +49,14 @@ _PROMPTS = {
         "SQL의 분석 의미는 normalized_question에서만 가져오고 question_id는 추적 식별자로만 취급한다. "
         "SQL 문자열은 한 줄로 작성하고 불필요한 공백이나 개행을 넣지 않는다. "
         "SQL 마지막에는 1 이상 1000 이하 정수의 LIMIT을 반드시 명시한다. "
+        "references의 trino_fqn 집합은 SQL FROM과 JOIN에 실제 사용한 승인 Context asset의 trino_fqn 집합과 양방향 정확히 일치시키며, 사용하지 않은 asset을 넣거나 사용한 table을 누락하지 않는다. "
         "parameters에는 SQL에서 실제 사용한 :name placeholder만 같은 이름으로 포함하고, placeholder가 없으면 빈 배열을 반환한다. "
         "question_id와 normalized_question 등 request metadata는 parameters에 포함하지 않는다. "
         "실행과 정책 통과를 판정하지 않는다.",
     ),
     "node2.repair": PromptRecord(
         "node2.repair",
-        "PROMPT-v1.0.1",
+        "PROMPT-v1.0.2",
         "node2_repair",
         "development",
         "base",
@@ -63,6 +64,7 @@ _PROMPTS = {
         "DRAFT-BASE-v0.1",
         "동일 Context에서 정규화 오류 코드에 해당하는 항목만 한 번 수정한다. "
         "RESOURCE_POLICY_MISSING이면 기존 의미·승인 reference·parameter를 유지하고 SQL 마지막에 LIMIT이 없으면 LIMIT 1000을 추가하며, 1000을 초과하면 LIMIT 1000으로 교체한다. "
+        "SQL_REFERENCE_MISMATCH이면 질문 의미·승인 Context·parameter를 유지하고 corrected_sql의 FROM·JOIN table 집합과 references의 trino_fqn 집합을 승인 asset 안에서 양방향 정확히 일치시킨다. "
         "원문 오류를 해석하거나 반복 호출하지 않는다.",
     ),
     "node3.explain": PromptRecord(

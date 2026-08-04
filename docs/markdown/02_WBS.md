@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.96 |
-| 문서 기준일 | 2026-08-04 15:01 |
+| 버전 | v7.98 |
+| 문서 기준일 | 2026-08-04 15:40 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -322,6 +322,8 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 15:40 | 3.2, 3.8, 3.10~3.15 | F4 CRM 실패를 재검토해 `expired_points`의 Context metric에는 `sum(-points_delta)`만 있고 정답 SQL이 요구하는 `txn_type='EXPIRE'` 필터가 전달되지 않는 계약 누락을 확인했다. 모델 prompt 재시도보다 metric 필수 필터를 field·operator·value 구조로 보존하고 schema·prompt·Validation 생성기를 동기화하는 R3-W4-F5를 로컬 전용으로 발행했다. RunPod·model download·endpoint·비용·전체 평가와 R4 경로 변경은 금지한다. | metric 필터 계약 보완 승인·외부 비용 0 |
+| 2026-08-04 15:34 | 3.10~3.15 | Instruct-2507 Base F4는 같은 균형 smoke manifest에서 첫 3건의 JSON·G2·합성 Trino·결과 동등성을 통과했으나 4번째 CRM `validation-0228`에서 결과 hash가 달라 즉시 중단했다. 생성 SQL은 소멸 포인트의 `property_id`·`txn_type='EXPIRE'`·`is_forecast=false`·음수 합산 조건을 누락하고 조회 기간을 잘못 확장했다. Pod 삭제·active 0, F4 약 USD 0.0402·F3+F4 약 USD 0.0825, R3 branch CI `30884334429`의 의도된 FAIL을 확인했다. 150건·LoRA·Blind Gold와 추가 cloud 실행은 금지하고 모델 전략 재판정 전 3.10·3.11·3.15 진행, 3.13·3.16 대기를 유지한다. | F4 의미 정확성 BLOCKED·추가 비용 차단 |
 | 2026-08-04 15:01 | 3.10~3.15 | 6개 업무 영역·두 SQL 단계·ID/OOD를 균형화한 Instruct-2507 Base smoke는 첫 건에서 JSON·G2를 통과했지만 생성 SQL이 `timestamp(3)` 컬럼을 월 문자열과 비교해 Trino가 차단했다. 정답 SQL은 동일 Trino에서 실행·결과 hash가 일치했고, 추가 19건·Validation 150건·LoRA·Blind Gold를 실행하지 않은 채 Pod 삭제·활성 0개·신규 비용 USD 0.0423·R3 CI `30882507027`의 의도된 실패를 확인했다. 일반 날짜 타입·synthetic 범위 규칙만 보완해 같은 20건을 재검증하는 R3-W4-F4를 현재 dev `c67612f`에서 발행하고 F3+F4 합계 USD 0.35 이내로 제한한다. | F3 타입 오류 BLOCKED·F4 제한 재검증 승인 |
 | 2026-08-04 14:30 | 3.10~3.15 | Instruct-2507 Base smoke 실패를 재검토해 첫 20건이 banquet·CRM에 치우친 선택, `node2`의 JSON 미완성 8건과 `LIMIT 2000` 8건, `node2_repair` 정확 통과 4건으로 분류했다. G2의 1000행 상한은 유지하고 6개 도메인·두 node의 결정론적 20건, SQL-only JSON, G2·합성 Trino·결과 동등성을 재검증하는 R3-W4-F3를 현재 dev `d7d7acc`에서 REWORK로 발행했다. task Pod 1개와 smoke 20건만 신규 USD 0.35 안에서 허용하며 150건·LoRA·Blind Gold는 계속 금지한다. | R3 Base smoke REWORK 승인 |
 | 2026-08-04 14:20 | 3.10~3.15 | `Qwen/Qwen3-4B-Instruct-2507` 고정 revision Base smoke 20건에서 JSON 12건, G2·합성 Trino·정답 SQL 각 4건만 통과했다. 오류는 JSON schema 미완성 8건과 `RESOURCE_POLICY_MISSING` 8건으로 분류했고, 150건 전체 평가와 LoRA는 실행하지 않았다. task Pod 삭제를 확인했으며 신규 비용은 USD 0.132로 추정했다. R3 commit `847ebc6`과 branch CI `30880359294`는 PASS했지만 모델 Gate 미달로 dev 병합하지 않는다. | Base smoke BLOCKED·비용 차단 |
@@ -449,6 +451,8 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.98 | 2026-08-04 15:40 | CRM 지표의 필수 필터가 Context metric에서 누락된 근본 계약을 3.2·3.8·3.10~3.15에 연결하고, 구조화 필터를 schema·prompt·Validation 생성기에 보존하는 비용 없는 R3-W4-F5를 발행했다. |
+| v7.97 | 2026-08-04 15:34 | F4의 첫 3건 전 기준 PASS 뒤 CRM 소멸 포인트 의미·범위 조건 누락으로 4번째 결과 hash가 달라진 실패, USD 0.0402·Pod 삭제·의도된 CI FAIL을 3.10~3.15에 기록하고 추가 cloud 실행을 차단했다. |
 | v7.96 | 2026-08-04 15:01 | 균형 smoke 첫 건의 JSON·G2 PASS 뒤 `timestamp(3) <= varchar(7)` Trino 실패와 정답 SQL PASS, USD 0.0423·Pod 삭제를 3.10~3.15에 기록하고 일반 타입·synthetic 범위 규칙의 제한 재검증을 승인했다. |
 | v7.95 | 2026-08-04 14:30 | 편향된 smoke 선택과 Instruct-2507의 JSON·1000행 resource policy 실패를 분리하고, G2 완화 없이 6개 도메인·두 node·Trino 결과 동등성을 USD 0.35 안에서 재검증하는 R3-W4-F3를 3.10~3.15에 연결했다. |
 | v7.94 | 2026-08-04 14:20 | Instruct-2507 Base smoke 20건의 JSON 12건·G2/Trino/정답 SQL 4건 결과와 schema·resource policy 실패, USD 0.132 비용·Pod 삭제·전체 평가 중단을 3.10~3.15에 기록했다. |

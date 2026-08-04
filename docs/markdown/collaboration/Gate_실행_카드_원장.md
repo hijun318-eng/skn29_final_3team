@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.04 |
-| 문서 기준일 | 2026-08-04 14:20 |
+| 버전 | v3.05 |
+| 문서 기준일 | 2026-08-04 14:35 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -204,9 +204,10 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R2-W4-F2A | Wave 4 raw URN 교정 | R2 | Gate 0 → I4 | R2-10 DataHub URN exact-match | platform instance·database를 포함한 실제 raw URN 7개 교정 | `MERGED_DEV` |
 | R4-W4-F1A | Wave 4 serving Context 소비 보완 | R4 | Gate 0 → I4 | R4-06~11 `LIVE_DATAHUB` Context·G2 정합 | 승인 View를 질문별 60-column 상한으로 선별하고 권한·G2를 fail-closed 검증 | `MERGED_DEV` |
 | R4-W4-F2 | Wave 4 혼합 Context 소비 | R4 | Gate 0 → I4 | R4-06~11 View·제한 raw Context·G2 정합 | 축약 raw URN이 live DataHub와 불일치해 생산자 교정 대기 | `BLOCKED` |
-| R4-W4-F2A | Wave 4 혼합 Context 재검증 | R4 | Gate 0 → I4 | R4-06~11 live raw Context 재검증 | R2 URN 교정 통합 후 실제 CRM·PMS–CRM Context·G2 재검증 | `READY` |
+| R4-W4-F2A | Wave 4 혼합 Context 재검증 | R4 | Gate 0 → I4 | R4-06~11 live raw Context 재검증 | R2 URN 교정 통합 후 실제 CRM·PMS–CRM Context·G2 재검증 | `MERGED_DEV` |
 | R3-W4 | Wave 4·08/24~09/02 | R3 | I4·RC1 → I5 | R3-11~15 + R3-01~10 회귀 | LoRA 1회 비교·조건부 채택·production client·전체 평가·fallback·release | `PLANNED` |
 | R3-W4-F1 | Wave 4 model checkpoint 전환 | R3 | Gate 0 → I4 | R3-10~14 Instruct-2507 Base smoke·Validation | checkpoint 고정 완료, Validation v2 Context 계약 대기 | `BLOCKED` |
+| R3-W4-F2 | Wave 4 Validation v2·Base 평가 | R3 | Gate 0 → I4 | R3-10~14 ID/OOD·Instruct-2507 Base | Validation-ID 75·OOD 75 생성 후 Base smoke·평가 | `READY` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
 
@@ -2534,7 +2535,7 @@ R1_REVIEW_CONDITIONS=R2 통합 뒤 R4-W4-F2A를 READY로 발행한다.
 ### R4-W4-F2A
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -2595,6 +2596,39 @@ HANDOFF=R4에 새 model ID·revision·endpoint schema·latency, R1에 Validation
 EXTERNAL_ACTION_PERMISSION=사용자가 지정한 model로 작업 계속을 승인했다. 기존 RunPod API key를 로그에 출력하지 않고 task 전용 Pod 1개·model download·최대 신규 USD 0.50·누적 USD 15 이내 Base smoke와 Validation 150건, task 자원 삭제, 허용 경로 commit·daesung push를 승인한다. LoRA 학습·Blind Gold·다른 cloud resource·외부 데이터 전송·dev 병합은 별도 R1 판정 전 불가하다.
 AUTO_FAIL_CONDITIONS=다른 checkpoint·main revision·old adapter 사용; Validation split 변경·누수; 비용 상한 초과; task Pod 미삭제; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=Base Validation 결과가 기존 제품 Gate에 미달하면 LoRA 또는 다른 model을 자동 실행하지 않고 정확도·속도·비용 근거와 함께 재승인을 요청한다.
+```
+
+### R3-W4-F2
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W4-F2
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=Validation v2 lock·Base smoke
+TASK_CARD_RANGE=R3-10~14 Validation-ID/OOD·Instruct-2507 Base
+CURRENT_TASK_CARD_ID=R3-10
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=23d27ac0434265ca5679a1ce1929bb462a113e85
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R3-W4-F2@23d27ac
+MODEL_ID=Qwen/Qwen3-4B-Instruct-2507
+MODEL_REVISION=cdbee75f17c01a7cc42f958dc650907174af0554
+CONTRACT_VERSION=I4-CONTEXT-v2.0.1; MODEL-CANDIDATE-v0.1
+ALLOWED_PATHS=src/ai/training/**; src/modelops/**; evals/**; tests/ai/**; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; infrastructure/database/**; frontend/**; root Compose·env·CI; secret; 기존 Gold·Acceptance·실험 증거 덮어쓰기
+HANDOFF_MANIFEST=handoffs/R3-W4-F2.json
+ACCEPTANCE_CRITERIA=2,000건 원장의 train 1,200건을 기준으로 `domain, metric, aggregation, dimension, filter, output, period, node` semantic signature를 고정한다. 기존 Gold 120·Acceptance 30을 제외한 validation·reserve에서 Train signature와 겹치는 ID 75, 겹치지 않는 OOD 75를 도메인 quota로 결정론적 선별하고 manifest SHA-256을 잠근다. 새 150건의 Context FQN은 I4-CONTEXT-v2.0.1 내부만 허용하고 중복·누수·G2·Trino 검증을 통과해야 한다. 이후 Instruct-2507 Base 20건 smoke 성공 시에만 동일 endpoint로 150건을 평가한다. LoRA·Blind Gold는 실행하지 않는다.
+ACCEPTANCE_IDS=AC1_SIGNATURE;AC2_ID75;AC3_OOD75;AC4_NO_GOLD;AC5_CONTEXT;AC6_G2_TRINO;AC7_HASH_LOCK;AC8_BASE_SMOKE;AC9_VALIDATION150;AC10_COST_CLEANUP
+TEST_COMMANDS=python -m pytest tests/ai -q; python -m compileall -q src/ai src/modelops; Validation v2 build·audit·Trino; Instruct-2507 endpoint smoke·evaluation; git diff --check
+TEST_COMMAND_IDS=T1_AI;T2_COMPILE;T3_VALIDATION;T4_MODEL;T5_DIFF
+STOP_CONDITIONS=ID/OOD 수량 부족; Gold·Acceptance 포함; Context 밖 FQN; G2·Trino 실패; revision 불일치; 이전 adapter 로드; 신규 USD 0.50 또는 누적 USD 15 도달; secret 로그; task Pod 미삭제; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=task RunPod Pod 1개·model download·최대 신규 USD 0.50·누적 USD 15 이내 Base smoke와 Validation 150, task 자원 삭제, 허용 경로 commit·daesung push를 승인한다. LoRA·Blind Gold·다른 cloud resource는 불가하다.
+AUTO_FAIL_CONDITIONS=기존 Validation 재사용; signature·split 변경 후 hash 미갱신; old adapter·다른 model; 비용 상한 초과; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=Base 결과가 Gate 미달이면 LoRA·다른 model을 자동 실행하지 않고 오류 분류·비용과 함께 재승인을 요청한다.
 ```
 
 ### R1-W4-F2
@@ -2675,6 +2709,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.05 | 2026-08-04 14:35 | R4가 actual DataHub에서 PMS–CRM 5개·허용 26개 column만 Context에 포함하고 승인 JOIN은 G2 PASS, JOIN ID 누락은 `UNAPPROVED_JOIN`으로 차단했다. branch CI `30878778928`·dev `23d27ac`과 task 자원 0을 확인해 R4-W4-F2A를 MERGED_DEV로 전환하고, Gold·Acceptance를 제외한 Validation-ID 75·OOD 75 생성 후 Instruct-2507 Base를 최대 신규 USD 0.50 안에서 평가하는 R3-W4-F2를 READY 발행했다. |
 | v3.04 | 2026-08-04 14:20 | R2 raw URN 교정 `b1349bc`·data test 30건·branch CI `30878553003`·dev `40776da`를 수용했다. View exact-match는 유지하고 raw는 exact URN·원본 database schema name·허용 column 부분집합만 노출해 실제 CRM·PMS–CRM Context와 G2를 재검증하는 R4-W4-F2A를 READY 발행했다. |
 | v3.03 | 2026-08-04 14:10 | 실제 DataHub raw URN이 platform instance·database를 포함해 R2 축약 계약과 불일치함을 R4 exact-match가 차단했다. R4-W4-F2를 BLOCKED로 전환하고 raw 7개 URN만 교정하는 R2-W4-F2A를 READY, 실제 재검증 R4-W4-F2A를 PLANNED로 발행했다. |
 | v3.02 | 2026-08-04 13:55 | R2의 `I4-CONTEXT-v2.0.0`이 View 기본·CRM raw 3개·승인 PMS–CRM JOIN 5개를 명시하고 data test 30건·branch CI `30877829305`·dev `115232e`로 통합됐다. 같은 계약을 live DataHub exact-match·entitlement·G2로 소비하는 R4-W4-F2를 READY 발행했다. |

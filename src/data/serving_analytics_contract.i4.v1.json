@@ -1,0 +1,293 @@
+{
+  "contract_version": "I4-DATA-v1.0.0-DRAFT",
+  "context_source": "LIVE_DATAHUB",
+  "validation_only": true,
+  "synthetic": true,
+  "schema_version": "1.0.0",
+  "seed_version": "20260729",
+  "scenario_version": "1.0.0",
+  "datahub_version": "1.6.0",
+  "recipe": {
+    "file": "infrastructure/database/datahub/recipes/serving.i4.yml",
+    "platform": "trino",
+    "database": "serving",
+    "environment": "PROD",
+    "platform_instance": null
+  },
+  "views": [
+    {
+      "name": "banquet_monthly_metrics",
+      "fqn": "serving.analytics.banquet_monthly_metrics",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.banquet_monthly_metrics,PROD)",
+      "synthetic": true,
+      "schema_version": "1.0.0",
+      "seed_version": "20260729",
+      "columns": {
+        "property_id": "varchar(64)",
+        "year_month": "timestamp(3)",
+        "product_category": "varchar(32)",
+        "data_period_status": "varchar(32)",
+        "is_forecast": "boolean",
+        "business_unit_code": "varchar(7)",
+        "booking_count": "bigint",
+        "confirmed_count": "bigint",
+        "cancelled_count": "bigint",
+        "actual_attendees": "bigint",
+        "recognized_revenue": "decimal(18,2)",
+        "expected_revenue": "decimal(18,2)",
+        "banquet_booking_watermark": "timestamp(6) with time zone",
+        "banquet_revenue_watermark": "timestamp(6) with time zone"
+      },
+      "upstream_fqns": [
+        "banquet.public.banquet_bookings",
+        "banquet.public.banquet_revenue"
+      ]
+    },
+    {
+      "name": "facility_daily_metrics",
+      "fqn": "serving.analytics.facility_daily_metrics",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.facility_daily_metrics,PROD)",
+      "synthetic": true,
+      "schema_version": "1.0.0",
+      "seed_version": "20260729",
+      "columns": {
+        "property_id": "varchar",
+        "facility_id": "varchar",
+        "business_date": "date",
+        "data_period_status": "varchar",
+        "is_forecast": "boolean",
+        "business_unit_code": "varchar(8)",
+        "completed_usage_count": "bigint",
+        "incident_count": "bigint",
+        "downtime_minutes": "bigint",
+        "facility_revenue": "decimal(18,2)",
+        "revenue_per_usage": "decimal(18,6)",
+        "reason_code": "varchar(16)",
+        "facility_watermark": "timestamp(3)"
+      },
+      "upstream_fqns": [
+        "facility.facility.facility_events"
+      ]
+    },
+    {
+      "name": "fnb_daypart_metrics",
+      "fqn": "serving.analytics.fnb_daypart_metrics",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.fnb_daypart_metrics,PROD)",
+      "synthetic": true,
+      "schema_version": "1.0.0",
+      "seed_version": "20260729",
+      "columns": {
+        "property_id": "varchar(64)",
+        "store_id": "varchar(32)",
+        "business_date": "date",
+        "service_period": "varchar(16)",
+        "data_period_status": "varchar(32)",
+        "is_forecast": "boolean",
+        "business_unit_code": "varchar(3)",
+        "fnb_net_revenue": "decimal(18,2)",
+        "covers": "bigint",
+        "order_count": "bigint",
+        "seat_hours_available": "decimal(18,2)",
+        "seat_hours_used": "decimal(18,2)",
+        "revpash": "decimal(18,6)",
+        "average_check": "decimal(18,6)",
+        "reason_code": "varchar(16)",
+        "pos_order_watermark": "timestamp(3)",
+        "pos_period_watermark": "timestamp(3)"
+      },
+      "upstream_fqns": [
+        "pos.pos_db.pos_orders",
+        "pos.pos_db.pos_service_periods"
+      ]
+    },
+    {
+      "name": "hotel_daily_metrics",
+      "fqn": "serving.analytics.hotel_daily_metrics",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.hotel_daily_metrics,PROD)",
+      "synthetic": true,
+      "schema_version": "1.0.0",
+      "seed_version": "20260729",
+      "columns": {
+        "property_id": "varchar(64)",
+        "business_date": "date",
+        "room_type_code": "varchar(32)",
+        "data_period_status": "varchar(32)",
+        "is_forecast": "boolean",
+        "business_unit_code": "varchar(5)",
+        "available_room_nights": "bigint",
+        "rooms_sold": "bigint",
+        "room_revenue": "decimal(18,2)",
+        "occupancy_rate": "decimal(18,6)",
+        "adr": "decimal(18,6)",
+        "revpar": "decimal(18,6)",
+        "reason_code": "varchar(16)",
+        "pms_inventory_watermark": "timestamp(6) with time zone",
+        "pms_stay_watermark": "timestamp(6) with time zone"
+      },
+      "upstream_fqns": [
+        "pms.public.pms_room_inventory_daily",
+        "pms.public.pms_stays"
+      ]
+    },
+    {
+      "name": "hotel_monthly_metrics",
+      "fqn": "serving.analytics.hotel_monthly_metrics",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.hotel_monthly_metrics,PROD)",
+      "synthetic": true,
+      "schema_version": "1.0.0",
+      "seed_version": "20260729",
+      "columns": {
+        "property_id": "varchar",
+        "year_month": "timestamp(3)",
+        "business_unit_code": "varchar(8)",
+        "data_period_status": "varchar",
+        "is_forecast": "boolean",
+        "total_operating_revenue": "decimal(18,2)",
+        "rooms_sold": "bigint",
+        "available_room_nights": "bigint",
+        "trevpar": "decimal(18,6)",
+        "revpor": "decimal(18,6)",
+        "reason_code": "varchar(16)",
+        "source_watermark": "timestamp(6) with time zone"
+      },
+      "upstream_fqns": [
+        "serving.analytics.banquet_monthly_metrics",
+        "serving.analytics.facility_daily_metrics",
+        "serving.analytics.fnb_daypart_metrics",
+        "serving.analytics.hotel_daily_metrics"
+      ]
+    },
+    {
+      "name": "hotel_yearly_metrics",
+      "fqn": "serving.analytics.hotel_yearly_metrics",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.hotel_yearly_metrics,PROD)",
+      "synthetic": true,
+      "schema_version": "1.0.0",
+      "seed_version": "20260729",
+      "columns": {
+        "property_id": "varchar",
+        "year": "bigint",
+        "business_unit_code": "varchar(8)",
+        "data_period_status": "varchar",
+        "is_forecast": "boolean",
+        "total_operating_revenue": "decimal(18,2)",
+        "rooms_sold": "bigint",
+        "available_room_nights": "bigint",
+        "trevpar": "decimal(18,6)",
+        "benchmark_occupancy_rate": "decimal(10,6)",
+        "benchmark_adr_krw": "decimal(18,2)",
+        "benchmark_revpar_krw": "decimal(18,2)",
+        "reason_code": "varchar(16)",
+        "source_watermark": "timestamp(6) with time zone"
+      },
+      "upstream_fqns": [
+        "serving.analytics.hotel_monthly_metrics",
+        "serving.reference.market_benchmark_annual"
+      ]
+    },
+    {
+      "name": "resource_monthly_metrics",
+      "fqn": "serving.analytics.resource_monthly_metrics",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.resource_monthly_metrics,PROD)",
+      "synthetic": true,
+      "schema_version": "1.0.0",
+      "seed_version": "20260729",
+      "columns": {
+        "property_id": "varchar",
+        "year_month": "timestamp(3)",
+        "resource_scope": "varchar",
+        "data_period_status": "varchar",
+        "is_forecast": "boolean",
+        "energy_kwh": "double",
+        "water_m3": "double",
+        "waste_kg": "double",
+        "resource_cost": "decimal(18,2)",
+        "occupied_room_nights": "bigint",
+        "energy_per_occupied_room": "double",
+        "water_per_occupied_room": "double",
+        "waste_per_occupied_room": "double",
+        "cost_per_occupied_room": "decimal(18,6)",
+        "reason_code": "varchar(16)",
+        "resource_watermark": "varchar",
+        "pms_watermark": "timestamp(6) with time zone"
+      },
+      "upstream_fqns": [
+        "facility.facility.facility_resource_daily",
+        "serving.analytics.hotel_daily_metrics"
+      ]
+    },
+    {
+      "name": "workforce_monthly_metrics",
+      "fqn": "serving.analytics.workforce_monthly_metrics",
+      "urn": "urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.workforce_monthly_metrics,PROD)",
+      "synthetic": true,
+      "schema_version": "1.0.0",
+      "seed_version": "20260729",
+      "columns": {
+        "property_id": "varchar",
+        "year_month": "timestamp(3)",
+        "department": "varchar",
+        "data_period_status": "varchar",
+        "is_forecast": "boolean",
+        "worked_hours": "decimal(18,2)",
+        "labor_cost": "decimal(18,2)",
+        "average_fte": "real",
+        "rooms_sold": "bigint",
+        "hpor": "decimal(18,6)",
+        "labor_cpor": "decimal(18,6)",
+        "reason_code": "varchar(16)",
+        "staffing_watermark": "varchar",
+        "pms_watermark": "timestamp(6) with time zone"
+      },
+      "upstream_fqns": [
+        "facility.facility.hotel_staffing_daily",
+        "serving.analytics.hotel_daily_metrics"
+      ]
+    }
+  ],
+  "verification": {
+    "trino_columns": {
+      "status": "PASS",
+      "user": "datahub_ingestion",
+      "view_count": 8,
+      "column_count": 116,
+      "canonical_sha256": "d0ee01debeb821a7085cc02a81f8b47cd637f1749e017be1a3b65a9c5a91bc0d"
+    },
+    "trino_select": {
+      "status": "PASS",
+      "user": "datahub_ingestion",
+      "row_counts": {
+        "banquet_monthly_metrics": 305,
+        "facility_daily_metrics": 33380,
+        "fnb_daypart_metrics": 53440,
+        "hotel_daily_metrics": 7304,
+        "hotel_monthly_metrics": 232,
+        "hotel_yearly_metrics": 22,
+        "resource_monthly_metrics": 220,
+        "workforce_monthly_metrics": 385
+      },
+      "canonical_sha256": "3c5ff6cc10c4081d903eb21068b54299d1557f857b10a61b9dfeb4b722f1f01d"
+    },
+    "read_only_policy": {
+      "status": "PASS",
+      "file": "infrastructure/database/trino/etc/access-control-rules.json",
+      "sha256": "078140cbd9d69ec6fed3045a7800b7386024e383a5d7b81d586987f96dd27b33",
+      "ddl": {
+        "command": "CREATE TABLE serving.analytics.r2_forbidden_write AS SELECT 1 id WHERE false",
+        "exit_code": 1,
+        "error": "Access Denied: Cannot create table serving.analytics.r2_forbidden_write",
+        "artifact_count_after": 0
+      },
+      "dml": {
+        "command": "DELETE FROM pms.public.pms_stays WHERE false",
+        "exit_code": 1,
+        "error": "Access Denied: Cannot delete from table pms.public.pms_stays"
+      }
+    },
+    "datahub_live": {
+      "status": "NOT_RUN",
+      "reason": "Local DataHub GMS is stopped and only v1.5.0.6 images are present; the approved v1.6.0 card prohibits image pull.",
+      "required_before_gate_pass": true
+    }
+  }
+}

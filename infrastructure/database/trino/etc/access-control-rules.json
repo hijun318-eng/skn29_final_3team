@@ -1,7 +1,7 @@
 {
   "catalogs": [
     {"user": "hotel_synthetic_setup", "catalog": "serving", "allow": "all"},
-    {"user": "hotel_synthetic_setup", "catalog": "(pms|pos|crm|facility|banquet)", "allow": "read-only"},
+    {"user": "hotel_synthetic_setup", "catalog": "(pms|pos|crm|facility|banquet)", "allow": "all"},
     {"catalog": "system", "allow": "none"},
     {"catalog": "(serving|pms|pos|crm|facility|banquet)", "allow": "read-only"},
     {"catalog": ".*", "allow": "none"}
@@ -16,7 +16,14 @@
       "catalog": "serving",
       "schema": "(analytics|reference)",
       "table": ".*",
-      "privileges": ["SELECT", "INSERT", "DELETE", "UPDATE", "OWNERSHIP"]
+      "privileges": ["SELECT", "INSERT", "DELETE", "UPDATE", "OWNERSHIP", "GRANT_SELECT"]
+    },
+    {
+      "user": "hotel_synthetic_setup",
+      "catalog": "(pms|pos|crm|facility|banquet)",
+      "schema": ".*",
+      "table": ".*",
+      "privileges": ["SELECT", "GRANT_SELECT"]
     },
     {
       "catalog": "(pms|pos|crm|facility|banquet)",

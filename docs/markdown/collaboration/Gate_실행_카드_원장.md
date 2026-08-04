@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.14 |
-| 문서 기준일 | 2026-08-04 16:55 |
+| 버전 | v3.15 |
+| 문서 기준일 | 2026-08-04 17:00 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -216,10 +216,11 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W4-F5 | Wave 4 metric filter 계약 보완 | R3 | Gate 0 → I4 | R3-01·07·09~14 metric filter 계약 | 구조화 필터 schema·prompt·Validation Context 보존 | `MERGED_DEV` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
 | R4-W4-F3 | Wave 4 Report production 등록 | R4 | 없음 → I4 | R4-16 Report 공통 등록 | FastAPI·Alembic·권한·승인본 불변성·중복 실행 차단 | `MERGED_DEV` |
-| R4-W4-F4 | Wave 4 metric registry 소비 | R4 | Gate 0 → I4 | R4-06~11 metric semantic Context·G2 | R2 registry를 권한별 Context·model payload·G2에 보존 | `READY` |
+| R4-W4-F4 | Wave 4 metric registry 소비 | R4 | Gate 0 → I4 | R4-06~11 metric semantic Context·G2 | R2 registry를 권한별 Context·model payload·G2에 보존 | `MERGED_DEV` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
 | R5-W4-F1 | Wave 4 12-column Report editor | R5 | 없음 → I4 | R5-11 Report editor | draft layout·keyboard 대안·승인본 불변성 | `MERGED_DEV` |
-| R5-W4-F2 | Wave 4 Report 상태·접근성 QA | R5 | 없음 → I4 | R5-12·16 fixture history·QA | 상태·partial·keyboard·live region·반응형 회귀 | `READY` |
+| R5-W4-F2 | Wave 4 Report 상태·접근성 QA | R5 | 없음 → I4 | R5-12·16 fixture history·QA | 상태·partial·keyboard·live region·반응형 회귀 | `MERGED_DEV` |
+| R5-W4-F3 | Wave 4 Report v1.1 proposal | R5 | 없음 → I4 | R5-08~10·12 Report 계약 보완 | layout 보존·draft replace·history·manual command 분리 | `READY` |
 
 ## Gate 공통 완료 조건
 
@@ -2805,7 +2806,7 @@ R1_REVIEW_CONDITIONS=branch CI와 smoke 20건의 JSON·G2·Trino·result match·
 ### R1-W4-F5
 
 ```text
-STATUS=IN_PROGRESS
+STATUS=VERIFIED_GATE
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -2828,6 +2829,8 @@ TEST_COMMAND_IDS=T1_DOCS;T2_GATE;T3_DASHBOARD;T4_DIFF
 STOP_CONDITIONS=case ID·정답 SQL hardcode; raw SQL filter 문자열을 model trust boundary에 그대로 허용; R4 경로 변경; 외부 비용·model 실행; R1 허용 경로 밖 변경; 필수 검증 실패
 HANDOFF=R3에 구조화 metric filter schema·일반 prompt 소비·validation-0228 회귀를 local-only로 전달
 EXTERNAL_ACTION_PERMISSION=없음. RunPod·model download·endpoint·외부 비용·150건·LoRA·Blind Gold를 금지한다.
+RESULT_SHA=f4871df852d606daf793414e9582aa48be49514e
+RESULT_CI=R3 30885817084 PASS; R2 30886662028 PASS; R4 30889083425 PASS; dev 30889141133 PASS
 ```
 
 ### R3-W4-F5
@@ -2935,7 +2938,7 @@ RESULT_CI=branch 30887466759 PASS; dev 30887524951 PASS
 ### R4-W4-F4
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -2962,6 +2965,8 @@ STOP_CONDITIONS=metric case ID·정답 SQL hardcode; raw SQL predicate를 Contex
 EXTERNAL_ACTION_PERMISSION=없음. local backend code·test·허용 경로 commit·jaehong push만 승인한다.
 AUTO_FAIL_CONDITIONS=hardcoded single metric; required filter 누락 허용; 권한 밖 metric; package hash 미포함; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=두 대표 metric의 Context·model payload·G2 차단, fail-closed, backend 회귀와 branch CI를 제출한다. 통과해도 cloud smoke는 별도 비용 승인 전까지 대기한다.
+RESULT_SHA=f4871df852d606daf793414e9582aa48be49514e
+RESULT_CI=branch 30889083425 PASS; dev 30889141133 PASS
 ```
 
 ### R5-W4-F1
@@ -3001,7 +3006,7 @@ RESULT_CI=branch 30887190599 PASS; dev 30887264040 PASS
 ### R5-W4-F2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -3028,6 +3033,40 @@ STOP_CONDITIONS=새 dependency·route·backend/API client 필요; local fixture�
 EXTERNAL_ACTION_PERMISSION=없음. local fixture UI·test·허용 경로 commit·minji push만 승인한다.
 AUTO_FAIL_CONDITIONS=fake success; 상태를 색상만으로 표시; 비대화형 clickable row; focus 손실; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=6개 run 상태·partial·fixture 표시·keyboard·live region·4 viewport·build·contract·branch CI를 제출한다. actual API와 schedule은 R4 공개 계약·runtime 뒤 별도 발행 전까지 대기한다.
+RESULT_SHA=ef7c55016baa98965e1b1009d1d46e9cc3a4c2e8
+RESULT_CI=branch 30889280089 PASS; dev 30889367777 PASS
+```
+
+### R5-W4-F3
+
+```text
+STATUS=READY
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W4-F3
+TARGET_INTEGRATION_GATE=I4
+CHECKPOINT_GATES=REPORT-v1.1 proposal freeze
+TASK_CARD_RANGE=R5-08~10·12 Report proposal 계약 보완
+CURRENT_TASK_CARD_ID=R5-08
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=ef7c55016baa98965e1b1009d1d46e9cc3a4c2e8
+START_POINT=origin/minji ef7c55016baa98965e1b1009d1d46e9cc3a4c2e8에서 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R5-W4-F3@ef7c550
+CONTRACT_VERSION=REPORT-v1.1.0-DRAFT; REPORT-v1.0.0-compatible
+ALLOWED_PATHS=src/report/**; tests/report/**; handoffs/R5-W4-F3.json; docs/markdown/daily_reports/minji/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; frontend/**; 기존 migration proposal 수정; root Compose·env·CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R5-W4-F3.json
+ACCEPTANCE_CRITERIA=기존 REPORT-v1.0.0 입력과 응답 호환성을 유지하면서 ReportBlock에 type(table·chart·text)과 x·y·w·h·content를 구조화해 보존한다. 12-column bounds와 positive height를 검증하고 table·chart는 artifact_id를 필수, text는 artifact_id 없이 허용하되 빈 content를 거부한다. 기존 migration proposal은 수정하지 않고 새 v1.1 migration proposal로 확장한다. draft version만 전체 block layout을 replace할 수 있고 approved version은 불변이다. definition list와 run list/detail 계약을 추가한다. manual run command는 definition_id·version·as_of·idempotency_key만 받아 queued command를 만들며 client가 run_id·status·policy_version·context_hash·watermark·block result를 제출하지 못하게 한다. 실제 worker·schedule·FastAPI·DB 실행은 구현하지 않는다.
+ACCEPTANCE_IDS=AC1_V1_COMPAT;AC2_LAYOUT_FIELDS;AC3_BOUNDS;AC4_ARTIFACT_RULE;AC5_NEW_MIGRATION_PROPOSAL;AC6_DRAFT_REPLACE;AC7_APPROVED_IMMUTABLE;AC8_LIST_HISTORY;AC9_MANUAL_COMMAND;AC10_TRUST_BOUNDARY;AC11_NO_RUNTIME
+TEST_COMMANDS=python -m pytest tests/report -q; python -m compileall -q src/report; migration proposal validator; python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_REPORT;T2_COMPILE;T3_MIGRATION;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=기존 migration proposal 수정; client result/status/policy/context/watermark 신뢰; approved mutation; 12-column 범위 위반; backend·frontend·worker·schedule 변경 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local proposal·test·허용 경로 commit·minji push만 승인한다.
+AUTO_FAIL_CONDITIONS=v1 비호환; layout 유실; decorative text 강제 artifact; client가 실행 결과를 결정; 승인본 변경; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=domain·router·repository·새 migration proposal·trust-boundary test와 branch CI를 제출한다. 통과 뒤 R4가 공통 FastAPI·Alembic·worker command에 등록하도록 별도 발행한다.
 ```
 
 ## I5 이후 후속 단계 예약
@@ -3078,6 +3117,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.15 | 2026-08-04 17:00 | R4 metric registry 제품 소비와 R5 상태·접근성 QA의 제품·handoff·branch/dev CI를 확인해 MERGED_DEV로 전환하고 R1-W4-F5 metric 계약 판정을 완료했다. 실제 API 신뢰 경계와 layout 보존을 먼저 동결하는 R5-W4-F3 REPORT-v1.1 proposal을 local-only로 발행했다. |
 | v3.14 | 2026-08-04 16:55 | R4 metric 소비와 독립적인 R5 fixture Run History·접근성·반응형·보안 상태 QA를 R5-W4-F2로 local-only 발행했다. 실제 API·schedule·share·export 성공 주장은 제외하고 6개 상태·partial·keyboard·aria-live·4 viewport만 검증한다. |
 | v3.13 | 2026-08-04 16:45 | R2 metric registry, R4 Report production 등록, R5 12-column editor의 제품·handoff·branch/dev CI를 확인해 MERGED_DEV로 전환했다. R2 registry를 권한별 Context·model payload·G2에 보존하고 hardcoded metric을 제거하는 R4-W4-F4를 local-only로 발행했다. |
 | v3.12 | 2026-08-04 16:20 | R3-W4-F5의 구조화 metric 필터 계약과 branch·dev·junhee CI 통과를 확인해 MERGED_DEV로 전환했다. 제품 Context가 같은 의미 계약을 소비할 수 있도록 R2-W4-F3 metric registry 생산자를 local-only로 발행하고 R4 소비·cloud 재평가는 후속 판정으로 유지했다. |

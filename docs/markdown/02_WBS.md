@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v8.02 |
-| 문서 기준일 | 2026-08-04 16:55 |
+| 버전 | v8.03 |
+| 문서 기준일 | 2026-08-04 17:00 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -211,15 +211,15 @@ gantt
 | 5.6 | R5-05 Evidence·출처·조건 panel | URN·metric·filter·as_of UI | 송민지 | 완료 | 08/10 | 08/14 | 높음 |
 | 5.7 | R5-06 결과 표·차트 | result components | 송민지 | 완료 | 08/10 | 08/14 | 높음 |
 | 5.8 | R5-07 Chat→Report Artifact bridge | artifact action | 송민지 | 완료 | 08/10 | 08/14 | 높음 |
-| 5.9 | R5-08 Report definition·version·run·block domain | Report contract | 송민지 | 완료 | 08/03 | 08/24 | 높음 |
-| 5.10 | R5-09 독립 Report router·API module | router·contract test | 송민지 | 완료 | 08/17 | 08/24 | 높음 |
-| 5.11 | R5-10 Report migration proposal | 단일 migration proposal | 송민지 | 완료 | 08/17 | 08/24 | 높음 |
+| 5.9 | R5-08 Report definition·version·run·block domain | Report contract | 송민지 | 진행 | 08/03 | 08/24 | 높음 |
+| 5.10 | R5-09 독립 Report router·API module | router·contract test | 송민지 | 진행 | 08/17 | 08/24 | 높음 |
+| 5.11 | R5-10 Report migration proposal | 단일 migration proposal | 송민지 | 진행 | 08/17 | 08/24 | 높음 |
 | 5.12 | R5-11 12-column Report editor | add·move·resize·draft | 송민지 | 완료 | 08/24 | 08/28 | 높음 |
 | 5.13 | R5-12 수동 실행·Run History | run·status·history UI | 송민지 | 진행 | 08/24 | 08/28 | 높음 |
 | 5.14 | R5-13 daily·weekly·monthly schedule UI | schedule contract | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
 | 5.15 | R5-14 Catalog·Connection UI | source·asset·ingestion UI | 송민지 | 완료 | 08/17 | 08/28 | 중간 |
 | 5.16 | R5-15 Operations·Audit trace UI | request trace UI | 송민지 | 대기 | 08/24 | 08/28 | 높음 |
-| 5.17 | R5-16 접근성·반응형·보안 상태 표시 | QA evidence | 송민지 | 진행 | 08/24 | 08/31 | 높음 |
+| 5.17 | R5-16 접근성·반응형·보안 상태 표시 | QA evidence | 송민지 | 완료 | 08/24 | 08/31 | 높음 |
 | 5.18 | R5-17 실제 API integration | production client | 송민지 | 대기 | 08/24 | 08/31 | 높음 |
 | 5.19 | R5-18 frontend Dockerfile·build·E2E | service fragment | 송민지 | 대기 | 08/24 | 09/02 | 높음 |
 | 5.20 | R5-19 발표 route·fallback fixture | demo runbook | 송민지 | 대기 | 08/31 | 09/03 | 높음 |

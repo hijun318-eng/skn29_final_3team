@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | Answervice 실행 작업·담당·상태·일정·산출물·Gate를 관리하는 공식 WBS 작업본 |
 | 문서 분류 | 산출물 작업본 |
-| 버전 | v7.94 |
-| 문서 기준일 | 2026-08-04 14:20 |
+| 버전 | v7.95 |
+| 문서 기준일 | 2026-08-04 14:30 |
 | 작성·수정 | 김재홍·박준희·정승·윤대성·송민지 |
 | 산출물 번호 | 02 |
 | 제출 일자 | 2026-07-16 |
@@ -322,6 +322,7 @@ gantt
 
 | 일시(KST) | WBS ID | 변경 요약 | 결과 구분 |
 |---|---|---|---|
+| 2026-08-04 14:30 | 3.10~3.15 | Instruct-2507 Base smoke 실패를 재검토해 첫 20건이 banquet·CRM에 치우친 선택, `node2`의 JSON 미완성 8건과 `LIMIT 2000` 8건, `node2_repair` 정확 통과 4건으로 분류했다. G2의 1000행 상한은 유지하고 6개 도메인·두 node의 결정론적 20건, SQL-only JSON, G2·합성 Trino·결과 동등성을 재검증하는 R3-W4-F3를 현재 dev `d7d7acc`에서 REWORK로 발행했다. task Pod 1개와 smoke 20건만 신규 USD 0.35 안에서 허용하며 150건·LoRA·Blind Gold는 계속 금지한다. | R3 Base smoke REWORK 승인 |
 | 2026-08-04 14:20 | 3.10~3.15 | `Qwen/Qwen3-4B-Instruct-2507` 고정 revision Base smoke 20건에서 JSON 12건, G2·합성 Trino·정답 SQL 각 4건만 통과했다. 오류는 JSON schema 미완성 8건과 `RESOURCE_POLICY_MISSING` 8건으로 분류했고, 150건 전체 평가와 LoRA는 실행하지 않았다. task Pod 삭제를 확인했으며 신규 비용은 USD 0.132로 추정했다. R3 commit `847ebc6`과 branch CI `30880359294`는 PASS했지만 모델 Gate 미달로 dev 병합하지 않는다. | Base smoke BLOCKED·비용 차단 |
 | 2026-08-04 14:35 | 3.10~3.15, 4.7~4.10 | 실제 DataHub의 PMS–CRM 5개·허용 26개 column Context와 G2 승인 JOIN PASS·누락 차단, branch CI `30878778928`, dev `23d27ac`, task 자원 0을 확인했다. Gold·Acceptance를 제외하고 Validation-ID 75·OOD 75를 새로 잠근 뒤 Instruct-2507 Base를 신규 USD 0.50 안에서 평가하도록 R3를 재개했다. | R4 MERGED_DEV·R3 Validation v2 READY |
 | 2026-08-04 14:20 | 2.11, 4.7~4.10 | R2가 raw 7개 URN을 실제 DataHub 값으로 교정해 data test 30건·branch CI `30878553003` PASS 후 dev `40776da`에 통합했다. View exact-match를 유지하면서 raw는 exact URN·원본 database schema name·허용 column 부분집합만 노출하는 R4 재검증을 승인했다. | R2 REWORK MERGED_DEV·R4 REWORK 승인 |
@@ -447,6 +448,7 @@ gantt
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v7.95 | 2026-08-04 14:30 | 편향된 smoke 선택과 Instruct-2507의 JSON·1000행 resource policy 실패를 분리하고, G2 완화 없이 6개 도메인·두 node·Trino 결과 동등성을 USD 0.35 안에서 재검증하는 R3-W4-F3를 3.10~3.15에 연결했다. |
 | v7.94 | 2026-08-04 14:20 | Instruct-2507 Base smoke 20건의 JSON 12건·G2/Trino/정답 SQL 4건 결과와 schema·resource policy 실패, USD 0.132 비용·Pod 삭제·전체 평가 중단을 3.10~3.15에 기록했다. |
 | v7.93 | 2026-08-04 14:35 | R4 actual 혼합 Context·G2·CI·dev 통합을 4.7~4.10에 연결하고, Gold·Acceptance를 제외한 Validation-ID/OOD 재생성과 Instruct-2507 Base 평가를 3.10~3.15에 재개했다. |
 | v7.92 | 2026-08-04 14:20 | 실제 raw URN 교정의 data test·branch CI·dev 통합을 2.11에 연결하고, View 검증은 유지하며 raw 허용 column만 노출하는 R4 live 재검증을 승인했다. |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 역할별 자율 구현 범위와 Gate 중단·통합 조건을 관리하는 실행 카드 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v3.19 |
-| 문서 기준일 | 2026-08-04 18:00 |
+| 버전 | v3.20 |
+| 문서 기준일 | 2026-08-04 18:15 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 쉬운 용어: Gate는 단계별 통과 검사, Wave는 함께 개발·합칠 작업 묶음, handoff는 다음 담당자에게 넘길 결과를 뜻한다.
@@ -216,12 +216,13 @@ Gate 시작 시 실제 존재 경로와 소유권을 다시 확인한다. 아래
 | R3-W4-F4 | Wave 4 Base SQL 타입 재검증 | R3 | Gate 0 → I4 | R3-10~14 prompt 일반화·Instruct-2507 Base | 같은 균형 20건의 타입·범위·결과 동등성 재검증 | `READY` |
 | R3-W4-F5 | Wave 4 metric filter 계약 보완 | R3 | Gate 0 → I4 | R3-01·07·09~14 metric filter 계약 | 구조화 필터 schema·prompt·Validation Context 보존 | `MERGED_DEV` |
 | R3-W4-F6 | Wave 4 evaluation metric bridge | R3 | I4 → I5 | R3-09~14 evaluation bridge 회귀 | 제품 metric·필수 필터를 G2 평가 package에 무손실 보존 | `MERGED_DEV` |
-| R3-W4-F7 | Wave 4 exact-one metric selection | R3 | I4 → I5 | R3-01·03 Node1 metric 선택 | versioned glossary에서 승인 metric 정확히 1개 선택 | `READY` |
+| R3-W4-F7 | Wave 4 exact-one metric selection | R3 | I4 → I5 | R3-01·03 Node1 metric 선택 | versioned glossary에서 승인 metric 정확히 1개 선택 | `MERGED_DEV` |
 | R4-W4 | Wave 4·08/24~09/02 | R4 | I4·RC1 → I5 | R4-16~21 + R4-01~15 회귀 | Report·worker·권한·복구·backend 전체 회귀·동결 | `PLANNED` |
 | R4-W4-F3 | Wave 4 Report production 등록 | R4 | 없음 → I4 | R4-16 Report 공통 등록 | FastAPI·Alembic·권한·승인본 불변성·중복 실행 차단 | `MERGED_DEV` |
 | R4-W4-F4 | Wave 4 metric registry 소비 | R4 | Gate 0 → I4 | R4-06~11 metric semantic Context·G2 | R2 registry를 권한별 Context·model payload·G2에 보존 | `MERGED_DEV` |
 | R4-W4-F5 | Wave 4 Report v1.1 제품 등록 | R4 | I4 → I5 | R4-16 Report API·DB queue 등록 | owner scope·draft replace·history·server-owned command | `MERGED_DEV` |
-| R4-W4-F6 | Wave 4 Report OpenAPI 후보 공개 | R4 | I4 → I5 | R4-01·16 typed Report API | v1.0 응답 호환·v1.1 additive OpenAPI·admin 권한 | `READY` |
+| R4-W4-F6 | Wave 4 Report OpenAPI 후보 공개 | R4 | I4 → I5 | R4-01·16 typed Report API | v1.0 응답 호환·v1.1 additive OpenAPI·admin 권한 | `MERGED_DEV` |
+| R4-W4-F7 | Wave 4 Report browser 요청 허용 | R4 | I4 → I5 | R4-01·16 CORS PUT preflight | exact origin·admin header를 유지한 draft PUT 허용 | `READY` |
 | R5-W4 | Wave 4·08/24~09/02 | R5 | I4·RC1 → I5 | R5-08~19 + R5-02~07 회귀 | Report·E2E·접근성·발표 route·fallback·frontend 동결 | `PLANNED` |
 | R5-W4-F1 | Wave 4 12-column Report editor | R5 | 없음 → I4 | R5-11 Report editor | draft layout·keyboard 대안·승인본 불변성 | `MERGED_DEV` |
 | R5-W4-F2 | Wave 4 Report 상태·접근성 QA | R5 | 없음 → I4 | R5-12·16 fixture history·QA | 상태·partial·keyboard·live region·반응형 회귀 | `MERGED_DEV` |
@@ -2909,7 +2910,7 @@ RESULT_CI=branch 30890862456 PASS; dev 30891002416 PASS
 ### R3-W4-F7
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -2936,6 +2937,8 @@ STOP_CONDITIONS=entitlement·Gate 판정을 Node1에 추가; R4 backend 변경 �
 EXTERNAL_ACTION_PERMISSION=없음. local schema·glossary·Node1·test·허용 경로 commit·daesung push만 승인한다.
 AUTO_FAIL_CONDITIONS=복수 후보 임의 선택; 미등록 ID 생성; 권한 정보 포함; 기존 candidate 제거; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=5개 glossary ID·alias와 exact-one/missing/ambiguous/dimension 회귀, AI 전체 회귀, branch CI를 제출한다. 통과 뒤 R4가 entitlement와 교집합해 제품 Context에 선택 ID 1개만 전달하도록 별도 발행한다.
+RESULT_SHA=dcc8ada48738636ded8c40de069a4ef49b604396
+RESULT_CI=branch 30893491712 PASS; dev 30893564400 PASS
 ```
 
 ### R2-W4-F3
@@ -3111,7 +3114,7 @@ RESULT_CI=branch 30892236929 PASS; dev 30892299692 PASS
 ### R4-W4-F6
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -3138,6 +3141,40 @@ STOP_CONDITIONS=기존 analysis response contract_version·fixture 비호환; Re
 EXTERNAL_ACTION_PERMISSION=없음. local OpenAPI·typed schema·test·허용 경로 commit·jaehong push만 승인한다.
 AUTO_FAIL_CONDITIONS=client result 주입 endpoint 공개; additional properties 허용; 기존 path 제거; 권한 누락; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=OpenAPI diff의 additive path·typed schema·operationId·admin auth·manual trust boundary, 기존 backend/report·frontend contract 회귀와 branch CI를 제출한다. 통과 뒤 R5 actual API client integration을 별도 발행한다.
+RESULT_SHA=4a2020e4450d1365f45ebc2bfba4eacfeb1e1d56
+RESULT_CI=branch 30893359718 PASS; dev 30893564400 PASS
+```
+
+### R4-W4-F7
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W4-F7
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=Report browser preflight readiness
+TASK_CARD_RANGE=R4-01·16 CORS PUT preflight
+CURRENT_TASK_CARD_ID=R4-01
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=dcc8ada48738636ded8c40de069a4ef49b604396
+START_POINT=origin/jaehong 4a2020e4450d1365f45ebc2bfba4eacfeb1e1d56에 origin/dev dcc8ada48738636ded8c40de069a4ef49b604396을 병합해 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W4-F7@dcc8ada
+CONTRACT_VERSION=OPENAPI-v1.1.0-DRAFT; REPORT-v1.1.0-DRAFT; CORS exact-origin
+ALLOWED_PATHS=app/backend/app/main.py; app/backend/README.md; tests/backend/test_http_runtime.py; tests/backend/test_report_registration.py; handoffs/R4-W4-F7.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=Report route·schema·repository·migration; OpenAPI JSON; worker·schedule·compose; frontend; root Compose·env·CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R4-W4-F7.json
+ACCEPTANCE_CRITERIA=기존 exact CORS origin·credentials·허용 header 정책을 유지하면서 공개 draft block replace의 PUT preflight만 추가 허용한다. 승인 origin의 OPTIONS에서 PUT과 Authorization·Content-Type·X-As-Of·X-Contract-Version·X-Role·X-Timezone·X-Trace-Id·X-User-Id header를 허용하고, 비승인 origin은 Access-Control-Allow-Origin을 받지 못한다. GET·POST·OPTIONS 기존 동작과 analysis·Report API 계약을 변경하지 않는다. wildcard origin/header/method는 금지한다.
+ACCEPTANCE_IDS=AC1_PUT_PREFLIGHT;AC2_EXACT_ORIGIN;AC3_REQUIRED_HEADERS;AC4_DENIED_ORIGIN;AC5_EXISTING_METHODS;AC6_NO_WILDCARD;AC7_NO_API_CHANGE
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_http_runtime.py tests/backend/test_report_registration.py -q; python -m pytest -p no:cacheprovider tests/backend tests/report -q; node tests/frontend/contracts.test.mjs; python -m compileall -q app/backend/app/main.py; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND_REPORT;T3_FRONTEND;T4_COMPILE;T5_SCOPE;T6_DIFF
+STOP_CONDITIONS=wildcard origin·method·header 필요; frontend origin 추가 결정 필요; route·schema·DB 변경 필요; 실제 cross-origin 외부 호출 필요; 허용 경로 밖 변경; 외부 비용·secret 필요; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local CORS·test·허용 경로 commit·jaehong push만 승인한다.
+AUTO_FAIL_CONDITIONS=PUT preflight 차단; wildcard; 비승인 origin 허용; 기존 POST 회귀; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=승인·비승인 origin의 PUT OPTIONS와 필수 header, 기존 backend/report·frontend 회귀, branch CI를 제출한다. 통과 뒤 R5 actual API client integration을 발행한다.
 ```
 
 ### R5-W4-F1
@@ -3290,6 +3327,7 @@ R1_REVIEW_CONDITIONS=<Not Run·change request·잔여 위험·외부 승인·기
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v3.20 | 2026-08-04 18:15 | R3 exact-one metric 선택과 5개 glossary, R4 typed Report OpenAPI additive 후보를 기존 v1.0 계약 호환 및 branch/dev CI로 수용했다. R5 browser actual API 연결 전에 draft block PUT preflight만 exact origin·header 정책으로 허용하는 R4-W4-F7을 local-only로 발행했다. wildcard·외부 호출·worker·schedule은 제외한다. |
 | v3.19 | 2026-08-04 18:00 | R2의 3개 single-asset metric 확대와 R4의 owner-scoped Report API·DB queue·신규 migration을 branch/dev CI 및 실제 PostgreSQL 증거로 수용했다. 동일 asset 복수 metric 전에 R3 exact-one 선택 계약을, R5 actual integration 전에 R4 typed Report OpenAPI additive 후보를 각각 local-only로 발행했다. ratio·count·multi-asset, worker·schedule, 외부 비용은 계속 차단한다. |
 | v3.18 | 2026-08-04 17:45 | R3 evaluation bridge의 metric·typed filter 보존과 누락·변조·OR 차단 회귀를 branch CI까지 확인해 dev에 통합했다. Validation 23개 metric 중 현 단일-asset 계약과 R4 단일 metric 소비를 동시에 만족하는 안전 범위를 재검토해, 기존 metric이 없는 서로 다른 View의 fnb_net_revenue·facility_revenue·actual_attendees만 추가하는 R2-W4-F4를 local-only로 발행했다. ratio·count·multi-asset 계약과 150건 평가는 계속 차단한다. |
 | v3.17 | 2026-08-04 17:30 | R5 REPORT-v1.1 proposal의 layout·draft replace·history·manual command 신뢰 경계와 branch CI를 확인해 dev에 통합했다. owner-scoped API·DB queue·신규 migration만 제품에 등록하는 R4-W4-F5를 local-only로 발행하고, OpenAPI 공개·worker·schedule은 선행 계약 전까지 제외했다. |

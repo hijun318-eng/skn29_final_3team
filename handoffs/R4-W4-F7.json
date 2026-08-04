@@ -1,0 +1,47 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W4-F7",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "dcc8ada48738636ded8c40de069a4ef49b604396",
+  "SYNCED_DEV_SHA": "136621dfd7161cbe948967a22993ae1e4dd2aeb9",
+  "RESULT_SHA": "d246f0406a076da4597852ae323e5f2faaef68e1",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W4-F7@dcc8ada",
+  "COMPLETED_CARDS": [
+    "R4-01·16 CORS PUT preflight"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/README.md",
+    "app/backend/app/main.py",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
+    "tests/backend/test_http_runtime.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "OPENAPI": "OPENAPI-v1.1.0-DRAFT unchanged",
+    "REPORT": "REPORT-v1.1.0-DRAFT unchanged",
+    "CORS": "exact-origin; GET·POST·PUT·OPTIONS"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_PUT_PREFLIGHT", "status": "PASS", "evidence": "승인 origin의 Report block replace OPTIONS가 PUT을 허용"},
+    {"id": "AC2_EXACT_ORIGIN", "status": "PASS", "evidence": "기존 http://localhost:5173 exact origin을 유지"},
+    {"id": "AC3_REQUIRED_HEADERS", "status": "PASS", "evidence": "Authorization·Content-Type·X-As-Of·X-Contract-Version·X-Role·X-Timezone·X-Trace-Id·X-User-Id 허용 확인"},
+    {"id": "AC4_DENIED_ORIGIN", "status": "PASS", "evidence": "비승인 https://untrusted.example PUT preflight는 400이며 Allow-Origin 없음"},
+    {"id": "AC5_EXISTING_METHODS", "status": "PASS", "evidence": "기존 POST preflight와 GET·POST·OPTIONS method 허용을 함께 회귀"},
+    {"id": "AC6_NO_WILDCARD", "status": "PASS", "evidence": "origin·method·header에 wildcard가 없음을 실제 응답에서 검증"},
+    {"id": "AC7_NO_API_CHANGE", "status": "PASS", "evidence": "route·schema·OpenAPI JSON·repository·DB·migration·frontend를 변경하지 않음"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_TARGET", "name": "python -m pytest -p no:cacheprovider tests/backend/test_http_runtime.py tests/backend/test_report_registration.py -q", "status": "PASS", "evidence": "9 passed, 8 environment-gated tests skipped, 10 subtests passed"},
+    {"id": "T2_BACKEND_REPORT", "name": "python -m pytest -p no:cacheprovider tests/backend tests/report -q", "status": "PASS", "evidence": "90 passed, 8 environment-gated tests skipped, 33 subtests passed"},
+    {"id": "T3_FRONTEND", "name": "node tests/frontend/contracts.test.mjs", "status": "PASS", "evidence": "R5 contract checks passed"},
+    {"id": "T4_COMPILE", "name": "python -m compileall -q app/backend/app/main.py", "status": "PASS", "evidence": "compile error 없음"},
+    {"id": "T5_SCOPE", "name": "python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "origin/dev 136621d 기준 R4-W4-F7 허용 경로와 handoff 계약 확인"},
+    {"id": "T6_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R4-W4-F7 PUT preflight 수용과 R5 actual API client integration 카드 발행 승인"
+}

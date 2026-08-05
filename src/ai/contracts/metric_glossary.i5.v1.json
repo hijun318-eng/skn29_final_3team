@@ -1,0 +1,26 @@
+{
+  "version": "METRIC-GLOSSARY-v1.0.0-DRAFT",
+  "metrics": {
+    "recognized_room_revenue": [
+      "인식 객실 매출",
+      "객실 매출",
+      "recognized room revenue"
+    ],
+    "expired_points": [
+      "소멸 포인트",
+      "expired points"
+    ],
+    "fnb_net_revenue": [
+      "식음 순매출",
+      "F&B net revenue"
+    ],
+    "facility_revenue": [
+      "부대시설 매출",
+      "facility revenue"
+    ],
+    "actual_attendees": [
+      "실제 연회 참석자 수",
+      "actual attendees"
+    ]
+  }
+}

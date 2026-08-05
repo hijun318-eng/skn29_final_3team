@@ -1,13 +1,20 @@
 export const REPORT_CONTRACT_VERSION = "REPORT-v1.0.0";
+export const REPORT_REQUEST_CONTEXT_VERSION = "OPENAPI-v1.0.0";
+export const REPORT_RUN_STATUSES = ["queued", "running", "success", "partial", "failed", "cancelled"] as const;
+export type ReportRunStatus = typeof REPORT_RUN_STATUSES[number];
+export const REPORT_BLOCK_TYPES = ["table", "chart", "text"] as const;
+export type ReportBlockType = typeof REPORT_BLOCK_TYPES[number];
 
 export interface ReportBlock {
   readonly id: string;
   readonly title: string;
-  readonly artifactId: string;
+  readonly artifactId?: string;
   readonly queryId?: string;
   readonly question?: string;
   readonly sourceUrns?: readonly string[];
   readonly columns: number;
+  readonly type?: ReportBlockType;
+  readonly content?: string;
   readonly x?: number;
   readonly y?: number;
   readonly w?: number;
@@ -69,8 +76,167 @@ export interface ReportRun {
   readonly policyVersion: string;
   readonly contextHash: string;
   readonly watermark: Readonly<Record<string, string>>;
-  readonly status: "queued" | "running" | "success" | "partial" | "failed" | "cancelled";
+  readonly status: ReportRunStatus;
   readonly blocks: readonly ReportBlockRun[];
+}
+
+export interface ReportDefinitionListResponse {
+  readonly contract_version: string;
+  readonly items: readonly ReportDefinitionResponse[];
+}
+
+export interface ReportDefinitionResponse {
+  readonly contract_version: string;
+  readonly definition_id: string;
+  readonly version: number;
+  readonly status: "draft" | "approved";
+  readonly title: string;
+  readonly blocks: readonly ReportBlockResponse[];
+  readonly approved_at: string | null;
+}
+
+export interface ReportBlockResponse {
+  readonly block_id: string;
+  readonly title: string;
+  readonly artifact_id: string | null;
+  readonly query_id: string | null;
+  readonly columns: number;
+  readonly type: ReportBlockType;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  readonly content: string;
+}
+
+export interface ReportRunListResponse {
+  readonly contract_version: string;
+  readonly items: readonly ReportRunResponse[];
+}
+
+export interface ReportRunResponse {
+  readonly contract_version: string;
+  readonly run_id: string;
+  readonly definition_id: string;
+  readonly definition_version: number;
+  readonly as_of: string;
+  readonly policy_version: string;
+  readonly context_hash: string;
+  readonly watermark: Readonly<Record<string, string>>;
+  readonly status: ReportRunStatus;
+  readonly blocks: readonly ReportBlockRunResponse[];
+}
+
+export interface ReportBlockRunResponse {
+  readonly block_id: string;
+  readonly artifact_id: string;
+  readonly query_id: string;
+  readonly snapshot_checksum: string;
+  readonly status: "success" | "partial" | "failed" | "cancelled";
+}
+
+export interface ManualRunCommandResponse {
+  readonly contract_version: string;
+  readonly command_id: string;
+  readonly definition_id: string;
+  readonly version: number;
+  readonly as_of: string;
+  readonly idempotency_key: string;
+  readonly status: "queued";
+}
+
+export interface ReportBlockRequest {
+  readonly block_id: string;
+  readonly title: string;
+  readonly artifact_id?: string;
+  readonly query_id?: string;
+  readonly columns: number;
+  readonly type: ReportBlockType;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  readonly content: string;
+}
+
+export function assertReportContractVersion(value: string): void {
+  if (value !== REPORT_CONTRACT_VERSION) throw new Error(`지원하지 않는 Report 계약입니다: ${value}`);
+}
+
+function normalizeBlock(block: ReportBlockResponse): DraftLayoutBlock {
+  if (!REPORT_BLOCK_TYPES.includes(block.type)) throw new Error(`지원하지 않는 Report block type입니다: ${block.type}`);
+  return {
+    id: block.block_id,
+    title: block.title,
+    artifactId: block.artifact_id ?? undefined,
+    queryId: block.query_id ?? undefined,
+    columns: block.columns,
+    type: block.type,
+    content: block.content,
+    x: block.x,
+    y: block.y,
+    w: block.w,
+    h: block.h,
+  };
+}
+
+export function normalizeReportDefinition(response: ReportDefinitionResponse): ReportDefinitionVersion {
+  assertReportContractVersion(response.contract_version);
+  if (!["draft", "approved"].includes(response.status)) throw new Error(`지원하지 않는 Report 상태입니다: ${response.status}`);
+  return {
+    definitionId: response.definition_id,
+    version: response.version,
+    status: response.status,
+    title: response.title,
+    blocks: response.blocks.map(normalizeBlock),
+    approvedAt: response.approved_at ?? undefined,
+  };
+}
+
+export function normalizeReportRun(response: ReportRunResponse): ReportRun {
+  assertReportContractVersion(response.contract_version);
+  if (!REPORT_RUN_STATUSES.includes(response.status)) throw new Error(`지원하지 않는 Report run 상태입니다: ${response.status}`);
+  return createReportRun({
+    runId: response.run_id,
+    definitionId: response.definition_id,
+    definitionVersion: response.definition_version,
+    asOf: response.as_of,
+    policyVersion: response.policy_version,
+    contextHash: response.context_hash,
+    watermark: response.watermark,
+    status: response.status,
+    blocks: response.blocks.map((block) => ({
+      blockId: block.block_id,
+      artifactId: block.artifact_id,
+      queryId: block.query_id,
+      snapshotChecksum: block.snapshot_checksum,
+      status: block.status,
+    })),
+  });
+}
+
+export function toReportBlockRequest(block: ReportBlock): ReportBlockRequest {
+  const type = block.type ?? "text";
+  if (!REPORT_BLOCK_TYPES.includes(type)) throw new Error(`API mode에서 지원하지 않는 block type입니다: ${type}`);
+  if ((type === "table" || type === "chart") && !block.artifactId) {
+    throw new Error("table·chart block은 Artifact가 필요합니다.");
+  }
+  const content = block.content ?? "";
+  if (type === "text" && !content.trim()) throw new Error("text block 내용은 비어 있을 수 없습니다.");
+  const w = block.w ?? block.columns;
+  return {
+    block_id: block.id,
+    title: block.title,
+    ...(block.artifactId ? { artifact_id: block.artifactId } : {}),
+    ...(block.queryId ? { query_id: block.queryId } : {}),
+    columns: w,
+    type,
+    x: block.x ?? 0,
+    y: block.y ?? 0,
+    w,
+    h: block.h ?? 1,
+    content,
+  };
 }
 
 export function createDraft(approved: ReportDefinitionVersion): ReportDefinitionVersion {

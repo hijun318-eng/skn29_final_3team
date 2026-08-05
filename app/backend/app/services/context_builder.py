@@ -12,6 +12,8 @@ class ContextBuildErrorCode(str, Enum):
     DATASET_LIMIT_EXCEEDED = "DATASET_LIMIT_EXCEEDED"
     COLUMN_LIMIT_EXCEEDED = "COLUMN_LIMIT_EXCEEDED"
     TOKEN_LIMIT_EXCEEDED = "TOKEN_LIMIT_EXCEEDED"
+    INVALID_METRIC = "INVALID_METRIC"
+    DUPLICATE_METRIC = "DUPLICATE_METRIC"
 
 
 class ContextBuildError(ValueError):
@@ -21,11 +23,30 @@ class ContextBuildError(ValueError):
 
 
 @dataclass(frozen=True)
+class ContextRequiredFilter:
+    field: str
+    operator: str
+    value: str | bool
+
+
+@dataclass(frozen=True)
+class ContextMetric:
+    id: str
+    asset_fqn: str
+    field: str
+    aggregation: str
+    time_field: str
+    required_filters: tuple[ContextRequiredFilter, ...]
+
+
+@dataclass(frozen=True)
 class ContextAsset:
     urn: str
     fqn: str
     columns: tuple[str, ...]
     join_ids: tuple[str, ...] = ()
+    metrics: tuple[ContextMetric, ...] = ()
+    metric_registry_required: bool = False
 
     def __post_init__(self) -> None:
         if not self.urn.strip() or not self.fqn.strip():
@@ -64,6 +85,7 @@ class ContextPackage:
     token_limit: int
     package_hash: str
     approved_join_ids: tuple[str, ...]
+    metrics: tuple[ContextMetric, ...] = ()
 
 
 class ContextPackageBuilder:
@@ -89,6 +111,13 @@ class ContextPackageBuilder:
             )
         )
         self._validate_unique_assets(assets)
+        metrics = tuple(
+            sorted(
+                (metric for asset in assets for metric in asset.metrics),
+                key=lambda metric: (metric.id, metric.asset_fqn),
+            )
+        )
+        self._validate_metrics(assets, metrics)
 
         dataset_count = len(assets)
         column_count = sum(len(asset.columns) for asset in assets)
@@ -117,6 +146,24 @@ class ContextPackageBuilder:
                 }
                 for asset in assets
             ],
+            "metrics": [
+                {
+                    "id": metric.id,
+                    "asset_fqn": metric.asset_fqn,
+                    "field": metric.field,
+                    "aggregation": metric.aggregation,
+                    "time_field": metric.time_field,
+                    "required_filters": [
+                        {
+                            "field": item.field,
+                            "operator": item.operator,
+                            "value": item.value,
+                        }
+                        for item in metric.required_filters
+                    ],
+                }
+                for metric in metrics
+            ],
             "token_count": request.token_count,
         }
         package_hash = hashlib.sha256(
@@ -133,6 +180,7 @@ class ContextPackageBuilder:
             time_version=request.time_version,
             entitlement_hash=request.entitlement_hash,
             assets=assets,
+            metrics=metrics,
             dataset_count=dataset_count,
             column_count=column_count,
             token_count=request.token_count,
@@ -140,6 +188,41 @@ class ContextPackageBuilder:
             package_hash=package_hash,
             approved_join_ids=tuple(sorted({join_id for asset in assets for join_id in asset.join_ids})),
         )
+
+    @staticmethod
+    def _validate_metrics(
+        assets: tuple[ContextAsset, ...],
+        metrics: tuple[ContextMetric, ...],
+    ) -> None:
+        ids = [metric.id for metric in metrics]
+        if any(asset.metric_registry_required for asset in assets) and not metrics:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "선택된 Context asset에는 하나 이상의 승인 metric이 필요합니다.",
+            )
+        if len(ids) != len(set(ids)):
+            raise ContextBuildError(
+                ContextBuildErrorCode.DUPLICATE_METRIC,
+                "동일한 metric id를 중복 포함할 수 없습니다.",
+            )
+        columns_by_fqn = {asset.fqn: set(asset.columns) for asset in assets}
+        for metric in metrics:
+            required_fields = {item.field for item in metric.required_filters}
+            columns = columns_by_fqn.get(metric.asset_fqn, set())
+            if (
+                not all(
+                    (metric.id, metric.asset_fqn, metric.field, metric.aggregation, metric.time_field)
+                )
+                or metric.field not in columns
+                or metric.time_field not in columns
+                or not metric.required_filters
+                or required_fields.difference(columns)
+                or any(item.operator != "eq" for item in metric.required_filters)
+            ):
+                raise ContextBuildError(
+                    ContextBuildErrorCode.INVALID_METRIC,
+                    "Metric은 선택된 asset column과 구조화 required filter를 사용해야 합니다.",
+                )
 
     @staticmethod
     def _validate_request_metadata(request: ContextBuildRequest) -> None:

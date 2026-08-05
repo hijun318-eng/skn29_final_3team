@@ -1,0 +1,54 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R5-W4-F3",
+  "ROLE": "R5",
+  "BRANCH": "minji",
+  "BASE_SHA": "ef7c55016baa98965e1b1009d1d46e9cc3a4c2e8",
+  "SYNCED_DEV_SHA": "1c77d8b491da246201f9b345a404ee9d105cdb51",
+  "RESULT_SHA": "e691b95b756b5c9b472ae17af32bf4b973401681",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R5-W4-F3@ef7c550",
+  "COMPLETED_CARDS": [
+    "R5-08~10·12 Report proposal 계약 보완"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/minji/일일보고.md",
+    "src/report/README.md",
+    "src/report/__init__.py",
+    "src/report/domain.py",
+    "src/report/migration_proposal_v1_1.sql",
+    "src/report/repository.py",
+    "src/report/router.py",
+    "tests/report/test_domain.py",
+    "tests/report/test_migration_proposal.py",
+    "tests/report/test_router_contract.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "REPORT": "REPORT-v1.1.0-DRAFT; REPORT-v1.0.0-compatible"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_V1_COMPAT", "status": "PASS", "evidence": "기존 REPORT-v1.0.0 상수·payload·response와 positional ReportBlock 생성을 보존"},
+    {"id": "AC2_LAYOUT_FIELDS", "status": "PASS", "evidence": "block type·x·y·w·h·content를 additive domain/router 계약으로 제공"},
+    {"id": "AC3_BOUNDS", "status": "PASS", "evidence": "x,y 비음수, w 1~12, h 양수, x+w<=12 및 columns=w 검증"},
+    {"id": "AC4_ARTIFACT_RULE", "status": "PASS", "evidence": "table/chart는 artifact 필수, text는 non-empty content 필수"},
+    {"id": "AC5_NEW_MIGRATION_PROPOSAL", "status": "PASS", "evidence": "기존 proposal SHA를 보존하고 20260804_04 이후 additive v1.1 proposal을 별도 파일로 추가"},
+    {"id": "AC6_DRAFT_REPLACE", "status": "PASS", "evidence": "draft version의 전체 block layout 교체 계약 제공"},
+    {"id": "AC7_APPROVED_IMMUTABLE", "status": "PASS", "evidence": "approved version block 교체를 409로 차단"},
+    {"id": "AC8_LIST_HISTORY", "status": "PASS", "evidence": "definition list와 run list/detail 계약 및 repository 조회 제공"},
+    {"id": "AC9_MANUAL_COMMAND", "status": "PASS", "evidence": "서버 생성 command_id와 queued 상태, idempotency key 재요청 동일 명령 반환"},
+    {"id": "AC10_TRUST_BOUNDARY", "status": "PASS", "evidence": "manual 입력을 definition_id·version·as_of·idempotency_key로 제한하고 결과·정책·상태 입력 거부"},
+    {"id": "AC11_NO_RUNTIME", "status": "PASS", "evidence": "backend·frontend·worker·schedule runtime을 수정하지 않고 R4 등록 proposal만 제공"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_REPORT", "name": "python -m pytest tests/report -q", "status": "PASS", "evidence": "11 passed, 9 subtests passed"},
+    {"id": "T2_COMPILE", "name": "python -m compileall -q src/report", "status": "PASS", "evidence": "compile error 없음"},
+    {"id": "T3_MIGRATION", "name": "python tests/report/test_migration_proposal.py", "status": "PASS", "evidence": "2 tests passed; v1 proposal SHA와 v1.1 additive proposal 검증"},
+    {"id": "T4_SCOPE", "name": "python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "origin/dev 1c77d8b 병합 후 승인 경로와 handoff 계약 검증"},
+    {"id": "T5_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R5-W4-F3 REPORT-v1.1.0-DRAFT proposal 수용과 dev 통합, R4 backend 등록 follow-up 승인"
+}

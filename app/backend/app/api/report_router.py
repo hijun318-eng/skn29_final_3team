@@ -3,13 +3,24 @@ from __future__ import annotations
 import os
 from typing import Annotated, Any, Callable
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.context import analysis_context
 from app.contracts import RequestContext, Role
+from app.report_contracts import (
+    ApproveReportVersionRequest,
+    CreateManualRunRequest,
+    CreateReportDefinitionRequest,
+    ManualRunCommandResponse,
+    ReplaceReportBlocksRequest,
+    ReportDefinitionListResponse,
+    ReportDefinitionResponse,
+    ReportRunListResponse,
+    ReportRunResponse,
+)
 
 
-report_router = APIRouter(include_in_schema=False)
+report_router = APIRouter()
 
 
 def report_admin_context(
@@ -39,27 +50,56 @@ def _call(action: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         raise HTTPException(status_code=error.status_code, detail=error.detail) from error
 
 
-@report_router.post("/reports/definitions")
+@report_router.post(
+    "/reports/definitions",
+    operation_id="reportCreateDefinition",
+    response_model=ReportDefinitionResponse,
+)
 def create_definition(
-    payload: Annotated[dict[str, Any], Body()],
-    context: Annotated[RequestContext, Depends(report_admin_context)],
-) -> dict[str, Any]:
-    return _call(lambda: _router(context).create_definition(payload))
-
-
-@report_router.post("/reports/definitions/{definition_id}/versions/{version}/approve")
-def approve_version(
-    definition_id: str,
-    version: int,
-    approved_at: Annotated[str, Body(embed=True)],
+    payload: CreateReportDefinitionRequest,
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
     return _call(
-        lambda: _router(context).approve_version(definition_id, version, approved_at)
+        lambda: _router(context).create_definition(
+            payload.model_dump(mode="json", exclude_none=True)
+        )
     )
 
 
-@report_router.post("/reports/definitions/{definition_id}/versions/{version}/drafts")
+@report_router.get(
+    "/reports/definitions",
+    operation_id="reportListDefinitions",
+    response_model=ReportDefinitionListResponse,
+)
+def list_definitions(
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+) -> dict[str, Any]:
+    return _call(lambda: _router(context).list_definitions())
+
+
+@report_router.post(
+    "/reports/definitions/{definition_id}/versions/{version}/approve",
+    operation_id="reportApproveVersion",
+    response_model=ReportDefinitionResponse,
+)
+def approve_version(
+    definition_id: str,
+    version: int,
+    payload: ApproveReportVersionRequest,
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+) -> dict[str, Any]:
+    return _call(
+        lambda: _router(context).approve_version(
+            definition_id, version, payload.approved_at.isoformat()
+        )
+    )
+
+
+@report_router.post(
+    "/reports/definitions/{definition_id}/versions/{version}/drafts",
+    operation_id="reportCreateNextDraft",
+    response_model=ReportDefinitionResponse,
+)
 def create_next_draft(
     definition_id: str,
     version: int,
@@ -68,7 +108,11 @@ def create_next_draft(
     return _call(lambda: _router(context).create_next_draft(definition_id, version))
 
 
-@report_router.get("/reports/definitions/{definition_id}/versions/{version}")
+@report_router.get(
+    "/reports/definitions/{definition_id}/versions/{version}",
+    operation_id="reportGetDefinitionVersion",
+    response_model=ReportDefinitionResponse,
+)
 def get_version(
     definition_id: str,
     version: int,
@@ -77,9 +121,67 @@ def get_version(
     return _call(lambda: _router(context).get_version(definition_id, version))
 
 
-@report_router.post("/reports/runs")
-def create_run(
-    payload: Annotated[dict[str, Any], Body()],
+@report_router.put(
+    "/reports/definitions/{definition_id}/versions/{version}/blocks",
+    operation_id="reportReplaceDraftBlocks",
+    response_model=ReportDefinitionResponse,
+)
+def replace_draft_blocks(
+    definition_id: str,
+    version: int,
+    payload: ReplaceReportBlocksRequest,
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
+    return _call(
+        lambda: _router(context).replace_draft_blocks(
+            definition_id,
+            version,
+            payload.model_dump(mode="json", exclude_none=True),
+        )
+    )
+
+
+@report_router.get(
+    "/reports/runs",
+    operation_id="reportListRuns",
+    response_model=ReportRunListResponse,
+)
+def list_runs(
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+    definition_id: str | None = None,
+) -> dict[str, Any]:
+    return _call(lambda: _router(context).list_runs(definition_id))
+
+
+@report_router.post(
+    "/reports/runs/manual",
+    operation_id="reportCreateManualRunCommand",
+    response_model=ManualRunCommandResponse,
+)
+def create_manual_run_command(
+    payload: CreateManualRunRequest,
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+) -> dict[str, Any]:
+    return _call(
+        lambda: _router(context).create_manual_run_command(payload.model_dump(mode="json"))
+    )
+
+
+@report_router.get(
+    "/reports/runs/{run_id}",
+    operation_id="reportGetRun",
+    response_model=ReportRunResponse,
+)
+def get_run(
+    run_id: str,
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+) -> dict[str, Any]:
+    return _call(lambda: _router(context).get_run(run_id))
+
+
+def create_run_internal(
+    payload: dict[str, Any],
+    context: RequestContext,
+) -> dict[str, Any]:
+    """Trusted worker adapter hook; intentionally not registered as HTTP."""
     return _call(lambda: _router(context).create_run(payload))

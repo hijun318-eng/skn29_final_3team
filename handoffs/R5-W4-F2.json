@@ -1,0 +1,50 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R5-W4-F2",
+  "ROLE": "R5",
+  "BRANCH": "minji",
+  "BASE_SHA": "a293194a039fa2ed5655ffa19f7b0494d8e5988f",
+  "SYNCED_DEV_SHA": "f4871df852d606daf793414e9582aa48be49514e",
+  "RESULT_SHA": "53d7e39b4ebf50b15e737bda586ab1914493c4a9",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R5-W4-F2@a293194",
+  "COMPLETED_CARDS": [
+    "R5-12·16 fixture Run History·접근성·반응형·보안 상태"
+  ],
+  "CHANGED_FILES": [
+    "app/enterprise-react/src/contracts/report.ts",
+    "app/enterprise-react/src/pages/ReportsPage.jsx",
+    "app/enterprise-react/src/styles.css",
+    "docs/markdown/daily_reports/minji/일일보고.md",
+    "tests/frontend/contracts.test.mjs"
+  ],
+  "CONTRACT_VERSIONS": {
+    "REPORT": "REPORT-v1.0.0-compatible",
+    "SCREEN": "SCR-RPT-003",
+    "RPE": "RPE-09~15-DRAFT"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_HISTORY_STATES", "status": "PASS", "evidence": "local synthetic Run History에 queued·running·success·partial·failed·cancelled 6개 상태를 text+icon으로 표시"},
+    {"id": "AC2_PARTIAL_BLOCK", "status": "PASS", "evidence": "partial 상세에 성공·부분 성공·실패 블록을 동시에 표시"},
+    {"id": "AC3_FIXTURE_LABEL", "status": "PASS", "evidence": "목록과 상세 상단에 LOCAL SYNTHETIC FIXTURE 및 실제 결과가 아니라는 경계를 명시"},
+    {"id": "AC4_KEYBOARD", "status": "PASS", "evidence": "실행 이력 전환을 native button으로 제공하고 Edge keyboard Enter와 focus-visible 2px 확인"},
+    {"id": "AC5_ARIA_LIVE", "status": "PASS", "evidence": "선택 상세와 toast에 aria-live=polite를 제공하고 Edge에서 선택 상태 문구 갱신 확인"},
+    {"id": "AC6_DISABLED_FOCUS", "status": "PASS", "evidence": "미연결 동작을 disabled 처리하고 선택 완료·오류 상태에서도 상세 영역으로 focus 이동"},
+    {"id": "AC7_SECURITY_STATES", "status": "PASS", "evidence": "권한 차단·loading·empty·error를 각각 text+icon으로 구분"},
+    {"id": "AC8_RESPONSIVE", "status": "PASS", "evidence": "Edge 1440·1024·768·360에서 document와 fixture 가로 overflow 없음"},
+    {"id": "AC9_NO_FAKE_SUCCESS", "status": "PASS", "evidence": "실제 승인·run·share·PDF/PPT·refresh 성공 동작을 제거 또는 disabled 처리하고 미연결임을 표시"},
+    {"id": "AC10_SCOPE", "status": "PASS", "evidence": "새 dependency·route·backend/API client·schedule 없이 승인된 frontend·test·report 경로만 변경"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_BUILD", "name": "npm --prefix app/enterprise-react run build", "status": "PASS", "evidence": "최신 dev 병합 후 Vite 8.1.5, 2367 modules transformed, built in 779ms"},
+    {"id": "T2_CONTRACT", "name": "node tests/frontend/contracts.test.mjs", "status": "PASS", "evidence": "R5 contract checks passed"},
+    {"id": "T3_BROWSER", "name": "Edge actual renderer 1440·1024·768·360 keyboard·focus·overflow·aria-live", "status": "PASS", "evidence": "Edge 151 CDP에서 4개 viewport 모두 6상태·partial 3블록·Enter 선택·focus-visible 2px·상세 focus·aria-live polite·disabled·text+icon·overflow 0 확인"},
+    {"id": "T4_SCOPE", "name": "python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "최신 origin/dev f4871df 병합 뒤 제품 결과 53d7e39와 handoff의 허용 경로 확인"},
+    {"id": "T5_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R5-W4-F2의 local-only Run History·접근성·반응형 QA 결과를 수용하고 dev 통합 승인"
+}

@@ -4,7 +4,10 @@ from typing import Any, Final
 
 from .domain import (
     BlockRunStatus,
+    BlockType,
     DefinitionStatus,
+    ManualRunCommand,
+    REPORT_CONTRACT_VERSION,
     ReportBlock,
     ReportBlockRun,
     ReportDefinitionVersion,
@@ -15,10 +18,15 @@ from .repository import InMemoryReportRepository
 
 REPORT_ROUTES: Final = (
     ("POST", "/reports/definitions", "create_definition"),
+    ("GET", "/reports/definitions", "list_definitions"),
     ("POST", "/reports/definitions/{definition_id}/versions/{version}/approve", "approve_version"),
     ("POST", "/reports/definitions/{definition_id}/versions/{version}/drafts", "create_next_draft"),
     ("GET", "/reports/definitions/{definition_id}/versions/{version}", "get_version"),
+    ("PUT", "/reports/definitions/{definition_id}/versions/{version}/blocks", "replace_draft_blocks"),
     ("POST", "/reports/runs", "create_run"),
+    ("GET", "/reports/runs", "list_runs"),
+    ("GET", "/reports/runs/{run_id}", "get_run"),
+    ("POST", "/reports/runs/manual", "create_manual_run_command"),
 )
 
 
@@ -40,7 +48,7 @@ class ReportRouter:
     @staticmethod
     def _response(version: ReportDefinitionVersion) -> dict[str, Any]:
         return {
-            "contract_version": "REPORT-v1.0.0",
+            "contract_version": REPORT_CONTRACT_VERSION,
             "definition_id": version.definition_id,
             "version": version.version,
             "status": version.status.value,
@@ -49,13 +57,62 @@ class ReportRouter:
             "approved_at": version.approved_at.isoformat() if version.approved_at else None,
         }
 
+    @staticmethod
+    def _blocks(payload: list[dict[str, Any]]) -> tuple[ReportBlock, ...]:
+        blocks = []
+        for block in payload:
+            width = block.get("w", block.get("columns"))
+            if width is None:
+                raise KeyError("columns")
+            blocks.append(ReportBlock(
+                block_id=block["block_id"],
+                title=block["title"],
+                artifact_id=block.get("artifact_id"),
+                columns=block.get("columns", width),
+                query_id=block.get("query_id"),
+                type=BlockType(block.get("type", "table")),
+                x=block.get("x", 0),
+                y=block.get("y", 0),
+                w=width,
+                h=block.get("h", 1),
+                content=block.get("content", ""),
+            ))
+        return tuple(blocks)
+
+    @staticmethod
+    def _run_response(run: ReportRun) -> dict[str, Any]:
+        return {
+            "contract_version": REPORT_CONTRACT_VERSION,
+            "run_id": run.run_id,
+            "definition_id": run.definition_id,
+            "definition_version": run.definition_version,
+            "as_of": run.as_of.isoformat(),
+            "policy_version": run.policy_version,
+            "context_hash": run.context_hash,
+            "watermark": dict(run.watermark),
+            "status": run.status.value,
+            "blocks": [asdict(block) for block in run.blocks],
+        }
+
+    @staticmethod
+    def _command_response(command: ManualRunCommand) -> dict[str, Any]:
+        return {
+            "contract_version": REPORT_CONTRACT_VERSION,
+            "command_id": command.command_id,
+            "definition_id": command.definition_id,
+            "version": command.version,
+            "as_of": command.as_of.isoformat(),
+            "idempotency_key": command.idempotency_key,
+            "status": command.status.value,
+        }
+
     def create_definition(self, payload: dict[str, Any]) -> dict[str, Any]:
         allowed = {"definition_id", "title", "blocks"}
         extra = set(payload) - allowed
         if extra:
             raise ReportRouteError(422, f"허용되지 않은 필드: {', '.join(sorted(extra))}")
         try:
-            blocks = tuple(ReportBlock(**block) for block in payload.get("blocks", []))
+            blocks = self._blocks(payload.get("blocks", []))
             draft = ReportDefinitionVersion(
                 definition_id=payload["definition_id"],
                 version=1,
@@ -92,6 +149,36 @@ class ReportRouter:
         except KeyError as error:
             raise ReportRouteError(404, str(error)) from error
 
+    def list_definitions(self) -> dict[str, Any]:
+        return {
+            "contract_version": REPORT_CONTRACT_VERSION,
+            "items": [self._response(version) for version in self.repository.list_definitions()],
+        }
+
+    def replace_draft_blocks(
+        self,
+        definition_id: str,
+        version: int,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        extra = set(payload) - {"blocks"}
+        if extra:
+            raise ReportRouteError(422, f"허용되지 않은 필드: {', '.join(sorted(extra))}")
+        try:
+            return self._response(
+                self.repository.replace_draft_blocks(
+                    definition_id,
+                    version,
+                    self._blocks(payload["blocks"]),
+                )
+            )
+        except KeyError as error:
+            if error.args and error.args[0] == "Report definition version을 찾을 수 없습니다.":
+                raise ReportRouteError(404, str(error)) from error
+            raise ReportRouteError(422, f"필수 필드 누락: {error.args[0]}") from error
+        except (TypeError, ValueError) as error:
+            raise ReportRouteError(409, str(error)) from error
+
     def create_run(self, payload: dict[str, Any]) -> dict[str, Any]:
         allowed = {
             "run_id", "definition_id", "definition_version", "as_of", "policy_version",
@@ -123,18 +210,39 @@ class ReportRouter:
                 blocks=blocks,
             )
             saved = self.repository.add_run(run)
-            return {
-                "contract_version": "REPORT-v1.0.0",
-                "run_id": saved.run_id,
-                "definition_id": saved.definition_id,
-                "definition_version": saved.definition_version,
-                "as_of": saved.as_of.isoformat(),
-                "policy_version": saved.policy_version,
-                "context_hash": saved.context_hash,
-                "watermark": dict(saved.watermark),
-                "status": saved.status.value,
-                "blocks": [asdict(block) for block in saved.blocks],
-            }
+            return self._run_response(saved)
+        except KeyError as error:
+            if error.args and error.args[0] == "Report definition version을 찾을 수 없습니다.":
+                raise ReportRouteError(404, str(error)) from error
+            raise ReportRouteError(422, f"필수 필드 누락: {error.args[0]}") from error
+        except (TypeError, ValueError) as error:
+            raise ReportRouteError(409, str(error)) from error
+
+    def list_runs(self, definition_id: str | None = None) -> dict[str, Any]:
+        return {
+            "contract_version": REPORT_CONTRACT_VERSION,
+            "items": [self._run_response(run) for run in self.repository.list_runs(definition_id)],
+        }
+
+    def get_run(self, run_id: str) -> dict[str, Any]:
+        try:
+            return self._run_response(self.repository.get_run(run_id))
+        except KeyError as error:
+            raise ReportRouteError(404, str(error)) from error
+
+    def create_manual_run_command(self, payload: dict[str, Any]) -> dict[str, Any]:
+        allowed = {"definition_id", "version", "as_of", "idempotency_key"}
+        extra = set(payload) - allowed
+        if extra:
+            raise ReportRouteError(422, f"허용되지 않은 필드: {', '.join(sorted(extra))}")
+        try:
+            command = self.repository.queue_manual_run(
+                payload["definition_id"],
+                payload["version"],
+                datetime.fromisoformat(payload["as_of"]),
+                payload["idempotency_key"],
+            )
+            return self._command_response(command)
         except KeyError as error:
             if error.args and error.args[0] == "Report definition version을 찾을 수 없습니다.":
                 raise ReportRouteError(404, str(error)) from error

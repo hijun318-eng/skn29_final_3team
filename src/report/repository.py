@@ -1,6 +1,7 @@
 from datetime import datetime
+from uuid import uuid4
 
-from .domain import DefinitionStatus, ReportDefinitionVersion, ReportRun
+from .domain import DefinitionStatus, ManualRunCommand, ReportBlock, ReportDefinitionVersion, ReportRun
 
 
 class InMemoryReportRepository:
@@ -9,6 +10,8 @@ class InMemoryReportRepository:
     def __init__(self) -> None:
         self._versions: dict[tuple[str, int], ReportDefinitionVersion] = {}
         self._runs: dict[str, ReportRun] = {}
+        self._commands: dict[str, ManualRunCommand] = {}
+        self._idempotency: dict[tuple[str, int, str], str] = {}
 
     def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
         if draft.status is not DefinitionStatus.DRAFT:
@@ -26,6 +29,9 @@ class InMemoryReportRepository:
         except KeyError as error:
             raise KeyError("Report definition version을 찾을 수 없습니다.") from error
 
+    def list_definitions(self) -> tuple[ReportDefinitionVersion, ...]:
+        return tuple(self._versions[key] for key in sorted(self._versions))
+
     def approve(self, definition_id: str, version: int, approved_at: datetime) -> ReportDefinitionVersion:
         approved = self.get_version(definition_id, version).approve(approved_at)
         self._versions[(definition_id, version)] = approved
@@ -35,6 +41,16 @@ class InMemoryReportRepository:
         draft = self.get_version(definition_id, approved_version).next_draft()
         return self.add_draft(draft)
 
+    def replace_draft_blocks(
+        self,
+        definition_id: str,
+        version: int,
+        blocks: tuple[ReportBlock, ...],
+    ) -> ReportDefinitionVersion:
+        replaced = self.get_version(definition_id, version).replace_blocks(blocks)
+        self._versions[(definition_id, version)] = replaced
+        return replaced
+
     def add_run(self, run: ReportRun) -> ReportRun:
         version = self.get_version(run.definition_id, run.definition_version)
         if version.status is not DefinitionStatus.APPROVED:
@@ -43,3 +59,30 @@ class InMemoryReportRepository:
             raise ValueError("같은 Report run_id를 다시 저장할 수 없습니다.")
         self._runs[run.run_id] = run
         return run
+
+    def list_runs(self, definition_id: str | None = None) -> tuple[ReportRun, ...]:
+        runs = self._runs.values()
+        return tuple(run for run in runs if definition_id is None or run.definition_id == definition_id)
+
+    def get_run(self, run_id: str) -> ReportRun:
+        try:
+            return self._runs[run_id]
+        except KeyError as error:
+            raise KeyError("Report run을 찾을 수 없습니다.") from error
+
+    def queue_manual_run(
+        self,
+        definition_id: str,
+        version: int,
+        as_of: datetime,
+        idempotency_key: str,
+    ) -> ManualRunCommand:
+        if self.get_version(definition_id, version).status is not DefinitionStatus.APPROVED:
+            raise ValueError("승인된 Report definition version만 실행할 수 있습니다.")
+        key = (definition_id, version, idempotency_key)
+        if command_id := self._idempotency.get(key):
+            return self._commands[command_id]
+        command = ManualRunCommand(str(uuid4()), definition_id, version, as_of, idempotency_key)
+        self._commands[command.command_id] = command
+        self._idempotency[key] = command.command_id
+        return command

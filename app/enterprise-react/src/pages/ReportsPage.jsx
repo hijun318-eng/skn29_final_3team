@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, ArrowLeft, BarChart3, Check, ChevronRight,
-  Columns2, Copy, Download, Eye, FileOutput, FilePlus2, GripVertical, Info, Minus,
-  Quote, RotateCcw, Save, Send, Share2, Sparkles, Table2, Target, Trash2, Type,
+  AlertTriangle, ArrowLeft, Ban, BarChart3, Check, ChevronRight, CircleCheck,
+  CircleX, Clock3, Columns2, Copy, Download, Eye, FileOutput, FilePlus2, GripVertical,
+  Inbox, Info, LoaderCircle, Minus, Quote, RotateCcw, Save, Send, Share2,
+  ShieldAlert, Sparkles, Table2, Target, Trash2, Type,
 } from "lucide-react";
 import { SYNTHETIC_META } from "../data/enterpriseDemoData";
-import { normalizeDraftLayout, serializeDraftLayout } from "../contracts/report";
+import { createReportClient, ReportApiError, usesFixtureReportClient } from "../api/reportClient";
+import { normalizeDraftLayout, serializeDraftLayout, toReportBlockRequest } from "../contracts/report";
+import { createUuid } from "../utils/createUuid";
 
 const REPORTS = [
   { id: 1, type: "주간", period: "07/21~07/27", title: "여름 성수기 객실 운영 주간 보고", summary: "성수기 진입으로 객실 판매와 점유율이 전주보다 상승했습니다. 주말 체크인 집중 시간대의 프런트 대기 증가가 함께 관측돼 운영 인력 배치 검토가 필요합니다.", kpi: "객실 매출 286.4백만원\n점유율 84.7%\n평균 객실 단가 168,000원\n직접 예약 비중 44.1%", note: "금·토요일 15~17시 체크인 인력을 보강하고 직접 예약 전환 추이를 다음 주에도 확인합니다.", status: "초안", author: "박준희", updated: "10분 전 수정" },
@@ -13,6 +16,22 @@ const REPORTS = [
   { id: 3, type: "주간", period: "07/07~07/13", title: "연회 행사 연계 매출 주간 보고", summary: "기업 연회 5건이 정상 진행됐고 연계 객실 판매가 증가했습니다. 행사일 전후 객실 수요가 집중돼 단체 예약과 일반 예약의 재고 배분을 조정했습니다.", kpi: "기업 연회 5건\n연회 매출 92.6백만원\n연계 객실 148박\n행사 취소 0건", note: "대형 행사 전후 2일의 객실 재고를 사전 확보하는 운영 기준을 유지합니다.", status: "확정", author: "박준희", updated: "07.14 확정" },
   { id: 4, type: "월간", period: "2026년 06월", title: "6월 객실·회원·연회 통합 운영 보고", summary: "6월 객실 매출과 회원 직접 예약은 전월 대비 증가했습니다. 연회 매출은 계획 범위였으며 주말 객실 점유율이 평일보다 높게 나타났습니다.", kpi: "객실 매출 1,084백만원\n평균 점유율 78.9%\n회원 예약 1,126건\n연회 매출 318백만원", note: "7월 성수기에는 주말 수요 집중과 직접 예약 전환을 핵심 관리 지표로 운영합니다.", status: "확정", author: "박준희", updated: "07.03 확정" },
   { id: 5, type: "분기", period: "2026 Q2", title: "2026년 2분기 호텔 운영 성과 보고", summary: "2분기 객실과 연회 매출이 계획 수준을 달성했고 회원 예약 비중이 지속해서 증가했습니다. 원천별 합성 데이터를 동일 기준 시각으로 집계한 경영 검토용 보고서입니다.", kpi: "객실 매출 3,126백만원\n평균 점유율 76.3%\n직접 예약 비중 42.7%\n연회 매출 946백만원", note: "3분기에는 직접 예약 비중 확대와 성수기 객실 운영 안정성을 중심으로 관리합니다.", status: "확정", author: "CX 운영팀", updated: "07.05 확정" },
+];
+
+const RUN_HISTORY = [
+  { id: "run-queued", status: "queued", label: "대기", icon: Clock3, summary: "실행 순서를 기다리는 fixture입니다.", blocks: [["객실 매출", "대기"], ["회원 분석", "대기"]] },
+  { id: "run-running", status: "running", label: "실행 중", icon: LoaderCircle, summary: "로컬 상태 전환을 확인하는 fixture입니다.", blocks: [["객실 매출", "완료"], ["회원 분석", "실행 중"]] },
+  { id: "run-success", status: "success", label: "성공", icon: CircleCheck, summary: "모든 블록이 성공한 표시 예시이며 실제 실행 결과가 아닙니다.", blocks: [["객실 매출", "성공"], ["회원 분석", "성공"]] },
+  { id: "run-partial", status: "partial", label: "부분 성공", icon: AlertTriangle, summary: "성공·부분 성공·실패 블록을 함께 표시합니다.", blocks: [["객실 매출", "성공"], ["회원 분석", "부분 성공"], ["연회 분석", "실패"]] },
+  { id: "run-failed", status: "failed", label: "실패", icon: CircleX, summary: "오류 원인을 표시하되 정상 결과로 승격하지 않습니다.", blocks: [["객실 매출", "실패"], ["회원 분석", "취소"]] },
+  { id: "run-cancelled", status: "cancelled", label: "취소", icon: Ban, summary: "취소된 fixture이며 보고서 결과를 만들지 않습니다.", blocks: [["객실 매출", "취소"], ["회원 분석", "취소"]] },
+];
+
+const VIEW_STATE_EXAMPLES = [
+  { id: "role", label: "권한 차단", icon: ShieldAlert, text: "REPORT_ADMIN 권한이 없는 사용자는 실행 정보를 볼 수 없습니다." },
+  { id: "loading", label: "로딩", icon: LoaderCircle, text: "로컬 실행 이력을 불러오는 중입니다." },
+  { id: "empty", label: "비어 있음", icon: Inbox, text: "표시할 실행 이력이 없습니다." },
+  { id: "error", label: "오류", icon: AlertTriangle, text: "실행 이력을 불러오지 못했습니다. 오류 코드를 확인하세요." },
 ];
 
 const DECISIONS = [
@@ -160,7 +179,36 @@ function savedReports() {
 }
 
 function Toast({ message }) {
-  return message ? <div className="enterprise-toast"><Check size={14} />{message}</div> : null;
+  return message ? <div className="enterprise-toast" role="status" aria-live="polite"><Check size={14} />{message}</div> : null;
+}
+
+function RunHistoryFixture() {
+  const [selectedRunId, setSelectedRunId] = useState(null);
+  const detailRef = useRef(null);
+  const selectedRun = RUN_HISTORY.find((run) => run.id === selectedRunId);
+  const SelectedIcon = selectedRun?.icon;
+  const selectRun = (runId) => {
+    setSelectedRunId(runId);
+    window.requestAnimationFrame(() => detailRef.current?.focus());
+  };
+
+  useEffect(() => {
+    if (selectedRun) detailRef.current?.focus();
+  }, [selectedRun]);
+
+  return <section className="card report-run-fixture" aria-labelledby="run-history-title">
+    <header><div><span className="fixture-badge">LOCAL SYNTHETIC FIXTURE</span><h2 id="run-history-title">Run History 상태·접근성 점검</h2><p>아래 항목은 실제 API·스케줄·승인·공유·내보내기 결과가 아닌 화면 검증용 데이터입니다.</p></div><button disabled><Ban size={14} />실제 실행 연결 대기</button></header>
+    <div className="report-run-layout">
+      <nav className="report-run-list" aria-label="fixture 실행 이력">{RUN_HISTORY.map((run) => {
+        const Icon = run.icon;
+        return <button type="button" aria-pressed={selectedRunId === run.id} aria-label={`${run.label} fixture 상세 보기`} onClick={() => selectRun(run.id)} key={run.id}><Icon size={17} aria-hidden="true" /><span><b>{run.label}</b><small>{run.status}</small></span><ChevronRight size={14} aria-hidden="true" /></button>;
+      })}</nav>
+      <section className="report-run-detail" ref={detailRef} tabIndex={-1} role="status" aria-live="polite" aria-atomic="true">
+        {selectedRun ? <><header><SelectedIcon size={19} aria-hidden="true" /><div><small>{selectedRun.id}</small><h3>{selectedRun.label}</h3></div></header><p>{selectedRun.summary}</p><ul>{selectedRun.blocks.map(([name, status]) => <li key={name}><span>{name}</span><b>{status}</b></li>)}</ul><button disabled>{["queued", "running"].includes(selectedRun.status) ? "fixture 처리 중 · 조작 불가" : "실제 작업 연결 대기"}</button></> : <div className="report-run-placeholder"><Info size={20} aria-hidden="true" /><p>실행 상태를 선택하면 상세와 블록별 상태가 여기에 표시됩니다.</p></div>}
+      </section>
+    </div>
+    <div className="report-view-states" aria-label="보안과 비동기 상태 예시">{VIEW_STATE_EXAMPLES.map((state) => { const Icon = state.icon; return <article key={state.id}><Icon size={18} aria-hidden="true" /><div><b>{state.label}</b><p>{state.text}</p></div></article>; })}</div>
+  </section>;
 }
 
 function SectionHeading({ number, eyebrow, title, description, meta }) {
@@ -203,7 +251,141 @@ function buildGeneratedReportLayout(blocks) {
   return layout;
 }
 
-export function ReportsPage() {
+function apiError(error) {
+  if (error instanceof ReportApiError && error.status === 401) return `401 · 로그인이 필요합니다. ${error.message}`;
+  if (error instanceof ReportApiError && error.status === 403) return `403 · REPORT_ADMIN 권한이 필요합니다. ${error.message}`;
+  return error instanceof ReportApiError ? `${error.status} · ${error.code} · ${error.message}`
+    : error instanceof Error ? error.message : "Report API 요청에 실패했습니다.";
+}
+
+function ReportApiPage() {
+  const client = useMemo(() => createReportClient(), []);
+  const [definitions, setDefinitions] = useState([]);
+  const [definitionState, setDefinitionState] = useState("loading");
+  const [runs, setRuns] = useState([]);
+  const [runState, setRunState] = useState("loading");
+  const [selectedDefinition, setSelectedDefinition] = useState(null);
+  const [apiBlocks, setApiBlocks] = useState([]);
+  const [selectedRun, setSelectedRun] = useState(null);
+  const [command, setCommand] = useState(null);
+  const [pending, setPending] = useState("");
+  const [error, setError] = useState("");
+
+  const upsertDefinition = (definition) => {
+    setDefinitions((current) => {
+      const remaining = current.filter((item) => !(item.definitionId === definition.definitionId && item.version === definition.version));
+      return [...remaining, definition].sort((a, b) => a.definitionId.localeCompare(b.definitionId) || a.version - b.version);
+    });
+    setSelectedDefinition(definition);
+    setApiBlocks(definition.blocks);
+  };
+  const loadDefinitions = async () => {
+    setDefinitionState("loading");
+    try {
+      const items = await client.listDefinitions();
+      setDefinitions(items);
+      setDefinitionState(items.length ? "ready" : "empty");
+    } catch (nextError) {
+      setError(apiError(nextError));
+      setDefinitionState("error");
+    }
+  };
+  const loadRuns = async () => {
+    setRunState("loading");
+    try {
+      const items = await client.listRuns();
+      setRuns(items);
+      setRunState(items.length ? "ready" : "empty");
+    } catch (nextError) {
+      setError(apiError(nextError));
+      setRunState("error");
+    }
+  };
+  useEffect(() => { void loadDefinitions(); void loadRuns(); }, []);
+
+  const mutate = async (name, action) => {
+    setPending(name);
+    setError("");
+    try { return await action(); } catch (nextError) { setError(apiError(nextError)); return null; } finally { setPending(""); }
+  };
+  const createDefinition = async () => {
+    const definition = await mutate("create", () => client.createDefinition({
+      definition_id: createUuid(),
+      title: "새 Report 정의",
+      blocks: [{
+        block_id: createUuid(), title: "보고서 내용", columns: 12, type: "text",
+        x: 0, y: 0, w: 12, h: 2, content: "검토할 보고서 내용을 입력하세요.",
+      }],
+    }));
+    if (definition) { upsertDefinition(definition); setDefinitionState("ready"); }
+  };
+  const openDefinition = async (definition) => {
+    const current = await mutate("definition", () => client.getDefinition(definition.definitionId, definition.version));
+    if (current) upsertDefinition(current);
+  };
+  const saveDraft = async () => {
+    if (!selectedDefinition || selectedDefinition.status !== "draft") return;
+    const saved = await mutate("save", () => client.replaceDraftBlocks(
+      selectedDefinition.definitionId,
+      selectedDefinition.version,
+      apiBlocks.map(toReportBlockRequest),
+    ));
+    if (saved) upsertDefinition(saved);
+  };
+  const approve = async () => {
+    if (!selectedDefinition || selectedDefinition.status !== "draft") return;
+    const approved = await mutate("approve", () => client.approveDefinition(
+      selectedDefinition.definitionId, selectedDefinition.version, new Date().toISOString(),
+    ));
+    if (approved) upsertDefinition(approved);
+  };
+  const createNextDraft = async () => {
+    if (!selectedDefinition || selectedDefinition.status !== "approved") return;
+    const draft = await mutate("draft", () => client.createNextDraft(selectedDefinition.definitionId, selectedDefinition.version));
+    if (draft) upsertDefinition(draft);
+  };
+  const queueManualRun = async () => {
+    if (!selectedDefinition || selectedDefinition.status !== "approved") return;
+    const receipt = await mutate("manual", () => client.createManualRun({
+      definition_id: selectedDefinition.definitionId,
+      version: selectedDefinition.version,
+      as_of: new Date().toISOString(),
+      idempotency_key: createUuid(),
+    }));
+    if (receipt) setCommand(receipt);
+  };
+  const openRun = async (run) => {
+    const detail = await mutate("run", () => client.getRun(run.runId));
+    if (detail) setSelectedRun(detail);
+  };
+
+  return <div className="page-content report-api-page">
+    <div className="meta-strip"><Info size={13} />ACTUAL LOCAL REPORT API<span>REPORT_ADMIN owner scope</span><span>worker 미연결</span></div>
+    <header className="card report-api-header"><div><p>REPORT API</p><h2>서버 Report 정의와 실행 이력</h2><small>화면은 API 응답 상태만 표시하며 오류 시 fixture로 전환하지 않습니다.</small></div><div><button onClick={() => void loadDefinitions()} disabled={definitionState === "loading"}><RotateCcw size={14} />정의 새로고침</button><button className="primary" onClick={() => void createDefinition()} disabled={Boolean(pending)}><FilePlus2 size={14} />초안 생성</button></div></header>
+    {error && <p className="report-api-state error" role="alert" aria-live="assertive">{/^40[13]/.test(error) ? <ShieldAlert size={17} /> : <AlertTriangle size={17} />}{error}</p>}
+    <section className="report-api-grid">
+      <article className="card report-api-panel"><header><h3>정의·버전</h3><small>서버가 반환한 title·version·status</small></header>
+        {definitionState === "loading" && <p className="report-api-state" role="status" aria-live="polite"><LoaderCircle size={17} />Report 정의를 불러오는 중입니다.</p>}
+        {definitionState === "error" && <p className="report-api-state error" role="alert"><ShieldAlert size={17} />Report 정의를 불러오지 못했습니다.</p>}
+        {definitionState === "empty" && <p className="report-api-state"><Inbox size={17} />서버에 표시할 Report 정의가 없습니다.</p>}
+        {definitionState === "ready" && <div className="report-api-list">{definitions.map((definition) => <button aria-pressed={selectedDefinition?.definitionId === definition.definitionId && selectedDefinition?.version === definition.version} onClick={() => void openDefinition(definition)} key={`${definition.definitionId}-${definition.version}`}><span><b>{definition.title}</b><small>{definition.definitionId}</small></span><em>v{definition.version} · {definition.status}</em></button>)}</div>}
+      </article>
+      <article className="card report-api-panel"><header><h3>실행 이력</h3><button onClick={() => void loadRuns()} disabled={runState === "loading"}><RotateCcw size={13} />새로고침</button></header>
+        {runState === "loading" && <p className="report-api-state" role="status" aria-live="polite"><LoaderCircle size={17} />실제 Run History를 불러오는 중입니다.</p>}
+        {runState === "error" && <p className="report-api-state error" role="alert"><AlertTriangle size={17} />Run History를 불러오지 못했습니다.</p>}
+        {runState === "empty" && <p className="report-api-state"><Inbox size={17} />서버에 생성된 Report run이 없습니다.</p>}
+        {runState === "ready" && <div className="report-api-list">{runs.map((run) => <button aria-pressed={selectedRun?.runId === run.runId} onClick={() => void openRun(run)} key={run.runId}><span><b>{run.status}</b><small>{run.runId}</small></span><em>definition v{run.definitionVersion}</em></button>)}</div>}
+      </article>
+    </section>
+    {selectedDefinition && <section className="card report-api-editor" aria-live="polite"><header><div><small>{selectedDefinition.definitionId}</small><h3>{selectedDefinition.title} · v{selectedDefinition.version}</h3><p>{selectedDefinition.status}{selectedDefinition.approvedAt ? ` · ${selectedDefinition.approvedAt}` : ""}</p></div><div>{selectedDefinition.status === "draft" ? <><button onClick={() => void saveDraft()} disabled={Boolean(pending)}><Save size={14} />초안 저장</button><button className="primary" onClick={() => void approve()} disabled={Boolean(pending)}><Check size={14} />명시적 승인</button></> : <><button onClick={() => void createNextDraft()} disabled={Boolean(pending)}><FilePlus2 size={14} />다음 초안</button><button className="primary" onClick={() => void queueManualRun()} disabled={Boolean(pending)}><Clock3 size={14} />수동 실행 요청</button></>}</div></header>
+      <div className="report-api-blocks">{apiBlocks.map((block) => <article key={block.id}><header><b>{block.title}</b><small>{block.type} · x{block.x + 1} y{block.y + 1} · {block.w}×{block.h}</small></header>{block.type === "text" ? <textarea aria-label={`${block.title} 내용`} disabled={selectedDefinition.status !== "draft"} value={block.content || ""} onChange={(event) => setApiBlocks((current) => current.map((item) => item.id === block.id ? { ...item, content: event.target.value } : item))} /> : <p>Artifact {block.artifactId}<br />Query {block.queryId || "—"}</p>}</article>)}</div>
+    </section>}
+    {command && <section className="card report-command-receipt" role="status" aria-live="polite"><Clock3 size={18} /><div><b>서버가 수동 실행 명령을 queued로 접수했습니다.</b><p>command {command.command_id} · 이 응답에는 run_id가 없으며 worker 진행 상태를 나타내지 않습니다.</p></div></section>}
+    {selectedRun && <section className="card report-run-actual" aria-live="polite"><header><div><small>{selectedRun.runId}</small><h3>실제 run · {selectedRun.status}</h3></div><span>definition v{selectedRun.definitionVersion}</span></header><p>as_of {selectedRun.asOf} · policy {selectedRun.policyVersion}</p><ul>{selectedRun.blocks.map((block) => <li key={block.blockId}><span>{block.blockId}</span><b>{block.status}</b></li>)}</ul></section>}
+  </div>;
+}
+
+function FixtureReportsPage() {
   const [view, setView] = useState("list");
   const [reports, setReports] = useState(savedReports);
   const [reportSearch, setReportSearch] = useState("");
@@ -438,6 +620,7 @@ export function ReportsPage() {
   if (view === "list") return <div className="page-content enterprise-reports-list">
     <div className="meta-strip"><Info size={13} />{SYNTHETIC_META.label}<span>seed {SYNTHETIC_META.seed}</span><span>schema {SYNTHETIC_META.schemaVersion}</span></div>
     <div className="legacy-report-toolbar"><button className="primary" onClick={createAutomatedReport}><FilePlus2 size={15} />자동 보고서 생성</button><label className="report-search">검색<input aria-label="보고서 검색" value={reportSearch} onChange={(event) => setReportSearch(event.target.value)} placeholder="기간, 작성자, 상태 검색" /></label><label>유형<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option>전체</option><option>주간</option><option>월간</option><option>분기</option></select></label><label>상태<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>전체</option><option>초안</option><option>확정</option></select></label></div>
+    <RunHistoryFixture />
     <section className="card legacy-report-list"><div className="legacy-report-row legacy-report-head"><span>유형</span><span>기간·제목</span><span>상태</span><span>작성자</span><span>최근 변경</span><span>동작</span></div>{filteredReports.map((report) => <article className="legacy-report-row" key={report.id} onClick={() => openReport(report, "document")}><strong>{report.type}</strong><b>{report.period}{report.title && <small>{report.title}</small>}</b><span><i className={`legacy-report-status ${report.status === "초안" ? "draft" : "final"}`}><em />{report.status}</i></span><span>{report.author}</span><span>{report.updated}</span><nav className="legacy-report-actions" aria-label={`${report.type} ${report.period} 보고서 동작`}><button className="edit" onClick={(event) => { event.stopPropagation(); openReport(report, "editor"); }}>편집</button><button className="view" onClick={(event) => { event.stopPropagation(); openReport(report, "document"); }}>열람 <ChevronRight size={13} /></button></nav></article>)}</section>
     <p className="legacy-report-guide">초안과 확정 보고서 모두 편집할 수 있으며 변경사항은 자동 저장됩니다.</p>
   </div>;
@@ -452,6 +635,21 @@ export function ReportsPage() {
     <section className="card generated-report-cover"><div><small>{selectedReport.type} REPORT · {selectedReport.period}</small><h1>{reportTitleBlock?.content || `${selectedReport.type} 보고서`}</h1><p>검증된 분석 결과와 데이터 출처를 기준 시각과 함께 구성한 보고서입니다.</p></div><dl><div><dt>상태</dt><dd>{selectedReport.status}</dd></div><div><dt>기준 시각</dt><dd>2026-07-30 · Asia/Seoul</dd></div><div><dt>데이터</dt><dd>synthetic · schema 1.0.0</dd></div></dl></section>
     <section className="generated-report-grid" aria-label="생성된 보고서 블록">{generatedReportBlocks.map((block) => <GeneratedReportBlock block={block} number={block.reportNumber} key={block.id} />)}</section>
     {importedArtifact?.artifactId && <div className="demo-steps document"><b className="done"><Check size={12} />분석 완료</b><span>→</span><b className="done"><Check size={12} />초안 반영</b><span>→</span><b className="done"><Check size={12} />편집</b><span>→</span><b className={selectedReport.status === "확정" ? "done" : "active"}>확정</b></div>}
+    {/* The actual Report API is rendered by ReportApiPage; this older fixture branch is intentionally inactive.
+    <div className="legacy-report-toolbar"><button className="primary" onClick={createAutomatedReport}><FilePlus2 size={15} />로컬 보고서 예시 생성</button><label className="report-search">검색<input aria-label="보고서 검색" value={reportSearch} onChange={(event) => setReportSearch(event.target.value)} placeholder="기간, 작성자, 상태 검색" /></label><label>유형<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option>전체</option><option>주간</option><option>월간</option><option>분기</option></select></label><label>상태<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>전체</option><option>초안</option><option>확정</option></select></label></div>
+    <RunHistoryFixture />
+    <section className="card legacy-report-list"><div className="legacy-report-row legacy-report-head"><span>유형</span><span>기간</span><span>상태</span><span>작성자</span><span>최근 변경</span><span>동작</span></div>{filteredReports.map((report) => <article className="legacy-report-row" key={report.id}><strong>{report.type}</strong><b>{report.period}</b><span><i className={`legacy-report-status ${report.status === "초안" ? "draft" : "final"}`}><em />{report.status}</i></span><span>{report.author}</span><span>{report.updated}</span><button onClick={() => openReport(report)}>{report.status === "초안" ? "편집" : "열람"} <ChevronRight size={13} /></button></article>)}</section>
+    <p className="legacy-report-guide">목록의 상태도 local fixture이며 실제 승인 이력이 아닙니다. 각 보고서는 동작 버튼으로 열 수 있습니다.</p>
+  </div>;
+
+  if (view === "editor") return <div className="enterprise-report-editor">
+    <aside className="card editor-library"><header><p>BLOCK LIBRARY</p><h2>보고서 에디터</h2><span>드래그하거나 버튼을 눌러 블록을 추가하세요.</span></header><section><h3><Sparkles size={14} />자연어로 차트 만들기</h3><textarea placeholder="예: 지난달 객실 매출과 점유율 추이 차트" /><button onClick={() => addBlock({ ...BASIC_BLOCKS.kpi, type: "chart", title: "AI 생성 차트", values: [8, 12, 10, 16, 13, 18, 14], caption: "자연어 요청 기반 synthetic chart" })}><BarChart3 size={14} />차트 생성</button></section><div className="editor-catalog"><p>기존 보고서 구성</p>{BLOCK_CATALOG.map((block) => <button draggable onClick={() => addBlock(block)} onDragStart={() => setDraggedLibraryItem({ kind: "catalog", value: block })} onDragEnd={() => setDraggedLibraryItem(null)} key={block.key}><span>{block.type === "chart" ? <BarChart3 size={14} /> : <FileOutput size={14} />}</span><div><small>{block.group}</small><b>{block.title}</b><em>{block.description}</em></div><GripVertical size={14} /></button>)}</div><div className="editor-basic"><p>기본 블록</p>{[["heading",Type,"제목"],["text",FileOutput,"텍스트"],["quote",Quote,"인용"],["kpi",Target,"KPI"],["table",Table2,"표"],["divider",Minus,"구분선"]].map(([type,Icon,label]) => <button draggable onClick={() => addBlock(BASIC_BLOCKS[type])} onDragStart={() => setDraggedLibraryItem({ kind: "basic", value: type })} onDragEnd={() => setDraggedLibraryItem(null)} key={type}><Icon size={14} />{label} 추가</button>)}</div></aside>
+    <main className="editor-workspace"><header className="card editor-topbar"><div><button onClick={() => setView("list")}><ArrowLeft size={14} />보고서 목록</button><p>REPORT BLOCK EDITOR</p><h2>{selectedReport.type} 보고서 · {selectedReport.period}</h2><small>LOCAL SYNTHETIC FIXTURE · 12-column draft</small></div><div><span role="status"><Check size={13} />로컬 초안 자동 저장</span><button disabled title="실제 export API는 연결되지 않았습니다."><Download size={14} />PDF 연결 대기</button><button onClick={saveReport}><Save size={14} />로컬 저장</button><button className="primary" disabled title="서버 승인 계약 전에는 확정하지 않습니다."><Check size={14} />승인 연결 대기</button></div></header><section className={`editor-canvas ${draggedLibraryItem ? "drop-ready" : ""}`} aria-label="12-column 보고서 초안 배치" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropLibraryItem(); }}>{editorBlocks.map((block, index) => <article className={`card editor-block ${draggedBlockId === block.id ? "dragging" : ""}`} style={{ "--block-x": block.x + 1, "--block-y": block.y + 1, "--block-w": block.w, "--block-h": block.h }} draggable onDragStart={() => { setDraggedLibraryItem(null); setDraggedBlockId(block.id); }} onDragEnd={() => setDraggedBlockId(null)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.stopPropagation(); if (!dropLibraryItem(block.id)) moveBlock(block.id); }} key={block.id}><header><div><GripVertical size={16} /><b>{index + 1}. {block.title}</b><small>x{block.x + 1} y{block.y + 1} · {block.w}×{block.h}</small></div><nav aria-label={`${block.title} 배치 조정`}><button aria-label={`${block.title} 앞으로 이동`} disabled={index === 0} onClick={() => moveBlockBy(block.id, -1)}>↑</button><button aria-label={`${block.title} 뒤로 이동`} disabled={index === editorBlocks.length - 1} onClick={() => moveBlockBy(block.id, 1)}>↓</button><button aria-label={`${block.title} 너비 줄이기`} onClick={() => resizeBlock(block.id, "w", -1)}>−</button><button aria-label={`${block.title} 너비 늘리기`} onClick={() => resizeBlock(block.id, "w", 1)}><Columns2 size={13} />{block.w}/12</button><button aria-label={`${block.title} 높이 줄이기`} onClick={() => resizeBlock(block.id, "h", -1)}>높이−</button><button aria-label={`${block.title} 높이 늘리기`} onClick={() => resizeBlock(block.id, "h", 1)}>높이+</button><button aria-label={`${block.title} 삭제`} onClick={() => setEditorBlocks((current) => normalizeDraftLayout(current.filter((item) => item.id !== block.id)))}><Trash2 size={13} /></button></nav></header>{block.type === "chart" ? <><div className="editor-chart">{block.values.map((value, valueIndex) => <div key={`${block.id}-${valueIndex}`}><b>{value}</b><i style={{ height: `${Math.max(24, (value / Math.max(...block.values)) * 118)}px` }} /><small>{valueIndex + 1}</small></div>)}</div><p>{block.caption}</p><button className="regenerate" onClick={() => notify(`${block.title} 블록을 다시 생성했습니다.`)}><RotateCcw size={13} /></button></> : block.type === "divider" ? <hr /> : <textarea aria-label={`${block.title} 내용`} className={`block-${block.type}`} value={block.content} onChange={(event) => setEditorBlocks((current) => current.map((item) => item.id === block.id ? { ...item, content: event.target.value } : item))} />}</article>)}</section></main><Toast message={toast} />
+  </div>;
+
+  return <div className="page-content legacy-report-document">
+    <div className="legacy-document-actions"><button className="secondary" onClick={() => setView("list")}><ArrowLeft size={14} />보고서 목록</button><div><button disabled><Sparkles size={14} />갱신 연결 대기</button><button disabled><Download size={14} />PDF 연결 대기</button><button disabled><FileOutput size={14} />PPT 연결 대기</button><button disabled><Share2 size={14} />공유 연결 대기</button></div></div>
+    */}
     <section className="card legacy-cover-strip"><div><span>보고서 유형</span><nav>{["Daily Report", "Weekly Report", "Monthly Report"].map((item) => <button className={period === item ? "active" : ""} onClick={() => setPeriod(item)} key={item}>{item}</button>)}</nav></div><div><span>보고 기간</span><strong>{selectedReport.period}</strong></div><div><span>작성 기준</span><strong>2026.08.10 08:45</strong></div><div><span>검토 대상</span><strong>Sense Place Hotel · 전체 시설</strong></div></section>
 
     <section className="card legacy-conclusion"><div className="legacy-number">01</div><div><p>VERIFIED ANALYSIS SUMMARY</p><h2>검증 결과 요약</h2><article><Sparkles size={19} /><p>7월 28~30일 객실 매출은 <b>4,520만원에서 4,010만원</b>으로 낮아졌습니다. 같은 기간 직접 예약 비중이 43.5%에서 38.2%로 감소했고, 기업 연회 2건의 일정 변경과 연결된 객실 62박 취소가 함께 관측됐습니다. 이 결과는 인과관계를 확정하지 않으며 관리자 검토가 필요합니다.</p></article></div><aside><small>실행 상태</small><strong>SUCCESS · 3개 원천</strong><span>as_of 2026-07-30 · 관리자 검토 필요</span></aside></section>
@@ -470,4 +668,8 @@ export function ReportsPage() {
 
     <footer className="card legacy-methodology"><Info size={15} /><div><b>분석 기준 및 한계</b><p>Hotel PMS, Membership CRM, Banquet Sales의 합성 데이터를 사용했으며 seed 20260729, schema 1.0.0, as_of 2026-07-30을 기록했습니다. DataHub URN과 Trino FQN으로 출처를 추적하며, 관측된 변화는 인과관계나 미래 값으로 해석하지 않습니다.</p></div><button className="primary" onClick={() => notify("검토용 공유 링크를 생성했습니다.")}><Send size={14} />검토자에게 공유</button></footer><Toast message={toast} />
   </div>;
+}
+
+export function ReportsPage() {
+  return usesFixtureReportClient ? <FixtureReportsPage /> : <ReportApiPage />;
 }

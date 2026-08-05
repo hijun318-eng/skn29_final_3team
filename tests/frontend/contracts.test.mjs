@@ -12,6 +12,7 @@ import {
   createReportRun,
   normalizeDraftLayout,
   REPORT_CONTRACT_VERSION,
+  REPORT_RUN_STATUSES,
   serializeDraftLayout,
 } from "../../app/enterprise-react/src/contracts/report.ts";
 import {
@@ -21,6 +22,7 @@ import {
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
 import { catalogSources, I3_DATA_CONTRACT_VERSION } from "../../app/enterprise-react/src/data/catalogFixtures.ts";
 import { createHttpAnalysisClient, usesMockAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
+import { createReportClient, ReportApiError, usesFixtureReportClient } from "../../app/enterprise-react/src/api/reportClient.ts";
 
 const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/package.json", import.meta.url)));
 const g1ClarificationFixture = JSON.parse(
@@ -55,6 +57,7 @@ const analysisStatePanelSource = readFileSync(
 );
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
 assert.equal(REPORT_CONTRACT_VERSION, "REPORT-v1.0.0");
+assert.deepEqual(REPORT_RUN_STATUSES, ["queued", "running", "success", "partial", "failed", "cancelled"]);
 assert.equal(FIXTURE_VERSION, "UI-FIXTURE-v1.0.0");
 assert.equal(OPENAPI_VERSION, "OPENAPI-v1.0.0");
 assert.ok(Object.values({ ...packageJson.dependencies, ...packageJson.devDependencies }).every((version) => version !== "latest"));
@@ -208,6 +211,11 @@ for (const source of analysisFixtures.ready.sources) {
   assert.equal(source.urn, catalogSource.datasetUrn);
 }
 assert.equal(usesMockAnalysisClient, false);
+assert.equal(usesFixtureReportClient, false);
+assert.match(reportsPageSource, /usesFixtureReportClient \? <FixtureReportsPage \/> : <ReportApiPage \/>/);
+assert.match(reportsPageSource, /오류 시 fixture로 전환하지 않습니다/);
+assert.match(reportsPageSource, /401 · 로그인이 필요합니다/);
+assert.match(reportsPageSource, /403 · REPORT_ADMIN 권한이 필요합니다/);
 assert.match(reportsPageSource, /candidate\.artifactId/);
 assert.match(reportsPageSource, /artifactId: candidate\.artifactId/);
 assert.match(reportsPageSource, /LOCAL SYNTHETIC FIXTURE/);
@@ -240,6 +248,18 @@ assert.match(reportsPageSource, /event\.detail === "\/reports"[\s\S]*setView\("l
 assert.match(agentPageSource, /4,520 → 4,010만원/);
 assert.match(agentPageSource, /객실 매출\(만원\) 4,520→4,010/);
 assert.match(reportsPageSource, /block\.labels\?\.\[index\] \?\? value/);
+for (const status of REPORT_RUN_STATUSES) assert.match(reportsPageSource, new RegExp(`status: "${status}"`));
+assert.match(reportsPageSource, /Run History 상태·접근성 점검/);
+assert.match(reportsPageSource, /성공·부분 성공·실패 블록/);
+assert.match(reportsPageSource, /aria-live="polite"/);
+assert.match(reportsPageSource, /aria-pressed=\{selectedRunId === run\.id\}/);
+assert.match(reportsPageSource, /detailRef\.current\?\.focus\(\)/);
+assert.match(reportsPageSource, /REPORT_ADMIN 권한이 없는 사용자/);
+assert.match(reportsPageSource, /로컬 실행 이력을 불러오는 중/);
+assert.match(reportsPageSource, /표시할 실행 이력이 없습니다/);
+assert.match(reportsPageSource, /실행 이력을 불러오지 못했습니다/);
+assert.match(reportsPageSource, /return usesFixtureReportClient \? <FixtureReportsPage \/> : <ReportApiPage \/>/);
+assert.match(stylesSource, /\.ppt-theme \.legacy-report-row>b small\{[^}]*color:#fff!important[^}]*font-size:14px[^}]*font-weight:800/);
 assert.match(stylesSource, /grid-template-columns:repeat\(12,minmax\(0,1fr\)\)/);
 assert.match(stylesSource, /grid-column:var\(--block-x\)\/span var\(--block-w\)/);
 assert.match(stylesSource, /\.editor-block\{[^}]*grid-row:auto;[^}]*overflow:visible/);
@@ -270,6 +290,8 @@ assert.match(stylesSource, /\.generated-report-kpi\{font-size:clamp\(26px,2vw,30
 assert.match(stylesSource, /button:focus-visible/);
 assert.match(stylesSource, /@media\(max-width:900px\)/);
 assert.match(stylesSource, /@media\(max-width:650px\).*\.editor-block\{grid-column:1\/-1;grid-row:auto/s);
+assert.match(stylesSource, /\.report-run-fixture button:focus-visible/);
+assert.match(stylesSource, /@media\(max-width:480px\).*\.report-run-list,\.report-view-states\{grid-template-columns:1fr\}/s);
 
 let httpRequest;
 const httpClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
@@ -287,6 +309,119 @@ assert.equal(JSON.parse(httpRequest.init.body).template_id, "weekly-room-operati
 assert.equal(httpRun.requestId, g1ClarificationFixture.meta.request_id);
 assert.equal(httpRun.traceId, g1ClarificationFixture.meta.trace_id);
 assert.equal(httpRun.error.retryable, false);
+
+const reportDefinitionResponse = {
+  contract_version: REPORT_CONTRACT_VERSION,
+  definition_id: "00000000-0000-0000-0000-000000000101",
+  version: 1,
+  status: "draft",
+  title: "주간 운영 보고서",
+  blocks: [{
+    block_id: "00000000-0000-0000-0000-000000000102",
+    title: "관리자 메모",
+    artifact_id: null,
+    query_id: null,
+    columns: 12,
+    type: "text",
+    x: 0,
+    y: 0,
+    w: 12,
+    h: 2,
+    content: "검토 내용",
+  }],
+  approved_at: null,
+};
+const reportRunResponse = {
+  contract_version: REPORT_CONTRACT_VERSION,
+  run_id: "00000000-0000-0000-0000-000000000103",
+  definition_id: reportDefinitionResponse.definition_id,
+  definition_version: 1,
+  as_of: "2026-08-04T00:00:00Z",
+  policy_version: "policy-v1",
+  context_hash: "sha256-context",
+  watermark: { pms: "2026-08-04T00:00:00Z" },
+  status: "success",
+  blocks: [{
+    block_id: reportDefinitionResponse.blocks[0].block_id,
+    artifact_id: "00000000-0000-0000-0000-000000000104",
+    query_id: "00000000-0000-0000-0000-000000000105",
+    snapshot_checksum: "sha256-snapshot",
+    status: "success",
+  }],
+};
+const manualCommandResponse = {
+  contract_version: REPORT_CONTRACT_VERSION,
+  command_id: "00000000-0000-0000-0000-000000000106",
+  definition_id: reportDefinitionResponse.definition_id,
+  version: 1,
+  as_of: "2026-08-04T00:00:00Z",
+  idempotency_key: "00000000-0000-0000-0000-000000000107",
+  status: "queued",
+};
+const reportResponses = [
+  reportDefinitionResponse,
+  { contract_version: REPORT_CONTRACT_VERSION, items: [reportDefinitionResponse] },
+  reportDefinitionResponse,
+  { ...reportDefinitionResponse, status: "approved", approved_at: "2026-08-04T00:00:00Z" },
+  { ...reportDefinitionResponse, version: 2 },
+  reportDefinitionResponse,
+  { contract_version: REPORT_CONTRACT_VERSION, items: [reportRunResponse] },
+  reportRunResponse,
+  manualCommandResponse,
+];
+const reportRequests = [];
+const reportClient = createReportClient("http://backend.test/", async (url, init) => {
+  reportRequests.push({ url, init });
+  return new Response(JSON.stringify(reportResponses.shift()), { status: 200, headers: { "Content-Type": "application/json" } });
+});
+const blockRequest = {
+  block_id: reportDefinitionResponse.blocks[0].block_id,
+  title: "관리자 메모",
+  columns: 12,
+  type: "text",
+  x: 0,
+  y: 0,
+  w: 12,
+  h: 2,
+  content: "검토 내용",
+};
+await reportClient.createDefinition({ definition_id: reportDefinitionResponse.definition_id, title: "주간 운영 보고서", blocks: [blockRequest] });
+await reportClient.listDefinitions();
+await reportClient.getDefinition(reportDefinitionResponse.definition_id, 1);
+await reportClient.approveDefinition(reportDefinitionResponse.definition_id, 1, "2026-08-04T00:00:00Z");
+await reportClient.createNextDraft(reportDefinitionResponse.definition_id, 1);
+await reportClient.replaceDraftBlocks(reportDefinitionResponse.definition_id, 1, [blockRequest]);
+await reportClient.listRuns(reportDefinitionResponse.definition_id);
+await reportClient.getRun(reportRunResponse.run_id);
+const manualReceipt = await reportClient.createManualRun({
+  definition_id: reportDefinitionResponse.definition_id,
+  version: 1,
+  as_of: manualCommandResponse.as_of,
+  idempotency_key: manualCommandResponse.idempotency_key,
+});
+assert.equal(reportRequests.length, 9);
+assert.deepEqual(reportRequests.map(({ init }) => init.method), ["POST", "GET", "GET", "POST", "POST", "PUT", "GET", "GET", "POST"]);
+for (const { init } of reportRequests) {
+  assert.equal(init.headers.Authorization, "Bearer synthetic-local");
+  assert.equal(init.headers["X-Contract-Version"], "OPENAPI-v1.0.0");
+  assert.equal(init.headers["X-Role"], "report_admin");
+  assert.equal(init.headers["X-Timezone"], "Asia/Seoul");
+  assert.match(init.headers["X-Trace-Id"], /^[0-9a-f-]{36}$/);
+}
+assert.deepEqual(Object.keys(JSON.parse(reportRequests[8].init.body)).sort(), ["as_of", "definition_id", "idempotency_key", "version"]);
+assert.equal(manualReceipt.status, "queued");
+assert.equal("run_id" in manualReceipt, false);
+
+let failedRequestCount = 0;
+const failingReportClient = createReportClient("http://backend.test", async () => {
+  failedRequestCount += 1;
+  return new Response(JSON.stringify({ error: { code: "REPORT_FORBIDDEN", message: "권한이 없습니다." } }), { status: 403 });
+});
+await assert.rejects(() => failingReportClient.listDefinitions(), (error) => error instanceof ReportApiError && error.status === 403 && error.code === "REPORT_FORBIDDEN");
+assert.equal(failedRequestCount, 1);
+
+const wrongVersionClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({ contract_version: "REPORT-v2.0.0", items: [] }), { status: 200 }));
+await assert.rejects(() => wrongVersionClient.listDefinitions(), /지원하지 않는 Report 계약/);
 
 const approved = Object.freeze({
   definitionId: "report-001",

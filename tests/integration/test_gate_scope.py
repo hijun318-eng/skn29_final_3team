@@ -27,27 +27,27 @@ class GateScopeTest(unittest.TestCase):
 
     def test_latest_r3_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "daesung")
-        self.assertEqual("R3-W4-F5", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("R3-W4-F7", bundle["EXECUTION_BUNDLE_ID"])
         self.assertEqual("MERGED_DEV", bundle["STATUS"])
 
     def test_latest_r2_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "seung")
-        self.assertEqual("R2-W4-F3", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("R2-W4-F4", bundle["EXECUTION_BUNDLE_ID"])
         self.assertEqual("MERGED_DEV", bundle["STATUS"])
 
     def test_latest_r4_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "jaehong")
-        self.assertEqual("R4-W4-F4", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("R4-W4-F8", bundle["EXECUTION_BUNDLE_ID"])
         self.assertEqual("READY", bundle["STATUS"])
 
     def test_latest_r1_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "junhee")
         self.assertEqual("R1-W4-F5", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("IN_PROGRESS", bundle["STATUS"])
+        self.assertEqual("VERIFIED_GATE", bundle["STATUS"])
 
     def test_latest_r5_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "minji")
-        self.assertEqual("R5-W4-F2", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("R5-W4-F4", bundle["EXECUTION_BUNDLE_ID"])
         self.assertEqual("READY", bundle["STATUS"])
 
     def test_terminal_transition_uses_previous_bundle_scope(self) -> None:

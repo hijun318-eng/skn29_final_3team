@@ -8,6 +8,7 @@ import { createUuid } from "../utils/createUuid";
 
 const RECENT_ANALYSES = ["객실·예약·연회 통합 분석"];
 const REPORT_SECTIONS = ["분석 요약", "핵심 KPI", "매출·점유율 비교 차트", "PMS·CRM·Banquet 근거"];
+const ARTIFACT_TABS = [["report", "Report"], ["sources", "Sources"], ["run", "Run history"], ["trace", "Trace"]];
 const client = createMockAnalysisClient();
 const initialRun = analysisFixtures.ready;
 
@@ -18,6 +19,8 @@ export function AgentPage({ onNavigate }) {
   const [run, setRun] = useState(initialRun);
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [artifactTab, setArtifactTab] = useState("report");
   const [reportModal, setReportModal] = useState("");
   const [reportSections, setReportSections] = useState(REPORT_SECTIONS);
   const viewMeta = useMemo(() => run.meta, [run.meta]);
@@ -28,6 +31,7 @@ export function AgentPage({ onNavigate }) {
     if (!nextQuestion || submitting) return;
 
     setSubmitting(true);
+    setEvidenceOpen(false);
     setHasSubmitted(true);
     setSubmittedQuestion(nextQuestion);
     setRun({
@@ -67,7 +71,7 @@ export function AgentPage({ onNavigate }) {
   };
 
   return (
-    <div className="chat-layout">
+    <div className={`chat-layout ${evidenceOpen ? "evidence-open" : ""}`}>
       <aside className="chat-history">
         <button className="new-chat"><Plus size={16} />새 분석</button>
         <p>RECENT</p>
@@ -81,6 +85,7 @@ export function AgentPage({ onNavigate }) {
 
       <main className="chat-main">
         <MetaStrip meta={viewMeta} />
+        {!hasSubmitted && <section className="chat-empty-state" aria-labelledby="chat-empty-title"><small>CHAT-FIRST ANALYTICS</small><h2 id="chat-empty-title">무엇을 분석할까요?</h2><p>검증된 합성 데이터 범위에서 직접 질문을 입력하세요.</p></section>}
         {hasSubmitted && <div className="conversation">
           <div className="message message--user">
             <div className="avatar small">J</div>
@@ -93,7 +98,7 @@ export function AgentPage({ onNavigate }) {
               <AnalysisStatePanel
                 run={run}
               />
-              {run.artifact && <><div className="demo-steps" aria-label="시연 진행 단계"><b className="done"><Check size={12} />분석 완료</b><span>→</span><b className="active">초안 반영</b><span>→</span><b>편집</b><span>→</span><b>확정</b></div><div className="analysis-report-actions"><button className="primary" type="button" onClick={() => setReportModal("draft")}><FilePlus2 size={15} />보고서 초안에 추가</button><button type="button" onClick={() => setReportModal("preview")}><Eye size={15} />결과 미리보기</button></div></>}
+              {run.artifact && <><div className="demo-steps" aria-label="시연 진행 단계"><b className="done"><Check size={12} />분석 완료</b><span>→</span><b className="active">초안 반영</b><span>→</span><b>편집</b><span>→</span><b>확정</b></div><div className="analysis-report-actions"><button className="primary" type="button" onClick={() => setReportModal("draft")}><FilePlus2 size={15} />보고서 초안에 추가</button><button type="button" onClick={() => setReportModal("preview")}><Eye size={15} />결과 미리보기</button><button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((open) => !open)}><TableProperties size={15} />Artifacts</button></div></>}
             </div>
           </div>
         </div>}
@@ -111,10 +116,13 @@ export function AgentPage({ onNavigate }) {
         </form>
       </main>
 
-      <aside className="evidence-panel">
-        <SectionTitle eyebrow="TRACEABILITY" title="분석 근거" />
+      {evidenceOpen && <aside className="evidence-panel">
+        <div className="evidence-panel-header"><SectionTitle eyebrow="TRACEABILITY" title="Artifacts" /><button type="button" aria-label="Artifacts 닫기" onClick={() => setEvidenceOpen(false)}><X size={18} /></button></div>
+        <div className="artifact-tabs" role="tablist" aria-label="Artifact 상세">{ARTIFACT_TABS.map(([id, label]) => <button className={artifactTab === id ? "active" : ""} role="tab" aria-selected={artifactTab === id} onClick={() => setArtifactTab(id)} key={id}>{label}</button>)}</div>
         {!hasSubmitted && <p className="evidence-empty">질문을 입력하면 분석 결과와 근거가 표시됩니다.</p>}
         {hasSubmitted && <>
+        {artifactTab === "report" && <div className="artifact-report-summary"><small>REPORT ARTIFACT</small><h3>7월 마지막 주 객실 매출 분석</h3><p>{run.summary}</p><dl><div><dt>artifact</dt><dd>{run.artifact?.artifactId ?? "—"}</dd></div><div><dt>status</dt><dd>{run.status}</dd></div><div><dt>layout</dt><dd>12-column draft</dd></div></dl><button type="button" className="primary" onClick={() => setReportModal("draft")}><FilePlus2 size={14} />보고서 초안 구성</button></div>}
+        {artifactTab === "trace" && <>
         <div className="execution-list">
           {["분석 요청 확인", "메타데이터 근거 연결", "Artifact 생성"].map((name, index) => (
             <article key={name}>
@@ -123,7 +131,8 @@ export function AgentPage({ onNavigate }) {
             </article>
           ))}
         </div>
-        <div className="evidence-block">
+        {run.evidence && (<div className="evidence-block"><h3>조회 조건</h3><dl><div><dt>period</dt><dd>{run.evidence.period ? `${run.evidence.period.start} ~ ${run.evidence.period.endExclusive}` : "—"}</dd></div><div><dt>filter</dt><dd>{Object.entries(run.evidence.filters).map(([key, value]) => `${key}=${String(value)}`).join(", ") || "없음"}</dd></div><div><dt>sampling</dt><dd>{run.evidence.sampling.applied ? "적용" : "미적용"} · {run.evidence.sampling.returnedRows}/{run.evidence.sampling.totalRows ?? "unknown"}</dd></div></dl></div>)}</>}
+        {artifactTab === "sources" && <div className="evidence-block">
           <h3>사용 데이터 자산</h3>
           {run.sources.length ? run.sources.map((source) => (
             <article className="evidence-source" key={source.urn}>
@@ -132,18 +141,8 @@ export function AgentPage({ onNavigate }) {
               {source.fqn && <small>{source.fqn} · schema {source.schemaVersion} · seed {source.seedVersion}</small>}
             </article>
           )) : <p className="evidence-empty">표시 가능한 자산이 없습니다.</p>}
-        </div>
-        {run.evidence && (
-          <div className="evidence-block">
-            <h3>조회 조건</h3>
-            <dl>
-              <div><dt>period</dt><dd>{run.evidence.period ? `${run.evidence.period.start} ~ ${run.evidence.period.endExclusive}` : "—"}</dd></div>
-              <div><dt>filter</dt><dd>{Object.entries(run.evidence.filters).map(([key, value]) => `${key}=${String(value)}`).join(", ") || "없음"}</dd></div>
-              <div><dt>sampling</dt><dd>{run.evidence.sampling.applied ? "적용" : "미적용"} · {run.evidence.sampling.returnedRows}/{run.evidence.sampling.totalRows ?? "unknown"}</dd></div>
-            </dl>
-          </div>
-        )}
-        <div className="evidence-block">
+        </div>}
+        {artifactTab === "run" && <div className="evidence-block">
           <h3>실행 정보</h3>
           <dl>
             <div><dt>conversation</dt><dd>{run.conversationId}</dd></div>
@@ -154,9 +153,9 @@ export function AgentPage({ onNavigate }) {
             <div><dt>as_of</dt><dd>{run.meta.asOf}</dd></div>
             <div><dt>timezone</dt><dd>{run.meta.timezone}</dd></div>
           </dl>
-        </div>
+        </div>}
         </>}
-      </aside>
+      </aside>}
       {reportModal && <div className="report-modal-backdrop" role="presentation" onMouseDown={() => setReportModal("")}><section className="report-transfer-modal" role="dialog" aria-modal="true" aria-labelledby="report-modal-title" onMouseDown={(event) => event.stopPropagation()}><header><div><small>SYNTHETIC ANALYSIS ARTIFACT</small><h2 id="report-modal-title">{reportModal === "draft" ? "보고서 초안 구성" : "분석 결과 미리보기"}</h2></div><button aria-label="닫기" onClick={() => setReportModal("")}><X size={18} /></button></header><div className="report-preview-summary"><b>7월 마지막 주 객실 매출 감소 통합 분석</b><p>{run.summary}</p><dl><div><dt>객실 매출</dt><dd>4,520 → 4,010만원</dd></div><div><dt>점유율</dt><dd>76.1 → 68.6%</dd></div><div><dt>직접 예약</dt><dd>43.5 → 38.2%</dd></div><div><dt>연회 변경</dt><dd>2건 · 62박 취소</dd></div></dl><em>관측 결과이며 인과관계 확정을 위해 관리자 검토가 필요합니다.</em></div>{reportModal === "draft" && <div className="report-section-options"><p>초안에 포함할 항목</p>{REPORT_SECTIONS.map((section) => <label key={section}><input type="checkbox" checked={reportSections.includes(section)} onChange={() => setReportSections((current) => current.includes(section) ? current.filter((item) => item !== section) : [...current, section])} /><span><Check size={12} /></span>{section}</label>)}</div>}<footer><button onClick={() => setReportModal("")}>취소</button>{reportModal === "draft" ? <button className="primary" disabled={!reportSections.length} onClick={createReportDraft}>선택한 내용으로 초안 만들기</button> : <button className="primary" onClick={() => setReportModal("draft")}>보고서 초안에 추가</button>}</footer></section></div>}
     </div>
   );

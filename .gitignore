@@ -24,6 +24,7 @@ node_modules/
 dist/
 coverage/
 # Local tools and logs
+.tmp/
 .codex-log/
 *.log
 .vscode/

@@ -117,6 +117,24 @@ class GateScopeTest(unittest.TestCase):
             gate_scope.handoff_status(bundle, "jaehong"),
         )
 
+    def test_blocked_bundle_is_report_only_until_reissued(self) -> None:
+        bundle = {
+            "EXECUTION_BUNDLE_ID": "R5-W4-F4",
+            "STATUS": "BLOCKED",
+            "ALLOWED_PATHS": "app/enterprise-react/**",
+        }
+        patterns = gate_scope.allowed_paths(bundle, "minji")
+        self.assertTrue(
+            gate_scope.path_allowed(
+                "docs/markdown/daily_reports/minji/일일보고.md", patterns
+            )
+        )
+        self.assertFalse(
+            gate_scope.path_allowed(
+                "app/enterprise-react/src/pages/ReportsPage.jsx", patterns
+            )
+        )
+
     def test_changed_paths_decodes_korean_names_without_git_quoting(self) -> None:
         path = "docs/markdown/daily_reports/daesung/일일보고.md"
         with patch.object(gate_scope.subprocess, "run") as run:
@@ -126,6 +144,44 @@ class GateScopeTest(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertIn("-z", command)
         self.assertIn("--diff-filter=ACMRD", command)
+
+    def test_stale_base_without_path_overlap_can_continue(self) -> None:
+        bundle = {"STATUS": "READY", "BASE_SHA": "issued"}
+        with (
+            patch.object(gate_scope, "is_ancestor", side_effect=[False, True]),
+            patch.object(gate_scope, "changed_paths", return_value=["src/data/a.py"]),
+        ):
+            status, notes = gate_scope.base_sync_status(
+                bundle, "origin/dev", "HEAD", ["src/ai/node1.py"]
+            )
+        self.assertEqual("SAFE_STALE", status)
+        self.assertEqual([], notes)
+
+    def test_stale_base_with_path_overlap_requires_refresh(self) -> None:
+        bundle = {"STATUS": "IN_PROGRESS", "BASE_SHA": "issued"}
+        with (
+            patch.object(gate_scope, "is_ancestor", side_effect=[False, True]),
+            patch.object(gate_scope, "changed_paths", return_value=["src/ai/node1.py"]),
+        ):
+            status, notes = gate_scope.base_sync_status(
+                bundle, "origin/dev", "HEAD", ["src/ai/node1.py"]
+            )
+        self.assertEqual("REFRESH_REQUIRED", status)
+        self.assertEqual(["src/ai/node1.py"], notes)
+
+    def test_next_gate_is_inferred_from_active_bundle(self) -> None:
+        self.assertEqual("I5", gate_scope.inferred_next_gate(self.ledger))
+
+    def test_dashboard_prefers_origin_dev_sha(self) -> None:
+        with patch.object(gate_scope.subprocess, "run") as run:
+            run.return_value.returncode = 0
+            run.return_value.stdout = "a" * 40 + "\n"
+            self.assertEqual("a" * 40, gate_scope.latest_dev_sha())
+
+    def test_blocked_dashboard_requests_scoped_rework(self) -> None:
+        dashboard = "\n".join(gate_scope.dashboard_lines(self.ledger))
+        self.assertIn("R5-W4-F4", dashboard)
+        self.assertIn("Issue owner-scoped REWORK bundle", dashboard)
 
     def test_valid_handoff_with_external_work_needs_review(self) -> None:
         bundle = self.generic_bundle()

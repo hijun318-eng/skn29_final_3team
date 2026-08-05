@@ -204,6 +204,24 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertTrue(response.data.gates.g1_required)
         self.assertTrue(response.data.gates.g2_required)
 
+    def test_versioned_trino_demo_uses_only_the_approved_serving_view(self) -> None:
+        decision = RoutingService.for_versioned_trino_demo().decide(
+            AnalysisRequest(
+                question="호텔 객실 매출을 분석해 줘",
+                template_id="weekly-room-operations",
+                parameters={
+                    "period_start": "2026-05-01",
+                    "period_end_exclusive": "2026-07-01",
+                },
+            )
+        )
+
+        self.assertEqual({"serving.analytics.hotel_daily_metrics"}, set(decision.source_fqns))
+        self.assertIn("data_period_status = 'YTD_SYNTHETIC'", decision.sql_text)
+        self.assertIn("SUM(room_revenue) AS room_revenue", decision.sql_text)
+        self.assertIn("GROUP BY business_date", decision.sql_text)
+        self.assertTrue(decision.sql_text.endswith("LIMIT 1000"))
+
     def test_template_role_is_blocked_before_query(self) -> None:
         template = ApprovedTemplate(
             template_id="weekly-room-operations",

@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import { Check, MessageSquareText, Plus, Send, Sparkles, TableProperties } from "lucide-react";
-import { createMockAnalysisClient } from "../api/analysisClient";
+import { createAnalysisClient } from "../api/analysisClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { MetaStrip, SectionTitle } from "../components/common/EnterpriseUi";
 import { analysisFixtures } from "../data/analysisFixtures";
 import { createUuid } from "../utils/createUuid";
 
 const RECENT_ANALYSES = ["객실·예약·연회 통합 분석"];
-const client = createMockAnalysisClient();
+const client = createAnalysisClient();
 const initialRun = analysisFixtures.ready;
 
 export function AgentPage() {
@@ -39,9 +39,16 @@ export function AgentPage() {
       setRun(await client.analyze(nextQuestion, conversationId, "ready"));
     } catch {
       setRun({
-        ...analysisFixtures.ready,
+        ...analysisFixtures.error,
+        requestId: createUuid(),
+        traceId: createUuid(),
         question: nextQuestion,
         conversationId,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "Backend API에 연결할 수 없습니다.",
+          retryable: true,
+        },
       });
     } finally {
       setSubmitting(false);

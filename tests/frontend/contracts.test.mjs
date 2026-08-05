@@ -42,11 +42,18 @@ const analysisStatePanelSource = readFileSync(
   new URL("../../app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx", import.meta.url),
   "utf8",
 );
+const agentPageSource = readFileSync(
+  new URL("../../app/enterprise-react/src/pages/AgentPage.jsx", import.meta.url),
+  "utf8",
+);
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
 assert.equal(REPORT_CONTRACT_VERSION, "REPORT-v1.0.0");
 assert.deepEqual(REPORT_RUN_STATUSES, ["queued", "running", "success", "partial", "failed", "cancelled"]);
 assert.equal(FIXTURE_VERSION, "UI-FIXTURE-v1.0.0");
 assert.equal(OPENAPI_VERSION, "OPENAPI-v1.0.0");
+assert.match(agentPageSource, /createAnalysisClient\(\)/);
+assert.doesNotMatch(agentPageSource, /createMockAnalysisClient/);
+assert.match(agentPageSource, /Backend API에 연결할 수 없습니다/);
 assert.ok(Object.values({ ...packageJson.dependencies, ...packageJson.devDependencies }).every((version) => version !== "latest"));
 assert.equal(resolveRoute("/customers").page, "notFound");
 assert.equal(resolveRoute("/catalog/tools").page, "notFound");

@@ -7,6 +7,7 @@ const AgentPage = lazy(() => import("./pages/AgentPage").then((module) => ({ def
 const ReportsPage = lazy(() => import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })));
 const CatalogPage = lazy(() => import("./pages/CatalogPage").then((module) => ({ default: module.CatalogPage })));
 const ConnectionsPage = lazy(() => import("./pages/ConnectionsPage").then((module) => ({ default: module.ConnectionsPage })));
+const USE_PPT_THEME = true;
 
 const PAGE_META = {
   chat: ["분석 Agent", "자연어 질문으로 승인된 기업 데이터를 수집·분석합니다."],
@@ -29,7 +30,7 @@ function NotFoundPage({ onNavigate }) {
 
 export function App() {
   const [route, setRoute] = useState(() => resolveRoute(window.location.pathname));
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(true);
   const [isPending, startTransition] = useTransition();
   const page = route.page;
   const [title, description] = PAGE_META[page];
@@ -42,6 +43,7 @@ export function App() {
     }
 
     const handlePopState = () => {
+      setMenuOpen(false);
       startTransition(() => setRoute(resolveRoute(window.location.pathname)));
     };
 
@@ -51,9 +53,14 @@ export function App() {
 
   const navigate = useCallback((nextPath) => {
     const nextRoute = resolveRoute(nextPath);
-    if (nextRoute.path === route.path) return;
+    if (nextRoute.path === route.path) {
+      window.dispatchEvent(new CustomEvent("answervice:navigate", { detail: nextRoute.path }));
+      setMenuOpen(false);
+      return;
+    }
 
     window.history.pushState({}, "", nextRoute.path);
+    setMenuOpen(false);
     startTransition(() => setRoute(nextRoute));
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
   }, [route.path]);
@@ -69,11 +76,11 @@ export function App() {
         />
       );
     }
-    return <AgentPage />;
+    return <AgentPage onNavigate={navigate} />;
   }, [navigate, page]);
 
   return (
-    <div className={`app-shell ${isPending ? "is-page-pending" : ""}`}>
+    <div className={`app-shell ${USE_PPT_THEME ? "ppt-theme" : ""} ${menuOpen ? "" : "sidebar-collapsed"} ${isPending ? "is-page-pending" : ""}`}>
       <AppSidebar
         page={page}
         onNavigate={navigate}

@@ -131,9 +131,9 @@ export function AnalysisStatePanel({
             <small>Artifact</small>
             <code>{run.artifact.artifactId}</code>
           </div>
-          <button type="button" onClick={() => onAddArtifact?.(run.artifact!.artifactId)}>
+          {onAddArtifact && <button type="button" onClick={() => onAddArtifact(run.artifact!.artifactId)}>
             보고서에 담기
-          </button>
+          </button>}
         </div>
       )}
       <footer>

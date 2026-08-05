@@ -104,6 +104,7 @@ assert.match(stylesSource, /\.ppt-theme \.brand-mark\{[^}]*background:#1c69d4/);
 assert.match(stylesSource, /\.ppt-theme \.brand>button\{position:absolute;top:8px;right:8px/);
 assert.match(stylesSource, /\.ppt-theme \.brand b:after\{width:112px;height:3px[^}]*linear-gradient\(90deg,#1c69d4 0 18%,#e22718 18% 28%,#fff 28% 100%\)/);
 assert.match(stylesSource, /\.ppt-theme \.section-title:after\{width:112px;height:3px;background:linear-gradient\(90deg,#1c69d4 0 18%,#e22718 18% 28%,#fff 28% 100%\)\}/);
+assert.match(stylesSource, /\.ppt-theme,\.ppt-theme button,\.ppt-theme input,[^}]*\.ppt-theme label\{font-weight:700\}/);
 assert.doesNotMatch(stylesSource, /linear-gradient\(135deg,#1c69d4 0 64%,#e22718 64% 100%\)/);
 assert.match(stylesSource, /\.ppt-theme \.analysis-chart \.recharts-line-curve\{stroke:#1c69d4;stroke-width:3\}/);
 assert.match(stylesSource, /\.ppt-theme \.analysis-chart \.recharts-dot\{fill:#e22718;stroke:#fff\}/);

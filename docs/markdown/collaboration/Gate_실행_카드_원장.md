@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v4.8 |
-| 문서 기준일 | 2026-08-06 11:01 |
+| 버전 | v4.9 |
+| 문서 기준일 | 2026-08-06 11:16 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W4-F9` | `REVIEW` | `junhee` |
+| R1 | `R1-W4-F9` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W4-F4` | `MERGED_DEV` | `seung` |
 | R3 | `R3-W4-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W4-F8` | `MERGED_DEV` | `jaehong` |
@@ -150,7 +150,7 @@ RESULT_CI=branch 31063368217 PASS
 ### R1 · R1-W4-F9
 
 ```text
-STATUS=REVIEW
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -172,6 +172,8 @@ TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration -q; python 
 TEST_COMMAND_IDS=T1_INTEGRATION;T2_COMPILE;T3_DOCS;T4_SCOPE;T5_DIFF
 STOP_CONDITIONS=자동 merge·push·conflict 해결 추가; 제품 코드·workflow 변경; Gate 안전 경계 축소; 새 dependency; 다른 역할 경로 변경; 필수 검증 실패
 EXTERNAL_ACTION_PERMISSION=없음. local 자동화·문서·test 변경만 허용하며 commit·push·dev 병합은 별도 사용자 요청 전 금지한다.
+RESULT_SHA=f8e8d1900b1ae5a4f3b003bb62d6a8a0016a09a5
+RESULT_CI=branch 31065077010 PASS
 ```
 
 ### R2 · R2-W4-F4
@@ -318,6 +320,7 @@ R1_REVIEW_CONDITIONS=typed client·전체 필수 headers·definition/draft/manua
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v4.9 | 2026-08-06 11:16 | R1-W4-F9 source CI와 handoff를 확인하고 dev 통합 결과를 기록해 MERGED_DEV 전환 |
 | v4.8 | 2026-08-06 11:01 | R1 카드 fixture·공용 parser·병합 session 구현과 local 통합 회귀 완료 후 REVIEW 전환 |
 | v4.7 | 2026-08-06 10:59 | 역할 카드 fixture·공용 Gate parser·병합 session 정합성 개선을 위한 R1 카드 발행·착수 |
 | v4.2 | 2026-08-06 09:30 | source CI 확인·작업 전 경로 검사·변경 문서 CI·보고 일괄 통합을 위한 R1 유지보수 카드 발행·착수 |

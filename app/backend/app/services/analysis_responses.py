@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from app.contracts import (
     AnalysisData,
     AnalysisResponse,
@@ -12,6 +14,7 @@ from app.contracts import (
     GateRequirements,
     MaskingEvidence,
     MetricValue,
+    PeriodEvidence,
     PipelineStage,
     RequestContext,
     SamplingEvidence,
@@ -54,23 +57,38 @@ class AnalysisResponseFactory:
         machine.transition(status)
         rows = tuple(query["rows"])
         first_value = next(iter(rows[0].values()), None) if rows else 0
+        metrics = (
+            MetricValue(
+                metric_id="synthetic_result_count",
+                label="합성 결과",
+                value=first_value,
+                unit="건",
+            ),
+        )
+        if decision.template_id == "weekly-room-operations" and rows and all("room_revenue" in row for row in rows):
+            total = sum(Decimal(str(row["room_revenue"])) for row in rows)
+            metrics = (
+                MetricValue(
+                    metric_id="recognized_room_revenue",
+                    label="인식 객실 매출",
+                    value=int(total) if total == total.to_integral() else float(total),
+                    unit="KRW",
+                ),
+            )
         result = AnalysisResult(
             summary=str(explanation["summary"]),
-            metrics=(
-                MetricValue(
-                    metric_id="synthetic_result_count",
-                    label="합성 결과",
-                    value=first_value,
-                    unit="건",
-                ),
-            ),
+            metrics=metrics,
             table=TableResult(
                 columns=tuple(rows[0]) if rows else (),
                 rows=rows,
             ),
             evidence=Evidence(
                 as_of=context.as_of,
-                period=support.period(context.as_of),
+                period=(
+                    PeriodEvidence.model_validate(query["period"])
+                    if query.get("period", {}).get("start")
+                    else support.period(context.as_of)
+                ),
                 filters=query.get("filters", {}),
                 sources=support.sources(assets),
                 query_id=str(query["query_id"]),

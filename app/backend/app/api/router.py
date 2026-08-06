@@ -36,16 +36,19 @@ from app.services.readiness import AppDatabaseReadiness
 
 def _routing_service() -> RoutingService:
     database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
-    return (
-        RoutingService.from_database(database_url)
-        if database_url
-        else RoutingService()
-    )
+    if database_url:
+        return RoutingService.from_database(database_url)
+    if os.getenv("DATA_PLATFORM_MODE") == "versioned-trino":
+        return RoutingService.for_versioned_trino_demo()
+    return RoutingService()
 
 
 def _data_platform():
-    if os.getenv("DATA_PLATFORM_MODE", "fake") == "fake":
+    mode = os.getenv("DATA_PLATFORM_MODE", "fake")
+    if mode == "fake":
         return FakeDataPlatformAdapter()
+    if mode not in {"real", "versioned-trino"}:
+        raise ValueError(f"unsupported DATA_PLATFORM_MODE: {mode}")
     from app.adapters.i2_data_platform import I2DataPlatformAdapter
 
     return I2DataPlatformAdapter(
@@ -53,6 +56,7 @@ def _data_platform():
         os.getenv("TRINO_USER", "answervice"),
         os.getenv("DATAHUB_GMS_URL", "http://datahub-gms:8080"),
         os.getenv("DATAHUB_API_TOKEN"),
+        require_live_metadata=mode == "real",
     )
 
 

@@ -125,6 +125,26 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     ]
 
 
+def test_versioned_trino_mode_uses_approved_contract_without_datahub():
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080",
+        "runtime-user",
+        require_live_metadata=False,
+    )
+    adapter._datahub_dataset = lambda _urn: pytest.fail("DataHub must not be called")
+
+    assets = adapter.search_assets(
+        "호텔 객실 매출을 분석해 줘",
+        {"role": "hotel_analyst"},
+    )
+
+    assert [asset["fqn"] for asset in assets] == [
+        "serving.analytics.hotel_daily_metrics"
+    ]
+    assert assets[0]["metrics"][0]["required_filters"][0]["value"] == "YTD_SYNTHETIC"
+    assert adapter.get_asset_schema(assets[0]["urn"])["columns"]
+
+
 def test_crm_question_uses_only_approved_raw_asset():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)

@@ -70,10 +70,12 @@ query Dataset($urn: String!) {
         datahub_url: str = "http://datahub-gms:8080",
         datahub_token: str | None = None,
         contract_path: Path | None = None,
+        require_live_metadata: bool = True,
     ) -> None:
         self._trino_user = trino_user
         self._datahub_url = datahub_url.rstrip("/")
         self._datahub_token = datahub_token
+        self._require_live_metadata = require_live_metadata
         self._trino = _PartialAwareTrinoAdapter(
             trino_url,
             transport=self._request,
@@ -91,6 +93,11 @@ query Dataset($urn: String!) {
         metric_ids = [metric.get("id") for metric in metrics if isinstance(metric, dict)]
         if len(metric_ids) != len(metrics) or len(metric_ids) != len(set(metric_ids)):
             raise ValueError("analytics context contract metric ids must be unique")
+        if not require_live_metadata:
+            for metric in metrics:
+                for required_filter in metric["required_filters"]:
+                    if required_filter["field"] == "data_period_status":
+                        required_filter["value"] = "YTD_SYNTHETIC"
         self._metrics = tuple(metrics)
         view_contract = json.loads((root / contract["view_contract"]).read_text(encoding="utf-8"))
         views = [
@@ -177,27 +184,29 @@ query Dataset($urn: String!) {
         for asset in self._rank_assets(query):
             if column_count + len(asset["columns"]) > 60:
                 continue
-            live = self._datahub_dataset(asset["urn"])
-            schema = live.get("schemaMetadata") or {}
-            columns = tuple(field["fieldPath"] for field in schema.get("fields") or ())
-            live_name = str(schema.get("name", ""))
-            raw_name_suffix = "." + ".".join(asset["fqn"].split(".")[1:])
-            name_matches = (
-                live_name == asset["fqn"]
-                if asset["kind"] == "view"
-                else live_name.endswith(raw_name_suffix)
-            )
-            columns_match = (
-                set(columns) == set(asset["columns"])
-                if asset["kind"] == "view"
-                else set(asset["columns"]).issubset(columns)
-            )
-            if (
-                live.get("urn") != asset["urn"]
-                or not name_matches
-                or not columns_match
-            ):
-                raise ValueError("live DataHub metadata does not match the contract")
+            columns = asset["columns"]
+            if self._require_live_metadata:
+                live = self._datahub_dataset(asset["urn"])
+                schema = live.get("schemaMetadata") or {}
+                columns = tuple(field["fieldPath"] for field in schema.get("fields") or ())
+                live_name = str(schema.get("name", ""))
+                raw_name_suffix = "." + ".".join(asset["fqn"].split(".")[1:])
+                name_matches = (
+                    live_name == asset["fqn"]
+                    if asset["kind"] == "view"
+                    else live_name.endswith(raw_name_suffix)
+                )
+                columns_match = (
+                    set(columns) == set(asset["columns"])
+                    if asset["kind"] == "view"
+                    else set(asset["columns"]).issubset(columns)
+                )
+                if (
+                    live.get("urn") != asset["urn"]
+                    or not name_matches
+                    or not columns_match
+                ):
+                    raise ValueError("live DataHub metadata does not match the contract")
             self._live_schemas[asset["urn"]] = asset["columns"]
             item = {key: value for key, value in asset.items() if key != "columns"}
             item["join_ids"] = (
@@ -288,6 +297,10 @@ query Dataset($urn: String!) {
             if error.code == AdapterErrorCode.TIMEOUT:
                 raise TimeoutError(str(error)) from error
             raise ValueError(str(error)) from error
+        result["period"] = {
+            "start": parameters.get("period_start"),
+            "end_exclusive": parameters.get("period_end_exclusive"),
+        }
         self._queries[result["query_id"]] = result
         return result
 

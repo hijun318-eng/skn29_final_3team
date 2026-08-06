@@ -4,11 +4,13 @@
 |---|---|
 | 문서 설명 | 팀원 개인 branch와 dev·main 통합 정책 및 사람이 수행하는 Git 절차 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.7 |
-| 문서 기준일 | 2026-08-03 12:14 |
+| 버전 | v1.8 |
+| 문서 기준일 | 2026-08-05 22:30 |
 | 작성·수정 | 박준희 |
 
 각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다. PR은 필수 절차가 아니며 GitHub Actions는 개인 branch와 `dev` push를 기준으로 실행한다. CI를 실행할 수 없으면 같은 검증을 local에서 수행하고, 필수 검증이 실패한 branch는 병합하지 않는다.
+
+개인 branch CI는 해당 역할의 기본 Python test를 실행하고 `dev` CI는 전체 Python test를 실행한다. frontend·Compose job은 관련 branch와 `dev`에서만 실행한다. 역할 카드에 선언된 소비자 contract test를 포함해 `TEST_COMMANDS`가 CI보다 넓으면 해당 명령을 추가로 실행하며, 개인 branch CI 통과를 전체 저장소 검증으로 표현하지 않는다.
 
 ## Branch 역할
 
@@ -149,6 +151,7 @@ git push origin main
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.8 | 2026-08-05 22:30 | 개인 branch 역할 검증과 dev 전체 검증을 분리해 중복 CI 실행 축소 |
 | v1.7 | 2026-08-03 12:14 | commit 형식은 Git 정책, staged 검토·병합 실행은 Skill로 단일화하고 중복 예시 제거 |
 | v1.6 | 2026-07-30 14:25 | commit 제목 아래 변경·검증·선택적 영향 본문을 기본 작성하고 staged diff와 확인된 검증만 구체적으로 기록하도록 Skill·Git 절차를 동기화 |
 | v1.5 | 2026-07-30 10:56 | commit 제목의 선택적 scope 규칙과 staged 변경 범위에 따른 사용 기준을 추가하고 hook·Skill 형식을 동기화 |

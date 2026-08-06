@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v4.4 |
-| 문서 기준일 | 2026-08-06 10:29 |
+| 버전 | v4.5 |
+| 문서 기준일 | 2026-08-06 10:35 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W4-F7` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W4-F8` | `IN_PROGRESS` | `junhee` |
 | R2 | `R2-W4-F4` | `MERGED_DEV` | `seung` |
 | R3 | `R3-W4-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W4-F8` | `MERGED_DEV` | `jaehong` |
@@ -116,6 +116,33 @@ STOP_CONDITIONS=다른 역할 제품 경로 변경; terminal·BLOCKED 카드 구
 EXTERNAL_ACTION_PERMISSION=없음. local 자동화·문서·test 변경만 승인하며 commit·push·dev 병합은 별도 사용자 요청 전 금지한다.
 RESULT_SHA=19a05c3ae356d2af5b5919b770fd6741f060d807
 RESULT_CI=branch 31062826908 PASS
+```
+
+### R1 · R1-W4-F8
+
+```text
+STATUS=IN_PROGRESS
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F8
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=terminal card regression
+TASK_CARD_RANGE=R1-06 병합 종료 상태 이후 Gate test 회귀 보정
+CURRENT_TASK_CARD_ID=R1-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=18910ba41cc3647371fdb9013c1156541bb8c937
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F8@18910ba
+ALLOWED_PATHS=tests/integration/test_gate_scope.py; docs/markdown/collaboration/Gate_실행_카드_원장.md
+FORBIDDEN_PATHS=제품 코드; 다른 역할 경로; workflow; dependency; secret
+ACCEPTANCE_CRITERIA=Gate test가 활성 카드에만 의존하지 않고 MERGED_DEV 전환 뒤에도 planned path의 구현 허용·차단 조건을 독립적으로 검증한다. 전체 dev Python test 회귀를 복구하며 제품 동작과 기존 안전 경계는 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_STATE_INDEPENDENT_TEST;AC2_DEV_FULL_REGRESSION;AC3_NO_PRODUCT_CHANGE
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration -q; python -m pytest -p no:cacheprovider tests -q; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_INTEGRATION;T2_FULL;T3_SCOPE;T4_DIFF
+STOP_CONDITIONS=제품 코드·workflow 변경; Gate 안전 경계 축소; 다른 역할 경로 변경; 새 dependency; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local test·Gate 원장 변경과 승인된 commit·push·dev 병합만 허용한다.
 ```
 
 ### R2 · R2-W4-F4

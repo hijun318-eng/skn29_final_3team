@@ -40,13 +40,27 @@ class GateScopeTest(unittest.TestCase):
         self.assertEqual("R4-W4-F8", bundle["EXECUTION_BUNDLE_ID"])
         self.assertEqual("MERGED_DEV", bundle["STATUS"])
 
-    def test_latest_r1_bundle_is_selected(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "junhee")
-        self.assertEqual("R1-W4-F7", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertIn(
-            bundle["STATUS"],
-            gate_scope.ACTIVE_STATUSES | gate_scope.TERMINAL_STATUSES,
-        )
+    def test_current_bundle_selects_latest_non_planned_card(self) -> None:
+        ledger = """```text
+EXECUTION_BUNDLE_ID=R1-W1
+STATUS=READY
+PERSONAL_BRANCH=junhee
+ALLOWED_PATHS=docs/**
+```
+```text
+EXECUTION_BUNDLE_ID=R1-W2
+STATUS=PLANNED
+PERSONAL_BRANCH=junhee
+ALLOWED_PATHS=tests/**
+```
+```text
+EXECUTION_BUNDLE_ID=R1-W3
+STATUS=IN_PROGRESS
+PERSONAL_BRANCH=junhee
+ALLOWED_PATHS=.github/**
+```"""
+        bundle = gate_scope.current_bundle(ledger, "junhee")
+        self.assertEqual("R1-W3", bundle["EXECUTION_BUNDLE_ID"])
 
     def test_latest_r5_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "minji")
@@ -173,9 +187,12 @@ class GateScopeTest(unittest.TestCase):
         self.assertEqual("true", outputs["compose"])
 
     def test_planned_paths_require_active_bundle_and_allowed_paths(self) -> None:
-        bundle = dict(gate_scope.current_bundle(self.ledger, "junhee"))
-        self.assertEqual("R1-W4-F7", bundle["EXECUTION_BUNDLE_ID"])
-        bundle["STATUS"] = "IN_PROGRESS"
+        bundle = {
+            "EXECUTION_BUNDLE_ID": "R1-W1",
+            "STATUS": "IN_PROGRESS",
+            "PERSONAL_BRANCH": "junhee",
+            "ALLOWED_PATHS": ".github/scripts/gate_scope.py",
+        }
         with patch.object(gate_scope, "current_bundle", return_value=bundle):
             _, errors = gate_scope.planned_path_errors(
                 self.ledger, "junhee", [".github/scripts/gate_scope.py"]

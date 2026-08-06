@@ -42,8 +42,8 @@ class GateScopeTest(unittest.TestCase):
 
     def test_latest_r1_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "junhee")
-        self.assertEqual("R1-W4-F5", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("VERIFIED_GATE", bundle["STATUS"])
+        self.assertEqual("R1-W4-F6", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("IN_PROGRESS", bundle["STATUS"])
 
     def test_latest_r5_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "minji")
@@ -168,6 +168,26 @@ class GateScopeTest(unittest.TestCase):
         )
         self.assertEqual("true", outputs["python"])
         self.assertEqual("true", outputs["compose"])
+
+    def test_planned_paths_require_active_bundle_and_allowed_paths(self) -> None:
+        bundle, errors = gate_scope.planned_path_errors(
+            self.ledger, "junhee", [".github/workflows/ci.yml"]
+        )
+        self.assertEqual("R1-W4-F6", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual([], errors)
+
+        bundle["STATUS"] = "VERIFIED_GATE"
+        with patch.object(gate_scope, "current_bundle", return_value=bundle):
+            _, errors = gate_scope.planned_path_errors(
+                self.ledger, "junhee", [".github/workflows/ci.yml"]
+            )
+        self.assertIn("does not allow implementation", errors[0])
+
+        with patch.object(gate_scope, "current_bundle", return_value=bundle):
+            _, errors = gate_scope.planned_path_errors(
+                self.ledger, "junhee", [gate_scope.LEDGER.as_posix()]
+            )
+        self.assertEqual([], errors)
 
     def test_stale_base_without_path_overlap_can_continue(self) -> None:
         bundle = {"STATUS": "READY", "BASE_SHA": "issued"}

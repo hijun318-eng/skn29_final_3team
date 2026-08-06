@@ -85,9 +85,49 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/01_요구사항정의서.md docs/markdown/02_WBS.md docs/markdown/05_화면설계서.md docs/markdown/collaboration/Gate_실행_카드_원장.md docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md docs/markdown/collaboration/I1_평가_원장.md
-      - run: python .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md
-      - run: python .agents/skills/update-project-reports/scripts/validate_reports.py docs/markdown/daily_reports/*/일일보고.md
+        with:
+          fetch-depth: 0
+      - name: Validate changed documents
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_NAME" == "dev" ]]; then
+            base="${{ github.event.before }}"
+            separator=".."
+            if [[ "$base" =~ ^0+$ ]]; then
+              base="$(git rev-list --max-parents=0 HEAD)"
+            fi
+          else
+            git fetch origin dev:refs/remotes/origin/dev
+            base="origin/dev"
+            separator="..."
+          fi
+
+          mapfile -d '' documents < <(
+            git diff --name-only -z --diff-filter=ACMR \
+              "${base}${separator}${GITHUB_SHA}" -- \
+              'AGENTS.md' ':(glob)**/*.md'
+          )
+          if (( ${#documents[@]} )); then
+            python .agents/skills/manage-project-documents/scripts/check_document_policy.py \
+              "${documents[@]}"
+          fi
+
+          reports=()
+          for path in "${documents[@]}"; do
+            case "$path" in
+              docs/markdown/daily_reports/*/일일보고.md|docs/markdown/daily_reports/team_summaries/*/*.md)
+                reports+=("$path")
+                ;;
+            esac
+          done
+          if (( ${#reports[@]} )); then
+            python .agents/skills/update-project-reports/scripts/validate_reports.py \
+              "${reports[@]}"
+          fi
+          if printf '%s\0' "${documents[@]}" | grep -Fzxq 'docs/markdown/02_WBS.md'; then
+            python .agents/skills/update-project-wbs/scripts/validate_wbs.py \
+              docs/markdown/02_WBS.md
+          fi
 
   frontend-contracts:
     needs: role-scope

@@ -53,6 +53,34 @@ def is_ancestor(ancestor: str, descendant: str) -> bool:
     return result.returncode == 0
 
 
+def source_ci(branch: str, sha: str) -> dict[str, object]:
+    try:
+        result = subprocess.run(
+            [
+                "gh", "run", "list", "--workflow", "CI", "--branch", branch,
+                "--commit", sha, "--event", "push", "--limit", "1",
+                "--json", "databaseId,status,conclusion,url",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+    except FileNotFoundError:
+        return {"status": "unavailable", "error": "gh command를 찾을 수 없습니다."}
+    if result.returncode != 0:
+        return {
+            "status": "unavailable",
+            "error": result.stderr.strip() or "GitHub Actions 조회에 실패했습니다.",
+        }
+    try:
+        runs = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {"status": "unavailable", "error": "GitHub Actions 응답이 JSON이 아닙니다."}
+    if not runs:
+        return {"status": "missing", "error": "source SHA의 CI 실행이 없습니다."}
+    return runs[0]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True, choices=sorted(PERSONAL_BRANCHES))
@@ -71,6 +99,7 @@ def main() -> int:
 
     source_local = ref(args.source)
     source_remote = ref(f"origin/{args.source}")
+    ci: dict[str, object] | None = None
     if not source_local or not source_remote:
         errors.append("source local/remote ref를 모두 확인할 수 없습니다.")
     elif source_local != source_remote:
@@ -80,6 +109,13 @@ def main() -> int:
     dev_remote = ref("origin/dev")
     if args.phase == "source" and current != args.source:
         errors.append(f"source 단계의 현재 branch가 {args.source}가 아닙니다.")
+    if args.phase == "source" and source_remote:
+        ci = source_ci(args.source, source_remote)
+        if ci.get("status") != "completed" or ci.get("conclusion") != "success":
+            errors.append(
+                "source SHA의 CI가 성공하지 않았습니다: "
+                f"status={ci.get('status')}, conclusion={ci.get('conclusion')}"
+            )
     if args.phase == "dev":
         if current != "dev":
             errors.append("dev 단계의 현재 branch가 dev가 아닙니다.")
@@ -113,6 +149,7 @@ def main() -> int:
         "dev_remote": dev_remote,
         "clean": not status,
         "operations": operations,
+        "source_ci": ci,
         "errors": errors,
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))

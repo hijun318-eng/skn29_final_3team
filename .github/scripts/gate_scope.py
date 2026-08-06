@@ -60,6 +60,7 @@ ROLES = {
 }
 TERMINAL_STATUSES = {"MERGED_DEV", "VERIFIED_GATE"}
 ACTIVE_STATUSES = {"READY", "IN_PROGRESS", "REVIEW"}
+IMPLEMENTATION_STATUSES = {"READY", "IN_PROGRESS"}
 TEST_STATUSES = {"PASS", "FAIL", "NOT_RUN", "BLOCKED", "REVIEW_REQUIRED"}
 # NOT_RUN은 아직 manifest를 제출하지 않은 작업 중 branch의 정상 상태다.
 # manifest가 제출됐지만 필수 검증·change request·잔여 위험·외부 승인이 남으면
@@ -166,6 +167,22 @@ def change_group_outputs(paths: list[str]) -> dict[str, str]:
         ).lower()
         for group, patterns in CHANGE_GROUP_PATTERNS.items()
     }
+
+
+def planned_path_errors(
+    text: str, branch: str, paths: list[str]
+) -> tuple[dict[str, str] | None, list[str]]:
+    bundle = current_bundle(text, branch)
+    if bundle is None:
+        return None, [f"No executable bundle found for branch: {branch}"]
+    if bundle["STATUS"] not in IMPLEMENTATION_STATUSES:
+        if branch == "junhee" and paths == [LEDGER.as_posix()]:
+            return bundle, []
+        return bundle, [
+            f"bundle status {bundle['STATUS']} does not allow implementation"
+        ]
+    patterns = allowed_paths(bundle, branch)
+    return bundle, [path for path in paths if not path_allowed(path, patterns)]
 
 
 def ledger_at(ref: str) -> str:
@@ -630,6 +647,7 @@ def main() -> int:
     parser.add_argument("--write-handoff", action="store_true")
     parser.add_argument("--dashboard", action="store_true")
     parser.add_argument("--next-gate", choices=("auto", "I2", "I3", "I4", "I5"))
+    parser.add_argument("--check-planned-path", action="append", default=[])
     args = parser.parse_args()
 
     text = LEDGER.read_text(encoding="utf-8")
@@ -643,6 +661,23 @@ def main() -> int:
         write_summary(lines)
         print("\n".join(lines))
         return 0
+
+    if args.check_planned_path:
+        if args.branch not in REPORTS:
+            parser.error("--check-planned-path requires a personal --branch")
+        bundle, errors = planned_path_errors(
+            text, args.branch, args.check_planned_path
+        )
+        lines = [
+            "## Planned path scope",
+            f"- Branch: `{args.branch}`",
+            f"- Bundle: `{bundle['EXECUTION_BUNDLE_ID'] if bundle else 'N/A'}`",
+            f"- Result: `{'FAIL' if errors else 'PASS'}`",
+        ]
+        if errors:
+            lines.extend(f"- `{error}`" for error in errors)
+        print("\n".join(lines))
+        return int(bool(errors))
 
     missing = [
         name

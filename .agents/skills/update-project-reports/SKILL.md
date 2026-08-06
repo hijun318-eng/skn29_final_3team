@@ -25,7 +25,7 @@ branch 매핑, 근거, 형식, 기간, 제한은 `docs/markdown/daily_reports/RE
 1. post-merge mode에서는 `source`, `base`, `head`를 필수로 받고 `base`가 `head`의 ancestor이며 `head`가 현재 commit인지 확인한다. 두 SHA에서 source 팀원의 개인 보고서를 비교해 전체 block이 바뀐 날짜를 고르고, 팀 요약이 없는 날짜를 추가한다. 사용자가 지정한 범위가 있으면 먼저 따른다.
 2. 5개 개인 `일일보고.md`를 직접 읽는다. 날짜 요약을 source of truth로 사용하지 않는다.
 3. 단일 기준 README에서 공식 주차를 정하고 해당 형식·문구·제한에 따라 날짜 요약과 주간보고를 작성한다.
-4. post-merge mode에서는 `source`, `base`, `head`, 변경된 `team_summaries/` path, 대상 날짜, 검증 결과를 `merge-branch-to-dev`에 반환한다. 여기서는 stage하거나 commit하지 않는다.
+4. 한 요청에서 여러 source를 병합하면 각 source의 `base`·`head`를 순서대로 적용하되 모든 보고 변경을 마지막 source 뒤 한 번만 반환한다. `source`, `base`, `head`, 변경된 `team_summaries/` path, 대상 날짜, 검증 결과를 `merge-branch-to-dev`에 반환하며 여기서는 stage하거나 commit하지 않는다.
 
 ## 검증
 

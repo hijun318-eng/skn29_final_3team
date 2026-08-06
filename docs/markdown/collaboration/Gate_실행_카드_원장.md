@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v4.1 |
-| 문서 기준일 | 2026-08-05 20:14 |
+| 버전 | v4.2 |
+| 문서 기준일 | 2026-08-06 09:30 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W4-F5` | `VERIFIED_GATE` | `junhee` |
+| R1 | `R1-W4-F6` | `IN_PROGRESS` | `junhee` |
 | R2 | `R2-W4-F4` | `MERGED_DEV` | `seung` |
 | R3 | `R3-W4-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W4-F8` | `MERGED_DEV` | `jaehong` |
@@ -58,6 +58,33 @@ HANDOFF=R3에 구조화 metric filter schema·일반 prompt 소비·validation-0
 EXTERNAL_ACTION_PERMISSION=없음. RunPod·model download·endpoint·외부 비용·150건·LoRA·Blind Gold를 금지한다.
 RESULT_SHA=f4871df852d606daf793414e9582aa48be49514e
 RESULT_CI=R3 30885817084 PASS; R2 30886662028 PASS; R4 30889083425 PASS; dev 30889141133 PASS
+```
+
+### R1 · R1-W4-F6
+
+```text
+STATUS=IN_PROGRESS
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F6
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=agent automation efficiency
+TASK_CARD_RANGE=R1-06 CI·병합·보고 자동화 정합성 보완
+CURRENT_TASK_CARD_ID=R1-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=5b368a5b17fa91028e128f79ac03f19e0742a074
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F6@5b368a5
+ALLOWED_PATHS=AGENTS.md; .agents/skills/merge-branch-to-dev/**; .github/scripts/gate_scope.py; .github/workflows/ci.yml; tests/integration/test_gate_scope.py; tests/integration/test_merge_preflight.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/collaboration/README.md; docs/markdown/daily_reports/README.md; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 제품 경로; backend·frontend·data·AI 제품 코드; root Compose·env; dependency; secret
+ACCEPTANCE_CRITERIA=개인 branch를 dev에 병합하기 전에 해당 source SHA의 CI 성공을 확인하고, 작업 시작 전에 예상 변경 경로가 활성 실행 카드 범위인지 검사한다. 문서 CI는 고정 목록이 아니라 실제 변경 문서를 검사한다. 여러 branch를 한 요청에서 통합할 때 handoff를 push 전 검증하고 팀 보고는 마지막 source 뒤 한 번만 commit한다. 기존 역할 소유권·Gate·secret·외부 비용 경계를 유지한다.
+ACCEPTANCE_IDS=AC1_SOURCE_CI;AC2_PLANNED_PATHS;AC3_CHANGED_DOCS;AC4_BATCH_REPORT;AC5_EXISTING_BOUNDARIES
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration -q; python -m compileall -q .github/scripts .agents/skills/merge-branch-to-dev/scripts tests/integration; CI YAML parse; document/report validation; python .github/scripts/gate_scope.py --branch junhee --check-planned-path .github/workflows/ci.yml; git diff --check
+TEST_COMMAND_IDS=T1_INTEGRATION;T2_COMPILE;T3_YAML;T4_DOCS;T5_PLANNED_SCOPE;T6_DIFF
+STOP_CONDITIONS=CI 실패 source 병합 허용; terminal 카드로 제품 변경 허용; 변경 문서 검사 누락; 역할·보안 경계 축소; R2~R5 제품 경로 변경; 새 dependency·외부 비용·secret 필요; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local 자동화·문서·test 변경만 승인하며 commit·push·dev 병합은 별도 사용자 요청 전 금지한다.
 ```
 
 ### R2 · R2-W4-F4
@@ -204,5 +231,6 @@ R1_REVIEW_CONDITIONS=typed client·전체 필수 headers·definition/draft/manua
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v4.2 | 2026-08-06 09:30 | source CI 확인·작업 전 경로 검사·변경 문서 CI·보고 일괄 통합을 위한 R1 유지보수 카드 발행·착수 |
 | v4.1 | 2026-08-05 20:14 | versioned-trino 합성 기간 상태·일별 집계·KPI·Evidence 기간을 일치시키고 실브라우저 E2E 병목 해소 |
 | v4.0 | 2026-08-05 19:44 | 역할별 최신 실행 카드만 활성 원장에 유지하고 기존 전체 이력을 archive로 분리 |

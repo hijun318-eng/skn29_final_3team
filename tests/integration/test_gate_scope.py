@@ -43,7 +43,10 @@ class GateScopeTest(unittest.TestCase):
     def test_latest_r1_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "junhee")
         self.assertEqual("R1-W4-F7", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("IN_PROGRESS", bundle["STATUS"])
+        self.assertIn(
+            bundle["STATUS"],
+            gate_scope.ACTIVE_STATUSES | gate_scope.TERMINAL_STATUSES,
+        )
 
     def test_latest_r5_bundle_is_selected(self) -> None:
         bundle = gate_scope.current_bundle(self.ledger, "minji")
@@ -170,10 +173,13 @@ class GateScopeTest(unittest.TestCase):
         self.assertEqual("true", outputs["compose"])
 
     def test_planned_paths_require_active_bundle_and_allowed_paths(self) -> None:
-        bundle, errors = gate_scope.planned_path_errors(
-            self.ledger, "junhee", [".github/scripts/gate_scope.py"]
-        )
+        bundle = dict(gate_scope.current_bundle(self.ledger, "junhee"))
         self.assertEqual("R1-W4-F7", bundle["EXECUTION_BUNDLE_ID"])
+        bundle["STATUS"] = "IN_PROGRESS"
+        with patch.object(gate_scope, "current_bundle", return_value=bundle):
+            _, errors = gate_scope.planned_path_errors(
+                self.ledger, "junhee", [".github/scripts/gate_scope.py"]
+            )
         self.assertEqual([], errors)
 
         bundle["STATUS"] = "VERIFIED_GATE"

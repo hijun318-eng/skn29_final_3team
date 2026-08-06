@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v4.6 |
-| 문서 기준일 | 2026-08-06 10:41 |
+| 버전 | v4.8 |
+| 문서 기준일 | 2026-08-06 11:01 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W4-F8` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W4-F9` | `REVIEW` | `junhee` |
 | R2 | `R2-W4-F4` | `MERGED_DEV` | `seung` |
 | R3 | `R3-W4-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W4-F8` | `MERGED_DEV` | `jaehong` |
@@ -145,6 +145,33 @@ STOP_CONDITIONS=제품 코드·workflow 변경; Gate 안전 경계 축소; 다�
 EXTERNAL_ACTION_PERMISSION=없음. local test·Gate 원장 변경과 승인된 commit·push·dev 병합만 허용한다.
 RESULT_SHA=2fa04df4af552544e442cd137c2c84cd1bb06b3d
 RESULT_CI=branch 31063368217 PASS
+```
+
+### R1 · R1-W4-F9
+
+```text
+STATUS=REVIEW
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F9
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=agent merge automation hardening
+TASK_CARD_RANGE=R1-06 Gate test·parser·병합 세션 정합성 개선
+CURRENT_TASK_CARD_ID=R1-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=65679f69e0253611e3e572b1bbe08229d3e66d77
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F9@65679f6
+ALLOWED_PATHS=.github/scripts/gate_scope.py; .agents/skills/merge-branch-to-dev/**; tests/integration/test_gate_scope.py; tests/integration/test_merge_preflight.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/collaboration/README.md; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=제품 코드; 다른 역할 경로; workflow; dependency; secret
+ACCEPTANCE_CRITERIA=역할별 최신 카드 번호 변경이 test fixture를 깨뜨리지 않는다. 병합 사전검사는 gate_scope의 원장 parser와 terminal status를 재사용한다. source·dev·final 단계가 하나의 ignored JSON session에서 base SHA·source SHA·CI 결과를 재사용하고 결과 기록 값을 제공한다. 기존 승인·충돌 중단·수동 merge·push 경계는 유지한다.
+ACCEPTANCE_IDS=AC1_NO_LIVE_CARD_IDS;AC2_SINGLE_LEDGER_PARSER;AC3_SESSION_REUSE;AC4_EXISTING_GIT_BOUNDARIES
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration -q; python -m compileall -q .github/scripts .agents/skills/merge-branch-to-dev/scripts tests/integration; document/report validation; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_INTEGRATION;T2_COMPILE;T3_DOCS;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=자동 merge·push·conflict 해결 추가; 제품 코드·workflow 변경; Gate 안전 경계 축소; 새 dependency; 다른 역할 경로 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local 자동화·문서·test 변경만 허용하며 commit·push·dev 병합은 별도 사용자 요청 전 금지한다.
 ```
 
 ### R2 · R2-W4-F4
@@ -291,6 +318,8 @@ R1_REVIEW_CONDITIONS=typed client·전체 필수 headers·definition/draft/manua
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v4.8 | 2026-08-06 11:01 | R1 카드 fixture·공용 parser·병합 session 구현과 local 통합 회귀 완료 후 REVIEW 전환 |
+| v4.7 | 2026-08-06 10:59 | 역할 카드 fixture·공용 Gate parser·병합 session 정합성 개선을 위한 R1 카드 발행·착수 |
 | v4.2 | 2026-08-06 09:30 | source CI 확인·작업 전 경로 검사·변경 문서 CI·보고 일괄 통합을 위한 R1 유지보수 카드 발행·착수 |
 | v4.1 | 2026-08-05 20:14 | versioned-trino 합성 기간 상태·일별 집계·KPI·Evidence 기간을 일치시키고 실브라우저 E2E 병목 해소 |
 | v4.0 | 2026-08-05 19:44 | 역할별 최신 실행 카드만 활성 원장에 유지하고 기존 전체 이력을 archive로 분리 |

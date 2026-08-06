@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -87,22 +88,71 @@ class MergePreflightTest(unittest.TestCase):
         self.assertIn("working tree", payload["sources"][1]["errors"][0])
         self.assertIn("seung:", payload["errors"][0])
 
-    def test_current_bundle_status_uses_last_non_planned_card(self) -> None:
-        ledger = """```text
-STATUS=MERGED_DEV
-PERSONAL_BRANCH=seung
-EXECUTION_BUNDLE_ID=R2-W1
-```
-```text
-STATUS=PLANNED
-PERSONAL_BRANCH=seung
-EXECUTION_BUNDLE_ID=R2-W2
-```
-"""
+    def test_current_bundle_status_reuses_gate_scope_parser(self) -> None:
         with patch.object(preflight.Path, "exists", return_value=True), patch.object(
-            preflight.Path, "read_text", return_value=ledger
-        ):
+            preflight.Path, "read_text", return_value="ledger"
+        ), patch.object(
+            preflight.gate_scope,
+            "current_bundle",
+            return_value={"STATUS": "MERGED_DEV"},
+        ) as current_bundle:
             self.assertEqual("MERGED_DEV", preflight.current_bundle_status("seung"))
+        current_bundle.assert_called_once_with("ledger", "seung")
+
+    def test_final_phase_reuses_session_base_and_result_fields(self) -> None:
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "session.json"
+            preflight.save_session(
+                path,
+                {
+                    "version": 1,
+                    "base": sha,
+                    "sources": {
+                        "junhee": {
+                            "sha": sha,
+                            "ci": {
+                                "databaseId": 7,
+                                "status": "completed",
+                                "conclusion": "success",
+                            },
+                        }
+                    },
+                },
+            )
+
+            def fake_ref(name: str) -> str | None:
+                return None if name in preflight.OPERATION_MARKERS else sha
+
+            with (
+                patch.object(
+                    preflight.sys,
+                    "argv",
+                    ["preflight", "--source", "junhee", "--phase", "final", "--session"],
+                ),
+                patch.object(preflight, "git", side_effect=["dev", ""]),
+                patch.object(preflight, "ref", side_effect=fake_ref),
+                patch.object(preflight, "is_ancestor", return_value=True),
+                patch.object(preflight, "merge_session_path", return_value=path),
+                patch.object(
+                    preflight, "current_bundle_status", return_value="MERGED_DEV"
+                ),
+            ):
+                self.assertEqual(0, preflight.main())
+            self.assertEqual(
+                {"RESULT_SHA": sha, "RESULT_CI": "branch 7 PASS"},
+                preflight.result_fields(preflight.load_session(path), "junhee"),
+            )
+
+    def test_load_session_rejects_incomplete_source_result(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "session.json"
+            path.write_text(
+                json.dumps({"version": 1, "sources": {"junhee": {"sha": "a"}}}),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "source 결과 형식"):
+                preflight.load_session(path)
 
     def test_final_phase_requires_terminal_source_card(self) -> None:
         sha = "a" * 40

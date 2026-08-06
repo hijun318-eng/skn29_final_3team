@@ -25,20 +25,12 @@ class GateScopeTest(unittest.TestCase):
         bundle.pop("ACCEPTANCE_IDS", None)
         return bundle
 
-    def test_latest_r3_bundle_is_selected(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "daesung")
-        self.assertEqual("R3-W4-F7", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("MERGED_DEV", bundle["STATUS"])
-
-    def test_latest_r2_bundle_is_selected(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "seung")
-        self.assertEqual("R2-W4-F4", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("MERGED_DEV", bundle["STATUS"])
-
-    def test_latest_r4_bundle_is_selected(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "jaehong")
-        self.assertEqual("R4-W4-F8", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("MERGED_DEV", bundle["STATUS"])
+    def test_current_ledger_has_resolvable_bundle_for_each_role(self) -> None:
+        for branch in gate_scope.ROLES:
+            with self.subTest(branch=branch):
+                bundle = gate_scope.current_bundle(self.ledger, branch)
+                self.assertIsNotNone(bundle)
+                self.assertEqual(branch, bundle["PERSONAL_BRANCH"])
 
     def test_current_bundle_selects_latest_non_planned_card(self) -> None:
         ledger = """```text
@@ -61,11 +53,6 @@ ALLOWED_PATHS=.github/**
 ```"""
         bundle = gate_scope.current_bundle(ledger, "junhee")
         self.assertEqual("R1-W3", bundle["EXECUTION_BUNDLE_ID"])
-
-    def test_latest_r5_bundle_is_selected(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "minji")
-        self.assertEqual("R5-W4-F4", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("BLOCKED", bundle["STATUS"])
 
     def test_terminal_transition_uses_previous_bundle_scope(self) -> None:
         current = {

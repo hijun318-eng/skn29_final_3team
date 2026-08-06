@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v4.2 |
-| 문서 기준일 | 2026-08-06 09:30 |
+| 버전 | v4.3 |
+| 문서 기준일 | 2026-08-06 10:09 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W4-F6` | `IN_PROGRESS` | `junhee` |
+| R1 | `R1-W4-F7` | `IN_PROGRESS` | `junhee` |
 | R2 | `R2-W4-F4` | `MERGED_DEV` | `seung` |
 | R3 | `R3-W4-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W4-F8` | `MERGED_DEV` | `jaehong` |
@@ -63,7 +63,7 @@ RESULT_CI=R3 30885817084 PASS; R2 30886662028 PASS; R4 30889083425 PASS; dev 308
 ### R1 · R1-W4-F6
 
 ```text
-STATUS=IN_PROGRESS
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -84,6 +84,35 @@ ACCEPTANCE_IDS=AC1_SOURCE_CI;AC2_PLANNED_PATHS;AC3_CHANGED_DOCS;AC4_BATCH_REPORT
 TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration -q; python -m compileall -q .github/scripts .agents/skills/merge-branch-to-dev/scripts tests/integration; CI YAML parse; document/report validation; python .github/scripts/gate_scope.py --branch junhee --check-planned-path .github/workflows/ci.yml; git diff --check
 TEST_COMMAND_IDS=T1_INTEGRATION;T2_COMPILE;T3_YAML;T4_DOCS;T5_PLANNED_SCOPE;T6_DIFF
 STOP_CONDITIONS=CI 실패 source 병합 허용; terminal 카드로 제품 변경 허용; 변경 문서 검사 누락; 역할·보안 경계 축소; R2~R5 제품 경로 변경; 새 dependency·외부 비용·secret 필요; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local 자동화·문서·test 변경만 승인하며 commit·push·dev 병합은 별도 사용자 요청 전 금지한다.
+RESULT_SHA=8037c5dafe6b85706737e7ae2aab5f2d02d817e8
+RESULT_CI=branch 31060559706 PASS; dev 31060722209 PASS; sync 31060779744 PASS
+```
+
+### R1 · R1-W4-F7
+
+```text
+STATUS=IN_PROGRESS
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F7
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=agent parallel bootstrap and integration
+TASK_CARD_RANGE=R1-06 작업 위치·상태·공통 지침·다중 branch 통합 자동화 보완
+CURRENT_TASK_CARD_ID=R1-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=23214ac3eaf2e4b8dacf85a0df9bf34f7310a973
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F7@23214ac
+ALLOWED_PATHS=AGENTS.md; .github/scripts/gate_scope.py; .agents/skills/merge-branch-to-dev/**; tests/integration/test_gate_scope.py; tests/integration/test_merge_preflight.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/collaboration/README.md; docs/markdown/collaboration/AI_개발_환경_설정.md; docs/markdown/ai_docs/5인_병렬구현_*_매뉴얼_최종안.md; docs/markdown/ai_docs/legacy/260805_코딩에이전트_작업프로세스_개선기록_v1.0.md; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 제품 경로; backend·frontend·data·AI 제품 코드; root Compose·env·CI; dependency; secret
+ACCEPTANCE_CRITERIA=역할 작업 시작 전에 현재 branch·dirty 상태·실행 가능 카드와 읽을 기준 문서를 한 명령으로 확인한다. 병합 완료 카드가 실행 가능 상태로 남지 않도록 결과 기록 절차를 고정한다. 역할 매뉴얼의 중복·노후 CI 설명을 공통 협업 규칙으로 대체한다. 여러 source의 worktree·remote SHA·CI를 dev에서 한 번에 점검한다. 기존 Gate·소유권·source CI·dev 회귀 경계를 유지한다.
+ACCEPTANCE_IDS=AC1_BOOTSTRAP;AC2_TERMINAL_STATE;AC3_CANONICAL_GUIDANCE;AC4_BATCH_PREFLIGHT;AC5_EXISTING_BOUNDARIES
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration -q; python -m compileall -q .github/scripts .agents/skills/merge-branch-to-dev/scripts tests/integration; document/report validation; python .github/scripts/gate_scope.py --branch junhee --bootstrap; python .github/scripts/gate_scope.py --branch junhee --check-planned-path .github/scripts/gate_scope.py; git diff --check
+TEST_COMMAND_IDS=T1_INTEGRATION;T2_COMPILE;T3_DOCS;T4_BOOTSTRAP;T5_PLANNED_SCOPE;T6_DIFF
+STOP_CONDITIONS=다른 역할 제품 경로 변경; terminal·BLOCKED 카드 구현 허용; dirty·branch 불일치 무시; source CI·dev 회귀 생략; 자동 merge·push 확대; 새 dependency·외부 비용·secret 필요; 필수 검증 실패
 EXTERNAL_ACTION_PERMISSION=없음. local 자동화·문서·test 변경만 승인하며 commit·push·dev 병합은 별도 사용자 요청 전 금지한다.
 ```
 

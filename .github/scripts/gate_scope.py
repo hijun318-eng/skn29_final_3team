@@ -58,6 +58,24 @@ ROLES = {
     "jaehong": "R4",
     "minji": "R5",
 }
+ROLE_MANUALS = {
+    "junhee": "docs/markdown/ai_docs/5인_병렬구현_01_기술PM_통합플랫폼_품질릴리스_매뉴얼_최종안.md",
+    "seung": "docs/markdown/ai_docs/5인_병렬구현_02_데이터플랫폼_메타데이터_연합조회_매뉴얼_최종안.md",
+    "daesung": "docs/markdown/ai_docs/5인_병렬구현_03_AI_모델_프롬프트_ModelOps_매뉴얼_최종안.md",
+    "jaehong": "docs/markdown/ai_docs/5인_병렬구현_04_백엔드_ControlPlane_매뉴얼_최종안.md",
+    "minji": "docs/markdown/ai_docs/5인_병렬구현_05_프론트엔드_자동리포팅_매뉴얼_최종안.md",
+}
+FULL_READS = (
+    "AGENTS.md",
+    "docs/markdown/collaboration/Gate_실행_카드_원장.md",
+)
+RELEVANT_READS = (
+    "docs/Answervice_기획서.md",
+    "docs/markdown/02_WBS.md",
+    "docs/markdown/collaboration/README.md",
+    "docs/markdown/collaboration/AI_개발_환경_설정.md",
+    "docs/markdown/ai_docs/5인_병렬구현_통합일정_20260729-20260903.md",
+)
 TERMINAL_STATUSES = {"MERGED_DEV", "VERIFIED_GATE"}
 ACTIVE_STATUSES = {"READY", "IN_PROGRESS", "REVIEW"}
 IMPLEMENTATION_STATUSES = {"READY", "IN_PROGRESS"}
@@ -183,6 +201,41 @@ def planned_path_errors(
         ]
     patterns = allowed_paths(bundle, branch)
     return bundle, [path for path in paths if not path_allowed(path, patterns)]
+
+
+def bootstrap_payload(
+    text: str,
+    branch: str,
+    current_branch: str,
+    root: str,
+    dirty: bool,
+) -> dict[str, Any]:
+    bundle = current_bundle(text, branch)
+    errors = []
+    if bundle is None:
+        errors.append(f"No executable bundle found for branch: {branch}")
+    elif bundle["STATUS"] not in IMPLEMENTATION_STATUSES:
+        errors.append(
+            f"bundle status {bundle['STATUS']} does not allow implementation"
+        )
+    if current_branch != branch:
+        errors.append(
+            f"current branch {current_branch or '(detached)'} does not match {branch}"
+        )
+    if dirty:
+        errors.append("working tree is not clean")
+    return {
+        "role": ROLES[branch],
+        "branch": branch,
+        "current_branch": current_branch,
+        "worktree_root": root,
+        "configured_root": bundle.get("REPOSITORY_ROOT") if bundle else None,
+        "bundle": bundle.get("EXECUTION_BUNDLE_ID") if bundle else None,
+        "status": bundle.get("STATUS") if bundle else None,
+        "full_reads": [*FULL_READS, ROLE_MANUALS[branch]],
+        "relevant_reads": list(RELEVANT_READS),
+        "errors": errors,
+    }
 
 
 def ledger_at(ref: str) -> str:
@@ -648,6 +701,7 @@ def main() -> int:
     parser.add_argument("--dashboard", action="store_true")
     parser.add_argument("--next-gate", choices=("auto", "I2", "I3", "I4", "I5"))
     parser.add_argument("--check-planned-path", action="append", default=[])
+    parser.add_argument("--bootstrap", action="store_true")
     args = parser.parse_args()
 
     text = LEDGER.read_text(encoding="utf-8")
@@ -661,6 +715,36 @@ def main() -> int:
         write_summary(lines)
         print("\n".join(lines))
         return 0
+
+    if args.bootstrap:
+        if args.branch not in REPORTS:
+            parser.error("--bootstrap requires a personal --branch")
+        payload = bootstrap_payload(
+            text,
+            args.branch,
+            subprocess.run(
+                ["git", "branch", "--show-current"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip(),
+            subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip(),
+            bool(
+                subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+            ),
+        )
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return int(bool(payload["errors"]))
 
     if args.check_planned_path:
         if args.branch not in REPORTS:

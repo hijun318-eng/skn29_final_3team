@@ -4,9 +4,9 @@
 |---|---|
 | 문서 설명 | 5명 팀원이 동일한 AI 개발 환경을 준비하기 위한 최초 설정 체크리스트 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.1 |
-| 문서 기준일 | 2026-07-29 12:16 |
-| 작성·수정 | 윤대성 |
+| 버전 | v2.2 |
+| 문서 기준일 | 2026-08-06 10:09 |
+| 작성·수정 | 윤대성 / 박준희 |
 | 권장 저장 위치 | `docs/markdown/collaboration/AI_개발_환경_설정.md` |
 
 ## 1. 공통 준비
@@ -46,6 +46,7 @@ git config --local --get core.hooksPath
 codex plugin marketplace add DietrichGebert/ponytail --ref v4.8.4
 codex plugin add ponytail@ponytail
 codex plugin list --json
+python .github/scripts/gate_scope.py --branch <본인 branch> --bootstrap
 ```
 
 PowerShell에서 `codex.ps1`이 차단되면 `codex.cmd`를 사용한다. 설치 후 `/hooks`에서 Ponytail hook을 검토·신뢰하고 Codex를 재시작해 새 작업을 연다.
@@ -65,12 +66,13 @@ codex plugin list --json
 - `core.hooksPath`가 `.githooks`다.
 - Ponytail `v4.8.4`, `full` mode가 활성화됐다.
 - Codex가 root `AGENTS.md`를 읽는다.
-- 본인 역할 매뉴얼과 관리자가 전달한 작업 카드 1개를 확인했다.
+- bootstrap이 `PASS`이고, 출력된 전체 읽기 문서와 현재 카드 관련 절을 확인했다.
 
 ## 변경 내역
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.2 | 2026-08-06 10:09 | branch·dirty 상태·실행 카드와 읽기 문서를 한 번에 확인하는 bootstrap 추가 |
 | v2.1 | 2026-07-29 12:16 | 팀 공통 AI 도구를 Codex로 한정하고 Claude Code 절차 제거 |
 | v2.0 | 2026-07-29 12:14 | 팀원별 공통 개발 환경 구축에 필요한 설정만 남기도록 문서 축약 |
 | v1.3 | 2026-07-29 12:12 | 개인 branch 확인과 dev 병합 주체를 R1이 아닌 관리자로 정정 |

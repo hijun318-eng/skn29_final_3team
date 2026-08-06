@@ -66,6 +66,73 @@ class MergePreflightTest(unittest.TestCase):
         ):
             self.assertEqual(1, preflight.main())
 
+    def test_batch_preflight_reports_all_source_failures(self) -> None:
+        sha = "a" * 40
+        with (
+            patch.object(preflight, "git", side_effect=["dev", "", "", "dirty"]),
+            patch.object(preflight, "ref", side_effect=[sha] * 6),
+            patch.object(
+                preflight,
+                "worktree_roots",
+                return_value={"junhee": "C:/junhee", "seung": "C:/seung"},
+            ),
+            patch.object(
+                preflight,
+                "source_ci",
+                return_value={"status": "completed", "conclusion": "success"},
+            ),
+        ):
+            payload = preflight.batch_payload(["junhee", "seung"])
+        self.assertEqual([], payload["sources"][0]["errors"])
+        self.assertIn("working tree", payload["sources"][1]["errors"][0])
+        self.assertIn("seung:", payload["errors"][0])
+
+    def test_current_bundle_status_uses_last_non_planned_card(self) -> None:
+        ledger = """```text
+STATUS=MERGED_DEV
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W1
+```
+```text
+STATUS=PLANNED
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W2
+```
+"""
+        with patch.object(preflight.Path, "exists", return_value=True), patch.object(
+            preflight.Path, "read_text", return_value=ledger
+        ):
+            self.assertEqual("MERGED_DEV", preflight.current_bundle_status("seung"))
+
+    def test_final_phase_requires_terminal_source_card(self) -> None:
+        sha = "a" * 40
+
+        def fake_ref(name: str) -> str | None:
+            return None if name in preflight.OPERATION_MARKERS else sha
+
+        with (
+            patch.object(
+                preflight.sys,
+                "argv",
+                [
+                    "preflight",
+                    "--source",
+                    "junhee",
+                    "--phase",
+                    "final",
+                    "--base",
+                    sha,
+                ],
+            ),
+            patch.object(preflight, "git", side_effect=["dev", ""]),
+            patch.object(preflight, "ref", side_effect=fake_ref),
+            patch.object(preflight, "is_ancestor", return_value=True),
+            patch.object(
+                preflight, "current_bundle_status", return_value="IN_PROGRESS"
+            ),
+        ):
+            self.assertEqual(1, preflight.main())
+
 
 if __name__ == "__main__":
     unittest.main()

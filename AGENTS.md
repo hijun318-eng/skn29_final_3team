@@ -52,6 +52,7 @@
 - 확인된 사실·결정·가정·제안을 구분하고, 불확실한 내용은 한계와 검증 방법을 함께 제시한다.
 - 사용자의 범위와 권한을 임의로 넓히지 않는다. 위험한 모호성만 질문하고 대안이 있으면 같은 기준으로 비교해 권장안을 제시한다.
 - 시작할 때 repository root를 확인해 working directory로 삼고, current branch와 `git status --short`를 확인해 기존 변경을 사용자 작업으로 보존한다.
+- 역할 작업은 구현 전에 `python .github/scripts/gate_scope.py --branch <개인 branch> --bootstrap`으로 branch·dirty 상태·실행 가능 카드와 필수·관련 읽기 문서를 확인하며, 실패하면 수정하지 않는다. worktree 경로는 달라도 되지만 현재 branch는 실행 카드의 `PERSONAL_BRANCH`와 같아야 한다.
 - 구현 전에 예상 변경 path를 `.github/scripts/gate_scope.py --branch <개인 branch> --check-planned-path <path>`로 확인한다. 여러 path는 option을 반복하며, 실패하면 수정하지 않고 R1이 실행 카드를 발행·교정한 뒤 다시 확인한다. R1은 종료 카드 상태에서 새 카드를 발행할 때 `Gate_실행_카드_원장.md` 한 파일만 먼저 변경할 수 있다.
 - 현재 파일·실제 동작·관련 contract를 확인한 뒤 가장 작은 일관된 변경을 적용하고, 위험에 맞는 결정론적 검증을 실행한다.
 - 외부 시스템 변경, 비용 발생, 데이터 전송, 저장소 밖 쓰기는 사용자 승인을 받은 뒤 수행한다.

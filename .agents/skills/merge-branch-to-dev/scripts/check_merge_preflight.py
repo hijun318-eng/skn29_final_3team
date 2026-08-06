@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
+from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -22,15 +24,18 @@ OPERATION_MARKERS = {
     "BISECT_HEAD": "bisect",
     "BISECT_START": "bisect",
 }
+LEDGER = Path("docs/markdown/collaboration/Gate_실행_카드_원장.md")
+TERMINAL_STATUSES = {"MERGED_DEV", "VERIFIED_GATE"}
 
 
-def git(*args: str, check: bool = True) -> str:
+def git(*args: str, check: bool = True, cwd: str | None = None) -> str:
     result = subprocess.run(
         ["git", *args],
         check=check,
         capture_output=True,
         text=True,
         encoding="utf-8",
+        cwd=cwd,
     )
     return result.stdout.strip()
 
@@ -81,12 +86,91 @@ def source_ci(branch: str, sha: str) -> dict[str, object]:
     return runs[0]
 
 
+def worktree_roots() -> dict[str, str]:
+    roots = {}
+    for block in git("worktree", "list", "--porcelain").split("\n\n"):
+        values = dict(
+            line.split(" ", 1) for line in block.splitlines() if " " in line
+        )
+        branch = values.get("branch", "").removeprefix("refs/heads/")
+        if branch:
+            roots[branch] = values["worktree"]
+    return roots
+
+
+def current_bundle_status(branch: str) -> str | None:
+    if not LEDGER.exists():
+        return None
+    matches = []
+    for block in re.findall(
+        r"```text\n(.*?)```", LEDGER.read_text(encoding="utf-8"), re.DOTALL
+    ):
+        values = dict(
+            line.split("=", 1) for line in block.splitlines() if "=" in line
+        )
+        if values.get("PERSONAL_BRANCH") == branch and values.get("STATUS") != "PLANNED":
+            matches.append(values.get("STATUS"))
+    return matches[-1] if matches else None
+
+
+def batch_payload(sources: list[str]) -> dict[str, object]:
+    current = git("branch", "--show-current")
+    status = git("status", "--porcelain")
+    errors = []
+    if current != "dev":
+        errors.append("batch 단계의 현재 branch가 dev가 아닙니다.")
+    if status:
+        errors.append("dev working tree가 깨끗하지 않습니다.")
+    dev_local = ref("dev")
+    dev_remote = ref("origin/dev")
+    if not dev_local or dev_local != dev_remote:
+        errors.append("dev와 origin/dev가 정확히 같지 않습니다.")
+    roots = worktree_roots()
+    items = []
+    for source in sources:
+        local = ref(source)
+        remote = ref(f"origin/{source}")
+        root = roots.get(source)
+        ci = source_ci(source, remote) if remote else None
+        item_errors = []
+        if not local or local != remote:
+            item_errors.append("local과 origin commit이 다르거나 없습니다.")
+        if not root:
+            item_errors.append("개인 branch worktree를 찾을 수 없습니다.")
+        elif git("status", "--porcelain", cwd=root):
+            item_errors.append("개인 branch working tree가 깨끗하지 않습니다.")
+        if not ci or ci.get("status") != "completed" or ci.get("conclusion") != "success":
+            item_errors.append("source SHA의 CI가 성공하지 않았습니다.")
+        items.append(
+            {"source": source, "root": root, "sha": remote, "source_ci": ci, "errors": item_errors}
+        )
+        errors.extend(f"{source}: {error}" for error in item_errors)
+    return {
+        "phase": "batch",
+        "current_branch": current,
+        "dev_local": dev_local,
+        "dev_remote": dev_remote,
+        "sources": items,
+        "errors": errors,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source", required=True, choices=sorted(PERSONAL_BRANCHES))
-    parser.add_argument("--phase", required=True, choices=["source", "dev", "final"])
+    parser.add_argument("--source", choices=sorted(PERSONAL_BRANCHES))
+    parser.add_argument("--sources", nargs="+", choices=sorted(PERSONAL_BRANCHES))
+    parser.add_argument("--phase", required=True, choices=["source", "dev", "final", "batch"])
     parser.add_argument("--base", help="병합 직전 dev commit; final 단계에서 필수")
     args = parser.parse_args()
+
+    if args.phase == "batch":
+        if not args.sources or args.source:
+            parser.error("batch 단계에는 --sources만 사용합니다.")
+        payload = batch_payload(args.sources)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return int(bool(payload["errors"]))
+    if not args.source or args.sources:
+        parser.error("source/dev/final 단계에는 --source 하나가 필요합니다.")
 
     errors: list[str] = []
     current = git("branch", "--show-current")
@@ -137,6 +221,12 @@ def main() -> int:
             errors.append("병합 직전 base가 local dev의 ancestor가 아닙니다.")
         if source_remote and dev_local and not is_ancestor(source_remote, dev_local):
             errors.append("source branch가 local dev에 반영되지 않았습니다.")
+        bundle_status = current_bundle_status(args.source)
+        if bundle_status not in TERMINAL_STATUSES:
+            errors.append(
+                "source 실행 카드가 MERGED_DEV 또는 VERIFIED_GATE가 아닙니다: "
+                f"{bundle_status or 'missing'}"
+            )
 
     payload = {
         "phase": args.phase,

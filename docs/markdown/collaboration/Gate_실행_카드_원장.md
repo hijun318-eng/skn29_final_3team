@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v4.3 |
-| 문서 기준일 | 2026-08-06 10:09 |
+| 버전 | v4.4 |
+| 문서 기준일 | 2026-08-06 10:29 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W4-F7` | `IN_PROGRESS` | `junhee` |
+| R1 | `R1-W4-F7` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W4-F4` | `MERGED_DEV` | `seung` |
 | R3 | `R3-W4-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W4-F8` | `MERGED_DEV` | `jaehong` |
@@ -92,7 +92,7 @@ RESULT_CI=branch 31060559706 PASS; dev 31060722209 PASS; sync 31060779744 PASS
 ### R1 · R1-W4-F7
 
 ```text
-STATUS=IN_PROGRESS
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -114,6 +114,8 @@ TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration -q; python 
 TEST_COMMAND_IDS=T1_INTEGRATION;T2_COMPILE;T3_DOCS;T4_BOOTSTRAP;T5_PLANNED_SCOPE;T6_DIFF
 STOP_CONDITIONS=다른 역할 제품 경로 변경; terminal·BLOCKED 카드 구현 허용; dirty·branch 불일치 무시; source CI·dev 회귀 생략; 자동 merge·push 확대; 새 dependency·외부 비용·secret 필요; 필수 검증 실패
 EXTERNAL_ACTION_PERMISSION=없음. local 자동화·문서·test 변경만 승인하며 commit·push·dev 병합은 별도 사용자 요청 전 금지한다.
+RESULT_SHA=19a05c3ae356d2af5b5919b770fd6741f060d807
+RESULT_CI=branch 31062826908 PASS
 ```
 
 ### R2 · R2-W4-F4

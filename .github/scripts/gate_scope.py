@@ -23,6 +23,34 @@ SHARED_NON_PRODUCT_PATHS = (
     "docs/markdown/daily_reports/team_summaries/**",
     "tests/integration/test_report_validation.py",
 )
+CHANGE_GROUP_PATTERNS = {
+    "python": (
+        ".agents/skills/**/*.py",
+        ".github/scripts/**",
+        "app/backend/**",
+        "config/**",
+        "evals/**",
+        "src/**",
+        "tests/**/*.py",
+    ),
+    "documents": (
+        "AGENTS.md",
+        ".agents/skills/**",
+        ".githooks/**",
+        "docs/**",
+    ),
+    "frontend": (
+        "app/enterprise-react/**",
+        "tests/frontend/**",
+    ),
+    "compose": (
+        ".env.example",
+        "app/backend/compose.fragment.yml",
+        "app/enterprise-react/compose.fragment.yml",
+        "compose.yml",
+        "infrastructure/database/**",
+    ),
+}
 ROLES = {
     "junhee": "R1",
     "seung": "R2",
@@ -127,6 +155,17 @@ def changed_paths(base: str, head: str, mode: str) -> list[str]:
         for path in result.stdout.split(b"\0")
         if path
     ]
+
+
+def change_group_outputs(paths: list[str]) -> dict[str, str]:
+    force_all = any(path.startswith(".github/workflows/") for path in paths)
+    return {
+        group: str(
+            force_all
+            or any(path_allowed(path, list(patterns)) for path in paths)
+        ).lower()
+        for group, patterns in CHANGE_GROUP_PATTERNS.items()
+    }
 
 
 def ledger_at(ref: str) -> str:
@@ -616,6 +655,7 @@ def main() -> int:
         parser.error(f"unsupported role branch: {args.branch}")
 
     changed = changed_paths(args.base, args.head, args.mode)
+    change_groups = change_group_outputs(changed)
     if args.branch == "dev":
         lines = [
             "## Role Gate scope",
@@ -624,7 +664,7 @@ def main() -> int:
             "- Result: `PASS` - integration branch, role scope enforcement skipped",
         ]
         write_summary(lines)
-        write_outputs(scope="PASS", handoff="N/A")
+        write_outputs(scope="PASS", handoff="N/A", **change_groups)
         print("\n".join(lines))
         return 0
 
@@ -687,7 +727,7 @@ def main() -> int:
         lines.extend(["", "### Handoff notes"])
         lines.extend(f"- {note}" for note in handoff_notes)
     write_summary(lines)
-    write_outputs(scope=result, handoff=handoff)
+    write_outputs(scope=result, handoff=handoff, **change_groups)
     print("\n".join(lines))
     return int(result == "FAIL")
 

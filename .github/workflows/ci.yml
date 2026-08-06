@@ -7,12 +7,20 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   role-scope:
     runs-on: ubuntu-latest
     outputs:
       scope: ${{ steps.gate.outputs.scope }}
       handoff: ${{ steps.gate.outputs.handoff }}
+      python: ${{ steps.gate.outputs.python }}
+      documents: ${{ steps.gate.outputs.documents }}
+      frontend: ${{ steps.gate.outputs.frontend }}
+      compose: ${{ steps.gate.outputs.compose }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,6 +54,8 @@ jobs:
         run: python .github/scripts/gate_scope.py --dashboard --next-gate auto
 
   python-contracts:
+    needs: role-scope
+    if: ${{ needs['role-scope'].outputs.python == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,6 +80,8 @@ jobs:
           python -m pytest -p no:cacheprovider "${targets[@]}"
 
   document-quality:
+    needs: role-scope
+    if: ${{ needs['role-scope'].outputs.documents == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,7 +90,8 @@ jobs:
       - run: python .agents/skills/update-project-reports/scripts/validate_reports.py docs/markdown/daily_reports/*/일일보고.md
 
   frontend-contracts:
-    if: github.ref_name == 'minji' || github.ref_name == 'dev'
+    needs: role-scope
+    if: ${{ needs['role-scope'].outputs.frontend == 'true' && (github.ref_name == 'minji' || github.ref_name == 'dev') }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -95,7 +108,8 @@ jobs:
       - run: node --test ../../tests/frontend/contracts.test.mjs
 
   compose-config:
-    if: github.ref_name == 'junhee' || github.ref_name == 'seung' || github.ref_name == 'dev'
+    needs: role-scope
+    if: ${{ needs['role-scope'].outputs.compose == 'true' && (github.ref_name == 'junhee' || github.ref_name == 'seung' || github.ref_name == 'dev') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

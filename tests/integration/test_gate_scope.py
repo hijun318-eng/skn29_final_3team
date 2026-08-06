@@ -145,6 +145,30 @@ class GateScopeTest(unittest.TestCase):
         self.assertIn("-z", command)
         self.assertIn("--diff-filter=ACMRD", command)
 
+    def test_document_only_change_selects_document_job(self) -> None:
+        self.assertEqual(
+            {
+                "python": "false",
+                "documents": "true",
+                "frontend": "false",
+                "compose": "false",
+            },
+            gate_scope.change_group_outputs(["docs/markdown/02_WBS.md"]),
+        )
+
+    def test_workflow_change_selects_every_job(self) -> None:
+        self.assertEqual(
+            {group: "true" for group in gate_scope.CHANGE_GROUP_PATTERNS},
+            gate_scope.change_group_outputs([".github/workflows/ci.yml"]),
+        )
+
+    def test_backend_compose_fragment_selects_python_and_compose(self) -> None:
+        outputs = gate_scope.change_group_outputs(
+            ["app/backend/compose.fragment.yml"]
+        )
+        self.assertEqual("true", outputs["python"])
+        self.assertEqual("true", outputs["compose"])
+
     def test_stale_base_without_path_overlap_can_continue(self) -> None:
         bundle = {"STATUS": "READY", "BASE_SHA": "issued"}
         with (

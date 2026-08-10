@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.33 |
-| 문서 기준일 | 2026-08-10 17:50 |
+| 버전 | v5.34 |
+| 문서 기준일 | 2026-08-10 18:15 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,9 +22,9 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F10` | `READY` | `junhee` |
+| R1 | `R1-W5-F11` | `READY` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
-| R3 | `R3-W5-F6` | `MERGED_DEV` | `daesung` |
+| R3 | `R3-W5-F7` | `READY` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
@@ -875,7 +875,7 @@ BLOCKED_REASON=Trino Gold 자체는 2행·475972400.00·canonical hash가 일치
 ### R1 · R1-W5-F10
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -902,6 +902,41 @@ STOP_CONDITIONS=F9 변경 미보존; marker 경로 불일치; compose identity/p
 EXTERNAL_ACTION_PERMISSION=정확한 hotel-synthetic-db crm-mssql의 read-only health inspect와 임시 backend test image build/run/remove, 허용 경로 commit·junhee push만 허용한다. container recreate·volume reset·다른 project·외부 비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=DB 접속만으로 healthy; marker만으로 healthy; 다른 project drift; F9 evidence 손실; Py3.12 미검증 PASS 주장; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=Option 1 보완 요청을 부분 수용한다. 구 Google 보드는 명시 폐기하고 Git 원장의 현재 카드만 실행한다. R2 runtime trace→R4/R3 semantic consumer 뒤 fresh-volume 최종 검증은 별도 승인으로 유지한다.
+RESULT_SHA=e9107aa5fcb7494b4ba10c7f8b0b96d6c5d8a0e0
+BLOCKED_REASON=CRM marker+sqlcmd product 변경과 target/runtime smoke는 통과했지만 Python 3.12 backend image에 pytest가 없어 전체 suite를 완료하지 못했고, actual HTTP 제품 경로는 G3 뒤 Node3가 복수 Context metric을 거부해 INTERNAL_ERROR로 종료됐다. CRM product 변경만 후속 R1-W5-F11로 분리하고 actual E2E·Node3·LAN CORS·secret mount는 owner별 새 카드 전까지 재개하지 않는다.
+```
+
+### R1 · R1-W5-F11
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F11
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=CRM seed-ready health product-only integration
+TASK_CARD_RANGE=R1-02 CRM healthcheck 분리 보존·source CI·dev 통합
+CURRENT_TASK_CARD_ID=R1-02
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=b820698c6cb5a5cb08b6f4a17b9052af6dc6fdf7
+START_POINT=junhee의 F9/F10 blocked evidence commit은 보존하고 검증된 product ancestor e9107aa의 CRM health 두 경로만 통합 대상으로 고정한다. source branch는 누적 evidence를 허용하되 dev에는 infrastructure/database/compose.yml과 tests/integration/test_crm_healthcheck.py만 적용한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F11@b820698
+CONTRACT_VERSION=R1-SERVICE-v1.1.0-DRAFT; CRM-SEED-HEALTH-v1.0.0-DRAFT
+ALLOWED_PATHS=infrastructure/database/compose.yml; tests/integration/test_crm_healthcheck.py; tests/integration/test_typed_three_source_e2e.py; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F11.json; docs/markdown/daily_reports/junhee/일일보고.md
+PRODUCT_INTEGRATION_PATHS=infrastructure/database/compose.yml; tests/integration/test_crm_healthcheck.py
+FORBIDDEN_PATHS=actual Analysis API E2E·Node3·CORS·secret mount; R2~R5 product; seed/DDL/DataHub; root env/CI; dependency; 다른 Docker project·volume; secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F11.json
+ACCEPTANCE_CRITERIA=e9107aa에서 CRM healthcheck와 정적 회귀 두 경로만 exact 추출해 marker와 sqlcmd SELECT 1을 같은 CMD-SHELL에서 모두 요구한다. 기존 image·service/container name·host port·volume·entrypoint 불변과 marker-only·probe-only negative를 확인한다. F9/F10 evidence는 변경하지 않고 source CI 뒤 dev에는 PRODUCT_INTEGRATION_PATHS만 적용하며 actual E2E·Node3·LAN CORS·model credential은 성공 조건에서 제외한다.
+ACCEPTANCE_IDS=AC1_EXACT_PRODUCT_PATHS;AC2_MARKER_AND_SQL;AC3_IDENTITY_NEGATIVE;AC4_SOURCE_CI;AC5_DEV_PRODUCT_ONLY
+TEST_COMMANDS=docker compose --env-file infrastructure/database/.env -f infrastructure/database/compose.yml config --quiet; python -m pytest -p no:cacheprovider tests/integration/test_crm_healthcheck.py -q; git diff e9107aa^ e9107aa -- infrastructure/database/compose.yml tests/integration/test_crm_healthcheck.py; gate_scope merge-base; git diff --check; junhee source CI; dev target test·CI
+TEST_COMMAND_IDS=T1_COMPOSE;T2_TARGET;T3_EXACT_DIFF;T4_SCOPE;T5_DIFF;T6_SOURCE_CI;T7_DEV
+STOP_CONDITIONS=두 product path 밖 dev 적용; F9/F10 evidence 수정·삭제; actual E2E·Node3·CORS·secret 변경; compose identity drift; seed/DDL/container/volume lifecycle; dependency·secret; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local 정적·target test와 허용 경로 commit·junhee push, PRODUCT_INTEGRATION_PATHS의 dev 적용·commit·push만 허용한다. Docker lifecycle·외부 비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=marker-only 또는 probe-only healthy; product path 밖 dev diff; blocked evidence 손실; actual E2E 재개; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=source CI PASS와 exact product-only diff를 확인한 뒤 두 경로만 dev에 통합하고 dev target·CI를 확인한다. F10 전체나 junhee branch 전체를 merge하지 않는다.
 ```
 
 ### R2 · R2-W5-F5
@@ -986,6 +1021,38 @@ STOP_CONDITIONS=backend/data 변경 필요; actual composition 실패; case/Gold
 EXTERNAL_ACTION_PERMISSION=local deterministic 조합 test와 허용 경로 commit·daesung push만 허용한다. Docker/DataHub/Trino lifecycle·외부 비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=probe SQL만 검증; 실제 Node2 plan 미검증; multi-CTE filter 누락 허용; second repair; stash 변경; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R3 source CI PASS 뒤 dev에 통합하고 새 R1 actual API E2E 카드로 local Trino Gold·G3 table/chart/evidence/artifact/request trace를 검증한다.
+```
+
+### R3 · R3-W5-F7
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F7
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=approved 3-source derived metric Node3 selection producer
+TASK_CARD_RANGE=R3-06 Node3 derived metric fail-closed selection REWORK
+CURRENT_TASK_CARD_ID=R3-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=b820698c6cb5a5cb08b6f4a17b9052af6dc6fdf7
+START_POINT=origin/daesung의 F6 결과 eec1891을 최신 dev b820698에 동기화하고 stash@{0}은 적용·삭제하지 않는다. 실제 R1 trace에서 Context·G1·Node2·G2·Trino·G3 뒤 Node3가 복수 asset metric 집합을 거부한 재현만 사용한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R3-W5-F7@b820698
+CONTRACT_VERSION=MODEL-v1.0.0 Node3 derived metric selection DRAFT; I5-3SOURCE-CONTEXT-v1.0.0-DRAFT
+ALLOWED_PATHS=src/ai/node3.py; src/ai/fake_model.py; src/ai/schema.py; src/ai/contracts/node_io.v0.1.json; tests/ai/test_node3.py; tests/ai/test_fake_model.py; tests/ai/test_contracts.py; tests/ai/test_wave3.py; handoffs/R3-W5-F7.json; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; Node2·training dataset·prompt serving·RunPod; dependency; external endpoint; secret
+HANDOFF_MANIFEST=handoffs/R3-W5-F7.json
+ACCEPTANCE_CRITERIA=Node3 request는 승인된 Context의 여러 asset이 하나의 derived metric을 공동 구성할 때 그 approved metric_id 하나만 명시적으로 선택해 설명한다. 서로 다른 metric_id가 둘 이상이거나 selected metric이 Context에 없거나 entitlement 밖이면 임의 선택하지 않고 fail-closed한다. G120-046 6-asset composition fixture에서 guest total revenue derived metric 하나를 선택해 table evidence를 설명하고 source·masking·sampling·partial·result reference를 보존한다. backend adapter나 data contract를 수정하지 않고 R4 소비자에게 필요한 producer contract와 negative를 handoff한다.
+ACCEPTANCE_IDS=AC1_ONE_DERIVED_METRIC;AC2_MULTI_METRIC_FAIL_CLOSED;AC3_ENTITLEMENT_FAIL_CLOSED;AC4_ACTUAL_COMPOSITION_FIXTURE;AC5_EVIDENCE_PRESERVED;AC6_OWNER_BOUNDARY
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/ai/test_node3.py tests/ai/test_fake_model.py tests/ai/test_contracts.py tests/ai/test_wave3.py -q; python -m pytest -p no:cacheprovider tests/ai -q; python -m compileall -q src/ai; gate_scope merge-base; git diff --check; daesung source CI
+TEST_COMMAND_IDS=T1_NODE3;T2_AI;T3_COMPILE;T4_SCOPE;T5_DIFF;T6_BRANCH_CI
+STOP_CONDITIONS=backend/data 변경 필요; 서로 다른 metric 임의 선택; question/text에서 metric 추정; Node2·dataset·RunPod 변경; external service·비용·secret; stash 변경; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local deterministic AI contract test와 허용 경로 commit·daesung push만 승인한다. Docker/DataHub/Trino lifecycle·외부 endpoint·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=first metric 임의 선택; entitlement 밖 metric 설명; actual 6-asset fixture 없음; backend/data 변경; stash 변경; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=R3 producer source CI PASS 뒤 dev에 통합하고 R4 ContractModelAdapter가 selected derived metric을 소비하는 별도 owner 카드로 이어간다. 이 카드만으로 actual 제품 API PASS를 주장하지 않는다.
 ```
 
 ### R2 · R2-W5-F3
@@ -1074,16 +1141,19 @@ BASE_SHA=593b68a46c7800c1993be0656bea0c9bf58b57d6
 START_POINT=origin/seung을 최신 dev 593b68a로 fast-forward한 뒤 시작한다.
 DIRECTIVE=REWORK
 DIRECTIVE_TOKEN=R2-W5-F6@593b68a
+INHERITED_DIRTY_CHECKPOINT_PERMISSION=현재 seung worktree의 exact offline product 9경로는 이전 실행의 사용자 변경으로 보존한다. 첫 단계는 read-only diff·허용 경로·target/data/compose/diff 검토이며 reset·stash·추가 수정은 금지한다. 검토가 PASS하면 handoff를 제외한 exact 9경로만 checkpoint commit·seung push·source CI할 수 있고, 그 commit 뒤 clean bootstrap을 다시 통과해야 후속 구현을 시작한다.
+CHECKPOINT_PATHS=infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql; infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/trino/etc/access-control-rules.json; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; src/data/serving_semantic_catalog.i4.v1.json; src/data/serving_analytics_contract.i4.v1.json; tests/data/test_serving_semantic_catalog.py; docs/markdown/daily_reports/seung/일일보고.md
+CHECKPOINT_LIMIT=offline product 보존 전용이다. CRM fresh 80000 seed·DataHub ingestion/publish/search·runtime PASS·F6 완료·dev 병합 증거로 사용하지 않고 기존 handoff/R2-W5-F6.json은 checkpoint commit에 포함하지 않는다.
 CONTRACT_VERSION=I5-SEMANTIC-CATALOG-v1.0.0-DRAFT; I5-DATAHUB-v1.1.0-RUNTIME-DRAFT
 ALLOWED_PATHS=infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql; infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/trino/etc/access-control-rules.json; infrastructure/database/datahub/scripts/run-runtime-validation.ps1; src/data/serving_semantic_catalog.i4.v1.json; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; src/data/serving_analytics_contract.i4.v1.json; tests/data/test_serving_semantic_catalog.py; handoffs/R2-W5-F6.json; docs/markdown/daily_reports/seung/일일보고.md
 FORBIDDEN_PATHS=infrastructure/database/compose.yml; seed/data SQL; backend·AI·frontend; root env/CI; DataHub volume reset; 다른 Docker project; secret
 HANDOFF_MANIFEST=handoffs/R2-W5-F6.json
 ACCEPTANCE_CRITERIA=현재 동결된 serving analytics 8 View·116 field occurrence·70 unique field의 FQN·column 목록을 재사용해 description만 versioned enrichment한 단일 Semantic Catalog를 만든다. publisher는 재실행 가능하고 verifier는 ingestion 뒤 Dataset description 8/8·Column description 116/116 및 catalog version/hash를 exact 검증한다. runtime wrapper는 R1_RUNTIME_HEALTHY→serving.i4 schema ingestion→8 View schema 확인→publisher→verifier 8/116→publisher 재실행 동일 결과→schema ingestion 재실행→description 유지→backend live Context 순서를 강제하고 raw secret·resolved recipe를 기록하지 않는다. publisher/verifier는 pinned DataHub v1.7 ingestion image와 exact approved project network 내부에서 명시 GMS URL로만 실행하며 host Python 실행을 금지한다. Kafka healthcheck는 현재 image에 실제 존재하는 kafka-topics 명령을 사용하고 datahub_ingestion 계정에는 system.metadata.catalogs·table_comments SELECT만 최소 허용한다. CRM의 기존 active-only filtered unique index 5개와 grade/customer_map history overlap trigger는 보존하며 trigger 내부 fast path가 filtered unique 보호 범위에만 적용됨을 duplicate·adjacent·overlap 회귀와 fresh synthetic 80000 seed 증거로 확인한다. 격리 문서의 과거 183 passed 수치를 현재 PASS로 복사하지 않고 이번 실행 증거만 기록한다.
 ACCEPTANCE_IDS=AC1_CATALOG_CARDINALITY;AC2_DESCRIPTION_VERSION_HASH;AC3_IDEMPOTENT_PUBLISH;AC4_EXACT_VERIFY;AC5_KAFKA_HEALTH;AC6_MINIMUM_METADATA_GRANT;AC7_CRM_PROTECTION;AC8_CURRENT_EVIDENCE_ONLY
-TEST_COMMANDS=python -m json.tool src/data/serving_semantic_catalog.i4.v1.json; python -m pytest -p no:cacheprovider tests/data/test_serving_semantic_catalog.py -q; python -m pytest -p no:cacheprovider tests/data -q; docker compose config; fresh isolated synthetic CRM duplicate·adjacent·overlap·80000 seed 검증; isolated DataHub ingestion→publisher 2회→verifier 8/116; gate_scope merge-base; git diff --check; seung branch CI
+TEST_COMMANDS=checkpoint 전 read-only diff·path inventory; python -m json.tool src/data/serving_semantic_catalog.i4.v1.json; python -m pytest -p no:cacheprovider tests/data/test_serving_semantic_catalog.py -q; python -m pytest -p no:cacheprovider tests/data -q; docker compose config; git diff --check; exact 9-path checkpoint commit·seung push·source CI; clean bootstrap 재검증. CRM fresh 80000과 isolated DataHub ingestion→publisher 2회→verifier 8/116은 별도 runtime 재승인 전 NOT_RUN
 TEST_COMMAND_IDS=T1_JSON;T2_TARGET;T3_DATA;T4_COMPOSE;T5_CRM;T6_DATAHUB;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
 STOP_CONDITIONS=기존 index·trigger 의미 약화; seed 파일 변경 필요; 8/116/70 불일치; publisher 비멱등; ingestion warning/health 실패; broad system grant; root compose 복사; 다른 project·volume reset·secret·비용; scope/필수 검증 실패
-EXTERNAL_ACTION_PERMISSION=정확히 격리된 synthetic CRM 무볼륨 container의 단계별 DDL→fresh 80000 seed→trigger 검증을 최대 20분까지 background·short poll로 실행하고 exact container만 정리할 수 있다. 격리 DataHub 신규 기동은 host free RAM 8GB 이상일 때만 허용한다. 기존 hotel-synthetic-db·data-hub-test·다른 project/volume, root env, 외부 전송·비용·secret 변경은 금지한다.
+EXTERNAL_ACTION_PERMISSION=현재 exact offline product 9경로의 read-only review→checkpoint commit→seung push→source CI만 승인한다. CRM fresh 80000 container와 DataHub 신규 기동·ingestion/publish/search는 다시 승인하지 않으며 NOT_RUN을 유지한다. 기존 hotel-synthetic-db·data-hub-test·다른 project/volume, root env, 외부 전송·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=과거 격리 수치를 현재 PASS로 승격; catalog cardinality/hash 불일치; broad grant; 기존 history 보호 약화; 다른 project drift; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=Option 1 요청은 부분 수용한다. 이 R2 생산자를 먼저 dev에 통합·동결한 뒤 R4 Dataset/Column description Context 소비자와 R3 training catalog 소비자를 별도 owner 카드로 발행하고, 마지막에 R1 fresh integration을 수행한다.
 ```
@@ -1345,7 +1415,7 @@ CURRENT_TASK_CARD_ID=R4-05
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=b825e6da8c7f80f372dcf6bf436b540deff749d2
-START_POINT=origin/jaehong을 최신 dev b825e6d로 fast-forward한 뒤 시작한다.
+START_POINT=제품 SHA 0303cd9d8aad9f1b2f3d3859d238249ea07dd205와 source CI 31359321598 PASS를 승인 근거로 고정한다. 제품 파일은 다시 수정하지 않고 누락된 F9 handoff만 작성한다.
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R4-W5-F9@b825e6d
 CONTRACT_VERSION=ANALYSIS-PERSISTENCE-v1.0.0-DRAFT; existing request→query→artifact reuse
@@ -1358,6 +1428,7 @@ TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_analysis_p
 TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND;T3_OPENAPI;T4_HEADS;T5_MIGRATION;T6_COMPILE;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
 STOP_CONDITIONS=기존 request/query/artifact 의미 변경 또는 raw result 복제 필요; client-owned status/id; G1/G2/G3 우회; system template user mutation; Report worker/schedule·SQLGlot/G3 정책·R2/R3/frontend 변경; 제품 dependency·외부 DB·secret; scope/필수 검증 실패
 EXTERNAL_ACTION_PERMISSION=local deterministic test와 전용 ephemeral PostgreSQL migration 검증, 허용 경로 commit·jaehong push를 허용한다. Python 3.12 backend test container 안에서만 pytest==8.3.5를 일회성 설치할 수 있으며 repository requirements·Dockerfile·host Python은 변경하지 않고 검증 뒤 exact test image를 제거한다. 기존 app DB·volume·외부 서비스·비용·secret 변경은 금지한다.
+HANDOFF_ONLY_PERMISSION=handoffs/R4-W5-F9.json에 RESULT_SHA=0303cd9d8aad9f1b2f3d3859d238249ea07dd205와 확인된 CI·test evidence를 기록하고 handoff-only commit·jaehong push·terminal CI를 실행한다. terminal CI가 제품 SHA의 기존 PASS와 handoff 무결성을 모두 확인하기 전 dev 병합을 금지한다.
 AUTO_FAIL_CONDITIONS=새 result blob/table 중복; 과거 SQL 무검증 재실행; client-owned id/status; G3 전 Artifact success; owner bypass; raw SQL/result 노출; 기존 API 파손; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R3-W5-F6와 경로 충돌 없이 병렬 수행한다. Analysis persistence source CI와 dev 통합 뒤 Report v1.2 worker·partial contract를 별도 카드로 발행한다.
 ```
@@ -1430,6 +1501,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.34 | 2026-08-10 18:15 | R1-W5-F10을 근거대로 BLOCKED로 정정하고 CRM health product-only R1-W5-F11, R2 offline 9-path checkpoint, R3 Node3 derived metric producer, R4 F9 handoff-only 권한을 발행 |
 | v5.33 | 2026-08-10 17:50 | R4-W5-F9 test container가 제품 entrypoint를 실행하지 않도록 docker run에 `--entrypoint sh`를 명시해 Python 3.12 pytest 검증 명령을 실행 가능하게 교정 |
 | v5.32 | 2026-08-10 17:45 | R4-W5-F9의 전체 backend가 pytest 수집을 요구함을 재현해 제품 dependency는 동결하고 Python 3.12 test container 안에서만 pytest 8.3.5를 일회성 설치하도록 검증 권한을 교정 |
 | v5.31 | 2026-08-10 17:35 | R3-W5-F6의 source CI·handoff와 dev 조합 회귀를 확인해 MERGED_DEV로 전환하고, R4-W5-F9의 Python 3.12 컨테이너 검증을 이미지에 없는 pytest 대신 승인 원문의 stdlib unittest 명령으로 교정 |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.35 |
-| 문서 기준일 | 2026-08-10 18:30 |
+| 버전 | v5.36 |
+| 문서 기준일 | 2026-08-10 18:40 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -961,7 +961,8 @@ START_POINT=F11 source CI 31361727713의 49 PASS·1 ConnectionRefused를 근거�
 DIRECTIVE=REWORK
 DIRECTIVE_TOKEN=R1-W5-F12@d4044b2
 CONTRACT_VERSION=R1-SERVICE-v1.1.0-DRAFT; CRM-SEED-HEALTH-v1.0.0-DRAFT; LIVE-TRINO-TEST-PROFILE-v1.0.0-DRAFT
-ALLOWED_PATHS=tests/integration/test_typed_three_source_e2e.py; infrastructure/database/compose.yml; tests/integration/test_crm_healthcheck.py; handoffs/R1-W5-F11.json; handoffs/R1-W5-F12.json; docs/markdown/daily_reports/junhee/일일보고.md
+ALLOWED_PATHS=tests/integration/test_typed_three_source_e2e.py; infrastructure/database/compose.yml; tests/integration/test_crm_healthcheck.py; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F11.json; handoffs/R1-W5-F12.json; docs/markdown/daily_reports/junhee/일일보고.md
+READ_ONLY_CUMULATIVE_EVIDENCE=handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json. 두 파일은 origin/dev...junhee 누적 scope 통과만 허용하며 수정·삭제·재작성·dev 적용을 금지한다.
 PRODUCT_INTEGRATION_PATHS=infrastructure/database/compose.yml; tests/integration/test_crm_healthcheck.py
 FORBIDDEN_PATHS=Gold SQL·expected hash·metric·result 변경; fake Trino response; actual E2E body·Node3·backend·R2~R5 product; root CI/env/dependency; CORS·secret mount; Docker lifecycle·volume
 HANDOFF_MANIFEST=handoffs/R1-W5-F12.json
@@ -969,7 +970,7 @@ ACCEPTANCE_CRITERIA=typed 3-source test는 명명된 opt-in 환경 변수로 liv
 ACCEPTANCE_IDS=AC1_EXPLICIT_OPT_IN;AC2_CI_SKIP_VISIBLE;AC3_LIVE_FAIL_CLOSED;AC4_GOLD_UNCHANGED;AC5_CRM_TARGET;AC6_SOURCE_CI;AC7_DEV_PRODUCT_ONLY
 TEST_COMMANDS=live opt-in 미지정 target test skip 확인; live opt-in과 unavailable endpoint에서 FAIL 확인; python -m pytest -p no:cacheprovider tests/integration/test_crm_healthcheck.py -q; python -m pytest -p no:cacheprovider tests/integration -q; docker compose --env-file infrastructure/database/.env -f infrastructure/database/compose.yml config --quiet; git diff e9107aa^ e9107aa -- infrastructure/database/compose.yml tests/integration/test_crm_healthcheck.py; gate_scope merge-base; git diff --check; junhee source CI; dev product target·전체 CI
 TEST_COMMAND_IDS=T1_DEFAULT_SKIP;T2_LIVE_FAIL_CLOSED;T3_CRM_TARGET;T4_INTEGRATION;T5_COMPOSE;T6_EXACT_PRODUCT;T7_SCOPE;T8_DIFF;T9_SOURCE_CI;T10_DEV
-STOP_CONDITIONS=live endpoint 오류를 skip 처리; Gold SQL/hash/result 변경; fake response; actual E2E 의미 완화; PRODUCT_INTEGRATION_PATHS 밖 dev 적용; backend/Node3/R2~R5/CI/env/dependency/CORS/secret 변경; Docker lifecycle; scope/필수 검증 실패
+STOP_CONDITIONS=live endpoint 오류를 skip 처리; Gold SQL/hash/result 변경; fake response; actual E2E 의미 완화; F9/F10 cumulative evidence 수정·삭제·dev 적용; PRODUCT_INTEGRATION_PATHS 밖 dev 적용; backend/Node3/R2~R5/CI/env/dependency/CORS/secret 변경; Docker lifecycle; scope/필수 검증 실패
 EXTERNAL_ACTION_PERMISSION=local deterministic test, 허용 경로 commit·junhee push와 source CI, PRODUCT_INTEGRATION_PATHS만 dev 적용·commit·push를 허용한다. Docker lifecycle·외부 endpoint·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=opt-in 없이 live 호출; opt-in 상태 ConnectionRefused skip; Gold expected 변경; product 두 경로 밖 dev diff; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=source CI가 default skip을 명시하고 전체 PASS한 뒤 CRM 두 경로만 dev에 적용한다. live actual E2E PASS는 이 카드의 완료 주장이 아니라 승인된 live profile 후속 증거로 유지한다.
@@ -1537,6 +1538,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.36 | 2026-08-10 18:40 | R1-W5-F12 source scope가 기존 F9/F10 handoff를 history rewrite 없이 보존하도록 두 파일을 read-only cumulative evidence로만 허용하고 CRM product integration 범위는 유지 |
 | v5.35 | 2026-08-10 18:30 | R1-W5-F11을 source CI의 live Trino endpoint 부재 근거로 BLOCKED 처리하고, 명시적 live profile guard와 CRM product-only 통합을 수행하는 R1-W5-F12를 발행 |
 | v5.34 | 2026-08-10 18:15 | R1-W5-F10을 근거대로 BLOCKED로 정정하고 CRM health product-only R1-W5-F11, R2 offline 9-path checkpoint, R3 Node3 derived metric producer, R4 F9 handoff-only 권한을 발행 |
 | v5.33 | 2026-08-10 17:50 | R4-W5-F9 test container가 제품 entrypoint를 실행하지 않도록 docker run에 `--entrypoint sh`를 명시해 Python 3.12 pytest 검증 명령을 실행 가능하게 교정 |

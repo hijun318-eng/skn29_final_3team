@@ -1,0 +1,75 @@
+{
+  "EXECUTION_BUNDLE_ID": "R1-W4-F10",
+  "ROLE": "R1",
+  "BRANCH": "junhee",
+  "BASE_SHA": "6c05c6057d0518d3edab412bb1af860da0d6ce69",
+  "RESULT_SHA": "e787557b2886bc4468bad3ce6d55ae542d271f1d",
+  "COMPLETED_CARDS": [
+    "R1-06"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/collaboration/Gate_실행_카드_원장.md",
+    "docs/markdown/daily_reports/junhee/일일보고.md",
+    "tests/integration/test_gate_scope.py"
+  ],
+  "CONTRACT_VERSIONS": {},
+  "TEST_RESULTS": [
+    {
+      "id": "T1_TARGET",
+      "name": "Gate 대상 회귀 테스트",
+      "status": "PASS",
+      "evidence": "python -m pytest -p no:cacheprovider tests/integration/test_gate_scope.py -q: 30 passed, 7 subtests passed"
+    },
+    {
+      "id": "T2_INTEGRATION",
+      "name": "통합 자동화 회귀 테스트",
+      "status": "PASS",
+      "evidence": "python -m pytest -p no:cacheprovider tests/integration -q: 42 passed, 7 subtests passed"
+    },
+    {
+      "id": "T3_COMPILE",
+      "name": "Python compile 검사",
+      "status": "PASS",
+      "evidence": "python -m compileall -q .github/scripts tests/integration: exit 0"
+    },
+    {
+      "id": "T4_DOCS",
+      "name": "원장과 일일보고 검사",
+      "status": "PASS",
+      "evidence": "document policy OK, report validation OK"
+    },
+    {
+      "id": "T5_SCOPE",
+      "name": "R1 실행 범위 검사",
+      "status": "PASS",
+      "evidence": "R1-W4-F10 변경 경로가 허용 범위와 일치"
+    },
+    {
+      "id": "T6_DIFF",
+      "name": "Git whitespace 검사",
+      "status": "PASS",
+      "evidence": "git diff --check: exit 0"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_NO_LIVE_CARD_ID",
+      "status": "PASS",
+      "evidence": "차단 dashboard 검증이 합성 R5-W9-TEST 카드만 사용하고 활성 원장 카드 번호를 참조하지 않음"
+    },
+    {
+      "id": "AC2_REWORK_SELECTION",
+      "status": "PASS",
+      "evidence": "실제 dashboard가 R5-W4-F5 READY를 최신 R5 카드로 선택"
+    },
+    {
+      "id": "AC3_EXISTING_GATE_BOUNDARIES",
+      "status": "PASS",
+      "evidence": "BLOCKED 카드 구현 차단·owner-scoped REWORK 안내·handoff 검증 회귀가 통합 테스트에서 통과"
+    }
+  ]
+}

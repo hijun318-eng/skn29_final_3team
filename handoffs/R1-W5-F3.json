@@ -1,0 +1,40 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R1-W5-F3",
+  "ROLE": "R1",
+  "BRANCH": "junhee",
+  "BASE_SHA": "594c34da9ef14ec7db5a483446409dea69aee673",
+  "RESULT_SHA": "9566499de4c1673017fb62d7eb8d9a77b0bfd332",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R1-W5-F3@594c34d",
+  "COMPLETED_CARDS": ["R1-06 R5 목업 기반 frontend 재작업 범위 승인"],
+  "CHANGED_FILES": [
+    "docs/markdown/collaboration/Gate_실행_카드_원장.md",
+    "docs/markdown/daily_reports/junhee/일일보고.md"
+  ],
+  "CONTRACT_VERSIONS": {
+    "PONYTAIL": "v4.9.0 full",
+    "GATE_LEDGER": "v5.10",
+    "R5_BUNDLE": "R5-W5-F1"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_OWNER_SCOPE", "status": "PASS", "evidence": "R5 소유 frontend 6파일·contract test·handoff·개인 보고로 허용 경로 제한"},
+    {"id": "AC2_EXISTING_CONTRACTS", "status": "PASS", "evidence": "Analysis·Report API, 기존 4 route, 명시적 fixture와 오류 비fallback 경계를 유지"},
+    {"id": "AC3_NO_MOCK_FEATURES", "status": "PASS", "evidence": "auto-fill·PDF·export·share·AI 도우미·가짜 저장과 실행을 금지"},
+    {"id": "AC4_PONYTAIL_4_9", "status": "PASS", "evidence": "Ponytail v4.9.0 full mode를 구현 기준으로 고정"},
+    {"id": "AC5_BROWSER_A11Y", "status": "PASS", "evidence": "1440·1024·768·360·200% zoom, dark/light, keyboard·focus와 fixture/API browser 회귀를 요구"},
+    {"id": "AC6_PARALLEL_SAFE", "status": "PASS", "evidence": "R2 data·R3 AI·R4 backend 활성 카드와 직접 수정 경로가 겹치지 않음"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_PLANNED", "name": "planned path scope", "status": "PASS", "evidence": "Gate 원장 변경 경로 허용"},
+    {"id": "T2_DASHBOARD", "name": "R1 dashboard", "status": "PASS", "evidence": "R1~R5 READY와 READY_TO_ISSUE 확인"},
+    {"id": "T3_DOCS", "name": "document and report validation", "status": "PASS", "evidence": "Gate 원장과 20260810 R1 보고 검증 통과"},
+    {"id": "T4_SCOPE", "name": "junhee role scope", "status": "PASS", "evidence": "9566499 결과와 handoff-only 후속 commit을 대상으로 local role-scope PASS; source CI는 push 후 merge preflight에서 확인"},
+    {"id": "T5_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R5-W5-F1을 dev에 통합하고 minji를 fast-forward한 뒤 목업 기반 frontend 재작업 시작"
+}

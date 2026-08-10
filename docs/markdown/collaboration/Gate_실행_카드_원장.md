@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.36 |
-| 문서 기준일 | 2026-08-10 18:40 |
+| 버전 | v5.37 |
+| 문서 기준일 | 2026-08-10 18:50 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F12` | `READY` | `junhee` |
+| R1 | `R1-W5-F12` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `READY` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
@@ -945,7 +945,7 @@ BLOCKED_REASON=F9 actual E2E evidence를 보존한 source branch의 integration 
 ### R1 · R1-W5-F12
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -974,6 +974,10 @@ STOP_CONDITIONS=live endpoint 오류를 skip 처리; Gold SQL/hash/result 변경
 EXTERNAL_ACTION_PERMISSION=local deterministic test, 허용 경로 commit·junhee push와 source CI, PRODUCT_INTEGRATION_PATHS만 dev 적용·commit·push를 허용한다. Docker lifecycle·외부 endpoint·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=opt-in 없이 live 호출; opt-in 상태 ConnectionRefused skip; Gold expected 변경; product 두 경로 밖 dev diff; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=source CI가 default skip을 명시하고 전체 PASS한 뒤 CRM 두 경로만 dev에 적용한다. live actual E2E PASS는 이 카드의 완료 주장이 아니라 승인된 live profile 후속 증거로 유지한다.
+RESULT_SHA=46c0e0dec6f8090a14fdbcdd393cb726745bde30
+TERMINAL_SHA=98e986ad3abdf8b5f792128df5a11c5a51e6d150
+INTEGRATED_DEV_SHA=c5d8ca24c3a8a100ff7beb213a72c108a7f29f4f
+RESULT_CI=junhee source 31362070083 PASS; dev 31362182505 PASS; junhee terminal 31362325679 PASS
 ```
 
 ### R2 · R2-W5-F5
@@ -1538,6 +1542,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.37 | 2026-08-10 18:50 | R1-W5-F12의 live profile guard source·terminal CI와 CRM product-only dev CI를 확인해 MERGED_DEV로 종료 |
 | v5.36 | 2026-08-10 18:40 | R1-W5-F12 source scope가 기존 F9/F10 handoff를 history rewrite 없이 보존하도록 두 파일을 read-only cumulative evidence로만 허용하고 CRM product integration 범위는 유지 |
 | v5.35 | 2026-08-10 18:30 | R1-W5-F11을 source CI의 live Trino endpoint 부재 근거로 BLOCKED 처리하고, 명시적 live profile guard와 CRM product-only 통합을 수행하는 R1-W5-F12를 발행 |
 | v5.34 | 2026-08-10 18:15 | R1-W5-F10을 근거대로 BLOCKED로 정정하고 CRM health product-only R1-W5-F11, R2 offline 9-path checkpoint, R3 Node3 derived metric producer, R4 F9 handoff-only 권한을 발행 |

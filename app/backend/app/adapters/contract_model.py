@@ -302,7 +302,26 @@ class ContractModelAdapter:
         ]
         metrics = list(package.metrics)
         fixture_metric = None
-        if not metrics and package.assets:
+        three_source = (
+            "pms_crm_pos_gold_revenue_month_v1" in package.approved_join_ids
+        )
+        if not metrics and three_source:
+            fixture_metric = {
+                "id": "total_guest_revenue_krw",
+                "field": "derived.total_guest_revenue_krw",
+                "aggregation": "derived_sum",
+                "time_field": "derived.month",
+                "required_filters": [
+                    {
+                        "field": item.field,
+                        "operator": item.operator,
+                        "value_type": item.value_type,
+                        "value": item.value,
+                    }
+                    for item in package.required_filters
+                ],
+            }
+        elif not metrics and package.assets:
             asset = package.assets[0]
             fixture_metric = {
                 "id": f"fixture_count_{asset.columns[0]}",
@@ -332,15 +351,19 @@ class ContractModelAdapter:
                 }
                 for metric in metrics
             ] + ([fixture_metric] if fixture_metric else []),
-            "joins": [
-                {
-                    "id": "pms_stay_to_crm_membership_grade_event_time_v1",
-                    "left": "pms.public.pms_stays",
-                    "right": "crm.dbo.crm_member_grade_history",
-                    "cardinality": "many_to_zero_or_one",
-                    "status": "approved",
-                }
-            ],
+            "joins": (
+                [
+                    {
+                        "id": "pms_crm_pos_gold_revenue_month_v1",
+                        "left": "pms_crm_by_property_month",
+                        "right": "pos_crm_by_property_month",
+                        "cardinality": "preaggregate_then_one_to_one_month",
+                        "status": "approved",
+                    }
+                ]
+                if three_source
+                else []
+            ),
         }
 
     @staticmethod

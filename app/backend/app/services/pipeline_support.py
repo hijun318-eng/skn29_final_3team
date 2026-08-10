@@ -281,8 +281,10 @@ class PipelineSupport:
         }
         tokens = set(re.findall(r"[a-z_]+", normalized))
         if (
-            re.match(r"select\b", normalized) is None
+            not PipelineSupport._read_only_query_shape(sql)
             or ";" in normalized
+            or "--" in normalized
+            or "/*" in normalized
             or tokens.intersection(forbidden)
             or {"system", "information_schema"}.intersection(tokens)
             or re.search(
@@ -331,8 +333,10 @@ class PipelineSupport:
         ):
             return "REFERENCE_OUTSIDE_CONTEXT"
         expected_metric_ids = {metric.id for metric in package.metrics}
+        if "pms_crm_pos_gold_revenue_month_v1" in package.approved_join_ids:
+            expected_metric_ids = {"total_guest_revenue_krw"}
         has_metric_references = any("metric_ids" in item for item in references)
-        if expected_metric_ids and has_metric_references:
+        if expected_metric_ids:
             referenced_metric_ids = {
                 str(metric_id)
                 for item in references
@@ -340,13 +344,24 @@ class PipelineSupport:
             }
             if referenced_metric_ids != expected_metric_ids:
                 return "METRIC_REFERENCE_MISMATCH"
-        queried = {
-            table.strip('"').lower()
-            for table in re.findall(
-                r"\b(?:from|join)\s+([a-zA-Z0-9_.\"]+)",
+        cte_names = {
+            name.lower()
+            for name in re.findall(
+                r"(?:\bwith\b|,)\s*([a-z_][a-z0-9_]*)\s+as\s*\(",
                 sql,
                 flags=re.IGNORECASE,
             )
+        }
+        table_matches = re.findall(
+            r"\b(?:from|join)\s+([a-zA-Z0-9_.\"]+)"
+            r"(?:\s+(?:as\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?",
+            sql,
+            flags=re.IGNORECASE,
+        )
+        queried = {
+            table.strip('"').lower()
+            for table, _alias in table_matches
+            if table.strip('"').lower() not in cte_names
         }
         if queried != {item.lower() for item in referenced}:
             return "SQL_REFERENCE_MISMATCH"
@@ -362,6 +377,20 @@ class PipelineSupport:
                 or queried != {item.fqn.lower() for item in package.assets}
             ):
                 return "UNAPPROVED_JOIN"
+        columns_by_alias = {
+            (alias or table.rsplit(".", 1)[-1]).lower(): columns_by_fqn[fqn]
+            for table, alias in table_matches
+            if (fqn := table.strip('"').lower()) in columns_by_fqn
+        }
+        if any(
+            column not in columns_by_alias[alias]
+            for alias, column in re.findall(
+                r"(?<![a-z0-9_])([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)",
+                normalized,
+            )
+            if alias in columns_by_alias
+        ):
+            return "REFERENCE_OUTSIDE_CONTEXT"
         if any(
             not PipelineSupport._required_filter_matches(
                 normalized,
@@ -378,6 +407,43 @@ class PipelineSupport:
         if parameters_invalid:
             return "PARAMETERS_INVALID"
         return None
+
+    @staticmethod
+    def _read_only_query_shape(sql: str) -> bool:
+        words: list[str] = []
+        depth = 0
+        quoted = False
+        index = 0
+        while index < len(sql):
+            character = sql[index]
+            if character == "'":
+                if quoted and index + 1 < len(sql) and sql[index + 1] == "'":
+                    index += 2
+                    continue
+                quoted = not quoted
+            elif not quoted:
+                if character == "(":
+                    depth += 1
+                elif character == ")":
+                    depth -= 1
+                    if depth < 0:
+                        return False
+                elif depth == 0 and (character.isalpha() or character == "_"):
+                    end = index + 1
+                    while end < len(sql) and (sql[end].isalnum() or sql[end] == "_"):
+                        end += 1
+                    words.append(sql[index:end].lower())
+                    index = end
+                    continue
+            index += 1
+        if quoted or depth or not words or words[0] not in {"select", "with"}:
+            return False
+        statements = [
+            word
+            for word in words
+            if word in {"select", "insert", "update", "delete", "merge"}
+        ]
+        return statements == ["select"] and not {"union", "intersect", "except"}.intersection(words)
 
     @staticmethod
     def _required_filter_matches(

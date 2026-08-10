@@ -13,6 +13,7 @@ BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
 from app.adapters.i2_data_platform import I2DataPlatformAdapter
+from app.adapters.contract_model import ContractModelAdapter
 from app.contracts import AnalysisRequest, RequestContext
 from app.services.context_builder import ContextPackageBuilder
 from app.services.context_builder import ContextBuildError
@@ -340,7 +341,7 @@ def test_raw_live_extra_columns_are_not_exposed():
     assert "source_updated_at" not in {column["name"] for column in schema["columns"]}
 
 
-def test_pms_crm_question_uses_exact_approved_join_assets():
+def test_pms_crm_question_no_longer_injects_a_hardcoded_join():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
 
@@ -357,12 +358,10 @@ def test_pms_crm_question_uses_exact_approved_join_assets():
         "crm.dbo.crm_member_grade_history",
     }
     assert sum(len(adapter._live_schemas[asset["urn"]]) for asset in assets) <= 60
-    assert {join_id for asset in assets for join_id in asset["join_ids"]} == {
-        "pms_stay_to_crm_membership_grade_event_time_v1"
-    }
+    assert {join_id for asset in assets for join_id in asset["join_ids"]} == set()
 
 
-def test_g2_allows_only_the_approved_pms_crm_join_id():
+def test_g2_blocks_the_removed_hardcoded_pms_crm_join_id():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
@@ -394,7 +393,9 @@ def test_g2_allows_only_the_approved_pms_crm_join_id():
         for item in package.assets
     ]
 
-    assert support.g2_violation({"sql": sql, "parameters": {}, "references": references}, package) is None
+    assert support.g2_violation(
+        {"sql": sql, "parameters": {}, "references": references}, package
+    ) == "UNAPPROVED_JOIN"
     for reference in references:
         reference["join_ids"] = []
     assert support.g2_violation({"sql": sql, "parameters": {}, "references": references}, package) == "UNAPPROVED_JOIN"
@@ -703,6 +704,7 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
             "fqn": item.fqn,
             "columns": list(item.columns),
             "join_ids": list(package.approved_join_ids),
+            "metric_ids": ["total_guest_revenue_krw"],
         }
         for item in package.assets
     ]
@@ -720,6 +722,29 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
         "period_end_exclusive",
         *(f"required_filter_{index}" for index in range(1, 10)),
     ]
+    model_context = ContractModelAdapter._context_package(
+        {"package": package, "context": context}
+    )
+    assert model_context["metrics"] == [
+        {
+            "id": "total_guest_revenue_krw",
+            "field": "derived.total_guest_revenue_krw",
+            "aggregation": "derived_sum",
+            "time_field": "derived.month",
+            "required_filters": [
+                {
+                    "field": item.field,
+                    "operator": item.operator,
+                    "value_type": item.value_type,
+                    "value": item.value,
+                }
+                for item in package.required_filters
+            ],
+        }
+    ]
+    assert model_context["joins"][0]["cardinality"] == (
+        "preaggregate_then_one_to_one_month"
+    )
     assert support.g2_violation(plan, package) is None
 
     mutated = {**parameters, "required_filter_7": {"value_type": "number", "value": 1}}
@@ -738,6 +763,56 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
     assert support.g2_violation(
         {**plan, "parameters": {**parameters, "unknown": "value"}}, package
     )
+
+    cte_sql = sql.replace("SELECT 1", "WITH approved AS (SELECT s.property_id")
+    cte_sql = cte_sql.replace(" LIMIT 1000", ") SELECT property_id FROM approved LIMIT 1000")
+    assert support.g2_violation({**plan, "sql": cte_sql}, package) is None
+    for unsafe in (
+        cte_sql + "; SELECT 1",
+        cte_sql.replace("s.property_id", "s.secret_column", 1),
+        cte_sql.replace("WITH approved AS (SELECT", "WITH approved AS (DELETE"),
+    ):
+        assert support.g2_violation({**plan, "sql": unsafe}, package)
+
+
+def test_versioned_three_source_uses_runtime_verified_contract_while_live_pending_fails():
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080", "runtime-user", require_live_metadata=False
+    )
+    assets = adapter.search_assets(
+        "5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘.",
+        {"role": "hotel_analyst"},
+    )
+
+    assert len(assets) == 6
+    assert {join_id for asset in assets for join_id in asset["join_ids"]} == {
+        "pms_crm_pos_gold_revenue_month_v1"
+    }
+
+    live = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    with pytest.raises(ValueError, match="live DataHub runtime verification"):
+        live.search_assets(
+            "5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘.",
+            {"role": "hotel_analyst"},
+        )
+
+
+def test_versioned_three_source_requires_real_trino_pass(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    contract = json.loads(
+        (root / "src/data/pms_crm_pos_context.i5.v1.json").read_text(encoding="utf-8")
+    )
+    contract["gold_evidence"]["runtime"]["status"] = "NOT_RUN"
+    path = tmp_path / "not-verified.json"
+    path.write_text(json.dumps(contract), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="three-source Context contract is invalid"):
+        I2DataPlatformAdapter(
+            "http://trino:8080",
+            "runtime-user",
+            three_source_path=path,
+            require_live_metadata=False,
+        )
 
 
 def test_single_binder_supports_only_approved_typed_values():

@@ -5,6 +5,7 @@ from app.contracts import (
     AnalysisResponse,
     AnalysisStatus,
     ArtifactReference,
+    ChartSpec,
     ErrorBody,
     ErrorCode,
     PipelineStage,
@@ -401,10 +402,12 @@ class AnalysisService:
             artifact_id=artifact_id,
             query_id=query["query_id"],
             context_hash=package.package_hash,
+            request_id=context.request_id,
+            trace_id=context.trace_id,
         )
         self._responses.record(trace, PipelineStage.ARTIFACT, str(artifact_id))
 
-        return self._responses.success(
+        response = self._responses.success(
             support=self._support,
             context=context,
             machine=machine,
@@ -418,6 +421,25 @@ class AnalysisService:
             repair_count=repair_count,
             cached=result_cached,
         )
+        rows = query["rows"]
+        if rows and response.data.result is not None:
+            columns = tuple(rows[0])
+            numeric = tuple(
+                column
+                for column in columns[1:]
+                if all(
+                    isinstance(row.get(column), (int, float))
+                    and not isinstance(row.get(column), bool)
+                    for row in rows
+                )
+            )
+            if columns and numeric:
+                response.data.result.chart = ChartSpec(
+                    chart_type="bar",
+                    x_field=columns[0],
+                    y_fields=numeric,
+                )
+        return response
 
     def blocked(self, context: RequestContext, error: ErrorBody) -> AnalysisResponse:
         return self._responses.blocked(context, error)

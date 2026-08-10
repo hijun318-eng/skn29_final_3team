@@ -13,7 +13,11 @@ class Node2Tests(unittest.TestCase):
         self.assertIn("FROM pms.public.reservations", response["sql"])
         self.assertNotIn("current_date", response["sql"].lower())
         self.assertEqual(["stay_date", "room_revenue"], response["references"][0]["columns"])
-        self.assertEqual(["period_start", "period_end"], [item["name"] for item in response["parameters"]])
+        self.assertEqual(
+            ["period_start", "period_end_exclusive"],
+            [item["name"] for item in response["parameters"]],
+        )
+        self.assertEqual(["date", "date"], [item["value_type"] for item in response["parameters"]])
 
     def test_context_outside_field_is_rejected(self):
         payload = copy.deepcopy(VALID_PAYLOADS["node2_request"])
@@ -27,8 +31,8 @@ class Node2Tests(unittest.TestCase):
         context = payload["context_package"]
         context["assets"][0]["columns"] += ["is_forecast", "data_period_status"]
         context["metrics"][0]["required_filters"] = [
-            {"field": "is_forecast", "operator": "eq", "value": False},
-            {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
+            {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
+            {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
         ]
 
         response = generate_sql(payload)
@@ -37,12 +41,16 @@ class Node2Tests(unittest.TestCase):
         self.assertIn('"is_forecast" = :required_filter_2', response["sql"])
         self.assertNotIn("ACTUAL", response["sql"])
         self.assertEqual(
-            ["period_start", "period_end", "required_filter_1", "required_filter_2"],
+            ["period_start", "period_end_exclusive", "required_filter_1", "required_filter_2"],
             [item["name"] for item in response["parameters"]],
         )
         self.assertEqual(
             ["2026-07-01", "2026-07-30", "ACTUAL", False],
             [item["value"] for item in response["parameters"]],
+        )
+        self.assertEqual(
+            ["date", "date", "string", "boolean"],
+            [item["value_type"] for item in response["parameters"]],
         )
         self.assertEqual(
             ["stay_date", "room_revenue", "is_forecast", "data_period_status"],
@@ -55,12 +63,14 @@ class Node2Tests(unittest.TestCase):
     def test_invalid_and_duplicate_required_filters_are_rejected(self):
         for filters in (
             [
-                {"field": "stay_date", "operator": "eq", "value": "2026-07-01"},
-                {"field": "stay_date", "operator": "eq", "value": "2026-07-02"},
+                {"field": "stay_date", "operator": "eq", "value_type": "date", "value": "2026-07-01"},
+                {"field": "stay_date", "operator": "eq", "value_type": "date", "value": "2026-07-02"},
             ],
-            [{"field": "secret", "operator": "eq", "value": "ACTUAL"}],
-            [{"field": "stay_date OR 1=1", "operator": "eq", "value": "ACTUAL"}],
-            [{"field": "stay_date", "operator": "eq", "value": ""}],
+            [{"field": "secret", "operator": "eq", "value_type": "string", "value": "ACTUAL"}],
+            [{"field": "stay_date OR 1=1", "operator": "eq", "value_type": "string", "value": "ACTUAL"}],
+            [{"field": "stay_date", "operator": "eq", "value_type": "string", "value": ""}],
+            [{"field": "stay_date", "operator": "eq", "value_type": "date", "value": "2026-07-01T00:00:00"}],
+            [{"field": "stay_date", "operator": "eq", "value_type": "number", "value": True}],
         ):
             payload = copy.deepcopy(VALID_PAYLOADS["node2_request"])
             payload["context_package"]["metrics"][0]["required_filters"] = filters
@@ -68,10 +78,32 @@ class Node2Tests(unittest.TestCase):
                 with self.assertRaisesRegex(ContractError, "required filter"):
                     generate_sql(payload)
 
+    def test_all_required_filter_value_types_are_preserved(self):
+        payload = copy.deepcopy(VALID_PAYLOADS["node2_request"])
+        context = payload["context_package"]
+        context["assets"][0]["columns"] += ["active", "cutoff_date", "minimum_amount", "segment"]
+        context["metrics"][0]["required_filters"] = [
+            {"field": "segment", "operator": "eq", "value_type": "string", "value": "GOLD"},
+            {"field": "minimum_amount", "operator": "eq", "value_type": "number", "value": 12.5},
+            {"field": "cutoff_date", "operator": "eq", "value_type": "date", "value": "2026-07-01"},
+            {"field": "active", "operator": "eq", "value_type": "boolean", "value": True},
+        ]
+
+        response = generate_sql(payload)
+
+        self.assertEqual(
+            ["boolean", "date", "number", "string"],
+            [item["value_type"] for item in response["parameters"][2:]],
+        )
+        self.assertEqual(
+            [True, "2026-07-01", 12.5, "GOLD"],
+            [item["value"] for item in response["parameters"][2:]],
+        )
+
     def test_repair_preserves_required_filter_contract(self):
         payload = copy.deepcopy(VALID_PAYLOADS["node2_repair_request"])
         payload["context_package"]["metrics"][0]["required_filters"] = [
-            {"field": "stay_date", "operator": "eq", "value": "2026-07-01"}
+            {"field": "stay_date", "operator": "eq", "value_type": "date", "value": "2026-07-01"}
         ]
 
         response = repair_sql(payload)

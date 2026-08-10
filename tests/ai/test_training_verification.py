@@ -1,7 +1,9 @@
 import unittest
 
 from src.ai.training.verify_case_specs import (
+    PlanContractError,
     PipelineSupport,
+    _declared_parameters,
     _result_hash,
     _rows_hash,
     _runtime_package,
@@ -19,11 +21,11 @@ def _context(fqn, columns, metric):
     }
 
 
-def _plan(fqn, sql):
+def _plan(fqn, sql, parameters=None):
     return {
         "sql": sql,
         "references": [{"urn": f"urn:{fqn}", "fqn": fqn, "columns": [], "join_ids": []}],
-        "parameters": {},
+        "parameters": parameters or {},
     }
 
 
@@ -47,8 +49,8 @@ class TrainingVerificationTests(unittest.TestCase):
                     "aggregation": "negative_sum",
                     "time_field": f"{fqn}.event_at",
                     "required_filters": [
-                        {"field": "txn_type", "operator": "eq", "value": "EXPIRE"},
-                        {"field": "is_forecast", "operator": "eq", "value": False},
+                        {"field": "txn_type", "operator": "eq", "value_type": "string", "value": "EXPIRE"},
+                        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
                     ],
                 },
             )
@@ -61,6 +63,7 @@ class TrainingVerificationTests(unittest.TestCase):
         self.assertEqual("negative_sum", metric.aggregation)
         self.assertEqual(f"{fqn}.event_at", metric.time_field)
         self.assertEqual(("EXPIRE", False), tuple(item.value for item in metric.required_filters))
+        self.assertEqual(("string", "boolean"), tuple(item.value_type for item in metric.required_filters))
 
     def test_runtime_g2_enforces_crm_and_view_metric_filters(self):
         cases = (
@@ -73,11 +76,15 @@ class TrainingVerificationTests(unittest.TestCase):
                     "aggregation": "negative_sum",
                     "time_field": "crm.dbo.crm_point_transactions.event_at",
                     "required_filters": [
-                        {"field": "txn_type", "operator": "eq", "value": "EXPIRE"},
-                        {"field": "is_forecast", "operator": "eq", "value": False},
+                        {"field": "txn_type", "operator": "eq", "value_type": "string", "value": "EXPIRE"},
+                        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
                     ],
                 },
-                "txn_type = 'EXPIRE' AND is_forecast = false",
+                "txn_type = :required_filter_2 AND is_forecast = :required_filter_1",
+                {
+                    "required_filter_1": {"value_type": "boolean", "value": False},
+                    "required_filter_2": {"value_type": "string", "value": "EXPIRE"},
+                },
             ),
             (
                 "serving.analytics.hotel_daily_metrics",
@@ -88,35 +95,51 @@ class TrainingVerificationTests(unittest.TestCase):
                     "aggregation": "sum",
                     "time_field": "serving.analytics.hotel_daily_metrics.business_date",
                     "required_filters": [
-                        {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
-                        {"field": "is_forecast", "operator": "eq", "value": False},
+                        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+                        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
                     ],
                 },
-                "data_period_status = 'ACTUAL' AND is_forecast = false",
+                "data_period_status = :required_filter_1 AND is_forecast = :required_filter_2",
+                {
+                    "required_filter_1": {"value_type": "string", "value": "ACTUAL"},
+                    "required_filter_2": {"value_type": "boolean", "value": False},
+                },
             ),
         )
-        for fqn, columns, metric, filters in cases:
+        for fqn, columns, metric, filters, parameters in cases:
             with self.subTest(metric=metric["id"]):
                 package = _runtime_package(_context(fqn, columns, metric))
                 prefix = f"SELECT SUM({columns[-1]}) FROM {fqn} WHERE "
                 self.assertIsNone(
                     PipelineSupport.g2_violation(
-                        _plan(fqn, f"{prefix}{filters} LIMIT 1000"),
+                        _plan(fqn, f"{prefix}{filters} LIMIT 1000", parameters),
                         package,
                     )
                 )
-                for invalid in (
-                    "is_forecast = false",
-                    filters.replace("EXPIRE", "EARN").replace("ACTUAL", "FORECAST"),
-                    filters.replace(" AND ", " OR "),
+                for invalid_sql, invalid_parameters, expected in (
+                    ("is_forecast = :required_filter_1", {"required_filter_1": parameters["required_filter_1"]}, "METRIC_FILTER_MISSING"),
+                    (filters, {**parameters, "required_filter_1": {"value_type": "string", "value": "FORECAST"}}, "METRIC_FILTER_MISSING"),
+                    (filters.replace(" AND ", " OR "), parameters, "METRIC_FILTER_MISSING"),
+                    (filters.replace(":required_filter_1", "'ACTUAL'"), parameters, "METRIC_FILTER_MISSING"),
+                    (filters.replace(":required_filter_1", ":unknown"), parameters, "METRIC_FILTER_MISSING"),
                 ):
                     self.assertEqual(
-                        "METRIC_FILTER_MISSING",
+                        expected,
                         PipelineSupport.g2_violation(
-                            _plan(fqn, f"{prefix}{invalid} LIMIT 1000"),
+                            _plan(fqn, f"{prefix}{invalid_sql} LIMIT 1000", invalid_parameters),
                             package,
                         ),
                     )
+
+    def test_declared_parameter_names_must_be_unique(self):
+        duplicate = {
+            "parameters": [
+                {"name": "required_filter_1", "value_type": "string", "value": "ACTUAL"},
+                {"name": "required_filter_1", "value_type": "string", "value": "FORECAST"},
+            ]
+        }
+        with self.assertRaises(PlanContractError):
+            _declared_parameters(duplicate)
 
 
 if __name__ == "__main__":

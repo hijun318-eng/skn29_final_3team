@@ -1,8 +1,15 @@
 {
-  "contract_version": "I4-CONTEXT-v2.2.0-DRAFT",
-  "metric_registry_version": "I4-METRIC-v1.1.0-DRAFT",
+  "contract_version": "I4-CONTEXT-v2.3.0-DRAFT",
+  "metric_registry_version": "I4-METRIC-v1.2.0-DRAFT",
   "context_source": "LIVE_DATAHUB",
   "synthetic": true,
+  "required_filter_contract": {
+    "fields": ["field", "operator", "value_type", "value"],
+    "value_types": ["string", "boolean", "number", "date"],
+    "date_format": "YYYY-MM-DD",
+    "number_policy": "finite_non_boolean",
+    "parameter_order": ["period_start", "period_end_exclusive", "required_filter_N"]
+  },
   "view_contract": "src/data/serving_analytics_contract.i4.v1.json",
   "selection_policy": {
     "default": "serving_views",
@@ -18,8 +25,8 @@
       "aggregation": "sum",
       "time_field": "business_date",
       "required_filters": [
-        {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
-        {"field": "is_forecast", "operator": "eq", "value": false}
+        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
       ]
     },
     {
@@ -29,8 +36,8 @@
       "aggregation": "sum",
       "time_field": "business_date",
       "required_filters": [
-        {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
-        {"field": "is_forecast", "operator": "eq", "value": false}
+        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
       ]
     },
     {
@@ -40,8 +47,8 @@
       "aggregation": "sum",
       "time_field": "business_date",
       "required_filters": [
-        {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
-        {"field": "is_forecast", "operator": "eq", "value": false}
+        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
       ]
     },
     {
@@ -51,8 +58,8 @@
       "aggregation": "sum",
       "time_field": "year_month",
       "required_filters": [
-        {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
-        {"field": "is_forecast", "operator": "eq", "value": false}
+        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
       ]
     },
     {
@@ -62,8 +69,8 @@
       "aggregation": "negative_sum",
       "time_field": "event_at",
       "required_filters": [
-        {"field": "txn_type", "operator": "eq", "value": "EXPIRE"},
-        {"field": "is_forecast", "operator": "eq", "value": false}
+        {"field": "txn_type", "operator": "eq", "value_type": "string", "value": "EXPIRE"},
+        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
       ]
     }
   ],

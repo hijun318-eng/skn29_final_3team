@@ -22,8 +22,8 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F3` | `MERGED_DEV` | `junhee` |
-| R2 | `R2-W5-F1` | `READY` | `seung` |
+| R1 | `R1-W5-F4` | `READY` | `junhee` |
+| R2 | `R2-W5-F2` | `READY` | `seung` |
 | R3 | `R3-W5-F1` | `READY` | `daesung` |
 | R4 | `R4-W5-F1` | `READY` | `jaehong` |
 | R5 | `R5-W5-F1` | `READY` | `minji` |
@@ -378,7 +378,7 @@ RESULT_CI=branch 31347368113 PASS
 ### R2 · R2-W5-F1
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -405,6 +405,7 @@ STOP_CONDITIONS=승인되지 않은 source·column·JOIN 필요; 3-source 결과
 EXTERNAL_ACTION_PERMISSION=기존 local synthetic DB·Trino read-only 조회와 허용 경로 commit·seung push만 승인한다. volume reset·외부 전송·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=source 3개 미만; forecast·취소·void 포함; 비결정 기간; hash 불일치; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=SQL의 3-source·filter·집계 후 결합, 실제 local Trino 결과와 contract hash, data 전체 회귀와 branch CI를 제출한다.
+BLOCKED_REASON=사용자가 DataHub v1.7.0 최신화를 우선 요청했고, 기존 허용 범위로는 공식 v1.7.0 consumer pin·호환 증거를 변경할 수 없다. 기존 3-source Gold 요구도 지점별·고정 직전 달·GOLD 회원 객실/F&B 매출 grain으로 보완이 필요하므로 현재 token을 폐기하고 DataHub 업그레이드 완료 뒤 owner-scoped REWORK로 재발행한다.
 ```
 
 ### R1 · R1-W5-F1
@@ -572,6 +573,70 @@ RESULT_SHA=daba10d5353c50c5313b5ecc970991d0524707ca
 RESULT_CI=branch 31348830005 PASS
 ```
 
+### R1 · R1-W5-F4
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F4
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=DataHub v1.7.0 pinned integration contract
+TASK_CARD_RANGE=R1-02 root env·service manifest·통합 verifier의 DataHub v1.7.0 정합성
+CURRENT_TASK_CARD_ID=R1-02
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=264391f1d4bdafaf6cd9529571c55dfbe71bd57a
+START_POINT=origin/junhee 264391f1d4bdafaf6cd9529571c55dfbe71bd57a에서 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F4@264391f
+CONTRACT_VERSION=R1-SERVICE-v1.1.0-DRAFT; DataHub v1.7.0; Trino 476 유지
+ALLOWED_PATHS=.env.example; infrastructure/database/r1-service-fragment.v1.json; infrastructure/database/scripts/verify-service-fragment.ps1; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F4.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=infrastructure/database/datahub/**; R2~R5 제품 경로; Trino image/version; DB DDL·seed·volume; dependency; secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F4.json
+ACCEPTANCE_CRITERIA=공식 stable DataHub v1.7.0 release를 root DATAHUB_VERSION·service manifest·통합 verifier의 단일 pin으로 반영하고 R2 consumer compose가 동일 버전을 선언하도록 검증한다. 기존 v1.6.0에서 v1.7.0으로만 한 단계 이동하며 Trino 476과 schema·seed·recipe·volume은 변경하지 않는다. 공식 tag·release URL과 image tag를 고정하고 latest·가변 tag를 사용하지 않는다. compose config와 service fragment 검증은 image pull·container 재생성 없이 수행한다. v1.7.0 breaking change인 secret·authentication·classifier 관련 설정은 저장소 현재 설정과 대조해 별도 런타임 위험으로 기록하며 secret 값을 출력하지 않는다.
+ACCEPTANCE_IDS=AC1_OFFICIAL_STABLE;AC2_SINGLE_PIN;AC3_TRINO_FREEZE;AC4_NO_RUNTIME_MUTATION;AC5_BREAKING_CHANGE_AUDIT;AC6_R2_CONSUMER_CONTRACT
+TEST_COMMANDS=python -m json.tool infrastructure/database/r1-service-fragment.v1.json; powershell -NoProfile -ExecutionPolicy Bypass -File infrastructure/database/scripts/verify-service-fragment.ps1; docker compose -f infrastructure/database/compose.yml -f infrastructure/database/datahub/compose.consumer.yml config; 공식 DataHub v1.7.0 tag·release·image tag 대조; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_JSON;T2_FRAGMENT;T3_COMPOSE_CONFIG;T4_OFFICIAL_PROVENANCE;T5_SCOPE;T6_DIFF
+STOP_CONDITIONS=공식 v1.7.0 tag·image 부재; v1.6.0 우회 upgrade 필요; Trino·DDL·seed·recipe·volume 변경 필요; image pull·container 재생성·secret 변경 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=공식 release/tag 읽기, 허용 경로 수정·검증·commit·junhee push·dev 병합만 승인한다. image pull·DataHub container/volume 변경·외부 데이터 전송·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=latest tag; R1·R2 version 불일치; Trino version 변경; runtime resource 변경; secret 출력; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=공식 v1.7.0 provenance, root env·manifest·verifier와 R2 consumer pin 일치, compose config·branch CI·rollback 경계를 제출한다.
+```
+
+### R2 · R2-W5-F2
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F2
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=DataHub v1.7.0 consumer configuration compatibility
+TASK_CARD_RANGE=R2-11·19 DataHub consumer pin·recipe config compatibility evidence
+CURRENT_TASK_CARD_ID=R2-11
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=264391f1d4bdafaf6cd9529571c55dfbe71bd57a
+START_POINT=origin/seung을 최신 origin/dev 264391f1d4bdafaf6cd9529571c55dfbe71bd57a로 fast-forward한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R2-W5-F2@264391f
+CONTRACT_VERSION=I5-DATAHUB-v1.1.0-DRAFT; DataHub v1.7.0; Trino 476 유지
+ALLOWED_PATHS=infrastructure/database/datahub/compose.consumer.yml; src/data/datahub_runtime_compat.i5.v1.json; tests/data/test_datahub_runtime_compat.py; handoffs/R2-W5-F2.json; docs/markdown/daily_reports/seung/일일보고.md
+FORBIDDEN_PATHS=.env.example; infrastructure/database/compose.yml; infrastructure/database/r1-service-fragment.v1.json; infrastructure/database/scripts/verify-service-fragment.ps1; recipe·DDL·seed·volume; Trino image/version; app/backend/**; dependency; secret
+HANDOFF_MANIFEST=handoffs/R2-W5-F2.json
+ACCEPTANCE_CRITERIA=공식 DataHub v1.7.0 tag의 quickstart compose provenance를 확인해 consumer source revision·compose blob·release URL과 upgrade·GMS·Actions·Frontend image를 정확한 v1.7.0 tag로 갱신한다. 현재 5-source와 serving recipe 내용, DataHub service names·network·health·local port, Trino 476은 유지한다. versioned compatibility evidence에는 from/to version, 공식 tag·source revision·compose blob, image 목록, config-only 검증 결과, v1.7.0 breaking change 점검과 rollback v1.6.0 경계를 기록한다. 실제 ingestion/search·lineage·Asset Binding·3-source hash는 이 config 카드에서 PASS로 만들지 않고 후속 런타임 카드로 분리한다. image pull·container·volume 변경 없이 docker compose config와 결정론적 contract test만 수행한다.
+ACCEPTANCE_IDS=AC1_OFFICIAL_PROVENANCE;AC2_PINNED_IMAGES;AC3_RECIPE_STABILITY;AC4_TRINO_FREEZE;AC5_VERSIONED_EVIDENCE;AC6_NO_FAKE_RUNTIME_PASS;AC7_ROLLBACK_BOUNDARY
+TEST_COMMANDS=python -m json.tool src/data/datahub_runtime_compat.i5.v1.json; python -m pytest -p no:cacheprovider tests/data/test_datahub_runtime_compat.py -q; python -m pytest -p no:cacheprovider tests/data -q; docker compose -f infrastructure/database/compose.yml -f infrastructure/database/datahub/compose.consumer.yml config; 공식 v1.7.0 source revision·compose blob·image tag 대조; python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_JSON;T2_TARGET;T3_DATA;T4_COMPOSE_CONFIG;T5_OFFICIAL_PROVENANCE;T6_SCOPE;T7_DIFF
+STOP_CONDITIONS=공식 source/image tag 불일치; recipe·DDL·seed·Trino 변경 필요; image pull·container·volume 재생성 필요; secret·외부 데이터·비용 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=공식 release/tag/원본 읽기, config-only compose 검증, 허용 경로 commit·seung push만 승인한다. image pull·container/volume 변경·실제 ingestion·외부 전송·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=latest tag; provenance 불일치; recipe/Trino drift; runtime PASS 위조; resource 변경; secret 출력; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=공식 v1.7.0 provenance와 pinned image, 기존 recipe/Trino 불변, versioned evidence·compose config·data 회귀·branch CI를 제출한다. 통합 후 Asset Binding health→live ingestion/search·Trino 3-source hash→지점별 직전 달 GOLD 객실/F&B Gold REWORK 순으로 별도 카드 발행한다.
+```
+
 ### R5 · R5-W5-F1
 
 ```text
@@ -613,6 +678,7 @@ R1_REVIEW_CONDITIONS=변경 전후 1440·1024·768·360 screenshot, dark/light·
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.12 | 2026-08-10 11:23 | 공식 DataHub v1.7.0 최신화를 R1 root 계약과 R2 consumer config 카드로 분리 발행하고 Trino 476·runtime resource를 동결; 기존 R2 Gold 카드는 보완된 후속 REWORK를 위해 차단 |
 | v5.11 | 2026-08-10 11:06 | R5-W5-F1 발행 범위와 R1 handoff·source CI를 확인해 R1-W5-F3를 MERGED_DEV 전환 |
 | v5.10 | 2026-08-10 11:03 | 사용자 목업을 기존 API·route·fixture 계약 안에서 최소 이식하는 R5-W5-F1과 발행 검증 R1-W5-F3를 READY 발행 |
 | v5.9 | 2026-08-10 11:00 | R1-W5-F2의 Ponytail v4.9.0 정합성·LLM 참고 스냅샷·handoff와 source CI를 확인해 MERGED_DEV 전환 |

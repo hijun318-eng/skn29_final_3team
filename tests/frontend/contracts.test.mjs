@@ -62,6 +62,18 @@ const appSidebarSource = readFileSync(
   new URL("../../app/enterprise-react/src/components/layout/AppSidebar.jsx", import.meta.url),
   "utf8",
 );
+const composeFragmentSource = readFileSync(
+  new URL("../../app/enterprise-react/compose.fragment.yml", import.meta.url),
+  "utf8",
+);
+const frontendPortSpec = composeFragmentSource.match(/"(\$\{FRONTEND_BIND_ADDRESS:-127\.0\.0\.1\}:13000:8080)"/)?.[1];
+assert.equal(frontendPortSpec, "${FRONTEND_BIND_ADDRESS:-127.0.0.1}:13000:8080");
+assert.equal(frontendPortSpec.replace("${FRONTEND_BIND_ADDRESS:-127.0.0.1}", "127.0.0.1"), "127.0.0.1:13000:8080");
+assert.equal(frontendPortSpec.replace("${FRONTEND_BIND_ADDRESS:-127.0.0.1}", "0.0.0.0"), "0.0.0.0:13000:8080");
+assert.match(composeFragmentSource, /container_name: answervice-frontend/);
+assert.match(composeFragmentSource, /context: \.\.\/\.\.\/app\/enterprise-react\s+dockerfile: Dockerfile/);
+assert.match(composeFragmentSource, /wget -qO- http:\/\/127\.0\.0\.1:8080\/health \| grep -q healthy/);
+assert.match(composeFragmentSource, /restart: unless-stopped/);
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
 assert.equal(REPORT_CONTRACT_VERSION, "REPORT-v1.0.0");
 assert.deepEqual(REPORT_RUN_STATUSES, ["queued", "running", "success", "partial", "failed", "cancelled"]);

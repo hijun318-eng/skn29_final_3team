@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.15 |
-| 문서 기준일 | 2026-08-10 12:18 |
+| 버전 | v5.16 |
+| 문서 기준일 | 2026-08-10 12:31 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -678,6 +678,29 @@ RESULT_SHA=3a5f1af4c6c6c12281885586cd6c36e3a5c860b4
 RESULT_CI=branch 31351161858 PASS; runtime start NOT_RUN(BLOCKED_INSUFFICIENT_MEMORY)
 ```
 
+### R1 · R1-W5-F6
+
+```text
+STATUS=PLANNED
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F6
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=DataHub v1.7 first-start health
+TASK_CARD_RANGE=R1-02 exact runtime first-start checkpoint
+CURRENT_TASK_CARD_ID=N/A — host free RAM 8GB 이상 확보 뒤 발행
+BASE_BRANCH=dev
+BASE_SHA=N/A — 실행 직전 최신 dev SHA로 발행
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F6.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=runtime script 변경; DataHub recipe; Trino; source/app DB; 다른 Compose project/container/volume; tracked env·secret
+ACCEPTANCE_CRITERIA=시작 직전 host free RAM 8GB 이상과 local secret 5개 readiness를 값 출력 없이 확인한다. exact target inventory와 unrelated project의 container ID·state·volume snapshot을 전후 비교하고 dependency healthy→system-update exit 0→GMS/management/frontend healthy 순서로만 기동한다. DataHub v1.7.0 image digest와 Trino 476·source/app DB 무변경을 확인하며 실패 시 exact DataHub 7개 service만 rollback하고 volume을 보존한다.
+STOP_CONDITIONS=host free RAM 8GB 미만; 다른 project 변경 필요; secret 출력; target label 불일치; system-update/health 실패; Trino·source/app DB 변경 필요
+R1_REVIEW_CONDITIONS=현재 free RAM 4.67GB이므로 READY 발행과 runtime start를 금지한다. 메모리 확보 결정 뒤 실행 전 재점검한다.
+```
+
 ### R2 · R2-W5-F3
 
 ```text
@@ -802,6 +825,29 @@ STOP_CONDITIONS=R4-W5-F3 미통합; 실제 legacy DB 보존 필요; migration·e
 R1_REVIEW_CONDITIONS=Google Docs의 R4→R1 재발행 요청을 부분 수용했다. 기존 F2 번호는 Context/G2에 사용됐으므로 F4로 예약하며 F3 통합 후 최신 BASE_SHA로 READY 전환한다.
 ```
 
+### R4 · R4-W5-F5
+
+```text
+STATUS=PLANNED
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F5
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=Metadata·Context Registry scope decision
+TASK_CARD_RANGE=R4-06·07·15·18 Context Registry runtime proposal decomposition
+CURRENT_TASK_CARD_ID=N/A — R4-W5-F3·F4와 R2 runtime producer 선행
+BASE_BRANCH=dev
+BASE_SHA=N/A — 선행 계약 통합 SHA로 발행
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=N/A — migration revision·OpenAPI·R2 producer 계약 확정 뒤 owner path로 분리 발행
+FORBIDDEN_PATHS=D:\bootcamp 미추적 사용자 변경 자동 채택·덮어쓰기·삭제; 기존 migration; infrastructure 원본 DDL; src/data/**; src/ai/**; frontend; root Compose/env/CI; dependency; secret
+ACCEPTANCE_CRITERIA=제안된 live DataHub∩PUBLISHED release∩ACTIVE binding∩entitlement 교집합과 Context Package 불변 저장은 제품 계약 결정 뒤 최소 카드로 분리한다. 현재 R2 runtime NOT_RUN, unknown revision F4 미검증, migration revision·OpenAPI 계약 미확정 상태에서는 schema·trigger·repository·service·error contract를 한 번에 구현하지 않는다. D:\bootcamp의 dirty·untracked 파일은 사용자 작업으로 보존하고 이 저장소 산출물로 간주하지 않는다.
+STOP_CONDITIONS=R4-W5-F3·F4 미통합; R2 live runtime/metadata producer 미검증; migration revision·OpenAPI 계약 미확정; 외부 작업공간 사용자 변경 필요; cross-owner 파일 변경; 실제 DB·secret·dependency 필요
+R1_REVIEW_CONDITIONS=Google Docs의 대규모 R4-W5-F3 요청은 번호 충돌과 미충족 선행조건 때문에 제안 그대로 반려한다. F3 binding 정합성→F4 native Alembic 경계→R2 live producer 판정 후 Context Registry를 migration·repository/API 소비자로 나눈 별도 카드만 검토한다.
+```
+
 ### R5 · R5-W5-F1
 
 ```text
@@ -835,6 +881,29 @@ RESULT_SHA=25bfe2abf50fbfae669bb1a3d6e1959f17ed04e2
 RESULT_CI=branch 31350163587 PASS
 ```
 
+### R5 · R5-W5-F2
+
+```text
+STATUS=PLANNED
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W5-F2
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=OPENAPI-AUDIT-v1.0.0-DRAFT producer merged dev and screen approval
+TASK_CARD_RANGE=R5-15 SCR-AUD-001·SCR-AUD-002 Operations·Audit read-only trace UI
+CURRENT_TASK_CARD_ID=N/A — R4 audit producer와 R1 route 승인 뒤 발행
+BASE_BRANCH=dev
+BASE_SHA=N/A — audit producer 통합 SHA로 발행
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=app/enterprise-react/src/App.jsx; app/enterprise-react/src/components/layout/AppSidebar.jsx; app/enterprise-react/src/pages/AuditPage.jsx; app/enterprise-react/src/api/auditClient.ts; app/enterprise-react/src/contracts/audit.ts; app/enterprise-react/src/routing.js; app/enterprise-react/src/styles.css; tests/frontend/contracts.test.mjs; handoffs/R5-W5-F2.json; docs/markdown/daily_reports/minji/일일보고.md
+FORBIDDEN_PATHS=backend/OpenAPI producer; schedule/worker; root Compose/env/CI; package/dependency; P2 Tool/customer360; role mutation; raw secret·SQL·parameter·result; 승인되지 않은 route/screen
+ACCEPTANCE_CRITERIA=R1이 SCR-AUD-001/002와 /operations/audit·/operations/audit/:requestId를 명시 승인하고 R4 read-only list/detail OpenAPI가 dev에 통합된 뒤에만 구현한다. production은 typed HTTP client를 기본으로 하고 fixture는 명시 mode만 허용하며 오류 fallback·가짜 trace를 금지한다. 서버의 masked user·request_id·기간·상태와 context release→model/policy→query_id→artifact/report 연결을 재계산 없이 표시하고 401·403·404·422·503 및 empty/loading/partial/error를 구분한다. raw SQL·parameter·result·secret·stack trace를 노출하지 않고 keyboard·focus·aria·360~1440px·200% zoom을 검증한다.
+STOP_CONDITIONS=R4 audit OpenAPI 미통합; R1 화면/route 미승인; backend/schema 변경 필요; role mutation·민감 정보 필요; fake success/fallback 필요; package/dependency·외부 network 필요; scope/필수 검증 실패
+R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/schedule producer가 없어 발행하지 않는다. Audit producer 통합 뒤에만 최신 BASE_SHA와 token으로 READY 전환한다.
+```
+
 ## 현재 통합 확인 사항
 
 | ID | 상태 | 확인 결과 | 다음 결정 |
@@ -845,6 +914,7 @@ RESULT_CI=branch 31350163587 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.16 | 2026-08-10 12:31 | R4 Metadata·Context Registry 대규모 요청은 번호 충돌·R2 runtime NOT_RUN·migration/OpenAPI 미확정·외부 dirty 작업공간 때문에 제안 그대로 반려하고 F5 PLANNED로 분해 순서를 기록; R1 first-start와 R5 Audit UI도 선행조건부 PLANNED로 등록 |
 | v5.15 | 2026-08-10 12:18 | R1 DataHub 안전 기동 도구와 R2 offline runtime·binding, R4 Context/G2 결과·CI를 MERGED_DEV로 전환; R2 PENDING binding의 R4 VERIFIED 오표시를 막는 F3 REWORK를 우선 발행하고 R4의 legacy migration 요청은 F4 PLANNED로 부분 수용 |
 | v5.14 | 2026-08-10 11:52 | R3 required-filter 결과와 source CI를 확인해 MERGED_DEV 전환; legacy schema 근거 없는 R4 migration 카드를 차단하고 R1 DataHub runtime preflight·R2 offline runtime/binding validator·R4 versioned Context consumer 카드를 병렬 발행 |
 | v5.13 | 2026-08-10 11:43 | R2 DataHub v1.7.0 config producer와 R1 root verifier의 결합 CI, R5 목업 기반 frontend source CI·handoff를 확인해 R1·R2·R5 카드를 MERGED_DEV로 전환 |

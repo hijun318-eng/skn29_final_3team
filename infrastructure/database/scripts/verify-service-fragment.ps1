@@ -104,10 +104,23 @@ foreach ($service in $consumer.services.PSObject.Properties.Value) {
 }
 $gms = $consumer.services.'datahub-gms-quickstart'
 $gmsHealth = @($gms.healthcheck.test) -join ' '
-if ($gms.image -ne 'acryldata/datahub-gms:v1.6.0' -or
+if ($gms.image -ne 'acryldata/datahub-gms:v1.7.0' -or
     $gms.environment.DATAHUB_VERSION -ne $datahub.datahub_version -or
+    $gms.environment.DATAHUB_OBJECT_STORAGE_URI -ne 'file:///tmp/datahub-object-storage' -or
     $gmsHealth -notmatch '8080/health') {
     throw 'DataHub GMS image or health contract mismatch.'
+}
+$expectedDataHubImages = @{
+    'system-update-quickstart' = 'acryldata/datahub-upgrade:v1.7.0'
+    'datahub-gms-quickstart' = 'acryldata/datahub-gms:v1.7.0'
+    'datahub-actions-quickstart' = 'acryldata/datahub-actions:v1.7.0-slim'
+    'frontend-quickstart' = 'acryldata/datahub-frontend-react:v1.7.0'
+    'kafka-broker' = 'confluentinc/cp-kafka:8.2.2'
+}
+foreach ($entry in $expectedDataHubImages.GetEnumerator()) {
+    if ($consumer.services.PSObject.Properties[$entry.Key].Value.image -ne $entry.Value) {
+        throw "DataHub consumer image drifted: $($entry.Key)"
+    }
 }
 
 $compose = & docker compose --env-file $localEnv -f $composePath --profile full config --format json |

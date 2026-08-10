@@ -12,12 +12,13 @@
     "AGENTS.md",
     "docs/markdown/collaboration/AI_개발_환경_설정.md",
     "docs/markdown/collaboration/Gate_실행_카드_원장.md",
+    "docs/markdown/ai_docs/legacy/LLM_사용_현황.md",
     "docs/markdown/daily_reports/junhee/일일보고.md"
   ],
   "CONTRACT_VERSIONS": {
     "PONYTAIL": "v4.9.0 full",
     "AI_ENV_GUIDE": "v2.3",
-    "GATE_LEDGER": "v5.7"
+    "GATE_LEDGER": "v5.8"
   },
   "ACCEPTANCE_RESULTS": [
     {"id": "AC1_CANONICAL_VERSION", "status": "PASS", "evidence": "현재 설치된 Skill 경로 4.9.0을 팀 단일 기준으로 확정"},
@@ -25,15 +26,17 @@
     {"id": "AC3_SETUP_MATCH", "status": "PASS", "evidence": "AI 개발 환경 가이드의 기준·설치 명령·최종 확인을 v4.9.0으로 통일"},
     {"id": "AC4_HISTORY_PRESERVED", "status": "PASS", "evidence": "과거 daesung 일일보고의 v4.8.4 기록은 변경하지 않음"},
     {"id": "AC5_R2_TOKEN_CONTINUES", "status": "PASS", "evidence": "R2-W5-F1 허용 제품 경로와 정책 변경 경로가 겹치지 않아 token 유지"},
-    {"id": "AC6_BOOTSTRAP", "status": "PASS", "evidence": "현재 dashboard에서 R2-W5-F1 READY와 기존 token을 확인했으며 seung 실제 bootstrap은 dev fast-forward 후 통합 검증으로 수행"}
+    {"id": "AC6_BOOTSTRAP", "status": "PASS", "evidence": "현재 dashboard에서 R2-W5-F1 READY와 기존 token을 확인했으며 seung 실제 bootstrap은 dev fast-forward 후 통합 검증으로 수행"},
+    {"id": "AC7_LLM_SNAPSHOT_BOUNDARY", "status": "PASS", "evidence": "동시 생성된 LLM 사용 현황을 코드·설정 근거로 재확인하고 ai_docs legacy 참고자료 비대체 경계를 명시"}
   ],
   "TEST_RESULTS": [
     {"id": "T1_INSTALLED", "name": "Ponytail Skill v4.9.0 path", "status": "PASS", "evidence": "C:/Users/Playdata/.codex/plugins/cache/ponytail/ponytail/4.9.0/skills/ponytail/SKILL.md 존재"},
     {"id": "T2_VERSION_TEXT", "name": "current policy version search", "status": "PASS", "evidence": "AGENTS와 AI 개발 환경 가이드에서 v4.8.4 0건, v4.9.0 일치"},
-    {"id": "T3_DOCS", "name": "document/report validation", "status": "PASS", "evidence": "document-policy와 20260810 report validation 통과"},
-    {"id": "T4_SCOPE", "name": "junhee role scope", "status": "PASS", "evidence": "branch CI 31348235993 role-scope PASS"},
-    {"id": "T5_R2_READY", "name": "python .github/scripts/gate_scope.py --dashboard --next-gate I5", "status": "PASS", "evidence": "R2-W5-F1 READY·NOT_RUN으로 선택되고 재발행 blocker 없음"},
-    {"id": "T6_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
+    {"id": "T3_LLM_SNAPSHOT", "name": "LLM snapshot evidence and secret scan", "status": "PASS", "evidence": "backend model mode·adapter model·ModelOps 후보·manifest와 대조했고 secret pattern 0건"},
+    {"id": "T4_DOCS", "name": "document/report validation", "status": "PASS", "evidence": "document-policy와 20260810 report validation 통과"},
+    {"id": "T5_SCOPE", "name": "junhee role scope", "status": "PASS", "evidence": "branch CI 31348317929 role-scope PASS; 최종 문서 보존 commit CI는 push 후 확인"},
+    {"id": "T6_R2_READY", "name": "python .github/scripts/gate_scope.py --dashboard --next-gate I5", "status": "PASS", "evidence": "R2-W5-F1 READY·NOT_RUN으로 선택되고 재발행 blocker 없음"},
+    {"id": "T7_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
   ],
   "NOT_RUN": [],
   "CHANGE_REQUESTS": [],

@@ -1,0 +1,115 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W5-F7",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "593b68a46c7800c1993be0656bea0c9bf58b57d6",
+  "RESULT_SHA": "44941147c1795fdfcdf9035293de336f02e63339",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W5-F7@593b68a",
+  "COMPLETED_CARDS": [
+    "R4-04·05 G120-046 Context topology·multi-CTE G2 REWORK"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/app/adapters/contract_model.py",
+    "app/backend/app/adapters/i2_data_platform.py",
+    "app/backend/app/services/analysis_service.py",
+    "app/backend/app/services/pipeline_support.py",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
+    "handoffs/R4-W5-F6.json",
+    "tests/backend/test_analysis_pipeline.py",
+    "tests/backend/test_i2_data_platform.py"
+  ],
+  "SUPERSEDES": "R4-W5-F6의 미완료 1-edge topology·첫 WHERE 중심 필터 검증은 F7 누적 결과로 대체한다. F6 실패·위험 기록은 기존 handoff에 보존하고 runtime은 F7 제품 CI로 검증했으며 producer gap은 Gate 후속 카드로 이동했다.",
+  "CONTRACT_VERSIONS": {
+    "THREE_SOURCE_CONTEXT": "I5-3SOURCE-CONTEXT-v1.0.0-DRAFT",
+    "JOIN": "pms_crm_pos_gold_revenue_month_v1;preaggregate_then_one_to_one_month;6 assets;5 edges",
+    "PARAMETERS": "11 typed bindings;2 CTE exact WHERE scopes",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_FIVE_EDGE_TOPOLOGY",
+      "status": "PASS",
+      "evidence": "known approved join의 stays→reservations→guests→customer_map→grade_history 및 customer_map→pos_orders 5개 edge를 R3 Context에 전달"
+    },
+    {
+      "id": "AC2_MULTI_CTE_FILTER_SCOPE",
+      "status": "PASS",
+      "evidence": "pms_source와 pos_source의 source alias·WHERE를 분리하고 각 period/filter placeholder 위치와 발생 횟수를 검증"
+    },
+    {
+      "id": "AC3_EXACT_TYPED_MAP",
+      "status": "PASS",
+      "evidence": "11개 placeholder name·type·Python exact value와 CTE별 expected occurrence Counter를 versioned Context binding과 대조"
+    },
+    {
+      "id": "AC4_BYPASS_NEGATIVE",
+      "status": "PASS",
+      "evidence": "POS filter 누락·literal·OR·다른 alias field·unknown/duplicate placeholder·typed value mutation 회귀가 fail-closed"
+    },
+    {
+      "id": "AC5_ACTUAL_R3_PLAN",
+      "status": "PASS",
+      "evidence": "R3-W5-F5의 6 reference·5-edge Context와 pms_source/pos_source Node2 SQL·parameters fixture를 ContractModelAdapter→G2로 직접 조합"
+    },
+    {
+      "id": "AC6_SINGLE_BINDER",
+      "status": "PASS",
+      "evidence": "G2 통과 plan을 기존 I2DataPlatformAdapter._bind_parameters 한 경로로 치환하고 required_filter placeholder 잔존 없음 확인"
+    },
+    {
+      "id": "AC7_ONE_REPAIR",
+      "status": "PASS",
+      "evidence": "AnalysisPipelineTest second repair 회귀 통과 및 query 실행 0건 유지"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_TARGET",
+      "name": "target backend Context/G2 composition tests",
+      "status": "PASS",
+      "evidence": "OpenAPI 중복 field 교정 포함 target 63 passed, 10 subtests passed"
+    },
+    {
+      "id": "T2_BACKEND",
+      "name": "backend 전체",
+      "status": "PASS",
+      "evidence": "제품 CI 31357211797 python-contracts에서 backend 104 passed, 10 skipped; 이전 OpenAPI 불일치 1건 교정 후 PASS"
+    },
+    {
+      "id": "T3_COMPILE",
+      "name": "compileall",
+      "status": "PASS",
+      "evidence": "python -m compileall -q app/backend/app tests/backend 성공"
+    },
+    {
+      "id": "T4_SCOPE",
+      "name": "gate_scope merge-base",
+      "status": "PASS",
+      "evidence": "제품 CI 31357211797 role-scope PASS; origin/dev 대비 F6+F7 누적 실제 diff 8개가 모두 허용 경로"
+    },
+    {
+      "id": "T5_DIFF",
+      "name": "git diff --check",
+      "status": "PASS",
+      "evidence": "whitespace error 없음"
+    },
+    {
+      "id": "T6_BRANCH_CI",
+      "name": "jaehong branch CI",
+      "status": "PASS",
+      "evidence": "GitHub Actions CI 31357211797 role-scope·python-contracts·document-quality·quality-gate PASS"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "R1_REVIEW_RESOLUTION": [
+    "R2 producer의 derived metric·5-edge topology 결손은 Gate v5.25의 R2-W5-F6에서 owner 후속 작업으로 수용·추적한다.",
+    "dependency 없는 보수적 safe CTE 해석과 source preaggregation 의미 검증 범위는 R1이 F7 fail-closed 구현 및 후속 actual API E2E 조건으로 수용했다.",
+    "F6의 로컬 runtime 미검증은 제품 CI 31357211797의 backend 104 passed, 10 skipped로 해소했다."
+  ],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "F7 누적 source CI PASS 뒤 dev에 통합하고 R3-W5-F5를 최신 dev에 동기화해 combined test를 수행"
+}

@@ -22,11 +22,11 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F4` | `READY` | `junhee` |
-| R2 | `R2-W5-F2` | `READY` | `seung` |
+| R1 | `R1-W5-F4` | `MERGED_DEV` | `junhee` |
+| R2 | `R2-W5-F2` | `MERGED_DEV` | `seung` |
 | R3 | `R3-W5-F1` | `READY` | `daesung` |
 | R4 | `R4-W5-F1` | `READY` | `jaehong` |
-| R5 | `R5-W5-F1` | `READY` | `minji` |
+| R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
 
@@ -576,7 +576,7 @@ RESULT_CI=branch 31348830005 PASS
 ### R1 · R1-W5-F4
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -603,12 +603,14 @@ STOP_CONDITIONS=공식 v1.7.0 tag·image 부재; v1.6.0 우회 upgrade 필요; T
 EXTERNAL_ACTION_PERMISSION=공식 release/tag 읽기, 허용 경로 수정·검증·commit·junhee push·dev 병합만 승인한다. image pull·DataHub container/volume 변경·외부 데이터 전송·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=latest tag; R1·R2 version 불일치; Trino version 변경; runtime resource 변경; secret 출력; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=공식 v1.7.0 provenance, root env·manifest·verifier와 R2 consumer pin 일치, compose config·branch CI·rollback 경계를 제출한다.
+RESULT_SHA=3a3fd7ce95f3411850c8f9300b5471f71bfb17f4
+RESULT_CI=dev 31350486043 PASS
 ```
 
 ### R2 · R2-W5-F2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -635,12 +637,14 @@ STOP_CONDITIONS=공식 source/image tag 불일치; recipe·DDL·seed·Trino 변�
 EXTERNAL_ACTION_PERMISSION=공식 release/tag/원본 읽기, config-only compose 검증, 허용 경로 commit·seung push만 승인한다. image pull·container/volume 변경·실제 ingestion·외부 전송·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=latest tag; provenance 불일치; recipe/Trino drift; runtime PASS 위조; resource 변경; secret 출력; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=공식 v1.7.0 provenance와 pinned image, 기존 recipe/Trino 불변, versioned evidence·compose config·data 회귀·branch CI를 제출한다. 통합 후 Asset Binding health→live ingestion/search·Trino 3-source hash→지점별 직전 달 GOLD 객실/F&B Gold REWORK 순으로 별도 카드 발행한다.
+RESULT_SHA=0342939d82ab4e2411c7d6386f5836c92154248f
+RESULT_CI=branch 31350128426 python·document·scope PASS, compose expected producer-consumer mismatch; dev 31350486043 PASS
 ```
 
 ### R5 · R5-W5-F1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -666,6 +670,8 @@ STOP_CONDITIONS=route·API·schema·data fixture·backend 변경 필요; 목업 
 EXTERNAL_ACTION_PERMISSION=허용 frontend·test·handoff·R5 보고와 local fixture/API browser 검증용 임시 process·격리 DB 생성·정리, 승인된 commit·minji push만 허용한다. package 설치·외부 비용·secret·실데이터·운영 서비스 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=route·API·fixture 의미 변경; mockup fake 기능 이식; 승인본 수정; queued receipt를 run으로 표시; 360px·200% zoom·keyboard·API 회귀 실패; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=변경 전후 1440·1024·768·360 screenshot, dark/light·keyboard·focus·200% zoom, fixture/API browser trace, frontend·backend contract·build, 정확한 handoff와 branch CI를 제출한다.
+RESULT_SHA=25bfe2abf50fbfae669bb1a3d6e1959f17ed04e2
+RESULT_CI=branch 31350163587 PASS
 ```
 
 ## 현재 통합 확인 사항
@@ -678,6 +684,7 @@ R1_REVIEW_CONDITIONS=변경 전후 1440·1024·768·360 screenshot, dark/light·
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.13 | 2026-08-10 11:43 | R2 DataHub v1.7.0 config producer와 R1 root verifier의 결합 CI, R5 목업 기반 frontend source CI·handoff를 확인해 R1·R2·R5 카드를 MERGED_DEV로 전환 |
 | v5.12 | 2026-08-10 11:23 | 공식 DataHub v1.7.0 최신화를 R1 root 계약과 R2 consumer config 카드로 분리 발행하고 Trino 476·runtime resource를 동결; 기존 R2 Gold 카드는 보완된 후속 REWORK를 위해 차단 |
 | v5.11 | 2026-08-10 11:06 | R5-W5-F1 발행 범위와 R1 handoff·source CI를 확인해 R1-W5-F3를 MERGED_DEV 전환 |
 | v5.10 | 2026-08-10 11:03 | 사용자 목업을 기존 API·route·fixture 계약 안에서 최소 이식하는 R5-W5-F1과 발행 검증 R1-W5-F3를 READY 발행 |

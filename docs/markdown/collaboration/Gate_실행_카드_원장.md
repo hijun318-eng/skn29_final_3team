@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.44 |
-| 문서 기준일 | 2026-08-10 20:25 |
+| 버전 | v5.45 |
+| 문서 기준일 | 2026-08-10 20:40 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F16` | `READY` | `junhee` |
+| R1 | `R1-W5-F17` | `READY` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
@@ -1085,7 +1085,7 @@ BLOCKED_REASON=infrastructure/database/.env의 COMPOSE_PROJECT_NAME=hotel-synthe
 ### R1 · R1-W5-F16
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1113,6 +1113,40 @@ STOP_CONDITIONS=resolved project가 answervice가 아님; override가 container_
 EXTERNAL_ACTION_PERMISSION=--project-name answervice로 해석된 exact app-postgres와 backend만 build/up/recreate하고 read-only health·SQL을 확인할 수 있다. 기존 volume은 보존하며 down·down -v·reset·prune·다른 project/container/volume 변경은 금지한다. 허용 경로 commit·junhee push만 허용한다.
 AUTO_FAIL_CONDITIONS=project identity mismatch; override가 container_name·host port 제거 외 값을 변경; 다른 project drift; migration 우회; template 수동 보정; readiness 일부만 PASS; secret 출력; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=explicit project identity와 root override를 먼저 검증한다. 이후 backend port 또는 readiness 계약이 차단하면 해당 owner REWORK로 반환한다.
+BLOCKED_REASON=--project-name answervice와 DB override로 exact answervice-app-postgres를 unrelated drift 없이 healthy 기동했다. 신규 보존 volume에는 migration이 없고 backend host port 18000은 answervice-test-backend가 점유해 backend 기동 전에 중단했다. F16 product 변경은 미커밋 제거했으며 exact answervice DB container·volume은 보존했다.
+```
+
+### R1 · R1-W5-F17
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F17
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=F16 backend host port collision owner REWORK
+TASK_CARD_RANGE=R1-02 root Compose project·DB·backend host publish 격리와 internal readiness 재검증
+CURRENT_TASK_CARD_ID=R1-02
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=ead79dc29ac7e3c30e80957cd96d270bce0969ff
+START_POINT=explicit answervice project와 내부 DB만으로 unrelated project 격리를 확인했다. root-owned override에서 app-postgres와 backend host publish만 제거하고 backend의 내부 8000 endpoint로 migration·readiness를 검증한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F17@ead79dc
+CONTRACT_VERSION=R1-SERVICE-v1.1.0-DRAFT; explicit Compose project answervice; internal app-postgres:5432 and backend:8000 only; Alembic head 20260804_05; approved Template I2-v1.0.0
+ALLOWED_PATHS=compose.yml; compose.runtime-isolation.override.yml; tests/integration/test_runtime_isolation_override.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F17.json; docs/markdown/daily_reports/junhee/일일보고.md; docs/markdown/daily_reports/team_summaries/5주차/20260810.md; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F12.json; tests/integration/test_typed_three_source_e2e.py
+READ_ONLY_CUMULATIVE_EVIDENCE=docs/markdown/daily_reports/team_summaries/5주차/20260810.md; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F12.json; tests/integration/test_typed_three_source_e2e.py. origin/dev...junhee 누적 scope를 위해 보존하며 수정·삭제하지 않는다.
+FORBIDDEN_PATHS=infrastructure/database/**; app/backend/**; frontend/**; migration/schema/template row 수동 수정; root CI·env; dependency; tracked/local secret 값; 다른 Docker project/container/volume
+HANDOFF_MANIFEST=handoffs/R1-W5-F17.json
+ACCEPTANCE_CRITERIA=resolved project는 explicit answervice이며 root override는 app-postgres container_name과 app-postgres/backend host ports만 바꾼다. 내부 DNS app-postgres:5432·backend:8000과 image·volume·healthcheck·credential은 불변이다. 다른 project/container/volume은 실행 전후 같다. exact backend entrypoint가 신규 DB를 head까지 migration하고 approved Template을 생성하며 Compose 내부 /readiness의 database·migration·approved_templates가 ready다.
+ACCEPTANCE_IDS=AC1_PROJECT_IDENTITY;AC2_RUNTIME_OVERRIDE_ONLY;AC3_INTERNAL_SERVICES;AC4_OTHER_PROJECT_INVARIANT;AC5_MIGRATION_HEAD;AC6_APPROVED_TEMPLATE;AC7_INTERNAL_READINESS
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration/test_runtime_isolation_override.py -q; docker compose --project-name answervice -f compose.yml --env-file local-env --profile dev config --quiet; resolved model delta 검사; unrelated snapshot; docker compose --project-name answervice -f compose.yml --env-file local-env --profile dev up -d app-postgres backend; docker exec answervice-app-postgres migration·template read-only query; backend container 내부 /readiness; integration tests; gate_scope merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_STATIC;T2_COMPOSE;T3_MODEL_DIFF;T4_SNAPSHOT;T5_EXACT_UP;T6_DB_EVIDENCE;T7_INTERNAL_READINESS;T8_INTEGRATION;T9_SCOPE;T10_DIFF;T11_BRANCH_CI
+STOP_CONDITIONS=project mismatch; override가 app-postgres name과 두 host ports 외 변경; 내부 DNS/port 변경; unknown/legacy revision; alembic/readiness 실패; template 0/복수/비승인; 다른 project/container/volume 변경 필요; infrastructure/backend/frontend 수정 필요; secret 출력; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=--project-name answervice로 해석된 exact app-postgres와 backend만 build/up/recreate하고 container 내부 read-only health·SQL을 확인할 수 있다. 기존 answervice volume은 보존하며 down·down -v·reset·prune·다른 project/container/volume 변경은 금지한다. 허용 경로 commit·junhee push만 허용한다.
+AUTO_FAIL_CONDITIONS=project identity mismatch; unexpected resolved delta; other project drift; migration 우회; template 수동 보정; readiness 일부만 PASS; secret 출력; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=runtime 격리와 entrypoint migration을 먼저 검증한다. 이후 readiness 계약이 current head/template을 거부하면 R4 owner REWORK로 반환한다.
 ```
 
 ### R2 · R2-W5-F5
@@ -1714,6 +1748,7 @@ RESULT_CI=branch 31363391107 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.45 | 2026-08-10 20:40 | F16의 explicit project·DB 격리는 성공했으나 backend 18000 충돌을 확인해 DB와 backend를 내부 전용으로 기동하고 migration·readiness를 검증하는 R1-W5-F17 발행 |
 | v5.44 | 2026-08-10 20:25 | F15에서 infra env의 COMPOSE_PROJECT_NAME이 root project를 덮는 위험을 확인해 원상 복구하고 explicit answervice project identity와 DB host publish 격리를 함께 검증하는 R1-W5-F16 발행 |
 | v5.43 | 2026-08-10 20:10 | R1-W5-F14를 기존 hotel-synthetic-db의 15432 host port 점유로 BLOCKED 처리하고 answervice app-postgres를 내부 DNS 전용으로 격리해 exact runtime을 재검증하는 R1-W5-F15 REWORK 발행 |
 | v5.42 | 2026-08-10 20:00 | R1-W5-F13의 고정 app-postgres 이름 충돌을 다른 project 변경 없이 root include override로 해소하고 exact migration·Template·readiness를 재검증하는 R1-W5-F14 REWORK 발행 |

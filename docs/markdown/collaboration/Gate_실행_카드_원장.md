@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.19 |
-| 문서 기준일 | 2026-08-10 12:55 |
+| 버전 | v5.20 |
+| 문서 기준일 | 2026-08-10 13:00 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F5` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F8` | `READY` | `junhee` |
 | R2 | `R2-W5-F4` | `READY` | `seung` |
 | R3 | `R3-W5-F2` | `BLOCKED` | `daesung` |
 | R4 | `R4-W5-F4` | `MERGED_DEV` | `jaehong` |
@@ -780,6 +780,38 @@ STOP_CONDITIONS=생산자/소비자 미통합; fixture-only 성공; 제품 경�
 R1_REVIEW_CONDITIONS=조합 회귀와 대표 3-source 실제 API E2E가 모두 PASS한 뒤에만 Analysis persistence·SQLGlot G2/G3·Report worker 단계로 진행한다.
 ```
 
+### R1 · R1-W5-F8
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F8
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=CI supply-chain pinning and bounded execution
+TASK_CARD_RANGE=R1-04 CI action SHA pin·job timeout
+CURRENT_TASK_CARD_ID=R1-04
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=b2df6bf1ac3b05078599a0663bf9affcae1551cf
+START_POINT=origin/junhee을 최신 dev b2df6bf로 fast-forward한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F8@b2df6bf
+CONTRACT_VERSION=CI-SUPPLY-v1.0.0-DRAFT
+ALLOWED_PATHS=.github/workflows/ci.yml; tests/integration/test_ci_workflow.py; handoffs/R1-W5-F8.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 제품 경로; workflow trigger·permissions·branch scope·test target 의미 변경; dependency; secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F8.json
+ACCEPTANCE_CRITERIA=actions/checkout v4.4.0=11d5960a326750d5838078e36cf38b85af677262, actions/setup-python v6.3.0=ece7cb06caefa5fff74198d8649806c4678c61a1, actions/setup-node v4.4.0=49933ea5288caeca8642d1e84afbd3f7d6820020의 공식 tag commit SHA로 모든 uses를 고정하고 exact version comment를 유지한다. 모든 6개 job에 timeout-minutes를 설정하며 기존 최소 permissions·concurrency·branch별 test routing·quality gate 의미를 바꾸지 않는다. 회귀 test는 mutable actions/* tag와 timeout 누락을 차단한다. 현재 dev의 알려진 R3 METRIC_FILTER_MISSING 실패는 이 카드 범위 밖 baseline으로 기록하고 R1 제품 코드로 우회하지 않는다.
+ACCEPTANCE_IDS=AC1_ACTION_SHA_PIN;AC2_VERSION_COMMENT;AC3_ALL_JOB_TIMEOUT;AC4_EXISTING_SEMANTICS;AC5_REGRESSION;AC6_BASELINE_BOUNDARY
+TEST_COMMANDS=git ls-remote official action tags; python -m pytest -p no:cacheprovider tests/integration/test_ci_workflow.py tests/integration/test_gate_scope.py -q; python -m pytest -p no:cacheprovider tests/integration -q; workflow syntax review; gate_scope merge-base; git diff --check; junhee branch CI
+TEST_COMMAND_IDS=T1_UPSTREAM;T2_TARGET;T3_INTEGRATION;T4_WORKFLOW;T5_SCOPE;T6_DIFF;T7_BRANCH_CI
+STOP_CONDITIONS=공식 tag SHA 불일치; workflow 기능·permission·trigger 변경 필요; dependency·secret·외부 write 필요; 허용 경로 밖 변경; R1 integration 검증 실패
+EXTERNAL_ACTION_PERMISSION=공식 GitHub action tag의 read-only 확인과 허용 경로 commit·junhee push만 승인한다. 외부 workflow 수동 실행·secret 변경·비용은 금지한다.
+AUTO_FAIL_CONDITIONS=mutable actions tag 잔존; job timeout 누락; 기존 branch/test routing 변경; R3 baseline을 R1에서 우회; scope 위반; R1 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=immutable SHA·version comment·6 job timeout과 integration 회귀, 정확한 handoff·branch CI를 제출한다. dev 전체 green 판정은 R2→R4→R3 계약 통합 뒤 별도로 수행한다.
+```
+
 ### R2 · R2-W5-F3
 
 ```text
@@ -1057,6 +1089,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.20 | 2026-08-10 13:00 | 다른 역할과 독립적인 R1 CI 공급망 작업을 확인해 GitHub Actions immutable SHA pin과 모든 job timeout을 검증하는 R1-W5-F8을 병렬 발행; R5는 Audit·Schedule·Report worker·Catalog live 생산자 부재로 신규 구현 없이 대기 |
 | v5.19 | 2026-08-10 12:55 | R4 Alembic 검증을 MERGED_DEV로 전환하고, typed required-filter·대표 PMS/CRM/POS Context를 R2 생산자부터 R4·R3 소비자와 R1 실제 API E2E 순으로 재편; Analysis·SQLGlot G2/G3·Report worker·schedule은 선행 E2E 뒤 단계화 |
 | v5.18 | 2026-08-10 12:47 | dev CI 31352194575에서 R4 G2 parameter 경계와 R3 literal evaluator/test 불일치로 3건 실패한 원인을 확인하고, backend 경계를 완화하지 않는 R3-W5-F2 REWORK를 병렬 발행 |
 | v5.17 | 2026-08-10 12:40 | R4 Asset Binding consumer가 PENDING/NOT_RUN을 성공으로 오표시하지 않는 결과와 CI를 MERGED_DEV로 전환하고, 이전 R4 legacy migration 요청을 제품 migration 변경 없는 R4-W5-F4 검증 카드로 READY 발행 |

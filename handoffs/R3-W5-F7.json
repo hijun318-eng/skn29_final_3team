@@ -1,0 +1,100 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R3-W5-F7",
+  "ROLE": "R3",
+  "BRANCH": "daesung",
+  "BASE_SHA": "b820698c6cb5a5cb08b6f4a17b9052af6dc6fdf7",
+  "RESULT_SHA": "c54612611d526b750f22c49f2577499b45847bcc",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R3-W5-F7@b820698",
+  "COMPLETED_CARDS": [
+    "R3-06 Node3 derived metric fail-closed selection REWORK"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/daesung/일일보고.md",
+    "src/ai/contracts/node_io.v0.1.json",
+    "src/ai/node3.py",
+    "tests/ai/test_contracts.py",
+    "tests/ai/test_node3.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "MODEL_IO": "MODEL-v1.0.0 compatible metric_selection extension",
+    "CONTEXT": "I5-3SOURCE-CONTEXT-v1.0.0-DRAFT",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_ONE_DERIVED_METRIC",
+      "status": "PASS",
+      "evidence": "metric_selection의 selected_metric_id와 모든 source별 context_metric_ids가 하나의 total_guest_revenue_krw일 때만 설명"
+    },
+    {
+      "id": "AC2_MULTI_METRIC_FAIL_CLOSED",
+      "status": "PASS",
+      "evidence": "서로 다른 context metric 두 개, source binding 개수 불일치, multi-source selection 누락을 ContractError로 차단"
+    },
+    {
+      "id": "AC3_ENTITLEMENT_FAIL_CLOSED",
+      "status": "PASS",
+      "evidence": "selected metric이 Context 또는 entitled_metric_ids 밖이면 임의 선택 없이 ContractError"
+    },
+    {
+      "id": "AC4_ACTUAL_COMPOSITION_FIXTURE",
+      "status": "PASS",
+      "evidence": "pms_crm_pos_context.i5.v1.json의 G120-046 6 asset URN과 total_guest_revenue_krw로 실제 fixture 회귀 통과"
+    },
+    {
+      "id": "AC5_EVIDENCE_PRESERVED",
+      "status": "PASS",
+      "evidence": "source_ids, sampling, masking, partial, query_execution_id result reference를 Node3 response에 결정론적으로 보존"
+    },
+    {
+      "id": "AC6_OWNER_BOUNDARY",
+      "status": "PASS",
+      "evidence": "R3 Node3·MODEL I/O contract·AI test와 일일보고·handoff만 변경; backend/data/Node2/dataset/RunPod/stash 변경 없음"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_NODE3",
+      "name": "Node3·fake model·contract·wave3 target",
+      "status": "PASS",
+      "evidence": "27 passed, 39 subtests passed"
+    },
+    {
+      "id": "T2_AI",
+      "name": "AI 전체",
+      "status": "PASS",
+      "evidence": "76 passed, 51 subtests passed"
+    },
+    {
+      "id": "T3_COMPILE",
+      "name": "python -m compileall -q src/ai",
+      "status": "PASS",
+      "evidence": "compileall PASS"
+    },
+    {
+      "id": "T4_SCOPE",
+      "name": "R3 merge-base scope",
+      "status": "PASS",
+      "evidence": "결과 SHA c546126 기준 changed paths 5, scope PASS"
+    },
+    {
+      "id": "T5_DIFF",
+      "name": "git diff --check",
+      "status": "PASS",
+      "evidence": "whitespace error 없음"
+    },
+    {
+      "id": "T6_BRANCH_CI",
+      "name": "daesung source CI",
+      "status": "PASS",
+      "evidence": "GitHub Actions 31364695604 PASS at c01031079856ecc12df4f08e36092b342d29d40c"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R3-W5-F7 Node3 producer contract를 dev에 통합하고 R4 consumer follow-up을 발행"
+}

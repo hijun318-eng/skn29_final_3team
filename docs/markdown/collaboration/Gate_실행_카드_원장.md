@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.39 |
-| 문서 기준일 | 2026-08-10 19:10 |
+| 버전 | v5.40 |
+| 문서 기준일 | 2026-08-10 19:20 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F12` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F13` | `READY` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `READY` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
@@ -980,6 +980,38 @@ INTEGRATED_DEV_SHA=c5d8ca24c3a8a100ff7beb213a72c108a7f29f4f
 RESULT_CI=junhee source 31362070083 PASS; dev 31362182505 PASS; junhee terminal 31362325679 PASS
 ```
 
+### R1 · R1-W5-F13
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F13
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=demo app PostgreSQL migration·approved Template readiness
+TASK_CARD_RANGE=R1-02 exact app-postgres/backend orchestration과 readiness 증거
+CURRENT_TASK_CARD_ID=R1-02
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=1237d02091f8392a61bf553637ccd9300b5fc6b3
+START_POINT=최신 dev의 dev profile이 app-postgres·backend·frontend만 포함함을 확인했다. R4 migration/Template 구현은 수정하지 않고 exact answervice app-postgres와 backend의 기존 entrypoint를 실행해 readiness만 검증한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W5-F13@1237d02
+CONTRACT_VERSION=R1-SERVICE-v1.1.0-DRAFT; existing Alembic head 20260804_05; approved Template I2-v1.0.0
+ALLOWED_PATHS=compose.yml; .env.example; handoffs/R1-W5-F13.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; infrastructure/database/**; frontend/**; DataHub·Catalog; migration/schema/template row 수정; root CI; dependency; tracked/local secret 값; 다른 Docker project/container/volume
+HANDOFF_MANIFEST=handoffs/R1-W5-F13.json
+ACCEPTANCE_CRITERIA=local env의 app PostgreSQL 필수 credential은 값 출력 없이 존재 여부만 확인하고 Compose dev config를 검증한다. 실행 전후 Docker project snapshot을 비교하며 exact answervice project의 app-postgres와 backend만 up/recreate할 수 있다. backend entrypoint의 기존 alembic upgrade head가 성공하고 /readiness가 database·migration·approved_templates 모두 ready를 반환해야 한다. read-only SQL로 governance.alembic_version 단일 row가 20260804_05이고 context.analysis_templates의 weekly-room-operations I2-v1.0.0 APPROVED row가 정확히 하나인지 확인한다. legacy/unknown revision이면 stamp·drop·SQL 보정 없이 중단한다.
+ACCEPTANCE_IDS=AC1_SECRET_PRESENCE_ONLY;AC2_EXACT_PROJECT_SCOPE;AC3_MIGRATION_HEAD;AC4_APPROVED_TEMPLATE;AC5_READINESS;AC6_OTHER_PROJECT_INVARIANT
+TEST_COMMANDS=docker compose -f compose.yml --env-file local-env --profile dev config --quiet; exact Docker project/container/volume read-only snapshot; docker compose -f compose.yml --env-file local-env --profile dev up -d app-postgres backend; docker compose ps app-postgres backend; backend /readiness read-only HTTP; app-postgres read-only migration head·approved template count query; before/after non-answervice project identity 비교; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_COMPOSE;T2_SNAPSHOT;T3_EXACT_UP;T4_PS;T5_READINESS;T6_DB_EVIDENCE;T7_INVARIANT;T8_SCOPE;T9_DIFF;T10_BRANCH_CI
+STOP_CONDITIONS=필수 credential 부재; unknown/legacy revision; alembic nonzero; approved template 0/복수/비승인; readiness not_ready; backend 내부 변경 필요; stamp/drop/schema/data 보정 필요; DataHub/Catalog·frontend·다른 project/container/volume 변경; secret 출력; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=exact answervice project의 app-postgres와 backend service만 build/up/recreate하고 read-only health·SQL을 확인할 수 있다. 기존 answervice volume은 보존하며 down·down -v·reset·prune·다른 project/container/volume·DataHub lifecycle·firewall 변경은 금지한다. 허용 경로 commit·junhee push만 허용한다.
+AUTO_FAIL_CONDITIONS=secret 값 출력; 다른 project drift; migration 우회; template 수동 INSERT/UPDATE; readiness 일부만으로 PASS; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=실행 전후 다른 project snapshot 불변, exact service identity, migration head·approved Template·readiness evidence와 source CI를 확인한다. Backend CORS·Report repository endpoint는 R4, Catalog live DataHub는 R2 후속 지시로 분리한다.
+```
+
 ### R2 · R2-W5-F5
 
 ```text
@@ -1577,6 +1609,7 @@ RESULT_CI=branch 31363391107 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.40 | 2026-08-10 19:20 | 시연 준비를 위해 exact answervice app-postgres/backend만 기동하고 migration head·approved Template·readiness를 검증하는 R1-W5-F13 발행 |
 | v5.39 | 2026-08-10 19:10 | R5-W5-F3의 기본 loopback·명시적 LAN 공개, exact frontend runtime·source CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |
 | v5.38 | 2026-08-10 19:00 | frontend 기본 loopback을 유지하고 FRONTEND_BIND_ADDRESS=0.0.0.0 명시 시에만 same-LAN 13000 공개를 허용하는 R5-W5-F3 발행 |
 | v5.37 | 2026-08-10 18:50 | R1-W5-F12의 live profile guard source·terminal CI와 CRM product-only dev CI를 확인해 MERGED_DEV로 종료 |

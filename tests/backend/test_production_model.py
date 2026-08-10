@@ -110,6 +110,13 @@ class ProductionModelTest(unittest.TestCase):
 
         self.assertNotIn("grade_code", plan["parameters"])
 
+    def test_plan_rejects_duplicate_parameter_names(self) -> None:
+        response = FakeModelAdapter().generate("node2", self._node2_payload())
+        response["parameters"].append(dict(response["parameters"][0]))
+
+        with self.assertRaisesRegex(ValueError, "unique"):
+            ContractModelAdapter._plan(response, "sql")
+
     def test_month_comparison_requires_two_month_window(self) -> None:
         payload = {"normalized_question": "전월 대비 매출을 알려줘"}
         with self.assertRaisesRegex(ValueError, "two-month window"):

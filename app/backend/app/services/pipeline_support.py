@@ -25,6 +25,7 @@ from app.services.context_builder import (
     ContextMetric,
     ContextPackage,
     ContextPackageBuilder,
+    ContextParameterBinding,
     ContextRequiredFilter,
 )
 
@@ -109,6 +110,7 @@ class PipelineSupport:
                                 field=str(item["field"]),
                                 operator=str(item["operator"]),
                                 value=item["value"],
+                                value_type=str(item.get("value_type") or ""),
                             )
                             for item in metric["required_filters"]
                         ),
@@ -116,8 +118,45 @@ class PipelineSupport:
                     for metric in asset.get("metrics", ())
                 ),
                 metric_registry_required="metrics" in asset,
+                required_filters=tuple(
+                    ContextRequiredFilter(
+                        field=str(item["field"]),
+                        operator=str(item["operator"]),
+                        value=item["value"],
+                        value_type=str(item["value_type"]),
+                    )
+                    for item in asset.get("required_filters", ())
+                ),
             )
             for asset in assets
+        )
+        supplied_bindings = tuple(
+            ContextParameterBinding(
+                str(item["name"]),
+                str(item["value_type"]),
+                item["value"],
+            )
+            for asset in assets
+            for item in asset.get("parameter_bindings", ())
+        )
+        metric_filters = tuple(
+            item
+            for asset in items
+            for metric in asset.metrics
+            for item in metric.required_filters
+        )
+        parameter_bindings = supplied_bindings or tuple(
+            [
+                ContextParameterBinding(name, "date", payload.parameters[name])
+                for name in ("period_start", "period_end_exclusive")
+                if name in payload.parameters
+            ]
+            + [
+                ContextParameterBinding(
+                    f"required_filter_{index}", item.value_type, item.value
+                )
+                for index, item in enumerate(metric_filters, start=1)
+            ]
         )
         request = ContextBuildRequest(
             context_release="context-v1",
@@ -129,6 +168,7 @@ class PipelineSupport:
             assets=items,
             token_count=max(1, len(payload.question.split()) * 4),
             model_context_tokens=24_000,
+            parameter_bindings=parameter_bindings,
         )
         return self._context_builder.build(
             request,
@@ -255,7 +295,21 @@ class PipelineSupport:
         if not isinstance(parameters, dict):
             return "PARAMETERS_INVALID"
         placeholders = set(re.findall(r":([a-z_][a-z0-9_]*)", normalized))
-        if not placeholders.issubset(parameters):
+        expected_parameters = {
+            item.name: (item.value_type, item.value)
+            for item in package.parameter_bindings
+        }
+        parameters_invalid = bool(package.parameter_bindings) and (
+            placeholders != set(parameters)
+            or placeholders != set(expected_parameters)
+            or any(
+                not PipelineSupport._parameter_matches(
+                    parameters[name], *expected_parameters[name]
+                )
+                for name in placeholders
+            )
+        )
+        if not package.parameter_bindings and not placeholders.issubset(parameters):
             return "PARAMETERS_INVALID"
         limit = re.search(r"\blimit\s+(\d+)\s*$", normalized)
         if limit is None or int(limit.group(1)) > PipelineSupport.MAX_QUERY_ROWS:
@@ -266,6 +320,15 @@ class PipelineSupport:
             return "REFERENCE_MISSING"
         referenced = {str(item.get("fqn")) for item in references}
         if not referenced.issubset(allowed):
+            return "REFERENCE_OUTSIDE_CONTEXT"
+        columns_by_fqn = {item.fqn: set(item.columns) for item in package.assets}
+        if len(referenced) != len(references) or any(
+            not isinstance(item.get("columns"), (list, tuple))
+            or not set(map(str, item["columns"])).issubset(
+                columns_by_fqn.get(str(item.get("fqn")), set())
+            )
+            for item in references
+        ):
             return "REFERENCE_OUTSIDE_CONTEXT"
         expected_metric_ids = {metric.id for metric in package.metrics}
         has_metric_references = any("metric_ids" in item for item in references)
@@ -304,12 +367,16 @@ class PipelineSupport:
                 normalized,
                 item,
                 parameters,
-                allow_literal=str(plan.get("model_version", "")).startswith("TEMPLATE-"),
+                allow_literal=False,
             )
-            for metric in package.metrics
-            for item in metric.required_filters
+            for item in (
+                *package.required_filters,
+                *(item for metric in package.metrics for item in metric.required_filters),
+            )
         ):
             return "METRIC_FILTER_MISSING"
+        if parameters_invalid:
+            return "PARAMETERS_INVALID"
         return None
 
     @staticmethod
@@ -329,7 +396,7 @@ class PipelineSupport:
         )
         if where is None or re.search(r"\bor\b", where.group(1), re.IGNORECASE):
             return False
-        field = re.escape(required.field.lower())
+        field = re.escape(required.field.lower().rsplit(".", 1)[-1])
         matches = re.findall(
             rf"(?<![a-z0-9_])(?:[a-z_][a-z0-9_]*\.)?{field}\s*=\s*"
             r"(?:'([^']*)'|(true|false)|:([a-z_][a-z0-9_]*))(?![a-z0-9_])",
@@ -342,12 +409,33 @@ class PipelineSupport:
             if parameter:
                 if parameter not in parameters:
                     return False
-                values.append(str(parameters[parameter]).lower())
+                value = parameters[parameter]
+                if isinstance(value, dict):
+                    value = value.get("value")
+                values.append(str(value).lower())
             elif allow_literal:
                 values.append((string or boolean).lower())
             else:
                 return False
-        return bool(values) and all(value == expected for value in values)
+        return expected in values
+
+    @staticmethod
+    def _parameter_matches(
+        actual: object,
+        expected_type: str,
+        expected_value: object,
+    ) -> bool:
+        if isinstance(actual, dict):
+            if set(actual) != {"value_type", "value"}:
+                return False
+            actual_type = actual["value_type"]
+            actual_value = actual["value"]
+        else:
+            actual_type = expected_type
+            actual_value = actual
+        if actual_type != expected_type or type(actual_value) is not type(expected_value):
+            return False
+        return actual_value == expected_value
 
     @staticmethod
     def model_plan_violation(plan: object) -> str | None:

@@ -120,12 +120,13 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     sql = (
         "SELECT property_id, SUM(room_revenue) AS revenue "
         "FROM serving.analytics.hotel_daily_metrics "
-        "WHERE data_period_status = 'ACTUAL' AND is_forecast = false "
+        "WHERE data_period_status = :required_filter_1 "
+        "AND is_forecast = :required_filter_2 "
         "GROUP BY property_id LIMIT 1000"
     )
     plan = {
         "sql": sql,
-        "parameters": {},
+        "parameters": {"required_filter_1": "ACTUAL", "required_filter_2": False},
         "references": [
             {
                 "urn": item.urn,
@@ -607,7 +608,7 @@ def test_template_dates_are_bound_without_changing_the_approved_query_shape():
         "LIMIT 1000"
     )
 
-    bound = I2DataPlatformAdapter._bind_date_parameters(
+    bound = I2DataPlatformAdapter._bind_parameters(
         sql,
         {
             "period_start": "2026-05-01",
@@ -628,7 +629,7 @@ def test_required_filter_parameters_are_bound_as_values():
         "AND is_forecast = :required_filter_2 LIMIT 1000"
     )
 
-    bound = I2DataPlatformAdapter._bind_date_parameters(
+    bound = I2DataPlatformAdapter._bind_parameters(
         sql,
         {"required_filter_1": "ACTUAL", "required_filter_2": False},
     )
@@ -646,9 +647,122 @@ def test_required_filter_parameters_are_bound_as_values():
         {},
     ],
 )
-def test_template_date_binding_rejects_invalid_or_missing_values(parameters):
+def test_template_parameter_binding_rejects_invalid_or_missing_values(parameters):
     with pytest.raises(ValueError):
-        I2DataPlatformAdapter._bind_date_parameters(
+        I2DataPlatformAdapter._bind_parameters(
             "SELECT 1 WHERE event_at >= TIMESTAMP ':period_start'",
             parameters,
         )
+
+
+def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path):
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080",
+        "runtime-user",
+        binding_path=verified_binding_path(tmp_path),
+        require_live_metadata=False,
+    )
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(
+        question="5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘."
+    )
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 1),
+    )
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+    package = support.build_context(payload, context, assets)
+    sql = " ".join(
+        (
+            "SELECT 1 FROM pms.public.pms_stays s",
+            "JOIN pms.public.pms_reservations r ON 1=1",
+            "JOIN pms.public.pms_guests g0 ON 1=1",
+            "JOIN crm.dbo.crm_customer_map m ON 1=1",
+            "JOIN crm.dbo.crm_member_grade_history g ON 1=1",
+            "JOIN pos.pos_db.pos_orders o ON 1=1",
+            "WHERE s.actual_checkout_at >= DATE ':period_start'",
+            "AND s.actual_checkout_at < DATE ':period_end_exclusive'",
+            "AND g.grade_code = :required_filter_1",
+            "AND s.complimentary_flag = :required_filter_2",
+            "AND s.house_use_flag = :required_filter_3",
+            "AND s.is_forecast = :required_filter_4",
+            "AND s.property_id = :required_filter_5",
+            "AND s.stay_status = :required_filter_6",
+            "AND o.is_forecast = :required_filter_7",
+            "AND o.property_id = :required_filter_8",
+            "AND o.void_flag = :required_filter_9 LIMIT 1000",
+        )
+    )
+    parameters = {
+        item.name: {"value_type": item.value_type, "value": item.value}
+        for item in package.parameter_bindings
+    }
+    references = [
+        {
+            "urn": item.urn,
+            "fqn": item.fqn,
+            "columns": list(item.columns),
+            "join_ids": list(package.approved_join_ids),
+        }
+        for item in package.assets
+    ]
+    plan = {
+        "sql": sql,
+        "parameters": parameters,
+        "references": references,
+        "model_version": "MODEL-v1",
+    }
+
+    assert len(package.assets) == 6
+    assert package.approved_join_ids == ("pms_crm_pos_gold_revenue_month_v1",)
+    assert [item.name for item in package.parameter_bindings] == [
+        "period_start",
+        "period_end_exclusive",
+        *(f"required_filter_{index}" for index in range(1, 10)),
+    ]
+    assert support.g2_violation(plan, package) is None
+
+    mutated = {**parameters, "required_filter_7": {"value_type": "number", "value": 1}}
+    assert support.g2_violation({**plan, "parameters": mutated}, package)
+    assert support.g2_violation(
+        {**plan, "sql": sql + " OR 1=1", "parameters": parameters}, package
+    )
+    assert support.g2_violation(
+        {
+            **plan,
+            "sql": sql.replace(":required_filter_1", "'GOLD'"),
+            "parameters": {key: value for key, value in parameters.items() if key != "required_filter_1"},
+        },
+        package,
+    )
+    assert support.g2_violation(
+        {**plan, "parameters": {**parameters, "unknown": "value"}}, package
+    )
+
+
+def test_single_binder_supports_only_approved_typed_values():
+    sql = (
+        "SELECT 1 WHERE name = :required_filter_1 "
+        "AND active = :required_filter_2 AND amount = :required_filter_3 "
+        "AND business_date = :required_filter_4 LIMIT 1"
+    )
+    bound = I2DataPlatformAdapter._bind_parameters(
+        sql,
+        {
+            "required_filter_1": {"value_type": "string", "value": "O'Brien"},
+            "required_filter_2": {"value_type": "boolean", "value": False},
+            "required_filter_3": {"value_type": "number", "value": 12.5},
+            "required_filter_4": {"value_type": "date", "value": "2026-05-01"},
+        },
+    )
+
+    assert "'O''Brien'" in bound
+    assert "active = FALSE" in bound
+    assert "amount = 12.5" in bound
+    assert "business_date = DATE '2026-05-01'" in bound
+    for value in (True, float("inf"), float("nan")):
+        with pytest.raises(ValueError):
+            I2DataPlatformAdapter._bind_parameters(
+                "SELECT :required_filter_1",
+                {"required_filter_1": {"value_type": "number", "value": value}},
+            )

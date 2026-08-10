@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
+from datetime import date
 from enum import Enum
 
 
@@ -26,7 +28,31 @@ class ContextBuildError(ValueError):
 class ContextRequiredFilter:
     field: str
     operator: str
-    value: str | bool
+    value: str | bool | int | float
+    value_type: str = ""
+
+    def __post_init__(self) -> None:
+        value_type = self.value_type or _value_type(self.value)
+        if self.operator != "eq" or not _typed_value_is_valid(value_type, self.value):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "Required filter는 승인된 type의 eq 값이어야 합니다.",
+            )
+        object.__setattr__(self, "value_type", value_type)
+
+
+@dataclass(frozen=True)
+class ContextParameterBinding:
+    name: str
+    value_type: str
+    value: str | bool | int | float
+
+    def __post_init__(self) -> None:
+        if not self.name or not _typed_value_is_valid(self.value_type, self.value):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Context parameter binding의 name·type·value가 유효하지 않습니다.",
+            )
 
 
 @dataclass(frozen=True)
@@ -47,6 +73,7 @@ class ContextAsset:
     join_ids: tuple[str, ...] = ()
     metrics: tuple[ContextMetric, ...] = ()
     metric_registry_required: bool = False
+    required_filters: tuple[ContextRequiredFilter, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.urn.strip() or not self.fqn.strip():
@@ -70,6 +97,7 @@ class ContextBuildRequest:
     assets: tuple[ContextAsset, ...]
     token_count: int
     model_context_tokens: int
+    parameter_bindings: tuple[ContextParameterBinding, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -86,6 +114,8 @@ class ContextPackage:
     package_hash: str
     approved_join_ids: tuple[str, ...]
     metrics: tuple[ContextMetric, ...] = ()
+    parameter_bindings: tuple[ContextParameterBinding, ...] = ()
+    required_filters: tuple[ContextRequiredFilter, ...] = ()
 
 
 class ContextPackageBuilder:
@@ -117,7 +147,11 @@ class ContextPackageBuilder:
                 key=lambda metric: (metric.id, metric.asset_fqn),
             )
         )
+        required_filters = tuple(
+            item for asset in assets for item in asset.required_filters
+        )
         self._validate_metrics(assets, metrics)
+        self._validate_parameter_bindings(request.parameter_bindings)
 
         dataset_count = len(assets)
         column_count = sum(len(asset.columns) for asset in assets)
@@ -157,6 +191,7 @@ class ContextPackageBuilder:
                         {
                             "field": item.field,
                             "operator": item.operator,
+                            "value_type": item.value_type,
                             "value": item.value,
                         }
                         for item in metric.required_filters
@@ -165,6 +200,23 @@ class ContextPackageBuilder:
                 for metric in metrics
             ],
             "token_count": request.token_count,
+            "parameter_bindings": [
+                {
+                    "name": item.name,
+                    "value_type": item.value_type,
+                    "value": item.value,
+                }
+                for item in request.parameter_bindings
+            ],
+            "required_filters": [
+                {
+                    "field": item.field,
+                    "operator": item.operator,
+                    "value_type": item.value_type,
+                    "value": item.value,
+                }
+                for item in required_filters
+            ],
         }
         package_hash = hashlib.sha256(
             json.dumps(
@@ -187,7 +239,20 @@ class ContextPackageBuilder:
             token_limit=token_limit,
             package_hash=package_hash,
             approved_join_ids=tuple(sorted({join_id for asset in assets for join_id in asset.join_ids})),
+            parameter_bindings=request.parameter_bindings,
+            required_filters=required_filters,
         )
+
+    @staticmethod
+    def _validate_parameter_bindings(
+        bindings: tuple[ContextParameterBinding, ...],
+    ) -> None:
+        names = [item.name for item in bindings]
+        if len(names) != len(set(names)):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Context parameter binding name은 중복될 수 없습니다.",
+            )
 
     @staticmethod
     def _validate_metrics(
@@ -217,7 +282,6 @@ class ContextPackageBuilder:
                 or metric.time_field not in columns
                 or not metric.required_filters
                 or required_fields.difference(columns)
-                or any(item.operator != "eq" for item in metric.required_filters)
             ):
                 raise ContextBuildError(
                     ContextBuildErrorCode.INVALID_METRIC,
@@ -275,3 +339,30 @@ class ContextPackageBuilder:
                 ContextBuildErrorCode.TOKEN_LIMIT_EXCEEDED,
                 f"Context token은 최대 {token_limit}개까지 허용됩니다.",
             )
+
+
+def _value_type(value: object) -> str:
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    return "string"
+
+
+def _typed_value_is_valid(value_type: str, value: object) -> bool:
+    if value_type == "boolean":
+        return isinstance(value, bool)
+    if value_type == "number":
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+        )
+    if value_type == "string":
+        return isinstance(value, str) and bool(value)
+    if value_type == "date" and isinstance(value, str):
+        try:
+            return date.fromisoformat(value).isoformat() == value
+        except ValueError:
+            return False
+    return False

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.45 |
-| 문서 기준일 | 2026-08-10 20:40 |
+| 버전 | v5.46 |
+| 문서 기준일 | 2026-08-10 21:00 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F17` | `READY` | `junhee` |
+| R1 | `R1-W5-F18` | `READY` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
@@ -1119,7 +1119,7 @@ BLOCKED_REASON=--project-name answervice와 DB override로 exact answervice-app-
 ### R1 · R1-W5-F17
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1147,6 +1147,40 @@ STOP_CONDITIONS=project mismatch; override가 app-postgres name과 두 host port
 EXTERNAL_ACTION_PERMISSION=--project-name answervice로 해석된 exact app-postgres와 backend만 build/up/recreate하고 container 내부 read-only health·SQL을 확인할 수 있다. 기존 answervice volume은 보존하며 down·down -v·reset·prune·다른 project/container/volume 변경은 금지한다. 허용 경로 commit·junhee push만 허용한다.
 AUTO_FAIL_CONDITIONS=project identity mismatch; unexpected resolved delta; other project drift; migration 우회; template 수동 보정; readiness 일부만 PASS; secret 출력; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=runtime 격리와 entrypoint migration을 먼저 검증한다. 이후 readiness 계약이 current head/template을 거부하면 R4 owner REWORK로 반환한다.
+BLOCKED_REASON=explicit answervice project에서 DB는 healthy였지만 backend migration 연결이 app_migration password authentication failed로 반복 종료했다. DB에는 governance.alembic_version이 없어 신규 빈 volume임을 확인했고 backend를 exact stop했다. unrelated project는 원상 healthy이며 F17 product 변경은 미커밋 제거했다.
+```
+
+### R1 · R1-W5-F18
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F18
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=F17 empty volume credential mismatch owner REWORK
+TASK_CARD_RANGE=R1-02 exact empty answervice app DB 재초기화와 internal runtime readiness 검증
+CURRENT_TASK_CARD_ID=R1-02
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=ead79dc29ac7e3c30e80957cd96d270bce0969ff
+START_POINT=answervice_app-postgres-data에는 governance migration relation이 없고 backend가 current local credential로 접속하지 못한다. 다른 project를 보존한 채 exact answervice backend·DB container와 empty volume만 제거·재생성한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F18@ead79dc
+CONTRACT_VERSION=R1-SERVICE-v1.1.0-DRAFT; explicit answervice project; empty exact volume reset; internal app-postgres:5432 and backend:8000; Alembic head 20260804_05; approved Template I2-v1.0.0
+ALLOWED_PATHS=compose.yml; compose.runtime-isolation.override.yml; tests/integration/test_runtime_isolation_override.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F18.json; docs/markdown/daily_reports/junhee/일일보고.md; docs/markdown/daily_reports/team_summaries/5주차/20260810.md; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F12.json; tests/integration/test_typed_three_source_e2e.py
+READ_ONLY_CUMULATIVE_EVIDENCE=docs/markdown/daily_reports/team_summaries/5주차/20260810.md; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F12.json; tests/integration/test_typed_three_source_e2e.py. 수정·삭제하지 않는다.
+FORBIDDEN_PATHS=infrastructure/database/**; app/backend/**; frontend/**; migration/schema/template row 수동 수정; root CI·env; dependency; tracked/local secret 값; 다른 Docker project/container/volume
+HANDOFF_MANIFEST=handoffs/R1-W5-F18.json
+ACCEPTANCE_CRITERIA=삭제 전 exact answervice volume이 migration relation 없는 빈 초기 상태임을 재확인한다. answervice-backend·answervice-app-postgres와 answervice_app-postgres-data만 exact 제거하고 current env로 재생성한다. root runtime override는 DB 이름과 DB/backend host publish만 바꾸며 다른 resolved 값은 불변이다. unrelated project/container/volume은 전후 같다. backend migration 후 head·approved Template·internal readiness를 검증한다.
+ACCEPTANCE_IDS=AC1_EMPTY_PROOF;AC2_EXACT_RESET;AC3_PROJECT_IDENTITY;AC4_RUNTIME_OVERRIDE_ONLY;AC5_OTHER_PROJECT_INVARIANT;AC6_MIGRATION_HEAD;AC7_APPROVED_TEMPLATE;AC8_INTERNAL_READINESS
+TEST_COMMANDS=static override test; explicit answervice Compose config/model delta; empty relation proof; unrelated snapshot; exact answervice backend/app-postgres remove and exact volume remove; exact up; migration/template query; internal readiness; integration tests; gate_scope; diff; source CI
+TEST_COMMAND_IDS=T1_STATIC;T2_MODEL;T3_EMPTY_PROOF;T4_SNAPSHOT;T5_EXACT_RESET;T6_EXACT_UP;T7_DB_EVIDENCE;T8_READINESS;T9_INTEGRATION;T10_SCOPE;T11_DIFF;T12_CI
+STOP_CONDITIONS=volume에 migration 또는 사용자 데이터 relation 존재; exact target identity/label mismatch; unrelated drift; reset 대상 확대; project mismatch; migration/readiness 실패; template 0/복수/비승인; owner 파일 변경 필요; secret 출력; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=사용자가 보존 데이터가 없다고 승인한 범위에서 labels가 answervice인 exact backend/app-postgres와 migration relation이 없는 answervice_app-postgres-data만 제거·재생성할 수 있다. 다른 project/container/volume, down -v, reset script, prune는 금지한다. 허용 경로 commit·junhee push만 허용한다.
+AUTO_FAIL_CONDITIONS=empty proof 실패; exact identity 불일치; unrelated drift; migration 우회; template 수동 보정; readiness 일부만 PASS; secret 출력; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=empty proof와 exact target을 먼저 고정한다. readiness 제품 계약 차단은 R4 owner REWORK로 반환한다.
 ```
 
 ### R2 · R2-W5-F5
@@ -1748,6 +1782,7 @@ RESULT_CI=branch 31363391107 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.46 | 2026-08-10 21:00 | F17에서 신규 answervice 빈 volume의 credential mismatch를 확인해 exact empty volume만 current env로 재초기화하고 internal readiness를 검증하는 R1-W5-F18 발행 |
 | v5.45 | 2026-08-10 20:40 | F16의 explicit project·DB 격리는 성공했으나 backend 18000 충돌을 확인해 DB와 backend를 내부 전용으로 기동하고 migration·readiness를 검증하는 R1-W5-F17 발행 |
 | v5.44 | 2026-08-10 20:25 | F15에서 infra env의 COMPOSE_PROJECT_NAME이 root project를 덮는 위험을 확인해 원상 복구하고 explicit answervice project identity와 DB host publish 격리를 함께 검증하는 R1-W5-F16 발행 |
 | v5.43 | 2026-08-10 20:10 | R1-W5-F14를 기존 hotel-synthetic-db의 15432 host port 점유로 BLOCKED 처리하고 answervice app-postgres를 내부 DNS 전용으로 격리해 exact runtime을 재검증하는 R1-W5-F15 REWORK 발행 |

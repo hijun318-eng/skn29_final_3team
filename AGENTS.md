@@ -35,13 +35,15 @@
 - 각 역할은 자기 소유 경로와 승인된 카드 범위 안에서 독립 구현한다. fake adapter와 versioned fixture를 사용해 다른 역할의 미완료 구현을 기다리지 않는다.
 - `CHECKPOINT_GATES`는 계약·증거만 확인하는 지점이며 그 자체만으로 개인 branch의 전체 구현을 병합하지 않는다. 현재 일정에서는 I0를 Wave 1의 checkpoint로 사용한다.
 - 역할별 중단 조건은 `TARGET_INTEGRATION_GATE` 도달, `TASK_CARD_RANGE` 완료, `ALLOWED_PATHS` 밖 변경 필요, 계약·보안 충돌, 필수 검증 실패다. 중단 시 변경·검증·handoff를 보고하고 통합 판정을 기다린다.
+- `BLOCKED`는 기존 카드의 무단 재개가 아니라 R1의 owner-scoped `REWORK` 묶음으로 해제한다. 차단 해소에 둘 이상의 역할이 필요하면 파일 소유권을 섞은 공동 카드 대신 같은 checkpoint를 공유하는 역할별 묶음을 병렬 발행하고 생산자 contract를 소비자보다 먼저 통합한다.
+- 카드 발행 뒤 `dev`가 앞서가도 `BASE_SHA`부터 최신 `dev`까지의 변경과 역할 변경 경로가 겹치지 않으면 기존 token으로 계속할 수 있다. 경로가 겹치거나 기준 이력이 갈라진 경우에만 최신 SHA로 묶음을 재발행한다.
 - I0 전에 역할·branch·P0/P1/P2·backend·frontend·파일 소유권을 확정하고 `I0_DECISION_VERSION`을 기록한다.
 - I1에서 metric·time·schema·API·model·Report·health 계약과 versioned fixture를 동결한다. 실제 연동 전에는 fake adapter와 fixture로 병렬 개발한다.
 - Gate는 `I0 기준 정렬 → I1 Contract Freeze → I2 Deterministic Slice → I3 General LLM → I4 Reporting → I5 Release` 순서로 통과한다.
 - 작업 상태는 `READY`, `IN_PROGRESS`, `REVIEW`, `BLOCKED`, `MERGED_DEV`, `VERIFIED_GATE`를 구분한다. fixture 통과나 `dev` 병합만으로 통합 Gate 통과라고 쓰지 않는다.
-- 통합은 `Wave 1 I1 기반 계약 → Wave 2 I2 deterministic slice → Wave 3 I3 핵심 기능 → Wave 4 I4~I5 Reporting·Release` 네 번을 기본으로 한다. 달력상 checkpoint 도달이나 부분 구현만으로 병합하지 않고, 역할 범위의 소비 가능 산출물·검증·handoff가 준비된 뒤 `R1 → R2 → R3 → R4 → R5 → R1 follow-up` 순서로 통합한다.
+- 통합은 `Wave 1 I1 기반 계약 → Wave 2 I2 deterministic slice → Wave 3 I3 핵심 기능 → Wave 4 I4~I5 Reporting·Release` 네 번을 기본으로 한다. 달력상 checkpoint 도달이나 부분 구현만으로 병합하지 않는다. 의존성이 있는 변경은 생산자→소비자→R1 follow-up 순서로, 의존성이 없는 역할 묶음은 병렬 검증·독립 통합한다.
 - R1이 목표 통합 Gate 결과와 다음 Wave 실행 묶음을 승인하기 전에는 다음 Wave의 카드 범위로 넘어가지 않는다.
-- 병합마다 생산자 test와 소비자 contract test를 실행한다. 실행하지 않은 검증은 `Not Run`, 외부 환경 부족은 `Blocked`로 기록한다.
+- 개인 branch에서는 역할 대상 test와 선언된 소비자 contract test를 실행하고, `dev`에서는 전체 test를 실행한다. Release Gate에서는 전체 test와 승인된 E2E를 다시 실행한다. 실행하지 않은 검증은 `Not Run`, 외부 환경 부족은 `Blocked`로 기록한다.
 - 2026-08-28 기능 동결, 2026-09-02 code·data·model·prompt·policy 동결, 2026-09-03 최종 발표를 기준으로 한다.
 
 ## 응답과 작업 원칙

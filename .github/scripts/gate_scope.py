@@ -31,6 +31,7 @@ ROLES = {
     "minji": "R5",
 }
 TERMINAL_STATUSES = {"MERGED_DEV", "VERIFIED_GATE"}
+ACTIVE_STATUSES = {"READY", "IN_PROGRESS", "REVIEW"}
 TEST_STATUSES = {"PASS", "FAIL", "NOT_RUN", "BLOCKED", "REVIEW_REQUIRED"}
 # NOT_RUN은 아직 manifest를 제출하지 않은 작업 중 branch의 정상 상태다.
 # manifest가 제출됐지만 필수 검증·change request·잔여 위험·외부 승인이 남으면
@@ -93,7 +94,7 @@ def terminal_transition_scope(
 
 def allowed_paths(bundle: dict[str, str], branch: str) -> list[str]:
     report = REPORTS[branch]
-    if bundle["STATUS"] in TERMINAL_STATUSES:
+    if bundle["STATUS"] in TERMINAL_STATUSES | {"BLOCKED"}:
         return [report, *SHARED_NON_PRODUCT_PATHS]
     return [
         *(part.strip() for part in bundle["ALLOWED_PATHS"].split(";")),
@@ -150,6 +151,44 @@ def git_sha(ref: str) -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def latest_dev_sha() -> str:
+    result = subprocess.run(
+        ["git", "rev-parse", "--verify", "origin/dev"],
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip() if result.returncode == 0 else git_sha("HEAD")
+
+
+def is_ancestor(ancestor: str, descendant: str) -> bool:
+    return subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        capture_output=True,
+    ).returncode == 0
+
+
+def base_sync_status(
+    bundle: dict[str, str],
+    current_base: str,
+    head: str,
+    role_changed_paths: list[str],
+) -> tuple[str, list[str]]:
+    if bundle["STATUS"] not in ACTIVE_STATUSES:
+        return "N/A", []
+    if is_ancestor(current_base, head):
+        return "SYNCED", []
+
+    issued_base = bundle["BASE_SHA"]
+    if not is_ancestor(issued_base, current_base):
+        return "DIVERGED", ["bundle BASE_SHA is not an ancestor of the current base"]
+
+    upstream_paths = set(changed_paths(issued_base, current_base, "direct"))
+    overlap = sorted(upstream_paths.intersection(role_changed_paths))
+    if overlap:
+        return "REFRESH_REQUIRED", overlap
+    return "SAFE_STALE", []
 
 
 def result_sha_matches_checked_head(
@@ -463,7 +502,7 @@ def next_gate_lines(text: str, target_gate: str) -> list[str]:
     lines = [
         f"## {target_gate} issue readiness",
         f"- Previous gate: `{previous_gate}`",
-        f"- Latest dev SHA: `{git_sha('HEAD')}`",
+        f"- Latest dev SHA: `{latest_dev_sha()}`",
         f"- Result: `{'READY_TO_ISSUE' if ready else 'BLOCKED'}`",
     ]
     if blockers:
@@ -474,6 +513,29 @@ def next_gate_lines(text: str, target_gate: str) -> list[str]:
         lines.append(f"- Planned candidates: {', '.join(candidates)}")
     lines.append("- READY publication remains an R1 manual decision.")
     return lines
+
+
+def inferred_next_gate(text: str) -> str:
+    current = [
+        bundle
+        for branch in ROLES
+        if (bundle := current_bundle(text, branch)) is not None
+    ]
+    active_targets = [
+        bundle["TARGET_INTEGRATION_GATE"]
+        for bundle in current
+        if bundle["STATUS"] not in TERMINAL_STATUSES
+        and re.fullmatch(r"I[2-5]", bundle.get("TARGET_INTEGRATION_GATE", ""))
+    ]
+    if active_targets:
+        return min(active_targets, key=lambda gate: int(gate[1:]))
+    verified = [
+        int(bundle["TARGET_INTEGRATION_GATE"][1:])
+        for bundle in current
+        if bundle["STATUS"] == "VERIFIED_GATE"
+        and re.fullmatch(r"I[1-5]", bundle.get("TARGET_INTEGRATION_GATE", ""))
+    ]
+    return f"I{min(max(verified, default=1) + 1, 5)}"
 
 
 def dashboard_lines(text: str) -> list[str]:
@@ -491,7 +553,7 @@ def dashboard_lines(text: str) -> list[str]:
         if bundle["STATUS"] == "REVIEW":
             action = "Review submission"
         elif bundle["STATUS"] == "BLOCKED":
-            action = "Resolve blocker"
+            action = "Issue owner-scoped REWORK bundle"
         elif handoff == "REVIEW_REQUIRED":
             action = "Review exception"
         elif bundle["STATUS"] in TERMINAL_STATUSES:
@@ -528,14 +590,17 @@ def main() -> int:
     parser.add_argument("--mode", choices=("direct", "merge-base"))
     parser.add_argument("--write-handoff", action="store_true")
     parser.add_argument("--dashboard", action="store_true")
-    parser.add_argument("--next-gate", choices=("I2", "I3", "I4", "I5"))
+    parser.add_argument("--next-gate", choices=("auto", "I2", "I3", "I4", "I5"))
     args = parser.parse_args()
 
     text = LEDGER.read_text(encoding="utf-8")
     if args.dashboard:
         lines = dashboard_lines(text)
         if args.next_gate:
-            lines.extend(["", *next_gate_lines(text, args.next_gate)])
+            target_gate = (
+                inferred_next_gate(text) if args.next_gate == "auto" else args.next_gate
+            )
+            lines.extend(["", *next_gate_lines(text, target_gate)])
         write_summary(lines)
         print("\n".join(lines))
         return 0
@@ -588,6 +653,7 @@ def main() -> int:
     scope_bundle = terminal_transition_scope(bundle, previous)
     patterns = allowed_paths(scope_bundle, args.branch)
     violations = [path for path in changed if not path_allowed(path, patterns)]
+    base_sync, base_notes = base_sync_status(bundle, args.base, args.head, changed)
     handoff, handoff_notes = handoff_status(
         bundle,
         args.branch,
@@ -596,7 +662,9 @@ def main() -> int:
     )
     result = (
         "FAIL"
-        if violations or handoff in BLOCKING_HANDOFF_STATUSES
+        if violations
+        or base_sync in {"DIVERGED", "REFRESH_REQUIRED"}
+        or handoff in BLOCKING_HANDOFF_STATUSES
         else "PASS"
     )
     lines = [
@@ -604,6 +672,7 @@ def main() -> int:
         f"- Branch: `{args.branch}`",
         f"- Bundle: `{bundle['EXECUTION_BUNDLE_ID']}`",
         f"- Status: `{bundle['STATUS']}`",
+        f"- Base sync: `{base_sync}`",
         f"- Changed paths: {len(changed)}",
         f"- Result: `{result}`",
         f"- Handoff: `{handoff}`",
@@ -611,6 +680,9 @@ def main() -> int:
     if violations:
         lines.extend(["", "### Paths outside ALLOWED_PATHS"])
         lines.extend(f"- `{path}`" for path in violations)
+    if base_notes:
+        lines.extend(["", "### Base sync notes"])
+        lines.extend(f"- `{note}`" for note in base_notes)
     if handoff_notes:
         lines.extend(["", "### Handoff notes"])
         lines.extend(f"- {note}" for note in handoff_notes)

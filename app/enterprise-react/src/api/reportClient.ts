@@ -17,7 +17,7 @@ import { createUuid } from "../utils/createUuid.ts";
 type Fetch = typeof fetch;
 const env = import.meta.env ?? {};
 
-export const usesFixtureReportClient = env.VITE_REPORT_MODE === "fixture";
+export const usesFixtureReportClient = env.VITE_REPORT_MODE === "fixture" || Boolean(!env.VITE_REPORT_MODE && env.DEV);
 
 export function createLatestRequestGuard() {
   let latest = 0;

@@ -1,6 +1,20 @@
 import { OPENAPI_VERSION, type AnalysisRun, type AnalysisViewState } from "../contracts/analysis.ts";
+import { catalogSources, I3_SCHEMA_VERSION, I3_SEED_VERSION } from "./catalogFixtures.ts";
 
 export const FIXTURE_VERSION = "UI-FIXTURE-v1.0.0";
+
+function sourceReference(sourceId: string, name: string) {
+  const source = catalogSources.find((item) => item.sourceId === sourceId);
+  if (!source) throw new Error(`Unknown catalog source: ${sourceId}`);
+  return {
+    name,
+    urn: source.datasetUrn,
+    fqn: source.fqn,
+    schemaVersion: I3_SCHEMA_VERSION,
+    seedVersion: I3_SEED_VERSION,
+    status: "success" as const,
+  };
+}
 
 const baseRun: AnalysisRun = {
   conversationId: "conv-demo-001",
@@ -9,30 +23,9 @@ const baseRun: AnalysisRun = {
   status: "success",
   question: "7월 마지막 주 객실 매출 감소 구간을 찾고, 예약 채널과 연회 일정 변화를 함께 비교해줘.",
   sources: [
-    {
-      name: "PMS reservations",
-      urn: "urn:answervice:dataset:pms.public.reservations",
-      fqn: "pms.public.reservations",
-      schemaVersion: "1.0.0",
-      seedVersion: "20260729",
-      status: "success",
-    },
-    {
-      name: "CRM membership history",
-      urn: "urn:answervice:dataset:crm.public.membership_history",
-      fqn: "crm.public.membership_history",
-      schemaVersion: "1.0.0",
-      seedVersion: "20260729",
-      status: "success",
-    },
-    {
-      name: "Banquet bookings",
-      urn: "urn:answervice:dataset:banquet.public.banquet_bookings",
-      fqn: "banquet.public.banquet_bookings",
-      schemaVersion: "1.0.0",
-      seedVersion: "20260729",
-      status: "success",
-    },
+    sourceReference("pms", "Hotel PMS"),
+    sourceReference("crm", "Membership CRM"),
+    sourceReference("banquet", "Banquet Sales"),
   ],
   artifact: {
     artifactId: "00000000-0000-0000-0000-0000000002f9",

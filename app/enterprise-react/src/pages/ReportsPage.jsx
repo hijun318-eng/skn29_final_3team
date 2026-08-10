@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowLeft, Ban, BarChart3, Check, ChevronRight, CircleCheck,
   CircleX, Clock3, Columns2, Download, FileOutput, FilePlus2, GripVertical,
@@ -6,7 +6,9 @@ import {
   ShieldAlert, Sparkles, Table2, Target, Trash2, Type,
 } from "lucide-react";
 import { SYNTHETIC_META } from "../data/enterpriseDemoData";
-import { normalizeDraftLayout, serializeDraftLayout } from "../contracts/report";
+import { createLatestRequestGuard, createReportClient, ReportApiError, usesFixtureReportClient, withBusy } from "../api/reportClient";
+import { normalizeDraftLayout, serializeDraftLayout, toReportBlockRequest } from "../contracts/report";
+import { createUuid } from "../utils/createUuid";
 
 const REPORTS = [
   { id: 1, type: "주간", period: "07/21~07/27", status: "초안", author: "박준희", updated: "10분 전 수정" },
@@ -159,7 +161,7 @@ function RunHistoryFixture() {
     <div className="report-run-layout">
       <nav className="report-run-list" aria-label="fixture 실행 이력">{RUN_HISTORY.map((run) => {
         const Icon = run.icon;
-        return <button type="button" aria-pressed={selectedRunId === run.id} aria-label={`${run.label} fixture 상세 보기`} onClick={() => selectRun(run.id)} key={run.id}><Icon size={17} aria-hidden="true" /><span><b>{run.label}</b><small>{run.status}</small></span><ChevronRight size={14} aria-hidden="true" /></button>;
+        return <button type="button" aria-pressed={selectedRunId === run.id} aria-label={`${run.label} fixture 상세 보기`} onClick={() => selectRun(run.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectRun(run.id); } }} key={run.id}><Icon size={17} aria-hidden="true" /><span><b>{run.label}</b><small>{run.status}</small></span><ChevronRight size={14} aria-hidden="true" /></button>;
       })}</nav>
       <section className="report-run-detail" ref={detailRef} tabIndex={-1} role="status" aria-live="polite" aria-atomic="true">
         {selectedRun ? <><header><SelectedIcon size={19} aria-hidden="true" /><div><small>{selectedRun.id}</small><h3>{selectedRun.label}</h3></div></header><p>{selectedRun.summary}</p><ul>{selectedRun.blocks.map(([name, status]) => <li key={name}><span>{name}</span><b>{status}</b></li>)}</ul><button disabled>{["queued", "running"].includes(selectedRun.status) ? "fixture 처리 중 · 조작 불가" : "실제 작업 연결 대기"}</button></> : <div className="report-run-placeholder"><Info size={20} aria-hidden="true" /><p>실행 상태를 선택하면 상세와 블록별 상태가 여기에 표시됩니다.</p></div>}
@@ -173,7 +175,142 @@ function SectionHeading({ number, eyebrow, title, description, meta }) {
   return <header className="legacy-section-heading"><span>{number}</span><div><p>{eyebrow}</p><h2>{title}</h2>{description && <small>{description}</small>}</div>{meta && <b>{meta}</b>}</header>;
 }
 
-export function ReportsPage() {
+function apiError(error) {
+  if (error instanceof ReportApiError && error.status === 401) return `401 · 로그인이 필요합니다. ${error.message}`;
+  if (error instanceof ReportApiError && error.status === 403) return `403 · REPORT_ADMIN 권한이 필요합니다. ${error.message}`;
+  return error instanceof ReportApiError ? `${error.status} · ${error.code} · ${error.message}`
+    : error instanceof Error ? error.message : "Report API 요청에 실패했습니다.";
+}
+
+function ReportApiPage() {
+  const client = useMemo(() => createReportClient(), []);
+  const nextDefinitionRequest = useMemo(() => createLatestRequestGuard(), []);
+  const [definitions, setDefinitions] = useState([]);
+  const [definitionState, setDefinitionState] = useState("loading");
+  const [runs, setRuns] = useState([]);
+  const [runState, setRunState] = useState("loading");
+  const [selectedDefinition, setSelectedDefinition] = useState(null);
+  const [blocks, setBlocks] = useState([]);
+  const [selectedRun, setSelectedRun] = useState(null);
+  const [command, setCommand] = useState(null);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [error, setError] = useState("");
+
+  const upsertDefinition = (definition) => {
+    setDefinitions((current) => [...current.filter((item) => !(
+      item.definitionId === definition.definitionId && item.version === definition.version
+    )), definition].sort((a, b) => a.definitionId.localeCompare(b.definitionId) || a.version - b.version));
+    setSelectedDefinition(definition);
+    setBlocks(definition.blocks);
+  };
+  const loadDefinitions = async () => {
+    setDefinitionState("loading");
+    try {
+      const items = await client.listDefinitions();
+      setDefinitions(items);
+      setDefinitionState(items.length ? "ready" : "empty");
+      setError("");
+    } catch (nextError) {
+      setError(apiError(nextError));
+      setDefinitionState("error");
+    }
+  };
+  const loadRuns = async () => {
+    setRunState("loading");
+    try {
+      const items = await client.listRuns();
+      setRuns(items);
+      setRunState(items.length ? "ready" : "empty");
+      setError("");
+    } catch (nextError) {
+      setError(apiError(nextError));
+      setRunState("error");
+    }
+  };
+  useEffect(() => { void loadDefinitions(); void loadRuns(); }, []);
+
+  const mutate = async (action, isCurrent = () => true) => {
+    setError("");
+    try { return await withBusy(action, (delta) => setPendingCount((count) => count + delta)); }
+    catch (nextError) { if (isCurrent()) setError(apiError(nextError)); return null; }
+  };
+  const createDefinition = async () => {
+    const definition = await mutate(() => client.createDefinition({
+      definition_id: createUuid(),
+      title: "새 Report 정의",
+      blocks: [{
+        block_id: createUuid(), title: "보고서 내용", columns: 12, type: "text",
+        x: 0, y: 0, w: 12, h: 2, content: "검토할 보고서 내용을 입력하세요.",
+      }],
+    }));
+    if (definition) { upsertDefinition(definition); setDefinitionState("ready"); }
+  };
+  const openDefinition = async (definition) => {
+    const isCurrent = nextDefinitionRequest();
+    const current = await mutate(() => client.getDefinition(definition.definitionId, definition.version), isCurrent);
+    if (current && isCurrent()) upsertDefinition(current);
+  };
+  const saveDraft = async () => {
+    if (!selectedDefinition || selectedDefinition.status !== "draft") return;
+    const saved = await mutate(() => client.replaceDraftBlocks(
+      selectedDefinition.definitionId, selectedDefinition.version, blocks.map(toReportBlockRequest),
+    ));
+    if (saved) upsertDefinition(saved);
+  };
+  const approve = async () => {
+    if (!selectedDefinition || selectedDefinition.status !== "draft") return;
+    const approved = await mutate(() => client.approveDefinition(
+      selectedDefinition.definitionId, selectedDefinition.version, new Date().toISOString(),
+    ));
+    if (approved) upsertDefinition(approved);
+  };
+  const createNextDraft = async () => {
+    if (!selectedDefinition || selectedDefinition.status !== "approved") return;
+    const draft = await mutate(() => client.createNextDraft(selectedDefinition.definitionId, selectedDefinition.version));
+    if (draft) upsertDefinition(draft);
+  };
+  const queueManualRun = async () => {
+    if (!selectedDefinition || selectedDefinition.status !== "approved") return;
+    const receipt = await mutate(() => client.createManualRun({
+      definition_id: selectedDefinition.definitionId,
+      version: selectedDefinition.version,
+      as_of: new Date().toISOString(),
+      idempotency_key: createUuid(),
+    }));
+    if (receipt) setCommand(receipt);
+  };
+  const openRun = async (run) => {
+    const detail = await mutate(() => client.getRun(run.runId));
+    if (detail) setSelectedRun(detail);
+  };
+
+  return <div className="page-content report-api-page">
+    <div className="meta-strip"><Info size={13} />ACTUAL LOCAL REPORT API<span>REPORT_ADMIN owner scope</span><span>worker 미연결</span></div>
+    <header className="card report-api-header"><div><p>REPORT API</p><h2>서버 Report 정의와 실행 이력</h2><small>API 응답만 표시하며 오류 시 fixture로 전환하지 않습니다.</small></div><div><button onClick={() => void loadDefinitions()} disabled={definitionState === "loading"}><RotateCcw size={14} />정의 새로고침</button><button className="primary" onClick={() => void createDefinition()} disabled={pendingCount > 0}><FilePlus2 size={14} />초안 생성</button></div></header>
+    {error && <p className="report-api-state error" role="alert" aria-live="assertive">{/^40[13]/.test(error) ? <ShieldAlert size={17} /> : <AlertTriangle size={17} />}{error}</p>}
+    <section className="report-api-grid">
+      <article className="card report-api-panel"><header><h3>정의·버전</h3><small>서버 title·version·status</small></header>
+        {definitionState === "loading" && <p className="report-api-state" role="status" aria-live="polite"><LoaderCircle size={17} />Report 정의를 불러오는 중입니다.</p>}
+        {definitionState === "error" && <p className="report-api-state error" role="alert"><ShieldAlert size={17} />Report 정의를 불러오지 못했습니다.</p>}
+        {definitionState === "empty" && <p className="report-api-state"><Inbox size={17} />서버에 표시할 Report 정의가 없습니다.</p>}
+        {definitionState === "ready" && <div className="report-api-list">{definitions.map((definition) => <button aria-pressed={selectedDefinition?.definitionId === definition.definitionId && selectedDefinition?.version === definition.version} onClick={() => void openDefinition(definition)} key={`${definition.definitionId}-${definition.version}`}><span><b>{definition.title}</b><small>{definition.definitionId}</small></span><em>v{definition.version} · {definition.status}</em></button>)}</div>}
+      </article>
+      <article className="card report-api-panel"><header><h3>실행 이력</h3><button onClick={() => void loadRuns()} disabled={runState === "loading"}><RotateCcw size={13} />새로고침</button></header>
+        {runState === "loading" && <p className="report-api-state" role="status" aria-live="polite"><LoaderCircle size={17} />실제 Run History를 불러오는 중입니다.</p>}
+        {runState === "error" && <p className="report-api-state error" role="alert"><AlertTriangle size={17} />Run History를 불러오지 못했습니다.</p>}
+        {runState === "empty" && <p className="report-api-state"><Inbox size={17} />서버에 생성된 Report run이 없습니다.</p>}
+        {runState === "ready" && <div className="report-api-list">{runs.map((run) => <button aria-pressed={selectedRun?.runId === run.runId} onClick={() => void openRun(run)} key={run.runId}><span><b>{run.status}</b><small>{run.runId}</small></span><em>definition v{run.definitionVersion}</em></button>)}</div>}
+      </article>
+    </section>
+    {selectedDefinition && <section className="card report-api-editor" aria-live="polite"><header><div><small>{selectedDefinition.definitionId}</small><h3>{selectedDefinition.title} · v{selectedDefinition.version}</h3><p>{selectedDefinition.status}{selectedDefinition.approvedAt ? ` · ${selectedDefinition.approvedAt}` : ""}</p></div><div>{selectedDefinition.status === "draft" ? <><button onClick={() => void saveDraft()} disabled={pendingCount > 0}><Save size={14} />초안 저장</button><button className="primary" onClick={() => void approve()} disabled={pendingCount > 0}><Check size={14} />명시적 승인</button></> : <><button onClick={() => void createNextDraft()} disabled={pendingCount > 0}><FilePlus2 size={14} />다음 초안</button><button className="primary" onClick={() => void queueManualRun()} disabled={pendingCount > 0}><Clock3 size={14} />수동 실행 요청</button></>}</div></header>
+      <div className="report-api-blocks">{blocks.map((block) => <article key={block.id}><header><b>{block.title}</b><small>{block.type} · x{block.x + 1} y{block.y + 1} · {block.w}×{block.h}</small></header>{block.type === "text" ? <textarea aria-label={`${block.title} 내용`} disabled={selectedDefinition.status !== "draft"} value={block.content || ""} onChange={(event) => setBlocks((current) => current.map((item) => item.id === block.id ? { ...item, content: event.target.value } : item))} /> : <p>Artifact {block.artifactId}<br />Query {block.queryId || "—"}</p>}</article>)}</div>
+    </section>}
+    {command && <section className="card report-command-receipt" role="status" aria-live="polite"><Clock3 size={18} /><div><b>서버가 수동 실행 명령을 queued로 접수했습니다.</b><p>command {command.command_id} · run_id가 없으며 worker 진행 상태를 나타내지 않습니다.</p></div></section>}
+    {selectedRun && <section className="card report-run-actual" aria-live="polite"><header><div><small>{selectedRun.runId}</small><h3>실제 run · {selectedRun.status}</h3></div><span>definition v{selectedRun.definitionVersion}</span></header><p>as_of {selectedRun.asOf} · policy {selectedRun.policyVersion}</p><ul>{selectedRun.blocks.map((block) => <li key={block.blockId}><span>{block.blockId}</span><b>{block.status}</b></li>)}</ul></section>}
+  </div>;
+}
+
+function FixtureReportsPage() {
   const [view, setView] = useState("list");
   const [reports, setReports] = useState(savedReports);
   const [reportSearch, setReportSearch] = useState("");
@@ -309,4 +446,8 @@ export function ReportsPage() {
 
     <footer className="card legacy-methodology"><Info size={15} /><div><b>분석 기준 및 한계</b><p>PMS reservations, CRM membership history, Banquet bookings의 합성 데이터를 사용했으며 seed 20260729, schema 1.0.0, as_of 2026-07-30을 기록했습니다. DataHub URN과 Trino FQN으로 출처를 추적하며, 관측된 변화는 인과관계나 미래 값으로 해석하지 않습니다.</p></div><button className="primary" disabled><Send size={14} />공유 연결 대기</button></footer><Toast message={toast} />
   </div>;
+}
+
+export function ReportsPage() {
+  return usesFixtureReportClient ? <FixtureReportsPage /> : <ReportApiPage />;
 }

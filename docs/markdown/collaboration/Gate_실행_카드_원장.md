@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.8 |
-| 문서 기준일 | 2026-08-10 10:56 |
+| 버전 | v5.9 |
+| 문서 기준일 | 2026-08-10 11:00 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F2` | `READY` | `junhee` |
+| R1 | `R1-W5-F2` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F1` | `READY` | `seung` |
 | R3 | `R3-W5-F1` | `READY` | `daesung` |
 | R4 | `R4-W5-F1` | `READY` | `jaehong` |
@@ -509,7 +509,7 @@ R1_REVIEW_CONDITIONS=migration graph·두 upgrade path·schema 동등성·backen
 ### R1 · R1-W5-F2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -535,6 +535,8 @@ STOP_CONDITIONS=설치되지 않은 version으로 변경; 과거 보고 이력 �
 EXTERNAL_ACTION_PERMISSION=정책 문서·Gate 원장·handoff·R1 보고와 승인된 commit·push·dev 병합·seung fast-forward 동기화만 허용한다. plugin 설치·외부 비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=AGENTS와 설치 가이드 version 불일치; full 외 mode; 과거 이력 변경; R2 bootstrap 차단 지속; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=v4.9.0 단일 기준, LLM 스냅샷의 참고자료 경계, 문서·scope 검사, R2-W5-F1 READY와 branch CI를 제출한다. dev 통합 뒤 seung fast-forward·bootstrap READY는 통합 후 검증한다.
+RESULT_SHA=0bd2aae2ca4687dc197f5a9f3e70c591fd24c2b1
+RESULT_CI=branch 31348559427 PASS
 ```
 
 ## 현재 통합 확인 사항
@@ -547,6 +549,7 @@ R1_REVIEW_CONDITIONS=v4.9.0 단일 기준, LLM 스냅샷의 참고자료 경계,
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.9 | 2026-08-10 11:00 | R1-W5-F2의 Ponytail v4.9.0 정합성·LLM 참고 스냅샷·handoff와 source CI를 확인해 MERGED_DEV 전환 |
 | v5.8 | 2026-08-10 10:56 | 동시 생성된 LLM 사용 현황을 현재 코드·설정 근거의 legacy 참고 스냅샷으로 보존하도록 R1-W5-F2 범위 보완 |
 | v5.7 | 2026-08-10 10:52 | Ponytail 실제 설치본 v4.9.0과 팀 정책을 일치시키는 R1-W5-F2 발행 |
 | v5.6 | 2026-08-10 10:45 | R1-W5-F1·R5-W4-F5 source CI와 handoff를 확인하고 dev 통합 결과를 기록해 MERGED_DEV 전환 |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.18 |
-| 문서 기준일 | 2026-08-10 12:47 |
+| 버전 | v5.19 |
+| 문서 기준일 | 2026-08-10 12:55 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -23,9 +23,9 @@
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
 | R1 | `R1-W5-F5` | `MERGED_DEV` | `junhee` |
-| R2 | `R2-W5-F3` | `MERGED_DEV` | `seung` |
-| R3 | `R3-W5-F2` | `READY` | `daesung` |
-| R4 | `R4-W5-F4` | `READY` | `jaehong` |
+| R2 | `R2-W5-F4` | `READY` | `seung` |
+| R3 | `R3-W5-F2` | `BLOCKED` | `daesung` |
+| R4 | `R4-W5-F4` | `MERGED_DEV` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
@@ -480,7 +480,7 @@ RESULT_CI=branch 31349329692 PASS
 ### R3 · R3-W5-F2
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -507,6 +507,30 @@ STOP_CONDITIONS=backend G2 완화 필요; compiled dataset 재생성·RunPod·mo
 EXTERNAL_ACTION_PERMISSION=local evaluator·AI test·handoff·R3 보고와 승인된 commit·daesung push만 허용한다. model/RunPod/Trino container 실행·데이터 재생성·외부 비용·secret은 금지한다.
 AUTO_FAIL_CONDITIONS=MODEL literal filter 재허용; Context 밖 parameter; unsafe string 치환; dataset 무단 변경; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=dev CI 31352194575의 3개 METRIC_FILTER_MISSING 실패를 parameterized evaluator·test로 해소하고 AI 전체·branch CI와 정확한 handoff를 제출한다.
+BLOCKED_REASON=기존 evaluator 범위만으로는 string·boolean·number·date typed contract, period_end_exclusive, R4 단일 binder를 확정할 수 없다. R2 생산자와 R4 소비자 계약이 선행되어야 하므로 token을 폐기하고 로컬 부분 변경은 stash로 보존한다.
+```
+
+### R3 · R3-W5-F3
+
+```text
+STATUS=PLANNED
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F3
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=R2 typed registry와 R4 Context·G2·binder 통합
+TASK_CARD_RANGE=R3-04·05·14 Node2 typed parameter 출력·endpoint evaluator 정합화
+CURRENT_TASK_CARD_ID=N/A — R2-W5-F4와 R4-W5-F5 선행
+BASE_BRANCH=dev
+BASE_SHA=N/A — R4 consumer 통합 SHA로 발행
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/ai/contracts/node_io.v0.1.json; src/ai/node2.py; src/ai/training/evaluate_endpoint.py; src/ai/training/verify_case_specs.py; tests/ai/test_contracts.py; tests/ai/test_node2.py; tests/ai/test_training_verification.py; tests/ai/test_validation_v2.py; tests/ai/test_eval_runner.py; handoffs/R3-W5-F3.json; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; compiled/train/validation/Gold dataset; RunPod·외부 endpoint; root Compose/env/CI; dependency; secret
+ACCEPTANCE_CRITERIA=Node2는 R2/R4가 동결한 string·boolean·number·date parameter contract와 period_start·period_end_exclusive·required_filter_N 이름을 그대로 출력한다. generated/expected plan은 Context의 placeholder·type·value와 일치해야 하며 literal·OR·unknown placeholder·값 변조를 허용하지 않는다. R3 내부에 별도 실행 binder를 복제하지 않고 R4 공개 binder 계약을 소비하며 dataset 불일치는 별도 재생성 카드로 반환한다.
+STOP_CONDITIONS=R2/R4 계약 미통합; backend 완화·별도 binder·dataset 재생성 필요; model·RunPod·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+R1_REVIEW_CONDITIONS=R2 생산자→R4 소비자 통합 뒤 최신 BASE_SHA·token으로 READY 전환하며 Node2→G2→binder 조합 회귀는 별도 R1 통합 카드에서 검증한다.
 ```
 
 ### R4 · R4-W5-F1
@@ -733,6 +757,29 @@ STOP_CONDITIONS=host free RAM 8GB 미만; 다른 project 변경 필요; secret �
 R1_REVIEW_CONDITIONS=현재 free RAM 4.67GB이므로 READY 발행과 runtime start를 금지한다. 메모리 확보 결정 뒤 실행 전 재점검한다.
 ```
 
+### R1 · R1-W5-F7
+
+```text
+STATUS=PLANNED
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F7
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=R2 typed/3-source producer·R4 binder consumer·R3 Node2 consumer merged dev
+TASK_CARD_RANGE=R1-08·09 Node2→G2→binder 조합 회귀·대표 3-source 제품 API E2E
+CURRENT_TASK_CARD_ID=N/A — R2-W5-F4→R4-W5-F5→R3-W5-F3 선행
+BASE_BRANCH=dev
+BASE_SHA=N/A — 세 소비자 통합 SHA로 발행
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=tests/integration/**; handoffs/R1-W5-F7.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 제품 구현; model·RunPod; DataHub runtime PASS 위조; root env·secret; dependency
+ACCEPTANCE_CRITERIA=하나의 테스트에서 Node2 출력→R4 G2 placeholder+typed parameter 검증→단일 binder를 통과한다. 이어 G120-046 질문을 Business Request→승인 PMS·CRM·POS Context→Node2 SQL→G2→실제 Trino→G3→표·차트·설명·근거까지 제품 API로 실행하고 하나의 request_id로 trace한다. 권한 없음·승인 밖 JOIN·필수 필터 누락·repair 정확히 1회·timeout/cancel·빈/대용량 결과·masking·Gold 수치 비교는 구현된 계약 범위만 실제 결과로 기록하고 미구현은 후속 카드로 남긴다.
+STOP_CONDITIONS=생산자/소비자 미통합; fixture-only 성공; 제품 경로 수정 필요; DataHub runtime·RunPod·비용·secret 필요; 필수 검증 실패
+R1_REVIEW_CONDITIONS=조합 회귀와 대표 3-source 실제 API E2E가 모두 PASS한 뒤에만 Analysis persistence·SQLGlot G2/G3·Report worker 단계로 진행한다.
+```
+
 ### R2 · R2-W5-F3
 
 ```text
@@ -765,6 +812,38 @@ AUTO_FAIL_CONDITIONS=R1 checkpoint 전 ingestion; v1.7 fake PASS; binding 불일
 R1_REVIEW_CONDITIONS=현재 RAM blocker 동안 offline validator·Asset Binding schema/test를 완료하고 runtime evidence는 BLOCKED로 제출한다. R1 health 뒤 실제 trace만 후속 증거 commit으로 허용한다.
 RESULT_SHA=49a34ccba8cd4d05a71a9d6564c150f44d1aaee8
 RESULT_CI=branch 31351264193 PASS; runtime evidence BLOCKED/NOT_RUN
+```
+
+### R2 · R2-W5-F4
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F4
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=typed metric registry and approved PMS·CRM·POS Context producer
+TASK_CARD_RANGE=R2-15 typed required-filter 계약·대표 3-source Context fixture·deterministic Gold SQL
+CURRENT_TASK_CARD_ID=R2-15
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=cea8ad9b456950bffd649b9a0fb8d9b135ee58ad
+START_POINT=origin/seung을 최신 dev cea8ad9로 fast-forward한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R2-W5-F4@cea8ad9
+CONTRACT_VERSION=I4-CONTEXT-v2.3.0-DRAFT; I5-3SOURCE-CONTEXT-v1.0.0-DRAFT
+ALLOWED_PATHS=src/data/analytics_context_contract.i4.v2.json; tests/data/test_analytics_context_contract.py; infrastructure/database/sql/queries/i5_gold_pms_crm_pos_context.sql; src/data/pms_crm_pos_context.i5.v1.json; tests/data/test_pms_crm_pos_context.py; handoffs/R2-W5-F4.json; docs/markdown/daily_reports/seung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/ai/**; frontend/**; DataHub recipe·runtime evidence; DDL·seed·Compose·env·CI; Trino image/version; secret
+HANDOFF_MANIFEST=handoffs/R2-W5-F4.json
+ACCEPTANCE_CRITERIA=required_filter를 field·operator·value_type·value로 정의하고 value_type은 string·boolean·number·date만 허용한다. date는 ISO YYYY-MM-DD, number는 bool을 제외한 유한 수이며 parameter 이름은 period_start·period_end_exclusive·required_filter_N 순서로 고정한다. 승인된 G120-046 질문과 join=pms_crm_pos_gold_revenue_month_v1을 재사용해 PMS·CRM·POS asset·column·filter·property_id+month grain을 명시한 versioned Context fixture를 만든다. SYNTHETIC_HOTEL_001과 2026-05~06을 고정하고 source별 선집계 뒤 결합한 single read-only Trino SQL의 row count·합계·canonical hash·SQL hash를 실제 실행으로 기록한다. 기존 I3 fixture·평가 manifest·DataHub runtime 상태는 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_TYPED_FILTER;AC2_PARAMETER_NAMES;AC3_APPROVED_SCENARIO;AC4_THREE_SOURCE_CONTEXT;AC5_PREAGG_JOIN;AC6_TRINO_HASH;AC7_EXISTING_IMMUTABLE;AC8_NO_FAKE_RUNTIME
+TEST_COMMANDS=python -m json.tool src/data/analytics_context_contract.i4.v2.json; python -m json.tool src/data/pms_crm_pos_context.i5.v1.json; python -m pytest -p no:cacheprovider tests/data/test_analytics_context_contract.py tests/data/test_pms_crm_pos_context.py -q; python -m pytest -p no:cacheprovider tests/data -q; local Trino read-only SQL 실행과 hash 검증; python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_JSON;T2_TARGET;T3_DATA;T4_TRINO;T5_SCOPE;T6_DIFF
+STOP_CONDITIONS=승인 질문·JOIN·source 의미 변경 필요; R4/R3 경로 변경 필요; raw-row source 결합·증폭; DDL·seed·recipe 변경; PMS·CRM·POS·Trino unhealthy; 기존 결과와 설명 없는 불일치; DataHub runtime PASS 필요; 비용·secret·외부 전송; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local synthetic PMS·CRM·POS와 Trino 476의 read-only 조회, 허용 경로 commit·seung push만 승인한다. DataHub lifecycle·DDL·seed·외부 서비스·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=type 미검증; period_end 사용; dynamic date; raw-row join; 승인 밖 asset/column; hash 위조; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=typed registry와 대표 3-source producer를 같은 R2 카드 안에서 순서대로 완료하고 실제 Trino 결과·target/data 회귀·handoff·branch CI를 제출한다.
 ```
 
 ### R4 · R4-W5-F2
@@ -838,7 +917,7 @@ RESULT_CI=branch 31352114861 PASS
 ### R4 · R4-W5-F4
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -858,6 +937,8 @@ ACCEPTANCE_CRITERIA=현행 migration graph의 single root·single head와 공식
 TEST_COMMANDS=migration compatibility target test; backend 전체 test; alembic heads; 격리 empty/known/unknown revision 검증; compileall; gate_scope; git diff --check
 STOP_CONDITIONS=R4-W5-F3 미통합; 실제 legacy DB 보존 필요; migration·entrypoint·schema·data 변경 필요; stamp/drop; multi-head; 외부 DB·비용·secret·scope 밖 변경
 R1_REVIEW_CONDITIONS=Google Docs의 R4→R1 재발행 요청을 부분 수용했다. 기존 F2 번호는 Context/G2에 사용됐으므로 F4로 재번호화했고, 제품 변경 없이 native Alembic 지원·차단 경계의 결정론적 증거만 제출한다.
+RESULT_SHA=3977f3554de8f3ef82334c976a3bfb360fbc37b0
+RESULT_CI=branch 31352566492 PASS
 ```
 
 ### R4 · R4-W5-F5
@@ -868,6 +949,31 @@ ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
 EXECUTION_BUNDLE_ID=R4-W5-F5
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=R2-W5-F4 typed registry·3-source Context producer merged dev
+TASK_CARD_RANGE=R4-04·05 typed Context·G2 parameter map·single Trino binder
+CURRENT_TASK_CARD_ID=N/A — R2-W5-F4 통합 뒤 발행
+BASE_BRANCH=dev
+BASE_SHA=N/A — R2 producer 통합 SHA로 발행
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=app/backend/app/adapters/contract_model.py; app/backend/app/adapters/i2_data_platform.py; app/backend/app/services/context_builder.py; app/backend/app/services/pipeline_support.py; tests/backend/test_context_builder.py; tests/backend/test_i2_data_platform.py; tests/backend/test_production_model.py; tests/backend/test_analysis_pipeline.py; handoffs/R4-W5-F5.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/data/**; src/ai/**; migration·OpenAPI·route; frontend; root Compose/env/CI; dependency; secret
+ACCEPTANCE_CRITERIA=R2의 string·boolean·number·date required_filter와 period_start·period_end_exclusive를 Context model이 손실 없이 보존한다. G2는 SQL placeholder와 parameter map을 Context의 name·type·value와 함께 검증하고 누락·unknown·중복·literal·OR·값 변조를 fail-closed한다. 단일 Trino binder는 string escaping, boolean, bool 제외 finite number, ISO date만 안전하게 bind하고 실행 직전까지 parameterized SQL을 유지한다. 승인된 PMS·CRM·POS Context의 FQN·column·JOIN만 허용하며 기존 entitlement·1회 repair 경계를 유지한다.
+ACCEPTANCE_IDS=AC1_TYPED_CONTEXT;AC2_PERIOD_EXCLUSIVE;AC3_G2_PAIR_VALIDATION;AC4_SINGLE_BINDER;AC5_TYPE_ALLOWLIST;AC6_THREE_SOURCE_POLICY;AC7_FAIL_CLOSED;AC8_REGRESSION
+TEST_COMMANDS=target backend typed Context/G2/binder tests; backend 전체 test; compileall; gate_scope merge-base; git diff --check
+STOP_CONDITIONS=R2 producer 미통합; AST dependency·migration·OpenAPI 변경 필요; R3/data 경로 변경; arbitrary literal/type coercion 필요; 외부 서비스·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+R1_REVIEW_CONDITIONS=R2 producer 통합 뒤 최신 BASE_SHA·token으로 READY 전환하며 SQLGlot AST와 G3·Analysis persistence는 후속 카드로 분리한다.
+```
+
+### R4 · R4-W5-F10
+
+```text
+STATUS=PLANNED
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F10
 TARGET_INTEGRATION_GATE=I5
 CHECKPOINT_GATES=Metadata·Context Registry scope decision
 TASK_CARD_RANGE=R4-06·07·15·18 Context Registry runtime proposal decomposition
@@ -944,11 +1050,14 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 | ID | 상태 | 확인 결과 | 다음 결정 |
 |---|---|---|---|
 | E2E-DATA-01 | RESOLVED | versioned-trino 시연 Context와 Template을 YTD_SYNTHETIC으로 한정하고 일별 객실 매출을 집계했다. 브라우저에서 Frontend→Backend→G2→Trino→G3→Artifact가 READY로 완료됐으며 61행, 2,505,043,200 KRW, 기간 2026-05-01~2026-07-01, query 20260805_101833_00023_i4vd9를 확인했다. | 운영 real 모드와 학습 계약의 ACTUAL은 유지한다. 이후 R2가 합성 상태 명칭을 변경하면 versioned-trino 계약과 함께 갱신한다. |
+| I5-PRIORITY-01 | IN_PROGRESS | R3와 R4의 required filter 계약은 string·boolean 중심이며 `period_end`/`period_end_exclusive`와 실행 binder가 불일치한다. 승인 3-source 질문 G120-046과 Gold hash는 있으나 제품 소비용 PMS·CRM·POS Context fixture가 없다. | R2 typed registry+3-source producer → R4 Context/G2/binder → R3 Node2/evaluator → R1 조합 회귀+실제 API E2E 순으로 통합한다. 이 경로 통과 전 RunPod와 Node2 기능 확장을 보류한다. |
+| I5-BACKLOG-02 | PLANNED | Analysis는 기존 template/request/query/artifact 테이블이 있으나 persistence·조회·재실행 API가 없고, G2는 regex 기반, G3는 증폭·불변식·redaction이 부족하다. Report는 worker·schedule이 없고 실패 block 필드가 실행 전 실패를 표현하기 어렵다. | 기존 테이블 재사용 계약 결정 → Analysis persistence → SQLGlot G2 → R2 실행 증적/R4 G3 → Report v1.2 worker → R5 partial UI → schedule → Golden 보안·성능 검증 순으로 owner-scoped 카드 발행한다. |
 
 ## 변경 내역
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.19 | 2026-08-10 12:55 | R4 Alembic 검증을 MERGED_DEV로 전환하고, typed required-filter·대표 PMS/CRM/POS Context를 R2 생산자부터 R4·R3 소비자와 R1 실제 API E2E 순으로 재편; Analysis·SQLGlot G2/G3·Report worker·schedule은 선행 E2E 뒤 단계화 |
 | v5.18 | 2026-08-10 12:47 | dev CI 31352194575에서 R4 G2 parameter 경계와 R3 literal evaluator/test 불일치로 3건 실패한 원인을 확인하고, backend 경계를 완화하지 않는 R3-W5-F2 REWORK를 병렬 발행 |
 | v5.17 | 2026-08-10 12:40 | R4 Asset Binding consumer가 PENDING/NOT_RUN을 성공으로 오표시하지 않는 결과와 CI를 MERGED_DEV로 전환하고, 이전 R4 legacy migration 요청을 제품 migration 변경 없는 R4-W5-F4 검증 카드로 READY 발행 |
 | v5.16 | 2026-08-10 12:31 | R4 Metadata·Context Registry 대규모 요청은 번호 충돌·R2 runtime NOT_RUN·migration/OpenAPI 미확정·외부 dirty 작업공간 때문에 제안 그대로 반려하고 F5 PLANNED로 분해 순서를 기록; R1 first-start와 R5 Audit UI도 선행조건부 PLANNED로 등록 |

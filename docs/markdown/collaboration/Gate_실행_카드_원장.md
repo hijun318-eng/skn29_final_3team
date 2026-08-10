@@ -663,7 +663,7 @@ START_POINT=origin/junhee를 최신 dev af8b11db15734bf6f047bdd709a890a3ff18a19a
 DIRECTIVE=REWORK
 DIRECTIVE_TOKEN=R1-W5-F5@af8b11d
 CONTRACT_VERSION=R1-SERVICE-v1.1.0-RUNTIME-DRAFT; DataHub v1.7.0; Trino 476 frozen
-ALLOWED_PATHS=infrastructure/database/scripts/upgrade-datahub-runtime.ps1; infrastructure/database/scripts/rollback-datahub-runtime.ps1; tests/integration/test_datahub_runtime_upgrade_scripts.py; handoffs/R1-W5-F5.json; docs/markdown/daily_reports/junhee/일일보고.md
+ALLOWED_PATHS=infrastructure/database/scripts/upgrade-datahub-runtime.ps1; infrastructure/database/scripts/rollback-datahub-runtime.ps1; tests/integration/test_datahub_runtime_upgrade_scripts.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F5.json; docs/markdown/daily_reports/junhee/일일보고.md
 FORBIDDEN_PATHS=infrastructure/database/datahub/recipes/**; src/data/**; app/backend/**; Trino image/version; source DB·app DB container/volume; 다른 Compose project/container/volume; tracked env·secret
 HANDOFF_MANIFEST=handoffs/R1-W5-F5.json
 ACCEPTANCE_CRITERIA=Compose config와 label에서 project=hotel-synthetic-db의 DataHub 7개 service와 전용 volume 3개를 exact name으로 식별하고 prefix/glob·project down·down -v·prune를 사용하지 않는다. 현재 대상 DataHub runtime/volume 0개는 BACKUP_NOT_APPLICABLE_NEW_RUNTIME으로 기록하며 가짜 backup PASS를 만들지 않는다. local env의 필수 secret 5개는 값 출력 없이 존재·최소 길이만 확인하고 필요 시 암호학적 난수로 로컬 파일에만 생성한다. pinned image digest·port·RAM·다른 project snapshot을 preflight하고, RAM 부족 또는 다른 project 변경 없이는 안전하지 않으면 실제 start를 BLOCKED로 남긴다. 안전 조건 충족 시 dependency healthy→system-update exit 0→GMS/management/frontend health 순서만 허용하며 실패 시 이번 실행에서 생성한 exact DataHub service만 제거하고 volume은 기본 보존한다.
@@ -727,7 +727,7 @@ START_POINT=origin/jaehong을 최신 dev af8b11db15734bf6f047bdd709a890a3ff18a19
 DIRECTIVE=REWORK
 DIRECTIVE_TOKEN=R4-W5-F2@af8b11d
 CONTRACT_VERSION=I4-CONTEXT-v2.2.0-DRAFT; ASSET-BINDING-v1.0.0-DRAFT; OPENAPI-v1.1.0-DRAFT
-ALLOWED_PATHS=app/backend/app/adapters/i2_data_platform.py; app/backend/app/services/context_builder.py; app/backend/app/services/execution_control.py; tests/backend/test_i2_data_platform.py; tests/backend/test_context_builder.py; tests/backend/test_execution_control.py; handoffs/R4-W5-F2.json; docs/markdown/daily_reports/jaehong/일일보고.md
+ALLOWED_PATHS=app/backend/app/adapters/i2_data_platform.py; app/backend/app/services/context_builder.py; app/backend/app/services/execution_control.py; app/backend/app/services/pipeline_support.py; tests/backend/test_i2_data_platform.py; tests/backend/test_context_builder.py; tests/backend/test_execution_control.py; tests/backend/test_analysis_pipeline.py; handoffs/R4-W5-F2.json; docs/markdown/daily_reports/jaehong/일일보고.md
 FORBIDDEN_PATHS=src/data/**; src/ai/**; route/OpenAPI schema; migration; frontend; root Compose/env; dependency; secret
 HANDOFF_MANIFEST=handoffs/R4-W5-F2.json
 ACCEPTANCE_CRITERIA=live DataHub health가 없을 때는 승인된 versioned analytics Context binding만 소비하고 PMS·CRM 원천 5개 고정 반환을 실제 제품 성공처럼 표시하지 않는다. entitlement 후 허용된 serving.analytics View URN/FQN만 Context Package에 포함하며 권한 없는 View·binding status 비정상·version 불일치는 제외한다. G2는 Context 내부 FQN과 parameterized required filter만 허용하고 외부 FQN·raw identifier를 차단한다. R2 runtime evidence가 아직 없으면 live mode는 fail-closed하고 versioned mode contract test만 PASS로 기록한다.

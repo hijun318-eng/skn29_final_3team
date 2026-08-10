@@ -253,8 +253,14 @@ ALLOWED_PATHS=.github/**
             self.assertEqual("a" * 40, gate_scope.latest_dev_sha())
 
     def test_blocked_dashboard_requests_scoped_rework(self) -> None:
-        dashboard = "\n".join(gate_scope.dashboard_lines(self.ledger))
-        self.assertIn("R5-W4-F4", dashboard)
+        ledger = """```text
+EXECUTION_BUNDLE_ID=R5-W9-TEST
+STATUS=BLOCKED
+PERSONAL_BRANCH=minji
+ALLOWED_PATHS=app/enterprise-react/**
+```"""
+        dashboard = "\n".join(gate_scope.dashboard_lines(ledger))
+        self.assertIn("R5-W9-TEST", dashboard)
         self.assertIn("Issue owner-scoped REWORK bundle", dashboard)
 
     def test_valid_handoff_with_external_work_needs_review(self) -> None:

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.11 |
-| 문서 기준일 | 2026-08-10 11:06 |
+| 버전 | v5.15 |
+| 문서 기준일 | 2026-08-10 12:18 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,10 +22,10 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F5` | `READY` | `junhee` |
-| R2 | `R2-W5-F3` | `READY` | `seung` |
+| R1 | `R1-W5-F5` | `MERGED_DEV` | `junhee` |
+| R2 | `R2-W5-F3` | `MERGED_DEV` | `seung` |
 | R3 | `R3-W5-F1` | `MERGED_DEV` | `daesung` |
-| R4 | `R4-W5-F2` | `READY` | `jaehong` |
+| R4 | `R4-W5-F3` | `READY` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
@@ -647,7 +647,7 @@ RESULT_CI=branch 31350128426 python·document·scope PASS, compose expected prod
 ### R1 · R1-W5-F5
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -674,12 +674,14 @@ STOP_CONDITIONS=host free RAM 8GB 미만; 필수 secret 생성/검증 실패; ta
 EXTERNAL_ACTION_PERMISSION=사용자가 pinned DataHub v1.7.0 최초 기동을 승인했다. exact target DataHub image 확인·service 생성/정지/재생성·새 전용 volume 생성과 local secret 생성만 허용한다. 다른 project·기존 source/app DB·Trino·외부 전송·비용·secret 출력은 금지한다.
 AUTO_FAIL_CONDITIONS=glob/project-wide down; 다른 project drift; secret 출력; runtime 조건 미충족인데 PASS; Trino drift; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=현재는 unrelated data-hub-test를 유지하면 RAM 부족이므로 offline script·secret readiness까지 진행하고 runtime start는 BLOCKED 근거를 제출한다. 메모리 확보 후에만 실제 health checkpoint를 발행한다.
+RESULT_SHA=3a5f1af4c6c6c12281885586cd6c36e3a5c860b4
+RESULT_CI=branch 31351161858 PASS; runtime start NOT_RUN(BLOCKED_INSUFFICIENT_MEMORY)
 ```
 
 ### R2 · R2-W5-F3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -706,12 +708,14 @@ STOP_CONDITIONS=R1 runtime health 없음; recipe 변경 필요; 승인 밖 URN/F
 EXTERNAL_ACTION_PERMISSION=offline validator·contract·test 구현과 R1 health 뒤 local synthetic ingestion/search/read-only Trino metadata 조회만 허용한다. runtime lifecycle·다른 project·외부 전송·비용·secret 출력은 금지한다.
 AUTO_FAIL_CONDITIONS=R1 checkpoint 전 ingestion; v1.7 fake PASS; binding 불일치; lineage 없음; secret 노출; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=현재 RAM blocker 동안 offline validator·Asset Binding schema/test를 완료하고 runtime evidence는 BLOCKED로 제출한다. R1 health 뒤 실제 trace만 후속 증거 commit으로 허용한다.
+RESULT_SHA=49a34ccba8cd4d05a71a9d6564c150f44d1aaee8
+RESULT_CI=branch 31351264193 PASS; runtime evidence BLOCKED/NOT_RUN
 ```
 
 ### R4 · R4-W5-F2
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -738,6 +742,64 @@ STOP_CONDITIONS=R2 contract/schema 변경 필요; live 결과 위조; entitlemen
 EXTERNAL_ACTION_PERMISSION=local versioned Context adapter·backend tests와 허용 경로 commit·jaehong push만 승인한다. DataHub lifecycle·외부 endpoint·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=hardcoded source만 성공 반환; 권한 없는 View 포함; 외부 FQN 허용; live fake PASS; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=versioned binding 기반 analytics View Context와 entitlement·G2 allow/block·live fail-closed·backend 회귀·정확한 handoff와 branch CI를 제출한다.
+RESULT_SHA=65ef3d0b5d6419f654a5f1f167d7bfd45c9a4fa1
+RESULT_CI=branch 31351378232 PASS
+```
+
+### R4 · R4-W5-F3
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F3
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=R2 Asset Binding producer-consumer status consistency
+TASK_CARD_RANGE=R4-04 Asset Binding health 소비자 fail-closed REWORK
+CURRENT_TASK_CARD_ID=R4-04
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=459fa3c
+START_POINT=origin/jaehong을 최신 dev 459fa3c로 fast-forward한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W5-F3@459fa3c
+CONTRACT_VERSION=I4-CONTEXT-v2.2.0-DRAFT; ASSET-BINDING-v1.0.0-DRAFT
+ALLOWED_PATHS=app/backend/app/adapters/i2_data_platform.py; tests/backend/test_i2_data_platform.py; tests/backend/test_context_builder.py; handoffs/R4-W5-F3.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/data/**; migration·entrypoint·OpenAPI·route; frontend; root Compose/env; dependency; secret
+HANDOFF_MANIFEST=handoffs/R4-W5-F3.json
+ACCEPTANCE_CRITERIA=R2의 src/data/asset_binding_health.i5.v1.json을 읽기 전용 생산자 계약으로 소비해 binding_id·URN·FQN·version·status를 Context 후보와 교차 검증한다. PENDING_RUNTIME_VERIFICATION·verified_at null·provenance NOT_RUN인 binding을 VERIFIED로 재작성하거나 Context 성공에 포함하지 않으며, 현재 runtime BLOCKED에서는 versioned/live 모두 fail-closed한다. URN/FQN/version 불일치·누락·중복은 차단하고 실제 R2 runtime evidence가 PASS로 전환된 경우에만 기존 entitlement·G2 경계를 유지한 채 승인 binding을 노출한다.
+ACCEPTANCE_IDS=AC1_R2_CONTRACT_CONSUME;AC2_NO_PENDING_AS_VERIFIED;AC3_VERSION_MATCH;AC4_FAIL_CLOSED;AC5_ENTITLEMENT_G2_REGRESSION
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_i2_data_platform.py tests/backend/test_context_builder.py -q; python -m pytest -p no:cacheprovider tests/backend -q; python -m compileall -q app/backend; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND;T3_COMPILE;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=R2 contract 변경 필요; PENDING을 성공으로 노출; runtime PASS 위조; migration·OpenAPI·route 변경 필요; 외부 서비스·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local contract consumer·backend test·handoff·R4 보고와 승인된 commit·jaehong push만 허용한다. DataHub lifecycle·외부 endpoint·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=PENDING binding을 VERIFIED로 표시; R2 contract 불일치 무시; entitlement/G2 회귀; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=R2 binding 상태를 그대로 존중하는 fail-closed consumer와 target/backend 회귀·정확한 handoff·branch CI를 제출한다.
+```
+
+### R4 · R4-W5-F4
+
+```text
+STATUS=PLANNED
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F4
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=official Alembic support boundary and unknown revision fail-closed evidence
+TASK_CARD_RANGE=R4-03 공식 Alembic 지원 경로·unknown revision 검증
+CURRENT_TASK_CARD_ID=N/A — R4-W5-F3 통합 뒤 발행
+BASE_BRANCH=dev
+BASE_SHA=N/A — R4-W5-F3 통합 SHA로 발행
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=app/backend/README.md; tests/backend/test_migration_compatibility.py; handoffs/R4-W5-F4.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=기존 migration·entrypoint·env·schema·data; stamp·drop; 외부 DB·secret
+ACCEPTANCE_CRITERIA=현행 migration graph의 single root·single head와 공식 known revision 목록을 검증하고 격리 empty DB 및 20260731_03에서 stamp 없이 head upgrade가 성공해야 한다. 존재하지 않는 20260803_03은 native Alembic non-zero로 backend 기동 전에 차단되고 운영 판정 LEGACY_REVISION_UNSUPPORTED로 기록한다. README는 지원 범위를 공식 migration revision으로 한정하며 추정 migration·자동 stamp·drop·기존 schema/data 변경을 금지한다.
+TEST_COMMANDS=migration compatibility target test; backend 전체 test; alembic heads; 격리 empty/known/unknown revision 검증; compileall; gate_scope; git diff --check
+STOP_CONDITIONS=R4-W5-F3 미통합; 실제 legacy DB 보존 필요; migration·entrypoint·schema·data 변경 필요; stamp/drop; multi-head; 외부 DB·비용·secret·scope 밖 변경
+R1_REVIEW_CONDITIONS=Google Docs의 R4→R1 재발행 요청을 부분 수용했다. 기존 F2 번호는 Context/G2에 사용됐으므로 F4로 예약하며 F3 통합 후 최신 BASE_SHA로 READY 전환한다.
 ```
 
 ### R5 · R5-W5-F1
@@ -783,6 +845,7 @@ RESULT_CI=branch 31350163587 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.15 | 2026-08-10 12:18 | R1 DataHub 안전 기동 도구와 R2 offline runtime·binding, R4 Context/G2 결과·CI를 MERGED_DEV로 전환; R2 PENDING binding의 R4 VERIFIED 오표시를 막는 F3 REWORK를 우선 발행하고 R4의 legacy migration 요청은 F4 PLANNED로 부분 수용 |
 | v5.14 | 2026-08-10 11:52 | R3 required-filter 결과와 source CI를 확인해 MERGED_DEV 전환; legacy schema 근거 없는 R4 migration 카드를 차단하고 R1 DataHub runtime preflight·R2 offline runtime/binding validator·R4 versioned Context consumer 카드를 병렬 발행 |
 | v5.13 | 2026-08-10 11:43 | R2 DataHub v1.7.0 config producer와 R1 root verifier의 결합 CI, R5 목업 기반 frontend source CI·handoff를 확인해 R1·R2·R5 카드를 MERGED_DEV로 전환 |
 | v5.12 | 2026-08-10 11:23 | 공식 DataHub v1.7.0 최신화를 R1 root 계약과 R2 consumer config 카드로 분리 발행하고 Trino 476·runtime resource를 동결; 기존 R2 Gold 카드는 보완된 후속 REWORK를 위해 차단 |

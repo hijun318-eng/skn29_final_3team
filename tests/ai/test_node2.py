@@ -1,6 +1,8 @@
 import copy
 import json
+import sys
 import unittest
+from datetime import date
 from pathlib import Path
 
 from src.ai.node2 import generate_sql, repair_sql
@@ -9,6 +11,13 @@ from tests.ai.test_contracts import VALID_PAYLOADS
 
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "app" / "backend"))
+
+from app.adapters.contract_model import ContractModelAdapter
+from app.adapters.i2_data_platform import I2DataPlatformAdapter
+from app.contracts import AnalysisRequest, RequestContext
+from app.services.context_builder import ContextPackageBuilder
+from app.services.pipeline_support import PipelineSupport
 
 
 def derived_payload():
@@ -239,6 +248,110 @@ class Node2Tests(unittest.TestCase):
         self.assertEqual(1, corrected["attempt"])
         self.assertEqual(expected["sql"], corrected["corrected_sql"])
         self.assertEqual(expected["parameters"], corrected["parameters"])
+
+    def test_actual_context_passes_g2_binder_and_one_repair(self):
+        adapter = I2DataPlatformAdapter(
+            "http://trino:8080", "node2-composition", require_live_metadata=False
+        )
+        support = PipelineSupport(adapter, ContextPackageBuilder())
+        request = AnalysisRequest(
+            question="5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘."
+        )
+        context = RequestContext(as_of=date(2026, 7, 1))
+        assets = adapter.search_assets(
+            request.question, context.model_dump(mode="json")
+        )
+        package = support.build_context(request, context, assets)
+        model_context = ContractModelAdapter._context_package(
+            {"package": package, "context": context}
+        )
+        response = generate_sql(
+            {"question_id": "g120-046-composition", "context_package": model_context}
+        )
+        plan = ContractModelAdapter._plan(
+            response, "sql", package.parameter_bindings
+        )
+
+        self.assertIsNone(support.g2_violation(plan, package))
+        bound = adapter._bind_parameters(plan["sql"], plan["parameters"])
+        self.assertNotRegex(bound, r":(?:period|required_filter_)\w*")
+
+        rejected_sql = plan["sql"].replace(
+            'AND o."void_flag" = :required_filter_9', ""
+        )
+        self.assertEqual(
+            "METRIC_FILTER_MISSING",
+            support.g2_violation({**plan, "sql": rejected_sql}, package),
+        )
+        for bypass in (
+            plan["sql"].replace(
+                'o."void_flag" = :required_filter_9', 'o."void_flag" = 0'
+            ),
+            plan["sql"].replace(
+                'AND o."void_flag" = :required_filter_9',
+                'OR o."void_flag" = :required_filter_9',
+            ),
+        ):
+            self.assertEqual(
+                "METRIC_FILTER_MISSING",
+                support.g2_violation({**plan, "sql": bypass}, package),
+            )
+        mutated = {
+            **plan["parameters"],
+            "required_filter_7": {"value_type": "number", "value": 1},
+        }
+        self.assertEqual(
+            "PARAMETERS_INVALID",
+            support.g2_violation({**plan, "parameters": mutated}, package),
+        )
+        self.assertEqual(
+            "PARAMETERS_INVALID",
+            support.g2_violation(
+                {**plan, "parameters": {**plan["parameters"], "unknown": "value"}},
+                package,
+            ),
+        )
+        outside_join = [
+            {**item, "join_ids": ["outside_join"]} for item in plan["references"]
+        ]
+        self.assertEqual(
+            "UNAPPROVED_JOIN",
+            support.g2_violation({**plan, "references": outside_join}, package),
+        )
+        duplicate = {
+            **response,
+            "parameters": [*response["parameters"], response["parameters"][-1]],
+        }
+        with self.assertRaisesRegex(ValueError, "unique"):
+            ContractModelAdapter._plan(
+                duplicate, "sql", package.parameter_bindings
+            )
+
+        repaired = repair_sql(
+            {
+                "trace_id": "g120-046-composition",
+                "attempt": 1,
+                "rejected_sql": rejected_sql,
+                "context_package": model_context,
+                "normalized_error_code": "METRIC_FILTER_MISSING",
+                "repair_scope": ["sql", "references", "parameters"],
+            }
+        )
+        repaired_plan = ContractModelAdapter._plan(
+            repaired, "corrected_sql", package.parameter_bindings
+        )
+        self.assertIsNone(support.g2_violation(repaired_plan, package))
+        with self.assertRaises(ContractError):
+            repair_sql(
+                {
+                    "trace_id": "g120-046-composition",
+                    "attempt": 2,
+                    "rejected_sql": rejected_sql,
+                    "context_package": model_context,
+                    "normalized_error_code": "METRIC_FILTER_MISSING",
+                    "repair_scope": ["sql"],
+                }
+            )
 
 
 if __name__ == "__main__":

@@ -16,8 +16,6 @@ const NAVIGATION = [
   { id: "connections", path: PAGE_PATHS.connections, label: "DB 연결 관리", icon: Database, group: "admin" },
 ];
 
-const SHOW_ADMIN_NAV = true;
-
 export function AppSidebar({ page, onNavigate, open, onClose }) {
   const renderGroup = (group, title) => (
     <>
@@ -55,7 +53,7 @@ export function AppSidebar({ page, onNavigate, open, onClose }) {
         </div>
         <nav>
           {renderGroup("workspace", "WORKSPACE")}
-          {SHOW_ADMIN_NAV && renderGroup("admin", "ADMINISTRATION")}
+          {renderGroup("admin", "ADMINISTRATION")}
         </nav>
         <div className="organization">
           <Building2 size={20} />

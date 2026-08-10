@@ -24,9 +24,9 @@ export function CatalogPage({ onManageConnections }) {
       <section className="card federation-card">
         <SectionTitle
           eyebrow={I3_DATA_CONTRACT_VERSION}
-          title="분석 가능한 데이터 카탈로그"
-          description="DataHub에 등록된 5개 합성 데이터셋의 업무 영역, 원천 엔진, Trino FQN과 최종 기준 시각을 확인합니다."
-          action={<button className="secondary" onClick={onManageConnections}>연결 구성 확인</button>}
+          title="5개 합성 데이터 원천 Catalog"
+          description="R2 I3 fixture의 source·engine·DataHub URN·Trino FQN·watermark를 그대로 표시합니다."
+          action={<button className="secondary" onClick={onManageConnections}>연결 상세</button>}
         />
         <div className="catalog-metrics" aria-label="R2 I3 카탈로그 요약">
           <span><small>logical source</small><b>{catalogSources.length}</b><em>fixture 제공값</em></span>
@@ -48,8 +48,8 @@ export function CatalogPage({ onManageConnections }) {
       <section className="card source-status-card">
         <SectionTitle
           eyebrow="DATAHUB → TRINO TRACE"
-          title="데이터셋 출처 및 최신성"
-          description="보고서 근거로 사용되는 DataHub URN, Trino FQN, 데이터 건수와 watermark를 추적합니다."
+          title="원천 자산과 ingestion 상태"
+          description="검색은 현재 I3 fixture 안에서만 수행하며 상태를 연결 성공으로 재판정하지 않습니다."
         />
         <label className="search-box">
           <Search size={14} />
@@ -57,8 +57,8 @@ export function CatalogPage({ onManageConnections }) {
         </label>
         <div className="data-table source-status-table">
           <div className="table-row table-head">
-            <span>데이터 원천</span><span>엔진</span><span>수집 ID</span><span>구성 상태</span>
-            <span>데이터 건수</span><span>기준 시각 UTC</span><span>DataHub · Trino 추적</span>
+            <span>source</span><span>engine</span><span>ingestion</span><span>status</span>
+            <span>rows</span><span>watermark UTC</span><span>asset</span>
           </div>
           {sources.map((source) => (
             <div className="table-row" key={source.sourceId}>

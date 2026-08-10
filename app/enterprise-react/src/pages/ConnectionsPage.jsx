@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Database, ShieldCheck } from "lucide-react";
-import { MetaStrip, SectionTitle, StatusBadge } from "../components/common/EnterpriseUi";
+import { MetaStrip, StatusBadge } from "../components/common/EnterpriseUi";
 import {
   catalogSources,
   I3_DATA_CONTRACT_VERSION,
@@ -17,11 +17,6 @@ export function ConnectionsPage() {
   return (
     <div className="page-content">
       <MetaStrip meta={{ synthetic: true, seed: I3_SEED_VERSION, schemaVersion: I3_SCHEMA_VERSION }} />
-      <SectionTitle
-        eyebrow="SOURCE CONFIGURATION"
-        title="데이터 소스 연결 구성"
-        description="원천별 DataHub·Trino 매핑과 ingestion 설정을 확인합니다. CONFIG_VALIDATED는 실시간 접속 성공이 아니라 연결 구성이 검증됐다는 의미입니다."
-      />
       <div className="management-toolbar">
         <label className="scenario-picker">
           <span>source</span>
@@ -50,7 +45,7 @@ export function ConnectionsPage() {
               <div><dt>watermark UTC</dt><dd>{source.watermark}</dd></div>
               <div><dt>catalog SHA-256</dt><dd><code>{source.sha256}</code></dd></div>
             </dl>
-            <footer><span><ShieldCheck size={13} />구성 검증 완료 · synthetic · read only</span></footer>
+            <footer><span><ShieldCheck size={13} />synthetic · read only</span></footer>
           </article>
         ))}
       </section>

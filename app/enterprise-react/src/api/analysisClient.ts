@@ -64,7 +64,7 @@ export function createHttpAnalysisClient(
 export function createMockAnalysisClient(): AnalysisClient {
   return {
     async analyze(question, conversationId, fixtureKey) {
-      await new Promise((resolve) => window.setTimeout(resolve, 2200));
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
       const selected = structuredClone(analysisFixtures[fixtureKey]);
       return {
         ...selected,

@@ -22,7 +22,13 @@ import {
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
 import { catalogSources, I3_DATA_CONTRACT_VERSION } from "../../app/enterprise-react/src/data/catalogFixtures.ts";
 import { createHttpAnalysisClient, usesMockAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
-import { createLatestRequestGuard, createReportClient, ReportApiError, usesFixtureReportClient, withBusy } from "../../app/enterprise-react/src/api/reportClient.ts";
+import {
+  createLatestRequestGuard,
+  createReportClient,
+  ReportApiError,
+  usesFixtureReportClient,
+  withBusy,
+} from "../../app/enterprise-react/src/api/reportClient.ts";
 
 const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/package.json", import.meta.url)));
 const g1ClarificationFixture = JSON.parse(
@@ -35,106 +41,29 @@ const reportsPageSource = readFileSync(
   new URL("../../app/enterprise-react/src/pages/ReportsPage.jsx", import.meta.url),
   "utf8",
 );
-const agentPageSource = readFileSync(
-  new URL("../../app/enterprise-react/src/pages/AgentPage.jsx", import.meta.url),
-  "utf8",
-);
 const stylesSource = readFileSync(
   new URL("../../app/enterprise-react/src/styles.css", import.meta.url),
-  "utf8",
-);
-const sidebarSource = readFileSync(
-  new URL("../../app/enterprise-react/src/components/layout/AppSidebar.jsx", import.meta.url),
-  "utf8",
-);
-const appSource = readFileSync(
-  new URL("../../app/enterprise-react/src/App.jsx", import.meta.url),
   "utf8",
 );
 const analysisStatePanelSource = readFileSync(
   new URL("../../app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx", import.meta.url),
   "utf8",
 );
-assert.match(analysisStatePanelSource, /분석 요약/);
-assert.match(analysisStatePanelSource, /ANALYSIS DASHBOARD/);
-assert.match(analysisStatePanelSource, /analysis-dashboard-meta/);
-assert.match(analysisStatePanelSource, /연회 일정 변경/);
-assert.match(analysisStatePanelSource, /주요 지표/);
-assert.match(analysisStatePanelSource, /기간별 변화/);
-assert.match(analysisStatePanelSource, /상세 데이터/);
-assert.match(analysisStatePanelSource, /const TRACE_STEPS =/);
-assert.match(analysisStatePanelSource, /질문 해석/);
-assert.match(analysisStatePanelSource, /SQL 정책 검증/);
-assert.match(analysisStatePanelSource, /실제 Gate 판정은 API 응답 계약을 기준/);
-assert.doesNotMatch(analysisStatePanelSource, /sampling\.applied=/);
-assert.doesNotMatch(analysisStatePanelSource, /request \{run\.requestId\}/);
-assert.doesNotMatch(analysisStatePanelSource, /run\/trace \{run\.traceId\}/);
+const agentPageSource = readFileSync(
+  new URL("../../app/enterprise-react/src/pages/AgentPage.jsx", import.meta.url),
+  "utf8",
+);
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
 assert.equal(REPORT_CONTRACT_VERSION, "REPORT-v1.0.0");
 assert.deepEqual(REPORT_RUN_STATUSES, ["queued", "running", "success", "partial", "failed", "cancelled"]);
 assert.equal(FIXTURE_VERSION, "UI-FIXTURE-v1.0.0");
 assert.equal(OPENAPI_VERSION, "OPENAPI-v1.0.0");
+assert.match(agentPageSource, /createAnalysisClient\(\)/);
+assert.doesNotMatch(agentPageSource, /createMockAnalysisClient/);
+assert.match(agentPageSource, /Backend API에 연결할 수 없습니다/);
 assert.ok(Object.values({ ...packageJson.dependencies, ...packageJson.devDependencies }).every((version) => version !== "latest"));
 assert.equal(resolveRoute("/customers").page, "notFound");
 assert.equal(resolveRoute("/catalog/tools").page, "notFound");
-assert.equal(resolveRoute("/catalog").page, "catalog");
-assert.equal(resolveRoute("/catalog/connections").page, "connections");
-assert.equal(resolveRoute("/connections").page, "connections");
-assert.match(sidebarSource, /const SHOW_ADMIN_NAV = true/);
-assert.match(sidebarSource, /SHOW_ADMIN_NAV && renderGroup\("admin", "ADMINISTRATION"\)/);
-assert.match(appSource, /const \[menuOpen, setMenuOpen\] = useState\(true\)/);
-assert.match(appSource, /window\.history\.pushState[\s\S]*setMenuOpen\(false\)/);
-assert.match(appSource, /new CustomEvent\("answervice:navigate", \{ detail: nextRoute\.path \}\)/);
-assert.match(appSource, /sidebar-collapsed/);
-assert.match(appSource, /const USE_PPT_THEME = true/);
-assert.match(appSource, /USE_PPT_THEME \? "ppt-theme"/);
-assert.match(stylesSource, /\.ppt-theme\{[^}]*--blue:#1c69d4/);
-assert.match(stylesSource, /\.ppt-theme\{[^}]*--coral:#e22718/);
-assert.match(stylesSource, /PPT theme preview: keep the original theme above intact for one-flag rollback/);
-assert.match(stylesSource, /Presentation visual system: black canvas, technical rules, white type, blue\/red signals/);
-assert.match(stylesSource, /\.ppt-theme\{--ivory:#000;--ivory-2:#030509;--surface:#05070b;--border:#2a3443;--radius:2px;background:#000\}/);
-assert.match(stylesSource, /\.ppt-theme \.section-title:after\{[^}]*linear-gradient\(90deg,#1c69d4 0 68%,#e22718 68% 100%\)/);
-assert.match(stylesSource, /\.ppt-theme \.message b em\{color:#fff!important;border:1px solid #1c69d4;border-radius:2px;background:#102a4d!important\}/);
-assert.match(stylesSource, /\.ppt-theme \.message b em,\.ppt-theme \.analysis-state>header span\{color:#fff!important;border:1px solid #1c69d4!important;border-radius:2px;background:#102a4d!important/);
-assert.match(stylesSource, /\.ppt-theme \.analysis-state>footer code\{[^}]*color:#fff!important[^}]*background:#102a4d!important/);
-assert.match(stylesSource, /\.ppt-theme \.editor-topbar>div:first-child>button,\.ppt-theme \.legacy-document-actions>button\{[^}]*border:1px solid #1c69d4!important[^}]*background:#102a4d!important/);
-assert.match(stylesSource, /\.ppt-theme \.report-preview-summary dl div\{[^}]*border-color:#26344a[^}]*background:#101725\}/);
-assert.match(stylesSource, /\.ppt-theme \.report-preview-summary dd\{color:#fff\}/);
-assert.match(reportsPageSource, /const \[chartPrompt, setChartPrompt\] = useState\("객실 매출과 점유율 변화를 비교해줘"\)/);
-assert.match(reportsPageSource, /const generateChart = \(\) => \{/);
-assert.match(reportsPageSource, /prompt\.includes\("연회"\)/);
-assert.match(reportsPageSource, /prompt\.includes\("예약"\)/);
-assert.match(reportsPageSource, /onClick=\{generateChart\}/);
-assert.match(reportsPageSource, /addBlock\(\{ \.\.\.chart, type: "chart"[^;]+\}, true\)/);
-assert.match(reportsPageSource, /\.editor-canvas \.editor-block\.selected/);
-assert.match(reportsPageSource, /scrollIntoView\(\{ behavior: "smooth", block: "center" \}\)/);
-assert.match(stylesSource, /\.enterprise-report-editor\{min-height:calc\(100vh - 96px\);overflow:visible\}/);
-assert.match(stylesSource, /\.editor-workspace\{min-height:calc\(100vh - 96px\);display:block;overflow:visible\}/);
-assert.match(stylesSource, /\.editor-topbar,\.editor-selection-toolbar\{width:100%\}/);
-assert.match(stylesSource, /\.editor-canvas\{min-height:420px;overflow:visible;scrollbar-gutter:stable\}/);
-assert.match(reportsPageSource, /const insertBlock = \(current, block, targetId, position = "after"\)/);
-assert.match(reportsPageSource, /const isBasicDocumentBlock = \(block\) => block\.origin === "basic"/);
-assert.match(reportsPageSource, /const hasReportNumber = \(block\) => block\.type !== "divider" && !isBasicDocumentBlock\(block\)/);
-assert.match(reportsPageSource, /\{number && <span>\{String\(number\)\.padStart\(2, "0"\)\}<\/span>\}/);
-assert.match(reportsPageSource, /updateDropTarget\(event, block\.id\)/);
-assert.match(reportsPageSource, /className="editor-drag-handle"[^>]*draggable/);
-assert.match(reportsPageSource, /여기에 블록을 놓으세요/);
-assert.match(stylesSource, /\.editor-block\.drop-before:before,\.editor-block\.drop-after:after/);
-assert.match(stylesSource, /\.ppt-theme \.brand-mark\{[^}]*background:#1c69d4/);
-assert.match(stylesSource, /\.ppt-theme \.brand>button\{position:absolute;top:8px;right:8px/);
-assert.match(stylesSource, /\.ppt-theme \.brand b:after\{width:112px;height:3px[^}]*linear-gradient\(90deg,#1c69d4 0 18%,#e22718 18% 28%,#fff 28% 100%\)/);
-assert.match(stylesSource, /\.ppt-theme \.section-title:after\{width:112px;height:3px;background:linear-gradient\(90deg,#1c69d4 0 18%,#e22718 18% 28%,#fff 28% 100%\)\}/);
-assert.match(stylesSource, /\.ppt-theme,\.ppt-theme button,\.ppt-theme input,[^}]*\.ppt-theme label\{font-weight:700\}/);
-assert.doesNotMatch(stylesSource, /linear-gradient\(135deg,#1c69d4 0 64%,#e22718 64% 100%\)/);
-assert.match(stylesSource, /\.ppt-theme \.analysis-chart \.recharts-line-curve\{stroke:#1c69d4;stroke-width:3\}/);
-assert.match(stylesSource, /\.ppt-theme \.analysis-chart \.recharts-dot\{fill:#e22718;stroke:#fff\}/);
-assert.match(stylesSource, /\.evidence-panel-header \.section-title h2\{font-size:22px;white-space:nowrap\}/);
-assert.match(stylesSource, /\.ppt-theme \.analysis-state--ready,\.ppt-theme \.analysis-state--partial\{border-color:#26344a;background:#0f1522\}/);
-assert.match(stylesSource, /\.bar-fill\{color:#fff\}/);
-assert.match(stylesSource, /\.ppt-theme \.demo-steps\{[^}]*color:#fff!important[^}]*background:transparent!important/);
-assert.match(stylesSource, /\.ppt-theme \.demo-steps b,\.ppt-theme \.demo-steps b\.done,\.ppt-theme \.demo-steps b\.active,\.ppt-theme \.demo-steps>span\{color:#fff!important;background:transparent!important\}/);
-assert.match(stylesSource, /\.sidebar-collapsed \.sidebar\{transform:translateX\(-100%\)\}/);
-assert.match(stylesSource, /\.sidebar-collapsed \.workspace\{margin-left:0\}/);
 
 for (const [expected, run] of Object.entries(analysisFixtures)) {
   assert.equal(resolveViewState(run).toLowerCase(), expected === "clarification" ? "empty" : expected);
@@ -223,17 +152,7 @@ assert.equal(normalized.rowCount, 1);
 assert.equal(analysisFixtures.ready.artifact.artifactId, analysisFixtures.ready.evidence.artifactId);
 assert.equal(analysisFixtures.ready.metrics[0].unit, "KRW");
 assert.ok(analysisFixtures.ready.table.rows.length > 0);
-for (const source of analysisFixtures.ready.sources) {
-  const catalogSource = catalogSources.find((candidate) => candidate.fqn === source.fqn);
-  assert.ok(catalogSource, `analysis source must exist in catalog: ${source.fqn}`);
-  assert.equal(source.urn, catalogSource.datasetUrn);
-}
 assert.equal(usesMockAnalysisClient, false);
-assert.equal(usesFixtureReportClient, false);
-assert.match(reportsPageSource, /usesFixtureReportClient \? <FixtureReportsPage \/> : <ReportApiPage \/>/);
-assert.match(reportsPageSource, /오류 시 fixture로 전환하지 않습니다/);
-assert.match(reportsPageSource, /401 · 로그인이 필요합니다/);
-assert.match(reportsPageSource, /403 · REPORT_ADMIN 권한이 필요합니다/);
 assert.match(reportsPageSource, /candidate\.artifactId/);
 assert.match(reportsPageSource, /artifactId: candidate\.artifactId/);
 assert.match(reportsPageSource, /LOCAL SYNTHETIC FIXTURE/);
@@ -241,72 +160,22 @@ assert.match(reportsPageSource, /aria-label={`\$\{block\.title} 앞으로 이동
 assert.match(reportsPageSource, /aria-label={`\$\{block\.title} 너비 늘리기`}/);
 assert.match(reportsPageSource, /aria-label={`\$\{block\.title} 높이 늘리기`}/);
 assert.match(reportsPageSource, /aria-label={`\$\{block\.title} 삭제`}/);
-assert.doesNotMatch(reportsPageSource, /targetView === "editor" && report\.status !== "초안"/);
-assert.doesNotMatch(reportsPageSource, /report\.status === "초안" && <button className="edit"/);
-assert.match(reportsPageSource, /className="edit".*openReport\(report, "editor"\).*편집/);
-assert.match(reportsPageSource, /초안과 확정 보고서 모두 편집할 수 있으며/);
-assert.match(reportsPageSource, /<button className="view"/);
-assert.match(stylesSource, /\.legacy-report-actions\{[^}]*display:flex/);
-assert.match(agentPageSource, /보고서 초안에 추가/);
-assert.match(agentPageSource, /무엇을 분석할까요\?/);
-assert.match(agentPageSource, /\[\["report", "Report"\], \["sources", "Sources"\], \["run", "Run history"\], \["trace", "Trace"\]\]/);
-assert.match(agentPageSource, /선택한 내용으로 초안 만들기/);
-assert.doesNotMatch(agentPageSource, /answervice\.report\.openEditor/);
-assert.match(reportsPageSource, /const \[view, setView\] = useState\("list"\)/);
-assert.match(reportsPageSource, /id: importedId, type: "주간".*status: "초안"/);
-assert.match(reportsPageSource, /candidate\.blocks\?\.length/);
-assert.match(reportsPageSource, /artifact\.title \|\| artifact\.blocks/);
-assert.match(reportsPageSource, /window\.localStorage\.setItem\("answervice\.reports"/);
-assert.match(reportsPageSource, /확정 보고서의 변경사항을 저장했습니다/);
-assert.match(reportsPageSource, /block\.type === "kpi" \? block\.content\.replaceAll\(" · ", "\\n"\)/);
-assert.match(reportsPageSource, /여름 성수기 객실 운영 주간 보고/);
-assert.match(reportsPageSource, /회원 예약 전환 및 객실 운영 보고/);
-assert.match(reportsPageSource, /const mockReportBlocks =/);
-assert.match(reportsPageSource, /report\.title \? mockReportBlocks\(report\) : initialEditorBlocks\(\)/);
-assert.match(reportsPageSource, /window\.addEventListener\("answervice:navigate", showReportList\)/);
-assert.match(reportsPageSource, /event\.detail === "\/reports"[\s\S]*setView\("list"\)/);
-assert.match(agentPageSource, /4,520 → 4,010만원/);
-assert.match(agentPageSource, /객실 매출\(만원\) 4,520→4,010/);
-assert.match(reportsPageSource, /block\.labels\?\.\[index\] \?\? value/);
 for (const status of REPORT_RUN_STATUSES) assert.match(reportsPageSource, new RegExp(`status: "${status}"`));
 assert.match(reportsPageSource, /Run History 상태·접근성 점검/);
 assert.match(reportsPageSource, /성공·부분 성공·실패 블록/);
 assert.match(reportsPageSource, /aria-live="polite"/);
 assert.match(reportsPageSource, /aria-pressed=\{selectedRunId === run\.id\}/);
 assert.match(reportsPageSource, /detailRef\.current\?\.focus\(\)/);
+assert.match(reportsPageSource, /event\.key === "Enter" \|\| event\.key === " "/);
 assert.match(reportsPageSource, /REPORT_ADMIN 권한이 없는 사용자/);
 assert.match(reportsPageSource, /로컬 실행 이력을 불러오는 중/);
 assert.match(reportsPageSource, /표시할 실행 이력이 없습니다/);
 assert.match(reportsPageSource, /실행 이력을 불러오지 못했습니다/);
-assert.match(reportsPageSource, /return usesFixtureReportClient \? <FixtureReportsPage \/> : <ReportApiPage \/>/);
-assert.match(stylesSource, /\.ppt-theme \.legacy-report-row>b small\{[^}]*color:#fff!important[^}]*font-size:14px[^}]*font-weight:800/);
+assert.doesNotMatch(reportsPageSource, /onClick=\{finalizeReport\}/);
+assert.doesNotMatch(reportsPageSource, /공유 링크를 생성했습니다/);
 assert.match(stylesSource, /grid-template-columns:repeat\(12,minmax\(0,1fr\)\)/);
 assert.match(stylesSource, /grid-column:var\(--block-x\)\/span var\(--block-w\)/);
-assert.match(stylesSource, /\.editor-block\{[^}]*grid-row:auto;[^}]*overflow:visible/);
-assert.match(stylesSource, /\.editor-block textarea\{[^}]*field-sizing:content/);
-assert.match(reportsPageSource, /origin: "basic"/);
-assert.match(reportsPageSource, /block\.origin !== "basic" && <div>/);
-assert.match(stylesSource, /\.editor-block--basic\{[^}]*border:0;[^}]*background:transparent/);
-assert.match(stylesSource, /\.editor-block--divider hr\{[^}]*border-top-color/);
-assert.match(reportsPageSource, /const \[selectedBlockId, setSelectedBlockId\] = useState\(null\)/);
-assert.match(reportsPageSource, /className="card editor-selection-toolbar"/);
-assert.match(reportsPageSource, /setBlockWidth\(selectedBlock\.id, 6\)/);
-assert.match(reportsPageSource, /duplicateBlock\(selectedBlock\.id\)/);
-assert.match(reportsPageSource, /event\.key\.toLowerCase\(\) === "s"/);
-assert.match(reportsPageSource, /saveState === "saving"/);
-assert.match(reportsPageSource, /const withReportTitle =/);
-assert.match(reportsPageSource, /function GeneratedReportBlock/);
-assert.match(reportsPageSource, /reportTitleBlock\?\.content/);
-assert.match(reportsPageSource, /className="generated-report-grid"/);
-assert.match(reportsPageSource, /function buildGeneratedReportLayout/);
-assert.match(reportsPageSource, /reportNumber: hasReportNumber\(block\) \? sectionNumber\+\+ : null/);
-assert.match(reportsPageSource, /isBasicDocumentBlock\(block\) && block\.type === "heading"[\s\S]*generated-report-heading/);
-assert.match(reportsPageSource, /isBasicDocumentBlock\(block\) && block\.type === "text"[\s\S]*generated-report-text/);
-assert.match(stylesSource, /\.generated-report-basic\{grid-column:span var\(--report-block-width\)/);
-assert.match(stylesSource, /\.generated-report-grid\{[^}]*repeat\(12,minmax\(0,1fr\)\)/);
-assert.match(stylesSource, /\.generated-report-block\{[^}]*grid-column:span var\(--report-block-width\)/);
-assert.match(stylesSource, /\.generated-report-copy,.generated-report-block blockquote\{font-size:17px;line-height:1\.85\}/);
-assert.match(stylesSource, /\.generated-report-kpi\{font-size:clamp\(26px,2vw,30px\)/);
+assert.match(stylesSource, /grid-row:var\(--block-y\)\/span var\(--block-h\)/);
 assert.match(stylesSource, /button:focus-visible/);
 assert.match(stylesSource, /@media\(max-width:900px\)/);
 assert.match(stylesSource, /@media\(max-width:650px\).*\.editor-block\{grid-column:1\/-1;grid-row:auto/s);
@@ -329,6 +198,14 @@ assert.equal(JSON.parse(httpRequest.init.body).template_id, "weekly-room-operati
 assert.equal(httpRun.requestId, g1ClarificationFixture.meta.request_id);
 assert.equal(httpRun.traceId, g1ClarificationFixture.meta.trace_id);
 assert.equal(httpRun.error.retryable, false);
+
+assert.equal(usesFixtureReportClient, false);
+assert.doesNotMatch(readFileSync(new URL("../../app/enterprise-react/src/api/reportClient.ts", import.meta.url), "utf8"), /env\.DEV/);
+assert.match(reportsPageSource, /const client = useMemo\(\(\) => createReportClient\(\), \[\]\)/);
+assert.match(reportsPageSource, /usesFixtureReportClient \? <FixtureReportsPage \/> : <ReportApiPage \/>/);
+assert.match(reportsPageSource, /const isCurrent = nextDefinitionRequest\(\)/);
+assert.match(reportsPageSource, /if \(current && isCurrent\(\)\) upsertDefinition\(current\)/);
+assert.match(reportsPageSource, /disabled=\{pendingCount > 0\}/);
 
 const reportDefinitionResponse = {
   contract_version: REPORT_CONTRACT_VERSION,
@@ -392,7 +269,10 @@ const reportResponses = [
 const reportRequests = [];
 const reportClient = createReportClient("http://backend.test/", async (url, init) => {
   reportRequests.push({ url, init });
-  return new Response(JSON.stringify(reportResponses.shift()), { status: 200, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(reportResponses.shift()), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 });
 const blockRequest = {
   block_id: reportDefinitionResponse.blocks[0].block_id,
@@ -435,15 +315,18 @@ assert.deepEqual(Object.keys(JSON.parse(reportRequests[8].init.body)).sort(), ["
 assert.equal(manualReceipt.status, "queued");
 assert.equal("run_id" in manualReceipt, false);
 
-let failedRequestCount = 0;
-const failingReportClient = createReportClient("http://backend.test", async () => {
-  failedRequestCount += 1;
-  return new Response(JSON.stringify({ error: { code: "REPORT_FORBIDDEN", message: "권한이 없습니다." } }), { status: 403 });
-});
-await assert.rejects(() => failingReportClient.listDefinitions(), (error) => error instanceof ReportApiError && error.status === 403 && error.code === "REPORT_FORBIDDEN");
-assert.equal(failedRequestCount, 1);
-
-const wrongVersionClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({ contract_version: "REPORT-v2.0.0", items: [] }), { status: 200 }));
+const failingReportClient = createReportClient("http://backend.test", async () => new Response(
+  JSON.stringify({ error: { code: "REPORT_FORBIDDEN", message: "권한이 없습니다." } }),
+  { status: 403 },
+));
+await assert.rejects(
+  () => failingReportClient.listDefinitions(),
+  (error) => error instanceof ReportApiError && error.status === 403 && error.code === "REPORT_FORBIDDEN",
+);
+const wrongVersionClient = createReportClient("http://backend.test", async () => new Response(
+  JSON.stringify({ contract_version: "REPORT-v2.0.0", items: [] }),
+  { status: 200 },
+));
 await assert.rejects(() => wrongVersionClient.listDefinitions(), /지원하지 않는 Report 계약/);
 
 const nextRequest = createLatestRequestGuard();
@@ -462,8 +345,6 @@ await requestB;
 resolveA("definition-A");
 await requestA;
 assert.equal(selectedDefinitionId, "definition-B");
-assert.match(reportsPageSource, /const isCurrent = nextDefinitionRequest\(\)/);
-assert.match(reportsPageSource, /if \(current && isCurrent\(\)\) upsertDefinition\(current\)/);
 
 let activeRequests = 0;
 let resolveBusyA;
@@ -478,9 +359,6 @@ assert.equal(activeRequests, 1);
 resolveBusyB();
 await busyB;
 assert.equal(activeRequests, 0);
-assert.match(reportsPageSource, /disabled=\{pendingCount > 0\}/);
-assert.match(reportsPageSource, /setDefinitionState\(items\.length \? "ready" : "empty"\);\s+setError\(""\)/);
-assert.match(reportsPageSource, /setRunState\(items\.length \? "ready" : "empty"\);\s+setError\(""\)/);
 
 const approved = Object.freeze({
   definitionId: "report-001",

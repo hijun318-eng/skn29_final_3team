@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.26 |
-| 문서 기준일 | 2026-08-10 16:10 |
+| 버전 | v5.27 |
+| 문서 기준일 | 2026-08-10 16:25 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -24,8 +24,8 @@
 |---|---|---|---|
 | R1 | `R1-W5-F9` | `BLOCKED` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
-| R3 | `R3-W5-F6` | `READY` | `daesung` |
-| R4 | `R4-W5-F7` | `MERGED_DEV` | `jaehong` |
+| R3 | `R3-W5-F6` | `BLOCKED` | `daesung` |
+| R4 | `R4-W5-F8` | `READY` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
@@ -926,7 +926,7 @@ BLOCKED_REASON=R3 제품 commit 626164b의 단위 회귀는 통과했으나 R4-W
 ### R3 · R3-W5-F6
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -952,6 +952,7 @@ STOP_CONDITIONS=backend/data 변경 필요; actual composition 실패; case/Gold
 EXTERNAL_ACTION_PERMISSION=local deterministic 조합 test와 허용 경로 commit·daesung push만 허용한다. Docker/DataHub/Trino lifecycle·외부 비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=probe SQL만 검증; 실제 Node2 plan 미검증; multi-CTE filter 누락 허용; second repair; stash 변경; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R3 source CI PASS 뒤 dev에 통합하고 새 R1 actual API E2E 카드로 local Trino Gold·G3 table/chart/evidence/artifact/request trace를 검증한다.
+BLOCKED_REASON=최신 dev 조합에서 R4 ContractModelAdapter가 package의 period_start=2026-05-01을 보존하지 않고 RequestContext.as_of=2026-07-01로 execution_time.period_start를 덮어써 Node2가 07-01/07-01 parameters를 생성한다. G2는 PARAMETERS_INVALID로 정상 차단하며 R3가 질문·Gold 값을 hardcode해 우회할 수 없으므로 R4 owner REWORK 뒤 재검증한다.
 ```
 
 ### R2 · R2-W5-F3
@@ -1261,6 +1262,37 @@ AUTO_FAIL_CONDITIONS=1-edge topology 잔존; 첫 WHERE만 검사; POS filter 누
 R1_REVIEW_CONDITIONS=F6를 결함 상태로 선통합하지 않는다. F7은 origin/dev 대비 F6+F7 누적 diff와 두 handoff를 한 번에 제출하고 source CI PASS 뒤 dev에 통합한다. 이후 R3-W5-F5를 최신 dev에 동기화해 combined test·source CI를 다시 통과시킨다. 그 전 R1-W5-F9 actual API E2E를 재발행하지 않는다.
 RESULT_SHA=44941147c1795fdfcdf9035293de336f02e63339
 RESULT_CI=branch 31357307192 PASS; product 31357211797 PASS; 104 passed·10 skipped
+```
+
+### R4 · R4-W5-F8
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F8
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=Context period binding preservation and R3 composition
+TASK_CARD_RANGE=R4-04·05 period_start·period_end_exclusive Context REWORK
+CURRENT_TASK_CARD_ID=R4-04
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=ff294bb56293f19e50d12cdf0412ab6d283ac77e
+START_POINT=origin/jaehong을 최신 dev ff294bb로 fast-forward한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W5-F8@ff294bb
+ALLOWED_PATHS=app/backend/app/adapters/contract_model.py; tests/backend/test_i2_data_platform.py; tests/backend/test_analysis_pipeline.py; handoffs/R4-W5-F8.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/data/**; src/ai/**; pipeline policy·binder 의미 변경; migration·OpenAPI·frontend; root Compose/env/CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R4-W5-F8.json
+ACCEPTANCE_CRITERIA=ContractModelAdapter가 approved Context Package의 parameter_bindings에서 period_start와 period_end_exclusive를 이름·type=date·ISO value 그대로 읽어 execution_time에 전달하며 RequestContext.as_of로 덮어쓰지 않는다. 누락·중복·type 불일치·invalid date·start>=end는 model 호출 전에 fail-closed한다. 실제 R3-W5-F5 Node2 shape로 2026-05-01/2026-07-01과 required_filter 9개를 생성해 R4 G2 exact map과 single binder를 통과시키고, 임의 기간 mutation은 PARAMETERS_INVALID로 차단한다. 기존 5-edge·multi-CTE·repair 1회 경계를 유지한다.
+ACCEPTANCE_IDS=AC1_PERIOD_BINDING_SOURCE;AC2_NO_AS_OF_OVERRIDE;AC3_DATE_FAIL_CLOSED;AC4_ACTUAL_R3_PERIOD;AC5_G2_BINDER;AC6_MUTATION_NEGATIVE;AC7_EXISTING_BOUNDARIES
+TEST_COMMANDS=target backend ContractModel/Context/G2 composition; backend 전체; R3 consumer composition test read-only; compileall; gate_scope merge-base; git diff --check; jaehong branch CI
+TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND;T3_R3_CONSUMER;T4_COMPILE;T5_SCOPE;T6_DIFF;T7_BRANCH_CI
+STOP_CONDITIONS=R2/R3 product 변경 필요; period를 question/Gold/as_of에서 추정; invalid range 허용; binder/policy 완화; dependency·external service·secret; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local deterministic test와 허용 경로 commit·jaehong push만 허용한다. Docker/DataHub/Trino lifecycle·외부 비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=as_of override 잔존; package binding 무시; invalid date/range 통과; R3 plan hardcode; 기존 negative/repair 회귀; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=R4 source CI PASS 뒤 dev에 통합하고 R3-W5-F6를 최신 dev에 재동기화해 actual Node2→G2→binder와 dev 전체 CI를 복구한다.
 ```
 
 ### R5 · R5-W5-F1

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.41 |
-| 문서 기준일 | 2026-08-10 19:30 |
+| 버전 | v5.42 |
+| 문서 기준일 | 2026-08-10 20:00 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F13` | `BLOCKED` | `junhee` |
+| R1 | `R1-W5-F14` | `READY` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
@@ -1014,6 +1014,39 @@ R1_REVIEW_CONDITIONS=실행 전후 다른 project snapshot 불변, exact service
 BLOCKED_REASON=exact answervice project의 app-postgres/backend 기동 전 APP DB credential 존재·Compose config·backend image build는 통과했지만, 고정 container name app-postgres가 기존 hotel-synthetic-db project의 healthy container에 이미 사용 중이라 Docker가 answervice app-postgres 생성 전에 중단했다. 기존 container/project/volume은 변경하지 않았고 이번 시도에서 생성된 answervice-network·answervice_datahub-network·빈 answervice_app-postgres-data volume은 삭제 권한 없이 보존했다. migration·approved Template·/readiness는 NOT_RUN이며 기존 container를 제거·이름 변경하거나 다른 project로 backend를 편입하지 않는다.
 ```
 
+### R1 · R1-W5-F14
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F14
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=F13 app-postgres container identity owner REWORK
+TASK_CARD_RANGE=R1-02 root Compose include override와 exact runtime 재검증
+CURRENT_TASK_CARD_ID=R1-02
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=ead79dc29ac7e3c30e80957cd96d270bce0969ff
+START_POINT=R1-W5-F13은 다른 hotel-synthetic-db project가 고정 container name app-postgres를 사용해 차단됐다. 기존 project/container/volume을 변경하지 않고 root Compose include override로 answervice app-postgres identity만 분리한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F14@ead79dc
+CONTRACT_VERSION=R1-SERVICE-v1.1.0-DRAFT; Docker Compose include override; existing Alembic head 20260804_05; approved Template I2-v1.0.0
+ALLOWED_PATHS=compose.yml; compose.app-postgres.override.yml; tests/integration/test_app_postgres_compose_override.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F14.json; docs/markdown/daily_reports/junhee/일일보고.md; docs/markdown/daily_reports/team_summaries/5주차/20260810.md; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F12.json; tests/integration/test_typed_three_source_e2e.py
+READ_ONLY_CUMULATIVE_EVIDENCE=docs/markdown/daily_reports/team_summaries/5주차/20260810.md; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F12.json; tests/integration/test_typed_three_source_e2e.py. origin/dev...junhee 누적 scope를 위해 보존하며 수정·삭제하지 않는다.
+FORBIDDEN_PATHS=infrastructure/database/**; app/backend/**; frontend/**; migration/schema/template row 수정; root CI·env; dependency; tracked/local secret 값; 다른 Docker project/container/volume
+HANDOFF_MANIFEST=handoffs/R1-W5-F14.json
+ACCEPTANCE_CRITERIA=root Compose가 infrastructure/database/compose.yml과 root-owned override를 같은 include path 목록으로 병합하고 app-postgres의 resolved container_name만 answervice-app-postgres로 바꾼다. service key·DNS·image·port·volume·healthcheck·credential은 불변이다. 다른 project/container/volume의 ID·상태는 실행 전후 같아야 한다. exact answervice app-postgres/backend만 기동해 migration head 20260804_05, weekly-room-operations I2-v1.0.0 APPROVED 1건, /readiness의 database·migration·approved_templates ready를 확인한다.
+ACCEPTANCE_IDS=AC1_ROOT_OVERRIDE_ONLY;AC2_RESOLVED_MODEL_SINGLE_DELTA;AC3_OTHER_PROJECT_INVARIANT;AC4_MIGRATION_HEAD;AC5_APPROVED_TEMPLATE;AC6_READINESS
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration/test_app_postgres_compose_override.py -q; docker compose -f compose.yml --env-file local-env --profile dev config --quiet; resolved Compose model single-delta 검사; exact Docker project/container/volume read-only snapshot; docker compose -f compose.yml --env-file local-env --profile dev up -d app-postgres backend; app-postgres migration head·approved template read-only SQL; backend /readiness; integration tests; gate_scope merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_STATIC;T2_COMPOSE;T3_MODEL_DIFF;T4_SNAPSHOT;T5_EXACT_UP;T6_DB_EVIDENCE;T7_READINESS;T8_INTEGRATION;T9_SCOPE;T10_DIFF;T11_BRANCH_CI
+STOP_CONDITIONS=resolved model이 container_name 외 변경; answervice-app-postgres 이름·15432 port 충돌; unknown/legacy revision; alembic/readiness 실패; template 0/복수/비승인; 다른 project/container/volume 변경 필요; infrastructure/backend/frontend 수정 필요; secret 출력; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=exact answervice project의 app-postgres와 backend service만 build/up/recreate하고 read-only health·SQL을 확인할 수 있다. 기존 volume은 보존하며 down·down -v·reset·prune·다른 project/container/volume 변경은 금지한다. 허용 경로 commit·junhee push만 허용한다.
+AUTO_FAIL_CONDITIONS=override가 container_name 외 값을 변경; 다른 project drift; migration 우회; template 수동 보정; readiness 일부만 PASS; secret 출력; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=root override와 exact service identity를 먼저 검증한다. 이후 readiness 코드가 migration 20260804_05 또는 exact template 계약을 거부하면 제품을 완화하지 않고 R4 owner REWORK로 반환한다.
+```
+
 ### R2 · R2-W5-F5
 
 ```text
@@ -1613,6 +1646,7 @@ RESULT_CI=branch 31363391107 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.42 | 2026-08-10 20:00 | R1-W5-F13의 고정 app-postgres 이름 충돌을 다른 project 변경 없이 root include override로 해소하고 exact migration·Template·readiness를 재검증하는 R1-W5-F14 REWORK 발행 |
 | v5.41 | 2026-08-10 19:30 | R1-W5-F13을 기존 hotel-synthetic-db app-postgres 고정 이름 충돌 근거로 BLOCKED 처리하고 다른 project 불변·신규 빈 answervice resource 보존·owner별 후속 경계를 기록 |
 | v5.40 | 2026-08-10 19:20 | 시연 준비를 위해 exact answervice app-postgres/backend만 기동하고 migration head·approved Template·readiness를 검증하는 R1-W5-F13 발행 |
 | v5.39 | 2026-08-10 19:10 | R5-W5-F3의 기본 loopback·명시적 LAN 공개, exact frontend runtime·source CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |

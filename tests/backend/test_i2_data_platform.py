@@ -36,8 +36,31 @@ def live_dataset(adapter, urn):
 
 def simulated_verified_live_adapter():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._bindings_verified = True
     adapter._live_runtime_verified = True
+    for asset in adapter._assets:
+        if asset["kind"] == "view":
+            asset["binding_status"] = "VERIFIED"
     return adapter
+
+
+def verified_binding_path(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    health = json.loads(
+        (root / "src/data/asset_binding_health.i5.v1.json").read_text(encoding="utf-8")
+    )
+    health["status"] = "HEALTHY"
+    health["runtime_execution"] = "PASS"
+    for binding in health["bindings"]:
+        binding["status"] = "VERIFIED"
+        binding["verified_at"] = "2026-08-10T12:00:00Z"
+        binding["provenance"] = {
+            "datahub_exact_search": {"status": "PASS", "response_sha256": "a" * 64},
+            "trino_metadata": {"status": "PASS", "result_sha256": "b" * 64},
+        }
+    path = tmp_path / "asset-bindings.json"
+    path.write_text(json.dumps(health), encoding="utf-8")
+    return path
 
 
 def test_trino_transport_sends_required_user_header():
@@ -131,10 +154,11 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     ]
 
 
-def test_versioned_trino_mode_uses_approved_contract_without_datahub():
+def test_versioned_trino_mode_uses_approved_contract_without_datahub(tmp_path):
     adapter = I2DataPlatformAdapter(
         "http://trino:8080",
         "runtime-user",
+        binding_path=verified_binding_path(tmp_path),
         require_live_metadata=False,
     )
     adapter._datahub_dataset = lambda _urn: pytest.fail("DataHub must not be called")
@@ -148,7 +172,7 @@ def test_versioned_trino_mode_uses_approved_contract_without_datahub():
         "serving.analytics.hotel_daily_metrics"
     ]
     assert assets[0]["binding_status"] == "VERIFIED"
-    assert assets[0]["binding_version"] == "I4-DATA-v1.0.0-DRAFT"
+    assert assets[0]["binding_version"] == "1.0.0"
     assert assets[0]["metrics"][0]["required_filters"][0]["value"] == "YTD_SYNTHETIC"
     assert adapter.get_asset_schema(assets[0]["urn"])["columns"]
     assert adapter.search_assets("포인트 소멸 내역", {"role": "hotel_analyst"}) == []
@@ -158,10 +182,102 @@ def test_live_mode_fails_closed_without_v17_runtime_evidence():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     adapter._datahub_dataset = MagicMock()
 
-    with pytest.raises(ValueError, match="runtime evidence"):
+    with pytest.raises(ValueError, match="runtime verification"):
         adapter.search_assets("호텔 객실 매출", {"role": "hotel_analyst"})
 
     adapter._datahub_dataset.assert_not_called()
+
+
+def test_versioned_mode_does_not_expose_pending_binding():
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080",
+        "runtime-user",
+        require_live_metadata=False,
+    )
+    adapter._datahub_dataset = MagicMock()
+
+    with pytest.raises(ValueError, match="runtime verification"):
+        adapter.search_assets("호텔 객실 매출", {"role": "hotel_analyst"})
+
+    assert {asset["binding_status"] for asset in adapter._assets} == {
+        "PENDING_RUNTIME_VERIFICATION"
+    }
+    adapter._datahub_dataset.assert_not_called()
+
+
+@pytest.mark.parametrize("field", ["urn", "fqn", "version"])
+def test_asset_binding_identity_mismatch_fails_closed(tmp_path, field):
+    root = Path(__file__).resolve().parents[2]
+    health = json.loads(
+        (root / "src/data/asset_binding_health.i5.v1.json").read_text(encoding="utf-8")
+    )
+    health["bindings"][0][field] = "mismatch"
+    path = tmp_path / "mismatch.json"
+    path.write_text(json.dumps(health), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="identity does not match"):
+        I2DataPlatformAdapter(
+            "http://trino:8080",
+            "runtime-user",
+            binding_path=path,
+            require_live_metadata=False,
+        )
+
+
+def test_duplicate_asset_binding_id_fails_closed(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    health = json.loads(
+        (root / "src/data/asset_binding_health.i5.v1.json").read_text(encoding="utf-8")
+    )
+    health["bindings"][1]["binding_id"] = health["bindings"][0]["binding_id"]
+    path = tmp_path / "duplicate.json"
+    path.write_text(json.dumps(health), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="health contract is invalid"):
+        I2DataPlatformAdapter(
+            "http://trino:8080",
+            "runtime-user",
+            binding_path=path,
+            require_live_metadata=False,
+        )
+
+
+def test_missing_required_asset_binding_field_fails_closed(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    health = json.loads(
+        (root / "src/data/asset_binding_health.i5.v1.json").read_text(encoding="utf-8")
+    )
+    health["bindings"][0].pop("binding_id")
+    path = tmp_path / "missing.json"
+    path.write_text(json.dumps(health), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="health contract is invalid"):
+        I2DataPlatformAdapter(
+            "http://trino:8080",
+            "runtime-user",
+            binding_path=path,
+            require_live_metadata=False,
+        )
+
+
+def test_null_verified_at_cannot_be_promoted_by_global_health(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    health = json.loads(
+        (root / "src/data/asset_binding_health.i5.v1.json").read_text(encoding="utf-8")
+    )
+    health["status"] = "HEALTHY"
+    health["runtime_execution"] = "PASS"
+    path = tmp_path / "false-health.json"
+    path.write_text(json.dumps(health), encoding="utf-8")
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080",
+        "runtime-user",
+        binding_path=path,
+        require_live_metadata=False,
+    )
+
+    with pytest.raises(ValueError, match="runtime verification"):
+        adapter.search_assets("호텔 객실 매출", {"role": "hotel_analyst"})
 
 
 @pytest.mark.parametrize(("field", "value"), [("contract_version", "wrong"), ("status", "FAIL")])

@@ -121,7 +121,7 @@ class ServingSemanticCatalogTest(unittest.TestCase):
             publisher.publish("https://datahub.example.com", opener=FakeDataHub())
 
     def test_datahub_kafka_health_uses_real_cli(self):
-        self.assertIn("kafka-topics --bootstrap-server broker:29092 --list >/dev/null", self.compose)
+        self.assertIn("kafka-topics --bootstrap-server broker:29092 --list", self.compose)
         self.assertNotIn("nc -z broker 29092", self.compose)
 
     def test_datahub_ingestion_gets_only_two_system_metadata_tables(self):

@@ -29,7 +29,7 @@ services:
     volumes:
       - datahub-kafka-data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics --bootstrap-server broker:29092 --list >/dev/null"]
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server broker:29092 --list"]
       interval: 5s
       timeout: 5s
       retries: 20

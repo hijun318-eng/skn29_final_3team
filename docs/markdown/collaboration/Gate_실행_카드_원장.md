@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.27 |
-| 문서 기준일 | 2026-08-10 16:25 |
+| 버전 | v5.28 |
+| 문서 기준일 | 2026-08-10 16:40 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -24,8 +24,8 @@
 |---|---|---|---|
 | R1 | `R1-W5-F9` | `BLOCKED` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
-| R3 | `R3-W5-F6` | `BLOCKED` | `daesung` |
-| R4 | `R4-W5-F8` | `READY` | `jaehong` |
+| R3 | `R3-W5-F6` | `READY` | `daesung` |
+| R4 | `R4-W5-F8` | `MERGED_DEV` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
@@ -926,7 +926,7 @@ BLOCKED_REASON=R3 제품 commit 626164b의 단위 회귀는 통과했으나 R4-W
 ### R3 · R3-W5-F6
 
 ```text
-STATUS=BLOCKED
+STATUS=READY
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -937,10 +937,10 @@ TASK_CARD_RANGE=R3-04·05 G120-046 조합 회귀·handoff 교정
 CURRENT_TASK_CARD_ID=R3-04
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=07c08e8b8b1ec2410466e804dc8fd83dbc19004d
-START_POINT=보존한 R3 제품 commit 626164b를 최신 dev 07c08e8 위에 안전하게 재적용하고 stash@{0}은 계속 건드리지 않는다.
+BASE_SHA=dcbc6165f30b2899630cd2db01a44d90b72f3623
+START_POINT=보존한 R3 제품 commit 626164b를 최신 dev dcbc616 위에 안전하게 재적용하고 stash@{0}은 계속 건드리지 않는다.
 DIRECTIVE=REWORK
-DIRECTIVE_TOKEN=R3-W5-F6@07c08e8
+DIRECTIVE_TOKEN=R3-W5-F6@dcbc616
 ALLOWED_PATHS=src/ai/node2.py; tests/ai/test_node2.py; tests/ai/test_training_verification.py; handoffs/R3-W5-F5.json; handoffs/R3-W5-F6.json; docs/markdown/daily_reports/daesung/일일보고.md
 FORBIDDEN_PATHS=app/backend/**; src/data/**; dataset·prompt/model serving; RunPod·외부 endpoint; dependency; secret
 HANDOFF_MANIFEST=handoffs/R3-W5-F6.json
@@ -952,7 +952,6 @@ STOP_CONDITIONS=backend/data 변경 필요; actual composition 실패; case/Gold
 EXTERNAL_ACTION_PERMISSION=local deterministic 조합 test와 허용 경로 commit·daesung push만 허용한다. Docker/DataHub/Trino lifecycle·외부 비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=probe SQL만 검증; 실제 Node2 plan 미검증; multi-CTE filter 누락 허용; second repair; stash 변경; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R3 source CI PASS 뒤 dev에 통합하고 새 R1 actual API E2E 카드로 local Trino Gold·G3 table/chart/evidence/artifact/request trace를 검증한다.
-BLOCKED_REASON=최신 dev 조합에서 R4 ContractModelAdapter가 package의 period_start=2026-05-01을 보존하지 않고 RequestContext.as_of=2026-07-01로 execution_time.period_start를 덮어써 Node2가 07-01/07-01 parameters를 생성한다. G2는 PARAMETERS_INVALID로 정상 차단하며 R3가 질문·Gold 값을 hardcode해 우회할 수 없으므로 R4 owner REWORK 뒤 재검증한다.
 ```
 
 ### R2 · R2-W5-F3
@@ -1267,7 +1266,7 @@ RESULT_CI=branch 31357307192 PASS; product 31357211797 PASS; 104 passed·10 skip
 ### R4 · R4-W5-F8
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -1293,6 +1292,8 @@ STOP_CONDITIONS=R2/R3 product 변경 필요; period를 question/Gold/as_of에서
 EXTERNAL_ACTION_PERMISSION=local deterministic test와 허용 경로 commit·jaehong push만 허용한다. Docker/DataHub/Trino lifecycle·외부 비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=as_of override 잔존; package binding 무시; invalid date/range 통과; R3 plan hardcode; 기존 negative/repair 회귀; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R4 source CI PASS 뒤 dev에 통합하고 R3-W5-F6를 최신 dev에 재동기화해 actual Node2→G2→binder와 dev 전체 CI를 복구한다.
+RESULT_SHA=5720a01bb514eb401584d40e60ab970b10fc3146
+RESULT_CI=branch 31357958938 PASS; product 31357850201 PASS; 110 passed·10 skipped
 ```
 
 ### R5 · R5-W5-F1

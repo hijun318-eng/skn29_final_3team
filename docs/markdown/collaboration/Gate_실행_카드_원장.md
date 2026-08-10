@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.24 |
-| 문서 기준일 | 2026-08-10 14:00 |
+| 버전 | v5.25 |
+| 문서 기준일 | 2026-08-10 15:25 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -23,9 +23,9 @@
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
 | R1 | `R1-W5-F9` | `BLOCKED` | `junhee` |
-| R2 | `R2-W5-F4` | `MERGED_DEV` | `seung` |
-| R3 | `R3-W5-F5` | `READY` | `daesung` |
-| R4 | `R4-W5-F6` | `READY` | `jaehong` |
+| R2 | `R2-W5-F6` | `READY` | `seung` |
+| R3 | `R3-W5-F5` | `BLOCKED` | `daesung` |
+| R4 | `R4-W5-F7` | `READY` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
@@ -898,7 +898,7 @@ R1_REVIEW_CONDITIONS=현재 live 모드는 계속 fail-closed이며 R3/R4 제품
 ### R3 · R3-W5-F5
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -920,6 +920,7 @@ ACCEPTANCE_CRITERIA=Node2는 특정 case ID나 정답 SQL을 hardcode하지 않�
 TEST_COMMANDS=target Node2/G2 composition tests; AI 전체; compileall; gate_scope; git diff --check; daesung branch CI
 STOP_CONDITIONS=R2/R4 product file 변경 필요; case/Gold SQL hardcode; raw-row join; dataset·RunPod·비용·secret 필요; scope/필수 검증 실패
 R1_REVIEW_CONDITIONS=multi-source plan의 SQL 구조·typed parameters·approved join·repair 1회와 AI 전체·source CI를 제출한다.
+BLOCKED_REASON=R3 제품 commit 626164b의 단위 회귀는 통과했으나 R4-W5-F6 Context가 5-edge topology를 전달하지 않아 실제 조합이 ContractError로 중단되고, 보정 뒤에도 G2가 두 번째 POS CTE filter를 검사하지 못해 METRIC_FILTER_MISSING이 발생한다. R4 owner REWORK 통합 뒤 최신 dev에서 조합을 재검증하기 전 handoff·push·병합을 금지한다.
 ```
 
 ### R2 · R2-W5-F3
@@ -988,6 +989,38 @@ AUTO_FAIL_CONDITIONS=type 미검증; period_end 사용; dynamic date; raw-row jo
 R1_REVIEW_CONDITIONS=typed registry와 대표 3-source producer를 같은 R2 카드 안에서 순서대로 완료하고 실제 Trino 결과·target/data 회귀·handoff·branch CI를 제출한다.
 RESULT_SHA=1eec81b7f46545e7d1e6d448cc8b1a567435ce7d
 RESULT_CI=branch 31353517252 PASS
+```
+
+### R2 · R2-W5-F6
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F6
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=versioned Semantic Catalog producer and isolated runtime evidence
+TASK_CARD_RANGE=R2-11·19 serving View description catalog·DataHub publish/verify·CRM seed protection
+CURRENT_TASK_CARD_ID=R2-11
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=593b68a46c7800c1993be0656bea0c9bf58b57d6
+START_POINT=origin/seung을 최신 dev 593b68a로 fast-forward한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R2-W5-F6@593b68a
+CONTRACT_VERSION=I5-SEMANTIC-CATALOG-v1.0.0-DRAFT; I5-DATAHUB-v1.1.0-RUNTIME-DRAFT
+ALLOWED_PATHS=infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql; infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/trino/etc/access-control-rules.json; src/data/serving_semantic_catalog.i4.v1.json; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; src/data/serving_analytics_contract.i4.v1.json; tests/data/test_serving_semantic_catalog.py; handoffs/R2-W5-F6.json; docs/markdown/daily_reports/seung/일일보고.md
+FORBIDDEN_PATHS=infrastructure/database/compose.yml; seed/data SQL; backend·AI·frontend; root env/CI; DataHub volume reset; 다른 Docker project; secret
+HANDOFF_MANIFEST=handoffs/R2-W5-F6.json
+ACCEPTANCE_CRITERIA=현재 동결된 serving analytics 8 View·116 field occurrence·70 unique field의 FQN·column 목록을 재사용해 description만 versioned enrichment한 단일 Semantic Catalog를 만든다. publisher는 재실행 가능하고 verifier는 ingestion 뒤 Dataset description 8/8·Column description 116/116 및 catalog version/hash를 exact 검증한다. Kafka healthcheck는 현재 image에 실제 존재하는 kafka-topics 명령을 사용하고 datahub_ingestion 계정에는 system.metadata.catalogs·table_comments SELECT만 최소 허용한다. CRM의 기존 active-only filtered unique index 5개와 grade/customer_map history overlap trigger는 보존하며 trigger 내부 fast path가 filtered unique 보호 범위에만 적용됨을 duplicate·adjacent·overlap 회귀와 fresh synthetic 80000 seed 증거로 확인한다. 격리 문서의 과거 183 passed 수치를 현재 PASS로 복사하지 않고 이번 실행 증거만 기록한다.
+ACCEPTANCE_IDS=AC1_CATALOG_CARDINALITY;AC2_DESCRIPTION_VERSION_HASH;AC3_IDEMPOTENT_PUBLISH;AC4_EXACT_VERIFY;AC5_KAFKA_HEALTH;AC6_MINIMUM_METADATA_GRANT;AC7_CRM_PROTECTION;AC8_CURRENT_EVIDENCE_ONLY
+TEST_COMMANDS=python -m json.tool src/data/serving_semantic_catalog.i4.v1.json; python -m pytest -p no:cacheprovider tests/data/test_serving_semantic_catalog.py -q; python -m pytest -p no:cacheprovider tests/data -q; docker compose config; fresh isolated synthetic CRM duplicate·adjacent·overlap·80000 seed 검증; isolated DataHub ingestion→publisher 2회→verifier 8/116; gate_scope merge-base; git diff --check; seung branch CI
+TEST_COMMAND_IDS=T1_JSON;T2_TARGET;T3_DATA;T4_COMPOSE;T5_CRM;T6_DATAHUB;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
+STOP_CONDITIONS=기존 index·trigger 의미 약화; seed 파일 변경 필요; 8/116/70 불일치; publisher 비멱등; ingestion warning/health 실패; broad system grant; root compose 복사; 다른 project·volume reset·secret·비용; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=정확히 격리된 synthetic CRM·DataHub 검증 project의 container 생성·정리와 local metadata publish/search만 허용한다. 기존 hotel-synthetic-db·data-hub-test·다른 project/volume, root env, 외부 전송·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=과거 격리 수치를 현재 PASS로 승격; catalog cardinality/hash 불일치; broad grant; 기존 history 보호 약화; 다른 project drift; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=Option 1 요청은 부분 수용한다. 이 R2 생산자를 먼저 dev에 통합·동결한 뒤 R4 Dataset/Column description Context 소비자와 R3 training catalog 소비자를 별도 owner 카드로 발행하고, 마지막에 R1 fresh integration을 수행한다.
 ```
 
 ### R4 · R4-W5-F2
@@ -1139,7 +1172,7 @@ R1_REVIEW_CONDITIONS=Google Docs의 대규모 R4-W5-F3 요청은 번호 충돌�
 ### R4 · R4-W5-F6
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -1161,6 +1194,40 @@ ACCEPTANCE_CRITERIA=대표 E2E의 versioned-trino mode에서 R2가 실제 Trino 
 TEST_COMMANDS=target backend Context/G2/G3/API tests; backend 전체; compileall; gate_scope; git diff --check; jaehong branch CI
 STOP_CONDITIONS=R2/AI/frontend/migration/OpenAPI route 변경 필요; general SQL parser/SQLGlot dependency 필요; live PENDING을 승인; fake chart/trace; 외부 서비스·비용·secret; scope/필수 검증 실패
 R1_REVIEW_CONDITIONS=versioned/live 경계, safe CTE negative, 3-source Context mapping, G3 이후 chart/evidence/request trace와 backend 전체·source CI를 제출한다.
+RESULT_SHA=dcd4d8378ea50cf1a3aeb4dca4cb0b89fb07e20f
+RESULT_CI=31356025262 FAILURE — handoff REVIEW_REQUIRED로 후속 jobs skipped
+BLOCKED_REASON=실제 R3-W5-F5 plan 조합에서 Context topology가 1-edge로 축약되어 ContractError가 발생하고, 5-edge 보정 뒤에도 required-filter 검사가 첫 CTE WHERE만 읽어 POS CTE filter를 누락한다. 단일 WHERE probe test로는 이 결함을 검출하지 못했으므로 병합을 보류한다.
+```
+
+### R4 · R4-W5-F7
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F7
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=actual R3 multi-CTE topology and required-filter composition
+TASK_CARD_RANGE=R4-04·05 G120-046 Context topology·multi-CTE G2 REWORK
+CURRENT_TASK_CARD_ID=R4-04
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=593b68a46c7800c1993be0656bea0c9bf58b57d6
+START_POINT=origin/jaehong의 R4-W5-F6 결과를 보존하고 최신 dev 593b68a와 충돌 여부를 확인한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W5-F7@593b68a
+ALLOWED_PATHS=app/backend/app/adapters/contract_model.py; app/backend/app/services/pipeline_support.py; tests/backend/test_analysis_pipeline.py; tests/backend/test_i2_data_platform.py; handoffs/R4-W5-F7.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=src/data/**; src/ai/**; Context schema·migration·OpenAPI route; frontend; root Compose/env/CI; dependency·SQLGlot; secret
+HANDOFF_MANIFEST=handoffs/R4-W5-F7.json
+ACCEPTANCE_CRITERIA=승인된 pms_crm_pos_gold_revenue_month_v1에 한해 R3와 합의한 6 asset·5-edge topology와 preaggregate_then_one_to_one_month cardinality를 model Context에 전달한다. G2 required-filter 검사는 각 CTE의 alias·WHERE 범위를 독립적으로 확인해 PMS·CRM·POS typed placeholder 11개를 exact parameter map과 대조하며, POS filter 하나만 제거해도 METRIC_FILTER_MISSING이어야 한다. 다른 CTE의 같은 field·literal·OR·unknown/duplicate placeholder·value mutation으로 우회할 수 없다. 실제 R3-W5-F5 Node2 plan shape를 test fixture로 직접 조합해 Context→Node2 output→G2→single binder를 통과시키고 second repair는 계속 차단한다.
+ACCEPTANCE_IDS=AC1_FIVE_EDGE_TOPOLOGY;AC2_MULTI_CTE_FILTER_SCOPE;AC3_EXACT_TYPED_MAP;AC4_BYPASS_NEGATIVE;AC5_ACTUAL_R3_PLAN;AC6_SINGLE_BINDER;AC7_ONE_REPAIR
+TEST_COMMANDS=target backend Context/G2 composition tests; backend 전체; compileall; gate_scope merge-base; git diff --check; jaehong branch CI
+TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND;T3_COMPILE;T4_SCOPE;T5_DIFF;T6_BRANCH_CI
+STOP_CONDITIONS=R2/R3 product 변경 필요; general SQL parser/dependency 필요; approved join 밖 topology 합성; literal/OR 우회; local probe만 통과하고 actual R3 shape 실패; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local deterministic test와 허용 경로 commit·jaehong push만 허용한다. DataHub/Trino lifecycle·외부 서비스·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=1-edge topology 잔존; 첫 WHERE만 검사; POS filter 누락 허용; actual R3 plan 미검증; second repair; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=R4 source CI PASS 뒤 dev에 먼저 통합하고 R3-W5-F5를 최신 dev에 동기화해 combined test·source CI를 다시 통과시킨다. 그 전 R1-W5-F9 actual API E2E를 재발행하지 않는다.
 ```
 
 ### R5 · R5-W5-F1

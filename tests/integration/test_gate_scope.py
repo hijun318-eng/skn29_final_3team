@@ -200,23 +200,31 @@ ALLOWED_PATHS=.github/**
         self.assertEqual([], errors)
 
     def test_bootstrap_requires_matching_clean_executable_workspace(self) -> None:
-        payload = gate_scope.bootstrap_payload(
-            self.ledger,
-            "seung",
-            "codex/process-e2e",
-            "C:/repo/worktree",
-            True,
+        bundle = self.generic_bundle()
+        bundle["STATUS"] = "READY"
+        with patch.object(gate_scope, "current_bundle", return_value=bundle):
+            payload = gate_scope.bootstrap_payload(
+                self.ledger,
+                "seung",
+                "codex/process-e2e",
+                "C:/repo/worktree",
+                True,
+            )
+        self.assertTrue(
+            any("does not match seung" in error for error in payload["errors"])
         )
-        self.assertIn("does not match seung", payload["errors"][1])
         self.assertIn("working tree is not clean", payload["errors"])
         self.assertEqual(
             gate_scope.ROLE_MANUALS["seung"], payload["full_reads"][-1]
         )
 
     def test_bootstrap_blocks_terminal_bundle(self) -> None:
-        payload = gate_scope.bootstrap_payload(
-            self.ledger, "seung", "seung", "C:/repo", False
-        )
+        bundle = self.generic_bundle()
+        bundle["STATUS"] = "MERGED_DEV"
+        with patch.object(gate_scope, "current_bundle", return_value=bundle):
+            payload = gate_scope.bootstrap_payload(
+                self.ledger, "seung", "seung", "C:/repo", False
+            )
         self.assertIn("does not allow implementation", payload["errors"][0])
 
     def test_stale_base_without_path_overlap_can_continue(self) -> None:

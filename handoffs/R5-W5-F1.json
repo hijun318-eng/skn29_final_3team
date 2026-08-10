@@ -1,0 +1,56 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R5-W5-F1",
+  "ROLE": "R5",
+  "BRANCH": "minji",
+  "BASE_SHA": "594c34da9ef14ec7db5a483446409dea69aee673",
+  "RESULT_SHA": "d7e881b52c4bf86b4f116770e67edf30cf527154",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R5-W5-F1@594c34d",
+  "COMPLETED_CARDS": [
+    "R5-01·03·11·12·16·17 목업 기반 shell·Chat·Report 표현 정렬 및 회귀 검증"
+  ],
+  "CHANGED_FILES": [
+    "app/enterprise-react/src/App.jsx",
+    "app/enterprise-react/src/components/layout/AppHeader.jsx",
+    "app/enterprise-react/src/components/layout/AppSidebar.jsx",
+    "app/enterprise-react/src/pages/AgentPage.jsx",
+    "app/enterprise-react/src/styles.css",
+    "docs/markdown/daily_reports/minji/일일보고.md",
+    "tests/frontend/contracts.test.mjs"
+  ],
+  "CONTRACT_VERSIONS": {
+    "UI": "UI-v1.0.0",
+    "OPENAPI": "OPENAPI-v1.0.0",
+    "REPORT": "REPORT-v1.0.0",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_MOCKUP_VISUAL_HIERARCHY", "status": "PASS", "evidence": "244px compact sidebar, 52px topbar, 질문 중심 thread·textarea와 근거 panel 적용"},
+    {"id": "AC2_ROUTE_FREEZE", "status": "PASS", "evidence": "routing.js 미변경, 기존 /agent·/reports·/catalog·/catalog/connections 유지"},
+    {"id": "AC3_API_FIXTURE_BOUNDARY", "status": "PASS", "evidence": "API client 미변경, 오류 자동 fallback 없이 server 오류 표시"},
+    {"id": "AC4_ID_STATE_PRESERVATION", "status": "PASS", "evidence": "queued에서 fixture requestId·traceId·Artifact를 제거하고 실제 응답 뒤에만 완료 표시"},
+    {"id": "AC5_NO_MOCK_FEATURE_IMPORT", "status": "PASS", "evidence": "auto-fill·PDF·export·share·가짜 저장·실행을 추가하지 않음"},
+    {"id": "AC6_RESPONSIVE_A11Y", "status": "PASS", "evidence": "1440·1024·768·360, keyboard·focus·drawer·panel과 720 CSS viewport 동등 조건 확인"},
+    {"id": "AC7_NO_DEPENDENCY", "status": "PASS", "evidence": "package·외부 font·network dependency 변경 없음"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T3_FRONTEND_CONTRACT", "name": "node tests/frontend/contracts.test.mjs", "status": "PASS", "evidence": "R5 contract checks passed"},
+    {"id": "T4_BUILD", "name": "npm --prefix app/enterprise-react run build", "status": "PASS", "evidence": "Vite production build 통과"},
+    {"id": "T5_FIXTURE_BROWSER", "name": "responsive and keyboard browser regression", "status": "PASS", "evidence": "1440·1024·768·360, theme, Enter/Shift+Enter, Escape focus restore 확인"},
+    {"id": "T6_API_BROWSER", "name": "API no-fallback browser boundary", "status": "PASS", "evidence": "Reports API 오류가 fixture success로 대체되지 않음을 확인"},
+    {"id": "T7_SCOPE", "name": "planned path scope", "status": "PASS", "evidence": "변경 7개 파일 모두 R5-W5-F1 허용 경로"},
+    {"id": "T8_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
+  ],
+  "NOT_RUN": [
+    {"id": "T1_OPENAPI", "reason": "local Python 환경에 FastAPI가 없어 ModuleNotFoundError"},
+    {"id": "T2_BACKEND_CONTRACT", "reason": "local Python 환경에 FastAPI가 없어 backend contract test 미실행"},
+    {"id": "T5_EXACT_200_PERCENT_ZOOM", "reason": "브라우저 zoom 단축키 자동화 미지원; 720 CSS viewport 동등 조건은 통과"}
+  ],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [
+    "실제 backend가 기동된 환경의 전체 Analysis·Report 성공 흐름은 이번 UI rework 뒤 재실행하지 않음"
+  ],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "branch CI 확인 뒤 R5-W5-F1을 dev에 통합"
+}

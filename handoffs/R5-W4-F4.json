@@ -3,11 +3,11 @@
   "EXECUTION_BUNDLE_ID": "R5-W4-F4",
   "ROLE": "R5",
   "BRANCH": "minji",
-  "BASE_SHA": "2efa20cf48676e6e718e92637f702ba7fa3452d7",
-  "SYNCED_DEV_SHA": "61506b27745759c29bcd7a58dbb288136794acd1",
-  "RESULT_SHA": "a19de0f2c1dc854f2b17e02777b77f4c49fd751c",
+  "BASE_SHA": "2b7d2dba46e57be6ad7a5e131d7c7b525ee43a76",
+  "SYNCED_DEV_SHA": "ab78ad96141d19bc6168e24efa0f65b70314bb89",
+  "RESULT_SHA": "531027c6f0bec08e5d22ed02283465622bbe285d",
   "TERMINAL_SHA": "HEAD",
-  "DIRECTIVE_TOKEN": "R5-W4-F4@2efa20c",
+  "DIRECTIVE_TOKEN": "R5-W4-F4R1@2b7d2db",
   "COMPLETED_CARDS": [
     "R5-12·17 actual Report definition·manual command·Run History integration"
   ],
@@ -27,23 +27,23 @@
     {"id": "AC1_HTTP_DEFAULT", "status": "PASS", "evidence": "VITE_REPORT_MODE=fixture일 때만 fixture를 선택하고 기본값은 HTTP client"},
     {"id": "AC2_EXPLICIT_FIXTURE", "status": "PASS", "evidence": "API 오류 처리에 fixture fallback 경로 없음"},
     {"id": "AC3_TYPED_CONTRACT", "status": "PASS", "evidence": "공개 9개 operation과 REPORT-v1.0.0 snake_case DTO·runtime version 검증"},
-    {"id": "AC4_ADMIN_CONTEXT", "status": "PASS", "evidence": "Bearer·X-User-Id·report_admin·X-As-Of·X-Trace-Id·Asia/Seoul·OPENAPI-v1.0.0 header 계약 테스트"},
-    {"id": "AC5_DEFINITION_FLOW", "status": "PASS", "evidence": "create/list/get/approve/next draft 결과를 서버 response로만 반영"},
+    {"id": "AC4_ADMIN_CONTEXT", "status": "PASS", "evidence": "Bearer·X-User-Id·report_admin·X-As-Of·X-Trace-Id·Asia/Seoul·OPENAPI-v1.0.0 및 body Content-Type 계약 테스트"},
+    {"id": "AC5_DEFINITION_FLOW", "status": "PASS", "evidence": "create/list/get/approve/next draft 결과를 서버 response로만 반영하고 A→B 늦은 A response를 request guard로 무시"},
     {"id": "AC6_DRAFT_REPLACE", "status": "PASS", "evidence": "PUT blocks는 table·chart·text 규칙을 통과한 전체 snake_case block만 전송"},
     {"id": "AC7_MANUAL_BOUNDARY", "status": "PASS", "evidence": "manual body는 네 필드만 전송하고 queued receipt에 run_id가 없음을 검증"},
     {"id": "AC8_REAL_HISTORY", "status": "PASS", "evidence": "run list/detail은 GET response만 렌더링"},
-    {"id": "AC9_ASYNC_STATES", "status": "PASS", "evidence": "loading·empty·error·401·403·queued 상태를 text·icon·live region으로 구분"},
+    {"id": "AC9_ASYNC_STATES", "status": "PASS", "evidence": "동시 mutation 수명 전체 busy 유지, reload 성공 error clear, loading·empty·error·401·403·queued 상태 구분"},
     {"id": "AC10_NO_FAKE_SUCCESS", "status": "PASS", "evidence": "API page는 서버에 없는 author·period·stats·worker 진행을 만들지 않음"},
     {"id": "AC11_FIXTURE_COMPAT", "status": "PASS", "evidence": "기존 fixture page와 6상태·12-column·keyboard source contract 보존"}
   ],
   "TEST_RESULTS": [
     {"id": "T1_OPENAPI", "name": "python app/backend/scripts/export_openapi.py --check", "status": "PASS", "evidence": "GitHub Actions CI 30895691240 python-contracts job에서 committed OpenAPI와 FastAPI schema 일치 test 포함 전체 pytest 통과"},
     {"id": "T2_BACKEND_CONSUMER", "name": "python -m pytest -p no:cacheprovider tests/backend/test_openapi_contract.py tests/backend/test_report_registration.py -q", "status": "PASS", "evidence": "GitHub Actions CI 30895691240 python-contracts job의 전체 pytest 통과로 해당 두 test 포함 확인"},
-    {"id": "T3_FRONTEND_CONTRACT", "name": "node tests/frontend/contracts.test.mjs", "status": "PASS", "evidence": "R5 contract checks passed"},
-    {"id": "T4_BUILD", "name": "npm --prefix app/enterprise-react run build", "status": "PASS", "evidence": "2368 modules transformed; built in 659ms"},
+    {"id": "T3_FRONTEND_CONTRACT", "name": "node tests/frontend/contracts.test.mjs", "status": "PASS", "evidence": "R5 contract checks passed; A→B stale response·동시 busy·reload error·필수 header 회귀 포함"},
+    {"id": "T4_BUILD", "name": "npm --prefix app/enterprise-react run build", "status": "PASS", "evidence": "2368 modules transformed; built in 633ms"},
     {"id": "T5_FIXTURE_BROWSER", "name": "browser fixture 1440·1024·768·360, 6상태·keyboard", "status": "BLOCKED", "evidence": "Browser runtime discovery 결과 사용 가능한 browser 0개"},
     {"id": "T6_API_BROWSER", "name": "browser API local definition·PUT·approve·draft·manual·history·error", "status": "BLOCKED", "evidence": "Browser runtime과 local backend runtime 부재; Docker resource는 변경하지 않음"},
-    {"id": "T7_SCOPE", "name": "python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "변경 5개 승인 경로 PASS; handoff 작성 전 실행"},
+    {"id": "T7_SCOPE", "name": "python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base", "status": "PASS", "evidence": "승인 경로 7개만 변경; Browser BLOCKED로 handoff FAIL은 유지"},
     {"id": "T8_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
   ],
   "NOT_RUN": [
@@ -51,9 +51,9 @@
   ],
   "CHANGE_REQUESTS": [],
   "RESIDUAL_RISKS": [
-    "실제 FastAPI·PostgreSQL에서 9개 HTTP 흐름과 401·403·409·422·503 화면을 재검증해야 함",
+    "Browser runtime과 local backend runtime이 준비되면 fixture 4 viewport와 실제 9개 HTTP·401·403·409·422·503 화면을 재검증해야 함",
     "worker가 없으므로 queued command 이후 run 생성·진행 상태는 구현하지 않음"
   ],
   "EXTERNAL_APPROVAL_REQUIRED": [],
-  "REQUESTED_DECISION": "환경 차단 검증을 보완한 뒤 R5-W4-F4 actual Report consumer의 I5 통합 여부 판정"
+  "REQUESTED_DECISION": "경쟁 상태 코드 보완과 branch CI를 검토하고 Browser T5·T6 환경 차단 해소 전 I5 통합 보류"
 }

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.25 |
-| 문서 기준일 | 2026-08-10 15:25 |
+| 버전 | v5.26 |
+| 문서 기준일 | 2026-08-10 16:10 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -24,8 +24,8 @@
 |---|---|---|---|
 | R1 | `R1-W5-F9` | `BLOCKED` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
-| R3 | `R3-W5-F5` | `BLOCKED` | `daesung` |
-| R4 | `R4-W5-F7` | `READY` | `jaehong` |
+| R3 | `R3-W5-F6` | `READY` | `daesung` |
+| R4 | `R4-W5-F7` | `MERGED_DEV` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
@@ -923,6 +923,37 @@ R1_REVIEW_CONDITIONS=multi-source plan의 SQL 구조·typed parameters·approved
 BLOCKED_REASON=R3 제품 commit 626164b의 단위 회귀는 통과했으나 R4-W5-F6 Context가 5-edge topology를 전달하지 않아 실제 조합이 ContractError로 중단되고, 보정 뒤에도 G2가 두 번째 POS CTE filter를 검사하지 못해 METRIC_FILTER_MISSING이 발생한다. R4 owner REWORK 통합 뒤 최신 dev에서 조합을 재검증하기 전 handoff·push·병합을 금지한다.
 ```
 
+### R3 · R3-W5-F6
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F6
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=actual Node2→R4 multi-CTE G2→single binder composition
+TASK_CARD_RANGE=R3-04·05 G120-046 조합 회귀·handoff 교정
+CURRENT_TASK_CARD_ID=R3-04
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=07c08e8b8b1ec2410466e804dc8fd83dbc19004d
+START_POINT=보존한 R3 제품 commit 626164b를 최신 dev 07c08e8 위에 안전하게 재적용하고 stash@{0}은 계속 건드리지 않는다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R3-W5-F6@07c08e8
+ALLOWED_PATHS=src/ai/node2.py; tests/ai/test_node2.py; tests/ai/test_training_verification.py; handoffs/R3-W5-F5.json; handoffs/R3-W5-F6.json; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; dataset·prompt/model serving; RunPod·외부 endpoint; dependency; secret
+HANDOFF_MANIFEST=handoffs/R3-W5-F6.json
+ACCEPTANCE_CRITERIA=최신 dev의 R4-W5-F7 Context가 전달하는 6 asset·5-edge topology와 R2 typed binding을 R3 Node2가 소비해 두 source preaggregate CTE SQL을 생성하고, 실제 R4 PipelineSupport G2와 I2DataPlatformAdapter single binder를 순서대로 통과한다. POS CTE filter 하나를 제거하면 METRIC_FILTER_MISSING, 승인 밖 JOIN·literal·OR·unknown/duplicate/value mutation은 fail-closed이며 METRIC_FILTER_MISSING repair는 정확히 1회만 허용한다. F5 handoff의 BLOCKED를 조합 결과로 대체하되 compiled dataset·RunPod는 계속 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_LATEST_DEV_CONTEXT;AC2_ACTUAL_NODE2_G2_BINDER;AC3_MULTI_CTE_NEGATIVE;AC4_ONE_REPAIR;AC5_HANDOFF_SUPERSEDE;AC6_NO_DATASET_RUNPOD
+TEST_COMMANDS=actual R3 Node2→R4 G2→I2 binder composition target; Node2 target; AI 전체; compileall; gate_scope merge-base; git diff --check; daesung branch CI
+TEST_COMMAND_IDS=T1_COMPOSITION;T2_NODE2;T3_AI;T4_COMPILE;T5_SCOPE;T6_DIFF;T7_BRANCH_CI
+STOP_CONDITIONS=backend/data 변경 필요; actual composition 실패; case/Gold SQL hardcode; raw-row join; second repair; dataset·RunPod·비용·secret; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local deterministic 조합 test와 허용 경로 commit·daesung push만 허용한다. Docker/DataHub/Trino lifecycle·외부 비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=probe SQL만 검증; 실제 Node2 plan 미검증; multi-CTE filter 누락 허용; second repair; stash 변경; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=R3 source CI PASS 뒤 dev에 통합하고 새 R1 actual API E2E 카드로 local Trino Gold·G3 table/chart/evidence/artifact/request trace를 검증한다.
+```
+
 ### R2 · R2-W5-F3
 
 ```text
@@ -1202,7 +1233,7 @@ BLOCKED_REASON=실제 R3-W5-F5 plan 조합에서 Context topology가 1-edge로 �
 ### R4 · R4-W5-F7
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -1228,6 +1259,8 @@ STOP_CONDITIONS=R2/R3 product 변경 필요; general SQL parser/dependency 필�
 EXTERNAL_ACTION_PERMISSION=local deterministic test와 허용 경로 commit·jaehong push만 허용한다. DataHub/Trino lifecycle·외부 서비스·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=1-edge topology 잔존; 첫 WHERE만 검사; POS filter 누락 허용; actual R3 plan 미검증; second repair; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=F6를 결함 상태로 선통합하지 않는다. F7은 origin/dev 대비 F6+F7 누적 diff와 두 handoff를 한 번에 제출하고 source CI PASS 뒤 dev에 통합한다. 이후 R3-W5-F5를 최신 dev에 동기화해 combined test·source CI를 다시 통과시킨다. 그 전 R1-W5-F9 actual API E2E를 재발행하지 않는다.
+RESULT_SHA=44941147c1795fdfcdf9035293de336f02e63339
+RESULT_CI=branch 31357307192 PASS; product 31357211797 PASS; 104 passed·10 skipped
 ```
 
 ### R5 · R5-W5-F1

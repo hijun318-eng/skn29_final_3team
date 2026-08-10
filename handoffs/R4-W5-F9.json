@@ -1,0 +1,137 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W5-F9",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "b825e6da8c7f80f372dcf6bf436b540deff749d2",
+  "RESULT_SHA": "0303cd9d8aad9f1b2f3d3859d238249ea07dd205",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W5-F9@b825e6d",
+  "COMPLETED_CARDS": [
+    "R4-05·13·16 Analysis 저장·조회·현재 계약 재실행"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/README.md",
+    "app/backend/app/adapters/analysis_repository.py",
+    "app/backend/app/analysis_contracts.py",
+    "app/backend/app/api/router.py",
+    "app/backend/app/controllers/analysis_controller.py",
+    "app/backend/app/services/analysis_service.py",
+    "app/backend/contracts/openapi.v0.1.json",
+    "app/backend/migrations/versions/20260810_06_analysis_persistence.py",
+    "tests/backend/test_analysis_persistence.py",
+    "tests/backend/test_analysis_pipeline.py",
+    "tests/backend/test_migration_compatibility.py",
+    "tests/backend/test_openapi_contract.py",
+    "docs/markdown/daily_reports/jaehong/일일보고.md"
+  ],
+  "CONTRACT_VERSIONS": {
+    "ANALYSIS_PERSISTENCE": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
+    "RUN_RESULT": "existing request→query→artifact reuse",
+    "REPLAY": "current entitlement·Context·G1·G2·G3·repair·binder",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_SYSTEM_TEMPLATE_IMMUTABLE",
+      "status": "PASS",
+      "evidence": "context.analysis_templates는 system routing template로 유지하고 user-owned versioned Definition을 별도 저장"
+    },
+    {
+      "id": "AC2_EXISTING_RUN_RESULT_REUSE",
+      "status": "PASS",
+      "evidence": "Definition과 기존 analysis_requests·query_executions·analysis_artifacts의 ID만 연결하고 result blob을 복제하지 않음"
+    },
+    {
+      "id": "AC3_APPROVED_ROUTES",
+      "status": "PASS",
+      "evidence": "승인된 Definition create/list/get, replay, run list/detail route를 OpenAPI에 additive로 고정"
+    },
+    {
+      "id": "AC4_SERVER_OWNED_IDS_STATUS",
+      "status": "PASS",
+      "evidence": "owner·status·request_id·query_id·artifact_id·result의 client 제출을 차단하고 server에서 생성"
+    },
+    {
+      "id": "AC5_CURRENT_GATE_REPLAY",
+      "status": "PASS",
+      "evidence": "저장 SQL을 재사용하지 않고 redacted question·typed parameters·as_of로 기존 AnalysisController 단일 경로를 다시 호출"
+    },
+    {
+      "id": "AC6_TERMINAL_IMMUTABLE",
+      "status": "PASS",
+      "evidence": "terminal success·partial·failure와 idempotency를 저장하고 과거 run 변경 및 G3 전 Artifact success를 차단"
+    },
+    {
+      "id": "AC7_AUTH_REDACTION",
+      "status": "PASS",
+      "evidence": "owner/role scope와 401·403·404·409·422·503, raw SQL·unbound parameter·result snapshot·secret 비노출을 검증"
+    },
+    {
+      "id": "AC8_EXISTING_API_COMPAT",
+      "status": "PASS",
+      "evidence": "기존 POST /analysis와 Report v1.1 9-operation 계약 및 OpenAPI 검증 통과"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_TARGET",
+      "name": "Analysis persistence target backend",
+      "status": "PASS",
+      "evidence": "제품 검증에서 38 passed, 1 skipped"
+    },
+    {
+      "id": "T2_BACKEND",
+      "name": "Python 3.12 backend 전체",
+      "status": "PASS",
+      "evidence": "승인된 일회성 test container에서 117 passed, 11 skipped"
+    },
+    {
+      "id": "T3_OPENAPI",
+      "name": "OpenAPI contract",
+      "status": "PASS",
+      "evidence": "OPENAPI_CONTRACT_VERIFIED 및 export_openapi.py --check 통과"
+    },
+    {
+      "id": "T4_HEADS",
+      "name": "Alembic single head",
+      "status": "PASS",
+      "evidence": "single head 20260810_06 확인"
+    },
+    {
+      "id": "T5_MIGRATION",
+      "name": "isolated migration",
+      "status": "PASS",
+      "evidence": "격리 PostgreSQL empty→head 및 20260804_05→head 5 passed"
+    },
+    {
+      "id": "T6_COMPILE",
+      "name": "compileall",
+      "status": "PASS",
+      "evidence": "제품 검증 및 CI compileall 통과"
+    },
+    {
+      "id": "T7_SCOPE",
+      "name": "role scope",
+      "status": "PASS",
+      "evidence": "GitHub Actions 31359321598 role-scope PASS"
+    },
+    {
+      "id": "T8_DIFF",
+      "name": "git diff --check",
+      "status": "PASS",
+      "evidence": "제품 SHA 검증에서 whitespace error 없음"
+    },
+    {
+      "id": "T9_BRANCH_CI",
+      "name": "jaehong branch CI",
+      "status": "PASS",
+      "evidence": "GitHub Actions 31359321598 전체 success, head SHA 0303cd9d8"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "F9 handoff-only terminal commit과 jaehong push 확인 후 R1 dev 통합 판정"
+}

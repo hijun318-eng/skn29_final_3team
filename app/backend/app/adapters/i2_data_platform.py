@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -39,6 +39,7 @@ class I2DataPlatformAdapter:
 
     _CONTEXT_CONTRACT_VERSION = "I4-CONTEXT-v2.2.0-DRAFT"
     _VIEW_CONTRACT_VERSION = "I4-DATA-v1.0.0-DRAFT"
+    _BINDING_CONTRACT_VERSION = "ASSET-BINDING-v1.0.0-DRAFT"
 
     _DATASET_QUERY = """
 query Dataset($urn: String!) {
@@ -73,6 +74,7 @@ query Dataset($urn: String!) {
         datahub_url: str = "http://datahub-gms:8080",
         datahub_token: str | None = None,
         contract_path: Path | None = None,
+        binding_path: Path | None = None,
         require_live_metadata: bool = True,
     ) -> None:
         self._trino_user = trino_user
@@ -116,8 +118,54 @@ query Dataset($urn: String!) {
             )
         ):
             raise ValueError("analytics View binding is not verified")
-        compatibility = view_contract.get("upgrade_compatibility") or {}
-        self._live_runtime_verified = compatibility.get("runtime_status") == "PASS"
+        health = json.loads(
+            (
+                binding_path
+                or root / "src" / "data" / "asset_binding_health.i5.v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        bindings = health.get("bindings")
+        required_binding_fields = {
+            "binding_id",
+            "urn",
+            "fqn",
+            "status",
+            "version",
+            "verified_at",
+            "provenance",
+        }
+        if (
+            health.get("contract_version") != self._BINDING_CONTRACT_VERSION
+            or set(health.get("required_fields") or ()) != required_binding_fields
+            or not isinstance(bindings, list)
+            or len(bindings) != len(view_contract.get("views", ()))
+            or any(
+                not isinstance(item, dict)
+                or not required_binding_fields.issubset(item)
+                or any(not item.get(key) for key in ("binding_id", "urn", "fqn", "version"))
+                for item in bindings
+            )
+            or any(
+                len({item.get(key) for item in bindings}) != len(bindings)
+                for key in ("binding_id", "urn", "fqn")
+            )
+        ):
+            raise ValueError("Asset Binding health contract is invalid")
+        binding_by_fqn = {item["fqn"]: item for item in bindings}
+        if {
+            (item.get("urn"), item.get("fqn"), item.get("version"))
+            for item in bindings
+        } != {
+            (view.get("urn"), view.get("fqn"), view.get("schema_version"))
+            for view in view_contract["views"]
+        }:
+            raise ValueError("Asset Binding identity does not match the View contract")
+        self._bindings_verified = (
+            health.get("status") == "HEALTHY"
+            and health.get("runtime_execution") == "PASS"
+            and all(self._binding_verified(item) for item in bindings)
+        )
+        self._live_runtime_verified = self._bindings_verified
         views = [
             {
                 "urn": view["urn"],
@@ -128,8 +176,9 @@ query Dataset($urn: String!) {
                 "seed_version": view["seed_version"],
                 "uses": ("serving_views",),
                 "kind": "view",
-                "binding_status": "VERIFIED",
-                "binding_version": view_contract["contract_version"],
+                "binding_id": binding_by_fqn[view["fqn"]]["binding_id"],
+                "binding_status": binding_by_fqn[view["fqn"]]["status"],
+                "binding_version": binding_by_fqn[view["fqn"]]["version"],
             }
             for view in view_contract["views"]
             if view.get("schema_version") == view_contract.get("schema_version")
@@ -157,6 +206,34 @@ query Dataset($urn: String!) {
         ]
         self._assets = tuple(views + raw_assets if require_live_metadata else views)
         self._live_schemas: dict[str, tuple[str, ...]] = {}
+
+    @staticmethod
+    def _binding_verified(binding: dict[str, Any]) -> bool:
+        verified_at = binding.get("verified_at")
+        provenance = binding.get("provenance") or {}
+        datahub = provenance.get("datahub_exact_search") or {}
+        trino = provenance.get("trino_metadata") or {}
+        try:
+            timestamp = datetime.fromisoformat(str(verified_at).replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        return (
+            binding.get("status") == "VERIFIED"
+            and isinstance(verified_at, str)
+            and verified_at.endswith("Z")
+            and timestamp.utcoffset() is not None
+            and timestamp.utcoffset().total_seconds() == 0
+            and datahub.get("status") == "PASS"
+            and trino.get("status") == "PASS"
+            and re.fullmatch(
+                r"[0-9a-f]{64}", str(datahub.get("response_sha256") or "")
+            )
+            is not None
+            and re.fullmatch(
+                r"[0-9a-f]{64}", str(trino.get("result_sha256") or "")
+            )
+            is not None
+        )
 
     def _request(
         self,
@@ -207,6 +284,8 @@ query Dataset($urn: String!) {
     ) -> list[dict[str, Any]]:
         if context.get("role") != "hotel_analyst":
             return []
+        if not self._bindings_verified:
+            raise ValueError("Asset Binding runtime verification is unavailable")
         if self._require_live_metadata and not self._live_runtime_verified:
             raise ValueError("live DataHub runtime evidence is unavailable")
         selected: list[dict[str, Any]] = []

@@ -4,15 +4,17 @@
   "ROLE": "R1",
   "BRANCH": "junhee",
   "BASE_SHA": "264391f1d4bdafaf6cd9529571c55dfbe71bd57a",
-  "RESULT_SHA": "e4c36b91fca55dc2819fab45e5c3b13f03fa95db",
+  "RESULT_SHA": "3a3fd7ce95f3411850c8f9300b5471f71bfb17f4",
   "TERMINAL_SHA": "HEAD",
   "DIRECTIVE_TOKEN": "R1-W5-F4@264391f",
   "COMPLETED_CARDS": ["R1-02 root env·service manifest·통합 verifier의 DataHub v1.7.0 정합성"],
   "CHANGED_FILES": [
     ".env.example",
+    "docs/markdown/collaboration/Gate_실행_카드_원장.md",
     "docs/markdown/daily_reports/junhee/일일보고.md",
     "infrastructure/database/r1-service-fragment.v1.json",
-    "infrastructure/database/scripts/verify-service-fragment.ps1"
+    "infrastructure/database/scripts/verify-service-fragment.ps1",
+    "tests/integration/test_gate_scope.py"
   ],
   "CONTRACT_VERSIONS": {
     "R1_SERVICE": "R1-SERVICE-v1.1.0-DRAFT",
@@ -33,7 +35,7 @@
     {"id": "T2_FRAGMENT", "name": "service fragment verifier", "status": "PASS", "evidence": "R2_SERVICE_FRAGMENT_VERIFIED"},
     {"id": "T3_COMPOSE_CONFIG", "name": "full compose config", "status": "PASS", "evidence": "docker compose config --quiet PASS"},
     {"id": "T4_OFFICIAL_PROVENANCE", "name": "official v1.7.0 provenance", "status": "PASS", "evidence": "revision 7f81ccb, blob 39b0f37 and four registry image digests verified"},
-    {"id": "T5_SCOPE", "name": "R1 planned path scope", "status": "PASS", "evidence": "four R1 paths allowed"},
+    {"id": "T5_SCOPE", "name": "R1 planned path and Gate regression scope", "status": "PASS", "evidence": "six R1 paths allowed; gate scope 30 tests and 10 subtests PASS"},
     {"id": "T6_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "no whitespace errors"}
   ],
   "NOT_RUN": [],

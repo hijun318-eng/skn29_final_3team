@@ -1,9 +1,66 @@
 import copy
+import json
 import unittest
+from pathlib import Path
 
 from src.ai.node2 import generate_sql, repair_sql
 from src.ai.schema import ContractError
 from tests.ai.test_contracts import VALID_PAYLOADS
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def derived_payload():
+    source = json.loads(
+        (ROOT / "src/data/pms_crm_pos_context.i5.v1.json").read_text(encoding="utf-8")
+    )
+    assets = [
+        {"urn": item["urn"], "trino_fqn": item["fqn"], "columns": item["columns"]}
+        for item in source["assets"]
+    ]
+    fqns = {item["trino_fqn"] for item in assets}
+    chain = [
+        ("pms.public.pms_stays", "pms.public.pms_reservations"),
+        ("pms.public.pms_reservations", "pms.public.pms_guests"),
+        ("pms.public.pms_guests", "crm.dbo.crm_customer_map"),
+        ("crm.dbo.crm_customer_map", "crm.dbo.crm_member_grade_history"),
+        ("crm.dbo.crm_customer_map", "pos.pos_db.pos_orders"),
+    ]
+    assert {fqn for pair in chain for fqn in pair} == fqns
+    joins = [
+        {
+            "id": source["approved_join"]["id"],
+            "left": left,
+            "right": right,
+            "cardinality": source["approved_join"]["cardinality"],
+            "status": "approved",
+        }
+        for left, right in chain
+    ]
+    return {
+        "question_id": "derived-question",
+        "context_package": {
+            "context_version": source["contract_version"],
+            "policy_version": "G2-v1.0.0",
+            "execution_time": {
+                "as_of": "2026-07-01T00:00:00+09:00",
+                "timezone": source["execution_time"]["timezone"],
+                "calendar_id": "gregorian-kr",
+                "period_start": source["execution_time"]["period_start"] + "T00:00:00+09:00",
+                "period_end_exclusive": source["execution_time"]["period_end_exclusive"] + "T00:00:00+09:00",
+            },
+            "assets": assets,
+            "metrics": [{
+                "id": "total_guest_revenue_krw",
+                "field": "derived.total_guest_revenue_krw",
+                "aggregation": "derived_sum",
+                "time_field": "derived.month",
+                "required_filters": source["required_filters"],
+            }],
+            "joins": joins,
+        },
+    }
 
 
 class Node2Tests(unittest.TestCase):
@@ -120,6 +177,68 @@ class Node2Tests(unittest.TestCase):
         unsupported["normalized_error_code"] = "raw database stack trace"
         with self.assertRaisesRegex(ContractError, "normalized error code"):
             repair_sql(unsupported)
+
+    def test_derived_metric_uses_two_source_preaggregates_and_all_typed_bindings(self):
+        payload = derived_payload()
+
+        response = generate_sql(payload)
+        sql = response["sql"]
+
+        self.assertTrue(sql.startswith("WITH pms_source AS ("))
+        self.assertEqual(2, sql.count("GROUP BY"))
+        self.assertIn("FROM pms_source p FULL OUTER JOIN pos_source f", sql)
+        self.assertIn("p.property_id = f.property_id AND p.month = f.month", sql)
+        self.assertIn("valid_from <= s.actual_checkout_at", sql)
+        self.assertIn("valid_from <= o.ordered_at", sql)
+        self.assertNotIn("GOLD", sql)
+        self.assertNotIn("SYNTHETIC_HOTEL_001", sql)
+        expected = json.loads(
+            (ROOT / "src/data/pms_crm_pos_context.i5.v1.json").read_text(encoding="utf-8")
+        )["parameter_bindings"]
+        self.assertEqual(expected, response["parameters"])
+        self.assertEqual(6, len(response["references"]))
+        self.assertTrue(
+            all(
+                item["join_ids"] == ["pms_crm_pos_gold_revenue_month_v1"]
+                for item in response["references"]
+            )
+        )
+        self.assertTrue(all(item["columns"] for item in response["references"]))
+
+    def test_derived_metric_rejects_unapproved_or_amplifying_context(self):
+        for mutate in (
+            lambda context: context["joins"][0].update(id="outside_join"),
+            lambda context: context["joins"][0].update(cardinality="many_to_many"),
+            lambda context: context["assets"].append(copy.deepcopy(context["assets"][0])),
+            lambda context: context["metrics"][0]["required_filters"].append(
+                copy.deepcopy(context["metrics"][0]["required_filters"][0])
+            ),
+        ):
+            payload = derived_payload()
+            mutate(payload["context_package"])
+            with self.subTest(context=payload["context_package"]):
+                with self.assertRaisesRegex(ContractError, "derived|filter"):
+                    generate_sql(payload)
+
+    def test_metric_filter_missing_repair_is_exactly_once(self):
+        request = derived_payload()
+        expected = generate_sql(request)
+        repair = {
+            "trace_id": "derived-trace",
+            "attempt": 1,
+            "rejected_sql": expected["sql"].replace(
+                'h."grade_code" = :required_filter_1', "1 = 1"
+            ),
+            "context_package": request["context_package"],
+            "normalized_error_code": "METRIC_FILTER_MISSING",
+            "repair_scope": ["sql", "references", "parameters"],
+        }
+
+        corrected = repair_sql(repair)
+
+        self.assertEqual(1, corrected["attempt"])
+        self.assertEqual(expected["sql"], corrected["corrected_sql"])
+        self.assertEqual(expected["parameters"], corrected["parameters"])
 
 
 if __name__ == "__main__":

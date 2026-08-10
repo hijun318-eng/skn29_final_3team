@@ -1,8 +1,10 @@
 import json
 import re
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from sys import path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import UUID
 
@@ -669,7 +671,7 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
     )
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
-        as_of=date(2026, 7, 1),
+        as_of=date(2026, 8, 1),
     )
     assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
     package = support.build_context(payload, context, assets)
@@ -783,6 +785,11 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
             ],
         }
     ]
+    assert model_context["execution_time"]["as_of"].startswith("2026-08-01")
+    assert model_context["execution_time"]["period_start"].startswith("2026-05-01")
+    assert model_context["execution_time"]["period_end_exclusive"].startswith(
+        "2026-07-01"
+    )
     assert [(item["left"], item["right"]) for item in model_context["joins"]] == [
         ("pms.public.pms_stays", "pms.public.pms_reservations"),
         ("pms.public.pms_reservations", "pms.public.pms_guests"),
@@ -801,6 +808,14 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
 
     mutated = {**parameters, "required_filter_7": {"value_type": "number", "value": 1}}
     assert support.g2_violation({**plan, "parameters": mutated}, package) == "PARAMETERS_INVALID"
+    mutated_period = {
+        **parameters,
+        "period_start": {"value_type": "date", "value": "2026-06-01"},
+    }
+    assert (
+        support.g2_violation({**plan, "parameters": mutated_period}, package)
+        == "PARAMETERS_INVALID"
+    )
     for bypass in (
         sql.replace('AND o."void_flag" = :required_filter_9', ""),
         sql.replace('o."void_flag" = :required_filter_9', "o.\"void_flag\" = 0"),
@@ -818,6 +833,86 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
     duplicate = {**response, "parameters": [*response["parameters"], response["parameters"][-1]]}
     with pytest.raises(ValueError, match="unique"):
         ContractModelAdapter._plan(duplicate, "sql", package.parameter_bindings)
+
+
+@pytest.mark.parametrize(
+    "periods",
+    (
+        (
+            SimpleNamespace(
+                name="period_start", value_type="date", value="2026-05-01"
+            ),
+        ),
+        (
+            SimpleNamespace(
+                name="period_start", value_type="date", value="2026-05-01"
+            ),
+            SimpleNamespace(
+                name="period_start", value_type="date", value="2026-05-01"
+            ),
+        ),
+        (
+            SimpleNamespace(
+                name="period_start", value_type="string", value="2026-05-01"
+            ),
+            SimpleNamespace(
+                name="period_end_exclusive", value_type="date", value="2026-07-01"
+            ),
+        ),
+        (
+            SimpleNamespace(
+                name="period_start", value_type="date", value="2026-02-30"
+            ),
+            SimpleNamespace(
+                name="period_end_exclusive", value_type="date", value="2026-07-01"
+            ),
+        ),
+        (
+            SimpleNamespace(
+                name="period_start", value_type="date", value="20260501"
+            ),
+            SimpleNamespace(
+                name="period_end_exclusive", value_type="date", value="2026-07-01"
+            ),
+        ),
+        (
+            SimpleNamespace(
+                name="period_start", value_type="date", value="2026-07-01"
+            ),
+            SimpleNamespace(
+                name="period_end_exclusive", value_type="date", value="2026-05-01"
+            ),
+        ),
+    ),
+    ids=("missing", "duplicate", "type", "invalid-date", "invalid-format", "reversed"),
+)
+def test_three_source_context_rejects_invalid_period_bindings(tmp_path, periods):
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080",
+        "runtime-user",
+        binding_path=verified_binding_path(tmp_path),
+        require_live_metadata=False,
+    )
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(question="5월과 6월 GOLD 고객의 통합 매출")
+    context = RequestContext(as_of=date(2026, 8, 1))
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+    package = support.build_context(payload, context, assets)
+    filters = tuple(
+        item
+        for item in package.parameter_bindings
+        if item.name not in {"period_start", "period_end_exclusive"}
+    )
+
+    with pytest.raises(ValueError, match="period"):
+        ContractModelAdapter._context_package(
+            {
+                "package": replace(
+                    package, parameter_bindings=(*periods, *filters)
+                ),
+                "context": context,
+            }
+        )
 
 
 def test_versioned_three_source_uses_runtime_verified_contract_while_live_pending_fails():

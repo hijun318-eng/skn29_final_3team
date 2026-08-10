@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.29 |
-| 문서 기준일 | 2026-08-10 16:55 |
+| 버전 | v5.30 |
+| 문서 기준일 | 2026-08-10 17:10 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F9` | `BLOCKED` | `junhee` |
+| R1 | `R1-W5-F10` | `READY` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
 | R3 | `R3-W5-F6` | `READY` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
@@ -872,6 +872,38 @@ R1_REVIEW_CONDITIONS=조합 회귀와 실제 제품 API E2E가 모두 PASS한 �
 BLOCKED_REASON=Trino Gold 자체는 2행·475972400.00·canonical hash가 일치했지만 제품 경로는 live Asset Binding BLOCKED/NOT_RUN, Node2의 단일 asset/PMS-CRM plan, METRIC_FILTER_MISSING repair 미지원, G2의 safe CTE 차단, chart 미조립 때문에 성공 trace를 만들지 못했다. fake/fixture-only 성공을 금지하고 R3·R4 owner REWORK 뒤 새 token으로 재발행한다.
 ```
 
+### R1 · R1-W5-F10
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F10
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=CRM seed-ready health and Python 3.12 integration harness
+TASK_CARD_RANGE=R1-02·08 CRM healthcheck·통합 runtime 검증 보완
+CURRENT_TASK_CARD_ID=R1-02
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=a8717d652dc98a6a8c4e2f6455b8ea698772b06e
+START_POINT=R1-W5-F9의 알려진 blocked diagnostic 변경을 먼저 해당 카드 범위로 commit해 보존한 뒤 origin/junhee을 최신 dev a8717d6와 동기화한다. F10은 F9 blocked evidence를 누적 보존하고 CRM health 변경만 추가한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F10@a8717d6
+CONTRACT_VERSION=R1-SERVICE-v1.1.0-DRAFT; CRM-SEED-HEALTH-v1.0.0-DRAFT
+ALLOWED_PATHS=infrastructure/database/compose.yml; tests/integration/test_crm_healthcheck.py; tests/integration/test_typed_three_source_e2e.py; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2 DDL·seed·DataHub 내부; R3/R4/R5 제품; 다른 Docker project·volume; root env/CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F10.json
+ACCEPTANCE_CRITERIA=crm-mssql healthcheck는 /var/opt/mssql/.hotel_synthetic_initialized 파일 존재와 sqlcmd SELECT 1 성공을 같은 CMD-SHELL에서 모두 요구한다. 기존 image·service name·container name·host port·volume·entrypoint를 바꾸지 않고 격리 후보의 container/project 값을 복사하지 않는다. 정적 회귀는 marker 또는 DB probe 하나만 성공하는 경우를 health PASS로 인정하지 않는다. local runtime 검증은 정확한 hotel-synthetic-db crm-mssql만 대상으로 하며 source/app DB·Trino·DataHub·다른 project·volume을 변경하지 않는다. backend 전체와 report registration은 app/backend/Dockerfile의 Python 3.12 image에서 실행하고 임시 local tag만 exact 정리한다.
+ACCEPTANCE_IDS=AC1_MARKER_AND_SQL;AC2_COMPOSE_IDENTITY;AC3_NEGATIVE_STATIC;AC4_EXACT_RUNTIME_TARGET;AC5_PY312_BACKEND;AC6_OTHER_PROJECT_INVARIANT
+TEST_COMMANDS=docker compose config; python -m pytest -p no:cacheprovider tests/integration/test_crm_healthcheck.py tests/integration/test_typed_three_source_e2e.py -q; exact crm-mssql health marker+sqlcmd smoke; docker build -t answervice-backend-r1-f10-test -f app/backend/Dockerfile .; docker run --rm --entrypoint python -v <exact-worktree>:/workspace -w /workspace answervice-backend-r1-f10-test -m pytest -p no:cacheprovider tests/backend tests/report -q; exact image remove; gate_scope merge-base; git diff --check; junhee branch CI
+TEST_COMMAND_IDS=T1_COMPOSE;T2_INTEGRATION;T3_CRM_RUNTIME;T4_PY312_IMAGE;T5_PY312_TEST;T6_CLEANUP;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
+STOP_CONDITIONS=F9 변경 미보존; marker 경로 불일치; compose identity/port/volume 변경 필요; seed/DDL 변경 필요; 다른 project·volume drift; Python image build 실패; secret 출력; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=정확한 hotel-synthetic-db crm-mssql의 read-only health inspect와 임시 backend test image build/run/remove, 허용 경로 commit·junhee push만 허용한다. container recreate·volume reset·다른 project·외부 비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=DB 접속만으로 healthy; marker만으로 healthy; 다른 project drift; F9 evidence 손실; Py3.12 미검증 PASS 주장; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=Option 1 보완 요청을 부분 수용한다. 구 Google 보드는 명시 폐기하고 Git 원장의 현재 카드만 실행한다. R2 runtime trace→R4/R3 semantic consumer 뒤 fresh-volume 최종 검증은 별도 승인으로 유지한다.
+```
+
 ### R2 · R2-W5-F5
 
 ```text
@@ -1041,10 +1073,10 @@ START_POINT=origin/seung을 최신 dev 593b68a로 fast-forward한 뒤 시작한�
 DIRECTIVE=REWORK
 DIRECTIVE_TOKEN=R2-W5-F6@593b68a
 CONTRACT_VERSION=I5-SEMANTIC-CATALOG-v1.0.0-DRAFT; I5-DATAHUB-v1.1.0-RUNTIME-DRAFT
-ALLOWED_PATHS=infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql; infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/trino/etc/access-control-rules.json; src/data/serving_semantic_catalog.i4.v1.json; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; src/data/serving_analytics_contract.i4.v1.json; tests/data/test_serving_semantic_catalog.py; handoffs/R2-W5-F6.json; docs/markdown/daily_reports/seung/일일보고.md
+ALLOWED_PATHS=infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql; infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/trino/etc/access-control-rules.json; infrastructure/database/datahub/scripts/run-runtime-validation.ps1; src/data/serving_semantic_catalog.i4.v1.json; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; src/data/serving_analytics_contract.i4.v1.json; tests/data/test_serving_semantic_catalog.py; handoffs/R2-W5-F6.json; docs/markdown/daily_reports/seung/일일보고.md
 FORBIDDEN_PATHS=infrastructure/database/compose.yml; seed/data SQL; backend·AI·frontend; root env/CI; DataHub volume reset; 다른 Docker project; secret
 HANDOFF_MANIFEST=handoffs/R2-W5-F6.json
-ACCEPTANCE_CRITERIA=현재 동결된 serving analytics 8 View·116 field occurrence·70 unique field의 FQN·column 목록을 재사용해 description만 versioned enrichment한 단일 Semantic Catalog를 만든다. publisher는 재실행 가능하고 verifier는 ingestion 뒤 Dataset description 8/8·Column description 116/116 및 catalog version/hash를 exact 검증한다. Kafka healthcheck는 현재 image에 실제 존재하는 kafka-topics 명령을 사용하고 datahub_ingestion 계정에는 system.metadata.catalogs·table_comments SELECT만 최소 허용한다. CRM의 기존 active-only filtered unique index 5개와 grade/customer_map history overlap trigger는 보존하며 trigger 내부 fast path가 filtered unique 보호 범위에만 적용됨을 duplicate·adjacent·overlap 회귀와 fresh synthetic 80000 seed 증거로 확인한다. 격리 문서의 과거 183 passed 수치를 현재 PASS로 복사하지 않고 이번 실행 증거만 기록한다.
+ACCEPTANCE_CRITERIA=현재 동결된 serving analytics 8 View·116 field occurrence·70 unique field의 FQN·column 목록을 재사용해 description만 versioned enrichment한 단일 Semantic Catalog를 만든다. publisher는 재실행 가능하고 verifier는 ingestion 뒤 Dataset description 8/8·Column description 116/116 및 catalog version/hash를 exact 검증한다. runtime wrapper는 R1_RUNTIME_HEALTHY→serving.i4 schema ingestion→8 View schema 확인→publisher→verifier 8/116→publisher 재실행 동일 결과→schema ingestion 재실행→description 유지→backend live Context 순서를 강제하고 raw secret·resolved recipe를 기록하지 않는다. publisher/verifier는 pinned DataHub v1.7 ingestion image와 exact approved project network 내부에서 명시 GMS URL로만 실행하며 host Python 실행을 금지한다. Kafka healthcheck는 현재 image에 실제 존재하는 kafka-topics 명령을 사용하고 datahub_ingestion 계정에는 system.metadata.catalogs·table_comments SELECT만 최소 허용한다. CRM의 기존 active-only filtered unique index 5개와 grade/customer_map history overlap trigger는 보존하며 trigger 내부 fast path가 filtered unique 보호 범위에만 적용됨을 duplicate·adjacent·overlap 회귀와 fresh synthetic 80000 seed 증거로 확인한다. 격리 문서의 과거 183 passed 수치를 현재 PASS로 복사하지 않고 이번 실행 증거만 기록한다.
 ACCEPTANCE_IDS=AC1_CATALOG_CARDINALITY;AC2_DESCRIPTION_VERSION_HASH;AC3_IDEMPOTENT_PUBLISH;AC4_EXACT_VERIFY;AC5_KAFKA_HEALTH;AC6_MINIMUM_METADATA_GRANT;AC7_CRM_PROTECTION;AC8_CURRENT_EVIDENCE_ONLY
 TEST_COMMANDS=python -m json.tool src/data/serving_semantic_catalog.i4.v1.json; python -m pytest -p no:cacheprovider tests/data/test_serving_semantic_catalog.py -q; python -m pytest -p no:cacheprovider tests/data -q; docker compose config; fresh isolated synthetic CRM duplicate·adjacent·overlap·80000 seed 검증; isolated DataHub ingestion→publisher 2회→verifier 8/116; gate_scope merge-base; git diff --check; seung branch CI
 TEST_COMMAND_IDS=T1_JSON;T2_TARGET;T3_DATA;T4_COMPOSE;T5_CRM;T6_DATAHUB;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
@@ -1320,7 +1352,7 @@ FORBIDDEN_PATHS=기존 migration·context.analysis_templates 의미 변경; R2/R
 HANDOFF_MANIFEST=handoffs/R4-W5-F9.json
 ACCEPTANCE_CRITERIA=context.analysis_templates는 system routing template로 유지하고 user-owned versioned Analysis Definition만 additive migration으로 추가한다. Run/Result 본체는 기존 chat.analysis_requests→query.query_executions→artifact.analysis_artifacts를 재사용하고 Definition↔request 연결만 최소 저장하며 result blob을 복제하지 않는다. R1은 /analysis/definitions create·list·get, /analysis/definitions/{id}/runs replay, /analysis/runs list·detail route를 명시 승인한다. client는 owner/status/request_id/query_id/artifact_id/result를 제출할 수 없고, replay는 승인 Definition의 redacted question·typed parameters·as_of로 기존 AnalysisController 한 경로를 호출해 현재 entitlement·Context·G1/G2/G3·repair·binder를 다시 검증한다. terminal success·partial·failure와 idempotency를 저장하되 G3 전 Artifact 성공을 만들지 않고 과거 run은 불변이다. owner/role scope, 401·403·404·409·422·503, raw SQL·unbound parameter·result snapshot·secret 비노출, 기존 POST /analysis와 Report v1.1 9-operation 호환을 검증한다.
 ACCEPTANCE_IDS=AC1_SYSTEM_TEMPLATE_IMMUTABLE;AC2_EXISTING_RUN_RESULT_REUSE;AC3_APPROVED_ROUTES;AC4_SERVER_OWNED_IDS_STATUS;AC5_CURRENT_GATE_REPLAY;AC6_TERMINAL_IMMUTABLE;AC7_AUTH_REDACTION;AC8_EXISTING_API_COMPAT
-TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_analysis_persistence.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py tests/backend/test_report_registration.py -q; python -m pytest -p no:cacheprovider tests/backend -q; python app/backend/scripts/export_openapi.py --check; alembic heads; isolated empty→head and 20260804_05→head; python -m compileall -q app/backend; gate_scope merge-base; git diff --check; jaehong branch CI
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_analysis_persistence.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py tests/backend/test_report_registration.py -q; docker build -t answervice-backend-r4-f9-test -f app/backend/Dockerfile .; docker run --rm --entrypoint python -v <exact-worktree>:/workspace -w /workspace answervice-backend-r4-f9-test -m pytest -p no:cacheprovider tests/backend -q; exact image remove; python app/backend/scripts/export_openapi.py --check; alembic heads; isolated empty→head and 20260804_05→head; python -m compileall -q app/backend; gate_scope merge-base; git diff --check; jaehong branch CI
 TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND;T3_OPENAPI;T4_HEADS;T5_MIGRATION;T6_COMPILE;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
 STOP_CONDITIONS=기존 request/query/artifact 의미 변경 또는 raw result 복제 필요; client-owned status/id; G1/G2/G3 우회; system template user mutation; Report worker/schedule·SQLGlot/G3 정책·R2/R3/frontend 변경; dependency·외부 DB·secret; scope/필수 검증 실패
 EXTERNAL_ACTION_PERMISSION=local deterministic test와 전용 ephemeral PostgreSQL migration 검증, 허용 경로 commit·jaehong push만 허용한다. 기존 app DB·volume·외부 서비스·비용·secret 변경은 금지한다.

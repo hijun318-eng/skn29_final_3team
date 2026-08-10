@@ -53,6 +53,15 @@ const agentPageSource = readFileSync(
   new URL("../../app/enterprise-react/src/pages/AgentPage.jsx", import.meta.url),
   "utf8",
 );
+const appSource = readFileSync(new URL("../../app/enterprise-react/src/App.jsx", import.meta.url), "utf8");
+const appHeaderSource = readFileSync(
+  new URL("../../app/enterprise-react/src/components/layout/AppHeader.jsx", import.meta.url),
+  "utf8",
+);
+const appSidebarSource = readFileSync(
+  new URL("../../app/enterprise-react/src/components/layout/AppSidebar.jsx", import.meta.url),
+  "utf8",
+);
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
 assert.equal(REPORT_CONTRACT_VERSION, "REPORT-v1.0.0");
 assert.deepEqual(REPORT_RUN_STATUSES, ["queued", "running", "success", "partial", "failed", "cancelled"]);
@@ -61,6 +70,22 @@ assert.equal(OPENAPI_VERSION, "OPENAPI-v1.0.0");
 assert.match(agentPageSource, /createAnalysisClient\(\)/);
 assert.doesNotMatch(agentPageSource, /createMockAnalysisClient/);
 assert.match(agentPageSource, /Backend API에 연결할 수 없습니다/);
+assert.match(appSource, /localStorage\.getItem\("answervice\.theme"\)/);
+assert.match(appSource, /document\.documentElement\.dataset\.theme = theme/);
+assert.match(appSource, /sidebarCollapsed/);
+assert.match(appHeaderSource, /aria-controls="main-navigation"/);
+assert.match(appHeaderSource, /aria-expanded=\{menuOpen\}/);
+assert.match(appSidebarSource, /aria-expanded=\{!collapsed\}/);
+assert.match(agentPageSource, /<textarea/);
+assert.match(agentPageSource, /event\.nativeEvent\.isComposing/);
+assert.match(agentPageSource, /requestSubmit\(\)/);
+assert.match(agentPageSource, /\.\.\.analysisFixtures\.loading/);
+assert.match(agentPageSource, /requestId: "",\s*traceId: ""/s);
+assert.doesNotMatch(agentPageSource, /\.\.\.initialRun,\s*status: "queued"/s);
+assert.match(agentPageSource, /complete: Boolean\(run\.requestId\) && run\.error\?\.code !== "INTERNAL_ERROR"/);
+assert.match(agentPageSource, /complete: run\.sources\.length > 0/);
+assert.match(agentPageSource, /complete: Boolean\(run\.artifact\?\.artifactId\)/);
+assert.doesNotMatch(agentPageSource, /검증 완료/);
 assert.ok(Object.values({ ...packageJson.dependencies, ...packageJson.devDependencies }).every((version) => version !== "latest"));
 assert.equal(resolveRoute("/customers").page, "notFound");
 assert.equal(resolveRoute("/catalog/tools").page, "notFound");

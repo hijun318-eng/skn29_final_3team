@@ -30,6 +30,8 @@ function NotFoundPage({ onNavigate }) {
 export function App() {
   const [route, setRoute] = useState(() => resolveRoute(window.location.pathname));
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [theme, setTheme] = useState(() => window.localStorage.getItem("answervice.theme") || "dark");
   const [isPending, startTransition] = useTransition();
   const page = route.page;
   const [title, description] = PAGE_META[page];
@@ -48,6 +50,25 @@ export function App() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem("answervice.theme", theme);
+  }, [theme]);
+
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
+    window.requestAnimationFrame(() => document.querySelector(".mobile-menu")?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === "Escape") closeMenu();
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [closeMenu, menuOpen]);
 
   const navigate = useCallback((nextPath) => {
     const nextRoute = resolveRoute(nextPath);
@@ -73,15 +94,24 @@ export function App() {
   }, [navigate, page]);
 
   return (
-    <div className={`app-shell ${isPending ? "is-page-pending" : ""}`}>
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${isPending ? "is-page-pending" : ""}`}>
       <AppSidebar
         page={page}
         onNavigate={navigate}
         open={menuOpen}
-        onClose={() => setMenuOpen(false)}
+        onClose={closeMenu}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
       />
       <div className="workspace">
-        <AppHeader title={title} description={description} onMenu={() => setMenuOpen(true)} />
+        <AppHeader
+          title={title}
+          description={description}
+          onMenu={() => setMenuOpen(true)}
+          menuOpen={menuOpen}
+          theme={theme}
+          onThemeToggle={() => setTheme((value) => value === "dark" ? "light" : "dark")}
+        />
         <div className="page-progress" aria-hidden="true" />
         <main className="page-stage" key={route.path} aria-busy={isPending}>
           <Suspense fallback={<div className="page-loading"><i /><b>페이지를 준비하고 있습니다.</b></div>}>

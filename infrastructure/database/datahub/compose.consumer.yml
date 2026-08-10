@@ -25,8 +25,6 @@ services:
       KAFKA_NODE_ID: "1"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
     volumes:
       - datahub-kafka-data:/var/lib/kafka/data
     healthcheck:
@@ -68,8 +66,8 @@ services:
 
   system-update-quickstart:
     <<: *datahub-service
-    image: acryldata/datahub-upgrade:v1.6.0
     restart: "no"
+    image: acryldata/datahub-upgrade:v1.6.0
     command: ["-u", "SystemUpdate"]
     depends_on:
       kafka-broker: {condition: service_healthy}
@@ -154,10 +152,7 @@ services:
       DATAHUB_GMS_HOST: datahub-gms
       DATAHUB_GMS_PORT: "8080"
       DATAHUB_GMS_PROTOCOL: http
-      ELASTICSEARCH_HOST: opensearch
-      ELASTICSEARCH_PORT: "9200"
-      KAFKA_BOOTSTRAP_SERVER: broker:29092
-      SCHEMA_REGISTRY_URL: http://datahub-gms:8080/schema-registry/api/
+      DATAHUB_VERSION: v1.6.0
 
   frontend-quickstart:
     <<: *datahub-service
@@ -169,6 +164,7 @@ services:
       DATAHUB_GMS_HOST: datahub-gms
       DATAHUB_GMS_PORT: "8080"
       DATAHUB_SECRET: ${DATAHUB_SECRET}
+      DATAHUB_VERSION: v1.6.0
     ports:
       - "127.0.0.1:${DATAHUB_MAPPED_FRONTEND_PORT:-19002}:9002"
 

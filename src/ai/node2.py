@@ -32,17 +32,25 @@ def generate_sql(payload: dict[str, Any]) -> dict[str, Any]:
         raise ContractError("node2_request: unsupported aggregation")
 
     fqn = _validated_fqn(asset["trino_fqn"])
+    filter_clauses, filter_parameters, filter_columns = _required_filters(asset, metric)
+    where = [
+        f'"{time_column}" >= DATE \':period_start\'',
+        f'"{time_column}" < DATE \':period_end\'',
+        *filter_clauses,
+    ]
     sql = (
         f'SELECT {aggregation}("{metric_column}") AS "{metric_column}" '
-        f'FROM {fqn} WHERE "{time_column}" >= DATE \':period_start\' '
-        f'AND "{time_column}" < DATE \':period_end\' LIMIT 1000'
+        f'FROM {fqn} WHERE {" AND ".join(where)} LIMIT 1000'
     )
     response = {
         "sql": sql,
-        "references": [_reference(asset, context, {metric_column, time_column})],
+        "references": [
+            _reference(asset, context, {metric_column, time_column, *filter_columns})
+        ],
         "parameters": [
             {"name": "period_start", "value": context["execution_time"]["period_start"][:10]},
             {"name": "period_end", "value": context["execution_time"]["period_end_exclusive"][:10]},
+            *filter_parameters,
         ],
         "model": get_prompt("node2.sql").metadata(),
     }
@@ -86,6 +94,33 @@ def _validated_fqn(fqn: str) -> str:
     if len(parts) != 3 or any(not _IDENTIFIER.fullmatch(part) for part in parts):
         raise ContractError(f"node2_request: invalid Context FQN: {fqn!r}")
     return fqn
+
+
+def _required_filters(
+    asset: dict[str, Any], metric: dict[str, Any]
+) -> tuple[list[str], list[dict[str, Any]], set[str]]:
+    filters = sorted(metric.get("required_filters", []), key=lambda item: item["field"])
+    fields: set[str] = set()
+    clauses = []
+    parameters = []
+    for index, item in enumerate(filters, start=1):
+        field = item["field"]
+        if (
+            not _IDENTIFIER.fullmatch(field)
+            or field not in asset["columns"]
+            or field in fields
+        ):
+            raise ContractError(f"node2_request: invalid required filter field: {field!r}")
+        if item["operator"] != "eq":
+            raise ContractError("node2_request: unsupported required filter operator")
+        value = item["value"]
+        if not isinstance(value, (str, bool)) or isinstance(value, str) and not value:
+            raise ContractError("node2_request: invalid required filter value")
+        name = f"required_filter_{index}"
+        fields.add(field)
+        clauses.append(f'"{field}" = :{name}')
+        parameters.append({"name": name, "value": value})
+    return clauses, parameters, fields
 
 
 def _reference(

@@ -13,4 +13,3 @@ sink:
   type: datahub-rest
   config:
     server: http://datahub-gms-quickstart:8080
-    token: ${DATAHUB_TOKEN}

@@ -81,5 +81,3 @@ chroma/
 *.bin
 models/cache/
 mlruns/
-
-runpod/

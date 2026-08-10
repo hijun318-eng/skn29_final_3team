@@ -34,6 +34,12 @@ def live_dataset(adapter, urn):
     }
 
 
+def simulated_verified_live_adapter():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._live_runtime_verified = True
+    return adapter
+
+
 def test_trino_transport_sends_required_user_header():
     response = MagicMock()
     response.read.return_value = json.dumps(
@@ -77,7 +83,7 @@ def test_finished_query_with_warnings_is_preserved_as_partial():
 
 
 def test_live_datahub_serving_view_passes_context_and_g2_contract():
-    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
     payload = AnalysisRequest(question="호텔 객실 매출을 분석해 줘")
@@ -141,12 +147,53 @@ def test_versioned_trino_mode_uses_approved_contract_without_datahub():
     assert [asset["fqn"] for asset in assets] == [
         "serving.analytics.hotel_daily_metrics"
     ]
+    assert assets[0]["binding_status"] == "VERIFIED"
+    assert assets[0]["binding_version"] == "I4-DATA-v1.0.0-DRAFT"
     assert assets[0]["metrics"][0]["required_filters"][0]["value"] == "YTD_SYNTHETIC"
     assert adapter.get_asset_schema(assets[0]["urn"])["columns"]
+    assert adapter.search_assets("포인트 소멸 내역", {"role": "hotel_analyst"}) == []
+
+
+def test_live_mode_fails_closed_without_v17_runtime_evidence():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._datahub_dataset = MagicMock()
+
+    with pytest.raises(ValueError, match="runtime evidence"):
+        adapter.search_assets("호텔 객실 매출", {"role": "hotel_analyst"})
+
+    adapter._datahub_dataset.assert_not_called()
+
+
+@pytest.mark.parametrize(("field", "value"), [("contract_version", "wrong"), ("status", "FAIL")])
+def test_versioned_view_binding_version_and_status_fail_closed(tmp_path, field, value):
+    root = Path(__file__).resolve().parents[2]
+    context = json.loads(
+        (root / "src/data/analytics_context_contract.i4.v2.json").read_text(encoding="utf-8")
+    )
+    view = json.loads(
+        (root / "src/data/serving_analytics_contract.i4.v1.json").read_text(encoding="utf-8")
+    )
+    if field == "contract_version":
+        view[field] = value
+    else:
+        view["verification"]["trino_columns"][field] = value
+    view_path = tmp_path / "views.json"
+    view_path.write_text(json.dumps(view), encoding="utf-8")
+    context["view_contract"] = str(view_path)
+    context_path = tmp_path / "context.json"
+    context_path.write_text(json.dumps(context), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="binding is not verified"):
+        I2DataPlatformAdapter(
+            "http://trino:8080",
+            "runtime-user",
+            contract_path=context_path,
+            require_live_metadata=False,
+        )
 
 
 def test_crm_question_uses_only_approved_raw_asset():
-    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
 
     assets = adapter.search_assets(
@@ -158,7 +205,7 @@ def test_crm_question_uses_only_approved_raw_asset():
 
 
 def test_raw_live_extra_columns_are_not_exposed():
-    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter = simulated_verified_live_adapter()
 
     def raw_live_dataset(urn):
         payload = live_dataset(adapter, urn)
@@ -177,7 +224,7 @@ def test_raw_live_extra_columns_are_not_exposed():
 
 
 def test_pms_crm_question_uses_exact_approved_join_assets():
-    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
 
     assets = adapter.search_assets(
@@ -199,7 +246,7 @@ def test_pms_crm_question_uses_exact_approved_join_assets():
 
 
 def test_g2_allows_only_the_approved_pms_crm_join_id():
-    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
     payload = AnalysisRequest(question="투숙 완료 객실 매출을 회원 등급별로 알려줘")
@@ -237,7 +284,7 @@ def test_g2_allows_only_the_approved_pms_crm_join_id():
 
 
 def test_selected_assets_without_metric_fail_closed_when_context_is_built():
-    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
     payload = AnalysisRequest(question="현재 등급별 활성 회원 수를 알려줘")
@@ -255,30 +302,32 @@ def test_selected_assets_without_metric_fail_closed_when_context_is_built():
 
 
 @pytest.mark.parametrize(
-    ("question", "sql", "changed", "expected_metric"),
+    ("question", "sql", "parameters", "changed_parameters", "expected_metric"),
     [
         (
             "호텔 객실 매출",
             "SELECT SUM(room_revenue) FROM serving.analytics.hotel_daily_metrics "
-            "WHERE data_period_status = 'ACTUAL' AND is_forecast = false LIMIT 1000",
-            "SELECT SUM(room_revenue) FROM serving.analytics.hotel_daily_metrics "
-            "WHERE data_period_status = 'FORECAST' AND is_forecast = true LIMIT 1000",
+            "WHERE data_period_status = :required_filter_1 "
+            "AND is_forecast = :required_filter_2 LIMIT 1000",
+            {"required_filter_1": "ACTUAL", "required_filter_2": False},
+            {"required_filter_1": "FORECAST", "required_filter_2": True},
             "recognized_room_revenue",
         ),
         (
             "소멸 포인트 합계",
             "SELECT SUM(points_delta) FROM crm.dbo.crm_point_transactions "
-            "WHERE txn_type = 'EXPIRE' AND is_forecast = false LIMIT 1000",
-            "SELECT SUM(points_delta) FROM crm.dbo.crm_point_transactions "
-            "WHERE txn_type = 'EARN' AND is_forecast = true LIMIT 1000",
+            "WHERE txn_type = :required_filter_1 "
+            "AND is_forecast = :required_filter_2 LIMIT 1000",
+            {"required_filter_1": "EXPIRE", "required_filter_2": False},
+            {"required_filter_1": "EARN", "required_filter_2": True},
             "expired_points",
         ),
     ],
 )
 def test_g2_enforces_metric_required_filters_for_view_and_crm(
-    question, sql, changed, expected_metric
+    question, sql, parameters, changed_parameters, expected_metric
 ):
-    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
     payload = AnalysisRequest(question=question)
@@ -300,23 +349,35 @@ def test_g2_enforces_metric_required_filters_for_view_and_crm(
     ]
 
     assert [metric.id for metric in package.metrics] == [expected_metric]
+    plan = {
+        "sql": sql,
+        "parameters": parameters,
+        "references": references,
+        "model_version": "MODEL-v1.1.0-DRAFT",
+    }
     assert support.g2_violation(
-        {"sql": sql, "parameters": {}, "references": references}, package
+        plan, package
     ) is None
+    literal_sql = sql.replace(
+        ":required_filter_1", f"'{parameters['required_filter_1']}'"
+    ).replace(":required_filter_2", str(parameters["required_filter_2"]).lower())
     assert support.g2_violation(
-        {"sql": changed, "parameters": {}, "references": references}, package
+        {**plan, "sql": literal_sql, "parameters": {}}, package
     ) == "METRIC_FILTER_MISSING"
-    missing = re.sub(r"\s+AND\s+is_forecast\s*=\s*false", "", sql)
     assert support.g2_violation(
-        {"sql": missing, "parameters": {}, "references": references}, package
+        {**plan, "parameters": changed_parameters}, package
     ) == "METRIC_FILTER_MISSING"
-    bypass = sql.replace(" AND is_forecast = false", " OR is_forecast = false")
+    missing = re.sub(r"\s+AND\s+is_forecast\s*=\s*:required_filter_2", "", sql)
     assert support.g2_violation(
-        {"sql": bypass, "parameters": {}, "references": references}, package
+        {**plan, "sql": missing}, package
+    ) == "METRIC_FILTER_MISSING"
+    bypass = sql.replace(" AND is_forecast", " OR is_forecast")
+    assert support.g2_violation(
+        {**plan, "sql": bypass}, package
     ) == "METRIC_FILTER_MISSING"
     wrong_metric = [{**item, "metric_ids": ["unapproved_metric"]} for item in references]
     assert support.g2_violation(
-        {"sql": sql, "parameters": {}, "references": wrong_metric}, package
+        {**plan, "references": wrong_metric}, package
     ) == "METRIC_REFERENCE_MISMATCH"
 
 
@@ -388,7 +449,7 @@ def test_role_entitlement_excludes_serving_views_before_live_lookup():
 
 
 def test_live_datahub_contract_mismatch_fails_closed():
-    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: {
         **live_dataset(adapter, urn),
         "schemaMetadata": {"name": "serving.analytics.unapproved", "fields": []},
@@ -399,7 +460,7 @@ def test_live_datahub_contract_mismatch_fails_closed():
 
 
 def test_g2_rejects_fqn_outside_live_context():
-    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
     payload = AnalysisRequest(question="호텔 객실 매출")
@@ -442,6 +503,23 @@ def test_template_dates_are_bound_without_changing_the_approved_query_shape():
     assert "2026-05-01" in bound
     assert "2026-07-01" in bound
     assert bound.endswith("LIMIT 1000")
+
+
+def test_required_filter_parameters_are_bound_as_values():
+    sql = (
+        "SELECT 1 FROM serving.analytics.hotel_daily_metrics "
+        "WHERE data_period_status = :required_filter_1 "
+        "AND is_forecast = :required_filter_2 LIMIT 1000"
+    )
+
+    bound = I2DataPlatformAdapter._bind_date_parameters(
+        sql,
+        {"required_filter_1": "ACTUAL", "required_filter_2": False},
+    )
+
+    assert "data_period_status = 'ACTUAL'" in bound
+    assert "is_forecast = FALSE" in bound
+    assert ":required_filter_" not in bound
 
 
 @pytest.mark.parametrize(

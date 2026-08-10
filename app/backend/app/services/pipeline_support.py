@@ -254,6 +254,9 @@ class PipelineSupport:
         parameters = plan.get("parameters", {})
         if not isinstance(parameters, dict):
             return "PARAMETERS_INVALID"
+        placeholders = set(re.findall(r":([a-z_][a-z0-9_]*)", normalized))
+        if not placeholders.issubset(parameters):
+            return "PARAMETERS_INVALID"
         limit = re.search(r"\blimit\s+(\d+)\s*$", normalized)
         if limit is None or int(limit.group(1)) > PipelineSupport.MAX_QUERY_ROWS:
             return "RESOURCE_POLICY_MISSING"
@@ -297,7 +300,12 @@ class PipelineSupport:
             ):
                 return "UNAPPROVED_JOIN"
         if any(
-            not PipelineSupport._required_filter_matches(normalized, item)
+            not PipelineSupport._required_filter_matches(
+                normalized,
+                item,
+                parameters,
+                allow_literal=str(plan.get("model_version", "")).startswith("TEMPLATE-"),
+            )
             for metric in package.metrics
             for item in metric.required_filters
         ):
@@ -305,7 +313,13 @@ class PipelineSupport:
         return None
 
     @staticmethod
-    def _required_filter_matches(sql: str, required: ContextRequiredFilter) -> bool:
+    def _required_filter_matches(
+        sql: str,
+        required: ContextRequiredFilter,
+        parameters: dict[str, object],
+        *,
+        allow_literal: bool,
+    ) -> bool:
         if required.operator != "eq":
             return False
         where = re.search(
@@ -316,15 +330,24 @@ class PipelineSupport:
         if where is None or re.search(r"\bor\b", where.group(1), re.IGNORECASE):
             return False
         field = re.escape(required.field.lower())
-        values = re.findall(
+        matches = re.findall(
             rf"(?<![a-z0-9_])(?:[a-z_][a-z0-9_]*\.)?{field}\s*=\s*"
-            r"(?:'([^']*)'|(true|false))(?![a-z0-9_])",
+            r"(?:'([^']*)'|(true|false)|:([a-z_][a-z0-9_]*))(?![a-z0-9_])",
             where.group(1),
             flags=re.IGNORECASE,
         )
         expected = str(required.value).lower()
-        normalized = [string.lower() if string else boolean.lower() for string, boolean in values]
-        return bool(normalized) and all(value == expected for value in normalized)
+        values = []
+        for string, boolean, parameter in matches:
+            if parameter:
+                if parameter not in parameters:
+                    return False
+                values.append(str(parameters[parameter]).lower())
+            elif allow_literal:
+                values.append((string or boolean).lower())
+            else:
+                return False
+        return bool(values) and all(value == expected for value in values)
 
     @staticmethod
     def model_plan_violation(plan: object) -> str | None:

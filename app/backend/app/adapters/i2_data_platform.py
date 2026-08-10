@@ -37,6 +37,9 @@ class _PartialAwareTrinoAdapter(TrinoAdapter):
 class I2DataPlatformAdapter:
     """R2 I2 contract를 R4 DataPlatform port로 연결한다."""
 
+    _CONTEXT_CONTRACT_VERSION = "I4-CONTEXT-v2.2.0-DRAFT"
+    _VIEW_CONTRACT_VERSION = "I4-DATA-v1.0.0-DRAFT"
+
     _DATASET_QUERY = """
 query Dataset($urn: String!) {
   dataset(urn: $urn) {
@@ -85,8 +88,11 @@ query Dataset($urn: String!) {
         root = Path(__file__).resolve().parents[4]
         source = contract_path or root / "src" / "data" / "analytics_context_contract.i4.v2.json"
         contract = json.loads(source.read_text(encoding="utf-8"))
-        if contract.get("context_source") != "LIVE_DATAHUB":
-            raise ValueError("analytics context contract must require LIVE_DATAHUB")
+        if (
+            contract.get("contract_version") != self._CONTEXT_CONTRACT_VERSION
+            or contract.get("context_source") != "LIVE_DATAHUB"
+        ):
+            raise ValueError("analytics context contract version is not approved")
         metrics = contract.get("metrics")
         if not isinstance(metrics, list) or not metrics:
             raise ValueError("analytics context contract must include metric registry")
@@ -100,6 +106,18 @@ query Dataset($urn: String!) {
                         required_filter["value"] = "YTD_SYNTHETIC"
         self._metrics = tuple(metrics)
         view_contract = json.loads((root / contract["view_contract"]).read_text(encoding="utf-8"))
+        verification = view_contract.get("verification") or {}
+        if (
+            view_contract.get("contract_version") != self._VIEW_CONTRACT_VERSION
+            or view_contract.get("validation_only") is not True
+            or any(
+                (verification.get(name) or {}).get("status") != "PASS"
+                for name in ("trino_columns", "trino_select", "read_only_policy")
+            )
+        ):
+            raise ValueError("analytics View binding is not verified")
+        compatibility = view_contract.get("upgrade_compatibility") or {}
+        self._live_runtime_verified = compatibility.get("runtime_status") == "PASS"
         views = [
             {
                 "urn": view["urn"],
@@ -110,9 +128,20 @@ query Dataset($urn: String!) {
                 "seed_version": view["seed_version"],
                 "uses": ("serving_views",),
                 "kind": "view",
+                "binding_status": "VERIFIED",
+                "binding_version": view_contract["contract_version"],
             }
             for view in view_contract["views"]
+            if view.get("schema_version") == view_contract.get("schema_version")
+            and str(view.get("fqn", "")).startswith("serving.analytics.")
+            and view.get("urn")
+            == (
+                "urn:li:dataset:(urn:li:dataPlatform:trino,"
+                f"{view.get('fqn')},PROD)"
+            )
         ]
+        if len(views) != len(view_contract.get("views", ())):
+            raise ValueError("analytics View binding identity does not match the contract")
         raw_assets = [
             {
                 "urn": asset["urn"],
@@ -126,7 +155,7 @@ query Dataset($urn: String!) {
             }
             for asset in contract["raw_assets"]
         ]
-        self._assets = tuple(views + raw_assets)
+        self._assets = tuple(views + raw_assets if require_live_metadata else views)
         self._live_schemas: dict[str, tuple[str, ...]] = {}
 
     def _request(
@@ -178,6 +207,8 @@ query Dataset($urn: String!) {
     ) -> list[dict[str, Any]]:
         if context.get("role") != "hotel_analyst":
             return []
+        if self._require_live_metadata and not self._live_runtime_verified:
+            raise ValueError("live DataHub runtime evidence is unavailable")
         selected: list[dict[str, Any]] = []
         column_count = 0
         query_use = self._query_use(query)
@@ -311,16 +342,29 @@ query Dataset($urn: String!) {
     ) -> str:
         bound = sql
         for name, value in parameters.items():
-            if (
-                not isinstance(value, str)
-                or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value)
-            ):
-                raise ValueError(f"{name} must be an ISO date")
-            date.fromisoformat(value)
             placeholder = f":{name}"
             if placeholder not in bound:
                 raise ValueError(f"unknown template parameter: {name}")
-            bound = bound.replace(placeholder, value)
+            if name in {"period_start", "period_end", "period_end_exclusive"}:
+                if (
+                    not isinstance(value, str)
+                    or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value)
+                ):
+                    raise ValueError(f"{name} must be an ISO date")
+                date.fromisoformat(value)
+                literal = value
+            elif re.fullmatch(r"required_filter_\d+", name) and isinstance(
+                value, (str, bool)
+            ):
+                if isinstance(value, bool):
+                    literal = "TRUE" if value else "FALSE"
+                elif value:
+                    literal = "'" + value.replace("'", "''") + "'"
+                else:
+                    raise ValueError(f"{name} must not be empty")
+            else:
+                raise ValueError(f"unsupported template parameter: {name}")
+            bound = bound.replace(placeholder, literal)
         if re.search(r":[a-z_][a-z0-9_]*", bound):
             raise ValueError("template parameter is missing")
         return bound

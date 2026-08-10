@@ -11,7 +11,6 @@
   "CHANGED_FILES": [
     "app/backend/app/adapters/i2_data_platform.py",
     "docs/markdown/daily_reports/jaehong/일일보고.md",
-    "handoffs/R4-W5-F3.json",
     "tests/backend/test_i2_data_platform.py"
   ],
   "CONTRACT_VERSIONS": {

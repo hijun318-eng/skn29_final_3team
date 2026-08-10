@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.31 |
-| 문서 기준일 | 2026-08-10 17:35 |
+| 버전 | v5.32 |
+| 문서 기준일 | 2026-08-10 17:45 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -1350,14 +1350,14 @@ DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R4-W5-F9@b825e6d
 CONTRACT_VERSION=ANALYSIS-PERSISTENCE-v1.0.0-DRAFT; existing request→query→artifact reuse
 ALLOWED_PATHS=app/backend/app/analysis_contracts.py; app/backend/app/adapters/analysis_repository.py; app/backend/app/services/analysis_service.py; app/backend/app/controllers/analysis_controller.py; app/backend/app/api/router.py; app/backend/app/main.py; app/backend/migrations/versions/20260810_06_analysis_persistence.py; app/backend/contracts/openapi.v0.1.json; app/backend/README.md; tests/backend/test_analysis_persistence.py; tests/backend/test_analysis_pipeline.py; tests/backend/test_openapi_contract.py; tests/backend/test_migration_compatibility.py; tests/backend/test_report_registration.py; handoffs/R4-W5-F9.json; docs/markdown/daily_reports/jaehong/일일보고.md
-FORBIDDEN_PATHS=기존 migration·context.analysis_templates 의미 변경; R2/R3/frontend; Report worker/schedule; SQLGlot/G3 정책 확장; root Compose/env/CI; dependency; secret
+FORBIDDEN_PATHS=기존 migration·context.analysis_templates 의미 변경; R2/R3/frontend; Report worker/schedule; SQLGlot/G3 정책 확장; root Compose/env/CI; 제품 dependency·Dockerfile 변경; secret
 HANDOFF_MANIFEST=handoffs/R4-W5-F9.json
 ACCEPTANCE_CRITERIA=context.analysis_templates는 system routing template로 유지하고 user-owned versioned Analysis Definition만 additive migration으로 추가한다. Run/Result 본체는 기존 chat.analysis_requests→query.query_executions→artifact.analysis_artifacts를 재사용하고 Definition↔request 연결만 최소 저장하며 result blob을 복제하지 않는다. R1은 /analysis/definitions create·list·get, /analysis/definitions/{id}/runs replay, /analysis/runs list·detail route를 명시 승인한다. client는 owner/status/request_id/query_id/artifact_id/result를 제출할 수 없고, replay는 승인 Definition의 redacted question·typed parameters·as_of로 기존 AnalysisController 한 경로를 호출해 현재 entitlement·Context·G1/G2/G3·repair·binder를 다시 검증한다. terminal success·partial·failure와 idempotency를 저장하되 G3 전 Artifact 성공을 만들지 않고 과거 run은 불변이다. owner/role scope, 401·403·404·409·422·503, raw SQL·unbound parameter·result snapshot·secret 비노출, 기존 POST /analysis와 Report v1.1 9-operation 호환을 검증한다.
 ACCEPTANCE_IDS=AC1_SYSTEM_TEMPLATE_IMMUTABLE;AC2_EXISTING_RUN_RESULT_REUSE;AC3_APPROVED_ROUTES;AC4_SERVER_OWNED_IDS_STATUS;AC5_CURRENT_GATE_REPLAY;AC6_TERMINAL_IMMUTABLE;AC7_AUTH_REDACTION;AC8_EXISTING_API_COMPAT
-TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_analysis_persistence.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py tests/backend/test_report_registration.py -q; docker build -t answervice-backend-r4-f9-test -f app/backend/Dockerfile .; docker run --rm --entrypoint python -v <exact-worktree>:/workspace -w /workspace answervice-backend-r4-f9-test -m unittest discover -s tests/backend -p "test_*.py" -v; docker run --rm --entrypoint python -v <exact-worktree>:/workspace -w /workspace answervice-backend-r4-f9-test -m unittest tests.backend.test_report_registration -v; exact image remove; python app/backend/scripts/export_openapi.py --check; alembic heads; isolated empty→head and 20260804_05→head; python -m compileall -q app/backend; gate_scope merge-base; git diff --check; jaehong branch CI
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_analysis_persistence.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py tests/backend/test_report_registration.py -q; docker build -t answervice-backend-r4-f9-test -f app/backend/Dockerfile .; docker run --rm -v <exact-worktree>:/workspace -w /workspace answervice-backend-r4-f9-test sh -lc "python -m pip install --no-cache-dir pytest==8.3.5 && python -m pytest -p no:cacheprovider tests/backend -q"; exact image remove; python app/backend/scripts/export_openapi.py --check; alembic heads; isolated empty→head and 20260804_05→head; python -m compileall -q app/backend; gate_scope merge-base; git diff --check; jaehong branch CI
 TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND;T3_OPENAPI;T4_HEADS;T5_MIGRATION;T6_COMPILE;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
-STOP_CONDITIONS=기존 request/query/artifact 의미 변경 또는 raw result 복제 필요; client-owned status/id; G1/G2/G3 우회; system template user mutation; Report worker/schedule·SQLGlot/G3 정책·R2/R3/frontend 변경; dependency·외부 DB·secret; scope/필수 검증 실패
-EXTERNAL_ACTION_PERMISSION=local deterministic test와 전용 ephemeral PostgreSQL migration 검증, 허용 경로 commit·jaehong push만 허용한다. 기존 app DB·volume·외부 서비스·비용·secret 변경은 금지한다.
+STOP_CONDITIONS=기존 request/query/artifact 의미 변경 또는 raw result 복제 필요; client-owned status/id; G1/G2/G3 우회; system template user mutation; Report worker/schedule·SQLGlot/G3 정책·R2/R3/frontend 변경; 제품 dependency·외부 DB·secret; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local deterministic test와 전용 ephemeral PostgreSQL migration 검증, 허용 경로 commit·jaehong push를 허용한다. Python 3.12 backend test container 안에서만 pytest==8.3.5를 일회성 설치할 수 있으며 repository requirements·Dockerfile·host Python은 변경하지 않고 검증 뒤 exact test image를 제거한다. 기존 app DB·volume·외부 서비스·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=새 result blob/table 중복; 과거 SQL 무검증 재실행; client-owned id/status; G3 전 Artifact success; owner bypass; raw SQL/result 노출; 기존 API 파손; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R3-W5-F6와 경로 충돌 없이 병렬 수행한다. Analysis persistence source CI와 dev 통합 뒤 Report v1.2 worker·partial contract를 별도 카드로 발행한다.
 ```
@@ -1430,6 +1430,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.32 | 2026-08-10 17:45 | R4-W5-F9의 전체 backend가 pytest 수집을 요구함을 재현해 제품 dependency는 동결하고 Python 3.12 test container 안에서만 pytest 8.3.5를 일회성 설치하도록 검증 권한을 교정 |
 | v5.31 | 2026-08-10 17:35 | R3-W5-F6의 source CI·handoff와 dev 조합 회귀를 확인해 MERGED_DEV로 전환하고, R4-W5-F9의 Python 3.12 컨테이너 검증을 이미지에 없는 pytest 대신 승인 원문의 stdlib unittest 명령으로 교정 |
 | v5.24 | 2026-08-10 14:00 | 대표 3-source Trino Gold는 일치했지만 제품 E2E가 Binding·Node2 multi-source plan·repair·safe CTE·chart에서 차단됨을 기록; interim은 검증된 versioned binding, live는 fail-closed로 결정하고 R3-W5-F5·R4-W5-F6을 병렬 READY 발행 |
 | v5.23 | 2026-08-10 13:45 | R3 Node2·evaluator typed parameter 결과와 source CI를 MERGED_DEV로 전환하고, 실제 G120-046 제품 API E2E를 R1-W5-F9으로 READY 발행; compiled 1,350건 재생성은 E2E 통과 뒤 R3-W5-F4로 분리 |

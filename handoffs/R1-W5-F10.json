@@ -122,7 +122,9 @@
   },
   "CHANGE_REQUESTS": [
     "R3: Node3가 승인된 3-source derived metric Context를 정확히 하나의 분석 metric으로 설명하도록 metric 선택 계약 보완",
-    "R1: Python 3.12 test image에서 pytest를 실행할 승인된 일회성 설치 명령 또는 test 전용 image 정책을 Gate에 명시"
+    "R1: Python 3.12 test image에서 pytest를 실행할 승인된 일회성 설치 명령 또는 test 전용 image 정책을 Gate에 명시",
+    "R4: 같은 네트워크 시연용 frontend origin을 exact allowlist로 받는 CORS 계약을 owner-scoped 카드에서 보완하고 wildcard는 금지",
+    "R1/R3: backend container의 외부 model credential 전달을 평문 environment 주입 대신 승인된 secret mount 계약으로 분리"
   ],
   "NOT_RUN": [
     "Python 3.12 image의 pytest 전체 backend·report suite",
@@ -130,7 +132,9 @@
   ],
   "RESIDUAL_RISKS": [
     "실제 3-source API가 Node3에서 실패해 table·chart·Artifact 성공 응답을 아직 만들지 못함",
-    "CRM 기존 volume의 marker 존재는 확인했지만 container recreate나 fresh-volume 검증은 승인 범위 밖이라 미실행"
+    "CRM 기존 volume의 marker 존재는 확인했지만 container recreate나 fresh-volume 검증은 승인 범위 밖이라 미실행",
+    "LAN frontend origin은 backend CORS exact allowlist에 아직 없어 다른 기기에서 API 호출이 차단될 수 있음",
+    "backend container의 외부 model credential은 container inspect 경계에서 노출될 수 있어 secret mount 전환이 필요함"
   ],
   "EXTERNAL_APPROVAL_REQUIRED": [],
   "REQUESTED_DECISION": "CRM health 변경은 수용 가능하나 AC5와 actual 3-source API Node3 blocker 때문에 R1-W5-F10 전체 완료는 보류"

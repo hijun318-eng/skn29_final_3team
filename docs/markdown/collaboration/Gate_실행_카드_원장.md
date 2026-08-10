@@ -24,7 +24,7 @@
 |---|---|---|---|
 | R1 | `R1-W5-F13` | `BLOCKED` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
-| R3 | `R3-W5-F7` | `READY` | `daesung` |
+| R3 | `R3-W5-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
 | R5 | `R5-W5-F3` | `MERGED_DEV` | `minji` |
 
@@ -1101,7 +1101,9 @@ R1_REVIEW_CONDITIONS=R3 source CI PASS 뒤 dev에 통합하고 새 R1 actual API
 ### R3 · R3-W5-F7
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
+RESULT_SHA=6f53e2d5a4864998c31336255c076d984a1ac241
+RESULT_CI=branch 31365072845 PASS
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung

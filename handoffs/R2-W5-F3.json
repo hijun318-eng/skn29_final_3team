@@ -1,0 +1,51 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R2-W5-F3",
+  "ROLE": "R2",
+  "BRANCH": "seung",
+  "BASE_SHA": "af8b11db15734bf6f047bdd709a890a3ff18a19a",
+  "RESULT_SHA": "49a34ccba8cd4d05a71a9d6564c150f44d1aaee8",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R2-W5-F3@af8b11d",
+  "COMPLETED_CARDS": ["R2-11·19 runtime validator·Asset Binding health evidence"],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/seung/일일보고.md",
+    "infrastructure/database/datahub/scripts/run-runtime-validation.ps1",
+    "src/data/asset_binding_health.i5.v1.json",
+    "src/data/datahub_runtime_evidence.i5.v1.json",
+    "src/data/serving_analytics_contract.i4.v1.json",
+    "tests/data/test_asset_binding_health.py",
+    "tests/data/test_datahub_runtime_evidence.py",
+    "tests/data/test_serving_analytics_contract.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "DATAHUB_RUNTIME": "I5-DATAHUB-v1.1.0-RUNTIME-DRAFT; BLOCKED/NOT_RUN",
+    "ASSET_BINDING": "ASSET-BINDING-v1.0.0-DRAFT; PENDING_RUNTIME_VERIFICATION",
+    "TRINO": "476 unchanged",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_OFFLINE_VALIDATOR", "status": "PASS", "evidence": "Docker 호출 없는 redacting dry-run validator 구현"},
+    {"id": "AC2_R1_HEALTH_GATE", "status": "PASS", "evidence": "R1_RUNTIME_HEALTHY 없이는 live 경로 차단"},
+    {"id": "AC3_FIVE_SOURCE_INGESTION", "status": "PASS", "evidence": "5 source 후 serving recipe 순서를 계약으로 검증하며 실행 결과는 NOT_RUN"},
+    {"id": "AC4_VIEW_SEARCH_SCHEMA", "status": "PASS", "evidence": "8 exact URN/FQN과 116 column 기대값, observed NOT_RUN/null"},
+    {"id": "AC5_LINEAGE", "status": "PASS", "evidence": "dataset/fine-grained lineage evidence 필수·미실행 상태를 명시"},
+    {"id": "AC6_ASSET_BINDING_HEALTH", "status": "PASS", "evidence": "8 binding의 ID·URN·FQN·status·version·verified_at·provenance 검증"},
+    {"id": "AC7_NO_FAKE_PASS", "status": "PASS", "evidence": "RAM blocker에서 runtime BLOCKED/NOT_RUN 유지"},
+    {"id": "AC8_SECRET_REDACTION", "status": "PASS", "evidence": "민감 key/value를 evidence와 output에서 거부"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_JSON", "name": "three evidence JSON parse", "status": "PASS", "evidence": "json.tool PASS"},
+    {"id": "T2_TARGET", "name": "runtime and binding target tests", "status": "PASS", "evidence": "14 passed"},
+    {"id": "T3_DATA", "name": "all data tests", "status": "PASS", "evidence": "42 passed; branch CI 31351191898 PASS"},
+    {"id": "T4_DRY_RUN", "name": "PowerShell validator dry-run", "status": "PASS", "evidence": "DRY_RUN_PASS, recipes=6, bindings=8, next=R1_RUNTIME_HEALTHY"},
+    {"id": "T5_SECRET_SCAN", "name": "local secret leak scan", "status": "PASS", "evidence": "no secret values in changed files or output"},
+    {"id": "T6_SCOPE", "name": "R2 planned path scope", "status": "PASS", "evidence": "eight allowed paths"},
+    {"id": "T7_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "no whitespace errors"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "offline validator와 binding contract를 dev에 통합하고 R1 runtime health 뒤 실제 evidence를 별도 commit"
+}

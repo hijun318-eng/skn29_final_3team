@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "src/data/serving_analytics_contract.i4.v1.json"
 RECIPE_PATH = ROOT / "infrastructure/database/datahub/recipes/serving.i4.yml"
 DATAHUB_COMPOSE_PATH = ROOT / "infrastructure/database/datahub/compose.consumer.yml"
+ROOT_COMPOSE_PATH = ROOT / "infrastructure/database/compose.yml"
 ACCESS_PATH = ROOT / "infrastructure/database/trino/etc/access-control-rules.json"
 TRAINING_PATH = ROOT / "src/ai/training/build_case_specs.py"
 
@@ -21,6 +22,7 @@ class ServingAnalyticsContractTest(unittest.TestCase):
         cls.views = {item["fqn"]: item for item in cls.contract["views"]}
         cls.recipe = RECIPE_PATH.read_text(encoding="utf-8")
         cls.datahub_compose = DATAHUB_COMPOSE_PATH.read_text(encoding="utf-8")
+        cls.root_compose = ROOT_COMPOSE_PATH.read_text(encoding="utf-8")
         cls.access = json.loads(ACCESS_PATH.read_text(encoding="utf-8"))
 
     def test_recipe_allowlists_exactly_eight_views(self):
@@ -55,6 +57,75 @@ class ServingAnalyticsContractTest(unittest.TestCase):
         ):
             self.assertIn(setting, self.datahub_compose)
         self.assertIn('system-update-quickstart:\n    <<: *datahub-service\n    restart: "no"', self.datahub_compose)
+
+    def test_v1_7_upgrade_is_config_only_and_officially_pinned(self):
+        compatibility = self.contract["upgrade_compatibility"]
+        expected_images = {
+            "gms": (
+                "acryldata/datahub-gms:v1.7.0",
+                "sha256:54bc4431402846a72d1c1bdb69fae1148f74a59425144aa947fdf1c3506461f7",
+            ),
+            "frontend": (
+                "acryldata/datahub-frontend-react:v1.7.0",
+                "sha256:f8f94d246d6d7c93eb3de6a9d625af4f1574e2ced28629b972429de3e2c2bf6a",
+            ),
+            "actions": (
+                "acryldata/datahub-actions:v1.7.0-slim",
+                "sha256:4ca86e3bdbba4c5e24421cae8dc7ac7c19d1b094c1418f36f607cd437265fb74",
+            ),
+            "upgrade": (
+                "acryldata/datahub-upgrade:v1.7.0",
+                "sha256:21e77ad964be64b2b5a7f74c9685897ed79e8854995242eaa5e5c426395b88c0",
+            ),
+        }
+        self.assertEqual("1.6.0", self.contract["datahub_version"])
+        self.assertEqual("I5-DATAHUB-v1.1.0-DRAFT", compatibility["contract_version"])
+        self.assertEqual("CONFIG_VALIDATED", compatibility["status"])
+        self.assertEqual("CONFIG_ONLY", compatibility["validation_scope"])
+        self.assertEqual("NOT_RUN", compatibility["runtime_status"])
+        self.assertEqual("v1.6.0", compatibility["from_version"])
+        self.assertEqual("v1.7.0", compatibility["to_version"])
+        self.assertEqual(
+            "https://github.com/datahub-project/datahub/releases/tag/v1.7.0",
+            compatibility["official_release_url"],
+        )
+        self.assertEqual("7f81ccbfe27b9acc947f5f600fcf9ddb72138a80", compatibility["source_revision"])
+        self.assertEqual("39b0f37f089302209ce8d7e932eeb7c50caa28d9", compatibility["compose_blob"])
+        self.assertEqual(
+            "ec476d12f6f278c50d657a617357a050510565ef00b570a69cbe9123a932a7b7",
+            compatibility["compose_sha256"],
+        )
+        self.assertEqual(
+            expected_images,
+            {key: (image["tag"], image["manifest_digest"]) for key, image in compatibility["images"].items()},
+        )
+        for image in compatibility["images"].values():
+            self.assertIn(image["tag"], self.datahub_compose)
+        for expected in (
+            f"release: {compatibility['to_version']}",
+            f"revision: {compatibility['source_revision']}",
+            f"compose_blob: {compatibility['compose_blob']}",
+            f"sha256: {compatibility['compose_sha256']}",
+            f"url: {compatibility['compose_raw_url']}",
+            f"image: {compatibility['kafka_image']}",
+            f"DATAHUB_OBJECT_STORAGE_URI: {compatibility['object_storage_uri']}",
+        ):
+            self.assertIn(expected, self.datahub_compose)
+        self.assertEqual(
+            compatibility["recipe_sha256"],
+            hashlib.sha256(RECIPE_PATH.read_bytes()).hexdigest(),
+        )
+        self.assertEqual(
+            {
+                "v1_6_prerequisite": "SATISFIED",
+                "classification_config": "NOT_CONFIGURED",
+                "legacy_lineage_flags": "NOT_CONFIGURED",
+                "custom_object_storage_yaml": "NOT_CONFIGURED",
+            },
+            compatibility["breaking_change_checks"],
+        )
+        self.assertIn("trinodb/trino:476@sha256:", self.root_compose)
+        self.assertNotIn("trinodb/trino:483", self.root_compose)
 
     def test_view_contract_has_stable_identity_columns_and_lineage(self):
         self.assertEqual("LIVE_DATAHUB", self.contract["context_source"])

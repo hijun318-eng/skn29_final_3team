@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, time
+from datetime import date, datetime, time
 from functools import lru_cache, partial
 from pathlib import Path
 from typing import Any
@@ -305,6 +305,9 @@ class ContractModelAdapter:
         three_source = (
             "pms_crm_pos_gold_revenue_month_v1" in package.approved_join_ids
         )
+        execution_time = cls._execution_time(
+            context, package.parameter_bindings if three_source else None
+        )
         if not metrics and three_source:
             fixture_metric = {
                 "id": "total_guest_revenue_krw",
@@ -332,7 +335,7 @@ class ContractModelAdapter:
         return {
             "context_version": package.context_release,
             "policy_version": package.policy_version,
-            "execution_time": cls._execution_time(context),
+            "execution_time": execution_time,
             "assets": assets,
             "metrics": [
                 {
@@ -377,14 +380,44 @@ class ContractModelAdapter:
         }
 
     @staticmethod
-    def _execution_time(context) -> dict[str, str]:
+    def _execution_time(context, parameter_bindings=None) -> dict[str, str]:
         timezone = ZoneInfo(context.timezone)
         as_of = datetime.combine(context.as_of, time.min, timezone)
-        period_start = as_of.replace(day=1)
+        if parameter_bindings is None:
+            period_start = as_of.replace(day=1)
+            period_end = as_of
+        else:
+            periods = [
+                item
+                for item in parameter_bindings
+                if item.name in {"period_start", "period_end_exclusive"}
+            ]
+            if (
+                len(periods) != 2
+                or {item.name for item in periods}
+                != {"period_start", "period_end_exclusive"}
+                or any(
+                    item.value_type != "date" or not isinstance(item.value, str)
+                    for item in periods
+                )
+            ):
+                raise ValueError("approved Context requires unique typed period bindings")
+            try:
+                values = {item.name: date.fromisoformat(item.value) for item in periods}
+            except ValueError as error:
+                raise ValueError("approved Context period binding is not an ISO date") from error
+            if any(values[item.name].isoformat() != item.value for item in periods):
+                raise ValueError("approved Context period binding is not an ISO date")
+            if values["period_start"] >= values["period_end_exclusive"]:
+                raise ValueError("approved Context period range is invalid")
+            period_start = datetime.combine(values["period_start"], time.min, timezone)
+            period_end = datetime.combine(
+                values["period_end_exclusive"], time.min, timezone
+            )
         return {
             "as_of": as_of.isoformat(),
             "timezone": context.timezone,
             "calendar_id": "gregorian-kr",
             "period_start": period_start.isoformat(),
-            "period_end_exclusive": as_of.isoformat(),
+            "period_end_exclusive": period_end.isoformat(),
         }

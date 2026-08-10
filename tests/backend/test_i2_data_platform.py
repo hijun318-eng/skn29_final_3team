@@ -13,6 +13,7 @@ BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
 from app.adapters.i2_data_platform import I2DataPlatformAdapter
+from app.adapters.contract_model import ContractModelAdapter
 from app.contracts import AnalysisRequest, RequestContext
 from app.services.context_builder import ContextPackageBuilder
 from app.services.context_builder import ContextBuildError
@@ -340,7 +341,7 @@ def test_raw_live_extra_columns_are_not_exposed():
     assert "source_updated_at" not in {column["name"] for column in schema["columns"]}
 
 
-def test_pms_crm_question_uses_exact_approved_join_assets():
+def test_pms_crm_question_no_longer_injects_a_hardcoded_join():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
 
@@ -357,12 +358,10 @@ def test_pms_crm_question_uses_exact_approved_join_assets():
         "crm.dbo.crm_member_grade_history",
     }
     assert sum(len(adapter._live_schemas[asset["urn"]]) for asset in assets) <= 60
-    assert {join_id for asset in assets for join_id in asset["join_ids"]} == {
-        "pms_stay_to_crm_membership_grade_event_time_v1"
-    }
+    assert {join_id for asset in assets for join_id in asset["join_ids"]} == set()
 
 
-def test_g2_allows_only_the_approved_pms_crm_join_id():
+def test_g2_blocks_the_removed_hardcoded_pms_crm_join_id():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
@@ -394,7 +393,9 @@ def test_g2_allows_only_the_approved_pms_crm_join_id():
         for item in package.assets
     ]
 
-    assert support.g2_violation({"sql": sql, "parameters": {}, "references": references}, package) is None
+    assert support.g2_violation(
+        {"sql": sql, "parameters": {}, "references": references}, package
+    ) == "UNAPPROVED_JOIN"
     for reference in references:
         reference["join_ids"] = []
     assert support.g2_violation({"sql": sql, "parameters": {}, "references": references}, package) == "UNAPPROVED_JOIN"
@@ -674,23 +675,47 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
     package = support.build_context(payload, context, assets)
     sql = " ".join(
         (
-            "SELECT 1 FROM pms.public.pms_stays s",
-            "JOIN pms.public.pms_reservations r ON 1=1",
-            "JOIN pms.public.pms_guests g0 ON 1=1",
-            "JOIN crm.dbo.crm_customer_map m ON 1=1",
-            "JOIN crm.dbo.crm_member_grade_history g ON 1=1",
-            "JOIN pos.pos_db.pos_orders o ON 1=1",
+            "WITH pms_source AS (SELECT s.property_id,",
+            "date_trunc('month', s.actual_checkout_at) AS month,",
+            "SUM(s.room_revenue) AS room_revenue_krw",
+            "FROM pms.public.pms_stays s",
+            "JOIN pms.public.pms_reservations r ON s.property_id = r.property_id AND s.reservation_id = r.reservation_id",
+            "JOIN pms.public.pms_guests g ON r.property_id = g.property_id AND r.guest_id = g.guest_id",
+            "JOIN crm.dbo.crm_customer_map m ON g.property_id = m.property_id AND g.guest_id = m.pms_guest_id",
+            "AND m.valid_from <= s.actual_checkout_at AND (m.valid_to IS NULL OR s.actual_checkout_at < m.valid_to)",
+            "JOIN crm.dbo.crm_member_grade_history h ON m.property_id = h.property_id AND m.member_no = h.member_no",
+            "AND h.valid_from <= s.actual_checkout_at AND (h.valid_to IS NULL OR s.actual_checkout_at < h.valid_to)",
             "WHERE s.actual_checkout_at >= DATE ':period_start'",
             "AND s.actual_checkout_at < DATE ':period_end_exclusive'",
-            "AND g.grade_code = :required_filter_1",
-            "AND s.complimentary_flag = :required_filter_2",
-            "AND s.house_use_flag = :required_filter_3",
-            "AND s.is_forecast = :required_filter_4",
-            "AND s.property_id = :required_filter_5",
-            "AND s.stay_status = :required_filter_6",
-            "AND o.is_forecast = :required_filter_7",
-            "AND o.property_id = :required_filter_8",
-            "AND o.void_flag = :required_filter_9 LIMIT 1000",
+            'AND h."grade_code" = :required_filter_1',
+            'AND s."complimentary_flag" = :required_filter_2',
+            'AND s."house_use_flag" = :required_filter_3',
+            'AND s."is_forecast" = :required_filter_4',
+            'AND s."property_id" = :required_filter_5',
+            'AND s."stay_status" = :required_filter_6',
+            "GROUP BY s.property_id, date_trunc('month', s.actual_checkout_at)),",
+            "pos_source AS (SELECT o.property_id,",
+            "date_trunc('month', o.ordered_at) AS month,",
+            "SUM(o.net_amount) AS fnb_revenue_krw",
+            "FROM pos.pos_db.pos_orders o",
+            "JOIN crm.dbo.crm_customer_map m ON o.property_id = m.property_id AND o.pos_customer_ref = m.pos_customer_ref",
+            "AND m.valid_from <= o.ordered_at AND (m.valid_to IS NULL OR o.ordered_at < m.valid_to)",
+            "JOIN crm.dbo.crm_member_grade_history h ON m.property_id = h.property_id AND m.member_no = h.member_no",
+            "AND h.valid_from <= o.ordered_at AND (h.valid_to IS NULL OR o.ordered_at < h.valid_to)",
+            "WHERE o.ordered_at >= DATE ':period_start'",
+            "AND o.ordered_at < DATE ':period_end_exclusive'",
+            'AND h."grade_code" = :required_filter_1',
+            'AND o."is_forecast" = :required_filter_7',
+            'AND o."property_id" = :required_filter_8',
+            'AND o."void_flag" = :required_filter_9',
+            "GROUP BY o.property_id, date_trunc('month', o.ordered_at))",
+            "SELECT COALESCE(p.property_id, f.property_id) AS property_id,",
+            "COALESCE(p.month, f.month) AS month,",
+            "COALESCE(p.room_revenue_krw, 0) AS room_revenue_krw,",
+            "COALESCE(f.fnb_revenue_krw, 0) AS fnb_revenue_krw,",
+            "COALESCE(p.room_revenue_krw, 0) + COALESCE(f.fnb_revenue_krw, 0) AS total_guest_revenue_krw",
+            "FROM pms_source p FULL OUTER JOIN pos_source f",
+            "ON p.property_id = f.property_id AND p.month = f.month LIMIT 1000",
         )
     )
     parameters = {
@@ -701,17 +726,35 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
         {
             "urn": item.urn,
             "fqn": item.fqn,
-            "columns": list(item.columns),
+            "columns": [
+                column
+                for column in item.columns
+                if column not in {"order_status", "payment_status"}
+            ],
             "join_ids": list(package.approved_join_ids),
+            "metric_ids": ["total_guest_revenue_krw"],
         }
         for item in package.assets
     ]
-    plan = {
+    response = {
         "sql": sql,
-        "parameters": parameters,
-        "references": references,
-        "model_version": "MODEL-v1",
+        "parameters": [
+            {"name": item.name, "value_type": item.value_type, "value": item.value}
+            for item in package.parameter_bindings
+        ],
+        "references": [
+            {
+                "urn": item["urn"],
+                "trino_fqn": item["fqn"],
+                "columns": item["columns"],
+                "join_ids": item["join_ids"],
+                "metric_ids": item["metric_ids"],
+            }
+            for item in references
+        ],
+        "model": {"model_version": "MODEL-v1"},
     }
+    plan = ContractModelAdapter._plan(response, "sql", package.parameter_bindings)
 
     assert len(package.assets) == 6
     assert package.approved_join_ids == ("pms_crm_pos_gold_revenue_month_v1",)
@@ -720,24 +763,101 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
         "period_end_exclusive",
         *(f"required_filter_{index}" for index in range(1, 10)),
     ]
+    model_context = ContractModelAdapter._context_package(
+        {"package": package, "context": context}
+    )
+    assert model_context["metrics"] == [
+        {
+            "id": "total_guest_revenue_krw",
+            "field": "derived.total_guest_revenue_krw",
+            "aggregation": "derived_sum",
+            "time_field": "derived.month",
+            "required_filters": [
+                {
+                    "field": item.field,
+                    "operator": item.operator,
+                    "value_type": item.value_type,
+                    "value": item.value,
+                }
+                for item in package.required_filters
+            ],
+        }
+    ]
+    assert [(item["left"], item["right"]) for item in model_context["joins"]] == [
+        ("pms.public.pms_stays", "pms.public.pms_reservations"),
+        ("pms.public.pms_reservations", "pms.public.pms_guests"),
+        ("pms.public.pms_guests", "crm.dbo.crm_customer_map"),
+        ("crm.dbo.crm_customer_map", "crm.dbo.crm_member_grade_history"),
+        ("crm.dbo.crm_customer_map", "pos.pos_db.pos_orders"),
+    ]
+    assert all(
+        item["cardinality"] == "preaggregate_then_one_to_one_month"
+        for item in model_context["joins"]
+    )
     assert support.g2_violation(plan, package) is None
+    assert ":required_filter" not in adapter._bind_parameters(
+        plan["sql"], plan["parameters"]
+    )
 
     mutated = {**parameters, "required_filter_7": {"value_type": "number", "value": 1}}
-    assert support.g2_violation({**plan, "parameters": mutated}, package)
-    assert support.g2_violation(
-        {**plan, "sql": sql + " OR 1=1", "parameters": parameters}, package
-    )
-    assert support.g2_violation(
-        {
-            **plan,
-            "sql": sql.replace(":required_filter_1", "'GOLD'"),
-            "parameters": {key: value for key, value in parameters.items() if key != "required_filter_1"},
-        },
-        package,
-    )
+    assert support.g2_violation({**plan, "parameters": mutated}, package) == "PARAMETERS_INVALID"
+    for bypass in (
+        sql.replace('AND o."void_flag" = :required_filter_9', ""),
+        sql.replace('o."void_flag" = :required_filter_9', "o.\"void_flag\" = 0"),
+        sql.replace('AND o."void_flag" = :required_filter_9', 'OR o."void_flag" = :required_filter_9'),
+        sql.replace('o."void_flag" = :required_filter_9', 'h."grade_code" = :required_filter_9'),
+        sql.replace(
+            'AND o."void_flag" = :required_filter_9',
+            'AND o."void_flag" = :required_filter_9 AND o."void_flag" = :required_filter_9',
+        ),
+    ):
+        assert support.g2_violation({**plan, "sql": bypass}, package) == "METRIC_FILTER_MISSING"
     assert support.g2_violation(
         {**plan, "parameters": {**parameters, "unknown": "value"}}, package
+    ) == "PARAMETERS_INVALID"
+    duplicate = {**response, "parameters": [*response["parameters"], response["parameters"][-1]]}
+    with pytest.raises(ValueError, match="unique"):
+        ContractModelAdapter._plan(duplicate, "sql", package.parameter_bindings)
+
+
+def test_versioned_three_source_uses_runtime_verified_contract_while_live_pending_fails():
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080", "runtime-user", require_live_metadata=False
     )
+    assets = adapter.search_assets(
+        "5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘.",
+        {"role": "hotel_analyst"},
+    )
+
+    assert len(assets) == 6
+    assert {join_id for asset in assets for join_id in asset["join_ids"]} == {
+        "pms_crm_pos_gold_revenue_month_v1"
+    }
+
+    live = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    with pytest.raises(ValueError, match="live DataHub runtime verification"):
+        live.search_assets(
+            "5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘.",
+            {"role": "hotel_analyst"},
+        )
+
+
+def test_versioned_three_source_requires_real_trino_pass(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    contract = json.loads(
+        (root / "src/data/pms_crm_pos_context.i5.v1.json").read_text(encoding="utf-8")
+    )
+    contract["gold_evidence"]["runtime"]["status"] = "NOT_RUN"
+    path = tmp_path / "not-verified.json"
+    path.write_text(json.dumps(contract), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="three-source Context contract is invalid"):
+        I2DataPlatformAdapter(
+            "http://trino:8080",
+            "runtime-user",
+            three_source_path=path,
+            require_live_metadata=False,
+        )
 
 
 def test_single_binder_supports_only_approved_typed_values():

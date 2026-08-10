@@ -68,7 +68,6 @@ query Dataset($urn: String!) {
     _CRM_HINTS = ("crm", "고객", "회원", "멤버", "등급", "포인트", "적립", "소멸")
     _PMS_HINTS = ("pms", "호텔", "객실", "숙박", "투숙", "매출")
     _POS_HINTS = ("pos", "식음", "f&b", "주문", "통합 매출")
-    _PMS_CRM_JOIN_ID = "pms_stay_to_crm_membership_grade_event_time_v1"
     _PMS_CRM_POS_JOIN_ID = "pms_crm_pos_gold_revenue_month_v1"
 
     def __init__(
@@ -79,6 +78,7 @@ query Dataset($urn: String!) {
         datahub_token: str | None = None,
         contract_path: Path | None = None,
         binding_path: Path | None = None,
+        three_source_path: Path | None = None,
         require_live_metadata: bool = True,
     ) -> None:
         self._trino_user = trino_user
@@ -112,11 +112,11 @@ query Dataset($urn: String!) {
                         required_filter["value"] = "YTD_SYNTHETIC"
         self._metrics = tuple(metrics)
         three_source = json.loads(
-            (root / "src" / "data" / "pms_crm_pos_context.i5.v1.json").read_text(
-                encoding="utf-8"
-            )
+            (three_source_path or root / "src" / "data" / "pms_crm_pos_context.i5.v1.json")
+            .read_text(encoding="utf-8")
         )
         self._validate_three_source_context(three_source)
+        self._three_source_verified = True
         self._three_source_filters = tuple(three_source["required_filters"])
         self._three_source_parameters = tuple(three_source["parameter_bindings"])
         self._three_source_assets = tuple(
@@ -272,6 +272,20 @@ query Dataset($urn: String!) {
             or not isinstance(bindings, list)
             or not isinstance(assets, list)
             or not assets
+            or (contract.get("approved_join") or {}).get("id")
+            != cls._PMS_CRM_POS_JOIN_ID
+            or (contract.get("gold_evidence") or {}).get("runtime", {}).get("status")
+            != "PASS"
+            or re.fullmatch(
+                r"[0-9a-f]{64}",
+                str((contract.get("gold_evidence") or {}).get("sql_sha256") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"[0-9a-f]{64}",
+                str((contract.get("gold_evidence") or {}).get("result_sha256") or ""),
+            )
+            is None
         ):
             raise ValueError("three-source Context contract is invalid")
         expected_names = [
@@ -368,13 +382,17 @@ query Dataset($urn: String!) {
     ) -> list[dict[str, Any]]:
         if context.get("role") != "hotel_analyst":
             return []
-        if not self._bindings_verified:
-            raise ValueError("Asset Binding runtime verification is unavailable")
-        if self._require_live_metadata and not self._live_runtime_verified:
-            raise ValueError("live DataHub runtime evidence is unavailable")
         selected: list[dict[str, Any]] = []
         column_count = 0
         query_use = self._query_use(query)
+        if self._require_live_metadata:
+            if not self._bindings_verified or not self._live_runtime_verified:
+                raise ValueError("live DataHub runtime verification is unavailable")
+        elif query_use == "approved_pms_crm_pos_join":
+            if not self._three_source_verified:
+                raise ValueError("versioned 3-source runtime verification is unavailable")
+        elif not self._bindings_verified:
+            raise ValueError("Asset Binding runtime verification is unavailable")
         for asset in self._rank_assets(query):
             if column_count + len(asset["columns"]) > 60:
                 continue
@@ -406,8 +424,6 @@ query Dataset($urn: String!) {
             item["join_ids"] = (
                 (self._PMS_CRM_POS_JOIN_ID,)
                 if query_use == "approved_pms_crm_pos_join"
-                else (self._PMS_CRM_JOIN_ID,)
-                if query_use == "approved_pms_crm_join"
                 else ()
             )
             selected.append(item)
@@ -510,8 +526,15 @@ query Dataset($urn: String!) {
                 raise TimeoutError(str(error)) from error
             raise ValueError(str(error)) from error
         result["period"] = {
-            "start": parameters.get("period_start"),
-            "end_exclusive": parameters.get("period_end_exclusive"),
+            "start": self._parameter_value(parameters.get("period_start")),
+            "end_exclusive": self._parameter_value(
+                parameters.get("period_end_exclusive")
+            ),
+        }
+        result["filters"] = {
+            name: self._parameter_value(value)
+            for name, value in parameters.items()
+            if re.fullmatch(r"required_filter_\d+", name)
         }
         self._queries[result["query_id"]] = result
         return result
@@ -568,6 +591,10 @@ query Dataset($urn: String!) {
         if re.search(r":[a-z_][a-z0-9_]*", bound):
             raise ValueError("template parameter is missing")
         return bound
+
+    @staticmethod
+    def _parameter_value(value: Any) -> Any:
+        return value.get("value") if isinstance(value, dict) else value
 
     def _collect(
         self,

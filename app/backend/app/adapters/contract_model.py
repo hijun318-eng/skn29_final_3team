@@ -172,7 +172,9 @@ class ContractModelAdapter:
                     "context_package": self._context_package(payload),
                 },
             )
-            return self._plan(response, "sql")
+            return self._plan(
+                response, "sql", payload["package"].parameter_bindings
+            )
         if node == "node2_repair":
             response = self._generate(
                 node,
@@ -185,7 +187,9 @@ class ContractModelAdapter:
                     "repair_scope": ["sql"],
                 },
             )
-            return self._plan(response, "corrected_sql")
+            return self._plan(
+                response, "corrected_sql", payload["package"].parameter_bindings
+            )
         if node == "node3":
             query = payload["query"]
             context = payload["context"]
@@ -238,9 +242,25 @@ class ContractModelAdapter:
         return response
 
     @staticmethod
-    def _plan(response: dict[str, Any], sql_field: str) -> dict[str, Any]:
+    def _plan(
+        response: dict[str, Any],
+        sql_field: str,
+        parameter_bindings=(),
+    ) -> dict[str, Any]:
         sql = response[sql_field]
+        expected = {item.name: item for item in parameter_bindings}
+        if "period_end_exclusive" in expected and ":period_end" in sql:
+            sql = re.sub(r":period_end(?![a-z0-9_])", ":period_end_exclusive", sql)
         placeholders = set(re.findall(r":([a-z_][a-z0-9_]*)", sql))
+        response_parameters = response["parameters"]
+        names = [
+            "period_end_exclusive"
+            if item["name"] == "period_end" and "period_end_exclusive" in expected
+            else item["name"]
+            for item in response_parameters
+        ]
+        if len(names) != len(set(names)):
+            raise ValueError("model parameter names must be unique")
         return {
             "sql": sql,
             "references": [
@@ -254,9 +274,16 @@ class ContractModelAdapter:
                 for item in response["references"]
             ],
             "parameters": {
-                item["name"]: item["value"]
-                for item in response["parameters"]
-                if item["name"] in placeholders
+                name: (
+                    {
+                        "value_type": expected[name].value_type,
+                        "value": item["value"],
+                    }
+                    if name in expected
+                    else item["value"]
+                )
+                for name, item in zip(names, response_parameters)
+                if name in placeholders
             },
             "model_version": response["model"]["model_version"],
         }

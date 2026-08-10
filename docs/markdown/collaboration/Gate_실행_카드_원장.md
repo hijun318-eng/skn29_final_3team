@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.17 |
-| 문서 기준일 | 2026-08-10 12:40 |
+| 버전 | v5.18 |
+| 문서 기준일 | 2026-08-10 12:47 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -24,7 +24,7 @@
 |---|---|---|---|
 | R1 | `R1-W5-F5` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F3` | `MERGED_DEV` | `seung` |
-| R3 | `R3-W5-F1` | `MERGED_DEV` | `daesung` |
+| R3 | `R3-W5-F2` | `READY` | `daesung` |
 | R4 | `R4-W5-F4` | `READY` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
@@ -477,6 +477,38 @@ RESULT_SHA=93505e81637a291f8e4792a53285a815d463384a
 RESULT_CI=branch 31349329692 PASS
 ```
 
+### R3 · R3-W5-F2
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F2
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=parameterized model evaluation and full dev CI recovery
+TASK_CARD_RANGE=R3-14 endpoint evaluator·AI G2 regression contract alignment
+CURRENT_TASK_CARD_ID=R3-14
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=308660c
+START_POINT=origin/daesung을 최신 dev 308660c로 fast-forward한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R3-W5-F2@308660c
+CONTRACT_VERSION=MODEL-v1.1.0-DRAFT; G2 parameterized required-filter contract
+ALLOWED_PATHS=src/ai/training/evaluate_endpoint.py; src/ai/training/verify_case_specs.py; tests/ai/test_training_verification.py; tests/ai/test_validation_v2.py; tests/ai/test_eval_runner.py; handoffs/R3-W5-F2.json; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; compiled/train/validation/Gold dataset; model·prompt registry; RunPod·endpoint 실행; root Compose/env/CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R3-W5-F2.json
+ACCEPTANCE_CRITERIA=R4 G2의 MODEL literal filter 금지 경계를 되돌리지 않고 endpoint evaluator와 AI 회귀를 Node2의 parameterized required-filter 계약에 맞춘다. generated/expected plan은 Context가 승인한 placeholder와 결정론적 parameter만 사용하며 arbitrary parameter·literal 우회·OR·값 변조는 G2에서 차단한다. Trino 평가가 실행될 경우 승인된 parameter를 안전하게 binding한 SQL만 전달하고 generated·expected 동일 경계를 적용한다. 기존 compiled dataset이 parameterized contract와 불일치하면 데이터를 무단 재작성하지 않고 change request로 반환한다.
+ACCEPTANCE_IDS=AC1_NO_LITERAL_BYPASS;AC2_PARAMETERIZED_EVALUATOR;AC3_CONTEXT_PARAMETERS;AC4_SAFE_TRINO_BINDING;AC5_AI_REGRESSION;AC6_DATASET_BOUNDARY
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/ai/test_training_verification.py tests/ai/test_validation_v2.py tests/ai/test_eval_runner.py -q; python -m pytest -p no:cacheprovider tests/ai -q; python -m compileall -q src/ai; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_TARGET;T2_AI;T3_COMPILE;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=backend G2 완화 필요; compiled dataset 재생성·RunPod·model endpoint 필요; arbitrary literal/parameter 허용; R4/R2 파일 변경 필요; dependency·secret·비용 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local evaluator·AI test·handoff·R3 보고와 승인된 commit·daesung push만 허용한다. model/RunPod/Trino container 실행·데이터 재생성·외부 비용·secret은 금지한다.
+AUTO_FAIL_CONDITIONS=MODEL literal filter 재허용; Context 밖 parameter; unsafe string 치환; dataset 무단 변경; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=dev CI 31352194575의 3개 METRIC_FILTER_MISSING 실패를 parameterized evaluator·test로 해소하고 AI 전체·branch CI와 정확한 handoff를 제출한다.
+```
+
 ### R4 · R4-W5-F1
 
 ```text
@@ -917,6 +949,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.18 | 2026-08-10 12:47 | dev CI 31352194575에서 R4 G2 parameter 경계와 R3 literal evaluator/test 불일치로 3건 실패한 원인을 확인하고, backend 경계를 완화하지 않는 R3-W5-F2 REWORK를 병렬 발행 |
 | v5.17 | 2026-08-10 12:40 | R4 Asset Binding consumer가 PENDING/NOT_RUN을 성공으로 오표시하지 않는 결과와 CI를 MERGED_DEV로 전환하고, 이전 R4 legacy migration 요청을 제품 migration 변경 없는 R4-W5-F4 검증 카드로 READY 발행 |
 | v5.16 | 2026-08-10 12:31 | R4 Metadata·Context Registry 대규모 요청은 번호 충돌·R2 runtime NOT_RUN·migration/OpenAPI 미확정·외부 dirty 작업공간 때문에 제안 그대로 반려하고 F5 PLANNED로 분해 순서를 기록; R1 first-start와 R5 Audit UI도 선행조건부 PLANNED로 등록 |
 | v5.15 | 2026-08-10 12:18 | R1 DataHub 안전 기동 도구와 R2 offline runtime·binding, R4 Context/G2 결과·CI를 MERGED_DEV로 전환; R2 PENDING binding의 R4 VERIFIED 오표시를 막는 F3 REWORK를 우선 발행하고 R4의 legacy migration 요청은 F4 PLANNED로 부분 수용 |

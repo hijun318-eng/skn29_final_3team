@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.9 |
-| 문서 기준일 | 2026-08-10 11:00 |
+| 버전 | v5.10 |
+| 문서 기준일 | 2026-08-10 11:03 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,11 +22,11 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F2` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F3` | `READY` | `junhee` |
 | R2 | `R2-W5-F1` | `READY` | `seung` |
 | R3 | `R3-W5-F1` | `READY` | `daesung` |
 | R4 | `R4-W5-F1` | `READY` | `jaehong` |
-| R5 | `R5-W4-F5` | `MERGED_DEV` | `minji` |
+| R5 | `R5-W5-F1` | `READY` | `minji` |
 
 ## 활성 실행 카드
 
@@ -539,6 +539,68 @@ RESULT_SHA=0bd2aae2ca4687dc197f5a9f3e70c591fd24c2b1
 RESULT_CI=branch 31348559427 PASS
 ```
 
+### R1 · R1-W5-F3
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F3
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=R5 mockup rework authorization
+TASK_CARD_RANGE=R1-06 R5 목업 기반 frontend 재작업 범위 승인
+CURRENT_TASK_CARD_ID=R1-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=594c34da9ef14ec7db5a483446409dea69aee673
+START_POINT=origin/junhee 594c34da9ef14ec7db5a483446409dea69aee673에서 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W5-F3@594c34d
+ALLOWED_PATHS=docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F3.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 제품 경로; backend·data·AI 제품 코드; root Compose·env·CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F3.json
+ACCEPTANCE_CRITERIA=사용자가 제공한 목업과 현재 frontend를 대조한 읽기 전용 분석을 근거로 R5 owner-scoped 재작업 묶음을 발행한다. 기존 Analysis·Report API·route·권한·fixture 경계를 유지하고 목업의 가짜 저장·자동 채움·PDF·공유·AI 도우미는 편입하지 않는다. 실제 설치된 Ponytail v4.9.0 full mode와 1440·1024·768·360 반응형·keyboard·focus·dark/light 검증을 고정한다. R2~R4 제품 경로와 직접 충돌하지 않음을 기록한다.
+ACCEPTANCE_IDS=AC1_OWNER_SCOPE;AC2_EXISTING_CONTRACTS;AC3_NO_MOCK_FEATURES;AC4_PONYTAIL_4_9;AC5_BROWSER_A11Y;AC6_PARALLEL_SAFE
+TEST_COMMANDS=python .github/scripts/gate_scope.py --branch junhee --check-planned-path docs/markdown/collaboration/Gate_실행_카드_원장.md; python .github/scripts/gate_scope.py --dashboard --next-gate I5; document/report validation; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_PLANNED;T2_DASHBOARD;T3_DOCS;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=R5 소유권 밖 제품 변경; route·API·schema·fixture 의미 변경; 목업의 합성 성공값·가짜 기능 편입; dependency·외부 font/network·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=Gate 원장·handoff·R1 보고와 승인된 commit·push·dev 병합·minji fast-forward 동기화만 허용한다. 제품 코드 변경·dependency·외부 비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=R5 카드 미발행; 기존 API·route·fixture 경계 축소; Ponytail v4.9.0 full 외 mode; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=R5-W5-F1의 owner path·기존 계약 보존·금지 목업 기능·browser 검증·R2~R4 병렬 안전 경계를 제출한다.
+```
+
+### R5 · R5-W5-F1
+
+```text
+STATUS=READY
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W5-F1
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=mockup-aligned frontend browser regression
+TASK_CARD_RANGE=R5-01·03·11·12·16·17 목업 기반 shell·Chat·Report 표현 정렬 및 회귀 검증
+CURRENT_TASK_CARD_ID=R5-01
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=594c34da9ef14ec7db5a483446409dea69aee673
+START_POINT=origin/minji를 최신 origin/dev 594c34da9ef14ec7db5a483446409dea69aee673로 fast-forward한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R5-W5-F1@594c34d
+ALLOWED_PATHS=app/enterprise-react/src/App.jsx; app/enterprise-react/src/components/layout/AppHeader.jsx; app/enterprise-react/src/components/layout/AppSidebar.jsx; app/enterprise-react/src/pages/AgentPage.jsx; app/enterprise-react/src/pages/ReportsPage.jsx; app/enterprise-react/src/styles.css; tests/frontend/contracts.test.mjs; handoffs/R5-W5-F1.json; docs/markdown/daily_reports/minji/일일보고.md
+FORBIDDEN_PATHS=app/enterprise-react/src/api/**; app/enterprise-react/src/contracts/**; app/enterprise-react/src/data/**; app/enterprise-react/src/routing.js; package*.json; backend·data·AI; root Compose·env·CI; secret
+HANDOFF_MANIFEST=handoffs/R5-W5-F1.json
+ACCEPTANCE_CRITERIA=목업의 compact sidebar·52px topbar·고밀도 neutral dark/light token·질문 중심 thread/composer·근거 panel·Report 시각 계층을 기존 React 구조에 최소 이식한다. /agent·/reports·/catalog·/catalog/connections와 P2·customer360 차단, Analysis·Report HTTP client 기본·명시적 fixture mode·오류 자동 fallback 금지, 기존 artifact/query/trace/as_of/source·definition/version/run/block ID·승인본 immutable·queued receipt와 run 구분을 유지한다. 목업의 auto-fill·print/PDF/export/share·AI 보고서 도우미·localStorage 가짜 저장·실행은 구현하지 않는다. 1440·1024·768·360과 200% zoom에서 sidebar·panel 접근, single-column 읽기 순서, keyboard·focus·aria-expanded·aria-current·aria-live·텍스트+아이콘 상태를 확인한다. 외부 font·network·dependency를 추가하지 않는다.
+ACCEPTANCE_IDS=AC1_MOCKUP_VISUAL_HIERARCHY;AC2_ROUTE_FREEZE;AC3_API_FIXTURE_BOUNDARY;AC4_ID_STATE_PRESERVATION;AC5_NO_MOCK_FEATURE_IMPORT;AC6_RESPONSIVE_A11Y;AC7_NO_DEPENDENCY
+TEST_COMMANDS=python app/backend/scripts/export_openapi.py --check; python -m pytest -p no:cacheprovider tests/backend/test_openapi_contract.py tests/backend/test_report_registration.py -q; node tests/frontend/contracts.test.mjs; npm --prefix app/enterprise-react run build; browser fixture mode /agent·/reports 1440·1024·768·360·200% zoom·keyboard·focus·drawer·panel; browser API mode definition list/get→draft replace→approve→next draft→manual queued receipt→real history 및 401·403·409·422·503 회귀; python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_OPENAPI;T2_BACKEND_CONTRACT;T3_FRONTEND_CONTRACT;T4_BUILD;T5_FIXTURE_BROWSER;T6_API_BROWSER;T7_SCOPE;T8_DIFF
+STOP_CONDITIONS=route·API·schema·data fixture·backend 변경 필요; 목업 합성값·fake success·자동 fallback 필요; P2 export·share·customer360·자유 AI 도우미 편입 필요; package·dependency·외부 font/network·secret 필요; 승인본 직접 수정 또는 queued를 run으로 표시; 360px·200% zoom·keyboard·API browser 회귀 실패; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=허용 frontend·test·handoff·R5 보고와 local fixture/API browser 검증용 임시 process·격리 DB 생성·정리, 승인된 commit·minji push만 허용한다. package 설치·외부 비용·secret·실데이터·운영 서비스 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=route·API·fixture 의미 변경; mockup fake 기능 이식; 승인본 수정; queued receipt를 run으로 표시; 360px·200% zoom·keyboard·API 회귀 실패; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=변경 전후 1440·1024·768·360 screenshot, dark/light·keyboard·focus·200% zoom, fixture/API browser trace, frontend·backend contract·build, 정확한 handoff와 branch CI를 제출한다.
+```
+
 ## 현재 통합 확인 사항
 
 | ID | 상태 | 확인 결과 | 다음 결정 |
@@ -549,6 +611,7 @@ RESULT_CI=branch 31348559427 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.10 | 2026-08-10 11:03 | 사용자 목업을 기존 API·route·fixture 계약 안에서 최소 이식하는 R5-W5-F1과 발행 검증 R1-W5-F3를 READY 발행 |
 | v5.9 | 2026-08-10 11:00 | R1-W5-F2의 Ponytail v4.9.0 정합성·LLM 참고 스냅샷·handoff와 source CI를 확인해 MERGED_DEV 전환 |
 | v5.8 | 2026-08-10 10:56 | 동시 생성된 LLM 사용 현황을 현재 코드·설정 근거의 legacy 참고 스냅샷으로 보존하도록 R1-W5-F2 범위 보완 |
 | v5.7 | 2026-08-10 10:52 | Ponytail 실제 설치본 v4.9.0과 팀 정책을 일치시키는 R1-W5-F2 발행 |

@@ -124,6 +124,7 @@
   ],
   "NOT_RUN": [],
   "RESIDUAL_RISKS": [],
+  "CHANGE_REQUESTS": [],
   "EXTERNAL_APPROVAL_REQUIRED": [],
   "REQUESTED_DECISION": "F12 terminal handoff와 CRM product-only dev 통합을 수용하고 Gate 상태를 MERGED_DEV로 전환"
 }

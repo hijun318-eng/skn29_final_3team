@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.38 |
-| 문서 기준일 | 2026-08-10 19:00 |
+| 버전 | v5.39 |
+| 문서 기준일 | 2026-08-10 19:10 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -26,7 +26,7 @@
 | R2 | `R2-W5-F6` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `READY` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
-| R5 | `R5-W5-F3` | `READY` | `minji` |
+| R5 | `R5-W5-F3` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
 
@@ -1533,7 +1533,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 ### R5 · R5-W5-F3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -1560,6 +1560,9 @@ STOP_CONDITIONS=기본 bind가 0.0.0.0; opt-in 없이 LAN 공개; container name
 EXTERNAL_ACTION_PERMISSION=local compose config·frontend contract·build와 exact answervice project의 answervice-frontend service만 recreate·health/LAN HTTP smoke·정리하고 허용 경로 commit·minji push할 수 있다. 다른 project/container/volume·firewall·backend lifecycle·외부 배포·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=default wildcard bind; FRONTEND_BIND_ADDRESS 외 조건으로 LAN 공개; runtime identity drift; agent HTTP 비200; 다른 project/volume/firewall 변경; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=default와 opt-in config의 host_ip diff, exact frontend container identity·health, 실제 host LAN IP /agent HTTP 200, frontend contract·build·source CI와 handoff를 확인한다. backend CORS/API 호출은 별도 R4 owner 카드 전까지 성공 조건에서 제외한다.
+RESULT_SHA=8ad6d4b84af0331ada490d4a89219c4e9a4c9e14
+PRODUCT_SHA=6c8afd8
+RESULT_CI=branch 31363391107 PASS
 ```
 
 ## 현재 통합 확인 사항
@@ -1574,6 +1577,7 @@ R1_REVIEW_CONDITIONS=default와 opt-in config의 host_ip diff, exact frontend co
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.39 | 2026-08-10 19:10 | R5-W5-F3의 기본 loopback·명시적 LAN 공개, exact frontend runtime·source CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |
 | v5.38 | 2026-08-10 19:00 | frontend 기본 loopback을 유지하고 FRONTEND_BIND_ADDRESS=0.0.0.0 명시 시에만 same-LAN 13000 공개를 허용하는 R5-W5-F3 발행 |
 | v5.37 | 2026-08-10 18:50 | R1-W5-F12의 live profile guard source·terminal CI와 CRM product-only dev CI를 확인해 MERGED_DEV로 종료 |
 | v5.36 | 2026-08-10 18:40 | R1-W5-F12 source scope가 기존 F9/F10 handoff를 history rewrite 없이 보존하도록 두 파일을 read-only cumulative evidence로만 허용하고 CRM product integration 범위는 유지 |

@@ -1217,7 +1217,7 @@ BASE_SHA=593b68a46c7800c1993be0656bea0c9bf58b57d6
 START_POINT=origin/jaehong의 R4-W5-F6 결과를 보존하고 최신 dev 593b68a와 충돌 여부를 확인한 뒤 시작한다.
 DIRECTIVE=REWORK
 DIRECTIVE_TOKEN=R4-W5-F7@593b68a
-ALLOWED_PATHS=app/backend/app/adapters/contract_model.py; app/backend/app/services/pipeline_support.py; tests/backend/test_analysis_pipeline.py; tests/backend/test_i2_data_platform.py; handoffs/R4-W5-F7.json; docs/markdown/daily_reports/jaehong/일일보고.md
+ALLOWED_PATHS=app/backend/app/adapters/contract_model.py; app/backend/app/adapters/i2_data_platform.py; app/backend/app/contracts.py; app/backend/app/services/analysis_service.py; app/backend/app/services/pipeline_support.py; tests/backend/test_analysis_pipeline.py; tests/backend/test_i2_data_platform.py; tests/backend/test_control_plane_contract.py; handoffs/R4-W5-F6.json; handoffs/R4-W5-F7.json; docs/markdown/daily_reports/jaehong/일일보고.md
 FORBIDDEN_PATHS=src/data/**; src/ai/**; Context schema·migration·OpenAPI route; frontend; root Compose/env/CI; dependency·SQLGlot; secret
 HANDOFF_MANIFEST=handoffs/R4-W5-F7.json
 ACCEPTANCE_CRITERIA=승인된 pms_crm_pos_gold_revenue_month_v1에 한해 R3와 합의한 6 asset·5-edge topology와 preaggregate_then_one_to_one_month cardinality를 model Context에 전달한다. G2 required-filter 검사는 각 CTE의 alias·WHERE 범위를 독립적으로 확인해 PMS·CRM·POS typed placeholder 11개를 exact parameter map과 대조하며, POS filter 하나만 제거해도 METRIC_FILTER_MISSING이어야 한다. 다른 CTE의 같은 field·literal·OR·unknown/duplicate placeholder·value mutation으로 우회할 수 없다. 실제 R3-W5-F5 Node2 plan shape를 test fixture로 직접 조합해 Context→Node2 output→G2→single binder를 통과시키고 second repair는 계속 차단한다.
@@ -1227,7 +1227,7 @@ TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND;T3_COMPILE;T4_SCOPE;T5_DIFF;T6_BRANCH_CI
 STOP_CONDITIONS=R2/R3 product 변경 필요; general SQL parser/dependency 필요; approved join 밖 topology 합성; literal/OR 우회; local probe만 통과하고 actual R3 shape 실패; scope/필수 검증 실패
 EXTERNAL_ACTION_PERMISSION=local deterministic test와 허용 경로 commit·jaehong push만 허용한다. DataHub/Trino lifecycle·외부 서비스·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=1-edge topology 잔존; 첫 WHERE만 검사; POS filter 누락 허용; actual R3 plan 미검증; second repair; scope 위반; 필수 검증 FAIL
-R1_REVIEW_CONDITIONS=R4 source CI PASS 뒤 dev에 먼저 통합하고 R3-W5-F5를 최신 dev에 동기화해 combined test·source CI를 다시 통과시킨다. 그 전 R1-W5-F9 actual API E2E를 재발행하지 않는다.
+R1_REVIEW_CONDITIONS=F6를 결함 상태로 선통합하지 않는다. F7은 origin/dev 대비 F6+F7 누적 diff와 두 handoff를 한 번에 제출하고 source CI PASS 뒤 dev에 통합한다. 이후 R3-W5-F5를 최신 dev에 동기화해 combined test·source CI를 다시 통과시킨다. 그 전 R1-W5-F9 actual API E2E를 재발행하지 않는다.
 ```
 
 ### R5 · R5-W5-F1

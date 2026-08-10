@@ -4,7 +4,7 @@
   "ROLE": "R1",
   "BRANCH": "junhee",
   "BASE_SHA": "cf178b411d62f91b882e98d6e856bddbfa6208ad",
-  "RESULT_SHA": "68e98f43e48331827760450b5d24541068a8d929",
+  "RESULT_SHA": "ea3a44b8446f88f143ab5622079c92764e41726e",
   "TERMINAL_SHA": "HEAD",
   "DIRECTIVE_TOKEN": "R1-W5-F2@cf178b4",
   "COMPLETED_CARDS": ["R1-06 AI 개발 환경 정책 정합성 보완"],
@@ -34,7 +34,7 @@
     {"id": "T2_VERSION_TEXT", "name": "current policy version search", "status": "PASS", "evidence": "AGENTS와 AI 개발 환경 가이드에서 v4.8.4 0건, v4.9.0 일치"},
     {"id": "T3_LLM_SNAPSHOT", "name": "LLM snapshot evidence and secret scan", "status": "PASS", "evidence": "backend model mode·adapter model·ModelOps 후보·manifest와 대조했고 secret pattern 0건"},
     {"id": "T4_DOCS", "name": "document/report validation", "status": "PASS", "evidence": "document-policy와 20260810 report validation 통과"},
-    {"id": "T5_SCOPE", "name": "junhee role scope", "status": "PASS", "evidence": "branch CI 31348317929 role-scope PASS; 최종 문서 보존 commit CI는 push 후 확인"},
+    {"id": "T5_SCOPE", "name": "junhee role scope", "status": "PASS", "evidence": "ea3a44b 결과와 handoff-only 후속 commit을 대상으로 local role-scope PASS; source CI는 push 후 merge preflight에서 확인"},
     {"id": "T6_R2_READY", "name": "python .github/scripts/gate_scope.py --dashboard --next-gate I5", "status": "PASS", "evidence": "R2-W5-F1 READY·NOT_RUN으로 선택되고 재발행 blocker 없음"},
     {"id": "T7_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"}
   ],

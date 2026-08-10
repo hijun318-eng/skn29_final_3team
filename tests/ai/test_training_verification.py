@@ -21,10 +21,16 @@ def _context(fqn, columns, metric):
     }
 
 
-def _plan(fqn, sql, parameters=None):
+def _plan(fqn, sql, parameters=None, metric_id=None):
     return {
         "sql": sql,
-        "references": [{"urn": f"urn:{fqn}", "fqn": fqn, "columns": [], "join_ids": []}],
+        "references": [{
+            "urn": f"urn:{fqn}",
+            "fqn": fqn,
+            "columns": [],
+            "join_ids": [],
+            "metric_ids": [metric_id] if metric_id else [],
+        }],
         "parameters": parameters or {},
     }
 
@@ -112,7 +118,12 @@ class TrainingVerificationTests(unittest.TestCase):
                 prefix = f"SELECT SUM({columns[-1]}) FROM {fqn} WHERE "
                 self.assertIsNone(
                     PipelineSupport.g2_violation(
-                        _plan(fqn, f"{prefix}{filters} LIMIT 1000", parameters),
+                        _plan(
+                            fqn,
+                            f"{prefix}{filters} LIMIT 1000",
+                            parameters,
+                            metric["id"],
+                        ),
                         package,
                     )
                 )
@@ -126,7 +137,12 @@ class TrainingVerificationTests(unittest.TestCase):
                     self.assertEqual(
                         expected,
                         PipelineSupport.g2_violation(
-                            _plan(fqn, f"{prefix}{invalid_sql} LIMIT 1000", invalid_parameters),
+                            _plan(
+                                fqn,
+                                f"{prefix}{invalid_sql} LIMIT 1000",
+                                invalid_parameters,
+                                metric["id"],
+                            ),
                             package,
                         ),
                     )

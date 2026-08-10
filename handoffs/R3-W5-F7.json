@@ -4,7 +4,7 @@
   "ROLE": "R3",
   "BRANCH": "daesung",
   "BASE_SHA": "b820698c6cb5a5cb08b6f4a17b9052af6dc6fdf7",
-  "RESULT_SHA": "c54612611d526b750f22c49f2577499b45847bcc",
+  "RESULT_SHA": "d0c203b821d5e4f021501c5ceabc101607a3f2ce",
   "TERMINAL_SHA": "HEAD",
   "DIRECTIVE_TOKEN": "R3-W5-F7@b820698",
   "COMPLETED_CARDS": [
@@ -77,7 +77,7 @@
       "id": "T4_SCOPE",
       "name": "R3 merge-base scope",
       "status": "PASS",
-      "evidence": "결과 SHA c546126 기준 changed paths 5, scope PASS"
+      "evidence": "결과 SHA d0c203b 기준 changed paths 5, scope PASS"
     },
     {
       "id": "T5_DIFF",

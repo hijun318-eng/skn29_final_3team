@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.46 |
-| 문서 기준일 | 2026-08-10 21:00 |
+| 버전 | v5.47 |
+| 문서 기준일 | 2026-08-10 21:15 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F18` | `READY` | `junhee` |
+| R1 | `R1-W5-F19` | `READY` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
@@ -1153,7 +1153,7 @@ BLOCKED_REASON=explicit answervice project에서 DB는 healthy였지만 backend 
 ### R1 · R1-W5-F18
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1181,6 +1181,40 @@ STOP_CONDITIONS=volume에 migration 또는 사용자 데이터 relation 존재; 
 EXTERNAL_ACTION_PERMISSION=사용자가 보존 데이터가 없다고 승인한 범위에서 labels가 answervice인 exact backend/app-postgres와 migration relation이 없는 answervice_app-postgres-data만 제거·재생성할 수 있다. 다른 project/container/volume, down -v, reset script, prune는 금지한다. 허용 경로 commit·junhee push만 허용한다.
 AUTO_FAIL_CONDITIONS=empty proof 실패; exact identity 불일치; unrelated drift; migration 우회; template 수동 보정; readiness 일부만 PASS; secret 출력; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=empty proof와 exact target을 먼저 고정한다. readiness 제품 계약 차단은 R4 owner REWORK로 반환한다.
+BLOCKED_REASON=삭제 전 read-only 검사에서 governance.alembic_version은 없지만 user schema table 21개와 합성 seed 약 2013행이 확인돼 empty proof가 실패했다. 카드 범위를 넓혀 삭제하지 않았고 F18 product 변경은 미커밋 제거했다.
+```
+
+### R1 · R1-W5-F19
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F19
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=F18 synthetic seeded volume reset approval
+TASK_CARD_RANGE=R1-02 exact answervice synthetic app DB volume 재생성과 internal readiness 검증
+CURRENT_TASK_CARD_ID=R1-02
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=ead79dc29ac7e3c30e80957cd96d270bce0969ff
+START_POINT=사용자는 보존할 로컬 DB 데이터가 없음을 승인했다. 대상은 labels project=answervice인 answervice_app-postgres-data 한 개이며 21 schema table·약 2013행은 synthetic init 결과이고 Alembic 이력은 없다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F19@ead79dc
+CONTRACT_VERSION=R1-SERVICE-v1.1.0-DRAFT; exact synthetic volume reset; explicit answervice project; internal DB/backend; head 20260804_05; Template I2-v1.0.0
+ALLOWED_PATHS=compose.yml; compose.runtime-isolation.override.yml; tests/integration/test_runtime_isolation_override.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F19.json; docs/markdown/daily_reports/junhee/일일보고.md; docs/markdown/daily_reports/team_summaries/5주차/20260810.md; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F12.json; tests/integration/test_typed_three_source_e2e.py
+READ_ONLY_CUMULATIVE_EVIDENCE=docs/markdown/daily_reports/team_summaries/5주차/20260810.md; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F12.json; tests/integration/test_typed_three_source_e2e.py. 수정·삭제하지 않는다.
+FORBIDDEN_PATHS=infrastructure/database/**; app/backend/**; frontend/**; migration/schema/template 수동 수정; root CI·env; dependency; secret 값; 다른 Docker project/container/volume
+HANDOFF_MANIFEST=handoffs/R1-W5-F19.json
+ACCEPTANCE_CRITERIA=target container·volume labels와 synthetic row evidence를 기록한 뒤 answervice-backend·answervice-app-postgres와 answervice_app-postgres-data만 exact 제거한다. 다른 project/container/volume은 전후 같다. current env로 재생성하고 entrypoint migration·approved Template·internal readiness를 검증한다. root override delta는 DB 이름과 DB/backend host publish 제거뿐이다.
+ACCEPTANCE_IDS=AC1_EXACT_TARGET;AC2_SYNTHETIC_RESET;AC3_OTHER_PROJECT_INVARIANT;AC4_RUNTIME_OVERRIDE_ONLY;AC5_MIGRATION_HEAD;AC6_APPROVED_TEMPLATE;AC7_INTERNAL_READINESS
+TEST_COMMANDS=static/model test; target labels·synthetic evidence; unrelated snapshot; exact container remove; exact volume remove; exact up; migration/template query; internal readiness; integration tests; scope; diff; source CI
+TEST_COMMAND_IDS=T1_STATIC;T2_TARGET;T3_SNAPSHOT;T4_EXACT_RESET;T5_EXACT_UP;T6_DB_EVIDENCE;T7_READINESS;T8_INTEGRATION;T9_SCOPE;T10_DIFF;T11_CI
+STOP_CONDITIONS=target label mismatch; target 외 삭제 필요; unrelated drift; customer/non-synthetic data; project mismatch; migration/readiness 실패; template 0/복수/비승인; owner 파일 변경 필요; secret 출력; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=사용자의 보존 데이터 없음 승인에 따라 project=answervice labels를 가진 exact backend/app-postgres containers와 answervice_app-postgres-data 한 개만 제거·재생성할 수 있다. 다른 project/container/volume, down -v, reset script, prune는 금지한다. 허용 경로 commit·junhee push만 허용한다.
+AUTO_FAIL_CONDITIONS=exact identity 불일치; target 확대; unrelated drift; migration 우회; template 수동 보정; readiness 일부만 PASS; secret 출력; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=exact reset과 current env bootstrap 후 readiness 제품 계약 차단은 R4 owner REWORK로 반환한다.
 ```
 
 ### R2 · R2-W5-F5
@@ -1782,6 +1816,7 @@ RESULT_CI=branch 31363391107 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.47 | 2026-08-10 21:15 | F18 empty proof에서 synthetic schema 21개·약 2013행을 확인해 보존 데이터 없음 승인 범위의 exact answervice volume만 재생성하는 R1-W5-F19 발행 |
 | v5.46 | 2026-08-10 21:00 | F17에서 신규 answervice 빈 volume의 credential mismatch를 확인해 exact empty volume만 current env로 재초기화하고 internal readiness를 검증하는 R1-W5-F18 발행 |
 | v5.45 | 2026-08-10 20:40 | F16의 explicit project·DB 격리는 성공했으나 backend 18000 충돌을 확인해 DB와 backend를 내부 전용으로 기동하고 migration·readiness를 검증하는 R1-W5-F17 발행 |
 | v5.44 | 2026-08-10 20:25 | F15에서 infra env의 COMPOSE_PROJECT_NAME이 root project를 덮는 위험을 확인해 원상 복구하고 explicit answervice project identity와 DB host publish 격리를 함께 검증하는 R1-W5-F16 발행 |

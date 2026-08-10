@@ -7,9 +7,6 @@ from decimal import Decimal
 from pathlib import Path
 from sys import path
 
-import pytest
-
-
 ROOT = Path(__file__).resolve().parents[2]
 path.insert(0, str(ROOT / "app" / "backend"))
 
@@ -58,88 +55,7 @@ def _product_package(contract: dict) -> tuple[object, RequestContext]:
     return package, RequestContext(as_of=date(2026, 7, 1))
 
 
-def _typed_gold_plan(contract: dict, package: object) -> dict:
-    sql = (ROOT / contract["gold_evidence"]["sql_file"]).read_text(encoding="utf-8")
-    replacements = {
-        "s.property_id = 'SYNTHETIC_HOTEL_001'": "s.property_id = :required_filter_5",
-        "s.complimentary_flag = false": "s.complimentary_flag = :required_filter_2",
-        "s.house_use_flag = false": "s.house_use_flag = :required_filter_3",
-        "s.is_forecast = false": "s.is_forecast = :required_filter_4",
-        "s.stay_status = 'COMPLETED'": "s.stay_status = :required_filter_6",
-        "o.property_id = 'SYNTHETIC_HOTEL_001'": "o.property_id = :required_filter_8",
-        "o.void_flag = 0": "o.void_flag = :required_filter_9",
-        "o.is_forecast = 0": "o.is_forecast = :required_filter_7",
-        "TIMESTAMP '2026-05-01 00:00:00 Asia/Seoul'": "TIMESTAMP ':period_start 00:00:00 Asia/Seoul'",
-        "TIMESTAMP '2026-07-01 00:00:00 Asia/Seoul'": "TIMESTAMP ':period_end_exclusive 00:00:00 Asia/Seoul'",
-        "TIMESTAMP '2026-05-01 00:00:00'": "TIMESTAMP ':period_start 00:00:00'",
-        "TIMESTAMP '2026-07-01 00:00:00'": "TIMESTAMP ':period_end_exclusive 00:00:00'",
-    }
-    for old, new in replacements.items():
-        assert old in sql
-        sql = sql.replace(old, new)
-    sql = sql.replace("h.grade_code = 'GOLD'", "h.grade_code = :required_filter_1")
-    sql = sql.rstrip() + "\nLIMIT 1000"
-    return {
-        "sql": sql,
-        "references": [
-            {
-                "urn": item.urn,
-                "fqn": item.fqn,
-                "columns": list(item.columns),
-                "join_ids": list(package.approved_join_ids),
-            }
-            for item in package.assets
-        ],
-        "parameters": {
-            item.name: {"value_type": item.value_type, "value": item.value}
-            for item in package.parameter_bindings
-        },
-        "model_version": "approved-gold-candidate-not-node2-output",
-    }
-
-
-def _g2_probe_plan(package: object) -> dict:
-    sql = " ".join(
-        (
-            "SELECT 1 FROM pms.public.pms_stays s",
-            "JOIN pms.public.pms_reservations r ON 1=1",
-            "JOIN pms.public.pms_guests g0 ON 1=1",
-            "JOIN crm.dbo.crm_customer_map m ON 1=1",
-            "JOIN crm.dbo.crm_member_grade_history g ON 1=1",
-            "JOIN pos.pos_db.pos_orders o ON 1=1",
-            "WHERE s.actual_checkout_at >= DATE ':period_start'",
-            "AND s.actual_checkout_at < DATE ':period_end_exclusive'",
-            "AND g.grade_code = :required_filter_1",
-            "AND s.complimentary_flag = :required_filter_2",
-            "AND s.house_use_flag = :required_filter_3",
-            "AND s.is_forecast = :required_filter_4",
-            "AND s.property_id = :required_filter_5",
-            "AND s.stay_status = :required_filter_6",
-            "AND o.is_forecast = :required_filter_7",
-            "AND o.property_id = :required_filter_8",
-            "AND o.void_flag = :required_filter_9 LIMIT 1000",
-        )
-    )
-    return {
-        "sql": sql,
-        "references": [
-            {
-                "urn": item.urn,
-                "fqn": item.fqn,
-                "columns": list(item.columns),
-                "join_ids": list(package.approved_join_ids),
-            }
-            for item in package.assets
-        ],
-        "parameters": {
-            item.name: {"value_type": item.value_type, "value": item.value}
-            for item in package.parameter_bindings
-        },
-        "model_version": "g2-contract-probe-not-node2-output",
-    }
-
-
-def test_g120_046_components_prove_runtime_gold_but_product_e2e_fails_closed():
+def test_g120_046_node2_g2_binder_and_runtime_gold_are_composable():
     contract = json.loads(CONTEXT_PATH.read_text(encoding="utf-8"))
     package, request_context = _product_package(contract)
     adapter = I2DataPlatformAdapter(
@@ -150,8 +66,12 @@ def test_g120_046_components_prove_runtime_gold_but_product_e2e_fails_closed():
     support = PipelineSupport(adapter, ContextPackageBuilder())
 
     assert adapter.search_assets(contract["question"], {"role": "unauthorized"}) == []
-    with pytest.raises(ValueError, match="Asset Binding runtime verification is unavailable"):
-        adapter.search_assets(contract["question"], request_context.model_dump(mode="json"))
+    selected = adapter.search_assets(
+        contract["question"], request_context.model_dump(mode="json")
+    )
+    assert {item["fqn"] for item in selected} == {
+        item["fqn"] for item in contract["assets"]
+    }
 
     model = ContractModelAdapter()
     model_payload = {
@@ -161,30 +81,18 @@ def test_g120_046_components_prove_runtime_gold_but_product_e2e_fails_closed():
         "context": request_context,
     }
     node2_plan = model.generate("node2", model_payload)
-    assert support.g2_violation(node2_plan, package) == "METRIC_FILTER_MISSING"
-    with pytest.raises(ValueError, match="unsupported normalized error code"):
-        model.generate(
-            "node2_repair",
-            {
-                **model_payload,
-                "trace_id": request_context.trace_id,
-                "rejected_sql": node2_plan["sql"],
-                "violation": "METRIC_FILTER_MISSING",
-            },
-        )
-
-    candidate = _g2_probe_plan(package)
-    assert support.g2_violation(candidate, package) is None
+    assert support.g2_violation(node2_plan, package) is None
     bound = I2DataPlatformAdapter._bind_parameters(
-        candidate["sql"], candidate["parameters"]
+        node2_plan["sql"], node2_plan["parameters"]
     )
     assert ":period_" not in bound and ":required_filter_" not in bound
     outside = {
-        **candidate,
-        "sql": candidate["sql"].replace(
+        **node2_plan,
+        "sql": node2_plan["sql"].replace(
             "FROM pms.public.pms_stays s",
             "FROM pms.public.pms_stays s "
             "JOIN serving.analytics.hotel_daily_metrics x ON true",
+            1,
         ),
     }
     assert support.g2_violation(outside, package) in {
@@ -192,20 +100,22 @@ def test_g120_046_components_prove_runtime_gold_but_product_e2e_fails_closed():
         "UNAPPROVED_JOIN",
     }
     missing = {
-        **candidate,
-        "sql": candidate["sql"].replace(
-            "AND s.complimentary_flag = :required_filter_2 ", ""
+        **node2_plan,
+        "sql": node2_plan["sql"].replace(
+            's."complimentary_flag" = :required_filter_2', "TRUE", 1
         ),
-        "parameters": {
-            key: value
-            for key, value in candidate["parameters"].items()
-            if key != "required_filter_2"
-        },
     }
     assert support.g2_violation(missing, package) == "METRIC_FILTER_MISSING"
-
-    typed_gold = _typed_gold_plan(contract, package)
-    assert support.g2_violation(typed_gold, package) == "UNSAFE_SQL"
+    repaired = model.generate(
+        "node2_repair",
+        {
+            **model_payload,
+            "trace_id": request_context.trace_id,
+            "rejected_sql": missing["sql"],
+            "violation": "METRIC_FILTER_MISSING",
+        },
+    )
+    assert support.g2_violation(repaired, package) is None
     raw_gold_sql = (ROOT / contract["gold_evidence"]["sql_file"]).read_text(
         encoding="utf-8"
     )

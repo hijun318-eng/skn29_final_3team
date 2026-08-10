@@ -137,7 +137,7 @@ services:
       - ./sql/data/260729_03_crm_sqlserver_2022_2026_v2.2.sql:/bootstrap/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "test -f /var/opt/mssql/.hotel_synthetic_initialized && /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
       retries: 20

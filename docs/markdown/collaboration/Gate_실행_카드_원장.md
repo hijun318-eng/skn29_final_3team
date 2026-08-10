@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.20 |
-| 문서 기준일 | 2026-08-10 13:00 |
+| 버전 | v5.21 |
+| 문서 기준일 | 2026-08-10 13:15 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,10 +22,10 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F8` | `READY` | `junhee` |
-| R2 | `R2-W5-F4` | `READY` | `seung` |
+| R1 | `R1-W5-F8` | `MERGED_DEV` | `junhee` |
+| R2 | `R2-W5-F4` | `MERGED_DEV` | `seung` |
 | R3 | `R3-W5-F2` | `BLOCKED` | `daesung` |
-| R4 | `R4-W5-F4` | `MERGED_DEV` | `jaehong` |
+| R4 | `R4-W5-F5` | `READY` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
@@ -783,7 +783,7 @@ R1_REVIEW_CONDITIONS=조합 회귀와 대표 3-source 실제 API E2E가 모두 P
 ### R1 · R1-W5-F8
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -810,6 +810,8 @@ STOP_CONDITIONS=공식 tag SHA 불일치; workflow 기능·permission·trigger �
 EXTERNAL_ACTION_PERMISSION=공식 GitHub action tag의 read-only 확인과 허용 경로 commit·junhee push만 승인한다. 외부 workflow 수동 실행·secret 변경·비용은 금지한다.
 AUTO_FAIL_CONDITIONS=mutable actions tag 잔존; job timeout 누락; 기존 branch/test routing 변경; R3 baseline을 R1에서 우회; scope 위반; R1 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=immutable SHA·version comment·6 job timeout과 integration 회귀, 정확한 handoff·branch CI를 제출한다. dev 전체 green 판정은 R2→R4→R3 계약 통합 뒤 별도로 수행한다.
+RESULT_SHA=aed36f38198019b7553631deeb2110cf99d13fd4
+RESULT_CI=branch 31353517478 PASS
 ```
 
 ### R2 · R2-W5-F3
@@ -849,7 +851,7 @@ RESULT_CI=branch 31351264193 PASS; runtime evidence BLOCKED/NOT_RUN
 ### R2 · R2-W5-F4
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -876,6 +878,8 @@ STOP_CONDITIONS=승인 질문·JOIN·source 의미 변경 필요; R4/R3 경로 �
 EXTERNAL_ACTION_PERMISSION=local synthetic PMS·CRM·POS와 Trino 476의 read-only 조회, 허용 경로 commit·seung push만 승인한다. DataHub lifecycle·DDL·seed·외부 서비스·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=type 미검증; period_end 사용; dynamic date; raw-row join; 승인 밖 asset/column; hash 위조; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=typed registry와 대표 3-source producer를 같은 R2 카드 안에서 순서대로 완료하고 실제 Trino 결과·target/data 회귀·handoff·branch CI를 제출한다.
+RESULT_SHA=1eec81b7f46545e7d1e6d448cc8b1a567435ce7d
+RESULT_CI=branch 31353517252 PASS
 ```
 
 ### R4 · R4-W5-F2
@@ -976,7 +980,7 @@ RESULT_CI=branch 31352566492 PASS
 ### R4 · R4-W5-F5
 
 ```text
-STATUS=PLANNED
+STATUS=READY
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -984,11 +988,12 @@ EXECUTION_BUNDLE_ID=R4-W5-F5
 TARGET_INTEGRATION_GATE=I5
 CHECKPOINT_GATES=R2-W5-F4 typed registry·3-source Context producer merged dev
 TASK_CARD_RANGE=R4-04·05 typed Context·G2 parameter map·single Trino binder
-CURRENT_TASK_CARD_ID=N/A — R2-W5-F4 통합 뒤 발행
+CURRENT_TASK_CARD_ID=R4-04
 BASE_BRANCH=dev
-BASE_SHA=N/A — R2 producer 통합 SHA로 발행
-DIRECTIVE=WAIT
-DIRECTIVE_TOKEN=N/A
+BASE_SHA=b35f2d86d2089f461aff6de316d062ce1cc40bfd
+START_POINT=origin/jaehong을 최신 dev b35f2d8로 fast-forward한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W5-F5@b35f2d8
 ALLOWED_PATHS=app/backend/app/adapters/contract_model.py; app/backend/app/adapters/i2_data_platform.py; app/backend/app/services/context_builder.py; app/backend/app/services/pipeline_support.py; tests/backend/test_context_builder.py; tests/backend/test_i2_data_platform.py; tests/backend/test_production_model.py; tests/backend/test_analysis_pipeline.py; handoffs/R4-W5-F5.json; docs/markdown/daily_reports/jaehong/일일보고.md
 FORBIDDEN_PATHS=src/data/**; src/ai/**; migration·OpenAPI·route; frontend; root Compose/env/CI; dependency; secret
 ACCEPTANCE_CRITERIA=R2의 string·boolean·number·date required_filter와 period_start·period_end_exclusive를 Context model이 손실 없이 보존한다. G2는 SQL placeholder와 parameter map을 Context의 name·type·value와 함께 검증하고 누락·unknown·중복·literal·OR·값 변조를 fail-closed한다. 단일 Trino binder는 string escaping, boolean, bool 제외 finite number, ISO date만 안전하게 bind하고 실행 직전까지 parameterized SQL을 유지한다. 승인된 PMS·CRM·POS Context의 FQN·column·JOIN만 허용하며 기존 entitlement·1회 repair 경계를 유지한다.
@@ -1089,6 +1094,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.21 | 2026-08-10 13:15 | R1 CI 공급망 보강과 R2 typed filter·PMS/CRM/POS Context의 source CI·handoff를 확인해 MERGED_DEV로 전환하고 R4 Context·G2·단일 binder 소비자 카드를 READY 발행; 5주차 팀 요약·주간보고를 개인 보고와 동기화 |
 | v5.20 | 2026-08-10 13:00 | 다른 역할과 독립적인 R1 CI 공급망 작업을 확인해 GitHub Actions immutable SHA pin과 모든 job timeout을 검증하는 R1-W5-F8을 병렬 발행; R5는 Audit·Schedule·Report worker·Catalog live 생산자 부재로 신규 구현 없이 대기 |
 | v5.19 | 2026-08-10 12:55 | R4 Alembic 검증을 MERGED_DEV로 전환하고, typed required-filter·대표 PMS/CRM/POS Context를 R2 생산자부터 R4·R3 소비자와 R1 실제 API E2E 순으로 재편; Analysis·SQLGlot G2/G3·Report worker·schedule은 선행 E2E 뒤 단계화 |
 | v5.18 | 2026-08-10 12:47 | dev CI 31352194575에서 R4 G2 parameter 경계와 R3 literal evaluator/test 불일치로 3건 실패한 원인을 확인하고, backend 경계를 완화하지 않는 R3-W5-F2 REWORK를 병렬 발행 |

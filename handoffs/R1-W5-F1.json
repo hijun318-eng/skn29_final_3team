@@ -4,13 +4,14 @@
   "ROLE": "R1",
   "BRANCH": "junhee",
   "BASE_SHA": "ccbb94cfdb20caf975975a68f6beeb5f37f7eff0",
-  "RESULT_SHA": "2fdc4fbb28fcd88fe362bffb611cc9834d1abe92",
+  "RESULT_SHA": "3e3f68ab2f57b0c794091b5d21cd263ee8c34512",
   "TERMINAL_SHA": "HEAD",
   "DIRECTIVE_TOKEN": "R1-W5-F1@ccbb94c",
   "COMPLETED_CARDS": [
     "R1-03 역할별 실행 묶음 발행·승인"
   ],
   "CHANGED_FILES": [
+    "docs/markdown/ai_docs/Answervice_기획서_기반_현재_구현_진행현황_20260810.md",
     "docs/markdown/collaboration/Gate_실행_카드_원장.md"
   ],
   "CONTRACT_VERSIONS": {
@@ -23,7 +24,8 @@
     {"id": "AC3_R3_RECOVERY", "status": "PASS", "evidence": "R3-W5-F1에 e332466 보존·off-scope 복구·required filter Node2 구현 범위 승인"},
     {"id": "AC4_R4_COMPAT", "status": "PASS", "evidence": "R4-W5-F1에 legacy 20260803_03와 empty DB의 additive migration 호환 검증 범위 승인"},
     {"id": "AC5_SCOPE_CHECK", "status": "PASS", "evidence": "seung·daesung·jaehong의 대표 계획 경로 gate_scope 검사 모두 PASS"},
-    {"id": "AC6_NO_EXTERNAL_COST", "status": "PASS", "evidence": "RunPod·외부 model/DB·비용·secret을 승인하지 않고 local synthetic 검증만 허용"}
+    {"id": "AC6_NO_EXTERNAL_COST", "status": "PASS", "evidence": "RunPod·외부 model/DB·비용·secret을 승인하지 않고 local synthetic 검증만 허용"},
+    {"id": "AC7_STATUS_SNAPSHOT", "status": "PASS", "evidence": "동시 작성된 기획서 기반 구현 현황은 ai_docs 참고 스냅샷으로 보존하고 공식 WBS·Gate 비대체 경계를 원장에 명시"}
   ],
   "TEST_RESULTS": [
     {"id": "T1_DOCS", "name": "document validation", "status": "PASS", "evidence": "document-policy OK: 1 checked"},

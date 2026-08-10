@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.2 |
-| 문서 기준일 | 2026-08-10 09:48 |
+| 버전 | v5.3 |
+| 문서 기준일 | 2026-08-10 10:29 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -23,9 +23,9 @@
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
 | R1 | `R1-W4-F10` | `MERGED_DEV` | `junhee` |
-| R2 | `R2-W4-F4` | `MERGED_DEV` | `seung` |
-| R3 | `R3-W4-F7` | `MERGED_DEV` | `daesung` |
-| R4 | `R4-W4-F8` | `MERGED_DEV` | `jaehong` |
+| R2 | `R2-W5-F1` | `READY` | `seung` |
+| R3 | `R3-W5-F1` | `READY` | `daesung` |
+| R4 | `R4-W5-F1` | `READY` | `jaehong` |
 | R5 | `R5-W4-F5` | `READY` | `minji` |
 
 ## 활성 실행 카드
@@ -373,6 +373,104 @@ AUTO_FAIL_CONDITIONS=범위 초과 기능 잔존; HTTP 비기본; 자동 fixture
 R1_REVIEW_CONDITIONS=origin/dev 대비 변경 경로와 cleanup-only 복구, typed client·필수 headers·definition/draft/manual/history·fixture 경계·경쟁 상태, build·contract·두 browser mode·branch CI와 정확한 R5-W4-F5 handoff를 제출한다. 모두 PASS일 때만 dev 병합을 검토한다.
 ```
 
+### R2 · R2-W5-F1
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F1
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=representative three-source gold query
+TASK_CARD_RANGE=R2-15 대표 3-source 정답 조회
+CURRENT_TASK_CARD_ID=R2-15
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=ccbb94cfdb20caf975975a68f6beeb5f37f7eff0
+START_POINT=origin/seung ccbb94cfdb20caf975975a68f6beeb5f37f7eff0에서 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R2-W5-F1@ccbb94c
+CONTRACT_VERSION=I3-DATA-v1.1.0-DRAFT; schema 1.0.0; seed 20260729; scenario 1.0.0
+ALLOWED_PATHS=infrastructure/database/sql/queries/i5_gold_three_source_operating_revenue.sql; src/data/i3_contract.v1.json; tests/data/test_i3_contract.py; handoffs/R2-W5-F1.json; docs/markdown/daily_reports/seung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/ai/**; frontend/**; DataHub recipe·source DDL·seed·root Compose·env·CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R2-W5-F1.json
+ACCEPTANCE_CRITERIA=기존 승인 schema·synthetic seed만 사용해 서로 다른 3개 source의 운영 매출을 월 단위 KRW로 결합하는 read-only Trino 정답 SQL 1개를 추가한다. 각 source는 자기 CTE에서 승인 상태·취소/void·forecast 제외·Asia/Seoul 기간 경계를 적용하고, source 간 raw row JOIN 대신 집계 결과를 month로 결합한다. contract에는 SQL path·입력 source·기간·정렬된 결과 hash·row count·합계를 기록하고 test가 파일 hash와 결정론적 fixture를 검증한다. 기존 2-source gold와 watermark·평가 manifest는 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_THREE_SOURCES;AC2_READ_ONLY;AC3_SOURCE_FILTERS;AC4_AGGREGATE_JOIN;AC5_DETERMINISTIC_HASH;AC6_EXISTING_COMPAT
+TEST_COMMANDS=python -m json.tool src/data/i3_contract.v1.json; python -m pytest -p no:cacheprovider tests/data/test_i3_contract.py -q; python -m pytest -p no:cacheprovider tests/data -q; local synthetic Trino에서 SQL 실행 후 row count·합계·hash 확인; python .github/scripts/gate_scope.py --branch seung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_JSON;T2_TARGET;T3_DATA;T4_LOCAL_TRINO;T5_SCOPE;T6_DIFF
+STOP_CONDITIONS=승인되지 않은 source·column·JOIN 필요; 3-source 결과를 raw row 수준으로 결합; 기존 seed·DDL·recipe 변경 필요; local Trino 또는 source가 불건전; 외부 서비스·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=기존 local synthetic DB·Trino read-only 조회와 허용 경로 commit·seung push만 승인한다. volume reset·외부 전송·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=source 3개 미만; forecast·취소·void 포함; 비결정 기간; hash 불일치; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=SQL의 3-source·filter·집계 후 결합, 실제 local Trino 결과와 contract hash, data 전체 회귀와 branch CI를 제출한다.
+```
+
+### R3 · R3-W5-F1
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F1
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=branch scope recovery and required-filter SQL generation
+TASK_CARD_RANGE=R3-04·05 Node 2 Context 제한 SQL·1회 수정
+CURRENT_TASK_CARD_ID=R3-04
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=ccbb94cfdb20caf975975a68f6beeb5f37f7eff0
+START_POINT=origin/daesung e3324660425bebb6b2cbe5f8e614bae8bbf1f547에 origin/dev ccbb94cfdb20caf975975a68f6beeb5f37f7eff0을 병합해 시작한다. history rewrite·force push·고유 commit 폐기를 금지한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R3-W5-F1@ccbb94c
+CONTRACT_VERSION=MODEL-v1.1.0-DRAFT; I4-CONTEXT-v2.2.0-DRAFT
+IMPLEMENTATION_PATHS=src/ai/node2.py; tests/ai/test_node2.py; tests/ai/test_contracts.py; handoffs/R3-W5-F1.json; docs/markdown/daily_reports/daesung/일일보고.md
+CLEANUP_ONLY_PATHS=.gitignore; docs/Answervice_기획서.md; docs/markdown/Answervice_sLLM_RunPod_재구축.md; infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/datahub/recipes/banquet.i3.yml; infrastructure/database/datahub/recipes/crm.i2.yml; infrastructure/database/datahub/recipes/facility.i3.yml; infrastructure/database/datahub/recipes/pms.i2.yml; infrastructure/database/datahub/recipes/pos.i3.yml; src/ai/training/README.md; src/ai/training/build_case_specs.py; src/ai/training/build_smoke_manifest.py; src/ai/training/build_validation_v2.py; src/ai/training/case_specs.example.jsonl; src/ai/training/dataset.py; src/ai/training/evaluate_endpoint.py; src/ai/training/evaluate_lora.py; src/ai/training/generate_scenarios.py; src/ai/training/requirements.txt; src/ai/training/train_lora.py; src/ai/training/verify_case_specs.py; tests/ai/test_training_dataset.py; tests/ai/test_training_scenarios.py; tests/ai/test_training_verification.py; tests/ai/test_validation_v2.py
+ALLOWED_PATHS=.gitignore; docs/Answervice_기획서.md; docs/markdown/Answervice_sLLM_RunPod_재구축.md; infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/datahub/recipes/banquet.i3.yml; infrastructure/database/datahub/recipes/crm.i2.yml; infrastructure/database/datahub/recipes/facility.i3.yml; infrastructure/database/datahub/recipes/pms.i2.yml; infrastructure/database/datahub/recipes/pos.i3.yml; src/ai/node2.py; src/ai/training/README.md; src/ai/training/build_case_specs.py; src/ai/training/build_smoke_manifest.py; src/ai/training/build_validation_v2.py; src/ai/training/case_specs.example.jsonl; src/ai/training/dataset.py; src/ai/training/evaluate_endpoint.py; src/ai/training/evaluate_lora.py; src/ai/training/generate_scenarios.py; src/ai/training/requirements.txt; src/ai/training/train_lora.py; src/ai/training/verify_case_specs.py; tests/ai/test_node2.py; tests/ai/test_contracts.py; tests/ai/test_training_dataset.py; tests/ai/test_training_scenarios.py; tests/ai/test_training_verification.py; tests/ai/test_validation_v2.py; handoffs/R3-W5-F1.json; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; 위 CLEANUP_ONLY_PATHS의 신규 내용 유지; model endpoint·RunPod·dataset 생성·평가 실행; root Compose·env·CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R3-W5-F1.json
+ACCEPTANCE_CRITERIA=origin/daesung의 고유 commit은 보존하되 CLEANUP_ONLY_PATHS 결과를 origin/dev 내용으로만 복구한다. Node2는 Context의 선택 metric에 포함된 typed required_filters를 column·operator·value allowlist로 검증해 parameterized WHERE에 모두 포함하며, context 밖 field·raw SQL·지원하지 않는 operator·중복 filter는 fail-closed한다. 날짜 parameter와 required filter parameter 이름·순서는 결정론적으로 고정하고 response reference에는 실제 참조 column을 포함한다. Node2-prime은 Controller가 허용한 normalized error code에서만 같은 Context·filter 계약으로 정확히 1회 수정한다. case ID·정답 SQL·특정 metric ID hardcode를 금지하고 기존 no-filter payload 호환을 유지한다.
+ACCEPTANCE_IDS=AC1_SCOPE_RECOVERY;AC2_TYPED_FILTERS;AC3_PARAMETERIZED;AC4_FAIL_CLOSED;AC5_DETERMINISTIC;AC6_REFERENCES;AC7_ONE_REPAIR;AC8_NO_CASE_HARDCODE;AC9_COMPAT
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/ai/test_node2.py tests/ai/test_contracts.py -q; python -m pytest -p no:cacheprovider tests/ai -q; python -m compileall -q src/ai; python .github/scripts/gate_scope.py --branch daesung --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_TARGET;T2_AI;T3_COMPILE;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=고유 commit 폐기·history rewrite·force push 필요; CLEANUP_ONLY_PATHS에 신규 내용을 유지해야 함; Context schema 변경·R2/R4 경로 변경 필요; raw SQL filter 또는 arbitrary identifier 허용; 외부 model·RunPod·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local Node2·test·범위 복구와 허용 경로 commit·daesung push만 승인한다. model download·RunPod·외부 endpoint·비용·secret·force push는 금지한다.
+AUTO_FAIL_CONDITIONS=off-scope 잔존; filter 누락·문자열 삽입; context 밖 column; repair 2회 이상; case hardcode; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=origin/dev 대비 cleanup-only 복구, typed required filter의 SQL·parameter·reference와 거부 case, AI 전체 회귀, 정확한 handoff와 branch CI를 제출한다.
+```
+
+### R4 · R4-W5-F1
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F1
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=legacy application DB migration compatibility
+TASK_CARD_RANGE=R4-03 application DB Alembic REWORK
+CURRENT_TASK_CARD_ID=R4-03
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=ccbb94cfdb20caf975975a68f6beeb5f37f7eff0
+START_POINT=origin/jaehong 23efdb83810496e73d5d5defbb7aa00a3e2c882e에 origin/dev ccbb94cfdb20caf975975a68f6beeb5f37f7eff0을 병합해 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W5-F1@ccbb94c
+CONTRACT_VERSION=OPENAPI-v1.1.0-DRAFT; REPORT-v1.1.0-DRAFT; Alembic current head 20260804_05
+ALLOWED_PATHS=app/backend/migrations/versions/20260810_06_legacy_20260803_03_compatibility.py; app/backend/migrations/versions/20260810_07_merge_legacy_compatibility.py; app/backend/README.md; tests/backend/test_report_migration.py; tests/backend/test_migration_compatibility.py; handoffs/R4-W5-F1.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=기존 migration 파일 수정; application table·Report contract·router·frontend; src/ai/**; src/data/**; root Compose·env·CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R4-W5-F1.json
+ACCEPTANCE_CRITERIA=현행 저장소의 migration graph에 없는 legacy revision 20260803_03이 기록된 보존 DB를 stamp·drop·데이터 삭제 없이 current head까지 올릴 수 있는 additive compatibility branch와 merge revision을 제공한다. 빈 DB→head와 legacy 20260803_03→head 두 경로가 모두 단일 head에서 끝나며 동일 schema·grant·Report registration 결과를 갖는다. legacy revision이 실제 기대 schema와 다르면 임의 추정하지 않고 fail-closed precondition으로 중단한다. downgrade는 데이터 손실 없이 migration metadata만 안전하게 되돌릴 수 있는 범위만 제공하고 기존 migration 파일은 수정하지 않는다.
+ACCEPTANCE_IDS=AC1_LEGACY_REVISION;AC2_NO_STAMP_DROP;AC3_EMPTY_UPGRADE;AC4_LEGACY_UPGRADE;AC5_SINGLE_HEAD;AC6_SCHEMA_EQUIVALENCE;AC7_FAIL_CLOSED;AC8_EXISTING_IMMUTABLE
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_report_migration.py tests/backend/test_migration_compatibility.py -q; python -m pytest -p no:cacheprovider tests/backend -q; alembic heads 단일 head 확인; 격리 empty DB와 legacy revision fixture에서 alembic upgrade head; python -m compileall -q app/backend; python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND;T3_HEAD;T4_UPGRADE_PATHS;T5_COMPILE;T6_SCOPE;T7_DIFF
+STOP_CONDITIONS=legacy schema를 확인할 수 없음; stamp·drop·기존 migration 수정·운영 데이터 삭제 필요; head가 둘 이상 남음; Report schema 비호환; 외부 DB·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=격리 local synthetic PostgreSQL fixture 생성·삭제와 허용 경로 commit·jaehong push만 승인한다. 기존 app_db·volume 변경, 외부 DB, 비용, secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=stamp·drop 사용; 기존 migration 수정; multi-head; empty 또는 legacy upgrade 실패; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=migration graph·두 upgrade path·schema 동등성·backend 전체 회귀·정확한 handoff와 branch CI를 제출한다.
+```
+
 ## 현재 통합 확인 사항
 
 | ID | 상태 | 확인 결과 | 다음 결정 |
@@ -383,6 +481,7 @@ R1_REVIEW_CONDITIONS=origin/dev 대비 변경 경로와 cleanup-only 복구, typ
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.3 | 2026-08-10 10:29 | R2 3-source 정답 조회, R3 범위 복구·required filter SQL, R4 legacy migration 호환 복구 카드를 발행 |
 | v5.2 | 2026-08-10 09:48 | R1-W4-F10 source CI와 handoff를 확인하고 dev 통합 결과를 기록해 MERGED_DEV 전환 |
 | v5.1 | 2026-08-10 09:44 | R1-W4-F10의 카드 번호 독립 회귀 검증과 전달 증거를 완료해 REVIEW 전환 |
 | v5.0 | 2026-08-10 09:40 | R5 범위 초과 변경과 browser 검증 차단을 해소하는 R5-W4-F5 REWORK 및 카드 전환 회귀를 보정하는 R1-W4-F10 발행 |

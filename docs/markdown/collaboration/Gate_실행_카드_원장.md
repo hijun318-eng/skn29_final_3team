@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.40 |
-| 문서 기준일 | 2026-08-10 19:20 |
+| 버전 | v5.41 |
+| 문서 기준일 | 2026-08-10 19:30 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F13` | `READY` | `junhee` |
+| R1 | `R1-W5-F13` | `BLOCKED` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `READY` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
@@ -983,7 +983,7 @@ RESULT_CI=junhee source 31362070083 PASS; dev 31362182505 PASS; junhee terminal 
 ### R1 · R1-W5-F13
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -999,7 +999,8 @@ START_POINT=최신 dev의 dev profile이 app-postgres·backend·frontend만 포�
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W5-F13@1237d02
 CONTRACT_VERSION=R1-SERVICE-v1.1.0-DRAFT; existing Alembic head 20260804_05; approved Template I2-v1.0.0
-ALLOWED_PATHS=compose.yml; .env.example; handoffs/R1-W5-F13.json; docs/markdown/daily_reports/junhee/일일보고.md
+ALLOWED_PATHS=compose.yml; .env.example; tests/integration/test_typed_three_source_e2e.py; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F12.json; handoffs/R1-W5-F13.json; docs/markdown/daily_reports/junhee/일일보고.md
+READ_ONLY_CUMULATIVE_EVIDENCE=tests/integration/test_typed_three_source_e2e.py; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F12.json. origin/dev...junhee 누적 scope 통과만 허용하며 수정·삭제·dev 적용을 금지한다.
 FORBIDDEN_PATHS=app/backend/**; infrastructure/database/**; frontend/**; DataHub·Catalog; migration/schema/template row 수정; root CI; dependency; tracked/local secret 값; 다른 Docker project/container/volume
 HANDOFF_MANIFEST=handoffs/R1-W5-F13.json
 ACCEPTANCE_CRITERIA=local env의 app PostgreSQL 필수 credential은 값 출력 없이 존재 여부만 확인하고 Compose dev config를 검증한다. 실행 전후 Docker project snapshot을 비교하며 exact answervice project의 app-postgres와 backend만 up/recreate할 수 있다. backend entrypoint의 기존 alembic upgrade head가 성공하고 /readiness가 database·migration·approved_templates 모두 ready를 반환해야 한다. read-only SQL로 governance.alembic_version 단일 row가 20260804_05이고 context.analysis_templates의 weekly-room-operations I2-v1.0.0 APPROVED row가 정확히 하나인지 확인한다. legacy/unknown revision이면 stamp·drop·SQL 보정 없이 중단한다.
@@ -1010,6 +1011,7 @@ STOP_CONDITIONS=필수 credential 부재; unknown/legacy revision; alembic nonze
 EXTERNAL_ACTION_PERMISSION=exact answervice project의 app-postgres와 backend service만 build/up/recreate하고 read-only health·SQL을 확인할 수 있다. 기존 answervice volume은 보존하며 down·down -v·reset·prune·다른 project/container/volume·DataHub lifecycle·firewall 변경은 금지한다. 허용 경로 commit·junhee push만 허용한다.
 AUTO_FAIL_CONDITIONS=secret 값 출력; 다른 project drift; migration 우회; template 수동 INSERT/UPDATE; readiness 일부만으로 PASS; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=실행 전후 다른 project snapshot 불변, exact service identity, migration head·approved Template·readiness evidence와 source CI를 확인한다. Backend CORS·Report repository endpoint는 R4, Catalog live DataHub는 R2 후속 지시로 분리한다.
+BLOCKED_REASON=exact answervice project의 app-postgres/backend 기동 전 APP DB credential 존재·Compose config·backend image build는 통과했지만, 고정 container name app-postgres가 기존 hotel-synthetic-db project의 healthy container에 이미 사용 중이라 Docker가 answervice app-postgres 생성 전에 중단했다. 기존 container/project/volume은 변경하지 않았고 이번 시도에서 생성된 answervice-network·answervice_datahub-network·빈 answervice_app-postgres-data volume은 삭제 권한 없이 보존했다. migration·approved Template·/readiness는 NOT_RUN이며 기존 container를 제거·이름 변경하거나 다른 project로 backend를 편입하지 않는다.
 ```
 
 ### R2 · R2-W5-F5
@@ -1609,6 +1611,7 @@ RESULT_CI=branch 31363391107 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.41 | 2026-08-10 19:30 | R1-W5-F13을 기존 hotel-synthetic-db app-postgres 고정 이름 충돌 근거로 BLOCKED 처리하고 다른 project 불변·신규 빈 answervice resource 보존·owner별 후속 경계를 기록 |
 | v5.40 | 2026-08-10 19:20 | 시연 준비를 위해 exact answervice app-postgres/backend만 기동하고 migration head·approved Template·readiness를 검증하는 R1-W5-F13 발행 |
 | v5.39 | 2026-08-10 19:10 | R5-W5-F3의 기본 loopback·명시적 LAN 공개, exact frontend runtime·source CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |
 | v5.38 | 2026-08-10 19:00 | frontend 기본 loopback을 유지하고 FRONTEND_BIND_ADDRESS=0.0.0.0 명시 시에만 same-LAN 13000 공개를 허용하는 R5-W5-F3 발행 |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.37 |
-| 문서 기준일 | 2026-08-10 18:50 |
+| 버전 | v5.38 |
+| 문서 기준일 | 2026-08-10 19:00 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -26,7 +26,7 @@
 | R2 | `R2-W5-F6` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `READY` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
-| R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
+| R5 | `R5-W5-F3` | `READY` | `minji` |
 
 ## 활성 실행 카드
 
@@ -1530,6 +1530,38 @@ STOP_CONDITIONS=R4 audit OpenAPI 미통합; R1 화면/route 미승인; backend/s
 R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/schedule producer가 없어 발행하지 않는다. Audit producer 통합 뒤에만 최신 BASE_SHA와 token으로 READY 전환한다.
 ```
 
+### R5 · R5-W5-F3
+
+```text
+STATUS=READY
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W5-F3
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=frontend same-LAN opt-in exposure
+TASK_CARD_RANGE=R5-01 frontend bind address opt-in과 LAN smoke
+CURRENT_TASK_CARD_ID=R5-01
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=6b4d94905018cc11506be8a2810b0ed970de5374
+START_POINT=origin/minji를 최신 origin/dev 6b4d949로 fast-forward한 뒤 시작한다. 기존 frontend port binding 127.0.0.1:13000:8080을 기본값으로 보존하고 명시적 opt-in만 추가한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R5-W5-F3@6b4d949
+CONTRACT_VERSION=FRONTEND-LAN-BIND-v1.0.0-DRAFT; existing frontend runtime contract
+ALLOWED_PATHS=app/enterprise-react/compose.fragment.yml; tests/frontend/contracts.test.mjs; handoffs/R5-W5-F3.json; docs/markdown/daily_reports/minji/일일보고.md
+FORBIDDEN_PATHS=compose.yml; .env·.env.example; app/backend/**; frontend API·route·page·package; root CI; firewall; 다른 project/container/volume; dependency; secret
+HANDOFF_MANIFEST=handoffs/R5-W5-F3.json
+ACCEPTANCE_CRITERIA=frontend published address는 ${FRONTEND_BIND_ADDRESS:-127.0.0.1}:13000:8080 형태로 선언해 기본 compose config가 127.0.0.1만 bind한다. FRONTEND_BIND_ADDRESS=0.0.0.0을 명시한 경우에만 same-LAN 13000 접근을 허용한다. 기존 container_name=answervice-frontend, target 8080, published port 13000, healthcheck, restart, build context·Dockerfile은 바꾸지 않는다. root Compose/env/backend/API/route/package를 수정하지 않고 wildcard CORS 성공이나 backend 연결을 이 카드의 성공으로 주장하지 않는다.
+ACCEPTANCE_IDS=AC1_DEFAULT_LOOPBACK;AC2_EXPLICIT_LAN_OPT_IN;AC3_RUNTIME_IDENTITY;AC4_OWNER_BOUNDARY;AC5_LAN_HTTP_200
+TEST_COMMANDS=docker compose -f compose.yml --env-file .env.example --profile dev config에서 frontend host_ip=127.0.0.1 확인; FRONTEND_BIND_ADDRESS=0.0.0.0 docker compose -f compose.yml --env-file .env.example --profile dev config에서 frontend host_ip=0.0.0.0 확인; node tests/frontend/contracts.test.mjs; npm --prefix app/enterprise-react run build; exact answervice-frontend만 opt-in config로 recreate 후 container health·host LAN IP /agent HTTP 200 확인; python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base; git diff --check; minji branch CI
+TEST_COMMAND_IDS=T1_DEFAULT_CONFIG;T2_OPT_IN_CONFIG;T3_FRONTEND_CONTRACT;T4_BUILD;T5_EXACT_LAN_RUNTIME;T6_SCOPE;T7_DIFF;T8_BRANCH_CI
+STOP_CONDITIONS=기본 bind가 0.0.0.0; opt-in 없이 LAN 공개; container name·target/published port·health/restart/build drift; root compose/env/backend/API/route/package 변경 필요; backend CORS 또는 API 성공 필요; 다른 project/container/volume·firewall 변경; dependency·secret·외부 비용; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local compose config·frontend contract·build와 exact answervice project의 answervice-frontend service만 recreate·health/LAN HTTP smoke·정리하고 허용 경로 commit·minji push할 수 있다. 다른 project/container/volume·firewall·backend lifecycle·외부 배포·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=default wildcard bind; FRONTEND_BIND_ADDRESS 외 조건으로 LAN 공개; runtime identity drift; agent HTTP 비200; 다른 project/volume/firewall 변경; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=default와 opt-in config의 host_ip diff, exact frontend container identity·health, 실제 host LAN IP /agent HTTP 200, frontend contract·build·source CI와 handoff를 확인한다. backend CORS/API 호출은 별도 R4 owner 카드 전까지 성공 조건에서 제외한다.
+```
+
 ## 현재 통합 확인 사항
 
 | ID | 상태 | 확인 결과 | 다음 결정 |
@@ -1542,6 +1574,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.38 | 2026-08-10 19:00 | frontend 기본 loopback을 유지하고 FRONTEND_BIND_ADDRESS=0.0.0.0 명시 시에만 same-LAN 13000 공개를 허용하는 R5-W5-F3 발행 |
 | v5.37 | 2026-08-10 18:50 | R1-W5-F12의 live profile guard source·terminal CI와 CRM product-only dev CI를 확인해 MERGED_DEV로 종료 |
 | v5.36 | 2026-08-10 18:40 | R1-W5-F12 source scope가 기존 F9/F10 handoff를 history rewrite 없이 보존하도록 두 파일을 read-only cumulative evidence로만 허용하고 CRM product integration 범위는 유지 |
 | v5.35 | 2026-08-10 18:30 | R1-W5-F11을 source CI의 live Trino endpoint 부재 근거로 BLOCKED 처리하고, 명시적 live profile guard와 CRM product-only 통합을 수행하는 R1-W5-F12를 발행 |

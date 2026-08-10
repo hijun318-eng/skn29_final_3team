@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.16 |
-| 문서 기준일 | 2026-08-10 12:31 |
+| 버전 | v5.17 |
+| 문서 기준일 | 2026-08-10 12:40 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -25,7 +25,7 @@
 | R1 | `R1-W5-F5` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F3` | `MERGED_DEV` | `seung` |
 | R3 | `R3-W5-F1` | `MERGED_DEV` | `daesung` |
-| R4 | `R4-W5-F3` | `READY` | `jaehong` |
+| R4 | `R4-W5-F4` | `READY` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
@@ -772,7 +772,7 @@ RESULT_CI=branch 31351378232 PASS
 ### R4 · R4-W5-F3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -799,12 +799,14 @@ STOP_CONDITIONS=R2 contract 변경 필요; PENDING을 성공으로 노출; runti
 EXTERNAL_ACTION_PERMISSION=local contract consumer·backend test·handoff·R4 보고와 승인된 commit·jaehong push만 허용한다. DataHub lifecycle·외부 endpoint·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=PENDING binding을 VERIFIED로 표시; R2 contract 불일치 무시; entitlement/G2 회귀; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R2 binding 상태를 그대로 존중하는 fail-closed consumer와 target/backend 회귀·정확한 handoff·branch CI를 제출한다.
+RESULT_SHA=0f881a7d8f7b034000dc2d2617bade4fa290c7d8
+RESULT_CI=branch 31352114861 PASS
 ```
 
 ### R4 · R4-W5-F4
 
 ```text
-STATUS=PLANNED
+STATUS=READY
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -812,17 +814,18 @@ EXECUTION_BUNDLE_ID=R4-W5-F4
 TARGET_INTEGRATION_GATE=I5
 CHECKPOINT_GATES=official Alembic support boundary and unknown revision fail-closed evidence
 TASK_CARD_RANGE=R4-03 공식 Alembic 지원 경로·unknown revision 검증
-CURRENT_TASK_CARD_ID=N/A — R4-W5-F3 통합 뒤 발행
+CURRENT_TASK_CARD_ID=R4-03
 BASE_BRANCH=dev
-BASE_SHA=N/A — R4-W5-F3 통합 SHA로 발행
-DIRECTIVE=WAIT
-DIRECTIVE_TOKEN=N/A
+BASE_SHA=b8331bc
+START_POINT=origin/jaehong을 최신 dev b8331bc로 fast-forward한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W5-F4@b8331bc
 ALLOWED_PATHS=app/backend/README.md; tests/backend/test_migration_compatibility.py; handoffs/R4-W5-F4.json; docs/markdown/daily_reports/jaehong/일일보고.md
 FORBIDDEN_PATHS=기존 migration·entrypoint·env·schema·data; stamp·drop; 외부 DB·secret
 ACCEPTANCE_CRITERIA=현행 migration graph의 single root·single head와 공식 known revision 목록을 검증하고 격리 empty DB 및 20260731_03에서 stamp 없이 head upgrade가 성공해야 한다. 존재하지 않는 20260803_03은 native Alembic non-zero로 backend 기동 전에 차단되고 운영 판정 LEGACY_REVISION_UNSUPPORTED로 기록한다. README는 지원 범위를 공식 migration revision으로 한정하며 추정 migration·자동 stamp·drop·기존 schema/data 변경을 금지한다.
 TEST_COMMANDS=migration compatibility target test; backend 전체 test; alembic heads; 격리 empty/known/unknown revision 검증; compileall; gate_scope; git diff --check
 STOP_CONDITIONS=R4-W5-F3 미통합; 실제 legacy DB 보존 필요; migration·entrypoint·schema·data 변경 필요; stamp/drop; multi-head; 외부 DB·비용·secret·scope 밖 변경
-R1_REVIEW_CONDITIONS=Google Docs의 R4→R1 재발행 요청을 부분 수용했다. 기존 F2 번호는 Context/G2에 사용됐으므로 F4로 예약하며 F3 통합 후 최신 BASE_SHA로 READY 전환한다.
+R1_REVIEW_CONDITIONS=Google Docs의 R4→R1 재발행 요청을 부분 수용했다. 기존 F2 번호는 Context/G2에 사용됐으므로 F4로 재번호화했고, 제품 변경 없이 native Alembic 지원·차단 경계의 결정론적 증거만 제출한다.
 ```
 
 ### R4 · R4-W5-F5
@@ -914,6 +917,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.17 | 2026-08-10 12:40 | R4 Asset Binding consumer가 PENDING/NOT_RUN을 성공으로 오표시하지 않는 결과와 CI를 MERGED_DEV로 전환하고, 이전 R4 legacy migration 요청을 제품 migration 변경 없는 R4-W5-F4 검증 카드로 READY 발행 |
 | v5.16 | 2026-08-10 12:31 | R4 Metadata·Context Registry 대규모 요청은 번호 충돌·R2 runtime NOT_RUN·migration/OpenAPI 미확정·외부 dirty 작업공간 때문에 제안 그대로 반려하고 F5 PLANNED로 분해 순서를 기록; R1 first-start와 R5 Audit UI도 선행조건부 PLANNED로 등록 |
 | v5.15 | 2026-08-10 12:18 | R1 DataHub 안전 기동 도구와 R2 offline runtime·binding, R4 Context/G2 결과·CI를 MERGED_DEV로 전환; R2 PENDING binding의 R4 VERIFIED 오표시를 막는 F3 REWORK를 우선 발행하고 R4의 legacy migration 요청은 F4 PLANNED로 부분 수용 |
 | v5.14 | 2026-08-10 11:52 | R3 required-filter 결과와 source CI를 확인해 MERGED_DEV 전환; legacy schema 근거 없는 R4 migration 카드를 차단하고 R1 DataHub runtime preflight·R2 offline runtime/binding validator·R4 versioned Context consumer 카드를 병렬 발행 |

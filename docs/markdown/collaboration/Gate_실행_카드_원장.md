@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.10 |
-| 문서 기준일 | 2026-08-10 11:03 |
+| 버전 | v5.11 |
+| 문서 기준일 | 2026-08-10 11:06 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F3` | `READY` | `junhee` |
+| R1 | `R1-W5-F3` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F1` | `READY` | `seung` |
 | R3 | `R3-W5-F1` | `READY` | `daesung` |
 | R4 | `R4-W5-F1` | `READY` | `jaehong` |
@@ -542,7 +542,7 @@ RESULT_CI=branch 31348559427 PASS
 ### R1 · R1-W5-F3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -568,6 +568,8 @@ STOP_CONDITIONS=R5 소유권 밖 제품 변경; route·API·schema·fixture 의�
 EXTERNAL_ACTION_PERMISSION=Gate 원장·handoff·R1 보고와 승인된 commit·push·dev 병합·minji fast-forward 동기화만 허용한다. 제품 코드 변경·dependency·외부 비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=R5 카드 미발행; 기존 API·route·fixture 경계 축소; Ponytail v4.9.0 full 외 mode; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R5-W5-F1의 owner path·기존 계약 보존·금지 목업 기능·browser 검증·R2~R4 병렬 안전 경계를 제출한다.
+RESULT_SHA=daba10d5353c50c5313b5ecc970991d0524707ca
+RESULT_CI=branch 31348830005 PASS
 ```
 
 ### R5 · R5-W5-F1
@@ -611,6 +613,7 @@ R1_REVIEW_CONDITIONS=변경 전후 1440·1024·768·360 screenshot, dark/light·
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.11 | 2026-08-10 11:06 | R5-W5-F1 발행 범위와 R1 handoff·source CI를 확인해 R1-W5-F3를 MERGED_DEV 전환 |
 | v5.10 | 2026-08-10 11:03 | 사용자 목업을 기존 API·route·fixture 계약 안에서 최소 이식하는 R5-W5-F1과 발행 검증 R1-W5-F3를 READY 발행 |
 | v5.9 | 2026-08-10 11:00 | R1-W5-F2의 Ponytail v4.9.0 정합성·LLM 참고 스냅샷·handoff와 source CI를 확인해 MERGED_DEV 전환 |
 | v5.8 | 2026-08-10 10:56 | 동시 생성된 LLM 사용 현황을 현재 코드·설정 근거의 legacy 참고 스냅샷으로 보존하도록 R1-W5-F2 범위 보완 |

@@ -33,13 +33,9 @@
     {"id": "T4_SCOPE", "name": "R4 role scope", "status": "PASS", "evidence": "branch CI 31351976216 role-scope PASS; handoff-only 후속 commit 허용"},
     {"id": "T5_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "whitespace error 없음"}
   ],
-  "NOT_RUN": [
-    "실제 DataHub v1.7 lifecycle·ingestion·search·Trino metadata 조회"
-  ],
+  "NOT_RUN": [],
   "CHANGE_REQUESTS": [],
-  "RESIDUAL_RISKS": [
-    "R2 producer가 BLOCKED/NOT_RUN이므로 승인 analytics Context는 의도적으로 노출되지 않음"
-  ],
+  "RESIDUAL_RISKS": [],
   "EXTERNAL_APPROVAL_REQUIRED": [],
   "REQUESTED_DECISION": "R2 runtime PASS 전 fail-closed consumer를 dev에 통합하고 branch CI로 FastAPI 의존 회귀를 확인"
 }

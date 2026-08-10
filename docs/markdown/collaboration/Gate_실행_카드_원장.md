@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.4 |
-| 문서 기준일 | 2026-08-10 10:34 |
+| 버전 | v5.5 |
+| 문서 기준일 | 2026-08-10 10:40 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -423,11 +423,11 @@ BASE_SHA=ccbb94cfdb20caf975975a68f6beeb5f37f7eff0
 START_POINT=origin/junhee ccbb94cfdb20caf975975a68f6beeb5f37f7eff0에서 시작한다.
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W5-F1@ccbb94c
-ALLOWED_PATHS=docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F1.json; docs/markdown/daily_reports/junhee/일일보고.md
+ALLOWED_PATHS=docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/ai_docs/Answervice_기획서_기반_현재_구현_진행현황_20260810.md; handoffs/R1-W5-F1.json; docs/markdown/daily_reports/junhee/일일보고.md
 FORBIDDEN_PATHS=R2~R5 제품 경로; root Compose·env·CI; dependency; secret
 HANDOFF_MANIFEST=handoffs/R1-W5-F1.json
-ACCEPTANCE_CRITERIA=R2~R4의 terminal 카드·remote branch·WBS 진행 항목을 대조해 각 역할에 owner-scoped 실행 묶음 하나씩 발행한다. R2는 local synthetic 3-source 정답 조회, R3는 고유 commit 보존·off-scope 복구 후 required filter SQL, R4는 legacy migration 호환을 독립 카드로 승인한다. 각 카드에 최신 dev BASE_SHA·허용 경로·검증·중단·외부 권한 경계를 기록하고 planned path 검사를 통과한다. 외부 model·RunPod·비용·secret을 승인하지 않는다.
-ACCEPTANCE_IDS=AC1_ROLE_STATE;AC2_R2_CARD;AC3_R3_RECOVERY;AC4_R4_COMPAT;AC5_SCOPE_CHECK;AC6_NO_EXTERNAL_COST
+ACCEPTANCE_CRITERIA=R2~R4의 terminal 카드·remote branch·WBS 진행 항목을 대조해 각 역할에 owner-scoped 실행 묶음 하나씩 발행한다. R2는 local synthetic 3-source 정답 조회, R3는 고유 commit 보존·off-scope 복구 후 required filter SQL, R4는 legacy migration 호환을 독립 카드로 승인한다. 각 카드에 최신 dev BASE_SHA·허용 경로·검증·중단·외부 권한 경계를 기록하고 planned path 검사를 통과한다. 같은 시점에 작성된 기획서 기반 구현 현황 스냅샷은 ai_docs 참고자료로 보존하되 WBS·Gate 판정을 덮어쓰지 않는다. 외부 model·RunPod·비용·secret을 승인하지 않는다.
+ACCEPTANCE_IDS=AC1_ROLE_STATE;AC2_R2_CARD;AC3_R3_RECOVERY;AC4_R4_COMPAT;AC5_SCOPE_CHECK;AC6_NO_EXTERNAL_COST;AC7_STATUS_SNAPSHOT
 TEST_COMMANDS=document validation; python .github/scripts/gate_scope.py --dashboard --next-gate I5; 역할별 planned path scope 검사; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; git diff --check
 TEST_COMMAND_IDS=T1_DOCS;T2_DASHBOARD;T3_PLANNED_SCOPE;T4_SCOPE;T5_DIFF
 STOP_CONDITIONS=역할 소유권 혼합; R3 고유 commit 폐기·history rewrite; 외부 서비스·비용·secret 승인; 허용 경로 밖 변경; 필수 검증 실패
@@ -512,6 +512,7 @@ R1_REVIEW_CONDITIONS=migration graph·두 upgrade path·schema 동등성·backen
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.5 | 2026-08-10 10:40 | 같은 시점의 기획서 기반 구현 현황 스냅샷을 R1 참고 근거로 보존하도록 허용 경로 추가 |
 | v5.4 | 2026-08-10 10:34 | R2~R4 카드 발행 행위를 추적하는 R1-W5-F1 실행 묶음 추가 |
 | v5.3 | 2026-08-10 10:29 | R2 3-source 정답 조회, R3 범위 복구·required filter SQL, R4 legacy migration 호환 복구 카드를 발행 |
 | v5.2 | 2026-08-10 09:48 | R1-W4-F10 source CI와 handoff를 확인하고 dev 통합 결과를 기록해 MERGED_DEV 전환 |

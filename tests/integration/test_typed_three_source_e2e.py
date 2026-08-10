@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from sys import path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 path.insert(0, str(ROOT / "app" / "backend"))
@@ -24,6 +27,7 @@ from app.services.pipeline_support import PipelineSupport
 
 
 CONTEXT_PATH = ROOT / "src/data/pms_crm_pos_context.i5.v1.json"
+LIVE_TRINO_PROFILE = "ANSWERVICE_LIVE_TRINO_E2E"
 
 
 def _product_package(contract: dict) -> tuple[object, RequestContext]:
@@ -55,6 +59,10 @@ def _product_package(contract: dict) -> tuple[object, RequestContext]:
     return package, RequestContext(as_of=date(2026, 7, 1))
 
 
+@pytest.mark.skipif(
+    os.environ.get(LIVE_TRINO_PROFILE) != "1",
+    reason=f"set {LIVE_TRINO_PROFILE}=1 to run the live Trino Gold E2E",
+)
 def test_g120_046_node2_g2_binder_and_runtime_gold_are_composable():
     contract = json.loads(CONTEXT_PATH.read_text(encoding="utf-8"))
     package, request_context = _product_package(contract)

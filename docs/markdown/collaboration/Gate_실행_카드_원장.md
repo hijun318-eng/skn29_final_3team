@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.22 |
-| 문서 기준일 | 2026-08-10 13:30 |
+| 버전 | v5.23 |
+| 문서 기준일 | 2026-08-10 13:45 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,9 +22,9 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F8` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F9` | `READY` | `junhee` |
 | R2 | `R2-W5-F4` | `MERGED_DEV` | `seung` |
-| R3 | `R3-W5-F3` | `READY` | `daesung` |
+| R3 | `R3-W5-F3` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W5-F5` | `MERGED_DEV` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
@@ -513,7 +513,7 @@ BLOCKED_REASON=기존 evaluator 범위만으로는 string·boolean·number·date
 ### R3 · R3-W5-F3
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -532,6 +532,31 @@ FORBIDDEN_PATHS=app/backend/**; src/data/**; compiled/train/validation/Gold data
 ACCEPTANCE_CRITERIA=Node2는 R2/R4가 동결한 string·boolean·number·date parameter contract와 period_start·period_end_exclusive·required_filter_N 이름을 그대로 출력한다. generated/expected plan은 Context의 placeholder·type·value와 일치해야 하며 literal·OR·unknown placeholder·값 변조를 허용하지 않는다. R3 내부에 별도 실행 binder를 복제하지 않고 R4 공개 binder 계약을 소비하며 dataset 불일치는 별도 재생성 카드로 반환한다.
 STOP_CONDITIONS=R2/R4 계약 미통합; backend 완화·별도 binder·dataset 재생성 필요; model·RunPod·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
 R1_REVIEW_CONDITIONS=R2 생산자→R4 소비자 통합 뒤 최신 BASE_SHA·token으로 READY 전환하며 Node2→G2→binder 조합 회귀는 별도 R1 통합 카드에서 검증한다.
+RESULT_SHA=c2b44b2c1b2200a4b05b489ea9339bf463f3df11
+RESULT_CI=branch 31355000164 PASS
+```
+
+### R3 · R3-W5-F4
+
+```text
+STATUS=PLANNED
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F4
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=R1 Node2→G2→binder·3-source API E2E PASS
+TASK_CARD_RANGE=R3-14 compiled 1,350건 typed parameter 재생성·검증
+CURRENT_TASK_CARD_ID=N/A — R1-W5-F9 선행
+BASE_BRANCH=dev
+BASE_SHA=N/A — 통합 E2E 결과 SHA로 발행
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=N/A — build_case_specs와 generated dataset의 exact 경로·용량·제출 정책을 R1 검토 뒤 확정
+FORBIDDEN_PATHS=RunPod·외부 endpoint; Gold/Acceptance 평가; backend/data/root Compose; secret
+ACCEPTANCE_CRITERIA=현재 compiled 1,350건과 예시 4건의 typed parameter 0건 상태를 실제 동결 계약으로 재생성한다. period_start·period_end_exclusive·required_filter_N과 value_type을 보존하고 train/validation 누수·중복·Trino 실행 검증을 다시 확인한다. 제품 조합 E2E가 실패하면 dataset을 먼저 바꾸지 않는다.
+STOP_CONDITIONS=R1 통합 E2E 미통과; generated path·제출 정책 미확정; Gold 의미 변경; RunPod·비용·secret 필요
+R1_REVIEW_CONDITIONS=제품 실행 계약이 먼저 통과한 뒤 dataset 생성 path와 hash 갱신 범위를 별도 승인한다.
 ```
 
 ### R4 · R4-W5-F1
@@ -813,6 +838,37 @@ AUTO_FAIL_CONDITIONS=mutable actions tag 잔존; job timeout 누락; 기존 bran
 R1_REVIEW_CONDITIONS=immutable SHA·version comment·6 job timeout과 integration 회귀, 정확한 handoff·branch CI를 제출한다. dev 전체 green 판정은 R2→R4→R3 계약 통합 뒤 별도로 수행한다.
 RESULT_SHA=aed36f38198019b7553631deeb2110cf99d13fd4
 RESULT_CI=branch 31353517478 PASS
+```
+
+### R1 · R1-W5-F9
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F9
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=typed Node2→G2→binder and representative 3-source product API
+TASK_CARD_RANGE=R1-08·09 typed 조합 회귀·G120-046 제품 API E2E
+CURRENT_TASK_CARD_ID=R1-08
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=107e7cfbe7e13c0b8751ca91cc3a686d5bd59cf1
+START_POINT=origin/junhee을 최신 dev 107e7cf로 fast-forward한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F9@107e7cf
+CONTRACT_VERSION=I4-CONTEXT-v2.3.0-DRAFT; I5-3SOURCE-CONTEXT-v1.0.0-DRAFT; MODEL typed extension
+ALLOWED_PATHS=tests/integration/test_typed_three_source_e2e.py; handoffs/R1-W5-F9.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 product code·fixture·dataset; DataHub runtime; RunPod·model endpoint; root Compose/env/CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F9.json
+ACCEPTANCE_CRITERIA=하나의 integration test에서 R2의 approved G120-046 Context를 입력해 R3 Node2 typed plan→R4 G2 exact parameter map→단일 I2 binder를 통과한다. 같은 질문을 실제 제품 Analysis API 경로로 실행해 Business Request·승인 PMS/CRM/POS Context·Node2 SQL·G2·local Trino 476·G3·표/차트/설명/근거와 request_id trace를 확인하고 Gold 2행·총액 475972400.00·canonical hash를 비교한다. fixture 존재만으로 성공 처리하지 않고 권한 없음·승인 밖 JOIN·필수 filter 누락·repair 1회 경계를 함께 검증한다.
+ACCEPTANCE_IDS=AC1_COMBINED_PATH;AC2_ACTUAL_API;AC3_THREE_SOURCE_TRINO;AC4_G3_ARTIFACT;AC5_SINGLE_REQUEST_TRACE;AC6_GOLD_MATCH;AC7_NEGATIVE_AUTH_JOIN_FILTER;AC8_REPAIR_ONCE
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration/test_typed_three_source_e2e.py -q; python -m pytest -p no:cacheprovider tests -q; actual local API+Trino trace; gate_scope merge-base; git diff --check; junhee branch CI
+TEST_COMMAND_IDS=T1_TARGET;T2_ALL;T3_RUNTIME;T4_SCOPE;T5_DIFF;T6_BRANCH_CI
+STOP_CONDITIONS=제품 code 변경 필요; DataHub runtime 필요; actual Trino/API unavailable; Gold mismatch; request_id trace 단절; 권한/JOIN/filter negative 실패; RunPod·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local synthetic app DB·backend·Trino 476의 조회 전용 E2E용 임시 process 생성·정리와 허용 경로 commit·junhee push만 승인한다. DDL·seed·volume reset·다른 Docker project·DataHub lifecycle·외부 비용·secret 변경은 금지한다.
+R1_REVIEW_CONDITIONS=조합 회귀와 실제 제품 API E2E가 모두 PASS한 뒤에만 compiled dataset 재생성과 Analysis persistence·SQLGlot G2/G3·Report worker 단계로 진행한다.
 ```
 
 ### R2 · R2-W5-F3
@@ -1097,6 +1153,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.23 | 2026-08-10 13:45 | R3 Node2·evaluator typed parameter 결과와 source CI를 MERGED_DEV로 전환하고, 실제 G120-046 제품 API E2E를 R1-W5-F9으로 READY 발행; compiled 1,350건 재생성은 E2E 통과 뒤 R3-W5-F4로 분리 |
 | v5.22 | 2026-08-10 13:30 | R4 typed Context·G2·단일 Trino binder의 source CI·handoff를 확인해 MERGED_DEV로 전환하고, R3 Node2·evaluator가 같은 value_type·period_end_exclusive 계약을 소비하도록 R3-W5-F3을 READY 발행 |
 | v5.21 | 2026-08-10 13:15 | R1 CI 공급망 보강과 R2 typed filter·PMS/CRM/POS Context의 source CI·handoff를 확인해 MERGED_DEV로 전환하고 R4 Context·G2·단일 binder 소비자 카드를 READY 발행; 5주차 팀 요약·주간보고를 개인 보고와 동기화 |
 | v5.20 | 2026-08-10 13:00 | 다른 역할과 독립적인 R1 CI 공급망 작업을 확인해 GitHub Actions immutable SHA pin과 모든 job timeout을 검증하는 R1-W5-F8을 병렬 발행; R5는 Audit·Schedule·Report worker·Catalog live 생산자 부재로 신규 구현 없이 대기 |

@@ -1,0 +1,46 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R2-W5-F2",
+  "ROLE": "R2",
+  "BRANCH": "seung",
+  "BASE_SHA": "264391f1d4bdafaf6cd9529571c55dfbe71bd57a",
+  "RESULT_SHA": "0342939d82ab4e2411c7d6386f5836c92154248f",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R2-W5-F2@264391f",
+  "COMPLETED_CARDS": ["R2-11·19 DataHub consumer pin·recipe config compatibility evidence"],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/seung/일일보고.md",
+    "infrastructure/database/datahub/compose.consumer.yml",
+    "src/data/serving_analytics_contract.i4.v1.json",
+    "tests/data/test_serving_analytics_contract.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "DATAHUB_CONFIG": "I5-DATAHUB-v1.1.0-DRAFT",
+    "DATAHUB_RUNTIME_EVIDENCE": "v1.6.0 PASS retained; v1.7.0 NOT_RUN",
+    "TRINO": "476 unchanged",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_OFFICIAL_PROVENANCE", "status": "PASS", "evidence": "official v1.7.0 revision 7f81ccb and compose blob 39b0f37 verified"},
+    {"id": "AC2_PINNED_IMAGES", "status": "PASS", "evidence": "DataHub 4 images and registry manifest digests fixed to v1.7.0"},
+    {"id": "AC3_RECIPE_STABILITY", "status": "PASS", "evidence": "5-source and serving recipe hashes unchanged"},
+    {"id": "AC4_TRINO_FREEZE", "status": "PASS", "evidence": "Trino image remains 476"},
+    {"id": "AC5_VERSIONED_EVIDENCE", "status": "PASS", "evidence": "existing serving analytics contract records config-only upgrade evidence"},
+    {"id": "AC6_NO_FAKE_RUNTIME_PASS", "status": "PASS", "evidence": "v1.6.0 live PASS preserved and v1.7.0 runtime explicitly NOT_RUN"},
+    {"id": "AC7_ROLLBACK_BOUNDARY", "status": "PASS", "evidence": "no image pull, system-update, container or volume mutation; v1.6.0 rollback boundary recorded"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_JSON", "name": "serving analytics contract JSON", "status": "PASS", "evidence": "json.tool PASS"},
+    {"id": "T2_TARGET", "name": "serving analytics contract tests", "status": "PASS", "evidence": "7 passed"},
+    {"id": "T3_DATA", "name": "all data tests", "status": "PASS", "evidence": "35 passed"},
+    {"id": "T4_COMPOSE_CONFIG", "name": "DataHub consumer compose config", "status": "PASS", "evidence": "docker compose config --quiet PASS"},
+    {"id": "T5_OFFICIAL_PROVENANCE", "name": "official tag, blob and image digest verification", "status": "PASS", "evidence": "DATAHUB_V170_OFFICIAL_PROVENANCE_VERIFIED"},
+    {"id": "T6_SCOPE", "name": "R2 merge-base scope", "status": "PASS", "evidence": "allowed 4 product/report paths only"},
+    {"id": "T7_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "no whitespace errors"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R2 config producer를 dev에 통합한 뒤 R1 root verifier를 검증하고 v1.7.0 runtime smoke는 별도 카드로 발행"
+}

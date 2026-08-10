@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.5 |
-| 문서 기준일 | 2026-08-10 10:40 |
+| 버전 | v5.6 |
+| 문서 기준일 | 2026-08-10 10:45 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,11 +22,11 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F1` | `READY` | `junhee` |
+| R1 | `R1-W5-F1` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F1` | `READY` | `seung` |
 | R3 | `R3-W5-F1` | `READY` | `daesung` |
 | R4 | `R4-W5-F1` | `READY` | `jaehong` |
-| R5 | `R5-W4-F5` | `READY` | `minji` |
+| R5 | `R5-W4-F5` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
 
@@ -342,7 +342,7 @@ R1_REVIEW_CONDITIONS=typed client·전체 필수 headers·definition/draft/manua
 ### R5 · R5-W4-F5
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -371,6 +371,8 @@ STOP_CONDITIONS=기존 미커밋 변경 폐기·history rewrite·force push 필�
 EXTERNAL_ACTION_PERMISSION=local frontend·기존 local synthetic Report API/DB·browser 검증·허용 경로 commit·minji push만 승인한다. 외부 배포·비용·secret·Docker resource 변경·force push는 금지한다.
 AUTO_FAIL_CONDITIONS=범위 초과 기능 잔존; HTTP 비기본; 자동 fixture fallback; client 결과/status 생성; queued를 run으로 표시; server에 없는 success; browser BLOCKED; handoff 불일치; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=origin/dev 대비 변경 경로와 cleanup-only 복구, typed client·필수 headers·definition/draft/manual/history·fixture 경계·경쟁 상태, build·contract·두 browser mode·branch CI와 정확한 R5-W4-F5 handoff를 제출한다. 모두 PASS일 때만 dev 병합을 검토한다.
+RESULT_SHA=b58d3c00fc0fd9936ad3a5a0f86911074b631892
+RESULT_CI=branch 31347368113 PASS
 ```
 
 ### R2 · R2-W5-F1
@@ -408,7 +410,7 @@ R1_REVIEW_CONDITIONS=SQL의 3-source·filter·집계 후 결합, 실제 local Tr
 ### R1 · R1-W5-F1
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -434,6 +436,8 @@ STOP_CONDITIONS=역할 소유권 혼합; R3 고유 commit 폐기·history rewrit
 EXTERNAL_ACTION_PERMISSION=Gate 원장·handoff·R1 보고와 승인된 commit·junhee push·dev 병합만 허용한다. 외부 비용·secret·제품 코드 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=base SHA 누락; 역할별 복수 활성 카드; planned path 실패; 외부 비용 승인; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R2~R4 dashboard READY, 각 카드 planned path PASS, R1 branch CI와 정확한 handoff를 제출한다.
+RESULT_SHA=4dd1ba5e1ba8a21ae7e7054d42f1639d100c521b
+RESULT_CI=branch 31347640928 PASS
 ```
 
 ### R3 · R3-W5-F1
@@ -512,6 +516,7 @@ R1_REVIEW_CONDITIONS=migration graph·두 upgrade path·schema 동등성·backen
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.6 | 2026-08-10 10:45 | R1-W5-F1·R5-W4-F5 source CI와 handoff를 확인하고 dev 통합 결과를 기록해 MERGED_DEV 전환 |
 | v5.5 | 2026-08-10 10:40 | 같은 시점의 기획서 기반 구현 현황 스냅샷을 R1 참고 근거로 보존하도록 허용 경로 추가 |
 | v5.4 | 2026-08-10 10:34 | R2~R4 카드 발행 행위를 추적하는 R1-W5-F1 실행 묶음 추가 |
 | v5.3 | 2026-08-10 10:29 | R2 3-source 정답 조회, R3 범위 복구·required filter SQL, R4 legacy migration 호환 복구 카드를 발행 |

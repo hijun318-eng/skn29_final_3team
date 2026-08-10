@@ -82,7 +82,17 @@ class ServingAnalyticsContractTest(unittest.TestCase):
         self.assertEqual("I5-DATAHUB-v1.1.0-DRAFT", compatibility["contract_version"])
         self.assertEqual("CONFIG_VALIDATED", compatibility["status"])
         self.assertEqual("CONFIG_ONLY", compatibility["validation_scope"])
-        self.assertEqual("NOT_RUN", compatibility["runtime_status"])
+        self.assertEqual("BLOCKED", compatibility["runtime_status"])
+        self.assertEqual("NOT_RUN", compatibility["runtime_execution"])
+        self.assertEqual("LOCAL_RAM_LIMIT", compatibility["runtime_blocker"])
+        self.assertEqual(
+            "src/data/datahub_runtime_evidence.i5.v1.json",
+            compatibility["runtime_evidence"],
+        )
+        self.assertEqual(
+            "src/data/asset_binding_health.i5.v1.json",
+            compatibility["asset_binding_health"],
+        )
         self.assertEqual("v1.6.0", compatibility["from_version"])
         self.assertEqual("v1.7.0", compatibility["to_version"])
         self.assertEqual(
@@ -124,6 +134,8 @@ class ServingAnalyticsContractTest(unittest.TestCase):
             },
             compatibility["breaking_change_checks"],
         )
+        self.assertIn("blocked by local RAM", compatibility["rollback_boundary"])
+        self.assertIn("R1 verified backup and health checkpoint", compatibility["rollback_boundary"])
         self.assertIn("trinodb/trino:476@sha256:", self.root_compose)
         self.assertNotIn("trinodb/trino:483", self.root_compose)
 

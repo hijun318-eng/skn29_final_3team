@@ -11,7 +11,11 @@
     "contract_version": "I5-DATAHUB-v1.1.0-DRAFT",
     "status": "CONFIG_VALIDATED",
     "validation_scope": "CONFIG_ONLY",
-    "runtime_status": "NOT_RUN",
+    "runtime_status": "BLOCKED",
+    "runtime_execution": "NOT_RUN",
+    "runtime_evidence": "src/data/datahub_runtime_evidence.i5.v1.json",
+    "asset_binding_health": "src/data/asset_binding_health.i5.v1.json",
+    "runtime_blocker": "LOCAL_RAM_LIMIT",
     "from_version": "v1.6.0",
     "to_version": "v1.7.0",
     "official_release_url": "https://github.com/datahub-project/datahub/releases/tag/v1.7.0",
@@ -46,7 +50,7 @@
       "legacy_lineage_flags": "NOT_CONFIGURED",
       "custom_object_storage_yaml": "NOT_CONFIGURED"
     },
-    "rollback_boundary": "v1.7.0 runtime and volume migration are not approved; retain the v1.6.0 runtime evidence and require a volume backup before a later runtime upgrade"
+    "rollback_boundary": "v1.7.0 runtime is approved but blocked by local RAM; retain the v1.6.0 evidence, do not mutate volumes, and require an R1 verified backup and health checkpoint before execution"
   },
   "recipe": {
     "file": "infrastructure/database/datahub/recipes/serving.i4.yml",

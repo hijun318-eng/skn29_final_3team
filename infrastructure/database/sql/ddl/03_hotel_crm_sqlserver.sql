@@ -167,6 +167,13 @@ BEGIN
               OR (i.facility_user_ref IS NOT NULL AND m.facility_user_ref = i.facility_user_ref)
               OR (i.banquet_customer_id IS NOT NULL AND m.banquet_customer_id = i.banquet_customer_id)
          )
+         -- Both open ACTIVE rows are already protected by the five filtered
+         -- unique indexes above. Keep the trigger for every historical or
+         -- revoked interval so this fast path cannot weaken overlap checks.
+         AND NOT (
+             i.mapping_status = 'ACTIVE' AND i.valid_to IS NULL
+             AND m.mapping_status = 'ACTIVE' AND m.valid_to IS NULL
+         )
          AND i.valid_from < COALESCE(m.valid_to, CONVERT(datetime2(3), '9999-12-31T23:59:59.999'))
          AND m.valid_from < COALESCE(i.valid_to, CONVERT(datetime2(3), '9999-12-31T23:59:59.999'))
     )

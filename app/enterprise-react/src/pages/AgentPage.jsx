@@ -1,14 +1,16 @@
 import { useMemo, useState } from "react";
-import { Check, MessageSquareText, Plus, Send, Sparkles, TableProperties } from "lucide-react";
+import { Check, Send, Sparkles, TableProperties, TrendingUp } from "lucide-react";
 import { createAnalysisClient } from "../api/analysisClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { MetaStrip, SectionTitle } from "../components/common/EnterpriseUi";
 import { analysisFixtures } from "../data/analysisFixtures";
 import { createUuid } from "../utils/createUuid";
 
-const RECENT_ANALYSES = ["객실·예약·연회 통합 분석"];
 const client = createAnalysisClient();
 const initialRun = analysisFixtures.ready;
+const SUGGESTIONS = [
+  { icon: TrendingUp, label: "주간 객실 운영", question: "주간 객실 운영 현황을 보여줘" },
+];
 
 export function AgentPage() {
   const [conversationId] = useState(createUuid);
@@ -30,8 +32,9 @@ export function AgentPage() {
     setArtifactNotice("");
     setSubmittedQuestion(nextQuestion);
     setRun({
-      ...initialRun,
-      status: "queued",
+      ...analysisFixtures.loading,
+      requestId: "",
+      traceId: "",
       question: nextQuestion,
       conversationId,
     });
@@ -57,19 +60,24 @@ export function AgentPage() {
 
   return (
     <div className="chat-layout">
-      <aside className="chat-history">
-        <button className="new-chat"><Plus size={16} />새 분석</button>
-        <p>RECENT</p>
-        {RECENT_ANALYSES.map((item, index) => (
-          <button className={index === 0 ? "selected" : ""} key={item}>
-            <MessageSquareText size={15} />
-            <span>{item}<small>{index === 0 ? "방금 전" : `${index + 1}일 전`}</small></span>
-          </button>
-        ))}
-      </aside>
-
-      <main className="chat-main">
+      <section className="chat-main" aria-label="분석 대화">
         <MetaStrip meta={viewMeta} />
+        {!hasSubmitted && (
+          <section className="chat-hero" aria-labelledby="chat-hero-title">
+            <span className="hero-mark"><Sparkles size={22} /></span>
+            <p>DATA ANALYSIS COPILOT</p>
+            <h2 id="chat-hero-title">무엇을 분석해 볼까요?</h2>
+            <span>승인된 합성 데이터와 동일한 기준 시각으로 답변합니다.</span>
+            <div className="suggestion-grid">
+              {SUGGESTIONS.map(({ icon: Icon, label, question: suggestion }) => (
+                <button type="button" key={label} onClick={() => setQuestion(suggestion)}>
+                  <Icon size={17} />
+                  <span><b>{label}</b><small>{suggestion}</small></span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
         {hasSubmitted && <div className="conversation">
           <div className="message message--user">
             <div className="avatar small">J</div>
@@ -98,27 +106,39 @@ export function AgentPage() {
         </div>}
         <form className="chat-input" onSubmit={submitQuestion}>
           <div className="question-field">
-            <input
+            <textarea
               aria-label="분석 질문"
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return;
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
               placeholder="승인된 데이터에 대해 질문하세요..."
+              rows={2}
             />
             <button aria-label="질문 전송" disabled={submitting}><Send size={17} /></button>
           </div>
           <small>중간발표 시연용 합성 데이터 · seed 20260729 · as_of 2026-07-30</small>
         </form>
-      </main>
+      </section>
 
-      <aside className="evidence-panel">
+      <aside className="evidence-panel" id="analysis-evidence" aria-label="분석 근거 패널">
         <SectionTitle eyebrow="TRACEABILITY" title="분석 근거" />
         {!hasSubmitted && <p className="evidence-empty">질문을 입력하면 분석 결과와 근거가 표시됩니다.</p>}
         {hasSubmitted && <>
         <div className="execution-list">
-          {["분석 요청 확인", "메타데이터 근거 연결", "Artifact 생성"].map((name, index) => (
-            <article key={name}>
+          {[
+            { name: "분석 요청 확인", complete: Boolean(run.requestId) && run.error?.code !== "INTERNAL_ERROR", note: "Backend가 요청을 수신한 경우에만 완료됩니다." },
+            { name: "메타데이터 근거 연결", complete: run.sources.length > 0, note: "API가 반환한 source만 근거로 표시합니다." },
+            { name: "Artifact 생성", complete: Boolean(run.artifact?.artifactId), note: "검증된 Artifact가 있을 때만 완료됩니다." },
+          ].map(({ name, complete, note }, index) => (
+            <article className={complete ? "complete" : "incomplete"} key={name}>
               <span>{index + 1}</span>
-              <div><b>{name}<em><Check size={11} />검증 완료</em></b><small>동일 기준 시각과 합성 데이터 버전을 사용합니다.</small></div>
+              <div><b>{name}<em>{complete && <Check size={11} />}{complete ? "확인됨" : "미완료"}</em></b><small>{note}</small></div>
             </article>
           ))}
         </div>

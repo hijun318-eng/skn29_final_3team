@@ -1,0 +1,110 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W5-F8",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "ff294bb56293f19e50d12cdf0412ab6d283ac77e",
+  "RESULT_SHA": "5720a01bb514eb401584d40e60ab970b10fc3146",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W5-F8@ff294bb",
+  "COMPLETED_CARDS": [
+    "R4-04·05 period_start·period_end_exclusive Context REWORK"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/app/adapters/contract_model.py",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
+    "tests/backend/test_i2_data_platform.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "THREE_SOURCE_CONTEXT": "I5-3SOURCE-CONTEXT-v1.0.0-DRAFT",
+    "PERIOD": "period_start·period_end_exclusive;type=date;start<end",
+    "PARAMETERS": "11 typed bindings;single safe binder",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_PERIOD_BINDING_SOURCE",
+      "status": "PASS",
+      "evidence": "3-source approved Context Package의 parameter_bindings에서 period_start와 period_end_exclusive를 읽어 execution_time에 전달"
+    },
+    {
+      "id": "AC2_NO_AS_OF_OVERRIDE",
+      "status": "PASS",
+      "evidence": "RequestContext.as_of=2026-08-01과 별개로 approved period 2026-05-01/2026-07-01을 보존하는 회귀 검사 통과"
+    },
+    {
+      "id": "AC3_DATE_FAIL_CLOSED",
+      "status": "PASS",
+      "evidence": "period 누락·중복·type 불일치·invalid/non-canonical ISO date·start>=end를 model 호출 전에 ValueError로 차단"
+    },
+    {
+      "id": "AC4_ACTUAL_R3_PERIOD",
+      "status": "PASS",
+      "evidence": "실제 R3-W5-F5 shape의 2026-05-01/2026-07-01과 required_filter 9개를 Context model에 무손실 조합"
+    },
+    {
+      "id": "AC5_G2_BINDER",
+      "status": "PASS",
+      "evidence": "11개 typed parameter exact map을 G2로 검증한 뒤 기존 I2DataPlatformAdapter 단일 safe binder로 치환"
+    },
+    {
+      "id": "AC6_MUTATION_NEGATIVE",
+      "status": "PASS",
+      "evidence": "모델이 period_start를 2026-06-01로 변경한 plan은 PARAMETERS_INVALID로 fail-closed"
+    },
+    {
+      "id": "AC7_EXISTING_BOUNDARIES",
+      "status": "PASS",
+      "evidence": "기존 6-asset·5-edge·multi-CTE 위치별 filter·single binder·repair 1회 회귀 검사 유지"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_TARGET",
+      "name": "target backend ContractModel/Context/G2 composition",
+      "status": "PASS",
+      "evidence": "64 passed, 10 subtests passed"
+    },
+    {
+      "id": "T2_BACKEND",
+      "name": "backend 전체",
+      "status": "PASS",
+      "evidence": "제품 CI 31357850201 python-contracts에서 110 passed, 10 skipped"
+    },
+    {
+      "id": "T3_R3_CONSUMER",
+      "name": "R3 consumer composition read-only",
+      "status": "PASS",
+      "evidence": "R3 worktree tests/ai/test_node2.py에서 10 passed, 10 subtests passed"
+    },
+    {
+      "id": "T4_COMPILE",
+      "name": "compileall",
+      "status": "PASS",
+      "evidence": "contract_model.py와 test_i2_data_platform.py compileall 성공; 제품 CI 전체 compileall PASS"
+    },
+    {
+      "id": "T5_SCOPE",
+      "name": "gate_scope merge-base",
+      "status": "PASS",
+      "evidence": "제품 CI 31357850201 role-scope PASS; origin/dev 대비 제품 diff 3개가 모두 허용 경로"
+    },
+    {
+      "id": "T6_DIFF",
+      "name": "git diff --check",
+      "status": "PASS",
+      "evidence": "whitespace error 없음"
+    },
+    {
+      "id": "T7_BRANCH_CI",
+      "name": "jaehong branch CI",
+      "status": "PASS",
+      "evidence": "GitHub Actions CI 31357850201 role-scope·document-quality·python-contracts·quality-gate PASS"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "F8 source CI PASS 결과를 dev에 통합하고 R3-W5-F6를 최신 dev에 재동기화해 actual Node2→G2→binder와 dev 전체 CI를 확인"
+}

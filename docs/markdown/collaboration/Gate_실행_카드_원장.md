@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.6 |
-| 문서 기준일 | 2026-08-10 10:45 |
+| 버전 | v5.7 |
+| 문서 기준일 | 2026-08-10 10:52 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F1` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F2` | `READY` | `junhee` |
 | R2 | `R2-W5-F1` | `READY` | `seung` |
 | R3 | `R3-W5-F1` | `READY` | `daesung` |
 | R4 | `R4-W5-F1` | `READY` | `jaehong` |
@@ -506,6 +506,37 @@ AUTO_FAIL_CONDITIONS=stamp·drop 사용; 기존 migration 수정; multi-head; em
 R1_REVIEW_CONDITIONS=migration graph·두 upgrade path·schema 동등성·backend 전체 회귀·정확한 handoff와 branch CI를 제출한다.
 ```
 
+### R1 · R1-W5-F2
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F2
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=team AI tool version consistency
+TASK_CARD_RANGE=R1-06 AI 개발 환경 정책 정합성 보완
+CURRENT_TASK_CARD_ID=R1-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=cf178b411d62f91b882e98d6e856bddbfa6208ad
+START_POINT=origin/junhee cf178b411d62f91b882e98d6e856bddbfa6208ad에서 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W5-F2@cf178b4
+ALLOWED_PATHS=AGENTS.md; docs/markdown/collaboration/AI_개발_환경_설정.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F2.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 제품 경로; 과거 일일보고; plugin source·설치 상태; root Compose·env·CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F2.json
+ACCEPTANCE_CRITERIA=실제 사용 가능한 Ponytail Skill v4.9.0을 팀 단일 기준으로 확정하고 AGENTS.md와 AI 개발 환경 설정의 설치·최종 확인 문구를 v4.9.0 full mode로 일치시킨다. 과거 일일보고의 v4.8.4 기록은 당시 이력으로 유지한다. 현재 R2-W5-F1의 제품 허용 경로와 겹치지 않으므로 기존 token을 재발행하지 않고 최신 dev 동기화 뒤 bootstrap이 READY를 반환함을 확인한다.
+ACCEPTANCE_IDS=AC1_CANONICAL_VERSION;AC2_AGENTS_MATCH;AC3_SETUP_MATCH;AC4_HISTORY_PRESERVED;AC5_R2_TOKEN_CONTINUES;AC6_BOOTSTRAP
+TEST_COMMANDS=현재 Ponytail Skill 경로 v4.9.0 확인; current-policy에서 v4.8.4 부재·v4.9.0 일치 검사; document validation; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; dev 반영·seung 동기화 후 python .github/scripts/gate_scope.py --branch seung --bootstrap; git diff --check
+TEST_COMMAND_IDS=T1_INSTALLED;T2_VERSION_TEXT;T3_DOCS;T4_SCOPE;T5_R2_BOOTSTRAP;T6_DIFF
+STOP_CONDITIONS=설치되지 않은 version으로 변경; 과거 보고 이력 수정; R2 제품 경로·token 변경; plugin 설치·dependency·외부 비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=정책 문서·Gate 원장·handoff·R1 보고와 승인된 commit·push·dev 병합·seung fast-forward 동기화만 허용한다. plugin 설치·외부 비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=AGENTS와 설치 가이드 version 불일치; full 외 mode; 과거 이력 변경; R2 bootstrap 차단 지속; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=v4.9.0 단일 기준, 문서·scope 검사, branch/dev CI와 seung bootstrap READY를 제출한다.
+```
+
 ## 현재 통합 확인 사항
 
 | ID | 상태 | 확인 결과 | 다음 결정 |
@@ -516,6 +547,7 @@ R1_REVIEW_CONDITIONS=migration graph·두 upgrade path·schema 동등성·backen
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.7 | 2026-08-10 10:52 | Ponytail 실제 설치본 v4.9.0과 팀 정책을 일치시키는 R1-W5-F2 발행 |
 | v5.6 | 2026-08-10 10:45 | R1-W5-F1·R5-W4-F5 source CI와 handoff를 확인하고 dev 통합 결과를 기록해 MERGED_DEV 전환 |
 | v5.5 | 2026-08-10 10:40 | 같은 시점의 기획서 기반 구현 현황 스냅샷을 R1 참고 근거로 보존하도록 허용 경로 추가 |
 | v5.4 | 2026-08-10 10:34 | R2~R4 카드 발행 행위를 추적하는 R1-W5-F1 실행 묶음 추가 |

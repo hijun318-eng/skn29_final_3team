@@ -485,8 +485,6 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual(("total_revenue",), response.data.result.chart.y_fields)
         self.assertEqual(2, len(response.data.result.table.rows))
         self.assertTrue(response.data.result.summary)
-        self.assertEqual(response.meta.request_id, response.data.artifact.request_id)
-        self.assertEqual(response.meta.trace_id, response.data.artifact.trace_id)
         self.assertEqual(
             response.data.result.evidence.artifact_id,
             response.data.artifact.artifact_id,

@@ -182,8 +182,6 @@ class ArtifactReference(ContractModel):
     artifact_id: UUID
     query_id: str
     context_hash: str
-    request_id: UUID | None = None
-    trace_id: str | None = None
 
 
 class AnalysisData(ContractModel):

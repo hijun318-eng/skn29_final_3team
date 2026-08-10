@@ -402,8 +402,6 @@ class AnalysisService:
             artifact_id=artifact_id,
             query_id=query["query_id"],
             context_hash=package.package_hash,
-            request_id=context.request_id,
-            trace_id=context.trace_id,
         )
         self._responses.record(trace, PipelineStage.ARTIFACT, str(artifact_id))
 

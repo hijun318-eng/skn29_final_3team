@@ -1,0 +1,46 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R3-W5-F6",
+  "ROLE": "R3",
+  "BRANCH": "daesung",
+  "BASE_SHA": "dcbc616ff3a035332e097173b267dd9c19ba9742",
+  "RESULT_SHA": "01cb346bfdf440f6d48b98047ff13c7cec914a55",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R3-W5-F6@dcbc616",
+  "COMPLETED_CARDS": ["R3-04·05 G120-046 조합 회귀·handoff 교정"],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/daesung/일일보고.md",
+    "handoffs/R3-W5-F5.json",
+    "src/ai/node2.py",
+    "tests/ai/test_node2.py",
+    "tests/ai/test_training_verification.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "CONTEXT": "I5-3SOURCE-CONTEXT-v1.0.0-DRAFT",
+    "JOIN": "pms_crm_pos_gold_revenue_month_v1",
+    "MODEL_IO": "MODEL-v1.0.0 typed parameters",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_LATEST_DEV_CONTEXT", "status": "PASS", "evidence": "R4-W5-F8 통합 dev의 6 asset·5-edge topology와 R2 period_start 2026-05-01·period_end_exclusive 2026-07-01을 실제 소비"},
+    {"id": "AC2_ACTUAL_NODE2_G2_BINDER", "status": "PASS", "evidence": "실제 Context→Node2 두 source preaggregate CTE→R4 G2→I2 single binder 통과와 placeholder 0 확인"},
+    {"id": "AC3_MULTI_CTE_NEGATIVE", "status": "PASS", "evidence": "POS filter 누락·literal·OR, 승인 밖 JOIN, unknown·duplicate·value mutation을 fail-closed"},
+    {"id": "AC4_ONE_REPAIR", "status": "PASS", "evidence": "METRIC_FILTER_MISSING attempt=1은 같은 Context로 복구 후 G2 PASS, attempt=2는 ContractError"},
+    {"id": "AC5_HANDOFF_SUPERSEDE", "status": "PASS", "evidence": "R3-W5-F5 BLOCKED handoff를 SUPERSEDED로 보존하고 최신 조합 증거를 F6에 제출"},
+    {"id": "AC6_NO_DATASET_RUNPOD", "status": "PASS", "evidence": "compiled dataset·RunPod·외부 endpoint 변경 없음"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_COMPOSITION", "name": "actual Context→Node2→G2→binder composition", "status": "PASS", "evidence": "1 passed"},
+    {"id": "T2_NODE2", "name": "Node2 target", "status": "PASS", "evidence": "11 passed, 10 subtests passed"},
+    {"id": "T3_AI", "name": "all AI tests", "status": "PASS", "evidence": "73 passed, 43 subtests passed"},
+    {"id": "T4_COMPILE", "name": "python -m compileall -q src/ai", "status": "PASS", "evidence": "compileall PASS"},
+    {"id": "T5_SCOPE", "name": "R3 merge-base scope", "status": "PASS", "evidence": "changed paths 4, scope PASS, handoff 제출 전 NOT_RUN"},
+    {"id": "T6_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "whitespace error 없음"},
+    {"id": "T7_BRANCH_CI", "name": "daesung product SHA CI", "status": "PASS", "evidence": "GitHub Actions 31358273698 PASS at product ancestor 88b7a934fa7494178e45dc18df50ca065a980764; RESULT_SHA는 Gate BASE_SHA 교정 dev만 동기화한 984b007fcdcb1f7f5264a9412406103d3d867822"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R3-W5-F6 typed 3-source Node2 consumer와 실제 R4 G2·single binder 조합을 dev에 통합"
+}

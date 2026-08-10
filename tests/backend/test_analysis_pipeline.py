@@ -39,6 +39,21 @@ class CountingDataPlatformAdapter(FakeDataPlatformAdapter):
         return super().execute_query(sql, parameters, gate_token)
 
 
+class ChartDataPlatformAdapter(CountingDataPlatformAdapter):
+    def execute_query(self, sql, parameters, gate_token):
+        result = super().execute_query(sql, parameters, gate_token)
+        result["rows"] = [
+            {"month": "2026-05", "total_revenue": 257602100},
+            {"month": "2026-06", "total_revenue": 218370300},
+        ]
+        result["sampling"] = {
+            "applied": False,
+            "returned_rows": 2,
+            "total_rows": 2,
+        }
+        return result
+
+
 class MetricCandidateAdapter(CountingDataPlatformAdapter):
     METRICS = {
         "recognized_room_revenue": {
@@ -457,6 +472,22 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual(
             str(response.data.artifact.artifact_id),
             response.data.trace[-1].detail,
+        )
+
+    def test_g3_success_links_table_chart_explanation_evidence_and_artifact(self) -> None:
+        service = AnalysisService(ChartDataPlatformAdapter(), FakeModelAdapter())
+        payload = AnalysisRequest(question="합성 객실 운영 현황을 알려줘")
+
+        response = service.analyze(payload, self.context, self.decision(payload))
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual("month", response.data.result.chart.x_field)
+        self.assertEqual(("total_revenue",), response.data.result.chart.y_fields)
+        self.assertEqual(2, len(response.data.result.table.rows))
+        self.assertTrue(response.data.result.summary)
+        self.assertEqual(
+            response.data.result.evidence.artifact_id,
+            response.data.artifact.artifact_id,
         )
 
 

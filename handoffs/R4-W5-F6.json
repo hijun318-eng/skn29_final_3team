@@ -1,0 +1,57 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W5-F6",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "32e7a4de6e4a3a817a5a2b9dd9b9f9014db4e7c4",
+  "RESULT_SHA": "dcd4d8378ea50cf1a3aeb4dca4cb0b89fb07e20f",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W5-F6@32e7a4d",
+  "COMPLETED_CARDS": ["R4-04·05·06·09 G120-046 versioned Context·safe CTE·G3 response REWORK"],
+  "CHANGED_FILES": [
+    "app/backend/app/adapters/contract_model.py",
+    "app/backend/app/adapters/i2_data_platform.py",
+    "app/backend/app/contracts.py",
+    "app/backend/app/services/analysis_service.py",
+    "app/backend/app/services/pipeline_support.py",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
+    "tests/backend/test_analysis_pipeline.py",
+    "tests/backend/test_i2_data_platform.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "CONTEXT": "I4-CONTEXT-v2.3.0-DRAFT",
+    "THREE_SOURCE_CONTEXT": "I5-3SOURCE-CONTEXT-v1.0.0-DRAFT",
+    "DERIVED_METRIC": "total_guest_revenue_krw;derived_sum;derived.month",
+    "JOIN": "pms_crm_pos_gold_revenue_month_v1;preaggregate_then_one_to_one_month",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_VERSIONED_TRINO", "status": "PASS", "evidence": "versioned mode에서 R2 gold_evidence runtime PASS·hash가 있는 3-source contract만 6개 asset Context로 노출"},
+    {"id": "AC2_LIVE_FAIL_CLOSED", "status": "PASS", "evidence": "live mode는 기존 Asset Binding/DataHub runtime PENDING을 계속 차단"},
+    {"id": "AC3_JOIN_CONTEXT", "status": "PASS", "evidence": "기존 PMS-CRM hardcoded join을 제거하고 승인된 3-source join id·cardinality와 R3 derived metric shape만 known contract에서 합성"},
+    {"id": "AC4_SAFE_CTE", "status": "PASS", "evidence": "괄호·quote depth 기반 top-level 검사로 WITH CTE 뒤 단일 SELECT만 허용하고 DML·multi-statement·set operation·comment를 차단"},
+    {"id": "AC5_CONTEXT_POLICY", "status": "PASS", "evidence": "6 references·11 typed bindings·승인 FQN/column/join/metric과 placeholder filter를 검증하고 외부 column·literal·OR를 차단"},
+    {"id": "AC6_G3_RESPONSE", "status": "PASS", "evidence": "G3 통과 뒤 실제 query rows에서 table/chart를 파생하고 explanation/evidence/artifact를 동일 request_id·trace_id로 연결"},
+    {"id": "AC7_FAILURE_BOUNDARY", "status": "PASS", "evidence": "기존 실패·차단 경로는 result/chart/artifact를 성공처럼 채우지 않음"},
+    {"id": "AC8_REGRESSION", "status": "PASS", "evidence": "target 63건과 로컬 dependency-blocked runtime 제외 backend 88건 통과"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_TARGET", "name": "Context/G2/G3/control-plane target tests", "status": "PASS", "evidence": "63 passed, 10 subtests passed"},
+    {"id": "T2_BACKEND_NO_RUNTIME", "name": "backend excluding local dependency-blocked runtime modules", "status": "PASS", "evidence": "88 passed, 17 subtests passed"},
+    {"id": "T3_COMPILE", "name": "python -m compileall -q app/backend/app", "status": "PASS", "evidence": "compileall PASS"},
+    {"id": "T4_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "whitespace error 없음"}
+  ],
+  "NOT_RUN": [
+    "BLOCKED — complete tests/backend collection and HTTP runtime: 현재 로컬 Python에 fastapi와 alembic이 없어 collection/uvicorn app import 불가; dependency 설치는 승인 밖",
+    "NOT_RUN — external live DataHub/Trino execution: R2 versioned contract의 실제 Trino PASS evidence를 소비했으며 외부 서비스·secret 사용은 카드에서 금지"
+  ],
+  "CHANGE_REQUESTS": [
+    "R2 — pms_crm_pos_context.i5.v1.json에는 derived metric 객체와 Context join cardinality/left/right가 없어 R4가 known join id에서 R3 공통 shape를 제한적으로 합성한다. 차기 producer contract에 metric·join 구조를 직접 포함해 합성을 제거할 것"
+  ],
+  "RESIDUAL_RISKS": [
+    "일반 SQL parser 없이 승인된 safe CTE 형태만 보수적으로 허용하므로 더 복잡한 유효 SQL도 fail-closed될 수 있다.",
+    "source preaggregation chain의 의미 검증은 현재 exact 6-asset set·qualified column·join id/cardinality 및 CTE 구조 조합에 한정된다."
+  ],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R3 Node2 consumer를 이 derived metric·join·11 typed binding shape로 통합하고 R2 producer contract 결손을 후속 카드로 보완"
+}

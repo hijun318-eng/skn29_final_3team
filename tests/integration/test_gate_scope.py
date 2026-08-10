@@ -25,30 +25,34 @@ class GateScopeTest(unittest.TestCase):
         bundle.pop("ACCEPTANCE_IDS", None)
         return bundle
 
-    def test_latest_r3_bundle_is_selected(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "daesung")
-        self.assertEqual("R3-W4-F7", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("MERGED_DEV", bundle["STATUS"])
+    def test_current_ledger_has_resolvable_bundle_for_each_role(self) -> None:
+        for branch in gate_scope.ROLES:
+            with self.subTest(branch=branch):
+                bundle = gate_scope.current_bundle(self.ledger, branch)
+                self.assertIsNotNone(bundle)
+                self.assertEqual(branch, bundle["PERSONAL_BRANCH"])
 
-    def test_latest_r2_bundle_is_selected(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "seung")
-        self.assertEqual("R2-W4-F4", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("MERGED_DEV", bundle["STATUS"])
-
-    def test_latest_r4_bundle_is_selected(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "jaehong")
-        self.assertEqual("R4-W4-F8", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("MERGED_DEV", bundle["STATUS"])
-
-    def test_latest_r1_bundle_is_selected(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "junhee")
-        self.assertEqual("R1-W4-F5", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("VERIFIED_GATE", bundle["STATUS"])
-
-    def test_latest_r5_bundle_is_selected(self) -> None:
-        bundle = gate_scope.current_bundle(self.ledger, "minji")
-        self.assertEqual("R5-W4-F4", bundle["EXECUTION_BUNDLE_ID"])
-        self.assertEqual("BLOCKED", bundle["STATUS"])
+    def test_current_bundle_selects_latest_non_planned_card(self) -> None:
+        ledger = """```text
+EXECUTION_BUNDLE_ID=R1-W1
+STATUS=READY
+PERSONAL_BRANCH=junhee
+ALLOWED_PATHS=docs/**
+```
+```text
+EXECUTION_BUNDLE_ID=R1-W2
+STATUS=PLANNED
+PERSONAL_BRANCH=junhee
+ALLOWED_PATHS=tests/**
+```
+```text
+EXECUTION_BUNDLE_ID=R1-W3
+STATUS=IN_PROGRESS
+PERSONAL_BRANCH=junhee
+ALLOWED_PATHS=.github/**
+```"""
+        bundle = gate_scope.current_bundle(ledger, "junhee")
+        self.assertEqual("R1-W3", bundle["EXECUTION_BUNDLE_ID"])
 
     def test_terminal_transition_uses_previous_bundle_scope(self) -> None:
         current = {
@@ -145,6 +149,76 @@ class GateScopeTest(unittest.TestCase):
         self.assertIn("-z", command)
         self.assertIn("--diff-filter=ACMRD", command)
 
+    def test_document_only_change_selects_document_job(self) -> None:
+        self.assertEqual(
+            {
+                "python": "false",
+                "documents": "true",
+                "frontend": "false",
+                "compose": "false",
+            },
+            gate_scope.change_group_outputs(["docs/markdown/02_WBS.md"]),
+        )
+
+    def test_workflow_change_selects_every_job(self) -> None:
+        self.assertEqual(
+            {group: "true" for group in gate_scope.CHANGE_GROUP_PATTERNS},
+            gate_scope.change_group_outputs([".github/workflows/ci.yml"]),
+        )
+
+    def test_backend_compose_fragment_selects_python_and_compose(self) -> None:
+        outputs = gate_scope.change_group_outputs(
+            ["app/backend/compose.fragment.yml"]
+        )
+        self.assertEqual("true", outputs["python"])
+        self.assertEqual("true", outputs["compose"])
+
+    def test_planned_paths_require_active_bundle_and_allowed_paths(self) -> None:
+        bundle = {
+            "EXECUTION_BUNDLE_ID": "R1-W1",
+            "STATUS": "IN_PROGRESS",
+            "PERSONAL_BRANCH": "junhee",
+            "ALLOWED_PATHS": ".github/scripts/gate_scope.py",
+        }
+        with patch.object(gate_scope, "current_bundle", return_value=bundle):
+            _, errors = gate_scope.planned_path_errors(
+                self.ledger, "junhee", [".github/scripts/gate_scope.py"]
+            )
+        self.assertEqual([], errors)
+
+        bundle["STATUS"] = "VERIFIED_GATE"
+        with patch.object(gate_scope, "current_bundle", return_value=bundle):
+            _, errors = gate_scope.planned_path_errors(
+                self.ledger, "junhee", [".github/scripts/gate_scope.py"]
+            )
+        self.assertIn("does not allow implementation", errors[0])
+
+        with patch.object(gate_scope, "current_bundle", return_value=bundle):
+            _, errors = gate_scope.planned_path_errors(
+                self.ledger, "junhee", [gate_scope.LEDGER.as_posix()]
+            )
+        self.assertEqual([], errors)
+
+    def test_bootstrap_requires_matching_clean_executable_workspace(self) -> None:
+        payload = gate_scope.bootstrap_payload(
+            self.ledger,
+            "seung",
+            "codex/process-e2e",
+            "C:/repo/worktree",
+            True,
+        )
+        self.assertIn("does not match seung", payload["errors"][1])
+        self.assertIn("working tree is not clean", payload["errors"])
+        self.assertEqual(
+            gate_scope.ROLE_MANUALS["seung"], payload["full_reads"][-1]
+        )
+
+    def test_bootstrap_blocks_terminal_bundle(self) -> None:
+        payload = gate_scope.bootstrap_payload(
+            self.ledger, "seung", "seung", "C:/repo", False
+        )
+        self.assertIn("does not allow implementation", payload["errors"][0])
+
     def test_stale_base_without_path_overlap_can_continue(self) -> None:
         bundle = {"STATUS": "READY", "BASE_SHA": "issued"}
         with (
@@ -179,8 +253,14 @@ class GateScopeTest(unittest.TestCase):
             self.assertEqual("a" * 40, gate_scope.latest_dev_sha())
 
     def test_blocked_dashboard_requests_scoped_rework(self) -> None:
-        dashboard = "\n".join(gate_scope.dashboard_lines(self.ledger))
-        self.assertIn("R5-W4-F4", dashboard)
+        ledger = """```text
+EXECUTION_BUNDLE_ID=R5-W9-TEST
+STATUS=BLOCKED
+PERSONAL_BRANCH=minji
+ALLOWED_PATHS=app/enterprise-react/**
+```"""
+        dashboard = "\n".join(gate_scope.dashboard_lines(ledger))
+        self.assertIn("R5-W9-TEST", dashboard)
         self.assertIn("Issue owner-scoped REWORK bundle", dashboard)
 
     def test_valid_handoff_with_external_work_needs_review(self) -> None:

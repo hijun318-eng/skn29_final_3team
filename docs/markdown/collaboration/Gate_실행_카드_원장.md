@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v4.1 |
-| 문서 기준일 | 2026-08-05 20:14 |
+| 버전 | v5.2 |
+| 문서 기준일 | 2026-08-10 09:48 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,11 +22,11 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W4-F5` | `VERIFIED_GATE` | `junhee` |
+| R1 | `R1-W4-F10` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W4-F4` | `MERGED_DEV` | `seung` |
 | R3 | `R3-W4-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W4-F8` | `MERGED_DEV` | `jaehong` |
-| R5 | `R5-W4-F4` | `BLOCKED` | `minji` |
+| R5 | `R5-W4-F5` | `READY` | `minji` |
 
 ## 활성 실행 카드
 
@@ -58,6 +58,151 @@ HANDOFF=R3에 구조화 metric filter schema·일반 prompt 소비·validation-0
 EXTERNAL_ACTION_PERMISSION=없음. RunPod·model download·endpoint·외부 비용·150건·LoRA·Blind Gold를 금지한다.
 RESULT_SHA=f4871df852d606daf793414e9582aa48be49514e
 RESULT_CI=R3 30885817084 PASS; R2 30886662028 PASS; R4 30889083425 PASS; dev 30889141133 PASS
+```
+
+### R1 · R1-W4-F6
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F6
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=agent automation efficiency
+TASK_CARD_RANGE=R1-06 CI·병합·보고 자동화 정합성 보완
+CURRENT_TASK_CARD_ID=R1-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=5b368a5b17fa91028e128f79ac03f19e0742a074
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F6@5b368a5
+ALLOWED_PATHS=AGENTS.md; .agents/skills/merge-branch-to-dev/**; .github/scripts/gate_scope.py; .github/workflows/ci.yml; tests/integration/test_gate_scope.py; tests/integration/test_merge_preflight.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/collaboration/README.md; docs/markdown/daily_reports/README.md; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 제품 경로; backend·frontend·data·AI 제품 코드; root Compose·env; dependency; secret
+ACCEPTANCE_CRITERIA=개인 branch를 dev에 병합하기 전에 해당 source SHA의 CI 성공을 확인하고, 작업 시작 전에 예상 변경 경로가 활성 실행 카드 범위인지 검사한다. 문서 CI는 고정 목록이 아니라 실제 변경 문서를 검사한다. 여러 branch를 한 요청에서 통합할 때 handoff를 push 전 검증하고 팀 보고는 마지막 source 뒤 한 번만 commit한다. 기존 역할 소유권·Gate·secret·외부 비용 경계를 유지한다.
+ACCEPTANCE_IDS=AC1_SOURCE_CI;AC2_PLANNED_PATHS;AC3_CHANGED_DOCS;AC4_BATCH_REPORT;AC5_EXISTING_BOUNDARIES
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration -q; python -m compileall -q .github/scripts .agents/skills/merge-branch-to-dev/scripts tests/integration; CI YAML parse; document/report validation; python .github/scripts/gate_scope.py --branch junhee --check-planned-path .github/workflows/ci.yml; git diff --check
+TEST_COMMAND_IDS=T1_INTEGRATION;T2_COMPILE;T3_YAML;T4_DOCS;T5_PLANNED_SCOPE;T6_DIFF
+STOP_CONDITIONS=CI 실패 source 병합 허용; terminal 카드로 제품 변경 허용; 변경 문서 검사 누락; 역할·보안 경계 축소; R2~R5 제품 경로 변경; 새 dependency·외부 비용·secret 필요; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local 자동화·문서·test 변경만 승인하며 commit·push·dev 병합은 별도 사용자 요청 전 금지한다.
+RESULT_SHA=8037c5dafe6b85706737e7ae2aab5f2d02d817e8
+RESULT_CI=branch 31060559706 PASS; dev 31060722209 PASS; sync 31060779744 PASS
+```
+
+### R1 · R1-W4-F7
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F7
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=agent parallel bootstrap and integration
+TASK_CARD_RANGE=R1-06 작업 위치·상태·공통 지침·다중 branch 통합 자동화 보완
+CURRENT_TASK_CARD_ID=R1-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=23214ac3eaf2e4b8dacf85a0df9bf34f7310a973
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F7@23214ac
+ALLOWED_PATHS=AGENTS.md; .github/scripts/gate_scope.py; .agents/skills/merge-branch-to-dev/**; tests/integration/test_gate_scope.py; tests/integration/test_merge_preflight.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/collaboration/README.md; docs/markdown/collaboration/AI_개발_환경_설정.md; docs/markdown/ai_docs/5인_병렬구현_*_매뉴얼_최종안.md; docs/markdown/ai_docs/legacy/260805_코딩에이전트_작업프로세스_개선기록_v1.0.md; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=R2~R5 제품 경로; backend·frontend·data·AI 제품 코드; root Compose·env·CI; dependency; secret
+ACCEPTANCE_CRITERIA=역할 작업 시작 전에 현재 branch·dirty 상태·실행 가능 카드와 읽을 기준 문서를 한 명령으로 확인한다. 병합 완료 카드가 실행 가능 상태로 남지 않도록 결과 기록 절차를 고정한다. 역할 매뉴얼의 중복·노후 CI 설명을 공통 협업 규칙으로 대체한다. 여러 source의 worktree·remote SHA·CI를 dev에서 한 번에 점검한다. 기존 Gate·소유권·source CI·dev 회귀 경계를 유지한다.
+ACCEPTANCE_IDS=AC1_BOOTSTRAP;AC2_TERMINAL_STATE;AC3_CANONICAL_GUIDANCE;AC4_BATCH_PREFLIGHT;AC5_EXISTING_BOUNDARIES
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration -q; python -m compileall -q .github/scripts .agents/skills/merge-branch-to-dev/scripts tests/integration; document/report validation; python .github/scripts/gate_scope.py --branch junhee --bootstrap; python .github/scripts/gate_scope.py --branch junhee --check-planned-path .github/scripts/gate_scope.py; git diff --check
+TEST_COMMAND_IDS=T1_INTEGRATION;T2_COMPILE;T3_DOCS;T4_BOOTSTRAP;T5_PLANNED_SCOPE;T6_DIFF
+STOP_CONDITIONS=다른 역할 제품 경로 변경; terminal·BLOCKED 카드 구현 허용; dirty·branch 불일치 무시; source CI·dev 회귀 생략; 자동 merge·push 확대; 새 dependency·외부 비용·secret 필요; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local 자동화·문서·test 변경만 승인하며 commit·push·dev 병합은 별도 사용자 요청 전 금지한다.
+RESULT_SHA=19a05c3ae356d2af5b5919b770fd6741f060d807
+RESULT_CI=branch 31062826908 PASS
+```
+
+### R1 · R1-W4-F8
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F8
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=terminal card regression
+TASK_CARD_RANGE=R1-06 병합 종료 상태 이후 Gate test 회귀 보정
+CURRENT_TASK_CARD_ID=R1-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=18910ba41cc3647371fdb9013c1156541bb8c937
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F8@18910ba
+ALLOWED_PATHS=tests/integration/test_gate_scope.py; docs/markdown/collaboration/Gate_실행_카드_원장.md
+FORBIDDEN_PATHS=제품 코드; 다른 역할 경로; workflow; dependency; secret
+ACCEPTANCE_CRITERIA=Gate test가 활성 카드에만 의존하지 않고 MERGED_DEV 전환 뒤에도 planned path의 구현 허용·차단 조건을 독립적으로 검증한다. 전체 dev Python test 회귀를 복구하며 제품 동작과 기존 안전 경계는 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_STATE_INDEPENDENT_TEST;AC2_DEV_FULL_REGRESSION;AC3_NO_PRODUCT_CHANGE
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration -q; python -m pytest -p no:cacheprovider tests -q; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_INTEGRATION;T2_FULL;T3_SCOPE;T4_DIFF
+STOP_CONDITIONS=제품 코드·workflow 변경; Gate 안전 경계 축소; 다른 역할 경로 변경; 새 dependency; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local test·Gate 원장 변경과 승인된 commit·push·dev 병합만 허용한다.
+RESULT_SHA=2fa04df4af552544e442cd137c2c84cd1bb06b3d
+RESULT_CI=branch 31063368217 PASS
+```
+
+### R1 · R1-W4-F9
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F9
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=agent merge automation hardening
+TASK_CARD_RANGE=R1-06 Gate test·parser·병합 세션 정합성 개선
+CURRENT_TASK_CARD_ID=R1-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=65679f69e0253611e3e572b1bbe08229d3e66d77
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F9@65679f6
+ALLOWED_PATHS=.github/scripts/gate_scope.py; .agents/skills/merge-branch-to-dev/**; tests/integration/test_gate_scope.py; tests/integration/test_merge_preflight.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/collaboration/README.md; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=제품 코드; 다른 역할 경로; workflow; dependency; secret
+ACCEPTANCE_CRITERIA=역할별 최신 카드 번호 변경이 test fixture를 깨뜨리지 않는다. 병합 사전검사는 gate_scope의 원장 parser와 terminal status를 재사용한다. source·dev·final 단계가 하나의 ignored JSON session에서 base SHA·source SHA·CI 결과를 재사용하고 결과 기록 값을 제공한다. 기존 승인·충돌 중단·수동 merge·push 경계는 유지한다.
+ACCEPTANCE_IDS=AC1_NO_LIVE_CARD_IDS;AC2_SINGLE_LEDGER_PARSER;AC3_SESSION_REUSE;AC4_EXISTING_GIT_BOUNDARIES
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration -q; python -m compileall -q .github/scripts .agents/skills/merge-branch-to-dev/scripts tests/integration; document/report validation; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_INTEGRATION;T2_COMPILE;T3_DOCS;T4_SCOPE;T5_DIFF
+STOP_CONDITIONS=자동 merge·push·conflict 해결 추가; 제품 코드·workflow 변경; Gate 안전 경계 축소; 새 dependency; 다른 역할 경로 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local 자동화·문서·test 변경만 허용하며 commit·push·dev 병합은 별도 사용자 요청 전 금지한다.
+RESULT_SHA=f8e8d1900b1ae5a4f3b003bb62d6a8a0016a09a5
+RESULT_CI=branch 31065077010 PASS
+```
+
+### R1 · R1-W4-F10
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W4-F10
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=owner-scoped REWORK card regression
+TASK_CARD_RANGE=R1-06 실행 카드 전환 회귀 검증 보정
+CURRENT_TASK_CARD_ID=R1-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=6c05c6057d0518d3edab412bb1af860da0d6ce69
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W4-F10@6c05c60
+ALLOWED_PATHS=tests/integration/test_gate_scope.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=제품 코드; R2~R5 소유 경로; workflow·root Compose·env; dependency; secret
+ACCEPTANCE_CRITERIA=dashboard의 BLOCKED→owner-scoped REWORK 동작을 현재 활성 카드 번호에 의존하지 않는 독립 fixture로 검증한다. R5-W4-F5 READY 발행 뒤 실제 dashboard가 새 카드를 선택하고 기존 terminal·BLOCKED 구현 차단과 handoff 검증 경계를 유지한다.
+ACCEPTANCE_IDS=AC1_NO_LIVE_CARD_ID;AC2_REWORK_SELECTION;AC3_EXISTING_GATE_BOUNDARIES
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration/test_gate_scope.py -q; python -m pytest -p no:cacheprovider tests/integration -q; python -m compileall -q .github/scripts tests/integration; document validation; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_TARGET;T2_INTEGRATION;T3_COMPILE;T4_DOCS;T5_SCOPE;T6_DIFF
+STOP_CONDITIONS=제품 코드·workflow 변경; 특정 live bundle ID 재고정; Gate 안전 경계 축소; 다른 역할 경로 변경; 새 dependency; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=없음. local Gate test·원장·보고와 승인된 commit·push·dev 병합만 허용한다.
+RESULT_SHA=187cac11fcdf8b3bbb60517dd248ed6cf66a7495
+RESULT_CI=branch 31345351140 PASS
 ```
 
 ### R2 · R2-W4-F4
@@ -194,6 +339,40 @@ AUTO_FAIL_CONDITIONS=HTTP 비기본; 자동 fixture fallback; client 결과/stat
 R1_REVIEW_CONDITIONS=typed client·전체 필수 headers·definition/draft/manual/history·fixture 경계·stale response 차단·동시 pending·오류 복구, build·contract·두 browser mode·branch CI를 제출한다. worker 없는 queued 이후 상태는 미구현으로 명시한다. 현재 origin/minji a7c4128의 Python·frontend·문서 job은 PASS지만 browser T5·T6 BLOCKED로 role-scope·quality-gate가 FAIL이며, UI 경쟁 상태 P1이 확인되어 dev 병합을 차단한다.
 ```
 
+### R5 · R5-W4-F5
+
+```text
+STATUS=READY
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W4-F5
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=OPENAPI-v1.1 actual Report consumer scope recovery and browser evidence
+TASK_CARD_RANGE=R5-12·17 actual Report definition·manual command·Run History 재검증
+CURRENT_TASK_CARD_ID=R5-17
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=6c05c6057d0518d3edab412bb1af860da0d6ce69
+START_POINT=origin/minji a864d79b95c976680f8427c7140abf7201979c35에 origin/dev 6c05c6057d0518d3edab412bb1af860da0d6ce69을 병합해 시작한다. history rewrite·force push·기존 미커밋 변경 폐기를 금지한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R5-W4-F5@6c05c60
+CONTRACT_VERSION=OPENAPI-v1.1.0-DRAFT additive; OPENAPI-v1.0.0 request context; REPORT-v1.0.0 wire compatible; REPORT-v1.1.0-DRAFT behavior
+IMPLEMENTATION_PATHS=app/enterprise-react/src/api/reportClient.ts; app/enterprise-react/src/contracts/report.ts; app/enterprise-react/src/pages/ReportsPage.jsx; app/enterprise-react/src/styles.css; tests/frontend/contracts.test.mjs; docs/markdown/daily_reports/minji/일일보고.md
+CLEANUP_ONLY_PATHS=app/enterprise-react/src/App.jsx; app/enterprise-react/src/api/analysisClient.ts; app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx; app/enterprise-react/src/components/layout/AppHeader.jsx; app/enterprise-react/src/components/layout/AppSidebar.jsx; app/enterprise-react/src/data/analysisFixtures.ts; app/enterprise-react/src/pages/AgentPage.jsx; app/enterprise-react/src/pages/CatalogPage.jsx; app/enterprise-react/src/pages/ConnectionsPage.jsx; app/enterprise-react/vite.config.js; docs/markdown/daily_reports/team_summaries/4주차/20260804.md; handoffs/R5-W4-F4.json
+ALLOWED_PATHS=app/enterprise-react/src/App.jsx; app/enterprise-react/src/api/analysisClient.ts; app/enterprise-react/src/api/reportClient.ts; app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx; app/enterprise-react/src/components/layout/AppHeader.jsx; app/enterprise-react/src/components/layout/AppSidebar.jsx; app/enterprise-react/src/contracts/report.ts; app/enterprise-react/src/data/analysisFixtures.ts; app/enterprise-react/src/pages/AgentPage.jsx; app/enterprise-react/src/pages/CatalogPage.jsx; app/enterprise-react/src/pages/ConnectionsPage.jsx; app/enterprise-react/src/pages/ReportsPage.jsx; app/enterprise-react/src/styles.css; app/enterprise-react/vite.config.js; tests/frontend/contracts.test.mjs; handoffs/R5-W4-F4.json; handoffs/R5-W4-F5.json; docs/markdown/daily_reports/minji/일일보고.md; docs/markdown/daily_reports/team_summaries/4주차/20260804.md
+FORBIDDEN_PATHS=app/backend/**; src/report/**; migration·DB·worker·schedule; 위 CLEANUP_ONLY_PATHS의 신규 기능 변경; 다른 frontend path·route; root Compose·env·CI; dependency; secret; share·export
+HANDOFF_MANIFEST=handoffs/R5-W4-F5.json
+ACCEPTANCE_CRITERIA=origin/dev 대비 범위 초과 변경은 CLEANUP_ONLY_PATHS에서 origin/dev 내용으로만 복구하고 Report 구현은 IMPLEMENTATION_PATHS에만 남긴다. HTTP Report client를 기본으로 하고 fixture는 VITE_REPORT_MODE=fixture에서만 선택하며 API 오류 시 자동 fallback하지 않는다. 공개 9개 operation과 strict snake_case request·response, 필수 인증·사용자·권한·시각·trace header를 보존한다. definition create/list/get, draft replace, approve, next draft, manual queued receipt, 실제 Run History를 서버 응답으로만 처리한다. 늦은 definition 응답·동시 mutation busy·재시도 error clear를 검증한다. API mode에서 서버에 없는 success·수치·작성자·기간·worker 진행을 만들지 않는다. fixture와 local API browser 검증을 실제 실행하고 BLOCKED·Not Run을 PASS로 기록하지 않는다. 새 handoff는 BASE_SHA·DIRECTIVE_TOKEN·CHANGED_FILES·RESULT_SHA와 실제 test 결과가 일치해야 한다.
+ACCEPTANCE_IDS=AC1_SCOPE_RECOVERY;AC2_HTTP_DEFAULT;AC3_EXPLICIT_FIXTURE;AC4_TYPED_CONTRACT;AC5_ADMIN_CONTEXT;AC6_DEFINITION_FLOW;AC7_MANUAL_BOUNDARY;AC8_REAL_HISTORY;AC9_ASYNC_STATES;AC10_NO_FAKE_SUCCESS;AC11_BROWSER_EVIDENCE;AC12_HANDOFF_EXACT
+TEST_COMMANDS=python app/backend/scripts/export_openapi.py --check; python -m pytest -p no:cacheprovider tests/backend/test_openapi_contract.py tests/backend/test_report_registration.py -q; node tests/frontend/contracts.test.mjs; npm --prefix app/enterprise-react run build; browser fixture mode badge·6상태·keyboard·1440·1024·768·360 확인; browser API mode local backend definition create→PUT replace→approve→next draft·manual queued receipt·real history empty/detail·401·403·409·422·503 확인; python .github/scripts/gate_scope.py --branch minji --base origin/dev --head HEAD --mode merge-base; git diff --check
+TEST_COMMAND_IDS=T1_OPENAPI;T2_BACKEND_CONSUMER;T3_FRONTEND_CONTRACT;T4_BUILD;T5_FIXTURE_BROWSER;T6_API_BROWSER;T7_SCOPE;T8_DIFF
+STOP_CONDITIONS=기존 미커밋 변경 폐기·history rewrite·force push 필요; CLEANUP_ONLY_PATHS에 신규 기능을 남겨야 함; browser 또는 local Report API 검증 BLOCKED; request·response version drift; fixture 자동 fallback 또는 fake success; worker·schedule·public result ingestion 필요; production secret·외부 비용 필요; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local frontend·기존 local synthetic Report API/DB·browser 검증·허용 경로 commit·minji push만 승인한다. 외부 배포·비용·secret·Docker resource 변경·force push는 금지한다.
+AUTO_FAIL_CONDITIONS=범위 초과 기능 잔존; HTTP 비기본; 자동 fixture fallback; client 결과/status 생성; queued를 run으로 표시; server에 없는 success; browser BLOCKED; handoff 불일치; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=origin/dev 대비 변경 경로와 cleanup-only 복구, typed client·필수 headers·definition/draft/manual/history·fixture 경계·경쟁 상태, build·contract·두 browser mode·branch CI와 정확한 R5-W4-F5 handoff를 제출한다. 모두 PASS일 때만 dev 병합을 검토한다.
+```
+
 ## 현재 통합 확인 사항
 
 | ID | 상태 | 확인 결과 | 다음 결정 |
@@ -204,5 +383,12 @@ R1_REVIEW_CONDITIONS=typed client·전체 필수 headers·definition/draft/manua
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.2 | 2026-08-10 09:48 | R1-W4-F10 source CI와 handoff를 확인하고 dev 통합 결과를 기록해 MERGED_DEV 전환 |
+| v5.1 | 2026-08-10 09:44 | R1-W4-F10의 카드 번호 독립 회귀 검증과 전달 증거를 완료해 REVIEW 전환 |
+| v5.0 | 2026-08-10 09:40 | R5 범위 초과 변경과 browser 검증 차단을 해소하는 R5-W4-F5 REWORK 및 카드 전환 회귀를 보정하는 R1-W4-F10 발행 |
+| v4.9 | 2026-08-06 11:16 | R1-W4-F9 source CI와 handoff를 확인하고 dev 통합 결과를 기록해 MERGED_DEV 전환 |
+| v4.8 | 2026-08-06 11:01 | R1 카드 fixture·공용 parser·병합 session 구현과 local 통합 회귀 완료 후 REVIEW 전환 |
+| v4.7 | 2026-08-06 10:59 | 역할 카드 fixture·공용 Gate parser·병합 session 정합성 개선을 위한 R1 카드 발행·착수 |
+| v4.2 | 2026-08-06 09:30 | source CI 확인·작업 전 경로 검사·변경 문서 CI·보고 일괄 통합을 위한 R1 유지보수 카드 발행·착수 |
 | v4.1 | 2026-08-05 20:14 | versioned-trino 합성 기간 상태·일별 집계·KPI·Evidence 기간을 일치시키고 실브라우저 E2E 병목 해소 |
 | v4.0 | 2026-08-05 19:44 | 역할별 최신 실행 카드만 활성 원장에 유지하고 기존 전체 이력을 archive로 분리 |

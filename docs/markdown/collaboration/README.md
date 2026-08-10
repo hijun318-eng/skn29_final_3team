@@ -4,13 +4,23 @@
 |---|---|
 | 문서 설명 | 팀원 개인 branch와 dev·main 통합 정책 및 사람이 수행하는 Git 절차 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.8 |
-| 문서 기준일 | 2026-08-05 22:30 |
+| 버전 | v1.12 |
+| 문서 기준일 | 2026-08-06 10:56 |
 | 작성·수정 | 박준희 |
 
 각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다. PR은 필수 절차가 아니며 GitHub Actions는 개인 branch와 `dev` push를 기준으로 실행한다. CI를 실행할 수 없으면 같은 검증을 local에서 수행하고, 필수 검증이 실패한 branch는 병합하지 않는다.
 
-개인 branch CI는 해당 역할의 기본 Python test를 실행하고 `dev` CI는 전체 Python test를 실행한다. frontend·Compose job은 관련 branch와 `dev`에서만 실행한다. 역할 카드에 선언된 소비자 contract test를 포함해 `TEST_COMMANDS`가 CI보다 넓으면 해당 명령을 추가로 실행하며, 개인 branch CI 통과를 전체 저장소 검증으로 표현하지 않는다.
+개인 branch CI는 변경 경로에 필요한 검사만 실행한다. Python·문서·frontend·Compose 변경을 구분하고 문서는 실제 변경된 Markdown만 검사하며, workflow 자체가 바뀌면 모든 검사를 실행한다. 같은 branch에 새 push가 생기면 이전 CI는 자동으로 취소한다. 역할 카드에 선언된 소비자 contract test를 포함해 `TEST_COMMANDS`가 CI보다 넓으면 해당 명령을 추가로 실행하며, 개인 branch CI 통과를 전체 저장소 검증으로 표현하지 않는다.
+
+## 에이전트 작업 시작
+
+역할 작업은 파일을 수정하기 전에 본인 branch에서 다음 한 명령으로 시작한다.
+
+```powershell
+python .github/scripts/gate_scope.py --branch <본인 branch> --bootstrap
+```
+
+이 명령은 현재 branch·dirty worktree·마지막 non-`PLANNED` 실행 카드 상태를 검사하고, 처음부터 끝까지 읽을 문서와 현재 카드 관련 절을 읽을 문서를 구분해 출력한다. worktree의 절대 경로는 달라도 되지만 branch가 카드의 `PERSONAL_BRANCH`와 다르거나 카드가 `READY`·`IN_PROGRESS`가 아니거나 기존 변경이 있으면 구현하지 않는다.
 
 ## Branch 역할
 
@@ -110,7 +120,9 @@ commit 제목은 `<type>: <한국어 summary>` 또는 `<type>(<scope>): <한국�
 
 AI 에이전트가 개인 branch의 `dev` 병합을 수행할 때는 이 문서의 정책과 `docs/markdown/daily_reports/README.md`를 기준으로 `.agents/skills/merge-branch-to-dev/SKILL.md`를 적용한다.
 
-`dev` 병합 요청은 위 통합에 필요한 개인 branch push, `dev` fetch·pull·merge·push와 `team_summaries/` 파일의 stage·commit을 승인한 것으로 본다. 기존 미커밋 변경과 다른 파일은 포함하지 않으며, 작업 트리가 깨끗하지 않거나 로컬·원격 commit이 일치하지 않거나 병합·보고 검증이 실패하면 stash·reset·임의 commit 없이 중단하고 사용자에게 알린다.
+`dev` 병합 요청은 위 통합에 필요한 개인 branch push, `dev` fetch·pull·merge·push, Gate 원장의 source 카드 종료 기록과 `team_summaries/` 파일의 단일 통합 기록 commit, 병합 완료 후 개인 branch의 안전한 fast-forward·push를 승인한 것으로 본다. source SHA의 개인 branch CI가 성공해야 병합할 수 있다. 여러 branch를 한 요청에서 통합하면 카드 종료와 팀 요약·주간보고는 마지막 source 뒤 한 번만 commit한다. 개인 branch 작업 트리가 깨끗하고 기존 원격 개인 branch가 `origin/dev`의 조상일 때만 동기화하며, 조건이 맞지 않으면 개인 branch를 변경하지 않고 이유를 알린다. 기존 미커밋 변경과 다른 파일은 포함하지 않으며, 작업 트리가 깨끗하지 않거나 로컬·원격 commit이 일치하지 않거나 CI·병합·보고 검증이 실패하면 stash·reset·임의 commit 없이 중단한다.
+
+병합 사전검사의 `--session`은 worktree들이 공유하는 Git 공용 디렉터리에 `answervice-merge-session.json`을 두고 최초 dev SHA, source SHA와 CI 결과를 단계 사이에서 재사용한다. 이 파일은 Git 추적 대상이 아니며 secret이나 변경 파일 내용을 저장하지 않는다. 실제 merge·원장 수정·commit·push는 계속 승인된 절차에서만 수행한다.
 
 ## 관리자 통합
 
@@ -151,6 +163,10 @@ git push origin main
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.12 | 2026-08-06 10:56 | 병합 단계가 공용 JSON session에서 dev·source SHA와 CI 결과를 재사용하도록 사전검사 절차 보완 |
+| v1.11 | 2026-08-06 10:09 | 역할 작업 bootstrap, 다중 branch 사전점검과 병합 카드 종료 기록 추가 |
+| v1.10 | 2026-08-06 09:30 | source CI 성공을 병합 조건으로 추가하고 실제 변경 문서 검사·여러 branch 보고 일괄 commit 적용 |
+| v1.9 | 2026-08-06 09:10 | 변경 경로별 CI 실행·중복 실행 취소와 dev 병합 후 개인 branch 안전 동기화 추가 |
 | v1.8 | 2026-08-05 22:30 | 개인 branch 역할 검증과 dev 전체 검증을 분리해 중복 CI 실행 축소 |
 | v1.7 | 2026-08-03 12:14 | commit 형식은 Git 정책, staged 검토·병합 실행은 Skill로 단일화하고 중복 예시 제거 |
 | v1.6 | 2026-07-30 14:25 | commit 제목 아래 변경·검증·선택적 영향 본문을 기본 작성하고 staged diff와 확인된 검증만 구체적으로 기록하도록 Skill·Git 절차를 동기화 |

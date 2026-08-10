@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.21 |
-| 문서 기준일 | 2026-08-10 13:15 |
+| 버전 | v5.22 |
+| 문서 기준일 | 2026-08-10 13:30 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -24,8 +24,8 @@
 |---|---|---|---|
 | R1 | `R1-W5-F8` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F4` | `MERGED_DEV` | `seung` |
-| R3 | `R3-W5-F2` | `BLOCKED` | `daesung` |
-| R4 | `R4-W5-F5` | `READY` | `jaehong` |
+| R3 | `R3-W5-F3` | `READY` | `daesung` |
+| R4 | `R4-W5-F5` | `MERGED_DEV` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
@@ -513,7 +513,7 @@ BLOCKED_REASON=기존 evaluator 범위만으로는 string·boolean·number·date
 ### R3 · R3-W5-F3
 
 ```text
-STATUS=PLANNED
+STATUS=READY
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -521,11 +521,12 @@ EXECUTION_BUNDLE_ID=R3-W5-F3
 TARGET_INTEGRATION_GATE=I5
 CHECKPOINT_GATES=R2 typed registry와 R4 Context·G2·binder 통합
 TASK_CARD_RANGE=R3-04·05·14 Node2 typed parameter 출력·endpoint evaluator 정합화
-CURRENT_TASK_CARD_ID=N/A — R2-W5-F4와 R4-W5-F5 선행
+CURRENT_TASK_CARD_ID=R3-04
 BASE_BRANCH=dev
-BASE_SHA=N/A — R4 consumer 통합 SHA로 발행
-DIRECTIVE=WAIT
-DIRECTIVE_TOKEN=N/A
+BASE_SHA=83c5d94b762938c4ecab1d1297d54bedbfa1e8da
+START_POINT=origin/daesung을 최신 dev 83c5d94로 fast-forward한 뒤 시작한다. 로컬 stash는 자동 적용하지 않고 현재 계약과 path를 대조한 뒤 필요한 변경만 수동 반영한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R3-W5-F3@83c5d94
 ALLOWED_PATHS=src/ai/contracts/node_io.v0.1.json; src/ai/node2.py; src/ai/training/evaluate_endpoint.py; src/ai/training/verify_case_specs.py; tests/ai/test_contracts.py; tests/ai/test_node2.py; tests/ai/test_training_verification.py; tests/ai/test_validation_v2.py; tests/ai/test_eval_runner.py; handoffs/R3-W5-F3.json; docs/markdown/daily_reports/daesung/일일보고.md
 FORBIDDEN_PATHS=app/backend/**; src/data/**; compiled/train/validation/Gold dataset; RunPod·외부 endpoint; root Compose/env/CI; dependency; secret
 ACCEPTANCE_CRITERIA=Node2는 R2/R4가 동결한 string·boolean·number·date parameter contract와 period_start·period_end_exclusive·required_filter_N 이름을 그대로 출력한다. generated/expected plan은 Context의 placeholder·type·value와 일치해야 하며 literal·OR·unknown placeholder·값 변조를 허용하지 않는다. R3 내부에 별도 실행 binder를 복제하지 않고 R4 공개 binder 계약을 소비하며 dataset 불일치는 별도 재생성 카드로 반환한다.
@@ -980,7 +981,7 @@ RESULT_CI=branch 31352566492 PASS
 ### R4 · R4-W5-F5
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -1001,6 +1002,8 @@ ACCEPTANCE_IDS=AC1_TYPED_CONTEXT;AC2_PERIOD_EXCLUSIVE;AC3_G2_PAIR_VALIDATION;AC4
 TEST_COMMANDS=target backend typed Context/G2/binder tests; backend 전체 test; compileall; gate_scope merge-base; git diff --check
 STOP_CONDITIONS=R2 producer 미통합; AST dependency·migration·OpenAPI 변경 필요; R3/data 경로 변경; arbitrary literal/type coercion 필요; 외부 서비스·비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
 R1_REVIEW_CONDITIONS=R2 producer 통합 뒤 최신 BASE_SHA·token으로 READY 전환하며 SQLGlot AST와 G3·Analysis persistence는 후속 카드로 분리한다.
+RESULT_SHA=2a2ed9feb97723a7ac495fe87b2c59d142cacc13
+RESULT_CI=branch 31354450601 PASS
 ```
 
 ### R4 · R4-W5-F10
@@ -1094,6 +1097,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.22 | 2026-08-10 13:30 | R4 typed Context·G2·단일 Trino binder의 source CI·handoff를 확인해 MERGED_DEV로 전환하고, R3 Node2·evaluator가 같은 value_type·period_end_exclusive 계약을 소비하도록 R3-W5-F3을 READY 발행 |
 | v5.21 | 2026-08-10 13:15 | R1 CI 공급망 보강과 R2 typed filter·PMS/CRM/POS Context의 source CI·handoff를 확인해 MERGED_DEV로 전환하고 R4 Context·G2·단일 binder 소비자 카드를 READY 발행; 5주차 팀 요약·주간보고를 개인 보고와 동기화 |
 | v5.20 | 2026-08-10 13:00 | 다른 역할과 독립적인 R1 CI 공급망 작업을 확인해 GitHub Actions immutable SHA pin과 모든 job timeout을 검증하는 R1-W5-F8을 병렬 발행; R5는 Audit·Schedule·Report worker·Catalog live 생산자 부재로 신규 구현 없이 대기 |
 | v5.19 | 2026-08-10 12:55 | R4 Alembic 검증을 MERGED_DEV로 전환하고, typed required-filter·대표 PMS/CRM/POS Context를 R2 생산자부터 R4·R3 소비자와 R1 실제 API E2E 순으로 재편; Analysis·SQLGlot G2/G3·Report worker·schedule은 선행 E2E 뒤 단계화 |

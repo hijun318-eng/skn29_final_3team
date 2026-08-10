@@ -529,12 +529,12 @@ FORBIDDEN_PATHS=R2~R5 제품 경로; 과거 일일보고; plugin source·설치 
 HANDOFF_MANIFEST=handoffs/R1-W5-F2.json
 ACCEPTANCE_CRITERIA=실제 사용 가능한 Ponytail Skill v4.9.0을 팀 단일 기준으로 확정하고 AGENTS.md와 AI 개발 환경 설정의 설치·최종 확인 문구를 v4.9.0 full mode로 일치시킨다. 과거 일일보고의 v4.8.4 기록은 당시 이력으로 유지한다. 현재 R2-W5-F1의 제품 허용 경로와 겹치지 않으므로 기존 token을 재발행하지 않고 최신 dev 동기화 뒤 bootstrap이 READY를 반환함을 확인한다.
 ACCEPTANCE_IDS=AC1_CANONICAL_VERSION;AC2_AGENTS_MATCH;AC3_SETUP_MATCH;AC4_HISTORY_PRESERVED;AC5_R2_TOKEN_CONTINUES;AC6_BOOTSTRAP
-TEST_COMMANDS=현재 Ponytail Skill 경로 v4.9.0 확인; current-policy에서 v4.8.4 부재·v4.9.0 일치 검사; document validation; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; dev 반영·seung 동기화 후 python .github/scripts/gate_scope.py --branch seung --bootstrap; git diff --check
-TEST_COMMAND_IDS=T1_INSTALLED;T2_VERSION_TEXT;T3_DOCS;T4_SCOPE;T5_R2_BOOTSTRAP;T6_DIFF
+TEST_COMMANDS=현재 Ponytail Skill 경로 v4.9.0 확인; current-policy에서 v4.8.4 부재·v4.9.0 일치 검사; document validation; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; python .github/scripts/gate_scope.py --dashboard --next-gate I5에서 R2-W5-F1 READY 확인; git diff --check
+TEST_COMMAND_IDS=T1_INSTALLED;T2_VERSION_TEXT;T3_DOCS;T4_SCOPE;T5_R2_READY;T6_DIFF
 STOP_CONDITIONS=설치되지 않은 version으로 변경; 과거 보고 이력 수정; R2 제품 경로·token 변경; plugin 설치·dependency·외부 비용·secret 필요; 허용 경로 밖 변경; 필수 검증 실패
 EXTERNAL_ACTION_PERMISSION=정책 문서·Gate 원장·handoff·R1 보고와 승인된 commit·push·dev 병합·seung fast-forward 동기화만 허용한다. plugin 설치·외부 비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=AGENTS와 설치 가이드 version 불일치; full 외 mode; 과거 이력 변경; R2 bootstrap 차단 지속; scope 위반; 필수 검증 FAIL
-R1_REVIEW_CONDITIONS=v4.9.0 단일 기준, 문서·scope 검사, branch/dev CI와 seung bootstrap READY를 제출한다.
+R1_REVIEW_CONDITIONS=v4.9.0 단일 기준, 문서·scope 검사, R2-W5-F1 READY와 branch CI를 제출한다. dev 통합 뒤 seung fast-forward·bootstrap READY는 통합 후 검증한다.
 ```
 
 ## 현재 통합 확인 사항

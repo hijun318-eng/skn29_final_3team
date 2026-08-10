@@ -60,7 +60,7 @@
 ## AI 구현 도구와 코드 품질
 
 - 팀 공통 환경 설정은 `docs/markdown/collaboration/AI_개발_환경_설정.md`를 따른다.
-- Codex로 code 작성·수정·refactoring·bug fix·dependency 선택·code review를 수행할 때 Ponytail plugin `v4.8.4`의 `full` mode를 사용하며, 구현 선택·과설계 방지·필수 안전 경계의 단일 기준으로 삼는다.
+- Codex로 code 작성·수정·refactoring·bug fix·dependency 선택·code review를 수행할 때 Ponytail plugin `v4.9.0`의 `full` mode를 사용하며, 구현 선택·과설계 방지·필수 안전 경계의 단일 기준으로 삼는다.
 - 팀원은 Ponytail을 임의로 `off`, `normal`, `lite`, `ultra`로 바꾸지 않는다. plugin 충돌로 일시 해제가 필요하면 작업을 중단하고 R1에게 사유와 재현 절차를 전달한다.
 - MCP server는 현재 도입하지 않으며, 추후 필요성과 권한을 검토해 R1 결정으로 확장한다. MCP 부재를 현재 작업 또는 검증 실패 사유로 삼지 않는다.
 - 작업 카드의 `TEST_COMMANDS`에 formatter·lint·type check·관련 test·build 중 적용 가능한 명령을 적고 실행한다. 해당 도구가 아직 없으면 임의로 새 dependency를 추가하지 말고 `Not Run` 또는 `Blocked`와 이유를 기록한다.

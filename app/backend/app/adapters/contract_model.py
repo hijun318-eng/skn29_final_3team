@@ -355,11 +355,21 @@ class ContractModelAdapter:
                 [
                     {
                         "id": "pms_crm_pos_gold_revenue_month_v1",
-                        "left": "pms_crm_by_property_month",
-                        "right": "pos_crm_by_property_month",
+                        "left": left,
+                        "right": right,
                         "cardinality": "preaggregate_then_one_to_one_month",
                         "status": "approved",
                     }
+                    for left, right in (
+                        ("pms.public.pms_stays", "pms.public.pms_reservations"),
+                        ("pms.public.pms_reservations", "pms.public.pms_guests"),
+                        ("pms.public.pms_guests", "crm.dbo.crm_customer_map"),
+                        (
+                            "crm.dbo.crm_customer_map",
+                            "crm.dbo.crm_member_grade_history",
+                        ),
+                        ("crm.dbo.crm_customer_map", "pos.pos_db.pos_orders"),
+                    )
                 ]
                 if three_source
                 else []

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import Counter
 from datetime import date, datetime, time
 from functools import lru_cache
 from pathlib import Path
@@ -296,7 +297,8 @@ class PipelineSupport:
         parameters = plan.get("parameters", {})
         if not isinstance(parameters, dict):
             return "PARAMETERS_INVALID"
-        placeholders = set(re.findall(r":([a-z_][a-z0-9_]*)", normalized))
+        placeholder_names = re.findall(r":([a-z_][a-z0-9_]*)", normalized)
+        placeholders = set(placeholder_names)
         expected_parameters = {
             item.name: (item.value_type, item.value)
             for item in package.parameter_bindings
@@ -391,17 +393,24 @@ class PipelineSupport:
             if alias in columns_by_alias
         ):
             return "REFERENCE_OUTSIDE_CONTEXT"
-        if any(
+        required_filters = (
+            *package.required_filters,
+            *(item for metric in package.metrics for item in metric.required_filters),
+        )
+        three_source = "pms_crm_pos_gold_revenue_month_v1" in package.approved_join_ids
+        if three_source:
+            if not PipelineSupport._three_source_filters_match(
+                normalized, required_filters, placeholder_names
+            ):
+                return "METRIC_FILTER_MISSING"
+        elif any(
             not PipelineSupport._required_filter_matches(
                 normalized,
                 item,
                 parameters,
                 allow_literal=False,
             )
-            for item in (
-                *package.required_filters,
-                *(item for metric in package.metrics for item in metric.required_filters),
-            )
+            for item in required_filters
         ):
             return "METRIC_FILTER_MISSING"
         if parameters_invalid:
@@ -484,6 +493,91 @@ class PipelineSupport:
             else:
                 return False
         return expected in values
+
+    @staticmethod
+    def _three_source_filters_match(
+        sql: str,
+        required_filters: tuple[ContextRequiredFilter, ...],
+        placeholders: list[str],
+    ) -> bool:
+        scopes = PipelineSupport._cte_scopes(sql)
+        if len(scopes) != 2:
+            return False
+        for scope in scopes:
+            where = re.search(
+                r"\bwhere\b(.+?)(?:\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)",
+                scope,
+                re.IGNORECASE | re.DOTALL,
+            )
+            if where is None or any(
+                len(re.findall(rf":{name}(?![a-z0-9_])", where.group(1))) != 1
+                for name in ("period_start", "period_end_exclusive")
+            ):
+                return False
+        expected_counts = Counter(
+            {"period_start": len(scopes), "period_end_exclusive": len(scopes)}
+        )
+        for index, required in enumerate(required_filters, start=1):
+            fqn, column = required.field.lower().rsplit(".", 1)
+            parameter = f"required_filter_{index}"
+            matched_scopes = 0
+            for scope in scopes:
+                alias_match = re.search(
+                    rf"\b(?:from|join)\s+{re.escape(fqn)}\s+(?:as\s+)?([a-z_][a-z0-9_]*)",
+                    scope,
+                    re.IGNORECASE,
+                )
+                if alias_match is None:
+                    continue
+                where = re.search(
+                    r"\bwhere\b(.+?)(?:\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)",
+                    scope,
+                    re.IGNORECASE | re.DOTALL,
+                )
+                if (
+                    where is None
+                    or re.search(r"\bor\b", where.group(1), re.IGNORECASE)
+                    or len(
+                        re.findall(
+                            rf"(?<![a-z0-9_]){re.escape(alias_match.group(1))}\.\"?{re.escape(column)}\"?\s*=\s*:{parameter}(?![a-z0-9_])",
+                            where.group(1),
+                            re.IGNORECASE,
+                        )
+                    )
+                    != 1
+                ):
+                    return False
+                matched_scopes += 1
+            if matched_scopes == 0:
+                return False
+            expected_counts[parameter] = matched_scopes
+        return Counter(placeholders) == expected_counts
+
+    @staticmethod
+    def _cte_scopes(sql: str) -> tuple[str, ...]:
+        scopes = []
+        for match in re.finditer(
+            r"(?:\bwith\b|,)\s*[a-z_][a-z0-9_]*\s+as\s*\(",
+            sql,
+            re.IGNORECASE,
+        ):
+            depth = 1
+            quoted = False
+            index = match.end()
+            while index < len(sql) and depth:
+                if sql[index] == "'":
+                    if quoted and index + 1 < len(sql) and sql[index + 1] == "'":
+                        index += 2
+                        continue
+                    quoted = not quoted
+                elif not quoted:
+                    depth += sql[index] == "("
+                    depth -= sql[index] == ")"
+                index += 1
+            if depth:
+                return ()
+            scopes.append(sql[match.end() : index - 1])
+        return tuple(scopes)
 
     @staticmethod
     def _parameter_matches(

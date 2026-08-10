@@ -76,11 +76,12 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["field", "operator", "value"],
+            "required": ["field", "operator", "value_type", "value"],
             "properties": {
               "field": {"type": "string", "minLength": 1},
               "operator": {"type": "string", "enum": ["eq"]},
-              "value": {"type": ["string", "boolean"]}
+              "value_type": {"type": "string", "enum": ["string", "boolean", "number", "date"]},
+              "value": {"type": ["string", "number", "boolean"]}
             }
           }
         }
@@ -144,10 +145,11 @@
     "parameter_binding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "value"],
+      "required": ["name", "value_type", "value"],
       "properties": {
         "name": {"type": "string", "minLength": 1},
-        "value": {"type": ["string", "number", "boolean", "null"]}
+        "value_type": {"type": "string", "enum": ["string", "boolean", "number", "date"]},
+        "value": {"type": ["string", "number", "boolean"]}
       }
     },
     "shaped_result": {

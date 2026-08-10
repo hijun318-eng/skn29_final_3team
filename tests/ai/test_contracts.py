@@ -196,16 +196,16 @@ class ContractTests(unittest.TestCase):
         legacy = copy.deepcopy(VALID_PAYLOADS["node2_request"])
         current = copy.deepcopy(legacy)
         current["context_package"]["metrics"][0]["required_filters"] = [
-            {"field": "is_forecast", "operator": "eq", "value": False}
+            {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False}
         ]
 
         validate_payload("node2_request", legacy)
         validate_payload("node2_request", current)
 
         for invalid_filter in (
-            {"field": "is_forecast", "operator": "raw", "value": False},
-            {"field": "is_forecast", "operator": "eq", "value": None},
-            {"field": "is_forecast", "operator": "eq", "value": False, "sql": "1 = 1"},
+            {"field": "is_forecast", "operator": "raw", "value_type": "boolean", "value": False},
+            {"field": "is_forecast", "operator": "eq", "value_type": "timestamp", "value": "2026-07-01"},
+            {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False, "sql": "1 = 1"},
         ):
             invalid = copy.deepcopy(legacy)
             invalid["context_package"]["metrics"][0]["required_filters"] = [invalid_filter]

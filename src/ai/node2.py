@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 import re
+from datetime import date
 from typing import Any
 
 from .prompt_registry import get_prompt
@@ -35,7 +37,7 @@ def generate_sql(payload: dict[str, Any]) -> dict[str, Any]:
     filter_clauses, filter_parameters, filter_columns = _required_filters(asset, metric)
     where = [
         f'"{time_column}" >= DATE \':period_start\'',
-        f'"{time_column}" < DATE \':period_end\'',
+        f'"{time_column}" < DATE \':period_end_exclusive\'',
         *filter_clauses,
     ]
     sql = (
@@ -48,8 +50,16 @@ def generate_sql(payload: dict[str, Any]) -> dict[str, Any]:
             _reference(asset, context, {metric_column, time_column, *filter_columns})
         ],
         "parameters": [
-            {"name": "period_start", "value": context["execution_time"]["period_start"][:10]},
-            {"name": "period_end", "value": context["execution_time"]["period_end_exclusive"][:10]},
+            {
+                "name": "period_start",
+                "value_type": "date",
+                "value": context["execution_time"]["period_start"][:10],
+            },
+            {
+                "name": "period_end_exclusive",
+                "value_type": "date",
+                "value": context["execution_time"]["period_end_exclusive"][:10],
+            },
             *filter_parameters,
         ],
         "model": get_prompt("node2.sql").metadata(),
@@ -113,14 +123,34 @@ def _required_filters(
             raise ContractError(f"node2_request: invalid required filter field: {field!r}")
         if item["operator"] != "eq":
             raise ContractError("node2_request: unsupported required filter operator")
+        value_type = item["value_type"]
         value = item["value"]
-        if not isinstance(value, (str, bool)) or isinstance(value, str) and not value:
+        if not _typed_value_is_valid(value_type, value):
             raise ContractError("node2_request: invalid required filter value")
         name = f"required_filter_{index}"
         fields.add(field)
         clauses.append(f'"{field}" = :{name}')
-        parameters.append({"name": name, "value": value})
+        parameters.append({"name": name, "value_type": value_type, "value": value})
     return clauses, parameters, fields
+
+
+def _typed_value_is_valid(value_type: str, value: object) -> bool:
+    if value_type == "boolean":
+        return isinstance(value, bool)
+    if value_type == "number":
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+        )
+    if value_type == "string":
+        return isinstance(value, str) and bool(value)
+    if value_type == "date" and isinstance(value, str):
+        try:
+            return date.fromisoformat(value).isoformat() == value
+        except ValueError:
+            return False
+    return False
 
 
 def _reference(

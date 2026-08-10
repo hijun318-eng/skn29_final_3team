@@ -4,12 +4,13 @@
   "ROLE": "R3",
   "BRANCH": "daesung",
   "BASE_SHA": "dcbc616ff3a035332e097173b267dd9c19ba9742",
-  "RESULT_SHA": "984b007fcdcb1f7f5264a9412406103d3d867822",
+  "RESULT_SHA": "01cb346bfdf440f6d48b98047ff13c7cec914a55",
   "TERMINAL_SHA": "HEAD",
   "DIRECTIVE_TOKEN": "R3-W5-F6@dcbc616",
   "COMPLETED_CARDS": ["R3-04·05 G120-046 조합 회귀·handoff 교정"],
   "CHANGED_FILES": [
     "docs/markdown/daily_reports/daesung/일일보고.md",
+    "handoffs/R3-W5-F5.json",
     "src/ai/node2.py",
     "tests/ai/test_node2.py",
     "tests/ai/test_training_verification.py"

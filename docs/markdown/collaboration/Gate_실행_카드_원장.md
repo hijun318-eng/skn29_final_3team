@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.28 |
-| 문서 기준일 | 2026-08-10 16:40 |
+| 버전 | v5.29 |
+| 문서 기준일 | 2026-08-10 16:55 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -25,7 +25,7 @@
 | R1 | `R1-W5-F9` | `BLOCKED` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
 | R3 | `R3-W5-F6` | `READY` | `daesung` |
-| R4 | `R4-W5-F8` | `MERGED_DEV` | `jaehong` |
+| R4 | `R4-W5-F9` | `READY` | `jaehong` |
 | R5 | `R5-W5-F1` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
@@ -937,8 +937,8 @@ TASK_CARD_RANGE=R3-04·05 G120-046 조합 회귀·handoff 교정
 CURRENT_TASK_CARD_ID=R3-04
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
-BASE_SHA=dcbc6165f30b2899630cd2db01a44d90b72f3623
-START_POINT=보존한 R3 제품 commit 626164b를 최신 dev dcbc616 위에 안전하게 재적용하고 stash@{0}은 계속 건드리지 않는다.
+BASE_SHA=dcbc616ff3a035332e097173b267dd9c19ba9742
+START_POINT=보존한 R3 제품 commit 626164b를 dev dcbc616 위에 안전하게 재적용하고 stash@{0}은 계속 건드리지 않는다. 이후 dev 1bd6e63까지의 변경은 R3 허용 경로와 겹치지 않아 같은 token으로 계속한다.
 DIRECTIVE=REWORK
 DIRECTIVE_TOKEN=R3-W5-F6@dcbc616
 ALLOWED_PATHS=src/ai/node2.py; tests/ai/test_node2.py; tests/ai/test_training_verification.py; handoffs/R3-W5-F5.json; handoffs/R3-W5-F6.json; docs/markdown/daily_reports/daesung/일일보고.md
@@ -1049,7 +1049,7 @@ ACCEPTANCE_IDS=AC1_CATALOG_CARDINALITY;AC2_DESCRIPTION_VERSION_HASH;AC3_IDEMPOTE
 TEST_COMMANDS=python -m json.tool src/data/serving_semantic_catalog.i4.v1.json; python -m pytest -p no:cacheprovider tests/data/test_serving_semantic_catalog.py -q; python -m pytest -p no:cacheprovider tests/data -q; docker compose config; fresh isolated synthetic CRM duplicate·adjacent·overlap·80000 seed 검증; isolated DataHub ingestion→publisher 2회→verifier 8/116; gate_scope merge-base; git diff --check; seung branch CI
 TEST_COMMAND_IDS=T1_JSON;T2_TARGET;T3_DATA;T4_COMPOSE;T5_CRM;T6_DATAHUB;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
 STOP_CONDITIONS=기존 index·trigger 의미 약화; seed 파일 변경 필요; 8/116/70 불일치; publisher 비멱등; ingestion warning/health 실패; broad system grant; root compose 복사; 다른 project·volume reset·secret·비용; scope/필수 검증 실패
-EXTERNAL_ACTION_PERMISSION=정확히 격리된 synthetic CRM·DataHub 검증 project의 container 생성·정리와 local metadata publish/search만 허용한다. 기존 hotel-synthetic-db·data-hub-test·다른 project/volume, root env, 외부 전송·비용·secret 변경은 금지한다.
+EXTERNAL_ACTION_PERMISSION=정확히 격리된 synthetic CRM 무볼륨 container의 단계별 DDL→fresh 80000 seed→trigger 검증을 최대 20분까지 background·short poll로 실행하고 exact container만 정리할 수 있다. 격리 DataHub 신규 기동은 host free RAM 8GB 이상일 때만 허용한다. 기존 hotel-synthetic-db·data-hub-test·다른 project/volume, root env, 외부 전송·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=과거 격리 수치를 현재 PASS로 승격; catalog cardinality/hash 불일치; broad grant; 기존 history 보호 약화; 다른 project drift; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=Option 1 요청은 부분 수용한다. 이 R2 생산자를 먼저 dev에 통합·동결한 뒤 R4 Dataset/Column description Context 소비자와 R3 training catalog 소비자를 별도 owner 카드로 발행하고, 마지막에 R1 fresh integration을 수행한다.
 ```
@@ -1294,6 +1294,38 @@ AUTO_FAIL_CONDITIONS=as_of override 잔존; package binding 무시; invalid date
 R1_REVIEW_CONDITIONS=R4 source CI PASS 뒤 dev에 통합하고 R3-W5-F6를 최신 dev에 재동기화해 actual Node2→G2→binder와 dev 전체 CI를 복구한다.
 RESULT_SHA=5720a01bb514eb401584d40e60ab970b10fc3146
 RESULT_CI=branch 31357958938 PASS; product 31357850201 PASS; 110 passed·10 skipped
+```
+
+### R4 · R4-W5-F9
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F9
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=Analysis Definition·Run·Result persistence contract freeze
+TASK_CARD_RANGE=R4-05·13·16 Analysis 저장·조회·현재 계약 재실행
+CURRENT_TASK_CARD_ID=R4-05
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=b825e6da8c7f80f372dcf6bf436b540deff749d2
+START_POINT=origin/jaehong을 최신 dev b825e6d로 fast-forward한 뒤 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R4-W5-F9@b825e6d
+CONTRACT_VERSION=ANALYSIS-PERSISTENCE-v1.0.0-DRAFT; existing request→query→artifact reuse
+ALLOWED_PATHS=app/backend/app/analysis_contracts.py; app/backend/app/adapters/analysis_repository.py; app/backend/app/services/analysis_service.py; app/backend/app/controllers/analysis_controller.py; app/backend/app/api/router.py; app/backend/app/main.py; app/backend/migrations/versions/20260810_06_analysis_persistence.py; app/backend/contracts/openapi.v0.1.json; app/backend/README.md; tests/backend/test_analysis_persistence.py; tests/backend/test_analysis_pipeline.py; tests/backend/test_openapi_contract.py; tests/backend/test_migration_compatibility.py; tests/backend/test_report_registration.py; handoffs/R4-W5-F9.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=기존 migration·context.analysis_templates 의미 변경; R2/R3/frontend; Report worker/schedule; SQLGlot/G3 정책 확장; root Compose/env/CI; dependency; secret
+HANDOFF_MANIFEST=handoffs/R4-W5-F9.json
+ACCEPTANCE_CRITERIA=context.analysis_templates는 system routing template로 유지하고 user-owned versioned Analysis Definition만 additive migration으로 추가한다. Run/Result 본체는 기존 chat.analysis_requests→query.query_executions→artifact.analysis_artifacts를 재사용하고 Definition↔request 연결만 최소 저장하며 result blob을 복제하지 않는다. R1은 /analysis/definitions create·list·get, /analysis/definitions/{id}/runs replay, /analysis/runs list·detail route를 명시 승인한다. client는 owner/status/request_id/query_id/artifact_id/result를 제출할 수 없고, replay는 승인 Definition의 redacted question·typed parameters·as_of로 기존 AnalysisController 한 경로를 호출해 현재 entitlement·Context·G1/G2/G3·repair·binder를 다시 검증한다. terminal success·partial·failure와 idempotency를 저장하되 G3 전 Artifact 성공을 만들지 않고 과거 run은 불변이다. owner/role scope, 401·403·404·409·422·503, raw SQL·unbound parameter·result snapshot·secret 비노출, 기존 POST /analysis와 Report v1.1 9-operation 호환을 검증한다.
+ACCEPTANCE_IDS=AC1_SYSTEM_TEMPLATE_IMMUTABLE;AC2_EXISTING_RUN_RESULT_REUSE;AC3_APPROVED_ROUTES;AC4_SERVER_OWNED_IDS_STATUS;AC5_CURRENT_GATE_REPLAY;AC6_TERMINAL_IMMUTABLE;AC7_AUTH_REDACTION;AC8_EXISTING_API_COMPAT
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_analysis_persistence.py tests/backend/test_analysis_pipeline.py tests/backend/test_openapi_contract.py tests/backend/test_report_registration.py -q; python -m pytest -p no:cacheprovider tests/backend -q; python app/backend/scripts/export_openapi.py --check; alembic heads; isolated empty→head and 20260804_05→head; python -m compileall -q app/backend; gate_scope merge-base; git diff --check; jaehong branch CI
+TEST_COMMAND_IDS=T1_TARGET;T2_BACKEND;T3_OPENAPI;T4_HEADS;T5_MIGRATION;T6_COMPILE;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
+STOP_CONDITIONS=기존 request/query/artifact 의미 변경 또는 raw result 복제 필요; client-owned status/id; G1/G2/G3 우회; system template user mutation; Report worker/schedule·SQLGlot/G3 정책·R2/R3/frontend 변경; dependency·외부 DB·secret; scope/필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local deterministic test와 전용 ephemeral PostgreSQL migration 검증, 허용 경로 commit·jaehong push만 허용한다. 기존 app DB·volume·외부 서비스·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=새 result blob/table 중복; 과거 SQL 무검증 재실행; client-owned id/status; G3 전 Artifact success; owner bypass; raw SQL/result 노출; 기존 API 파손; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=R3-W5-F6와 경로 충돌 없이 병렬 수행한다. Analysis persistence source CI와 dev 통합 뒤 Report v1.2 worker·partial contract를 별도 카드로 발행한다.
 ```
 
 ### R5 · R5-W5-F1

@@ -3,7 +3,7 @@
   "ROLE": "R1",
   "BRANCH": "junhee",
   "BASE_SHA": "af13722b23196a761d7c3742e925936bb86c84b5",
-  "RESULT_SHA": "3a1387ed412dc5db41b687b8203e9e3e725a8a39",
+  "RESULT_SHA": "fd3cb12a9db7ab01c3ed9b72efca517ea2f8cf09",
   "COMPLETED_CARDS": ["R1-04-TEST-RUNTIME-IDENTITY"],
   "CHANGED_FILES": [
     ".github/scripts/refresh_test_runtime.ps1",

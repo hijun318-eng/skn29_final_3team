@@ -41,6 +41,7 @@ def simulated_verified_live_adapter():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     adapter._bindings_verified = True
     adapter._live_runtime_verified = True
+    adapter._trino.health = lambda: True
     for asset in adapter._assets:
         if asset["kind"] == "view":
             asset["binding_status"] = "VERIFIED"
@@ -185,6 +186,7 @@ def test_versioned_trino_mode_uses_approved_contract_without_datahub(tmp_path):
 def test_live_mode_fails_closed_without_v17_runtime_evidence():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     adapter._datahub_dataset = MagicMock()
+    adapter._trino.health = lambda: False
 
     with pytest.raises(ValueError, match="runtime verification"):
         adapter.search_assets("호텔 객실 매출", {"role": "hotel_analyst"})
@@ -343,7 +345,7 @@ def test_raw_live_extra_columns_are_not_exposed():
     assert "source_updated_at" not in {column["name"] for column in schema["columns"]}
 
 
-def test_pms_crm_question_no_longer_injects_a_hardcoded_join():
+def test_pms_crm_question_uses_the_versioned_approved_join():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
 
@@ -360,10 +362,12 @@ def test_pms_crm_question_no_longer_injects_a_hardcoded_join():
         "crm.dbo.crm_member_grade_history",
     }
     assert sum(len(adapter._live_schemas[asset["urn"]]) for asset in assets) <= 60
-    assert {join_id for asset in assets for join_id in asset["join_ids"]} == set()
+    assert {join_id for asset in assets for join_id in asset["join_ids"]} == {
+        "pms_stay_to_crm_membership_grade_event_time_v1"
+    }
 
 
-def test_g2_blocks_the_removed_hardcoded_pms_crm_join_id():
+def test_g2_accepts_the_versioned_pms_crm_join_id():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
@@ -374,7 +378,7 @@ def test_g2_blocks_the_removed_hardcoded_pms_crm_join_id():
     )
     assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
     for asset in assets:
-        asset.pop("metrics")
+        asset.pop("metrics", None)
     package = support.build_context(payload, context, assets)
     join_id = "pms_stay_to_crm_membership_grade_event_time_v1"
     sql = (
@@ -395,9 +399,12 @@ def test_g2_blocks_the_removed_hardcoded_pms_crm_join_id():
         for item in package.assets
     ]
 
-    assert support.g2_violation(
-        {"sql": sql, "parameters": {}, "references": references}, package
-    ) == "UNAPPROVED_JOIN"
+    assert (
+        support.g2_violation(
+            {"sql": sql, "parameters": {}, "references": references}, package
+        )
+        is None
+    )
     for reference in references:
         reference["join_ids"] = []
     assert support.g2_violation({"sql": sql, "parameters": {}, "references": references}, package) == "UNAPPROVED_JOIN"
@@ -915,7 +922,7 @@ def test_three_source_context_rejects_invalid_period_bindings(tmp_path, periods)
         )
 
 
-def test_versioned_three_source_uses_runtime_verified_contract_while_live_pending_fails():
+def test_versioned_three_source_uses_runtime_verified_contract_and_live_checks_runtime():
     adapter = I2DataPlatformAdapter(
         "http://trino:8080", "runtime-user", require_live_metadata=False
     )
@@ -930,11 +937,66 @@ def test_versioned_three_source_uses_runtime_verified_contract_while_live_pendin
     }
 
     live = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
-    with pytest.raises(ValueError, match="live DataHub runtime verification"):
+    live._trino.health = lambda: False
+    with pytest.raises(ValueError, match="live Trino runtime verification"):
         live.search_assets(
             "5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘.",
             {"role": "hotel_analyst"},
         )
+
+
+def test_live_mode_uses_current_datahub_response_instead_of_stale_evidence():
+    live = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    live._trino.health = lambda: True
+    live._datahub_dataset = lambda urn: live_dataset(live, urn)
+
+    assets = live.search_assets(
+        "5월과 6월 GOLD 고객의 객실 매출을 보여줘.",
+        {"role": "hotel_analyst"},
+    )
+
+    assert len(assets) == 5
+    assert all(live.get_asset_schema(item["urn"])["columns"] for item in assets)
+
+
+def test_approved_pms_crm_join_omits_empty_metric_registry():
+    adapter = simulated_verified_live_adapter()
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+
+    assets = adapter.search_assets(
+        "GOLD 고객의 객실 매출",
+        {"role": "hotel_analyst"},
+    )
+
+    assert len(assets) == 5
+    assert all("metrics" not in asset for asset in assets)
+
+
+def test_live_raw_columns_do_not_evict_approved_contract_assets():
+    adapter = simulated_verified_live_adapter()
+
+    def dataset_with_unapproved_columns(urn):
+        dataset = live_dataset(adapter, urn)
+        dataset["schemaMetadata"]["fields"].extend(
+            {"fieldPath": f"raw_extra_{index}"} for index in range(20)
+        )
+        return dataset
+
+    adapter._datahub_dataset = dataset_with_unapproved_columns
+
+    assets = adapter.search_assets(
+        "GOLD 고객의 객실 매출",
+        {"role": "hotel_analyst"},
+    )
+
+    assert len(assets) == 5
+    assert all(
+        not any(
+            column["name"].startswith("raw_extra_")
+            for column in adapter.get_asset_schema(asset["urn"])["columns"]
+        )
+        for asset in assets
+    )
 
 
 def test_versioned_three_source_requires_real_trino_pass(tmp_path):

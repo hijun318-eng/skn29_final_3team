@@ -111,6 +111,28 @@ query Dataset($urn: String!) {
                     if required_filter["field"] == "data_period_status":
                         required_filter["value"] = "YTD_SYNTHETIC"
         self._metrics = tuple(metrics)
+        approved_joins = contract.get("approved_joins")
+        if (
+            not isinstance(approved_joins, list)
+            or not approved_joins
+            or any(
+                not isinstance(item, dict)
+                or not isinstance(item.get("id"), str)
+                or not isinstance(item.get("assets"), list)
+                or not item["assets"]
+                for item in approved_joins
+            )
+        ):
+            raise ValueError("analytics context contract approved joins are invalid")
+        self._approved_joins = {
+            frozenset(map(str, item["assets"])): str(item["id"])
+            for item in approved_joins
+        }
+        if (
+            len(self._approved_joins) != len(approved_joins)
+            or len({item["id"] for item in approved_joins}) != len(approved_joins)
+        ):
+            raise ValueError("analytics context contract approved joins must be unique")
         three_source = json.loads(
             (three_source_path or root / "src" / "data" / "pms_crm_pos_context.i5.v1.json")
             .read_text(encoding="utf-8")
@@ -386,8 +408,8 @@ query Dataset($urn: String!) {
         column_count = 0
         query_use = self._query_use(query)
         if self._require_live_metadata:
-            if not self._bindings_verified or not self._live_runtime_verified:
-                raise ValueError("live DataHub runtime verification is unavailable")
+            if not self._trino.health():
+                raise ValueError("live Trino runtime verification is unavailable")
         elif query_use == "approved_pms_crm_pos_join":
             if not self._three_source_verified:
                 raise ValueError("versioned 3-source runtime verification is unavailable")
@@ -421,14 +443,18 @@ query Dataset($urn: String!) {
                     raise ValueError("live DataHub metadata does not match the contract")
             self._live_schemas[asset["urn"]] = asset["columns"]
             item = {key: value for key, value in asset.items() if key != "columns"}
-            item["join_ids"] = (
-                (self._PMS_CRM_POS_JOIN_ID,)
-                if query_use == "approved_pms_crm_pos_join"
-                else ()
-            )
+            item["join_ids"] = ()
             selected.append(item)
-            column_count += len(columns)
+            column_count += len(asset["columns"])
         selected_fqns = {item["fqn"] for item in selected}
+        approved_join_id = None
+        if query_use == "approved_pms_crm_pos_join":
+            approved_join_id = self._PMS_CRM_POS_JOIN_ID
+        elif query_use == "approved_pms_crm_join":
+            approved_join_id = self._approved_joins.get(frozenset(selected_fqns))
+        if approved_join_id:
+            for item in selected:
+                item["join_ids"] = (approved_join_id,)
         metrics = tuple(
             metric for metric in self._metrics if metric.get("asset_fqn") in selected_fqns
         )
@@ -436,11 +462,16 @@ query Dataset($urn: String!) {
             item_metrics = tuple(
                 metric for metric in metrics if metric["asset_fqn"] == item["fqn"]
             )
-            if item_metrics or query_use != "approved_pms_crm_pos_join":
+            if item_metrics or query_use not in {
+                "approved_pms_crm_join",
+                "approved_pms_crm_pos_join",
+            }:
                 item["metrics"] = item_metrics
         if query_use == "approved_pms_crm_pos_join" and selected:
             selected[0]["required_filters"] = self._three_source_filters
             selected[0]["parameter_bindings"] = self._three_source_parameters
+        if self._require_live_metadata and not selected:
+            raise ValueError("live DataHub returned no entitled matching assets")
         return selected
 
     def get_asset_schema(self, urn: str) -> dict[str, Any]:

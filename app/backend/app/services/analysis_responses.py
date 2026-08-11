@@ -65,8 +65,16 @@ class AnalysisResponseFactory:
                 unit="건",
             ),
         )
-        if decision.template_id == "weekly-room-operations" and rows and all("room_revenue" in row for row in rows):
-            total = sum(Decimal(str(row["room_revenue"])) for row in rows)
+        revenue_field = next(
+            (
+                field
+                for field in ("recognized_room_revenue_krw", "room_revenue")
+                if rows and all(field in row for row in rows)
+            ),
+            None,
+        )
+        if decision.template_id == "weekly-room-operations" and revenue_field:
+            total = sum(Decimal(str(row[revenue_field])) for row in rows)
             metrics = (
                 MetricValue(
                     metric_id="recognized_room_revenue",

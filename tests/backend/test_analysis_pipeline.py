@@ -14,6 +14,7 @@ from app.adapters.contract_model import ContractModelAdapter
 from app.contracts import (
     AnalysisRequest,
     AnalysisStatus,
+    ErrorCode,
     PipelineStage,
     RequestContext,
     Role,
@@ -194,6 +195,8 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertNotEqual(node2["normalized_question"], node2["question_id"])
 
     def test_approved_template_reaches_template_route_and_both_gates(self) -> None:
+        model = CountingModel()
+        service = AnalysisService(self.adapter, model)
         template = ApprovedTemplate(
             template_id="weekly-room-operations",
             parameter_names=frozenset({"week_start"}),
@@ -211,13 +214,41 @@ class AnalysisPipelineTest(unittest.TestCase):
         )
         decision = RoutingService((template,)).decide(payload)
 
-        response = self.service.analyze(payload, self.context, decision)
+        response = service.analyze(payload, self.context, decision)
 
         self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
         self.assertEqual("TEMPLATE", response.data.route.value)
         self.assertEqual(template.template_id, response.data.template_id)
         self.assertTrue(response.data.gates.g1_required)
         self.assertTrue(response.data.gates.g2_required)
+        self.assertEqual(0, model.calls)
+        self.assertEqual("TEMPLATE-RESULT-v1.0.0", response.data.result.evidence.model_version)
+
+    def test_approved_template_g2_failure_does_not_call_model_repair(self) -> None:
+        model = CountingModel()
+        service = AnalysisService(self.adapter, model)
+        template = ApprovedTemplate(
+            template_id="weekly-room-operations",
+            parameter_names=frozenset(),
+            allowed_roles=frozenset({Role.HOTEL_ANALYST}),
+            sql_text="SELECT 1 FROM secret.private_table LIMIT 1",
+            source_fqns=frozenset({"pms.public.pms_guests"}),
+        )
+        payload = AnalysisRequest(
+            question="weekly room operations",
+            template_id=template.template_id,
+        )
+
+        response = service.analyze(
+            payload,
+            self.context,
+            RoutingService((template,)).decide(payload),
+        )
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ErrorCode.SQL_POLICY_BLOCKED, response.error.code)
+        self.assertEqual(0, response.data.repair_count)
+        self.assertEqual(0, model.calls)
 
     def test_versioned_trino_demo_uses_only_the_approved_serving_view(self) -> None:
         decision = RoutingService.for_versioned_trino_demo().decide(

@@ -22,6 +22,7 @@ KNOWN_REVISIONS = (
     "20260804_04",
     "20260804_05",
     "20260810_06",
+    "20260811_07",
 )
 LEGACY_REVISION_UNSUPPORTED = "LEGACY_REVISION_UNSUPPORTED"
 
@@ -47,7 +48,7 @@ class MigrationGraphTest(unittest.TestCase):
         script = ScriptDirectory.from_config(config)
 
         self.assertEqual(["20260729_01"], script.get_bases())
-        self.assertEqual(["20260810_06"], script.get_heads())
+        self.assertEqual(["20260811_07"], script.get_heads())
         self.assertEqual(
             set(KNOWN_REVISIONS),
             {item.revision for item in script.walk_revisions()},
@@ -100,7 +101,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         result = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertEqual("20260810_06", self.revision(self.empty_database))
+        self.assertEqual("20260811_07", self.revision(self.empty_database))
 
     def test_known_20260731_revision_upgrades_to_single_head(self) -> None:
         url = self.base_url.set(database=self.known_database).render_as_string(
@@ -113,7 +114,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
-        self.assertEqual("20260810_06", self.revision(self.known_database))
+        self.assertEqual("20260811_07", self.revision(self.known_database))
 
     def test_report_head_upgrades_to_analysis_persistence_head(self) -> None:
         database = f"migration_report_{uuid4().hex[:8]}"
@@ -131,7 +132,30 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
+        self.assertEqual("20260811_07", self.revision(database))
+
+    def test_analysis_head_roundtrips_through_context_registry(self) -> None:
+        database = f"migration_context_{uuid4().hex[:8]}"
+        admin = create_engine(
+            self.base_url.set(database="postgres"),
+            isolation_level="AUTOCOMMIT",
+        )
+        with admin.connect() as connection:
+            connection.exec_driver_sql(f"CREATE DATABASE {database}")
+        admin.dispose()
+        url = self.base_url.set(database=database).render_as_string(hide_password=False)
+        known = alembic("upgrade", "20260810_06", database_url=url)
+        self.assertEqual(0, known.returncode, known.stdout + known.stderr)
+
+        upgrade = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, upgrade.returncode, upgrade.stdout + upgrade.stderr)
+        self.assertEqual("20260811_07", self.revision(database))
+        downgrade = alembic("downgrade", "20260810_06", database_url=url)
+        self.assertEqual(0, downgrade.returncode, downgrade.stdout + downgrade.stderr)
         self.assertEqual("20260810_06", self.revision(database))
+        second_upgrade = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
+        self.assertEqual("20260811_07", self.revision(database))
 
 
 if __name__ == "__main__":

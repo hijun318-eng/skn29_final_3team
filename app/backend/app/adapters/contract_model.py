@@ -462,3 +462,10 @@ class ContractModelAdapter:
             "period_start": period_start.isoformat(),
             "period_end_exclusive": period_end.isoformat(),
         }
+
+
+class TemplateOnlyModelAdapter:
+    """승인 Template은 허용하고 신규 SQL·LLM 호출은 fail-closed한다."""
+
+    def generate(self, node: str, _payload: dict[str, Any]) -> dict[str, Any]:
+        raise ValueError(f"{node} requires an approved model endpoint")

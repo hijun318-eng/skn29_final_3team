@@ -49,3 +49,15 @@ def test_workflow_keeps_read_only_repository_permission():
     source = _workflow()
     assert source.count("permissions:") == 1
     assert re.search(r"(?m)^permissions:\s*\n  contents: read\s*$", source)
+
+
+def test_product_jobs_run_after_role_scope_failure_without_opening_quality_gate():
+    source = _workflow()
+    for output in ("python", "documents", "frontend", "compose"):
+        assert re.search(
+            rf"(?m)^    if: \$\{{\{{ always\(\) && needs\['role-scope'\]\.outputs\.{output} == 'true'",
+            source,
+        )
+
+    assert 'ROLE_SCOPE: ${{ needs[\'role-scope\'].result }}' in source
+    assert 'if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then' in source

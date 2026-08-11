@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 팀원 개인 branch와 dev·main 통합 정책 및 사람이 수행하는 Git 절차 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.12 |
-| 문서 기준일 | 2026-08-06 10:56 |
+| 버전 | v1.13 |
+| 문서 기준일 | 2026-08-11 12:10 |
 | 작성·수정 | 박준희 |
 
 각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다. PR은 필수 절차가 아니며 GitHub Actions는 개인 branch와 `dev` push를 기준으로 실행한다. CI를 실행할 수 없으면 같은 검증을 local에서 수행하고, 필수 검증이 실패한 branch는 병합하지 않는다.
@@ -14,13 +14,21 @@
 
 ## 에이전트 작업 시작
 
-역할 작업은 파일을 수정하기 전에 본인 branch에서 다음 한 명령으로 시작한다.
+Git의 `Gate_실행_카드_원장.md`를 실행 상태의 단일 기준으로 사용한다. Google Docs는 요청과 응답을 전달하는 작업함이며 READY 여부나 허용 경로를 판정하는 기준으로 사용하지 않는다.
+
+역할 작업은 파일을 수정하기 전에 본인 branch에서 다음 한 명령으로 시작한다. 기본 실행은 fetch·merge·push 없이 현재 상태만 진단한다.
 
 ```powershell
-python .github/scripts/gate_scope.py --branch <본인 branch> --bootstrap
+python .github/scripts/agent_workflow.py --branch <본인 branch>
 ```
 
-이 명령은 현재 branch·dirty worktree·마지막 non-`PLANNED` 실행 카드 상태를 검사하고, 처음부터 끝까지 읽을 문서와 현재 카드 관련 절을 읽을 문서를 구분해 출력한다. worktree의 절대 경로는 달라도 되지만 branch가 카드의 `PERSONAL_BRANCH`와 다르거나 카드가 `READY`·`IN_PROGRESS`가 아니거나 기존 변경이 있으면 구현하지 않는다.
+출력의 `action`이 `fast-forward-available`일 때만 아래 명령으로 현재 개인 branch를 이미 존재하는 `origin/dev`까지 fast-forward할 수 있다. 이 명령도 fetch·push·reset·rebase·stash는 수행하지 않는다.
+
+```powershell
+python .github/scripts/agent_workflow.py --branch <본인 branch> --ff-only-dev
+```
+
+이 명령은 기존 `gate_scope.py`의 preflight 판정을 재사용해 현재 branch·dirty worktree·카드 계약·허용 경로를 검사한다. `--ff-only-dev`가 실제 fast-forward를 수행하면 갱신된 원장으로 preflight를 다시 실행한다. 개인 branch와 `origin/dev`가 갈라졌거나 branch·카드·도구·working tree 조건이 맞지 않으면 변경 없이 실패한다. worktree의 절대 경로는 달라도 되지만 branch가 카드의 `PERSONAL_BRANCH`와 다르거나 카드가 `READY`·`IN_PROGRESS`가 아니거나 기존 변경이 있으면 구현하지 않는다.
 
 ## Branch 역할
 
@@ -163,6 +171,7 @@ git push origin main
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.13 | 2026-08-11 12:10 | Git Gate 정본과 Google Docs 요청함을 구분하고 read-only 진단·제한적 dev fast-forward 단일 명령 추가 |
 | v1.12 | 2026-08-06 10:56 | 병합 단계가 공용 JSON session에서 dev·source SHA와 CI 결과를 재사용하도록 사전검사 절차 보완 |
 | v1.11 | 2026-08-06 10:09 | 역할 작업 bootstrap, 다중 branch 사전점검과 병합 카드 종료 기록 추가 |
 | v1.10 | 2026-08-06 09:30 | source CI 성공을 병합 조건으로 추가하고 실제 변경 문서 검사·여러 branch 보고 일괄 commit 적용 |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.69 |
-| 문서 기준일 | 2026-08-11 14:04 |
+| 버전 | v5.70 |
+| 문서 기준일 | 2026-08-11 14:15 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -26,7 +26,7 @@
 | R2 | `R2-W5-F9` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `READY` | `jaehong` |
-| R5 | `R5-W5-F4` | `READY` | `minji` |
+| R5 | `R5-W5-F4` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
 
@@ -477,7 +477,7 @@ R1_REVIEW_CONDITIONS=현재 R5 READY 카드는 없고 schedule UI는 R4 worker/s
 ### R5 · R5-W5-F4
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -506,6 +506,8 @@ STOP_CONDITIONS=exact external repo·HEAD·clean snapshot 불일치; local-only 
 EXTERNAL_ACTION_PERMISSION=origin/minji 46e278b의 source CI 31454965937이 제품 scope가 아니라 handoff T8 NOT_RUN·NOT_RUN/RESIDUAL_RISKS 때문에 REVIEW_REQUIRED로 실패했으므로, exact clean external clone에서 fetch 후 latest origin/dev 473d014를 history-preserving non-ff merge하고 handoff만 교정한 뒤 minji corrective push 1회를 추가 승인한다. 중간 push·reset·rebase·force push·stash 조작·다른 project/container/volume·firewall·backend lifecycle·외부 배포·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=Agent·Report base 불일치; 명시 opt-in 없는 LAN 공개; production 자동 fixture/mock fallback; secret 노출; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=local-only 3 commits와 latest dev ancestry, inherited 15경로 overlap 0, F4 build wiring, source CI와 handoff를 확인한다. corrective push CI PASS를 R1이 원격 run으로 확인한 뒤에만 dev 통합하며 CI_PENDING은 terminal PASS가 아니다. backend runtime 실패는 R5가 우회하지 않고 R4 corrective 결과와 결합해 후속 판정한다.
+RESULT_SHA=895d7b2cec61a1fcd39eac0751ed2052b43df73b
+RESULT_CI=branch 31460952787 PASS
 ```
 
 ### R1 · R1-W5-F23
@@ -798,6 +800,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.70 | 2026-08-11 14:15 | R5-W5-F4의 기존 UI·버튼·레이아웃 이력과 backend build 주소 연결을 보존하고 source CI 31460952787 PASS를 확인해 MERGED_DEV로 전환 |
 | v5.68 | 2026-08-11 14:04 | stale branch self-sync·Gate-only 원장 발행·remote source preflight의 세 자동화 병목과 중복 시작 지침을 최소 교정하는 R1-W5-F29 READY 발행 |
 | v5.69 | 2026-08-11 15:18 | R1-W5-F29 source CI 31460026364 PASS와 dev 충돌 없는 반영을 확인해 MERGED_DEV 전환 |
 | v5.67 | 2026-08-11 13:42 | terminal R1 카드 때문에 Gate-only 발행 CI가 scope FAIL하는 순환을 해소하고 역할별 active READY·source evidence 전이만 담당하는 R1-W5-F28 READY 발행 |

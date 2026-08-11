@@ -5,6 +5,8 @@ services:
     build:
       context: ../../app/enterprise-react
       dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_BASE_URL: "${VITE_BACKEND_BASE_URL:-http://127.0.0.1:18000}"
     ports:
       - "${FRONTEND_BIND_ADDRESS:-127.0.0.1}:13000:8080"
     healthcheck:

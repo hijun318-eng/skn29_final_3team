@@ -5,8 +5,6 @@ import {
   Database,
   FileBarChart,
   MessageSquareText,
-  PanelLeftClose,
-  PanelLeftOpen,
   X,
 } from "lucide-react";
 import { PAGE_PATHS } from "../../routing";
@@ -18,7 +16,9 @@ const NAVIGATION = [
   { id: "connections", path: PAGE_PATHS.connections, label: "DB 연결 관리", icon: Database, group: "admin" },
 ];
 
-export function AppSidebar({ page, onNavigate, open, onClose, collapsed, onToggleCollapsed }) {
+const SHOW_ADMIN_NAV = true;
+
+export function AppSidebar({ page, onNavigate, open, onClose }) {
   const renderGroup = (group, title) => (
     <>
       <small className="nav-group">{title}</small>
@@ -26,8 +26,6 @@ export function AppSidebar({ page, onNavigate, open, onClose, collapsed, onToggl
         <button
           className={page === id ? "active" : ""}
           aria-current={page === id ? "page" : undefined}
-          aria-label={collapsed ? label : undefined}
-          title={collapsed ? label : undefined}
           onClick={() => {
             onNavigate(path);
             onClose();
@@ -44,12 +42,12 @@ export function AppSidebar({ page, onNavigate, open, onClose, collapsed, onToggl
   return (
     <>
       {open && <button className="scrim" aria-label="메뉴 닫기" onClick={onClose} />}
-      <aside id="main-navigation" className={`sidebar ${open ? "sidebar--open" : ""} ${collapsed ? "sidebar--collapsed" : ""}`}>
+      <aside className={`sidebar ${open ? "sidebar--open" : ""}`}>
         <div className="brand">
-          <div className="brand-mark" aria-hidden="true">A</div>
+          <div className="brand-mark">AS</div>
           <div>
-            <b>Answervice</b>
-            <small>Data intelligence</small>
+            <b>ANSWERVICE</b>
+            <small>Enterprise Intelligence</small>
           </div>
           <button onClick={onClose} aria-label="메뉴 닫기">
             <X size={18} />
@@ -57,7 +55,7 @@ export function AppSidebar({ page, onNavigate, open, onClose, collapsed, onToggl
         </div>
         <nav>
           {renderGroup("workspace", "WORKSPACE")}
-          {renderGroup("admin", "ADMINISTRATION")}
+          {SHOW_ADMIN_NAV && renderGroup("admin", "ADMINISTRATION")}
         </nav>
         <div className="organization">
           <Building2 size={20} />
@@ -67,15 +65,6 @@ export function AppSidebar({ page, onNavigate, open, onClose, collapsed, onToggl
           </div>
           <ChevronDown size={15} />
         </div>
-        <button
-          className="sidebar-toggle"
-          onClick={onToggleCollapsed}
-          aria-label={collapsed ? "사이드바 펼치기" : "사이드바 접기"}
-          aria-expanded={!collapsed}
-        >
-          {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
-          <span>{collapsed ? "펼치기" : "사이드바 접기"}</span>
-        </button>
       </aside>
     </>
   );

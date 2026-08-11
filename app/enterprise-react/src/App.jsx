@@ -7,6 +7,7 @@ const AgentPage = lazy(() => import("./pages/AgentPage").then((module) => ({ def
 const ReportsPage = lazy(() => import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })));
 const CatalogPage = lazy(() => import("./pages/CatalogPage").then((module) => ({ default: module.CatalogPage })));
 const ConnectionsPage = lazy(() => import("./pages/ConnectionsPage").then((module) => ({ default: module.ConnectionsPage })));
+const USE_PPT_THEME = true;
 
 const PAGE_META = {
   chat: ["분석 Agent", "자연어 질문으로 승인된 기업 데이터를 수집·분석합니다."],
@@ -29,9 +30,7 @@ function NotFoundPage({ onNavigate }) {
 
 export function App() {
   const [route, setRoute] = useState(() => resolveRoute(window.location.pathname));
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [theme, setTheme] = useState(() => window.localStorage.getItem("answervice.theme") || "dark");
+  const [menuOpen, setMenuOpen] = useState(true);
   const [isPending, startTransition] = useTransition();
   const page = route.page;
   const [title, description] = PAGE_META[page];
@@ -44,6 +43,7 @@ export function App() {
     }
 
     const handlePopState = () => {
+      setMenuOpen(false);
       startTransition(() => setRoute(resolveRoute(window.location.pathname)));
     };
 
@@ -51,30 +51,16 @@ export function App() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("answervice.theme", theme);
-  }, [theme]);
-
-  const closeMenu = useCallback(() => {
-    setMenuOpen(false);
-    window.requestAnimationFrame(() => document.querySelector(".mobile-menu")?.focus());
-  }, []);
-
-  useEffect(() => {
-    if (!menuOpen) return undefined;
-    const handleEscape = (event) => {
-      if (event.key === "Escape") closeMenu();
-    };
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [closeMenu, menuOpen]);
-
   const navigate = useCallback((nextPath) => {
     const nextRoute = resolveRoute(nextPath);
-    if (nextRoute.path === route.path) return;
+    if (nextRoute.path === route.path) {
+      window.dispatchEvent(new CustomEvent("answervice:navigate", { detail: nextRoute.path }));
+      setMenuOpen(false);
+      return;
+    }
 
     window.history.pushState({}, "", nextRoute.path);
+    setMenuOpen(false);
     startTransition(() => setRoute(nextRoute));
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
   }, [route.path]);
@@ -90,28 +76,19 @@ export function App() {
         />
       );
     }
-    return <AgentPage />;
+    return <AgentPage onNavigate={navigate} />;
   }, [navigate, page]);
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${isPending ? "is-page-pending" : ""}`}>
+    <div className={`app-shell ${USE_PPT_THEME ? "ppt-theme" : ""} ${menuOpen ? "" : "sidebar-collapsed"} ${isPending ? "is-page-pending" : ""}`}>
       <AppSidebar
         page={page}
         onNavigate={navigate}
         open={menuOpen}
-        onClose={closeMenu}
-        collapsed={sidebarCollapsed}
-        onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
+        onClose={() => setMenuOpen(false)}
       />
       <div className="workspace">
-        <AppHeader
-          title={title}
-          description={description}
-          onMenu={() => setMenuOpen(true)}
-          menuOpen={menuOpen}
-          theme={theme}
-          onThemeToggle={() => setTheme((value) => value === "dark" ? "light" : "dark")}
-        />
+        <AppHeader title={title} description={description} onMenu={() => setMenuOpen(true)} />
         <div className="page-progress" aria-hidden="true" />
         <main className="page-stage" key={route.path} aria-busy={isPending}>
           <Suspense fallback={<div className="page-loading"><i /><b>페이지를 준비하고 있습니다.</b></div>}>

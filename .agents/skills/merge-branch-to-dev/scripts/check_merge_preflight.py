@@ -126,6 +126,8 @@ def load_session(path: Path) -> dict[str, object]:
         raise ValueError("병합 session의 base SHA 형식이 잘못되었습니다.")
     if data.get("remote_only") not in (None, True, False):
         raise ValueError("병합 session의 remote_only 형식이 잘못되었습니다.")
+    if data.get("self_service_source") not in (None, *PERSONAL_BRANCHES):
+        raise ValueError("병합 session의 self_service_source가 잘못되었습니다.")
     for saved in data["sources"].values():
         if (
             not isinstance(saved, dict)
@@ -154,11 +156,16 @@ def result_fields(session: dict[str, object], source: str) -> dict[str, str] | N
 
 
 def batch_payload(
-    sources: list[str], remote_only: bool = False
+    sources: list[str], remote_only: bool = False, self_service_source: str | None = None
 ) -> dict[str, object]:
     current = git("branch", "--show-current")
     status = git("status", "--porcelain")
     errors = []
+    if self_service_source:
+        if sources != [self_service_source]:
+            errors.append("self-service는 자기 mapped branch 하나만 허용합니다.")
+        if remote_only:
+            errors.append("self-service는 remote-only를 허용하지 않습니다.")
     if current != "dev":
         errors.append("batch 단계의 현재 branch가 dev가 아닙니다.")
     if status:
@@ -217,18 +224,24 @@ def main() -> int:
         action="store_true",
         help="등록 local source 대신 origin SHA와 해당 source CI를 병합 근거로 사용",
     )
+    parser.add_argument(
+        "--self-service-source",
+        choices=sorted(PERSONAL_BRANCHES),
+        help="개인 작업자가 자기 mapped branch 하나만 병합하도록 session에 고정",
+    )
     args = parser.parse_args()
 
     if args.phase == "batch":
         if not args.sources or args.source:
             parser.error("batch 단계에는 --sources만 사용합니다.")
-        payload = batch_payload(args.sources, args.remote_only)
+        payload = batch_payload(args.sources, args.remote_only, args.self_service_source)
         if args.session and not payload["errors"]:
             path = merge_session_path()
             session = {
                 "version": 1,
                 "base": payload["dev_local"],
                 "remote_only": args.remote_only,
+                "self_service_source": args.self_service_source,
                 "sources": {
                     item["source"]: {"sha": item["sha"], "ci": item["source_ci"]}
                     for item in payload["sources"]
@@ -249,6 +262,11 @@ def main() -> int:
         session = {"version": 1, "sources": {}}
         errors.append(f"병합 session을 읽을 수 없습니다: {exc}")
     remote_only = args.remote_only or bool(session.get("remote_only", False))
+    self_service_source = session.get("self_service_source")
+    if self_service_source and args.source != self_service_source:
+        errors.append("self-service session은 고정된 자기 branch만 허용합니다.")
+    if self_service_source and remote_only:
+        errors.append("self-service session은 remote-only를 허용하지 않습니다.")
     current = git("branch", "--show-current")
     status = git("status", "--porcelain")
     if status:

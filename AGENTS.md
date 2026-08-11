@@ -70,6 +70,7 @@
 - branch·commit message 형식·PR·CI 정책의 단일 기준은 `docs/markdown/collaboration/README.md`다.
 - 명시적 요청 전에는 stage, commit, push, dependency 설치를 하지 않는다.
 - 개인 branch의 `dev` 병합과 commit message 초안은 각 Skill의 `description`에 따라 라우팅하며, 초안 요청은 stage·commit·push 승인으로 해석하지 않는다.
+- 개인 작업자는 `merge-branch-to-dev` Skill로 자기 mapped branch 하나만 `dev`에 병합할 수 있다. 다른 사람 branch·복수 source·remote-only·`main` 병합은 관리자 전용이며 force·rebase·reset·stash는 허용하지 않는다.
 - commit message에는 staged diff와 확인된 검증만 기록하고, 미실행 검증의 성공이나 diff에서 확인되지 않은 의도·효과를 쓰지 않는다.
 - 제목은 구현 수단보다 사용자가 체감하는 결과를 먼저 적고, `수정`, `개선`, `반영`처럼 대상이 불명확한 표현만 단독으로 쓰지 않는다. 예: `Report 오류 수정`보다 `Report 재생성 시 중복 Artifact가 생기지 않도록 수정`처럼 대상·상황·결과가 드러나게 쓴다.
 - PowerShell에서 다중행 commit message를 만들 때 작은따옴표 안의 `` `n `` 같은 escape 문자열을 사용하지 않는다. 본문은 실제 개행이 있는 UTF-8 message file과 `git commit -F <file>`을 사용해 `변경:`·목록·`검증:`·목록 구조를 보존한다. push 전 `git log -1 --format=%B`로 실제 개행과 각 헤더가 한 번만 있는지 확인한다.

@@ -118,6 +118,31 @@ class MergePreflightTest(unittest.TestCase):
             failed = preflight.batch_payload(["seung"], remote_only=True)
         self.assertIn("CI가 성공하지 않았습니다", failed["errors"][0])
 
+    def test_self_service_allows_only_one_owned_local_source(self) -> None:
+        sha = "a" * 40
+        cases = [(["seung"], False), (["junhee", "seung"], False), (["junhee"], True)]
+        for sources, remote_only in cases:
+            with self.subTest(sources=sources, remote_only=remote_only):
+                with (
+                    patch.object(preflight, "git", side_effect=["dev", ""]),
+                    patch.object(preflight, "ref", return_value=sha),
+                    patch.object(preflight, "worktree_roots", return_value={}),
+                    patch.object(preflight, "source_ci", return_value={"status": "completed", "conclusion": "success"}),
+                ):
+                    payload = preflight.batch_payload(
+                        sources, remote_only=remote_only, self_service_source="junhee"
+                    )
+                self.assertTrue(any("self-service" in error for error in payload["errors"]))
+
+        with (
+            patch.object(preflight, "git", side_effect=["dev", "", ""]),
+            patch.object(preflight, "ref", return_value=sha),
+            patch.object(preflight, "worktree_roots", return_value={"junhee": "C:/junhee"}),
+            patch.object(preflight, "source_ci", return_value={"status": "completed", "conclusion": "success"}),
+        ):
+            payload = preflight.batch_payload(["junhee"], self_service_source="junhee")
+        self.assertEqual([], payload["errors"])
+
     def test_current_bundle_status_reuses_gate_scope_parser(self) -> None:
         with patch.object(preflight.Path, "exists", return_value=True), patch.object(
             preflight.Path, "read_text", return_value="ledger"

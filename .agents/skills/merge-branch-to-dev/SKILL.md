@@ -10,11 +10,11 @@ description: >-
 
 ## 권한 경계
 
-개인 branch를 `dev`에 병합하라는 명시적 요청은 대상 branch push, `dev` fetch/pull/merge/push, 보고서 절차가 반환한 `team_summaries/` 파일만 담은 보고 전용 commit과 병합 완료 후 source branch의 안전한 fast-forward·push까지 승인한다. 여러 branch가 한 요청에 포함되면 보고 전용 commit은 마지막 source 병합 뒤 하나만 만든다. 무관한 파일, force push, rebase, reset, stash 또는 history rewriting은 승인하지 않는다.
+개인 branch를 `dev`에 병합하라는 명시적 요청은 자기 mapped branch 하나의 push, `dev` fetch/pull/merge/push, 보고서 절차가 반환한 `team_summaries/` 파일만 담은 보고 전용 commit과 병합 완료 후 source branch의 안전한 fast-forward·push까지 승인한다. 개인 작업자는 `--self-service-source <자기 branch>`를 고정하며 다른 사람 branch·복수 source·`--remote-only`를 사용할 수 없다. 여러 branch·remote-only 통합은 관리자 전용이다. 무관한 파일, force push, rebase, reset, stash, `main` merge 또는 history rewriting은 승인하지 않는다.
 
 ## 절차
 
-1. 단일 Git 정책에 매핑된 개인 branch 중 사용자가 요청한 source 목록을 기록한다. 사용자가 이름을 지정하지 않았다면 현재 branch가 매핑된 경우에만 source 하나로 사용하고, 아니면 중단한다. 여러 source는 `dev`에서 `<python> .agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py --phase batch --sources <branch...> --session` 한 번으로 worktree root·clean 상태·remote SHA·source CI를 먼저 점검한다. 등록 local source가 stale·dirty지만 병합 대상 `origin/<branch>` exact SHA와 그 SHA의 source CI가 PASS라면 관리자는 `--remote-only`를 추가할 수 있다. 이 경우 local source를 병합 근거로 사용하거나 변경하지 않는다. `--session`은 Git 공용 디렉터리의 untracked JSON에 최초 dev SHA·source SHA와 CI 결과·remote-only 여부만 저장하며 secret이나 변경 파일 내용은 저장하지 않는다.
+1. 개인 작업자는 현재 mapped branch와 요청 source가 같은지 확인하고 `dev`에서 `<python> .agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py --phase batch --sources <자기 branch> --self-service-source <자기 branch> --session`으로 실행자를 고정한다. 관리자의 여러 source 절차는 기존 batch 명령을 사용한다. 등록 local source가 stale·dirty한 경우의 `--remote-only`는 관리자만 사용할 수 있다. `--session`은 Git 공용 디렉터리의 untracked JSON에 최초 dev SHA·source SHA와 CI 결과·self-service source·remote-only 여부만 저장하며 secret이나 변경 파일 내용은 저장하지 않는다.
 2. local source 모드에서는 각 source의 작업이 commit되었고 clean인지 확인한다. origin을 fetch하고 `<python> .github/scripts/gate_scope.py --branch <branch> --base origin/dev --head HEAD --mode merge-base`로 handoff·범위를 local에서 먼저 검증한 뒤 push한다. push된 source SHA의 CI가 완료될 때까지 기다리고 다음 검사를 통과해야 한다. remote-only session은 batch에서 고정한 origin SHA·CI를 사용하므로 이 source 단계를 생략한다.
    `<python> .agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py --source <branch> --phase source --session`
    CI가 `missing`·`queued`·`in_progress`면 payload의 run ID 또는 `gh run list`로 찾은 ID를 `gh run watch <id> --exit-status`로 기다린 뒤 사전검사를 다시 실행한다. `failure`·`cancelled`·조회 불가는 병합하지 않는다.

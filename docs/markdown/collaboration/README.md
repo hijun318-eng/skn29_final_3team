@@ -8,7 +8,7 @@
 | 문서 기준일 | 2026-08-11 15:46 |
 | 작성·수정 | 박준희 |
 
-각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다. PR은 필수 절차가 아니며 GitHub Actions는 개인 branch와 `dev` push를 기준으로 실행한다. CI를 실행할 수 없으면 같은 검증을 local에서 수행하고, 필수 검증이 실패한 branch는 병합하지 않는다.
+각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한다. source CI·handoff·범위·clean 검사를 통과하면 `merge-branch-to-dev` 절차의 `--self-service-source <자기 branch>`로 자기 branch 하나만 `dev`에 반영할 수 있다. 다른 사람 branch·복수 source·remote-only와 최종 `dev`→`main` 병합은 관리자 전용이다. PR은 필수 절차가 아니며 GitHub Actions는 개인 branch와 `dev` push를 기준으로 실행한다. CI를 실행할 수 없으면 같은 검증을 local에서 수행하고, 필수 검증이 실패한 branch는 병합하지 않는다.
 
 개인 branch CI는 변경 경로에 필요한 검사만 실행한다. Python·문서·frontend·Compose 변경을 구분하고 문서는 실제 변경된 Markdown만 검사하며, workflow 자체가 바뀌면 모든 검사를 실행한다. 같은 branch에 새 push가 생기면 이전 CI는 자동으로 취소한다. 역할 카드에 선언된 소비자 contract test를 포함해 `TEST_COMMANDS`가 CI보다 넓으면 해당 명령을 추가로 실행하며, 개인 branch CI 통과를 전체 저장소 검증으로 표현하지 않는다.
 
@@ -166,9 +166,9 @@ AI 에이전트가 개인 branch의 `dev` 병합을 수행할 때는 이 문서�
 
 등록된 local source worktree가 오래되거나 dirty여도 병합 대상이 이미 push된 `origin/<branch>`이고 그 exact SHA의 source CI가 PASS라면, 관리자는 batch에 `--remote-only --session`을 명시해 remote SHA만 병합 근거로 사용할 수 있다. 이 모드에서는 source 단계를 생략하고 dev·final 단계가 session의 remote SHA와 CI를 계속 검증한다. local source 변경은 읽거나 정리하지 않으며 병합 뒤 개인 branch 동기화도 clean 조건이 확인되지 않으면 생략한다.
 
-## 관리자 통합
+## 안전한 dev 통합
 
-팀원은 개인 branch push가 끝나면 관리자에게 branch 이름과 변경 내용을 알린다. 관리자는 다음 순서로 검증된 개인 branch를 `dev`에 반영하며, 병합 후 보고 통합·검증을 마친 뒤 마지막에 push한다.
+개인 작업자는 자기 mapped branch 하나만 self-service로, 관리자는 승인된 여러 branch를 다음 순서로 `dev`에 반영한다. 병합 후 보고 통합·검증을 마친 뒤 마지막에 push한다.
 
 ```powershell
 git switch dev

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.95 |
-| 문서 기준일 | 2026-08-11 19:02 |
+| 버전 | v5.96 |
+| 문서 기준일 | 2026-08-11 19:15 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -24,7 +24,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F37` | `READY` | `junhee` |
+| R1 | `R1-W5-F37` | `REVIEW` | `junhee` |
 | R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F17` | `READY` | `jaehong` |
@@ -508,7 +508,7 @@ RESULT_CI=branch 31470948044 PASS
 ### R1 · R1-W5-F37
 
 ```text
-STATUS=READY
+STATUS=REVIEW
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1168,6 +1168,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.96 | 2026-08-11 19:15 | 자기 mapped branch 단일 source만 self-service session에 고정하고 다른 branch·복수·remote-only를 차단하며 관리자 절차를 보존해 R1-W5-F37 REVIEW 전환 |
 | v5.95 | 2026-08-11 19:02 | mapped 개인 작업자가 자기 branch 하나만 기존 안전 조건을 유지해 dev에 병합하도록 관리자 전용 표현·실행자 검증을 최소 완화하는 R1-W5-F37 READY 발행 |
 | v5.94 | 2026-08-11 18:50 | R1-W5-F36의 외부 env 직접 참조·runtime 충돌 fail-closed와 source CI 31470948044 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.93 | 2026-08-11 18:31 | R2-W5-F12를 CRM `include_jobs: false` corrective와 recipe hash·existing isolated runtime ingestion·Semantic Catalog 8/116 evidence 재개 묶음으로 교정하고, 존재하지 않는 F9 handoff 소급과 DB grant·Docker lifecycle을 금지 |

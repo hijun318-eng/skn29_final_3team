@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.89 |
-| 문서 기준일 | 2026-08-11 17:55 |
+| 버전 | v5.90 |
+| 문서 기준일 | 2026-08-11 18:05 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -24,7 +24,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F34` | `REVIEW` | `junhee` |
+| R1 | `R1-W5-F36` | `READY` | `junhee` |
 | R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F17` | `READY` | `jaehong` |
@@ -408,7 +408,7 @@ RESULT_CI=branch 31466799848 PASS
 ### R1 · R1-W5-F34
 
 ```text
-STATUS=REVIEW
+STATUS=VERIFIED_GATE
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -434,6 +434,8 @@ STOP_CONDITIONS=conditional 후보의 missing·N/A permission 허용; permission
 EXTERNAL_ACTION_PERMISSION=origin read-only fetch·CI 조회, 허용 경로 commit·junhee push·source CI만 승인한다. dev/test merge·test runtime/env·Docker 변경·외부 시스템 쓰기·secret·비용 발생은 금지한다.
 AUTO_FAIL_CONDITIONS=conditional missing·N/A permission이 ledger health를 통과; non-conditional 카드에 새 필드 강제; 기존 clean·safe-stale·single-active·terminal CI guard 우회; scope·필수 검증 FAIL
 R1_REVIEW_CONDITIONS=target·integration 회귀와 문서 정책·scope가 PASS하고 source CI가 PASS한 뒤 dev 통합 여부를 별도 판정한다.
+RESULT_SHA=4db49b4263ba885f4cbfc35b2a590726958d8f7f
+RESULT_CI=branch 31469682947 PASS
 ```
 
 ### R1 · R1-W5-F35
@@ -454,7 +456,7 @@ START_POINT=R4-W5-F16과 R5-W5-F8이 dev e6f791f에 통합되고 dev CI 31468594
 DIRECTIVE=ACTION
 DIRECTIVE_TOKEN=R1-W5-F35@e6f791f
 AUTO_START=CONDITIONAL
-AUTO_START_AFTER=R1-W5-F34;R4-W5-F17;R5-W5-F8
+AUTO_START_AFTER=R1-W5-F34;R1-W5-F36;R4-W5-F17;R5-W5-F8
 CONTRACT_VERSION=ACTUAL-ANALYSIS-E2E-v1.0.0-DRAFT; OPENAPI-v1.0.0; TEST-BRANCH-RUNTIME-v1.0.1
 ALLOWED_PATHS=tests/integration/test_answervice_demo_runtime.py; handoffs/R1-W5-F35.json
 FORBIDDEN_PATHS=docs/markdown/daily_reports/**; app/**; infrastructure/**; src/**; tests/integration의 승인 1파일 외 tests/**; root Compose/env·.env; R2~R5 제품·보고·handoff; migration; dependency; secret
@@ -468,6 +470,37 @@ STOP_CONDITIONS=origin/test가 dev와 다름; dev/test CI Not Run·FAIL; .wt/tes
 EXTERNAL_ACTION_PERMISSION=이미 승인·기동된 same-checkout test runtime에 대한 read-only health, 실제 HTTP 요청, 실제 Trino read-only query, app-postgres의 API 기반 persisted readback과 허용 경로 commit·junhee push·source CI만 승인한다. .env 생성·복사·수정, Docker create/recreate/remove, volume/network 변경, DB DDL·DML 직접 실행, 제품 수정, 다른 project·외부 배포·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=same-SHA·test CI 없이 실행; mock·fixture success; client-owned role 신뢰; DB persistence·Trino·G3·Artifact 중 한 단계 누락; negative가 query 실행; Gold 불일치 은폐; scope·필수 검증 FAIL
 R1_REVIEW_CONDITIONS=동일 dev/test/runtime SHA에서 실제 network·request_id·query_id·artifact_id·persisted readback·Gold hash가 하나의 trace로 확인될 때만 MVP Core actual integration을 판정한다.
+```
+
+### R1 · R1-W5-F36
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F36
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=test runtime external env reference and concurrent runtime conflict fail-closed
+TASK_CARD_RANGE=R1-04 test runtime 외부 env 경로 안전 참조
+CURRENT_TASK_CARD_ID=R1-04-TEST-RUNTIME-EXTERNAL-ENV
+BASE_BRANCH=dev
+BASE_SHA=e6f791f7d18ab8b18695a943461a0b89b512d0b3
+START_POINT=R1-W5-F34 source CI 31469682947이 PASS했다. origin/test는 b78265c이고 .wt/test/.env 부재로 refresh가 fail-closed한다. env를 복사하지 않고 test worktree local git config가 승인된 기존 env 파일을 직접 참조하게 하되 실제 test merge·refresh는 수행하지 않는다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F36@e6f791f
+CONTRACT_VERSION=TEST-BRANCH-RUNTIME-v1.0.2-DRAFT
+ALLOWED_PATHS=.github/scripts/refresh_test_runtime.ps1; .githooks/post-merge; tests/integration/test_test_runtime_refresh.py; docs/markdown/collaboration/README.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F36.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=.env; .env.example; compose*.yml; .github/workflows/**; app/**; infrastructure/**; src/**; tests/**의 승인 1파일 외 경로; R2~R5 제품·보고·handoff; dependency·secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F36.json
+ACCEPTANCE_CRITERIA=post-merge hook은 local git config answervice.testEnvFile을 읽고 값이 없을 때만 test worktree의 .env를 fallback으로 넘긴다. refresh script는 absolute existing regular file만 허용하고 env 내용·값을 출력하지 않으며 required vars 존재 여부만 이름 기준으로 검증한다. 선택한 env는 docker compose --env-file exact path로 직접 사용하고 복사·생성·수정하지 않는다. dev와 test runtime의 고정 port·container_name 충돌 또는 source SHA·Compose checkout/config/env label 불일치는 Docker 변경 전에 fail-closed한다. 기존 opt-in·branch·clean·path classifier·PlanOnly 계약은 유지한다.
+ACCEPTANCE_IDS=AC1_CONFIG_THEN_FALLBACK;AC2_ABSOLUTE_EXISTING_FILE;AC3_NO_SECRET_OUTPUT;AC4_REQUIRED_VAR_NAMES;AC5_DIRECT_ENV_REFERENCE;AC6_CONCURRENT_CONFLICT_FAIL_CLOSED;AC7_SOURCE_LABEL_IDENTITY;AC8_EXISTING_GUARDS
+TEST_COMMANDS=hook config/fallback shell contract; PowerShell synthetic external env absolute/missing/relative/required-var/no-secret matrix; fixed port/container conflict matrix; source SHA·label mismatch matrix; parser; python -m pytest -p no:cacheprovider tests/integration/test_test_runtime_refresh.py -q; python -m pytest -p no:cacheprovider tests/integration -q; document/report policy; gate_scope 7 paths; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_HOOK;T2_ENV_MATRIX;T3_CONFLICT_MATRIX;T4_SOURCE_IDENTITY;T5_PARSE;T6_TARGET;T7_INTEGRATION;T8_DOCUMENT_POLICY;T9_SCOPE;T10_DIFF;T11_BRANCH_CI
+STOP_CONDITIONS=env copy·content/value 출력; relative·missing env 허용; required vars 값 노출; port/container 충돌 허용; source SHA·label 불일치 허용; Docker/test refresh 실행; dev/test merge; 제품·Compose·env·secret 수정; scope·필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=origin read-only fetch·CI 조회, 허용 경로 commit·junhee push·source CI만 승인한다. git config·env·Docker·dev/test branch·외부 시스템·secret·비용은 변경하지 않는다.
+AUTO_FAIL_CONDITIONS=external env가 compose --env-file로 직접 전달되지 않음; fallback 우선순위 역전; secret log; concurrent conflict 또는 mixed source 허용; 기존 PlanOnly·opt-in 회귀; scope·필수 검증 FAIL
+R1_REVIEW_CONDITIONS=synthetic env·conflict·source identity matrix와 전체 integration·source CI가 PASS한 뒤 test runtime 적용 여부를 별도 판정한다.
 ```
 
 ### R2 · R2-W5-F5
@@ -1100,6 +1133,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.90 | 2026-08-11 18:05 | R1-W5-F34 source CI 31469682947 PASS를 VERIFIED_GATE로 기록하고, env 복사 없이 local git config의 absolute existing env를 직접 참조하며 runtime 충돌·source 불일치를 차단하는 R1-W5-F36 READY 발행; F35 선행에 F36 terminal 추가 |
 | v5.89 | 2026-08-11 17:55 | 조건부 AUTO_START의 exact 외부 행위 권한 누락·N/A를 fail-closed하고 기존 non-conditional 호환 회귀를 확인해 R1-W5-F34 REVIEW 전환 |
 | v5.88 | 2026-08-11 17:30 | dev e6f791f·CI 31468594200 PASS와 R4 F16·R5 F8 통합을 기준으로 실제 protocol harness·격리 migration ownership을 R4-W5-F17 REWORK로 발행하고, R1-W5-F34와 F17 terminal 뒤 actual HTTP→DB→Trino→G3→Artifact를 검증할 R1-W5-F35 조건부 후보를 고정했다. origin/test는 b78265c이며 `.wt/test/.env` 부재로 refresh가 fail-closed해 same-SHA test CI 전까지 WAIT한다. |
 | v5.87 | 2026-08-11 17:25 | 조건부 AUTO_START 후보가 exact EXTERNAL_ACTION_PERMISSION 누락·N/A를 fail-closed하고 기존 non-conditional 카드를 보존하도록 R1-W5-F34 owner-scoped REWORK 발행 |

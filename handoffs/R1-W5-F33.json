@@ -29,11 +29,11 @@
     {"id": "T10_BRANCH_CI", "name": "junhee source CI", "status": "CI_PENDING", "evidence": "handoff push 뒤 terminal CI 확인 예정"}
   ],
   "NOT_RUN": [],
-  "CHANGE_REQUESTS": [
-    "R4: app_migration이 app_admin 소유 table을 변경하는 migration ownership 문제는 owner-scoped producer 카드로 별도 교정 필요; F33에서 DB 또는 backend를 변경하지 않음"
-  ],
-  "RESIDUAL_RISKS": [
-    "현재 local runtime은 mixed checkout이라 선택 재기동이 의도대로 차단된다. exact test worktree에서 세 service를 동일 env/config로 준비하기 전 actual integration refresh는 실행할 수 없다."
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "FOLLOWUP_CANDIDATES": [
+    "R4 owner-scoped: app_migration이 app_admin 소유 table을 변경하는 migration ownership 교정; F33에서는 DB·backend 미변경",
+    "R1 operator: exact test worktree에서 app-postgres·backend·frontend를 동일 env/config로 준비한 뒤 actual refresh 재검증"
   ],
   "EXTERNAL_APPROVAL_REQUIRED": [],
   "ACCEPTANCE_RESULTS": [

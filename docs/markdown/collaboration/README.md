@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 팀원 개인 branch와 dev·main 통합 정책 및 사람이 수행하는 Git 절차 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.16 |
-| 문서 기준일 | 2026-08-11 14:50 |
+| 버전 | v1.17 |
+| 문서 기준일 | 2026-08-11 15:46 |
 | 작성·수정 | 박준희 |
 
 각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다. PR은 필수 절차가 아니며 GitHub Actions는 개인 branch와 `dev` push를 기준으로 실행한다. CI를 실행할 수 없으면 같은 검증을 local에서 수행하고, 필수 검증이 실패한 branch는 병합하지 않는다.
@@ -47,11 +47,36 @@ R1이 `PLANNED` 카드에 `AUTO_START=CONDITIONAL`, exact `AUTO_START_AFTER`, �
 |---|---|
 | 최종 안정본 | `main` |
 | 팀 통합본 | `dev` |
+| 공동 실행 확인본 | `test` |
 | 준희 | `junhee` |
 | 민지 | `minji` |
 | 승 | `seung` |
 | 대성 | `daesung` |
 | 재홍 | `jaehong` |
+
+`test`는 작업 branch가 아니라 관리자가 검증된 개인 branch 또는 `dev`를 모아 공동 실행 환경에서 확인하는 branch다. `test` push는 GitHub hosted runner에서 `dev`와 같은 전체 검증을 수행하지만, hosted runner는 작업자 Windows PC의 Docker에 접근하거나 container를 재기동하지 않는다.
+
+### Test runtime 선택 재기동
+
+전용 test worktree에서 최초 한 번 승인된 local `.env`와 dev profile의 `app-postgres`, `backend`, `frontend`를 준비한다. `.env`는 commit하지 않는다. 기존 다른 Compose project나 동일 고정 container를 쓰는 환경과 test runtime을 동시에 기동하지 않는다.
+
+```powershell
+git fetch origin
+git worktree add --track -b test .wt/test origin/test
+Set-Location .wt/test
+git config --local core.hooksPath .githooks
+git config --local answervice.testAutoRefresh true
+docker compose -f compose.yml --env-file .env --profile dev up -d --build --wait app-postgres backend frontend
+```
+
+이후 관리자가 clean `test` worktree에서 검증된 branch를 merge하면 `post-merge` hook이 `ORIG_HEAD..HEAD`를 확인한다. `app/enterprise-react/**`는 `frontend`, `app/backend/**`·`src/**`·`config/**`는 `backend`만 `--no-deps --build --wait`로 갱신한다. 문서·test만 바뀌면 container를 건드리지 않는다. root Compose, `.env.example`, `infrastructure/**` 변경은 stateful 영향 가능성이 있으므로 자동 실행을 중단하고 R1이 수동 절차를 정한다.
+
+```powershell
+git fetch origin
+git merge --no-ff origin/<검증된-개인-branch>
+```
+
+Hook이 실패해도 완료된 Git merge를 되돌리거나 숨기지 않는다. 오류를 해결하기 전 `test`를 push하지 않으며 reset·rebase·stash·volume 삭제로 우회하지 않는다. 원격 `test` push만으로 test host가 자동 pull되지는 않으므로, 별도 self-hosted runner를 승인하기 전에는 전용 worktree에서 관리자가 merge하거나 fast-forward해야 local refresh가 실행된다.
 
 ## 처음 clone하는 팀원
 
@@ -178,6 +203,7 @@ git push origin main
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.17 | 2026-08-11 15:46 | 공동 실행 확인용 test branch의 hosted CI와 local opt-in 선택 재기동 절차 및 stateful 수동 검토 경계를 추가 |
 | v1.16 | 2026-08-11 14:50 | 작업 시작 결과 판정표와 재승인 불필요 경계를 추가하고 중복 명령·commit 예시를 단일 규칙으로 정리 |
 | v1.15 | 2026-08-11 14:08 | 선행 terminal·CI PASS·single-active·clean·safe-stale 조건을 만족한 pre-authorized PLANNED 카드의 effective READY 자동 착수 규칙 추가 |
 | v1.14 | 2026-08-11 14:04 | stale 원장보다 안전한 fast-forward를 먼저 수행하도록 단일 시작 명령을 명확히 하고 검증된 origin SHA의 remote-only dev 병합 절차 추가 |

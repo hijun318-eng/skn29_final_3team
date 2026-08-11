@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.75 |
-| 문서 기준일 | 2026-08-11 15:02 |
+| 버전 | v5.77 |
+| 문서 기준일 | 2026-08-11 15:35 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -24,7 +24,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F31` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F32` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F9` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `READY` | `jaehong` |
@@ -337,6 +337,39 @@ AUTO_FAIL_CONDITIONS=폐기 bootstrap 잔존; 시작 명령 중복; PASS 뒤 재
 R1_REVIEW_CONDITIONS=문서 정책과 자동화 회귀가 PASS하고 실제 agent_workflow 출력과 지침이 일치하며 source CI가 PASS한 뒤에만 dev 통합한다.
 RESULT_SHA=1c3f3fbdb668f0d927e26a3c49843db1d91632ee
 RESULT_CI=branch 31462642899 PASS
+```
+
+### R1 · R1-W5-F32
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F32
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=test branch selective local runtime refresh without hosted-runner deployment claims
+TASK_CARD_RANGE=R1-04·06 test 통합 branch와 경로 기반 frontend/backend 선택 재기동
+CURRENT_TASK_CARD_ID=R1-04-TEST-RUNTIME-REFRESH
+BASE_BRANCH=dev
+BASE_SHA=29451217a4c004520f682f1ccee34cd5b8d3634e
+START_POINT=전 역할의 검증된 변경이 dev 2945121에 통합됐고 junhee가 같은 SHA에서 clean하다. GitHub hosted runner는 이 Windows Docker host를 제어할 수 없으므로 test branch CI와 local test worktree의 post-merge refresh를 분리한다.
+DIRECTIVE=BUILD
+DIRECTIVE_TOKEN=R1-W5-F32@2945121
+CONTRACT_VERSION=TEST-BRANCH-RUNTIME-v1.0.0-DRAFT; COMPOSE-DEV-v1
+ALLOWED_PATHS=.github/workflows/ci.yml; .github/scripts/refresh_test_runtime.ps1; .githooks/post-merge; tests/integration/test_ci_workflow.py; tests/integration/test_test_runtime_refresh.py; docs/markdown/collaboration/README.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F32.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=app/**; infrastructure/**; src/**; tests/**의 승인 2파일 외 경로; root Compose·env; R2~R5 보고·handoff·제품 경로; dependency·secret; self-hosted runner 등록
+HANDOFF_MANIFEST=handoffs/R1-W5-F32.json
+ACCEPTANCE_CRITERIA=test push는 기존 hosted CI에서 dev와 같은 전체 검증을 수행하되 Docker host 배포를 주장하지 않는다. local test worktree에서 test branch merge가 완료되면 opt-in이 설정된 경우에만 post-merge가 ORIG_HEAD..HEAD 변경을 검사한다. app/enterprise-react 변경은 exact frontend, app/backend·src·backend Docker build input 변경은 exact backend만 --no-deps --build --wait로 recreate한다. 두 범위가 함께 바뀌면 두 service만 한 번 재기동한다. 문서·test·handoff·Gate-only 변경은 no-op이다. root Compose 또는 stateful infrastructure 변경은 자동 재기동하지 않고 manual review로 중단한다. branch 불일치·dirty worktree·필수 container 부재·env file 부재·Docker/health 실패도 fail-closed한다. volume·stateful service·다른 Compose project·firewall·secret은 변경하지 않는다. initial test worktree·env·dev profile 기동과 test branch 생성·merge는 문서의 명시적 관리자 절차로 분리한다.
+ACCEPTANCE_IDS=AC1_TEST_CI;AC2_HOST_BOUNDARY;AC3_FRONTEND_ONLY;AC4_BACKEND_ONLY;AC5_COMBINED_ONCE;AC6_NOOP_DOCS;AC7_STATEFUL_FAIL_CLOSED;AC8_OPT_IN_HOOK;AC9_NO_SECRET_OR_VOLUME;AC10_REGRESSION
+TEST_COMMANDS=workflow YAML parse와 test branch dev-sized job selection; refresh script path classifier frontend/backend/both/no-op/manual-review; branch·dirty·env·container fail-closed fixture; PowerShell parser; compose dev config; python -m pytest -p no:cacheprovider tests/integration/test_ci_workflow.py tests/integration/test_test_runtime_refresh.py -q; python -m pytest -p no:cacheprovider tests/integration -q; document policy; gate_scope preflight·9 planned paths·merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_WORKFLOW;T2_CLASSIFIER;T3_FAIL_CLOSED;T4_POWERSHELL_PARSE;T5_COMPOSE_CONFIG;T6_TARGET_TESTS;T7_INTEGRATION;T8_DOCUMENT_POLICY;T9_SCOPE;T10_DIFF;T11_BRANCH_CI
+STOP_CONDITIONS=hosted runner가 local Docker 재기동을 수행한다고 주장; test push만으로 외부 배포; root Compose·stateful infrastructure 자동 recreate; volume reset·prune; 다른 project/container; branch·dirty·env·health 실패 무시; wildcard service selection; R2~R5 제품 수정; self-hosted runner·secret·dependency 추가; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=test branch 생성·push, local test worktree 생성, opt-in git config, exact answervice frontend/backend recreate와 read-only health 확인, 허용 경로 commit·junhee push·source CI만 승인한다. dev merge·stateful container/volume·다른 project·firewall·secret·GitHub runner 등록은 금지한다.
+AUTO_FAIL_CONDITIONS=test CI가 dev 전체 검증보다 좁음; hosted/local 경계 오표시; docs-only인데 container restart; stateful path 자동 처리; branch/dirty/env/container guard 누락; scope·필수 검증 FAIL
+R1_REVIEW_CONDITIONS=synthetic path matrix와 local dry-run에서 exact service 선택·no-op·manual-review가 확인되고 source CI가 PASS한 뒤 test branch를 dev에서 생성해 관리자 merge 전용으로 사용한다.
+RESULT_SHA=c87361832fe84f044134125528e01c88d6208ceb
+RESULT_CI=branch 31463640451 PASS
 ```
 
 ### R2 · R2-W5-F5
@@ -870,6 +903,8 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.77 | 2026-08-11 15:35 | test branch 전체 CI와 local opt-in 선택 재기동을 검증하고 source CI 31463640451 PASS를 확인해 R1-W5-F32를 MERGED_DEV로 전환 |
+| v5.76 | 2026-08-11 15:34 | test branch의 hosted CI와 local Docker 경계를 분리하고 변경된 frontend/backend만 opt-in 재기동하는 R1-W5-F32 READY 발행 |
 | v5.75 | 2026-08-11 15:02 | R1-W5-F31 협업 지침 단일화와 source CI 31462642899 PASS를 확인해 MERGED_DEV로 전환 |
 | v5.74 | 2026-08-11 14:52 | 선언 READY와 조건부 effective READY를 구분하고 PASS 카드의 착수 재승인·token 재발행 반복을 금지하도록 사용 원칙 정합화 |
 | v5.73 | 2026-08-11 14:48 | 협업 문서의 중복 시작 흐름·폐기 bootstrap·조건부 READY 설명·과거 상태 오인을 최소 교정하는 R1-W5-F31 발행 |

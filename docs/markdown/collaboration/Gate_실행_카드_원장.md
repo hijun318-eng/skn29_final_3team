@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.47 |
-| 문서 기준일 | 2026-08-11 09:55 |
+| 버전 | v5.48 |
+| 문서 기준일 | 2026-08-11 10:10 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -25,7 +25,7 @@
 | R1 | `R1-W5-F21` | `READY` | `junhee` |
 | R2 | `R2-W5-F7` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
-| R4 | `R4-W5-F11` | `READY` | `jaehong` |
+| R4 | `R4-W5-F11` | `MERGED_DEV` | `jaehong` |
 | R5 | `R5-W5-F4` | `READY` | `minji` |
 
 ## 활성 실행 카드
@@ -1652,7 +1652,7 @@ RESULT_CI=branch 31363417507 PASS
 ### R4 · R4-W5-F11
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -1679,6 +1679,8 @@ STOP_CONDITIONS=migration/schema/template data 수정 필요; metric을 질문·
 EXTERNAL_ACTION_PERMISSION=local deterministic test, Python 3.12 일회성 test container, exact answervice backend service의 default/LAN config·preflight smoke, 허용 경로 commit·jaehong push·source CI를 승인한다. 기존 DB row·volume·다른 project/container·firewall·secret·외부 전송·비용 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=stale head ready; template count 완화; metric 임의 선택; unauthorized CORS; fake Report success; 기존 API 파손; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=세 하위 항목은 같은 시연 연결 checkpoint에서 병렬 구현할 수 있다. 한 항목이 실패하면 해당 항목만 BLOCKED로 기록하고 검증된 나머지 변경은 source handoff에 분리한다. 최종 dev 통합은 branch CI와 owner 경계 검토 뒤 판정한다.
+RESULT_SHA=4c5ecd99a4efec82c11304b1da3091f34cb05d4b
+RESULT_CI=branch 31447774460 PASS; 126 passed·12 skipped
 ```
 
 ### R5 · R5-W5-F1
@@ -1816,6 +1818,7 @@ R1_REVIEW_CONDITIONS=backend runtime/CORS가 아직 실패해도 R5 wiring 자�
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.48 | 2026-08-11 10:10 | R4-W5-F11의 readiness·Node3 payload·LAN API 경계와 source CI를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.47 | 2026-08-11 09:55 | R1-W5-F20 이력 조정을 dev에 통합하고 R1 CI Node 24 공급망 pin, R3 Node3·ModelOps DRAFT 검증을 READY 발행; R4·R5는 Gate-only dev 선행을 ff-only 동기화해 기존 token으로 즉시 착수하도록 명시 |
 | v5.46 | 2026-08-11 09:44 | 작업자 Downloads 저장소의 seung 7c4164b·dirty 일일보고 1개 snapshot을 조건부 정본으로 받아 제품·stash 불변과 F6/F7 handoff만 허용하도록 R2-W5-F7 token 재발행 |
 | v5.45 | 2026-08-11 09:38 | 갈라진 junhee·dev 이력과 기존 R1 증거를 삭제 없이 보존하고 최신 Gate로 동기화하는 R1-W5-F20 reconciliation REWORK 발행 |

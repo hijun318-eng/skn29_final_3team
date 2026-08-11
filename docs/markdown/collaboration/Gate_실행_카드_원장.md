@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.64 |
-| 문서 기준일 | 2026-08-11 12:55 |
+| 버전 | v5.65 |
+| 문서 기준일 | 2026-08-11 13:02 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -23,7 +23,7 @@
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
 | R1 | `R1-W5-F27` | `MERGED_DEV` | `junhee` |
-| R2 | `R2-W5-F8` | `MERGED_DEV` | `seung` |
+| R2 | `R2-W5-F9` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F12` | `MERGED_DEV` | `jaehong` |
 | R5 | `R5-W5-F4` | `READY` | `minji` |
@@ -432,19 +432,27 @@ STOP_CONDITIONS=R5-W5-F4 미통합; firewall·secret·다른 project 변경; fix
 ### R2 · R2-W5-F9
 
 ```text
-STATUS=PLANNED
+STATUS=READY
 ROLE_ID=R2
+ASSIGNEE=정승
 PERSONAL_BRANCH=seung
 EXECUTION_BUNDLE_ID=R2-W5-F9
 TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=DataHub v1.7 isolated runtime·Semantic Catalog live publish/verify·Asset Binding evidence
 TASK_CARD_RANGE=R2-09·10·11·19 DataHub 5-source ingestion·Semantic Catalog publish/verify·Binding live evidence
-BASE_SHA=N/A — R2-W5-F8 dev 통합 SHA
-DIRECTIVE=WAIT
-DIRECTIVE_TOKEN=N/A
+CURRENT_TASK_CARD_ID=R2-09
+BASE_BRANCH=dev
+BASE_SHA=26bc8feb0e954062c95f188b722b2b0dfb13d4ec
+START_POINT=R2-W5-F8과 R4-W5-F12가 dev 26bc8fe에 통합되고 dev CI 31456536103이 PASS했다. clean seung이 origin/dev와 일치하는 상태에서 preflight·전체 planned-path 검사를 통과한 뒤 시작한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R2-W5-F9@26bc8fe
 ALLOWED_PATHS=src/data/datahub_runtime_evidence.i5.v1.json; src/data/asset_binding_health.i5.v1.json; infrastructure/database/datahub/scripts/run-runtime-validation.ps1; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; tests/data/**; handoffs/R2-W5-F9.json; docs/markdown/daily_reports/seung/일일보고.md
-ACCEPTANCE_CRITERIA=pinned DataHub v1.7에서 5 recipe, Dataset 8/8, Column 116/116, unique 70, publisher 2회 멱등성과 live URN/FQN/lineage/binding hash를 observed evidence로 기록한다.
-TEST_COMMANDS=JSON; tests/data 전체; compose config; isolated runtime wrapper; publish twice; verifier; scope; diff; CI
-STOP_CONDITIONS=F8 미통합; 자원 preflight 실패; 다른 project/volume 변경; cardinality/hash 불일치; secret·실데이터·비용
+READ_ONLY_INPUTS=infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/datahub/recipes/**; src/data/serving_semantic_catalog.i4.v1.json; src/data/serving_analytics_contract.i4.v1.json; infrastructure/database/sql/ddl/**; infrastructure/database/sql/seed/**
+ACCEPTANCE_CRITERIA=pinned DataHub v1.7에서 승인된 isolated project만 사용해 5 recipe ingestion 상태를 관측한다. Dataset 8/8, Column 116/116, unique field 70과 exact catalog version/hash를 검증하고 publisher를 2회 실행해 동일 결과와 schema 재수집 뒤 description 보존을 확인한다. live URN/FQN/column/lineage·binding status·verified_at·hash는 현재 실행값으로만 기록하며 과거 PASS를 복사하지 않는다. CRM fresh synthetic 80000 회귀는 exact 승인 runtime에서만 실행하고 미완료는 NOT_RUN/BLOCKED로 분리한다. secret·resolved recipe·raw customer data는 기록하지 않고 다른 project/container/volume을 변경하지 않는다.
+TEST_COMMANDS=python -m json.tool src/data/datahub_runtime_evidence.i5.v1.json src/data/asset_binding_health.i5.v1.json handoffs/R2-W5-F9.json; python -m pytest -p no:cacheprovider tests/data/test_datahub_runtime_evidence.py tests/data/test_asset_binding_health.py tests/data/test_serving_semantic_catalog.py -q; python -m pytest -p no:cacheprovider tests/data -q; docker compose -f infrastructure/database/datahub/compose.consumer.yml config --quiet; pwsh -File infrastructure/database/datahub/scripts/run-runtime-validation.ps1; publisher 2회와 verifier; gate_scope preflight·전체 planned paths·merge-base; git diff --check; seung source CI
+STOP_CONDITIONS=clean preflight 실패; free RAM·port·image·project identity·secret readiness 실패; 기존 project/container/volume 변경 필요; 8/116/70·version/hash 불일치; publisher 비멱등; DDL·seed·recipe·compose 수정 필요; broad grant·실데이터·비용; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=승인된 exact isolated DataHub runtime의 기동·수집·publisher 2회·verifier와 종료, 허용 경로 commit·seung push·source CI만 허용한다. 다른 project/container/volume·DDL·seed·recipe·secret·방화벽 변경은 금지한다.
+R1_REVIEW_CONDITIONS=runtime PASS와 NOT_RUN/BLOCKED를 분리하고 observed timestamp·hash·run evidence가 일치할 때만 dev 통합한다.
 ```
 
 ### R2 · R2-W5-F10
@@ -693,6 +701,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.65 | 2026-08-11 13:02 | R2-W5-F8·R4-W5-F12 dev 통합과 CI 31456536103 PASS 뒤 isolated DataHub v1.7 live evidence를 수집하는 R2-W5-F9 READY 발행 |
 | v5.64 | 2026-08-11 12:55 | R2-W5-F8 Semantic Catalog checkpoint와 R4-W5-F12 Context Registry·실제 Gold 조합의 source CI·handoff를 확인해 MERGED_DEV로 전환 |
 | v5.63 | 2026-08-11 12:43 | R1-W5-F27의 history-preserving reconciliation과 corrective source CI를 확인해 MERGED_DEV로 전환 |
 | v5.61 | 2026-08-11 12:30 | 기획서의 Node1 keyword 후보→DataHub main search·Domain/Glossary structured filter→권한 Context 흐름을 R2 F11·R3 F12·R4 F15·R1 F26 후속 카드로 명시하고 raw keyword의 필터 무조건 재사용을 금지 |

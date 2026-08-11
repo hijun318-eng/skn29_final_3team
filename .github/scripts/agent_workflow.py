@@ -39,19 +39,18 @@ def run(branch: str, ff_only_dev: bool = False) -> dict[str, object]:
         dirty = bool(git("status", "--porcelain").stdout.strip())
         ledger = Path(root) / gate_scope.LEDGER
         text = ledger.read_text(encoding="utf-8")
-        payload = gate_scope.preflight_payload(
-            text, branch, current_branch, root, dirty, []
-        )
-        errors.extend(payload["errors"])
         git("rev-parse", "--verify", "origin/dev")
 
         behind = is_ancestor("HEAD", "origin/dev")
         dev_is_ancestor = is_ancestor("origin/dev", "HEAD")
-        if not behind and not dev_is_ancestor:
-            errors.append("personal branch and origin/dev have diverged")
-
         action = "none"
-        if not errors and ff_only_dev and behind and not dev_is_ancestor:
+        if (
+            ff_only_dev
+            and current_branch == branch
+            and not dirty
+            and behind
+            and not dev_is_ancestor
+        ):
             git("merge", "--ff-only", "origin/dev")
             action = "fast-forwarded"
             payload = gate_scope.preflight_payload(
@@ -62,8 +61,20 @@ def run(branch: str, ff_only_dev: bool = False) -> dict[str, object]:
                 bool(git("status", "--porcelain").stdout.strip()),
                 [],
             )
-            errors.extend(payload["errors"])
-        elif not errors and behind and not dev_is_ancestor:
+        else:
+            payload = gate_scope.preflight_payload(
+                text, branch, current_branch, root, dirty, []
+            )
+        errors.extend(payload["errors"])
+        if not behind and not dev_is_ancestor:
+            errors.append("personal branch and origin/dev have diverged")
+        elif (
+            action == "none"
+            and current_branch == branch
+            and not dirty
+            and behind
+            and not dev_is_ancestor
+        ):
             action = "fast-forward-available"
 
         return {

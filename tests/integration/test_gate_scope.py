@@ -74,6 +74,29 @@ PERSONAL_BRANCH=junhee
     def test_current_ledger_dashboard_and_active_bundles_are_consistent(self) -> None:
         self.assertEqual([], gate_scope.ledger_health_errors(self.ledger))
 
+    def test_gate_issuance_allows_only_a_healthy_r1_ledger_change(self) -> None:
+        ledger_path = gate_scope.LEDGER.as_posix()
+        self.assertEqual(
+            [], gate_scope.gate_issuance_errors(self.ledger, "junhee", [ledger_path])
+        )
+        self.assertIsNone(
+            gate_scope.gate_issuance_errors(self.ledger, "seung", [ledger_path])
+        )
+        self.assertIsNone(
+            gate_scope.gate_issuance_errors(
+                self.ledger, "junhee", [ledger_path, "AGENTS.md"]
+            )
+        )
+
+        broken = self.ledger.replace(
+            "| R1 | `R1-W5-F29` | `READY` | `junhee` |",
+            "| R1 | `wrong` | `READY` | `junhee` |",
+            1,
+        )
+        self.assertTrue(
+            gate_scope.gate_issuance_errors(broken, "junhee", [ledger_path])
+        )
+
     def test_terminal_transition_uses_previous_bundle_scope(self) -> None:
         current = {
             "EXECUTION_BUNDLE_ID": "R1-W2",
@@ -282,7 +305,9 @@ PERSONAL_BRANCH=junhee
             )
         self.assertIn("does not allow implementation", errors[0])
 
-        with patch.object(gate_scope, "current_bundle", return_value=bundle):
+        with patch.object(
+            gate_scope, "current_bundle", return_value=bundle
+        ), patch.object(gate_scope, "ledger_health_errors", return_value=[]):
             _, errors = gate_scope.planned_path_errors(
                 self.ledger, "junhee", [gate_scope.LEDGER.as_posix()]
             )

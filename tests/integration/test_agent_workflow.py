@@ -75,7 +75,19 @@ class AgentWorkflowTest(unittest.TestCase):
         self.assertEqual("fast-forward-available", payload["action"])
         self.assertFalse(any(call.args[:2] == ("merge", "--ff-only") for call in git.call_args_list))
 
-    def test_ff_only_dev_runs_only_fast_forward_then_preflight(self) -> None:
+    def test_stale_ledger_still_reports_safe_fast_forward(self) -> None:
+        stale = {**self.bootstrap, "status": "MERGED_DEV", "errors": ["terminal"]}
+        payload, _, _ = self.run_with(
+            [
+                completed("C:/repo"), completed("junhee"), completed(), completed(),
+                completed(), completed(returncode=1),
+            ],
+            bootstrap=stale,
+        )
+        self.assertEqual("FAIL", payload["result"])
+        self.assertEqual("fast-forward-available", payload["action"])
+
+    def test_ff_only_dev_fast_forwards_before_full_preflight(self) -> None:
         payload, git, preflight = self.run_with(
             [
                 completed("C:/repo"), completed("junhee"), completed(), completed(),
@@ -95,7 +107,7 @@ class AgentWorkflowTest(unittest.TestCase):
                 call.args[0] for call in git.call_args_list
             )
         )
-        self.assertEqual(2, preflight.call_count)
+        self.assertEqual(1, preflight.call_count)
 
     def test_diverged_branch_fails_closed(self) -> None:
         payload, _, _ = self.run_with(

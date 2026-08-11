@@ -303,13 +303,21 @@ def planned_path_errors(
     if bundle is None:
         return None, [f"No executable bundle found for branch: {branch}"]
     if bundle["STATUS"] not in IMPLEMENTATION_STATUSES:
-        if branch == "junhee" and paths == [LEDGER.as_posix()]:
+        if gate_issuance_errors(text, branch, paths) == []:
             return bundle, []
         return bundle, [
             f"bundle status {bundle['STATUS']} does not allow implementation"
         ]
     patterns = allowed_paths(bundle, branch)
     return bundle, [path for path in paths if not path_allowed(path, patterns)]
+
+
+def gate_issuance_errors(
+    text: str, branch: str, paths: list[str]
+) -> list[str] | None:
+    if branch != "junhee" or paths != [LEDGER.as_posix()]:
+        return None
+    return ledger_health_errors(text)
 
 
 def bundle_contract_errors(bundle: dict[str, str] | None) -> list[str]:
@@ -1020,7 +1028,12 @@ def main() -> int:
     previous = current_bundle(ledger_at(args.base), args.branch)
     scope_bundle = terminal_transition_scope(bundle, previous)
     patterns = allowed_paths(scope_bundle, args.branch)
-    violations = [path for path in role_changed if not path_allowed(path, patterns)]
+    issuance_errors = gate_issuance_errors(text, args.branch, role_changed)
+    violations = (
+        []
+        if issuance_errors == []
+        else [path for path in role_changed if not path_allowed(path, patterns)]
+    )
     base_sync, base_notes = base_sync_status(
         bundle, args.base, args.head, role_changed
     )
@@ -1033,6 +1046,7 @@ def main() -> int:
     result = (
         "FAIL"
         if violations
+        or issuance_errors
         or inherited_errors
         or base_sync in {"DIVERGED", "REFRESH_REQUIRED"}
         or handoff in BLOCKING_HANDOFF_STATUSES
@@ -1052,6 +1066,9 @@ def main() -> int:
     if violations:
         lines.extend(["", "### Paths outside ALLOWED_PATHS"])
         lines.extend(f"- `{path}`" for path in violations)
+    if issuance_errors:
+        lines.extend(["", "### Gate ledger errors"])
+        lines.extend(f"- {error}" for error in issuance_errors)
     if inherited_errors:
         lines.extend(["", "### Inherited checkpoint notes"])
         lines.extend(f"- {note}" for note in inherited_errors)

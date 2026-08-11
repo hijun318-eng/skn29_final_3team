@@ -88,6 +88,36 @@ class MergePreflightTest(unittest.TestCase):
         self.assertIn("working tree", payload["sources"][1]["errors"][0])
         self.assertIn("seung:", payload["errors"][0])
 
+    def test_batch_remote_only_uses_origin_sha_and_ci_without_a_worktree(self) -> None:
+        sha = "a" * 40
+        with (
+            patch.object(preflight, "git", side_effect=["dev", ""]),
+            patch.object(preflight, "ref", side_effect=[sha, sha, None, sha]),
+            patch.object(preflight, "worktree_roots", return_value={}),
+            patch.object(
+                preflight,
+                "source_ci",
+                return_value={"status": "completed", "conclusion": "success"},
+            ),
+        ):
+            payload = preflight.batch_payload(["seung"], remote_only=True)
+        self.assertEqual([], payload["errors"])
+        self.assertTrue(payload["remote_only"])
+        self.assertIsNone(payload["sources"][0]["root"])
+
+        with (
+            patch.object(preflight, "git", side_effect=["dev", ""]),
+            patch.object(preflight, "ref", side_effect=[sha, sha, None, sha]),
+            patch.object(preflight, "worktree_roots", return_value={}),
+            patch.object(
+                preflight,
+                "source_ci",
+                return_value={"status": "completed", "conclusion": "failure"},
+            ),
+        ):
+            failed = preflight.batch_payload(["seung"], remote_only=True)
+        self.assertIn("CI가 성공하지 않았습니다", failed["errors"][0])
+
     def test_current_bundle_status_reuses_gate_scope_parser(self) -> None:
         with patch.object(preflight.Path, "exists", return_value=True), patch.object(
             preflight.Path, "read_text", return_value="ledger"
@@ -143,6 +173,50 @@ class MergePreflightTest(unittest.TestCase):
                 {"RESULT_SHA": sha, "RESULT_CI": "branch 7 PASS"},
                 preflight.result_fields(preflight.load_session(path), "junhee"),
             )
+
+    def test_final_remote_only_does_not_require_a_local_source_ref(self) -> None:
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "session.json"
+            preflight.save_session(
+                path,
+                {
+                    "version": 1,
+                    "base": sha,
+                    "remote_only": True,
+                    "sources": {
+                        "junhee": {
+                            "sha": sha,
+                            "ci": {
+                                "databaseId": 7,
+                                "status": "completed",
+                                "conclusion": "success",
+                            },
+                        }
+                    },
+                },
+            )
+
+            def fake_ref(name: str) -> str | None:
+                if name in preflight.OPERATION_MARKERS or name == "junhee":
+                    return None
+                return sha
+
+            with (
+                patch.object(
+                    preflight.sys,
+                    "argv",
+                    ["preflight", "--source", "junhee", "--phase", "final", "--session"],
+                ),
+                patch.object(preflight, "git", side_effect=["dev", ""]),
+                patch.object(preflight, "ref", side_effect=fake_ref),
+                patch.object(preflight, "is_ancestor", return_value=True),
+                patch.object(preflight, "merge_session_path", return_value=path),
+                patch.object(
+                    preflight, "current_bundle_status", return_value="MERGED_DEV"
+                ),
+            ):
+                self.assertEqual(0, preflight.main())
 
     def test_load_session_rejects_incomplete_source_result(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

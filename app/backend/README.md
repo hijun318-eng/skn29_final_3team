@@ -24,6 +24,8 @@ uvicorn app.main:app --reload
 - Readiness: `GET /readiness`
 - Analysis: `POST /analysis`
 
+운영 인증은 기본값 `AUTH_MODE=release`에서 서버가 소유한 principal JSON 파일을 사용한다. 파일은 JSON 배열이며 각 항목에는 `token_sha256`, `subject`, `role`, `not_before`, `expires_at`만 기록한다. raw Bearer token은 파일·환경 변수·로그에 기록하지 않는다. `AUTH_PRINCIPALS_FILE`에는 container 내부 read-only 경로를 지정하며 실제 secret mount는 R1 배포 카드에서 구성한다. `AUTH_MODE=test`는 고정 합성 principal을 사용하는 test 전용 모드이고 운영 fallback으로 사용하지 않는다.
+
 승인된 P0 Template만 실행할 때는 `MODEL_MODE=template-only`를 사용한다. 이 모드는 승인 SQL을 G1·G2로 검사하고 실제 Trino 결과를 G3 통과 후 표·차트·Artifact로 저장하며 fake model을 호출하지 않는다. 일반 자연어 SQL 생성은 지원하지 않고 실패 차단한다.
 
 일반 질문까지 실행하려면 OpenAI 호환 endpoint의 base URL을 환경 변수로 전달한다. token은 선택 사항이며 로그나 응답에 포함하지 않는다.

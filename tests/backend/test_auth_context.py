@@ -1,0 +1,143 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import sys
+import tempfile
+import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+from uuid import UUID
+
+from fastapi.security import HTTPAuthorizationCredentials
+
+ROOT = Path(__file__).resolve().parents[2]
+BACKEND = ROOT / "app" / "backend"
+sys.path.insert(0, str(BACKEND))
+
+from app.auth import AuthenticationError, authenticate_token  # noqa: E402
+from app.context import ContextValidationError, analysis_context  # noqa: E402
+from app.contracts import CONTRACT_VERSION, ErrorCode, Role  # noqa: E402
+
+
+class AuthenticationTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.now = datetime(2026, 8, 11, 5, 0, tzinfo=timezone.utc)
+        self.directory = tempfile.TemporaryDirectory()
+        self.path = Path(self.directory.name) / "principals.json"
+
+    def tearDown(self) -> None:
+        self.directory.cleanup()
+
+    def record(self, token: str = "release-token", **overrides: object) -> dict[str, object]:
+        record: dict[str, object] = {
+            "token_sha256": hashlib.sha256(token.encode("utf-8")).hexdigest(),
+            "subject": "00000000-0000-0000-0000-000000000011",
+            "role": "hotel_analyst",
+            "not_before": (self.now - timedelta(minutes=1)).isoformat(),
+            "expires_at": (self.now + timedelta(minutes=1)).isoformat(),
+        }
+        record.update(overrides)
+        return record
+
+    def write(self, records: object) -> None:
+        self.path.write_text(json.dumps(records), encoding="utf-8")
+
+    def release_environment(self) -> dict[str, str]:
+        return {"AUTH_MODE": "release", "AUTH_PRINCIPALS_FILE": str(self.path)}
+
+    def test_release_uses_digest_owned_subject_and_role(self) -> None:
+        self.write([self.record()])
+        with patch.dict(os.environ, self.release_environment(), clear=False):
+            principal = authenticate_token("release-token", now=self.now)
+        self.assertEqual(UUID("00000000-0000-0000-0000-000000000011"), principal.subject)
+        self.assertEqual(Role.HOTEL_ANALYST, principal.role)
+
+    def test_missing_unknown_expired_and_future_tokens_fail_with_401(self) -> None:
+        cases = {
+            "missing": (None, self.record()),
+            "empty": (" ", self.record()),
+            "unknown": ("unknown", self.record()),
+            "expired": ("release-token", self.record(expires_at=self.now.isoformat())),
+            "future": ("release-token", self.record(not_before=(self.now + timedelta(seconds=1)).isoformat())),
+        }
+        for name, (token, record) in cases.items():
+            with self.subTest(name=name):
+                self.write([record])
+                with patch.dict(os.environ, self.release_environment(), clear=False):
+                    with self.assertRaises(AuthenticationError) as denied:
+                        authenticate_token(token, now=self.now)
+                self.assertEqual(401, denied.exception.status_code)
+                self.assertNotIn("release-token", denied.exception.message)
+
+    def test_invalid_principal_files_fail_closed_with_503(self) -> None:
+        valid = self.record()
+        cases = {
+            "empty": [],
+            "duplicate": [valid, valid],
+            "invalid_uuid": [self.record(subject="not-a-uuid")],
+            "invalid_role": [self.record(role="owner")],
+            "raw_token_field": [{**self.record(), "token": "release-token"}],
+            "naive_time": [self.record(not_before="2026-08-11T04:59:00")],
+        }
+        for name, payload in cases.items():
+            with self.subTest(name=name):
+                self.write(payload)
+                with patch.dict(os.environ, self.release_environment(), clear=False):
+                    with self.assertRaises(AuthenticationError) as unavailable:
+                        authenticate_token("release-token", now=self.now)
+                self.assertEqual(503, unavailable.exception.status_code)
+                self.assertNotIn("release-token", unavailable.exception.message)
+
+        self.path.unlink()
+        with patch.dict(os.environ, self.release_environment(), clear=False):
+            with self.assertRaises(AuthenticationError) as unreadable:
+                authenticate_token("release-token", now=self.now)
+        self.assertEqual(503, unreadable.exception.status_code)
+
+    def test_test_mode_accepts_only_fixed_synthetic_principals(self) -> None:
+        with patch.dict(os.environ, {"AUTH_MODE": "test"}, clear=False):
+            principal = authenticate_token("runtime-report-admin-token")
+            self.assertEqual(UUID(int=2), principal.subject)
+            self.assertEqual(Role.REPORT_ADMIN, principal.role)
+            with self.assertRaises(AuthenticationError) as denied:
+                authenticate_token("arbitrary-token")
+        self.assertEqual(401, denied.exception.status_code)
+
+    def test_default_release_mode_never_falls_back_to_test_principal(self) -> None:
+        environment = os.environ.copy()
+        environment.pop("AUTH_MODE", None)
+        environment.pop("AUTH_PRINCIPALS_FILE", None)
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaises(AuthenticationError) as unavailable:
+                authenticate_token("runtime-test-token", now=self.now)
+        self.assertEqual(503, unavailable.exception.status_code)
+
+    def test_unavailable_release_mapping_is_normalized_without_secret_details(self) -> None:
+        environment = os.environ.copy()
+        environment["AUTH_MODE"] = "release"
+        environment.pop("AUTH_PRINCIPALS_FILE", None)
+        request = SimpleNamespace(state=SimpleNamespace(request_id=UUID(int=9)))
+        credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer", credentials="runtime-test-token"
+        )
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaises(ContextValidationError) as unavailable:
+                analysis_context(
+                    request,
+                    credentials,
+                    "2026-08-11",
+                    "trace-9",
+                    "Asia/Seoul",
+                    CONTRACT_VERSION,
+                )
+        self.assertEqual(503, unavailable.exception.status_code)
+        self.assertEqual(ErrorCode.INTERNAL_ERROR, unavailable.exception.code)
+        self.assertNotIn("runtime-test-token", unavailable.exception.message)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -4,9 +4,18 @@ from datetime import date
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Header, Request
+from fastapi import Header, Request, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.auth import AuthenticationError, authenticate_token
 from app.contracts import CONTRACT_VERSION, ErrorCode, RequestContext, Role
+
+
+bearer_auth = HTTPBearer(
+    auto_error=False,
+    scheme_name="BearerAuth",
+    description="서버가 AUTH_PRINCIPALS_FILE의 SHA-256 digest로 검증하는 Bearer token",
+)
 
 
 class ContextValidationError(ValueError):
@@ -23,30 +32,40 @@ def request_context(request: Request) -> RequestContext:
 
 def analysis_context(
     request: Request,
-    authorization: Annotated[str, Header()],
-    user_id: Annotated[str, Header(alias="X-User-Id")],
-    role: Annotated[str, Header(alias="X-Role")],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_auth)],
     as_of: Annotated[str, Header(alias="X-As-Of")],
     trace_id: Annotated[str, Header(alias="X-Trace-Id")],
     timezone: Annotated[str, Header(alias="X-Timezone")],
     contract_version: Annotated[str, Header(alias="X-Contract-Version")],
+    user_id: Annotated[str | None, Header(alias="X-User-Id", include_in_schema=False)] = None,
+    role: Annotated[str | None, Header(alias="X-Role", include_in_schema=False)] = None,
 ) -> RequestContext:
-    if not authorization.startswith("Bearer ") or not authorization[7:].strip():
-        raise ContextValidationError(ErrorCode.ACCESS_DENIED, "Bearer 인증 정보가 필요합니다.", 401)
     try:
-        parsed_user_id = UUID(user_id)
+        principal = authenticate_token(credentials.credentials if credentials else None)
+    except AuthenticationError as exc:
+        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.ACCESS_DENIED
+        raise ContextValidationError(code, exc.message, exc.status_code) from exc
+    try:
         parsed_as_of = date.fromisoformat(as_of)
     except ValueError as exc:
         raise ContextValidationError(ErrorCode.CONTEXT_INCOMPLETE, "요청 Context 형식이 올바르지 않습니다.", 422) from exc
-    try:
-        parsed_role = Role(role)
-    except ValueError as exc:
-        raise ContextValidationError(ErrorCode.ACCESS_DENIED, "허용되지 않은 역할입니다.", 403) from exc
+    if user_id is not None:
+        try:
+            if UUID(user_id) != principal.subject:
+                raise ValueError
+        except ValueError as exc:
+            raise ContextValidationError(ErrorCode.ACCESS_DENIED, "인증 주체가 일치하지 않습니다.", 403) from exc
+    if role is not None:
+        try:
+            if Role(role) != principal.role:
+                raise ValueError
+        except ValueError as exc:
+            raise ContextValidationError(ErrorCode.ACCESS_DENIED, "인증 역할이 일치하지 않습니다.", 403) from exc
     if contract_version != CONTRACT_VERSION:
         raise ContextValidationError(ErrorCode.CONTRACT_VERSION_MISMATCH, "지원하지 않는 API 계약 버전입니다.", 409)
     if timezone != "Asia/Seoul" or not trace_id.strip():
         raise ContextValidationError(ErrorCode.CONTEXT_INCOMPLETE, "필수 Context 값이 올바르지 않습니다.", 422)
-    context = RequestContext(request_id=request.state.request_id, trace_id=trace_id, user_id=parsed_user_id, role=parsed_role, as_of=parsed_as_of, timezone=timezone, contract_version=contract_version)
+    context = RequestContext(request_id=request.state.request_id, trace_id=trace_id, user_id=principal.subject, role=principal.role, as_of=parsed_as_of, timezone=timezone, contract_version=contract_version)
     request.state.context = context
     request.state.trace_id = trace_id
     return context

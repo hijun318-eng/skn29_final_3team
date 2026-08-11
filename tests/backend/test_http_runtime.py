@@ -29,6 +29,7 @@ class FastApiRuntimeTest(unittest.TestCase):
         environment = os.environ.copy()
         environment["PYTHONPATH"] = os.pathsep.join([str(BACKEND), str(ROOT)])
         environment.pop("APP_RUNTIME_DATABASE_URL", None)
+        environment["AUTH_MODE"] = "test"
         environment["CORS_ALLOW_ORIGINS"] = (
             "http://localhost:5173,http://localhost:13000,"
             "http://192.168.0.15:13000"
@@ -103,11 +104,14 @@ class FastApiRuntimeTest(unittest.TestCase):
             return exc.code, json.load(exc)
 
     @staticmethod
-    def context_headers() -> dict[str, str]:
+    def context_headers(role: str = "hotel_analyst") -> dict[str, str]:
+        tokens = {
+            "hotel_analyst": "runtime-test-token",
+            "report_admin": "runtime-report-admin-token",
+            "data_admin": "runtime-data-admin-token",
+        }
         return {
-            "Authorization": "Bearer runtime-test-token",
-            "X-User-Id": "00000000-0000-0000-0000-000000000001",
-            "X-Role": "hotel_analyst",
+            "Authorization": f"Bearer {tokens[role]}",
             "X-As-Of": "2026-07-30",
             "X-Trace-Id": "runtime-test-trace",
             "X-Timezone": "Asia/Seoul",
@@ -124,15 +128,17 @@ class FastApiRuntimeTest(unittest.TestCase):
         parameters = schema["paths"]["/analysis"]["post"]["parameters"]
         names = {parameter["name"].lower() for parameter in parameters}
         expected = {
-            "authorization",
-            "x-user-id",
-            "x-role",
             "x-as-of",
             "x-trace-id",
             "x-timezone",
             "x-contract-version",
         }
         self.assertTrue(expected.issubset(names))
+        self.assertNotIn("authorization", names)
+        self.assertNotIn("x-user-id", names)
+        self.assertNotIn("x-role", names)
+        self.assertEqual({"BearerAuth": []}, schema["paths"]["/analysis"]["post"]["security"][0])
+        self.assertEqual("http", schema["components"]["securitySchemes"]["BearerAuth"]["type"])
 
     def test_analysis_and_report_preflight_use_exact_origins(self) -> None:
         for path in ("/analysis", "/reports/definitions"):
@@ -289,11 +295,11 @@ class FastApiRuntimeTest(unittest.TestCase):
         self.assertEqual("RATE_LIMITED", limited["error"]["code"])
 
     def test_missing_context_and_invalid_role_are_blocked(self) -> None:
-        status, response = self.request(
-            "/analysis", method="POST", body={"question": "test"}
-        )
-        self.assertEqual(422, status)
-        self.assertEqual("CONTEXT_INCOMPLETE", response["error"]["code"])
+        headers = self.context_headers()
+        headers.pop("Authorization")
+        status, response = self.request("/analysis", method="POST", headers=headers, body={"question": "test"})
+        self.assertEqual(401, status)
+        self.assertEqual("ACCESS_DENIED", response["error"]["code"])
 
         headers = self.context_headers()
         headers["X-Role"] = "unknown"
@@ -319,6 +325,23 @@ class FastApiRuntimeTest(unittest.TestCase):
             "CONTRACT_VERSION_MISMATCH",
             response["error"]["code"],
         )
+
+    def test_analysis_and_report_share_server_owned_principal(self) -> None:
+        headers = self.context_headers("report_admin")
+        status, response = self.request("/reports/definitions", headers=headers)
+        self.assertEqual(503, status)
+        self.assertIn("저장소", response["detail"])
+
+        status, response = self.request(
+            "/reports/definitions", headers=self.context_headers("hotel_analyst")
+        )
+        self.assertEqual(403, status)
+        self.assertIn("권한", response["detail"])
+
+        headers["X-User-Id"] = "00000000-0000-0000-0000-000000000001"
+        status, response = self.request("/reports/definitions", headers=headers)
+        self.assertEqual(403, status)
+        self.assertEqual("ACCESS_DENIED", response["error"]["code"])
 
 
 class BackendComposeContractTest(unittest.TestCase):
@@ -460,8 +483,7 @@ class RealTemplateHttpRuntimeTest(FastApiRuntimeTest):
 
         query_count = _TrinoHandler.query_count
         for role in ("report_admin", "data_admin"):
-            headers = self.context_headers()
-            headers["X-Role"] = role
+            headers = self.context_headers(role)
             status, denied = self.request(
                 "/analysis",
                 method="POST",

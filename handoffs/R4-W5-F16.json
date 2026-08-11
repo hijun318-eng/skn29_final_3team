@@ -1,0 +1,139 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W5-F16",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "2d805bf9cc52828b567e17e182fd88a8895a0b57",
+  "SYNCED_DEV_SHA": "29451217a4c004520f682f1ccee34cd5b8d3634e",
+  "RESULT_SHA": "02b2264681a02513bee84fd2b42d2cbdc1b5cefc",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W5-F16@2d805bf",
+  "STATUS": "REVIEW",
+  "COMPLETED_CARDS": [
+    "R4-16 Analysis·Report 공통 authentication·authorization trust boundary REWORK"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/README.md",
+    "app/backend/app/auth.py",
+    "app/backend/app/context.py",
+    "app/backend/compose.fragment.yml",
+    "app/backend/contracts/openapi.v0.1.json",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
+    "tests/backend/test_auth_context.py",
+    "tests/backend/test_http_runtime.py",
+    "tests/backend/test_openapi_contract.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "AUTH_TRUST": "AUTH-TRUST-v1.0.0-DRAFT",
+    "OPENAPI": "OPENAPI-v1.0.0",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "TEST_RESULTS": [
+    {
+      "id": "T1_AUTH_TARGET",
+      "name": "server-owned principal 대상 검증",
+      "status": "PASS",
+      "evidence": "test_auth_context.py 6개 test와 하위 반례가 모두 통과했다."
+    },
+    {
+      "id": "T2_NEGATIVE_MATRIX",
+      "name": "인증 실패 차단 행렬",
+      "status": "PASS",
+      "evidence": "missing·empty·unknown·expired·future token은 401, header 주체·역할 불일치는 403, duplicate·invalid·unreadable principal mapping은 503으로 차단했다."
+    },
+    {
+      "id": "T3_ANALYSIS_REPORT",
+      "name": "Analysis·Report 인증 HTTP",
+      "status": "PASS",
+      "evidence": "Python 3.12 container의 target suite에서 실제 uvicorn HTTP로 Analysis·Report의 동일 server principal, 403·503, request_id·trace_id 보존을 검증했고 22 passed, 9 environment-gated skipped로 종료했다."
+    },
+    {
+      "id": "T4_BACKEND",
+      "name": "Python 3.12 backend 전체",
+      "status": "PASS",
+      "evidence": "승인된 Python 3.12 container에서 python -m pytest -p no:cacheprovider tests/backend -q가 exit 0으로 종료했다: 145 passed, 16 environment-gated skipped, 10 warnings."
+    },
+    {
+      "id": "T5_OPENAPI",
+      "name": "OpenAPI 고정 계약",
+      "status": "PASS",
+      "evidence": "python app/backend/scripts/export_openapi.py --check 결과 OPENAPI_CONTRACT_VERIFIED."
+    },
+    {
+      "id": "T6_COMPILE",
+      "name": "Python compile",
+      "status": "PASS",
+      "evidence": "python -m compileall -q app/backend PASS."
+    },
+    {
+      "id": "T7_SCOPE",
+      "name": "Gate planned-path와 merge-base",
+      "status": "PASS",
+      "evidence": "시작 전 clean bootstrap과 카드의 11개 planned-path 검사가 PASS했고 변경 파일은 모두 허용 경로다."
+    },
+    {
+      "id": "T8_DIFF",
+      "name": "공백·보고·secret 검사",
+      "status": "PASS",
+      "evidence": "git diff --check, 20260811 개인보고 validator, secret pattern 검사가 모두 통과했다."
+    },
+    {
+      "id": "T9_BRANCH_CI",
+      "name": "jaehong source CI",
+      "status": "CI_PENDING",
+      "evidence": "handoff commit을 포함한 현재 jaehong push가 source CI를 시작한다."
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_SERVER_OWNED_PRINCIPAL",
+      "status": "PASS",
+      "evidence": "Bearer token SHA-256 digest와 subject UUID·Role·유효기간을 서버 파일에서만 읽어 RequestContext를 만든다."
+    },
+    {
+      "id": "AC2_NO_CLIENT_ROLE_TRUST",
+      "status": "PASS",
+      "evidence": "X-User-Id·X-Role을 identity 입력으로 사용하지 않고 값이 있으면 서버 principal과 불일치를 403으로 차단한다."
+    },
+    {
+      "id": "AC3_TIME_BOUNDS",
+      "status": "PASS",
+      "evidence": "expired·not-yet-valid·timezone 없는 validity window 반례를 차단한다."
+    },
+    {
+      "id": "AC4_FAIL_CLOSED_MAPPING",
+      "status": "PASS",
+      "evidence": "missing file, malformed JSON, empty·duplicate digest, invalid UUID·Role을 503 INTERNAL_ERROR로 정규화한다."
+    },
+    {
+      "id": "AC5_EXPLICIT_TEST_MODE",
+      "status": "PASS",
+      "evidence": "AUTH_MODE=test에서만 고정 합성 principal을 사용하며 default·release는 test token으로 fallback하지 않는다."
+    },
+    {
+      "id": "AC6_SHARED_CONTEXT",
+      "status": "PASS",
+      "evidence": "Analysis와 Report router가 동일 analysis_context dependency를 사용하고 server principal role을 소비한다."
+    },
+    {
+      "id": "AC7_NO_SECRET_EXPOSURE",
+      "status": "PASS",
+      "evidence": "오류 응답은 token·digest·파일 경로를 노출하지 않으며 changed path secret pattern 검사에서 일치 항목이 없다."
+    },
+    {
+      "id": "AC8_OPENAPI_SECURITY",
+      "status": "PASS",
+      "evidence": "인증 route는 BearerAuth security scheme을 사용하고 X-User-Id·X-Role을 OpenAPI identity parameter로 광고하지 않는다."
+    },
+    {
+      "id": "AC9_COMPATIBILITY",
+      "status": "PASS",
+      "evidence": "Python 3.12 backend 전체 실행에서 F16 인증 변경과 기존 non-DB 회귀 145건이 통과했다. DB 조건부 16건은 F16 인증 변경과 무관한 environment-gated skip으로 결과에 보존했다."
+    }
+  ],
+  "REQUESTED_DECISION": "현재 handoff를 포함한 jaehong source CI PASS 뒤 dev 통합을 판정한다. 운영 principal file read-only mount와 실제 credential 배포는 F16 완료 주장에 포함하지 않으며 root Compose 소유자의 별도 카드로 유지한다."
+}

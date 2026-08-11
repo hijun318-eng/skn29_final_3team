@@ -1746,6 +1746,13 @@
         "title": "ValidationError",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "description": "서버가 AUTH_PRINCIPALS_FILE의 SHA-256 digest로 검증하는 Bearer token",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -1758,33 +1765,6 @@
       "post": {
         "operationId": "submitAnalysis",
         "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
-              "type": "string"
-            }
-          },
           {
             "in": "header",
             "name": "X-As-Of",
@@ -2894,6 +2874,11 @@
             "description": "안전하게 정규화된 내부 오류"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Analysis"
       }
     },
@@ -2901,33 +2886,6 @@
       "get": {
         "operationId": "analysisListDefinitions",
         "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
-              "type": "string"
-            }
-          },
           {
             "in": "header",
             "name": "X-As-Of",
@@ -2987,38 +2945,16 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "List Analysis Definitions"
       },
       "post": {
         "operationId": "analysisCreateDefinition",
         "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
-              "type": "string"
-            }
-          },
           {
             "in": "header",
             "name": "X-As-Of",
@@ -3088,6 +3024,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Create Analysis Definition"
       }
     },
@@ -3102,33 +3043,6 @@
             "schema": {
               "format": "uuid",
               "title": "Definition Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
               "type": "string"
             }
           },
@@ -3191,6 +3105,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Analysis Definition"
       }
     },
@@ -3205,33 +3124,6 @@
             "schema": {
               "format": "uuid",
               "title": "Definition Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
               "type": "string"
             }
           },
@@ -3304,6 +3196,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Replay Analysis Definition"
       }
     },
@@ -3311,33 +3208,6 @@
       "get": {
         "operationId": "analysisListRuns",
         "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
-              "type": "string"
-            }
-          },
           {
             "in": "header",
             "name": "X-As-Of",
@@ -3397,6 +3267,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "List Analysis Runs"
       }
     },
@@ -3411,33 +3286,6 @@
             "schema": {
               "format": "uuid",
               "title": "Request Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
               "type": "string"
             }
           },
@@ -3500,6 +3348,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Analysis Run"
       }
     },
@@ -3543,33 +3396,6 @@
       "get": {
         "operationId": "reportListDefinitions",
         "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
-              "type": "string"
-            }
-          },
           {
             "in": "header",
             "name": "X-As-Of",
@@ -3629,38 +3455,16 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "List Definitions"
       },
       "post": {
         "operationId": "reportCreateDefinition",
         "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
-              "type": "string"
-            }
-          },
           {
             "in": "header",
             "name": "X-As-Of",
@@ -3730,6 +3534,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Create Definition"
       }
     },
@@ -3753,33 +3562,6 @@
             "schema": {
               "title": "Version",
               "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
-              "type": "string"
             }
           },
           {
@@ -3841,6 +3623,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Version"
       }
     },
@@ -3864,33 +3651,6 @@
             "schema": {
               "title": "Version",
               "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
-              "type": "string"
             }
           },
           {
@@ -3962,6 +3722,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Approve Version"
       }
     },
@@ -3985,33 +3750,6 @@
             "schema": {
               "title": "Version",
               "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
-              "type": "string"
             }
           },
           {
@@ -4083,6 +3821,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Replace Draft Blocks"
       }
     },
@@ -4106,33 +3849,6 @@
             "schema": {
               "title": "Version",
               "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
-              "type": "string"
             }
           },
           {
@@ -4194,6 +3910,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Create Next Draft"
       }
     },
@@ -4215,33 +3936,6 @@
                 }
               ],
               "title": "Definition Id"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
-              "type": "string"
             }
           },
           {
@@ -4303,6 +3997,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "List Runs"
       }
     },
@@ -4310,33 +4009,6 @@
       "post": {
         "operationId": "reportCreateManualRunCommand",
         "parameters": [
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
-              "type": "string"
-            }
-          },
           {
             "in": "header",
             "name": "X-As-Of",
@@ -4406,6 +4078,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Create Manual Run Command"
       }
     },
@@ -4419,33 +4096,6 @@
             "required": true,
             "schema": {
               "title": "Run Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": true,
-            "schema": {
-              "title": "Authorization",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-User-Id",
-            "required": true,
-            "schema": {
-              "title": "X-User-Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "X-Role",
-            "required": true,
-            "schema": {
-              "title": "X-Role",
               "type": "string"
             }
           },
@@ -4508,6 +4158,11 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
         "summary": "Get Run"
       }
     }

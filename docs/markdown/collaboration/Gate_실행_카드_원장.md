@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.66 |
-| 문서 기준일 | 2026-08-11 13:16 |
+| 버전 | v5.67 |
+| 문서 기준일 | 2026-08-11 13:42 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F27` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F28` | `READY` | `junhee` |
 | R2 | `R2-W5-F9` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `READY` | `jaehong` |
@@ -203,6 +203,37 @@ STOP_CONDITIONS=기존 commit/history/blob 수정; WBS·F25 handoff·자동화 c
 EXTERNAL_ACTION_PERMISSION=현재 clean junhee에서 mutable 3경로 commit·junhee push·branch CI만 허용한다. dev merge·workflow dispatch·기존 history rewrite는 금지한다.
 AUTO_FAIL_CONDITIONS=12a46f1·5c54b3e ancestry 손실; read-only blob drift; handoff changed files 불일치; dashboard 회귀; scope·필수 검증 FAIL
 R1_REVIEW_CONDITIONS=corrective source CI가 실제 PASS하고 F27 handoff가 origin/dev...HEAD의 자기 manifest 제외 exact 7경로를 기록한 뒤에만 dev 통합한다.
+```
+
+### R1 · R1-W5-F28
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F28
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=역할별 active READY 단일화·source evidence 판정·후속 카드 발행
+TASK_CARD_RANGE=R1-04 Gate 실행 큐 조정과 owner 카드 통합 판정
+CURRENT_TASK_CARD_ID=R1-04-I5-ACTIVE-QUEUE
+BASE_BRANCH=dev
+BASE_SHA=2d805bf9cc52828b567e17e182fd88a8895a0b57
+START_POINT=R1-W5-F27은 dev 2d805bf에 통합되었고 dev CI 31456640689가 PASS했다. 현재 R2-W5-F9·R3-W5-F8·R4-W5-F16·R5-W5-F4가 역할별 active READY 하나씩이며, R4-W5-F16 발행 commit 1024202의 CI 31458984632는 제품·문서 실패가 아니라 terminal R1 카드가 Gate 원장 1경로를 허용하지 않아 role-scope만 FAIL했다. 이 카드로 원장 발행·source evidence 판정·terminal 전이만 수행한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W5-F28@2d805bf
+CONTRACT_VERSION=GATE-SCOPE-v1.1.1
+ALLOWED_PATHS=docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F28.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=.github/**; docs/markdown/collaboration/archive/**; docs/markdown/02_WBS.md; app/**; infrastructure/**; src/**; tests/**; R2~R5 보고·handoff·제품 경로; root Compose·env; dependency·secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F28.json
+ACCEPTANCE_CRITERIA=역할별 active READY는 하나만 유지하고 현재 R2 F9·R3 F8·R4 F16·R5 F4의 token·BASE_SHA·허용 경로를 변경 없이 정본으로 제공한다. 각 source branch의 terminal CI·handoff·scope가 실제 PASS한 경우에만 MERGED_DEV 또는 후속 READY를 원장에 기록한다. CI 실패·NOT_RUN·BLOCKED를 PASS로 승격하지 않고 생산자→소비자 순서를 유지한다. Google Docs는 작업 인계함으로만 사용하고 Git 원장 READY token을 대신하지 않는다. R4-W5-F16 발행 commit의 CI 31458984632 role-scope 실패는 역사적 사실로 보존하고 이 카드 발행 뒤 재실행되는 junhee CI의 실제 결과로만 현재 원장 발행을 판정한다.
+ACCEPTANCE_IDS=AC1_ONE_ACTIVE_PER_ROLE;AC2_CANONICAL_TOKENS;AC3_EVIDENCE_ONLY_TRANSITION;AC4_PRODUCER_FIRST;AC5_FAILED_CI_PRESERVED;AC6_GOOGLE_DOCS_INBOX_ONLY
+TEST_COMMANDS=python -m unittest tests.integration.test_gate_scope -q; python .github/scripts/gate_scope.py --dashboard --next-gate auto; python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/collaboration/Gate_실행_카드_원장.md; gate_scope preflight·3 planned paths·merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_GATE_REGRESSION;T2_DASHBOARD;T3_DOCUMENT_POLICY;T4_SCOPE;T5_DIFF;T6_BRANCH_CI
+STOP_CONDITIONS=역할별 active 카드 중복; source CI·handoff 미통과 상태의 MERGED_DEV 전환; 생산자 미통합 상태의 소비자 후속 발행; owner 제품 파일 변경 필요; archive·WBS·workflow·Gate script 변경; 허용 경로 밖 변경; reset·rebase·force·stash; dependency·secret·외부 비용; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=origin read-only fetch·CI 조회, 허용 3경로 commit·junhee push·branch CI만 허용한다. dev merge·다른 역할 branch push·workflow dispatch·제품 구현·환경 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=active READY 중복; 실패 evidence의 PASS 승격; token·BASE_SHA drift; scope·필수 검증 FAIL
+R1_REVIEW_CONDITIONS=원장 발행 CI가 PASS하고 현재 dashboard가 R1 F28·R2 F9·R3 F8·R4 F16·R5 F4를 각각 하나의 active READY로 표시한 뒤 역할별 작업을 계속한다.
 ```
 
 ### R2 · R2-W5-F5
@@ -732,6 +763,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.67 | 2026-08-11 13:42 | terminal R1 카드 때문에 Gate-only 발행 CI가 scope FAIL하는 순환을 해소하고 역할별 active READY·source evidence 전이만 담당하는 R1-W5-F28 READY 발행 |
 | v5.66 | 2026-08-11 13:16 | R4-W5-F12 통합 뒤 client-owned X-User-Id·X-Role 신뢰를 제거하고 server-owned opaque principal mapping으로 Analysis·Report 공통 인증 경계를 동결하는 R4-W5-F16 READY 발행 |
 | v5.65 | 2026-08-11 13:02 | R2-W5-F8·R4-W5-F12 dev 통합과 CI 31456536103 PASS 뒤 isolated DataHub v1.7 live evidence를 수집하는 R2-W5-F9 READY 발행 |
 | v5.64 | 2026-08-11 12:55 | R2-W5-F8 Semantic Catalog checkpoint와 R4-W5-F12 Context Registry·실제 Gold 조합의 source CI·handoff를 확인해 MERGED_DEV로 전환 |

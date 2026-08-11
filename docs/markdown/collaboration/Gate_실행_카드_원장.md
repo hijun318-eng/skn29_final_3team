@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.51 |
-| 문서 기준일 | 2026-08-11 10:10 |
+| 버전 | v5.56 |
+| 문서 기준일 | 2026-08-11 11:45 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F22` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F24` | `READY` | `junhee` |
 | R2 | `R2-W5-F8` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F12` | `READY` | `jaehong` |
@@ -1118,6 +1118,38 @@ RESULT_SHA=6ac0307bfb64fb833f10252373a8e3ef1c8ff9df
 RESULT_CI=branch 31449728747 PASS
 ```
 
+### R1 · R1-W5-F24
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F24
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=agent workflow throughput without weakening role ownership or final quality gate
+TASK_CARD_RANGE=R1-02·04·10 coding-agent CI·Gate·handoff·worktree preflight automation simplification
+CURRENT_TASK_CARD_ID=R1-04-AGENT-AUTOMATION-EFFICIENCY
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=6dfcb494d13b21cf0b3c51e67daaf1e785b28e79
+START_POINT=clean junhee가 origin/dev 6dfcb49와 일치하는 상태에서 시작한다. exact path ownership·final quality gate·secret/runtime fail-closed는 유지하고, scope metadata 실패 때문에 제품 검증이 사라지거나 동일 증거를 반복 제출하는 자동화 비용만 제거한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F24@6dfcb49
+CONTRACT_VERSION=AGENT-WORKFLOW-v2.0.0-DRAFT; HANDOFF-v1.1.0-DRAFT; GATE-SCOPE-v1.1.0-DRAFT
+ALLOWED_PATHS=.github/workflows/ci.yml; .github/scripts/gate_scope.py; .github/scripts/agent_workflow.py; tests/integration/test_ci_workflow.py; tests/integration/test_gate_scope.py; tests/integration/test_agent_workflow.py; docs/markdown/collaboration/README.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/collaboration/archive/Gate_실행_카드_원장_20260805-20260811.md; handoffs/R1-W5-F24.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=AGENTS.md; app/**; infrastructure/**; src/**; tests/integration의 승인 3파일 외 tests/**; R2~R5 파일·보고·handoff; root Compose/env; dependency·secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F24.json
+ACCEPTANCE_CRITERIA=role-scope가 실패해도 변경 그룹 output을 보존하고 적용 가능한 Python·document·frontend·Compose 검증은 독립 실행해 제품 신호를 수집하되 final quality-gate는 scope·제품·handoff 실패를 계속 차단한다. handoff는 branch CI만 PENDING_CI로 정직하게 제출할 수 있고 이 상태는 현재 push의 CI 실행을 허용하되 R1 terminal 통합 승인으로 오인되지 않는다. 카드의 INHERITED_CHECKPOINT_SHA와 INHERITED_READ_ONLY_PATHS가 있으면 checkpoint 대비 blob이 exact 불변인 경로만 누적 diff에서 current editable change와 분리하며 drift·missing checkpoint는 fail-closed한다. bundle preflight는 branch·clean·base overlap·전체 allowed path·필수 도구 capability를 한 명령으로 보고하고 clean ancestor일 때만 명시적 ff-only dev sync를 제공한다. 활성 Gate 원장은 현재 실행·PLANNED queue만 유지하고 종료 이력은 신규 archive로 이동하되 current_bundle·dashboard·historical base 조회 의미를 보존한다. Google Docs·보고는 Git Gate 정본을 복제하는 상태 저장소가 아니라 요청·결과 전달로만 취급한다고 collaboration README에 명시한다. force/reset/rebase/stash·자동 conflict 해결·권한 확대는 추가하지 않는다.
+ACCEPTANCE_IDS=AC1_TEST_SIGNAL_ON_SCOPE_FAILURE;AC2_FINAL_GATE_FAIL_CLOSED;AC3_PENDING_CI_HANDOFF;AC4_INHERITED_HASH;AC5_ONE_COMMAND_PREFLIGHT;AC6_SAFE_FF_ONLY;AC7_ACTIVE_LEDGER_COMPACT;AC8_SINGLE_GIT_CANONICAL;AC9_REGRESSION
+TEST_COMMANDS=workflow YAML parse와 integration workflow tests; gate_scope inherited unchanged/drift/missing checkpoint·PENDING_CI 제한·legacy handoff·SAFE_STALE·current dashboard tests; agent_workflow clean/dirty/ancestor/diverged/tool-missing/dry-run/ff-only tests; 전체 tests/integration; python -m compileall -q .github/scripts tests/integration; document policy; gate_scope bootstrap·11 planned paths·merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_WORKFLOW;T2_GATE_TARGET;T3_AGENT_WORKFLOW;T4_INTEGRATION;T5_COMPILE;T6_DOCS;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
+STOP_CONDITIONS=제품 test를 scope PASS로 위조; quality gate 완화; inherited blob drift 수용; PENDING_CI를 일반 미검증에 허용; dirty/diverged branch 자동 변경; reset·rebase·stash·force·conflict 자동 해결; Git 외 상태를 canonical로 승격; parser가 historical card를 잃음; dependency·secret·외부 비용; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=read-only fetch와 clean ancestor branch의 명시적 ff-only sync, 허용 경로 commit·junhee push·branch CI만 승인한다. 자동 push·merge conflict 해결·workflow dispatch·secret 변경·외부 배포는 금지한다.
+AUTO_FAIL_CONDITIONS=scope 실패인데 final gate PASS; 제품 job skip 회귀; inherited checkpoint drift 은폐; handoff 미검증 PASS; dirty/history 손실; archive 뒤 active bundle·historical base 조회 실패; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=scope 실패 fixture에서도 제품 jobs가 실행되고 final gate는 실패하는 CI 계약, terminal handoff 호환성, inherited blob 불변 검증, Windows/Linux preflight 회귀, compact ledger dashboard를 모두 확인한 뒤 dev 통합한다.
+```
+
 ### R2 · R2-W5-F5
 
 ```text
@@ -2125,6 +2157,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.56 | 2026-08-11 11:45 | scope metadata 실패에도 제품 검증 신호를 수집하고 pending-CI handoff·inherited checkpoint hash·단일 preflight/sync·활성 원장 경량화를 구현하는 R1-W5-F24 READY 발행 |
 | v5.55 | 2026-08-11 11:28 | 외부 R5 clone의 local-only 3 commits를 삭제 없이 보존하고 latest dev를 non-ff merge한 뒤 기존 F4 wiring을 완주하는 owner-scoped reconciliation REWORK 재발행 |
 | v5.54 | 2026-08-11 11:22 | R4-W5-F12의 실제 제품 SHA f481f91과 scope-only 실패 CI 31451536556을 보존하면서 F10C·F10D owner 경로를 정식화하고 canonical G120-046 Gold 수치·hash 교정을 필수로 하는 corrective REWORK 재발행 |
 | v5.53 | 2026-08-11 10:50 | actual G120-046 HTTP가 live Trino Gold PASS와 달리 Node3 MODEL 단계에서 실패한 근거로, 미착수 R4-W5-F12를 Context Registry와 multi-source metric_selection consumer를 함께 완주하는 owner-scoped REWORK로 재발행 |

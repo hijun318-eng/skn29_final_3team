@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.87 |
-| 문서 기준일 | 2026-08-11 17:25 |
+| 버전 | v5.88 |
+| 문서 기준일 | 2026-08-11 17:30 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -27,7 +27,7 @@
 | R1 | `R1-W5-F34` | `READY` | `junhee` |
 | R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
-| R4 | `R4-W5-F16` | `MERGED_DEV` | `jaehong` |
+| R4 | `R4-W5-F17` | `READY` | `jaehong` |
 | R5 | `R5-W5-F8` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
@@ -436,6 +436,40 @@ AUTO_FAIL_CONDITIONS=conditional missing·N/A permission이 ledger health를 통
 R1_REVIEW_CONDITIONS=target·integration 회귀와 문서 정책·scope가 PASS하고 source CI가 PASS한 뒤 dev 통합 여부를 별도 판정한다.
 ```
 
+### R1 · R1-W5-F35
+
+```text
+STATUS=PLANNED
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F35
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=actual HTTP→DB persistence→Trino→G3→Artifact same-SHA E2E
+TASK_CARD_RANGE=R1-08·09 actual Analysis service integration E2E
+CURRENT_TASK_CARD_ID=R1-08-ACTUAL-ANALYSIS-E2E
+BASE_BRANCH=dev
+BASE_SHA=e6f791f7d18ab8b18695a943461a0b89b512d0b3
+START_POINT=R4-W5-F16과 R5-W5-F8이 dev e6f791f에 통합되고 dev CI 31468594200이 PASS했다. R1-W5-F34와 R4-W5-F17이 terminal·CI PASS이고 origin/dev·origin/test·runtime checkout identity가 exact 일치할 때만 conditional candidate가 effective READY가 된다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R1-W5-F35@e6f791f
+AUTO_START=CONDITIONAL
+AUTO_START_AFTER=R1-W5-F34;R4-W5-F17;R5-W5-F8
+CONTRACT_VERSION=ACTUAL-ANALYSIS-E2E-v1.0.0-DRAFT; OPENAPI-v1.0.0; TEST-BRANCH-RUNTIME-v1.0.1
+ALLOWED_PATHS=tests/integration/test_answervice_demo_runtime.py; handoffs/R1-W5-F35.json
+FORBIDDEN_PATHS=docs/markdown/daily_reports/**; app/**; infrastructure/**; src/**; tests/integration의 승인 1파일 외 tests/**; root Compose/env·.env; R2~R5 제품·보고·handoff; migration; dependency; secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F35.json
+TEST_RUNTIME_PREREQUISITE=WAIT — 현재 origin/test는 b78265c이고 local test refresh는 .wt/test/.env 부재로 fail-closed했다. 현재 active R1-W5-F34는 test worktree·env·secret을 FORBIDDEN으로 두므로 F35 권한으로 env 값을 추정·복사·생성하지 않는다. 승인된 local env와 same-checkout refresh, origin/test push·CI PASS는 effective start 전 외부 선행조건이다.
+ACCEPTANCE_CRITERIA=실행 시점 origin/dev·origin/test와 backend/frontend/app-postgres Compose checkout·config·env identity가 exact 동일하고 dev/test CI가 모두 PASS한다. production/default frontend는 R5 실제 Analysis HTTP client를 사용하며 mock·fixture fallback이 없다. server-owned principal로 실제 POST /analysis를 호출해 app-postgres request persistence→실제 Trino query→G3→Artifact를 통과하고 follow-up API readback이 같은 request_id·query_id·artifact_id를 반환한다. unauthorized·unapproved JOIN·missing filter는 Trino 전에 차단하고 repair exactly once·timeout/cancel·empty/large·masking·partial·replay를 실제 trace로 구분한다. canonical G120-046은 승인 Context·SQL에서 2행·합계 475972400.00·hash de17b5a22c6718c6e77e37936421c94618945dd31b0c7207f40e51d51b667716과 일치해야 한다.
+ACCEPTANCE_IDS=AC1_SAME_SHA_RUNTIME;AC2_REAL_HTTP_CLIENT;AC3_SERVER_PRINCIPAL;AC4_DB_PERSISTENCE;AC5_REAL_TRINO;AC6_G3_BEFORE_ARTIFACT;AC7_PERSISTED_READBACK;AC8_NEGATIVE_MATRIX;AC9_CANONICAL_GOLD;AC10_NO_MOCK_SUCCESS
+TEST_COMMANDS=origin/dev·origin/test exact SHA와 양쪽 CI PASS; refresh_test_runtime checkout/config/env identity; app-postgres migration head·backend /health·/readiness·Trino /v1/info; production/default frontend network trace; actual POST /analysis positive와 persisted follow-up readback; unauthorized·unapproved JOIN·missing filter·repair once·timeout/cancel·empty/large·masking·partial·replay negative matrix; G120-046 row/total/hash; python -m pytest -p no:cacheprovider tests/integration/test_answervice_demo_runtime.py -q with required live env; python -m pytest -p no:cacheprovider tests/integration -q; gate_scope preflight·2 planned paths·merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_SHA_CI;T2_RUNTIME_IDENTITY;T3_HEALTH;T4_FRONTEND_NETWORK;T5_ACTUAL_POSITIVE;T6_PERSISTED_READBACK;T7_NEGATIVE_MATRIX;T8_GOLD;T9_TARGET;T10_INTEGRATION;T11_SCOPE;T12_DIFF;T13_BRANCH_CI
+STOP_CONDITIONS=origin/test가 dev와 다름; dev/test CI Not Run·FAIL; .wt/test/.env·checkout/config/env identity 부재·불일치; backend/app-postgres/Trino health·migration head 실패; fixture/mock/contract-fake/fallback 성공; 실제 request_id·query_id·artifact_id 또는 DB readback 누락; canonical Gold 불일치; 제품·env·Docker resource 수정 필요; 다른 project/container/volume·firewall·secret·dependency·외부 비용; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=이미 승인·기동된 same-checkout test runtime에 대한 read-only health, 실제 HTTP 요청, 실제 Trino read-only query, app-postgres의 API 기반 persisted readback과 허용 경로 commit·junhee push·source CI만 승인한다. .env 생성·복사·수정, Docker create/recreate/remove, volume/network 변경, DB DDL·DML 직접 실행, 제품 수정, 다른 project·외부 배포·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=same-SHA·test CI 없이 실행; mock·fixture success; client-owned role 신뢰; DB persistence·Trino·G3·Artifact 중 한 단계 누락; negative가 query 실행; Gold 불일치 은폐; scope·필수 검증 FAIL
+R1_REVIEW_CONDITIONS=동일 dev/test/runtime SHA에서 실제 network·request_id·query_id·artifact_id·persisted readback·Gold hash가 하나의 trace로 확인될 때만 MVP Core actual integration을 판정한다.
+```
+
 ### R2 · R2-W5-F5
 
 ```text
@@ -616,6 +650,37 @@ AUTO_FAIL_CONDITIONS=임의 Bearer 문자열 수용; X-Role·X-User-Id 자칭 �
 R1_REVIEW_CONDITIONS=source CI와 Python 3.12 backend 전체 회귀에서 Analysis·Report가 동일 server principal을 사용하고 client-owned identity가 차단되며 OpenAPI가 실제 security contract와 일치할 때만 dev 통합한다. root secret mount·OIDC/JWT 채택은 별도 R1 카드로 남긴다.
 RESULT_SHA=5b353d4195f8994a376a6ee014916edbce8932d6
 RESULT_CI=branch 31463682802 PASS
+```
+
+### R4 · R4-W5-F17
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F17
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=real HTTP test harness and isolated migration ownership proof
+TASK_CARD_RANGE=R4-16 actual HTTP·DB test-harness와 migration ownership corrective REWORK
+CURRENT_TASK_CARD_ID=R4-16-REAL-RUNTIME-HARNESS
+BASE_BRANCH=dev
+BASE_SHA=e6f791f7d18ab8b18695a943461a0b89b512d0b3
+START_POINT=R4-W5-F16과 R5-W5-F8이 dev e6f791f에 통합되고 dev CI 31468594200이 PASS했다. clean jaehong을 origin/dev e6f791f까지 ff-only한 뒤 preflight와 전체 planned-path 검사를 통과한 경우에만 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W5-F17@e6f791f
+CONTRACT_VERSION=R4-REAL-RUNTIME-HARNESS-v1.0.0-DRAFT; existing OPENAPI-v1.0.0
+ALLOWED_PATHS=tests/backend/test_http_runtime.py; tests/backend/test_migration_compatibility.py; handoffs/R4-W5-F17.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=app/backend/app/**; app/backend/migrations/**; app/backend/contracts/**; infrastructure/**; compose.yml; .env; .env.example; frontend/**; src/data/**; src/ai/**; dependency; secret; 기존 project/container/network/volume
+HANDOFF_MANIFEST=handoffs/R4-W5-F17.json
+ACCEPTANCE_CRITERIA=product code·migration·infrastructure를 바꾸지 않고 test harness만 실제 runtime contract에 맞춘다. 실제 DataHub handler는 GET /health·/config와 POST /api/graphql을, 실제 Trino handler는 POST /v1/statement와 continuation을 처리하며 DATAHUB_GMS_URL·TRINO_URL을 명시 주입한다. 격리된 새 synthetic PostgreSQL에서 APP_MIGRATION_USER가 blank→head를 수행하고 context table owner와 Alembic head가 migration role에 귀속됨을 확인한다. APP_DB_USER는 runtime DML만 수행하며 migration owner 권한을 얻지 않는다. owner 불일치·APP_MIGRATION_USER 누락·DataHub/Trino protocol 불일치는 fail-closed한다. RealTemplateHttpRuntimeTest와 backend 전체·OpenAPI 검증이 PASS하고 기존 app-postgres·공유 Docker resource는 실행 전후 동일해야 한다.
+ACCEPTANCE_IDS=AC1_REAL_PROTOCOL_HARNESS;AC2_EXPLICIT_ENDPOINTS;AC3_BLANK_TO_HEAD_OWNER;AC4_RUNTIME_ROLE_SEPARATION;AC5_NEGATIVE_OWNERSHIP;AC6_BACKEND_REGRESSION;AC7_OPENAPI_UNCHANGED;AC8_RESOURCE_ISOLATION
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_http_runtime.py tests/backend/test_migration_compatibility.py -q; DataHub GET health/config·POST graphql와 Trino POST statement/continuation positive·protocol negative; pinned isolated PostgreSQL create→APP_MIGRATION_USER blank-to-head→owner/head query→APP_DB_USER runtime DML→exact destroy; APP_MIGRATION_USER missing·owner mismatch negative; python -m pytest -p no:cacheprovider tests/backend -q in approved Python 3.12 test container; python app/backend/scripts/export_openapi.py --check; python -m compileall -q tests/backend; gate_scope preflight·전체 planned paths·merge-base; git diff --check; jaehong source CI
+TEST_COMMAND_IDS=T1_TARGET;T2_PROTOCOL_MATRIX;T3_MIGRATION_OWNER;T4_OWNER_NEGATIVE;T5_BACKEND;T6_OPENAPI;T7_COMPILE;T8_SCOPE;T9_DIFF;T10_BRANCH_CI
+STOP_CONDITIONS=product code·migration·OpenAPI·infrastructure 수정 필요; 광범위 GRANT·superuser·owner 공유 필요; APP_DB_USER가 migration 수행; mock·fixture 성공을 actual E2E로 주장; 기존 app-postgres·공유 Docker resource 변경; host port publish·image pull·외부 network call·secret·dependency; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=로컬에 이미 존재하는 `postgres:16.13-bookworm@sha256:472efd9a66f2b2f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60` image로 owner-scoped `r4-w5-f17-runtime-test` PostgreSQL을 새 synthetic credential·전용 network·전용 volume에서 생성하고 migration·승인 HTTP/DB test를 수행한 뒤 exact container·network·volume만 폐기하는 절차, 허용 경로 commit·jaehong push·source CI를 승인한다. host port publish·image pull·기존 app-postgres·공유 volume·다른 project/container/network 변경, 실제 credential·외부 전송·비용은 금지한다. 실행 전후 기존 Docker name·ID·volume snapshot이 같아야 하며 실패 시에도 격리 대상을 정리하고 evidence를 BLOCKED로 기록한다.
+AUTO_FAIL_CONDITIONS=mock handler를 실제 protocol 증거로 기록; broad GRANT·superuser; runtime role가 migration owner; 기존 resource drift; OpenAPI·제품 변경; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=source CI와 Python 3.12 backend 전체 회귀가 PASS하고 실제 DataHub/Trino protocol harness, blank-to-head owner 분리, negative fail-closed, 기존 resource 무변경이 handoff에 exact evidence로 남을 때만 dev 통합한다.
 ```
 
 ### R5 · R5-W5-F2
@@ -1035,6 +1100,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.88 | 2026-08-11 17:30 | dev e6f791f·CI 31468594200 PASS와 R4 F16·R5 F8 통합을 기준으로 실제 protocol harness·격리 migration ownership을 R4-W5-F17 REWORK로 발행하고, R1-W5-F34와 F17 terminal 뒤 actual HTTP→DB→Trino→G3→Artifact를 검증할 R1-W5-F35 조건부 후보를 고정했다. origin/test는 b78265c이며 `.wt/test/.env` 부재로 refresh가 fail-closed해 same-SHA test CI 전까지 WAIT한다. |
 | v5.87 | 2026-08-11 17:25 | 조건부 AUTO_START 후보가 exact EXTERNAL_ACTION_PERMISSION 누락·N/A를 fail-closed하고 기존 non-conditional 카드를 보존하도록 R1-W5-F34 owner-scoped REWORK 발행 |
 | v5.86 | 2026-08-11 17:18 | R5-W5-F8의 Agent 실제 Analysis API·오류 fail-closed 전환과 source CI 31468349479 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.85 | 2026-08-11 17:12 | R4-W5-F16의 server-owned principal·OpenAPI 인증 계약과 source CI 31463682802 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |

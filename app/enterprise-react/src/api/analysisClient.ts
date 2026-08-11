@@ -55,7 +55,9 @@ export function createHttpAnalysisClient(
         },
         body: JSON.stringify({ question, ...body }),
       });
+      if (!response.ok) throw new Error(`Analysis API request failed (${response.status})`);
       const payload = await response.json() as AnalysisApiResponse;
+      if (!payload?.data || !payload.meta) throw new Error("Analysis API returned an invalid response");
       return normalizeApiResponse(payload, question, conversationId);
     },
   };
@@ -75,6 +77,6 @@ export function createMockAnalysisClient(): AnalysisClient {
   };
 }
 
-export function createAnalysisClient(): AnalysisClient {
-  return usesMockAnalysisClient ? createMockAnalysisClient() : createHttpAnalysisClient();
+export function createAnalysisClient(request: Fetch = fetch): AnalysisClient {
+  return usesMockAnalysisClient ? createMockAnalysisClient() : createHttpAnalysisClient(undefined, request);
 }

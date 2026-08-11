@@ -1,29 +1,48 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Check, Eye, FilePlus2, MessageSquareText, Plus, Send, Sparkles, TableProperties, X } from "lucide-react";
-import { createMockAnalysisClient } from "../api/analysisClient";
+import { createAnalysisClient } from "../api/analysisClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { MetaStrip, SectionTitle } from "../components/common/EnterpriseUi";
-import { analysisFixtures } from "../data/analysisFixtures";
+import { OPENAPI_VERSION } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 
 const RECENT_ANALYSES = ["객실·예약·연회 통합 분석"];
 const REPORT_SECTIONS = ["분석 요약", "핵심 KPI", "매출·점유율 비교 차트", "PMS·CRM·Banquet 근거"];
 const ARTIFACT_TABS = [["report", "Report"], ["sources", "Sources"], ["run", "Run history"], ["trace", "Trace"]];
-const client = createMockAnalysisClient();
-const initialRun = analysisFixtures.ready;
+const client = createAnalysisClient();
+
+function createTransientRun(question, conversationId, status = "idle") {
+  return {
+    conversationId,
+    requestId: "—",
+    traceId: "—",
+    status,
+    question,
+    metrics: [],
+    sources: [],
+    meta: {
+      asOf: "2026-07-30",
+      timezone: "Asia/Seoul",
+      synthetic: true,
+      seed: "—",
+      schemaVersion: "—",
+      contractVersion: OPENAPI_VERSION,
+    },
+  };
+}
 
 export function AgentPage({ onNavigate }) {
   const [conversationId] = useState(createUuid);
   const [question, setQuestion] = useState("7월 마지막 주 객실 매출 감소 원인을 예약 채널과 연회 일정 변화까지 함께 비교해줘");
   const [submittedQuestion, setSubmittedQuestion] = useState("");
-  const [run, setRun] = useState(initialRun);
+  const [run, setRun] = useState(() => createTransientRun("", conversationId));
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [artifactTab, setArtifactTab] = useState("report");
   const [reportModal, setReportModal] = useState("");
   const [reportSections, setReportSections] = useState(REPORT_SECTIONS);
-  const viewMeta = useMemo(() => run.meta, [run.meta]);
+  const viewMeta = run.meta;
 
   const submitQuestion = async (event) => {
     event.preventDefault();
@@ -34,19 +53,17 @@ export function AgentPage({ onNavigate }) {
     setEvidenceOpen(false);
     setHasSubmitted(true);
     setSubmittedQuestion(nextQuestion);
-    setRun({
-      ...initialRun,
-      status: "queued",
-      question: nextQuestion,
-      conversationId,
-    });
+    setRun(createTransientRun(nextQuestion, conversationId, "queued"));
     try {
       setRun(await client.analyze(nextQuestion, conversationId, "ready"));
     } catch {
       setRun({
-        ...analysisFixtures.ready,
-        question: nextQuestion,
-        conversationId,
+        ...createTransientRun(nextQuestion, conversationId, "failed"),
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "분석 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+          retryable: true,
+        },
       });
     } finally {
       setSubmitting(false);

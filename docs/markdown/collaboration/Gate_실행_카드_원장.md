@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.57 |
-| 문서 기준일 | 2026-08-11 11:55 |
+| 버전 | v5.58 |
+| 문서 기준일 | 2026-08-11 11:58 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F24` | `READY` | `junhee` |
+| R1 | `R1-W5-F24` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F8` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F12` | `READY` | `jaehong` |
@@ -102,7 +102,7 @@ R1_REVIEW_CONDITIONS=조합 회귀와 대표 3-source 실제 API E2E가 모두 P
 ### R1 · R1-W5-F24
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -121,6 +121,8 @@ CONTRACT_VERSION=AGENT-WORKFLOW-v2.0.0-DRAFT; HANDOFF-v1.1.0-DRAFT; GATE-SCOPE-v
 ALLOWED_PATHS=.github/workflows/ci.yml; .github/scripts/gate_scope.py; .github/scripts/agent_workflow.py; tests/integration/test_ci_workflow.py; tests/integration/test_gate_scope.py; tests/integration/test_agent_workflow.py; docs/markdown/collaboration/README.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/collaboration/archive/Gate_실행_카드_원장_20260805-20260811.md; handoffs/R1-W5-F24.json; docs/markdown/daily_reports/junhee/일일보고.md
 FORBIDDEN_PATHS=AGENTS.md; app/**; infrastructure/**; src/**; tests/integration의 승인 3파일 외 tests/**; R2~R5 파일·보고·handoff; root Compose/env; dependency·secret
 HANDOFF_MANIFEST=handoffs/R1-W5-F24.json
+RESULT_SHA=7b1a7f7be58685dbd78652ce607eaaa83560e91d
+RESULT_CI=branch 31453748585 PASS
 ACCEPTANCE_CRITERIA=role-scope가 실패해도 변경 그룹 output을 보존하고 적용 가능한 Python·document·frontend·Compose 검증은 독립 실행해 제품 신호를 수집하되 final quality-gate는 scope·제품·handoff 실패를 계속 차단한다. handoff는 branch CI만 CI_PENDING으로 정직하게 제출할 수 있고 이 상태는 현재 push의 CI 실행을 허용하되 R1 terminal 통합 승인으로 오인되지 않는다. 카드의 INHERITED_BLOB_PATHS와 INHERITED_BLOB_SHA256이 함께 있으면 blob이 exact 불변인 경로만 누적 diff에서 current editable change와 분리하며 drift·missing checkpoint는 fail-closed한다. bundle preflight는 branch·clean·base overlap·전체 allowed path를 한 명령으로 보고하고 clean ancestor일 때만 명시적 ff-only dev sync를 제공한다. 활성 Gate 원장은 현재 실행·PLANNED queue만 유지하고 종료 이력은 신규 archive로 이동하되 current_bundle·dashboard·historical base 조회 의미를 보존한다. Google Docs·보고는 Git Gate 정본을 복제하는 상태 저장소가 아니라 요청·결과 전달로만 취급한다고 collaboration README에 명시한다. force/reset/rebase/stash·자동 conflict 해결·권한 확대는 추가하지 않는다.
 ACCEPTANCE_IDS=AC1_TEST_SIGNAL_ON_SCOPE_FAILURE;AC2_FINAL_GATE_FAIL_CLOSED;AC3_PENDING_CI_HANDOFF;AC4_INHERITED_HASH;AC5_ONE_COMMAND_PREFLIGHT;AC6_SAFE_FF_ONLY;AC7_ACTIVE_LEDGER_COMPACT;AC8_SINGLE_GIT_CANONICAL;AC9_REGRESSION
 TEST_COMMANDS=workflow YAML parse와 integration workflow tests; gate_scope inherited unchanged/drift/missing checkpoint·PENDING_CI 제한·legacy handoff·SAFE_STALE·current dashboard tests; agent_workflow clean/dirty/ancestor/diverged/tool-missing/dry-run/ff-only tests; 전체 tests/integration; python -m compileall -q .github/scripts tests/integration; document policy; gate_scope bootstrap·11 planned paths·merge-base; git diff --check; junhee source CI
@@ -536,6 +538,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.58 | 2026-08-11 11:58 | R1-W5-F24 자동화 개선을 source CI 31453748585 PASS 근거로 dev에 통합하고 MERGED_DEV로 종료 |
 | v5.57 | 2026-08-11 11:55 | 역할별 최신 실행 카드와 PLANNED 큐만 활성 원장에 남기고 이전 49개 카드를 날짜 archive로 이동해 hot-file 크기를 축소 |
 | v5.56 | 2026-08-11 11:45 | scope metadata 실패에도 제품 검증 신호를 수집하고 pending-CI handoff·inherited checkpoint hash·단일 preflight/sync·활성 원장 경량화를 구현하는 R1-W5-F24 READY 발행 |
 | v5.55 | 2026-08-11 11:28 | 외부 R5 clone의 local-only 3 commits를 삭제 없이 보존하고 latest dev를 non-ff merge한 뒤 기존 F4 wiring을 완주하는 owner-scoped reconciliation REWORK 재발행 |

@@ -15,13 +15,22 @@ path.insert(0, str(BACKEND))
 from app.services.readiness import AppDatabaseReadiness
 
 
+def current_migration_head() -> str:
+    config = Config(str(BACKEND / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND / "migrations"))
+    head = ScriptDirectory.from_config(config).get_current_head()
+    assert head is not None
+    return head
+
+
 class AppDatabaseReadinessMigrationTest(unittest.TestCase):
     def test_exact_approved_template_count_must_be_one(self) -> None:
+        current_head = current_migration_head()
         for count, expected in ((0, "not_ready"), (1, "ready"), (2, "not_ready")):
             with self.subTest(count=count):
                 connection = MagicMock()
                 connection.execute.side_effect = [
-                    MagicMock(scalar_one_or_none=lambda: "20260810_06"),
+                    MagicMock(scalar_one_or_none=lambda: current_head),
                     MagicMock(scalar_one=lambda: count),
                 ]
                 engine = MagicMock()
@@ -63,11 +72,8 @@ class AppDatabaseReadinessMigrationTest(unittest.TestCase):
             )
 
     def test_current_migration_head_is_ready(self) -> None:
-        config = Config(str(BACKEND / "alembic.ini"))
-        config.set_main_option("script_location", str(BACKEND / "migrations"))
-        current_head = ScriptDirectory.from_config(config).get_current_head()
         self.assertEqual(
-            "ready", AppDatabaseReadiness._migration_status(current_head)
+            "ready", AppDatabaseReadiness._migration_status(current_migration_head())
         )
 
     def test_old_or_unknown_migration_head_is_not_ready(self) -> None:

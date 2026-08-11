@@ -4,7 +4,7 @@
   "ROLE": "R5",
   "BRANCH": "minji",
   "BASE_SHA": "15270f9",
-  "RESULT_SHA": "73faf0e309658d57adfe25f1e18904daf46f38b5",
+  "RESULT_SHA": "1501c6d094c065c9b0163f224b198fa7f88b5118",
   "TERMINAL_SHA": "HEAD",
   "DIRECTIVE_TOKEN": "R5-W5-F4@15270f9",
   "RESULT_CI": "Not Run — final minji push 전",
@@ -28,7 +28,6 @@
     "app/enterprise-react/src/styles.css",
     "app/enterprise-react/vite.config.js",
     "docs/markdown/daily_reports/minji/일일보고.md",
-    "handoffs/R5-W5-F4.json",
     "tests/frontend/contracts.test.mjs"
   ],
   "CONTRACT_VERSIONS": {

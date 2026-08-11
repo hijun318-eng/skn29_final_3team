@@ -134,13 +134,13 @@
     {
       "id": "T9_BRANCH_CI",
       "name": "daesung source CI",
-      "status": "CI_PENDING",
-      "evidence": "Historical CI runs 31469119306 and 31469331887 failed in role-scope and quality-gate while python-contracts and document-quality passed; those failures remain historical facts and current handoff-only correction push validation is pending."
+      "status": "PASS",
+      "evidence": "CI run 31471530110 on f3cbe313ca6e671e258be669dc770cc872b2512a passed role-scope, python-contracts, document-quality, and quality-gate. Historical runs 31469119306 and 31469331887 remain recorded as superseded failures."
     }
   ],
   "NOT_RUN": [],
   "CHANGE_REQUESTS": [],
   "RESIDUAL_RISKS": [],
   "EXTERNAL_APPROVAL_REQUIRED": [],
-  "REQUESTED_DECISION": "Run source CI for the handoff-only corrective push; R1 reviews dev integration only after role-scope, python-contracts, document-quality, and quality-gate all PASS."
+  "REQUESTED_DECISION": "Merge origin/daesung into dev through the approved self-service procedure, then record MERGED_DEV only after final preflight and dev CI PASS."
 }

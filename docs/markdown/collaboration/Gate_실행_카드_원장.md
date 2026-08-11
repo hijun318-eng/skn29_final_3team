@@ -1889,24 +1889,26 @@ TARGET_INTEGRATION_GATE=I5
 CHECKPOINT_GATES=frontend build-time backend base wiring and explicit LAN opt-in
 TASK_CARD_RANGE=R5-01 Agent·Report 공통 backend base build wiring 및 fail-closed 회귀
 CURRENT_TASK_CARD_ID=R5-01
-REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+REPOSITORY_ROOT=C:\Users\nowis\Desktop\SKN\Final_project
 BASE_BRANCH=dev
-BASE_SHA=9c7dc475a1ad993dd85a364ed1d6d4c5f5bb1e8e
-START_POINT=clean minji가 최신 origin/dev Gate v5.47의 ancestor임을 확인하고 origin/dev로 ff-only 동기화한 뒤 시작한다. 9c7dc47 이후 owner 제품 경로 변경은 0건이므로 기존 BASE_SHA·token을 유지하며, backend producer 완료를 기다리지 않고 현재 VITE_BACKEND_BASE_URL client 계약을 그대로 build에 연결한다.
+BASE_SHA=15270f9
+START_POINT=external clone의 clean minji ece70e3026c20669adb620d8f964424fb94054cf와 local-only commits 1fd9701·96f0b74·ece70e3을 history 그대로 보존한다. fetch 뒤 latest origin/dev 15270f9를 non-ff merge한다. 관측 base f5387b7 이후 latest dev까지 아래 inherited frontend 15경로 overlap은 0이므로 conflict가 없을 때만 진행하고, conflict·추가 dirty·ref drift가 있으면 중단한다. reset·rebase·force push·stash 적용/삭제는 금지한다.
 DIRECTIVE=REWORK
-DIRECTIVE_TOKEN=R5-W5-F4@9c7dc47
+DIRECTIVE_TOKEN=R5-W5-F4@15270f9
 CONTRACT_VERSION=FRONTEND-BACKEND-BASE-v1.0.0-DRAFT; existing Analysis·Report HTTP clients
-ALLOWED_PATHS=app/enterprise-react/Dockerfile; app/enterprise-react/compose.fragment.yml; tests/frontend/contracts.test.mjs; handoffs/R5-W5-F4.json; docs/markdown/daily_reports/minji/일일보고.md
-FORBIDDEN_PATHS=compose.yml; .env; .env.example; app/backend/**; app/enterprise-react/src/api/**; app/enterprise-react/src/pages/**; app/enterprise-react/src/contracts/**; package*.json; root CI; firewall; 다른 project/container/volume; dependency; secret
+ALLOWED_PATHS=app/enterprise-react/Dockerfile; app/enterprise-react/compose.fragment.yml; app/enterprise-react/src/App.jsx; app/enterprise-react/src/api/analysisClient.ts; app/enterprise-react/src/api/reportClient.ts; app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx; app/enterprise-react/src/components/layout/AppHeader.jsx; app/enterprise-react/src/components/layout/AppSidebar.jsx; app/enterprise-react/src/data/analysisFixtures.ts; app/enterprise-react/src/pages/AgentPage.jsx; app/enterprise-react/src/pages/CatalogPage.jsx; app/enterprise-react/src/pages/ConnectionsPage.jsx; app/enterprise-react/src/pages/ReportsPage.jsx; app/enterprise-react/src/styles.css; app/enterprise-react/vite.config.js; tests/frontend/contracts.test.mjs; handoffs/R5-W5-F4.json; docs/markdown/daily_reports/minji/일일보고.md
+INHERITED_LOCAL_HISTORY_PATHS=app/enterprise-react/compose.fragment.yml; app/enterprise-react/src/App.jsx; app/enterprise-react/src/api/analysisClient.ts; app/enterprise-react/src/api/reportClient.ts; app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx; app/enterprise-react/src/components/layout/AppHeader.jsx; app/enterprise-react/src/components/layout/AppSidebar.jsx; app/enterprise-react/src/data/analysisFixtures.ts; app/enterprise-react/src/pages/AgentPage.jsx; app/enterprise-react/src/pages/CatalogPage.jsx; app/enterprise-react/src/pages/ConnectionsPage.jsx; app/enterprise-react/src/pages/ReportsPage.jsx; app/enterprise-react/src/styles.css; app/enterprise-react/vite.config.js; tests/frontend/contracts.test.mjs
+MUTABLE_PATHS=app/enterprise-react/Dockerfile; app/enterprise-react/compose.fragment.yml; tests/frontend/contracts.test.mjs; handoffs/R5-W5-F4.json; docs/markdown/daily_reports/minji/일일보고.md
+FORBIDDEN_PATHS=compose.yml; .env; .env.example; app/backend/**; app/enterprise-react/src/contracts/**; package*.json; root CI; firewall; 다른 project/container/volume; dependency; secret
 HANDOFF_MANIFEST=handoffs/R5-W5-F4.json
 ACCEPTANCE_CRITERIA=Dockerfile build stage는 ARG VITE_BACKEND_BASE_URL=http://127.0.0.1:18000과 동일 ENV를 npm run build 전에 선언하고 compose build.args는 ${VITE_BACKEND_BASE_URL:-http://127.0.0.1:18000}만 전달한다. 기본 build는 loopback을 유지하고 LAN은 FRONTEND_BIND_ADDRESS=0.0.0.0과 VITE_BACKEND_BASE_URL=http://<명시적-LAN-IP>:18000을 함께 제공할 때만 사용한다. 0.0.0.0을 browser backend URL로 사용하거나 LAN IP를 자동 추론하지 않는다. Agent·Report는 기존 동일 base와 fallback을 유지하고 backend 실패를 mock·fixture·synthetic success로 자동 전환하지 않는다. token·secret·backend/OpenAPI/CORS/route/package를 변경하지 않는다.
 ACCEPTANCE_IDS=AC1_BUILD_ARG_ENV;AC2_DEFAULT_LOOPBACK;AC3_EXPLICIT_LAN_OPT_IN;AC4_AGENT_REPORT_SAME_BASE;AC5_FAIL_CLOSED;AC6_NO_SECRET_OR_OWNER_BYPASS
-TEST_COMMANDS=default와 explicit LAN compose config에서 build arg·host_ip 확인; node tests/frontend/contracts.test.mjs; npm --prefix app/enterprise-react run build; explicit LAN backend base 별도 build; Dockerfile ARG/ENV 순서·두 client 동일 env/default·자동 fallback 부재 contract test; gate_scope merge-base; git diff --check; minji branch CI
+TEST_COMMANDS=repository path·branch·HEAD·clean·local-only 3 commit inventory; fetch 후 f5387b7→latest dev의 inherited 15경로 overlap 0 재확인; origin/dev non-ff merge와 1fd9701·96f0b74·ece70e3 ancestry 보존; default와 explicit LAN compose config에서 build arg·host_ip 확인; node tests/frontend/contracts.test.mjs; npm --prefix app/enterprise-react run build; explicit LAN backend base 별도 build; Dockerfile ARG/ENV 순서·두 client 동일 env/default·자동 fallback 부재 contract test; gate_scope bootstrap·전체 planned-path·merge-base; git diff --check; minji corrective source CI
 TEST_COMMAND_IDS=T1_DEFAULT_CONFIG;T2_LAN_CONFIG;T3_FRONTEND_CONTRACT;T4_DEFAULT_BUILD;T5_LAN_BUILD;T6_SCOPE;T7_DIFF;T8_BRANCH_CI
-STOP_CONDITIONS=backend endpoint·CORS·OpenAPI/schema 변경 필요; 기본값을 loopback 밖으로 변경; LAN IP 자동 탐지·0.0.0.0 backend URL·wildcard CORS 요구; backend 실패를 mock/fixture/synthetic success로 대체; secret/token build arg; root Compose/env/backend/API/page/package/dependency 변경; 허용 경로 밖 변경; 필수 검증 실패
-EXTERNAL_ACTION_PERMISSION=local compose config·frontend contract·default/LAN build와 허용 경로 commit·minji push·source CI를 승인한다. 다른 project/container/volume·firewall·backend lifecycle·외부 배포·비용·secret 변경은 금지한다.
+STOP_CONDITIONS=exact external repo·HEAD·clean snapshot 불일치; local-only commit 유실; latest dev overlap 또는 merge conflict; inherited 15경로를 reconciliation 외 새 기능으로 확대; backend endpoint·CORS·OpenAPI/schema 변경 필요; 기본값을 loopback 밖으로 변경; LAN IP 자동 탐지·0.0.0.0 backend URL·wildcard CORS; backend 실패를 mock/fixture/synthetic success로 대체; secret/token build arg; root Compose/env/backend/package/dependency 변경; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=exact external clone에서 fetch, latest dev non-ff merge, local-only 3 commits 보존, F4 허용 경로 corrective commit, 최종 minji push 1회와 source CI를 승인한다. 중간 push·reset·rebase·force push·stash 조작·다른 project/container/volume·firewall·backend lifecycle·외부 배포·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=Agent·Report base 불일치; 명시 opt-in 없는 LAN 공개; production 자동 fixture/mock fallback; secret 노출; scope 위반; 필수 검증 FAIL
-R1_REVIEW_CONDITIONS=backend runtime/CORS가 아직 실패해도 R5 wiring 자체가 contract·build·CI를 통과하면 제출할 수 있다. runtime 실패는 R4-W5-F11 결과와 결합해 후속 판정한다.
+R1_REVIEW_CONDITIONS=local-only 3 commits와 latest dev ancestry, inherited 15경로 overlap 0, F4 build wiring, source CI와 handoff를 확인한다. backend runtime 실패는 R5가 우회하지 않고 R4 corrective 결과와 결합해 후속 판정한다.
 ```
 
 ## 현재 통합 확인 사항
@@ -2123,6 +2125,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.55 | 2026-08-11 11:28 | 외부 R5 clone의 local-only 3 commits를 삭제 없이 보존하고 latest dev를 non-ff merge한 뒤 기존 F4 wiring을 완주하는 owner-scoped reconciliation REWORK 재발행 |
 | v5.54 | 2026-08-11 11:22 | R4-W5-F12의 실제 제품 SHA f481f91과 scope-only 실패 CI 31451536556을 보존하면서 F10C·F10D owner 경로를 정식화하고 canonical G120-046 Gold 수치·hash 교정을 필수로 하는 corrective REWORK 재발행 |
 | v5.53 | 2026-08-11 10:50 | actual G120-046 HTTP가 live Trino Gold PASS와 달리 Node3 MODEL 단계에서 실패한 근거로, 미착수 R4-W5-F12를 Context Registry와 multi-source metric_selection consumer를 함께 완주하는 owner-scoped REWORK로 재발행 |
 | v5.52 | 2026-08-11 10:35 | R1-W5-F22의 격리 runtime·migration·Template·readiness를 MERGED_DEV로 전환하고, 각 역할의 후속 작업 11개를 단일 활성 카드 원칙을 지키는 PLANNED 큐로 등록 |

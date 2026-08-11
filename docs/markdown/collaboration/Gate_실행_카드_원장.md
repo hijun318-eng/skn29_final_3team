@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.60 |
-| 문서 기준일 | 2026-08-11 12:15 |
+| 버전 | v5.61 |
+| 문서 기준일 | 2026-08-11 12:30 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -423,6 +423,26 @@ TEST_COMMANDS=JSON/hash; tests/data 전체; producer-consumer fixtures; scope; d
 STOP_CONDITIONS=F9 NOT_RUN; runtime PASS 위조; R3/R4 파일 변경; hash 비결정성
 ```
 
+### R2 · R2-W5-F11
+
+```text
+STATUS=PLANNED
+ROLE_ID=R2
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F11
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R2-10·11 DataHub Domain·Glossary 검색 원장과 typed structured-search producer
+BASE_SHA=N/A — R2-W5-F10 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+CONTRACT_VERSION=DATAHUB-SEARCH-v1.0.0-DRAFT
+ALLOWED_PATHS=src/data/datahub_search_contract.i5.v1.json; src/data/serving_semantic_catalog.i4.v1.json; src/data/i2_adapters.py; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; tests/data/test_datahub_search_contract.py; tests/data/test_i2_adapters.py; tests/data/test_serving_semantic_catalog.py; handoffs/R2-W5-F11.json; docs/markdown/daily_reports/seung/일일보고.md
+ACCEPTANCE_CRITERIA=main keyword와 Domain·Glossary 후보를 서로 다른 입력으로 받는 typed search request를 동결한다. Domain·Glossary는 raw keyword 문자열을 그대로 filter에 복사하지 않고 승인된 logical ID·alias를 canonical DataHub URN으로 exact 해석한다. 후보가 없거나 ambiguous하면 해당 structured filter를 생략하거나 fail-closed하고 임의 URN을 생성하지 않는다. Dataset·Column·description·owner·Domain·Glossary·tag·lineage 반환 필드와 PUBLISHED·ACTIVE 상태, result limit, canonical hash를 고정한다.
+TEST_COMMANDS=JSON schema·canonical hash; alias→Domain/Glossary URN positive·unknown·ambiguous·injection·duplicate tests; typed adapter tests; tests/data 전체; publisher/verifier 회귀; compileall; scope; diff; seung source CI
+STOP_CONDITIONS=R2-W5-F10 미통합; live 미검증 상태를 VERIFIED로 승격; raw keyword를 Domain·Glossary filter에 무조건 복사; R3/R4 파일 변경; DataHub secret·실데이터·외부 비용; dependency·scope·필수 검증 실패
+R1_REVIEW_CONDITIONS=logical ID·alias·canonical URN과 반환 schema/hash가 결정론적이며 R3/R4가 fixture로 독립 소비할 수 있을 때 READY 전환한다.
+```
+
 ### R3 · R3-W5-F9
 
 ```text
@@ -477,6 +497,26 @@ TEST_COMMANDS=JSON/hash graph; artifact existence; model/prompt tests; tests/ai 
 STOP_CONDITIONS=stale evidence; 무승인 Base→LoRA; RunPod 비용·secret; artifact/hash 누락
 ```
 
+### R3 · R3-W5-F12
+
+```text
+STATUS=PLANNED
+ROLE_ID=R3
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F12
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R3-03 Node1 DataHub 검색 입력 후보 계약
+BASE_SHA=N/A — R3-W5-F8·R2-W5-F11 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+CONTRACT_VERSION=NODE-IO-v0.2.0-DRAFT; DATAHUB-SEARCH-v1.0.0-DRAFT
+ALLOWED_PATHS=src/ai/contracts/node_io.v0.1.json; src/ai/node1.py; src/ai/fake_model.py; src/ai/prompt_registry.py; tests/ai/test_node1.py; tests/ai/test_fake_model.py; tests/ai/test_contracts.py; tests/ai/test_prompt_registry.py; handoffs/R3-W5-F12.json; docs/markdown/daily_reports/daesung/일일보고.md
+ACCEPTANCE_CRITERIA=Node1은 자연어 질문에서 main search_keywords, domain_candidates, glossary_term_candidates를 별도 typed 배열로 생성하고 후보별 confidence·근거·ambiguity를 보존한다. 동일 raw keyword를 세 배열에 기계적으로 복제하지 않는다. Domain·Glossary 후보는 R2 승인 registry의 logical ID·alias만 사용하고 DataHub URN·asset·권한을 확정하지 않는다. 후보가 없으면 빈 배열을 반환하며 질문·첫 단어·LLM 추측으로 filter를 강제하지 않는다. 기존 intent·metric·time·single-source 호환과 deterministic fake를 유지한다.
+TEST_COMMANDS=Node1 schema positive; 일반 keyword-only; Domain-only; Glossary-only; multi-domain; ambiguous alias; unknown term; prompt injection; duplicate 후보; 기존 Node1/fake/prompt/contract tests; tests/ai 전체; compileall; scope; diff; daesung source CI
+STOP_CONDITIONS=R2 search contract 미통합; Node1이 URN·asset·권한 확정; 동일 keyword 무조건 복제; backend/data 변경; model download·RunPod·endpoint·secret·비용; dependency·scope·필수 검증 실패
+R1_REVIEW_CONDITIONS=R2 logical registry fixture와 exact 호환되고 Node1 출력만으로 검색 결과·권한 성공을 주장하지 않을 때 READY 전환한다.
+```
+
 ### R4 · R4-W5-F13
 
 ```text
@@ -511,6 +551,45 @@ ALLOWED_PATHS=app/backend/app/audit_*.py; app/backend/app/main.py; app/backend/a
 ACCEPTANCE_CRITERIA=request_id 기반 append-only trace와 owner-scoped list/detail을 제공하고 raw SQL·parameter·result·secret·stack trace를 redaction한다.
 TEST_COMMANDS=analysis/report trace; authz; redaction; immutable append; pagination; migration; backend 전체; OpenAPI; scope; CI
 STOP_CONDITIONS=role mutation; raw data 노출; worker 미통합인데 report trace PASS 주장; frontend·R2/R3 변경
+```
+
+### R4 · R4-W5-F15
+
+```text
+STATUS=PLANNED
+ROLE_ID=R4
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F15
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R4-06 Node1 검색 입력→DataHub Search SDK→Context resolver
+BASE_SHA=N/A — R2-W5-F11·R3-W5-F12·R4-W5-F12 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+CONTRACT_VERSION=DATAHUB-SEARCH-v1.0.0-DRAFT; CONTEXT-PACKAGE-vNEXT-DRAFT
+ALLOWED_PATHS=app/backend/app/adapters/i2_data_platform.py; app/backend/app/services/analysis_service.py; app/backend/app/services/pipeline_support.py; app/backend/app/context_registry_contracts.py; app/backend/app/services/context_registry_service.py; tests/backend/test_i2_data_platform.py; tests/backend/test_analysis_pipeline.py; tests/backend/test_context_registry.py; handoffs/R4-W5-F15.json; docs/markdown/daily_reports/jaehong/일일보고.md
+ACCEPTANCE_CRITERIA=Analysis 경로는 Node1의 main search_keywords를 DataHub main search에 사용하고 domain_candidates·glossary_term_candidates는 R2 registry를 통해 canonical URN structured filter로 별도 적용한다. 동일 keyword를 Domain·Glossary filter에 자동 복사하지 않는다. request role·approved domain prefilter를 먼저 적용하고 Dataset·Column·description·owner·Glossary·Domain 후보를 받은 뒤 PUBLISHED∩ACTIVE∩asset binding∩entitlement를 모두 만족한 자산만 Context에 포함한다. 점수·tie-break·최대 Dataset 8개·Column 60개를 결정론적으로 제한하고 unknown·ambiguous·zero-result·timeout·GraphQL 오류는 fail-closed한다. versioned/fake와 기존 G1·G2·G3·binder 경로를 우회하지 않는다.
+TEST_COMMANDS=main keyword only; Domain/Glossary exact filter; no-candidate filter omission; raw keyword reuse negative; unknown/ambiguous alias; unauthorized domain; unpublished/inactive/unbound asset; duplicate/tie/ranking/result cap; zero/timeout/GraphQL error; analysis pipeline·Context Registry·backend 전체; compileall; scope; diff; jaehong source CI
+STOP_CONDITIONS=R2/R3 producer 미통합; DataHub query schema 추정; wildcard Domain·Glossary filter; 권한·binding 우회; GraphQL 실패 fixture fallback; R2/R3/frontend/root Compose·dependency·secret 변경; scope·필수 검증 실패
+R1_REVIEW_CONDITIONS=Node1→typed DataHub request→structured search→entitled Context trace가 하나의 request_id로 재현되고 negative case가 fail-closed할 때 READY 전환한다. R4-W5-F13·F14와 파일이 겹치므로 같은 branch에서 동시에 실행하지 않는다.
+```
+
+### R1 · R1-W5-F26
+
+```text
+STATUS=PLANNED
+ROLE_ID=R1
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F26
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R1-08 DataHub 자연어 structured search 통합 검증
+BASE_SHA=N/A — R2-W5-F11·R3-W5-F12·R4-W5-F15 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=tests/integration/test_datahub_semantic_search_e2e.py; handoffs/R1-W5-F26.json; docs/markdown/daily_reports/junhee/일일보고.md
+ACCEPTANCE_CRITERIA=자연어 질문→Node1의 분리된 keyword·Domain·Glossary 후보→DataHub main/structured search→role·binding·entitlement→Context Package를 실제 제품 경로로 검증한다. 일반 검색, Domain만 지정, Glossary만 지정, 복합 질문, 모호어, 미등록어, 권한 없는 Domain, 빈 결과, result cap을 포함하고 동일 request_id trace를 확인한다. main keyword를 Domain·Glossary에 무조건 재사용하지 않는다는 계약을 Gold negative case로 고정한다.
+TEST_COMMANDS=target integration test; R2 search contract·R3 Node1·R4 adapter/pipeline targets; tests/data·tests/ai·tests/backend·tests/integration; actual DataHub runtime은 자원/health PASS일 때만; scope; diff; junhee source CI; dev CI
+STOP_CONDITIONS=producer 카드 미통합; 실제 DataHub health·binding 미검증인데 live PASS 주장; direct fixture/URN/SQL 주입; 권한·Gate 우회; 외부 비용·secret·다른 project 변경; scope·필수 검증 실패
+R1_REVIEW_CONDITIONS=versioned 경로는 결정론적 PASS, live 경로는 observed evidence가 있을 때만 PASS로 분리 판정한다.
 ```
 
 ### R5 · R5-W5-F5
@@ -572,6 +651,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.61 | 2026-08-11 12:30 | 기획서의 Node1 keyword 후보→DataHub main search·Domain/Glossary structured filter→권한 Context 흐름을 R2 F11·R3 F12·R4 F15·R1 F26 후속 카드로 명시하고 raw keyword의 필터 무조건 재사용을 금지 |
 | v5.60 | 2026-08-11 12:15 | 사용자 승인으로 commit된 legacy 자동화 개선 기록을 F25 누적 read-only evidence로 분리해 role-scope 교정 |
 | v5.59 | 2026-08-11 12:11 | compact archive의 I4 VERIFIED_GATE를 dashboard가 인식하지 못하는 회귀를 교정하는 R1-W5-F25 READY 발행 |
 | v5.58 | 2026-08-11 11:58 | R1-W5-F24 자동화 개선을 source CI 31453748585 PASS 근거로 dev에 통합하고 MERGED_DEV로 종료 |

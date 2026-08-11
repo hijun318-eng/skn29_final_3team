@@ -1,0 +1,4 @@
+services:
+  app-postgres:
+    container_name: answervice-app-postgres
+    ports: !override ["127.0.0.1:25432:5432"]

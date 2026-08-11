@@ -2,7 +2,13 @@ name: answervice
 
 # DataHub Core is restricted to full/split-host by its own fragment.
 include:
-  - path: infrastructure/database/compose.yml
+  - path:
+      - infrastructure/database/compose.yml
+      - compose.app-postgres.override.yml
   - path: app/backend/compose.fragment.yml
   - path: app/enterprise-react/compose.fragment.yml
   - path: infrastructure/database/datahub/compose.consumer.yml
+
+services:
+  backend:
+    ports: !override ["127.0.0.1:28000:8000"]

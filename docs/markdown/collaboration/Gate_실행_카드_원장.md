@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.84 |
-| 문서 기준일 | 2026-08-11 17:00 |
+| 버전 | v5.85 |
+| 문서 기준일 | 2026-08-11 17:12 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -27,7 +27,7 @@
 | R1 | `R1-W5-F33` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
-| R4 | `R4-W5-F16` | `READY` | `jaehong` |
+| R4 | `R4-W5-F16` | `MERGED_DEV` | `jaehong` |
 | R5 | `R5-W5-F8` | `READY` | `minji` |
 
 ## 활성 실행 카드
@@ -557,7 +557,7 @@ R1_REVIEW_CONDITIONS=corrective source CI가 전체 제품 job까지 PASS하고 
 ### R4 · R4-W5-F16
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -583,6 +583,8 @@ STOP_CONDITIONS=실제 token·secret을 tracked file/env/log에 기록; client h
 EXTERNAL_ACTION_PERMISSION=ephemeral synthetic principal file을 test container에 read-only mount하는 검증과 `postgres:16.13-bookworm@sha256:472efd9a66f2b2f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60` 기반의 owner-scoped `r4-w5-f16-auth-test` PostgreSQL을 새 synthetic credential·전용 network·전용 volume으로 생성해 migration과 승인 HTTP/DB test를 수행한 뒤 exact container·network·volume만 폐기하는 절차, 허용 경로 commit·jaehong push·source CI를 승인한다. host port publish·image pull·기존 app-postgres·공유 volume·다른 Compose project/container/network 변경, 실제 credential·외부 IdP·외부 network call·root secret mount·배포는 금지한다. 실행 전후 기존 Docker name·ID·volume snapshot이 같아야 하며 실패 시에도 격리 대상을 정리하고 evidence를 BLOCKED로 기록한다.
 AUTO_FAIL_CONDITIONS=임의 Bearer 문자열 수용; X-Role·X-User-Id 자칭 성공; expired/unknown token 성공; malformed mapping fail-open; release test fallback; secret 노출; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=source CI와 Python 3.12 backend 전체 회귀에서 Analysis·Report가 동일 server principal을 사용하고 client-owned identity가 차단되며 OpenAPI가 실제 security contract와 일치할 때만 dev 통합한다. root secret mount·OIDC/JWT 채택은 별도 R1 카드로 남긴다.
+RESULT_SHA=5b353d4195f8994a376a6ee014916edbce8932d6
+RESULT_CI=branch 31463682802 PASS
 ```
 
 ### R5 · R5-W5-F2
@@ -1000,6 +1002,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.85 | 2026-08-11 17:12 | R4-W5-F16의 server-owned principal·OpenAPI 인증 계약과 source CI 31463682802 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.84 | 2026-08-11 17:00 | CRM DataHub MSSQL ingestion의 불필요한 msdb job 조회를 광범위 DB 권한 없이 `include_jobs: false`로 차단하도록 R2-W5-F9를 BLOCKED 처리하고 R2-W5-F12 owner-scoped REWORK 발행 |
 | v5.83 | 2026-08-11 16:57 | R1-W5-F33의 mixed-checkout runtime 차단과 누적 Gate 발행 source CI 31466799848 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.82 | 2026-08-11 16:56 | R5-W5-F5 actual smoke가 AgentPage direct mock·fixture fallback으로 fake success가 되는 blocker를 기록하고 실제 Analysis HTTP client·fail-closed 전환을 R5-W5-F8 owner-scoped REWORK로 발행 |

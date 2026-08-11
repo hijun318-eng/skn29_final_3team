@@ -1,0 +1,141 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R1-W5-F10",
+  "ROLE": "R1",
+  "BRANCH": "junhee",
+  "BASE_SHA": "a8717d652dc98a6a8c4e2f6455b8ea698772b06e",
+  "RESULT_SHA": "e9107aa5fcb7494b4ba10c7f8b0b96d6c5d8a0e0",
+  "TERMINAL_SHA": "WORKTREE",
+  "DIRECTIVE_TOKEN": "R1-W5-F10@a8717d6",
+  "STATUS": "BLOCKED",
+  "COMPLETED_CARDS": [
+    "R1-02 CRM seed-ready healthcheck"
+  ],
+  "CHANGED_FILES": [
+    "handoffs/R1-W5-F9.json",
+    "infrastructure/database/compose.yml",
+    "tests/integration/test_crm_healthcheck.py",
+    "tests/integration/test_typed_three_source_e2e.py",
+    "docs/markdown/daily_reports/junhee/일일보고.md"
+  ],
+  "CONTRACT_VERSIONS": {
+    "SERVICE": "R1-SERVICE-v1.1.0-DRAFT",
+    "CRM_HEALTH": "CRM-SEED-HEALTH-v1.0.0-DRAFT",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_MARKER_AND_SQL",
+      "status": "PASS",
+      "evidence": "crm-mssql healthcheck가 marker 존재와 sqlcmd SELECT 1을 같은 CMD-SHELL의 &&로 요구"
+    },
+    {
+      "id": "AC2_COMPOSE_IDENTITY",
+      "status": "PASS",
+      "evidence": "image·service/container name·host port·volume·entrypoint 불변 정적 회귀 통과"
+    },
+    {
+      "id": "AC3_NEGATIVE_STATIC",
+      "status": "PASS",
+      "evidence": "marker 단독과 DB probe 단독을 seed-ready로 인정하지 않는 회귀 통과"
+    },
+    {
+      "id": "AC4_EXACT_RUNTIME_TARGET",
+      "status": "PASS",
+      "evidence": "기존 hotel-synthetic-db의 exact crm-mssql에서 marker+sqlcmd read-only smoke 통과"
+    },
+    {
+      "id": "AC5_PY312_BACKEND",
+      "status": "BLOCKED",
+      "evidence": "Python 3.12 image build는 PASS했으나 image에 pytest가 없어 카드의 pytest 명령 실행 불가; unittest discover는 78건 중 77건 통과·1 import error·9 skip"
+    },
+    {
+      "id": "AC6_OTHER_PROJECT_INVARIANT",
+      "status": "PASS",
+      "evidence": "다른 container/project/volume lifecycle 명령을 실행하지 않았고 exact crm-mssql read-only exec와 임시 test image만 사용"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_COMPOSE",
+      "name": "docker compose config",
+      "status": "PASS",
+      "evidence": "docker compose --env-file .env -f compose.yml config --quiet"
+    },
+    {
+      "id": "T2_INTEGRATION",
+      "name": "CRM health and typed 3-source integration",
+      "status": "PASS",
+      "evidence": "CRM health와 typed 3-source target 3 passed"
+    },
+    {
+      "id": "T3_CRM_RUNTIME",
+      "name": "exact CRM runtime smoke",
+      "status": "PASS",
+      "evidence": "exact crm-mssql marker+sqlcmd smoke PASS"
+    },
+    {
+      "id": "T4_PY312_IMAGE",
+      "name": "Python 3.12 backend image build",
+      "status": "PASS",
+      "evidence": "answervice-backend-r1-f10-test image build PASS"
+    },
+    {
+      "id": "T5_PY312_TEST",
+      "name": "Python 3.12 backend and report tests",
+      "status": "BLOCKED",
+      "evidence": "pytest module absent; unittest discover 77 passed·1 import error·9 skipped"
+    },
+    {
+      "id": "T6_CLEANUP",
+      "name": "exact temporary image cleanup",
+      "status": "PASS",
+      "evidence": "exact answervice-backend-r1-f10-test image inspect 후 tag와 image 제거"
+    },
+    {
+      "id": "T7_SCOPE",
+      "name": "gate scope merge-base",
+      "status": "NOT_RUN",
+      "evidence": "commit 전 worktree이며 bootstrap·planned-path 6건은 PASS"
+    },
+    {
+      "id": "T8_DIFF",
+      "name": "git diff check",
+      "status": "PASS",
+      "evidence": "git diff --check PASS"
+    },
+    {
+      "id": "T9_BRANCH_CI",
+      "name": "junhee branch CI",
+      "status": "NOT_RUN",
+      "evidence": "F10 commit·push 전"
+    }
+  ],
+  "ACTUAL_API_EVIDENCE": {
+    "status": "BLOCKED",
+    "evidence": "Python 3.12 image의 실제 HTTP /analysis가 Context·G1·MODEL(Node2)·G2·QUERY(Trino)·G3까지 PASS했으나 Node3가 exactly one Context metric을 요구해 INTERNAL_ERROR; rows=0, chart/artifact=false, trace_id=r1-f10-actual-api"
+  },
+  "PRESERVED_PREDECESSOR": {
+    "bundle": "R1-W5-F9",
+    "commit": "56e98aa",
+    "handoff": "handoffs/R1-W5-F9.json"
+  },
+  "CHANGE_REQUESTS": [
+    "R3: Node3가 승인된 3-source derived metric Context를 정확히 하나의 분석 metric으로 설명하도록 metric 선택 계약 보완",
+    "R1: Python 3.12 test image에서 pytest를 실행할 승인된 일회성 설치 명령 또는 test 전용 image 정책을 Gate에 명시",
+    "R4: 같은 네트워크 시연용 frontend origin을 exact allowlist로 받는 CORS 계약을 owner-scoped 카드에서 보완하고 wildcard는 금지",
+    "R1/R3: backend container의 외부 model credential 전달을 평문 environment 주입 대신 승인된 secret mount 계약으로 분리"
+  ],
+  "NOT_RUN": [
+    "Python 3.12 image의 pytest 전체 backend·report suite",
+    "junhee branch CI"
+  ],
+  "RESIDUAL_RISKS": [
+    "실제 3-source API가 Node3에서 실패해 table·chart·Artifact 성공 응답을 아직 만들지 못함",
+    "CRM 기존 volume의 marker 존재는 확인했지만 container recreate나 fresh-volume 검증은 승인 범위 밖이라 미실행",
+    "LAN frontend origin은 backend CORS exact allowlist에 아직 없어 다른 기기에서 API 호출이 차단될 수 있음",
+    "backend container의 외부 model credential은 container inspect 경계에서 노출될 수 있어 secret mount 전환이 필요함"
+  ],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "CRM health 변경은 수용 가능하나 AC5와 actual 3-source API Node3 blocker 때문에 R1-W5-F10 전체 완료는 보류"
+}

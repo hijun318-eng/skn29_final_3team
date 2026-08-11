@@ -21,7 +21,7 @@ import {
 } from "../../app/enterprise-react/src/data/analysisFixtures.ts";
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
 import { catalogSources, I3_DATA_CONTRACT_VERSION } from "../../app/enterprise-react/src/data/catalogFixtures.ts";
-import { createHttpAnalysisClient, usesMockAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
+import { createAnalysisClient, createHttpAnalysisClient, usesMockAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
 import { createReportClient, ReportApiError, usesFixtureReportClient } from "../../app/enterprise-react/src/api/reportClient.ts";
 
 const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/package.json", import.meta.url)));
@@ -281,6 +281,10 @@ assert.match(agentPageSource, /무엇을 분석할까요\?/);
 assert.match(agentPageSource, /\[\["report", "Report"\], \["sources", "Sources"\], \["run", "Run history"\], \["trace", "Trace"\]\]/);
 assert.match(agentPageSource, /선택한 내용으로 초안 만들기/);
 assert.doesNotMatch(agentPageSource, /answervice\.report\.openEditor/);
+assert.match(agentPageSource, /createAnalysisClient\(\)/);
+assert.doesNotMatch(agentPageSource, /createMockAnalysisClient|analysisFixtures/);
+assert.match(agentPageSource, /createTransientRun\(nextQuestion, conversationId, "failed"\)/);
+assert.doesNotMatch(agentPageSource, /status: "failed"[\s\S]*artifact:/);
 assert.match(reportsPageSource, /const \[view, setView\] = useState\("list"\)/);
 assert.match(reportsPageSource, /id: importedId, type: "주간".*status: "초안"/);
 assert.match(reportsPageSource, /candidate\.blocks\?\.length/);
@@ -358,6 +362,33 @@ assert.equal(JSON.parse(httpRequest.init.body).template_id, "weekly-room-operati
 assert.equal(httpRun.requestId, g1ClarificationFixture.meta.request_id);
 assert.equal(httpRun.traceId, g1ClarificationFixture.meta.trace_id);
 assert.equal(httpRun.error.retryable, false);
+
+let defaultClientRequests = 0;
+const defaultClient = createAnalysisClient(async () => {
+  defaultClientRequests += 1;
+  return new Response(JSON.stringify(g1ClarificationFixture), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+});
+const defaultRun = await defaultClient.analyze("기본 client 질문", "conv-default-001", "ready");
+assert.equal(defaultClientRequests, 1);
+assert.equal(defaultRun.requestId, g1ClarificationFixture.meta.request_id);
+
+for (const [name, request] of [
+  ["401", async () => new Response(JSON.stringify(g1ClarificationFixture), { status: 401 })],
+  ["403", async () => new Response(JSON.stringify(g1ClarificationFixture), { status: 403 })],
+  ["500", async () => new Response(JSON.stringify(g1ClarificationFixture), { status: 500 })],
+  ["invalid JSON", async () => new Response("{", { status: 200 })],
+  ["network rejection", async () => { throw new Error("network unavailable"); }],
+]) {
+  const rejectedClient = createHttpAnalysisClient("http://backend.test", request);
+  await assert.rejects(
+    () => rejectedClient.analyze("실패 질문", `conv-${name}`, "ready"),
+    undefined,
+    `${name} must not produce an AnalysisRun`,
+  );
+}
 
 const reportDefinitionResponse = {
   contract_version: REPORT_CONTRACT_VERSION,

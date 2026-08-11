@@ -45,6 +45,18 @@ def _serving_schema(node: str) -> dict[str, Any]:
             "required": ["corrected_sql"],
             "properties": {"corrected_sql": {"type": "string"}},
         }
+    if node == "node3":
+        return {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["explanation", "conditions", "sources", "limitations"],
+            "properties": {
+                "explanation": {"type": "string"},
+                "conditions": {"type": "array", "items": {"type": "string"}},
+                "sources": {"type": "array", "items": {"type": "string"}},
+                "limitations": {"type": "array", "items": {"type": "string"}},
+            },
+        }
     return _response_schema(node)
 
 
@@ -64,6 +76,7 @@ def _validate_sql_semantics(node: str, payload: dict[str, Any], sql: str) -> Non
 def openai_transport(
     endpoint: str,
     token: str | None,
+    model: str,
     node: str,
     payload: dict[str, Any],
     timeout: float,
@@ -72,7 +85,49 @@ def openai_transport(
         "POST",
         f"{endpoint.rstrip('/')}/v1/chat/completions",
         {
-            "model": "Qwen/Qwen3-4B",
+            "model": model,
+            "messages": [
+                {"role": "system", "content": get_prompt(_PROMPT_IDS[node]).text},
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        payload,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                },
+            ],
+            "temperature": 0,
+            "max_tokens": 1_500,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": f"answervice_{node}",
+                    "strict": True,
+                    "schema": _serving_schema(node),
+                },
+            },
+        },
+        token,
+        timeout,
+    )
+    return _complete_chat_response(response, node, payload, model, "openai")
+
+
+def vllm_transport(
+    endpoint: str,
+    token: str | None,
+    model: str,
+    node: str,
+    payload: dict[str, Any],
+    timeout: float,
+) -> dict[str, Any]:
+    response = request_json(
+        "POST",
+        f"{endpoint.rstrip('/')}/v1/chat/completions",
+        {
+            "model": model,
             "messages": [
                 {"role": "system", "content": get_prompt(_PROMPT_IDS[node]).text},
                 {
@@ -93,6 +148,16 @@ def openai_transport(
         token,
         timeout,
     )
+    return _complete_chat_response(response, node, payload, model, "vllm")
+
+
+def _complete_chat_response(
+    response: dict[str, Any],
+    node: str,
+    payload: dict[str, Any],
+    model: str,
+    adapter: str,
+) -> dict[str, Any]:
     choices = response.get("choices")
     if not isinstance(choices, list) or not choices:
         raise ValueError("chat completion response has no choices")
@@ -103,8 +168,10 @@ def openai_transport(
     result = json.loads(content)
     if not isinstance(result, dict):
         raise ValueError("model content must be a JSON object")
+    metadata = get_prompt(_PROMPT_IDS[node]).metadata()
+    metadata.update(model_version=model, adapter=adapter)
     if node not in {"node2", "node2_repair"}:
-        return result
+        return {**result, "model": metadata}
     sql_field = "sql" if node == "node2" else "corrected_sql"
     sql = result[sql_field]
     _validate_sql_semantics(node, payload, sql)
@@ -133,11 +200,35 @@ def openai_transport(
             if asset["trino_fqn"].lower() in queried
         ],
         "parameters": [],
-        "model": get_prompt(_PROMPT_IDS[node]).metadata(),
+        "model": metadata,
     }
     if node == "node2_repair":
         completed.update(trace_id=payload["trace_id"], attempt=payload["attempt"])
     return completed
+
+
+class NodeModelRouter:
+    """Route selected nodes to replaceable model clients without changing the pipeline."""
+
+    def __init__(
+        self,
+        default_client: ProductionModelClient,
+        node_clients: dict[str, ProductionModelClient] | None = None,
+    ) -> None:
+        self._default = default_client
+        self._clients = dict(node_clients or {})
+        if not set(self._clients).issubset(_PROMPT_IDS):
+            raise ValueError("unsupported node model route")
+        self.last_trace: dict[str, Any] = {}
+
+    def generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
+        client = self._clients.get(node, self._default)
+        result = client.generate(node, payload)
+        self.last_trace = {
+            **client.last_trace,
+            "route": "override" if node in self._clients else "default",
+        }
+        return result
 
 
 class ContractModelAdapter:
@@ -151,16 +242,31 @@ class ContractModelAdapter:
         cls,
         endpoint: str,
         token: str | None = None,
+        model: str = "gpt-4.1-mini",
         timeout_seconds: float = 15.0,
+        node2_endpoint: str | None = None,
+        node2_token: str | None = None,
+        node2_model: str = "Qwen/Qwen3-4B",
     ) -> ContractModelAdapter:
-        if not endpoint:
-            raise ValueError("MODEL_ENDPOINT is required in openai mode")
-        return cls(
-            ProductionModelClient(
-                partial(openai_transport, endpoint, token),
+        if not endpoint or not token or not model:
+            raise ValueError("OpenAI endpoint, API key, and model are required")
+        default_client = ProductionModelClient(
+            partial(openai_transport, endpoint, token, model),
+            timeout_seconds=timeout_seconds,
+        )
+        node_clients: dict[str, ProductionModelClient] = {}
+        if node2_endpoint:
+            node2_client = ProductionModelClient(
+                partial(
+                    vllm_transport,
+                    node2_endpoint,
+                    node2_token,
+                    node2_model,
+                ),
                 timeout_seconds=timeout_seconds,
             )
-        )
+            node_clients = {"node2": node2_client, "node2_repair": node2_client}
+        return cls(NodeModelRouter(default_client, node_clients))
 
     def generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
         if node == "node2":
@@ -292,6 +398,14 @@ class ContractModelAdapter:
         expected = {item.name: item for item in parameter_bindings}
         if "period_end_exclusive" in expected and ":period_end" in sql:
             sql = re.sub(r":period_end(?![a-z0-9_])", ":period_end_exclusive", sql)
+        for name, binding in expected.items():
+            if binding.value_type == "date":
+                sql = re.sub(
+                    rf"DATE\s+'{re.escape(str(binding.value))}'",
+                    f"DATE ':{name}'",
+                    sql,
+                    flags=re.IGNORECASE,
+                )
         placeholders = set(re.findall(r":([a-z_][a-z0-9_]*)", sql))
         response_parameters = response["parameters"]
         names = [
@@ -302,6 +416,7 @@ class ContractModelAdapter:
         ]
         if len(names) != len(set(names)):
             raise ValueError("model parameter names must be unique")
+        supplied = dict(zip(names, response_parameters))
         return {
             "sql": sql,
             "references": [
@@ -318,13 +433,17 @@ class ContractModelAdapter:
                 name: (
                     {
                         "value_type": expected[name].value_type,
-                        "value": item["value"],
+                        "value": (
+                            supplied[name]["value"]
+                            if name in supplied
+                            else expected[name].value
+                        ),
                     }
                     if name in expected
-                    else item["value"]
+                    else supplied[name]["value"]
                 )
-                for name, item in zip(names, response_parameters)
-                if name in placeholders
+                for name in placeholders
+                if name in supplied or name in expected
             },
             "model_version": response["model"]["model_version"],
         }
@@ -388,6 +507,7 @@ class ContractModelAdapter:
                         {
                             "field": item.field,
                             "operator": item.operator,
+                            "value_type": item.value_type,
                             "value": item.value,
                         }
                         for item in metric.required_filters
@@ -395,6 +515,14 @@ class ContractModelAdapter:
                 }
                 for metric in metrics
             ] + ([fixture_metric] if fixture_metric else []),
+            "parameter_bindings": [
+                {
+                    "name": item.name,
+                    "value_type": item.value_type,
+                    "value": item.value,
+                }
+                for item in package.parameter_bindings
+            ],
             "joins": (
                 [
                     {

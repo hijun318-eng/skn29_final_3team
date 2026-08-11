@@ -1,6 +1,7 @@
 services:
   app-postgres:
-    container_name: answervice-app-postgres
-    ports: !override ["127.0.0.1:25432:5432"]
+    container_name: ${APP_POSTGRES_CONTAINER_NAME:-answervice-app-postgres}
+    ports: !override ["${APP_POSTGRES_BIND_ADDRESS:-127.0.0.1}:${APP_POSTGRES_PORT:-25432}:5432"]
   backend:
-    ports: !override ["127.0.0.1:28000:8000"]
+    container_name: ${BACKEND_CONTAINER_NAME:-answervice-backend}
+    ports: !override ["${BACKEND_BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-28000}:8000"]

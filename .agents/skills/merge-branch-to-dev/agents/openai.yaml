@@ -1,4 +1,0 @@
-interface:
-  display_name: "개인 Branch → dev 병합"
-  short_description: "개인 branch를 dev에 안전하게 병합하고 보고서를 통합"
-  default_prompt: "$merge-branch-to-dev로 개인 branch를 dev에 병합하고 보고서를 통합해줘."

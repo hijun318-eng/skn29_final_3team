@@ -7,6 +7,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from src.data.i2_adapters import (
@@ -106,7 +107,7 @@ query Dataset($urn: String!) {
         metric_ids = [metric.get("id") for metric in metrics if isinstance(metric, dict)]
         if len(metric_ids) != len(metrics) or len(metric_ids) != len(set(metric_ids)):
             raise ValueError("analytics context contract metric ids must be unique")
-        if not require_live_metadata:
+        if contract.get("synthetic") is True:
             for metric in metrics:
                 for required_filter in metric["required_filters"]:
                     if required_filter["field"] == "data_period_status":
@@ -524,6 +525,8 @@ query Dataset($urn: String!) {
         return "crm_only" if has_crm else "serving_views"
 
     def _datahub_dataset(self, urn: str) -> dict[str, Any]:
+        if urn.startswith("urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics."):
+            return self._datahub_editable_dataset(urn)
         headers = {"Content-Type": "application/json"}
         if self._datahub_token:
             headers["Authorization"] = f"Bearer {self._datahub_token}"
@@ -543,6 +546,42 @@ query Dataset($urn: String!) {
         if payload.get("errors") or not (payload.get("data") or {}).get("dataset"):
             raise ValueError("live DataHub dataset is unavailable")
         return payload["data"]["dataset"]
+
+    def _datahub_editable_dataset(self, urn: str) -> dict[str, Any]:
+        headers = {"X-RestLi-Protocol-Version": "2.0.0"}
+        if self._datahub_token:
+            headers["Authorization"] = f"Bearer {self._datahub_token}"
+        url = (
+            f"{self._datahub_url}/entitiesV2/{quote(urn, safe='')}"
+            "?aspects=List(editableDatasetProperties,editableSchemaMetadata)"
+        )
+        try:
+            with urlopen(Request(url, headers=headers), timeout=10) as response:
+                payload = json.loads(response.read())
+        except (HTTPError, TimeoutError, URLError, json.JSONDecodeError) as error:
+            raise ValueError("live DataHub lookup failed") from error
+        aspects = payload.get("aspects") or {}
+        key = (aspects.get("datasetKey") or {}).get("value") or {}
+        schema = (aspects.get("editableSchemaMetadata") or {}).get("value") or {}
+        fields = schema.get("editableSchemaFieldInfo") or []
+        if payload.get("urn") != urn or key.get("name") is None or not fields:
+            raise ValueError("live DataHub dataset is unavailable")
+        return {
+            "urn": payload["urn"],
+            "name": str(key["name"]).rsplit(".", 1)[-1],
+            "status": {"removed": False},
+            "schemaMetadata": {
+                "name": key["name"],
+                "fields": [
+                    {
+                        "fieldPath": item["fieldPath"],
+                        "nativeDataType": "contract",
+                    }
+                    for item in fields
+                    if isinstance(item, dict) and item.get("fieldPath")
+                ],
+            },
+        }
 
     def _datahub_health(self) -> bool:
         try:

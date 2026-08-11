@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
@@ -41,7 +41,7 @@ def verify(
     marker = catalog_marker(catalog)
     dataset_count = 0
     column_count = 0
-    query = urlencode({"aspects": "List(editableDatasetProperties,editableSchemaMetadata)"})
+    query = "aspects=List(editableDatasetProperties,editableSchemaMetadata)"
     for view in contract["views"]:
         endpoint = f"{server.rstrip('/')}/entitiesV2/{quote(view['urn'], safe='')}?{query}"
         request = Request(endpoint, headers=_headers(token), method="GET")

@@ -39,6 +39,35 @@ SELECT format(
   current_database(),
   :'migration_user'
 ) \gexec
+
+SELECT format('ALTER TABLE %I.%I OWNER TO %I', n.nspname, c.relname, :'migration_user')
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = ANY (ARRAY[
+  'analysis_v1','analytics','artifact','chat','connection','context','governance','model','query','reference','report','report_v1','tooling','rag','ml'
+])
+  AND c.relkind IN ('r', 'p')
+ORDER BY n.nspname, c.relname
+\gexec
+
+SELECT format('ALTER SEQUENCE %I.%I OWNER TO %I', n.nspname, c.relname, :'migration_user')
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE n.nspname = ANY (ARRAY[
+  'analysis_v1','analytics','artifact','chat','connection','context','governance','model','query','reference','report','report_v1','tooling','rag','ml'
+])
+  AND c.relkind = 'S'
+ORDER BY n.nspname, c.relname
+\gexec
+
+SELECT format('ALTER SCHEMA %I OWNER TO %I', nspname, :'migration_user')
+FROM pg_namespace
+WHERE nspname = ANY (ARRAY[
+  'analysis_v1','analytics','artifact','chat','connection','context','governance','model','query','reference','report','report_v1','tooling','rag','ml'
+])
+ORDER BY nspname
+\gexec
+
 GRANT USAGE,CREATE ON SCHEMA
   artifact,chat,connection,context,governance,model,query,reference,report,tooling,rag,ml
   TO :"migration_user";

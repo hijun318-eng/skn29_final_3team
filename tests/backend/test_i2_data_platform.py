@@ -90,6 +90,40 @@ def test_trino_transport_sends_required_user_header():
     assert payload["id"] == "query-1"
 
 
+def test_serving_view_uses_exact_datahub_editable_metadata():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    asset = next(item for item in adapter._assets if item["kind"] == "view")
+    response = MagicMock()
+    response.read.return_value = json.dumps(
+        {
+            "urn": asset["urn"],
+            "entityName": "dataset",
+            "aspects": {
+                "datasetKey": {"value": {"name": asset["fqn"]}},
+                "editableSchemaMetadata": {
+                    "value": {
+                        "editableSchemaFieldInfo": [
+                            {"fieldPath": column, "description": "synthetic"}
+                            for column in asset["columns"]
+                        ]
+                    }
+                },
+            },
+        }
+    ).encode()
+    response.__enter__.return_value = response
+
+    with patch("app.adapters.i2_data_platform.urlopen", return_value=response) as call:
+        dataset = adapter._datahub_dataset(asset["urn"])
+
+    assert dataset["urn"] == asset["urn"]
+    assert dataset["schemaMetadata"]["name"] == asset["fqn"]
+    assert [item["fieldPath"] for item in dataset["schemaMetadata"]["fields"]] == list(
+        asset["columns"]
+    )
+    assert "%3A" in call.call_args.args[0].full_url
+
+
 def test_finished_query_with_warnings_is_preserved_as_partial():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     adapter._trino.transport = lambda _method, _url, _body: {
@@ -132,7 +166,10 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     )
     plan = {
         "sql": sql,
-        "parameters": {"required_filter_1": "ACTUAL", "required_filter_2": False},
+        "parameters": {
+            "required_filter_1": "YTD_SYNTHETIC",
+            "required_filter_2": False,
+        },
         "references": [
             {
                 "urn": item.urn,
@@ -156,7 +193,7 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     assert package.assets[0].fqn == "serving.analytics.hotel_daily_metrics"
     assert [metric.id for metric in package.metrics] == ["recognized_room_revenue"]
     assert [(item.field, item.value) for item in package.metrics[0].required_filters] == [
-        ("data_period_status", "ACTUAL"),
+        ("data_period_status", "YTD_SYNTHETIC"),
         ("is_forecast", False),
     ]
 
@@ -196,10 +233,22 @@ def test_live_mode_fails_closed_without_v17_runtime_evidence():
     adapter._datahub_dataset.assert_not_called()
 
 
-def test_versioned_mode_does_not_expose_pending_binding():
+def test_versioned_mode_does_not_expose_pending_binding(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    health = json.loads(
+        (root / "src/data/asset_binding_health.i5.v1.json").read_text(encoding="utf-8")
+    )
+    health["status"] = "BLOCKED"
+    health["runtime_execution"] = "NOT_RUN"
+    for binding in health["bindings"]:
+        binding["status"] = "PENDING_RUNTIME_VERIFICATION"
+        binding["verified_at"] = None
+    binding_path = tmp_path / "pending-bindings.json"
+    binding_path.write_text(json.dumps(health), encoding="utf-8")
     adapter = I2DataPlatformAdapter(
         "http://trino:8080",
         "runtime-user",
+        binding_path=binding_path,
         require_live_metadata=False,
     )
     adapter._datahub_dataset = MagicMock()
@@ -275,6 +324,7 @@ def test_null_verified_at_cannot_be_promoted_by_global_health(tmp_path):
     )
     health["status"] = "HEALTHY"
     health["runtime_execution"] = "PASS"
+    health["bindings"][0]["verified_at"] = None
     path = tmp_path / "false-health.json"
     path.write_text(json.dumps(health), encoding="utf-8")
     adapter = I2DataPlatformAdapter(
@@ -438,7 +488,7 @@ def test_selected_assets_without_metric_fail_closed_when_context_is_built():
             "SELECT SUM(room_revenue) FROM serving.analytics.hotel_daily_metrics "
             "WHERE data_period_status = :required_filter_1 "
             "AND is_forecast = :required_filter_2 LIMIT 1000",
-            {"required_filter_1": "ACTUAL", "required_filter_2": False},
+            {"required_filter_1": "YTD_SYNTHETIC", "required_filter_2": False},
             {"required_filter_1": "FORECAST", "required_filter_2": True},
             "recognized_room_revenue",
         ),

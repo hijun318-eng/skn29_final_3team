@@ -34,6 +34,11 @@ class CountingDataPlatformAdapter(FakeDataPlatformAdapter):
     def __init__(self) -> None:
         super().__init__()
         self.execute_count = 0
+        self.search_queries = []
+
+    def search_assets(self, query, context):
+        self.search_queries.append(query)
+        return super().search_assets(query, context)
 
     def execute_query(self, sql, parameters, gate_token):
         self.execute_count += 1
@@ -259,6 +264,7 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual(ErrorCode.SQL_POLICY_BLOCKED, response.error.code)
         self.assertEqual(0, response.data.repair_count)
         self.assertEqual(0, model.calls)
+        self.assertEqual(["pms.public.pms_guests"], self.adapter.search_queries)
 
     def test_versioned_trino_demo_uses_only_the_approved_serving_view(self) -> None:
         decision = RoutingService.for_versioned_trino_demo().decide(
@@ -273,7 +279,8 @@ class AnalysisPipelineTest(unittest.TestCase):
         )
 
         self.assertEqual({"serving.analytics.hotel_daily_metrics"}, set(decision.source_fqns))
-        self.assertIn("data_period_status = 'YTD_SYNTHETIC'", decision.sql_text)
+        self.assertIn("data_period_status = :required_filter_1", decision.sql_text)
+        self.assertIn("is_forecast = :required_filter_2", decision.sql_text)
         self.assertIn("SUM(room_revenue) AS room_revenue", decision.sql_text)
         self.assertIn("GROUP BY business_date", decision.sql_text)
         self.assertTrue(decision.sql_text.endswith("LIMIT 1000"))

@@ -124,6 +124,10 @@
           "minItems": 1,
           "items": {"$ref": "#/$defs/context_metric"}
         },
+        "parameter_bindings": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/parameter_binding"}
+        },
         "joins": {
           "type": "array",
           "items": {"$ref": "#/$defs/context_join"}

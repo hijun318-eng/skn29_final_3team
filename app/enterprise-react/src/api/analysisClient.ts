@@ -18,19 +18,20 @@ export const usesMockAnalysisClient = env.VITE_ANALYSIS_MODE === "mock";
 export const showsAnalysisScenarios = usesMockAnalysisClient || env.VITE_ANALYSIS_DEMO === "true";
 
 function requestOptions(fixtureKey: FixtureKey) {
-  const templateRequest = {
-    template_id: "weekly-room-operations",
-    parameters: {
-      period_start: env.VITE_ANALYSIS_PERIOD_START || "2026-05-01",
-      period_end_exclusive: env.VITE_ANALYSIS_PERIOD_END_EXCLUSIVE || "2026-07-01",
-    },
+  const parameters = {
+    period_start: env.VITE_ANALYSIS_PERIOD_START || "2026-05-01",
+    period_end_exclusive: env.VITE_ANALYSIS_PERIOD_END_EXCLUSIVE || "2026-07-01",
   };
-  if (!showsAnalysisScenarios || fixtureKey === "ready") return { body: templateRequest, role: "hotel_analyst" };
+  const templateId = env.VITE_ANALYSIS_TEMPLATE_ID?.trim();
+  const analysisRequest = templateId
+    ? { template_id: templateId, parameters }
+    : {};
+  if (!showsAnalysisScenarios || fixtureKey === "ready") return { body: analysisRequest, role: "hotel_analyst" };
   if (fixtureKey === "clarification") return { body: { parameters: { scenario: "clarification" } }, role: "hotel_analyst" };
-  if (fixtureKey === "forbidden") return { body: templateRequest, role: "report_admin" };
+  if (fixtureKey === "forbidden") return { body: analysisRequest, role: "report_admin" };
   if (fixtureKey === "error") return { body: { parameters: { scenario: "query_failed" } }, role: "hotel_analyst" };
   if (fixtureKey === "partial") return { body: { parameters: { scenario: "query_partial" } }, role: "hotel_analyst" };
-  return { body: templateRequest, role: "hotel_analyst" };
+  return { body: analysisRequest, role: "hotel_analyst" };
 }
 
 export function createHttpAnalysisClient(
@@ -44,7 +45,7 @@ export function createHttpAnalysisClient(
       const response = await request(`${baseUrl.replace(/\/$/, "")}/analysis`, {
         method: "POST",
         headers: {
-          Authorization: "Bearer synthetic-local",
+          Authorization: "Bearer runtime-test-token",
           "Content-Type": "application/json",
           "X-As-Of": env.VITE_ANALYSIS_AS_OF || "2026-07-30",
           "X-Contract-Version": OPENAPI_VERSION,

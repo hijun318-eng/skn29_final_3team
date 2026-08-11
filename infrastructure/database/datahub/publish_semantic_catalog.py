@@ -108,7 +108,12 @@ def publish(
                 "aspectName": aspect_name,
                 "aspect": {
                     "contentType": "application/json",
-                    "value": json.dumps(aspect, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+                    "value": json.dumps(
+                        aspect,
+                        ensure_ascii=True,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
                 },
             }
         }

@@ -57,12 +57,12 @@ _PROMPTS = {
         "pms_stay_to_crm_membership_grade_event_time_v1은 SQL table 이름이 아니라 승인 JOIN 식별자이므로 JOIN 뒤에 쓰지 않는다. "
         "이 JOIN은 FROM pms.public.pms_stays s JOIN pms.public.pms_reservations r ON s.property_id = r.property_id AND s.reservation_id = r.reservation_id JOIN pms.public.pms_guests g ON r.property_id = g.property_id AND r.guest_id = g.guest_id JOIN crm.dbo.crm_customer_map m ON g.property_id = m.property_id AND g.guest_id = m.pms_guest_id AND m.valid_from <= s.actual_checkout_at AND (m.valid_to IS NULL OR s.actual_checkout_at < m.valid_to) JOIN crm.dbo.crm_member_grade_history h ON m.property_id = h.property_id AND m.member_no = h.member_no AND h.valid_from <= s.actual_checkout_at AND (h.valid_to IS NULL OR s.actual_checkout_at < h.valid_to) 형태를 정확히 사용한다. "
         "지표 질문은 Context metric의 field·aggregation·time_field를 그대로 적용하고, 질문에 요구된 dimension과 filter만 사용하며 원시 식별자 행을 대신 반환하지 않는다. "
-        "Context metric에 required_filters가 있으면 각 field를 승인 asset column으로 사용하고 operator eq를 =로 변환해 모든 field·value 조건을 AND로 정확히 적용한다. string value는 작은따옴표 literal, boolean value는 true 또는 false로 쓰며 자유 형식 predicate로 해석하지 않는다. "
+        "Context metric에 required_filters가 있으면 나열 순서대로 각 field = :required_filter_1, :required_filter_2 형식의 바인딩을 AND로 정확히 적용하고 값을 SQL literal로 쓰지 않는다. "
         "timestamp with time zone 기간만 TIMESTAMP 'YYYY-MM-DD 00:00:00 Asia/Seoul' 리터럴의 이상·미만 반개구간으로 비교한다. "
         "CURRENT_DATE·CURRENT_TIMESTAMP·now 함수는 쓰지 않고 Context execution_time의 절대 시각만 사용한다. "
         "전월 대비 월 지표는 원시 식별자나 valid_from·valid_to를 SELECT·GROUP BY하지 않고 date_format(date_trunc('month', s.actual_checkout_at AT TIME ZONE 'Asia/Seoul'), '%Y-%m') 월과 SUM(s.room_revenue)만 SELECT한다. "
         "기간 조건은 s.actual_checkout_at >= date_add('month', -2, from_iso8601_timestamp('<execution_time.period_start 값>')) AND s.actual_checkout_at < from_iso8601_timestamp('<execution_time.period_start 값>') 형태로 직전 완료 월과 그 이전 월만 조회하고 GROUP BY 1 ORDER BY 1로 두 행을 반환한다. "
-        "literal은 normalized_question과 Context execution_time에 명시된 값만 사용하고 placeholder는 만들지 않는다. "
+        "Context parameter_bindings의 모든 name을 SQL placeholder로 정확히 한 번 이상 사용하고 값을 literal로 복사하지 않으며 Context에 없는 임의 placeholder는 만들지 않는다. "
         "질문에 top N이 있으면 1 이상 1000 이하 N을 LIMIT으로 쓰고, 없으면 LIMIT 1000을 쓴다. "
         "실행과 정책 통과를 판정하지 않는다.",
     ),

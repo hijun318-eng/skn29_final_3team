@@ -73,10 +73,19 @@ class AnalysisService:
         )[:16]
         self._responses.record(trace, PipelineStage.CONTROLLER, f"audit={audit_id}")
 
+        asset_query = (
+            " ".join(sorted(decision.source_fqns))
+            if decision.route_type is RouteType.TEMPLATE
+            else payload.question
+        )
         assets = self._adapter.search_assets(
-            payload.question,
+            asset_query,
             context.model_dump(mode="json"),
         )
+        if decision.route_type is RouteType.TEMPLATE:
+            assets = [
+                item for item in assets if item.get("fqn") in decision.source_fqns
+            ]
         try:
             assets, normalized_question = self._support.select_metric(
                 payload, context, assets
@@ -164,7 +173,13 @@ class AnalysisService:
                     for item in references
                     if item["fqn"] in decision.source_fqns
                 ],
-                "parameters": payload.parameters,
+                "parameters": {
+                    item.name: {
+                        "value_type": item.value_type,
+                        "value": item.value,
+                    }
+                    for item in package.parameter_bindings
+                },
                 "model_version": "TEMPLATE-I2-v1.0.0",
             }
         else:

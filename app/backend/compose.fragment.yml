@@ -15,7 +15,14 @@ services:
       TRINO_USER: ${APP_DB_USER}
       DATAHUB_GMS_URL: http://datahub-gms:8080
       DATA_PLATFORM_MODE: ${DATA_PLATFORM_MODE:-real}
-      MODEL_MODE: ${MODEL_MODE:-template-only}
+      MODEL_MODE: ${MODEL_MODE:-openai}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_ENDPOINT: ${OPENAI_ENDPOINT:-https://api.openai.com}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      NODE2_MODEL_ENDPOINT: ${NODE2_MODEL_ENDPOINT:-}
+      NODE2_MODEL_API_TOKEN: ${NODE2_MODEL_API_TOKEN:-}
+      NODE2_MODEL: ${NODE2_MODEL:-Qwen/Qwen3-4B}
+      MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-30}
       AUTH_MODE: ${AUTH_MODE:-release}
       AUTH_PRINCIPALS_FILE: ${AUTH_PRINCIPALS_FILE:-/run/secrets/answervice_auth_principals.json}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://127.0.0.1:13000,http://localhost:13000,http://localhost:5173}
@@ -28,4 +35,6 @@ services:
     depends_on:
       app-postgres:
         condition: service_healthy
+      app-postgres-provision:
+        condition: service_completed_successfully
     restart: unless-stopped

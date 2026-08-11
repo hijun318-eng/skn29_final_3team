@@ -44,11 +44,11 @@ from app.services.readiness import AppDatabaseReadiness
 
 
 def _routing_service() -> RoutingService:
+    if os.getenv("DATA_PLATFORM_MODE") == "versioned-trino":
+        return RoutingService.for_versioned_trino_demo()
     database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
     if database_url:
         return RoutingService.from_database(database_url)
-    if os.getenv("DATA_PLATFORM_MODE") == "versioned-trino":
-        return RoutingService.for_versioned_trino_demo()
     return RoutingService()
 
 
@@ -70,7 +70,7 @@ def _data_platform():
 
 
 def _model():
-    mode = os.getenv("MODEL_MODE", "fake")
+    mode = (os.getenv("MODEL_MODE") or os.getenv("LLM") or "fake").strip().lower()
     if mode == "fake":
         return FakeModelAdapter()
     from app.adapters.contract_model import ContractModelAdapter, TemplateOnlyModelAdapter
@@ -82,9 +82,17 @@ def _model():
         return ContractModelAdapter()
     if mode == "openai":
         return ContractModelAdapter.from_openai(
-            os.getenv("MODEL_ENDPOINT", ""),
-            os.getenv("MODEL_API_TOKEN"),
-            float(os.getenv("MODEL_TIMEOUT_SECONDS", "15")),
+            os.getenv("OPENAI_ENDPOINT")
+            or os.getenv("MODEL_ENDPOINT")
+            or "https://api.openai.com",
+            os.getenv("OPENAI_API_KEY")
+            or os.getenv("LLM_API_KEY")
+            or os.getenv("MODEL_API_TOKEN"),
+            os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+            float(os.getenv("MODEL_TIMEOUT_SECONDS", "30")),
+            os.getenv("NODE2_MODEL_ENDPOINT") or os.getenv("SLLM_ENDPOINT"),
+            os.getenv("NODE2_MODEL_API_TOKEN") or os.getenv("SLLM_API_KEY"),
+            os.getenv("NODE2_MODEL", "Qwen/Qwen3-4B"),
         )
     raise ValueError(f"unsupported MODEL_MODE: {mode}")
 

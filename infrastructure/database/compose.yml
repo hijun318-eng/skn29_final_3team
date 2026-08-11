@@ -24,6 +24,7 @@ services:
     volumes:
       - app-postgres-data:/var/lib/postgresql/data
       - ./sql/ddl/00_answervice_app_postgresql.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
+      - ./security/provision-app-postgres.sh:/docker-entrypoint-initdb.d/05-provision-roles.sh:ro
       - ./sql/app/10-reference-data.sql:/docker-entrypoint-initdb.d/10-reference.sql:ro
       - ./security:/security:ro
     healthcheck:
@@ -32,6 +33,27 @@ services:
       timeout: 5s
       retries: 10
       start_period: 20s
+
+  app-postgres-provision:
+    <<: *db
+    profiles: [dev, full, split-host]
+    image: "postgres:16.13-bookworm@sha256:472efd9a66f2b2f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60"
+    environment:
+      PGHOST: app-postgres
+      PGPASSWORD: ${APP_ADMIN_PASSWORD}
+      POSTGRES_DB: ${APP_DB_NAME:-app_db}
+      POSTGRES_USER: ${APP_ADMIN_USER}
+      APP_MIGRATION_USER: ${APP_MIGRATION_USER}
+      APP_MIGRATION_PASSWORD: ${APP_MIGRATION_PASSWORD}
+      APP_DB_USER: ${APP_DB_USER}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+    entrypoint: ["sh", "/security/provision-app-postgres.sh"]
+    volumes:
+      - ./security:/security:ro
+    depends_on:
+      app-postgres:
+        condition: service_healthy
+    restart: on-failure
 
   pms-postgres:
     <<: *db

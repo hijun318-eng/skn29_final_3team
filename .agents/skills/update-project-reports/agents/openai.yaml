@@ -1,4 +1,0 @@
-interface:
-  display_name: "프로젝트 보고서 갱신"
-  short_description: "저장소 근거로 개인·팀 일일보고와 주간보고를 갱신"
-  default_prompt: "$update-project-reports로 저장소 근거의 일일·주간보고를 갱신해줘."

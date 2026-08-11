@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -94,16 +94,45 @@ class AppDatabaseReadiness:
 
     @staticmethod
     def _model_probe() -> str:
-        mode = os.getenv("MODEL_MODE", "fake")
+        mode = (os.getenv("MODEL_MODE") or os.getenv("LLM") or "fake").strip().lower()
         if mode in {"fake", "contract-fake", "template-only"}:
             return "not_required" if mode == "template-only" else "not_ready"
         if mode != "openai":
             return "not_ready"
-        endpoint = os.getenv("MODEL_ENDPOINT", "").rstrip("/")
-        if not endpoint:
+        endpoint = (
+            os.getenv("OPENAI_ENDPOINT")
+            or os.getenv("MODEL_ENDPOINT")
+            or "https://api.openai.com"
+        ).rstrip("/")
+        token = (
+            os.getenv("OPENAI_API_KEY")
+            or os.getenv("LLM_API_KEY")
+            or os.getenv("MODEL_API_TOKEN")
+        )
+        if not token:
             return "not_ready"
-        try:
-            with urlopen(f"{endpoint}/v1/models", timeout=2) as response:
-                return "ready" if response.status == 200 else "not_ready"
-        except (OSError, URLError):
-            return "not_ready"
+        routes = [(endpoint, token)]
+        node2_endpoint = os.getenv("NODE2_MODEL_ENDPOINT") or os.getenv("SLLM_ENDPOINT")
+        if node2_endpoint:
+            routes.append(
+                (
+                    node2_endpoint.rstrip("/"),
+                    os.getenv("NODE2_MODEL_API_TOKEN") or os.getenv("SLLM_API_KEY"),
+                )
+            )
+        for route_endpoint, route_token in routes:
+            headers = (
+                {"Authorization": f"Bearer {route_token}"}
+                if route_token
+                else {}
+            )
+            try:
+                with urlopen(
+                    Request(f"{route_endpoint}/v1/models", headers=headers),
+                    timeout=5,
+                ) as response:
+                    if response.status != 200:
+                        return "not_ready"
+            except (OSError, URLError):
+                return "not_ready"
+        return "ready"

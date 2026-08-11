@@ -33,7 +33,7 @@ function createTransientRun(question, conversationId, status = "idle") {
 
 export function AgentPage({ onNavigate }) {
   const [conversationId] = useState(createUuid);
-  const [question, setQuestion] = useState("7월 마지막 주 객실 매출 감소 원인을 예약 채널과 연회 일정 변화까지 함께 비교해줘");
+  const [question, setQuestion] = useState("이번 달 객실 매출을 일별로 분석해줘");
   const [submittedQuestion, setSubmittedQuestion] = useState("");
   const [run, setRun] = useState(() => createTransientRun("", conversationId));
   const [hasSubmitted, setHasSubmitted] = useState(false);

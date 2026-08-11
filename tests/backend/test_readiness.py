@@ -108,6 +108,28 @@ class AppDatabaseReadinessMigrationTest(unittest.TestCase):
             self.assertEqual("ready", AppDatabaseReadiness._datahub_probe())
             self.assertEqual("not_required", AppDatabaseReadiness._model_probe())
 
+    def test_openai_and_optional_node2_routes_are_probed_with_auth(self) -> None:
+        response = MagicMock(status=200)
+        response.__enter__.return_value = response
+        with patch("app.services.readiness.urlopen", return_value=response) as urlopen, patch.dict(
+            "os.environ",
+            {
+                "MODEL_MODE": "openai",
+                "OPENAI_ENDPOINT": "https://api.openai.test",
+                "LLM_API_KEY": "openai-token",
+                "NODE2_MODEL_ENDPOINT": "http://sllm.test",
+                "NODE2_MODEL_API_TOKEN": "sllm-token",
+            },
+            clear=True,
+        ):
+            self.assertEqual("ready", AppDatabaseReadiness._model_probe())
+
+        requests = [call.args[0] for call in urlopen.call_args_list]
+        self.assertEqual(
+            ["Bearer openai-token", "Bearer sllm-token"],
+            [request.get_header("Authorization") for request in requests],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

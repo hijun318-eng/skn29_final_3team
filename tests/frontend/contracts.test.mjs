@@ -358,7 +358,8 @@ const httpRun = await httpClient.analyze("기간 없는 질문", "conv-http-001"
 assert.equal(httpRequest.url, "http://backend.test/analysis");
 assert.equal(httpRequest.init.method, "POST");
 assert.equal(httpRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION);
-assert.equal(JSON.parse(httpRequest.init.body).template_id, "weekly-room-operations");
+assert.equal("template_id" in JSON.parse(httpRequest.init.body), false);
+assert.equal("parameters" in JSON.parse(httpRequest.init.body), false);
 assert.equal(httpRun.requestId, g1ClarificationFixture.meta.request_id);
 assert.equal(httpRun.traceId, g1ClarificationFixture.meta.trace_id);
 assert.equal(httpRun.error.retryable, false);
@@ -482,9 +483,10 @@ const manualReceipt = await reportClient.createManualRun({
 assert.equal(reportRequests.length, 9);
 assert.deepEqual(reportRequests.map(({ init }) => init.method), ["POST", "GET", "GET", "POST", "POST", "PUT", "GET", "GET", "POST"]);
 for (const { init } of reportRequests) {
-  assert.equal(init.headers.Authorization, "Bearer synthetic-local");
+  assert.equal(init.headers.Authorization, "Bearer runtime-report-admin-token");
   assert.equal(init.headers["X-Contract-Version"], "OPENAPI-v1.0.0");
   assert.equal(init.headers["X-Role"], "report_admin");
+  assert.equal(init.headers["X-User-Id"], "00000000-0000-0000-0000-000000000002");
   assert.equal(init.headers["X-Timezone"], "Asia/Seoul");
   assert.match(init.headers["X-Trace-Id"], /^[0-9a-f-]{36}$/);
 }

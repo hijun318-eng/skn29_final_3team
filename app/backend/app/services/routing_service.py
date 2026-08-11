@@ -54,8 +54,8 @@ class RoutingService:
                         "FROM serving.analytics.hotel_daily_metrics "
                         "WHERE business_date >= DATE ':period_start' "
                         "AND business_date < DATE ':period_end_exclusive' "
-                        "AND data_period_status = 'YTD_SYNTHETIC' "
-                        "AND is_forecast = false "
+                        "AND data_period_status = :required_filter_1 "
+                        "AND is_forecast = :required_filter_2 "
                         "GROUP BY business_date ORDER BY business_date LIMIT 1000"
                     ),
                     source_fqns=frozenset(

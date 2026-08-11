@@ -44,10 +44,11 @@ def test_root_include_applies_only_the_runtime_identity_override():
     assert override == (
         "services:\n"
         "  app-postgres:\n"
-        "    container_name: answervice-app-postgres\n"
-        '    ports: !override ["127.0.0.1:25432:5432"]\n'
+        "    container_name: ${APP_POSTGRES_CONTAINER_NAME:-answervice-app-postgres}\n"
+        '    ports: !override ["${APP_POSTGRES_BIND_ADDRESS:-127.0.0.1}:${APP_POSTGRES_PORT:-25432}:5432"]\n'
         "  backend:\n"
-        '    ports: !override ["127.0.0.1:28000:8000"]\n'
+        "    container_name: ${BACKEND_CONTAINER_NAME:-answervice-backend}\n"
+        '    ports: !override ["${BACKEND_BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-28000}:8000"]\n'
     )
 
 
@@ -71,3 +72,23 @@ def test_resolved_backend_uses_an_isolated_host_port_only():
     assert service["ports"] == [
         {"mode": "ingress", "target": 8000, "published": "28000", "protocol": "tcp", "host_ip": "127.0.0.1"}
     ]
+    assert service["depends_on"]["app-postgres-provision"]["condition"] == "service_completed_successfully"
+
+
+def test_app_postgres_provision_repairs_existing_volume_before_backend():
+    config = _config()
+    database = config["services"]["app-postgres"]
+    provision = config["services"]["app-postgres-provision"]
+
+    assert any(volume["target"] == "/docker-entrypoint-initdb.d/05-provision-roles.sh" for volume in database["volumes"])
+    assert provision["environment"]["PGHOST"] == "app-postgres"
+    assert provision["depends_on"]["app-postgres"]["condition"] == "service_healthy"
+    assert provision["entrypoint"] == ["sh", "/security/provision-app-postgres.sh"]
+
+
+def test_provision_transfers_schema_table_and_sequence_ownership():
+    script = (ROOT / "infrastructure/database/security/provision-app-postgres.sh").read_text(encoding="utf-8")
+
+    assert "ALTER TABLE %I.%I OWNER TO %I" in script
+    assert "ALTER SEQUENCE %I.%I OWNER TO %I" in script
+    assert "ALTER SCHEMA %I OWNER TO %I" in script

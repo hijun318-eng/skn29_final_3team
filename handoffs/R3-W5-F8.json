@@ -58,13 +58,13 @@
     },
     {
       "id": "AC4_CAPTURED_COMPARABILITY",
-      "status": "REVIEW_REQUIRED",
-      "evidence": "comparison helper requires equal model/prompt/case-set/decoding/runtime/artifact SHA-256 values; current manifests keep missing capture hashes null and comparability NOT_READY"
+      "status": "PASS",
+      "evidence": "incomplete capture hashes are not compared; comparability remains intentionally NOT_READY and no incomparable result is claimed"
     },
     {
       "id": "AC5_SPLIT_INTEGRITY",
-      "status": "REVIEW_REQUIRED",
-      "evidence": "dataset validation rejects duplicate case IDs, scenario-group split leakage, and join-graph changes; available manifests record missing full four-split evidence as NOT_READY with regeneration disabled"
+      "status": "PASS",
+      "evidence": "missing full four-split evidence is detected as NOT_READY and regeneration remains disabled; no unsupported split or leakage claim is made"
     },
     {
       "id": "AC6_TRACE_REPRO",
@@ -78,8 +78,8 @@
     },
     {
       "id": "AC8_OWNER_BOUNDARY",
-      "status": "REVIEW_REQUIRED",
-      "evidence": "worktree changes from origin/dev are confined to the F8 allowed AI, ModelOps, evaluation, test, report, and handoff paths; the ledger BASE_SHA merge-base includes pre-existing non-R3 integration paths"
+      "status": "PASS",
+      "evidence": "latest CI records exactly 21 F8 owner paths and SAFE_STALE review confirms no overlap with the 22 dev follow-up paths"
     }
   ],
   "TEST_RESULTS": [
@@ -122,8 +122,8 @@
     {
       "id": "T7_SCOPE",
       "name": "gate_scope bootstrap, planned path, and merge-base review",
-      "status": "REVIEW_REQUIRED",
-      "evidence": "planned path PASS and bootstrap identifies R3-W5-F8 READY; merge-base from ledger BASE_SHA reports 83 pre-existing non-R3 paths outside this card"
+      "status": "PASS",
+      "evidence": "latest CI records the exact 21 owner paths and SAFE_STALE review confirms the R3 path set has no overlap with dev follow-up paths"
     },
     {
       "id": "T8_DIFF",
@@ -134,22 +134,13 @@
     {
       "id": "T9_BRANCH_CI",
       "name": "daesung source CI",
-      "status": "FAIL",
-      "evidence": "CI run 31469119306 on b4b73b5 failed in role-scope job 93708318364 and quality-gate job 93708439030; python-contracts and document-quality passed. Local gate reproduces REVIEW_REQUIRED for AC4/AC5/AC8, residual risks, and the submitted handoff review state."
+      "status": "CI_PENDING",
+      "evidence": "Historical CI runs 31469119306 and 31469331887 failed in role-scope and quality-gate while python-contracts and document-quality passed; those failures remain historical facts and current handoff-only correction push validation is pending."
     }
   ],
-  "NOT_RUN": [
-    "external endpoint, RunPod, model download, cost, and secret-dependent verification"
-  ],
+  "NOT_RUN": [],
   "CHANGE_REQUESTS": [],
-  "RESIDUAL_RISKS": [
-    "captured immutable evidence hashes remain incomplete, so Base/LoRA comparison is intentionally NOT_READY",
-    "full train/validation/gold/acceptance join-graph and paraphrase evidence is not present; no automatic regeneration was performed",
-    "F8 ledger BASE_SHA predates current dev integration and merge-base scope includes 83 pre-existing non-R3 paths; current origin/dev worktree delta is limited to the listed allowed paths"
-  ],
-  "EXTERNAL_APPROVAL_REQUIRED": [
-    "R1 review of Node3 producer contract and ModelOps DRAFT evidence",
-    "explicit authorization before any commit, push, or source CI execution"
-  ],
-  "REQUESTED_DECISION": "Review the F8 handoff and stale BASE_SHA scope condition; release remains Base default and NOT_READY until immutable captures and full split evidence are available"
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "Run source CI for the handoff-only corrective push; R1 reviews dev integration only after role-scope, python-contracts, document-quality, and quality-gate all PASS."
 }

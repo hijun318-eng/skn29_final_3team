@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.69 |
-| 문서 기준일 | 2026-08-11 14:04 |
+| 버전 | v5.70 |
+| 문서 기준일 | 2026-08-11 14:08 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F29` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F30` | `READY` | `junhee` |
 | R2 | `R2-W5-F9` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `READY` | `jaehong` |
@@ -269,6 +269,37 @@ AUTO_FAIL_CONDITIONS=stale ledger가 안전한 ff-only를 계속 차단; Gate-on
 R1_REVIEW_CONDITIONS=세 회귀가 실제·synthetic test에서 fail-closed 경계를 유지하고 협업 지침이 단일 시작 명령으로 정렬되며 source CI가 PASS한 뒤 dev 통합한다.
 RESULT_SHA=3519e476651c2ca57643a4a662f780d5b27a4d05
 RESULT_CI=branch 31460026364 PASS
+```
+
+### R1 · R1-W5-F30
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F30
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=pre-authorized conditional ticket effective READY
+TASK_CARD_RANGE=R1-04 coding-agent conditional auto-start
+CURRENT_TASK_CARD_ID=R1-04-AUTOMATION-CONDITIONAL-AUTO-START
+BASE_BRANCH=dev
+BASE_SHA=d2b1d5574e8b76fe0190bb6ed90b0b2e1b72fc61
+START_POINT=R1-W5-F29가 dev d2b1d55에 통합되고 dev CI 31460246620과 동기화된 junhee CI 31460304795가 PASS했다. 다음 카드의 exact token·경로·선행 bundle을 R1이 미리 승인했는데도 PLANNED 상태 전환을 다시 기다리는 병목을 제거한다. 원장 자동 commit·push 대신 조건을 만족한 pre-authorized 카드만 실행 시점에 effective READY로 판정한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F30@d2b1d55
+CONTRACT_VERSION=GATE-SCOPE-v1.2.0-DRAFT; AGENT-WORKFLOW-v1.2.0-DRAFT
+ALLOWED_PATHS=.github/scripts/gate_scope.py; .github/scripts/agent_workflow.py; tests/integration/test_gate_scope.py; tests/integration/test_agent_workflow.py; AGENTS.md; docs/markdown/collaboration/README.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F30.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=.github/workflows/**; .github/scripts/** 중 승인 2경로 외 파일; tests/** 중 승인 2경로 외 파일; .agents/skills/**; docs/markdown/collaboration/archive/**; docs/markdown/02_WBS.md; app/**; infrastructure/**; src/**; R2~R5 보고·handoff·제품 경로; dependency·secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F30.json
+ACCEPTANCE_CRITERIA=R1이 future card에 STATUS=PLANNED, AUTO_START=CONDITIONAL, AUTO_START_AFTER의 exact bundle ID, non-N/A BASE_SHA·DIRECTIVE_TOKEN, exact ALLOWED_PATHS·ACCEPTANCE_CRITERIA·TEST_COMMANDS·STOP_CONDITIONS를 미리 기록한 경우만 조건부 후보로 인정한다. 모든 선행 bundle이 MERGED_DEV·VERIFIED_GATE이고 RESULT_CI가 PASS이며 같은 역할에 READY·IN_PROGRESS·REVIEW가 없고 원장 health가 정상일 때 candidate를 메모리에서 effective READY로 판정한다. agent_workflow preflight의 branch match·clean worktree·origin/dev ancestor와 Gate의 BASE_SHA safe-stale·경로 비중첩 검사를 모두 통과한 뒤에만 구현을 허용한다. 조건 미충족·후보 복수·dependency 누락·CI 미확정·N/A token/base·경로 겹침은 변경 없이 차단한다. 원장 파일·status·token을 자동 수정·commit·push하지 않고 제품 코드 실행·외부 lifecycle도 자동 수행하지 않는다. 기존 수동 READY·dashboard·role-scope·handoff·archive 의미를 유지한다.
+ACCEPTANCE_IDS=AC1_PREAUTHORIZED_ONLY;AC2_TERMINAL_DEPENDENCIES;AC3_PASS_CI;AC4_SINGLE_ACTIVE;AC5_SAFE_STALE_AND_CLEAN;AC6_EFFECTIVE_READY;AC7_FAIL_CLOSED;AC8_NO_LEDGER_MUTATION;AC9_COMPATIBILITY
+TEST_COMMANDS=python -m unittest tests.integration.test_gate_scope tests.integration.test_agent_workflow -v; python -m unittest discover -s tests/integration -p 'test_*.py'; synthetic conditional candidate dependency PASS·CI PASS·single candidate positive; missing dependency·nonterminal·CI missing/fail·duplicate candidate·active bundle·N/A base/token negative; safe-stale overlap·dirty·diverged negative; manual READY/dashboard/role-scope regression; python -m compileall -q .github/scripts/gate_scope.py .github/scripts/agent_workflow.py tests/integration/test_gate_scope.py tests/integration/test_agent_workflow.py; document policy AGENTS.md·README·Gate 원장·junhee 일일보고; gate_scope preflight·9 planned paths·merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_CONDITIONAL_TARGET;T2_INTEGRATION_FULL;T3_POSITIVE;T4_DEPENDENCY_NEGATIVE;T5_CANDIDATE_NEGATIVE;T6_WORKTREE_NEGATIVE;T7_COMPATIBILITY;T8_COMPILE;T9_DOCUMENT_POLICY;T10_SCOPE;T11_DIFF;T12_BRANCH_CI
+STOP_CONDITIONS=PLANNED 일반 카드를 실행 가능하게 만듦; AUTO_START_AFTER가 없는 후보 허용; terminal·CI PASS 미확인; 같은 역할 active 또는 후보 복수인데 자동 시작; N/A·동적 추정 token/base; safe-stale·경로 겹침·dirty·diverged 무시; 원장 자동 write·commit·push; 제품 실행·external lifecycle 자동화; workflow·dependency·제품 경로 변경; 기존 READY·role-scope·handoff 회귀; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=origin read-only fetch·CI 조회, 허용 경로 commit·junhee push·branch CI만 허용한다. 원장 자동 수정·dev merge·다른 역할 branch push·workflow dispatch·제품 실행·Docker·비용·secret·ACL·환경 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=일반 PLANNED가 실행됨; 선행 bundle·CI·single-active·safe-stale 조건 누락; 원장 mutation; 조건 불충족인데 effective READY; 기존 manual READY 회귀; scope·필수 검증 FAIL
+R1_REVIEW_CONDITIONS=synthetic positive·negative와 실제 manual READY 회귀에서 effective READY가 pre-authorized 조건에만 생성되고 source CI가 PASS한 뒤 dev 통합한다.
 ```
 
 ### R2 · R2-W5-F5
@@ -798,6 +829,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.70 | 2026-08-11 14:08 | exact token·경로·선행조건이 미리 승인된 PLANNED 카드만 조건 충족 시 effective READY로 판정하는 R1-W5-F30 발행 |
 | v5.68 | 2026-08-11 14:04 | stale branch self-sync·Gate-only 원장 발행·remote source preflight의 세 자동화 병목과 중복 시작 지침을 최소 교정하는 R1-W5-F29 READY 발행 |
 | v5.69 | 2026-08-11 15:18 | R1-W5-F29 source CI 31460026364 PASS와 dev 충돌 없는 반영을 확인해 MERGED_DEV 전환 |
 | v5.67 | 2026-08-11 13:42 | terminal R1 카드 때문에 Gate-only 발행 CI가 scope FAIL하는 순환을 해소하고 역할별 active READY·source evidence 전이만 담당하는 R1-W5-F28 READY 발행 |

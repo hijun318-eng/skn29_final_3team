@@ -1,0 +1,106 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R5-W5-F8",
+  "ROLE": "R5",
+  "BRANCH": "minji",
+  "BASE_SHA": "af13722b23196a761d7c3742e925936bb86c84b5",
+  "RESULT_SHA": "bfbdc3fa069e464a6551c54b35e5f5c67255ef83",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R5-W5-F8@af13722",
+  "RESULT_CI": "CI_PENDING — 이 handoff-only commit을 포함한 minji push가 source CI를 시작함",
+  "COMPLETED_CARDS": [
+    "R5-01 Agent 실제 Analysis API client 전환 REWORK"
+  ],
+  "CHANGED_FILES": [
+    "app/enterprise-react/src/api/analysisClient.ts",
+    "app/enterprise-react/src/pages/AgentPage.jsx",
+    "docs/markdown/daily_reports/minji/일일보고.md",
+    "tests/frontend/contracts.test.mjs"
+  ],
+  "CONTRACT_VERSIONS": {
+    "FRONTEND_BACKEND_BASE": "FRONTEND-BACKEND-BASE-v1.0.0-DRAFT",
+    "OPENAPI": "OPENAPI-v1.0.0",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "TEST_RESULTS": [
+    {
+      "id": "T1_FRONTEND_CONTRACT",
+      "name": "frontend contract",
+      "status": "PASS",
+      "evidence": "node tests/frontend/contracts.test.mjs — R5 contract checks passed"
+    },
+    {
+      "id": "T2_BUILD",
+      "name": "production build",
+      "status": "PASS",
+      "evidence": "npm.cmd --prefix app/enterprise-react run build — vite build PASS"
+    },
+    {
+      "id": "T3_NO_MOCK_OR_FALLBACK",
+      "name": "Agent direct mock·fixture fallback 정적 회귀",
+      "status": "PASS",
+      "evidence": "AgentPage의 createMockAnalysisClient·analysisFixtures 참조 0, createAnalysisClient 기본 사용과 failed transient state 확인"
+    },
+    {
+      "id": "T4_HTTP_NEGATIVE",
+      "name": "Analysis HTTP negative contract",
+      "status": "PASS",
+      "evidence": "default client HTTP 1회와 401·403·500·invalid JSON·network rejection의 AnalysisRun 성공 반환 0 확인"
+    },
+    {
+      "id": "T5_SCOPE",
+      "name": "R5 preflight·planned path·merge-base",
+      "status": "PASS",
+      "evidence": "agent_workflow R5-W5-F8 PASS, 허용 5경로 planned-path PASS, merge-base=b78265c40b18b30b517d7745e541e1dd64ad4add"
+    },
+    {
+      "id": "T6_DIFF",
+      "name": "git diff check",
+      "status": "PASS",
+      "evidence": "git diff --check whitespace error 없음"
+    },
+    {
+      "id": "T7_BRANCH_CI",
+      "name": "minji source CI",
+      "status": "CI_PENDING",
+      "evidence": "허용된 corrective push 1회가 source CI를 시작하며 실제 run 결과 확인 전 PASS로 주장하지 않음"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_ACTUAL_CLIENT",
+      "status": "PASS",
+      "evidence": "AgentPage가 createAnalysisClient()만 생성하고 submit 결과를 실제 client 응답으로 갱신"
+    },
+    {
+      "id": "AC2_NO_DIRECT_MOCK",
+      "status": "PASS",
+      "evidence": "AgentPage의 createMockAnalysisClient import·호출 0"
+    },
+    {
+      "id": "AC3_NO_FIXTURE_FALLBACK",
+      "status": "PASS",
+      "evidence": "AgentPage의 analysisFixtures import·호출 0, catch는 artifact 없는 failed 상태로 전환"
+    },
+    {
+      "id": "AC4_HTTP_FAIL_CLOSED",
+      "status": "PASS",
+      "evidence": "non-2xx·invalid JSON·network rejection이 reject되고 UI catch가 failed 상태를 표시"
+    },
+    {
+      "id": "AC5_TEST_DEFAULT_HTTP",
+      "status": "PASS",
+      "evidence": "VITE_ANALYSIS_MODE가 없는 contract test에서 createAnalysisClient가 HTTP request를 정확히 1회 수행"
+    },
+    {
+      "id": "AC6_OWNER_BOUNDARY",
+      "status": "PASS",
+      "evidence": "R5 허용 frontend·test·handoff·개인보고 경로만 변경하고 backend·OpenAPI·CORS·package를 변경하지 않음"
+    }
+  ],
+  "REQUESTED_DECISION": "minji source CI PASS 확인 후 R5-W5-F8 dev 통합 및 R4-W5-F16 통합 뒤 actual browser E2E 별도 판정"
+}

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.90 |
-| 문서 기준일 | 2026-08-11 18:05 |
+| 버전 | v5.91 |
+| 문서 기준일 | 2026-08-11 18:12 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -490,12 +490,12 @@ START_POINT=R1-W5-F34 source CI 31469682947이 PASS했다. origin/test는 b78265
 DIRECTIVE=REWORK
 DIRECTIVE_TOKEN=R1-W5-F36@e6f791f
 CONTRACT_VERSION=TEST-BRANCH-RUNTIME-v1.0.2-DRAFT
-ALLOWED_PATHS=.github/scripts/refresh_test_runtime.ps1; .githooks/post-merge; tests/integration/test_test_runtime_refresh.py; docs/markdown/collaboration/README.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F36.json; docs/markdown/daily_reports/junhee/일일보고.md
-FORBIDDEN_PATHS=.env; .env.example; compose*.yml; .github/workflows/**; app/**; infrastructure/**; src/**; tests/**의 승인 1파일 외 경로; R2~R5 제품·보고·handoff; dependency·secret
+ALLOWED_PATHS=.github/scripts/gate_scope.py; .github/scripts/refresh_test_runtime.ps1; .githooks/post-merge; tests/integration/test_gate_scope.py; tests/integration/test_test_runtime_refresh.py; AGENTS.md; docs/markdown/collaboration/README.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F34.json; handoffs/R1-W5-F36.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=.env; .env.example; compose*.yml; .github/scripts/**의 승인 2파일 외 경로; .github/workflows/**; app/**; infrastructure/**; src/**; tests/**의 승인 2파일 외 경로; R2~R5 제품·보고·handoff; dependency·secret
 HANDOFF_MANIFEST=handoffs/R1-W5-F36.json
 ACCEPTANCE_CRITERIA=post-merge hook은 local git config answervice.testEnvFile을 읽고 값이 없을 때만 test worktree의 .env를 fallback으로 넘긴다. refresh script는 absolute existing regular file만 허용하고 env 내용·값을 출력하지 않으며 required vars 존재 여부만 이름 기준으로 검증한다. 선택한 env는 docker compose --env-file exact path로 직접 사용하고 복사·생성·수정하지 않는다. dev와 test runtime의 고정 port·container_name 충돌 또는 source SHA·Compose checkout/config/env label 불일치는 Docker 변경 전에 fail-closed한다. 기존 opt-in·branch·clean·path classifier·PlanOnly 계약은 유지한다.
 ACCEPTANCE_IDS=AC1_CONFIG_THEN_FALLBACK;AC2_ABSOLUTE_EXISTING_FILE;AC3_NO_SECRET_OUTPUT;AC4_REQUIRED_VAR_NAMES;AC5_DIRECT_ENV_REFERENCE;AC6_CONCURRENT_CONFLICT_FAIL_CLOSED;AC7_SOURCE_LABEL_IDENTITY;AC8_EXISTING_GUARDS
-TEST_COMMANDS=hook config/fallback shell contract; PowerShell synthetic external env absolute/missing/relative/required-var/no-secret matrix; fixed port/container conflict matrix; source SHA·label mismatch matrix; parser; python -m pytest -p no:cacheprovider tests/integration/test_test_runtime_refresh.py -q; python -m pytest -p no:cacheprovider tests/integration -q; document/report policy; gate_scope 7 paths; git diff --check; junhee source CI
+TEST_COMMANDS=hook config/fallback shell contract; PowerShell synthetic external env absolute/missing/relative/required-var/no-secret matrix; fixed port/container conflict matrix; source SHA·label mismatch matrix; parser; python -m pytest -p no:cacheprovider tests/integration/test_test_runtime_refresh.py -q; python -m pytest -p no:cacheprovider tests/integration -q; document/report policy; gate_scope cumulative 11 paths; git diff --check; junhee source CI
 TEST_COMMAND_IDS=T1_HOOK;T2_ENV_MATRIX;T3_CONFLICT_MATRIX;T4_SOURCE_IDENTITY;T5_PARSE;T6_TARGET;T7_INTEGRATION;T8_DOCUMENT_POLICY;T9_SCOPE;T10_DIFF;T11_BRANCH_CI
 STOP_CONDITIONS=env copy·content/value 출력; relative·missing env 허용; required vars 값 노출; port/container 충돌 허용; source SHA·label 불일치 허용; Docker/test refresh 실행; dev/test merge; 제품·Compose·env·secret 수정; scope·필수 검증 실패
 EXTERNAL_ACTION_PERMISSION=origin read-only fetch·CI 조회, 허용 경로 commit·junhee push·source CI만 승인한다. git config·env·Docker·dev/test branch·외부 시스템·secret·비용은 변경하지 않는다.
@@ -1133,6 +1133,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.91 | 2026-08-11 18:12 | F36 Gate-only CI 31469850161이 제품 결함 없이 dev 기준 누적 F34 4경로 미선언으로 fail-closed한 결과를 반영해, 신규 7경로와 누적 F34 경로의 exact union 11경로로 source scope 교정 |
 | v5.90 | 2026-08-11 18:05 | R1-W5-F34 source CI 31469682947 PASS를 VERIFIED_GATE로 기록하고, env 복사 없이 local git config의 absolute existing env를 직접 참조하며 runtime 충돌·source 불일치를 차단하는 R1-W5-F36 READY 발행; F35 선행에 F36 terminal 추가 |
 | v5.89 | 2026-08-11 17:55 | 조건부 AUTO_START의 exact 외부 행위 권한 누락·N/A를 fail-closed하고 기존 non-conditional 호환 회귀를 확인해 R1-W5-F34 REVIEW 전환 |
 | v5.88 | 2026-08-11 17:30 | dev e6f791f·CI 31468594200 PASS와 R4 F16·R5 F8 통합을 기준으로 실제 protocol harness·격리 migration ownership을 R4-W5-F17 REWORK로 발행하고, R1-W5-F34와 F17 terminal 뒤 actual HTTP→DB→Trino→G3→Artifact를 검증할 R1-W5-F35 조건부 후보를 고정했다. origin/test는 b78265c이며 `.wt/test/.env` 부재로 refresh가 fail-closed해 same-SHA test CI 전까지 WAIT한다. |

@@ -4,6 +4,8 @@ import re
 import unittest
 from pathlib import Path
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = ROOT / "src" / "data" / "i2_contract.v1.json"
@@ -51,6 +53,14 @@ class I2ContractTest(unittest.TestCase):
         self.assertEqual(5, len(upstream))
         self.assertTrue(any(name.startswith("pms.") for name in upstream))
         self.assertTrue(any(name.startswith("crm.") for name in upstream))
+
+    def test_crm_recipe_disables_job_metadata_collection(self):
+        path = ROOT / "infrastructure/database/datahub/recipes/crm.i2.yml"
+        text = path.read_text(encoding="utf-8")
+        recipe = yaml.safe_load(text)
+
+        self.assertIs(recipe["source"]["config"]["include_jobs"], False)
+        self.assertEqual(1, text.count("include_jobs:"))
 
     def test_type_mapping_is_lossless_for_money_time_and_ids(self):
         mappings = self.contract["type_mappings"]

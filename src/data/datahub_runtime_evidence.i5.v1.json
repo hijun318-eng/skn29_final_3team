@@ -4,11 +4,11 @@
   "datahub_version": "v1.7.0",
   "trino_version": "476",
   "status": "BLOCKED",
-  "runtime_execution": "NOT_RUN",
+  "runtime_execution": "PARTIAL",
   "blocker": {
-    "code": "LOCAL_RAM_LIMIT",
+    "code": "CRM_MSDB_METADATA_PERMISSION_DENIED",
     "required_checkpoint": "R1_RUNTIME_HEALTHY",
-    "detail": "R1 runtime health checkpoint is unavailable while the approved local runtime is stopped for RAM safety."
+    "detail": "PMS and POS ingestion succeeded before CRM job metadata collection was disabled. The corrected CRM recipe has not been rerun because the approved DataHub runtime is stopped."
   },
   "target": {
     "compose_project": "hotel-synthetic-db",
@@ -17,12 +17,12 @@
     "ingestion_image": "acryldata/datahub-ingestion:v1.7.0"
   },
   "ingestion_plan": [
-    {"order": 1, "source": "pms", "recipe": "infrastructure/database/datahub/recipes/pms.i2.yml", "recipe_sha256": "d33928973e09faa4fad5957fed8cc20ffd4e583ce9df22aa44a868e5fcfa9a28", "status": "NOT_RUN", "exit_code": null},
-    {"order": 2, "source": "pos", "recipe": "infrastructure/database/datahub/recipes/pos.i3.yml", "recipe_sha256": "c2bfe24de57006415caf7eb79ef0b5943ab39ab38cdf1e3e6bf38901cd289b37", "status": "NOT_RUN", "exit_code": null},
-    {"order": 3, "source": "crm", "recipe": "infrastructure/database/datahub/recipes/crm.i2.yml", "recipe_sha256": "163592fa7b2229a9e7d69f67c8a68c78a9d001d8e216ca36b94c9135429c432c", "status": "NOT_RUN", "exit_code": null},
-    {"order": 4, "source": "facility", "recipe": "infrastructure/database/datahub/recipes/facility.i3.yml", "recipe_sha256": "b1d867265996723c978c00a5c4848950b2b9879cb52c5edc449bcb5e5592a65f", "status": "NOT_RUN", "exit_code": null},
-    {"order": 5, "source": "banquet", "recipe": "infrastructure/database/datahub/recipes/banquet.i3.yml", "recipe_sha256": "6d611d3826005707bd38e1ca09e421f407f26e0b4d6d983ca5180e66b6be18dc", "status": "NOT_RUN", "exit_code": null},
-    {"order": 6, "source": "serving", "recipe": "infrastructure/database/datahub/recipes/serving.i4.yml", "recipe_sha256": "bdd5902bb2d5411b88235f4b52acd617793a6b0bd00f7cb5007eee2819bf1f5c", "status": "NOT_RUN", "exit_code": null}
+    {"order": 1, "source": "pms", "recipe": "infrastructure/database/datahub/recipes/pms.i2.yml", "recipe_sha256": "d33928973e09faa4fad5957fed8cc20ffd4e583ce9df22aa44a868e5fcfa9a28", "status": "PASS", "exit_code": 0, "run_id": "r2-w5-f9-pms-20260811T063843Z", "started_at": "2026-08-11T06:38:43.030845967Z", "finished_at": "2026-08-11T06:38:57.763206195Z"},
+    {"order": 2, "source": "pos", "recipe": "infrastructure/database/datahub/recipes/pos.i3.yml", "recipe_sha256": "c2bfe24de57006415caf7eb79ef0b5943ab39ab38cdf1e3e6bf38901cd289b37", "status": "PASS", "exit_code": 0, "run_id": "r2-w5-f9-pos-20260811T064013Z", "started_at": "2026-08-11T06:40:13.830236041Z", "finished_at": "2026-08-11T06:40:24.711306991Z"},
+    {"order": 3, "source": "crm", "recipe": "infrastructure/database/datahub/recipes/crm.i2.yml", "recipe_sha256": "6666bfecba6a1839e254f8153a34c405bf0f3fb52119294565f43222be42f404", "status": "NOT_RUN", "exit_code": null, "run_id": null, "started_at": null, "finished_at": null},
+    {"order": 4, "source": "facility", "recipe": "infrastructure/database/datahub/recipes/facility.i3.yml", "recipe_sha256": "b1d867265996723c978c00a5c4848950b2b9879cb52c5edc449bcb5e5592a65f", "status": "NOT_RUN", "exit_code": null, "run_id": null, "started_at": null, "finished_at": null},
+    {"order": 5, "source": "banquet", "recipe": "infrastructure/database/datahub/recipes/banquet.i3.yml", "recipe_sha256": "6d611d3826005707bd38e1ca09e421f407f26e0b4d6d983ca5180e66b6be18dc", "status": "NOT_RUN", "exit_code": null, "run_id": null, "started_at": null, "finished_at": null},
+    {"order": 6, "source": "serving", "recipe": "infrastructure/database/datahub/recipes/serving.i4.yml", "recipe_sha256": "bdd5902bb2d5411b88235f4b52acd617793a6b0bd00f7cb5007eee2819bf1f5c", "status": "NOT_RUN", "exit_code": null, "run_id": null, "started_at": null, "finished_at": null}
   ],
   "expected": {
     "view_count": 8,
@@ -39,10 +39,10 @@
     ]
   },
   "observed": {
-    "ingestion": {"status": "NOT_RUN", "run_ids": [], "canonical_sha256": null},
+    "ingestion": {"status": "PARTIAL", "run_ids": ["r2-w5-f9-pms-20260811T063843Z", "r2-w5-f9-pos-20260811T064013Z"], "canonical_sha256": "c5c0e14b900d6ba0b0a3b391c72e833ca98215f4ecbb2ec171e1ac55c5485e3c"},
     "search": {"status": "NOT_RUN", "view_count": null, "canonical_sha256": null},
     "schema": {"status": "NOT_RUN", "column_count": null, "canonical_sha256": null},
     "lineage": {"status": "NOT_RUN", "upstream_edge_count": null, "fine_grained_lineage_count": null, "canonical_sha256": null}
   },
-  "recorded_at": null
+  "recorded_at": "2026-08-11T15:41:05+09:00"
 }

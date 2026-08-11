@@ -13,17 +13,27 @@ def load(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_runtime_evidence_is_truthfully_blocked():
+def test_runtime_evidence_is_truthfully_partial_and_blocked():
     evidence = load(EVIDENCE_PATH)
     assert evidence["contract_version"] == "I5-DATAHUB-v1.1.0-RUNTIME-DRAFT"
     assert evidence["datahub_version"] == "v1.7.0"
     assert evidence["trino_version"] == "476"
-    assert (evidence["status"], evidence["runtime_execution"]) == ("BLOCKED", "NOT_RUN")
+    assert (evidence["status"], evidence["runtime_execution"]) == ("BLOCKED", "PARTIAL")
+    assert evidence["blocker"]["code"] == "CRM_MSDB_METADATA_PERMISSION_DENIED"
     assert evidence["blocker"]["required_checkpoint"] == "R1_RUNTIME_HEALTHY"
-    assert evidence["recorded_at"] is None
-    assert all(item["status"] == "NOT_RUN" and item["exit_code"] is None for item in evidence["ingestion_plan"])
-    assert all(item["status"] == "NOT_RUN" for item in evidence["observed"].values())
-    assert not any(item["canonical_sha256"] for item in evidence["observed"].values())
+    assert evidence["recorded_at"].endswith("+09:00")
+    assert [item["status"] for item in evidence["ingestion_plan"]] == [
+        "PASS", "PASS", "NOT_RUN", "NOT_RUN", "NOT_RUN", "NOT_RUN"
+    ]
+    assert [item["exit_code"] for item in evidence["ingestion_plan"]] == [0, 0, None, None, None, None]
+    assert evidence["observed"]["ingestion"]["status"] == "PARTIAL"
+    assert len(evidence["observed"]["ingestion"]["run_ids"]) == 2
+    assert evidence["observed"]["ingestion"]["canonical_sha256"] == hashlib.sha256(
+        b"pms:0|pos:0"
+    ).hexdigest()
+    for name in ("search", "schema", "lineage"):
+        assert evidence["observed"][name]["status"] == "NOT_RUN"
+        assert evidence["observed"][name]["canonical_sha256"] is None
 
 
 def test_recipe_order_and_hashes_are_reproducible():

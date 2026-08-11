@@ -25,8 +25,8 @@ if (-not $DryRun) {
     throw 'Live ingestion is intentionally disabled in this offline validator revision.'
 }
 
-if ($runtime.status -ne 'BLOCKED' -or $runtime.runtime_execution -ne 'NOT_RUN') {
-    throw 'Runtime evidence must remain BLOCKED/NOT_RUN until live trace exists.'
+if ($runtime.status -ne 'BLOCKED' -or $runtime.runtime_execution -notin @('NOT_RUN', 'PARTIAL')) {
+    throw 'Runtime evidence must remain truthfully BLOCKED with NOT_RUN or PARTIAL execution.'
 }
 if ($bindings.status -ne 'BLOCKED' -or $bindings.runtime_execution -ne 'NOT_RUN') {
     throw 'Asset Binding health must remain BLOCKED/NOT_RUN until live trace exists.'
@@ -49,8 +49,25 @@ foreach ($step in $runtime.ingestion_plan) {
     $recipePath = Join-Path $root $step.recipe
     if (-not (Test-Path -LiteralPath $recipePath)) { throw "Recipe not found: $($step.recipe)" }
     $hash = (Get-FileHash -LiteralPath $recipePath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($hash -ne $step.recipe_sha256 -or $step.status -ne 'NOT_RUN' -or $null -ne $step.exit_code) {
+    if ($hash -ne $step.recipe_sha256) {
         throw "Recipe evidence drifted: $($step.recipe)"
+    }
+    if ($step.status -eq 'NOT_RUN') {
+        if ($null -ne $step.exit_code -or $null -ne $step.run_id) {
+            throw "Unexecuted recipe contains runtime evidence: $($step.recipe)"
+        }
+        continue
+    }
+    if ($step.status -notin @('PASS', 'FAIL') -or
+        $null -eq $step.exit_code -or
+        -not $step.run_id -or
+        -not $step.started_at -or
+        -not $step.finished_at) {
+        throw "Executed recipe evidence is incomplete: $($step.recipe)"
+    }
+    if (($step.status -eq 'PASS' -and $step.exit_code -ne 0) -or
+        ($step.status -eq 'FAIL' -and $step.exit_code -eq 0)) {
+        throw "Recipe status and exit code disagree: $($step.recipe)"
     }
 }
 

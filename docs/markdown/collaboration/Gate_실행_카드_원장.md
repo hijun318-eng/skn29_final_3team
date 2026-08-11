@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.92 |
-| 문서 기준일 | 2026-08-11 18:28 |
+| 버전 | v5.93 |
+| 문서 기준일 | 2026-08-11 18:31 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -830,26 +830,28 @@ ASSIGNEE=정승
 PERSONAL_BRANCH=seung
 EXECUTION_BUNDLE_ID=R2-W5-F12
 TARGET_INTEGRATION_GATE=I5
-CHECKPOINT_GATES=CRM DataHub MSSQL ingestion without msdb job permission
-TASK_CARD_RANGE=R2-09 CRM DataHub MSSQL job 수집 opt-out corrective REWORK
+CHECKPOINT_GATES=CRM DataHub MSSQL ingestion without msdb job permission·inherited F9 runtime evidence resume
+TASK_CARD_RANGE=R2-09·10·11·19 CRM job 수집 opt-out corrective·DataHub runtime evidence·Semantic Catalog 8/116 재검증
 CURRENT_TASK_CARD_ID=R2-09-CRM-INCLUDE-JOBS-FALSE
 BASE_BRANCH=dev
-BASE_SHA=b78265c40b18b30b517d7745e541e1dd64ad4add
-START_POINT=R2-W5-F9는 CRM ingestion에서 불필요한 msdb 조회가 재현됐지만 recipe를 read-only로 고정해 자체 수정할 수 없다. clean seung이 latest dev b78265c와 일치하고 agent_workflow preflight·전체 planned-path 검사를 통과한 뒤 시작한다.
+BASE_SHA=e6f791f7d18ab8b18695a943461a0b89b512d0b3
+START_POINT=R2-W5-F9는 CRM ingestion의 불필요한 msdb job 조회에서 BLOCKED됐고 handoffs/R2-W5-F9.json은 dev와 Git history에 존재하지 않는다. F12가 recipe corrective와 그 변경의 live evidence를 한 묶음으로 수행하도록 교정한다. clean seung이 latest dev e6f791f와 일치하고 agent_workflow preflight·전체 planned-path 검사를 통과한 뒤 시작한다.
 DIRECTIVE=REWORK
-DIRECTIVE_TOKEN=R2-W5-F12@b78265c
-CONTRACT_VERSION=DATAHUB-MSSQL-CRM-RECIPE-v1.0.1-DRAFT
-ALLOWED_PATHS=infrastructure/database/datahub/recipes/crm.i2.yml; tests/data/test_i2_contract.py; handoffs/R2-W5-F12.json; docs/markdown/daily_reports/seung/일일보고.md
-FORBIDDEN_PATHS=infrastructure/database/security/**; infrastructure/database/mssql/**; infrastructure/database/datahub/recipes의 CRM 외 파일; compose.yml; infrastructure/database/datahub/compose.consumer.yml; .env; secret; DDL·seed; app/**; src/**; 다른 tests/**; Docker lifecycle; 다른 project/container/volume; dependency
+DIRECTIVE_TOKEN=R2-W5-F12@e6f791f
+CONTRACT_VERSION=DATAHUB-MSSQL-CRM-RECIPE-v1.0.2-DRAFT
+ALLOWED_PATHS=infrastructure/database/datahub/recipes/crm.i2.yml; src/data/datahub_runtime_evidence.i5.v1.json; infrastructure/database/datahub/scripts/run-runtime-validation.ps1; tests/data/test_i2_contract.py; tests/data/test_datahub_runtime_evidence.py; handoffs/R2-W5-F12.json; docs/markdown/daily_reports/seung/일일보고.md
+READ_ONLY_INPUTS=infrastructure/database/datahub/recipes/pms.i2.yml; infrastructure/database/datahub/recipes/pos.i3.yml; infrastructure/database/datahub/recipes/facility.i3.yml; infrastructure/database/datahub/recipes/banquet.i3.yml; infrastructure/database/datahub/recipes/serving.i4.yml; infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; src/data/serving_semantic_catalog.i4.v1.json; src/data/serving_analytics_contract.i4.v1.json; src/data/asset_binding_health.i5.v1.json
+FORBIDDEN_PATHS=handoffs/R2-W5-F9.json 생성·수정; infrastructure/database/security/**; infrastructure/database/mssql/**; infrastructure/database/datahub/recipes의 CRM 외 파일; compose.yml; infrastructure/database/datahub/compose.consumer.yml; .env; secret; DDL·seed; app/**; src/**의 승인 1파일 외 경로; tests/**의 승인 2파일 외 경로; Docker lifecycle; 다른 project/container/volume; dependency
 HANDOFF_MANIFEST=handoffs/R2-W5-F12.json
-ACCEPTANCE_CRITERIA=crm.i2.yml의 source.config에 include_jobs: false를 정확히 한 번 추가하고 PMS·POS·facility·banquet recipe와 DB login·role·GRANT·secret은 변경하지 않는다. YAML을 parse하고 target regression으로 CRM recipe의 opt-out과 다른 recipe 불변을 검증한다. 승인된 isolated DataHub runtime이 이미 healthy인 경우에만 CRM ingestion을 실행해 msdb job 권한 없이 성공하는지 확인하며 환경이 없으면 Not Run으로 기록하고 PASS로 위조하지 않는다.
-ACCEPTANCE_IDS=AC1_CRM_INCLUDE_JOBS_FALSE;AC2_NO_MSSQL_GRANT;AC3_OTHER_RECIPES_UNCHANGED;AC4_RECIPE_PARSE;AC5_TARGET_REGRESSION;AC6_RUNTIME_EVIDENCE_HONEST
-TEST_COMMANDS=python -c "import yaml; p='infrastructure/database/datahub/recipes/crm.i2.yml'; d=yaml.safe_load(open(p, encoding='utf-8')); assert d['source']['config']['include_jobs'] is False"; python -m pytest -p no:cacheprovider tests/data/test_i2_contract.py -q; python -m pytest -p no:cacheprovider tests/data -q; 승인된 healthy isolated DataHub runtime에서 CRM recipe ingestion 또는 Not Run 사유; python .github/scripts/agent_workflow.py --branch seung; gate_scope preflight·전체 planned paths·merge-base; git diff --check; seung source CI
-TEST_COMMAND_IDS=T1_RECIPE_PARSE;T2_TARGET_CONTRACT;T3_DATA_REGRESSION;T4_CRM_RUNTIME_OR_NOT_RUN;T5_WORKFLOW_PREFLIGHT;T6_SCOPE;T7_DIFF;T8_BRANCH_CI
-STOP_CONDITIONS=DB login·role·GRANT·secret·DDL·seed·compose·Docker lifecycle 변경 필요; CRM 외 recipe 변경; 기존 DB·다른 project/container/volume 변경; runtime 미검증을 PASS로 기록; 허용 경로 밖 변경; dependency·외부 비용; 필수 검증 실패
-EXTERNAL_ACTION_PERMISSION=허용 경로 commit·seung push·source CI만 승인한다. runtime 검증은 R1_RUNTIME_HEALTHY checkpoint와 기존 승인 project가 모두 유효할 때만 허용하며 DB 권한·secret·Docker lifecycle·다른 project 변경은 금지한다.
-AUTO_FAIL_CONDITIONS=include_jobs 누락·true; msdb 권한 추가; 다른 recipe drift; runtime evidence 위조; scope 위반; 필수 검증 FAIL
-R1_REVIEW_CONDITIONS=CRM recipe 한 줄 corrective와 target/data 회귀, DB grant·다른 recipe 변경 0건, source CI PASS를 확인한 뒤 dev 통합한다. F9 live 5-source evidence는 이 corrective 통합 뒤 별도 latest-dev 카드로 재발행한다.
+INHERITED_HANDOFF=R2-W5-F9 manifest는 미생성 상태로 상속하지 않는다. F9의 BLOCKED 원인과 NOT_RUN 상태만 Git 원장에서 읽고 이번 실행 결과는 F12 manifest에만 기록한다.
+ACCEPTANCE_CRITERIA=crm.i2.yml의 source.config에 include_jobs: false를 정확히 한 번 추가하고 CRM recipe SHA-256을 runtime evidence에 갱신한다. PMS·POS·facility·banquet·serving recipe 파일과 hash, DB login·role·GRANT·secret은 변경하지 않는다. YAML parse와 target/data regression을 통과한다. R1_RUNTIME_HEALTHY checkpoint, exact approved isolated project identity, port·image·secret readiness가 모두 실제 PASS인 경우에만 existing runtime에서 CRM ingestion exit 0과 나머지 recipe ingestion을 재개하고 Semantic Catalog Dataset 8/8·Column 116/116을 verifier로 확인해 현재 run id·timestamp·hash만 기록한다. 조건이 없으면 offline 변경·검증까지만 수행하고 live 항목은 NOT_RUN/BLOCKED로 기록한다.
+ACCEPTANCE_IDS=AC1_CRM_INCLUDE_JOBS_FALSE;AC2_CRM_RECIPE_HASH_REFRESH;AC3_NO_MSSQL_GRANT;AC4_OTHER_RECIPES_UNCHANGED;AC5_RECIPE_PARSE;AC6_TARGET_DATA_REGRESSION;AC7_CRM_EXIT_ZERO_IF_READY;AC8_OTHER_INGESTION_RESUME_IF_READY;AC9_SEMANTIC_8_116_IF_READY;AC10_RUNTIME_EVIDENCE_HONEST;AC11_F12_HANDOFF_ONLY
+TEST_COMMANDS=python -c "import yaml; p='infrastructure/database/datahub/recipes/crm.i2.yml'; d=yaml.safe_load(open(p, encoding='utf-8')); assert d['source']['config']['include_jobs'] is False"; python -m json.tool src/data/datahub_runtime_evidence.i5.v1.json handoffs/R2-W5-F12.json; python -m pytest -p no:cacheprovider tests/data/test_i2_contract.py tests/data/test_datahub_runtime_evidence.py -q; python -m pytest -p no:cacheprovider tests/data -q; pwsh -File infrastructure/database/datahub/scripts/run-runtime-validation.ps1 -DryRun; R1_RUNTIME_HEALTHY·isolated identity·port·image·secret readiness PASS일 때만 existing runtime CRM exit 0·나머지 ingestion·Semantic Catalog 8/116 verifier 또는 NOT_RUN/BLOCKED 사유; python .github/scripts/agent_workflow.py --branch seung; gate_scope preflight·전체 planned paths·merge-base; document/report policy; git diff --check; seung source CI
+TEST_COMMAND_IDS=T1_RECIPE_PARSE;T2_JSON;T3_TARGET_CONTRACT;T4_DATA_REGRESSION;T5_OFFLINE_VALIDATOR;T6_RUNTIME_READINESS;T7_CRM_RUNTIME;T8_OTHER_INGESTION;T9_SEMANTIC_8_116;T10_WORKFLOW_PREFLIGHT;T11_SCOPE;T12_DOCUMENT_POLICY;T13_DIFF;T14_BRANCH_CI
+STOP_CONDITIONS=DB login·role·GRANT·msdb 권한·secret·DDL·seed·compose 변경 필요; CRM 외 recipe 변경; Docker lifecycle 또는 기존 DB·다른 project/container/volume 변경; F9 handoff 생성·수정·PASS 소급; runtime 미검증을 PASS로 기록; Dataset 8/8·Column 116/116·recipe hash 불일치; 허용 경로 밖 변경; dependency·외부 비용; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=허용 경로 commit·seung push·source CI를 승인한다. live 검증은 R1_RUNTIME_HEALTHY checkpoint와 exact approved isolated project identity·port·image·secret readiness가 모두 유효할 때 기존 runtime에 대한 CRM·나머지 recipe ingestion과 publisher/verifier 실행만 허용한다. DB 권한·secret·Docker lifecycle·공유 또는 다른 project/container/volume 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=include_jobs 누락·true; CRM hash 미갱신; msdb 권한 추가; 다른 recipe drift; F9 handoff 생성·소급; runtime evidence 위조; readiness 없이 live 실행; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=CRM corrective·recipe hash·target/data 회귀와 DB grant·다른 recipe 변경 0건을 확인한다. live readiness 충족 시 CRM exit 0·나머지 ingestion·Dataset 8/8·Column 116/116·현재 timestamp/hash·source CI PASS를 확인하고, 미충족 시 NOT_RUN/BLOCKED를 정직하게 분리한 F12 handoff를 판정한다.
 ```
 
 ### R2 · R2-W5-F10
@@ -1133,6 +1135,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.93 | 2026-08-11 18:31 | R2-W5-F12를 CRM `include_jobs: false` corrective와 recipe hash·existing isolated runtime ingestion·Semantic Catalog 8/116 evidence 재개 묶음으로 교정하고, 존재하지 않는 F9 handoff 소급과 DB grant·Docker lifecycle을 금지 |
 | v5.92 | 2026-08-11 18:28 | test env absolute regular file·필수 변수 이름·config fallback과 fixed container/port·checkout label fail-closed를 구현하고 target 9건·integration 92건을 확인해 R1-W5-F36 REVIEW 전환 |
 | v5.91 | 2026-08-11 18:12 | F36 Gate-only CI 31469850161이 제품 결함 없이 dev 기준 누적 F34 4경로 미선언으로 fail-closed한 결과를 반영해, 신규 7경로와 누적 F34 경로의 exact union 11경로로 source scope 교정 |
 | v5.90 | 2026-08-11 18:05 | R1-W5-F34 source CI 31469682947 PASS를 VERIFIED_GATE로 기록하고, env 복사 없이 local git config의 absolute existing env를 직접 참조하며 runtime 충돌·source 불일치를 차단하는 R1-W5-F36 READY 발행; F35 선행에 F36 terminal 추가 |

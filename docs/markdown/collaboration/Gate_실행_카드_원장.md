@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.71 |
-| 문서 기준일 | 2026-08-11 14:16 |
+| 버전 | v5.72 |
+| 문서 기준일 | 2026-08-11 14:35 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F30` | `READY` | `junhee` |
+| R1 | `R1-W5-F30` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F9` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `READY` | `jaehong` |
@@ -274,7 +274,7 @@ RESULT_CI=branch 31460026364 PASS
 ### R1 · R1-W5-F30
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -300,6 +300,8 @@ STOP_CONDITIONS=PLANNED 일반 카드를 실행 가능하게 만듦; AUTO_START_
 EXTERNAL_ACTION_PERMISSION=origin read-only fetch·CI 조회, 허용 경로 commit·junhee push·branch CI만 허용한다. 원장 자동 수정·dev merge·다른 역할 branch push·workflow dispatch·제품 실행·Docker·비용·secret·ACL·환경 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=일반 PLANNED가 실행됨; 선행 bundle·CI·single-active·safe-stale 조건 누락; 원장 mutation; 조건 불충족인데 effective READY; 기존 manual READY 회귀; scope·필수 검증 FAIL
 R1_REVIEW_CONDITIONS=synthetic positive·negative와 실제 manual READY 회귀에서 effective READY가 pre-authorized 조건에만 생성되고 source CI가 PASS한 뒤 dev 통합한다.
+RESULT_SHA=b5df10bfa3d3b8227ab2ca9929caa35a0fd72051
+RESULT_CI=branch 31461474741 PASS
 ```
 
 ### R2 · R2-W5-F5
@@ -833,6 +835,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.72 | 2026-08-11 14:35 | 조건부 자동 착수의 fail-closed 회귀와 source CI 31461474741 PASS를 확인해 R1-W5-F30을 MERGED_DEV로 전환 |
 | v5.71 | 2026-08-11 14:16 | exact token·경로·선행조건이 미리 승인된 PLANNED 카드만 조건 충족 시 effective READY로 판정하는 R1-W5-F30 발행 |
 | v5.70 | 2026-08-11 14:15 | R5-W5-F4의 기존 UI·버튼·레이아웃 이력과 backend build 주소 연결을 보존하고 source CI 31460952787 PASS를 확인해 MERGED_DEV로 전환 |
 | v5.68 | 2026-08-11 14:04 | stale branch self-sync·Gate-only 원장 발행·remote source preflight의 세 자동화 병목과 중복 시작 지침을 최소 교정하는 R1-W5-F29 READY 발행 |

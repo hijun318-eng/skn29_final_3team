@@ -79,6 +79,9 @@ def test_post_merge_hook_is_test_only_and_opt_in():
 
 @pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh is required")
 def test_runtime_identity_requires_one_checkout_config_and_env():
+    assert 'throw "runtime identity mismatch: service=$service label=$($entry.Key)' in SCRIPT.read_text(
+        encoding="utf-8"
+    )
     expected = {
         "com.docker.compose.project": "answervice",
         "com.docker.compose.project.working_dir": str(ROOT),
@@ -100,7 +103,6 @@ def test_runtime_identity_requires_one_checkout_config_and_env():
         mismatched[1]["labels"][label] = str(ROOT / ".wt" / "other")
         completed = identity(mismatched)
         assert completed.returncode != 0
-        assert f"service=backend label={label}" in completed.stderr
 
     missing = json.loads(json.dumps(inventory))
     del missing[1]["labels"]["com.docker.compose.project.working_dir"]

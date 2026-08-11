@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.59 |
-| 문서 기준일 | 2026-08-11 12:11 |
+| 버전 | v5.60 |
+| 문서 기준일 | 2026-08-11 12:15 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -148,12 +148,13 @@ CURRENT_TASK_CARD_ID=R1-04-AGENT-AUTOMATION-ARCHIVE-READINESS
 REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
 BASE_BRANCH=dev
 BASE_SHA=473d014f0d9c394faf62d958200ae4e9e4755200
-START_POINT=R1-W5-F24 MERGED_DEV와 junhee/dev CI PASS를 기준으로 한다. 원본 junhee의 사용자 요청 legacy 문서 dirty diff는 status와 binary hash를 전후 보존하고 stage·commit·stash·reset하지 않는다. Gate-only 발행 commit 뒤 구현은 Git-write 가능한 별도 clean junhee clone에서 시작한다.
+START_POINT=R1-W5-F24 MERGED_DEV와 junhee/dev CI PASS를 기준으로 한다. 사용자 승인으로 commit된 legacy 자동화 개선 기록 2d923e2는 누적 read-only evidence로 보존하고 F25에서 추가 수정하지 않는다. 구현은 Git-write 가능한 별도 clean junhee clone에서 시작한다.
 DIRECTIVE=REWORK
 DIRECTIVE_TOKEN=R1-W5-F25@473d014
 CONTRACT_VERSION=GATE-SCOPE-v1.1.1-DRAFT
-ALLOWED_PATHS=.github/scripts/gate_scope.py; tests/integration/test_gate_scope.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F25.json; docs/markdown/daily_reports/junhee/일일보고.md
-FORBIDDEN_PATHS=docs/markdown/collaboration/archive/** 수정; docs/markdown/ai_docs/legacy/**; .github/workflows/**; .github/scripts/agent_workflow.py; 승인 test 외 tests/**; app/**; infrastructure/**; src/**; R2~R5 경로; root Compose/env; dependency·secret
+ALLOWED_PATHS=.github/scripts/gate_scope.py; tests/integration/test_gate_scope.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/ai_docs/legacy/260805_코딩에이전트_작업프로세스_개선기록_v1.0.md; handoffs/R1-W5-F25.json; docs/markdown/daily_reports/junhee/일일보고.md
+READ_ONLY_EVIDENCE_PATHS=docs/markdown/ai_docs/legacy/260805_코딩에이전트_작업프로세스_개선기록_v1.0.md@2d923e29698181f3f3fed5b62fca3bdee5abe099 — 사용자 승인 기록이며 F25 추가 수정 금지
+FORBIDDEN_PATHS=docs/markdown/collaboration/archive/** 수정; ALLOWED의 exact legacy 파일 외 docs/markdown/ai_docs/legacy/**; .github/workflows/**; .github/scripts/agent_workflow.py; 승인 test 외 tests/**; app/**; infrastructure/**; src/**; R2~R5 경로; root Compose/env; dependency·secret
 HANDOFF_MANIFEST=handoffs/R1-W5-F25.json
 ACCEPTANCE_CRITERIA=active 원장만 current bundle·현재 blocker·PLANNED candidate·token의 정본으로 유지하고 archive는 직전 Gate VERIFIED_GATE 존재 판정에만 사용한다. archive의 R1-W4-F5 TARGET_INTEGRATION_GATE=I4·STATUS=VERIFIED_GATE를 근거로 `--dashboard --next-gate auto`가 Previous gate I4와 READY_TO_ISSUE를 출력한다. archive의 과거 PLANNED·READY·BLOCKED·MERGED_DEV는 현재 상태로 승격하지 않는다. archive missing·parse failure·I4 VERIFIED_GATE 부재는 BLOCKED와 명시적 진단을 반환한다. 기존 current_bundle·historical base·role scope·inherited blob·CI_PENDING 의미를 유지한다. Google Docs는 요청함이며 READY 정본이 아니다.
 ACCEPTANCE_IDS=AC1_ARCHIVED_VERIFIED_GATE;AC2_ACTIVE_STATE_CANONICAL;AC3_ARCHIVE_FAIL_CLOSED;AC4_CURRENT_I5_READINESS;AC5_GATE_REGRESSION;AC6_USER_DIRTY_PRESERVED;AC7_GOOGLE_DOCS_INBOX_ONLY
@@ -571,6 +572,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.60 | 2026-08-11 12:15 | 사용자 승인으로 commit된 legacy 자동화 개선 기록을 F25 누적 read-only evidence로 분리해 role-scope 교정 |
 | v5.59 | 2026-08-11 12:11 | compact archive의 I4 VERIFIED_GATE를 dashboard가 인식하지 못하는 회귀를 교정하는 R1-W5-F25 READY 발행 |
 | v5.58 | 2026-08-11 11:58 | R1-W5-F24 자동화 개선을 source CI 31453748585 PASS 근거로 dev에 통합하고 MERGED_DEV로 종료 |
 | v5.57 | 2026-08-11 11:55 | 역할별 최신 실행 카드와 PLANNED 큐만 활성 원장에 남기고 이전 49개 카드를 날짜 archive로 이동해 hot-file 크기를 축소 |

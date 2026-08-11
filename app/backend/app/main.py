@@ -27,7 +27,7 @@ def _allowed_origins() -> list[str]:
         origin.strip()
         for origin in os.getenv(
             "CORS_ALLOW_ORIGINS",
-            "http://localhost:5173",
+            "http://127.0.0.1:13000,http://localhost:13000,http://localhost:5173",
         ).split(",")
         if origin.strip()
     ]

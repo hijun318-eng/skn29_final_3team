@@ -249,6 +249,40 @@ class PostgresAnalysisRepository:
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 저장소를 사용할 수 없습니다.") from error
 
+    def begin_request(self, question: str, context: RequestContext) -> UUID:
+        redacted = _redact_question(question)
+        if not redacted:
+            raise ValueError("redacted question은 비어 있을 수 없습니다.")
+        try:
+            with self._engine.begin() as connection:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO chat.analysis_requests
+                            (request_id, request_type, user_id, user_role,
+                             question_text_redacted, question_hash, ambiguity_status,
+                             sql_policy_version, status, trace_id, started_at)
+                        VALUES (:request_id, 'CHAT', :user_id, :user_role,
+                                :question, :question_hash, 'CLEAR',
+                                'policy-v1', 'RECEIVED', :trace_id, :started_at)
+                        """
+                    ),
+                    {
+                        "request_id": context.request_id,
+                        "user_id": self._owner_id,
+                        "user_role": context.role.value,
+                        "question": redacted,
+                        "question_hash": _hash(redacted),
+                        "trace_id": context.trace_id,
+                        "started_at": datetime.now(timezone.utc),
+                    },
+                )
+            return context.request_id
+        except IntegrityError as error:
+            raise ValueError("같은 Analysis request가 이미 존재합니다.") from error
+        except SQLAlchemyError as error:
+            raise AnalysisRepositoryUnavailable("Analysis 요청을 저장할 수 없습니다.") from error
+
     def _existing_run(
         self,
         definition_id: UUID,

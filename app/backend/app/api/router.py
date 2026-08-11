@@ -73,7 +73,10 @@ def _model():
     mode = os.getenv("MODEL_MODE", "fake")
     if mode == "fake":
         return FakeModelAdapter()
-    from app.adapters.contract_model import ContractModelAdapter
+    from app.adapters.contract_model import ContractModelAdapter, TemplateOnlyModelAdapter
+
+    if mode == "template-only":
+        return TemplateOnlyModelAdapter()
 
     if mode == "contract-fake":
         return ContractModelAdapter()
@@ -189,8 +192,22 @@ def analysis(
             ),
         )
         return JSONResponse(status_code=429, content=response.model_dump(mode="json"))
+    repository = None
+    execution: dict[str, Any] = {}
     try:
-        return controller.submit(payload, context)
+        if os.getenv("APP_RUNTIME_DATABASE_URL"):
+            repository = _analysis_repository(context)
+            _repository_call(lambda: repository.begin_request(payload.question, context))
+        response = controller.submit(payload, context, execution.update)
+        if repository is not None:
+            _repository_call(
+                lambda: repository.finish_run(context.request_id, response, execution)
+            )
+        return response
+    except Exception:
+        if repository is not None:
+            _repository_call(lambda: repository.fail_run(context.request_id))
+        raise
     finally:
         execution_gate.release()
 

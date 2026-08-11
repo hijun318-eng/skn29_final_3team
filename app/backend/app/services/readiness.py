@@ -16,6 +16,8 @@ class AppDatabaseReadiness:
     def check(self) -> dict[str, str]:
         probe = self._database_probe()
         probe["trino"] = self._trino_probe()
+        probe["datahub"] = self._datahub_probe()
+        probe["model"] = self._model_probe()
         return probe
 
     @staticmethod
@@ -75,6 +77,33 @@ class AppDatabaseReadiness:
         url = f"{os.getenv('TRINO_URL', 'http://trino:8080').rstrip('/')}/v1/info"
         try:
             with urlopen(url, timeout=2) as response:
+                return "ready" if response.status == 200 else "not_ready"
+        except (OSError, URLError):
+            return "not_ready"
+
+    @staticmethod
+    def _datahub_probe() -> str:
+        if os.getenv("DATA_PLATFORM_MODE", "fake") != "real":
+            return "not_required"
+        url = f"{os.getenv('DATAHUB_GMS_URL', 'http://datahub-gms:8080').rstrip('/')}/config"
+        try:
+            with urlopen(url, timeout=2) as response:
+                return "ready" if response.status == 200 else "not_ready"
+        except (OSError, URLError):
+            return "not_ready"
+
+    @staticmethod
+    def _model_probe() -> str:
+        mode = os.getenv("MODEL_MODE", "fake")
+        if mode in {"fake", "contract-fake", "template-only"}:
+            return "not_required" if mode == "template-only" else "not_ready"
+        if mode != "openai":
+            return "not_ready"
+        endpoint = os.getenv("MODEL_ENDPOINT", "").rstrip("/")
+        if not endpoint:
+            return "not_ready"
+        try:
+            with urlopen(f"{endpoint}/v1/models", timeout=2) as response:
                 return "ready" if response.status == 200 else "not_ready"
         except (OSError, URLError):
             return "not_ready"

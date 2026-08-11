@@ -1,0 +1,84 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W5-F12",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "6cf2ff9b072587b33e3d7f8bbbdeba642ac84dbc",
+  "SYNCED_DEV_SHA": "9cdb906a67ee37b1e5cb5bcb34a4f898d300a93e",
+  "RESULT_SHA": "f481f9123a683da7f61258f286dd2658828b00bc",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W5-F12@6cf2ff9",
+  "STATUS": "REVIEW",
+  "COMPLETED_CARDS": [
+    "R4-W5-F10A·F10B Context Registry additive schema·checksum repository",
+    "R4-13 승인 Template 결과 조립",
+    "USER_PRIORITY_F10C·F10D live DataHub·Analysis persistence local verification"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/README.md",
+    "app/backend/app/adapters/analysis_repository.py",
+    "app/backend/app/adapters/context_registry_repository.py",
+    "app/backend/app/adapters/contract_model.py",
+    "app/backend/app/adapters/i2_data_platform.py",
+    "app/backend/app/api/router.py",
+    "app/backend/app/context_registry_contracts.py",
+    "app/backend/app/services/analysis_responses.py",
+    "app/backend/app/services/analysis_service.py",
+    "app/backend/app/services/context_registry_service.py",
+    "app/backend/app/services/readiness.py",
+    "app/backend/compose.fragment.yml",
+    "app/backend/migrations/versions/20260811_07_context_registry.py",
+    "tests/backend/test_analysis_persistence.py",
+    "tests/backend/test_analysis_pipeline.py",
+    "tests/backend/test_context_registry.py",
+    "tests/backend/test_i2_data_platform.py",
+    "tests/backend/test_migration_compatibility.py",
+    "tests/backend/test_readiness.py",
+    "docs/markdown/daily_reports/jaehong/일일보고.md"
+  ],
+  "CONTRACT_VERSIONS": {
+    "CONTEXT_REGISTRY": "CONTEXT-REGISTRY-v1.0.0-DRAFT",
+    "OPENAPI": "OPENAPI-v1.0.0",
+    "MIGRATION_HEAD": "20260811_07",
+    "MODEL_MODE": "template-only",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_ADDITIVE_HEAD", "status": "PASS", "evidence": "20260811_07이 20260810_06의 additive child이고 Alembic single head·current를 확인"},
+    {"id": "AC2_MINIMAL_REGISTRY_SCHEMA", "status": "PASS", "evidence": "Context record·release·request package binding과 FK·unique·status 제약만 추가"},
+    {"id": "AC3_CANONICAL_CHECKSUM", "status": "PASS", "evidence": "repository가 정렬된 canonical JSON의 SHA-256을 server-side로 계산"},
+    {"id": "AC4_IDEMPOTENCY_CONFLICT", "status": "PASS", "evidence": "동일 key·payload는 동일 결과, 다른 payload는 domain conflict로 차단"},
+    {"id": "AC5_RELEASE_IMMUTABLE", "status": "PASS", "evidence": "승인 record·배포 release·결합 package의 mutation을 service와 DB trigger가 차단"},
+    {"id": "AC6_SERVICE_ONLY", "status": "PASS", "evidence": "Context Registry 자체는 repository·service-only이며 public router나 OpenAPI operation을 추가하지 않음"},
+    {"id": "AC7_NO_LIVE_ASSUMPTION", "status": "PASS", "evidence": "Registry test는 live PASS를 가정하지 않으며 별도 사용자 우선 실제 연결은 DataHub·Trino 응답으로 직접 검증"},
+    {"id": "AC8_NODE3_SELECTION", "status": "PASS", "evidence": "승인 derived metric 하나만 metric_selection으로 전달하고 누락·복수·권한 밖은 fail-closed"},
+    {"id": "AC9_ACTUAL_SHAPED_RESPONSE", "status": "PASS", "evidence": "trace p0-live-e2e-final이 2행·399088800 KRW·bar chart·Artifact를 같은 요청에 연결"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_TARGET", "name": "Context Registry·actual pipeline target", "status": "PASS", "evidence": "target test와 실제 DataHub·Trino·PostgreSQL HTTP 2행·Artifact·Report 참조 PASS"},
+    {"id": "T2_HEAD", "name": "Alembic graph", "status": "PASS", "evidence": "single head 20260811_07"},
+    {"id": "T3_MIGRATION", "name": "isolated PostgreSQL migration", "status": "PASS", "evidence": "전용 PostgreSQL에 upgrade head 후 current 20260811_07과 승인 Template exact 1건 확인"},
+    {"id": "T4_NEGATIVE", "name": "registry·template fail-closed", "status": "PASS", "evidence": "idempotency mismatch·immutable mutation·미승인 join evidence·Template G2 실패의 model repair 금지를 검증"},
+    {"id": "T5_NODE3_COMPOSITION", "name": "metric selection·shaped response", "status": "PASS", "evidence": "metric selection 회귀와 actual table·chart·summary·Artifact 조합 PASS"},
+    {"id": "T6_BACKEND", "name": "Python 3.12 backend·Report", "status": "PASS", "evidence": "146 passed, 15 skipped, 9 warnings"},
+    {"id": "T7_OPENAPI_UNCHANGED", "name": "export_openapi.py --check", "status": "PASS", "evidence": "OPENAPI_CONTRACT_VERIFIED"},
+    {"id": "T8_COMPILE", "name": "compileall", "status": "PASS", "evidence": "app/backend/app compile PASS"},
+    {"id": "T9_SCOPE", "name": "Gate planned path", "status": "FAIL", "evidence": "현재 F12는 API·live DataHub·Analysis persistence를 금지하므로 사용자 우선 로컬 구현의 F10C·F10D 경로가 정식화 전 범위 초과"},
+    {"id": "T10_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"},
+    {"id": "T11_BRANCH_CI", "name": "jaehong source CI", "status": "NOT_RUN", "evidence": "push 이후 확인"}
+  ],
+  "NOT_RUN": [
+    "source CI는 push 이후 확인"
+  ],
+  "RESIDUAL_RISKS": [
+    "report_v1 manual command는 queued까지 실제 저장되지만 command consumer worker가 없어 run 생성은 후속 R4-W5-F13 필요",
+    "R5 API mode의 동일 actual trace browser 검증은 R1 범위 정식화 뒤 R5 owner 작업 필요"
+  ],
+  "CHANGE_REQUESTS": [
+    "R1: F10C live 조립과 F10D Analysis persistence 경로를 owner-scoped REWORK 또는 다음 bundle로 정식화",
+    "R5: backend 127.0.0.1:18000 API mode에서 2행·chart·Artifact를 browser로 재검증",
+    "R1: R4-W5-F13 Report worker·block별 재실행 카드 발행"
+  ],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "제품 test는 실제 데이터로 통과했으므로 F10C·F10D 경로를 정식 범위로 수용하고 R5 actual consumer smoke 뒤 R4-W5-F13 Report worker를 발행"
+}

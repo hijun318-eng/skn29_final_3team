@@ -1,0 +1,43 @@
+{
+  "EXECUTION_BUNDLE_ID": "R1-W5-F36",
+  "ROLE": "R1",
+  "BRANCH": "junhee",
+  "BASE_SHA": "e6f791f7d18ab8b18695a943461a0b89b512d0b3",
+  "RESULT_SHA": "7d417ece96ab84aa99f2138251f0d49acc36cc8b",
+  "COMPLETED_CARDS": ["R1-04-TEST-RUNTIME-EXTERNAL-ENV"],
+  "CHANGED_FILES": [
+    ".githooks/post-merge", ".github/scripts/gate_scope.py",
+    ".github/scripts/refresh_test_runtime.ps1", "AGENTS.md",
+    "docs/markdown/collaboration/Gate_실행_카드_원장.md",
+    "docs/markdown/collaboration/README.md",
+    "docs/markdown/daily_reports/junhee/일일보고.md",
+    "handoffs/R1-W5-F34.json", "tests/integration/test_gate_scope.py",
+    "tests/integration/test_test_runtime_refresh.py"
+  ],
+  "CONTRACT_VERSIONS": {"test_branch_runtime": "v1.0.2-DRAFT", "directive_token": "R1-W5-F36@e6f791f"},
+  "TEST_RESULTS": [
+    {"id":"T1_HOOK","name":"hook config/fallback","status":"PASS","evidence":"target source contract PASS"},
+    {"id":"T2_ENV_MATRIX","name":"absolute env matrix","status":"PASS","evidence":"relative/missing reject and required-name guard PASS"},
+    {"id":"T3_CONFLICT_MATRIX","name":"fixed conflict guard","status":"PASS","evidence":"container name and published port read-only guards asserted"},
+    {"id":"T4_SOURCE_IDENTITY","name":"checkout identity","status":"PASS","evidence":"working_dir/config/env label matrix PASS"},
+    {"id":"T5_PARSE","name":"PowerShell parser","status":"PASS","evidence":"parse errors 0"},
+    {"id":"T6_TARGET","name":"target tests","status":"PASS","evidence":"9 passed"},
+    {"id":"T7_INTEGRATION","name":"integration tests","status":"PASS","evidence":"92 passed, 2 skipped, 17 subtests"},
+    {"id":"T8_DOCUMENT_POLICY","name":"document/report policy","status":"PASS","evidence":"policy and report validation PASS"},
+    {"id":"T9_SCOPE","name":"Gate scope","status":"PASS","evidence":"READY preflight and cumulative 11 paths PASS"},
+    {"id":"T10_DIFF","name":"diff check","status":"PASS","evidence":"git diff --check PASS"},
+    {"id":"T11_BRANCH_CI","name":"junhee source CI","status":"CI_PENDING","evidence":"handoff-only push terminal CI 확인 예정"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [], "RESIDUAL_RISKS": [], "EXTERNAL_APPROVAL_REQUIRED": [],
+  "ACCEPTANCE_RESULTS": [
+    {"id":"AC1_CONFIG_THEN_FALLBACK","status":"PASS","evidence":"git config path 우선, root .env fallback"},
+    {"id":"AC2_ABSOLUTE_EXISTING_FILE","status":"PASS","evidence":"absolute regular file guard"},
+    {"id":"AC3_NO_SECRET_OUTPUT","status":"PASS","evidence":"값 대신 누락 변수 이름만 오류"},
+    {"id":"AC4_REQUIRED_VAR_NAMES","status":"PASS","evidence":"app runtime 필수 이름 검사"},
+    {"id":"AC5_DIRECT_ENV_REFERENCE","status":"PASS","evidence":"-EnvFilePath가 compose --env-file로 전달"},
+    {"id":"AC6_CONCURRENT_CONFLICT_FAIL_CLOSED","status":"PASS","evidence":"고정 name/port 충돌 사전 차단"},
+    {"id":"AC7_SOURCE_LABEL_IDENTITY","status":"PASS","evidence":"checkout/config/env label exact 비교 유지"},
+    {"id":"AC8_EXISTING_GUARDS","status":"PASS","evidence":"opt-in/branch/clean/PlanOnly 회귀 PASS"}
+  ]
+}

@@ -348,14 +348,14 @@
       "properties": {
         "g3_result": {"type": "string", "const": "pass"},
         "shaped_result": {"$ref": "#/$defs/shaped_result"},
-        "metric": {"type": "string"},
+        "metric": {"type": "string", "minLength": 1},
         "period": {"$ref": "#/$defs/execution_time"},
         "filters": {"type": "array", "items": {"type": "string"}},
         "unit": {"type": "string"},
         "sampling": {"type": "boolean"},
         "masking": {"type": "boolean"},
         "partial": {"type": "boolean"},
-        "source_ids": {"type": "array", "items": {"type": "string"}},
+        "source_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
         "metric_selection": {
           "type": "object",
           "additionalProperties": false,
@@ -383,7 +383,19 @@
             "value": {"type": "string"}
           }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "source_ids": {"minItems": 2}
+            }
+          },
+          "then": {
+            "required": ["metric_selection"]
+          }
+        }
+      ]
     },
     "node3_response": {
       "type": "object",

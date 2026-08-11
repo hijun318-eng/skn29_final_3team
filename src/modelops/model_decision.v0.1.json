@@ -1,5 +1,8 @@
 {
   "decision_version": "MODEL-v1.0.0",
+  "product_default": "Base",
+  "release_candidate_status": "DRAFT",
+  "release_readiness": "NOT_READY",
   "scope": {
     "included": [
       "node1_question_normalization",

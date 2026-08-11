@@ -13,7 +13,13 @@ from typing import Any, Callable
 
 from src.ai.training.benchmark_serving import request_json
 from src.ai.training.dataset import load_compiled, write_jsonl
-from src.ai.training.evaluate_lora import DEFAULT_MODEL, DEFAULT_REVISION, _normalize_sql, _percentile
+from src.ai.training.evaluate_lora import (
+    DEFAULT_MODEL,
+    DEFAULT_REVISION,
+    _normalize_sql,
+    _percentile,
+    observed_metrics,
+)
 from src.ai.training.verify_case_specs import (
     PlanContractError,
     _context_plan,
@@ -256,6 +262,13 @@ def main() -> int:
         "sql_exact_match": sum(prediction["sql_exact_match"] for prediction in predictions),
         "latency_p50_ms": _percentile(latencies, 50),
         "latency_p95_ms": _percentile(latencies, 95),
+        "observed": observed_metrics(
+            accuracy=sum(prediction["sql_exact_match"] for prediction in predictions) / len(predictions),
+            p50_ms=_percentile(latencies, 50),
+            p95_ms=_percentile(latencies, 95),
+            peak_vram_bytes=None,
+            cost_usd=None,
+        ),
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     required = ("valid_json", "g2_pass", "expected_g2_pass", "trino_pass", "result_match")

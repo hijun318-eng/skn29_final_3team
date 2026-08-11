@@ -35,6 +35,28 @@ class TrainingDatasetTests(unittest.TestCase):
             with self.assertRaisesRegex(DatasetError, "leaks across"):
                 load_specs(path)
 
+    def test_join_graph_cannot_change_inside_scenario_group(self):
+        specs = load_specs(EXAMPLE)
+        changed = copy.deepcopy(specs[0])
+        changed["case_id"] = "same-group-different-join-001"
+        changed["input"]["context_package"]["joins"] = [
+            {
+                "id": "approved-join",
+                "left": "pms.stays",
+                "right": "crm.accounts",
+                "cardinality": "many-to-one",
+                "status": "approved",
+            }
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "join-graph.jsonl"
+            path.write_text(
+                "\n".join(json.dumps(item, ensure_ascii=False) for item in [specs[0], changed]) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(DatasetError, "changes join graph"):
+                load_specs(path)
+
     def test_write_sql_is_rejected(self):
         specs = load_specs(EXAMPLE)
         unsafe = copy.deepcopy(specs[0])

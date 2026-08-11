@@ -136,6 +136,13 @@ def benchmark(
             "max_latency_ms": round(max(concurrent), 3),
         },
         "peak_vram_bytes": peak_vram_bytes,
+        "observed": {
+            "accuracy": None,
+            "p50_ms": round(percentile(warm, 50), 3),
+            "p95_ms": round(percentile(warm, 95), 3),
+            "peak_vram_bytes": peak_vram_bytes,
+            "cost_usd": None,
+        },
         "response_evidence_sha256": sha256(material).hexdigest(),
     }
 

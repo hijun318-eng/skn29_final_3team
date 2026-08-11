@@ -3,7 +3,15 @@ import unittest
 
 from evals.runner import EvaluationError, evaluate_cases
 from src.ai.fake_model import FakeModelAdapter
-from src.ai.training.evaluate_lora import DEFAULT_MODEL, DEFAULT_REVISION, _percentile
+from src.ai.training.evaluate_lora import (
+    DEFAULT_MODEL,
+    DEFAULT_REVISION,
+    EvidenceError,
+    IMMUTABLE_EVIDENCE_FIELDS,
+    _percentile,
+    compare_captured_evidence,
+    observed_metrics,
+)
 from tests.ai.test_contracts import VALID_PAYLOADS
 
 
@@ -28,6 +36,39 @@ class EvaluationRunnerTests(unittest.TestCase):
 
         self.assertEqual(2.0, _percentile(observations, 50))
         self.assertEqual(4.0, _percentile(observations, 95))
+
+    def test_captured_comparison_requires_equal_immutable_hashes(self):
+        evidence = {
+            field: f"{number:064x}"
+            for number, field in enumerate(IMMUTABLE_EVIDENCE_FIELDS, start=1)
+        }
+        self.assertTrue(compare_captured_evidence(evidence, dict(evidence))["comparable"])
+
+        changed = dict(evidence)
+        changed["runtime_sha256"] = "f" * 64
+        comparison = compare_captured_evidence(evidence, changed)
+        self.assertFalse(comparison["comparable"])
+        self.assertEqual(["runtime_sha256"], comparison["mismatched_fields"])
+
+        with self.assertRaises(EvidenceError):
+            compare_captured_evidence({"model_sha256": "0" * 64}, evidence)
+
+    def test_observed_metrics_keep_unknown_cost_nullable(self):
+        self.assertEqual(
+            {
+                "accuracy": 0.5,
+                "p50_ms": 10.0,
+                "p95_ms": 20.0,
+                "peak_vram_bytes": None,
+                "cost_usd": None,
+            },
+            observed_metrics(
+                accuracy=0.5,
+                p50_ms=10.0,
+                p95_ms=20.0,
+                peak_vram_bytes=None,
+            ),
+        )
 
     def test_result_and_hash_are_reproducible(self):
         first = evaluate_cases([valid_case()])

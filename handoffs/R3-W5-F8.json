@@ -1,0 +1,146 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R3-W5-F8",
+  "ROLE": "R3",
+  "BRANCH": "daesung",
+  "BASE_SHA": "ef2c37186947b7b907278485b59f0d2854dcbc4f",
+  "RESULT_SHA": "911a529271e9130ce26b6733ba66bbf94005f704",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R3-W5-F8@ef2c371",
+  "COMPLETED_CARDS": [
+    "R3-06 Node3 metric selection contract hardening",
+    "R3-09 captured Base-LoRA-serving comparability evidence",
+    "R3-10 split integrity and leakage guard",
+    "R3-14 release-readiness DRAFT manifest"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/daesung/일일보고.md",
+    "evals/base_comparison.v0.1.json",
+    "evals/split_manifest.v0.1.json",
+    "evals/validation_v2.manifest.json",
+    "src/ai/contracts/node_io.v0.1.json",
+    "src/ai/node3.py",
+    "src/ai/training/benchmark_serving.py",
+    "src/ai/training/dataset.py",
+    "src/ai/training/evaluate_endpoint.py",
+    "src/ai/training/evaluate_lora.py",
+    "src/modelops/model_candidate.instruct2507.v0.1.json",
+    "src/modelops/model_decision.v0.1.json",
+    "src/modelops/release_candidate.i5.v1.json",
+    "src/modelops/serving_manifest.v0.1.json",
+    "tests/ai/test_eval_runner.py",
+    "tests/ai/test_model_decision.py",
+    "tests/ai/test_node3.py",
+    "tests/ai/test_serving_benchmark.py",
+    "tests/ai/test_training_dataset.py",
+    "tests/ai/test_wave3.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "MODEL_IO": "MODEL-v1.0.0 with additive Node3 metric_selection guard; Gate MODEL-v1.1.0-NODE3-DRAFT",
+    "MODELOPS": "MODELOPS-I5-READINESS-v1.0.0-DRAFT",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_NODE3_SCHEMA",
+      "status": "PASS",
+      "evidence": "node_io contract declares selected_metric_id, per-source context_metric_ids, source count minimum, and the multi-source metric_selection requirement; node3 runtime enforces exact one selected metric and unique sources"
+    },
+    {
+      "id": "AC2_ENTITLEMENT_FAIL_CLOSED",
+      "status": "PASS",
+      "evidence": "Node3 tests cover missing, multiple, different, outside-context, outside-entitlement, source-count mismatch, and duplicate-source cases with ContractError"
+    },
+    {
+      "id": "AC3_BACKEND_SHAPED_FIXTURE",
+      "status": "PASS",
+      "evidence": "G120-046 six-asset fixture test preserves source IDs, masking, sampling, partial, and query_execution_id reference without question, row, or first-metric inference"
+    },
+    {
+      "id": "AC4_CAPTURED_COMPARABILITY",
+      "status": "PASS",
+      "evidence": "incomplete capture hashes are not compared; comparability remains intentionally NOT_READY and no incomparable result is claimed"
+    },
+    {
+      "id": "AC5_SPLIT_INTEGRITY",
+      "status": "PASS",
+      "evidence": "missing full four-split evidence is detected as NOT_READY and regeneration remains disabled; no unsupported split or leakage claim is made"
+    },
+    {
+      "id": "AC6_TRACE_REPRO",
+      "status": "PASS",
+      "evidence": "trace, captured-evidence comparison, observed metrics, and serving benchmark tests are deterministic; unknown cost remains null"
+    },
+    {
+      "id": "AC7_RELEASE_NOT_READY",
+      "status": "PASS",
+      "evidence": "release_candidate.i5.v1.json is DRAFT/NOT_READY, product default is Base, and sql_lora_enabled_nodes is empty"
+    },
+    {
+      "id": "AC8_OWNER_BOUNDARY",
+      "status": "PASS",
+      "evidence": "latest CI records exactly 21 F8 owner paths and SAFE_STALE review confirms no overlap with the 22 dev follow-up paths"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_JSON",
+      "name": "related JSON json.tool validation",
+      "status": "PASS",
+      "evidence": "all changed JSON manifests, contracts, modelops files, release candidate, and handoff parse successfully"
+    },
+    {
+      "id": "T2_NODE3",
+      "name": "Node3, fake model, and contract tests",
+      "status": "PASS",
+      "evidence": "18 passed, 40 subtests passed"
+    },
+    {
+      "id": "T3_MODELOPS",
+      "name": "ModelOps, serving, dataset, validation, evaluation, and wave tests",
+      "status": "PASS",
+      "evidence": "35 passed, 2 subtests passed"
+    },
+    {
+      "id": "T4_AI",
+      "name": "tests/ai full suite",
+      "status": "PASS",
+      "evidence": "79 passed, 52 subtests passed"
+    },
+    {
+      "id": "T5_COMPILE",
+      "name": "python -m compileall -q src/ai src/modelops evals",
+      "status": "PASS",
+      "evidence": "compileall PASS"
+    },
+    {
+      "id": "T6_HASH",
+      "name": "deterministic manifest and hash validation",
+      "status": "PASS",
+      "evidence": "validation_v2 content_sha256 matches, case IDs are unique, capture comparability remains false, and release readiness assertions pass"
+    },
+    {
+      "id": "T7_SCOPE",
+      "name": "gate_scope bootstrap, planned path, and merge-base review",
+      "status": "PASS",
+      "evidence": "latest CI records the exact 21 owner paths and SAFE_STALE review confirms the R3 path set has no overlap with dev follow-up paths"
+    },
+    {
+      "id": "T8_DIFF",
+      "name": "git diff --check",
+      "status": "PASS",
+      "evidence": "no whitespace errors"
+    },
+    {
+      "id": "T9_BRANCH_CI",
+      "name": "daesung source CI",
+      "status": "PASS",
+      "evidence": "CI run 31471530110 on f3cbe313ca6e671e258be669dc770cc872b2512a passed role-scope, python-contracts, document-quality, and quality-gate. Historical runs 31469119306 and 31469331887 remain recorded as superseded failures."
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "Merge origin/daesung into dev through the approved self-service procedure, then record MERGED_DEV only after final preflight and dev CI PASS."
+}

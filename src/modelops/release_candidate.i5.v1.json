@@ -1,0 +1,42 @@
+{
+  "release_candidate_version": "RELEASE-CANDIDATE-I5-v1.0.0-DRAFT",
+  "status": "DRAFT",
+  "readiness": "NOT_READY",
+  "product_default": "Base",
+  "sql_lora_enabled_nodes": [],
+  "comparability": {
+    "status": "NOT_READY",
+    "comparable": false,
+    "required_hashes": [
+      "model_sha256",
+      "prompt_sha256",
+      "case_set_sha256",
+      "decoding_sha256",
+      "runtime_sha256",
+      "artifact_sha256"
+    ],
+    "reason": "captured immutable evidence is incomplete; Base and LoRA are not promoted as comparable"
+  },
+  "typed_missing": {
+    "train_validation_gold_acceptance": {
+      "status": "NOT_READY",
+      "reason": "split evidence is incomplete and automatic regeneration is disabled"
+    },
+    "model_execution": {
+      "status": "NOT_READY",
+      "reason": "external checkpoint and endpoint execution are not approved"
+    }
+  },
+  "auto_regeneration": "DISABLED",
+  "rollback": {
+    "target": "Base",
+    "sql_lora_enabled_nodes": []
+  },
+  "source_manifests": [
+    "evals/base_comparison.v0.1.json",
+    "evals/split_manifest.v0.1.json",
+    "evals/validation_v2.manifest.json",
+    "src/modelops/serving_manifest.v0.1.json"
+  ],
+  "external_actions": "NOT_PERMITTED"
+}

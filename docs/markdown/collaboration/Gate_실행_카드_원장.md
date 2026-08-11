@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.62 |
-| 문서 기준일 | 2026-08-11 12:29 |
+| 버전 | v5.63 |
+| 문서 기준일 | 2026-08-11 12:43 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F27` | `READY` | `junhee` |
+| R1 | `R1-W5-F27` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F8` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F12` | `READY` | `jaehong` |
@@ -172,7 +172,7 @@ BLOCK_REASON=F25 source SHA 12a46f1·CI 31455099641은 PASS했으나 별도 승�
 ### R1 · R1-W5-F27
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -193,6 +193,8 @@ READ_ONLY_EVIDENCE_PATHS=.github/scripts/gate_scope.py@12a46f1; docs/markdown/02
 MUTABLE_PATHS=docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/daily_reports/junhee/일일보고.md; handoffs/R1-W5-F27.json
 FORBIDDEN_PATHS=READ_ONLY_EVIDENCE_PATHS 내용 변경; docs/markdown/collaboration/archive/**; R2~R5 제품·보고·handoff; app/**; infrastructure/**; src/**; root Compose/env; dependency·secret
 HANDOFF_MANIFEST=handoffs/R1-W5-F27.json
+RESULT_SHA=c8bd13dc4be378fdf37d316b4a7cc9be0b6fe74c
+RESULT_CI=branch 31455756824 PASS
 ACCEPTANCE_CRITERIA=F25 source PASS와 WBS·Gate 문서 commit을 모두 ancestry로 보존하고 누적 7경로를 정확히 handoff한다. F25 handoff의 역사적 CI PASS를 변경하지 않는다. F27은 제품·WBS·자동화 코드를 재수정하지 않고 reconciliation 사실과 실제 corrective CI만 기록한다. archive I4→I5 READY_TO_ISSUE, active current bundle, inherited checkpoint, CI_PENDING 회귀가 유지되어야 한다.
 ACCEPTANCE_IDS=AC1_F25_HISTORY;AC2_WBS_HISTORY;AC3_EXACT_CUMULATIVE_DIFF;AC4_READ_ONLY_BLOBS;AC5_GATE_REGRESSION;AC6_CORRECTIVE_CI
 TEST_COMMANDS=git ancestry 12a46f1·5c54b3e·7b8dc74; read-only evidence blob diff 0; python -m unittest tests.integration.test_gate_scope -v; python .github/scripts/gate_scope.py --dashboard --next-gate auto; python -m json.tool handoffs/R1-W5-F25.json handoffs/R1-W5-F27.json; document policy; report validation; gate_scope preflight·8 planned paths·merge-base; git diff --check; junhee corrective source CI
@@ -687,6 +689,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.63 | 2026-08-11 12:43 | R1-W5-F27의 history-preserving reconciliation과 corrective source CI를 확인해 MERGED_DEV로 전환 |
 | v5.61 | 2026-08-11 12:30 | 기획서의 Node1 keyword 후보→DataHub main search·Domain/Glossary structured filter→권한 Context 흐름을 R2 F11·R3 F12·R4 F15·R1 F26 후속 카드로 명시하고 raw keyword의 필터 무조건 재사용을 금지 |
 | v5.60 | 2026-08-11 12:15 | 사용자 승인으로 commit된 legacy 자동화 개선 기록을 F25 누적 read-only evidence로 분리해 role-scope 교정 |
 | v5.59 | 2026-08-11 12:11 | compact archive의 I4 VERIFIED_GATE를 dashboard가 인식하지 못하는 회귀를 교정하는 R1-W5-F25 READY 발행 |

@@ -4,7 +4,7 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.68 |
+| 버전 | v5.69 |
 | 문서 기준일 | 2026-08-11 14:04 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F29` | `READY` | `junhee` |
+| R1 | `R1-W5-F29` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F9` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `READY` | `jaehong` |
@@ -241,7 +241,7 @@ BLOCKED_REASON=원장 발행 CI 31459104984 PASS로 큐 정합성은 확인했�
 ### R1 · R1-W5-F29
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -267,6 +267,8 @@ STOP_CONDITIONS=fast-forward 전에 dirty·diverged branch mutation; ledger heal
 EXTERNAL_ACTION_PERMISSION=origin read-only fetch·CI 조회, 허용 경로 commit·junhee push·branch CI만 허용한다. 테스트용 임시 Git directory는 test cleanup 범위에서만 허용한다. dev merge·다른 역할 branch push·workflow dispatch·ACL·환경 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=stale ledger가 안전한 ff-only를 계속 차단; Gate-only 범위가 exact 원장 1경로보다 넓음; remote-only가 failed/mismatched CI를 허용; local dirty evidence 무시; 지침에 서로 다른 필수 시작 절차 잔존; scope·필수 검증 FAIL
 R1_REVIEW_CONDITIONS=세 회귀가 실제·synthetic test에서 fail-closed 경계를 유지하고 협업 지침이 단일 시작 명령으로 정렬되며 source CI가 PASS한 뒤 dev 통합한다.
+RESULT_SHA=3519e476651c2ca57643a4a662f780d5b27a4d05
+RESULT_CI=branch 31460026364 PASS
 ```
 
 ### R2 · R2-W5-F5
@@ -797,6 +799,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 | 버전 | 일시 | 요약 |
 |---|---|---|
 | v5.68 | 2026-08-11 14:04 | stale branch self-sync·Gate-only 원장 발행·remote source preflight의 세 자동화 병목과 중복 시작 지침을 최소 교정하는 R1-W5-F29 READY 발행 |
+| v5.69 | 2026-08-11 15:18 | R1-W5-F29 source CI 31460026364 PASS와 dev 충돌 없는 반영을 확인해 MERGED_DEV 전환 |
 | v5.67 | 2026-08-11 13:42 | terminal R1 카드 때문에 Gate-only 발행 CI가 scope FAIL하는 순환을 해소하고 역할별 active READY·source evidence 전이만 담당하는 R1-W5-F28 READY 발행 |
 | v5.66 | 2026-08-11 13:16 | R4-W5-F12 통합 뒤 client-owned X-User-Id·X-Role 신뢰를 제거하고 server-owned opaque principal mapping으로 Analysis·Report 공통 인증 경계를 동결하는 R4-W5-F16 READY 발행 |
 | v5.65 | 2026-08-11 13:02 | R2-W5-F8·R4-W5-F12 dev 통합과 CI 31456536103 PASS 뒤 isolated DataHub v1.7 live evidence를 수집하는 R2-W5-F9 READY 발행 |

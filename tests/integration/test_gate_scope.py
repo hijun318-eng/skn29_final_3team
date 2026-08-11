@@ -88,9 +88,15 @@ PERSONAL_BRANCH=junhee
             )
         )
 
+        current = gate_scope.current_bundle(self.ledger, "junhee")
+        self.assertIsNotNone(current)
+        current_row = (
+            f"| R1 | `{current['EXECUTION_BUNDLE_ID']}` | "
+            f"`{current['STATUS']}` | `junhee` |"
+        )
         broken = self.ledger.replace(
-            "| R1 | `R1-W5-F29` | `READY` | `junhee` |",
-            "| R1 | `wrong` | `READY` | `junhee` |",
+            current_row,
+            f"| R1 | `wrong` | `{current['STATUS']}` | `junhee` |",
             1,
         )
         self.assertTrue(

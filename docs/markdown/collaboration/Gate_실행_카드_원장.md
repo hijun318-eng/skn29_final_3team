@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.83 |
-| 문서 기준일 | 2026-08-11 16:57 |
+| 버전 | v5.84 |
+| 문서 기준일 | 2026-08-11 17:00 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -25,7 +25,7 @@
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
 | R1 | `R1-W5-F33` | `MERGED_DEV` | `junhee` |
-| R2 | `R2-W5-F9` | `READY` | `seung` |
+| R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `READY` | `jaehong` |
 | R5 | `R5-W5-F8` | `READY` | `minji` |
@@ -665,7 +665,7 @@ STOP_CONDITIONS=R5-W5-F4 미통합; firewall·secret·다른 project 변경; fix
 ### R2 · R2-W5-F9
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -686,6 +686,39 @@ TEST_COMMANDS=python -m json.tool src/data/datahub_runtime_evidence.i5.v1.json s
 STOP_CONDITIONS=clean preflight 실패; free RAM·port·image·project identity·secret readiness 실패; 기존 project/container/volume 변경 필요; 8/116/70·version/hash 불일치; publisher 비멱등; DDL·seed·recipe·compose 수정 필요; broad grant·실데이터·비용; 허용 경로 밖 변경; 필수 검증 실패
 EXTERNAL_ACTION_PERMISSION=승인된 exact isolated DataHub runtime의 기동·수집·publisher 2회·verifier와 종료, 허용 경로 commit·seung push·source CI만 허용한다. 다른 project/container/volume·DDL·seed·recipe·secret·방화벽 변경은 금지한다.
 R1_REVIEW_CONDITIONS=runtime PASS와 NOT_RUN/BLOCKED를 분리하고 observed timestamp·hash·run evidence가 일치할 때만 dev 통합한다.
+SUPERSEDED_BY=R2-W5-F12
+BLOCKED_REASON=CRM ingestion이 DataHub MSSQL source의 기본 job 수집으로 불필요한 msdb 조회를 시도했다. 현재 F9는 recipes/**를 READ_ONLY_INPUTS로 두고 recipe 수정 필요를 STOP_CONDITION으로 선언했으므로 광범위 msdb 권한을 추가하지 않고 R2 owner-scoped corrective로 분리한다.
+```
+
+### R2 · R2-W5-F12
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F12
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=CRM DataHub MSSQL ingestion without msdb job permission
+TASK_CARD_RANGE=R2-09 CRM DataHub MSSQL job 수집 opt-out corrective REWORK
+CURRENT_TASK_CARD_ID=R2-09-CRM-INCLUDE-JOBS-FALSE
+BASE_BRANCH=dev
+BASE_SHA=b78265c40b18b30b517d7745e541e1dd64ad4add
+START_POINT=R2-W5-F9는 CRM ingestion에서 불필요한 msdb 조회가 재현됐지만 recipe를 read-only로 고정해 자체 수정할 수 없다. clean seung이 latest dev b78265c와 일치하고 agent_workflow preflight·전체 planned-path 검사를 통과한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R2-W5-F12@b78265c
+CONTRACT_VERSION=DATAHUB-MSSQL-CRM-RECIPE-v1.0.1-DRAFT
+ALLOWED_PATHS=infrastructure/database/datahub/recipes/crm.i2.yml; tests/data/test_i2_contract.py; handoffs/R2-W5-F12.json; docs/markdown/daily_reports/seung/일일보고.md
+FORBIDDEN_PATHS=infrastructure/database/security/**; infrastructure/database/mssql/**; infrastructure/database/datahub/recipes의 CRM 외 파일; compose.yml; infrastructure/database/datahub/compose.consumer.yml; .env; secret; DDL·seed; app/**; src/**; 다른 tests/**; Docker lifecycle; 다른 project/container/volume; dependency
+HANDOFF_MANIFEST=handoffs/R2-W5-F12.json
+ACCEPTANCE_CRITERIA=crm.i2.yml의 source.config에 include_jobs: false를 정확히 한 번 추가하고 PMS·POS·facility·banquet recipe와 DB login·role·GRANT·secret은 변경하지 않는다. YAML을 parse하고 target regression으로 CRM recipe의 opt-out과 다른 recipe 불변을 검증한다. 승인된 isolated DataHub runtime이 이미 healthy인 경우에만 CRM ingestion을 실행해 msdb job 권한 없이 성공하는지 확인하며 환경이 없으면 Not Run으로 기록하고 PASS로 위조하지 않는다.
+ACCEPTANCE_IDS=AC1_CRM_INCLUDE_JOBS_FALSE;AC2_NO_MSSQL_GRANT;AC3_OTHER_RECIPES_UNCHANGED;AC4_RECIPE_PARSE;AC5_TARGET_REGRESSION;AC6_RUNTIME_EVIDENCE_HONEST
+TEST_COMMANDS=python -c "import yaml; p='infrastructure/database/datahub/recipes/crm.i2.yml'; d=yaml.safe_load(open(p, encoding='utf-8')); assert d['source']['config']['include_jobs'] is False"; python -m pytest -p no:cacheprovider tests/data/test_i2_contract.py -q; python -m pytest -p no:cacheprovider tests/data -q; 승인된 healthy isolated DataHub runtime에서 CRM recipe ingestion 또는 Not Run 사유; python .github/scripts/agent_workflow.py --branch seung; gate_scope preflight·전체 planned paths·merge-base; git diff --check; seung source CI
+TEST_COMMAND_IDS=T1_RECIPE_PARSE;T2_TARGET_CONTRACT;T3_DATA_REGRESSION;T4_CRM_RUNTIME_OR_NOT_RUN;T5_WORKFLOW_PREFLIGHT;T6_SCOPE;T7_DIFF;T8_BRANCH_CI
+STOP_CONDITIONS=DB login·role·GRANT·secret·DDL·seed·compose·Docker lifecycle 변경 필요; CRM 외 recipe 변경; 기존 DB·다른 project/container/volume 변경; runtime 미검증을 PASS로 기록; 허용 경로 밖 변경; dependency·외부 비용; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=허용 경로 commit·seung push·source CI만 승인한다. runtime 검증은 R1_RUNTIME_HEALTHY checkpoint와 기존 승인 project가 모두 유효할 때만 허용하며 DB 권한·secret·Docker lifecycle·다른 project 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=include_jobs 누락·true; msdb 권한 추가; 다른 recipe drift; runtime evidence 위조; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=CRM recipe 한 줄 corrective와 target/data 회귀, DB grant·다른 recipe 변경 0건, source CI PASS를 확인한 뒤 dev 통합한다. F9 live 5-source evidence는 이 corrective 통합 뒤 별도 latest-dev 카드로 재발행한다.
 ```
 
 ### R2 · R2-W5-F10
@@ -967,6 +1000,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.84 | 2026-08-11 17:00 | CRM DataHub MSSQL ingestion의 불필요한 msdb job 조회를 광범위 DB 권한 없이 `include_jobs: false`로 차단하도록 R2-W5-F9를 BLOCKED 처리하고 R2-W5-F12 owner-scoped REWORK 발행 |
 | v5.83 | 2026-08-11 16:57 | R1-W5-F33의 mixed-checkout runtime 차단과 누적 Gate 발행 source CI 31466799848 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.82 | 2026-08-11 16:56 | R5-W5-F5 actual smoke가 AgentPage direct mock·fixture fallback으로 fake success가 되는 blocker를 기록하고 실제 Analysis HTTP client·fail-closed 전환을 R5-W5-F8 owner-scoped REWORK로 발행 |
 | v5.81 | 2026-08-11 16:55 | mixed checkout identity fail-closed와 integration 90건을 확인해 R1-W5-F33을 REVIEW 전환 |

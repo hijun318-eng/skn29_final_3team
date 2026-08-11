@@ -3,16 +3,16 @@
   "EXECUTION_BUNDLE_ID": "R4-W5-F12",
   "ROLE": "R4",
   "BRANCH": "jaehong",
-  "BASE_SHA": "6cf2ff9b072587b33e3d7f8bbbdeba642ac84dbc",
-  "SYNCED_DEV_SHA": "9cdb906a67ee37b1e5cb5bcb34a4f898d300a93e",
-  "RESULT_SHA": "f481f9123a683da7f61258f286dd2658828b00bc",
-  "TERMINAL_SHA": "HEAD",
-  "DIRECTIVE_TOKEN": "R4-W5-F12@6cf2ff9",
+  "BASE_SHA": "9cdb906a67ee37b1e5cb5bcb34a4f898d300a93e",
+  "SYNCED_DEV_SHA": "6dfcb494d13b21cf0b3c51e67daaf1e785b28e79",
+  "RESULT_SHA": "bd6d2231b4404dd44152da90d3b8c3821cb66db3",
+  "DIRECTIVE_TOKEN": "R4-W5-F12@9cdb906",
   "STATUS": "REVIEW",
   "COMPLETED_CARDS": [
     "R4-W5-F10A·F10B Context Registry additive schema·checksum repository",
-    "R4-13 승인 Template 결과 조립",
-    "USER_PRIORITY_F10C·F10D live DataHub·Analysis persistence local verification"
+    "R4-W5-F10C live Context fail-closed integration",
+    "R4-W5-F10D existing /analysis persistence",
+    "R4-13 Node3 metric_selection and G120-046 result composition"
   ],
   "CHANGED_FILES": [
     "app/backend/README.md",
@@ -28,55 +28,53 @@
     "app/backend/app/services/readiness.py",
     "app/backend/compose.fragment.yml",
     "app/backend/migrations/versions/20260811_07_context_registry.py",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
     "tests/backend/test_analysis_persistence.py",
     "tests/backend/test_analysis_pipeline.py",
     "tests/backend/test_context_registry.py",
     "tests/backend/test_i2_data_platform.py",
     "tests/backend/test_migration_compatibility.py",
-    "tests/backend/test_readiness.py",
-    "docs/markdown/daily_reports/jaehong/일일보고.md"
+    "tests/backend/test_readiness.py"
   ],
   "CONTRACT_VERSIONS": {
     "CONTEXT_REGISTRY": "CONTEXT-REGISTRY-v1.0.0-DRAFT",
     "OPENAPI": "OPENAPI-v1.0.0",
     "MIGRATION_HEAD": "20260811_07",
-    "MODEL_MODE": "template-only",
+    "G120_CASE": "G120-046",
     "PONYTAIL": "v4.9.0 full"
   },
   "ACCEPTANCE_RESULTS": [
-    {"id": "AC1_ADDITIVE_HEAD", "status": "PASS", "evidence": "20260811_07이 20260810_06의 additive child이고 Alembic single head·current를 확인"},
-    {"id": "AC2_MINIMAL_REGISTRY_SCHEMA", "status": "PASS", "evidence": "Context record·release·request package binding과 FK·unique·status 제약만 추가"},
-    {"id": "AC3_CANONICAL_CHECKSUM", "status": "PASS", "evidence": "repository가 정렬된 canonical JSON의 SHA-256을 server-side로 계산"},
-    {"id": "AC4_IDEMPOTENCY_CONFLICT", "status": "PASS", "evidence": "동일 key·payload는 동일 결과, 다른 payload는 domain conflict로 차단"},
-    {"id": "AC5_RELEASE_IMMUTABLE", "status": "PASS", "evidence": "승인 record·배포 release·결합 package의 mutation을 service와 DB trigger가 차단"},
-    {"id": "AC6_SERVICE_ONLY", "status": "PASS", "evidence": "Context Registry 자체는 repository·service-only이며 public router나 OpenAPI operation을 추가하지 않음"},
-    {"id": "AC7_NO_LIVE_ASSUMPTION", "status": "PASS", "evidence": "Registry test는 live PASS를 가정하지 않으며 별도 사용자 우선 실제 연결은 DataHub·Trino 응답으로 직접 검증"},
-    {"id": "AC8_NODE3_SELECTION", "status": "PASS", "evidence": "승인 derived metric 하나만 metric_selection으로 전달하고 누락·복수·권한 밖은 fail-closed"},
-    {"id": "AC9_ACTUAL_SHAPED_RESPONSE", "status": "PASS", "evidence": "trace p0-live-e2e-final이 2행·399088800 KRW·bar chart·Artifact를 같은 요청에 연결"}
+    {"id": "AC1_ADDITIVE_HEAD", "status": "PASS", "evidence": "20260811_07이 20260810_06의 additive child이며 empty와 20260810_06 모두 single head 20260811_07로 upgrade"},
+    {"id": "AC2_REGISTRY_INVARIANTS", "status": "PASS", "evidence": "server-side canonical checksum, idempotency conflict, APPROVED record와 PUBLISHED release 불변 제약 회귀 통과"},
+    {"id": "AC3_LIVE_CONTEXT_FAIL_CLOSED", "status": "PASS", "evidence": "DataHub health, removed=false, 승인 URN/FQN/column과 hotel_analyst entitlement를 확인하고 health·identity·column·removed mismatch를 차단"},
+    {"id": "AC4_EXISTING_ANALYSIS_PATH", "status": "PASS", "evidence": "새 OpenAPI operation 없이 기존 POST /analysis가 실제 DataHub·Trino 결과를 기존 request/query/artifact repository에 저장"},
+    {"id": "AC5_G3_BEFORE_PERSIST", "status": "PASS", "evidence": "G3 PASSED 뒤에만 execution sink와 Artifact 저장이 실행되는 target·실제 HTTP 검증 통과"},
+    {"id": "AC6_NODE3_SELECTION", "status": "PASS", "evidence": "6개 승인 source의 derived total_guest_revenue_krw 하나만 metric_selection에 전달하고 missing·multi·outside-entitlement를 fail-closed"},
+    {"id": "AC7_G120_GOLD_EXACT", "status": "PASS", "evidence": "실제 G120-046 HTTP가 2026-05-01~2026-07-01에서 2행·475972400.00·de17b5a22c6718c6e77e37936421c94618945dd31b0c7207f40e51d51b667716 반환"},
+    {"id": "AC8_TABLE_CHART_EVIDENCE", "status": "PASS", "evidence": "trace r4-f12-g120-046-final-3에서 table, month bar chart, Node3 explanation, query/artifact ID와 persistence를 같은 request에 연결"},
+    {"id": "AC9_HISTORICAL_CI_ACCURACY", "status": "PASS", "evidence": "기존 source CI 31451536556은 role-scope FAIL이며 제품 PASS/FAIL로 전용하지 않고 corrective CI 전까지 그대로 보존"},
+    {"id": "AC10_REPORT_QUEUED_ONLY", "status": "PASS", "evidence": "Report 수동 command는 queued 경계만 유지하고 worker/run 생성 성공을 주장하지 않음"}
   ],
   "TEST_RESULTS": [
-    {"id": "T1_TARGET", "name": "Context Registry·actual pipeline target", "status": "PASS", "evidence": "target test와 실제 DataHub·Trino·PostgreSQL HTTP 2행·Artifact·Report 참조 PASS"},
-    {"id": "T2_HEAD", "name": "Alembic graph", "status": "PASS", "evidence": "single head 20260811_07"},
-    {"id": "T3_MIGRATION", "name": "isolated PostgreSQL migration", "status": "PASS", "evidence": "전용 PostgreSQL에 upgrade head 후 current 20260811_07과 승인 Template exact 1건 확인"},
-    {"id": "T4_NEGATIVE", "name": "registry·template fail-closed", "status": "PASS", "evidence": "idempotency mismatch·immutable mutation·미승인 join evidence·Template G2 실패의 model repair 금지를 검증"},
-    {"id": "T5_NODE3_COMPOSITION", "name": "metric selection·shaped response", "status": "PASS", "evidence": "metric selection 회귀와 actual table·chart·summary·Artifact 조합 PASS"},
-    {"id": "T6_BACKEND", "name": "Python 3.12 backend·Report", "status": "PASS", "evidence": "146 passed, 15 skipped, 9 warnings"},
+    {"id": "T1_TARGET", "name": "Context Registry·analysis·HTTP·I2 target", "status": "PASS", "evidence": "대상 104 passed, 14 skipped 뒤 교정 target 81 passed와 실제 G120-046 HTTP PASS"},
+    {"id": "T2_HEAD", "name": "Alembic graph", "status": "PASS", "evidence": "python -m alembic heads: 20260811_07 single head"},
+    {"id": "T3_MIGRATION", "name": "isolated PostgreSQL migration", "status": "PASS", "evidence": "ephemeral PostgreSQL 16.13에서 empty→head와 20260810_06→head 모두 current 20260811_07"},
+    {"id": "T4_NEGATIVE", "name": "fail-closed negative", "status": "PASS", "evidence": "registry checksum/idempotency/immutability, DataHub health·removed·identity·column, unauthorized join·missing filter·repair·timeout·cancel·empty·masking 회귀 포함"},
+    {"id": "T5_NODE3_COMPOSITION", "name": "Node3·Gold response composition", "status": "PASS", "evidence": "metric_selection 회귀와 actual 2행·합계·hash·table·chart·explanation·artifact 조합 PASS"},
+    {"id": "T6_BACKEND", "name": "Python 3.12 backend", "status": "PASS", "evidence": "ephemeral Python 3.12 container: 137 passed, 15 skipped, 10 warnings"},
     {"id": "T7_OPENAPI_UNCHANGED", "name": "export_openapi.py --check", "status": "PASS", "evidence": "OPENAPI_CONTRACT_VERIFIED"},
-    {"id": "T8_COMPILE", "name": "compileall", "status": "PASS", "evidence": "app/backend/app compile PASS"},
-    {"id": "T9_SCOPE", "name": "Gate planned path", "status": "FAIL", "evidence": "현재 F12는 API·live DataHub·Analysis persistence를 금지하므로 사용자 우선 로컬 구현의 F10C·F10D 경로가 정식화 전 범위 초과"},
+    {"id": "T8_COMPILE", "name": "compileall", "status": "PASS", "evidence": "python -m compileall -q app/backend PASS"},
+    {"id": "T9_SCOPE", "name": "Gate scope", "status": "PASS", "evidence": "23개 planned-path PASS, 최신 dev non-ff ancestry와 allowed diff 확인; terminal handoff CI만 후속 갱신"},
     {"id": "T10_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"},
-    {"id": "T11_BRANCH_CI", "name": "jaehong source CI", "status": "FAIL", "evidence": "GitHub Actions run 31451536556이 현재 카드 밖 F10C·F10D 경로 때문에 role-scope에서 실패하고 제품 job은 skip"}
+    {"id": "T11_BRANCH_CI", "name": "jaehong corrective source CI", "status": "NOT_RUN", "evidence": "corrective push 전이므로 새 source CI는 아직 생성되지 않았고 기존 31451536556 scope FAIL만 보존"}
   ],
-  "NOT_RUN": [],
+  "NOT_RUN": [
+    "jaehong corrective source CI는 이 handoff commit push 뒤 생성되므로 아직 결과 없음"
+  ],
+  "CHANGE_REQUESTS": [],
   "RESIDUAL_RISKS": [
-    "report_v1 manual command는 queued까지 실제 저장되지만 command consumer worker가 없어 run 생성은 후속 R4-W5-F13 필요",
-    "R5 API mode의 동일 actual trace browser 검증은 R1 범위 정식화 뒤 R5 owner 작업 필요"
-  ],
-  "CHANGE_REQUESTS": [
-    "R1: F10C live 조립과 F10D Analysis persistence 경로를 owner-scoped REWORK 또는 다음 bundle로 정식화",
-    "R5: backend 127.0.0.1:18000 API mode에서 2행·chart·Artifact를 browser로 재검증",
-    "R1: R4-W5-F13 Report worker·block별 재실행 카드 발행"
+    "Report manual command consumer worker와 run 생성은 후속 R4-W5-F13 범위"
   ],
   "EXTERNAL_APPROVAL_REQUIRED": [],
-  "REQUESTED_DECISION": "제품 test는 실제 데이터로 통과했으므로 F10C·F10D 경로를 정식 범위로 수용하고 R5 actual consumer smoke 뒤 R4-W5-F13 Report worker를 발행"
+  "REQUESTED_DECISION": "corrective source CI PASS 확인 뒤 R1 actual provenance 재검증과 dev 통합"
 }

@@ -14,6 +14,43 @@
     "gold": 5,
     "paraphrase_group_leakage": 0
   },
+  "integrity": {
+    "status": "REVIEW",
+    "case_id_duplicates": 0,
+    "paraphrase_group_leakage": 0,
+    "join_graph_leakage": "NOT_READY",
+    "scope": "review input contains 35 cases; full four-split join-graph evidence is not present"
+  },
+  "typed_missing": {
+    "train": {
+      "status": "NOT_READY",
+      "observed": 0,
+      "reason": "train cases are not included in this review input"
+    },
+    "validation": {
+      "status": "REVIEW",
+      "observed": 30,
+      "missing": 0,
+      "reason": "source cases remain under review"
+    },
+    "gold": {
+      "status": "NOT_READY",
+      "observed": 5,
+      "missing": 115,
+      "reason": "partial gold input; no automatic regeneration"
+    },
+    "acceptance": {
+      "status": "NOT_READY",
+      "observed": 0,
+      "missing": 30,
+      "reason": "acceptance cases are not included in this review input"
+    },
+    "model_execution": {
+      "status": "NOT_READY",
+      "reason": "checkpoint and endpoint are not approved"
+    }
+  },
+  "auto_regeneration": "DISABLED",
   "review_state": "All 35 source cases are REVIEW; R1 and R3 approvals remain pending",
   "model_execution": "NOT_RUN — checkpoint and endpoint are not approved"
 }

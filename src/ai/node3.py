@@ -58,17 +58,22 @@ def explain_result(
 
 
 def _validate_metric_selection(payload: dict[str, Any]) -> None:
+    source_ids = payload["source_ids"]
+    if len(source_ids) != len(set(source_ids)):
+        raise ContractError("node3_request: source_ids must be unique")
+
     selection = payload.get("metric_selection")
     if selection is None:
-        if len(payload["source_ids"]) > 1:
+        if len(source_ids) > 1:
             raise ContractError("node3_request: multi-source result requires metric selection")
         return
 
     selected = selection["selected_metric_id"]
     context_ids = selection["context_metric_ids"]
     if (
-        len(context_ids) != len(payload["source_ids"])
-        or set(context_ids) != {selected}
+        len(context_ids) != len(source_ids)
+        or len(set(context_ids)) != 1
+        or context_ids[0] != selected
         or payload["metric"] != selected
         or selected not in selection["entitled_metric_ids"]
     ):

@@ -1,7 +1,43 @@
 {
   "manifest_version": "SERVING-v0.2",
   "status": "PASS",
+  "status_scope": "HISTORICAL_CAPTURE_ONLY",
   "product_default": "Base",
+  "observed": {
+    "accuracy": null,
+    "p50_ms": 724.472,
+    "p95_ms": 725.808,
+    "peak_vram_bytes": 41188065280,
+    "cost_usd": null
+  },
+  "captured_evidence": {
+    "status": "NOT_READY",
+    "required_hashes": [
+      "model_sha256",
+      "prompt_sha256",
+      "case_set_sha256",
+      "decoding_sha256",
+      "runtime_sha256",
+      "artifact_sha256"
+    ],
+    "shared": {
+      "model_sha256": null,
+      "prompt_sha256": null,
+      "case_set_sha256": null,
+      "decoding_sha256": null,
+      "runtime_sha256": null,
+      "artifact_sha256": null
+    },
+    "missing": [
+      "model_sha256",
+      "prompt_sha256",
+      "case_set_sha256",
+      "decoding_sha256",
+      "runtime_sha256",
+      "artifact_sha256"
+    ],
+    "auto_regeneration": "DISABLED"
+  },
   "protocol": {
     "models_path": "/v1/models",
     "chat_completions_path": "/v1/chat/completions",

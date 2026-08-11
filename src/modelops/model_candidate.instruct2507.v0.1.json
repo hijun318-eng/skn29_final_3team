@@ -1,6 +1,9 @@
 {
   "candidate_version": "MODEL-CANDIDATE-v0.1",
   "status": "BLOCKED_BASE_RESULT_MATCH_REWORK",
+  "status_scope": "HISTORICAL_CAPTURE_ONLY",
+  "product_default": "Base",
+  "release_readiness": "NOT_READY",
   "model": "Qwen/Qwen3-4B-Instruct-2507",
   "revision": "cdbee75f17c01a7cc42f958dc650907174af0554",
   "mode": "non-thinking",

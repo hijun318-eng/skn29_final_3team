@@ -25,6 +25,33 @@
       "pos": 20
     }
   },
+  "integrity": {
+    "status": "REVIEW",
+    "case_id_duplicates": 0,
+    "paraphrase_group_leakage": "NOT_READY",
+    "join_graph_leakage": "NOT_READY",
+    "scope": "validation manifest carries semantic signatures but not full four-split paraphrase or join-graph evidence"
+  },
+  "typed_missing": {
+    "train": {
+      "status": "NOT_READY",
+      "reason": "validation-only manifest"
+    },
+    "validation": {
+      "status": "REVIEW",
+      "observed": 150,
+      "missing": 0
+    },
+    "gold": {
+      "status": "NOT_READY",
+      "reason": "not included; no automatic regeneration"
+    },
+    "acceptance": {
+      "status": "NOT_READY",
+      "reason": "not included; no automatic regeneration"
+    }
+  },
+  "auto_regeneration": "DISABLED",
   "cases": [
     {
       "case_id": "validation-0151",

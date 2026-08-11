@@ -1,0 +1,156 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R3-W5-F8",
+  "ROLE": "R3",
+  "BRANCH": "daesung",
+  "BASE_SHA": "ef2c37186947b7b907278485b59f0d2854dcbc4f",
+  "RESULT_SHA": "9176c5cf8ccacfb5523fce28283d94ef56b79e28",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R3-W5-F8@ef2c371",
+  "COMPLETED_CARDS": [
+    "R3-06 Node3 metric selection contract hardening",
+    "R3-09 captured Base-LoRA-serving comparability evidence",
+    "R3-10 split integrity and leakage guard",
+    "R3-14 release-readiness DRAFT manifest"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/daesung/일일보고.md",
+    "evals/base_comparison.v0.1.json",
+    "evals/split_manifest.v0.1.json",
+    "evals/validation_v2.manifest.json",
+    "src/ai/contracts/node_io.v0.1.json",
+    "src/ai/node3.py",
+    "src/ai/training/benchmark_serving.py",
+    "src/ai/training/dataset.py",
+    "src/ai/training/evaluate_endpoint.py",
+    "src/ai/training/evaluate_lora.py",
+    "src/modelops/model_candidate.instruct2507.v0.1.json",
+    "src/modelops/model_decision.v0.1.json",
+    "src/modelops/release_candidate.i5.v1.json",
+    "src/modelops/serving_manifest.v0.1.json",
+    "tests/ai/test_eval_runner.py",
+    "tests/ai/test_model_decision.py",
+    "tests/ai/test_node3.py",
+    "tests/ai/test_serving_benchmark.py",
+    "tests/ai/test_training_dataset.py",
+    "tests/ai/test_wave3.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "MODEL_IO": "MODEL-v1.0.0 with additive Node3 metric_selection guard; Gate MODEL-v1.1.0-NODE3-DRAFT",
+    "MODELOPS": "MODELOPS-I5-READINESS-v1.0.0-DRAFT",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_NODE3_SCHEMA",
+      "status": "PASS",
+      "evidence": "node_io contract declares selected_metric_id, per-source context_metric_ids, source count minimum, and the multi-source metric_selection requirement; node3 runtime enforces exact one selected metric and unique sources"
+    },
+    {
+      "id": "AC2_ENTITLEMENT_FAIL_CLOSED",
+      "status": "PASS",
+      "evidence": "Node3 tests cover missing, multiple, different, outside-context, outside-entitlement, source-count mismatch, and duplicate-source cases with ContractError"
+    },
+    {
+      "id": "AC3_BACKEND_SHAPED_FIXTURE",
+      "status": "PASS",
+      "evidence": "G120-046 six-asset fixture test preserves source IDs, masking, sampling, partial, and query_execution_id reference without question, row, or first-metric inference"
+    },
+    {
+      "id": "AC4_CAPTURED_COMPARABILITY",
+      "status": "REVIEW_REQUIRED",
+      "evidence": "comparison helper requires equal model/prompt/case-set/decoding/runtime/artifact SHA-256 values; current manifests keep missing capture hashes null and comparability NOT_READY"
+    },
+    {
+      "id": "AC5_SPLIT_INTEGRITY",
+      "status": "REVIEW_REQUIRED",
+      "evidence": "dataset validation rejects duplicate case IDs, scenario-group split leakage, and join-graph changes; available manifests record missing full four-split evidence as NOT_READY with regeneration disabled"
+    },
+    {
+      "id": "AC6_TRACE_REPRO",
+      "status": "PASS",
+      "evidence": "trace, captured-evidence comparison, observed metrics, and serving benchmark tests are deterministic; unknown cost remains null"
+    },
+    {
+      "id": "AC7_RELEASE_NOT_READY",
+      "status": "PASS",
+      "evidence": "release_candidate.i5.v1.json is DRAFT/NOT_READY, product default is Base, and sql_lora_enabled_nodes is empty"
+    },
+    {
+      "id": "AC8_OWNER_BOUNDARY",
+      "status": "REVIEW_REQUIRED",
+      "evidence": "worktree changes from origin/dev are confined to the F8 allowed AI, ModelOps, evaluation, test, report, and handoff paths; the ledger BASE_SHA merge-base includes pre-existing non-R3 integration paths"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_JSON",
+      "name": "related JSON json.tool validation",
+      "status": "PASS",
+      "evidence": "all changed JSON manifests, contracts, modelops files, release candidate, and handoff parse successfully"
+    },
+    {
+      "id": "T2_NODE3",
+      "name": "Node3, fake model, and contract tests",
+      "status": "PASS",
+      "evidence": "18 passed, 40 subtests passed"
+    },
+    {
+      "id": "T3_MODELOPS",
+      "name": "ModelOps, serving, dataset, validation, evaluation, and wave tests",
+      "status": "PASS",
+      "evidence": "35 passed, 2 subtests passed"
+    },
+    {
+      "id": "T4_AI",
+      "name": "tests/ai full suite",
+      "status": "PASS",
+      "evidence": "79 passed, 52 subtests passed"
+    },
+    {
+      "id": "T5_COMPILE",
+      "name": "python -m compileall -q src/ai src/modelops evals",
+      "status": "PASS",
+      "evidence": "compileall PASS"
+    },
+    {
+      "id": "T6_HASH",
+      "name": "deterministic manifest and hash validation",
+      "status": "PASS",
+      "evidence": "validation_v2 content_sha256 matches, case IDs are unique, capture comparability remains false, and release readiness assertions pass"
+    },
+    {
+      "id": "T7_SCOPE",
+      "name": "gate_scope bootstrap, planned path, and merge-base review",
+      "status": "REVIEW_REQUIRED",
+      "evidence": "planned path PASS and bootstrap identifies R3-W5-F8 READY; merge-base from ledger BASE_SHA reports 83 pre-existing non-R3 paths outside this card"
+    },
+    {
+      "id": "T8_DIFF",
+      "name": "git diff --check",
+      "status": "PASS",
+      "evidence": "no whitespace errors"
+    },
+    {
+      "id": "T9_BRANCH_CI",
+      "name": "daesung source CI",
+      "status": "NOT_RUN",
+      "evidence": "not run because this task did not authorize commit/push; local full AI verification passed"
+    }
+  ],
+  "NOT_RUN": [
+    "daesung source CI after push",
+    "external endpoint, RunPod, model download, cost, and secret-dependent verification"
+  ],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [
+    "captured immutable evidence hashes remain incomplete, so Base/LoRA comparison is intentionally NOT_READY",
+    "full train/validation/gold/acceptance join-graph and paraphrase evidence is not present; no automatic regeneration was performed",
+    "F8 ledger BASE_SHA predates current dev integration and merge-base scope includes 83 pre-existing non-R3 paths; current origin/dev worktree delta is limited to the listed allowed paths"
+  ],
+  "EXTERNAL_APPROVAL_REQUIRED": [
+    "R1 review of Node3 producer contract and ModelOps DRAFT evidence",
+    "explicit authorization before any commit, push, or source CI execution"
+  ],
+  "REQUESTED_DECISION": "Review the F8 handoff and stale BASE_SHA scope condition; release remains Base default and NOT_READY until immutable captures and full split evidence are available"
+}

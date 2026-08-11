@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.81 |
-| 문서 기준일 | 2026-08-11 16:55 |
+| 버전 | v5.82 |
+| 문서 기준일 | 2026-08-11 16:56 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -28,7 +28,7 @@
 | R2 | `R2-W5-F9` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `READY` | `jaehong` |
-| R5 | `R5-W5-F4` | `MERGED_DEV` | `minji` |
+| R5 | `R5-W5-F8` | `READY` | `minji` |
 
 ## 활성 실행 카드
 
@@ -878,12 +878,10 @@ R1_REVIEW_CONDITIONS=versioned 경로는 결정론적 PASS, live 경로는 obser
 ### R5 · R5-W5-F5
 
 ```text
-STATUS=PLANNED
+STATUS=BLOCKED
 ROLE_ID=R5
 PERSONAL_BRANCH=minji
 EXECUTION_BUNDLE_ID=R5-W5-F5
-AUTO_START=CONDITIONAL
-AUTO_START_AFTER=R5-W5-F4
 TARGET_INTEGRATION_GATE=I5
 TASK_CARD_RANGE=R5-01 LAN actual browser·CORS·fail-closed smoke
 BASE_SHA=d2b1d5574e8b76fe0190bb6ed90b0b2e1b72fc61
@@ -893,6 +891,39 @@ ALLOWED_PATHS=handoffs/R5-W5-F5.json; docs/markdown/daily_reports/minji/일일�
 ACCEPTANCE_CRITERIA=명시적 LAN frontend/backend 주소에서 Agent·Report network request와 allowed/denied CORS, 4xx/503 fail-closed UI를 실제 browser로 검증한다.
 TEST_COMMANDS=resolved compose; service health; browser screenshot/network; OPTIONS allow/deny; frontend contracts/build; scope; CI
 STOP_CONDITIONS=F4 미통합; 제품 수정 필요; wildcard CORS; firewall·다른 project·secret; fake success
+SUPERSEDED_BY=R5-W5-F8
+BLOCKED_REASON=origin/dev af13722의 AgentPage.jsx가 createMockAnalysisClient()를 직접 생성하고 catch에서 analysisFixtures.ready로 성공 복귀해 handoff-only actual browser smoke가 fake success가 되는 STOP_CONDITION을 확인했다. 제품 수정은 owner-scoped R5-W5-F8로만 수행한다.
+```
+
+### R5 · R5-W5-F8
+
+```text
+STATUS=READY
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W5-F8
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=Agent actual HTTP client wiring and fail-closed UI before browser E2E
+TASK_CARD_RANGE=R5-01 Agent 실제 Analysis API client 전환 REWORK
+CURRENT_TASK_CARD_ID=R5-01-ACTUAL-ANALYSIS-CLIENT
+BASE_BRANCH=dev
+BASE_SHA=af13722b23196a761d7c3742e925936bb86c84b5
+START_POINT=R5-W5-F4가 dev af13722에 MERGED_DEV이고 dev·test·minji CI가 PASS했다. F5 actual smoke 사전 진단에서 AgentPage의 direct mock과 fixture fallback을 확인했으므로 F5를 BLOCKED 처리하고 clean minji에서 preflight·전체 planned-path 검사를 통과한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R5-W5-F8@af13722
+CONTRACT_VERSION=FRONTEND-BACKEND-BASE-v1.0.0-DRAFT; existing OPENAPI-v1.0.0
+ALLOWED_PATHS=app/enterprise-react/src/pages/AgentPage.jsx; app/enterprise-react/src/api/analysisClient.ts; tests/frontend/contracts.test.mjs; handoffs/R5-W5-F8.json; docs/markdown/daily_reports/minji/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; app/enterprise-react/src/data/analysisFixtures.ts; app/enterprise-react/src/contracts/**; app/enterprise-react/package*.json; compose.yml; .env; .env.example; root CI; Report·Catalog UI; dependency; token·secret
+HANDOFF_MANIFEST=handoffs/R5-W5-F8.json
+ACCEPTANCE_CRITERIA=AgentPage는 createAnalysisClient()만 생성하고 createMockAnalysisClient·analysisFixtures를 import·호출하지 않는다. submit은 실제 /analysis HTTP 응답만 AnalysisRun으로 표시한다. network error·non-2xx·invalid body는 success·READY·Artifact로 변환하지 않고 오류 상태로 표시하며 이전 성공 결과를 재사용하지 않는다. VITE_ANALYSIS_MODE=mock은 명시적 개발 fixture 경로에만 남고 test·default build는 HTTP client를 사용한다. API base·CORS·auth 계약을 추정하거나 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_ACTUAL_CLIENT;AC2_NO_DIRECT_MOCK;AC3_NO_FIXTURE_FALLBACK;AC4_HTTP_FAIL_CLOSED;AC5_TEST_DEFAULT_HTTP;AC6_OWNER_BOUNDARY
+TEST_COMMANDS=node tests/frontend/contracts.test.mjs; npm --prefix app/enterprise-react run build; AgentPage direct mock·fixture import 0과 catch fixture fallback 0 정적 회귀; default·test createAnalysisClient HTTP request 1회와 401·403·500·invalid JSON·network rejection에서 Artifact·success 0 contract test; gate_scope preflight·전체 planned paths·merge-base; git diff --check; minji source CI
+TEST_COMMAND_IDS=T1_FRONTEND_CONTRACT;T2_BUILD;T3_NO_MOCK_OR_FALLBACK;T4_HTTP_NEGATIVE;T5_SCOPE;T6_DIFF;T7_BRANCH_CI
+STOP_CONDITIONS=R4 auth·API 변경 필요; 실제 backend가 unavailable하거나 migration ownership이 차단된 상태에서 browser PASS 주장; fixture·mock 성공 복귀 필요; backend·OpenAPI·CORS·root Compose·env·package·dependency·secret 변경; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=허용 경로 commit·minji push·source CI만 승인한다. actual browser E2E와 backend lifecycle은 R1 ownership·R4 F16 producer 통합 뒤 별도 R1 통합 판정으로 수행한다. firewall·secret·다른 project 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=AgentPage direct mock; backend failure의 fixture success 변환; non-2xx·invalid payload에서 Artifact 표시; test·default build가 mock 선택; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=source CI에서 direct mock과 fixture fallback 부재, 실제 HTTP 오류 fail-closed를 확인한다. actual browser PASS는 R1 ownership 정합화와 R4-W5-F16 통합 뒤에만 별도 판정한다.
 ```
 
 ### R5 · R5-W5-F6
@@ -936,6 +967,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.82 | 2026-08-11 16:56 | R5-W5-F5 actual smoke가 AgentPage direct mock·fixture fallback으로 fake success가 되는 blocker를 기록하고 실제 Analysis HTTP client·fail-closed 전환을 R5-W5-F8 owner-scoped REWORK로 발행 |
 | v5.81 | 2026-08-11 16:55 | mixed checkout identity fail-closed와 integration 90건을 확인해 R1-W5-F33을 REVIEW 전환 |
 | v5.80 | 2026-08-11 16:38 | R1-W5-F33 발행과 현재 역할별 dashboard를 동기화해 source scope 판정 교정 |
 | v5.79 | 2026-08-11 16:15 | healthy container가 서로 다른 checkout·env에서 생성된 mixed test runtime을 단일 환경으로 오인하지 않도록 R1-W5-F33 READY 발행 |

@@ -948,7 +948,10 @@ def next_gate_lines(
     lines.extend(f"- Blocker: {error}" for error in archive_errors)
     if candidates:
         lines.append(f"- Planned candidates: {', '.join(candidates)}")
-    lines.append("- READY publication remains an R1 manual decision.")
+    lines.append(
+        "- READY publication remains an R1 manual decision; eligible "
+        "AUTO_START=CONDITIONAL cards use effective READY without ledger writes."
+    )
     return lines
 
 

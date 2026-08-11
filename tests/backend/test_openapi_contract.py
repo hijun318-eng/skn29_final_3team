@@ -91,6 +91,21 @@ class OpenApiContractTest(unittest.TestCase):
         for forbidden in ("sql", "parameters", "result", "snapshot"):
             self.assertNotIn(forbidden, run)
 
+    def test_authenticated_routes_use_server_owned_bearer_identity(self) -> None:
+        schema = app.openapi()
+        bearer = schema["components"]["securitySchemes"]["BearerAuth"]
+        self.assertEqual("http", bearer["type"])
+        self.assertEqual("bearer", bearer["scheme"])
+        for path, operations in schema["paths"].items():
+            if path in {"/health", "/readiness"}:
+                continue
+            for operation in operations.values():
+                self.assertEqual([{"BearerAuth": []}], operation["security"])
+                parameters = {item["name"].lower() for item in operation.get("parameters", [])}
+                self.assertNotIn("authorization", parameters)
+                self.assertNotIn("x-user-id", parameters)
+                self.assertNotIn("x-role", parameters)
+
     def test_report_request_schemas_reject_additional_properties(self) -> None:
         schemas = app.openapi()["components"]["schemas"]
         for name in (

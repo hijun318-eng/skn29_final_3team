@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.47 |
-| 문서 기준일 | 2026-08-10 21:15 |
+| 버전 | v5.48 |
+| 문서 기준일 | 2026-08-11 09:15 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F19` | `READY` | `junhee` |
+| R1 | `R1-W5-F19` | `BLOCKED` | `junhee` |
 | R2 | `R2-W5-F6` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
@@ -1187,7 +1187,7 @@ BLOCKED_REASON=삭제 전 read-only 검사에서 governance.alembic_version은 �
 ### R1 · R1-W5-F19
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1215,6 +1215,7 @@ STOP_CONDITIONS=target label mismatch; target 외 삭제 필요; unrelated drift
 EXTERNAL_ACTION_PERMISSION=사용자의 보존 데이터 없음 승인에 따라 project=answervice labels를 가진 exact backend/app-postgres containers와 answervice_app-postgres-data 한 개만 제거·재생성할 수 있다. 다른 project/container/volume, down -v, reset script, prune는 금지한다. 허용 경로 commit·junhee push만 허용한다.
 AUTO_FAIL_CONDITIONS=exact identity 불일치; target 확대; unrelated drift; migration 우회; template 수동 보정; readiness 일부만 PASS; secret 출력; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=exact reset과 current env bootstrap 후 readiness 제품 계약 차단은 R4 owner REWORK로 반환한다.
+BLOCKED_REASON=exact answervice synthetic volume 재생성, approved provisioning, backend migration은 성공해 DB head 20260804_05와 weekly-room-operations I2-v1.0.0 APPROVED 1건을 확인했다. backend /readiness는 app_postgres·approved_templates ready지만 R4 readiness 코드가 과거 20260731_03을 요구해 migration not_ready를 반환했다. R1 product 변경은 미커밋 제거했고 R4 owner REWORK·dev 통합 전 재개하지 않는다.
 ```
 
 ### R2 · R2-W5-F5
@@ -1816,6 +1817,7 @@ RESULT_CI=branch 31363391107 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.48 | 2026-08-11 09:15 | R1-W5-F19에서 exact app DB 재생성·migration·Template 검증은 성공했으나 R4 readiness가 과거 migration head를 요구함을 확인해 BLOCKED 처리하고 owner REWORK 대기 |
 | v5.47 | 2026-08-10 21:15 | F18 empty proof에서 synthetic schema 21개·약 2013행을 확인해 보존 데이터 없음 승인 범위의 exact answervice volume만 재생성하는 R1-W5-F19 발행 |
 | v5.46 | 2026-08-10 21:00 | F17에서 신규 answervice 빈 volume의 credential mismatch를 확인해 exact empty volume만 current env로 재초기화하고 internal readiness를 검증하는 R1-W5-F18 발행 |
 | v5.45 | 2026-08-10 20:40 | F16의 explicit project·DB 격리는 성공했으나 backend 18000 충돌을 확인해 DB와 backend를 내부 전용으로 기동하고 migration·readiness를 검증하는 R1-W5-F17 발행 |

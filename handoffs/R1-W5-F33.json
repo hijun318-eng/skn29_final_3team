@@ -9,8 +9,7 @@
     ".github/scripts/refresh_test_runtime.ps1",
     "tests/integration/test_test_runtime_refresh.py",
     "docs/markdown/collaboration/Gate_실행_카드_원장.md",
-    "docs/markdown/daily_reports/junhee/일일보고.md",
-    "handoffs/R1-W5-F33.json"
+    "docs/markdown/daily_reports/junhee/일일보고.md"
   ],
   "CONTRACT_VERSIONS": {
     "test_branch_runtime": "v1.0.1-DRAFT",

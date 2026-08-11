@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.44 |
-| 문서 기준일 | 2026-08-11 09:29 |
+| 버전 | v5.45 |
+| 문서 기준일 | 2026-08-11 09:38 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F13` | `BLOCKED` | `junhee` |
+| R1 | `R1-W5-F20` | `READY` | `junhee` |
 | R2 | `R2-W5-F7` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W5-F11` | `READY` | `jaehong` |
@@ -1014,6 +1014,40 @@ R1_REVIEW_CONDITIONS=실행 전후 다른 project snapshot 불변, exact service
 BLOCKED_REASON=exact answervice project의 app-postgres/backend 기동 전 APP DB credential 존재·Compose config·backend image build는 통과했지만, 고정 container name app-postgres가 기존 hotel-synthetic-db project의 healthy container에 이미 사용 중이라 Docker가 answervice app-postgres 생성 전에 중단했다. 기존 container/project/volume은 변경하지 않았고 이번 시도에서 생성된 answervice-network·answervice_datahub-network·빈 answervice_app-postgres-data volume은 삭제 권한 없이 보존했다. migration·approved Template·/readiness는 NOT_RUN이며 기존 container를 제거·이름 변경하거나 다른 project로 backend를 편입하지 않는다.
 ```
 
+### R1 · R1-W5-F20
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F20
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=junhee·dev history-preserving reconciliation and R1 evidence cleanup
+TASK_CARD_RANGE=R1-02 기존 F9·F10·F12·F19 증거 보존과 최신 dev 동기화
+CURRENT_TASK_CARD_ID=R1-02-RECONCILIATION
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=3003bec8a0349a29433bb5ca84d08668d1709311
+START_POINT=clean junhee 6e788c948f0dc553f7c438247fed9a8a1512ca3e의 R1 evidence history와 origin/dev 3003bec의 R2·R4·R5 최신 Gate·제품 이력을 non-ff merge로 모두 보존한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F20@3003bec
+CONTRACT_VERSION=R1-HISTORY-RECONCILIATION-v1.0.0-DRAFT
+ALLOWED_PATHS=docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/daily_reports/junhee/일일보고.md; docs/markdown/daily_reports/team_summaries/5주차/20260810.md; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F12.json; tests/integration/test_typed_three_source_e2e.py; handoffs/R1-W5-F20.json
+FORBIDDEN_PATHS=app/**; infrastructure/**; src/**; tests/integration/test_typed_three_source_e2e.py 외 tests/**; R2~R5 개인 보고·handoff; root Compose/env/CI; dependency·secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F20.json
+RECONCILIATION_SEQUENCE=junhee clean·SHA inventory → origin/dev 3003bec non-ff merge → conflict path inventory → Gate와 팀 요약은 최신 dev 정본 유지 → R1 일일보고·F9/F10/F12 handoff·typed E2E evidence는 junhee history와 최종 tree에 보존 → target 검증 → F20 handoff → junhee push·source CI
+CONFLICT_POLICY=충돌이 Gate 또는 team_summaries/5주차/20260810.md에 한정되면 최신 origin/dev 내용을 최종 tree 기준으로 사용하고 기존 junhee 내용은 merge 이전 history로 보존할 수 있다. R1 일일보고·handoff·typed E2E 충돌은 삭제·덮어쓰기하지 않고 중단한다. 허용 경로 밖 충돌은 해결하지 않는다.
+ACCEPTANCE_CRITERIA=junhee와 dev 양쪽 commit이 최종 ancestry에 존재하고 worktree가 clean하다. 최종 Gate는 v5.45의 R2·R4·R5 READY 상태를 유지한다. 기존 R1 F9/F10/F12 handoff와 typed 3-source blocker test는 final tree에 존재하며 수정 없이 보존한다. 제품·Compose·backend·data·AI·frontend 파일 변경은 0건이다. F20 handoff에 두 parent SHA·충돌 경로·선택 기준·검증 결과를 기록한다.
+ACCEPTANCE_IDS=AC1_BOTH_HISTORIES;AC2_LATEST_GATE_PRESERVED;AC3_R1_EVIDENCE_PRESERVED;AC4_ZERO_PRODUCT_CHANGE;AC5_CLEAN_ANCESTRY;AC6_TERMINAL_HANDOFF
+TEST_COMMANDS=git status --short; git rev-list --left-right --count와 merge-base inventory; 8개 check-planned-path; merge 뒤 git merge-base --is-ancestor로 6e788c9·3003bec 확인; python -m pytest -p no:cacheprovider tests/integration/test_typed_three_source_e2e.py -q; python -m pytest -p no:cacheprovider tests/integration/test_gate_scope.py -q; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; python .agents/skills/manage-project-documents/scripts/check_document_policy.py on changed docs; python .agents/skills/update-project-reports/scripts/validate_reports.py on changed reports; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_INVENTORY;T2_PLANNED_PATH;T3_ANCESTRY;T4_E2E_BOUNDARY;T5_GATE;T6_SCOPE;T7_DOCS;T8_REPORT;T9_DIFF;T10_BRANCH_CI
+STOP_CONDITIONS=junhee dirty; origin SHA drift; 충돌이 허용 8경로 밖; R1 evidence final tree 손실; 최신 dev Gate 후퇴; 제품 파일 변경; reset·rebase·stash·force push·history rewrite 필요; R2~R5 변경 필요; dependency·secret·Docker lifecycle·비용; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=clean junhee에서 origin/dev non-ff merge, 허용 경로 충돌 판정, F20 handoff commit, junhee push와 source CI만 승인한다. Docker·DB·외부 서비스·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=history 손실; latest Gate 후퇴; 제품 diff 발생; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=F20 source CI와 both-history ancestry·zero-product diff를 확인한 뒤 R4-W5-F11 결과를 기다리고, 이후 별도 R1 runtime REWORK로 F19 readiness를 재검증한다.
+```
+
 ### R2 · R2-W5-F5
 
 ```text
@@ -1716,6 +1750,7 @@ R1_REVIEW_CONDITIONS=backend runtime/CORS가 아직 실패해도 R5 wiring 자�
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.45 | 2026-08-11 09:38 | 갈라진 junhee·dev 이력과 기존 R1 증거를 삭제 없이 보존하고 최신 Gate로 동기화하는 R1-W5-F20 reconciliation REWORK 발행 |
 | v5.44 | 2026-08-11 09:29 | 선행 producer 완성을 기다리지 않고 R4 backend 시연 연결 해소와 R5 공통 backend base wiring을 DRAFT 계약으로 병렬 착수하도록 READY 발행 |
 | v5.43 | 2026-08-11 09:27 | R4-W5-F9의 Analysis 저장·조회·재실행 API와 terminal CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |
 | v5.42 | 2026-08-11 09:20 | R2-W5-F6의 원격 CI 통과 checkpoint와 로컬 일일보고·제품 변경을 모두 보존하는 R2-W5-F7 reconciliation 전용 REWORK 발행 |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.88 |
-| 문서 기준일 | 2026-08-11 17:30 |
+| 버전 | v5.89 |
+| 문서 기준일 | 2026-08-11 17:55 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -24,7 +24,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F34` | `READY` | `junhee` |
+| R1 | `R1-W5-F34` | `REVIEW` | `junhee` |
 | R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F17` | `READY` | `jaehong` |
@@ -408,7 +408,7 @@ RESULT_CI=branch 31466799848 PASS
 ### R1 · R1-W5-F34
 
 ```text
-STATUS=READY
+STATUS=REVIEW
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1100,6 +1100,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.89 | 2026-08-11 17:55 | 조건부 AUTO_START의 exact 외부 행위 권한 누락·N/A를 fail-closed하고 기존 non-conditional 호환 회귀를 확인해 R1-W5-F34 REVIEW 전환 |
 | v5.88 | 2026-08-11 17:30 | dev e6f791f·CI 31468594200 PASS와 R4 F16·R5 F8 통합을 기준으로 실제 protocol harness·격리 migration ownership을 R4-W5-F17 REWORK로 발행하고, R1-W5-F34와 F17 terminal 뒤 actual HTTP→DB→Trino→G3→Artifact를 검증할 R1-W5-F35 조건부 후보를 고정했다. origin/test는 b78265c이며 `.wt/test/.env` 부재로 refresh가 fail-closed해 same-SHA test CI 전까지 WAIT한다. |
 | v5.87 | 2026-08-11 17:25 | 조건부 AUTO_START 후보가 exact EXTERNAL_ACTION_PERMISSION 누락·N/A를 fail-closed하고 기존 non-conditional 카드를 보존하도록 R1-W5-F34 owner-scoped REWORK 발행 |
 | v5.86 | 2026-08-11 17:18 | R5-W5-F8의 Agent 실제 Analysis API·오류 fail-closed 전환과 source CI 31468349479 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |

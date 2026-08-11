@@ -75,6 +75,7 @@ ALLOWED_PATHS=src/data/**
 ACCEPTANCE_CRITERIA=accepted
 TEST_COMMANDS=tests
 STOP_CONDITIONS=stop
+EXTERNAL_ACTION_PERMISSION=owner branch commit, push, and source CI only
 ```"""
 
     def test_conditional_auto_start_returns_effective_ready(self) -> None:
@@ -116,6 +117,25 @@ STOP_CONDITIONS=stop
         errors = gate_scope.ledger_health_errors(malformed)
         self.assertTrue(any("missing auto-start dependency" in error for error in errors))
         self.assertTrue(any("requires fixed base" in error for error in errors))
+
+        permission = "EXTERNAL_ACTION_PERMISSION=owner branch commit, push, and source CI only"
+        for invalid in ("", "EXTERNAL_ACTION_PERMISSION=N/A"):
+            with self.subTest(permission=invalid or "missing"):
+                ledger = self.conditional_ledger().replace(permission, invalid)
+                errors = gate_scope.ledger_health_errors(ledger)
+                self.assertTrue(
+                    any("action permission" in error for error in errors), errors
+                )
+
+    def test_non_conditional_card_does_not_require_action_permission(self) -> None:
+        ledger = """| R1 | `R1-W1` | `MERGED_DEV` | `junhee` |
+```text
+EXECUTION_BUNDLE_ID=R1-W1
+STATUS=MERGED_DEV
+PERSONAL_BRANCH=junhee
+ALLOWED_PATHS=docs/**
+```"""
+        self.assertEqual([], gate_scope.ledger_health_errors(ledger))
 
     def test_conditional_base_rejects_overlap_after_issuance(self) -> None:
         bundle, _ = gate_scope.conditional_auto_start(
@@ -379,15 +399,20 @@ PERSONAL_BRANCH=junhee
         self.assertEqual([], errors)
 
         bundle["STATUS"] = "VERIFIED_GATE"
-        with patch.object(gate_scope, "current_bundle", return_value=bundle):
+        with (
+            patch.object(gate_scope, "current_bundle", return_value=bundle),
+            patch.object(gate_scope, "conditional_auto_start", return_value=(None, [])),
+        ):
             _, errors = gate_scope.planned_path_errors(
                 self.ledger, "junhee", [".github/scripts/gate_scope.py"]
             )
         self.assertIn("does not allow implementation", errors[0])
 
-        with patch.object(
-            gate_scope, "current_bundle", return_value=bundle
-        ), patch.object(gate_scope, "ledger_health_errors", return_value=[]):
+        with (
+            patch.object(gate_scope, "current_bundle", return_value=bundle),
+            patch.object(gate_scope, "ledger_health_errors", return_value=[]),
+            patch.object(gate_scope, "conditional_auto_start", return_value=(None, [])),
+        ):
             _, errors = gate_scope.planned_path_errors(
                 self.ledger, "junhee", [gate_scope.LEDGER.as_posix()]
             )

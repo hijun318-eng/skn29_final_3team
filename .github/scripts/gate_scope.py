@@ -209,12 +209,15 @@ def conditional_definition_errors(
     required = (
         "BASE_SHA", "DIRECTIVE_TOKEN", "ALLOWED_PATHS",
         "ACCEPTANCE_CRITERIA", "TEST_COMMANDS", "STOP_CONDITIONS",
+        "EXTERNAL_ACTION_PERMISSION",
     )
     errors = []
     if not dependencies:
         errors.append("AUTO_START_AFTER is required")
     if any(not candidate.get(field) or candidate[field].startswith("N/A") for field in required):
-        errors.append("conditional card requires fixed base, token, paths, and checks")
+        errors.append(
+            "conditional card requires fixed base, token, paths, checks, and action permission"
+        )
     if candidate.get("DIRECTIVE_TOKEN") != (
         f"{candidate_id}@{candidate.get('BASE_SHA', '')[:7]}"
     ):

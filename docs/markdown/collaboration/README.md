@@ -30,7 +30,7 @@ python .github/scripts/agent_workflow.py --branch <본인 branch> --ff-only-dev
 
 이 명령은 기존 `gate_scope.py`의 preflight 판정을 재사용해 현재 branch·dirty worktree·카드 계약·허용 경로를 검사한다. `--ff-only-dev`는 branch·clean·ancestor 조건을 먼저 확인하고 fast-forward한 뒤 갱신된 원장으로 전체 preflight를 한 번 실행하므로, 오래된 local 원장의 종료 카드가 안전한 최신화를 가로막지 않는다. 개인 branch와 `origin/dev`가 갈라졌거나 branch·카드·도구·working tree 조건이 맞지 않으면 변경 없이 실패한다. worktree의 절대 경로는 달라도 되지만 branch가 카드의 `PERSONAL_BRANCH`와 다르거나 최신화 뒤 카드가 `READY`·`IN_PROGRESS`가 아니거나 기존 변경이 있으면 구현하지 않는다.
 
-R1이 `PLANNED` 카드에 `AUTO_START=CONDITIONAL`, exact `AUTO_START_AFTER`, 고정 `BASE_SHA`·`DIRECTIVE_TOKEN`과 전체 실행 계약을 미리 기록하면 추가 승인 요청 없이 조건부 착수가 가능하다. `agent_workflow.py`는 선행 카드가 모두 `MERGED_DEV`·`VERIFIED_GATE`이고 `RESULT_CI`가 PASS이며 같은 역할의 active 카드가 없고, 카드 기준 이후 허용 제품 경로가 겹치지 않을 때만 메모리에서 `status=READY`, `declared_status=PLANNED`, `auto_start=true`를 반환한다. 원장·token을 자동 수정하거나 commit·push하지 않으며 조건이 하나라도 맞지 않으면 일반 `PLANNED`처럼 중단한다.
+R1이 `PLANNED` 카드에 `AUTO_START=CONDITIONAL`, exact `AUTO_START_AFTER`, 고정 `BASE_SHA`·`DIRECTIVE_TOKEN`·`EXTERNAL_ACTION_PERMISSION`과 전체 실행 계약을 미리 기록하면 추가 승인 요청 없이 조건부 착수가 가능하다. `EXTERNAL_ACTION_PERMISSION`이 누락되거나 `N/A`이면 fail-closed하며, 기존 non-conditional 카드에는 이 필드를 새로 강제하지 않는다. `agent_workflow.py`는 선행 카드가 모두 `MERGED_DEV`·`VERIFIED_GATE`이고 `RESULT_CI`가 PASS이며 같은 역할의 active 카드가 없고, 카드 기준 이후 허용 제품 경로가 겹치지 않을 때만 메모리에서 `status=READY`, `declared_status=PLANNED`, `auto_start=true`를 반환한다. 원장·token을 자동 수정하거나 commit·push하지 않으며 조건이 하나라도 맞지 않으면 일반 `PLANNED`처럼 중단한다.
 
 | `agent_workflow.py` 결과 | 후속 행동 |
 |---|---|

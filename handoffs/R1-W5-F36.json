@@ -3,7 +3,7 @@
   "ROLE": "R1",
   "BRANCH": "junhee",
   "BASE_SHA": "e6f791f7d18ab8b18695a943461a0b89b512d0b3",
-  "RESULT_SHA": "7d417ece96ab84aa99f2138251f0d49acc36cc8b",
+  "RESULT_SHA": "5b1e8cbec9bcdf2b37b9c10b817efb728a85ab23",
   "COMPLETED_CARDS": ["R1-04-TEST-RUNTIME-EXTERNAL-ENV"],
   "CHANGED_FILES": [
     ".githooks/post-merge", ".github/scripts/gate_scope.py",
@@ -26,7 +26,7 @@
     {"id":"T8_DOCUMENT_POLICY","name":"document/report policy","status":"PASS","evidence":"policy and report validation PASS"},
     {"id":"T9_SCOPE","name":"Gate scope","status":"PASS","evidence":"READY preflight and cumulative 11 paths PASS"},
     {"id":"T10_DIFF","name":"diff check","status":"PASS","evidence":"git diff --check PASS"},
-    {"id":"T11_BRANCH_CI","name":"junhee source CI","status":"CI_PENDING","evidence":"handoff-only push terminal CI 확인 예정"}
+    {"id":"T11_BRANCH_CI","name":"junhee source CI","status":"CI_PENDING","evidence":"31470441819의 Linux hidden dotfile 조회 실패를 Get-Item -Force로 교정하고 terminal CI 재확인 예정"}
   ],
   "NOT_RUN": [],
   "CHANGE_REQUESTS": [], "RESIDUAL_RISKS": [], "EXTERNAL_APPROVAL_REQUIRED": [],

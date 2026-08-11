@@ -1,6 +1,7 @@
 {
   "comparison_version": "BASE-COMPARISON-v0.2",
   "status": "PASS_BASE_SELECTED",
+  "status_scope": "HISTORICAL_CAPTURE_ONLY",
   "evaluation_manifest": {
     "version": "EVAL-DATA-I3-v1.1.0-DRAFT",
     "gold120": 120,
@@ -13,6 +14,79 @@
     "prompt_version": "PROMPT-v1.0.0",
     "temperature": 0,
     "same_held_out_and_decoding": true
+  },
+  "captured_evidence": {
+    "required_hashes": [
+      "model_sha256",
+      "prompt_sha256",
+      "case_set_sha256",
+      "decoding_sha256",
+      "runtime_sha256",
+      "artifact_sha256"
+    ],
+    "baseline": {
+      "model_sha256": null,
+      "prompt_sha256": null,
+      "case_set_sha256": null,
+      "decoding_sha256": null,
+      "runtime_sha256": null,
+      "artifact_sha256": null
+    },
+    "candidate": {
+      "model_sha256": null,
+      "prompt_sha256": null,
+      "case_set_sha256": null,
+      "decoding_sha256": null,
+      "runtime_sha256": null,
+      "artifact_sha256": null
+    },
+    "comparison": {
+      "status": "NOT_READY",
+      "comparable": false,
+      "mismatched_fields": [],
+      "missing_fields": [
+        "model_sha256",
+        "prompt_sha256",
+        "case_set_sha256",
+        "decoding_sha256",
+        "runtime_sha256",
+        "artifact_sha256"
+      ],
+      "reason": "immutable captured evidence is incomplete; no cross-candidate comparison is claimed"
+    },
+    "auto_regeneration": "DISABLED"
+  },
+  "observed_metrics": {
+    "Base": {
+      "accuracy": 0.0,
+      "p50_ms": 8676.6,
+      "p95_ms": 15416.82,
+      "peak_vram_bytes": 8329969664,
+      "cost_usd": null
+    },
+    "LoRA": {
+      "accuracy": 0.7083333333333334,
+      "p50_ms": 12163.91,
+      "p95_ms": 43844.33,
+      "peak_vram_bytes": 8511364096,
+      "cost_usd": null
+    }
+  },
+  "serving_observed_metrics": {
+    "Base": {
+      "accuracy": null,
+      "p50_ms": 724.472,
+      "p95_ms": 725.808,
+      "peak_vram_bytes": 41188065280,
+      "cost_usd": null
+    },
+    "LoRA": {
+      "accuracy": null,
+      "p50_ms": null,
+      "p95_ms": null,
+      "peak_vram_bytes": null,
+      "cost_usd": null
+    }
   },
   "candidates": [
     {

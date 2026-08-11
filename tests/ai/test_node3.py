@@ -96,9 +96,13 @@ class Node3Tests(unittest.TestCase):
         missing_source_binding["metric_selection"]["context_metric_ids"].pop()
         invalid.append(missing_source_binding)
 
+        duplicate_source = copy.deepcopy(base)
+        duplicate_source["source_ids"][1] = duplicate_source["source_ids"][0]
+        invalid.append(duplicate_source)
+
         for payload in invalid:
             with self.subTest(metric_selection=payload.get("metric_selection")):
-                with self.assertRaisesRegex(ContractError, "metric selection"):
+                with self.assertRaisesRegex(ContractError, "metric selection|source_ids must be unique"):
                     explain_result(payload)
 
     def test_g3_failure_and_schema_drift_are_rejected(self):

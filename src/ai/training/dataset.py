@@ -150,6 +150,7 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 def _validate_records(records: list[dict[str, Any]], *, compiled: bool) -> None:
     seen_ids: set[str] = set()
     group_splits: dict[str, str] = {}
+    group_join_graphs: dict[str, str] = {}
     for index, record in enumerate(records, 1):
         try:
             _validate_record(record, compiled=compiled)
@@ -164,6 +165,12 @@ def _validate_records(records: list[dict[str, Any]], *, compiled: bool) -> None:
         if previous != record["split"]:
             raise DatasetError(
                 f"scenario_group {record['scenario_group']!r} leaks across {previous} and {record['split']}"
+            )
+        join_graph = _join_graph_signature(record, compiled=compiled)
+        previous_graph = group_join_graphs.setdefault(record["scenario_group"], join_graph)
+        if previous_graph != join_graph:
+            raise DatasetError(
+                f"scenario_group {record['scenario_group']!r} changes join graph"
             )
 
 
@@ -240,6 +247,20 @@ def _validate_messages(node: str, messages: Any) -> None:
     validate_model_output(node, output_value)
     _validate_references(input_value["context_package"], output_value)
     _reject_pii(messages)
+
+
+def _join_graph_signature(record: dict[str, Any], *, compiled: bool) -> str:
+    if compiled:
+        input_value = json.loads(record["messages"][1]["content"])
+        joins = input_value["context_package"]["joins"]
+    else:
+        joins = record["input"]["context_package"]["joins"]
+    return _stable_json(
+        sorted(
+            joins,
+            key=lambda join: _stable_json(join),
+        )
+    )
 
 
 def _validate_references(context: dict[str, Any], output: dict[str, Any]) -> None:

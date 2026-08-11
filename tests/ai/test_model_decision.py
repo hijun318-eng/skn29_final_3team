@@ -9,6 +9,9 @@ class ModelDecisionTests(unittest.TestCase):
         decision = json.loads(path.read_text(encoding="utf-8"))
 
         self.assertEqual(decision["decision_version"], "MODEL-v1.0.0")
+        self.assertEqual(decision["product_default"], "Base")
+        self.assertEqual(decision["release_candidate_status"], "DRAFT")
+        self.assertEqual(decision["release_readiness"], "NOT_READY")
         self.assertEqual(
             decision["scope"]["excluded_until_i5_followup"],
             ["mcp", "document_rag", "ml_as_a_tool", "customer_360"],

@@ -14,6 +14,80 @@ from src.ai.training.dataset import DatasetError, load_compiled, validate_model_
 
 DEFAULT_MODEL = "Qwen/Qwen3-4B-Instruct-2507"
 DEFAULT_REVISION = "cdbee75f17c01a7cc42f958dc650907174af0554"
+IMMUTABLE_EVIDENCE_FIELDS = (
+    "model_sha256",
+    "prompt_sha256",
+    "case_set_sha256",
+    "decoding_sha256",
+    "runtime_sha256",
+    "artifact_sha256",
+)
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+class EvidenceError(ValueError):
+    """Raised when captured comparison evidence cannot be trusted."""
+
+
+def validate_captured_evidence(evidence: Any) -> dict[str, str]:
+    """Require immutable SHA-256 evidence before comparing two captures."""
+    if not isinstance(evidence, dict):
+        raise EvidenceError("captured evidence must be an object")
+    missing = [field for field in IMMUTABLE_EVIDENCE_FIELDS if field not in evidence]
+    if missing:
+        raise EvidenceError(f"captured evidence is missing {missing}")
+    invalid = [
+        field
+        for field in IMMUTABLE_EVIDENCE_FIELDS
+        if not isinstance(evidence[field], str) or _SHA256.fullmatch(evidence[field]) is None
+    ]
+    if invalid:
+        raise EvidenceError(f"captured evidence has invalid hashes {invalid}")
+    return {field: evidence[field] for field in IMMUTABLE_EVIDENCE_FIELDS}
+
+
+def compare_captured_evidence(
+    baseline: dict[str, Any], candidate: dict[str, Any]
+) -> dict[str, Any]:
+    """Return comparable only when every immutable capture hash is identical."""
+    baseline_hashes = validate_captured_evidence(baseline)
+    candidate_hashes = validate_captured_evidence(candidate)
+    mismatched = [
+        field
+        for field in IMMUTABLE_EVIDENCE_FIELDS
+        if baseline_hashes[field] != candidate_hashes[field]
+    ]
+    return {
+        "comparable": not mismatched,
+        "mismatched_fields": mismatched,
+        "baseline": baseline_hashes,
+        "candidate": candidate_hashes,
+    }
+
+
+def observed_metrics(
+    *,
+    accuracy: float,
+    p50_ms: float,
+    p95_ms: float,
+    peak_vram_bytes: int | None,
+    cost_usd: float | None = None,
+) -> dict[str, Any]:
+    """Keep only observed metrics; unknown cost remains explicitly nullable."""
+    if isinstance(accuracy, bool) or not isinstance(accuracy, (int, float)) or not 0 <= accuracy <= 1:
+        raise ValueError("accuracy must be between zero and one")
+    for name, value in (("p50_ms", p50_ms), ("p95_ms", p95_ms), ("peak_vram_bytes", peak_vram_bytes)):
+        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0):
+            raise ValueError(f"{name} must be non-negative or null")
+    if cost_usd is not None and (isinstance(cost_usd, bool) or not isinstance(cost_usd, (int, float)) or cost_usd < 0):
+        raise ValueError("cost_usd must be non-negative or null")
+    return {
+        "accuracy": accuracy,
+        "p50_ms": p50_ms,
+        "p95_ms": p95_ms,
+        "peak_vram_bytes": peak_vram_bytes,
+        "cost_usd": cost_usd,
+    }
 
 
 def _normalize_sql(sql: str) -> str:
@@ -122,6 +196,7 @@ def main() -> int:
 
     write_jsonl(args.output, predictions)
     total = len(predictions)
+    peak_vram_bytes = torch.cuda.max_memory_allocated()
     summary = {
         "model": args.model,
         "adapter": args.adapter,
@@ -133,7 +208,14 @@ def main() -> int:
         "exact_match": sum(item["exact_match"] for item in predictions),
         "latency_p50_ms": _percentile(latencies_ms, 50),
         "latency_p95_ms": _percentile(latencies_ms, 95),
-        "peak_vram_bytes": torch.cuda.max_memory_allocated(),
+        "peak_vram_bytes": peak_vram_bytes,
+        "observed": observed_metrics(
+            accuracy=sum(item["sql_exact_match"] for item in predictions) / total,
+            p50_ms=_percentile(latencies_ms, 50),
+            p95_ms=_percentile(latencies_ms, 95),
+            peak_vram_bytes=peak_vram_bytes,
+            cost_usd=None,
+        ),
     }
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True, indent=2))
     return 0

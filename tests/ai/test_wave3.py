@@ -148,6 +148,12 @@ class Wave3EvaluationTests(unittest.TestCase):
         )
         self.assertEqual("Base", comparison["decision"]["product_default"])
         self.assertEqual("Base", serving["product_default"])
+        self.assertFalse(comparison["captured_evidence"]["comparison"]["comparable"])
+        self.assertEqual("NOT_READY", comparison["captured_evidence"]["comparison"]["status"])
+        self.assertEqual(0.0, comparison["observed_metrics"]["Base"]["accuracy"])
+        self.assertIsNone(comparison["observed_metrics"]["LoRA"]["cost_usd"])
+        self.assertEqual(724.472, serving["observed"]["p50_ms"])
+        self.assertIsNone(serving["observed"]["cost_usd"])
         self.assertEqual(2, serving["runtime"]["max_concurrency"])
         self.assertTrue(serving["verification"]["restart_same_revision"])
         self.assertTrue(serving["cost_and_cleanup"]["pod_deleted_404"])
@@ -155,6 +161,17 @@ class Wave3EvaluationTests(unittest.TestCase):
             serving["cost_and_cleanup"]["projected_cumulative_cost_usd"],
             serving["cost_and_cleanup"]["cumulative_limit_usd"],
         )
+        self.assertEqual("NOT_READY", split["typed_missing"]["gold"]["status"])
+        self.assertEqual("DISABLED", split["auto_regeneration"])
+        release = json.loads(
+            (ROOT / "src" / "modelops" / "release_candidate.i5.v1.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual("DRAFT", release["status"])
+        self.assertEqual("NOT_READY", release["readiness"])
+        self.assertEqual("Base", release["product_default"])
+        self.assertEqual([], release["sql_lora_enabled_nodes"])
 
 
 class ProductionClientTests(unittest.TestCase):

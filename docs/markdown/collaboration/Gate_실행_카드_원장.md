@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.77 |
-| 문서 기준일 | 2026-08-11 15:35 |
+| 버전 | v5.78 |
+| 문서 기준일 | 2026-08-11 16:05 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -547,7 +547,7 @@ ACCEPTANCE_IDS=AC1_SERVER_OWNED_PRINCIPAL;AC2_NO_CLIENT_ROLE_TRUST;AC3_TIME_BOUN
 TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_auth_context.py tests/backend/test_http_runtime.py tests/backend/test_openapi_contract.py -q; token missing·unknown·expired·future·duplicate·invalid role·malformed file·X header mismatch negative; Analysis·Report positive/403/503 and request_id·trace_id preservation; python -m pytest -p no:cacheprovider tests/backend -q in approved Python 3.12 test container; python app/backend/scripts/export_openapi.py --check; python -m compileall -q app/backend; gate_scope preflight·전체 planned paths·merge-base; git diff --check; jaehong source CI
 TEST_COMMAND_IDS=T1_AUTH_TARGET;T2_NEGATIVE_MATRIX;T3_ANALYSIS_REPORT;T4_BACKEND;T5_OPENAPI;T6_COMPILE;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
 STOP_CONDITIONS=실제 token·secret을 tracked file/env/log에 기록; client header role 신뢰 유지; release에서 test fallback; custom JWT/OIDC 또는 dependency 추가 필요; root Compose·env·migration·R2/R3/R5 변경 필요; raw token·digest 노출; 기존 G1·G2·G3·Context 의미 변경; 허용 경로 밖 변경; 필수 검증 실패
-EXTERNAL_ACTION_PERMISSION=ephemeral synthetic principal file을 test container에 read-only mount하는 검증, 허용 경로 commit·jaehong push·source CI만 허용한다. 실제 credential·외부 IdP·network call·root secret mount·배포는 금지한다.
+EXTERNAL_ACTION_PERMISSION=ephemeral synthetic principal file을 test container에 read-only mount하는 검증과 `postgres:16.13-bookworm@sha256:472efd9a66f2b2f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60` 기반의 owner-scoped `r4-w5-f16-auth-test` PostgreSQL을 새 synthetic credential·전용 network·전용 volume으로 생성해 migration과 승인 HTTP/DB test를 수행한 뒤 exact container·network·volume만 폐기하는 절차, 허용 경로 commit·jaehong push·source CI를 승인한다. host port publish·image pull·기존 app-postgres·공유 volume·다른 Compose project/container/network 변경, 실제 credential·외부 IdP·외부 network call·root secret mount·배포는 금지한다. 실행 전후 기존 Docker name·ID·volume snapshot이 같아야 하며 실패 시에도 격리 대상을 정리하고 evidence를 BLOCKED로 기록한다.
 AUTO_FAIL_CONDITIONS=임의 Bearer 문자열 수용; X-Role·X-User-Id 자칭 성공; expired/unknown token 성공; malformed mapping fail-open; release test fallback; secret 노출; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=source CI와 Python 3.12 backend 전체 회귀에서 Analysis·Report가 동일 server principal을 사용하고 client-owned identity가 차단되며 OpenAPI가 실제 security contract와 일치할 때만 dev 통합한다. root secret mount·OIDC/JWT 채택은 별도 R1 카드로 남긴다.
 ```
@@ -903,6 +903,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.78 | 2026-08-11 16:05 | R4-W5-F16이 기존 환경을 건드리지 않고 인증 migration·HTTP/DB 회귀를 수행하도록 exact PostgreSQL image와 격리 project·network·volume의 생성·검증·폐기 권한을 추가 |
 | v5.77 | 2026-08-11 15:35 | test branch 전체 CI와 local opt-in 선택 재기동을 검증하고 source CI 31463640451 PASS를 확인해 R1-W5-F32를 MERGED_DEV로 전환 |
 | v5.76 | 2026-08-11 15:34 | test branch의 hosted CI와 local Docker 경계를 분리하고 변경된 frontend/backend만 opt-in 재기동하는 R1-W5-F32 READY 발행 |
 | v5.75 | 2026-08-11 15:02 | R1-W5-F31 협업 지침 단일화와 source CI 31462642899 PASS를 확인해 MERGED_DEV로 전환 |

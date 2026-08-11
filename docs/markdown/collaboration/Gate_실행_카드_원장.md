@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.47 |
-| 문서 기준일 | 2026-08-11 09:55 |
+| 버전 | v5.48 |
+| 문서 기준일 | 2026-08-11 10:08 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -23,7 +23,7 @@
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
 | R1 | `R1-W5-F21` | `READY` | `junhee` |
-| R2 | `R2-W5-F7` | `READY` | `seung` |
+| R2 | `R2-W5-F8` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F11` | `READY` | `jaehong` |
 | R5 | `R5-W5-F4` | `READY` | `minji` |
@@ -1372,6 +1372,40 @@ AUTO_FAIL_CONDITIONS=사용자 snapshot 불일치; 제품·stash 변경; report 
 R1_REVIEW_CONDITIONS=F7 terminal CI PASS와 두 handoff의 실제 SHA·CI·BLOCKED 경계, 최종 clean·ancestry를 확인한 뒤에만 dev 통합 또는 Catalog 후속 카드를 판정한다.
 ```
 
+### R2 · R2-W5-F8
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F8
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=F6 inherited checkpoint scope correction and F7 terminal CI
+TASK_CARD_RANGE=R2-W5-F6·F7 inherited 제품 증거 인정과 terminalization only
+CURRENT_TASK_CARD_ID=R2-W5-F7-SCOPE-CORRECTION
+REPOSITORY_ROOT=C:\Users\Playdata\Downloads\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=d79ef0a89daaf8220e510c517bb1abe0477d7ffa
+START_POINT=origin/seung f7f8514b5c203949622c8e31946ec5f298190cb7과 CI 31448012065의 role-scope-only failure를 고정한다. 제품 8경로는 F6 source CI가 통과한 inherited checkpoint로 인정하고 final tree를 수정하지 않는다. 최신 origin/dev d79ef0a를 non-ff merge한 뒤 handoff evidence만 교정한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R2-W5-F8@d79ef0a
+CONTRACT_VERSION=I5-SEMANTIC-CATALOG-v1.0.0-DRAFT; R2-INHERITED-CHECKPOINT-v1.0.0
+INHERITED_CHECKPOINT_PATHS=infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql; infrastructure/database/trino/etc/access-control-rules.json; src/data/serving_analytics_contract.i4.v1.json; src/data/serving_semantic_catalog.i4.v1.json; tests/data/test_serving_semantic_catalog.py
+MUTABLE_PATHS=docs/markdown/daily_reports/seung/일일보고.md; handoffs/R2-W5-F6.json; handoffs/R2-W5-F7.json; handoffs/R2-W5-F8.json
+ALLOWED_PATHS=infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql; infrastructure/database/trino/etc/access-control-rules.json; src/data/serving_analytics_contract.i4.v1.json; src/data/serving_semantic_catalog.i4.v1.json; tests/data/test_serving_semantic_catalog.py; docs/markdown/daily_reports/seung/일일보고.md; handoffs/R2-W5-F6.json; handoffs/R2-W5-F7.json; handoffs/R2-W5-F8.json
+FORBIDDEN_PATHS=INHERITED_CHECKPOINT_PATHS 내용 수정; app/**; src/ai/**; root Compose·env·CI; 다른 tests; dependency; Docker lifecycle; stash·Git object; secret
+HANDOFF_MANIFEST=handoffs/R2-W5-F8.json
+ACCEPTANCE_CRITERIA=origin/seung f7f8514의 inherited 제품 8경로 blob hash가 작업 전후 exact 일치한다. 최신 dev ancestry를 병합하고 일일보고·F6/F7 handoff를 보존하며 F7 handoff에 CI 31448012065가 제품/test 실패가 아닌 이전 Gate scope 충돌임을 기록한다. F8 handoff는 inherited 8경로·mutable 4경로·local target/data/integration PASS와 corrective terminal CI를 구분한다. 제품 재구현·stash 적용·history rewrite 없이 최종 seung를 한 번만 push하고 clean·local/origin 0/0을 확인한다.
+ACCEPTANCE_IDS=AC1_INHERITED_HASH;AC2_LATEST_DEV_ANCESTRY;AC3_REPORT_HANDOFF_PRESERVED;AC4_SCOPE_CAUSE_RECORDED;AC5_LOCAL_TESTS;AC6_SINGLE_CORRECTIVE_PUSH;AC7_TERMINAL_CI
+TEST_COMMANDS=12개 planned-path; inherited 8경로 pre/post git hash-object exact 비교; clean bootstrap; F6/F7/F8 json.tool; python -m pytest -p no:cacheprovider tests/data/test_serving_semantic_catalog.py -q; python -m pytest -p no:cacheprovider tests/data -q; python -m pytest -p no:cacheprovider tests/integration -q; docker compose -f infrastructure/database/datahub/compose.consumer.yml config; gate_scope merge-base; git diff --check; f7f8514·d79ef0a ancestry; clean·ahead/behind 0/0; seung terminal CI
+TEST_COMMAND_IDS=T1_PLANNED;T2_INHERITED_HASH;T3_BOOTSTRAP;T4_JSON;T5_TARGET;T6_DATA;T7_INTEGRATION;T8_COMPOSE;T9_SCOPE;T10_DIFF;T11_ANCESTRY;T12_BRANCH_CI
+STOP_CONDITIONS=origin/seung f7f8514 drift; inherited 8경로 hash 변경; 일일보고·handoff 손실; 허용 경로 밖 conflict/변경; 제품 재구현 필요; reset·rebase·force push·stash apply/drop/clear·중간 push 필요; Docker lifecycle·외부 전송·비용·secret; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=최신 origin/dev non-ff merge, mutable handoff·보고 교정, 검증 뒤 seung corrective push 1회와 source CI만 승인한다. inherited 제품·stash·Docker·외부 서비스·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=inherited product hash drift; scope 원인을 제품 실패로 왜곡; history/report/handoff 손실; 중간 push; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=F8 terminal CI PASS와 inherited hash 불변·최신 dev ancestry·clean 0/0을 확인하면 F6/F7/F8을 한 묶음으로 dev 통합한다.
+```
+
 ### R4 · R4-W5-F2
 
 ```text
@@ -1816,6 +1850,7 @@ R1_REVIEW_CONDITIONS=backend runtime/CORS가 아직 실패해도 R5 wiring 자�
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.48 | 2026-08-11 10:08 | R2-W5-F7 CI 31448012065가 F6 inherited 제품 8경로를 새 변경으로 계산한 scope 충돌임을 분리하고, 제품 hash 불변·handoff-only corrective push를 허용하는 R2-W5-F8 REWORK 발행 |
 | v5.47 | 2026-08-11 09:55 | R1-W5-F20 이력 조정을 dev에 통합하고 R1 CI Node 24 공급망 pin, R3 Node3·ModelOps DRAFT 검증을 READY 발행; R4·R5는 Gate-only dev 선행을 ff-only 동기화해 기존 token으로 즉시 착수하도록 명시 |
 | v5.46 | 2026-08-11 09:44 | 작업자 Downloads 저장소의 seung 7c4164b·dirty 일일보고 1개 snapshot을 조건부 정본으로 받아 제품·stash 불변과 F6/F7 handoff만 허용하도록 R2-W5-F7 token 재발행 |
 | v5.45 | 2026-08-11 09:38 | 갈라진 junhee·dev 이력과 기존 R1 증거를 삭제 없이 보존하고 최신 Gate로 동기화하는 R1-W5-F20 reconciliation REWORK 발행 |

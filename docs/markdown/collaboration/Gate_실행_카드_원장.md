@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.79 |
-| 문서 기준일 | 2026-08-11 16:15 |
+| 버전 | v5.80 |
+| 문서 기준일 | 2026-08-11 16:38 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -24,7 +24,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F32` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F33` | `READY` | `junhee` |
 | R2 | `R2-W5-F9` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `READY` | `jaehong` |
@@ -934,6 +934,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.80 | 2026-08-11 16:38 | R1-W5-F33 발행과 현재 역할별 dashboard를 동기화해 source scope 판정 교정 |
 | v5.79 | 2026-08-11 16:15 | healthy container가 서로 다른 checkout·env에서 생성된 mixed test runtime을 단일 환경으로 오인하지 않도록 R1-W5-F33 READY 발행 |
 | v5.78 | 2026-08-11 16:05 | R4-W5-F16이 기존 환경을 건드리지 않고 인증 migration·HTTP/DB 회귀를 수행하도록 exact PostgreSQL image와 격리 project·network·volume의 생성·검증·폐기 권한을 추가 |
 | v5.77 | 2026-08-11 15:35 | test branch 전체 CI와 local opt-in 선택 재기동을 검증하고 source CI 31463640451 PASS를 확인해 R1-W5-F32를 MERGED_DEV로 전환 |

@@ -16,7 +16,7 @@ function Resolve-ApprovedEnvFile {
     if (-not [System.IO.Path]::IsPathFullyQualified($Path)) {
         throw 'test env path must be absolute'
     }
-    $item = Get-Item -LiteralPath $Path -ErrorAction Stop
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
     if ($item.PSIsContainer) { throw 'test env path must be a regular file' }
     return $item.FullName
 }

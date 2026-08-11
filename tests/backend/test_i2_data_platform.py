@@ -27,6 +27,7 @@ def live_dataset(adapter, urn):
     return {
         "urn": urn,
         "name": asset["name"],
+        "status": {"removed": False},
         "schemaMetadata": {
             "name": asset["fqn"],
             "fields": [
@@ -42,6 +43,7 @@ def simulated_verified_live_adapter():
     adapter._bindings_verified = True
     adapter._live_runtime_verified = True
     adapter._trino.health = lambda: True
+    adapter._datahub_health = lambda: True
     for asset in adapter._assets:
         if asset["kind"] == "view":
             asset["binding_status"] = "VERIFIED"
@@ -948,6 +950,7 @@ def test_versioned_three_source_uses_runtime_verified_contract_and_live_checks_r
 def test_live_mode_uses_current_datahub_response_instead_of_stale_evidence():
     live = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     live._trino.health = lambda: True
+    live._datahub_health = lambda: True
     live._datahub_dataset = lambda urn: live_dataset(live, urn)
 
     assets = live.search_assets(
@@ -957,6 +960,52 @@ def test_live_mode_uses_current_datahub_response_instead_of_stale_evidence():
 
     assert len(assets) == 5
     assert all(live.get_asset_schema(item["urn"])["columns"] for item in assets)
+
+
+def test_live_raw_asset_accepts_datahub_name_without_catalog_prefix():
+    live = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    live._trino.health = lambda: True
+    live._datahub_health = lambda: True
+
+    def dataset_without_catalog(urn):
+        asset = next(item for item in live._three_source_assets if item["urn"] == urn)
+        return {
+            "urn": urn,
+            "name": asset["name"],
+            "status": {"removed": False},
+            "schemaMetadata": {
+                "name": ".".join(asset["fqn"].split(".")[1:]),
+                "fields": [
+                    {"fieldPath": column, "nativeDataType": "contract"}
+                    for column in asset["columns"]
+                ],
+            },
+        }
+
+    live._datahub_dataset = dataset_without_catalog
+
+    assets = live.search_assets(
+        "5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘.",
+        {"role": "hotel_analyst"},
+    )
+
+    assert {item["fqn"] for item in assets} == {
+        item["fqn"] for item in live._three_source_assets
+    }
+
+
+def test_live_datahub_removed_asset_fails_closed():
+    live = simulated_verified_live_adapter()
+
+    def removed_dataset(urn):
+        dataset = live_dataset(live, urn)
+        dataset["status"]["removed"] = True
+        return dataset
+
+    live._datahub_dataset = removed_dataset
+
+    with pytest.raises(ValueError, match="metadata does not match"):
+        live.search_assets("호텔 객실 매출", {"role": "hotel_analyst"})
 
 
 def test_approved_pms_crm_join_omits_empty_metric_registry():

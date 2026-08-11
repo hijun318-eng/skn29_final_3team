@@ -68,17 +68,32 @@ class AnalysisResponseFactory:
         revenue_field = next(
             (
                 field
-                for field in ("recognized_room_revenue_krw", "room_revenue")
+                for field in (
+                    "total_guest_revenue_krw",
+                    "recognized_room_revenue_krw",
+                    "room_revenue",
+                )
                 if rows and all(field in row for row in rows)
             ),
             None,
         )
-        if decision.template_id == "weekly-room-operations" and revenue_field:
+        if revenue_field == "total_guest_revenue_krw" or (
+            decision.template_id == "weekly-room-operations" and revenue_field
+        ):
             total = sum(Decimal(str(row[revenue_field])) for row in rows)
+            metric_id = (
+                "total_guest_revenue_krw"
+                if revenue_field == "total_guest_revenue_krw"
+                else "recognized_room_revenue"
+            )
             metrics = (
                 MetricValue(
-                    metric_id="recognized_room_revenue",
-                    label="인식 객실 매출",
+                    metric_id=metric_id,
+                    label=(
+                        "객실·식음 통합 매출"
+                        if revenue_field == "total_guest_revenue_krw"
+                        else "인식 객실 매출"
+                    ),
                     value=int(total) if total == total.to_integral() else float(total),
                     unit="KRW",
                 ),

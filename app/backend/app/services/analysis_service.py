@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
 from app.contracts import (
@@ -448,11 +449,12 @@ class AnalysisService:
                 column
                 for column in columns[1:]
                 if all(
-                    isinstance(row.get(column), (int, float))
-                    and not isinstance(row.get(column), bool)
+                    self._is_numeric(row.get(column))
                     for row in rows
                 )
             )
+            if "total_guest_revenue_krw" in numeric:
+                numeric = ("total_guest_revenue_krw",)
             if (
                 decision.template_id == "weekly-room-operations"
                 and "recognized_room_revenue_krw" in columns
@@ -461,12 +463,22 @@ class AnalysisService:
             if columns and numeric:
                 response.data.result.chart = ChartSpec(
                     chart_type="bar",
-                    x_field=columns[0],
+                    x_field="month" if "month" in columns else columns[0],
                     y_fields=numeric,
                 )
         if execution_sink is not None:
             execution_sink({"plan": plan, "query": query, "package": package})
         return response
+
+    @staticmethod
+    def _is_numeric(value: object) -> bool:
+        if isinstance(value, bool) or value is None:
+            return False
+        try:
+            Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            return False
+        return True
 
     def blocked(self, context: RequestContext, error: ErrorBody) -> AnalysisResponse:
         return self._responses.blocked(context, error)

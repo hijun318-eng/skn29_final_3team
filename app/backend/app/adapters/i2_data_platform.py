@@ -48,6 +48,7 @@ query Dataset($urn: String!) {
   dataset(urn: $urn) {
     urn
     name
+    status { removed }
     schemaMetadata { name fields { fieldPath nativeDataType } }
   }
 }
@@ -410,6 +411,8 @@ query Dataset($urn: String!) {
         if self._require_live_metadata:
             if not self._trino.health():
                 raise ValueError("live Trino runtime verification is unavailable")
+            if not self._datahub_health():
+                raise ValueError("live DataHub runtime verification is unavailable")
         elif query_use == "approved_pms_crm_pos_join":
             if not self._three_source_verified:
                 raise ValueError("versioned 3-source runtime verification is unavailable")
@@ -424,11 +427,11 @@ query Dataset($urn: String!) {
                 schema = live.get("schemaMetadata") or {}
                 columns = tuple(field["fieldPath"] for field in schema.get("fields") or ())
                 live_name = str(schema.get("name", ""))
-                raw_name_suffix = "." + ".".join(asset["fqn"].split(".")[1:])
+                raw_name = ".".join(asset["fqn"].split(".")[1:])
                 name_matches = (
                     live_name == asset["fqn"]
                     if asset["kind"] == "view"
-                    else live_name.endswith(raw_name_suffix)
+                    else live_name == raw_name or live_name.endswith("." + raw_name)
                 )
                 columns_match = (
                     set(columns) == set(asset["columns"])
@@ -437,6 +440,7 @@ query Dataset($urn: String!) {
                 )
                 if (
                     live.get("urn") != asset["urn"]
+                    or (live.get("status") or {}).get("removed") is not False
                     or not name_matches
                     or not columns_match
                 ):
@@ -539,6 +543,13 @@ query Dataset($urn: String!) {
         if payload.get("errors") or not (payload.get("data") or {}).get("dataset"):
             raise ValueError("live DataHub dataset is unavailable")
         return payload["data"]["dataset"]
+
+    def _datahub_health(self) -> bool:
+        try:
+            with urlopen(Request(f"{self._datahub_url}/health"), timeout=10) as response:
+                return response.status == 200
+        except (HTTPError, TimeoutError, URLError):
+            return False
 
     def execute_query(
         self,

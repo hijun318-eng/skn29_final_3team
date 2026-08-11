@@ -44,8 +44,18 @@ class ChartDataPlatformAdapter(CountingDataPlatformAdapter):
     def execute_query(self, sql, parameters, gate_token):
         result = super().execute_query(sql, parameters, gate_token)
         result["rows"] = [
-            {"month": "2026-05", "total_revenue": 257602100},
-            {"month": "2026-06", "total_revenue": 218370300},
+            {
+                "month": "2026-05",
+                "room_revenue_krw": "218275200.00",
+                "fnb_revenue_krw": "39326900.00",
+                "total_guest_revenue_krw": "257602100.00",
+            },
+            {
+                "month": "2026-06",
+                "room_revenue_krw": "180813600.00",
+                "fnb_revenue_krw": "37556700.00",
+                "total_guest_revenue_krw": "218370300.00",
+            },
         ]
         result["sampling"] = {
             "applied": False,
@@ -513,7 +523,10 @@ class AnalysisPipelineTest(unittest.TestCase):
 
         self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
         self.assertEqual("month", response.data.result.chart.x_field)
-        self.assertEqual(("total_revenue",), response.data.result.chart.y_fields)
+        self.assertEqual(
+            ("total_guest_revenue_krw",), response.data.result.chart.y_fields
+        )
+        self.assertEqual(475972400, response.data.result.metrics[0].value)
         self.assertEqual(2, len(response.data.result.table.rows))
         self.assertTrue(response.data.result.summary)
         self.assertEqual(

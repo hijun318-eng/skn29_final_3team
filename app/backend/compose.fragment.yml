@@ -16,10 +16,10 @@ services:
       DATAHUB_GMS_URL: http://datahub-gms:8080
       DATA_PLATFORM_MODE: ${DATA_PLATFORM_MODE:-real}
       MODEL_MODE: ${MODEL_MODE:-contract-fake}
-      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:5173}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://127.0.0.1:13000,http://localhost:13000,http://localhost:5173}
       TZ: Asia/Seoul
     ports:
-      - "127.0.0.1:18000:8000"
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:18000:8000"
     networks:
       - database-network
       - datahub-network

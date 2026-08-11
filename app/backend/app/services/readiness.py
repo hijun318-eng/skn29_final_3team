@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 
 
@@ -33,7 +36,9 @@ class AppDatabaseReadiness:
                 template_count = connection.execute(
                     text(
                         "SELECT count(*) FROM context.analysis_templates "
-                        "WHERE status = 'APPROVED' "
+                        "WHERE template_id = 'weekly-room-operations' "
+                        "AND version = 'I2-v1.0.0' "
+                        "AND status = 'APPROVED' "
                         "AND sql_text IS NOT NULL "
                         "AND source_fqns_json IS NOT NULL"
                     )
@@ -41,11 +46,9 @@ class AppDatabaseReadiness:
             engine.dispose()
             return {
                 "app_postgres": "ready",
-                "migration": (
-                    "ready" if version == "20260731_03" else "not_ready"
-                ),
+                "migration": AppDatabaseReadiness._migration_status(version),
                 "approved_templates": (
-                    "ready" if template_count > 0 else "not_ready"
+                    "ready" if template_count == 1 else "not_ready"
                 ),
             }
         except Exception:
@@ -54,6 +57,16 @@ class AppDatabaseReadiness:
                 "migration": "not_ready",
                 "approved_templates": "not_ready",
             }
+
+    @staticmethod
+    def _migration_status(version: str | None) -> str:
+        backend = Path(__file__).resolve().parents[2]
+        config = Config(str(backend / "alembic.ini"))
+        config.set_main_option("script_location", str(backend / "migrations"))
+        heads = ScriptDirectory.from_config(config).get_heads()
+        if len(heads) != 1:
+            raise RuntimeError("Alembic migration graph must have exactly one head")
+        return "ready" if version == heads[0] else "not_ready"
 
     @staticmethod
     def _trino_probe() -> str:

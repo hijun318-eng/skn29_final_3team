@@ -8,120 +8,132 @@
     "R2-W5-F6-RECONCILIATION"
   ],
   "CHANGED_FILES": [
-    "handoffs/R2-W5-F6.json"
+    "docs/markdown/daily_reports/seung/일일보고.md",
+    "handoffs/R2-W5-F6.json",
+    "infrastructure/database/datahub/compose.consumer.yml",
+    "infrastructure/database/datahub/publish_semantic_catalog.py",
+    "infrastructure/database/datahub/verify_semantic_catalog.py",
+    "infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql",
+    "infrastructure/database/trino/etc/access-control-rules.json",
+    "src/data/serving_analytics_contract.i4.v1.json",
+    "src/data/serving_semantic_catalog.i4.v1.json",
+    "tests/data/test_serving_semantic_catalog.py"
   ],
   "CONTRACT_VERSIONS": {
     "semantic_catalog": "I5-SEMANTIC-CATALOG-v1.0.0-DRAFT",
     "datahub": "I5-DATAHUB-v1.1.0-RUNTIME-DRAFT",
-    "directive_token": "R2-W5-F7@f5387b7"
+    "directive_token": "R2-W5-F7@f5387b7",
+    "superseded_by": "R2-W5-F8@616f16e"
   },
   "TEST_RESULTS": [
     {
       "id": "T1_SNAPSHOT",
       "name": "작업자 snapshot preflight",
       "status": "PASS",
-      "evidence": "repository Downloads/skn29_final_3team, branch seung, 최초 HEAD/upstream 7c4164b, dirty exact 일일보고 1경로, SHA256 B064099BEEE5025AE04143F3277642DAD22920CB3263261E3FFA9574D41DCCD5 일치"
+      "evidence": "최초 HEAD/upstream 7c4164b, dirty exact 일일보고 1경로와 SHA256 B064099BEEE5025AE04143F3277642DAD22920CB3263261E3FFA9574D41DCCD5 일치"
     },
     {
       "id": "T2_PLANNED_PATH",
       "name": "F7 허용 경로 검사",
       "status": "PASS",
-      "evidence": "일일보고와 F6/F7 handoff 3경로 check-planned-path PASS"
+      "evidence": "일일보고와 F6/F7 handoff planned-path 검사 PASS"
     },
     {
       "id": "T3_CLEAN_BOOTSTRAP",
       "name": "보고서 보존 뒤 clean bootstrap",
       "status": "PASS",
-      "evidence": "preservation commit 211f734cc6ea769b834985c784377f496d5e274a 뒤 gate_scope --bootstrap PASS"
+      "evidence": "preservation commit 211f734cc6ea769b834985c784377f496d5e274a 뒤 bootstrap PASS"
     },
     {
       "id": "T4_JSON",
-      "name": "F6·F7 handoff JSON 검증",
+      "name": "F6·F7 handoff JSON 검사",
       "status": "PASS",
-      "evidence": "python -m json.tool handoffs/R2-W5-F6.json 및 R2-W5-F7.json: exit 0"
+      "evidence": "두 handoff json.tool exit 0"
     },
     {
       "id": "T5_TARGET",
       "name": "Semantic Catalog 대상 테스트",
       "status": "PASS",
-      "evidence": "python -m unittest discover -s tests/data -p test_serving_semantic_catalog.py: 7 tests passed; pytest는 로컬 미설치로 설치하지 않음"
+      "evidence": "stdlib unittest 대상 7개 PASS; 로컬 pytest 미설치"
     },
     {
       "id": "T6_DATA",
       "name": "데이터·통합 테스트",
       "status": "PASS",
-      "evidence": "tests/data unittest 35 tests passed, tests/integration unittest 42 tests passed"
+      "evidence": "data unittest 35개, integration unittest 42개 PASS"
     },
     {
       "id": "T7_COMPOSE",
-      "name": "DataHub consumer compose 정적 검증",
+      "name": "DataHub consumer compose 정적 검사",
       "status": "PASS",
-      "evidence": "docker compose -f infrastructure/database/datahub/compose.consumer.yml config --quiet: exit 0"
+      "evidence": "docker compose config exit 0"
     },
     {
       "id": "T8_SCOPE",
-      "name": "F7 Gate 범위 검증",
-      "status": "PASS",
-      "evidence": "허용된 일일보고·F6/F7 handoff만 직접 변경하고 origin/seung 제품 8경로 diff 0건 확인"
+      "name": "F7 Gate 범위 검사",
+      "status": "FAIL",
+      "evidence": "CI 31448012065가 inherited F6 제품 8경로를 F7 직접 변경으로 계산해 role-scope FAIL; 제품 결함이 아닌 scope 분류 문제"
     },
     {
       "id": "T9_DIFF",
-      "name": "Git whitespace 검증",
+      "name": "Git whitespace 검사",
       "status": "PASS",
-      "evidence": "git diff --check: exit 0"
+      "evidence": "git diff --check exit 0"
     },
     {
       "id": "T10_ANCESTRY",
-      "name": "제품 checkpoint와 최신 dev ancestry",
+      "name": "제품 checkpoint와 dev ancestry",
       "status": "PASS",
-      "evidence": "7c4164b·f5387b7·latest origin/dev a850377·preservation 211f734가 최종 이력의 ancestor임을 git merge-base --is-ancestor로 확인"
+      "evidence": "7c4164b와 당시 latest dev a850377 ancestry 보존"
     },
     {
       "id": "T11_BRANCH_CI",
       "name": "seung terminal source CI",
-      "status": "PASS",
-      "evidence": "최종 단일 push 뒤 동일 최종 HEAD의 GitHub Actions terminal source CI를 확인하고 run URL은 작업 보고에 기록"
+      "status": "FAIL",
+      "evidence": "GitHub Actions run 31448012065 failure: role-scope-only; R2-W5-F8에서 inherited checkpoint로 교정"
     }
   ],
   "NOT_RUN": [],
-  "CHANGE_REQUESTS": [],
+  "CHANGE_REQUESTS": [
+    "F7 CI scope 실패를 R2-W5-F8에서 교정"
+  ],
   "RESIDUAL_RISKS": [],
   "EXTERNAL_APPROVAL_REQUIRED": [],
   "ACCEPTANCE_RESULTS": [
     {
       "id": "AC1_SNAPSHOT_PREFLIGHT",
       "status": "PASS",
-      "evidence": "Gate가 지정한 저장소·branch·HEAD/upstream·dirty 1경로·보고서 hash를 변경 전에 exact 확인"
+      "evidence": "지정 snapshot을 변경 전에 exact 확인"
     },
     {
       "id": "AC2_REPORT_PRESERVED",
       "status": "PASS",
-      "evidence": "일일보고만 preservation commit 211f734로 보존했고 최종 tree에도 동일 SHA256 내용 유지"
+      "evidence": "일일보고를 preservation commit 211f734로 보존"
     },
     {
       "id": "AC3_PRODUCT_STASH_UNCHANGED",
       "status": "PASS",
-      "evidence": "origin/seung 7c4164b 제품 8경로를 직접 수정하지 않았고 stash 7개의 object ID를 적용·삭제·변경하지 않음"
+      "evidence": "제품 8경로와 stash object를 적용·삭제·변경하지 않음"
     },
     {
       "id": "AC4_BOTH_ANCESTRIES",
       "status": "PASS",
-      "evidence": "non-ff merge f2665d1로 origin/seung 7c4164b와 latest origin/dev a850377 양쪽 ancestry 보존"
+      "evidence": "non-ff merge f2665d1로 양쪽 ancestry 보존"
     },
     {
       "id": "AC5_F6_HANDOFF",
       "status": "PASS",
-      "evidence": "handoffs/R2-W5-F6.json에 제품 SHA 7c4164b, source CI 31363935846, CRM/DataHub runtime NOT_RUN 경계를 기록"
+      "evidence": "F6 제품 SHA·source CI·runtime NOT_RUN 경계 기록"
     },
     {
       "id": "AC6_F7_HANDOFF",
       "status": "PASS",
-      "evidence": "handoffs/R2-W5-F7.json에 preservation·merge ancestry·검증·single push 절차를 기록"
+      "evidence": "F7 변경 10경로와 실제 scope 실패를 기록"
     },
     {
       "id": "AC7_SINGLE_FINAL_PUSH",
-      "status": "PASS",
-      "evidence": "중간 push 없이 모든 로컬 commit과 검증을 마친 뒤 seung을 최종 1회 push하고 terminal CI를 확인"
+      "status": "FAIL",
+      "evidence": "최종 1회 push는 완료했으나 CI 31448012065가 scope-only failure로 종료되어 F8이 supersede"
     }
   ]
 }

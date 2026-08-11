@@ -26,7 +26,7 @@
 |---|---|---|---|
 | R1 | `R1-W5-F37` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F12` | `READY` | `seung` |
-| R3 | `R3-W5-F8` | `READY` | `daesung` |
+| R3 | `R3-W5-F8` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W5-F17` | `READY` | `jaehong` |
 | R5 | `R5-W5-F6` | `READY` | `minji` |
 
@@ -563,7 +563,7 @@ R1_REVIEW_CONDITIONS=현재 live 모드는 계속 fail-closed이며 R3/R4 제품
 ### R3 · R3-W5-F8
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R3
 ASSIGNEE=윤대성
 PERSONAL_BRANCH=daesung
@@ -582,6 +582,8 @@ CONTRACT_VERSION=MODEL-v1.1.0-NODE3-DRAFT; MODELOPS-I5-READINESS-v1.0.0-DRAFT
 ALLOWED_PATHS=src/ai/contracts/node_io.v0.1.json; src/ai/node3.py; src/ai/fake_model.py; tests/ai/test_node3.py; tests/ai/test_fake_model.py; tests/ai/test_contracts.py; evals/base_comparison.v0.1.json; evals/split_manifest.v0.1.json; evals/validation_v2.manifest.json; src/ai/training/benchmark_serving.py; src/ai/training/dataset.py; src/ai/training/evaluate_endpoint.py; src/ai/training/evaluate_lora.py; src/ai/training/verify_case_specs.py; src/modelops/model_decision.v0.1.json; src/modelops/model_candidate.instruct2507.v0.1.json; src/modelops/serving_manifest.v0.1.json; src/modelops/runtime.py; src/modelops/release_candidate.i5.v1.json; tests/ai/test_model_decision.py; tests/ai/test_serving_benchmark.py; tests/ai/test_training_dataset.py; tests/ai/test_training_verification.py; tests/ai/test_validation_v2.py; tests/ai/test_eval_runner.py; tests/ai/test_wave3.py; handoffs/R3-W5-F8.json; docs/markdown/daily_reports/daesung/일일보고.md
 FORBIDDEN_PATHS=app/backend/**; src/data/**; Node2·prompt serving; compiled 1,350 dataset·Gold·acceptance 내용 재생성; root Compose·CI; dependency; RunPod·외부 endpoint·model download; secret
 HANDOFF_MANIFEST=handoffs/R3-W5-F8.json
+RESULT_SHA=b0199017c3d1b31a2197a863f64756c80d77e1b4
+RESULT_CI=branch 31473327767 PASS
 ACCEPTANCE_CRITERIA=Node3 multi-source request는 selected_metric_id·source별 context_metric_ids를 schema에서 명시하고 selected derived metric 하나와 entitlement를 exact 검증하며 missing·multi·different·outside-entitlement·source-count mismatch를 fail-closed한다. 6-asset G120-046 backend-shaped fixture는 통과하고 source·masking·sampling·partial·result reference를 보존하며 question·row·첫 metric에서 추정하지 않는다. 이어서 Base·LoRA·serving 비교는 immutable captured evidence의 model/prompt/case-set/decoding/runtime·artifact hash가 같은 경우만 comparable로 판정하고 accuracy·p50·p95·VRAM·nullable cost를 observed 값으로만 기록한다. train·validation·gold·acceptance의 case ID·paraphrase group·join graph 누수를 검증하며 기존 typed 결손은 NOT_READY로 기록하고 자동 재생성하지 않는다. release candidate manifest는 DRAFT/NOT_READY이고 제품 기본값 Base·SQL LoRA disabled를 유지한다.
 ACCEPTANCE_IDS=AC1_NODE3_SCHEMA;AC2_ENTITLEMENT_FAIL_CLOSED;AC3_BACKEND_SHAPED_FIXTURE;AC4_CAPTURED_COMPARABILITY;AC5_SPLIT_INTEGRITY;AC6_TRACE_REPRO;AC7_RELEASE_NOT_READY;AC8_OWNER_BOUNDARY
 TEST_COMMANDS=관련 JSON json.tool; python -m pytest -p no:cacheprovider tests/ai/test_node3.py tests/ai/test_fake_model.py tests/ai/test_contracts.py -q; python -m pytest -p no:cacheprovider tests/ai/test_model_decision.py tests/ai/test_serving_benchmark.py tests/ai/test_training_dataset.py tests/ai/test_training_verification.py tests/ai/test_validation_v2.py tests/ai/test_eval_runner.py tests/ai/test_wave3.py -q; python -m pytest -p no:cacheprovider tests/ai -q; python -m compileall -q src/ai src/modelops evals; deterministic manifest/hash 검증; gate_scope bootstrap·planned-path·merge-base; git diff --check; daesung source CI

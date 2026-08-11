@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.61 |
-| 문서 기준일 | 2026-08-11 12:30 |
+| 버전 | v5.62 |
+| 문서 기준일 | 2026-08-11 12:29 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F25` | `READY` | `junhee` |
+| R1 | `R1-W5-F27` | `READY` | `junhee` |
 | R2 | `R2-W5-F8` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F12` | `READY` | `jaehong` |
@@ -136,7 +136,7 @@ R1_REVIEW_CONDITIONS=scope 실패 fixture에서도 제품 jobs가 실행되고 f
 ### R1 · R1-W5-F25
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -165,6 +165,42 @@ STOP_CONDITIONS=legacy dirty diff 변화; archive 수정·현재 실행 정본 �
 EXTERNAL_ACTION_PERMISSION=origin read-only fetch, Git-write 가능한 exact 별도 clean clone, 허용 경로 commit·junhee push·branch CI만 승인한다. 원본 dirty worktree의 stage/commit/stash/reset/checkout, archive 수정, dev merge, ACL·sandbox·network 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=archive 때문에 active current card/blocker/candidate가 변함; archive 없음·손상인데 READY; dashboard가 I4 미검증으로 오판; 원본 dirty diff 변화; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=synthetic·실제 compact 원장에서 archive I4 VERIFIED_GATE만 인식하고 active 상태가 불변이며 원본 legacy diff hash가 일치하고 source CI PASS인 경우에만 dev 통합한다.
+SUPERSEDED_BY=R1-W5-F27
+BLOCK_REASON=F25 source SHA 12a46f1·CI 31455099641은 PASS했으나 별도 승인된 WBS·Gate 문서 commit 5c54b3e와 history-preserving merge 뒤 누적 branch diff가 F25 handoff 범위를 벗어났다. 이력을 되돌리지 않고 F27에서 reconciliation evidence로 종결한다.
+```
+
+### R1 · R1-W5-F27
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F27
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=R1-W5-F25 source PASS + WBS·Gate 문서 이력 reconciliation
+TASK_CARD_RANGE=R1-04 junhee history-preserving reconciliation evidence correction
+CURRENT_TASK_CARD_ID=R1-04-AGENT-AUTOMATION-RECONCILIATION
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=473d014f0d9c394faf62d958200ae4e9e4755200
+START_POINT=F25 terminal source SHA 12a46f1·CI 31455099641 PASS와 별도 승인 문서 SHA 5c54b3e를 merge commit 7b8dc74에서 모두 보존했다. CI 31455371749는 WBS가 F25 범위 밖이고 F25 handoff가 누적 diff와 달라 FAIL했다. 기존 commit·blob을 수정하지 않고 새 evidence만 작성한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F27@473d014
+CONTRACT_VERSION=GATE-SCOPE-v1.1.1-DRAFT
+ALLOWED_PATHS=.github/scripts/gate_scope.py; docs/markdown/02_WBS.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/ai_docs/legacy/260805_코딩에이전트_작업프로세스_개선기록_v1.0.md; docs/markdown/daily_reports/junhee/일일보고.md; handoffs/R1-W5-F25.json; handoffs/R1-W5-F27.json; tests/integration/test_gate_scope.py
+READ_ONLY_EVIDENCE_PATHS=.github/scripts/gate_scope.py@12a46f1; docs/markdown/02_WBS.md@5c54b3e; docs/markdown/ai_docs/legacy/260805_코딩에이전트_작업프로세스_개선기록_v1.0.md@2d923e2; handoffs/R1-W5-F25.json@12a46f1; tests/integration/test_gate_scope.py@12a46f1
+MUTABLE_PATHS=docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/daily_reports/junhee/일일보고.md; handoffs/R1-W5-F27.json
+FORBIDDEN_PATHS=READ_ONLY_EVIDENCE_PATHS 내용 변경; docs/markdown/collaboration/archive/**; R2~R5 제품·보고·handoff; app/**; infrastructure/**; src/**; root Compose/env; dependency·secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F27.json
+ACCEPTANCE_CRITERIA=F25 source PASS와 WBS·Gate 문서 commit을 모두 ancestry로 보존하고 누적 7경로를 정확히 handoff한다. F25 handoff의 역사적 CI PASS를 변경하지 않는다. F27은 제품·WBS·자동화 코드를 재수정하지 않고 reconciliation 사실과 실제 corrective CI만 기록한다. archive I4→I5 READY_TO_ISSUE, active current bundle, inherited checkpoint, CI_PENDING 회귀가 유지되어야 한다.
+ACCEPTANCE_IDS=AC1_F25_HISTORY;AC2_WBS_HISTORY;AC3_EXACT_CUMULATIVE_DIFF;AC4_READ_ONLY_BLOBS;AC5_GATE_REGRESSION;AC6_CORRECTIVE_CI
+TEST_COMMANDS=git ancestry 12a46f1·5c54b3e·7b8dc74; read-only evidence blob diff 0; python -m unittest tests.integration.test_gate_scope -v; python .github/scripts/gate_scope.py --dashboard --next-gate auto; python -m json.tool handoffs/R1-W5-F25.json handoffs/R1-W5-F27.json; document policy; report validation; gate_scope preflight·8 planned paths·merge-base; git diff --check; junhee corrective source CI
+TEST_COMMAND_IDS=T1_ANCESTRY;T2_BLOB_INVARIANTS;T3_GATE_TESTS;T4_DASHBOARD;T5_HANDOFF_JSON;T6_DOCUMENT_POLICY;T7_REPORT;T8_SCOPE;T9_DIFF;T10_BRANCH_CI
+STOP_CONDITIONS=기존 commit/history/blob 수정; WBS·F25 handoff·자동화 code 재작성; reset·rebase·force·stash; 누적 diff 누락; 허용 8경로 밖 변경; source CI 실패를 PASS로 기록; dependency·secret·외부 비용; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=현재 clean junhee에서 mutable 3경로 commit·junhee push·branch CI만 허용한다. dev merge·workflow dispatch·기존 history rewrite는 금지한다.
+AUTO_FAIL_CONDITIONS=12a46f1·5c54b3e ancestry 손실; read-only blob drift; handoff changed files 불일치; dashboard 회귀; scope·필수 검증 FAIL
+R1_REVIEW_CONDITIONS=corrective source CI가 실제 PASS하고 F27 handoff가 origin/dev...HEAD의 자기 manifest 제외 exact 7경로를 기록한 뒤에만 dev 통합한다.
 ```
 
 ### R2 · R2-W5-F5
@@ -361,12 +397,12 @@ FORBIDDEN_PATHS=compose.yml; .env; .env.example; app/backend/**; app/enterprise-
 HANDOFF_MANIFEST=handoffs/R5-W5-F4.json
 ACCEPTANCE_CRITERIA=Dockerfile build stage는 ARG VITE_BACKEND_BASE_URL=http://127.0.0.1:18000과 동일 ENV를 npm run build 전에 선언하고 compose build.args는 ${VITE_BACKEND_BASE_URL:-http://127.0.0.1:18000}만 전달한다. 기본 build는 loopback을 유지하고 LAN은 FRONTEND_BIND_ADDRESS=0.0.0.0과 VITE_BACKEND_BASE_URL=http://<명시적-LAN-IP>:18000을 함께 제공할 때만 사용한다. 0.0.0.0을 browser backend URL로 사용하거나 LAN IP를 자동 추론하지 않는다. Agent·Report는 기존 동일 base와 fallback을 유지하고 backend 실패를 mock·fixture·synthetic success로 자동 전환하지 않는다. token·secret·backend/OpenAPI/CORS/route/package를 변경하지 않는다.
 ACCEPTANCE_IDS=AC1_BUILD_ARG_ENV;AC2_DEFAULT_LOOPBACK;AC3_EXPLICIT_LAN_OPT_IN;AC4_AGENT_REPORT_SAME_BASE;AC5_FAIL_CLOSED;AC6_NO_SECRET_OR_OWNER_BYPASS
-TEST_COMMANDS=repository path·branch·HEAD·clean·local-only 3 commit inventory; fetch 후 f5387b7→latest dev의 inherited 15경로 overlap 0 재확인; origin/dev non-ff merge와 1fd9701·96f0b74·ece70e3 ancestry 보존; default와 explicit LAN compose config에서 build arg·host_ip 확인; node tests/frontend/contracts.test.mjs; npm --prefix app/enterprise-react run build; explicit LAN backend base 별도 build; Dockerfile ARG/ENV 순서·두 client 동일 env/default·자동 fallback 부재 contract test; gate_scope bootstrap·전체 planned-path·merge-base; git diff --check; minji corrective source CI
+TEST_COMMANDS=repository path·branch·HEAD·clean·local-only 3 commit inventory; fetch 후 f5387b7→latest dev의 inherited 15경로 overlap 0 재확인; origin/dev non-ff merge와 1fd9701·96f0b74·ece70e3 ancestry 보존; default와 explicit LAN compose config에서 build arg·host_ip 확인; node tests/frontend/contracts.test.mjs; npm --prefix app/enterprise-react run build; explicit LAN backend base 별도 build; Dockerfile ARG/ENV 순서·두 client 동일 env/default·자동 fallback 부재 contract test; gate_scope bootstrap·전체 planned-path·merge-base; git diff --check; minji corrective source CI. handoff는 merge commit을 RESULT_SHA로 기록하고 T8_BRANCH_CI=CI_PENDING으로 제출하며, 이전 CI 31454965937 FAILURE와 원인을 RESULT_CI·REQUESTED_DECISION에 보존한다. 카드 필수 검증이 아닌 Docker image build는 NOT_RUN·RESIDUAL_RISKS에서 제거하되 실행했다고 주장하지 않고 NOT_RUN=[]·RESIDUAL_RISKS=[]로 정합화한다.
 TEST_COMMAND_IDS=T1_DEFAULT_CONFIG;T2_LAN_CONFIG;T3_FRONTEND_CONTRACT;T4_DEFAULT_BUILD;T5_LAN_BUILD;T6_SCOPE;T7_DIFF;T8_BRANCH_CI
 STOP_CONDITIONS=exact external repo·HEAD·clean snapshot 불일치; local-only commit 유실; latest dev overlap 또는 merge conflict; inherited 15경로를 reconciliation 외 새 기능으로 확대; backend endpoint·CORS·OpenAPI/schema 변경 필요; 기본값을 loopback 밖으로 변경; LAN IP 자동 탐지·0.0.0.0 backend URL·wildcard CORS; backend 실패를 mock/fixture/synthetic success로 대체; secret/token build arg; root Compose/env/backend/package/dependency 변경; 허용 경로 밖 변경; 필수 검증 실패
-EXTERNAL_ACTION_PERMISSION=exact external clone에서 fetch, latest dev non-ff merge, local-only 3 commits 보존, F4 허용 경로 corrective commit, 최종 minji push 1회와 source CI를 승인한다. 중간 push·reset·rebase·force push·stash 조작·다른 project/container/volume·firewall·backend lifecycle·외부 배포·비용·secret 변경은 금지한다.
+EXTERNAL_ACTION_PERMISSION=origin/minji 46e278b의 source CI 31454965937이 제품 scope가 아니라 handoff T8 NOT_RUN·NOT_RUN/RESIDUAL_RISKS 때문에 REVIEW_REQUIRED로 실패했으므로, exact clean external clone에서 fetch 후 latest origin/dev 473d014를 history-preserving non-ff merge하고 handoff만 교정한 뒤 minji corrective push 1회를 추가 승인한다. 중간 push·reset·rebase·force push·stash 조작·다른 project/container/volume·firewall·backend lifecycle·외부 배포·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=Agent·Report base 불일치; 명시 opt-in 없는 LAN 공개; production 자동 fixture/mock fallback; secret 노출; scope 위반; 필수 검증 FAIL
-R1_REVIEW_CONDITIONS=local-only 3 commits와 latest dev ancestry, inherited 15경로 overlap 0, F4 build wiring, source CI와 handoff를 확인한다. backend runtime 실패는 R5가 우회하지 않고 R4 corrective 결과와 결합해 후속 판정한다.
+R1_REVIEW_CONDITIONS=local-only 3 commits와 latest dev ancestry, inherited 15경로 overlap 0, F4 build wiring, source CI와 handoff를 확인한다. corrective push CI PASS를 R1이 원격 run으로 확인한 뒤에만 dev 통합하며 CI_PENDING은 terminal PASS가 아니다. backend runtime 실패는 R5가 우회하지 않고 R4 corrective 결과와 결합해 후속 판정한다.
 ```
 
 ### R1 · R1-W5-F23

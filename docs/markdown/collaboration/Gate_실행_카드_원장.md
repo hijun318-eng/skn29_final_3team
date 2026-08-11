@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.41 |
-| 문서 기준일 | 2026-08-10 19:30 |
+| 버전 | v5.42 |
+| 문서 기준일 | 2026-08-11 09:40 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -23,7 +23,7 @@
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
 | R1 | `R1-W5-F13` | `BLOCKED` | `junhee` |
-| R2 | `R2-W5-F6` | `READY` | `seung` |
+| R2 | `R2-W5-F7` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `MERGED_DEV` | `daesung` |
 | R4 | `R4-W5-F9` | `READY` | `jaehong` |
 | R5 | `R5-W5-F3` | `MERGED_DEV` | `minji` |
@@ -1203,7 +1203,7 @@ RESULT_CI=branch 31353517252 PASS
 ### R2 · R2-W5-F6
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -1233,6 +1233,43 @@ STOP_CONDITIONS=기존 index·trigger 의미 약화; seed 파일 변경 필요; 
 EXTERNAL_ACTION_PERMISSION=현재 exact offline product 9경로의 read-only review→checkpoint commit→seung push→source CI만 승인한다. CRM fresh 80000 container와 DataHub 신규 기동·ingestion/publish/search는 다시 승인하지 않으며 NOT_RUN을 유지한다. 기존 hotel-synthetic-db·data-hub-test·다른 project/volume, root env, 외부 전송·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=과거 격리 수치를 현재 PASS로 승격; catalog cardinality/hash 불일치; broad grant; 기존 history 보호 약화; 다른 project drift; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=Option 1 요청은 부분 수용한다. 이 R2 생산자를 먼저 dev에 통합·동결한 뒤 R4 Dataset/Column description Context 소비자와 R3 training catalog 소비자를 별도 owner 카드로 발행하고, 마지막에 R1 fresh integration을 수행한다.
+BLOCKED_REASON=origin/seung 7c4164b의 제품 checkpoint와 source CI 31363935846은 PASS지만 원격 F6 handoff가 없고, mapped seung b820698에는 원격 최종 tree와 다른 exact 10개 로컬 변경이 남아 있다. 어느 한쪽도 삭제·덮어쓰기하지 않는 owner-scoped reconciliation이 필요하다.
+```
+
+### R2 · R2-W5-F7
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F7
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=R2-W5-F6 history-preserving reconciliation and terminal handoff
+TASK_CARD_RANGE=R2-W5-F6 원격 checkpoint·로컬 일일보고·제품 변경 보존 및 terminalization only
+CURRENT_TASK_CARD_ID=R2-W5-F6-RECONCILIATION
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=ead79dc29ac7e3c30e80957cd96d270bce0969ff
+START_POINT=origin/seung 7c4164b495edb189eef2fcb58939a1d4cfa51fdc의 CI 통과 제품 이력과 mapped seung b820698의 exact 10개 dirty 변경을 모두 보존한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R2-W5-F7@ead79dc
+INHERITED_DIRTY_RECONCILIATION_PERMISSION=일반 bootstrap dirty 실패의 유일한 예외로 현재 exact 10개 경로의 path·hash inventory와 11개 planned-path 검사를 먼저 수행한 뒤, 그 10개 변경을 preservation commit 1개로만 보존할 수 있다. 이 commit은 단독 push하지 않으며 생성 직후 worktree clean과 bootstrap PASS를 확인해야 한다. dirty 범위가 달라지거나 planned-path가 실패하면 즉시 중단한다.
+PRESERVATION_PATHS=docs/markdown/daily_reports/seung/일일보고.md; infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql; infrastructure/database/trino/etc/access-control-rules.json; src/data/serving_analytics_contract.i4.v1.json; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; src/data/serving_semantic_catalog.i4.v1.json; tests/data/test_serving_semantic_catalog.py; handoffs/R2-W5-F6.json
+RECONCILIATION_SEQUENCE=exact 10-path/hash inventory → local preservation commit 1회(미푸시) → origin/seung 7c4164b non-ff merge → origin/dev ead79dc merge → F6 handoff 정합화와 F7 handoff 작성 → 전체 검증 → clean·ancestry 확인 → seung 최종 1회 push → terminal CI
+CONFLICT_POLICY=원격 CI 통과 제품의 최종 tree를 기본으로 하되 로컬판은 preservation commit history로 보존한다. 일일보고는 상충하지 않는 로컬 runtime 사실을 함께 유지한다. 허용 경로 밖 충돌은 해결하지 않고 중단한다.
+CONTRACT_VERSION=I5-SEMANTIC-CATALOG-v1.0.0-DRAFT; I5-DATAHUB-v1.1.0-RUNTIME-DRAFT
+ALLOWED_PATHS=docs/markdown/daily_reports/seung/일일보고.md; infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql; infrastructure/database/trino/etc/access-control-rules.json; src/data/serving_analytics_contract.i4.v1.json; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; src/data/serving_semantic_catalog.i4.v1.json; tests/data/test_serving_semantic_catalog.py; handoffs/R2-W5-F6.json; handoffs/R2-W5-F7.json
+FORBIDDEN_PATHS=infrastructure/database/datahub/scripts/run-runtime-validation.ps1; infrastructure/database/compose.yml; seed/data SQL; backend·AI·frontend; root env/CI; 다른 Docker project·volume; secret
+HANDOFF_MANIFEST=handoffs/R2-W5-F7.json
+ACCEPTANCE_CRITERIA=로컬 일일보고·제품 변경·F6 handoff와 원격 7c4164b 제품 checkpoint·CI 이력을 모두 Git ancestry로 보존한다. 최종 제품 tree는 원격 CI 통과판에서 검증 없이 후퇴하지 않는다. F6 handoff에는 실제 product SHA·CI와 CRM 80000·DataHub runtime BLOCKED/NOT_RUN을 기록하고 F7 handoff에는 reconciliation commit·merge ancestry·검증 결과를 기록한다. Catalog live 기능·runtime PASS·새 제품 기능을 만들지 않는다.
+ACCEPTANCE_IDS=AC1_EXACT_DIRTY_INVENTORY;AC2_LOCAL_HISTORY_PRESERVED;AC3_REMOTE_HISTORY_PRESERVED;AC4_REMOTE_PRODUCT_NO_REGRESSION;AC5_F6_HANDOFF_TERMINAL;AC6_F7_RECONCILIATION_HANDOFF;AC7_SINGLE_FINAL_PUSH
+TEST_COMMANDS=git status --short와 exact 10-path SHA256 inventory; 11개 check-planned-path; preservation commit 직후 clean bootstrap; python -m json.tool src/data/serving_semantic_catalog.i4.v1.json; python -m json.tool src/data/serving_analytics_contract.i4.v1.json; python -m json.tool handoffs/R2-W5-F6.json; python -m json.tool handoffs/R2-W5-F7.json; python -m pytest -p no:cacheprovider tests/data/test_serving_semantic_catalog.py -q; python -m pytest -p no:cacheprovider tests/data -q; docker compose config; git diff --check; gate_scope merge-base; git merge-base --is-ancestor로 local preservation·7c4164b·ead79dc ancestry 확인; clean status; terminal source CI
+TEST_COMMAND_IDS=T1_INVENTORY;T2_PLANNED_PATH;T3_CLEAN_BOOTSTRAP;T4_JSON;T5_TARGET;T6_DATA;T7_COMPOSE;T8_SCOPE;T9_DIFF;T10_ANCESTRY;T11_BRANCH_CI
+STOP_CONDITIONS=dirty 경로·hash inventory 변화; origin/seung 7c4164b 또는 CI 31363935846 변경; 허용 11경로 밖 충돌; 원격 CI 통과 제품의 검증 없는 후퇴; 로컬 이력·일일보고 사실 손실; reset·stash·rebase·force push·삭제·덮어쓰기 필요; preservation commit 단독 또는 중간 push; Catalog live/runtime·Docker lifecycle·secret·비용 필요; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=exact 10개 로컬 변경의 preservation commit 1회, origin/seung·origin/dev non-ff merge, 최종 검증 후 seung 1회 push와 source CI만 승인한다. Docker lifecycle·DataHub ingestion/publish/search·CRM seed·외부 전송·비용은 승인하지 않는다.
+AUTO_FAIL_CONDITIONS=local 또는 remote history 손실; dirty 범위 증가; conflict scope 확대; 중간 push; runtime PASS 위조; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=F7 terminal CI PASS와 두 handoff의 실제 SHA·CI·BLOCKED 경계, 최종 clean·ancestry를 확인한 뒤에만 dev 통합 또는 Catalog 후속 카드를 판정한다.
 ```
 
 ### R4 · R4-W5-F2
@@ -1613,6 +1650,7 @@ RESULT_CI=branch 31363391107 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.42 | 2026-08-11 09:40 | R2-W5-F6의 원격 CI 통과 checkpoint와 로컬 일일보고·제품 변경을 모두 보존하는 R2-W5-F7 reconciliation 전용 REWORK 발행 |
 | v5.41 | 2026-08-10 19:30 | R1-W5-F13을 기존 hotel-synthetic-db app-postgres 고정 이름 충돌 근거로 BLOCKED 처리하고 다른 project 불변·신규 빈 answervice resource 보존·owner별 후속 경계를 기록 |
 | v5.40 | 2026-08-10 19:20 | 시연 준비를 위해 exact answervice app-postgres/backend만 기동하고 migration head·approved Template·readiness를 검증하는 R1-W5-F13 발행 |
 | v5.39 | 2026-08-10 19:10 | R5-W5-F3의 기본 loopback·명시적 LAN 공개, exact frontend runtime·source CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |

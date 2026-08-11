@@ -16,4 +16,9 @@ if ! command -v pwsh >/dev/null 2>&1; then
     exit 1
 fi
 
-pwsh -NoProfile -File .github/scripts/refresh_test_runtime.ps1
+env_file=$(git config --path --get answervice.testEnvFile 2>/dev/null || printf '')
+if [ -z "$env_file" ]; then
+    env_file="$(git rev-parse --show-toplevel)/.env"
+fi
+
+pwsh -NoProfile -File .github/scripts/refresh_test_runtime.ps1 -EnvFilePath "$env_file"

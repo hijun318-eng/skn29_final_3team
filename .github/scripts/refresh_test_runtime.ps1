@@ -11,6 +11,51 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Resolve-ApprovedEnvFile {
+    param([string]$Path)
+    if (-not [System.IO.Path]::IsPathFullyQualified($Path)) {
+        throw 'test env path must be absolute'
+    }
+    $item = Get-Item -LiteralPath $Path -ErrorAction Stop
+    if ($item.PSIsContainer) { throw 'test env path must be a regular file' }
+    return $item.FullName
+}
+
+function Assert-RequiredEnvNames {
+    param([string]$Path)
+    $required = @(
+        'COMPOSE_PROJECT_NAME', 'APP_DB_NAME', 'APP_ADMIN_USER',
+        'APP_ADMIN_PASSWORD', 'APP_MIGRATION_USER', 'APP_MIGRATION_PASSWORD',
+        'APP_DB_USER', 'APP_DB_PASSWORD', 'APP_DATABASE_URL'
+    )
+    $present = @{}
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        if ($line -match '^\s*([A-Z][A-Z0-9_]*)\s*=.+$') { $present[$Matches[1]] = $true }
+    }
+    $missing = @($required | Where-Object { -not $present.ContainsKey($_) })
+    if ($missing.Count) {
+        throw "required env variable names are missing: $($missing -join ', ')"
+    }
+}
+
+function Assert-NoRuntimeConflict {
+    param([hashtable]$ExpectedContainers)
+    foreach ($entry in $ExpectedContainers.GetEnumerator()) {
+        $conflicts = @(& docker ps -aq --filter "name=^/$($entry.Key)$")
+        if ($LASTEXITCODE -ne 0) { throw 'container conflict inventory failed' }
+        if (@($conflicts | Where-Object { $_ -ne $entry.Value }).Count) {
+            throw "fixed container name conflict: $($entry.Key)"
+        }
+    }
+    foreach ($port in @(15432, 28000, 13000)) {
+        $conflicts = @(& docker ps -q --filter "publish=$port")
+        if ($LASTEXITCODE -ne 0) { throw 'port conflict inventory failed' }
+        if (@($conflicts | Where-Object { $_ -notin $ExpectedContainers.Values }).Count) {
+            throw "fixed port conflict: $port"
+        }
+    }
+}
+
 function Get-RefreshPlan {
     param([string[]]$Paths)
 
@@ -78,12 +123,14 @@ if (-not $root) { throw 'Repository root를 확인할 수 없습니다.' }
 Set-Location -LiteralPath $root
 
 if ($RuntimeInventoryJson) {
+    $resolvedEnv = Resolve-ApprovedEnvFile $EnvFilePath
+    Assert-RequiredEnvNames $resolvedEnv
     Assert-RuntimeIdentity `
         -Inventory @(ConvertFrom-Json -InputObject $RuntimeInventoryJson) `
         -ExpectedProject 'answervice' `
         -ExpectedRoot $root `
         -ExpectedCompose (Join-Path $root 'compose.yml') `
-        -ExpectedEnv (Resolve-Path -LiteralPath $EnvFilePath -ErrorAction Stop).Path
+        -ExpectedEnv $resolvedEnv
     Write-Output 'RUNTIME_IDENTITY_OK'
     exit 0
 }
@@ -116,19 +163,24 @@ if ($plan.action -eq 'no-op') {
     exit 0
 }
 
-$envFile = (Resolve-Path -LiteralPath $EnvFilePath -ErrorAction Stop).Path
+$envFile = Resolve-ApprovedEnvFile $EnvFilePath
+Assert-RequiredEnvNames $envFile
 $composeFile = (Resolve-Path -LiteralPath 'compose.yml' -ErrorAction Stop).Path
 $projectName = (& docker compose -f $composeFile --env-file $envFile --profile dev config --format json | ConvertFrom-Json).name
 if ($LASTEXITCODE -ne 0 -or -not $projectName) { throw 'Compose project identity를 확인하지 못했습니다.' }
 $inventory = @()
+$expectedContainers = @{}
 foreach ($service in @('app-postgres', 'backend', 'frontend')) {
     $containerIds = @(& docker compose -f $composeFile --env-file $envFile --profile dev ps -q $service)
     if ($LASTEXITCODE -ne 0 -or $containerIds.Count -ne 1) { throw "runtime identity service count mismatch: $service" }
     $labels = & docker inspect --format '{{json .Config.Labels}}' $containerIds[0] | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0 -or -not $labels) { throw "runtime identity label을 확인하지 못했습니다: $service" }
     $inventory += [pscustomobject]@{ service = $service; labels = $labels }
+    $expectedName = @{ 'app-postgres' = 'app-postgres'; 'backend' = 'answervice-backend'; 'frontend' = 'answervice-frontend' }[$service]
+    $expectedContainers[$expectedName] = $containerIds[0]
 }
 Assert-RuntimeIdentity $inventory $projectName $root $composeFile $envFile
+Assert-NoRuntimeConflict $expectedContainers
 $running = @(& docker compose -f compose.yml --env-file $envFile --profile dev ps --status running --services)
 if ($LASTEXITCODE -ne 0) { throw 'Compose runtime inventory를 확인하지 못했습니다.' }
 foreach ($service in $plan.services) {

@@ -71,6 +71,8 @@ docker compose -f compose.yml --env-file .env --profile dev up -d --build --wait
 
 이후 관리자가 clean `test` worktree에서 검증된 branch를 merge하면 `post-merge` hook이 `ORIG_HEAD..HEAD`를 확인한다. `app/enterprise-react/**`는 `frontend`, `app/backend/**`·`src/**`·`config/**`는 `backend`만 `--no-deps --build --wait`로 갱신한다. 문서·test만 바뀌면 container를 건드리지 않는다. root Compose, `.env.example`, `infrastructure/**` 변경은 stateful 영향 가능성이 있으므로 자동 실행을 중단하고 R1이 수동 절차를 정한다.
 
+test worktree에서 별도 `.env` 복사본을 만들지 않으려면 `git config --local answervice.testEnvFile <absolute-existing-path>`로 승인된 env 파일을 지정한다. 설정이 없을 때만 test worktree의 `.env`를 사용한다. hook은 env 내용을 출력하지 않고 absolute regular file·필수 변수 이름·Compose checkout/config/env label과 고정 container name·port 충돌을 먼저 검사하며, 실패하면 Docker 변경 전에 중단한다.
+
 ```powershell
 git fetch origin
 git merge --no-ff origin/<검증된-개인-branch>

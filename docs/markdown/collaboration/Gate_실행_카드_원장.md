@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.91 |
-| 문서 기준일 | 2026-08-11 18:12 |
+| 버전 | v5.92 |
+| 문서 기준일 | 2026-08-11 18:28 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -24,7 +24,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F36` | `READY` | `junhee` |
+| R1 | `R1-W5-F36` | `REVIEW` | `junhee` |
 | R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F17` | `READY` | `jaehong` |
@@ -475,7 +475,7 @@ R1_REVIEW_CONDITIONS=동일 dev/test/runtime SHA에서 실제 network·request_i
 ### R1 · R1-W5-F36
 
 ```text
-STATUS=READY
+STATUS=REVIEW
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1133,6 +1133,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.92 | 2026-08-11 18:28 | test env absolute regular file·필수 변수 이름·config fallback과 fixed container/port·checkout label fail-closed를 구현하고 target 9건·integration 92건을 확인해 R1-W5-F36 REVIEW 전환 |
 | v5.91 | 2026-08-11 18:12 | F36 Gate-only CI 31469850161이 제품 결함 없이 dev 기준 누적 F34 4경로 미선언으로 fail-closed한 결과를 반영해, 신규 7경로와 누적 F34 경로의 exact union 11경로로 source scope 교정 |
 | v5.90 | 2026-08-11 18:05 | R1-W5-F34 source CI 31469682947 PASS를 VERIFIED_GATE로 기록하고, env 복사 없이 local git config의 absolute existing env를 직접 참조하며 runtime 충돌·source 불일치를 차단하는 R1-W5-F36 READY 발행; F35 선행에 F36 terminal 추가 |
 | v5.89 | 2026-08-11 17:55 | 조건부 AUTO_START의 exact 외부 행위 권한 누락·N/A를 fail-closed하고 기존 non-conditional 호환 회귀를 확인해 R1-W5-F34 REVIEW 전환 |

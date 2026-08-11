@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.85 |
-| 문서 기준일 | 2026-08-11 17:12 |
+| 버전 | v5.86 |
+| 문서 기준일 | 2026-08-11 17:18 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -28,7 +28,7 @@
 | R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `MERGED_DEV` | `jaehong` |
-| R5 | `R5-W5-F8` | `READY` | `minji` |
+| R5 | `R5-W5-F8` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
 
@@ -933,7 +933,7 @@ BLOCKED_REASON=origin/dev af13722의 AgentPage.jsx가 createMockAnalysisClient()
 ### R5 · R5-W5-F8
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R5
 ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
@@ -959,6 +959,8 @@ STOP_CONDITIONS=R4 auth·API 변경 필요; 실제 backend가 unavailable하거�
 EXTERNAL_ACTION_PERMISSION=허용 경로 commit·minji push·source CI만 승인한다. actual browser E2E와 backend lifecycle은 R1 ownership·R4 F16 producer 통합 뒤 별도 R1 통합 판정으로 수행한다. firewall·secret·다른 project 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=AgentPage direct mock; backend failure의 fixture success 변환; non-2xx·invalid payload에서 Artifact 표시; test·default build가 mock 선택; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=source CI에서 direct mock과 fixture fallback 부재, 실제 HTTP 오류 fail-closed를 확인한다. actual browser PASS는 R1 ownership 정합화와 R4-W5-F16 통합 뒤에만 별도 판정한다.
+RESULT_SHA=657baaec16eb8b3d1eaa9f16f67053dd0758f8b8
+RESULT_CI=branch 31468349479 PASS
 ```
 
 ### R5 · R5-W5-F6
@@ -1002,6 +1004,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.86 | 2026-08-11 17:18 | R5-W5-F8의 Agent 실제 Analysis API·오류 fail-closed 전환과 source CI 31468349479 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.85 | 2026-08-11 17:12 | R4-W5-F16의 server-owned principal·OpenAPI 인증 계약과 source CI 31463682802 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.84 | 2026-08-11 17:00 | CRM DataHub MSSQL ingestion의 불필요한 msdb job 조회를 광범위 DB 권한 없이 `include_jobs: false`로 차단하도록 R2-W5-F9를 BLOCKED 처리하고 R2-W5-F12 owner-scoped REWORK 발행 |
 | v5.83 | 2026-08-11 16:57 | R1-W5-F33의 mixed-checkout runtime 차단과 누적 Gate 발행 source CI 31466799848 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |

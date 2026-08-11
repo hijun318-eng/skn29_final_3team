@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 팀원 개인 branch와 dev·main 통합 정책 및 사람이 수행하는 Git 절차 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.14 |
-| 문서 기준일 | 2026-08-11 14:04 |
+| 버전 | v1.16 |
+| 문서 기준일 | 2026-08-11 14:50 |
 | 작성·수정 | 박준희 |
 
 각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다. PR은 필수 절차가 아니며 GitHub Actions는 개인 branch와 `dev` push를 기준으로 실행한다. CI를 실행할 수 없으면 같은 검증을 local에서 수행하고, 필수 검증이 실패한 branch는 병합하지 않는다.
@@ -29,6 +29,17 @@ python .github/scripts/agent_workflow.py --branch <본인 branch> --ff-only-dev
 ```
 
 이 명령은 기존 `gate_scope.py`의 preflight 판정을 재사용해 현재 branch·dirty worktree·카드 계약·허용 경로를 검사한다. `--ff-only-dev`는 branch·clean·ancestor 조건을 먼저 확인하고 fast-forward한 뒤 갱신된 원장으로 전체 preflight를 한 번 실행하므로, 오래된 local 원장의 종료 카드가 안전한 최신화를 가로막지 않는다. 개인 branch와 `origin/dev`가 갈라졌거나 branch·카드·도구·working tree 조건이 맞지 않으면 변경 없이 실패한다. worktree의 절대 경로는 달라도 되지만 branch가 카드의 `PERSONAL_BRANCH`와 다르거나 최신화 뒤 카드가 `READY`·`IN_PROGRESS`가 아니거나 기존 변경이 있으면 구현하지 않는다.
+
+R1이 `PLANNED` 카드에 `AUTO_START=CONDITIONAL`, exact `AUTO_START_AFTER`, 고정 `BASE_SHA`·`DIRECTIVE_TOKEN`과 전체 실행 계약을 미리 기록하면 추가 승인 요청 없이 조건부 착수가 가능하다. `agent_workflow.py`는 선행 카드가 모두 `MERGED_DEV`·`VERIFIED_GATE`이고 `RESULT_CI`가 PASS이며 같은 역할의 active 카드가 없고, 카드 기준 이후 허용 제품 경로가 겹치지 않을 때만 메모리에서 `status=READY`, `declared_status=PLANNED`, `auto_start=true`를 반환한다. 원장·token을 자동 수정하거나 commit·push하지 않으며 조건이 하나라도 맞지 않으면 일반 `PLANNED`처럼 중단한다.
+
+| `agent_workflow.py` 결과 | 후속 행동 |
+|---|---|
+| `result=PASS`, `status=READY` 또는 `IN_PROGRESS` | 카드 범위 구현을 즉시 시작하거나 계속한다. 별도 Google Docs 승인이나 token 재발행을 요청하지 않는다. |
+| `result=PASS`, `declared_status=PLANNED`, `auto_start=true` | 미리 승인된 조건부 카드이므로 원장 상태를 바꾸지 않고 즉시 시작한다. |
+| `action=fast-forward-available` | `--ff-only-dev`를 한 번 실행한 뒤 갱신된 결과로 판정한다. |
+| 그 외 `result=FAIL` | 변경하지 않고 `errors`를 따른다. 새 권한이나 계약 교정이 필요한 오류만 R1에게 전달한다. |
+
+`R1_REVIEW_CONDITIONS`는 구현 완료 후 `dev` 통합 판정 기준이며 작업 시작 재승인 조건이 아니다. preflight가 PASS한 승인 카드에서는 `TASK_CARD_RANGE`를 순서대로 수행하고 카드 사이에 재승인을 요청하지 않는다.
 
 ## Branch 역할
 
@@ -89,14 +100,7 @@ git pull --ff-only origin <본인 branch>
 
 ## 새 작업 시작
 
-현재 branch가 본인 개인 branch이고 미완료 변경이 없을 때 앞의 단일 명령으로 최신화 가능 여부를 확인한다.
-
-```powershell
-python .github/scripts/agent_workflow.py --branch <본인 branch>
-python .github/scripts/agent_workflow.py --branch <본인 branch> --ff-only-dev
-```
-
-두 번째 명령은 출력이 `fast-forward-available`일 때만 사용한다. 개인 branch와 `origin/dev`가 갈라졌으면 임의 pull·merge·push하지 않고 history-preserving 동기화 판정을 관리자에게 요청한다.
+작업 시작은 위 `에이전트 작업 시작` 절의 단일 명령과 결과 판정표를 따른다. 같은 명령을 반복하거나 Google Docs에 착수 승인을 재요청하지 않는다. 개인 branch와 `origin/dev`가 갈라졌으면 임의 pull·merge·push하지 않고 history-preserving 동기화 판정을 관리자에게 요청한다.
 
 ## 변경 확인과 commit
 
@@ -108,8 +112,11 @@ git diff --cached
 
 Commit message 초안은 `.agents/skills/draft-commit-message/SKILL.md`로 staged diff만 검토해 작성한다. 제안된 메시지가 실제 변경과 일치하는지 확인한 뒤 commit한다.
 
+PowerShell 다중행 message는 실제 개행이 있는 UTF-8 파일로 작성하고 확인한 뒤 사용한다.
+
 ```powershell
-git commit -m "<확인한 제목>" -m "<확인한 상세 본문>"
+git commit -F <message-file>
+git log -1 --format=%B
 git push origin <본인 branch>
 ```
 
@@ -171,6 +178,8 @@ git push origin main
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.16 | 2026-08-11 14:50 | 작업 시작 결과 판정표와 재승인 불필요 경계를 추가하고 중복 명령·commit 예시를 단일 규칙으로 정리 |
+| v1.15 | 2026-08-11 14:08 | 선행 terminal·CI PASS·single-active·clean·safe-stale 조건을 만족한 pre-authorized PLANNED 카드의 effective READY 자동 착수 규칙 추가 |
 | v1.14 | 2026-08-11 14:04 | stale 원장보다 안전한 fast-forward를 먼저 수행하도록 단일 시작 명령을 명확히 하고 검증된 origin SHA의 remote-only dev 병합 절차 추가 |
 | v1.13 | 2026-08-11 12:10 | Git Gate 정본과 Google Docs 요청함을 구분하고 read-only 진단·제한적 dev fast-forward 단일 명령 추가 |
 | v1.12 | 2026-08-06 10:56 | 병합 단계가 공용 JSON session에서 dev·source SHA와 CI 결과를 재사용하도록 사전검사 절차 보완 |

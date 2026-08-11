@@ -55,6 +55,80 @@ ALLOWED_PATHS=.github/**
         bundle = gate_scope.current_bundle(ledger, "junhee")
         self.assertEqual("R1-W3", bundle["EXECUTION_BUNDLE_ID"])
 
+    def conditional_ledger(self, *, ci: str = "branch 1 PASS") -> str:
+        return f"""```text
+EXECUTION_BUNDLE_ID=R2-W1
+STATUS=MERGED_DEV
+PERSONAL_BRANCH=seung
+ALLOWED_PATHS=src/data/**
+RESULT_CI={ci}
+```
+```text
+EXECUTION_BUNDLE_ID=R2-W2
+STATUS=PLANNED
+PERSONAL_BRANCH=seung
+AUTO_START=CONDITIONAL
+AUTO_START_AFTER=R2-W1
+BASE_SHA={'a' * 40}
+DIRECTIVE_TOKEN=R2-W2@aaaaaaa
+ALLOWED_PATHS=src/data/**
+ACCEPTANCE_CRITERIA=accepted
+TEST_COMMANDS=tests
+STOP_CONDITIONS=stop
+```"""
+
+    def test_conditional_auto_start_returns_effective_ready(self) -> None:
+        bundle, errors = gate_scope.conditional_auto_start(
+            self.conditional_ledger(), "seung"
+        )
+        self.assertEqual([], errors)
+        self.assertEqual("R2-W2", bundle["EXECUTION_BUNDLE_ID"])
+        self.assertEqual("READY", bundle["STATUS"])
+        self.assertEqual("PLANNED", bundle["DECLARED_STATUS"])
+        with patch.object(gate_scope, "ROLES", {"seung": "R2"}):
+            dashboard = "\n".join(gate_scope.dashboard_lines(self.conditional_ledger()))
+        self.assertIn("R2-W2 | READY", dashboard)
+        self.assertIn("Auto-start available", dashboard)
+
+    def test_conditional_auto_start_fails_closed(self) -> None:
+        failed_ci = self.conditional_ledger(ci="branch 1 FAIL")
+        bundle, errors = gate_scope.conditional_auto_start(failed_ci, "seung")
+        self.assertIsNone(bundle)
+        self.assertTrue(any("CI is not PASS" in error for error in errors))
+
+        duplicate = self.conditional_ledger() + "```text" + self.conditional_ledger().split(
+            "```text", 2
+        )[2].replace("R2-W2", "R2-W3")
+        bundle, errors = gate_scope.conditional_auto_start(duplicate, "seung")
+        self.assertIsNone(bundle)
+        self.assertTrue(any("multiple conditional" in error for error in errors))
+
+        active = self.conditional_ledger().replace(
+            "STATUS=MERGED_DEV", "STATUS=IN_PROGRESS", 1
+        )
+        bundle, errors = gate_scope.conditional_auto_start(active, "seung")
+        self.assertIsNone(bundle)
+        self.assertEqual([], errors)
+
+        malformed = self.conditional_ledger().replace(
+            "AUTO_START_AFTER=R2-W1", "AUTO_START_AFTER=R2-MISSING"
+        ).replace("BASE_SHA=" + "a" * 40, "BASE_SHA=N/A")
+        errors = gate_scope.ledger_health_errors(malformed)
+        self.assertTrue(any("missing auto-start dependency" in error for error in errors))
+        self.assertTrue(any("requires fixed base" in error for error in errors))
+
+    def test_conditional_base_rejects_overlap_after_issuance(self) -> None:
+        bundle, _ = gate_scope.conditional_auto_start(
+            self.conditional_ledger(), "seung"
+        )
+        with (
+            patch.object(gate_scope, "latest_dev_sha", return_value="b" * 40),
+            patch.object(gate_scope, "is_ancestor", return_value=True),
+            patch.object(gate_scope, "changed_paths", return_value=["src/data/new.py"]),
+        ):
+            errors = gate_scope.conditional_base_errors(bundle)
+        self.assertTrue(any("overlap" in error for error in errors))
+
     def test_ledger_health_rejects_duplicate_active_and_dashboard_drift(self) -> None:
         ledger = """| R1 | `R1-W1` | `READY` | `junhee` |
 ```text

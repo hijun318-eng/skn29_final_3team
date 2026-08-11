@@ -4,25 +4,27 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.70 |
-| 문서 기준일 | 2026-08-11 14:15 |
+| 버전 | v5.75 |
+| 문서 기준일 | 2026-08-11 15:02 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
 
 ## 사용 원칙
 
-1. 자동화와 에이전트는 이 파일의 역할별 마지막 non-`PLANNED` 카드만 현재 실행 기준으로 사용한다.
-2. `READY`·`IN_PROGRESS`만 구현을 계속할 수 있으며 `BLOCKED`는 차단 원인을 해소하는 새 묶음이 필요하다.
+1. 역할별 마지막 non-`PLANNED` 카드를 기본 실행 기준으로 사용한다. 단, 계약이 완전한 `AUTO_START=CONDITIONAL` 후보는 `agent_workflow.py`가 모든 선행·CI·single-active·clean·safe-stale 조건을 통과한 실행에서만 effective `READY`로 선택한다.
+2. 선언 상태가 `READY`·`IN_PROGRESS`이거나 위 조건부 판정으로 effective `READY`가 된 카드만 구현할 수 있다. `BLOCKED`는 owner-scoped 새 묶음이 필요하다.
 3. `MERGED_DEV`·`VERIFIED_GATE`는 개인 보고와 공용 보고 경로 외 신규 구현을 허용하지 않는다.
 4. 과거 카드·상태 전이·비용·검증 이력은 archive에 보존하며 활성 원장에 복제하지 않는다.
 5. 일정과 진행률의 단일 기준은 `docs/markdown/02_WBS.md`다.
+6. `agent_workflow.py`가 `PASS`를 반환한 카드는 별도 착수 승인·Google Docs 응답·token 재발행 없이 승인 범위를 수행한다. `FAIL`이면 원장을 사람이 임의 교정하지 않는다.
+7. `R1_REVIEW_CONDITIONS`는 구현 완료 후 통합 판정에만 적용하며 착수 전 재승인 조건으로 사용하지 않는다.
 
 ## 현재 역할별 실행 상태
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F29` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F31` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F9` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `READY` | `jaehong` |
@@ -269,6 +271,72 @@ AUTO_FAIL_CONDITIONS=stale ledger가 안전한 ff-only를 계속 차단; Gate-on
 R1_REVIEW_CONDITIONS=세 회귀가 실제·synthetic test에서 fail-closed 경계를 유지하고 협업 지침이 단일 시작 명령으로 정렬되며 source CI가 PASS한 뒤 dev 통합한다.
 RESULT_SHA=3519e476651c2ca57643a4a662f780d5b27a4d05
 RESULT_CI=branch 31460026364 PASS
+```
+
+### R1 · R1-W5-F30
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F30
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=pre-authorized conditional ticket effective READY
+TASK_CARD_RANGE=R1-04 coding-agent conditional auto-start
+CURRENT_TASK_CARD_ID=R1-04-AUTOMATION-CONDITIONAL-AUTO-START
+BASE_BRANCH=dev
+BASE_SHA=d2b1d5574e8b76fe0190bb6ed90b0b2e1b72fc61
+START_POINT=R1-W5-F29가 dev d2b1d55에 통합되고 dev CI 31460246620과 동기화된 junhee CI 31460304795가 PASS했다. 다음 카드의 exact token·경로·선행 bundle을 R1이 미리 승인했는데도 PLANNED 상태 전환을 다시 기다리는 병목을 제거한다. 원장 자동 commit·push 대신 조건을 만족한 pre-authorized 카드만 실행 시점에 effective READY로 판정한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F30@d2b1d55
+CONTRACT_VERSION=GATE-SCOPE-v1.2.0-DRAFT; AGENT-WORKFLOW-v1.2.0-DRAFT
+ALLOWED_PATHS=.github/scripts/gate_scope.py; .github/scripts/agent_workflow.py; tests/integration/test_gate_scope.py; tests/integration/test_agent_workflow.py; AGENTS.md; docs/markdown/collaboration/README.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F30.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=.github/workflows/**; .github/scripts/** 중 승인 2경로 외 파일; tests/** 중 승인 2경로 외 파일; .agents/skills/**; docs/markdown/collaboration/archive/**; docs/markdown/02_WBS.md; app/**; infrastructure/**; src/**; R2~R5 보고·handoff·제품 경로; dependency·secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F30.json
+ACCEPTANCE_CRITERIA=R1이 future card에 STATUS=PLANNED, AUTO_START=CONDITIONAL, AUTO_START_AFTER의 exact bundle ID, non-N/A BASE_SHA·DIRECTIVE_TOKEN, exact ALLOWED_PATHS·ACCEPTANCE_CRITERIA·TEST_COMMANDS·STOP_CONDITIONS를 미리 기록한 경우만 조건부 후보로 인정한다. 모든 선행 bundle이 MERGED_DEV·VERIFIED_GATE이고 RESULT_CI가 PASS이며 같은 역할에 READY·IN_PROGRESS·REVIEW가 없고 원장 health가 정상일 때 candidate를 메모리에서 effective READY로 판정한다. agent_workflow preflight의 branch match·clean worktree·origin/dev ancestor와 Gate의 BASE_SHA safe-stale·경로 비중첩 검사를 모두 통과한 뒤에만 구현을 허용한다. 조건 미충족·후보 복수·dependency 누락·CI 미확정·N/A token/base·경로 겹침은 변경 없이 차단한다. 원장 파일·status·token을 자동 수정·commit·push하지 않고 제품 코드 실행·외부 lifecycle도 자동 수행하지 않는다. 기존 수동 READY·dashboard·role-scope·handoff·archive 의미를 유지한다.
+ACCEPTANCE_IDS=AC1_PREAUTHORIZED_ONLY;AC2_TERMINAL_DEPENDENCIES;AC3_PASS_CI;AC4_SINGLE_ACTIVE;AC5_SAFE_STALE_AND_CLEAN;AC6_EFFECTIVE_READY;AC7_FAIL_CLOSED;AC8_NO_LEDGER_MUTATION;AC9_COMPATIBILITY
+TEST_COMMANDS=python -m unittest tests.integration.test_gate_scope tests.integration.test_agent_workflow -v; python -m unittest discover -s tests/integration -p 'test_*.py'; synthetic conditional candidate dependency PASS·CI PASS·single candidate positive; missing dependency·nonterminal·CI missing/fail·duplicate candidate·active bundle·N/A base/token negative; safe-stale overlap·dirty·diverged negative; manual READY/dashboard/role-scope regression; python -m compileall -q .github/scripts/gate_scope.py .github/scripts/agent_workflow.py tests/integration/test_gate_scope.py tests/integration/test_agent_workflow.py; document policy AGENTS.md·README·Gate 원장·junhee 일일보고; gate_scope preflight·9 planned paths·merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_CONDITIONAL_TARGET;T2_INTEGRATION_FULL;T3_POSITIVE;T4_DEPENDENCY_NEGATIVE;T5_CANDIDATE_NEGATIVE;T6_WORKTREE_NEGATIVE;T7_COMPATIBILITY;T8_COMPILE;T9_DOCUMENT_POLICY;T10_SCOPE;T11_DIFF;T12_BRANCH_CI
+STOP_CONDITIONS=PLANNED 일반 카드를 실행 가능하게 만듦; AUTO_START_AFTER가 없는 후보 허용; terminal·CI PASS 미확인; 같은 역할 active 또는 후보 복수인데 자동 시작; N/A·동적 추정 token/base; safe-stale·경로 겹침·dirty·diverged 무시; 원장 자동 write·commit·push; 제품 실행·external lifecycle 자동화; workflow·dependency·제품 경로 변경; 기존 READY·role-scope·handoff 회귀; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=origin read-only fetch·CI 조회, 허용 경로 commit·junhee push·branch CI만 허용한다. 원장 자동 수정·dev merge·다른 역할 branch push·workflow dispatch·제품 실행·Docker·비용·secret·ACL·환경 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=일반 PLANNED가 실행됨; 선행 bundle·CI·single-active·safe-stale 조건 누락; 원장 mutation; 조건 불충족인데 effective READY; 기존 manual READY 회귀; scope·필수 검증 FAIL
+R1_REVIEW_CONDITIONS=synthetic positive·negative와 실제 manual READY 회귀에서 effective READY가 pre-authorized 조건에만 생성되고 source CI가 PASS한 뒤 dev 통합한다.
+RESULT_SHA=b5df10bfa3d3b8227ab2ca9929caa35a0fd72051
+RESULT_CI=branch 31461474741 PASS
+```
+
+### R1 · R1-W5-F31
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F31
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=collaboration guidance single entrypoint and historical snapshot clarity
+TASK_CARD_RANGE=R1-04 협업 지침 중복·현재 상태 오인 최소 교정
+CURRENT_TASK_CARD_ID=R1-04-COLLABORATION-GUIDANCE-SIMPLIFICATION
+BASE_BRANCH=dev
+BASE_SHA=a4b4898ef4cf31993647b4906238f21103c83c1d
+START_POINT=R1-W5-F30이 dev a4b4898에 통합되고 dev CI 31462263189가 PASS했다. 협업 문서 감사에서 작업 시작 명령 중복, 폐기된 bootstrap 안내, conditional effective READY 설명 충돌, I0·I1 과거 상태의 현재 상태 오인 가능성을 확인했다. 안전 경계는 유지하고 문구와 진입점만 최소 교정한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F31@a4b4898
+CONTRACT_VERSION=COLLABORATION-GUIDANCE-v1.0.0-DRAFT; GATE-SCOPE-v1.2.0
+ALLOWED_PATHS=docs/markdown/collaboration/README.md; docs/markdown/collaboration/AI_개발_환경_설정.md; docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md; docs/markdown/collaboration/I1_평가_원장.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F31.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=docs/markdown/collaboration/archive/**; R1_Gate_원장_경로_정합성_패치_제안서.md 이동·삭제; .github/**; .agents/**; AGENTS.md; docs/markdown/02_WBS.md; app/**; infrastructure/**; src/**; R2~R5 보고·handoff·제품 경로; dependency·secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F31.json
+ACCEPTANCE_CRITERIA=agent_workflow.py를 유일한 작업 시작 진입점으로 안내하고 README의 중복 명령과 폐기된 gate_scope --bootstrap 안내를 제거한다. PASS·conditional effective READY·fast-forward-available·FAIL의 후속 행동을 한 표로 고정하며 PASS 카드의 TASK_CARD_RANGE에는 별도 Google Docs 착수 승인이나 token 재발행을 요구하지 않는다. R1_REVIEW_CONDITIONS는 완료 후 dev 통합 기준이지 착수 재승인 조건이 아님을 명시한다. Gate 사용 원칙은 선언 READY·IN_PROGRESS와 조건부 effective READY를 구분한다. I0·I1 문서는 과거 계약·평가 스냅샷임을 표시하고 현재 실행 상태는 Gate 원장만 참조한다. 안전 검증·single-active·clean·CI·scope·stop 경계는 완화하지 않는다. 대규모 archive 이동·원장 카드 재배치는 이번 범위에서 하지 않는다.
+ACCEPTANCE_IDS=AC1_SINGLE_ENTRYPOINT;AC2_ACTION_TABLE;AC3_NO_APPROVAL_PING_PONG;AC4_EFFECTIVE_READY_WORDING;AC5_REVIEW_IS_POST_IMPLEMENTATION;AC6_HISTORICAL_SNAPSHOTS;AC7_SAFETY_UNCHANGED;AC8_MINIMAL_SCOPE
+TEST_COMMANDS=python .agents/skills/manage-project-documents/scripts/check_document_policy.py <changed docs>; python -m unittest tests.integration.test_gate_scope tests.integration.test_agent_workflow -v; python .github/scripts/agent_workflow.py --branch junhee; rg로 폐기 bootstrap·중복 시작 명령·현재 판정 오인 문구 부재 확인; gate_scope preflight·전체 7 planned paths·merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_DOCUMENT_POLICY;T2_AUTOMATION_REGRESSION;T3_WORKFLOW_CLI;T4_TEXT_AUDIT;T5_SCOPE;T6_DIFF;T7_BRANCH_CI
+STOP_CONDITIONS=작업 시작 안전 조건 완화; 일반 PLANNED 실행 허용; Gate 외 문서를 READY 정본으로 승격; archive·과거 카드 내용 변경; I0·I1 계약·평가 결과 의미 변경; 허용 경로 밖 변경; 자동 commit·push 추가; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=origin read-only fetch, 허용 경로 commit·junhee push·source CI만 허용한다. dev merge·archive 이동·다른 branch·Docker·외부 시스템·secret·비용 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=폐기 bootstrap 잔존; 시작 명령 중복; PASS 뒤 재승인 요구; 일반 PLANNED 자동 실행; historical 문서가 현재 실행 상태로 읽힘; scope·필수 검증 FAIL
+R1_REVIEW_CONDITIONS=문서 정책과 자동화 회귀가 PASS하고 실제 agent_workflow 출력과 지침이 일치하며 source CI가 PASS한 뒤에만 dev 통합한다.
+RESULT_SHA=1c3f3fbdb668f0d927e26a3c49843db1d91632ee
+RESULT_CI=branch 31462642899 PASS
 ```
 
 ### R2 · R2-W5-F5
@@ -748,11 +816,13 @@ STATUS=PLANNED
 ROLE_ID=R5
 PERSONAL_BRANCH=minji
 EXECUTION_BUNDLE_ID=R5-W5-F5
+AUTO_START=CONDITIONAL
+AUTO_START_AFTER=R5-W5-F4
 TARGET_INTEGRATION_GATE=I5
 TASK_CARD_RANGE=R5-01 LAN actual browser·CORS·fail-closed smoke
-BASE_SHA=N/A — R5-W5-F4 dev 통합 SHA
-DIRECTIVE=WAIT
-DIRECTIVE_TOKEN=N/A
+BASE_SHA=d2b1d5574e8b76fe0190bb6ed90b0b2e1b72fc61
+DIRECTIVE=AUTO
+DIRECTIVE_TOKEN=R5-W5-F5@d2b1d55
 ALLOWED_PATHS=handoffs/R5-W5-F5.json; docs/markdown/daily_reports/minji/일일보고.md
 ACCEPTANCE_CRITERIA=명시적 LAN frontend/backend 주소에서 Agent·Report network request와 allowed/denied CORS, 4xx/503 fail-closed UI를 실제 browser로 검증한다.
 TEST_COMMANDS=resolved compose; service health; browser screenshot/network; OPTIONS allow/deny; frontend contracts/build; scope; CI
@@ -800,6 +870,11 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.75 | 2026-08-11 15:02 | R1-W5-F31 협업 지침 단일화와 source CI 31462642899 PASS를 확인해 MERGED_DEV로 전환 |
+| v5.74 | 2026-08-11 14:52 | 선언 READY와 조건부 effective READY를 구분하고 PASS 카드의 착수 재승인·token 재발행 반복을 금지하도록 사용 원칙 정합화 |
+| v5.73 | 2026-08-11 14:48 | 협업 문서의 중복 시작 흐름·폐기 bootstrap·조건부 READY 설명·과거 상태 오인을 최소 교정하는 R1-W5-F31 발행 |
+| v5.72 | 2026-08-11 14:35 | 조건부 자동 착수의 fail-closed 회귀와 source CI 31461474741 PASS를 확인해 R1-W5-F30을 MERGED_DEV로 전환 |
+| v5.71 | 2026-08-11 14:16 | exact token·경로·선행조건이 미리 승인된 PLANNED 카드만 조건 충족 시 effective READY로 판정하는 R1-W5-F30 발행 |
 | v5.70 | 2026-08-11 14:15 | R5-W5-F4의 기존 UI·버튼·레이아웃 이력과 backend build 주소 연결을 보존하고 source CI 31460952787 PASS를 확인해 MERGED_DEV로 전환 |
 | v5.68 | 2026-08-11 14:04 | stale branch self-sync·Gate-only 원장 발행·remote source preflight의 세 자동화 병목과 중복 시작 지침을 최소 교정하는 R1-W5-F29 READY 발행 |
 | v5.69 | 2026-08-11 15:18 | R1-W5-F29 source CI 31460026364 PASS와 dev 충돌 없는 반영을 확인해 MERGED_DEV 전환 |

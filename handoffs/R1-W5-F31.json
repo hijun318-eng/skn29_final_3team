@@ -1,0 +1,113 @@
+{
+  "EXECUTION_BUNDLE_ID": "R1-W5-F31",
+  "ROLE": "R1",
+  "BRANCH": "junhee",
+  "BASE_SHA": "a4b4898ef4cf31993647b4906238f21103c83c1d",
+  "RESULT_SHA": "edef93958955d04510c285d814544c8a67db3b6a",
+  "COMPLETED_CARDS": [
+    "R1-04-COLLABORATION-GUIDANCE-SIMPLIFICATION"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/collaboration/AI_개발_환경_설정.md",
+    "docs/markdown/collaboration/Gate_실행_카드_원장.md",
+    "docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md",
+    "docs/markdown/collaboration/I1_평가_원장.md",
+    "docs/markdown/collaboration/README.md",
+    "docs/markdown/daily_reports/junhee/일일보고.md"
+  ],
+  "CONTRACT_VERSIONS": {
+    "collaboration_guidance": "v1.0.0-DRAFT",
+    "gate_scope": "v1.2.0",
+    "directive_token": "R1-W5-F31@a4b4898"
+  },
+  "TEST_RESULTS": [
+    {
+      "id": "T1_DOCUMENT_POLICY",
+      "name": "협업 문서 정책 검사",
+      "status": "PASS",
+      "evidence": "check_document_policy.py: 5 checked, 1 report skipped"
+    },
+    {
+      "id": "T2_AUTOMATION_REGRESSION",
+      "name": "Gate와 agent workflow 회귀",
+      "status": "PASS",
+      "evidence": "python -m unittest tests.integration.test_gate_scope tests.integration.test_agent_workflow -v: 56 passed"
+    },
+    {
+      "id": "T3_WORKFLOW_CLI",
+      "name": "단일 작업 시작 명령",
+      "status": "PASS",
+      "evidence": "python .github/scripts/agent_workflow.py --branch junhee: result PASS, bundle R1-W5-F31, contract/path errors 0"
+    },
+    {
+      "id": "T4_TEXT_AUDIT",
+      "name": "중복·폐기 문구 검사",
+      "status": "PASS",
+      "evidence": "collaboration 문서에서 gate_scope --bootstrap 기본 안내와 I0 현재 판정 제목 0건, 작업 시작 명령은 단일 절에서만 안내"
+    },
+    {
+      "id": "T5_SCOPE",
+      "name": "Gate scope",
+      "status": "PASS",
+      "evidence": "7 planned paths PASS, merge-base role scope PASS before handoff"
+    },
+    {
+      "id": "T6_DIFF",
+      "name": "Git diff check",
+      "status": "PASS",
+      "evidence": "git diff --check PASS"
+    },
+    {
+      "id": "T7_BRANCH_CI",
+      "name": "junhee branch CI",
+      "status": "CI_PENDING",
+      "evidence": "current handoff push가 branch CI를 시작하며 terminal 결과는 R1 dev 통합 판정에서 확인"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_SINGLE_ENTRYPOINT",
+      "status": "PASS",
+      "evidence": "agent_workflow.py를 역할 작업의 단일 시작 진입점으로 고정"
+    },
+    {
+      "id": "AC2_ACTION_TABLE",
+      "status": "PASS",
+      "evidence": "PASS, conditional effective READY, fast-forward-available, FAIL의 후속 행동을 한 표로 정의"
+    },
+    {
+      "id": "AC3_NO_APPROVAL_PING_PONG",
+      "status": "PASS",
+      "evidence": "preflight PASS 카드에서 별도 Google Docs 착수 승인과 token 재발행을 요구하지 않음"
+    },
+    {
+      "id": "AC4_EFFECTIVE_READY_WORDING",
+      "status": "PASS",
+      "evidence": "선언 READY·IN_PROGRESS와 조건부 effective READY를 Gate 사용 원칙에서 구분"
+    },
+    {
+      "id": "AC5_REVIEW_IS_POST_IMPLEMENTATION",
+      "status": "PASS",
+      "evidence": "R1_REVIEW_CONDITIONS를 구현 완료 후 dev 통합 판정으로 명시"
+    },
+    {
+      "id": "AC6_HISTORICAL_SNAPSHOTS",
+      "status": "PASS",
+      "evidence": "I0·I1 문서를 FROZEN/HISTORICAL로 표시하고 현재 실행 상태는 Gate 원장으로 연결"
+    },
+    {
+      "id": "AC7_SAFETY_UNCHANGED",
+      "status": "PASS",
+      "evidence": "single-active, clean, CI, scope, stop 조건과 일반 PLANNED 차단을 유지"
+    },
+    {
+      "id": "AC8_MINIMAL_SCOPE",
+      "status": "PASS",
+      "evidence": "문구 정합에 필요한 5개 협업 문서와 R1 보고만 수정하고 archive·제품·자동화 코드는 변경하지 않음"
+    }
+  ]
+}

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.58 |
-| 문서 기준일 | 2026-08-11 11:58 |
+| 버전 | v5.59 |
+| 문서 기준일 | 2026-08-11 12:11 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F24` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F25` | `READY` | `junhee` |
 | R2 | `R2-W5-F8` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F12` | `READY` | `jaehong` |
@@ -131,6 +131,39 @@ STOP_CONDITIONS=제품 test를 scope PASS로 위조; quality gate 완화; inheri
 EXTERNAL_ACTION_PERMISSION=read-only fetch와 clean ancestor branch의 명시적 ff-only sync, 허용 경로 commit·junhee push·branch CI만 승인한다. 자동 push·merge conflict 해결·workflow dispatch·secret 변경·외부 배포는 금지한다.
 AUTO_FAIL_CONDITIONS=scope 실패인데 final gate PASS; 제품 job skip 회귀; inherited checkpoint drift 은폐; handoff 미검증 PASS; dirty/history 손실; archive 뒤 active bundle·historical base 조회 실패; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=scope 실패 fixture에서도 제품 jobs가 실행되고 final gate는 실패하는 CI 계약, terminal handoff 호환성, inherited blob 불변 검증, Windows/Linux preflight 회귀, compact ledger dashboard를 모두 확인한 뒤 dev 통합한다.
+```
+
+### R1 · R1-W5-F25
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F25
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=archived I4 VERIFIED_GATE → active I5 issue readiness
+TASK_CARD_RANGE=R1-04 coding-agent compact Gate archive readiness regression
+CURRENT_TASK_CARD_ID=R1-04-AGENT-AUTOMATION-ARCHIVE-READINESS
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=473d014f0d9c394faf62d958200ae4e9e4755200
+START_POINT=R1-W5-F24 MERGED_DEV와 junhee/dev CI PASS를 기준으로 한다. 원본 junhee의 사용자 요청 legacy 문서 dirty diff는 status와 binary hash를 전후 보존하고 stage·commit·stash·reset하지 않는다. Gate-only 발행 commit 뒤 구현은 Git-write 가능한 별도 clean junhee clone에서 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F25@473d014
+CONTRACT_VERSION=GATE-SCOPE-v1.1.1-DRAFT
+ALLOWED_PATHS=.github/scripts/gate_scope.py; tests/integration/test_gate_scope.py; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F25.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=docs/markdown/collaboration/archive/** 수정; docs/markdown/ai_docs/legacy/**; .github/workflows/**; .github/scripts/agent_workflow.py; 승인 test 외 tests/**; app/**; infrastructure/**; src/**; R2~R5 경로; root Compose/env; dependency·secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F25.json
+ACCEPTANCE_CRITERIA=active 원장만 current bundle·현재 blocker·PLANNED candidate·token의 정본으로 유지하고 archive는 직전 Gate VERIFIED_GATE 존재 판정에만 사용한다. archive의 R1-W4-F5 TARGET_INTEGRATION_GATE=I4·STATUS=VERIFIED_GATE를 근거로 `--dashboard --next-gate auto`가 Previous gate I4와 READY_TO_ISSUE를 출력한다. archive의 과거 PLANNED·READY·BLOCKED·MERGED_DEV는 현재 상태로 승격하지 않는다. archive missing·parse failure·I4 VERIFIED_GATE 부재는 BLOCKED와 명시적 진단을 반환한다. 기존 current_bundle·historical base·role scope·inherited blob·CI_PENDING 의미를 유지한다. Google Docs는 요청함이며 READY 정본이 아니다.
+ACCEPTANCE_IDS=AC1_ARCHIVED_VERIFIED_GATE;AC2_ACTIVE_STATE_CANONICAL;AC3_ARCHIVE_FAIL_CLOSED;AC4_CURRENT_I5_READINESS;AC5_GATE_REGRESSION;AC6_USER_DIRTY_PRESERVED;AC7_GOOGLE_DOCS_INBOX_ONLY
+TEST_COMMANDS=archive VERIFIED_GATE positive와 missing·malformed·no-verified negative unittest; current dashboard/current_bundle/historical base 회귀; 전체 test_gate_scope; 실제 `--dashboard --next-gate auto`; compileall; handoff json.tool; document policy; clean preflight·5 planned paths·merge-base; 원본 legacy dirty pre/post binary diff SHA-256; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_ARCHIVE_VERIFIED;T2_ARCHIVE_MISSING;T3_CURRENT_DASHBOARD;T4_GATE_REGRESSION;T5_DASHBOARD_CLI;T6_COMPILE;T7_HANDOFF_JSON;T8_DOCUMENT_POLICY;T9_SCOPE;T10_USER_DIRTY_HASH;T11_DIFF;T12_BRANCH_CI
+DEPENDENCIES=R1-W5-F24 MERGED_DEV@473d014; read-only archive에 R1-W4-F5 I4 VERIFIED_GATE 존재; R2~R5 제품 카드와 무관
+STOP_CONDITIONS=legacy dirty diff 변화; archive 수정·현재 실행 정본 승격; archive 과거 카드를 현재 blocker/candidate/current bundle로 사용; archive missing·손상인데 READY; current_bundle·role scope·historical base·handoff 회귀; 허용 경로 밖 변경; reset·rebase·stash·force·자동 conflict 해결; dependency·secret·외부 비용; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=origin read-only fetch, Git-write 가능한 exact 별도 clean clone, 허용 경로 commit·junhee push·branch CI만 승인한다. 원본 dirty worktree의 stage/commit/stash/reset/checkout, archive 수정, dev merge, ACL·sandbox·network 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=archive 때문에 active current card/blocker/candidate가 변함; archive 없음·손상인데 READY; dashboard가 I4 미검증으로 오판; 원본 dirty diff 변화; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=synthetic·실제 compact 원장에서 archive I4 VERIFIED_GATE만 인식하고 active 상태가 불변이며 원본 legacy diff hash가 일치하고 source CI PASS인 경우에만 dev 통합한다.
 ```
 
 ### R2 · R2-W5-F5
@@ -538,6 +571,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.59 | 2026-08-11 12:11 | compact archive의 I4 VERIFIED_GATE를 dashboard가 인식하지 못하는 회귀를 교정하는 R1-W5-F25 READY 발행 |
 | v5.58 | 2026-08-11 11:58 | R1-W5-F24 자동화 개선을 source CI 31453748585 PASS 근거로 dev에 통합하고 MERGED_DEV로 종료 |
 | v5.57 | 2026-08-11 11:55 | 역할별 최신 실행 카드와 PLANNED 큐만 활성 원장에 남기고 이전 49개 카드를 날짜 archive로 이동해 hot-file 크기를 축소 |
 | v5.56 | 2026-08-11 11:45 | scope metadata 실패에도 제품 검증 신호를 수집하고 pending-CI handoff·inherited checkpoint hash·단일 preflight/sync·활성 원장 경량화를 구현하는 R1-W5-F24 READY 발행 |

@@ -3,7 +3,7 @@
   "ROLE": "R1",
   "BRANCH": "junhee",
   "BASE_SHA": "af13722b23196a761d7c3742e925936bb86c84b5",
-  "RESULT_SHA": "fd3cb12a9db7ab01c3ed9b72efca517ea2f8cf09",
+  "RESULT_SHA": "2621b2e345ac6e6765899826de0d1c3a872950ec",
   "COMPLETED_CARDS": ["R1-04-TEST-RUNTIME-IDENTITY"],
   "CHANGED_FILES": [
     ".github/scripts/refresh_test_runtime.ps1",
@@ -26,7 +26,7 @@
     {"id": "T7_DOCUMENT_POLICY", "name": "문서·보고 정책", "status": "PASS", "evidence": "document policy와 개인 보고 validation PASS"},
     {"id": "T8_SCOPE", "name": "Gate scope", "status": "PASS", "evidence": "6 planned paths와 merge-base scope PASS"},
     {"id": "T9_DIFF", "name": "Git diff check", "status": "PASS", "evidence": "git diff --check PASS"},
-    {"id": "T10_BRANCH_CI", "name": "junhee source CI", "status": "CI_PENDING", "evidence": "handoff push 뒤 terminal CI 확인 예정"}
+    {"id": "T10_BRANCH_CI", "name": "junhee source CI", "status": "CI_PENDING", "evidence": "F33 terminal CI 31466404591 PASS 뒤 R5 Gate-only 발행 commit 2621b2e를 RESULT_SHA로 고정했다. CI 31466626517은 제품·문서가 아니라 stale RESULT_SHA role-scope만 실패했으며 이 handoff-only 교정 push의 terminal CI 확인 예정"}
   ],
   "NOT_RUN": [],
   "CHANGE_REQUESTS": [],

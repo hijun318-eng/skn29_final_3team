@@ -1,0 +1,149 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W5-F16",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "2d805bf9cc52828b567e17e182fd88a8895a0b57",
+  "SYNCED_DEV_SHA": "d2b1d5574e8b76fe0190bb6ed90b0b2e1b72fc61",
+  "RESULT_SHA": "02b2264681a02513bee84fd2b42d2cbdc1b5cefc",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W5-F16@2d805bf",
+  "STATUS": "REVIEW",
+  "COMPLETED_CARDS": [
+    "R4-16 Analysis·Report 공통 authentication·authorization trust boundary REWORK"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/README.md",
+    "app/backend/app/auth.py",
+    "app/backend/app/context.py",
+    "app/backend/compose.fragment.yml",
+    "app/backend/contracts/openapi.v0.1.json",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
+    "tests/backend/test_auth_context.py",
+    "tests/backend/test_http_runtime.py",
+    "tests/backend/test_openapi_contract.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "AUTH_TRUST": "AUTH-TRUST-v1.0.0-DRAFT",
+    "OPENAPI": "OPENAPI-v1.0.0",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "TEST_RESULTS": [
+    {
+      "id": "T1_AUTH_TARGET",
+      "name": "server-owned principal 대상 검증",
+      "status": "PASS",
+      "evidence": "test_auth_context.py 6개 test와 하위 반례가 모두 통과했다."
+    },
+    {
+      "id": "T2_NEGATIVE_MATRIX",
+      "name": "인증 실패 차단 행렬",
+      "status": "PASS",
+      "evidence": "missing·empty·unknown·expired·future token은 401, header 주체·역할 불일치는 403, duplicate·invalid·unreadable principal mapping은 503으로 차단했다."
+    },
+    {
+      "id": "T3_ANALYSIS_REPORT",
+      "name": "Analysis·Report 실제 HTTP와 임시 DB",
+      "status": "NOT_RUN",
+      "evidence": "합성 test-mode HTTP는 통과했지만 R4_REAL_HTTP_TEST=1과 임시 PostgreSQL을 요구하는 9건은 현재 F16 외부 실행 권한에 DB 생성 권한이 없어 skip했다."
+    },
+    {
+      "id": "T4_BACKEND",
+      "name": "Python 3.12 backend 전체",
+      "status": "NOT_RUN",
+      "evidence": "Python 3.12 container에서 145 passed, 16 skipped, 10 warnings. skip은 실제 HTTP 9건, migration DB 4건, Context Registry DB 2건, Report DB 1건이다."
+    },
+    {
+      "id": "T5_OPENAPI",
+      "name": "OpenAPI 고정 계약",
+      "status": "PASS",
+      "evidence": "python app/backend/scripts/export_openapi.py --check 결과 OPENAPI_CONTRACT_VERIFIED."
+    },
+    {
+      "id": "T6_COMPILE",
+      "name": "Python compile",
+      "status": "PASS",
+      "evidence": "python -m compileall -q app/backend PASS."
+    },
+    {
+      "id": "T7_SCOPE",
+      "name": "Gate planned-path와 merge-base",
+      "status": "PASS",
+      "evidence": "시작 전 clean bootstrap과 카드의 11개 planned-path 검사가 PASS했고 변경 파일은 모두 허용 경로다."
+    },
+    {
+      "id": "T8_DIFF",
+      "name": "공백·보고·secret 검사",
+      "status": "PASS",
+      "evidence": "git diff --check, 20260811 개인보고 validator, secret pattern 검사가 모두 통과했다."
+    },
+    {
+      "id": "T9_BRANCH_CI",
+      "name": "jaehong source CI",
+      "status": "CI_PENDING",
+      "evidence": "handoff commit을 포함한 현재 jaehong push가 source CI를 시작한다."
+    }
+  ],
+  "NOT_RUN": [
+    "R4_REAL_HTTP_TEST=1 실제 HTTP 9건: 임시 PostgreSQL 연결이 필요하지만 현재 F16은 DB lifecycle을 승인하지 않음",
+    "MIGRATION_TEST_DATABASE_URL 기반 migration 호환성 4건과 Context Registry 2건: 격리 PostgreSQL 필요",
+    "REPORT_DATABASE_URL 기반 Report PostgreSQL 1건: 격리 PostgreSQL 필요"
+  ],
+  "CHANGE_REQUESTS": [
+    "R1이 다른 project·volume을 변경하지 않는 owner-scoped ephemeral PostgreSQL 검증 카드를 발행하면 skip 16건을 실제 실행하고 handoff를 교정한다."
+  ],
+  "RESIDUAL_RISKS": [
+    "운영 AUTH_PRINCIPALS_FILE의 read-only secret mount와 실제 credential 배포는 root Compose 소유자인 R1의 별도 카드가 필요하다."
+  ],
+  "EXTERNAL_APPROVAL_REQUIRED": [
+    "skip 16건 해소를 위한 격리 ephemeral PostgreSQL 생성·폐기 및 MIGRATION_TEST_DATABASE_URL·REPORT_DATABASE_URL·R4_REAL_HTTP_TEST 설정 권한"
+  ],
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_SERVER_OWNED_PRINCIPAL",
+      "status": "PASS",
+      "evidence": "Bearer token SHA-256 digest와 subject UUID·Role·유효기간을 서버 파일에서만 읽어 RequestContext를 만든다."
+    },
+    {
+      "id": "AC2_NO_CLIENT_ROLE_TRUST",
+      "status": "PASS",
+      "evidence": "X-User-Id·X-Role을 identity 입력으로 사용하지 않고 값이 있으면 서버 principal과 불일치를 403으로 차단한다."
+    },
+    {
+      "id": "AC3_TIME_BOUNDS",
+      "status": "PASS",
+      "evidence": "expired·not-yet-valid·timezone 없는 validity window 반례를 차단한다."
+    },
+    {
+      "id": "AC4_FAIL_CLOSED_MAPPING",
+      "status": "PASS",
+      "evidence": "missing file, malformed JSON, empty·duplicate digest, invalid UUID·Role을 503 INTERNAL_ERROR로 정규화한다."
+    },
+    {
+      "id": "AC5_EXPLICIT_TEST_MODE",
+      "status": "PASS",
+      "evidence": "AUTH_MODE=test에서만 고정 합성 principal을 사용하며 default·release는 test token으로 fallback하지 않는다."
+    },
+    {
+      "id": "AC6_SHARED_CONTEXT",
+      "status": "PASS",
+      "evidence": "Analysis와 Report router가 동일 analysis_context dependency를 사용하고 server principal role을 소비한다."
+    },
+    {
+      "id": "AC7_NO_SECRET_EXPOSURE",
+      "status": "PASS",
+      "evidence": "오류 응답은 token·digest·파일 경로를 노출하지 않으며 changed path secret pattern 검사에서 일치 항목이 없다."
+    },
+    {
+      "id": "AC8_OPENAPI_SECURITY",
+      "status": "PASS",
+      "evidence": "인증 route는 BearerAuth security scheme을 사용하고 X-User-Id·X-Role을 OpenAPI identity parameter로 광고하지 않는다."
+    },
+    {
+      "id": "AC9_COMPATIBILITY",
+      "status": "NOT_RUN",
+      "evidence": "145건은 통과했으나 DB 조건부 16건은 현재 권한 밖이라 전체 호환성 PASS로 승격하지 않는다."
+    }
+  ],
+  "REQUESTED_DECISION": "R1 source CI 확인과 보안 계약 검토. skip 16건을 해소할 owner-scoped ephemeral PostgreSQL 검증 카드를 발행하고, 운영 principal file read-only mount는 별도 root Compose 카드로 분리한다."
+}

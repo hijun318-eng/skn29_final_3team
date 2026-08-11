@@ -134,12 +134,11 @@
     {
       "id": "T9_BRANCH_CI",
       "name": "daesung source CI",
-      "status": "NOT_RUN",
-      "evidence": "not run because this task did not authorize commit/push; local full AI verification passed"
+      "status": "FAIL",
+      "evidence": "CI run 31469119306 on b4b73b5 failed in role-scope job 93708318364 and quality-gate job 93708439030; python-contracts and document-quality passed. Local gate reproduces REVIEW_REQUIRED for AC4/AC5/AC8, residual risks, and the submitted handoff review state."
     }
   ],
   "NOT_RUN": [
-    "daesung source CI after push",
     "external endpoint, RunPod, model download, cost, and secret-dependent verification"
   ],
   "CHANGE_REQUESTS": [],

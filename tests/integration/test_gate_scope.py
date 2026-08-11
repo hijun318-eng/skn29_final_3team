@@ -110,6 +110,13 @@ STOP_CONDITIONS=stop
         self.assertIsNone(bundle)
         self.assertEqual([], errors)
 
+        malformed = self.conditional_ledger().replace(
+            "AUTO_START_AFTER=R2-W1", "AUTO_START_AFTER=R2-MISSING"
+        ).replace("BASE_SHA=" + "a" * 40, "BASE_SHA=N/A")
+        errors = gate_scope.ledger_health_errors(malformed)
+        self.assertTrue(any("missing auto-start dependency" in error for error in errors))
+        self.assertTrue(any("requires fixed base" in error for error in errors))
+
     def test_conditional_base_rejects_overlap_after_issuance(self) -> None:
         bundle, _ = gate_scope.conditional_auto_start(
             self.conditional_ledger(), "seung"

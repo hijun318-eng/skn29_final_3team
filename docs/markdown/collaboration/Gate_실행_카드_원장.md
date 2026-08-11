@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F22` | `READY` | `junhee` |
+| R1 | `R1-W5-F22` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F8` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F12` | `READY` | `jaehong` |
@@ -1087,7 +1087,7 @@ R1_REVIEW_CONDITIONS=source CI에서 deprecation warning 해소와 전체 job PA
 ### R1 · R1-W5-F22
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1114,6 +1114,8 @@ STOP_CONDITIONS=override가 승인된 container_name·host 25432·host 28000 외
 EXTERNAL_ACTION_PERMISSION=exact answervice app-postgres/backend image build·service up/recreate·health/SQL/readiness와 실패 시 이번 실행에서 생성한 exact answervice container/network/빈 volume 정리만 승인한다. 기존 project/container/volume, DataHub, source DB, firewall, secret, 외부 전송·비용 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=기존 resource drift; broad down/down -v/prune/reset; migration stamp/drop; Template 수동 변조; partial readiness를 PASS; fake endpoint success; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=other-project invariant와 exact runtime readiness·source CI가 PASS하면 dev에 통합하고 R5 F4 bundle과 결합한 LAN Agent·Report browser smoke를 다음 R1 카드로 발행한다.
+RESULT_SHA=6ac0307bfb64fb833f10252373a8e3ef1c8ff9df
+RESULT_CI=branch 31449728747 PASS
 ```
 
 ### R2 · R2-W5-F5
@@ -1915,10 +1917,213 @@ R1_REVIEW_CONDITIONS=backend runtime/CORS가 아직 실패해도 R5 wiring 자�
 | I5-PRIORITY-01 | IN_PROGRESS | R3와 R4의 required filter 계약은 string·boolean 중심이며 `period_end`/`period_end_exclusive`와 실행 binder가 불일치한다. 승인 3-source 질문 G120-046과 Gold hash는 있으나 제품 소비용 PMS·CRM·POS Context fixture가 없다. | R2 typed registry+3-source producer → R4 Context/G2/binder → R3 Node2/evaluator → R1 조합 회귀+실제 API E2E 순으로 통합한다. 이 경로 통과 전 RunPod와 Node2 기능 확장을 보류한다. |
 | I5-BACKLOG-02 | PLANNED | Analysis는 기존 template/request/query/artifact 테이블이 있으나 persistence·조회·재실행 API가 없고, G2는 regex 기반, G3는 증폭·불변식·redaction이 부족하다. Report는 worker·schedule이 없고 실패 block 필드가 실행 전 실패를 표현하기 어렵다. | 기존 테이블 재사용 계약 결정 → Analysis persistence → SQLGlot G2 → R2 실행 증적/R4 G3 → Report v1.2 worker → R5 partial UI → schedule → Golden 보안·성능 검증 순으로 owner-scoped 카드 발행한다. |
 
+## 후속 실행 큐
+
+> 아래 카드는 선행 묶음이 끝나면 최신 dev SHA로 READY 전환한다. PLANNED·WAIT 상태는 구현 권한이 아니다.
+
+### R1 · R1-W5-F23
+
+```text
+STATUS=PLANNED
+ROLE_ID=R1
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F23
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R1-08 LAN Agent·Report actual browser smoke와 request trace
+BASE_SHA=N/A — R5-W5-F4 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=tests/integration/**; handoffs/R1-W5-F23.json; docs/markdown/daily_reports/junhee/일일보고.md
+ACCEPTANCE_CRITERIA=명시적 LAN frontend/backend URL에서 Agent·Report network request, exact CORS, fail-closed 오류와 request_id를 검증하며 3-source 성공은 실제 API가 성공할 때만 기록한다.
+TEST_COMMANDS=default/LAN compose config; actual browser/network trace; allowed/denied preflight; integration 전체; scope; diff; CI
+STOP_CONDITIONS=R5-W5-F4 미통합; firewall·secret·다른 project 변경; fixture success; 제품 변경 필요
+```
+
+### R2 · R2-W5-F9
+
+```text
+STATUS=PLANNED
+ROLE_ID=R2
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F9
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R2-09·10·11·19 DataHub 5-source ingestion·Semantic Catalog publish/verify·Binding live evidence
+BASE_SHA=N/A — R2-W5-F8 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/data/datahub_runtime_evidence.i5.v1.json; src/data/asset_binding_health.i5.v1.json; infrastructure/database/datahub/scripts/run-runtime-validation.ps1; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; tests/data/**; handoffs/R2-W5-F9.json; docs/markdown/daily_reports/seung/일일보고.md
+ACCEPTANCE_CRITERIA=pinned DataHub v1.7에서 5 recipe, Dataset 8/8, Column 116/116, unique 70, publisher 2회 멱등성과 live URN/FQN/lineage/binding hash를 observed evidence로 기록한다.
+TEST_COMMANDS=JSON; tests/data 전체; compose config; isolated runtime wrapper; publish twice; verifier; scope; diff; CI
+STOP_CONDITIONS=F8 미통합; 자원 preflight 실패; 다른 project/volume 변경; cardinality/hash 불일치; secret·실데이터·비용
+```
+
+### R2 · R2-W5-F10
+
+```text
+STATUS=PLANNED
+ROLE_ID=R2
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F10
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R2-10·11·19 live Semantic Catalog release freeze
+BASE_SHA=N/A — R2-W5-F9 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/data/serving_semantic_catalog.i4.v1.json; src/data/serving_analytics_contract.i4.v1.json; src/data/asset_binding_health.i5.v1.json; src/data/datahub_runtime_evidence.i5.v1.json; tests/data/**; handoffs/R2-W5-F10.json; docs/markdown/daily_reports/seung/일일보고.md
+ACCEPTANCE_CRITERIA=F9 live hash를 immutable 후보로 연결하고 PUBLISHED·VERIFIED binding만 소비자에게 노출하며 미검증 항목은 fail-closed한다.
+TEST_COMMANDS=JSON/hash; tests/data 전체; producer-consumer fixtures; scope; diff; CI
+STOP_CONDITIONS=F9 NOT_RUN; runtime PASS 위조; R3/R4 파일 변경; hash 비결정성
+```
+
+### R3 · R3-W5-F9
+
+```text
+STATUS=PLANNED
+ROLE_ID=R3
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F9
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R3-10 versioned Semantic Catalog training consumer
+BASE_SHA=N/A — R2·R3 W5-F8 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/ai/contracts/**; src/ai/training/semantic_catalog.py; src/ai/training/dataset.py; src/ai/training/verify_case_specs.py; tests/ai/**; handoffs/R3-W5-F9.json; docs/markdown/daily_reports/daesung/일일보고.md
+ACCEPTANCE_CRITERIA=8/116/70과 version/hash를 fail-closed 검증하고 description을 실행 instruction으로 취급하지 않으며 compiled dataset은 변경하지 않는다.
+TEST_COMMANDS=JSON; semantic tamper/injection tests; tests/ai 전체; compileall; deterministic hash; scope; diff; CI
+STOP_CONDITIONS=producer 미통합; dataset 재생성; prompt/model 변경; external endpoint·secret·dependency
+```
+
+### R3 · R3-W5-F10
+
+```text
+STATUS=PLANNED
+ROLE_ID=R3
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F10
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R3-10·14 compiled 1,350 typed parameter v2 재생성
+BASE_SHA=N/A — actual Analysis API E2E 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/ai/training/**; evals/**; tests/ai/**; handoffs/R3-W5-F10.json; docs/markdown/daily_reports/daesung/일일보고.md
+ACCEPTANCE_CRITERIA=period_end_exclusive·typed required filters를 1,350건에 결정론적으로 재생성하고 split/paraphrase/join graph 누수 0과 Gold 불변을 보장한다.
+TEST_COMMANDS=two-run byte/hash equality; manifest/leakage tests; tests/ai 전체; compileall; scope; diff; CI
+STOP_CONDITIONS=actual API E2E 미통과; Gold 의미 변경; RunPod·model·secret·비용; generated path 미승인
+```
+
+### R3 · R3-W5-F11
+
+```text
+STATUS=PLANNED
+ROLE_ID=R3
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F11
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R3-15 model·prompt·adapter release candidate freeze
+BASE_SHA=N/A — R3-W5-F10 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/modelops/**; src/ai/prompt_registry.py; tests/ai/**; handoffs/R3-W5-F11.json; docs/markdown/daily_reports/daesung/일일보고.md
+ACCEPTANCE_CRITERIA=model/image/runtime/prompt/dataset/adapter hash와 rollback target을 고정하고 Base 기본·LoRA disabled를 별도 승인 전 유지한다.
+TEST_COMMANDS=JSON/hash graph; artifact existence; model/prompt tests; tests/ai 전체; compileall; scope; diff; CI
+STOP_CONDITIONS=stale evidence; 무승인 Base→LoRA; RunPod 비용·secret; artifact/hash 누락
+```
+
+### R4 · R4-W5-F13
+
+```text
+STATUS=PLANNED
+ROLE_ID=R4
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F13
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R4-17·18 Report worker·block별 Analysis 재실행
+BASE_SHA=N/A — R4-W5-F12·R5-W5-F6 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=app/backend/app/report_*.py; app/backend/app/controllers/analysis_controller.py; app/backend/compose.fragment.yml; app/backend/migrations/**; app/backend/contracts/openapi.v0.1.json; tests/backend/**; handoffs/R4-W5-F13.json; docs/markdown/daily_reports/jaehong/일일보고.md
+ACCEPTANCE_CRITERIA=approved Definition command를 atomic claim하고 block마다 현재 권한·Context·G1/G2/G3 경로로 재실행해 success·partial·failed·cancelled를 구분한다.
+TEST_COMMANDS=claim concurrency; partial/all-fail/auth/filter/repair/timeout/masking; migration; backend 전체; OpenAPI; compose; scope; CI
+STOP_CONDITIONS=F12·R5 proposal 미통합; Gate 우회; raw SQL/result 복제; schedule·root compose·secret
+```
+
+### R4 · R4-W5-F14
+
+```text
+STATUS=PLANNED
+ROLE_ID=R4
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F14
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R4-15 append-only Audit repository와 read-only API
+BASE_SHA=N/A — R4-W5-F13 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=app/backend/app/audit_*.py; app/backend/app/main.py; app/backend/app/services/analysis_service.py; app/backend/app/services/report_worker.py; app/backend/migrations/**; app/backend/contracts/openapi.v0.1.json; tests/backend/**; handoffs/R4-W5-F14.json; docs/markdown/daily_reports/jaehong/일일보고.md
+ACCEPTANCE_CRITERIA=request_id 기반 append-only trace와 owner-scoped list/detail을 제공하고 raw SQL·parameter·result·secret·stack trace를 redaction한다.
+TEST_COMMANDS=analysis/report trace; authz; redaction; immutable append; pagination; migration; backend 전체; OpenAPI; scope; CI
+STOP_CONDITIONS=role mutation; raw data 노출; worker 미통합인데 report trace PASS 주장; frontend·R2/R3 변경
+```
+
+### R5 · R5-W5-F5
+
+```text
+STATUS=PLANNED
+ROLE_ID=R5
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W5-F5
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R5-01 LAN actual browser·CORS·fail-closed smoke
+BASE_SHA=N/A — R5-W5-F4 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=handoffs/R5-W5-F5.json; docs/markdown/daily_reports/minji/일일보고.md
+ACCEPTANCE_CRITERIA=명시적 LAN frontend/backend 주소에서 Agent·Report network request와 allowed/denied CORS, 4xx/503 fail-closed UI를 실제 browser로 검증한다.
+TEST_COMMANDS=resolved compose; service health; browser screenshot/network; OPTIONS allow/deny; frontend contracts/build; scope; CI
+STOP_CONDITIONS=F4 미통합; 제품 수정 필요; wildcard CORS; firewall·다른 project·secret; fake success
+```
+
+### R5 · R5-W5-F6
+
+```text
+STATUS=PLANNED
+ROLE_ID=R5
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W5-F6
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R5-14 Report Worker v1.2 domain/router/migration proposal
+BASE_SHA=N/A — R5-W5-F5 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/report/**; tests/report/**; handoffs/R5-W5-F6.json; docs/markdown/daily_reports/minji/일일보고.md
+ACCEPTANCE_CRITERIA=immutable Analysis Definition version·공통 report_as_of·queued→claimed→terminal·block partial·idempotency를 proposal로 동결하고 schedule은 제외한다.
+TEST_COMMANDS=report domain/router/migration proposal tests; duplicate claim; partial/all-fail; backend/OpenAPI unchanged; scope; CI
+STOP_CONDITIONS=app/backend 직접 수정; 과거 SQL 신뢰; fake status; schedule·P2·dependency·secret
+```
+
+### R5 · R5-W5-F7
+
+```text
+STATUS=PLANNED
+ROLE_ID=R5
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W5-F7
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R5-14 actual Report worker run·partial·error UI
+BASE_SHA=N/A — R4-W5-F13 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=app/enterprise-react/src/api/reportClient.ts; app/enterprise-react/src/contracts/report.ts; app/enterprise-react/src/pages/ReportsPage.jsx; app/enterprise-react/src/styles.css; tests/frontend/contracts.test.mjs; handoffs/R5-W5-F7.json; docs/markdown/daily_reports/minji/일일보고.md
+ACCEPTANCE_CRITERIA=server의 queued/running/success/partial/failed/cancelled와 block evidence를 그대로 표시하고 polling race·과거 결과 최신 위장을 차단한다.
+TEST_COMMANDS=frontend contracts/build; HTTP state matrix; actual worker browser flow; responsive/a11y; scope; CI
+STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStorage result; schedule·dependency
+```
+
 ## 변경 내역
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.52 | 2026-08-11 10:35 | R1-W5-F22의 격리 runtime·migration·Template·readiness를 MERGED_DEV로 전환하고, 각 역할의 후속 작업 11개를 단일 활성 카드 원칙을 지키는 PLANNED 큐로 등록 |
 | v5.51 | 2026-08-11 10:20 | 실제 호스트의 15432·18000 점유와 Windows 55432 제외 범위를 반영해 R1-W5-F22가 내부 DNS/target을 보존한 채 answervice 전용 host 25432·28000만 override하도록 runtime identity 계약 교정 |
 | v5.50 | 2026-08-11 10:10 | R1-W5-F21 checkout Node 24 immutable pin과 source CI를 dev에 통합하고, R4-W5-F11 readiness 계약 위에서 app-postgres identity 충돌을 root override로 해소해 actual readiness를 검증하는 R1-W5-F22 READY 발행 |
 | v5.49 | 2026-08-11 10:10 | R2-W5-F7 CI scope 충돌을 inherited evidence로 분리해 R2-W5-F8을 발행하고, R4 Context Registry 요청 중 live 의존이 없는 F10A additive migration·F10B checksum repository를 R4-W5-F12 service-only READY로 병렬 발행 |

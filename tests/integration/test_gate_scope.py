@@ -367,6 +367,86 @@ PERSONAL_BRANCH=junhee
     def test_next_gate_is_inferred_from_active_bundle(self) -> None:
         self.assertEqual("I5", gate_scope.inferred_next_gate(self.ledger))
 
+    def test_next_gate_uses_verified_gate_from_archive_without_promoting_archived_cards(self) -> None:
+        active = """```text
+EXECUTION_BUNDLE_ID=R1-W5-F25
+STATUS=READY
+PERSONAL_BRANCH=junhee
+TARGET_INTEGRATION_GATE=I5
+ALLOWED_PATHS=.github/scripts/gate_scope.py
+```
+```text
+EXECUTION_BUNDLE_ID=R2-W5-F9
+STATUS=PLANNED
+PERSONAL_BRANCH=seung
+TARGET_INTEGRATION_GATE=I5
+```"""
+        archive = [
+            {
+                "EXECUTION_BUNDLE_ID": "R1-W4-F5",
+                "STATUS": "VERIFIED_GATE",
+                "PERSONAL_BRANCH": "junhee",
+                "TARGET_INTEGRATION_GATE": "I4",
+            },
+            {
+                "EXECUTION_BUNDLE_ID": "R2-W5-F8",
+                "STATUS": "PLANNED",
+                "PERSONAL_BRANCH": "seung",
+                "TARGET_INTEGRATION_GATE": "I5",
+            },
+        ]
+        lines = "\n".join(
+            gate_scope.next_gate_lines(active, "I5", archive, [])
+        )
+        self.assertIn("Result: `READY_TO_ISSUE`", lines)
+        self.assertIn("R2-W5-F9", lines)
+        self.assertNotIn("R2-W5-F8", lines)
+        self.assertEqual(
+            "R1-W5-F25",
+            gate_scope.current_bundle(active, "junhee")["EXECUTION_BUNDLE_ID"],
+        )
+
+    def test_next_gate_blocks_when_archive_missing_or_has_no_verified_previous_gate(self) -> None:
+        archive, errors = gate_scope.load_archive_bundles([])
+        lines = "\n".join(
+            gate_scope.next_gate_lines(self.ledger, "I5", archive, errors)
+        )
+        self.assertIn("Result: `BLOCKED`", lines)
+        self.assertIn("Gate archive files are missing", lines)
+
+        with tempfile.TemporaryDirectory() as directory:
+            malformed = Path(directory) / "Gate_실행_카드_원장_bad.md"
+            malformed.write_text("not a Gate ledger", encoding="utf-8")
+            archive, errors = gate_scope.load_archive_bundles([malformed])
+        self.assertEqual([], archive)
+        self.assertIn("no parseable bundles", errors[0])
+
+        lines = "\n".join(
+            gate_scope.next_gate_lines(
+                self.ledger,
+                "I5",
+                [
+                    {
+                        "STATUS": "VERIFIED_GATE",
+                        "PERSONAL_BRANCH": "seung",
+                        "TARGET_INTEGRATION_GATE": "I4",
+                    }
+                ],
+                [],
+            )
+        )
+        self.assertIn("Result: `BLOCKED`", lines)
+        self.assertIn("I4` has no VERIFIED_GATE", lines)
+
+    def test_current_dashboard_recognizes_archived_i4_verified_gate(self) -> None:
+        archive, errors = gate_scope.load_archive_bundles()
+        lines = "\n".join(
+            gate_scope.next_gate_lines(self.ledger, "I5", archive, errors)
+        )
+        self.assertEqual([], errors)
+        self.assertIn("Previous gate: `I4`", lines)
+        self.assertIn("Result: `READY_TO_ISSUE`", lines)
+
     def test_dashboard_prefers_origin_dev_sha(self) -> None:
         with patch.object(gate_scope.subprocess, "run") as run:
             run.return_value.returncode = 0

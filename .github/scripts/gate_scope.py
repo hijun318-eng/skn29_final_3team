@@ -10,6 +10,7 @@ from typing import Any
 
 
 LEDGER = Path("docs/markdown/collaboration/Gate_실행_카드_원장.md")
+ARCHIVE_DIR = LEDGER.parent / "archive"
 HANDOFFS = Path("handoffs")
 REPORTS = {
     "junhee": "docs/markdown/daily_reports/junhee/일일보고.md",
@@ -117,6 +118,30 @@ def bundles(text: str) -> list[dict[str, str]]:
         if {"STATUS", "PERSONAL_BRANCH", "EXECUTION_BUNDLE_ID"} <= values.keys():
             parsed.append(values)
     return parsed
+
+
+def load_archive_bundles(
+    paths: list[Path] | None = None,
+) -> tuple[list[dict[str, str]], list[str]]:
+    archive_paths = (
+        sorted(ARCHIVE_DIR.glob("Gate_실행_카드_원장_*.md"))
+        if paths is None
+        else paths
+    )
+    if not archive_paths:
+        return [], ["Gate archive files are missing"]
+    parsed: list[dict[str, str]] = []
+    errors: list[str] = []
+    for path in archive_paths:
+        try:
+            archived = bundles(path.read_text(encoding="utf-8"))
+        except OSError as error:
+            errors.append(f"cannot read Gate archive {path}: {error}")
+            continue
+        if not archived:
+            errors.append(f"Gate archive has no parseable bundles: {path}")
+        parsed.extend(archived)
+    return parsed, errors
 
 
 def ledger_health_errors(text: str) -> list[str]:
@@ -731,7 +756,12 @@ def handoff_status(
     return "PASS", []
 
 
-def next_gate_lines(text: str, target_gate: str) -> list[str]:
+def next_gate_lines(
+    text: str,
+    target_gate: str,
+    archive: list[dict[str, str]] | None = None,
+    archive_errors: list[str] | None = None,
+) -> list[str]:
     match = re.fullmatch(r"I([1-5])", target_gate)
     if not match or match.group(1) == "1":
         raise ValueError("next gate must be I2 through I5")
@@ -748,10 +778,15 @@ def next_gate_lines(text: str, target_gate: str) -> list[str]:
             blockers.append(
                 f"{role} {bundle['EXECUTION_BUNDLE_ID']}={bundle['STATUS']}"
             )
+    if archive is None or archive_errors is None:
+        loaded, errors = load_archive_bundles()
+        archive = loaded if archive is None else archive
+        archive_errors = errors if archive_errors is None else archive_errors
     verified = any(
         bundle.get("TARGET_INTEGRATION_GATE") == previous_gate
         and bundle["STATUS"] == "VERIFIED_GATE"
-        for bundle in parsed
+        and bundle.get("PERSONAL_BRANCH") == "junhee"
+        for bundle in [*parsed, *archive]
     )
     candidates = [
         bundle["EXECUTION_BUNDLE_ID"]
@@ -760,7 +795,7 @@ def next_gate_lines(text: str, target_gate: str) -> list[str]:
         and bundle["STATUS"] == "PLANNED"
         and re.fullmatch(r"R[1-5]-W\d+(?:-[A-Z0-9]+)?", bundle["EXECUTION_BUNDLE_ID"])
     ]
-    ready = not blockers and verified
+    ready = not blockers and verified and not archive_errors
     lines = [
         f"## {target_gate} issue readiness",
         f"- Previous gate: `{previous_gate}`",
@@ -771,13 +806,16 @@ def next_gate_lines(text: str, target_gate: str) -> list[str]:
         lines.extend(f"- Blocker: {blocker}" for blocker in blockers)
     if not verified:
         lines.append(f"- Blocker: `{previous_gate}` has no VERIFIED_GATE bundle")
+    lines.extend(f"- Blocker: {error}" for error in archive_errors)
     if candidates:
         lines.append(f"- Planned candidates: {', '.join(candidates)}")
     lines.append("- READY publication remains an R1 manual decision.")
     return lines
 
 
-def inferred_next_gate(text: str) -> str:
+def inferred_next_gate(
+    text: str, archive: list[dict[str, str]] | None = None
+) -> str:
     current = [
         bundle
         for branch in ROLES
@@ -793,8 +831,9 @@ def inferred_next_gate(text: str) -> str:
         return min(active_targets, key=lambda gate: int(gate[1:]))
     verified = [
         int(bundle["TARGET_INTEGRATION_GATE"][1:])
-        for bundle in current
+        for bundle in [*current, *(archive or [])]
         if bundle["STATUS"] == "VERIFIED_GATE"
+        and bundle.get("PERSONAL_BRANCH") == "junhee"
         and re.fullmatch(r"I[1-5]", bundle.get("TARGET_INTEGRATION_GATE", ""))
     ]
     return f"I{min(max(verified, default=1) + 1, 5)}"
@@ -860,12 +899,20 @@ def main() -> int:
 
     text = LEDGER.read_text(encoding="utf-8")
     if args.dashboard:
+        archive, archive_errors = load_archive_bundles()
         lines = dashboard_lines(text)
         if args.next_gate:
             target_gate = (
-                inferred_next_gate(text) if args.next_gate == "auto" else args.next_gate
+                inferred_next_gate(text, archive)
+                if args.next_gate == "auto"
+                else args.next_gate
             )
-            lines.extend(["", *next_gate_lines(text, target_gate)])
+            lines.extend(
+                [
+                    "",
+                    *next_gate_lines(text, target_gate, archive, archive_errors),
+                ]
+            )
         write_summary(lines)
         print("\n".join(lines))
         return 0

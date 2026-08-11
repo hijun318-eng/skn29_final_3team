@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.93 |
-| 문서 기준일 | 2026-08-11 18:31 |
+| 버전 | v5.94 |
+| 문서 기준일 | 2026-08-11 18:50 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -24,7 +24,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F36` | `REVIEW` | `junhee` |
+| R1 | `R1-W5-F36` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F17` | `READY` | `jaehong` |
@@ -475,7 +475,7 @@ R1_REVIEW_CONDITIONS=동일 dev/test/runtime SHA에서 실제 network·request_i
 ### R1 · R1-W5-F36
 
 ```text
-STATUS=REVIEW
+STATUS=MERGED_DEV
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -501,6 +501,8 @@ STOP_CONDITIONS=env copy·content/value 출력; relative·missing env 허용; re
 EXTERNAL_ACTION_PERMISSION=origin read-only fetch·CI 조회, 허용 경로 commit·junhee push·source CI만 승인한다. git config·env·Docker·dev/test branch·외부 시스템·secret·비용은 변경하지 않는다.
 AUTO_FAIL_CONDITIONS=external env가 compose --env-file로 직접 전달되지 않음; fallback 우선순위 역전; secret log; concurrent conflict 또는 mixed source 허용; 기존 PlanOnly·opt-in 회귀; scope·필수 검증 FAIL
 R1_REVIEW_CONDITIONS=synthetic env·conflict·source identity matrix와 전체 integration·source CI가 PASS한 뒤 test runtime 적용 여부를 별도 판정한다.
+RESULT_SHA=067f4b5d4e316da425c056bd902520ba61a3f1c2
+RESULT_CI=branch 31470948044 PASS
 ```
 
 ### R2 · R2-W5-F5
@@ -1135,6 +1137,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.94 | 2026-08-11 18:50 | R1-W5-F36의 외부 env 직접 참조·runtime 충돌 fail-closed와 source CI 31470948044 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.93 | 2026-08-11 18:31 | R2-W5-F12를 CRM `include_jobs: false` corrective와 recipe hash·existing isolated runtime ingestion·Semantic Catalog 8/116 evidence 재개 묶음으로 교정하고, 존재하지 않는 F9 handoff 소급과 DB grant·Docker lifecycle을 금지 |
 | v5.92 | 2026-08-11 18:28 | test env absolute regular file·필수 변수 이름·config fallback과 fixed container/port·checkout label fail-closed를 구현하고 target 9건·integration 92건을 확인해 R1-W5-F36 REVIEW 전환 |
 | v5.91 | 2026-08-11 18:12 | F36 Gate-only CI 31469850161이 제품 결함 없이 dev 기준 누적 F34 4경로 미선언으로 fail-closed한 결과를 반영해, 신규 7경로와 누적 F34 경로의 exact union 11경로로 source scope 교정 |

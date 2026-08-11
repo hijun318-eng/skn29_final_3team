@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.78 |
-| 문서 기준일 | 2026-08-11 16:05 |
+| 버전 | v5.79 |
+| 문서 기준일 | 2026-08-11 16:15 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -370,6 +370,37 @@ AUTO_FAIL_CONDITIONS=test CI가 dev 전체 검증보다 좁음; hosted/local 경
 R1_REVIEW_CONDITIONS=synthetic path matrix와 local dry-run에서 exact service 선택·no-op·manual-review가 확인되고 source CI가 PASS한 뒤 test branch를 dev에서 생성해 관리자 merge 전용으로 사용한다.
 RESULT_SHA=c87361832fe84f044134125528e01c88d6208ceb
 RESULT_CI=branch 31463640451 PASS
+```
+
+### R1 · R1-W5-F33
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F33
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=test runtime checkout identity fail-closed before selective refresh
+TASK_CARD_RANGE=R1-04 test runtime Compose checkout identity 검증
+CURRENT_TASK_CARD_ID=R1-04-TEST-RUNTIME-IDENTITY
+BASE_BRANCH=dev
+BASE_SHA=af13722b23196a761d7c3742e925936bb86c84b5
+START_POINT=R1-W5-F32가 dev af13722에 통합되고 dev·test·junhee가 같은 SHA이며 source CI 31463640451과 dev CI 31464311224와 test CI 31464354416이 PASS했다. 실제 host 점검에서 app-postgres는 repository root, backend는 별도 baseline_restore worktree, frontend는 test worktree의 Compose label을 가져 모두 healthy인데도 현재 refresh script가 같은 project 이름만 보고 단일 test runtime으로 오인함을 확인했다. 제품 소유 코드는 변경하지 않고 선택 재기동 전에 exact test checkout identity를 fail-closed 검증한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F33@af13722
+CONTRACT_VERSION=TEST-BRANCH-RUNTIME-v1.0.1-DRAFT; COMPOSE-DEV-v1
+ALLOWED_PATHS=.github/scripts/refresh_test_runtime.ps1; tests/integration/test_test_runtime_refresh.py; docs/markdown/collaboration/README.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F33.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=.github/workflows/**; .githooks/**; compose.yml; compose.app-postgres.override.yml; .env.example; app/**; infrastructure/**; src/**; tests/**의 승인 1파일 외 경로; R2~R5 보고·handoff·제품 경로; dependency·secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F33.json
+ACCEPTANCE_CRITERIA=실제 refresh 직전에 backend·frontend와 stateful prerequisite app-postgres의 Compose project label, config file, environment file, working directory를 읽어 현재 test worktree의 compose.yml·승인된 EnvFilePath·repository root와 exact 일치하는지 검증한다. 누락·상대경로 해석 실패·다른 checkout·다른 env·다른 project면 container가 healthy여도 재기동하지 않고 확인된 service와 label 차이를 포함해 중단한다. PlanOnly 분류는 Docker를 조회하지 않고 기존 결과를 보존한다. 일치하면 기존 exact service 선택과 --no-deps --build --wait·HTTP health 흐름을 그대로 사용한다. container 생성·교체·volume·network·다른 project·제품 코드는 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_CURRENT_TEST_CHECKOUT;AC2_EXACT_CONFIG;AC3_EXACT_ENV;AC4_ALL_PREREQUISITES;AC5_MISMATCH_FAIL_CLOSED;AC6_PLAN_ONLY_UNCHANGED;AC7_REFRESH_UNCHANGED;AC8_NO_PRODUCT_MUTATION
+TEST_COMMANDS=PowerShell path classifier 회귀; synthetic docker compose ps label matrix same checkout PASS·mixed checkout FAIL·config mismatch FAIL·env mismatch FAIL·missing label FAIL; current host read-only mismatch 재현; PowerShell parser; python -m pytest -p no:cacheprovider tests/integration/test_test_runtime_refresh.py -q; python -m pytest -p no:cacheprovider tests/integration -q; document policy; gate_scope preflight·6 planned paths·merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_CLASSIFIER;T2_IDENTITY_MATRIX;T3_HOST_REPRODUCTION;T4_POWERSHELL_PARSE;T5_TARGET_TESTS;T6_INTEGRATION;T7_DOCUMENT_POLICY;T8_SCOPE;T9_DIFF;T10_BRANCH_CI
+STOP_CONDITIONS=PlanOnly가 Docker 필요; healthy만으로 다른 checkout 허용; path substring·container name만으로 identity 인정; app-postgres identity 미검사; mismatch 뒤 refresh 수행; root Compose·env·stateful resource·제품 수정; scope·필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=origin read-only fetch·현재 answervice container label/health read-only 조회, 허용 경로 commit·junhee push·source CI만 승인한다. container recreate·Docker resource 변경·dev/test merge·다른 branch·secret·비용·외부 시스템 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=mixed checkout runtime에서 refresh 가능; config/env label 불일치 허용; mismatch 뒤 docker compose up 호출; 기존 path matrix 회귀; scope·필수 검증 FAIL
+R1_REVIEW_CONDITIONS=synthetic identity matrix와 현재 host의 mixed-checkout read-only 재현이 fail-closed하고 기존 선택 재기동 계약이 유지되며 source CI가 PASS한 뒤 dev 통합한다.
 ```
 
 ### R2 · R2-W5-F5
@@ -903,6 +934,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.79 | 2026-08-11 16:15 | healthy container가 서로 다른 checkout·env에서 생성된 mixed test runtime을 단일 환경으로 오인하지 않도록 R1-W5-F33 READY 발행 |
 | v5.78 | 2026-08-11 16:05 | R4-W5-F16이 기존 환경을 건드리지 않고 인증 migration·HTTP/DB 회귀를 수행하도록 exact PostgreSQL image와 격리 project·network·volume의 생성·검증·폐기 권한을 추가 |
 | v5.77 | 2026-08-11 15:35 | test branch 전체 CI와 local opt-in 선택 재기동을 검증하고 source CI 31463640451 PASS를 확인해 R1-W5-F32를 MERGED_DEV로 전환 |
 | v5.76 | 2026-08-11 15:34 | test branch의 hosted CI와 local Docker 경계를 분리하고 변경된 frontend/backend만 opt-in 재기동하는 R1-W5-F32 READY 발행 |

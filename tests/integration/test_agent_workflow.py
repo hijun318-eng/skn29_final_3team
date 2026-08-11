@@ -54,6 +54,24 @@ class AgentWorkflowTest(unittest.TestCase):
         self.assertEqual("none", payload["action"])
         self.assertNotIn("merge", [call.args[0] for call in git.call_args_list])
 
+    def test_effective_ready_is_returned_without_ledger_mutation(self) -> None:
+        effective = {
+            **self.bootstrap,
+            "declared_status": "PLANNED",
+            "auto_start": True,
+        }
+        payload, git, _ = self.run_with(
+            [
+                completed("C:/repo"), completed("junhee"), completed(), completed(),
+                completed(), completed(),
+            ],
+            bootstrap=effective,
+        )
+        self.assertEqual("PASS", payload["result"])
+        self.assertTrue(payload["auto_start"])
+        self.assertEqual("PLANNED", payload["declared_status"])
+        self.assertFalse(any(call.args[0] in {"add", "commit", "push"} for call in git.call_args_list))
+
     def test_dirty_branch_fails_closed(self) -> None:
         dirty = {**self.bootstrap, "errors": ["working tree is not clean"]}
         payload, _, _ = self.run_with(

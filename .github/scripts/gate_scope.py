@@ -174,6 +174,15 @@ def ledger_health_errors(text: str) -> list[str]:
         ) if current else None
         if row != expected:
             errors.append(f"dashboard row does not match current bundle for {role}")
+    by_id = {
+        bundle.get("EXECUTION_BUNDLE_ID", ""): bundle for bundle in parsed
+    }
+    for bundle in parsed:
+        if bundle.get("AUTO_START") == "CONDITIONAL":
+            errors.extend(
+                f"{bundle.get('EXECUTION_BUNDLE_ID', 'N/A')}: {error}"
+                for error in conditional_definition_errors(bundle, by_id)
+            )
     return errors
 
 
@@ -186,6 +195,100 @@ def current_bundle(text: str, branch: str) -> dict[str, str] | None:
         and "ALLOWED_PATHS" in bundle
     ]
     return candidates[-1] if candidates else None
+
+
+def conditional_definition_errors(
+    candidate: dict[str, str], by_id: dict[str, dict[str, str]]
+) -> list[str]:
+    candidate_id = candidate.get("EXECUTION_BUNDLE_ID", "N/A")
+    dependencies = [
+        item.strip()
+        for item in candidate.get("AUTO_START_AFTER", "").split(";")
+        if item.strip()
+    ]
+    required = (
+        "BASE_SHA", "DIRECTIVE_TOKEN", "ALLOWED_PATHS",
+        "ACCEPTANCE_CRITERIA", "TEST_COMMANDS", "STOP_CONDITIONS",
+    )
+    errors = []
+    if not dependencies:
+        errors.append("AUTO_START_AFTER is required")
+    if any(not candidate.get(field) or candidate[field].startswith("N/A") for field in required):
+        errors.append("conditional card requires fixed base, token, paths, and checks")
+    if candidate.get("DIRECTIVE_TOKEN") != (
+        f"{candidate_id}@{candidate.get('BASE_SHA', '')[:7]}"
+    ):
+        errors.append("conditional card token must match bundle and base")
+    errors.extend(
+        f"missing auto-start dependency: {dependency_id}"
+        for dependency_id in dependencies
+        if dependency_id not in by_id
+    )
+    return errors
+
+
+def conditional_auto_start(
+    text: str, branch: str
+) -> tuple[dict[str, str] | None, list[str]]:
+    parsed = bundles(text)
+    current = current_bundle(text, branch)
+    candidates = [
+        bundle for bundle in parsed
+        if bundle.get("PERSONAL_BRANCH") == branch
+        and bundle.get("STATUS") == "PLANNED"
+        and bundle.get("AUTO_START") == "CONDITIONAL"
+    ]
+    if not candidates:
+        return None, []
+    if current and current.get("STATUS") in ACTIVE_STATUSES:
+        return None, []
+    if current is None or current.get("STATUS") not in TERMINAL_STATUSES:
+        return None, ["conditional auto-start requires a terminal current bundle"]
+
+    by_id = {
+        bundle.get("EXECUTION_BUNDLE_ID", ""): bundle for bundle in parsed
+    }
+    ready: list[dict[str, str]] = []
+    blocked: list[str] = []
+    for candidate in candidates:
+        candidate_id = candidate.get("EXECUTION_BUNDLE_ID", "N/A")
+        errors = conditional_definition_errors(candidate, by_id)
+        dependencies = [
+            item.strip()
+            for item in candidate.get("AUTO_START_AFTER", "").split(";")
+            if item.strip()
+        ]
+        for dependency_id in dependencies:
+            dependency = by_id.get(dependency_id)
+            if dependency is None:
+                continue
+            if dependency.get("STATUS") not in TERMINAL_STATUSES:
+                errors.append(f"auto-start dependency is not terminal: {dependency_id}")
+            elif not dependency.get("RESULT_CI", "").endswith(" PASS"):
+                errors.append(f"auto-start dependency CI is not PASS: {dependency_id}")
+        if errors:
+            blocked.extend(f"{candidate_id}: {error}" for error in errors)
+            continue
+        effective = dict(candidate)
+        effective["DECLARED_STATUS"] = "PLANNED"
+        effective["STATUS"] = "READY"
+        ready.append(effective)
+
+    if len(ready) > 1:
+        return None, [
+            "multiple conditional auto-start candidates are eligible: "
+            + ", ".join(item["EXECUTION_BUNDLE_ID"] for item in ready)
+        ]
+    if ready:
+        return ready[0], []
+    return None, blocked
+
+
+def implementation_bundle(
+    text: str, branch: str
+) -> tuple[dict[str, str] | None, list[str]]:
+    candidate, errors = conditional_auto_start(text, branch)
+    return (candidate or current_bundle(text, branch)), errors
 
 
 def terminal_transition_scope(
@@ -299,9 +402,11 @@ def change_group_outputs(paths: list[str]) -> dict[str, str]:
 def planned_path_errors(
     text: str, branch: str, paths: list[str]
 ) -> tuple[dict[str, str] | None, list[str]]:
-    bundle = current_bundle(text, branch)
+    bundle, auto_start_errors = implementation_bundle(text, branch)
     if bundle is None:
         return None, [f"No executable bundle found for branch: {branch}"]
+    if auto_start_errors and bundle["STATUS"] not in IMPLEMENTATION_STATUSES:
+        return bundle, auto_start_errors
     if bundle["STATUS"] not in IMPLEMENTATION_STATUSES:
         if gate_issuance_errors(text, branch, paths) == []:
             return bundle, []
@@ -361,8 +466,8 @@ def bootstrap_payload(
     root: str,
     dirty: bool,
 ) -> dict[str, Any]:
-    bundle = current_bundle(text, branch)
-    errors = []
+    bundle, auto_start_errors = implementation_bundle(text, branch)
+    errors = list(auto_start_errors)
     if bundle is None:
         errors.append(f"No executable bundle found for branch: {branch}")
     elif bundle["STATUS"] not in IMPLEMENTATION_STATUSES:
@@ -383,6 +488,8 @@ def bootstrap_payload(
         "configured_root": bundle.get("REPOSITORY_ROOT") if bundle else None,
         "bundle": bundle.get("EXECUTION_BUNDLE_ID") if bundle else None,
         "status": bundle.get("STATUS") if bundle else None,
+        "declared_status": bundle.get("DECLARED_STATUS") if bundle else None,
+        "auto_start": bool(bundle and bundle.get("DECLARED_STATUS") == "PLANNED"),
         "full_reads": [*FULL_READS, ROLE_MANUALS[branch]],
         "relevant_reads": list(RELEVANT_READS),
         "errors": errors,
@@ -398,8 +505,12 @@ def preflight_payload(
     paths: list[str],
 ) -> dict[str, Any]:
     payload = bootstrap_payload(text, branch, current_branch, root, dirty)
-    bundle = current_bundle(text, branch)
-    contract_errors = [*ledger_health_errors(text), *bundle_contract_errors(bundle)]
+    bundle, _ = implementation_bundle(text, branch)
+    contract_errors = [
+        *ledger_health_errors(text),
+        *bundle_contract_errors(bundle),
+        *conditional_base_errors(bundle),
+    ]
     checked_paths = paths or (
         [part.strip() for part in bundle.get("ALLOWED_PATHS", "").split(";")]
         if bundle else []
@@ -445,6 +556,26 @@ def latest_dev_sha() -> str:
         text=True,
     )
     return result.stdout.strip() if result.returncode == 0 else git_sha("HEAD")
+
+
+def conditional_base_errors(bundle: dict[str, str] | None) -> list[str]:
+    if not bundle or bundle.get("DECLARED_STATUS") != "PLANNED":
+        return []
+    base = bundle["BASE_SHA"]
+    dev = latest_dev_sha()
+    if base == dev:
+        return []
+    if not is_ancestor(base, dev):
+        return ["conditional card BASE_SHA is not an ancestor of origin/dev"]
+    overlap = [
+        path for path in changed_paths(base, dev, "direct")
+        if not path.startswith(("handoffs/", "docs/markdown/daily_reports/"))
+        if path_allowed(path, allowed_paths(bundle, bundle["PERSONAL_BRANCH"]))
+    ]
+    return (
+        ["conditional card paths overlap changes after BASE_SHA: " + ", ".join(overlap)]
+        if overlap else []
+    )
 
 
 def is_ancestor(ancestor: str, descendant: str) -> bool:
@@ -854,7 +985,7 @@ def dashboard_lines(text: str) -> list[str]:
         "|---|---|---|---|---|",
     ]
     for branch, role in ROLES.items():
-        bundle = current_bundle(text, branch)
+        bundle, auto_start_errors = implementation_bundle(text, branch)
         if bundle is None:
             lines.append(f"| {role} | - | PLANNED | NOT_RUN | Issue bundle |")
             continue
@@ -865,6 +996,10 @@ def dashboard_lines(text: str) -> list[str]:
             action = "Issue owner-scoped REWORK bundle"
         elif handoff == "REVIEW_REQUIRED":
             action = "Review exception"
+        elif bundle.get("DECLARED_STATUS") == "PLANNED":
+            action = "Auto-start available"
+        elif auto_start_errors:
+            action = "Conditional wait"
         elif bundle["STATUS"] in TERMINAL_STATUSES:
             action = "No action"
         else:
@@ -1001,7 +1136,7 @@ def main() -> int:
         print("\n".join(lines))
         return 0
 
-    bundle = current_bundle(text, args.branch)
+    bundle, auto_start_errors = implementation_bundle(text, args.branch)
     if bundle is None:
         raise SystemExit(f"No executable bundle found for branch: {args.branch}")
     role_changed, inherited_errors = role_diff(bundle, changed, args.head)
@@ -1029,6 +1164,7 @@ def main() -> int:
     scope_bundle = terminal_transition_scope(bundle, previous)
     patterns = allowed_paths(scope_bundle, args.branch)
     issuance_errors = gate_issuance_errors(text, args.branch, role_changed)
+    gate_errors = [*(issuance_errors or []), *auto_start_errors]
     violations = (
         []
         if issuance_errors == []
@@ -1046,7 +1182,7 @@ def main() -> int:
     result = (
         "FAIL"
         if violations
-        or issuance_errors
+        or gate_errors
         or inherited_errors
         or base_sync in {"DIVERGED", "REFRESH_REQUIRED"}
         or handoff in BLOCKING_HANDOFF_STATUSES
@@ -1066,9 +1202,9 @@ def main() -> int:
     if violations:
         lines.extend(["", "### Paths outside ALLOWED_PATHS"])
         lines.extend(f"- `{path}`" for path in violations)
-    if issuance_errors:
+    if gate_errors:
         lines.extend(["", "### Gate ledger errors"])
-        lines.extend(f"- {error}" for error in issuance_errors)
+        lines.extend(f"- {error}" for error in gate_errors)
     if inherited_errors:
         lines.extend(["", "### Inherited checkpoint notes"])
         lines.extend(f"- {note}" for note in inherited_errors)

@@ -88,6 +88,84 @@
         "title": "AnalysisData",
         "type": "object"
       },
+      "AnalysisDefinitionListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisDefinitionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AnalysisDefinitionListResponse",
+        "type": "object"
+      },
+      "AnalysisDefinitionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "definition_id": {
+            "format": "uuid",
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "parameter_types": {
+            "additionalProperties": {
+              "enum": [
+                "string",
+                "boolean",
+                "number",
+                "null"
+              ],
+              "type": "string"
+            },
+            "title": "Parameter Types",
+            "type": "object"
+          },
+          "status": {
+            "const": "approved",
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "definition_id",
+          "version",
+          "status",
+          "title",
+          "parameter_types",
+          "created_at"
+        ],
+        "title": "AnalysisDefinitionResponse",
+        "type": "object"
+      },
       "AnalysisRequest": {
         "additionalProperties": false,
         "properties": {
@@ -212,6 +290,139 @@
         "title": "AnalysisResult",
         "type": "object"
       },
+      "AnalysisRunListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisRunResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AnalysisRunListResponse",
+        "type": "object"
+      },
+      "AnalysisRunResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Id"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "contract_version": {
+            "default": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "definition_id": {
+            "format": "uuid",
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "definition_version": {
+            "title": "Definition Version",
+            "type": "integer"
+          },
+          "error_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Type"
+          },
+          "query_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Id"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "RECEIVED",
+              "SUCCEEDED",
+              "PARTIAL",
+              "FAILED",
+              "BLOCKED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "definition_id",
+          "definition_version",
+          "status",
+          "as_of",
+          "timezone",
+          "trace_id",
+          "started_at"
+        ],
+        "title": "AnalysisRunResponse",
+        "type": "object"
+      },
       "AnalysisStatus": {
         "enum": [
           "RECEIVED",
@@ -290,6 +501,52 @@
           "y_fields"
         ],
         "title": "ChartSpec",
+        "type": "object"
+      },
+      "CreateAnalysisDefinitionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "parameters": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Parameters",
+            "type": "object"
+          },
+          "question": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "question"
+        ],
+        "title": "CreateAnalysisDefinitionRequest",
         "type": "object"
       },
       "CreateManualRunRequest": {
@@ -833,6 +1090,28 @@
           "blocks"
         ],
         "title": "ReplaceReportBlocksRequest",
+        "type": "object"
+      },
+      "ReplayAnalysisRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "as_of",
+          "idempotency_key"
+        ],
+        "title": "ReplayAnalysisRequest",
         "type": "object"
       },
       "ReportBlockRequest": {
@@ -2616,6 +2895,612 @@
           }
         },
         "summary": "Analysis"
+      }
+    },
+    "/analysis/definitions": {
+      "get": {
+        "operationId": "analysisListDefinitions",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Id",
+            "required": true,
+            "schema": {
+              "title": "X-User-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisDefinitionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Analysis Definitions"
+      },
+      "post": {
+        "operationId": "analysisCreateDefinition",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Id",
+            "required": true,
+            "schema": {
+              "title": "X-User-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAnalysisDefinitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Analysis Definition"
+      }
+    },
+    "/analysis/definitions/{definition_id}": {
+      "get": {
+        "operationId": "analysisGetDefinition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Id",
+            "required": true,
+            "schema": {
+              "title": "X-User-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analysis Definition"
+      }
+    },
+    "/analysis/definitions/{definition_id}/runs": {
+      "post": {
+        "operationId": "analysisReplayDefinition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Id",
+            "required": true,
+            "schema": {
+              "title": "X-User-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplayAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replay Analysis Definition"
+      }
+    },
+    "/analysis/runs": {
+      "get": {
+        "operationId": "analysisListRuns",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Id",
+            "required": true,
+            "schema": {
+              "title": "X-User-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRunListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Analysis Runs"
+      }
+    },
+    "/analysis/runs/{request_id}": {
+      "get": {
+        "operationId": "analysisGetRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "title": "Authorization",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-User-Id",
+            "required": true,
+            "schema": {
+              "title": "X-User-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Role",
+            "required": true,
+            "schema": {
+              "title": "X-Role",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Analysis Run"
       }
     },
     "/health": {

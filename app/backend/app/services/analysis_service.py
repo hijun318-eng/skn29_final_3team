@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, Callable
+
 from app.contracts import (
     AnalysisRequest,
     AnalysisResponse,
@@ -51,6 +53,7 @@ class AnalysisService:
         payload: AnalysisRequest,
         context: RequestContext,
         decision: RouteDecision,
+        execution_sink: Callable[[dict[str, Any]], None] | None = None,
     ) -> AnalysisResponse:
         machine = AnalysisStateMachine()
         trace: list[TraceStep] = []
@@ -437,6 +440,8 @@ class AnalysisService:
                     x_field=columns[0],
                     y_fields=numeric,
                 )
+        if execution_sink is not None:
+            execution_sink({"plan": plan, "query": query, "package": package})
         return response
 
     def blocked(self, context: RequestContext, error: ErrorBody) -> AnalysisResponse:

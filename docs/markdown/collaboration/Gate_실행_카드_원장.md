@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.41 |
-| 문서 기준일 | 2026-08-10 19:30 |
+| 버전 | v5.51 |
+| 문서 기준일 | 2026-08-11 10:10 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -22,11 +22,11 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F13` | `BLOCKED` | `junhee` |
-| R2 | `R2-W5-F6` | `READY` | `seung` |
-| R3 | `R3-W5-F7` | `MERGED_DEV` | `daesung` |
-| R4 | `R4-W5-F9` | `READY` | `jaehong` |
-| R5 | `R5-W5-F3` | `MERGED_DEV` | `minji` |
+| R1 | `R1-W5-F22` | `MERGED_DEV` | `junhee` |
+| R2 | `R2-W5-F8` | `READY` | `seung` |
+| R3 | `R3-W5-F8` | `READY` | `daesung` |
+| R4 | `R4-W5-F12` | `READY` | `jaehong` |
+| R5 | `R5-W5-F4` | `READY` | `minji` |
 
 ## 활성 실행 카드
 
@@ -1014,6 +1014,110 @@ R1_REVIEW_CONDITIONS=실행 전후 다른 project snapshot 불변, exact service
 BLOCKED_REASON=exact answervice project의 app-postgres/backend 기동 전 APP DB credential 존재·Compose config·backend image build는 통과했지만, 고정 container name app-postgres가 기존 hotel-synthetic-db project의 healthy container에 이미 사용 중이라 Docker가 answervice app-postgres 생성 전에 중단했다. 기존 container/project/volume은 변경하지 않았고 이번 시도에서 생성된 answervice-network·answervice_datahub-network·빈 answervice_app-postgres-data volume은 삭제 권한 없이 보존했다. migration·approved Template·/readiness는 NOT_RUN이며 기존 container를 제거·이름 변경하거나 다른 project로 backend를 편입하지 않는다.
 ```
 
+### R1 · R1-W5-F20
+
+```text
+STATUS=MERGED_DEV
+RESULT_SHA=d3691ab555d9365b252d8a18531233a8ef3a1dd4
+RESULT_CI=branch 31447381416 PASS; dev merge ef2c37186947b7b907278485b59f0d2854dcbc4f
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F20
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=junhee·dev history-preserving reconciliation and R1 evidence cleanup
+TASK_CARD_RANGE=R1-02 기존 F9·F10·F12·F19 증거 보존과 최신 dev 동기화
+CURRENT_TASK_CARD_ID=R1-02-RECONCILIATION
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=3003bec8a0349a29433bb5ca84d08668d1709311
+START_POINT=clean junhee 6e788c948f0dc553f7c438247fed9a8a1512ca3e의 R1 evidence history와 origin/dev 3003bec의 R2·R4·R5 최신 Gate·제품 이력을 non-ff merge로 모두 보존한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F20@3003bec
+CONTRACT_VERSION=R1-HISTORY-RECONCILIATION-v1.0.0-DRAFT
+ALLOWED_PATHS=docs/markdown/collaboration/Gate_실행_카드_원장.md; docs/markdown/daily_reports/junhee/일일보고.md; docs/markdown/daily_reports/team_summaries/5주차/20260810.md; handoffs/R1-W5-F9.json; handoffs/R1-W5-F10.json; handoffs/R1-W5-F12.json; tests/integration/test_typed_three_source_e2e.py; handoffs/R1-W5-F20.json
+FORBIDDEN_PATHS=app/**; infrastructure/**; src/**; tests/integration/test_typed_three_source_e2e.py 외 tests/**; R2~R5 개인 보고·handoff; root Compose/env/CI; dependency·secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F20.json
+RECONCILIATION_SEQUENCE=junhee clean·SHA inventory → origin/dev 3003bec non-ff merge → conflict path inventory → Gate와 팀 요약은 최신 dev 정본 유지 → R1 일일보고·F9/F10/F12 handoff·typed E2E evidence는 junhee history와 최종 tree에 보존 → target 검증 → F20 handoff → junhee push·source CI
+CONFLICT_POLICY=충돌이 Gate 또는 team_summaries/5주차/20260810.md에 한정되면 최신 origin/dev 내용을 최종 tree 기준으로 사용하고 기존 junhee 내용은 merge 이전 history로 보존할 수 있다. R1 일일보고·handoff·typed E2E 충돌은 삭제·덮어쓰기하지 않고 중단한다. 허용 경로 밖 충돌은 해결하지 않는다.
+ACCEPTANCE_CRITERIA=junhee와 dev 양쪽 commit이 최종 ancestry에 존재하고 worktree가 clean하다. 최종 Gate는 v5.45의 R2·R4·R5 READY 상태를 유지한다. 기존 R1 F9/F10/F12 handoff와 typed 3-source blocker test는 final tree에 존재하며 수정 없이 보존한다. 제품·Compose·backend·data·AI·frontend 파일 변경은 0건이다. F20 handoff에 두 parent SHA·충돌 경로·선택 기준·검증 결과를 기록한다.
+ACCEPTANCE_IDS=AC1_BOTH_HISTORIES;AC2_LATEST_GATE_PRESERVED;AC3_R1_EVIDENCE_PRESERVED;AC4_ZERO_PRODUCT_CHANGE;AC5_CLEAN_ANCESTRY;AC6_TERMINAL_HANDOFF
+TEST_COMMANDS=git status --short; git rev-list --left-right --count와 merge-base inventory; 8개 check-planned-path; merge 뒤 git merge-base --is-ancestor로 6e788c9·3003bec 확인; python -m pytest -p no:cacheprovider tests/integration/test_typed_three_source_e2e.py -q; python -m pytest -p no:cacheprovider tests/integration/test_gate_scope.py -q; python .github/scripts/gate_scope.py --branch junhee --base origin/dev --head HEAD --mode merge-base; python .agents/skills/manage-project-documents/scripts/check_document_policy.py on changed docs; python .agents/skills/update-project-reports/scripts/validate_reports.py on changed reports; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_INVENTORY;T2_PLANNED_PATH;T3_ANCESTRY;T4_E2E_BOUNDARY;T5_GATE;T6_SCOPE;T7_DOCS;T8_REPORT;T9_DIFF;T10_BRANCH_CI
+STOP_CONDITIONS=junhee dirty; origin SHA drift; 충돌이 허용 8경로 밖; R1 evidence final tree 손실; 최신 dev Gate 후퇴; 제품 파일 변경; reset·rebase·stash·force push·history rewrite 필요; R2~R5 변경 필요; dependency·secret·Docker lifecycle·비용; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=clean junhee에서 origin/dev non-ff merge, 허용 경로 충돌 판정, F20 handoff commit, junhee push와 source CI만 승인한다. Docker·DB·외부 서비스·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=history 손실; latest Gate 후퇴; 제품 diff 발생; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=F20 source CI와 both-history ancestry·zero-product diff를 확인한 뒤 R4-W5-F11 결과를 기다리고, 이후 별도 R1 runtime REWORK로 F19 readiness를 재검증한다.
+```
+
+### R1 · R1-W5-F21
+
+```text
+STATUS=MERGED_DEV
+RESULT_SHA=baa9be1da12bd4bf9d5d2ce7ee8dae99eb28efbb
+RESULT_CI=branch 31448147519 PASS; product 31448030148 PASS; dev merge 2009e7f69ece79cd3a6cc6bc2f42e27dcf1a405b
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F21
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=GitHub Actions Node 24 runtime compatibility and immutable action provenance
+TASK_CARD_RANGE=R1-04·10 CI action runtime warning 제거와 공급망 pin 재검증
+CURRENT_TASK_CARD_ID=R1-04-CI-SUPPLY-CHAIN
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=ef2c37186947b7b907278485b59f0d2854dcbc4f
+START_POINT=clean junhee를 최신 dev Gate v5.47로 ff-only 동기화한 뒤 시작한다. 현재 CI의 checkout action Node.js 20 deprecation warning을 공식 immutable ref로 해소하되 다른 job 의미는 바꾸지 않는다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F21@ef2c371
+CONTRACT_VERSION=CI-SUPPLY-CHAIN-v1.1.0-DRAFT; GitHub-hosted Node 24 action runtime
+ALLOWED_PATHS=.github/workflows/ci.yml; tests/integration/test_ci_workflow.py; handoffs/R1-W5-F21.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=app/**; infrastructure/**; src/**; tests/integration/test_ci_workflow.py 외 tests/**; package*.json; dependency; secret; R2~R5 파일
+HANDOFF_MANIFEST=handoffs/R1-W5-F21.json
+ACCEPTANCE_CRITERIA=actions/checkout의 모든 사용처를 공식 Node 24 지원 major의 검증된 40-hex immutable commit으로 pin하고 사람이 확인 가능한 release 주석을 유지한다. setup-python·setup-node와 job 권한·trigger·timeout·matrix·test command는 변경하지 않는다. mutable tag·branch ref를 남기지 않고 action provenance를 target test에서 검증한다. 기존 role-scope·Python·frontend·document·quality job 의미와 fork/PR 안전 경계를 보존한다.
+ACCEPTANCE_IDS=AC1_NODE24_ACTION;AC2_IMMUTABLE_SHA;AC3_ALL_OCCURRENCES;AC4_JOB_SEMANTICS_UNCHANGED;AC5_PROVENANCE_TEST;AC6_BRANCH_CI
+TEST_COMMANDS=공식 GitHub tag/ref와 commit read-only 대조; python -m pytest -p no:cacheprovider tests/integration/test_ci_workflow.py -q; python -m pytest -p no:cacheprovider tests/integration -q; workflow YAML parse; python -m compileall -q .github/scripts tests/integration; gate_scope bootstrap·planned-path·merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_OFFICIAL_REF;T2_TARGET;T3_INTEGRATION;T4_YAML;T5_COMPILE;T6_SCOPE;T7_DIFF;T8_BRANCH_CI
+STOP_CONDITIONS=공식 immutable commit을 검증할 수 없음; checkout 외 action·job command·permission·trigger 변경 필요; dependency 설치; R2~R5 경로 필요; secret·외부 write·비용; scope 또는 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=공식 GitHub tag/ref read-only 조회와 허용 경로 commit·junhee push·branch CI만 승인한다. release 생성·workflow dispatch·secret 변경·외부 배포는 금지한다.
+AUTO_FAIL_CONDITIONS=mutable action ref; 검증되지 않은 SHA; job 의미 변경; 권한 확대; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=source CI에서 deprecation warning 해소와 전체 job PASS를 확인한 뒤 dev에 통합한다. action major 전환이 job 결과를 바꾸면 기존 pin으로 되돌리지 말고 BLOCKED 근거를 제출한다.
+```
+
+### R1 · R1-W5-F22
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F22
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=isolated app-postgres/backend host binding override and actual demo readiness
+TASK_CARD_RANGE=R1-02·08·09 exact answervice runtime isolation·migration·Template·readiness E2E
+CURRENT_TASK_CARD_ID=R1-08-RUNTIME-READINESS
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=2009e7f69ece79cd3a6cc6bc2f42e27dcf1a405b
+START_POINT=R4-W5-F11 readiness·LAN CORS가 dev에 통합되고 R1-W5-F21 checkout 전환까지 반영된 clean junhee에서 시작한다. 기존 hotel-synthetic-db app-postgres와 volume은 건드리지 않고 root include override로 answervice 전용 container identity만 분리한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F22@2009e7f
+CONTRACT_VERSION=R1-RUNTIME-ISOLATION-v1.0.0-DRAFT; BACKEND-DEMO-CONNECTION-v1.0.0-DRAFT
+ALLOWED_PATHS=compose.yml; compose.app-postgres.override.yml; tests/integration/test_app_postgres_compose_override.py; tests/integration/test_answervice_demo_runtime.py; handoffs/R1-W5-F22.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=infrastructure/**; app/**; src/**; .env·.env.example; 기존 handoff; 다른 tests; dependency; firewall; 다른 project/container/volume; secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F22.json
+ACCEPTANCE_CRITERIA=root Compose는 infrastructure database include에 root-owned override를 함께 적용해 service key·DNS app-postgres와 backend 내부 target port를 유지하면서 container_name=answervice-app-postgres, app-postgres host 25432, backend host 28000으로 격리한다. resolved model은 이 세 host runtime identity 외 image·volume·health·credential·network·dependency가 동일하다. 기존 hotel-synthetic-db·answervice-test와 모든 비대상 container/volume identity를 전후 비교해 불변을 확인한다. exact answervice app-postgres/backend만 기동해 current Alembic single head, weekly-room-operations·I2-v1.0.0·APPROVED Template exact 1건, /health와 /readiness의 app_postgres·migration·templates ready를 검증한다. fake mode Trino not_required를 보존하고 Analysis/Report 실제 endpoint 실패를 성공으로 위조하지 않는다. 실패 시 이번 실행에서 새로 만든 exact answervice resource만 정리하고 기존 resource는 보존한다.
+ACCEPTANCE_IDS=AC1_CONTAINER_IDENTITY_ONLY;AC2_RESOLVED_MODEL_DIFF;AC3_OTHER_PROJECT_INVARIANT;AC4_CURRENT_MIGRATION_HEAD;AC5_EXACT_TEMPLATE;AC6_READINESS;AC7_FAIL_CLOSED;AC8_EXACT_ROLLBACK
+TEST_COMMANDS=Compose version>=2.20.3; default/full/split-host config --quiet; resolved JSON original-vs-override semantic diff; static target test; integration 전체; before/after Docker label·ID inventory; exact answervice app-postgres/backend build/up; SQL migration head·Template exact count; /health·/readiness; allowed/disallowed CORS preflight; exact cleanup on failure only; gate_scope bootstrap·planned-path·merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_COMPOSE_VERSION;T2_CONFIG;T3_MODEL_DIFF;T4_TARGET;T5_INTEGRATION;T6_INVENTORY;T7_RUNTIME;T8_SQL;T9_READINESS;T10_CORS;T11_ROLLBACK;T12_SCOPE;T13_DIFF;T14_BRANCH_CI
+STOP_CONDITIONS=override가 승인된 container_name·host 25432·host 28000 외 resolved model을 변경; 세 runtime identity 충돌; 기존 hotel-synthetic-db·answervice-test 또는 비대상 resource 변경 필요; legacy/unknown migration; approved Template exact 1건 아님; readiness 실패; infrastructure/backend/data/frontend 변경 필요; secret 출력·dependency·비용; scope·필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=exact answervice app-postgres/backend image build·service up/recreate·health/SQL/readiness와 실패 시 이번 실행에서 생성한 exact answervice container/network/빈 volume 정리만 승인한다. 기존 project/container/volume, DataHub, source DB, firewall, secret, 외부 전송·비용 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=기존 resource drift; broad down/down -v/prune/reset; migration stamp/drop; Template 수동 변조; partial readiness를 PASS; fake endpoint success; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=other-project invariant와 exact runtime readiness·source CI가 PASS하면 dev에 통합하고 R5 F4 bundle과 결합한 LAN Agent·Report browser smoke를 다음 R1 카드로 발행한다.
+RESULT_SHA=6ac0307bfb64fb833f10252373a8e3ef1c8ff9df
+RESULT_CI=branch 31449728747 PASS
+```
+
 ### R2 · R2-W5-F5
 
 ```text
@@ -1132,6 +1236,38 @@ AUTO_FAIL_CONDITIONS=first metric 임의 선택; entitlement 밖 metric 설명; 
 R1_REVIEW_CONDITIONS=R3 producer source CI PASS 뒤 dev에 통합하고 R4 ContractModelAdapter가 selected derived metric을 소비하는 별도 owner 카드로 이어간다. 이 카드만으로 actual 제품 API PASS를 주장하지 않는다.
 ```
 
+### R3 · R3-W5-F8
+
+```text
+STATUS=READY
+ROLE_ID=R3
+ASSIGNEE=윤대성
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F8
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=Node3 schema hardening; captured Base·LoRA comparability; split integrity; release-readiness DRAFT
+TASK_CARD_RANGE=R3-06·09·10·14 Node3 metric selection 계약과 ModelOps 검증 증거 정합화
+CURRENT_TASK_CARD_ID=R3-06
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=ef2c37186947b7b907278485b59f0d2854dcbc4f
+START_POINT=clean daesung을 최신 dev Gate v5.47로 ff-only 동기화하고 repository-global stash는 적용·삭제하지 않는다. 번호 순서대로 Node3 schema hardening을 먼저 끝낸 뒤 captured evidence·split·release-readiness 검증으로 진행한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R3-W5-F8@ef2c371
+CONTRACT_VERSION=MODEL-v1.1.0-NODE3-DRAFT; MODELOPS-I5-READINESS-v1.0.0-DRAFT
+ALLOWED_PATHS=src/ai/contracts/node_io.v0.1.json; src/ai/node3.py; src/ai/fake_model.py; tests/ai/test_node3.py; tests/ai/test_fake_model.py; tests/ai/test_contracts.py; evals/base_comparison.v0.1.json; evals/split_manifest.v0.1.json; evals/validation_v2.manifest.json; src/ai/training/benchmark_serving.py; src/ai/training/dataset.py; src/ai/training/evaluate_endpoint.py; src/ai/training/evaluate_lora.py; src/ai/training/verify_case_specs.py; src/modelops/model_decision.v0.1.json; src/modelops/model_candidate.instruct2507.v0.1.json; src/modelops/serving_manifest.v0.1.json; src/modelops/runtime.py; src/modelops/release_candidate.i5.v1.json; tests/ai/test_model_decision.py; tests/ai/test_serving_benchmark.py; tests/ai/test_training_dataset.py; tests/ai/test_training_verification.py; tests/ai/test_validation_v2.py; tests/ai/test_eval_runner.py; tests/ai/test_wave3.py; handoffs/R3-W5-F8.json; docs/markdown/daily_reports/daesung/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; src/data/**; Node2·prompt serving; compiled 1,350 dataset·Gold·acceptance 내용 재생성; root Compose·CI; dependency; RunPod·외부 endpoint·model download; secret
+HANDOFF_MANIFEST=handoffs/R3-W5-F8.json
+ACCEPTANCE_CRITERIA=Node3 multi-source request는 selected_metric_id·source별 context_metric_ids를 schema에서 명시하고 selected derived metric 하나와 entitlement를 exact 검증하며 missing·multi·different·outside-entitlement·source-count mismatch를 fail-closed한다. 6-asset G120-046 backend-shaped fixture는 통과하고 source·masking·sampling·partial·result reference를 보존하며 question·row·첫 metric에서 추정하지 않는다. 이어서 Base·LoRA·serving 비교는 immutable captured evidence의 model/prompt/case-set/decoding/runtime·artifact hash가 같은 경우만 comparable로 판정하고 accuracy·p50·p95·VRAM·nullable cost를 observed 값으로만 기록한다. train·validation·gold·acceptance의 case ID·paraphrase group·join graph 누수를 검증하며 기존 typed 결손은 NOT_READY로 기록하고 자동 재생성하지 않는다. release candidate manifest는 DRAFT/NOT_READY이고 제품 기본값 Base·SQL LoRA disabled를 유지한다.
+ACCEPTANCE_IDS=AC1_NODE3_SCHEMA;AC2_ENTITLEMENT_FAIL_CLOSED;AC3_BACKEND_SHAPED_FIXTURE;AC4_CAPTURED_COMPARABILITY;AC5_SPLIT_INTEGRITY;AC6_TRACE_REPRO;AC7_RELEASE_NOT_READY;AC8_OWNER_BOUNDARY
+TEST_COMMANDS=관련 JSON json.tool; python -m pytest -p no:cacheprovider tests/ai/test_node3.py tests/ai/test_fake_model.py tests/ai/test_contracts.py -q; python -m pytest -p no:cacheprovider tests/ai/test_model_decision.py tests/ai/test_serving_benchmark.py tests/ai/test_training_dataset.py tests/ai/test_training_verification.py tests/ai/test_validation_v2.py tests/ai/test_eval_runner.py tests/ai/test_wave3.py -q; python -m pytest -p no:cacheprovider tests/ai -q; python -m compileall -q src/ai src/modelops evals; deterministic manifest/hash 검증; gate_scope bootstrap·planned-path·merge-base; git diff --check; daesung source CI
+TEST_COMMAND_IDS=T1_JSON;T2_NODE3;T3_MODELOPS;T4_AI;T5_COMPILE;T6_HASH;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
+STOP_CONDITIONS=latest dev ff-only 불가·dirty·stash touch 필요; backend/data 변경 필요; compiled dataset·Gold 의미 변경·자동 재생성 필요; captured hash 불일치나 누수를 숨겨야 진행 가능; Base→LoRA 기본 전환·release freeze 주장; RunPod·외부 endpoint·model download·비용·secret; dependency·scope·필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local captured artifact read-only 검증과 허용 경로 commit·daesung push·branch CI만 승인한다. 외부 endpoint·RunPod·model download·비용·secret·배포는 금지한다.
+AUTO_FAIL_CONDITIONS=metric 임의 선택; incomparable 결과 비교; 누수 은폐; 과거 evidence를 live PASS로 승격; LoRA 기본 전환; stash 변경; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=Node3 schema producer와 ModelOps DRAFT evidence를 각각 확인한다. actual API PASS는 R4-W5-F11 consumer와 R1 runtime E2E가 통합된 뒤에만 판정한다.
+```
+
 ### R2 · R2-W5-F3
 
 ```text
@@ -1203,7 +1339,7 @@ RESULT_CI=branch 31353517252 PASS
 ### R2 · R2-W5-F6
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -1233,6 +1369,78 @@ STOP_CONDITIONS=기존 index·trigger 의미 약화; seed 파일 변경 필요; 
 EXTERNAL_ACTION_PERMISSION=현재 exact offline product 9경로의 read-only review→checkpoint commit→seung push→source CI만 승인한다. CRM fresh 80000 container와 DataHub 신규 기동·ingestion/publish/search는 다시 승인하지 않으며 NOT_RUN을 유지한다. 기존 hotel-synthetic-db·data-hub-test·다른 project/volume, root env, 외부 전송·비용·secret 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=과거 격리 수치를 현재 PASS로 승격; catalog cardinality/hash 불일치; broad grant; 기존 history 보호 약화; 다른 project drift; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=Option 1 요청은 부분 수용한다. 이 R2 생산자를 먼저 dev에 통합·동결한 뒤 R4 Dataset/Column description Context 소비자와 R3 training catalog 소비자를 별도 owner 카드로 발행하고, 마지막에 R1 fresh integration을 수행한다.
+BLOCKED_REASON=origin/seung 7c4164b의 제품 checkpoint와 source CI 31363935846은 PASS지만 원격 F6 handoff가 없고, mapped seung b820698에는 원격 최종 tree와 다른 exact 10개 로컬 변경이 남아 있다. 어느 한쪽도 삭제·덮어쓰기하지 않는 owner-scoped reconciliation이 필요하다.
+```
+
+### R2 · R2-W5-F7
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F7
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=R2-W5-F6 remote checkpoint·single local report reconciliation and terminal handoff
+TASK_CARD_RANGE=R2-W5-F6 원격 제품 checkpoint 불변·로컬 일일보고 보존·terminalization only
+CURRENT_TASK_CARD_ID=R2-W5-F6-RECONCILIATION
+REPOSITORY_ROOT=C:\Users\Playdata\Downloads\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=f5387b7802f5663d44ee2a4993c5e9ad7d7337fa
+START_POINT=사용자가 제공한 작업자 snapshot인 seung HEAD·origin/seung 7c4164b495edb189eef2fcb58939a1d4cfa51fdc, dirty exact 1경로 docs/markdown/daily_reports/seung/일일보고.md를 조건부 정본으로 사용한다. 첫 read-only preflight가 다르면 token은 자동 무효다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R2-W5-F7@f5387b7
+INHERITED_DIRTY_RECONCILIATION_PERMISSION=일반 bootstrap dirty 실패의 유일한 예외로 지정 repository·seung·HEAD/upstream 7c4164b·dirty exact 일일보고 1경로를 read-only 확인하고 SHA256 inventory를 남긴 뒤 그 보고만 preservation commit 1개로 보존할 수 있다. commit은 단독 push하지 않으며 직후 clean bootstrap을 통과해야 한다.
+PRESERVATION_PATHS=docs/markdown/daily_reports/seung/일일보고.md
+RECONCILIATION_SEQUENCE=exact repository·branch·HEAD/upstream·dirty 1-path/hash inventory → 일일보고 preservation commit 1회(미푸시) → 최신 origin/dev f5387b7 non-ff merge → F6·F7 handoff 작성 → 전체 검증 → clean·ancestry 확인 → seung 최종 1회 push → terminal CI
+CONFLICT_POLICY=기존 제품 파일은 origin/seung 7c4164b tree를 수정하지 않고 최신 origin/dev merge 결과만 수용한다. 일일보고 충돌은 양쪽의 사실을 보존할 수 있으나 다른 경로 충돌은 해결하지 않고 중단한다. Git object와 stash는 적용·삭제·변경하지 않는다.
+CONTRACT_VERSION=I5-SEMANTIC-CATALOG-v1.0.0-DRAFT; I5-DATAHUB-v1.1.0-RUNTIME-DRAFT
+ALLOWED_PATHS=docs/markdown/daily_reports/seung/일일보고.md; handoffs/R2-W5-F6.json; handoffs/R2-W5-F7.json
+FORBIDDEN_PATHS=기존 제품 파일 전체; Git object·stash; infrastructure·src·app·제품 tests; root env/CI; Docker lifecycle; secret
+HANDOFF_MANIFEST=handoffs/R2-W5-F7.json
+ACCEPTANCE_CRITERIA=origin/seung 7c4164b의 제품 tree와 stash를 변경하지 않고 최신 dev ancestry를 병합한다. 로컬 일일보고를 preservation commit과 final tree에 보존한다. F6 handoff에는 실제 7c4164b 제품 SHA·CI와 runtime NOT_RUN/BLOCKED 경계를, F7 handoff에는 report preservation·merge ancestry·검증·single push를 기록한다. 최종 dirty는 0이고 제품 경로 diff는 latest dev merge 외 0건이다.
+ACCEPTANCE_IDS=AC1_SNAPSHOT_PREFLIGHT;AC2_REPORT_PRESERVED;AC3_PRODUCT_STASH_UNCHANGED;AC4_BOTH_ANCESTRIES;AC5_F6_HANDOFF;AC6_F7_HANDOFF;AC7_SINGLE_FINAL_PUSH
+TEST_COMMANDS=exact repository·branch·HEAD/upstream·dirty 1-path SHA256 inventory; 3개 check-planned-path; preservation commit 뒤 clean bootstrap; python -m json.tool handoffs/R2-W5-F6.json; python -m json.tool handoffs/R2-W5-F7.json; python -m pytest -p no:cacheprovider tests/data/test_serving_semantic_catalog.py -q; python -m pytest -p no:cacheprovider tests/data -q; docker compose -f infrastructure/database/datahub/compose.consumer.yml config; git diff --check; gate_scope merge-base; git merge-base --is-ancestor로 7c4164b·f5387b7 확인; clean status; terminal source CI
+TEST_COMMAND_IDS=T1_SNAPSHOT;T2_PLANNED_PATH;T3_CLEAN_BOOTSTRAP;T4_JSON;T5_TARGET;T6_DATA;T7_COMPOSE;T8_SCOPE;T9_DIFF;T10_ANCESTRY;T11_BRANCH_CI
+STOP_CONDITIONS=지정 repository 부재; branch·HEAD·upstream·dirty snapshot 불일치; dirty가 일일보고 외 존재; origin/seung 7c4164b 변경; 제품 파일·Git object·stash 변경 필요; 일일보고 외 conflict; reset·rebase·force push·stash apply/drop/clear 필요; 중간 push; 필수 검증 실패; Docker lifecycle·외부 전송·비용·secret 필요
+EXTERNAL_ACTION_PERMISSION=exact 일일보고 preservation commit 1회, 최신 origin/dev non-ff merge, F6·F7 handoff 작성, 검증 뒤 seung 최종 1회 push와 source CI만 승인한다. 제품 파일·stash·Docker·외부 서비스·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=사용자 snapshot 불일치; 제품·stash 변경; report 손실; ancestry 누락; 중간 push; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=F7 terminal CI PASS와 두 handoff의 실제 SHA·CI·BLOCKED 경계, 최종 clean·ancestry를 확인한 뒤에만 dev 통합 또는 Catalog 후속 카드를 판정한다.
+```
+
+### R2 · R2-W5-F8
+
+```text
+STATUS=READY
+ROLE_ID=R2
+ASSIGNEE=정승
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F8
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=F6 inherited checkpoint scope correction and F7 terminal CI
+TASK_CARD_RANGE=R2-W5-F6·F7 inherited 제품 증거 인정과 terminalization only
+CURRENT_TASK_CARD_ID=R2-W5-F7-SCOPE-CORRECTION
+REPOSITORY_ROOT=C:\Users\Playdata\Downloads\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=616f16e6c6620b0e3e4058c586c440d6767662ab
+START_POINT=origin/seung f7f8514b5c203949622c8e31946ec5f298190cb7과 CI 31448012065의 role-scope-only failure를 고정한다. 제품 8경로는 F6 source CI가 통과했고 7c4164b와 f7f8514 blob이 8/8 동일한 inherited checkpoint로 인정한다. 최신 origin/dev를 non-ff merge한 뒤 F7·F8 handoff evidence만 교정한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R2-W5-F8@616f16e
+CONTRACT_VERSION=I5-SEMANTIC-CATALOG-v1.0.0-DRAFT; R2-INHERITED-CHECKPOINT-v1.0.0
+INHERITED_CHECKPOINT_PATHS=infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql; infrastructure/database/trino/etc/access-control-rules.json; src/data/serving_analytics_contract.i4.v1.json; src/data/serving_semantic_catalog.i4.v1.json; tests/data/test_serving_semantic_catalog.py
+OTHER_READ_ONLY_EVIDENCE_PATHS=docs/markdown/daily_reports/seung/일일보고.md; handoffs/R2-W5-F6.json
+MUTABLE_PATHS=handoffs/R2-W5-F7.json; handoffs/R2-W5-F8.json
+ALLOWED_PATHS=infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql; infrastructure/database/trino/etc/access-control-rules.json; src/data/serving_analytics_contract.i4.v1.json; src/data/serving_semantic_catalog.i4.v1.json; tests/data/test_serving_semantic_catalog.py; docs/markdown/daily_reports/seung/일일보고.md; handoffs/R2-W5-F6.json; handoffs/R2-W5-F7.json; handoffs/R2-W5-F8.json
+FORBIDDEN_PATHS=INHERITED_CHECKPOINT_PATHS와 OTHER_READ_ONLY_EVIDENCE_PATHS 내용 수정; app/**; src/ai/**; root Compose·env·CI; 다른 tests; dependency; Docker lifecycle; stash·Git object; secret
+HANDOFF_MANIFEST=handoffs/R2-W5-F8.json
+ACCEPTANCE_CRITERIA=origin/seung f7f8514의 inherited 제품 8경로 blob hash와 일일보고·F6 handoff가 작업 전후 exact 일치한다. 최신 dev ancestry를 병합하고 F7 handoff의 CHANGED_FILES를 자기 manifest 제외 실제 10경로로 교정하며 T11에 CI 31448012065 scope FAIL을 사실대로 기록하고 F8 supersede를 명시한다. F8 handoff는 inherited 8경로·read-only 2경로·mutable 2경로·local target/data/integration PASS를 구분하며 terminal CI를 push 전에 PASS로 주장하지 않는다. 제품 재구현·stash 적용·history rewrite 없이 최종 seung를 한 번만 push하고 clean·local/origin 0/0을 확인한다.
+ACCEPTANCE_IDS=AC1_INHERITED_HASH;AC2_LATEST_DEV_ANCESTRY;AC3_REPORT_HANDOFF_PRESERVED;AC4_SCOPE_CAUSE_RECORDED;AC5_LOCAL_TESTS;AC6_SINGLE_CORRECTIVE_PUSH;AC7_TERMINAL_CI
+TEST_COMMANDS=12개 planned-path; inherited 8경로 pre/post git hash-object exact 비교; clean bootstrap; F6/F7/F8 json.tool; python -m pytest -p no:cacheprovider tests/data/test_serving_semantic_catalog.py -q; python -m pytest -p no:cacheprovider tests/data -q; python -m pytest -p no:cacheprovider tests/integration -q; docker compose -f infrastructure/database/datahub/compose.consumer.yml config; gate_scope merge-base; git diff --check; f7f8514·616f16e ancestry; clean·ahead/behind 0/0; seung terminal CI
+TEST_COMMAND_IDS=T1_PLANNED;T2_INHERITED_HASH;T3_BOOTSTRAP;T4_JSON;T5_TARGET;T6_DATA;T7_INTEGRATION;T8_COMPOSE;T9_SCOPE;T10_DIFF;T11_ANCESTRY;T12_BRANCH_CI
+STOP_CONDITIONS=origin/seung f7f8514 drift; inherited 8경로 hash 또는 read-only evidence 변경; 허용 경로 밖 conflict/변경; 제품 재구현 필요; reset·rebase·force push·stash apply/drop/clear·중간 push 필요; Docker lifecycle·외부 전송·비용·secret; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=최신 origin/dev non-ff merge, F7·F8 handoff 교정, 검증 뒤 seung corrective push 1회와 source CI만 승인한다. inherited 제품·read-only evidence·stash·Docker·외부 서비스·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=inherited product 또는 read-only evidence drift; scope 원인을 제품 실패로 왜곡; history 손실; 중간 push; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=F8 terminal CI PASS와 inherited hash 불변·최신 dev ancestry·clean 0/0을 확인하면 F6/F7/F8을 한 묶음으로 dev 통합한다.
 ```
 
 ### R4 · R4-W5-F2
@@ -1480,7 +1688,7 @@ RESULT_CI=branch 31357958938 PASS; product 31357850201 PASS; 110 passed·10 skip
 ### R4 · R4-W5-F9
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -1508,6 +1716,74 @@ EXTERNAL_ACTION_PERMISSION=local deterministic test와 전용 ephemeral PostgreS
 HANDOFF_ONLY_PERMISSION=handoffs/R4-W5-F9.json에 RESULT_SHA=0303cd9d8aad9f1b2f3d3859d238249ea07dd205와 확인된 CI·test evidence를 기록하고 handoff-only commit·jaehong push·terminal CI를 실행한다. terminal CI가 제품 SHA의 기존 PASS와 handoff 무결성을 모두 확인하기 전 dev 병합을 금지한다.
 AUTO_FAIL_CONDITIONS=새 result blob/table 중복; 과거 SQL 무검증 재실행; client-owned id/status; G3 전 Artifact success; owner bypass; raw SQL/result 노출; 기존 API 파손; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R3-W5-F6와 경로 충돌 없이 병렬 수행한다. Analysis persistence source CI와 dev 통합 뒤 Report v1.2 worker·partial contract를 별도 카드로 발행한다.
+RESULT_SHA=e14ba209449d1e1cd6eff1426ad844d570e830c9
+RESULT_CI=branch 31363417507 PASS
+```
+
+### R4 · R4-W5-F11
+
+```text
+STATUS=MERGED_DEV
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F11
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=demo backend readiness·3-source Node3 consumer·explicit LAN CORS DRAFT
+TASK_CARD_RANGE=R4-05·13·16 시연 연결을 막는 readiness·Node3 payload·LAN API 경계 해소
+CURRENT_TASK_CARD_ID=R4-05
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=9c7dc475a1ad993dd85a364ed1d6d4c5f5bb1e8e
+START_POINT=clean jaehong이 최신 origin/dev Gate v5.47의 ancestor임을 확인하고 origin/dev로 ff-only 동기화한 뒤 시작한다. 9c7dc47 이후 owner 제품 경로 변경은 0건이므로 기존 BASE_SHA·token을 유지하며, 생산자 최종 동결을 기다리지 않고 현재 dev 계약을 DRAFT로 소비하되 불일치는 fail-closed로 반환한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W5-F11@9c7dc47
+CONTRACT_VERSION=BACKEND-DEMO-CONNECTION-v1.0.0-DRAFT; ANALYSIS-PERSISTENCE-v1.0.0-DRAFT; existing Node3 metric_selection
+ALLOWED_PATHS=app/backend/app/services/readiness.py; app/backend/app/adapters/contract_model.py; app/backend/app/main.py; app/backend/compose.fragment.yml; tests/backend/test_readiness.py; tests/backend/test_production_model.py; tests/backend/test_analysis_pipeline.py; tests/backend/test_http_runtime.py; tests/backend/test_migration_compatibility.py; handoffs/R4-W5-F11.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=app/backend/migrations/**; app/backend/contracts/openapi.v0.1.json; R2/R3/R5 제품; root Compose·env·CI; template/data row mutation; Report fake success; dependency·secret
+HANDOFF_MANIFEST=handoffs/R4-W5-F11.json
+ACCEPTANCE_CRITERIA=readiness는 Alembic ScriptDirectory의 현재 single head를 도출해 governance.alembic_version과 exact 비교하고 migration revision 문자열을 별도로 하드코드하지 않는다. weekly-room-operations·I2-v1.0.0·APPROVED이며 sql_text·source_fqns_json이 존재하는 Template exact 1건만 ready로 인정한다. ContractModelAdapter는 승인 Context의 derived metric 선택을 metric_selection으로 Node3에 전달하며 payload metric·Context·entitlement가 일치할 때만 진행하고 복수 후보·누락·임의 첫 항목 선택은 차단한다. backend port는 BACKEND_BIND_ADDRESS 기본 127.0.0.1, 명시 0.0.0.0 opt-in만 허용하고 CORS_ALLOW_ORIGINS exact 목록으로 localhost와 명시 LAN frontend origin만 허용하며 wildcard를 금지한다. /analysis와 /reports preflight는 허용 origin에만 성공하고 Report repository 503을 성공으로 위조하지 않는다. 기존 POST /analysis·Analysis persistence·Report API·Trino 상태 의미를 보존한다.
+ACCEPTANCE_IDS=AC1_DYNAMIC_SINGLE_HEAD;AC2_EXACT_APPROVED_TEMPLATE;AC3_DERIVED_METRIC_SELECTION;AC4_AMBIGUITY_FAIL_CLOSED;AC5_DEFAULT_LOOPBACK;AC6_EXPLICIT_LAN_CORS;AC7_EXISTING_API_COMPAT
+TEST_COMMANDS=readiness no-env·DB error·current/old/unknown head·0/1/2 template; derived 6-asset metric_selection PASS와 missing/multiple/outside entitlement FAIL; existing analysis pipeline·persistence·report regression; default/LAN compose config; OPTIONS /analysis·/reports allowed/disallowed origin; migration graph single head; backend 전체 Python 3.12 test container; python app/backend/scripts/export_openapi.py --check; python -m compileall -q app/backend; gate_scope merge-base; git diff --check; jaehong branch CI
+TEST_COMMAND_IDS=T1_READINESS;T2_NODE3_CONSUMER;T3_PIPELINE;T4_CORS;T5_MIGRATION;T6_BACKEND;T7_OPENAPI;T8_COMPILE;T9_SCOPE;T10_DIFF;T11_BRANCH_CI
+STOP_CONDITIONS=migration/schema/template data 수정 필요; metric을 질문·row·첫 asset에서 추정; wildcard CORS·기본 0.0.0.0·LAN IP 자동 탐지; Report 503을 fixture/success로 대체; OpenAPI route/schema 변경 필요; R2/R3/R5/root/dependency/secret 변경; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local deterministic test, Python 3.12 일회성 test container, exact answervice backend service의 default/LAN config·preflight smoke, 허용 경로 commit·jaehong push·source CI를 승인한다. 기존 DB row·volume·다른 project/container·firewall·secret·외부 전송·비용 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=stale head ready; template count 완화; metric 임의 선택; unauthorized CORS; fake Report success; 기존 API 파손; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=세 하위 항목은 같은 시연 연결 checkpoint에서 병렬 구현할 수 있다. 한 항목이 실패하면 해당 항목만 BLOCKED로 기록하고 검증된 나머지 변경은 source handoff에 분리한다. 최종 dev 통합은 branch CI와 owner 경계 검토 뒤 판정한다.
+RESULT_SHA=4c5ecd99a4efec82c11304b1da3091f34cb05d4b
+RESULT_CI=branch 31447774460 PASS; 126 passed·12 skipped
+```
+
+### R4 · R4-W5-F12
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F12
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=Context Registry service-only contract and actual Node3 metric-selection consumer
+TASK_CARD_RANGE=R4-W5-F10A·F10B Context Registry additive schema·checksum repository; R4-13 multi-source Node3 consumer REWORK
+CURRENT_TASK_CARD_ID=R4-W5-F10A
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=9cdb906a67ee37b1e5cb5bcb34a4f898d300a93e
+START_POINT=origin/jaehong 417a6faa5b2077c38d373620d314d9c84dc6187d의 제품 SHA f481f9123a683da7f61258f286dd2658828b00bc와 실패 CI 31451536556을 history 그대로 보존한다. 실패는 제품 test가 아니라 기존 F12 밖 F10C·F10D 경로와 handoff REVIEW 때문에 role-scope에서 발생했다. 최신 origin/dev 9cdb906을 non-ff merge한 뒤 이 재발행 범위로 scope와 제품 회귀를 함께 교정한다. reset·rebase·force push·stash 적용/삭제는 금지한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W5-F12@9cdb906
+CONTRACT_VERSION=CONTEXT-REGISTRY-v1.0.0-DRAFT; internal service plus existing /analysis path integration
+ALLOWED_PATHS=app/backend/README.md; app/backend/app/adapters/analysis_repository.py; app/backend/app/adapters/context_registry_repository.py; app/backend/app/adapters/contract_model.py; app/backend/app/adapters/i2_data_platform.py; app/backend/app/api/router.py; app/backend/app/context_registry_contracts.py; app/backend/app/services/analysis_responses.py; app/backend/app/services/analysis_service.py; app/backend/app/services/context_registry_service.py; app/backend/app/services/readiness.py; app/backend/compose.fragment.yml; app/backend/migrations/versions/20260811_07_context_registry.py; tests/backend/test_analysis_persistence.py; tests/backend/test_analysis_pipeline.py; tests/backend/test_context_registry.py; tests/backend/test_http_runtime.py; tests/backend/test_i2_data_platform.py; tests/backend/test_migration_compatibility.py; tests/backend/test_production_model.py; tests/backend/test_readiness.py; handoffs/R4-W5-F12.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=app/backend/app/main.py; app/backend/contracts/openapi.v0.1.json; 기존 migration; infrastructure/**; src/data/**; src/ai/**; frontend; root Compose·env·CI; Report worker·schedule·Audit; dependency·secret
+HANDOFF_MANIFEST=handoffs/R4-W5-F12.json
+ACCEPTANCE_CRITERIA=20260811_07은 20260810_06의 additive child이고 single head를 유지한다. Context checksum·idempotency·release 불변 계약과 승인 metric_selection fail-closed를 보존한다. F10C는 existing /analysis 경로 안에서 DataHub health·PUBLISHED/ACTIVE·승인 URN/FQN/column·entitlement를 모두 확인한 뒤만 live Context를 조립하며 versioned 또는 missing 상태를 live PASS로 승격하지 않는다. F10D는 기존 request/query/artifact repository를 재사용해 G3 뒤 결과만 영속화하고 public OpenAPI operation을 추가하지 않는다. G120-046 exact question과 2026-05-01~2026-07-01 bindings는 실제 Trino에서 2행·475972400.00·hash de17b5a22c6718c6e77e37936421c94618945dd31b0c7207f40e51d51b667716을 반환하고 같은 request_id/trace에 table·chart·explanation·artifact를 연결한다. 399088800 결과는 다른 exact question·Context·SQL/result hash가 입증되지 않으면 Gold PASS로 기록하지 않는다. Report manual command queued는 허용하되 worker/run 생성 성공은 주장하지 않는다. F12 handoff는 CI 31451536556 실패를 PASS로 쓰지 않고 이번 corrective CI로 supersede한다.
+ACCEPTANCE_IDS=AC1_ADDITIVE_HEAD;AC2_REGISTRY_INVARIANTS;AC3_LIVE_CONTEXT_FAIL_CLOSED;AC4_EXISTING_ANALYSIS_PATH;AC5_G3_BEFORE_PERSIST;AC6_NODE3_SELECTION;AC7_G120_GOLD_EXACT;AC8_TABLE_CHART_EVIDENCE;AC9_HISTORICAL_CI_ACCURACY;AC10_REPORT_QUEUED_ONLY
+TEST_COMMANDS=context registry·analysis persistence·pipeline·HTTP·I2 adapter·readiness target tests; migration graph single head; isolated empty→head·20260810_06→head; idempotency·immutability·PUBLISHED/ACTIVE/entitlement·URN/FQN/column mismatch negative; unauthorized join·missing filter·repair exactly once·timeout/cancel·empty·masking negative; actual G120-046 HTTP→Trino→G3→artifact Gold row/total/hash exact; Report queued-only contract; backend 전체 Python 3.12 test container; python app/backend/scripts/export_openapi.py --check; python -m compileall -q app/backend; gate_scope bootstrap·전체 planned-path·merge-base; git diff --check; jaehong corrective source CI
+TEST_COMMAND_IDS=T1_TARGET;T2_HEAD;T3_MIGRATION;T4_NEGATIVE;T5_NODE3_COMPOSITION;T6_BACKEND;T7_OPENAPI_UNCHANGED;T8_COMPILE;T9_SCOPE;T10_DIFF;T11_BRANCH_CI
+STOP_CONDITIONS=기존 migration·OpenAPI operation 변경 필요; DataHub PUBLISHED/ACTIVE/entitlement를 확인할 수 없음; canonical Gold 불일치; 399088800을 G120-046으로 재명명; Report worker 성공 위조; frontend·R2/R3/R5/root 변경; dependency·secret·다른 project/volume 변경; scope·필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=현재 answervice 전용 backend·app-postgres와 기존 healthy Trino/DataHub에 대한 read-only health/query 검증, 전용 ephemeral PostgreSQL migration, Python 3.12 일회성 test container, 허용 경로 corrective commit·jaehong push·source CI를 승인한다. seed·volume·다른 project/container·firewall·secret·외부 전송·비용 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=기존 migration 수정; duplicate head; checksum client 신뢰; released payload mutation; unverified live PASS; Gold row/total/hash 불일치; 실패 CI를 PASS 기록; Report worker fake success; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=corrective source CI가 전체 제품 job까지 PASS하고 F12 handoff가 실제 diff·실패/성공 CI를 정확히 기록해야 한다. R1은 canonical G120-046 HTTP table·chart·explanation·artifact와 DataHub/Trino provenance를 재검증한 뒤에만 dev 통합한다.
 ```
 
 ### R5 · R5-W5-F1
@@ -1601,6 +1877,40 @@ PRODUCT_SHA=6c8afd8
 RESULT_CI=branch 31363391107 PASS
 ```
 
+### R5 · R5-W5-F4
+
+```text
+STATUS=READY
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W5-F4
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=frontend build-time backend base wiring and explicit LAN opt-in
+TASK_CARD_RANGE=R5-01 Agent·Report 공통 backend base build wiring 및 fail-closed 회귀
+CURRENT_TASK_CARD_ID=R5-01
+REPOSITORY_ROOT=C:\Users\nowis\Desktop\SKN\Final_project
+BASE_BRANCH=dev
+BASE_SHA=15270f9
+START_POINT=external clone의 clean minji ece70e3026c20669adb620d8f964424fb94054cf와 local-only commits 1fd9701·96f0b74·ece70e3을 history 그대로 보존한다. fetch 뒤 latest origin/dev 15270f9를 non-ff merge한다. 관측 base f5387b7 이후 latest dev까지 아래 inherited frontend 15경로 overlap은 0이므로 conflict가 없을 때만 진행하고, conflict·추가 dirty·ref drift가 있으면 중단한다. reset·rebase·force push·stash 적용/삭제는 금지한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R5-W5-F4@15270f9
+CONTRACT_VERSION=FRONTEND-BACKEND-BASE-v1.0.0-DRAFT; existing Analysis·Report HTTP clients
+ALLOWED_PATHS=app/enterprise-react/Dockerfile; app/enterprise-react/compose.fragment.yml; app/enterprise-react/src/App.jsx; app/enterprise-react/src/api/analysisClient.ts; app/enterprise-react/src/api/reportClient.ts; app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx; app/enterprise-react/src/components/layout/AppHeader.jsx; app/enterprise-react/src/components/layout/AppSidebar.jsx; app/enterprise-react/src/data/analysisFixtures.ts; app/enterprise-react/src/pages/AgentPage.jsx; app/enterprise-react/src/pages/CatalogPage.jsx; app/enterprise-react/src/pages/ConnectionsPage.jsx; app/enterprise-react/src/pages/ReportsPage.jsx; app/enterprise-react/src/styles.css; app/enterprise-react/vite.config.js; tests/frontend/contracts.test.mjs; handoffs/R5-W5-F4.json; docs/markdown/daily_reports/minji/일일보고.md
+INHERITED_LOCAL_HISTORY_PATHS=app/enterprise-react/compose.fragment.yml; app/enterprise-react/src/App.jsx; app/enterprise-react/src/api/analysisClient.ts; app/enterprise-react/src/api/reportClient.ts; app/enterprise-react/src/components/analysis/AnalysisStatePanel.tsx; app/enterprise-react/src/components/layout/AppHeader.jsx; app/enterprise-react/src/components/layout/AppSidebar.jsx; app/enterprise-react/src/data/analysisFixtures.ts; app/enterprise-react/src/pages/AgentPage.jsx; app/enterprise-react/src/pages/CatalogPage.jsx; app/enterprise-react/src/pages/ConnectionsPage.jsx; app/enterprise-react/src/pages/ReportsPage.jsx; app/enterprise-react/src/styles.css; app/enterprise-react/vite.config.js; tests/frontend/contracts.test.mjs
+MUTABLE_PATHS=app/enterprise-react/Dockerfile; app/enterprise-react/compose.fragment.yml; tests/frontend/contracts.test.mjs; handoffs/R5-W5-F4.json; docs/markdown/daily_reports/minji/일일보고.md
+FORBIDDEN_PATHS=compose.yml; .env; .env.example; app/backend/**; app/enterprise-react/src/contracts/**; package*.json; root CI; firewall; 다른 project/container/volume; dependency; secret
+HANDOFF_MANIFEST=handoffs/R5-W5-F4.json
+ACCEPTANCE_CRITERIA=Dockerfile build stage는 ARG VITE_BACKEND_BASE_URL=http://127.0.0.1:18000과 동일 ENV를 npm run build 전에 선언하고 compose build.args는 ${VITE_BACKEND_BASE_URL:-http://127.0.0.1:18000}만 전달한다. 기본 build는 loopback을 유지하고 LAN은 FRONTEND_BIND_ADDRESS=0.0.0.0과 VITE_BACKEND_BASE_URL=http://<명시적-LAN-IP>:18000을 함께 제공할 때만 사용한다. 0.0.0.0을 browser backend URL로 사용하거나 LAN IP를 자동 추론하지 않는다. Agent·Report는 기존 동일 base와 fallback을 유지하고 backend 실패를 mock·fixture·synthetic success로 자동 전환하지 않는다. token·secret·backend/OpenAPI/CORS/route/package를 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_BUILD_ARG_ENV;AC2_DEFAULT_LOOPBACK;AC3_EXPLICIT_LAN_OPT_IN;AC4_AGENT_REPORT_SAME_BASE;AC5_FAIL_CLOSED;AC6_NO_SECRET_OR_OWNER_BYPASS
+TEST_COMMANDS=repository path·branch·HEAD·clean·local-only 3 commit inventory; fetch 후 f5387b7→latest dev의 inherited 15경로 overlap 0 재확인; origin/dev non-ff merge와 1fd9701·96f0b74·ece70e3 ancestry 보존; default와 explicit LAN compose config에서 build arg·host_ip 확인; node tests/frontend/contracts.test.mjs; npm --prefix app/enterprise-react run build; explicit LAN backend base 별도 build; Dockerfile ARG/ENV 순서·두 client 동일 env/default·자동 fallback 부재 contract test; gate_scope bootstrap·전체 planned-path·merge-base; git diff --check; minji corrective source CI
+TEST_COMMAND_IDS=T1_DEFAULT_CONFIG;T2_LAN_CONFIG;T3_FRONTEND_CONTRACT;T4_DEFAULT_BUILD;T5_LAN_BUILD;T6_SCOPE;T7_DIFF;T8_BRANCH_CI
+STOP_CONDITIONS=exact external repo·HEAD·clean snapshot 불일치; local-only commit 유실; latest dev overlap 또는 merge conflict; inherited 15경로를 reconciliation 외 새 기능으로 확대; backend endpoint·CORS·OpenAPI/schema 변경 필요; 기본값을 loopback 밖으로 변경; LAN IP 자동 탐지·0.0.0.0 backend URL·wildcard CORS; backend 실패를 mock/fixture/synthetic success로 대체; secret/token build arg; root Compose/env/backend/package/dependency 변경; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=exact external clone에서 fetch, latest dev non-ff merge, local-only 3 commits 보존, F4 허용 경로 corrective commit, 최종 minji push 1회와 source CI를 승인한다. 중간 push·reset·rebase·force push·stash 조작·다른 project/container/volume·firewall·backend lifecycle·외부 배포·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=Agent·Report base 불일치; 명시 opt-in 없는 LAN 공개; production 자동 fixture/mock fallback; secret 노출; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=local-only 3 commits와 latest dev ancestry, inherited 15경로 overlap 0, F4 build wiring, source CI와 handoff를 확인한다. backend runtime 실패는 R5가 우회하지 않고 R4 corrective 결과와 결합해 후속 판정한다.
+```
+
 ## 현재 통합 확인 사항
 
 | ID | 상태 | 확인 결과 | 다음 결정 |
@@ -1609,10 +1919,226 @@ RESULT_CI=branch 31363391107 PASS
 | I5-PRIORITY-01 | IN_PROGRESS | R3와 R4의 required filter 계약은 string·boolean 중심이며 `period_end`/`period_end_exclusive`와 실행 binder가 불일치한다. 승인 3-source 질문 G120-046과 Gold hash는 있으나 제품 소비용 PMS·CRM·POS Context fixture가 없다. | R2 typed registry+3-source producer → R4 Context/G2/binder → R3 Node2/evaluator → R1 조합 회귀+실제 API E2E 순으로 통합한다. 이 경로 통과 전 RunPod와 Node2 기능 확장을 보류한다. |
 | I5-BACKLOG-02 | PLANNED | Analysis는 기존 template/request/query/artifact 테이블이 있으나 persistence·조회·재실행 API가 없고, G2는 regex 기반, G3는 증폭·불변식·redaction이 부족하다. Report는 worker·schedule이 없고 실패 block 필드가 실행 전 실패를 표현하기 어렵다. | 기존 테이블 재사용 계약 결정 → Analysis persistence → SQLGlot G2 → R2 실행 증적/R4 G3 → Report v1.2 worker → R5 partial UI → schedule → Golden 보안·성능 검증 순으로 owner-scoped 카드 발행한다. |
 
+## 후속 실행 큐
+
+> 아래 카드는 선행 묶음이 끝나면 최신 dev SHA로 READY 전환한다. PLANNED·WAIT 상태는 구현 권한이 아니다.
+
+### R1 · R1-W5-F23
+
+```text
+STATUS=PLANNED
+ROLE_ID=R1
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F23
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R1-08 LAN Agent·Report actual browser smoke와 request trace
+BASE_SHA=N/A — R5-W5-F4 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=tests/integration/**; handoffs/R1-W5-F23.json; docs/markdown/daily_reports/junhee/일일보고.md
+ACCEPTANCE_CRITERIA=명시적 LAN frontend/backend URL에서 Agent·Report network request, exact CORS, fail-closed 오류와 request_id를 검증하며 3-source 성공은 실제 API가 성공할 때만 기록한다.
+TEST_COMMANDS=default/LAN compose config; actual browser/network trace; allowed/denied preflight; integration 전체; scope; diff; CI
+STOP_CONDITIONS=R5-W5-F4 미통합; firewall·secret·다른 project 변경; fixture success; 제품 변경 필요
+```
+
+### R2 · R2-W5-F9
+
+```text
+STATUS=PLANNED
+ROLE_ID=R2
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F9
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R2-09·10·11·19 DataHub 5-source ingestion·Semantic Catalog publish/verify·Binding live evidence
+BASE_SHA=N/A — R2-W5-F8 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/data/datahub_runtime_evidence.i5.v1.json; src/data/asset_binding_health.i5.v1.json; infrastructure/database/datahub/scripts/run-runtime-validation.ps1; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; tests/data/**; handoffs/R2-W5-F9.json; docs/markdown/daily_reports/seung/일일보고.md
+ACCEPTANCE_CRITERIA=pinned DataHub v1.7에서 5 recipe, Dataset 8/8, Column 116/116, unique 70, publisher 2회 멱등성과 live URN/FQN/lineage/binding hash를 observed evidence로 기록한다.
+TEST_COMMANDS=JSON; tests/data 전체; compose config; isolated runtime wrapper; publish twice; verifier; scope; diff; CI
+STOP_CONDITIONS=F8 미통합; 자원 preflight 실패; 다른 project/volume 변경; cardinality/hash 불일치; secret·실데이터·비용
+```
+
+### R2 · R2-W5-F10
+
+```text
+STATUS=PLANNED
+ROLE_ID=R2
+PERSONAL_BRANCH=seung
+EXECUTION_BUNDLE_ID=R2-W5-F10
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R2-10·11·19 live Semantic Catalog release freeze
+BASE_SHA=N/A — R2-W5-F9 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/data/serving_semantic_catalog.i4.v1.json; src/data/serving_analytics_contract.i4.v1.json; src/data/asset_binding_health.i5.v1.json; src/data/datahub_runtime_evidence.i5.v1.json; tests/data/**; handoffs/R2-W5-F10.json; docs/markdown/daily_reports/seung/일일보고.md
+ACCEPTANCE_CRITERIA=F9 live hash를 immutable 후보로 연결하고 PUBLISHED·VERIFIED binding만 소비자에게 노출하며 미검증 항목은 fail-closed한다.
+TEST_COMMANDS=JSON/hash; tests/data 전체; producer-consumer fixtures; scope; diff; CI
+STOP_CONDITIONS=F9 NOT_RUN; runtime PASS 위조; R3/R4 파일 변경; hash 비결정성
+```
+
+### R3 · R3-W5-F9
+
+```text
+STATUS=PLANNED
+ROLE_ID=R3
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F9
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R3-10 versioned Semantic Catalog training consumer
+BASE_SHA=N/A — R2·R3 W5-F8 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/ai/contracts/**; src/ai/training/semantic_catalog.py; src/ai/training/dataset.py; src/ai/training/verify_case_specs.py; tests/ai/**; handoffs/R3-W5-F9.json; docs/markdown/daily_reports/daesung/일일보고.md
+ACCEPTANCE_CRITERIA=8/116/70과 version/hash를 fail-closed 검증하고 description을 실행 instruction으로 취급하지 않으며 compiled dataset은 변경하지 않는다.
+TEST_COMMANDS=JSON; semantic tamper/injection tests; tests/ai 전체; compileall; deterministic hash; scope; diff; CI
+STOP_CONDITIONS=producer 미통합; dataset 재생성; prompt/model 변경; external endpoint·secret·dependency
+```
+
+### R3 · R3-W5-F10
+
+```text
+STATUS=PLANNED
+ROLE_ID=R3
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F10
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R3-10·14 compiled 1,350 typed parameter v2 재생성
+BASE_SHA=N/A — actual Analysis API E2E 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/ai/training/**; evals/**; tests/ai/**; handoffs/R3-W5-F10.json; docs/markdown/daily_reports/daesung/일일보고.md
+ACCEPTANCE_CRITERIA=period_end_exclusive·typed required filters를 1,350건에 결정론적으로 재생성하고 split/paraphrase/join graph 누수 0과 Gold 불변을 보장한다.
+TEST_COMMANDS=two-run byte/hash equality; manifest/leakage tests; tests/ai 전체; compileall; scope; diff; CI
+STOP_CONDITIONS=actual API E2E 미통과; Gold 의미 변경; RunPod·model·secret·비용; generated path 미승인
+```
+
+### R3 · R3-W5-F11
+
+```text
+STATUS=PLANNED
+ROLE_ID=R3
+PERSONAL_BRANCH=daesung
+EXECUTION_BUNDLE_ID=R3-W5-F11
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R3-15 model·prompt·adapter release candidate freeze
+BASE_SHA=N/A — R3-W5-F10 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/modelops/**; src/ai/prompt_registry.py; tests/ai/**; handoffs/R3-W5-F11.json; docs/markdown/daily_reports/daesung/일일보고.md
+ACCEPTANCE_CRITERIA=model/image/runtime/prompt/dataset/adapter hash와 rollback target을 고정하고 Base 기본·LoRA disabled를 별도 승인 전 유지한다.
+TEST_COMMANDS=JSON/hash graph; artifact existence; model/prompt tests; tests/ai 전체; compileall; scope; diff; CI
+STOP_CONDITIONS=stale evidence; 무승인 Base→LoRA; RunPod 비용·secret; artifact/hash 누락
+```
+
+### R4 · R4-W5-F13
+
+```text
+STATUS=PLANNED
+ROLE_ID=R4
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F13
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R4-17·18 Report worker·block별 Analysis 재실행
+BASE_SHA=N/A — R4-W5-F12·R5-W5-F6 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=app/backend/app/report_*.py; app/backend/app/controllers/analysis_controller.py; app/backend/compose.fragment.yml; app/backend/migrations/**; app/backend/contracts/openapi.v0.1.json; tests/backend/**; handoffs/R4-W5-F13.json; docs/markdown/daily_reports/jaehong/일일보고.md
+ACCEPTANCE_CRITERIA=approved Definition command를 atomic claim하고 block마다 현재 권한·Context·G1/G2/G3 경로로 재실행해 success·partial·failed·cancelled를 구분한다.
+TEST_COMMANDS=claim concurrency; partial/all-fail/auth/filter/repair/timeout/masking; migration; backend 전체; OpenAPI; compose; scope; CI
+STOP_CONDITIONS=F12·R5 proposal 미통합; Gate 우회; raw SQL/result 복제; schedule·root compose·secret
+```
+
+### R4 · R4-W5-F14
+
+```text
+STATUS=PLANNED
+ROLE_ID=R4
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F14
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R4-15 append-only Audit repository와 read-only API
+BASE_SHA=N/A — R4-W5-F13 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=app/backend/app/audit_*.py; app/backend/app/main.py; app/backend/app/services/analysis_service.py; app/backend/app/services/report_worker.py; app/backend/migrations/**; app/backend/contracts/openapi.v0.1.json; tests/backend/**; handoffs/R4-W5-F14.json; docs/markdown/daily_reports/jaehong/일일보고.md
+ACCEPTANCE_CRITERIA=request_id 기반 append-only trace와 owner-scoped list/detail을 제공하고 raw SQL·parameter·result·secret·stack trace를 redaction한다.
+TEST_COMMANDS=analysis/report trace; authz; redaction; immutable append; pagination; migration; backend 전체; OpenAPI; scope; CI
+STOP_CONDITIONS=role mutation; raw data 노출; worker 미통합인데 report trace PASS 주장; frontend·R2/R3 변경
+```
+
+### R5 · R5-W5-F5
+
+```text
+STATUS=PLANNED
+ROLE_ID=R5
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W5-F5
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R5-01 LAN actual browser·CORS·fail-closed smoke
+BASE_SHA=N/A — R5-W5-F4 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=handoffs/R5-W5-F5.json; docs/markdown/daily_reports/minji/일일보고.md
+ACCEPTANCE_CRITERIA=명시적 LAN frontend/backend 주소에서 Agent·Report network request와 allowed/denied CORS, 4xx/503 fail-closed UI를 실제 browser로 검증한다.
+TEST_COMMANDS=resolved compose; service health; browser screenshot/network; OPTIONS allow/deny; frontend contracts/build; scope; CI
+STOP_CONDITIONS=F4 미통합; 제품 수정 필요; wildcard CORS; firewall·다른 project·secret; fake success
+```
+
+### R5 · R5-W5-F6
+
+```text
+STATUS=PLANNED
+ROLE_ID=R5
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W5-F6
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R5-14 Report Worker v1.2 domain/router/migration proposal
+BASE_SHA=N/A — R5-W5-F5 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=src/report/**; tests/report/**; handoffs/R5-W5-F6.json; docs/markdown/daily_reports/minji/일일보고.md
+ACCEPTANCE_CRITERIA=immutable Analysis Definition version·공통 report_as_of·queued→claimed→terminal·block partial·idempotency를 proposal로 동결하고 schedule은 제외한다.
+TEST_COMMANDS=report domain/router/migration proposal tests; duplicate claim; partial/all-fail; backend/OpenAPI unchanged; scope; CI
+STOP_CONDITIONS=app/backend 직접 수정; 과거 SQL 신뢰; fake status; schedule·P2·dependency·secret
+```
+
+### R5 · R5-W5-F7
+
+```text
+STATUS=PLANNED
+ROLE_ID=R5
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W5-F7
+TARGET_INTEGRATION_GATE=I5
+TASK_CARD_RANGE=R5-14 actual Report worker run·partial·error UI
+BASE_SHA=N/A — R4-W5-F13 dev 통합 SHA
+DIRECTIVE=WAIT
+DIRECTIVE_TOKEN=N/A
+ALLOWED_PATHS=app/enterprise-react/src/api/reportClient.ts; app/enterprise-react/src/contracts/report.ts; app/enterprise-react/src/pages/ReportsPage.jsx; app/enterprise-react/src/styles.css; tests/frontend/contracts.test.mjs; handoffs/R5-W5-F7.json; docs/markdown/daily_reports/minji/일일보고.md
+ACCEPTANCE_CRITERIA=server의 queued/running/success/partial/failed/cancelled와 block evidence를 그대로 표시하고 polling race·과거 결과 최신 위장을 차단한다.
+TEST_COMMANDS=frontend contracts/build; HTTP state matrix; actual worker browser flow; responsive/a11y; scope; CI
+STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStorage result; schedule·dependency
+```
+
 ## 변경 내역
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.55 | 2026-08-11 11:28 | 외부 R5 clone의 local-only 3 commits를 삭제 없이 보존하고 latest dev를 non-ff merge한 뒤 기존 F4 wiring을 완주하는 owner-scoped reconciliation REWORK 재발행 |
+| v5.54 | 2026-08-11 11:22 | R4-W5-F12의 실제 제품 SHA f481f91과 scope-only 실패 CI 31451536556을 보존하면서 F10C·F10D owner 경로를 정식화하고 canonical G120-046 Gold 수치·hash 교정을 필수로 하는 corrective REWORK 재발행 |
+| v5.53 | 2026-08-11 10:50 | actual G120-046 HTTP가 live Trino Gold PASS와 달리 Node3 MODEL 단계에서 실패한 근거로, 미착수 R4-W5-F12를 Context Registry와 multi-source metric_selection consumer를 함께 완주하는 owner-scoped REWORK로 재발행 |
+| v5.52 | 2026-08-11 10:35 | R1-W5-F22의 격리 runtime·migration·Template·readiness를 MERGED_DEV로 전환하고, 각 역할의 후속 작업 11개를 단일 활성 카드 원칙을 지키는 PLANNED 큐로 등록 |
+| v5.51 | 2026-08-11 10:20 | 실제 호스트의 15432·18000 점유와 Windows 55432 제외 범위를 반영해 R1-W5-F22가 내부 DNS/target을 보존한 채 answervice 전용 host 25432·28000만 override하도록 runtime identity 계약 교정 |
+| v5.50 | 2026-08-11 10:10 | R1-W5-F21 checkout Node 24 immutable pin과 source CI를 dev에 통합하고, R4-W5-F11 readiness 계약 위에서 app-postgres identity 충돌을 root override로 해소해 actual readiness를 검증하는 R1-W5-F22 READY 발행 |
+| v5.49 | 2026-08-11 10:10 | R2-W5-F7 CI scope 충돌을 inherited evidence로 분리해 R2-W5-F8을 발행하고, R4 Context Registry 요청 중 live 의존이 없는 F10A additive migration·F10B checksum repository를 R4-W5-F12 service-only READY로 병렬 발행 |
+| v5.48 | 2026-08-11 10:10 | R4-W5-F11의 readiness·Node3 payload·LAN API 경계와 source CI를 확인해 dev에 통합하고 MERGED_DEV 전환 |
+| v5.47 | 2026-08-11 09:55 | R1-W5-F20 이력 조정을 dev에 통합하고 R1 CI Node 24 공급망 pin, R3 Node3·ModelOps DRAFT 검증을 READY 발행; R4·R5는 Gate-only dev 선행을 ff-only 동기화해 기존 token으로 즉시 착수하도록 명시 |
+| v5.46 | 2026-08-11 09:44 | 작업자 Downloads 저장소의 seung 7c4164b·dirty 일일보고 1개 snapshot을 조건부 정본으로 받아 제품·stash 불변과 F6/F7 handoff만 허용하도록 R2-W5-F7 token 재발행 |
+| v5.45 | 2026-08-11 09:38 | 갈라진 junhee·dev 이력과 기존 R1 증거를 삭제 없이 보존하고 최신 Gate로 동기화하는 R1-W5-F20 reconciliation REWORK 발행 |
+| v5.44 | 2026-08-11 09:29 | 선행 producer 완성을 기다리지 않고 R4 backend 시연 연결 해소와 R5 공통 backend base wiring을 DRAFT 계약으로 병렬 착수하도록 READY 발행 |
+| v5.43 | 2026-08-11 09:27 | R4-W5-F9의 Analysis 저장·조회·재실행 API와 terminal CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |
+| v5.42 | 2026-08-11 09:20 | R2-W5-F6의 원격 CI 통과 checkpoint와 로컬 일일보고·제품 변경을 모두 보존하는 R2-W5-F7 reconciliation 전용 REWORK 발행 |
 | v5.41 | 2026-08-10 19:30 | R1-W5-F13을 기존 hotel-synthetic-db app-postgres 고정 이름 충돌 근거로 BLOCKED 처리하고 다른 project 불변·신규 빈 answervice resource 보존·owner별 후속 경계를 기록 |
 | v5.40 | 2026-08-10 19:20 | 시연 준비를 위해 exact answervice app-postgres/backend만 기동하고 migration head·approved Template·readiness를 검증하는 R1-W5-F13 발행 |
 | v5.39 | 2026-08-10 19:10 | R5-W5-F3의 기본 loopback·명시적 LAN 공개, exact frontend runtime·source CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |

@@ -194,13 +194,8 @@ class ContractModelAdapter:
             query = payload["query"]
             context = payload["context"]
             rows = query["rows"]
-            metric_ids = {
-                str(metric["id"])
-                for asset in payload["assets"]
-                for metric in asset.get("metrics", ())
-            }
-            if len(metric_ids) != 1:
-                raise ValueError("node3 requires exactly one entitled Context metric")
+            metric_selection = self._metric_selection(payload["assets"])
+            selected_metric = metric_selection["selected_metric_id"]
             response = self._generate(
                 node,
                 {
@@ -212,7 +207,8 @@ class ContractModelAdapter:
                         ],
                         "rows": rows,
                     },
-                    "metric": metric_ids.pop(),
+                    "metric": selected_metric,
+                    "metric_selection": metric_selection,
                     "period": self._execution_time(context),
                     "filters": [
                         f"{key}={value}"
@@ -234,6 +230,51 @@ class ContractModelAdapter:
                 "model_version": response["model"]["model_version"],
             }
         raise ValueError(f"unsupported node: {node}")
+
+    @staticmethod
+    def _metric_selection(assets: list[dict[str, Any]]) -> dict[str, Any]:
+        if not assets:
+            raise ValueError("node3 requires entitled Context assets")
+
+        metric_ids = [
+            str(metric["id"])
+            for asset in assets
+            for metric in asset.get("metrics", ())
+            if isinstance(metric, dict) and isinstance(metric.get("id"), str)
+        ]
+        if metric_ids:
+            selected = set(metric_ids)
+            if len(selected) != 1:
+                raise ValueError("node3 requires exactly one entitled Context metric")
+            selected_metric = selected.pop()
+            context_metric_ids = [selected_metric] * len(assets)
+        else:
+            approved_join = "pms_crm_pos_gold_revenue_month_v1"
+            if (
+                len(assets) != 6
+                or len({asset.get("urn") for asset in assets}) != 6
+                or any(
+                    approved_join not in asset.get("join_ids", ())
+                    for asset in assets
+                )
+            ):
+                raise ValueError("node3 requires exactly one entitled Context metric")
+            selected_metric = "total_guest_revenue_krw"
+            context_metric_ids = [selected_metric] * len(assets)
+
+        explicit_entitlements = [
+            str(metric_id)
+            for asset in assets
+            for metric_id in asset.get("entitled_metric_ids", ())
+        ]
+        entitled_metric_ids = set(explicit_entitlements) or {selected_metric}
+        if selected_metric not in entitled_metric_ids:
+            raise ValueError("node3 selected metric is outside entitlement")
+        return {
+            "selected_metric_id": selected_metric,
+            "context_metric_ids": context_metric_ids,
+            "entitled_metric_ids": sorted(entitled_metric_ids),
+        }
 
     def _generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
         response = self._model.generate(node, payload)

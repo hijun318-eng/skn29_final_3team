@@ -32,18 +32,23 @@ def _config() -> dict:
     return json.loads(result.stdout)
 
 
-def test_root_include_applies_only_the_app_postgres_identity_override():
+def test_root_include_applies_only_the_runtime_identity_override():
     root = COMPOSE.read_text(encoding="utf-8")
     override = OVERRIDE.read_text(encoding="utf-8")
 
-    assert "- infrastructure/database/compose.yml\n      - compose.app-postgres.override.yml" in root
+    assert "- infrastructure/database/compose.yml" in root
+    assert "- app/backend/compose.fragment.yml" in root
+    assert "- app/enterprise-react/compose.fragment.yml" in root
+    assert "- infrastructure/database/datahub/compose.consumer.yml" in root
+    assert "- compose.app-postgres.override.yml" in root
     assert override == (
         "services:\n"
         "  app-postgres:\n"
         "    container_name: answervice-app-postgres\n"
         '    ports: !override ["127.0.0.1:25432:5432"]\n'
+        "  backend:\n"
+        '    ports: !override ["127.0.0.1:28000:8000"]\n'
     )
-    assert 'ports: !override ["127.0.0.1:28000:8000"]' in root
 
 
 def test_resolved_app_postgres_keeps_service_contract_except_identity():

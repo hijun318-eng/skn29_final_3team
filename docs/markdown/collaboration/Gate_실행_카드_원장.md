@@ -28,7 +28,7 @@
 | R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F17` | `READY` | `jaehong` |
-| R5 | `R5-W5-F8` | `MERGED_DEV` | `minji` |
+| R5 | `R5-W5-F6` | `READY` | `minji` |
 
 ## 활성 실행 카드
 
@@ -453,10 +453,9 @@ CURRENT_TASK_CARD_ID=R1-08-ACTUAL-ANALYSIS-E2E
 BASE_BRANCH=dev
 BASE_SHA=e6f791f7d18ab8b18695a943461a0b89b512d0b3
 START_POINT=R4-W5-F16과 R5-W5-F8이 dev e6f791f에 통합되고 dev CI 31468594200이 PASS했다. R1-W5-F34와 R4-W5-F17이 terminal·CI PASS이고 origin/dev·origin/test·runtime checkout identity가 exact 일치할 때만 conditional candidate가 effective READY가 된다.
-DIRECTIVE=ACTION
+DIRECTIVE=WAIT
 DIRECTIVE_TOKEN=R1-W5-F35@e6f791f
-AUTO_START=CONDITIONAL
-AUTO_START_AFTER=R1-W5-F34;R1-W5-F36;R4-W5-F17;R5-W5-F8
+AUTO_START_DEFERRED=R4-W5-F17 terminal·CI PASS와 origin/test=origin/dev·same-SHA runtime이 확인되면 같은 fixed card를 AUTO_START=CONDITIONAL로 재활성화한다.
 CONTRACT_VERSION=ACTUAL-ANALYSIS-E2E-v1.0.0-DRAFT; OPENAPI-v1.0.0; TEST-BRANCH-RUNTIME-v1.0.1
 ALLOWED_PATHS=tests/integration/test_answervice_demo_runtime.py; handoffs/R1-W5-F35.json
 FORBIDDEN_PATHS=docs/markdown/daily_reports/**; app/**; infrastructure/**; src/**; tests/integration의 승인 1파일 외 tests/**; root Compose/env·.env; R2~R5 제품·보고·handoff; migration; dependency; secret
@@ -1132,19 +1131,32 @@ RESULT_CI=branch 31468349479 PASS
 ### R5 · R5-W5-F6
 
 ```text
-STATUS=PLANNED
+STATUS=READY
 ROLE_ID=R5
+ASSIGNEE=송민지
 PERSONAL_BRANCH=minji
 EXECUTION_BUNDLE_ID=R5-W5-F6
 TARGET_INTEGRATION_GATE=I5
-TASK_CARD_RANGE=R5-14 Report Worker v1.2 domain/router/migration proposal
-BASE_SHA=N/A — R5-W5-F5 dev 통합 SHA
-DIRECTIVE=WAIT
-DIRECTIVE_TOKEN=N/A
-ALLOWED_PATHS=src/report/**; tests/report/**; handoffs/R5-W5-F6.json; docs/markdown/daily_reports/minji/일일보고.md
-ACCEPTANCE_CRITERIA=immutable Analysis Definition version·공통 report_as_of·queued→claimed→terminal·block partial·idempotency를 proposal로 동결하고 schedule은 제외한다.
-TEST_COMMANDS=report domain/router/migration proposal tests; duplicate claim; partial/all-fail; backend/OpenAPI unchanged; scope; CI
-STOP_CONDITIONS=app/backend 직접 수정; 과거 SQL 신뢰; fake status; schedule·P2·dependency·secret
+CHECKPOINT_GATES=Report Worker v1.2 owner proposal before R4 backend integration
+TASK_CARD_RANGE=R5-14 Report Worker v1.2 domain·repository·router·migration proposal
+CURRENT_TASK_CARD_ID=R5-14-REPORT-WORKER-PROPOSAL
+BASE_BRANCH=dev
+BASE_SHA=cb27277177083f69accde9614dddd854daf4fe57
+START_POINT=R5-W5-F8이 dev cb27277에 통합되고 dev CI 31472099058이 PASS했다. R5-W5-F5 actual browser smoke는 R4 migration owner 교정 전까지 별도 대기하되, backend 변경이 없는 Report owner proposal은 clean minji를 latest dev cb27277로 ff-only 동기화하고 preflight·전체 planned-path 검사를 통과한 뒤 독립 착수한다.
+DIRECTIVE=ACTION
+DIRECTIVE_TOKEN=R5-W5-F6@cb27277
+CONTRACT_VERSION=REPORT-WORKER-v1.2.0-DRAFT
+ALLOWED_PATHS=src/report/domain.py; src/report/repository.py; src/report/router.py; src/report/migration_proposal_v1_2.sql; src/report/README.md; tests/report/test_domain.py; tests/report/test_router_contract.py; tests/report/test_migration_proposal.py; handoffs/R5-W5-F6.json; docs/markdown/daily_reports/minji/일일보고.md
+FORBIDDEN_PATHS=app/backend/**; app/enterprise-react/**; app/backend/migrations/**; app/backend/contracts/**; compose.yml; .env; .env.example; package*.json; root CI; schedule·P2; dependency; secret
+HANDOFF_MANIFEST=handoffs/R5-W5-F6.json
+ACCEPTANCE_CRITERIA=각 non-text report block은 immutable Analysis Definition id·version과 공통 report_as_of를 참조한다. command는 queued→claimed/running→terminal 상태와 block별 독립 결과를 가지며 run은 success·partial·failed를 구분한다. 동일 idempotency key와 동일 payload는 같은 command를 반환하고 payload가 다르면 conflict로 거부하며 claim은 exactly once다. 재실행은 과거 SQL·Artifact를 신뢰하지 않고 현재 entitlement·Context·G1·G2·G3 재검증이 필요하다는 owner proposal 계약을 고정한다. migration_proposal_v1_2.sql은 proposal일 뿐 공통 Alembic chain이나 runtime DB에 적용하지 않으며 scheduler·배포·fake success를 추가하지 않는다.
+ACCEPTANCE_IDS=AC1_IMMUTABLE_DEFINITION;AC2_COMMON_AS_OF;AC3_COMMAND_STATE;AC4_BLOCK_PARTIAL;AC5_IDEMPOTENCY;AC6_EXACTLY_ONCE_CLAIM;AC7_REVALIDATION_CONTRACT;AC8_PROPOSAL_ONLY
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/report/test_domain.py tests/report/test_router_contract.py tests/report/test_migration_proposal.py -q; python -m pytest -p no:cacheprovider tests/report -q; duplicate idempotency·payload conflict·duplicate claim·mixed partial·all-fail·immutable definition negative matrix; proposal SQL static parse와 app/backend/OpenAPI diff 0 확인; python .github/scripts/agent_workflow.py --branch minji; gate_scope preflight·전체 10 planned paths·merge-base; document/report policy; git diff --check; minji source CI
+TEST_COMMAND_IDS=T1_TARGET;T2_REPORT_FULL;T3_IDEMPOTENCY;T4_CLAIM;T5_PARTIAL;T6_PROPOSAL_SQL;T7_BACKEND_UNCHANGED;T8_WORKFLOW_PREFLIGHT;T9_SCOPE;T10_DOCUMENT_POLICY;T11_DIFF;T12_BRANCH_CI
+STOP_CONDITIONS=app/backend·공통 Alembic·OpenAPI·frontend 변경 필요; 과거 SQL·Artifact를 현재 결과로 신뢰; client-owned status·id; fake success; 실제 migration 적용·scheduler·배포·P2 추가; latest dev 동기화 불가·경로 겹침·dirty; 허용 경로 밖 변경; dependency·secret·외부 비용; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=clean minji의 latest dev ff-only 동기화, 허용 경로 commit·minji push·source CI만 승인한다. migration_proposal SQL의 실제 DB 적용, backend·Docker lifecycle, scheduler·배포, 다른 branch, secret·외부 전송·비용은 금지한다.
+AUTO_FAIL_CONDITIONS=definition version 가변; report_as_of 불일치; 중복 claim; payload mutation을 같은 command로 수용; 과거 SQL·Artifact 재사용; proposal을 실제 migration으로 적용; backend/OpenAPI/frontend drift; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=R5 source CI와 handoff에서 immutable definition·공통 as_of·idempotency·exactly-once claim·partial 상태·proposal-only 경계를 확인한 뒤 dev 통합한다. R4 backend worker 구현은 이 proposal 통합 뒤 별도 owner-scoped 카드로 발행한다.
 ```
 
 ### R5 · R5-W5-F7
@@ -1170,6 +1182,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.98 | 2026-08-11 17:24 | 미완료 R4 F17 dependency가 모든 branch CI를 실패시키던 R1-W5-F35 conditional 판정을 WAIT로 복구하고, backend migration 교정과 독립적인 Report Worker v1.2 proposal을 R5-W5-F6 READY로 발행 |
 | v5.97 | 2026-08-11 19:25 | R1-W5-F37 self-service 단일 source guard와 source CI 31471874981 PASS를 새 표준 절차로 dev에 통합하고 MERGED_DEV 전환 |
 | v5.96 | 2026-08-11 19:15 | 자기 mapped branch 단일 source만 self-service session에 고정하고 다른 branch·복수·remote-only를 차단하며 관리자 절차를 보존해 R1-W5-F37 REVIEW 전환 |
 | v5.95 | 2026-08-11 19:02 | mapped 개인 작업자가 자기 branch 하나만 기존 안전 조건을 유지해 dev에 병합하도록 관리자 전용 표현·실행자 검증을 최소 완화하는 R1-W5-F37 READY 발행 |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.86 |
-| 문서 기준일 | 2026-08-11 17:18 |
+| 버전 | v5.87 |
+| 문서 기준일 | 2026-08-11 17:25 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -24,7 +24,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F33` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F34` | `READY` | `junhee` |
 | R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `MERGED_DEV` | `jaehong` |
@@ -403,6 +403,37 @@ AUTO_FAIL_CONDITIONS=mixed checkout runtime에서 refresh 가능; config/env lab
 R1_REVIEW_CONDITIONS=synthetic identity matrix와 현재 host의 mixed-checkout read-only 재현이 fail-closed하고 기존 선택 재기동 계약이 유지되며 source CI가 PASS한 뒤 dev 통합한다.
 RESULT_SHA=bf6b29ba0617fd8df941949c8946e9ff63ea84a8
 RESULT_CI=branch 31466799848 PASS
+```
+
+### R1 · R1-W5-F34
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F34
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=conditional AUTO_START exact external-action permission fail-closed
+TASK_CARD_RANGE=R1-04 conditional AUTO_START action permission 검증
+CURRENT_TASK_CARD_ID=R1-04-AUTO-START-ACTION-PERMISSION
+BASE_BRANCH=dev
+BASE_SHA=e6f791f7d18ab8b18695a943461a0b89b512d0b3
+START_POINT=R1-W5-F33까지 dev e6f791f에 통합되고 dev CI 31468594200이 PASS했다. test는 local .env 부재로 갱신하지 못해 origin/test b78265c에 머물며 이 카드 범위에서 제외한다. 조건부 자동 착수 후보가 exact 외부 행위 권한 없이 실행 범위를 얻는 정책 병목을 owner-scoped fail-closed 검증으로 최소 보완한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F34@e6f791f
+CONTRACT_VERSION=GATE-SCOPE-v1.2.1-DRAFT; AGENT-WORKFLOW-v1.2.0
+ALLOWED_PATHS=.github/scripts/gate_scope.py; tests/integration/test_gate_scope.py; AGENTS.md; docs/markdown/collaboration/README.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F34.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=.github/scripts/**의 승인 1파일 외 경로; tests/**의 승인 1파일 외 경로; .github/workflows/**; app/**; infrastructure/**; src/**; R2~R5 보고·handoff·제품 경로; test worktree·env·secret; dependency
+HANDOFF_MANIFEST=handoffs/R1-W5-F34.json
+ACCEPTANCE_CRITERIA=AUTO_START=CONDITIONAL인 PLANNED 후보는 기존 고정 필드와 함께 비어 있지 않고 N/A가 아닌 exact EXTERNAL_ACTION_PERMISSION을 가져야 한다. 누락·N/A는 ledger health와 effective READY 판정에서 fail-closed한다. 권한 문자열의 의미 해석·권한 상속·외부 행위 실행은 추가하지 않는다. 기존 manual READY·IN_PROGRESS와 non-conditional 카드는 이 필드가 없어도 기존 판정을 유지한다. Google Docs는 요청·협업 경로이며 Git Gate 원장과 agent_workflow PASS만 실행 승인 정본이다. terminal CI·single-active·clean·safe-stale·exact path 검사는 그대로 유지한다.
+ACCEPTANCE_IDS=AC1_CONDITIONAL_PERMISSION_REQUIRED;AC2_MISSING_FAIL_CLOSED;AC3_NA_FAIL_CLOSED;AC4_NON_CONDITIONAL_COMPATIBLE;AC5_NO_PERMISSION_INTERPRETER;AC6_CANONICAL_GATE_UNCHANGED
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/integration/test_gate_scope.py -q; python -m pytest -p no:cacheprovider tests/integration -q; python -m compileall .github/scripts/gate_scope.py; document policy; gate_scope preflight·7 planned paths·merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_TARGET_TESTS;T2_INTEGRATION;T3_COMPILE;T4_DOCUMENT_POLICY;T5_SCOPE;T6_DIFF;T7_BRANCH_CI
+STOP_CONDITIONS=conditional 후보의 missing·N/A permission 허용; permission 내용 해석·행위 자동 실행·상속 추가; non-conditional 호환성 파손; agent_workflow·workflow·제품 코드·test env·secret 수정; dev/test merge; scope·필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=origin read-only fetch·CI 조회, 허용 경로 commit·junhee push·source CI만 승인한다. dev/test merge·test runtime/env·Docker 변경·외부 시스템 쓰기·secret·비용 발생은 금지한다.
+AUTO_FAIL_CONDITIONS=conditional missing·N/A permission이 ledger health를 통과; non-conditional 카드에 새 필드 강제; 기존 clean·safe-stale·single-active·terminal CI guard 우회; scope·필수 검증 FAIL
+R1_REVIEW_CONDITIONS=target·integration 회귀와 문서 정책·scope가 PASS하고 source CI가 PASS한 뒤 dev 통합 여부를 별도 판정한다.
 ```
 
 ### R2 · R2-W5-F5
@@ -1004,6 +1035,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.87 | 2026-08-11 17:25 | 조건부 AUTO_START 후보가 exact EXTERNAL_ACTION_PERMISSION 누락·N/A를 fail-closed하고 기존 non-conditional 카드를 보존하도록 R1-W5-F34 owner-scoped REWORK 발행 |
 | v5.86 | 2026-08-11 17:18 | R5-W5-F8의 Agent 실제 Analysis API·오류 fail-closed 전환과 source CI 31468349479 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.85 | 2026-08-11 17:12 | R4-W5-F16의 server-owned principal·OpenAPI 인증 계약과 source CI 31463682802 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.84 | 2026-08-11 17:00 | CRM DataHub MSSQL ingestion의 불필요한 msdb job 조회를 광범위 DB 권한 없이 `include_jobs: false`로 차단하도록 R2-W5-F9를 BLOCKED 처리하고 R2-W5-F12 owner-scoped REWORK 발행 |

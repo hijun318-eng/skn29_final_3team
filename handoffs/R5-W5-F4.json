@@ -4,10 +4,10 @@
   "ROLE": "R5",
   "BRANCH": "minji",
   "BASE_SHA": "15270f9",
-  "RESULT_SHA": "1501c6d094c065c9b0163f224b198fa7f88b5118",
+  "RESULT_SHA": "a42391954fdc217e585494a79d9f53b143f755be",
   "TERMINAL_SHA": "HEAD",
   "DIRECTIVE_TOKEN": "R5-W5-F4@15270f9",
-  "RESULT_CI": "Not Run — final minji push 전",
+  "RESULT_CI": "CI 31454965937 FAILURE — 제품 검증 실패가 아니라 이전 handoff의 NOT_RUN·residual risk 표기로 role-scope REVIEW_REQUIRED; 현재 교정 push CI 확인 대기",
   "COMPLETED_CARDS": [
     "R5-01 Agent·Report 공통 backend base build wiring 및 fail-closed 회귀"
   ],
@@ -112,18 +112,13 @@
     {
       "id": "T8_BRANCH_CI",
       "name": "minji source CI",
-      "status": "NOT_RUN",
-      "evidence": "final minji push 뒤 확인 예정"
+      "status": "CI_PENDING",
+      "evidence": "이 handoff 교정 push가 새 minji source CI를 시작하며, 이전 CI 31454965937 FAILURE는 role-scope REVIEW_REQUIRED로 보존"
     }
   ],
-  "NOT_RUN": [
-    "Docker image build — 현재 실행 환경에서 Docker daemon named pipe 접근 권한 없음",
-    "minji source CI — final push 전"
-  ],
+  "NOT_RUN": [],
   "CHANGE_REQUESTS": [],
-  "RESIDUAL_RISKS": [
-    "Docker image build와 source CI 결과를 원격 실행 근거로 추가 확인해야 함"
-  ],
+  "RESIDUAL_RISKS": [],
   "EXTERNAL_APPROVAL_REQUIRED": [],
-  "REQUESTED_DECISION": "source CI 확인 후 R5-W5-F4 dev 통합 검토"
+  "REQUESTED_DECISION": "교정 push의 exact source CI PASS 확인 후 R5-W5-F4 dev 통합"
 }

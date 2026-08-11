@@ -51,6 +51,15 @@ def test_workflow_keeps_read_only_repository_permission():
     assert re.search(r"(?m)^permissions:\s*\n  contents: read\s*$", source)
 
 
+def test_test_branch_runs_integration_sized_checks_without_host_deployment():
+    workflow = _workflow()
+    assert "branches: [dev, test, junhee, seung, daesung, jaehong, minji]" in workflow
+    assert "dev|test) targets=(tests)" in workflow
+    assert 'scope_branch="dev"' in workflow
+    assert "self-hosted" not in workflow
+    assert "refresh_test_runtime.ps1" not in workflow
+
+
 def test_product_jobs_run_after_role_scope_failure_without_opening_quality_gate():
     source = _workflow()
     for output in ("python", "documents", "frontend", "compose"):

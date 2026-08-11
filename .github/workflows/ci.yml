@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [dev, junhee, seung, daesung, jaehong, minji]
+    branches: [dev, test, junhee, seung, daesung, jaehong, minji]
 
 permissions:
   contents: read
@@ -30,9 +30,11 @@ jobs:
         id: gate
         shell: bash
         run: |
-          if [[ "$GITHUB_REF_NAME" == "dev" ]]; then
+          scope_branch="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF_NAME" == "dev" || "$GITHUB_REF_NAME" == "test" ]]; then
             base="${{ github.event.before }}"
             mode="direct"
+            scope_branch="dev"
             if [[ "$base" =~ ^0+$ ]]; then
               base="$(git rev-list --max-parents=0 HEAD)"
             fi
@@ -42,7 +44,7 @@ jobs:
             mode="merge-base"
           fi
           python .github/scripts/gate_scope.py \
-            --branch "$GITHUB_REF_NAME" \
+            --branch "$scope_branch" \
             --base "$base" \
             --head "$GITHUB_SHA" \
             --mode "$mode"
@@ -72,7 +74,7 @@ jobs:
         shell: bash
         run: |
           case "$GITHUB_REF_NAME" in
-            dev) targets=(tests) ;;
+            dev|test) targets=(tests) ;;
             junhee) targets=(tests/integration) ;;
             seung) targets=(tests/data) ;;
             daesung) targets=(tests/ai) ;;
@@ -93,7 +95,7 @@ jobs:
       - name: Validate changed documents
         shell: bash
         run: |
-          if [[ "$GITHUB_REF_NAME" == "dev" ]]; then
+          if [[ "$GITHUB_REF_NAME" == "dev" || "$GITHUB_REF_NAME" == "test" ]]; then
             base="${{ github.event.before }}"
             separator=".."
             if [[ "$base" =~ ^0+$ ]]; then
@@ -134,7 +136,7 @@ jobs:
 
   frontend-contracts:
     needs: role-scope
-    if: ${{ always() && needs['role-scope'].outputs.frontend == 'true' && (github.ref_name == 'minji' || github.ref_name == 'dev') }}
+    if: ${{ always() && needs['role-scope'].outputs.frontend == 'true' && (github.ref_name == 'minji' || github.ref_name == 'dev' || github.ref_name == 'test') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -153,7 +155,7 @@ jobs:
 
   compose-config:
     needs: role-scope
-    if: ${{ always() && needs['role-scope'].outputs.compose == 'true' && (github.ref_name == 'junhee' || github.ref_name == 'seung' || github.ref_name == 'dev') }}
+    if: ${{ always() && needs['role-scope'].outputs.compose == 'true' && (github.ref_name == 'junhee' || github.ref_name == 'seung' || github.ref_name == 'dev' || github.ref_name == 'test') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

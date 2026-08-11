@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.65 |
-| 문서 기준일 | 2026-08-11 13:02 |
+| 버전 | v5.66 |
+| 문서 기준일 | 2026-08-11 13:16 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -25,7 +25,7 @@
 | R1 | `R1-W5-F27` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F9` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
-| R4 | `R4-W5-F12` | `MERGED_DEV` | `jaehong` |
+| R4 | `R4-W5-F16` | `READY` | `jaehong` |
 | R5 | `R5-W5-F4` | `READY` | `minji` |
 
 ## 활성 실행 카드
@@ -352,6 +352,37 @@ STOP_CONDITIONS=기존 migration·OpenAPI operation 변경 필요; DataHub PUBLI
 EXTERNAL_ACTION_PERMISSION=현재 answervice 전용 backend·app-postgres와 기존 healthy Trino/DataHub에 대한 read-only health/query 검증, 전용 ephemeral PostgreSQL migration, Python 3.12 일회성 test container, 허용 경로 corrective commit·jaehong push·source CI를 승인한다. seed·volume·다른 project/container·firewall·secret·외부 전송·비용 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=기존 migration 수정; duplicate head; checksum client 신뢰; released payload mutation; unverified live PASS; Gold row/total/hash 불일치; 실패 CI를 PASS 기록; Report worker fake success; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=corrective source CI가 전체 제품 job까지 PASS하고 F12 handoff가 실제 diff·실패/성공 CI를 정확히 기록해야 한다. R1은 canonical G120-046 HTTP table·chart·explanation·artifact와 DataHub/Trino provenance를 재검증한 뒤에만 dev 통합한다.
+```
+
+### R4 · R4-W5-F16
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F16
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=AUTH-TRUST-v1.0.0-DRAFT server-owned principal and HTTP security scheme
+TASK_CARD_RANGE=R4-16 Analysis·Report 공통 authentication·authorization trust boundary REWORK
+CURRENT_TASK_CARD_ID=R4-16-AUTH-TRUST
+BASE_BRANCH=dev
+BASE_SHA=2d805bf9cc52828b567e17e182fd88a8895a0b57
+START_POINT=R4-W5-F12가 dev에 통합되고 dev CI 31456536103 및 Gate 발행 CI 31456640689가 PASS했다. clean jaehong이 origin/dev 2d805bf와 일치하는 상태에서 preflight와 전체 planned-path 검사를 통과한 뒤 시작한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W5-F16@2d805bf
+CONTRACT_VERSION=AUTH-TRUST-v1.0.0-DRAFT; existing OPENAPI-v1.0.0
+ALLOWED_PATHS=app/backend/app/auth.py; app/backend/app/context.py; app/backend/app/main.py; app/backend/compose.fragment.yml; app/backend/contracts/openapi.v0.1.json; app/backend/README.md; tests/backend/test_auth_context.py; tests/backend/test_http_runtime.py; tests/backend/test_openapi_contract.py; handoffs/R4-W5-F16.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=compose.yml; .env; .env.example; app/backend/requirements.txt; app/backend/Dockerfile; migrations/**; infrastructure/**; src/data/**; src/ai/**; frontend; Report worker·Audit·SQLGlot; dependency; real secret·token
+HANDOFF_MANIFEST=handoffs/R4-W5-F16.json
+ACCEPTANCE_CRITERIA=release auth mode는 server-owned principal file을 사용한다. AUTH_PRINCIPALS_FILE은 raw Bearer token이 아니라 token SHA-256 digest, subject UUID, Role, not_before, expires_at만 가진다. Authorization Bearer를 서버가 digest와 constant-time 비교해 principal로 해석하며 X-User-Id·X-Role은 신뢰하지 않고 값이 있으면 server principal과 불일치를 403으로 차단한다. test mode는 명시적 AUTH_MODE=test에서 synthetic principal만 허용하고 release·default에서 자동 fallback하지 않는다. missing·empty·unknown·expired·not-yet-valid token, duplicate digest, invalid UUID/role, unreadable·malformed mapping은 각각 401/403/503으로 fail-closed한다. as_of·timezone·trace_id·contract version은 기존 검증을 유지한다. Analysis와 Report가 같은 RequestContext dependency를 사용하며 raw token·digest·principal file·stack trace를 log·response·artifact·audit에 노출하지 않는다. OpenAPI는 HTTP Bearer security scheme와 server-owned identity를 표현하고 X-User-Id·X-Role을 필수 identity 입력으로 광고하지 않는다. OIDC/JWT·외부 IdP는 별도 R1 결정 전 구현하지 않는다.
+ACCEPTANCE_IDS=AC1_SERVER_OWNED_PRINCIPAL;AC2_NO_CLIENT_ROLE_TRUST;AC3_TIME_BOUNDS;AC4_FAIL_CLOSED_MAPPING;AC5_EXPLICIT_TEST_MODE;AC6_SHARED_CONTEXT;AC7_NO_SECRET_EXPOSURE;AC8_OPENAPI_SECURITY;AC9_COMPATIBILITY
+TEST_COMMANDS=python -m pytest -p no:cacheprovider tests/backend/test_auth_context.py tests/backend/test_http_runtime.py tests/backend/test_openapi_contract.py -q; token missing·unknown·expired·future·duplicate·invalid role·malformed file·X header mismatch negative; Analysis·Report positive/403/503 and request_id·trace_id preservation; python -m pytest -p no:cacheprovider tests/backend -q in approved Python 3.12 test container; python app/backend/scripts/export_openapi.py --check; python -m compileall -q app/backend; gate_scope preflight·전체 planned paths·merge-base; git diff --check; jaehong source CI
+TEST_COMMAND_IDS=T1_AUTH_TARGET;T2_NEGATIVE_MATRIX;T3_ANALYSIS_REPORT;T4_BACKEND;T5_OPENAPI;T6_COMPILE;T7_SCOPE;T8_DIFF;T9_BRANCH_CI
+STOP_CONDITIONS=실제 token·secret을 tracked file/env/log에 기록; client header role 신뢰 유지; release에서 test fallback; custom JWT/OIDC 또는 dependency 추가 필요; root Compose·env·migration·R2/R3/R5 변경 필요; raw token·digest 노출; 기존 G1·G2·G3·Context 의미 변경; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=ephemeral synthetic principal file을 test container에 read-only mount하는 검증, 허용 경로 commit·jaehong push·source CI만 허용한다. 실제 credential·외부 IdP·network call·root secret mount·배포는 금지한다.
+AUTO_FAIL_CONDITIONS=임의 Bearer 문자열 수용; X-Role·X-User-Id 자칭 성공; expired/unknown token 성공; malformed mapping fail-open; release test fallback; secret 노출; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=source CI와 Python 3.12 backend 전체 회귀에서 Analysis·Report가 동일 server principal을 사용하고 client-owned identity가 차단되며 OpenAPI가 실제 security contract와 일치할 때만 dev 통합한다. root secret mount·OIDC/JWT 채택은 별도 R1 카드로 남긴다.
 ```
 
 ### R5 · R5-W5-F2
@@ -701,6 +732,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.66 | 2026-08-11 13:16 | R4-W5-F12 통합 뒤 client-owned X-User-Id·X-Role 신뢰를 제거하고 server-owned opaque principal mapping으로 Analysis·Report 공통 인증 경계를 동결하는 R4-W5-F16 READY 발행 |
 | v5.65 | 2026-08-11 13:02 | R2-W5-F8·R4-W5-F12 dev 통합과 CI 31456536103 PASS 뒤 isolated DataHub v1.7 live evidence를 수집하는 R2-W5-F9 READY 발행 |
 | v5.64 | 2026-08-11 12:55 | R2-W5-F8 Semantic Catalog checkpoint와 R4-W5-F12 Context Registry·실제 Gold 조합의 source CI·handoff를 확인해 MERGED_DEV로 전환 |
 | v5.63 | 2026-08-11 12:43 | R1-W5-F27의 history-preserving reconciliation과 corrective source CI를 확인해 MERGED_DEV로 전환 |

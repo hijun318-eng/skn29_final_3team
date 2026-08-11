@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.42 |
-| 문서 기준일 | 2026-08-11 09:40 |
+| 버전 | v5.43 |
+| 문서 기준일 | 2026-08-11 09:27 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -25,7 +25,7 @@
 | R1 | `R1-W5-F13` | `BLOCKED` | `junhee` |
 | R2 | `R2-W5-F7` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `MERGED_DEV` | `daesung` |
-| R4 | `R4-W5-F9` | `READY` | `jaehong` |
+| R4 | `R4-W5-F9` | `MERGED_DEV` | `jaehong` |
 | R5 | `R5-W5-F3` | `MERGED_DEV` | `minji` |
 
 ## 활성 실행 카드
@@ -1517,7 +1517,7 @@ RESULT_CI=branch 31357958938 PASS; product 31357850201 PASS; 110 passed·10 skip
 ### R4 · R4-W5-F9
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -1545,6 +1545,8 @@ EXTERNAL_ACTION_PERMISSION=local deterministic test와 전용 ephemeral PostgreS
 HANDOFF_ONLY_PERMISSION=handoffs/R4-W5-F9.json에 RESULT_SHA=0303cd9d8aad9f1b2f3d3859d238249ea07dd205와 확인된 CI·test evidence를 기록하고 handoff-only commit·jaehong push·terminal CI를 실행한다. terminal CI가 제품 SHA의 기존 PASS와 handoff 무결성을 모두 확인하기 전 dev 병합을 금지한다.
 AUTO_FAIL_CONDITIONS=새 result blob/table 중복; 과거 SQL 무검증 재실행; client-owned id/status; G3 전 Artifact success; owner bypass; raw SQL/result 노출; 기존 API 파손; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=R3-W5-F6와 경로 충돌 없이 병렬 수행한다. Analysis persistence source CI와 dev 통합 뒤 Report v1.2 worker·partial contract를 별도 카드로 발행한다.
+RESULT_SHA=e14ba209449d1e1cd6eff1426ad844d570e830c9
+RESULT_CI=branch 31363417507 PASS
 ```
 
 ### R5 · R5-W5-F1
@@ -1650,7 +1652,8 @@ RESULT_CI=branch 31363391107 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
-| v5.42 | 2026-08-11 09:40 | R2-W5-F6의 원격 CI 통과 checkpoint와 로컬 일일보고·제품 변경을 모두 보존하는 R2-W5-F7 reconciliation 전용 REWORK 발행 |
+| v5.43 | 2026-08-11 09:27 | R4-W5-F9의 Analysis 저장·조회·재실행 API와 terminal CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |
+| v5.42 | 2026-08-11 09:20 | R2-W5-F6의 원격 CI 통과 checkpoint와 로컬 일일보고·제품 변경을 모두 보존하는 R2-W5-F7 reconciliation 전용 REWORK 발행 |
 | v5.41 | 2026-08-10 19:30 | R1-W5-F13을 기존 hotel-synthetic-db app-postgres 고정 이름 충돌 근거로 BLOCKED 처리하고 다른 project 불변·신규 빈 answervice resource 보존·owner별 후속 경계를 기록 |
 | v5.40 | 2026-08-10 19:20 | 시연 준비를 위해 exact answervice app-postgres/backend만 기동하고 migration head·approved Template·readiness를 검증하는 R1-W5-F13 발행 |
 | v5.39 | 2026-08-10 19:10 | R5-W5-F3의 기본 loopback·명시적 LAN 공개, exact frontend runtime·source CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |

@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.94 |
-| 문서 기준일 | 2026-08-11 18:50 |
+| 버전 | v5.95 |
+| 문서 기준일 | 2026-08-11 19:02 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -24,7 +24,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F36` | `MERGED_DEV` | `junhee` |
+| R1 | `R1-W5-F37` | `READY` | `junhee` |
 | R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F17` | `READY` | `jaehong` |
@@ -503,6 +503,37 @@ AUTO_FAIL_CONDITIONS=external env가 compose --env-file로 직접 전달되지 �
 R1_REVIEW_CONDITIONS=synthetic env·conflict·source identity matrix와 전체 integration·source CI가 PASS한 뒤 test runtime 적용 여부를 별도 판정한다.
 RESULT_SHA=067f4b5d4e316da425c056bd902520ba61a3f1c2
 RESULT_CI=branch 31470948044 PASS
+```
+
+### R1 · R1-W5-F37
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F37
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=owner self-service personal branch to dev merge guard
+TASK_CARD_RANGE=R1-04 self-service 안전 dev 병합 규칙
+CURRENT_TASK_CARD_ID=R1-04-SELF-SERVICE-DEV-MERGE
+BASE_BRANCH=dev
+BASE_SHA=70d7d91d208958d15c195c9b543eddc11b834c3f
+START_POINT=R1-W5-F36이 dev 70d7d91에 통합되고 dev CI 31471205953이 PASS했다. 관리자 전용 문구를 mapped 개인 작업자가 자기 branch 하나만 표준 절차로 dev에 병합할 수 있도록 최소 완화한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F37@70d7d91
+CONTRACT_VERSION=MERGE-BRANCH-TO-DEV-v1.1.0-DRAFT
+ALLOWED_PATHS=AGENTS.md; .agents/skills/merge-branch-to-dev/SKILL.md; .agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py; tests/integration/test_merge_preflight.py; docs/markdown/collaboration/README.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F37.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=.github/workflows/**; .github/scripts/**; app/**; infrastructure/**; src/**; tests/**의 승인 1파일 외 경로; 다른 skill; R2~R5 보고·handoff·제품; dependency·secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F37.json
+ACCEPTANCE_CRITERIA=mapped 개인 작업자는 자기 current branch 하나만 --self-service-source로 고정해 dev 통합을 실행할 수 있다. source exact SHA CI PASS·handoff/scope·clean·no conflict·dev ff-only·session·final preflight·보고 통합 조건은 유지한다. 다른 사람 branch·복수 source·remote-only·failed CI·진행 중 Git operation은 fail-closed한다. force/rebase/reset/stash·main merge는 승인하지 않는다. 기존 관리자 multi-source·remote-only 절차는 호환 유지한다.
+ACCEPTANCE_IDS=AC1_OWN_MAPPED_BRANCH;AC2_SINGLE_SOURCE;AC3_EXISTING_GUARDS;AC4_ADMIN_COMPATIBLE;AC5_FORBIDDEN_GIT_OPS;AC6_NO_MAIN_MERGE
+TEST_COMMANDS=target self-service own/other/multiple/remote-only matrix; existing merge preflight regression; python -m pytest -p no:cacheprovider tests/integration/test_merge_preflight.py -q; python -m pytest -p no:cacheprovider tests/integration -q; compileall; document/report policy; gate_scope 8 paths; git diff --check; junhee source CI; standard dev integration and dev CI
+TEST_COMMAND_IDS=T1_SELF_SERVICE_MATRIX;T2_TARGET;T3_INTEGRATION;T4_COMPILE;T5_DOCUMENT_POLICY;T6_SCOPE;T7_DIFF;T8_SOURCE_CI;T9_DEV_INTEGRATION;T10_DEV_CI
+STOP_CONDITIONS=self-service actor가 다른 branch·복수 source·remote-only 허용; existing CI/handoff/scope/clean/final/report guard 완화; force/rebase/reset/stash/main merge 추가; workflow·제품 수정; scope·필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=허용 경로 commit·junhee push·source CI와 source CI PASS 뒤 표준 skill을 통한 자기 junhee→dev merge·보고 통합·dev push·dev CI·clean junhee ff-sync만 승인한다. main/test·다른 개인 branch·force/rebase/reset/stash·외부 시스템·secret·비용은 금지한다.
+AUTO_FAIL_CONDITIONS=actor/source 불일치 통과; 복수·remote-only self-service 통과; 기존 preflight 회귀; scope·필수 검증 FAIL
+R1_REVIEW_CONDITIONS=self-service negative matrix와 기존 관리자 회귀·source CI PASS 뒤 표준 절차로 dev 통합하고 dev CI PASS를 확인한다.
 ```
 
 ### R2 · R2-W5-F5
@@ -1137,6 +1168,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.95 | 2026-08-11 19:02 | mapped 개인 작업자가 자기 branch 하나만 기존 안전 조건을 유지해 dev에 병합하도록 관리자 전용 표현·실행자 검증을 최소 완화하는 R1-W5-F37 READY 발행 |
 | v5.94 | 2026-08-11 18:50 | R1-W5-F36의 외부 env 직접 참조·runtime 충돌 fail-closed와 source CI 31470948044 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.93 | 2026-08-11 18:31 | R2-W5-F12를 CRM `include_jobs: false` corrective와 recipe hash·existing isolated runtime ingestion·Semantic Catalog 8/116 evidence 재개 묶음으로 교정하고, 존재하지 않는 F9 handoff 소급과 DB grant·Docker lifecycle을 금지 |
 | v5.92 | 2026-08-11 18:28 | test env absolute regular file·필수 변수 이름·config fallback과 fixed container/port·checkout label fail-closed를 구현하고 target 9건·integration 92건을 확인해 R1-W5-F36 REVIEW 전환 |

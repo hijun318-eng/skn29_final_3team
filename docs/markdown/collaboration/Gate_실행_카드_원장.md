@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.43 |
-| 문서 기준일 | 2026-08-11 09:27 |
+| 버전 | v5.44 |
+| 문서 기준일 | 2026-08-11 09:29 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)에서 확인한다.
@@ -25,8 +25,8 @@
 | R1 | `R1-W5-F13` | `BLOCKED` | `junhee` |
 | R2 | `R2-W5-F7` | `READY` | `seung` |
 | R3 | `R3-W5-F7` | `MERGED_DEV` | `daesung` |
-| R4 | `R4-W5-F9` | `MERGED_DEV` | `jaehong` |
-| R5 | `R5-W5-F3` | `MERGED_DEV` | `minji` |
+| R4 | `R4-W5-F11` | `READY` | `jaehong` |
+| R5 | `R5-W5-F4` | `READY` | `minji` |
 
 ## 활성 실행 카드
 
@@ -1549,6 +1549,38 @@ RESULT_SHA=e14ba209449d1e1cd6eff1426ad844d570e830c9
 RESULT_CI=branch 31363417507 PASS
 ```
 
+### R4 · R4-W5-F11
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F11
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=demo backend readiness·3-source Node3 consumer·explicit LAN CORS DRAFT
+TASK_CARD_RANGE=R4-05·13·16 시연 연결을 막는 readiness·Node3 payload·LAN API 경계 해소
+CURRENT_TASK_CARD_ID=R4-05
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=9c7dc475a1ad993dd85a364ed1d6d4c5f5bb1e8e
+START_POINT=origin/jaehong과 origin/dev 9c7dc47이 일치하는 clean 상태에서 시작한다. 생산자 최종 동결을 기다리지 않고 현재 dev 계약을 DRAFT로 소비하되 불일치는 fail-closed로 반환한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W5-F11@9c7dc47
+CONTRACT_VERSION=BACKEND-DEMO-CONNECTION-v1.0.0-DRAFT; ANALYSIS-PERSISTENCE-v1.0.0-DRAFT; existing Node3 metric_selection
+ALLOWED_PATHS=app/backend/app/services/readiness.py; app/backend/app/adapters/contract_model.py; app/backend/app/main.py; app/backend/compose.fragment.yml; tests/backend/test_readiness.py; tests/backend/test_production_model.py; tests/backend/test_analysis_pipeline.py; tests/backend/test_http_runtime.py; tests/backend/test_migration_compatibility.py; handoffs/R4-W5-F11.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=app/backend/migrations/**; app/backend/contracts/openapi.v0.1.json; R2/R3/R5 제품; root Compose·env·CI; template/data row mutation; Report fake success; dependency·secret
+HANDOFF_MANIFEST=handoffs/R4-W5-F11.json
+ACCEPTANCE_CRITERIA=readiness는 Alembic ScriptDirectory의 현재 single head를 도출해 governance.alembic_version과 exact 비교하고 migration revision 문자열을 별도로 하드코드하지 않는다. weekly-room-operations·I2-v1.0.0·APPROVED이며 sql_text·source_fqns_json이 존재하는 Template exact 1건만 ready로 인정한다. ContractModelAdapter는 승인 Context의 derived metric 선택을 metric_selection으로 Node3에 전달하며 payload metric·Context·entitlement가 일치할 때만 진행하고 복수 후보·누락·임의 첫 항목 선택은 차단한다. backend port는 BACKEND_BIND_ADDRESS 기본 127.0.0.1, 명시 0.0.0.0 opt-in만 허용하고 CORS_ALLOW_ORIGINS exact 목록으로 localhost와 명시 LAN frontend origin만 허용하며 wildcard를 금지한다. /analysis와 /reports preflight는 허용 origin에만 성공하고 Report repository 503을 성공으로 위조하지 않는다. 기존 POST /analysis·Analysis persistence·Report API·Trino 상태 의미를 보존한다.
+ACCEPTANCE_IDS=AC1_DYNAMIC_SINGLE_HEAD;AC2_EXACT_APPROVED_TEMPLATE;AC3_DERIVED_METRIC_SELECTION;AC4_AMBIGUITY_FAIL_CLOSED;AC5_DEFAULT_LOOPBACK;AC6_EXPLICIT_LAN_CORS;AC7_EXISTING_API_COMPAT
+TEST_COMMANDS=readiness no-env·DB error·current/old/unknown head·0/1/2 template; derived 6-asset metric_selection PASS와 missing/multiple/outside entitlement FAIL; existing analysis pipeline·persistence·report regression; default/LAN compose config; OPTIONS /analysis·/reports allowed/disallowed origin; migration graph single head; backend 전체 Python 3.12 test container; python app/backend/scripts/export_openapi.py --check; python -m compileall -q app/backend; gate_scope merge-base; git diff --check; jaehong branch CI
+TEST_COMMAND_IDS=T1_READINESS;T2_NODE3_CONSUMER;T3_PIPELINE;T4_CORS;T5_MIGRATION;T6_BACKEND;T7_OPENAPI;T8_COMPILE;T9_SCOPE;T10_DIFF;T11_BRANCH_CI
+STOP_CONDITIONS=migration/schema/template data 수정 필요; metric을 질문·row·첫 asset에서 추정; wildcard CORS·기본 0.0.0.0·LAN IP 자동 탐지; Report 503을 fixture/success로 대체; OpenAPI route/schema 변경 필요; R2/R3/R5/root/dependency/secret 변경; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local deterministic test, Python 3.12 일회성 test container, exact answervice backend service의 default/LAN config·preflight smoke, 허용 경로 commit·jaehong push·source CI를 승인한다. 기존 DB row·volume·다른 project/container·firewall·secret·외부 전송·비용 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=stale head ready; template count 완화; metric 임의 선택; unauthorized CORS; fake Report success; 기존 API 파손; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=세 하위 항목은 같은 시연 연결 checkpoint에서 병렬 구현할 수 있다. 한 항목이 실패하면 해당 항목만 BLOCKED로 기록하고 검증된 나머지 변경은 source handoff에 분리한다. 최종 dev 통합은 branch CI와 owner 경계 검토 뒤 판정한다.
+```
+
 ### R5 · R5-W5-F1
 
 ```text
@@ -1640,6 +1672,38 @@ PRODUCT_SHA=6c8afd8
 RESULT_CI=branch 31363391107 PASS
 ```
 
+### R5 · R5-W5-F4
+
+```text
+STATUS=READY
+ROLE_ID=R5
+ASSIGNEE=송민지
+PERSONAL_BRANCH=minji
+EXECUTION_BUNDLE_ID=R5-W5-F4
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=frontend build-time backend base wiring and explicit LAN opt-in
+TASK_CARD_RANGE=R5-01 Agent·Report 공통 backend base build wiring 및 fail-closed 회귀
+CURRENT_TASK_CARD_ID=R5-01
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=9c7dc475a1ad993dd85a364ed1d6d4c5f5bb1e8e
+START_POINT=origin/minji를 origin/dev 9c7dc47로 fast-forward한 clean 상태에서 시작한다. backend producer 완료를 기다리지 않고 현재 VITE_BACKEND_BASE_URL client 계약을 그대로 build에 연결한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R5-W5-F4@9c7dc47
+CONTRACT_VERSION=FRONTEND-BACKEND-BASE-v1.0.0-DRAFT; existing Analysis·Report HTTP clients
+ALLOWED_PATHS=app/enterprise-react/Dockerfile; app/enterprise-react/compose.fragment.yml; tests/frontend/contracts.test.mjs; handoffs/R5-W5-F4.json; docs/markdown/daily_reports/minji/일일보고.md
+FORBIDDEN_PATHS=compose.yml; .env; .env.example; app/backend/**; app/enterprise-react/src/api/**; app/enterprise-react/src/pages/**; app/enterprise-react/src/contracts/**; package*.json; root CI; firewall; 다른 project/container/volume; dependency; secret
+HANDOFF_MANIFEST=handoffs/R5-W5-F4.json
+ACCEPTANCE_CRITERIA=Dockerfile build stage는 ARG VITE_BACKEND_BASE_URL=http://127.0.0.1:18000과 동일 ENV를 npm run build 전에 선언하고 compose build.args는 ${VITE_BACKEND_BASE_URL:-http://127.0.0.1:18000}만 전달한다. 기본 build는 loopback을 유지하고 LAN은 FRONTEND_BIND_ADDRESS=0.0.0.0과 VITE_BACKEND_BASE_URL=http://<명시적-LAN-IP>:18000을 함께 제공할 때만 사용한다. 0.0.0.0을 browser backend URL로 사용하거나 LAN IP를 자동 추론하지 않는다. Agent·Report는 기존 동일 base와 fallback을 유지하고 backend 실패를 mock·fixture·synthetic success로 자동 전환하지 않는다. token·secret·backend/OpenAPI/CORS/route/package를 변경하지 않는다.
+ACCEPTANCE_IDS=AC1_BUILD_ARG_ENV;AC2_DEFAULT_LOOPBACK;AC3_EXPLICIT_LAN_OPT_IN;AC4_AGENT_REPORT_SAME_BASE;AC5_FAIL_CLOSED;AC6_NO_SECRET_OR_OWNER_BYPASS
+TEST_COMMANDS=default와 explicit LAN compose config에서 build arg·host_ip 확인; node tests/frontend/contracts.test.mjs; npm --prefix app/enterprise-react run build; explicit LAN backend base 별도 build; Dockerfile ARG/ENV 순서·두 client 동일 env/default·자동 fallback 부재 contract test; gate_scope merge-base; git diff --check; minji branch CI
+TEST_COMMAND_IDS=T1_DEFAULT_CONFIG;T2_LAN_CONFIG;T3_FRONTEND_CONTRACT;T4_DEFAULT_BUILD;T5_LAN_BUILD;T6_SCOPE;T7_DIFF;T8_BRANCH_CI
+STOP_CONDITIONS=backend endpoint·CORS·OpenAPI/schema 변경 필요; 기본값을 loopback 밖으로 변경; LAN IP 자동 탐지·0.0.0.0 backend URL·wildcard CORS 요구; backend 실패를 mock/fixture/synthetic success로 대체; secret/token build arg; root Compose/env/backend/API/page/package/dependency 변경; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local compose config·frontend contract·default/LAN build와 허용 경로 commit·minji push·source CI를 승인한다. 다른 project/container/volume·firewall·backend lifecycle·외부 배포·비용·secret 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=Agent·Report base 불일치; 명시 opt-in 없는 LAN 공개; production 자동 fixture/mock fallback; secret 노출; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=backend runtime/CORS가 아직 실패해도 R5 wiring 자체가 contract·build·CI를 통과하면 제출할 수 있다. runtime 실패는 R4-W5-F11 결과와 결합해 후속 판정한다.
+```
+
 ## 현재 통합 확인 사항
 
 | ID | 상태 | 확인 결과 | 다음 결정 |
@@ -1652,6 +1716,7 @@ RESULT_CI=branch 31363391107 PASS
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.44 | 2026-08-11 09:29 | 선행 producer 완성을 기다리지 않고 R4 backend 시연 연결 해소와 R5 공통 backend base wiring을 DRAFT 계약으로 병렬 착수하도록 READY 발행 |
 | v5.43 | 2026-08-11 09:27 | R4-W5-F9의 Analysis 저장·조회·재실행 API와 terminal CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |
 | v5.42 | 2026-08-11 09:20 | R2-W5-F6의 원격 CI 통과 checkpoint와 로컬 일일보고·제품 변경을 모두 보존하는 R2-W5-F7 reconciliation 전용 REWORK 발행 |
 | v5.41 | 2026-08-10 19:30 | R1-W5-F13을 기존 hotel-synthetic-db app-postgres 고정 이름 충돌 근거로 BLOCKED 처리하고 다른 project 불변·신규 빈 answervice resource 보존·owner별 후속 경계를 기록 |

@@ -1,0 +1,139 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W5-F11",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "9c7dc475a1ad993dd85a364ed1d6d4c5f5bb1e8e",
+  "RESULT_SHA": "1039957afc20260c1c704238f93e386f278aa385",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W5-F11@9c7dc47",
+  "COMPLETED_CARDS": [
+    "R4-05·13·16 readiness·Node3 payload·LAN API 경계 REWORK"
+  ],
+  "CHANGED_FILES": [
+    "app/backend/app/services/readiness.py",
+    "app/backend/app/adapters/contract_model.py",
+    "app/backend/app/main.py",
+    "app/backend/compose.fragment.yml",
+    "tests/backend/test_readiness.py",
+    "tests/backend/test_production_model.py",
+    "tests/backend/test_http_runtime.py",
+    "docs/markdown/daily_reports/jaehong/일일보고.md"
+  ],
+  "CONTRACT_VERSIONS": {
+    "BACKEND_DEMO_CONNECTION": "BACKEND-DEMO-CONNECTION-v1.0.0-DRAFT",
+    "ANALYSIS_PERSISTENCE": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
+    "NODE3": "existing metric_selection",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_DYNAMIC_SINGLE_HEAD",
+      "status": "PASS",
+      "evidence": "Alembic ScriptDirectory에서 single head를 도출해 DB version과 exact 비교"
+    },
+    {
+      "id": "AC2_EXACT_APPROVED_TEMPLATE",
+      "status": "PASS",
+      "evidence": "weekly-room-operations·I2-v1.0.0·APPROVED·필수 SQL/source가 exact 1건일 때만 ready"
+    },
+    {
+      "id": "AC3_DERIVED_METRIC_SELECTION",
+      "status": "PASS",
+      "evidence": "승인 join의 6개 고유 asset을 total_guest_revenue_krw metric_selection으로 Node3에 전달"
+    },
+    {
+      "id": "AC4_AMBIGUITY_FAIL_CLOSED",
+      "status": "PASS",
+      "evidence": "asset·metric 누락, 복수 metric, entitlement 밖 선택을 ValueError로 차단"
+    },
+    {
+      "id": "AC5_DEFAULT_LOOPBACK",
+      "status": "PASS",
+      "evidence": "Compose 기본 backend host_ip 127.0.0.1 확인"
+    },
+    {
+      "id": "AC6_EXPLICIT_LAN_CORS",
+      "status": "PASS",
+      "evidence": "명시 0.0.0.0 bind와 exact LAN origin만 허용하고 wildcard·미승인 origin 차단"
+    },
+    {
+      "id": "AC7_EXISTING_API_COMPAT",
+      "status": "PASS",
+      "evidence": "기존 Analysis·persistence·Report 회귀와 OpenAPI contract 통과"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_READINESS",
+      "name": "readiness exact head·Template fail-closed",
+      "status": "PASS",
+      "evidence": "no-env·DB error·current/old/unknown head·0/1/2 Template target 통과"
+    },
+    {
+      "id": "T2_NODE3_CONSUMER",
+      "name": "Node3 derived metric consumer",
+      "status": "PASS",
+      "evidence": "production model 10 passed, 7 subtests; 6-asset PASS와 missing/multiple/outside entitlement 차단"
+    },
+    {
+      "id": "T3_PIPELINE",
+      "name": "Analysis·persistence·Report regression",
+      "status": "PASS",
+      "evidence": "F11 target 묶음 49 passed, 11 skipped, 29 subtests passed"
+    },
+    {
+      "id": "T4_CORS",
+      "name": "default/LAN Compose와 preflight",
+      "status": "PASS",
+      "evidence": "기본 127.0.0.1, 명시 0.0.0.0/LAN exact origin, /analysis·/reports 허용·차단 확인"
+    },
+    {
+      "id": "T5_MIGRATION",
+      "name": "Alembic migration graph",
+      "status": "PASS",
+      "evidence": "migration compatibility target에서 single head 20260810_06 확인"
+    },
+    {
+      "id": "T6_BACKEND",
+      "name": "Python 3.12 backend 전체",
+      "status": "PASS",
+      "evidence": "일회성 test container에서 126 passed, 12 skipped"
+    },
+    {
+      "id": "T7_OPENAPI",
+      "name": "OpenAPI contract",
+      "status": "PASS",
+      "evidence": "python app/backend/scripts/export_openapi.py --check 결과 OPENAPI_CONTRACT_VERIFIED"
+    },
+    {
+      "id": "T8_COMPILE",
+      "name": "backend compileall",
+      "status": "PASS",
+      "evidence": "python -m compileall -q app/backend exit 0"
+    },
+    {
+      "id": "T9_SCOPE",
+      "name": "R4 merge-base scope",
+      "status": "PASS",
+      "evidence": "R4-W5-F11 허용 경로 9개 planned-path PASS 및 최신 Gate 범위 유지"
+    },
+    {
+      "id": "T10_DIFF",
+      "name": "Git whitespace 검사",
+      "status": "PASS",
+      "evidence": "git diff --check whitespace error 없음"
+    },
+    {
+      "id": "T11_BRANCH_CI",
+      "name": "jaehong source CI",
+      "status": "PASS",
+      "evidence": "GitHub Actions 31447628199 PASS at 513912c4a98d83d8e7211914729d6464d256382e"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "jaehong source CI PASS 확인 뒤 R1 dev 통합 판정"
+}

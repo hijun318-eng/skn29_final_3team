@@ -27,7 +27,12 @@ class FastApiRuntimeTest(unittest.TestCase):
             cls.port = listener.getsockname()[1]
 
         environment = os.environ.copy()
-        environment["PYTHONPATH"] = str(BACKEND)
+        environment["PYTHONPATH"] = os.pathsep.join([str(BACKEND), str(ROOT)])
+        environment.pop("APP_RUNTIME_DATABASE_URL", None)
+        environment["CORS_ALLOW_ORIGINS"] = (
+            "http://localhost:5173,http://localhost:13000,"
+            "http://192.168.0.15:13000"
+        )
         creation_flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         cls.server = subprocess.Popen(
             [
@@ -128,6 +133,40 @@ class FastApiRuntimeTest(unittest.TestCase):
             "x-contract-version",
         }
         self.assertTrue(expected.issubset(names))
+
+    def test_analysis_and_report_preflight_use_exact_origins(self) -> None:
+        for path in ("/analysis", "/reports/definitions"):
+            with self.subTest(path=path, origin="allowed"):
+                request = urllib.request.Request(
+                    f"http://127.0.0.1:{self.port}{path}",
+                    method="OPTIONS",
+                    headers={
+                        "Origin": "http://192.168.0.15:13000",
+                        "Access-Control-Request-Method": "POST",
+                    },
+                )
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    self.assertEqual(200, response.status)
+                    self.assertEqual(
+                        "http://192.168.0.15:13000",
+                        response.headers["Access-Control-Allow-Origin"],
+                    )
+
+            with self.subTest(path=path, origin="denied"):
+                request = urllib.request.Request(
+                    f"http://127.0.0.1:{self.port}{path}",
+                    method="OPTIONS",
+                    headers={
+                        "Origin": "http://untrusted.example",
+                        "Access-Control-Request-Method": "POST",
+                    },
+                )
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(request, timeout=5)
+                self.assertEqual(400, error.exception.code)
+                self.assertIsNone(
+                    error.exception.headers.get("Access-Control-Allow-Origin")
+                )
 
     def test_browser_preflight_allows_only_configured_origin(self) -> None:
         requested_headers = {
@@ -280,6 +319,16 @@ class FastApiRuntimeTest(unittest.TestCase):
             "CONTRACT_VERSION_MISMATCH",
             response["error"]["code"],
         )
+
+
+class BackendComposeContractTest(unittest.TestCase):
+    def test_backend_bind_defaults_to_loopback_and_allows_explicit_override(self) -> None:
+        compose = (BACKEND / "compose.fragment.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            '"${BACKEND_BIND_ADDRESS:-127.0.0.1}:18000:8000"', compose
+        )
+        self.assertNotIn('- "0.0.0.0:18000:8000"', compose)
+        self.assertNotIn("CORS_ALLOW_ORIGINS: *", compose)
 
 
 class _TrinoHandler(BaseHTTPRequestHandler):

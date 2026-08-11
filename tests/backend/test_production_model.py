@@ -219,7 +219,79 @@ class ProductionModelTest(unittest.TestCase):
         )
 
         self.assertEqual("expired_points", captured["metric"])
+        self.assertEqual(
+            {
+                "selected_metric_id": "expired_points",
+                "context_metric_ids": ["expired_points"],
+                "entitled_metric_ids": ["expired_points"],
+            },
+            captured["metric_selection"],
+        )
         self.assertEqual("검증된 결과", result["summary"])
+
+    def test_node3_passes_approved_six_asset_derived_metric_selection(self) -> None:
+        captured = {}
+
+        class Model:
+            def generate(self, _node, payload):
+                captured.update(payload)
+                return {
+                    "explanation": "derived",
+                    "model": {"model_version": "MODEL-v1"},
+                }
+
+        join_id = "pms_crm_pos_gold_revenue_month_v1"
+        assets = [
+            {"urn": f"urn:li:dataset:source-{index}", "join_ids": (join_id,)}
+            for index in range(6)
+        ]
+        payload = {
+            "query": {
+                "rows": [],
+                "query_id": "query-1",
+                "status": "SUCCEEDED",
+            },
+            "assets": assets,
+            "context": RequestContext(as_of=date(2026, 8, 4)),
+        }
+        ContractModelAdapter(Model()).generate(
+            "node3",
+            payload,
+        )
+
+        self.assertEqual("total_guest_revenue_krw", captured["metric"])
+        self.assertEqual(
+            ["total_guest_revenue_krw"] * 6,
+            captured["metric_selection"]["context_metric_ids"],
+        )
+        self.assertEqual(
+            ["total_guest_revenue_krw"],
+            captured["metric_selection"]["entitled_metric_ids"],
+        )
+        self.assertTrue(ContractModelAdapter().generate("node3", payload)["summary"])
+
+    def test_node3_metric_selection_fails_closed(self) -> None:
+        invalid_assets = (
+            [],
+            [{"urn": "source", "metrics": ()}],
+            [
+                {
+                    "urn": "source",
+                    "metrics": ({"id": "metric-a"}, {"id": "metric-b"}),
+                }
+            ],
+            [
+                {
+                    "urn": "source",
+                    "metrics": ({"id": "metric-a"},),
+                    "entitled_metric_ids": ("metric-b",),
+                }
+            ],
+        )
+        for assets in invalid_assets:
+            with self.subTest(assets=assets):
+                with self.assertRaises(ValueError):
+                    ContractModelAdapter._metric_selection(assets)
 
     @staticmethod
     def _node2_payload():

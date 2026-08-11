@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 5명 팀원이 동일한 AI 개발 환경을 준비하기 위한 최초 설정 체크리스트 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v2.3 |
-| 문서 기준일 | 2026-08-10 10:52 |
+| 버전 | v2.4 |
+| 문서 기준일 | 2026-08-11 14:50 |
 | 작성·수정 | 윤대성 / 박준희 |
 | 권장 저장 위치 | `docs/markdown/collaboration/AI_개발_환경_설정.md` |
 
@@ -46,7 +46,6 @@ git config --local --get core.hooksPath
 codex plugin marketplace add DietrichGebert/ponytail --ref v4.9.0
 codex plugin add ponytail@ponytail
 codex plugin list --json
-python .github/scripts/gate_scope.py --branch <본인 branch> --bootstrap
 ```
 
 PowerShell에서 `codex.ps1`이 차단되면 `codex.cmd`를 사용한다. 설치 후 `/hooks`에서 Ponytail hook을 검토·신뢰하고 Codex를 재시작해 새 작업을 연다.
@@ -60,18 +59,20 @@ git config --local --get core.hooksPath
 python --version
 node --version
 codex plugin list --json
+python .github/scripts/agent_workflow.py --branch <본인 branch>
 ```
 
 - 본인 branch가 맞다.
 - `core.hooksPath`가 `.githooks`다.
 - Ponytail `v4.9.0`, `full` mode가 활성화됐다.
 - Codex가 root `AGENTS.md`를 읽는다.
-- bootstrap이 `PASS`이고, 출력된 전체 읽기 문서와 현재 카드 관련 절을 확인했다.
+- `agent_workflow.py`의 환경·branch·카드 계약 결과를 확인했다. `PASS`이면 협업 README의 결과 판정표에 따라 착수하며, `FAIL`은 환경 설치 실패와 작업 미승인을 구분해 기록한다.
 
 ## 변경 내역
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v2.4 | 2026-08-11 14:50 | 폐기된 bootstrap 안내를 제거하고 작업 시작 단일 진입점 agent_workflow.py로 통일 |
 | v2.3 | 2026-08-10 10:52 | 실제 사용 가능한 Ponytail Skill과 팀 기준을 v4.9.0 full mode로 통일 |
 | v2.2 | 2026-08-06 10:09 | branch·dirty 상태·실행 카드와 읽기 문서를 한 번에 확인하는 bootstrap 추가 |
 | v2.1 | 2026-07-29 12:16 | 팀 공통 AI 도구를 Codex로 한정하고 Claude Code 절차 제거 |

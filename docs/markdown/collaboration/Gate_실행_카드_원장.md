@@ -4,19 +4,21 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.73 |
-| 문서 기준일 | 2026-08-11 14:48 |
+| 버전 | v5.74 |
+| 문서 기준일 | 2026-08-11 14:52 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
 
 ## 사용 원칙
 
-1. 자동화와 에이전트는 이 파일의 역할별 마지막 non-`PLANNED` 카드만 현재 실행 기준으로 사용한다.
-2. `READY`·`IN_PROGRESS`만 구현을 계속할 수 있으며 `BLOCKED`는 차단 원인을 해소하는 새 묶음이 필요하다.
+1. 역할별 마지막 non-`PLANNED` 카드를 기본 실행 기준으로 사용한다. 단, 계약이 완전한 `AUTO_START=CONDITIONAL` 후보는 `agent_workflow.py`가 모든 선행·CI·single-active·clean·safe-stale 조건을 통과한 실행에서만 effective `READY`로 선택한다.
+2. 선언 상태가 `READY`·`IN_PROGRESS`이거나 위 조건부 판정으로 effective `READY`가 된 카드만 구현할 수 있다. `BLOCKED`는 owner-scoped 새 묶음이 필요하다.
 3. `MERGED_DEV`·`VERIFIED_GATE`는 개인 보고와 공용 보고 경로 외 신규 구현을 허용하지 않는다.
 4. 과거 카드·상태 전이·비용·검증 이력은 archive에 보존하며 활성 원장에 복제하지 않는다.
 5. 일정과 진행률의 단일 기준은 `docs/markdown/02_WBS.md`다.
+6. `agent_workflow.py`가 `PASS`를 반환한 카드는 별도 착수 승인·Google Docs 응답·token 재발행 없이 승인 범위를 수행한다. `FAIL`이면 원장을 사람이 임의 교정하지 않는다.
+7. `R1_REVIEW_CONDITIONS`는 구현 완료 후 통합 판정에만 적용하며 착수 전 재승인 조건으로 사용하지 않는다.
 
 ## 현재 역할별 실행 상태
 
@@ -866,6 +868,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.74 | 2026-08-11 14:52 | 선언 READY와 조건부 effective READY를 구분하고 PASS 카드의 착수 재승인·token 재발행 반복을 금지하도록 사용 원칙 정합화 |
 | v5.73 | 2026-08-11 14:48 | 협업 문서의 중복 시작 흐름·폐기 bootstrap·조건부 READY 설명·과거 상태 오인을 최소 교정하는 R1-W5-F31 발행 |
 | v5.72 | 2026-08-11 14:35 | 조건부 자동 착수의 fail-closed 회귀와 source CI 31461474741 PASS를 확인해 R1-W5-F30을 MERGED_DEV로 전환 |
 | v5.71 | 2026-08-11 14:16 | exact token·경로·선행조건이 미리 승인된 PLANNED 카드만 조건 충족 시 effective READY로 판정하는 R1-W5-F30 발행 |

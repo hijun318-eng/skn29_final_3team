@@ -4,7 +4,7 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.49 |
+| 버전 | v5.50 |
 | 문서 기준일 | 2026-08-11 10:10 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
@@ -22,7 +22,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F21` | `READY` | `junhee` |
+| R1 | `R1-W5-F22` | `READY` | `junhee` |
 | R2 | `R2-W5-F8` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F12` | `READY` | `jaehong` |
@@ -1053,7 +1053,9 @@ R1_REVIEW_CONDITIONS=F20 source CI와 both-history ancestry·zero-product diff�
 ### R1 · R1-W5-F21
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
+RESULT_SHA=baa9be1da12bd4bf9d5d2ce7ee8dae99eb28efbb
+RESULT_CI=branch 31448147519 PASS; product 31448030148 PASS; dev merge 2009e7f69ece79cd3a6cc6bc2f42e27dcf1a405b
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -1080,6 +1082,38 @@ STOP_CONDITIONS=공식 immutable commit을 검증할 수 없음; checkout 외 ac
 EXTERNAL_ACTION_PERMISSION=공식 GitHub tag/ref read-only 조회와 허용 경로 commit·junhee push·branch CI만 승인한다. release 생성·workflow dispatch·secret 변경·외부 배포는 금지한다.
 AUTO_FAIL_CONDITIONS=mutable action ref; 검증되지 않은 SHA; job 의미 변경; 권한 확대; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=source CI에서 deprecation warning 해소와 전체 job PASS를 확인한 뒤 dev에 통합한다. action major 전환이 job 결과를 바꾸면 기존 pin으로 되돌리지 말고 BLOCKED 근거를 제출한다.
+```
+
+### R1 · R1-W5-F22
+
+```text
+STATUS=READY
+ROLE_ID=R1
+ASSIGNEE=박준희
+PERSONAL_BRANCH=junhee
+EXECUTION_BUNDLE_ID=R1-W5-F22
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=isolated app-postgres identity override and actual demo readiness
+TASK_CARD_RANGE=R1-02·08·09 exact answervice runtime isolation·migration·Template·readiness E2E
+CURRENT_TASK_CARD_ID=R1-08-RUNTIME-READINESS
+REPOSITORY_ROOT=C:\Users\Playdata\Documents\skn29_final_3team
+BASE_BRANCH=dev
+BASE_SHA=2009e7f69ece79cd3a6cc6bc2f42e27dcf1a405b
+START_POINT=R4-W5-F11 readiness·LAN CORS가 dev에 통합되고 R1-W5-F21 checkout 전환까지 반영된 clean junhee에서 시작한다. 기존 hotel-synthetic-db app-postgres와 volume은 건드리지 않고 root include override로 answervice 전용 container identity만 분리한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R1-W5-F22@2009e7f
+CONTRACT_VERSION=R1-RUNTIME-ISOLATION-v1.0.0-DRAFT; BACKEND-DEMO-CONNECTION-v1.0.0-DRAFT
+ALLOWED_PATHS=compose.yml; compose.app-postgres.override.yml; tests/integration/test_app_postgres_compose_override.py; tests/integration/test_answervice_demo_runtime.py; handoffs/R1-W5-F22.json; docs/markdown/daily_reports/junhee/일일보고.md
+FORBIDDEN_PATHS=infrastructure/**; app/**; src/**; .env·.env.example; 기존 handoff; 다른 tests; dependency; firewall; 다른 project/container/volume; secret
+HANDOFF_MANIFEST=handoffs/R1-W5-F22.json
+ACCEPTANCE_CRITERIA=root Compose는 infrastructure database include에 root-owned override를 함께 적용해 service key·DNS app-postgres를 유지하면서 container_name만 answervice-app-postgres로 분리한다. resolved model은 원본 대비 container_name 한 항목 외 image·port·volume·health·credential·network·dependency가 동일하다. 기존 hotel-synthetic-db와 모든 비대상 container/volume identity를 전후 비교해 불변을 확인한다. exact answervice app-postgres/backend만 기동해 current Alembic single head, weekly-room-operations·I2-v1.0.0·APPROVED Template exact 1건, /health와 /readiness의 app_postgres·migration·templates ready를 검증한다. fake mode Trino not_required를 보존하고 Analysis/Report 실제 endpoint 실패를 성공으로 위조하지 않는다. 실패 시 이번 실행에서 새로 만든 exact answervice resource만 정리하고 기존 resource는 보존한다.
+ACCEPTANCE_IDS=AC1_CONTAINER_IDENTITY_ONLY;AC2_RESOLVED_MODEL_DIFF;AC3_OTHER_PROJECT_INVARIANT;AC4_CURRENT_MIGRATION_HEAD;AC5_EXACT_TEMPLATE;AC6_READINESS;AC7_FAIL_CLOSED;AC8_EXACT_ROLLBACK
+TEST_COMMANDS=Compose version>=2.20.3; default/full/split-host config --quiet; resolved JSON original-vs-override semantic diff; static target test; integration 전체; before/after Docker label·ID inventory; exact answervice app-postgres/backend build/up; SQL migration head·Template exact count; /health·/readiness; allowed/disallowed CORS preflight; exact cleanup on failure only; gate_scope bootstrap·planned-path·merge-base; git diff --check; junhee source CI
+TEST_COMMAND_IDS=T1_COMPOSE_VERSION;T2_CONFIG;T3_MODEL_DIFF;T4_TARGET;T5_INTEGRATION;T6_INVENTORY;T7_RUNTIME;T8_SQL;T9_READINESS;T10_CORS;T11_ROLLBACK;T12_SCOPE;T13_DIFF;T14_BRANCH_CI
+STOP_CONDITIONS=override가 container_name 외 resolved model을 변경; answervice-app-postgres 이름·55432·18000 충돌; 기존 hotel-synthetic-db 또는 비대상 resource 변경 필요; legacy/unknown migration; approved Template exact 1건 아님; readiness 실패; infrastructure/backend/data/frontend 변경 필요; secret 출력·dependency·비용; scope·필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=exact answervice app-postgres/backend image build·service up/recreate·health/SQL/readiness와 실패 시 이번 실행에서 생성한 exact answervice container/network/빈 volume 정리만 승인한다. 기존 project/container/volume, DataHub, source DB, firewall, secret, 외부 전송·비용 변경은 금지한다.
+AUTO_FAIL_CONDITIONS=기존 resource drift; broad down/down -v/prune/reset; migration stamp/drop; Template 수동 변조; partial readiness를 PASS; fake endpoint success; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=other-project invariant와 exact runtime readiness·source CI가 PASS하면 dev에 통합하고 R5 F4 bundle과 결합한 LAN Agent·Report browser smoke를 다음 R1 카드로 발행한다.
 ```
 
 ### R2 · R2-W5-F5
@@ -1885,6 +1919,7 @@ R1_REVIEW_CONDITIONS=backend runtime/CORS가 아직 실패해도 R5 wiring 자�
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.50 | 2026-08-11 10:10 | R1-W5-F21 checkout Node 24 immutable pin과 source CI를 dev에 통합하고, R4-W5-F11 readiness 계약 위에서 app-postgres identity 충돌을 root override로 해소해 actual readiness를 검증하는 R1-W5-F22 READY 발행 |
 | v5.49 | 2026-08-11 10:10 | R2-W5-F7 CI scope 충돌을 inherited evidence로 분리해 R2-W5-F8을 발행하고, R4 Context Registry 요청 중 live 의존이 없는 F10A additive migration·F10B checksum repository를 R4-W5-F12 service-only READY로 병렬 발행 |
 | v5.48 | 2026-08-11 10:10 | R4-W5-F11의 readiness·Node3 payload·LAN API 경계와 source CI를 확인해 dev에 통합하고 MERGED_DEV 전환 |
 | v5.47 | 2026-08-11 09:55 | R1-W5-F20 이력 조정을 dev에 통합하고 R1 CI Node 24 공급망 pin, R3 Node3·ModelOps DRAFT 검증을 READY 발행; R4·R5는 Gate-only dev 선행을 ff-only 동기화해 기존 token으로 즉시 착수하도록 명시 |

@@ -1,7 +1,7 @@
 # 역할 4 — 백엔드 Control Plane 매뉴얼
 
-> 문서 상태: 팀 확정용 최종안
-> 작성 기준일: 2026-08-06
+> 문서 상태: 역할 도메인 참고서 — 현재 실행 상태·권한은 Git Gate 원장 참조
+> 작성 기준일: 2026-08-11
 > 담당자: 김재홍
 > 개인 브랜치: `jaehong`
 > 역할 ID: `R4`
@@ -57,113 +57,13 @@ R4는 R3 model server나 R2 vendor client를 중복 구현하지 않고 typed ad
 
 ## 3. AI 실행 방식
 
-### 3.1 통합 Wave 시작 시 AI 입력
+공통 작업 시작·branch 동기화·CI·handoff·Git 절차는 `docs/markdown/collaboration/README.md`와 현재 `Gate_실행_카드_원장.md`를 단일 기준으로 사용한다. 이 매뉴얼의 과거 공통 prompt·CI 표·handoff 필드 복제본은 제거하며, 현재 카드의 `ALLOWED_PATHS`·`ACCEPTANCE_CRITERIA`·`TEST_COMMANDS`·`STOP_CONDITIONS`를 우선한다.
 
-```text
-ROLE_ID=R4
-ASSIGNEE=김재홍
-PERSONAL_BRANCH=jaehong
-EXECUTION_BUNDLE_ID=R4-Wx
-TARGET_INTEGRATION_GATE=Ix
-CHECKPOINT_GATES=<Wave 안 중간 확인 Gate>
-TASK_CARD_RANGE=R4-xx~yy
-CURRENT_TASK_CARD_ID=<범위 안 현재 카드>
-REPOSITORY_ROOT=<절대 경로>
-BASE_BRANCH=dev
-BASE_SHA=<시작 SHA>
-I0_DECISION_VERSION=<R1 기준 정렬 승인 버전>
-CONTRACT_VERSION=<OpenAPI/state/error 계약>
-DB_REVISION_HEAD=<현재 migration head>
-ADAPTER_VERSION=<R2/R3 adapter 계약>
-FIXTURE_VERSION=<test fixture>
-ALLOWED_PATHS=<R4 허용 경로>
-FORBIDDEN_PATHS=<다른 역할 소유 경로>
-EXTERNAL_ACTION_PERMISSION=<설치·외부 배포·데이터 전송·secret·Git 권한>
-ACCEPTANCE_CRITERIA=<완료 조건>
-TEST_COMMANDS=<검증 명령>
-STOP_CONDITIONS=<Gate 도달·범위 밖 변경·계약 충돌·검증 실패>
-```
-
-### 3.2 R4 AI용 최종 프롬프트
-
-```text
-너는 Answervice 프로젝트의 R4 백엔드 Control Plane 담당 AI다.
-담당자는 김재홍이고 개인 브랜치는 jaehong이다.
-
-저장소 AGENTS.md, 기획서, 이 매뉴얼, 협업 규칙, 통합 일정을 읽고
-승인된 EXECUTION_BUNDLE_ID 하나의 TASK_CARD_RANGE를 번호 순서대로 수행한다.
-범위 안에서는 카드 사이 별도 승인 없이 진행하고 CHECKPOINT_GATES에서는 계약·증거만 확인한다.
-TARGET_INTEGRATION_GATE 또는 STOP_CONDITIONS에 도달하면 멈추며 다음 Wave 카드는 선행하지 않는다.
-작업 전 branch, BASE_SHA, dirty worktree, contract/adapter/fixture version,
-현재 migration head를 확인한다.
-AGENTS.md·공식 WBS·기획서 충돌이 I0 decision으로 해결되지 않았으면 구현하지 않고 Blocked로 보고한다.
-
-ALLOWED_PATHS만 수정한다. DB 원천·AI prompt/model·frontend·루트 Compose는 수정하지 않는다.
-공유 FastAPI/OpenAPI/Alembic의 단일 작성자로서 다른 역할의 router·migration proposal을
-계약 test 후 순차 등록한다.
-
-Controller는 자유 ReAct loop를 사용하지 않고 고정 상태 전이를 따른다.
-모든 SQL 출처는 G1과 G2를 통과하고, 실행 결과는 G3를 통과해야 설명·Artifact 성공이 가능하다.
-Node 2′ 수정은 한 번만 허용하며 Cache·Template·worker도 Gate를 우회하지 않는다.
-원천 DB는 read-only adapter로만 호출한다.
-
-설치·외부 배포·secret·stage·commit·push·merge는 승인 없이 실행하지 않는다.
-실행하지 않은 test는 Pass로 기록하지 않는다.
-완료 시 변경 파일, 계약/migration/fixture version, 상태 전이,
-실행한 검증, 미검증, R1/R2/R3/R5 handoff와 남은 위험을 보고한다.
-```
-
-### 3.3 공통 수행 순서
-
-1. R1 공통 계약과 R2/R3/R5 interface를 확인한다.
-2. 상태 전이·오류·입출력 contract test를 먼저 작성한다.
-3. fake DataHub·Trino·model·Report adapter로 구현한다.
-4. 정상·차단·timeout·partial fixture를 통과시킨다.
-5. 실제 R2/R3 adapter를 하나씩 연결한다.
-6. migration은 단일 head를 유지한다.
-7. backend·worker service fragment를 R1에게 전달한다.
-8. OpenAPI example과 상태 fixture를 R5에게 전달한다.
-
-### 3.4 push하면 자동으로 도는 검사 (GitHub Actions)
-
-개인 브랜치 `jaehong`에 push하면 GitHub Actions가 자동으로 실행된다. **자동 검사 통과는 기계 검증이 끝났다는 뜻일 뿐, R1의 제품 수용·계약 Freeze·Gate 승인을 대체하지 않는다.** 판정 기준의 단일 출처는 `docs/markdown/collaboration/Gate_실행_카드_원장.md`다.
-
-| Job | 무엇을 보는가 | R4에서 |
-|---|---|---|
-| `role-scope` | `origin/dev` 대비 변경한 파일이 이번 실행 묶음의 `ALLOWED_PATHS` 안인지, 공백·충돌 표시가 없는지, handoff manifest가 정합한지 | **실행** |
-| `python-contracts` | Python compile 검사와 `tests` 전체 실행 | **실행** |
-| `document-quality` | 문서 정책, WBS 형식, 일일보고 형식 검증 | **실행** |
-| `frontend-contracts` | `npm ci` 재현 설치, production build, 화면 계약 test | 건너뜀 |
-| `compose-config` | DataHub service fragment와 `dev`·`full`·`split-host` profile 설정 검증 | 건너뜀 |
-| `quality-gate` | 위 결과 집계와 최종 통과 판정, R1 대시보드 출력 | **실행** |
-
-> 현재 CI 실행 범위와 실패 판정은 `docs/markdown/collaboration/README.md`를 단일 기준으로 확인한다. 이 매뉴얼에는 R4 소유권과 카드별 추가 검증만 유지하고 시점별 공통 CI 동작은 복제하지 않는다.
-
-**가장 흔한 실패 원인은 허용 경로 침범이다.** `ALLOWED_PATHS` 밖 파일을 하나라도 수정하면 `role-scope`가 FAIL하고 Summary에 침범한 경로가 그대로 출력된다. 다른 역할 파일이 필요하면 직접 고치지 말고 change request로 넘긴다.
-
-#### handoff manifest
-
-통합 판정(`REVIEW`)을 요청하기 전 `handoffs/<EXECUTION_BUNDLE_ID>.json`을 제출한다. 초안은 아래 명령으로 만든다. 이미 제출된 manifest는 덮어쓰지 않는다.
-
-```text
-python .github/scripts/gate_scope.py --branch jaehong --base origin/dev --head HEAD --mode merge-base --write-handoff
-```
-
-필수 항목은 13개다. `EXECUTION_BUNDLE_ID`, `ROLE`, `BRANCH`, `BASE_SHA`, `RESULT_SHA`, `COMPLETED_CARDS`, `CHANGED_FILES`, `CONTRACT_VERSIONS`, `TEST_RESULTS`, `NOT_RUN`, `CHANGE_REQUESTS`, `RESIDUAL_RISKS`, `EXTERNAL_APPROVAL_REQUIRED`. 초안은 `COMPLETED_CARDS`가 비어 있고 `TEST_RESULTS`에 안내 문구가 들어 있으므로 반드시 실제 값으로 채운다.
-
-#### 잔여 위험을 적으면 어떻게 되는가
-
-**차단되지 않는다. 적어야 한다.**
-
-| 판정 | 언제 | CI 차단 |
-|---|---|:---:|
-| `PASS` | 경로·필수 필드·검증이 모두 정상 | — |
-| `FAIL` | 허용 경로 침범, 필수 필드 누락·형식 오류, `FAIL`·`BLOCKED` 검증 결과 | **차단** |
-| `REVIEW_REQUIRED` | `NOT_RUN`·`CHANGE_REQUESTS`·`RESIDUAL_RISKS`·`EXTERNAL_APPROVAL_REQUIRED`에 값이 있음 | 차단하지 않음 |
-| `NOT_RUN` | 아직 manifest를 내지 않음 | 차단하지 않음 |
-| `N/A` | `MERGED_DEV`·`VERIFIED_GATE`라 새 handoff가 필요 없음 | — |
-
-미실행 검증·잔여 위험·외부 승인 요청은 R1 검토 큐에 올라갈 뿐 CI를 실패시키지 않는다. 반대로 **실행하지 않은 검증을 `PASS`로 적는 것은 증거 위조로 취급**하며, 발견 시 실행 묶음이 원 소유 역할로 반환된다. 모르면 비워 두지 말고 `Not Run`과 사유를 적는다.
+1. 본인 branch에서 `python .github/scripts/agent_workflow.py --branch <본인 branch>`를 실행한다.
+2. `PASS`와 실행 가능한 카드가 확인된 경우에만 현재 `TASK_CARD_RANGE`를 번호 순서대로 수행한다.
+3. R4는 FastAPI·OpenAPI·Controller·Alembic 소유 경로와 카드별 backend 검증만 수행하고 data·AI·frontend 제품을 대신 수정하지 않는다.
+4. 완료 후 협업 README의 공통 handoff 절차로 실제 검증·미실행·잔여 위험을 기록한다.
+5. 범위 밖 변경·계약 충돌·필수 검증 실패는 직접 우회하지 않고 원 소유자와 R1에게 반환한다.
 
 ## 4. 순차 작업 카드
 

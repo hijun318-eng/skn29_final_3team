@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 팀원 개인 branch와 dev·main 통합 정책 및 사람이 수행하는 Git 절차 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.17 |
-| 문서 기준일 | 2026-08-11 15:46 |
+| 버전 | v1.18 |
+| 문서 기준일 | 2026-08-11 17:40 |
 | 작성·수정 | 박준희 |
 
 각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한다. source CI·handoff·범위·clean 검사를 통과하면 `merge-branch-to-dev` 절차의 `--self-service-source <자기 branch>`로 자기 branch 하나만 `dev`에 반영할 수 있다. 다른 사람 branch·복수 source·remote-only와 최종 `dev`→`main` 병합은 관리자 전용이다. PR은 필수 절차가 아니며 GitHub Actions는 개인 branch와 `dev` push를 기준으로 실행한다. CI를 실행할 수 없으면 같은 검증을 local에서 수행하고, 필수 검증이 실패한 branch는 병합하지 않는다.
@@ -40,6 +40,16 @@ R1이 `PLANNED` 카드에 `AUTO_START=CONDITIONAL`, exact `AUTO_START_AFTER`, �
 | 그 외 `result=FAIL` | 변경하지 않고 `errors`를 따른다. 새 권한이나 계약 교정이 필요한 오류만 R1에게 전달한다. |
 
 `R1_REVIEW_CONDITIONS`는 구현 완료 후 `dev` 통합 판정 기준이며 작업 시작 재승인 조건이 아니다. preflight가 PASS한 승인 카드에서는 `TASK_CARD_RANGE`를 순서대로 수행하고 카드 사이에 재승인을 요청하지 않는다.
+
+### Handoff 제출
+
+역할 매뉴얼은 소유권·도메인 계약·역할별 추가 검증만 제공한다. 공통 실행 결과는 현재 카드의 `TEST_COMMANDS`를 수행한 뒤 다음 명령으로 manifest 초안을 만들고 실제 값으로 채운다.
+
+```powershell
+python .github/scripts/gate_scope.py --branch <본인 branch> --base origin/dev --head HEAD --mode merge-base --write-handoff
+```
+
+필수 항목은 `EXECUTION_BUNDLE_ID`, `ROLE`, `BRANCH`, `BASE_SHA`, `RESULT_SHA`, `COMPLETED_CARDS`, `CHANGED_FILES`, `CONTRACT_VERSIONS`, `TEST_RESULTS`, `NOT_RUN`, `CHANGE_REQUESTS`, `RESIDUAL_RISKS`, `EXTERNAL_APPROVAL_REQUIRED`다. 실행하지 않은 검증은 `Not Run`과 이유를 기록하며 `PASS`로 바꾸지 않는다. `FAIL`·필수 필드 누락·허용 경로 침범은 CI를 차단하고, 외부 환경 부족은 실제 상태에 따라 `Not Run` 또는 `Blocked`로 남긴다.
 
 ## Branch 역할
 
@@ -205,18 +215,8 @@ git push origin main
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.18 | 2026-08-11 17:40 | 역할 매뉴얼에 반복된 공통 실행·CI·handoff 절차를 협업 README 단일 기준으로 통합 |
 | v1.17 | 2026-08-11 15:46 | 공동 실행 확인용 test branch의 hosted CI와 local opt-in 선택 재기동 절차 및 stateful 수동 검토 경계를 추가 |
 | v1.16 | 2026-08-11 14:50 | 작업 시작 결과 판정표와 재승인 불필요 경계를 추가하고 중복 명령·commit 예시를 단일 규칙으로 정리 |
 | v1.15 | 2026-08-11 14:08 | 선행 terminal·CI PASS·single-active·clean·safe-stale 조건을 만족한 pre-authorized PLANNED 카드의 effective READY 자동 착수 규칙 추가 |
 | v1.14 | 2026-08-11 14:04 | stale 원장보다 안전한 fast-forward를 먼저 수행하도록 단일 시작 명령을 명확히 하고 검증된 origin SHA의 remote-only dev 병합 절차 추가 |
-| v1.13 | 2026-08-11 12:10 | Git Gate 정본과 Google Docs 요청함을 구분하고 read-only 진단·제한적 dev fast-forward 단일 명령 추가 |
-| v1.12 | 2026-08-06 10:56 | 병합 단계가 공용 JSON session에서 dev·source SHA와 CI 결과를 재사용하도록 사전검사 절차 보완 |
-| v1.11 | 2026-08-06 10:09 | 역할 작업 bootstrap, 다중 branch 사전점검과 병합 카드 종료 기록 추가 |
-| v1.10 | 2026-08-06 09:30 | source CI 성공을 병합 조건으로 추가하고 실제 변경 문서 검사·여러 branch 보고 일괄 commit 적용 |
-| v1.9 | 2026-08-06 09:10 | 변경 경로별 CI 실행·중복 실행 취소와 dev 병합 후 개인 branch 안전 동기화 추가 |
-| v1.8 | 2026-08-05 22:30 | 개인 branch 역할 검증과 dev 전체 검증을 분리해 중복 CI 실행 축소 |
-| v1.7 | 2026-08-03 12:14 | commit 형식은 Git 정책, staged 검토·병합 실행은 Skill로 단일화하고 중복 예시 제거 |
-| v1.6 | 2026-07-30 14:25 | commit 제목 아래 변경·검증·선택적 영향 본문을 기본 작성하고 staged diff와 확인된 검증만 구체적으로 기록하도록 Skill·Git 절차를 동기화 |
-| v1.5 | 2026-07-30 10:56 | commit 제목의 선택적 scope 규칙과 staged 변경 범위에 따른 사용 기준을 추가하고 hook·Skill 형식을 동기화 |
-| v1.4 | 2026-07-27 17:07 | 개인 branch 병합 전후 SHA 기반 보고 통합 계약과 최종 사전검사 기준 추가 |
-| v1.3 | 2026-07-22 16:16 | pre-commit의 staged Markdown 문서관리규칙 자동 검증 추가 |

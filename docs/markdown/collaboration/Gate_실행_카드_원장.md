@@ -325,7 +325,7 @@ DIRECTIVE=REWORK
 DIRECTIVE_TOKEN=R1-W5-F31@a4b4898
 CONTRACT_VERSION=COLLABORATION-GUIDANCE-v1.0.0-DRAFT; GATE-SCOPE-v1.2.0
 ALLOWED_PATHS=docs/markdown/collaboration/README.md; docs/markdown/collaboration/AI_개발_환경_설정.md; docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md; docs/markdown/collaboration/I1_평가_원장.md; docs/markdown/collaboration/Gate_실행_카드_원장.md; handoffs/R1-W5-F31.json; docs/markdown/daily_reports/junhee/일일보고.md
-FORBIDDEN_PATHS=docs/markdown/collaboration/archive/**; R1_Gate_원장_경로_정합성_패치_제안서.md 이동·삭제; .github/**; .agents/**; AGENTS.md; docs/markdown/02_WBS.md; app/**; infrastructure/**; src/**; R2~R5 보고·handoff·제품 경로; dependency·secret
+FORBIDDEN_PATHS=docs/markdown/collaboration/archive/**; archive/R1_Gate_원장_경로_정합성_패치_제안서.md 수정·삭제; .github/**; .agents/**; AGENTS.md; docs/markdown/02_WBS.md; app/**; infrastructure/**; src/**; R2~R5 보고·handoff·제품 경로; dependency·secret
 HANDOFF_MANIFEST=handoffs/R1-W5-F31.json
 ACCEPTANCE_CRITERIA=agent_workflow.py를 유일한 작업 시작 진입점으로 안내하고 README의 중복 명령과 폐기된 gate_scope --bootstrap 안내를 제거한다. PASS·conditional effective READY·fast-forward-available·FAIL의 후속 행동을 한 표로 고정하며 PASS 카드의 TASK_CARD_RANGE에는 별도 Google Docs 착수 승인이나 token 재발행을 요구하지 않는다. R1_REVIEW_CONDITIONS는 완료 후 dev 통합 기준이지 착수 재승인 조건이 아님을 명시한다. Gate 사용 원칙은 선언 READY·IN_PROGRESS와 조건부 effective READY를 구분한다. I0·I1 문서는 과거 계약·평가 스냅샷임을 표시하고 현재 실행 상태는 Gate 원장만 참조한다. 안전 검증·single-active·clean·CI·scope·stop 경계는 완화하지 않는다. 대규모 archive 이동·원장 카드 재배치는 이번 범위에서 하지 않는다.
 ACCEPTANCE_IDS=AC1_SINGLE_ENTRYPOINT;AC2_ACTION_TABLE;AC3_NO_APPROVAL_PING_PONG;AC4_EFFECTIVE_READY_WORDING;AC5_REVIEW_IS_POST_IMPLEMENTATION;AC6_HISTORICAL_SNAPSHOTS;AC7_SAFETY_UNCHANGED;AC8_MINIMAL_SCOPE
@@ -1187,96 +1187,3 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 | v5.96 | 2026-08-11 19:15 | 자기 mapped branch 단일 source만 self-service session에 고정하고 다른 branch·복수·remote-only를 차단하며 관리자 절차를 보존해 R1-W5-F37 REVIEW 전환 |
 | v5.95 | 2026-08-11 19:02 | mapped 개인 작업자가 자기 branch 하나만 기존 안전 조건을 유지해 dev에 병합하도록 관리자 전용 표현·실행자 검증을 최소 완화하는 R1-W5-F37 READY 발행 |
 | v5.94 | 2026-08-11 18:50 | R1-W5-F36의 외부 env 직접 참조·runtime 충돌 fail-closed와 source CI 31470948044 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
-| v5.93 | 2026-08-11 18:31 | R2-W5-F12를 CRM `include_jobs: false` corrective와 recipe hash·existing isolated runtime ingestion·Semantic Catalog 8/116 evidence 재개 묶음으로 교정하고, 존재하지 않는 F9 handoff 소급과 DB grant·Docker lifecycle을 금지 |
-| v5.92 | 2026-08-11 18:28 | test env absolute regular file·필수 변수 이름·config fallback과 fixed container/port·checkout label fail-closed를 구현하고 target 9건·integration 92건을 확인해 R1-W5-F36 REVIEW 전환 |
-| v5.91 | 2026-08-11 18:12 | F36 Gate-only CI 31469850161이 제품 결함 없이 dev 기준 누적 F34 4경로 미선언으로 fail-closed한 결과를 반영해, 신규 7경로와 누적 F34 경로의 exact union 11경로로 source scope 교정 |
-| v5.90 | 2026-08-11 18:05 | R1-W5-F34 source CI 31469682947 PASS를 VERIFIED_GATE로 기록하고, env 복사 없이 local git config의 absolute existing env를 직접 참조하며 runtime 충돌·source 불일치를 차단하는 R1-W5-F36 READY 발행; F35 선행에 F36 terminal 추가 |
-| v5.89 | 2026-08-11 17:55 | 조건부 AUTO_START의 exact 외부 행위 권한 누락·N/A를 fail-closed하고 기존 non-conditional 호환 회귀를 확인해 R1-W5-F34 REVIEW 전환 |
-| v5.88 | 2026-08-11 17:30 | dev e6f791f·CI 31468594200 PASS와 R4 F16·R5 F8 통합을 기준으로 실제 protocol harness·격리 migration ownership을 R4-W5-F17 REWORK로 발행하고, R1-W5-F34와 F17 terminal 뒤 actual HTTP→DB→Trino→G3→Artifact를 검증할 R1-W5-F35 조건부 후보를 고정했다. origin/test는 b78265c이며 `.wt/test/.env` 부재로 refresh가 fail-closed해 same-SHA test CI 전까지 WAIT한다. |
-| v5.87 | 2026-08-11 17:25 | 조건부 AUTO_START 후보가 exact EXTERNAL_ACTION_PERMISSION 누락·N/A를 fail-closed하고 기존 non-conditional 카드를 보존하도록 R1-W5-F34 owner-scoped REWORK 발행 |
-| v5.86 | 2026-08-11 17:18 | R5-W5-F8의 Agent 실제 Analysis API·오류 fail-closed 전환과 source CI 31468349479 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
-| v5.85 | 2026-08-11 17:12 | R4-W5-F16의 server-owned principal·OpenAPI 인증 계약과 source CI 31463682802 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
-| v5.84 | 2026-08-11 17:00 | CRM DataHub MSSQL ingestion의 불필요한 msdb job 조회를 광범위 DB 권한 없이 `include_jobs: false`로 차단하도록 R2-W5-F9를 BLOCKED 처리하고 R2-W5-F12 owner-scoped REWORK 발행 |
-| v5.83 | 2026-08-11 16:57 | R1-W5-F33의 mixed-checkout runtime 차단과 누적 Gate 발행 source CI 31466799848 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |
-| v5.82 | 2026-08-11 16:56 | R5-W5-F5 actual smoke가 AgentPage direct mock·fixture fallback으로 fake success가 되는 blocker를 기록하고 실제 Analysis HTTP client·fail-closed 전환을 R5-W5-F8 owner-scoped REWORK로 발행 |
-| v5.81 | 2026-08-11 16:55 | mixed checkout identity fail-closed와 integration 90건을 확인해 R1-W5-F33을 REVIEW 전환 |
-| v5.80 | 2026-08-11 16:38 | R1-W5-F33 발행과 현재 역할별 dashboard를 동기화해 source scope 판정 교정 |
-| v5.79 | 2026-08-11 16:15 | healthy container가 서로 다른 checkout·env에서 생성된 mixed test runtime을 단일 환경으로 오인하지 않도록 R1-W5-F33 READY 발행 |
-| v5.78 | 2026-08-11 16:05 | R4-W5-F16이 기존 환경을 건드리지 않고 인증 migration·HTTP/DB 회귀를 수행하도록 exact PostgreSQL image와 격리 project·network·volume의 생성·검증·폐기 권한을 추가 |
-| v5.77 | 2026-08-11 15:35 | test branch 전체 CI와 local opt-in 선택 재기동을 검증하고 source CI 31463640451 PASS를 확인해 R1-W5-F32를 MERGED_DEV로 전환 |
-| v5.76 | 2026-08-11 15:34 | test branch의 hosted CI와 local Docker 경계를 분리하고 변경된 frontend/backend만 opt-in 재기동하는 R1-W5-F32 READY 발행 |
-| v5.75 | 2026-08-11 15:02 | R1-W5-F31 협업 지침 단일화와 source CI 31462642899 PASS를 확인해 MERGED_DEV로 전환 |
-| v5.74 | 2026-08-11 14:52 | 선언 READY와 조건부 effective READY를 구분하고 PASS 카드의 착수 재승인·token 재발행 반복을 금지하도록 사용 원칙 정합화 |
-| v5.73 | 2026-08-11 14:48 | 협업 문서의 중복 시작 흐름·폐기 bootstrap·조건부 READY 설명·과거 상태 오인을 최소 교정하는 R1-W5-F31 발행 |
-| v5.72 | 2026-08-11 14:35 | 조건부 자동 착수의 fail-closed 회귀와 source CI 31461474741 PASS를 확인해 R1-W5-F30을 MERGED_DEV로 전환 |
-| v5.71 | 2026-08-11 14:16 | exact token·경로·선행조건이 미리 승인된 PLANNED 카드만 조건 충족 시 effective READY로 판정하는 R1-W5-F30 발행 |
-| v5.70 | 2026-08-11 14:15 | R5-W5-F4의 기존 UI·버튼·레이아웃 이력과 backend build 주소 연결을 보존하고 source CI 31460952787 PASS를 확인해 MERGED_DEV로 전환 |
-| v5.68 | 2026-08-11 14:04 | stale branch self-sync·Gate-only 원장 발행·remote source preflight의 세 자동화 병목과 중복 시작 지침을 최소 교정하는 R1-W5-F29 READY 발행 |
-| v5.69 | 2026-08-11 15:18 | R1-W5-F29 source CI 31460026364 PASS와 dev 충돌 없는 반영을 확인해 MERGED_DEV 전환 |
-| v5.67 | 2026-08-11 13:42 | terminal R1 카드 때문에 Gate-only 발행 CI가 scope FAIL하는 순환을 해소하고 역할별 active READY·source evidence 전이만 담당하는 R1-W5-F28 READY 발행 |
-| v5.66 | 2026-08-11 13:16 | R4-W5-F12 통합 뒤 client-owned X-User-Id·X-Role 신뢰를 제거하고 server-owned opaque principal mapping으로 Analysis·Report 공통 인증 경계를 동결하는 R4-W5-F16 READY 발행 |
-| v5.65 | 2026-08-11 13:02 | R2-W5-F8·R4-W5-F12 dev 통합과 CI 31456536103 PASS 뒤 isolated DataHub v1.7 live evidence를 수집하는 R2-W5-F9 READY 발행 |
-| v5.64 | 2026-08-11 12:55 | R2-W5-F8 Semantic Catalog checkpoint와 R4-W5-F12 Context Registry·실제 Gold 조합의 source CI·handoff를 확인해 MERGED_DEV로 전환 |
-| v5.63 | 2026-08-11 12:43 | R1-W5-F27의 history-preserving reconciliation과 corrective source CI를 확인해 MERGED_DEV로 전환 |
-| v5.61 | 2026-08-11 12:30 | 기획서의 Node1 keyword 후보→DataHub main search·Domain/Glossary structured filter→권한 Context 흐름을 R2 F11·R3 F12·R4 F15·R1 F26 후속 카드로 명시하고 raw keyword의 필터 무조건 재사용을 금지 |
-| v5.60 | 2026-08-11 12:15 | 사용자 승인으로 commit된 legacy 자동화 개선 기록을 F25 누적 read-only evidence로 분리해 role-scope 교정 |
-| v5.59 | 2026-08-11 12:11 | compact archive의 I4 VERIFIED_GATE를 dashboard가 인식하지 못하는 회귀를 교정하는 R1-W5-F25 READY 발행 |
-| v5.58 | 2026-08-11 11:58 | R1-W5-F24 자동화 개선을 source CI 31453748585 PASS 근거로 dev에 통합하고 MERGED_DEV로 종료 |
-| v5.57 | 2026-08-11 11:55 | 역할별 최신 실행 카드와 PLANNED 큐만 활성 원장에 남기고 이전 49개 카드를 날짜 archive로 이동해 hot-file 크기를 축소 |
-| v5.56 | 2026-08-11 11:45 | scope metadata 실패에도 제품 검증 신호를 수집하고 pending-CI handoff·inherited checkpoint hash·단일 preflight/sync·활성 원장 경량화를 구현하는 R1-W5-F24 READY 발행 |
-| v5.55 | 2026-08-11 11:28 | 외부 R5 clone의 local-only 3 commits를 삭제 없이 보존하고 latest dev를 non-ff merge한 뒤 기존 F4 wiring을 완주하는 owner-scoped reconciliation REWORK 재발행 |
-| v5.54 | 2026-08-11 11:22 | R4-W5-F12의 실제 제품 SHA f481f91과 scope-only 실패 CI 31451536556을 보존하면서 F10C·F10D owner 경로를 정식화하고 canonical G120-046 Gold 수치·hash 교정을 필수로 하는 corrective REWORK 재발행 |
-| v5.53 | 2026-08-11 10:50 | actual G120-046 HTTP가 live Trino Gold PASS와 달리 Node3 MODEL 단계에서 실패한 근거로, 미착수 R4-W5-F12를 Context Registry와 multi-source metric_selection consumer를 함께 완주하는 owner-scoped REWORK로 재발행 |
-| v5.52 | 2026-08-11 10:35 | R1-W5-F22의 격리 runtime·migration·Template·readiness를 MERGED_DEV로 전환하고, 각 역할의 후속 작업 11개를 단일 활성 카드 원칙을 지키는 PLANNED 큐로 등록 |
-| v5.51 | 2026-08-11 10:20 | 실제 호스트의 15432·18000 점유와 Windows 55432 제외 범위를 반영해 R1-W5-F22가 내부 DNS/target을 보존한 채 answervice 전용 host 25432·28000만 override하도록 runtime identity 계약 교정 |
-| v5.50 | 2026-08-11 10:10 | R1-W5-F21 checkout Node 24 immutable pin과 source CI를 dev에 통합하고, R4-W5-F11 readiness 계약 위에서 app-postgres identity 충돌을 root override로 해소해 actual readiness를 검증하는 R1-W5-F22 READY 발행 |
-| v5.49 | 2026-08-11 10:10 | R2-W5-F7 CI scope 충돌을 inherited evidence로 분리해 R2-W5-F8을 발행하고, R4 Context Registry 요청 중 live 의존이 없는 F10A additive migration·F10B checksum repository를 R4-W5-F12 service-only READY로 병렬 발행 |
-| v5.48 | 2026-08-11 10:10 | R4-W5-F11의 readiness·Node3 payload·LAN API 경계와 source CI를 확인해 dev에 통합하고 MERGED_DEV 전환 |
-| v5.47 | 2026-08-11 09:55 | R1-W5-F20 이력 조정을 dev에 통합하고 R1 CI Node 24 공급망 pin, R3 Node3·ModelOps DRAFT 검증을 READY 발행; R4·R5는 Gate-only dev 선행을 ff-only 동기화해 기존 token으로 즉시 착수하도록 명시 |
-| v5.46 | 2026-08-11 09:44 | 작업자 Downloads 저장소의 seung 7c4164b·dirty 일일보고 1개 snapshot을 조건부 정본으로 받아 제품·stash 불변과 F6/F7 handoff만 허용하도록 R2-W5-F7 token 재발행 |
-| v5.45 | 2026-08-11 09:38 | 갈라진 junhee·dev 이력과 기존 R1 증거를 삭제 없이 보존하고 최신 Gate로 동기화하는 R1-W5-F20 reconciliation REWORK 발행 |
-| v5.44 | 2026-08-11 09:29 | 선행 producer 완성을 기다리지 않고 R4 backend 시연 연결 해소와 R5 공통 backend base wiring을 DRAFT 계약으로 병렬 착수하도록 READY 발행 |
-| v5.43 | 2026-08-11 09:27 | R4-W5-F9의 Analysis 저장·조회·재실행 API와 terminal CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |
-| v5.42 | 2026-08-11 09:20 | R2-W5-F6의 원격 CI 통과 checkpoint와 로컬 일일보고·제품 변경을 모두 보존하는 R2-W5-F7 reconciliation 전용 REWORK 발행 |
-| v5.41 | 2026-08-10 19:30 | R1-W5-F13을 기존 hotel-synthetic-db app-postgres 고정 이름 충돌 근거로 BLOCKED 처리하고 다른 project 불변·신규 빈 answervice resource 보존·owner별 후속 경계를 기록 |
-| v5.40 | 2026-08-10 19:20 | 시연 준비를 위해 exact answervice app-postgres/backend만 기동하고 migration head·approved Template·readiness를 검증하는 R1-W5-F13 발행 |
-| v5.39 | 2026-08-10 19:10 | R5-W5-F3의 기본 loopback·명시적 LAN 공개, exact frontend runtime·source CI를 확인해 dev에 통합하고 MERGED_DEV로 종료 |
-| v5.38 | 2026-08-10 19:00 | frontend 기본 loopback을 유지하고 FRONTEND_BIND_ADDRESS=0.0.0.0 명시 시에만 same-LAN 13000 공개를 허용하는 R5-W5-F3 발행 |
-| v5.37 | 2026-08-10 18:50 | R1-W5-F12의 live profile guard source·terminal CI와 CRM product-only dev CI를 확인해 MERGED_DEV로 종료 |
-| v5.36 | 2026-08-10 18:40 | R1-W5-F12 source scope가 기존 F9/F10 handoff를 history rewrite 없이 보존하도록 두 파일을 read-only cumulative evidence로만 허용하고 CRM product integration 범위는 유지 |
-| v5.35 | 2026-08-10 18:30 | R1-W5-F11을 source CI의 live Trino endpoint 부재 근거로 BLOCKED 처리하고, 명시적 live profile guard와 CRM product-only 통합을 수행하는 R1-W5-F12를 발행 |
-| v5.34 | 2026-08-10 18:15 | R1-W5-F10을 근거대로 BLOCKED로 정정하고 CRM health product-only R1-W5-F11, R2 offline 9-path checkpoint, R3 Node3 derived metric producer, R4 F9 handoff-only 권한을 발행 |
-| v5.33 | 2026-08-10 17:50 | R4-W5-F9 test container가 제품 entrypoint를 실행하지 않도록 docker run에 `--entrypoint sh`를 명시해 Python 3.12 pytest 검증 명령을 실행 가능하게 교정 |
-| v5.32 | 2026-08-10 17:45 | R4-W5-F9의 전체 backend가 pytest 수집을 요구함을 재현해 제품 dependency는 동결하고 Python 3.12 test container 안에서만 pytest 8.3.5를 일회성 설치하도록 검증 권한을 교정 |
-| v5.31 | 2026-08-10 17:35 | R3-W5-F6의 source CI·handoff와 dev 조합 회귀를 확인해 MERGED_DEV로 전환하고, R4-W5-F9의 Python 3.12 컨테이너 검증을 이미지에 없는 pytest 대신 승인 원문의 stdlib unittest 명령으로 교정 |
-| v5.24 | 2026-08-10 14:00 | 대표 3-source Trino Gold는 일치했지만 제품 E2E가 Binding·Node2 multi-source plan·repair·safe CTE·chart에서 차단됨을 기록; interim은 검증된 versioned binding, live는 fail-closed로 결정하고 R3-W5-F5·R4-W5-F6을 병렬 READY 발행 |
-| v5.23 | 2026-08-10 13:45 | R3 Node2·evaluator typed parameter 결과와 source CI를 MERGED_DEV로 전환하고, 실제 G120-046 제품 API E2E를 R1-W5-F9으로 READY 발행; compiled 1,350건 재생성은 E2E 통과 뒤 R3-W5-F4로 분리 |
-| v5.22 | 2026-08-10 13:30 | R4 typed Context·G2·단일 Trino binder의 source CI·handoff를 확인해 MERGED_DEV로 전환하고, R3 Node2·evaluator가 같은 value_type·period_end_exclusive 계약을 소비하도록 R3-W5-F3을 READY 발행 |
-| v5.21 | 2026-08-10 13:15 | R1 CI 공급망 보강과 R2 typed filter·PMS/CRM/POS Context의 source CI·handoff를 확인해 MERGED_DEV로 전환하고 R4 Context·G2·단일 binder 소비자 카드를 READY 발행; 5주차 팀 요약·주간보고를 개인 보고와 동기화 |
-| v5.20 | 2026-08-10 13:00 | 다른 역할과 독립적인 R1 CI 공급망 작업을 확인해 GitHub Actions immutable SHA pin과 모든 job timeout을 검증하는 R1-W5-F8을 병렬 발행; R5는 Audit·Schedule·Report worker·Catalog live 생산자 부재로 신규 구현 없이 대기 |
-| v5.19 | 2026-08-10 12:55 | R4 Alembic 검증을 MERGED_DEV로 전환하고, typed required-filter·대표 PMS/CRM/POS Context를 R2 생산자부터 R4·R3 소비자와 R1 실제 API E2E 순으로 재편; Analysis·SQLGlot G2/G3·Report worker·schedule은 선행 E2E 뒤 단계화 |
-| v5.18 | 2026-08-10 12:47 | dev CI 31352194575에서 R4 G2 parameter 경계와 R3 literal evaluator/test 불일치로 3건 실패한 원인을 확인하고, backend 경계를 완화하지 않는 R3-W5-F2 REWORK를 병렬 발행 |
-| v5.17 | 2026-08-10 12:40 | R4 Asset Binding consumer가 PENDING/NOT_RUN을 성공으로 오표시하지 않는 결과와 CI를 MERGED_DEV로 전환하고, 이전 R4 legacy migration 요청을 제품 migration 변경 없는 R4-W5-F4 검증 카드로 READY 발행 |
-| v5.16 | 2026-08-10 12:31 | R4 Metadata·Context Registry 대규모 요청은 번호 충돌·R2 runtime NOT_RUN·migration/OpenAPI 미확정·외부 dirty 작업공간 때문에 제안 그대로 반려하고 F5 PLANNED로 분해 순서를 기록; R1 first-start와 R5 Audit UI도 선행조건부 PLANNED로 등록 |
-| v5.15 | 2026-08-10 12:18 | R1 DataHub 안전 기동 도구와 R2 offline runtime·binding, R4 Context/G2 결과·CI를 MERGED_DEV로 전환; R2 PENDING binding의 R4 VERIFIED 오표시를 막는 F3 REWORK를 우선 발행하고 R4의 legacy migration 요청은 F4 PLANNED로 부분 수용 |
-| v5.14 | 2026-08-10 11:52 | R3 required-filter 결과와 source CI를 확인해 MERGED_DEV 전환; legacy schema 근거 없는 R4 migration 카드를 차단하고 R1 DataHub runtime preflight·R2 offline runtime/binding validator·R4 versioned Context consumer 카드를 병렬 발행 |
-| v5.13 | 2026-08-10 11:43 | R2 DataHub v1.7.0 config producer와 R1 root verifier의 결합 CI, R5 목업 기반 frontend source CI·handoff를 확인해 R1·R2·R5 카드를 MERGED_DEV로 전환 |
-| v5.12 | 2026-08-10 11:23 | 공식 DataHub v1.7.0 최신화를 R1 root 계약과 R2 consumer config 카드로 분리 발행하고 Trino 476·runtime resource를 동결; 기존 R2 Gold 카드는 보완된 후속 REWORK를 위해 차단 |
-| v5.11 | 2026-08-10 11:06 | R5-W5-F1 발행 범위와 R1 handoff·source CI를 확인해 R1-W5-F3를 MERGED_DEV 전환 |
-| v5.10 | 2026-08-10 11:03 | 사용자 목업을 기존 API·route·fixture 계약 안에서 최소 이식하는 R5-W5-F1과 발행 검증 R1-W5-F3를 READY 발행 |
-| v5.9 | 2026-08-10 11:00 | R1-W5-F2의 Ponytail v4.9.0 정합성·LLM 참고 스냅샷·handoff와 source CI를 확인해 MERGED_DEV 전환 |
-| v5.8 | 2026-08-10 10:56 | 동시 생성된 LLM 사용 현황을 현재 코드·설정 근거의 legacy 참고 스냅샷으로 보존하도록 R1-W5-F2 범위 보완 |
-| v5.7 | 2026-08-10 10:52 | Ponytail 실제 설치본 v4.9.0과 팀 정책을 일치시키는 R1-W5-F2 발행 |
-| v5.6 | 2026-08-10 10:45 | R1-W5-F1·R5-W4-F5 source CI와 handoff를 확인하고 dev 통합 결과를 기록해 MERGED_DEV 전환 |
-| v5.5 | 2026-08-10 10:40 | 같은 시점의 기획서 기반 구현 현황 스냅샷을 R1 참고 근거로 보존하도록 허용 경로 추가 |
-| v5.4 | 2026-08-10 10:34 | R2~R4 카드 발행 행위를 추적하는 R1-W5-F1 실행 묶음 추가 |
-| v5.3 | 2026-08-10 10:29 | R2 3-source 정답 조회, R3 범위 복구·required filter SQL, R4 legacy migration 호환 복구 카드를 발행 |
-| v5.2 | 2026-08-10 09:48 | R1-W4-F10 source CI와 handoff를 확인하고 dev 통합 결과를 기록해 MERGED_DEV 전환 |
-| v5.1 | 2026-08-10 09:44 | R1-W4-F10의 카드 번호 독립 회귀 검증과 전달 증거를 완료해 REVIEW 전환 |
-| v5.0 | 2026-08-10 09:40 | R5 범위 초과 변경과 browser 검증 차단을 해소하는 R5-W4-F5 REWORK 및 카드 전환 회귀를 보정하는 R1-W4-F10 발행 |
-| v4.9 | 2026-08-06 11:16 | R1-W4-F9 source CI와 handoff를 확인하고 dev 통합 결과를 기록해 MERGED_DEV 전환 |
-| v4.8 | 2026-08-06 11:01 | R1 카드 fixture·공용 parser·병합 session 구현과 local 통합 회귀 완료 후 REVIEW 전환 |
-| v4.7 | 2026-08-06 10:59 | 역할 카드 fixture·공용 Gate parser·병합 session 정합성 개선을 위한 R1 카드 발행·착수 |
-| v4.2 | 2026-08-06 09:30 | source CI 확인·작업 전 경로 검사·변경 문서 CI·보고 일괄 통합을 위한 R1 유지보수 카드 발행·착수 |
-| v4.1 | 2026-08-05 20:14 | versioned-trino 합성 기간 상태·일별 집계·KPI·Evidence 기간을 일치시키고 실브라우저 E2E 병목 해소 |
-| v4.0 | 2026-08-05 19:44 | 역할별 최신 실행 카드만 활성 원장에 유지하고 기존 전체 이력을 archive로 분리 |

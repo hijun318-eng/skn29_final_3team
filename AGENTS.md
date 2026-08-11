@@ -4,7 +4,7 @@
 
 - 프로젝트는 **DataHub Core 기반 대화형 데이터 분석·자동 리포팅 서비스 Answervice**로 구현한다.
 - 기능 범위·아키텍처의 기준은 `docs/Answervice_기획서.md`, 실행 일정·담당·상태의 기준은 `docs/markdown/02_WBS.md`다. `docs/markdown/05_화면설계서.md`는 검토 중 참고자료이며, R1·R5가 작업 카드에서 승인한 화면 ID만 구현하고 route·API·권한·design token을 추정하지 않는다.
-- 각 역할은 `docs/markdown/ai_docs/5인_병렬구현_*_매뉴얼_최종안.md` 중 본인 역할 매뉴얼을 읽고, R1이 통합 Wave별로 승인한 `EXECUTION_BUNDLE_ID`의 `TASK_CARD_RANGE`를 수행한다. 승인 범위 안에서는 카드 번호 순서대로 재승인 없이 자율 진행하며, 목표 통합 Gate·범위 밖 변경·계약 충돌 시 멈추고 R1에게 반환한다. 매뉴얼과 통합 일정은 AI 실행 참고서이며 기획서나 공식 WBS를 덮어쓰지 않는다.
+- 각 역할은 `docs/markdown/ai_docs/5인_병렬구현_*_매뉴얼_최종안.md` 중 본인 역할의 소유권·도메인 계약·역할별 검증 절만 참고하고, 공통 작업 시작·CI·handoff·Git 절차는 `docs/markdown/collaboration/README.md`와 전용 Skill을 따른다. R1이 승인한 `EXECUTION_BUNDLE_ID`의 `TASK_CARD_RANGE` 안에서는 카드 번호 순서대로 재승인 없이 자율 진행하며, 목표 통합 Gate·범위 밖 변경·계약 충돌 시 멈추고 R1에게 반환한다. 매뉴얼과 통합 일정은 AI 실행 참고서이며 기획서나 공식 WBS를 덮어쓰지 않는다.
 - 역할별 Gate 실행 묶음의 번호·범위·상태·발행 값은 `docs/markdown/collaboration/Gate_실행_카드_원장.md`에서 관리한다. `PLANNED`는 원칙적으로 실행 승인이 아니다. 단, R1이 `AUTO_START=CONDITIONAL`, exact `AUTO_START_AFTER`, 고정 `BASE_SHA`·`DIRECTIVE_TOKEN`·`EXTERNAL_ACTION_PERMISSION`·허용 경로·검증·중단 조건을 미리 기록한 카드는 모든 선행 묶음의 terminal 상태·CI PASS, 역할별 active 0건, clean·safe-stale 검사를 Gate가 통과한 실행 시점에만 effective `READY`로 시작할 수 있다.
 - DataHub는 메타데이터 기준 시스템, Trino는 읽기 전용 연합 조회 엔진, FastAPI Controller는 고정 상태 전이와 G1·G2·G3를 통제하는 Control Plane으로 둔다.
 - backend 기준은 FastAPI다. Django나 자유 ReAct loop를 별도 승인 없이 추가하지 않는다.

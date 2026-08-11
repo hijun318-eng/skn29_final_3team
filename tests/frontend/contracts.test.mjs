@@ -58,6 +58,8 @@ const analysisStatePanelSource = readFileSync(
 assert.match(analysisStatePanelSource, /분석 요약/);
 assert.match(analysisStatePanelSource, /ANALYSIS DASHBOARD/);
 assert.match(analysisStatePanelSource, /analysis-dashboard-meta/);
+assert.match(analysisStatePanelSource, /tickFormatter={formatAxisValue}/);
+assert.match(analysisStatePanelSource, /COLUMN_UNITS/);
 assert.match(analysisStatePanelSource, /연회 일정 변경/);
 assert.match(analysisStatePanelSource, /주요 지표/);
 assert.match(analysisStatePanelSource, /기간별 변화/);
@@ -248,6 +250,7 @@ assert.match(reportsPageSource, /초안과 확정 보고서 모두 편집할 수
 assert.match(reportsPageSource, /<button className="view"/);
 assert.match(stylesSource, /\.legacy-report-actions\{[^}]*display:flex/);
 assert.match(agentPageSource, /보고서 초안에 추가/);
+assert.match(agentPageSource, /report-transfer-modal--preview/);
 assert.match(agentPageSource, /무엇을 분석할까요\?/);
 assert.match(agentPageSource, /\[\["report", "Report"\], \["sources", "Sources"\], \["run", "Run history"\], \["trace", "Trace"\]\]/);
 assert.match(agentPageSource, /선택한 내용으로 초안 만들기/);

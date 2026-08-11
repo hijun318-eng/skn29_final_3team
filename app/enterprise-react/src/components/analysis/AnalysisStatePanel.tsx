@@ -38,6 +38,11 @@ const COLUMN_LABELS: Record<string, string> = {
   cancelled_room_nights: "연계 객실 취소",
 };
 
+const COLUMN_UNITS: Record<string, string> = {
+  banquet_changes: "건",
+  cancelled_room_nights: "박",
+};
+
 const VIEW_COPY: Record<AnalysisViewState, { title: string; description: string; icon: typeof CheckCircle2 }> = {
   LOADING: { title: "분석 중", description: "승인된 분석 경로를 확인하고 있습니다.", icon: LoaderCircle },
   EMPTY: { title: "결과 없음", description: "조건을 바꾸거나 기간을 넓혀 다시 질문해 보세요.", icon: SearchX },
@@ -62,6 +67,12 @@ function formatMetric(value: unknown, unit?: string) {
     return `${value.toLocaleString("ko-KR")}원`;
   }
   return `${value.toLocaleString("ko-KR")}${unit ? ` ${unit}` : ""}`;
+}
+
+function formatAxisValue(value: number) {
+  if (value >= 100_000_000) return `${(value / 100_000_000).toFixed(1)}억`;
+  if (value >= 10_000) return `${Math.round(value / 10_000).toLocaleString("ko-KR")}만`;
+  return value.toLocaleString("ko-KR");
 }
 
 export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
@@ -136,11 +147,11 @@ export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
           {chart && table?.rows.length ? (
             <section className="analysis-result-section"><h3>기간별 변화</h3><div className="analysis-chart" aria-label="기간별 변화 차트">
               <ResponsiveContainer width="100%" height={210}>
-                <LineChart data={table.rows}>
+                <LineChart data={table.rows} margin={{ top: 12, right: 16, bottom: 4, left: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey={chart.xField} />
-                  <YAxis />
-                  <Tooltip />
+                  <XAxis dataKey={chart.xField} tick={{ fontSize: 11 }} tickMargin={10} />
+                  <YAxis width={72} tick={{ fontSize: 11 }} tickFormatter={formatAxisValue} />
+                  <Tooltip formatter={(value) => formatMetric(value, run.metrics.find((metric) => metric.metricId === chart.yFields[0])?.unit)} />
                   {chart.yFields.map((field) => (
                     <Line key={field} dataKey={field} name={COLUMN_LABELS[field] ?? field} type="monotone" stroke="#1c69d4" />
                   ))}
@@ -158,7 +169,10 @@ export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
                 <tbody>
                   {table.rows.map((row, index) => (
                     <tr key={`${run.requestId}-${index}`}>
-                      {table.columns.map((column) => <td key={column}>{formatValue(row[column])}</td>)}
+                      {table.columns.map((column) => {
+                        const metric = run.metrics.find((item) => item.metricId === column);
+                        return <td key={column}>{formatMetric(row[column], metric?.unit ?? COLUMN_UNITS[column])}</td>;
+                      })}
                     </tr>
                   ))}
                 </tbody>

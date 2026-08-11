@@ -7,14 +7,23 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   role-scope:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       scope: ${{ steps.gate.outputs.scope }}
       handoff: ${{ steps.gate.outputs.handoff }}
+      python: ${{ steps.gate.outputs.python }}
+      documents: ${{ steps.gate.outputs.documents }}
+      frontend: ${{ steps.gate.outputs.frontend }}
+      compose: ${{ steps.gate.outputs.compose }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       - name: Check role scope
@@ -46,10 +55,13 @@ jobs:
         run: python .github/scripts/gate_scope.py --dashboard --next-gate auto
 
   python-contracts:
+    needs: role-scope
+    if: ${{ needs['role-scope'].outputs.python == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
           cache: pip
@@ -70,22 +82,67 @@ jobs:
           python -m pytest -p no:cacheprovider "${targets[@]}"
 
   document-quality:
+    needs: role-scope
+    if: ${{ needs['role-scope'].outputs.documents == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - run: python .agents/skills/manage-project-documents/scripts/check_document_policy.py docs/markdown/01_요구사항정의서.md docs/markdown/02_WBS.md docs/markdown/05_화면설계서.md docs/markdown/collaboration/Gate_실행_카드_원장.md docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md docs/markdown/collaboration/I1_평가_원장.md
-      - run: python .agents/skills/update-project-wbs/scripts/validate_wbs.py docs/markdown/02_WBS.md
-      - run: python .agents/skills/update-project-reports/scripts/validate_reports.py docs/markdown/daily_reports/*/일일보고.md
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Validate changed documents
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_NAME" == "dev" ]]; then
+            base="${{ github.event.before }}"
+            separator=".."
+            if [[ "$base" =~ ^0+$ ]]; then
+              base="$(git rev-list --max-parents=0 HEAD)"
+            fi
+          else
+            git fetch origin dev:refs/remotes/origin/dev
+            base="origin/dev"
+            separator="..."
+          fi
+
+          mapfile -d '' documents < <(
+            git diff --name-only -z --diff-filter=ACMR \
+              "${base}${separator}${GITHUB_SHA}" -- \
+              'AGENTS.md' ':(glob)**/*.md'
+          )
+          if (( ${#documents[@]} )); then
+            python .agents/skills/manage-project-documents/scripts/check_document_policy.py \
+              "${documents[@]}"
+          fi
+
+          reports=()
+          for path in "${documents[@]}"; do
+            case "$path" in
+              docs/markdown/daily_reports/*/일일보고.md|docs/markdown/daily_reports/team_summaries/*/*.md)
+                reports+=("$path")
+                ;;
+            esac
+          done
+          if (( ${#reports[@]} )); then
+            python .agents/skills/update-project-reports/scripts/validate_reports.py \
+              "${reports[@]}"
+          fi
+          if printf '%s\0' "${documents[@]}" | grep -Fzxq 'docs/markdown/02_WBS.md'; then
+            python .agents/skills/update-project-wbs/scripts/validate_wbs.py \
+              docs/markdown/02_WBS.md
+          fi
 
   frontend-contracts:
-    if: github.ref_name == 'minji' || github.ref_name == 'dev'
+    needs: role-scope
+    if: ${{ needs['role-scope'].outputs.frontend == 'true' && (github.ref_name == 'minji' || github.ref_name == 'dev') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: app/enterprise-react
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24"
           cache: npm
@@ -95,10 +152,12 @@ jobs:
       - run: node --test ../../tests/frontend/contracts.test.mjs
 
   compose-config:
-    if: github.ref_name == 'junhee' || github.ref_name == 'seung' || github.ref_name == 'dev'
+    needs: role-scope
+    if: ${{ needs['role-scope'].outputs.compose == 'true' && (github.ref_name == 'junhee' || github.ref_name == 'seung' || github.ref_name == 'dev') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Show Docker Compose version
         run: docker compose version
       - run: pwsh -File infrastructure/database/scripts/verify-service-fragment.ps1 -EnvFilePath .env.example
@@ -115,6 +174,7 @@ jobs:
       - frontend-contracts
       - compose-config
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     env:
       ROLE_SCOPE: ${{ needs['role-scope'].result }}
       PYTHON_CONTRACTS: ${{ needs['python-contracts'].result }}

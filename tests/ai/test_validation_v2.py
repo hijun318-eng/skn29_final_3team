@@ -4,7 +4,7 @@ from collections import Counter
 from src.ai.training.build_case_specs import _urn
 from src.ai.training.build_smoke_manifest import reproduce_previous, select_smoke20
 from src.ai.training.build_validation_v2 import select_validation_v2
-from src.ai.training.evaluate_endpoint import evaluate_record
+from src.ai.training.evaluate_endpoint import _run_trino, evaluate_record
 
 
 def _record(candidate_id, split, domain, metric, node="node2", output="scalar"):
@@ -49,7 +49,11 @@ def test_endpoint_evaluator_applies_g2_and_compares_trino_results(monkeypatch):
     context = {
         "context_version": "test",
         "policy_version": "test",
-        "execution_time": {"as_of": "2026-08-01T00:00:00+09:00"},
+        "execution_time": {
+            "as_of": "2026-08-01T00:00:00+09:00",
+            "period_start": "2026-07-01T00:00:00+09:00",
+            "period_end_exclusive": "2026-08-01T00:00:00+09:00",
+        },
         "assets": [
             {
                 "urn": "urn:hotel",
@@ -70,8 +74,8 @@ def test_endpoint_evaluator_applies_g2_and_compares_trino_results(monkeypatch):
                 "aggregation": "sum",
                 "time_field": "serving.analytics.hotel_daily_metrics.business_date",
                 "required_filters": [
-                    {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
-                    {"field": "is_forecast", "operator": "eq", "value": False},
+                    {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+                    {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
                 ],
             }
         ],
@@ -79,8 +83,17 @@ def test_endpoint_evaluator_applies_g2_and_compares_trino_results(monkeypatch):
     }
     sql = (
         "SELECT SUM(room_revenue) FROM serving.analytics.hotel_daily_metrics "
-        "WHERE data_period_status = 'ACTUAL' AND is_forecast = false LIMIT 1000"
+        "WHERE business_date >= DATE ':period_start' "
+        "AND business_date < DATE ':period_end_exclusive' "
+        "AND data_period_status = :required_filter_1 "
+        "AND is_forecast = :required_filter_2 LIMIT 1000"
     )
+    parameters = [
+        {"name": "period_start", "value_type": "date", "value": "2026-07-01"},
+        {"name": "period_end_exclusive", "value_type": "date", "value": "2026-08-01"},
+        {"name": "required_filter_1", "value_type": "string", "value": "ACTUAL"},
+        {"name": "required_filter_2", "value_type": "boolean", "value": False},
+    ]
     record = {
         "case_id": "validation-1",
         "domain": "pms",
@@ -88,7 +101,7 @@ def test_endpoint_evaluator_applies_g2_and_compares_trino_results(monkeypatch):
         "messages": [
             {"role": "system", "content": "system"},
             {"role": "user", "content": __import__("json").dumps({"context_package": context})},
-            {"role": "assistant", "content": __import__("json").dumps({"sql": sql})},
+            {"role": "assistant", "content": __import__("json").dumps({"sql": sql, "parameters": parameters})},
         ],
     }
 
@@ -105,9 +118,137 @@ def test_endpoint_evaluator_applies_g2_and_compares_trino_results(monkeypatch):
     )
 
     assert result["g2"] == "PASS"
+    assert result["expected_g2"] == "PASS"
     assert result["sql_exact_match"] is True
     assert result["trino"] == "PASS"
     assert result["result_match"] is True
+
+
+def test_endpoint_evaluator_rejects_literal_or_parameter_mutation(monkeypatch):
+    context = {
+        "context_version": "test",
+        "policy_version": "test",
+        "execution_time": {
+            "as_of": "2026-08-01T00:00:00+09:00",
+            "period_start": "2026-07-01T00:00:00+09:00",
+            "period_end_exclusive": "2026-08-01T00:00:00+09:00",
+        },
+        "assets": [{
+            "urn": "urn:hotel",
+            "trino_fqn": "serving.analytics.hotel_daily_metrics",
+            "columns": ["business_date", "data_period_status", "is_forecast", "room_revenue"],
+        }],
+        "metrics": [{
+            "id": "recognized_room_revenue",
+            "field": "serving.analytics.hotel_daily_metrics.room_revenue",
+            "aggregation": "sum",
+            "time_field": "serving.analytics.hotel_daily_metrics.business_date",
+            "required_filters": [
+                {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+                {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
+            ],
+        }],
+        "joins": [],
+    }
+    sql = (
+        "SELECT SUM(room_revenue) FROM serving.analytics.hotel_daily_metrics "
+        "WHERE business_date >= DATE ':period_start' "
+        "AND business_date < DATE ':period_end_exclusive' "
+        "AND data_period_status = :required_filter_1 "
+        "AND is_forecast = :required_filter_2 LIMIT 1000"
+    )
+    parameters = [
+        {"name": "period_start", "value_type": "date", "value": "2026-07-01"},
+        {"name": "period_end_exclusive", "value_type": "date", "value": "2026-08-01"},
+        {"name": "required_filter_1", "value_type": "string", "value": "ACTUAL"},
+        {"name": "required_filter_2", "value_type": "boolean", "value": False},
+    ]
+    record = {
+        "case_id": "validation-negative",
+        "domain": "pms",
+        "node": "node2",
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": json.dumps({"context_package": context})},
+            {"role": "assistant", "content": json.dumps({"sql": sql, "parameters": parameters})},
+        ],
+    }
+    monkeypatch.setattr(
+        "src.ai.training.evaluate_endpoint._run_trino",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("Trino must not run")),
+    )
+    for generated, expected_code in (
+        (sql.replace(":required_filter_1", "'ACTUAL'"), "METRIC_FILTER_MISSING"),
+        (sql.replace(":required_filter_1", ":unknown"), "METRIC_FILTER_MISSING"),
+        (sql.replace("AND data_period_status", "OR data_period_status"), "METRIC_FILTER_MISSING"),
+        (sql.replace(":period_end_exclusive", ":period_end"), "PARAMETERS_INVALID"),
+    ):
+        result = evaluate_record(
+            record,
+            base_url="https://model.invalid",
+            model="test",
+            requester=lambda *_args, generated=generated: {
+                "choices": [{"message": {"content": json.dumps({"sql": generated})}}]
+            },
+            trino_container="trino",
+        )
+        assert result["g2"] == expected_code
+        assert result["trino"] == "NOT_RUN"
+
+    mutated = json.loads(json.dumps(record))
+    expected_payload = json.loads(mutated["messages"][2]["content"])
+    expected_payload["parameters"][2]["value"] = "FORECAST"
+    mutated["messages"][2]["content"] = json.dumps(expected_payload)
+    result = evaluate_record(
+        mutated,
+        base_url="https://model.invalid",
+        model="test",
+        requester=lambda *_args: {"choices": [{"message": {"content": json.dumps({"sql": sql})}}]},
+        trino_container="trino",
+    )
+    assert result["g2"] == "PASS"
+    assert result["expected_g2"] == "PARAMETERS_INVALID"
+    assert result["trino"] == "NOT_RUN"
+
+
+def test_endpoint_trino_execution_uses_the_backend_binder(monkeypatch):
+    observed = {}
+
+    def bind(sql, parameters):
+        observed["binder"] = (sql, parameters)
+        return "SELECT 1 AS value LIMIT 1"
+
+    class Completed:
+        returncode = 0
+        stdout = '{"value":1}\n'
+        stderr = ""
+
+    def run(command, **_kwargs):
+        observed["command"] = command
+        return Completed()
+
+    monkeypatch.setattr(
+        "src.ai.training.evaluate_endpoint.I2DataPlatformAdapter._bind_parameters",
+        bind,
+    )
+    monkeypatch.setattr(
+        "src.ai.training.evaluate_endpoint.subprocess.run",
+        run,
+    )
+    parameters = {"period_start": {"value_type": "date", "value": "2026-07-01"}}
+
+    status, result_hash, error = _run_trino(
+        "SELECT :period_start AS value LIMIT 1",
+        parameters,
+        "trino",
+        "hotel_analyst",
+    )
+
+    assert observed["binder"] == ("SELECT :period_start AS value LIMIT 1", parameters)
+    assert "SELECT 1 AS value LIMIT 1" in observed["command"]
+    assert status == "PASS"
+    assert result_hash is not None
+    assert error is None
 
 
 def test_smoke20_is_deterministic_and_covers_domains_nodes_and_slices():

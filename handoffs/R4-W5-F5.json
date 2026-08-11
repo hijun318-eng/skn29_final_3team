@@ -1,0 +1,49 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W5-F5",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "b35f2d86d2089f461aff6de316d062ce1cc40bfd",
+  "RESULT_SHA": "143521ee2428cbcfafafab8a05a344ac858b71e1",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W5-F5@b35f2d8",
+  "COMPLETED_CARDS": ["R4 typed 3-source Context consumer·G2 parameter contract·safe Trino binder"],
+  "CHANGED_FILES": [
+    "app/backend/app/adapters/contract_model.py",
+    "app/backend/app/adapters/i2_data_platform.py",
+    "app/backend/app/services/context_builder.py",
+    "app/backend/app/services/pipeline_support.py",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
+    "tests/backend/test_context_builder.py",
+    "tests/backend/test_i2_data_platform.py",
+    "tests/backend/test_production_model.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "CONTEXT": "I4-CONTEXT-v2.3.0-DRAFT",
+    "THREE_SOURCE_CONTEXT": "I5-3SOURCE-CONTEXT-v1.0.0-DRAFT",
+    "PARAMETERS": "string;boolean;number;date;period_end_exclusive",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_TYPED_CONTEXT", "status": "PASS", "evidence": "R2 versioned 3-source contract를 read-only 로드하고 Context package/hash에 typed filter/binding을 무손실 포함"},
+    {"id": "AC2_PERIOD_EXCLUSIVE", "status": "PASS", "evidence": "period_start·period_end_exclusive 이름과 ISO date type/value를 Context→model plan→binder에서 유지"},
+    {"id": "AC3_G2_PAIR_VALIDATION", "status": "PASS", "evidence": "placeholder·model parameter map·Context binding의 exact set/type/value를 비교해 missing/unknown/duplicate/value mutation을 차단"},
+    {"id": "AC4_SINGLE_BINDER", "status": "PASS", "evidence": "실행 직전 단일 _bind_parameters만 typed parameter를 SQL literal로 안전하게 치환"},
+    {"id": "AC5_TYPE_ALLOWLIST", "status": "PASS", "evidence": "quote escaping string·boolean·finite number(bool 제외)·ISO date만 허용"},
+    {"id": "AC6_THREE_SOURCE_POLICY", "status": "PASS", "evidence": "승인된 PMS·CRM·POS 6개 asset과 FQN·column·pms_crm_pos_gold_revenue_month_v1 JOIN만 허용"},
+    {"id": "AC7_FAIL_CLOSED", "status": "PASS", "evidence": "literal·OR filter, 미지원/잔여 placeholder, 외부 FQN/column 및 binding 변조를 차단"},
+    {"id": "AC8_REGRESSION", "status": "PASS", "evidence": "기존 entitlement·1회 repair 경계를 유지하고 target/backend 비-runtime 회귀 통과"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_TARGET", "name": "R4-W5-F5 target backend tests", "status": "PASS", "evidence": "74 passed, 17 subtests passed"},
+    {"id": "T2_BACKEND_NO_RUNTIME", "name": "backend tests excluding dependency-blocked runtime modules", "status": "PASS", "evidence": "85 passed, 17 subtests passed"},
+    {"id": "T3_COMPILE", "name": "python -m compileall -q app/backend/app", "status": "PASS", "evidence": "compileall PASS"},
+    {"id": "T4_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "whitespace error 없음"},
+    {"id": "T5_BRANCH_CI", "name": "jaehong branch GitHub Actions", "status": "PASS", "evidence": "CI 31354380318에서 tests/backend 전체와 quality gate 성공"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "R4 typed Context/G2/binder consumer를 검토하고 R3 AI literal evaluator 후속과 dev 의존성 환경에서 전체 회귀를 순서대로 실행"
+}

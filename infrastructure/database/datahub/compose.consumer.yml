@@ -1,8 +1,9 @@
 x-datahub-source:
-  release: v1.6.0
-  revision: 059a36c0b035a6057de00114ccac0ea9003d6bc2
-  compose_blob: 028473ea6f8466fb9db7042da1c3af026702ed9b
-  url: https://raw.githubusercontent.com/datahub-project/datahub/059a36c0b035a6057de00114ccac0ea9003d6bc2/docker/quickstart/docker-compose.quickstart-profile.yml
+  release: v1.7.0
+  revision: 7f81ccbfe27b9acc947f5f600fcf9ddb72138a80
+  compose_blob: 39b0f37f089302209ce8d7e932eeb7c50caa28d9
+  sha256: ec476d12f6f278c50d657a617357a050510565ef00b570a69cbe9123a932a7b7
+  url: https://raw.githubusercontent.com/datahub-project/datahub/7f81ccbfe27b9acc947f5f600fcf9ddb72138a80/docker/quickstart/docker-compose.quickstart-profile.yml
 
 x-datahub-service: &datahub-service
   profiles: [full, split-host]
@@ -12,7 +13,7 @@ x-datahub-service: &datahub-service
 services:
   kafka-broker:
     <<: *datahub-service
-    image: confluentinc/cp-kafka:8.0.0
+    image: confluentinc/cp-kafka:8.2.2
     hostname: broker
     environment:
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
@@ -67,14 +68,14 @@ services:
   system-update-quickstart:
     <<: *datahub-service
     restart: "no"
-    image: acryldata/datahub-upgrade:v1.6.0
+    image: acryldata/datahub-upgrade:v1.7.0
     command: ["-u", "SystemUpdate"]
     depends_on:
       kafka-broker: {condition: service_healthy}
       mysql: {condition: service_healthy}
       opensearch: {condition: service_healthy}
     environment:
-      DATAHUB_VERSION: v1.6.0
+      DATAHUB_VERSION: v1.7.0
       DATAHUB_GMS_HOST: datahub-gms
       DATAHUB_GMS_PORT: "8080"
       DATAHUB_PRECREATE_TOPICS: "true"
@@ -101,15 +102,16 @@ services:
 
   datahub-gms-quickstart:
     <<: *datahub-service
-    image: acryldata/datahub-gms:v1.6.0
+    image: acryldata/datahub-gms:v1.7.0
     hostname: datahub-gms
     depends_on:
       system-update-quickstart: {condition: service_completed_successfully}
     environment:
       DATAHUB_SERVER_TYPE: quickstart
+      DATAHUB_OBJECT_STORAGE_URI: file:///tmp/datahub-object-storage
       DATAHUB_TELEMETRY_ENABLED: "false"
       DATAHUB_UPGRADE_HISTORY_KAFKA_CONSUMER_GROUP_ID: generic-duhe-consumer-job-client-gms
-      DATAHUB_VERSION: v1.6.0
+      DATAHUB_VERSION: v1.7.0
       DATAHUB_TOKEN_SERVICE_SALT: ${DATAHUB_TOKEN_SERVICE_SALT}
       DATAHUB_TOKEN_SERVICE_SIGNING_KEY: ${DATAHUB_TOKEN_SERVICE_SIGNING_KEY}
       EBEAN_DATASOURCE_DRIVER: com.mysql.jdbc.Driver
@@ -145,26 +147,26 @@ services:
 
   datahub-actions-quickstart:
     <<: *datahub-service
-    image: acryldata/datahub-actions:v1.6.0-slim
+    image: acryldata/datahub-actions:v1.7.0-slim
     depends_on:
       datahub-gms-quickstart: {condition: service_healthy}
     environment:
       DATAHUB_GMS_HOST: datahub-gms
       DATAHUB_GMS_PORT: "8080"
       DATAHUB_GMS_PROTOCOL: http
-      DATAHUB_VERSION: v1.6.0
+      DATAHUB_VERSION: v1.7.0
 
   frontend-quickstart:
     <<: *datahub-service
-    image: acryldata/datahub-frontend-react:v1.6.0
+    image: acryldata/datahub-frontend-react:v1.7.0
     depends_on:
       datahub-gms-quickstart: {condition: service_healthy}
     environment:
-      DATAHUB_APP_VERSION: v1.6.0
+      DATAHUB_APP_VERSION: v1.7.0
       DATAHUB_GMS_HOST: datahub-gms
       DATAHUB_GMS_PORT: "8080"
       DATAHUB_SECRET: ${DATAHUB_SECRET}
-      DATAHUB_VERSION: v1.6.0
+      DATAHUB_VERSION: v1.7.0
     ports:
       - "127.0.0.1:${DATAHUB_MAPPED_FRONTEND_PORT:-19002}:9002"
 

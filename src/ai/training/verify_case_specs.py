@@ -17,13 +17,43 @@ BACKEND = Path(__file__).resolve().parents[3] / "app" / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
+from app.adapters.i2_data_platform import I2DataPlatformAdapter  # noqa: E402
 from app.services.context_builder import (  # noqa: E402
     ContextAsset,
     ContextMetric,
+    ContextParameterBinding,
     ContextPackage,
     ContextRequiredFilter,
 )
 from app.services.pipeline_support import PipelineSupport  # noqa: E402
+
+
+class PlanContractError(ValueError):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def _context_parameter_bindings(context: dict[str, Any]) -> tuple[ContextParameterBinding, ...]:
+    execution = context["execution_time"]
+    bindings = [
+        ContextParameterBinding(name, "date", execution[name][:10])
+        for name in ("period_start", "period_end_exclusive")
+        if name in execution
+    ]
+    filters = sorted(
+        context["metrics"][0].get("required_filters", ()),
+        key=lambda item: item["field"],
+    )
+    bindings.extend(
+        ContextParameterBinding(
+            f"required_filter_{index}",
+            item["value_type"],
+            item["value"],
+        )
+        for index, item in enumerate(filters, start=1)
+    )
+    return tuple(bindings)
 
 
 def _runtime_package(context: dict[str, Any]) -> ContextPackage:
@@ -56,6 +86,7 @@ def _runtime_package(context: dict[str, Any]) -> ContextPackage:
                     field=item["field"],
                     operator=item["operator"],
                     value=item["value"],
+                    value_type=item["value_type"],
                 )
                 for item in metric.get("required_filters", ())
             ),
@@ -75,6 +106,7 @@ def _runtime_package(context: dict[str, Any]) -> ContextPackage:
         package_hash="training-verification",
         approved_join_ids=join_ids,
         metrics=metrics,
+        parameter_bindings=_context_parameter_bindings(context),
     )
 
 
@@ -85,23 +117,60 @@ def _references(output: dict[str, Any]) -> list[dict[str, Any]]:
             "fqn": item["trino_fqn"],
             "columns": item["columns"],
             "join_ids": item["join_ids"],
+            "metric_ids": item.get("metric_ids", []),
         }
         for item in output["references"]
     ]
 
 
-def _rejected_plan(case: dict[str, Any]) -> dict[str, Any]:
+def _declared_parameters(output: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    declared = output.get("parameters")
+    if not isinstance(declared, list):
+        raise PlanContractError("PARAMETERS_INVALID")
+    parameters = {}
+    for item in declared:
+        if not isinstance(item, dict) or set(item) != {"name", "value_type", "value"}:
+            raise PlanContractError("PARAMETERS_INVALID")
+        name = item["name"]
+        if not isinstance(name, str) or not name or name in parameters:
+            raise PlanContractError("PARAMETERS_INVALID")
+        parameters[name] = {"value_type": item["value_type"], "value": item["value"]}
+    return parameters
+
+
+def _context_plan(
+    sql: str,
+    context: dict[str, Any],
+    references: list[dict[str, Any]],
+    declared: dict[str, dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any], ContextPackage]:
+    package = _runtime_package(context)
+    parameters = {
+        item.name: {"value_type": item.value_type, "value": item.value}
+        for item in package.parameter_bindings
+    }
+    if declared is not None and declared != parameters:
+        raise PlanContractError("PARAMETERS_INVALID")
+    return {
+        "sql": sql,
+        "references": references,
+        "parameters": parameters,
+        "model_version": "MODEL-v1.0.0",
+    }, package
+
+
+def _rejected_plan(case: dict[str, Any], parameters: dict[str, Any]) -> dict[str, Any]:
     code = case["input"]["normalized_error_code"]
     output = case["expected_output"]
     references = _references(output)
-    parameters: object = {}
+    rejected_parameters: object = parameters
     if code == "REFERENCE_MISSING":
         references = []
     elif code == "REFERENCE_OUTSIDE_CONTEXT":
         references = [{"urn": "outside", "fqn": "outside.schema.table", "columns": ["value"]}]
     elif code == "PARAMETERS_INVALID":
-        parameters = []
-    return {"sql": case["input"]["rejected_sql"], "references": references, "parameters": parameters}
+        rejected_parameters = []
+    return {"sql": case["input"]["rejected_sql"], "references": references, "parameters": rejected_parameters}
 
 
 def _result_hash(stdout: str) -> str:
@@ -120,13 +189,11 @@ def _rows_hash(rows: list[dict[str, Any]]) -> str:
 
 
 def verify_batch(cases: list[dict[str, Any]], *, container: str, user: str) -> None:
-    for case in cases:
-        validate_g2(case)
     statements = []
     for case in cases:
-        output = case["expected_output"]
-        sql_field = "sql" if case["node"] == "node2" else "corrected_sql"
-        statements.extend((output[sql_field] + ";", f"SELECT '{case['case_id']}' AS __case_marker LIMIT 1;"))
+        plan = validate_g2(case)
+        bound = I2DataPlatformAdapter._bind_parameters(plan["sql"], plan["parameters"])
+        statements.extend((bound + ";", f"SELECT '{case['case_id']}' AS __case_marker LIMIT 1;"))
     command = [
         "docker",
         "exec",
@@ -171,25 +238,29 @@ def verify_batch(cases: list[dict[str, Any]], *, container: str, user: str) -> N
         raise ValueError(f"batch result boundary mismatch: {verified}/{len(cases)}")
 
 
-def validate_g2(case: dict[str, Any]) -> None:
+def validate_g2(case: dict[str, Any]) -> dict[str, Any]:
     output = case["expected_output"]
     sql_field = "sql" if case["node"] == "node2" else "corrected_sql"
-    package = _runtime_package(case["input"]["context_package"])
-    plan = {"sql": output[sql_field], "references": _references(output), "parameters": {}}
+    plan, package = _context_plan(
+        output[sql_field],
+        case["input"]["context_package"],
+        _references(output),
+        _declared_parameters(output),
+    )
     violation = PipelineSupport.g2_violation(plan, package)
     if violation is not None:
         raise ValueError(f"{case['case_id']}: corrected SQL failed G2: {violation}")
     if case["node"] == "node2_repair":
         expected = case["input"]["normalized_error_code"]
-        actual = PipelineSupport.g2_violation(_rejected_plan(case), package)
+        actual = PipelineSupport.g2_violation(_rejected_plan(case, plan["parameters"]), package)
         if actual != expected:
             raise ValueError(f"{case['case_id']}: rejected SQL expected {expected}, got {actual}")
+    return plan
 
 
 def verify_case(case: dict[str, Any], *, container: str, user: str) -> None:
-    validate_g2(case)
-    output = case["expected_output"]
-    sql_field = "sql" if case["node"] == "node2" else "corrected_sql"
+    plan = validate_g2(case)
+    sql = I2DataPlatformAdapter._bind_parameters(plan["sql"], plan["parameters"])
 
     command = [
         "docker",
@@ -203,7 +274,7 @@ def verify_case(case: dict[str, Any], *, container: str, user: str) -> None:
         "--output-format",
         "JSON",
         "--execute",
-        output[sql_field],
+        sql,
     ]
     result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8")
     if result.returncode:

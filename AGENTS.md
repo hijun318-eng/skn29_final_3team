@@ -52,13 +52,15 @@
 - 확인된 사실·결정·가정·제안을 구분하고, 불확실한 내용은 한계와 검증 방법을 함께 제시한다.
 - 사용자의 범위와 권한을 임의로 넓히지 않는다. 위험한 모호성만 질문하고 대안이 있으면 같은 기준으로 비교해 권장안을 제시한다.
 - 시작할 때 repository root를 확인해 working directory로 삼고, current branch와 `git status --short`를 확인해 기존 변경을 사용자 작업으로 보존한다.
+- 역할 작업은 구현 전에 `python .github/scripts/gate_scope.py --branch <개인 branch> --bootstrap`으로 branch·dirty 상태·실행 가능 카드와 필수·관련 읽기 문서를 확인하며, 실패하면 수정하지 않는다. worktree 경로는 달라도 되지만 현재 branch는 실행 카드의 `PERSONAL_BRANCH`와 같아야 한다.
+- 구현 전에 예상 변경 path를 `.github/scripts/gate_scope.py --branch <개인 branch> --check-planned-path <path>`로 확인한다. 여러 path는 option을 반복하며, 실패하면 수정하지 않고 R1이 실행 카드를 발행·교정한 뒤 다시 확인한다. R1은 종료 카드 상태에서 새 카드를 발행할 때 `Gate_실행_카드_원장.md` 한 파일만 먼저 변경할 수 있다.
 - 현재 파일·실제 동작·관련 contract를 확인한 뒤 가장 작은 일관된 변경을 적용하고, 위험에 맞는 결정론적 검증을 실행한다.
 - 외부 시스템 변경, 비용 발생, 데이터 전송, 저장소 밖 쓰기는 사용자 승인을 받은 뒤 수행한다.
 
 ## AI 구현 도구와 코드 품질
 
 - 팀 공통 환경 설정은 `docs/markdown/collaboration/AI_개발_환경_설정.md`를 따른다.
-- Codex로 code 작성·수정·refactoring·bug fix·dependency 선택·code review를 수행할 때 Ponytail plugin `v4.8.4`의 `full` mode를 사용하며, 구현 선택·과설계 방지·필수 안전 경계의 단일 기준으로 삼는다.
+- Codex로 code 작성·수정·refactoring·bug fix·dependency 선택·code review를 수행할 때 Ponytail plugin `v4.9.0`의 `full` mode를 사용하며, 구현 선택·과설계 방지·필수 안전 경계의 단일 기준으로 삼는다.
 - 팀원은 Ponytail을 임의로 `off`, `normal`, `lite`, `ultra`로 바꾸지 않는다. plugin 충돌로 일시 해제가 필요하면 작업을 중단하고 R1에게 사유와 재현 절차를 전달한다.
 - MCP server는 현재 도입하지 않으며, 추후 필요성과 권한을 검토해 R1 결정으로 확장한다. MCP 부재를 현재 작업 또는 검증 실패 사유로 삼지 않는다.
 - 작업 카드의 `TEST_COMMANDS`에 formatter·lint·type check·관련 test·build 중 적용 가능한 명령을 적고 실행한다. 해당 도구가 아직 없으면 임의로 새 dependency를 추가하지 말고 `Not Run` 또는 `Blocked`와 이유를 기록한다.

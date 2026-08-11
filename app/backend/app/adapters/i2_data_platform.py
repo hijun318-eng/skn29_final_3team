@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+import math
 import re
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -37,6 +38,11 @@ class _PartialAwareTrinoAdapter(TrinoAdapter):
 class I2DataPlatformAdapter:
     """R2 I2 contract를 R4 DataPlatform port로 연결한다."""
 
+    _CONTEXT_CONTRACT_VERSION = "I4-CONTEXT-v2.3.0-DRAFT"
+    _THREE_SOURCE_CONTEXT_VERSION = "I5-3SOURCE-CONTEXT-v1.0.0-DRAFT"
+    _VIEW_CONTRACT_VERSION = "I4-DATA-v1.0.0-DRAFT"
+    _BINDING_CONTRACT_VERSION = "ASSET-BINDING-v1.0.0-DRAFT"
+
     _DATASET_QUERY = """
 query Dataset($urn: String!) {
   dataset(urn: $urn) {
@@ -59,9 +65,10 @@ query Dataset($urn: String!) {
         "crm_member_grade_history": ("등급 변경", "등급 이력"),
         "crm_point_transactions": ("포인트", "적립", "사용", "소멸"),
     }
-    _CRM_HINTS = ("crm", "회원", "멤버", "등급", "포인트", "적립", "소멸")
+    _CRM_HINTS = ("crm", "고객", "회원", "멤버", "등급", "포인트", "적립", "소멸")
     _PMS_HINTS = ("pms", "호텔", "객실", "숙박", "투숙", "매출")
-    _PMS_CRM_JOIN_ID = "pms_stay_to_crm_membership_grade_event_time_v1"
+    _POS_HINTS = ("pos", "식음", "f&b", "주문", "통합 매출")
+    _PMS_CRM_POS_JOIN_ID = "pms_crm_pos_gold_revenue_month_v1"
 
     def __init__(
         self,
@@ -70,6 +77,8 @@ query Dataset($urn: String!) {
         datahub_url: str = "http://datahub-gms:8080",
         datahub_token: str | None = None,
         contract_path: Path | None = None,
+        binding_path: Path | None = None,
+        three_source_path: Path | None = None,
         require_live_metadata: bool = True,
     ) -> None:
         self._trino_user = trino_user
@@ -85,8 +94,11 @@ query Dataset($urn: String!) {
         root = Path(__file__).resolve().parents[4]
         source = contract_path or root / "src" / "data" / "analytics_context_contract.i4.v2.json"
         contract = json.loads(source.read_text(encoding="utf-8"))
-        if contract.get("context_source") != "LIVE_DATAHUB":
-            raise ValueError("analytics context contract must require LIVE_DATAHUB")
+        if (
+            contract.get("contract_version") != self._CONTEXT_CONTRACT_VERSION
+            or contract.get("context_source") != "LIVE_DATAHUB"
+        ):
+            raise ValueError("analytics context contract version is not approved")
         metrics = contract.get("metrics")
         if not isinstance(metrics, list) or not metrics:
             raise ValueError("analytics context contract must include metric registry")
@@ -99,7 +111,86 @@ query Dataset($urn: String!) {
                     if required_filter["field"] == "data_period_status":
                         required_filter["value"] = "YTD_SYNTHETIC"
         self._metrics = tuple(metrics)
+        three_source = json.loads(
+            (three_source_path or root / "src" / "data" / "pms_crm_pos_context.i5.v1.json")
+            .read_text(encoding="utf-8")
+        )
+        self._validate_three_source_context(three_source)
+        self._three_source_verified = True
+        self._three_source_filters = tuple(three_source["required_filters"])
+        self._three_source_parameters = tuple(three_source["parameter_bindings"])
+        self._three_source_assets = tuple(
+            {
+                "urn": asset["urn"],
+                "fqn": asset["fqn"],
+                "name": asset["fqn"].rsplit(".", 1)[-1],
+                "columns": tuple(asset["columns"]),
+                "schema_version": "1.0.0",
+                "seed_version": "20260729",
+                "uses": ("approved_pms_crm_pos_join",),
+                "kind": "raw",
+            }
+            for asset in three_source["assets"]
+        )
         view_contract = json.loads((root / contract["view_contract"]).read_text(encoding="utf-8"))
+        verification = view_contract.get("verification") or {}
+        if (
+            view_contract.get("contract_version") != self._VIEW_CONTRACT_VERSION
+            or view_contract.get("validation_only") is not True
+            or any(
+                (verification.get(name) or {}).get("status") != "PASS"
+                for name in ("trino_columns", "trino_select", "read_only_policy")
+            )
+        ):
+            raise ValueError("analytics View binding is not verified")
+        health = json.loads(
+            (
+                binding_path
+                or root / "src" / "data" / "asset_binding_health.i5.v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        bindings = health.get("bindings")
+        required_binding_fields = {
+            "binding_id",
+            "urn",
+            "fqn",
+            "status",
+            "version",
+            "verified_at",
+            "provenance",
+        }
+        if (
+            health.get("contract_version") != self._BINDING_CONTRACT_VERSION
+            or set(health.get("required_fields") or ()) != required_binding_fields
+            or not isinstance(bindings, list)
+            or len(bindings) != len(view_contract.get("views", ()))
+            or any(
+                not isinstance(item, dict)
+                or not required_binding_fields.issubset(item)
+                or any(not item.get(key) for key in ("binding_id", "urn", "fqn", "version"))
+                for item in bindings
+            )
+            or any(
+                len({item.get(key) for item in bindings}) != len(bindings)
+                for key in ("binding_id", "urn", "fqn")
+            )
+        ):
+            raise ValueError("Asset Binding health contract is invalid")
+        binding_by_fqn = {item["fqn"]: item for item in bindings}
+        if {
+            (item.get("urn"), item.get("fqn"), item.get("version"))
+            for item in bindings
+        } != {
+            (view.get("urn"), view.get("fqn"), view.get("schema_version"))
+            for view in view_contract["views"]
+        }:
+            raise ValueError("Asset Binding identity does not match the View contract")
+        self._bindings_verified = (
+            health.get("status") == "HEALTHY"
+            and health.get("runtime_execution") == "PASS"
+            and all(self._binding_verified(item) for item in bindings)
+        )
+        self._live_runtime_verified = self._bindings_verified
         views = [
             {
                 "urn": view["urn"],
@@ -110,9 +201,21 @@ query Dataset($urn: String!) {
                 "seed_version": view["seed_version"],
                 "uses": ("serving_views",),
                 "kind": "view",
+                "binding_id": binding_by_fqn[view["fqn"]]["binding_id"],
+                "binding_status": binding_by_fqn[view["fqn"]]["status"],
+                "binding_version": binding_by_fqn[view["fqn"]]["version"],
             }
             for view in view_contract["views"]
+            if view.get("schema_version") == view_contract.get("schema_version")
+            and str(view.get("fqn", "")).startswith("serving.analytics.")
+            and view.get("urn")
+            == (
+                "urn:li:dataset:(urn:li:dataPlatform:trino,"
+                f"{view.get('fqn')},PROD)"
+            )
         ]
+        if len(views) != len(view_contract.get("views", ())):
+            raise ValueError("analytics View binding identity does not match the contract")
         raw_assets = [
             {
                 "urn": asset["urn"],
@@ -126,8 +229,109 @@ query Dataset($urn: String!) {
             }
             for asset in contract["raw_assets"]
         ]
-        self._assets = tuple(views + raw_assets)
+        self._assets = tuple(views + raw_assets if require_live_metadata else views)
         self._live_schemas: dict[str, tuple[str, ...]] = {}
+
+    @staticmethod
+    def _binding_verified(binding: dict[str, Any]) -> bool:
+        verified_at = binding.get("verified_at")
+        provenance = binding.get("provenance") or {}
+        datahub = provenance.get("datahub_exact_search") or {}
+        trino = provenance.get("trino_metadata") or {}
+        try:
+            timestamp = datetime.fromisoformat(str(verified_at).replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        return (
+            binding.get("status") == "VERIFIED"
+            and isinstance(verified_at, str)
+            and verified_at.endswith("Z")
+            and timestamp.utcoffset() is not None
+            and timestamp.utcoffset().total_seconds() == 0
+            and datahub.get("status") == "PASS"
+            and trino.get("status") == "PASS"
+            and re.fullmatch(
+                r"[0-9a-f]{64}", str(datahub.get("response_sha256") or "")
+            )
+            is not None
+            and re.fullmatch(
+                r"[0-9a-f]{64}", str(trino.get("result_sha256") or "")
+            )
+            is not None
+        )
+
+    @classmethod
+    def _validate_three_source_context(cls, contract: dict[str, Any]) -> None:
+        filters = contract.get("required_filters")
+        bindings = contract.get("parameter_bindings")
+        assets = contract.get("assets")
+        if (
+            contract.get("contract_version") != cls._THREE_SOURCE_CONTEXT_VERSION
+            or contract.get("synthetic") is not True
+            or not isinstance(filters, list)
+            or not isinstance(bindings, list)
+            or not isinstance(assets, list)
+            or not assets
+            or (contract.get("approved_join") or {}).get("id")
+            != cls._PMS_CRM_POS_JOIN_ID
+            or (contract.get("gold_evidence") or {}).get("runtime", {}).get("status")
+            != "PASS"
+            or re.fullmatch(
+                r"[0-9a-f]{64}",
+                str((contract.get("gold_evidence") or {}).get("sql_sha256") or ""),
+            )
+            is None
+            or re.fullmatch(
+                r"[0-9a-f]{64}",
+                str((contract.get("gold_evidence") or {}).get("result_sha256") or ""),
+            )
+            is None
+        ):
+            raise ValueError("three-source Context contract is invalid")
+        expected_names = [
+            "period_start",
+            "period_end_exclusive",
+            *(f"required_filter_{index}" for index in range(1, len(filters) + 1)),
+        ]
+        if [item.get("name") for item in bindings] != expected_names:
+            raise ValueError("three-source Context parameter order is invalid")
+        if any(
+            set(item) != {"field", "operator", "value_type", "value"}
+            or item["operator"] != "eq"
+            or not cls._typed_value_is_valid(item["value_type"], item["value"])
+            for item in filters
+        ) or any(
+            set(item) != {"name", "value_type", "value"}
+            or not cls._typed_value_is_valid(item["value_type"], item["value"])
+            for item in bindings
+        ):
+            raise ValueError("three-source Context typed value is invalid")
+        for index, item in enumerate(filters, start=2):
+            binding = bindings[index]
+            if (binding["value_type"], binding["value"]) != (
+                item["value_type"],
+                item["value"],
+            ):
+                raise ValueError("three-source Context binding value was mutated")
+
+    @staticmethod
+    def _typed_value_is_valid(value_type: str, value: object) -> bool:
+        if value_type == "boolean":
+            return isinstance(value, bool)
+        if value_type == "number":
+            return (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+            )
+        if value_type == "string":
+            return isinstance(value, str) and bool(value)
+        if value_type == "date" and isinstance(value, str):
+            try:
+                return date.fromisoformat(value).isoformat() == value
+            except ValueError:
+                return False
+        return False
 
     def _request(
         self,
@@ -181,6 +385,14 @@ query Dataset($urn: String!) {
         selected: list[dict[str, Any]] = []
         column_count = 0
         query_use = self._query_use(query)
+        if self._require_live_metadata:
+            if not self._bindings_verified or not self._live_runtime_verified:
+                raise ValueError("live DataHub runtime verification is unavailable")
+        elif query_use == "approved_pms_crm_pos_join":
+            if not self._three_source_verified:
+                raise ValueError("versioned 3-source runtime verification is unavailable")
+        elif not self._bindings_verified:
+            raise ValueError("Asset Binding runtime verification is unavailable")
         for asset in self._rank_assets(query):
             if column_count + len(asset["columns"]) > 60:
                 continue
@@ -210,8 +422,8 @@ query Dataset($urn: String!) {
             self._live_schemas[asset["urn"]] = asset["columns"]
             item = {key: value for key, value in asset.items() if key != "columns"}
             item["join_ids"] = (
-                (self._PMS_CRM_JOIN_ID,)
-                if query_use == "approved_pms_crm_join"
+                (self._PMS_CRM_POS_JOIN_ID,)
+                if query_use == "approved_pms_crm_pos_join"
                 else ()
             )
             selected.append(item)
@@ -221,9 +433,14 @@ query Dataset($urn: String!) {
             metric for metric in self._metrics if metric.get("asset_fqn") in selected_fqns
         )
         for item in selected:
-            item["metrics"] = tuple(
+            item_metrics = tuple(
                 metric for metric in metrics if metric["asset_fqn"] == item["fqn"]
             )
+            if item_metrics or query_use != "approved_pms_crm_pos_join":
+                item["metrics"] = item_metrics
+        if query_use == "approved_pms_crm_pos_join" and selected:
+            selected[0]["required_filters"] = self._three_source_filters
+            selected[0]["parameter_bindings"] = self._three_source_parameters
         return selected
 
     def get_asset_schema(self, urn: str) -> dict[str, Any]:
@@ -240,7 +457,12 @@ query Dataset($urn: String!) {
         use = self._query_use(query)
         words = set(re.findall(r"[a-z0-9_]{3,}", lowered))
         ranked: list[tuple[int, dict[str, Any]]] = []
-        for asset in self._assets:
+        candidates = (
+            self._three_source_assets
+            if use == "approved_pms_crm_pos_join"
+            else self._assets
+        )
+        for asset in candidates:
             if use not in asset["uses"]:
                 continue
             searchable = " ".join((asset["name"], asset["fqn"], *asset["columns"])).lower()
@@ -248,7 +470,7 @@ query Dataset($urn: String!) {
             score += 3 * sum(
                 hint in lowered for hint in self._KOREAN_HINTS.get(asset["name"], ())
             )
-            if score or use == "approved_pms_crm_join":
+            if score or use in {"approved_pms_crm_join", "approved_pms_crm_pos_join"}:
                 ranked.append((score, asset))
         return tuple(asset for _score, asset in sorted(ranked, key=lambda item: (-item[0], item[1]["fqn"])))
 
@@ -256,6 +478,12 @@ query Dataset($urn: String!) {
     def _query_use(cls, query: str) -> str:
         lowered = query.lower()
         has_crm = any(hint in lowered for hint in cls._CRM_HINTS)
+        if (
+            has_crm
+            and any(hint in lowered for hint in cls._PMS_HINTS)
+            and any(hint in lowered for hint in cls._POS_HINTS)
+        ):
+            return "approved_pms_crm_pos_join"
         if has_crm and any(hint in lowered for hint in cls._PMS_HINTS):
             return "approved_pms_crm_join"
         return "crm_only" if has_crm else "serving_views"
@@ -289,7 +517,7 @@ query Dataset($urn: String!) {
     ) -> dict[str, Any]:
         if not gate_token:
             raise ValueError("G2 gate token is required")
-        bound_sql = self._bind_date_parameters(sql, parameters)
+        bound_sql = self._bind_parameters(sql, parameters)
         try:
             page = self._trino.execute(bound_sql)
             result = self._collect(page)
@@ -298,32 +526,75 @@ query Dataset($urn: String!) {
                 raise TimeoutError(str(error)) from error
             raise ValueError(str(error)) from error
         result["period"] = {
-            "start": parameters.get("period_start"),
-            "end_exclusive": parameters.get("period_end_exclusive"),
+            "start": self._parameter_value(parameters.get("period_start")),
+            "end_exclusive": self._parameter_value(
+                parameters.get("period_end_exclusive")
+            ),
+        }
+        result["filters"] = {
+            name: self._parameter_value(value)
+            for name, value in parameters.items()
+            if re.fullmatch(r"required_filter_\d+", name)
         }
         self._queries[result["query_id"]] = result
         return result
 
     @staticmethod
-    def _bind_date_parameters(
+    def _bind_parameters(
         sql: str,
         parameters: dict[str, Any],
     ) -> str:
         bound = sql
         for name, value in parameters.items():
-            if (
-                not isinstance(value, str)
-                or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value)
-            ):
-                raise ValueError(f"{name} must be an ISO date")
-            date.fromisoformat(value)
             placeholder = f":{name}"
-            if placeholder not in bound:
+            if re.search(rf"{re.escape(placeholder)}(?![a-z0-9_])", bound) is None:
                 raise ValueError(f"unknown template parameter: {name}")
-            bound = bound.replace(placeholder, value)
+            if isinstance(value, dict):
+                if set(value) != {"value_type", "value"}:
+                    raise ValueError(f"invalid typed parameter: {name}")
+                value_type = value["value_type"]
+                raw_value = value["value"]
+            else:
+                raw_value = value
+                value_type = (
+                    "date"
+                    if name in {"period_start", "period_end_exclusive"}
+                    else "boolean"
+                    if isinstance(value, bool)
+                    else "number"
+                    if isinstance(value, (int, float))
+                    else "string"
+                )
+            if not I2DataPlatformAdapter._typed_value_is_valid(value_type, raw_value):
+                raise ValueError(f"invalid typed parameter: {name}")
+            if name not in {"period_start", "period_end_exclusive"} and not re.fullmatch(
+                r"required_filter_\d+", name
+            ):
+                raise ValueError(f"unsupported template parameter: {name}")
+            if value_type == "boolean":
+                literal = "TRUE" if raw_value else "FALSE"
+            elif value_type == "number":
+                literal = str(raw_value)
+            elif value_type == "string":
+                literal = "'" + str(raw_value).replace("'", "''") + "'"
+            else:
+                quoted = re.search(
+                    rf"'[^']*{re.escape(placeholder)}(?![a-z0-9_])[^']*'",
+                    bound,
+                )
+                literal = str(raw_value) if quoted else f"DATE '{raw_value}'"
+            bound = re.sub(
+                rf"{re.escape(placeholder)}(?![a-z0-9_])",
+                lambda _match: literal,
+                bound,
+            )
         if re.search(r":[a-z_][a-z0-9_]*", bound):
             raise ValueError("template parameter is missing")
         return bound
+
+    @staticmethod
+    def _parameter_value(value: Any) -> Any:
+        return value.get("value") if isinstance(value, dict) else value
 
     def _collect(
         self,

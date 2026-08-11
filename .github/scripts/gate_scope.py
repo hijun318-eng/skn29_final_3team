@@ -23,6 +23,34 @@ SHARED_NON_PRODUCT_PATHS = (
     "docs/markdown/daily_reports/team_summaries/**",
     "tests/integration/test_report_validation.py",
 )
+CHANGE_GROUP_PATTERNS = {
+    "python": (
+        ".agents/skills/**/*.py",
+        ".github/scripts/**",
+        "app/backend/**",
+        "config/**",
+        "evals/**",
+        "src/**",
+        "tests/**/*.py",
+    ),
+    "documents": (
+        "AGENTS.md",
+        ".agents/skills/**",
+        ".githooks/**",
+        "docs/**",
+    ),
+    "frontend": (
+        "app/enterprise-react/**",
+        "tests/frontend/**",
+    ),
+    "compose": (
+        ".env.example",
+        "app/backend/compose.fragment.yml",
+        "app/enterprise-react/compose.fragment.yml",
+        "compose.yml",
+        "infrastructure/database/**",
+    ),
+}
 ROLES = {
     "junhee": "R1",
     "seung": "R2",
@@ -30,8 +58,27 @@ ROLES = {
     "jaehong": "R4",
     "minji": "R5",
 }
+ROLE_MANUALS = {
+    "junhee": "docs/markdown/ai_docs/5인_병렬구현_01_기술PM_통합플랫폼_품질릴리스_매뉴얼_최종안.md",
+    "seung": "docs/markdown/ai_docs/5인_병렬구현_02_데이터플랫폼_메타데이터_연합조회_매뉴얼_최종안.md",
+    "daesung": "docs/markdown/ai_docs/5인_병렬구현_03_AI_모델_프롬프트_ModelOps_매뉴얼_최종안.md",
+    "jaehong": "docs/markdown/ai_docs/5인_병렬구현_04_백엔드_ControlPlane_매뉴얼_최종안.md",
+    "minji": "docs/markdown/ai_docs/5인_병렬구현_05_프론트엔드_자동리포팅_매뉴얼_최종안.md",
+}
+FULL_READS = (
+    "AGENTS.md",
+    "docs/markdown/collaboration/Gate_실행_카드_원장.md",
+)
+RELEVANT_READS = (
+    "docs/Answervice_기획서.md",
+    "docs/markdown/02_WBS.md",
+    "docs/markdown/collaboration/README.md",
+    "docs/markdown/collaboration/AI_개발_환경_설정.md",
+    "docs/markdown/ai_docs/5인_병렬구현_통합일정_20260729-20260903.md",
+)
 TERMINAL_STATUSES = {"MERGED_DEV", "VERIFIED_GATE"}
 ACTIVE_STATUSES = {"READY", "IN_PROGRESS", "REVIEW"}
+IMPLEMENTATION_STATUSES = {"READY", "IN_PROGRESS"}
 TEST_STATUSES = {"PASS", "FAIL", "NOT_RUN", "BLOCKED", "REVIEW_REQUIRED"}
 # NOT_RUN은 아직 manifest를 제출하지 않은 작업 중 branch의 정상 상태다.
 # manifest가 제출됐지만 필수 검증·change request·잔여 위험·외부 승인이 남으면
@@ -127,6 +174,68 @@ def changed_paths(base: str, head: str, mode: str) -> list[str]:
         for path in result.stdout.split(b"\0")
         if path
     ]
+
+
+def change_group_outputs(paths: list[str]) -> dict[str, str]:
+    force_all = any(path.startswith(".github/workflows/") for path in paths)
+    return {
+        group: str(
+            force_all
+            or any(path_allowed(path, list(patterns)) for path in paths)
+        ).lower()
+        for group, patterns in CHANGE_GROUP_PATTERNS.items()
+    }
+
+
+def planned_path_errors(
+    text: str, branch: str, paths: list[str]
+) -> tuple[dict[str, str] | None, list[str]]:
+    bundle = current_bundle(text, branch)
+    if bundle is None:
+        return None, [f"No executable bundle found for branch: {branch}"]
+    if bundle["STATUS"] not in IMPLEMENTATION_STATUSES:
+        if branch == "junhee" and paths == [LEDGER.as_posix()]:
+            return bundle, []
+        return bundle, [
+            f"bundle status {bundle['STATUS']} does not allow implementation"
+        ]
+    patterns = allowed_paths(bundle, branch)
+    return bundle, [path for path in paths if not path_allowed(path, patterns)]
+
+
+def bootstrap_payload(
+    text: str,
+    branch: str,
+    current_branch: str,
+    root: str,
+    dirty: bool,
+) -> dict[str, Any]:
+    bundle = current_bundle(text, branch)
+    errors = []
+    if bundle is None:
+        errors.append(f"No executable bundle found for branch: {branch}")
+    elif bundle["STATUS"] not in IMPLEMENTATION_STATUSES:
+        errors.append(
+            f"bundle status {bundle['STATUS']} does not allow implementation"
+        )
+    if current_branch != branch:
+        errors.append(
+            f"current branch {current_branch or '(detached)'} does not match {branch}"
+        )
+    if dirty:
+        errors.append("working tree is not clean")
+    return {
+        "role": ROLES[branch],
+        "branch": branch,
+        "current_branch": current_branch,
+        "worktree_root": root,
+        "configured_root": bundle.get("REPOSITORY_ROOT") if bundle else None,
+        "bundle": bundle.get("EXECUTION_BUNDLE_ID") if bundle else None,
+        "status": bundle.get("STATUS") if bundle else None,
+        "full_reads": [*FULL_READS, ROLE_MANUALS[branch]],
+        "relevant_reads": list(RELEVANT_READS),
+        "errors": errors,
+    }
 
 
 def ledger_at(ref: str) -> str:
@@ -591,6 +700,8 @@ def main() -> int:
     parser.add_argument("--write-handoff", action="store_true")
     parser.add_argument("--dashboard", action="store_true")
     parser.add_argument("--next-gate", choices=("auto", "I2", "I3", "I4", "I5"))
+    parser.add_argument("--check-planned-path", action="append", default=[])
+    parser.add_argument("--bootstrap", action="store_true")
     args = parser.parse_args()
 
     text = LEDGER.read_text(encoding="utf-8")
@@ -605,6 +716,53 @@ def main() -> int:
         print("\n".join(lines))
         return 0
 
+    if args.bootstrap:
+        if args.branch not in REPORTS:
+            parser.error("--bootstrap requires a personal --branch")
+        payload = bootstrap_payload(
+            text,
+            args.branch,
+            subprocess.run(
+                ["git", "branch", "--show-current"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip(),
+            subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip(),
+            bool(
+                subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+            ),
+        )
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return int(bool(payload["errors"]))
+
+    if args.check_planned_path:
+        if args.branch not in REPORTS:
+            parser.error("--check-planned-path requires a personal --branch")
+        bundle, errors = planned_path_errors(
+            text, args.branch, args.check_planned_path
+        )
+        lines = [
+            "## Planned path scope",
+            f"- Branch: `{args.branch}`",
+            f"- Bundle: `{bundle['EXECUTION_BUNDLE_ID'] if bundle else 'N/A'}`",
+            f"- Result: `{'FAIL' if errors else 'PASS'}`",
+        ]
+        if errors:
+            lines.extend(f"- `{error}`" for error in errors)
+        print("\n".join(lines))
+        return int(bool(errors))
+
     missing = [
         name
         for name in ("branch", "base", "head", "mode")
@@ -616,6 +774,7 @@ def main() -> int:
         parser.error(f"unsupported role branch: {args.branch}")
 
     changed = changed_paths(args.base, args.head, args.mode)
+    change_groups = change_group_outputs(changed)
     if args.branch == "dev":
         lines = [
             "## Role Gate scope",
@@ -624,7 +783,7 @@ def main() -> int:
             "- Result: `PASS` - integration branch, role scope enforcement skipped",
         ]
         write_summary(lines)
-        write_outputs(scope="PASS", handoff="N/A")
+        write_outputs(scope="PASS", handoff="N/A", **change_groups)
         print("\n".join(lines))
         return 0
 
@@ -687,7 +846,7 @@ def main() -> int:
         lines.extend(["", "### Handoff notes"])
         lines.extend(f"- {note}" for note in handoff_notes)
     write_summary(lines)
-    write_outputs(scope=result, handoff=handoff)
+    write_outputs(scope=result, handoff=handoff, **change_groups)
     print("\n".join(lines))
     return int(result == "FAIL")
 

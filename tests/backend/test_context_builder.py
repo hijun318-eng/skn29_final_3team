@@ -1,5 +1,5 @@
 import unittest
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 from sys import path
 
@@ -14,6 +14,7 @@ from app.services.context_builder import (
     ContextBuildRequest,
     ContextMetric,
     ContextPackageBuilder,
+    ContextParameterBinding,
     ContextRequiredFilter,
 )
 
@@ -142,6 +143,54 @@ class ContextPackageBuilderTest(unittest.TestCase):
 
         with self.assertRaises(FrozenInstanceError):
             package.context_release = "changed"
+
+    def test_typed_parameter_bindings_are_lossless_and_hashed(self) -> None:
+        bindings = (
+            ContextParameterBinding("period_start", "date", "2026-05-01"),
+            ContextParameterBinding("required_filter_1", "string", "O'Brien"),
+            ContextParameterBinding("required_filter_2", "boolean", False),
+            ContextParameterBinding("required_filter_3", "number", 0),
+        )
+        package = self.builder.build(
+            replace(self.request(), parameter_bindings=bindings),
+            frozenset({self.pms.urn, self.crm.urn}),
+        )
+        changed = self.builder.build(
+            replace(
+                self.request(),
+                parameter_bindings=(
+                    *bindings[:-1],
+                    ContextParameterBinding("required_filter_3", "number", 1),
+                ),
+            ),
+            frozenset({self.pms.urn, self.crm.urn}),
+        )
+
+        self.assertEqual(bindings, package.parameter_bindings)
+        self.assertNotEqual(package.package_hash, changed.package_hash)
+
+    def test_typed_parameter_bindings_fail_closed(self) -> None:
+        for name, value_type, value in (
+            ("required_filter_1", "number", True),
+            ("required_filter_1", "number", float("inf")),
+            ("required_filter_1", "date", "2026-02-30"),
+            ("required_filter_1", "string", ""),
+        ):
+            with self.subTest(value_type=value_type, value=value):
+                with self.assertRaises(ContextBuildError):
+                    ContextParameterBinding(name, value_type, value)
+
+        with self.assertRaisesRegex(ContextBuildError, "중복"):
+            self.builder.build(
+                replace(
+                    self.request(),
+                    parameter_bindings=(
+                        ContextParameterBinding("required_filter_1", "string", "A"),
+                        ContextParameterBinding("required_filter_1", "string", "A"),
+                    ),
+                ),
+                frozenset({self.pms.urn, self.crm.urn}),
+            )
 
     def test_rejects_more_than_eight_datasets(self) -> None:
         assets = tuple(

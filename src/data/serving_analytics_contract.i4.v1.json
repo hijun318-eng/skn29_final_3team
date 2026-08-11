@@ -7,6 +7,51 @@
   "seed_version": "20260729",
   "scenario_version": "1.0.0",
   "datahub_version": "1.6.0",
+  "upgrade_compatibility": {
+    "contract_version": "I5-DATAHUB-v1.1.0-DRAFT",
+    "status": "CONFIG_VALIDATED",
+    "validation_scope": "CONFIG_ONLY",
+    "runtime_status": "BLOCKED",
+    "runtime_execution": "NOT_RUN",
+    "runtime_evidence": "src/data/datahub_runtime_evidence.i5.v1.json",
+    "asset_binding_health": "src/data/asset_binding_health.i5.v1.json",
+    "runtime_blocker": "LOCAL_RAM_LIMIT",
+    "from_version": "v1.6.0",
+    "to_version": "v1.7.0",
+    "official_release_url": "https://github.com/datahub-project/datahub/releases/tag/v1.7.0",
+    "source_revision": "7f81ccbfe27b9acc947f5f600fcf9ddb72138a80",
+    "compose_blob": "39b0f37f089302209ce8d7e932eeb7c50caa28d9",
+    "compose_raw_url": "https://raw.githubusercontent.com/datahub-project/datahub/7f81ccbfe27b9acc947f5f600fcf9ddb72138a80/docker/quickstart/docker-compose.quickstart-profile.yml",
+    "compose_sha256": "ec476d12f6f278c50d657a617357a050510565ef00b570a69cbe9123a932a7b7",
+    "images": {
+      "gms": {
+        "tag": "acryldata/datahub-gms:v1.7.0",
+        "manifest_digest": "sha256:54bc4431402846a72d1c1bdb69fae1148f74a59425144aa947fdf1c3506461f7"
+      },
+      "frontend": {
+        "tag": "acryldata/datahub-frontend-react:v1.7.0",
+        "manifest_digest": "sha256:f8f94d246d6d7c93eb3de6a9d625af4f1574e2ced28629b972429de3e2c2bf6a"
+      },
+      "actions": {
+        "tag": "acryldata/datahub-actions:v1.7.0-slim",
+        "manifest_digest": "sha256:4ca86e3bdbba4c5e24421cae8dc7ac7c19d1b094c1418f36f607cd437265fb74"
+      },
+      "upgrade": {
+        "tag": "acryldata/datahub-upgrade:v1.7.0",
+        "manifest_digest": "sha256:21e77ad964be64b2b5a7f74c9685897ed79e8854995242eaa5e5c426395b88c0"
+      }
+    },
+    "kafka_image": "confluentinc/cp-kafka:8.2.2",
+    "object_storage_uri": "file:///tmp/datahub-object-storage",
+    "recipe_sha256": "bdd5902bb2d5411b88235f4b52acd617793a6b0bd00f7cb5007eee2819bf1f5c",
+    "breaking_change_checks": {
+      "v1_6_prerequisite": "SATISFIED",
+      "classification_config": "NOT_CONFIGURED",
+      "legacy_lineage_flags": "NOT_CONFIGURED",
+      "custom_object_storage_yaml": "NOT_CONFIGURED"
+    },
+    "rollback_boundary": "v1.7.0 runtime is approved but blocked by local RAM; retain the v1.6.0 evidence, do not mutate volumes, and require an R1 verified backup and health checkpoint before execution"
+  },
   "recipe": {
     "file": "infrastructure/database/datahub/recipes/serving.i4.yml",
     "platform": "trino",

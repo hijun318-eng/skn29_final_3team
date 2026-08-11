@@ -1,4 +1,7 @@
 import json
+import math
+import re
+from datetime import date
 from pathlib import Path
 
 
@@ -9,6 +12,22 @@ CONTRACT = json.loads(
 VIEW_CONTRACT = json.loads(
     (ROOT / CONTRACT["view_contract"]).read_text(encoding="utf-8")
 )
+
+
+def _valid_typed_value(value_type, value):
+    if value_type == "string":
+        return isinstance(value, str) and bool(value)
+    if value_type == "boolean":
+        return isinstance(value, bool)
+    if value_type == "number":
+        return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+    if value_type == "date":
+        return (
+            isinstance(value, str)
+            and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value) is not None
+            and date.fromisoformat(value).isoformat() == value
+        )
+    return False
 
 
 def _asset_columns():
@@ -62,8 +81,15 @@ def test_pms_crm_join_matches_frozen_source_registry():
 
 
 def test_metric_registry_is_versioned_and_references_approved_columns():
-    assert CONTRACT["contract_version"] == "I4-CONTEXT-v2.2.0-DRAFT"
-    assert CONTRACT["metric_registry_version"] == "I4-METRIC-v1.1.0-DRAFT"
+    assert CONTRACT["contract_version"] == "I4-CONTEXT-v2.3.0-DRAFT"
+    assert CONTRACT["metric_registry_version"] == "I4-METRIC-v1.2.0-DRAFT"
+    assert CONTRACT["required_filter_contract"] == {
+        "fields": ["field", "operator", "value_type", "value"],
+        "value_types": ["string", "boolean", "number", "date"],
+        "date_format": "YYYY-MM-DD",
+        "number_policy": "finite_non_boolean",
+        "parameter_order": ["period_start", "period_end_exclusive", "required_filter_N"],
+    }
     metrics = CONTRACT["metrics"]
     assert len({metric["id"] for metric in metrics}) == len(metrics)
 
@@ -73,10 +99,33 @@ def test_metric_registry_is_versioned_and_references_approved_columns():
         assert metric["field"] in columns
         assert metric["time_field"] in columns
         for required_filter in metric.get("required_filters", []):
-            assert set(required_filter) == {"field", "operator", "value"}
+            assert set(required_filter) == {"field", "operator", "value_type", "value"}
             assert required_filter["field"] in columns
             assert required_filter["operator"] == "eq"
-            assert isinstance(required_filter["value"], (str, bool))
+            assert _valid_typed_value(required_filter["value_type"], required_filter["value"])
+
+
+def test_required_filter_types_reject_coercion_and_non_finite_numbers():
+    assert all(
+        _valid_typed_value(value_type, value)
+        for value_type, value in (
+            ("string", "ACTUAL"),
+            ("boolean", False),
+            ("number", 1.5),
+            ("date", "2026-05-01"),
+        )
+    )
+    assert not any(
+        _valid_typed_value(value_type, value)
+        for value_type, value in (
+            ("string", ""),
+            ("boolean", 0),
+            ("number", True),
+            ("number", float("inf")),
+            ("date", "2026-05-01T00:00:00"),
+            ("timestamp", "2026-05-01"),
+        )
+    )
 
 
 def test_metric_registry_adds_only_the_three_approved_single_asset_metrics():
@@ -124,8 +173,8 @@ def test_expired_points_preserves_transaction_and_forecast_filters():
         "aggregation": "negative_sum",
         "time_field": "event_at",
         "required_filters": [
-            {"field": "txn_type", "operator": "eq", "value": "EXPIRE"},
-            {"field": "is_forecast", "operator": "eq", "value": False},
+            {"field": "txn_type", "operator": "eq", "value_type": "string", "value": "EXPIRE"},
+            {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
         ],
     }
 
@@ -135,8 +184,8 @@ def test_view_metrics_preserve_actual_non_forecast_filters_without_sql_predicate
     view_metrics = [metric for metric in CONTRACT["metrics"] if metric["asset_fqn"] in view_fqns]
     assert view_metrics
     expected = [
-        {"field": "data_period_status", "operator": "eq", "value": "ACTUAL"},
-        {"field": "is_forecast", "operator": "eq", "value": False},
+        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
     ]
     assert all(metric["required_filters"] == expected for metric in view_metrics)
     assert "predicate" not in json.dumps(CONTRACT).lower()

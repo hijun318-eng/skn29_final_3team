@@ -1,0 +1,46 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R4-W5-F2",
+  "ROLE": "R4",
+  "BRANCH": "jaehong",
+  "BASE_SHA": "af8b11db15734bf6f047bdd709a890a3ff18a19a",
+  "RESULT_SHA": "65ef3d0b5d6419f654a5f1f167d7bfd45c9a4fa1",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R4-W5-F2@af8b11d",
+  "COMPLETED_CARDS": ["R4-04·05 DataHub Context adapter·entitlement·G2 contract"],
+  "CHANGED_FILES": [
+    "app/backend/app/adapters/i2_data_platform.py",
+    "app/backend/app/services/pipeline_support.py",
+    "docs/markdown/daily_reports/jaehong/일일보고.md",
+    "tests/backend/test_i2_data_platform.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "CONTEXT": "I4-CONTEXT-v2.2.0-DRAFT",
+    "ASSET_BINDING": "ASSET-BINDING-v1.0.0-DRAFT versioned consumer",
+    "OPENAPI": "OPENAPI-v1.1.0-DRAFT unchanged",
+    "DATAHUB_LIVE": "BLOCKED/FAIL_CLOSED",
+    "PONYTAIL": "v4.9.0 full"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_VERSIONED_BINDING", "status": "PASS", "evidence": "I4 Context/Data version·verification·URN/FQN/schema binding 검증"},
+    {"id": "AC2_NO_HARDCODE_SUCCESS", "status": "PASS", "evidence": "PMS/CRM raw 고정 반환을 versioned-trino 후보에서 제거"},
+    {"id": "AC3_ENTITLEMENT", "status": "PASS", "evidence": "role entitlement 선필터 후 허용 View만 반환"},
+    {"id": "AC4_VIEW_CONTEXT", "status": "PASS", "evidence": "serving.analytics View URN/FQN만 Context 후보"},
+    {"id": "AC5_G2_ALLOW", "status": "PASS", "evidence": "MODEL required filter는 placeholder와 parameters 일치 시 허용"},
+    {"id": "AC6_G2_BLOCK", "status": "PASS", "evidence": "외부 FQN·값 변조·literal·OR·누락 차단"},
+    {"id": "AC7_LIVE_FAIL_CLOSED", "status": "PASS", "evidence": "v1.7 runtime PASS 없으면 live adapter 호출 전 차단"},
+    {"id": "AC8_EXISTING_COMPAT", "status": "PASS", "evidence": "기존 TEMPLATE literal 계약과 simulated live unit 호환 유지"}
+  ],
+  "TEST_RESULTS": [
+    {"id": "T1_TARGET", "name": "Context, G2 and analysis pipeline target tests", "status": "PASS", "evidence": "59 passed, 10 subtests passed"},
+    {"id": "T2_BACKEND", "name": "all backend tests", "status": "PASS", "evidence": "branch CI 31351298893 python-contracts PASS"},
+    {"id": "T3_COMPILE", "name": "backend compileall", "status": "PASS", "evidence": "compileall PASS"},
+    {"id": "T4_SCOPE", "name": "R4 role scope", "status": "PASS", "evidence": "branch CI 31351298893 role-scope PASS"},
+    {"id": "T5_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "no whitespace errors"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "versioned analytics Context consumer를 dev에 통합하고 live DataHub는 R1/R2 runtime PASS 뒤 활성화"
+}

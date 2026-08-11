@@ -1,7 +1,7 @@
 # 역할 3 — AI·모델·프롬프트·ModelOps 매뉴얼
 
 > 문서 상태: 팀 확정용 최종안
-> 작성 기준일: 2026-07-30
+> 작성 기준일: 2026-08-06
 > 담당자: 윤대성
 > 개인 브랜치: `daesung`
 > 역할 ID: `R3`
@@ -141,7 +141,7 @@ Node 3은 G3 pass shaped result만 설명하고 수치를 다시 계산하지 �
 | `compose-config` | DataHub service fragment와 `dev`·`full`·`split-host` profile 설정 검증 | 건너뜀 |
 | `quality-gate` | 위 결과 집계와 최종 통과 판정, R1 대시보드 출력 | **실행** |
 
-> 현재 `python-contracts`와 `document-quality`는 모든 브랜치에서 **전체** test와 **타 역할 소유 문서**를 검사한다. 따라서 내 변경과 무관한 다른 역할의 실패로도 내 CI가 red가 될 수 있다. 이 경우 내 코드를 고치지 말고 R1에게 알린다. 역할별 경로 분기는 Wave 2 전 적용 예정이다.
+> 현재 CI 실행 범위와 실패 판정은 `docs/markdown/collaboration/README.md`를 단일 기준으로 확인한다. 이 매뉴얼에는 R3 소유권과 카드별 추가 검증만 유지하고 시점별 공통 CI 동작은 복제하지 않는다.
 
 **가장 흔한 실패 원인은 허용 경로 침범이다.** `ALLOWED_PATHS` 밖 파일을 하나라도 수정하면 `role-scope`가 FAIL하고 Summary에 침범한 경로가 그대로 출력된다. 다른 역할 파일이 필요하면 직접 고치지 말고 change request로 넘긴다.
 

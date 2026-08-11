@@ -1,5 +1,6 @@
 import argparse
 import fnmatch
+import hashlib
 import json
 import os
 import re
@@ -9,6 +10,7 @@ from typing import Any
 
 
 LEDGER = Path("docs/markdown/collaboration/Gate_실행_카드_원장.md")
+ARCHIVE_DIR = LEDGER.parent / "archive"
 HANDOFFS = Path("handoffs")
 REPORTS = {
     "junhee": "docs/markdown/daily_reports/junhee/일일보고.md",
@@ -79,7 +81,10 @@ RELEVANT_READS = (
 TERMINAL_STATUSES = {"MERGED_DEV", "VERIFIED_GATE"}
 ACTIVE_STATUSES = {"READY", "IN_PROGRESS", "REVIEW"}
 IMPLEMENTATION_STATUSES = {"READY", "IN_PROGRESS"}
-TEST_STATUSES = {"PASS", "FAIL", "NOT_RUN", "BLOCKED", "REVIEW_REQUIRED"}
+TEST_STATUSES = {
+    "PASS", "FAIL", "NOT_RUN", "BLOCKED", "REVIEW_REQUIRED", "CI_PENDING",
+}
+ACCEPTANCE_STATUSES = TEST_STATUSES - {"CI_PENDING"}
 # NOT_RUN은 아직 manifest를 제출하지 않은 작업 중 branch의 정상 상태다.
 # manifest가 제출됐지만 필수 검증·change request·잔여 위험·외부 승인이 남으면
 # REVIEW_REQUIRED가 되며 terminal 제출로 수용하지 않는다.
@@ -113,6 +118,63 @@ def bundles(text: str) -> list[dict[str, str]]:
         if {"STATUS", "PERSONAL_BRANCH", "EXECUTION_BUNDLE_ID"} <= values.keys():
             parsed.append(values)
     return parsed
+
+
+def load_archive_bundles(
+    paths: list[Path] | None = None,
+) -> tuple[list[dict[str, str]], list[str]]:
+    archive_paths = (
+        sorted(ARCHIVE_DIR.glob("Gate_실행_카드_원장_*.md"))
+        if paths is None
+        else paths
+    )
+    if not archive_paths:
+        return [], ["Gate archive files are missing"]
+    parsed: list[dict[str, str]] = []
+    errors: list[str] = []
+    for path in archive_paths:
+        try:
+            archived = bundles(path.read_text(encoding="utf-8"))
+        except OSError as error:
+            errors.append(f"cannot read Gate archive {path}: {error}")
+            continue
+        if not archived:
+            errors.append(f"Gate archive has no parseable bundles: {path}")
+        parsed.extend(archived)
+    return parsed, errors
+
+
+def ledger_health_errors(text: str) -> list[str]:
+    errors: list[str] = []
+    parsed = bundles(text)
+    for branch in REPORTS:
+        active = [
+            item for item in parsed
+            if item.get("PERSONAL_BRANCH") == branch
+            and item.get("STATUS") in ACTIVE_STATUSES
+        ]
+        if len(active) > 1:
+            errors.append(
+                f"multiple active bundles for {branch}: "
+                + ", ".join(item.get("EXECUTION_BUNDLE_ID", "N/A") for item in active)
+            )
+
+    rows = {
+        role: (bundle_id, status)
+        for role, bundle_id, status in re.findall(
+            r"(?m)^\| (R[1-5]) \| `([^`]+)` \| `([^`]+)` \|",
+            text,
+        )
+    }
+    for branch, role in ROLES.items():
+        current = current_bundle(text, branch)
+        row = rows.get(role)
+        expected = (
+            current.get("EXECUTION_BUNDLE_ID"), current.get("STATUS")
+        ) if current else None
+        if row != expected:
+            errors.append(f"dashboard row does not match current bundle for {role}")
+    return errors
 
 
 def current_bundle(text: str, branch: str) -> dict[str, str] | None:
@@ -176,6 +238,53 @@ def changed_paths(base: str, head: str, mode: str) -> list[str]:
     ]
 
 
+def aggregate_blob_sha256(ref: str, paths: list[str]) -> str | None:
+    digest = hashlib.sha256()
+    for path in sorted(paths):
+        result = subprocess.run(
+            ["git", "show", f"{ref}:{path}"],
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            return None
+        digest.update(path.encode("utf-8") + b"\0" + result.stdout + b"\0")
+    return digest.hexdigest()
+
+
+def role_diff(
+    bundle: dict[str, str], changed: list[str], head: str
+) -> tuple[list[str], list[str]]:
+    paths_value = bundle.get("INHERITED_BLOB_PATHS")
+    hash_value = bundle.get("INHERITED_BLOB_SHA256")
+    if not paths_value and not hash_value:
+        return changed, []
+    if not paths_value or not hash_value:
+        return changed, [
+            "INHERITED_BLOB_PATHS and INHERITED_BLOB_SHA256 "
+            "must be declared together"
+        ]
+    paths = [part.strip() for part in paths_value.split(";") if part.strip()]
+    if not paths or len(paths) != len(set(paths)):
+        return changed, ["INHERITED_BLOB_PATHS must be unique and non-empty"]
+    if any(
+        path.startswith("/")
+        or "\\" in path
+        or any(part == ".." for part in path.split("/"))
+        or any(character in path for character in "*?[")
+        for path in paths
+    ):
+        return changed, ["INHERITED_BLOB_PATHS must be literal repository paths"]
+    if not re.fullmatch(r"[0-9a-f]{64}", hash_value):
+        return changed, ["INHERITED_BLOB_SHA256 must be lowercase SHA-256"]
+    actual = aggregate_blob_sha256(head, paths)
+    if actual is None:
+        return changed, ["inherited checkpoint path is missing at checked head"]
+    if actual != hash_value:
+        return changed, ["inherited checkpoint blob hash drift detected"]
+    inherited = set(paths)
+    return [path for path in changed if path not in inherited], []
+
+
 def change_group_outputs(paths: list[str]) -> dict[str, str]:
     force_all = any(path.startswith(".github/workflows/") for path in paths)
     return {
@@ -194,13 +303,55 @@ def planned_path_errors(
     if bundle is None:
         return None, [f"No executable bundle found for branch: {branch}"]
     if bundle["STATUS"] not in IMPLEMENTATION_STATUSES:
-        if branch == "junhee" and paths == [LEDGER.as_posix()]:
+        if gate_issuance_errors(text, branch, paths) == []:
             return bundle, []
         return bundle, [
             f"bundle status {bundle['STATUS']} does not allow implementation"
         ]
     patterns = allowed_paths(bundle, branch)
     return bundle, [path for path in paths if not path_allowed(path, patterns)]
+
+
+def gate_issuance_errors(
+    text: str, branch: str, paths: list[str]
+) -> list[str] | None:
+    if branch != "junhee" or paths != [LEDGER.as_posix()]:
+        return None
+    return ledger_health_errors(text)
+
+
+def bundle_contract_errors(bundle: dict[str, str] | None) -> list[str]:
+    if bundle is None:
+        return ["No executable bundle found"]
+    required = (
+        "EXECUTION_BUNDLE_ID", "STATUS", "PERSONAL_BRANCH", "BASE_SHA",
+        "ALLOWED_PATHS",
+    )
+    errors = [
+        f"bundle missing field: {field}"
+        for field in required
+        if not bundle.get(field)
+    ]
+    if bundle.get("BASE_SHA") and not re.fullmatch(
+        r"[0-9a-f]{40}", bundle["BASE_SHA"]
+    ):
+        errors.append("bundle BASE_SHA must be a 40-character lowercase git SHA")
+    if bundle.get("ALLOWED_PATHS") and not all(
+        part.strip() for part in bundle["ALLOWED_PATHS"].split(";")
+    ):
+        errors.append("bundle ALLOWED_PATHS contains an empty path")
+    for field in ("TEST_COMMAND_IDS", "ACCEPTANCE_IDS"):
+        values = [part.strip() for part in bundle.get(field, "").split(";") if part.strip()]
+        if len(values) != len(set(values)):
+            errors.append(f"bundle {field} contains duplicate IDs")
+    inherited_paths = bundle.get("INHERITED_BLOB_PATHS")
+    inherited_hash = bundle.get("INHERITED_BLOB_SHA256")
+    if bool(inherited_paths) != bool(inherited_hash):
+        errors.append(
+            "INHERITED_BLOB_PATHS and INHERITED_BLOB_SHA256 "
+            "must be declared together"
+        )
+    return errors
 
 
 def bootstrap_payload(
@@ -236,6 +387,31 @@ def bootstrap_payload(
         "relevant_reads": list(RELEVANT_READS),
         "errors": errors,
     }
+
+
+def preflight_payload(
+    text: str,
+    branch: str,
+    current_branch: str,
+    root: str,
+    dirty: bool,
+    paths: list[str],
+) -> dict[str, Any]:
+    payload = bootstrap_payload(text, branch, current_branch, root, dirty)
+    bundle = current_bundle(text, branch)
+    contract_errors = [*ledger_health_errors(text), *bundle_contract_errors(bundle)]
+    checked_paths = paths or (
+        [part.strip() for part in bundle.get("ALLOWED_PATHS", "").split(";")]
+        if bundle else []
+    )
+    _, path_errors = planned_path_errors(text, branch, checked_paths)
+    payload.update(
+        checked_paths=checked_paths,
+        contract_errors=contract_errors,
+        path_errors=path_errors,
+    )
+    payload["errors"] = [*payload["errors"], *contract_errors, *path_errors]
+    return payload
 
 
 def ledger_at(ref: str) -> str:
@@ -471,6 +647,10 @@ def validate_handoff(
             errors.append("mapped TEST_RESULTS items need real evidence")
         if result["status"] not in TEST_STATUSES:
             errors.append(f"unsupported test status: {result['status']}")
+        elif result["status"] == "CI_PENDING" and not str(
+            result.get("id", "")
+        ).endswith("_BRANCH_CI"):
+            errors.append("CI_PENDING is allowed only for *_BRANCH_CI tests")
         elif result["status"] in {"FAIL", "BLOCKED"}:
             errors.append(f"test {result['name']} is {result['status']}")
         elif result["status"] in {"NOT_RUN", "REVIEW_REQUIRED"}:
@@ -497,7 +677,7 @@ def validate_handoff(
                         "each ACCEPTANCE_RESULTS item needs status and real evidence"
                     )
                     continue
-                if result["status"] not in TEST_STATUSES:
+                if result["status"] not in ACCEPTANCE_STATUSES:
                     errors.append(
                         f"unsupported acceptance status: {result['status']}"
                     )
@@ -575,10 +755,21 @@ def handoff_status(
         return "FAIL", errors
     if reviews:
         return "REVIEW_REQUIRED", reviews
+    if any(
+        result.get("status") == "CI_PENDING"
+        for result in handoff["TEST_RESULTS"]
+        if isinstance(result, dict)
+    ):
+        return "CI_PENDING", []
     return "PASS", []
 
 
-def next_gate_lines(text: str, target_gate: str) -> list[str]:
+def next_gate_lines(
+    text: str,
+    target_gate: str,
+    archive: list[dict[str, str]] | None = None,
+    archive_errors: list[str] | None = None,
+) -> list[str]:
     match = re.fullmatch(r"I([1-5])", target_gate)
     if not match or match.group(1) == "1":
         raise ValueError("next gate must be I2 through I5")
@@ -595,10 +786,15 @@ def next_gate_lines(text: str, target_gate: str) -> list[str]:
             blockers.append(
                 f"{role} {bundle['EXECUTION_BUNDLE_ID']}={bundle['STATUS']}"
             )
+    if archive is None or archive_errors is None:
+        loaded, errors = load_archive_bundles()
+        archive = loaded if archive is None else archive
+        archive_errors = errors if archive_errors is None else archive_errors
     verified = any(
         bundle.get("TARGET_INTEGRATION_GATE") == previous_gate
         and bundle["STATUS"] == "VERIFIED_GATE"
-        for bundle in parsed
+        and bundle.get("PERSONAL_BRANCH") == "junhee"
+        for bundle in [*parsed, *archive]
     )
     candidates = [
         bundle["EXECUTION_BUNDLE_ID"]
@@ -607,7 +803,7 @@ def next_gate_lines(text: str, target_gate: str) -> list[str]:
         and bundle["STATUS"] == "PLANNED"
         and re.fullmatch(r"R[1-5]-W\d+(?:-[A-Z0-9]+)?", bundle["EXECUTION_BUNDLE_ID"])
     ]
-    ready = not blockers and verified
+    ready = not blockers and verified and not archive_errors
     lines = [
         f"## {target_gate} issue readiness",
         f"- Previous gate: `{previous_gate}`",
@@ -618,13 +814,16 @@ def next_gate_lines(text: str, target_gate: str) -> list[str]:
         lines.extend(f"- Blocker: {blocker}" for blocker in blockers)
     if not verified:
         lines.append(f"- Blocker: `{previous_gate}` has no VERIFIED_GATE bundle")
+    lines.extend(f"- Blocker: {error}" for error in archive_errors)
     if candidates:
         lines.append(f"- Planned candidates: {', '.join(candidates)}")
     lines.append("- READY publication remains an R1 manual decision.")
     return lines
 
 
-def inferred_next_gate(text: str) -> str:
+def inferred_next_gate(
+    text: str, archive: list[dict[str, str]] | None = None
+) -> str:
     current = [
         bundle
         for branch in ROLES
@@ -640,8 +839,9 @@ def inferred_next_gate(text: str) -> str:
         return min(active_targets, key=lambda gate: int(gate[1:]))
     verified = [
         int(bundle["TARGET_INTEGRATION_GATE"][1:])
-        for bundle in current
+        for bundle in [*current, *(archive or [])]
         if bundle["STATUS"] == "VERIFIED_GATE"
+        and bundle.get("PERSONAL_BRANCH") == "junhee"
         and re.fullmatch(r"I[1-5]", bundle.get("TARGET_INTEGRATION_GATE", ""))
     ]
     return f"I{min(max(verified, default=1) + 1, 5)}"
@@ -702,24 +902,34 @@ def main() -> int:
     parser.add_argument("--next-gate", choices=("auto", "I2", "I3", "I4", "I5"))
     parser.add_argument("--check-planned-path", action="append", default=[])
     parser.add_argument("--bootstrap", action="store_true")
+    parser.add_argument("--preflight", action="store_true")
     args = parser.parse_args()
 
     text = LEDGER.read_text(encoding="utf-8")
     if args.dashboard:
+        archive, archive_errors = load_archive_bundles()
         lines = dashboard_lines(text)
         if args.next_gate:
             target_gate = (
-                inferred_next_gate(text) if args.next_gate == "auto" else args.next_gate
+                inferred_next_gate(text, archive)
+                if args.next_gate == "auto"
+                else args.next_gate
             )
-            lines.extend(["", *next_gate_lines(text, target_gate)])
+            lines.extend(
+                [
+                    "",
+                    *next_gate_lines(text, target_gate, archive, archive_errors),
+                ]
+            )
         write_summary(lines)
         print("\n".join(lines))
         return 0
 
-    if args.bootstrap:
+    if args.bootstrap or args.preflight:
         if args.branch not in REPORTS:
-            parser.error("--bootstrap requires a personal --branch")
-        payload = bootstrap_payload(
+            parser.error("--bootstrap/--preflight requires a personal --branch")
+        payload_builder = preflight_payload if args.preflight else bootstrap_payload
+        payload_args = (
             text,
             args.branch,
             subprocess.run(
@@ -742,6 +952,10 @@ def main() -> int:
                     text=True,
                 ).stdout.strip()
             ),
+        )
+        payload = payload_builder(
+            *payload_args,
+            *([args.check_planned_path] if args.preflight else []),
         )
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return int(bool(payload["errors"]))
@@ -790,15 +1004,18 @@ def main() -> int:
     bundle = current_bundle(text, args.branch)
     if bundle is None:
         raise SystemExit(f"No executable bundle found for branch: {args.branch}")
+    role_changed, inherited_errors = role_diff(bundle, changed, args.head)
 
     if args.write_handoff:
+        if inherited_errors:
+            raise SystemExit("; ".join(inherited_errors))
         path = manifest_path(bundle)
         if path.exists():
             raise SystemExit(f"Refusing to overwrite existing manifest: {path}")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(
-                handoff_template(bundle, args.branch, git_sha(args.head), changed),
+                handoff_template(bundle, args.branch, git_sha(args.head), role_changed),
                 ensure_ascii=False,
                 indent=2,
             )
@@ -811,17 +1028,26 @@ def main() -> int:
     previous = current_bundle(ledger_at(args.base), args.branch)
     scope_bundle = terminal_transition_scope(bundle, previous)
     patterns = allowed_paths(scope_bundle, args.branch)
-    violations = [path for path in changed if not path_allowed(path, patterns)]
-    base_sync, base_notes = base_sync_status(bundle, args.base, args.head, changed)
+    issuance_errors = gate_issuance_errors(text, args.branch, role_changed)
+    violations = (
+        []
+        if issuance_errors == []
+        else [path for path in role_changed if not path_allowed(path, patterns)]
+    )
+    base_sync, base_notes = base_sync_status(
+        bundle, args.base, args.head, role_changed
+    )
     handoff, handoff_notes = handoff_status(
         bundle,
         args.branch,
-        changed,
+        role_changed,
         git_sha(args.head),
     )
     result = (
         "FAIL"
         if violations
+        or issuance_errors
+        or inherited_errors
         or base_sync in {"DIVERGED", "REFRESH_REQUIRED"}
         or handoff in BLOCKING_HANDOFF_STATUSES
         else "PASS"
@@ -833,12 +1059,19 @@ def main() -> int:
         f"- Status: `{bundle['STATUS']}`",
         f"- Base sync: `{base_sync}`",
         f"- Changed paths: {len(changed)}",
+        f"- Role changed paths: {len(role_changed)}",
         f"- Result: `{result}`",
         f"- Handoff: `{handoff}`",
     ]
     if violations:
         lines.extend(["", "### Paths outside ALLOWED_PATHS"])
         lines.extend(f"- `{path}`" for path in violations)
+    if issuance_errors:
+        lines.extend(["", "### Gate ledger errors"])
+        lines.extend(f"- {error}" for error in issuance_errors)
+    if inherited_errors:
+        lines.extend(["", "### Inherited checkpoint notes"])
+        lines.extend(f"- {note}" for note in inherited_errors)
     if base_notes:
         lines.extend(["", "### Base sync notes"])
         lines.extend(f"- `{note}`" for note in base_notes)

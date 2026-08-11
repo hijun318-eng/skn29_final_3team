@@ -59,6 +59,18 @@
     "environment": "PROD",
     "platform_instance": null
   },
+  "semantic_catalog": {
+    "contract_version": "I5-SEMANTIC-CATALOG-v1.0.0-DRAFT",
+    "file": "src/data/serving_semantic_catalog.i4.v1.json",
+    "catalog_sha256": "38982b4a536024fb0ce6a2cf42ffcbafbc9beb2f6f8731d6da09c504df6ce7a2",
+    "status": "READY_FOR_ISOLATED_VALIDATION",
+    "dataset_description_count": 8,
+    "column_description_count": 116,
+    "unique_field_count": 70,
+    "publisher": "infrastructure/database/datahub/publish_semantic_catalog.py",
+    "verifier": "infrastructure/database/datahub/verify_semantic_catalog.py",
+    "runtime_result": "NOT_RUN"
+  },
   "views": [
     {
       "name": "banquet_monthly_metrics",
@@ -316,7 +328,7 @@
     "read_only_policy": {
       "status": "PASS",
       "file": "infrastructure/database/trino/etc/access-control-rules.json",
-      "sha256": "078140cbd9d69ec6fed3045a7800b7386024e383a5d7b81d586987f96dd27b33",
+      "sha256": "c98925d263343c8964977316f5a10ed15a75465293f7a2146ab948bd2bf18644",
       "ddl": {
         "command": "CREATE TABLE serving.analytics.r2_forbidden_write AS SELECT 1 id WHERE false",
         "exit_code": 1,

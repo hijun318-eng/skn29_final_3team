@@ -124,6 +124,8 @@ def load_session(path: Path) -> dict[str, object]:
         raise ValueError("지원하지 않는 병합 session 형식입니다.")
     if data.get("base") is not None and not isinstance(data["base"], str):
         raise ValueError("병합 session의 base SHA 형식이 잘못되었습니다.")
+    if data.get("remote_only") not in (None, True, False):
+        raise ValueError("병합 session의 remote_only 형식이 잘못되었습니다.")
     for saved in data["sources"].values():
         if (
             not isinstance(saved, dict)
@@ -151,7 +153,9 @@ def result_fields(session: dict[str, object], source: str) -> dict[str, str] | N
     }
 
 
-def batch_payload(sources: list[str]) -> dict[str, object]:
+def batch_payload(
+    sources: list[str], remote_only: bool = False
+) -> dict[str, object]:
     current = git("branch", "--show-current")
     status = git("status", "--porcelain")
     errors = []
@@ -171,12 +175,15 @@ def batch_payload(sources: list[str]) -> dict[str, object]:
         root = roots.get(source)
         ci = source_ci(source, remote) if remote else None
         item_errors = []
-        if not local or local != remote:
-            item_errors.append("local과 origin commit이 다르거나 없습니다.")
-        if not root:
-            item_errors.append("개인 branch worktree를 찾을 수 없습니다.")
-        elif git("status", "--porcelain", cwd=root):
-            item_errors.append("개인 branch working tree가 깨끗하지 않습니다.")
+        if not remote:
+            item_errors.append("origin commit이 없습니다.")
+        elif not remote_only:
+            if not local or local != remote:
+                item_errors.append("local과 origin commit이 다르거나 없습니다.")
+            if not root:
+                item_errors.append("개인 branch worktree를 찾을 수 없습니다.")
+            elif git("status", "--porcelain", cwd=root):
+                item_errors.append("개인 branch working tree가 깨끗하지 않습니다.")
         if not ci or ci.get("status") != "completed" or ci.get("conclusion") != "success":
             item_errors.append("source SHA의 CI가 성공하지 않았습니다.")
         items.append(
@@ -188,6 +195,7 @@ def batch_payload(sources: list[str]) -> dict[str, object]:
         "current_branch": current,
         "dev_local": dev_local,
         "dev_remote": dev_remote,
+        "remote_only": remote_only,
         "sources": items,
         "errors": errors,
     }
@@ -204,17 +212,23 @@ def main() -> int:
         action="store_true",
         help="Git 공용 디렉터리의 병합 session에서 SHA와 CI 결과를 재사용",
     )
+    parser.add_argument(
+        "--remote-only",
+        action="store_true",
+        help="등록 local source 대신 origin SHA와 해당 source CI를 병합 근거로 사용",
+    )
     args = parser.parse_args()
 
     if args.phase == "batch":
         if not args.sources or args.source:
             parser.error("batch 단계에는 --sources만 사용합니다.")
-        payload = batch_payload(args.sources)
+        payload = batch_payload(args.sources, args.remote_only)
         if args.session and not payload["errors"]:
             path = merge_session_path()
             session = {
                 "version": 1,
                 "base": payload["dev_local"],
+                "remote_only": args.remote_only,
                 "sources": {
                     item["source"]: {"sha": item["sha"], "ci": item["source_ci"]}
                     for item in payload["sources"]
@@ -234,6 +248,7 @@ def main() -> int:
     except (json.JSONDecodeError, OSError, ValueError) as exc:
         session = {"version": 1, "sources": {}}
         errors.append(f"병합 session을 읽을 수 없습니다: {exc}")
+    remote_only = args.remote_only or bool(session.get("remote_only", False))
     current = git("branch", "--show-current")
     status = git("status", "--porcelain")
     if status:
@@ -245,15 +260,17 @@ def main() -> int:
     source_local = ref(args.source)
     source_remote = ref(f"origin/{args.source}")
     ci: dict[str, object] | None = None
-    if not source_local or not source_remote:
-        errors.append("source local/remote ref를 모두 확인할 수 없습니다.")
-    elif source_local != source_remote:
+    if not source_remote:
+        errors.append("source origin ref를 확인할 수 없습니다.")
+    elif not remote_only and (not source_local or source_local != source_remote):
         errors.append("source local과 origin commit이 다릅니다.")
 
     dev_local = ref("dev")
     dev_remote = ref("origin/dev")
     if args.phase == "source" and current != args.source:
         errors.append(f"source 단계의 현재 branch가 {args.source}가 아닙니다.")
+    if args.phase == "source" and remote_only:
+        errors.append("remote-only session은 source 단계를 생략합니다.")
     if args.phase == "source" and source_remote:
         ci = source_ci(args.source, source_remote)
         if ci.get("status") != "completed" or ci.get("conclusion") != "success":
@@ -318,6 +335,7 @@ def main() -> int:
         "clean": not status,
         "operations": operations,
         "source_ci": ci,
+        "remote_only": remote_only,
         "session": str(path) if path else None,
         "result_fields": result_fields(session, args.source) if path else None,
         "errors": errors,

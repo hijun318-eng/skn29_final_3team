@@ -1,0 +1,153 @@
+{
+  "HANDOFF_VERSION": 1,
+  "EXECUTION_BUNDLE_ID": "R1-W5-F29",
+  "ROLE": "R1",
+  "BRANCH": "junhee",
+  "BASE_SHA": "2d805bf9cc52828b567e17e182fd88a8895a0b57",
+  "RESULT_SHA": "253cd10228f2c769e3028b9b04ce9e994a9ecbdf",
+  "TERMINAL_SHA": "HEAD",
+  "DIRECTIVE_TOKEN": "R1-W5-F29@2d805bf",
+  "RESULT_CI": "CI_PENDING — current junhee push가 source CI를 시작함",
+  "COMPLETED_CARDS": [
+    "R1-04-AUTOMATION-BOTTLENECKS"
+  ],
+  "CHANGED_FILES": [
+    ".agents/skills/merge-branch-to-dev/SKILL.md",
+    ".agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py",
+    ".github/scripts/agent_workflow.py",
+    ".github/scripts/gate_scope.py",
+    "AGENTS.md",
+    "docs/markdown/collaboration/Gate_실행_카드_원장.md",
+    "docs/markdown/collaboration/README.md",
+    "docs/markdown/daily_reports/junhee/일일보고.md",
+    "tests/integration/test_agent_workflow.py",
+    "tests/integration/test_gate_scope.py",
+    "tests/integration/test_merge_preflight.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "agent_workflow": "AGENT-WORKFLOW-v1.1.0-DRAFT",
+    "gate_scope": "GATE-SCOPE-v1.1.2-DRAFT",
+    "merge_preflight": "MERGE-PREFLIGHT-v1.1.0-DRAFT",
+    "directive_token": "R1-W5-F29@2d805bf"
+  },
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_STALE_FF_FIRST",
+      "status": "PASS",
+      "evidence": "stale ledger가 FAIL이어도 clean·ancestor 조건이면 fast-forward-available을 반환하고 --ff-only-dev가 merge를 먼저 실행하는 회귀 PASS"
+    },
+    {
+      "id": "AC2_POST_FF_FULL_PREFLIGHT",
+      "status": "PASS",
+      "evidence": "fast-forward 뒤 preflight_payload 호출 1회 회귀 PASS"
+    },
+    {
+      "id": "AC3_DIRTY_DIVERGED_FAIL_CLOSED",
+      "status": "PASS",
+      "evidence": "dirty·diverged·branch mismatch negative 회귀 PASS"
+    },
+    {
+      "id": "AC4_LEDGER_ONLY_SCOPE",
+      "status": "PASS",
+      "evidence": "junhee exact Gate 원장 1경로만 issuance 후보로 인정하고 다른 role·추가 path는 거부하는 회귀 PASS"
+    },
+    {
+      "id": "AC5_LEDGER_HEALTH",
+      "status": "PASS",
+      "evidence": "dashboard drift가 있는 원장은 issuance_errors를 반환하는 회귀 PASS"
+    },
+    {
+      "id": "AC6_REMOTE_SOURCE_EVIDENCE",
+      "status": "PASS",
+      "evidence": "origin/seung 2d805bf·CI 31456704833 PASS를 local source 미사용 remote-only batch로 확인"
+    },
+    {
+      "id": "AC7_LOCAL_EVIDENCE_FAIL_CLOSED",
+      "status": "PASS",
+      "evidence": "기본 local 모드는 local/origin mismatch·dirty·CI failure를 계속 거부하고 remote-only CI failure도 거부하는 회귀 PASS"
+    },
+    {
+      "id": "AC8_SINGLE_START_INSTRUCTION",
+      "status": "PASS",
+      "evidence": "AGENTS와 collaboration README의 필수 작업 시작 절차를 agent_workflow 단일 명령으로 정렬"
+    },
+    {
+      "id": "AC9_NO_NEW_TOOLING",
+      "status": "PASS",
+      "evidence": "기존 Python stdlib·git·gh만 재사용하고 dependency·workflow 추가 없음"
+    }
+  ],
+  "TEST_RESULTS": [
+    {
+      "id": "T1_AUTOMATION_TARGET",
+      "name": "자동화 대상 회귀",
+      "status": "PASS",
+      "evidence": "agent_workflow·gate_scope·merge_preflight unittest 61건 PASS"
+    },
+    {
+      "id": "T2_INTEGRATION_FULL",
+      "name": "전체 integration 회귀",
+      "status": "PASS",
+      "evidence": "unittest discover tests/integration 67건 PASS·configured live test 1건 skip"
+    },
+    {
+      "id": "T3_STALE_FF",
+      "name": "stale ledger fast-forward 순서",
+      "status": "PASS",
+      "evidence": "stale default action과 ff-only post-preflight 회귀 PASS"
+    },
+    {
+      "id": "T4_SYNC_NEGATIVE",
+      "name": "branch sync negative",
+      "status": "PASS",
+      "evidence": "dirty·diverged·unsupported branch·missing git 회귀 PASS"
+    },
+    {
+      "id": "T5_LEDGER_ONLY",
+      "name": "R1 Gate 원장 단일 발행",
+      "status": "PASS",
+      "evidence": "healthy exact ledger PASS, 다른 role·추가 path·dashboard drift FAIL 회귀 PASS"
+    },
+    {
+      "id": "T6_REMOTE_SOURCE",
+      "name": "remote-only source evidence",
+      "status": "PASS",
+      "evidence": "synthetic batch/final positive·CI failure negative와 실제 origin/seung CI evidence PASS"
+    },
+    {
+      "id": "T7_COMPILE",
+      "name": "Python compile",
+      "status": "PASS",
+      "evidence": "compileall automation scripts와 integration tests PASS"
+    },
+    {
+      "id": "T8_DOCUMENT_POLICY",
+      "name": "문서·보고 검증",
+      "status": "PASS",
+      "evidence": "document-policy PASS, junhee 20260811 report-validation PASS"
+    },
+    {
+      "id": "T9_SCOPE",
+      "name": "planned paths와 role scope",
+      "status": "PASS",
+      "evidence": "12 planned paths PASS, product commit role scope 11 paths PASS"
+    },
+    {
+      "id": "T10_DIFF",
+      "name": "Git whitespace validation",
+      "status": "PASS",
+      "evidence": "git diff --check PASS"
+    },
+    {
+      "id": "T11_BRANCH_CI",
+      "name": "junhee source CI",
+      "status": "CI_PENDING",
+      "evidence": "handoff commit을 포함한 current junhee push가 source CI를 시작함"
+    }
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [],
+  "RESIDUAL_RISKS": [],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "REQUESTED_DECISION": "source CI PASS 확인 후 R1-W5-F29를 dev에 통합"
+}

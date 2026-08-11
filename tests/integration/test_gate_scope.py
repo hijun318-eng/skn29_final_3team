@@ -1,9 +1,10 @@
+import hashlib
 import importlib.util
 import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -53,6 +54,54 @@ ALLOWED_PATHS=.github/**
 ```"""
         bundle = gate_scope.current_bundle(ledger, "junhee")
         self.assertEqual("R1-W3", bundle["EXECUTION_BUNDLE_ID"])
+
+    def test_ledger_health_rejects_duplicate_active_and_dashboard_drift(self) -> None:
+        ledger = """| R1 | `R1-W1` | `READY` | `junhee` |
+```text
+EXECUTION_BUNDLE_ID=R1-W1
+STATUS=READY
+PERSONAL_BRANCH=junhee
+```
+```text
+EXECUTION_BUNDLE_ID=R1-W2
+STATUS=IN_PROGRESS
+PERSONAL_BRANCH=junhee
+```"""
+        errors = gate_scope.ledger_health_errors(ledger)
+        self.assertTrue(any("multiple active bundles" in error for error in errors))
+        self.assertTrue(any("dashboard row" in error for error in errors))
+
+    def test_current_ledger_dashboard_and_active_bundles_are_consistent(self) -> None:
+        self.assertEqual([], gate_scope.ledger_health_errors(self.ledger))
+
+    def test_gate_issuance_allows_only_a_healthy_r1_ledger_change(self) -> None:
+        ledger_path = gate_scope.LEDGER.as_posix()
+        self.assertEqual(
+            [], gate_scope.gate_issuance_errors(self.ledger, "junhee", [ledger_path])
+        )
+        self.assertIsNone(
+            gate_scope.gate_issuance_errors(self.ledger, "seung", [ledger_path])
+        )
+        self.assertIsNone(
+            gate_scope.gate_issuance_errors(
+                self.ledger, "junhee", [ledger_path, "AGENTS.md"]
+            )
+        )
+
+        current = gate_scope.current_bundle(self.ledger, "junhee")
+        self.assertIsNotNone(current)
+        current_row = (
+            f"| R1 | `{current['EXECUTION_BUNDLE_ID']}` | "
+            f"`{current['STATUS']}` | `junhee` |"
+        )
+        broken = self.ledger.replace(
+            current_row,
+            f"| R1 | `wrong` | `{current['STATUS']}` | `junhee` |",
+            1,
+        )
+        self.assertTrue(
+            gate_scope.gate_issuance_errors(broken, "junhee", [ledger_path])
+        )
 
     def test_terminal_transition_uses_previous_bundle_scope(self) -> None:
         current = {
@@ -166,6 +215,75 @@ ALLOWED_PATHS=.github/**
             gate_scope.change_group_outputs([".github/workflows/ci.yml"]),
         )
 
+    def test_inherited_checkpoint_filters_role_diff_after_exact_hash(self) -> None:
+        bundle = {
+            "INHERITED_BLOB_PATHS": "src/data/a.py; src/data/b.py",
+            "INHERITED_BLOB_SHA256": "a" * 64,
+        }
+        changed = ["src/data/a.py", "src/data/current.py"]
+        with patch.object(
+            gate_scope, "aggregate_blob_sha256", return_value="a" * 64
+        ):
+            role_changed, errors = gate_scope.role_diff(bundle, changed, "HEAD")
+        self.assertEqual(["src/data/current.py"], role_changed)
+        self.assertEqual([], errors)
+
+    def test_inherited_checkpoint_hash_is_path_and_blob_aggregate(self) -> None:
+        with patch.object(gate_scope.subprocess, "run") as run:
+            run.side_effect = [
+                Mock(returncode=0, stdout=b"alpha"),
+                Mock(returncode=0, stdout=b"beta"),
+            ]
+            actual = gate_scope.aggregate_blob_sha256(
+                "HEAD", ["b.txt", "a.txt"]
+            )
+        expected = hashlib.sha256(
+            b"a.txt\0alpha\0b.txt\0beta\0"
+        ).hexdigest()
+        self.assertEqual(expected, actual)
+
+    def test_inherited_checkpoint_drift_and_missing_blob_fail_closed(self) -> None:
+        bundle = {
+            "INHERITED_BLOB_PATHS": "src/data/a.py",
+            "INHERITED_BLOB_SHA256": "a" * 64,
+        }
+        for actual, message in (
+            ("b" * 64, "drift"),
+            (None, "missing"),
+        ):
+            with self.subTest(actual=actual):
+                with patch.object(
+                    gate_scope, "aggregate_blob_sha256", return_value=actual
+                ):
+                    role_changed, errors = gate_scope.role_diff(
+                        bundle, ["src/data/a.py"], "HEAD"
+                    )
+                self.assertEqual(["src/data/a.py"], role_changed)
+                self.assertIn(message, errors[0])
+
+    def test_inherited_checkpoint_fields_must_be_declared_together(self) -> None:
+        role_changed, errors = gate_scope.role_diff(
+            {"INHERITED_BLOB_PATHS": "src/data/a.py"},
+            ["src/data/a.py"],
+            "HEAD",
+        )
+        self.assertEqual(["src/data/a.py"], role_changed)
+        self.assertIn("must be declared together", errors[0])
+
+    def test_inherited_checkpoint_rejects_non_literal_paths(self) -> None:
+        for path in ("../secret", "/absolute", "src/data/**", "src\\data\\a.py"):
+            with self.subTest(path=path):
+                role_changed, errors = gate_scope.role_diff(
+                    {
+                        "INHERITED_BLOB_PATHS": path,
+                        "INHERITED_BLOB_SHA256": "a" * 64,
+                    },
+                    [path],
+                    "HEAD",
+                )
+                self.assertEqual([path], role_changed)
+                self.assertIn("literal repository paths", errors[0])
+
     def test_backend_compose_fragment_selects_python_and_compose(self) -> None:
         outputs = gate_scope.change_group_outputs(
             ["app/backend/compose.fragment.yml"]
@@ -193,7 +311,9 @@ ALLOWED_PATHS=.github/**
             )
         self.assertIn("does not allow implementation", errors[0])
 
-        with patch.object(gate_scope, "current_bundle", return_value=bundle):
+        with patch.object(
+            gate_scope, "current_bundle", return_value=bundle
+        ), patch.object(gate_scope, "ledger_health_errors", return_value=[]):
             _, errors = gate_scope.planned_path_errors(
                 self.ledger, "junhee", [gate_scope.LEDGER.as_posix()]
             )
@@ -227,6 +347,30 @@ ALLOWED_PATHS=.github/**
             )
         self.assertIn("does not allow implementation", payload["errors"][0])
 
+    def test_preflight_combines_bootstrap_contract_and_planned_paths(self) -> None:
+        bundle = self.generic_bundle()
+        bundle.update(
+            STATUS="READY",
+            PERSONAL_BRANCH="seung",
+            BASE_SHA="a" * 40,
+            ALLOWED_PATHS="src/data/**;tests/data/**",
+        )
+        with (
+            patch.object(gate_scope, "current_bundle", return_value=bundle),
+            patch.object(gate_scope, "ledger_health_errors", return_value=[]),
+        ):
+            payload = gate_scope.preflight_payload(
+                self.ledger,
+                "seung",
+                "seung",
+                "C:/repo",
+                False,
+                ["src/data/source.py", "app/backend/main.py"],
+            )
+        self.assertEqual([], payload["contract_errors"])
+        self.assertEqual(["app/backend/main.py"], payload["path_errors"])
+        self.assertIn("app/backend/main.py", payload["errors"])
+
     def test_stale_base_without_path_overlap_can_continue(self) -> None:
         bundle = {"STATUS": "READY", "BASE_SHA": "issued"}
         with (
@@ -253,6 +397,86 @@ ALLOWED_PATHS=.github/**
 
     def test_next_gate_is_inferred_from_active_bundle(self) -> None:
         self.assertEqual("I5", gate_scope.inferred_next_gate(self.ledger))
+
+    def test_next_gate_uses_verified_gate_from_archive_without_promoting_archived_cards(self) -> None:
+        active = """```text
+EXECUTION_BUNDLE_ID=R1-W5-F25
+STATUS=READY
+PERSONAL_BRANCH=junhee
+TARGET_INTEGRATION_GATE=I5
+ALLOWED_PATHS=.github/scripts/gate_scope.py
+```
+```text
+EXECUTION_BUNDLE_ID=R2-W5-F9
+STATUS=PLANNED
+PERSONAL_BRANCH=seung
+TARGET_INTEGRATION_GATE=I5
+```"""
+        archive = [
+            {
+                "EXECUTION_BUNDLE_ID": "R1-W4-F5",
+                "STATUS": "VERIFIED_GATE",
+                "PERSONAL_BRANCH": "junhee",
+                "TARGET_INTEGRATION_GATE": "I4",
+            },
+            {
+                "EXECUTION_BUNDLE_ID": "R2-W5-F8",
+                "STATUS": "PLANNED",
+                "PERSONAL_BRANCH": "seung",
+                "TARGET_INTEGRATION_GATE": "I5",
+            },
+        ]
+        lines = "\n".join(
+            gate_scope.next_gate_lines(active, "I5", archive, [])
+        )
+        self.assertIn("Result: `READY_TO_ISSUE`", lines)
+        self.assertIn("R2-W5-F9", lines)
+        self.assertNotIn("R2-W5-F8", lines)
+        self.assertEqual(
+            "R1-W5-F25",
+            gate_scope.current_bundle(active, "junhee")["EXECUTION_BUNDLE_ID"],
+        )
+
+    def test_next_gate_blocks_when_archive_missing_or_has_no_verified_previous_gate(self) -> None:
+        archive, errors = gate_scope.load_archive_bundles([])
+        lines = "\n".join(
+            gate_scope.next_gate_lines(self.ledger, "I5", archive, errors)
+        )
+        self.assertIn("Result: `BLOCKED`", lines)
+        self.assertIn("Gate archive files are missing", lines)
+
+        with tempfile.TemporaryDirectory() as directory:
+            malformed = Path(directory) / "Gate_실행_카드_원장_bad.md"
+            malformed.write_text("not a Gate ledger", encoding="utf-8")
+            archive, errors = gate_scope.load_archive_bundles([malformed])
+        self.assertEqual([], archive)
+        self.assertIn("no parseable bundles", errors[0])
+
+        lines = "\n".join(
+            gate_scope.next_gate_lines(
+                self.ledger,
+                "I5",
+                [
+                    {
+                        "STATUS": "VERIFIED_GATE",
+                        "PERSONAL_BRANCH": "seung",
+                        "TARGET_INTEGRATION_GATE": "I4",
+                    }
+                ],
+                [],
+            )
+        )
+        self.assertIn("Result: `BLOCKED`", lines)
+        self.assertIn("I4` has no VERIFIED_GATE", lines)
+
+    def test_current_dashboard_recognizes_archived_i4_verified_gate(self) -> None:
+        archive, errors = gate_scope.load_archive_bundles()
+        lines = "\n".join(
+            gate_scope.next_gate_lines(self.ledger, "I5", archive, errors)
+        )
+        self.assertEqual([], errors)
+        self.assertIn("Previous gate: `I4`", lines)
+        self.assertIn("Result: `READY_TO_ISSUE`", lines)
 
     def test_dashboard_prefers_origin_dev_sha(self) -> None:
         with patch.object(gate_scope.subprocess, "run") as run:
@@ -390,6 +614,76 @@ ALLOWED_PATHS=app/enterprise-react/**
         errors, reviews = gate_scope.validate_handoff(handoff, bundle, "seung", [])
         self.assertEqual([], errors)
         self.assertEqual([], reviews)
+
+    def test_ci_pending_is_limited_to_branch_ci_test(self) -> None:
+        bundle = self.generic_bundle()
+        bundle["TEST_COMMAND_IDS"] = "T1_UNIT;T2_BRANCH_CI"
+        handoff = gate_scope.handoff_template(bundle, "seung", "a" * 40, [])
+        handoff["COMPLETED_CARDS"] = ["R2-09"]
+        handoff["NOT_RUN"] = []
+        handoff["TEST_RESULTS"] = [
+            {
+                "id": "T1_UNIT",
+                "name": "unit",
+                "status": "PASS",
+                "evidence": "42 passed",
+            },
+            {
+                "id": "T2_BRANCH_CI",
+                "name": "branch CI",
+                "status": "CI_PENDING",
+                "evidence": "current push starts branch CI",
+            },
+        ]
+        errors, reviews = gate_scope.validate_handoff(
+            handoff, bundle, "seung", []
+        )
+        self.assertEqual([], errors)
+        self.assertEqual([], reviews)
+
+        handoff["TEST_RESULTS"][0]["status"] = "CI_PENDING"
+        errors, _ = gate_scope.validate_handoff(handoff, bundle, "seung", [])
+        self.assertIn(
+            "CI_PENDING is allowed only for *_BRANCH_CI tests", errors
+        )
+
+    def test_ci_pending_handoff_status_is_not_terminal_pass(self) -> None:
+        bundle = self.generic_bundle()
+        bundle["STATUS"] = "REVIEW"
+        bundle["TEST_COMMAND_IDS"] = "T9_BRANCH_CI"
+        handoff = gate_scope.handoff_template(bundle, "seung", "a" * 40, [])
+        handoff["COMPLETED_CARDS"] = ["R2-09"]
+        handoff["NOT_RUN"] = []
+        handoff["TEST_RESULTS"] = [
+            {
+                "id": "T9_BRANCH_CI",
+                "name": "branch CI",
+                "status": "CI_PENDING",
+                "evidence": "current push starts branch CI",
+            }
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / f"{bundle['EXECUTION_BUNDLE_ID']}.json"
+            path.write_text(json.dumps(handoff), encoding="utf-8")
+            with patch.object(gate_scope, "HANDOFFS", Path(directory)):
+                status, notes = gate_scope.handoff_status(
+                    bundle, "seung", [], "a" * 40
+                )
+        self.assertEqual("CI_PENDING", status)
+        self.assertEqual([], notes)
+
+    def test_ci_pending_is_rejected_for_acceptance(self) -> None:
+        bundle = self.generic_bundle()
+        bundle["ACCEPTANCE_IDS"] = "AC1"
+        handoff = gate_scope.handoff_template(bundle, "seung", "a" * 40, [])
+        handoff["COMPLETED_CARDS"] = ["R2-09"]
+        handoff["TEST_RESULTS"] = [{"name": "unit", "status": "PASS"}]
+        handoff["NOT_RUN"] = []
+        handoff["ACCEPTANCE_RESULTS"] = [
+            {"id": "AC1", "status": "CI_PENDING", "evidence": "pending"}
+        ]
+        errors, _ = gate_scope.validate_handoff(handoff, bundle, "seung", [])
+        self.assertIn("unsupported acceptance status: CI_PENDING", errors)
 
     def test_handoff_result_sha_must_match_checked_head(self) -> None:
         bundle = self.generic_bundle()

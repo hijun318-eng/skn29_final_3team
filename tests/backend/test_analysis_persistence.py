@@ -40,6 +40,11 @@ class FakeAnalysisRepository:
         self.question = "합성 객실 운영 현황을 알려줘"
         self.parameters = {"scenario": "success"}
 
+    def begin_request(self, question, request_context):
+        self.question = question
+        self.request_id = request_context.request_id
+        return self.request_id
+
     def create_definition(self, title, question, parameters):
         self.definition.update(
             title=title,
@@ -158,6 +163,26 @@ def test_replay_uses_existing_controller_and_is_idempotent_without_result_exposu
     assert set(repository.finished[1]) == {"plan", "query", "package"}
     assert "result" not in first
     assert "sql" not in first
+
+
+def test_direct_analysis_persists_request_query_and_artifact_when_database_is_configured():
+    owner = uuid4()
+    repository = FakeAnalysisRepository(owner)
+    request_context = context(owner)
+    with patch.object(
+        analysis_api, "_analysis_repository", return_value=repository
+    ), patch.dict(
+        "os.environ", {"APP_RUNTIME_DATABASE_URL": "postgresql://configured"}
+    ):
+        response = analysis_api.analysis(
+            AnalysisRequest(question="합성 객실 운영 현황을 알려줘"),
+            request_context,
+        )
+
+    assert response.data.status.value == "SUCCEEDED"
+    assert repository.request_id == request_context.request_id
+    assert repository.finished[0] is response
+    assert set(repository.finished[1]) == {"plan", "query", "package"}
 
 
 def test_replay_requires_store_and_existing_owner_definition():

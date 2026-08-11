@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
 from app.contracts import (
@@ -12,6 +13,7 @@ from app.contracts import (
     ErrorCode,
     PipelineStage,
     RequestContext,
+    RouteType,
     StageOutcome,
     TraceStep,
 )
@@ -114,6 +116,7 @@ class AnalysisService:
                 "urn": item.urn,
                 "fqn": item.fqn,
                 "columns": list(item.columns),
+                "join_ids": list(item.join_ids),
                 "metric_ids": [
                     metric.id
                     for metric in package.metrics
@@ -208,6 +211,17 @@ class AnalysisService:
                 violation,
                 StageOutcome.BLOCKED,
             )
+            if decision.route_type is RouteType.TEMPLATE:
+                return self._responses.error(
+                    context,
+                    machine,
+                    trace,
+                    PipelineStage.G2,
+                    AnalysisStatus.BLOCKED,
+                    ErrorCode.SQL_POLICY_BLOCKED,
+                    "승인된 Template SQL이 현재 G2 정책을 통과하지 못했습니다.",
+                    decision,
+                )
             repair_count = 1
             try:
                 plan = budget.call(
@@ -371,31 +385,37 @@ class AnalysisService:
         if not result_cached:
             self._cache.put_result(result_key, query)
 
-        try:
-            explanation = budget.call(
-                self._model,
-                "node3",
-                {
-                    "scenario": scenario,
-                    "query": query,
-                    "assets": assets,
-                    "context": context,
-                },
-            )
-            if (
-                not isinstance(explanation, dict)
-                or not isinstance(explanation.get("summary"), str)
-                or not isinstance(explanation.get("model_version"), str)
-            ):
-                raise ValueError("invalid node3 response")
-        except (TimeoutError, TypeError, ValueError):
-            return self._responses.model_error(
-                context,
-                machine,
-                trace,
-                decision,
-                repair_count,
-            )
+        if decision.route_type is RouteType.TEMPLATE:
+            explanation = {
+                "summary": f"승인된 분석에서 {len(query['rows'])}건을 조회했습니다.",
+                "model_version": "TEMPLATE-RESULT-v1.0.0",
+            }
+        else:
+            try:
+                explanation = budget.call(
+                    self._model,
+                    "node3",
+                    {
+                        "scenario": scenario,
+                        "query": query,
+                        "assets": assets,
+                        "context": context,
+                    },
+                )
+                if (
+                    not isinstance(explanation, dict)
+                    or not isinstance(explanation.get("summary"), str)
+                    or not isinstance(explanation.get("model_version"), str)
+                ):
+                    raise ValueError("invalid node3 response")
+            except (TimeoutError, TypeError, ValueError):
+                return self._responses.model_error(
+                    context,
+                    machine,
+                    trace,
+                    decision,
+                    repair_count,
+                )
         artifact_id = self._support.artifact_id(
             context.trace_id,
             query["query_id"],
@@ -429,20 +449,36 @@ class AnalysisService:
                 column
                 for column in columns[1:]
                 if all(
-                    isinstance(row.get(column), (int, float))
-                    and not isinstance(row.get(column), bool)
+                    self._is_numeric(row.get(column))
                     for row in rows
                 )
             )
+            if "total_guest_revenue_krw" in numeric:
+                numeric = ("total_guest_revenue_krw",)
+            if (
+                decision.template_id == "weekly-room-operations"
+                and "recognized_room_revenue_krw" in columns
+            ):
+                numeric = ("recognized_room_revenue_krw",)
             if columns and numeric:
                 response.data.result.chart = ChartSpec(
                     chart_type="bar",
-                    x_field=columns[0],
+                    x_field="month" if "month" in columns else columns[0],
                     y_fields=numeric,
                 )
         if execution_sink is not None:
             execution_sink({"plan": plan, "query": query, "package": package})
         return response
+
+    @staticmethod
+    def _is_numeric(value: object) -> bool:
+        if isinstance(value, bool) or value is None:
+            return False
+        try:
+            Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            return False
+        return True
 
     def blocked(self, context: RequestContext, error: ErrorBody) -> AnalysisResponse:
         return self._responses.blocked(context, error)

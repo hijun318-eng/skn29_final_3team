@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 팀원 개인 branch와 dev·main 통합 정책 및 사람이 수행하는 Git 절차 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v1.12 |
-| 문서 기준일 | 2026-08-06 10:56 |
+| 버전 | v1.14 |
+| 문서 기준일 | 2026-08-11 14:04 |
 | 작성·수정 | 박준희 |
 
 각 팀원은 본인 개인 branch에서만 작업하고 완료한 변경을 개인 branch에 push한 뒤 관리자에게 알린다. 관리자는 확인한 개인 branch만 `dev`에 merge하고, 최종 검증 후 `dev`를 `main`에 merge한다. PR은 필수 절차가 아니며 GitHub Actions는 개인 branch와 `dev` push를 기준으로 실행한다. CI를 실행할 수 없으면 같은 검증을 local에서 수행하고, 필수 검증이 실패한 branch는 병합하지 않는다.
@@ -14,13 +14,21 @@
 
 ## 에이전트 작업 시작
 
-역할 작업은 파일을 수정하기 전에 본인 branch에서 다음 한 명령으로 시작한다.
+Git의 `Gate_실행_카드_원장.md`를 실행 상태의 단일 기준으로 사용한다. Google Docs는 요청과 응답을 전달하는 작업함이며 READY 여부나 허용 경로를 판정하는 기준으로 사용하지 않는다.
+
+역할 작업은 파일을 수정하기 전에 본인 branch에서 다음 한 명령으로 시작한다. 기본 실행은 fetch·merge·push 없이 현재 상태만 진단한다.
 
 ```powershell
-python .github/scripts/gate_scope.py --branch <본인 branch> --bootstrap
+python .github/scripts/agent_workflow.py --branch <본인 branch>
 ```
 
-이 명령은 현재 branch·dirty worktree·마지막 non-`PLANNED` 실행 카드 상태를 검사하고, 처음부터 끝까지 읽을 문서와 현재 카드 관련 절을 읽을 문서를 구분해 출력한다. worktree의 절대 경로는 달라도 되지만 branch가 카드의 `PERSONAL_BRANCH`와 다르거나 카드가 `READY`·`IN_PROGRESS`가 아니거나 기존 변경이 있으면 구현하지 않는다.
+출력의 `action`이 `fast-forward-available`일 때만 아래 명령으로 현재 개인 branch를 이미 존재하는 `origin/dev`까지 fast-forward할 수 있다. 이 명령도 fetch·push·reset·rebase·stash는 수행하지 않는다.
+
+```powershell
+python .github/scripts/agent_workflow.py --branch <본인 branch> --ff-only-dev
+```
+
+이 명령은 기존 `gate_scope.py`의 preflight 판정을 재사용해 현재 branch·dirty worktree·카드 계약·허용 경로를 검사한다. `--ff-only-dev`는 branch·clean·ancestor 조건을 먼저 확인하고 fast-forward한 뒤 갱신된 원장으로 전체 preflight를 한 번 실행하므로, 오래된 local 원장의 종료 카드가 안전한 최신화를 가로막지 않는다. 개인 branch와 `origin/dev`가 갈라졌거나 branch·카드·도구·working tree 조건이 맞지 않으면 변경 없이 실패한다. worktree의 절대 경로는 달라도 되지만 branch가 카드의 `PERSONAL_BRANCH`와 다르거나 최신화 뒤 카드가 `READY`·`IN_PROGRESS`가 아니거나 기존 변경이 있으면 구현하지 않는다.
 
 ## Branch 역할
 
@@ -81,16 +89,14 @@ git pull --ff-only origin <본인 branch>
 
 ## 새 작업 시작
 
-현재 branch가 본인 개인 branch이고 미완료 변경이 없을 때 최신 `dev`를 반영한다.
+현재 branch가 본인 개인 branch이고 미완료 변경이 없을 때 앞의 단일 명령으로 최신화 가능 여부를 확인한다.
 
 ```powershell
-git branch --show-current
-git status --short
-git pull --no-rebase origin dev
-git push origin <본인 branch>
+python .github/scripts/agent_workflow.py --branch <본인 branch>
+python .github/scripts/agent_workflow.py --branch <본인 branch> --ff-only-dev
 ```
 
-첫 번째 출력이 본인 branch가 아니거나 `git status --short`에 내용이 표시되면 pull하지 않는다. merge conflict가 발생하면 push하지 말고 관리자에게 알린다.
+두 번째 명령은 출력이 `fast-forward-available`일 때만 사용한다. 개인 branch와 `origin/dev`가 갈라졌으면 임의 pull·merge·push하지 않고 history-preserving 동기화 판정을 관리자에게 요청한다.
 
 ## 변경 확인과 commit
 
@@ -123,6 +129,8 @@ AI 에이전트가 개인 branch의 `dev` 병합을 수행할 때는 이 문서�
 `dev` 병합 요청은 위 통합에 필요한 개인 branch push, `dev` fetch·pull·merge·push, Gate 원장의 source 카드 종료 기록과 `team_summaries/` 파일의 단일 통합 기록 commit, 병합 완료 후 개인 branch의 안전한 fast-forward·push를 승인한 것으로 본다. source SHA의 개인 branch CI가 성공해야 병합할 수 있다. 여러 branch를 한 요청에서 통합하면 카드 종료와 팀 요약·주간보고는 마지막 source 뒤 한 번만 commit한다. 개인 branch 작업 트리가 깨끗하고 기존 원격 개인 branch가 `origin/dev`의 조상일 때만 동기화하며, 조건이 맞지 않으면 개인 branch를 변경하지 않고 이유를 알린다. 기존 미커밋 변경과 다른 파일은 포함하지 않으며, 작업 트리가 깨끗하지 않거나 로컬·원격 commit이 일치하지 않거나 CI·병합·보고 검증이 실패하면 stash·reset·임의 commit 없이 중단한다.
 
 병합 사전검사의 `--session`은 worktree들이 공유하는 Git 공용 디렉터리에 `answervice-merge-session.json`을 두고 최초 dev SHA, source SHA와 CI 결과를 단계 사이에서 재사용한다. 이 파일은 Git 추적 대상이 아니며 secret이나 변경 파일 내용을 저장하지 않는다. 실제 merge·원장 수정·commit·push는 계속 승인된 절차에서만 수행한다.
+
+등록된 local source worktree가 오래되거나 dirty여도 병합 대상이 이미 push된 `origin/<branch>`이고 그 exact SHA의 source CI가 PASS라면, 관리자는 batch에 `--remote-only --session`을 명시해 remote SHA만 병합 근거로 사용할 수 있다. 이 모드에서는 source 단계를 생략하고 dev·final 단계가 session의 remote SHA와 CI를 계속 검증한다. local source 변경은 읽거나 정리하지 않으며 병합 뒤 개인 branch 동기화도 clean 조건이 확인되지 않으면 생략한다.
 
 ## 관리자 통합
 
@@ -163,6 +171,8 @@ git push origin main
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v1.14 | 2026-08-11 14:04 | stale 원장보다 안전한 fast-forward를 먼저 수행하도록 단일 시작 명령을 명확히 하고 검증된 origin SHA의 remote-only dev 병합 절차 추가 |
+| v1.13 | 2026-08-11 12:10 | Git Gate 정본과 Google Docs 요청함을 구분하고 read-only 진단·제한적 dev fast-forward 단일 명령 추가 |
 | v1.12 | 2026-08-06 10:56 | 병합 단계가 공용 JSON session에서 dev·source SHA와 CI 결과를 재사용하도록 사전검사 절차 보완 |
 | v1.11 | 2026-08-06 10:09 | 역할 작업 bootstrap, 다중 branch 사전점검과 병합 카드 종료 기록 추가 |
 | v1.10 | 2026-08-06 09:30 | source CI 성공을 병합 조건으로 추가하고 실제 변경 문서 검사·여러 branch 보고 일괄 commit 적용 |

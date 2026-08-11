@@ -2,6 +2,7 @@
   "catalogs": [
     {"user": "hotel_synthetic_setup", "catalog": "serving", "allow": "all"},
     {"user": "hotel_synthetic_setup", "catalog": "(pms|pos|crm|facility|banquet)", "allow": "all"},
+    {"user": "datahub_ingestion", "catalog": "system", "allow": "read-only"},
     {"catalog": "system", "allow": "none"},
     {"catalog": "(serving|pms|pos|crm|facility|banquet)", "allow": "read-only"},
     {"catalog": ".*", "allow": "none"}
@@ -11,6 +12,20 @@
     {"owner": false}
   ],
   "tables": [
+    {
+      "user": "datahub_ingestion",
+      "catalog": "system",
+      "schema": "metadata",
+      "table": "(catalogs|table_comments)",
+      "privileges": ["SELECT"]
+    },
+    {
+      "user": "datahub_ingestion",
+      "catalog": "system",
+      "schema": ".*",
+      "table": ".*",
+      "privileges": []
+    },
     {
       "user": "hotel_synthetic_setup",
       "catalog": "serving",

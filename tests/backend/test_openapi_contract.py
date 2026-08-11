@@ -34,6 +34,11 @@ class OpenApiContractTest(unittest.TestCase):
         self.assertEqual(
             {
                 "/analysis",
+                "/analysis/definitions",
+                "/analysis/definitions/{definition_id}",
+                "/analysis/definitions/{definition_id}/runs",
+                "/analysis/runs",
+                "/analysis/runs/{request_id}",
                 "/health",
                 "/readiness",
                 "/reports/definitions",
@@ -57,6 +62,12 @@ class OpenApiContractTest(unittest.TestCase):
                 "getHealth",
                 "getReadiness",
                 "submitAnalysis",
+                "analysisCreateDefinition",
+                "analysisListDefinitions",
+                "analysisGetDefinition",
+                "analysisReplayDefinition",
+                "analysisListRuns",
+                "analysisGetRun",
                 "reportCreateDefinition",
                 "reportListDefinitions",
                 "reportApproveVersion",
@@ -70,6 +81,15 @@ class OpenApiContractTest(unittest.TestCase):
             operation_ids,
         )
         self.assertNotIn("post", committed["paths"]["/reports/runs"])
+
+    def test_analysis_persistence_requests_reject_server_owned_fields(self) -> None:
+        schemas = app.openapi()["components"]["schemas"]
+        for name in ("CreateAnalysisDefinitionRequest", "ReplayAnalysisRequest"):
+            with self.subTest(schema=name):
+                self.assertFalse(schemas[name]["additionalProperties"])
+        run = schemas["AnalysisRunResponse"]["properties"]
+        for forbidden in ("sql", "parameters", "result", "snapshot"):
+            self.assertNotIn(forbidden, run)
 
     def test_report_request_schemas_reject_additional_properties(self) -> None:
         schemas = app.openapi()["components"]["schemas"]

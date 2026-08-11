@@ -1,0 +1,110 @@
+{
+  "EXECUTION_BUNDLE_ID": "R2-W5-F12",
+  "ROLE": "R2",
+  "BRANCH": "seung",
+  "BASE_SHA": "e6f791f7d18ab8b18695a943461a0b89b512d0b3",
+  "RESULT_SHA": "e4d7d983606a7ee55b75b2350e33d36c573a6741",
+  "COMPLETED_CARDS": [
+    "R2-09-CRM-INCLUDE-JOBS-FALSE"
+  ],
+  "CHANGED_FILES": [
+    "docs/markdown/daily_reports/seung/일일보고.md",
+    "infrastructure/database/datahub/recipes/crm.i2.yml",
+    "infrastructure/database/datahub/scripts/run-runtime-validation.ps1",
+    "src/data/datahub_runtime_evidence.i5.v1.json",
+    "tests/data/test_datahub_runtime_evidence.py",
+    "tests/data/test_i2_contract.py"
+  ],
+  "CONTRACT_VERSIONS": {
+    "datahub": "I5-DATAHUB-v1.1.0-RUNTIME-DRAFT",
+    "crm_recipe": "DATAHUB-MSSQL-CRM-RECIPE-v1.0.1-DRAFT",
+    "directive_token": "R2-W5-F12@b78265c",
+    "execution_override": "USER_APPROVED_WITHOUT_UPDATED_GIT_LEDGER"
+  },
+  "TEST_RESULTS": [
+    {
+      "id": "T1_RECIPE_PARSE",
+      "name": "CRM recipe YAML 및 opt-out 계약",
+      "status": "PASS",
+      "evidence": "PyYAML parse와 include_jobs=false exact 1회 확인"
+    },
+    {
+      "id": "T2_TARGET_CONTRACT",
+      "name": "I2 대상 계약",
+      "status": "PASS",
+      "evidence": "stdlib unittest 5건 PASS"
+    },
+    {
+      "id": "T3_RUNTIME_EVIDENCE",
+      "name": "DataHub runtime evidence 대상 검사",
+      "status": "PASS",
+      "evidence": "pytest형 함수 4건 직접 실행 PASS; recipe hash, 8/116 기대값, secret-bearing field 부재 확인"
+    },
+    {
+      "id": "T4_DATA_REGRESSION",
+      "name": "전체 데이터 회귀",
+      "status": "PASS",
+      "evidence": "stdlib unittest discover 36건 PASS"
+    },
+    {
+      "id": "T5_OFFLINE_VALIDATOR",
+      "name": "DataHub offline runtime validator",
+      "status": "PASS",
+      "evidence": "DRY_RUN_PASS, runtime PARTIAL/BLOCKED, recipe 6개와 binding 8개 검증"
+    },
+    {
+      "id": "T6_DIFF",
+      "name": "Git whitespace 검사",
+      "status": "PASS",
+      "evidence": "git diff --check exit 0"
+    },
+    {
+      "id": "T7_BRANCH_CI",
+      "name": "seung source CI",
+      "status": "CI_PENDING",
+      "evidence": "push 뒤 GitHub Actions 결과 확인 예정"
+    }
+  ],
+  "NOT_RUN": [
+    {
+      "id": "T4_CRM_RUNTIME",
+      "reason": "승인된 DataHub GMS runtime이 정지 상태이며 Docker lifecycle 변경 없이 corrected CRM ingestion을 실행할 수 없음"
+    },
+    {
+      "id": "PYTEST",
+      "reason": "로컬 환경에 pytest가 없고 dependency 추가는 수행하지 않음"
+    }
+  ],
+  "CHANGE_REQUESTS": [
+    "R1은 Google Docs의 확대 범위를 Git Gate 원장에 반영해 source scope를 일치시켜야 함"
+  ],
+  "RESIDUAL_RISKS": [
+    "corrected CRM recipe의 live ingestion과 Dataset 8/8·Column 116/116 검증은 아직 완료되지 않음",
+    "Git Gate가 기존 4경로인 상태라 확대된 evidence 3경로는 source CI scope 실패 가능성이 있음"
+  ],
+  "EXTERNAL_APPROVAL_REQUIRED": [
+    "R1 Git Gate 범위 동기화와 live DataHub runtime 재검증 카드"
+  ],
+  "ACCEPTANCE_RESULTS": [
+    {
+      "id": "AC1_CRM_INCLUDE_JOBS_FALSE",
+      "status": "PASS",
+      "evidence": "crm.i2.yml source.config에 include_jobs=false exact 1회"
+    },
+    {
+      "id": "AC2_NO_MSSQL_GRANT",
+      "status": "PASS",
+      "evidence": "DB login·role·GRANT·secret 변경 0건"
+    },
+    {
+      "id": "AC3_OTHER_RECIPES_UNCHANGED",
+      "status": "PASS",
+      "evidence": "CRM 외 recipe 변경 0건"
+    },
+    {
+      "id": "AC4_RUNTIME_EVIDENCE_HONEST",
+      "status": "PASS",
+      "evidence": "PMS·POS inherited PASS만 보존하고 corrected CRM과 나머지는 NOT_RUN으로 기록"
+    }
+  ]
+}

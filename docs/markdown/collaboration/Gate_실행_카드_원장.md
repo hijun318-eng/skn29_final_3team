@@ -27,7 +27,7 @@
 | R1 | `R1-W5-F37` | `MERGED_DEV` | `junhee` |
 | R2 | `R2-W5-F12` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `MERGED_DEV` | `daesung` |
-| R4 | `R4-W5-F17` | `READY` | `jaehong` |
+| R4 | `R4-W5-F18` | `READY` | `jaehong` |
 | R5 | `R5-W5-F6` | `READY` | `minji` |
 
 ## 활성 실행 카드
@@ -724,7 +724,7 @@ RESULT_CI=branch 31463682802 PASS
 ### R4 · R4-W5-F17
 
 ```text
-STATUS=READY
+STATUS=BLOCKED
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -750,6 +750,41 @@ STOP_CONDITIONS=product code·migration·OpenAPI·infrastructure 수정 필요; 
 EXTERNAL_ACTION_PERMISSION=로컬에 이미 존재하는 `postgres:16.13-bookworm@sha256:472efd9a66f2b2f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60` image로 owner-scoped `r4-w5-f17-runtime-test` PostgreSQL을 새 synthetic credential·전용 network·전용 volume에서 생성하고 migration·승인 HTTP/DB test를 수행한 뒤 exact container·network·volume만 폐기하는 절차, 허용 경로 commit·jaehong push·source CI를 승인한다. host port publish·image pull·기존 app-postgres·공유 volume·다른 project/container/network 변경, 실제 credential·외부 전송·비용은 금지한다. 실행 전후 기존 Docker name·ID·volume snapshot이 같아야 하며 실패 시에도 격리 대상을 정리하고 evidence를 BLOCKED로 기록한다.
 AUTO_FAIL_CONDITIONS=mock handler를 실제 protocol 증거로 기록; broad GRANT·superuser; runtime role가 migration owner; 기존 resource drift; OpenAPI·제품 변경; scope 위반; 필수 검증 FAIL
 R1_REVIEW_CONDITIONS=source CI와 Python 3.12 backend 전체 회귀가 PASS하고 실제 DataHub/Trino protocol harness, blank-to-head owner 분리, negative fail-closed, 기존 resource 무변경이 handoff에 exact evidence로 남을 때만 dev 통합한다.
+SUPERSEDED_BY=R4-W5-F18
+BLOCKED_REASON=origin/jaehong 134cdf2와 source CI 31473948457은 test harness 회귀를 통과했지만 실제 20260810_06 baseline의 context.context_records·context_releases·context_packages owner가 APP_ADMIN_USER이고 Alembic 실행 role은 APP_MIGRATION_USER라서 20260811_07 ALTER TABLE이 must be owner로 중단됐다. F17은 infrastructure 수정이 금지되어 제품 ownership을 교정할 수 없고 handoff도 제출되지 않았으므로 actual runtime PASS로 승격하지 않는다.
+RESULT_SHA=134cdf2e08bf8aec25bf3927f4b4425c8dde2928
+RESULT_CI=branch 31473948457 PASS — test harness regression only; migration ownership acceptance BLOCKED
+```
+
+### R4 · R4-W5-F18
+
+```text
+STATUS=READY
+ROLE_ID=R4
+ASSIGNEE=김재홍
+PERSONAL_BRANCH=jaehong
+EXECUTION_BUNDLE_ID=R4-W5-F18
+TARGET_INTEGRATION_GATE=I5
+CHECKPOINT_GATES=application PostgreSQL migration ownership alignment and actual runtime proof
+TASK_CARD_RANGE=R4-16 app-postgres exact migration owner provisioning REWORK
+CURRENT_TASK_CARD_ID=R4-16-MIGRATION-OWNERSHIP
+BASE_BRANCH=dev
+BASE_SHA=5518b93b017c008171d86342d5bdee8ffcb83564
+START_POINT=origin/jaehong 134cdf2의 F17 test 3경로와 source CI 31473948457 PASS를 보존한다. R4 고유 3경로와 latest origin/dev 5518b93 이후 변경의 overlap은 0이다. clean jaehong에서 origin/dev를 history-preserving non-ff merge하고 conflict·ref drift·추가 dirty가 없을 때만 preflight와 전체 planned-path 검사를 거쳐 시작한다. reset·rebase·force push·stash 조작은 금지한다.
+DIRECTIVE=REWORK
+DIRECTIVE_TOKEN=R4-W5-F18@5518b93
+CONTRACT_VERSION=APP-POSTGRES-MIGRATION-OWNERSHIP-v1.0.0-DRAFT; R4-REAL-RUNTIME-HARNESS-v1.0.0-DRAFT; existing OPENAPI-v1.0.0
+ALLOWED_PATHS=infrastructure/database/security/provision-app-postgres.sh; tests/backend/test_http_runtime.py; tests/backend/test_migration_compatibility.py; handoffs/R4-W5-F18.json; docs/markdown/daily_reports/jaehong/일일보고.md
+FORBIDDEN_PATHS=app/backend/migrations/**; app/backend/app/**; app/backend/contracts/**; infrastructure/database/security의 승인 script 외 infrastructure/**; compose.yml; .env; .env.example; frontend/**; src/data/**; src/ai/**; handoffs/R4-W5-F17.json; dependency; secret; 기존 project/container/network/volume
+HANDOFF_MANIFEST=handoffs/R4-W5-F18.json
+ACCEPTANCE_CRITERIA=provision-app-postgres.sh는 기존 application DDL이 APP_ADMIN_USER로 만든 context.context_records·context_releases·context_packages 세 table만 APP_MIGRATION_USER owner로 idempotent 정렬한다. blanket REASSIGN OWNED, superuser migration, schema·database owner 이전, 다른 table owner 변경, 광범위 GRANT를 사용하지 않는다. pinned PostgreSQL 16의 격리된 실제 20260810_06 baseline에서 provisioning→APP_MIGRATION_USER Alembic 20260811_07/head upgrade를 통과하고 세 table owner가 migration role과 exact 일치해야 한다. APP_DB_USER는 필요한 runtime DML만 가능하고 owner·ALTER·DDL은 거부돼야 한다. F17의 actual DataHub/Trino protocol harness와 FastAPI HTTP/DB 회귀를 재사용해 request persistence→Trino query→G3→Artifact readback을 검증하며 기존 app-postgres와 공유 Docker resource는 전후 불변이어야 한다.
+ACCEPTANCE_IDS=AC1_EXACT_THREE_TABLE_OWNERS;AC2_IDEMPOTENT_PROVISION;AC3_BASELINE_TO_HEAD;AC4_RUNTIME_DML_ONLY;AC5_NO_BROAD_GRANT;AC6_ACTUAL_HTTP_DB_TRACE;AC7_EXISTING_RESOURCE_UNCHANGED;AC8_PUBLISHED_MIGRATION_UNCHANGED
+TEST_COMMANDS=sh parser 또는 동등한 provision script 정적 검증; python -m pytest -p no:cacheprovider tests/backend/test_migration_compatibility.py tests/backend/test_http_runtime.py -q; pinned isolated PostgreSQL create→20260810_06 baseline→provision twice→APP_MIGRATION_USER upgrade head→exact 3-table owner query→APP_DB_USER DML positive·ALTER/DDL negative→actual HTTP/DB trace→exact destroy; 다른 application table owner 전후 비교; python -m pytest -p no:cacheprovider tests/backend -q in approved Python 3.12 test container; python app/backend/scripts/export_openapi.py --check; python -m compileall -q tests/backend; gate_scope preflight·5 planned paths·merge-base; git diff --check; jaehong source CI
+TEST_COMMAND_IDS=T1_PROVISION_STATIC;T2_TARGET;T3_OWNER_IDEMPOTENCY;T4_BASELINE_TO_HEAD;T5_RUNTIME_NEGATIVE;T6_HTTP_DB_TRACE;T7_RESOURCE_SNAPSHOT;T8_BACKEND;T9_OPENAPI;T10_COMPILE;T11_SCOPE;T12_DIFF;T13_BRANCH_CI
+STOP_CONDITIONS=세 context table 외 owner 변경; blanket REASSIGN OWNED·superuser·schema/database owner 이전·광범위 GRANT 필요; published migration·app/backend product·OpenAPI 수정 필요; shared app-postgres·기존 DB·다른 project/container/network/volume 변경; host port publish·image pull·외부 network·secret·dependency·비용; F17 handoff 소급 생성; 허용 경로 밖 변경; 필수 검증 실패
+EXTERNAL_ACTION_PERMISSION=local에 이미 존재하는 pinned postgres:16.13-bookworm image로 owner-scoped r4-w5-f18-migration-owner-test PostgreSQL을 새 synthetic credential·전용 network·전용 volume에 생성하고 20260810_06 baseline→provisioning→migration head→승인 HTTP/DB test를 수행한 뒤 exact 격리 container·network·volume만 폐기하는 절차, latest origin/dev history-preserving merge, 허용 경로 commit·jaehong corrective push 1회·source CI를 승인한다. image pull·host port publish·기존 app-postgres·공유 volume·다른 project/resource·실제 credential·외부 전송·배포는 금지한다. 실행 전후 기존 Docker name·ID·volume snapshot이 같아야 한다.
+AUTO_FAIL_CONDITIONS=세 table 외 ownership drift; runtime role owner/DDL 성공; migration role head 실패; broad privilege; published migration 변경; mock/fixture 결과를 actual PASS로 기록; 기존 resource drift; scope 위반; 필수 검증 FAIL
+R1_REVIEW_CONDITIONS=source CI와 Python 3.12 backend 전체 회귀가 PASS하고 exact 세 table ownership·idempotent provisioning·baseline-to-head·runtime DML/DDL 분리·actual HTTP/DB trace·기존 resource 무변경이 F18 handoff에 기록된 뒤에만 dev/test 통합을 검토한다.
 ```
 
 ### R5 · R5-W5-F2
@@ -1184,8 +1219,8 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.99 | 2026-08-11 17:49 | R4 F17 test harness 결과와 CI PASS는 보존하되 실제 migration table ownership 차단을 BLOCKED로 분리하고 exact 세 context table만 migration role로 정렬하는 R4-W5-F18 owner-scoped REWORK 발행 |
 | v5.98 | 2026-08-11 17:24 | 미완료 R4 F17 dependency가 모든 branch CI를 실패시키던 R1-W5-F35 conditional 판정을 WAIT로 복구하고, backend migration 교정과 독립적인 Report Worker v1.2 proposal을 R5-W5-F6 READY로 발행 |
 | v5.97 | 2026-08-11 19:25 | R1-W5-F37 self-service 단일 source guard와 source CI 31471874981 PASS를 새 표준 절차로 dev에 통합하고 MERGED_DEV 전환 |
 | v5.96 | 2026-08-11 19:15 | 자기 mapped branch 단일 source만 self-service session에 고정하고 다른 branch·복수·remote-only를 차단하며 관리자 절차를 보존해 R1-W5-F37 REVIEW 전환 |
 | v5.95 | 2026-08-11 19:02 | mapped 개인 작업자가 자기 branch 하나만 기존 안전 조건을 유지해 dev에 병합하도록 관리자 전용 표현·실행자 검증을 최소 완화하는 R1-W5-F37 READY 발행 |
-| v5.94 | 2026-08-11 18:50 | R1-W5-F36의 외부 env 직접 참조·runtime 충돌 fail-closed와 source CI 31470948044 PASS를 확인해 dev에 통합하고 MERGED_DEV 전환 |

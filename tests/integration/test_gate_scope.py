@@ -425,7 +425,13 @@ TARGET_INTEGRATION_GATE=I5
             gate_scope.next_gate_lines(
                 self.ledger,
                 "I5",
-                [{"STATUS": "MERGED_DEV", "TARGET_INTEGRATION_GATE": "I4"}],
+                [
+                    {
+                        "STATUS": "VERIFIED_GATE",
+                        "PERSONAL_BRANCH": "seung",
+                        "TARGET_INTEGRATION_GATE": "I4",
+                    }
+                ],
                 [],
             )
         )

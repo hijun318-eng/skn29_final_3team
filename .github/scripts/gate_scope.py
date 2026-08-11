@@ -785,6 +785,7 @@ def next_gate_lines(
     verified = any(
         bundle.get("TARGET_INTEGRATION_GATE") == previous_gate
         and bundle["STATUS"] == "VERIFIED_GATE"
+        and bundle.get("PERSONAL_BRANCH") == "junhee"
         for bundle in [*parsed, *archive]
     )
     candidates = [
@@ -832,6 +833,7 @@ def inferred_next_gate(
         int(bundle["TARGET_INTEGRATION_GATE"][1:])
         for bundle in [*current, *(archive or [])]
         if bundle["STATUS"] == "VERIFIED_GATE"
+        and bundle.get("PERSONAL_BRANCH") == "junhee"
         and re.fullmatch(r"I[1-5]", bundle.get("TARGET_INTEGRATION_GATE", ""))
     ]
     return f"I{min(max(verified, default=1) + 1, 5)}"

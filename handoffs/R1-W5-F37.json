@@ -1,0 +1,28 @@
+{
+  "EXECUTION_BUNDLE_ID":"R1-W5-F37","ROLE":"R1","BRANCH":"junhee",
+  "BASE_SHA":"70d7d91d208958d15c195c9b543eddc11b834c3f","RESULT_SHA":"33b9d3c1711a3b5ebc233c44a91725396f99d33d",
+  "COMPLETED_CARDS":["R1-04-SELF-SERVICE-DEV-MERGE"],
+  "CHANGED_FILES":[".agents/skills/merge-branch-to-dev/SKILL.md",".agents/skills/merge-branch-to-dev/scripts/check_merge_preflight.py","AGENTS.md","docs/markdown/collaboration/Gate_실행_카드_원장.md","docs/markdown/collaboration/README.md","docs/markdown/daily_reports/junhee/일일보고.md","tests/integration/test_merge_preflight.py"],
+  "CONTRACT_VERSIONS":{"merge_branch_to_dev":"v1.1.0-DRAFT","directive_token":"R1-W5-F37@70d7d91"},
+  "TEST_RESULTS":[
+    {"id":"T1_SELF_SERVICE_MATRIX","name":"self-service matrix","status":"PASS","evidence":"own PASS; other/multiple/remote-only fail-closed"},
+    {"id":"T2_TARGET","name":"target tests","status":"PASS","evidence":"10 passed, 3 subtests"},
+    {"id":"T3_INTEGRATION","name":"integration tests","status":"PASS","evidence":"93 passed, 2 skipped, 20 subtests"},
+    {"id":"T4_COMPILE","name":"compileall","status":"PASS","evidence":"preflight script compiled"},
+    {"id":"T5_DOCUMENT_POLICY","name":"document/report policy","status":"PASS","evidence":"policy and report validation PASS"},
+    {"id":"T6_SCOPE","name":"Gate scope","status":"PASS","evidence":"READY preflight and 8 paths PASS"},
+    {"id":"T7_DIFF","name":"diff check","status":"PASS","evidence":"git diff --check PASS"},
+    {"id":"T8_SOURCE_CI","name":"source CI","status":"CI_PENDING","evidence":"handoff-only push terminal CI 예정"},
+    {"id":"T9_DEV_INTEGRATION","name":"standard dev integration","status":"CI_PENDING","evidence":"source CI PASS 뒤 self-service 표준 절차 예정"},
+    {"id":"T10_DEV_CI","name":"dev CI","status":"CI_PENDING","evidence":"dev push 뒤 terminal CI 예정"}
+  ],
+  "NOT_RUN":[],"CHANGE_REQUESTS":[],"RESIDUAL_RISKS":[],"EXTERNAL_APPROVAL_REQUIRED":[],
+  "ACCEPTANCE_RESULTS":[
+    {"id":"AC1_OWN_MAPPED_BRANCH","status":"PASS","evidence":"self_service_source session field fixed"},
+    {"id":"AC2_SINGLE_SOURCE","status":"PASS","evidence":"sources must equal actor singleton"},
+    {"id":"AC3_EXISTING_GUARDS","status":"PASS","evidence":"existing batch/source/dev/final path unchanged"},
+    {"id":"AC4_ADMIN_COMPATIBLE","status":"PASS","evidence":"flag absent retains multi-source/remote-only"},
+    {"id":"AC5_FORBIDDEN_GIT_OPS","status":"PASS","evidence":"force/rebase/reset/stash remain unauthorized"},
+    {"id":"AC6_NO_MAIN_MERGE","status":"PASS","evidence":"skill scope remains personal branch to dev only"}
+  ]
+}

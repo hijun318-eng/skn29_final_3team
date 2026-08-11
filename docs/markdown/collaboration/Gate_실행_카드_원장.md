@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.80 |
-| 문서 기준일 | 2026-08-11 16:38 |
+| 버전 | v5.81 |
+| 문서 기준일 | 2026-08-11 16:55 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -24,7 +24,7 @@
 
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
-| R1 | `R1-W5-F33` | `READY` | `junhee` |
+| R1 | `R1-W5-F33` | `REVIEW` | `junhee` |
 | R2 | `R2-W5-F9` | `READY` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
 | R4 | `R4-W5-F16` | `READY` | `jaehong` |
@@ -375,7 +375,7 @@ RESULT_CI=branch 31463640451 PASS
 ### R1 · R1-W5-F33
 
 ```text
-STATUS=READY
+STATUS=REVIEW
 ROLE_ID=R1
 ASSIGNEE=박준희
 PERSONAL_BRANCH=junhee
@@ -401,6 +401,8 @@ STOP_CONDITIONS=PlanOnly가 Docker 필요; healthy만으로 다른 checkout 허�
 EXTERNAL_ACTION_PERMISSION=origin read-only fetch·현재 answervice container label/health read-only 조회, 허용 경로 commit·junhee push·source CI만 승인한다. container recreate·Docker resource 변경·dev/test merge·다른 branch·secret·비용·외부 시스템 변경은 금지한다.
 AUTO_FAIL_CONDITIONS=mixed checkout runtime에서 refresh 가능; config/env label 불일치 허용; mismatch 뒤 docker compose up 호출; 기존 path matrix 회귀; scope·필수 검증 FAIL
 R1_REVIEW_CONDITIONS=synthetic identity matrix와 현재 host의 mixed-checkout read-only 재현이 fail-closed하고 기존 선택 재기동 계약이 유지되며 source CI가 PASS한 뒤 dev 통합한다.
+RESULT_SHA=3a1387ed412dc5db41b687b8203e9e3e725a8a39
+RESULT_CI=branch pending
 ```
 
 ### R2 · R2-W5-F5
@@ -934,6 +936,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.81 | 2026-08-11 16:55 | mixed checkout identity fail-closed와 integration 90건을 확인해 R1-W5-F33을 REVIEW 전환 |
 | v5.80 | 2026-08-11 16:38 | R1-W5-F33 발행과 현재 역할별 dashboard를 동기화해 source scope 판정 교정 |
 | v5.79 | 2026-08-11 16:15 | healthy container가 서로 다른 checkout·env에서 생성된 mixed test runtime을 단일 환경으로 오인하지 않도록 R1-W5-F33 READY 발행 |
 | v5.78 | 2026-08-11 16:05 | R4-W5-F16이 기존 환경을 건드리지 않고 인증 migration·HTTP/DB 회귀를 수행하도록 exact PostgreSQL image와 격리 project·network·volume의 생성·검증·폐기 권한을 추가 |

@@ -1,0 +1,50 @@
+{
+  "EXECUTION_BUNDLE_ID": "R1-W5-F33",
+  "ROLE": "R1",
+  "BRANCH": "junhee",
+  "BASE_SHA": "af13722b23196a761d7c3742e925936bb86c84b5",
+  "RESULT_SHA": "3a1387ed412dc5db41b687b8203e9e3e725a8a39",
+  "COMPLETED_CARDS": ["R1-04-TEST-RUNTIME-IDENTITY"],
+  "CHANGED_FILES": [
+    ".github/scripts/refresh_test_runtime.ps1",
+    "tests/integration/test_test_runtime_refresh.py",
+    "docs/markdown/collaboration/Gate_실행_카드_원장.md",
+    "docs/markdown/daily_reports/junhee/일일보고.md",
+    "handoffs/R1-W5-F33.json"
+  ],
+  "CONTRACT_VERSIONS": {
+    "test_branch_runtime": "v1.0.1-DRAFT",
+    "compose_dev": "v1",
+    "directive_token": "R1-W5-F33@af13722"
+  },
+  "TEST_RESULTS": [
+    {"id": "T1_CLASSIFIER", "name": "경로 분류 회귀", "status": "PASS", "evidence": "target test의 기존 frontend/backend/combined/no-op/manual-review 6-case PASS"},
+    {"id": "T2_IDENTITY_MATRIX", "name": "runtime identity matrix", "status": "PASS", "evidence": "same checkout PASS; working_dir/config/env mismatch, missing label, duplicate service FAIL"},
+    {"id": "T3_HOST_REPRODUCTION", "name": "현재 host mixed checkout 재현", "status": "PASS", "evidence": "read-only label 검사에서 backend working_dir baseline_restore != repository root를 표시하고 refresh 전 차단"},
+    {"id": "T4_POWERSHELL_PARSE", "name": "PowerShell parser", "status": "PASS", "evidence": "ScriptBlock parse PASS"},
+    {"id": "T5_TARGET_TESTS", "name": "target 회귀", "status": "PASS", "evidence": "8 passed"},
+    {"id": "T6_INTEGRATION", "name": "전체 integration 회귀", "status": "PASS", "evidence": "90 passed, 2 skipped, 15 subtests passed"},
+    {"id": "T7_DOCUMENT_POLICY", "name": "문서·보고 정책", "status": "PASS", "evidence": "document policy와 개인 보고 validation PASS"},
+    {"id": "T8_SCOPE", "name": "Gate scope", "status": "PASS", "evidence": "6 planned paths와 merge-base scope PASS"},
+    {"id": "T9_DIFF", "name": "Git diff check", "status": "PASS", "evidence": "git diff --check PASS"},
+    {"id": "T10_BRANCH_CI", "name": "junhee source CI", "status": "CI_PENDING", "evidence": "handoff push 뒤 terminal CI 확인 예정"}
+  ],
+  "NOT_RUN": [],
+  "CHANGE_REQUESTS": [
+    "R4: app_migration이 app_admin 소유 table을 변경하는 migration ownership 문제는 owner-scoped producer 카드로 별도 교정 필요; F33에서 DB 또는 backend를 변경하지 않음"
+  ],
+  "RESIDUAL_RISKS": [
+    "현재 local runtime은 mixed checkout이라 선택 재기동이 의도대로 차단된다. exact test worktree에서 세 service를 동일 env/config로 준비하기 전 actual integration refresh는 실행할 수 없다."
+  ],
+  "EXTERNAL_APPROVAL_REQUIRED": [],
+  "ACCEPTANCE_RESULTS": [
+    {"id": "AC1_CURRENT_TEST_CHECKOUT", "status": "PASS", "evidence": "세 prerequisite service의 working_dir를 exact 비교"},
+    {"id": "AC2_EXACT_CONFIG", "status": "PASS", "evidence": "config_files를 current compose.yml과 exact path 비교"},
+    {"id": "AC3_EXACT_ENV", "status": "PASS", "evidence": "environment_file을 resolved EnvFilePath와 exact path 비교"},
+    {"id": "AC4_ALL_PREREQUISITES", "status": "PASS", "evidence": "app-postgres, backend, frontend가 각각 정확히 한 개여야 함"},
+    {"id": "AC5_MISMATCH_FAIL_CLOSED", "status": "PASS", "evidence": "service·label·expected·actual을 표시하고 docker compose up 전 throw"},
+    {"id": "AC6_PLAN_ONLY_UNCHANGED", "status": "PASS", "evidence": "PlanOnly는 identity·Docker 조회 전에 기존 JSON 결과 반환"},
+    {"id": "AC7_REFRESH_UNCHANGED", "status": "PASS", "evidence": "identity PASS 뒤 기존 --no-deps --build --wait와 HTTP health 흐름 유지"},
+    {"id": "AC8_NO_PRODUCT_MUTATION", "status": "PASS", "evidence": "R2~R5 제품·DB·Compose 변경 없음; host 검사는 label read-only"}
+  ]
+}

@@ -5,6 +5,7 @@ param(
     [string]$EnvFilePath = '.env',
     [string[]]$ChangedPaths = @(),
     [string]$ChangedPathsJson = '',
+    [string]$RuntimeInventoryJson = '',
     [switch]$PlanOnly
 )
 
@@ -37,9 +38,55 @@ function Get-RefreshPlan {
     }
 }
 
+function Assert-RuntimeIdentity {
+    param(
+        [object[]]$Inventory,
+        [string]$ExpectedProject,
+        [string]$ExpectedRoot,
+        [string]$ExpectedCompose,
+        [string]$ExpectedEnv
+    )
+
+    $expected = @{
+        'com.docker.compose.project' = $ExpectedProject
+        'com.docker.compose.project.working_dir' = $ExpectedRoot
+        'com.docker.compose.project.config_files' = $ExpectedCompose
+        'com.docker.compose.project.environment_file' = $ExpectedEnv
+    }
+    foreach ($service in @('app-postgres', 'backend', 'frontend')) {
+        $matches = @($Inventory | Where-Object { $_.service -eq $service })
+        if ($matches.Count -ne 1) { throw "runtime identity service count mismatch: $service" }
+        foreach ($entry in $expected.GetEnumerator()) {
+            $actual = $matches[0].labels.PSObject.Properties[$entry.Key].Value
+            $matchesExpected = if ($entry.Key -eq 'com.docker.compose.project') {
+                [System.StringComparer]::Ordinal.Equals($actual, $entry.Value)
+            } else {
+                $actual -and [System.StringComparer]::OrdinalIgnoreCase.Equals(
+                    [System.IO.Path]::GetFullPath($actual).TrimEnd('\', '/'),
+                    [System.IO.Path]::GetFullPath($entry.Value).TrimEnd('\', '/')
+                )
+            }
+            if (-not $matchesExpected) {
+                throw "runtime identity mismatch: service=$service label=$($entry.Key) expected=$($entry.Value) actual=$actual"
+            }
+        }
+    }
+}
+
 $root = (& git rev-parse --show-toplevel 2>$null).Trim()
 if (-not $root) { throw 'Repository root를 확인할 수 없습니다.' }
 Set-Location -LiteralPath $root
+
+if ($RuntimeInventoryJson) {
+    Assert-RuntimeIdentity `
+        -Inventory @(ConvertFrom-Json -InputObject $RuntimeInventoryJson) `
+        -ExpectedProject 'answervice' `
+        -ExpectedRoot $root `
+        -ExpectedCompose (Join-Path $root 'compose.yml') `
+        -ExpectedEnv (Resolve-Path -LiteralPath $EnvFilePath -ErrorAction Stop).Path
+    Write-Output 'RUNTIME_IDENTITY_OK'
+    exit 0
+}
 
 if ($ChangedPathsJson) {
     $ChangedPaths = @(ConvertFrom-Json -InputObject $ChangedPathsJson)
@@ -70,6 +117,18 @@ if ($plan.action -eq 'no-op') {
 }
 
 $envFile = (Resolve-Path -LiteralPath $EnvFilePath -ErrorAction Stop).Path
+$composeFile = (Resolve-Path -LiteralPath 'compose.yml' -ErrorAction Stop).Path
+$projectName = (& docker compose -f $composeFile --env-file $envFile --profile dev config --format json | ConvertFrom-Json).name
+if ($LASTEXITCODE -ne 0 -or -not $projectName) { throw 'Compose project identity를 확인하지 못했습니다.' }
+$inventory = @()
+foreach ($service in @('app-postgres', 'backend', 'frontend')) {
+    $containerIds = @(& docker compose -f $composeFile --env-file $envFile --profile dev ps -q $service)
+    if ($LASTEXITCODE -ne 0 -or $containerIds.Count -ne 1) { throw "runtime identity service count mismatch: $service" }
+    $labels = & docker inspect --format '{{json .Config.Labels}}' $containerIds[0] | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or -not $labels) { throw "runtime identity label을 확인하지 못했습니다: $service" }
+    $inventory += [pscustomobject]@{ service = $service; labels = $labels }
+}
+Assert-RuntimeIdentity $inventory $projectName $root $composeFile $envFile
 $running = @(& docker compose -f compose.yml --env-file $envFile --profile dev ps --status running --services)
 if ($LASTEXITCODE -ne 0) { throw 'Compose runtime inventory를 확인하지 못했습니다.' }
 foreach ($service in $plan.services) {

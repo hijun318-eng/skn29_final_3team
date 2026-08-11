@@ -65,11 +65,9 @@
     {"id": "T8_COMPILE", "name": "compileall", "status": "PASS", "evidence": "app/backend/app compile PASS"},
     {"id": "T9_SCOPE", "name": "Gate planned path", "status": "FAIL", "evidence": "현재 F12는 API·live DataHub·Analysis persistence를 금지하므로 사용자 우선 로컬 구현의 F10C·F10D 경로가 정식화 전 범위 초과"},
     {"id": "T10_DIFF", "name": "git diff --check", "status": "PASS", "evidence": "공백 오류 없음"},
-    {"id": "T11_BRANCH_CI", "name": "jaehong source CI", "status": "NOT_RUN", "evidence": "push 이후 확인"}
+    {"id": "T11_BRANCH_CI", "name": "jaehong source CI", "status": "FAIL", "evidence": "GitHub Actions run 31451536556이 현재 카드 밖 F10C·F10D 경로 때문에 role-scope에서 실패하고 제품 job은 skip"}
   ],
-  "NOT_RUN": [
-    "source CI는 push 이후 확인"
-  ],
+  "NOT_RUN": [],
   "RESIDUAL_RISKS": [
     "report_v1 manual command는 queued까지 실제 저장되지만 command consumer worker가 없어 run 생성은 후속 R4-W5-F13 필요",
     "R5 API mode의 동일 actual trace browser 검증은 R1 범위 정식화 뒤 R5 owner 작업 필요"

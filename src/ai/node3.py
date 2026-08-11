@@ -7,7 +7,7 @@ from copy import deepcopy
 from typing import Any
 
 from .prompt_registry import get_prompt
-from .schema import validate_payload
+from .schema import ContractError, validate_payload
 
 
 def explain_result(
@@ -17,6 +17,7 @@ def explain_result(
 ) -> dict[str, Any]:
     """Describe approved values without recalculating results or gates."""
     validate_payload("node3_request", payload)
+    _validate_metric_selection(payload)
 
     period = payload["period"]
     rows = json.dumps(
@@ -29,6 +30,11 @@ def explain_result(
         f"metric={payload['metric']}",
         f"period={period['period_start']}..{period['period_end_exclusive']}",
         f"unit={payload['unit']}",
+        f"sampling={str(payload['sampling']).lower()}",
+        f"masking={str(payload['masking']).lower()}",
+        f"partial={str(payload['partial']).lower()}",
+        "result_reference="
+        f"{payload['result_reference']['kind']}:{payload['result_reference']['value']}",
         *(f"filter={item}" for item in payload["filters"]),
     ]
     limitations = [
@@ -49,3 +55,21 @@ def explain_result(
     }
     validate_payload("node3_response", response)
     return response
+
+
+def _validate_metric_selection(payload: dict[str, Any]) -> None:
+    selection = payload.get("metric_selection")
+    if selection is None:
+        if len(payload["source_ids"]) > 1:
+            raise ContractError("node3_request: multi-source result requires metric selection")
+        return
+
+    selected = selection["selected_metric_id"]
+    context_ids = selection["context_metric_ids"]
+    if (
+        len(context_ids) != len(payload["source_ids"])
+        or set(context_ids) != {selected}
+        or payload["metric"] != selected
+        or selected not in selection["entitled_metric_ids"]
+    ):
+        raise ContractError("node3_request: metric selection is outside approved Context or entitlement")

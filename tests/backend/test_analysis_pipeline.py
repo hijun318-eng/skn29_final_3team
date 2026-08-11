@@ -490,6 +490,31 @@ class AnalysisPipelineTest(unittest.TestCase):
             response.data.artifact.artifact_id,
         )
 
+    def test_persistence_sink_receives_internal_plan_query_and_context_only_after_g3(self) -> None:
+        captured = {}
+        success = self.service.analyze(
+            AnalysisRequest(question="합성 객실 운영 현황을 알려줘"),
+            self.context,
+            self.decision(AnalysisRequest(question="합성 객실 운영 현황을 알려줘")),
+            captured.update,
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, success.data.status)
+        self.assertEqual({"plan", "query", "package"}, set(captured))
+
+        captured.clear()
+        failed = self.service.analyze(
+            AnalysisRequest(
+                question="합성 객실 운영 현황을 알려줘",
+                parameters={"scenario": "g3_failed"},
+            ),
+            self.context,
+            self.decision(AnalysisRequest(question="합성 객실 운영 현황을 알려줘")),
+            captured.update,
+        )
+        self.assertEqual(AnalysisStatus.FAILED, failed.data.status)
+        self.assertEqual({}, captured)
+
 
 if __name__ == "__main__":
     unittest.main()

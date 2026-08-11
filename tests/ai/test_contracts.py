@@ -243,6 +243,25 @@ class ContractTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             validate_payload("node3_request", explanation)
 
+    def test_node3_metric_selection_contract_is_strict_and_additive(self):
+        legacy = copy.deepcopy(VALID_PAYLOADS["node3_request"])
+        selected = copy.deepcopy(legacy)
+        selected["metric_selection"] = {
+            "selected_metric_id": "room_revenue",
+            "context_metric_ids": ["room_revenue"],
+            "entitled_metric_ids": ["room_revenue"],
+        }
+
+        validate_payload("node3_request", legacy)
+        validate_payload("node3_request", selected)
+
+        for field in selected["metric_selection"]:
+            missing = copy.deepcopy(selected)
+            missing["metric_selection"].pop(field)
+            with self.subTest(missing=field):
+                with self.assertRaises(ContractError):
+                    validate_payload("node3_request", missing)
+
     def test_nested_missing_and_extra_fields_are_rejected(self):
         missing = copy.deepcopy(VALID_PAYLOADS["node2_request"])
         missing["context_package"]["execution_time"].pop("timezone")

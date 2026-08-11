@@ -46,7 +46,9 @@ uvicorn app.main:app --host 127.0.0.1 --port 18000
 
 ## API 계약
 
-FastAPI·Pydantic code가 API 계약의 단일 원본이다. 분석 응답의 `OPENAPI-v1.0.0` 호환성은 유지하고 FastAPI 문서 버전은 `OPENAPI-v1.1.0-DRAFT`로 분리한다. 문서에는 기존 `/health`, `/readiness`, `/analysis`와 Report 관리자 endpoint만 포함한다.
+FastAPI·Pydantic code가 API 계약의 단일 원본이다. 분석 응답의 `OPENAPI-v1.0.0` 호환성은 유지하고 FastAPI 문서 버전은 `OPENAPI-v1.1.0-DRAFT`로 분리한다. 문서에는 기존 `/health`, `/readiness`, `/analysis`, Report 관리자 endpoint와 owner 범위의 Analysis Definition·Run 조회 및 재실행 endpoint를 포함한다.
+
+Analysis Definition은 사용자 소유의 불변 버전이며 공개 응답에 질문 원문·parameter 값·SQL·결과 snapshot을 노출하지 않는다. 재실행은 저장 SQL을 사용하지 않고 현재 `AnalysisController`를 호출해 entitlement·Context·G1·G2·G3·repair·binder를 다시 검증한다. 실행 이력은 기존 `chat.analysis_requests` → `query.query_executions` → `artifact.analysis_artifacts`를 재사용하고 Definition과 request의 연결만 저장한다.
 
 계약 파일과 상태별 fixture를 갱신하거나 drift를 확인하는 명령은 다음과 같다.
 
@@ -61,7 +63,7 @@ python app/backend/scripts/export_openapi.py --check
 - 명세 파일과 fixture는 직접 수정하지 않고 exporter로 다시 생성한다.
 - pagination·sorting·filter·idempotency는 현재 세 endpoint에 적용되지 않으며, 이를 사용하는 endpoint 구현 시 별도 version으로 추가한다.
 
-`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 단일 migration chain이 application schema를 최신 head까지 적용한다. 공식 지원 revision은 `20260729_01`, `20260730_02`, `20260731_03`, `20260804_04`, `20260804_05`이며 root는 `20260729_01`, head는 `20260804_05` 하나씩이다. 빈 DB와 이 목록에 있는 revision만 upgrade 대상으로 지원한다. Report endpoint는 기존 `report` schema를 변경하지 않고 `REPORT-v1.0.0` 호환 및 `REPORT-v1.1.0-DRAFT` 등록본을 `report_v1` schema에 영속화한다. 공개 요청·응답은 strict Pydantic schema와 고정 operation ID를 사용한다.
+`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 단일 migration chain이 application schema를 최신 head까지 적용한다. 공식 지원 revision은 `20260729_01`, `20260730_02`, `20260731_03`, `20260804_04`, `20260804_05`, `20260810_06`이며 root는 `20260729_01`, head는 `20260810_06` 하나씩이다. 빈 DB와 이 목록에 있는 revision만 upgrade 대상으로 지원한다. Report endpoint는 기존 `report` schema를 변경하지 않고 `REPORT-v1.0.0` 호환 및 `REPORT-v1.1.0-DRAFT` 등록본을 `report_v1` schema에 영속화한다. 공개 요청·응답은 strict Pydantic schema와 고정 operation ID를 사용한다.
 
 backend 기동 전 `alembic current` 결과가 위 지원 목록에 있는지 확인한다. 저장소에 존재하지 않는 `20260803_03`은 Alembic이 native non-zero로 거부하며 운영 판정 코드 `LEGACY_REVISION_UNSUPPORTED`로 기록한다. 이 상태를 우회하는 추정 migration, 자동 `stamp`, schema·data 변경, `drop`은 금지한다. 보존이 필요한 legacy DB는 변경하지 않고 별도 복구·변환 결정을 요청한다.
 

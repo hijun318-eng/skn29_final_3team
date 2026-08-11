@@ -4,8 +4,8 @@
 |---|---|
 | 문서 설명 | 현재 역할별 실행 카드와 Gate 중단·통합 조건을 관리하는 활성 원장 |
 | 문서 분류 | 일반 문서 |
-| 버전 | v5.63 |
-| 문서 기준일 | 2026-08-11 12:43 |
+| 버전 | v5.64 |
+| 문서 기준일 | 2026-08-11 12:55 |
 | 작성·수정 | 박준희 / 3팀 사용자 요청·Codex 반영 |
 
 > 종료되거나 대체된 카드는 [2026-07-29~2026-08-04 Archive](archive/Gate_실행_카드_원장_20260729-20260804.md)와 [2026-08-05~2026-08-11 Archive](archive/Gate_실행_카드_원장_20260805-20260811.md)에서 확인한다.
@@ -23,9 +23,9 @@
 | 역할 | 실행 묶음 | 상태 | 개인 branch |
 |---|---|---|---|
 | R1 | `R1-W5-F27` | `MERGED_DEV` | `junhee` |
-| R2 | `R2-W5-F8` | `READY` | `seung` |
+| R2 | `R2-W5-F8` | `MERGED_DEV` | `seung` |
 | R3 | `R3-W5-F8` | `READY` | `daesung` |
-| R4 | `R4-W5-F12` | `READY` | `jaehong` |
+| R4 | `R4-W5-F12` | `MERGED_DEV` | `jaehong` |
 | R5 | `R5-W5-F4` | `READY` | `minji` |
 
 ## 활성 실행 카드
@@ -263,7 +263,7 @@ R1_REVIEW_CONDITIONS=Node3 schema producer와 ModelOps DRAFT evidence를 각각 
 ### R2 · R2-W5-F8
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R2
 ASSIGNEE=정승
 PERSONAL_BRANCH=seung
@@ -285,6 +285,8 @@ MUTABLE_PATHS=handoffs/R2-W5-F7.json; handoffs/R2-W5-F8.json
 ALLOWED_PATHS=infrastructure/database/datahub/compose.consumer.yml; infrastructure/database/datahub/publish_semantic_catalog.py; infrastructure/database/datahub/verify_semantic_catalog.py; infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql; infrastructure/database/trino/etc/access-control-rules.json; src/data/serving_analytics_contract.i4.v1.json; src/data/serving_semantic_catalog.i4.v1.json; tests/data/test_serving_semantic_catalog.py; docs/markdown/daily_reports/seung/일일보고.md; handoffs/R2-W5-F6.json; handoffs/R2-W5-F7.json; handoffs/R2-W5-F8.json
 FORBIDDEN_PATHS=INHERITED_CHECKPOINT_PATHS와 OTHER_READ_ONLY_EVIDENCE_PATHS 내용 수정; app/**; src/ai/**; root Compose·env·CI; 다른 tests; dependency; Docker lifecycle; stash·Git object; secret
 HANDOFF_MANIFEST=handoffs/R2-W5-F8.json
+RESULT_SHA=ceb9ab3bf9d9746a4905c9a265eb03034ab0ed9e
+RESULT_CI=branch 31452376643 PASS
 ACCEPTANCE_CRITERIA=origin/seung f7f8514의 inherited 제품 8경로 blob hash와 일일보고·F6 handoff가 작업 전후 exact 일치한다. 최신 dev ancestry를 병합하고 F7 handoff의 CHANGED_FILES를 자기 manifest 제외 실제 10경로로 교정하며 T11에 CI 31448012065 scope FAIL을 사실대로 기록하고 F8 supersede를 명시한다. F8 handoff는 inherited 8경로·read-only 2경로·mutable 2경로·local target/data/integration PASS를 구분하며 terminal CI를 push 전에 PASS로 주장하지 않는다. 제품 재구현·stash 적용·history rewrite 없이 최종 seung를 한 번만 push하고 clean·local/origin 0/0을 확인한다.
 ACCEPTANCE_IDS=AC1_INHERITED_HASH;AC2_LATEST_DEV_ANCESTRY;AC3_REPORT_HANDOFF_PRESERVED;AC4_SCOPE_CAUSE_RECORDED;AC5_LOCAL_TESTS;AC6_SINGLE_CORRECTIVE_PUSH;AC7_TERMINAL_CI
 TEST_COMMANDS=12개 planned-path; inherited 8경로 pre/post git hash-object exact 비교; clean bootstrap; F6/F7/F8 json.tool; python -m pytest -p no:cacheprovider tests/data/test_serving_semantic_catalog.py -q; python -m pytest -p no:cacheprovider tests/data -q; python -m pytest -p no:cacheprovider tests/integration -q; docker compose -f infrastructure/database/datahub/compose.consumer.yml config; gate_scope merge-base; git diff --check; f7f8514·616f16e ancestry; clean·ahead/behind 0/0; seung terminal CI
@@ -321,7 +323,7 @@ R1_REVIEW_CONDITIONS=Google Docs의 대규모 R4-W5-F3 요청은 번호 충돌�
 ### R4 · R4-W5-F12
 
 ```text
-STATUS=READY
+STATUS=MERGED_DEV
 ROLE_ID=R4
 ASSIGNEE=김재홍
 PERSONAL_BRANCH=jaehong
@@ -340,6 +342,8 @@ CONTRACT_VERSION=CONTEXT-REGISTRY-v1.0.0-DRAFT; internal service plus existing /
 ALLOWED_PATHS=app/backend/README.md; app/backend/app/adapters/analysis_repository.py; app/backend/app/adapters/context_registry_repository.py; app/backend/app/adapters/contract_model.py; app/backend/app/adapters/i2_data_platform.py; app/backend/app/api/router.py; app/backend/app/context_registry_contracts.py; app/backend/app/services/analysis_responses.py; app/backend/app/services/analysis_service.py; app/backend/app/services/context_registry_service.py; app/backend/app/services/readiness.py; app/backend/compose.fragment.yml; app/backend/migrations/versions/20260811_07_context_registry.py; tests/backend/test_analysis_persistence.py; tests/backend/test_analysis_pipeline.py; tests/backend/test_context_registry.py; tests/backend/test_http_runtime.py; tests/backend/test_i2_data_platform.py; tests/backend/test_migration_compatibility.py; tests/backend/test_production_model.py; tests/backend/test_readiness.py; handoffs/R4-W5-F12.json; docs/markdown/daily_reports/jaehong/일일보고.md
 FORBIDDEN_PATHS=app/backend/app/main.py; app/backend/contracts/openapi.v0.1.json; 기존 migration; infrastructure/**; src/data/**; src/ai/**; frontend; root Compose·env·CI; Report worker·schedule·Audit; dependency·secret
 HANDOFF_MANIFEST=handoffs/R4-W5-F12.json
+RESULT_SHA=d4a75d4de58e5d97c28b7622394caf7eaba62e27
+RESULT_CI=branch 31453405302 PASS
 ACCEPTANCE_CRITERIA=20260811_07은 20260810_06의 additive child이고 single head를 유지한다. Context checksum·idempotency·release 불변 계약과 승인 metric_selection fail-closed를 보존한다. F10C는 existing /analysis 경로 안에서 DataHub health·PUBLISHED/ACTIVE·승인 URN/FQN/column·entitlement를 모두 확인한 뒤만 live Context를 조립하며 versioned 또는 missing 상태를 live PASS로 승격하지 않는다. F10D는 기존 request/query/artifact repository를 재사용해 G3 뒤 결과만 영속화하고 public OpenAPI operation을 추가하지 않는다. G120-046 exact question과 2026-05-01~2026-07-01 bindings는 실제 Trino에서 2행·475972400.00·hash de17b5a22c6718c6e77e37936421c94618945dd31b0c7207f40e51d51b667716을 반환하고 같은 request_id/trace에 table·chart·explanation·artifact를 연결한다. 399088800 결과는 다른 exact question·Context·SQL/result hash가 입증되지 않으면 Gold PASS로 기록하지 않는다. Report manual command queued는 허용하되 worker/run 생성 성공은 주장하지 않는다. F12 handoff는 CI 31451536556 실패를 PASS로 쓰지 않고 이번 corrective CI로 supersede한다.
 ACCEPTANCE_IDS=AC1_ADDITIVE_HEAD;AC2_REGISTRY_INVARIANTS;AC3_LIVE_CONTEXT_FAIL_CLOSED;AC4_EXISTING_ANALYSIS_PATH;AC5_G3_BEFORE_PERSIST;AC6_NODE3_SELECTION;AC7_G120_GOLD_EXACT;AC8_TABLE_CHART_EVIDENCE;AC9_HISTORICAL_CI_ACCURACY;AC10_REPORT_QUEUED_ONLY
 TEST_COMMANDS=context registry·analysis persistence·pipeline·HTTP·I2 adapter·readiness target tests; migration graph single head; isolated empty→head·20260810_06→head; idempotency·immutability·PUBLISHED/ACTIVE/entitlement·URN/FQN/column mismatch negative; unauthorized join·missing filter·repair exactly once·timeout/cancel·empty·masking negative; actual G120-046 HTTP→Trino→G3→artifact Gold row/total/hash exact; Report queued-only contract; backend 전체 Python 3.12 test container; python app/backend/scripts/export_openapi.py --check; python -m compileall -q app/backend; gate_scope bootstrap·전체 planned-path·merge-base; git diff --check; jaehong corrective source CI
@@ -689,6 +693,7 @@ STOP_CONDITIONS=R4 worker 미통합; API 추정; optimistic fake run; localStora
 
 | 버전 | 일시 | 요약 |
 |---|---|---|
+| v5.64 | 2026-08-11 12:55 | R2-W5-F8 Semantic Catalog checkpoint와 R4-W5-F12 Context Registry·실제 Gold 조합의 source CI·handoff를 확인해 MERGED_DEV로 전환 |
 | v5.63 | 2026-08-11 12:43 | R1-W5-F27의 history-preserving reconciliation과 corrective source CI를 확인해 MERGED_DEV로 전환 |
 | v5.61 | 2026-08-11 12:30 | 기획서의 Node1 keyword 후보→DataHub main search·Domain/Glossary structured filter→권한 Context 흐름을 R2 F11·R3 F12·R4 F15·R1 F26 후속 카드로 명시하고 raw keyword의 필터 무조건 재사용을 금지 |
 | v5.60 | 2026-08-11 12:15 | 사용자 승인으로 commit된 legacy 자동화 개선 기록을 F25 누적 read-only evidence로 분리해 role-scope 교정 |

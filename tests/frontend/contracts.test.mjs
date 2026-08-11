@@ -25,6 +25,19 @@ import { createHttpAnalysisClient, usesMockAnalysisClient } from "../../app/ente
 import { createReportClient, ReportApiError, usesFixtureReportClient } from "../../app/enterprise-react/src/api/reportClient.ts";
 
 const packageJson = JSON.parse(readFileSync(new URL("../../app/enterprise-react/package.json", import.meta.url)));
+const dockerfileSource = readFileSync(new URL("../../app/enterprise-react/Dockerfile", import.meta.url), "utf8");
+const composeFragmentSource = readFileSync(
+  new URL("../../app/enterprise-react/compose.fragment.yml", import.meta.url),
+  "utf8",
+);
+const analysisClientSource = readFileSync(
+  new URL("../../app/enterprise-react/src/api/analysisClient.ts", import.meta.url),
+  "utf8",
+);
+const reportClientSource = readFileSync(
+  new URL("../../app/enterprise-react/src/api/reportClient.ts", import.meta.url),
+  "utf8",
+);
 const g1ClarificationFixture = JSON.parse(
   readFileSync(new URL("../backend/fixtures/api/v0.1/g1_clarification.json", import.meta.url)),
 );
@@ -232,6 +245,19 @@ for (const source of analysisFixtures.ready.sources) {
 }
 assert.equal(usesMockAnalysisClient, false);
 assert.equal(usesFixtureReportClient, false);
+const backendBaseDefault = "http://127.0.0.1:18000";
+const dockerArgIndex = dockerfileSource.indexOf(`ARG VITE_BACKEND_BASE_URL=${backendBaseDefault}`);
+const dockerEnvIndex = dockerfileSource.indexOf("ENV VITE_BACKEND_BASE_URL=${VITE_BACKEND_BASE_URL}");
+const dockerBuildIndex = dockerfileSource.indexOf("RUN npm run build");
+assert.ok(dockerArgIndex >= 0 && dockerArgIndex < dockerEnvIndex && dockerEnvIndex < dockerBuildIndex);
+assert.match(composeFragmentSource, /VITE_BACKEND_BASE_URL: "\$\{VITE_BACKEND_BASE_URL:-http:\/\/127\.0\.0\.1:18000\}"/);
+assert.match(composeFragmentSource, /"\$\{FRONTEND_BIND_ADDRESS:-127\.0\.0\.1\}:13000:8080"/);
+assert.doesNotMatch(composeFragmentSource, /VITE_BACKEND_BASE_URL:[^\n]*0\.0\.0\.0/);
+for (const clientSource of [analysisClientSource, reportClientSource]) {
+  assert.match(clientSource, /env\.VITE_BACKEND_BASE_URL \|\| "http:\/\/127\.0\.0\.1:18000"/);
+}
+assert.doesNotMatch(analysisClientSource, /catch[\s\S]*analysisFixtures/);
+assert.doesNotMatch(reportClientSource, /catch[\s\S]*mockReportBlocks/);
 assert.match(reportsPageSource, /usesFixtureReportClient \? <FixtureReportsPage \/> : <ReportApiPage \/>/);
 assert.match(reportsPageSource, /오류 시 fixture로 전환하지 않습니다/);
 assert.match(reportsPageSource, /401 · 로그인이 필요합니다/);

@@ -244,8 +244,8 @@ class AnalysisService:
             }
             for item in package.assets
         ]
-        watermark = secure_cache_key(
-            "watermark",
+        metadata_fingerprint = secure_cache_key(
+            "asset-metadata",
             assets=[
                 (item.get("urn"), item.get("schema_version"), item.get("seed_version"))
                 for item in assets
@@ -264,7 +264,7 @@ class AnalysisService:
             "policy": package.policy_version,
             "entitlement": package.entitlement_hash,
             "as_of": context.as_of,
-            "watermark": watermark,
+            "asset_metadata": metadata_fingerprint,
             "mask": mask,
         }
         plan_key = secure_cache_key(
@@ -409,31 +409,23 @@ class AnalysisService:
 
         self._cache.put_plan(plan_key, plan)
         gate_token = self._support.gate_token(package, str(plan["sql"]))
-        result_key = secure_cache_key(
-            "query-result",
-            sql=plan["sql"],
-            parameters=plan.get("parameters", {}),
-            **common_key,
-        )
-        cached_query = self._cache.get_result(result_key)
-        result_cached = cached_query is not None
-        progress("TRINO", "SKIPPED" if result_cached else "STARTED")
+        # Result reuse stays disabled until every source exposes a trustworthy
+        # data watermark. Schema/seed metadata cannot detect changed rows.
+        result_cached = False
+        progress("TRINO", "STARTED")
         try:
             with observe_stage(
                 "trino",
                 context=context,
                 attributes={"answervice.cache_hit": result_cached},
             ) as span:
-                if cached_query is None:
-                    query = self._adapter.execute_query(
-                        plan["sql"],
-                        plan.get("parameters", {}),
-                        gate_token,
-                        getattr(package, "trino_principal", None),
-                    )
-                    query = self._adapter.get_query_status(query["query_id"])
-                else:
-                    query = cached_query
+                query = self._adapter.execute_query(
+                    plan["sql"],
+                    plan.get("parameters", {}),
+                    gate_token,
+                    getattr(package, "trino_principal", None),
+                )
+                query = self._adapter.get_query_status(query["query_id"])
                 span.set_attribute(
                     "answervice.query_status", str(query.get("status", "unknown"))
                 )
@@ -528,8 +520,7 @@ class AnalysisService:
                 repair_count,
                 retryable=True,
             )
-        if not result_cached:
-            progress("TRINO", "PASSED")
+        progress("TRINO", "PASSED")
 
         progress("G3", "STARTED")
         g3_violation = self._support.g3_violation(query, package)
@@ -548,9 +539,6 @@ class AnalysisService:
             )
         self._responses.record(trace, PipelineStage.G3)
         progress("G3", "PASSED")
-        if not result_cached:
-            self._cache.put_result(result_key, query)
-
         if decision.route_type is RouteType.TEMPLATE:
             progress("NODE3", "SKIPPED")
             explanation = {

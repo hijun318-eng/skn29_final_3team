@@ -99,7 +99,7 @@ class _Model:
         raise AssertionError(f"template cache test must not call {node}")
 
 
-def test_plan_and_result_hits_still_pass_g2_and_g3():
+def test_plan_cache_hits_but_result_is_requeried_without_source_watermark():
     adapter = _Adapter()
     cache = IsolatedExecutionCache()
     service = AnalysisService(adapter, _Model(), cache=cache)
@@ -144,7 +144,7 @@ def test_plan_and_result_hits_still_pass_g2_and_g3():
     second = service.analyze(payload, context.model_copy(update={"request_id": uuid4()}), decision)
 
     assert first.data.result.evidence.cached is False
-    assert second.data.result.evidence.cached is True
-    assert adapter.executions == 1
+    assert second.data.result.evidence.cached is False
+    assert adapter.executions == 2
     assert support.g2_violation.call_count == 2
     assert support.g3_violation.call_count == 2

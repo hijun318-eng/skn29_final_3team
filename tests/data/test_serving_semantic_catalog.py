@@ -62,14 +62,19 @@ class ServingSemanticCatalogTest(unittest.TestCase):
         self.assertIn("kafka-topics --bootstrap-server broker:29092 --list", self.compose)
         self.assertNotIn("nc -z broker 29092", self.compose)
 
-    def test_datahub_ingestion_gets_only_two_system_metadata_tables(self):
+    def test_datahub_ingestion_gets_system_metadata_and_serving_read_only(self):
         catalog_rules = [rule for rule in self.access["catalogs"] if rule.get("user") == "datahub_ingestion"]
-        self.assertEqual([{"user": "datahub_ingestion", "catalog": "system", "allow": "read-only"}], catalog_rules)
+        self.assertEqual("(system|serving)", catalog_rules[0]["catalog"])
+        self.assertEqual("read-only", catalog_rules[0]["allow"])
+        self.assertEqual("none", catalog_rules[-1]["allow"])
         table_rules = [rule for rule in self.access["tables"] if rule.get("user") == "datahub_ingestion"]
         self.assertEqual("metadata", table_rules[0]["schema"])
         self.assertEqual("(catalogs|table_comments)", table_rules[0]["table"])
         self.assertEqual(["SELECT"], table_rules[0]["privileges"])
         self.assertEqual([], table_rules[1]["privileges"])
+        self.assertEqual("serving", table_rules[2]["catalog"])
+        self.assertEqual(["SELECT"], table_rules[2]["privileges"])
+        self.assertEqual([], table_rules[-1]["privileges"])
         self.assertNotIn(".*", table_rules[0]["table"])
 
     def test_crm_fast_path_preserves_unique_and_interval_protection(self):

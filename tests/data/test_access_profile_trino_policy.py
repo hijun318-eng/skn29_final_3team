@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 
@@ -55,3 +56,95 @@ def test_access_control_refreshes_without_browser_selected_credentials():
     ).read_text(encoding="utf-8")
     assert "security.refresh-period=5s" in properties
     assert not any("token" in item for item in json.dumps(RULES).lower().split())
+
+
+def test_unknown_principal_is_default_denied_without_generic_read_fallback():
+    assert [rule for rule in RULES["catalogs"] if "user" not in rule] == [
+        {"catalog": "system", "allow": "none"},
+        {"catalog": ".*", "allow": "none"},
+    ]
+    assert [rule for rule in RULES["tables"] if "user" not in rule] == [
+        {"privileges": []}
+    ]
+    assert RULES["queries"][-1] == {"allow": []}
+    assert all("user" in rule for rule in RULES["queries"][:-1])
+    assert RULES["system_session_properties"] == [{"allow": False}]
+
+
+def test_resource_groups_bound_each_profile_and_platform_workload():
+    config = json.loads(
+        (ROOT / "infrastructure/database/trino/etc/resource-groups.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    answervice, platform = config["rootGroups"]
+    profile = answervice["subGroups"][0]
+    assert (answervice["hardConcurrencyLimit"], answervice["maxQueued"]) == (4, 16)
+    assert profile["name"] == "profile_${USER}"
+    assert (profile["hardConcurrencyLimit"], profile["maxQueued"]) == (2, 4)
+    assert (platform["hardConcurrencyLimit"], platform["maxQueued"]) == (2, 4)
+    assert config["selectors"] == [
+        {
+            "user": "answervice_(pms_only|crm_only|pms_crm|integrated_revenue)",
+            "group": "answervice.profile_${USER}",
+        },
+        {
+            "user": "(hotel_synthetic_setup|datahub_ingestion)",
+            "group": "platform",
+        },
+    ]
+    properties = (
+        ROOT / "infrastructure/database/trino/etc/resource-groups.properties"
+    ).read_text(encoding="utf-8")
+    assert "resource-groups.configuration-manager=file" in properties
+    assert "resource-groups.config-file=etc/resource-groups.json" in properties
+
+    trino = (ROOT / "infrastructure/database/trino/etc/config.properties").read_text(
+        encoding="utf-8"
+    )
+    assert "query.max-execution-time=2m" in trino
+    assert "query.max-run-time=3m" in trino
+    compose = (ROOT / "infrastructure/database/compose.yml").read_text(encoding="utf-8")
+    assert "./trino/etc:/etc/trino:ro" in compose
+
+
+def test_approved_query_contract_has_no_direct_identifier_needing_a_mask():
+    context = json.loads(
+        (ROOT / "src/data/analytics_context_contract.i4.v2.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    serving = json.loads(
+        (ROOT / "src/data/serving_analytics_contract.i4.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    three_source = json.loads(
+        (ROOT / "src/data/pms_crm_pos_context.i5.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    columns = {
+        *(
+            column
+            for asset in context["raw_assets"]
+            for column in asset["columns"]
+        ),
+        *(
+            column
+            for view in serving["views"]
+            for column in view["columns"]
+        ),
+        *(
+            column
+            for asset in three_source["assets"]
+            for column in asset["columns"]
+        ),
+    }
+    direct_identifier = re.compile(
+        r"^(email|e_mail|phone|mobile|full_name|first_name|last_name|"
+        r"resident_number|passport_number|credit_card_number)$",
+        re.IGNORECASE,
+    )
+    assert not {column for column in columns if direct_identifier.fullmatch(column)}
+    assert "columnMasks" not in RULES and "rowFilters" not in RULES

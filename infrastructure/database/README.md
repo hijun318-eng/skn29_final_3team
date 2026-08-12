@@ -29,6 +29,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1
 
 업무 DB는 `*_READONLY_USER` 계정으로 DataHub와 Trino에 연결한다. 이 계정은 `SELECT` 및 시스템 메타데이터 조회만 허용하며 DML·DDL은 거부한다. `app-postgres`의 `APP_DB_USER`는 앱 읽기·쓰기, `APP_MIGRATION_USER`는 migration 전용이다.
 
+Trino는 네 개의 `answervice_*` profile principal과 `hotel_synthetic_setup`, `datahub_ingestion`만 query resource group에 배정하며, 그 밖의 principal은 catalog·table·query 모두 default-deny한다. profile별 동시 실행은 2건, queue는 4건이고 전체 애플리케이션 동시 실행은 4건으로 제한한다. 실행 시간은 2분, queue·planning을 포함한 전체 run time은 3분을 넘길 수 없다.
+
+승인된 raw·serving Context에는 email, 전화번호, 이름, 주민·여권·결제카드 번호 같은 직접식별 컬럼이 없다. `guest_id`, `member_no` 등은 합성 내부 join 식별자로서 승인된 분석 계약에만 사용한다. 따라서 현재는 의미를 훼손하는 임의 column mask를 추가하지 않고, 직접식별 컬럼이 계약에 들어오면 Trino 조회 경계의 명시적 mask와 role별 누출 테스트를 먼저 추가한다.
+
 실행 원본은 `sql/ddl`, `sql/data`, `sql/app`, `security`에만 둔다.
 
 PowerShell 실행 파일은 `scripts`에 모아 관리한다.

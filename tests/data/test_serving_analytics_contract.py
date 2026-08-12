@@ -196,11 +196,10 @@ class ServingAnalyticsContractTest(unittest.TestCase):
             "GRANT_SELECT" not in item["privileges"]
             for item in self.access["tables"] if "user" not in item
         ))
-        runtime = next(
-            item for item in self.access["catalogs"]
-            if "user" not in item and item.get("catalog") == "(serving|pms|pos|crm|facility|banquet)"
-        )
-        self.assertEqual("read-only", runtime["allow"])
+        self.assertFalse(any(
+            "user" not in item and item.get("allow") in {"all", "read-only"}
+            for item in self.access["catalogs"]
+        ))
 
     def test_recorded_live_trino_evidence_matches_contract(self):
         verification = self.contract["verification"]

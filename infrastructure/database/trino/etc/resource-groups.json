@@ -1,0 +1,35 @@
+{
+  "rootGroups": [
+    {
+      "name": "answervice",
+      "softMemoryLimit": "80%",
+      "hardConcurrencyLimit": 4,
+      "maxQueued": 16,
+      "schedulingPolicy": "weighted_fair",
+      "subGroups": [
+        {
+          "name": "profile_${USER}",
+          "softMemoryLimit": "25%",
+          "hardConcurrencyLimit": 2,
+          "maxQueued": 4
+        }
+      ]
+    },
+    {
+      "name": "platform",
+      "softMemoryLimit": "50%",
+      "hardConcurrencyLimit": 2,
+      "maxQueued": 4
+    }
+  ],
+  "selectors": [
+    {
+      "user": "answervice_(pms_only|crm_only|pms_crm|integrated_revenue)",
+      "group": "answervice.profile_${USER}"
+    },
+    {
+      "user": "(hotel_synthetic_setup|datahub_ingestion)",
+      "group": "platform"
+    }
+  ]
+}

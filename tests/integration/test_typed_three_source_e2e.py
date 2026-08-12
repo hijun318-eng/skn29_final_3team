@@ -67,7 +67,7 @@ def test_g120_046_context_and_runtime_gold_are_composable():
     package, request_context = _product_package(contract)
     adapter = I2DataPlatformAdapter(
         "http://127.0.0.1:18080",
-        "answervice-integration",
+        "answervice_integrated_revenue",
         require_live_metadata=False,
     )
     support = PipelineSupport(adapter, ContextPackageBuilder())

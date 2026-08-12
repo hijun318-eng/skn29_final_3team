@@ -1,14 +1,9 @@
-import json
-import os
 from dataclasses import dataclass
-from pathlib import Path
 
 from sqlalchemy import create_engine, text
 
+from app.access_policy import load_access_policy
 from app.contracts import AnalysisRequest, ErrorCode, Role, RouteType
-
-
-ACCESS_POLICY_VERSION = "ACCESS-POLICY-v1.0.0"
 
 
 @dataclass(frozen=True)
@@ -136,18 +131,7 @@ class RoutingService:
 
 
 def _template_role_policy() -> dict[str, frozenset[Role]]:
-    configured = os.getenv("ACCESS_POLICY_PATH")
-    service = Path(__file__).resolve()
-    candidates = [Path(configured)] if configured else []
-    candidates.append(service.parents[2] / "config" / "access-policy.yaml")
-    if len(service.parents) > 4:
-        candidates.append(service.parents[4] / "config" / "access-policy.yaml")
-    path = next((candidate for candidate in candidates if candidate.is_file()), None)
-    if path is None:
-        raise RuntimeError("config/access-policy.yaml is required")
-    policy = json.loads(path.read_text(encoding="utf-8"))
-    if policy.get("policy_version") != ACCESS_POLICY_VERSION:
-        raise RuntimeError("unsupported access policy version")
+    policy = load_access_policy()
     templates = policy.get("analysis_templates")
     if not isinstance(templates, dict) or not templates:
         raise RuntimeError("analysis template role policy is missing")

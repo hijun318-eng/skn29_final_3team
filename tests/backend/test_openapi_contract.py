@@ -37,8 +37,10 @@ class OpenApiContractTest(unittest.TestCase):
                 "/analysis/definitions/{definition_id}/runs",
                 "/analysis/runs",
                 "/analysis/runs/{request_id}",
+                "/catalog/sources",
                 "/health",
                 "/operations/audit",
+                "/operations/audit/access",
                 "/operations/audit/{request_id}",
                 "/readiness",
                 "/reports/definitions",
@@ -65,6 +67,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "getReadiness",
                 "auditSearchRequests",
                 "auditGetRequestTrace",
+                "auditGetEffectiveAccess",
                 "submitAnalysis",
                 "analysisCreateDefinition",
                 "analysisListDefinitions",
@@ -72,6 +75,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "analysisReplayDefinition",
                 "analysisListRuns",
                 "analysisGetRun",
+                "catalogListSources",
                 "reportCreateDefinition",
                 "reportListDefinitions",
                 "reportApproveVersion",
@@ -87,6 +91,10 @@ class OpenApiContractTest(unittest.TestCase):
             operation_ids,
         )
         self.assertNotIn("post", committed["paths"]["/reports/runs"])
+        self.assertEqual(
+            "DataHub 또는 Trino 카탈로그 미가용",
+            committed["paths"]["/catalog/sources"]["get"]["responses"]["503"]["description"],
+        )
 
     def test_analysis_persistence_requests_reject_server_owned_fields(self) -> None:
         schemas = app.openapi()["components"]["schemas"]

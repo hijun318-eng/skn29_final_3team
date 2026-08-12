@@ -51,6 +51,16 @@ query Dataset($urn: String!) {
     name
     status { removed }
     schemaMetadata { name fields { fieldPath nativeDataType } }
+    platform { urn name }
+    ownership {
+      owners {
+        owner {
+          ... on CorpUser { urn username }
+          ... on CorpGroup { urn name }
+        }
+        type
+      }
+    }
   }
 }
 """.strip()
@@ -255,6 +265,56 @@ query Dataset($urn: String!) {
         ]
         self._assets = tuple(views + raw_assets if require_live_metadata else views)
         self._live_schemas: dict[str, tuple[str, ...]] = {}
+        self._catalog_sources = (
+            {"source_id": "pms", "platform_instance": "pms", "dataset_urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.public.pms_stays,PROD)"},
+            {"source_id": "pos", "platform_instance": "pos", "dataset_urn": "urn:li:dataset:(urn:li:dataPlatform:mysql,pos.pos_db.pos_orders,PROD)"},
+            {"source_id": "crm", "platform_instance": "crm", "dataset_urn": "urn:li:dataset:(urn:li:dataPlatform:mssql,crm.crm_db.dbo.crm_member_grade_history,PROD)"},
+            {"source_id": "facility", "platform_instance": "facility", "dataset_urn": "urn:li:dataset:(urn:li:dataPlatform:clickhouse,facility.facility.facility_events,PROD)"},
+            {"source_id": "banquet", "platform_instance": "banquet", "dataset_urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,banquet.banquet_db.public.banquet_bookings,PROD)"},
+        )
+
+    def catalog_sources(self) -> list[dict[str, Any]]:
+        if not self._require_live_metadata:
+            raise ValueError("live DataHub catalog is required")
+        if not self._datahub_health():
+            raise ValueError("live DataHub runtime verification is unavailable")
+        if not self._trino.health():
+            raise ValueError("live Trino runtime verification is unavailable")
+
+        sources = []
+        for configured in self._catalog_sources:
+            dataset = self._datahub_dataset(configured["dataset_urn"])
+            schema = dataset.get("schemaMetadata") or {}
+            fields = schema.get("fields") or []
+            ownership = (dataset.get("ownership") or {}).get("owners") or []
+            owners = sorted(
+                {
+                    str((item.get("owner") or {}).get("username") or (item.get("owner") or {}).get("name") or (item.get("owner") or {}).get("urn"))
+                    for item in ownership
+                    if (item.get("owner") or {}).get("urn")
+                }
+            )
+            if (
+                dataset.get("urn") != configured["dataset_urn"]
+                or (dataset.get("status") or {}).get("removed") is not False
+                or not schema.get("name")
+            ):
+                raise ValueError("live DataHub metadata does not match the catalog source")
+            sources.append(
+                {
+                    "source_id": configured["source_id"],
+                    "platform": (dataset.get("platform") or {}).get("name") or configured["platform_instance"],
+                    "location": schema["name"],
+                    "dataset_urn": dataset["urn"],
+                    "owners": owners,
+                    "owner_status": "AVAILABLE" if owners else "MISSING",
+                    "schema_status": "AVAILABLE" if fields else "EMPTY",
+                    "column_count": len(fields),
+                    "search_status": "AVAILABLE",
+                    "connection_status": "AVAILABLE",
+                }
+            )
+        return sources
 
     @staticmethod
     def _binding_verified(binding: dict[str, Any]) -> bool:

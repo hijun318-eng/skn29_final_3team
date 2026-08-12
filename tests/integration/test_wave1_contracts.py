@@ -50,6 +50,12 @@ class Wave1ContractTest(unittest.TestCase):
             ["hotel_analyst"],
             policy["analysis_templates"]["weekly-room-operations"]["allowed_roles"],
         )
+        self.assertEqual(
+            {"hotel_analyst", "report_admin", "data_admin"},
+            set(policy["role_mappings"]["groups"].values()),
+        )
+        self.assertEqual(3, len(policy["role_mappings"]["test_users"]))
+        self.assertNotIn("token", json.dumps(policy).lower())
 
     def test_root_docker_context_excludes_local_state(self) -> None:
         ignored = set((ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines())

@@ -1,5 +1,17 @@
 {
   "policy_version": "ACCESS-POLICY-v1.0.0",
+  "role_mappings": {
+    "groups": {
+      "hotel_analysts": "hotel_analyst",
+      "report_admins": "report_admin",
+      "data_admins": "data_admin"
+    },
+    "test_users": [
+      {"subject": "00000000-0000-0000-0000-000000000001", "group": "hotel_analysts"},
+      {"subject": "00000000-0000-0000-0000-000000000002", "group": "report_admins"},
+      {"subject": "00000000-0000-0000-0000-000000000003", "group": "data_admins"}
+    ]
+  },
   "analysis_templates": {
     "weekly-room-operations": {
       "allowed_roles": ["hotel_analyst"]

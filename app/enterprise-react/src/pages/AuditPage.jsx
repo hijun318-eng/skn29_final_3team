@@ -16,18 +16,21 @@ export function AuditPage() {
   const [startedTo, setStartedTo] = useState("");
   const [items, setItems] = useState([]);
   const [trace, setTrace] = useState(null);
+  const [access, setAccess] = useState(null);
   const [state, setState] = useState({ loading: true, error: "" });
 
   const load = useCallback(async (filters = {}) => {
     setState({ loading: true, error: "" });
     try {
-      const nextItems = await client.search(filters);
+      const [nextItems, effectiveAccess] = await Promise.all([client.search(filters), client.getAccess()]);
       setItems(nextItems);
+      setAccess(effectiveAccess);
       setTrace(nextItems.length === 1 ? await client.get(nextItems[0].request_id) : null);
       setState({ loading: false, error: "" });
     } catch (error) {
       setItems([]);
       setTrace(null);
+      setAccess(null);
       setState({ loading: false, error: error instanceof Error ? error.message : "감사 Trace를 불러오지 못했습니다." });
     }
   }, [client]);
@@ -57,7 +60,7 @@ export function AuditPage() {
   return (
     <div className="page-content audit-page">
       <section className="card audit-search">
-        <header><div><small>OWNER-SCOPED TRACE</small><h2>요청 감사 조회</h2><p>본인 요청의 상태 전이와 정책·모델·Artifact·보고서 연결 메타데이터를 확인합니다.</p></div><ShieldCheck /></header>
+        <header><div><small>OWNER-SCOPED TRACE</small><h2>요청 감사 조회</h2><p>본인 요청의 상태 전이와 정책·모델·Artifact·보고서 연결 메타데이터를 확인합니다.</p>{access && <p>유효 권한: <b>{access.role}</b> · 정책 <code>{access.policy_version}</code></p>}</div><ShieldCheck /></header>
         <form onSubmit={(event) => { event.preventDefault(); void load({ requestId, status, startedFrom: startedFrom ? new Date(startedFrom).toISOString() : "", startedTo: startedTo ? new Date(startedTo).toISOString() : "" }); }}>
           <input aria-label="Request ID" placeholder="Request ID (비우면 최근 요청)" value={requestId} onChange={(event) => setRequestId(event.target.value)} />
           <select aria-label="상태" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">전체 상태</option>{["RECEIVED", "SUCCEEDED", "PARTIAL", "DENIED", "FAILED"].map((value) => <option key={value}>{value}</option>)}</select>

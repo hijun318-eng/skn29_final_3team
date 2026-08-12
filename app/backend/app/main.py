@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.router import router
 from app.api.audit_router import audit_router
+from app.api.catalog_router import catalog_router
 from app.api.report_router import report_router
 from app.context import ContextValidationError, request_context
 from app.contracts import (
@@ -58,6 +59,7 @@ app.add_middleware(
 app.include_router(router)
 app.include_router(report_router)
 app.include_router(audit_router)
+app.include_router(catalog_router)
 
 
 @app.middleware("http")

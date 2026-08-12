@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
+from typing import Literal
 
 
 class AuditContractModel(BaseModel):
@@ -24,6 +25,13 @@ class AuditRequestSummary(AuditContractModel):
 
 class AuditSearchResponse(AuditContractModel):
     items: list[AuditRequestSummary]
+
+
+class EffectiveAccessResponse(AuditContractModel):
+    policy_version: str
+    subject: UUID
+    role: Literal["hotel_analyst", "report_admin", "data_admin"]
+    mapping_source: Literal["test_seed", "release_principal"]
 
 
 class AuditTransition(AuditContractModel):

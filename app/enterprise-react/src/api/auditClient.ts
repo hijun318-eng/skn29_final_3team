@@ -17,6 +17,13 @@ export interface AuditRequestSummary {
   completed_at: string | null;
 }
 
+export interface EffectiveAccess {
+  policy_version: string;
+  subject: string;
+  role: "hotel_analyst" | "report_admin" | "data_admin";
+  mapping_source: "test_seed" | "release_principal";
+}
+
 export interface AuditTrace extends AuditRequestSummary {
   transitions: ReadonlyArray<{ sequence: number; from_status: string | null; to_status: string; created_at: string }>;
   analysis_definition: { definition_id: string; version: number; status: string } | null;
@@ -49,6 +56,9 @@ export function createAuditClient(
   });
 
   return {
+    async getAccess(): Promise<EffectiveAccess> {
+      return parse<EffectiveAccess>(await send("/operations/audit/access"));
+    },
     async search(filters: { requestId?: string; status?: string; startedFrom?: string; startedTo?: string } | string = {}): Promise<readonly AuditRequestSummary[]> {
       const normalized = typeof filters === "string" ? { requestId: filters } : filters;
       const parameters = new URLSearchParams();

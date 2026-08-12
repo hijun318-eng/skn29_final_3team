@@ -806,6 +806,102 @@
         "title": "AuditTransition",
         "type": "object"
       },
+      "CatalogSource": {
+        "additionalProperties": false,
+        "properties": {
+          "column_count": {
+            "title": "Column Count",
+            "type": "integer"
+          },
+          "connection_status": {
+            "const": "AVAILABLE",
+            "title": "Connection Status",
+            "type": "string"
+          },
+          "dataset_urn": {
+            "title": "Dataset Urn",
+            "type": "string"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "owner_status": {
+            "enum": [
+              "AVAILABLE",
+              "MISSING"
+            ],
+            "title": "Owner Status",
+            "type": "string"
+          },
+          "owners": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Owners",
+            "type": "array"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "schema_status": {
+            "enum": [
+              "AVAILABLE",
+              "EMPTY"
+            ],
+            "title": "Schema Status",
+            "type": "string"
+          },
+          "search_status": {
+            "const": "AVAILABLE",
+            "title": "Search Status",
+            "type": "string"
+          },
+          "source_id": {
+            "enum": [
+              "pms",
+              "pos",
+              "crm",
+              "facility",
+              "banquet"
+            ],
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "platform",
+          "location",
+          "dataset_urn",
+          "owners",
+          "owner_status",
+          "schema_status",
+          "column_count",
+          "search_status",
+          "connection_status"
+        ],
+        "title": "CatalogSource",
+        "type": "object"
+      },
+      "CatalogSourceListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogSource"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CatalogSourceListResponse",
+        "type": "object"
+      },
       "ChartSpec": {
         "additionalProperties": false,
         "properties": {
@@ -1021,6 +1117,45 @@
           "title"
         ],
         "title": "CreateReportDefinitionRequest",
+        "type": "object"
+      },
+      "EffectiveAccessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "mapping_source": {
+            "enum": [
+              "test_seed",
+              "release_principal"
+            ],
+            "title": "Mapping Source",
+            "type": "string"
+          },
+          "policy_version": {
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "hotel_analyst",
+              "report_admin",
+              "data_admin"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "subject": {
+            "format": "uuid",
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "policy_version",
+          "subject",
+          "role",
+          "mapping_source"
+        ],
+        "title": "EffectiveAccessResponse",
         "type": "object"
       },
       "EmptyData": {
@@ -3139,6 +3274,83 @@
         "summary": "Get Analysis Run"
       }
     },
+    "/catalog/sources": {
+      "get": {
+        "operationId": "catalogListSources",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSourceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "DataHub 또는 Trino 카탈로그 미가용"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Catalog Sources",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "getHealth",
@@ -3292,6 +3504,80 @@
           }
         ],
         "summary": "Search Audit Requests",
+        "tags": [
+          "operations-audit"
+        ]
+      }
+    },
+    "/operations/audit/access": {
+      "get": {
+        "operationId": "auditGetEffectiveAccess",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EffectiveAccessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Effective Access",
         "tags": [
           "operations-audit"
         ]

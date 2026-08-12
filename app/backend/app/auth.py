@@ -35,9 +35,9 @@ class _PrincipalRecord:
 
 _RECORD_FIELDS = {"token_sha256", "subject", "role", "not_before", "expires_at"}
 _TEST_TOKENS = {
-    "runtime-test-token": Principal(UUID(int=1), Role.HOTEL_ANALYST),
-    "runtime-report-admin-token": Principal(UUID(int=2), Role.REPORT_ADMIN),
-    "runtime-data-admin-token": Principal(UUID(int=3), Role.DATA_ADMIN),
+    "runtime-test-token": UUID(int=1),
+    "runtime-report-admin-token": UUID(int=2),
+    "runtime-data-admin-token": UUID(int=3),
 }
 
 
@@ -110,11 +110,19 @@ def _release_principal(token: str, now: datetime) -> Principal:
 
 
 def _test_principal(token: str) -> Principal:
+    from app.access_policy import test_seed_role
+
     supplied_digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
-    for expected_token, principal in _TEST_TOKENS.items():
+    for expected_token, subject in _TEST_TOKENS.items():
         expected_digest = hashlib.sha256(expected_token.encode("utf-8")).hexdigest()
         if hmac.compare_digest(expected_digest, supplied_digest):
-            return principal
+            try:
+                role = test_seed_role(subject)
+            except RuntimeError as error:
+                raise _authentication_error(503) from error
+            if role is None:
+                raise _authentication_error(503)
+            return Principal(subject, role)
     raise _authentication_error()
 
 

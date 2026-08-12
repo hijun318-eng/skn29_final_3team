@@ -6,12 +6,30 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.audit_contracts import AuditSearchResponse, AuditTraceResponse
+from app.audit_contracts import (
+    AuditSearchResponse,
+    AuditTraceResponse,
+    EffectiveAccessResponse,
+)
 from app.context import analysis_context
 from app.contracts import RequestContext
 
 
 audit_router = APIRouter(prefix="/operations/audit", tags=["operations-audit"])
+
+
+@audit_router.get(
+    "/access", operation_id="auditGetEffectiveAccess", response_model=EffectiveAccessResponse
+)
+def get_effective_access(
+    context: Annotated[RequestContext, Depends(analysis_context)],
+) -> dict[str, str]:
+    from app.access_policy import effective_access
+
+    try:
+        return effective_access(context.user_id, context.role)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail="접근 정책을 확인할 수 없습니다.") from error
 
 
 def _repository(context: RequestContext):

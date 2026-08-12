@@ -1,11 +1,18 @@
 import os
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from uuid import UUID, uuid4
+from unittest.mock import patch
 
 import pytest
 
-from app.services.report_worker import ReportCommandWorker
+from app.services.report_worker import (
+    ReportAccessBindingError,
+    ReportAnalysisRunner,
+    ReportCommandWorker,
+)
 from src.report.domain import (
+    AnalysisBinding,
     AnalysisReplayResult,
     BlockType,
     ReportBlock,
@@ -21,6 +28,7 @@ class Repository:
         self.completed = None
         self.failed = None
         self.enqueued = 0
+        self.fallback_calls = 0
 
     def enqueue_due_schedules(self, _current):
         self.enqueued += 1
@@ -33,6 +41,7 @@ class Repository:
         return artifact_id
 
     def artifact_result(self, _artifact_id):
+        self.fallback_calls += 1
         if self.fallback is None:
             raise KeyError("fallback 없음")
         return self.fallback
@@ -109,6 +118,76 @@ def test_worker_marks_command_failed_when_no_run_can_be_built():
     assert run.status is RunStatus.FAILED
     assert run.blocks == ()
     assert repository.completed[1] == run
+
+
+def test_worker_does_not_fallback_when_access_binding_is_rejected():
+    repository = Repository(
+        command(ReportBlock("failed", "실패", "artifact-old", 6)),
+        fallback=RESULT,
+    )
+
+    class AccessRejectedRunner:
+        def replay(self, *_args):
+            raise ReportAccessBindingError("binding mismatch")
+
+    run = ReportCommandWorker(repository, AccessRejectedRunner()).run_once()
+
+    assert run.status is RunStatus.FAILED
+    assert run.blocks == ()
+    assert repository.fallback_calls == 0
+
+
+def test_report_replay_restores_original_access_binding_after_current_policy_approval():
+    owner_id = UUID("00000000-0000-0000-0000-000000000001")
+    binding = AnalysisBinding(
+        "analysis-1", 1, owner_id, "hotel_analyst", "매출", {}, "pms_only",
+        ("urn:li:domain:rooms",), "ACCESS-POLICY-v1.0.0", "entitlement",
+        "urn:li:corpuser:pms", "answervice_pms",
+    )
+    profile = SimpleNamespace(
+        name="pms_only",
+        domains=("urn:li:domain:rooms",),
+        policy_version="ACCESS-POLICY-v1.0.0",
+        entitlement_hash="entitlement",
+        datahub_principal="urn:li:corpuser:pms",
+        trino_principal="answervice_pms",
+        credential=lambda: "token",
+    )
+
+    with patch("app.access_policy.resolve_access_profile", return_value=profile):
+        context = ReportAnalysisRunner._restore_context(
+            binding, datetime(2026, 8, 12, tzinfo=timezone.utc)
+        )
+
+    assert context.access_profile == "pms_only"
+    assert context.allowed_domains == ("urn:li:domain:rooms",)
+    assert context.entitlement_hash == "entitlement"
+    assert context.datahub_principal == "urn:li:corpuser:pms"
+    assert context.trino_principal == "answervice_pms"
+
+
+def test_report_replay_blocks_changed_policy_and_missing_credential():
+    binding = AnalysisBinding(
+        "analysis-1", 1, UUID(int=1), "hotel_analyst", "매출", {}, "pms_only",
+        ("urn:li:domain:rooms",), "old-policy", "old-entitlement",
+        "urn:li:corpuser:pms", "answervice_pms",
+    )
+    profile = SimpleNamespace(
+        name="pms_only",
+        domains=("urn:li:domain:rooms",),
+        policy_version="new-policy",
+        entitlement_hash="new-entitlement",
+        datahub_principal="urn:li:corpuser:pms",
+        trino_principal="answervice_pms",
+        credential=lambda: "token",
+    )
+    with patch("app.access_policy.resolve_access_profile", return_value=profile):
+        with pytest.raises(ReportAccessBindingError, match="현재 정책"):
+            ReportAnalysisRunner._restore_context(binding, datetime.now(timezone.utc))
+    profile.credential = lambda: (_ for _ in ()).throw(RuntimeError("missing"))
+    with patch("app.access_policy.resolve_access_profile", return_value=profile):
+        with pytest.raises(ReportAccessBindingError, match="credential"):
+            ReportAnalysisRunner._restore_context(binding, datetime.now(timezone.utc))
 
 
 def test_worker_marks_unexpected_persistence_error_on_command():

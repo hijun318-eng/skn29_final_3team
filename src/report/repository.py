@@ -9,6 +9,7 @@ from .domain import (
     ReportDefinitionVersion,
     ReportRun,
     ReportSchedule,
+    RunStatus,
 )
 
 
@@ -99,8 +100,25 @@ class InMemoryReportRepository:
     def save_schedule(self, schedule: ReportSchedule) -> ReportSchedule:
         if self.get_version(schedule.definition_id, schedule.version).status is not DefinitionStatus.APPROVED:
             raise ValueError("승인된 Report definition version만 예약할 수 있습니다.")
+        if schedule.enabled:
+            self.assert_schedule_activatable(schedule.definition_id, schedule.version)
         self._schedules[schedule.schedule_id] = schedule
         return schedule
+
+    def assert_schedule_activatable(self, definition_id: str, version: int) -> None:
+        report_version = self.get_version(definition_id, version)
+        if not any(
+            run.definition_id == definition_id
+            and run.definition_version == version
+            and run.status is RunStatus.SUCCESS
+            for run in self._runs.values()
+        ):
+            raise ValueError("스케줄 활성화 전에 성공한 수동 실행이 필요합니다.")
+        if any(
+            block.type.value != "text" and not block.artifact_id
+            for block in report_version.blocks
+        ):
+            raise ValueError("스케줄 활성화 전에 모든 block의 재실행 binding이 필요합니다.")
 
     def list_schedules(self) -> tuple[ReportSchedule, ...]:
         return tuple(self._schedules[key] for key in sorted(self._schedules))

@@ -110,6 +110,7 @@ class ControlPlaneContractTest(unittest.TestCase):
             "RATE_LIMITED",
             "CONTRACT_VERSION_MISMATCH",
             "SCHEMA_VERSION_MISMATCH",
+            "REPORT_SCHEDULE_NOT_READY",
             "INTERNAL_ERROR",
         }
 

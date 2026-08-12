@@ -1274,6 +1274,7 @@
           "RATE_LIMITED",
           "CONTRACT_VERSION_MISMATCH",
           "SCHEMA_VERSION_MISMATCH",
+          "REPORT_SCHEDULE_NOT_READY",
           "INTERNAL_ERROR"
         ],
         "title": "ErrorCode",
@@ -4679,6 +4680,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "수동 실행 또는 재실행 binding 미확인"
           },
           "422": {
             "content": {

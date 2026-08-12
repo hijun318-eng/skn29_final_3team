@@ -181,6 +181,34 @@ class ReportRegistrationTest(unittest.TestCase):
             schema["paths"],
         )
         self.assertNotIn("post", schema["paths"]["/reports/runs"])
+        activation_error = schema["paths"][
+            "/reports/definitions/{definition_id}/versions/{version}/schedule"
+        ]["put"]["responses"]["409"]
+        self.assertEqual(
+            "#/components/schemas/ErrorResponse",
+            activation_error["content"]["application/json"]["schema"]["$ref"],
+        )
+
+    def test_schedule_activation_requires_a_successful_run(self):
+        proposal = create_report_router(InMemoryReportRepository())
+        proposal.create_definition({
+            "definition_id": "report-gated",
+            "title": "예약 전 검증",
+            "blocks": [{
+                "block_id": "text-1", "title": "해석", "type": "text",
+                "content": "검증", "columns": 12,
+            }],
+        })
+        proposal.approve_version(
+            "report-gated", 1, datetime(2026, 8, 12, tzinfo=timezone.utc).isoformat()
+        )
+
+        with self.assertRaisesRegex(Exception, "성공한 수동 실행") as blocked:
+            proposal.upsert_schedule(
+                "report-gated", 1,
+                {"frequency": "daily", "hour": 9, "minute": 0, "enabled": True},
+            )
+        self.assertEqual(409, blocked.exception.status_code)
 
 
 @unittest.skipUnless(os.getenv("REPORT_DATABASE_URL"), "temporary report DB is required")

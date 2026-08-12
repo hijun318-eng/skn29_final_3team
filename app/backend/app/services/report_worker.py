@@ -17,6 +17,10 @@ from src.report.domain import (
 )
 
 
+class ReportAccessBindingError(RuntimeError):
+    """The original analysis authorization cannot be safely restored."""
+
+
 class ReportAnalysisRunner:
     def __init__(self, database_url: str, controller, worker_repository) -> None:
         self.database_url = database_url
@@ -29,11 +33,7 @@ class ReportAnalysisRunner:
         block_id: str,
         binding,
     ) -> AnalysisReplayResult:
-        context = RequestContext(
-            user_id=binding.owner_id,
-            role=Role.HOTEL_ANALYST,
-            as_of=command.as_of.date(),
-        )
+        context = self._restore_context(binding, command.as_of)
         repository = PostgresAnalysisRepository(self.database_url, binding.owner_id)
         definition = {
             "definition_id": binding.definition_id,
@@ -76,6 +76,52 @@ class ReportAnalysisRunner:
             )
         return result
 
+    @staticmethod
+    def _restore_context(binding, as_of: datetime) -> RequestContext:
+        from app.access_policy import resolve_access_profile
+
+        try:
+            role = Role(binding.role)
+            profile = resolve_access_profile(
+                binding.owner_id, role, binding.access_profile
+            )
+            profile.credential()
+        except (PermissionError, RuntimeError, TypeError, ValueError) as error:
+            raise ReportAccessBindingError(
+                "Report Analysis 원본 접근 권한 또는 credential을 복원할 수 없습니다."
+            ) from error
+        expected = (
+            profile.name,
+            profile.domains,
+            profile.policy_version,
+            profile.entitlement_hash,
+            profile.datahub_principal,
+            profile.trino_principal,
+        )
+        bound = (
+            binding.access_profile,
+            tuple(sorted(binding.allowed_domains)),
+            binding.policy_version,
+            binding.entitlement_hash,
+            binding.datahub_principal,
+            binding.trino_principal,
+        )
+        if bound != expected:
+            raise ReportAccessBindingError(
+                "Report Analysis 원본 접근 binding이 현재 정책과 일치하지 않습니다."
+            )
+        return RequestContext(
+            user_id=binding.owner_id,
+            role=role,
+            as_of=as_of.date(),
+            access_profile=profile.name,
+            allowed_domains=profile.domains,
+            access_policy_version=profile.policy_version,
+            entitlement_hash=profile.entitlement_hash,
+            trino_principal=profile.trino_principal,
+            datahub_principal=profile.datahub_principal,
+        )
+
 
 class ReportCommandWorker:
     def __init__(self, repository, runner) -> None:
@@ -109,6 +155,9 @@ class ReportCommandWorker:
                 binding = self.repository.analysis_binding(block.artifact_id)
                 result = self.runner.replay(command, block.block_id, binding)
                 status = BlockRunStatus.SUCCESS
+            except ReportAccessBindingError:
+                failures += 1
+                continue
             except Exception:
                 failures += 1
                 try:

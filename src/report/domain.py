@@ -117,11 +117,19 @@ class AnalysisBinding:
     definition_id: str
     version: int
     owner_id: UUID
+    role: str
     question: str
     parameters: Mapping[str, object]
+    access_profile: str
+    allowed_domains: tuple[str, ...]
+    policy_version: str
+    entitlement_hash: str
+    datahub_principal: str
+    trino_principal: str
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters)))
+        object.__setattr__(self, "allowed_domains", tuple(self.allowed_domains))
 
 
 @dataclass(frozen=True, slots=True)

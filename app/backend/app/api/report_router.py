@@ -4,9 +4,18 @@ import os
 from typing import Annotated, Any, Callable
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 
 from app.context import analysis_context
-from app.contracts import RequestContext, Role
+from app.contracts import (
+    EmptyData,
+    ErrorBody,
+    ErrorCode,
+    ErrorResponse,
+    RequestContext,
+    Role,
+    response_meta,
+)
 from app.report_contracts import (
     ApproveReportVersionRequest,
     CreateManualRunRequest,
@@ -174,18 +183,34 @@ def create_manual_run_command(
     "/reports/definitions/{definition_id}/versions/{version}/schedule",
     operation_id="reportUpsertSchedule",
     response_model=ReportScheduleResponse,
+    responses={
+        409: {"model": ErrorResponse, "description": "수동 실행 또는 재실행 binding 미확인"},
+    },
 )
 def upsert_schedule(
     definition_id: str,
     version: int,
     payload: UpsertReportScheduleRequest,
     context: Annotated[RequestContext, Depends(report_owner_context)],
-) -> dict[str, Any]:
-    return _call(
-        lambda: _router(context).upsert_schedule(
-            definition_id, version, payload.model_dump(mode="json")
+) -> dict[str, Any] | JSONResponse:
+    try:
+        return _call(
+            lambda: _router(context).upsert_schedule(
+                definition_id, version, payload.model_dump(mode="json")
+            )
         )
-    )
+    except HTTPException as error:
+        if error.status_code != 409:
+            raise
+        body = ErrorResponse(
+            data=EmptyData(),
+            meta=response_meta(context),
+            error=ErrorBody(
+                code=ErrorCode.REPORT_SCHEDULE_NOT_READY,
+                message=str(error.detail),
+            ),
+        )
+        return JSONResponse(status_code=409, content=body.model_dump(mode="json"))
 
 
 @report_router.get(

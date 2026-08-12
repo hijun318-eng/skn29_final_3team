@@ -543,6 +543,8 @@ class PostgresReportRepository:
 
     def save_schedule(self, schedule: ReportSchedule) -> ReportSchedule:
         definition_id = _uuid(schedule.definition_id, "definition_id")
+        if schedule.enabled:
+            self.assert_schedule_activatable(schedule.definition_id, schedule.version)
         with self._engine.begin() as connection:
             approved = connection.execute(
                 text(
@@ -590,6 +592,78 @@ class PostgresReportRepository:
                 },
             )
         return schedule
+
+    def assert_schedule_activatable(self, definition_id: str, version: int) -> None:
+        definition_uuid = _uuid(definition_id, "definition_id")
+        with self._engine.connect() as connection:
+            successful_manual_run = connection.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM report_v1.report_manual_run_commands c
+                    JOIN report_v1.report_runs r ON r.run_id = c.run_id
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE c.definition_id = :definition_id
+                      AND c.definition_version = :version
+                      AND c.trigger_type = 'MANUAL'
+                      AND c.status = 'success'
+                      AND r.status = 'success'
+                      AND d.owner_id = :owner_id
+                    LIMIT 1
+                    """
+                ),
+                {
+                    "definition_id": definition_uuid,
+                    "version": version,
+                    "owner_id": self._owner_id,
+                },
+            ).first()
+            if successful_manual_run is None:
+                raise ValueError("스케줄 활성화 전에 성공한 수동 실행이 필요합니다.")
+            missing_binding = connection.execute(
+                text(
+                    """
+                    SELECT b.block_id
+                    FROM report_v1.report_blocks b
+                    WHERE b.definition_id = :definition_id
+                      AND b.definition_version = :version
+                      AND b.block_type <> 'text'
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM artifact.analysis_artifacts a
+                          JOIN analysis_v1.analysis_run_links l
+                            ON l.request_id = a.request_id
+                          JOIN analysis_v1.analysis_definitions ad
+                            ON ad.definition_id = l.definition_id
+                           AND ad.version = l.definition_version
+                          JOIN governance.audit_events e
+                            ON e.request_id = a.request_id
+                           AND e.action_code = 'ANALYSIS_ACCESS_COMPLETED'
+                          JOIN context.context_packages cp
+                            ON cp.request_id = a.request_id
+                           AND cp.user_scope_json ->> 'entitlement_hash'
+                               = e.details_json_redacted ->> 'entitlement_hash'
+                          WHERE a.artifact_id = b.artifact_id
+                            AND a.status = 'APPROVED'
+                            AND ad.owner_id = :owner_id
+                            AND e.details_json_redacted ->> 'request_status'
+                                IN ('SUCCEEDED', 'PARTIAL')
+                            AND e.details_json_redacted ?& ARRAY[
+                                'access_profile', 'allowed_domains', 'policy_version',
+                                'entitlement_hash', 'datahub_actor', 'trino_role'
+                            ]
+                      )
+                    LIMIT 1
+                    """
+                ),
+                {
+                    "definition_id": definition_uuid,
+                    "version": version,
+                    "owner_id": self._owner_id,
+                },
+            ).first()
+        if missing_binding is not None:
+            raise ValueError("스케줄 활성화 전에 모든 block의 재실행 binding이 필요합니다.")
 
     @staticmethod
     def _schedule(row) -> ReportSchedule:
@@ -798,22 +872,54 @@ class PostgresReportWorkerRepository:
                 text(
                     """
                     SELECT l.definition_id, l.definition_version, d.owner_id,
-                           d.question_text_redacted, d.parameters_json
+                           e.actor_role, d.question_text_redacted, d.parameters_json,
+                           e.details_json_redacted ->> 'access_profile' AS access_profile,
+                           ARRAY(
+                               SELECT jsonb_array_elements_text(
+                                   e.details_json_redacted -> 'allowed_domains'
+                               )
+                           ) AS allowed_domains,
+                           e.details_json_redacted ->> 'policy_version' AS policy_version,
+                           e.details_json_redacted ->> 'entitlement_hash' AS entitlement_hash,
+                           e.details_json_redacted ->> 'datahub_actor' AS datahub_principal,
+                           e.details_json_redacted ->> 'trino_role' AS trino_principal
                     FROM artifact.analysis_artifacts a
                     JOIN analysis_v1.analysis_run_links l ON l.request_id = a.request_id
                     JOIN analysis_v1.analysis_definitions d
                       ON d.definition_id = l.definition_id
                      AND d.version = l.definition_version
+                    JOIN governance.audit_events e
+                      ON e.request_id = a.request_id
+                     AND e.action_code = 'ANALYSIS_ACCESS_COMPLETED'
+                    JOIN context.context_packages cp
+                      ON cp.request_id = a.request_id
+                     AND cp.user_scope_json ->> 'entitlement_hash'
+                         = e.details_json_redacted ->> 'entitlement_hash'
                     WHERE a.artifact_id = :artifact_id
+                      AND a.status = 'APPROVED'
+                      AND e.details_json_redacted ->> 'request_status'
+                          IN ('SUCCEEDED', 'PARTIAL')
+                      AND e.details_json_redacted ?& ARRAY[
+                          'access_profile', 'allowed_domains', 'policy_version',
+                          'entitlement_hash', 'datahub_actor', 'trino_role'
+                      ]
+                    ORDER BY e.created_at DESC
+                    LIMIT 1
                     """
                 ),
                 {"artifact_id": _uuid(artifact_id, "artifact_id")},
             ).mappings().one_or_none()
         if row is None:
-            raise KeyError("Report block Artifact에 재실행 가능한 Analysis Definition이 없습니다.")
+            from app.services.report_worker import ReportAccessBindingError
+
+            raise ReportAccessBindingError(
+                "Report block Artifact에 검증된 Context/access binding이 없습니다."
+            )
         return AnalysisBinding(
             str(row["definition_id"]), row["definition_version"], row["owner_id"],
-            row["question_text_redacted"], row["parameters_json"],
+            row["actor_role"], row["question_text_redacted"], row["parameters_json"],
+            row["access_profile"], tuple(row["allowed_domains"]), row["policy_version"],
+            row["entitlement_hash"], row["datahub_principal"], row["trino_principal"],
         )
 
     def analysis_result(self, request_id: UUID) -> AnalysisReplayResult:

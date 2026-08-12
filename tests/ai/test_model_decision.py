@@ -2,6 +2,8 @@ import json
 import unittest
 from pathlib import Path
 
+from src.modelops.release_gate import production_release_ready
+
 
 class ModelDecisionTests(unittest.TestCase):
     def test_node2_and_repair_use_qwen35_sql_lora_only(self):
@@ -9,7 +11,13 @@ class ModelDecisionTests(unittest.TestCase):
         decision = json.loads(path.read_text(encoding="utf-8"))
 
         self.assertEqual(decision["decision_version"], "MODEL-v1.0.0")
-        self.assertEqual(decision["product_default"], "answervice-sql-lora-qwen3.5-4b")
+        self.assertEqual(
+            decision["development_validation_default"],
+            "answervice-sql-lora-qwen3.5-4b",
+        )
+        self.assertEqual(
+            decision["default_scope"], "USER_DIRECTED_DEVELOPMENT_AND_VALIDATION"
+        )
         self.assertEqual(decision["release_candidate_status"], "SERVERLESS_SMOKE_VERIFIED")
         self.assertEqual(decision["release_readiness"], "ENDPOINT_ADVERTISES_ALIAS")
         self.assertEqual(decision["external_actions"]["deployment"], "workers_min_0")
@@ -31,6 +39,35 @@ class ModelDecisionTests(unittest.TestCase):
         self.assertFalse(decision["runtime_boundary"]["model_may_decide_authorization"])
         self.assertFalse(decision["runtime_boundary"]["model_may_decide_sql_execution"])
         self.assertFalse(decision["runtime_boundary"]["model_may_decide_gates"])
+
+    def test_production_release_fails_closed_without_complete_approval(self):
+        decision = json.loads(
+            Path("src/modelops/model_decision.v0.1.json").read_text(encoding="utf-8")
+        )
+        candidate = json.loads(
+            Path("src/modelops/release_candidate.i5.v1.json").read_text(encoding="utf-8")
+        )
+        comparison = json.loads(
+            Path("evals/base_comparison.v0.1.json").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(decision["production_release"]["status"], "NOT_APPROVED")
+        self.assertFalse(production_release_ready(decision, candidate, comparison))
+
+        malformed = dict(decision, production_release="APPROVED")
+        self.assertFalse(production_release_ready(malformed, candidate, comparison))
+
+        decision["production_release"] = {"status": "APPROVED", "ready": True}
+        candidate["production_release"]["status"] = "APPROVED"
+        candidate["production_release"]["ready"] = True
+        candidate["production_release"]["required_evidence"] = {
+            key: True
+            for key in candidate["production_release"]["required_evidence"]
+        }
+        comparison["captured_evidence"]["comparison"].update(
+            {"status": "READY", "comparable": True}
+        )
+        self.assertTrue(production_release_ready(decision, candidate, comparison))
 
 
 if __name__ == "__main__":

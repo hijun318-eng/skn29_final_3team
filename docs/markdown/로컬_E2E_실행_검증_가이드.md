@@ -100,6 +100,8 @@ MODEL_TIMEOUT_SECONDS=300
 
 Node2·2′는 `Qwen/Qwen3.5-4B` Base의 SQL LoRA를 OpenAI-compatible endpoint에서 `answervice-sql-lora-qwen3.5-4b` alias로 제공한다. 현재 E2E 기간에는 RunPod worker를 상시 유지하도록 `workersMin=1`, `workersMax=1`, `idleTimeout=300`초, `executionTimeoutMs=300000`으로 설정한다. `workersMin=1`은 유휴 중에도 Active 과금이 계속되므로 검증 종료 뒤 비용 절감이 필요하면 `workersMin=0`으로 되돌린다. GPU 후보는 저가형을 우선하고 최대 RTX 4090급까지 fallback한다.
 
+이 alias는 사용자가 지정한 **개발·E2E 검증 기본값**이며 P0 운영 채택 승인을 의미하지 않는다. `src/modelops/release_candidate.i5.v1.json`의 Base–LoRA 불변 비교 증거, LoRA serving SLO, 명시적 P0 채택 승인이 모두 충족되기 전에는 `production_release=NOT_APPROVED`로 판정한다. endpoint alias 노출·smoke 성공만으로 운영 release readiness `PASS`를 기록하지 않는다.
+
 ```powershell
 docker compose --env-file .env --profile full up -d --build backend
 ```

@@ -1,8 +1,14 @@
 {
   "decision_version": "MODEL-v1.0.0",
-  "product_default": "answervice-sql-lora-qwen3.5-4b",
+  "development_validation_default": "answervice-sql-lora-qwen3.5-4b",
+  "default_scope": "USER_DIRECTED_DEVELOPMENT_AND_VALIDATION",
   "release_candidate_status": "SERVERLESS_SMOKE_VERIFIED",
   "release_readiness": "ENDPOINT_ADVERTISES_ALIAS",
+  "production_release": {
+    "status": "NOT_APPROVED",
+    "ready": false,
+    "reason": "serverless smoke verification is not P0 production adoption approval"
+  },
   "scope": {
     "included": [
       "node1_question_normalization",

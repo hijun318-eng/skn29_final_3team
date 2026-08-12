@@ -61,7 +61,8 @@ class Wave3EvaluationTests(unittest.TestCase):
         )
         self.assertEqual("PASS_BASE_SELECTED", comparison["status"])
         self.assertEqual("PASS", serving["status"])
-        self.assertEqual("Base", comparison["decision"]["product_default"])
+        self.assertEqual("Base", comparison["decision"]["historical_comparison_selection"])
+        self.assertEqual("HISTORICAL_CAPTURE_ONLY", comparison["decision"]["decision_scope"])
         self.assertEqual("Base", serving["product_default"])
         self.assertFalse(comparison["captured_evidence"]["comparison"]["comparable"])
         self.assertEqual("NOT_READY", comparison["captured_evidence"]["comparison"]["status"])
@@ -86,7 +87,12 @@ class Wave3EvaluationTests(unittest.TestCase):
         execution = release["typed_missing"]["model_execution"]
         self.assertEqual("SMOKE_PASS", execution["status"])
         self.assertEqual(0, execution["workers_min_after_test"])
-        self.assertEqual("answervice-sql-lora-qwen3.5-4b", release["product_default"])
+        self.assertEqual(
+            "answervice-sql-lora-qwen3.5-4b",
+            release["development_validation_default"],
+        )
+        self.assertEqual("NOT_APPROVED", release["production_release"]["status"])
+        self.assertFalse(release["production_release"]["ready"])
         self.assertEqual("Qwen/Qwen3.5-4B", release["base_model"])
         self.assertEqual(["node2", "node2_repair"], release["sql_lora_enabled_nodes"])
 

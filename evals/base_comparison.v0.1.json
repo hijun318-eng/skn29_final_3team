@@ -113,7 +113,8 @@
     }
   ],
   "decision": {
-    "product_default": "Base",
+    "historical_comparison_selection": "Base",
+    "decision_scope": "HISTORICAL_CAPTURE_ONLY",
     "lora_adoption": "NOT_APPROVED",
     "reason": "LoRA improved SQL and result match, but its direct-evaluation p95 was slower and no LoRA serving SLO was verified"
   }

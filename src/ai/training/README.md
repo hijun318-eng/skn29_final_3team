@@ -1,6 +1,6 @@
 # Answervice SQL LoRA 학습 실행 가이드
 
-이 폴더는 `Qwen/Qwen3.5-4B` Base와 제품 Node 2·2′용 SQL LoRA `answervice-sql-lora-qwen3.5-4b`를 재현하는 최소 실행 패키지다. Adapter 바이너리는 `models/adapters/answervice-sql-lora-qwen3.5-4b`에 로컬로 두고 Git에는 포함하지 않는다.
+이 폴더는 `Qwen/Qwen3.5-4B` Base와 Node 2·2′ 개발·검증용 SQL LoRA `answervice-sql-lora-qwen3.5-4b`를 재현하는 최소 실행 패키지다. Adapter 바이너리는 `models/adapters/answervice-sql-lora-qwen3.5-4b`에 로컬로 두고 Git에는 포함하지 않는다. 이 alias를 기본으로 사용하는 것은 P0 운영 채택 승인과 별개이며, 비교·SLO·명시적 승인 증거가 완료되기 전에는 release gate가 fail-closed로 유지된다.
 
 ## 1. 파일 역할
 

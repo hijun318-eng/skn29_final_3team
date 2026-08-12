@@ -2,10 +2,20 @@
   "release_candidate_version": "RELEASE-CANDIDATE-I5-v1.0.0-DRAFT",
   "status": "SERVERLESS_SMOKE_VERIFIED",
   "readiness": "ENDPOINT_ADVERTISES_ALIAS",
-  "product_default": "answervice-sql-lora-qwen3.5-4b",
+  "development_validation_default": "answervice-sql-lora-qwen3.5-4b",
+  "default_scope": "USER_DIRECTED_DEVELOPMENT_AND_VALIDATION",
   "base_model": "Qwen/Qwen3.5-4B",
   "adapter_path": "models/adapters/answervice-sql-lora-qwen3.5-4b",
   "sql_lora_enabled_nodes": ["node2", "node2_repair"],
+  "production_release": {
+    "status": "NOT_APPROVED",
+    "ready": false,
+    "required_evidence": {
+      "immutable_base_lora_comparison": false,
+      "lora_serving_slo": false,
+      "explicit_p0_adoption_approval": false
+    }
+  },
   "comparability": {
     "status": "NOT_READY",
     "comparable": false,

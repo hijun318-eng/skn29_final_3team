@@ -42,7 +42,8 @@ def test_analysis_profiles_match_server_contract_and_default_to_pms_only():
     policy = load_access_policy()
     contract = load_server_access_profiles()
     assert set(policy["access_profiles"]) == set(contract["profiles"]) == {
-        "pms_only", "crm_only", "pms_crm", "integrated_revenue"
+        "pms_only", "crm_only", "pms_crm", "integrated_revenue",
+        "integrated_operations",
     }
     profile = resolve_access_profile(UUID(int=1), Role.HOTEL_ANALYST, None)
     assert profile.name == "pms_only"

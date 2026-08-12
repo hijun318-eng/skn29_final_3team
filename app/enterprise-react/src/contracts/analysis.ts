@@ -5,7 +5,8 @@ export type AccessProfile =
   | "pms_only"
   | "crm_only"
   | "pms_crm"
-  | "integrated_revenue";
+  | "integrated_revenue"
+  | "integrated_operations";
 
 export type AnalysisRunStatus =
   | "idle"

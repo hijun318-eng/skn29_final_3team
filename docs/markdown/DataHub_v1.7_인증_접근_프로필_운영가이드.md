@@ -24,7 +24,7 @@ DataHub v1.7.0의 `application.yaml`은 위 네 플래그와 health 인증 제�
    교체한다. 실제 값은 커밋하지 않는다.
 2. DataHub에 `rooms`, `membership`, `food_and_beverage`, `facility`, `banquet` Domain을
    만들고 대상 Dataset을 정확한 Domain에 배치한다.
-3. 네 `datahub_actor`를 생성한다. 광범위한 Reader/Admin 역할을 부여하지 않는다.
+3. 다섯 `datahub_actor`를 생성한다. 광범위한 Reader/Admin 역할을 부여하지 않는다.
 4. 각 actor에 대해 계약의 `domains`만 대상으로 다음 Metadata Policy 권한을
    명시적으로 허용한다.
    - `VIEW_ENTITY` (DataHub v1.7 UI의 **View Entity**)
@@ -44,7 +44,7 @@ DataHub v1.7.0의 `application.yaml`은 위 네 플래그와 health 인증 제�
 
    bootstrap은 접근 actor와 명시적 Domain 정책, Domain, `AI_SEARCH_ALLOWED` Tag,
    Serving View의 실제 원천 Domain 및 lineage를 동일 입력으로 반복 적용할 수 있다.
-   verify는 네 profile PAT의 actor 일치 여부까지 fail-closed로 확인한다.
+   verify는 다섯 profile PAT의 actor 일치 여부까지 fail-closed로 확인한다.
 
 ## 프로필 경계
 
@@ -54,6 +54,7 @@ DataHub v1.7.0의 `application.yaml`은 위 네 플래그와 health 인증 제�
 | `crm_only` | `membership` | `answervice_crm_only` | `answervice_crm_only` |
 | `pms_crm` | `rooms`, `membership` | `answervice_pms_crm` | `answervice_pms_crm` |
 | `integrated_revenue` | `rooms`, `membership`, `food_and_beverage` | `answervice_integrated_revenue` | `answervice_integrated_revenue` |
+| `integrated_operations` | `rooms`, `membership`, `food_and_beverage`, `facility`, `banquet` | `answervice_integrated_operations` | `answervice_integrated_operations` |
 
 DataHub actor는 표에서 각 이름 앞에 `urn:li:corpuser:`를 붙인 URN이다.
 

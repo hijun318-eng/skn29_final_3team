@@ -35,6 +35,17 @@ EXPECTED = {
         "DATAHUB_INTEGRATED_REVENUE_TOKEN",
         "answervice_integrated_revenue",
     ),
+    "integrated_operations": (
+        [
+            "urn:li:domain:rooms",
+            "urn:li:domain:membership",
+            "urn:li:domain:food_and_beverage",
+            "urn:li:domain:facility",
+            "urn:li:domain:banquet",
+        ],
+        "DATAHUB_INTEGRATED_OPERATIONS_TOKEN",
+        "answervice_integrated_operations",
+    ),
 }
 
 
@@ -62,7 +73,7 @@ def test_server_access_profiles_are_explicit_default_deny_grants():
         token_envs.add(token_env)
         principals.add(trino_principal)
 
-    assert len(actors) == len(token_envs) == len(principals) == 4
+    assert len(actors) == len(token_envs) == len(principals) == 5
 
 
 def test_datahub_v1_7_auth_and_authorization_are_enabled_without_embedded_secrets():

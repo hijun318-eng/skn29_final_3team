@@ -53,7 +53,8 @@ profile 계약의 단일 원본은 [server-access-profiles.v1.json](../../config
 | `pms_only` | `urn:li:domain:rooms` | `DATAHUB_PMS_ONLY_TOKEN` | `answervice_pms_only` |
 | `crm_only` | `urn:li:domain:membership` | `DATAHUB_CRM_ONLY_TOKEN` | `answervice_crm_only` |
 | `pms_crm` | `urn:li:domain:rooms`, `urn:li:domain:membership` | `DATAHUB_PMS_CRM_TOKEN` | `answervice_pms_crm` |
-| `integrated_revenue` | `urn:li:domain:hotel-analytics` | `DATAHUB_INTEGRATED_REVENUE_TOKEN` | `answervice_integrated_revenue` |
+| `integrated_revenue` | `urn:li:domain:rooms`, `urn:li:domain:membership`, `urn:li:domain:food_and_beverage` | `DATAHUB_INTEGRATED_REVENUE_TOKEN` | `answervice_integrated_revenue` |
+| `integrated_operations` | `urn:li:domain:rooms`, `urn:li:domain:membership`, `urn:li:domain:food_and_beverage`, `urn:li:domain:facility`, `urn:li:domain:banquet` | `DATAHUB_INTEGRATED_OPERATIONS_TOKEN` | `answervice_integrated_operations` |
 
 각 token은 profile별 최소 권한 PAT로 발급해 배포 secret에서 해당 환경 변수로 주입한다. raw token은 저장소·설정 예시·로그·응답에 기록하지 않는다. 브라우저는 선택한 `X-Access-Profile`만 보내며 profile token, 허용 Domain, role, DataHub token 또는 Trino 자격증명을 보내거나 보관하지 않는다.
 

@@ -24,7 +24,7 @@
   ],
   "selectors": [
     {
-      "user": "answervice_(pms_only|crm_only|pms_crm|integrated_revenue)",
+      "user": "answervice_(pms_only|crm_only|pms_crm|integrated_revenue|integrated_operations)",
       "group": "answervice.profile_${USER}"
     },
     {

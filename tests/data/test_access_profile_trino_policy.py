@@ -18,6 +18,15 @@ PROFILES = {
         {"pms", "crm", "pos", "serving"},
         {"hotel_daily_metrics", "fnb_daypart_metrics"},
     ),
+    "answervice_integrated_operations": (
+        {"pms", "crm", "pos", "facility", "banquet", "serving"},
+        {
+            "banquet_monthly_metrics", "facility_daily_metrics",
+            "fnb_daypart_metrics", "hotel_daily_metrics",
+            "hotel_monthly_metrics", "hotel_yearly_metrics",
+            "resource_monthly_metrics", "workforce_monthly_metrics",
+        },
+    ),
 }
 
 
@@ -85,7 +94,7 @@ def test_resource_groups_bound_each_profile_and_platform_workload():
     assert (platform["hardConcurrencyLimit"], platform["maxQueued"]) == (2, 4)
     assert config["selectors"] == [
         {
-            "user": "answervice_(pms_only|crm_only|pms_crm|integrated_revenue)",
+            "user": "answervice_(pms_only|crm_only|pms_crm|integrated_revenue|integrated_operations)",
             "group": "answervice.profile_${USER}",
         },
         {

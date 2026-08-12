@@ -12,6 +12,8 @@
     {"user": "answervice_pms_crm", "catalog": ".*", "allow": "none"},
     {"user": "answervice_integrated_revenue", "catalog": "(pms|crm|pos|serving)", "allow": "read-only"},
     {"user": "answervice_integrated_revenue", "catalog": ".*", "allow": "none"},
+    {"user": "answervice_integrated_operations", "catalog": "(pms|crm|pos|facility|banquet|serving)", "allow": "read-only"},
+    {"user": "answervice_integrated_operations", "catalog": ".*", "allow": "none"},
     {"catalog": "system", "allow": "none"},
     {"catalog": ".*", "allow": "none"}
   ],
@@ -109,6 +111,21 @@
       "privileges": ["SELECT"]
     },
     {"user": "answervice_integrated_revenue", "catalog": ".*", "schema": ".*", "table": ".*", "privileges": []},
+    {
+      "user": "answervice_integrated_operations",
+      "catalog": "(pms|crm|pos|facility|banquet)",
+      "schema": ".*",
+      "table": ".*",
+      "privileges": ["SELECT"]
+    },
+    {
+      "user": "answervice_integrated_operations",
+      "catalog": "serving",
+      "schema": "analytics",
+      "table": "(banquet_monthly_metrics|facility_daily_metrics|fnb_daypart_metrics|hotel_daily_metrics|hotel_monthly_metrics|hotel_yearly_metrics|resource_monthly_metrics|workforce_monthly_metrics)",
+      "privileges": ["SELECT"]
+    },
+    {"user": "answervice_integrated_operations", "catalog": ".*", "schema": ".*", "table": ".*", "privileges": []},
     {"privileges": []}
   ],
   "procedures": [
@@ -117,7 +134,7 @@
   "queries": [
     {"user": "hotel_synthetic_setup", "allow": ["execute"]},
     {"user": "datahub_ingestion", "allow": ["execute"]},
-    {"user": "answervice_(pms_only|crm_only|pms_crm|integrated_revenue)", "allow": ["execute"]},
+    {"user": "answervice_(pms_only|crm_only|pms_crm|integrated_revenue|integrated_operations)", "allow": ["execute"]},
     {"allow": []}
   ],
   "system_session_properties": [

@@ -41,6 +41,18 @@
       "datahub_actor": "urn:li:corpuser:answervice_integrated_revenue",
       "datahub_token_env": "DATAHUB_INTEGRATED_REVENUE_TOKEN",
       "trino_principal": "answervice_integrated_revenue"
+    },
+    "integrated_operations": {
+      "domains": [
+        "urn:li:domain:rooms",
+        "urn:li:domain:membership",
+        "urn:li:domain:food_and_beverage",
+        "urn:li:domain:facility",
+        "urn:li:domain:banquet"
+      ],
+      "datahub_actor": "urn:li:corpuser:answervice_integrated_operations",
+      "datahub_token_env": "DATAHUB_INTEGRATED_OPERATIONS_TOKEN",
+      "trino_principal": "answervice_integrated_operations"
     }
   }
 }

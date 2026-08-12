@@ -283,7 +283,7 @@ assert.match(agentPageSource, /artifact_id: run\.artifact\.artifactId/);
 assert.match(agentPageSource, /query_id: run\.artifact\.queryId/);
 assert.match(agentPageSource, /type: run\.chart \? "chart" : "table"/);
 assert.match(agentPageSource, /useState\("pms_only"\)/);
-for (const profile of ["pms_only", "crm_only", "pms_crm", "integrated_revenue"]) assert.match(agentPageSource, new RegExp(profile));
+for (const profile of ["pms_only", "crm_only", "pms_crm", "integrated_revenue", "integrated_operations"]) assert.match(agentPageSource, new RegExp(profile));
 assert.match(agentPageSource, /htmlFor="analysis-access-profile"/);
 assert.match(agentPageSource, /id="analysis-access-profile"/);
 assert.match(agentPageSource, /disabled=\{submitting\}/);

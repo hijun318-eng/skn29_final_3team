@@ -66,7 +66,10 @@ def load_server_access_profiles() -> dict:
         if (
             contract.get("contract_version") != "SERVER-ACCESS-PROFILES-v1.0.0"
             or contract.get("default_effect") != "deny"
-            or set(profiles) != {"pms_only", "crm_only", "pms_crm", "integrated_revenue"}
+            or set(profiles) != {
+                "pms_only", "crm_only", "pms_crm", "integrated_revenue",
+                "integrated_operations",
+            }
         ):
             raise ValueError
         for profile in profiles.values():

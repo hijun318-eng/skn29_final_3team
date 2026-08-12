@@ -34,11 +34,14 @@
       "runtime": "vllm-0.26.0-ad307881",
       "workers_min_after_test": 0,
       "workers_max": 1,
-      "idle_timeout_seconds": 60,
+      "idle_timeout_seconds": 300,
       "gpu_type_ids": [
         "NVIDIA RTX A4000",
         "NVIDIA RTX A4500",
-        "NVIDIA RTX 4000 Ada Generation"
+        "NVIDIA RTX 4000 Ada Generation",
+        "NVIDIA RTX A5000",
+        "NVIDIA GeForce RTX 3090",
+        "NVIDIA GeForce RTX 4090"
       ]
     }
   },

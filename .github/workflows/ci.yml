@@ -54,9 +54,58 @@ jobs:
       - run: docker compose -f compose.yml --env-file .env.example --profile full config --quiet
       - run: docker compose -f compose.yml --env-file .env.example --profile split-host config --quiet
 
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - name: Audit Python dependencies
+        uses: pypa/gh-action-pip-audit@1220774d901786e6f652ae159f7b6bc8fea6d266 # v1.1.0
+        with:
+          inputs: app/backend/requirements.txt
+      - name: Audit Node dependencies
+        working-directory: app/enterprise-react
+        run: npm audit --audit-level=high
+      - name: Generate CycloneDX SBOM
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: cyclonedx
+          output: answervice.cdx.json
+          version: v0.70.0
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: answervice-cyclonedx-sbom
+          path: answervice.cdx.json
+          retention-days: 30
+      - name: Build application images
+        run: |
+          docker build -f app/backend/Dockerfile -t answervice-backend:${{ github.sha }} .
+          docker build -f app/enterprise-react/Dockerfile -t answervice-frontend:${{ github.sha }} app/enterprise-react
+      - name: Scan backend image
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: answervice-backend:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          scanners: vuln
+          exit-code: "1"
+          version: v0.70.0
+      - name: Scan frontend image
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: answervice-frontend:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          scanners: vuln
+          exit-code: "1"
+          version: v0.70.0
+
   quality-gate:
     if: always()
-    needs: [python-contracts, frontend-contracts, compose-config]
+    needs: [python-contracts, frontend-contracts, compose-config, supply-chain]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -65,8 +114,9 @@ jobs:
           PYTHON_CONTRACTS: ${{ needs.python-contracts.result }}
           FRONTEND_CONTRACTS: ${{ needs.frontend-contracts.result }}
           COMPOSE_CONFIG: ${{ needs.compose-config.result }}
+          SUPPLY_CHAIN: ${{ needs.supply-chain.result }}
         shell: bash
         run: |
-          for result in "$PYTHON_CONTRACTS" "$FRONTEND_CONTRACTS" "$COMPOSE_CONFIG"; do
+          for result in "$PYTHON_CONTRACTS" "$FRONTEND_CONTRACTS" "$COMPOSE_CONFIG" "$SUPPLY_CHAIN"; do
             [[ "$result" == "success" ]] || exit 1
           done

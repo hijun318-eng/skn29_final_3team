@@ -9,6 +9,8 @@ Answervice는 여러 업무 데이터 소스를 자연어로 조회하고 근거
 - 화면·상태·사용자 흐름: [화면설계서](./docs/markdown/05_화면설계서.md)
 - 문서 위치·번호·보호 규칙: [문서 관리 규칙](./docs/문서관리규칙.md)
 
+CI는 Python·Node 의존성 감사를 수행하고 CycloneDX SBOM을 30일간 보관한다. 또한 backend·frontend 이미지를 직접 빌드해 HIGH·CRITICAL 취약점이 발견되면 품질 게이트를 실패시킨다.
+
 ## 개인 branch 시작
 
 ```powershell

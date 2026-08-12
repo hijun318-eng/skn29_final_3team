@@ -404,7 +404,7 @@ def vllm_transport(
                 },
             ],
             "temperature": 0,
-            "max_tokens": 1_500,
+            "max_tokens": 800,
             "chat_template_kwargs": {"enable_thinking": False},
             "response_format": {
                 "type": "json_schema",

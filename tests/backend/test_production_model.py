@@ -185,6 +185,7 @@ class ProductionModelTest(unittest.TestCase):
 
         body = request_json.call_args.args[2]
         self.assertNotIn("guided_json", body)
+        self.assertEqual(800, body["max_tokens"])
         self.assertEqual("json_schema", body["response_format"]["type"])
         self.assertEqual(
             "object", body["response_format"]["json_schema"]["schema"]["type"]

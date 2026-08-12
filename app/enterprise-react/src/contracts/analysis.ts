@@ -183,6 +183,7 @@ export interface AnalysisRun {
   table?: AnalysisTable | null;
   chart?: AnalysisChart | null;
   trace?: Array<{ stage: string; outcome: string; detail?: string | null }>;
+  progress?: Array<{ stage: string; outcome: string }>;
   evidence?: AnalysisEvidence;
   error?: {
     code: AnalysisErrorCode;

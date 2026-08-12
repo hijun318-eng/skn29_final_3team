@@ -56,6 +56,7 @@ export function createHttpAnalysisClient(
         "X-Trace-Id": traceId,
       };
       let settled = false;
+      let latestProgress: Array<{ stage: string; outcome: string }> = [];
       const responsePromise = request(`${root}/analysis`, {
         method: "POST",
         signal: AbortSignal.timeout(180_000),
@@ -72,6 +73,7 @@ export function createHttpAnalysisClient(
             const progressResponse = await request(`${root}/analysis/${requestId}/progress`, { method: "GET", headers });
             if (progressResponse.ok) {
               const progress = await progressResponse.json() as AnalysisProgressResponse;
+              latestProgress = progress.events.map(({ stage, outcome }) => ({ stage, outcome }));
               onProgress?.({
                 conversationId,
                 requestId,
@@ -80,7 +82,7 @@ export function createHttpAnalysisClient(
                 question,
                 metrics: [],
                 sources: [],
-                trace: progress.events.map(({ stage, outcome }) => ({ stage, outcome })),
+                progress: latestProgress,
                 meta: { asOf: headers["X-As-Of"], timezone: "Asia/Seoul", synthetic: true, seed: "", schemaVersion: "", contractVersion: OPENAPI_VERSION },
               });
             }
@@ -107,7 +109,7 @@ export function createHttpAnalysisClient(
         );
       }
       if (!payload?.data || !payload.meta) throw new Error("Analysis API returned an invalid response");
-      return normalizeApiResponse(payload, question, conversationId);
+      return { ...normalizeApiResponse(payload, question, conversationId), progress: latestProgress };
     },
   };
 }

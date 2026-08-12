@@ -67,6 +67,39 @@ function formatAxisValue(value: number) {
   return value.toLocaleString("ko-KR");
 }
 
+const PIPELINE_STEPS = [
+  ["DATAHUB", "자산 · 권한 확인", "선택한 Profile 권한으로 DataHub Dataset을 조회합니다."],
+  ["NODE1", "질문 이해", "질문의 목적, 기간, 업무 영역을 구조화합니다."],
+  ["G1", "1차 검증 — SQL 생성 전", "지표 · 기간 · 승인 Context · 권한을 확인합니다."],
+  ["NODE2", "통합 SQL 생성", "허용된 자산과 Join Policy만 사용해 SQL을 생성합니다."],
+  ["G2", "2차 검증 — SQL 실행 전", "AST · 컬럼 · Join · Filter · 읽기 전용 경계를 확인합니다."],
+  ["TRINO", "통합 조회 실행", "Profile 전용 읽기 계정으로 Trino 조회를 실행합니다."],
+  ["G3", "3차 검증 — 결과 제공 전", "결과 구조 · 빈 결과 · Sampling · 민감정보 증적을 확인합니다."],
+  ["NODE3", "결과 설명", "검증을 통과한 결과만 자연어로 설명합니다."],
+  ["ARTIFACT", "결과 저장", "표 · 차트 · 산출 근거를 함께 보존합니다."],
+] as const;
+
+function AnalysisProgress({ run }: { run: AnalysisRun }) {
+  const events = run.progress ?? [];
+  if (!events.length) return null;
+  const latest = new Map(events.map((event) => [event.stage, event.outcome]));
+  const completed = PIPELINE_STEPS.filter(([stage]) => latest.has(stage)).length;
+  const failed = events.findLast((event) => event.outcome === "FAILED" || event.outcome === "BLOCKED");
+  return (
+    <details className="analysis-process" open={run.status === "queued" || run.status === "running"}>
+      <summary><span className="analysis-process-caret">›</span><b>처리 과정</b><span>{failed ? `${completed} 단계에서 중단` : `${completed} / ${PIPELINE_STEPS.length} 단계`}</span></summary>
+      <ol aria-label="실제 분석 실행 단계">
+        {PIPELINE_STEPS.map(([stage, label, description], index) => {
+          const outcome = latest.get(stage);
+          const state = outcome === "STARTED" ? "busy" : outcome === "PASSED" ? "done" : outcome === "SKIPPED" ? "skip" : outcome === "FAILED" || outcome === "BLOCKED" ? "fail" : "pending";
+          const gate = state === "busy" ? "진행 중" : state === "done" ? "완료" : state === "skip" ? "생략" : state === "fail" ? (outcome === "BLOCKED" ? "차단" : "실패") : "";
+          return <li key={stage} className={`analysis-process-step ${state}`}><span className="analysis-process-dot">{state === "fail" ? "!" : index + 1}</span><span><b>{label}</b><small>{description}</small></span><em>{gate}</em></li>;
+        })}
+      </ol>
+    </details>
+  );
+}
+
 export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
   const viewState = resolveViewState(run);
   const copy = VIEW_COPY[viewState];
@@ -78,7 +111,7 @@ export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
 
   if (viewState === "LOADING") {
     return (
-      <section className="analysis-state analysis-state--loading" aria-live="polite"><header><LoaderCircle size={18} /><div><b>분석 요청 중</b><span>실제 단계 조회</span></div></header><p>서버가 기록한 처리 단계와 최종 결과를 기다리고 있습니다.</p>{run.trace && run.trace.length > 0 && <ol className="actual-analysis-trace" aria-label="실제 분석 실행 단계">{run.trace.map((step, index) => <li key={`${step.stage}-${index}`}><b>{step.stage}</b><span>{step.outcome}</span></li>)}</ol>}</section>
+      <section className="analysis-state analysis-state--loading" aria-live="polite"><header><LoaderCircle size={18} /><div><b>분석 요청 중</b><span>실제 단계 조회</span></div></header><p>서버가 기록한 처리 단계와 최종 결과를 기다리고 있습니다.</p><AnalysisProgress run={run} /></section>
     );
   }
 
@@ -98,7 +131,7 @@ export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
           <div><dt>error.retryable</dt><dd>{String(run.error.retryable)}</dd></div>
         </dl>
       )}
-      {run.trace && run.trace.length > 0 && <ol className="actual-analysis-trace" aria-label="실제 분석 실행 단계">{run.trace.map((step, index) => <li key={`${step.stage}-${index}`}><b>{step.stage}</b><span>{step.outcome}</span>{step.detail && <small>{step.detail}</small>}</li>)}</ol>}
+      <AnalysisProgress run={run} />
       {showResult && (
         <div className="analysis-dashboard">
           <div className="analysis-dashboard-header">

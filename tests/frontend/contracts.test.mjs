@@ -134,7 +134,7 @@ const progressClient = createHttpAnalysisClient("http://backend.test/", async (u
   await new Promise((resolve) => setTimeout(resolve, 5));
   return new Response(JSON.stringify(analysisResponse), { status: 200 });
 });
-await progressClient.analyze("진행 조회", "conversation-progress", "pms_only", (run) => observedProgress.push(run.trace));
+await progressClient.analyze("진행 조회", "conversation-progress", "pms_only", (run) => observedProgress.push(run.progress));
 assert.equal(observedProgress[0][0].stage, "DATAHUB");
 assert.equal(observedProgress[0][0].outcome, "STARTED");
 

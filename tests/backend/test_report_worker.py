@@ -156,6 +156,7 @@ def test_report_replay_restores_original_access_binding_after_current_policy_app
     )
     profile = SimpleNamespace(
         name="pms_only",
+        database_grants=("pms",),
         domains=("urn:li:domain:rooms",),
         policy_version="ACCESS-POLICY-v1.0.0",
         entitlement_hash="entitlement",
@@ -170,6 +171,7 @@ def test_report_replay_restores_original_access_binding_after_current_policy_app
         )
 
     assert context.access_profile == "pms_only"
+    assert context.database_grants == ("pms",)
     assert context.allowed_domains == ("urn:li:domain:rooms",)
     assert context.entitlement_hash == "entitlement"
     assert context.datahub_principal == "urn:li:corpuser:pms"
@@ -184,6 +186,7 @@ def test_report_replay_blocks_changed_policy_and_missing_credential():
     )
     profile = SimpleNamespace(
         name="pms_only",
+        database_grants=("pms",),
         domains=("urn:li:domain:rooms",),
         policy_version="new-policy",
         entitlement_hash="new-entitlement",

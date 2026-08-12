@@ -115,6 +115,7 @@ class ReportAnalysisRunner:
             role=role,
             as_of=as_of.date(),
             access_profile=profile.name,
+            database_grants=profile.database_grants,
             allowed_domains=profile.domains,
             access_policy_version=profile.policy_version,
             entitlement_hash=profile.entitlement_hash,

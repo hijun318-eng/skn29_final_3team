@@ -73,6 +73,16 @@ def test_resolved_backend_uses_configured_host_port_only():
         {"mode": "ingress", "target": 8000, "published": "18000", "protocol": "tcp", "host_ip": "127.0.0.1"}
     ]
     assert service["depends_on"]["app-postgres-provision"]["condition"] == "service_completed_successfully"
+    healthcheck = service["healthcheck"]
+    assert healthcheck["test"][:2] == ["CMD", "python"]
+    assert "/readiness" in healthcheck["test"][-1]
+    assert "status'] == 'ready'" in healthcheck["test"][-1]
+
+
+def test_report_worker_waits_for_the_backend_healthcheck():
+    config = _config()
+
+    assert config["services"]["report-worker"]["depends_on"]["backend"]["condition"] == "service_healthy"
 
 
 def test_app_postgres_provision_repairs_existing_volume_before_backend():

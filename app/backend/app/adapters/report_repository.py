@@ -974,7 +974,7 @@ class PostgresReportWorkerRepository:
                     JOIN query.query_executions q
                       ON q.query_execution_id = a.query_execution_id
                     WHERE a.request_id = :request_id AND a.status = 'APPROVED'
-                    ORDER BY a.created_at DESC LIMIT 1
+                    ORDER BY a.artifact_id DESC LIMIT 1
                     """
                 ),
                 {"request_id": request_id},

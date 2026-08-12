@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID, uuid4
 from unittest.mock import patch
@@ -79,6 +80,15 @@ def command(*blocks):
 RESULT = AnalysisReplayResult(
     "artifact-new", "query-new", "sha256-new", "context-new", "policy-v1", {"pms": "cutoff"}
 )
+
+
+def test_report_replay_orders_by_a_real_artifact_column():
+    source = (Path(__file__).resolve().parents[2] / "app/backend/app/adapters/report_repository.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "ORDER BY a.artifact_id DESC LIMIT 1" in source
+    assert "ORDER BY a.created_at DESC LIMIT 1" not in source
 
 
 def test_worker_replays_data_blocks_and_preserves_text_blocks_in_definition_only():

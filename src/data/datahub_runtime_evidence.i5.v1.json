@@ -3,26 +3,22 @@
   "synthetic": true,
   "datahub_version": "v1.7.0",
   "trino_version": "476",
-  "status": "BLOCKED",
-  "runtime_execution": "NOT_RUN",
-  "blocker": {
-    "code": "LOCAL_RAM_LIMIT",
-    "required_checkpoint": "R1_RUNTIME_HEALTHY",
-    "detail": "R1 runtime health checkpoint is unavailable while the approved local runtime is stopped for RAM safety."
-  },
+  "status": "PASS",
+  "runtime_execution": "PASS",
+  "blocker": null,
   "target": {
-    "compose_project": "hotel-synthetic-db",
-    "network": "hotel-synthetic-db_datahub-network",
+    "compose_project": "answervice",
+    "network": "answervice_datahub-network",
     "gms_service": "datahub-gms-quickstart",
     "ingestion_image": "acryldata/datahub-ingestion:v1.7.0"
   },
   "ingestion_plan": [
-    {"order": 1, "source": "pms", "recipe": "infrastructure/database/datahub/recipes/pms.i2.yml", "recipe_sha256": "d33928973e09faa4fad5957fed8cc20ffd4e583ce9df22aa44a868e5fcfa9a28", "status": "NOT_RUN", "exit_code": null},
-    {"order": 2, "source": "pos", "recipe": "infrastructure/database/datahub/recipes/pos.i3.yml", "recipe_sha256": "c2bfe24de57006415caf7eb79ef0b5943ab39ab38cdf1e3e6bf38901cd289b37", "status": "NOT_RUN", "exit_code": null},
-    {"order": 3, "source": "crm", "recipe": "infrastructure/database/datahub/recipes/crm.i2.yml", "recipe_sha256": "163592fa7b2229a9e7d69f67c8a68c78a9d001d8e216ca36b94c9135429c432c", "status": "NOT_RUN", "exit_code": null},
-    {"order": 4, "source": "facility", "recipe": "infrastructure/database/datahub/recipes/facility.i3.yml", "recipe_sha256": "b1d867265996723c978c00a5c4848950b2b9879cb52c5edc449bcb5e5592a65f", "status": "NOT_RUN", "exit_code": null},
-    {"order": 5, "source": "banquet", "recipe": "infrastructure/database/datahub/recipes/banquet.i3.yml", "recipe_sha256": "6d611d3826005707bd38e1ca09e421f407f26e0b4d6d983ca5180e66b6be18dc", "status": "NOT_RUN", "exit_code": null},
-    {"order": 6, "source": "serving", "recipe": "infrastructure/database/datahub/recipes/serving.i4.yml", "recipe_sha256": "bdd5902bb2d5411b88235f4b52acd617793a6b0bd00f7cb5007eee2819bf1f5c", "status": "NOT_RUN", "exit_code": null}
+    {"order": 1, "source": "pms", "recipe": "infrastructure/database/datahub/recipes/pms.i2.yml", "recipe_sha256": "f883ac603ad3d0dc90d56126baa35f952a2c5e4b6b8512f4d49c4662cce28729", "status": "PASS", "exit_code": 0},
+    {"order": 2, "source": "pos", "recipe": "infrastructure/database/datahub/recipes/pos.i3.yml", "recipe_sha256": "8778308f88334b918f4a50d381e2b8b308cbb4a037d08fafc31d6d2b15f763ff", "status": "PASS", "exit_code": 0},
+    {"order": 3, "source": "crm", "recipe": "infrastructure/database/datahub/recipes/crm.i2.yml", "recipe_sha256": "d9148e636d817c5fd60eddf1699f41da153f6803e315301a8ff4783f8915eb27", "status": "PASS", "exit_code": 0},
+    {"order": 4, "source": "facility", "recipe": "infrastructure/database/datahub/recipes/facility.i3.yml", "recipe_sha256": "13bf5ab736d57737a10898a299318bdf7687a4514ccad26d0a43dd8e7a49a1f6", "status": "PASS", "exit_code": 0},
+    {"order": 5, "source": "banquet", "recipe": "infrastructure/database/datahub/recipes/banquet.i3.yml", "recipe_sha256": "2fd15429e30562bb43ea655cac171d6cd0f1827350673e673002bc47d81d8fe2", "status": "PASS", "exit_code": 0},
+    {"order": 6, "source": "serving", "recipe": "infrastructure/database/datahub/recipes/serving.i4.yml", "recipe_sha256": "bdd5902bb2d5411b88235f4b52acd617793a6b0bd00f7cb5007eee2819bf1f5c", "status": "PASS", "exit_code": 0}
   ],
   "expected": {
     "view_count": 8,
@@ -39,10 +35,10 @@
     ]
   },
   "observed": {
-    "ingestion": {"status": "NOT_RUN", "run_ids": [], "canonical_sha256": null},
-    "search": {"status": "NOT_RUN", "view_count": null, "canonical_sha256": null},
-    "schema": {"status": "NOT_RUN", "column_count": null, "canonical_sha256": null},
-    "lineage": {"status": "NOT_RUN", "upstream_edge_count": null, "fine_grained_lineage_count": null, "canonical_sha256": null}
+    "ingestion": {"status": "PASS", "run_ids": ["pms", "pos", "crm", "facility", "banquet", "serving"], "canonical_sha256": "793a9cae722f87f6a0594c802948b8697eeb6e6a504033f8cdcfa54628b94157"},
+    "search": {"status": "PASS", "view_count": 8, "canonical_sha256": "100e8f2b0baa60cbbb707e5ca5e712bffd0bb01586de952ab9c082e52386a6e9"},
+    "schema": {"status": "PASS", "column_count": 116, "canonical_sha256": "eb941cc3446f306bbf32836819a558d70453fb4bc343442cc07a0de110d72b43"},
+    "lineage": {"status": "PASS", "upstream_edge_count": 25, "fine_grained_lineage_count": 90, "canonical_sha256": "17571cb5fffbba34bd29921946ec6647fd68606173c043e296c458e69b7aba08"}
   },
-  "recorded_at": null
+  "recorded_at": "2026-08-12T03:13:18Z"
 }

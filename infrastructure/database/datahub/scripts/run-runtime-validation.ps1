@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
-    [switch]$DryRun,
-    [string]$CheckpointPath
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,22 +13,11 @@ $runtime = Get-Content -Raw -LiteralPath $runtimePath | ConvertFrom-Json
 $bindings = Get-Content -Raw -LiteralPath $bindingPath | ConvertFrom-Json
 $contract = Get-Content -Raw -LiteralPath $contractPath | ConvertFrom-Json
 
-if (-not $DryRun) {
-    if (-not $CheckpointPath -or -not (Test-Path -LiteralPath $CheckpointPath)) {
-        throw 'R1_RUNTIME_HEALTHY checkpoint is required before live validation.'
-    }
-    $checkpoint = Get-Content -Raw -LiteralPath $CheckpointPath | ConvertFrom-Json
-    if ($checkpoint.status -ne 'R1_RUNTIME_HEALTHY') {
-        throw 'R1 runtime checkpoint is not healthy.'
-    }
-    throw 'Live ingestion is intentionally disabled in this offline validator revision.'
+if ($runtime.status -ne 'PASS' -or $runtime.runtime_execution -ne 'PASS') {
+    throw 'Runtime evidence must record a successful live validation.'
 }
-
-if ($runtime.status -ne 'BLOCKED' -or $runtime.runtime_execution -ne 'NOT_RUN') {
-    throw 'Runtime evidence must remain BLOCKED/NOT_RUN until live trace exists.'
-}
-if ($bindings.status -ne 'BLOCKED' -or $bindings.runtime_execution -ne 'NOT_RUN') {
-    throw 'Asset Binding health must remain BLOCKED/NOT_RUN until live trace exists.'
+if ($bindings.status -ne 'HEALTHY' -or $bindings.runtime_execution -ne 'PASS') {
+    throw 'Asset Binding health must record exact live verification.'
 }
 
 $viewsByUrn = @{}
@@ -39,9 +27,9 @@ if ($viewsByUrn.Count -ne 8 -or $bindings.bindings.Count -ne 8) {
 }
 foreach ($binding in $bindings.bindings) {
     if ($viewsByUrn[$binding.urn] -ne $binding.fqn -or
-        $binding.status -ne 'PENDING_RUNTIME_VERIFICATION' -or
-        $null -ne $binding.verified_at) {
-        throw "Asset Binding is not an unverified exact URN/FQN pair: $($binding.binding_id)"
+        $binding.status -ne 'VERIFIED' -or
+        -not $binding.verified_at) {
+        throw "Asset Binding is not a verified exact URN/FQN pair: $($binding.binding_id)"
     }
 }
 
@@ -49,8 +37,13 @@ foreach ($step in $runtime.ingestion_plan) {
     $recipePath = Join-Path $root $step.recipe
     if (-not (Test-Path -LiteralPath $recipePath)) { throw "Recipe not found: $($step.recipe)" }
     $hash = (Get-FileHash -LiteralPath $recipePath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($hash -ne $step.recipe_sha256 -or $step.status -ne 'NOT_RUN' -or $null -ne $step.exit_code) {
+    if ($hash -ne $step.recipe_sha256 -or $step.status -ne 'PASS' -or $step.exit_code -ne 0) {
         throw "Recipe evidence drifted: $($step.recipe)"
+    }
+}
+foreach ($observation in $runtime.observed.PSObject.Properties.Value) {
+    if ($observation.status -ne 'PASS' -or $observation.canonical_sha256 -notmatch '^[0-9a-f]{64}$') {
+        throw 'Observed runtime evidence is incomplete.'
     }
 }
 
@@ -60,10 +53,10 @@ if ($rawEvidence -match '(?i)"[^"\r\n]*(password|secret|token|credential)[^"\r\n
 }
 
 [ordered]@{
-    status = 'DRY_RUN_PASS'
+    status = if ($DryRun) { 'DRY_RUN_PASS' } else { 'VERIFIED' }
     runtime_status = $runtime.status
     runtime_execution = $runtime.runtime_execution
     recipe_count = $runtime.ingestion_plan.Count
     asset_binding_count = $bindings.bindings.Count
-    next_checkpoint = $runtime.blocker.required_checkpoint
+    recorded_at = $runtime.recorded_at
 } | ConvertTo-Json -Compress

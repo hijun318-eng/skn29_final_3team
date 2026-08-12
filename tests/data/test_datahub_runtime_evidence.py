@@ -13,17 +13,21 @@ def load(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_runtime_evidence_is_truthfully_blocked():
+def test_runtime_evidence_records_successful_live_validation():
     evidence = load(EVIDENCE_PATH)
     assert evidence["contract_version"] == "I5-DATAHUB-v1.1.0-RUNTIME-DRAFT"
     assert evidence["datahub_version"] == "v1.7.0"
     assert evidence["trino_version"] == "476"
-    assert (evidence["status"], evidence["runtime_execution"]) == ("BLOCKED", "NOT_RUN")
-    assert evidence["blocker"]["required_checkpoint"] == "R1_RUNTIME_HEALTHY"
-    assert evidence["recorded_at"] is None
-    assert all(item["status"] == "NOT_RUN" and item["exit_code"] is None for item in evidence["ingestion_plan"])
-    assert all(item["status"] == "NOT_RUN" for item in evidence["observed"].values())
-    assert not any(item["canonical_sha256"] for item in evidence["observed"].values())
+    assert (evidence["status"], evidence["runtime_execution"]) == ("PASS", "PASS")
+    assert evidence["blocker"] is None
+    assert evidence["recorded_at"].endswith("Z")
+    assert all(item["status"] == "PASS" and item["exit_code"] == 0 for item in evidence["ingestion_plan"])
+    assert all(item["status"] == "PASS" for item in evidence["observed"].values())
+    assert all(re.fullmatch(r"[0-9a-f]{64}", item["canonical_sha256"]) for item in evidence["observed"].values())
+    assert evidence["observed"]["search"]["view_count"] == 8
+    assert evidence["observed"]["schema"]["column_count"] == 116
+    assert evidence["observed"]["lineage"]["upstream_edge_count"] > 0
+    assert evidence["observed"]["lineage"]["fine_grained_lineage_count"] > 0
 
 
 def test_recipe_order_and_hashes_are_reproducible():

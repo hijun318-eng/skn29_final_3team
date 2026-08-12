@@ -6,6 +6,7 @@ source:
     username: ${CRM_READONLY_USER}
     password: ${CRM_READONLY_PASSWORD}
     platform_instance: crm
+    include_jobs: false
     schema_pattern:
       allow:
         - dbo
@@ -13,3 +14,8 @@ sink:
   type: datahub-rest
   config:
     server: http://datahub-gms-quickstart:8080
+transformers:
+  - type: simple_add_ownership
+    config:
+      owner_urns: ["urn:li:corpuser:membership_operations"]
+      entity_types: ["dataset"]

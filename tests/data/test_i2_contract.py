@@ -46,6 +46,8 @@ class I2ContractTest(unittest.TestCase):
             self.assertFalse(set(re.findall(r"\$\{([A-Z0-9_]+)\}", text)) - env_names)
             self.assertTrue(recipe["dataset_urn"].startswith("urn:li:dataset:"))
             self.assertEqual(3, len(recipe["fqn"].split(".")))
+            if recipe["source_id"] == "crm":
+                self.assertIn("include_jobs: false", text)
         upstream = self.contract["metadata"]["lineage"][0]["upstream"]
         self.assertEqual(5, len(upstream))
         self.assertTrue(any(name.startswith("pms.") for name in upstream))

@@ -13,3 +13,8 @@ sink:
   type: datahub-rest
   config:
     server: http://datahub-gms-quickstart:8080
+transformers:
+  - type: simple_add_ownership
+    config:
+      owner_urns: ["urn:li:corpuser:hotel_operations"]
+      entity_types: ["dataset"]

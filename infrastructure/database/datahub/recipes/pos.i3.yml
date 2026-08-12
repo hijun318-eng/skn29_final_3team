@@ -10,3 +10,8 @@ sink:
   type: datahub-rest
   config:
     server: http://datahub-gms-quickstart:8080
+transformers:
+  - type: simple_add_ownership
+    config:
+      owner_urns: ["urn:li:corpuser:food_and_beverage_operations"]
+      entity_types: ["dataset"]

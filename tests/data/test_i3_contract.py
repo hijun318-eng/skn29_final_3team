@@ -9,12 +9,14 @@ from src.data.i3_watermarks import watermark_fingerprint
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = ROOT / "src/data/i3_contract.v1.json"
+REGISTRY = ROOT / "src/data/source_registry.v1.json"
 
 
 class I3ContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        cls.registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
 
     def test_five_recipes_have_stable_identity_and_known_env(self):
         recipes = self.contract["metadata"]["recipes"]
@@ -32,6 +34,9 @@ class I3ContractTest(unittest.TestCase):
             self.assertFalse(set(re.findall(r"\$\{([A-Z0-9_]+)\}", recipe)) - env_names)
             self.assertTrue(item["dataset_urn"].startswith("urn:li:dataset:"))
             self.assertGreaterEqual(len(item["fqn"].split(".")), 3)
+            source = next(source for source in self.registry["sources"] if source["source_id"] == item["source_id"])
+            self.assertIn("type: simple_add_ownership", recipe)
+            self.assertIn(f"urn:li:corpuser:{source['data_owner']}", recipe)
 
     def test_catalog_hashes_and_type_mappings_are_lossless(self):
         checks = self.contract["catalog_checks"]

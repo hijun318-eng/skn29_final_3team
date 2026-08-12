@@ -440,7 +440,6 @@ class PostgresAnalysisRepository:
                                 AND e.details_json_redacted ->> 'entitlement_hash'
                                     = :entitlement_hash
                           )
-                        ORDER BY a.created_at DESC
                         LIMIT 1
                         """
                     ),

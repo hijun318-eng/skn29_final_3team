@@ -287,6 +287,7 @@ def test_persisted_result_restore_uses_current_entitlement_and_returns_no_sql_or
     sql = str(statement).lower()
     assert "r.user_id = :owner_id" in sql
     assert "access_profile" in sql and "entitlement_hash" in sql
+    assert "a.created_at" not in sql
     for forbidden in ("generated_sql", "parameters_json", "token"):
         assert forbidden not in sql
     assert parameters == {

@@ -127,6 +127,32 @@ export interface ReportRunResponse {
   readonly blocks: readonly ReportBlockRunResponse[];
 }
 
+export interface ReportArtifactPreviewResponse {
+  readonly contract_version: string;
+  readonly artifact_id: string;
+  readonly query_id: string;
+  readonly snapshot_checksum: string;
+  readonly summary: string;
+  readonly table: {
+    readonly columns: readonly string[];
+    readonly rows: readonly Readonly<Record<string, string | number | boolean | null>>[];
+  };
+  readonly chart: {
+    readonly chart_type: string;
+    readonly x_field: string;
+    readonly y_fields: readonly string[];
+  } | null;
+}
+
+export interface ReportArtifactPreview {
+  readonly artifactId: string;
+  readonly queryId: string;
+  readonly snapshotChecksum: string;
+  readonly summary: string;
+  readonly table: ReportArtifactPreviewResponse["table"];
+  readonly chart?: { readonly chartType: string; readonly xField: string; readonly yFields: readonly string[] };
+}
+
 export interface ReportBlockRunResponse {
   readonly block_id: string;
   readonly artifact_id: string;
@@ -258,6 +284,22 @@ export function normalizeReportRun(response: ReportRunResponse): ReportRun {
       status: block.status,
     })),
   });
+}
+
+export function normalizeReportArtifactPreview(response: ReportArtifactPreviewResponse): ReportArtifactPreview {
+  assertReportContractVersion(response.contract_version);
+  return {
+    artifactId: response.artifact_id,
+    queryId: response.query_id,
+    snapshotChecksum: response.snapshot_checksum,
+    summary: response.summary,
+    table: response.table,
+    chart: response.chart ? {
+      chartType: response.chart.chart_type,
+      xField: response.chart.x_field,
+      yFields: response.chart.y_fields,
+    } : undefined,
+  };
 }
 
 export function normalizeReportSchedule(response: ReportScheduleResponse): ReportSchedule {

@@ -21,6 +21,7 @@ from src.report.domain import (
     ReportDefinitionVersion,
     ReportRun,
     ReportSchedule,
+    REPORT_CONTRACT_VERSION,
     RunStatus,
     ScheduleFrequency,
 )
@@ -77,6 +78,46 @@ class PostgresReportRepository:
             raise ValueError("본인 소유의 재실행 가능한 Artifact만 Report에 포함할 수 있습니다.")
         if block.query_id and block.query_id != artifact:
             raise ValueError("Artifact와 query_id가 일치하지 않습니다.")
+
+    def artifact_preview(self, artifact_id: str) -> dict:
+        with self._engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    SELECT a.artifact_id, a.artifact_checksum,
+                           a.data_snapshot_json, a.chart_spec_json,
+                           a.narrative_markdown, q.trino_query_id
+                    FROM artifact.analysis_artifacts a
+                    JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                    JOIN query.query_executions q
+                      ON q.query_execution_id = a.query_execution_id
+                    WHERE a.artifact_id = :artifact_id
+                      AND r.user_id = :owner_id
+                      AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                      AND a.status = 'APPROVED'
+                      AND q.execution_status = 'SUCCEEDED'
+                    LIMIT 1
+                    """
+                ),
+                {
+                    "artifact_id": _uuid(artifact_id, "artifact_id"),
+                    "owner_id": self._owner_id,
+                },
+            ).mappings().one_or_none()
+        if row is None:
+            raise KeyError("본인 소유의 승인된 Artifact를 찾을 수 없습니다.")
+        table = row["data_snapshot_json"] or {}
+        if "columns" not in table or "rows" not in table:
+            raise ValueError("Artifact payload의 보존 기간이 만료되었습니다.")
+        return {
+            "contract_version": REPORT_CONTRACT_VERSION,
+            "artifact_id": str(row["artifact_id"]),
+            "query_id": row["trino_query_id"],
+            "snapshot_checksum": row["artifact_checksum"],
+            "summary": row["narrative_markdown"] or "",
+            "table": table,
+            "chart": row["chart_spec_json"] or None,
+        }
 
     def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
         if draft.status is not DefinitionStatus.DRAFT:

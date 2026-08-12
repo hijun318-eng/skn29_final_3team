@@ -48,6 +48,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "/operations/audit/{request_id}",
                 "/readiness",
                 "/reports/definitions",
+                "/reports/artifacts/{artifact_id}",
                 "/reports/definitions/{definition_id}/versions/{version}/approve",
                 "/reports/definitions/{definition_id}/versions/{version}/drafts",
                 "/reports/definitions/{definition_id}/versions/{version}",
@@ -85,6 +86,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "analysisGetRun",
                 "catalogListSources",
                 "reportCreateDefinition",
+                "reportGetArtifactPreview",
                 "reportListDefinitions",
                 "reportApproveVersion",
                 "reportCreateNextDraft",
@@ -100,8 +102,12 @@ class OpenApiContractTest(unittest.TestCase):
         )
         self.assertNotIn("post", committed["paths"]["/reports/runs"])
         self.assertEqual(
-            "DataHub 또는 Trino 카탈로그 미가용",
+            "Profile 자격증명, DataHub 또는 Trino 카탈로그 미가용",
             committed["paths"]["/catalog/sources"]["get"]["responses"]["503"]["description"],
+        )
+        self.assertEqual(
+            "접근 Profile 또는 DB grant 거부",
+            committed["paths"]["/catalog/sources"]["get"]["responses"]["403"]["description"],
         )
         analysis = committed["paths"]["/analysis"]["post"]
         self.assertIn("503", analysis["responses"])

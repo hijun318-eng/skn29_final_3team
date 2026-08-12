@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CalendarClock, Check, Clock3, FilePlus2, Inbox, Info, LoaderCircle, RotateCcw, Save, ShieldAlert } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { createReportClient, ReportApiError } from "../api/reportClient";
 import { toReportBlockRequest } from "../contracts/report";
 import { createUuid } from "../utils/createUuid";
@@ -9,6 +10,18 @@ function apiError(error) {
   if (error instanceof ReportApiError && error.status === 403) return `403 · Report 사용 권한이 필요합니다. ${error.message}`;
   return error instanceof ReportApiError ? `${error.status} · ${error.code} · ${error.message}`
     : error instanceof Error ? error.message : "Report API 요청에 실패했습니다.";
+}
+
+function ArtifactPreview({ state, type }) {
+  if (!state || state.status === "loading") return <p className="report-artifact-state"><LoaderCircle size={15} />승인 Artifact를 불러오는 중입니다.</p>;
+  if (state.status === "error") return <p className="report-artifact-state error"><ShieldAlert size={15} />{state.message}</p>;
+  const preview = state.preview;
+  if (type === "chart") {
+    if (!preview.chart) return <p className="report-artifact-state error"><ShieldAlert size={15} />승인된 차트 snapshot이 없습니다.</p>;
+    const Chart = preview.chart.chartType === "bar" ? BarChart : LineChart;
+    return <div className="report-artifact-preview"><p>{preview.summary}</p><div className="report-artifact-chart"><ResponsiveContainer width="100%" height={190}><Chart data={preview.table.rows}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey={preview.chart.xField} /><YAxis /><Tooltip />{preview.chart.yFields.map((field) => preview.chart.chartType === "bar" ? <Bar key={field} dataKey={field} fill="#1c69d4" /> : <Line key={field} dataKey={field} stroke="#1c69d4" />)}</Chart></ResponsiveContainer></div></div>;
+  }
+  return <div className="report-artifact-preview"><p>{preview.summary}</p><div className="analysis-table"><table><thead><tr>{preview.table.columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{preview.table.rows.map((row, index) => <tr key={index}>{preview.table.columns.map((column) => <td key={column}>{String(row[column] ?? "—")}</td>)}</tr>)}</tbody></table></div></div>;
 }
 
 export function ReportsPage() {
@@ -27,6 +40,8 @@ export function ReportsPage() {
   const [scheduleForm, setScheduleForm] = useState({ frequency: "daily", hour: 9, minute: 0, weekday: 0, dayOfMonth: 1, enabled: false });
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
+  const [artifactPreviews, setArtifactPreviews] = useState({});
+  const artifactKey = [...new Set(apiBlocks.map((block) => block.artifactId).filter(Boolean))].sort().join(",");
 
   const upsertDefinition = (definition) => {
     setDefinitions((current) => {
@@ -74,6 +89,17 @@ export function ReportsPage() {
   };
 
   useEffect(() => { void loadDefinitions(); void loadRuns(); void loadSchedules(); }, []);
+  useEffect(() => {
+    const artifactIds = artifactKey ? artifactKey.split(",") : [];
+    if (!artifactIds.length) { setArtifactPreviews({}); return undefined; }
+    let active = true;
+    setArtifactPreviews(Object.fromEntries(artifactIds.map((id) => [id, { status: "loading" }])));
+    void Promise.all(artifactIds.map(async (artifactId) => {
+      try { return [artifactId, { status: "ready", preview: await client.getArtifactPreview(artifactId) }]; }
+      catch (nextError) { return [artifactId, { status: "error", message: apiError(nextError) }]; }
+    })).then((entries) => { if (active) setArtifactPreviews(Object.fromEntries(entries)); });
+    return () => { active = false; };
+  }, [artifactKey, client]);
   useEffect(() => {
     if (!selectedDefinition || selectedDefinition.status !== "approved") return;
     const schedule = schedules.find((item) => item.definitionId === selectedDefinition.definitionId && item.version === selectedDefinition.version);
@@ -174,7 +200,7 @@ export function ReportsPage() {
 
   return <div className="page-content report-api-page">
     <div className="meta-strip"><Info size={13} />REPORT API<span>owner scope</span></div>
-    <header className="card report-api-header"><div><p>REPORT API</p><h2>서버 Report 정의와 실행 이력</h2><small>Report API 응답 상태만 표시합니다.</small></div><div><button onClick={() => void loadDefinitions()} disabled={definitionState === "loading"}><RotateCcw size={14} />정의 새로고침</button><button className="primary" onClick={() => void createDefinition()} disabled={Boolean(pending)}><FilePlus2 size={14} />초안 생성</button></div></header>
+    <header className="card report-api-header"><div><p>REPORT API</p><h2>서버 Report 정의와 실행 이력</h2><small>승인된 Artifact snapshot만 owner scope로 표시합니다.</small></div><div><button onClick={() => void loadDefinitions()} disabled={definitionState === "loading"}><RotateCcw size={14} />정의 새로고침</button><button className="primary" onClick={() => void createDefinition()} disabled={Boolean(pending)}><FilePlus2 size={14} />초안 생성</button></div></header>
     {error && <p className="report-api-state error" role="alert" aria-live="assertive">{/^40[13]/.test(error) ? <ShieldAlert size={17} /> : <AlertTriangle size={17} />}{error}</p>}
     <section className="report-api-grid">
       <article className="card report-api-panel"><header><h3>정의·버전</h3><small>서버가 반환한 title·version·status</small></header>
@@ -192,7 +218,7 @@ export function ReportsPage() {
     </section>
     {selectedDefinition && <section className="card report-api-editor" aria-live="polite"><header><div><small>{selectedDefinition.definitionId}</small><h3>{selectedDefinition.title} · v{selectedDefinition.version}</h3><p>{selectedDefinition.status}{selectedDefinition.approvedAt ? ` · ${selectedDefinition.approvedAt}` : ""}</p></div><div>{selectedDefinition.status === "draft" ? <><button onClick={() => void saveDraft()} disabled={Boolean(pending)}><Save size={14} />초안 저장</button><button className="primary" onClick={() => void approve()} disabled={Boolean(pending)}><Check size={14} />명시적 승인</button></> : <><button onClick={() => void createNextDraft()} disabled={Boolean(pending)}><FilePlus2 size={14} />다음 초안</button><button className="primary" onClick={() => void queueManualRun()} disabled={Boolean(pending)}><Clock3 size={14} />수동 실행 요청</button></>}</div></header>
       {selectedDefinition.status === "draft" && <button type="button" onClick={addTextBlock}><FilePlus2 size={14} />텍스트 블록 추가</button>}
-      <div className="report-api-blocks">{apiBlocks.map((block) => <article key={block.id} style={{ gridColumn: `${block.x + 1} / span ${block.w}`, gridRow: `${block.y + 1} / span ${block.h}` }}><header><b>{block.title}</b><small>{block.type} · x{block.x + 1} y{block.y + 1} · {block.w}×{block.h}</small></header>{selectedDefinition.status === "draft" && <div className="report-block-layout" aria-label={`${block.title} 12열 배치`}><label>열<input type="number" min="1" max="12" value={block.x + 1} onChange={(event) => updateBlock(block.id, "x", Number(event.target.value) - 1)} /></label><label>행<input type="number" min="1" value={block.y + 1} onChange={(event) => updateBlock(block.id, "y", Number(event.target.value) - 1)} /></label><label>너비<input type="number" min="1" max="12" value={block.w} onChange={(event) => updateBlock(block.id, "w", event.target.value)} /></label><label>높이<input type="number" min="1" value={block.h} onChange={(event) => updateBlock(block.id, "h", event.target.value)} /></label><button type="button" onClick={() => setApiBlocks((current) => current.filter((item) => item.id !== block.id))}>삭제</button></div>}{block.type === "text" ? <textarea aria-label={`${block.title} 내용`} disabled={selectedDefinition.status !== "draft"} value={block.content || ""} onChange={(event) => setApiBlocks((current) => current.map((item) => item.id === block.id ? { ...item, content: event.target.value } : item))} /> : <p><b>{block.type === "chart" ? "차트" : "표"} Artifact 미리보기</b><br />Artifact {block.artifactId}<br />Query {block.queryId || "—"}</p>}</article>)}</div>
+      <div className="report-api-blocks">{apiBlocks.map((block) => <article key={block.id} style={{ gridColumn: `${block.x + 1} / span ${block.w}`, gridRow: `${block.y + 1} / span ${block.h}` }}><header><b>{block.title}</b><small>{block.type} · x{block.x + 1} y{block.y + 1} · {block.w}×{block.h}</small></header>{selectedDefinition.status === "draft" && <div className="report-block-layout" aria-label={`${block.title} 12열 배치`}><label>열<input type="number" min="1" max="12" value={block.x + 1} onChange={(event) => updateBlock(block.id, "x", Number(event.target.value) - 1)} /></label><label>행<input type="number" min="1" value={block.y + 1} onChange={(event) => updateBlock(block.id, "y", Number(event.target.value) - 1)} /></label><label>너비<input type="number" min="1" max="12" value={block.w} onChange={(event) => updateBlock(block.id, "w", event.target.value)} /></label><label>높이<input type="number" min="1" value={block.h} onChange={(event) => updateBlock(block.id, "h", event.target.value)} /></label><button type="button" onClick={() => setApiBlocks((current) => current.filter((item) => item.id !== block.id))}>삭제</button></div>}{block.type === "text" ? <textarea aria-label={`${block.title} 내용`} disabled={selectedDefinition.status !== "draft"} value={block.content || ""} onChange={(event) => setApiBlocks((current) => current.map((item) => item.id === block.id ? { ...item, content: event.target.value } : item))} /> : <ArtifactPreview type={block.type} state={artifactPreviews[block.artifactId]} />}</article>)}</div>
       {selectedDefinition.status === "approved" && <section className="report-schedule-editor"><header><CalendarClock size={18} /><div><b>예약 실행</b><small>{scheduleState === "loading" ? "스케줄 조회 중" : "Asia/Seoul 기준"}</small></div></header><div className="report-schedule-fields"><label>주기<select value={scheduleForm.frequency} onChange={(event) => setScheduleForm((current) => ({ ...current, frequency: event.target.value }))}><option value="daily">매일</option><option value="weekly">매주</option><option value="monthly">매월</option></select></label>{scheduleForm.frequency === "weekly" && <label>요일<select value={scheduleForm.weekday} onChange={(event) => setScheduleForm((current) => ({ ...current, weekday: Number(event.target.value) }))}>{["월", "화", "수", "목", "금", "토", "일"].map((label, index) => <option value={index} key={label}>{label}요일</option>)}</select></label>}{scheduleForm.frequency === "monthly" && <label>일<input type="number" min="1" max="31" value={scheduleForm.dayOfMonth} onChange={(event) => setScheduleForm((current) => ({ ...current, dayOfMonth: Number(event.target.value) }))} /></label>}<label>시<input type="number" min="0" max="23" value={scheduleForm.hour} onChange={(event) => setScheduleForm((current) => ({ ...current, hour: Number(event.target.value) }))} /></label><label>분<input type="number" min="0" max="59" value={scheduleForm.minute} onChange={(event) => setScheduleForm((current) => ({ ...current, minute: Number(event.target.value) }))} /></label><label className="report-schedule-toggle"><input type="checkbox" checked={scheduleForm.enabled} onChange={(event) => setScheduleForm((current) => ({ ...current, enabled: event.target.checked }))} />활성화</label><button className="primary" onClick={() => void saveSchedule()} disabled={Boolean(pending) || scheduleState === "loading"}><Save size={14} />스케줄 저장</button></div>{scheduleMessage && <p role="status" aria-live="polite">{scheduleMessage}</p>}{schedules.find((item) => item.definitionId === selectedDefinition.definitionId && item.version === selectedDefinition.version)?.nextRunAt && <p>다음 실행: {schedules.find((item) => item.definitionId === selectedDefinition.definitionId && item.version === selectedDefinition.version).nextRunAt}</p>}</section>}
     </section>}
     {command && <section className="card report-command-receipt" role="status" aria-live="polite"><Clock3 size={18} /><div><b>서버가 수동 실행 명령을 queued로 접수했습니다.</b><p>command {command.command_id}</p></div></section>}

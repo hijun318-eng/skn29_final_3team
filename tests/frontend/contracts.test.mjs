@@ -233,6 +233,15 @@ const scheduleResponse = {
   enabled: true,
   next_run_at: "2026-08-17T09:30:00+09:00",
 };
+const artifactPreviewResponse = {
+  contract_version: REPORT_CONTRACT_VERSION,
+  artifact_id: "artifact-1",
+  query_id: "query-1",
+  snapshot_checksum: "checksum-1",
+  summary: "승인 결과",
+  table: { columns: ["day", "revenue"], rows: [{ day: "2026-08-01", revenue: 100 }] },
+  chart: { chart_type: "bar", x_field: "day", y_fields: ["revenue"] },
+};
 const reportResponses = [
   definitionResponse,
   { contract_version: REPORT_CONTRACT_VERSION, items: [definitionResponse] },
@@ -242,6 +251,7 @@ const reportResponses = [
   definitionResponse,
   { contract_version: REPORT_CONTRACT_VERSION, items: [runResponse] },
   runResponse,
+  artifactPreviewResponse,
   commandResponse,
   { contract_version: REPORT_CONTRACT_VERSION, items: [scheduleResponse] },
   scheduleResponse,
@@ -260,15 +270,18 @@ await reportClient.createNextDraft("definition-1", 1);
 await reportClient.replaceDraftBlocks("definition-1", 1, [blockRequest]);
 await reportClient.listRuns("definition-1");
 await reportClient.getRun("run-1");
+const artifactPreview = await reportClient.getArtifactPreview("artifact-1");
 const command = await reportClient.createManualRun({ definition_id: "definition-1", version: 1, as_of: commandResponse.as_of, idempotency_key: "key-1" });
 const schedules = await reportClient.listSchedules();
 const savedSchedule = await reportClient.upsertSchedule("definition-1", 1, { frequency: "weekly", hour: 9, minute: 30, weekday: 0, enabled: true });
-assert.equal(reportRequests.length, 11);
-assert.deepEqual(reportRequests.map(({ init }) => init.method), ["POST", "GET", "GET", "POST", "POST", "PUT", "GET", "GET", "POST", "GET", "PUT"]);
+assert.equal(reportRequests.length, 12);
+assert.deepEqual(reportRequests.map(({ init }) => init.method), ["POST", "GET", "GET", "POST", "POST", "PUT", "GET", "GET", "GET", "POST", "GET", "PUT"]);
+assert.equal(reportRequests[8].url, "http://backend.test/reports/artifacts/artifact-1");
+assert.equal(artifactPreview.table.rows[0].revenue, 100);
 assert.equal(command.status, "queued");
 assert.equal(schedules[0].nextRunAt, scheduleResponse.next_run_at);
 assert.equal(savedSchedule.weekday, 0);
-assert.deepEqual(JSON.parse(reportRequests[10].init.body), { frequency: "weekly", hour: 9, minute: 30, weekday: 0, enabled: true });
+assert.deepEqual(JSON.parse(reportRequests[11].init.body), { frequency: "weekly", hour: 9, minute: 30, weekday: 0, enabled: true });
 const artifactDefinitionBody = JSON.parse(reportRequests[0].init.body);
 assert.equal(artifactDefinitionBody.blocks[0].artifact_id, "artifact-1");
 assert.equal(artifactDefinitionBody.blocks[0].query_id, "query-1");
@@ -294,6 +307,7 @@ assert.doesNotMatch(analysisClientSource, /VITE_ANALYSIS_MODE|VITE_ANALYSIS_DEMO
 assert.doesNotMatch(reportClientSource, /VITE_REPORT_MODE/);
 assert.doesNotMatch(reportsPageSource, /localStorage|sessionStorage/);
 assert.match(reportsPageSource, /createReportClient\(\)/);
+assert.match(reportsPageSource, /getArtifactPreview/);
 assert.match(agentPageSource, /createAnalysisClient\(\)/);
 assert.match(agentPageSource, /보고서에 담기/);
 assert.match(agentPageSource, /artifact_id: run\.artifact\.artifactId/);

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -134,6 +134,16 @@ class ReportRunResponse(ReportContractModel):
 class ReportRunListResponse(ReportContractModel):
     contract_version: str
     items: list[ReportRunResponse]
+
+
+class ReportArtifactPreviewResponse(ReportContractModel):
+    contract_version: str
+    artifact_id: str
+    query_id: str
+    snapshot_checksum: str
+    summary: str
+    table: dict[str, Any]
+    chart: dict[str, Any] | None
 
 
 class ManualRunCommandResponse(ReportContractModel):

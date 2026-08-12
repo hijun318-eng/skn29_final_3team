@@ -22,6 +22,7 @@ from app.report_contracts import (
     CreateReportDefinitionRequest,
     ManualRunCommandResponse,
     ReplaceReportBlocksRequest,
+    ReportArtifactPreviewResponse,
     ReportDefinitionListResponse,
     ReportDefinitionResponse,
     ReportRunListResponse,
@@ -44,13 +45,18 @@ def report_owner_context(
 
 
 def _router(context: RequestContext):
-    from app.adapters.report_repository import PostgresReportRepository
     from src.report.router import create_report_router
+
+    return create_report_router(_repository(context))
+
+
+def _repository(context: RequestContext):
+    from app.adapters.report_repository import PostgresReportRepository
 
     database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
     if not database_url:
         raise HTTPException(status_code=503, detail="Report 저장소를 사용할 수 없습니다.")
-    return create_report_router(PostgresReportRepository(database_url, context.user_id))
+    return PostgresReportRepository(database_url, context.user_id)
 
 
 def _call(action: Callable[[], dict[str, Any]]) -> dict[str, Any]:
@@ -163,6 +169,23 @@ def list_runs(
     definition_id: str | None = None,
 ) -> dict[str, Any]:
     return _call(lambda: _router(context).list_runs(definition_id))
+
+
+@report_router.get(
+    "/reports/artifacts/{artifact_id}",
+    operation_id="reportGetArtifactPreview",
+    response_model=ReportArtifactPreviewResponse,
+)
+def get_artifact_preview(
+    artifact_id: str,
+    context: Annotated[RequestContext, Depends(report_owner_context)],
+) -> dict[str, Any]:
+    try:
+        return _repository(context).artifact_preview(artifact_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @report_router.post(

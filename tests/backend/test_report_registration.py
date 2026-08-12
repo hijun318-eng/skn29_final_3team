@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from sys import path
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 from uuid import uuid4
 
@@ -58,6 +58,39 @@ class ReportRegistrationTest(unittest.TestCase):
             with self.assertRaises(HTTPException) as denied:
                 report_api.report_owner_context(context(role))
             self.assertEqual(403, denied.exception.status_code)
+
+    def test_artifact_preview_is_owner_scoped_safe_and_fails_closed_after_retention(self):
+        from app.adapters.report_repository import PostgresReportRepository
+        from app.report_contracts import ReportArtifactPreviewResponse
+
+        repository = PostgresReportRepository.__new__(PostgresReportRepository)
+        repository._owner_id = context().user_id
+        repository._engine = MagicMock()
+        connection = repository._engine.connect.return_value.__enter__.return_value
+        row = {
+            "artifact_id": uuid4(), "artifact_checksum": "checksum-1",
+            "data_snapshot_json": {"columns": ["day", "revenue"], "rows": [{"day": "2026-08-01", "revenue": 100}]},
+            "chart_spec_json": {"chart_type": "bar", "x_field": "day", "y_fields": ["revenue"]},
+            "narrative_markdown": "승인 결과", "trino_query_id": "query-1",
+        }
+        connection.execute.return_value.mappings.return_value.one_or_none.return_value = row
+
+        preview = ReportArtifactPreviewResponse.model_validate(repository.artifact_preview(str(row["artifact_id"])))
+
+        self.assertEqual(100, preview.table["rows"][0]["revenue"])
+        statement, parameters = connection.execute.call_args.args
+        sql = str(statement).lower()
+        self.assertIn("r.user_id = :owner_id", sql)
+        self.assertIn("a.status = 'approved'", sql)
+        self.assertNotIn("generated_sql", sql)
+        self.assertEqual(repository._owner_id, parameters["owner_id"])
+        serialized = preview.model_dump_json().lower()
+        for forbidden in ("generated_sql", "parameters", "token"):
+            self.assertNotIn(forbidden, serialized)
+
+        row["data_snapshot_json"] = None
+        with self.assertRaisesRegex(ValueError, "보존 기간"):
+            repository.artifact_preview(str(row["artifact_id"]))
 
     def test_report_v11_routes_replace_draft_and_keep_result_ingestion_internal(self):
         proposal = create_report_router(InMemoryReportRepository())

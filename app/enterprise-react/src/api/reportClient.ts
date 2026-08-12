@@ -2,10 +2,12 @@ import {
   REPORT_REQUEST_CONTEXT_VERSION,
   assertReportContractVersion,
   normalizeReportDefinition,
+  normalizeReportArtifactPreview,
   normalizeReportRun,
   normalizeReportSchedule,
   type ManualRunCommandResponse,
   type ReportBlockRequest,
+  type ReportArtifactPreviewResponse,
   type ReportDefinitionListResponse,
   type ReportDefinitionResponse,
   type ReportDefinitionVersion,
@@ -106,6 +108,11 @@ export function createReportClient(
     async getRun(runId: string) {
       return normalizeReportRun(await parse<ReportRunResponse>(
         await send(`/reports/runs/${encodeURIComponent(runId)}`),
+      ));
+    },
+    async getArtifactPreview(artifactId: string) {
+      return normalizeReportArtifactPreview(await parse<ReportArtifactPreviewResponse>(
+        await send(`/reports/artifacts/${encodeURIComponent(artifactId)}`),
       ));
     },
     async createManualRun(payload: { definition_id: string; version: number; as_of: string; idempotency_key: string }) {

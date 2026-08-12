@@ -82,6 +82,9 @@ services:
       node2-model:
         condition: service_healthy
         required: false
+      trino-provision:
+        condition: service_completed_successfully
+        required: false
       app-postgres:
         condition: service_healthy
       app-postgres-provision:

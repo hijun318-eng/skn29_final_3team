@@ -224,6 +224,17 @@ services:
       retries: 20
       start_period: 30s
 
+  trino-provision:
+    <<: *db
+    restart: "no"
+    profiles: [full, split-host]
+    image: "trinodb/trino:476@sha256:00125e40d063bc4816d165482f6044872b18b56026fb959d3b28ce1f96ffbbee"
+    depends_on:
+      trino: { condition: service_healthy }
+    entrypoint: ["trino", "--server", "http://trino:8080", "--user", "hotel_synthetic_setup", "--file", "/sql/ddl/06_trino_analytics_views.sql"]
+    volumes:
+      - ./sql/ddl:/sql/ddl:ro
+
 networks:
   database-network:
     name: ${COMPOSE_PROJECT_NAME:-hotel-synthetic-db}-network

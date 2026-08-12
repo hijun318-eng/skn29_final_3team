@@ -108,6 +108,11 @@ class ReportDomainTest(unittest.TestCase):
         repo = InMemoryReportRepository()
         repo.add_draft(self.draft)
         repo.approve("report-1", 1, datetime(2026, 8, 3, tzinfo=timezone.utc))
+        repo.add_run(ReportRun(
+            "manual-success", "report-1", 1, datetime(2026, 8, 3, tzinfo=timezone.utc),
+            "policy-v1", "context-v1", {}, RunStatus.SUCCESS,
+            (ReportBlockRun("block-1", "artifact-1", "query-1", "sha256-1", BlockRunStatus.SUCCESS),),
+        ))
         due = datetime(2026, 8, 12, 10, 0, tzinfo=ZoneInfo("Asia/Seoul"))
         repo.save_schedule(ReportSchedule(
             "schedule-1", "report-1", 1, ScheduleFrequency.DAILY, 10, 0,

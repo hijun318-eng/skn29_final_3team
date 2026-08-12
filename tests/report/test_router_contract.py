@@ -34,6 +34,11 @@ class ReportRouterContractTest(unittest.TestCase):
         self.router.create_definition({"definition_id": "report-1", "title": "월간", "blocks": []})
         approved_at = datetime(2026, 8, 3, tzinfo=timezone.utc).isoformat()
         self.router.approve_version("report-1", 1, approved_at)
+        self.router.create_run({
+            "run_id": "manual-success", "definition_id": "report-1", "definition_version": 1,
+            "as_of": approved_at, "policy_version": "policy-v1", "context_hash": "context-v1",
+            "watermark": {}, "status": "success", "blocks": [],
+        })
         schedule = self.router.upsert_schedule(
             "report-1", 1,
             {"frequency": "monthly", "hour": 9, "minute": 0, "day_of_month": 31, "enabled": True},

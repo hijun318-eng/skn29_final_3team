@@ -6,7 +6,7 @@
   "profile_requirements": {
     "dev": {
       "selection_owner": "R1",
-      "requirement": "fixture and the minimum approved source set; R2 does not select sources before I1 approval"
+      "requirement": "approved synthetic dataset and the minimum approved source set; R2 does not select sources before I1 approval"
     },
     "full": {
       "services": [
@@ -121,7 +121,7 @@
       "health": "datahub-gms-quickstart: curl -fsS http://datahub-gms:8080/health",
       "depends_on": ["kafka-broker:service_healthy", "mysql:service_healthy", "opensearch:service_healthy", "system-update-quickstart:service_completed_successfully"],
       "profiles": ["full", "split-host"],
-      "dev_eligibility": "excluded; dev uses fixture and minimum dependencies",
+      "dev_eligibility": "excluded; dev uses approved synthetic dataset and minimum dependencies",
       "datahub_version": "v1.7.0",
       "compose_source": "https://raw.githubusercontent.com/datahub-project/datahub/7f81ccbfe27b9acc947f5f600fcf9ddb72138a80/docker/quickstart/docker-compose.quickstart-profile.yml",
       "compose_source_revision": "7f81ccbfe27b9acc947f5f600fcf9ddb72138a80",

@@ -29,7 +29,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1
 
 업무 DB는 `*_READONLY_USER` 계정으로 DataHub와 Trino에 연결한다. 이 계정은 `SELECT` 및 시스템 메타데이터 조회만 허용하며 DML·DDL은 거부한다. `app-postgres`의 `APP_DB_USER`는 앱 읽기·쓰기, `APP_MIGRATION_USER`는 migration 전용이다.
 
-실행 원본은 `sql/ddl`, `sql/data`, `sql/app`, `security`에만 둔다. `releases/`는 배포 아카이브이며 Compose 초기화 경로에서 사용하지 않는다.
+실행 원본은 `sql/ddl`, `sql/data`, `sql/app`, `security`에만 둔다.
 
 PowerShell 실행 파일은 `scripts`에 모아 관리한다.
 

@@ -9,6 +9,8 @@ import {
   SearchX,
 } from "lucide-react";
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
   Line,
   LineChart,
@@ -123,15 +125,21 @@ export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
           {chart && table?.rows.length ? (
             <section className="analysis-result-section"><h3>기간별 변화</h3><div className="analysis-chart" aria-label="기간별 변화 차트">
               <ResponsiveContainer width="100%" height={210}>
-                <LineChart data={table.rows} margin={{ top: 12, right: 16, bottom: 4, left: 4 }}>
+                {chart.chartType === "bar" ? <BarChart data={table.rows} margin={{ top: 12, right: 16, bottom: 4, left: 4 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey={chart.xField} tick={{ fontSize: 11 }} tickMargin={10} />
                   <YAxis width={72} tick={{ fontSize: 11 }} tickFormatter={formatAxisValue} />
                   <Tooltip formatter={(value) => formatMetric(value, run.metrics.find((metric) => metric.metricId === chart.yFields[0])?.unit)} />
                   {chart.yFields.map((field) => (
-                    <Line key={field} dataKey={field} name={COLUMN_LABELS[field] ?? field} type="monotone" stroke="#1c69d4" />
+                    <Bar key={field} dataKey={field} name={COLUMN_LABELS[field] ?? field} fill="#1c69d4" />
                   ))}
-                </LineChart>
+                </BarChart> : <LineChart data={table.rows} margin={{ top: 12, right: 16, bottom: 4, left: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey={chart.xField} tick={{ fontSize: 11 }} tickMargin={10} />
+                  <YAxis width={72} tick={{ fontSize: 11 }} tickFormatter={formatAxisValue} />
+                  <Tooltip formatter={(value) => formatMetric(value, run.metrics.find((metric) => metric.metricId === chart.yFields[0])?.unit)} />
+                  {chart.yFields.map((field) => <Line key={field} dataKey={field} name={COLUMN_LABELS[field] ?? field} type="monotone" stroke="#1c69d4" />)}
+                </LineChart>}
               </ResponsiveContainer>
             </div></section>
           ) : null}

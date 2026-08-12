@@ -89,7 +89,7 @@ export function AgentPage() {
           artifact_id: run.artifact.artifactId,
           query_id: run.artifact.queryId,
           columns: 12,
-          type: "table",
+          type: run.chart ? "chart" : "table",
           x: 0,
           y: 0,
           w: 12,

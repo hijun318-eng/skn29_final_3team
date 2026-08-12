@@ -31,6 +31,7 @@ const reportsPageSource = readFileSync(new URL("pages/ReportsPage.jsx", frontend
 const agentPageSource = readFileSync(new URL("pages/AgentPage.jsx", frontendRoot), "utf8");
 const routingSource = readFileSync(new URL("routing.js", frontendRoot), "utf8");
 const auditPageSource = readFileSync(new URL("pages/AuditPage.jsx", frontendRoot), "utf8");
+const analysisPanelSource = readFileSync(new URL("components/analysis/AnalysisStatePanel.tsx", frontendRoot), "utf8");
 
 assert.deepEqual(resolveRoute("/"), { page: "chat", path: "/agent", redirected: true });
 assert.deepEqual(resolveRoute("/agent"), { page: "chat", path: "/agent", redirected: false });
@@ -246,6 +247,7 @@ assert.match(agentPageSource, /createAnalysisClient\(\)/);
 assert.match(agentPageSource, /보고서에 담기/);
 assert.match(agentPageSource, /artifact_id: run\.artifact\.artifactId/);
 assert.match(agentPageSource, /query_id: run\.artifact\.queryId/);
+assert.match(agentPageSource, /type: run\.chart \? "chart" : "table"/);
 assert.match(agentPageSource, /useState\("pms_only"\)/);
 for (const profile of ["pms_only", "crm_only", "pms_crm", "integrated_revenue"]) assert.match(agentPageSource, new RegExp(profile));
 assert.match(agentPageSource, /htmlFor="analysis-access-profile"/);
@@ -259,6 +261,10 @@ assert.match(reportsPageSource, /client\.listSchedules\(\)/);
 assert.match(reportsPageSource, /client\.upsertSchedule/);
 assert.match(reportsPageSource, /frequency === "weekly"/);
 assert.match(reportsPageSource, /frequency === "monthly"/);
+for (const label of ["텍스트 블록 추가", "12열 배치", "너비", "높이", "삭제"]) assert.match(reportsPageSource, new RegExp(label));
+assert.match(reportsPageSource, /gridColumn/);
+assert.match(analysisPanelSource, /chart\.chartType === "bar"/);
+assert.match(analysisPanelSource, /<BarChart/);
 assert.match(auditPageSource, /createAuditClient\(\)/);
 for (const label of ["접근 Profile", "허용 Domain", "DataHub actor", "Entitlement hash", "Trino role", "DataHub 검색 시도", "Trino 실행 시도", "허용 URNs"]) assert.match(auditPageSource, new RegExp(label));
 assert.doesNotMatch(auditPageSource, /question|parameters|result_snapshot/i);

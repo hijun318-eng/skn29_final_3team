@@ -1,18 +1,13 @@
-# REPORT-v1.1.0-DRAFT R4 registration proposal
+# REPORT-v1.1.0-DRAFT 계약
 
-This module is intentionally independent from `app/backend` and the common Alembic chain.
-`REPORT-v1.0.0` payloads and responses remain compatible; v1.1 adds layout, history and
-manual-command contracts without registering a runtime.
+이 모듈은 framework-neutral Report domain·route 계약과 독립 검증용 메모리 저장소를 제공한다.
+운영 runtime은 `app/backend`의 FastAPI router, PostgreSQL 저장소와 단일 Alembic chain에 등록되어 있다.
+`REPORT-v1.0.0` 요청·응답 호환성을 유지하면서 v1.1 layout, history, manual command, schedule 계약을 추가한다.
 
-R4 registration work:
+현재 backend 등록 범위:
 
-1. wrap the framework-neutral `create_report_router(...)` route contract with an R4-owned FastAPI `APIRouter` behind the common authentication/authorization middleware;
-2. replace `InMemoryReportRepository` with the application PostgreSQL repository;
-3. preserve `migration_proposal.sql` and translate only `migration_proposal_v1_1.sql` into a new Alembic revision after the current R4 head;
-4. keep approved definition versions insert-only and retain `definition_version`, `as_of`, policy, context, watermark, artifact, query and snapshot checksum on every run;
-5. expose definition list/detail, draft block replacement and run list/detail only after repository contract tests pass;
-6. expose `POST /reports/runs/manual` as the client trust boundary: accept only `definition_id`, `version`, `as_of`, `idempotency_key`, generate the command ID server-side and keep status/result/policy/context/watermark worker-owned;
-7. keep the legacy full run-result ingestion contract trusted-internal rather than exposing it to an untrusted client.
-
-Backend registration and persistent schedule queueing are implemented under `app/backend`.
-Command consumption and analysis/Artifact execution workers are not implemented yet.
+1. `create_report_router(...)` 계약을 공통 인증·인가 뒤 FastAPI `APIRouter`로 제공한다.
+2. application PostgreSQL 저장소로 definition, run, schedule과 command를 영속화한다.
+3. 승인된 definition version은 불변으로 유지하고 각 run에 정책·Context·watermark·Artifact 근거를 보존한다.
+4. `POST /reports/runs/manual`은 최소 식별자만 받고 command ID와 상태는 서버가 관리한다.
+5. `report-worker`가 예약 command를 소비해 분석과 Artifact 생성을 실행한다.

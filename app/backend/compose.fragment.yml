@@ -43,7 +43,7 @@ services:
     extends:
       service: backend
     container_name: answervice-report-worker
-    entrypoint: ["python", "scripts/run_report_worker.py"]
+    entrypoint: ["python", "-m", "scripts.run_report_worker"]
     ports: !reset []
     healthcheck:
       disable: true

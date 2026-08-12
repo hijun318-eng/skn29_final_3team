@@ -1141,23 +1141,23 @@ I5 이후 후속 단계로 구현한다. 현재 P0/P1·I5 완료선에서는 메
 
 프론트엔드는 확정된 `React + Vite`를 사용한다. 나머지는 최신 버전을 무조건 쓰기보다 2026-07-28 기준 유지보수성과 상호 호환성을 검증해 image·lockfile로 고정한다.
 
-아래 표의 **`현재 구현`** 열은 2026-07-31 기준 `app/enterprise-react/package.json`과 실제 소스 트리에서 확인한 값이다. 계획과 구현이 다른 항목은 어느 쪽으로 수렴할지 I1 Contract Freeze에서 R1이 판정한다. 계획값을 확정 사실로 인용하지 않는다.
+아래 표의 **`현재 구현`** 열은 2026-08-12 기준 `app/enterprise-react/package.json`과 실제 소스 트리·회귀 테스트에서 확인한 값이다. 계획값을 확정 사실로 인용하지 않으며, 구현 완료 표시는 코드와 계약 테스트가 함께 존재하는 경우에만 사용한다.
 
-| 영역 | 잠정 선택 | 현재 구현(2026-07-31) | 적용 이유·주의점 |
+| 영역 | 잠정 선택 | 현재 구현(2026-08-12) | 적용 이유·주의점 |
 |---|---|---|---|
 | 프론트엔드 | React 19, Vite | React 19.2.7, Vite 8.1.5 — **일치** | 확정 조합의 현재 안정 major를 기준으로 호환성 검증 |
 | 타입 체계 | TypeScript | **미도입** — `typescript` devDependency 없음, 소스는 `.jsx` 10 / `.tsx` 1 / `.ts` 4 | R5 typed client 계약은 현재 JSDoc·contract test로 대체 중. 도입 여부와 시점을 I1에서 결정 |
 | 서버 상태 | TanStack Query | **미도입** | 도입 전까지 polling·cache·error 상태는 화면 모듈이 직접 관리 |
 | 차트 | Apache ECharts | **`recharts` 3.10.0** | 현재 구현은 recharts. 표·KPI 요구를 충족하는지 확인한 뒤 유지 또는 교체를 I1에서 결정 |
 | 보고서 배치 | `react-grid-layout` + 접근성 보완, drag 보조는 `dnd-kit` | **미도입** | 12-column 직렬화·resize를 먼저 충족하고 키보드 대체 조작 별도 구현 |
-| API·계약 | FastAPI, Pydantic v2, OpenAPI | `app/backend`에 구현 진행 중 | Python AI·SQL 생태계와 typed contract |
+| API·계약 | FastAPI, Pydantic v2, OpenAPI | 분석·보고서·스케줄·운영 감사 API와 OpenAPI drift 검사 구현 | Python AI·SQL 생태계와 typed contract |
 | 애플리케이션 DB | PostgreSQL, SQLAlchemy 2, Alembic | `app/backend/migrations` Alembic chain 구성됨 | Context 승인본·artifact·report·audit 저장; P2에서 pgvector 추가 |
-| 실행 흐름 | Deterministic Controller + 명시적 상태 머신 | Controller skeleton 단계 | 자유 ReAct가 아니라 Router→Context→G1→SQL Source→G2→Trino/Cache→G3→설명 순서를 강제 |
-| SQL 검증·실행 | SQLGlot + Trino | `infrastructure/database/trino` 구성됨, G2 미구현 | G2의 Trino dialect AST·실행계획 검사와 Trino의 read-only·row filter·column mask를 분리 |
+| 실행 흐름 | Deterministic Controller + 명시적 상태 머신 | Router→Context→G1→SQL Source→G2→Trino→G3→Artifact 전이와 실패 종료 구현 | 자유 ReAct가 아니라 승인된 상태 순서와 수정 상한을 강제 |
+| SQL 검증·실행 | SQLGlot + Trino | Trino AST 정책과 `EXPLAIN (TYPE VALIDATE)` 선행 실행 구현 | G2의 AST·실행계획 검사와 Trino의 read-only·row filter·column mask를 분리 |
 | sLLM 서빙 | RunPod GPU Pod + vLLM 공유 endpoint | 미착수(Wave 3 예정) | 전 Node Base 기준선; 채택 Gate 통과 시에만 Node 2·2′ Preloaded SQL LoRA, runtime dynamic loading OFF, 데모 동시 실행 2건 |
 | 캐시 | PostgreSQL 또는 Redis-compatible cache를 구현 단계에서 고정 | 미결정 | SQL Plan Cache와 Result Cache를 분리하고 Gate 우회 금지·version/watermark 무효화 적용 |
 | 관측성 | OpenTelemetry trace·metric·log | 미착수 | request→context→model→Trino→artifact 경로 연결 |
-| 스케줄 실행 | 영속 job store와 worker 1개부터 시작 | 미착수(Wave 4 예정) | 동시 실행·재시도 요구가 확인될 때 queue를 분리 |
+| 스케줄 실행 | 영속 job store와 worker 1개부터 시작 | 일·주·월 영속 스케줄, command queue, 단일 worker와 실행 이력 구현 | 동시 실행·재시도 요구가 확인될 때 queue를 분리 |
 
 ### 16.2 화면 모듈
 

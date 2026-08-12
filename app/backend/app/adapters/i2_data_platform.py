@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlglot import exp, parse_one
 from sqlglot.errors import SqlglotError
 
+from src.modelops.privacy import DIRECT_IDENTIFIER_FIELDS
 from src.data.i2_adapters import (
     AdapterError,
     AdapterErrorCode,
@@ -127,15 +128,7 @@ query SearchDatasets($query: String!) {
     _PMS_HINTS = ("pms", "호텔", "객실", "숙박", "투숙", "매출")
     _POS_HINTS = ("pos", "식음", "f&b", "주문", "통합 매출")
     _PMS_CRM_POS_JOIN_ID = "pms_crm_pos_gold_revenue_month_v1"
-    _SENSITIVE_RESULT_FIELDS = frozenset(
-        {
-            "guest_id",
-            "member_no",
-            "pms_guest_id",
-            "pos_customer_ref",
-            "reservation_id",
-        }
-    )
+    _SENSITIVE_RESULT_FIELDS = DIRECT_IDENTIFIER_FIELDS
 
     def __init__(
         self,

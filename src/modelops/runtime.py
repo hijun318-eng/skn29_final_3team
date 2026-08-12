@@ -8,6 +8,7 @@ from typing import Any, Callable, NoReturn
 
 from src.ai.prompt_registry import get_prompt
 from src.ai.schema import ContractError, validate_payload
+from src.modelops.privacy import OutboundPrivacyError, prepare_outbound
 
 
 Transport = Callable[[str, dict[str, Any], float], dict[str, Any]]
@@ -34,15 +35,26 @@ class ProductionModelClient:
         self._threshold = failure_threshold
         self._failures = 0
         self.last_trace: dict[str, Any] = {}
+        self.last_outbound_evidence: dict[str, Any] = {}
 
     def generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
         validate_payload(f"{node}_request", payload)
         if self._failures >= self._threshold:
             self._raise_unavailable("CIRCUIT_OPEN", 0)
 
+        try:
+            outbound, self.last_outbound_evidence = prepare_outbound(node, payload)
+            validate_payload(f"{node}_request", outbound)
+        except OutboundPrivacyError:
+            self.last_outbound_evidence = {
+                "policy_version": "MODEL-OUTBOUND-v1",
+                "decision": "DENY",
+            }
+            self._raise_unavailable("PRIVACY_DENIED", 0)
+
         for attempt in (1, 2):
             try:
-                response = self._transport(node, payload, self._timeout)
+                response = self._transport(node, outbound, self._timeout)
                 validate_payload(f"{node}_response", response)
                 self._failures = 0
                 self.last_trace = {

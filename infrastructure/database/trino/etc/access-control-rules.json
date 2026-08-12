@@ -3,6 +3,14 @@
     {"user": "hotel_synthetic_setup", "catalog": "serving", "allow": "all"},
     {"user": "hotel_synthetic_setup", "catalog": "(pms|pos|crm|facility|banquet)", "allow": "all"},
     {"user": "datahub_ingestion", "catalog": "system", "allow": "read-only"},
+    {"user": "answervice_pms_only", "catalog": "(pms|serving)", "allow": "read-only"},
+    {"user": "answervice_pms_only", "catalog": ".*", "allow": "none"},
+    {"user": "answervice_crm_only", "catalog": "crm", "allow": "read-only"},
+    {"user": "answervice_crm_only", "catalog": ".*", "allow": "none"},
+    {"user": "answervice_pms_crm", "catalog": "(pms|crm|serving)", "allow": "read-only"},
+    {"user": "answervice_pms_crm", "catalog": ".*", "allow": "none"},
+    {"user": "answervice_integrated_revenue", "catalog": "(pms|crm|pos|serving)", "allow": "read-only"},
+    {"user": "answervice_integrated_revenue", "catalog": ".*", "allow": "none"},
     {"catalog": "system", "allow": "none"},
     {"catalog": "(serving|pms|pos|crm|facility|banquet)", "allow": "read-only"},
     {"catalog": ".*", "allow": "none"}
@@ -40,6 +48,59 @@
       "table": ".*",
       "privileges": ["SELECT", "GRANT_SELECT"]
     },
+    {
+      "user": "answervice_pms_only",
+      "catalog": "pms",
+      "schema": ".*",
+      "table": ".*",
+      "privileges": ["SELECT"]
+    },
+    {
+      "user": "answervice_pms_only",
+      "catalog": "serving",
+      "schema": "analytics",
+      "table": "hotel_daily_metrics",
+      "privileges": ["SELECT"]
+    },
+    {"user": "answervice_pms_only", "catalog": ".*", "schema": ".*", "table": ".*", "privileges": []},
+    {
+      "user": "answervice_crm_only",
+      "catalog": "crm",
+      "schema": ".*",
+      "table": ".*",
+      "privileges": ["SELECT"]
+    },
+    {"user": "answervice_crm_only", "catalog": ".*", "schema": ".*", "table": ".*", "privileges": []},
+    {
+      "user": "answervice_pms_crm",
+      "catalog": "(pms|crm)",
+      "schema": ".*",
+      "table": ".*",
+      "privileges": ["SELECT"]
+    },
+    {
+      "user": "answervice_pms_crm",
+      "catalog": "serving",
+      "schema": "analytics",
+      "table": "hotel_daily_metrics",
+      "privileges": ["SELECT"]
+    },
+    {"user": "answervice_pms_crm", "catalog": ".*", "schema": ".*", "table": ".*", "privileges": []},
+    {
+      "user": "answervice_integrated_revenue",
+      "catalog": "(pms|crm|pos)",
+      "schema": ".*",
+      "table": ".*",
+      "privileges": ["SELECT"]
+    },
+    {
+      "user": "answervice_integrated_revenue",
+      "catalog": "serving",
+      "schema": "analytics",
+      "table": "(hotel_daily_metrics|fnb_daypart_metrics)",
+      "privileges": ["SELECT"]
+    },
+    {"user": "answervice_integrated_revenue", "catalog": ".*", "schema": ".*", "table": ".*", "privileges": []},
     {
       "catalog": "(pms|pos|crm|facility|banquet)",
       "schema": "system",

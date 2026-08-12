@@ -607,6 +607,14 @@ query SearchDatasets($query: String!) {
                 use_candidates = self._three_source_assets if query_use == "approved_pms_crm_pos_join" else self._assets
                 candidates = tuple(asset for asset in use_candidates if query_use in asset["uses"])
             search_results = self._datahub_search(query, datahub_token)
+            if query_use == "approved_pms_crm_pos_join":
+                exact_results = self._datahub_search(
+                    " OR ".join(asset["fqn"] for asset in self._three_source_assets),
+                    datahub_token,
+                )
+                search_results = list(
+                    {item["urn"]: item for item in (*search_results, *exact_results)}.values()
+                )
             if not search_results:
                 expanded = " OR ".join(
                     name for name, hints in self._KOREAN_HINTS.items()
@@ -693,10 +701,22 @@ query SearchDatasets($query: String!) {
             selected.append(item)
             column_count += len(asset["columns"])
         selected_fqns = {item["fqn"] for item in selected}
+        if query_use == "approved_pms_crm_pos_join" and selected_fqns != {
+            item["fqn"] for item in self._three_source_assets
+        }:
+            if policy_filtered:
+                raise DataPlatformAccessDenied(
+                    "DataHub assets are outside the selected profile"
+                )
+            if self._require_live_metadata:
+                raise DataPlatformNoAssets(
+                    "live DataHub returned an incomplete approved join"
+                )
+            return []
         approved_join_id = None
         if query_use == "approved_pms_crm_pos_join":
             approved_join_id = self._PMS_CRM_POS_JOIN_ID
-        elif query_use == "approved_pms_crm_join":
+        elif query_use in {"approved_pms_crm_join", "crm_only"}:
             approved_join_id = self._approved_joins.get(frozenset(selected_fqns))
         if approved_join_id:
             for item in selected:
@@ -709,7 +729,11 @@ query SearchDatasets($query: String!) {
                     "cardinality": (
                         "preaggregate_then_one_to_one_month"
                         if approved_join_id == self._PMS_CRM_POS_JOIN_ID
-                        else "many_to_zero_or_one"
+                        else (
+                            "many_to_one"
+                            if approved_join_id == "crm_point_transactions_to_members_v1"
+                            else "many_to_zero_or_one"
+                        )
                     ),
                     "on_predicates": tuple(edge["on_predicates"]),
                 }

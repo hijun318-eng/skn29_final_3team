@@ -13,6 +13,7 @@ from app.adapters import contract_model
 from app.adapters.contract_model import (
     ContractModelAdapter,
     NodeModelRouter,
+    _complete_aggregate_group_by,
     _validate_sql_semantics,
     vllm_transport,
 )
@@ -28,6 +29,22 @@ from app.services.context_builder import (
 
 
 class ProductionModelTest(unittest.TestCase):
+    def test_model_sql_groups_every_non_aggregate_projection(self) -> None:
+        sql = _complete_aggregate_group_by(
+            "SELECT business_date, SUM(room_revenue) AS revenue "
+            "FROM serving.analytics.hotel_daily_metrics ORDER BY business_date LIMIT 1000"
+        )
+
+        self.assertIn("GROUP BY business_date", sql)
+
+    def test_model_sql_preserves_existing_group_by_position(self) -> None:
+        sql = (
+            "SELECT business_date, SUM(room_revenue) AS revenue "
+            "FROM serving.analytics.hotel_daily_metrics GROUP BY 1 LIMIT 1000"
+        )
+
+        self.assertEqual(sql, _complete_aggregate_group_by(sql))
+
     @patch("app.adapters.contract_model.request_json")
     def test_vllm_uses_supported_openai_json_schema(self, request_json) -> None:
         request_json.return_value = {

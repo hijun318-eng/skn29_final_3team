@@ -65,7 +65,7 @@ class ProductionModelClient:
                 return response
             except TimeoutError:
                 reason = "TIMEOUT"
-            except (ContractError, TypeError, ValueError):
+            except (ContractError, KeyError, TypeError, ValueError):
                 reason = "SCHEMA_INVALID"
             except OSError:
                 reason = "ENDPOINT_UNAVAILABLE"

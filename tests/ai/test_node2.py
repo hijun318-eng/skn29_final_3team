@@ -81,6 +81,65 @@ def derived_payload():
 
 
 class Node2Tests(unittest.TestCase):
+    def test_crm_earned_and_redeemed_points_use_approved_members_join(self):
+        payload = copy.deepcopy(VALID_PAYLOADS["node2_request"])
+        context = payload["context_package"]
+        context["assets"] = [
+            {
+                "urn": "urn:transactions",
+                "trino_fqn": "crm.dbo.crm_point_transactions",
+                "columns": ["property_id", "member_no", "event_at", "txn_type", "points_delta", "is_forecast"],
+            },
+            {
+                "urn": "urn:members",
+                "trino_fqn": "crm.dbo.crm_members",
+                "columns": ["property_id", "member_no", "membership_grade"],
+            },
+        ]
+        context["metrics"] = [
+            {
+                "id": metric_id,
+                "field": "crm.dbo.crm_point_transactions.points_delta",
+                "aggregation": aggregation,
+                "time_field": "crm.dbo.crm_point_transactions.event_at",
+                "required_filters": [
+                    {"field": "txn_type", "operator": "eq", "value_type": "string", "value": txn_type},
+                    {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
+                ],
+            }
+            for metric_id, aggregation, txn_type in (
+                ("earned_points", "sum", "EARN"),
+                ("redeemed_points", "negative_sum", "USE"),
+            )
+        ]
+        context["dimensions"] = [{
+            "id": "membership_grade",
+            "field": "crm.dbo.crm_members.membership_grade",
+        }]
+        context["joins"] = [{
+            "id": "crm_point_transactions_to_members_v1",
+            "left": "crm.dbo.crm_point_transactions",
+            "right": "crm.dbo.crm_members",
+            "cardinality": "many_to_one",
+            "status": "approved",
+            "on_predicates": [
+                "crm.dbo.crm_point_transactions.property_id = crm.dbo.crm_members.property_id",
+                "crm.dbo.crm_point_transactions.member_no = crm.dbo.crm_members.member_no",
+            ],
+        }]
+
+        response = generate_sql(payload)
+
+        self.assertIn("JOIN crm.dbo.crm_members m ON t.property_id = m.property_id AND t.member_no = m.member_no", response["sql"])
+        self.assertIn('SUM(t."points_delta") FILTER (WHERE t."txn_type" = :required_filter_1', response["sql"])
+        self.assertIn('-SUM(t."points_delta") FILTER (WHERE t."txn_type" = :required_filter_3', response["sql"])
+        self.assertIn('t."event_at" >= DATE \':period_start\'', response["sql"])
+        self.assertIn('GROUP BY m."membership_grade" ORDER BY m."membership_grade"', response["sql"])
+        self.assertEqual(
+            ["period_start", "period_end_exclusive", "required_filter_1", "required_filter_2", "required_filter_3", "required_filter_4"],
+            [item["name"] for item in response["parameters"]],
+        )
+
     def test_current_snapshot_metrics_group_by_approved_dimension_without_period_filter(self):
         payload = copy.deepcopy(VALID_PAYLOADS["node2_request"])
         context = payload["context_package"]

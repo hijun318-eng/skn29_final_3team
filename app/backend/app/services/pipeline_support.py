@@ -196,9 +196,12 @@ class PipelineSupport:
         )
         metric_filters = tuple(
             item
-            for asset in items
-            for metric in asset.metrics
-            for item in metric.required_filters
+            for policy in dict.fromkeys(
+                metric.required_filters
+                for asset in items
+                for metric in asset.metrics
+            )
+            for item in policy
         )
         context_metrics = tuple(metric for asset in items for metric in asset.metrics)
         current_snapshot = bool(context_metrics) and all(
@@ -754,7 +757,7 @@ class PipelineSupport:
             return False
         field = re.escape(required.field.lower().rsplit(".", 1)[-1])
         matches = re.findall(
-            rf"(?<![a-z0-9_])(?:[a-z_][a-z0-9_]*\.)?{field}\s*=\s*"
+            rf'(?<![a-z0-9_])(?:[a-z_][a-z0-9_]*\.)?"?{field}"?\s*=\s*'
             r"(?:'([^']*)'|(true|false)|:([a-z_][a-z0-9_]*))(?![a-z0-9_])",
             where.group(1),
             flags=re.IGNORECASE,

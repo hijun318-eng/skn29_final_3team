@@ -20,11 +20,13 @@ from app.adapters.contract_model import ContractModelAdapter
 from app.contracts import AnalysisRequest, RequestContext
 from app.services.context_builder import ContextPackageBuilder
 from app.services.context_builder import ContextBuildError, ContextBuildErrorCode
+from app.ports.data_platform import DataPlatformNoAssets
 from app.services.pipeline_support import (
     PipelineSupport,
     _conservative_json_token_estimate,
 )
 from src.data.i2_adapters import QueryPage
+from src.ai.node2 import generate_sql
 
 
 def _published_release(_as_of):
@@ -567,6 +569,41 @@ def test_pms_crm_question_uses_the_versioned_approved_join():
     assert {join_id for asset in assets for join_id in asset["join_ids"]} == {
         "pms_stay_to_crm_membership_grade_event_time_v1"
     }
+
+
+def test_crm_point_question_selects_two_metrics_and_passes_the_approved_join():
+    adapter = simulated_verified_live_adapter()
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = _support(adapter)
+    payload = AnalysisRequest(
+        question="이번 달 회원 등급별 적립 포인트와 사용 포인트를 보여줘",
+        parameters={
+            "period_start": "2026-07-01",
+            "period_end_exclusive": "2026-07-30",
+        },
+    )
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+    assets, normalized = support.select_metric(payload, context, assets)
+    package = support.build_context(payload, context, assets)
+    model_context = ContractModelAdapter._context_package(
+        {"package": package, "context": context}
+    )
+    response = generate_sql(
+        {"question_id": "crm-points", "normalized_question": normalized, "context_package": model_context}
+    )
+    plan = ContractModelAdapter._plan(response, "sql", package.parameter_bindings)
+
+    assert [metric.id for metric in package.metrics] == ["earned_points", "redeemed_points"]
+    assert [dimension.id for dimension in package.dimensions] == ["membership_grade"]
+    assert package.approved_join_ids == ("crm_point_transactions_to_members_v1",)
+    assert support.g2_violation(plan, package) is None
+    assert 't."event_at" >= DATE \':period_start\'' in plan["sql"]
+    assert "crm.dbo.crm_members m ON t.property_id = m.property_id AND t.member_no = m.member_no" in plan["sql"]
 
 
 def test_g2_accepts_the_versioned_pms_crm_join_id():
@@ -1220,6 +1257,55 @@ def test_versioned_three_source_uses_runtime_verified_contract_and_live_checks_r
     live = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     live._trino.health = lambda: False
     with pytest.raises(ValueError, match="live Trino runtime verification"):
+        live.search_assets(
+            "5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘.",
+            {"role": "hotel_analyst"},
+        )
+
+
+def test_live_three_source_supplements_question_search_with_exact_asset_search():
+    live = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    live._trino.health = lambda: True
+    live._datahub_health = lambda: True
+    def lookup(urn):
+        dataset = live_dataset(live, urn)
+        asset = next(item for item in live._three_source_assets if item["urn"] == urn)
+        dataset["schemaMetadata"]["name"] = ".".join(asset["fqn"].split(".")[1:])
+        dataset["schemaMetadata"]["fields"] = [
+            {"fieldPath": column, "nativeDataType": "contract"}
+            for column in asset["columns"]
+        ]
+        return dataset
+
+    live._datahub_dataset = lookup
+    calls = []
+
+    def search(query, _token):
+        calls.append(query)
+        if " OR " not in query:
+            return []
+        return [live_dataset(live, asset["urn"]) for asset in live._three_source_assets]
+
+    live._datahub_search = search
+
+    assets = live.search_assets(
+        "5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘.",
+        {"role": "hotel_analyst"},
+    )
+
+    assert len(calls) >= 2
+    assert {item["fqn"] for item in assets} == {
+        item["fqn"] for item in live._three_source_assets
+    }
+
+
+def test_live_three_source_empty_search_is_insufficient_evidence_not_index_error():
+    live = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    live._trino.health = lambda: True
+    live._datahub_health = lambda: True
+    live._datahub_search = lambda _query, _token: []
+
+    with pytest.raises(DataPlatformNoAssets, match="incomplete approved join"):
         live.search_assets(
             "5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘.",
             {"role": "hotel_analyst"},

@@ -38,7 +38,7 @@ _PROMPTS = {
     ),
     "node2.sql": PromptRecord(
         "node2.sql",
-        "PROMPT-v1.0.9-DRAFT",
+        "PROMPT-v1.0.10-DRAFT",
         "node2",
         "development",
         "base",
@@ -55,6 +55,8 @@ _PROMPTS = {
         "날짜·timestamp without time zone 기간은 DATE 'YYYY-MM-DD' 리터럴의 이상·미만 반개구간으로 비교하고 year_month도 월 첫날 DATE를 사용한다. "
         "pms_stay_to_crm_membership_grade_event_time_v1은 SQL table 이름이 아니라 승인 JOIN 식별자이므로 JOIN 뒤에 쓰지 않는다. "
         "이 JOIN은 FROM pms.public.pms_stays s JOIN pms.public.pms_reservations r ON s.property_id = r.property_id AND s.reservation_id = r.reservation_id JOIN pms.public.pms_guests g ON r.property_id = g.property_id AND r.guest_id = g.guest_id JOIN crm.dbo.crm_customer_map m ON g.property_id = m.property_id AND g.guest_id = m.pms_guest_id AND m.valid_from <= s.actual_checkout_at AND (m.valid_to IS NULL OR s.actual_checkout_at < m.valid_to) JOIN crm.dbo.crm_member_grade_history h ON m.property_id = h.property_id AND m.member_no = h.member_no AND h.valid_from <= s.actual_checkout_at AND (h.valid_to IS NULL OR s.actual_checkout_at < h.valid_to) 형태를 정확히 사용한다. "
+        "crm_point_transactions_to_members_v1은 FROM crm.dbo.crm_point_transactions t JOIN crm.dbo.crm_members m ON t.property_id = m.property_id AND t.member_no = m.member_no 형태를 정확히 사용한다. "
+        "earned_points와 redeemed_points를 함께 요청하면 각각 SUM(t.points_delta) FILTER (WHERE t.txn_type = :required_filter_1 AND t.is_forecast = :required_filter_2), -SUM(t.points_delta) FILTER (WHERE t.txn_type = :required_filter_3 AND t.is_forecast = :required_filter_4)로 분리 집계하고 기간은 t.event_at에 적용한다. "
         "지표 질문은 Context metric의 field·aggregation·time_field를 그대로 적용하고, 질문에 요구된 dimension과 filter만 사용하며 원시 식별자 행을 대신 반환하지 않는다. "
         "Context dimensions의 field는 모두 SELECT·GROUP BY·ORDER BY에 포함하고 다른 dimension을 추측하지 않는다. "
         "metric temporal_semantics가 current_snapshot이면 execution_time 기간을 과거 월말 잔액으로 해석하거나 time_field 기간 조건을 적용하지 않고 현재 스냅샷만 집계한다. "
@@ -69,7 +71,7 @@ _PROMPTS = {
     ),
     "node2.repair": PromptRecord(
         "node2.repair",
-        "PROMPT-v1.0.4",
+        "PROMPT-v1.0.5",
         "node2_repair",
         "development",
         "base",
@@ -84,6 +86,7 @@ _PROMPTS = {
         "Context parameter_bindings의 모든 name을 placeholder로 정확히 사용하며 period 경계나 filter 값을 임의 날짜·literal로 바꾸지 않는다. "
         "집계값과 dimension을 함께 SELECT하면 모든 비집계 dimension을 GROUP BY하고 metric id를 집계 별칭으로 사용한다. "
         "DIMENSION_REFERENCE_MISMATCH이면 Context dimensions의 field를 SELECT·GROUP BY·ORDER BY와 reference에 동일하게 복구한다. "
+        "UNAPPROVED_JOIN 또는 UNAPPROVED_JOIN_PREDICATE이면 Context joins의 left·right·on_predicates를 table과 ON 절에 그대로 복구하고 다른 자산이나 축약 JOIN은 쓰지 않는다. "
         "원문 오류를 해석하거나 반복 호출하지 않는다.",
     ),
     "node3.explain": PromptRecord(

@@ -73,18 +73,40 @@ def test_pms_crm_join_matches_frozen_source_registry():
         if join["join_id"] == "pms_stay_to_crm_membership_grade_event_time_v1"
     )
     actual = CONTRACT["approved_joins"]
-    assert len(actual) == 1
-    assert actual[0]["id"] == expected["join_id"]
-    assert actual[0]["cardinality"] == expected["cardinality"]
-    assert actual[0]["event_time_field"] == expected["event_time_field"]
-    assert len(actual[0]["assets"]) == 5
-    assert len(actual[0]["join_edges"]) == 4
-    assert all(edge["on_predicates"] for edge in actual[0]["join_edges"])
+    pms_crm = next(item for item in actual if item["id"] == expected["join_id"])
+    assert pms_crm["cardinality"] == expected["cardinality"]
+    assert pms_crm["event_time_field"] == expected["event_time_field"]
+    assert len(pms_crm["assets"]) == 5
+    assert len(pms_crm["join_edges"]) == 4
+    assert all(edge["on_predicates"] for edge in pms_crm["join_edges"])
+
+
+def test_crm_point_metrics_and_membership_grade_join_are_approved():
+    metrics = {metric["id"]: metric for metric in CONTRACT["metrics"]}
+    assert metrics["earned_points"]["required_filters"][0]["value"] == "EARN"
+    assert metrics["redeemed_points"]["required_filters"][0]["value"] == "USE"
+    assert metrics["earned_points"]["time_field"] == "event_at"
+    assert metrics["redeemed_points"]["aggregation"] == "negative_sum"
+
+    join = next(
+        item
+        for item in CONTRACT["approved_joins"]
+        if item["id"] == "crm_point_transactions_to_members_v1"
+    )
+    assert join["cardinality"] == "many_to_one"
+    assert join["assets"] == [
+        "crm.dbo.crm_point_transactions",
+        "crm.dbo.crm_members",
+    ]
+    assert join["join_edges"][0]["on_predicates"] == [
+        "crm.dbo.crm_point_transactions.property_id = crm.dbo.crm_members.property_id",
+        "crm.dbo.crm_point_transactions.member_no = crm.dbo.crm_members.member_no",
+    ]
 
 
 def test_metric_registry_is_versioned_and_references_approved_columns():
     assert CONTRACT["contract_version"] == "I4-CONTEXT-v2.3.0-DRAFT"
-    assert CONTRACT["metric_registry_version"] == "I4-METRIC-v1.2.0-DRAFT"
+    assert CONTRACT["metric_registry_version"] == "I4-METRIC-v1.3.0-DRAFT"
     assert CONTRACT["required_filter_contract"] == {
         "fields": ["field", "operator", "value_type", "value"],
         "value_types": ["string", "boolean", "number", "date"],
@@ -135,6 +157,8 @@ def test_metric_registry_contains_only_approved_metrics():
     assert set(metrics) == {
         "recognized_room_revenue",
         "expired_points",
+        "earned_points",
+        "redeemed_points",
         "fnb_net_revenue",
         "facility_revenue",
         "actual_attendees",

@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from sqlglot import exp, parse_one
+
 from src.ai import schema as ai_schema
 from src.ai.prompt_registry import get_prompt
 from src.ai.training.benchmark_serving import request_json
@@ -90,6 +92,80 @@ def _validate_sql_semantics(node: str, payload: dict[str, Any], sql: str) -> Non
             )
         ):
             raise ValueError("SQL must group by every approved requested dimension")
+
+
+def _complete_aggregate_group_by(sql: str) -> str:
+    """Group non-aggregate projections omitted by the model."""
+    query = parse_one(sql, read="trino")
+    changed = False
+    for select in query.find_all(exp.Select):
+        if not any(
+            isinstance(node, exp.AggFunc)
+            for projection in select.expressions
+            for node in projection.walk()
+        ):
+            continue
+        group = select.args.get("group")
+        grouped = {
+            expression.sql(dialect="trino").lower()
+            for expression in (group.expressions if group else ())
+        }
+        grouped_positions = {
+            int(expression.this)
+            for expression in (group.expressions if group else ())
+            if isinstance(expression, exp.Literal) and expression.is_int
+        }
+        missing = []
+        for position, projection in enumerate(select.expressions, 1):
+            expression = projection.this if isinstance(projection, exp.Alias) else projection
+            if any(isinstance(node, exp.AggFunc) for node in expression.walk()):
+                continue
+            if (
+                position not in grouped_positions
+                and expression.sql(dialect="trino").lower() not in grouped
+            ):
+                missing.append(expression.copy())
+        if not missing:
+            continue
+        select.set(
+            "group",
+            exp.Group(expressions=[*(group.expressions if group else ()), *missing]),
+        )
+        changed = True
+    return query.sql(dialect="trino") if changed else sql
+
+
+def _without_snapshot_time_filters(sql: str, time_fields: set[str]) -> str:
+    """Current snapshot metrics must not be narrowed by an event-time window."""
+    if not time_fields:
+        return sql
+    query = parse_one(sql, read="trino")
+    changed = False
+    for select in query.find_all(exp.Select):
+        where = select.args.get("where")
+        if where is None:
+            continue
+        predicates = list(where.this.flatten(unnest=False))
+        retained = [
+            predicate
+            for predicate in predicates
+            if not {
+                column.name.lower() for column in predicate.find_all(exp.Column)
+            }.intersection(time_fields)
+            and not re.search(
+                r":period_(?:start|end(?:_exclusive)?)\b",
+                predicate.sql(),
+                re.IGNORECASE,
+            )
+        ]
+        if len(retained) == len(predicates):
+            continue
+        changed = True
+        select.set(
+            "where",
+            exp.Where(this=exp.and_(*retained)) if retained else None,
+        )
+    return query.sql(dialect="trino") if changed else sql
 
 
 def openai_transport(
@@ -199,7 +275,7 @@ def _complete_chat_response(
     if node not in {"node2", "node2_repair"}:
         return {**result, "model": metadata}
     sql_field = "sql" if node == "node2" else "corrected_sql"
-    sql = result[sql_field]
+    sql = _complete_aggregate_group_by(result[sql_field])
     _validate_sql_semantics(node, payload, sql)
     queried = {
         table.strip('"').lower()
@@ -298,6 +374,7 @@ class ContractModelAdapter:
         if node == "node1":
             return self._generate(node, payload)
         if node == "node2":
+            snapshot_time_fields = self._snapshot_time_fields(payload["package"])
             response = self._generate(
                 node,
                 {
@@ -307,9 +384,13 @@ class ContractModelAdapter:
                 },
             )
             return self._plan(
-                response, "sql", payload["package"].parameter_bindings
+                response,
+                "sql",
+                payload["package"].parameter_bindings,
+                snapshot_time_fields,
             )
         if node == "node2_repair":
+            snapshot_time_fields = self._snapshot_time_fields(payload["package"])
             response = self._generate(
                 node,
                 {
@@ -322,7 +403,10 @@ class ContractModelAdapter:
                 },
             )
             return self._plan(
-                response, "corrected_sql", payload["package"].parameter_bindings
+                response,
+                "corrected_sql",
+                payload["package"].parameter_bindings,
+                snapshot_time_fields,
             )
         if node == "node3":
             query = payload["query"]
@@ -367,13 +451,22 @@ class ContractModelAdapter:
             )
             return {
                 "summary": response["explanation"] + (
-                    " 사용 가능 포인트는 분석 시점의 현재 잔액이며 과거 월말 잔액이 아닙니다."
+                    " 현재 활성 회원 기준 스냅샷이며, 가입일 기간이나 과거 월말 잔액으로 해석하지 않습니다."
                     if current_snapshot
                     else ""
                 ),
                 "model_version": response["model"]["model_version"],
             }
         raise ValueError(f"unsupported node: {node}")
+
+    @staticmethod
+    def _snapshot_time_fields(package) -> set[str]:
+        metrics = tuple(package.metrics)
+        if not metrics or any(
+            metric.temporal_semantics != "current_snapshot" for metric in metrics
+        ):
+            return set()
+        return {metric.time_field.lower() for metric in metrics}
 
     @staticmethod
     def _metric_selection(assets: list[dict[str, Any]]) -> dict[str, Any]:
@@ -425,8 +518,11 @@ class ContractModelAdapter:
         response: dict[str, Any],
         sql_field: str,
         parameter_bindings=(),
+        snapshot_time_fields=frozenset(),
     ) -> dict[str, Any]:
-        sql = response[sql_field]
+        sql = _without_snapshot_time_filters(
+            response[sql_field], set(snapshot_time_fields)
+        )
         expected = {item.name: item for item in parameter_bindings}
         if "period_end_exclusive" in expected and ":period_end" in sql:
             sql = re.sub(r":period_end(?![a-z0-9_])", ":period_end_exclusive", sql)

@@ -38,6 +38,10 @@ from app.services.routing_service import RouteDecision
 from app.services.state_machine import AnalysisStateMachine
 from app.telemetry import observe_stage
 from app.adapters.context_registry_repository import PublishedContextRelease
+from src.modelops.runtime import ModelUnavailableError
+
+
+_MODEL_ERRORS = (ModelUnavailableError, KeyError, TimeoutError, TypeError, ValueError)
 
 
 class AnalysisService:
@@ -172,7 +176,7 @@ class AnalysisService:
                 self._support.node1_request(payload, context, assets),
                 context,
             )
-        except (TimeoutError, TypeError, ValueError):
+        except _MODEL_ERRORS:
             progress("NODE1", "FAILED")
             return self._responses.model_error(context, machine, trace, decision)
         progress("NODE1", "PASSED")
@@ -338,7 +342,7 @@ class AnalysisService:
                     },
                     context,
                 )
-            except (TimeoutError, TypeError, ValueError):
+            except _MODEL_ERRORS:
                 progress("NODE2", "FAILED")
                 return self._responses.model_error(context, machine, trace, decision)
             progress("NODE2", "PASSED")
@@ -415,7 +419,7 @@ class AnalysisService:
                     },
                     context,
                 )
-            except (TimeoutError, TypeError, ValueError):
+            except _MODEL_ERRORS:
                 progress("NODE2", "FAILED")
                 return self._responses.model_error(
                     context,
@@ -645,7 +649,7 @@ class AnalysisService:
                     or not isinstance(explanation.get("model_version"), str)
                 ):
                     raise ValueError("invalid node3 response")
-            except (TimeoutError, TypeError, ValueError):
+            except _MODEL_ERRORS:
                 progress("NODE3", "FAILED")
                 return self._responses.model_error(
                     context,

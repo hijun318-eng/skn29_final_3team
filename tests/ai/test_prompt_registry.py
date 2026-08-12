@@ -12,8 +12,8 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(
             {
                 "node1.normalize": "PROMPT-v1.0.0",
-                "node2.repair": "PROMPT-v1.0.4",
-                "node2.sql": "PROMPT-v1.0.9-DRAFT",
+                "node2.repair": "PROMPT-v1.0.5",
+                "node2.sql": "PROMPT-v1.0.10-DRAFT",
                 "node3.explain": "PROMPT-v1.0.0",
             },
             {item["prompt_id"]: item["version"] for item in first},

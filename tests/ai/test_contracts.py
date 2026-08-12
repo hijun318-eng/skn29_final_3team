@@ -161,6 +161,8 @@ class ContractTests(unittest.TestCase):
         expected_ids = {
             "recognized_room_revenue",
             "expired_points",
+            "earned_points",
+            "redeemed_points",
             "current_points_balance_sum",
             "current_points_balance_average",
             "fnb_net_revenue",
@@ -168,7 +170,7 @@ class ContractTests(unittest.TestCase):
             "actual_attendees",
         }
 
-        self.assertEqual(glossary["version"], "METRIC-GLOSSARY-v1.0.0-DRAFT")
+        self.assertEqual(glossary["version"], "METRIC-GLOSSARY-v1.1.0-DRAFT")
         self.assertEqual(set(glossary), {"version", "metrics"})
         self.assertEqual(set(glossary["metrics"]), expected_ids)
         aliases = [

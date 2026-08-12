@@ -1,6 +1,6 @@
 {
   "contract_version": "I4-CONTEXT-v2.3.0-DRAFT",
-  "metric_registry_version": "I4-METRIC-v1.2.0-DRAFT",
+  "metric_registry_version": "I4-METRIC-v1.3.0-DRAFT",
   "context_source": "LIVE_DATAHUB",
   "synthetic": true,
   "required_filter_contract": {
@@ -70,6 +70,28 @@
       "time_field": "event_at",
       "required_filters": [
         {"field": "txn_type", "operator": "eq", "value_type": "string", "value": "EXPIRE"},
+        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
+      ]
+    },
+    {
+      "id": "earned_points",
+      "asset_fqn": "crm.dbo.crm_point_transactions",
+      "field": "points_delta",
+      "aggregation": "sum",
+      "time_field": "event_at",
+      "required_filters": [
+        {"field": "txn_type", "operator": "eq", "value_type": "string", "value": "EARN"},
+        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
+      ]
+    },
+    {
+      "id": "redeemed_points",
+      "asset_fqn": "crm.dbo.crm_point_transactions",
+      "field": "points_delta",
+      "aggregation": "negative_sum",
+      "time_field": "event_at",
+      "required_filters": [
+        {"field": "txn_type", "operator": "eq", "value_type": "string", "value": "USE"},
         {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
       ]
     },
@@ -151,6 +173,25 @@
     }
   ],
   "approved_joins": [
+    {
+      "id": "crm_point_transactions_to_members_v1",
+      "assets": [
+        "crm.dbo.crm_point_transactions",
+        "crm.dbo.crm_members"
+      ],
+      "event_time_field": "crm.dbo.crm_point_transactions.event_at",
+      "cardinality": "many_to_one",
+      "join_edges": [
+        {
+          "left": "crm.dbo.crm_point_transactions",
+          "right": "crm.dbo.crm_members",
+          "on_predicates": [
+            "crm.dbo.crm_point_transactions.property_id = crm.dbo.crm_members.property_id",
+            "crm.dbo.crm_point_transactions.member_no = crm.dbo.crm_members.member_no"
+          ]
+        }
+      ]
+    },
     {
       "id": "pms_stay_to_crm_membership_grade_event_time_v1",
       "assets": [

@@ -19,6 +19,8 @@ _REPAIR_CODES = {
     "MODEL_SCHEMA_INVALID",
     "REFERENCE_MISSING",
     "RESOURCE_POLICY_MISSING",
+    "UNAPPROVED_JOIN",
+    "UNAPPROVED_JOIN_PREDICATE",
     "UNKNOWN_COLUMN",
 }
 
@@ -36,6 +38,15 @@ def generate_sql(payload: dict[str, Any]) -> dict[str, Any]:
         for item in metrics
     ]
     _, asset, metric_column, time_asset, time_column = resolved[0]
+    dimensions = [
+        (item, *_resolve_column(context["assets"], item["field"]))
+        for item in context.get("dimensions", ())
+    ]
+    if dimensions and any(
+        dimension_asset["trino_fqn"] != asset["trino_fqn"]
+        for _, dimension_asset, _ in dimensions
+    ):
+        return _generate_joined_metric_sql(context, resolved, dimensions)
     if any(
         item_asset["trino_fqn"] != asset["trino_fqn"]
         or item_time_asset["trino_fqn"] != time_asset["trino_fqn"]
@@ -57,10 +68,6 @@ def generate_sql(payload: dict[str, Any]) -> dict[str, Any]:
         raise ContractError("node2_request: unsupported aggregation")
 
     fqn = _validated_fqn(asset["trino_fqn"])
-    dimensions = [
-        (item, *_resolve_column(context["assets"], item["field"]))
-        for item in context.get("dimensions", ())
-    ]
     if any(dimension_asset["trino_fqn"] != asset["trino_fqn"] for _, dimension_asset, _ in dimensions):
         raise ContractError("node2_request: dimension requires an approved join predicate")
     dimension_columns = [column for _, _, column in dimensions]
@@ -109,6 +116,105 @@ def generate_sql(payload: dict[str, Any]) -> dict[str, Any]:
                 "value": context["execution_time"]["period_end_exclusive"][:10],
             }]),
             *filter_parameters,
+        ],
+        "model": get_prompt("node2.sql").metadata(),
+    }
+    validate_payload("node2_response", response)
+    return response
+
+
+def _generate_joined_metric_sql(
+    context: dict[str, Any],
+    resolved: list[tuple[dict[str, Any], dict[str, Any], str, dict[str, Any], str]],
+    dimensions: list[tuple[dict[str, Any], dict[str, Any], str]],
+) -> dict[str, Any]:
+    metric_assets = {item_asset["trino_fqn"] for _, item_asset, _, _, _ in resolved}
+    time_fields = {(time_asset["trino_fqn"], time_column) for _, _, _, time_asset, time_column in resolved}
+    dimension_assets = {item_asset["trino_fqn"] for _, item_asset, _ in dimensions}
+    joins = context.get("joins", ())
+    if (
+        len(metric_assets) != 1
+        or len(time_fields) != 1
+        or len(dimension_assets) != 1
+        or len(joins) != 1
+        or joins[0].get("id") != "crm_point_transactions_to_members_v1"
+        or joins[0].get("status") != "approved"
+        or joins[0].get("cardinality") != "many_to_one"
+    ):
+        raise ContractError("node2_request: dimension requires an approved join predicate")
+    metric_fqn = next(iter(metric_assets))
+    dimension_fqn = next(iter(dimension_assets))
+    join = joins[0]
+    if {join.get("left"), join.get("right")} != {metric_fqn, dimension_fqn}:
+        raise ContractError("node2_request: dimension join assets do not match Context")
+
+    metric_asset = resolved[0][1]
+    dimension_asset = dimensions[0][1]
+    _, time_column = next(iter(time_fields))
+    aliases = {metric_fqn: "t", dimension_fqn: "m"}
+    predicates = []
+    for predicate in join.get("on_predicates", ()):
+        qualified = str(predicate)
+        for fqn, alias in aliases.items():
+            qualified = qualified.replace(fqn + ".", alias + ".")
+        predicates.append(qualified)
+    if len(predicates) != 2:
+        raise ContractError("node2_request: CRM point join predicate is invalid")
+
+    parameters = []
+    filter_columns: set[str] = set()
+    aggregate_sql = []
+    parameter_index = 1
+    for metric, _, column, _, _ in resolved:
+        clauses = []
+        for required in metric.get("required_filters", ()):
+            field = str(required["field"])
+            if field not in metric_asset["columns"] or required.get("operator") != "eq":
+                raise ContractError("node2_request: invalid joined metric filter")
+            name = f"required_filter_{parameter_index}"
+            parameter_index += 1
+            clauses.append(f't."{field}" = :{name}')
+            filter_columns.add(field)
+            parameters.append(
+                {"name": name, "value_type": required["value_type"], "value": required["value"]}
+            )
+        aggregation = str(metric["aggregation"]).lower()
+        if aggregation not in {"sum", "negative_sum"} or not clauses:
+            raise ContractError("node2_request: unsupported joined metric aggregation")
+        expression = f'SUM(t."{column}") FILTER (WHERE {" AND ".join(clauses)})'
+        if aggregation == "negative_sum":
+            expression = f"-{expression}"
+        aggregate_sql.append(f'{expression} AS "{metric["id"]}"')
+
+    dimension_columns = [column for _, _, column in dimensions]
+    select_dimensions = [f'm."{column}" AS "{item["id"]}"' for item, _, column in dimensions]
+    group_dimensions = ", ".join(f'm."{column}"' for column in dimension_columns)
+    sql = (
+        "SELECT " + ", ".join((*select_dimensions, *aggregate_sql))
+        + f" FROM {_validated_fqn(metric_fqn)} t"
+        + f" JOIN {_validated_fqn(dimension_fqn)} m ON {' AND '.join(predicates)}"
+        + f' WHERE t."{time_column}" >= DATE \':period_start\''
+        + f' AND t."{time_column}" < DATE \':period_end_exclusive\''
+        + f" GROUP BY {group_dimensions} ORDER BY {group_dimensions} LIMIT 1000"
+    )
+    metric_columns = {
+        *(column for _, _, column, _, _ in resolved),
+        time_column,
+        *filter_columns,
+        "property_id",
+        "member_no",
+    }
+    dimension_reference_columns = {*dimension_columns, "property_id", "member_no"}
+    response = {
+        "sql": sql,
+        "references": [
+            _reference(metric_asset, context, metric_columns),
+            _reference(dimension_asset, context, dimension_reference_columns),
+        ],
+        "parameters": [
+            {"name": "period_start", "value_type": "date", "value": context["execution_time"]["period_start"][:10]},
+            {"name": "period_end_exclusive", "value_type": "date", "value": context["execution_time"]["period_end_exclusive"][:10]},
+            *parameters,
         ],
         "model": get_prompt("node2.sql").metadata(),
     }

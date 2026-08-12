@@ -1,8 +1,8 @@
 {
   "decision_version": "MODEL-v1.0.0",
   "product_default": "answervice-sql-lora-qwen3.5-4b",
-  "release_candidate_status": "CONFIGURED",
-  "release_readiness": "ENDPOINT_REQUIRED",
+  "release_candidate_status": "SERVERLESS_SMOKE_VERIFIED",
+  "release_readiness": "ENDPOINT_ADVERTISES_ALIAS",
   "scope": {
     "included": [
       "node1_question_normalization",
@@ -31,9 +31,9 @@
     "model_may_decide_gates": false
   },
   "external_actions": {
-    "model_download": "not_permitted",
-    "gpu_or_runpod": "not_permitted",
-    "cost": "not_permitted",
-    "deployment": "endpoint_configuration_only"
+    "model_download": "completed_for_serverless_smoke",
+    "gpu_or_runpod": "runpod_serverless",
+    "cost": "flex_worker_scale_to_zero",
+    "deployment": "workers_min_0"
   }
 }

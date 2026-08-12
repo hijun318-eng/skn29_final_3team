@@ -1,7 +1,7 @@
 {
   "release_candidate_version": "RELEASE-CANDIDATE-I5-v1.0.0-DRAFT",
-  "status": "CONFIGURED",
-  "readiness": "ENDPOINT_REQUIRED",
+  "status": "SERVERLESS_SMOKE_VERIFIED",
+  "readiness": "ENDPOINT_ADVERTISES_ALIAS",
   "product_default": "answervice-sql-lora-qwen3.5-4b",
   "base_model": "Qwen/Qwen3.5-4B",
   "adapter_path": "models/adapters/answervice-sql-lora-qwen3.5-4b",
@@ -25,8 +25,17 @@
       "reason": "split evidence is incomplete and automatic regeneration is disabled"
     },
     "model_execution": {
-      "status": "NOT_READY",
-      "reason": "the OpenAI-compatible endpoint must advertise answervice-sql-lora-qwen3.5-4b"
+      "status": "SMOKE_PASS",
+      "reason": "RunPod Serverless advertised the LoRA alias and returned a structured response",
+      "endpoint_id": "tsex8hcr3xsgk5",
+      "job_id": "22f9ba90-82c1-4e57-a882-f86788ee51fb-e1",
+      "cold_start_delay_ms": 329805,
+      "execution_ms": 720,
+      "runtime": "vllm-0.26.0-ad307881",
+      "workers_min_after_test": 0,
+      "workers_max": 1,
+      "idle_timeout_seconds": 5,
+      "gpu_type_ids": ["NVIDIA RTX A4500", "NVIDIA RTX 4000 Ada Generation"]
     }
   },
   "auto_regeneration": "DISABLED",
@@ -39,5 +48,5 @@
     "evals/validation_v2.manifest.json",
     "src/modelops/serving_manifest.v0.1.json"
   ],
-  "external_actions": "LOCAL_CONFIGURATION_ONLY"
+  "external_actions": "RUNPOD_SERVERLESS_SMOKE_ONLY"
 }

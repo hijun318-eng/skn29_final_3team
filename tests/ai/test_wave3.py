@@ -81,8 +81,11 @@ class Wave3EvaluationTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
-        self.assertEqual("CONFIGURED", release["status"])
-        self.assertEqual("ENDPOINT_REQUIRED", release["readiness"])
+        self.assertEqual("SERVERLESS_SMOKE_VERIFIED", release["status"])
+        self.assertEqual("ENDPOINT_ADVERTISES_ALIAS", release["readiness"])
+        execution = release["typed_missing"]["model_execution"]
+        self.assertEqual("SMOKE_PASS", execution["status"])
+        self.assertEqual(0, execution["workers_min_after_test"])
         self.assertEqual("answervice-sql-lora-qwen3.5-4b", release["product_default"])
         self.assertEqual("Qwen/Qwen3.5-4B", release["base_model"])
         self.assertEqual(["node2", "node2_repair"], release["sql_lora_enabled_nodes"])

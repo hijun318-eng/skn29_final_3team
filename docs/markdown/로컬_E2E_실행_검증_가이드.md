@@ -86,23 +86,31 @@ node --test tests/frontend/contracts.test.mjs
 
 ## 4. 모델 교체
 
-기본적으로 모든 Node는 OpenAI를 사용한다.
+Node1·3은 OpenAI를 사용하고 Node2·2′는 SQL LoRA를 사용한다.
 
 ```dotenv
 MODEL_MODE=openai
 OPENAI_MODEL=gpt-4.1-mini
-NODE2_MODEL_ENDPOINT=
+# RunPod Serverless: https://api.runpod.ai/v2/<endpoint-id>/openai
+NODE2_MODEL_ENDPOINT=https://api.runpod.ai/v2/<endpoint-id>/openai
 NODE2_MODEL_API_TOKEN=
 NODE2_MODEL=answervice-sql-lora-qwen3.5-4b
+MODEL_TIMEOUT_SECONDS=600
 ```
 
-Node2·2′는 `Qwen/Qwen3.5-4B` Base의 SQL LoRA를 OpenAI-compatible endpoint에서 `answervice-sql-lora-qwen3.5-4b` alias로 제공한다. `NODE2_MODEL_ENDPOINT`와 필요 시 API token을 설정하고 Backend를 다시 만든다.
+Node2·2′는 `Qwen/Qwen3.5-4B` Base의 SQL LoRA를 OpenAI-compatible endpoint에서 `answervice-sql-lora-qwen3.5-4b` alias로 제공한다. RunPod는 `RUNPOD_API_KEY`를 인증에 재사용하며 `workersMin=0`, `workersMax=1`, 짧은 idle timeout으로 유지한다. 첫 콜드스타트는 수 분 걸릴 수 있으므로 timeout을 600초로 둔다.
 
 ```powershell
 docker compose --env-file .env --profile full up -d --build backend
 ```
 
 설정을 비우면 Node2도 OpenAI를 사용한다.
+
+로컬 CPU vLLM을 명시적으로 실행할 때만 `model` 프로필을 추가한다.
+
+```powershell
+docker compose --env-file .env --profile model up -d node2-model
+```
 
 ## 5. 현재 허용 범위와 종료
 

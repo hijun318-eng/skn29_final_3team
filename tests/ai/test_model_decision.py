@@ -10,8 +10,9 @@ class ModelDecisionTests(unittest.TestCase):
 
         self.assertEqual(decision["decision_version"], "MODEL-v1.0.0")
         self.assertEqual(decision["product_default"], "answervice-sql-lora-qwen3.5-4b")
-        self.assertEqual(decision["release_candidate_status"], "CONFIGURED")
-        self.assertEqual(decision["release_readiness"], "ENDPOINT_REQUIRED")
+        self.assertEqual(decision["release_candidate_status"], "SERVERLESS_SMOKE_VERIFIED")
+        self.assertEqual(decision["release_readiness"], "ENDPOINT_ADVERTISES_ALIAS")
+        self.assertEqual(decision["external_actions"]["deployment"], "workers_min_0")
         self.assertEqual(
             decision["scope"]["excluded_until_i5_followup"],
             ["mcp", "document_rag", "ml_as_a_tool", "customer_360"],

@@ -115,7 +115,9 @@ class AppDatabaseReadiness:
             routes.append(
                 (
                     node2_endpoint.rstrip("/"),
-                    os.getenv("NODE2_MODEL_API_TOKEN") or os.getenv("SLLM_API_KEY"),
+                    os.getenv("NODE2_MODEL_API_TOKEN")
+                    or os.getenv("RUNPOD_API_KEY")
+                    or os.getenv("SLLM_API_KEY"),
                 )
             )
         for route_endpoint, route_token in routes:

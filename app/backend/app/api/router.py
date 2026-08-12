@@ -78,9 +78,11 @@ def _model():
             or os.getenv("LLM_API_KEY")
             or os.getenv("MODEL_API_TOKEN"),
             os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
-            float(os.getenv("MODEL_TIMEOUT_SECONDS", "30")),
+            float(os.getenv("MODEL_TIMEOUT_SECONDS", "600")),
             os.getenv("NODE2_MODEL_ENDPOINT") or os.getenv("SLLM_ENDPOINT"),
-            os.getenv("NODE2_MODEL_API_TOKEN") or os.getenv("SLLM_API_KEY"),
+            os.getenv("NODE2_MODEL_API_TOKEN")
+            or os.getenv("RUNPOD_API_KEY")
+            or os.getenv("SLLM_API_KEY"),
             os.getenv("NODE2_MODEL", "answervice-sql-lora-qwen3.5-4b"),
         )
     raise ValueError(f"unsupported MODEL_MODE: {mode}")

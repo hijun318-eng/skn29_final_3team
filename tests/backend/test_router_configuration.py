@@ -46,6 +46,7 @@ def test_openai_model_routes_node2_lora_alias_by_default():
             "LLM_API_KEY": "openai-key",
             "OPENAI_MODEL": "gpt-4.1-mini",
             "NODE2_MODEL_ENDPOINT": "http://sllm:8000",
+            "RUNPOD_API_KEY": "runpod-key",
         },
         clear=True,
     ), patch("app.adapters.contract_model.ContractModelAdapter.from_openai") as factory:
@@ -55,8 +56,8 @@ def test_openai_model_routes_node2_lora_alias_by_default():
         "https://api.openai.com",
         "openai-key",
         "gpt-4.1-mini",
-        30.0,
+        600.0,
         "http://sllm:8000",
-        None,
+        "runpod-key",
         "answervice-sql-lora-qwen3.5-4b",
     )

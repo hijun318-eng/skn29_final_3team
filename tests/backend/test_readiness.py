@@ -118,7 +118,7 @@ class AppDatabaseReadinessMigrationTest(unittest.TestCase):
                 "OPENAI_ENDPOINT": "https://api.openai.test",
                 "LLM_API_KEY": "openai-token",
                 "NODE2_MODEL_ENDPOINT": "http://sllm.test",
-                "NODE2_MODEL_API_TOKEN": "sllm-token",
+                "RUNPOD_API_KEY": "runpod-token",
             },
             clear=True,
         ):
@@ -126,7 +126,7 @@ class AppDatabaseReadinessMigrationTest(unittest.TestCase):
 
         requests = [call.args[0] for call in urlopen.call_args_list]
         self.assertEqual(
-            ["Bearer openai-token", "Bearer sllm-token"],
+            ["Bearer openai-token", "Bearer runpod-token"],
             [request.get_header("Authorization") for request in requests],
         )
 

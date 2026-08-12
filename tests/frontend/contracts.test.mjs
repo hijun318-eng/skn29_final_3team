@@ -325,6 +325,7 @@ assert.match(analysisPanelSource, /chart\.chartType === "bar"/);
 assert.match(analysisPanelSource, /<BarChart/);
 assert.match(analysisPanelSource, /<code>{stage}<\/code>/);
 assert.match(analysisPanelSource, /elapsedMs/);
+assert.match(analysisPanelSource, /run\.restoredStatus && run\.restoredStatus !== "RECEIVED" && !run\.artifact/);
 for (const stage of ["NODE1", "G1", "NODE2", "G2", "TRINO", "G3", "NODE3"]) assert.match(analysisPanelSource, new RegExp(`\\["${stage}"`));
 assert.match(auditPageSource, /createAuditClient\(\)/);
 for (const label of ["접근 Profile", "허용 Domain", "DataHub actor", "Entitlement hash", "Trino role", "DataHub 검색 시도", "Trino 실행 시도", "허용 URNs"]) assert.match(auditPageSource, new RegExp(label));

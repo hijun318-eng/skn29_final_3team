@@ -114,7 +114,7 @@ function AnalysisProgress({ run }: { run: AnalysisRun }) {
 }
 
 export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
-  if (run.restoredStatus && run.restoredStatus !== "RECEIVED") {
+  if (run.restoredStatus && run.restoredStatus !== "RECEIVED" && !run.artifact) {
     return <section className="analysis-state" aria-live="polite"><header><Clock3 size={18} /><div><b>최근 분석 기록</b><span>{run.restoredStatus}</span></div></header><p>보안상 결과 payload는 다시 전송하지 않으며, 서버에 기록된 처리 과정만 복원했습니다.</p><AnalysisProgress run={run} /></section>;
   }
   const viewState = resolveViewState(run);

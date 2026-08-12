@@ -425,7 +425,7 @@ class PostgresAnalysisRepository:
                                 UPDATE governance.audit_events
                                 SET action_code = 'ANALYSIS_ACCESS_COMPLETED',
                                     details_json_redacted = details_json_redacted ||
-                                      '{"request_status":"FAILED","stale_timeout":true}'::jsonb
+                                      CAST(:stale_details AS jsonb)
                                 WHERE request_id = ANY(CAST(:request_ids AS uuid[]))
                                   AND actor_user_id = :owner_id
                                   AND action_code = 'ANALYSIS_ACCESS_STARTED'
@@ -434,6 +434,9 @@ class PostgresAnalysisRepository:
                             {
                                 "request_ids": [str(request_id) for request_id in stale],
                                 "owner_id": self._owner_id,
+                                "stale_details": json.dumps(
+                                    {"request_status": "FAILED", "stale_timeout": True}
+                                ),
                             },
                         )
                 rows = connection.execute(

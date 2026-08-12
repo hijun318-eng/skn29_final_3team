@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -296,6 +297,10 @@ def test_recent_repository_expires_only_received_requests_older_than_safe_timeou
     assert connection.execute.call_args_list[0].args[1] == {
         "owner_id": repository._owner_id,
         "stale_before": cutoff,
+    }
+    assert json.loads(connection.execute.call_args_list[1].args[1]["stale_details"]) == {
+        "request_status": "FAILED",
+        "stale_timeout": True,
     }
 
 

@@ -17,6 +17,7 @@ path.insert(0, str(BACKEND))
 
 from app.access_policy import (  # noqa: E402
     ACCESS_POLICY_VERSION,
+    available_profiles,
     effective_access,
     load_access_policy,
     load_server_access_profiles,
@@ -53,6 +54,34 @@ def test_analysis_profiles_match_server_contract_and_default_to_pms_only():
     assert profile.domains == ("urn:li:domain:rooms",)
     with pytest.raises(PermissionError):
         resolve_access_profile(UUID(int=3), Role.DATA_ADMIN, "pms_only")
+
+
+def test_profile_availability_exposes_only_safe_database_domains():
+    environment = {
+        "DATAHUB_PMS_ONLY_TOKEN": "configured-secret",
+        "DATAHUB_CRM_ONLY_TOKEN": "",
+        "DATAHUB_PMS_CRM_TOKEN": "",
+        "DATAHUB_INTEGRATED_REVENUE_TOKEN": "",
+        "DATAHUB_INTEGRATED_OPERATIONS_TOKEN": "",
+    }
+    with patch.dict(os.environ, environment, clear=False):
+        items = available_profiles(Role.HOTEL_ANALYST)
+    assert items[0] == {
+        "profile_id": "pms_only",
+        "domains": ["pms"],
+        "available": True,
+        "reason": None,
+    }
+    assert items[-1] == {
+        "profile_id": "integrated_operations",
+        "domains": ["pms", "crm", "pos", "facility", "banquet"],
+        "available": False,
+        "reason": "서버 인증 준비가 필요합니다.",
+    }
+    serialized = json.dumps(items)
+    for forbidden in ("configured-secret", "token_env", "datahub_actor", "trino_principal"):
+        assert forbidden not in serialized
+    assert available_profiles(Role.DATA_ADMIN) == []
 
 
 def test_effective_access_exposes_only_authenticated_self_and_policy_version():

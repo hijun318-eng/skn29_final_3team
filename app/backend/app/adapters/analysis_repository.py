@@ -12,7 +12,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.analysis_contracts import ANALYSIS_PERSISTENCE_VERSION
-from app.contracts import AnalysisResponse, AnalysisStatus, PipelineStage, RequestContext
+from app.contracts import AnalysisResponse, AnalysisStatus, RequestContext
 
 
 _EMAIL = re.compile(r"\b[^\s@]+@[^\s@]+\.[^\s@]+\b")
@@ -625,9 +625,14 @@ class PostgresAnalysisRepository:
                     )
                     previous = transition.value
                 self._update_access_audit(connection, request_id, response, execution)
-                if execution and response.data.artifact and response.data.result:
+                if execution.get("package"):
                     self._link_execution_metadata(connection, request_id, execution)
+                if execution and response.data.artifact and response.data.result:
                     self._save_evidence(connection, request_id, response, execution)
+                elif execution.get("sql_hash"):
+                    self._save_failed_execution(
+                        connection, request_id, response, execution
+                    )
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 실행 결과를 저장할 수 없습니다.") from error
 
@@ -719,18 +724,22 @@ class PostgresAnalysisRepository:
         response: AnalysisResponse,
         execution: dict[str, Any],
     ) -> None:
-        stages = {item.stage for item in response.data.trace}
         package = execution.get("package")
         allowed_urns = sorted({item.urn for item in package.assets}) if package else []
         details = {
             "allowed_urns": allowed_urns,
-            "datahub_search_attempted": any(
-                stage not in {PipelineStage.ROUTER, PipelineStage.CONTROLLER}
-                for stage in stages
+            "datahub_search_attempted": bool(
+                execution.get("datahub_search_attempted")
             ),
-            "trino_execution_attempted": PipelineStage.QUERY in stages,
+            "trino_execution_attempted": bool(
+                execution.get("trino_execution_attempted")
+            ),
             "request_status": response.data.status.value,
         }
+        if execution.get("sql_hash"):
+            details["sql_hash"] = execution["sql_hash"]
+        if execution.get("g2_status"):
+            details["validation_status"] = execution["g2_status"]
         action = (
             "ANALYSIS_ACCESS_DENIED"
             if response.data.status is AnalysisStatus.BLOCKED
@@ -756,7 +765,7 @@ class PostgresAnalysisRepository:
 
     @staticmethod
     def _link_execution_metadata(connection, request_id, execution) -> None:
-        plan = execution["plan"]
+        plan = execution.get("plan") or {}
         package = execution["package"]
         release_id = connection.execute(
             text(
@@ -848,7 +857,9 @@ class PostgresAnalysisRepository:
                 {"request_id": request_id},
             ).scalar_one()
 
-        model_version = str(plan.get("model_version", ""))
+        model_version = str(
+            plan.get("model_version") or execution.get("model_version") or ""
+        )
         model_id = None
         if model_version and not model_version.startswith("TEMPLATE"):
             model_id = connection.execute(
@@ -884,6 +895,63 @@ class PostgresAnalysisRepository:
                 "package_id": package_id,
                 "model_id": model_id,
                 "policy_version": package.policy_version,
+            },
+        )
+
+    @staticmethod
+    def _save_failed_execution(connection, request_id, response, execution) -> None:
+        package = execution.get("package")
+        validation = str(execution.get("g2_status") or "FAILED")
+        validation_status = {
+            "PASSED": "ALLOWED",
+            "BLOCKED": "BLOCKED",
+            "PENDING": "FAILED",
+        }.get(validation, "FAILED")
+        query_status = str(execution.get("query_status") or "")
+        execution_status = {
+            "SUCCEEDED": "SUCCEEDED",
+            "PARTIAL": "SUCCEEDED",
+            "CANCELLED": "CANCELLED",
+            "TIMEOUT": "FAILED",
+            "FAILED": "FAILED",
+        }.get(query_status, "FAILED" if execution.get("trino_execution_attempted") else "NOT_STARTED")
+        violation = str(execution.get("g2_violation") or "")[:64]
+        source_urns = [item.urn for item in package.assets] if package else []
+        connection.execute(
+            text(
+                """
+                INSERT INTO query.query_executions
+                    (query_execution_id, request_id, attempt_no, generation_mode,
+                     generated_sql_redacted, sql_hash, ast_validation_json,
+                     join_validation_json, permission_validation_json, explain_json,
+                     validation_status, trino_query_id, execution_status, row_count,
+                     scan_bytes, source_urns_json, source_cutoff_json, error_code,
+                     error_message_redacted)
+                VALUES (:query_execution_id, :request_id, 1, :generation_mode,
+                        '[REDACTED]', :sql_hash, CAST(:ast AS jsonb),
+                        CAST(:joins AS jsonb), CAST(:permission AS jsonb), '{}'::jsonb,
+                        :validation_status, :query_id, :execution_status, 0, 0,
+                        CAST(:sources AS jsonb), '{}'::jsonb, :error_code,
+                        '[REDACTED]')
+                """
+            ),
+            {
+                "query_execution_id": uuid4(),
+                "request_id": request_id,
+                "generation_mode": execution.get("generation_mode") or "SLLM",
+                "sql_hash": execution["sql_hash"],
+                "ast": json.dumps({"status": validation_status}),
+                "joins": json.dumps({"status": validation_status}),
+                "permission": json.dumps(
+                    {"status": validation_status, "violation": violation or None}
+                ),
+                "validation_status": validation_status,
+                "query_id": str(execution.get("query_id") or "") or None,
+                "execution_status": execution_status,
+                "sources": json.dumps(source_urns),
+                "error_code": (
+                    response.error.code.value if response.error else None
+                ),
             },
         )
 

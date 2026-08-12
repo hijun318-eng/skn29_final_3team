@@ -237,3 +237,18 @@ def test_analysis_error_contract_distinguishes_denied_unavailable_and_no_assets(
     )
     assert response.error.code is code
     assert response.data.status is status
+
+
+def test_missing_profile_credential_has_safe_actionable_message():
+    class Adapter:
+        def search_assets(self, _query, _context):
+            raise DataPlatformUnavailable("access profile credential is unavailable")
+
+    response = AnalysisService(Adapter(), object()).analyze(
+        AnalysisRequest(question="CRM 매출"),
+        RequestContext(user_id=UUID(int=1), access_profile="integrated_operations"),
+        RouteDecision(RouteType.GENERAL, None, True, True),
+    )
+    assert response.error.code is ErrorCode.QUERY_SOURCE_FAILED
+    assert response.error.message == "선택한 데이터 접근 범위는 현재 사용할 수 없습니다. 관리자에게 문의해 주세요."
+    assert "credential" not in response.error.message.lower()

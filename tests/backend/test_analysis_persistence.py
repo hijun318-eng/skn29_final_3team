@@ -23,7 +23,7 @@ from app.analysis_contracts import (  # noqa: E402
 )
 from app.api import router as analysis_api  # noqa: E402
 from app.adapters.analysis_repository import PostgresAnalysisRepository  # noqa: E402
-from app.contracts import RequestContext  # noqa: E402
+from app.contracts import AnalysisStatus, RequestContext  # noqa: E402
 
 
 class InMemoryAnalysisRepository:
@@ -513,3 +513,70 @@ def test_access_audit_records_only_entitlement_metadata_and_attempt_flags():
     serialized = str(parameters)
     for forbidden in ("question", "token", "select", "parameters", "result"):
         assert forbidden not in serialized.lower()
+
+
+def test_failed_access_audit_uses_accumulated_safe_execution_metadata():
+    connection = MagicMock()
+    request_id = uuid4()
+    response = SimpleNamespace(data=SimpleNamespace(status=AnalysisStatus.BLOCKED))
+    package = SimpleNamespace(assets=(SimpleNamespace(urn="urn:source"),))
+
+    PostgresAnalysisRepository._update_access_audit(
+        connection,
+        request_id,
+        response,
+        {
+            "package": package,
+            "datahub_search_attempted": True,
+            "trino_execution_attempted": False,
+            "sql_hash": "a" * 64,
+            "g2_status": "BLOCKED",
+        },
+    )
+
+    details = json.loads(connection.execute.call_args.args[1]["details"])
+    assert details == {
+        "allowed_urns": ["urn:source"],
+        "datahub_search_attempted": True,
+        "trino_execution_attempted": False,
+        "request_status": "BLOCKED",
+        "sql_hash": "a" * 64,
+        "validation_status": "BLOCKED",
+    }
+    assert "ANALYSIS_ACCESS_DENIED" == connection.execute.call_args.args[1]["action"]
+
+
+@pytest.mark.parametrize(
+    ("execution", "validation_status", "execution_status"),
+    (
+        ({"g2_status": "BLOCKED", "g2_violation": "UNSAFE_SQL"}, "BLOCKED", "NOT_STARTED"),
+        ({"g2_status": "PASSED", "trino_execution_attempted": True}, "ALLOWED", "FAILED"),
+    ),
+)
+def test_failed_execution_persists_only_hash_validation_and_attempt_state(
+    execution, validation_status, execution_status
+):
+    connection = MagicMock()
+    request_id = uuid4()
+    response = SimpleNamespace(error=SimpleNamespace(code=SimpleNamespace(value="SQL_POLICY_BLOCKED")))
+    safe = {
+        **execution,
+        "sql_hash": "b" * 64,
+        "generation_mode": "SLLM",
+        "model_version": "model-v1",
+        "package": SimpleNamespace(assets=(SimpleNamespace(urn="urn:source"),)),
+    }
+
+    PostgresAnalysisRepository._save_failed_execution(
+        connection, request_id, response, safe
+    )
+
+    statement, parameters = connection.execute.call_args.args
+    serialized = json.dumps(parameters, default=str).lower()
+    assert parameters["sql_hash"] == "b" * 64
+    assert parameters["validation_status"] == validation_status
+    assert parameters["execution_status"] == execution_status
+    assert json.loads(parameters["sources"]) == ["urn:source"]
+    assert "[redacted]" in str(statement).lower()
+    for forbidden in ("select ", "token", "parameter", "question", "result"):
+        assert forbidden not in serialized

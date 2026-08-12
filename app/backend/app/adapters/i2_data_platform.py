@@ -129,6 +129,28 @@ query SearchDatasets($query: String!) {
     _POS_HINTS = ("pos", "식음", "f&b", "주문", "통합 매출")
     _PMS_CRM_POS_JOIN_ID = "pms_crm_pos_gold_revenue_month_v1"
     _SENSITIVE_RESULT_FIELDS = DIRECT_IDENTIFIER_FIELDS
+    _WATERMARK_TABLES = {
+        "pms": (
+            "pms.public.pms_guests", "pms.public.pms_room_inventory_daily",
+            "pms.public.pms_reservations", "pms.public.pms_stays",
+        ),
+        "crm": (
+            "crm.dbo.crm_members", "crm.dbo.crm_member_grade_history",
+            "crm.dbo.crm_point_transactions", "crm.dbo.crm_customer_map",
+        ),
+        "pos": (
+            "pos.pos_db.pos_stores", "pos.pos_db.pos_service_periods",
+            "pos.pos_db.pos_orders", "pos.pos_db.pos_order_items",
+        ),
+        "facility": (
+            "facility.facility.facility_master", "facility.facility.facility_events",
+            "facility.facility.hotel_staffing_daily",
+            "facility.facility.facility_resource_daily",
+        ),
+        "banquet": (
+            "banquet.public.banquet_bookings", "banquet.public.banquet_revenue",
+        ),
+    }
 
     def __init__(
         self,
@@ -1099,6 +1121,57 @@ query SearchDatasets($query: String!) {
             query_id,
             {"query_id": query_id, "status": "NOT_FOUND"},
         )
+
+    def get_source_watermarks(
+        self,
+        source_ids: frozenset[str],
+        trino_principal: str | None = None,
+    ) -> dict[str, str]:
+        if (
+            not source_ids
+            or not source_ids.issubset(self._WATERMARK_TABLES)
+            or trino_principal is None
+            or not re.fullmatch(r"answervice_[a-z_]+", trino_principal)
+        ):
+            raise ValueError("source watermark scope is invalid")
+        trino = _PartialAwareTrinoAdapter(
+            self._trino.base_url,
+            transport=lambda method, url, body: self._request(
+                method, url, body, trino_principal
+            ),
+        )
+        watermarks: dict[str, str] = {}
+        try:
+            for source_id in sorted(source_ids):
+                statements = " UNION ALL ".join(
+                    "SELECT count(*) row_count, max(source_updated_at) watermark "
+                    f"FROM {table}"
+                    for table in self._WATERMARK_TABLES[source_id]
+                )
+                result = self._collect(
+                    trino.execute(
+                        "SELECT sum(row_count) row_count, max(watermark) watermark "
+                        f"FROM ({statements}) AS source_watermarks"
+                    ),
+                    trino=trino,
+                )
+                rows = result.get("rows") or []
+                if result.get("status") != "SUCCEEDED" or len(rows) != 1:
+                    raise ValueError("source watermark is unavailable")
+                row_count = rows[0].get("row_count")
+                watermark = rows[0].get("watermark")
+                if (
+                    isinstance(row_count, bool)
+                    or not isinstance(row_count, int)
+                    or row_count < 1
+                    or watermark is None
+                    or not str(watermark).strip()
+                ):
+                    raise ValueError("source watermark is unavailable")
+                watermarks[source_id] = f"{row_count}:{watermark}"
+        except AdapterError as error:
+            raise ValueError("source watermark is unavailable") from error
+        return watermarks
 
     def cancel_query(self, query_id: str) -> dict[str, Any]:
         next_uri = self._next_uris.get(query_id)

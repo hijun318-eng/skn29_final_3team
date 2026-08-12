@@ -34,4 +34,10 @@ class DataPlatformAdapter(Protocol):
 
     def cancel_query(self, query_id: str) -> dict[str, Any]: ...
 
+    def get_source_watermarks(
+        self,
+        source_ids: frozenset[str],
+        trino_principal: str | None = None,
+    ) -> dict[str, str]: ...
+
     def get_source_health(self) -> list[dict[str, Any]]: ...

@@ -72,6 +72,80 @@
         "title": "AccessExecutionTrace",
         "type": "object"
       },
+      "AccessProfileAvailability": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "domains": {
+            "items": {
+              "enum": [
+                "pms",
+                "crm",
+                "pos",
+                "facility",
+                "banquet"
+              ],
+              "type": "string"
+            },
+            "title": "Domains",
+            "type": "array"
+          },
+          "profile_id": {
+            "enum": [
+              "pms_only",
+              "crm_only",
+              "pms_crm",
+              "integrated_revenue",
+              "integrated_operations"
+            ],
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "profile_id",
+          "domains",
+          "available"
+        ],
+        "title": "AccessProfileAvailability",
+        "type": "object"
+      },
+      "AccessProfileAvailabilityListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AccessProfileAvailability"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AccessProfileAvailabilityListResponse",
+        "type": "object"
+      },
       "AnalysisData": {
         "additionalProperties": false,
         "properties": {
@@ -3449,6 +3523,93 @@
           }
         ],
         "summary": "Analysis"
+      }
+    },
+    "/analysis/access-profiles": {
+      "get": {
+        "operationId": "analysisListAccessProfiles",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessProfileAvailabilityListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Access Profiles"
       }
     },
     "/analysis/definitions": {

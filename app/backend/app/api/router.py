@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from app.contract_examples import ANALYSIS_REQUEST_EXAMPLES
 from app.analysis_contracts import (
+    AccessProfileAvailabilityListResponse,
     AnalysisDefinitionListResponse,
     AnalysisDefinitionResponse,
     AnalysisProgressResponse,
@@ -20,6 +21,7 @@ from app.analysis_contracts import (
     CreateAnalysisDefinitionRequest,
     ReplayAnalysisRequest,
 )
+from app.access_policy import available_profiles
 from app.context import ContextValidationError, analysis_context, request_context
 from app.contracts import (
     AnalysisRequest,
@@ -243,6 +245,17 @@ def analysis(
         raise
     finally:
         execution_gate.release()
+
+
+@router.get(
+    "/analysis/access-profiles",
+    operation_id="analysisListAccessProfiles",
+    response_model=AccessProfileAvailabilityListResponse,
+)
+def list_access_profiles(
+    context: Annotated[RequestContext, Depends(analysis_context)],
+) -> dict[str, Any]:
+    return {"items": available_profiles(context.role)}
 
 
 @router.get(

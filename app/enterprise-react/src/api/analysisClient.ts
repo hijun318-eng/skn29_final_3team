@@ -10,9 +10,17 @@ import { getAuthorizationHeader } from "./authSession.ts";
 
 export interface AnalysisClient {
   analyze(question: string, conversationId: string, accessProfile?: AccessProfile, onProgress?: (run: AnalysisRun) => void): Promise<AnalysisRun>;
+  listAccessProfiles(): Promise<AccessProfileAvailability[]>;
   listRecent(limit?: number): Promise<RecentAnalysisItem[]>;
   getProgress(requestId: string, accessProfile: AccessProfile): Promise<AnalysisProgressResponse>;
   getResult(requestId: string, question: string, conversationId: string, accessProfile: AccessProfile): Promise<AnalysisRun>;
+}
+
+export interface AccessProfileAvailability {
+  profile_id: AccessProfile;
+  domains: Array<"pms" | "crm" | "pos" | "facility" | "banquet">;
+  available: boolean;
+  reason: string | null;
 }
 
 export interface RecentAnalysisItem {
@@ -56,6 +64,22 @@ export function createHttpAnalysisClient(
   request: Fetch = fetch,
 ): AnalysisClient {
   return {
+    async listAccessProfiles() {
+      const root = baseUrl.replace(/\/$/, "");
+      const response = await request(`${root}/analysis/access-profiles`, {
+        headers: {
+          Authorization: getAuthorizationHeader(),
+          "X-As-Of": env.VITE_ANALYSIS_AS_OF || new Date().toISOString().slice(0, 10),
+          "X-Access-Profile": "pms_only",
+          "X-Contract-Version": OPENAPI_VERSION,
+          "X-Timezone": "Asia/Seoul",
+          "X-Trace-Id": createUuid(),
+        },
+      });
+      if (!response.ok) throw new Error(`접근 범위 API가 HTTP ${response.status}로 거부되었습니다.`);
+      const payload = await response.json() as { items: AccessProfileAvailability[] };
+      return payload.items;
+    },
     async listRecent(limit = 20) {
       const root = baseUrl.replace(/\/$/, "");
       const response = await request(`${root}/analysis/recent?limit=${limit}`, {

@@ -89,6 +89,10 @@ class AnalysisService:
             if progress_sink is not None:
                 progress_sink(stage, outcome)
 
+        def checkpoint(**values: Any) -> None:
+            if execution_sink is not None:
+                execution_sink(values)
+
         machine = AnalysisStateMachine()
         trace: list[TraceStep] = []
         budget = ModelCallBudget()
@@ -113,6 +117,7 @@ class AnalysisService:
             else payload.question
         )
         progress("DATAHUB", "STARTED")
+        checkpoint(datahub_search_attempted=True)
         try:
             with observe_stage(
                 "context",
@@ -133,12 +138,17 @@ class AnalysisService:
                 AnalysisStatus.BLOCKED, ErrorCode.ACCESS_DENIED,
                 "선택한 접근 Profile로 검색할 수 없습니다.", decision,
             )
-        except DataPlatformUnavailable:
+        except DataPlatformUnavailable as error:
             progress("DATAHUB", "FAILED")
             return self._responses.error(
                 context, machine, trace, PipelineStage.CONTEXT,
                 AnalysisStatus.FAILED, ErrorCode.QUERY_SOURCE_FAILED,
-                "DataHub 검색 상태를 확인할 수 없습니다.", decision,
+                (
+                    "선택한 데이터 접근 범위는 현재 사용할 수 없습니다. 관리자에게 문의해 주세요."
+                    if str(error) == "access profile credential is unavailable"
+                    else "DataHub 검색 상태를 확인할 수 없습니다."
+                ),
+                decision,
                 retryable=True,
             )
         except DataPlatformNoAssets:
@@ -187,6 +197,7 @@ class AnalysisService:
                 span.set_attribute(
                     "answervice.context_package_hash", package.package_hash
                 )
+                checkpoint(package=package)
         except ContextBuildError as error:
             message = (
                 "요청 시점에 유효한 PUBLISHED Context release가 없습니다."
@@ -320,6 +331,16 @@ class AnalysisService:
             if not plan_cached and not decision.sql_text:
                 progress("NODE2", "FAILED")
             return self._responses.model_error(context, machine, trace, decision)
+        checkpoint(
+            sql_hash=secure_cache_key("sql", sql=plan["sql"]),
+            model_version=plan.get("model_version", ""),
+            generation_mode=(
+                "TEMPLATE"
+                if str(plan.get("model_version", "")).startswith("TEMPLATE")
+                else "SLLM"
+            ),
+            g2_status="PENDING",
+        )
         self._responses.record(
             trace,
             PipelineStage.MODEL,
@@ -330,6 +351,7 @@ class AnalysisService:
         progress("G2", "STARTED")
         violation = self._support.g2_violation(plan, package)
         if violation == "UNSAFE_SQL":
+            checkpoint(g2_status="BLOCKED", g2_violation=violation)
             progress("G2", "BLOCKED")
             return self._responses.error(
                 context,
@@ -342,6 +364,7 @@ class AnalysisService:
                 decision,
             )
         if violation:
+            checkpoint(g2_status="BLOCKED", g2_violation=violation)
             progress("G2", "BLOCKED")
             self._responses.record(
                 trace,
@@ -392,6 +415,13 @@ class AnalysisService:
                 self._support.model_plan_violation(plan)
                 or self._support.g2_violation(plan, package)
             ):
+                checkpoint(
+                    sql_hash=secure_cache_key("sql", sql=plan.get("sql", "")),
+                    model_version=plan.get("model_version", ""),
+                    g2_status="BLOCKED",
+                    g2_violation=self._support.g2_violation(plan, package)
+                    or "MODEL_SCHEMA_INVALID",
+                )
                 progress("G2", "BLOCKED")
                 return self._responses.error(
                     context,
@@ -406,45 +436,77 @@ class AnalysisService:
                 )
         self._responses.record(trace, PipelineStage.G2)
         progress("G2", "PASSED")
+        checkpoint(
+            sql_hash=secure_cache_key("sql", sql=plan["sql"]),
+            model_version=plan.get("model_version", ""),
+            g2_status="PASSED",
+            g2_violation=None,
+        )
 
         self._cache.put_plan(plan_key, plan)
         gate_token = self._support.gate_token(package, str(plan["sql"]))
-        # Result reuse stays disabled until every source exposes a trustworthy
-        # data watermark. Schema/seed metadata cannot detect changed rows.
-        result_cached = False
-        progress("TRINO", "STARTED")
+        result_key = None
         try:
-            with observe_stage(
-                "trino",
-                context=context,
-                attributes={"answervice.cache_hit": result_cached},
-            ) as span:
-                query = self._adapter.execute_query(
-                    plan["sql"],
-                    plan.get("parameters", {}),
-                    gate_token,
-                    getattr(package, "trino_principal", None),
-                )
-                query = self._adapter.get_query_status(query["query_id"])
-                span.set_attribute(
-                    "answervice.query_status", str(query.get("status", "unknown"))
-                )
-                if query.get("query_id"):
-                    span.set_attribute("answervice.query_id", str(query["query_id"]))
-        except (KeyError, TimeoutError, TypeError, ValueError):
-            progress("TRINO", "FAILED")
-            return self._responses.error(
-                context,
-                machine,
-                trace,
-                PipelineStage.QUERY,
-                AnalysisStatus.FAILED,
-                ErrorCode.QUERY_SOURCE_FAILED,
-                "원천 조회 상태를 확인할 수 없습니다.",
-                decision,
-                repair_count,
-                retryable=True,
+            source_ids = frozenset(context.database_grants)
+            watermarks = self._adapter.get_source_watermarks(
+                source_ids,
+                getattr(package, "trino_principal", None),
             )
+            if set(watermarks) == set(source_ids):
+                result_key = secure_cache_key(
+                    "query-result",
+                    sql=plan["sql"],
+                    parameters=plan.get("parameters", {}),
+                    catalog_watermark_set=watermarks,
+                    **common_key,
+                )
+        except (AttributeError, KeyError, TimeoutError, TypeError, ValueError):
+            pass
+        query = self._cache.get_result(result_key) if result_key else None
+        result_cached = query is not None
+        progress("TRINO", "SKIPPED" if result_cached else "STARTED")
+        if query is None:
+            checkpoint(trino_execution_attempted=True)
+            try:
+                with observe_stage(
+                    "trino",
+                    context=context,
+                    attributes={"answervice.cache_hit": result_cached},
+                ) as span:
+                    query = self._adapter.execute_query(
+                        plan["sql"],
+                        plan.get("parameters", {}),
+                        gate_token,
+                        getattr(package, "trino_principal", None),
+                    )
+                    query = self._adapter.get_query_status(query["query_id"])
+                    checkpoint(
+                        query_id=str(query.get("query_id") or ""),
+                        query_status=str(query.get("status") or ""),
+                    )
+                    span.set_attribute(
+                        "answervice.query_status", str(query.get("status", "unknown"))
+                    )
+                    if query.get("query_id"):
+                        span.set_attribute("answervice.query_id", str(query["query_id"]))
+            except (KeyError, TimeoutError, TypeError, ValueError):
+                progress("TRINO", "FAILED")
+                return self._responses.error(
+                    context,
+                    machine,
+                    trace,
+                    PipelineStage.QUERY,
+                    AnalysisStatus.FAILED,
+                    ErrorCode.QUERY_SOURCE_FAILED,
+                    "원천 조회 상태를 확인할 수 없습니다.",
+                    decision,
+                    repair_count,
+                    retryable=True,
+                )
+        checkpoint(
+            query_id=str(query.get("query_id") or ""),
+            query_status=str(query.get("status") or ""),
+        )
         query_id = str(query.get("query_id", ""))
         self._responses.record(trace, PipelineStage.QUERY, query_id)
         query_status = query.get("status")
@@ -520,7 +582,8 @@ class AnalysisService:
                 repair_count,
                 retryable=True,
             )
-        progress("TRINO", "PASSED")
+        if not result_cached:
+            progress("TRINO", "PASSED")
 
         progress("G3", "STARTED")
         g3_violation = self._support.g3_violation(query, package)
@@ -539,6 +602,8 @@ class AnalysisService:
             )
         self._responses.record(trace, PipelineStage.G3)
         progress("G3", "PASSED")
+        if result_key and not result_cached and query.get("status") == "SUCCEEDED":
+            self._cache.put_result(result_key, query)
         if decision.route_type is RouteType.TEMPLATE:
             progress("NODE3", "SKIPPED")
             explanation = {
@@ -629,8 +694,7 @@ class AnalysisService:
                     x_field="month" if "month" in columns else columns[0],
                     y_fields=numeric,
                 )
-        if execution_sink is not None:
-            execution_sink({"plan": plan, "query": query, "package": package})
+        checkpoint(plan=plan, query=query, package=package)
         return response
 
     @staticmethod

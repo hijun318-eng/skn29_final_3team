@@ -32,6 +32,7 @@ class OpenApiContractTest(unittest.TestCase):
         self.assertEqual(
             {
                 "/analysis",
+                "/analysis/access-profiles",
                 "/analysis/{request_id}/progress",
                 "/analysis/{request_id}/result",
                 "/analysis/recent",
@@ -75,6 +76,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "auditGetEffectiveAccess",
                 "auditGetRecoveryStatus",
                 "submitAnalysis",
+                "analysisListAccessProfiles",
                 "analysisGetProgress",
                 "analysisGetPersistedResult",
                 "analysisListRecent",

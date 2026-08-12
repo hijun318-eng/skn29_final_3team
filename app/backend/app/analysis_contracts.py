@@ -137,3 +137,18 @@ class RecentAnalysisItem(AnalysisPersistenceModel):
 class RecentAnalysisListResponse(AnalysisPersistenceModel):
     contract_version: str = ANALYSIS_PERSISTENCE_VERSION
     items: list[RecentAnalysisItem]
+
+
+class AccessProfileAvailability(AnalysisPersistenceModel):
+    profile_id: Literal[
+        "pms_only", "crm_only", "pms_crm", "integrated_revenue",
+        "integrated_operations",
+    ]
+    domains: list[Literal["pms", "crm", "pos", "facility", "banquet"]]
+    available: bool
+    reason: str | None = None
+
+
+class AccessProfileAvailabilityListResponse(AnalysisPersistenceModel):
+    contract_version: str = ANALYSIS_PERSISTENCE_VERSION
+    items: list[AccessProfileAvailability]

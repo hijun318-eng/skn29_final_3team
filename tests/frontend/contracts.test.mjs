@@ -145,6 +145,21 @@ assert.equal(historyRequests[2].url, "http://backend.test/analysis/request-1/res
 assert.equal(restoredResult.artifact.artifactId, "artifact-1");
 assert.equal(historyRequests[0].init.headers.Authorization, "Bearer contract-test-token");
 
+const profileClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
+  assert.equal(url, "http://backend.test/analysis/access-profiles");
+  assert.equal(init.headers.Authorization, "Bearer contract-test-token");
+  return new Response(JSON.stringify({ items: [
+    { profile_id: "pms_only", domains: ["pms"], available: true, reason: null },
+    { profile_id: "integrated_operations", domains: ["pms", "crm", "pos", "facility", "banquet"], available: false, reason: "서버 인증 준비가 필요합니다." },
+  ] }), { status: 200 });
+});
+const profiles = await profileClient.listAccessProfiles();
+assert.equal(profiles[0].available, true);
+assert.equal(profiles[1].available, false);
+assert.deepEqual(profiles[1].domains, ["pms", "crm", "pos", "facility", "banquet"]);
+assert.match(agentPageSource, /disabled=\{!profileAvailability\.find/);
+assert.match(agentPageSource, /selectedAvailability\?\.reason/);
+
 const observedProgress = [];
 const progressClient = createHttpAnalysisClient("http://backend.test/", async (url) => {
   if (url.includes("/progress")) return new Response(JSON.stringify({ request_id: "request-1", status: "RECEIVED", events: [{ sequence: 1, stage: "DATAHUB", outcome: "STARTED", created_at: "2026-08-12T00:00:00Z" }] }), { status: 200 });
@@ -317,7 +332,7 @@ assert.match(agentPageSource, /useState\("pms_only"\)/);
 for (const profile of ["pms_only", "crm_only", "pms_crm", "integrated_revenue", "integrated_operations"]) assert.match(agentPageSource, new RegExp(profile));
 assert.match(agentPageSource, /htmlFor="analysis-access-profile"/);
 assert.match(agentPageSource, /id="analysis-access-profile"/);
-assert.match(agentPageSource, /disabled=\{submitting\}/);
+assert.match(agentPageSource, /disabled=\{submitting \|\| !profileAvailability\.length\}/);
 assert.match(agentPageSource, /progress: current\.progress/);
 assert.match(agentPageSource, /requestId: current\.requestId/);
 assert.match(agentPageSource, /aria-describedby="analysis-access-domain"/);

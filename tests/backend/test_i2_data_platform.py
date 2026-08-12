@@ -24,6 +24,7 @@ from app.services.pipeline_support import (
     PipelineSupport,
     _conservative_json_token_estimate,
 )
+from src.data.i2_adapters import QueryPage
 
 
 def _published_release(_as_of):
@@ -121,6 +122,45 @@ def test_trino_transport_sends_required_user_header():
     assert request.get_header("X-trino-user") == "runtime-user"
     assert request.data == b"SELECT 1"
     assert payload["id"] == "query-1"
+
+
+def test_source_watermarks_use_profile_principal_and_require_every_source():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    trino = MagicMock()
+    trino.execute.side_effect = (
+        QueryPage(
+            "watermark-crm", "FINISHED", ("row_count", "watermark"),
+            ((50, "2026-08-11 00:00:00"),), None, (),
+        ),
+        QueryPage(
+            "watermark-pms", "FINISHED", ("row_count", "watermark"),
+            ((100, "2026-08-12 00:00:00 UTC"),), None, (),
+        ),
+    )
+
+    with patch(
+        "app.adapters.i2_data_platform._PartialAwareTrinoAdapter",
+        return_value=trino,
+    ) as factory:
+        watermarks = adapter.get_source_watermarks(
+            frozenset({"pms", "crm"}), "answervice_pms_crm"
+        )
+
+    assert watermarks == {
+        "crm": "50:2026-08-11 00:00:00",
+        "pms": "100:2026-08-12 00:00:00 UTC",
+    }
+    assert factory.call_args.kwargs["transport"]
+    assert trino.execute.call_count == 2
+
+
+def test_source_watermarks_fail_closed_for_empty_or_unknown_source():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+
+    with pytest.raises(ValueError, match="scope"):
+        adapter.get_source_watermarks(frozenset(), "answervice_pms_only")
+    with pytest.raises(ValueError, match="scope"):
+        adapter.get_source_watermarks(frozenset({"unknown"}), "answervice_pms_only")
 
 
 def test_serving_view_uses_exact_datahub_editable_metadata():

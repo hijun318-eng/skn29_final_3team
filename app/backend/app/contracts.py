@@ -82,6 +82,7 @@ class RequestContext(ContractModel):
     timezone: str = "Asia/Seoul"
     contract_version: str = CONTRACT_VERSION
     access_profile: str | None = None
+    database_grants: tuple[str, ...] = ()
     allowed_domains: tuple[str, ...] = ()
     access_policy_version: str | None = None
     entitlement_hash: str | None = None

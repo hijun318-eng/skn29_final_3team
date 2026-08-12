@@ -189,3 +189,21 @@ def resolve_access_profile(
         policy_version=policy["policy_version"],
         entitlement_hash=hashlib.sha256(canonical.encode()).hexdigest(),
     )
+
+
+def available_profiles(authenticated_role: Role) -> list[dict[str, object]]:
+    policy = load_access_policy()
+    contract = load_server_access_profiles()
+    items: list[dict[str, object]] = []
+    for profile_id, access in policy["access_profiles"].items():
+        if authenticated_role.value not in access["allowed_roles"]:
+            continue
+        server = contract["profiles"][profile_id]
+        available = bool(os.getenv(server["datahub_token_env"], "").strip())
+        items.append({
+            "profile_id": profile_id,
+            "domains": server["database_grants"],
+            "available": available,
+            "reason": None if available else "서버 인증 준비가 필요합니다.",
+        })
+    return items

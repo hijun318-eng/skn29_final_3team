@@ -160,7 +160,9 @@ def test_g3_negative_stops_node3_result_cache_execution_and_artifact(
     assert model.calls.count("node3") == 0
     support.artifact_id.assert_not_called()
     cache.put_result.assert_not_called()
-    execution_sink.assert_not_called()
+    checkpoints = [call.args[0] for call in execution_sink.call_args_list]
+    assert any(item.get("trino_execution_attempted") is True for item in checkpoints)
+    assert not any({"plan", "query", "package"}.issubset(item) for item in checkpoints)
 
 
 def test_g3_rejects_query_evidence_that_does_not_match_context_bindings():

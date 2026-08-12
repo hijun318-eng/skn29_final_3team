@@ -79,6 +79,7 @@ def analysis_context(
         request_id=request.state.request_id, trace_id=trace_id, user_id=principal.subject,
         role=principal.role, as_of=parsed_as_of, timezone=timezone,
         contract_version=contract_version, access_profile=profile.name if profile else None,
+        database_grants=profile.database_grants if profile else (),
         allowed_domains=profile.domains if profile else (),
         access_policy_version=profile.policy_version if profile else None,
         entitlement_hash=profile.entitlement_hash if profile else None,

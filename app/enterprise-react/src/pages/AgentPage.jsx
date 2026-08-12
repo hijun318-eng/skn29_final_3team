@@ -50,12 +50,28 @@ export function AgentPage() {
   const [artifactTab, setArtifactTab] = useState("report");
   const [reportTransfer, setReportTransfer] = useState({ status: "idle", message: "" });
   const [recent, setRecent] = useState([]);
+  const [profileAvailability, setProfileAvailability] = useState([]);
+  const [profileAvailabilityError, setProfileAvailabilityError] = useState("");
+
+  const selectedAvailability = profileAvailability.find((item) => item.profile_id === accessProfile);
 
   const loadRecent = async () => {
     try { setRecent(await client.listRecent()); } catch { setRecent([]); }
   };
 
-  useEffect(() => { void loadRecent(); }, []);
+  useEffect(() => {
+    void loadRecent();
+    void client.listAccessProfiles().then((items) => {
+      setProfileAvailability(items);
+      setProfileAvailabilityError("");
+      setAccessProfile((current) => items.some((item) => item.profile_id === current && item.available)
+        ? current
+        : items.find((item) => item.available)?.profile_id || current);
+    }).catch(() => {
+      setProfileAvailability([]);
+      setProfileAvailabilityError("데이터 접근 범위의 사용 가능 여부를 확인할 수 없습니다.");
+    });
+  }, []);
   useEffect(() => {
     const active = recent.find((item) => item.status === "RECEIVED");
     if (!hasSubmitted && active) void restoreRecent(active);
@@ -129,7 +145,7 @@ export function AgentPage() {
   const submitQuestion = async (event) => {
     event.preventDefault();
     const nextQuestion = question.trim();
-    if (!nextQuestion || submitting) return;
+    if (!nextQuestion || submitting || !selectedAvailability?.available) return;
 
     setSubmitting(true);
     setEvidenceOpen(false);
@@ -213,9 +229,9 @@ export function AgentPage() {
           </div>
         </div>}
         <form className="chat-input" onSubmit={submitQuestion}>
-          <label className="access-profile-picker" htmlFor="analysis-access-profile"><span>데이터 접근 범위</span><select id="analysis-access-profile" value={accessProfile} disabled={submitting} aria-describedby="analysis-access-domain" onChange={(event) => setAccessProfile(event.target.value)}>{ACCESS_PROFILES.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-          <div className="access-profile-meta" id="analysis-access-domain" aria-live="polite"><span>선택 profile <b>{accessProfile}</b></span><span>접근 Domain <b>{ACCESS_PROFILES.find(([value]) => value === accessProfile)?.[2]}</b></span></div>
-          <div className="question-field"><input aria-label="분석 질문" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="승인된 데이터에 대해 질문하세요..." /><button aria-label="질문 전송" disabled={submitting}><Send size={17} /></button></div>
+          <label className="access-profile-picker" htmlFor="analysis-access-profile"><span>데이터 접근 범위</span><select id="analysis-access-profile" value={accessProfile} disabled={submitting || !profileAvailability.length} aria-describedby="analysis-access-domain" onChange={(event) => setAccessProfile(event.target.value)}>{ACCESS_PROFILES.map(([value, label]) => <option value={value} key={value} disabled={!profileAvailability.find((item) => item.profile_id === value)?.available}>{label}</option>)}</select></label>
+          <div className="access-profile-meta" id="analysis-access-domain" aria-live="polite"><span>선택 profile <b>{accessProfile}</b></span><span>접근 Domain <b>{ACCESS_PROFILES.find(([value]) => value === accessProfile)?.[2]}</b></span>{(profileAvailabilityError || selectedAvailability?.reason) && <span role="status">{profileAvailabilityError || selectedAvailability.reason}</span>}</div>
+          <div className="question-field"><input aria-label="분석 질문" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="승인된 데이터에 대해 질문하세요..." /><button aria-label="질문 전송" disabled={submitting || !selectedAvailability?.available}><Send size={17} /></button></div>
           <small>화면에는 Analysis API가 반환한 결과만 표시됩니다.</small>
         </form>
       </main>

@@ -50,6 +50,8 @@ def test_plan_and_result_ttl_expire_and_are_removed_without_shared_mutation():
 def test_cache_key_isolates_role_context_policy_time_watermark_and_mask():
     base = {
         "role": "hotel_analyst",
+        "access_profile": "pms_only",
+        "entitlement": "entitlement-v1",
         "context": "context-v1",
         "policy": "policy-v1",
         "as_of": date(2026, 8, 12),
@@ -59,6 +61,8 @@ def test_cache_key_isolates_role_context_policy_time_watermark_and_mask():
     original = secure_cache_key("query-result", **base)
     changes = {
         "role": "report_admin",
+        "access_profile": "pms_crm",
+        "entitlement": "entitlement-v2",
         "context": "context-v2",
         "policy": "policy-v2",
         "as_of": date(2026, 8, 11),
@@ -70,8 +74,9 @@ def test_cache_key_isolates_role_context_policy_time_watermark_and_mask():
 
 
 class _Adapter:
-    def __init__(self) -> None:
+    def __init__(self, watermarks=None) -> None:
         self.executions = 0
+        self.watermarks = watermarks
 
     def search_assets(self, _query, _context):
         return [{"urn": "urn:room", "fqn": "serving.analytics.room", "schema_version": "1", "seed_version": "1"}]
@@ -91,6 +96,11 @@ class _Adapter:
             "masking": {},
         }
 
+    def get_source_watermarks(self, _source_ids, _trino_principal=None):
+        if self.watermarks is None:
+            raise ValueError("watermark unavailable")
+        return self.watermarks
+
 
 class _Model:
     def generate(self, node, _payload):
@@ -99,18 +109,14 @@ class _Model:
         raise AssertionError(f"template cache test must not call {node}")
 
 
-def test_plan_cache_hits_but_result_is_requeried_without_source_watermark():
-    adapter = _Adapter()
+def _cache_scenario(adapter):
     cache = IsolatedExecutionCache()
     service = AnalysisService(adapter, _Model(), cache=cache)
     package = SimpleNamespace(
-        package_hash="context-v1",
-        policy_version="policy-v1",
-        entitlement_hash="entitlement-v1",
-        assets=(),
-        metrics=(),
-        parameter_bindings=(),
-        context_release="context-v1",
+        package_hash="context-v1", policy_version="policy-v1",
+        entitlement_hash="entitlement-v1", assets=(), metrics=(),
+        parameter_bindings=(), context_release="context-v1",
+        trino_principal="answervice_pms_only",
     )
     support = MagicMock()
     support.node1_request.return_value = {}
@@ -137,8 +143,45 @@ def test_plan_cache_hits_but_result_is_requeried_without_source_watermark():
     )
     payload = AnalysisRequest(question="객실 현황")
     context = RequestContext(
-        user_id=uuid4(), role=Role.HOTEL_ANALYST, as_of=date(2026, 8, 12)
+        user_id=uuid4(), role=Role.HOTEL_ANALYST, as_of=date(2026, 8, 12),
+        database_grants=("pms",), entitlement_hash="entitlement-v1",
     )
+    return service, support, decision, payload, context
+
+
+def test_result_cache_hits_only_with_complete_entitled_source_watermarks():
+    adapter = _Adapter({"pms": "100:2026-08-12 00:00:00"})
+    service, support, decision, payload, context = _cache_scenario(adapter)
+
+    first = service.analyze(payload, context, decision)
+    second = service.analyze(payload, context.model_copy(update={"request_id": uuid4()}), decision)
+
+    assert first.data.result.evidence.cached is False
+    assert second.data.result.evidence.cached is True
+    assert adapter.executions == 1
+    assert support.g2_violation.call_count == 2
+    assert support.g3_violation.call_count == 2
+
+
+def test_changed_source_watermark_invalidates_cached_result():
+    adapter = _Adapter({"pms": "100:2026-08-12 00:00:00"})
+    service, _, decision, payload, context = _cache_scenario(adapter)
+
+    first = service.analyze(payload, context, decision)
+    adapter.watermarks = {"pms": "101:2026-08-12 01:00:00"}
+    second = service.analyze(
+        payload,
+        context.model_copy(update={"request_id": uuid4()}), decision,
+    )
+
+    assert first.data.result.evidence.cached is False
+    assert second.data.result.evidence.cached is False
+    assert adapter.executions == 2
+
+
+def test_result_is_requeried_when_any_entitled_source_watermark_is_unavailable():
+    adapter = _Adapter()
+    service, support, decision, payload, context = _cache_scenario(adapter)
 
     first = service.analyze(payload, context, decision)
     second = service.analyze(payload, context.model_copy(update={"request_id": uuid4()}), decision)

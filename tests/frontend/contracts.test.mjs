@@ -84,10 +84,11 @@ assert.equal(normalized.trace[0].stage, "G2");
 const auditSummary = { request_id: "request-1", user_id: "user-1", user_role: "HOTEL_ANALYST", request_type: "analysis", status: "SUCCEEDED", error_type: null, trace_id: "trace-1", started_at: "2026-08-12T00:00:00Z", completed_at: "2026-08-12T00:00:01Z" };
 const auditTrace = { ...auditSummary, transitions: [], analysis_definition: null, context: { release_id: null, release_key: null, release_version: null, release_hash: null, package_id: null, package_hash: null }, policy: { sql_policy_version: "g2-v1", policy_version: "ACCESS-POLICY-v1.0.0", entitlement_hash: "entitlement-hash" }, access: { access_profile: "pms_only", allowed_domains: ["rooms"], datahub_actor: "urn:li:corpuser:answervice_pms_only", allowed_urns: ["urn:source"], trino_role: "answervice_pms_only", datahub_search_attempted: true, trino_execution_attempted: true }, model: null, query: { query_id: "q1", generation_mode: "TEMPLATE", validation_status: "ALLOWED", execution_status: "SUCCEEDED", duration_ms: 1, source_urns: ["urn:source"] }, artifact: { artifact_id: "a1", artifact_type: "COMPOSITE", freshness_status: "FRESH", status: "APPROVED", artifact_checksum: "sum", masking: { applied: true, fields: ["guest_id"] } }, reports: [] };
 const effectiveAccess = { policy_version: "ACCESS-POLICY-v1.0.0", subject: "user-1", role: "hotel_analyst", mapping_source: "test_seed" };
+const recoveryStatus = { generated_at: "2026-08-12T00:00:00Z", retention: { status: "dry_run", last_run_at: "2026-08-12T00:00:00Z" }, backup: { status: "available", created_at: "2026-08-12T00:00:00Z", age_hours: 1, sha256: "a".repeat(64), rpo_target_hours: 24, rpo_passed: true }, restore: { status: "verified", verified_at: "2026-08-12T00:00:00Z", mode: "archive-list-only", backup_age_hours: 1, restore_duration_hours: 0.1, rpo_target_hours: 24, rpo_passed: true, rto_target_hours: 4, rto_passed: true, backup_sha256: "a".repeat(64) } };
 const auditRequests = [];
 const auditClient = createAuditClient("http://backend.test/", async (url, init) => {
   auditRequests.push({ url, init });
-  const body = url.endsWith("/access") ? effectiveAccess : url.includes("/request-1") ? auditTrace : { items: [auditSummary] };
+  const body = url.endsWith("/access") ? effectiveAccess : url.endsWith("/recovery") ? recoveryStatus : url.includes("/request-1") ? auditTrace : { items: [auditSummary] };
   return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 });
 assert.equal((await auditClient.search("request-1"))[0].request_id, "request-1");
@@ -95,9 +96,11 @@ const fetchedAuditTrace = await auditClient.get("request-1");
 assert.equal(fetchedAuditTrace.policy.sql_policy_version, "g2-v1");
 assert.equal(fetchedAuditTrace.access.trino_role, "answervice_pms_only");
 assert.equal((await auditClient.getAccess()).policy_version, "ACCESS-POLICY-v1.0.0");
+assert.equal((await auditClient.getRecovery()).restore.mode, "archive-list-only");
 assert.equal(auditRequests[0].url, "http://backend.test/operations/audit?request_id=request-1");
 assert.equal(auditRequests[1].url, "http://backend.test/operations/audit/request-1");
 assert.equal(auditRequests[2].url, "http://backend.test/operations/audit/access");
+assert.equal(auditRequests[3].url, "http://backend.test/operations/audit/recovery");
 assert.equal(auditRequests[0].init.headers.Authorization, "Bearer contract-test-token");
 assert.equal(auditRequests[0].init.headers["X-Contract-Version"], OPENAPI_VERSION);
 
@@ -267,6 +270,7 @@ assert.match(analysisPanelSource, /chart\.chartType === "bar"/);
 assert.match(analysisPanelSource, /<BarChart/);
 assert.match(auditPageSource, /createAuditClient\(\)/);
 for (const label of ["접근 Profile", "허용 Domain", "DataHub actor", "Entitlement hash", "Trino role", "DataHub 검색 시도", "Trino 실행 시도", "허용 URNs"]) assert.match(auditPageSource, new RegExp(label));
+for (const label of ["보존 정책", "암호화 백업", "복구 검증", "RPO", "RTO"]) assert.match(auditPageSource, new RegExp(label));
 assert.doesNotMatch(auditPageSource, /question|parameters|result_snapshot/i);
 
 for (const removedDataFile of ["analysisFixtures.ts", "catalogFixtures.ts", "enterpriseDemoData.js"]) {

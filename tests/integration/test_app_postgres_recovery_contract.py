@@ -11,6 +11,7 @@ def test_retention_is_dry_run_by_default_and_requires_explicit_approval():
     policy = RETENTION_SQL.read_text(encoding="utf-8")
 
     assert "-Apply -Approval APPLY_RETENTION" in wrapper
+    assert "retention-evidence.json" in wrapper
     assert "if ($Apply) { 'true' } else { 'false' }" in wrapper
     assert "\\if :apply" in policy
     assert "interval '30 days'" in policy

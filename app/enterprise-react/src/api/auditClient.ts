@@ -24,6 +24,13 @@ export interface EffectiveAccess {
   mapping_source: "test_seed" | "release_principal";
 }
 
+export interface RecoveryStatus {
+  generated_at: string;
+  retention: { status: "unknown" | "not_run" | "dry_run" | "applied"; last_run_at: string | null };
+  backup: { status: "unknown" | "not_run" | "available"; created_at: string | null; age_hours: number | null; sha256: string | null; rpo_target_hours: number; rpo_passed: boolean | null };
+  restore: { status: "unknown" | "not_run" | "verified"; verified_at: string | null; mode: "unknown" | "not_run" | "archive-list-only" | "isolated-restore"; backup_age_hours: number | null; restore_duration_hours: number | null; rpo_target_hours: number; rpo_passed: boolean | null; rto_target_hours: number; rto_passed: boolean | null; backup_sha256: string | null };
+}
+
 export interface AuditTrace extends AuditRequestSummary {
   transitions: ReadonlyArray<{ sequence: number; from_status: string | null; to_status: string; created_at: string }>;
   analysis_definition: { definition_id: string; version: number; status: string } | null;
@@ -59,6 +66,9 @@ export function createAuditClient(
   return {
     async getAccess(): Promise<EffectiveAccess> {
       return parse<EffectiveAccess>(await send("/operations/audit/access"));
+    },
+    async getRecovery(): Promise<RecoveryStatus> {
+      return parse<RecoveryStatus>(await send("/operations/audit/recovery"));
     },
     async search(filters: { requestId?: string; status?: string; startedFrom?: string; startedTo?: string } | string = {}): Promise<readonly AuditRequestSummary[]> {
       const normalized = typeof filters === "string" ? { requestId: filters } : filters;

@@ -34,6 +34,40 @@ class EffectiveAccessResponse(AuditContractModel):
     mapping_source: Literal["test_seed", "release_principal"]
 
 
+class RetentionStatus(AuditContractModel):
+    status: Literal["unknown", "not_run", "dry_run", "applied"]
+    last_run_at: datetime | None
+
+
+class BackupStatus(AuditContractModel):
+    status: Literal["unknown", "not_run", "available"]
+    created_at: datetime | None
+    age_hours: float | None
+    sha256: str | None
+    rpo_target_hours: int
+    rpo_passed: bool | None
+
+
+class RestoreStatus(AuditContractModel):
+    status: Literal["unknown", "not_run", "verified"]
+    verified_at: datetime | None
+    mode: Literal["unknown", "not_run", "archive-list-only", "isolated-restore"]
+    backup_age_hours: float | None
+    restore_duration_hours: float | None
+    rpo_target_hours: int
+    rpo_passed: bool | None
+    rto_target_hours: int
+    rto_passed: bool | None
+    backup_sha256: str | None
+
+
+class RecoveryStatusResponse(AuditContractModel):
+    generated_at: datetime
+    retention: RetentionStatus
+    backup: BackupStatus
+    restore: RestoreStatus
+
+
 class AuditTransition(AuditContractModel):
     sequence: int
     from_status: str | None

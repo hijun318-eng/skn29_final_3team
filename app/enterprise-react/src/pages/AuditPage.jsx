@@ -17,20 +17,23 @@ export function AuditPage() {
   const [items, setItems] = useState([]);
   const [trace, setTrace] = useState(null);
   const [access, setAccess] = useState(null);
+  const [recovery, setRecovery] = useState(null);
   const [state, setState] = useState({ loading: true, error: "" });
 
   const load = useCallback(async (filters = {}) => {
     setState({ loading: true, error: "" });
     try {
-      const [nextItems, effectiveAccess] = await Promise.all([client.search(filters), client.getAccess()]);
+      const [nextItems, effectiveAccess, recoveryStatus] = await Promise.all([client.search(filters), client.getAccess(), client.getRecovery().catch(() => null)]);
       setItems(nextItems);
       setAccess(effectiveAccess);
+      setRecovery(recoveryStatus);
       setTrace(nextItems.length === 1 ? await client.get(nextItems[0].request_id) : null);
       setState({ loading: false, error: "" });
     } catch (error) {
       setItems([]);
       setTrace(null);
       setAccess(null);
+      setRecovery(null);
       setState({ loading: false, error: error instanceof Error ? error.message : "감사 Trace를 불러오지 못했습니다." });
     }
   }, [client]);
@@ -72,6 +75,12 @@ export function AuditPage() {
 
       {state.error && <p className="report-api-state error" role="alert">{state.error}</p>}
       {state.loading && <p className="report-api-state" role="status">감사 기록을 조회하고 있습니다.</p>}
+
+      {recovery && <section className="audit-recovery" aria-label="보존 및 복구 상태">
+        <article className="card"><small>RETENTION</small><h3>보존 정책</h3><b>{recovery.retention.status}</b><p>마지막 실행 {formatTime(recovery.retention.last_run_at)}</p></article>
+        <article className="card"><small>BACKUP · RPO {recovery.backup.rpo_target_hours}h</small><h3>암호화 백업</h3><b>{recovery.backup.status}</b><p>나이 {recovery.backup.age_hours == null ? "-" : `${recovery.backup.age_hours}h`} · RPO {recovery.backup.rpo_passed == null ? "미확인" : recovery.backup.rpo_passed ? "충족" : "초과"}</p><code>{recovery.backup.sha256 || "hash 미확인"}</code></article>
+        <article className="card"><small>RESTORE · RTO {recovery.restore.rto_target_hours}h</small><h3>복구 검증</h3><b>{recovery.restore.status}</b><p>{recovery.restore.mode} · 마지막 검증 {formatTime(recovery.restore.verified_at)}</p><p>RPO {recovery.restore.rpo_passed == null ? "미확인" : recovery.restore.rpo_passed ? "충족" : "초과"} · RTO {recovery.restore.rto_passed == null ? "미확인" : recovery.restore.rto_passed ? "충족" : "초과"}</p><code>{recovery.restore.backup_sha256 || "hash 미확인"}</code></article>
+      </section>}
 
       <div className="audit-layout">
         <section className="card audit-list">

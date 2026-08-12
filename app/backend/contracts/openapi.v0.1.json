@@ -881,6 +881,79 @@
         "title": "AuditTransition",
         "type": "object"
       },
+      "BackupStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "age_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Hours"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "rpo_passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rpo Passed"
+          },
+          "rpo_target_hours": {
+            "title": "Rpo Target Hours",
+            "type": "integer"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sha256"
+          },
+          "status": {
+            "enum": [
+              "unknown",
+              "not_run",
+              "available"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "created_at",
+          "age_hours",
+          "sha256",
+          "rpo_target_hours",
+          "rpo_passed"
+        ],
+        "title": "BackupStatus",
+        "type": "object"
+      },
       "CatalogSource": {
         "additionalProperties": false,
         "properties": {
@@ -1843,6 +1916,33 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "RecoveryStatusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "backup": {
+            "$ref": "#/components/schemas/BackupStatus"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "restore": {
+            "$ref": "#/components/schemas/RestoreStatus"
+          },
+          "retention": {
+            "$ref": "#/components/schemas/RetentionStatus"
+          }
+        },
+        "required": [
+          "generated_at",
+          "retention",
+          "backup",
+          "restore"
+        ],
+        "title": "RecoveryStatusResponse",
+        "type": "object"
+      },
       "ReplaceReportBlocksRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2469,6 +2569,152 @@
           "contract_version"
         ],
         "title": "ResponseMeta",
+        "type": "object"
+      },
+      "RestoreStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "backup_age_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup Age Hours"
+          },
+          "backup_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backup Sha256"
+          },
+          "mode": {
+            "enum": [
+              "unknown",
+              "not_run",
+              "archive-list-only",
+              "isolated-restore"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "restore_duration_hours": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restore Duration Hours"
+          },
+          "rpo_passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rpo Passed"
+          },
+          "rpo_target_hours": {
+            "title": "Rpo Target Hours",
+            "type": "integer"
+          },
+          "rto_passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rto Passed"
+          },
+          "rto_target_hours": {
+            "title": "Rto Target Hours",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "unknown",
+              "not_run",
+              "verified"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "status",
+          "verified_at",
+          "mode",
+          "backup_age_hours",
+          "restore_duration_hours",
+          "rpo_target_hours",
+          "rpo_passed",
+          "rto_target_hours",
+          "rto_passed",
+          "backup_sha256"
+        ],
+        "title": "RestoreStatus",
+        "type": "object"
+      },
+      "RetentionStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "status": {
+            "enum": [
+              "unknown",
+              "not_run",
+              "dry_run",
+              "applied"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "last_run_at"
+        ],
+        "title": "RetentionStatus",
         "type": "object"
       },
       "RouteType": {
@@ -3841,6 +4087,96 @@
           }
         ],
         "summary": "Get Effective Access",
+        "tags": [
+          "operations-audit"
+        ]
+      }
+    },
+    "/operations/audit/recovery": {
+      "get": {
+        "operationId": "auditGetRecoveryStatus",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Recovery Status",
         "tags": [
           "operations-audit"
         ]

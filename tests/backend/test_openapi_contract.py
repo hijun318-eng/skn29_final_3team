@@ -41,6 +41,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "/health",
                 "/operations/audit",
                 "/operations/audit/access",
+                "/operations/audit/recovery",
                 "/operations/audit/{request_id}",
                 "/readiness",
                 "/reports/definitions",
@@ -68,6 +69,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "auditSearchRequests",
                 "auditGetRequestTrace",
                 "auditGetEffectiveAccess",
+                "auditGetRecoveryStatus",
                 "submitAnalysis",
                 "analysisCreateDefinition",
                 "analysisListDefinitions",
@@ -132,6 +134,10 @@ class OpenApiContractTest(unittest.TestCase):
         self.assertTrue(
             {"request_id", "status", "started_from", "started_to"}.issubset(parameters)
         )
+
+        recovery = json.dumps({name: schemas[name] for name in ("RecoveryStatusResponse", "RetentionStatus", "BackupStatus", "RestoreStatus")}, ensure_ascii=False)
+        for forbidden in ("path", "file", "key", "secret"):
+            self.assertNotIn(f'"{forbidden}"', recovery)
 
     def test_authenticated_routes_use_server_owned_bearer_identity(self) -> None:
         schema = app.openapi()

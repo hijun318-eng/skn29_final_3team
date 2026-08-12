@@ -10,6 +10,7 @@ from app.audit_contracts import (
     AuditSearchResponse,
     AuditTraceResponse,
     EffectiveAccessResponse,
+    RecoveryStatusResponse,
 )
 from app.context import analysis_context
 from app.contracts import RequestContext
@@ -30,6 +31,17 @@ def get_effective_access(
         return effective_access(context.user_id, context.role)
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail="접근 정책을 확인할 수 없습니다.") from error
+
+
+@audit_router.get(
+    "/recovery", operation_id="auditGetRecoveryStatus", response_model=RecoveryStatusResponse
+)
+def get_recovery_status(
+    _context: Annotated[RequestContext, Depends(analysis_context)],
+) -> dict:
+    from app.recovery_status import recovery_status
+
+    return recovery_status()
 
 
 def _repository(context: RequestContext):

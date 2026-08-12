@@ -559,13 +559,21 @@ class PipelineSupport:
                 for item in references
                 for join_id in item.get("join_ids", ())
             }
+            relation_names = queried | {
+                cte.alias_or_name.lower() for cte in query.find_all(exp.CTE)
+            }
+            used_join_policies = tuple(
+                policy
+                for policy in package.join_policies
+                if {policy.left.lower(), policy.right.lower()}.issubset(relation_names)
+            )
+            expected_join_ids = {policy.id for policy in used_join_policies}
             if (
-                not package.approved_join_ids
-                or referenced_join_ids != set(package.approved_join_ids)
-                or queried != {item.fqn.lower() for item in package.assets}
+                not used_join_policies
+                or referenced_join_ids != expected_join_ids
             ):
                 return "UNAPPROVED_JOIN"
-            if not PipelineSupport._join_predicates_match(query, package.join_policies):
+            if not PipelineSupport._join_predicates_match(query, used_join_policies):
                 return "UNAPPROVED_JOIN_PREDICATE"
         normalized_columns = {
             fqn.lower(): {column.lower() for column in columns}

@@ -615,20 +615,30 @@ query SearchDatasets($query: String!) {
                 )
             search_results = self._datahub_search(query, datahub_token)
             if query_use == "approved_pms_crm_pos_join":
-                exact_results = self._datahub_search(
-                    " OR ".join(asset["fqn"] for asset in self._three_source_assets),
-                    datahub_token,
-                )
+                exact_results = [
+                    item
+                    for asset in self._three_source_assets
+                    for item in self._datahub_search(asset["fqn"], datahub_token)
+                    if item["urn"] == asset["urn"]
+                ]
                 search_results = list(
                     {item["urn"]: item for item in (*search_results, *exact_results)}.values()
                 )
             if not search_results:
-                expanded = " OR ".join(
+                known_by_name = {
+                    asset["name"]: asset
+                    for asset in (*self._assets, *self._three_source_assets)
+                }
+                expanded_names = (
                     name for name, hints in self._KOREAN_HINTS.items()
                     if any(hint in query.lower() for hint in hints)
                 )
-                if expanded:
-                    search_results = self._datahub_search(expanded, datahub_token)
+                search_results = [
+                    item
+                    for name in expanded_names
+                    for item in self._datahub_search(name, datahub_token)
+                    if item["urn"] == known_by_name[name]["urn"]
+                ]
             search_metadata = {str(item["urn"]): item for item in search_results}
             order = {str(item["urn"]): index for index, item in enumerate(search_results)}
             candidates = tuple(

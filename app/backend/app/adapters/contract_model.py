@@ -220,6 +220,20 @@ def _complete_dimension_order_by(sql: str, dimension_fields: set[str]) -> str:
     return query.sql(dialect="trino") if changed else sql
 
 
+def _ensure_limit(sql: str, maximum: int = 1000) -> str:
+    query = parse_one(sql, read="trino")
+    limit = query.args.get("limit")
+    expression = limit.expression if limit else None
+    if (
+        isinstance(expression, exp.Literal)
+        and expression.is_int
+        and 1 <= int(expression.this) <= maximum
+    ):
+        return sql
+    query.set("limit", exp.Limit(expression=exp.Literal.number(maximum)))
+    return query.sql(dialect="trino")
+
+
 def _queried_fqns(sql: str) -> set[str]:
     query = parse_one(sql, read="trino")
     return {
@@ -383,6 +397,7 @@ def _complete_chat_response(
             for item in payload["context_package"].get("dimensions", ())
         }
         sql = _complete_dimension_order_by(sql, dimension_fields)
+        sql = _ensure_limit(sql)
     except (KeyError, TypeError, ValueError) as error:
         raise ModelResponseValidationError("SQL_PARSE_INVALID", result[sql_field]) from error
     try:
@@ -393,11 +408,20 @@ def _complete_chat_response(
         raise ModelResponseValidationError("SQL_SEMANTICS_INVALID", result[sql_field]) from error
     queried = _queried_fqns(sql)
     package = payload["context_package"]
-    join_ids = sorted({item["id"] for item in package["joins"]})
+    join_ids = sorted(
+        item["id"]
+        for item in package["joins"]
+        if {
+            str(item.get("left", "")).lower(),
+            str(item.get("right", "")).lower(),
+        }.issubset(queried)
+    )
     metric_ids = [item["id"] for item in package["metrics"]]
     referenced_assets = [
         asset for asset in package["assets"] if asset["trino_fqn"].lower() in queried
-    ] or list(package["assets"])
+    ]
+    if not referenced_assets:
+        referenced_assets = list(package["assets"][:1])
     completed = {
         sql_field: sql,
         "references": [

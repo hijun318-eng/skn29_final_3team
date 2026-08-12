@@ -186,6 +186,41 @@ def test_question_requiring_database_outside_profile_is_denied_after_datahub_sea
     search.assert_called_once_with("CRM 회원 등급별 포인트", "profile-credential")
 
 
+def test_expanded_datahub_results_ignore_unrelated_permitted_asset_before_denial():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._trino.health = lambda: True
+    adapter._datahub_health = lambda: True
+    crm = {
+        asset["name"]: asset
+        for asset in adapter._assets
+        if asset["name"] in {"crm_members", "crm_point_transactions"}
+    }
+    unrelated = next(
+        asset for asset in adapter._assets if asset["fqn"] == "pms.public.pms_guests"
+    )
+
+    def search(query, _credential):
+        if query not in crm:
+            return []
+        return [
+            _metadata(adapter, crm[query], "urn:li:domain:membership"),
+            _metadata(adapter, unrelated, "urn:li:domain:rooms"),
+        ]
+
+    adapter._datahub_search = search
+    adapter._datahub_dataset = lambda urn, _credential: _live_dataset(
+        next(asset for asset in crm.values() if asset["urn"] == urn)
+    )
+    context = RequestContext(user_id=UUID(int=1), access_profile="pms_only")
+
+    with patch.dict("os.environ", {"DATAHUB_PMS_ONLY_TOKEN": "profile-credential"}, clear=False):
+        with pytest.raises(DataPlatformAccessDenied, match="outside the selected profile"):
+            adapter.search_assets(
+                "CRM 회원 등급별 사용 가능 포인트 합계",
+                context.model_dump(mode="json"),
+            )
+
+
 def test_integrated_revenue_search_limits_policy_filtering_to_three_source_contract():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     adapter._trino.health = lambda: True

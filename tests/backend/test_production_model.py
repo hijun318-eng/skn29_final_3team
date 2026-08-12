@@ -17,6 +17,7 @@ from app.adapters.contract_model import (
     _complete_dimension_order_by,
     _complete_chat_response,
     _queried_fqns,
+    _ensure_limit,
     _validate_sql_semantics,
     vllm_transport,
 )
@@ -32,6 +33,11 @@ from app.services.context_builder import (
 
 
 class ProductionModelTest(unittest.TestCase):
+    def test_model_sql_gets_bounded_limit(self) -> None:
+        self.assertTrue(_ensure_limit("SELECT 1").endswith("LIMIT 1000"))
+        self.assertEqual("SELECT 1 LIMIT 10", _ensure_limit("SELECT 1 LIMIT 10"))
+        self.assertTrue(_ensure_limit("SELECT 1 LIMIT 2000").endswith("LIMIT 1000"))
+
     def test_unmatched_model_table_reaches_g2_with_entitled_references(self) -> None:
         result = _complete_chat_response(
             {"choices": [{"message": {"content": '{"sql":"SELECT x FROM other.schema.table LIMIT 1000"}'}}]},
@@ -71,6 +77,43 @@ class ProductionModelTest(unittest.TestCase):
                 'JOIN "crm"."dbo"."crm_members" m ON t."member_no" = m."member_no"'
             ),
         )
+
+    def test_model_references_only_join_edges_used_by_sql(self) -> None:
+        result = _complete_chat_response(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"sql":"SELECT t.points FROM crm.dbo.crm_point_transactions t JOIN crm.dbo.crm_members m ON t.member_no = m.member_no LIMIT 1000"}'
+                        }
+                    }
+                ]
+            },
+            "node2",
+            {
+                "context_package": {
+                    "assets": [
+                        {"urn": "urn:t", "trino_fqn": "crm.dbo.crm_point_transactions", "columns": ["member_no", "points"]},
+                        {"urn": "urn:m", "trino_fqn": "crm.dbo.crm_members", "columns": ["member_no"]},
+                        {"urn": "urn:x", "trino_fqn": "crm.dbo.crm_customer_map", "columns": ["member_no"]},
+                    ],
+                    "joins": [
+                        {"id": "points_to_members", "left": "crm.dbo.crm_point_transactions", "right": "crm.dbo.crm_members"},
+                        {"id": "members_to_map", "left": "crm.dbo.crm_members", "right": "crm.dbo.crm_customer_map"},
+                    ],
+                    "metrics": [],
+                    "dimensions": [],
+                }
+            },
+            "model",
+            "vllm",
+        )
+
+        self.assertEqual(
+            ["crm.dbo.crm_point_transactions", "crm.dbo.crm_members"],
+            [item["trino_fqn"] for item in result["references"]],
+        )
+        self.assertTrue(all(item["join_ids"] == ["points_to_members"] for item in result["references"]))
 
     def test_dimension_semantics_accepts_order_by_projection_alias(self) -> None:
         _validate_sql_semantics(
@@ -121,7 +164,7 @@ class ProductionModelTest(unittest.TestCase):
         self.assertEqual(
             "object", body["response_format"]["json_schema"]["schema"]["type"]
         )
-        self.assertEqual("SELECT 1", result["sql"])
+        self.assertEqual("SELECT 1 LIMIT 1000", result["sql"])
 
     def test_node2_can_route_to_an_openai_compatible_sllm(self) -> None:
         calls = []

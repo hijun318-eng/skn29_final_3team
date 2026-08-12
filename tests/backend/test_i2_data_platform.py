@@ -1282,9 +1282,11 @@ def test_live_three_source_supplements_question_search_with_exact_asset_search()
 
     def search(query, _token):
         calls.append(query)
-        if " OR " not in query:
-            return []
-        return [live_dataset(live, asset["urn"]) for asset in live._three_source_assets]
+        return [
+            live_dataset(live, asset["urn"])
+            for asset in live._three_source_assets
+            if query == asset["fqn"]
+        ]
 
     live._datahub_search = search
 
@@ -1293,7 +1295,7 @@ def test_live_three_source_supplements_question_search_with_exact_asset_search()
         {"role": "hotel_analyst"},
     )
 
-    assert len(calls) >= 2
+    assert calls[1:] == [item["fqn"] for item in live._three_source_assets]
     assert {item["fqn"] for item in assets} == {
         item["fqn"] for item in live._three_source_assets
     }

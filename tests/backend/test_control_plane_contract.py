@@ -25,6 +25,10 @@ class ControlPlaneContractTest(unittest.TestCase):
             "infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql",
             dockerfile,
         )
+        self.assertIn(
+            "config/server-access-profiles.v1.json config/server-access-profiles.v1.json",
+            dockerfile,
+        )
 
     def test_published_migration_is_immutable_and_followup_is_least_privilege(self) -> None:
         versions = BACKEND / "migrations" / "versions"

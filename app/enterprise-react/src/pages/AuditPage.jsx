@@ -86,11 +86,16 @@ export function AuditPage() {
             <dl className="audit-metadata">
               <Metadata label="상태" value={trace.status} /><Metadata label="Trace ID" value={trace.trace_id} />
               <Metadata label="역할" value={trace.user_role} /><Metadata label="SQL 정책" value={trace.policy.sql_policy_version} />
+              <Metadata label="접근 Profile" value={trace.access.access_profile} /><Metadata label="정책 Version" value={trace.policy.policy_version} />
+              <Metadata label="허용 Domain" value={trace.access.allowed_domains.join(", ")} /><Metadata label="DataHub actor" value={trace.access.datahub_actor} />
+              <Metadata label="Entitlement hash" value={trace.policy.entitlement_hash} /><Metadata label="Trino role" value={trace.access.trino_role} />
+              <Metadata label="DataHub 검색 시도" value={trace.access.datahub_search_attempted ? "예" : "아니오"} /><Metadata label="Trino 실행 시도" value={trace.access.trino_execution_attempted ? "예" : "아니오"} />
               <Metadata label="시작" value={formatTime(trace.started_at)} /><Metadata label="완료" value={formatTime(trace.completed_at)} />
               <Metadata label="Context release" value={trace.context.release_key ? `${trace.context.release_key} v${trace.context.release_version}` : null} />
               <Metadata label="Model" value={trace.model ? `${trace.model.model_name} / ${trace.model.model_revision}` : null} />
               <Metadata label="Query" value={trace.query?.query_id} /><Metadata label="Artifact" value={trace.artifact?.artifact_id} />
               <Metadata label="Source URNs" value={trace.query?.source_urns?.join(", ")} /><Metadata label="Masking" value={trace.artifact ? `${trace.artifact.masking.applied ? "적용" : "미적용"}${trace.artifact.masking.fields.length ? ` (${trace.artifact.masking.fields.join(", ")})` : ""}` : null} />
+              <Metadata label="허용 URNs" value={trace.access.allowed_urns.join(", ")} />
             </dl>
             <div className="audit-transitions"><h4>상태 전이</h4><ol>{trace.transitions.map((item) => <li key={item.sequence}><i>{item.sequence}</i><b>{item.from_status || "START"} → {item.to_status}</b><time>{formatTime(item.created_at)}</time></li>)}</ol></div>
             <div className="audit-reports"><h4>보고서 실행 연결</h4>{trace.reports.length ? trace.reports.map((report) => <p key={report.run_id}><code>{report.run_id}</code><span>v{report.definition_version} · {report.status}</span></p>) : <p>연결된 보고서 실행이 없습니다.</p>}</div>

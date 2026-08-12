@@ -24,6 +24,7 @@ globalThis.sessionStorage = {
 };
 
 const frontendRoot = new URL("../../app/enterprise-react/src/", import.meta.url);
+const analysisContractSource = readFileSync(new URL("contracts/analysis.ts", frontendRoot), "utf8");
 const analysisClientSource = readFileSync(new URL("api/analysisClient.ts", frontendRoot), "utf8");
 const reportClientSource = readFileSync(new URL("api/reportClient.ts", frontendRoot), "utf8");
 const reportsPageSource = readFileSync(new URL("pages/ReportsPage.jsx", frontendRoot), "utf8");
@@ -80,7 +81,7 @@ assert.equal(normalized.sources[0].urn, "urn:pms");
 assert.equal(normalized.trace[0].stage, "G2");
 
 const auditSummary = { request_id: "request-1", user_id: "user-1", user_role: "HOTEL_ANALYST", request_type: "analysis", status: "SUCCEEDED", error_type: null, trace_id: "trace-1", started_at: "2026-08-12T00:00:00Z", completed_at: "2026-08-12T00:00:01Z" };
-const auditTrace = { ...auditSummary, transitions: [], analysis_definition: null, context: { release_id: null, release_key: null, release_version: null, release_hash: null, package_id: null, package_hash: null }, policy: { sql_policy_version: "g2-v1" }, model: null, query: { query_id: "q1", generation_mode: "TEMPLATE", validation_status: "ALLOWED", execution_status: "SUCCEEDED", duration_ms: 1, source_urns: ["urn:source"] }, artifact: { artifact_id: "a1", artifact_type: "COMPOSITE", freshness_status: "FRESH", status: "APPROVED", artifact_checksum: "sum", masking: { applied: true, fields: ["guest_id"] } }, reports: [] };
+const auditTrace = { ...auditSummary, transitions: [], analysis_definition: null, context: { release_id: null, release_key: null, release_version: null, release_hash: null, package_id: null, package_hash: null }, policy: { sql_policy_version: "g2-v1", policy_version: "ACCESS-POLICY-v1.0.0", entitlement_hash: "entitlement-hash" }, access: { access_profile: "pms_only", allowed_domains: ["rooms"], datahub_actor: "urn:li:corpuser:answervice_pms_only", allowed_urns: ["urn:source"], trino_role: "answervice_pms_only", datahub_search_attempted: true, trino_execution_attempted: true }, model: null, query: { query_id: "q1", generation_mode: "TEMPLATE", validation_status: "ALLOWED", execution_status: "SUCCEEDED", duration_ms: 1, source_urns: ["urn:source"] }, artifact: { artifact_id: "a1", artifact_type: "COMPOSITE", freshness_status: "FRESH", status: "APPROVED", artifact_checksum: "sum", masking: { applied: true, fields: ["guest_id"] } }, reports: [] };
 const effectiveAccess = { policy_version: "ACCESS-POLICY-v1.0.0", subject: "user-1", role: "hotel_analyst", mapping_source: "test_seed" };
 const auditRequests = [];
 const auditClient = createAuditClient("http://backend.test/", async (url, init) => {
@@ -89,7 +90,9 @@ const auditClient = createAuditClient("http://backend.test/", async (url, init) 
   return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 });
 assert.equal((await auditClient.search("request-1"))[0].request_id, "request-1");
-assert.equal((await auditClient.get("request-1")).policy.sql_policy_version, "g2-v1");
+const fetchedAuditTrace = await auditClient.get("request-1");
+assert.equal(fetchedAuditTrace.policy.sql_policy_version, "g2-v1");
+assert.equal(fetchedAuditTrace.access.trino_role, "answervice_pms_only");
 assert.equal((await auditClient.getAccess()).policy_version, "ACCESS-POLICY-v1.0.0");
 assert.equal(auditRequests[0].url, "http://backend.test/operations/audit?request_id=request-1");
 assert.equal(auditRequests[1].url, "http://backend.test/operations/audit/request-1");
@@ -102,21 +105,28 @@ const analysisClient = createHttpAnalysisClient("http://backend.test/", async (u
   analysisRequest = { url, init };
   return new Response(JSON.stringify(analysisResponse), { status: 200, headers: { "Content-Type": "application/json" } });
 });
-const analysisRun = await analysisClient.analyze("매출 분석", "conversation-1");
+const analysisRun = await analysisClient.analyze("매출 분석", "conversation-1", "integrated_revenue");
 assert.equal(analysisRequest.url, "http://backend.test/analysis");
 assert.equal(analysisRequest.init.method, "POST");
 assert.equal(analysisRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION);
 assert.equal(analysisRequest.init.headers.Authorization, "Bearer contract-test-token");
+assert.equal(analysisRequest.init.headers["X-Access-Profile"], "integrated_revenue");
 assert.deepEqual(JSON.parse(analysisRequest.init.body), { question: "매출 분석" });
+for (const forbidden of ["allowed_domains", "role", "datahub", "trino", "credential"]) {
+  assert.doesNotMatch(JSON.stringify(analysisRequest.init.headers).toLowerCase(), new RegExp(forbidden));
+}
 assert.equal(analysisRun.requestId, "request-1");
 
 let defaultClientRequests = 0;
-const defaultClient = createAnalysisClient(async () => {
+let defaultClientInit;
+const defaultClient = createAnalysisClient(async (_url, init) => {
   defaultClientRequests += 1;
+  defaultClientInit = init;
   return new Response(JSON.stringify(analysisResponse), { status: 200, headers: { "Content-Type": "application/json" } });
 });
 await defaultClient.analyze("기본 요청", "conversation-2");
 assert.equal(defaultClientRequests, 1);
+assert.equal(defaultClientInit.headers["X-Access-Profile"], "pms_only");
 
 for (const request of [
   async () => new Response("{}", { status: 401 }),
@@ -236,11 +246,21 @@ assert.match(agentPageSource, /createAnalysisClient\(\)/);
 assert.match(agentPageSource, /보고서에 담기/);
 assert.match(agentPageSource, /artifact_id: run\.artifact\.artifactId/);
 assert.match(agentPageSource, /query_id: run\.artifact\.queryId/);
+assert.match(agentPageSource, /useState\("pms_only"\)/);
+for (const profile of ["pms_only", "crm_only", "pms_crm", "integrated_revenue"]) assert.match(agentPageSource, new RegExp(profile));
+assert.match(agentPageSource, /htmlFor="analysis-access-profile"/);
+assert.match(agentPageSource, /id="analysis-access-profile"/);
+assert.match(agentPageSource, /disabled=\{submitting\}/);
+assert.match(agentPageSource, /aria-describedby="analysis-access-domain"/);
+assert.match(agentPageSource, /접근 Domain/);
+assert.doesNotMatch(agentPageSource, /allowed_domains|DataHub token|Trino.*credential/i);
+assert.match(analysisContractSource, /export type AccessProfile/);
 assert.match(reportsPageSource, /client\.listSchedules\(\)/);
 assert.match(reportsPageSource, /client\.upsertSchedule/);
 assert.match(reportsPageSource, /frequency === "weekly"/);
 assert.match(reportsPageSource, /frequency === "monthly"/);
 assert.match(auditPageSource, /createAuditClient\(\)/);
+for (const label of ["접근 Profile", "허용 Domain", "DataHub actor", "Entitlement hash", "Trino role", "DataHub 검색 시도", "Trino 실행 시도", "허용 URNs"]) assert.match(auditPageSource, new RegExp(label));
 assert.doesNotMatch(auditPageSource, /question|parameters|result_snapshot/i);
 
 for (const removedDataFile of ["analysisFixtures.ts", "catalogFixtures.ts", "enterpriseDemoData.js"]) {

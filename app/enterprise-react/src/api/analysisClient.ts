@@ -2,13 +2,14 @@ import {
   normalizeApiResponse,
   OPENAPI_VERSION,
   type AnalysisApiResponse,
+  type AccessProfile,
   type AnalysisRun,
 } from "../contracts/analysis.ts";
 import { createUuid } from "../utils/createUuid.ts";
 import { getAuthorizationHeader } from "./authSession.ts";
 
 export interface AnalysisClient {
-  analyze(question: string, conversationId: string): Promise<AnalysisRun>;
+  analyze(question: string, conversationId: string, accessProfile?: AccessProfile): Promise<AnalysisRun>;
 }
 
 type Fetch = typeof fetch;
@@ -20,7 +21,7 @@ export function createHttpAnalysisClient(
   request: Fetch = fetch,
 ): AnalysisClient {
   return {
-    async analyze(question, conversationId) {
+    async analyze(question, conversationId, accessProfile = "pms_only") {
       const traceId = createUuid();
       const response = await request(`${baseUrl.replace(/\/$/, "")}/analysis`, {
         method: "POST",
@@ -28,13 +29,13 @@ export function createHttpAnalysisClient(
           Authorization: getAuthorizationHeader(),
           "Content-Type": "application/json",
           "X-As-Of": env.VITE_ANALYSIS_AS_OF || new Date().toISOString().slice(0, 10),
+          "X-Access-Profile": accessProfile,
           "X-Contract-Version": OPENAPI_VERSION,
           "X-Timezone": "Asia/Seoul",
           "X-Trace-Id": traceId,
         },
         body: JSON.stringify({ question }),
       });
-      if (!response.ok) throw new Error(`Analysis API request failed (${response.status})`);
       const payload = await response.json() as AnalysisApiResponse;
       if (!payload?.data || !payload.meta) throw new Error("Analysis API returned an invalid response");
       return normalizeApiResponse(payload, question, conversationId);

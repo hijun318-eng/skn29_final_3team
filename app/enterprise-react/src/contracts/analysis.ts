@@ -1,6 +1,12 @@
 export const UI_CONTRACT_VERSION = "UI-v1.0.0";
 export const OPENAPI_VERSION = "OPENAPI-v1.0.0";
 
+export type AccessProfile =
+  | "pms_only"
+  | "crm_only"
+  | "pms_crm"
+  | "integrated_revenue";
+
 export type AnalysisRunStatus =
   | "idle"
   | "queued"

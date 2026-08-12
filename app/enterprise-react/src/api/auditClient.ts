@@ -28,7 +28,8 @@ export interface AuditTrace extends AuditRequestSummary {
   transitions: ReadonlyArray<{ sequence: number; from_status: string | null; to_status: string; created_at: string }>;
   analysis_definition: { definition_id: string; version: number; status: string } | null;
   context: { release_id: string | null; release_key: string | null; release_version: number | null; release_hash: string | null; package_id: string | null; package_hash: string | null };
-  policy: { sql_policy_version: string };
+  policy: { sql_policy_version: string; policy_version: string; entitlement_hash: string | null };
+  access: { access_profile: string | null; allowed_domains: readonly string[]; datahub_actor: string | null; allowed_urns: readonly string[]; trino_role: string | null; datahub_search_attempted: boolean; trino_execution_attempted: boolean };
   model: { model_version_id: string; model_role: string; model_name: string; model_revision: string; runtime_name: string } | null;
   query: { query_id: string | null; generation_mode: string; validation_status: string; execution_status: string; duration_ms: number | null; source_urns: readonly string[] } | null;
   artifact: { artifact_id: string; artifact_type: string; freshness_status: string; status: string; artifact_checksum: string; masking: { applied: boolean; fields: readonly string[] } } | null;

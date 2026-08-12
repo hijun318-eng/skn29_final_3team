@@ -8,6 +8,12 @@ import { OPENAPI_VERSION } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 
 const ARTIFACT_TABS = [["report", "Report"], ["sources", "Sources"], ["run", "Run history"], ["trace", "Trace"]];
+const ACCESS_PROFILES = [
+  ["pms_only", "PMS 전용", "PMS"],
+  ["crm_only", "CRM 전용", "CRM"],
+  ["pms_crm", "PMS + CRM", "PMS · CRM"],
+  ["integrated_revenue", "통합 매출", "PMS · CRM · POS"],
+];
 const client = createAnalysisClient();
 const reportClient = createReportClient();
 
@@ -34,6 +40,7 @@ function createTransientRun(question, conversationId, status = "idle") {
 export function AgentPage() {
   const [conversationId] = useState(createUuid);
   const [question, setQuestion] = useState("");
+  const [accessProfile, setAccessProfile] = useState("pms_only");
   const [submittedQuestion, setSubmittedQuestion] = useState("");
   const [run, setRun] = useState(() => createTransientRun("", conversationId));
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -54,7 +61,7 @@ export function AgentPage() {
     setReportTransfer({ status: "idle", message: "" });
     setRun(createTransientRun(nextQuestion, conversationId, "queued"));
     try {
-      setRun(await client.analyze(nextQuestion, conversationId));
+      setRun(await client.analyze(nextQuestion, conversationId, accessProfile));
     } catch {
       setRun({
         ...createTransientRun(nextQuestion, conversationId, "failed"),
@@ -99,7 +106,7 @@ export function AgentPage() {
   return (
     <div className={`chat-layout ${evidenceOpen ? "evidence-open" : ""}`}>
       <aside className="chat-history">
-        <button className="new-chat" onClick={() => { setQuestion(""); setHasSubmitted(false); setRun(createTransientRun("", conversationId)); }}><Plus size={16} />새 분석</button>
+        <button className="new-chat" onClick={() => { setQuestion(""); setAccessProfile("pms_only"); setHasSubmitted(false); setRun(createTransientRun("", conversationId)); }}><Plus size={16} />새 분석</button>
         <p>RECENT</p>
         <div className="evidence-empty"><MessageSquareText size={15} /> 저장된 대화가 없습니다.</div>
       </aside>
@@ -120,6 +127,8 @@ export function AgentPage() {
           </div>
         </div>}
         <form className="chat-input" onSubmit={submitQuestion}>
+          <label className="access-profile-picker" htmlFor="analysis-access-profile"><span>데이터 접근 범위</span><select id="analysis-access-profile" value={accessProfile} disabled={submitting} aria-describedby="analysis-access-domain" onChange={(event) => setAccessProfile(event.target.value)}>{ACCESS_PROFILES.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+          <div className="access-profile-meta" id="analysis-access-domain" aria-live="polite"><span>선택 profile <b>{accessProfile}</b></span><span>접근 Domain <b>{ACCESS_PROFILES.find(([value]) => value === accessProfile)?.[2]}</b></span></div>
           <div className="question-field"><input aria-label="분석 질문" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="승인된 데이터에 대해 질문하세요..." /><button aria-label="질문 전송" disabled={submitting}><Send size={17} /></button></div>
           <small>화면에는 Analysis API가 반환한 결과만 표시됩니다.</small>
         </form>

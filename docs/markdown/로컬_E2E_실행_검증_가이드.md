@@ -98,7 +98,7 @@ NODE2_MODEL=answervice-sql-lora-qwen3.5-4b
 MODEL_TIMEOUT_SECONDS=300
 ```
 
-Node2·2′는 `Qwen/Qwen3.5-4B` Base의 SQL LoRA를 OpenAI-compatible endpoint에서 `answervice-sql-lora-qwen3.5-4b` alias로 제공한다. RunPod는 `RUNPOD_API_KEY`를 인증에 재사용하며 `workersMin=0`, `workersMax=1`, `idleTimeout=30`초로 유지한다. 첫 콜드스타트는 수 분 걸릴 수 있으므로 timeout을 600초로 둔다.
+Node2·2′는 `Qwen/Qwen3.5-4B` Base의 SQL LoRA를 OpenAI-compatible endpoint에서 `answervice-sql-lora-qwen3.5-4b` alias로 제공한다. 현재 E2E 기간에는 RunPod worker를 상시 유지하도록 `workersMin=1`, `workersMax=1`, `idleTimeout=300`초, `executionTimeoutMs=300000`으로 설정한다. `workersMin=1`은 유휴 중에도 Active 과금이 계속되므로 검증 종료 뒤 비용 절감이 필요하면 `workersMin=0`으로 되돌린다. GPU 후보는 저가형을 우선하고 최대 RTX 4090급까지 fallback한다.
 
 ```powershell
 docker compose --env-file .env --profile full up -d --build backend

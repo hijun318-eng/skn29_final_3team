@@ -35,7 +35,11 @@
       "workers_min_after_test": 0,
       "workers_max": 1,
       "idle_timeout_seconds": 30,
-      "gpu_type_ids": ["NVIDIA RTX A4500", "NVIDIA RTX 4000 Ada Generation"]
+      "gpu_type_ids": [
+        "NVIDIA RTX A4000",
+        "NVIDIA RTX A4500",
+        "NVIDIA RTX 4000 Ada Generation"
+      ]
     }
   },
   "auto_regeneration": "DISABLED",

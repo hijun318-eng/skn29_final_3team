@@ -30,6 +30,7 @@ from app.services.execution_control import (
 from app.services.pipeline_support import PipelineSupport
 from app.services.routing_service import RouteDecision
 from app.services.state_machine import AnalysisStateMachine
+from app.telemetry import observe_stage
 
 
 class AnalysisService:
@@ -50,6 +51,23 @@ class AnalysisService:
         )
         self._responses = AnalysisResponseFactory()
         self._cache = cache or IsolatedExecutionCache()
+
+    def _call_model(
+        self,
+        budget: ModelCallBudget,
+        node: str,
+        payload: dict[str, Any],
+        context: RequestContext,
+    ) -> dict[str, Any]:
+        with observe_stage(
+            "model",
+            context=context,
+            attributes={"gen_ai.operation.name": node},
+        ) as span:
+            result = budget.call(self._model, node, payload)
+            if isinstance(result, dict) and isinstance(result.get("model_version"), str):
+                span.set_attribute("gen_ai.response.model", result["model_version"])
+            return result
 
     def analyze(
         self,
@@ -82,10 +100,18 @@ class AnalysisService:
             else payload.question
         )
         try:
-            assets = self._adapter.search_assets(
-                asset_query,
-                context.model_dump(mode="json"),
-            )
+            with observe_stage(
+                "context",
+                context=context,
+                attributes={
+                    "answervice.context.operation": "datahub_search",
+                    "answervice.access_profile": context.access_profile or "default",
+                },
+            ):
+                assets = self._adapter.search_assets(
+                    asset_query,
+                    context.model_dump(mode="json"),
+                )
         except DataPlatformAccessDenied:
             return self._responses.error(
                 context, machine, trace, PipelineStage.CONTEXT,
@@ -110,18 +136,30 @@ class AnalysisService:
                 item for item in assets if item.get("fqn") in decision.source_fqns
             ]
         try:
-            node1 = budget.call(
-                self._model,
+            node1 = self._call_model(
+                budget,
                 "node1",
                 self._support.node1_request(payload, context, assets),
+                context,
             )
         except (TimeoutError, TypeError, ValueError):
             return self._responses.model_error(context, machine, trace, decision)
         try:
-            assets, normalized_question = self._support.select_metric(
-                payload, context, assets, node1
-            )
-            package = self._support.build_context(payload, context, assets)
+            with observe_stage(
+                "context",
+                context=context,
+                attributes={
+                    "answervice.context.operation": "package_build",
+                    "answervice.asset_count": len(assets),
+                },
+            ) as span:
+                assets, normalized_question = self._support.select_metric(
+                    payload, context, assets, node1
+                )
+                package = self._support.build_context(payload, context, assets)
+                span.set_attribute(
+                    "answervice.context_package_hash", package.package_hash
+                )
         except ContextBuildError:
             return self._responses.error(
                 context,
@@ -218,8 +256,8 @@ class AnalysisService:
             }
         else:
             try:
-                plan = budget.call(
-                    self._model,
+                plan = self._call_model(
+                    budget,
                     "node2",
                     {
                         "scenario": scenario,
@@ -229,6 +267,7 @@ class AnalysisService:
                         "package": package,
                         "context": context,
                     },
+                    context,
                 )
             except (TimeoutError, TypeError, ValueError):
                 return self._responses.model_error(context, machine, trace, decision)
@@ -273,8 +312,8 @@ class AnalysisService:
                 )
             repair_count = 1
             try:
-                plan = budget.call(
-                    self._model,
+                plan = self._call_model(
+                    budget,
                     "node2_repair",
                     {
                         "scenario": scenario,
@@ -286,6 +325,7 @@ class AnalysisService:
                         "package": package,
                         "context": context,
                     },
+                    context,
                 )
             except (TimeoutError, TypeError, ValueError):
                 return self._responses.model_error(
@@ -324,16 +364,26 @@ class AnalysisService:
         cached_query = self._cache.get_result(result_key)
         result_cached = cached_query is not None
         try:
-            if cached_query is None:
-                query = self._adapter.execute_query(
-                    plan["sql"],
-                    plan.get("parameters", {}),
-                    gate_token,
-                    getattr(package, "trino_principal", None),
+            with observe_stage(
+                "trino",
+                context=context,
+                attributes={"answervice.cache_hit": result_cached},
+            ) as span:
+                if cached_query is None:
+                    query = self._adapter.execute_query(
+                        plan["sql"],
+                        plan.get("parameters", {}),
+                        gate_token,
+                        getattr(package, "trino_principal", None),
+                    )
+                    query = self._adapter.get_query_status(query["query_id"])
+                else:
+                    query = cached_query
+                span.set_attribute(
+                    "answervice.query_status", str(query.get("status", "unknown"))
                 )
-                query = self._adapter.get_query_status(query["query_id"])
-            else:
-                query = cached_query
+                if query.get("query_id"):
+                    span.set_attribute("answervice.query_id", str(query["query_id"]))
         except (KeyError, TimeoutError, TypeError, ValueError):
             return self._responses.error(
                 context,
@@ -442,8 +492,8 @@ class AnalysisService:
             }
         else:
             try:
-                explanation = budget.call(
-                    self._model,
+                explanation = self._call_model(
+                    budget,
                     "node3",
                     {
                         "scenario": scenario,
@@ -451,6 +501,7 @@ class AnalysisService:
                         "assets": assets,
                         "context": context,
                     },
+                    context,
                 )
                 if (
                     not isinstance(explanation, dict)
@@ -466,16 +517,18 @@ class AnalysisService:
                     decision,
                     repair_count,
                 )
-        artifact_id = self._support.artifact_id(
-            context.trace_id,
-            query["query_id"],
-            package.package_hash,
-        )
-        artifact = ArtifactReference(
-            artifact_id=artifact_id,
-            query_id=query["query_id"],
-            context_hash=package.package_hash,
-        )
+        with observe_stage("artifact", context=context) as span:
+            artifact_id = self._support.artifact_id(
+                context.trace_id,
+                query["query_id"],
+                package.package_hash,
+            )
+            artifact = ArtifactReference(
+                artifact_id=artifact_id,
+                query_id=query["query_id"],
+                context_hash=package.package_hash,
+            )
+            span.set_attribute("answervice.artifact_id", str(artifact_id))
         self._responses.record(trace, PipelineStage.ARTIFACT, str(artifact_id))
 
         response = self._responses.success(

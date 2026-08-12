@@ -13,6 +13,7 @@ from app.api.audit_router import audit_router
 from app.api.catalog_router import catalog_router
 from app.api.report_router import report_router
 from app.context import ContextValidationError, request_context
+from app.telemetry import observe_stage
 from app.contracts import (
     CONTRACT_VERSION,
     EmptyData,
@@ -67,7 +68,17 @@ app.include_router(catalog_router)
 async def request_context_header(request: Request, call_next):
     request.state.request_id = uuid4()
     request.state.trace_id = request.headers.get("X-Trace-Id") or uuid4().hex
-    response = await call_next(request)
+    with observe_stage(
+        "request",
+        request_id=str(request.state.request_id),
+        trace_id=request.state.trace_id,
+        attributes={
+            "http.request.method": request.method,
+            "url.path": request.url.path,
+        },
+    ) as span:
+        response = await call_next(request)
+        span.set_attribute("http.response.status_code", response.status_code)
     response.headers["X-Request-Id"] = str(request.state.request_id)
     response.headers["X-Trace-Id"] = request.state.trace_id
     return response

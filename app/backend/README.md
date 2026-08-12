@@ -111,6 +111,15 @@ docker compose --profile dev up -d app-postgres app-postgres-provision backend r
 
 backend는 `http://127.0.0.1:18000`에서 접근한다. 서비스 정의는 root Compose가 [compose.fragment.yml](compose.fragment.yml)을 결합한다.
 
+## 관측성
+
+backend는 HTTP request와 분석의 Context 검색·조립, model, Trino, Artifact 단계를
+OpenTelemetry span·metric·상관 로그로 기록한다. 모든 단계에는 기존 `request_id`와
+`trace_id`만 상관 속성으로 사용하며 질문, token, SQL, parameter, 조회 결과는 기록하지
+않는다. `OTEL_EXPORTER_OTLP_ENDPOINT`가 비어 있으면 SDK exporter를 만들지 않는 안전한
+no-op이고, collector를 사용할 때만 OTLP/HTTP base URL(예: `http://otel-collector:4318`)을
+배포 환경에 설정한다.
+
 ## 조건부 backend 선행 작업
 
 I1 전체 승인이 완료되기 전에도 R4는 producer draft를 만들 수 있지만 `APPROVED` 또는 Gate 통과로 표시하지 않는다. 변경이 필요하면 contract diff를 제출한다. UI·Report 구현과 다른 역할 소유 코드는 R4가 직접 변경하지 않는다.

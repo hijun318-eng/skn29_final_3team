@@ -42,6 +42,32 @@ $env:MODEL_TIMEOUT_SECONDS = "15"
 
 `DATA_PLATFORM_MODE=versioned-trino`는 DataHub 없이 승인된 versioned Context와 실제 Trino를 연결한다. `real`은 live DataHub metadata exact-match와 승인 raw join 계약을 요구한다.
 
+### DataHub 접근 profile 운영
+
+self-hosted DataHub OSS v1.7에서 `VIEW_AUTHORIZATION_ENABLED=true`는 entity page 조회를 제한하지만, 검색 시점의 권한 pushdown은 Cloud 전용이다. 따라서 backend는 검색 결과마다 허용 Domain과 Tag를 확인하고 승인된 dataset URN·schema·FQN과 exact-match한 뒤 Context에 포함해야 한다. Domain/Tag가 없거나 허용 URN을 확정할 수 없는 결과도 거부한다. 자세한 제품 경계는 DataHub 공식 [Search Access Controls](https://docs.datahub.com/docs/features/feature-guides/search-access-controls)와 [Policies Guide](https://docs.datahub.com/docs/authorization/policies)를 따른다.
+
+profile 계약의 단일 원본은 [server-access-profiles.v1.json](../../config/server-access-profiles.v1.json)이다.
+
+| profile | 허용 Domain URN | DataHub token 환경 변수 | Trino principal |
+| --- | --- | --- | --- |
+| `pms_only` | `urn:li:domain:rooms` | `DATAHUB_PMS_ONLY_TOKEN` | `answervice_pms_only` |
+| `crm_only` | `urn:li:domain:membership` | `DATAHUB_CRM_ONLY_TOKEN` | `answervice_crm_only` |
+| `pms_crm` | `urn:li:domain:rooms`, `urn:li:domain:membership` | `DATAHUB_PMS_CRM_TOKEN` | `answervice_pms_crm` |
+| `integrated_revenue` | `urn:li:domain:hotel-analytics` | `DATAHUB_INTEGRATED_REVENUE_TOKEN` | `answervice_integrated_revenue` |
+
+각 token은 profile별 최소 권한 PAT로 발급해 배포 secret에서 해당 환경 변수로 주입한다. raw token은 저장소·설정 예시·로그·응답에 기록하지 않는다. 브라우저는 선택한 `X-Access-Profile`만 보내며 profile token, 허용 Domain, role, DataHub token 또는 Trino 자격증명을 보내거나 보관하지 않는다.
+
+운영 bootstrap과 검증 순서는 다음과 같다.
+
+1. profile별 Domain·Tag·승인 URN과 Trino principal을 검토하고 versioned profile 계약을 승인한다.
+2. DataHub actor와 Domain 정책을 생성하고 dataset에 Domain·Tag를 부여한 뒤 `VIEW_AUTHORIZATION_ENABLED=true`를 적용한다.
+3. profile별 PAT를 별도로 발급해 secret manager 또는 read-only secret mount에 저장하고, 배포 시 계약의 환경 변수로만 주입한다.
+4. [Trino 접근 제어](../../infrastructure/database/trino/etc/access-control-rules.json)에 principal별 최소 `SELECT` 범위와 명시적 deny가 있는지 확인하고 backend를 재기동한다.
+5. 각 profile의 허용 dataset 검색·조회와 Trino 질의가 성공하고, 다른 Domain·Tag·URN 및 catalog 접근은 실패하는지 확인한다. 브라우저 개발자 도구에서 profile token·정책·DataHub/Trino 자격증명이 노출되지 않는지도 확인한다.
+6. token 누락·만료, 알 수 없는 profile, 정책 로드 실패, metadata 불일치, DataHub/Trino 오류를 각각 유도해 요청이 성공 결과·cache·Artifact 없이 차단되는지 확인한다. 감사 로그에는 profile·정책 버전·principal 식별자만 남고 raw token은 없어야 한다.
+
+위 검증 중 하나라도 실패하면 다른 profile, 공용 DataHub token, 더 넓은 Trino principal 또는 `versioned-trino`로 fallback하지 않는다. 정책과 자격증명이 정상화될 때까지 fail-closed 상태를 유지한다.
+
 ```powershell
 $env:DATA_PLATFORM_MODE = "versioned-trino"
 $env:MODEL_MODE = "template-only"

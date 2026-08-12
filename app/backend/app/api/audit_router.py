@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,9 +27,18 @@ def _repository(context: RequestContext):
 def search_audit_requests(
     context: Annotated[RequestContext, Depends(analysis_context)],
     request_id: str | None = None,
+    status: str | None = None,
+    started_from: datetime | None = None,
+    started_to: datetime | None = None,
 ) -> dict:
     try:
-        return {"items": _repository(context).search(request_id)}
+        if started_from and started_to and started_from > started_to:
+            raise ValueError("started_from은 started_to보다 늦을 수 없습니다.")
+        return {
+            "items": _repository(context).search(
+                request_id, status, started_from, started_to
+            )
+        }
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except RuntimeError as error:

@@ -80,7 +80,7 @@ assert.equal(normalized.sources[0].urn, "urn:pms");
 assert.equal(normalized.trace[0].stage, "G2");
 
 const auditSummary = { request_id: "request-1", user_id: "user-1", user_role: "HOTEL_ANALYST", request_type: "analysis", status: "SUCCEEDED", error_type: null, trace_id: "trace-1", started_at: "2026-08-12T00:00:00Z", completed_at: "2026-08-12T00:00:01Z" };
-const auditTrace = { ...auditSummary, transitions: [], analysis_definition: null, context: { release_id: null, release_key: null, release_version: null, release_hash: null, package_id: null, package_hash: null }, policy: { sql_policy_version: "g2-v1" }, model: null, query: null, artifact: null, reports: [] };
+const auditTrace = { ...auditSummary, transitions: [], analysis_definition: null, context: { release_id: null, release_key: null, release_version: null, release_hash: null, package_id: null, package_hash: null }, policy: { sql_policy_version: "g2-v1" }, model: null, query: { query_id: "q1", generation_mode: "TEMPLATE", validation_status: "ALLOWED", execution_status: "SUCCEEDED", duration_ms: 1, source_urns: ["urn:source"] }, artifact: { artifact_id: "a1", artifact_type: "COMPOSITE", freshness_status: "FRESH", status: "APPROVED", artifact_checksum: "sum", masking: { applied: true, fields: ["guest_id"] } }, reports: [] };
 const auditRequests = [];
 const auditClient = createAuditClient("http://backend.test/", async (url, init) => {
   auditRequests.push({ url, init });

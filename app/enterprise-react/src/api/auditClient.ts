@@ -23,8 +23,8 @@ export interface AuditTrace extends AuditRequestSummary {
   context: { release_id: string | null; release_key: string | null; release_version: number | null; release_hash: string | null; package_id: string | null; package_hash: string | null };
   policy: { sql_policy_version: string };
   model: { model_version_id: string; model_role: string; model_name: string; model_revision: string; runtime_name: string } | null;
-  query: { query_id: string | null; generation_mode: string; validation_status: string; execution_status: string; duration_ms: number | null } | null;
-  artifact: { artifact_id: string; artifact_type: string; freshness_status: string; status: string; artifact_checksum: string } | null;
+  query: { query_id: string | null; generation_mode: string; validation_status: string; execution_status: string; duration_ms: number | null; source_urns: readonly string[] } | null;
+  artifact: { artifact_id: string; artifact_type: string; freshness_status: string; status: string; artifact_checksum: string; masking: { applied: boolean; fields: readonly string[] } } | null;
   reports: ReadonlyArray<{ definition_id: string; definition_version: number; run_id: string; status: string }>;
 }
 
@@ -49,8 +49,14 @@ export function createAuditClient(
   });
 
   return {
-    async search(requestId = ""): Promise<readonly AuditRequestSummary[]> {
-      const query = requestId.trim() ? `?request_id=${encodeURIComponent(requestId.trim())}` : "";
+    async search(filters: { requestId?: string; status?: string; startedFrom?: string; startedTo?: string } | string = {}): Promise<readonly AuditRequestSummary[]> {
+      const normalized = typeof filters === "string" ? { requestId: filters } : filters;
+      const parameters = new URLSearchParams();
+      if (normalized.requestId?.trim()) parameters.set("request_id", normalized.requestId.trim());
+      if (normalized.status?.trim()) parameters.set("status", normalized.status.trim());
+      if (normalized.startedFrom) parameters.set("started_from", normalized.startedFrom);
+      if (normalized.startedTo) parameters.set("started_to", normalized.startedTo);
+      const query = parameters.size ? `?${parameters}` : "";
       return (await parse<{ items: AuditRequestSummary[] }>(await send(`/operations/audit${query}`))).items;
     },
     async get(requestId: string): Promise<AuditTrace> {

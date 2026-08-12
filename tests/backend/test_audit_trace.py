@@ -60,11 +60,13 @@ def _safe_row() -> dict:
         "validation_status": "ALLOWED",
         "execution_status": "SUCCEEDED",
         "duration_ms": 12,
+        "source_urns_json": ["urn:li:dataset:room-revenue"],
         "artifact_id": artifact_id,
         "artifact_type": "COMPOSITE",
         "freshness_status": "FRESH",
         "artifact_status": "APPROVED",
         "artifact_checksum": "a" * 64,
+        "evidence_json": {"masking": {"applied": True, "fields": ["guest_id"]}},
         # 저장소 행에 존재하더라도 응답 조립 대상이 될 수 없는 민감 payload.
         "generated_sql_redacted": "SELECT secret",
         "parameters_json": {"guest": "secret"},
@@ -83,7 +85,9 @@ def test_detail_returns_linked_metadata_without_sql_parameters_or_result_payload
 
     assert payload["query"]["query_id"] == "query-1"
     assert payload["artifact"]["artifact_id"]
-    for forbidden in ("SELECT secret", "parameters_json", "data_snapshot_json", "guest"):
+    assert payload["query"]["source_urns"] == ["urn:li:dataset:room-revenue"]
+    assert payload["artifact"]["masking"] == {"applied": True, "fields": ["guest_id"]}
+    for forbidden in ("SELECT secret", "parameters_json", "data_snapshot_json"):
         assert forbidden not in serialized
 
 
@@ -93,12 +97,23 @@ def test_repository_search_binds_owner_and_reads_only_safe_summary_columns():
     connection = engine.connect.return_value.__enter__.return_value
     connection.execute.return_value.mappings.return_value = []
     with patch("app.adapters.audit_repository._engine", return_value=engine):
-        PostgresAuditRepository("postgresql://runtime", owner_id).search(request_id)
+        PostgresAuditRepository("postgresql://runtime", owner_id).search(
+            request_id, "SUCCEEDED", NOW, NOW
+        )
 
     statement, parameters = connection.execute.call_args.args
     sql = str(statement)
-    assert parameters == {"owner_id": owner_id, "request_id": request_id}
+    assert parameters == {
+        "owner_id": owner_id,
+        "request_id": request_id,
+        "status": "SUCCEEDED",
+        "started_from": NOW,
+        "started_to": NOW,
+    }
     assert "r.user_id = :owner_id" in sql
+    assert "r.status = :status" in sql
+    assert "r.started_at >= :started_from" in sql
+    assert "r.started_at <= :started_to" in sql
     for forbidden in ("question_text", "generated_sql", "parameters_json", "data_snapshot_json"):
         assert forbidden not in sql
 
@@ -108,8 +123,8 @@ class _AuditRepository:
         self.item = item
         self.searched = None
 
-    def search(self, request_id=None):
-        self.searched = request_id
+    def search(self, request_id=None, status=None, started_from=None, started_to=None):
+        self.searched = (request_id, status, started_from, started_to)
         return [{key: self.item[key] for key in (
             "request_id", "user_id", "user_role", "request_type", "status",
             "error_type", "trace_id", "started_at", "completed_at",
@@ -132,7 +147,7 @@ def test_search_and_detail_keep_every_role_in_authenticated_owner_scope(role: Ro
         searched = audit_api.search_audit_requests(context, str(row["request_id"]))
         detail = audit_api.get_audit_trace(str(row["request_id"]), context)
 
-    assert repository.searched == str(row["request_id"])
+    assert repository.searched == (str(row["request_id"]), None, None, None)
     assert searched["items"][0]["user_id"] == context.user_id
     assert detail["user_id"] == context.user_id
 
@@ -147,3 +162,12 @@ def test_invalid_or_foreign_request_is_not_disclosed():
 
     with pytest.raises(ValueError):
         _uuid("not-a-uuid")
+
+
+def test_search_rejects_inverted_started_range():
+    with patch.object(audit_api, "_repository"):
+        with pytest.raises(HTTPException) as invalid:
+            audit_api.search_audit_requests(
+                _context(), started_from=NOW, started_to=NOW.replace(year=2025)
+            )
+    assert invalid.value.status_code == 422

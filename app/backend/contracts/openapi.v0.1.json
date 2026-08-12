@@ -521,6 +521,9 @@
             "title": "Freshness Status",
             "type": "string"
           },
+          "masking": {
+            "$ref": "#/components/schemas/MaskingTrace"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -531,7 +534,8 @@
           "artifact_type",
           "freshness_status",
           "status",
-          "artifact_checksum"
+          "artifact_checksum",
+          "masking"
         ],
         "title": "ArtifactTrace",
         "type": "object"
@@ -1347,6 +1351,28 @@
         "title": "MaskingEvidence",
         "type": "object"
       },
+      "MaskingTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "applied",
+          "fields"
+        ],
+        "title": "MaskingTrace",
+        "type": "object"
+      },
       "MetricValue": {
         "additionalProperties": false,
         "properties": {
@@ -1517,6 +1543,13 @@
             ],
             "title": "Query Id"
           },
+          "source_urns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Urns",
+            "type": "array"
+          },
           "validation_status": {
             "title": "Validation Status",
             "type": "string"
@@ -1527,7 +1560,8 @@
           "generation_mode",
           "validation_status",
           "execution_status",
-          "duration_ms"
+          "duration_ms",
+          "source_urns"
         ],
         "title": "QueryTrace",
         "type": "object"
@@ -3141,6 +3175,56 @@
                 }
               ],
               "title": "Request Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "started_from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "started_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started To"
             }
           },
           {

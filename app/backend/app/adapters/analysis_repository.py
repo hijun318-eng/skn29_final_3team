@@ -412,6 +412,7 @@ class PostgresAnalysisRepository:
                     )
                     previous = transition.value
                 if execution and response.data.artifact and response.data.result:
+                    self._link_execution_metadata(connection, request_id, execution)
                     self._save_evidence(connection, request_id, response, execution)
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 실행 결과를 저장할 수 없습니다.") from error
@@ -436,6 +437,120 @@ class PostgresAnalysisRepository:
                 )
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 실행 실패를 저장할 수 없습니다.") from error
+
+    @staticmethod
+    def _link_execution_metadata(connection, request_id, execution) -> None:
+        plan = execution["plan"]
+        package = execution["package"]
+        release_id = connection.execute(
+            text(
+                """
+                SELECT context_release_id
+                FROM context.context_releases
+                WHERE status = 'PUBLISHED'
+                  AND (release_key = :release OR release_hash = :release)
+                ORDER BY version_no DESC
+                LIMIT 1
+                """
+            ),
+            {"release": package.context_release},
+        ).scalar_one_or_none()
+        package_id = None
+        if release_id is not None:
+            package_id = uuid4()
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO context.context_packages
+                        (context_package_id, request_id, context_release_id,
+                         user_scope_json, assets_json, metrics_json, joins_json,
+                         policies_json, dataset_count, column_count, token_count,
+                         package_hash)
+                    VALUES (:package_id, :request_id, :release_id,
+                            CAST(:user_scope AS jsonb), CAST(:assets AS jsonb),
+                            CAST(:metrics AS jsonb), CAST(:joins AS jsonb),
+                            CAST(:policies AS jsonb), :dataset_count, :column_count,
+                            :token_count, :package_hash)
+                    ON CONFLICT (request_id) DO NOTHING
+                    """
+                ),
+                {
+                    "package_id": package_id,
+                    "request_id": request_id,
+                    "release_id": release_id,
+                    "user_scope": json.dumps(
+                        {"entitlement_hash": package.entitlement_hash}
+                    ),
+                    "assets": json.dumps(
+                        [
+                            {
+                                "urn": item.urn,
+                                "fqn": item.fqn,
+                                "columns": list(item.columns),
+                            }
+                            for item in package.assets
+                        ]
+                    ),
+                    "metrics": json.dumps([item.id for item in package.metrics]),
+                    "joins": json.dumps(list(package.approved_join_ids)),
+                    "policies": json.dumps(
+                        {
+                            "sql_policy_version": package.policy_version,
+                            "time_version": package.time_version,
+                        }
+                    ),
+                    "dataset_count": package.dataset_count,
+                    "column_count": package.column_count,
+                    "token_count": package.token_count,
+                    "package_hash": package.package_hash,
+                },
+            )
+            package_id = connection.execute(
+                text(
+                    "SELECT context_package_id FROM context.context_packages "
+                    "WHERE request_id = :request_id"
+                ),
+                {"request_id": request_id},
+            ).scalar_one()
+
+        model_version = str(plan.get("model_version", ""))
+        model_id = None
+        if model_version and not model_version.startswith("TEMPLATE"):
+            model_id = connection.execute(
+                text(
+                    """
+                    SELECT model_version_id
+                    FROM model.model_versions
+                    WHERE model_role = 'SQL_GENERATION'
+                      AND status IN ('APPROVED', 'DEPLOYED')
+                      AND (model_revision = :version OR model_name = :version
+                           OR checkpoint_ref = :version)
+                    ORDER BY CASE status WHEN 'DEPLOYED' THEN 0 ELSE 1 END,
+                             model_version_id
+                    LIMIT 1
+                    """
+                ),
+                {"version": model_version},
+            ).scalar_one_or_none()
+        connection.execute(
+            text(
+                """
+                UPDATE chat.analysis_requests
+                SET context_release_id = :release_id,
+                    context_package_id = :package_id,
+                    sql_generation_model_id = :model_id,
+                    sql_policy_version = :policy_version
+                WHERE request_id = :request_id
+                """
+            ),
+            {
+                "request_id": request_id,
+                "release_id": release_id,
+                "package_id": package_id,
+                "model_id": model_id,
+                "policy_version": package.policy_version,
+            },
+        )
 
     @staticmethod
     def _save_evidence(connection, request_id, response, execution) -> None:

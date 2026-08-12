@@ -102,6 +102,16 @@ class OpenApiContractTest(unittest.TestCase):
         serialized = json.dumps(schemas["AuditTraceResponse"], ensure_ascii=False)
         for forbidden in ("sql", "parameters", "result", "snapshot", "question"):
             self.assertNotIn(f'"{forbidden}"', serialized)
+        self.assertIn("source_urns", schemas["QueryTrace"]["properties"])
+        self.assertIn("masking", schemas["ArtifactTrace"]["properties"])
+
+        parameters = {
+            item["name"]
+            for item in app.openapi()["paths"]["/operations/audit"]["get"]["parameters"]
+        }
+        self.assertTrue(
+            {"request_id", "status", "started_from", "started_to"}.issubset(parameters)
+        )
 
     def test_authenticated_routes_use_server_owned_bearer_identity(self) -> None:
         schema = app.openapi()

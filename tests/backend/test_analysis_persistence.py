@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from sys import path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -19,6 +20,7 @@ from app.analysis_contracts import (  # noqa: E402
     ReplayAnalysisRequest,
 )
 from app.api import router as analysis_api  # noqa: E402
+from app.adapters.analysis_repository import PostgresAnalysisRepository  # noqa: E402
 from app.contracts import RequestContext  # noqa: E402
 
 
@@ -168,3 +170,49 @@ def test_replay_request_rejects_client_owned_status_and_blank_idempotency():
         )
     with pytest.raises(ValidationError):
         ReplayAnalysisRequest(as_of=date(2026, 7, 1), idempotency_key=" ")
+
+
+def test_success_metadata_links_existing_release_package_and_model_without_payloads():
+    release_id, package_id, model_id, request_id = (uuid4() for _ in range(4))
+    connection = MagicMock()
+    scalar = lambda value: MagicMock(scalar_one_or_none=lambda: value)
+    package_scalar = MagicMock(scalar_one=lambda: package_id)
+    connection.execute.side_effect = [
+        scalar(release_id),
+        MagicMock(),
+        package_scalar,
+        scalar(model_id),
+        MagicMock(),
+    ]
+    package = SimpleNamespace(
+        context_release="context-v1",
+        entitlement_hash="entitlement-hash",
+        assets=(SimpleNamespace(urn="urn:source", fqn="catalog.schema.table", columns=("id",)),),
+        metrics=(),
+        approved_join_ids=(),
+        policy_version="policy-v1",
+        time_version="2026-08-12",
+        dataset_count=1,
+        column_count=1,
+        token_count=10,
+        package_hash="a" * 64,
+    )
+
+    PostgresAnalysisRepository._link_execution_metadata(
+        connection,
+        request_id,
+        {"plan": {"model_version": "MODEL-v1"}, "package": package},
+    )
+
+    update_sql, update_parameters = connection.execute.call_args.args
+    assert "context_release_id = :release_id" in str(update_sql)
+    assert update_parameters == {
+        "request_id": request_id,
+        "release_id": release_id,
+        "package_id": package_id,
+        "model_id": model_id,
+        "policy_version": "policy-v1",
+    }
+    all_sql = " ".join(str(call.args[0]) for call in connection.execute.call_args_list)
+    for forbidden in ("question_text_redacted", "generated_sql_redacted", "data_snapshot_json"):
+        assert forbidden not in all_sql

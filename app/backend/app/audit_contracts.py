@@ -66,6 +66,12 @@ class QueryTrace(AuditContractModel):
     validation_status: str
     execution_status: str
     duration_ms: int | None
+    source_urns: list[str]
+
+
+class MaskingTrace(AuditContractModel):
+    applied: bool
+    fields: list[str]
 
 
 class ArtifactTrace(AuditContractModel):
@@ -74,6 +80,7 @@ class ArtifactTrace(AuditContractModel):
     freshness_status: str
     status: str
     artifact_checksum: str
+    masking: MaskingTrace
 
 
 class ReportTrace(AuditContractModel):

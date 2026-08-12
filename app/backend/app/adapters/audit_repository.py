@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import Engine, create_engine, text
@@ -30,11 +31,28 @@ class PostgresAuditRepository:
         self._engine = _engine(database_url)
         self._owner_id = owner_id
 
-    def search(self, request_id: str | UUID | None = None) -> list[dict]:
-        where = "AND r.request_id = :request_id" if request_id is not None else ""
+    def search(
+        self,
+        request_id: str | UUID | None = None,
+        status: str | None = None,
+        started_from: datetime | None = None,
+        started_to: datetime | None = None,
+    ) -> list[dict]:
+        filters = []
         parameters = {"owner_id": self._owner_id}
         if request_id is not None:
+            filters.append("r.request_id = :request_id")
             parameters["request_id"] = _uuid(request_id)
+        if status:
+            filters.append("r.status = :status")
+            parameters["status"] = status
+        if started_from is not None:
+            filters.append("r.started_at >= :started_from")
+            parameters["started_from"] = started_from
+        if started_to is not None:
+            filters.append("r.started_at <= :started_to")
+            parameters["started_to"] = started_to
+        where = "".join(f" AND {item}" for item in filters)
         try:
             with self._engine.connect() as connection:
                 rows = connection.execute(
@@ -74,8 +92,10 @@ class PostgresAuditRepository:
                                mv.model_revision, mv.runtime_name,
                                q.trino_query_id, q.generation_mode,
                                q.validation_status, q.execution_status, q.duration_ms,
+                               q.source_urns_json,
                                a.artifact_id, a.artifact_type, a.freshness_status,
-                               a.status AS artifact_status, a.artifact_checksum
+                               a.status AS artifact_status, a.artifact_checksum,
+                               a.evidence_json
                         FROM chat.analysis_requests r
                         LEFT JOIN analysis_v1.analysis_run_links l
                           ON l.request_id = r.request_id
@@ -90,14 +110,15 @@ class PostgresAuditRepository:
                           ON mv.model_version_id = r.sql_generation_model_id
                         LEFT JOIN LATERAL (
                             SELECT trino_query_id, generation_mode, validation_status,
-                                   execution_status, duration_ms, query_execution_id
+                                   execution_status, duration_ms, query_execution_id,
+                                   source_urns_json
                             FROM query.query_executions
                             WHERE request_id = r.request_id
                             ORDER BY attempt_no DESC LIMIT 1
                         ) q ON true
                         LEFT JOIN LATERAL (
                             SELECT artifact_id, artifact_type, freshness_status,
-                                   status, artifact_checksum
+                                   status, artifact_checksum, evidence_json
                             FROM artifact.analysis_artifacts
                             WHERE request_id = r.request_id
                             ORDER BY artifact_id LIMIT 1
@@ -178,13 +199,19 @@ class PostgresAuditRepository:
             "validation_status": row["validation_status"],
             "execution_status": row["execution_status"],
             "duration_ms": row["duration_ms"],
+            "source_urns": list(row["source_urns_json"] or []),
         }
+        masking = (row.get("evidence_json") or {}).get("masking") or {}
         result["artifact"] = None if row["artifact_id"] is None else {
             "artifact_id": row["artifact_id"],
             "artifact_type": row["artifact_type"],
             "freshness_status": row["freshness_status"],
             "status": row["artifact_status"],
             "artifact_checksum": row["artifact_checksum"],
+            "masking": {
+                "applied": bool(masking.get("applied", False)),
+                "fields": list(masking.get("fields") or []),
+            },
         }
         result["reports"] = [dict(item) for item in reports]
         return result

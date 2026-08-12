@@ -11,14 +11,17 @@ function Metadata({ label, value }) {
 export function AuditPage() {
   const client = useMemo(() => createAuditClient(), []);
   const [requestId, setRequestId] = useState("");
+  const [status, setStatus] = useState("");
+  const [startedFrom, setStartedFrom] = useState("");
+  const [startedTo, setStartedTo] = useState("");
   const [items, setItems] = useState([]);
   const [trace, setTrace] = useState(null);
   const [state, setState] = useState({ loading: true, error: "" });
 
-  const load = useCallback(async (filter = "") => {
+  const load = useCallback(async (filters = {}) => {
     setState({ loading: true, error: "" });
     try {
-      const nextItems = await client.search(filter);
+      const nextItems = await client.search(filters);
       setItems(nextItems);
       setTrace(nextItems.length === 1 ? await client.get(nextItems[0].request_id) : null);
       setState({ loading: false, error: "" });
@@ -55,8 +58,11 @@ export function AuditPage() {
     <div className="page-content audit-page">
       <section className="card audit-search">
         <header><div><small>OWNER-SCOPED TRACE</small><h2>요청 감사 조회</h2><p>본인 요청의 상태 전이와 정책·모델·Artifact·보고서 연결 메타데이터를 확인합니다.</p></div><ShieldCheck /></header>
-        <form onSubmit={(event) => { event.preventDefault(); void load(requestId); }}>
+        <form onSubmit={(event) => { event.preventDefault(); void load({ requestId, status, startedFrom: startedFrom ? new Date(startedFrom).toISOString() : "", startedTo: startedTo ? new Date(startedTo).toISOString() : "" }); }}>
           <input aria-label="Request ID" placeholder="Request ID (비우면 최근 요청)" value={requestId} onChange={(event) => setRequestId(event.target.value)} />
+          <select aria-label="상태" value={status} onChange={(event) => setStatus(event.target.value)}><option value="">전체 상태</option>{["RECEIVED", "SUCCEEDED", "PARTIAL", "DENIED", "FAILED"].map((value) => <option key={value}>{value}</option>)}</select>
+          <input aria-label="시작일 시작" type="datetime-local" value={startedFrom} onChange={(event) => setStartedFrom(event.target.value)} />
+          <input aria-label="시작일 종료" type="datetime-local" value={startedTo} onChange={(event) => setStartedTo(event.target.value)} />
           <button className="primary" type="submit" disabled={state.loading}><Search size={16} />조회</button>
         </form>
       </section>
@@ -81,6 +87,7 @@ export function AuditPage() {
               <Metadata label="Context release" value={trace.context.release_key ? `${trace.context.release_key} v${trace.context.release_version}` : null} />
               <Metadata label="Model" value={trace.model ? `${trace.model.model_name} / ${trace.model.model_revision}` : null} />
               <Metadata label="Query" value={trace.query?.query_id} /><Metadata label="Artifact" value={trace.artifact?.artifact_id} />
+              <Metadata label="Source URNs" value={trace.query?.source_urns?.join(", ")} /><Metadata label="Masking" value={trace.artifact ? `${trace.artifact.masking.applied ? "적용" : "미적용"}${trace.artifact.masking.fields.length ? ` (${trace.artifact.masking.fields.join(", ")})` : ""}` : null} />
             </dl>
             <div className="audit-transitions"><h4>상태 전이</h4><ol>{trace.transitions.map((item) => <li key={item.sequence}><i>{item.sequence}</i><b>{item.from_status || "START"} → {item.to_status}</b><time>{formatTime(item.created_at)}</time></li>)}</ol></div>
             <div className="audit-reports"><h4>보고서 실행 연결</h4>{trace.reports.length ? trace.reports.map((report) => <p key={report.run_id}><code>{report.run_id}</code><span>v{report.definition_version} · {report.status}</span></p>) : <p>연결된 보고서 실행이 없습니다.</p>}</div>

@@ -130,7 +130,7 @@ def test_required_filter_types_reject_coercion_and_non_finite_numbers():
     )
 
 
-def test_metric_registry_adds_only_the_three_approved_single_asset_metrics():
+def test_metric_registry_contains_only_approved_metrics():
     metrics = {metric["id"]: metric for metric in CONTRACT["metrics"]}
     assert set(metrics) == {
         "recognized_room_revenue",
@@ -138,8 +138,9 @@ def test_metric_registry_adds_only_the_three_approved_single_asset_metrics():
         "fnb_net_revenue",
         "facility_revenue",
         "actual_attendees",
+        "current_points_balance_sum",
+        "current_points_balance_average",
     }
-    assert len({metric["asset_fqn"] for metric in metrics.values()}) == len(metrics)
 
     expected = {
         "fnb_net_revenue": (
@@ -164,6 +165,9 @@ def test_metric_registry_adds_only_the_three_approved_single_asset_metrics():
         assert metric["field"] == field
         assert metric["aggregation"] == "sum"
         assert metric["time_field"] == time_field
+
+    for metric_id in ("current_points_balance_sum", "current_points_balance_average"):
+        assert metrics[metric_id]["temporal_semantics"] == "current_snapshot"
 
 
 def test_expired_points_preserves_transaction_and_forecast_filters():

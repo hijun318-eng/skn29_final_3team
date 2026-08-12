@@ -753,14 +753,46 @@ def test_node1_metric_selection_fails_closed_for_missing_ambiguous_and_duplicate
         for item in ("current_points_balance_sum", "current_points_balance_average")
     )
     selected, _ = support.select_metric(
-        AnalysisRequest(question="사용 가능 포인트 합계와 사용 가능 포인트 평균"),
+        AnalysisRequest(
+            question="사용 가능 포인트 합계와 사용 가능 포인트 평균",
+            selected_metric_ids=(
+                "current_points_balance_sum",
+                "current_points_balance_average",
+            ),
+        ),
         context,
-        [{"urn": "urn:crm", "fqn": "crm.dbo.crm_members", "metrics": crm_metrics}],
+        [{
+            "urn": "urn:crm",
+            "fqn": "crm.dbo.crm_members",
+            "metrics": crm_metrics,
+            "dimensions": ({
+                "id": "membership_grade",
+                "asset_fqn": "crm.dbo.crm_members",
+                "field": "membership_grade",
+                "aliases": ("회원 등급별", "등급별"),
+            },),
+        }],
+        {
+            "normalized_question": "이번 달 CRM 회원 등급별 사용 가능 포인트 합계와 평균",
+            "dimension_candidates": ["membership_grade"],
+        },
     )
     assert {metric["id"] for asset in selected for metric in asset["metrics"]} == {
         "current_points_balance_sum",
         "current_points_balance_average",
     }
+    assert selected[0]["dimensions"][0]["id"] == "membership_grade"
+
+    with pytest.raises(ContextBuildError):
+        support.select_metric(
+            AnalysisRequest(
+                question="사용 가능 포인트",
+                selected_metric_ids=("forged_metric",),
+            ),
+            context,
+            [{"urn": "urn:crm", "fqn": "crm.dbo.crm_members", "metrics": crm_metrics}],
+            {"normalized_question": "사용 가능 포인트", "dimension_candidates": []},
+        )
 
     duplicate = [{**assets[0], "metrics": assets[0]["metrics"] * 2}]
     with pytest.raises(ContextBuildError, match="중복"):

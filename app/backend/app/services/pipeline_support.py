@@ -33,6 +33,7 @@ from app.services.context_builder import (
     ContextBuildError,
     ContextBuildErrorCode,
     ContextBuildRequest,
+    ContextDimension,
     ContextMetric,
     ContextJoinPolicy,
     ContextPackage,
@@ -157,8 +158,19 @@ class PipelineSupport:
                             )
                             for item in metric["required_filters"]
                         ),
+                        temporal_semantics=str(
+                            metric.get("temporal_semantics") or "event_time"
+                        ),
                     )
                     for metric in asset.get("metrics", ())
+                ),
+                dimensions=tuple(
+                    ContextDimension(
+                        id=str(dimension["id"]),
+                        asset_fqn=str(dimension["asset_fqn"]),
+                        field=str(dimension["field"]),
+                    )
+                    for dimension in asset.get("dimensions", ())
                 ),
                 metric_registry_required="metrics" in asset,
                 required_filters=tuple(
@@ -188,11 +200,16 @@ class PipelineSupport:
             for metric in asset.metrics
             for item in metric.required_filters
         )
+        context_metrics = tuple(metric for asset in items for metric in asset.metrics)
+        current_snapshot = bool(context_metrics) and all(
+            metric.temporal_semantics == "current_snapshot"
+            for metric in context_metrics
+        )
         parameter_bindings = supplied_bindings or tuple(
             [
                 ContextParameterBinding(name, "date", payload.parameters[name])
                 for name in ("period_start", "period_end_exclusive")
-                if name in payload.parameters
+                if name in payload.parameters and not current_snapshot
             ]
             + [
                 ContextParameterBinding(
@@ -277,6 +294,19 @@ class PipelineSupport:
             for metric_id in candidate_ids
             if metric_id in glossary
         }
+        business_terms.update(
+            {
+                str(dimension["id"]): {
+                    "kind": "dimension",
+                    "aliases": list(dimension.get("aliases", ())),
+                }
+                for asset in assets
+                for dimension in asset.get("dimensions", ())
+                if isinstance(dimension, dict)
+                and isinstance(dimension.get("id"), str)
+                and dimension.get("aliases")
+            }
+        )
         try:
             timezone = ZoneInfo(context.timezone)
         except ZoneInfoNotFoundError as error:
@@ -319,8 +349,15 @@ class PipelineSupport:
         normalized = normalized or _normalize_question(
             PipelineSupport.node1_request(payload, context, assets)
         )
+        if len(payload.selected_metric_ids) != len(set(payload.selected_metric_ids)):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "명시 선택한 metric id는 중복될 수 없습니다.",
+            )
         selected = normalized.get("selected_metric_id")
-        selected_ids = [selected] if isinstance(selected, str) else []
+        selected_ids = list(payload.selected_metric_ids)
+        if not selected_ids and isinstance(selected, str):
+            selected_ids = [selected]
         metric_candidates = normalized.get("metric_candidates")
         if (
             not selected_ids
@@ -341,6 +378,11 @@ class PipelineSupport:
                 "질문에서 권한이 있는 승인 metric 하나를 확인할 수 없습니다.",
             )
         selected_assets = []
+        dimension_candidates = {
+            str(item)
+            for item in normalized.get("dimension_candidates", ())
+            if isinstance(item, str)
+        }
         for asset in assets:
             item = dict(asset)
             if "metrics" in item:
@@ -348,6 +390,13 @@ class PipelineSupport:
                     metric
                     for metric in item.get("metrics", ())
                     if isinstance(metric, dict) and metric.get("id") in selected_ids
+                )
+            if "dimensions" in item:
+                item["dimensions"] = tuple(
+                    dimension
+                    for dimension in item.get("dimensions", ())
+                    if isinstance(dimension, dict)
+                    and dimension.get("id") in dimension_candidates
                 )
             selected_assets.append(item)
         return selected_assets, str(normalized["normalized_question"])
@@ -528,6 +577,31 @@ class PipelineSupport:
             if column.table and column.table.lower() in columns_by_alias
         ):
             return "REFERENCE_OUTSIDE_CONTEXT"
+        dimensions = {item.field.lower() for item in package.dimensions}
+        if dimensions:
+            selected = {
+                column.name.lower()
+                for projection in query.expressions
+                for column in projection.find_all(exp.Column)
+            }
+            grouped = {
+                column.name.lower()
+                for column in (query.args.get("group") or exp.Group()).find_all(exp.Column)
+            }
+            ordered = {
+                column.name.lower()
+                for column in (query.args.get("order") or exp.Order()).find_all(exp.Column)
+            }
+            referenced_columns = {
+                str(column).lower()
+                for item in references
+                for column in item.get("columns", ())
+            }
+            if not all(
+                dimensions.issubset(columns)
+                for columns in (selected, grouped, ordered, referenced_columns)
+            ):
+                return "DIMENSION_REFERENCE_MISMATCH"
         required_filters = (
             *package.required_filters,
             *(item for metric in package.metrics for item in metric.required_filters),

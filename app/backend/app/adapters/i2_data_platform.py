@@ -193,6 +193,18 @@ query SearchDatasets($query: String!) {
                     if required_filter["field"] == "data_period_status":
                         required_filter["value"] = "YTD_SYNTHETIC"
         self._metrics = tuple(metrics)
+        dimensions = contract.get("dimensions")
+        if (
+            not isinstance(dimensions, list)
+            or any(
+                not isinstance(item, dict)
+                or not all(item.get(key) for key in ("id", "asset_fqn", "field", "aliases"))
+                for item in dimensions
+            )
+            or len({item["id"] for item in dimensions}) != len(dimensions)
+        ):
+            raise ValueError("analytics context dimensions are invalid")
+        self._dimensions = tuple(dimensions)
         approved_joins = contract.get("approved_joins")
         if (
             not isinstance(approved_joins, list)
@@ -706,6 +718,11 @@ query SearchDatasets($query: String!) {
         metrics = tuple(
             metric for metric in self._metrics if metric.get("asset_fqn") in selected_fqns
         )
+        dimensions = tuple(
+            dimension
+            for dimension in self._dimensions
+            if dimension.get("asset_fqn") in selected_fqns
+        )
         for item in selected:
             item_metrics = tuple(
                 metric for metric in metrics if metric["asset_fqn"] == item["fqn"]
@@ -715,6 +732,11 @@ query SearchDatasets($query: String!) {
                 "approved_pms_crm_pos_join",
             }:
                 item["metrics"] = item_metrics
+            item["dimensions"] = tuple(
+                dimension
+                for dimension in dimensions
+                if dimension["asset_fqn"] == item["fqn"]
+            )
         if query_use == "approved_pms_crm_pos_join" and selected:
             selected[0]["required_filters"] = self._three_source_filters
             selected[0]["parameter_bindings"] = self._three_source_parameters

@@ -457,6 +457,15 @@
             "title": "Question",
             "type": "string"
           },
+          "selected_metric_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Selected Metric Ids",
+            "type": "array"
+          },
           "template_id": {
             "anyOf": [
               {

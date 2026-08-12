@@ -15,7 +15,7 @@ class Node3Tests(unittest.TestCase):
 
         self.assertEqual(result, explain_result(payload))
         self.assertIn('"room_revenue":1000', result["explanation"])
-        self.assertIn("metric=room_revenue", result["conditions"])
+        self.assertIn("metrics=room_revenue", result["conditions"])
         self.assertEqual(result["sources"], payload["source_ids"])
         self.assertEqual(result["limitations"], ["masking"])
         self.assertNotIn("authorized", result)
@@ -34,7 +34,8 @@ class Node3Tests(unittest.TestCase):
                 "source_ids": [asset["urn"] for asset in context["assets"]],
                 "metric_selection": {
                     "selected_metric_id": metric_id,
-                    "context_metric_ids": [metric_id] * len(context["assets"]),
+                    "selected_metric_ids": [metric_id],
+                    "context_metric_ids": [metric_id],
                     "entitled_metric_ids": [metric_id],
                 },
                 "sampling": True,
@@ -49,7 +50,7 @@ class Node3Tests(unittest.TestCase):
 
         result = explain_result(payload)
 
-        self.assertIn(f"metric={metric_id}", result["conditions"])
+        self.assertIn(f"metrics={metric_id}", result["conditions"])
         self.assertEqual(payload["source_ids"], result["sources"])
         self.assertEqual(["sampling", "masking", "partial"], result["limitations"])
         self.assertIn("sampling=true", result["conditions"])
@@ -69,7 +70,8 @@ class Node3Tests(unittest.TestCase):
                 "source_ids": ["source-a", "source-b"],
                 "metric_selection": {
                     "selected_metric_id": metric_id,
-                    "context_metric_ids": [metric_id, metric_id],
+                    "selected_metric_ids": [metric_id],
+                    "context_metric_ids": [metric_id],
                     "entitled_metric_ids": [metric_id],
                 },
             }
@@ -80,9 +82,9 @@ class Node3Tests(unittest.TestCase):
         missing_selection.pop("metric_selection")
         invalid.append(missing_selection)
 
-        multiple_metrics = copy.deepcopy(base)
-        multiple_metrics["metric_selection"]["context_metric_ids"][1] = "other_metric"
-        invalid.append(multiple_metrics)
+        mismatched_metrics = copy.deepcopy(base)
+        mismatched_metrics["metric_selection"]["context_metric_ids"] = ["other_metric"]
+        invalid.append(mismatched_metrics)
 
         outside_context = copy.deepcopy(base)
         outside_context["metric_selection"]["selected_metric_id"] = "other_metric"
@@ -92,9 +94,9 @@ class Node3Tests(unittest.TestCase):
         outside_entitlement["metric_selection"]["entitled_metric_ids"] = ["other_metric"]
         invalid.append(outside_entitlement)
 
-        missing_source_binding = copy.deepcopy(base)
-        missing_source_binding["metric_selection"]["context_metric_ids"].pop()
-        invalid.append(missing_source_binding)
+        missing_context_binding = copy.deepcopy(base)
+        missing_context_binding["metric_selection"]["context_metric_ids"].pop()
+        invalid.append(missing_context_binding)
 
         duplicate_source = copy.deepcopy(base)
         duplicate_source["source_ids"][1] = duplicate_source["source_ids"][0]
@@ -102,8 +104,22 @@ class Node3Tests(unittest.TestCase):
 
         for payload in invalid:
             with self.subTest(metric_selection=payload.get("metric_selection")):
-                with self.assertRaisesRegex(ContractError, "metric selection|source_ids must be unique"):
+                with self.assertRaises(ContractError):
                     explain_result(payload)
+
+    def test_multiple_metrics_are_preserved_in_conditions_and_entitlement(self):
+        payload = copy.deepcopy(VALID_PAYLOADS["node3_request"])
+        payload["metric_selection"] = {
+            "selected_metric_id": "points_sum",
+            "selected_metric_ids": ["points_sum", "points_average"],
+            "context_metric_ids": ["points_sum", "points_average"],
+            "entitled_metric_ids": ["points_average", "points_sum"],
+        }
+        payload["metric"] = "points_sum"
+
+        result = explain_result(payload)
+
+        self.assertIn("metrics=points_sum,points_average", result["conditions"])
 
     def test_g3_failure_and_schema_drift_are_rejected(self):
         failed = copy.deepcopy(VALID_PAYLOADS["node3_request"])

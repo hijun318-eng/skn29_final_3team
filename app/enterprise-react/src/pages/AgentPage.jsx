@@ -41,6 +41,7 @@ function createTransientRun(question, conversationId, status = "idle") {
 export function AgentPage() {
   const [conversationId] = useState(createUuid);
   const [question, setQuestion] = useState("");
+  const [selectedMetrics, setSelectedMetrics] = useState([]);
   const [accessProfile, setAccessProfile] = useState("pms_only");
   const [submittedQuestion, setSubmittedQuestion] = useState("");
   const [run, setRun] = useState(() => createTransientRun("", conversationId));
@@ -104,6 +105,7 @@ export function AgentPage() {
   }, [run.requestId, run.restoredStatus, run.accessProfile]);
 
   const restoreRecent = async (item) => {
+    setSelectedMetrics([]);
     setAccessProfile(item.access_profile);
     setSubmittedQuestion(item.question_text_redacted);
     setQuestion(item.question_text_redacted);
@@ -154,7 +156,7 @@ export function AgentPage() {
     setReportTransfer({ status: "idle", message: "" });
     setRun(createTransientRun(nextQuestion, conversationId, "queued"));
     try {
-      setRun(await client.analyze(nextQuestion, conversationId, accessProfile, setRun));
+      setRun(await client.analyze(nextQuestion, conversationId, accessProfile, setRun, selectedMetrics.map((metric) => metric.id)));
     } catch (error) {
       const timedOut = error instanceof DOMException && error.name === "TimeoutError";
       setRun((current) => ({
@@ -208,7 +210,7 @@ export function AgentPage() {
   return (
     <div className={`chat-layout ${evidenceOpen ? "evidence-open" : ""}`}>
       <aside className="chat-history">
-        <button className="new-chat" onClick={() => { setQuestion(""); setAccessProfile("pms_only"); setHasSubmitted(false); setRun(createTransientRun("", conversationId)); }}><Plus size={16} />새 분석</button>
+        <button className="new-chat" onClick={() => { setQuestion(""); setSelectedMetrics([]); setAccessProfile("pms_only"); setHasSubmitted(false); setRun(createTransientRun("", conversationId)); }}><Plus size={16} />새 분석</button>
         <p>RECENT</p>
         {recent.length ? <div className="recent-analysis-list">{recent.map((item) => <button type="button" key={item.request_id} onClick={() => void restoreRecent(item)}><MessageSquareText size={15} /><span>{item.question_text_redacted}<small>{item.status} · {item.access_profile}</small></span></button>)}</div> : <div className="evidence-empty"><MessageSquareText size={15} /> 저장된 분석이 없습니다.</div>}
       </aside>
@@ -222,7 +224,7 @@ export function AgentPage() {
             <span className="agent-avatar"><Sparkles size={17} /></span>
             <div>
               <b>Analysis Agent <em>{run.status}</em></b>
-              <AnalysisStatePanel run={run} onClarify={(suffix) => setQuestion(`${submittedQuestion} ${suffix}`.trim())} />
+              <AnalysisStatePanel run={run} onClarify={(option) => setSelectedMetrics([option])} />
               {run.status === "success" && run.artifact && <div className="analysis-report-actions"><button className="primary" type="button" disabled={reportTransfer.status === "loading"} onClick={() => void addArtifactToReport()}><FilePlus2 size={15} />보고서에 담기</button><button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((open) => !open)}><TableProperties size={15} />Artifacts</button></div>}
               {reportTransfer.status !== "idle" && <p className={`artifact-transfer-state ${reportTransfer.status}`} role={reportTransfer.status === "error" ? "alert" : "status"} aria-live="polite">{reportTransfer.message}</p>}
             </div>
@@ -231,7 +233,8 @@ export function AgentPage() {
         <form className="chat-input" onSubmit={submitQuestion}>
           <label className="access-profile-picker" htmlFor="analysis-access-profile"><span>데이터 접근 범위</span><select id="analysis-access-profile" value={accessProfile} disabled={submitting || !profileAvailability.length} aria-describedby="analysis-access-domain" onChange={(event) => setAccessProfile(event.target.value)}>{ACCESS_PROFILES.map(([value, label]) => <option value={value} key={value} disabled={!profileAvailability.find((item) => item.profile_id === value)?.available}>{label}</option>)}</select></label>
           <div className="access-profile-meta" id="analysis-access-domain" aria-live="polite"><span>선택 profile <b>{accessProfile}</b></span><span>접근 Domain <b>{ACCESS_PROFILES.find(([value]) => value === accessProfile)?.[2]}</b></span>{(profileAvailabilityError || selectedAvailability?.reason) && <span role="status">{profileAvailabilityError || selectedAvailability.reason}</span>}</div>
-          <div className="question-field"><input aria-label="분석 질문" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="승인된 데이터에 대해 질문하세요..." /><button aria-label="질문 전송" disabled={submitting || !selectedAvailability?.available}><Send size={17} /></button></div>
+          {selectedMetrics.length > 0 && <div className="selected-metric-chips" aria-label="선택한 승인 지표">{selectedMetrics.map((metric) => <span key={metric.id}>{metric.label}<button type="button" aria-label={`${metric.label} 선택 해제`} onClick={() => setSelectedMetrics((current) => current.filter((item) => item.id !== metric.id))}><X size={13} /></button></span>)}</div>}
+          <div className="question-field"><input aria-label="분석 질문" value={question} onChange={(event) => { setQuestion(event.target.value); setSelectedMetrics([]); }} placeholder="승인된 데이터에 대해 질문하세요..." /><button aria-label="질문 전송" disabled={submitting || !selectedAvailability?.available}><Send size={17} /></button></div>
           <small>화면에는 Analysis API가 반환한 결과만 표시됩니다.</small>
         </form>
       </main>

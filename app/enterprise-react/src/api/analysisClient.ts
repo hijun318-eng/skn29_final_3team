@@ -9,7 +9,7 @@ import { createUuid } from "../utils/createUuid.ts";
 import { getAuthorizationHeader } from "./authSession.ts";
 
 export interface AnalysisClient {
-  analyze(question: string, conversationId: string, accessProfile?: AccessProfile, onProgress?: (run: AnalysisRun) => void): Promise<AnalysisRun>;
+  analyze(question: string, conversationId: string, accessProfile?: AccessProfile, onProgress?: (run: AnalysisRun) => void, selectedMetricIds?: string[]): Promise<AnalysisRun>;
   listAccessProfiles(): Promise<AccessProfileAvailability[]>;
   listRecent(limit?: number): Promise<RecentAnalysisItem[]>;
   getProgress(requestId: string, accessProfile: AccessProfile): Promise<AnalysisProgressResponse>;
@@ -133,7 +133,7 @@ export function createHttpAnalysisClient(
       }
       return normalizeApiResponse(payload, question, conversationId);
     },
-    async analyze(question, conversationId, accessProfile = "pms_only", onProgress) {
+    async analyze(question, conversationId, accessProfile = "pms_only", onProgress, selectedMetricIds = []) {
       const traceId = createUuid();
       const requestId = createUuid();
       const root = baseUrl.replace(/\/$/, "");
@@ -155,7 +155,7 @@ export function createHttpAnalysisClient(
           "Content-Type": "application/json",
           "X-Request-Id": requestId,
         },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, selected_metric_ids: selectedMetricIds }),
       });
       const fetchProgress = async () => {
           try {

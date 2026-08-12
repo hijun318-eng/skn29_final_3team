@@ -68,16 +68,28 @@ def _serving_schema(node: str) -> dict[str, Any]:
 
 
 def _validate_sql_semantics(node: str, payload: dict[str, Any], sql: str) -> None:
-    if node != "node2" or "전월 대비" not in payload.get("normalized_question", ""):
+    if node != "node2":
         return
-    required = (
-        r"date_add\s*\(\s*'month'\s*,\s*-2",
-        r"from_iso8601_timestamp\s*\(",
-        r"group\s+by\s+1",
-        r"order\s+by\s+1",
-    )
-    if any(re.search(pattern, sql, flags=re.IGNORECASE) is None for pattern in required):
-        raise ValueError("month-over-month SQL must use the approved two-month window")
+    if "전월 대비" in payload.get("normalized_question", ""):
+        required = (
+            r"date_add\s*\(\s*'month'\s*,\s*-2",
+            r"from_iso8601_timestamp\s*\(",
+            r"group\s+by\s+1",
+            r"order\s+by\s+1",
+        )
+        if any(re.search(pattern, sql, flags=re.IGNORECASE) is None for pattern in required):
+            raise ValueError("month-over-month SQL must use the approved two-month window")
+    for dimension in payload.get("context_package", {}).get("dimensions", ()):
+        field = re.escape(str(dimension["field"]))
+        if any(
+            re.search(pattern, sql, flags=re.IGNORECASE) is None
+            for pattern in (
+                rf'\bselect\b.*\b{field}\b',
+                rf'\bgroup\s+by\b.*\b{field}\b',
+                rf'\border\s+by\b.*\b{field}\b',
+            )
+        ):
+            raise ValueError("SQL must group by every approved requested dimension")
 
 
 def openai_transport(
@@ -347,8 +359,18 @@ class ContractModelAdapter:
                     },
                 },
             )
+            current_snapshot = any(
+                metric.get("temporal_semantics") == "current_snapshot"
+                for asset in payload["assets"]
+                for metric in asset.get("metrics", ())
+                if isinstance(metric, dict)
+            )
             return {
-                "summary": response["explanation"],
+                "summary": response["explanation"] + (
+                    " 사용 가능 포인트는 분석 시점의 현재 잔액이며 과거 월말 잔액이 아닙니다."
+                    if current_snapshot
+                    else ""
+                ),
                 "model_version": response["model"]["model_version"],
             }
         raise ValueError(f"unsupported node: {node}")
@@ -367,7 +389,7 @@ class ContractModelAdapter:
         selected = set(metric_ids)
         if selected:
             selected_metric = metric_ids[0]
-            context_metric_ids = [selected_metric] * len(assets)
+            context_metric_ids = metric_ids
         else:
             approved_join = "pms_crm_pos_gold_revenue_month_v1"
             if (
@@ -390,6 +412,7 @@ class ContractModelAdapter:
             raise ValueError("node3 selected metric is outside entitlement")
         return {
             "selected_metric_id": selected_metric,
+            "selected_metric_ids": metric_ids or [selected_metric],
             "context_metric_ids": context_metric_ids,
             "entitled_metric_ids": sorted(entitled_metric_ids),
         }
@@ -504,6 +527,7 @@ class ContractModelAdapter:
                     "field": f"{metric.asset_fqn}.{metric.field}",
                     "aggregation": metric.aggregation,
                     "time_field": f"{metric.asset_fqn}.{metric.time_field}",
+                    "temporal_semantics": metric.temporal_semantics,
                     "required_filters": [
                         {
                             "field": item.field,
@@ -516,6 +540,13 @@ class ContractModelAdapter:
                 }
                 for metric in metrics
             ] + ([derived_metric] if derived_metric else []),
+            "dimensions": [
+                {
+                    "id": dimension.id,
+                    "field": f"{dimension.asset_fqn}.{dimension.field}",
+                }
+                for dimension in package.dimensions
+            ],
             "parameter_bindings": [
                 {
                     "name": item.name,

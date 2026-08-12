@@ -250,6 +250,7 @@ class ContractTests(unittest.TestCase):
         selected = copy.deepcopy(legacy)
         selected["metric_selection"] = {
             "selected_metric_id": "room_revenue",
+            "selected_metric_ids": ["room_revenue"],
             "context_metric_ids": ["room_revenue"],
             "entitled_metric_ids": ["room_revenue"],
         }

@@ -268,6 +268,7 @@ class ProductionModelTest(unittest.TestCase):
         self.assertEqual(
             {
                 "selected_metric_id": "expired_points",
+                "selected_metric_ids": ["expired_points"],
                 "context_metric_ids": ["expired_points"],
                 "entitled_metric_ids": ["expired_points"],
             },
@@ -282,12 +283,6 @@ class ProductionModelTest(unittest.TestCase):
             [
                 {
                     "urn": "source",
-                    "metrics": ({"id": "metric-a"}, {"id": "metric-b"}),
-                }
-            ],
-            [
-                {
-                    "urn": "source",
                     "metrics": ({"id": "metric-a"},),
                     "entitled_metric_ids": ("metric-b",),
                 }
@@ -297,6 +292,15 @@ class ProductionModelTest(unittest.TestCase):
             with self.subTest(assets=assets):
                 with self.assertRaises(ValueError):
                     ContractModelAdapter._metric_selection(assets)
+
+        selection = ContractModelAdapter._metric_selection([
+            {
+                "urn": "source",
+                "metrics": ({"id": "metric-a"}, {"id": "metric-b"}),
+            }
+        ])
+        self.assertEqual(["metric-a", "metric-b"], selection["selected_metric_ids"])
+        self.assertEqual(["metric-a", "metric-b"], selection["context_metric_ids"])
 
     @staticmethod
     def _node2_response():

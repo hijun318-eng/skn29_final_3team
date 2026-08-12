@@ -14,6 +14,7 @@ from .schema import ContractError, validate_payload
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _DERIVED_JOIN_ID = "pms_crm_pos_gold_revenue_month_v1"
 _REPAIR_CODES = {
+    "DIMENSION_REFERENCE_MISMATCH",
     "METRIC_FILTER_MISSING",
     "MODEL_SCHEMA_INVALID",
     "REFERENCE_MISSING",
@@ -43,6 +44,12 @@ def generate_sql(payload: dict[str, Any]) -> dict[str, Any]:
         for item, item_asset, _, item_time_asset, item_time_column in resolved
     ):
         raise ContractError("node2_request: multiple metrics require one asset, time field and filter policy")
+    temporal_semantics = {
+        item.get("temporal_semantics", "event_time") for item in metrics
+    }
+    if len(temporal_semantics) != 1:
+        raise ContractError("node2_request: multiple metrics require one temporal policy")
+    current_snapshot = temporal_semantics == {"current_snapshot"}
     if time_asset["trino_fqn"] != asset["trino_fqn"]:
         raise ContractError("node2_request: metric and time field require an approved join predicate")
     aggregates = [(item["aggregation"].upper(), column, item["id"]) for item, _, column, _, _ in resolved]
@@ -50,35 +57,57 @@ def generate_sql(payload: dict[str, Any]) -> dict[str, Any]:
         raise ContractError("node2_request: unsupported aggregation")
 
     fqn = _validated_fqn(asset["trino_fqn"])
+    dimensions = [
+        (item, *_resolve_column(context["assets"], item["field"]))
+        for item in context.get("dimensions", ())
+    ]
+    if any(dimension_asset["trino_fqn"] != asset["trino_fqn"] for _, dimension_asset, _ in dimensions):
+        raise ContractError("node2_request: dimension requires an approved join predicate")
+    dimension_columns = [column for _, _, column in dimensions]
     filter_clauses, filter_parameters, filter_columns = _required_filters(asset, metric)
     where = [
-        f'"{time_column}" >= DATE \':period_start\'',
-        f'"{time_column}" < DATE \':period_end_exclusive\'',
+        *([] if current_snapshot else [
+            f'"{time_column}" >= DATE \':period_start\'',
+            f'"{time_column}" < DATE \':period_end_exclusive\'',
+        ]),
         *filter_clauses,
     ]
+    select = [
+        *(f'"{column}" AS "{item["id"]}"' for item, _, column in dimensions),
+        *(f'{aggregation}("{column}") AS "{metric_id}"' for aggregation, column, metric_id in aggregates),
+    ]
+    dimension_sql = ", ".join(f'"{column}"' for column in dimension_columns)
     sql = (
-        "SELECT " + ", ".join(
-            f'{aggregation}("{column}") AS "{metric_id}"'
-            for aggregation, column, metric_id in aggregates
-        ) + " "
-        f'FROM {fqn} WHERE {" AND ".join(where)} LIMIT 1000'
+        "SELECT " + ", ".join(select) + " "
+        f'FROM {fqn} WHERE {" AND ".join(where)}'
+        + (f" GROUP BY {dimension_sql}" if dimensions else "")
+        + (f" ORDER BY {dimension_sql}" if dimensions else "")
+        + " LIMIT 1000"
     )
     response = {
         "sql": sql,
         "references": [
-            _reference(asset, context, {*(column for _, column, _ in aggregates), time_column, *filter_columns})
+            _reference(
+                asset,
+                context,
+                {
+                    *(column for _, column, _ in aggregates),
+                    *([] if current_snapshot else [time_column]),
+                    *dimension_columns,
+                    *filter_columns,
+                },
+            )
         ],
         "parameters": [
-            {
+            *([] if current_snapshot else [{
                 "name": "period_start",
                 "value_type": "date",
                 "value": context["execution_time"]["period_start"][:10],
-            },
-            {
+            }, {
                 "name": "period_end_exclusive",
                 "value_type": "date",
                 "value": context["execution_time"]["period_end_exclusive"][:10],
-            },
+            }]),
             *filter_parameters,
         ],
         "model": get_prompt("node2.sql").metadata(),

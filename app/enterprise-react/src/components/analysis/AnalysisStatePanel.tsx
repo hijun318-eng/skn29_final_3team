@@ -113,7 +113,7 @@ function AnalysisProgress({ run }: { run: AnalysisRun }) {
   );
 }
 
-export function AnalysisStatePanel({ run, onClarify }: { run: AnalysisRun; onClarify?: (suffix: string) => void }) {
+export function AnalysisStatePanel({ run, onClarify }: { run: AnalysisRun; onClarify?: (option: { id: string; label: string; question_suffix: string }) => void }) {
   if (run.restoredStatus && run.restoredStatus !== "RECEIVED" && !run.artifact) {
     return <section className="analysis-state" aria-live="polite"><header><Clock3 size={18} /><div><b>최근 분석 기록</b><span>{run.restoredStatus}</span></div></header><p>보안상 결과 payload는 다시 전송하지 않으며, 서버에 기록된 처리 과정만 복원했습니다.</p><AnalysisProgress run={run} /></section>;
   }
@@ -149,9 +149,9 @@ export function AnalysisStatePanel({ run, onClarify }: { run: AnalysisRun; onCla
       )}
       {needsClarification && Boolean(run.error?.clarification_options?.length) && (
         <div className="analysis-clarification" aria-label="선택 가능한 승인 지표">
-          <small>조회할 승인 지표를 선택하면 질문 입력란에 반영됩니다.</small>
+          <small>조회할 승인 지표를 선택하면 질문과 함께 전달됩니다.</small>
           <div>{run.error?.clarification_options?.map((option) => (
-            <button key={option.id} type="button" onClick={() => onClarify?.(option.question_suffix)}>{option.label}</button>
+            <button key={option.id} type="button" onClick={() => onClarify?.(option)}>{option.label}</button>
           ))}</div>
         </div>
       )}

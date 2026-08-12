@@ -81,6 +81,49 @@ def derived_payload():
 
 
 class Node2Tests(unittest.TestCase):
+    def test_current_snapshot_metrics_group_by_approved_dimension_without_period_filter(self):
+        payload = copy.deepcopy(VALID_PAYLOADS["node2_request"])
+        context = payload["context_package"]
+        context["assets"] = [{
+            "urn": "urn:crm",
+            "trino_fqn": "crm.dbo.crm_members",
+            "columns": ["membership_grade", "points_balance", "joined_at", "member_status"],
+        }]
+        context["metrics"] = [
+            {
+                "id": "current_points_balance_sum",
+                "field": "crm.dbo.crm_members.points_balance",
+                "aggregation": "sum",
+                "time_field": "crm.dbo.crm_members.joined_at",
+                "temporal_semantics": "current_snapshot",
+                "required_filters": [
+                    {"field": "member_status", "operator": "eq", "value_type": "string", "value": "ACTIVE"}
+                ],
+            },
+            {
+                "id": "current_points_balance_average",
+                "field": "crm.dbo.crm_members.points_balance",
+                "aggregation": "avg",
+                "time_field": "crm.dbo.crm_members.joined_at",
+                "temporal_semantics": "current_snapshot",
+                "required_filters": [
+                    {"field": "member_status", "operator": "eq", "value_type": "string", "value": "ACTIVE"}
+                ],
+            },
+        ]
+        context["dimensions"] = [{
+            "id": "membership_grade",
+            "field": "crm.dbo.crm_members.membership_grade",
+        }]
+
+        response = generate_sql(payload)
+
+        self.assertIn('"membership_grade" AS "membership_grade"', response["sql"])
+        self.assertIn('GROUP BY "membership_grade" ORDER BY "membership_grade"', response["sql"])
+        self.assertNotIn('"joined_at" >=', response["sql"])
+        self.assertEqual(["required_filter_1"], [item["name"] for item in response["parameters"]])
+        self.assertIn("membership_grade", response["references"][0]["columns"])
+
     def test_explicit_multiple_metrics_share_one_context_bound_query(self):
         payload = copy.deepcopy(VALID_PAYLOADS["node2_request"])
         first = payload["context_package"]["metrics"][0]

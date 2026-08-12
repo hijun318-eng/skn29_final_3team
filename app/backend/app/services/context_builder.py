@@ -65,6 +65,14 @@ class ContextMetric:
     aggregation: str
     time_field: str
     required_filters: tuple[ContextRequiredFilter, ...]
+    temporal_semantics: str = "event_time"
+
+
+@dataclass(frozen=True)
+class ContextDimension:
+    id: str
+    asset_fqn: str
+    field: str
 
 
 @dataclass(frozen=True)
@@ -90,6 +98,7 @@ class ContextAsset:
     columns: tuple[str, ...]
     join_ids: tuple[str, ...] = ()
     metrics: tuple[ContextMetric, ...] = ()
+    dimensions: tuple[ContextDimension, ...] = ()
     metric_registry_required: bool = False
     required_filters: tuple[ContextRequiredFilter, ...] = ()
 
@@ -147,6 +156,7 @@ class ContextPackage:
     approved_join_ids: tuple[str, ...]
     join_policies: tuple[ContextJoinPolicy, ...] = ()
     metrics: tuple[ContextMetric, ...] = ()
+    dimensions: tuple[ContextDimension, ...] = ()
     parameter_bindings: tuple[ContextParameterBinding, ...] = ()
     required_filters: tuple[ContextRequiredFilter, ...] = ()
     access_profile: str = "default"
@@ -193,10 +203,17 @@ class ContextPackageBuilder:
                 key=lambda metric: (metric.id, metric.asset_fqn),
             )
         )
+        dimensions = tuple(
+            sorted(
+                (dimension for asset in assets for dimension in asset.dimensions),
+                key=lambda dimension: (dimension.id, dimension.asset_fqn),
+            )
+        )
         required_filters = tuple(
             item for asset in assets for item in asset.required_filters
         )
         self._validate_metrics(assets, metrics)
+        self._validate_dimensions(assets, dimensions)
         self._validate_parameter_bindings(request.parameter_bindings)
         self._validate_join_policies(assets, request.join_policies)
 
@@ -247,6 +264,7 @@ class ContextPackageBuilder:
                     "field": metric.field,
                     "aggregation": metric.aggregation,
                     "time_field": metric.time_field,
+                    "temporal_semantics": metric.temporal_semantics,
                     "required_filters": [
                         {
                             "field": item.field,
@@ -258,6 +276,14 @@ class ContextPackageBuilder:
                     ],
                 }
                 for metric in metrics
+            ],
+            "dimensions": [
+                {
+                    "id": dimension.id,
+                    "asset_fqn": dimension.asset_fqn,
+                    "field": dimension.field,
+                }
+                for dimension in dimensions
             ],
             "token_count": request.token_count,
             "parameter_bindings": [
@@ -303,6 +329,7 @@ class ContextPackageBuilder:
             entitlement_hash=request.entitlement_hash,
             assets=assets,
             metrics=metrics,
+            dimensions=dimensions,
             dataset_count=dataset_count,
             column_count=column_count,
             token_count=request.token_count,
@@ -378,11 +405,29 @@ class ContextPackageBuilder:
                 or metric.time_field not in columns
                 or not metric.required_filters
                 or required_fields.difference(columns)
+                or metric.temporal_semantics not in {"event_time", "current_snapshot"}
             ):
                 raise ContextBuildError(
                     ContextBuildErrorCode.INVALID_METRIC,
                     "Metric은 선택된 asset column과 구조화 required filter를 사용해야 합니다.",
                 )
+
+    @staticmethod
+    def _validate_dimensions(
+        assets: tuple[ContextAsset, ...],
+        dimensions: tuple[ContextDimension, ...],
+    ) -> None:
+        ids = [dimension.id for dimension in dimensions]
+        columns_by_fqn = {asset.fqn: set(asset.columns) for asset in assets}
+        if len(ids) != len(set(ids)) or any(
+            not dimension.id
+            or dimension.field not in columns_by_fqn.get(dimension.asset_fqn, set())
+            for dimension in dimensions
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Dimension은 선택된 asset의 승인 column을 사용해야 합니다.",
+            )
 
     @staticmethod
     def _validate_request_metadata(request: ContextBuildRequest) -> None:

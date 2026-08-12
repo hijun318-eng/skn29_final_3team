@@ -94,6 +94,7 @@ class AnalysisRequest(ContractModel):
     question: str = Field(min_length=1, max_length=1000)
     template_id: str | None = Field(default=None, max_length=128)
     parameters: dict[str, Scalar] = Field(default_factory=dict)
+    selected_metric_ids: tuple[str, ...] = Field(default=(), max_length=8)
 
 
 class ClarificationOption(ContractModel):

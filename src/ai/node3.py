@@ -27,7 +27,11 @@ def explain_result(
         separators=(",", ":"),
     )
     conditions = [
-        f"metric={payload['metric']}",
+        "metrics=" + ",".join(
+            payload.get("metric_selection", {}).get(
+                "selected_metric_ids", [payload["metric"]]
+            )
+        ),
         f"period={period['period_start']}..{period['period_end_exclusive']}",
         f"unit={payload['unit']}",
         f"sampling={str(payload['sampling']).lower()}",
@@ -69,12 +73,14 @@ def _validate_metric_selection(payload: dict[str, Any]) -> None:
         return
 
     selected = selection["selected_metric_id"]
+    selected_ids = selection["selected_metric_ids"]
     context_ids = selection["context_metric_ids"]
     if (
-        len(context_ids) != len(source_ids)
-        or len(set(context_ids)) != 1
-        or context_ids[0] != selected
+        not selected_ids
+        or len(selected_ids) != len(set(selected_ids))
+        or selected != selected_ids[0]
+        or context_ids != selected_ids
         or payload["metric"] != selected
-        or selected not in selection["entitled_metric_ids"]
+        or not set(selected_ids).issubset(selection["entitled_metric_ids"])
     ):
         raise ContractError("node3_request: metric selection is outside approved Context or entitlement")

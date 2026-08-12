@@ -114,14 +114,14 @@ const analysisClient = createHttpAnalysisClient("http://backend.test/", async (u
   analysisRequest = { url, init };
   return new Response(JSON.stringify(analysisResponse), { status: 200, headers: { "Content-Type": "application/json" } });
 });
-const analysisRun = await analysisClient.analyze("매출 분석", "conversation-1", "integrated_revenue");
+const analysisRun = await analysisClient.analyze("매출 분석", "conversation-1", "integrated_revenue", undefined, ["gross_revenue", "net_revenue"]);
 assert.equal(analysisRequest.url, "http://backend.test/analysis");
 assert.equal(analysisRequest.init.method, "POST");
 assert.equal(analysisRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION);
 assert.equal(analysisRequest.init.headers.Authorization, "Bearer contract-test-token");
 assert.equal(analysisRequest.init.headers["X-Access-Profile"], "integrated_revenue");
 assert.match(analysisRequest.init.headers["X-Request-Id"], /^[0-9a-f-]{36}$/);
-assert.deepEqual(JSON.parse(analysisRequest.init.body), { question: "매출 분석" });
+assert.deepEqual(JSON.parse(analysisRequest.init.body), { question: "매출 분석", selected_metric_ids: ["gross_revenue", "net_revenue"] });
 for (const forbidden of ["allowed_domains", "role", "datahub", "trino", "credential"]) {
   assert.doesNotMatch(JSON.stringify(analysisRequest.init.headers).toLowerCase(), new RegExp(forbidden));
 }
@@ -324,6 +324,10 @@ assert.doesNotMatch(reportsPageSource, /localStorage|sessionStorage/);
 assert.match(reportsPageSource, /createReportClient\(\)/);
 assert.match(reportsPageSource, /getArtifactPreview/);
 assert.match(agentPageSource, /createAnalysisClient\(\)/);
+assert.match(agentPageSource, /selectedMetrics\.map\(\(metric\) => metric\.id\)/);
+assert.match(agentPageSource, /onClarify=\{\(option\) => setSelectedMetrics\(\[option\]\)\}/);
+assert.match(agentPageSource, /선택 해제/);
+assert.match(analysisPanelSource, /onClarify\?\.\(option\)/);
 assert.match(agentPageSource, /보고서에 담기/);
 assert.match(agentPageSource, /artifact_id: run\.artifact\.artifactId/);
 assert.match(agentPageSource, /query_id: run\.artifact\.queryId/);

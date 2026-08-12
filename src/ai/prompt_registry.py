@@ -56,6 +56,8 @@ _PROMPTS = {
         "pms_stay_to_crm_membership_grade_event_time_v1은 SQL table 이름이 아니라 승인 JOIN 식별자이므로 JOIN 뒤에 쓰지 않는다. "
         "이 JOIN은 FROM pms.public.pms_stays s JOIN pms.public.pms_reservations r ON s.property_id = r.property_id AND s.reservation_id = r.reservation_id JOIN pms.public.pms_guests g ON r.property_id = g.property_id AND r.guest_id = g.guest_id JOIN crm.dbo.crm_customer_map m ON g.property_id = m.property_id AND g.guest_id = m.pms_guest_id AND m.valid_from <= s.actual_checkout_at AND (m.valid_to IS NULL OR s.actual_checkout_at < m.valid_to) JOIN crm.dbo.crm_member_grade_history h ON m.property_id = h.property_id AND m.member_no = h.member_no AND h.valid_from <= s.actual_checkout_at AND (h.valid_to IS NULL OR s.actual_checkout_at < h.valid_to) 형태를 정확히 사용한다. "
         "지표 질문은 Context metric의 field·aggregation·time_field를 그대로 적용하고, 질문에 요구된 dimension과 filter만 사용하며 원시 식별자 행을 대신 반환하지 않는다. "
+        "Context dimensions의 field는 모두 SELECT·GROUP BY·ORDER BY에 포함하고 다른 dimension을 추측하지 않는다. "
+        "metric temporal_semantics가 current_snapshot이면 execution_time 기간을 과거 월말 잔액으로 해석하거나 time_field 기간 조건을 적용하지 않고 현재 스냅샷만 집계한다. "
         "Context metric에 required_filters가 있으면 나열 순서대로 operator eq를 =로 변환해 각 field = :required_filter_1, :required_filter_2 형식의 바인딩을 AND로 정확히 적용하고 값을 SQL literal로 쓰지 않으며 자유 형식 predicate로 해석하지 않는다. "
         "timestamp with time zone 기간만 TIMESTAMP 'YYYY-MM-DD 00:00:00 Asia/Seoul' 리터럴의 이상·미만 반개구간으로 비교한다. "
         "CURRENT_DATE·CURRENT_TIMESTAMP·now 함수는 쓰지 않고 Context execution_time의 절대 시각만 사용한다. "
@@ -81,6 +83,7 @@ _PROMPTS = {
         "Context metric required_filters는 나열 순서대로 각 field = :required_filter_1, :required_filter_2 형태로 적용하고 literal 값을 쓰지 않는다. "
         "Context parameter_bindings의 모든 name을 placeholder로 정확히 사용하며 period 경계나 filter 값을 임의 날짜·literal로 바꾸지 않는다. "
         "집계값과 dimension을 함께 SELECT하면 모든 비집계 dimension을 GROUP BY하고 metric id를 집계 별칭으로 사용한다. "
+        "DIMENSION_REFERENCE_MISMATCH이면 Context dimensions의 field를 SELECT·GROUP BY·ORDER BY와 reference에 동일하게 복구한다. "
         "원문 오류를 해석하거나 반복 호출하지 않는다.",
     ),
     "node3.explain": PromptRecord(

@@ -79,6 +79,7 @@
       "field": "points_balance",
       "aggregation": "sum",
       "time_field": "joined_at",
+      "temporal_semantics": "current_snapshot",
       "required_filters": [
         {"field": "member_status", "operator": "eq", "value_type": "string", "value": "ACTIVE"},
         {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
@@ -90,10 +91,19 @@
       "field": "points_balance",
       "aggregation": "avg",
       "time_field": "joined_at",
+      "temporal_semantics": "current_snapshot",
       "required_filters": [
         {"field": "member_status", "operator": "eq", "value_type": "string", "value": "ACTIVE"},
         {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
       ]
+    }
+  ],
+  "dimensions": [
+    {
+      "id": "membership_grade",
+      "asset_fqn": "crm.dbo.crm_members",
+      "field": "membership_grade",
+      "aliases": ["회원 등급별", "멤버십 등급별", "등급별"]
     }
   ],
   "raw_assets": [

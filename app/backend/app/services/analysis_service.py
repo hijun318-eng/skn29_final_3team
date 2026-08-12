@@ -83,7 +83,12 @@ class AnalysisService:
         context: RequestContext,
         decision: RouteDecision,
         execution_sink: Callable[[dict[str, Any]], None] | None = None,
+        progress_sink: Callable[[str, str], None] | None = None,
     ) -> AnalysisResponse:
+        def progress(stage: str, outcome: str) -> None:
+            if progress_sink is not None:
+                progress_sink(stage, outcome)
+
         machine = AnalysisStateMachine()
         trace: list[TraceStep] = []
         budget = ModelCallBudget()
@@ -107,6 +112,7 @@ class AnalysisService:
             if decision.route_type is RouteType.TEMPLATE
             else payload.question
         )
+        progress("DATAHUB", "STARTED")
         try:
             with observe_stage(
                 "context",
@@ -121,12 +127,14 @@ class AnalysisService:
                     context.model_dump(mode="json"),
                 )
         except DataPlatformAccessDenied:
+            progress("DATAHUB", "BLOCKED")
             return self._responses.error(
                 context, machine, trace, PipelineStage.CONTEXT,
                 AnalysisStatus.BLOCKED, ErrorCode.ACCESS_DENIED,
                 "선택한 접근 Profile로 검색할 수 없습니다.", decision,
             )
         except DataPlatformUnavailable:
+            progress("DATAHUB", "FAILED")
             return self._responses.error(
                 context, machine, trace, PipelineStage.CONTEXT,
                 AnalysisStatus.FAILED, ErrorCode.QUERY_SOURCE_FAILED,
@@ -134,15 +142,18 @@ class AnalysisService:
                 retryable=True,
             )
         except DataPlatformNoAssets:
+            progress("DATAHUB", "BLOCKED")
             return self._responses.error(
                 context, machine, trace, PipelineStage.CONTEXT,
                 AnalysisStatus.BLOCKED, ErrorCode.INSUFFICIENT_EVIDENCE,
                 "질문과 일치하는 검색 가능한 Dataset이 없습니다.", decision,
             )
+        progress("DATAHUB", "PASSED")
         if decision.route_type is RouteType.TEMPLATE:
             assets = [
                 item for item in assets if item.get("fqn") in decision.source_fqns
             ]
+        progress("NODE1", "STARTED")
         try:
             node1 = self._call_model(
                 budget,
@@ -151,7 +162,9 @@ class AnalysisService:
                 context,
             )
         except (TimeoutError, TypeError, ValueError):
+            progress("NODE1", "FAILED")
             return self._responses.model_error(context, machine, trace, decision)
+        progress("NODE1", "PASSED")
         try:
             with observe_stage(
                 "context",
@@ -193,6 +206,7 @@ class AnalysisService:
         self._responses.record(trace, PipelineStage.CONTEXT, package.package_hash)
 
         scenario = str(payload.parameters.get("scenario") or "")
+        progress("G1", "STARTED")
         g1_error = self._support.g1_error(
             package,
             payload,
@@ -201,6 +215,7 @@ class AnalysisService:
             decision.template_id,
         )
         if g1_error:
+            progress("G1", "BLOCKED")
             error_code, message = g1_error
             return self._responses.error(
                 context,
@@ -213,6 +228,7 @@ class AnalysisService:
                 decision,
             )
         self._responses.record(trace, PipelineStage.G1)
+        progress("G1", "PASSED")
 
         references = [
             {
@@ -261,8 +277,9 @@ class AnalysisService:
         plan = self._cache.get_plan(plan_key)
         plan_cached = plan is not None
         if plan is not None:
-            pass
+            progress("NODE2", "SKIPPED")
         elif decision.sql_text:
+            progress("NODE2", "SKIPPED")
             plan = {
                 "sql": decision.sql_text,
                 "references": [
@@ -280,6 +297,7 @@ class AnalysisService:
                 "model_version": "TEMPLATE-I2-v1.0.0",
             }
         else:
+            progress("NODE2", "STARTED")
             try:
                 plan = self._call_model(
                     budget,
@@ -295,8 +313,12 @@ class AnalysisService:
                     context,
                 )
             except (TimeoutError, TypeError, ValueError):
+                progress("NODE2", "FAILED")
                 return self._responses.model_error(context, machine, trace, decision)
+            progress("NODE2", "PASSED")
         if self._support.model_plan_violation(plan):
+            if not plan_cached and not decision.sql_text:
+                progress("NODE2", "FAILED")
             return self._responses.model_error(context, machine, trace, decision)
         self._responses.record(
             trace,
@@ -305,8 +327,10 @@ class AnalysisService:
         )
 
         repair_count = 0
+        progress("G2", "STARTED")
         violation = self._support.g2_violation(plan, package)
         if violation == "UNSAFE_SQL":
+            progress("G2", "BLOCKED")
             return self._responses.error(
                 context,
                 machine,
@@ -318,6 +342,7 @@ class AnalysisService:
                 decision,
             )
         if violation:
+            progress("G2", "BLOCKED")
             self._responses.record(
                 trace,
                 PipelineStage.G2,
@@ -353,6 +378,7 @@ class AnalysisService:
                     context,
                 )
             except (TimeoutError, TypeError, ValueError):
+                progress("NODE2", "FAILED")
                 return self._responses.model_error(
                     context,
                     machine,
@@ -361,10 +387,12 @@ class AnalysisService:
                     repair_count,
                 )
             self._responses.record(trace, PipelineStage.REPAIR, "attempt=1")
+            progress("G2", "STARTED")
             if (
                 self._support.model_plan_violation(plan)
                 or self._support.g2_violation(plan, package)
             ):
+                progress("G2", "BLOCKED")
                 return self._responses.error(
                     context,
                     machine,
@@ -377,6 +405,7 @@ class AnalysisService:
                     repair_count,
                 )
         self._responses.record(trace, PipelineStage.G2)
+        progress("G2", "PASSED")
 
         self._cache.put_plan(plan_key, plan)
         gate_token = self._support.gate_token(package, str(plan["sql"]))
@@ -388,6 +417,7 @@ class AnalysisService:
         )
         cached_query = self._cache.get_result(result_key)
         result_cached = cached_query is not None
+        progress("TRINO", "SKIPPED" if result_cached else "STARTED")
         try:
             with observe_stage(
                 "trino",
@@ -410,6 +440,7 @@ class AnalysisService:
                 if query.get("query_id"):
                     span.set_attribute("answervice.query_id", str(query["query_id"]))
         except (KeyError, TimeoutError, TypeError, ValueError):
+            progress("TRINO", "FAILED")
             return self._responses.error(
                 context,
                 machine,
@@ -431,6 +462,7 @@ class AnalysisService:
             except (KeyError, TimeoutError, TypeError, ValueError):
                 terminal = {}
             if terminal.get("status") != "CANCELLED":
+                progress("TRINO", "FAILED")
                 return self._responses.error(
                     context,
                     machine,
@@ -442,6 +474,7 @@ class AnalysisService:
                     decision,
                     repair_count,
                 )
+            progress("TRINO", "FAILED")
             return self._responses.error(
                 context,
                 machine,
@@ -455,6 +488,7 @@ class AnalysisService:
                 retryable=True,
             )
         if query_status == "CANCELLED":
+            progress("TRINO", "FAILED")
             return self._responses.error(
                 context,
                 machine,
@@ -467,6 +501,7 @@ class AnalysisService:
                 repair_count,
             )
         if query_status == "FAILED":
+            progress("TRINO", "FAILED")
             return self._responses.error(
                 context,
                 machine,
@@ -480,6 +515,7 @@ class AnalysisService:
                 retryable=True,
             )
         if query_status not in {"SUCCEEDED", "PARTIAL"}:
+            progress("TRINO", "FAILED")
             return self._responses.error(
                 context,
                 machine,
@@ -492,9 +528,13 @@ class AnalysisService:
                 repair_count,
                 retryable=True,
             )
+        if not result_cached:
+            progress("TRINO", "PASSED")
 
+        progress("G3", "STARTED")
         g3_violation = self._support.g3_violation(query, package)
         if g3_violation:
+            progress("G3", "FAILED")
             return self._responses.error(
                 context,
                 machine,
@@ -507,15 +547,18 @@ class AnalysisService:
                 repair_count,
             )
         self._responses.record(trace, PipelineStage.G3)
+        progress("G3", "PASSED")
         if not result_cached:
             self._cache.put_result(result_key, query)
 
         if decision.route_type is RouteType.TEMPLATE:
+            progress("NODE3", "SKIPPED")
             explanation = {
                 "summary": f"승인된 분석에서 {len(query['rows'])}건을 조회했습니다.",
                 "model_version": "TEMPLATE-RESULT-v1.0.0",
             }
         else:
+            progress("NODE3", "STARTED")
             try:
                 explanation = self._call_model(
                     budget,
@@ -535,6 +578,7 @@ class AnalysisService:
                 ):
                     raise ValueError("invalid node3 response")
             except (TimeoutError, TypeError, ValueError):
+                progress("NODE3", "FAILED")
                 return self._responses.model_error(
                     context,
                     machine,
@@ -542,6 +586,8 @@ class AnalysisService:
                     decision,
                     repair_count,
                 )
+            progress("NODE3", "PASSED")
+        progress("ARTIFACT", "STARTED")
         with observe_stage("artifact", context=context) as span:
             artifact_id = self._support.artifact_id(
                 context.trace_id,
@@ -555,6 +601,7 @@ class AnalysisService:
             )
             span.set_attribute("answervice.artifact_id", str(artifact_id))
         self._responses.record(trace, PipelineStage.ARTIFACT, str(artifact_id))
+        progress("ARTIFACT", "PASSED")
 
         response = self._responses.success(
             support=self._support,

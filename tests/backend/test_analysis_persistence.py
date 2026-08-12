@@ -78,6 +78,26 @@ class InMemoryAnalysisRepository:
     def finish_run(self, request_id, response, execution):
         self.finished = (response, execution)
 
+    def record_progress(self, request_id, stage, outcome):
+        self.progress = getattr(self, "progress", []) + [(stage, outcome)]
+
+    def get_progress(self, request_id):
+        if request_id != self.request_id:
+            raise KeyError("Analysis 요청을 찾을 수 없습니다.")
+        return {
+            "request_id": request_id,
+            "status": "RECEIVED",
+            "events": [
+                {
+                    "sequence": index,
+                    "stage": stage,
+                    "outcome": outcome,
+                    "created_at": datetime(2026, 8, 10, tzinfo=timezone.utc),
+                }
+                for index, (stage, outcome) in enumerate(self.progress, 1)
+            ],
+        }
+
     def fail_run(self, request_id, error_type="UNSUPPORTED"):
         self.finished = error_type
 
@@ -170,6 +190,41 @@ def test_replay_request_rejects_client_owned_status_and_blank_idempotency():
         )
     with pytest.raises(ValidationError):
         ReplayAnalysisRequest(as_of=date(2026, 7, 1), idempotency_key=" ")
+
+
+def test_progress_route_is_owner_scoped_and_returns_only_recorded_stage_events():
+    owner = context()
+    repository = InMemoryAnalysisRepository(owner.user_id)
+    repository.request_id = owner.request_id
+    repository.record_progress(owner.request_id, "DATAHUB", "STARTED")
+    repository.record_progress(owner.request_id, "DATAHUB", "PASSED")
+
+    with patch.object(analysis_api, "_analysis_repository", return_value=repository):
+        progress = analysis_api.get_analysis_progress(owner.request_id, owner)
+
+    assert [(item["stage"], item["outcome"]) for item in progress["events"]] == [
+        ("DATAHUB", "STARTED"),
+        ("DATAHUB", "PASSED"),
+    ]
+    with patch.object(analysis_api, "_analysis_repository", return_value=repository):
+        with pytest.raises(HTTPException) as missing:
+            analysis_api.get_analysis_progress(uuid4(), owner)
+    assert missing.value.status_code == 404
+
+
+def test_progress_repository_queries_are_owner_scoped():
+    repository = PostgresAnalysisRepository.__new__(PostgresAnalysisRepository)
+    repository._owner_id = uuid4()
+    repository._engine = MagicMock()
+    connection = repository._engine.connect.return_value.__enter__.return_value
+    connection.execute.return_value.scalar_one_or_none.return_value = None
+
+    with pytest.raises(KeyError):
+        repository.get_progress(uuid4())
+
+    statement, parameters = connection.execute.call_args.args
+    assert "user_id = :owner_id" in str(statement)
+    assert parameters["owner_id"] == repository._owner_id
 
 
 def test_success_metadata_links_existing_release_package_and_model_without_payloads():

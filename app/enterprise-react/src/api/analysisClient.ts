@@ -9,7 +9,13 @@ import { createUuid } from "../utils/createUuid.ts";
 import { getAuthorizationHeader } from "./authSession.ts";
 
 export interface AnalysisClient {
-  analyze(question: string, conversationId: string, accessProfile?: AccessProfile): Promise<AnalysisRun>;
+  analyze(question: string, conversationId: string, accessProfile?: AccessProfile, onProgress?: (run: AnalysisRun) => void): Promise<AnalysisRun>;
+}
+
+interface AnalysisProgressResponse {
+  request_id: string;
+  status: string;
+  events: Array<{ sequence: number; stage: string; outcome: string; created_at: string }>;
 }
 
 type Fetch = typeof fetch;
@@ -37,22 +43,61 @@ export function createHttpAnalysisClient(
   request: Fetch = fetch,
 ): AnalysisClient {
   return {
-    async analyze(question, conversationId, accessProfile = "pms_only") {
+    async analyze(question, conversationId, accessProfile = "pms_only", onProgress) {
       const traceId = createUuid();
-      const response = await request(`${baseUrl.replace(/\/$/, "")}/analysis`, {
+      const requestId = createUuid();
+      const root = baseUrl.replace(/\/$/, "");
+      const headers = {
+        Authorization: getAuthorizationHeader(),
+        "X-As-Of": env.VITE_ANALYSIS_AS_OF || new Date().toISOString().slice(0, 10),
+        "X-Access-Profile": accessProfile,
+        "X-Contract-Version": OPENAPI_VERSION,
+        "X-Timezone": "Asia/Seoul",
+        "X-Trace-Id": traceId,
+      };
+      let settled = false;
+      const responsePromise = request(`${root}/analysis`, {
         method: "POST",
         signal: AbortSignal.timeout(180_000),
         headers: {
-          Authorization: getAuthorizationHeader(),
+          ...headers,
           "Content-Type": "application/json",
-          "X-As-Of": env.VITE_ANALYSIS_AS_OF || new Date().toISOString().slice(0, 10),
-          "X-Access-Profile": accessProfile,
-          "X-Contract-Version": OPENAPI_VERSION,
-          "X-Timezone": "Asia/Seoul",
-          "X-Trace-Id": traceId,
+          "X-Request-Id": requestId,
         },
         body: JSON.stringify({ question }),
       });
+      const poll = async () => {
+        while (!settled) {
+          try {
+            const progressResponse = await request(`${root}/analysis/${requestId}/progress`, { method: "GET", headers });
+            if (progressResponse.ok) {
+              const progress = await progressResponse.json() as AnalysisProgressResponse;
+              onProgress?.({
+                conversationId,
+                requestId,
+                traceId,
+                status: "running",
+                question,
+                metrics: [],
+                sources: [],
+                trace: progress.events.map(({ stage, outcome }) => ({ stage, outcome })),
+                meta: { asOf: headers["X-As-Of"], timezone: "Asia/Seoul", synthetic: true, seed: "", schemaVersion: "", contractVersion: OPENAPI_VERSION },
+              });
+            }
+          } catch {
+            // 최종 POST 응답이 오류를 정규화하므로 progress 실패를 성공으로 대체하지 않는다.
+          }
+          if (!settled) await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      };
+      const progressPromise = onProgress ? poll() : Promise.resolve();
+      let response: Response;
+      try {
+        response = await responsePromise;
+      } finally {
+        settled = true;
+        await progressPromise;
+      }
       const payload = await response.json() as AnalysisApiResponse;
       if (!response.ok) {
         throw new AnalysisRequestError(

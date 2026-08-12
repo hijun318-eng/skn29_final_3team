@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -52,6 +52,7 @@ app.add_middleware(
         "X-As-Of",
         "X-Contract-Version",
         "X-Role",
+        "X-Request-Id",
         "X-Timezone",
         "X-Trace-Id",
         "X-User-Id",
@@ -66,7 +67,13 @@ app.include_router(catalog_router)
 
 @app.middleware("http")
 async def request_context_header(request: Request, call_next):
-    request.state.request_id = uuid4()
+    supplied_request_id = request.headers.get("X-Request-Id")
+    try:
+        request.state.request_id = (
+            UUID(supplied_request_id) if supplied_request_id else uuid4()
+        )
+    except ValueError:
+        request.state.request_id = uuid4()
     request.state.trace_id = request.headers.get("X-Trace-Id") or uuid4().hex
     with observe_stage(
         "request",

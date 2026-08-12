@@ -78,7 +78,7 @@ export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
 
   if (viewState === "LOADING") {
     return (
-      <section className="analysis-state analysis-state--loading" aria-live="polite"><header><LoaderCircle size={18} /><div><b>분석 요청 중</b><span>API 응답 대기</span></div></header><p>서버가 반환하는 실제 실행 결과를 기다리고 있습니다.</p></section>
+      <section className="analysis-state analysis-state--loading" aria-live="polite"><header><LoaderCircle size={18} /><div><b>분석 요청 중</b><span>실제 단계 조회</span></div></header><p>서버가 기록한 처리 단계와 최종 결과를 기다리고 있습니다.</p>{run.trace && run.trace.length > 0 && <ol className="actual-analysis-trace" aria-label="실제 분석 실행 단계">{run.trace.map((step, index) => <li key={`${step.stage}-${index}`}><b>{step.stage}</b><span>{step.outcome}</span></li>)}</ol>}</section>
     );
   }
 

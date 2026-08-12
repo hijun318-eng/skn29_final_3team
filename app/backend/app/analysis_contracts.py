@@ -91,3 +91,20 @@ class AnalysisRunResponse(AnalysisPersistenceModel):
 class AnalysisRunListResponse(AnalysisPersistenceModel):
     contract_version: str = ANALYSIS_PERSISTENCE_VERSION
     items: list[AnalysisRunResponse]
+
+
+class AnalysisProgressEvent(AnalysisPersistenceModel):
+    sequence: int = Field(ge=1)
+    stage: Literal[
+        "DATAHUB", "NODE1", "G1", "NODE2", "G2",
+        "TRINO", "G3", "NODE3", "ARTIFACT",
+    ]
+    outcome: Literal["STARTED", "PASSED", "SKIPPED", "BLOCKED", "FAILED"]
+    created_at: datetime
+
+
+class AnalysisProgressResponse(AnalysisPersistenceModel):
+    contract_version: str = ANALYSIS_PERSISTENCE_VERSION
+    request_id: UUID
+    status: Literal["RECEIVED", "SUCCEEDED", "PARTIAL", "FAILED", "DENIED"]
+    events: list[AnalysisProgressEvent]

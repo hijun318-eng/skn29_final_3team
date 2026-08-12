@@ -32,6 +32,7 @@ class OpenApiContractTest(unittest.TestCase):
         self.assertEqual(
             {
                 "/analysis",
+                "/analysis/{request_id}/progress",
                 "/analysis/definitions",
                 "/analysis/definitions/{definition_id}",
                 "/analysis/definitions/{definition_id}/runs",
@@ -71,6 +72,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "auditGetEffectiveAccess",
                 "auditGetRecoveryStatus",
                 "submitAnalysis",
+                "analysisGetProgress",
                 "analysisCreateDefinition",
                 "analysisListDefinitions",
                 "analysisGetDefinition",
@@ -100,6 +102,9 @@ class OpenApiContractTest(unittest.TestCase):
         analysis = committed["paths"]["/analysis"]["post"]
         self.assertIn("503", analysis["responses"])
         self.assertIn("X-Access-Profile", {item["name"] for item in analysis["parameters"]})
+        self.assertIn("X-Request-Id", {item["name"] for item in analysis["parameters"]})
+        progress = committed["paths"]["/analysis/{request_id}/progress"]["get"]
+        self.assertEqual("AnalysisProgressResponse", progress["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[-1])
 
     def test_analysis_persistence_requests_reject_server_owned_fields(self) -> None:
         schemas = app.openapi()["components"]["schemas"]

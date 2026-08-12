@@ -105,7 +105,12 @@ assert.equal(auditRequests[0].init.headers.Authorization, "Bearer contract-test-
 assert.equal(auditRequests[0].init.headers["X-Contract-Version"], OPENAPI_VERSION);
 
 let analysisRequest;
+const progressResponses = [];
 const analysisClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
+  if (url.includes("/progress")) {
+    progressResponses.push(url);
+    return new Response(JSON.stringify({ request_id: "request-1", status: "RECEIVED", events: [{ sequence: 1, stage: "DATAHUB", outcome: "STARTED", created_at: "2026-08-12T00:00:00Z" }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
   analysisRequest = { url, init };
   return new Response(JSON.stringify(analysisResponse), { status: 200, headers: { "Content-Type": "application/json" } });
 });
@@ -115,11 +120,23 @@ assert.equal(analysisRequest.init.method, "POST");
 assert.equal(analysisRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION);
 assert.equal(analysisRequest.init.headers.Authorization, "Bearer contract-test-token");
 assert.equal(analysisRequest.init.headers["X-Access-Profile"], "integrated_revenue");
+assert.match(analysisRequest.init.headers["X-Request-Id"], /^[0-9a-f-]{36}$/);
 assert.deepEqual(JSON.parse(analysisRequest.init.body), { question: "매출 분석" });
 for (const forbidden of ["allowed_domains", "role", "datahub", "trino", "credential"]) {
   assert.doesNotMatch(JSON.stringify(analysisRequest.init.headers).toLowerCase(), new RegExp(forbidden));
 }
 assert.equal(analysisRun.requestId, "request-1");
+assert.equal(progressResponses.length, 0);
+
+const observedProgress = [];
+const progressClient = createHttpAnalysisClient("http://backend.test/", async (url) => {
+  if (url.includes("/progress")) return new Response(JSON.stringify({ request_id: "request-1", status: "RECEIVED", events: [{ sequence: 1, stage: "DATAHUB", outcome: "STARTED", created_at: "2026-08-12T00:00:00Z" }] }), { status: 200 });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  return new Response(JSON.stringify(analysisResponse), { status: 200 });
+});
+await progressClient.analyze("진행 조회", "conversation-progress", "pms_only", (run) => observedProgress.push(run.trace));
+assert.equal(observedProgress[0][0].stage, "DATAHUB");
+assert.equal(observedProgress[0][0].outcome, "STARTED");
 
 let defaultClientRequests = 0;
 let defaultClientInit;

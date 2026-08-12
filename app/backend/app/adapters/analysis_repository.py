@@ -328,6 +328,77 @@ class PostgresAnalysisRepository:
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 요청을 저장할 수 없습니다.") from error
 
+    def record_progress(self, request_id: UUID, stage: str, outcome: str) -> None:
+        try:
+            with self._engine.begin() as connection:
+                result = connection.execute(
+                    text(
+                        """
+                        INSERT INTO chat.analysis_stage_events
+                            (request_id, sequence_no, stage, outcome)
+                        SELECT r.request_id,
+                               COALESCE((SELECT max(sequence_no) + 1
+                                         FROM chat.analysis_stage_events
+                                         WHERE request_id = r.request_id), 1),
+                               :stage, :outcome
+                        FROM chat.analysis_requests r
+                        WHERE r.request_id = :request_id AND r.user_id = :owner_id
+                        """
+                    ),
+                    {
+                        "request_id": request_id,
+                        "owner_id": self._owner_id,
+                        "stage": stage,
+                        "outcome": outcome,
+                    },
+                )
+                if result.rowcount != 1:
+                    raise KeyError("Analysis 요청을 찾을 수 없습니다.")
+        except SQLAlchemyError as error:
+            raise AnalysisRepositoryUnavailable("Analysis 진행 상태를 저장할 수 없습니다.") from error
+
+    def get_progress(self, request_id: UUID) -> dict[str, Any]:
+        try:
+            with self._engine.connect() as connection:
+                request_status = connection.execute(
+                    text(
+                        """
+                        SELECT status
+                        FROM chat.analysis_requests
+                        WHERE request_id = :request_id AND user_id = :owner_id
+                        """
+                    ),
+                    {"request_id": request_id, "owner_id": self._owner_id},
+                ).scalar_one_or_none()
+                if request_status is None:
+                    raise KeyError("Analysis 요청을 찾을 수 없습니다.")
+                rows = connection.execute(
+                    text(
+                        """
+                        SELECT sequence_no, stage, outcome, created_at
+                        FROM chat.analysis_stage_events
+                        WHERE request_id = :request_id
+                        ORDER BY sequence_no
+                        """
+                    ),
+                    {"request_id": request_id},
+                ).mappings()
+                return {
+                    "request_id": request_id,
+                    "status": request_status,
+                    "events": [
+                        {
+                            "sequence": row["sequence_no"],
+                            "stage": row["stage"],
+                            "outcome": row["outcome"],
+                            "created_at": row["created_at"],
+                        }
+                        for row in rows
+                    ],
+                }
+        except SQLAlchemyError as error:
+            raise AnalysisRepositoryUnavailable("Analysis 진행 상태를 조회할 수 없습니다.") from error
+
     def _existing_run(
         self,
         definition_id: UUID,

@@ -262,6 +262,95 @@
         "title": "AnalysisDefinitionTrace",
         "type": "object"
       },
+      "AnalysisProgressEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "STARTED",
+              "PASSED",
+              "SKIPPED",
+              "BLOCKED",
+              "FAILED"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "sequence": {
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "stage": {
+            "enum": [
+              "DATAHUB",
+              "NODE1",
+              "G1",
+              "NODE2",
+              "G2",
+              "TRINO",
+              "G3",
+              "NODE3",
+              "ARTIFACT"
+            ],
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "stage",
+          "outcome",
+          "created_at"
+        ],
+        "title": "AnalysisProgressEvent",
+        "type": "object"
+      },
+      "AnalysisProgressResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisProgressEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "RECEIVED",
+              "SUCCEEDED",
+              "PARTIAL",
+              "FAILED",
+              "DENIED"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "status",
+          "events"
+        ],
+        "title": "AnalysisProgressResponse",
+        "type": "object"
+      },
       "AnalysisRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2985,7 +3074,7 @@
   },
   "info": {
     "title": "Answervice Control Plane",
-    "version": "OPENAPI-v1.1.0-DRAFT"
+    "version": "OPENAPI-v1.2.0-DRAFT"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -2993,6 +3082,23 @@
       "post": {
         "operationId": "submitAnalysis",
         "parameters": [
+          {
+            "in": "header",
+            "name": "X-Request-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
+          },
           {
             "in": "header",
             "name": "X-As-Of",
@@ -3733,6 +3839,103 @@
           }
         ],
         "summary": "Get Analysis Run"
+      }
+    },
+    "/analysis/{request_id}/progress": {
+      "get": {
+        "operationId": "analysisGetProgress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisProgressResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Analysis Progress"
       }
     },
     "/catalog/sources": {

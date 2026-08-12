@@ -4,13 +4,14 @@ import os
 from typing import Annotated, Any, Callable
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from app.contract_examples import ANALYSIS_REQUEST_EXAMPLES
 from app.analysis_contracts import (
     AnalysisDefinitionListResponse,
     AnalysisDefinitionResponse,
+    AnalysisProgressResponse,
     AnalysisRunListResponse,
     AnalysisRunResponse,
     CreateAnalysisDefinitionRequest,
@@ -187,6 +188,7 @@ def analysis(
         Body(openapi_examples=ANALYSIS_REQUEST_EXAMPLES),
     ],
     context: Annotated[RequestContext, Depends(analysis_context)],
+    _request_id: Annotated[UUID | None, Header(alias="X-Request-Id")] = None,
 ) -> AnalysisResponse | JSONResponse:
     wait_seconds = float(os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0"))
     if not execution_gate.acquire(wait_seconds):
@@ -212,7 +214,20 @@ def analysis(
                     context,
                 )
             )
-        response = controller.submit(payload, context, execution.update)
+        response = controller.submit(
+            payload,
+            context,
+            execution.update,
+            (
+                lambda stage, outcome: _repository_call(
+                    lambda: repository.record_progress(
+                        context.request_id, stage, outcome
+                    )
+                )
+            )
+            if repository is not None
+            else None,
+        )
         if repository is not None:
             _repository_call(
                 lambda: repository.finish_run(context.request_id, response, execution)
@@ -224,6 +239,19 @@ def analysis(
         raise
     finally:
         execution_gate.release()
+
+
+@router.get(
+    "/analysis/{request_id}/progress",
+    operation_id="analysisGetProgress",
+    response_model=AnalysisProgressResponse,
+)
+def get_analysis_progress(
+    request_id: UUID,
+    context: Annotated[RequestContext, Depends(analysis_context)],
+) -> dict[str, Any]:
+    repository = _analysis_repository(context)
+    return _repository_call(lambda: repository.get_progress(request_id))
 
 
 @router.post(

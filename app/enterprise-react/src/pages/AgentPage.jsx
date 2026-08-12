@@ -61,7 +61,7 @@ export function AgentPage() {
     setReportTransfer({ status: "idle", message: "" });
     setRun(createTransientRun(nextQuestion, conversationId, "queued"));
     try {
-      setRun(await client.analyze(nextQuestion, conversationId, accessProfile));
+      setRun(await client.analyze(nextQuestion, conversationId, accessProfile, setRun));
     } catch (error) {
       const timedOut = error instanceof DOMException && error.name === "TimeoutError";
       setRun({

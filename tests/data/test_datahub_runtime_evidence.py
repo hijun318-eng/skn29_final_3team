@@ -31,6 +31,19 @@ def test_runtime_evidence_does_not_claim_unvalidated_authorization_runtime():
     assert baseline["lineage"]["upstream_edge_count"] > 0
 
 
+def test_current_observation_separates_trino_success_from_datahub_blocker():
+    observation = load(EVIDENCE_PATH)["current_non_destructive_observation"]
+    assert observation["status"] == "PARTIAL"
+    assert observation["datahub_authorization"]["status"] == "BLOCKED"
+    assert observation["datahub_authorization"]["profile_auth_ready"]["integrated_operations"] is False
+    assert observation["trino_integrated_operations"]["status"] == "PASS"
+    assert set(observation["trino_integrated_operations"]["five_source_counts"]) == {
+        "pms", "crm", "pos", "facility", "banquet"
+    }
+    assert observation["trino_integrated_operations"]["negative_control"]["status"] == "DENIED"
+    assert observation["overall_gate"] == "BLOCKED_BY_DATAHUB_PROFILE_AND_POLICY_PROVISIONING"
+
+
 def test_recipe_order_and_hashes_are_reproducible():
     evidence = load(EVIDENCE_PATH)
     assert [item["source"] for item in evidence["ingestion_plan"]] == [

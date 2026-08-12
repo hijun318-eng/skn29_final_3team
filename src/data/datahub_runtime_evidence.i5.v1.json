@@ -42,5 +42,73 @@
     "schema": {"status": "PASS", "column_count": 116, "canonical_sha256": "eb941cc3446f306bbf32836819a558d70453fb4bc343442cc07a0de110d72b43"},
     "lineage": {"status": "PASS", "upstream_edge_count": 25, "fine_grained_lineage_count": 90, "canonical_sha256": "17571cb5fffbba34bd29921946ec6647fd68606173c043e296c458e69b7aba08"}
   },
+  "current_non_destructive_observation": {
+    "observed_at": "2026-08-12T07:19:12Z",
+    "status": "PARTIAL",
+    "scope": "CURRENT_CONTAINERS_WITHOUT_RESTART",
+    "components": {
+      "backend": {"state": "HEALTHY", "http_status": 200},
+      "frontend": {"state": "HEALTHY", "http_status": 200},
+      "report_worker": {"state": "RUNNING", "restart_count": 0},
+      "trino": {"state": "HEALTHY"},
+      "datahub_gms": {"state": "HEALTHY", "http_status": 200},
+      "datahub_mysql": {"state": "HEALTHY"},
+      "datahub_kafka": {"state": "HEALTHY"},
+      "datahub_opensearch": {"state": "HEALTHY"}
+    },
+    "datahub_authorization": {
+      "metadata_service_auth_enabled": true,
+      "auth_policies_enabled": true,
+      "view_authorization_enabled": true,
+      "rest_api_authorization_enabled": true,
+      "unauthenticated_graphql_http_status": 401,
+      "profile_auth_ready": {
+        "pms_only": true,
+        "crm_only": true,
+        "pms_crm": true,
+        "integrated_revenue": true,
+        "integrated_operations": false
+      },
+      "administrative_policy_provisioning_ready": false,
+      "integrated_operations_search": "BLOCKED_MISSING_PROFILE_PAT",
+      "status": "BLOCKED"
+    },
+    "trino_integrated_operations": {
+      "principal": "answervice_integrated_operations",
+      "five_source_counts": {
+        "pms": 167071,
+        "crm": 80000,
+        "pos": 320000,
+        "facility": 700000,
+        "banquet": 6000
+      },
+      "two_source_join": {
+        "sources": ["pms", "crm"],
+        "bounded_period": "2026-05/2026-06",
+        "row_count": 2,
+        "status": "PASS"
+      },
+      "three_source_join": {
+        "sources": ["pms", "crm", "pos"],
+        "bounded_period": "2026-05/2026-06",
+        "row_count": 2,
+        "status": "PASS"
+      },
+      "negative_control": {
+        "principal": "answervice_integrated_revenue",
+        "forbidden_source": "facility",
+        "status": "DENIED"
+      },
+      "status": "PASS"
+    },
+    "resource_snapshot": {
+      "backend": {"cpu": "0.17%", "memory": "72.64MiB", "pids": 6},
+      "frontend": {"cpu": "0.00%", "memory": "15.57MiB", "pids": 17},
+      "report_worker": {"cpu": "0.00%", "memory": "63.81MiB", "pids": 1},
+      "trino": {"cpu": "1.30%", "memory": "2.06GiB", "pids": 372},
+      "datahub_gms": {"cpu": "1.64%", "memory": "2.105GiB", "pids": 166}
+    },
+    "overall_gate": "BLOCKED_BY_DATAHUB_PROFILE_AND_POLICY_PROVISIONING"
+  },
   "recorded_at": "2026-08-12T03:13:18Z"
 }

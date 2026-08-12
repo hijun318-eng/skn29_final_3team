@@ -223,7 +223,11 @@ def _complete_dimensions(sql: str, dimensions: list[dict[str, Any]]) -> str:
         ".".join(part.name.lower() for part in table.parts): table.alias_or_name
         for table in query.find_all(exp.Table)
     }
-    selected = {column.name.lower() for column in query.find_all(exp.Column)}
+    selected = {
+        column.name.lower()
+        for projection in query.expressions
+        for column in projection.find_all(exp.Column)
+    }
     changed = False
     for item in dimensions:
         field = str(item["field"]).rsplit(".", 1)[-1]

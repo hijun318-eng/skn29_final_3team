@@ -52,7 +52,7 @@ class ProductionModelTest(unittest.TestCase):
 
     def test_missing_entitled_dimension_is_completed(self) -> None:
         sql = _complete_dimensions(
-            "SELECT SUM(t.points_delta) FROM crm.dbo.crm_point_transactions t JOIN crm.dbo.crm_members m ON t.member_no = m.member_no",
+            "SELECT SUM(t.points_delta) FROM crm.dbo.crm_point_transactions t JOIN crm.dbo.crm_members m ON t.member_no = m.member_no ORDER BY m.membership_grade",
             [{"id": "membership_grade", "field": "crm.dbo.crm_members.membership_grade"}],
         )
 

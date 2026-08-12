@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from datetime import date
 from pathlib import Path
 from sys import path
@@ -13,6 +14,7 @@ from app.adapters.contract_model import (
     ContractModelAdapter,
     NodeModelRouter,
     _validate_sql_semantics,
+    vllm_transport,
 )
 from app.contracts import RequestContext
 from app.services.context_builder import (
@@ -26,6 +28,29 @@ from app.services.context_builder import (
 
 
 class ProductionModelTest(unittest.TestCase):
+    @patch("app.adapters.contract_model.request_json")
+    def test_vllm_uses_supported_openai_json_schema(self, request_json) -> None:
+        request_json.return_value = {
+            "choices": [{"message": {"content": '{"sql":"SELECT 1"}'}}]
+        }
+
+        result = vllm_transport(
+            "https://model.test/openai",
+            "token",
+            "model",
+            "node2",
+            {"context_package": {"assets": [], "joins": [], "metrics": []}},
+            30,
+        )
+
+        body = request_json.call_args.args[2]
+        self.assertNotIn("guided_json", body)
+        self.assertEqual("json_schema", body["response_format"]["type"])
+        self.assertEqual(
+            "object", body["response_format"]["json_schema"]["schema"]["type"]
+        )
+        self.assertEqual("SELECT 1", result["sql"])
+
     def test_node2_can_route_to_an_openai_compatible_sllm(self) -> None:
         calls = []
 

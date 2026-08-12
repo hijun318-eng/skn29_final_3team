@@ -150,7 +150,14 @@ def vllm_transport(
             "temperature": 0,
             "max_tokens": 1_500,
             "chat_template_kwargs": {"enable_thinking": False},
-            "guided_json": _serving_schema(node),
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": f"answervice_{node}",
+                    "strict": True,
+                    "schema": _serving_schema(node),
+                },
+            },
         },
         token,
         timeout,

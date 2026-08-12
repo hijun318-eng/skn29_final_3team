@@ -117,7 +117,14 @@ def evaluate_record(
             "temperature": 0,
             "max_tokens": 512,
             "chat_template_kwargs": {"enable_thinking": False},
-            "guided_json": _schema(record["node"]),
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": f"answervice_{record['node']}",
+                    "strict": True,
+                    "schema": _schema(record["node"]),
+                },
+            },
         },
         None,
         timeout,

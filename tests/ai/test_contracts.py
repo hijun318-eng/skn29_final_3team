@@ -55,11 +55,9 @@ SQL_REFERENCES = [
 VALID_PAYLOADS = {
     "node1_request": {
         "question": "이번 달 객실 매출을 보여줘",
-        "role_hint": "hotel_analyst",
         "as_of": "2026-07-30T12:00:00+09:00",
         "timezone": "Asia/Seoul",
-        "calendar_id": "gregorian-kr",
-        "allowed_routes": ["analysis"],
+        "selected_metric_ids": [],
         "business_terms": {
             "room_revenue": {"kind": "metric", "aliases": ["객실 매출"]}
         },
@@ -171,7 +169,8 @@ class ContractTests(unittest.TestCase):
         }
 
         self.assertEqual(glossary["version"], "METRIC-GLOSSARY-v1.1.0-DRAFT")
-        self.assertEqual(set(glossary), {"version", "metrics"})
+        self.assertEqual(set(glossary), {"version", "dimensions", "metrics"})
+        self.assertEqual(set(glossary["dimensions"]), {"membership_grade"})
         self.assertEqual(set(glossary["metrics"]), expected_ids)
         aliases = [
             alias.casefold()

@@ -64,6 +64,7 @@ def test_missing_model_response_field_becomes_model_unavailable():
 
 
 def test_node2_model_unavailable_is_a_safe_failed_response():
+    events = []
     asset = {
         "urn": "urn:room",
         "fqn": "serving.analytics.room",
@@ -73,14 +74,16 @@ def test_node2_model_unavailable_is_a_safe_failed_response():
 
     class Adapter:
         @staticmethod
-        def search_assets(_query, _context):
+        def search_assets(query, _context):
+            events.append(("datahub", query))
             return [asset]
 
     class Model:
         @staticmethod
         def generate(node, _payload):
             if node == "node1":
-                return {"normalized_question": "객실 현황", "ambiguity": "CLEAR"}
+                events.append(("node1", None))
+                return {"normalized_question": "정규화된 객실 현황", "ambiguity": "CLEAR"}
             raise ModelUnavailableError(
                 "production model unavailable: SCHEMA_INVALID raw-secret"
             )
@@ -127,3 +130,4 @@ def test_node2_model_unavailable_is_a_safe_failed_response():
     assert response.data.trace[-1].stage is PipelineStage.MODEL
     assert response.data.trace[-1].outcome is StageOutcome.FAILED
     progress.assert_any_call("NODE2", "FAILED")
+    assert events == [("node1", None), ("datahub", "정규화된 객실 현황")]

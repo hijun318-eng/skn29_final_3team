@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from hashlib import sha256
 from typing import Any, Callable, NoReturn
 
@@ -12,6 +13,19 @@ from src.modelops.privacy import OutboundPrivacyError, prepare_outbound
 
 
 Transport = Callable[[str, dict[str, Any], float], dict[str, Any]]
+logger = logging.getLogger(__name__)
+
+
+class ModelResponseValidationError(ValueError):
+    """Safe model-response failure evidence without retaining response content."""
+
+    def __init__(
+        self, status: str, material: object = None, message: str | None = None
+    ) -> None:
+        encoded = str(material).encode("utf-8", errors="replace")
+        self.status = status
+        self.fingerprint = sha256(encoded).hexdigest()[:16]
+        super().__init__(message or status)
 
 
 class ModelUnavailableError(RuntimeError):
@@ -65,7 +79,50 @@ class ProductionModelClient:
                 return response
             except TimeoutError:
                 reason = "TIMEOUT"
-            except (ContractError, KeyError, TypeError, ValueError):
+            except ModelResponseValidationError as error:
+                reason = "SCHEMA_INVALID"
+                self.last_trace = {
+                    "status": reason,
+                    "validation_status": error.status,
+                    "validation_fingerprint": error.fingerprint,
+                    "attempts": attempt,
+                }
+                logger.warning(
+                    "model response rejected node=%s status=%s fingerprint=%s attempt=%d",
+                    node,
+                    error.status,
+                    error.fingerprint,
+                    attempt,
+                )
+            except ContractError as error:
+                reason = "SCHEMA_INVALID"
+                validation_path = str(error).split(":", 1)[0]
+                if not validation_path.startswith(f"{node}_response"):
+                    validation_path = f"{node}_response"
+                fingerprint = sha256(
+                    json.dumps(
+                        response if "response" in locals() else {},
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        default=str,
+                    ).encode("utf-8")
+                ).hexdigest()[:16]
+                self.last_trace = {
+                    "status": reason,
+                    "validation_status": "CONTRACT_SCHEMA_INVALID",
+                    "validation_path": validation_path,
+                    "validation_fingerprint": fingerprint,
+                    "attempts": attempt,
+                }
+                logger.warning(
+                    "model response rejected node=%s status=CONTRACT_SCHEMA_INVALID "
+                    "path=%s fingerprint=%s attempt=%d",
+                    node,
+                    validation_path,
+                    fingerprint,
+                    attempt,
+                )
+            except (KeyError, TypeError, ValueError):
                 reason = "SCHEMA_INVALID"
             except OSError:
                 reason = "ENDPOINT_UNAVAILABLE"
@@ -74,6 +131,7 @@ class ProductionModelClient:
 
     def _raise_unavailable(self, reason: str, attempts: int) -> NoReturn:
         self.last_trace = {
+            **self.last_trace,
             "status": reason,
             "attempts": attempts,
             "circuit_failures": self._failures,

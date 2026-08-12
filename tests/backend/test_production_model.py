@@ -14,6 +14,9 @@ from app.adapters.contract_model import (
     ContractModelAdapter,
     NodeModelRouter,
     _complete_aggregate_group_by,
+    _complete_dimension_order_by,
+    _complete_chat_response,
+    _queried_fqns,
     _validate_sql_semantics,
     vllm_transport,
 )
@@ -29,6 +32,58 @@ from app.services.context_builder import (
 
 
 class ProductionModelTest(unittest.TestCase):
+    def test_unmatched_model_table_reaches_g2_with_entitled_references(self) -> None:
+        result = _complete_chat_response(
+            {"choices": [{"message": {"content": '{"sql":"SELECT x FROM other.schema.table LIMIT 1000"}'}}]},
+            "node2",
+            {
+                "context_package": {
+                    "assets": [{
+                        "urn": "urn:approved",
+                        "trino_fqn": "serving.analytics.hotel_daily_metrics",
+                        "columns": ["business_date", "room_revenue"],
+                    }],
+                    "joins": [],
+                    "metrics": [],
+                    "dimensions": [],
+                }
+            },
+            "model",
+            "vllm",
+        )
+
+        self.assertEqual("serving.analytics.hotel_daily_metrics", result["references"][0]["trino_fqn"])
+
+    def test_dimension_order_is_completed_from_group_expression(self) -> None:
+        sql = _complete_dimension_order_by(
+            "SELECT membership_grade, SUM(points_balance) AS total "
+            "FROM crm.dbo.crm_members GROUP BY membership_grade LIMIT 1000",
+            {"membership_grade"},
+        )
+
+        self.assertIn("ORDER BY membership_grade", sql)
+
+    def test_quoted_model_tables_are_matched_to_context_fqns(self) -> None:
+        self.assertEqual(
+            {"crm.dbo.crm_point_transactions", "crm.dbo.crm_members"},
+            _queried_fqns(
+                'SELECT m."membership_grade" FROM "crm"."dbo"."crm_point_transactions" t '
+                'JOIN "crm"."dbo"."crm_members" m ON t."member_no" = m."member_no"'
+            ),
+        )
+
+    def test_dimension_semantics_accepts_order_by_projection_alias(self) -> None:
+        _validate_sql_semantics(
+            "node2",
+            {
+                "context_package": {
+                    "dimensions": [{"field": "serving.analytics.hotel_daily_metrics.business_date"}]
+                }
+            },
+            "SELECT date_trunc('month', business_date) AS month, SUM(room_revenue) "
+            "FROM serving.analytics.hotel_daily_metrics GROUP BY 1 ORDER BY month LIMIT 1000",
+        )
+
     def test_model_sql_groups_every_non_aggregate_projection(self) -> None:
         sql = _complete_aggregate_group_by(
             "SELECT business_date, SUM(room_revenue) AS revenue "
@@ -182,6 +237,35 @@ class ProductionModelTest(unittest.TestCase):
             "from_iso8601_timestamp('2026-08-01T00:00:00+09:00')) "
             "GROUP BY 1 ORDER BY 1 LIMIT 1",
         )
+
+    def test_dimension_semantics_accepts_fqn_context_and_sql_alias(self) -> None:
+        payload = {
+            "context_package": {
+                "dimensions": [{
+                    "id": "membership_grade",
+                    "field": "crm.dbo.crm_members.membership_grade",
+                }]
+            }
+        }
+
+        _validate_sql_semantics(
+            "node2",
+            payload,
+            "SELECT m.membership_grade, SUM(t.points_delta) "
+            "FROM crm.dbo.crm_point_transactions t "
+            "JOIN crm.dbo.crm_members m ON t.member_no = m.member_no "
+            "GROUP BY m.membership_grade ORDER BY m.membership_grade LIMIT 1000",
+        )
+
+        with self.assertRaisesRegex(ValueError, "group by"):
+            _validate_sql_semantics(
+                "node2",
+                payload,
+                "SELECT m.membership_grade, SUM(t.points_delta) "
+                "FROM crm.dbo.crm_point_transactions t "
+                "JOIN crm.dbo.crm_members m ON t.member_no = m.member_no "
+                "GROUP BY m.membership_grade LIMIT 1000",
+            )
 
     def test_context_metric_registry_reaches_model_payload(self) -> None:
         metric = ContextMetric(

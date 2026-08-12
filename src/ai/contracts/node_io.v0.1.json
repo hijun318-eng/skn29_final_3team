@@ -202,26 +202,22 @@
     "node1_request": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "question",
-        "role_hint",
-        "as_of",
-        "timezone",
-        "calendar_id",
-        "allowed_routes",
-        "business_terms"
-      ],
-      "properties": {
-        "question": {"type": "string", "minLength": 1},
-        "role_hint": {"type": "string", "minLength": 1},
-        "as_of": {"type": "string", "format": "date-time"},
-        "timezone": {"type": "string", "minLength": 1},
-        "calendar_id": {"type": "string", "const": "gregorian-kr"},
-        "allowed_routes": {
-          "type": "array",
-          "minItems": 1,
-          "items": {"type": "string", "minLength": 1}
-        },
+        "required": [
+          "question",
+          "as_of",
+          "timezone",
+          "selected_metric_ids",
+          "business_terms"
+        ],
+        "properties": {
+          "question": {"type": "string", "minLength": 1},
+          "as_of": {"type": "string", "format": "date-time"},
+          "timezone": {"type": "string", "minLength": 1},
+          "selected_metric_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
         "business_terms": {
           "type": "object",
           "additionalProperties": {

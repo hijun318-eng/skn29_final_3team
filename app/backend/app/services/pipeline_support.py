@@ -72,6 +72,29 @@ def _metric_glossary() -> dict[str, tuple[str, ...]]:
     return glossary
 
 
+@lru_cache(maxsize=1)
+def _dimension_glossary() -> dict[str, tuple[str, ...]]:
+    path = (
+        Path(__file__).resolve().parents[4]
+        / "src"
+        / "ai"
+        / "contracts"
+        / "metric_glossary.i5.v1.json"
+    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    dimensions = payload.get("dimensions")
+    if not isinstance(dimensions, dict):
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METRIC,
+            "승인 dimension glossary 계약을 확인할 수 없습니다.",
+        )
+    return {
+        str(dimension_id): tuple(str(alias) for alias in aliases)
+        for dimension_id, aliases in dimensions.items()
+        if isinstance(aliases, list) and aliases
+    }
+
+
 def _normalize_question(payload: dict[str, object]) -> dict[str, object]:
     from src.ai.node1 import normalize_question
 
@@ -277,37 +300,19 @@ class PipelineSupport:
     def node1_request(
         payload: AnalysisRequest,
         context: RequestContext,
-        assets: list[dict[str, object]],
     ) -> dict[str, object]:
-        candidates = [
-            metric
-            for asset in assets
-            for metric in asset.get("metrics", ())
-            if isinstance(metric, dict) and isinstance(metric.get("id"), str)
-        ]
-        candidate_ids = [str(metric["id"]) for metric in candidates]
-        if len(candidate_ids) != len(set(candidate_ids)):
-            raise ContextBuildError(
-                ContextBuildErrorCode.DUPLICATE_METRIC,
-                "동일한 metric id를 중복 선택할 수 없습니다.",
-            )
         glossary = _metric_glossary()
         business_terms = {
             metric_id: {"kind": "metric", "aliases": list(glossary[metric_id])}
-            for metric_id in candidate_ids
-            if metric_id in glossary
+            for metric_id in sorted(glossary)
         }
         business_terms.update(
             {
-                str(dimension["id"]): {
+                dimension_id: {
                     "kind": "dimension",
-                    "aliases": list(dimension.get("aliases", ())),
+                    "aliases": list(aliases),
                 }
-                for asset in assets
-                for dimension in asset.get("dimensions", ())
-                if isinstance(dimension, dict)
-                and isinstance(dimension.get("id"), str)
-                and dimension.get("aliases")
+                for dimension_id, aliases in sorted(_dimension_glossary().items())
             }
         )
         try:
@@ -320,11 +325,9 @@ class PipelineSupport:
         as_of = datetime.combine(context.as_of, time.min, timezone).isoformat()
         return {
             "question": payload.question,
-            "role_hint": context.role.value,
             "as_of": as_of,
             "timezone": context.timezone,
-            "calendar_id": "gregorian-kr",
-            "allowed_routes": ["general", "template"],
+            "selected_metric_ids": list(payload.selected_metric_ids),
             "business_terms": business_terms,
         }
 
@@ -350,7 +353,7 @@ class PipelineSupport:
                 "동일한 metric id를 중복 선택할 수 없습니다.",
             )
         normalized = normalized or _normalize_question(
-            PipelineSupport.node1_request(payload, context, assets)
+            PipelineSupport.node1_request(payload, context)
         )
         if len(payload.selected_metric_ids) != len(set(payload.selected_metric_ids)):
             raise ContextBuildError(

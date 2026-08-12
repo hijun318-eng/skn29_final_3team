@@ -13,12 +13,11 @@ from .schema import ContractError, validate_payload
 def normalize_question(payload: dict[str, Any]) -> dict[str, Any]:
     validate_payload("node1_request", payload)
     question = " ".join(payload["question"].split())
-    matched_terms = [
-        (term_id, term)
-        for term_id, term in payload["business_terms"].items()
-        if any(alias in question for alias in term["aliases"])
+    matched_terms = _matched_terms(question, payload["business_terms"])
+    matched_metrics = [
+        term_id for term_id, term in matched_terms if term["kind"] == "metric"
     ]
-    metrics = [term_id for term_id, term in matched_terms if term["kind"] == "metric"]
+    metrics = list(payload["selected_metric_ids"]) or matched_metrics
     dimensions = [term_id for term_id, term in matched_terms if term["kind"] == "dimension"]
     periods = _period_candidates(question, payload["as_of"], payload["timezone"])
     reasons = []
@@ -45,6 +44,30 @@ def normalize_question(payload: dict[str, Any]) -> dict[str, Any]:
     }
     validate_payload("node1_response", response)
     return response
+
+
+def _matched_terms(
+    question: str, business_terms: dict[str, dict[str, Any]]
+) -> list[tuple[str, dict[str, Any]]]:
+    matches = []
+    for term_id, term in business_terms.items():
+        spans = [
+            (question.find(alias), question.find(alias) + len(alias))
+            for alias in term["aliases"]
+            if alias in question
+        ]
+        if spans:
+            start, end = min(spans, key=lambda span: (span[0], -(span[1] - span[0])))
+            matches.append((start, end, term_id, term))
+    selected = []
+    occupied: dict[str, list[tuple[int, int]]] = {}
+    for start, end, term_id, term in sorted(matches, key=lambda item: (item[0], -item[1])):
+        kind_spans = occupied.setdefault(term["kind"], [])
+        if any(start < other_end and other_start < end for other_start, other_end in kind_spans):
+            continue
+        kind_spans.append((start, end))
+        selected.append((term_id, term))
+    return selected
 
 
 def _intent(question: str) -> str:

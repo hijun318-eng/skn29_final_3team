@@ -600,12 +600,19 @@ query SearchDatasets($query: String!) {
         search_metadata: dict[str, dict[str, Any]] = {}
         if self._require_live_metadata:
             if profile is not None:
-                candidates = tuple(
-                    {asset["urn"]: asset for asset in (*self._assets, *self._three_source_assets)}.values()
-                )
+                candidates = tuple({
+                    asset["urn"]: asset
+                    for asset in (*self._assets, *self._three_source_assets)
+                }.values())
             else:
-                use_candidates = self._three_source_assets if query_use == "approved_pms_crm_pos_join" else self._assets
-                candidates = tuple(asset for asset in use_candidates if query_use in asset["uses"])
+                use_candidates = (
+                    self._three_source_assets
+                    if query_use == "approved_pms_crm_pos_join"
+                    else self._assets
+                )
+                candidates = tuple(
+                    asset for asset in use_candidates if query_use in asset["uses"]
+                )
             search_results = self._datahub_search(query, datahub_token)
             if query_use == "approved_pms_crm_pos_join":
                 exact_results = self._datahub_search(
@@ -666,10 +673,15 @@ query SearchDatasets($query: String!) {
                 tags = self._metadata_names(metadata, "tags", "tags", "tag")
                 if profile is not None:
                     source_domains = self._serving_source_domains(metadata) if asset["kind"] == "view" else {domain}
+                    asset_database = str(asset["fqn"]).split(".", 1)[0]
                     if (
                         "AI_SEARCH_ALLOWED" not in tags
                         or not source_domains
                         or not source_domains.issubset(allowed_domains)
+                        or (
+                            asset["kind"] == "raw"
+                            and asset_database not in profile.database_grants
+                        )
                         or (asset["kind"] == "raw" and domain not in allowed_domains)
                     ):
                         policy_filtered = True

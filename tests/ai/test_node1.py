@@ -42,6 +42,26 @@ class Node1Tests(unittest.TestCase):
             "확인할 지표를 알려주세요.",
         )
 
+    def test_explicit_metric_selection_is_normalized_without_asset_metadata(self):
+        payload = {
+            **VALID_PAYLOADS["node1_request"],
+            "question": "이번 달 포인트를 보여줘",
+            "selected_metric_ids": ["current_points_balance_sum"],
+            "business_terms": {
+                "current_points_balance_sum": {
+                    "kind": "metric",
+                    "aliases": ["사용 가능 포인트 합계"],
+                }
+            },
+        }
+
+        result = normalize_question(payload)
+
+        self.assertEqual(
+            result["selected_metric_id"], "current_points_balance_sum"
+        )
+        self.assertNotIn("assets", payload)
+
     def test_multiple_metrics_are_ambiguous_without_arbitrary_selection(self):
         payload = {
             **VALID_PAYLOADS["node1_request"],
@@ -64,6 +84,23 @@ class Node1Tests(unittest.TestCase):
             result["ambiguity"]["clarification_question"],
             "확인할 지표를 하나만 선택해 주세요.",
         )
+
+    def test_specific_metric_alias_wins_over_an_overlapping_generic_alias(self):
+        payload = {
+            **VALID_PAYLOADS["node1_request"],
+            "question": "이번 달 소멸 포인트 합계",
+            "business_terms": {
+                "expired_points": {"kind": "metric", "aliases": ["소멸 포인트"]},
+                "current_points_balance_sum": {
+                    "kind": "metric",
+                    "aliases": ["포인트 합계"],
+                },
+            },
+        }
+
+        result = normalize_question(payload)
+
+        self.assertEqual(result["metric_candidates"], ["expired_points"])
 
     def test_multiple_dimensions_do_not_make_one_metric_ambiguous(self):
         payload = {

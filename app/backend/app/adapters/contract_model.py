@@ -14,7 +14,7 @@ from sqlglot import exp, parse_one
 from src.ai import schema as ai_schema
 from src.ai.prompt_registry import get_prompt
 from src.ai.training.benchmark_serving import request_json
-from src.modelops.runtime import ProductionModelClient
+from src.modelops.runtime import ModelResponseValidationError, ProductionModelClient
 
 
 _PROMPT_IDS = {
@@ -80,18 +80,63 @@ def _validate_sql_semantics(node: str, payload: dict[str, Any], sql: str) -> Non
             r"order\s+by\s+1",
         )
         if any(re.search(pattern, sql, flags=re.IGNORECASE) is None for pattern in required):
-            raise ValueError("month-over-month SQL must use the approved two-month window")
-    for dimension in payload.get("context_package", {}).get("dimensions", ()):
-        field = re.escape(str(dimension["field"]))
-        if any(
-            re.search(pattern, sql, flags=re.IGNORECASE) is None
-            for pattern in (
-                rf'\bselect\b.*\b{field}\b',
-                rf'\bgroup\s+by\b.*\b{field}\b',
-                rf'\border\s+by\b.*\b{field}\b',
+            raise ModelResponseValidationError(
+                "MONTH_WINDOW_INVALID",
+                sql,
+                "month-over-month SQL must use the approved two-month window",
             )
-        ):
-            raise ValueError("SQL must group by every approved requested dimension")
+    dimensions = {
+        str(dimension["field"]).rsplit(".", 1)[-1].lower()
+        for dimension in payload.get("context_package", {}).get("dimensions", ())
+    }
+    if dimensions:
+        query = parse_one(sql, read="trino")
+        projections = list(query.expressions)
+        selected = {
+            column.name.lower()
+            for projection in projections
+            for column in projection.find_all(exp.Column)
+        }
+        grouped = {
+            column.name.lower()
+            for column in (query.args.get("group") or exp.Group()).find_all(exp.Column)
+        }
+        for expression in (query.args.get("group") or exp.Group()).expressions:
+            if isinstance(expression, exp.Literal) and expression.is_int:
+                position = int(expression.this) - 1
+                if 0 <= position < len(projections):
+                    grouped.update(
+                        column.name.lower()
+                        for column in projections[position].find_all(exp.Column)
+                    )
+        ordered = {
+            column.name.lower()
+            for column in (query.args.get("order") or exp.Order()).find_all(exp.Column)
+        }
+        aliases = {
+            projection.alias.lower(): {
+                column.name.lower() for column in projection.find_all(exp.Column)
+            }
+            for projection in projections
+            if projection.alias
+        }
+        for order in (query.args.get("order") or exp.Order()).expressions:
+            expression = order.this if isinstance(order, exp.Ordered) else order
+            if isinstance(expression, exp.Column):
+                ordered.update(aliases.get(expression.name.lower(), ()))
+            elif isinstance(expression, exp.Literal) and expression.is_int:
+                position = int(expression.this) - 1
+                if 0 <= position < len(projections):
+                    ordered.update(
+                        column.name.lower()
+                        for column in projections[position].find_all(exp.Column)
+                    )
+        if not all(dimensions.issubset(columns) for columns in (selected, grouped, ordered)):
+            raise ModelResponseValidationError(
+                "DIMENSION_GROUPING_INVALID",
+                sql,
+                "SQL must group by every approved requested dimension",
+            )
 
 
 def _complete_aggregate_group_by(sql: str) -> str:
@@ -133,6 +178,54 @@ def _complete_aggregate_group_by(sql: str) -> str:
         )
         changed = True
     return query.sql(dialect="trino") if changed else sql
+
+
+def _complete_dimension_order_by(sql: str, dimension_fields: set[str]) -> str:
+    if not dimension_fields:
+        return sql
+    query = parse_one(sql, read="trino")
+    changed = False
+    for select in query.find_all(exp.Select):
+        order = select.args.get("order")
+        ordered = {
+            column.name.lower()
+            for column in (order or exp.Order()).find_all(exp.Column)
+        }
+        missing = dimension_fields - ordered
+        if not missing:
+            continue
+        grouped = select.args.get("group")
+        candidates = list(grouped.expressions if grouped else ()) + list(select.expressions)
+        additions = []
+        for field in sorted(missing):
+            expression = next(
+                (
+                    candidate.this
+                    if isinstance(candidate, exp.Alias)
+                    else candidate
+                    for candidate in candidates
+                    if field
+                    in {column.name.lower() for column in candidate.find_all(exp.Column)}
+                ),
+                None,
+            )
+            if expression is not None:
+                additions.append(exp.Ordered(this=expression.copy()))
+        if additions:
+            select.set(
+                "order",
+                exp.Order(expressions=[*(order.expressions if order else ()), *additions]),
+            )
+            changed = True
+    return query.sql(dialect="trino") if changed else sql
+
+
+def _queried_fqns(sql: str) -> set[str]:
+    query = parse_one(sql, read="trino")
+    return {
+        ".".join(part.name for part in table.parts).lower()
+        for table in query.find_all(exp.Table)
+    }
 
 
 def _without_snapshot_time_filters(sql: str, time_fields: set[str]) -> str:
@@ -262,32 +355,49 @@ def _complete_chat_response(
 ) -> dict[str, Any]:
     choices = response.get("choices")
     if not isinstance(choices, list) or not choices:
-        raise ValueError("chat completion response has no choices")
+        raise ModelResponseValidationError("ENVELOPE_CHOICES_INVALID", sorted(response))
     message = choices[0].get("message")
     content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(content, str):
-        raise ValueError("chat completion response has no text content")
-    result = json.loads(content)
+        raise ModelResponseValidationError(
+            "MESSAGE_CONTENT_MISSING",
+            sorted(message) if isinstance(message, dict) else type(message).__name__,
+        )
+    try:
+        result = json.loads(content)
+    except json.JSONDecodeError as error:
+        raise ModelResponseValidationError("CONTENT_JSON_INVALID", content) from error
     if not isinstance(result, dict):
-        raise ValueError("model content must be a JSON object")
+        raise ModelResponseValidationError("CONTENT_OBJECT_INVALID", content)
     metadata = get_prompt(_PROMPT_IDS[node]).metadata()
     metadata.update(model_version=model, adapter=adapter)
     if node not in {"node2", "node2_repair"}:
         return {**result, "model": metadata}
     sql_field = "sql" if node == "node2" else "corrected_sql"
-    sql = _complete_aggregate_group_by(result[sql_field])
-    _validate_sql_semantics(node, payload, sql)
-    queried = {
-        table.strip('"').lower()
-        for table in re.findall(
-            r"\b(?:from|join)\s+([a-zA-Z0-9_.\"]+)",
-            sql,
-            flags=re.IGNORECASE,
-        )
-    }
+    if not isinstance(result.get(sql_field), str):
+        raise ModelResponseValidationError("SQL_FIELD_INVALID", sorted(result))
+    try:
+        sql = _complete_aggregate_group_by(result[sql_field])
+        dimension_fields = {
+            str(item["field"]).rsplit(".", 1)[-1].lower()
+            for item in payload["context_package"].get("dimensions", ())
+        }
+        sql = _complete_dimension_order_by(sql, dimension_fields)
+    except (KeyError, TypeError, ValueError) as error:
+        raise ModelResponseValidationError("SQL_PARSE_INVALID", result[sql_field]) from error
+    try:
+        _validate_sql_semantics(node, payload, sql)
+    except ModelResponseValidationError:
+        raise
+    except (KeyError, TypeError, ValueError) as error:
+        raise ModelResponseValidationError("SQL_SEMANTICS_INVALID", result[sql_field]) from error
+    queried = _queried_fqns(sql)
     package = payload["context_package"]
     join_ids = sorted({item["id"] for item in package["joins"]})
     metric_ids = [item["id"] for item in package["metrics"]]
+    referenced_assets = [
+        asset for asset in package["assets"] if asset["trino_fqn"].lower() in queried
+    ] or list(package["assets"])
     completed = {
         sql_field: sql,
         "references": [
@@ -298,8 +408,7 @@ def _complete_chat_response(
                 "join_ids": join_ids,
                 "metric_ids": metric_ids,
             }
-            for asset in package["assets"]
-            if asset["trino_fqn"].lower() in queried
+            for asset in referenced_assets
         ],
         "parameters": [],
         "model": metadata,

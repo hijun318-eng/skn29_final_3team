@@ -111,8 +111,8 @@ def test_pipeline_spans_metrics_and_logs_share_only_safe_correlation(caplog):
 
     assert response.data.artifact is not None
     assert progress == [
-        ("DATAHUB", "STARTED"), ("DATAHUB", "PASSED"),
         ("NODE1", "STARTED"), ("NODE1", "PASSED"),
+        ("DATAHUB", "STARTED"), ("DATAHUB", "PASSED"),
         ("G1", "STARTED"), ("G1", "PASSED"),
         ("NODE2", "SKIPPED"), ("G2", "STARTED"), ("G2", "PASSED"),
         ("TRINO", "STARTED"), ("TRINO", "PASSED"),

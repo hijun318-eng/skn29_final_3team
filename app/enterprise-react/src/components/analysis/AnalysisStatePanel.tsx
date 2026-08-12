@@ -69,8 +69,8 @@ function formatAxisValue(value: number) {
 }
 
 const PIPELINE_STEPS = [
-  ["DATAHUB", "자산 · 권한 확인", "선택한 Profile 권한으로 DataHub Dataset을 조회합니다."],
   ["NODE1", "질문 이해", "질문의 목적, 기간, 업무 영역을 구조화합니다."],
+  ["DATAHUB", "자산 · 권한 확인", "구조화한 질문과 선택한 Profile 권한으로 DataHub Dataset을 조회합니다."],
   ["G1", "1차 검증 — SQL 생성 전", "지표 · 기간 · 승인 Context · 권한을 확인합니다."],
   ["NODE2", "통합 SQL 생성", "허용된 자산과 Join Policy만 사용해 SQL을 생성합니다."],
   ["G2", "2차 검증 — SQL 실행 전", "AST · 컬럼 · Join · Filter · 읽기 전용 경계를 확인합니다."],

@@ -116,11 +116,19 @@ class AnalysisService:
         )[:16]
         self._responses.record(trace, PipelineStage.CONTROLLER, f"audit={audit_id}")
 
-        asset_query = (
-            " ".join(sorted(decision.source_fqns))
-            if decision.route_type is RouteType.TEMPLATE
-            else payload.question
-        )
+        progress("NODE1", "STARTED")
+        try:
+            node1 = self._call_model(
+                budget,
+                "node1",
+                self._support.node1_request(payload, context),
+                context,
+            )
+        except _MODEL_ERRORS:
+            progress("NODE1", "FAILED")
+            return self._responses.model_error(context, machine, trace, decision)
+        progress("NODE1", "PASSED")
+        asset_query = str(node1.get("normalized_question") or payload.question)
         progress("DATAHUB", "STARTED")
         checkpoint(datahub_search_attempted=True)
         try:
@@ -168,18 +176,6 @@ class AnalysisService:
             assets = [
                 item for item in assets if item.get("fqn") in decision.source_fqns
             ]
-        progress("NODE1", "STARTED")
-        try:
-            node1 = self._call_model(
-                budget,
-                "node1",
-                self._support.node1_request(payload, context, assets),
-                context,
-            )
-        except _MODEL_ERRORS:
-            progress("NODE1", "FAILED")
-            return self._responses.model_error(context, machine, trace, decision)
-        progress("NODE1", "PASSED")
         try:
             with observe_stage(
                 "context",

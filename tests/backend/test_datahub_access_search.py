@@ -111,7 +111,11 @@ def test_domain_denial_and_missing_profile_credential_never_fall_back():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user", datahub_token="generic-token")
     adapter._trino.health = lambda: True
     adapter._datahub_health = lambda: True
-    asset = next(asset for asset in adapter._assets if asset["fqn"] == "pms.public.pms_stays")
+    asset = next(
+        asset
+        for asset in adapter._assets
+        if asset["fqn"] == "serving.analytics.hotel_daily_metrics"
+    )
     adapter._datahub_search = lambda _query, _credential: [_metadata(adapter, asset, "urn:li:domain:forbidden")]
     adapter._datahub_dataset = lambda _urn, _credential: _live_dataset(asset)
     context = RequestContext(user_id=UUID(int=1), access_profile="pms_only")
@@ -157,6 +161,68 @@ def test_empty_datahub_search_is_no_assets_not_denied_or_unavailable():
     with patch.dict("os.environ", {"DATAHUB_PMS_ONLY_TOKEN": "profile-credential"}, clear=False):
         with pytest.raises(DataPlatformNoAssets):
             adapter.search_assets("존재하지 않는 지표", context.model_dump(mode="json"))
+
+
+def test_question_requiring_database_outside_profile_is_denied_after_datahub_search():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._trino.health = lambda: True
+    adapter._datahub_health = lambda: True
+    asset = next(
+        asset
+        for asset in adapter._assets
+        if asset["fqn"] == "crm.dbo.crm_point_transactions"
+    )
+    search = MagicMock(
+        return_value=[_metadata(adapter, asset, "urn:li:domain:membership")]
+    )
+    adapter._datahub_search = search
+    adapter._datahub_dataset = lambda _urn, _credential: _live_dataset(asset)
+    context = RequestContext(user_id=UUID(int=1), access_profile="pms_only")
+
+    with patch.dict("os.environ", {"DATAHUB_PMS_ONLY_TOKEN": "profile-credential"}, clear=False):
+        with pytest.raises(DataPlatformAccessDenied, match="outside the selected profile"):
+            adapter.search_assets("CRM 회원 등급별 포인트", context.model_dump(mode="json"))
+
+    search.assert_called_once_with("CRM 회원 등급별 포인트", "profile-credential")
+
+
+def test_integrated_revenue_search_limits_policy_filtering_to_three_source_contract():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._trino.health = lambda: True
+    adapter._datahub_health = lambda: True
+    domains = {
+        "pms": "urn:li:domain:rooms",
+        "crm": "urn:li:domain:membership",
+        "pos": "urn:li:domain:food_and_beverage",
+    }
+
+    def metadata(asset):
+        domain = domains[asset["fqn"].split(".", 1)[0]]
+        value = _metadata(adapter, asset, domain)
+        value["schemaMetadata"]["name"] = ".".join(asset["fqn"].split(".")[1:])
+        return value
+
+    adapter._datahub_search = lambda _query, _credential: [
+        metadata(asset) for asset in adapter._three_source_assets
+    ]
+    adapter._datahub_dataset = lambda urn, _credential: _live_dataset(
+        next(asset for asset in adapter._three_source_assets if asset["urn"] == urn)
+    )
+    context = RequestContext(user_id=UUID(int=1), access_profile="integrated_revenue")
+
+    with patch.dict(
+        "os.environ",
+        {"DATAHUB_INTEGRATED_REVENUE_TOKEN": "profile-credential"},
+        clear=False,
+    ):
+        assets = adapter.search_assets(
+            "5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘",
+            context.model_dump(mode="json"),
+        )
+
+    assert {item["fqn"] for item in assets} == {
+        item["fqn"] for item in adapter._three_source_assets
+    }
 
 
 @pytest.mark.parametrize(
@@ -227,8 +293,12 @@ def test_analysis_error_contract_distinguishes_denied_unavailable_and_no_assets(
             raise failure
 
     class Model:
-        def generate(self, _node, _payload):
-            raise AssertionError("search failure must stop before model")
+        def generate(self, node, payload):
+            assert node == "node1"
+            return {
+                "normalized_question": payload["question"],
+                "ambiguity": "CLEAR",
+            }
 
     response = AnalysisService(Adapter(), Model()).analyze(
         AnalysisRequest(question="객실"),
@@ -244,7 +314,15 @@ def test_missing_profile_credential_has_safe_actionable_message():
         def search_assets(self, _query, _context):
             raise DataPlatformUnavailable("access profile credential is unavailable")
 
-    response = AnalysisService(Adapter(), object()).analyze(
+    class Model:
+        def generate(self, node, payload):
+            assert node == "node1"
+            return {
+                "normalized_question": payload["question"],
+                "ambiguity": "CLEAR",
+            }
+
+    response = AnalysisService(Adapter(), Model()).analyze(
         AnalysisRequest(question="CRM 매출"),
         RequestContext(user_id=UUID(int=1), access_profile="integrated_operations"),
         RouteDecision(RouteType.GENERAL, None, True, True),

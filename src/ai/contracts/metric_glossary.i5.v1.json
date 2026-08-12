@@ -1,5 +1,12 @@
 {
   "version": "METRIC-GLOSSARY-v1.1.0-DRAFT",
+  "dimensions": {
+    "membership_grade": [
+      "회원 등급별",
+      "등급별",
+      "membership grade"
+    ]
+  },
   "metrics": {
     "recognized_room_revenue": [
       "인식 객실 매출",

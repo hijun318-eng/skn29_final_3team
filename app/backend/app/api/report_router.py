@@ -26,11 +26,11 @@ from app.report_contracts import (
 report_router = APIRouter()
 
 
-def report_admin_context(
+def report_owner_context(
     context: Annotated[RequestContext, Depends(analysis_context)],
 ) -> RequestContext:
-    if context.role is not Role.REPORT_ADMIN:
-        raise HTTPException(status_code=403, detail="Report 관리 권한이 없습니다.")
+    if context.role not in {Role.HOTEL_ANALYST, Role.REPORT_ADMIN}:
+        raise HTTPException(status_code=403, detail="Report 사용 권한이 없습니다.")
     return context
 
 
@@ -60,7 +60,7 @@ def _call(action: Callable[[], dict[str, Any]]) -> dict[str, Any]:
 )
 def create_definition(
     payload: CreateReportDefinitionRequest,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_owner_context)],
 ) -> dict[str, Any]:
     return _call(
         lambda: _router(context).create_definition(
@@ -75,7 +75,7 @@ def create_definition(
     response_model=ReportDefinitionListResponse,
 )
 def list_definitions(
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_owner_context)],
 ) -> dict[str, Any]:
     return _call(lambda: _router(context).list_definitions())
 
@@ -89,7 +89,7 @@ def approve_version(
     definition_id: str,
     version: int,
     payload: ApproveReportVersionRequest,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_owner_context)],
 ) -> dict[str, Any]:
     return _call(
         lambda: _router(context).approve_version(
@@ -106,7 +106,7 @@ def approve_version(
 def create_next_draft(
     definition_id: str,
     version: int,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_owner_context)],
 ) -> dict[str, Any]:
     return _call(lambda: _router(context).create_next_draft(definition_id, version))
 
@@ -119,7 +119,7 @@ def create_next_draft(
 def get_version(
     definition_id: str,
     version: int,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_owner_context)],
 ) -> dict[str, Any]:
     return _call(lambda: _router(context).get_version(definition_id, version))
 
@@ -133,7 +133,7 @@ def replace_draft_blocks(
     definition_id: str,
     version: int,
     payload: ReplaceReportBlocksRequest,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_owner_context)],
 ) -> dict[str, Any]:
     return _call(
         lambda: _router(context).replace_draft_blocks(
@@ -150,7 +150,7 @@ def replace_draft_blocks(
     response_model=ReportRunListResponse,
 )
 def list_runs(
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_owner_context)],
     definition_id: str | None = None,
 ) -> dict[str, Any]:
     return _call(lambda: _router(context).list_runs(definition_id))
@@ -163,7 +163,7 @@ def list_runs(
 )
 def create_manual_run_command(
     payload: CreateManualRunRequest,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_owner_context)],
 ) -> dict[str, Any]:
     return _call(
         lambda: _router(context).create_manual_run_command(payload.model_dump(mode="json"))
@@ -179,7 +179,7 @@ def upsert_schedule(
     definition_id: str,
     version: int,
     payload: UpsertReportScheduleRequest,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_owner_context)],
 ) -> dict[str, Any]:
     return _call(
         lambda: _router(context).upsert_schedule(
@@ -194,7 +194,7 @@ def upsert_schedule(
     response_model=ReportScheduleListResponse,
 )
 def list_schedules(
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_owner_context)],
 ) -> dict[str, Any]:
     return _call(lambda: _router(context).list_schedules())
 
@@ -206,7 +206,7 @@ def list_schedules(
 )
 def get_run(
     run_id: str,
-    context: Annotated[RequestContext, Depends(report_admin_context)],
+    context: Annotated[RequestContext, Depends(report_owner_context)],
 ) -> dict[str, Any]:
     return _call(lambda: _router(context).get_run(run_id))
 

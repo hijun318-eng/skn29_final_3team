@@ -91,6 +91,7 @@ export interface AnalysisApiResponse {
   data: {
     status?: BackendAnalysisStatus;
     transitions?: BackendAnalysisStatus[];
+    trace?: Array<{ stage: string; outcome: string; detail?: string | null }>;
     artifact?: {
       artifact_id: string;
       query_id: string;
@@ -175,6 +176,7 @@ export interface AnalysisRun {
   metrics: AnalysisMetric[];
   table?: AnalysisTable | null;
   chart?: AnalysisChart | null;
+  trace?: Array<{ stage: string; outcome: string; detail?: string | null }>;
   evidence?: AnalysisEvidence;
   error?: {
     code: AnalysisErrorCode;
@@ -269,6 +271,7 @@ export function normalizeApiResponse(
       xField: result.chart.x_field,
       yFields: result.chart.y_fields,
     } : undefined,
+    trace: response.data.trace ?? [],
     evidence: evidence ? {
       artifactId: evidence.artifact_id,
       queryId: evidence.query_id,

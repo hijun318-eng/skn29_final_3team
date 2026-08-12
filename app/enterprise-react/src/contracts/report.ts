@@ -145,6 +145,51 @@ export interface ManualRunCommandResponse {
   readonly status: "queued";
 }
 
+export type ReportScheduleFrequency = "daily" | "weekly" | "monthly";
+
+export interface ReportSchedule {
+  readonly scheduleId: string;
+  readonly definitionId: string;
+  readonly version: number;
+  readonly frequency: ReportScheduleFrequency;
+  readonly hour: number;
+  readonly minute: number;
+  readonly timezone: "Asia/Seoul";
+  readonly weekday?: number;
+  readonly dayOfMonth?: number;
+  readonly enabled: boolean;
+  readonly nextRunAt?: string;
+}
+
+export interface ReportScheduleResponse {
+  readonly contract_version: string;
+  readonly schedule_id: string;
+  readonly definition_id: string;
+  readonly version: number;
+  readonly frequency: ReportScheduleFrequency;
+  readonly hour: number;
+  readonly minute: number;
+  readonly timezone: "Asia/Seoul";
+  readonly weekday: number | null;
+  readonly day_of_month: number | null;
+  readonly enabled: boolean;
+  readonly next_run_at: string | null;
+}
+
+export interface ReportScheduleListResponse {
+  readonly contract_version: string;
+  readonly items: readonly ReportScheduleResponse[];
+}
+
+export interface UpsertReportScheduleRequest {
+  readonly frequency: ReportScheduleFrequency;
+  readonly hour: number;
+  readonly minute: number;
+  readonly weekday?: number;
+  readonly day_of_month?: number;
+  readonly enabled: boolean;
+}
+
 export interface ReportBlockRequest {
   readonly block_id: string;
   readonly title: string;
@@ -213,6 +258,26 @@ export function normalizeReportRun(response: ReportRunResponse): ReportRun {
       status: block.status,
     })),
   });
+}
+
+export function normalizeReportSchedule(response: ReportScheduleResponse): ReportSchedule {
+  assertReportContractVersion(response.contract_version);
+  if (!(["daily", "weekly", "monthly"] as const).includes(response.frequency)) {
+    throw new Error(`지원하지 않는 Report schedule 주기입니다: ${response.frequency}`);
+  }
+  return {
+    scheduleId: response.schedule_id,
+    definitionId: response.definition_id,
+    version: response.version,
+    frequency: response.frequency,
+    hour: response.hour,
+    minute: response.minute,
+    timezone: response.timezone,
+    weekday: response.weekday ?? undefined,
+    dayOfMonth: response.day_of_month ?? undefined,
+    enabled: response.enabled,
+    nextRunAt: response.next_run_at ?? undefined,
+  };
 }
 
 export function toReportBlockRequest(block: ReportBlock): ReportBlockRequest {

@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { MessageSquareText, Plus, Send, Sparkles, TableProperties, X } from "lucide-react";
+import { FilePlus2, MessageSquareText, Plus, Send, Sparkles, TableProperties, X } from "lucide-react";
 import { createAnalysisClient } from "../api/analysisClient";
+import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { MetaStrip, SectionTitle } from "../components/common/EnterpriseUi";
 import { OPENAPI_VERSION } from "../contracts/analysis";
@@ -8,6 +9,7 @@ import { createUuid } from "../utils/createUuid";
 
 const ARTIFACT_TABS = [["report", "Report"], ["sources", "Sources"], ["run", "Run history"], ["trace", "Trace"]];
 const client = createAnalysisClient();
+const reportClient = createReportClient();
 
 function createTransientRun(question, conversationId, status = "idle") {
   return {
@@ -38,6 +40,7 @@ export function AgentPage() {
   const [submitting, setSubmitting] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [artifactTab, setArtifactTab] = useState("report");
+  const [reportTransfer, setReportTransfer] = useState({ status: "idle", message: "" });
 
   const submitQuestion = async (event) => {
     event.preventDefault();
@@ -48,6 +51,7 @@ export function AgentPage() {
     setEvidenceOpen(false);
     setHasSubmitted(true);
     setSubmittedQuestion(nextQuestion);
+    setReportTransfer({ status: "idle", message: "" });
     setRun(createTransientRun(nextQuestion, conversationId, "queued"));
     try {
       setRun(await client.analyze(nextQuestion, conversationId));
@@ -62,6 +66,33 @@ export function AgentPage() {
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const addArtifactToReport = async () => {
+    if (run.status !== "success" || !run.artifact) return;
+    setReportTransfer({ status: "loading", message: "Report 정의를 생성하고 있습니다." });
+    try {
+      const definition = await reportClient.createDefinition({
+        definition_id: createUuid(),
+        title: run.question,
+        blocks: [{
+          block_id: createUuid(),
+          title: run.summary || run.question,
+          artifact_id: run.artifact.artifactId,
+          query_id: run.artifact.queryId,
+          columns: 12,
+          type: "table",
+          x: 0,
+          y: 0,
+          w: 12,
+          h: 4,
+          content: "",
+        }],
+      });
+      setReportTransfer({ status: "success", message: `Report 정의 v${definition.version} 초안을 생성했습니다.` });
+    } catch (error) {
+      setReportTransfer({ status: "error", message: error instanceof Error ? error.message : "Report 정의 생성에 실패했습니다." });
     }
   };
 
@@ -83,7 +114,8 @@ export function AgentPage() {
             <div>
               <b>Analysis Agent <em>{run.status}</em></b>
               <AnalysisStatePanel run={run} />
-              {run.artifact && <div className="analysis-report-actions"><button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((open) => !open)}><TableProperties size={15} />Artifacts</button></div>}
+              {run.status === "success" && run.artifact && <div className="analysis-report-actions"><button className="primary" type="button" disabled={reportTransfer.status === "loading"} onClick={() => void addArtifactToReport()}><FilePlus2 size={15} />보고서에 담기</button><button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((open) => !open)}><TableProperties size={15} />Artifacts</button></div>}
+              {reportTransfer.status !== "idle" && <p className={`artifact-transfer-state ${reportTransfer.status}`} role={reportTransfer.status === "error" ? "alert" : "status"} aria-live="polite">{reportTransfer.message}</p>}
             </div>
           </div>
         </div>}

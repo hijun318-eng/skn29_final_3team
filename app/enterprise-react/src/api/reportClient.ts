@@ -3,6 +3,7 @@ import {
   assertReportContractVersion,
   normalizeReportDefinition,
   normalizeReportRun,
+  normalizeReportSchedule,
   type ManualRunCommandResponse,
   type ReportBlockRequest,
   type ReportDefinitionListResponse,
@@ -11,8 +12,13 @@ import {
   type ReportRun,
   type ReportRunListResponse,
   type ReportRunResponse,
+  type ReportSchedule,
+  type ReportScheduleListResponse,
+  type ReportScheduleResponse,
+  type UpsertReportScheduleRequest,
 } from "../contracts/report.ts";
 import { createUuid } from "../utils/createUuid.ts";
+import { getAuthorizationHeader } from "./authSession.ts";
 
 type Fetch = typeof fetch;
 const env = import.meta.env ?? {};
@@ -30,14 +36,12 @@ export class ReportApiError extends Error {
 
 function contextHeaders(hasBody = false): Record<string, string> {
   return {
-    Authorization: "Bearer runtime-report-admin-token",
+    Authorization: getAuthorizationHeader(),
     ...(hasBody ? { "Content-Type": "application/json" } : {}),
     "X-As-Of": env.VITE_REPORT_AS_OF || new Date().toISOString().slice(0, 10),
     "X-Contract-Version": REPORT_REQUEST_CONTEXT_VERSION,
-    "X-Role": "report_admin",
     "X-Timezone": "Asia/Seoul",
     "X-Trace-Id": createUuid(),
-    "X-User-Id": "00000000-0000-0000-0000-000000000002",
   };
 }
 
@@ -109,6 +113,16 @@ export function createReportClient(
       assertReportContractVersion(response.contract_version);
       if (response.status !== "queued") throw new Error(`Unexpected manual command status: ${response.status}`);
       return response;
+    },
+    async listSchedules(): Promise<readonly ReportSchedule[]> {
+      const payload = await parse<ReportScheduleListResponse>(await send("/reports/schedules"));
+      assertReportContractVersion(payload.contract_version);
+      return payload.items.map(normalizeReportSchedule);
+    },
+    async upsertSchedule(definitionId: string, version: number, payload: UpsertReportScheduleRequest) {
+      return normalizeReportSchedule(await parse<ReportScheduleResponse>(
+        await send(`/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}/schedule`, "PUT", payload),
+      ));
     },
   };
 }

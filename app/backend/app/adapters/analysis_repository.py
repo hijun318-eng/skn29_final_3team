@@ -249,12 +249,37 @@ class PostgresAnalysisRepository:
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 저장소를 사용할 수 없습니다.") from error
 
-    def begin_request(self, question: str, context: RequestContext) -> UUID:
+    def begin_request(
+        self,
+        question: str,
+        parameters: dict[str, object],
+        context: RequestContext,
+    ) -> UUID:
         redacted = _redact_question(question)
         if not redacted:
             raise ValueError("redacted question은 비어 있을 수 없습니다.")
+        definition_id = uuid4()
         try:
             with self._engine.begin() as connection:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO analysis_v1.analysis_definitions
+                            (definition_id, version, owner_id, title,
+                             question_text_redacted, parameters_json, parameter_hash)
+                        VALUES (:definition_id, 1, :owner_id, :title,
+                                :question, CAST(:parameters AS jsonb), :parameter_hash)
+                        """
+                    ),
+                    {
+                        "definition_id": definition_id,
+                        "owner_id": self._owner_id,
+                        "title": redacted[:200],
+                        "question": redacted,
+                        "parameters": json.dumps(parameters, ensure_ascii=False),
+                        "parameter_hash": _hash(parameters),
+                    },
+                )
                 connection.execute(
                     text(
                         """
@@ -275,6 +300,24 @@ class PostgresAnalysisRepository:
                         "question_hash": _hash(redacted),
                         "trace_id": context.trace_id,
                         "started_at": datetime.now(timezone.utc),
+                    },
+                )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO analysis_v1.analysis_run_links
+                            (definition_id, definition_version, request_id,
+                             idempotency_key, as_of, timezone_name)
+                        VALUES (:definition_id, 1, :request_id,
+                                :idempotency_key, :as_of, :timezone)
+                        """
+                    ),
+                    {
+                        "definition_id": definition_id,
+                        "request_id": context.request_id,
+                        "idempotency_key": f"chat:{context.request_id}",
+                        "as_of": context.as_of,
+                        "timezone": context.timezone,
                     },
                 )
             return context.request_id

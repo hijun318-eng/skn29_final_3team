@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, Clock3, FilePlus2, Inbox, Info, LoaderCircle, RotateCcw, Save, ShieldAlert } from "lucide-react";
+import { AlertTriangle, CalendarClock, Check, Clock3, FilePlus2, Inbox, Info, LoaderCircle, RotateCcw, Save, ShieldAlert } from "lucide-react";
 import { createReportClient, ReportApiError } from "../api/reportClient";
 import { toReportBlockRequest } from "../contracts/report";
 import { createUuid } from "../utils/createUuid";
 
 function apiError(error) {
   if (error instanceof ReportApiError && error.status === 401) return `401 · 로그인이 필요합니다. ${error.message}`;
-  if (error instanceof ReportApiError && error.status === 403) return `403 · REPORT_ADMIN 권한이 필요합니다. ${error.message}`;
+  if (error instanceof ReportApiError && error.status === 403) return `403 · Report 사용 권한이 필요합니다. ${error.message}`;
   return error instanceof ReportApiError ? `${error.status} · ${error.code} · ${error.message}`
     : error instanceof Error ? error.message : "Report API 요청에 실패했습니다.";
 }
@@ -21,6 +21,10 @@ export function ReportsPage() {
   const [apiBlocks, setApiBlocks] = useState([]);
   const [selectedRun, setSelectedRun] = useState(null);
   const [command, setCommand] = useState(null);
+  const [schedules, setSchedules] = useState([]);
+  const [scheduleState, setScheduleState] = useState("loading");
+  const [scheduleMessage, setScheduleMessage] = useState("");
+  const [scheduleForm, setScheduleForm] = useState({ frequency: "daily", hour: 9, minute: 0, weekday: 0, dayOfMonth: 1, enabled: false });
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
 
@@ -57,7 +61,31 @@ export function ReportsPage() {
     }
   };
 
-  useEffect(() => { void loadDefinitions(); void loadRuns(); }, []);
+  const loadSchedules = async () => {
+    setScheduleState("loading");
+    try {
+      const items = await client.listSchedules();
+      setSchedules(items);
+      setScheduleState(items.length ? "ready" : "empty");
+    } catch (nextError) {
+      setError(apiError(nextError));
+      setScheduleState("error");
+    }
+  };
+
+  useEffect(() => { void loadDefinitions(); void loadRuns(); void loadSchedules(); }, []);
+  useEffect(() => {
+    if (!selectedDefinition || selectedDefinition.status !== "approved") return;
+    const schedule = schedules.find((item) => item.definitionId === selectedDefinition.definitionId && item.version === selectedDefinition.version);
+    setScheduleForm(schedule ? {
+      frequency: schedule.frequency,
+      hour: schedule.hour,
+      minute: schedule.minute,
+      weekday: schedule.weekday ?? 0,
+      dayOfMonth: schedule.dayOfMonth ?? 1,
+      enabled: schedule.enabled,
+    } : { frequency: "daily", hour: 9, minute: 0, weekday: 0, dayOfMonth: 1, enabled: false });
+  }, [schedules, selectedDefinition]);
 
   const mutate = async (name, action) => {
     setPending(name);
@@ -75,6 +103,7 @@ export function ReportsPage() {
   };
 
   const openDefinition = async (definition) => {
+    setScheduleMessage("");
     const current = await mutate("definition", () => client.getDefinition(definition.definitionId, definition.version));
     if (current) upsertDefinition(current);
   };
@@ -108,8 +137,25 @@ export function ReportsPage() {
     if (detail) setSelectedRun(detail);
   };
 
+  const saveSchedule = async () => {
+    if (!selectedDefinition || selectedDefinition.status !== "approved") return;
+    setScheduleMessage("");
+    const saved = await mutate("schedule", () => client.upsertSchedule(selectedDefinition.definitionId, selectedDefinition.version, {
+      frequency: scheduleForm.frequency,
+      hour: Number(scheduleForm.hour),
+      minute: Number(scheduleForm.minute),
+      ...(scheduleForm.frequency === "weekly" ? { weekday: Number(scheduleForm.weekday) } : {}),
+      ...(scheduleForm.frequency === "monthly" ? { day_of_month: Number(scheduleForm.dayOfMonth) } : {}),
+      enabled: scheduleForm.enabled,
+    }));
+    if (!saved) return;
+    setSchedules((current) => [...current.filter((item) => item.scheduleId !== saved.scheduleId), saved]);
+    setScheduleState("ready");
+    setScheduleMessage(saved.enabled ? "스케줄을 활성화했습니다." : "스케줄을 비활성 상태로 저장했습니다.");
+  };
+
   return <div className="page-content report-api-page">
-    <div className="meta-strip"><Info size={13} />REPORT API<span>REPORT_ADMIN owner scope</span></div>
+    <div className="meta-strip"><Info size={13} />REPORT API<span>owner scope</span></div>
     <header className="card report-api-header"><div><p>REPORT API</p><h2>서버 Report 정의와 실행 이력</h2><small>Report API 응답 상태만 표시합니다.</small></div><div><button onClick={() => void loadDefinitions()} disabled={definitionState === "loading"}><RotateCcw size={14} />정의 새로고침</button><button className="primary" onClick={() => void createDefinition()} disabled={Boolean(pending)}><FilePlus2 size={14} />초안 생성</button></div></header>
     {error && <p className="report-api-state error" role="alert" aria-live="assertive">{/^40[13]/.test(error) ? <ShieldAlert size={17} /> : <AlertTriangle size={17} />}{error}</p>}
     <section className="report-api-grid">
@@ -128,6 +174,7 @@ export function ReportsPage() {
     </section>
     {selectedDefinition && <section className="card report-api-editor" aria-live="polite"><header><div><small>{selectedDefinition.definitionId}</small><h3>{selectedDefinition.title} · v{selectedDefinition.version}</h3><p>{selectedDefinition.status}{selectedDefinition.approvedAt ? ` · ${selectedDefinition.approvedAt}` : ""}</p></div><div>{selectedDefinition.status === "draft" ? <><button onClick={() => void saveDraft()} disabled={Boolean(pending)}><Save size={14} />초안 저장</button><button className="primary" onClick={() => void approve()} disabled={Boolean(pending)}><Check size={14} />명시적 승인</button></> : <><button onClick={() => void createNextDraft()} disabled={Boolean(pending)}><FilePlus2 size={14} />다음 초안</button><button className="primary" onClick={() => void queueManualRun()} disabled={Boolean(pending)}><Clock3 size={14} />수동 실행 요청</button></>}</div></header>
       <div className="report-api-blocks">{apiBlocks.map((block) => <article key={block.id}><header><b>{block.title}</b><small>{block.type} · x{block.x + 1} y{block.y + 1} · {block.w}×{block.h}</small></header>{block.type === "text" ? <textarea aria-label={`${block.title} 내용`} disabled={selectedDefinition.status !== "draft"} value={block.content || ""} onChange={(event) => setApiBlocks((current) => current.map((item) => item.id === block.id ? { ...item, content: event.target.value } : item))} /> : <p>Artifact {block.artifactId}<br />Query {block.queryId || "—"}</p>}</article>)}</div>
+      {selectedDefinition.status === "approved" && <section className="report-schedule-editor"><header><CalendarClock size={18} /><div><b>예약 실행</b><small>{scheduleState === "loading" ? "스케줄 조회 중" : "Asia/Seoul 기준"}</small></div></header><div className="report-schedule-fields"><label>주기<select value={scheduleForm.frequency} onChange={(event) => setScheduleForm((current) => ({ ...current, frequency: event.target.value }))}><option value="daily">매일</option><option value="weekly">매주</option><option value="monthly">매월</option></select></label>{scheduleForm.frequency === "weekly" && <label>요일<select value={scheduleForm.weekday} onChange={(event) => setScheduleForm((current) => ({ ...current, weekday: Number(event.target.value) }))}>{["월", "화", "수", "목", "금", "토", "일"].map((label, index) => <option value={index} key={label}>{label}요일</option>)}</select></label>}{scheduleForm.frequency === "monthly" && <label>일<input type="number" min="1" max="31" value={scheduleForm.dayOfMonth} onChange={(event) => setScheduleForm((current) => ({ ...current, dayOfMonth: Number(event.target.value) }))} /></label>}<label>시<input type="number" min="0" max="23" value={scheduleForm.hour} onChange={(event) => setScheduleForm((current) => ({ ...current, hour: Number(event.target.value) }))} /></label><label>분<input type="number" min="0" max="59" value={scheduleForm.minute} onChange={(event) => setScheduleForm((current) => ({ ...current, minute: Number(event.target.value) }))} /></label><label className="report-schedule-toggle"><input type="checkbox" checked={scheduleForm.enabled} onChange={(event) => setScheduleForm((current) => ({ ...current, enabled: event.target.checked }))} />활성화</label><button className="primary" onClick={() => void saveSchedule()} disabled={Boolean(pending) || scheduleState === "loading"}><Save size={14} />스케줄 저장</button></div>{scheduleMessage && <p role="status" aria-live="polite">{scheduleMessage}</p>}{schedules.find((item) => item.definitionId === selectedDefinition.definitionId && item.version === selectedDefinition.version)?.nextRunAt && <p>다음 실행: {schedules.find((item) => item.definitionId === selectedDefinition.definitionId && item.version === selectedDefinition.version).nextRunAt}</p>}</section>}
     </section>}
     {command && <section className="card report-command-receipt" role="status" aria-live="polite"><Clock3 size={18} /><div><b>서버가 수동 실행 명령을 queued로 접수했습니다.</b><p>command {command.command_id}</p></div></section>}
     {selectedRun && <section className="card report-run-actual" aria-live="polite"><header><div><small>{selectedRun.runId}</small><h3>run · {selectedRun.status}</h3></div><span>definition v{selectedRun.definitionVersion}</span></header><p>as_of {selectedRun.asOf} · policy {selectedRun.policyVersion}</p><ul>{selectedRun.blocks.map((block) => <li key={block.blockId}><span>{block.blockId}</span><b>{block.status}</b></li>)}</ul></section>}

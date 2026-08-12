@@ -5,6 +5,7 @@ import {
   type AnalysisRun,
 } from "../contracts/analysis.ts";
 import { createUuid } from "../utils/createUuid.ts";
+import { getAuthorizationHeader } from "./authSession.ts";
 
 export interface AnalysisClient {
   analyze(question: string, conversationId: string): Promise<AnalysisRun>;
@@ -24,14 +25,12 @@ export function createHttpAnalysisClient(
       const response = await request(`${baseUrl.replace(/\/$/, "")}/analysis`, {
         method: "POST",
         headers: {
-          Authorization: "Bearer runtime-test-token",
+          Authorization: getAuthorizationHeader(),
           "Content-Type": "application/json",
           "X-As-Of": env.VITE_ANALYSIS_AS_OF || new Date().toISOString().slice(0, 10),
           "X-Contract-Version": OPENAPI_VERSION,
-          "X-Role": "hotel_analyst",
           "X-Timezone": "Asia/Seoul",
           "X-Trace-Id": traceId,
-          "X-User-Id": "00000000-0000-0000-0000-000000000001",
         },
         body: JSON.stringify({ question }),
       });

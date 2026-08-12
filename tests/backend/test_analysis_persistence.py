@@ -40,8 +40,9 @@ class InMemoryAnalysisRepository:
         self.question = "합성 객실 운영 현황을 알려줘"
         self.parameters = {"scenario": "success"}
 
-    def begin_request(self, question, request_context):
+    def begin_request(self, question, parameters, request_context):
         self.question = question
+        self.parameters = parameters
         self.request_id = request_context.request_id
         return self.request_id
 

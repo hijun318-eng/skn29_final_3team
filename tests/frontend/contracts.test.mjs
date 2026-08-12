@@ -16,6 +16,12 @@ import { createAnalysisClient, createHttpAnalysisClient } from "../../app/enterp
 import { createReportClient, ReportApiError } from "../../app/enterprise-react/src/api/reportClient.ts";
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
 
+globalThis.sessionStorage = {
+  getItem: (key) => key === "answervice.auth.token" ? "contract-test-token" : null,
+  setItem() {},
+  removeItem() {},
+};
+
 const frontendRoot = new URL("../../app/enterprise-react/src/", import.meta.url);
 const analysisClientSource = readFileSync(new URL("api/analysisClient.ts", frontendRoot), "utf8");
 const reportClientSource = readFileSync(new URL("api/reportClient.ts", frontendRoot), "utf8");
@@ -35,6 +41,7 @@ const analysisResponse = {
   data: {
     status: "SUCCEEDED",
     transitions: ["RECEIVED", "ROUTED", "SUCCEEDED"],
+    trace: [{ stage: "G2", outcome: "PASSED", detail: "read-only" }],
     artifact: { artifact_id: "artifact-1", query_id: "query-1", context_hash: "context-1" },
     result: {
       summary: "API 분석 결과",
@@ -67,6 +74,7 @@ assert.equal(resolveViewState(normalized), "READY");
 assert.equal(normalized.artifact.artifactId, "artifact-1");
 assert.equal(normalized.metrics[0].value, 100);
 assert.equal(normalized.sources[0].urn, "urn:pms");
+assert.equal(normalized.trace[0].stage, "G2");
 
 let analysisRequest;
 const analysisClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
@@ -77,7 +85,7 @@ const analysisRun = await analysisClient.analyze("매출 분석", "conversation-
 assert.equal(analysisRequest.url, "http://backend.test/analysis");
 assert.equal(analysisRequest.init.method, "POST");
 assert.equal(analysisRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION);
-assert.equal(analysisRequest.init.headers["X-Role"], "hotel_analyst");
+assert.equal(analysisRequest.init.headers.Authorization, "Bearer contract-test-token");
 assert.deepEqual(JSON.parse(analysisRequest.init.body), { question: "매출 분석" });
 assert.equal(analysisRun.requestId, "request-1");
 
@@ -128,6 +136,20 @@ const commandResponse = {
   idempotency_key: "key-1",
   status: "queued",
 };
+const scheduleResponse = {
+  contract_version: REPORT_CONTRACT_VERSION,
+  schedule_id: "schedule-1",
+  definition_id: "definition-1",
+  version: 1,
+  frequency: "weekly",
+  hour: 9,
+  minute: 30,
+  timezone: "Asia/Seoul",
+  weekday: 0,
+  day_of_month: null,
+  enabled: true,
+  next_run_at: "2026-08-17T09:30:00+09:00",
+};
 const reportResponses = [
   definitionResponse,
   { contract_version: REPORT_CONTRACT_VERSION, items: [definitionResponse] },
@@ -138,13 +160,15 @@ const reportResponses = [
   { contract_version: REPORT_CONTRACT_VERSION, items: [runResponse] },
   runResponse,
   commandResponse,
+  { contract_version: REPORT_CONTRACT_VERSION, items: [scheduleResponse] },
+  scheduleResponse,
 ];
 const reportRequests = [];
 const reportClient = createReportClient("http://backend.test/", async (url, init) => {
   reportRequests.push({ url, init });
   return new Response(JSON.stringify(reportResponses.shift()), { status: 200, headers: { "Content-Type": "application/json" } });
 });
-const blockRequest = { block_id: "block-1", title: "내용", columns: 12, type: "text", x: 0, y: 0, w: 12, h: 2, content: "검토" };
+const blockRequest = { block_id: "block-1", title: "분석 결과", artifact_id: "artifact-1", query_id: "query-1", columns: 12, type: "table", x: 0, y: 0, w: 12, h: 4, content: "" };
 await reportClient.createDefinition({ definition_id: "definition-1", title: "주간 보고서", blocks: [blockRequest] });
 await reportClient.listDefinitions();
 await reportClient.getDefinition("definition-1", 1);
@@ -154,12 +178,20 @@ await reportClient.replaceDraftBlocks("definition-1", 1, [blockRequest]);
 await reportClient.listRuns("definition-1");
 await reportClient.getRun("run-1");
 const command = await reportClient.createManualRun({ definition_id: "definition-1", version: 1, as_of: commandResponse.as_of, idempotency_key: "key-1" });
-assert.equal(reportRequests.length, 9);
-assert.deepEqual(reportRequests.map(({ init }) => init.method), ["POST", "GET", "GET", "POST", "POST", "PUT", "GET", "GET", "POST"]);
+const schedules = await reportClient.listSchedules();
+const savedSchedule = await reportClient.upsertSchedule("definition-1", 1, { frequency: "weekly", hour: 9, minute: 30, weekday: 0, enabled: true });
+assert.equal(reportRequests.length, 11);
+assert.deepEqual(reportRequests.map(({ init }) => init.method), ["POST", "GET", "GET", "POST", "POST", "PUT", "GET", "GET", "POST", "GET", "PUT"]);
 assert.equal(command.status, "queued");
+assert.equal(schedules[0].nextRunAt, scheduleResponse.next_run_at);
+assert.equal(savedSchedule.weekday, 0);
+assert.deepEqual(JSON.parse(reportRequests[10].init.body), { frequency: "weekly", hour: 9, minute: 30, weekday: 0, enabled: true });
+const artifactDefinitionBody = JSON.parse(reportRequests[0].init.body);
+assert.equal(artifactDefinitionBody.blocks[0].artifact_id, "artifact-1");
+assert.equal(artifactDefinitionBody.blocks[0].query_id, "query-1");
 for (const { init } of reportRequests) {
   assert.equal(init.headers["X-Contract-Version"], OPENAPI_VERSION);
-  assert.equal(init.headers["X-Role"], "report_admin");
+  assert.equal(init.headers.Authorization, "Bearer contract-test-token");
 }
 
 const deniedClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({ error: { code: "REPORT_FORBIDDEN", message: "권한이 없습니다." } }), { status: 403 }));
@@ -180,6 +212,13 @@ assert.doesNotMatch(reportClientSource, /VITE_REPORT_MODE/);
 assert.doesNotMatch(reportsPageSource, /localStorage|sessionStorage/);
 assert.match(reportsPageSource, /createReportClient\(\)/);
 assert.match(agentPageSource, /createAnalysisClient\(\)/);
+assert.match(agentPageSource, /보고서에 담기/);
+assert.match(agentPageSource, /artifact_id: run\.artifact\.artifactId/);
+assert.match(agentPageSource, /query_id: run\.artifact\.queryId/);
+assert.match(reportsPageSource, /client\.listSchedules\(\)/);
+assert.match(reportsPageSource, /client\.upsertSchedule/);
+assert.match(reportsPageSource, /frequency === "weekly"/);
+assert.match(reportsPageSource, /frequency === "monthly"/);
 
 for (const removedDataFile of ["analysisFixtures.ts", "catalogFixtures.ts", "enterpriseDemoData.js"]) {
   assert.equal(existsSync(new URL(`data/${removedDataFile}`, frontendRoot)), false);

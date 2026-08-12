@@ -187,7 +187,13 @@ def analysis(
     try:
         if os.getenv("APP_RUNTIME_DATABASE_URL"):
             repository = _analysis_repository(context)
-            _repository_call(lambda: repository.begin_request(payload.question, context))
+            _repository_call(
+                lambda: repository.begin_request(
+                    payload.question,
+                    payload.model_dump(mode="json")["parameters"],
+                    context,
+                )
+            )
         response = controller.submit(payload, context, execution.update)
         if repository is not None:
             _repository_call(

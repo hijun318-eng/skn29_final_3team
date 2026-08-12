@@ -5,6 +5,8 @@ import {
   MessageSquareText,
   X,
 } from "lucide-react";
+import { useState } from "react";
+import { clearAuthSession, hasAuthSession, saveAuthSession } from "../../api/authSession";
 import { PAGE_PATHS } from "../../routing";
 
 const NAVIGATION = [
@@ -13,6 +15,8 @@ const NAVIGATION = [
 ];
 
 export function AppSidebar({ page, onNavigate, open, onClose }) {
+  const [authenticated, setAuthenticated] = useState(hasAuthSession);
+  const [token, setToken] = useState("");
   const renderGroup = (group, title) => (
     <>
       <small className="nav-group">{title}</small>
@@ -50,6 +54,15 @@ export function AppSidebar({ page, onNavigate, open, onClose }) {
         <nav>
           {renderGroup("workspace", "WORKSPACE")}
         </nav>
+        <form className="auth-session" onSubmit={(event) => {
+          event.preventDefault();
+          saveAuthSession(token);
+          setToken("");
+          setAuthenticated(true);
+        }}>
+          <small>AUTH SESSION</small>
+          {authenticated ? <button type="button" onClick={() => { clearAuthSession(); setAuthenticated(false); }}>로그아웃</button> : <><input type="password" autoComplete="current-password" aria-label="Bearer 로그인 토큰" placeholder="Bearer token" value={token} onChange={(event) => setToken(event.target.value)} /><button type="submit" disabled={!token.trim()}>로그인</button></>}
+        </form>
         <div className="organization">
           <Building2 size={20} />
           <div>

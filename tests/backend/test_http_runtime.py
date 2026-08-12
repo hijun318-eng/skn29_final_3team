@@ -267,8 +267,8 @@ class FastApiRuntimeTest(unittest.TestCase):
         status, response = self.request(
             "/reports/definitions", headers=self.context_headers("hotel_analyst")
         )
-        self.assertEqual(403, status)
-        self.assertIn("권한", response["detail"])
+        self.assertEqual(503, status)
+        self.assertIn("저장소", response["detail"])
 
         headers["X-User-Id"] = "00000000-0000-0000-0000-000000000001"
         status, response = self.request("/reports/definitions", headers=headers)

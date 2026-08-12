@@ -49,13 +49,14 @@ def context(role: Role = Role.REPORT_ADMIN) -> RequestContext:
 
 
 class ReportRegistrationTest(unittest.TestCase):
-    def test_report_routes_require_authentication_and_report_admin(self):
-        dependency = signature(report_api.report_admin_context).parameters["context"]
+    def test_report_routes_require_authenticated_report_owner(self):
+        dependency = signature(report_api.report_owner_context).parameters["context"]
         self.assertIn("analysis_context", repr(dependency.annotation))
-        self.assertEqual(Role.REPORT_ADMIN, report_api.report_admin_context(context()).role)
-        for role in (Role.HOTEL_ANALYST, Role.DATA_ADMIN):
+        for role in (Role.HOTEL_ANALYST, Role.REPORT_ADMIN):
+            self.assertEqual(role, report_api.report_owner_context(context(role)).role)
+        for role in (Role.DATA_ADMIN,):
             with self.assertRaises(HTTPException) as denied:
-                report_api.report_admin_context(context(role))
+                report_api.report_owner_context(context(role))
             self.assertEqual(403, denied.exception.status_code)
 
     def test_report_v11_routes_replace_draft_and_keep_result_ingestion_internal(self):

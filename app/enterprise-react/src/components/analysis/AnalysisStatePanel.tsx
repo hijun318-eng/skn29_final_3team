@@ -17,17 +17,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useEffect, useState } from "react";
 import { resolveViewState, type AnalysisRun, type AnalysisViewState } from "../../contracts/analysis";
-
-const TRACE_STEPS = [
-  ["질문 해석", "질문의 지표와 기간을 정리합니다."],
-  ["데이터 근거 연결", "승인된 source와 schema를 연결합니다."],
-  ["분석 계획", "읽기 전용 조회 계획을 준비합니다."],
-  ["SQL 정책 검증", "허용된 SELECT 범위를 확인합니다."],
-  ["연합 조회", "Trino 실행 결과를 기다립니다."],
-  ["결과 검증", "근거와 Artifact를 정리합니다."],
-] as const;
 
 const COLUMN_LABELS: Record<string, string> = {
   business_date: "일자",
@@ -77,7 +67,6 @@ function formatAxisValue(value: number) {
 
 export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
   const viewState = resolveViewState(run);
-  const [traceStep, setTraceStep] = useState(0);
   const copy = VIEW_COPY[viewState];
   const Icon = copy.icon;
   const needsClarification = run.error?.code === "CONTEXT_INCOMPLETE";
@@ -85,23 +74,9 @@ export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
   const chart = showResult ? run.chart : null;
   const table = showResult ? run.table : null;
 
-  useEffect(() => {
-    if (viewState !== "LOADING") return undefined;
-    setTraceStep(0);
-    const timer = window.setInterval(() => setTraceStep((current) => Math.min(current + 1, TRACE_STEPS.length - 1)), 320);
-    return () => window.clearInterval(timer);
-  }, [viewState, run.requestId]);
-
   if (viewState === "LOADING") {
     return (
-      <section className="analysis-trace" aria-live="polite" aria-label="분석 진행 단계">
-        <header><div><small>SYNTHETIC EXECUTION TRACE</small><h3>답변을 준비하고 있습니다</h3></div><span>{traceStep + 1} / {TRACE_STEPS.length}</span></header>
-        <ol>{TRACE_STEPS.map(([title, description], index) => {
-          const state = index < traceStep ? "done" : index === traceStep ? "active" : "pending";
-          return <li className={state} aria-current={state === "active" ? "step" : undefined} key={title}><i>{state === "done" ? "✓" : index + 1}</i><div><b>{title}</b><small>{description}</small></div><em>{state === "done" ? "완료" : state === "active" ? "진행 중" : "대기"}</em></li>;
-        })}</ol>
-        <p>시연용 진행 표시이며 실제 Gate 판정은 API 응답 계약을 기준으로 합니다.</p>
-      </section>
+      <section className="analysis-state analysis-state--loading" aria-live="polite"><header><LoaderCircle size={18} /><div><b>분석 요청 중</b><span>API 응답 대기</span></div></header><p>서버가 반환하는 실제 실행 결과를 기다리고 있습니다.</p></section>
     );
   }
 
@@ -121,6 +96,7 @@ export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
           <div><dt>error.retryable</dt><dd>{String(run.error.retryable)}</dd></div>
         </dl>
       )}
+      {run.trace && run.trace.length > 0 && <ol className="actual-analysis-trace" aria-label="실제 분석 실행 단계">{run.trace.map((step, index) => <li key={`${step.stage}-${index}`}><b>{step.stage}</b><span>{step.outcome}</span>{step.detail && <small>{step.detail}</small>}</li>)}</ol>}
       {showResult && (
         <div className="analysis-dashboard">
           <div className="analysis-dashboard-header">

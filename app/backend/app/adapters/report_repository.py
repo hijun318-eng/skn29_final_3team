@@ -45,6 +45,39 @@ class PostgresReportRepository:
         self._engine = _engine(database_url)
         self._owner_id = owner_id
 
+    def _validate_artifact_block(self, connection, block: ReportBlock) -> None:
+        if block.type is BlockType.TEXT:
+            return
+        if not block.artifact_id:
+            raise ValueError("table/chart block에는 Artifact가 필요합니다.")
+        artifact = connection.execute(
+            text(
+                """
+                SELECT q.trino_query_id
+                FROM artifact.analysis_artifacts a
+                JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                JOIN query.query_executions q
+                  ON q.query_execution_id = a.query_execution_id
+                JOIN analysis_v1.analysis_run_links l ON l.request_id = a.request_id
+                JOIN analysis_v1.analysis_definitions d
+                  ON d.definition_id = l.definition_id
+                 AND d.version = l.definition_version
+                WHERE a.artifact_id = :artifact_id
+                  AND a.status = 'APPROVED'
+                  AND r.user_id = :owner_id
+                  AND d.owner_id = :owner_id
+                """
+            ),
+            {
+                "artifact_id": _uuid(block.artifact_id, "artifact_id"),
+                "owner_id": self._owner_id,
+            },
+        ).scalar_one_or_none()
+        if artifact is None:
+            raise ValueError("본인 소유의 재실행 가능한 Artifact만 Report에 포함할 수 있습니다.")
+        if block.query_id and block.query_id != artifact:
+            raise ValueError("Artifact와 query_id가 일치하지 않습니다.")
+
     def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
         if draft.status is not DefinitionStatus.DRAFT:
             raise ValueError("draft만 저장할 수 있습니다.")
@@ -87,6 +120,7 @@ class PostgresReportRepository:
                     },
                 )
                 for block in draft.blocks:
+                    self._validate_artifact_block(connection, block)
                     connection.execute(
                         text(
                             """
@@ -286,6 +320,7 @@ class PostgresReportRepository:
                 {"definition_id": definition_uuid, "version": version},
             )
             for block in blocks:
+                self._validate_artifact_block(connection, block)
                 connection.execute(
                     text(
                         """

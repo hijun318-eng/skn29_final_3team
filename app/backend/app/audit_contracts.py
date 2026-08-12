@@ -49,7 +49,7 @@ class BackupStatus(AuditContractModel):
 
 
 class RestoreStatus(AuditContractModel):
-    status: Literal["unknown", "not_run", "verified"]
+    status: Literal["unknown", "not_run", "archive_validated", "verified"]
     verified_at: datetime | None
     mode: Literal["unknown", "not_run", "archive-list-only", "isolated-restore"]
     backup_age_hours: float | None

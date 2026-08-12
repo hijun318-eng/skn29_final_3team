@@ -28,6 +28,7 @@ def test_recovery_status_reads_sanitized_latest_manifests(tmp_path, monkeypatch)
     assert status["backup"]["age_hours"] == 2
     assert status["backup"]["rpo_passed"] is True
     assert status["restore"]["mode"] == "archive-list-only"
+    assert status["restore"]["status"] == "archive_validated"
     assert status["restore"]["rto_passed"] is True
     assert "/secret" not in serialized
     assert "backup_file" not in serialized

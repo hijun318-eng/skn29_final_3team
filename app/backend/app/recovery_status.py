@@ -62,6 +62,15 @@ def recovery_status(now: datetime | None = None) -> dict:
     restore_mode = (restore or {}).get("mode")
     if restore_mode not in {"archive-list-only", "isolated-restore"}:
         restore_mode = "unknown" if restore == {} else "not_run"
+    restore_status = (
+        "verified"
+        if restore_mode == "isolated-restore" and verified_at and restore_hash
+        else "archive_validated"
+        if restore_mode == "archive-list-only" and verified_at and restore_hash
+        else "unknown"
+        if restore == {}
+        else "not_run"
+    )
     return {
         "generated_at": generated_at,
         "retention": {
@@ -77,7 +86,7 @@ def recovery_status(now: datetime | None = None) -> dict:
             "rpo_passed": age <= 24 if age is not None else None,
         },
         "restore": {
-            "status": "verified" if verified_at and restore_hash else "unknown" if restore == {} else "not_run",
+            "status": restore_status,
             "verified_at": verified_at,
             "mode": restore_mode,
             "backup_age_hours": (restore or {}).get("backup_age_hours"),

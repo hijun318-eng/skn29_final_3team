@@ -700,12 +700,12 @@ class PostgresAnalysisRepository:
                         (context_package_id, request_id, context_release_id,
                          user_scope_json, assets_json, metrics_json, joins_json,
                          policies_json, dataset_count, column_count, token_count,
-                         package_hash)
+                         package_hash, idempotency_key)
                     VALUES (:package_id, :request_id, :release_id,
                             CAST(:user_scope AS jsonb), CAST(:assets AS jsonb),
                             CAST(:metrics AS jsonb), CAST(:joins AS jsonb),
                             CAST(:policies AS jsonb), :dataset_count, :column_count,
-                            :token_count, :package_hash)
+                            :token_count, :package_hash, :idempotency_key)
                     ON CONFLICT (request_id) DO NOTHING
                     """
                 ),
@@ -756,6 +756,7 @@ class PostgresAnalysisRepository:
                     "column_count": package.column_count,
                     "token_count": package.token_count,
                     "package_hash": package.package_hash,
+                    "idempotency_key": f"analysis:{request_id}",
                 },
             )
             package_id = connection.execute(

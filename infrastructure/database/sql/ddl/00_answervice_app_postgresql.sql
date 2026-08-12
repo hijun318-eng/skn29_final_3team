@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS context.context_packages (
     column_count smallint NOT NULL CHECK (column_count BETWEEN 0 AND 60),
     token_count integer NOT NULL CHECK (token_count BETWEEN 0 AND 6000),
     package_hash varchar(64) NOT NULL,
+    idempotency_key varchar(128) NOT NULL UNIQUE CHECK (btrim(idempotency_key) <> ''),
     created_at timestamptz NOT NULL DEFAULT now()
 );
 

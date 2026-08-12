@@ -348,6 +348,9 @@ def test_success_metadata_links_existing_release_package_and_model_without_paylo
         "policy_version": "policy-v1",
     }
     all_sql = " ".join(str(call.args[0]) for call in connection.execute.call_args_list)
+    package_insert = connection.execute.call_args_list[1]
+    assert "idempotency_key" in str(package_insert.args[0])
+    assert package_insert.args[1]["idempotency_key"] == f"analysis:{request_id}"
     for forbidden in ("question_text_redacted", "generated_sql_redacted", "data_snapshot_json"):
         assert forbidden not in all_sql
 

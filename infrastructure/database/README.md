@@ -51,7 +51,7 @@ infrastructure/database/
 
 ## 애플리케이션 DB 보존·백업·복구
 
-보존 정책은 기본적으로 삭제 후보만 집계한다. 실제 삭제는 `-Apply -Approval APPLY_RETENTION`을 함께 전달한 경우에만 수행한다.
+보존 정책은 기본적으로 후보만 집계한다. `-Apply -Approval APPLY_RETENTION`을 함께 전달하면 일반 artifact payload는 30일, 승인 보고서 snapshot payload는 90일 뒤 비우고 trace 식별자는 유지한다. audit metadata는 180일 뒤 append-only archive로 옮긴다. 참조 중인 report definition, Analysis Definition, Context release/package와 실행 연결은 삭제하지 않는다.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/retention-app-postgres.ps1

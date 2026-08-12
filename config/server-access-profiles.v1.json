@@ -8,9 +8,7 @@
     "view_authorization_required": true,
     "rest_api_authorization_required": true,
     "policy_privileges": [
-      "VIEW_ENTITY_PAGE",
-      "VIEW_DATASET_PROFILE",
-      "VIEW_DATASET_USAGE"
+      "VIEW_ENTITY"
     ],
     "policy_provisioning": "explicit_actor_domain_grants",
     "oss_search_visibility": "application_domain_filter_required"

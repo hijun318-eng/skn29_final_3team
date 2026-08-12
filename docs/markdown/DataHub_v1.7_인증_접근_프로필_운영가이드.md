@@ -22,20 +22,29 @@ DataHub v1.7.0의 `application.yaml`은 위 네 플래그와 health 인증 제�
 
 1. `.env.example`의 `REQUIRED` 값을 복사하지 말고 각각 충분히 긴 무작위 값으로
    교체한다. 실제 값은 커밋하지 않는다.
-2. DataHub에 `rooms`, `membership`, `hotel-analytics` Domain을 만들고 대상 Dataset을
-   정확한 Domain에 배치한다.
+2. DataHub에 `rooms`, `membership`, `food_and_beverage`, `facility`, `banquet` Domain을
+   만들고 대상 Dataset을 정확한 Domain에 배치한다.
 3. 네 `datahub_actor`를 생성한다. 광범위한 Reader/Admin 역할을 부여하지 않는다.
 4. 각 actor에 대해 계약의 `domains`만 대상으로 다음 Metadata Policy 권한을
    명시적으로 허용한다.
-   - `VIEW_ENTITY_PAGE`
-   - `VIEW_DATASET_PROFILE`
-   - `VIEW_DATASET_USAGE`
+   - `VIEW_ENTITY` (DataHub v1.7 UI의 **View Entity**)
 5. 기본 `All Users` 정책에 의존하지 않는다. 특히 전역 View Entity Page 권한이
    남아 있으면 비활성화하거나 적용 대상에서 제외한다.
 6. 각 actor 명의 PAT를 생성하고 계약의 `datahub_token_env`에 주입한다. ingestion과
    Semantic Catalog 게시 PAT는 별도 actor·환경 변수로 운용한다.
 7. `infrastructure/database/scripts/verify-service-fragment.ps1`로 compose와 계약을
    검증한 뒤 기동한다.
+8. 관리자 PAT를 커밋되지 않는 `DATAHUB_BOOTSTRAP_TOKEN`에 주입하고 다음 명령을
+   순서대로 실행한다. 두 명령은 PAT 값을 출력하지 않는다.
+
+   ```powershell
+   python infrastructure/database/datahub/bootstrap_access_control.py bootstrap
+   python infrastructure/database/datahub/bootstrap_access_control.py verify
+   ```
+
+   bootstrap은 접근 actor와 명시적 Domain 정책, Domain, `AI_SEARCH_ALLOWED` Tag,
+   Serving View의 실제 원천 Domain 및 lineage를 동일 입력으로 반복 적용할 수 있다.
+   verify는 네 profile PAT의 actor 일치 여부까지 fail-closed로 확인한다.
 
 ## 프로필 경계
 
@@ -44,7 +53,7 @@ DataHub v1.7.0의 `application.yaml`은 위 네 플래그와 health 인증 제�
 | `pms_only` | `rooms` | `answervice_pms_only` | `answervice_pms_only` |
 | `crm_only` | `membership` | `answervice_crm_only` | `answervice_crm_only` |
 | `pms_crm` | `rooms`, `membership` | `answervice_pms_crm` | `answervice_pms_crm` |
-| `integrated_revenue` | `hotel-analytics` | `answervice_integrated_revenue` | `answervice_integrated_revenue` |
+| `integrated_revenue` | `rooms`, `membership`, `food_and_beverage` | `answervice_integrated_revenue` | `answervice_integrated_revenue` |
 
 DataHub actor는 표에서 각 이름 앞에 `urn:li:corpuser:`를 붙인 URN이다.
 

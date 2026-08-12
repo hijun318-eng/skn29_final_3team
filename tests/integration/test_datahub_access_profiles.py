@@ -45,6 +45,7 @@ def test_server_access_profiles_are_explicit_default_deny_grants():
     assert contract["default_effect"] == "deny"
     assert contract["all_users_policy_dependency"] is False
     assert contract["datahub"]["policy_provisioning"] == "explicit_actor_domain_grants"
+    assert contract["datahub"]["policy_privileges"] == ["VIEW_ENTITY"]
     assert contract["datahub"]["oss_search_visibility"] == "application_domain_filter_required"
     assert set(contract["profiles"]) == set(EXPECTED)
 

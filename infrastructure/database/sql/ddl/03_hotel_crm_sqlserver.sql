@@ -154,6 +154,15 @@ AFTER INSERT, UPDATE
 AS
 BEGIN
     SET NOCOUNT ON;
+    -- Active open-ended identifiers are already protected by the five filtered
+    -- unique indexes. Avoid comparing a large all-active batch with itself.
+    IF NOT EXISTS (
+        SELECT 1
+        FROM dbo.crm_customer_map
+        WHERE mapping_status <> 'ACTIVE' OR valid_to IS NOT NULL
+    )
+        RETURN;
+
     IF EXISTS (
         SELECT 1
         FROM inserted i

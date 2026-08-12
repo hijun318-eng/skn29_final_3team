@@ -87,6 +87,19 @@ class ServingSemanticCatalogTest(unittest.TestCase):
         self.assertIn("m.mapping_status = 'ACTIVE' AND m.valid_to IS NULL", self.crm_ddl)
         self.assertIn("i.valid_from < COALESCE(m.valid_to", self.crm_ddl)
         self.assertIn("m.valid_from < COALESCE(i.valid_to", self.crm_ddl)
+        trigger = self.crm_ddl.split(
+            "CREATE OR ALTER TRIGGER dbo.trg_crm_customer_map_no_overlap", 1
+        )[1]
+        fast_path = (
+            "IF NOT EXISTS (\n"
+            "        SELECT 1\n"
+            "        FROM dbo.crm_customer_map\n"
+            "        WHERE mapping_status <> 'ACTIVE' OR valid_to IS NOT NULL\n"
+            "    )\n"
+            "        RETURN;"
+        )
+        self.assertIn(fast_path, trigger)
+        self.assertLess(trigger.index(fast_path), trigger.index("JOIN dbo.crm_customer_map m"))
 
     def test_contract_records_catalog_without_claiming_runtime_pass(self):
         semantic = self.contract["semantic_catalog"]

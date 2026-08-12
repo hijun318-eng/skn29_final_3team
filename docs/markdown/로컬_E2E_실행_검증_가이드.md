@@ -98,7 +98,7 @@ NODE2_MODEL=answervice-sql-lora-qwen3.5-4b
 MODEL_TIMEOUT_SECONDS=300
 ```
 
-Node2·2′는 `Qwen/Qwen3.5-4B` Base의 SQL LoRA를 OpenAI-compatible endpoint에서 `answervice-sql-lora-qwen3.5-4b` alias로 제공한다. 현재 비용 절감 운영값은 `workersMin=0`, `workersMax=3`, `idleTimeout=300`초, `executionTimeoutMs=300000`이다. 요청이 없으면 5분 뒤 worker가 0개로 축소되며 다음 첫 요청에는 콜드 스타트가 발생할 수 있다. 집중 E2E 중에만 `workersMin=1`로 임시 상향하고 검증 종료 즉시 0으로 되돌린다. GPU 후보는 저가형을 우선하고 최대 RTX 4090급까지 fallback한다.
+Node2·2′는 `Qwen/Qwen3.5-4B` Base의 SQL LoRA를 OpenAI-compatible endpoint에서 `answervice-sql-lora-qwen3.5-4b` alias로 제공할 수 있다. 비용 차단을 위해 기존 RunPod Serverless endpoint와 연결된 Network Volume은 삭제된 상태이며, 현재 RunPod 실행·스토리지 리소스는 없다. 다시 검증할 때만 endpoint를 재생성하고 `workersMin=0`, `workersMax=3`, `idleTimeout=300`초, `executionTimeoutMs=300000`을 적용한다. 집중 E2E 중 `workersMin=1`로 임시 상향했다면 검증 종료 즉시 0으로 되돌린다. GPU 후보는 저가형을 우선하고 최대 RTX 4090급까지 fallback한다.
 
 이 alias는 사용자가 지정한 **개발·E2E 검증 기본값**이며 P0 운영 채택 승인을 의미하지 않는다. `src/modelops/release_candidate.i5.v1.json`의 Base–LoRA 불변 비교 증거, LoRA serving SLO, 명시적 P0 채택 승인이 모두 충족되기 전에는 `production_release=NOT_APPROVED`로 판정한다. endpoint alias 노출·smoke 성공만으로 운영 release readiness `PASS`를 기록하지 않는다.
 

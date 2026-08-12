@@ -329,7 +329,7 @@ query SearchDatasets($query: String!) {
             {"source_id": "banquet", "platform_instance": "banquet", "dataset_urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,banquet.banquet_db.public.banquet_bookings,PROD)"},
         )
 
-    def catalog_sources(self) -> list[dict[str, Any]]:
+    def catalog_sources(self, allowed_source_ids: frozenset[str] | None = None) -> list[dict[str, Any]]:
         if not self._require_live_metadata:
             raise ValueError("live DataHub catalog is required")
         if not self._datahub_health():
@@ -339,6 +339,8 @@ query SearchDatasets($query: String!) {
 
         sources = []
         for configured in self._catalog_sources:
+            if allowed_source_ids is not None and configured["source_id"] not in allowed_source_ids:
+                continue
             dataset = self._datahub_dataset(configured["dataset_urn"])
             schema = dataset.get("schemaMetadata") or {}
             fields = schema.get("fields") or []
@@ -935,7 +937,7 @@ query SearchDatasets($query: String!) {
                 ),
             )
         try:
-            self._collect(
+            explain = self._collect(
                 trino.execute(f"EXPLAIN (TYPE VALIDATE) {bound_sql}"),
                 trino=trino,
             )
@@ -945,6 +947,11 @@ query SearchDatasets($query: String!) {
             if error.code == AdapterErrorCode.TIMEOUT:
                 raise TimeoutError(str(error)) from error
             raise ValueError(str(error)) from error
+        result["explain"] = {
+            "query_id": explain["query_id"],
+            "status": explain["status"],
+            "validation_type": "TYPE_VALIDATE",
+        }
         result["period"] = {
             "start": self._parameter_value(parameters.get("period_start")),
             "end_exclusive": self._parameter_value(

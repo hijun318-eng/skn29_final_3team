@@ -436,6 +436,51 @@ def test_success_metadata_links_existing_release_package_and_model_without_paylo
         assert forbidden not in all_sql
 
 
+def test_query_evidence_persists_only_safe_explain_metadata():
+    connection = MagicMock()
+    request_id = uuid4()
+    response = SimpleNamespace(
+        data=SimpleNamespace(
+            status="SUCCEEDED",
+            artifact=SimpleNamespace(artifact_id=uuid4()),
+            result=SimpleNamespace(
+                table=SimpleNamespace(
+                    model_dump=lambda **_kwargs: {"columns": [], "rows": []}
+                ),
+                chart=None,
+                evidence=SimpleNamespace(model_dump=lambda **_kwargs: {}),
+                summary="검증된 결과",
+            ),
+        )
+    )
+    execution = {
+        "plan": {"sql": "SELECT secret", "model_version": "MODEL-v1"},
+        "query": {
+            "query_id": "query-1",
+            "rows": [],
+            "explain": {
+                "query_id": "explain-1",
+                "status": "SUCCEEDED",
+                "validation_type": "TYPE_VALIDATE",
+                "sql": "SELECT secret",
+                "parameters": {"secret": "value"},
+            },
+        },
+        "package": SimpleNamespace(assets=(SimpleNamespace(urn="urn:source"),)),
+    }
+
+    PostgresAnalysisRepository._save_evidence(
+        connection, request_id, response, execution
+    )
+
+    explain = json.loads(connection.execute.call_args_list[0].args[1]["explain"])
+    assert explain == {
+        "query_id": "explain-1",
+        "status": "SUCCEEDED",
+        "validation_type": "TYPE_VALIDATE",
+    }
+
+
 def test_access_audit_records_only_entitlement_metadata_and_attempt_flags():
     connection = MagicMock()
     request_context = RequestContext(

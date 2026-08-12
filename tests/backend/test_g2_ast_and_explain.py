@@ -133,6 +133,13 @@ def test_trino_validate_explain_finishes_before_bound_query_execution():
         ("POST", bound),
     ]
     assert result["rows"] == [{"id": 1}]
+    assert result["explain"] == {
+        "query_id": "validate-1",
+        "status": "SUCCEEDED",
+        "validation_type": "TYPE_VALIDATE",
+    }
+    assert "sql" not in result["explain"]
+    assert "parameters" not in result["explain"]
 
 
 def test_trino_validate_explain_failure_blocks_query_execution():

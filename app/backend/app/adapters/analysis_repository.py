@@ -897,6 +897,12 @@ class PostgresAnalysisRepository:
         snapshot = result.table.model_dump(mode="json") if result.table else {}
         chart = result.chart.model_dump(mode="json") if result.chart else {}
         evidence = result.evidence.model_dump(mode="json")
+        explain = query.get("explain", {})
+        explain_evidence = {
+            "query_id": str(explain.get("query_id", "")),
+            "status": str(explain.get("status", "NOT_AVAILABLE")),
+            "validation_type": str(explain.get("validation_type", "TYPE_VALIDATE")),
+        }
         connection.execute(
             text(
                 """
@@ -924,7 +930,7 @@ class PostgresAnalysisRepository:
                 "ast": json.dumps({"status": "PASSED"}),
                 "joins": json.dumps({"status": "PASSED"}),
                 "permission": json.dumps({"status": "PASSED"}),
-                "explain": json.dumps({"status": "NOT_RECORDED"}),
+                "explain": json.dumps(explain_evidence),
                 "query_id": query["query_id"],
                 "row_count": len(query.get("rows", ())),
                 "scan_bytes": int(query.get("scan_bytes", 0)),

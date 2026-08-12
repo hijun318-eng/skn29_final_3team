@@ -12,36 +12,30 @@ RECIPES_PATH = ROOT / "infrastructure/database/datahub/recipes"
 
 EXPECTED = {
     "pms_only": (
-        ["urn:li:domain:rooms"],
+        ["pms"],
         "DATAHUB_PMS_ONLY_TOKEN",
         "answervice_pms_only",
     ),
     "crm_only": (
-        ["urn:li:domain:membership"],
+        ["crm"],
         "DATAHUB_CRM_ONLY_TOKEN",
         "answervice_crm_only",
     ),
     "pms_crm": (
-        ["urn:li:domain:rooms", "urn:li:domain:membership"],
+        ["pms", "crm"],
         "DATAHUB_PMS_CRM_TOKEN",
         "answervice_pms_crm",
     ),
     "integrated_revenue": (
         [
-            "urn:li:domain:rooms",
-            "urn:li:domain:membership",
-            "urn:li:domain:food_and_beverage",
+            "pms", "crm", "pos",
         ],
         "DATAHUB_INTEGRATED_REVENUE_TOKEN",
         "answervice_integrated_revenue",
     ),
     "integrated_operations": (
         [
-            "urn:li:domain:rooms",
-            "urn:li:domain:membership",
-            "urn:li:domain:food_and_beverage",
-            "urn:li:domain:facility",
-            "urn:li:domain:banquet",
+            "pms", "crm", "pos", "facility", "banquet",
         ],
         "DATAHUB_INTEGRATED_OPERATIONS_TOKEN",
         "answervice_integrated_operations",
@@ -63,9 +57,14 @@ def test_server_access_profiles_are_explicit_default_deny_grants():
     actors = set()
     token_envs = set()
     principals = set()
-    for name, (domains, token_env, trino_principal) in EXPECTED.items():
+    assert contract["database_domains"] == {
+        "pms": "urn:li:domain:rooms", "crm": "urn:li:domain:membership",
+        "pos": "urn:li:domain:food_and_beverage", "facility": "urn:li:domain:facility",
+        "banquet": "urn:li:domain:banquet",
+    }
+    for name, (database_grants, token_env, trino_principal) in EXPECTED.items():
         profile = contract["profiles"][name]
-        assert profile["domains"] == domains
+        assert profile["database_grants"] == database_grants
         assert profile["datahub_actor"] == f"urn:li:corpuser:{trino_principal}"
         assert profile["datahub_token_env"] == token_env
         assert profile["trino_principal"] == trino_principal
@@ -101,7 +100,7 @@ def test_token_names_are_wired_but_values_remain_external():
         token_env = profile["datahub_token_env"]
         assert f"{token_env}=REQUIRED" in env_example
         assert f"{token_env}: ${{{token_env}:-}}" in backend_compose
-        assert set(profile) == {"domains", "datahub_actor", "datahub_token_env", "trino_principal"}
+        assert set(profile) == {"database_grants", "datahub_actor", "datahub_token_env", "trino_principal"}
 
     assert "DATAHUB_SYSTEM_CLIENT_SECRET=REQUIRED" in env_example
     assert "DATAHUB_INGESTION_TOKEN=REQUIRED" in env_example

@@ -48,15 +48,15 @@ self-hosted DataHub OSS v1.7에서 `VIEW_AUTHORIZATION_ENABLED=true`는 entity p
 
 profile 계약의 단일 원본은 [server-access-profiles.v1.json](../../config/server-access-profiles.v1.json)이다.
 
-| profile | 허용 Domain URN | DataHub token 환경 변수 | Trino principal |
+| profile | 독립 DB grant (파생 Domain) | DataHub token 환경 변수 | Trino principal |
 | --- | --- | --- | --- |
-| `pms_only` | `urn:li:domain:rooms` | `DATAHUB_PMS_ONLY_TOKEN` | `answervice_pms_only` |
-| `crm_only` | `urn:li:domain:membership` | `DATAHUB_CRM_ONLY_TOKEN` | `answervice_crm_only` |
-| `pms_crm` | `urn:li:domain:rooms`, `urn:li:domain:membership` | `DATAHUB_PMS_CRM_TOKEN` | `answervice_pms_crm` |
-| `integrated_revenue` | `urn:li:domain:rooms`, `urn:li:domain:membership`, `urn:li:domain:food_and_beverage` | `DATAHUB_INTEGRATED_REVENUE_TOKEN` | `answervice_integrated_revenue` |
-| `integrated_operations` | `urn:li:domain:rooms`, `urn:li:domain:membership`, `urn:li:domain:food_and_beverage`, `urn:li:domain:facility`, `urn:li:domain:banquet` | `DATAHUB_INTEGRATED_OPERATIONS_TOKEN` | `answervice_integrated_operations` |
+| `pms_only` | `pms` (`rooms`) | `DATAHUB_PMS_ONLY_TOKEN` | `answervice_pms_only` |
+| `crm_only` | `crm` (`membership`) | `DATAHUB_CRM_ONLY_TOKEN` | `answervice_crm_only` |
+| `pms_crm` | `pms`, `crm` (`rooms`, `membership`) | `DATAHUB_PMS_CRM_TOKEN` | `answervice_pms_crm` |
+| `integrated_revenue` | `pms`, `crm`, `pos` (`rooms`, `membership`, `food_and_beverage`) | `DATAHUB_INTEGRATED_REVENUE_TOKEN` | `answervice_integrated_revenue` |
+| `integrated_operations` | `pms`, `crm`, `pos`, `facility`, `banquet` (전체 5개 Domain) | `DATAHUB_INTEGRATED_OPERATIONS_TOKEN` | `answervice_integrated_operations` |
 
-각 token은 profile별 최소 권한 PAT로 발급해 배포 secret에서 해당 환경 변수로 주입한다. raw token은 저장소·설정 예시·로그·응답에 기록하지 않는다. 브라우저는 선택한 `X-Access-Profile`만 보내며 profile token, 허용 Domain, role, DataHub token 또는 Trino 자격증명을 보내거나 보관하지 않는다.
+각 preset의 `database_grants` 합집합이 서버 권한의 진실 원천이며 `database_domains`로 허용 Domain을 파생한다. Join은 필요한 DB grant가 모두 있고 해당 DB의 허용 URN이 Context에 포함된 경우에만 허용한다. 각 token은 profile별 최소 권한 PAT로 발급해 배포 secret에서 해당 환경 변수로 주입한다. raw token은 저장소·설정 예시·로그·응답에 기록하지 않는다. 브라우저는 선택한 `X-Access-Profile`만 보내며 profile token, 허용 Domain, role, DataHub token 또는 Trino 자격증명을 보내거나 보관하지 않는다.
 
 운영 bootstrap과 검증 순서는 다음과 같다.
 

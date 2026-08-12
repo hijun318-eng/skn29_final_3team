@@ -25,7 +25,7 @@ DataHub v1.7.0의 `application.yaml`은 위 네 플래그와 health 인증 제�
 2. DataHub에 `rooms`, `membership`, `food_and_beverage`, `facility`, `banquet` Domain을
    만들고 대상 Dataset을 정확한 Domain에 배치한다.
 3. 다섯 `datahub_actor`를 생성한다. 광범위한 Reader/Admin 역할을 부여하지 않는다.
-4. 각 actor에 대해 계약의 `domains`만 대상으로 다음 Metadata Policy 권한을
+4. 각 actor에 대해 계약의 `database_grants`에서 `database_domains`로 파생한 Domain만 대상으로 다음 Metadata Policy 권한을
    명시적으로 허용한다.
    - `VIEW_ENTITY` (DataHub v1.7 UI의 **View Entity**)
 5. 기본 `All Users` 정책에 의존하지 않는다. 특히 전역 View Entity Page 권한이
@@ -47,6 +47,11 @@ DataHub v1.7.0의 `application.yaml`은 위 네 플래그와 health 인증 제�
    verify는 다섯 profile PAT의 actor 일치 여부까지 fail-closed로 확인한다.
 
 ## 프로필 경계
+
+프로필은 UI preset일 뿐이며 서버는 각 DB의 독립 `database_grants` 합집합으로
+허용 Domain·DataHub 후보·Context URN을 계산한다. 필요한 원천 DB grant가 하나라도
+없으면 Serving View와 source join을 허용하지 않는다. `/catalog/sources`도 profile PAT로
+허용 DB만 조회하며 공용 token이나 로컬 목록으로 fallback하지 않는다.
 
 | profile | 허용 DataHub Domain | DataHub actor | Trino principal |
 |---|---|---|---|

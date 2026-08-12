@@ -4,6 +4,7 @@ from datetime import date
 from pathlib import Path
 from sys import path
 from unittest.mock import patch
+from uuid import UUID
 
 import pytest
 from fastapi import HTTPException
@@ -15,7 +16,7 @@ path.insert(0, str(BACKEND))
 from app.adapters.i2_data_platform import I2DataPlatformAdapter  # noqa: E402
 from app.api import catalog_router as catalog_api  # noqa: E402
 from app.catalog_contracts import CatalogSourceListResponse  # noqa: E402
-from app.contracts import RequestContext  # noqa: E402
+from app.contracts import RequestContext, Role  # noqa: E402
 
 
 def test_real_catalog_reads_exact_five_live_datahub_datasets_and_trino_health():
@@ -44,12 +45,45 @@ def test_real_catalog_reads_exact_five_live_datahub_datasets_and_trino_health():
     assert all(item.schema_status == item.search_status == item.connection_status == "AVAILABLE" for item in payload.items)
 
 
+def test_catalog_reads_only_sources_granted_to_the_server_validated_profile():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    requested = []
+    adapter._datahub_health = lambda: True
+    adapter._trino.health = lambda: True
+
+    def dataset(urn):
+        requested.append(urn)
+        return {
+            "urn": urn, "status": {"removed": False}, "platform": {"name": "postgres"},
+            "ownership": {"owners": []},
+            "schemaMetadata": {"name": "pms.public.pms_stays", "fields": [{"fieldPath": "id"}]},
+        }
+
+    adapter._datahub_dataset = dataset
+    items = adapter.catalog_sources(frozenset({"pms"}))
+
+    assert [item["source_id"] for item in items] == ["pms"]
+    assert len(requested) == 1 and ",pms." in requested[0]
+
+
+def test_catalog_profile_credential_is_required_without_generic_token_fallback():
+    context = RequestContext(
+        user_id=UUID(int=1), role=Role.HOTEL_ANALYST,
+        access_profile="pms_only",
+    )
+    with patch.dict("os.environ", {"DATA_PLATFORM_MODE": "real", "DATAHUB_API_TOKEN": "generic"}, clear=False):
+        with patch.dict("os.environ", {"DATAHUB_PMS_ONLY_TOKEN": ""}, clear=False):
+            with pytest.raises(HTTPException) as unavailable:
+                catalog_api._catalog_adapter(context)
+    assert unavailable.value.status_code == 503
+
+
 def test_catalog_route_returns_503_instead_of_success_when_datahub_is_unavailable():
     class Unavailable:
-        def catalog_sources(self):
+        def catalog_sources(self, _allowed_source_ids):
             raise ValueError("live DataHub runtime verification is unavailable")
 
-    with patch.object(catalog_api, "_catalog_adapter", return_value=Unavailable()):
+    with patch.object(catalog_api, "_catalog_adapter", return_value=(Unavailable(), frozenset({"pms"}))):
         with pytest.raises(HTTPException) as unavailable:
             catalog_api.list_catalog_sources(RequestContext(as_of=date(2026, 8, 12)))
     assert unavailable.value.status_code == 503
@@ -58,5 +92,5 @@ def test_catalog_route_returns_503_instead_of_success_when_datahub_is_unavailabl
 def test_versioned_mode_cannot_masquerade_as_live_catalog():
     with patch.dict("os.environ", {"DATA_PLATFORM_MODE": "versioned-trino"}, clear=True):
         with pytest.raises(HTTPException) as unavailable:
-            catalog_api._catalog_adapter()
+            catalog_api._catalog_adapter(RequestContext())
     assert unavailable.value.status_code == 503

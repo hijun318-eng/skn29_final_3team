@@ -49,6 +49,7 @@ def test_analysis_profiles_match_server_contract_and_default_to_pms_only():
     assert profile.name == "pms_only"
     assert profile.datahub_principal == contract["profiles"]["pms_only"]["datahub_actor"]
     assert profile.credential_env == "DATAHUB_PMS_ONLY_TOKEN"
+    assert profile.database_grants == ("pms",)
     assert profile.domains == ("urn:li:domain:rooms",)
     with pytest.raises(PermissionError):
         resolve_access_profile(UUID(int=3), Role.DATA_ADMIN, "pms_only")

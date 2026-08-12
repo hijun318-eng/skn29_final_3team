@@ -18,6 +18,7 @@ class AccessProfile:
     name: str
     datahub_principal: str
     credential_env: str
+    database_grants: tuple[str, ...]
     domains: tuple[str, ...]
     trino_principal: str
     policy_version: str
@@ -63,6 +64,7 @@ def load_server_access_profiles() -> dict:
             raise ValueError
         contract = json.loads(path.read_text(encoding="utf-8"))
         profiles = contract["profiles"]
+        database_domains = contract["database_domains"]
         if (
             contract.get("contract_version") != "SERVER-ACCESS-PROFILES-v1.0.0"
             or contract.get("default_effect") != "deny"
@@ -70,13 +72,16 @@ def load_server_access_profiles() -> dict:
                 "pms_only", "crm_only", "pms_crm", "integrated_revenue",
                 "integrated_operations",
             }
+            or set(database_domains) != {"pms", "crm", "pos", "facility", "banquet"}
+            or any(not str(domain).startswith("urn:li:domain:") for domain in database_domains.values())
         ):
             raise ValueError
         for profile in profiles.values():
             if (
-                set(profile) != {"domains", "datahub_actor", "datahub_token_env", "trino_principal"}
-                or not profile["domains"]
-                or not all(str(domain).startswith("urn:li:domain:") for domain in profile["domains"])
+                set(profile) != {"database_grants", "datahub_actor", "datahub_token_env", "trino_principal"}
+                or not profile["database_grants"]
+                or not set(profile["database_grants"]).issubset(database_domains)
+                or len(profile["database_grants"]) != len(set(profile["database_grants"]))
                 or not str(profile["datahub_actor"]).startswith("urn:li:corpuser:")
                 or not str(profile["datahub_token_env"]).startswith("DATAHUB_")
             ):
@@ -163,15 +168,22 @@ def resolve_access_profile(
     raw = policy["access_profiles"].get(name)
     if raw is None or authenticated_role.value not in raw["allowed_roles"]:
         raise PermissionError("access profile is not allowed")
-    server = load_server_access_profiles()["profiles"][name]
-    allowed_domains = tuple(sorted(set(server["domains"])))
+    contract = load_server_access_profiles()
+    server = contract["profiles"][name]
+    database_grants = tuple(sorted(set(server["database_grants"])))
+    database_domains = contract["database_domains"]
+    allowed_domains = tuple(sorted({database_domains[item] for item in database_grants}))
     canonical = ":".join(
-        (str(subject), authenticated_role.value, name, policy["policy_version"], *allowed_domains)
+        (
+            str(subject), authenticated_role.value, name, policy["policy_version"],
+            *database_grants, *allowed_domains,
+        )
     )
     return AccessProfile(
         name=name,
         datahub_principal=server["datahub_actor"],
         credential_env=server["datahub_token_env"],
+        database_grants=database_grants,
         domains=allowed_domains,
         trino_principal=server["trino_principal"],
         policy_version=policy["policy_version"],

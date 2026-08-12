@@ -13,43 +13,40 @@
     "policy_provisioning": "explicit_actor_domain_grants",
     "oss_search_visibility": "application_domain_filter_required"
   },
+  "database_domains": {
+    "pms": "urn:li:domain:rooms",
+    "crm": "urn:li:domain:membership",
+    "pos": "urn:li:domain:food_and_beverage",
+    "facility": "urn:li:domain:facility",
+    "banquet": "urn:li:domain:banquet"
+  },
   "profiles": {
     "pms_only": {
-      "domains": ["urn:li:domain:rooms"],
+      "database_grants": ["pms"],
       "datahub_actor": "urn:li:corpuser:answervice_pms_only",
       "datahub_token_env": "DATAHUB_PMS_ONLY_TOKEN",
       "trino_principal": "answervice_pms_only"
     },
     "crm_only": {
-      "domains": ["urn:li:domain:membership"],
+      "database_grants": ["crm"],
       "datahub_actor": "urn:li:corpuser:answervice_crm_only",
       "datahub_token_env": "DATAHUB_CRM_ONLY_TOKEN",
       "trino_principal": "answervice_crm_only"
     },
     "pms_crm": {
-      "domains": ["urn:li:domain:rooms", "urn:li:domain:membership"],
+      "database_grants": ["pms", "crm"],
       "datahub_actor": "urn:li:corpuser:answervice_pms_crm",
       "datahub_token_env": "DATAHUB_PMS_CRM_TOKEN",
       "trino_principal": "answervice_pms_crm"
     },
     "integrated_revenue": {
-      "domains": [
-        "urn:li:domain:rooms",
-        "urn:li:domain:membership",
-        "urn:li:domain:food_and_beverage"
-      ],
+      "database_grants": ["pms", "crm", "pos"],
       "datahub_actor": "urn:li:corpuser:answervice_integrated_revenue",
       "datahub_token_env": "DATAHUB_INTEGRATED_REVENUE_TOKEN",
       "trino_principal": "answervice_integrated_revenue"
     },
     "integrated_operations": {
-      "domains": [
-        "urn:li:domain:rooms",
-        "urn:li:domain:membership",
-        "urn:li:domain:food_and_beverage",
-        "urn:li:domain:facility",
-        "urn:li:domain:banquet"
-      ],
+      "database_grants": ["pms", "crm", "pos", "facility", "banquet"],
       "datahub_actor": "urn:li:corpuser:answervice_integrated_operations",
       "datahub_token_env": "DATAHUB_INTEGRATED_OPERATIONS_TOKEN",
       "trino_principal": "answervice_integrated_operations"

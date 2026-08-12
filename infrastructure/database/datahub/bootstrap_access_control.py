@@ -96,7 +96,9 @@ def _policy_urn(profile_id: str) -> str:
 def bootstrap(server: str, token: str, timeout: float = 30,
               opener: Callable[..., Any] = urlopen) -> dict[str, Any]:
     validate_local_server(server)
-    profiles = json.loads(PROFILE_CONTRACT.read_text(encoding="utf-8"))["profiles"]
+    contract = json.loads(PROFILE_CONTRACT.read_text(encoding="utf-8"))
+    profiles = contract["profiles"]
+    database_domains = contract["database_domains"]
     views = json.loads(SERVING_CONTRACT.read_text(encoding="utf-8"))["views"]
 
     for profile_id, profile in profiles.items():
@@ -111,7 +113,7 @@ def bootstrap(server: str, token: str, timeout: float = 30,
                   "actors": {"users": [profile["datahub_actor"]], "groups": [],
                              "allUsers": False, "allGroups": False, "resourceOwners": False},
                   "resources": {"filter": {"criteria": [{"field": "DOMAIN", "condition": "EQUALS",
-                                  "values": profile["domains"]}]}}}
+                                  "values": sorted({database_domains[item] for item in profile["database_grants"]})}]}}}
         policy_urn = _policy_urn(profile_id)
         _ingest(server, token, _proposal(policy_urn, "dataHubPolicy", "dataHubPolicyKey",
                                         {"id": policy_urn.rsplit(":", 1)[-1]}), timeout, opener)
@@ -167,7 +169,9 @@ def _entity(server: str, urn: str, aspects: list[str], token: str, timeout: floa
 def verify(server: str, token: str, timeout: float = 30,
            opener: Callable[..., Any] = urlopen) -> dict[str, Any]:
     validate_local_server(server)
-    profiles = json.loads(PROFILE_CONTRACT.read_text(encoding="utf-8"))["profiles"]
+    contract = json.loads(PROFILE_CONTRACT.read_text(encoding="utf-8"))
+    profiles = contract["profiles"]
+    database_domains = contract["database_domains"]
     views = json.loads(SERVING_CONTRACT.read_text(encoding="utf-8"))["views"]
     expected_domains = serving_domains(views)
     for profile_id, profile in profiles.items():
@@ -177,7 +181,8 @@ def verify(server: str, token: str, timeout: float = 30,
         except KeyError as exc:
             raise ValueError(f"missing profile policy: {profile_id}") from exc
         criteria = value["resources"]["filter"]["criteria"][0]
-        if value["actors"]["users"] != [profile["datahub_actor"]] or criteria["values"] != profile["domains"]:
+        granted_domains = sorted({database_domains[item] for item in profile["database_grants"]})
+        if value["actors"]["users"] != [profile["datahub_actor"]] or criteria["values"] != granted_domains:
             raise ValueError(f"profile policy mismatch: {profile_id}")
         profile_token = os.getenv(profile["datahub_token_env"])
         if not profile_token:

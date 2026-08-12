@@ -29,7 +29,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1
 
 업무 DB는 `*_READONLY_USER` 계정으로 DataHub와 Trino에 연결한다. 이 계정은 `SELECT` 및 시스템 메타데이터 조회만 허용하며 DML·DDL은 거부한다. `app-postgres`의 `APP_DB_USER`는 앱 읽기·쓰기, `APP_MIGRATION_USER`는 migration 전용이다.
 
-Trino는 네 개의 `answervice_*` profile principal과 `hotel_synthetic_setup`, `datahub_ingestion`만 query resource group에 배정하며, 그 밖의 principal은 catalog·table·query 모두 default-deny한다. profile별 동시 실행은 2건, queue는 4건이고 전체 애플리케이션 동시 실행은 4건으로 제한한다. 실행 시간은 2분, queue·planning을 포함한 전체 run time은 3분을 넘길 수 없다.
+Trino는 다섯 개의 `answervice_*` profile principal과 `hotel_synthetic_setup`, `datahub_ingestion`만 query resource group에 배정하며, 그 밖의 principal은 catalog·table·query 모두 default-deny한다. Profile은 source registry에 등록된 업무 테이블과 허용된 serving view만 조회할 수 있고, 모든 분석 조회에는 synthetic 사업장 `SYNTHETIC_HOTEL_001` row filter를 Trino가 강제한다. profile별 동시 실행은 2건, queue는 4건이고 전체 애플리케이션 동시 실행은 4건으로 제한한다. 실행 시간은 2분, queue·planning을 포함한 전체 run time은 3분을 넘길 수 없다.
 
 승인된 raw·serving Context에는 email, 전화번호, 이름, 주민·여권·결제카드 번호 같은 직접식별 컬럼이 없다. `guest_id`, `member_no` 등은 합성 내부 join 식별자로서 승인된 분석 계약에만 사용한다. 따라서 현재는 의미를 훼손하는 임의 column mask를 추가하지 않고, 직접식별 컬럼이 계약에 들어오면 Trino 조회 경계의 명시적 mask와 role별 누출 테스트를 먼저 추가한다.
 
@@ -46,6 +46,8 @@ infrastructure/database/
    ├─ verify.ps1
    ├─ retention-app-postgres.ps1
    ├─ backup-app-postgres.ps1
+   ├─ run-app-postgres-maintenance.ps1
+   ├─ install-app-postgres-maintenance-task.ps1
    └─ verify-app-postgres-restore.ps1
 ```
 
@@ -58,6 +60,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/retention-app-postgr
 ```
 
 백업은 custom-format `pg_dump`를 외부 key file로 AES-256 암호화하고 SHA-256·RPO manifest를 남긴다. key file과 백업 출력 디렉터리는 Git 밖의 접근 제한 경로를 사용한다. 복구 검증은 기본적으로 `pg_restore --list`만 수행하며, 실제 복구는 운영 `app_db`가 아닌 격리 DB와 `-Approval RESTORE_TO_ISOLATED_DB`가 모두 지정된 경우에만 허용한다. 정확한 인자는 각 스크립트 상단의 parameter 선언을 확인한다.
+
+일일 자동 작업은 암호화 백업이 성공한 뒤 retention을 dry-run으로만 수행한다. 스케줄러는 `-Apply`를 전달할 수 없으며 실제 정리는 사람이 후보를 검토하고 명시적으로 승인한 경우에만 수동 실행한다. 아래 예시는 매일 오전 2시에 Windows 작업을 등록하며, evidence 경로를 `RECOVERY_EVIDENCE_HOST_DIR`와 같게 지정하면 운영 감사 화면에 상태가 반영된다.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-app-postgres-maintenance-task.ps1 `
+  -BackupDirectory D:\answervice-backups `
+  -EncryptionKeyFile C:\secure\answervice-backup.key `
+  -EvidenceDirectory C:\answervice\recovery-evidence `
+  -At 02:00
+```
 
 이미지는 태그와 manifest digest를 함께 고정했다.
 

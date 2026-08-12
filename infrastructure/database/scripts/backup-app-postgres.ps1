@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$OutputDirectory,
-    [Parameter(Mandatory)][string]$EncryptionKeyFile
+    [Parameter(Mandatory)][string]$EncryptionKeyFile,
+    [string]$EvidenceDirectory
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,14 +26,20 @@ try {
     & gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase-file $keyPath --output $encryptedPath $plainPath
     if ($LASTEXITCODE -ne 0) { throw 'Backup encryption failed.' }
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $encryptedPath).Hash.ToLowerInvariant()
-    [ordered]@{
+    $manifest = [ordered]@{
         created_at_utc = (Get-Date).ToUniversalTime().ToString('o')
         backup_file = [System.IO.Path]::GetFileName($encryptedPath)
         sha256 = $hash
         encrypted = $true
         schedule = 'daily'
         rpo_target_hours = 24
-    } | ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath "$encryptedPath.json"
+    } | ConvertTo-Json
+    $manifest | Set-Content -Encoding utf8 -LiteralPath "$encryptedPath.json"
+    if ($EvidenceDirectory) {
+        $evidenceRoot = [System.IO.Path]::GetFullPath($EvidenceDirectory)
+        New-Item -ItemType Directory -Force -Path $evidenceRoot | Out-Null
+        $manifest | Set-Content -Encoding utf8 -LiteralPath (Join-Path $evidenceRoot ([System.IO.Path]::GetFileName("$encryptedPath.json")))
+    }
     "APP_POSTGRES_BACKUP_CREATED $encryptedPath"
 }
 finally {

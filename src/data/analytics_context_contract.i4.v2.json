@@ -122,6 +122,12 @@
   ],
   "dimensions": [
     {
+      "id": "month",
+      "asset_fqn": "serving.analytics.hotel_daily_metrics",
+      "field": "business_date",
+      "aliases": ["월별", "월간", "month"]
+    },
+    {
       "id": "membership_grade",
       "asset_fqn": "crm.dbo.crm_members",
       "field": "membership_grade",

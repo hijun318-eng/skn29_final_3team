@@ -15,9 +15,11 @@ from app.adapters.contract_model import (
     NodeModelRouter,
     _complete_aggregate_group_by,
     _complete_dimension_order_by,
+    _complete_dimensions,
     _complete_chat_response,
     _queried_fqns,
     _ensure_limit,
+    _normalize_contract_columns,
     _validate_sql_semantics,
     vllm_transport,
 )
@@ -33,6 +35,29 @@ from app.services.context_builder import (
 
 
 class ProductionModelTest(unittest.TestCase):
+    def test_model_contract_ids_are_normalized_to_entitled_columns(self) -> None:
+        package = {
+            "assets": [{"columns": ["business_date", "room_revenue"]}],
+            "metrics": [{"id": "recognized_room_revenue", "field": "serving.analytics.hotel_daily_metrics.room_revenue"}],
+            "dimensions": [{"id": "month", "field": "serving.analytics.hotel_daily_metrics.business_date"}],
+        }
+
+        sql = _normalize_contract_columns(
+            "SELECT month, SUM(recognized_room_revenue) FROM serving.analytics.hotel_daily_metrics GROUP BY month",
+            package,
+        )
+
+        self.assertIn("DATE_TRUNC('MONTH', BUSINESS_DATE)", sql.upper())
+        self.assertIn("SUM(ROOM_REVENUE)", sql.upper())
+
+    def test_missing_entitled_dimension_is_completed(self) -> None:
+        sql = _complete_dimensions(
+            "SELECT SUM(t.points_delta) FROM crm.dbo.crm_point_transactions t JOIN crm.dbo.crm_members m ON t.member_no = m.member_no",
+            [{"id": "membership_grade", "field": "crm.dbo.crm_members.membership_grade"}],
+        )
+
+        self.assertIn("m.membership_grade AS membership_grade", sql)
+
     def test_model_sql_gets_bounded_limit(self) -> None:
         self.assertTrue(_ensure_limit("SELECT 1").endswith("LIMIT 1000"))
         self.assertEqual("SELECT 1 LIMIT 10", _ensure_limit("SELECT 1 LIMIT 10"))

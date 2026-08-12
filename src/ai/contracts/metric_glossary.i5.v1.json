@@ -5,6 +5,11 @@
       "회원 등급별",
       "등급별",
       "membership grade"
+    ],
+    "month": [
+      "월별",
+      "월간",
+      "month"
     ]
   },
   "metrics": {

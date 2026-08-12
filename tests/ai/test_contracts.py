@@ -170,7 +170,7 @@ class ContractTests(unittest.TestCase):
 
         self.assertEqual(glossary["version"], "METRIC-GLOSSARY-v1.1.0-DRAFT")
         self.assertEqual(set(glossary), {"version", "dimensions", "metrics"})
-        self.assertEqual(set(glossary["dimensions"]), {"membership_grade"})
+        self.assertEqual(set(glossary["dimensions"]), {"membership_grade", "month"})
         self.assertEqual(set(glossary["metrics"]), expected_ids)
         aliases = [
             alias.casefold()

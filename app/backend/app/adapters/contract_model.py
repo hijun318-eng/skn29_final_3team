@@ -180,6 +180,67 @@ def _complete_aggregate_group_by(sql: str) -> str:
     return query.sql(dialect="trino") if changed else sql
 
 
+def _normalize_contract_columns(sql: str, package: dict[str, Any]) -> str:
+    """Resolve model-facing metric/dimension IDs to entitled physical fields."""
+    query = parse_one(sql, read="trino")
+    allowed = {
+        str(column).lower()
+        for asset in package.get("assets", ())
+        for column in asset.get("columns", ())
+    }
+    replacements = {
+        str(item["id"]).lower(): str(item["field"]).rsplit(".", 1)[-1]
+        for kind in ("metrics", "dimensions")
+        for item in package.get(kind, ())
+    }
+    changed = False
+    for column in tuple(query.find_all(exp.Column)):
+        name = column.name.lower()
+        field = replacements.get(name)
+        if name in allowed or not field:
+            continue
+        qualifier = f"{column.table}." if column.table else ""
+        replacement: exp.Expression
+        if name == "month":
+            replacement = parse_one(
+                f"date_trunc('month', {qualifier}{field})", read="trino"
+            )
+        else:
+            replacement = exp.column(field, table=column.table or None)
+        column.replace(replacement)
+        changed = True
+    return query.sql(dialect="trino") if changed else sql
+
+
+def _complete_dimensions(sql: str, dimensions: list[dict[str, Any]]) -> str:
+    """Add an entitled dimension omitted by the model; G2 still validates it."""
+    if not dimensions:
+        return sql
+    query = parse_one(sql, read="trino")
+    if not isinstance(query, exp.Select):
+        return sql
+    tables = {
+        ".".join(part.name.lower() for part in table.parts): table.alias_or_name
+        for table in query.find_all(exp.Table)
+    }
+    selected = {column.name.lower() for column in query.find_all(exp.Column)}
+    changed = False
+    for item in dimensions:
+        field = str(item["field"]).rsplit(".", 1)[-1]
+        if field.lower() in selected:
+            continue
+        fqn = str(item["field"]).rsplit(".", 1)[0].lower()
+        alias = tables.get(fqn)
+        if not alias:
+            continue
+        expression: exp.Expression = exp.column(field, table=alias)
+        if str(item["id"]).lower() == "month":
+            expression = exp.DateTrunc(unit=exp.Literal.string("month"), this=expression)
+        query.append("expressions", exp.alias_(expression, str(item["id"])))
+        changed = True
+    return query.sql(dialect="trino") if changed else sql
+
+
 def _complete_dimension_order_by(sql: str, dimension_fields: set[str]) -> str:
     if not dimension_fields:
         return sql
@@ -391,7 +452,10 @@ def _complete_chat_response(
     if not isinstance(result.get(sql_field), str):
         raise ModelResponseValidationError("SQL_FIELD_INVALID", sorted(result))
     try:
-        sql = _complete_aggregate_group_by(result[sql_field])
+        package = payload["context_package"]
+        sql = _normalize_contract_columns(result[sql_field], package)
+        sql = _complete_dimensions(sql, list(package.get("dimensions", ())))
+        sql = _complete_aggregate_group_by(sql)
         dimension_fields = {
             str(item["field"]).rsplit(".", 1)[-1].lower()
             for item in payload["context_package"].get("dimensions", ())
@@ -407,7 +471,6 @@ def _complete_chat_response(
     except (KeyError, TypeError, ValueError) as error:
         raise ModelResponseValidationError("SQL_SEMANTICS_INVALID", result[sql_field]) from error
     queried = _queried_fqns(sql)
-    package = payload["context_package"]
     join_ids = sorted(
         item["id"]
         for item in package["joins"]

@@ -1,6 +1,8 @@
 from dataclasses import asdict
 from datetime import datetime
 from typing import Any, Final
+from uuid import NAMESPACE_URL, uuid5
+from zoneinfo import ZoneInfo
 
 from .domain import (
     BlockRunStatus,
@@ -12,7 +14,9 @@ from .domain import (
     ReportBlockRun,
     ReportDefinitionVersion,
     ReportRun,
+    ReportSchedule,
     RunStatus,
+    ScheduleFrequency,
 )
 from .repository import InMemoryReportRepository
 
@@ -27,6 +31,8 @@ REPORT_ROUTES: Final = (
     ("GET", "/reports/runs", "list_runs"),
     ("GET", "/reports/runs/{run_id}", "get_run"),
     ("POST", "/reports/runs/manual", "create_manual_run_command"),
+    ("PUT", "/reports/definitions/{definition_id}/versions/{version}/schedule", "upsert_schedule"),
+    ("GET", "/reports/schedules", "list_schedules"),
 )
 
 
@@ -104,6 +110,23 @@ class ReportRouter:
             "as_of": command.as_of.isoformat(),
             "idempotency_key": command.idempotency_key,
             "status": command.status.value,
+        }
+
+    @staticmethod
+    def _schedule_response(schedule: ReportSchedule) -> dict[str, Any]:
+        return {
+            "contract_version": REPORT_CONTRACT_VERSION,
+            "schedule_id": schedule.schedule_id,
+            "definition_id": schedule.definition_id,
+            "version": schedule.version,
+            "frequency": schedule.frequency.value,
+            "hour": schedule.hour,
+            "minute": schedule.minute,
+            "timezone": schedule.timezone,
+            "weekday": schedule.weekday,
+            "day_of_month": schedule.day_of_month,
+            "enabled": schedule.enabled,
+            "next_run_at": schedule.next_run_at.isoformat() if schedule.next_run_at else None,
         }
 
     def create_definition(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -249,6 +272,50 @@ class ReportRouter:
             raise ReportRouteError(422, f"필수 필드 누락: {error.args[0]}") from error
         except (TypeError, ValueError) as error:
             raise ReportRouteError(409, str(error)) from error
+
+    def upsert_schedule(
+        self,
+        definition_id: str,
+        version: int,
+        payload: dict[str, Any],
+        current: datetime | None = None,
+    ) -> dict[str, Any]:
+        allowed = {"frequency", "hour", "minute", "weekday", "day_of_month", "enabled"}
+        extra = set(payload) - allowed
+        if extra:
+            raise ReportRouteError(422, f"허용되지 않은 필드: {', '.join(sorted(extra))}")
+        try:
+            schedule = ReportSchedule(
+                schedule_id=str(uuid5(NAMESPACE_URL, f"report-schedule:{definition_id}:{version}")),
+                definition_id=definition_id,
+                version=version,
+                frequency=ScheduleFrequency(payload["frequency"]),
+                hour=payload["hour"],
+                minute=payload["minute"],
+                weekday=payload.get("weekday"),
+                day_of_month=payload.get("day_of_month"),
+                enabled=payload.get("enabled", False),
+            )
+            if schedule.enabled:
+                now = current or datetime.now(ZoneInfo(schedule.timezone))
+                schedule = ReportSchedule(
+                    schedule.schedule_id, schedule.definition_id, schedule.version,
+                    schedule.frequency, schedule.hour, schedule.minute, schedule.timezone,
+                    schedule.weekday, schedule.day_of_month, True, schedule.next_after(now),
+                )
+            return self._schedule_response(self.repository.save_schedule(schedule))
+        except KeyError as error:
+            if error.args and error.args[0] == "Report definition version을 찾을 수 없습니다.":
+                raise ReportRouteError(404, str(error)) from error
+            raise ReportRouteError(422, f"필수 필드 누락: {error.args[0]}") from error
+        except (TypeError, ValueError) as error:
+            raise ReportRouteError(409, str(error)) from error
+
+    def list_schedules(self) -> dict[str, Any]:
+        return {
+            "contract_version": REPORT_CONTRACT_VERSION,
+            "items": [self._schedule_response(item) for item in self.repository.list_schedules()],
+        }
 
 
 def create_report_router(repository: InMemoryReportRepository | None = None) -> ReportRouter:

@@ -27,6 +27,7 @@ from app.report_contracts import (  # noqa: E402
     CreateManualRunRequest,
     CreateReportDefinitionRequest,
     ReplaceReportBlocksRequest,
+    UpsertReportScheduleRequest,
 )
 from src.report.repository import InMemoryReportRepository  # noqa: E402
 from src.report.router import create_report_router  # noqa: E402
@@ -137,6 +138,16 @@ class ReportRegistrationTest(unittest.TestCase):
             )
             self.assertEqual("queued", command["status"])
             self.assertNotIn("run_id", command)
+            schedule = report_api.upsert_schedule(
+                "report-1",
+                1,
+                UpsertReportScheduleRequest(
+                    frequency="weekly", hour=9, minute=0, weekday=0, enabled=True
+                ),
+                report_context,
+            )
+            self.assertTrue(schedule["enabled"])
+            self.assertEqual(1, len(report_api.list_schedules(report_context)["items"]))
             with self.assertRaises(ValidationError):
                 CreateManualRunRequest.model_validate(
                     {**command_payload, "idempotency_key": " "}
@@ -163,6 +174,11 @@ class ReportRegistrationTest(unittest.TestCase):
         schema = app.openapi()
         self.assertIn("/reports/definitions", schema["paths"])
         self.assertIn("/reports/runs/manual", schema["paths"])
+        self.assertIn("/reports/schedules", schema["paths"])
+        self.assertIn(
+            "/reports/definitions/{definition_id}/versions/{version}/schedule",
+            schema["paths"],
+        )
         self.assertNotIn("post", schema["paths"]["/reports/runs"])
 
 

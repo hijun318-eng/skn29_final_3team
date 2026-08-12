@@ -75,7 +75,7 @@ python app/backend/scripts/export_openapi.py --check
 
 backend 기동 전 `alembic current` 결과가 위 지원 목록에 있는지 확인한다. 저장소에 존재하지 않는 `20260803_03`은 Alembic이 native non-zero로 거부하며 운영 판정 코드 `LEGACY_REVISION_UNSUPPORTED`로 기록한다. 이 상태를 우회하는 추정 migration, 자동 `stamp`, schema·data 변경, `drop`은 금지한다. 보존이 필요한 legacy DB는 변경하지 않고 별도 복구·변환 결정을 요청한다.
 
-Report HTTP는 owner 범위의 definition 목록·초안 block 교체·run 목록/상세와 `POST /reports/runs/manual`만 제공한다. 수동 실행 요청은 `definition_id`, `version`, `as_of`, `idempotency_key`만 받고 command ID와 `queued` 상태는 서버가 만든다. 실행 결과 전체를 저장하는 기존 `create_run` 연결은 신뢰된 내부 호출에만 남겨 두며 HTTP route로 공개하지 않는다. 실제 command 소비, worker, schedule, Artifact 생성은 후속 계약 전까지 구현하지 않는다.
+Report HTTP는 owner 범위의 definition 목록·초안 block 교체·run 목록/상세, `POST /reports/runs/manual`, 일·주·월 schedule 저장·조회를 제공한다. 수동 실행 요청은 `definition_id`, `version`, `as_of`, `idempotency_key`만 받고 command ID와 `queued` 상태는 서버가 만든다. schedule은 승인된 definition version만 활성화할 수 있고 due 시각별 idempotency key로 한 번만 queue한 뒤 다음 실행 시각을 전진시킨다. 실행 결과 전체를 저장하는 기존 `create_run` 연결은 신뢰된 내부 호출에만 남겨 두며 HTTP route로 공개하지 않는다. 실제 command 소비와 분석 재실행·Artifact 생성 worker는 아직 구현하지 않았다.
 
 브라우저 CORS는 설정된 exact origin과 credentials·필수 header를 유지하며, 기존 `GET`·`POST`·`OPTIONS`와 draft block 교체용 `PUT` preflight만 허용한다. origin·method·header wildcard는 사용하지 않는다.
 

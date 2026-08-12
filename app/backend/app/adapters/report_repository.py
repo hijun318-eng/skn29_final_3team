@@ -17,7 +17,9 @@ from src.report.domain import (
     ReportBlockRun,
     ReportDefinitionVersion,
     ReportRun,
+    ReportSchedule,
     RunStatus,
+    ScheduleFrequency,
 )
 
 
@@ -500,3 +502,131 @@ class PostgresReportRepository:
             row["idempotency_key"],
             RunStatus(row["status"]),
         )
+
+    def save_schedule(self, schedule: ReportSchedule) -> ReportSchedule:
+        definition_id = _uuid(schedule.definition_id, "definition_id")
+        with self._engine.begin() as connection:
+            approved = connection.execute(
+                text(
+                    """
+                    SELECT 1 FROM report_v1.report_definition_versions v
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE v.definition_id = :definition_id AND v.version = :version
+                      AND v.status = 'approved' AND d.owner_id = :owner_id
+                    """
+                ),
+                {"definition_id": definition_id, "version": schedule.version, "owner_id": self._owner_id},
+            ).first()
+            if approved is None:
+                raise ValueError("승인된 Report definition version만 예약할 수 있습니다.")
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_schedules
+                        (schedule_id, definition_id, definition_version, frequency,
+                         hour, minute, weekday, day_of_month, timezone_name,
+                         enabled, next_run_at)
+                    VALUES (:schedule_id, :definition_id, :version, :frequency,
+                            :hour, :minute, :weekday, :day_of_month, :timezone,
+                            :enabled, :next_run_at)
+                    ON CONFLICT (definition_id, definition_version) DO UPDATE SET
+                        frequency = EXCLUDED.frequency, hour = EXCLUDED.hour,
+                        minute = EXCLUDED.minute, weekday = EXCLUDED.weekday,
+                        day_of_month = EXCLUDED.day_of_month,
+                        enabled = EXCLUDED.enabled, next_run_at = EXCLUDED.next_run_at,
+                        updated_at = now()
+                    """
+                ),
+                {
+                    "schedule_id": _uuid(schedule.schedule_id, "schedule_id"),
+                    "definition_id": definition_id,
+                    "version": schedule.version,
+                    "frequency": schedule.frequency.value,
+                    "hour": schedule.hour,
+                    "minute": schedule.minute,
+                    "weekday": schedule.weekday,
+                    "day_of_month": schedule.day_of_month,
+                    "timezone": schedule.timezone,
+                    "enabled": schedule.enabled,
+                    "next_run_at": schedule.next_run_at,
+                },
+            )
+        return schedule
+
+    @staticmethod
+    def _schedule(row) -> ReportSchedule:
+        return ReportSchedule(
+            str(row["schedule_id"]), str(row["definition_id"]), row["definition_version"],
+            ScheduleFrequency(row["frequency"]), row["hour"], row["minute"],
+            row["timezone_name"], row["weekday"], row["day_of_month"],
+            row["enabled"], row["next_run_at"],
+        )
+
+    def list_schedules(self) -> tuple[ReportSchedule, ...]:
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT s.* FROM report_v1.report_schedules s
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE d.owner_id = :owner_id ORDER BY s.created_at, s.schedule_id
+                    """
+                ),
+                {"owner_id": self._owner_id},
+            ).mappings()
+            return tuple(self._schedule(row) for row in rows)
+
+    def queue_due_schedules(self, current: datetime) -> tuple[ManualRunCommand, ...]:
+        commands = []
+        with self._engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT s.* FROM report_v1.report_schedules s
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE d.owner_id = :owner_id AND s.enabled
+                      AND s.next_run_at <= :current
+                    ORDER BY s.next_run_at FOR UPDATE OF s SKIP LOCKED
+                    """
+                ),
+                {"owner_id": self._owner_id, "current": current},
+            ).mappings().all()
+            for row in rows:
+                schedule = self._schedule(row)
+                idempotency_key = f"schedule:{schedule.schedule_id}:{schedule.next_run_at.isoformat()}"
+                command_row = connection.execute(
+                    text(
+                        """
+                        INSERT INTO report_v1.report_manual_run_commands
+                            (command_id, definition_id, definition_version, as_of,
+                             idempotency_key, trigger_type, schedule_id)
+                        VALUES (:command_id, :definition_id, :version, :as_of,
+                                :idempotency_key, 'SCHEDULE', :schedule_id)
+                        ON CONFLICT (definition_id, definition_version, idempotency_key)
+                        DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
+                        RETURNING command_id, definition_id, definition_version,
+                                  as_of, idempotency_key, status
+                        """
+                    ),
+                    {
+                        "command_id": uuid4(),
+                        "definition_id": row["definition_id"],
+                        "version": row["definition_version"],
+                        "as_of": row["next_run_at"],
+                        "idempotency_key": idempotency_key,
+                        "schedule_id": row["schedule_id"],
+                    },
+                ).mappings().one()
+                commands.append(ManualRunCommand(
+                    str(command_row["command_id"]), str(command_row["definition_id"]),
+                    command_row["definition_version"], command_row["as_of"],
+                    command_row["idempotency_key"], RunStatus(command_row["status"]),
+                ))
+                connection.execute(
+                    text("UPDATE report_v1.report_schedules SET next_run_at = :next_run_at, updated_at = now() WHERE schedule_id = :schedule_id"),
+                    {
+                        "schedule_id": row["schedule_id"],
+                        "next_run_at": schedule.next_after(schedule.next_run_at),
+                    },
+                )
+        return tuple(commands)

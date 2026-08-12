@@ -46,9 +46,11 @@ class OpenApiContractTest(unittest.TestCase):
                 "/reports/definitions/{definition_id}/versions/{version}/drafts",
                 "/reports/definitions/{definition_id}/versions/{version}",
                 "/reports/definitions/{definition_id}/versions/{version}/blocks",
+                "/reports/definitions/{definition_id}/versions/{version}/schedule",
                 "/reports/runs",
                 "/reports/runs/manual",
                 "/reports/runs/{run_id}",
+                "/reports/schedules",
             },
             set(committed["paths"]),
         )
@@ -77,6 +79,8 @@ class OpenApiContractTest(unittest.TestCase):
                 "reportListRuns",
                 "reportCreateManualRunCommand",
                 "reportGetRun",
+                "reportUpsertSchedule",
+                "reportListSchedules",
             },
             operation_ids,
         )

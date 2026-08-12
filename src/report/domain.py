@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from datetime import datetime
+import calendar
+from datetime import datetime, timedelta
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Mapping
@@ -33,6 +34,64 @@ class BlockType(StrEnum):
     TABLE = "table"
     CHART = "chart"
     TEXT = "text"
+
+
+class ScheduleFrequency(StrEnum):
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+
+
+@dataclass(frozen=True, slots=True)
+class ReportSchedule:
+    schedule_id: str
+    definition_id: str
+    version: int
+    frequency: ScheduleFrequency
+    hour: int
+    minute: int
+    timezone: str = "Asia/Seoul"
+    weekday: int | None = None
+    day_of_month: int | None = None
+    enabled: bool = False
+    next_run_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "frequency", ScheduleFrequency(self.frequency))
+        if not self.schedule_id or not self.definition_id or self.version < 1:
+            raise ValueError("Report schedule은 id와 definition version이 필요합니다.")
+        if self.timezone != "Asia/Seoul" or not 0 <= self.hour <= 23 or not 0 <= self.minute <= 59:
+            raise ValueError("Report schedule 시간대 또는 시각이 올바르지 않습니다.")
+        if self.frequency is ScheduleFrequency.WEEKLY:
+            if self.weekday is None or not 0 <= self.weekday <= 6:
+                raise ValueError("weekly schedule은 0~6 weekday가 필요합니다.")
+        elif self.weekday is not None:
+            raise ValueError("weekday는 weekly schedule에서만 사용합니다.")
+        if self.frequency is ScheduleFrequency.MONTHLY:
+            if self.day_of_month is None or not 1 <= self.day_of_month <= 31:
+                raise ValueError("monthly schedule은 1~31 day_of_month가 필요합니다.")
+        elif self.day_of_month is not None:
+            raise ValueError("day_of_month는 monthly schedule에서만 사용합니다.")
+
+    def next_after(self, current: datetime) -> datetime:
+        candidate = current.replace(hour=self.hour, minute=self.minute, second=0, microsecond=0)
+        if self.frequency is ScheduleFrequency.DAILY:
+            return candidate if candidate > current else candidate + timedelta(days=1)
+        if self.frequency is ScheduleFrequency.WEEKLY:
+            candidate += timedelta(days=(self.weekday - candidate.weekday()) % 7)
+            return candidate if candidate > current else candidate + timedelta(days=7)
+        year, month = current.year, current.month
+        while True:
+            day = min(self.day_of_month, calendar.monthrange(year, month)[1])
+            candidate = current.replace(
+                year=year, month=month, day=day,
+                hour=self.hour, minute=self.minute, second=0, microsecond=0,
+            )
+            if candidate > current:
+                return candidate
+            month += 1
+            if month == 13:
+                year, month = year + 1, 1
 
 
 @dataclass(frozen=True, slots=True)

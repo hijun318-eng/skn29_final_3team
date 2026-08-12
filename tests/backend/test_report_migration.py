@@ -68,6 +68,25 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertNotIn("worker", source.lower())
         self.assertNotIn("schedule", source.lower())
 
+    def test_report_schedule_migration_follows_current_head_and_keeps_due_commands_idempotent(self):
+        source = (MIGRATIONS / "20260812_08_report_schedules.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        values = {
+            node.targets[0].id: ast.literal_eval(node.value)
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id in {"revision", "down_revision"}
+        }
+        self.assertEqual(
+            {"revision": "20260812_08", "down_revision": "20260811_07"}, values
+        )
+        self.assertIn("CREATE TABLE report_v1.report_schedules", source)
+        self.assertIn("frequency IN ('daily', 'weekly', 'monthly')", source)
+        self.assertIn("UNIQUE (definition_id, definition_version)", source)
+        self.assertIn("trigger_type", source)
+        self.assertIn("schedule_id", source)
+
 
 if __name__ == "__main__":
     unittest.main()

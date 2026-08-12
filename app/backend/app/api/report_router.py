@@ -17,6 +17,9 @@ from app.report_contracts import (
     ReportDefinitionResponse,
     ReportRunListResponse,
     ReportRunResponse,
+    ReportScheduleListResponse,
+    ReportScheduleResponse,
+    UpsertReportScheduleRequest,
 )
 
 
@@ -165,6 +168,35 @@ def create_manual_run_command(
     return _call(
         lambda: _router(context).create_manual_run_command(payload.model_dump(mode="json"))
     )
+
+
+@report_router.put(
+    "/reports/definitions/{definition_id}/versions/{version}/schedule",
+    operation_id="reportUpsertSchedule",
+    response_model=ReportScheduleResponse,
+)
+def upsert_schedule(
+    definition_id: str,
+    version: int,
+    payload: UpsertReportScheduleRequest,
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+) -> dict[str, Any]:
+    return _call(
+        lambda: _router(context).upsert_schedule(
+            definition_id, version, payload.model_dump(mode="json")
+        )
+    )
+
+
+@report_router.get(
+    "/reports/schedules",
+    operation_id="reportListSchedules",
+    response_model=ReportScheduleListResponse,
+)
+def list_schedules(
+    context: Annotated[RequestContext, Depends(report_admin_context)],
+) -> dict[str, Any]:
+    return _call(lambda: _router(context).list_schedules())
 
 
 @report_router.get(

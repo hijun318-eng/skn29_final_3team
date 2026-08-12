@@ -1,7 +1,15 @@
+from dataclasses import replace
 from datetime import datetime
 from uuid import uuid4
 
-from .domain import DefinitionStatus, ManualRunCommand, ReportBlock, ReportDefinitionVersion, ReportRun
+from .domain import (
+    DefinitionStatus,
+    ManualRunCommand,
+    ReportBlock,
+    ReportDefinitionVersion,
+    ReportRun,
+    ReportSchedule,
+)
 
 
 class InMemoryReportRepository:
@@ -12,6 +20,7 @@ class InMemoryReportRepository:
         self._runs: dict[str, ReportRun] = {}
         self._commands: dict[str, ManualRunCommand] = {}
         self._idempotency: dict[tuple[str, int, str], str] = {}
+        self._schedules: dict[str, ReportSchedule] = {}
 
     def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
         if draft.status is not DefinitionStatus.DRAFT:
@@ -86,3 +95,35 @@ class InMemoryReportRepository:
         self._commands[command.command_id] = command
         self._idempotency[key] = command.command_id
         return command
+
+    def save_schedule(self, schedule: ReportSchedule) -> ReportSchedule:
+        if self.get_version(schedule.definition_id, schedule.version).status is not DefinitionStatus.APPROVED:
+            raise ValueError("승인된 Report definition version만 예약할 수 있습니다.")
+        self._schedules[schedule.schedule_id] = schedule
+        return schedule
+
+    def list_schedules(self) -> tuple[ReportSchedule, ...]:
+        return tuple(self._schedules[key] for key in sorted(self._schedules))
+
+    def get_schedule(self, schedule_id: str) -> ReportSchedule:
+        try:
+            return self._schedules[schedule_id]
+        except KeyError as error:
+            raise KeyError("Report schedule을 찾을 수 없습니다.") from error
+
+    def queue_due_schedules(self, current: datetime) -> tuple[ManualRunCommand, ...]:
+        commands = []
+        for schedule_id, schedule in tuple(self._schedules.items()):
+            if not schedule.enabled or schedule.next_run_at is None or schedule.next_run_at > current:
+                continue
+            command = self.queue_manual_run(
+                schedule.definition_id,
+                schedule.version,
+                schedule.next_run_at,
+                f"schedule:{schedule.schedule_id}:{schedule.next_run_at.isoformat()}",
+            )
+            commands.append(command)
+            self._schedules[schedule_id] = replace(
+                schedule, next_run_at=schedule.next_after(schedule.next_run_at)
+            )
+        return tuple(commands)

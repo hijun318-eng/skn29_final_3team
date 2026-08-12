@@ -52,6 +52,35 @@ class CreateManualRunRequest(ReportContractModel):
         return value
 
 
+class UpsertReportScheduleRequest(ReportContractModel):
+    frequency: Literal["daily", "weekly", "monthly"]
+    hour: int = Field(ge=0, le=23)
+    minute: int = Field(ge=0, le=59)
+    weekday: int | None = Field(default=None, ge=0, le=6)
+    day_of_month: int | None = Field(default=None, ge=1, le=31)
+    enabled: bool = False
+
+
+class ReportScheduleResponse(ReportContractModel):
+    contract_version: str
+    schedule_id: str
+    definition_id: str
+    version: int
+    frequency: Literal["daily", "weekly", "monthly"]
+    hour: int
+    minute: int
+    timezone: Literal["Asia/Seoul"]
+    weekday: int | None
+    day_of_month: int | None
+    enabled: bool
+    next_run_at: datetime | None
+
+
+class ReportScheduleListResponse(ReportContractModel):
+    contract_version: str
+    items: list[ReportScheduleResponse]
+
+
 class ReportBlockResponse(ReportContractModel):
     block_id: str
     title: str

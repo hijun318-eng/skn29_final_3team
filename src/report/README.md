@@ -14,4 +14,5 @@ R4 registration work:
 6. expose `POST /reports/runs/manual` as the client trust boundary: accept only `definition_id`, `version`, `as_of`, `idempotency_key`, generate the command ID server-side and keep status/result/policy/context/watermark worker-owned;
 7. keep the legacy full run-result ingestion contract trusted-internal rather than exposing it to an untrusted client.
 
-No backend registration, worker, schedule runtime, authentication decision or common migration registration is implemented here.
+Backend registration and persistent schedule queueing are implemented under `app/backend`.
+Command consumption and analysis/Artifact execution workers are not implemented yet.

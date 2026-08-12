@@ -10,7 +10,7 @@ class ReportRouterContractTest(unittest.TestCase):
         self.router = create_report_router(InMemoryReportRepository())
 
     def test_route_manifest_is_ready_for_r4_registration(self):
-        self.assertEqual(10, len(REPORT_ROUTES))
+        self.assertEqual(12, len(REPORT_ROUTES))
         self.assertIn(("POST", "/reports/definitions", "create_definition"), REPORT_ROUTES)
         self.assertIn(
             ("POST", "/reports/definitions/{definition_id}/versions/{version}/approve", "approve_version"),
@@ -28,6 +28,19 @@ class ReportRouterContractTest(unittest.TestCase):
         self.assertIn(("GET", "/reports/runs", "list_runs"), REPORT_ROUTES)
         self.assertIn(("GET", "/reports/runs/{run_id}", "get_run"), REPORT_ROUTES)
         self.assertIn(("POST", "/reports/runs/manual", "create_manual_run_command"), REPORT_ROUTES)
+        self.assertIn(("GET", "/reports/schedules", "list_schedules"), REPORT_ROUTES)
+
+    def test_approved_definition_accepts_a_persistent_monthly_schedule(self):
+        self.router.create_definition({"definition_id": "report-1", "title": "월간", "blocks": []})
+        approved_at = datetime(2026, 8, 3, tzinfo=timezone.utc).isoformat()
+        self.router.approve_version("report-1", 1, approved_at)
+        schedule = self.router.upsert_schedule(
+            "report-1", 1,
+            {"frequency": "monthly", "hour": 9, "minute": 0, "day_of_month": 31, "enabled": True},
+            datetime(2026, 8, 12, 0, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual("2026-08-31T09:00:00+00:00", schedule["next_run_at"])
+        self.assertEqual(1, len(self.router.list_schedules()["items"]))
 
     def test_router_creates_approves_and_versions_without_overwriting(self):
         created = self.router.create_definition({

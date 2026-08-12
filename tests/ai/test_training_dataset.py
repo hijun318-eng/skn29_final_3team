@@ -46,6 +46,7 @@ class TrainingDatasetTests(unittest.TestCase):
                 "right": "crm.accounts",
                 "cardinality": "many-to-one",
                 "status": "approved",
+                "on_predicates": ["pms.stays.guest_id = crm.accounts.guest_id"],
             }
         ]
         with tempfile.TemporaryDirectory() as directory:

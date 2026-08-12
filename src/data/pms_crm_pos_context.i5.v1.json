@@ -47,7 +47,73 @@
     "cardinality": "preaggregate_then_one_to_one_month",
     "source_preaggregations": ["pms_crm_by_property_month", "pos_crm_by_property_month"],
     "combine_keys": ["property_id", "month"],
-    "amplification_limit": 1
+    "amplification_limit": 1,
+    "join_edges": [
+      {
+        "left": "pms.public.pms_stays",
+        "right": "pms.public.pms_reservations",
+        "on_predicates": [
+          "pms.public.pms_stays.property_id = pms.public.pms_reservations.property_id",
+          "pms.public.pms_stays.reservation_id = pms.public.pms_reservations.reservation_id"
+        ]
+      },
+      {
+        "left": "pms.public.pms_reservations",
+        "right": "pms.public.pms_guests",
+        "on_predicates": [
+          "pms.public.pms_reservations.property_id = pms.public.pms_guests.property_id",
+          "pms.public.pms_reservations.guest_id = pms.public.pms_guests.guest_id"
+        ]
+      },
+      {
+        "left": "pms.public.pms_guests",
+        "right": "crm.dbo.crm_customer_map",
+        "on_predicates": [
+          "pms.public.pms_guests.property_id = crm.dbo.crm_customer_map.property_id",
+          "pms.public.pms_guests.guest_id = crm.dbo.crm_customer_map.pms_guest_id",
+          "crm.dbo.crm_customer_map.valid_from <= pms.public.pms_stays.actual_checkout_at",
+          "crm.dbo.crm_customer_map.valid_to IS NULL OR pms.public.pms_stays.actual_checkout_at < crm.dbo.crm_customer_map.valid_to"
+        ]
+      },
+      {
+        "left": "crm.dbo.crm_customer_map",
+        "right": "crm.dbo.crm_member_grade_history",
+        "on_predicates": [
+          "crm.dbo.crm_customer_map.property_id = crm.dbo.crm_member_grade_history.property_id",
+          "crm.dbo.crm_customer_map.member_no = crm.dbo.crm_member_grade_history.member_no",
+          "crm.dbo.crm_member_grade_history.valid_from <= pms.public.pms_stays.actual_checkout_at",
+          "crm.dbo.crm_member_grade_history.valid_to IS NULL OR pms.public.pms_stays.actual_checkout_at < crm.dbo.crm_member_grade_history.valid_to"
+        ]
+      },
+      {
+        "left": "pos.pos_db.pos_orders",
+        "right": "crm.dbo.crm_customer_map",
+        "on_predicates": [
+          "pos.pos_db.pos_orders.property_id = crm.dbo.crm_customer_map.property_id",
+          "pos.pos_db.pos_orders.pos_customer_ref = crm.dbo.crm_customer_map.pos_customer_ref",
+          "crm.dbo.crm_customer_map.valid_from <= pos.pos_db.pos_orders.ordered_at",
+          "crm.dbo.crm_customer_map.valid_to IS NULL OR pos.pos_db.pos_orders.ordered_at < crm.dbo.crm_customer_map.valid_to"
+        ]
+      },
+      {
+        "left": "crm.dbo.crm_customer_map",
+        "right": "crm.dbo.crm_member_grade_history",
+        "on_predicates": [
+          "crm.dbo.crm_customer_map.property_id = crm.dbo.crm_member_grade_history.property_id",
+          "crm.dbo.crm_customer_map.member_no = crm.dbo.crm_member_grade_history.member_no",
+          "crm.dbo.crm_member_grade_history.valid_from <= pos.pos_db.pos_orders.ordered_at",
+          "crm.dbo.crm_member_grade_history.valid_to IS NULL OR pos.pos_db.pos_orders.ordered_at < crm.dbo.crm_member_grade_history.valid_to"
+        ]
+      },
+      {
+        "left": "pms_source",
+        "right": "pos_source",
+        "on_predicates": [
+          "pms_source.property_id = pos_source.property_id",
+          "pms_source.month = pos_source.month"
+        ]
+      }
+    ]
   },
   "required_filters": [
     {"field": "crm.dbo.crm_member_grade_history.grade_code", "operator": "eq", "value_type": "string", "value": "GOLD"},

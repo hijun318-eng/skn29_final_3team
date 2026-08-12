@@ -88,9 +88,24 @@ def _model():
     raise ValueError(f"unsupported MODEL_MODE: {mode}")
 
 
+def _context_release_resolver():
+    database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
+    release_key = os.getenv("CONTEXT_RELEASE_KEY", "")
+    if not database_url or not release_key:
+        return None
+    from app.adapters.context_registry_repository import PostgresContextRegistryRepository
+
+    repository = PostgresContextRegistryRepository(database_url)
+    return lambda as_of: repository.resolve_published_release(release_key, as_of)
+
+
 router = APIRouter()
 controller = AnalysisController(
-    AnalysisService(_data_platform(), _model()),
+    AnalysisService(
+        _data_platform(),
+        _model(),
+        release_resolver=_context_release_resolver(),
+    ),
     _routing_service(),
 )
 readiness = AppDatabaseReadiness()

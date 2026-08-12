@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+from datetime import date
 from typing import Any, Callable
 
 from app.contracts import (
@@ -21,7 +22,11 @@ from app.ports.data_platform import DataPlatformAdapter
 from app.ports.data_platform import DataPlatformAccessDenied, DataPlatformNoAssets, DataPlatformUnavailable
 from app.ports.model import ModelAdapter
 from app.services.analysis_responses import AnalysisResponseFactory
-from app.services.context_builder import ContextBuildError, ContextPackageBuilder
+from app.services.context_builder import (
+    ContextBuildError,
+    ContextBuildErrorCode,
+    ContextPackageBuilder,
+)
 from app.services.execution_control import (
     IsolatedExecutionCache,
     ModelCallBudget,
@@ -31,6 +36,7 @@ from app.services.pipeline_support import PipelineSupport
 from app.services.routing_service import RouteDecision
 from app.services.state_machine import AnalysisStateMachine
 from app.telemetry import observe_stage
+from app.adapters.context_registry_repository import PublishedContextRelease
 
 
 class AnalysisService:
@@ -42,12 +48,14 @@ class AnalysisService:
         model: ModelAdapter,
         context_builder: ContextPackageBuilder | None = None,
         cache: IsolatedExecutionCache | None = None,
+        release_resolver: Callable[[date], PublishedContextRelease] | None = None,
     ) -> None:
         self._adapter = adapter
         self._model = model
         self._support = PipelineSupport(
             adapter,
             context_builder or ContextPackageBuilder(),
+            release_resolver,
         )
         self._responses = AnalysisResponseFactory()
         self._cache = cache or IsolatedExecutionCache()
@@ -156,11 +164,22 @@ class AnalysisService:
                 assets, normalized_question = self._support.select_metric(
                     payload, context, assets, node1
                 )
-                package = self._support.build_context(payload, context, assets)
+                package = self._support.build_context(
+                    payload,
+                    context,
+                    assets,
+                    decision.route_type.value,
+                    decision.template_id,
+                )
                 span.set_attribute(
                     "answervice.context_package_hash", package.package_hash
                 )
-        except ContextBuildError:
+        except ContextBuildError as error:
+            message = (
+                "요청 시점에 유효한 PUBLISHED Context release가 없습니다."
+                if error.code is ContextBuildErrorCode.INACTIVE_RELEASE
+                else "질문에서 권한이 있는 승인 지표 하나를 선택해 주세요."
+            )
             return self._responses.error(
                 context,
                 machine,
@@ -168,13 +187,19 @@ class AnalysisService:
                 PipelineStage.CONTEXT,
                 AnalysisStatus.BLOCKED,
                 ErrorCode.CONTEXT_INCOMPLETE,
-                "질문에서 권한이 있는 승인 지표 하나를 선택해 주세요.",
+                message,
                 decision,
             )
         self._responses.record(trace, PipelineStage.CONTEXT, package.package_hash)
 
         scenario = str(payload.parameters.get("scenario") or "")
-        g1_error = self._support.g1_error(scenario)
+        g1_error = self._support.g1_error(
+            package,
+            payload,
+            context,
+            decision.route_type.value,
+            decision.template_id,
+        )
         if g1_error:
             error_code, message = g1_error
             return self._responses.error(

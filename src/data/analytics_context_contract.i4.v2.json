@@ -129,7 +129,45 @@
         "crm.dbo.crm_member_grade_history"
       ],
       "event_time_field": "pms.public.pms_stays.actual_checkout_at",
-      "cardinality": "many_to_zero_or_one"
+      "cardinality": "many_to_zero_or_one",
+      "join_edges": [
+        {
+          "left": "pms.public.pms_stays",
+          "right": "pms.public.pms_reservations",
+          "on_predicates": [
+            "pms.public.pms_stays.property_id = pms.public.pms_reservations.property_id",
+            "pms.public.pms_stays.reservation_id = pms.public.pms_reservations.reservation_id"
+          ]
+        },
+        {
+          "left": "pms.public.pms_reservations",
+          "right": "pms.public.pms_guests",
+          "on_predicates": [
+            "pms.public.pms_reservations.property_id = pms.public.pms_guests.property_id",
+            "pms.public.pms_reservations.guest_id = pms.public.pms_guests.guest_id"
+          ]
+        },
+        {
+          "left": "pms.public.pms_guests",
+          "right": "crm.dbo.crm_customer_map",
+          "on_predicates": [
+            "pms.public.pms_guests.property_id = crm.dbo.crm_customer_map.property_id",
+            "pms.public.pms_guests.guest_id = crm.dbo.crm_customer_map.pms_guest_id",
+            "crm.dbo.crm_customer_map.valid_from <= pms.public.pms_stays.actual_checkout_at",
+            "crm.dbo.crm_customer_map.valid_to IS NULL OR pms.public.pms_stays.actual_checkout_at < crm.dbo.crm_customer_map.valid_to"
+          ]
+        },
+        {
+          "left": "crm.dbo.crm_customer_map",
+          "right": "crm.dbo.crm_member_grade_history",
+          "on_predicates": [
+            "crm.dbo.crm_customer_map.property_id = crm.dbo.crm_member_grade_history.property_id",
+            "crm.dbo.crm_customer_map.member_no = crm.dbo.crm_member_grade_history.member_no",
+            "crm.dbo.crm_member_grade_history.valid_from <= pms.public.pms_stays.actual_checkout_at",
+            "crm.dbo.crm_member_grade_history.valid_to IS NULL OR pms.public.pms_stays.actual_checkout_at < crm.dbo.crm_member_grade_history.valid_to"
+          ]
+        }
+      ]
     }
   ]
 }

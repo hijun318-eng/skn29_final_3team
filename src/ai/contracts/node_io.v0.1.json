@@ -88,13 +88,18 @@
     "context_join": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "left", "right", "cardinality", "status"],
+      "required": ["id", "left", "right", "cardinality", "status", "on_predicates"],
       "properties": {
         "id": {"type": "string", "minLength": 1},
         "left": {"type": "string", "minLength": 1},
         "right": {"type": "string", "minLength": 1},
         "cardinality": {"type": "string", "minLength": 1},
-        "status": {"type": "string", "const": "approved"}
+        "status": {"type": "string", "const": "approved"},
+        "on_predicates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        }
       }
     },
     "context_package": {

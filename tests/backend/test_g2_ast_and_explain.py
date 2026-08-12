@@ -12,6 +12,7 @@ from app.adapters.i2_data_platform import I2DataPlatformAdapter
 from app.services.context_builder import (
     ContextAsset,
     ContextBuildRequest,
+    ContextJoinPolicy,
     ContextPackageBuilder,
 )
 from app.services.pipeline_support import PipelineSupport
@@ -159,7 +160,7 @@ def test_trino_validate_explain_failure_blocks_query_execution():
     assert str(calls[0][2]).startswith("EXPLAIN (TYPE VALIDATE) ")
 
 
-def _profile_package(profile, principal, assets):
+def _profile_package(profile, principal, assets, join_policies=()):
     return ContextPackageBuilder().build(
         ContextBuildRequest(
             context_release="context-v1",
@@ -173,6 +174,7 @@ def _profile_package(profile, principal, assets):
             allowed_domains=("urn:li:domain:rooms",),
             trino_principal=principal,
             datahub_principal=f"urn:li:corpuser:{principal}",
+            join_policies=join_policies,
         ),
         frozenset(asset.urn for asset in assets),
     )
@@ -207,7 +209,18 @@ def test_pms_crm_join_is_allowed_but_pos_is_outside_profile_context():
         "urn:crm", "crm.dbo.members", ("pms_guest_id",), join_ids=(join_id,)
     )
     package = _profile_package(
-        "pms_crm", "answervice_pms_crm", (pms, crm)
+        "pms_crm",
+        "answervice_pms_crm",
+        (pms, crm),
+        (
+            ContextJoinPolicy(
+                join_id,
+                pms.fqn,
+                crm.fqn,
+                "many_to_one",
+                ("pms.public.stays.guest_id = crm.dbo.members.pms_guest_id",),
+            ),
+        ),
     )
     join_plan = {
         "sql": (
@@ -239,6 +252,16 @@ def test_pms_crm_join_is_allowed_but_pos_is_outside_profile_context():
     }
 
     assert PipelineSupport.g2_violation(join_plan, package) is None
+    mutated = {
+        **join_plan,
+        "sql": join_plan["sql"].replace(
+            "c.pms_guest_id = p.guest_id", "c.pms_guest_id = c.pms_guest_id"
+        ),
+    }
+    assert (
+        PipelineSupport.g2_violation(mutated, package)
+        == "UNAPPROVED_JOIN_PREDICATE"
+    )
     assert PipelineSupport.g2_violation(pos_plan, package) == "REFERENCE_OUTSIDE_CONTEXT"
 
 

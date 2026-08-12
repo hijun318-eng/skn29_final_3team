@@ -553,12 +553,12 @@ class PostgresAnalysisRepository:
                 SELECT context_release_id
                 FROM context.context_releases
                 WHERE status = 'PUBLISHED'
-                  AND (release_key = :release OR release_hash = :release)
+                  AND context_release_id = CAST(:release_id AS uuid)
                 ORDER BY version_no DESC
                 LIMIT 1
                 """
             ),
-            {"release": package.context_release},
+            {"release_id": package.context_release_id},
         ).scalar_one_or_none()
         package_id = None
         if release_id is not None:
@@ -584,7 +584,11 @@ class PostgresAnalysisRepository:
                     "request_id": request_id,
                     "release_id": release_id,
                     "user_scope": json.dumps(
-                        {"entitlement_hash": package.entitlement_hash}
+                        {
+                            "entitlement_hash": package.entitlement_hash,
+                            "route_type": package.route_type,
+                            "template_id": package.template_id,
+                        }
                     ),
                     "assets": json.dumps(
                         [
@@ -597,11 +601,25 @@ class PostgresAnalysisRepository:
                         ]
                     ),
                     "metrics": json.dumps([item.id for item in package.metrics]),
-                    "joins": json.dumps(list(package.approved_join_ids)),
+                    "joins": json.dumps(
+                        [
+                            {
+                                "id": item.id,
+                                "left": item.left,
+                                "right": item.right,
+                                "cardinality": item.cardinality,
+                                "on_predicates": list(item.on_predicates),
+                            }
+                            for item in package.join_policies
+                        ]
+                    ),
                     "policies": json.dumps(
                         {
                             "sql_policy_version": package.policy_version,
                             "time_version": package.time_version,
+                            "time_policy_id": package.time_policy_id,
+                            "calendar_id": package.calendar_id,
+                            "timezone": package.timezone,
                         }
                     ),
                     "dataset_count": package.dataset_count,

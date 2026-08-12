@@ -175,12 +175,17 @@ query SearchDatasets($query: String!) {
                 or not isinstance(item.get("id"), str)
                 or not isinstance(item.get("assets"), list)
                 or not item["assets"]
+                or not self._valid_join_edges(item.get("join_edges"))
                 for item in approved_joins
             )
         ):
             raise ValueError("analytics context contract approved joins are invalid")
         self._approved_joins = {
             frozenset(map(str, item["assets"])): str(item["id"])
+            for item in approved_joins
+        }
+        self._join_policies = {
+            str(item["id"]): tuple(item["join_edges"])
             for item in approved_joins
         }
         if (
@@ -196,6 +201,9 @@ query SearchDatasets($query: String!) {
         self._three_source_verified = True
         self._three_source_filters = tuple(three_source["required_filters"])
         self._three_source_parameters = tuple(three_source["parameter_bindings"])
+        self._join_policies[self._PMS_CRM_POS_JOIN_ID] = tuple(
+            three_source["approved_join"]["join_edges"]
+        )
         self._three_source_assets = tuple(
             {
                 "urn": asset["urn"],
@@ -401,6 +409,9 @@ query SearchDatasets($query: String!) {
             or not assets
             or (contract.get("approved_join") or {}).get("id")
             != cls._PMS_CRM_POS_JOIN_ID
+            or not cls._valid_join_edges(
+                (contract.get("approved_join") or {}).get("join_edges")
+            )
             or (contract.get("gold_evidence") or {}).get("runtime", {}).get("status")
             != "PASS"
             or re.fullmatch(
@@ -649,6 +660,20 @@ query SearchDatasets($query: String!) {
         if approved_join_id:
             for item in selected:
                 item["join_ids"] = (approved_join_id,)
+            selected[0]["join_policies"] = tuple(
+                {
+                    "id": approved_join_id,
+                    "left": edge["left"],
+                    "right": edge["right"],
+                    "cardinality": (
+                        "preaggregate_then_one_to_one_month"
+                        if approved_join_id == self._PMS_CRM_POS_JOIN_ID
+                        else "many_to_zero_or_one"
+                    ),
+                    "on_predicates": tuple(edge["on_predicates"]),
+                }
+                for edge in self._join_policies[approved_join_id]
+            )
         metrics = tuple(
             metric for metric in self._metrics if metric.get("asset_fqn") in selected_fqns
         )
@@ -669,6 +694,21 @@ query SearchDatasets($query: String!) {
                 raise DataPlatformAccessDenied("DataHub assets are outside the selected profile")
             raise DataPlatformNoAssets("live DataHub returned no matching assets")
         return selected
+
+    @staticmethod
+    def _valid_join_edges(value: object) -> bool:
+        return (
+            isinstance(value, list)
+            and bool(value)
+            and all(
+                isinstance(edge, dict)
+                and all(isinstance(edge.get(field), str) and edge[field] for field in ("left", "right"))
+                and isinstance(edge.get("on_predicates"), list)
+                and bool(edge["on_predicates"])
+                and all(isinstance(item, str) and item for item in edge["on_predicates"])
+                for edge in value
+            )
+        )
 
     @staticmethod
     def _dataset_domain(dataset: dict[str, Any]) -> str:

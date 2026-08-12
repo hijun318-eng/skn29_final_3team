@@ -4,13 +4,14 @@ import hashlib
 import json
 import re
 from collections import Counter
+from collections.abc import Callable
 from datetime import date, datetime, time
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid5
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlglot import exp, parse
+from sqlglot import exp, parse, parse_one
 from sqlglot.errors import SqlglotError
 
 from app.contracts import (
@@ -21,12 +22,18 @@ from app.contracts import (
     SourceReference,
 )
 from app.ports.data_platform import DataPlatformAdapter
+from app.adapters.context_registry_repository import (
+    ContextRegistryConflict,
+    ContextRegistryUnavailable,
+    PublishedContextRelease,
+)
 from app.services.context_builder import (
     ContextAsset,
     ContextBuildError,
     ContextBuildErrorCode,
     ContextBuildRequest,
     ContextMetric,
+    ContextJoinPolicy,
     ContextPackage,
     ContextPackageBuilder,
     ContextParameterBinding,
@@ -81,16 +88,37 @@ class PipelineSupport:
         self,
         adapter: DataPlatformAdapter,
         context_builder: ContextPackageBuilder,
+        release_resolver: Callable[[date], PublishedContextRelease] | None = None,
     ) -> None:
         self._adapter = adapter
         self._context_builder = context_builder
+        self._release_resolver = release_resolver
 
     def build_context(
         self,
         payload: AnalysisRequest,
         context: RequestContext,
         assets: list[dict[str, object]],
+        route_type: str = "GENERAL",
+        template_id: str | None = None,
     ) -> ContextPackage:
+        if self._release_resolver is None:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INACTIVE_RELEASE,
+                "Context Registry release resolver가 구성되지 않았습니다.",
+            )
+        try:
+            release = self._release_resolver(context.as_of)
+        except (ContextRegistryConflict, ContextRegistryUnavailable) as error:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INACTIVE_RELEASE,
+                "요청 시점에 유효한 PUBLISHED Context release가 없습니다.",
+            ) from error
+        if context.timezone != release.timezone:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "요청 timezone과 승인 TIME_POLICY가 일치하지 않습니다.",
+            )
         items = tuple(
             ContextAsset(
                 urn=str(asset["urn"]),
@@ -163,9 +191,9 @@ class PipelineSupport:
             ]
         )
         request = ContextBuildRequest(
-            context_release="context-v1",
+            context_release=release.release_hash,
             policy_version=context.access_policy_version or "policy-v1",
-            time_version=context.as_of.isoformat(),
+            time_version=release.time_policy_id,
             entitlement_hash=context.entitlement_hash or hashlib.sha256(
                 f"{context.user_id}:{context.role.value}".encode()
             ).hexdigest(),
@@ -173,10 +201,30 @@ class PipelineSupport:
             token_count=max(1, len(payload.question.split()) * 4),
             model_context_tokens=24_000,
             parameter_bindings=parameter_bindings,
+            join_policies=tuple(
+                ContextJoinPolicy(
+                    id=str(item["id"]),
+                    left=str(item["left"]),
+                    right=str(item["right"]),
+                    cardinality=str(item["cardinality"]),
+                    on_predicates=tuple(map(str, item["on_predicates"])),
+                )
+                for asset in assets
+                for item in asset.get("join_policies", ())
+            ),
             access_profile=context.access_profile or "default",
             allowed_domains=context.allowed_domains,
             trino_principal=context.trino_principal or "",
             datahub_principal=context.datahub_principal or "",
+            context_release_id=release.context_release_id,
+            context_release_key=release.release_key,
+            context_release_version=release.version_no,
+            time_policy_id=release.time_policy_id,
+            route_type=route_type,
+            template_id=template_id,
+            as_of=context.as_of.isoformat(),
+            timezone=context.timezone,
+            calendar_id=release.calendar_id,
         )
         return self._context_builder.build(
             request,
@@ -268,21 +316,48 @@ class PipelineSupport:
         return selected_assets, str(normalized["normalized_question"])
 
     @staticmethod
-    def g1_error(scenario: str) -> tuple[ErrorCode, str] | None:
-        return {
-            "clarification": (
-                ErrorCode.CONTEXT_INCOMPLETE,
-                "분석 기간 또는 기준을 보완해 주세요.",
-            ),
-            "access_denied": (
-                ErrorCode.ACCESS_DENIED,
-                "요청한 데이터 범위에 접근할 수 없습니다.",
-            ),
-            "inactive_context": (
-                ErrorCode.CONTEXT_INCOMPLETE,
-                "활성 Context 또는 정책 버전을 찾을 수 없습니다.",
-            ),
-        }.get(scenario)
+    def g1_error(
+        package: ContextPackage,
+        payload: AnalysisRequest,
+        context: RequestContext,
+        route_type: str,
+        template_id: str | None,
+    ) -> tuple[ErrorCode, str] | None:
+        """모든 실행 경로가 공유하는 단일 Context Gate."""
+        if (
+            not package.context_release_id
+            or not package.context_release_key
+            or package.context_release_version < 1
+            or not package.time_policy_id
+            or not package.assets
+        ):
+            return ErrorCode.CONTEXT_INCOMPLETE, "활성 Context release 근거가 없습니다."
+        if (
+            package.route_type != route_type
+            or package.template_id != template_id
+            or (route_type == "TEMPLATE") != bool(template_id)
+            or payload.template_id != template_id
+        ):
+            return ErrorCode.ACCESS_DENIED, "승인된 route·Template binding이 일치하지 않습니다."
+        if (
+            package.as_of != context.as_of.isoformat()
+            or package.timezone != context.timezone
+            or not package.calendar_id
+        ):
+            return ErrorCode.CONTEXT_INCOMPLETE, "승인된 시간 정책이 요청과 일치하지 않습니다."
+        period_start = payload.parameters.get("period_start")
+        period_end = payload.parameters.get("period_end_exclusive")
+        if (period_start is None) != (period_end is None):
+            return ErrorCode.CONTEXT_INCOMPLETE, "기간 시작과 종료 경계가 모두 필요합니다."
+        if period_start is not None:
+            try:
+                start = date.fromisoformat(str(period_start))
+                end = date.fromisoformat(str(period_end))
+            except ValueError:
+                return ErrorCode.CONTEXT_INCOMPLETE, "기간 경계 형식이 유효하지 않습니다."
+            if start >= end or end > context.as_of:
+                return ErrorCode.CONTEXT_INCOMPLETE, "기간 경계가 승인 시간 정책을 벗어났습니다."
+        return None
 
     @staticmethod
     def g2_violation(
@@ -398,6 +473,8 @@ class PipelineSupport:
                 or queried != {item.fqn.lower() for item in package.assets}
             ):
                 return "UNAPPROVED_JOIN"
+            if not PipelineSupport._join_predicates_match(query, package.join_policies):
+                return "UNAPPROVED_JOIN_PREDICATE"
         normalized_columns = {
             fqn.lower(): {column.lower() for column in columns}
             for fqn, columns in columns_by_fqn.items()
@@ -437,6 +514,93 @@ class PipelineSupport:
         if parameters_invalid:
             return "PARAMETERS_INVALID"
         return None
+
+    @staticmethod
+    def _join_predicates_match(
+        query: exp.Select, policies: tuple[ContextJoinPolicy, ...]
+    ) -> bool:
+        try:
+            expected = Counter(
+                PipelineSupport._predicate_group(
+                    tuple(parse_one(item, read="trino") for item in policy.on_predicates),
+                    {},
+                )
+                for policy in policies
+            )
+        except SqlglotError:
+            return False
+        actual: Counter[tuple[object, ...]] = Counter()
+        for select in query.find_all(exp.Select):
+            relations = [
+                select.args.get("from_").this if select.args.get("from_") else None,
+                *(join.this for join in select.args.get("joins") or ()),
+            ]
+            aliases = {
+                relation.alias_or_name.lower(): ".".join(
+                    part.name.lower() for part in relation.parts
+                )
+                for relation in relations
+                if isinstance(relation, exp.Table)
+            }
+            for join in select.args.get("joins") or ():
+                if join.args.get("on") is None:
+                    return False
+                actual[PipelineSupport._predicate_group((join.args["on"],), aliases)] += 1
+        return bool(actual) and actual == expected
+
+    @staticmethod
+    def _predicate_group(
+        expressions: tuple[exp.Expression, ...], aliases: dict[str, str]
+    ) -> tuple[object, ...]:
+        predicates: list[exp.Expression] = []
+        for expression in expressions:
+            predicates.extend(expression.flatten() if isinstance(expression, exp.And) else (expression,))
+        return tuple(
+            sorted(
+                (PipelineSupport._canonical_predicate(item, aliases) for item in predicates),
+                key=repr,
+            )
+        )
+
+    @staticmethod
+    def _canonical_predicate(
+        expression: exp.Expression, aliases: dict[str, str]
+    ) -> object:
+        if isinstance(expression, exp.Paren):
+            return PipelineSupport._canonical_predicate(expression.this, aliases)
+        if isinstance(expression, exp.Column):
+            parts = [part.name.lower() for part in expression.parts]
+            qualifier = ".".join(parts[:-1])
+            return ("column", aliases.get(qualifier, qualifier), parts[-1])
+        if isinstance(expression, exp.Null):
+            return ("null",)
+        if isinstance(expression, exp.Literal):
+            return ("literal", expression.this, expression.is_string)
+        if isinstance(expression, exp.Boolean):
+            return ("boolean", bool(expression.this))
+        if isinstance(expression, (exp.EQ, exp.Or)):
+            values = sorted(
+                (
+                    PipelineSupport._canonical_predicate(expression.this, aliases),
+                    PipelineSupport._canonical_predicate(expression.expression, aliases),
+                ),
+                key=repr,
+            )
+            return (expression.key, *values)
+        if isinstance(expression, (exp.GT, exp.GTE)):
+            operator = "lt" if isinstance(expression, exp.GT) else "lte"
+            return (
+                operator,
+                PipelineSupport._canonical_predicate(expression.expression, aliases),
+                PipelineSupport._canonical_predicate(expression.this, aliases),
+            )
+        if isinstance(expression, (exp.LT, exp.LTE, exp.Is)):
+            return (
+                expression.key,
+                PipelineSupport._canonical_predicate(expression.this, aliases),
+                PipelineSupport._canonical_predicate(expression.expression, aliases),
+            )
+        return (expression.key, expression.sql(dialect="trino", normalize=True))
 
     @staticmethod
     def _read_query_ast(sql: str) -> exp.Select | None:

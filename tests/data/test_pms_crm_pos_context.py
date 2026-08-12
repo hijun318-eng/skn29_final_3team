@@ -41,13 +41,24 @@ def test_context_reuses_approved_case_join_assets_and_grain():
         "period_end_exclusive": "2026-07-01",
     }
     assert CONTEXT["grain"] == ["property_id", "month"]
-    assert CONTEXT["approved_join"] == {
+    assert {
+        key: CONTEXT["approved_join"][key]
+        for key in (
+            "id",
+            "cardinality",
+            "source_preaggregations",
+            "combine_keys",
+            "amplification_limit",
+        )
+    } == {
         "id": "pms_crm_pos_gold_revenue_month_v1",
         "cardinality": "preaggregate_then_one_to_one_month",
         "source_preaggregations": ["pms_crm_by_property_month", "pos_crm_by_property_month"],
         "combine_keys": ["property_id", "month"],
         "amplification_limit": 1,
     }
+    assert len(CONTEXT["approved_join"]["join_edges"]) == 7
+    assert all(edge["on_predicates"] for edge in CONTEXT["approved_join"]["join_edges"])
     fqns = {asset["fqn"] for asset in CONTEXT["assets"]}
     assert {fqn.split(".", 1)[0] for fqn in fqns} == {"pms", "crm", "pos"}
     assert len(fqns) == len(CONTEXT["assets"]) == 6

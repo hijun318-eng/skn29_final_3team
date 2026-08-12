@@ -17,6 +17,7 @@ class ContextBuildErrorCode(str, Enum):
     TOKEN_LIMIT_EXCEEDED = "TOKEN_LIMIT_EXCEEDED"
     INVALID_METRIC = "INVALID_METRIC"
     DUPLICATE_METRIC = "DUPLICATE_METRIC"
+    INACTIVE_RELEASE = "INACTIVE_RELEASE"
 
 
 class ContextBuildError(ValueError):
@@ -67,6 +68,22 @@ class ContextMetric:
 
 
 @dataclass(frozen=True)
+class ContextJoinPolicy:
+    id: str
+    left: str
+    right: str
+    cardinality: str
+    on_predicates: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not all((self.id, self.left, self.right, self.cardinality)) or not self.on_predicates:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "승인 JOIN에는 식별자, 양쪽 source, cardinality, ON predicate가 필요합니다.",
+            )
+
+
+@dataclass(frozen=True)
 class ContextAsset:
     urn: str
     fqn: str
@@ -99,10 +116,20 @@ class ContextBuildRequest:
     token_count: int
     model_context_tokens: int
     parameter_bindings: tuple[ContextParameterBinding, ...] = ()
+    join_policies: tuple[ContextJoinPolicy, ...] = ()
     access_profile: str = "default"
     allowed_domains: tuple[str, ...] = ()
     trino_principal: str = ""
     datahub_principal: str = ""
+    context_release_id: str = ""
+    context_release_key: str = ""
+    context_release_version: int = 0
+    time_policy_id: str = ""
+    route_type: str = "GENERAL"
+    template_id: str | None = None
+    as_of: str = ""
+    timezone: str = "Asia/Seoul"
+    calendar_id: str = "gregorian-kr"
 
 
 @dataclass(frozen=True)
@@ -118,6 +145,7 @@ class ContextPackage:
     token_limit: int
     package_hash: str
     approved_join_ids: tuple[str, ...]
+    join_policies: tuple[ContextJoinPolicy, ...] = ()
     metrics: tuple[ContextMetric, ...] = ()
     parameter_bindings: tuple[ContextParameterBinding, ...] = ()
     required_filters: tuple[ContextRequiredFilter, ...] = ()
@@ -125,6 +153,15 @@ class ContextPackage:
     allowed_domains: tuple[str, ...] = ()
     trino_principal: str = ""
     datahub_principal: str = ""
+    context_release_id: str = ""
+    context_release_key: str = ""
+    context_release_version: int = 0
+    time_policy_id: str = ""
+    route_type: str = "GENERAL"
+    template_id: str | None = None
+    as_of: str = ""
+    timezone: str = "Asia/Seoul"
+    calendar_id: str = "gregorian-kr"
 
 
 class ContextPackageBuilder:
@@ -161,6 +198,7 @@ class ContextPackageBuilder:
         )
         self._validate_metrics(assets, metrics)
         self._validate_parameter_bindings(request.parameter_bindings)
+        self._validate_join_policies(assets, request.join_policies)
 
         dataset_count = len(assets)
         column_count = sum(len(asset.columns) for asset in assets)
@@ -184,6 +222,15 @@ class ContextPackageBuilder:
             "allowed_domains": sorted(set(request.allowed_domains)),
             "trino_principal": request.trino_principal,
             "datahub_principal": request.datahub_principal,
+            "context_release_id": request.context_release_id,
+            "context_release_key": request.context_release_key,
+            "context_release_version": request.context_release_version,
+            "time_policy_id": request.time_policy_id,
+            "route_type": request.route_type,
+            "template_id": request.template_id,
+            "as_of": request.as_of,
+            "timezone": request.timezone,
+            "calendar_id": request.calendar_id,
             "assets": [
                 {
                     "urn": asset.urn,
@@ -221,6 +268,16 @@ class ContextPackageBuilder:
                 }
                 for item in request.parameter_bindings
             ],
+            "join_policies": [
+                {
+                    "id": item.id,
+                    "left": item.left,
+                    "right": item.right,
+                    "cardinality": item.cardinality,
+                    "on_predicates": list(item.on_predicates),
+                }
+                for item in request.join_policies
+            ],
             "required_filters": [
                 {
                     "field": item.field,
@@ -252,12 +309,22 @@ class ContextPackageBuilder:
             token_limit=token_limit,
             package_hash=package_hash,
             approved_join_ids=tuple(sorted({join_id for asset in assets for join_id in asset.join_ids})),
+            join_policies=request.join_policies,
             parameter_bindings=request.parameter_bindings,
             required_filters=required_filters,
             access_profile=request.access_profile,
             allowed_domains=tuple(sorted(set(request.allowed_domains))),
             trino_principal=request.trino_principal,
             datahub_principal=request.datahub_principal,
+            context_release_id=request.context_release_id,
+            context_release_key=request.context_release_key,
+            context_release_version=request.context_release_version,
+            time_policy_id=request.time_policy_id,
+            route_type=request.route_type,
+            template_id=request.template_id,
+            as_of=request.as_of,
+            timezone=request.timezone,
+            calendar_id=request.calendar_id,
         )
 
     @staticmethod
@@ -269,6 +336,18 @@ class ContextPackageBuilder:
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METADATA,
                 "Context parameter binding name은 중복될 수 없습니다.",
+            )
+
+    @staticmethod
+    def _validate_join_policies(
+        assets: tuple[ContextAsset, ...], policies: tuple[ContextJoinPolicy, ...]
+    ) -> None:
+        approved_ids = {join_id for asset in assets for join_id in asset.join_ids}
+        policy_ids = {item.id for item in policies}
+        if len(set(policies)) != len(policies) or approved_ids != policy_ids:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "승인 JOIN ID마다 정확히 하나의 ON predicate 계약이 필요합니다.",
             )
 
     @staticmethod
@@ -318,6 +397,24 @@ class ContextPackageBuilder:
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METADATA,
                 "Context release, policy, time, entitlement 정보가 필요합니다.",
+            )
+        registry_metadata = (
+            request.context_release_id,
+            request.context_release_key,
+            request.time_policy_id,
+            request.as_of,
+            request.timezone,
+            request.calendar_id,
+        )
+        if request.context_release_id and (
+            any(not value.strip() for value in registry_metadata)
+            or request.context_release_version < 1
+            or request.route_type not in {"GENERAL", "TEMPLATE"}
+            or (request.route_type == "TEMPLATE") != bool(request.template_id)
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Registry release, route, time policy 식별자가 유효하지 않습니다.",
             )
         if request.access_profile != "default" and (
             not re.fullmatch(r"answervice_[a-z_]+", request.trino_principal)

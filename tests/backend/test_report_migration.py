@@ -95,6 +95,15 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("completed_at", source)
         self.assertIn("run_id uuid REFERENCES report_v1.report_runs", source)
 
+    def test_context_runtime_release_follows_report_worker_head(self):
+        source = (MIGRATIONS / "20260812_10_context_runtime_release.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260812_09"', source)
+        self.assertIn("'TIME_POLICY'", source)
+        self.assertIn("'PUBLISHED'", source)
+        self.assertIn("answervice-p0", source)
+
 
 if __name__ == "__main__":
     unittest.main()

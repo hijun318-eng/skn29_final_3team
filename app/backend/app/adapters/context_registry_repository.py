@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
+from datetime import date
 from functools import lru_cache
 from uuid import UUID, uuid4
 
@@ -20,6 +22,16 @@ class ContextRegistryConflict(RuntimeError):
 
 class ContextRegistryUnavailable(RuntimeError):
     pass
+
+@dataclass(frozen=True)
+class PublishedContextRelease:
+    context_release_id: str
+    release_key: str
+    version_no: int
+    release_hash: str
+    time_policy_id: str
+    timezone: str
+    calendar_id: str
 
 @lru_cache(maxsize=None)
 def _engine(database_url: str) -> Engine:
@@ -42,6 +54,84 @@ class PostgresContextRegistryRepository:
     """Checksum과 상태 전이를 서버에서 통제하는 PostgreSQL 저장소."""
     def __init__(self, database_url: str) -> None:
         self._engine = _engine(database_url)
+
+    def resolve_published_release(
+        self, release_key: str, as_of: date
+    ) -> PublishedContextRelease:
+        """요청 시점에 유효한 PUBLISHED release와 단일 시간 정책을 반환한다."""
+        if not release_key.strip():
+            raise ContextRegistryConflict("CONTEXT_RELEASE_KEY가 필요합니다.")
+        try:
+            with self._engine.connect() as connection:
+                release = connection.execute(
+                    text(
+                        """
+                        SELECT context_release_id, release_key, version_no,
+                               release_hash, included_record_refs_json
+                        FROM context.context_releases
+                        WHERE release_key = :key AND status = 'PUBLISHED'
+                        ORDER BY version_no DESC
+                        LIMIT 1
+                        """
+                    ),
+                    {"key": release_key},
+                ).mappings().one_or_none()
+                if release is None:
+                    raise ContextRegistryConflict("PUBLISHED Context release가 없습니다.")
+                refs = release["included_record_refs_json"]
+                if not isinstance(refs, list) or not refs:
+                    raise ContextRegistryConflict("Context release record가 비어 있습니다.")
+                records = connection.execute(
+                    text(
+                        """
+                        SELECT context_record_id::text AS context_record_id,
+                               record_type, record_key, version_no, payload_json,
+                               checksum
+                        FROM context.context_records
+                        WHERE status = 'APPROVED'
+                          AND valid_from <= :as_of
+                          AND (valid_to IS NULL OR valid_to > :as_of)
+                          AND context_record_id = ANY(CAST(:ids AS uuid[]))
+                        """
+                    ),
+                    {
+                        "as_of": as_of,
+                        "ids": [str(item.get("context_record_id")) for item in refs],
+                    },
+                ).mappings().all()
+                expected = {
+                    (str(item.get("context_record_id")), str(item.get("checksum")))
+                    for item in refs
+                }
+                actual = {(row["context_record_id"], row["checksum"]) for row in records}
+                if actual != expected:
+                    raise ContextRegistryConflict(
+                        "승인된 Context record와 release checksum이 일치하지 않습니다."
+                    )
+                time_policies = [row for row in records if row["record_type"] == "TIME_POLICY"]
+                if len(time_policies) != 1:
+                    raise ContextRegistryConflict("유효한 TIME_POLICY가 정확히 하나 필요합니다.")
+                policy = time_policies[0]
+                payload = policy["payload_json"]
+                timezone = payload.get("timezone") if isinstance(payload, dict) else None
+                calendar_id = payload.get("calendar_id") if isinstance(payload, dict) else None
+                if not isinstance(timezone, str) or not isinstance(calendar_id, str):
+                    raise ContextRegistryConflict("TIME_POLICY timezone·calendar가 필요합니다.")
+                return PublishedContextRelease(
+                    context_release_id=str(release["context_release_id"]),
+                    release_key=release["release_key"],
+                    version_no=release["version_no"],
+                    release_hash=release["release_hash"],
+                    time_policy_id=(
+                        f"{policy['record_key']}:v{policy['version_no']}:{policy['checksum']}"
+                    ),
+                    timezone=timezone,
+                    calendar_id=calendar_id,
+                )
+        except ContextRegistryConflict:
+            raise
+        except SQLAlchemyError as error:
+            raise ContextRegistryUnavailable("Context Registry 저장소를 사용할 수 없습니다.") from error
 
     @staticmethod
     def _same_or_conflict(row, checksum_field: str, checksum: str, kind: str):

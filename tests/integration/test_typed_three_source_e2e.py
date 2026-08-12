@@ -18,6 +18,7 @@ from app.contracts import AnalysisRequest, RequestContext
 from app.services.context_builder import (
     ContextAsset,
     ContextBuildRequest,
+    ContextJoinPolicy,
     ContextPackageBuilder,
     ContextParameterBinding,
     ContextRequiredFilter,
@@ -42,6 +43,7 @@ def _product_package(contract: dict) -> tuple[object, RequestContext]:
         for index, item in enumerate(contract["assets"])
     )
     bindings = tuple(ContextParameterBinding(**item) for item in contract["parameter_bindings"])
+    join_policy = contract["approved_join"]
     package = ContextPackageBuilder().build(
         ContextBuildRequest(
             context_release=contract["contract_version"],
@@ -52,6 +54,16 @@ def _product_package(contract: dict) -> tuple[object, RequestContext]:
             token_count=100,
             model_context_tokens=24_000,
             parameter_bindings=bindings,
+            join_policies=tuple(
+                ContextJoinPolicy(
+                    join_policy["id"],
+                    edge["left"],
+                    edge["right"],
+                    join_policy["cardinality"],
+                    tuple(edge["on_predicates"]),
+                )
+                for edge in join_policy["join_edges"]
+            ),
         ),
         frozenset(item.urn for item in assets),
     )

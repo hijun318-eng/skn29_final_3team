@@ -78,6 +78,8 @@ def test_pms_crm_join_matches_frozen_source_registry():
     assert actual[0]["cardinality"] == expected["cardinality"]
     assert actual[0]["event_time_field"] == expected["event_time_field"]
     assert len(actual[0]["assets"]) == 5
+    assert len(actual[0]["join_edges"]) == 4
+    assert all(edge["on_predicates"] for edge in actual[0]["join_edges"])
 
 
 def test_metric_registry_is_versioned_and_references_approved_columns():
@@ -188,4 +190,4 @@ def test_view_metrics_preserve_actual_non_forecast_filters_without_sql_predicate
         {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
     ]
     assert all(metric["required_filters"] == expected for metric in view_metrics)
-    assert "predicate" not in json.dumps(CONTRACT).lower()
+    assert all("predicate" not in metric for metric in CONTRACT["metrics"])

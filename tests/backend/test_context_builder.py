@@ -13,6 +13,7 @@ from app.services.context_builder import (
     ContextBuildErrorCode,
     ContextBuildRequest,
     ContextMetric,
+    ContextJoinPolicy,
     ContextPackageBuilder,
     ContextParameterBinding,
     ContextRequiredFilter,
@@ -190,6 +191,43 @@ class ContextPackageBuilderTest(unittest.TestCase):
                     ),
                 ),
                 frozenset({self.pms.urn, self.crm.urn}),
+            )
+
+    def test_join_predicate_contract_is_required_and_hashed(self) -> None:
+        join_id = "approved_join"
+        assets = (
+            replace(self.pms, join_ids=(join_id,)),
+            replace(self.crm, join_ids=(join_id,)),
+        )
+        policy = ContextJoinPolicy(
+            join_id,
+            self.pms.fqn,
+            self.crm.fqn,
+            "many_to_one",
+            ("pms.public.reservations.reservation_id = crm.dbo.members.member_id",),
+        )
+        request = replace(self.request(assets=assets), join_policies=(policy,))
+        package = self.builder.build(request, frozenset(item.urn for item in assets))
+        changed = self.builder.build(
+            replace(
+                request,
+                join_policies=(
+                    replace(
+                        policy,
+                        on_predicates=(
+                            "pms.public.reservations.check_in_date = crm.dbo.members.grade",
+                        ),
+                    ),
+                ),
+            ),
+            frozenset(item.urn for item in assets),
+        )
+
+        self.assertNotEqual(package.package_hash, changed.package_hash)
+        with self.assertRaisesRegex(ContextBuildError, "ON predicate"):
+            self.builder.build(
+                replace(request, join_policies=()),
+                frozenset(item.urn for item in assets),
             )
 
     def test_rejects_more_than_eight_datasets(self) -> None:

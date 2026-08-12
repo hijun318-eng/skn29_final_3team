@@ -15,9 +15,22 @@ sys.path.insert(0, str(ROOT / "app" / "backend"))
 
 from app.adapters.contract_model import ContractModelAdapter
 from app.adapters.i2_data_platform import I2DataPlatformAdapter
+from app.adapters.context_registry_repository import PublishedContextRelease
 from app.contracts import AnalysisRequest, RequestContext
 from app.services.context_builder import ContextPackageBuilder
 from app.services.pipeline_support import PipelineSupport
+
+
+def _published_release(_as_of):
+    return PublishedContextRelease(
+        "00000000-0000-0000-0000-000000000201",
+        "test-release",
+        1,
+        "f" * 64,
+        "time-policy:v1:" + "a" * 64,
+        "Asia/Seoul",
+        "gregorian-kr",
+    )
 
 
 def derived_payload():
@@ -29,23 +42,18 @@ def derived_payload():
         for item in source["assets"]
     ]
     fqns = {item["trino_fqn"] for item in assets}
-    chain = [
-        ("pms.public.pms_stays", "pms.public.pms_reservations"),
-        ("pms.public.pms_reservations", "pms.public.pms_guests"),
-        ("pms.public.pms_guests", "crm.dbo.crm_customer_map"),
-        ("crm.dbo.crm_customer_map", "crm.dbo.crm_member_grade_history"),
-        ("crm.dbo.crm_customer_map", "pos.pos_db.pos_orders"),
-    ]
-    assert {fqn for pair in chain for fqn in pair} == fqns
+    chain = source["approved_join"]["join_edges"]
+    assert fqns.issubset({fqn for edge in chain for fqn in (edge["left"], edge["right"])})
     joins = [
         {
             "id": source["approved_join"]["id"],
-            "left": left,
-            "right": right,
+            "left": edge["left"],
+            "right": edge["right"],
             "cardinality": source["approved_join"]["cardinality"],
             "status": "approved",
+            "on_predicates": edge["on_predicates"],
         }
-        for left, right in chain
+        for edge in chain
     ]
     return {
         "question_id": "derived-question",
@@ -253,7 +261,7 @@ class Node2Tests(unittest.TestCase):
         adapter = I2DataPlatformAdapter(
             "http://trino:8080", "node2-composition", require_live_metadata=False
         )
-        support = PipelineSupport(adapter, ContextPackageBuilder())
+        support = PipelineSupport(adapter, ContextPackageBuilder(), _published_release)
         request = AnalysisRequest(
             question="5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘."
         )

@@ -191,7 +191,7 @@ def _complete_chat_response(
         )
     }
     package = payload["context_package"]
-    join_ids = [item["id"] for item in package["joins"]]
+    join_ids = sorted({item["id"] for item in package["joins"]})
     metric_ids = [item["id"] for item in package["metrics"]]
     completed = {
         sql_field: sql,
@@ -517,29 +517,17 @@ class ContractModelAdapter:
                 }
                 for item in package.parameter_bindings
             ],
-            "joins": (
-                [
-                    {
-                        "id": "pms_crm_pos_gold_revenue_month_v1",
-                        "left": left,
-                        "right": right,
-                        "cardinality": "preaggregate_then_one_to_one_month",
-                        "status": "approved",
-                    }
-                    for left, right in (
-                        ("pms.public.pms_stays", "pms.public.pms_reservations"),
-                        ("pms.public.pms_reservations", "pms.public.pms_guests"),
-                        ("pms.public.pms_guests", "crm.dbo.crm_customer_map"),
-                        (
-                            "crm.dbo.crm_customer_map",
-                            "crm.dbo.crm_member_grade_history",
-                        ),
-                        ("crm.dbo.crm_customer_map", "pos.pos_db.pos_orders"),
-                    )
-                ]
-                if three_source
-                else []
-            ),
+            "joins": [
+                {
+                    "id": item.id,
+                    "left": item.left,
+                    "right": item.right,
+                    "cardinality": item.cardinality,
+                    "status": "approved",
+                    "on_predicates": list(item.on_predicates),
+                }
+                for item in package.join_policies
+            ],
         }
 
     @staticmethod

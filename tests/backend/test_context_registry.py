@@ -5,6 +5,7 @@ import subprocess
 import sys
 import unittest
 from datetime import datetime, timezone
+from datetime import date
 from pathlib import Path
 from uuid import uuid4
 
@@ -130,6 +131,19 @@ class PostgresContextRegistryTest(unittest.TestCase):
         }
         values.update(changes)
         return CreateContextRecord(**values)
+
+    def test_seeded_published_release_resolves_approved_time_policy(self) -> None:
+        release = self.repository.resolve_published_release(
+            "answervice-p0", date(2026, 8, 12)
+        )
+
+        self.assertEqual("answervice-p0", release.release_key)
+        self.assertEqual("Asia/Seoul", release.timezone)
+        self.assertEqual("gregorian-kr", release.calendar_id)
+        self.assertTrue(release.time_policy_id.startswith("kr-business-calendar:v1:"))
+
+        with self.assertRaises(ContextRegistryConflict):
+            self.repository.resolve_published_release("unknown-release", date(2026, 8, 12))
 
     def test_record_idempotency_conflict_and_released_immutability(self) -> None:
         command = self._record_command()

@@ -84,8 +84,10 @@ def _generate_derived_sql(context: dict[str, Any], metric: dict[str, Any]) -> di
             or join["cardinality"] != "preaggregate_then_one_to_one_month"
             for join in joins
         )
-        or {fqn for join in joins for fqn in (join["left"], join["right"])}
-        != {asset["trino_fqn"] for asset in assets}
+        or not {asset["trino_fqn"] for asset in assets}.issubset(
+            {fqn for join in joins for fqn in (join["left"], join["right"])}
+        )
+        or any(not join.get("on_predicates") for join in joins)
     ):
         raise ContractError("node2_request: derived metric requires the approved preaggregate join")
 

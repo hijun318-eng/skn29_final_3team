@@ -15,11 +15,28 @@ BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
 from app.adapters.i2_data_platform import I2DataPlatformAdapter
+from app.adapters.context_registry_repository import PublishedContextRelease
 from app.adapters.contract_model import ContractModelAdapter
 from app.contracts import AnalysisRequest, RequestContext
 from app.services.context_builder import ContextPackageBuilder
 from app.services.context_builder import ContextBuildError
 from app.services.pipeline_support import PipelineSupport
+
+
+def _published_release(_as_of):
+    return PublishedContextRelease(
+        "00000000-0000-0000-0000-000000000201",
+        "test-release",
+        1,
+        "f" * 64,
+        "time-policy:v1:" + "a" * 64,
+        "Asia/Seoul",
+        "gregorian-kr",
+    )
+
+
+def _support(adapter):
+    return PipelineSupport(adapter, ContextPackageBuilder(), _published_release)
 
 
 def live_dataset(adapter, urn):
@@ -161,7 +178,7 @@ def test_finished_query_with_warnings_is_preserved_as_partial():
 def test_live_datahub_serving_view_passes_context_and_g2_contract():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
-    support = PipelineSupport(adapter, ContextPackageBuilder())
+    support = _support(adapter)
     payload = AnalysisRequest(question="호텔 객실 매출을 분석해 줘")
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
@@ -435,7 +452,7 @@ def test_pms_crm_question_uses_the_versioned_approved_join():
 def test_g2_accepts_the_versioned_pms_crm_join_id():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
-    support = PipelineSupport(adapter, ContextPackageBuilder())
+    support = _support(adapter)
     payload = AnalysisRequest(question="투숙 완료 객실 매출을 회원 등급별로 알려줘")
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
@@ -448,10 +465,16 @@ def test_g2_accepts_the_versioned_pms_crm_join_id():
     join_id = "pms_stay_to_crm_membership_grade_event_time_v1"
     sql = (
         "SELECT gh.grade_code, SUM(s.room_revenue) FROM pms.public.pms_stays s "
-        "JOIN pms.public.pms_reservations r ON r.reservation_id = s.reservation_id "
-        "JOIN pms.public.pms_guests g ON g.guest_id = r.guest_id "
-        "JOIN crm.dbo.crm_customer_map cm ON cm.pms_guest_id = g.guest_id "
-        "JOIN crm.dbo.crm_member_grade_history gh ON gh.member_no = cm.member_no "
+        "JOIN pms.public.pms_reservations r ON r.property_id = s.property_id "
+        "AND r.reservation_id = s.reservation_id "
+        "JOIN pms.public.pms_guests g ON g.property_id = r.property_id "
+        "AND g.guest_id = r.guest_id "
+        "JOIN crm.dbo.crm_customer_map cm ON cm.property_id = g.property_id "
+        "AND cm.pms_guest_id = g.guest_id AND cm.valid_from <= s.actual_checkout_at "
+        "AND (cm.valid_to IS NULL OR s.actual_checkout_at < cm.valid_to) "
+        "JOIN crm.dbo.crm_member_grade_history gh ON gh.property_id = cm.property_id "
+        "AND gh.member_no = cm.member_no AND gh.valid_from <= s.actual_checkout_at "
+        "AND (gh.valid_to IS NULL OR s.actual_checkout_at < gh.valid_to) "
         "GROUP BY gh.grade_code LIMIT 1000"
     )
     references = [
@@ -478,7 +501,7 @@ def test_g2_accepts_the_versioned_pms_crm_join_id():
 def test_selected_assets_without_metric_fail_closed_when_context_is_built():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
-    support = PipelineSupport(adapter, ContextPackageBuilder())
+    support = _support(adapter)
     payload = AnalysisRequest(question="현재 등급별 활성 회원 수를 알려줘")
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
@@ -521,7 +544,7 @@ def test_g2_enforces_metric_required_filters_for_view_and_crm(
 ):
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
-    support = PipelineSupport(adapter, ContextPackageBuilder())
+    support = _support(adapter)
     payload = AnalysisRequest(question=question)
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
@@ -575,7 +598,7 @@ def test_g2_enforces_metric_required_filters_for_view_and_crm(
 
 def test_node1_metric_selection_fails_closed_for_missing_ambiguous_and_duplicate():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
-    support = PipelineSupport(adapter, ContextPackageBuilder())
+    support = _support(adapter)
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
         as_of=date(2026, 7, 30),
@@ -654,7 +677,7 @@ def test_live_datahub_contract_mismatch_fails_closed():
 def test_g2_rejects_fqn_outside_live_context():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
-    support = PipelineSupport(adapter, ContextPackageBuilder())
+    support = _support(adapter)
     payload = AnalysisRequest(question="호텔 객실 매출")
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
@@ -737,7 +760,7 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
         binding_path=verified_binding_path(tmp_path),
         require_live_metadata=False,
     )
-    support = PipelineSupport(adapter, ContextPackageBuilder())
+    support = _support(adapter)
     payload = AnalysisRequest(
         question="5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘."
     )
@@ -862,18 +885,42 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
     assert model_context["execution_time"]["period_end_exclusive"].startswith(
         "2026-07-01"
     )
-    assert [(item["left"], item["right"]) for item in model_context["joins"]] == [
-        ("pms.public.pms_stays", "pms.public.pms_reservations"),
-        ("pms.public.pms_reservations", "pms.public.pms_guests"),
-        ("pms.public.pms_guests", "crm.dbo.crm_customer_map"),
-        ("crm.dbo.crm_customer_map", "crm.dbo.crm_member_grade_history"),
-        ("crm.dbo.crm_customer_map", "pos.pos_db.pos_orders"),
+    assert [
+        (item["left"], item["right"], item["on_predicates"])
+        for item in model_context["joins"]
+    ] == [
+        (item.left, item.right, list(item.on_predicates))
+        for item in package.join_policies
     ]
     assert all(
         item["cardinality"] == "preaggregate_then_one_to_one_month"
         for item in model_context["joins"]
     )
     assert support.g2_violation(plan, package) is None
+    wrong_join_key = {
+        **plan,
+        "sql": plan["sql"].replace(
+            "g.guest_id = m.pms_guest_id",
+            "g.property_id = m.pms_guest_id",
+            1,
+        ),
+    }
+    missing_temporal_join = {
+        **plan,
+        "sql": plan["sql"].replace(
+            "AND m.valid_from <= s.actual_checkout_at",
+            "",
+            1,
+        ),
+    }
+    assert (
+        support.g2_violation(wrong_join_key, package)
+        == "UNAPPROVED_JOIN_PREDICATE"
+    )
+    assert (
+        support.g2_violation(missing_temporal_join, package)
+        == "UNAPPROVED_JOIN_PREDICATE"
+    )
     assert ":required_filter" not in adapter._bind_parameters(
         plan["sql"], plan["parameters"]
     )
@@ -965,7 +1012,7 @@ def test_three_source_context_rejects_invalid_period_bindings(tmp_path, periods)
         binding_path=verified_binding_path(tmp_path),
         require_live_metadata=False,
     )
-    support = PipelineSupport(adapter, ContextPackageBuilder())
+    support = _support(adapter)
     payload = AnalysisRequest(question="5월과 6월 GOLD 고객의 통합 매출")
     context = RequestContext(as_of=date(2026, 8, 1))
     assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))

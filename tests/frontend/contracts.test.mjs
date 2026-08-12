@@ -287,6 +287,8 @@ for (const profile of ["pms_only", "crm_only", "pms_crm", "integrated_revenue", 
 assert.match(agentPageSource, /htmlFor="analysis-access-profile"/);
 assert.match(agentPageSource, /id="analysis-access-profile"/);
 assert.match(agentPageSource, /disabled=\{submitting\}/);
+assert.match(agentPageSource, /progress: current\.progress/);
+assert.match(agentPageSource, /requestId: current\.requestId/);
 assert.match(agentPageSource, /aria-describedby="analysis-access-domain"/);
 assert.match(agentPageSource, /접근 Domain/);
 assert.doesNotMatch(agentPageSource, /allowed_domains|DataHub token|Trino.*credential/i);

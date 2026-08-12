@@ -65,8 +65,11 @@ export function AgentPage() {
       setRun(await client.analyze(nextQuestion, conversationId, accessProfile, setRun));
     } catch (error) {
       const timedOut = error instanceof DOMException && error.name === "TimeoutError";
-      setRun({
+      setRun((current) => ({
         ...createTransientRun(nextQuestion, conversationId, "failed"),
+        requestId: current.requestId,
+        traceId: current.traceId,
+        progress: current.progress,
         error: {
           code: error instanceof AnalysisRequestError ? error.code : "INTERNAL_ERROR",
           message: error instanceof AnalysisRequestError
@@ -76,7 +79,7 @@ export function AgentPage() {
               : "분석 API 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
           retryable: error instanceof AnalysisRequestError ? error.retryable : true,
         },
-      });
+      }));
     } finally {
       setSubmitting(false);
     }

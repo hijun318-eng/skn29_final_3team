@@ -175,6 +175,61 @@ def test_finished_query_with_warnings_is_preserved_as_partial():
     assert result["rows"] == [{"synthetic_value": 1}]
 
 
+def test_query_evidence_is_derived_from_actual_result_and_sql():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    responses = iter(
+        (
+            {"id": "explain", "stats": {"state": "FINISHED"}},
+            {
+                "id": "query-empty-aggregate",
+                "stats": {"state": "FINISHED"},
+                "columns": [{"name": "revenue"}],
+                "data": [],
+            },
+        )
+    )
+    adapter._trino.transport = lambda _method, _url, _body: next(responses)
+
+    result = adapter.execute_query(
+        "SELECT SUM(room_revenue) AS revenue FROM serving.analytics.hotel_daily_metrics LIMIT 1000",
+        {},
+        "g2-token",
+    )
+
+    assert result["evidence_complete"] is True
+    assert result["zero_result_suspicious"] is True
+    assert result["sampling"] == {
+        "applied": False,
+        "returned_rows": 0,
+        "total_rows": 0,
+    }
+
+
+def test_unverified_sensitive_result_is_not_claimed_as_masked_or_complete():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    responses = iter(
+        (
+            {"id": "explain", "stats": {"state": "FINISHED"}},
+            {
+                "id": "query-sensitive",
+                "stats": {"state": "FINISHED"},
+                "columns": [{"name": "id"}],
+                "data": [["guest-1"]],
+            },
+        )
+    )
+    adapter._trino.transport = lambda _method, _url, _body: next(responses)
+
+    result = adapter.execute_query(
+        "SELECT guest_id AS id FROM pms.public.pms_guests LIMIT 1000",
+        {},
+        "g2-token",
+    )
+
+    assert result["evidence_complete"] is False
+    assert result["masking"] == {"applied": False, "fields": ("guest_id",)}
+
+
 def test_live_datahub_serving_view_passes_context_and_g2_contract():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)

@@ -782,7 +782,11 @@ class PipelineSupport:
         return None
 
     @classmethod
-    def g3_violation(cls, query: dict[str, object]) -> str | None:
+    def g3_violation(
+        cls,
+        query: dict[str, object],
+        package: ContextPackage | None = None,
+    ) -> str | None:
         if not query.get("evidence_complete"):
             return "EVIDENCE_INCOMPLETE"
         rows = query.get("rows")
@@ -807,6 +811,42 @@ class PipelineSupport:
             or not isinstance(masking, dict)
         ):
             return "EVIDENCE_SCHEMA_INVALID"
+        if package is not None:
+            expected = {
+                item.name: item.value for item in package.parameter_bindings
+            }
+            expected_period = {
+                "start": expected.pop("period_start", None),
+                "end_exclusive": expected.pop("period_end_exclusive", None),
+            }
+            expected_filters = {
+                name: value
+                for name, value in expected.items()
+                if re.fullmatch(r"required_filter_\d+", name)
+            }
+            if filters != expected_filters or (
+                any(expected_period.values())
+                and query.get("period") != expected_period
+            ):
+                return "EVIDENCE_CONTEXT_MISMATCH"
+        masking_fields = masking.get("fields", ())
+        if (
+            not isinstance(masking.get("applied", False), bool)
+            or not isinstance(masking_fields, (list, tuple))
+            or any(not isinstance(field, str) for field in masking_fields)
+            or (masking_fields and not masking.get("applied"))
+        ):
+            return "MASKING_EVIDENCE_INCOMPLETE"
+        returned_rows = sampling.get("returned_rows")
+        total_rows = sampling.get("total_rows")
+        if sampling and (
+            not isinstance(sampling.get("applied", False), bool)
+            or returned_rows != len(rows)
+            or not isinstance(total_rows, int)
+            or total_rows < len(rows)
+            or (not sampling.get("applied") and total_rows != len(rows))
+        ):
+            return "SAMPLING_EVIDENCE_INVALID"
         if query.get("zero_result_suspicious"):
             return "SUSPICIOUS_EMPTY_RESULT"
         column_count = max((len(row) for row in rows), default=0)

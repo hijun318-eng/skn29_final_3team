@@ -493,7 +493,7 @@ class AnalysisService:
                 retryable=True,
             )
 
-        g3_violation = self._support.g3_violation(query)
+        g3_violation = self._support.g3_violation(query, package)
         if g3_violation:
             return self._responses.error(
                 context,

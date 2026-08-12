@@ -11,6 +11,9 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 from uuid import UUID
 
+from sqlglot import exp, parse_one
+from sqlglot.errors import SqlglotError
+
 from src.data.i2_adapters import (
     AdapterError,
     AdapterErrorCode,
@@ -124,6 +127,15 @@ query SearchDatasets($query: String!) {
     _PMS_HINTS = ("pms", "호텔", "객실", "숙박", "투숙", "매출")
     _POS_HINTS = ("pos", "식음", "f&b", "주문", "통합 매출")
     _PMS_CRM_POS_JOIN_ID = "pms_crm_pos_gold_revenue_month_v1"
+    _SENSITIVE_RESULT_FIELDS = frozenset(
+        {
+            "guest_id",
+            "member_no",
+            "pms_guest_id",
+            "pos_customer_ref",
+            "reservation_id",
+        }
+    )
 
     def __init__(
         self,
@@ -935,7 +947,7 @@ query SearchDatasets($query: String!) {
                 trino=trino,
             )
             page = trino.execute(bound_sql)
-            result = self._collect(page, trino=trino)
+            result = self._collect(page, trino=trino, sql=bound_sql)
         except AdapterError as error:
             if error.code == AdapterErrorCode.TIMEOUT:
                 raise TimeoutError(str(error)) from error
@@ -1016,6 +1028,7 @@ query SearchDatasets($query: String!) {
         first: QueryPage,
         partial: bool = False,
         trino: TrinoAdapter | None = None,
+        sql: str | None = None,
     ) -> dict[str, Any]:
         trino = trino or self._trino
         page = first
@@ -1032,20 +1045,54 @@ query SearchDatasets($query: String!) {
             rows.extend(page.rows)
             warnings.extend(page.warnings)
         shaped = [dict(zip(columns, row)) for row in rows]
+        expects_nonempty, projected_sensitive_fields = self._result_expectations(sql)
+        sensitive_fields = tuple(
+            sorted(
+                projected_sensitive_fields
+                | {
+                    column.lower()
+                    for column in columns
+                    if column.lower() in self._SENSITIVE_RESULT_FIELDS
+                }
+            )
+        )
         return {
             "query_id": page.query_id,
             "status": "PARTIAL" if partial or warnings else "SUCCEEDED",
             "rows": shaped,
-            "evidence_complete": True,
-            "zero_result_suspicious": False,
-            "filters": {"template": "weekly-room-operations"},
+            "evidence_complete": bool(page.query_id and columns and not sensitive_fields),
+            "zero_result_suspicious": expects_nonempty and not shaped,
+            "filters": {},
             "sampling": {
                 "applied": False,
                 "returned_rows": len(shaped),
                 "total_rows": len(shaped),
             },
-            "masking": {"applied": False, "fields": ()},
+            "masking": {"applied": False, "fields": sensitive_fields},
         }
+
+    @classmethod
+    def _result_expectations(cls, sql: str | None) -> tuple[bool, set[str]]:
+        if not sql:
+            return False, set()
+        try:
+            select = parse_one(sql, read="trino").find(exp.Select)
+        except SqlglotError:
+            return False, set()
+        if select is None:
+            return False, set()
+        sensitive = {
+            column.name.lower()
+            for projection in select.expressions
+            if projection.find(exp.AggFunc) is None
+            for column in projection.find_all(exp.Column)
+            if column.name.lower() in cls._SENSITIVE_RESULT_FIELDS
+        }
+        expects_nonempty = (
+            any(projection.find(exp.AggFunc) for projection in select.expressions)
+            and select.args.get("group") is None
+        )
+        return expects_nonempty, sensitive
 
     def get_query_status(self, query_id: str) -> dict[str, Any]:
         return self._queries.get(

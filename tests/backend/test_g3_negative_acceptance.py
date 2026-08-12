@@ -21,6 +21,7 @@ from app.contracts import (  # noqa: E402
     RouteType,
 )
 from app.services.analysis_service import AnalysisService  # noqa: E402
+from app.services.context_builder import ContextParameterBinding  # noqa: E402
 from app.services.execution_control import IsolatedExecutionCache  # noqa: E402
 from app.services.pipeline_support import PipelineSupport  # noqa: E402
 from app.services.routing_service import RouteDecision  # noqa: E402
@@ -160,3 +161,21 @@ def test_g3_negative_stops_node3_result_cache_execution_and_artifact(
     support.artifact_id.assert_not_called()
     cache.put_result.assert_not_called()
     execution_sink.assert_not_called()
+
+
+def test_g3_rejects_query_evidence_that_does_not_match_context_bindings():
+    package = SimpleNamespace(
+        parameter_bindings=(
+            ContextParameterBinding("period_start", "date", "2026-07-01"),
+            ContextParameterBinding("period_end_exclusive", "date", "2026-08-01"),
+            ContextParameterBinding("required_filter_1", "boolean", False),
+        )
+    )
+    query = _query(
+        [{"value": 1}],
+        period={"start": "2026-07-01", "end_exclusive": "2026-08-01"},
+        filters={"required_filter_1": True},
+        sampling={"applied": False, "returned_rows": 1, "total_rows": 1},
+    )
+
+    assert PipelineSupport.g3_violation(query, package) == "EVIDENCE_CONTEXT_MISMATCH"

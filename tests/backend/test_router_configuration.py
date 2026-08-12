@@ -56,7 +56,7 @@ def test_openai_model_routes_node2_lora_alias_by_default():
         "https://api.openai.com",
         "openai-key",
         "gpt-4.1-mini",
-        600.0,
+        300.0,
         "http://sllm:8000",
         "runpod-key",
         "answervice-sql-lora-qwen3.5-4b",

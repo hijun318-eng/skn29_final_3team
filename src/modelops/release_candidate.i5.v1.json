@@ -34,7 +34,7 @@
       "runtime": "vllm-0.26.0-ad307881",
       "workers_min_after_test": 0,
       "workers_max": 1,
-      "idle_timeout_seconds": 30,
+      "idle_timeout_seconds": 60,
       "gpu_type_ids": [
         "NVIDIA RTX A4000",
         "NVIDIA RTX A4500",

@@ -13,6 +13,7 @@ const ACCESS_PROFILES = [
   ["crm_only", "CRM 전용", "CRM"],
   ["pms_crm", "PMS + CRM", "PMS · CRM"],
   ["integrated_revenue", "통합 매출", "PMS · CRM · POS"],
+  ["integrated_operations", "전체 통합", "PMS · CRM · POS · 시설 · 연회"],
 ];
 const client = createAnalysisClient();
 const reportClient = createReportClient();
@@ -71,7 +72,7 @@ export function AgentPage() {
           message: error instanceof AnalysisRequestError
             ? error.message
             : timedOut
-              ? "분석 요청이 3분 안에 시작되지 않았습니다. 로그인 상태와 RunPod worker 상태를 확인해 주세요."
+              ? "분석 요청이 5분 안에 완료되지 않았습니다. 로그인 상태와 RunPod worker 상태를 확인해 주세요."
               : "분석 API 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
           retryable: error instanceof AnalysisRequestError ? error.retryable : true,
         },

@@ -59,7 +59,7 @@ export function createHttpAnalysisClient(
       let latestProgress: Array<{ sequence: number; stage: string; outcome: string; createdAt: string }> = [];
       const responsePromise = request(`${root}/analysis`, {
         method: "POST",
-        signal: AbortSignal.timeout(180_000),
+        signal: AbortSignal.timeout(300_000),
         headers: {
           ...headers,
           "Content-Type": "application/json",

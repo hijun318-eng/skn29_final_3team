@@ -455,7 +455,7 @@ class PostgresAnalysisRepository:
         if row is None:
             raise KeyError("현재 권한으로 복원할 수 있는 Analysis 결과가 없습니다.")
         table = row["data_snapshot_json"] or {}
-        if not table.get("columns") or "rows" not in table:
+        if "columns" not in table or "rows" not in table:
             raise ValueError("Analysis 결과 payload의 보존 기간이 만료되었습니다.")
         return {
             "request_id": row["request_id"],

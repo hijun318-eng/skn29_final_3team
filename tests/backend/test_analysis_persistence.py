@@ -298,6 +298,25 @@ def test_persisted_result_restore_uses_current_entitlement_and_returns_no_sql_or
     }
 
 
+def test_persisted_result_allows_a_valid_empty_table():
+    repository = PostgresAnalysisRepository.__new__(PostgresAnalysisRepository)
+    repository._owner_id = uuid4()
+    repository._engine = MagicMock()
+    row = {
+        "request_id": uuid4(), "trace_id": "trace", "status": "SUCCEEDED",
+        "as_of": date(2026, 8, 12), "artifact_id": uuid4(),
+        "data_snapshot_json": {"columns": [], "rows": []},
+        "chart_spec_json": {}, "narrative_markdown": "결과 없음",
+        "evidence_json": {"as_of": "2026-08-12"}, "trino_query_id": "query-1",
+        "context_hash": "c" * 64,
+    }
+    repository._engine.connect.return_value.__enter__.return_value.execute.return_value.mappings.return_value.one_or_none.return_value = row
+
+    restored = repository.get_persisted_result(uuid4(), "pms_only", "e" * 64)
+
+    assert restored["data"]["result"]["table"] == {"columns": [], "rows": []}
+
+
 def test_recent_analysis_is_owner_scoped_and_exposes_only_safe_resume_metadata():
     owner = context()
     repository = InMemoryAnalysisRepository(owner.user_id)

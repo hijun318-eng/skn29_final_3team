@@ -399,6 +399,85 @@ class PostgresAnalysisRepository:
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 진행 상태를 조회할 수 없습니다.") from error
 
+    def get_persisted_result(
+        self,
+        request_id: UUID,
+        access_profile: str,
+        entitlement_hash: str,
+    ) -> dict[str, Any]:
+        try:
+            with self._engine.connect() as connection:
+                row = connection.execute(
+                    text(
+                        """
+                        SELECT r.request_id, r.trace_id, r.status, l.as_of,
+                               a.artifact_id, a.data_snapshot_json,
+                               a.chart_spec_json, a.narrative_markdown,
+                               a.evidence_json, q.trino_query_id,
+                               cp.package_hash AS context_hash
+                        FROM chat.analysis_requests r
+                        JOIN analysis_v1.analysis_run_links l
+                          ON l.request_id = r.request_id
+                        JOIN artifact.analysis_artifacts a
+                          ON a.request_id = r.request_id
+                        JOIN query.query_executions q
+                          ON q.query_execution_id = a.query_execution_id
+                        JOIN context.context_packages cp
+                          ON cp.request_id = r.request_id
+                        WHERE r.request_id = :request_id
+                          AND r.user_id = :owner_id
+                          AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                          AND a.status = 'APPROVED'
+                          AND q.execution_status = 'SUCCEEDED'
+                          AND EXISTS (
+                              SELECT 1
+                              FROM governance.audit_events e
+                              WHERE e.request_id = r.request_id
+                                AND e.actor_user_id = :owner_id
+                                AND e.action_code = 'ANALYSIS_ACCESS_COMPLETED'
+                                AND e.details_json_redacted ->> 'access_profile'
+                                    = :access_profile
+                                AND e.details_json_redacted ->> 'entitlement_hash'
+                                    = :entitlement_hash
+                          )
+                        ORDER BY a.created_at DESC
+                        LIMIT 1
+                        """
+                    ),
+                    {
+                        "request_id": request_id,
+                        "owner_id": self._owner_id,
+                        "access_profile": access_profile,
+                        "entitlement_hash": entitlement_hash,
+                    },
+                ).mappings().one_or_none()
+        except SQLAlchemyError as error:
+            raise AnalysisRepositoryUnavailable("Analysis 결과를 조회할 수 없습니다.") from error
+        if row is None:
+            raise KeyError("현재 권한으로 복원할 수 있는 Analysis 결과가 없습니다.")
+        table = row["data_snapshot_json"] or {}
+        if not table.get("columns") or "rows" not in table:
+            raise ValueError("Analysis 결과 payload의 보존 기간이 만료되었습니다.")
+        return {
+            "request_id": row["request_id"],
+            "trace_id": row["trace_id"],
+            "as_of": row["as_of"],
+            "data": {
+                "status": row["status"],
+                "result": {
+                    "summary": row["narrative_markdown"] or "",
+                    "table": table,
+                    "chart": row["chart_spec_json"] or None,
+                    "evidence": row["evidence_json"],
+                },
+                "artifact": {
+                    "artifact_id": row["artifact_id"],
+                    "query_id": row["trino_query_id"],
+                    "context_hash": row["context_hash"],
+                },
+            },
+        }
+
     def list_recent(
         self, limit: int = 20, *, stale_before: datetime | None = None
     ) -> list[dict[str, Any]]:

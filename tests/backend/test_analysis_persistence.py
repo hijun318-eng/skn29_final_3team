@@ -18,6 +18,7 @@ path.insert(0, str(BACKEND))
 
 from app.analysis_contracts import (  # noqa: E402
     CreateAnalysisDefinitionRequest,
+    PersistedAnalysisResultResponse,
     ReplayAnalysisRequest,
 )
 from app.api import router as analysis_api  # noqa: E402
@@ -97,6 +98,25 @@ class InMemoryAnalysisRepository:
                 }
                 for index, (stage, outcome) in enumerate(self.progress, 1)
             ],
+        }
+
+    def get_persisted_result(self, request_id, access_profile, entitlement_hash):
+        if request_id != self.request_id or not entitlement_hash:
+            raise KeyError("Analysis 결과를 찾을 수 없습니다.")
+        return {
+            "request_id": request_id,
+            "trace_id": "analysis-persistence-trace",
+            "as_of": date(2026, 8, 1),
+            "data": {
+                "status": "SUCCEEDED",
+                "result": {
+                    "summary": "객실 매출 결과",
+                    "table": {"columns": ["day", "revenue"], "rows": [{"day": "2026-08-01", "revenue": 100}]},
+                    "chart": {"chart_type": "bar", "x_field": "day", "y_fields": ["revenue"]},
+                    "evidence": {"as_of": "2026-08-01", "query_id": "query-1"},
+                },
+                "artifact": {"artifact_id": str(uuid4()), "query_id": "query-1", "context_hash": "c" * 64},
+            },
         }
 
     def fail_run(self, request_id, error_type="UNSUPPORTED"):
@@ -239,6 +259,42 @@ def test_progress_repository_queries_are_owner_scoped():
     statement, parameters = connection.execute.call_args.args
     assert "user_id = :owner_id" in str(statement)
     assert parameters["owner_id"] == repository._owner_id
+
+
+def test_persisted_result_restore_uses_current_entitlement_and_returns_no_sql_or_token():
+    owner = context().model_copy(update={
+        "access_profile": "pms_only",
+        "entitlement_hash": "e" * 64,
+    })
+    repository = InMemoryAnalysisRepository(owner.user_id)
+    repository.request_id = owner.request_id
+    with patch.object(analysis_api, "_analysis_repository", return_value=repository):
+        response = analysis_api.get_persisted_analysis_result(owner.request_id, owner)
+    validated = PersistedAnalysisResultResponse.model_validate(response)
+    assert validated.data.result.table.rows[0]["revenue"] == 100
+    serialized = validated.model_dump_json()
+    for forbidden in ("generated_sql", "parameters", "token"):
+        assert forbidden not in serialized.lower()
+
+    postgres = PostgresAnalysisRepository.__new__(PostgresAnalysisRepository)
+    postgres._owner_id = owner.user_id
+    postgres._engine = MagicMock()
+    connection = postgres._engine.connect.return_value.__enter__.return_value
+    connection.execute.return_value.mappings.return_value.one_or_none.return_value = None
+    with pytest.raises(KeyError):
+        postgres.get_persisted_result(owner.request_id, "pms_only", "e" * 64)
+    statement, parameters = connection.execute.call_args.args
+    sql = str(statement).lower()
+    assert "r.user_id = :owner_id" in sql
+    assert "access_profile" in sql and "entitlement_hash" in sql
+    for forbidden in ("generated_sql", "parameters_json", "token"):
+        assert forbidden not in sql
+    assert parameters == {
+        "request_id": owner.request_id,
+        "owner_id": owner.user_id,
+        "access_profile": "pms_only",
+        "entitlement_hash": "e" * 64,
+    }
 
 
 def test_recent_analysis_is_owner_scoped_and_exposes_only_safe_resume_metadata():

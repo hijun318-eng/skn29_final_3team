@@ -13,6 +13,7 @@ from app.analysis_contracts import (
     AnalysisDefinitionListResponse,
     AnalysisDefinitionResponse,
     AnalysisProgressResponse,
+    PersistedAnalysisResultResponse,
     RecentAnalysisListResponse,
     AnalysisRunListResponse,
     AnalysisRunResponse,
@@ -32,6 +33,7 @@ from app.contracts import (
     ReadinessData,
     ReadinessResponse,
     RequestContext,
+    ResponseMeta,
     response_meta,
 )
 from app.controllers.analysis_controller import AnalysisController
@@ -280,6 +282,34 @@ def get_analysis_progress(
 ) -> dict[str, Any]:
     repository = _analysis_repository(context)
     return _repository_call(lambda: repository.get_progress(request_id))
+
+
+@router.get(
+    "/analysis/{request_id}/result",
+    operation_id="analysisGetPersistedResult",
+    response_model=PersistedAnalysisResultResponse,
+)
+def get_persisted_analysis_result(
+    request_id: UUID,
+    context: Annotated[RequestContext, Depends(analysis_context)],
+) -> dict[str, Any]:
+    if not context.access_profile or not context.entitlement_hash:
+        raise HTTPException(status_code=403, detail="Analysis 결과 복원 권한을 확인할 수 없습니다.")
+    repository = _analysis_repository(context)
+    restored = _repository_call(
+        lambda: repository.get_persisted_result(
+            request_id, context.access_profile, context.entitlement_hash
+        )
+    )
+    return {
+        "data": restored["data"],
+        "meta": ResponseMeta(
+            request_id=restored["request_id"],
+            trace_id=restored["trace_id"],
+            as_of=restored["as_of"],
+            contract_version=context.contract_version,
+        ),
+    }
 
 
 @router.post(

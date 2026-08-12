@@ -1853,6 +1853,49 @@
         "title": "PeriodEvidence",
         "type": "object"
       },
+      "PersistedAnalysisResultData": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact": {
+            "$ref": "#/components/schemas/ArtifactReference"
+          },
+          "result": {
+            "$ref": "#/components/schemas/AnalysisResult"
+          },
+          "status": {
+            "enum": [
+              "SUCCEEDED",
+              "PARTIAL"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "result",
+          "artifact"
+        ],
+        "title": "PersistedAnalysisResultData",
+        "type": "object"
+      },
+      "PersistedAnalysisResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PersistedAnalysisResultData"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "PersistedAnalysisResultResponse",
+        "type": "object"
+      },
       "PipelineStage": {
         "enum": [
           "ROUTER",
@@ -2823,6 +2866,7 @@
             "enum": [
               "unknown",
               "not_run",
+              "archive_validated",
               "verified"
             ],
             "title": "Status",
@@ -4116,6 +4160,103 @@
           }
         ],
         "summary": "Get Analysis Progress"
+      }
+    },
+    "/analysis/{request_id}/result": {
+      "get": {
+        "operationId": "analysisGetPersistedResult",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersistedAnalysisResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Persisted Analysis Result"
       }
     },
     "/catalog/sources": {

@@ -12,6 +12,7 @@ export interface AnalysisClient {
   analyze(question: string, conversationId: string, accessProfile?: AccessProfile, onProgress?: (run: AnalysisRun) => void): Promise<AnalysisRun>;
   listRecent(limit?: number): Promise<RecentAnalysisItem[]>;
   getProgress(requestId: string, accessProfile: AccessProfile): Promise<AnalysisProgressResponse>;
+  getResult(requestId: string, question: string, conversationId: string, accessProfile: AccessProfile): Promise<AnalysisRun>;
 }
 
 export interface RecentAnalysisItem {
@@ -85,6 +86,28 @@ export function createHttpAnalysisClient(
       });
       if (!response.ok) throw new Error(`분석 진행 API가 HTTP ${response.status}로 거부되었습니다.`);
       return response.json() as Promise<AnalysisProgressResponse>;
+    },
+    async getResult(requestId, question, conversationId, accessProfile) {
+      const root = baseUrl.replace(/\/$/, "");
+      const response = await request(`${root}/analysis/${requestId}/result`, {
+        headers: {
+          Authorization: getAuthorizationHeader(),
+          "X-As-Of": env.VITE_ANALYSIS_AS_OF || new Date().toISOString().slice(0, 10),
+          "X-Access-Profile": accessProfile,
+          "X-Contract-Version": OPENAPI_VERSION,
+          "X-Timezone": "Asia/Seoul",
+          "X-Trace-Id": createUuid(),
+        },
+      });
+      const payload = await response.json().catch(() => ({})) as AnalysisApiResponse & { detail?: string };
+      if (!response.ok) {
+        throw new AnalysisRequestError(
+          response.status === 403 ? "ACCESS_DENIED" : "INTERNAL_ERROR",
+          payload.detail || "저장된 Analysis 결과를 복원하지 못했습니다.",
+          response.status >= 500,
+        );
+      }
+      return normalizeApiResponse(payload, question, conversationId);
     },
     async analyze(question, conversationId, accessProfile = "pms_only", onProgress) {
       const traceId = createUuid();

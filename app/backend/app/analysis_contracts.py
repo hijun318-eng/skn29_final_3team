@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.contracts import Scalar
+from app.contracts import AnalysisResult, ArtifactReference, ResponseMeta, Scalar
 
 
 ANALYSIS_PERSISTENCE_VERSION = "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT"
@@ -108,6 +108,17 @@ class AnalysisProgressResponse(AnalysisPersistenceModel):
     request_id: UUID
     status: Literal["RECEIVED", "SUCCEEDED", "PARTIAL", "FAILED", "DENIED"]
     events: list[AnalysisProgressEvent]
+
+
+class PersistedAnalysisResultData(AnalysisPersistenceModel):
+    status: Literal["SUCCEEDED", "PARTIAL"]
+    result: AnalysisResult
+    artifact: ArtifactReference
+
+
+class PersistedAnalysisResultResponse(AnalysisPersistenceModel):
+    data: PersistedAnalysisResultData
+    meta: ResponseMeta
 
 
 class RecentAnalysisItem(AnalysisPersistenceModel):

@@ -67,6 +67,12 @@ export function AgentPage() {
       try {
         const progress = await client.getProgress(run.requestId, run.accessProfile);
         if (cancelled) return;
+        if (progress.status === "SUCCEEDED" || progress.status === "PARTIAL") {
+          const restored = await client.getResult(run.requestId, run.question, conversationId, run.accessProfile);
+          if (!cancelled) setRun({ ...restored, restoredStatus: progress.status, accessProfile: run.accessProfile, progress: progress.events.map(({ sequence, stage, outcome, created_at }) => ({ sequence, stage, outcome, createdAt: created_at })) });
+          void loadRecent();
+          return;
+        }
         setRun((current) => current.requestId !== run.requestId ? current : ({
           ...current,
           status: progress.status === "RECEIVED" ? "running" : "idle",
@@ -97,8 +103,27 @@ export function AgentPage() {
     setRun(restored);
     try {
       const progress = await client.getProgress(item.request_id, item.access_profile);
-      setRun((current) => current.requestId !== item.request_id ? current : ({ ...current, progress: progress.events.map(({ sequence, stage, outcome, created_at }) => ({ sequence, stage, outcome, createdAt: created_at })) }));
-    } catch { /* 최근 목록의 안전 메타데이터는 그대로 표시합니다. */ }
+      const events = progress.events.map(({ sequence, stage, outcome, created_at }) => ({ sequence, stage, outcome, createdAt: created_at }));
+      if (item.status === "SUCCEEDED" || item.status === "PARTIAL") {
+        const result = await client.getResult(item.request_id, item.question_text_redacted, conversationId, item.access_profile);
+        setRun({ ...result, restoredStatus: item.status, accessProfile: item.access_profile, progress: events });
+      } else {
+        setRun((current) => current.requestId !== item.request_id ? current : ({ ...current, progress: events }));
+      }
+    } catch (restoreError) {
+      if (item.status === "SUCCEEDED" || item.status === "PARTIAL") {
+        setRun((current) => current.requestId !== item.request_id ? current : ({
+          ...current,
+          status: restoreError instanceof AnalysisRequestError && restoreError.code === "ACCESS_DENIED" ? "blocked" : "failed",
+          error: {
+            code: restoreError instanceof AnalysisRequestError ? restoreError.code : "INTERNAL_ERROR",
+            message: restoreError instanceof Error ? restoreError.message : "저장된 Analysis 결과를 복원하지 못했습니다.",
+            retryable: restoreError instanceof AnalysisRequestError ? restoreError.retryable : false,
+          },
+        }));
+      }
+      /* 최근 목록의 안전 메타데이터는 그대로 표시합니다. */
+    }
   };
 
   const submitQuestion = async (event) => {

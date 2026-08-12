@@ -132,13 +132,17 @@ const historyRequests = [];
 const historyClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
   historyRequests.push({ url, init });
   if (url.includes("/progress")) return new Response(JSON.stringify({ request_id: "request-1", status: "RECEIVED", events: [] }), { status: 200 });
+  if (url.includes("/result")) return new Response(JSON.stringify(analysisResponse), { status: 200 });
   return new Response(JSON.stringify({ items: [{ request_id: "request-1", trace_id: "trace-1", question_text_redacted: "[REDACTED_EMAIL] 매출", status: "RECEIVED", started_at: "2026-08-12T00:00:00Z", as_of: "2026-08-12", access_profile: "pms_only" }] }), { status: 200 });
 });
 const recent = await historyClient.listRecent();
 assert.equal(recent[0].question_text_redacted, "[REDACTED_EMAIL] 매출");
 await historyClient.getProgress("request-1", "pms_only");
+const restoredResult = await historyClient.getResult("request-1", "매출", "conversation-restored", "pms_only");
 assert.equal(historyRequests[0].url, "http://backend.test/analysis/recent?limit=20");
 assert.equal(historyRequests[1].url, "http://backend.test/analysis/request-1/progress");
+assert.equal(historyRequests[2].url, "http://backend.test/analysis/request-1/result");
+assert.equal(restoredResult.artifact.artifactId, "artifact-1");
 assert.equal(historyRequests[0].init.headers.Authorization, "Bearer contract-test-token");
 
 const observedProgress = [];

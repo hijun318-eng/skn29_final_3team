@@ -19,6 +19,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useEffect, useState } from "react";
 import { resolveViewState, type AnalysisRun, type AnalysisViewState } from "../../contracts/analysis";
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -81,6 +82,13 @@ const PIPELINE_STEPS = [
 
 function AnalysisProgress({ run }: { run: AnalysisRun }) {
   const events = run.progress ?? [];
+  const hasRunningStage = events.some((event, index) => event.outcome === "STARTED" && !events.slice(index + 1).some((next) => next.stage === event.stage));
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!hasRunningStage) return undefined;
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, [hasRunningStage]);
   if (!events.length) return null;
   const latest = new Map(events.map((event) => [event.stage, event.outcome]));
   const completed = PIPELINE_STEPS.filter(([stage]) => latest.has(stage)).length;
@@ -93,7 +101,12 @@ function AnalysisProgress({ run }: { run: AnalysisRun }) {
           const outcome = latest.get(stage);
           const state = outcome === "STARTED" ? "busy" : outcome === "PASSED" ? "done" : outcome === "SKIPPED" ? "skip" : outcome === "FAILED" || outcome === "BLOCKED" ? "fail" : "pending";
           const gate = state === "busy" ? "진행 중" : state === "done" ? "완료" : state === "skip" ? "생략" : state === "fail" ? (outcome === "BLOCKED" ? "차단" : "실패") : "";
-          return <li key={stage} className={`analysis-process-step ${state}`}><span className="analysis-process-dot">{state === "fail" ? "!" : index + 1}</span><span><b>{label}</b><small>{description}</small></span><em>{gate}</em></li>;
+          const stageEvents = events.filter((event) => event.stage === stage);
+          const startedAt = stageEvents.findLast((event) => event.outcome === "STARTED")?.createdAt;
+          const terminalAt = outcome === "STARTED" ? undefined : stageEvents.findLast((event) => event.outcome !== "STARTED")?.createdAt;
+          const elapsedMs = startedAt ? Math.max(0, new Date(terminalAt ?? now).getTime() - new Date(startedAt).getTime()) : null;
+          const elapsed = elapsedMs === null || Number.isNaN(elapsedMs) ? "" : elapsedMs >= 60_000 ? `${Math.floor(elapsedMs / 60_000)}분 ${Math.floor((elapsedMs % 60_000) / 1000)}초` : `${(elapsedMs / 1000).toFixed(1)}초`;
+          return <li key={stage} className={`analysis-process-step ${state}`}><span className="analysis-process-dot">{state === "fail" ? "!" : index + 1}</span><span><b><code>{stage}</code>{label}</b><small>{description}</small></span><em>{[gate, elapsed].filter(Boolean).join(" · ")}</em></li>;
         })}
       </ol>
     </details>

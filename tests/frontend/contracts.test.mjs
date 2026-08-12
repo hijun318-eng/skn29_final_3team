@@ -137,6 +137,8 @@ const progressClient = createHttpAnalysisClient("http://backend.test/", async (u
 await progressClient.analyze("진행 조회", "conversation-progress", "pms_only", (run) => observedProgress.push(run.progress));
 assert.equal(observedProgress[0][0].stage, "DATAHUB");
 assert.equal(observedProgress[0][0].outcome, "STARTED");
+assert.equal(observedProgress[0][0].sequence, 1);
+assert.equal(observedProgress[0][0].createdAt, "2026-08-12T00:00:00Z");
 
 let defaultClientRequests = 0;
 let defaultClientInit;
@@ -297,6 +299,9 @@ for (const label of ["텍스트 블록 추가", "12열 배치", "너비", "높�
 assert.match(reportsPageSource, /gridColumn/);
 assert.match(analysisPanelSource, /chart\.chartType === "bar"/);
 assert.match(analysisPanelSource, /<BarChart/);
+assert.match(analysisPanelSource, /<code>{stage}<\/code>/);
+assert.match(analysisPanelSource, /elapsedMs/);
+for (const stage of ["NODE1", "G1", "NODE2", "G2", "TRINO", "G3", "NODE3"]) assert.match(analysisPanelSource, new RegExp(`\\["${stage}"`));
 assert.match(auditPageSource, /createAuditClient\(\)/);
 for (const label of ["접근 Profile", "허용 Domain", "DataHub actor", "Entitlement hash", "Trino role", "DataHub 검색 시도", "Trino 실행 시도", "허용 URNs"]) assert.match(auditPageSource, new RegExp(label));
 for (const label of ["보존 정책", "암호화 백업", "복구 검증", "RPO", "RTO"]) assert.match(auditPageSource, new RegExp(label));

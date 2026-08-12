@@ -56,7 +56,7 @@ export function createHttpAnalysisClient(
         "X-Trace-Id": traceId,
       };
       let settled = false;
-      let latestProgress: Array<{ stage: string; outcome: string }> = [];
+      let latestProgress: Array<{ sequence: number; stage: string; outcome: string; createdAt: string }> = [];
       const responsePromise = request(`${root}/analysis`, {
         method: "POST",
         signal: AbortSignal.timeout(180_000),
@@ -67,13 +67,12 @@ export function createHttpAnalysisClient(
         },
         body: JSON.stringify({ question }),
       });
-      const poll = async () => {
-        while (!settled) {
+      const fetchProgress = async () => {
           try {
             const progressResponse = await request(`${root}/analysis/${requestId}/progress`, { method: "GET", headers });
             if (progressResponse.ok) {
               const progress = await progressResponse.json() as AnalysisProgressResponse;
-              latestProgress = progress.events.map(({ stage, outcome }) => ({ stage, outcome }));
+              latestProgress = progress.events.map(({ sequence, stage, outcome, created_at }) => ({ sequence, stage, outcome, createdAt: created_at }));
               onProgress?.({
                 conversationId,
                 requestId,
@@ -89,6 +88,10 @@ export function createHttpAnalysisClient(
           } catch {
             // 최종 POST 응답이 오류를 정규화하므로 progress 실패를 성공으로 대체하지 않는다.
           }
+      };
+      const poll = async () => {
+        while (!settled) {
+          await fetchProgress();
           if (!settled) await new Promise((resolve) => setTimeout(resolve, 500));
         }
       };
@@ -99,6 +102,7 @@ export function createHttpAnalysisClient(
       } finally {
         settled = true;
         await progressPromise;
+        if (onProgress) await fetchProgress();
       }
       const payload = await response.json() as AnalysisApiResponse;
       if (!response.ok) {

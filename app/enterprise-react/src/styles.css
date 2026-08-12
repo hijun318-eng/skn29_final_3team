@@ -42,6 +42,7 @@ html{scrollbar-gutter:stable}body{line-height:1.45;text-rendering:optimizeLegibi
 @keyframes page-spinner{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.page-stage,.is-page-pending .page-progress{animation:none}.sidebar{transition:none}}
 @media(max-width:900px){.page-progress{left:0}.topbar{position:sticky}.legacy-report-row>button{justify-self:start}}
+.analysis-process-step b{display:flex;align-items:center;gap:7px}.analysis-process-step b code{min-width:max-content;padding:1px 5px;border:1px solid #365173;border-radius:4px;background:#101d31;color:#78adf2;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:9px;letter-spacing:.04em}
 .legacy-report-row>b{display:grid;gap:2px}.legacy-report-row>b small{overflow:hidden;color:#797169;font-size:10.85px;font-weight:500;text-overflow:ellipsis;white-space:nowrap}
 
 /* Keep the sidebar brand lockup on one horizontal line. */

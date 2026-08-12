@@ -6,24 +6,28 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$databaseRoot = Split-Path -Parent $PSScriptRoot
-$composeFile = Join-Path $databaseRoot 'compose.yml'
-$environmentFile = Join-Path $databaseRoot '.env'
 $outputRoot = [System.IO.Path]::GetFullPath($OutputDirectory)
 $keyPath = [System.IO.Path]::GetFullPath($EncryptionKeyFile)
-if (-not (Test-Path -LiteralPath $environmentFile)) { throw 'infrastructure/database/.env is required.' }
+$gpgPath = (Get-Command gpg -ErrorAction SilentlyContinue).Source
+if (-not $gpgPath -and (Test-Path -LiteralPath 'C:\Program Files\Git\usr\bin\gpg.exe')) {
+    $gpgPath = 'C:\Program Files\Git\usr\bin\gpg.exe'
+}
 if (-not (Test-Path -LiteralPath $keyPath -PathType Leaf)) { throw 'External encryption key file is required.' }
+if (-not $gpgPath) { throw 'gpg is required. Install GnuPG or Git for Windows.' }
+$containers = @(docker ps --quiet --filter 'label=com.docker.compose.service=app-postgres' --filter 'status=running')
+if ($LASTEXITCODE -ne 0 -or $containers.Count -ne 1) { throw 'Exactly one running app-postgres container is required.' }
+$containerId = $containers[0]
 New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
 
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
 $plainPath = Join-Path $outputRoot "app-postgres-$stamp.dump"
 $encryptedPath = "$plainPath.gpg"
 try {
-    docker compose --env-file $environmentFile -f $composeFile exec -T app-postgres `
+    docker exec $containerId `
         sh -c 'exec pg_dump --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --format custom --no-owner --no-privileges' `
         | Set-Content -LiteralPath $plainPath -AsByteStream
     if ($LASTEXITCODE -ne 0) { throw 'pg_dump failed.' }
-    & gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase-file $keyPath --output $encryptedPath $plainPath
+    & $gpgPath --batch --yes --symmetric --cipher-algo AES256 --passphrase-file $keyPath --output $encryptedPath $plainPath
     if ($LASTEXITCODE -ne 0) { throw 'Backup encryption failed.' }
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $encryptedPath).Hash.ToLowerInvariant()
     $manifest = [ordered]@{

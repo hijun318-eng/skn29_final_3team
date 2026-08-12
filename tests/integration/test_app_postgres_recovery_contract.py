@@ -39,3 +39,6 @@ def test_restore_defaults_to_non_mutating_archive_validation_and_emits_rpo_rto_e
     assert "rpo_target_hours = 24" in source
     assert "rto_target_hours = 4" in source
     assert "restore-evidence.json" in source
+    assert "docker cp" in source
+    assert "label=com.docker.compose.service=app-postgres" in source
+    assert "[string]$EvidenceDirectory" in source

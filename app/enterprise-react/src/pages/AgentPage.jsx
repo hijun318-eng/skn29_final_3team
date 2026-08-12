@@ -222,7 +222,7 @@ export function AgentPage() {
             <span className="agent-avatar"><Sparkles size={17} /></span>
             <div>
               <b>Analysis Agent <em>{run.status}</em></b>
-              <AnalysisStatePanel run={run} />
+              <AnalysisStatePanel run={run} onClarify={(suffix) => setQuestion(`${submittedQuestion} ${suffix}`.trim())} />
               {run.status === "success" && run.artifact && <div className="analysis-report-actions"><button className="primary" type="button" disabled={reportTransfer.status === "loading"} onClick={() => void addArtifactToReport()}><FilePlus2 size={15} />보고서에 담기</button><button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((open) => !open)}><TableProperties size={15} />Artifacts</button></div>}
               {reportTransfer.status !== "idle" && <p className={`artifact-transfer-state ${reportTransfer.status}`} role={reportTransfer.status === "error" ? "alert" : "status"} aria-live="polite">{reportTransfer.message}</p>}
             </div>

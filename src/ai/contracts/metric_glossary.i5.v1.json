@@ -10,6 +10,16 @@
       "소멸 포인트",
       "expired points"
     ],
+    "current_points_balance_sum": [
+      "사용 가능 포인트 합계",
+      "포인트 합계",
+      "available points total"
+    ],
+    "current_points_balance_average": [
+      "사용 가능 포인트 평균",
+      "포인트 평균",
+      "average available points"
+    ],
     "fnb_net_revenue": [
       "식음 순매출",
       "F&B net revenue"

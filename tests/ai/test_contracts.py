@@ -161,6 +161,8 @@ class ContractTests(unittest.TestCase):
         expected_ids = {
             "recognized_room_revenue",
             "expired_points",
+            "current_points_balance_sum",
+            "current_points_balance_average",
             "fnb_net_revenue",
             "facility_revenue",
             "actual_attendees",

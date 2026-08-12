@@ -72,6 +72,28 @@
         {"field": "txn_type", "operator": "eq", "value_type": "string", "value": "EXPIRE"},
         {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
       ]
+    },
+    {
+      "id": "current_points_balance_sum",
+      "asset_fqn": "crm.dbo.crm_members",
+      "field": "points_balance",
+      "aggregation": "sum",
+      "time_field": "joined_at",
+      "required_filters": [
+        {"field": "member_status", "operator": "eq", "value_type": "string", "value": "ACTIVE"},
+        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
+      ]
+    },
+    {
+      "id": "current_points_balance_average",
+      "asset_fqn": "crm.dbo.crm_members",
+      "field": "points_balance",
+      "aggregation": "avg",
+      "time_field": "joined_at",
+      "required_filters": [
+        {"field": "member_status", "operator": "eq", "value_type": "string", "value": "ACTIVE"},
+        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
+      ]
     }
   ],
   "raw_assets": [

@@ -96,10 +96,17 @@ class AnalysisRequest(ContractModel):
     parameters: dict[str, Scalar] = Field(default_factory=dict)
 
 
+class ClarificationOption(ContractModel):
+    id: str = Field(min_length=1, max_length=128)
+    label: str = Field(min_length=1, max_length=200)
+    question_suffix: str = Field(min_length=1, max_length=200)
+
+
 class ErrorBody(ContractModel):
     code: ErrorCode
     message: str
     retryable: bool = False
+    clarification_options: tuple[ClarificationOption, ...] = ()
 
 
 class ResponseMeta(ContractModel):

@@ -320,7 +320,22 @@ class PipelineSupport:
             PipelineSupport.node1_request(payload, context, assets)
         )
         selected = normalized.get("selected_metric_id")
-        if not isinstance(selected, str) or selected not in candidate_ids:
+        selected_ids = [selected] if isinstance(selected, str) else []
+        metric_candidates = normalized.get("metric_candidates")
+        if (
+            not selected_ids
+            and isinstance(metric_candidates, list)
+            and len(metric_candidates) > 1
+            and any(connector in payload.question for connector in ("와", "과", "및", "+"))
+            and all(isinstance(item, str) and item in candidate_ids for item in metric_candidates)
+            and len({
+                str(metric["asset_fqn"])
+                for metric in candidates
+                if metric["id"] in metric_candidates
+            }) == 1
+        ):
+            selected_ids = list(dict.fromkeys(metric_candidates))
+        if not selected_ids or any(item not in candidate_ids for item in selected_ids):
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METRIC,
                 "질문에서 권한이 있는 승인 metric 하나를 확인할 수 없습니다.",
@@ -332,7 +347,7 @@ class PipelineSupport:
                 item["metrics"] = tuple(
                     metric
                     for metric in item.get("metrics", ())
-                    if isinstance(metric, dict) and metric.get("id") == selected
+                    if isinstance(metric, dict) and metric.get("id") in selected_ids
                 )
             selected_assets.append(item)
         return selected_assets, str(normalized["normalized_question"])

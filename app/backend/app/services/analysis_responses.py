@@ -8,6 +8,7 @@ from app.contracts import (
     AnalysisResult,
     AnalysisStatus,
     ArtifactReference,
+    ClarificationOption,
     ErrorBody,
     ErrorCode,
     Evidence,
@@ -191,6 +192,7 @@ class AnalysisResponseFactory:
         decision: RouteDecision,
         repair_count: int = 0,
         retryable: bool = False,
+        clarification_options: tuple[ClarificationOption, ...] = (),
     ) -> AnalysisResponse:
         AnalysisResponseFactory.record(
             trace,
@@ -216,6 +218,7 @@ class AnalysisResponseFactory:
                 code=code,
                 message=message,
                 retryable=retryable,
+                clarification_options=clarification_options,
             ),
         )
 

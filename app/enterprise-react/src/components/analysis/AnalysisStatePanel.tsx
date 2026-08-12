@@ -113,7 +113,7 @@ function AnalysisProgress({ run }: { run: AnalysisRun }) {
   );
 }
 
-export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
+export function AnalysisStatePanel({ run, onClarify }: { run: AnalysisRun; onClarify?: (suffix: string) => void }) {
   if (run.restoredStatus && run.restoredStatus !== "RECEIVED" && !run.artifact) {
     return <section className="analysis-state" aria-live="polite"><header><Clock3 size={18} /><div><b>최근 분석 기록</b><span>{run.restoredStatus}</span></div></header><p>보안상 결과 payload는 다시 전송하지 않으며, 서버에 기록된 처리 과정만 복원했습니다.</p><AnalysisProgress run={run} /></section>;
   }
@@ -146,6 +146,14 @@ export function AnalysisStatePanel({ run }: { run: AnalysisRun }) {
           <div><dt>error.code</dt><dd>{run.error.code}</dd></div>
           <div><dt>error.retryable</dt><dd>{String(run.error.retryable)}</dd></div>
         </dl>
+      )}
+      {needsClarification && Boolean(run.error?.clarification_options?.length) && (
+        <div className="analysis-clarification" aria-label="선택 가능한 승인 지표">
+          <small>조회할 승인 지표를 선택하면 질문 입력란에 반영됩니다.</small>
+          <div>{run.error?.clarification_options?.map((option) => (
+            <button key={option.id} type="button" onClick={() => onClarify?.(option.question_suffix)}>{option.label}</button>
+          ))}</div>
+        </div>
       )}
       <AnalysisProgress run={run} />
       {showResult && (

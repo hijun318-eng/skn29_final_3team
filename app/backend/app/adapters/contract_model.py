@@ -365,8 +365,8 @@ class ContractModelAdapter:
             if isinstance(metric, dict) and isinstance(metric.get("id"), str)
         ]
         selected = set(metric_ids)
-        if len(selected) == 1:
-            selected_metric = selected.pop()
+        if selected:
+            selected_metric = metric_ids[0]
             context_metric_ids = [selected_metric] * len(assets)
         else:
             approved_join = "pms_crm_pos_gold_revenue_month_v1"
@@ -385,7 +385,7 @@ class ContractModelAdapter:
             for asset in assets
             for metric_id in asset.get("entitled_metric_ids", ())
         ]
-        entitled_metric_ids = set(explicit_entitlements) or {selected_metric}
+        entitled_metric_ids = set(explicit_entitlements) or selected or {selected_metric}
         if selected_metric not in entitled_metric_ids:
             raise ValueError("node3 selected metric is outside entitlement")
         return {

@@ -1240,6 +1240,36 @@
         "title": "ChartSpec",
         "type": "object"
       },
+      "ClarificationOption": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "question_suffix": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Question Suffix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "question_suffix"
+        ],
+        "title": "ClarificationOption",
+        "type": "object"
+      },
       "ContextTrace": {
         "additionalProperties": false,
         "properties": {
@@ -1478,6 +1508,14 @@
       "ErrorBody": {
         "additionalProperties": false,
         "properties": {
+          "clarification_options": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ClarificationOption"
+            },
+            "title": "Clarification Options",
+            "type": "array"
+          },
           "code": {
             "$ref": "#/components/schemas/ErrorCode"
           },

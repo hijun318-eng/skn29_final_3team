@@ -26,15 +26,27 @@ def generate_sql(payload: dict[str, Any]) -> dict[str, Any]:
     """Build one read-only aggregate using only identifiers present in Context."""
     validate_payload("node2_request", payload)
     context = payload["context_package"]
-    metric = context["metrics"][0]
+    metrics = context["metrics"]
+    metric = metrics[0]
     if metric["field"].startswith("derived."):
         return _generate_derived_sql(context, metric)
-    asset, metric_column = _resolve_column(context["assets"], metric["field"])
-    time_asset, time_column = _resolve_column(context["assets"], metric["time_field"])
+    resolved = [
+        (item, *_resolve_column(context["assets"], item["field"]), *_resolve_column(context["assets"], item["time_field"]))
+        for item in metrics
+    ]
+    _, asset, metric_column, time_asset, time_column = resolved[0]
+    if any(
+        item_asset["trino_fqn"] != asset["trino_fqn"]
+        or item_time_asset["trino_fqn"] != time_asset["trino_fqn"]
+        or item_time_column != time_column
+        or item.get("required_filters", []) != metric.get("required_filters", [])
+        for item, item_asset, _, item_time_asset, item_time_column in resolved
+    ):
+        raise ContractError("node2_request: multiple metrics require one asset, time field and filter policy")
     if time_asset["trino_fqn"] != asset["trino_fqn"]:
         raise ContractError("node2_request: metric and time field require an approved join predicate")
-    aggregation = metric["aggregation"].upper()
-    if aggregation not in {"AVG", "COUNT", "MAX", "MIN", "SUM"}:
+    aggregates = [(item["aggregation"].upper(), column, item["id"]) for item, _, column, _, _ in resolved]
+    if any(aggregation not in {"AVG", "COUNT", "MAX", "MIN", "SUM"} for aggregation, _, _ in aggregates):
         raise ContractError("node2_request: unsupported aggregation")
 
     fqn = _validated_fqn(asset["trino_fqn"])
@@ -45,13 +57,16 @@ def generate_sql(payload: dict[str, Any]) -> dict[str, Any]:
         *filter_clauses,
     ]
     sql = (
-        f'SELECT {aggregation}("{metric_column}") AS "{metric_column}" '
+        "SELECT " + ", ".join(
+            f'{aggregation}("{column}") AS "{metric_id}"'
+            for aggregation, column, metric_id in aggregates
+        ) + " "
         f'FROM {fqn} WHERE {" AND ".join(where)} LIMIT 1000'
     )
     response = {
         "sql": sql,
         "references": [
-            _reference(asset, context, {metric_column, time_column, *filter_columns})
+            _reference(asset, context, {*(column for _, column, _ in aggregates), time_column, *filter_columns})
         ],
         "parameters": [
             {

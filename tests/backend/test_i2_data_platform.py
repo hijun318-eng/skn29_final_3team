@@ -632,7 +632,10 @@ def test_selected_assets_without_metric_fail_closed_when_context_is_built():
         support.build_context(
             payload,
             context,
-            adapter.search_assets(payload.question, context.model_dump(mode="json")),
+            [
+                {**asset, "metrics": ()}
+                for asset in adapter.search_assets(payload.question, context.model_dump(mode="json"))
+            ],
         )
 
 
@@ -744,6 +747,20 @@ def test_node1_metric_selection_fails_closed_for_missing_ambiguous_and_duplicate
     ):
         with pytest.raises(ContextBuildError):
             support.select_metric(AnalysisRequest(question=question), context, selected_assets)
+
+    crm_metrics = tuple(
+        metrics[item]
+        for item in ("current_points_balance_sum", "current_points_balance_average")
+    )
+    selected, _ = support.select_metric(
+        AnalysisRequest(question="사용 가능 포인트 합계와 사용 가능 포인트 평균"),
+        context,
+        [{"urn": "urn:crm", "fqn": "crm.dbo.crm_members", "metrics": crm_metrics}],
+    )
+    assert {metric["id"] for asset in selected for metric in asset["metrics"]} == {
+        "current_points_balance_sum",
+        "current_points_balance_average",
+    }
 
     duplicate = [{**assets[0], "metrics": assets[0]["metrics"] * 2}]
     with pytest.raises(ContextBuildError, match="중복"):

@@ -157,6 +157,11 @@ export interface AnalysisApiResponse {
     code: AnalysisErrorCode;
     message: string;
     retryable: boolean;
+    clarification_options?: Array<{
+      id: string;
+      label: string;
+      question_suffix: string;
+    }>;
   } | null;
 }
 
@@ -191,6 +196,11 @@ export interface AnalysisRun {
     code: AnalysisErrorCode;
     message: string;
     retryable?: boolean;
+    clarification_options?: Array<{
+      id: string;
+      label: string;
+      question_suffix: string;
+    }>;
   };
   sources: AnalysisSource[];
   meta: {

@@ -81,6 +81,23 @@ def derived_payload():
 
 
 class Node2Tests(unittest.TestCase):
+    def test_explicit_multiple_metrics_share_one_context_bound_query(self):
+        payload = copy.deepcopy(VALID_PAYLOADS["node2_request"])
+        first = payload["context_package"]["metrics"][0]
+        payload["context_package"]["metrics"] = [
+            {**first, "id": "points_total", "aggregation": "sum"},
+            {**first, "id": "points_average", "aggregation": "avg"},
+        ]
+
+        response = generate_sql(payload)
+
+        self.assertIn('SUM("room_revenue") AS "points_total"', response["sql"])
+        self.assertIn('AVG("room_revenue") AS "points_average"', response["sql"])
+        self.assertEqual(
+            ["points_total", "points_average"],
+            response["references"][0]["metric_ids"],
+        )
+
     def test_sql_and_references_use_only_context(self):
         response = generate_sql(VALID_PAYLOADS["node2_request"])
 

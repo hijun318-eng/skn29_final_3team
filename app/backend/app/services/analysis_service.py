@@ -11,6 +11,7 @@ from app.contracts import (
     ArtifactReference,
     ChartSpec,
     ErrorBody,
+    ClarificationOption,
     ErrorCode,
     PipelineStage,
     RequestContext,
@@ -32,7 +33,7 @@ from app.services.execution_control import (
     ModelCallBudget,
     secure_cache_key,
 )
-from app.services.pipeline_support import PipelineSupport
+from app.services.pipeline_support import PipelineSupport, _metric_glossary
 from app.services.routing_service import RouteDecision
 from app.services.state_machine import AnalysisStateMachine
 from app.telemetry import observe_stage
@@ -213,6 +214,20 @@ class AnalysisService:
                 ErrorCode.CONTEXT_INCOMPLETE,
                 message,
                 decision,
+                clarification_options=(
+                    tuple(
+                        ClarificationOption(
+                            id=str(metric["id"]),
+                            label=(_metric_glossary().get(str(metric["id"])) or (str(metric["id"]),))[0],
+                            question_suffix=(_metric_glossary().get(str(metric["id"])) or (str(metric["id"]),))[0],
+                        )
+                        for asset in assets
+                        for metric in asset.get("metrics", ())
+                        if isinstance(metric, dict) and isinstance(metric.get("id"), str)
+                    )
+                    if error.code is ContextBuildErrorCode.INVALID_METRIC
+                    else ()
+                ),
             )
         self._responses.record(trace, PipelineStage.CONTEXT, package.package_hash)
 

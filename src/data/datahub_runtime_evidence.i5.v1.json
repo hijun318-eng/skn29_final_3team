@@ -3,9 +3,11 @@
   "synthetic": true,
   "datahub_version": "v1.7.0",
   "trino_version": "476",
-  "status": "PASS",
-  "runtime_execution": "PASS",
-  "blocker": null,
+  "status": "CONFIG_UPDATED",
+  "runtime_execution": "NOT_RUN",
+  "auth_runtime_validation": "NOT_RUN",
+  "auth_configured_after_recorded_runtime": true,
+  "blocker": "PROFILE_PAT_AND_METADATA_POLICY_PROVISIONING_REQUIRED",
   "target": {
     "compose_project": "answervice",
     "network": "answervice_datahub-network",
@@ -13,12 +15,12 @@
     "ingestion_image": "acryldata/datahub-ingestion:v1.7.0"
   },
   "ingestion_plan": [
-    {"order": 1, "source": "pms", "recipe": "infrastructure/database/datahub/recipes/pms.i2.yml", "recipe_sha256": "f883ac603ad3d0dc90d56126baa35f952a2c5e4b6b8512f4d49c4662cce28729", "status": "PASS", "exit_code": 0},
-    {"order": 2, "source": "pos", "recipe": "infrastructure/database/datahub/recipes/pos.i3.yml", "recipe_sha256": "8778308f88334b918f4a50d381e2b8b308cbb4a037d08fafc31d6d2b15f763ff", "status": "PASS", "exit_code": 0},
-    {"order": 3, "source": "crm", "recipe": "infrastructure/database/datahub/recipes/crm.i2.yml", "recipe_sha256": "d9148e636d817c5fd60eddf1699f41da153f6803e315301a8ff4783f8915eb27", "status": "PASS", "exit_code": 0},
-    {"order": 4, "source": "facility", "recipe": "infrastructure/database/datahub/recipes/facility.i3.yml", "recipe_sha256": "13bf5ab736d57737a10898a299318bdf7687a4514ccad26d0a43dd8e7a49a1f6", "status": "PASS", "exit_code": 0},
-    {"order": 5, "source": "banquet", "recipe": "infrastructure/database/datahub/recipes/banquet.i3.yml", "recipe_sha256": "2fd15429e30562bb43ea655cac171d6cd0f1827350673e673002bc47d81d8fe2", "status": "PASS", "exit_code": 0},
-    {"order": 6, "source": "serving", "recipe": "infrastructure/database/datahub/recipes/serving.i4.yml", "recipe_sha256": "bdd5902bb2d5411b88235f4b52acd617793a6b0bd00f7cb5007eee2819bf1f5c", "status": "PASS", "exit_code": 0}
+    {"order": 1, "source": "pms", "recipe": "infrastructure/database/datahub/recipes/pms.i2.yml", "recipe_sha256": "750e53c453996f6d8453f9575d0c064694bd5ac564ba5b37780b5f5c05e62346", "status": "NOT_RUN", "exit_code": null},
+    {"order": 2, "source": "pos", "recipe": "infrastructure/database/datahub/recipes/pos.i3.yml", "recipe_sha256": "72dc70d308c534669383c38c451cb73a18e4eba55c8a810f7c50c3190f8c9064", "status": "NOT_RUN", "exit_code": null},
+    {"order": 3, "source": "crm", "recipe": "infrastructure/database/datahub/recipes/crm.i2.yml", "recipe_sha256": "e59742b918b3495ffe917897a23151035d12b19595ef87ee3c1e1e3c0c7b4d86", "status": "NOT_RUN", "exit_code": null},
+    {"order": 4, "source": "facility", "recipe": "infrastructure/database/datahub/recipes/facility.i3.yml", "recipe_sha256": "0a6deacf0c3a2c56d653d0a1c873876739a68d647f1b5b05d5fe41a3fa18700c", "status": "NOT_RUN", "exit_code": null},
+    {"order": 5, "source": "banquet", "recipe": "infrastructure/database/datahub/recipes/banquet.i3.yml", "recipe_sha256": "daedf668b1c3cd8ea87b1fd83dbf5986bc3c3ae020f6855d65590b33cbaf7a44", "status": "NOT_RUN", "exit_code": null},
+    {"order": 6, "source": "serving", "recipe": "infrastructure/database/datahub/recipes/serving.i4.yml", "recipe_sha256": "e02163799dcd3ddc2b86a7530d909e746466d79c378ff20be8d6b83d2cb846be", "status": "NOT_RUN", "exit_code": null}
   ],
   "expected": {
     "view_count": 8,
@@ -34,7 +36,7 @@
       "urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics.workforce_monthly_metrics,PROD)"
     ]
   },
-  "observed": {
+  "pre_authorization_baseline": {
     "ingestion": {"status": "PASS", "run_ids": ["pms", "pos", "crm", "facility", "banquet", "serving"], "canonical_sha256": "793a9cae722f87f6a0594c802948b8697eeb6e6a504033f8cdcfa54628b94157"},
     "search": {"status": "PASS", "view_count": 8, "canonical_sha256": "100e8f2b0baa60cbbb707e5ca5e712bffd0bb01586de952ab9c082e52386a6e9"},
     "schema": {"status": "PASS", "column_count": 116, "canonical_sha256": "eb941cc3446f306bbf32836819a558d70453fb4bc343442cc07a0de110d72b43"},

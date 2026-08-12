@@ -43,7 +43,7 @@
     },
     "kafka_image": "confluentinc/cp-kafka:8.2.2",
     "object_storage_uri": "file:///tmp/datahub-object-storage",
-    "recipe_sha256": "bdd5902bb2d5411b88235f4b52acd617793a6b0bd00f7cb5007eee2819bf1f5c",
+    "recipe_sha256": "e02163799dcd3ddc2b86a7530d909e746466d79c378ff20be8d6b83d2cb846be",
     "breaking_change_checks": {
       "v1_6_prerequisite": "SATISFIED",
       "classification_config": "NOT_CONFIGURED",
@@ -328,7 +328,7 @@
     "read_only_policy": {
       "status": "PASS",
       "file": "infrastructure/database/trino/etc/access-control-rules.json",
-      "sha256": "c98925d263343c8964977316f5a10ed15a75465293f7a2146ab948bd2bf18644",
+      "sha256": "07e17ab969e57967a9891b97072446ade6d6d3944de61e22741e252c0891f5f4",
       "ddl": {
         "command": "CREATE TABLE serving.analytics.r2_forbidden_write AS SELECT 1 id WHERE false",
         "exit_code": 1,

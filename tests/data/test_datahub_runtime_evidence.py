@@ -13,21 +13,22 @@ def load(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_runtime_evidence_records_successful_live_validation():
+def test_runtime_evidence_does_not_claim_unvalidated_authorization_runtime():
     evidence = load(EVIDENCE_PATH)
     assert evidence["contract_version"] == "I5-DATAHUB-v1.1.0-RUNTIME-DRAFT"
     assert evidence["datahub_version"] == "v1.7.0"
     assert evidence["trino_version"] == "476"
-    assert (evidence["status"], evidence["runtime_execution"]) == ("PASS", "PASS")
-    assert evidence["blocker"] is None
+    assert (evidence["status"], evidence["runtime_execution"]) == ("CONFIG_UPDATED", "NOT_RUN")
+    assert evidence["auth_runtime_validation"] == "NOT_RUN"
+    assert evidence["blocker"] == "PROFILE_PAT_AND_METADATA_POLICY_PROVISIONING_REQUIRED"
     assert evidence["recorded_at"].endswith("Z")
-    assert all(item["status"] == "PASS" and item["exit_code"] == 0 for item in evidence["ingestion_plan"])
-    assert all(item["status"] == "PASS" for item in evidence["observed"].values())
-    assert all(re.fullmatch(r"[0-9a-f]{64}", item["canonical_sha256"]) for item in evidence["observed"].values())
-    assert evidence["observed"]["search"]["view_count"] == 8
-    assert evidence["observed"]["schema"]["column_count"] == 116
-    assert evidence["observed"]["lineage"]["upstream_edge_count"] > 0
-    assert evidence["observed"]["lineage"]["fine_grained_lineage_count"] > 0
+    assert all(item["status"] == "NOT_RUN" and item["exit_code"] is None for item in evidence["ingestion_plan"])
+    baseline = evidence["pre_authorization_baseline"]
+    assert all(item["status"] == "PASS" for item in baseline.values())
+    assert all(re.fullmatch(r"[0-9a-f]{64}", item["canonical_sha256"]) for item in baseline.values())
+    assert baseline["search"]["view_count"] == 8
+    assert baseline["schema"]["column_count"] == 116
+    assert baseline["lineage"]["upstream_edge_count"] > 0
 
 
 def test_recipe_order_and_hashes_are_reproducible():

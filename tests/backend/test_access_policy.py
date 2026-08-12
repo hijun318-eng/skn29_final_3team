@@ -19,6 +19,8 @@ from app.access_policy import (  # noqa: E402
     ACCESS_POLICY_VERSION,
     effective_access,
     load_access_policy,
+    load_server_access_profiles,
+    resolve_access_profile,
     test_seed_role as resolve_test_seed_role,
 )
 from app.api.audit_router import get_effective_access  # noqa: E402
@@ -34,6 +36,21 @@ def test_versioned_seed_maps_each_test_subject_through_a_group_role():
     serialized = json.dumps(policy)
     for forbidden in ("token", "digest", "password", "secret"):
         assert forbidden not in serialized.lower()
+
+
+def test_analysis_profiles_match_server_contract_and_default_to_pms_only():
+    policy = load_access_policy()
+    contract = load_server_access_profiles()
+    assert set(policy["access_profiles"]) == set(contract["profiles"]) == {
+        "pms_only", "crm_only", "pms_crm", "integrated_revenue"
+    }
+    profile = resolve_access_profile(UUID(int=1), Role.HOTEL_ANALYST, None)
+    assert profile.name == "pms_only"
+    assert profile.datahub_principal == contract["profiles"]["pms_only"]["datahub_actor"]
+    assert profile.credential_env == "DATAHUB_PMS_ONLY_TOKEN"
+    assert profile.domains == ("urn:li:domain:rooms",)
+    with pytest.raises(PermissionError):
+        resolve_access_profile(UUID(int=3), Role.DATA_ADMIN, "pms_only")
 
 
 def test_effective_access_exposes_only_authenticated_self_and_policy_version():

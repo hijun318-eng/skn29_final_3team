@@ -10,7 +10,14 @@ sink:
   type: datahub-rest
   config:
     server: http://datahub-gms-quickstart:8080
+    token: ${DATAHUB_INGESTION_TOKEN}
 transformers:
+  - type: simple_add_dataset_domain
+    config:
+      domains: ["urn:li:domain:facility"]
+  - type: simple_add_dataset_tags
+    config:
+      tag_urns: ["urn:li:tag:AI_SEARCH_ALLOWED"]
   - type: simple_add_ownership
     config:
       owner_urns: ["urn:li:corpuser:facility_operations"]

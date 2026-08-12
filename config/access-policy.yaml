@@ -16,5 +16,11 @@
     "weekly-room-operations": {
       "allowed_roles": ["hotel_analyst"]
     }
+  },
+  "access_profiles": {
+    "pms_only": {"allowed_roles": ["hotel_analyst"]},
+    "crm_only": {"allowed_roles": ["hotel_analyst"]},
+    "pms_crm": {"allowed_roles": ["hotel_analyst"]},
+    "integrated_revenue": {"allowed_roles": ["hotel_analyst"]}
   }
 }

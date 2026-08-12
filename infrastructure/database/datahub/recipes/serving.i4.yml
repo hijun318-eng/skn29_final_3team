@@ -27,3 +27,16 @@ sink:
   type: datahub-rest
   config:
     server: http://datahub-gms-quickstart:8080
+    token: ${DATAHUB_INGESTION_TOKEN}
+transformers:
+  - type: pattern_add_dataset_domain
+    config:
+      domain_pattern:
+        rules:
+          ".*banquet_monthly_metrics.*": ["urn:li:domain:banquet"]
+          ".*(facility_daily|resource_monthly|workforce_monthly)_metrics.*": ["urn:li:domain:facility"]
+          ".*fnb_daypart_metrics.*": ["urn:li:domain:food_and_beverage"]
+          ".*hotel_(daily|monthly|yearly)_metrics.*": ["urn:li:domain:rooms"]
+  - type: simple_add_dataset_tags
+    config:
+      tag_urns: ["urn:li:tag:AI_SEARCH_ALLOWED"]

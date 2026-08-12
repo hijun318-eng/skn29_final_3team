@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 from threading import BoundedSemaphore, Lock
+from time import monotonic
 from typing import Any
 
 
@@ -19,37 +20,57 @@ def secure_cache_key(kind: str, **parts: object) -> str:
 
 
 class IsolatedExecutionCache:
-    """Keep SQL plans and query results in separate bounded stores."""
+    """Keep short-lived SQL plans and 24-hour results in separate stores."""
 
     MAX_ENTRIES = 128
+    PLAN_TTL_SECONDS = 60 * 60
+    RESULT_TTL_SECONDS = 24 * 60 * 60
 
-    def __init__(self) -> None:
-        self._plans: dict[str, dict[str, Any]] = {}
-        self._results: dict[str, dict[str, Any]] = {}
+    def __init__(self, clock=monotonic) -> None:
+        self._plans: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._results: dict[str, tuple[float, dict[str, Any]]] = {}
         self._lock = Lock()
+        self._clock = clock
 
     def get_plan(self, key: str) -> dict[str, Any] | None:
         return self._get(self._plans, key)
 
     def put_plan(self, key: str, value: dict[str, Any]) -> None:
-        self._put(self._plans, key, value)
+        self._put(self._plans, key, value, self.PLAN_TTL_SECONDS)
 
     def get_result(self, key: str) -> dict[str, Any] | None:
         return self._get(self._results, key)
 
     def put_result(self, key: str, value: dict[str, Any]) -> None:
-        self._put(self._results, key, value)
+        self._put(self._results, key, value, self.RESULT_TTL_SECONDS)
 
-    def _get(self, store: dict[str, dict[str, Any]], key: str) -> dict[str, Any] | None:
+    def _get(
+        self, store: dict[str, tuple[float, dict[str, Any]]], key: str
+    ) -> dict[str, Any] | None:
         with self._lock:
-            value = store.get(key)
-            return copy.deepcopy(value) if value is not None else None
+            item = store.get(key)
+            if item is None:
+                return None
+            expires_at, value = item
+            if expires_at <= self._clock():
+                del store[key]
+                return None
+            return copy.deepcopy(value)
 
-    def _put(self, store: dict[str, dict[str, Any]], key: str, value: dict[str, Any]) -> None:
+    def _put(
+        self,
+        store: dict[str, tuple[float, dict[str, Any]]],
+        key: str,
+        value: dict[str, Any],
+        ttl_seconds: int,
+    ) -> None:
         with self._lock:
+            now = self._clock()
+            for expired in [name for name, item in store.items() if item[0] <= now]:
+                del store[expired]
             if len(store) >= self.MAX_ENTRIES:
                 store.pop(next(iter(store)))
-            store[key] = copy.deepcopy(value)
+            store[key] = (now + ttl_seconds, copy.deepcopy(value))
 
 
 class ModelCallBudget:

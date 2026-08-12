@@ -155,6 +155,7 @@ class AnalysisService:
             policy=package.policy_version,
         )
         common_key = {
+            "role": context.role.value,
             "context": package.package_hash,
             "policy": package.policy_version,
             "entitlement": package.entitlement_hash,

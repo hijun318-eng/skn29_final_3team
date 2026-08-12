@@ -72,8 +72,6 @@ class AppDatabaseReadiness:
 
     @staticmethod
     def _trino_probe() -> str:
-        if os.getenv("DATA_PLATFORM_MODE", "fake") == "fake":
-            return "not_required"
         url = f"{os.getenv('TRINO_URL', 'http://trino:8080').rstrip('/')}/v1/info"
         try:
             with urlopen(url, timeout=2) as response:
@@ -83,7 +81,7 @@ class AppDatabaseReadiness:
 
     @staticmethod
     def _datahub_probe() -> str:
-        if os.getenv("DATA_PLATFORM_MODE", "fake") != "real":
+        if os.getenv("DATA_PLATFORM_MODE", "real") != "real":
             return "not_required"
         url = f"{os.getenv('DATAHUB_GMS_URL', 'http://datahub-gms:8080').rstrip('/')}/config"
         try:
@@ -94,9 +92,9 @@ class AppDatabaseReadiness:
 
     @staticmethod
     def _model_probe() -> str:
-        mode = (os.getenv("MODEL_MODE") or os.getenv("LLM") or "fake").strip().lower()
-        if mode in {"fake", "contract-fake", "template-only"}:
-            return "not_required" if mode == "template-only" else "not_ready"
+        mode = (os.getenv("MODEL_MODE") or os.getenv("LLM") or "template-only").strip().lower()
+        if mode == "template-only":
+            return "not_required"
         if mode != "openai":
             return "not_ready"
         endpoint = (

@@ -19,10 +19,10 @@ from app.analysis_contracts import (  # noqa: E402
     ReplayAnalysisRequest,
 )
 from app.api import router as analysis_api  # noqa: E402
-from app.contracts import AnalysisRequest, RequestContext  # noqa: E402
+from app.contracts import RequestContext  # noqa: E402
 
 
-class FakeAnalysisRepository:
+class InMemoryAnalysisRepository:
     def __init__(self, owner_id: UUID) -> None:
         self.owner_id = owner_id
         self.definition_id = uuid4()
@@ -123,7 +123,7 @@ def test_definition_request_rejects_client_owned_fields_and_unsafe_parameter_nam
 
 def test_definition_routes_are_owner_scoped_repository_calls_without_values_in_contract():
     owner = uuid4()
-    repository = FakeAnalysisRepository(owner)
+    repository = InMemoryAnalysisRepository(owner)
     request = CreateAnalysisDefinitionRequest(
         title="객실 운영",
         question="user@example.com의 객실 운영을 알려줘",
@@ -142,49 +142,6 @@ def test_definition_routes_are_owner_scoped_repository_calls_without_values_in_c
     assert "parameters" not in created
 
 
-def test_replay_uses_existing_controller_and_is_idempotent_without_result_exposure():
-    owner = uuid4()
-    repository = FakeAnalysisRepository(owner)
-    first_context = context(owner)
-    payload = ReplayAnalysisRequest(as_of=date(2026, 7, 1), idempotency_key="run-1")
-    with patch.object(analysis_api, "_analysis_repository", return_value=repository):
-        first = analysis_api.replay_analysis_definition(
-            repository.definition_id, payload, first_context
-        )
-        second = analysis_api.replay_analysis_definition(
-            repository.definition_id, payload, context(owner)
-        )
-
-    assert first == second
-    assert first["request_id"] == first_context.request_id
-    assert first["status"] == "SUCCEEDED"
-    assert first["as_of"] == date(2026, 7, 1)
-    assert first["artifact_id"]
-    assert set(repository.finished[1]) == {"plan", "query", "package"}
-    assert "result" not in first
-    assert "sql" not in first
-
-
-def test_direct_analysis_persists_request_query_and_artifact_when_database_is_configured():
-    owner = uuid4()
-    repository = FakeAnalysisRepository(owner)
-    request_context = context(owner)
-    with patch.object(
-        analysis_api, "_analysis_repository", return_value=repository
-    ), patch.dict(
-        "os.environ", {"APP_RUNTIME_DATABASE_URL": "postgresql://configured"}
-    ):
-        response = analysis_api.analysis(
-            AnalysisRequest(question="합성 객실 운영 현황을 알려줘"),
-            request_context,
-        )
-
-    assert response.data.status.value == "SUCCEEDED"
-    assert repository.request_id == request_context.request_id
-    assert repository.finished[0] is response
-    assert set(repository.finished[1]) == {"plan", "query", "package"}
-
-
 def test_replay_requires_store_and_existing_owner_definition():
     owner_context = context()
     with patch.dict("os.environ", {}, clear=True):
@@ -192,7 +149,7 @@ def test_replay_requires_store_and_existing_owner_definition():
             analysis_api._analysis_repository(owner_context)
     assert unavailable.value.status_code == 503
 
-    repository = FakeAnalysisRepository(owner_context.user_id)
+    repository = InMemoryAnalysisRepository(owner_context.user_id)
     with patch.object(analysis_api, "_analysis_repository", return_value=repository):
         with pytest.raises(HTTPException) as missing:
             analysis_api.replay_analysis_definition(

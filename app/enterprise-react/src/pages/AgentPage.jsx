@@ -1,13 +1,11 @@
 import { useState } from "react";
-import { Check, Eye, FilePlus2, MessageSquareText, Plus, Send, Sparkles, TableProperties, X } from "lucide-react";
+import { MessageSquareText, Plus, Send, Sparkles, TableProperties, X } from "lucide-react";
 import { createAnalysisClient } from "../api/analysisClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { MetaStrip, SectionTitle } from "../components/common/EnterpriseUi";
 import { OPENAPI_VERSION } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 
-const RECENT_ANALYSES = ["객실·예약·연회 통합 분석"];
-const REPORT_SECTIONS = ["분석 요약", "핵심 KPI", "매출·점유율 비교 차트", "PMS·CRM·Banquet 근거"];
 const ARTIFACT_TABS = [["report", "Report"], ["sources", "Sources"], ["run", "Run history"], ["trace", "Trace"]];
 const client = createAnalysisClient();
 
@@ -21,28 +19,25 @@ function createTransientRun(question, conversationId, status = "idle") {
     metrics: [],
     sources: [],
     meta: {
-      asOf: "2026-07-30",
+      asOf: "",
       timezone: "Asia/Seoul",
       synthetic: true,
-      seed: "—",
-      schemaVersion: "—",
+      seed: "",
+      schemaVersion: "",
       contractVersion: OPENAPI_VERSION,
     },
   };
 }
 
-export function AgentPage({ onNavigate }) {
+export function AgentPage() {
   const [conversationId] = useState(createUuid);
-  const [question, setQuestion] = useState("이번 달 객실 매출을 일별로 분석해줘");
+  const [question, setQuestion] = useState("");
   const [submittedQuestion, setSubmittedQuestion] = useState("");
   const [run, setRun] = useState(() => createTransientRun("", conversationId));
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [artifactTab, setArtifactTab] = useState("report");
-  const [reportModal, setReportModal] = useState("");
-  const [reportSections, setReportSections] = useState(REPORT_SECTIONS);
-  const viewMeta = run.meta;
 
   const submitQuestion = async (event) => {
     event.preventDefault();
@@ -55,13 +50,13 @@ export function AgentPage({ onNavigate }) {
     setSubmittedQuestion(nextQuestion);
     setRun(createTransientRun(nextQuestion, conversationId, "queued"));
     try {
-      setRun(await client.analyze(nextQuestion, conversationId, "ready"));
+      setRun(await client.analyze(nextQuestion, conversationId));
     } catch {
       setRun({
         ...createTransientRun(nextQuestion, conversationId, "failed"),
         error: {
           code: "INTERNAL_ERROR",
-          message: "분석 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+          message: "분석 API 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
           retryable: true,
         },
       });
@@ -70,110 +65,42 @@ export function AgentPage({ onNavigate }) {
     }
   };
 
-  const createReportDraft = () => {
-    const artifactId = run.artifact?.artifactId;
-    if (!artifactId) return;
-    const includes = (section) => reportSections.includes(section);
-    const blocks = [
-      { id: `artifact-${artifactId}-title`, type: "heading", title: "보고서 제목", content: "7월 마지막 주 객실 매출 감소 통합 분석", w: 12, h: 2 },
-      includes("분석 요약") && { id: `artifact-${artifactId}-summary`, type: "summary", title: "AI 분석 요약", content: `${run.summary}\n\n※ 같은 기간에 함께 관측된 변화이며 인과관계 확정을 위해 관리자 검토가 필요합니다.`, w: 12, h: 4 },
-      includes("핵심 KPI") && { id: `artifact-${artifactId}-kpi`, type: "kpi", title: "핵심 KPI", content: "객실 매출 4,520→4,010만원\n점유율 76.1→68.6%\n직접 예약 43.5→38.2%\n연회 변경 2건\n객실 취소 62박", w: 6, h: 3 },
-      includes("매출·점유율 비교 차트") && { id: `artifact-${artifactId}-chart`, type: "chart", title: "매출·점유율 비교", values: [45.2, 40.1, 76.1, 68.6], labels: ["4,520", "4,010", "76.1", "68.6"], caption: "객실 매출(만원) 4,520→4,010 · 점유율(%) 76.1→68.6", w: 6, h: 4 },
-      includes("PMS·CRM·Banquet 근거") && { id: `artifact-${artifactId}-evidence`, type: "text", title: "데이터 출처 및 분석 기준", content: `Hotel PMS · pms.public.pms_stays\nMembership CRM · crm.dbo.crm_member_grade_history\nBanquet Sales · banquet.public.banquet_bookings\nArtifact ${artifactId} · Query ${run.artifact?.queryId ?? "—"}\nsynthetic · seed ${run.meta.seed} · schema ${run.meta.schemaVersion} · as_of ${run.meta.asOf}`, w: 6, h: 4 },
-      { id: `artifact-${artifactId}-review`, type: "quote", title: "관리자 검토 필요", content: "연회 일정 변경과 객실 매출 감소는 같은 기간에 관측됐지만 인과관계로 확정하지 않습니다. 보고서 확정 전 관리자가 해석과 조치 문구를 검토해야 합니다.", w: 6, h: 4 },
-    ].filter(Boolean);
-    window.sessionStorage.setItem("answervice.report.artifact", JSON.stringify({ artifactId, queryId: run.artifact?.queryId, question: run.question, title: blocks[0].content, blocks }));
-    window.sessionStorage.setItem("answervice.report.importNotice", `분석 결과 ${blocks.length}개 블록을 보고서 초안에 추가했습니다.`);
-    onNavigate("/reports");
-  };
-
   return (
     <div className={`chat-layout ${evidenceOpen ? "evidence-open" : ""}`}>
       <aside className="chat-history">
-        <button className="new-chat"><Plus size={16} />새 분석</button>
+        <button className="new-chat" onClick={() => { setQuestion(""); setHasSubmitted(false); setRun(createTransientRun("", conversationId)); }}><Plus size={16} />새 분석</button>
         <p>RECENT</p>
-        {RECENT_ANALYSES.map((item, index) => (
-          <button className={index === 0 ? "selected" : ""} key={item}>
-            <MessageSquareText size={15} />
-            <span>{item}<small>{index === 0 ? "방금 전" : `${index + 1}일 전`}</small></span>
-          </button>
-        ))}
+        <div className="evidence-empty"><MessageSquareText size={15} /> 저장된 대화가 없습니다.</div>
       </aside>
 
       <main className="chat-main">
-        <MetaStrip meta={viewMeta} />
-        {!hasSubmitted && <section className="chat-empty-state" aria-labelledby="chat-empty-title"><small>CHAT-FIRST ANALYTICS</small><h2 id="chat-empty-title">무엇을 분석할까요?</h2><p>검증된 합성 데이터 범위에서 직접 질문을 입력하세요.</p></section>}
+        <MetaStrip meta={run.meta} />
+        {!hasSubmitted && <section className="chat-empty-state" aria-labelledby="chat-empty-title"><small>CHAT-FIRST ANALYTICS</small><h2 id="chat-empty-title">무엇을 분석할까요?</h2><p>승인된 데이터에 대해 직접 질문을 입력하세요.</p></section>}
         {hasSubmitted && <div className="conversation">
-          <div className="message message--user">
-            <div className="avatar small">J</div>
-            <div><b>사용자</b><p>{submittedQuestion}</p></div>
-          </div>
+          <div className="message message--user"><div className="avatar small">J</div><div><b>사용자</b><p>{submittedQuestion}</p></div></div>
           <div className="message message--agent">
             <span className="agent-avatar"><Sparkles size={17} /></span>
             <div>
               <b>Analysis Agent <em>{run.status}</em></b>
-              <AnalysisStatePanel
-                run={run}
-              />
-              {run.artifact && <><div className="demo-steps" aria-label="시연 진행 단계"><b className="done"><Check size={12} />분석 완료</b><span>→</span><b className="active">초안 반영</b><span>→</span><b>편집</b><span>→</span><b>확정</b></div><div className="analysis-report-actions"><button className="primary" type="button" onClick={() => setReportModal("draft")}><FilePlus2 size={15} />보고서 초안에 추가</button><button type="button" onClick={() => setReportModal("preview")}><Eye size={15} />결과 미리보기</button><button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((open) => !open)}><TableProperties size={15} />Artifacts</button></div></>}
+              <AnalysisStatePanel run={run} />
+              {run.artifact && <div className="analysis-report-actions"><button type="button" aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen((open) => !open)}><TableProperties size={15} />Artifacts</button></div>}
             </div>
           </div>
         </div>}
         <form className="chat-input" onSubmit={submitQuestion}>
-          <div className="question-field">
-            <input
-              aria-label="분석 질문"
-              value={question}
-              onChange={(event) => setQuestion(event.target.value)}
-              placeholder="승인된 데이터에 대해 질문하세요..."
-            />
-            <button aria-label="질문 전송" disabled={submitting}><Send size={17} /></button>
-          </div>
-          <small>중간발표 시연용 합성 데이터 · seed 20260729 · as_of 2026-07-30</small>
+          <div className="question-field"><input aria-label="분석 질문" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="승인된 데이터에 대해 질문하세요..." /><button aria-label="질문 전송" disabled={submitting}><Send size={17} /></button></div>
+          <small>화면에는 Analysis API가 반환한 결과만 표시됩니다.</small>
         </form>
       </main>
 
       {evidenceOpen && <aside className="evidence-panel">
         <div className="evidence-panel-header"><SectionTitle eyebrow="TRACEABILITY" title="Artifacts" /><button type="button" aria-label="Artifacts 닫기" onClick={() => setEvidenceOpen(false)}><X size={18} /></button></div>
         <div className="artifact-tabs" role="tablist" aria-label="Artifact 상세">{ARTIFACT_TABS.map(([id, label]) => <button className={artifactTab === id ? "active" : ""} role="tab" aria-selected={artifactTab === id} onClick={() => setArtifactTab(id)} key={id}>{label}</button>)}</div>
-        {!hasSubmitted && <p className="evidence-empty">질문을 입력하면 분석 결과와 근거가 표시됩니다.</p>}
-        {hasSubmitted && <>
-        {artifactTab === "report" && <div className="artifact-report-summary"><small>REPORT ARTIFACT</small><h3>7월 마지막 주 객실 매출 분석</h3><p>{run.summary}</p><dl><div><dt>artifact</dt><dd>{run.artifact?.artifactId ?? "—"}</dd></div><div><dt>status</dt><dd>{run.status}</dd></div><div><dt>layout</dt><dd>12-column draft</dd></div></dl><button type="button" className="primary" onClick={() => setReportModal("draft")}><FilePlus2 size={14} />보고서 초안 구성</button></div>}
-        {artifactTab === "trace" && <>
-        <div className="execution-list">
-          {["분석 요청 확인", "메타데이터 근거 연결", "Artifact 생성"].map((name, index) => (
-            <article key={name}>
-              <span>{index + 1}</span>
-              <div><b>{name}<em><Check size={11} />검증 완료</em></b><small>동일 기준 시각과 합성 데이터 버전을 사용합니다.</small></div>
-            </article>
-          ))}
-        </div>
-        {run.evidence && (<div className="evidence-block"><h3>조회 조건</h3><dl><div><dt>period</dt><dd>{run.evidence.period ? `${run.evidence.period.start} ~ ${run.evidence.period.endExclusive}` : "—"}</dd></div><div><dt>filter</dt><dd>{Object.entries(run.evidence.filters).map(([key, value]) => `${key}=${String(value)}`).join(", ") || "없음"}</dd></div><div><dt>sampling</dt><dd>{run.evidence.sampling.applied ? "적용" : "미적용"} · {run.evidence.sampling.returnedRows}/{run.evidence.sampling.totalRows ?? "unknown"}</dd></div></dl></div>)}</>}
-        {artifactTab === "sources" && <div className="evidence-block">
-          <h3>사용 데이터 자산</h3>
-          {run.sources.length ? run.sources.map((source) => (
-            <article className="evidence-source" key={source.urn}>
-              <span><TableProperties size={13} />{source.name}<small>{source.status === "success" ? "정상" : "실패"}</small></span>
-              <code>{source.urn}</code>
-              {source.fqn && <small>{source.fqn} · schema {source.schemaVersion} · seed {source.seedVersion}</small>}
-            </article>
-          )) : <p className="evidence-empty">표시 가능한 자산이 없습니다.</p>}
-        </div>}
-        {artifactTab === "run" && <div className="evidence-block">
-          <h3>실행 정보</h3>
-          <dl>
-            <div><dt>conversation</dt><dd>{run.conversationId}</dd></div>
-            <div><dt>request</dt><dd>{run.requestId}</dd></div>
-            <div><dt>run/trace</dt><dd>{run.traceId}</dd></div>
-            <div><dt>artifact</dt><dd>{run.artifact?.artifactId ?? "—"}</dd></div>
-            <div><dt>query</dt><dd>{run.artifact?.queryId ?? run.evidence?.queryId ?? "—"}</dd></div>
-            <div><dt>as_of</dt><dd>{run.meta.asOf}</dd></div>
-            <div><dt>timezone</dt><dd>{run.meta.timezone}</dd></div>
-          </dl>
-        </div>}
-        </>}
+        {artifactTab === "report" && <div className="artifact-report-summary"><small>REPORT ARTIFACT</small><h3>{run.question}</h3><p>{run.summary || "요약이 없습니다."}</p><dl><div><dt>artifact</dt><dd>{run.artifact?.artifactId ?? "—"}</dd></div><div><dt>status</dt><dd>{run.status}</dd></div></dl></div>}
+        {artifactTab === "trace" && <div className="evidence-block"><h3>추적 식별자</h3><dl><div><dt>request</dt><dd>{run.requestId}</dd></div><div><dt>trace</dt><dd>{run.traceId}</dd></div><div><dt>context</dt><dd>{run.artifact?.contextHash ?? "—"}</dd></div></dl></div>}
+        {artifactTab === "sources" && <div className="evidence-block"><h3>사용 데이터 자산</h3>{run.sources.length ? run.sources.map((source) => <article className="evidence-source" key={source.urn}><span><TableProperties size={13} />{source.name}<small>{source.status}</small></span><code>{source.urn}</code>{source.fqn && <small>{source.fqn} · schema {source.schemaVersion} · seed {source.seedVersion}</small>}</article>) : <p className="evidence-empty">API가 반환한 자산이 없습니다.</p>}</div>}
+        {artifactTab === "run" && <div className="evidence-block"><h3>실행 정보</h3><dl><div><dt>conversation</dt><dd>{run.conversationId}</dd></div><div><dt>request</dt><dd>{run.requestId}</dd></div><div><dt>run/trace</dt><dd>{run.traceId}</dd></div><div><dt>artifact</dt><dd>{run.artifact?.artifactId ?? "—"}</dd></div><div><dt>query</dt><dd>{run.artifact?.queryId ?? run.evidence?.queryId ?? "—"}</dd></div><div><dt>as_of</dt><dd>{run.meta.asOf}</dd></div></dl></div>}
       </aside>}
-      {reportModal && <div className="report-modal-backdrop" role="presentation" onMouseDown={() => setReportModal("")}><section className={`report-transfer-modal ${reportModal === "preview" ? "report-transfer-modal--preview" : ""}`} role="dialog" aria-modal="true" aria-labelledby="report-modal-title" onMouseDown={(event) => event.stopPropagation()}><header><div><small>SYNTHETIC ANALYSIS ARTIFACT</small><h2 id="report-modal-title">{reportModal === "draft" ? "보고서 초안 구성" : "분석 결과 미리보기"}</h2></div><button aria-label="닫기" onClick={() => setReportModal("")}><X size={18} /></button></header><div className="report-preview-summary"><b>7월 마지막 주 객실 매출 감소 통합 분석</b><p>{run.summary}</p><dl><div><dt>객실 매출</dt><dd>4,520 → 4,010만원</dd></div><div><dt>점유율</dt><dd>76.1 → 68.6%</dd></div><div><dt>직접 예약</dt><dd>43.5 → 38.2%</dd></div><div><dt>연회 변경</dt><dd>2건 · 62박 취소</dd></div></dl><em>관측 결과이며 인과관계 확정을 위해 관리자 검토가 필요합니다.</em></div>{reportModal === "draft" && <div className="report-section-options"><p>초안에 포함할 항목</p>{REPORT_SECTIONS.map((section) => <label key={section}><input type="checkbox" checked={reportSections.includes(section)} onChange={() => setReportSections((current) => current.includes(section) ? current.filter((item) => item !== section) : [...current, section])} /><span><Check size={12} /></span>{section}</label>)}</div>}<footer><button onClick={() => setReportModal("")}>취소</button>{reportModal === "draft" ? <button className="primary" disabled={!reportSections.length} onClick={createReportDraft}>선택한 내용으로 초안 만들기</button> : <button className="primary" onClick={() => setReportModal("draft")}>보고서 초안에 추가</button>}</footer></section></div>}
     </div>
   );
 }

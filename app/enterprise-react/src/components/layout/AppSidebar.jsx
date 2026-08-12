@@ -1,8 +1,6 @@
 import {
-  BookOpen,
   Building2,
   ChevronDown,
-  Database,
   FileBarChart,
   MessageSquareText,
   X,
@@ -12,11 +10,7 @@ import { PAGE_PATHS } from "../../routing";
 const NAVIGATION = [
   { id: "chat", path: PAGE_PATHS.chat, label: "분석 Agent", icon: MessageSquareText, group: "workspace" },
   { id: "reports", path: PAGE_PATHS.reports, label: "보고서", icon: FileBarChart, group: "workspace" },
-  { id: "catalog", path: PAGE_PATHS.catalog, label: "데이터 카탈로그", icon: BookOpen, group: "admin" },
-  { id: "connections", path: PAGE_PATHS.connections, label: "DB 연결 관리", icon: Database, group: "admin" },
 ];
-
-const SHOW_ADMIN_NAV = true;
 
 export function AppSidebar({ page, onNavigate, open, onClose }) {
   const renderGroup = (group, title) => (
@@ -55,13 +49,12 @@ export function AppSidebar({ page, onNavigate, open, onClose }) {
         </div>
         <nav>
           {renderGroup("workspace", "WORKSPACE")}
-          {SHOW_ADMIN_NAV && renderGroup("admin", "ADMINISTRATION")}
         </nav>
         <div className="organization">
           <Building2 size={20} />
           <div>
             <b>Sense Place Hotel</b>
-            <small>Demo Organization</small>
+            <small>Organization</small>
           </div>
           <ChevronDown size={15} />
         </div>

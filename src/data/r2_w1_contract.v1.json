@@ -12,7 +12,7 @@
     "R2-04": "five deterministic seed files and SHA-256 manifest",
     "R2-05": "dbo.customer_identity_map compatibility view backed by constrained dbo.crm_customer_map",
     "R2-06": "dbo.crm_member_grade_history half-open periods with overlap trigger",
-    "R2-07": "quality_rules and rejected_fixture assertions",
+    "R2-07": "quality rules",
     "R2-08": "account_matrix and Trino file-based read-only policy",
     "R2-09": "recognized_room_revenue metric and approved PMS-to-CRM event-time join"
   },
@@ -103,13 +103,6 @@
     {"source_id": "crm", "input_rows": 600000, "accepted_rows": 600000, "rejected_rows": 0},
     {"source_id": "facility", "input_rows": 718390, "accepted_rows": 718390, "rejected_rows": 0},
     {"source_id": "banquet", "input_rows": 16902, "accepted_rows": 16902, "rejected_rows": 0}
-  ],
-  "rejected_fixtures": [
-    {"id": "REJECT-IDENTITY-OVERLAP", "expected_error": "CRM_IDENTITY_PERIOD_OVERLAP"},
-    {"id": "REJECT-GRADE-OVERLAP", "expected_error": "CRM_GRADE_PERIOD_OVERLAP"},
-    {"id": "REJECT-READONLY-DDL", "expected_error": "Access Denied"},
-    {"id": "REJECT-TRINO-SYSTEM", "expected_error": "Cannot access catalog system"},
-    {"id": "REJECT-TRINO-PASSTHROUGH", "expected_error": "Cannot execute function"}
   ],
   "account_matrix": [
     {"source_id": "pms", "query_account": "pms_readonly", "ingestion_account": "pms_ingest", "source_write": "deny", "trino": "select-only"},

@@ -76,7 +76,7 @@ class ControlPlaneContractTest(unittest.TestCase):
         for module in graph:
             visit(module)
 
-    def test_service_depends_on_port_not_fake_adapter(self) -> None:
+    def test_service_depends_on_data_platform_port(self) -> None:
         source = (BACKEND / "app" / "services" / "analysis_service.py").read_text(
             encoding="utf-8"
         )
@@ -87,7 +87,6 @@ class ControlPlaneContractTest(unittest.TestCase):
         }
 
         self.assertIn("app.ports.data_platform", imports)
-        self.assertNotIn("app.adapters.fake_data_platform", imports)
 
     def test_contract_version_and_error_codes_are_complete(self) -> None:
         contracts = (BACKEND / "app" / "contracts.py").read_text(encoding="utf-8")

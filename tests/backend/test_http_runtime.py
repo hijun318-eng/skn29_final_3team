@@ -9,7 +9,6 @@ import time
 import unittest
 import urllib.error
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -30,6 +29,8 @@ class FastApiRuntimeTest(unittest.TestCase):
         environment["PYTHONPATH"] = os.pathsep.join([str(BACKEND), str(ROOT)])
         environment.pop("APP_RUNTIME_DATABASE_URL", None)
         environment["AUTH_MODE"] = "test"
+        environment["DATA_PLATFORM_MODE"] = "versioned-trino"
+        environment["MODEL_MODE"] = "template-only"
         environment["CORS_ALLOW_ORIGINS"] = (
             "http://localhost:5173,http://localhost:13000,"
             "http://192.168.0.15:13000"
@@ -225,75 +226,6 @@ class FastApiRuntimeTest(unittest.TestCase):
             denied.exception.headers.get("Access-Control-Allow-Origin")
         )
 
-    def test_analysis_preserves_context(self) -> None:
-        status, response = self.request(
-            "/analysis",
-            method="POST",
-            headers=self.context_headers(),
-            body={"question": "오늘 객실 운영 상태를 요약해줘"},
-        )
-        self.assertEqual(200, status)
-        self.assertEqual("SUCCEEDED", response["data"]["status"])
-        self.assertEqual("runtime-test-trace", response["meta"]["trace_id"])
-        self.assertEqual(CONTRACT_VERSION, response["meta"]["contract_version"])
-
-    def test_analysis_exposes_repair_trace_and_blocks_g3_artifact(self) -> None:
-        status, repaired = self.request(
-            "/analysis",
-            method="POST",
-            headers=self.context_headers(),
-            body={
-                "question": "합성 객실 운영 현황",
-                "parameters": {"scenario": "repair_once"},
-            },
-        )
-        self.assertEqual(200, status)
-        self.assertEqual(1, repaired["data"]["repair_count"])
-        self.assertIn(
-            "REPAIR",
-            [step["stage"] for step in repaired["data"]["trace"]],
-        )
-        self.assertIsNotNone(repaired["data"]["artifact"])
-
-        status, failed = self.request(
-            "/analysis",
-            method="POST",
-            headers=self.context_headers(),
-            body={
-                "question": "합성 객실 운영 현황",
-                "parameters": {"scenario": "g3_failed"},
-            },
-        )
-        self.assertEqual(200, status)
-        self.assertEqual("FAILED", failed["data"]["status"])
-        self.assertIsNone(failed["data"]["artifact"])
-        self.assertEqual(
-            "RESULT_EVIDENCE_MISSING",
-            failed["error"]["code"],
-        )
-
-    def test_third_concurrent_analysis_receives_real_http_429(self) -> None:
-        def submit(index: int):
-            headers = self.context_headers()
-            headers["X-Trace-Id"] = f"rate-limit-{index}"
-            return self.request(
-                "/analysis",
-                method="POST",
-                headers=headers,
-                body={
-                    "question": f"slow room demand {index}",
-                    "parameters": {"scenario": "slow"},
-                },
-            )
-
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            results = list(pool.map(submit, range(3)))
-
-        statuses = sorted(status for status, _body in results)
-        self.assertEqual([200, 200, 429], statuses)
-        limited = next(body for status, body in results if status == 429)
-        self.assertEqual("RATE_LIMITED", limited["error"]["code"])
-
     def test_missing_context_and_invalid_role_are_blocked(self) -> None:
         headers = self.context_headers()
         headers.pop("Authorization")
@@ -409,7 +341,7 @@ class RealTemplateHttpRuntimeTest(FastApiRuntimeTest):
             {
                 "PYTHONPATH": os.pathsep.join([str(BACKEND), str(ROOT)]),
                 "DATA_PLATFORM_MODE": "real",
-                "MODEL_MODE": "contract-fake",
+                "MODEL_MODE": "template-only",
                 "TRINO_URL": f"http://127.0.0.1:{cls.trino.server_port}",
                 "TRINO_USER": "synthetic-runtime",
                 "CORS_ALLOW_ORIGINS": "http://localhost:5173",

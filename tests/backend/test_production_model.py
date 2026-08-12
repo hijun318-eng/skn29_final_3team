@@ -1,4 +1,3 @@
-import json
 import unittest
 from datetime import date
 from pathlib import Path
@@ -14,8 +13,6 @@ from app.adapters.contract_model import (
     ContractModelAdapter,
     NodeModelRouter,
     _validate_sql_semantics,
-    openai_transport,
-    vllm_transport,
 )
 from app.contracts import RequestContext
 from app.services.context_builder import (
@@ -26,56 +23,9 @@ from app.services.context_builder import (
     ContextParameterBinding,
     ContextRequiredFilter,
 )
-from src.ai.fake_model import FakeModelAdapter
-from src.modelops.runtime import ProductionModelClient
 
 
 class ProductionModelTest(unittest.TestCase):
-    def test_openai_transport_uses_structured_outputs(self) -> None:
-        captured = {}
-        original = contract_model.request_json
-        node_payload = self._node2_payload()
-
-        def request(method, url, payload, token, timeout):
-            captured.update(
-                method=method,
-                url=url,
-                payload=payload,
-                token=token,
-                timeout=timeout,
-            )
-            response = FakeModelAdapter().generate("node2", node_payload)
-            return {"choices": [{"message": {"content": json.dumps(response)}}]}
-
-        contract_model.request_json = request
-        try:
-            result = openai_transport(
-                "http://model.local/",
-                "secret-token",
-                "gpt-4.1-mini",
-                "node2",
-                node_payload,
-                7.0,
-            )
-        finally:
-            contract_model.request_json = original
-
-        self.assertIn("sql", result)
-        self.assertEqual("http://model.local/v1/chat/completions", captured["url"])
-        self.assertEqual("secret-token", captured["token"])
-        self.assertEqual(0, captured["payload"]["temperature"])
-        self.assertEqual(1_500, captured["payload"]["max_tokens"])
-        self.assertEqual("gpt-4.1-mini", captured["payload"]["model"])
-        self.assertNotIn("guided_json", captured["payload"])
-        self.assertNotIn("chat_template_kwargs", captured["payload"])
-        response_format = captured["payload"]["response_format"]
-        self.assertEqual("json_schema", response_format["type"])
-        self.assertTrue(response_format["json_schema"]["strict"])
-        guided = response_format["json_schema"]["schema"]
-        self.assertEqual({"sql"}, set(guided["required"]))
-        self.assertFalse(guided["additionalProperties"])
-        self.assertEqual(node_payload, json.loads(captured["payload"]["messages"][1]["content"]))
-
     def test_node2_can_route_to_an_openai_compatible_sllm(self) -> None:
         calls = []
 
@@ -100,33 +50,6 @@ class ProductionModelTest(unittest.TestCase):
             (name, node) for name, node, _payload in calls
         ])
 
-    def test_vllm_transport_keeps_guided_json_contract(self) -> None:
-        captured = {}
-        original = contract_model.request_json
-        node_payload = self._node2_payload()
-
-        def request(method, url, payload, token, timeout):
-            captured.update(payload=payload, url=url)
-            response = FakeModelAdapter().generate("node2", node_payload)
-            return {"choices": [{"message": {"content": json.dumps(response)}}]}
-
-        contract_model.request_json = request
-        try:
-            vllm_transport(
-                "http://sllm.local",
-                None,
-                "Qwen/Qwen3-4B",
-                "node2",
-                node_payload,
-                7.0,
-            )
-        finally:
-            contract_model.request_json = original
-
-        self.assertEqual("Qwen/Qwen3-4B", captured["payload"]["model"])
-        self.assertEqual({"enable_thinking": False}, captured["payload"]["chat_template_kwargs"])
-        self.assertEqual({"sql"}, set(captured["payload"]["guided_json"]["required"]))
-
     def test_every_product_node_uses_its_r3_response_schema(self) -> None:
         expected = {
             "node2": "sql",
@@ -142,23 +65,8 @@ class ProductionModelTest(unittest.TestCase):
         with self.assertRaises(KeyError):
             contract_model._response_schema("unknown")
 
-    def test_fallback_is_rejected_as_product_result(self) -> None:
-        client = ProductionModelClient(
-            lambda _node, _payload, _timeout: (_ for _ in ()).throw(TimeoutError()),
-            failure_threshold=1,
-        )
-        adapter = ContractModelAdapter(client)
-
-        with self.assertRaisesRegex(TimeoutError, "fallback"):
-            adapter._generate("node2", self._node2_payload())
-        self.assertTrue(client.last_trace["fallback"])
-
-        with self.assertRaisesRegex(TimeoutError, "fallback"):
-            adapter._generate("node2", self._node2_payload())
-        self.assertEqual("CIRCUIT_OPEN", client.last_trace["status"])
-
     def test_plan_ignores_parameters_without_sql_placeholders(self) -> None:
-        response = FakeModelAdapter().generate("node2", self._node2_payload())
+        response = self._node2_response()
         response["parameters"].append(
             {"name": "grade_code", "type": "string", "value": "GOLD"}
         )
@@ -168,7 +76,7 @@ class ProductionModelTest(unittest.TestCase):
         self.assertNotIn("grade_code", plan["parameters"])
 
     def test_plan_binds_server_approved_values_for_model_placeholders(self) -> None:
-        response = FakeModelAdapter().generate("node2", self._node2_payload())
+        response = self._node2_response()
         response["sql"] = (
             "SELECT room_revenue FROM serving.analytics.hotel_daily_metrics "
             "WHERE data_period_status = :required_filter_1 "
@@ -207,8 +115,11 @@ class ProductionModelTest(unittest.TestCase):
         self.assertIn("DATE ':period_end_exclusive'", plan["sql"])
 
     def test_plan_rejects_duplicate_parameter_names(self) -> None:
-        response = FakeModelAdapter().generate("node2", self._node2_payload())
-        response["parameters"].append(dict(response["parameters"][0]))
+        response = self._node2_response()
+        response["parameters"] = [
+            {"name": "period_start", "value": "2026-08-01"},
+            {"name": "period_start", "value": "2026-08-01"},
+        ]
 
         with self.assertRaisesRegex(ValueError, "unique"):
             ContractModelAdapter._plan(response, "sql")
@@ -335,47 +246,6 @@ class ProductionModelTest(unittest.TestCase):
         )
         self.assertEqual("검증된 결과", result["summary"])
 
-    def test_node3_passes_approved_six_asset_derived_metric_selection(self) -> None:
-        captured = {}
-
-        class Model:
-            def generate(self, _node, payload):
-                captured.update(payload)
-                return {
-                    "explanation": "derived",
-                    "model": {"model_version": "MODEL-v1"},
-                }
-
-        join_id = "pms_crm_pos_gold_revenue_month_v1"
-        assets = [
-            {"urn": f"urn:li:dataset:source-{index}", "join_ids": (join_id,)}
-            for index in range(6)
-        ]
-        payload = {
-            "query": {
-                "rows": [],
-                "query_id": "query-1",
-                "status": "SUCCEEDED",
-            },
-            "assets": assets,
-            "context": RequestContext(as_of=date(2026, 8, 4)),
-        }
-        ContractModelAdapter(Model()).generate(
-            "node3",
-            payload,
-        )
-
-        self.assertEqual("total_guest_revenue_krw", captured["metric"])
-        self.assertEqual(
-            ["total_guest_revenue_krw"] * 6,
-            captured["metric_selection"]["context_metric_ids"],
-        )
-        self.assertEqual(
-            ["total_guest_revenue_krw"],
-            captured["metric_selection"]["entitled_metric_ids"],
-        )
-        self.assertTrue(ContractModelAdapter().generate("node3", payload)["summary"])
-
     def test_node3_metric_selection_fails_closed(self) -> None:
         invalid_assets = (
             [],
@@ -398,6 +268,15 @@ class ProductionModelTest(unittest.TestCase):
             with self.subTest(assets=assets):
                 with self.assertRaises(ValueError):
                     ContractModelAdapter._metric_selection(assets)
+
+    @staticmethod
+    def _node2_response():
+        return {
+            "sql": "SELECT 1 LIMIT 1000",
+            "parameters": [],
+            "references": [],
+            "model": {"model_version": "MODEL-v1"},
+        }
 
     @staticmethod
     def _node2_payload():

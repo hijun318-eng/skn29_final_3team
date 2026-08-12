@@ -124,7 +124,7 @@ VALID_PAYLOADS = {
         "result_reference": {"kind": "query_execution_id", "value": "query-1"},
     },
     "node3_response": {
-        "explanation": "fixture",
+        "explanation": "검증된 결과 설명",
         "conditions": [],
         "sources": [],
         "limitations": [],

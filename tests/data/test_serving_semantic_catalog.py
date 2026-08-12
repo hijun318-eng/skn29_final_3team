@@ -2,16 +2,13 @@ import importlib.util
 import json
 import sys
 import unittest
-from copy import deepcopy
 from pathlib import Path
-from urllib.parse import unquote, urlparse
 
 
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG_PATH = ROOT / "src/data/serving_semantic_catalog.i4.v1.json"
 CONTRACT_PATH = ROOT / "src/data/serving_analytics_contract.i4.v1.json"
 PUBLISHER_PATH = ROOT / "infrastructure/database/datahub/publish_semantic_catalog.py"
-VERIFIER_PATH = ROOT / "infrastructure/database/datahub/verify_semantic_catalog.py"
 COMPOSE_PATH = ROOT / "infrastructure/database/datahub/compose.consumer.yml"
 ACCESS_PATH = ROOT / "infrastructure/database/trino/etc/access-control-rules.json"
 CRM_DDL_PATH = ROOT / "infrastructure/database/sql/ddl/03_hotel_crm_sqlserver.sql"
@@ -26,48 +23,6 @@ def load_module(name, path):
 
 
 publisher = load_module("publish_semantic_catalog", PUBLISHER_PATH)
-verifier = load_module("verify_semantic_catalog", VERIFIER_PATH)
-
-
-class FakeResponse:
-    def __init__(self, payload=b"{}"):
-        self.payload = payload
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_args):
-        return False
-
-    def read(self):
-        return self.payload
-
-
-class FakeDataHub:
-    def __init__(self):
-        self.aspects = {}
-        self.posts = []
-
-    def __call__(self, request, timeout):
-        self.assert_timeout(timeout)
-        if request.get_method() == "POST":
-            body = json.loads(request.data.decode("utf-8"))["proposal"]
-            value = json.loads(body["aspect"]["value"])
-            self.aspects.setdefault(body["entityUrn"], {})[body["aspectName"]] = {
-                "name": body["aspectName"],
-                "version": 0,
-                "value": value,
-            }
-            self.posts.append(deepcopy(body))
-            return FakeResponse()
-        urn = unquote(urlparse(request.full_url).path.rsplit("/", 1)[1])
-        payload = json.dumps({"urn": urn, "aspects": self.aspects.get(urn, {})}).encode("utf-8")
-        return FakeResponse(payload)
-
-    @staticmethod
-    def assert_timeout(timeout):
-        if timeout <= 0:
-            raise AssertionError("timeout must be positive")
 
 
 class ServingSemanticCatalogTest(unittest.TestCase):
@@ -96,29 +51,12 @@ class ServingSemanticCatalogTest(unittest.TestCase):
         self.assertTrue(all(value.strip() for value in self.catalog["dataset_descriptions"].values()))
         self.assertTrue(all(value.strip() for value in self.catalog["field_descriptions"].values()))
 
-    def test_publisher_is_idempotent_and_verifier_checks_exact_8_116(self):
-        fake = FakeDataHub()
-        first = publisher.publish("http://127.0.0.1:18081", opener=fake)
-        first_state = deepcopy(fake.aspects)
-        second = publisher.publish("http://127.0.0.1:18081/", opener=fake)
-        self.assertEqual(first_state, fake.aspects)
-        self.assertEqual(first, second)
-        self.assertEqual(16, first["aspect_upserts"])
-        self.assertEqual(32, len(fake.posts))
-        self.assertEqual(
-            {"editableDatasetProperties", "editableSchemaMetadata"},
-            {post["aspectName"] for post in fake.posts},
-        )
-        result = verifier.verify("http://127.0.0.1:18081", opener=fake)
-        self.assertEqual("VERIFIED", result["status"])
-        self.assertEqual(8, result["dataset_descriptions"])
-        self.assertEqual(116, result["column_descriptions"])
-        self.assertEqual(self.catalog["catalog_version"], result["catalog_version"])
-        self.assertEqual(self.catalog["catalog_sha256"], result["catalog_sha256"])
-
     def test_publisher_rejects_external_datahub_endpoint(self):
         with self.assertRaisesRegex(ValueError, "restricted to local"):
-            publisher.publish("https://datahub.example.com", opener=FakeDataHub())
+            publisher.publish(
+                "https://datahub.example.com",
+                opener=lambda *_args, **_kwargs: self.fail("external opener must not run"),
+            )
 
     def test_datahub_kafka_health_uses_real_cli(self):
         self.assertIn("kafka-topics --bootstrap-server broker:29092 --list", self.compose)

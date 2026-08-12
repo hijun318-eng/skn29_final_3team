@@ -14,7 +14,6 @@
         "model_profile",
         "adapter",
         "model_version",
-        "fixture_version",
         "hash"
       ],
       "properties": {
@@ -25,7 +24,6 @@
         "model_profile": {"type": "string", "const": "base"},
         "adapter": {"type": ["string", "null"]},
         "model_version": {"type": "string", "minLength": 1},
-        "fixture_version": {"type": ["string", "null"]},
         "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
       }
     },

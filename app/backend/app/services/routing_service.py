@@ -42,7 +42,7 @@ class RoutingService:
         self._templates = {item.template_id: item for item in templates}
 
     @classmethod
-    def for_versioned_trino_demo(cls) -> "RoutingService":
+    def for_versioned_trino(cls) -> "RoutingService":
         return cls(
             (
                 ApprovedTemplate(

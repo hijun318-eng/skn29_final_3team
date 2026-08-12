@@ -9,7 +9,6 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from src.ai import schema as ai_schema
-from src.ai.fake_model import FakeModelAdapter as R3FakeModelAdapter
 from src.ai.prompt_registry import get_prompt
 from src.ai.training.benchmark_serving import request_json
 from src.modelops.runtime import ProductionModelClient
@@ -234,8 +233,8 @@ class NodeModelRouter:
 class ContractModelAdapter:
     """R3 동결 schema와 R4 내부 plan 형식을 연결한다."""
 
-    def __init__(self, model=None) -> None:
-        self._model = model or R3FakeModelAdapter()
+    def __init__(self, model) -> None:
+        self._model = model
 
     @classmethod
     def from_openai(
@@ -348,21 +347,17 @@ class ContractModelAdapter:
             for metric in asset.get("metrics", ())
             if isinstance(metric, dict) and isinstance(metric.get("id"), str)
         ]
-        if metric_ids:
-            selected = set(metric_ids)
-            if len(selected) != 1:
-                raise ValueError("node3 requires exactly one entitled Context metric")
+        selected = set(metric_ids)
+        if len(selected) == 1:
             selected_metric = selected.pop()
             context_metric_ids = [selected_metric] * len(assets)
         else:
             approved_join = "pms_crm_pos_gold_revenue_month_v1"
             if (
-                len(assets) != 6
+                selected
+                or len(assets) != 6
                 or len({asset.get("urn") for asset in assets}) != 6
-                or any(
-                    approved_join not in asset.get("join_ids", ())
-                    for asset in assets
-                )
+                or any(approved_join not in asset.get("join_ids", ()) for asset in assets)
             ):
                 raise ValueError("node3 requires exactly one entitled Context metric")
             selected_metric = "total_guest_revenue_krw"
@@ -383,10 +378,7 @@ class ContractModelAdapter:
         }
 
     def _generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
-        response = self._model.generate(node, payload)
-        if getattr(self._model, "last_trace", {}).get("fallback"):
-            raise TimeoutError("production model fallback is not a product result")
-        return response
+        return self._model.generate(node, payload)
 
     @staticmethod
     def _plan(
@@ -461,15 +453,15 @@ class ContractModelAdapter:
             for item in package.assets
         ]
         metrics = list(package.metrics)
-        fixture_metric = None
         three_source = (
             "pms_crm_pos_gold_revenue_month_v1" in package.approved_join_ids
         )
+        derived_metric = None
         execution_time = cls._execution_time(
             context, package.parameter_bindings if three_source else None
         )
         if not metrics and three_source:
-            fixture_metric = {
+            derived_metric = {
                 "id": "total_guest_revenue_krw",
                 "field": "derived.total_guest_revenue_krw",
                 "aggregation": "derived_sum",
@@ -483,14 +475,6 @@ class ContractModelAdapter:
                     }
                     for item in package.required_filters
                 ],
-            }
-        elif not metrics and package.assets:
-            asset = package.assets[0]
-            fixture_metric = {
-                "id": f"fixture_count_{asset.columns[0]}",
-                "field": f"{asset.fqn}.{asset.columns[0]}",
-                "aggregation": "count",
-                "time_field": f"{asset.fqn}.{asset.columns[0]}",
             }
         return {
             "context_version": package.context_release,
@@ -514,7 +498,7 @@ class ContractModelAdapter:
                     ],
                 }
                 for metric in metrics
-            ] + ([fixture_metric] if fixture_metric else []),
+            ] + ([derived_metric] if derived_metric else []),
             "parameter_bindings": [
                 {
                     "name": item.name,

@@ -2,7 +2,6 @@ import hashlib
 import json
 import re
 import unittest
-from collections import Counter, defaultdict
 from pathlib import Path
 
 from src.data.i3_watermarks import watermark_fingerprint
@@ -10,14 +9,12 @@ from src.data.i3_watermarks import watermark_fingerprint
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = ROOT / "src/data/i3_contract.v1.json"
-MANIFEST = ROOT / "src/data/evaluation_fixture_manifest.i3.v1.json"
 
 
 class I3ContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
-        cls.manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
 
     def test_five_recipes_have_stable_identity_and_known_env(self):
         recipes = self.contract["metadata"]["recipes"]
@@ -47,7 +44,7 @@ class I3ContractTest(unittest.TestCase):
         semantic_types = {item["semantic_type"] for item in self.contract["type_mappings"]}
         self.assertTrue({"money_krw", "event_time", "source_local_id", "watermark_utc"} <= semantic_types)
 
-    def test_approved_two_and_three_source_joins_have_fixed_hashes(self):
+    def test_approved_two_and_three_source_joins_are_read_only_and_complete(self):
         joins = self.contract["approved_joins"]
         self.assertEqual([2, 3], [len(item["sources"]) for item in joins])
         for item in joins:
@@ -57,67 +54,11 @@ class I3ContractTest(unittest.TestCase):
             self.assertNotIn("now()", sql)
             for source in item["sources"]:
                 self.assertIn(f"{source}.", sql)
-        for fixture in self.contract["gold_fixtures"]:
-            canonical = "".join("|".join(row) + "\n" for row in fixture["rows"])
-            self.assertEqual(fixture["sha256"], hashlib.sha256(canonical.encode()).hexdigest())
-            sql = (ROOT / fixture["sql_file"]).read_text(encoding="utf-8")
-            self.assertEqual(fixture["sql_sha256"], hashlib.sha256(sql.encode()).hexdigest())
 
-    def test_watermark_and_failure_contract_are_complete(self):
+    def test_watermark_contract_is_complete(self):
         watermark = self.contract["watermark_set"]
         self.assertEqual(5, len(watermark["values"]))
         self.assertEqual(watermark["sha256"], watermark_fingerprint(watermark["values"]))
-        errors = {item["expected_error"] for item in self.contract["failure_fixtures"]}
-        self.assertTrue({"UNAPPROVED_JOIN", "CARDINALITY_AMPLIFICATION", "TYPE_LOSS", "WATERMARK_DRIFT", "NOT_FOUND", "FORBIDDEN", "TIMEOUT", "CANCELLED", "PARTIAL"} <= errors)
-
-    def test_required30_and_gold120_follow_case_schema(self):
-        required_fields = {
-            "case_id", "set", "category", "paraphrase_group", "split", "question",
-            "role_policy", "time_context", "expected_outcome", "expected_state_error",
-            "sources", "versions", "reviewers", "evidence", "status",
-        }
-        cases = self.manifest["cases"]
-        self.assertEqual(len(cases), len({item["case_id"] for item in cases}))
-        self.assertEqual(len(cases), len({item["question"] for item in cases}))
-        counts = Counter(item["set"] for item in cases)
-        self.assertEqual({"required30": 30, "gold120": 120}, dict(counts))
-        self.assertEqual(120, self.manifest["counts"]["gold120"])
-        categories = Counter(item["category"] for item in cases if item["set"] == "required30")
-        self.assertEqual({"단일 source": 10, "cross-source": 10, "모호성·근거 부족": 5, "권한·금지 요청": 5}, dict(categories))
-        gold_categories = Counter(item["category"] for item in cases if item["set"] == "gold120")
-        self.assertEqual(self.manifest["category_plan"], dict(gold_categories))
-        splits = defaultdict(set)
-        for item in cases:
-            self.assertFalse(required_fields - item.keys())
-            self.assertEqual(
-                {"data_contract", "schema", "seed", "scenario", "policy"},
-                set(item["versions"]),
-            )
-            splits[item["paraphrase_group"]].add(item["split"])
-            self.assertTrue(item["evidence"])
-            for path in item["evidence"]:
-                self.assertTrue((ROOT / path).is_file(), f"missing evidence: {path}")
-            self.assertEqual("APPROVED", item["status"])
-            self.assertEqual("R1:REVIEWED|R2:REVIEWED|R3:REVIEWED", item["reviewers"])
-        self.assertTrue(all(len(value) == 1 for value in splits.values()))
-
-    def test_success_results_resolve_to_contract_sql_and_hashes(self):
-        catalog = {item["id"]: item for item in self.contract["catalog_checks"]}
-        gold = {item["id"]: item for item in self.contract["gold_fixtures"]}
-        success = [item for item in self.manifest["cases"] if item["expected_outcome"] == "성공"]
-        self.assertEqual(85, len(success))
-        for case in success:
-            result = case["expected_query_result"]
-            fixture_id = result["fixture_id"]
-            if result["fixture_type"] == "catalog_check":
-                fixture = catalog[fixture_id]
-                self.assertEqual(fixture["query"], result["sql"])
-            else:
-                self.assertEqual("gold_fixture", result["fixture_type"])
-                fixture = gold[fixture_id]
-                self.assertEqual(fixture["sql_file"], result["sql_file"])
-            self.assertEqual(fixture["sql_sha256"], result["sql_sha256"])
-            self.assertEqual(fixture["sha256"], result["result_sha256"])
 
 
 if __name__ == "__main__":

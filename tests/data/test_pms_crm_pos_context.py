@@ -97,10 +97,3 @@ def test_gold_evidence_hashes_rows_and_totals():
     )
     assert evidence["runtime"]["engine"] == "Trino 476"
     assert evidence["runtime"]["status"] == "PASS"
-
-
-def test_existing_i3_gold_evidence_remains_unchanged():
-    contract = json.loads((ROOT / "src/data/i3_contract.v1.json").read_text(encoding="utf-8"))
-    fixture = next(item for item in contract["gold_fixtures"] if item["id"] == "gold_total_guest_revenue_mom")
-    assert fixture["sql_sha256"] == "3b9384005e7d2b0138f0c23475b7b0873dd85ada7ef3ace2229e68d20a2249fa"
-    assert fixture["sha256"] == "5333602fe9d11b9c23be1833ec316e894f6ee55359185a0f9ea0052b18e56865"

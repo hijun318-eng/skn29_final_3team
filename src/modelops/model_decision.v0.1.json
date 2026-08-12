@@ -10,7 +10,7 @@
       "node2_repair_once",
       "node3_grounded_explanation",
       "prompt_registry",
-      "deterministic_fake_adapter"
+      "deterministic_local_nodes"
     ],
     "excluded_until_i5_followup": [
       "mcp",

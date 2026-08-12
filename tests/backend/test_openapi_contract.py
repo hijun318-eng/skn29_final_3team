@@ -9,12 +9,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / "app" / "backend"
 CONTRACTS = BACKEND / "contracts"
-FIXTURES = ROOT / "tests" / "backend" / "fixtures" / "api" / "v0.1"
 sys.path.insert(0, str(BACKEND))
 
-from app.contract_examples import STATE_MAPPING, contract_fixtures  # noqa: E402
+from app.contract_examples import STATE_MAPPING  # noqa: E402
 from app.contracts import (  # noqa: E402
-    AnalysisResponse,
     AnalysisStatus,
     CONTRACT_VERSION,
     OPENAPI_DOCUMENT_VERSION,
@@ -132,19 +130,6 @@ class OpenApiContractTest(unittest.TestCase):
         self.assertIn("repair_count", analysis_data["properties"])
         self.assertIn("artifact", analysis_data["properties"])
         self.assertIn("evidence", analysis_result["properties"])
-
-    def test_all_fixtures_match_typed_response(self) -> None:
-        expected_names = set(contract_fixtures())
-        actual_names = {path.stem for path in FIXTURES.glob("*.json")}
-        self.assertEqual(expected_names, actual_names)
-
-        for path in FIXTURES.glob("*.json"):
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            AnalysisResponse.model_validate(payload)
-            self.assertEqual(CONTRACT_VERSION, payload["meta"]["contract_version"])
-            serialized = json.dumps(payload).lower()
-            for forbidden in ("password", "credential", "stack_trace"):
-                self.assertNotIn(forbidden, serialized)
 
     def test_state_mapping_covers_every_controller_status(self) -> None:
         committed = json.loads(

@@ -51,25 +51,5 @@
     "null_policy": "exclude rows without an event-time-valid GOLD grade",
     "amplification_limit": 1,
     "sql_file": "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
-  },
-  "gold_fixture": {
-    "id": "gold_recognized_room_revenue_mom",
-    "as_of": "2026-07-01T00:00:00+09:00",
-    "period": "[2026-05-01T00:00:00+09:00,2026-07-01T00:00:00+09:00)",
-    "canonical_format": "month|recognized_room_revenue_krw\\n",
-    "rows": [
-      ["2026-05", "218275200.00"],
-      ["2026-06", "180813600.00"]
-    ],
-    "sha256": "e6c2d1ee3ef2246180c9d6985a10e78c44829443acbeaeef9a1ec37c6f1e08fd"
-  },
-  "failure_fixtures": [
-    {"id": "unapproved_join", "expected_error": "UNAPPROVED_JOIN"},
-    {"id": "join_amplification", "expected_error": "CARDINALITY_AMPLIFICATION"},
-    {"id": "null_grade", "expected_error": "NULL_DIMENSION"},
-    {"id": "datahub_timeout", "expected_error": "TIMEOUT"},
-    {"id": "query_timeout", "expected_error": "TIMEOUT"},
-    {"id": "query_cancelled", "expected_error": "CANCELLED"},
-    {"id": "partial_result", "expected_error": "PARTIAL"}
-  ]
+  }
 }

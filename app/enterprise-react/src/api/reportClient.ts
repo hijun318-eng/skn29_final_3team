@@ -17,8 +17,6 @@ import { createUuid } from "../utils/createUuid.ts";
 type Fetch = typeof fetch;
 const env = import.meta.env ?? {};
 
-export const usesFixtureReportClient = env.VITE_REPORT_MODE === "fixture" || Boolean(!env.VITE_REPORT_MODE && env.DEV);
-
 export class ReportApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -34,7 +32,7 @@ function contextHeaders(hasBody = false): Record<string, string> {
   return {
     Authorization: "Bearer runtime-report-admin-token",
     ...(hasBody ? { "Content-Type": "application/json" } : {}),
-    "X-As-Of": env.VITE_REPORT_AS_OF || "2026-08-04",
+    "X-As-Of": env.VITE_REPORT_AS_OF || new Date().toISOString().slice(0, 10),
     "X-Contract-Version": REPORT_REQUEST_CONTEXT_VERSION,
     "X-Role": "report_admin",
     "X-Timezone": "Asia/Seoul",

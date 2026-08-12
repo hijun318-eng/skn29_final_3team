@@ -2,7 +2,7 @@ import copy
 import unittest
 
 from evals.runner import EvaluationError, evaluate_cases
-from src.ai.fake_model import FakeModelAdapter
+from src.ai.node3 import explain_result
 from src.ai.training.evaluate_lora import (
     DEFAULT_MODEL,
     DEFAULT_REVISION,
@@ -16,13 +16,12 @@ from tests.ai.test_contracts import VALID_PAYLOADS
 
 
 def valid_case():
-    adapter = FakeModelAdapter()
     request = copy.deepcopy(VALID_PAYLOADS["node3_request"])
     return {
         "case_id": "required30-node3-001",
         "node": "node3",
         "request": request,
-        "expected_output": adapter.generate("node3", request),
+        "expected_output": explain_result(request),
     }
 
 

@@ -226,48 +226,6 @@
       "sql_file": "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql"
     }
   ],
-  "gold_fixtures": [
-    {
-      "id": "gold_recognized_room_revenue_mom",
-      "join_id": "pms_stay_to_crm_membership_grade_event_time_v1",
-      "canonical_format": "month|recognized_room_revenue_krw\n",
-      "rows": [
-        [
-          "2026-05",
-          "218275200.00"
-        ],
-        [
-          "2026-06",
-          "180813600.00"
-        ]
-      ],
-      "sha256": "e6c2d1ee3ef2246180c9d6985a10e78c44829443acbeaeef9a1ec37c6f1e08fd",
-      "sql_file": "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql",
-      "sql_sha256": "4caf6c87ca2ff04e77a46fd3cd963be8b249e70c0886a542b87a4126838672e2"
-    },
-    {
-      "id": "gold_total_guest_revenue_mom",
-      "join_id": "pms_crm_pos_gold_revenue_month_v1",
-      "canonical_format": "month|room_revenue_krw|fnb_revenue_krw|total_guest_revenue_krw\n",
-      "rows": [
-        [
-          "2026-05",
-          "218275200.00",
-          "39326900.00",
-          "257602100.00"
-        ],
-        [
-          "2026-06",
-          "180813600.00",
-          "37556700.00",
-          "218370300.00"
-        ]
-      ],
-      "sha256": "5333602fe9d11b9c23be1833ec316e894f6ee55359185a0f9ea0052b18e56865",
-      "sql_file": "infrastructure/database/sql/queries/i3_gold_total_guest_revenue.sql",
-      "sql_sha256": "3b9384005e7d2b0138f0c23475b7b0873dd85ada7ef3ace2229e68d20a2249fa"
-    }
-  ],
   "watermark_set": {
     "canonical_format": "source_id|watermark_utc\n sorted by source_id",
     "values": {
@@ -280,52 +238,5 @@
     "sha256": "0e181c3f9f70b6a90bad79c90be392e3640e3f3fe454b488b4b4b2f20c10f614",
     "cache_rule": "invalidate plan/result/report entries whose source set intersects changed_sources"
   },
-  "failure_fixtures": [
-    {
-      "id": "unapproved_join",
-      "expected_error": "UNAPPROVED_JOIN"
-    },
-    {
-      "id": "join_amplification",
-      "expected_error": "CARDINALITY_AMPLIFICATION"
-    },
-    {
-      "id": "null_identity",
-      "expected_error": "NULL_IDENTITY"
-    },
-    {
-      "id": "event_time_gap",
-      "expected_error": "NO_VALID_TIME_MATCH"
-    },
-    {
-      "id": "type_loss",
-      "expected_error": "TYPE_LOSS"
-    },
-    {
-      "id": "watermark_drift",
-      "expected_error": "WATERMARK_DRIFT"
-    },
-    {
-      "id": "datahub_not_found",
-      "expected_error": "NOT_FOUND"
-    },
-    {
-      "id": "datahub_forbidden",
-      "expected_error": "FORBIDDEN"
-    },
-    {
-      "id": "datahub_timeout",
-      "expected_error": "TIMEOUT"
-    },
-    {
-      "id": "query_cancelled",
-      "expected_error": "CANCELLED"
-    },
-    {
-      "id": "partial_result",
-      "expected_error": "PARTIAL"
-    }
-  ],
-  "evaluation_manifest": "src/data/evaluation_fixture_manifest.i3.v1.json",
   "policy_version": "ACCESS-POLICY-v1.0.0"
 }

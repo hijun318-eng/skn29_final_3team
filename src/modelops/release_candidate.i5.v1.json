@@ -34,7 +34,6 @@
   },
   "source_manifests": [
     "evals/base_comparison.v0.1.json",
-    "evals/split_manifest.v0.1.json",
     "evals/validation_v2.manifest.json",
     "src/modelops/serving_manifest.v0.1.json"
   ],

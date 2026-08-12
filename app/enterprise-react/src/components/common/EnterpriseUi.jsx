@@ -1,5 +1,4 @@
 import { ShieldCheck } from "lucide-react";
-import { SYNTHETIC_META } from "../../data/enterpriseDemoData";
 
 const STATUS_LABEL = {
   connected: "연결됨",
@@ -19,13 +18,13 @@ export function StatusBadge({ status }) {
   );
 }
 
-export function MetaStrip({ meta = SYNTHETIC_META }) {
+export function MetaStrip({ meta = {} }) {
   return (
     <div className="meta-strip">
       <ShieldCheck size={13} />
-      {meta.synthetic ? "Synthetic data" : SYNTHETIC_META.label}
-      <span>seed {meta.seed}</span>
-      <span>schema {meta.schemaVersion}</span>
+      API response metadata
+      {meta.seed && <span>seed {meta.seed}</span>}
+      {meta.schemaVersion && <span>schema {meta.schemaVersion}</span>}
       {meta.asOf && <span>as_of {meta.asOf} · {meta.timezone}</span>}
     </div>
   );

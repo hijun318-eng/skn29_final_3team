@@ -10,13 +10,12 @@ from typing import Any
 BACKEND = Path(__file__).resolve().parents[1]
 REPOSITORY = BACKEND.parents[1]
 CONTRACT_DIRECTORY = BACKEND / "contracts"
-FIXTURE_DIRECTORY = REPOSITORY / "tests" / "backend" / "fixtures" / "api" / "v0.1"
 OPENAPI_PATH = CONTRACT_DIRECTORY / "openapi.v0.1.json"
 STATE_MAPPING_PATH = CONTRACT_DIRECTORY / "state_mapping.v0.1.json"
 
-sys.path.insert(0, str(BACKEND))
+sys.path[:0] = [str(REPOSITORY), str(BACKEND)]
 
-from app.contract_examples import STATE_MAPPING, contract_fixtures  # noqa: E402
+from app.contract_examples import STATE_MAPPING  # noqa: E402
 from app.main import app  # noqa: E402
 
 
@@ -33,19 +32,10 @@ def serialize(value: Any) -> str:
 
 
 def expected_files() -> dict[Path, str]:
-    files = {
+    return {
         OPENAPI_PATH: serialize(app.openapi()),
         STATE_MAPPING_PATH: serialize(STATE_MAPPING),
     }
-    files.update(
-        {
-            FIXTURE_DIRECTORY / f"{name}.json": serialize(
-                response.model_dump(mode="json")
-            )
-            for name, response in contract_fixtures().items()
-        }
-    )
-    return files
 
 
 def export_contracts() -> None:

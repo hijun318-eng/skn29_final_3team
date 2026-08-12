@@ -7,12 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from app.adapters.fake_data_platform import FakeDataPlatformAdapter
-from app.adapters.fake_model import FakeModelAdapter
-from app.contract_examples import (
-    ANALYSIS_REQUEST_EXAMPLES,
-    ANALYSIS_RESPONSE_EXAMPLES,
-)
+from app.contract_examples import ANALYSIS_REQUEST_EXAMPLES
 from app.analysis_contracts import (
     AnalysisDefinitionListResponse,
     AnalysisDefinitionResponse,
@@ -45,7 +40,7 @@ from app.services.readiness import AppDatabaseReadiness
 
 def _routing_service() -> RoutingService:
     if os.getenv("DATA_PLATFORM_MODE") == "versioned-trino":
-        return RoutingService.for_versioned_trino_demo()
+        return RoutingService.for_versioned_trino()
     database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
     if database_url:
         return RoutingService.from_database(database_url)
@@ -53,9 +48,7 @@ def _routing_service() -> RoutingService:
 
 
 def _data_platform():
-    mode = os.getenv("DATA_PLATFORM_MODE", "fake")
-    if mode == "fake":
-        return FakeDataPlatformAdapter()
+    mode = os.getenv("DATA_PLATFORM_MODE", "real")
     if mode not in {"real", "versioned-trino"}:
         raise ValueError(f"unsupported DATA_PLATFORM_MODE: {mode}")
     from app.adapters.i2_data_platform import I2DataPlatformAdapter
@@ -70,16 +63,12 @@ def _data_platform():
 
 
 def _model():
-    mode = (os.getenv("MODEL_MODE") or os.getenv("LLM") or "fake").strip().lower()
-    if mode == "fake":
-        return FakeModelAdapter()
+    mode = (os.getenv("MODEL_MODE") or os.getenv("LLM") or "template-only").strip().lower()
     from app.adapters.contract_model import ContractModelAdapter, TemplateOnlyModelAdapter
 
     if mode == "template-only":
         return TemplateOnlyModelAdapter()
 
-    if mode == "contract-fake":
-        return ContractModelAdapter()
     if mode == "openai":
         return ContractModelAdapter.from_openai(
             os.getenv("OPENAI_ENDPOINT")
@@ -165,14 +154,7 @@ def ready(request: Request) -> ReadinessResponse:
     response_model=AnalysisResponse,
     operation_id="submitAnalysis",
     responses={
-        200: {
-            "description": "분석 요청 처리 결과",
-            "content": {
-                "application/json": {
-                    "examples": ANALYSIS_RESPONSE_EXAMPLES,
-                }
-            },
-        },
+        200: {"description": "분석 요청 처리 결과"},
         401: {"model": ErrorResponse, "description": "인증 정보 누락"},
         403: {"model": ErrorResponse, "description": "역할 또는 접근 권한 거부"},
         409: {"model": ErrorResponse, "description": "계약 버전 불일치"},

@@ -20,7 +20,6 @@ class PromptRecord:
     def metadata(self) -> dict[str, str | None]:
         result = asdict(self)
         result.pop("text")
-        result["fixture_version"] = None
         result["hash"] = sha256(self.text.encode("utf-8")).hexdigest()
         return result
 

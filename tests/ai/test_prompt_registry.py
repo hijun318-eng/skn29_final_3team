@@ -21,7 +21,6 @@ class PromptRegistryTests(unittest.TestCase):
         for metadata in first:
             self.assertEqual(metadata["environment"], "development")
             self.assertEqual(metadata["model_version"], "DRAFT-BASE-v0.1")
-            self.assertIsNone(metadata["fixture_version"])
             self.assertEqual(len(metadata["hash"]), 64)
 
     def test_node1_and_node3_have_no_sql_adapter(self):

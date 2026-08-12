@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import json
 from hashlib import sha256
-from typing import Any, Callable
+from typing import Any, Callable, NoReturn
 
-from src.ai.fake_model import FakeModelAdapter
 from src.ai.prompt_registry import get_prompt
 from src.ai.schema import ContractError, validate_payload
 
 
 Transport = Callable[[str, dict[str, Any], float], dict[str, Any]]
+
+
+class ModelUnavailableError(RuntimeError):
+    """Raised when the configured production model cannot return a valid response."""
 
 
 class ProductionModelClient:
@@ -23,21 +26,19 @@ class ProductionModelClient:
         *,
         timeout_seconds: float = 15.0,
         failure_threshold: int = 2,
-        fallback: FakeModelAdapter | None = None,
     ) -> None:
         if timeout_seconds <= 0 or failure_threshold < 1:
             raise ValueError("timeout and failure threshold must be positive")
         self._transport = transport
         self._timeout = timeout_seconds
         self._threshold = failure_threshold
-        self._fallback = fallback or FakeModelAdapter()
         self._failures = 0
         self.last_trace: dict[str, Any] = {}
 
     def generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
         validate_payload(f"{node}_request", payload)
         if self._failures >= self._threshold:
-            return self._use_fallback(node, payload, "CIRCUIT_OPEN", 0)
+            self._raise_unavailable("CIRCUIT_OPEN", 0)
 
         for attempt in (1, 2):
             try:
@@ -47,7 +48,6 @@ class ProductionModelClient:
                 self.last_trace = {
                     "status": "SUCCESS",
                     "attempts": attempt,
-                    "fallback": False,
                     "circuit_failures": 0,
                 }
                 return response
@@ -58,18 +58,15 @@ class ProductionModelClient:
             except OSError:
                 reason = "ENDPOINT_UNAVAILABLE"
         self._failures += 1
-        return self._use_fallback(node, payload, reason, 2)
+        self._raise_unavailable(reason, 2)
 
-    def _use_fallback(
-        self, node: str, payload: dict[str, Any], reason: str, attempts: int
-    ) -> dict[str, Any]:
+    def _raise_unavailable(self, reason: str, attempts: int) -> NoReturn:
         self.last_trace = {
             "status": reason,
             "attempts": attempts,
-            "fallback": True,
             "circuit_failures": self._failures,
         }
-        return self._fallback.generate(node, payload)
+        raise ModelUnavailableError(f"production model unavailable: {reason}")
 
 
 def build_trace(
@@ -106,7 +103,6 @@ def build_trace(
         "model_version": model.get("model_version", prompt.model_version),
         "prompt_version": prompt.version,
         "prompt_hash": prompt.metadata()["hash"],
-        "fixture_version": model.get("fixture_version"),
         "latency_ms": latency_ms,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,

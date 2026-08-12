@@ -5,15 +5,11 @@ import { PAGE_PATHS, resolveRoute } from "./routing";
 
 const AgentPage = lazy(() => import("./pages/AgentPage").then((module) => ({ default: module.AgentPage })));
 const ReportsPage = lazy(() => import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })));
-const CatalogPage = lazy(() => import("./pages/CatalogPage").then((module) => ({ default: module.CatalogPage })));
-const ConnectionsPage = lazy(() => import("./pages/ConnectionsPage").then((module) => ({ default: module.ConnectionsPage })));
 const USE_PPT_THEME = true;
 
 const PAGE_META = {
   chat: ["분석 Agent", "자연어 질문으로 승인된 기업 데이터를 수집·분석합니다."],
   reports: ["정기 보고서", "일일·주간·월간 비즈니스 인사이트를 생성하고 검토합니다."],
-  catalog: ["데이터 카탈로그", "사일로 DB의 연결 정보와 데이터 제품·온톨로지를 탐색합니다."],
-  connections: ["DB 연결 관리", "이기종 데이터 소스의 connector와 catalog 상태를 관리합니다."],
   notFound: ["페이지를 찾을 수 없습니다", "현재 승인된 P0/P1 경로만 이용할 수 있습니다."],
 };
 
@@ -68,14 +64,6 @@ export function App() {
   const content = useMemo(() => {
     if (page === "notFound") return <NotFoundPage onNavigate={navigate} />;
     if (page === "reports") return <ReportsPage />;
-    if (page === "connections") return <ConnectionsPage />;
-    if (page === "catalog") {
-      return (
-        <CatalogPage
-          onManageConnections={() => navigate("/connections")}
-        />
-      );
-    }
     return <AgentPage onNavigate={navigate} />;
   }, [navigate, page]);
 

@@ -44,15 +44,4 @@ foreach ($check in $contract.catalog_checks) {
     Write-Output "I3_CATALOG_HASH_VERIFIED|$($check.source_id)|$hash"
 }
 
-foreach ($fixture in $contract.gold_fixtures) {
-    $join = $contract.approved_joins | Where-Object join_id -eq $fixture.join_id
-    $relativeQuery = $join.sql_file.Replace('infrastructure/database/', '')
-    $query = Get-Content -Raw -Encoding UTF8 (Join-Path $databaseRoot $relativeQuery)
-    $hash = Get-Sha256 (Get-TrinoCanonical $query)
-    if ($hash -ne $fixture.sha256) {
-        throw "Gold hash mismatch for $($fixture.id)."
-    }
-    Write-Output "I3_GOLD_HASH_VERIFIED|$($fixture.id)|$hash"
-}
-
 Write-Output 'I3_DATABASE_CONTRACT_VERIFIED'

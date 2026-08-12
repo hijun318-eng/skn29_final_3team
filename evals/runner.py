@@ -1,4 +1,4 @@
-"""Dependency-free deterministic runner for versioned AI node fixtures."""
+"""Dependency-free deterministic runner for versioned AI node evaluation cases."""
 
 from __future__ import annotations
 
@@ -7,9 +7,11 @@ import json
 from hashlib import sha256
 from pathlib import Path
 from statistics import median
-from typing import Any, Iterable
+from typing import Any, Iterable, Protocol
 
-from src.ai.fake_model import FakeModelAdapter
+from src.ai.node1 import normalize_question
+from src.ai.node2 import generate_sql, repair_sql
+from src.ai.node3 import explain_result
 
 
 class EvaluationError(ValueError):
@@ -17,14 +19,35 @@ class EvaluationError(ValueError):
 
 
 _CASE_FIELDS = {"case_id", "node", "request", "expected_output"}
+_NODE_RUNNERS = {
+    "node1": normalize_question,
+    "node2": generate_sql,
+    "node2_repair": repair_sql,
+    "node3": explain_result,
+}
+
+
+class ModelAdapter(Protocol):
+    def generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]: ...
+
+
+class LocalNodeAdapter:
+    """Run the checked-in deterministic node implementations directly."""
+
+    def generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            runner = _NODE_RUNNERS[node]
+        except KeyError as exc:
+            raise EvaluationError(f"unknown node: {node}") from exc
+        return runner(payload)
 
 
 def evaluate_cases(
     cases: Iterable[dict[str, Any]],
-    adapter: FakeModelAdapter | None = None,
+    adapter: ModelAdapter | None = None,
 ) -> dict[str, Any]:
-    """Evaluate fixtures twice and return stable exact-match results."""
-    model = adapter or FakeModelAdapter()
+    """Evaluate cases twice and return stable exact-match results."""
+    model = adapter or LocalNodeAdapter()
     seen: set[str] = set()
     results = []
 
@@ -65,7 +88,7 @@ def evaluate_cases(
 
 def evaluate_required30(
     cases: Iterable[dict[str, Any]],
-    adapter: FakeModelAdapter | None = None,
+    adapter: ModelAdapter | None = None,
 ) -> dict[str, Any]:
     """Reject incomplete acceptance manifests instead of reporting a partial pass."""
     materialized = list(cases)
@@ -87,84 +110,6 @@ def compare_runs(baseline: dict[str, Any], candidate: dict[str, Any]) -> dict[st
         "baseline": _run_metrics(baseline, baseline_cases),
         "candidate": _run_metrics(candidate, candidate_cases),
     }
-
-
-def validate_data_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
-    """Validate the R2 evaluation inventory without claiming model execution."""
-    required = {"manifest_version", "synthetic", "counts", "cases"}
-    if not required.issubset(manifest) or manifest["synthetic"] is not True:
-        raise EvaluationError("R2 evaluation manifest metadata is invalid")
-    counts = manifest["counts"]
-    cases = manifest["cases"]
-    if not isinstance(counts, dict) or not isinstance(cases, list):
-        raise EvaluationError("R2 evaluation manifest counts or cases are invalid")
-
-    seen: set[str] = set()
-    set_counts = {"required30": 0, "gold120": 0}
-    status_counts: dict[str, int] = {}
-    split_samples = []
-    for case in cases:
-        needed = {"case_id", "set", "paraphrase_group", "split", "status"}
-        if not needed.issubset(case) or not all(
-            isinstance(case[field], str) and case[field] for field in needed
-        ):
-            raise EvaluationError("R2 evaluation case is invalid")
-        case_id = case["case_id"]
-        if case_id in seen:
-            raise EvaluationError(f"duplicate case_id: {case_id}")
-        if case["set"] not in set_counts:
-            raise EvaluationError(f'unknown evaluation set: {case["set"]}')
-        seen.add(case_id)
-        set_counts[case["set"]] += 1
-        status_counts[case["status"]] = status_counts.get(case["status"], 0) + 1
-        split_samples.append(
-            {
-                "sample_id": case_id,
-                "paraphrase_group": case["paraphrase_group"],
-                "split": case["split"],
-            }
-        )
-
-    required_count = counts.get("required30")
-    gold_partial = counts.get("gold120_partial")
-    gold_target = counts.get("gold120_target")
-    if required_count != 30 or gold_target != 120:
-        raise EvaluationError("required30 count or gold120 target is invalid")
-    if (
-        not isinstance(gold_partial, int)
-        or isinstance(gold_partial, bool)
-        or not 0 <= gold_partial <= gold_target
-    ):
-        raise EvaluationError("gold120 partial count is invalid")
-    declared = {"required30": required_count, "gold120": gold_partial}
-    if declared != set_counts:
-        raise EvaluationError("R2 evaluation manifest declared counts do not match cases")
-    return {
-        "manifest_version": manifest["manifest_version"],
-        "set_counts": set_counts,
-        "split_counts": validate_split_manifest(split_samples),
-        "status_counts": status_counts,
-        "model_execution": "NOT_RUN",
-    }
-
-
-def validate_split_manifest(samples: Iterable[dict[str, Any]]) -> dict[str, int]:
-    """Keep a paraphrase group wholly inside one train/validation/gold split."""
-    allowed = {"train", "validation", "gold"}
-    groups: dict[str, str] = {}
-    counts = {split: 0 for split in sorted(allowed)}
-    for sample in samples:
-        if set(sample) != {"sample_id", "paraphrase_group", "split"}:
-            raise EvaluationError("split sample fields are invalid")
-        split = sample["split"]
-        group = sample["paraphrase_group"]
-        if split not in allowed or not all(isinstance(value, str) and value for value in sample.values()):
-            raise EvaluationError("split sample values are invalid")
-        if group in groups and groups[group] != split:
-            raise EvaluationError(f"paraphrase group leaked across splits: {group}")
-        groups[group] = split
-        counts[split] += 1
-    return counts
 
 
 def _case_results(run: dict[str, Any]) -> dict[str, bool]:
@@ -206,9 +151,9 @@ def _stable_hash(value: Any) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("fixture", type=Path)
+    parser.add_argument("dataset", type=Path)
     args = parser.parse_args()
-    cases = json.loads(args.fixture.read_text(encoding="utf-8"))
+    cases = json.loads(args.dataset.read_text(encoding="utf-8"))
     summary = evaluate_cases(cases)
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True, indent=2))
     return 0 if summary["failed"] == 0 else 1

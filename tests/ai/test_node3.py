@@ -23,7 +23,7 @@ class Node3Tests(unittest.TestCase):
         self.assertNotIn("gate", result)
 
     def test_approved_six_asset_derived_metric_is_selected_and_evidence_is_preserved(self):
-        fixture = json.loads(
+        context = json.loads(
             Path("src/data/pms_crm_pos_context.i5.v1.json").read_text(encoding="utf-8")
         )
         payload = copy.deepcopy(VALID_PAYLOADS["node3_request"])
@@ -31,10 +31,10 @@ class Node3Tests(unittest.TestCase):
         payload.update(
             {
                 "metric": metric_id,
-                "source_ids": [asset["urn"] for asset in fixture["assets"]],
+                "source_ids": [asset["urn"] for asset in context["assets"]],
                 "metric_selection": {
                     "selected_metric_id": metric_id,
-                    "context_metric_ids": [metric_id] * len(fixture["assets"]),
+                    "context_metric_ids": [metric_id] * len(context["assets"]),
                     "entitled_metric_ids": [metric_id],
                 },
                 "sampling": True,

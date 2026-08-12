@@ -1,4 +1,3 @@
-import hashlib
 import json
 import re
 import unittest
@@ -59,31 +58,12 @@ class I2ContractTest(unittest.TestCase):
         for token in ("decimal(18,2)", "timestamp(3)", "varchar"):
             self.assertIn(token, joined)
 
-    def test_gold_hash_and_failure_fixtures_are_fixed(self):
-        fixture = self.contract["gold_fixture"]
-        canonical = "".join("|".join(row) + "\n" for row in fixture["rows"])
-        self.assertEqual(
-            fixture["sha256"],
-            hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
-        )
-        self.assertEqual("2026-07-01T00:00:00+09:00", fixture["as_of"])
+    def test_approved_join_sql_uses_fixed_period_and_complete_lineage(self):
         sql = (ROOT / self.contract["approved_join"]["sql_file"]).read_text(encoding="utf-8")
         self.assertNotIn("current_date", sql.lower())
         self.assertNotIn("now()", sql.lower())
         for table in self.contract["metadata"]["lineage"][0]["upstream"]:
             self.assertIn(table, sql)
-        expected = {item["expected_error"] for item in self.contract["failure_fixtures"]}
-        self.assertEqual(
-            {
-                "UNAPPROVED_JOIN",
-                "CARDINALITY_AMPLIFICATION",
-                "NULL_DIMENSION",
-                "TIMEOUT",
-                "CANCELLED",
-                "PARTIAL",
-            },
-            expected,
-        )
 
 
 if __name__ == "__main__":

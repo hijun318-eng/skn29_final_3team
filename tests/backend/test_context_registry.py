@@ -148,7 +148,7 @@ class PostgresContextRegistryTest(unittest.TestCase):
         approved = self.repository.approve_record(first.context_record_id, uuid4())
         release = self.repository.create_release(
             CreateContextRelease(
-                release_key=f"demo-{uuid4().hex[:8]}",
+                release_key=f"test-{uuid4().hex[:8]}",
                 version_no=1,
                 included_records=[
                     RecordReference(

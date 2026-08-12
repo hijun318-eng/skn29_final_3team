@@ -67,7 +67,7 @@ _PROMPTS = {
     ),
     "node2.repair": PromptRecord(
         "node2.repair",
-        "PROMPT-v1.0.3",
+        "PROMPT-v1.0.4",
         "node2_repair",
         "development",
         "base",
@@ -77,6 +77,10 @@ _PROMPTS = {
         "동일 Context에서 rejected_sql을 기준으로 정규화 오류 코드에 해당하는 항목만 한 번 수정한다. "
         "RESOURCE_POLICY_MISSING이면 기존 의미·승인 reference·parameter를 유지하고 SQL 마지막에 LIMIT이 없으면 LIMIT 1000을 추가하며, 1000을 초과하면 LIMIT 1000으로 교체한다. "
         "SQL_REFERENCE_MISMATCH이면 질문 의미를 유지하고 corrected_sql의 FROM·JOIN table 집합을 승인 Context asset 안으로 제한한다. "
+        "METRIC_FILTER_MISSING이면 Context metric의 field·aggregation·time_field와 rejected_sql의 승인된 시간 dimension을 유지하되 execution_time의 period_start 이상, period_end_exclusive 미만 반개구간을 정확히 적용한다. "
+        "Context metric required_filters는 나열 순서대로 각 field = :required_filter_1, :required_filter_2 형태로 적용하고 literal 값을 쓰지 않는다. "
+        "Context parameter_bindings의 모든 name을 placeholder로 정확히 사용하며 period 경계나 filter 값을 임의 날짜·literal로 바꾸지 않는다. "
+        "집계값과 dimension을 함께 SELECT하면 모든 비집계 dimension을 GROUP BY하고 metric id를 집계 별칭으로 사용한다. "
         "원문 오류를 해석하거나 반복 호출하지 않는다.",
     ),
     "node3.explain": PromptRecord(

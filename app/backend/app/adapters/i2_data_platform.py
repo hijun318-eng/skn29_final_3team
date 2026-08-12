@@ -111,7 +111,7 @@ query SearchDatasets($query: String!) {
         "banquet_monthly_metrics": ("연회", "행사"),
         "facility_daily_metrics": ("시설", "장애", "다운타임"),
         "fnb_daypart_metrics": ("식음", "레스토랑", "주문", "객단가"),
-        "hotel_daily_metrics": ("호텔", "객실", "숙박", "점유", "adr", "revpar"),
+        "hotel_daily_metrics": ("호텔", "객실", "숙박", "점유", "매출", "adr", "revpar"),
         "hotel_monthly_metrics": ("월간", "월별"),
         "hotel_yearly_metrics": ("연간", "연별"),
         "resource_monthly_metrics": ("자원", "자재"),
@@ -555,6 +555,13 @@ query SearchDatasets($query: String!) {
                 use_candidates = self._three_source_assets if query_use == "approved_pms_crm_pos_join" else self._assets
                 candidates = tuple(asset for asset in use_candidates if query_use in asset["uses"])
             search_results = self._datahub_search(query, datahub_token)
+            if not search_results:
+                expanded = " OR ".join(
+                    name for name, hints in self._KOREAN_HINTS.items()
+                    if any(hint in query.lower() for hint in hints)
+                )
+                if expanded:
+                    search_results = self._datahub_search(expanded, datahub_token)
             search_metadata = {str(item["urn"]): item for item in search_results}
             order = {str(item["urn"]): index for index, item in enumerate(search_results)}
             candidates = tuple(

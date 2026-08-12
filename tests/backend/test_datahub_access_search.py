@@ -88,6 +88,25 @@ def test_selected_profile_credential_drives_datahub_order_and_candidate_metadata
     assert assets[0]["columns"][0]["description"].endswith("description")
 
 
+def test_korean_business_question_expands_only_the_datahub_search_query():
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter._trino.health = lambda: True
+    adapter._datahub_health = lambda: True
+    asset = next(item for item in adapter._assets if item["fqn"] == "serving.analytics.hotel_daily_metrics")
+    queries = []
+    adapter._datahub_search = lambda query, _credential: queries.append(query) or (
+        [_metadata(adapter, asset)] if "hotel_daily_metrics" in query else []
+    )
+    adapter._datahub_dataset = lambda _urn, _credential: _live_dataset(asset)
+    context = RequestContext(user_id=UUID(int=1), access_profile="pms_only")
+
+    with patch.dict("os.environ", {"DATAHUB_PMS_ONLY_TOKEN": "profile-credential"}, clear=False):
+        assets = adapter.search_assets("저번주 매출 알려줘", context.model_dump(mode="json"))
+
+    assert queries == ["저번주 매출 알려줘", "hotel_daily_metrics"]
+    assert [item["urn"] for item in assets] == [asset["urn"]]
+
+
 def test_domain_denial_and_missing_profile_credential_never_fall_back():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user", datahub_token="generic-token")
     adapter._trino.health = lambda: True

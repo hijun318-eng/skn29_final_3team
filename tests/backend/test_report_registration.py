@@ -236,9 +236,16 @@ class PostgresReportRepositoryTest(unittest.TestCase):
                 (
                     ReportBlock(
                         block_id,
-                        "객실 매출",
-                        artifact_id,
-                        6,
+                        "초기 해석",
+                        None,
+                        12,
+                        None,
+                        BlockType.TEXT,
+                        0,
+                        0,
+                        12,
+                        2,
+                        "실제 Artifact 권한 검증과 독립적인 저장소 레이아웃 검사",
                     ),
                 ),
             )

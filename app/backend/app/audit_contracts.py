@@ -58,6 +58,18 @@ class ContextTrace(AuditContractModel):
 
 class PolicyTrace(AuditContractModel):
     sql_policy_version: str
+    policy_version: str
+    entitlement_hash: str | None
+
+
+class AccessExecutionTrace(AuditContractModel):
+    access_profile: str | None
+    allowed_domains: list[str]
+    datahub_actor: str | None
+    allowed_urns: list[str]
+    trino_role: str | None
+    datahub_search_attempted: bool
+    trino_execution_attempted: bool
 
 
 class ModelTrace(AuditContractModel):
@@ -103,6 +115,7 @@ class AuditTraceResponse(AuditRequestSummary):
     analysis_definition: AnalysisDefinitionTrace | None
     context: ContextTrace
     policy: PolicyTrace
+    access: AccessExecutionTrace
     model: ModelTrace | None
     query: QueryTrace | None
     artifact: ArtifactTrace | None

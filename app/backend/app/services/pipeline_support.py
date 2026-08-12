@@ -164,15 +164,19 @@ class PipelineSupport:
         )
         request = ContextBuildRequest(
             context_release="context-v1",
-            policy_version="policy-v1",
+            policy_version=context.access_policy_version or "policy-v1",
             time_version=context.as_of.isoformat(),
-            entitlement_hash=hashlib.sha256(
+            entitlement_hash=context.entitlement_hash or hashlib.sha256(
                 f"{context.user_id}:{context.role.value}".encode()
             ).hexdigest(),
             assets=items,
             token_count=max(1, len(payload.question.split()) * 4),
             model_context_tokens=24_000,
             parameter_bindings=parameter_bindings,
+            access_profile=context.access_profile or "default",
+            allowed_domains=context.allowed_domains,
+            trino_principal=context.trino_principal or "",
+            datahub_principal=context.datahub_principal or "",
         )
         return self._context_builder.build(
             request,

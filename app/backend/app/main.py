@@ -47,6 +47,7 @@ app.add_middleware(
     allow_headers=[
         "Authorization",
         "Content-Type",
+        "X-Access-Profile",
         "X-As-Of",
         "X-Contract-Version",
         "X-Role",

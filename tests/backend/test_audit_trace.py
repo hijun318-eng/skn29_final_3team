@@ -50,6 +50,18 @@ def _safe_row() -> dict:
         "context_package_id": None,
         "package_hash": None,
         "sql_policy_version": "policy-v1",
+        "access_details": {
+            "access_profile": "pms_only",
+            "allowed_domains": ["rooms"],
+            "datahub_actor": "urn:li:corpuser:answervice_pms_only",
+            "allowed_urns": ["urn:li:dataset:room-revenue"],
+            "policy_version": "ACCESS-POLICY-v1.0.0",
+            "entitlement_hash": "e" * 64,
+            "trino_role": "answervice_pms_only",
+            "datahub_search_attempted": True,
+            "trino_execution_attempted": True,
+            "token": "must-never-leak",
+        },
         "model_version_id": None,
         "model_role": None,
         "model_name": None,
@@ -87,8 +99,47 @@ def test_detail_returns_linked_metadata_without_sql_parameters_or_result_payload
     assert payload["artifact"]["artifact_id"]
     assert payload["query"]["source_urns"] == ["urn:li:dataset:room-revenue"]
     assert payload["artifact"]["masking"] == {"applied": True, "fields": ["guest_id"]}
-    for forbidden in ("SELECT secret", "parameters_json", "data_snapshot_json"):
+    assert payload["access"] == {
+        "access_profile": "pms_only",
+        "allowed_domains": ["rooms"],
+        "datahub_actor": "urn:li:corpuser:answervice_pms_only",
+        "allowed_urns": ["urn:li:dataset:room-revenue"],
+        "trino_role": "answervice_pms_only",
+        "datahub_search_attempted": True,
+        "trino_execution_attempted": True,
+    }
+    assert payload["policy"]["entitlement_hash"] == "e" * 64
+    for forbidden in ("SELECT secret", "parameters_json", "data_snapshot_json", "must-never-leak"):
         assert forbidden not in serialized
+
+
+def test_denied_access_trace_has_attempt_flags_without_payloads():
+    row = _safe_row()
+    row.update(
+        status="DENIED",
+        trino_query_id=None,
+        generation_mode=None,
+        artifact_id=None,
+        access_details={
+            "access_profile": "crm_only",
+            "allowed_domains": ["membership"],
+            "datahub_actor": "urn:li:corpuser:answervice_crm_only",
+            "allowed_urns": [],
+            "policy_version": "ACCESS-POLICY-v1.0.0",
+            "entitlement_hash": "f" * 64,
+            "trino_role": "answervice_crm_only",
+            "datahub_search_attempted": False,
+            "trino_execution_attempted": False,
+        },
+    )
+    payload = AuditTraceResponse.model_validate(
+        PostgresAuditRepository._detail(row, [], [])
+    ).model_dump(mode="json")
+    assert payload["status"] == "DENIED"
+    assert payload["query"] is None
+    assert payload["access"]["allowed_urns"] == []
+    assert payload["access"]["datahub_search_attempted"] is False
+    assert payload["access"]["trino_execution_attempted"] is False
 
 
 def test_repository_search_binds_owner_and_reads_only_safe_summary_columns():

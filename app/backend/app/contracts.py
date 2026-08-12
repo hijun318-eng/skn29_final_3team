@@ -80,6 +80,12 @@ class RequestContext(ContractModel):
     as_of: date = Field(default_factory=date.today)
     timezone: str = "Asia/Seoul"
     contract_version: str = CONTRACT_VERSION
+    access_profile: str | None = None
+    allowed_domains: tuple[str, ...] = ()
+    access_policy_version: str | None = None
+    entitlement_hash: str | None = None
+    trino_principal: str | None = None
+    datahub_principal: str | None = None
 
 
 class AnalysisRequest(ContractModel):

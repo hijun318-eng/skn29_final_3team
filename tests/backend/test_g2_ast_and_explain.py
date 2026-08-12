@@ -1,5 +1,6 @@
 from pathlib import Path
 from sys import path
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -156,3 +157,134 @@ def test_trino_validate_explain_failure_blocks_query_execution():
 
     assert len(calls) == 1
     assert str(calls[0][2]).startswith("EXPLAIN (TYPE VALIDATE) ")
+
+
+def _profile_package(profile, principal, assets):
+    return ContextPackageBuilder().build(
+        ContextBuildRequest(
+            context_release="context-v1",
+            policy_version="ACCESS-POLICY-v1.0.0",
+            time_version="2026-08-12",
+            entitlement_hash=f"entitlement-{profile}",
+            assets=assets,
+            token_count=10,
+            model_context_tokens=24_000,
+            access_profile=profile,
+            allowed_domains=("urn:li:domain:rooms",),
+            trino_principal=principal,
+            datahub_principal=f"urn:li:corpuser:{principal}",
+        ),
+        frozenset(asset.urn for asset in assets),
+    )
+
+
+def test_profile_context_blocks_out_of_scope_sources_before_execution():
+    pms = ContextAsset("urn:pms", "pms.public.stays", ("guest_id",))
+    package = _profile_package("pms_only", "answervice_pms_only", (pms,))
+    executions = []
+
+    crm_plan = {
+        "sql": "SELECT member_no FROM crm.dbo.members LIMIT 10",
+        "parameters": {},
+        "references": [
+            {"urn": "urn:crm", "fqn": "crm.dbo.members", "columns": ["member_no"]}
+        ],
+    }
+    violation = PipelineSupport.g2_violation(crm_plan, package)
+    if violation is None:
+        executions.append(crm_plan["sql"])
+
+    assert violation == "REFERENCE_OUTSIDE_CONTEXT"
+    assert executions == []
+
+
+def test_pms_crm_join_is_allowed_but_pos_is_outside_profile_context():
+    join_id = "approved_pms_crm_join"
+    pms = ContextAsset(
+        "urn:pms", "pms.public.stays", ("guest_id",), join_ids=(join_id,)
+    )
+    crm = ContextAsset(
+        "urn:crm", "crm.dbo.members", ("pms_guest_id",), join_ids=(join_id,)
+    )
+    package = _profile_package(
+        "pms_crm", "answervice_pms_crm", (pms, crm)
+    )
+    join_plan = {
+        "sql": (
+            "SELECT p.guest_id FROM pms.public.stays AS p "
+            "JOIN crm.dbo.members AS c ON c.pms_guest_id = p.guest_id LIMIT 10"
+        ),
+        "parameters": {},
+        "references": [
+            {
+                "urn": pms.urn,
+                "fqn": pms.fqn,
+                "columns": ["guest_id"],
+                "join_ids": [join_id],
+            },
+            {
+                "urn": crm.urn,
+                "fqn": crm.fqn,
+                "columns": ["pms_guest_id"],
+                "join_ids": [join_id],
+            },
+        ],
+    }
+    pos_plan = {
+        "sql": "SELECT amount FROM pos.public.orders LIMIT 10",
+        "parameters": {},
+        "references": [
+            {"urn": "urn:pos", "fqn": "pos.public.orders", "columns": ["amount"]}
+        ],
+    }
+
+    assert PipelineSupport.g2_violation(join_plan, package) is None
+    assert PipelineSupport.g2_violation(pos_plan, package) == "REFERENCE_OUTSIDE_CONTEXT"
+
+
+def test_request_scoped_trino_principals_are_concurrency_safe_and_integrated_can_query_pos():
+    pos = ContextAsset("urn:pos", "pos.public.orders", ("amount",))
+    integrated = _profile_package(
+        "integrated_revenue", "answervice_integrated_revenue", (pos,)
+    )
+    assert PipelineSupport.g2_violation(
+        {
+            "sql": "SELECT amount FROM pos.public.orders LIMIT 1",
+            "parameters": {},
+            "references": [
+                {"urn": pos.urn, "fqn": pos.fqn, "columns": ["amount"]}
+            ],
+        },
+        integrated,
+    ) is None
+
+    adapter = I2DataPlatformAdapter("http://trino:8080", "fallback-user")
+    calls = []
+
+    def request(_method, _url, body, principal=None):
+        calls.append((principal, body))
+        return {
+            "id": f"query-{principal}-{'explain' if str(body).startswith('EXPLAIN') else 'run'}",
+            "stats": {"state": "FINISHED"},
+            "columns": [] if str(body).startswith("EXPLAIN") else [{"name": "amount"}],
+            "data": [] if str(body).startswith("EXPLAIN") else [[1]],
+        }
+
+    adapter._request = request
+    principals = ("answervice_pms_crm", "answervice_integrated_revenue")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = tuple(
+            pool.map(
+                lambda principal: adapter.execute_query(
+                    "SELECT 1 AS amount LIMIT 1",
+                    {},
+                    "g2-token",
+                    principal,
+                ),
+                principals,
+            )
+        )
+
+    assert all(result["rows"] == [{"amount": 1}] for result in results)
+    assert {principal for principal, _body in calls} == set(principals)
+    assert all(principal != "fallback-user" for principal, _body in calls)

@@ -9,6 +9,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+from uuid import UUID
 
 from src.data.i2_adapters import (
     AdapterError,
@@ -16,6 +17,7 @@ from src.data.i2_adapters import (
     QueryPage,
     TrinoAdapter,
 )
+from app.ports.data_platform import DataPlatformAccessDenied, DataPlatformNoAssets, DataPlatformUnavailable
 
 
 class _PartialAwareTrinoAdapter(TrinoAdapter):
@@ -59,6 +61,47 @@ query Dataset($urn: String!) {
           ... on CorpGroup { urn name }
         }
         type
+      }
+    }
+    properties { description }
+    domain { domain { urn properties { name } } }
+    glossaryTerms { terms { term { urn properties { name } } } }
+    tags { tags { tag { urn properties { name } } } }
+  }
+}
+""".strip()
+    _SEARCH_QUERY = """
+query SearchDatasets($query: String!) {
+  search(input: {type: DATASET, query: $query, start: 0, count: 50}) {
+    searchResults {
+      entity {
+        urn
+        ... on Dataset {
+          name
+          properties { description }
+          schemaMetadata { name fields { fieldPath description } }
+          domain { domain { urn properties { name } } }
+          ownership {
+            owners {
+              owner {
+                ... on CorpUser { urn username }
+                ... on CorpGroup { urn name }
+              }
+            }
+          }
+          glossaryTerms { terms { term { urn properties { name } } } }
+          tags { tags { tag { urn properties { name } } } }
+          lineage(input: {direction: UPSTREAM, start: 0, count: 100}) {
+            relationships {
+              entity {
+                ... on Dataset {
+                  urn
+                  domain { domain { urn properties { name } } }
+                }
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -422,6 +465,7 @@ query Dataset($urn: String!) {
         method: str,
         url: str,
         body: Any | None,
+        trino_user: str | None = None,
     ) -> dict[str, Any]:
         data = body.encode("utf-8") if isinstance(body, str) else None
         request = Request(
@@ -433,7 +477,7 @@ query Dataset($urn: String!) {
                     if isinstance(body, str)
                     else "application/json"
                 ),
-                "X-Trino-User": self._trino_user,
+                "X-Trino-User": trino_user or self._trino_user,
             },
             method=method,
         )
@@ -465,26 +509,70 @@ query Dataset($urn: String!) {
         context: dict[str, Any],
     ) -> list[dict[str, Any]]:
         if context.get("role") != "hotel_analyst":
-            return []
+            if not context.get("access_profile"):
+                return []
+            raise DataPlatformAccessDenied("analysis role is not entitled")
+        profile = None
+        datahub_token = self._datahub_token
+        allowed_domains: frozenset[str] | None = None
+        if context.get("access_profile") and self._require_live_metadata:
+            from app.access_policy import resolve_access_profile
+            from app.contracts import Role
+            try:
+                profile = resolve_access_profile(
+                    UUID(str(context.get("user_id"))),
+                    Role(str(context.get("role"))),
+                    str(context["access_profile"]),
+                )
+                datahub_token = profile.credential()
+            except PermissionError as error:
+                raise DataPlatformAccessDenied("access profile is not entitled") from error
+            except (RuntimeError, ValueError) as error:
+                raise DataPlatformUnavailable("access profile credential is unavailable") from error
+            allowed_domains = frozenset(profile.domains)
         selected: list[dict[str, Any]] = []
+        policy_filtered = False
         column_count = 0
         query_use = self._query_use(query)
         if self._require_live_metadata:
             if not self._trino.health():
-                raise ValueError("live Trino runtime verification is unavailable")
+                raise DataPlatformUnavailable("live Trino runtime verification is unavailable")
             if not self._datahub_health():
-                raise ValueError("live DataHub runtime verification is unavailable")
+                raise DataPlatformUnavailable("live DataHub runtime verification is unavailable")
         elif query_use == "approved_pms_crm_pos_join":
             if not self._three_source_verified:
                 raise ValueError("versioned 3-source runtime verification is unavailable")
         elif not self._bindings_verified:
             raise ValueError("Asset Binding runtime verification is unavailable")
-        for asset in self._rank_assets(query):
+        candidates = self._rank_assets(query)
+        search_metadata: dict[str, dict[str, Any]] = {}
+        if self._require_live_metadata:
+            if profile is not None:
+                candidates = tuple(
+                    {asset["urn"]: asset for asset in (*self._assets, *self._three_source_assets)}.values()
+                )
+            else:
+                use_candidates = self._three_source_assets if query_use == "approved_pms_crm_pos_join" else self._assets
+                candidates = tuple(asset for asset in use_candidates if query_use in asset["uses"])
+            search_results = self._datahub_search(query, datahub_token)
+            search_metadata = {str(item["urn"]): item for item in search_results}
+            order = {str(item["urn"]): index for index, item in enumerate(search_results)}
+            candidates = tuple(
+                sorted(
+                    (asset for asset in candidates if asset["urn"] in order),
+                    key=lambda asset: order[asset["urn"]],
+                )
+            )
+        for asset in candidates:
             if column_count + len(asset["columns"]) > 60:
                 continue
             columns = asset["columns"]
             if self._require_live_metadata:
-                live = self._datahub_dataset(asset["urn"])
+                live = (
+                    self._datahub_dataset(asset["urn"], datahub_token)
+                    if datahub_token
+                    else self._datahub_dataset(asset["urn"])
+                )
                 schema = live.get("schemaMetadata") or {}
                 columns = tuple(field["fieldPath"] for field in schema.get("fields") or ())
                 live_name = str(schema.get("name", ""))
@@ -505,10 +593,44 @@ query Dataset($urn: String!) {
                     or not name_matches
                     or not columns_match
                 ):
-                    raise ValueError("live DataHub metadata does not match the contract")
+                    raise DataPlatformUnavailable("live DataHub metadata does not match the contract")
+                metadata = search_metadata[asset["urn"]]
+                domain = self._dataset_domain(metadata)
+                tags = self._metadata_names(metadata, "tags", "tags", "tag")
+                if profile is not None:
+                    source_domains = self._serving_source_domains(metadata) if asset["kind"] == "view" else {domain}
+                    if (
+                        "AI_SEARCH_ALLOWED" not in tags
+                        or not source_domains
+                        or not source_domains.issubset(allowed_domains)
+                        or (asset["kind"] == "raw" and domain not in allowed_domains)
+                    ):
+                        policy_filtered = True
+                        continue
+                elif allowed_domains is not None and domain not in allowed_domains:
+                    continue
             self._live_schemas[asset["urn"]] = asset["columns"]
             item = {key: value for key, value in asset.items() if key != "columns"}
             item["join_ids"] = ()
+            if self._require_live_metadata:
+                item.update(
+                    {
+                        "description": str((metadata.get("properties") or {}).get("description") or ""),
+                        "domain": domain,
+                        "name": str(metadata.get("name") or asset["name"]),
+                        "columns": tuple(
+                            {
+                                "name": str(field.get("fieldPath")),
+                                "description": str(field.get("description") or ""),
+                            }
+                            for field in (metadata.get("schemaMetadata") or {}).get("fields") or ()
+                            if field.get("fieldPath")
+                        ),
+                        "owners": self._metadata_names(metadata, "ownership", "owners", "owner"),
+                        "glossary_terms": self._metadata_names(metadata, "glossaryTerms", "terms", "term"),
+                        "tags": tags,
+                    }
+                )
             selected.append(item)
             column_count += len(asset["columns"])
         selected_fqns = {item["fqn"] for item in selected}
@@ -536,8 +658,46 @@ query Dataset($urn: String!) {
             selected[0]["required_filters"] = self._three_source_filters
             selected[0]["parameter_bindings"] = self._three_source_parameters
         if self._require_live_metadata and not selected:
-            raise ValueError("live DataHub returned no entitled matching assets")
+            if policy_filtered:
+                raise DataPlatformAccessDenied("DataHub assets are outside the selected profile")
+            raise DataPlatformNoAssets("live DataHub returned no matching assets")
         return selected
+
+    @staticmethod
+    def _dataset_domain(dataset: dict[str, Any]) -> str:
+        domain = ((dataset.get("domain") or {}).get("domain") or {})
+        urn = str(domain.get("urn") or "")
+        return urn
+
+    @staticmethod
+    def _serving_source_domains(dataset: dict[str, Any]) -> set[str]:
+        return {
+            I2DataPlatformAdapter._dataset_domain(relationship.get("entity") or {})
+            for relationship in ((dataset.get("lineage") or {}).get("relationships") or ())
+            if I2DataPlatformAdapter._dataset_domain(relationship.get("entity") or {})
+        }
+
+    @staticmethod
+    def _asset_source_domain(fqn: str) -> str:
+        if fqn.startswith("serving.analytics."):
+            return "hotel-analytics"
+        return {
+            "pms": "rooms",
+            "pos": "food_and_beverage",
+            "crm": "membership",
+            "facility": "facility",
+            "banquet": "banquet",
+        }.get(fqn.split(".", 1)[0], "")
+
+    @staticmethod
+    def _metadata_names(dataset: dict[str, Any], aspect: str, entries: str, entity: str) -> tuple[str, ...]:
+        values = []
+        for item in (dataset.get(aspect) or {}).get(entries) or ():
+            target = item.get(entity) or {}
+            value = (target.get("properties") or {}).get("name") or target.get("username") or target.get("name") or target.get("urn")
+            if value:
+                values.append(str(value))
+        return tuple(sorted(set(values)))
 
     def get_asset_schema(self, urn: str) -> dict[str, Any]:
         columns = self._live_schemas.get(urn)
@@ -584,12 +744,45 @@ query Dataset($urn: String!) {
             return "approved_pms_crm_join"
         return "crm_only" if has_crm else "serving_views"
 
-    def _datahub_dataset(self, urn: str) -> dict[str, Any]:
-        if urn.startswith("urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics."):
-            return self._datahub_editable_dataset(urn)
+    def _datahub_search(self, query: str, token: str | None) -> list[dict[str, Any]]:
         headers = {"Content-Type": "application/json"}
-        if self._datahub_token:
-            headers["Authorization"] = f"Bearer {self._datahub_token}"
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        request = Request(
+            f"{self._datahub_url}/api/graphql",
+            data=json.dumps({"query": self._SEARCH_QUERY, "variables": {"query": query}}).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=10) as response:
+                payload = json.loads(response.read())
+        except HTTPError as error:
+            if error.code in {401, 403}:
+                raise DataPlatformAccessDenied("DataHub search access denied") from error
+            raise DataPlatformUnavailable("live DataHub search failed") from error
+        except (TimeoutError, URLError, json.JSONDecodeError) as error:
+            raise DataPlatformUnavailable("live DataHub search failed") from error
+        if payload.get("errors"):
+            codes = {
+                str((error.get("extensions") or {}).get("code") or "").upper()
+                for error in payload["errors"] if isinstance(error, dict)
+            }
+            if codes & {"UNAUTHORIZED", "FORBIDDEN", "ACCESS_DENIED"}:
+                raise DataPlatformAccessDenied("DataHub search was rejected")
+            raise DataPlatformUnavailable("live DataHub search failed")
+        results = ((payload.get("data") or {}).get("search") or {}).get("searchResults")
+        if not isinstance(results, list):
+            raise DataPlatformUnavailable("live DataHub search response is invalid")
+        return [item["entity"] for item in results if isinstance(item.get("entity"), dict) and item["entity"].get("urn")]
+
+    def _datahub_dataset(self, urn: str, token: str | None = None) -> dict[str, Any]:
+        if urn.startswith("urn:li:dataset:(urn:li:dataPlatform:trino,serving.analytics."):
+            return self._datahub_editable_dataset(urn, token)
+        headers = {"Content-Type": "application/json"}
+        credential = token or self._datahub_token
+        if credential:
+            headers["Authorization"] = f"Bearer {credential}"
         request = Request(
             f"{self._datahub_url}/api/graphql",
             data=json.dumps(
@@ -601,16 +794,29 @@ query Dataset($urn: String!) {
         try:
             with urlopen(request, timeout=10) as response:
                 payload = json.loads(response.read())
-        except (HTTPError, TimeoutError, URLError, json.JSONDecodeError) as error:
-            raise ValueError("live DataHub lookup failed") from error
-        if payload.get("errors") or not (payload.get("data") or {}).get("dataset"):
-            raise ValueError("live DataHub dataset is unavailable")
+        except HTTPError as error:
+            if error.code in {401, 403}:
+                raise DataPlatformAccessDenied("DataHub lookup access denied") from error
+            raise DataPlatformUnavailable("live DataHub lookup failed") from error
+        except (TimeoutError, URLError, json.JSONDecodeError) as error:
+            raise DataPlatformUnavailable("live DataHub lookup failed") from error
+        if payload.get("errors"):
+            codes = {
+                str((error.get("extensions") or {}).get("code") or "").upper()
+                for error in payload["errors"] if isinstance(error, dict)
+            }
+            if codes & {"UNAUTHORIZED", "FORBIDDEN", "ACCESS_DENIED"}:
+                raise DataPlatformAccessDenied("DataHub lookup access denied")
+            raise DataPlatformUnavailable("live DataHub lookup failed")
+        if not (payload.get("data") or {}).get("dataset"):
+            raise DataPlatformUnavailable("live DataHub dataset is unavailable")
         return payload["data"]["dataset"]
 
-    def _datahub_editable_dataset(self, urn: str) -> dict[str, Any]:
+    def _datahub_editable_dataset(self, urn: str, token: str | None = None) -> dict[str, Any]:
         headers = {"X-RestLi-Protocol-Version": "2.0.0"}
-        if self._datahub_token:
-            headers["Authorization"] = f"Bearer {self._datahub_token}"
+        credential = token or self._datahub_token
+        if credential:
+            headers["Authorization"] = f"Bearer {credential}"
         url = (
             f"{self._datahub_url}/entitiesV2/{quote(urn, safe='')}"
             "?aspects=List(editableDatasetProperties,editableSchemaMetadata)"
@@ -618,14 +824,18 @@ query Dataset($urn: String!) {
         try:
             with urlopen(Request(url, headers=headers), timeout=10) as response:
                 payload = json.loads(response.read())
-        except (HTTPError, TimeoutError, URLError, json.JSONDecodeError) as error:
-            raise ValueError("live DataHub lookup failed") from error
+        except HTTPError as error:
+            if error.code in {401, 403}:
+                raise DataPlatformAccessDenied("DataHub lookup access denied") from error
+            raise DataPlatformUnavailable("live DataHub lookup failed") from error
+        except (TimeoutError, URLError, json.JSONDecodeError) as error:
+            raise DataPlatformUnavailable("live DataHub lookup failed") from error
         aspects = payload.get("aspects") or {}
         key = (aspects.get("datasetKey") or {}).get("value") or {}
         schema = (aspects.get("editableSchemaMetadata") or {}).get("value") or {}
         fields = schema.get("editableSchemaFieldInfo") or []
         if payload.get("urn") != urn or key.get("name") is None or not fields:
-            raise ValueError("live DataHub dataset is unavailable")
+            raise DataPlatformUnavailable("live DataHub dataset is unavailable")
         return {
             "urn": payload["urn"],
             "name": str(key["name"]).rsplit(".", 1)[-1],
@@ -655,16 +865,30 @@ query Dataset($urn: String!) {
         sql: str,
         parameters: dict[str, Any],
         gate_token: str,
+        trino_principal: str | None = None,
     ) -> dict[str, Any]:
         if not gate_token:
             raise ValueError("G2 gate token is required")
+        if trino_principal is not None and not re.fullmatch(
+            r"answervice_[a-z_]+", trino_principal
+        ):
+            raise ValueError("Trino principal is invalid")
         bound_sql = self._bind_parameters(sql, parameters)
+        trino = self._trino
+        if trino_principal is not None:
+            trino = _PartialAwareTrinoAdapter(
+                self._trino.base_url,
+                transport=lambda method, url, body: self._request(
+                    method, url, body, trino_principal
+                ),
+            )
         try:
             self._collect(
-                self._trino.execute(f"EXPLAIN (TYPE VALIDATE) {bound_sql}")
+                trino.execute(f"EXPLAIN (TYPE VALIDATE) {bound_sql}"),
+                trino=trino,
             )
-            page = self._trino.execute(bound_sql)
-            result = self._collect(page)
+            page = trino.execute(bound_sql)
+            result = self._collect(page, trino=trino)
         except AdapterError as error:
             if error.code == AdapterErrorCode.TIMEOUT:
                 raise TimeoutError(str(error)) from error
@@ -744,7 +968,9 @@ query Dataset($urn: String!) {
         self,
         first: QueryPage,
         partial: bool = False,
+        trino: TrinoAdapter | None = None,
     ) -> dict[str, Any]:
+        trino = trino or self._trino
         page = first
         columns = page.columns
         rows = list(page.rows)
@@ -752,7 +978,7 @@ query Dataset($urn: String!) {
         while page.next_uri:
             self._next_uris[page.query_id] = page.next_uri
             try:
-                page = self._trino.next_page(page.next_uri)
+                page = trino.next_page(page.next_uri)
             except AdapterError as error:
                 raise ValueError(str(error)) from error
             columns = page.columns or columns

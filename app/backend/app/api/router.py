@@ -163,6 +163,7 @@ def ready(request: Request) -> ReadinessResponse:
         422: {"model": ErrorResponse, "description": "요청 Context 또는 body 오류"},
         429: {"model": ErrorResponse, "description": "동시 실행 제한"},
         500: {"model": ErrorResponse, "description": "안전하게 정규화된 내부 오류"},
+        503: {"model": ErrorResponse, "description": "접근 정책 또는 DataHub 검색 미가용"},
     },
 )
 def analysis(

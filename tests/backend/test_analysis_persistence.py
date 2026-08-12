@@ -216,3 +216,37 @@ def test_success_metadata_links_existing_release_package_and_model_without_paylo
     all_sql = " ".join(str(call.args[0]) for call in connection.execute.call_args_list)
     for forbidden in ("question_text_redacted", "generated_sql_redacted", "data_snapshot_json"):
         assert forbidden not in all_sql
+
+
+def test_access_audit_records_only_entitlement_metadata_and_attempt_flags():
+    connection = MagicMock()
+    request_context = RequestContext(
+        request_id=uuid4(), user_id=UUID(int=1), access_profile="pms_only",
+        allowed_domains=("rooms",), access_policy_version="ACCESS-POLICY-v1.0.0",
+        entitlement_hash="e" * 64,
+    )
+    profile = SimpleNamespace(
+        name="pms_only", datahub_principal="urn:li:corpuser:answervice_pms_only",
+        policy_version="ACCESS-POLICY-v1.0.0", entitlement_hash="e" * 64,
+    )
+    with patch("app.access_policy.resolve_access_profile", return_value=profile):
+        PostgresAnalysisRepository._insert_access_audit(connection, request_context)
+
+    statement, parameters = connection.execute.call_args.args
+    details = __import__("json").loads(parameters["details"])
+    assert "governance.audit_events" in str(statement)
+    assert details == {
+        "access_profile": "pms_only",
+        "allowed_domains": ["rooms"],
+        "datahub_actor": "urn:li:corpuser:answervice_pms_only",
+        "allowed_urns": [],
+        "policy_version": "ACCESS-POLICY-v1.0.0",
+        "entitlement_hash": "e" * 64,
+        "trino_role": "answervice_pms_only",
+        "datahub_search_attempted": False,
+        "trino_execution_attempted": False,
+        "request_status": "RECEIVED",
+    }
+    serialized = str(parameters)
+    for forbidden in ("question", "token", "select", "parameters", "result"):
+        assert forbidden not in serialized.lower()

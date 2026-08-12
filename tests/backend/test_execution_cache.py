@@ -76,7 +76,7 @@ class _Adapter:
     def search_assets(self, _query, _context):
         return [{"urn": "urn:room", "fqn": "serving.analytics.room", "schema_version": "1", "seed_version": "1"}]
 
-    def execute_query(self, _sql, _parameters, _gate_token):
+    def execute_query(self, _sql, _parameters, _gate_token, _trino_principal=None):
         self.executions += 1
         return {"query_id": "query-1"}
 

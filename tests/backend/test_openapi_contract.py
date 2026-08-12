@@ -95,6 +95,9 @@ class OpenApiContractTest(unittest.TestCase):
             "DataHub 또는 Trino 카탈로그 미가용",
             committed["paths"]["/catalog/sources"]["get"]["responses"]["503"]["description"],
         )
+        analysis = committed["paths"]["/analysis"]["post"]
+        self.assertIn("503", analysis["responses"])
+        self.assertIn("X-Access-Profile", {item["name"] for item in analysis["parameters"]})
 
     def test_analysis_persistence_requests_reject_server_owned_fields(self) -> None:
         schemas = app.openapi()["components"]["schemas"]
@@ -112,6 +115,15 @@ class OpenApiContractTest(unittest.TestCase):
             self.assertNotIn(f'"{forbidden}"', serialized)
         self.assertIn("source_urns", schemas["QueryTrace"]["properties"])
         self.assertIn("masking", schemas["ArtifactTrace"]["properties"])
+        self.assertEqual(
+            {
+                "access_profile", "allowed_domains", "datahub_actor",
+                "allowed_urns", "trino_role", "datahub_search_attempted",
+                "trino_execution_attempted",
+            },
+            set(schemas["AccessExecutionTrace"]["properties"]),
+        )
+        self.assertIn("entitlement_hash", schemas["PolicyTrace"]["properties"])
 
         parameters = {
             item["name"]

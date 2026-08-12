@@ -12,7 +12,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.analysis_contracts import ANALYSIS_PERSISTENCE_VERSION
-from app.contracts import AnalysisResponse, AnalysisStatus, RequestContext
+from app.contracts import AnalysisResponse, AnalysisStatus, PipelineStage, RequestContext
 
 
 _EMAIL = re.compile(r"\b[^\s@]+@[^\s@]+\.[^\s@]+\b")
@@ -218,6 +218,7 @@ class PostgresAnalysisRepository:
                         "started_at": datetime.now(timezone.utc),
                     },
                 )
+                self._insert_access_audit(connection, context)
                 connection.execute(
                     text(
                         """
@@ -302,6 +303,7 @@ class PostgresAnalysisRepository:
                         "started_at": datetime.now(timezone.utc),
                     },
                 )
+                self._insert_access_audit(connection, context)
                 connection.execute(
                     text(
                         """
@@ -411,6 +413,7 @@ class PostgresAnalysisRepository:
                         },
                     )
                     previous = transition.value
+                self._update_access_audit(connection, request_id, response, execution)
                 if execution and response.data.artifact and response.data.result:
                     self._link_execution_metadata(connection, request_id, execution)
                     self._save_evidence(connection, request_id, response, execution)
@@ -435,8 +438,110 @@ class PostgresAnalysisRepository:
                         "completed_at": datetime.now(timezone.utc),
                     },
                 )
+                connection.execute(
+                    text(
+                        """
+                        UPDATE governance.audit_events
+                        SET action_code = 'ANALYSIS_ACCESS_DENIED',
+                            details_json_redacted = details_json_redacted ||
+                                CAST(:status AS jsonb)
+                        WHERE request_id = :request_id
+                          AND action_code = 'ANALYSIS_ACCESS_STARTED'
+                        """
+                    ),
+                    {
+                        "request_id": request_id,
+                        "status": json.dumps({"request_status": "DENIED"}),
+                    },
+                )
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 실행 실패를 저장할 수 없습니다.") from error
+
+    @staticmethod
+    def _insert_access_audit(connection, context: RequestContext) -> None:
+        from app.access_policy import resolve_access_profile
+
+        profile = resolve_access_profile(
+            context.user_id, context.role, context.access_profile
+        )
+        trino_role = context.trino_principal or f"answervice_{profile.name.replace('-', '_')}"
+        details = {
+            "access_profile": profile.name,
+            "allowed_domains": list(context.allowed_domains),
+            "datahub_actor": context.datahub_principal or profile.datahub_principal,
+            "allowed_urns": [],
+            "policy_version": context.access_policy_version or profile.policy_version,
+            "entitlement_hash": context.entitlement_hash or profile.entitlement_hash,
+            "trino_role": trino_role,
+            "datahub_search_attempted": False,
+            "trino_execution_attempted": False,
+            "request_status": "RECEIVED",
+        }
+        connection.execute(
+            text(
+                """
+                INSERT INTO governance.audit_events
+                    (request_id, actor_user_id, actor_role, action_code,
+                     object_type, object_id, sql_policy_version,
+                     details_json_redacted, trace_id)
+                VALUES (:request_id, :actor_user_id, :actor_role,
+                        'ANALYSIS_ACCESS_STARTED', 'ANALYSIS_REQUEST',
+                        :object_id, :policy_version, CAST(:details AS jsonb),
+                        :trace_id)
+                """
+            ),
+            {
+                "request_id": context.request_id,
+                "actor_user_id": context.user_id,
+                "actor_role": context.role.value,
+                "object_id": str(context.request_id),
+                "policy_version": details["policy_version"],
+                "details": json.dumps(details, ensure_ascii=True, sort_keys=True),
+                "trace_id": context.trace_id,
+            },
+        )
+
+    @staticmethod
+    def _update_access_audit(
+        connection,
+        request_id: UUID,
+        response: AnalysisResponse,
+        execution: dict[str, Any],
+    ) -> None:
+        stages = {item.stage for item in response.data.trace}
+        package = execution.get("package")
+        allowed_urns = sorted({item.urn for item in package.assets}) if package else []
+        details = {
+            "allowed_urns": allowed_urns,
+            "datahub_search_attempted": any(
+                stage not in {PipelineStage.ROUTER, PipelineStage.CONTROLLER}
+                for stage in stages
+            ),
+            "trino_execution_attempted": PipelineStage.QUERY in stages,
+            "request_status": response.data.status.value,
+        }
+        action = (
+            "ANALYSIS_ACCESS_DENIED"
+            if response.data.status is AnalysisStatus.BLOCKED
+            else "ANALYSIS_ACCESS_COMPLETED"
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE governance.audit_events
+                SET action_code = :action,
+                    details_json_redacted = details_json_redacted ||
+                        CAST(:details AS jsonb)
+                WHERE request_id = :request_id
+                  AND action_code = 'ANALYSIS_ACCESS_STARTED'
+                """
+            ),
+            {
+                "request_id": request_id,
+                "action": action,
+                "details": json.dumps(details, ensure_ascii=True, sort_keys=True),
+            },
+        )
 
     @staticmethod
     def _link_execution_metadata(connection, request_id, execution) -> None:

@@ -23,10 +23,20 @@ from app.services.pipeline_support import PipelineSupport
 
 
 def live_dataset(adapter, urn):
-    asset = next(item for item in adapter._assets if item["urn"] == urn)
+    asset = next(item for item in (*adapter._assets, *adapter._three_source_assets) if item["urn"] == urn)
     return {
         "urn": urn,
         "name": asset["name"],
+        "properties": {"description": f"{asset['name']} description"},
+        "domain": {
+            "domain": {
+                "urn": f"urn:li:domain:{adapter._asset_source_domain(asset['fqn'])}",
+                "properties": {"name": adapter._asset_source_domain(asset["fqn"])},
+            }
+        },
+        "ownership": {"owners": [{"owner": {"urn": "urn:li:corpuser:owner", "username": "owner"}}]},
+        "glossaryTerms": {"terms": []},
+        "tags": {"tags": []},
         "status": {"removed": False},
         "schemaMetadata": {
             "name": asset["fqn"],
@@ -44,6 +54,9 @@ def simulated_verified_live_adapter():
     adapter._live_runtime_verified = True
     adapter._trino.health = lambda: True
     adapter._datahub_health = lambda: True
+    adapter._datahub_search = lambda query, _token: [
+        live_dataset(adapter, asset["urn"]) for asset in adapter._rank_assets(query)
+    ]
     for asset in adapter._assets:
         if asset["kind"] == "view":
             asset["binding_status"] = "VERIFIED"
@@ -1002,6 +1015,9 @@ def test_live_mode_uses_current_datahub_response_instead_of_stale_evidence():
     live._trino.health = lambda: True
     live._datahub_health = lambda: True
     live._datahub_dataset = lambda urn: live_dataset(live, urn)
+    live._datahub_search = lambda query, _token: [
+        live_dataset(live, asset["urn"]) for asset in live._rank_assets(query)
+    ]
 
     assets = live.search_assets(
         "5월과 6월 GOLD 고객의 객실 매출을 보여줘.",
@@ -1033,6 +1049,9 @@ def test_live_raw_asset_accepts_datahub_name_without_catalog_prefix():
         }
 
     live._datahub_dataset = dataset_without_catalog
+    live._datahub_search = lambda query, _token: [
+        live_dataset(live, asset["urn"]) for asset in live._rank_assets(query)
+    ]
 
     assets = live.search_assets(
         "5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘.",

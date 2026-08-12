@@ -40,7 +40,7 @@ class _Adapter:
             }
         ]
 
-    def execute_query(self, _sql, _parameters, _gate_token):
+    def execute_query(self, _sql, _parameters, _gate_token, _trino_principal=None):
         return {"query_id": self.query["query_id"]}
 
     def get_query_status(self, _query_id):

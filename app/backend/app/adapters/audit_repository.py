@@ -88,6 +88,7 @@ class PostgresAuditRepository:
                                cr.version_no AS release_version, cr.release_hash,
                                r.context_package_id, cp.package_hash,
                                r.sql_policy_version,
+                               ae.details_json_redacted AS access_details,
                                mv.model_version_id, mv.model_role, mv.model_name,
                                mv.model_revision, mv.runtime_name,
                                q.trino_query_id, q.generation_mode,
@@ -106,6 +107,17 @@ class PostgresAuditRepository:
                           ON cr.context_release_id = r.context_release_id
                         LEFT JOIN context.context_packages cp
                           ON cp.context_package_id = r.context_package_id
+                        LEFT JOIN LATERAL (
+                            SELECT details_json_redacted
+                            FROM governance.audit_events
+                            WHERE request_id = r.request_id
+                              AND action_code IN (
+                                  'ANALYSIS_ACCESS_STARTED',
+                                  'ANALYSIS_ACCESS_COMPLETED',
+                                  'ANALYSIS_ACCESS_DENIED'
+                              )
+                            ORDER BY created_at DESC, audit_event_id DESC LIMIT 1
+                        ) ae ON true
                         LEFT JOIN model.model_versions mv
                           ON mv.model_version_id = r.sql_generation_model_id
                         LEFT JOIN LATERAL (
@@ -185,7 +197,25 @@ class PostgresAuditRepository:
             "package_id": row["context_package_id"],
             "package_hash": row["package_hash"],
         }
-        result["policy"] = {"sql_policy_version": row["sql_policy_version"]}
+        access = row.get("access_details") or {}
+        result["policy"] = {
+            "sql_policy_version": row["sql_policy_version"],
+            "policy_version": access.get("policy_version") or row["sql_policy_version"],
+            "entitlement_hash": access.get("entitlement_hash"),
+        }
+        result["access"] = {
+            "access_profile": access.get("access_profile"),
+            "allowed_domains": list(access.get("allowed_domains") or []),
+            "datahub_actor": access.get("datahub_actor"),
+            "allowed_urns": list(access.get("allowed_urns") or []),
+            "trino_role": access.get("trino_role"),
+            "datahub_search_attempted": bool(
+                access.get("datahub_search_attempted", False)
+            ),
+            "trino_execution_attempted": bool(
+                access.get("trino_execution_attempted", False)
+            ),
+        }
         result["model"] = None if row["model_version_id"] is None else {
             key: row[key]
             for key in (

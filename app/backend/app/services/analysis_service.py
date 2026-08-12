@@ -18,6 +18,7 @@ from app.contracts import (
     TraceStep,
 )
 from app.ports.data_platform import DataPlatformAdapter
+from app.ports.data_platform import DataPlatformAccessDenied, DataPlatformNoAssets, DataPlatformUnavailable
 from app.ports.model import ModelAdapter
 from app.services.analysis_responses import AnalysisResponseFactory
 from app.services.context_builder import ContextBuildError, ContextPackageBuilder
@@ -69,7 +70,9 @@ class AnalysisService:
             role=context.role.value,
             as_of=context.as_of,
             mask_scope=context.role.value,
-            policy="policy-v1",
+            policy=context.access_policy_version or "policy-v1",
+            access_profile=context.access_profile,
+            entitlement_hash=context.entitlement_hash,
         )[:16]
         self._responses.record(trace, PipelineStage.CONTROLLER, f"audit={audit_id}")
 
@@ -78,10 +81,30 @@ class AnalysisService:
             if decision.route_type is RouteType.TEMPLATE
             else payload.question
         )
-        assets = self._adapter.search_assets(
-            asset_query,
-            context.model_dump(mode="json"),
-        )
+        try:
+            assets = self._adapter.search_assets(
+                asset_query,
+                context.model_dump(mode="json"),
+            )
+        except DataPlatformAccessDenied:
+            return self._responses.error(
+                context, machine, trace, PipelineStage.CONTEXT,
+                AnalysisStatus.BLOCKED, ErrorCode.ACCESS_DENIED,
+                "선택한 접근 Profile로 검색할 수 없습니다.", decision,
+            )
+        except DataPlatformUnavailable:
+            return self._responses.error(
+                context, machine, trace, PipelineStage.CONTEXT,
+                AnalysisStatus.FAILED, ErrorCode.QUERY_SOURCE_FAILED,
+                "DataHub 검색 상태를 확인할 수 없습니다.", decision,
+                retryable=True,
+            )
+        except DataPlatformNoAssets:
+            return self._responses.error(
+                context, machine, trace, PipelineStage.CONTEXT,
+                AnalysisStatus.BLOCKED, ErrorCode.INSUFFICIENT_EVIDENCE,
+                "질문과 일치하는 검색 가능한 Dataset이 없습니다.", decision,
+            )
         if decision.route_type is RouteType.TEMPLATE:
             assets = [
                 item for item in assets if item.get("fqn") in decision.source_fqns
@@ -156,6 +179,8 @@ class AnalysisService:
         )
         common_key = {
             "role": context.role.value,
+            "access_profile": getattr(package, "access_profile", "default"),
+            "allowed_domains": getattr(package, "allowed_domains", ()),
             "context": package.package_hash,
             "policy": package.policy_version,
             "entitlement": package.entitlement_hash,
@@ -304,6 +329,7 @@ class AnalysisService:
                     plan["sql"],
                     plan.get("parameters", {}),
                     gate_token,
+                    getattr(package, "trino_principal", None),
                 )
                 query = self._adapter.get_query_status(query["query_id"])
             else:

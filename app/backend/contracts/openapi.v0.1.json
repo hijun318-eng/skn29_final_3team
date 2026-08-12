@@ -1,6 +1,77 @@
 {
   "components": {
     "schemas": {
+      "AccessExecutionTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "access_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Profile"
+          },
+          "allowed_domains": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Domains",
+            "type": "array"
+          },
+          "allowed_urns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowed Urns",
+            "type": "array"
+          },
+          "datahub_actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datahub Actor"
+          },
+          "datahub_search_attempted": {
+            "title": "Datahub Search Attempted",
+            "type": "boolean"
+          },
+          "trino_execution_attempted": {
+            "title": "Trino Execution Attempted",
+            "type": "boolean"
+          },
+          "trino_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trino Role"
+          }
+        },
+        "required": [
+          "access_profile",
+          "allowed_domains",
+          "datahub_actor",
+          "allowed_urns",
+          "trino_role",
+          "datahub_search_attempted",
+          "trino_execution_attempted"
+        ],
+        "title": "AccessExecutionTrace",
+        "type": "object"
+      },
       "AnalysisData": {
         "additionalProperties": false,
         "properties": {
@@ -632,6 +703,9 @@
       "AuditTraceResponse": {
         "additionalProperties": false,
         "properties": {
+          "access": {
+            "$ref": "#/components/schemas/AccessExecutionTrace"
+          },
           "analysis_definition": {
             "anyOf": [
               {
@@ -761,6 +835,7 @@
           "analysis_definition",
           "context",
           "policy",
+          "access",
           "model",
           "query",
           "artifact",
@@ -1634,13 +1709,30 @@
       "PolicyTrace": {
         "additionalProperties": false,
         "properties": {
+          "entitlement_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entitlement Hash"
+          },
+          "policy_version": {
+            "title": "Policy Version",
+            "type": "string"
+          },
           "sql_policy_version": {
             "title": "Sql Policy Version",
             "type": "string"
           }
         },
         "required": [
-          "sql_policy_version"
+          "sql_policy_version",
+          "policy_version",
+          "entitlement_hash"
         ],
         "title": "PolicyTrace",
         "type": "object"
@@ -2689,6 +2781,22 @@
               "title": "X-Contract-Version",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
           }
         ],
         "requestBody": {
@@ -2790,6 +2898,16 @@
               }
             },
             "description": "안전하게 정규화된 내부 오류"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "접근 정책 또는 DataHub 검색 미가용"
           }
         },
         "security": [
@@ -2838,6 +2956,22 @@
             "schema": {
               "title": "X-Contract-Version",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
             }
           }
         ],
@@ -2907,6 +3041,22 @@
             "schema": {
               "title": "X-Contract-Version",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
             }
           }
         ],
@@ -2999,6 +3149,22 @@
               "title": "X-Contract-Version",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
           }
         ],
         "responses": {
@@ -3079,6 +3245,22 @@
             "schema": {
               "title": "X-Contract-Version",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
             }
           }
         ],
@@ -3161,6 +3343,22 @@
               "title": "X-Contract-Version",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
           }
         ],
         "responses": {
@@ -3242,6 +3440,22 @@
               "title": "X-Contract-Version",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
           }
         ],
         "responses": {
@@ -3312,6 +3526,22 @@
             "schema": {
               "title": "X-Contract-Version",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
             }
           }
         ],
@@ -3474,6 +3704,22 @@
               "title": "X-Contract-Version",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
           }
         ],
         "responses": {
@@ -3547,6 +3793,22 @@
             "schema": {
               "title": "X-Contract-Version",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
             }
           }
         ],
@@ -3630,6 +3892,22 @@
             "schema": {
               "title": "X-Contract-Version",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
             }
           }
         ],
@@ -3723,6 +4001,22 @@
               "title": "X-Contract-Version",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
           }
         ],
         "responses": {
@@ -3791,6 +4085,22 @@
             "schema": {
               "title": "X-Contract-Version",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
             }
           }
         ],
@@ -3891,6 +4201,22 @@
               "title": "X-Contract-Version",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
           }
         ],
         "responses": {
@@ -3979,6 +4305,22 @@
             "schema": {
               "title": "X-Contract-Version",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
             }
           }
         ],
@@ -4079,6 +4421,22 @@
               "title": "X-Contract-Version",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
           }
         ],
         "requestBody": {
@@ -4178,6 +4536,22 @@
               "title": "X-Contract-Version",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
           }
         ],
         "responses": {
@@ -4266,6 +4640,22 @@
             "schema": {
               "title": "X-Contract-Version",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
             }
           }
         ],
@@ -4364,6 +4754,22 @@
               "title": "X-Contract-Version",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
           }
         ],
         "responses": {
@@ -4434,6 +4840,22 @@
             "schema": {
               "title": "X-Contract-Version",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
             }
           }
         ],
@@ -4525,6 +4947,22 @@
               "title": "X-Contract-Version",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
           }
         ],
         "responses": {
@@ -4595,6 +5033,22 @@
             "schema": {
               "title": "X-Contract-Version",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
             }
           }
         ],

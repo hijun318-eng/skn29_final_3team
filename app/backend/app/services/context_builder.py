@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
@@ -98,6 +99,10 @@ class ContextBuildRequest:
     token_count: int
     model_context_tokens: int
     parameter_bindings: tuple[ContextParameterBinding, ...] = ()
+    access_profile: str = "default"
+    allowed_domains: tuple[str, ...] = ()
+    trino_principal: str = ""
+    datahub_principal: str = ""
 
 
 @dataclass(frozen=True)
@@ -116,6 +121,10 @@ class ContextPackage:
     metrics: tuple[ContextMetric, ...] = ()
     parameter_bindings: tuple[ContextParameterBinding, ...] = ()
     required_filters: tuple[ContextRequiredFilter, ...] = ()
+    access_profile: str = "default"
+    allowed_domains: tuple[str, ...] = ()
+    trino_principal: str = ""
+    datahub_principal: str = ""
 
 
 class ContextPackageBuilder:
@@ -171,6 +180,10 @@ class ContextPackageBuilder:
             "policy_version": request.policy_version,
             "time_version": request.time_version,
             "entitlement_hash": request.entitlement_hash,
+            "access_profile": request.access_profile,
+            "allowed_domains": sorted(set(request.allowed_domains)),
+            "trino_principal": request.trino_principal,
+            "datahub_principal": request.datahub_principal,
             "assets": [
                 {
                     "urn": asset.urn,
@@ -241,6 +254,10 @@ class ContextPackageBuilder:
             approved_join_ids=tuple(sorted({join_id for asset in assets for join_id in asset.join_ids})),
             parameter_bindings=request.parameter_bindings,
             required_filters=required_filters,
+            access_profile=request.access_profile,
+            allowed_domains=tuple(sorted(set(request.allowed_domains))),
+            trino_principal=request.trino_principal,
+            datahub_principal=request.datahub_principal,
         )
 
     @staticmethod
@@ -295,11 +312,21 @@ class ContextPackageBuilder:
             request.policy_version,
             request.time_version,
             request.entitlement_hash,
+            request.access_profile,
         )
         if any(not value.strip() for value in metadata):
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METADATA,
                 "Context release, policy, time, entitlement 정보가 필요합니다.",
+            )
+        if request.access_profile != "default" and (
+            not re.fullmatch(r"answervice_[a-z_]+", request.trino_principal)
+            or request.datahub_principal
+            != f"urn:li:corpuser:{request.trino_principal}"
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "접근 Profile에는 서버가 확인한 DataHub·Trino principal이 필요합니다.",
             )
         if request.token_count < 0 or request.model_context_tokens <= 0:
             raise ContextBuildError(

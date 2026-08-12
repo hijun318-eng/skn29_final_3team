@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Callable
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from app.analysis_contracts import (
     AnalysisDefinitionListResponse,
     AnalysisDefinitionResponse,
     AnalysisProgressResponse,
+    RecentAnalysisListResponse,
     AnalysisRunListResponse,
     AnalysisRunResponse,
     CreateAnalysisDefinitionRequest,
@@ -239,6 +241,32 @@ def analysis(
         raise
     finally:
         execution_gate.release()
+
+
+@router.get(
+    "/analysis/recent",
+    operation_id="analysisListRecent",
+    response_model=RecentAnalysisListResponse,
+)
+def list_recent_analysis(
+    context: Annotated[RequestContext, Depends(analysis_context)],
+    limit: int = 20,
+) -> dict[str, Any]:
+    if not 1 <= limit <= 50:
+        raise HTTPException(status_code=422, detail="limit은 1 이상 50 이하여야 합니다.")
+    try:
+        model_timeout = float(os.getenv("MODEL_TIMEOUT_SECONDS", "300"))
+    except ValueError as error:
+        raise HTTPException(status_code=503, detail="모델 제한 시간을 확인할 수 없습니다.") from error
+    if model_timeout <= 0:
+        raise HTTPException(status_code=503, detail="모델 제한 시간을 확인할 수 없습니다.")
+    stale_before = datetime.now(timezone.utc) - timedelta(seconds=model_timeout + 60)
+    repository = _analysis_repository(context)
+    return {
+        "items": _repository_call(
+            lambda: repository.list_recent(limit, stale_before=stale_before)
+        )
+    }
 
 
 @router.get(

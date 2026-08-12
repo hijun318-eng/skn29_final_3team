@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FilePlus2, MessageSquareText, Plus, Send, Sparkles, TableProperties, X } from "lucide-react";
 import { AnalysisRequestError, createAnalysisClient } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
@@ -49,6 +49,57 @@ export function AgentPage() {
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [artifactTab, setArtifactTab] = useState("report");
   const [reportTransfer, setReportTransfer] = useState({ status: "idle", message: "" });
+  const [recent, setRecent] = useState([]);
+
+  const loadRecent = async () => {
+    try { setRecent(await client.listRecent()); } catch { setRecent([]); }
+  };
+
+  useEffect(() => { void loadRecent(); }, []);
+  useEffect(() => {
+    const active = recent.find((item) => item.status === "RECEIVED");
+    if (!hasSubmitted && active) void restoreRecent(active);
+  }, [recent, hasSubmitted]);
+  useEffect(() => {
+    if (run.restoredStatus !== "RECEIVED") return undefined;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const progress = await client.getProgress(run.requestId, run.accessProfile);
+        if (cancelled) return;
+        setRun((current) => current.requestId !== run.requestId ? current : ({
+          ...current,
+          status: progress.status === "RECEIVED" ? "running" : "idle",
+          restoredStatus: progress.status,
+          progress: progress.events.map(({ sequence, stage, outcome, created_at }) => ({ sequence, stage, outcome, createdAt: created_at })),
+        }));
+        if (progress.status !== "RECEIVED") void loadRecent();
+      } catch { /* 기존 화면을 유지하고 다음 polling에서 재시도합니다. */ }
+    };
+    void tick();
+    const timer = window.setInterval(() => void tick(), 500);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [run.requestId, run.restoredStatus, run.accessProfile]);
+
+  const restoreRecent = async (item) => {
+    setAccessProfile(item.access_profile);
+    setSubmittedQuestion(item.question_text_redacted);
+    setQuestion(item.question_text_redacted);
+    setHasSubmitted(true);
+    const restored = {
+      ...createTransientRun(item.question_text_redacted, conversationId, item.status === "RECEIVED" ? "running" : "idle"),
+      requestId: item.request_id,
+      traceId: item.trace_id,
+      restoredStatus: item.status,
+      accessProfile: item.access_profile,
+      meta: { asOf: item.as_of, timezone: "Asia/Seoul", synthetic: true, seed: "", schemaVersion: "", contractVersion: OPENAPI_VERSION },
+    };
+    setRun(restored);
+    try {
+      const progress = await client.getProgress(item.request_id, item.access_profile);
+      setRun((current) => current.requestId !== item.request_id ? current : ({ ...current, progress: progress.events.map(({ sequence, stage, outcome, created_at }) => ({ sequence, stage, outcome, createdAt: created_at })) }));
+    } catch { /* 최근 목록의 안전 메타데이터는 그대로 표시합니다. */ }
+  };
 
   const submitQuestion = async (event) => {
     event.preventDefault();
@@ -82,6 +133,7 @@ export function AgentPage() {
       }));
     } finally {
       setSubmitting(false);
+      void loadRecent();
     }
   };
 
@@ -117,7 +169,7 @@ export function AgentPage() {
       <aside className="chat-history">
         <button className="new-chat" onClick={() => { setQuestion(""); setAccessProfile("pms_only"); setHasSubmitted(false); setRun(createTransientRun("", conversationId)); }}><Plus size={16} />새 분석</button>
         <p>RECENT</p>
-        <div className="evidence-empty"><MessageSquareText size={15} /> 저장된 대화가 없습니다.</div>
+        {recent.length ? <div className="recent-analysis-list">{recent.map((item) => <button type="button" key={item.request_id} onClick={() => void restoreRecent(item)}><MessageSquareText size={15} /><span>{item.question_text_redacted}<small>{item.status} · {item.access_profile}</small></span></button>)}</div> : <div className="evidence-empty"><MessageSquareText size={15} /> 저장된 분석이 없습니다.</div>}
       </aside>
 
       <main className="chat-main">

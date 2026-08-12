@@ -185,6 +185,7 @@ export interface AnalysisRun {
   chart?: AnalysisChart | null;
   trace?: Array<{ stage: string; outcome: string; detail?: string | null }>;
   progress?: Array<{ sequence: number; stage: string; outcome: string; createdAt: string }>;
+  restoredStatus?: "RECEIVED" | "SUCCEEDED" | "PARTIAL" | "FAILED" | "DENIED";
   evidence?: AnalysisEvidence;
   error?: {
     code: AnalysisErrorCode;

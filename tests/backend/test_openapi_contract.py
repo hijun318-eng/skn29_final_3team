@@ -33,6 +33,7 @@ class OpenApiContractTest(unittest.TestCase):
             {
                 "/analysis",
                 "/analysis/{request_id}/progress",
+                "/analysis/recent",
                 "/analysis/definitions",
                 "/analysis/definitions/{definition_id}",
                 "/analysis/definitions/{definition_id}/runs",
@@ -73,6 +74,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "auditGetRecoveryStatus",
                 "submitAnalysis",
                 "analysisGetProgress",
+                "analysisListRecent",
                 "analysisCreateDefinition",
                 "analysisListDefinitions",
                 "analysisGetDefinition",

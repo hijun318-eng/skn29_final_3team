@@ -122,6 +122,19 @@ class InMemoryAnalysisRepository:
     def list_runs(self):
         return [] if self.request_id is None else [self.get_run(self.request_id)]
 
+    def list_recent(self, limit=20, *, stale_before=None):
+        if self.request_id is None:
+            return []
+        return [{
+            "request_id": self.request_id,
+            "trace_id": "analysis-persistence-trace",
+            "question_text_redacted": "[REDACTED_EMAIL]의 객실 운영을 알려줘",
+            "status": "RECEIVED",
+            "started_at": datetime(2026, 8, 10, tzinfo=timezone.utc),
+            "as_of": date(2026, 8, 1),
+            "access_profile": "pms_only",
+        }][:limit]
+
 
 def context(owner_id: UUID | None = None) -> RequestContext:
     return RequestContext(
@@ -225,6 +238,65 @@ def test_progress_repository_queries_are_owner_scoped():
     statement, parameters = connection.execute.call_args.args
     assert "user_id = :owner_id" in str(statement)
     assert parameters["owner_id"] == repository._owner_id
+
+
+def test_recent_analysis_is_owner_scoped_and_exposes_only_safe_resume_metadata():
+    owner = context()
+    repository = InMemoryAnalysisRepository(owner.user_id)
+    repository.request_id = owner.request_id
+    with patch.object(analysis_api, "_analysis_repository", return_value=repository):
+        items = analysis_api.list_recent_analysis(owner, limit=20)["items"]
+
+    assert items[0]["question_text_redacted"].startswith("[REDACTED_EMAIL]")
+    assert set(items[0]) == {
+        "request_id", "trace_id", "question_text_redacted", "status",
+        "started_at", "as_of", "access_profile",
+    }
+    for forbidden in ("sql", "parameters", "result", "token"):
+        assert forbidden not in items[0]
+
+
+def test_recent_repository_query_filters_owner_and_never_selects_execution_payloads():
+    repository = PostgresAnalysisRepository.__new__(PostgresAnalysisRepository)
+    repository._owner_id = uuid4()
+    repository._engine = MagicMock()
+    connection = repository._engine.begin.return_value.__enter__.return_value
+    connection.execute.return_value.mappings.return_value = []
+
+    assert repository.list_recent(10) == []
+    statement, parameters = connection.execute.call_args.args
+    sql = str(statement).lower()
+    assert "r.user_id = :owner_id" in sql
+    assert "question_text_redacted" in sql
+    for forbidden in ("sql_text", "parameters_json", "result_json", "token"):
+        assert forbidden not in sql
+    assert parameters == {"owner_id": repository._owner_id, "limit": 10}
+
+
+def test_recent_repository_expires_only_received_requests_older_than_safe_timeout():
+    repository = PostgresAnalysisRepository.__new__(PostgresAnalysisRepository)
+    repository._owner_id = uuid4()
+    repository._engine = MagicMock()
+    connection = repository._engine.begin.return_value.__enter__.return_value
+    stale_id = uuid4()
+    update_result = MagicMock()
+    update_result.scalars.return_value.all.return_value = [stale_id]
+    audit_result = MagicMock()
+    list_result = MagicMock()
+    list_result.mappings.return_value = []
+    connection.execute.side_effect = [update_result, audit_result, list_result]
+    cutoff = datetime(2026, 8, 12, tzinfo=timezone.utc)
+
+    assert repository.list_recent(20, stale_before=cutoff) == []
+    update_sql = str(connection.execute.call_args_list[0].args[0])
+    assert "status = 'FAILED'" in update_sql
+    assert "status = 'RECEIVED'" in update_sql
+    assert "started_at < :stale_before" in update_sql
+    assert "analysis_stage_events" not in update_sql
+    assert connection.execute.call_args_list[0].args[1] == {
+        "owner_id": repository._owner_id,
+        "stale_before": cutoff,
+    }
 
 
 def test_success_metadata_links_existing_release_package_and_model_without_payloads():

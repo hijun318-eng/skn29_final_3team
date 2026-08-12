@@ -108,3 +108,21 @@ class AnalysisProgressResponse(AnalysisPersistenceModel):
     request_id: UUID
     status: Literal["RECEIVED", "SUCCEEDED", "PARTIAL", "FAILED", "DENIED"]
     events: list[AnalysisProgressEvent]
+
+
+class RecentAnalysisItem(AnalysisPersistenceModel):
+    request_id: UUID
+    trace_id: str
+    question_text_redacted: str
+    status: Literal["RECEIVED", "SUCCEEDED", "PARTIAL", "FAILED", "DENIED"]
+    started_at: datetime
+    as_of: date
+    access_profile: Literal[
+        "pms_only", "crm_only", "pms_crm", "integrated_revenue",
+        "integrated_operations",
+    ]
+
+
+class RecentAnalysisListResponse(AnalysisPersistenceModel):
+    contract_version: str = ANALYSIS_PERSISTENCE_VERSION
+    items: list[RecentAnalysisItem]

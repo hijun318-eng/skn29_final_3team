@@ -399,6 +399,65 @@ class PostgresAnalysisRepository:
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 진행 상태를 조회할 수 없습니다.") from error
 
+    def list_recent(
+        self, limit: int = 20, *, stale_before: datetime | None = None
+    ) -> list[dict[str, Any]]:
+        try:
+            with self._engine.begin() as connection:
+                if stale_before is not None:
+                    stale = connection.execute(
+                        text(
+                            """
+                            UPDATE chat.analysis_requests
+                            SET status = 'FAILED', error_type = 'TIMEOUT',
+                                completed_at = CURRENT_TIMESTAMP
+                            WHERE user_id = :owner_id AND status = 'RECEIVED'
+                              AND started_at < :stale_before
+                            RETURNING request_id
+                            """
+                        ),
+                        {"owner_id": self._owner_id, "stale_before": stale_before},
+                    ).scalars().all()
+                    if stale:
+                        connection.execute(
+                            text(
+                                """
+                                UPDATE governance.audit_events
+                                SET action_code = 'ANALYSIS_ACCESS_COMPLETED',
+                                    details_json_redacted = details_json_redacted ||
+                                      '{"request_status":"FAILED","stale_timeout":true}'::jsonb
+                                WHERE request_id = ANY(CAST(:request_ids AS uuid[]))
+                                  AND actor_user_id = :owner_id
+                                  AND action_code = 'ANALYSIS_ACCESS_STARTED'
+                                """
+                            ),
+                            {
+                                "request_ids": [str(request_id) for request_id in stale],
+                                "owner_id": self._owner_id,
+                            },
+                        )
+                rows = connection.execute(
+                    text(
+                        """
+                        SELECT r.request_id, r.trace_id, r.question_text_redacted,
+                               r.status, r.started_at, l.as_of,
+                               a.details_json_redacted ->> 'access_profile' AS access_profile
+                        FROM chat.analysis_requests r
+                        JOIN analysis_v1.analysis_run_links l
+                          ON l.request_id = r.request_id
+                        JOIN governance.audit_events a
+                          ON a.request_id = r.request_id
+                        WHERE r.user_id = :owner_id
+                        ORDER BY r.started_at DESC, r.request_id DESC
+                        LIMIT :limit
+                        """
+                    ),
+                    {"owner_id": self._owner_id, "limit": limit},
+                ).mappings()
+                return [dict(row) for row in rows]
+        except SQLAlchemyError as error:
+            raise AnalysisRepositoryUnavailable("최근 Analysis 요청을 조회할 수 없습니다.") from error
+
     def _existing_run(
         self,
         definition_id: UUID,

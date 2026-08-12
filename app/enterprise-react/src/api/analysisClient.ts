@@ -10,11 +10,23 @@ import { getAuthorizationHeader } from "./authSession.ts";
 
 export interface AnalysisClient {
   analyze(question: string, conversationId: string, accessProfile?: AccessProfile, onProgress?: (run: AnalysisRun) => void): Promise<AnalysisRun>;
+  listRecent(limit?: number): Promise<RecentAnalysisItem[]>;
+  getProgress(requestId: string, accessProfile: AccessProfile): Promise<AnalysisProgressResponse>;
 }
 
-interface AnalysisProgressResponse {
+export interface RecentAnalysisItem {
   request_id: string;
-  status: string;
+  trace_id: string;
+  question_text_redacted: string;
+  status: "RECEIVED" | "SUCCEEDED" | "PARTIAL" | "FAILED" | "DENIED";
+  started_at: string;
+  as_of: string;
+  access_profile: AccessProfile;
+}
+
+export interface AnalysisProgressResponse {
+  request_id: string;
+  status: "RECEIVED" | "SUCCEEDED" | "PARTIAL" | "FAILED" | "DENIED";
   events: Array<{ sequence: number; stage: string; outcome: string; created_at: string }>;
 }
 
@@ -43,6 +55,37 @@ export function createHttpAnalysisClient(
   request: Fetch = fetch,
 ): AnalysisClient {
   return {
+    async listRecent(limit = 20) {
+      const root = baseUrl.replace(/\/$/, "");
+      const response = await request(`${root}/analysis/recent?limit=${limit}`, {
+        headers: {
+          Authorization: getAuthorizationHeader(),
+          "X-As-Of": env.VITE_ANALYSIS_AS_OF || new Date().toISOString().slice(0, 10),
+          "X-Access-Profile": "pms_only",
+          "X-Contract-Version": OPENAPI_VERSION,
+          "X-Timezone": "Asia/Seoul",
+          "X-Trace-Id": createUuid(),
+        },
+      });
+      if (!response.ok) throw new Error(`최근 분석 API가 HTTP ${response.status}로 거부되었습니다.`);
+      const payload = await response.json() as { items: RecentAnalysisItem[] };
+      return payload.items;
+    },
+    async getProgress(requestId, accessProfile) {
+      const root = baseUrl.replace(/\/$/, "");
+      const response = await request(`${root}/analysis/${requestId}/progress`, {
+        headers: {
+          Authorization: getAuthorizationHeader(),
+          "X-As-Of": env.VITE_ANALYSIS_AS_OF || new Date().toISOString().slice(0, 10),
+          "X-Access-Profile": accessProfile,
+          "X-Contract-Version": OPENAPI_VERSION,
+          "X-Timezone": "Asia/Seoul",
+          "X-Trace-Id": createUuid(),
+        },
+      });
+      if (!response.ok) throw new Error(`분석 진행 API가 HTTP ${response.status}로 거부되었습니다.`);
+      return response.json() as Promise<AnalysisProgressResponse>;
+    },
     async analyze(question, conversationId, accessProfile = "pms_only", onProgress) {
       const traceId = createUuid();
       const requestId = createUuid();

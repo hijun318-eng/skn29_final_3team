@@ -2005,6 +2005,89 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "RecentAnalysisItem": {
+        "additionalProperties": false,
+        "properties": {
+          "access_profile": {
+            "enum": [
+              "pms_only",
+              "crm_only",
+              "pms_crm",
+              "integrated_revenue",
+              "integrated_operations"
+            ],
+            "title": "Access Profile",
+            "type": "string"
+          },
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "question_text_redacted": {
+            "title": "Question Text Redacted",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "RECEIVED",
+              "SUCCEEDED",
+              "PARTIAL",
+              "FAILED",
+              "DENIED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "trace_id",
+          "question_text_redacted",
+          "status",
+          "started_at",
+          "as_of",
+          "access_profile"
+        ],
+        "title": "RecentAnalysisItem",
+        "type": "object"
+      },
+      "RecentAnalysisListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_version": {
+            "default": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecentAnalysisItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "RecentAnalysisListResponse",
+        "type": "object"
+      },
       "RecoveryStatusResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3655,6 +3738,103 @@
           }
         ],
         "summary": "Replay Analysis Definition"
+      }
+    },
+    "/analysis/recent": {
+      "get": {
+        "operationId": "analysisListRecent",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Access-Profile",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Access-Profile"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentAnalysisListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "List Recent Analysis"
       }
     },
     "/analysis/runs": {

@@ -12,7 +12,7 @@ import {
   REPORT_CONTRACT_VERSION,
   serializeDraftLayout,
 } from "../../app/enterprise-react/src/contracts/report.ts";
-import { createAnalysisClient, createHttpAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
+import { AnalysisRequestError, createAnalysisClient, createHttpAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
 import { createReportClient, ReportApiError } from "../../app/enterprise-react/src/api/reportClient.ts";
 import { createAuditClient } from "../../app/enterprise-react/src/api/auditClient.ts";
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
@@ -131,6 +131,18 @@ const defaultClient = createAnalysisClient(async (_url, init) => {
 await defaultClient.analyze("기본 요청", "conversation-2");
 assert.equal(defaultClientRequests, 1);
 assert.equal(defaultClientInit.headers["X-Access-Profile"], "pms_only");
+
+await assert.rejects(
+  () => createHttpAnalysisClient("http://backend.test", async () => new Response(JSON.stringify({
+    data: null,
+    meta: null,
+    error: { code: "ACCESS_DENIED", message: "인증 토큰이 유효하지 않습니다.", retryable: false },
+  }), { status: 401, headers: { "Content-Type": "application/json" } })).analyze("실패 요청", "conversation-3"),
+  (error) => error instanceof AnalysisRequestError
+    && error.code === "ACCESS_DENIED"
+    && error.message === "인증 토큰이 유효하지 않습니다."
+    && error.retryable === false,
+);
 
 for (const request of [
   async () => new Response("{}", { status: 401 }),

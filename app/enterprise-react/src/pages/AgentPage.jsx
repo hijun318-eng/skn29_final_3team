@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FilePlus2, MessageSquareText, Plus, Send, Sparkles, TableProperties, X } from "lucide-react";
-import { createAnalysisClient } from "../api/analysisClient";
+import { AnalysisRequestError, createAnalysisClient } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { MetaStrip, SectionTitle } from "../components/common/EnterpriseUi";
@@ -62,13 +62,18 @@ export function AgentPage() {
     setRun(createTransientRun(nextQuestion, conversationId, "queued"));
     try {
       setRun(await client.analyze(nextQuestion, conversationId, accessProfile));
-    } catch {
+    } catch (error) {
+      const timedOut = error instanceof DOMException && error.name === "TimeoutError";
       setRun({
         ...createTransientRun(nextQuestion, conversationId, "failed"),
         error: {
-          code: "INTERNAL_ERROR",
-          message: "분석 API 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
-          retryable: true,
+          code: error instanceof AnalysisRequestError ? error.code : "INTERNAL_ERROR",
+          message: error instanceof AnalysisRequestError
+            ? error.message
+            : timedOut
+              ? "분석 요청이 3분 안에 시작되지 않았습니다. 로그인 상태와 RunPod worker 상태를 확인해 주세요."
+              : "분석 API 요청을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+          retryable: error instanceof AnalysisRequestError ? error.retryable : true,
         },
       });
     } finally {

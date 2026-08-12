@@ -14,6 +14,22 @@ export interface AnalysisClient {
 
 type Fetch = typeof fetch;
 
+export class AnalysisRequestError extends Error {
+  readonly code: string;
+  readonly retryable: boolean;
+
+  constructor(
+    code: string,
+    message: string,
+    retryable: boolean,
+  ) {
+    super(message);
+    this.name = "AnalysisRequestError";
+    this.code = code;
+    this.retryable = retryable;
+  }
+}
+
 const env = import.meta.env ?? {};
 
 export function createHttpAnalysisClient(
@@ -25,6 +41,7 @@ export function createHttpAnalysisClient(
       const traceId = createUuid();
       const response = await request(`${baseUrl.replace(/\/$/, "")}/analysis`, {
         method: "POST",
+        signal: AbortSignal.timeout(180_000),
         headers: {
           Authorization: getAuthorizationHeader(),
           "Content-Type": "application/json",
@@ -37,6 +54,13 @@ export function createHttpAnalysisClient(
         body: JSON.stringify({ question }),
       });
       const payload = await response.json() as AnalysisApiResponse;
+      if (!response.ok) {
+        throw new AnalysisRequestError(
+          payload.error?.code || "INTERNAL_ERROR",
+          payload.error?.message || `분석 API 요청이 HTTP ${response.status}로 거부되었습니다.`,
+          payload.error?.retryable ?? response.status >= 500,
+        );
+      }
       if (!payload?.data || !payload.meta) throw new Error("Analysis API returned an invalid response");
       return normalizeApiResponse(payload, question, conversationId);
     },

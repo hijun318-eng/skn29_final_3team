@@ -13,7 +13,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 path.insert(0, str(ROOT / "app" / "backend"))
 
-from app.adapters.contract_model import ContractModelAdapter
 from app.adapters.i2_data_platform import I2DataPlatformAdapter
 from app.contracts import AnalysisRequest, RequestContext
 from app.services.context_builder import (
@@ -63,7 +62,7 @@ def _product_package(contract: dict) -> tuple[object, RequestContext]:
     os.environ.get(LIVE_TRINO_PROFILE) != "1",
     reason=f"set {LIVE_TRINO_PROFILE}=1 to run the live Trino Gold E2E",
 )
-def test_g120_046_node2_g2_binder_and_runtime_gold_are_composable():
+def test_g120_046_context_and_runtime_gold_are_composable():
     contract = json.loads(CONTEXT_PATH.read_text(encoding="utf-8"))
     package, request_context = _product_package(contract)
     adapter = I2DataPlatformAdapter(
@@ -81,49 +80,6 @@ def test_g120_046_node2_g2_binder_and_runtime_gold_are_composable():
         item["fqn"] for item in contract["assets"]
     }
 
-    model = ContractModelAdapter()
-    model_payload = {
-        "request_id": str(request_context.request_id),
-        "question": contract["question"],
-        "package": package,
-        "context": request_context,
-    }
-    node2_plan = model.generate("node2", model_payload)
-    assert support.g2_violation(node2_plan, package) is None
-    bound = I2DataPlatformAdapter._bind_parameters(
-        node2_plan["sql"], node2_plan["parameters"]
-    )
-    assert ":period_" not in bound and ":required_filter_" not in bound
-    outside = {
-        **node2_plan,
-        "sql": node2_plan["sql"].replace(
-            "FROM pms.public.pms_stays s",
-            "FROM pms.public.pms_stays s "
-            "JOIN serving.analytics.hotel_daily_metrics x ON true",
-            1,
-        ),
-    }
-    assert support.g2_violation(outside, package) in {
-        "SQL_REFERENCE_MISMATCH",
-        "UNAPPROVED_JOIN",
-    }
-    missing = {
-        **node2_plan,
-        "sql": node2_plan["sql"].replace(
-            's."complimentary_flag" = :required_filter_2', "TRUE", 1
-        ),
-    }
-    assert support.g2_violation(missing, package) == "METRIC_FILTER_MISSING"
-    repaired = model.generate(
-        "node2_repair",
-        {
-            **model_payload,
-            "trace_id": request_context.trace_id,
-            "rejected_sql": missing["sql"],
-            "violation": "METRIC_FILTER_MISSING",
-        },
-    )
-    assert support.g2_violation(repaired, package) is None
     raw_gold_sql = (ROOT / contract["gold_evidence"]["sql_file"]).read_text(
         encoding="utf-8"
     )

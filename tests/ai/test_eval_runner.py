@@ -12,6 +12,11 @@ from src.ai.training.evaluate_lora import (
     compare_captured_evidence,
     observed_metrics,
 )
+from src.ai.training.train_lora import (
+    DEFAULT_MODEL as TRAIN_DEFAULT_MODEL,
+    DEFAULT_REVISION as TRAIN_DEFAULT_REVISION,
+    LORA_TARGET_MODULES,
+)
 from tests.ai.test_contracts import VALID_PAYLOADS
 
 
@@ -26,9 +31,15 @@ def valid_case():
 
 
 class EvaluationRunnerTests(unittest.TestCase):
-    def test_instruct_2507_checkpoint_is_pinned(self):
-        self.assertEqual("Qwen/Qwen3-4B-Instruct-2507", DEFAULT_MODEL)
-        self.assertEqual("cdbee75f17c01a7cc42f958dc650907174af0554", DEFAULT_REVISION)
+    def test_qwen35_base_is_the_training_and_evaluation_default(self):
+        self.assertEqual("Qwen/Qwen3.5-4B", DEFAULT_MODEL)
+        self.assertIsNone(DEFAULT_REVISION)
+        self.assertEqual(DEFAULT_MODEL, TRAIN_DEFAULT_MODEL)
+        self.assertIs(TRAIN_DEFAULT_REVISION, DEFAULT_REVISION)
+        self.assertTrue(
+            {"q_proj", "in_proj_qkv", "in_proj_z", "out_proj"}
+            <= set(LORA_TARGET_MODULES)
+        )
 
     def test_nearest_rank_percentile_is_deterministic(self):
         observations = [4.0, 1.0, 3.0, 2.0]

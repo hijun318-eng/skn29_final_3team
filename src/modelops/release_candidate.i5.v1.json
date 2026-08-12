@@ -1,9 +1,11 @@
 {
   "release_candidate_version": "RELEASE-CANDIDATE-I5-v1.0.0-DRAFT",
-  "status": "DRAFT",
-  "readiness": "NOT_READY",
-  "product_default": "Base",
-  "sql_lora_enabled_nodes": [],
+  "status": "CONFIGURED",
+  "readiness": "ENDPOINT_REQUIRED",
+  "product_default": "answervice-sql-lora-qwen3.5-4b",
+  "base_model": "Qwen/Qwen3.5-4B",
+  "adapter_path": "models/adapters/answervice-sql-lora-qwen3.5-4b",
+  "sql_lora_enabled_nodes": ["node2", "node2_repair"],
   "comparability": {
     "status": "NOT_READY",
     "comparable": false,
@@ -24,12 +26,12 @@
     },
     "model_execution": {
       "status": "NOT_READY",
-      "reason": "external checkpoint and endpoint execution are not approved"
+      "reason": "the OpenAI-compatible endpoint must advertise answervice-sql-lora-qwen3.5-4b"
     }
   },
   "auto_regeneration": "DISABLED",
   "rollback": {
-    "target": "Base",
+    "target": "Qwen/Qwen3.5-4B",
     "sql_lora_enabled_nodes": []
   },
   "source_manifests": [
@@ -37,5 +39,5 @@
     "evals/validation_v2.manifest.json",
     "src/modelops/serving_manifest.v0.1.json"
   ],
-  "external_actions": "NOT_PERMITTED"
+  "external_actions": "LOCAL_CONFIGURATION_ONLY"
 }

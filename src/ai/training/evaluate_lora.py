@@ -12,8 +12,8 @@ from typing import Any
 from src.ai.training.dataset import DatasetError, load_compiled, validate_model_output, write_jsonl
 
 
-DEFAULT_MODEL = "Qwen/Qwen3-4B-Instruct-2507"
-DEFAULT_REVISION = "cdbee75f17c01a7cc42f958dc650907174af0554"
+DEFAULT_MODEL = "Qwen/Qwen3.5-4B"
+DEFAULT_REVISION = None
 IMMUTABLE_EVIDENCE_FIELDS = (
     "model_sha256",
     "prompt_sha256",

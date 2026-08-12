@@ -87,8 +87,16 @@ class AnalysisService:
                 item for item in assets if item.get("fqn") in decision.source_fqns
             ]
         try:
+            node1 = budget.call(
+                self._model,
+                "node1",
+                self._support.node1_request(payload, context, assets),
+            )
+        except (TimeoutError, TypeError, ValueError):
+            return self._responses.model_error(context, machine, trace, decision)
+        try:
             assets, normalized_question = self._support.select_metric(
-                payload, context, assets
+                payload, context, assets, node1
             )
             package = self._support.build_context(payload, context, assets)
         except ContextBuildError:

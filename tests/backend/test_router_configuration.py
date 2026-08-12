@@ -38,7 +38,7 @@ def test_versioned_trino_routing_ignores_legacy_database_template():
     }
 
 
-def test_openai_model_routes_node2_override_from_environment():
+def test_openai_model_routes_node2_lora_alias_by_default():
     with patch.dict(
         "os.environ",
         {
@@ -46,7 +46,6 @@ def test_openai_model_routes_node2_override_from_environment():
             "LLM_API_KEY": "openai-key",
             "OPENAI_MODEL": "gpt-4.1-mini",
             "NODE2_MODEL_ENDPOINT": "http://sllm:8000",
-            "NODE2_MODEL": "Qwen/Qwen3-4B",
         },
         clear=True,
     ), patch("app.adapters.contract_model.ContractModelAdapter.from_openai") as factory:
@@ -59,5 +58,5 @@ def test_openai_model_routes_node2_override_from_environment():
         30.0,
         "http://sllm:8000",
         None,
-        "Qwen/Qwen3-4B",
+        "answervice-sql-lora-qwen3.5-4b",
     )

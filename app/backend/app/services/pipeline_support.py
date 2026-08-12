@@ -180,14 +180,11 @@ class PipelineSupport:
         )
 
     @staticmethod
-    def select_metric(
+    def node1_request(
         payload: AnalysisRequest,
         context: RequestContext,
         assets: list[dict[str, object]],
-    ) -> tuple[list[dict[str, object]], str]:
-        if not any("metrics" in asset for asset in assets):
-            return assets, payload.question
-
+    ) -> dict[str, object]:
         candidates = [
             metric
             for asset in assets
@@ -214,16 +211,39 @@ class PipelineSupport:
                 "Context timezone을 확인할 수 없습니다.",
             ) from error
         as_of = datetime.combine(context.as_of, time.min, timezone).isoformat()
-        normalized = _normalize_question(
-            {
-                "question": payload.question,
-                "role_hint": context.role.value,
-                "as_of": as_of,
-                "timezone": context.timezone,
-                "calendar_id": "gregorian-kr",
-                "allowed_routes": ["general", "template"],
-                "business_terms": business_terms,
-            }
+        return {
+            "question": payload.question,
+            "role_hint": context.role.value,
+            "as_of": as_of,
+            "timezone": context.timezone,
+            "calendar_id": "gregorian-kr",
+            "allowed_routes": ["general", "template"],
+            "business_terms": business_terms,
+        }
+
+    @staticmethod
+    def select_metric(
+        payload: AnalysisRequest,
+        context: RequestContext,
+        assets: list[dict[str, object]],
+        normalized: dict[str, object] | None = None,
+    ) -> tuple[list[dict[str, object]], str]:
+        if not any("metrics" in asset for asset in assets):
+            return assets, str((normalized or {}).get("normalized_question") or payload.question)
+        candidates = [
+            metric
+            for asset in assets
+            for metric in asset.get("metrics", ())
+            if isinstance(metric, dict) and isinstance(metric.get("id"), str)
+        ]
+        candidate_ids = [str(metric["id"]) for metric in candidates]
+        if len(candidate_ids) != len(set(candidate_ids)):
+            raise ContextBuildError(
+                ContextBuildErrorCode.DUPLICATE_METRIC,
+                "동일한 metric id를 중복 선택할 수 없습니다.",
+            )
+        normalized = normalized or _normalize_question(
+            PipelineSupport.node1_request(payload, context, assets)
         )
         selected = normalized.get("selected_metric_id")
         if not isinstance(selected, str) or selected not in candidate_ids:

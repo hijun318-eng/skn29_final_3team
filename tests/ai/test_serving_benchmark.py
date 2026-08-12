@@ -10,7 +10,7 @@ class ServingBenchmarkTests(unittest.TestCase):
         def requester(method, url, payload, token, timeout):
             calls.append((method, url, token))
             if url.endswith("/v1/models"):
-                return {"data": [{"id": "Qwen/Qwen3-4B"}]}
+                return {"data": [{"id": "answervice-sql-lora-qwen3.5-4b"}]}
             return {
                 "id": "completion-1",
                 "choices": [{"message": {"role": "assistant", "content": "READY"}}],
@@ -18,7 +18,7 @@ class ServingBenchmarkTests(unittest.TestCase):
 
         result = benchmark(
             base_url="https://model.example/",
-            model="Qwen/Qwen3-4B",
+            model="answervice-sql-lora-qwen3.5-4b",
             model_revision="fixed-revision",
             warm_requests=3,
             token="not-recorded",

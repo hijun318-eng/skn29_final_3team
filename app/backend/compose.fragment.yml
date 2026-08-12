@@ -1,4 +1,37 @@
 services:
+  node2-model:
+    profiles: [dev, full, model]
+    image: vllm/vllm-openai-cpu:latest-x86_64@sha256:0314b8a7594a3fc54e8a0c3ca1ba0c9257302bfb546abfb49a2d6107d2d0767f
+    container_name: answervice-node2-model
+    command:
+      - Qwen/Qwen3.5-4B
+      - --host=0.0.0.0
+      - --port=8000
+      - --dtype=bfloat16
+      - --max-model-len=4096
+      - --enable-lora
+      - --max-lora-rank=16
+      - --lora-modules=answervice-sql-lora-qwen3.5-4b=/models/adapter
+    environment:
+      VLLM_CPU_KVCACHE_SPACE: ${VLLM_CPU_KVCACHE_SPACE:-2}
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - ../../models/adapters/answervice-sql-lora-qwen3.5-4b:/models/adapter:ro
+      - answervice-huggingface-cache:/root/.cache/huggingface
+    ports:
+      - "${NODE2_MODEL_PORT:-18082}:8000"
+    networks: [database-network]
+    shm_size: 4gb
+    cap_add: [SYS_NICE]
+    security_opt: [seccomp=unconfined]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10m
+    restart: unless-stopped
+
   backend:
     profiles: [dev, full, split-host]
     container_name: answervice-backend
@@ -17,11 +50,12 @@ services:
       DATA_PLATFORM_MODE: ${DATA_PLATFORM_MODE:-real}
       MODEL_MODE: ${MODEL_MODE:-openai}
       LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_ENDPOINT: ${OPENAI_ENDPOINT:-https://api.openai.com}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
-      NODE2_MODEL_ENDPOINT: ${NODE2_MODEL_ENDPOINT:-}
+      NODE2_MODEL_ENDPOINT: ${NODE2_MODEL_ENDPOINT:-http://node2-model:8000}
       NODE2_MODEL_API_TOKEN: ${NODE2_MODEL_API_TOKEN:-}
-      NODE2_MODEL: ${NODE2_MODEL:-Qwen/Qwen3-4B}
+      NODE2_MODEL: ${NODE2_MODEL:-answervice-sql-lora-qwen3.5-4b}
       MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-30}
       AUTH_MODE: ${AUTH_MODE:-release}
       AUTH_PRINCIPALS_FILE: ${AUTH_PRINCIPALS_FILE:-/run/secrets/answervice_auth_principals.json}
@@ -33,6 +67,9 @@ services:
       - database-network
       - datahub-network
     depends_on:
+      node2-model:
+        condition: service_healthy
+        required: false
       app-postgres:
         condition: service_healthy
       app-postgres-provision:
@@ -50,3 +87,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+volumes:
+  answervice-huggingface-cache: {}

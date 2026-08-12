@@ -1,4 +1,4 @@
-"""Train a BF16 Qwen3-4B SQL LoRA adapter on one NVIDIA GPU."""
+"""Train a BF16 Qwen3.5-4B SQL LoRA adapter on one NVIDIA GPU."""
 
 from __future__ import annotations
 
@@ -11,9 +11,14 @@ from typing import Any
 from src.ai.training.dataset import DatasetError, load_compiled
 
 
-DEFAULT_MODEL = "Qwen/Qwen3-4B-Instruct-2507"
-DEFAULT_REVISION = "cdbee75f17c01a7cc42f958dc650907174af0554"
+DEFAULT_MODEL = "Qwen/Qwen3.5-4B"
+DEFAULT_REVISION = None
 DEFAULT_SEED = 20260729
+LORA_TARGET_MODULES = (
+    "q_proj", "k_proj", "v_proj", "o_proj", "out_proj",
+    "gate_proj", "up_proj", "down_proj",
+    "in_proj_a", "in_proj_b", "in_proj_qkv", "in_proj_z",
+)
 
 
 def _tokenize(tokenizer: Any, record: dict[str, Any], max_length: int) -> dict[str, list[int]]:
@@ -127,15 +132,7 @@ def main() -> int:
             lora_alpha=args.lora_alpha,
             lora_dropout=0.05,
             bias="none",
-            target_modules=[
-                "q_proj",
-                "k_proj",
-                "v_proj",
-                "o_proj",
-                "gate_proj",
-                "up_proj",
-                "down_proj",
-            ],
+            target_modules=list(LORA_TARGET_MODULES),
         ),
     )
     model.print_trainable_parameters()

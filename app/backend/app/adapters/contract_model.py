@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import copy
 import re
 from datetime import date, datetime, time
 from functools import lru_cache, partial
@@ -15,6 +16,7 @@ from src.modelops.runtime import ProductionModelClient
 
 
 _PROMPT_IDS = {
+    "node1": "node1.normalize",
     "node2": "node2.sql",
     "node2_repair": "node2.repair",
     "node3": "node3.explain",
@@ -30,6 +32,12 @@ def _response_schema(node: str) -> dict[str, Any]:
 
 
 def _serving_schema(node: str) -> dict[str, Any]:
+    if node == "node1":
+        schema = copy.deepcopy(_response_schema(node))
+        schema.pop("$defs", None)
+        schema["required"].remove("model")
+        schema["properties"].pop("model")
+        return schema
     if node == "node2":
         return {
             "type": "object",
@@ -245,7 +253,7 @@ class ContractModelAdapter:
         timeout_seconds: float = 15.0,
         node2_endpoint: str | None = None,
         node2_token: str | None = None,
-        node2_model: str = "Qwen/Qwen3-4B",
+        node2_model: str = "answervice-sql-lora-qwen3.5-4b",
     ) -> ContractModelAdapter:
         if not endpoint or not token or not model:
             raise ValueError("OpenAI endpoint, API key, and model are required")
@@ -268,6 +276,8 @@ class ContractModelAdapter:
         return cls(NodeModelRouter(default_client, node_clients))
 
     def generate(self, node: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if node == "node1":
+            return self._generate(node, payload)
         if node == "node2":
             response = self._generate(
                 node,

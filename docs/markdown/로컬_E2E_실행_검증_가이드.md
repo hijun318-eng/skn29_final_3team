@@ -93,10 +93,10 @@ MODEL_MODE=openai
 OPENAI_MODEL=gpt-4.1-mini
 NODE2_MODEL_ENDPOINT=
 NODE2_MODEL_API_TOKEN=
-NODE2_MODEL=Qwen/Qwen3-4B
+NODE2_MODEL=answervice-sql-lora-qwen3.5-4b
 ```
 
-Node2만 OpenAI-compatible sLLM으로 교체할 때 `NODE2_MODEL_ENDPOINT`, `NODE2_MODEL_API_TOKEN`, `NODE2_MODEL`을 설정하고 Backend를 다시 만든다.
+Node2·2′는 `Qwen/Qwen3.5-4B` Base의 SQL LoRA를 OpenAI-compatible endpoint에서 `answervice-sql-lora-qwen3.5-4b` alias로 제공한다. `NODE2_MODEL_ENDPOINT`와 필요 시 API token을 설정하고 Backend를 다시 만든다.
 
 ```powershell
 docker compose --env-file .env --profile full up -d --build backend

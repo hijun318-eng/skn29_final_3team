@@ -1,8 +1,8 @@
 {
   "decision_version": "MODEL-v1.0.0",
-  "product_default": "Base",
-  "release_candidate_status": "DRAFT",
-  "release_readiness": "NOT_READY",
+  "product_default": "answervice-sql-lora-qwen3.5-4b",
+  "release_candidate_status": "CONFIGURED",
+  "release_readiness": "ENDPOINT_REQUIRED",
   "scope": {
     "included": [
       "node1_question_normalization",
@@ -20,9 +20,11 @@
     ]
   },
   "runtime_boundary": {
-    "all_nodes_use_base_model": true,
-    "base_model_version": "DRAFT-BASE-v0.1",
-    "sql_lora_enabled_nodes": [],
+    "all_nodes_use_base_model": false,
+    "base_model_version": "Qwen/Qwen3.5-4B",
+    "node2_model_alias": "answervice-sql-lora-qwen3.5-4b",
+    "adapter_path": "models/adapters/answervice-sql-lora-qwen3.5-4b",
+    "sql_lora_enabled_nodes": ["node2", "node2_repair"],
     "node1_or_node3_sql_lora": false,
     "model_may_decide_authorization": false,
     "model_may_decide_sql_execution": false,
@@ -32,6 +34,6 @@
     "model_download": "not_permitted",
     "gpu_or_runpod": "not_permitted",
     "cost": "not_permitted",
-    "deployment": "not_permitted"
+    "deployment": "endpoint_configuration_only"
   }
 }

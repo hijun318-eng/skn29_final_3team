@@ -44,14 +44,16 @@ class ProductionModelTest(unittest.TestCase):
             {"node2": Client("sllm"), "node2_repair": Client("sllm")},
         )
 
+        self.assertEqual({"node": "node1"}, router.generate("node1", {}))
         self.assertEqual({"node": "node2"}, router.generate("node2", {}))
         self.assertEqual({"node": "node3"}, router.generate("node3", {}))
-        self.assertEqual([("sllm", "node2"), ("openai", "node3")], [
+        self.assertEqual([("openai", "node1"), ("sllm", "node2"), ("openai", "node3")], [
             (name, node) for name, node, _payload in calls
         ])
 
     def test_every_product_node_uses_its_r3_response_schema(self) -> None:
         expected = {
+            "node1": "selected_metric_id",
             "node2": "sql",
             "node2_repair": "corrected_sql",
             "node3": "explanation",
@@ -64,6 +66,8 @@ class ProductionModelTest(unittest.TestCase):
 
         with self.assertRaises(KeyError):
             contract_model._response_schema("unknown")
+
+        self.assertNotIn("$defs", contract_model._serving_schema("node1"))
 
     def test_plan_ignores_parameters_without_sql_placeholders(self) -> None:
         response = self._node2_response()

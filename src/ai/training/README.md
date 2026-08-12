@@ -1,6 +1,6 @@
 # Answervice SQL LoRA 학습 실행 가이드
 
-이 폴더는 `Qwen/Qwen3-4B-Instruct-2507` Base를 먼저 평가하고, 필요한 경우에만 Node 2·2′용 SQL LoRA를 학습하기 위한 최소 실행 패키지다. 이전 `Qwen/Qwen3-4B` adapter는 새 checkpoint와 호환성이 검증되지 않았으므로 재사용하지 않는다.
+이 폴더는 `Qwen/Qwen3.5-4B` Base와 제품 Node 2·2′용 SQL LoRA `answervice-sql-lora-qwen3.5-4b`를 재현하는 최소 실행 패키지다. Adapter 바이너리는 `models/adapters/answervice-sql-lora-qwen3.5-4b`에 로컬로 두고 Git에는 포함하지 않는다.
 
 ## 1. 파일 역할
 
@@ -154,7 +154,7 @@ python -m pip install -r src/ai/training/requirements.txt
 python -c "import torch; print(torch.__version__, torch.cuda.get_device_name(), torch.cuda.is_bf16_supported())"
 ```
 
-`requirements.txt`에는 RunPod image에 이미 있는 PyTorch를 넣지 않았다. Qwen3는 Transformers 4.51 이상이 필요하며, 이 패키지는 호환 범위를 고정하기 위해 Transformers 4.x 최종 안정판을 사용한다.
+`requirements.txt`에는 RunPod image에 이미 있는 PyTorch를 넣지 않았다. Qwen3.5 adapter를 만든 Transformers 4.57.6과 PEFT 0.19.1을 동일하게 사용한다.
 
 ## 5. Smoke test
 
@@ -163,7 +163,7 @@ python -c "import torch; print(torch.__version__, torch.cuda.get_device_name(), 
 ```bash
 python -m src.ai.training.train_lora \
   --data /workspace/data/sllm/dataset.v1.jsonl \
-  --output-dir /workspace/models/answervice-sql-lora-smoke \
+  --output-dir /workspace/models/answervice-sql-lora-qwen3.5-4b-smoke \
   --max-steps 2
 ```
 
@@ -182,14 +182,14 @@ Smoke test가 통과하면 `--max-steps` 없이 실행한다.
 ```bash
 python -m src.ai.training.train_lora \
   --data /workspace/data/sllm/dataset.v1.jsonl \
-  --output-dir /workspace/models/answervice-sql-lora-v1
+  --output-dir /workspace/models/answervice-sql-lora-qwen3.5-4b
 ```
 
 기본 설정:
 
 | 항목 | 값 |
 |---|---:|
-| Base model | `Qwen/Qwen3-4B-Instruct-2507` |
+| Base model | `Qwen/Qwen3.5-4B` |
 | 정밀도 | BF16 |
 | Thinking | 사용하지 않음 |
 | 최대 길이 | 12,288 tokens |
@@ -204,12 +204,12 @@ python -m src.ai.training.train_lora \
 중단된 checkpoint에서 이어서 실행하려면 다음 옵션을 추가한다.
 
 ```bash
---resume-from-checkpoint /workspace/models/answervice-sql-lora-v1/checkpoint-번호
+--resume-from-checkpoint /workspace/models/answervice-sql-lora-qwen3.5-4b/checkpoint-번호
 ```
 
 ## 7. Base와 LoRA 평가
 
-먼저 같은 Validation 데이터에서 새 Base를 실행한다. LoRA는 Base가 승인 기준에 미달하고 별도 승인을 받은 경우에만 비교한다.
+같은 Validation 데이터에서 Base와 제품 LoRA를 각각 실행해 회귀를 비교한다.
 
 Base:
 
@@ -226,19 +226,12 @@ LoRA:
 python -m src.ai.training.evaluate_lora \
   --data /workspace/data/sllm/dataset.v1.jsonl \
   --split gold \
-  --adapter /workspace/models/answervice-sql-lora-v1 \
+  --adapter /workspace/models/answervice-sql-lora-qwen3.5-4b \
   --output /workspace/evals/lora.gold.jsonl
 ```
 
 이 평가 스크립트는 JSON 형식과 정답 SQL의 문자열 일치 여부를 빠르게 확인한다. 의미가 같지만 표현이 다른 SQL까지 최종 정답으로 판정하려면 생성 SQL도 G2와 Trino에서 실행하고 `result_sha256`을 비교해야 한다.
 
-## 8. 아직 연결해야 하는 계약
+## 8. 제품 Serving 계약
 
-현재 동결된 `node2_request`에는 `question_id`와 `context_package`만 있고 `normalized_question`이 없다. 학습데이터는 실제 SQL 생성에 필요한 `normalized_question + context_package`를 입력으로 사용한다.
-
-공식 serving을 연결하기 전에 R3·R4가 다음 중 하나로 runtime 계약을 동결해야 한다.
-
-1. `node2_request`에 `normalized_question`을 추가한다.
-2. `question_id`로 서버 상태에서 정규화 질문을 조회해 모델 입력에 합친다.
-
-이 계약이 정해지기 전에도 데이터 제작과 LoRA 학습은 가능하지만, 학습한 adapter를 현재 backend에 바로 연결할 수는 없다.
+Backend는 Node 2와 2′만 `NODE2_MODEL_ENDPOINT`로 보내며 모델 ID로 `answervice-sql-lora-qwen3.5-4b`를 요청한다. Serving endpoint는 `/v1/models`에 같은 alias를 노출하고, 이 alias에 `Qwen/Qwen3.5-4B`와 해당 adapter를 결합해야 한다. Node 1·3은 SQL LoRA를 사용하지 않는다.

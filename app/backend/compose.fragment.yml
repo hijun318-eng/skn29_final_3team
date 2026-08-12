@@ -94,7 +94,7 @@ services:
         - CMD
         - python
         - -c
-        - "import json,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/readiness', timeout=3)); assert data['status'] == 'ready'"
+        - "import json,urllib.request; payload=json.load(urllib.request.urlopen('http://127.0.0.1:8000/readiness', timeout=3)); assert payload['data']['status'] == 'ready'"
       interval: 10s
       timeout: 5s
       retries: 12

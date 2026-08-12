@@ -76,7 +76,7 @@ def test_resolved_backend_uses_configured_host_port_only():
     healthcheck = service["healthcheck"]
     assert healthcheck["test"][:2] == ["CMD", "python"]
     assert "/readiness" in healthcheck["test"][-1]
-    assert "status'] == 'ready'" in healthcheck["test"][-1]
+    assert "payload['data']['status'] == 'ready'" in healthcheck["test"][-1]
 
 
 def test_report_worker_waits_for_the_backend_healthcheck():

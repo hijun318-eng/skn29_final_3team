@@ -19,8 +19,11 @@ from app.adapters.context_registry_repository import PublishedContextRelease
 from app.adapters.contract_model import ContractModelAdapter
 from app.contracts import AnalysisRequest, RequestContext
 from app.services.context_builder import ContextPackageBuilder
-from app.services.context_builder import ContextBuildError
-from app.services.pipeline_support import PipelineSupport
+from app.services.context_builder import ContextBuildError, ContextBuildErrorCode
+from app.services.pipeline_support import (
+    PipelineSupport,
+    _conservative_json_token_estimate,
+)
 
 
 def _published_release(_as_of):
@@ -275,12 +278,34 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     assert normalized_question == payload.question
     assert package.dataset_count == 1
     assert package.column_count <= 60
+    model_context = ContractModelAdapter._context_package(
+        {"package": package, "context": context}
+    )
+    assert package.token_count == _conservative_json_token_estimate(model_context)
     assert package.assets[0].fqn == "serving.analytics.hotel_daily_metrics"
     assert [metric.id for metric in package.metrics] == ["recognized_room_revenue"]
     assert [(item.field, item.value) for item in package.metrics[0].required_filters] == [
         ("data_period_status", "YTD_SYNTHETIC"),
         ("is_forecast", False),
     ]
+
+
+def test_model_context_payload_over_token_limit_fails_closed():
+    adapter = simulated_verified_live_adapter()
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = _support(adapter)
+    payload = AnalysisRequest(question="호텔 객실 매출을 분석해 줘")
+    context = RequestContext(as_of=date(2026, 7, 30))
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+
+    with patch.object(
+        ContractModelAdapter,
+        "_context_package",
+        return_value={"context": "가" * 4_001},
+    ), pytest.raises(ContextBuildError) as raised:
+        support.build_context(payload, context, assets)
+
+    assert raised.value.code is ContextBuildErrorCode.TOKEN_LIMIT_EXCEEDED
 
 
 def test_versioned_trino_mode_uses_approved_contract_without_datahub(tmp_path):

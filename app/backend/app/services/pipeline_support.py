@@ -5,6 +5,7 @@ import json
 import re
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import date, datetime, time
 from functools import lru_cache
 from pathlib import Path
@@ -74,6 +75,16 @@ def _normalize_question(payload: dict[str, object]) -> dict[str, object]:
     from src.ai.node1 import normalize_question
 
     return normalize_question(payload)
+
+
+def _conservative_json_token_estimate(payload: dict[str, object]) -> int:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return max(1, (len(encoded) + 1) // 2)
 
 
 class PipelineSupport:
@@ -198,7 +209,7 @@ class PipelineSupport:
                 f"{context.user_id}:{context.role.value}".encode()
             ).hexdigest(),
             assets=items,
-            token_count=max(1, len(payload.question.split()) * 4),
+            token_count=0,
             model_context_tokens=24_000,
             parameter_bindings=parameter_bindings,
             join_policies=tuple(
@@ -226,9 +237,20 @@ class PipelineSupport:
             timezone=context.timezone,
             calendar_id=release.calendar_id,
         )
-        return self._context_builder.build(
+        entitled_asset_urns = frozenset(item.urn for item in items)
+        draft = self._context_builder.build(
             request,
-            frozenset(item.urn for item in items),
+            entitled_asset_urns,
+        )
+        from app.adapters.contract_model import ContractModelAdapter
+
+        model_context = ContractModelAdapter._context_package(
+            {"package": draft, "context": context}
+        )
+        token_count = _conservative_json_token_estimate(model_context)
+        return self._context_builder.build(
+            replace(request, token_count=token_count),
+            entitled_asset_urns,
         )
 
     @staticmethod

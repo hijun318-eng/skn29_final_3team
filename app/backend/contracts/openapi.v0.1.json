@@ -166,6 +166,31 @@
         "title": "AnalysisDefinitionResponse",
         "type": "object"
       },
+      "AnalysisDefinitionTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "definition_id": {
+            "format": "uuid",
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "definition_id",
+          "version",
+          "status"
+        ],
+        "title": "AnalysisDefinitionTrace",
+        "type": "object"
+      },
       "AnalysisRequest": {
         "additionalProperties": false,
         "properties": {
@@ -476,6 +501,307 @@
         "title": "ArtifactReference",
         "type": "object"
       },
+      "ArtifactTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_checksum": {
+            "title": "Artifact Checksum",
+            "type": "string"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_type": {
+            "title": "Artifact Type",
+            "type": "string"
+          },
+          "freshness_status": {
+            "title": "Freshness Status",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "artifact_type",
+          "freshness_status",
+          "status",
+          "artifact_checksum"
+        ],
+        "title": "ArtifactTrace",
+        "type": "object"
+      },
+      "AuditRequestSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "error_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Type"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "request_type": {
+            "title": "Request Type",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "user_role": {
+            "title": "User Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "user_id",
+          "user_role",
+          "request_type",
+          "status",
+          "error_type",
+          "trace_id",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "AuditRequestSummary",
+        "type": "object"
+      },
+      "AuditSearchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AuditRequestSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AuditSearchResponse",
+        "type": "object"
+      },
+      "AuditTraceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_definition": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisDefinitionTrace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "artifact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ArtifactTrace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "context": {
+            "$ref": "#/components/schemas/ContextTrace"
+          },
+          "error_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Type"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelTrace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "policy": {
+            "$ref": "#/components/schemas/PolicyTrace"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QueryTrace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/ReportTrace"
+            },
+            "title": "Reports",
+            "type": "array"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "request_type": {
+            "title": "Request Type",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          },
+          "transitions": {
+            "items": {
+              "$ref": "#/components/schemas/AuditTransition"
+            },
+            "title": "Transitions",
+            "type": "array"
+          },
+          "user_id": {
+            "format": "uuid",
+            "title": "User Id",
+            "type": "string"
+          },
+          "user_role": {
+            "title": "User Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "user_id",
+          "user_role",
+          "request_type",
+          "status",
+          "error_type",
+          "trace_id",
+          "started_at",
+          "completed_at",
+          "transitions",
+          "analysis_definition",
+          "context",
+          "policy",
+          "model",
+          "query",
+          "artifact",
+          "reports"
+        ],
+        "title": "AuditTraceResponse",
+        "type": "object"
+      },
+      "AuditTransition": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "from_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Status"
+          },
+          "sequence": {
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "to_status": {
+            "title": "To Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "from_status",
+          "to_status",
+          "created_at"
+        ],
+        "title": "AuditTransition",
+        "type": "object"
+      },
       "ChartSpec": {
         "additionalProperties": false,
         "properties": {
@@ -501,6 +827,89 @@
           "y_fields"
         ],
         "title": "ChartSpec",
+        "type": "object"
+      },
+      "ContextTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "package_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Hash"
+          },
+          "package_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Id"
+          },
+          "release_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Hash"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "release_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Key"
+          },
+          "release_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Version"
+          }
+        },
+        "required": [
+          "release_id",
+          "release_key",
+          "release_version",
+          "release_hash",
+          "package_id",
+          "package_hash"
+        ],
+        "title": "ContextTrace",
         "type": "object"
       },
       "CreateAnalysisDefinitionRequest": {
@@ -989,6 +1398,41 @@
         "title": "MetricValue",
         "type": "object"
       },
+      "ModelTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "model_name": {
+            "title": "Model Name",
+            "type": "string"
+          },
+          "model_revision": {
+            "title": "Model Revision",
+            "type": "string"
+          },
+          "model_role": {
+            "title": "Model Role",
+            "type": "string"
+          },
+          "model_version_id": {
+            "format": "uuid",
+            "title": "Model Version Id",
+            "type": "string"
+          },
+          "runtime_name": {
+            "title": "Runtime Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_version_id",
+          "model_role",
+          "model_name",
+          "model_revision",
+          "runtime_name"
+        ],
+        "title": "ModelTrace",
+        "type": "object"
+      },
       "PeriodEvidence": {
         "additionalProperties": false,
         "properties": {
@@ -1025,6 +1469,68 @@
         ],
         "title": "PipelineStage",
         "type": "string"
+      },
+      "PolicyTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "sql_policy_version": {
+            "title": "Sql Policy Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sql_policy_version"
+        ],
+        "title": "PolicyTrace",
+        "type": "object"
+      },
+      "QueryTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "execution_status": {
+            "title": "Execution Status",
+            "type": "string"
+          },
+          "generation_mode": {
+            "title": "Generation Mode",
+            "type": "string"
+          },
+          "query_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Id"
+          },
+          "validation_status": {
+            "title": "Validation Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query_id",
+          "generation_mode",
+          "validation_status",
+          "execution_status",
+          "duration_ms"
+        ],
+        "title": "QueryTrace",
+        "type": "object"
       },
       "ReadinessData": {
         "additionalProperties": false,
@@ -1634,6 +2140,37 @@
           "next_run_at"
         ],
         "title": "ReportScheduleResponse",
+        "type": "object"
+      },
+      "ReportTrace": {
+        "additionalProperties": false,
+        "properties": {
+          "definition_id": {
+            "format": "uuid",
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "definition_version": {
+            "title": "Definition Version",
+            "type": "integer"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "definition_id",
+          "definition_version",
+          "run_id",
+          "status"
+        ],
+        "title": "ReportTrace",
         "type": "object"
       },
       "ResponseMeta": {
@@ -2584,6 +3121,179 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/operations/audit": {
+      "get": {
+        "operationId": "auditSearchRequests",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Request Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditSearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Search Audit Requests",
+        "tags": [
+          "operations-audit"
+        ]
+      }
+    },
+    "/operations/audit/{request_id}": {
+      "get": {
+        "operationId": "auditGetRequestTrace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "title": "Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditTraceResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Audit Trace",
+        "tags": [
+          "operations-audit"
+        ]
       }
     },
     "/readiness": {

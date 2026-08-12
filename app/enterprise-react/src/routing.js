@@ -1,11 +1,13 @@
 export const PAGE_PATHS = {
   chat: "/agent",
   reports: "/reports",
+  audit: "/operations/audit",
 };
 
 const ROUTES = {
   "/agent": { page: "chat" },
   "/reports": { page: "reports" },
+  "/operations/audit": { page: "audit" },
 };
 
 function normalizePath(pathname) {

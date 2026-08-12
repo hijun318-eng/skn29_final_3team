@@ -5,11 +5,13 @@ import { PAGE_PATHS, resolveRoute } from "./routing";
 
 const AgentPage = lazy(() => import("./pages/AgentPage").then((module) => ({ default: module.AgentPage })));
 const ReportsPage = lazy(() => import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })));
+const AuditPage = lazy(() => import("./pages/AuditPage").then((module) => ({ default: module.AuditPage })));
 const USE_PPT_THEME = true;
 
 const PAGE_META = {
   chat: ["분석 Agent", "자연어 질문으로 승인된 기업 데이터를 수집·분석합니다."],
   reports: ["정기 보고서", "일일·주간·월간 비즈니스 인사이트를 생성하고 검토합니다."],
+  audit: ["운영 감사", "요청별 상태 전이와 실행 메타데이터를 안전하게 추적합니다."],
   notFound: ["페이지를 찾을 수 없습니다", "현재 승인된 P0/P1 경로만 이용할 수 있습니다."],
 };
 
@@ -64,6 +66,7 @@ export function App() {
   const content = useMemo(() => {
     if (page === "notFound") return <NotFoundPage onNavigate={navigate} />;
     if (page === "reports") return <ReportsPage />;
+    if (page === "audit") return <AuditPage />;
     return <AgentPage onNavigate={navigate} />;
   }, [navigate, page]);
 

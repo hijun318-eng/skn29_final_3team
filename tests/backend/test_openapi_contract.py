@@ -38,6 +38,8 @@ class OpenApiContractTest(unittest.TestCase):
                 "/analysis/runs",
                 "/analysis/runs/{request_id}",
                 "/health",
+                "/operations/audit",
+                "/operations/audit/{request_id}",
                 "/readiness",
                 "/reports/definitions",
                 "/reports/definitions/{definition_id}/versions/{version}/approve",
@@ -61,6 +63,8 @@ class OpenApiContractTest(unittest.TestCase):
             {
                 "getHealth",
                 "getReadiness",
+                "auditSearchRequests",
+                "auditGetRequestTrace",
                 "submitAnalysis",
                 "analysisCreateDefinition",
                 "analysisListDefinitions",
@@ -92,6 +96,12 @@ class OpenApiContractTest(unittest.TestCase):
         run = schemas["AnalysisRunResponse"]["properties"]
         for forbidden in ("sql", "parameters", "result", "snapshot"):
             self.assertNotIn(forbidden, run)
+
+    def test_audit_trace_contract_excludes_sensitive_payloads(self) -> None:
+        schemas = app.openapi()["components"]["schemas"]
+        serialized = json.dumps(schemas["AuditTraceResponse"], ensure_ascii=False)
+        for forbidden in ("sql", "parameters", "result", "snapshot", "question"):
+            self.assertNotIn(f'"{forbidden}"', serialized)
 
     def test_authenticated_routes_use_server_owned_bearer_identity(self) -> None:
         schema = app.openapi()

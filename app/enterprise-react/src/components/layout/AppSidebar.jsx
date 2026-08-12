@@ -3,6 +3,7 @@ import {
   ChevronDown,
   FileBarChart,
   MessageSquareText,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -12,6 +13,7 @@ import { PAGE_PATHS } from "../../routing";
 const NAVIGATION = [
   { id: "chat", path: PAGE_PATHS.chat, label: "분석 Agent", icon: MessageSquareText, group: "workspace" },
   { id: "reports", path: PAGE_PATHS.reports, label: "보고서", icon: FileBarChart, group: "workspace" },
+  { id: "audit", path: PAGE_PATHS.audit, label: "운영 감사", icon: ShieldCheck, group: "workspace" },
 ];
 
 export function AppSidebar({ page, onNavigate, open, onClose }) {

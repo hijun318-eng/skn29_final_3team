@@ -14,6 +14,7 @@ import {
 } from "../../app/enterprise-react/src/contracts/report.ts";
 import { createAnalysisClient, createHttpAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
 import { createReportClient, ReportApiError } from "../../app/enterprise-react/src/api/reportClient.ts";
+import { createAuditClient } from "../../app/enterprise-react/src/api/auditClient.ts";
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
 
 globalThis.sessionStorage = {
@@ -28,10 +29,12 @@ const reportClientSource = readFileSync(new URL("api/reportClient.ts", frontendR
 const reportsPageSource = readFileSync(new URL("pages/ReportsPage.jsx", frontendRoot), "utf8");
 const agentPageSource = readFileSync(new URL("pages/AgentPage.jsx", frontendRoot), "utf8");
 const routingSource = readFileSync(new URL("routing.js", frontendRoot), "utf8");
+const auditPageSource = readFileSync(new URL("pages/AuditPage.jsx", frontendRoot), "utf8");
 
 assert.deepEqual(resolveRoute("/"), { page: "chat", path: "/agent", redirected: true });
 assert.deepEqual(resolveRoute("/agent"), { page: "chat", path: "/agent", redirected: false });
 assert.deepEqual(resolveRoute("/reports"), { page: "reports", path: "/reports", redirected: false });
+assert.deepEqual(resolveRoute("/operations/audit"), { page: "audit", path: "/operations/audit", redirected: false });
 for (const removedPath of ["/catalog", "/catalog/connections", "/connections", "/customer-360"]) {
   assert.equal(resolveRoute(removedPath).page, "notFound");
 }
@@ -75,6 +78,21 @@ assert.equal(normalized.artifact.artifactId, "artifact-1");
 assert.equal(normalized.metrics[0].value, 100);
 assert.equal(normalized.sources[0].urn, "urn:pms");
 assert.equal(normalized.trace[0].stage, "G2");
+
+const auditSummary = { request_id: "request-1", user_id: "user-1", user_role: "HOTEL_ANALYST", request_type: "analysis", status: "SUCCEEDED", error_type: null, trace_id: "trace-1", started_at: "2026-08-12T00:00:00Z", completed_at: "2026-08-12T00:00:01Z" };
+const auditTrace = { ...auditSummary, transitions: [], analysis_definition: null, context: { release_id: null, release_key: null, release_version: null, release_hash: null, package_id: null, package_hash: null }, policy: { sql_policy_version: "g2-v1" }, model: null, query: null, artifact: null, reports: [] };
+const auditRequests = [];
+const auditClient = createAuditClient("http://backend.test/", async (url, init) => {
+  auditRequests.push({ url, init });
+  const body = url.includes("/request-1") ? auditTrace : { items: [auditSummary] };
+  return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+});
+assert.equal((await auditClient.search("request-1"))[0].request_id, "request-1");
+assert.equal((await auditClient.get("request-1")).policy.sql_policy_version, "g2-v1");
+assert.equal(auditRequests[0].url, "http://backend.test/operations/audit?request_id=request-1");
+assert.equal(auditRequests[1].url, "http://backend.test/operations/audit/request-1");
+assert.equal(auditRequests[0].init.headers.Authorization, "Bearer contract-test-token");
+assert.equal(auditRequests[0].init.headers["X-Contract-Version"], OPENAPI_VERSION);
 
 let analysisRequest;
 const analysisClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {
@@ -204,7 +222,7 @@ const layout = normalizeDraftLayout([{ id: "a", title: "A", columns: 8, w: 8, h:
 assert.deepEqual(layout.map(({ x, y, w, h }) => ({ x, y, w, h })), [{ x: 0, y: 0, w: 8, h: 3 }, { x: 0, y: 3, w: 6, h: 4 }]);
 assert.equal(JSON.parse(serializeDraftLayout(layout))[0].w, 8);
 
-for (const source of [analysisClientSource, reportClientSource, reportsPageSource, agentPageSource]) {
+for (const source of [analysisClientSource, reportClientSource, reportsPageSource, agentPageSource, auditPageSource]) {
   assert.doesNotMatch(source, /fixture|mock|demo/i);
 }
 assert.doesNotMatch(analysisClientSource, /VITE_ANALYSIS_MODE|VITE_ANALYSIS_DEMO|scenario/);
@@ -219,6 +237,8 @@ assert.match(reportsPageSource, /client\.listSchedules\(\)/);
 assert.match(reportsPageSource, /client\.upsertSchedule/);
 assert.match(reportsPageSource, /frequency === "weekly"/);
 assert.match(reportsPageSource, /frequency === "monthly"/);
+assert.match(auditPageSource, /createAuditClient\(\)/);
+assert.doesNotMatch(auditPageSource, /question|parameters|result_snapshot/i);
 
 for (const removedDataFile of ["analysisFixtures.ts", "catalogFixtures.ts", "enterpriseDemoData.js"]) {
   assert.equal(existsSync(new URL(`data/${removedDataFile}`, frontendRoot)), false);

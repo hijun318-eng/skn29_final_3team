@@ -328,7 +328,7 @@
     "read_only_policy": {
       "status": "PASS",
       "file": "infrastructure/database/trino/etc/access-control-rules.json",
-      "sha256": "fd8757ae5d7d4f29a6cda86905fea9e616db603932016af5a686377f3906ef58",
+      "sha256": "f72dcaae9e6fc55b4310bc2f3080d1fa8c3dcdf2324935b6af2b4272e4f5bb44",
       "ddl": {
         "command": "CREATE TABLE serving.analytics.r2_forbidden_write AS SELECT 1 id WHERE false",
         "exit_code": 1,

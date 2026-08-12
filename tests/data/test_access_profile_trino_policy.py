@@ -29,6 +29,14 @@ PROFILES = {
     ),
 }
 
+RAW_TABLES = {
+    "pms": ("public", {"pms_guests", "pms_room_inventory_daily", "pms_reservations", "pms_stays"}),
+    "crm": ("dbo", {"crm_customer_map", "crm_member_grade_history", "crm_members", "crm_point_transactions"}),
+    "pos": ("pos_db", {"pos_order_items", "pos_orders", "pos_service_periods", "pos_stores"}),
+    "facility": ("facility", {"facility_events", "facility_master", "facility_resource_daily", "hotel_staffing_daily"}),
+    "banquet": ("public", {"banquet_bookings", "banquet_revenue"}),
+}
+
 
 def _rules(kind, user):
     return [item for item in RULES[kind] if item.get("user") == user]
@@ -51,10 +59,14 @@ def test_profile_table_rules_enforce_raw_domains_and_serving_dependencies():
         raw_catalogs = set()
         actual_serving = set()
         for item in allowed:
+            assert item["filter"] == "property_id = 'SYNTHETIC_HOTEL_001'"
             if item["catalog"] == "serving":
                 actual_serving.update(item["table"].strip("()").split("|"))
             else:
-                raw_catalogs.update(item["catalog"].strip("()").split("|"))
+                raw_catalogs.add(item["catalog"])
+                schema, tables = RAW_TABLES[item["catalog"]]
+                assert item["schema"] == schema
+                assert set(item["table"].strip("()").split("|")) == tables
         assert raw_catalogs == catalogs - {"serving"}
         assert actual_serving == serving_views
 
@@ -156,4 +168,8 @@ def test_approved_query_contract_has_no_direct_identifier_needing_a_mask():
         re.IGNORECASE,
     )
     assert not {column for column in columns if direct_identifier.fullmatch(column)}
-    assert "columnMasks" not in RULES and "rowFilters" not in RULES
+    assert all(
+        item.get("filter") == "property_id = 'SYNTHETIC_HOTEL_001'"
+        for user in PROFILES
+        for item in _rules("tables", user)[:-1]
+    )

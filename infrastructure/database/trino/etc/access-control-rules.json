@@ -61,69 +61,134 @@
     {
       "user": "answervice_pms_only",
       "catalog": "pms",
-      "schema": ".*",
-      "table": ".*",
-      "privileges": ["SELECT"]
+      "schema": "public",
+      "table": "(pms_guests|pms_room_inventory_daily|pms_reservations|pms_stays)",
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
     },
     {
       "user": "answervice_pms_only",
       "catalog": "serving",
       "schema": "analytics",
       "table": "hotel_daily_metrics",
-      "privileges": ["SELECT"]
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
     },
     {"user": "answervice_pms_only", "catalog": ".*", "schema": ".*", "table": ".*", "privileges": []},
     {
       "user": "answervice_crm_only",
       "catalog": "crm",
-      "schema": ".*",
-      "table": ".*",
-      "privileges": ["SELECT"]
+      "schema": "dbo",
+      "table": "(crm_customer_map|crm_member_grade_history|crm_members|crm_point_transactions)",
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
     },
     {"user": "answervice_crm_only", "catalog": ".*", "schema": ".*", "table": ".*", "privileges": []},
     {
       "user": "answervice_pms_crm",
-      "catalog": "(pms|crm)",
-      "schema": ".*",
-      "table": ".*",
-      "privileges": ["SELECT"]
+      "catalog": "pms",
+      "schema": "public",
+      "table": "(pms_guests|pms_room_inventory_daily|pms_reservations|pms_stays)",
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
+    },
+    {
+      "user": "answervice_pms_crm",
+      "catalog": "crm",
+      "schema": "dbo",
+      "table": "(crm_customer_map|crm_member_grade_history|crm_members|crm_point_transactions)",
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
     },
     {
       "user": "answervice_pms_crm",
       "catalog": "serving",
       "schema": "analytics",
       "table": "hotel_daily_metrics",
-      "privileges": ["SELECT"]
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
     },
     {"user": "answervice_pms_crm", "catalog": ".*", "schema": ".*", "table": ".*", "privileges": []},
     {
       "user": "answervice_integrated_revenue",
-      "catalog": "(pms|crm|pos)",
-      "schema": ".*",
-      "table": ".*",
-      "privileges": ["SELECT"]
+      "catalog": "pms",
+      "schema": "public",
+      "table": "(pms_guests|pms_room_inventory_daily|pms_reservations|pms_stays)",
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
+    },
+    {
+      "user": "answervice_integrated_revenue",
+      "catalog": "crm",
+      "schema": "dbo",
+      "table": "(crm_customer_map|crm_member_grade_history|crm_members|crm_point_transactions)",
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
+    },
+    {
+      "user": "answervice_integrated_revenue",
+      "catalog": "pos",
+      "schema": "pos_db",
+      "table": "(pos_order_items|pos_orders|pos_service_periods|pos_stores)",
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
     },
     {
       "user": "answervice_integrated_revenue",
       "catalog": "serving",
       "schema": "analytics",
       "table": "(hotel_daily_metrics|fnb_daypart_metrics)",
-      "privileges": ["SELECT"]
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
     },
     {"user": "answervice_integrated_revenue", "catalog": ".*", "schema": ".*", "table": ".*", "privileges": []},
     {
       "user": "answervice_integrated_operations",
-      "catalog": "(pms|crm|pos|facility|banquet)",
-      "schema": ".*",
-      "table": ".*",
-      "privileges": ["SELECT"]
+      "catalog": "pms",
+      "schema": "public",
+      "table": "(pms_guests|pms_room_inventory_daily|pms_reservations|pms_stays)",
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
+    },
+    {
+      "user": "answervice_integrated_operations",
+      "catalog": "crm",
+      "schema": "dbo",
+      "table": "(crm_customer_map|crm_member_grade_history|crm_members|crm_point_transactions)",
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
+    },
+    {
+      "user": "answervice_integrated_operations",
+      "catalog": "pos",
+      "schema": "pos_db",
+      "table": "(pos_order_items|pos_orders|pos_service_periods|pos_stores)",
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
+    },
+    {
+      "user": "answervice_integrated_operations",
+      "catalog": "facility",
+      "schema": "facility",
+      "table": "(facility_events|facility_master|facility_resource_daily|hotel_staffing_daily)",
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
+    },
+    {
+      "user": "answervice_integrated_operations",
+      "catalog": "banquet",
+      "schema": "public",
+      "table": "(banquet_bookings|banquet_revenue)",
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
     },
     {
       "user": "answervice_integrated_operations",
       "catalog": "serving",
       "schema": "analytics",
       "table": "(banquet_monthly_metrics|facility_daily_metrics|fnb_daypart_metrics|hotel_daily_metrics|hotel_monthly_metrics|hotel_yearly_metrics|resource_monthly_metrics|workforce_monthly_metrics)",
-      "privileges": ["SELECT"]
+      "privileges": ["SELECT"],
+      "filter": "property_id = 'SYNTHETIC_HOTEL_001'"
     },
     {"user": "answervice_integrated_operations", "catalog": ".*", "schema": ".*", "table": ".*", "privileges": []},
     {"privileges": []}

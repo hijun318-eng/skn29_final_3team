@@ -66,11 +66,11 @@ def test_resolved_app_postgres_keeps_service_contract_except_identity():
     ]
 
 
-def test_resolved_backend_uses_an_isolated_host_port_only():
+def test_resolved_backend_uses_configured_host_port_only():
     service = _config()["services"]["backend"]
 
     assert service["ports"] == [
-        {"mode": "ingress", "target": 8000, "published": "28000", "protocol": "tcp", "host_ip": "127.0.0.1"}
+        {"mode": "ingress", "target": 8000, "published": "18000", "protocol": "tcp", "host_ip": "127.0.0.1"}
     ]
     assert service["depends_on"]["app-postgres-provision"]["condition"] == "service_completed_successfully"
 

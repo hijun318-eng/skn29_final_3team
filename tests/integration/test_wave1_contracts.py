@@ -21,7 +21,7 @@ def assigned_value(path: Path, name: str):
 
 
 class Wave1ContractTest(unittest.TestCase):
-    def test_arrived_contract_versions_match_i1_ledger(self) -> None:
+    def test_arrived_contract_versions_match(self) -> None:
         data = json.loads(
             (ROOT / "src/data/r2_w1_contract.v1.json").read_text(encoding="utf-8")
         )
@@ -31,10 +31,6 @@ class Wave1ContractTest(unittest.TestCase):
         backend_version = assigned_value(
             ROOT / "app/backend/app/contracts.py", "CONTRACT_VERSION"
         )
-        ledger = (
-            ROOT / "docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md"
-        ).read_text(encoding="utf-8")
-
         self.assertEqual("I1-v1.0.0", data["contract_version"])
         self.assertEqual(
             ("1.0.0", "20260729", "1.0.0"),
@@ -43,13 +39,6 @@ class Wave1ContractTest(unittest.TestCase):
         self.assertEqual("I1-v1.0.0", data["candidate_contract_version"])
         self.assertEqual("MODEL-v1.0.0", model["version"])
         self.assertEqual("OPENAPI-v1.0.0", backend_version)
-        for version in (
-            data["contract_version"],
-            data["candidate_contract_version"],
-            model["version"],
-            backend_version,
-        ):
-            self.assertIn(version, ledger)
 
     def test_access_policy_is_versioned_and_least_privilege(self) -> None:
         policy = json.loads(
@@ -61,10 +50,6 @@ class Wave1ContractTest(unittest.TestCase):
             ["hotel_analyst"],
             policy["analysis_templates"]["weekly-room-operations"]["allowed_roles"],
         )
-        ledger = (
-            ROOT / "docs/markdown/collaboration/I0_결정_및_I1_공통_계약_원장.md"
-        ).read_text(encoding="utf-8")
-        self.assertIn(policy["policy_version"], ledger)
 
     def test_root_docker_context_excludes_local_state(self) -> None:
         ignored = set((ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines())

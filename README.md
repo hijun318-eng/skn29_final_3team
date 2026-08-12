@@ -7,7 +7,6 @@ Answervice는 여러 업무 데이터 소스를 자연어로 조회하고 근거
 - 프로젝트 범위·아키텍처: [최종 기획서](./docs/Answervice_기획서.md)
 - 실행 일정·담당·상태: [공식 WBS](./docs/markdown/02_WBS.md)
 - 화면·상태·사용자 흐름: [화면설계서](./docs/markdown/05_화면설계서.md)
-- AI 작업·권한·병합 원칙: [AGENTS.md](./AGENTS.md)
 - 문서 위치·번호·보호 규칙: [문서 관리 규칙](./docs/문서관리규칙.md)
 
 ## AI 참고 자료
@@ -26,11 +25,3 @@ git switch <본인 branch>
 ```
 
 팀원별 branch와 작업 시작, `dev` 반영, commit, push 방법은 [팀원 Git branch 사용 가이드](./docs/markdown/collaboration/README.md)를 확인한다.
-
-## AI 에이전트 반복 작업
-
-- 문서 생성·편집·이동·검증: [`manage-project-documents`](./.agents/skills/manage-project-documents/SKILL.md)
-- 실행 일정·상태·담당·산출물 변경 시 WBS 갱신: [`update-project-wbs`](./.agents/skills/update-project-wbs/SKILL.md)
-- 개인·팀·주간보고 갱신: [`update-project-reports`](./.agents/skills/update-project-reports/SKILL.md)
-- 개인 branch의 `dev` 통합: [`merge-branch-to-dev`](./.agents/skills/merge-branch-to-dev/SKILL.md)
-- staged diff 기반 commit message: [`draft-commit-message`](./.agents/skills/draft-commit-message/SKILL.md)

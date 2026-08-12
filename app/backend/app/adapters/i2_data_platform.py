@@ -600,6 +600,9 @@ query Dataset($urn: String!) {
             raise ValueError("G2 gate token is required")
         bound_sql = self._bind_parameters(sql, parameters)
         try:
+            self._collect(
+                self._trino.execute(f"EXPLAIN (TYPE VALIDATE) {bound_sql}")
+            )
             page = self._trino.execute(bound_sql)
             result = self._collect(page)
         except AdapterError as error:

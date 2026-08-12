@@ -10,6 +10,9 @@ from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid5
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from sqlglot import exp, parse
+from sqlglot.errors import SqlglotError
+
 from app.contracts import (
     AnalysisRequest,
     ErrorCode,
@@ -266,6 +269,7 @@ class PipelineSupport:
             return "MODEL_SCHEMA_INVALID"
         sql = str(plan.get("sql", "")).strip()
         normalized = sql.lower()
+        query = PipelineSupport._read_query_ast(sql)
         forbidden = {
             "insert",
             "update",
@@ -282,7 +286,7 @@ class PipelineSupport:
         }
         tokens = set(re.findall(r"[a-z_]+", normalized))
         if (
-            not PipelineSupport._read_only_query_shape(sql)
+            query is None
             or ";" in normalized
             or "--" in normalized
             or "/*" in normalized
@@ -346,28 +350,19 @@ class PipelineSupport:
             }
             if referenced_metric_ids != expected_metric_ids:
                 return "METRIC_REFERENCE_MISMATCH"
-        cte_names = {
-            name.lower()
-            for name in re.findall(
-                r"(?:\bwith\b|,)\s*([a-z_][a-z0-9_]*)\s+as\s*\(",
-                sql,
-                flags=re.IGNORECASE,
-            )
-        }
-        table_matches = re.findall(
-            r"\b(?:from|join)\s+([a-zA-Z0-9_.\"]+)"
-            r"(?:\s+(?:as\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?",
-            sql,
-            flags=re.IGNORECASE,
+        cte_names = {cte.alias_or_name.lower() for cte in query.find_all(exp.CTE)}
+        tables = tuple(
+            table
+            for table in query.find_all(exp.Table)
+            if table.db or table.catalog or table.name.lower() not in cte_names
         )
         queried = {
-            table.strip('"').lower()
-            for table, _alias in table_matches
-            if table.strip('"').lower() not in cte_names
+            ".".join(part.name for part in table.parts).lower()
+            for table in tables
         }
         if queried != {item.lower() for item in referenced}:
             return "SQL_REFERENCE_MISMATCH"
-        if len({table.split(".", 1)[0] for table in queried}) > 1:
+        if len(queried) > 1:
             referenced_join_ids = {
                 str(join_id)
                 for item in references
@@ -379,18 +374,20 @@ class PipelineSupport:
                 or queried != {item.fqn.lower() for item in package.assets}
             ):
                 return "UNAPPROVED_JOIN"
+        normalized_columns = {
+            fqn.lower(): {column.lower() for column in columns}
+            for fqn, columns in columns_by_fqn.items()
+        }
         columns_by_alias = {
-            (alias or table.rsplit(".", 1)[-1]).lower(): columns_by_fqn[fqn]
-            for table, alias in table_matches
-            if (fqn := table.strip('"').lower()) in columns_by_fqn
+            table.alias_or_name.lower(): normalized_columns[fqn]
+            for table in tables
+            if (fqn := ".".join(part.name for part in table.parts).lower())
+            in normalized_columns
         }
         if any(
-            column not in columns_by_alias[alias]
-            for alias, column in re.findall(
-                r"(?<![a-z0-9_])([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)",
-                normalized,
-            )
-            if alias in columns_by_alias
+            column.name.lower() not in columns_by_alias[column.table.lower()]
+            for column in query.find_all(exp.Column)
+            if column.table and column.table.lower() in columns_by_alias
         ):
             return "REFERENCE_OUTSIDE_CONTEXT"
         required_filters = (
@@ -418,41 +415,26 @@ class PipelineSupport:
         return None
 
     @staticmethod
-    def _read_only_query_shape(sql: str) -> bool:
-        words: list[str] = []
-        depth = 0
-        quoted = False
-        index = 0
-        while index < len(sql):
-            character = sql[index]
-            if character == "'":
-                if quoted and index + 1 < len(sql) and sql[index + 1] == "'":
-                    index += 2
-                    continue
-                quoted = not quoted
-            elif not quoted:
-                if character == "(":
-                    depth += 1
-                elif character == ")":
-                    depth -= 1
-                    if depth < 0:
-                        return False
-                elif depth == 0 and (character.isalpha() or character == "_"):
-                    end = index + 1
-                    while end < len(sql) and (sql[end].isalnum() or sql[end] == "_"):
-                        end += 1
-                    words.append(sql[index:end].lower())
-                    index = end
-                    continue
-            index += 1
-        if quoted or depth or not words or words[0] not in {"select", "with"}:
-            return False
-        statements = [
-            word
-            for word in words
-            if word in {"select", "insert", "update", "delete", "merge"}
-        ]
-        return statements == ["select"] and not {"union", "intersect", "except"}.intersection(words)
+    def _read_query_ast(sql: str) -> exp.Select | None:
+        try:
+            statements = parse(sql, read="trino")
+        except SqlglotError:
+            return None
+        if len(statements) != 1 or not isinstance(statements[0], exp.Select):
+            return None
+        query = statements[0]
+        if (
+            any(
+                query.find(kind)
+                for kind in (exp.DDL, exp.DML, exp.Union, exp.Intersect, exp.Except)
+            )
+            or any(
+                not isinstance(table.this, exp.Identifier)
+                for table in query.find_all(exp.Table)
+            )
+        ):
+            return None
+        return query
 
     @staticmethod
     def _required_filter_matches(

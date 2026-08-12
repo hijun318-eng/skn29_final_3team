@@ -1,6 +1,7 @@
 import unittest
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from src.report.domain import (
     BlockRunStatus,
@@ -84,7 +85,8 @@ class ReportDomainTest(unittest.TestCase):
             approved.replace_blocks((text,))
 
     def test_schedule_calculates_daily_weekly_and_month_end_without_cron_dependency(self):
-        current = datetime(2026, 8, 12, 9, 30, tzinfo=timezone.utc)
+        seoul = ZoneInfo("Asia/Seoul")
+        current = datetime(2026, 8, 12, 9, 30, tzinfo=seoul)
         daily = ReportSchedule("daily", "report-1", 1, ScheduleFrequency.DAILY, 10, 0)
         weekly = ReportSchedule(
             "weekly", "report-1", 1, ScheduleFrequency.WEEKLY, 9, 0, weekday=4
@@ -92,21 +94,21 @@ class ReportDomainTest(unittest.TestCase):
         monthly = ReportSchedule(
             "monthly", "report-1", 1, ScheduleFrequency.MONTHLY, 8, 0, day_of_month=31
         )
-        self.assertEqual(datetime(2026, 8, 12, 10, 0, tzinfo=timezone.utc), daily.next_after(current))
-        self.assertEqual(datetime(2026, 8, 14, 9, 0, tzinfo=timezone.utc), weekly.next_after(current))
+        self.assertEqual(datetime(2026, 8, 12, 10, 0, tzinfo=seoul), daily.next_after(current))
+        self.assertEqual(datetime(2026, 8, 14, 9, 0, tzinfo=seoul), weekly.next_after(current))
         self.assertEqual(
-            datetime(2026, 8, 31, 8, 0, tzinfo=timezone.utc), monthly.next_after(current)
+            datetime(2026, 8, 31, 8, 0, tzinfo=seoul), monthly.next_after(current)
         )
         self.assertEqual(
-            datetime(2026, 9, 30, 8, 0, tzinfo=timezone.utc),
-            monthly.next_after(datetime(2026, 8, 31, 8, 0, tzinfo=timezone.utc)),
+            datetime(2026, 9, 30, 8, 0, tzinfo=seoul),
+            monthly.next_after(datetime(2026, 8, 31, 8, 0, tzinfo=seoul)),
         )
 
     def test_due_schedule_queues_once_and_advances_next_run(self):
         repo = InMemoryReportRepository()
         repo.add_draft(self.draft)
         repo.approve("report-1", 1, datetime(2026, 8, 3, tzinfo=timezone.utc))
-        due = datetime(2026, 8, 12, 10, 0, tzinfo=timezone.utc)
+        due = datetime(2026, 8, 12, 10, 0, tzinfo=ZoneInfo("Asia/Seoul"))
         repo.save_schedule(ReportSchedule(
             "schedule-1", "report-1", 1, ScheduleFrequency.DAILY, 10, 0,
             enabled=True, next_run_at=due,

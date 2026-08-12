@@ -1,9 +1,13 @@
-from dataclasses import dataclass
+from __future__ import annotations
+
 import calendar
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Mapping
+from uuid import UUID
+from zoneinfo import ZoneInfo
 
 REPORT_CONTRACT_VERSION = "REPORT-v1.0.0"
 REPORT_PROPOSAL_VERSION = "REPORT-v1.1.0-DRAFT"
@@ -74,6 +78,9 @@ class ReportSchedule:
             raise ValueError("day_of_month는 monthly schedule에서만 사용합니다.")
 
     def next_after(self, current: datetime) -> datetime:
+        if current.tzinfo is None:
+            raise ValueError("Report schedule 계산 시각은 timezone-aware여야 합니다.")
+        current = current.astimezone(ZoneInfo(self.timezone))
         candidate = current.replace(hour=self.hour, minute=self.minute, second=0, microsecond=0)
         if self.frequency is ScheduleFrequency.DAILY:
             return candidate if candidate > current else candidate + timedelta(days=1)
@@ -92,6 +99,42 @@ class ReportSchedule:
             month += 1
             if month == 13:
                 year, month = year + 1, 1
+
+
+@dataclass(frozen=True, slots=True)
+class ReportCommand:
+    command_id: str
+    definition_id: str
+    version: int
+    owner_id: UUID
+    as_of: datetime
+    trigger_type: str
+    blocks: tuple[ReportBlock, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisBinding:
+    definition_id: str
+    version: int
+    owner_id: UUID
+    question: str
+    parameters: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters)))
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisReplayResult:
+    artifact_id: str
+    query_id: str
+    snapshot_checksum: str
+    context_hash: str
+    policy_version: str
+    watermark: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "watermark", MappingProxyType(dict(self.watermark)))
 
 
 @dataclass(frozen=True, slots=True)

@@ -24,6 +24,7 @@ KNOWN_REVISIONS = (
     "20260810_06",
     "20260811_07",
     "20260812_08",
+    "20260812_09",
 )
 LEGACY_REVISION_UNSUPPORTED = "LEGACY_REVISION_UNSUPPORTED"
 
@@ -49,7 +50,7 @@ class MigrationGraphTest(unittest.TestCase):
         script = ScriptDirectory.from_config(config)
 
         self.assertEqual(["20260729_01"], script.get_bases())
-        self.assertEqual(["20260812_08"], script.get_heads())
+        self.assertEqual(["20260812_09"], script.get_heads())
         self.assertEqual(
             set(KNOWN_REVISIONS),
             {item.revision for item in script.walk_revisions()},

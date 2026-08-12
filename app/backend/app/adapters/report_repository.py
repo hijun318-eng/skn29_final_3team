@@ -9,12 +9,15 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import IntegrityError
 
 from src.report.domain import (
+    AnalysisBinding,
+    AnalysisReplayResult,
     BlockRunStatus,
     BlockType,
     DefinitionStatus,
     ManualRunCommand,
     ReportBlock,
     ReportBlockRun,
+    ReportCommand,
     ReportDefinitionVersion,
     ReportRun,
     ReportSchedule,
@@ -630,3 +633,256 @@ class PostgresReportRepository:
                     },
                 )
         return tuple(commands)
+
+
+class PostgresReportWorkerRepository:
+    """Trusted worker persistence; HTTP owner scoping is intentionally not exposed here."""
+
+    def __init__(self, database_url: str) -> None:
+        self._engine = _engine(database_url)
+
+    def enqueue_due_schedules(self, current: datetime) -> int:
+        queued = 0
+        with self._engine.begin() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT * FROM report_v1.report_schedules
+                    WHERE enabled AND next_run_at <= :current
+                    ORDER BY next_run_at FOR UPDATE SKIP LOCKED
+                    """
+                ),
+                {"current": current},
+            ).mappings().all()
+            for row in rows:
+                schedule = PostgresReportRepository._schedule(row)
+                result = connection.execute(
+                    text(
+                        """
+                        INSERT INTO report_v1.report_manual_run_commands
+                            (command_id, definition_id, definition_version, as_of,
+                             idempotency_key, trigger_type, schedule_id)
+                        VALUES (:command_id, :definition_id, :version, :as_of,
+                                :idempotency_key, 'SCHEDULE', :schedule_id)
+                        ON CONFLICT (definition_id, definition_version, idempotency_key)
+                        DO NOTHING
+                        """
+                    ),
+                    {
+                        "command_id": uuid4(),
+                        "definition_id": row["definition_id"],
+                        "version": row["definition_version"],
+                        "as_of": row["next_run_at"],
+                        "idempotency_key": f"schedule:{schedule.schedule_id}:{schedule.next_run_at.isoformat()}",
+                        "schedule_id": row["schedule_id"],
+                    },
+                )
+                queued += result.rowcount
+                connection.execute(
+                    text(
+                        """
+                        UPDATE report_v1.report_schedules
+                        SET next_run_at = :next_run_at, updated_at = now()
+                        WHERE schedule_id = :schedule_id
+                        """
+                    ),
+                    {
+                        "schedule_id": row["schedule_id"],
+                        "next_run_at": schedule.next_after(schedule.next_run_at),
+                    },
+                )
+        return queued
+
+    def claim_next(self) -> ReportCommand | None:
+        with self._engine.begin() as connection:
+            # ponytail: 30-minute lease avoids a permanent stuck command; add heartbeats if runs exceed it.
+            connection.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_manual_run_commands
+                    SET status = 'queued', claimed_at = NULL
+                    WHERE status = 'running' AND claimed_at < now() - interval '30 minutes'
+                    """
+                )
+            )
+            row = connection.execute(
+                text(
+                    """
+                    WITH candidate AS (
+                        SELECT command_id
+                        FROM report_v1.report_manual_run_commands
+                        WHERE status = 'queued'
+                        ORDER BY created_at, command_id
+                        FOR UPDATE SKIP LOCKED LIMIT 1
+                    )
+                    UPDATE report_v1.report_manual_run_commands c
+                    SET status = 'running', claimed_at = now()
+                    FROM candidate
+                    WHERE c.command_id = candidate.command_id
+                    RETURNING c.command_id, c.definition_id, c.definition_version,
+                              c.as_of, c.trigger_type
+                    """
+                )
+            ).mappings().one_or_none()
+            if row is None:
+                return None
+            owner_id = connection.execute(
+                text("SELECT owner_id FROM report_v1.report_definitions WHERE definition_id = :definition_id"),
+                {"definition_id": row["definition_id"]},
+            ).scalar_one()
+            blocks = connection.execute(
+                text(
+                    """
+                    SELECT block_id, title, artifact_id, query_id, columns,
+                           block_type, x, y, w, h, content
+                    FROM report_v1.report_blocks
+                    WHERE definition_id = :definition_id
+                      AND definition_version = :version
+                    ORDER BY block_id
+                    """
+                ),
+                {"definition_id": row["definition_id"], "version": row["definition_version"]},
+            ).mappings()
+            return ReportCommand(
+                str(row["command_id"]), str(row["definition_id"]),
+                row["definition_version"], owner_id, row["as_of"], row["trigger_type"],
+                tuple(
+                    ReportBlock(
+                        str(block["block_id"]), block["title"],
+                        str(block["artifact_id"]) if block["artifact_id"] else None,
+                        block["columns"], block["query_id"], BlockType(block["block_type"]),
+                        block["x"], block["y"], block["w"], block["h"], block["content"],
+                    )
+                    for block in blocks
+                ),
+            )
+
+    def analysis_binding(self, artifact_id: str) -> AnalysisBinding:
+        with self._engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    SELECT l.definition_id, l.definition_version, d.owner_id,
+                           d.question_text_redacted, d.parameters_json
+                    FROM artifact.analysis_artifacts a
+                    JOIN analysis_v1.analysis_run_links l ON l.request_id = a.request_id
+                    JOIN analysis_v1.analysis_definitions d
+                      ON d.definition_id = l.definition_id
+                     AND d.version = l.definition_version
+                    WHERE a.artifact_id = :artifact_id
+                    """
+                ),
+                {"artifact_id": _uuid(artifact_id, "artifact_id")},
+            ).mappings().one_or_none()
+        if row is None:
+            raise KeyError("Report block Artifact에 재실행 가능한 Analysis Definition이 없습니다.")
+        return AnalysisBinding(
+            str(row["definition_id"]), row["definition_version"], row["owner_id"],
+            row["question_text_redacted"], row["parameters_json"],
+        )
+
+    def analysis_result(self, request_id: UUID) -> AnalysisReplayResult:
+        with self._engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    SELECT a.artifact_id, a.artifact_checksum, a.evidence_json,
+                           q.trino_query_id, q.source_cutoff_json
+                    FROM artifact.analysis_artifacts a
+                    JOIN query.query_executions q
+                      ON q.query_execution_id = a.query_execution_id
+                    WHERE a.request_id = :request_id AND a.status = 'APPROVED'
+                    ORDER BY a.created_at DESC LIMIT 1
+                    """
+                ),
+                {"request_id": request_id},
+            ).mappings().one_or_none()
+        if row is None or not row["trino_query_id"] or not row["artifact_checksum"]:
+            raise KeyError("Analysis 재실행 결과 Artifact가 없습니다.")
+        evidence = row["evidence_json"] or {}
+        return AnalysisReplayResult(
+            str(row["artifact_id"]), row["trino_query_id"], row["artifact_checksum"],
+            evidence.get("context_hash", "unknown"),
+            evidence.get("policy_version", "policy-v1"),
+            row["source_cutoff_json"] or {},
+        )
+
+    def artifact_result(self, artifact_id: str) -> AnalysisReplayResult:
+        with self._engine.connect() as connection:
+            request_id = connection.execute(
+                text("SELECT request_id FROM artifact.analysis_artifacts WHERE artifact_id = :artifact_id"),
+                {"artifact_id": _uuid(artifact_id, "artifact_id")},
+            ).scalar_one_or_none()
+        if request_id is None:
+            raise KeyError("Report block Artifact를 찾을 수 없습니다.")
+        return self.analysis_result(request_id)
+
+    def complete(self, command: ReportCommand, run: ReportRun) -> None:
+        with self._engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_runs
+                        (run_id, definition_id, definition_version, as_of,
+                         policy_version, context_hash, watermark, status)
+                    VALUES (:run_id, :definition_id, :version, :as_of,
+                            :policy_version, :context_hash, CAST(:watermark AS jsonb), :status)
+                    """
+                ),
+                {
+                    "run_id": _uuid(run.run_id, "run_id"),
+                    "definition_id": _uuid(run.definition_id, "definition_id"),
+                    "version": run.definition_version,
+                    "as_of": run.as_of,
+                    "policy_version": run.policy_version,
+                    "context_hash": run.context_hash,
+                    "watermark": json.dumps(dict(run.watermark)),
+                    "status": run.status.value,
+                },
+            )
+            for block in run.blocks:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO report_v1.report_block_runs
+                            (run_id, block_id, artifact_id, query_id,
+                             snapshot_checksum, status)
+                        VALUES (:run_id, :block_id, :artifact_id, :query_id,
+                                :checksum, :status)
+                        """
+                    ),
+                    {
+                        "run_id": _uuid(run.run_id, "run_id"),
+                        "block_id": _uuid(block.block_id, "block_id"),
+                        "artifact_id": _uuid(block.artifact_id, "artifact_id"),
+                        "query_id": block.query_id,
+                        "checksum": block.snapshot_checksum,
+                        "status": block.status.value,
+                    },
+                )
+            result = connection.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_manual_run_commands
+                    SET status = :status, run_id = :run_id, completed_at = now()
+                    WHERE command_id = :command_id AND status = 'running'
+                    """
+                ),
+                {"status": run.status.value, "run_id": _uuid(run.run_id, "run_id"), "command_id": _uuid(command.command_id, "command_id")},
+            )
+            if result.rowcount != 1:
+                raise ValueError("claim된 Report command만 완료할 수 있습니다.")
+
+    def fail(self, command_id: str, message: str) -> None:
+        with self._engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_manual_run_commands
+                    SET status = 'failed', completed_at = now(),
+                        error_message_redacted = :message
+                    WHERE command_id = :command_id AND status = 'running'
+                    """
+                ),
+                {"command_id": _uuid(command_id, "command_id"), "message": message[:500]},
+            )

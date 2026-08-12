@@ -87,6 +87,14 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("trigger_type", source)
         self.assertIn("schedule_id", source)
 
+    def test_report_worker_migration_adds_claim_and_completion_state(self):
+        source = (MIGRATIONS / "20260812_09_report_worker.py").read_text(encoding="utf-8")
+        self.assertIn('down_revision = "20260812_08"', source)
+        self.assertIn("'queued', 'running', 'success', 'partial', 'failed'", source)
+        self.assertIn("claimed_at", source)
+        self.assertIn("completed_at", source)
+        self.assertIn("run_id uuid REFERENCES report_v1.report_runs", source)
+
 
 if __name__ == "__main__":
     unittest.main()

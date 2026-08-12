@@ -39,7 +39,7 @@ class ReportRouterContractTest(unittest.TestCase):
             {"frequency": "monthly", "hour": 9, "minute": 0, "day_of_month": 31, "enabled": True},
             datetime(2026, 8, 12, 0, 0, tzinfo=timezone.utc),
         )
-        self.assertEqual("2026-08-31T09:00:00+00:00", schedule["next_run_at"])
+        self.assertEqual("2026-08-31T09:00:00+09:00", schedule["next_run_at"])
         self.assertEqual(1, len(self.router.list_schedules()["items"]))
 
     def test_router_creates_approves_and_versions_without_overwriting(self):

@@ -38,3 +38,15 @@ services:
       app-postgres-provision:
         condition: service_completed_successfully
     restart: unless-stopped
+
+  report-worker:
+    extends:
+      service: backend
+    container_name: answervice-report-worker
+    entrypoint: ["python", "scripts/run_report_worker.py"]
+    ports: !reset []
+    healthcheck:
+      disable: true
+    depends_on:
+      backend:
+        condition: service_healthy

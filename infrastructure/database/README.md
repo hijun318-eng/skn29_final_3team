@@ -39,8 +39,21 @@ infrastructure/database/
    ├─ start.ps1
    ├─ stop.ps1
    ├─ reset.ps1
-   └─ verify.ps1
+   ├─ verify.ps1
+   ├─ retention-app-postgres.ps1
+   ├─ backup-app-postgres.ps1
+   └─ verify-app-postgres-restore.ps1
 ```
+
+## 애플리케이션 DB 보존·백업·복구
+
+보존 정책은 기본적으로 삭제 후보만 집계한다. 실제 삭제는 `-Apply -Approval APPLY_RETENTION`을 함께 전달한 경우에만 수행한다.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/retention-app-postgres.ps1
+```
+
+백업은 custom-format `pg_dump`를 외부 key file로 AES-256 암호화하고 SHA-256·RPO manifest를 남긴다. key file과 백업 출력 디렉터리는 Git 밖의 접근 제한 경로를 사용한다. 복구 검증은 기본적으로 `pg_restore --list`만 수행하며, 실제 복구는 운영 `app_db`가 아닌 격리 DB와 `-Approval RESTORE_TO_ISOLATED_DB`가 모두 지정된 경우에만 허용한다. 정확한 인자는 각 스크립트 상단의 parameter 선언을 확인한다.
 
 이미지는 태그와 manifest digest를 함께 고정했다.
 

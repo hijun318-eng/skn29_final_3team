@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { normalizeApiResponse, OPENAPI_VERSION, resolveViewState, UI_CONTRACT_VERSION } from "../../app/enterprise-react/src/contracts/analysis.ts";
-import { REPORT_CONTRACT_VERSION, REPORT_RUN_STATUSES, reorderDraftBlocks } from "../../app/enterprise-react/src/contracts/report.ts";
+import { placeDraftBlock, REPORT_CONTRACT_VERSION, REPORT_RUN_STATUSES, reorderDraftBlocks } from "../../app/enterprise-react/src/contracts/report.ts";
 import { createAnalysisClient, createHttpAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
 import { createReportClient, ReportApiError } from "../../app/enterprise-react/src/api/reportClient.ts";
 import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
@@ -36,7 +36,9 @@ for (const forbidden of [
 assert.match(source("pages/AgentPage.jsx"), /nextPeriodStart >= nextPeriodEnd/);
 assert.match(source("pages/AgentPage.jsx"), /setPeriodStart\(nextPeriodStart\)/);
 assert.match(source("pages/AgentPage.jsx"), /setPeriodEnd\(nextPeriodEnd\)/);
-assert.match(source("components/auth/SessionLogin.jsx"), /onAuthenticated\(\{ token: nextToken, role: session\.role \}\)/);
+assert.match(source("components/auth/SessionLogin.jsx"), /\.login\(nextUsername, password\)/);
+assert.match(source("components/auth/SessionLogin.jsx"), /onAuthenticated\(\{ token: session\.session_token, role: session\.role \}\)/);
+assert.doesNotMatch(source("components/auth/SessionLogin.jsx"), /액세스 토큰/);
 assert.match(source("App.jsx"), /<ReportsPage authToken=\{authToken\} role=\{role\}/);
 assert.match(source("App.jsx"), /role === "report_admin"/);
 assert.match(source("App.jsx"), /role !== "hotel_analyst"/);
@@ -50,7 +52,8 @@ assert.match(source("pages/ReportsPage.jsx"), /setScheduleEnabled\(schedule\.sch
 assert.doesNotMatch(source("pages/ReportsPage.jsx"), />due 실행<\/button>/);
 assert.match(source("pages/ReportsPage.jsx"), /REPORT_DRAFT scope/);
 assert.match(source("pages/ReportsPage.jsx"), /draggable/);
-assert.match(source("pages/ReportsPage.jsx"), /reorderDraftBlocks\(current, sourceId, targetId\)/);
+assert.match(source("pages/ReportsPage.jsx"), /placeDraftBlock\(current, sourceId, position\.x, position\.y\)/);
+assert.match(source("pages/ReportsPage.jsx"), /gridRow:/);
 assert.match(source("pages/ReportsPage.jsx"), /배치 저장/);
 assert.match(source("pages/AgentPage.jsx"), /role="alert"/);
 assert.match(source("pages/AgentPage.jsx"), /savedRuns\.slice\(0, visibleRunCount\)/);
@@ -65,6 +68,13 @@ const reorderedBlocks = reorderDraftBlocks([
 ], "right", "left");
 assert.deepEqual(reorderedBlocks.map((block) => block.id), ["right", "left"]);
 assert.deepEqual(reorderedBlocks.map((block) => [block.x, block.y]), [[0, 0], [6, 0]]);
+
+const freelyPlacedBlocks = placeDraftBlock(reorderedBlocks, "right", 6, 3);
+assert.deepEqual(freelyPlacedBlocks.find((block) => block.id === "right"), {
+  id: "right", title: "오른쪽", columns: 6, type: "text", content: "오른쪽", x: 6, y: 3, w: 6, h: 2,
+});
+const collisionAvoidedBlocks = placeDraftBlock(freelyPlacedBlocks, "left", 6, 3);
+assert.equal(collisionAvoidedBlocks.find((block) => block.id === "left").y, 5);
 
 const apiResponse = {
   data: {
@@ -110,6 +120,17 @@ const sessionClient = createHttpAnalysisClient("http://backend.test", async (url
   return new Response(JSON.stringify({ data: { status: "authenticated", role: "hotel_analyst" } }), { status: 200 });
 }, "runtime-token");
 assert.deepEqual(await sessionClient.validateSession(), { status: "authenticated", role: "hotel_analyst" });
+
+let loginRequest;
+const loginClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
+  loginRequest = { url, init };
+  return new Response(JSON.stringify({ data: { status: "authenticated", role: "report_admin", session_token: "signed-session" } }), { status: 200 });
+});
+assert.deepEqual(await loginClient.login("admin", "admin1234!"), {
+  status: "authenticated", role: "report_admin", session_token: "signed-session",
+});
+assert.equal(loginRequest.url, "http://backend.test/auth/login");
+assert.deepEqual(JSON.parse(loginRequest.init.body), { username: "admin", password: "admin1234!" });
 
 let defaultRequests = 0;
 assert.throws(

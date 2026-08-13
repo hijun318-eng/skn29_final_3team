@@ -41,6 +41,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "/analysis/runs/{request_id}",
                 "/analysis/runs/{request_id}/artifact",
                 "/auth/session",
+                "/auth/login",
                 "/health",
                 "/mcp",
                 "/readiness",
@@ -69,6 +70,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "getHealth",
                 "getReadiness",
                 "getAuthenticatedSession",
+                "createAuthenticatedSession",
                 "submitAnalysis",
                 "analysisCreateDefinition",
                 "analysisListDefinitions",
@@ -113,7 +115,7 @@ class OpenApiContractTest(unittest.TestCase):
         self.assertEqual("http", bearer["type"])
         self.assertEqual("bearer", bearer["scheme"])
         for path, operations in schema["paths"].items():
-            if path in {"/health", "/readiness"}:
+            if path in {"/health", "/readiness", "/auth/login"}:
                 continue
             for operation in operations.values():
                 self.assertEqual([{"BearerAuth": []}], operation["security"])

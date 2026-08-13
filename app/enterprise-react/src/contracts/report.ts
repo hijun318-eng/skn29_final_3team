@@ -63,6 +63,41 @@ export function reorderDraftBlocks(
   return normalizeDraftLayout(reordered);
 }
 
+function overlaps(
+  left: Pick<DraftLayoutBlock, "x" | "y" | "w" | "h">,
+  right: Pick<DraftLayoutBlock, "x" | "y" | "w" | "h">,
+): boolean {
+  return left.x < right.x + right.w && left.x + left.w > right.x
+    && left.y < right.y + right.h && left.y + left.h > right.y;
+}
+
+export function placeDraftBlock(
+  blocks: readonly ReportBlock[],
+  blockId: string,
+  requestedX: number,
+  requestedY: number,
+): readonly DraftLayoutBlock[] {
+  const normalized = blocks.map((block) => ({
+    ...block,
+    columns: Math.min(12, Math.max(1, block.w ?? block.columns)),
+    x: Math.max(0, block.x ?? 0),
+    y: Math.max(0, block.y ?? 0),
+    w: Math.min(12, Math.max(1, block.w ?? block.columns)),
+    h: Math.max(1, block.h ?? 1),
+  }));
+  const source = normalized.find((block) => block.id === blockId);
+  if (!source) return normalized;
+
+  const candidate = {
+    ...source,
+    x: Math.min(12 - source.w, Math.max(0, Math.round(requestedX))),
+    y: Math.max(0, Math.round(requestedY)),
+  };
+  const others = normalized.filter((block) => block.id !== blockId);
+  while (others.some((block) => overlaps(candidate, block))) candidate.y += 1;
+  return normalized.map((block) => block.id === blockId ? candidate : block);
+}
+
 export function serializeDraftLayout(blocks: readonly ReportBlock[]): string {
   return JSON.stringify(normalizeDraftLayout(blocks));
 }

@@ -18,7 +18,7 @@ Copy-Item infrastructure/database/.env.example infrastructure/database/.env
 
 팀에서 전달받은 `infrastructure/database/.env`를 사용하거나, 직접 만들 때는 모든 `CHANGE_ME_` 값을 교체하고 `OPENAI_API_KEY`를 설정한다. 기본 모델은 Node 1·2·Repair·3 모두 `gpt-5.4-mini`이며, endpoint나 모델을 바꾸려는 경우에만 `OPENAI_ENDPOINT`, `OPENAI_MODEL`, `NODE2_MODEL`을 수정한다.
 
-다음 script는 `.env`의 placeholder login token을 로컬 난수로 교체하고 `hotel_analyst`·`report_admin` principal 파일을 생성한다. raw token과 principal 파일은 Git에서 제외된다.
+다음 script는 `.env`의 두 로그인 계정을 PBKDF2-SHA256으로 해시해 `hotel_analyst`·`report_admin` principal 파일을 생성한다. 비밀번호와 principal 파일은 Git에서 제외된다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File infrastructure/database/security/provision-release-principals.ps1
@@ -58,9 +58,9 @@ Invoke-RestMethod http://127.0.0.1:28000/readiness | ConvertTo-Json -Depth 5
 - `infrastructure/database/.env`
 - `infrastructure/database/security/answervice_auth_principals.local.json`
 - `OPENAI_API_KEY`와 사설 OpenAI-compatible endpoint 인증정보
-- 개인별 DB 비밀번호와 로컬 Analyst·Report Admin token
+- 개인별 DB 비밀번호와 Analyst·Report Admin 로그인 비밀번호
 
-팀원이 같은 외부 모델 endpoint를 사용해야 한다면 `OPENAI_API_KEY`와, 기본값이 아닌 경우에만 `OPENAI_ENDPOINT`를 별도 보안 채널로 전달한다. 나머지 로컬 token과 principal은 provisioning script로 각자 생성하는 편이 안전하다.
+팀원이 같은 외부 모델 endpoint를 사용해야 한다면 `.env` 또는 `OPENAI_API_KEY`와, 기본값이 아닌 경우 `OPENAI_ENDPOINT`를 별도 보안 채널로 전달한다. principal 파일은 provisioning script로 각자 생성할 수 있다.
 
 ## 검증
 

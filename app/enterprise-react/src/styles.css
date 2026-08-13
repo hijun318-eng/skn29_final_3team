@@ -140,6 +140,14 @@ html{scrollbar-gutter:stable}body{line-height:1.45;text-rendering:optimizeLegibi
 .report-schedule-list article div { display: grid; gap: 2px; min-width: 0; }
 .report-schedule-list small, .report-schedule-list em { overflow-wrap: anywhere; font-size: 11px; color: #64748b; font-style: normal; }
 .report-layout-help { display: flex; align-items: center; gap: 7px; margin: 14px 0 0; color: var(--muted); font-size: 12px; }
+.report-layout-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.report-layout-toolbar .report-layout-help { margin: 0; }
+.report-new-block-drag { flex: none; cursor: grab; border-style: dashed; }
+.report-new-block-drag:active { cursor: grabbing; }
+.report-api-blocks { position: relative; min-height: 240px; grid-auto-rows: 48px; padding: 12px; border: 1px dashed transparent; border-radius: 12px; background: linear-gradient(rgba(148,163,184,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.08) 1px,transparent 1px); background-size: calc((100% - 132px)/12 + 12px) 60px; transition: border-color .15s ease, background-color .15s ease; }
+.report-api-blocks.is-drop-ready { border-color: var(--primary); background-color: var(--primary-soft); }
+.report-drop-preview { z-index: 2; min-height: 48px; display: grid; place-items: center; pointer-events: none; color: var(--primary); border: 2px solid var(--primary); border-radius: 10px; background: color-mix(in srgb,var(--primary-soft) 82%,transparent); box-shadow: 0 8px 24px rgba(28,105,212,.18); }
+.report-drop-preview span { padding: 5px 8px; border-radius: 999px; background: #fff; font-size: 11px; font-weight: 700; }
 .report-api-blocks > article { position: relative; min-width: 0; background: #fff; transition: border-color .15s ease, box-shadow .15s ease, opacity .15s ease; }
 .report-api-blocks > article.is-dragging { opacity: .42; }
 .report-api-blocks > article.is-drop-target { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
@@ -156,10 +164,23 @@ html{scrollbar-gutter:stable}body{line-height:1.45;text-rendering:optimizeLegibi
 .report-block-controls button.danger { color: var(--danger); }
 .report-api-blocks textarea { padding: 10px; resize: vertical; }
 .report-api-blocks > article > p { overflow-wrap: anywhere; }
+.report-actual-editor { min-height: 560px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.report-actual-editor .editor-library { margin: 0; border: 0; border-right: 1px solid var(--border); border-radius: 0; }
+.report-actual-editor .editor-workspace { min-height: 560px; }
+.report-actual-editor .editor-topbar { margin: 0; }
+.report-actual-editor .editor-canvas { grid-auto-rows: 48px; align-content: start; }
+.report-actual-editor .editor-block { cursor: default; }
+.report-actual-editor .editor-block > header { align-items: flex-start; }
+.report-actual-editor .editor-block textarea { min-height: 72px; resize: vertical; }
+.report-actual-editor .editor-catalog button[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); }
+.report-actual-editor .editor-save-state { color: var(--muted); }
 @media (max-width: 600px) {
+  .report-layout-toolbar { align-items: stretch; flex-direction: column; }
   .report-schedule-form, .report-schedule-list article { align-items: stretch; flex-direction: column; }
   .report-schedule-form label, .report-schedule-form button { width: 100%; }
   .report-api-blocks > article { grid-column: 1 / -1 !important; }
+  .report-actual-editor { display: block; }
+  .report-actual-editor .editor-library { border-right: 0; border-bottom: 1px solid var(--border); }
   .report-api-blocks > article > header { flex-direction: column; }
   .report-block-controls { width: 100%; justify-content: flex-start; }
   .report-block-controls small { text-align: left; }

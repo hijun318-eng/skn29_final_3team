@@ -64,9 +64,11 @@
     ]
   },
   "error": {
-    "code": "QUERY_SOURCE_FAILED",
+    "clarification_type": null,
+    "code": "REQUEST_CANCELLED",
     "message": "요청이 취소되었습니다.",
-    "retryable": false
+    "retryable": false,
+    "suggestions": []
   },
   "meta": {
     "as_of": "2026-07-30",

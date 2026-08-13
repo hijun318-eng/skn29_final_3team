@@ -5,7 +5,8 @@ import math
 import re
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
+from threading import local
+from typing import Any, Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -95,6 +96,7 @@ query Dataset($urn: String!) {
         )
         self._queries: dict[str, dict[str, Any]] = {}
         self._next_uris: dict[str, str] = {}
+        self._cancellation = local()
         root = Path(__file__).resolve().parents[4]
         source = contract_path or root / "src" / "data" / "analytics_context_contract.i4.v2.json"
         contract = json.loads(source.read_text(encoding="utf-8"))
@@ -125,6 +127,10 @@ query Dataset($urn: String!) {
             raise ValueError("analytics context contract approved joins are invalid")
         self._approved_joins = {
             frozenset(map(str, item["assets"])): str(item["id"])
+            for item in approved_joins
+        }
+        self._approved_join_metrics = {
+            frozenset(map(str, item["assets"])): tuple(item.get("metrics", ()))
             for item in approved_joins
         }
         if (
@@ -484,6 +490,8 @@ query Dataset($urn: String!) {
         metrics = tuple(
             metric for metric in self._metrics if metric.get("asset_fqn") in selected_fqns
         )
+        if query_use == "approved_pms_crm_join":
+            metrics += self._approved_join_metrics.get(frozenset(selected_fqns), ())
         for item in selected:
             item_metrics = tuple(
                 metric for metric in metrics if metric["asset_fqn"] == item["fqn"]
@@ -609,6 +617,13 @@ query Dataset($urn: String!) {
         self._queries[result["query_id"]] = result
         return result
 
+    def bind_cancellation(self, check: Callable[[], bool] | None) -> None:
+        self._cancellation.check = check
+
+    def _cancel_requested(self) -> bool:
+        check = getattr(self._cancellation, "check", None)
+        return bool(check and check())
+
     @staticmethod
     def _bind_parameters(
         sql: str,
@@ -675,8 +690,15 @@ query Dataset($urn: String!) {
         columns = page.columns
         rows = list(page.rows)
         warnings = list(page.warnings)
+        if self._cancel_requested():
+            if page.next_uri:
+                self._trino.cancel(page.next_uri)
+            return self._cancelled_result(page.query_id)
         while page.next_uri:
             self._next_uris[page.query_id] = page.next_uri
+            if self._cancel_requested():
+                self._trino.cancel(page.next_uri)
+                return self._cancelled_result(page.query_id)
             try:
                 page = self._trino.next_page(page.next_uri)
             except AdapterError as error:
@@ -684,6 +706,10 @@ query Dataset($urn: String!) {
             columns = page.columns or columns
             rows.extend(page.rows)
             warnings.extend(page.warnings)
+            if self._cancel_requested():
+                if page.next_uri:
+                    self._trino.cancel(page.next_uri)
+                return self._cancelled_result(page.query_id)
         shaped = [dict(zip(columns, row)) for row in rows]
         return {
             "query_id": page.query_id,
@@ -697,6 +723,19 @@ query Dataset($urn: String!) {
                 "returned_rows": len(shaped),
                 "total_rows": len(shaped),
             },
+            "masking": {"applied": False, "fields": ()},
+        }
+
+    @staticmethod
+    def _cancelled_result(query_id: str) -> dict[str, Any]:
+        return {
+            "query_id": query_id,
+            "status": "CANCELLED",
+            "rows": [],
+            "evidence_complete": False,
+            "zero_result_suspicious": False,
+            "filters": {},
+            "sampling": {"applied": False, "returned_rows": 0, "total_rows": 0},
             "masking": {"applied": False, "fields": ()},
         }
 

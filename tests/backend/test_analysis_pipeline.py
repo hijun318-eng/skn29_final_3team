@@ -2,7 +2,9 @@ import unittest
 from datetime import date
 from pathlib import Path
 from sys import path
+from types import SimpleNamespace
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 
 BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
@@ -17,6 +19,7 @@ from tests.support.fakes import (
 from app.contracts import (
     AnalysisRequest,
     AnalysisStatus,
+    ClarificationType,
     ErrorCode,
     PipelineStage,
     RequestContext,
@@ -24,6 +27,9 @@ from app.contracts import (
     StageOutcome,
 )
 from app.services.analysis_service import AnalysisService
+from app.services.analysis_responses import _evidence_filters
+from app.services.context_builder import ContextRequiredFilter
+from app.services.pipeline_support import PipelineSupport, _validated_model_periods
 from app.ports.data_platform import NoEntitledAssetsError
 from app.services.routing_service import (
     ACCESS_POLICY_VERSION,
@@ -32,6 +38,7 @@ from app.services.routing_service import (
     _template_role_policy,
 )
 from src.modelops.runtime import ProductionModelClient
+from src.ai.node1 import normalize_question
 
 
 class CountingDataPlatformAdapter(FakeDataPlatformAdapter):
@@ -52,6 +59,16 @@ class CountingDataPlatformAdapter(FakeDataPlatformAdapter):
 class NoEntitledAssetsAdapter(CountingDataPlatformAdapter):
     def search_assets(self, query, context):
         raise NoEntitledAssetsError("no entitled assets")
+
+
+class ContextUnavailableAdapter(CountingDataPlatformAdapter):
+    def search_assets(self, query, context):
+        raise TimeoutError("context unavailable")
+
+
+class TrinoUnavailableAdapter(CountingDataPlatformAdapter):
+    def execute_query(self, sql, parameters, gate_token):
+        raise ConnectionError("trino unavailable")
 
 
 class ChartDataPlatformAdapter(CountingDataPlatformAdapter):
@@ -118,6 +135,53 @@ class CountingModel(FakeModelAdapter):
     def generate(self, node, payload):
         self.calls += 1
         return super().generate(node, payload)
+
+
+class TraceEvidenceModel(FakeModelAdapter):
+    def generate(self, node, payload):
+        response = super().generate(node, payload)
+        self.last_trace = {
+            "node": node,
+            "model_version": response["model_version"],
+            "prompt_id": f"{node}-prompt",
+            "prompt_version": "v1.0.0",
+        }
+        return response
+
+
+class RelativePeriodModel(CountingModel):
+    def __init__(self):
+        super().__init__()
+        self.requests = []
+
+    def normalize_question(self, payload):
+        return normalize_question(payload)
+
+    def generate(self, node, payload):
+        self.requests.append((node, payload))
+        return super().generate(node, payload)
+
+
+class WrongRelativePeriodModel(RelativePeriodModel):
+    def normalize_question(self, payload):
+        response = normalize_question(payload)
+        response["period_candidates"][0]["start"] = "2026-07-01T00:00:00+09:00"
+        return response
+
+
+class FlakyRelativePeriodModel(RelativePeriodModel):
+    def __init__(self):
+        super().__init__()
+        self.normalize_calls = 0
+
+    def normalize_question(self, payload):
+        self.normalize_calls += 1
+        response = normalize_question(payload)
+        if self.normalize_calls == 1:
+            response["period_candidates"][0]["end_exclusive"] = (
+                "2026-07-31T00:00:00+09:00"
+            )
+        return response
 
 
 class InvalidRepairModel(FakeModelAdapter):
@@ -333,6 +397,218 @@ class AnalysisPipelineTest(unittest.TestCase):
                 self.assertEqual(0, model.calls)
                 self.assertEqual(0, adapter.execute_count)
 
+    def test_multiple_natural_language_periods_return_period_choices(self) -> None:
+        adapter = MetricCandidateAdapter()
+        model = CountingModel()
+        service = AnalysisService(adapter, model)
+        payload = AnalysisRequest(
+            question="2026년 5월 또는 6월 체크아웃 기준 객실 매출을 보여줘"
+        )
+
+        response = service.analyze(
+            payload,
+            self.context,
+            self.decision(payload),
+        )
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ErrorCode.CONTEXT_INCOMPLETE, response.error.code)
+        self.assertEqual(ClarificationType.PERIOD, response.error.clarification_type)
+        self.assertEqual(("2026년 5월", "6월"), response.error.suggestions)
+        self.assertEqual(0, model.calls)
+        self.assertEqual(0, adapter.execute_count)
+
+    def test_missing_period_is_requested_before_metric_execution(self) -> None:
+        adapter = MetricCandidateAdapter()
+        model = CountingModel()
+        service = AnalysisService(adapter, model)
+        payload = AnalysisRequest(question="체크아웃 기준 객실 매출을 보여줘")
+
+        response = service.analyze(
+            payload,
+            self.context,
+            self.decision(payload),
+        )
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ClarificationType.PERIOD, response.error.clarification_type)
+        self.assertEqual((), response.error.suggestions)
+        self.assertIn("예: 2026년 6월", response.error.message)
+        self.assertEqual(0, model.calls)
+        self.assertEqual(0, adapter.execute_count)
+
+    def test_node1_relative_week_period_reaches_node2_context(self) -> None:
+        adapter = MetricCandidateAdapter()
+        model = RelativePeriodModel()
+        service = AnalysisService(adapter, model)
+        payload = AnalysisRequest(question="지난 주 인식 객실 매출을 보여줘")
+
+        response = service.analyze(payload, self.context, self.decision(payload))
+
+        node2 = next(item for node, item in model.requests if node == "node2")
+        bindings = {item.name: item.value for item in node2["package"].parameter_bindings}
+        self.assertEqual("2026-07-20", bindings["period_start"])
+        self.assertEqual("2026-07-27", bindings["period_end_exclusive"])
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.SQL_REPAIR_FAILED, response.error.code)
+        self.assertEqual(PipelineStage.REPAIR, response.data.trace[-1].stage)
+        self.assertEqual(0, adapter.execute_count)
+
+    def test_node1_relative_period_outside_calendar_contract_never_reaches_node2(self) -> None:
+        adapter = MetricCandidateAdapter()
+        model = WrongRelativePeriodModel()
+        service = AnalysisService(adapter, model)
+        payload = AnalysisRequest(question="지난 주 인식 객실 매출을 보여줘")
+
+        response = service.analyze(payload, self.context, self.decision(payload))
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(PipelineStage.MODEL, response.data.trace[-1].stage)
+        self.assertEqual(0, model.calls)
+        self.assertEqual(0, adapter.execute_count)
+
+    def test_node1_retries_one_calendar_contract_violation_before_node2(self) -> None:
+        adapter = MetricCandidateAdapter()
+        model = FlakyRelativePeriodModel()
+        service = AnalysisService(adapter, model)
+        payload = AnalysisRequest(question="이번 주 인식 객실 매출을 보여줘")
+
+        response = service.analyze(payload, self.context, self.decision(payload))
+
+        self.assertEqual(2, model.normalize_calls)
+        self.assertIn("node2", [node for node, _payload in model.requests])
+        self.assertEqual(ErrorCode.SQL_REPAIR_FAILED, response.error.code)
+
+    def test_node1_can_validate_semantic_period_beyond_fixed_phrase_rules(self) -> None:
+        candidates = [{
+            "start": "2026-01-01T00:00:00+09:00",
+            "end_exclusive": "2026-08-13T00:00:00+09:00",
+            "source_text": "올해 초부터 지금까지",
+        }]
+
+        validated = _validated_model_periods(
+            "올해 초부터 지금까지 인식 객실 매출을 분석해 줘",
+            candidates,
+            [],
+            ZoneInfo("Asia/Seoul"),
+        )
+
+        self.assertEqual(candidates, validated)
+
+    def test_node1_accepts_contiguous_model_periods_equal_to_one_calendar_range(self) -> None:
+        expected = [{
+            "start": "2026-05-01T00:00:00+09:00",
+            "end_exclusive": "2026-07-01T00:00:00+09:00",
+            "source_text": "2026년 5월과 6월",
+        }]
+        model = [
+            {
+                "start": "2026-05-01T00:00:00+09:00",
+                "end_exclusive": "2026-06-01T00:00:00+09:00",
+                "source_text": "2026년 5월",
+            },
+            {
+                "start": "2026-06-01T00:00:00+09:00",
+                "end_exclusive": "2026-07-01T00:00:00+09:00",
+                "source_text": "2026년 6월",
+            },
+        ]
+
+        validated = _validated_model_periods(
+            "2026년 5월과 6월 통합 매출을 비교해 줘",
+            model,
+            expected,
+            ZoneInfo("Asia/Seoul"),
+        )
+
+        self.assertEqual(expected, validated)
+
+    def test_node1_rejects_model_periods_with_gap_inside_calendar_range(self) -> None:
+        expected = [{
+            "start": "2026-05-01T00:00:00+09:00",
+            "end_exclusive": "2026-08-01T00:00:00+09:00",
+            "source_text": "2026년 5월부터 7월",
+        }]
+        model = [
+            {
+                "start": "2026-05-01T00:00:00+09:00",
+                "end_exclusive": "2026-06-01T00:00:00+09:00",
+                "source_text": "2026년 5월",
+            },
+            {
+                "start": "2026-07-01T00:00:00+09:00",
+                "end_exclusive": "2026-08-01T00:00:00+09:00",
+                "source_text": "7월",
+            },
+        ]
+
+        with self.assertRaisesRegex(ValueError, "candidate count"):
+            _validated_model_periods(
+                "2026년 5월부터 7월 통합 매출을 비교해 줘",
+                model,
+                expected,
+                ZoneInfo("Asia/Seoul"),
+            )
+
+    def test_evidence_filters_expose_approved_fields_not_internal_parameter_names(self) -> None:
+        package = SimpleNamespace(
+            required_filters=(
+                ContextRequiredFilter("crm.grade_code", "eq", "GOLD"),
+                ContextRequiredFilter("pms.is_forecast", "eq", False),
+            ),
+            metrics=(),
+        )
+
+        displayed = _evidence_filters(
+            {"required_filter_1": "GOLD", "required_filter_2": False},
+            package,
+        )
+
+        self.assertEqual(
+            {"crm.grade_code": "GOLD", "pms.is_forecast": False},
+            displayed,
+        )
+
+    def test_null_sql_aggregate_becomes_empty_result_not_fake_zero(self) -> None:
+        query = {
+            "query_id": "query-null-aggregate",
+            "status": "SUCCEEDED",
+            "rows": [{"recognized_room_revenue": None}],
+            "sampling": {"returned_rows": 1, "total_rows": 1},
+        }
+        package = SimpleNamespace(
+            metrics=(SimpleNamespace(id="recognized_room_revenue"),)
+        )
+
+        normalized = PipelineSupport.normalize_empty_aggregate(query, package)
+
+        self.assertEqual([], normalized["rows"])
+        self.assertEqual({"returned_rows": 0, "total_rows": 0}, normalized["sampling"])
+        self.assertIsNone(query["rows"][0]["recognized_room_revenue"])
+
+    def test_explicit_period_with_ambiguous_metrics_returns_metric_choices(self) -> None:
+        adapter = MetricCandidateAdapter()
+        model = CountingModel()
+        service = AnalysisService(adapter, model)
+        payload = AnalysisRequest(
+            question="2026년 6월 객실 매출과 식음 순매출을 비교해 줘"
+        )
+
+        response = service.analyze(
+            payload,
+            self.context,
+            self.decision(payload),
+        )
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ClarificationType.METRIC, response.error.clarification_type)
+        self.assertEqual(
+            ("인식 객실 매출", "식음 순매출"),
+            response.error.suggestions,
+        )
+        self.assertEqual(0, model.calls)
+        self.assertEqual(0, adapter.execute_count)
+
     def test_missing_entitled_assets_is_context_block_not_internal_failure(self) -> None:
         adapter = NoEntitledAssetsAdapter()
         model = CountingModel()
@@ -343,7 +619,7 @@ class AnalysisPipelineTest(unittest.TestCase):
 
         self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
         self.assertEqual(PipelineStage.CONTEXT, response.data.trace[-1].stage)
-        self.assertEqual("CONTEXT_INCOMPLETE", response.error.code.value)
+        self.assertEqual("DATA_ASSET_NOT_FOUND", response.error.code.value)
         self.assertEqual(0, model.calls)
         self.assertEqual(0, adapter.execute_count)
 
@@ -367,6 +643,19 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual(0, model.calls)
         self.assertEqual(0, adapter.execute_count)
 
+    def test_context_source_failure_is_retryable_and_distinct_from_no_asset(self) -> None:
+        adapter = ContextUnavailableAdapter()
+        payload = AnalysisRequest(question="승인 데이터로 객실 운영 현황을 알려줘")
+
+        response = AnalysisService(adapter, CountingModel()).analyze(
+            payload, self.context, self.decision(payload)
+        )
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.CONTEXT_SOURCE_FAILED, response.error.code)
+        self.assertTrue(response.error.retryable)
+        self.assertEqual(0, adapter.execute_count)
+
     def test_user_parameters_cannot_inject_pipeline_scenarios(self) -> None:
         for scenario in ("access_denied", "inactive_context", "g3_failed"):
             with self.subTest(scenario=scenario):
@@ -382,11 +671,15 @@ class AnalysisPipelineTest(unittest.TestCase):
                 self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
 
     def test_invalid_or_timed_out_model_response_is_safe_failure(self) -> None:
-        for scenario in ("invalid_model_schema", "model_timeout"):
+        expected_codes = {
+            "invalid_model_schema": ErrorCode.MODEL_CONTRACT_INVALID,
+            "model_timeout": ErrorCode.MODEL_TIMEOUT,
+        }
+        for scenario, expected_code in expected_codes.items():
             with self.subTest(scenario=scenario):
                 response = self.analyze(scenario)
                 self.assertEqual(AnalysisStatus.FAILED, response.data.status)
-                self.assertEqual("INTERNAL_ERROR", response.error.code.value)
+                self.assertEqual(expected_code, response.error.code)
                 self.assertEqual(PipelineStage.MODEL, response.data.trace[-1].stage)
                 self.assertIsNone(response.data.artifact)
                 self.assertEqual(0, self.adapter.execute_count)
@@ -403,7 +696,7 @@ class AnalysisPipelineTest(unittest.TestCase):
         response = service.analyze(payload, self.context, self.decision(payload))
 
         self.assertEqual(AnalysisStatus.FAILED, response.data.status)
-        self.assertEqual("INTERNAL_ERROR", response.error.code.value)
+        self.assertEqual(ErrorCode.MODEL_TIMEOUT, response.error.code)
         self.assertEqual(PipelineStage.MODEL, response.data.trace[-1].stage)
         self.assertIsNone(response.data.artifact)
         self.assertEqual(0, adapter.execute_count)
@@ -413,6 +706,7 @@ class AnalysisPipelineTest(unittest.TestCase):
         response = self.analyze("g2_blocked")
 
         self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ErrorCode.SQL_POLICY_BLOCKED, response.error.code)
         self.assertEqual(PipelineStage.G2, response.data.trace[-1].stage)
         self.assertEqual(0, response.data.repair_count)
         self.assertEqual(0, self.adapter.execute_count)
@@ -426,6 +720,10 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
         self.assertEqual(1, response.data.repair_count)
         self.assertEqual(1, self.adapter.execute_count)
+        self.assertEqual(
+            (StageOutcome.BLOCKED, StageOutcome.PASSED),
+            response.data.result.evidence.gate_history.g2,
+        )
 
     def test_g2_requires_a_hard_limit_before_query(self) -> None:
         service = AnalysisService(self.adapter, MissingLimitModel())
@@ -455,7 +753,8 @@ class AnalysisPipelineTest(unittest.TestCase):
         with self.assertLogs("uvicorn.error", level="WARNING") as captured:
             response = service.analyze(payload, self.context, self.decision(payload))
 
-        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.SQL_REPAIR_FAILED, response.error.code)
         self.assertEqual(1, response.data.repair_count)
         self.assertEqual(0, self.adapter.execute_count)
         log_text = "\n".join(captured.output)
@@ -480,12 +779,17 @@ class AnalysisPipelineTest(unittest.TestCase):
                             for step in response.data.trace
                         )
                     )
+                else:
+                    self.assertEqual(
+                        "EVIDENCE_INCOMPLETE",
+                        response.data.trace[-1].detail,
+                    )
 
     def test_query_timeout_is_cancelled_and_terminally_verified(self) -> None:
         response = self.analyze("query_timeout")
 
         self.assertEqual(AnalysisStatus.FAILED, response.data.status)
-        self.assertEqual("QUERY_SOURCE_FAILED", response.error.code.value)
+        self.assertEqual(ErrorCode.QUERY_TIMEOUT, response.error.code)
         self.assertEqual(1, len(self.adapter.cancelled_query_ids))
         query_id = self.adapter.cancelled_query_ids[0]
         self.assertEqual(
@@ -494,11 +798,45 @@ class AnalysisPipelineTest(unittest.TestCase):
         )
         self.assertIsNone(response.data.artifact)
 
+    def test_trino_connection_failure_is_retryable_and_distinct(self) -> None:
+        adapter = TrinoUnavailableAdapter()
+        service = AnalysisService(adapter, FakeModelAdapter())
+        payload = AnalysisRequest(question="합성 객실 운영 현황을 알려줘")
+
+        response = service.analyze(payload, self.context, self.decision(payload))
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.TRINO_CONNECTION_FAILED, response.error.code)
+        self.assertTrue(response.error.retryable)
+        self.assertIsNone(response.data.artifact)
+
     def test_cancelled_query_is_not_reported_as_success(self) -> None:
         response = self.analyze("query_cancelled")
 
         self.assertEqual(AnalysisStatus.CANCELLED, response.data.status)
         self.assertIsNone(response.data.artifact)
+
+    def test_user_cancellation_stops_before_the_next_expensive_phase(self) -> None:
+        payload = AnalysisRequest(question="합성 객실 운영 현황을 알려줘")
+        progress = []
+
+        response = self.service.analyze(
+            payload,
+            self.context,
+            self.decision(payload),
+            progress_sink=lambda stage, outcome: progress.append((stage, outcome)),
+            cancel_check=lambda: True,
+        )
+
+        self.assertEqual(AnalysisStatus.CANCELLED, response.data.status)
+        self.assertEqual(ErrorCode.REQUEST_CANCELLED, response.error.code)
+        self.assertEqual(0, self.adapter.search_count)
+        self.assertEqual(0, self.adapter.execute_count)
+        self.assertIsNone(response.data.artifact)
+        self.assertEqual(
+            (PipelineStage.CONTROLLER, StageOutcome.FAILED),
+            progress[-1],
+        )
 
     def test_normal_empty_and_suspicious_empty_are_distinguished(self) -> None:
         empty = self.analyze("empty")
@@ -518,6 +856,7 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual(AnalysisStatus.SUCCEEDED, empty.data.status)
         self.assertIsNotNone(empty.data.artifact)
         self.assertEqual(AnalysisStatus.FAILED, suspicious.data.status)
+        self.assertEqual(ErrorCode.RESULT_VALIDATION_FAILED, suspicious.error.code)
         self.assertIsNone(suspicious.data.artifact)
 
     def test_partial_result_keeps_artifact_and_error(self) -> None:
@@ -558,7 +897,7 @@ class AnalysisPipelineTest(unittest.TestCase):
         )
 
     def test_g3_success_links_table_chart_explanation_evidence_and_artifact(self) -> None:
-        service = AnalysisService(ChartDataPlatformAdapter(), FakeModelAdapter())
+        service = AnalysisService(ChartDataPlatformAdapter(), TraceEvidenceModel())
         payload = AnalysisRequest(question="합성 객실 운영 현황을 알려줘")
 
         response = service.analyze(payload, self.context, self.decision(payload))
@@ -575,6 +914,25 @@ class AnalysisPipelineTest(unittest.TestCase):
             response.data.result.evidence.artifact_id,
             response.data.artifact.artifact_id,
         )
+        evidence = response.data.result.evidence
+        self.assertEqual("Asia/Seoul", evidence.timezone)
+        self.assertEqual("total_guest_revenue_krw", evidence.metrics[0].metric_id)
+        self.assertEqual("객실·식음 통합 매출", evidence.metrics[0].label)
+        self.assertTrue(evidence.metrics[0].definition)
+        self.assertEqual("KRW", evidence.metrics[0].unit)
+        self.assertEqual(
+            {"node2", "node3"},
+            {invocation.node for invocation in evidence.models},
+        )
+        self.assertTrue(
+            all(invocation.prompt_id.endswith("-prompt") for invocation in evidence.models)
+        )
+        self.assertEqual(StageOutcome.PASSED, evidence.gates.g1)
+        self.assertEqual(StageOutcome.PASSED, evidence.gates.g2)
+        self.assertEqual(StageOutcome.PASSED, evidence.gates.g3)
+        self.assertEqual((StageOutcome.PASSED,), evidence.gate_history.g1)
+        self.assertEqual((StageOutcome.PASSED,), evidence.gate_history.g2)
+        self.assertEqual((StageOutcome.PASSED,), evidence.gate_history.g3)
 
     def test_persistence_sink_receives_internal_plan_query_and_context_only_after_g3(self) -> None:
         captured = {}

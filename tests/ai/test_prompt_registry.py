@@ -11,10 +11,10 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(len(first), 5)
         self.assertEqual(
             {
-                "node1.normalize": "PROMPT-v1.2.0",
-                "node2.repair": "PROMPT-v1.2.11",
-                "node2.sql": "PROMPT-v1.2.13",
-                "node3.explain": "PROMPT-v1.2.1",
+                "node1.normalize": "PROMPT-v1.2.4",
+                "node2.repair": "PROMPT-v1.2.13",
+                "node2.sql": "PROMPT-v1.2.15",
+                "node3.explain": "PROMPT-v1.2.2",
                 "report.assistant": "PROMPT-v1.0.0",
             },
             {item["prompt_id"]: item["version"] for item in first},
@@ -44,11 +44,18 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(4, len({item.metadata()["hash"] for item in prompts.values()}))
         self.assertIn("question interpreter", prompts["node1.normalize"].text)
         self.assertIn("never return SQL", prompts["node1.normalize"].text)
+        self.assertIn("supplied as_of and timezone as the authoritative clock", prompts["node1.normalize"].text)
+        self.assertIn("previous Monday through the current Monday", prompts["node1.normalize"].text)
+        self.assertIn("rather than by a fixed phrase list", prompts["node1.normalize"].text)
+        self.assertIn("보름=15일", prompts["node1.normalize"].text)
+        self.assertIn("'오늘까지' all end exactly at the supplied data-cutoff as_of", prompts["node1.normalize"].text)
+        self.assertIn("never at the following day", prompts["node1.normalize"].text)
         self.assertIn("read-only Trino SELECT", prompts["node2.sql"].text)
         self.assertIn("한 번 수정", prompts["node2.repair"].text)
         self.assertIn("사용자용 근거 설명자", prompts["node3.explain"].text)
         self.assertIn("자연스러운 한국어 2~4문장", prompts["node3.explain"].text)
         self.assertIn("SQL을 생성·수정", prompts["node3.explain"].text)
+        self.assertIn("0으로 바꾸지 말고", prompts["node3.explain"].text)
         assistant = get_prompt("report.assistant")
         self.assertNotIn(assistant.metadata()["hash"], {item.metadata()["hash"] for item in prompts.values()})
         self.assertIn("APPROVED Analysis Artifact", assistant.text)
@@ -76,6 +83,8 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("SQL table 이름이 아니라 승인 JOIN 식별자", sql_prompt)
         self.assertIn("FROM pms.public.pms_stays s JOIN pms.public.pms_reservations r", sql_prompt)
         self.assertIn("Context metric의 field·aggregation·time_field", sql_prompt)
+        self.assertIn("dimensions가 비어 있는 단일 Source 지표 질문", sql_prompt)
+        self.assertIn("GROUP BY를 쓰지 않으며", sql_prompt)
         self.assertIn("required_filters", sql_prompt)
         self.assertIn("operator eq를 =로 변환", sql_prompt)
         self.assertIn("자유 형식 predicate로 해석하지 않는다", sql_prompt)
@@ -86,6 +95,8 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("직전 완료 월과 그 이전 월만 조회", sql_prompt)
         self.assertIn("date_add('month', -2, from_iso8601_timestamp", sql_prompt)
         self.assertIn("GROUP BY 1 ORDER BY 1", sql_prompt)
+        self.assertIn("dimension_candidates", sql_prompt)
+        self.assertIn("5개 승인 asset", sql_prompt)
         self.assertIn("PMS·CRM 객실 매출 CTE와 POS·CRM 식음 매출 CTE", sql_prompt)
         self.assertIn("PMS 행과 POS 주문을 직접 JOIN하지 않는다", sql_prompt)
         self.assertIn("AS total_guest_revenue_krw", sql_prompt)
@@ -100,6 +111,7 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("RESOURCE_POLICY_MISSING", repair_prompt)
         self.assertIn("LIMIT 1000을 추가", repair_prompt)
         self.assertIn("SQL_REFERENCE_MISMATCH", repair_prompt)
+        self.assertIn("s→r→g→m→h", repair_prompt)
         self.assertIn("corrected_sql의 FROM·JOIN table 집합", repair_prompt)
         self.assertIn("승인 Context asset 안으로 제한", repair_prompt)
         self.assertIn(

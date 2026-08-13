@@ -8,9 +8,12 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from uuid import UUID
+from functools import lru_cache
+from uuid import UUID, uuid4
 
 from app.contracts import Role
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 
 @dataclass(frozen=True)
@@ -183,6 +186,7 @@ def issue_session_token(principal: Principal, *, now: datetime | None = None) ->
     issued_at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     ttl = min(86_400, max(900, int(os.getenv("AUTH_SESSION_TTL_SECONDS", "28800"))))
     payload = json.dumps({
+        "sid": str(uuid4()),
         "sub": str(principal.subject),
         "role": principal.role.value,
         "iat": int(issued_at.timestamp()),
@@ -201,13 +205,103 @@ def _session_principal(token: str, now: datetime) -> Principal:
         if not hmac.compare_digest(expected_signature, actual_signature):
             raise ValueError("invalid signature")
         payload = json.loads(urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
-        if set(payload) != {"sub", "role", "iat", "exp"} or not payload["iat"] <= int(now.timestamp()) < payload["exp"]:
+        if set(payload) != {"sid", "sub", "role", "iat", "exp"} or not payload["iat"] <= int(now.timestamp()) < payload["exp"]:
             raise ValueError("invalid session window")
-        return Principal(UUID(str(payload["sub"])), Role(str(payload["role"])))
+        UUID(str(payload["sid"]))
+        principal = Principal(UUID(str(payload["sub"])), Role(str(payload["role"])))
+        _assert_session_active(token, principal, now)
+        return principal
     except AuthenticationError:
         raise
     except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
         raise _authentication_error() from exc
+
+
+@lru_cache(maxsize=2)
+def _session_engine(database_url: str):
+    return create_engine(database_url, pool_pre_ping=True)
+
+
+def _session_store_url() -> str:
+    return os.getenv("APP_RUNTIME_DATABASE_URL", "").strip()
+
+
+def _session_window(token: str) -> tuple[datetime, datetime]:
+    try:
+        encoded = token.split(".", 1)[0]
+        payload = json.loads(urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        return (
+            datetime.fromtimestamp(int(payload["iat"]), timezone.utc),
+            datetime.fromtimestamp(int(payload["exp"]), timezone.utc),
+        )
+    except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        raise _authentication_error() from exc
+
+
+def register_session(token: str, principal: Principal) -> None:
+    database_url = _session_store_url()
+    if not database_url:
+        return
+    issued_at, expires_at = _session_window(token)
+    try:
+        with _session_engine(database_url).begin() as connection:
+            connection.execute(text("""
+                INSERT INTO security.auth_sessions (
+                    token_sha256, subject, role, issued_at, expires_at
+                ) VALUES (
+                    :token_sha256, :subject, :role, :issued_at, :expires_at
+                )
+            """), {
+                "token_sha256": hashlib.sha256(token.encode("utf-8")).hexdigest(),
+                "subject": principal.subject,
+                "role": principal.role.value,
+                "issued_at": issued_at,
+                "expires_at": expires_at,
+            })
+    except SQLAlchemyError as exc:
+        raise _authentication_error(503) from exc
+
+
+def revoke_session(token: str | None) -> None:
+    database_url = _session_store_url()
+    if not database_url or not token or token.count(".") != 1:
+        return
+    try:
+        with _session_engine(database_url).begin() as connection:
+            connection.execute(text("""
+                UPDATE security.auth_sessions
+                SET revoked_at = now()
+                WHERE token_sha256 = :token_sha256 AND revoked_at IS NULL
+            """), {"token_sha256": hashlib.sha256(token.encode("utf-8")).hexdigest()})
+    except SQLAlchemyError as exc:
+        raise _authentication_error(503) from exc
+
+
+def _assert_session_active(token: str, principal: Principal, now: datetime) -> None:
+    database_url = _session_store_url()
+    if not database_url:
+        return
+    try:
+        with _session_engine(database_url).connect() as connection:
+            active = connection.execute(text("""
+                SELECT 1
+                FROM security.auth_sessions
+                WHERE token_sha256 = :token_sha256
+                  AND subject = :subject
+                  AND role = :role
+                  AND revoked_at IS NULL
+                  AND issued_at <= :now
+                  AND expires_at > :now
+            """), {
+                "token_sha256": hashlib.sha256(token.encode("utf-8")).hexdigest(),
+                "subject": principal.subject,
+                "role": principal.role.value,
+                "now": now,
+            }).scalar_one_or_none()
+    except SQLAlchemyError as exc:
+        raise _authentication_error(503) from exc
+    if active is None:
+        raise _authentication_error()
 
 
 def _release_principal(token: str, now: datetime) -> Principal:

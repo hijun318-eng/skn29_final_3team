@@ -175,12 +175,17 @@ class FastApiRuntimeTest(unittest.TestCase):
                 )
 
     def test_session_validation_rejects_invalid_token_before_app_entry(self) -> None:
+        status, anonymous = self.request("/auth/session")
+        self.assertEqual(200, status)
+        self.assertEqual("anonymous", anonymous["data"]["status"])
+        self.assertIsNone(anonymous["data"]["role"])
+
         status, denied = self.request(
             "/auth/session",
             headers={"Authorization": "Bearer invalid-e2e-token"},
         )
         self.assertEqual(401, status)
-        self.assertEqual("ACCESS_DENIED", denied["error"]["code"])
+        self.assertEqual("AUTHENTICATION_REQUIRED", denied["error"]["code"])
 
         status, accepted = self.request(
             "/auth/session",
@@ -269,6 +274,39 @@ class FastApiRuntimeTest(unittest.TestCase):
         self.assertEqual("runtime-test-trace", response["meta"]["trace_id"])
         self.assertEqual(CONTRACT_VERSION, response["meta"]["contract_version"])
 
+    def test_analysis_progress_is_owner_scoped_and_terminal_cancel_is_rejected(self) -> None:
+        headers = self.context_headers()
+        headers["X-Trace-Id"] = "runtime-progress-trace"
+        status, response = self.request(
+            "/analysis",
+            method="POST",
+            headers=headers,
+            body={"question": "오늘 객실 운영 상태를 요약해줘"},
+        )
+        self.assertEqual(200, status)
+
+        status, progress = self.request(
+            "/analysis/progress/runtime-progress-trace",
+            headers=headers,
+        )
+        self.assertEqual(200, status)
+        self.assertEqual(response["meta"]["request_id"], progress["data"]["request_id"])
+        self.assertEqual(response["data"]["status"], progress["data"]["status"])
+        self.assertGreater(len(progress["data"]["trace"]), 0)
+
+        status, _ = self.request(
+            "/analysis/progress/runtime-progress-trace",
+            headers=self.context_headers("report_admin"),
+        )
+        self.assertEqual(404, status)
+
+        status, _ = self.request(
+            "/analysis/progress/runtime-progress-trace/cancel",
+            method="POST",
+            headers=headers,
+        )
+        self.assertEqual(409, status)
+
     def test_analysis_exposes_repair_trace_and_blocks_g3_artifact(self) -> None:
         status, repaired = self.request(
             "/analysis",
@@ -331,7 +369,7 @@ class FastApiRuntimeTest(unittest.TestCase):
         headers.pop("Authorization")
         status, response = self.request("/analysis", method="POST", headers=headers, body={"question": "test"})
         self.assertEqual(401, status)
-        self.assertEqual("ACCESS_DENIED", response["error"]["code"])
+        self.assertEqual("AUTHENTICATION_REQUIRED", response["error"]["code"])
 
         headers = self.context_headers()
         headers["X-Role"] = "unknown"
@@ -357,6 +395,18 @@ class FastApiRuntimeTest(unittest.TestCase):
             "CONTRACT_VERSION_MISMATCH",
             response["error"]["code"],
         )
+
+    def test_non_analyst_role_is_rejected_before_question_routing(self) -> None:
+        for role in ("report_admin", "data_admin"):
+            with self.subTest(role=role):
+                status, response = self.request(
+                    "/analysis",
+                    method="POST",
+                    headers=self.context_headers(role),
+                    body={"question": "권한 경계 검증"},
+                )
+                self.assertEqual(403, status)
+                self.assertEqual("ACCESS_DENIED", response["error"]["code"])
 
     def test_analysis_and_report_share_server_owned_principal(self) -> None:
         headers = self.context_headers("report_admin")

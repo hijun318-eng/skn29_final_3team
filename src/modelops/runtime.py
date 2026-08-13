@@ -27,12 +27,14 @@ class ProductionModelClient:
         *,
         timeout_seconds: float = 15.0,
         failure_threshold: int = 2,
+        max_attempts: int = 2,
     ) -> None:
-        if timeout_seconds <= 0 or failure_threshold < 1:
+        if timeout_seconds <= 0 or failure_threshold < 1 or max_attempts < 1:
             raise ValueError("timeout and failure threshold must be positive")
         self._transport = transport
         self._timeout = timeout_seconds
         self._threshold = failure_threshold
+        self._max_attempts = max_attempts
         self._failures = 0
         self.last_trace: dict[str, Any] = {}
 
@@ -50,7 +52,7 @@ class ProductionModelClient:
         if self._failures >= self._threshold:
             self._fail(node, "CIRCUIT_OPEN", 0)
 
-        for attempt in (1, 2):
+        for attempt in range(1, self._max_attempts + 1):
             try:
                 response = self._transport(node, payload, self._timeout)
                 validate_payload(f"{node}_response", response)
@@ -92,7 +94,7 @@ class ProductionModelClient:
                     error,
                 )
         self._failures += 1
-        self._fail(node, reason, 2)
+        self._fail(node, reason, self._max_attempts)
 
     def _fail(self, node: str, reason: str, attempts: int) -> None:
         self.last_trace = {

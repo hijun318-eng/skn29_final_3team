@@ -34,6 +34,8 @@ class OpenApiContractTest(unittest.TestCase):
         self.assertEqual(
             {
                 "/analysis",
+                "/analysis/progress/{trace_id}",
+                "/analysis/progress/{trace_id}/cancel",
                 "/analysis/definitions",
                 "/analysis/definitions/{definition_id}",
                 "/analysis/definitions/{definition_id}/runs",
@@ -42,11 +44,14 @@ class OpenApiContractTest(unittest.TestCase):
                 "/analysis/runs/{request_id}/artifact",
                 "/auth/session",
                 "/auth/login",
+                "/auth/logout",
                 "/health",
                 "/mcp",
                 "/readiness",
                 "/reports/definitions",
+                "/reports/drafts/from-analysis-artifact",
                 "/reports/definitions/{definition_id}/versions/{version}/approve",
+                "/reports/definitions/{definition_id}/versions/{version}/artifacts/{artifact_id}",
                 "/reports/definitions/{definition_id}/versions/{version}/drafts",
                 "/reports/definitions/{definition_id}/versions/{version}",
                 "/reports/definitions/{definition_id}/versions/{version}/blocks",
@@ -71,7 +76,10 @@ class OpenApiContractTest(unittest.TestCase):
                 "getReadiness",
                 "getAuthenticatedSession",
                 "createAuthenticatedSession",
+                "deleteAuthenticatedSession",
                 "submitAnalysis",
+                "getAnalysisProgress",
+                "cancelAnalysisProgress",
                 "analysisCreateDefinition",
                 "analysisListDefinitions",
                 "analysisGetDefinition",
@@ -80,10 +88,12 @@ class OpenApiContractTest(unittest.TestCase):
                 "analysisGetRun",
                 "analysisGetRunArtifact",
                 "reportCreateDefinition",
+                "reportCreateDraftFromAnalysisArtifact",
                 "reportListDefinitions",
                 "reportApproveVersion",
                 "reportCreateNextDraft",
                 "reportGetDefinitionVersion",
+                "reportGetArtifact",
                 "reportReplaceDraftBlocks",
                 "reportListRuns",
                 "reportCreateManualRunCommand",
@@ -106,6 +116,7 @@ class OpenApiContractTest(unittest.TestCase):
             with self.subTest(schema=name):
                 self.assertFalse(schemas[name]["additionalProperties"])
         run = schemas["AnalysisRunResponse"]["properties"]
+        self.assertIn("CANCELLED", run["status"]["enum"])
         for forbidden in ("sql", "parameters", "result", "snapshot"):
             self.assertNotIn(forbidden, run)
 

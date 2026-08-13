@@ -63,9 +63,11 @@
     ]
   },
   "error": {
+    "clarification_type": null,
     "code": "CONTEXT_INCOMPLETE",
     "message": "분석 기간을 입력해 주세요.",
-    "retryable": false
+    "retryable": false,
+    "suggestions": []
   },
   "meta": {
     "as_of": "2026-07-30",

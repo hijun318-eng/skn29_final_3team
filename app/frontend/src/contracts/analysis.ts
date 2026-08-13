@@ -24,13 +24,25 @@ export type AnalysisViewState =
 
 export type AnalysisErrorCode =
   | "CONTEXT_INCOMPLETE"
+  | "CONTEXT_SOURCE_FAILED"
+  | "DATA_ASSET_NOT_FOUND"
+  | "AUTHENTICATION_REQUIRED"
   | "ACCESS_DENIED"
+  | "MODEL_CONTRACT_INVALID"
+  | "MODEL_TIMEOUT"
   | "SQL_POLICY_BLOCKED"
+  | "SQL_REPAIR_FAILED"
+  | "TRINO_CONNECTION_FAILED"
+  | "QUERY_TIMEOUT"
   | "QUERY_SOURCE_FAILED"
+  | "RESULT_VALIDATION_FAILED"
   | "RESULT_EVIDENCE_MISSING"
+  | "ARTIFACT_PERSIST_FAILED"
+  | "NETWORK_UNAVAILABLE"
   | "PARTIAL_FAILURE"
   | "INSUFFICIENT_EVIDENCE"
   | "RATE_LIMITED"
+  | "REQUEST_CANCELLED"
   | "CONTRACT_VERSION_MISMATCH"
   | "SCHEMA_VERSION_MISMATCH"
   | "INTERNAL_ERROR";
@@ -48,9 +60,26 @@ export type AnalysisValue = string | number | boolean | null;
 
 export interface AnalysisMetric {
   metricId: string;
+  resultField: string;
   label: string;
+  definition: string;
   value: AnalysisValue;
   unit: string | null;
+}
+
+export interface AnalysisMetricReference {
+  metricId: string;
+  resultField: string;
+  label: string;
+  definition: string;
+  unit: string | null;
+}
+
+export interface AnalysisModelEvidence {
+  node: string;
+  modelVersion: string;
+  promptId: string;
+  promptVersion: string;
 }
 
 export interface AnalysisTable {
@@ -74,16 +103,28 @@ export interface AnalysisEvidence {
   artifactId?: string | null;
   queryId?: string | null;
   asOf: string;
+  timezone?: string | null;
   period?: {
     start: string;
     endExclusive: string;
   } | null;
   filters: Record<string, AnalysisValue>;
+  contextRelease?: string | null;
+  policyVersion?: string | null;
+  modelVersion?: string | null;
+  metrics: AnalysisMetricReference[];
+  models: AnalysisModelEvidence[];
+  gates?: { g1: string; g2: string; g3: string } | null;
+  gateHistory?: { g1: string[]; g2: string[]; g3: string[] } | null;
   cached: boolean;
   sampling: {
     applied: boolean;
     returnedRows: number;
     totalRows: number | null;
+  };
+  masking: {
+    applied: boolean;
+    fields: string[];
   };
 }
 
@@ -91,6 +132,7 @@ export interface AnalysisApiResponse {
   data: {
     status?: BackendAnalysisStatus;
     transitions?: BackendAnalysisStatus[];
+    trace?: Array<{ stage: string; outcome: string; detail?: string | null }>;
     artifact?: {
       artifact_id: string;
       query_id: string;
@@ -100,7 +142,9 @@ export interface AnalysisApiResponse {
       summary?: string;
       metrics?: Array<{
         metric_id: string;
+        result_field: string;
         label: string;
+        definition: string;
         value: AnalysisValue;
         unit?: string | null;
       }>;
@@ -117,16 +161,39 @@ export interface AnalysisApiResponse {
         artifact_id?: string | null;
         query_id?: string | null;
         as_of: string;
+        timezone?: string | null;
         period?: {
           start: string;
           end_exclusive: string;
         } | null;
         filters?: Record<string, AnalysisValue>;
+        context_release?: string | null;
+        policy_version?: string | null;
+        model_version?: string | null;
+        metrics?: Array<{
+          metric_id: string;
+          result_field: string;
+          label: string;
+          definition: string;
+          unit?: string | null;
+        }>;
+        models?: Array<{
+          node: string;
+          model_version: string;
+          prompt_id: string;
+          prompt_version: string;
+        }>;
+        gates?: { g1: string; g2: string; g3: string } | null;
+        gate_history?: { g1: string[]; g2: string[]; g3: string[] } | null;
         cached?: boolean;
         sampling?: {
           applied?: boolean;
           returned_rows?: number;
           total_rows?: number | null;
+        };
+        masking?: {
+          applied?: boolean;
+          fields?: string[];
         };
         sources?: Array<{
           name: string;
@@ -149,6 +216,8 @@ export interface AnalysisApiResponse {
     code: AnalysisErrorCode;
     message: string;
     retryable: boolean;
+    suggestions?: string[];
+    clarification_type?: "metric" | "period" | null;
   } | null;
 }
 
@@ -167,6 +236,7 @@ export interface AnalysisRun {
   traceId: string;
   status: AnalysisRunStatus;
   delayed?: boolean;
+  elapsedSeconds?: number;
   question: string;
   summary?: string;
   rowCount?: number;
@@ -180,11 +250,14 @@ export interface AnalysisRun {
     code: AnalysisErrorCode;
     message: string;
     retryable?: boolean;
+    suggestions?: string[];
+    clarification_type?: "metric" | "period" | null;
   };
   sources: AnalysisSource[];
+  trace?: Array<{ stage: string; outcome: string; detail?: string | null }>;
   meta: {
     asOf: string;
-    timezone: "Asia/Seoul";
+    timezone: string;
     seed: string;
     schemaVersion: string;
     contractVersion: string;
@@ -242,6 +315,13 @@ export function normalizeApiResponse(
   const evidence = result?.evidence;
   const sources = evidence?.sources ?? [];
   const sampling = evidence?.sampling;
+  const evidenceReady = Boolean(
+    evidence?.artifact_id
+    && evidence?.query_id
+    && evidence?.period
+    && sources.length
+    && evidence?.gates
+  );
   return {
     conversationId,
     requestId: response.meta.request_id,
@@ -250,7 +330,7 @@ export function normalizeApiResponse(
     question,
     summary: result?.summary,
     rowCount: sampling?.returned_rows,
-    evidenceReady: result ? Boolean(evidence) : undefined,
+    evidenceReady: result ? evidenceReady : undefined,
     artifact: response.data.artifact ? {
       artifactId: response.data.artifact.artifact_id,
       queryId: response.data.artifact.query_id,
@@ -258,7 +338,9 @@ export function normalizeApiResponse(
     } : undefined,
     metrics: (result?.metrics ?? []).map((metric) => ({
       metricId: metric.metric_id,
+      resultField: metric.result_field,
       label: metric.label,
+      definition: metric.definition,
       value: metric.value,
       unit: metric.unit ?? null,
     })),
@@ -272,16 +354,39 @@ export function normalizeApiResponse(
       artifactId: evidence.artifact_id,
       queryId: evidence.query_id,
       asOf: evidence.as_of,
+      timezone: evidence.timezone,
       period: evidence.period ? {
         start: evidence.period.start,
         endExclusive: evidence.period.end_exclusive,
       } : undefined,
       filters: evidence.filters ?? {},
+      contextRelease: evidence.context_release,
+      policyVersion: evidence.policy_version,
+      modelVersion: evidence.model_version,
+      metrics: (evidence.metrics ?? []).map((metric) => ({
+        metricId: metric.metric_id,
+        resultField: metric.result_field,
+        label: metric.label,
+        definition: metric.definition,
+        unit: metric.unit ?? null,
+      })),
+      models: (evidence.models ?? []).map((model) => ({
+        node: model.node,
+        modelVersion: model.model_version,
+        promptId: model.prompt_id,
+        promptVersion: model.prompt_version,
+      })),
+      gates: evidence.gates,
+      gateHistory: evidence.gate_history,
       cached: evidence.cached ?? false,
       sampling: {
         applied: sampling?.applied ?? false,
         returnedRows: sampling?.returned_rows ?? 0,
         totalRows: sampling?.total_rows ?? null,
+      },
+      masking: {
+        applied: evidence.masking?.applied ?? false,
+        fields: evidence.masking?.fields ?? [],
       },
     } : undefined,
     error: response.error ?? undefined,
@@ -293,9 +398,10 @@ export function normalizeApiResponse(
       seedVersion: source.seed_version,
       status: "success",
     })),
+    trace: response.data.trace?.map(({ stage, outcome, detail }) => ({ stage, outcome, detail })) ?? [],
     meta: {
       asOf: response.meta.as_of,
-      timezone: "Asia/Seoul",
+      timezone: evidence?.timezone ?? "Asia/Seoul",
       seed: sources[0]?.seed_version ?? "—",
       schemaVersion: sources[0]?.schema_version ?? "—",
       contractVersion: response.meta.contract_version,

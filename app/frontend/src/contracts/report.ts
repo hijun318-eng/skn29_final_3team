@@ -63,12 +63,66 @@ export function reorderDraftBlocks(
   return normalizeDraftLayout(reordered);
 }
 
-function overlaps(
-  left: Pick<DraftLayoutBlock, "x" | "y" | "w" | "h">,
-  right: Pick<DraftLayoutBlock, "x" | "y" | "w" | "h">,
-): boolean {
-  return left.x < right.x + right.w && left.x + left.w > right.x
-    && left.y < right.y + right.h && left.y + left.h > right.y;
+function minimumDraftWidth(block: ReportBlock): number {
+  return block.type === "text" ? 4 : 6;
+}
+
+function normalizedDraftBlock(block: ReportBlock): DraftLayoutBlock {
+  const w = Math.min(12, Math.max(minimumDraftWidth(block), block.w ?? block.columns));
+  return {
+    ...block,
+    columns: w,
+    x: Math.min(12 - w, Math.max(0, block.x ?? 0)),
+    y: Math.max(0, block.y ?? 0),
+    w,
+    h: Math.max(1, block.h ?? 1),
+  };
+}
+
+/**
+ * Packs the dashboard from top to bottom without arbitrary vertical holes.
+ * Blocks keep their visual order and preferred width. An unfinished row gives
+ * its remaining columns to the last block, and every block in a row shares the
+ * same height, so no blank band or middle gap remains in the document.
+ */
+export function compactDraftLayout(blocks: readonly ReportBlock[]): readonly DraftLayoutBlock[] {
+  const normalized = blocks.map((block, index) => ({ block: normalizedDraftBlock(block), index }));
+  const ordered = [...normalized].sort((left, right) => (
+    left.block.y - right.block.y || left.block.x - right.block.x || left.index - right.index
+  ));
+  const resolved = new Map<string, DraftLayoutBlock>();
+  let row: DraftLayoutBlock[] = [];
+  let rowY = 0;
+  let rowX = 0;
+  let rowHeight = 0;
+
+  const finishRow = () => {
+    if (row.length && rowX < 12) {
+      const lastIndex = row.length - 1;
+      const last = row[lastIndex];
+      const width = last.w + (12 - rowX);
+      row[lastIndex] = { ...last, columns: width, w: width };
+    }
+    for (const block of row) resolved.set(block.id, { ...block, h: rowHeight });
+    rowY += rowHeight;
+    row = [];
+    rowX = 0;
+    rowHeight = 0;
+  };
+
+  for (const { block } of ordered) {
+    const width = block.w;
+    if (rowX > 0 && width > 12 - rowX) finishRow();
+
+    const placed = { ...block, columns: width, x: rowX, y: rowY, w: width };
+    row.push(placed);
+    rowX += width;
+    rowHeight = Math.max(rowHeight, placed.h);
+    if (rowX === 12) finishRow();
+  }
+  if (row.length) finishRow();
+
+  return normalized.map(({ block }) => resolved.get(block.id) ?? block);
 }
 
 export function placeDraftBlock(
@@ -77,25 +131,31 @@ export function placeDraftBlock(
   requestedX: number,
   requestedY: number,
 ): readonly DraftLayoutBlock[] {
-  const normalized = blocks.map((block) => ({
-    ...block,
-    columns: Math.min(12, Math.max(1, block.w ?? block.columns)),
-    x: Math.max(0, block.x ?? 0),
-    y: Math.max(0, block.y ?? 0),
-    w: Math.min(12, Math.max(1, block.w ?? block.columns)),
-    h: Math.max(1, block.h ?? 1),
-  }));
+  const normalized = blocks.map(normalizedDraftBlock);
   const source = normalized.find((block) => block.id === blockId);
-  if (!source) return normalized;
+  if (!source) return compactDraftLayout(normalized);
 
-  const candidate = {
+  const rawX = Math.max(0, Math.round(requestedX));
+  const rawY = Math.max(0, Math.round(requestedY));
+  const target = normalized
+    .filter((block) => block.id !== blockId && block.w === 12)
+    .filter((block) => rawY < block.y + block.h && rawY + source.h > block.y)
+    .sort((left, right) => Math.abs(left.y - rawY) - Math.abs(right.y - rawY))[0];
+
+  let candidate = {
     ...source,
-    x: Math.min(12 - source.w, Math.max(0, Math.round(requestedX))),
-    y: Math.max(0, Math.round(requestedY)),
+    x: Math.min(12 - source.w, rawX),
+    y: rawY,
   };
-  const others = normalized.filter((block) => block.id !== blockId);
-  while (others.some((block) => overlaps(candidate, block))) candidate.y += 1;
-  return normalized.map((block) => block.id === blockId ? candidate : block);
+  let adjusted = normalized;
+  if (target) {
+    const sourceOnLeft = rawX < 6;
+    candidate = { ...candidate, columns: 6, w: 6, x: sourceOnLeft ? 0 : 6, y: target.y };
+    adjusted = normalized.map((block) => block.id === target.id
+      ? { ...block, columns: 6, w: 6, x: sourceOnLeft ? 6 : 0 }
+      : block);
+  }
+  return compactDraftLayout(adjusted.map((block) => block.id === blockId ? candidate : block));
 }
 
 export function serializeDraftLayout(blocks: readonly ReportBlock[]): string {

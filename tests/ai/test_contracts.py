@@ -3,6 +3,8 @@ import json
 import unittest
 from pathlib import Path
 
+from src.ai.metric_glossary import metric_definition, metric_display_name, metric_unit
+
 from src.ai.prompt_registry import get_prompt
 from src.ai.schema import ContractError, schema_version, validate_payload
 
@@ -169,9 +171,11 @@ class ContractTests(unittest.TestCase):
             "total_guest_revenue_krw",
         }
 
-        self.assertEqual(glossary["version"], "METRIC-GLOSSARY-v1.1.0")
-        self.assertEqual(set(glossary), {"version", "metrics"})
+        self.assertEqual(glossary["version"], "METRIC-GLOSSARY-v1.2.0")
+        self.assertEqual(set(glossary), {"version", "metrics", "definitions", "units"})
         self.assertEqual(set(glossary["metrics"]), expected_ids)
+        self.assertEqual(set(glossary["definitions"]), expected_ids)
+        self.assertEqual(set(glossary["units"]), expected_ids)
         aliases = [
             alias.casefold()
             for values in glossary["metrics"].values()
@@ -185,6 +189,13 @@ class ContractTests(unittest.TestCase):
             alias for alias in aliases if aliases.count(alias) > 1
         }
         self.assertEqual({"객실 매출"}, duplicate_aliases)
+        self.assertEqual("인식 객실 매출", metric_display_name("recognized_room_revenue"))
+        self.assertEqual("숙박일 배분 객실 매출", metric_display_name("stay_day_allocated_room_revenue"))
+        self.assertEqual(
+            "실제 체크아웃 날짜에 전액 인식한 객실 매출입니다.",
+            metric_definition("recognized_room_revenue"),
+        )
+        self.assertEqual("명", metric_unit("actual_attendees"))
 
     def test_node2_accepts_optional_non_empty_normalized_question(self):
         legacy = copy.deepcopy(VALID_PAYLOADS["node2_request"])

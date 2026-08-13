@@ -26,6 +26,7 @@ from app.report_contracts import (  # noqa: E402
     ApproveReportVersionRequest,
     CreateManualRunRequest,
     CreateReportDefinitionRequest,
+    CreateReportFromArtifactRequest,
     CreateReportScheduleRequest,
     ReplaceReportBlocksRequest,
     UpdateReportScheduleRequest,
@@ -50,6 +51,43 @@ def context(role: Role = Role.REPORT_ADMIN) -> RequestContext:
 
 
 class ReportRegistrationTest(unittest.TestCase):
+    def test_analysis_artifact_transfer_builds_server_owned_blocks(self):
+        class TransferRepository(InMemoryReportRepository):
+            def get_transfer_artifact(self, artifact_id):
+                if artifact_id != "00000000-0000-0000-0000-000000000099":
+                    raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
+                return {
+                    "artifact_id": artifact_id,
+                    "trino_query_id": "query-real",
+                    "narrative_markdown": "실제 분석 요약",
+                    "data_snapshot_json": {"columns": ["value"], "rows": [{"value": 1}]},
+                    "chart_spec_json": {"chart_type": "bar", "x_field": "month", "y_fields": ["value"]},
+                }
+
+        router = create_report_router(TransferRepository())
+        payload = CreateReportFromArtifactRequest(
+            artifact_id=UUID("00000000-0000-0000-0000-000000000099"),
+            title="실제 Artifact 보고서",
+        )
+        with patch.object(report_api, "_router", return_value=router):
+            created = report_api.create_draft_from_analysis_artifact(
+                payload, context(Role.HOTEL_ANALYST)
+            )
+
+        self.assertEqual("draft", created["status"])
+        self.assertEqual(["text", "chart", "table"], [block["type"] for block in created["blocks"]])
+        self.assertEqual("실제 분석 요약", created["blocks"][0]["content"])
+        for block in created["blocks"][1:]:
+            self.assertEqual(str(payload.artifact_id), block["artifact_id"])
+            self.assertEqual("query-real", block["query_id"])
+
+        with patch.object(report_api, "_router", return_value=router), self.assertRaises(HTTPException) as missing:
+            report_api.create_draft_from_analysis_artifact(
+                payload.model_copy(update={"artifact_id": uuid4()}),
+                context(Role.HOTEL_ANALYST),
+            )
+        self.assertEqual(404, missing.exception.status_code)
+
     def test_report_routes_require_authentication_and_report_admin(self):
         dependency = signature(report_api.report_admin_context).parameters["context"]
         self.assertIn("analysis_context", repr(dependency.annotation))

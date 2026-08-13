@@ -64,9 +64,11 @@
     ]
   },
   "error": {
+    "clarification_type": null,
     "code": "RESULT_EVIDENCE_MISSING",
     "message": "결과 근거가 충분하지 않아 설명을 생성하지 않았습니다.",
-    "retryable": false
+    "retryable": false,
+    "suggestions": []
   },
   "meta": {
     "as_of": "2026-07-30",

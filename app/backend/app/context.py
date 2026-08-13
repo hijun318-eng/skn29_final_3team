@@ -16,6 +16,11 @@ bearer_auth = HTTPBearer(
     scheme_name="BearerAuth",
     description="서버가 AUTH_PRINCIPALS_FILE의 SHA-256 digest로 검증하는 Bearer token",
 )
+SESSION_COOKIE = "answervice_session"
+
+
+def _request_token(request: Request, credentials: HTTPAuthorizationCredentials | None) -> str | None:
+    return credentials.credentials if credentials else request.cookies.get(SESSION_COOKIE)
 
 
 class ContextValidationError(ValueError):
@@ -34,10 +39,11 @@ def session_context(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_auth)],
 ) -> RequestContext:
+    token = _request_token(request, credentials)
     try:
-        principal = authenticate_token(credentials.credentials if credentials else None)
+        principal = authenticate_token(token)
     except AuthenticationError as exc:
-        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.ACCESS_DENIED
+        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
         raise ContextValidationError(code, exc.message, exc.status_code) from exc
     context = RequestContext(
         request_id=request.state.request_id,
@@ -46,7 +52,17 @@ def session_context(
         role=principal.role,
     )
     request.state.context = context
+    request.state.session_token = token
     return context
+
+
+def optional_session_context(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_auth)],
+) -> RequestContext | None:
+    if _request_token(request, credentials) is None:
+        return None
+    return session_context(request, credentials)
 
 
 def analysis_context(
@@ -60,9 +76,9 @@ def analysis_context(
     role: Annotated[str | None, Header(alias="X-Role", include_in_schema=False)] = None,
 ) -> RequestContext:
     try:
-        principal = authenticate_token(credentials.credentials if credentials else None)
+        principal = authenticate_token(_request_token(request, credentials))
     except AuthenticationError as exc:
-        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.ACCESS_DENIED
+        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
         raise ContextValidationError(code, exc.message, exc.status_code) from exc
     try:
         parsed_as_of = date.fromisoformat(as_of)

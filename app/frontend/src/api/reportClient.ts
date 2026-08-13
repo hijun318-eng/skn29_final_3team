@@ -40,9 +40,8 @@ export class ReportApiError extends Error {
 
 function contextHeaders(hasBody = false, explicitToken = ""): Record<string, string> {
   const token = explicitToken;
-  if (!token) throw new Error("Report 인증 세션이 없습니다.");
   return {
-    Authorization: `Bearer ${token}`,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(hasBody ? { "Content-Type": "application/json" } : {}),
     "X-As-Of": env.VITE_REPORT_AS_OF || seoulToday(),
     "X-Contract-Version": REPORT_REQUEST_CONTEXT_VERSION,
@@ -56,6 +55,7 @@ async function parse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const code = payload?.error?.code || `HTTP_${response.status}`;
     const message = payload?.error?.message || payload?.detail || "Report API 요청에 실패했습니다.";
+    if (response.status === 401 && typeof window !== "undefined") window.dispatchEvent(new CustomEvent("answervice:session-expired"));
     throw new ReportApiError(response.status, code, message);
   }
   return payload as T;
@@ -70,6 +70,7 @@ export function createReportClient(
   const endpoint = (path: string) => `${baseUrl.replace(/\/$/, "")}${path}`;
   const send = (path: string, method = "GET", body?: unknown) => request(endpoint(path), {
     method,
+    credentials: "include",
     headers: contextHeaders(body !== undefined, authToken),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
@@ -78,6 +79,11 @@ export function createReportClient(
     async createDefinition(payload: { definition_id: string; title: string; blocks: readonly ReportBlockRequest[] }) {
       return normalizeReportDefinition(await parse<ReportDefinitionResponse>(
         await send("/reports/definitions", "POST", payload),
+      ));
+    },
+    async createDraftFromArtifact(artifactId: string, title: string) {
+      return normalizeReportDefinition(await parse<ReportDefinitionResponse>(
+        await send("/reports/drafts/from-analysis-artifact", "POST", { artifact_id: artifactId, title }),
       ));
     },
     async listDefinitions(): Promise<readonly ReportDefinitionVersion[]> {
@@ -89,6 +95,13 @@ export function createReportClient(
       return normalizeReportDefinition(await parse<ReportDefinitionResponse>(
         await send(`/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}`),
       ));
+    },
+    async getArtifact(definitionId: string, version: number, artifactId: string) {
+      const payload = await parse<any>(await send(
+        `/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}/artifacts/${encodeURIComponent(artifactId)}`,
+      ));
+      assertReportContractVersion(payload.contract_version);
+      return payload;
     },
     async approveDefinition(definitionId: string, version: number, approvedAt: string) {
       return normalizeReportDefinition(await parse<ReportDefinitionResponse>(

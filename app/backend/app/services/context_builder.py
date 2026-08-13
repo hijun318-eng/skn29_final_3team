@@ -16,12 +16,19 @@ class ContextBuildErrorCode(str, Enum):
     TOKEN_LIMIT_EXCEEDED = "TOKEN_LIMIT_EXCEEDED"
     INVALID_METRIC = "INVALID_METRIC"
     DUPLICATE_METRIC = "DUPLICATE_METRIC"
+    PERIOD_REQUIRED = "PERIOD_REQUIRED"
 
 
 class ContextBuildError(ValueError):
-    def __init__(self, code: ContextBuildErrorCode, message: str) -> None:
+    def __init__(
+        self,
+        code: ContextBuildErrorCode,
+        message: str,
+        suggestions: tuple[str, ...] = (),
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.suggestions = suggestions
 
 
 @dataclass(frozen=True)

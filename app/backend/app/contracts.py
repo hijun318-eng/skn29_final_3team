@@ -5,7 +5,7 @@ from enum import Enum
 from typing import TypeAlias
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 CONTRACT_VERSION = "OPENAPI-v1.0.0"
@@ -59,16 +59,32 @@ class RouteType(str, Enum):
 
 class ErrorCode(str, Enum):
     CONTEXT_INCOMPLETE = "CONTEXT_INCOMPLETE"
+    CONTEXT_SOURCE_FAILED = "CONTEXT_SOURCE_FAILED"
+    DATA_ASSET_NOT_FOUND = "DATA_ASSET_NOT_FOUND"
+    AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
     ACCESS_DENIED = "ACCESS_DENIED"
+    MODEL_CONTRACT_INVALID = "MODEL_CONTRACT_INVALID"
+    MODEL_TIMEOUT = "MODEL_TIMEOUT"
     SQL_POLICY_BLOCKED = "SQL_POLICY_BLOCKED"
+    SQL_REPAIR_FAILED = "SQL_REPAIR_FAILED"
+    TRINO_CONNECTION_FAILED = "TRINO_CONNECTION_FAILED"
+    QUERY_TIMEOUT = "QUERY_TIMEOUT"
     QUERY_SOURCE_FAILED = "QUERY_SOURCE_FAILED"
+    RESULT_VALIDATION_FAILED = "RESULT_VALIDATION_FAILED"
     RESULT_EVIDENCE_MISSING = "RESULT_EVIDENCE_MISSING"
+    ARTIFACT_PERSIST_FAILED = "ARTIFACT_PERSIST_FAILED"
     PARTIAL_FAILURE = "PARTIAL_FAILURE"
     INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
     RATE_LIMITED = "RATE_LIMITED"
+    REQUEST_CANCELLED = "REQUEST_CANCELLED"
     CONTRACT_VERSION_MISMATCH = "CONTRACT_VERSION_MISMATCH"
     SCHEMA_VERSION_MISMATCH = "SCHEMA_VERSION_MISMATCH"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
+class ClarificationType(str, Enum):
+    METRIC = "metric"
+    PERIOD = "period"
 
 
 class RequestContext(ContractModel):
@@ -86,6 +102,15 @@ class AnalysisRequest(ContractModel):
     question: str = Field(min_length=1, max_length=1000)
     template_id: str | None = Field(default=None, max_length=128)
     parameters: dict[str, Scalar] = Field(default_factory=dict)
+
+    @field_validator("question", mode="before")
+    @classmethod
+    def validate_question(cls, value: object) -> object:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                raise ValueError("분석 질문을 입력해 주세요.")
+        return value
 
     @model_validator(mode="after")
     def validate_period(self) -> "AnalysisRequest":
@@ -114,6 +139,8 @@ class ErrorBody(ContractModel):
     code: ErrorCode
     message: str
     retryable: bool = False
+    suggestions: tuple[str, ...] = ()
+    clarification_type: ClarificationType | None = None
 
 
 class ResponseMeta(ContractModel):
@@ -132,11 +159,16 @@ class SourceReference(ContractModel):
     seed_version: str
 
 
-class MetricValue(ContractModel):
+class MetricReference(ContractModel):
     metric_id: str
+    result_field: str
     label: str
-    value: Scalar
+    definition: str
     unit: str | None = None
+
+
+class MetricValue(MetricReference):
+    value: Scalar
 
 
 class PeriodEvidence(ContractModel):
@@ -155,6 +187,25 @@ class MaskingEvidence(ContractModel):
     fields: tuple[str, ...] = ()
 
 
+class ModelInvocationEvidence(ContractModel):
+    node: str
+    model_version: str
+    prompt_id: str
+    prompt_version: str
+
+
+class GateEvidence(ContractModel):
+    g1: StageOutcome
+    g2: StageOutcome
+    g3: StageOutcome
+
+
+class GateHistoryEvidence(ContractModel):
+    g1: tuple[StageOutcome, ...]
+    g2: tuple[StageOutcome, ...]
+    g3: tuple[StageOutcome, ...]
+
+
 class TableResult(ContractModel):
     columns: tuple[str, ...]
     rows: tuple[dict[str, Scalar], ...]
@@ -168,6 +219,7 @@ class ChartSpec(ContractModel):
 
 class Evidence(ContractModel):
     as_of: date
+    timezone: str | None = None
     period: PeriodEvidence | None = None
     filters: dict[str, Scalar] = Field(default_factory=dict)
     sources: tuple[SourceReference, ...] = ()
@@ -176,6 +228,10 @@ class Evidence(ContractModel):
     context_release: str | None = None
     policy_version: str | None = None
     model_version: str | None = None
+    metrics: tuple[MetricReference, ...] = ()
+    models: tuple[ModelInvocationEvidence, ...] = ()
+    gates: GateEvidence | None = None
+    gate_history: GateHistoryEvidence | None = None
     sampling: SamplingEvidence = Field(default_factory=SamplingEvidence)
     masking: MaskingEvidence = Field(default_factory=MaskingEvidence)
     cached: bool = False
@@ -218,6 +274,16 @@ class AnalysisData(ContractModel):
     artifact: ArtifactReference | None = None
 
 
+class AnalysisProgressData(ContractModel):
+    trace_id: str
+    request_id: UUID
+    status: AnalysisStatus
+    started_at: datetime
+    elapsed_seconds: float = Field(ge=0)
+    cancel_requested: bool
+    trace: tuple[TraceStep, ...] = ()
+
+
 class HealthData(ContractModel):
     status: str
 
@@ -229,7 +295,7 @@ class ReadinessData(ContractModel):
 
 class SessionData(ContractModel):
     status: str = "authenticated"
-    role: Role
+    role: Role | None = None
 
 
 class LoginRequest(ContractModel):
@@ -238,7 +304,7 @@ class LoginRequest(ContractModel):
 
 
 class LoginData(SessionData):
-    session_token: str
+    pass
 
 
 class EmptyData(ContractModel):
@@ -247,6 +313,12 @@ class EmptyData(ContractModel):
 
 class AnalysisResponse(ContractModel):
     data: AnalysisData
+    meta: ResponseMeta
+    error: ErrorBody | None = None
+
+
+class AnalysisProgressResponse(ContractModel):
+    data: AnalysisProgressData
     meta: ResponseMeta
     error: ErrorBody | None = None
 

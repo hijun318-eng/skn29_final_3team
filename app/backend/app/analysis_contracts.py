@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -23,26 +23,24 @@ _SERVER_FIELDS = {
 }
 
 
+def _validate_parameters(value: dict[str, Scalar]) -> dict[str, Scalar]:
+    invalid = {
+        name
+        for name in value
+        if not _PARAMETER_NAME.fullmatch(name) or name in _SERVER_FIELDS
+    }
+    if invalid:
+        raise ValueError("parameter 이름은 승인된 snake_case만 허용합니다.")
+    return value
+
+
 class AnalysisPersistenceModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
 class CreateAnalysisDefinitionRequest(AnalysisPersistenceModel):
     title: str = Field(min_length=1, max_length=255)
-    question: str = Field(min_length=1, max_length=1000)
-    parameters: dict[str, Scalar] = Field(default_factory=dict)
-
-    @field_validator("parameters")
-    @classmethod
-    def validate_parameters(cls, value: dict[str, Scalar]) -> dict[str, Scalar]:
-        invalid = {
-            name
-            for name in value
-            if not _PARAMETER_NAME.fullmatch(name) or name in _SERVER_FIELDS
-        }
-        if invalid:
-            raise ValueError("parameter 이름은 승인된 snake_case만 허용합니다.")
-        return value
+    source_request_id: UUID
 
 
 class ReplayAnalysisRequest(AnalysisPersistenceModel):
@@ -60,7 +58,7 @@ class ReplayAnalysisRequest(AnalysisPersistenceModel):
     @field_validator("parameters")
     @classmethod
     def validate_parameters(cls, value: dict[str, Scalar]) -> dict[str, Scalar]:
-        return CreateAnalysisDefinitionRequest.validate_parameters(value)
+        return _validate_parameters(value)
 
 
 class AnalysisDefinitionResponse(AnalysisPersistenceModel):
@@ -69,7 +67,10 @@ class AnalysisDefinitionResponse(AnalysisPersistenceModel):
     version: int
     status: Literal["approved"]
     title: str
+    question: str
     parameter_types: dict[str, Literal["string", "boolean", "number", "null"]]
+    semantic_request: dict[str, Any]
+    parameter_schema: dict[str, str]
     created_at: datetime
 
 
@@ -83,7 +84,7 @@ class AnalysisRunResponse(AnalysisPersistenceModel):
     request_id: UUID
     definition_id: UUID
     definition_version: int
-    status: Literal["RECEIVED", "SUCCEEDED", "PARTIAL", "FAILED", "BLOCKED"]
+    status: Literal["RECEIVED", "SUCCEEDED", "PARTIAL", "FAILED", "BLOCKED", "CANCELLED"]
     as_of: date
     timezone: str
     trace_id: str
@@ -92,6 +93,9 @@ class AnalysisRunResponse(AnalysisPersistenceModel):
     error_type: str | None = None
     started_at: datetime
     completed_at: datetime | None = None
+    question: str
+    period_start: date | None = None
+    period_end_exclusive: date | None = None
 
 
 class AnalysisRunListResponse(AnalysisPersistenceModel):

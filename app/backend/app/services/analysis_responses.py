@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
 from decimal import Decimal
+
+from src.ai.metric_glossary import metric_definition, metric_display_name, metric_unit
 
 from app.contracts import (
     AnalysisData,
@@ -8,12 +11,17 @@ from app.contracts import (
     AnalysisResult,
     AnalysisStatus,
     ArtifactReference,
+    ClarificationType,
     ErrorBody,
     ErrorCode,
     Evidence,
+    GateEvidence,
+    GateHistoryEvidence,
     GateRequirements,
     MaskingEvidence,
+    MetricReference,
     MetricValue,
+    ModelInvocationEvidence,
     PeriodEvidence,
     PipelineStage,
     RequestContext,
@@ -27,6 +35,80 @@ from app.services.context_builder import ContextPackage
 from app.services.pipeline_support import PipelineSupport
 from app.services.routing_service import RouteDecision
 from app.services.state_machine import AnalysisStateMachine
+
+
+def _evidence_filters(
+    filters: object,
+    package: ContextPackage,
+) -> dict[str, object]:
+    if not isinstance(filters, dict):
+        return {}
+    approved = package.required_filters or tuple(
+        item for metric in package.metrics for item in metric.required_filters
+    )
+    displayed = {}
+    for name, value in filters.items():
+        match = re.fullmatch(r"required_filter_(\d+)", str(name))
+        index = int(match.group(1)) - 1 if match else -1
+        field = approved[index].field if 0 <= index < len(approved) else str(name)
+        displayed[field] = value
+    return displayed
+
+
+def _model_invocations(trace: list[TraceStep]) -> tuple[ModelInvocationEvidence, ...]:
+    invocations: list[ModelInvocationEvidence] = []
+    for step in trace:
+        if step.stage not in {PipelineStage.MODEL, PipelineStage.REPAIR} or not step.detail:
+            continue
+        fields = {}
+        for item in step.detail.split(";"):
+            key, separator, value = item.partition("=")
+            if separator:
+                fields[key] = value
+        prompt_id, separator, prompt_version = fields.get("prompt", "").rpartition("@")
+        node = fields.get("node")
+        model_version = fields.get("model")
+        if not separator or not node or not model_version or not prompt_id or not prompt_version:
+            continue
+        if "unknown" in {node, model_version, prompt_id, prompt_version}:
+            continue
+        invocations.append(
+            ModelInvocationEvidence(
+                node=node,
+                model_version=model_version,
+                prompt_id=prompt_id,
+                prompt_version=prompt_version,
+            )
+        )
+    return tuple(invocations)
+
+
+def _gate_evidence(trace: list[TraceStep]) -> GateEvidence:
+    outcomes = {
+        step.stage: step.outcome
+        for step in trace
+        if step.stage in {PipelineStage.G1, PipelineStage.G2, PipelineStage.G3}
+    }
+    missing = [
+        stage.value
+        for stage in (PipelineStage.G1, PipelineStage.G2, PipelineStage.G3)
+        if stage not in outcomes
+    ]
+    if missing:
+        raise ValueError(f"successful analysis is missing gate evidence: {', '.join(missing)}")
+    return GateEvidence(
+        g1=outcomes[PipelineStage.G1],
+        g2=outcomes[PipelineStage.G2],
+        g3=outcomes[PipelineStage.G3],
+    )
+
+
+def _gate_history(trace: list[TraceStep]) -> GateHistoryEvidence:
+    return GateHistoryEvidence(
+        g1=tuple(step.outcome for step in trace if step.stage == PipelineStage.G1),
+        g2=tuple(step.outcome for step in trace if step.stage == PipelineStage.G2),
+        g3=tuple(step.outcome for step in trace if step.stage == PipelineStage.G3),
+    )
 
 
 class AnalysisResponseFactory:
@@ -62,17 +144,19 @@ class AnalysisResponseFactory:
         if selected_metric_field and rows and all(
             selected_metric_field in row for row in rows
         ):
-            total = sum(
-                Decimal(str(row[selected_metric_field])) for row in rows
-            )
-            metrics = (
-                MetricValue(
-                    metric_id=selected_metric_field,
-                    label=selected_metric_field,
-                    value=int(total) if total == total.to_integral() else float(total),
-                    unit="KRW",
-                ),
-            )
+            values = [row[selected_metric_field] for row in rows if row[selected_metric_field] is not None]
+            if values:
+                total = sum(Decimal(str(value)) for value in values)
+                metrics = (
+                    MetricValue(
+                        metric_id=selected_metric_field,
+                        result_field=selected_metric_field,
+                        label=metric_display_name(selected_metric_field),
+                        definition=metric_definition(selected_metric_field),
+                        value=int(total) if total == total.to_integral() else float(total),
+                        unit=metric_unit(selected_metric_field),
+                    ),
+                )
         revenue_field = next(
             (
                 field
@@ -88,7 +172,13 @@ class AnalysisResponseFactory:
         if revenue_field == "total_guest_revenue_krw" or (
             decision.template_id == "weekly-room-operations" and revenue_field
         ):
-            total = sum(Decimal(str(row[revenue_field])) for row in rows)
+            values = [row[revenue_field] for row in rows if row[revenue_field] is not None]
+            if not values:
+                revenue_field = None
+        if revenue_field == "total_guest_revenue_krw" or (
+            decision.template_id == "weekly-room-operations" and revenue_field
+        ):
+            total = sum(Decimal(str(value)) for value in values)
             metric_id = (
                 "total_guest_revenue_krw"
                 if revenue_field == "total_guest_revenue_krw"
@@ -97,15 +187,33 @@ class AnalysisResponseFactory:
             metrics = (
                 MetricValue(
                     metric_id=metric_id,
-                    label=(
-                        "객실·식음 통합 매출"
-                        if revenue_field == "total_guest_revenue_krw"
-                        else "인식 객실 매출"
-                    ),
+                    result_field=revenue_field,
+                    label=metric_display_name(metric_id),
+                    definition=metric_definition(metric_id),
                     value=int(total) if total == total.to_integral() else float(total),
-                    unit="KRW",
+                    unit=metric_unit(metric_id),
                 ),
             )
+        metric_ids = tuple(
+            dict.fromkeys(
+                [metric.id for metric in package.metrics]
+                + [metric.metric_id for metric in metrics]
+            )
+        )
+        result_fields = {metric.id: metric.field for metric in package.metrics}
+        result_fields.update(
+            {metric.metric_id: metric.result_field for metric in metrics}
+        )
+        evidence_metrics = tuple(
+            MetricReference(
+                metric_id=metric_id,
+                result_field=result_fields[metric_id],
+                label=metric_display_name(metric_id),
+                definition=metric_definition(metric_id),
+                unit=metric_unit(metric_id),
+            )
+            for metric_id in metric_ids
+        )
         result = AnalysisResult(
             summary=str(explanation["summary"]),
             metrics=metrics,
@@ -115,18 +223,23 @@ class AnalysisResponseFactory:
             ),
             evidence=Evidence(
                 as_of=context.as_of,
+                timezone=context.timezone,
                 period=(
                     PeriodEvidence.model_validate(query["period"])
                     if query.get("period", {}).get("start")
                     else support.period(context.as_of)
                 ),
-                filters=query.get("filters", {}),
+                filters=_evidence_filters(query.get("filters", {}), package),
                 sources=support.sources(assets),
                 query_id=str(query["query_id"]),
                 artifact_id=artifact.artifact_id,
                 context_release=package.context_release,
                 policy_version=package.policy_version,
                 model_version=str(explanation["model_version"]),
+                metrics=evidence_metrics,
+                models=_model_invocations(trace),
+                gates=_gate_evidence(trace),
+                gate_history=_gate_history(trace),
                 sampling=SamplingEvidence.model_validate(
                     query.get(
                         "sampling",
@@ -200,6 +313,8 @@ class AnalysisResponseFactory:
         repair_count: int = 0,
         retryable: bool = False,
         detail: str | None = None,
+        suggestions: tuple[str, ...] = (),
+        clarification_type: ClarificationType | None = None,
     ) -> AnalysisResponse:
         AnalysisResponseFactory.record(
             trace,
@@ -225,6 +340,8 @@ class AnalysisResponseFactory:
                 code=code,
                 message=message,
                 retryable=retryable,
+                suggestions=suggestions,
+                clarification_type=clarification_type,
             ),
         )
 
@@ -235,6 +352,8 @@ class AnalysisResponseFactory:
         trace: list[TraceStep],
         decision: RouteDecision,
         repair_count: int = 0,
+        *,
+        timed_out: bool = False,
     ) -> AnalysisResponse:
         return AnalysisResponseFactory.error(
             context,
@@ -242,8 +361,12 @@ class AnalysisResponseFactory:
             trace,
             PipelineStage.MODEL,
             AnalysisStatus.FAILED,
-            ErrorCode.INTERNAL_ERROR,
-            "모델 응답 계약을 확인할 수 없습니다.",
+            ErrorCode.MODEL_TIMEOUT if timed_out else ErrorCode.MODEL_CONTRACT_INVALID,
+            (
+                "모델 응답 시간이 초과되었습니다."
+                if timed_out
+                else "모델 응답 계약을 확인할 수 없습니다."
+            ),
             decision,
             repair_count,
             retryable=True,

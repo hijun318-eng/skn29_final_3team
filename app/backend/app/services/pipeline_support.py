@@ -39,10 +39,96 @@ def _metric_glossary() -> dict[str, tuple[str, ...]]:
         ) from error
 
 
+def _metric_suggestions(
+    metric_ids: list[str],
+    glossary: dict[str, tuple[str, ...]],
+) -> tuple[str, ...]:
+    alias_counts = Counter(alias for aliases in glossary.values() for alias in aliases)
+    suggestions = []
+    for metric_id in metric_ids:
+        label = next(
+            (alias for alias in glossary.get(metric_id, ()) if alias_counts[alias] == 1),
+            None,
+        )
+        if label and label not in suggestions:
+            suggestions.append(label)
+    return tuple(suggestions)
+
+
+def _period_suggestions(candidates: object) -> tuple[str, ...]:
+    return tuple(
+        str(candidate["source_text"])
+        for candidate in candidates or ()
+        if isinstance(candidate, dict)
+        and isinstance(candidate.get("source_text"), str)
+    ) if isinstance(candidates, (list, tuple)) else ()
+
+
 def _normalize_question(payload: dict[str, object]) -> dict[str, object]:
     from src.ai.node1 import normalize_question
 
     return normalize_question(payload)
+
+
+def _validated_model_periods(
+    question: str,
+    model_candidates: object,
+    expected_candidates: object,
+    timezone: ZoneInfo,
+) -> list[dict[str, object]]:
+    if not isinstance(model_candidates, list) or not isinstance(expected_candidates, list):
+        raise ValueError("Node1 period_candidates must be arrays")
+    if len(model_candidates) > 4:
+        raise ValueError("Node1 returned too many period candidates")
+    strict_calendar_match = bool(expected_candidates)
+    validated = []
+    parsed = []
+    for model_candidate in model_candidates:
+        if not isinstance(model_candidate, dict):
+            raise ValueError("Node1 period candidate must be an object")
+        try:
+            model_start = datetime.fromisoformat(str(model_candidate["start"]))
+            model_end = datetime.fromisoformat(str(model_candidate["end_exclusive"]))
+            source_text = str(model_candidate["source_text"])
+        except (KeyError, ValueError) as error:
+            raise ValueError("Node1 period candidate is invalid") from error
+        if (
+            model_start.utcoffset() is None
+            or model_end.utcoffset() is None
+            or model_start.utcoffset() != model_start.astimezone(timezone).utcoffset()
+            or model_end.utcoffset() != model_end.astimezone(timezone).utcoffset()
+            or model_start >= model_end
+            or not source_text
+            or (not strict_calendar_match and source_text not in question)
+        ):
+            raise ValueError("Node1 period candidate violates the supplied calendar context")
+        validated.append(model_candidate)
+        parsed.append((model_start, model_end))
+    if not strict_calendar_match:
+        return validated
+    try:
+        expected_periods = [
+            (
+                datetime.fromisoformat(str(candidate["start"])),
+                datetime.fromisoformat(str(candidate["end_exclusive"])),
+            )
+            for candidate in expected_candidates
+            if isinstance(candidate, dict)
+        ]
+    except (KeyError, ValueError) as error:
+        raise ValueError("calendar contract period candidate is invalid") from error
+    if len(expected_periods) != len(expected_candidates):
+        raise ValueError("calendar contract period candidate is invalid")
+    if len(parsed) == len(expected_periods):
+        if parsed != expected_periods:
+            raise ValueError("Node1 period candidate violates the supplied calendar context")
+        return validated
+    if len(expected_periods) == 1 and len(parsed) > 1:
+        ordered = sorted(parsed)
+        contiguous = all(left[1] == right[0] for left, right in zip(ordered, ordered[1:]))
+        if contiguous and (ordered[0][0], ordered[-1][1]) == expected_periods[0]:
+            return [dict(expected_candidates[0])]
+    raise ValueError("Node1 period candidate count violates the calendar contract")
 
 
 class PipelineSupport:
@@ -140,25 +226,38 @@ class PipelineSupport:
             for name in ("period_start", "period_end_exclusive")
             if name in payload.parameters
         }
-        if not period_values and structured_request:
+        if (
+            not period_values
+            and structured_request is not None
+            and "period_candidates" in structured_request
+        ):
             candidates = structured_request.get("period_candidates")
-            if isinstance(candidates, list) and len(candidates) == 1:
-                candidate = candidates[0]
-                if isinstance(candidate, dict):
-                    try:
-                        period_values = {
-                            "period_start": datetime.fromisoformat(
-                                str(candidate["start"])
-                            ).date().isoformat(),
-                            "period_end_exclusive": datetime.fromisoformat(
-                                str(candidate["end_exclusive"])
-                            ).date().isoformat(),
-                        }
-                    except (KeyError, ValueError) as error:
-                        raise ContextBuildError(
-                            ContextBuildErrorCode.INVALID_METADATA,
-                            "Node1 period candidate is not a valid ISO date-time range.",
-                        ) from error
+            if not isinstance(candidates, list) or len(candidates) != 1:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.PERIOD_REQUIRED,
+                    "질문에 분석 기간을 하나만 명확히 포함해 주세요.",
+                    _period_suggestions(candidates),
+                )
+            candidate = candidates[0]
+            if not isinstance(candidate, dict):
+                raise ContextBuildError(
+                    ContextBuildErrorCode.INVALID_METADATA,
+                    "Node1 period candidate must be an object.",
+                )
+            try:
+                period_values = {
+                    "period_start": datetime.fromisoformat(
+                        str(candidate["start"])
+                    ).date().isoformat(),
+                    "period_end_exclusive": datetime.fromisoformat(
+                        str(candidate["end_exclusive"])
+                    ).date().isoformat(),
+                }
+            except (KeyError, ValueError) as error:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.INVALID_METADATA,
+                    "Node1 period candidate is not a valid ISO date-time range.",
+                ) from error
         if period_values and set(period_values) != {
             "period_start",
             "period_end_exclusive",
@@ -248,6 +347,7 @@ class PipelineSupport:
         dimension_aliases = {
             "business_date": ["일별", "일자별", "날짜별", "일자", "날짜"],
             "year_month": ["월별", "월 단위", "월"],
+            "actual_checkout_at": ["일별", "일자별", "날짜별", "월별", "월 단위"],
         }
         business_terms.update(
             {
@@ -277,16 +377,56 @@ class PipelineSupport:
             "business_terms": business_terms,
         }
         normalizer = getattr(self._model, "normalize_question", None)
-        normalized = (
-            normalizer(node1_payload)
-            if callable(normalizer)
-            else _normalize_question(node1_payload)
+        sealed = _normalize_question(node1_payload)
+        sealed_periods = sealed.get("period_candidates")
+        if callable(normalizer):
+            for attempt in range(2):
+                normalized = normalizer(node1_payload)
+                try:
+                    model_periods = _validated_model_periods(
+                        payload.question,
+                        normalized.get("period_candidates"),
+                        sealed_periods,
+                        timezone,
+                    )
+                    break
+                except ValueError:
+                    if attempt == 1:
+                        raise
+        else:
+            normalized = sealed
+            model_periods = _validated_model_periods(
+                payload.question,
+                normalized.get("period_candidates"),
+                sealed_periods,
+                timezone,
+            )
+        has_saved_period = all(
+            name in payload.parameters
+            for name in ("period_start", "period_end_exclusive")
         )
-        selected = normalized.get("selected_metric_id")
+        if not has_saved_period and len(model_periods) != 1:
+            raise ContextBuildError(
+                ContextBuildErrorCode.PERIOD_REQUIRED,
+                "질문에 분석 기간을 하나만 명확히 포함해 주세요.",
+                _period_suggestions(model_periods or sealed_periods),
+            )
+        selected = sealed.get("selected_metric_id")
         if not isinstance(selected, str) or selected not in candidate_ids:
+            normalized_candidates = sealed.get("metric_candidates")
+            suggestion_ids = [
+                metric_id
+                for metric_id in (
+                    normalized_candidates
+                    if isinstance(normalized_candidates, list)
+                    else ()
+                )
+                if isinstance(metric_id, str) and metric_id in candidate_ids
+            ] or candidate_ids
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METRIC,
                 "질문에서 권한이 있는 승인 metric 하나를 확인할 수 없습니다.",
+                _metric_suggestions(suggestion_ids, glossary),
             )
         selected_assets = []
         for asset in assets:
@@ -299,13 +439,21 @@ class PipelineSupport:
                 )
             selected_assets.append(item)
         structured_request = {
-            "intent_candidates": list(normalized.get("intent_candidates", ())),
-            "dimension_candidates": list(normalized.get("dimension_candidates", ())),
-            "period_candidates": list(normalized.get("period_candidates", ())),
+            "intent_candidates": [
+                item
+                for item in normalized.get("intent_candidates", ())
+                if item in {"aggregate", "compare", "trend"}
+            ] or list(sealed.get("intent_candidates", ())),
+            "dimension_candidates": [
+                item
+                for item in normalized.get("dimension_candidates", ())
+                if item in business_terms and business_terms[item]["kind"] == "dimension"
+            ],
+            "period_candidates": model_periods,
         }
         return (
             selected_assets,
-            str(normalized["normalized_question"]),
+            str(sealed["normalized_question"]),
             structured_request,
         )
 
@@ -544,11 +692,18 @@ class PipelineSupport:
                 f"{item.field} = :required_filter_{index}"
                 for index, item in enumerate(required_filters, start=1)
             )
-            return (
+            base = (
                 "Treat this as an exhaustive filter-set violation, not a single missing "
-                "predicate. In the WHERE clause of every CTE containing the named asset, "
+                "predicate. In the WHERE clause containing the named asset, "
                 "apply each placeholder exactly once: "
-                f"{checklist}. Also require PMS room_revenue > 0; POS order_status IN "
+                f"{checklist}. Preserve the approved assets, period, aggregation, "
+                "dimensions, and LIMIT."
+            )
+            if "pms_crm_pos_gold_revenue_month_v1" not in package.approved_join_ids:
+                return base
+            return (
+                f"{base} For every CTE containing each named asset, apply its filter. "
+                "Also require PMS room_revenue > 0; POS order_status IN "
                 "('PAID','PARTIAL_REFUND'); POS payment_status IN "
                 "('PAID','PARTIAL_REFUND'); and both customer-map and GOLD-grade "
                 "event-time validity predicates. Recheck the entire list before returning."
@@ -1159,6 +1314,26 @@ class PipelineSupport:
         ):
             return "RESULT_RANGE_EXCEEDED"
         return None
+
+    @staticmethod
+    def normalize_empty_aggregate(
+        query: dict[str, object], package: ContextPackage
+    ) -> dict[str, object]:
+        """Turn SQL's one-row NULL aggregate into an honest empty Safe Result."""
+        rows = query.get("rows")
+        metric_ids = {metric.id for metric in package.metrics}
+        if not isinstance(rows, list) or len(rows) != 1 or not metric_ids:
+            return query
+        row = rows[0]
+        selected = metric_ids.intersection(row) if isinstance(row, dict) else set()
+        if not selected or any(row[metric_id] is not None for metric_id in selected):
+            return query
+        normalized = dict(query)
+        normalized["rows"] = []
+        sampling = dict(query.get("sampling") or {})
+        sampling.update(returned_rows=0, total_rows=0)
+        normalized["sampling"] = sampling
+        return normalized
 
     @staticmethod
     def period(as_of: date) -> PeriodEvidence:

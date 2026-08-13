@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.contracts import ChartSpec, Evidence, TableResult
+
 
 class ReportContractModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -29,6 +31,11 @@ class CreateReportDefinitionRequest(ReportContractModel):
     definition_id: str = Field(min_length=1)
     title: str = Field(min_length=1)
     blocks: list[ReportBlockRequest] = Field(default_factory=list)
+
+
+class CreateReportFromArtifactRequest(ReportContractModel):
+    artifact_id: UUID
+    title: str = Field(min_length=1, max_length=255)
 
 
 class ReplaceReportBlocksRequest(ReportContractModel):
@@ -80,6 +87,18 @@ class ReportDefinitionResponse(ReportContractModel):
 class ReportDefinitionListResponse(ReportContractModel):
     contract_version: str
     items: list[ReportDefinitionResponse]
+
+
+class ReportArtifactResponse(ReportContractModel):
+    contract_version: str
+    artifact_id: UUID
+    query_id: str
+    title: str
+    summary: str
+    table: TableResult
+    chart: ChartSpec | None = None
+    evidence: Evidence
+    artifact_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class ReportBlockRunResponse(ReportContractModel):

@@ -1,29 +1,118 @@
-# Answervice MVP PRD
+# Answervice 최종평가 MVP PRD
 
-## 목표
+| 항목 | 내용 |
+|---|---|
+| 문서 목적 | 최종평가까지 구현할 제품 범위와 Vertical Slice 순서를 고정한다. |
+| 기준일 | 2026-08-13 |
+| 제품 기준선 | 2026-08-12 P0 Golden E2E 기록 |
+| 현재 작업 | Slice 1 — 자연어 질문 명확화 |
+| 상태 표현 | 실제 검증 전에는 `PASS`로 기록하지 않는다. |
 
-사용자의 자연어 질문을 실제 서비스 데이터로 분석하고, 검증된 결과를 표·차트·보고서 초안으로 이어 주는 하나의 Golden Path를 제공한다.
+## 1. 방향 결정
 
-## MVP 범위
+Answervice는 기능을 더 늘리지 않고, 기존 P0 Golden Path를 **최종평가에서 설명하고 재현할 수 있는 신뢰 가능한 Cross-domain 분석 흐름**으로 완성한다.
 
-- React 분석 화면에서 질문과 분석 기간을 입력한다.
-- Backend가 인증과 권한을 확인한다.
-- DataHub Core가 허용된 dataset, metric, column, filter를 Context로 확정한다.
-- Node 1은 질문을 구조화하고, Node 2는 승인된 Context 안에서 Trino SQL을 생성한다.
-- G2가 read-only, asset, metric, 기간, LIMIT 정책을 검사한 뒤 Trino가 실제 SQL을 실행한다.
-- Node 3가 실제 Result를 설명하고 Backend가 Artifact를 저장한다.
-- Frontend가 서버가 반환한 표·차트를 표시하고 Report 초안을 저장한다.
+- 1차 제품 사용자는 호텔 C-level 또는 사업책임자다.
+- 현재 런타임 역할 `hotel_analyst`는 대표 사용자 경로를 실행하는 MVP 역할로 유지한다.
+- 핵심 질문은 객실·멤버십·F&B를 연결한 경영 KPI 비교다.
+- 차별점은 Text-to-SQL 자체가 아니라 승인된 업무 정의, 권한, G1·G2·G3, 실제 조회 근거와 Report 재사용이다.
+- P1 Schedule·Report Assistant·MCP는 회귀만 유지하고, 최종평가 필수 증거를 만들기 전에는 확장하지 않는다.
 
-## 제외 범위
+대표 질문은 현재 승인된 3 Source 계약으로 실행 가능한 다음 문장으로 고정한다.
 
-- 새로운 합성 데이터 생성 SQL 작성
-- 운영 배포, 자동 스케일링, 비용 최적화
-- 모델 재학습과 weight·adapter의 Git 저장
-- fixture·mock·하드코딩 KPI를 제품 성공 근거로 사용하는 방식
+> 2026년 5월과 6월 GOLD 고객의 객실·식음 통합 매출을 비교하고 변화와 근거를 보여줘.
 
-## 완료 조건
+결과 설명은 객실 매출, F&B 매출과 통합 매출의 증감처럼 조회 결과로 계산 가능한 사실만 다룬다. 데이터에 없는 인과관계는 생성하지 않는다.
 
-- 실제 Docker 서비스와 HTTP 요청으로 Golden Path가 성공한다.
-- 모델이 생성한 SQL이 정책 검사를 통과한 경우에만 Trino에서 실행된다.
-- 화면 값이 저장된 Analysis Artifact와 일치한다.
-- 실패 시 성공처럼 보이는 가짜 결과 대신 명시적인 오류가 반환된다.
+## 2. 확인된 기준선과 재검증 경계
+
+`21_AI_작업_인수인계_현재진행상황.md`에는 다음 P0 결과가 기록돼 있다.
+
+- PMS·CRM·POS 3 Source 실제 Trino 조회와 독립 Gold 일치
+- G1·G2·G3, 1회 Repair, Artifact와 request trace
+- Analysis 저장·재실행·과거 Run 보존
+- Report 저장·수동 실행·부분 실패
+- 인증 거부, Report 권한 거부와 Trino read-only 차단
+- 실제 HTTP와 브라우저 사용자 흐름
+
+이 항목은 2026-08-12 실행 기록이며, 현재 dirty worktree를 포함한 최신 코드의 통과를 뜻하지 않는다. 각 Slice는 변경 후 관련 회귀와 실제 Docker·HTTP·브라우저 경로를 다시 실행해야 완료된다.
+
+## 3. 최종평가 완료선
+
+다음 다섯 묶음을 하나의 시연 가능한 흐름으로 증명한다.
+
+1. 업무 용어와 기간이 포함된 자연어 질문을 구조화한다.
+2. 승인된 Metric·Source·JOIN·기간·권한으로 Context를 만들고 선택 근거를 표시한다.
+3. G1·G2·G3와 read-only 실행 경계가 허용·거부·수정·종료를 결정한다.
+4. 실제 Trino 결과를 표·차트·근거와 함께 저장하고 Report에서 재실행한다.
+5. 고정 평가 세트로 정확도, 성공률, 응답시간과 재실행 결과를 측정한다.
+
+## 4. Vertical Slice 순서
+
+한 번에 하나만 진행한다. 앞 Slice의 실제 Exit Gate가 통과하기 전에는 다음 Slice 구현을 시작하지 않는다.
+
+| 순서 | Slice | 해결할 평가 간극 | Exit Gate |
+|---|---|---|---|
+| 1 | 자연어 질문 명확화 | 업무 용어 질문, 기간 해석, 모호한 Metric 처리 | 질문만으로 기간 확정, 승인 Metric 제안, 명시적 차단 |
+| 2 | Context 근거 공개 | 자연어→Context→SQL 선택 근거 부족 | Metric·Source·JOIN·기간·권한·Version을 화면과 trace에서 확인 |
+| 3 | 권한·마스킹 대표 시나리오 | 허용·거부·마스킹 증거 부족 | 같은 질문의 role별 허용 1건, 거부 1건, 마스킹 1건 |
+| 4 | 오류·재시도 매트릭스 | 없는 개념, SQL 실패, 0건, timeout, 부분 실패 설명 부족 | 오류별 상태·재시도·종료와 1회 Repair 상한 증명 |
+| 5 | 정량 평가와 최종 시연 패키지 | 정확도·성공률·latency 근거 부족 | 고정 평가 세트 결과표와 재현 가능한 Demo 실행 기록 |
+
+RAG, ML-as-a-Tool, 새 Source, 새 Agent framework, 추가 Report 기능, 모델 재학습과 외부 배포는 위 다섯 Slice의 완료 조건이 아니다.
+
+## 5. Slice 1 — 자연어 질문 명확화
+
+### 목표
+
+사용자가 별도 날짜 입력이나 원시 테이블·컬럼명을 몰라도 질문 안의 기간과 승인된 업무 Metric으로 분석을 시작한다. 시스템이 하나의 의미로 확정할 수 없으면 임의 선택하지 않고 사용자가 고를 수 있는 승인 항목만 제시한다.
+
+### 범위
+
+- 한국어 단일 월과 연속 월 범위를 `[start, end_exclusive)`로 변환
+- Node 1의 `period_candidates`가 정확히 1개일 때만 Context에 기간 반영
+- 승인 Metric이 정확히 1개일 때만 `selected_metric_id` 확정
+- Metric이 모호하면 `CONTEXT_INCOMPLETE`와 승인된 한글 제안 목록 반환
+- Frontend가 제안 선택을 새 자연어 질문으로 다시 제출
+- 성공 응답의 확정 기간을 Analysis Definition 저장 파라미터로 재사용
+- 기존 1 Source와 3 Source Golden 질문 회귀 보호
+
+### 제외 범위
+
+- 자유 형식의 모든 날짜 표현 지원
+- 등록되지 않은 Metric 자동 생성
+- 새로운 Metric·JOIN·Source 추가
+- 모호한 질문을 LLM 추측으로 자동 실행
+- Slice 2의 Context 상세 근거 UI
+
+### 구현 경계
+
+| 경계 | 책임 |
+|---|---|
+| Node 1 | 질문에서 승인 Metric 후보와 기간 후보를 구조화한다. |
+| Context Builder | 후보가 정확히 하나인지 검증하고 반개방 기간으로 봉인한다. |
+| Analysis API | 차단 상태, 안전한 사용자 메시지와 승인 제안을 반환한다. |
+| Frontend | 별도 기간 필드 없이 질문을 보내고 제안 선택·재질의를 지원한다. |
+| Persistence | 성공 응답의 확정 기간만 저장·재실행 파라미터로 사용한다. |
+
+### 완료 조건
+
+- `2026년 6월 객실 매출`이 `2026-06-01` 이상 `2026-07-01` 미만으로 해석된다.
+- `2026년 5월과 6월 ...`이 하나의 `2026-05-01` 이상 `2026-07-01` 미만 범위가 된다.
+- 기간이 없거나 둘 이상이면 Trino와 Node 2를 호출하지 않고 `CONTEXT_INCOMPLETE`로 종료한다.
+- `객실 매출`처럼 여러 승인 Metric과 일치하면 승인된 업무명만 제안하고 임의 선택하지 않는다.
+- 제안 선택 후 새 요청 ID로 재질의하며, 성공 시 Evidence 기간과 저장 파라미터가 일치한다.
+- API 계약, Backend 대상 테스트와 Frontend 계약 테스트가 통과한다.
+- 실제 Docker·HTTP·브라우저에서 정상 1건과 확인 요청 1건을 재현한다.
+- fixture·mock·브라우저 저장소·고정 결과를 성공 근거로 사용하지 않는다.
+
+## 6. 전체 제품 불변 조건
+
+- 인증과 권한을 우회하지 않는다.
+- G1·G2·G3와 Trino read-only를 축소하지 않는다.
+- Raw Result를 G3 이전에 UI나 외부 모델로 보내지 않는다.
+- 실패를 이전 결과나 샘플 데이터로 대체하지 않는다.
+- Run, Result와 Report Run을 덮어쓰지 않는다.
+- 측정하지 않은 정확도·성공률·latency를 작성하지 않는다.
+
+다음 문서: [02. Golden Path 유저플로우](02_Golden_Path_유저플로우.md)

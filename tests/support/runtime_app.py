@@ -11,11 +11,26 @@ from tests.support.fakes import FakeDataPlatformAdapter, FakeModelAdapter
 class _ScenarioAnalysisService(AnalysisService):
     """Keep synthetic failure controls inside the test application only."""
 
-    def analyze(self, payload, context, decision, execution_sink=None):
+    def analyze(
+        self,
+        payload,
+        context,
+        decision,
+        execution_sink=None,
+        progress_sink=None,
+        cancel_check=None,
+    ):
         scenario = str(payload.parameters.get("scenario") or "")
         self._adapter.scenario = scenario
         self._model.scenario = scenario
-        return super().analyze(payload, context, decision, execution_sink)
+        return super().analyze(
+            payload,
+            context,
+            decision,
+            execution_sink,
+            progress_sink,
+            cancel_check,
+        )
 
 
 def _test_controller() -> AnalysisController:

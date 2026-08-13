@@ -1,4 +1,4 @@
-name: answervice
+name: ${COMPOSE_PROJECT_NAME:-hotel-synthetic-db}
 
 # DataHub Core is restricted to full/split-host by its own fragment.
 include:

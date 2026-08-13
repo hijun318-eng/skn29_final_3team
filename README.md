@@ -22,7 +22,7 @@ Copy-Item infrastructure/database/.env.example infrastructure/database/.env
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File infrastructure/database/security/provision-release-principals.ps1
-docker compose up -d --build
+docker compose --profile full up -d --build
 docker compose ps
 ```
 

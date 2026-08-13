@@ -11,7 +11,7 @@ from evals.runner import (
     validate_data_manifest,
     validate_split_manifest,
 )
-from src.ai.fake_model import FakeModelAdapter
+from tests.support.fakes import ContractFakeModelAdapter as FakeModelAdapter
 from src.modelops.runtime import ProductionModelClient, build_trace
 from tests.ai.test_contracts import VALID_PAYLOADS
 
@@ -34,8 +34,8 @@ class Wave3EvaluationTests(unittest.TestCase):
             for number in range(30)
         ]
         with self.assertRaisesRegex(EvaluationError, "exactly 30"):
-            evaluate_required30(cases[:-1])
-        self.assertEqual(30, evaluate_required30(cases)["passed"])
+            evaluate_required30(cases[:-1], adapter)
+        self.assertEqual(30, evaluate_required30(cases, adapter)["passed"])
 
     def test_base_comparison_requires_same_conditions_and_cases(self):
         baseline = {
@@ -182,12 +182,14 @@ class ProductionClientTests(unittest.TestCase):
         )
         output = client.generate("node3", VALID_PAYLOADS["node3_request"])
         self.assertIn("explanation", output)
-        self.assertEqual(
-            {"status": "SUCCESS", "attempts": 1, "fallback": False, "circuit_failures": 0},
-            client.last_trace,
-        )
+        self.assertEqual("node3", client.last_trace["node"])
+        self.assertEqual("SUCCESS", client.last_trace["status"])
+        self.assertEqual(1, client.last_trace["attempts"])
+        self.assertFalse(client.last_trace["fallback"])
+        self.assertEqual(0, client.last_trace["circuit_failures"])
+        self.assertGreaterEqual(client.last_trace["duration_ms"], 0)
 
-    def test_timeout_retries_once_then_uses_redacted_fallback(self):
+    def test_timeout_retries_once_then_fails_without_a_result(self):
         calls = []
 
         def timeout_transport(node, payload, timeout):
@@ -195,11 +197,12 @@ class ProductionClientTests(unittest.TestCase):
             raise TimeoutError("secret upstream detail")
 
         client = ProductionModelClient(timeout_transport, timeout_seconds=0.5)
-        output = client.generate("node1", VALID_PAYLOADS["node1_request"])
+        with self.assertRaisesRegex(TimeoutError, "TIMEOUT"):
+            client.generate("node1", VALID_PAYLOADS["node1_request"])
         self.assertEqual(2, len(calls))
         self.assertEqual("TIMEOUT", client.last_trace["status"])
+        self.assertFalse(client.last_trace["fallback"])
         self.assertNotIn("secret", json.dumps(client.last_trace))
-        self.assertIn("normalized_question", output)
 
     def test_schema_failure_opens_circuit_after_two_calls(self):
         calls = 0
@@ -210,9 +213,12 @@ class ProductionClientTests(unittest.TestCase):
             return {}
 
         client = ProductionModelClient(invalid_transport, failure_threshold=2)
-        client.generate("node1", VALID_PAYLOADS["node1_request"])
-        client.generate("node1", VALID_PAYLOADS["node1_request"])
-        client.generate("node1", VALID_PAYLOADS["node1_request"])
+        with self.assertRaisesRegex(TimeoutError, "SCHEMA_INVALID"):
+            client.generate("node1", VALID_PAYLOADS["node1_request"])
+        with self.assertRaisesRegex(TimeoutError, "SCHEMA_INVALID"):
+            client.generate("node1", VALID_PAYLOADS["node1_request"])
+        with self.assertRaisesRegex(TimeoutError, "CIRCUIT_OPEN"):
+            client.generate("node1", VALID_PAYLOADS["node1_request"])
         self.assertEqual(4, calls)
         self.assertEqual("CIRCUIT_OPEN", client.last_trace["status"])
         self.assertEqual(0, client.last_trace["attempts"])

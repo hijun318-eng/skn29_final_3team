@@ -21,11 +21,22 @@
     {
       "id": "recognized_room_revenue",
       "asset_fqn": "serving.analytics.hotel_daily_metrics",
+      "field": "recognized_room_revenue",
+      "aggregation": "sum",
+      "time_field": "business_date",
+      "required_filters": [
+        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "SYNTHETIC_ACTUAL_LIKE"},
+        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
+      ]
+    },
+    {
+      "id": "stay_day_allocated_room_revenue",
+      "asset_fqn": "serving.analytics.hotel_daily_metrics",
       "field": "room_revenue",
       "aggregation": "sum",
       "time_field": "business_date",
       "required_filters": [
-        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "SYNTHETIC_ACTUAL_LIKE"},
         {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
       ]
     },
@@ -36,7 +47,7 @@
       "aggregation": "sum",
       "time_field": "business_date",
       "required_filters": [
-        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "SYNTHETIC_ACTUAL_LIKE"},
         {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
       ]
     },
@@ -47,7 +58,7 @@
       "aggregation": "sum",
       "time_field": "business_date",
       "required_filters": [
-        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "SYNTHETIC_ACTUAL_LIKE"},
         {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
       ]
     },
@@ -58,7 +69,7 @@
       "aggregation": "sum",
       "time_field": "year_month",
       "required_filters": [
-        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "SYNTHETIC_ACTUAL_LIKE"},
         {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
       ]
     },

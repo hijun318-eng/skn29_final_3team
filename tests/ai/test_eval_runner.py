@@ -2,7 +2,7 @@ import copy
 import unittest
 
 from evals.runner import EvaluationError, evaluate_cases
-from src.ai.fake_model import FakeModelAdapter
+from tests.support.fakes import ContractFakeModelAdapter as FakeModelAdapter
 from src.ai.training.evaluate_lora import (
     DEFAULT_MODEL,
     DEFAULT_REVISION,
@@ -71,8 +71,8 @@ class EvaluationRunnerTests(unittest.TestCase):
         )
 
     def test_result_and_hash_are_reproducible(self):
-        first = evaluate_cases([valid_case()])
-        second = evaluate_cases([valid_case()])
+        first = evaluate_cases([valid_case()], FakeModelAdapter())
+        second = evaluate_cases([valid_case()], FakeModelAdapter())
 
         self.assertEqual(first, second)
         self.assertEqual(first["total"], 1)
@@ -82,23 +82,23 @@ class EvaluationRunnerTests(unittest.TestCase):
     def test_expected_output_mismatch_fails(self):
         case = valid_case()
         case["expected_output"]["explanation"] = "unsupported"
-        result = evaluate_cases([case])
+        result = evaluate_cases([case], FakeModelAdapter())
         self.assertEqual(result["failed"], 1)
 
     def test_missing_extra_and_duplicate_case_ids_are_rejected(self):
         missing = valid_case()
         missing.pop("expected_output")
         with self.assertRaises(EvaluationError):
-            evaluate_cases([missing])
+            evaluate_cases([missing], FakeModelAdapter())
 
         extra = valid_case()
         extra["unexpected"] = True
         with self.assertRaises(EvaluationError):
-            evaluate_cases([extra])
+            evaluate_cases([extra], FakeModelAdapter())
 
         case = valid_case()
         with self.assertRaises(EvaluationError):
-            evaluate_cases([case, case])
+            evaluate_cases([case, case], FakeModelAdapter())
 
 
 if __name__ == "__main__":

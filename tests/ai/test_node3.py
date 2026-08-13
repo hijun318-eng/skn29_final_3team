@@ -14,6 +14,7 @@ class Node3Tests(unittest.TestCase):
         result = explain_result(payload)
 
         self.assertEqual(result, explain_result(payload))
+        self.assertIn("검증된 객실 매출 결과", result["explanation"])
         self.assertIn('"room_revenue":1000', result["explanation"])
         self.assertIn("metric=room_revenue", result["conditions"])
         self.assertEqual(result["sources"], payload["source_ids"])
@@ -31,6 +32,7 @@ class Node3Tests(unittest.TestCase):
         payload.update(
             {
                 "metric": metric_id,
+                "metric_label": "객실·식음 통합 매출",
                 "source_ids": [asset["urn"] for asset in fixture["assets"]],
                 "metric_selection": {
                     "selected_metric_id": metric_id,
@@ -66,6 +68,7 @@ class Node3Tests(unittest.TestCase):
         base.update(
             {
                 "metric": metric_id,
+                "metric_label": "객실·식음 통합 매출",
                 "source_ids": ["source-a", "source-b"],
                 "metric_selection": {
                     "selected_metric_id": metric_id,
@@ -115,6 +118,11 @@ class Node3Tests(unittest.TestCase):
         missing.pop("result_reference")
         with self.assertRaises(ContractError):
             explain_result(missing)
+
+        missing_label = copy.deepcopy(VALID_PAYLOADS["node3_request"])
+        missing_label.pop("metric_label")
+        with self.assertRaises(ContractError):
+            explain_result(missing_label)
 
         extra = copy.deepcopy(VALID_PAYLOADS["node3_request"])
         extra["sql"] = "SELECT 1"

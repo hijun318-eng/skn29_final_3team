@@ -56,15 +56,23 @@ class AnalysisResponseFactory:
         )
         machine.transition(status)
         rows = tuple(query["rows"])
-        first_value = next(iter(rows[0].values()), None) if rows else 0
-        metrics = (
-            MetricValue(
-                metric_id="synthetic_result_count",
-                label="합성 결과",
-                value=first_value,
-                unit="건",
-            ),
-        )
+        metrics: tuple[MetricValue, ...] = ()
+        selected_metric = package.metrics[0] if len(package.metrics) == 1 else None
+        selected_metric_field = selected_metric.id if selected_metric else None
+        if selected_metric_field and rows and all(
+            selected_metric_field in row for row in rows
+        ):
+            total = sum(
+                Decimal(str(row[selected_metric_field])) for row in rows
+            )
+            metrics = (
+                MetricValue(
+                    metric_id=selected_metric_field,
+                    label=selected_metric_field,
+                    value=int(total) if total == total.to_integral() else float(total),
+                    unit="KRW",
+                ),
+            )
         revenue_field = next(
             (
                 field
@@ -191,11 +199,12 @@ class AnalysisResponseFactory:
         decision: RouteDecision,
         repair_count: int = 0,
         retryable: bool = False,
+        detail: str | None = None,
     ) -> AnalysisResponse:
         AnalysisResponseFactory.record(
             trace,
             stage,
-            code.value,
+            detail or code.value,
             StageOutcome.BLOCKED
             if status == AnalysisStatus.BLOCKED
             else StageOutcome.FAILED,

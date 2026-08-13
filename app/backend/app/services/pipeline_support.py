@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from collections import Counter
 from datetime import date, datetime, time
-from functools import lru_cache
-from pathlib import Path
 from uuid import NAMESPACE_URL, UUID, uuid5
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from src.ai.metric_glossary import metric_glossary
+
 from app.contracts import (
     AnalysisRequest,
-    ErrorCode,
     PeriodEvidence,
     RequestContext,
     SourceReference,
@@ -31,33 +29,14 @@ from app.services.context_builder import (
 )
 
 
-@lru_cache(maxsize=1)
 def _metric_glossary() -> dict[str, tuple[str, ...]]:
-    path = (
-        Path(__file__).resolve().parents[4]
-        / "src"
-        / "ai"
-        / "contracts"
-        / "metric_glossary.i5.v1.json"
-    )
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    metrics = payload.get("metrics")
-    if not isinstance(payload.get("version"), str) or not isinstance(metrics, dict):
+    try:
+        return metric_glossary()
+    except (OSError, ValueError) as error:
         raise ContextBuildError(
             ContextBuildErrorCode.INVALID_METRIC,
             "R3 metric glossary 계약을 확인할 수 없습니다.",
-        )
-    glossary = {
-        str(metric_id): tuple(str(alias) for alias in aliases)
-        for metric_id, aliases in metrics.items()
-        if isinstance(aliases, list) and aliases
-    }
-    if len(glossary) != len(metrics):
-        raise ContextBuildError(
-            ContextBuildErrorCode.INVALID_METRIC,
-            "R3 metric glossary alias 계약을 확인할 수 없습니다.",
-        )
-    return glossary
+        ) from error
 
 
 def _normalize_question(payload: dict[str, object]) -> dict[str, object]:
@@ -78,15 +57,18 @@ class PipelineSupport:
         self,
         adapter: DataPlatformAdapter,
         context_builder: ContextPackageBuilder,
+        model=None,
     ) -> None:
         self._adapter = adapter
         self._context_builder = context_builder
+        self._model = model
 
     def build_context(
         self,
         payload: AnalysisRequest,
         context: RequestContext,
         assets: list[dict[str, object]],
+        structured_request: dict[str, object] | None = None,
     ) -> ContextPackage:
         items = tuple(
             ContextAsset(
@@ -128,6 +110,13 @@ class PipelineSupport:
                     )
                     for item in asset.get("required_filters", ())
                 ),
+                column_types=tuple(
+                    (str(column["name"]), str(column["type"]))
+                    for column in self._adapter.get_asset_schema(
+                        str(asset["urn"])
+                    )["columns"]
+                    if str(column.get("type") or "") != "contract"
+                ),
             )
             for asset in assets
         )
@@ -146,11 +135,48 @@ class PipelineSupport:
             for metric in asset.metrics
             for item in metric.required_filters
         )
+        period_values = {
+            name: payload.parameters[name]
+            for name in ("period_start", "period_end_exclusive")
+            if name in payload.parameters
+        }
+        if not period_values and structured_request:
+            candidates = structured_request.get("period_candidates")
+            if isinstance(candidates, list) and len(candidates) == 1:
+                candidate = candidates[0]
+                if isinstance(candidate, dict):
+                    try:
+                        period_values = {
+                            "period_start": datetime.fromisoformat(
+                                str(candidate["start"])
+                            ).date().isoformat(),
+                            "period_end_exclusive": datetime.fromisoformat(
+                                str(candidate["end_exclusive"])
+                            ).date().isoformat(),
+                        }
+                    except (KeyError, ValueError) as error:
+                        raise ContextBuildError(
+                            ContextBuildErrorCode.INVALID_METADATA,
+                            "Node1 period candidate is not a valid ISO date-time range.",
+                        ) from error
+        if period_values and set(period_values) != {
+            "period_start",
+            "period_end_exclusive",
+        }:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Analysis period requires start and end_exclusive together.",
+            )
+        if period_values and period_values["period_start"] >= period_values["period_end_exclusive"]:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Analysis period must be a non-empty half-open range.",
+            )
         parameter_bindings = supplied_bindings or tuple(
             [
-                ContextParameterBinding(name, "date", payload.parameters[name])
+                ContextParameterBinding(name, "date", period_values[name])
                 for name in ("period_start", "period_end_exclusive")
-                if name in payload.parameters
+                if name in period_values
             ]
             + [
                 ContextParameterBinding(
@@ -176,14 +202,18 @@ class PipelineSupport:
             frozenset(item.urn for item in items),
         )
 
-    @staticmethod
     def select_metric(
+        self,
         payload: AnalysisRequest,
         context: RequestContext,
         assets: list[dict[str, object]],
-    ) -> tuple[list[dict[str, object]], str]:
-        if not any("metrics" in asset for asset in assets):
-            return assets, payload.question
+    ) -> tuple[list[dict[str, object]], str, dict[str, object]]:
+        three_source = any(
+            "pms_crm_pos_gold_revenue_month_v1" in asset.get("join_ids", ())
+            for asset in assets
+        )
+        if not any("metrics" in asset for asset in assets) and not three_source:
+            return assets, payload.question, {}
 
         candidates = [
             metric
@@ -191,6 +221,13 @@ class PipelineSupport:
             for metric in asset.get("metrics", ())
             if isinstance(metric, dict) and isinstance(metric.get("id"), str)
         ]
+        if three_source:
+            candidates.append(
+                {
+                    "id": "total_guest_revenue_krw",
+                    "time_field": "derived.month",
+                }
+            )
         candidate_ids = [str(metric["id"]) for metric in candidates]
         if len(candidate_ids) != len(set(candidate_ids)):
             raise ContextBuildError(
@@ -203,6 +240,25 @@ class PipelineSupport:
             for metric_id in candidate_ids
             if metric_id in glossary
         }
+        time_fields = {
+            str(metric.get("time_field"))
+            for metric in candidates
+            if isinstance(metric.get("time_field"), str)
+        }
+        dimension_aliases = {
+            "business_date": ["일별", "일자별", "날짜별", "일자", "날짜"],
+            "year_month": ["월별", "월 단위", "월"],
+        }
+        business_terms.update(
+            {
+                field: {
+                    "kind": "dimension",
+                    "aliases": dimension_aliases[field],
+                }
+                for field in time_fields
+                if field in dimension_aliases
+            }
+        )
         try:
             timezone = ZoneInfo(context.timezone)
         except ZoneInfoNotFoundError as error:
@@ -211,16 +267,20 @@ class PipelineSupport:
                 "Context timezone을 확인할 수 없습니다.",
             ) from error
         as_of = datetime.combine(context.as_of, time.min, timezone).isoformat()
-        normalized = _normalize_question(
-            {
-                "question": payload.question,
-                "role_hint": context.role.value,
-                "as_of": as_of,
-                "timezone": context.timezone,
-                "calendar_id": "gregorian-kr",
-                "allowed_routes": ["general", "template"],
-                "business_terms": business_terms,
-            }
+        node1_payload = {
+            "question": payload.question,
+            "role_hint": context.role.value,
+            "as_of": as_of,
+            "timezone": context.timezone,
+            "calendar_id": "gregorian-kr",
+            "allowed_routes": ["general", "template"],
+            "business_terms": business_terms,
+        }
+        normalizer = getattr(self._model, "normalize_question", None)
+        normalized = (
+            normalizer(node1_payload)
+            if callable(normalizer)
+            else _normalize_question(node1_payload)
         )
         selected = normalized.get("selected_metric_id")
         if not isinstance(selected, str) or selected not in candidate_ids:
@@ -238,24 +298,16 @@ class PipelineSupport:
                     if isinstance(metric, dict) and metric.get("id") == selected
                 )
             selected_assets.append(item)
-        return selected_assets, str(normalized["normalized_question"])
-
-    @staticmethod
-    def g1_error(scenario: str) -> tuple[ErrorCode, str] | None:
-        return {
-            "clarification": (
-                ErrorCode.CONTEXT_INCOMPLETE,
-                "분석 기간 또는 기준을 보완해 주세요.",
-            ),
-            "access_denied": (
-                ErrorCode.ACCESS_DENIED,
-                "요청한 데이터 범위에 접근할 수 없습니다.",
-            ),
-            "inactive_context": (
-                ErrorCode.CONTEXT_INCOMPLETE,
-                "활성 Context 또는 정책 버전을 찾을 수 없습니다.",
-            ),
-        }.get(scenario)
+        structured_request = {
+            "intent_candidates": list(normalized.get("intent_candidates", ())),
+            "dimension_candidates": list(normalized.get("dimension_candidates", ())),
+            "period_candidates": list(normalized.get("period_candidates", ())),
+        }
+        return (
+            selected_assets,
+            str(normalized["normalized_question"]),
+            structured_request,
+        )
 
     @staticmethod
     def g2_violation(
@@ -335,7 +387,8 @@ class PipelineSupport:
         ):
             return "REFERENCE_OUTSIDE_CONTEXT"
         expected_metric_ids = {metric.id for metric in package.metrics}
-        if "pms_crm_pos_gold_revenue_month_v1" in package.approved_join_ids:
+        three_source = "pms_crm_pos_gold_revenue_month_v1" in package.approved_join_ids
+        if three_source:
             expected_metric_ids = {"total_guest_revenue_krw"}
         has_metric_references = any("metric_ids" in item for item in references)
         if expected_metric_ids:
@@ -379,26 +432,43 @@ class PipelineSupport:
                 or queried != {item.fqn.lower() for item in package.assets}
             ):
                 return "UNAPPROVED_JOIN"
-        columns_by_alias = {
-            (alias or table.rsplit(".", 1)[-1]).lower(): columns_by_fqn[fqn]
-            for table, alias in table_matches
-            if (fqn := table.strip('"').lower()) in columns_by_fqn
-        }
-        if any(
-            column not in columns_by_alias[alias]
-            for alias, column in re.findall(
-                r"(?<![a-z0-9_])([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)",
-                normalized,
+        column_scopes = PipelineSupport._cte_scopes(sql) if three_source else (sql,)
+        for scope in column_scopes:
+            scope_tables = re.findall(
+                r"\b(?:from|join)\s+([a-zA-Z0-9_.\"]+)"
+                r"(?:\s+(?:as\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?",
+                scope,
+                flags=re.IGNORECASE,
             )
-            if alias in columns_by_alias
-        ):
-            return "REFERENCE_OUTSIDE_CONTEXT"
+            columns_by_alias = {
+                (alias or table.rsplit(".", 1)[-1]).lower(): columns_by_fqn[fqn]
+                for table, alias in scope_tables
+                if (fqn := table.strip('"').lower()) in columns_by_fqn
+            }
+            if any(
+                column not in columns_by_alias[alias]
+                for alias, column in re.findall(
+                    r"(?<![a-z0-9_])([a-z_][a-z0-9_]*)\.([a-z_][a-z0-9_]*)",
+                    scope.lower(),
+                )
+                if alias in columns_by_alias
+            ):
+                return "REFERENCE_OUTSIDE_CONTEXT"
         required_filters = (
             *package.required_filters,
             *(item for metric in package.metrics for item in metric.required_filters),
         )
-        three_source = "pms_crm_pos_gold_revenue_month_v1" in package.approved_join_ids
         if three_source:
+            scopes = PipelineSupport._cte_scopes(sql)
+            if (
+                not PipelineSupport._three_source_composition_matches(sql)
+                or not PipelineSupport._three_source_join_semantics_match(scopes)
+            ):
+                return "UNAPPROVED_JOIN"
+            if not PipelineSupport._three_source_projection_matches(sql):
+                return "METRIC_REFERENCE_MISMATCH"
+            if not PipelineSupport._three_source_time_semantics_match(scopes, package):
+                return "TIME_SEMANTICS_INVALID"
             if not PipelineSupport._three_source_filters_match(
                 normalized, required_filters, placeholder_names
             ):
@@ -416,6 +486,74 @@ class PipelineSupport:
         if parameters_invalid:
             return "PARAMETERS_INVALID"
         return None
+
+    @staticmethod
+    def g2_repair_hint(violation: str, package: ContextPackage) -> str:
+        """Return context-derived repair constraints without rewriting model SQL."""
+        if violation == "TIME_SEMANTICS_INVALID":
+            bindings = {item.name: item.value for item in package.parameter_bindings}
+            start = bindings.get("period_start", "<period_start>")
+            end = bindings.get("period_end_exclusive", "<period_end_exclusive>")
+            native_types = {
+                f"{asset.fqn}.{column}": native_type
+                for asset in package.assets
+                for column, native_type in asset.column_types
+            }
+            return (
+                "Apply both source-specific rules exactly. "
+                "PMS pms.public.pms_stays.actual_checkout_at has native type "
+                f"{native_types.get('pms.public.pms_stays.actual_checkout_at', 'unknown')}: "
+                "its month join key must be date_format(date_trunc('month', "
+                "<pms_alias>.actual_checkout_at AT TIME ZONE 'Asia/Seoul'), '%Y-%m') "
+                "AS month and its half-open period must use "
+                f"TIMESTAMP '{start} 00:00:00 Asia/Seoul' and "
+                f"TIMESTAMP '{end} 00:00:00 Asia/Seoul'. "
+                "POS pos.pos_db.pos_orders.ordered_at has native type "
+                f"{native_types.get('pos.pos_db.pos_orders.ordered_at', 'unknown')}: "
+                "its month join key must be date_format(date_trunc('month', "
+                "<pos_alias>.ordered_at), '%Y-%m') AS month with no AT TIME ZONE, "
+                "and its half-open period must use "
+                f"TIMESTAMP '{start} 00:00:00' and TIMESTAMP '{end} 00:00:00' "
+                "with no timezone name or offset."
+            )
+        if violation == "UNAPPROVED_JOIN":
+            return (
+                "Preserve the two pre-aggregated PMS and POS CTEs and join them on both "
+                "property_id and month. Use only the approved identity chain: "
+                "PMS stay(property_id,reservation_id) -> reservation(property_id,reservation_id) "
+                "-> guest(property_id,guest_id) -> customer_map(property_id,pms_guest_id); "
+                "POS order(property_id,pos_customer_ref) -> "
+                "customer_map(property_id,pos_customer_ref); then customer_map(property_id,member_no) "
+                "-> grade_history(property_id,member_no). Apply valid_from <= event AND "
+                "(valid_to IS NULL OR event < valid_to) to both customer_map and grade_history."
+            )
+        if violation == "METRIC_REFERENCE_MISMATCH":
+            return (
+                "The final projection must expose the approved metric contract exactly: "
+                "COALESCE(<pms_cte>.property_id, <pos_cte>.property_id) AS property_id, "
+                "COALESCE(<pms_cte>.month, <pos_cte>.month) AS month, and the sum of "
+                "the two CTE revenue aggregates AS total_guest_revenue_krw. Do not rename "
+                "the metric to total_revenue or another alias."
+            )
+        if violation == "METRIC_FILTER_MISSING":
+            required_filters = (
+                *package.required_filters,
+                *(item for metric in package.metrics for item in metric.required_filters),
+            )
+            checklist = "; ".join(
+                f"{item.field} = :required_filter_{index}"
+                for index, item in enumerate(required_filters, start=1)
+            )
+            return (
+                "Treat this as an exhaustive filter-set violation, not a single missing "
+                "predicate. In the WHERE clause of every CTE containing the named asset, "
+                "apply each placeholder exactly once: "
+                f"{checklist}. Also require PMS room_revenue > 0; POS order_status IN "
+                "('PAID','PARTIAL_REFUND'); POS payment_status IN "
+                "('PAID','PARTIAL_REFUND'); and both customer-map and GOLD-grade "
+                "event-time validity predicates. Recheck the entire list before returning."
+            )
+        return "Repair only the normalized violation while preserving approved assets and bindings."
 
     @staticmethod
     def _read_only_query_shape(sql: str) -> bool:
@@ -469,7 +607,7 @@ class PipelineSupport:
             sql,
             flags=re.IGNORECASE | re.DOTALL,
         )
-        if where is None or re.search(r"\bor\b", where.group(1), re.IGNORECASE):
+        if where is None or PipelineSupport._has_top_level_or(where.group(1)):
             return False
         field = re.escape(required.field.lower().rsplit(".", 1)[-1])
         matches = re.findall(
@@ -536,7 +674,7 @@ class PipelineSupport:
                 )
                 if (
                     where is None
-                    or re.search(r"\bor\b", where.group(1), re.IGNORECASE)
+                    or PipelineSupport._has_top_level_or(where.group(1))
                     or len(
                         re.findall(
                             rf"(?<![a-z0-9_]){re.escape(alias_match.group(1))}\.\"?{re.escape(column)}\"?\s*=\s*:{parameter}(?![a-z0-9_])",
@@ -551,7 +689,381 @@ class PipelineSupport:
             if matched_scopes == 0:
                 return False
             expected_counts[parameter] = matched_scopes
-        return Counter(placeholders) == expected_counts
+        return (
+            Counter(placeholders) == expected_counts
+            and PipelineSupport._three_source_source_predicates_match(scopes)
+        )
+
+    @staticmethod
+    def _has_top_level_or(expression: str) -> bool:
+        """Reject predicate-bypass OR while allowing parenthesized validity windows."""
+        depth = 0
+        quote: str | None = None
+        token: list[str] = []
+        index = 0
+
+        def flush() -> bool:
+            is_or = "".join(token).lower() == "or"
+            token.clear()
+            return is_or
+
+        while index < len(expression):
+            character = expression[index]
+            if quote:
+                if character == quote:
+                    if index + 1 < len(expression) and expression[index + 1] == quote:
+                        index += 2
+                        continue
+                    quote = None
+                index += 1
+                continue
+            if character in {"'", '"'}:
+                if depth == 0 and flush():
+                    return True
+                quote = character
+            elif character == "(":
+                if depth == 0 and flush():
+                    return True
+                depth += 1
+            elif character == ")":
+                if depth == 0 and flush():
+                    return True
+                depth = max(0, depth - 1)
+            elif depth == 0 and (character.isalnum() or character == "_"):
+                token.append(character)
+            elif depth == 0 and flush():
+                return True
+            index += 1
+        return flush()
+
+    @staticmethod
+    def _three_source_composition_matches(sql: str) -> bool:
+        scopes = PipelineSupport._cte_scopes(sql)
+        if len(scopes) != 2:
+            return False
+        for fqn in ("pms.public.pms_stays", "pos.pos_db.pos_orders"):
+            matching_scopes = [
+                scope
+                for scope in scopes
+                if re.search(
+                    rf"\bfrom\s+{re.escape(fqn)}\s+(?:as\s+)?[a-z_][a-z0-9_]*",
+                    scope,
+                    re.IGNORECASE,
+                )
+            ]
+            if len(matching_scopes) != 1:
+                return False
+            scope = matching_scopes[0]
+            alias = re.search(
+                rf"\bfrom\s+{re.escape(fqn)}\s+(?:as\s+)?([a-z_][a-z0-9_]*)",
+                scope,
+                re.IGNORECASE,
+            )
+            select = re.search(
+                r"\bselect\b(.+?)\bfrom\b", scope, re.IGNORECASE | re.DOTALL
+            )
+            if alias is None or select is None or re.search(
+                rf"(?<![a-z0-9_]){re.escape(alias.group(1))}\.\"?property_id\"?(?![a-z0-9_])",
+                select.group(1),
+                re.IGNORECASE,
+            ) is None:
+                return False
+        outer = re.search(
+            r"\bfrom\s+([a-z_][a-z0-9_]*)"
+            r"(?:\s+(?:as\s+)?((?!(?:full|inner|left|right|cross|join|where|order|limit)\b)"
+            r"[a-z_][a-z0-9_]*))?\s+"
+            r"full\s+outer\s+join\s+([a-z_][a-z0-9_]*)"
+            r"(?:\s+(?:as\s+)?((?!(?:on|where|order|limit)\b)[a-z_][a-z0-9_]*))?\s+"
+            r"on\s+(.+?)(?:\border\s+by\b|\blimit\b|$)",
+            sql,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if outer is None:
+            return False
+        left_table, left_alias, right_table, right_alias, condition = outer.groups()
+        left = left_alias or left_table
+        right = right_alias or right_table
+        return all(
+            re.search(
+                rf"(?:{re.escape(left)}\.\"?{field}\"?\s*=\s*{re.escape(right)}\.\"?{field}\"?"
+                rf"|{re.escape(right)}\.\"?{field}\"?\s*=\s*{re.escape(left)}\.\"?{field}\"?)",
+                condition,
+                re.IGNORECASE,
+            )
+            for field in ("property_id", "month")
+        )
+
+    @staticmethod
+    def _three_source_join_semantics_match(scopes: tuple[str, ...]) -> bool:
+        def alias(scope: str, fqn: str) -> str | None:
+            match = re.search(
+                rf"\b(?:from|join)\s+{re.escape(fqn)}\s+(?:as\s+)?([a-z_][a-z0-9_]*)",
+                scope,
+                re.IGNORECASE,
+            )
+            return match.group(1) if match else None
+
+        def column(table_alias: str, name: str) -> str:
+            return rf"{re.escape(table_alias)}\.\"?{name}\"?"
+
+        def equality(scope: str, left: str, right: str) -> bool:
+            return re.search(
+                rf"(?:{left}\s*=\s*{right}|{right}\s*=\s*{left})",
+                scope,
+                re.IGNORECASE,
+            ) is not None
+
+        def temporal(scope: str, history: str, event: str) -> bool:
+            starts_before = re.search(
+                rf"(?:{column(history, 'valid_from')}\s*<=\s*{event}"
+                rf"|{event}\s*>=\s*{column(history, 'valid_from')})",
+                scope,
+                re.IGNORECASE,
+            )
+            ends_after = re.search(
+                rf"\(\s*{column(history, 'valid_to')}\s+is\s+null\s+or\s+"
+                rf"(?:{event}\s*<\s*{column(history, 'valid_to')}"
+                rf"|{column(history, 'valid_to')}\s*>\s*{event})\s*\)",
+                scope,
+                re.IGNORECASE,
+            )
+            return starts_before is not None and ends_after is not None
+
+        source_specs = {
+            "pms.public.pms_stays": (
+                "actual_checkout_at",
+                (
+                    ("source", "property_id", "reservation", "property_id"),
+                    ("source", "reservation_id", "reservation", "reservation_id"),
+                    ("reservation", "property_id", "guest", "property_id"),
+                    ("reservation", "guest_id", "guest", "guest_id"),
+                    ("guest", "property_id", "map", "property_id"),
+                    ("guest", "guest_id", "map", "pms_guest_id"),
+                ),
+            ),
+            "pos.pos_db.pos_orders": (
+                "ordered_at",
+                (
+                    ("source", "property_id", "map", "property_id"),
+                    ("source", "pos_customer_ref", "map", "pos_customer_ref"),
+                ),
+            ),
+        }
+        for source_fqn, (event_name, identities) in source_specs.items():
+            matching = [scope for scope in scopes if alias(scope, source_fqn)]
+            if len(matching) != 1:
+                return False
+            scope = matching[0]
+            aliases = {
+                "source": alias(scope, source_fqn),
+                "reservation": alias(scope, "pms.public.pms_reservations"),
+                "guest": alias(scope, "pms.public.pms_guests"),
+                "map": alias(scope, "crm.dbo.crm_customer_map"),
+                "grade": alias(scope, "crm.dbo.crm_member_grade_history"),
+            }
+            required = {"source", "map", "grade"}
+            if source_fqn.startswith("pms."):
+                required.update(("reservation", "guest"))
+            if any(not aliases[name] for name in required):
+                return False
+            event = column(str(aliases["source"]), event_name)
+            if any(
+                not equality(
+                    scope,
+                    column(str(aliases[left]), left_column),
+                    column(str(aliases[right]), right_column),
+                )
+                for left, left_column, right, right_column in identities
+            ):
+                return False
+            if not all(
+                equality(
+                    scope,
+                    column(str(aliases["map"]), name),
+                    column(str(aliases["grade"]), name),
+                )
+                for name in ("property_id", "member_no")
+            ):
+                return False
+            if not all(
+                temporal(scope, str(aliases[history]), event)
+                for history in ("map", "grade")
+            ):
+                return False
+        return True
+
+    @staticmethod
+    def _three_source_projection_matches(sql: str) -> bool:
+        outer = re.search(
+            r"\)\s*select\s+(.+?)\s+from\s+([a-z_][a-z0-9_]*)"
+            r"(?:\s+(?:as\s+)?((?!(?:full|inner|left|right|cross|join|where|order|limit)\b)"
+            r"[a-z_][a-z0-9_]*))?\s+"
+            r"full\s+outer\s+join\s+([a-z_][a-z0-9_]*)"
+            r"(?:\s+(?:as\s+)?((?!(?:on|where|order|limit)\b)[a-z_][a-z0-9_]*))?\s+on\b",
+            sql,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if outer is None:
+            return False
+        projection, left_table, left_alias, right_table, right_alias = outer.groups()
+        left = left_alias or left_table
+        right = right_alias or right_table
+
+        def coalesced_key(field: str, output: str) -> bool:
+            return re.search(
+                rf"(?:coalesce\s*\(\s*{re.escape(left)}\.{field}\s*,\s*"
+                rf"{re.escape(right)}\.{field}\s*\)|coalesce\s*\(\s*"
+                rf"{re.escape(right)}\.{field}\s*,\s*{re.escape(left)}\.{field}\s*\))"
+                rf"\s+as\s+{output}(?![a-z0-9_])",
+                projection,
+                re.IGNORECASE,
+            ) is not None
+
+        total = re.search(
+            r"(coalesce\s*\(.+?\)\s*\+\s*coalesce\s*\(.+?\))\s+"
+            r"as\s+total_guest_revenue_krw(?![a-z0-9_])",
+            projection,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if total is None:
+            return False
+        total_expression = total.group(1)
+        has_both_sources = all(
+            re.search(
+                rf"(?<![a-z0-9_]){re.escape(alias)}\.[a-z_][a-z0-9_]*",
+                total_expression,
+                re.IGNORECASE,
+            )
+            for alias in (left, right)
+        )
+        return (
+            coalesced_key("property_id", "property_id")
+            and coalesced_key("month", "month")
+            and has_both_sources
+        )
+
+    @staticmethod
+    def _three_source_time_semantics_match(
+        scopes: tuple[str, ...], package: ContextPackage
+    ) -> bool:
+        assets = {asset.fqn: asset for asset in package.assets}
+        specifications = (
+            (
+                "pms.public.pms_stays",
+                "actual_checkout_at",
+                "timestamp with time zone",
+            ),
+            ("pos.pos_db.pos_orders", "ordered_at", "timestamp without time zone"),
+        )
+        for fqn, event_column, expected_kind in specifications:
+            asset = assets.get(fqn)
+            native_type = (
+                dict(asset.column_types).get(event_column, "").lower()
+                if asset
+                else ""
+            )
+            is_with_zone = "with time zone" in native_type
+            is_without_zone = any(
+                marker in native_type for marker in ("datetime", "timestamp")
+            ) and not is_with_zone
+            if (expected_kind == "timestamp with time zone" and not is_with_zone) or (
+                expected_kind == "timestamp without time zone" and not is_without_zone
+            ):
+                return False
+            matching = [
+                scope
+                for scope in scopes
+                if re.search(rf"\bfrom\s+{re.escape(fqn)}\b", scope, re.IGNORECASE)
+            ]
+            if len(matching) != 1:
+                return False
+            scope = matching[0]
+            alias_match = re.search(
+                rf"\bfrom\s+{re.escape(fqn)}\s+(?:as\s+)?([a-z_][a-z0-9_]*)",
+                scope,
+                re.IGNORECASE,
+            )
+            if alias_match is None:
+                return False
+            event = rf"{re.escape(alias_match.group(1))}\.\"?{event_column}\"?"
+            if is_with_zone:
+                month_value = rf"date_trunc\s*\(\s*'month'\s*,\s*{event}\s+at\s+time\s+zone\s+'Asia/Seoul'\s*\)"
+                literals = {
+                    name: rf"timestamp\s*':{name}\s+00:00:00\s+Asia/Seoul'"
+                    for name in ("period_start", "period_end_exclusive")
+                }
+            else:
+                month_value = rf"date_trunc\s*\(\s*'month'\s*,\s*{event}\s*\)"
+                literals = {
+                    name: (
+                        rf"(?:date\s*':{name}'|"
+                        rf"timestamp\s*':{name}\s+00:00:00')"
+                    )
+                    for name in ("period_start", "period_end_exclusive")
+                }
+            month_key = (
+                rf"date_format\s*\(\s*{month_value}\s*,\s*'%Y-%m'\s*\)"
+            )
+            select = re.search(
+                r"\bselect\b(.+?)\bfrom\b", scope, re.IGNORECASE | re.DOTALL
+            )
+            if select is None or re.search(
+                rf"{month_key}\s+(?:as\s+)?\"?month\"?(?![a-z0-9_])",
+                select.group(1),
+                re.IGNORECASE,
+            ) is None:
+                return False
+            for name, operator in (
+                ("period_start", r">="),
+                ("period_end_exclusive", r"<"),
+            ):
+                if re.search(
+                    rf"{event}\s*{operator}\s*{literals[name]}",
+                    scope,
+                    re.IGNORECASE,
+                ) is None:
+                    return False
+        return True
+
+    @staticmethod
+    def _three_source_source_predicates_match(scopes: tuple[str, ...]) -> bool:
+        aliases: dict[str, tuple[str, str]] = {}
+        for fqn in ("pms.public.pms_stays", "pos.pos_db.pos_orders"):
+            for scope in scopes:
+                match = re.search(
+                    rf"\b(?:from|join)\s+{re.escape(fqn)}\s+(?:as\s+)?([a-z_][a-z0-9_]*)",
+                    scope,
+                    re.IGNORECASE,
+                )
+                where = re.search(
+                    r"\bwhere\b(.+?)(?:\bgroup\s+by\b|\border\s+by\b|\blimit\b|$)",
+                    scope,
+                    re.IGNORECASE | re.DOTALL,
+                )
+                if match and where:
+                    aliases[fqn] = (match.group(1), where.group(1))
+                    break
+        if set(aliases) != {"pms.public.pms_stays", "pos.pos_db.pos_orders"}:
+            return False
+        pms_alias, pms_where = aliases["pms.public.pms_stays"]
+        if re.search(
+            rf"(?<![a-z0-9_]){re.escape(pms_alias)}\.\"?room_revenue\"?\s*>\s*0(?:\.0+)?(?![a-z0-9_])",
+            pms_where,
+            re.IGNORECASE,
+        ) is None:
+            return False
+        pos_alias, pos_where = aliases["pos.pos_db.pos_orders"]
+        for column in ("order_status", "payment_status"):
+            match = re.search(
+                rf"(?<![a-z0-9_]){re.escape(pos_alias)}\.\"?{column}\"?\s+in\s*\(([^)]+)\)",
+                pos_where,
+                re.IGNORECASE,
+            )
+            if match is None or {
+                value.strip().strip("'").upper() for value in match.group(1).split(",")
+            } != {"PAID", "PARTIAL_REFUND"}:
+                return False
+        return True
 
     @staticmethod
     def _cte_scopes(sql: str) -> tuple[str, ...]:

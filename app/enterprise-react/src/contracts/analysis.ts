@@ -67,7 +67,7 @@ export interface AnalysisChart {
 export interface AnalysisArtifact {
   artifactId: string;
   queryId: string;
-  contextHash: string;
+  contextHash?: string;
 }
 
 export interface AnalysisEvidence {
@@ -94,7 +94,7 @@ export interface AnalysisApiResponse {
     artifact?: {
       artifact_id: string;
       query_id: string;
-      context_hash: string;
+      context_hash?: string;
     } | null;
     result?: {
       summary?: string;
@@ -185,7 +185,6 @@ export interface AnalysisRun {
   meta: {
     asOf: string;
     timezone: "Asia/Seoul";
-    synthetic: true;
     seed: string;
     schemaVersion: string;
     contractVersion: string;
@@ -297,7 +296,6 @@ export function normalizeApiResponse(
     meta: {
       asOf: response.meta.as_of,
       timezone: "Asia/Seoul",
-      synthetic: true,
       seed: sources[0]?.seed_version ?? "—",
       schemaVersion: sources[0]?.schema_version ?? "—",
       contractVersion: response.meta.contract_version,

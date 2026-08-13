@@ -40,7 +40,7 @@ class FastApiRuntimeTest(unittest.TestCase):
                 sys.executable,
                 "-m",
                 "uvicorn",
-                "app.main:app",
+                "tests.support.runtime_app:app",
                 "--host",
                 "127.0.0.1",
                 "--port",
@@ -173,6 +173,38 @@ class FastApiRuntimeTest(unittest.TestCase):
                 self.assertIsNone(
                     error.exception.headers.get("Access-Control-Allow-Origin")
                 )
+
+    def test_session_validation_rejects_invalid_token_before_app_entry(self) -> None:
+        status, denied = self.request(
+            "/auth/session",
+            headers={"Authorization": "Bearer invalid-e2e-token"},
+        )
+        self.assertEqual(401, status)
+        self.assertEqual("ACCESS_DENIED", denied["error"]["code"])
+
+        status, accepted = self.request(
+            "/auth/session",
+            headers={"Authorization": "Bearer runtime-test-token"},
+        )
+        self.assertEqual(200, status)
+        self.assertEqual("authenticated", accepted["data"]["status"])
+        self.assertEqual("hotel_analyst", accepted["data"]["role"])
+
+    def test_invalid_period_is_rejected_at_the_http_contract(self) -> None:
+        status, response = self.request(
+            "/analysis",
+            method="POST",
+            headers=self.context_headers(),
+            body={
+                "question": "GOLD 고객의 통합 매출",
+                "parameters": {
+                    "period_start": "2026-07-01",
+                    "period_end_exclusive": "2026-05-01",
+                },
+            },
+        )
+        self.assertEqual(422, status)
+        self.assertEqual("CONTEXT_INCOMPLETE", response["error"]["code"])
 
     def test_browser_preflight_allows_only_configured_origin(self) -> None:
         requested_headers = {
@@ -335,8 +367,8 @@ class FastApiRuntimeTest(unittest.TestCase):
         status, response = self.request(
             "/reports/definitions", headers=self.context_headers("hotel_analyst")
         )
-        self.assertEqual(403, status)
-        self.assertIn("권한", response["detail"])
+        self.assertEqual(503, status)
+        self.assertIn("저장소", response["detail"])
 
         headers["X-User-Id"] = "00000000-0000-0000-0000-000000000001"
         status, response = self.request("/reports/definitions", headers=headers)
@@ -408,8 +440,7 @@ class RealTemplateHttpRuntimeTest(FastApiRuntimeTest):
         environment.update(
             {
                 "PYTHONPATH": os.pathsep.join([str(BACKEND), str(ROOT)]),
-                "DATA_PLATFORM_MODE": "real",
-                "MODEL_MODE": "contract-fake",
+                "TEST_REAL_DATA_PLATFORM": "1",
                 "TRINO_URL": f"http://127.0.0.1:{cls.trino.server_port}",
                 "TRINO_USER": "synthetic-runtime",
                 "CORS_ALLOW_ORIGINS": "http://localhost:5173",
@@ -421,7 +452,7 @@ class RealTemplateHttpRuntimeTest(FastApiRuntimeTest):
                 sys.executable,
                 "-m",
                 "uvicorn",
-                "app.main:app",
+                "tests.support.runtime_app:app",
                 "--host",
                 "127.0.0.1",
                 "--port",

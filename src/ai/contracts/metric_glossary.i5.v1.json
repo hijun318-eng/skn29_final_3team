@@ -1,10 +1,17 @@
 {
-  "version": "METRIC-GLOSSARY-v1.0.0-DRAFT",
+  "version": "METRIC-GLOSSARY-v1.1.0",
   "metrics": {
     "recognized_room_revenue": [
-      "인식 객실 매출",
       "객실 매출",
+      "인식 객실 매출",
+      "체크아웃 기준 객실 매출",
       "recognized room revenue"
+    ],
+    "stay_day_allocated_room_revenue": [
+      "객실 매출",
+      "숙박일 배분 객실 매출",
+      "숙박일 기준 객실 매출",
+      "stay-day allocated room revenue"
     ],
     "expired_points": [
       "소멸 포인트",
@@ -21,6 +28,13 @@
     "actual_attendees": [
       "실제 연회 참석자 수",
       "actual attendees"
+    ],
+    "total_guest_revenue_krw": [
+      "객실·식음 통합 매출",
+      "객실 및 식음 매출",
+      "숙박 수익과 F&B 수익 합계",
+      "객실 수익과 식음 수익 합계",
+      "total guest revenue"
     ]
   }
 }

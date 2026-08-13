@@ -58,7 +58,7 @@ class ServingAnalyticsContractTest(unittest.TestCase):
             self.assertIn(setting, self.datahub_compose)
         self.assertIn('system-update-quickstart:\n    <<: *datahub-service\n    restart: "no"', self.datahub_compose)
 
-    def test_v1_7_upgrade_is_config_only_and_officially_pinned(self):
+    def test_v1_7_upgrade_is_runtime_verified_and_officially_pinned(self):
         compatibility = self.contract["upgrade_compatibility"]
         expected_images = {
             "gms": (
@@ -78,13 +78,13 @@ class ServingAnalyticsContractTest(unittest.TestCase):
                 "sha256:21e77ad964be64b2b5a7f74c9685897ed79e8854995242eaa5e5c426395b88c0",
             ),
         }
-        self.assertEqual("1.6.0", self.contract["datahub_version"])
+        self.assertEqual("1.7.0", self.contract["datahub_version"])
         self.assertEqual("I5-DATAHUB-v1.1.0-DRAFT", compatibility["contract_version"])
-        self.assertEqual("CONFIG_VALIDATED", compatibility["status"])
-        self.assertEqual("CONFIG_ONLY", compatibility["validation_scope"])
-        self.assertEqual("BLOCKED", compatibility["runtime_status"])
-        self.assertEqual("NOT_RUN", compatibility["runtime_execution"])
-        self.assertEqual("LOCAL_RAM_LIMIT", compatibility["runtime_blocker"])
+        self.assertEqual("RUNTIME_VERIFIED", compatibility["status"])
+        self.assertEqual("LIVE_RUNTIME", compatibility["validation_scope"])
+        self.assertEqual("HEALTHY", compatibility["runtime_status"])
+        self.assertEqual("PASS", compatibility["runtime_execution"])
+        self.assertIsNone(compatibility["runtime_blocker"])
         self.assertEqual(
             "src/data/datahub_runtime_evidence.i5.v1.json",
             compatibility["runtime_evidence"],
@@ -134,8 +134,8 @@ class ServingAnalyticsContractTest(unittest.TestCase):
             },
             compatibility["breaking_change_checks"],
         )
-        self.assertIn("blocked by local RAM", compatibility["rollback_boundary"])
-        self.assertIn("R1 verified backup and health checkpoint", compatibility["rollback_boundary"])
+        self.assertIn("runtime-verified", compatibility["rollback_boundary"])
+        self.assertIn("rollback volumes", compatibility["rollback_boundary"])
         self.assertIn("trinodb/trino:476@sha256:", self.root_compose)
         self.assertNotIn("trinodb/trino:483", self.root_compose)
 
@@ -143,7 +143,7 @@ class ServingAnalyticsContractTest(unittest.TestCase):
         self.assertEqual("LIVE_DATAHUB", self.contract["context_source"])
         self.assertTrue(self.contract["validation_only"])
         self.assertEqual(8, len(self.views))
-        self.assertEqual(116, sum(len(view["columns"]) for view in self.views.values()))
+        self.assertEqual(117, sum(len(view["columns"]) for view in self.views.values()))
         for fqn, view in self.views.items():
             self.assertEqual(fqn.rsplit(".", 1)[1], view["name"])
             self.assertEqual(
@@ -223,7 +223,7 @@ class ServingAnalyticsContractTest(unittest.TestCase):
         )
         datahub = verification["datahub_live"]
         self.assertEqual("PASS", datahub["status"])
-        self.assertEqual("v1.6.0", datahub["datahub_version"])
+        self.assertEqual("v1.7.0", datahub["datahub_version"])
         self.assertEqual(len(self.views), datahub["view_count"])
         self.assertEqual(sum(len(view["columns"]) for view in self.views.values()), datahub["column_count"])
         self.assertGreater(datahub["upstream_edge_count"], 0)

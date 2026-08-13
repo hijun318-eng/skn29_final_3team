@@ -14,7 +14,7 @@ FIXTURE_DIRECTORY = REPOSITORY / "tests" / "backend" / "fixtures" / "api" / "v0.
 OPENAPI_PATH = CONTRACT_DIRECTORY / "openapi.v0.1.json"
 STATE_MAPPING_PATH = CONTRACT_DIRECTORY / "state_mapping.v0.1.json"
 
-sys.path.insert(0, str(BACKEND))
+sys.path[:0] = [str(BACKEND), str(REPOSITORY)]
 
 from app.contract_examples import STATE_MAPPING, contract_fixtures  # noqa: E402
 from app.main import app  # noqa: E402

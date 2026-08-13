@@ -8,9 +8,12 @@ from uuid import UUID
 BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
-from app.adapters.fake_data_platform import FakeDataPlatformAdapter
-from app.adapters.fake_model import FakeModelAdapter
 from app.adapters.contract_model import ContractModelAdapter
+from tests.support.fakes import (
+    ContractFakeModelAdapter as R3FakeModelAdapter,
+    FakeDataPlatformAdapter,
+    FakeModelAdapter,
+)
 from app.contracts import (
     AnalysisRequest,
     AnalysisStatus,
@@ -21,6 +24,7 @@ from app.contracts import (
     StageOutcome,
 )
 from app.services.analysis_service import AnalysisService
+from app.ports.data_platform import NoEntitledAssetsError
 from app.services.routing_service import (
     ACCESS_POLICY_VERSION,
     ApprovedTemplate,
@@ -33,11 +37,21 @@ from src.modelops.runtime import ProductionModelClient
 class CountingDataPlatformAdapter(FakeDataPlatformAdapter):
     def __init__(self) -> None:
         super().__init__()
+        self.search_count = 0
         self.execute_count = 0
+
+    def search_assets(self, query, context):
+        self.search_count += 1
+        return super().search_assets(query, context)
 
     def execute_query(self, sql, parameters, gate_token):
         self.execute_count += 1
         return super().execute_query(sql, parameters, gate_token)
+
+
+class NoEntitledAssetsAdapter(CountingDataPlatformAdapter):
+    def search_assets(self, query, context):
+        raise NoEntitledAssetsError("no entitled assets")
 
 
 class ChartDataPlatformAdapter(CountingDataPlatformAdapter):
@@ -98,6 +112,7 @@ class MetricCandidateAdapter(CountingDataPlatformAdapter):
 
 class CountingModel(FakeModelAdapter):
     def __init__(self) -> None:
+        super().__init__()
         self.calls = 0
 
     def generate(self, node, payload):
@@ -131,7 +146,7 @@ class MissingLimitModel(FakeModelAdapter):
 
 class CapturingContractModel(ContractModelAdapter):
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(R3FakeModelAdapter())
         self.requests = []
 
     def _generate(self, node, payload):
@@ -142,7 +157,8 @@ class CapturingContractModel(ContractModelAdapter):
 class AnalysisPipelineTest(unittest.TestCase):
     def setUp(self) -> None:
         self.adapter = CountingDataPlatformAdapter()
-        self.service = AnalysisService(self.adapter, FakeModelAdapter())
+        self.model = FakeModelAdapter()
+        self.service = AnalysisService(self.adapter, self.model)
         self.context = RequestContext(
             request_id=UUID("00000000-0000-0000-0000-000000000001"),
             trace_id="pipeline-trace",
@@ -156,10 +172,13 @@ class AnalysisPipelineTest(unittest.TestCase):
         return RoutingService().decide(payload)
 
     def analyze(self, scenario: str | None = None):
-        parameters = {} if scenario is None else {"scenario": scenario}
+        self.adapter.scenario = scenario
+        self.model.scenario = scenario
+        question = "합성 객실 운영 현황을 알려줘"
+        if scenario:
+            question = f"{question} ({scenario})"
         payload = AnalysisRequest(
-            question="합성 객실 운영 현황을 알려줘",
-            parameters=parameters,
+            question=question,
         )
         return self.service.analyze(
             payload,
@@ -181,6 +200,7 @@ class AnalysisPipelineTest(unittest.TestCase):
                 PipelineStage.G2,
                 PipelineStage.QUERY,
                 PipelineStage.G3,
+                PipelineStage.MODEL,
                 PipelineStage.ARTIFACT,
             ],
             [step.stage for step in response.data.trace],
@@ -260,24 +280,6 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual(0, response.data.repair_count)
         self.assertEqual(0, model.calls)
 
-    def test_versioned_trino_demo_uses_only_the_approved_serving_view(self) -> None:
-        decision = RoutingService.for_versioned_trino_demo().decide(
-            AnalysisRequest(
-                question="호텔 객실 매출을 분석해 줘",
-                template_id="weekly-room-operations",
-                parameters={
-                    "period_start": "2026-05-01",
-                    "period_end_exclusive": "2026-07-01",
-                },
-            )
-        )
-
-        self.assertEqual({"serving.analytics.hotel_daily_metrics"}, set(decision.source_fqns))
-        self.assertIn("data_period_status = 'YTD_SYNTHETIC'", decision.sql_text)
-        self.assertIn("SUM(room_revenue) AS room_revenue", decision.sql_text)
-        self.assertIn("GROUP BY business_date", decision.sql_text)
-        self.assertTrue(decision.sql_text.endswith("LIMIT 1000"))
-
     def test_template_role_is_blocked_before_query(self) -> None:
         template = ApprovedTemplate(
             template_id="weekly-room-operations",
@@ -306,15 +308,6 @@ class AnalysisPipelineTest(unittest.TestCase):
             set(policy["weekly-room-operations"]),
         )
 
-    def test_g1_clarification_blocks_before_model_and_query(self) -> None:
-        response = self.analyze("clarification")
-
-        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
-        self.assertEqual(PipelineStage.G1, response.data.trace[-1].stage)
-        self.assertEqual(StageOutcome.BLOCKED, response.data.trace[-1].outcome)
-        self.assertIsNone(response.data.artifact)
-        self.assertEqual(0, self.adapter.execute_count)
-
     def test_invalid_metric_selection_blocks_before_model_and_query(self) -> None:
         for question in (
             "호텔 지표",
@@ -340,17 +333,53 @@ class AnalysisPipelineTest(unittest.TestCase):
                 self.assertEqual(0, model.calls)
                 self.assertEqual(0, adapter.execute_count)
 
-    def test_g1_distinguishes_access_and_inactive_context(self) -> None:
-        expected = {
-            "access_denied": "ACCESS_DENIED",
-            "inactive_context": "CONTEXT_INCOMPLETE",
-        }
-        for scenario, error_code in expected.items():
+    def test_missing_entitled_assets_is_context_block_not_internal_failure(self) -> None:
+        adapter = NoEntitledAssetsAdapter()
+        model = CountingModel()
+        service = AnalysisService(adapter, model)
+        payload = AnalysisRequest(question="권한 범위 밖의 지표")
+
+        response = service.analyze(payload, self.context, self.decision(payload))
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(PipelineStage.CONTEXT, response.data.trace[-1].stage)
+        self.assertEqual("CONTEXT_INCOMPLETE", response.error.code.value)
+        self.assertEqual(0, model.calls)
+        self.assertEqual(0, adapter.execute_count)
+
+    def test_report_admin_is_denied_before_context_or_model_calls(self) -> None:
+        adapter = CountingDataPlatformAdapter()
+        model = CountingModel()
+        service = AnalysisService(adapter, model)
+        payload = AnalysisRequest(question="GOLD 고객의 월별 매출")
+        admin_context = self.context.model_copy(update={"role": Role.REPORT_ADMIN})
+
+        response = service.analyze(
+            payload,
+            admin_context,
+            self.decision(payload),
+        )
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(PipelineStage.CONTROLLER, response.data.trace[-1].stage)
+        self.assertEqual(ErrorCode.ACCESS_DENIED, response.error.code)
+        self.assertEqual(0, adapter.search_count)
+        self.assertEqual(0, model.calls)
+        self.assertEqual(0, adapter.execute_count)
+
+    def test_user_parameters_cannot_inject_pipeline_scenarios(self) -> None:
+        for scenario in ("access_denied", "inactive_context", "g3_failed"):
             with self.subTest(scenario=scenario):
-                response = self.analyze(scenario)
-                self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
-                self.assertEqual(error_code, response.error.code.value)
-                self.assertEqual(0, self.adapter.execute_count)
+                payload = AnalysisRequest(
+                    question="합성 객실 운영 현황을 알려줘",
+                    parameters={"scenario": scenario},
+                )
+                response = self.service.analyze(
+                    payload,
+                    self.context,
+                    self.decision(payload),
+                )
+                self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
 
     def test_invalid_or_timed_out_model_response_is_safe_failure(self) -> None:
         for scenario in ("invalid_model_schema", "model_timeout"):
@@ -362,12 +391,13 @@ class AnalysisPipelineTest(unittest.TestCase):
                 self.assertIsNone(response.data.artifact)
                 self.assertEqual(0, self.adapter.execute_count)
 
-    def test_production_fallback_is_not_accepted_as_analysis_success(self) -> None:
+    def test_production_model_failure_is_not_accepted_as_analysis_success(self) -> None:
         client = ProductionModelClient(
             lambda _node, _payload, _timeout: (_ for _ in ()).throw(TimeoutError()),
             failure_threshold=1,
         )
-        service = AnalysisService(self.adapter, ContractModelAdapter(client))
+        adapter = MetricCandidateAdapter()
+        service = AnalysisService(adapter, ContractModelAdapter(client))
         payload = AnalysisRequest(question="합성 객실 운영 현황")
 
         response = service.analyze(payload, self.context, self.decision(payload))
@@ -376,8 +406,8 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual("INTERNAL_ERROR", response.error.code.value)
         self.assertEqual(PipelineStage.MODEL, response.data.trace[-1].stage)
         self.assertIsNone(response.data.artifact)
-        self.assertEqual(0, self.adapter.execute_count)
-        self.assertTrue(client.last_trace["fallback"])
+        self.assertEqual(0, adapter.execute_count)
+        self.assertFalse(client.last_trace["fallback"])
 
     def test_g2_blocks_unsafe_sql_without_query(self) -> None:
         response = self.analyze("g2_blocked")
@@ -419,17 +449,18 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual(1, self.adapter.execute_count)
 
     def test_second_repair_is_never_attempted(self) -> None:
-        service = AnalysisService(self.adapter, InvalidRepairModel())
-        payload = AnalysisRequest(
-            question="합성 객실 운영 현황을 알려줘",
-            parameters={"scenario": "repair_once"},
-        )
+        service = AnalysisService(self.adapter, InvalidRepairModel("repair_once"))
+        payload = AnalysisRequest(question="합성 객실 운영 현황을 알려줘")
 
-        response = service.analyze(payload, self.context, self.decision(payload))
+        with self.assertLogs("uvicorn.error", level="WARNING") as captured:
+            response = service.analyze(payload, self.context, self.decision(payload))
 
         self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
         self.assertEqual(1, response.data.repair_count)
         self.assertEqual(0, self.adapter.execute_count)
+        log_text = "\n".join(captured.output)
+        self.assertIn("sql_sha256=", log_text)
+        self.assertNotIn("DELETE FROM pms.public.pms_stays", log_text)
 
     def test_query_failure_and_g3_failure_never_create_artifact(self) -> None:
         for scenario, last_stage in (
@@ -471,7 +502,18 @@ class AnalysisPipelineTest(unittest.TestCase):
 
     def test_normal_empty_and_suspicious_empty_are_distinguished(self) -> None:
         empty = self.analyze("empty")
-        suspicious = self.analyze("suspicious_zero")
+        suspicious_adapter = CountingDataPlatformAdapter()
+        suspicious_adapter.scenario = "suspicious_zero"
+        suspicious_model = FakeModelAdapter("suspicious_zero")
+        suspicious_service = AnalysisService(suspicious_adapter, suspicious_model)
+        suspicious_payload = AnalysisRequest(
+            question="합성 객실 운영 현황을 알려줘"
+        )
+        suspicious = suspicious_service.analyze(
+            suspicious_payload,
+            self.context,
+            self.decision(suspicious_payload),
+        )
 
         self.assertEqual(AnalysisStatus.SUCCEEDED, empty.data.status)
         self.assertIsNotNone(empty.data.artifact)
@@ -489,7 +531,7 @@ class AnalysisPipelineTest(unittest.TestCase):
         response = self.analyze()
         result = response.data.result
 
-        self.assertEqual("건", result.metrics[0].unit)
+        self.assertEqual((), result.metrics)
         self.assertEqual(date(2026, 7, 1), result.evidence.period.start)
         self.assertEqual(self.context.as_of, result.evidence.period.end_exclusive)
         self.assertEqual({"dataset": "synthetic"}, result.evidence.filters)
@@ -547,13 +589,15 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual({"plan", "query", "package"}, set(captured))
 
         captured.clear()
+        self.adapter.scenario = "g3_failed"
+        self.model.scenario = "g3_failed"
+        failed_payload = AnalysisRequest(
+            question="합성 객실 운영 현황 실패 검증"
+        )
         failed = self.service.analyze(
-            AnalysisRequest(
-                question="합성 객실 운영 현황을 알려줘",
-                parameters={"scenario": "g3_failed"},
-            ),
+            failed_payload,
             self.context,
-            self.decision(AnalysisRequest(question="합성 객실 운영 현황을 알려줘")),
+            self.decision(failed_payload),
             captured.update,
         )
         self.assertEqual(AnalysisStatus.FAILED, failed.data.status)

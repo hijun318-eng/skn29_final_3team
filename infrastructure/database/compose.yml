@@ -53,7 +53,7 @@ services:
     volumes:
       - pms-postgres-data:/var/lib/postgresql/data
       - ./sql/ddl/01_hotel_pms_postgresql.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ./sql/data/260729_01_pms_postgresql_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
+      - ../../docs/e2e_mvp/derived/service_demo_v3/01_pms_seed_service_demo_v3.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -82,7 +82,7 @@ services:
     volumes:
       - banquet-postgres-data:/var/lib/postgresql/data
       - ./sql/ddl/05_hotel_banquet_postgresql.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ./sql/data/260729_05_banquet_postgresql_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
+      - ../../docs/e2e_mvp/derived/service_demo_v3/04_banquet_seed_service_demo_v3.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -107,7 +107,7 @@ services:
     volumes:
       - pos-mysql-data:/var/lib/mysql
       - ./sql/ddl/02_hotel_pos_mysql.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ./sql/data/260729_02_pos_mysql_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
+      - ../../docs/e2e_mvp/derived/service_demo_v3/02_pos_seed_service_demo_v3.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping --protocol=tcp -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
@@ -134,7 +134,7 @@ services:
       - crm-mssql-data:/var/opt/mssql
       - ./mssql/entrypoint.sh:/bootstrap/entrypoint.sh:ro
       - ./sql/ddl/03_hotel_crm_sqlserver.sql:/bootstrap/00-ddl.sql:ro
-      - ./sql/data/260729_03_crm_sqlserver_2022_2026_v2.2.sql:/bootstrap/10-synthetic.sql:ro
+      - ../../docs/e2e_mvp/derived/service_demo_v3/03_crm_seed_service_demo_v3.sql:/bootstrap/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "test -f /var/opt/mssql/.hotel_synthetic_initialized && /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" >/dev/null 2>&1"]
@@ -161,7 +161,7 @@ services:
       - facility-clickhouse-data:/var/lib/clickhouse
       - ./clickhouse/config.d/timezone.xml:/etc/clickhouse-server/config.d/timezone.xml:ro
       - ./sql/ddl/04_hotel_facility_clickhouse.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ./sql/data/260729_04_facility_clickhouse_2022_2026_v2.2.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
+      - ../../docs/e2e_mvp/derived/service_demo_v3/05_facility_seed_service_demo_v3.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' >/dev/null"]
@@ -202,14 +202,36 @@ services:
       retries: 20
       start_period: 30s
 
+  trino-analytics-keeper:
+    <<: *db
+    profiles: [full, split-host]
+    image: "trinodb/trino:476@sha256:00125e40d063bc4816d165482f6044872b18b56026fb959d3b28ce1f96ffbbee"
+    entrypoint: ["sh", "/trino/ensure-analytics-views.sh"]
+    depends_on:
+      trino: { condition: service_healthy }
+    volumes:
+      - ./trino/ensure-analytics-views.sh:/trino/ensure-analytics-views.sh:ro
+      - ./sql/ddl/06_trino_analytics_views.sql:/sql/ddl/06_trino_analytics_views.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "test \"$$(trino --server http://trino:8080 --user hotel_synthetic_setup --output-format TSV --execute \"SELECT count(*) FROM serving.information_schema.tables WHERE table_schema = 'analytics'\" 2>/dev/null | tail -n 1)\" = 8"]
+      interval: 10s
+      timeout: 8s
+      retries: 20
+      start_period: 30s
+
 networks:
   database-network:
     name: ${COMPOSE_PROJECT_NAME:-hotel-synthetic-db}-network
 
 volumes:
   app-postgres-data: {}
-  pms-postgres-data: {}
-  banquet-postgres-data: {}
-  pos-mysql-data: {}
-  crm-mssql-data: {}
-  facility-clickhouse-data: {}
+  pms-postgres-data:
+    name: hotel-synthetic-db_pms-validated-v4-data
+  banquet-postgres-data:
+    name: hotel-synthetic-db_banquet-validated-v3-data
+  pos-mysql-data:
+    name: hotel-synthetic-db_pos-validated-v3-data
+  crm-mssql-data:
+    name: hotel-synthetic-db_crm-validated-v3-data
+  facility-clickhouse-data:
+    name: hotel-synthetic-db_facility-validated-v3-data

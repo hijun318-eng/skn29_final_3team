@@ -42,30 +42,6 @@ class RoutingService:
         self._templates = {item.template_id: item for item in templates}
 
     @classmethod
-    def for_versioned_trino_demo(cls) -> "RoutingService":
-        return cls(
-            (
-                ApprovedTemplate(
-                    template_id="weekly-room-operations",
-                    parameter_names=frozenset({"period_start", "period_end_exclusive"}),
-                    allowed_roles=frozenset({Role.HOTEL_ANALYST}),
-                    sql_text=(
-                        "SELECT business_date, SUM(room_revenue) AS room_revenue "
-                        "FROM serving.analytics.hotel_daily_metrics "
-                        "WHERE business_date >= DATE ':period_start' "
-                        "AND business_date < DATE ':period_end_exclusive' "
-                        "AND data_period_status = 'YTD_SYNTHETIC' "
-                        "AND is_forecast = false "
-                        "GROUP BY business_date ORDER BY business_date LIMIT 1000"
-                    ),
-                    source_fqns=frozenset(
-                        {"serving.analytics.hotel_daily_metrics"}
-                    ),
-                ),
-            )
-        )
-
-    @classmethod
     def from_database(cls, database_url: str) -> "RoutingService":
         role_policy = _template_role_policy()
         engine = create_engine(database_url, pool_pre_ping=True)

@@ -24,6 +24,7 @@ from app.services.context_builder import (
     ContextRequiredFilter,
 )
 from app.services.pipeline_support import PipelineSupport
+from tests.support.fakes import ContractFakeModelAdapter as FakeModelAdapter
 
 
 CONTEXT_PATH = ROOT / "src/data/pms_crm_pos_context.i5.v1.json"
@@ -81,7 +82,7 @@ def test_g120_046_node2_g2_binder_and_runtime_gold_are_composable():
         item["fqn"] for item in contract["assets"]
     }
 
-    model = ContractModelAdapter()
+    model = ContractModelAdapter(FakeModelAdapter())
     model_payload = {
         "request_id": str(request_context.request_id),
         "question": contract["question"],
@@ -144,5 +145,5 @@ def test_g120_046_node2_g2_binder_and_runtime_gold_are_composable():
     evidence = contract["gold_evidence"]
     assert rows == evidence["rows"]
     assert len(rows) == evidence["row_count"] == 2
-    assert sum(Decimal(row[-1]) for row in rows) == Decimal("475972400.00")
+    assert sum(Decimal(row[-1]) for row in rows) == Decimal("281414226.00")
     assert hashlib.sha256(canonical.encode()).hexdigest() == evidence["result_sha256"]

@@ -30,19 +30,32 @@ stay_days AS (
            max(s.source_updated_at) pms_stay_watermark
     FROM pms.public.pms_stays s
     CROSS JOIN UNNEST(sequence(
-        cast(s.actual_checkin_at AS date),
-        date_add('day',-1,cast(s.actual_checkout_at AS date))
+        cast(at_timezone(s.actual_checkin_at,'Asia/Seoul') AS date),
+        date_add('day',-1,cast(at_timezone(s.actual_checkout_at,'Asia/Seoul') AS date))
     )) AS x(d)
     WHERE s.stay_status='COMPLETED'
       AND s.is_forecast=false
       AND s.complimentary_flag=false
       AND s.house_use_flag=false
     GROUP BY 1,2,3,4,5
+),
+checkouts AS (
+    SELECT property_id,
+           cast(at_timezone(actual_checkout_at,'Asia/Seoul') AS date) business_date,
+           room_type_code,data_period_status,is_forecast,
+           sum(room_revenue) recognized_room_revenue
+    FROM pms.public.pms_stays
+    WHERE stay_status='COMPLETED'
+      AND is_forecast=false
+      AND complimentary_flag=false
+      AND house_use_flag=false
+    GROUP BY 1,2,3,4,5
 )
 SELECT i.property_id,i.business_date,i.room_type_code,i.data_period_status,i.is_forecast,
        'ROOMS' business_unit_code,
        i.available_room_nights,coalesce(s.rooms_sold,0) rooms_sold,
        cast(coalesce(s.room_revenue,0) AS decimal(18,2)) room_revenue,
+       cast(coalesce(c.recognized_room_revenue,0) AS decimal(18,2)) recognized_room_revenue,
        cast(coalesce(s.rooms_sold,0)/nullif(i.available_room_nights,0) AS decimal(18,6)) occupancy_rate,
        cast(coalesce(s.room_revenue,0)/nullif(s.rooms_sold,0) AS decimal(18,6)) adr,
        cast(coalesce(s.room_revenue,0)/nullif(i.available_room_nights,0) AS decimal(18,6)) revpar,
@@ -52,7 +65,11 @@ FROM inventory i
 LEFT JOIN stay_days s
   ON i.property_id=s.property_id AND i.business_date=s.business_date
  AND i.room_type_code=s.room_type_code AND i.data_period_status=s.data_period_status
- AND i.is_forecast=s.is_forecast;
+ AND i.is_forecast=s.is_forecast
+LEFT JOIN checkouts c
+  ON i.property_id=c.property_id AND i.business_date=c.business_date
+ AND i.room_type_code=c.room_type_code AND i.data_period_status=c.data_period_status
+ AND i.is_forecast=c.is_forecast;
 
 CREATE OR REPLACE VIEW serving.analytics.fnb_daypart_metrics AS
 WITH orders AS (

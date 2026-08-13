@@ -51,14 +51,16 @@ class FakeDataHub:
     def __call__(self, request, timeout):
         self.assert_timeout(timeout)
         if request.get_method() == "POST":
-            body = json.loads(request.data.decode("utf-8"))["proposal"]
-            value = json.loads(body["aspect"]["value"])
-            self.aspects.setdefault(body["entityUrn"], {})[body["aspectName"]] = {
-                "name": body["aspectName"],
+            body = json.loads(request.data.decode("utf-8"))[0]
+            urn = body["urn"]
+            aspect_name = next(key for key in body if key != "urn")
+            value = body[aspect_name]["value"]
+            self.aspects.setdefault(urn, {})[aspect_name] = {
+                "name": aspect_name,
                 "version": 0,
                 "value": value,
             }
-            self.posts.append(deepcopy(body))
+            self.posts.append({"entityUrn": urn, "aspectName": aspect_name})
             return FakeResponse()
         urn = unquote(urlparse(request.full_url).path.rsplit("/", 1)[1])
         payload = json.dumps({"urn": urn, "aspects": self.aspects.get(urn, {})}).encode("utf-8")
@@ -83,7 +85,7 @@ class ServingSemanticCatalogTest(unittest.TestCase):
         views = self.contract["views"]
         fields = [field for view in views for field in view["columns"]]
         self.assertEqual(
-            {"datasets": 8, "field_occurrences": 116, "unique_fields": 70},
+            {"datasets": 8, "field_occurrences": 117, "unique_fields": 71},
             self.catalog["counts"],
         )
         self.assertEqual({view["fqn"] for view in views}, set(self.catalog["dataset_descriptions"]))
@@ -96,7 +98,7 @@ class ServingSemanticCatalogTest(unittest.TestCase):
         self.assertTrue(all(value.strip() for value in self.catalog["dataset_descriptions"].values()))
         self.assertTrue(all(value.strip() for value in self.catalog["field_descriptions"].values()))
 
-    def test_publisher_is_idempotent_and_verifier_checks_exact_8_116(self):
+    def test_publisher_is_idempotent_and_verifier_checks_exact_8_117(self):
         fake = FakeDataHub()
         first = publisher.publish("http://127.0.0.1:18081", opener=fake)
         first_state = deepcopy(fake.aspects)
@@ -112,7 +114,7 @@ class ServingSemanticCatalogTest(unittest.TestCase):
         result = verifier.verify("http://127.0.0.1:18081", opener=fake)
         self.assertEqual("VERIFIED", result["status"])
         self.assertEqual(8, result["dataset_descriptions"])
-        self.assertEqual(116, result["column_descriptions"])
+        self.assertEqual(117, result["column_descriptions"])
         self.assertEqual(self.catalog["catalog_version"], result["catalog_version"])
         self.assertEqual(self.catalog["catalog_sha256"], result["catalog_sha256"])
 
@@ -154,9 +156,9 @@ class ServingSemanticCatalogTest(unittest.TestCase):
         semantic = self.contract["semantic_catalog"]
         self.assertEqual(self.catalog["catalog_sha256"], semantic["catalog_sha256"])
         self.assertEqual(8, semantic["dataset_description_count"])
-        self.assertEqual(116, semantic["column_description_count"])
-        self.assertEqual(70, semantic["unique_field_count"])
-        self.assertEqual("NOT_RUN", semantic["runtime_result"])
+        self.assertEqual(117, semantic["column_description_count"])
+        self.assertEqual(71, semantic["unique_field_count"])
+        self.assertEqual("VERIFIED", semantic["runtime_result"])
         self.assertNotEqual("PASS", semantic["status"])
 
 

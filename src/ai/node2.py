@@ -105,8 +105,21 @@ def _generate_derived_sql(context: dict[str, Any], metric: dict[str, Any]) -> di
     )
     orders = _asset_with_columns(
         assets,
-        {"property_id", "pos_customer_ref", "ordered_at", "net_amount"},
+        {
+            "property_id",
+            "pos_customer_ref",
+            "ordered_at",
+            "net_amount",
+            "order_status",
+            "payment_status",
+        },
     )
+    if "with time zone" not in str(
+        stays.get("column_types", {}).get("actual_checkout_at", "")
+    ).lower() or "datetime" not in str(
+        orders.get("column_types", {}).get("ordered_at", "")
+    ).lower():
+        raise ContractError("node2_request: derived event time types are invalid")
     aliases = {
         stays["trino_fqn"]: "s",
         reservations["trino_fqn"]: "r",
@@ -128,7 +141,7 @@ def _generate_derived_sql(context: dict[str, Any], metric: dict[str, Any]) -> di
     sql = " ".join(
         (
             "WITH pms_source AS (SELECT s.property_id,",
-            "date_trunc('month', s.actual_checkout_at) AS month,",
+            "date_format(date_trunc('month', s.actual_checkout_at AT TIME ZONE 'Asia/Seoul'), '%Y-%m') AS month,",
             "SUM(s.room_revenue) AS room_revenue_krw",
             f"FROM {_validated_fqn(stays['trino_fqn'])} s",
             f"JOIN {_validated_fqn(reservations['trino_fqn'])} r "
@@ -143,12 +156,14 @@ def _generate_derived_sql(context: dict[str, Any], metric: dict[str, Any]) -> di
             "ON m.property_id = h.property_id AND m.member_no = h.member_no "
             "AND h.valid_from <= s.actual_checkout_at "
             "AND (h.valid_to IS NULL OR s.actual_checkout_at < h.valid_to)",
-            "WHERE s.actual_checkout_at >= DATE ':period_start'",
-            "AND s.actual_checkout_at < DATE ':period_end_exclusive'",
+            "WHERE s.actual_checkout_at >= TIMESTAMP ':period_start 00:00:00 Asia/Seoul'",
+            "AND s.actual_checkout_at < TIMESTAMP ':period_end_exclusive 00:00:00 Asia/Seoul'",
+            "AND s.room_revenue > 0",
             *(f"AND {clause}" for clause in pms_filters),
-            "GROUP BY s.property_id, date_trunc('month', s.actual_checkout_at)),",
+            "GROUP BY s.property_id, date_format(date_trunc('month', "
+            "s.actual_checkout_at AT TIME ZONE 'Asia/Seoul'), '%Y-%m')),",
             "pos_source AS (SELECT o.property_id,",
-            "date_trunc('month', o.ordered_at) AS month,",
+            "date_format(date_trunc('month', o.ordered_at), '%Y-%m') AS month,",
             "SUM(o.net_amount) AS fnb_revenue_krw",
             f"FROM {_validated_fqn(orders['trino_fqn'])} o",
             f"JOIN {_validated_fqn(customer_map['trino_fqn'])} m "
@@ -161,8 +176,10 @@ def _generate_derived_sql(context: dict[str, Any], metric: dict[str, Any]) -> di
             "AND (h.valid_to IS NULL OR o.ordered_at < h.valid_to)",
             "WHERE o.ordered_at >= DATE ':period_start'",
             "AND o.ordered_at < DATE ':period_end_exclusive'",
+            "AND o.order_status IN ('PAID', 'PARTIAL_REFUND')",
+            "AND o.payment_status IN ('PAID', 'PARTIAL_REFUND')",
             *(f"AND {clause}" for clause in pos_filters),
-            "GROUP BY o.property_id, date_trunc('month', o.ordered_at))",
+            "GROUP BY o.property_id, date_format(date_trunc('month', o.ordered_at), '%Y-%m'))",
             "SELECT COALESCE(p.property_id, f.property_id) AS property_id,",
             "COALESCE(p.month, f.month) AS month,",
             "COALESCE(p.room_revenue_krw, 0) AS room_revenue_krw,",
@@ -180,7 +197,14 @@ def _generate_derived_sql(context: dict[str, Any], metric: dict[str, Any]) -> di
             "property_id", "pms_guest_id", "pos_customer_ref", "member_no", "valid_from", "valid_to"
         },
         grades["trino_fqn"]: {"property_id", "member_no", "valid_from", "valid_to"},
-        orders["trino_fqn"]: {"property_id", "pos_customer_ref", "ordered_at", "net_amount"},
+        orders["trino_fqn"]: {
+            "property_id",
+            "pos_customer_ref",
+            "ordered_at",
+            "net_amount",
+            "order_status",
+            "payment_status",
+        },
     }
     for fqn, columns in filter_columns.items():
         referenced_columns[fqn].update(columns)
@@ -239,12 +263,16 @@ def _derived_filters(
     aliases: dict[str, str],
 ) -> tuple[list[tuple[str, str]], list[dict[str, Any]], dict[str, set[str]]]:
     columns_by_fqn = {asset["trino_fqn"]: set(asset["columns"]) for asset in assets}
-    filters = sorted(metric.get("required_filters", []), key=lambda item: item["field"])
+    filters = sorted(
+        metric.get("required_filters", []),
+        key=lambda item: int(item["parameter_name"].rsplit("_", 1)[1]),
+    )
     seen = set()
+    parameter_names = set()
     clauses = []
     parameters = []
     referenced = {fqn: set() for fqn in columns_by_fqn}
-    for index, item in enumerate(filters, start=1):
+    for item in filters:
         field = item["field"]
         if field in seen or item["operator"] != "eq":
             raise ContractError("node2_request: invalid derived required filter")
@@ -256,7 +284,7 @@ def _derived_filters(
         if len(matches) != 1 or not _typed_value_is_valid(item["value_type"], item["value"]):
             raise ContractError("node2_request: invalid derived required filter")
         fqn, column = matches[0]
-        name = f"required_filter_{index}"
+        name = _required_filter_parameter(item, parameter_names)
         seen.add(field)
         referenced[fqn].add(column)
         clauses.append((fqn, f'{aliases[fqn]}."{column}" = :{name}'))
@@ -309,11 +337,15 @@ def _validated_fqn(fqn: str) -> str:
 def _required_filters(
     asset: dict[str, Any], metric: dict[str, Any]
 ) -> tuple[list[str], list[dict[str, Any]], set[str]]:
-    filters = sorted(metric.get("required_filters", []), key=lambda item: item["field"])
+    filters = sorted(
+        metric.get("required_filters", []),
+        key=lambda item: int(item["parameter_name"].rsplit("_", 1)[1]),
+    )
     fields: set[str] = set()
+    parameter_names: set[str] = set()
     clauses = []
     parameters = []
-    for index, item in enumerate(filters, start=1):
+    for item in filters:
         field = item["field"]
         if (
             not _IDENTIFIER.fullmatch(field)
@@ -327,11 +359,19 @@ def _required_filters(
         value = item["value"]
         if not _typed_value_is_valid(value_type, value):
             raise ContractError("node2_request: invalid required filter value")
-        name = f"required_filter_{index}"
+        name = _required_filter_parameter(item, parameter_names)
         fields.add(field)
         clauses.append(f'"{field}" = :{name}')
         parameters.append({"name": name, "value_type": value_type, "value": value})
     return clauses, parameters, fields
+
+
+def _required_filter_parameter(item: dict[str, Any], seen: set[str]) -> str:
+    name = str(item.get("parameter_name", ""))
+    if re.fullmatch(r"required_filter_[1-9][0-9]*", name) is None or name in seen:
+        raise ContractError("node2_request: invalid required filter parameter")
+    seen.add(name)
+    return name
 
 
 def _typed_value_is_valid(value_type: str, value: object) -> bool:

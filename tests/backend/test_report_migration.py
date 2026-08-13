@@ -68,6 +68,54 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertNotIn("worker", source.lower())
         self.assertNotIn("schedule", source.lower())
 
+    def test_report_schedule_is_additive_and_references_approved_versions_and_runs(self):
+        source = (MIGRATIONS / "20260812_10_report_schedules.py").read_text(
+            encoding="utf-8"
+        )
+        tree = ast.parse(source)
+        values = {
+            node.targets[0].id: ast.literal_eval(node.value)
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id in {"revision", "down_revision"}
+        }
+
+        self.assertEqual(
+            {"revision": "20260812_10", "down_revision": "20260812_09"},
+            values,
+        )
+        self.assertIn("CREATE TABLE report_v1.report_schedules", source)
+        self.assertIn("REFERENCES report_v1.report_definition_versions", source)
+        self.assertIn("REFERENCES report_v1.report_runs", source)
+        self.assertIn("CHECK (cadence IN ('daily', 'weekly', 'monthly'))", source)
+        self.assertIn("CHECK (timezone_name = 'Asia/Seoul')", source)
+        self.assertIn("GRANT SELECT, INSERT, UPDATE ON report_v1.report_schedules", source)
+
+    def test_report_assistant_persists_success_and_failure_without_prompt_text(self):
+        source = (MIGRATIONS / "20260812_11_report_assistant.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('revision = "20260812_11"', source)
+        self.assertIn('down_revision = "20260812_10"', source)
+        self.assertIn("CREATE TABLE report_v1.report_assistant_requests", source)
+        self.assertIn("artifact_id uuid NOT NULL REFERENCES artifact.analysis_artifacts", source)
+        self.assertIn("instruction_hash varchar(64)", source)
+        self.assertIn("prompt_hash varchar(64)", source)
+        self.assertIn("status IN ('running', 'success', 'failed')", source)
+        self.assertNotIn("instruction text", source)
+
+    def test_query_generation_mode_records_llm_without_fallback(self):
+        source = (MIGRATIONS / "20260813_14_query_generation_mode_llm.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('revision = "20260813_14"', source)
+        self.assertIn('down_revision = "20260813_13"', source)
+        upgrade = source.split("def downgrade", 1)[0]
+        self.assertIn("generation_mode = 'LLM'", upgrade)
+        self.assertIn("generation_mode IN ('LLM', 'TEMPLATE')", upgrade)
+        self.assertIn("FALLBACK query history must be reviewed", upgrade)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.contracts import Scalar
+from app.contracts import ChartSpec, Evidence, Scalar, TableResult
 
 
 ANALYSIS_PERSISTENCE_VERSION = "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT"
@@ -48,6 +48,7 @@ class CreateAnalysisDefinitionRequest(AnalysisPersistenceModel):
 class ReplayAnalysisRequest(AnalysisPersistenceModel):
     as_of: date
     idempotency_key: str = Field(min_length=1, max_length=128)
+    parameters: dict[str, Scalar] = Field(default_factory=dict)
 
     @field_validator("idempotency_key")
     @classmethod
@@ -55,6 +56,11 @@ class ReplayAnalysisRequest(AnalysisPersistenceModel):
         if not value.strip():
             raise ValueError("idempotency_key는 비어 있을 수 없습니다.")
         return value
+
+    @field_validator("parameters")
+    @classmethod
+    def validate_parameters(cls, value: dict[str, Scalar]) -> dict[str, Scalar]:
+        return CreateAnalysisDefinitionRequest.validate_parameters(value)
 
 
 class AnalysisDefinitionResponse(AnalysisPersistenceModel):
@@ -91,3 +97,18 @@ class AnalysisRunResponse(AnalysisPersistenceModel):
 class AnalysisRunListResponse(AnalysisPersistenceModel):
     contract_version: str = ANALYSIS_PERSISTENCE_VERSION
     items: list[AnalysisRunResponse]
+
+
+class AnalysisRunArtifactResponse(AnalysisPersistenceModel):
+    contract_version: str = ANALYSIS_PERSISTENCE_VERSION
+    request_id: UUID
+    trace_id: str
+    status: Literal["SUCCEEDED", "PARTIAL"]
+    question: str
+    summary: str
+    table: TableResult
+    chart: ChartSpec | None = None
+    evidence: Evidence
+    artifact_id: UUID
+    query_id: str
+    artifact_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")

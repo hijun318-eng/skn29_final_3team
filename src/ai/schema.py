@@ -1,4 +1,4 @@
-"""Small JSON Schema subset used by the dependency-free fake adapter."""
+"""Small JSON Schema subset used by the runtime node contracts."""
 
 from __future__ import annotations
 

@@ -91,22 +91,45 @@ class AppDatabaseReadinessMigrationTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "exactly one head"):
                 AppDatabaseReadiness._migration_status("head_a")
 
-    def test_real_dependencies_are_probed_and_template_mode_needs_no_model(self) -> None:
+    def test_real_dependencies_and_model_are_all_probed(self) -> None:
         response = MagicMock(status=200)
         response.__enter__.return_value = response
         with patch("app.services.readiness.urlopen", return_value=response), patch.dict(
             "os.environ",
             {
-                "DATA_PLATFORM_MODE": "real",
                 "DATAHUB_GMS_URL": "http://datahub",
                 "TRINO_URL": "http://trino",
-                "MODEL_MODE": "template-only",
+                "OPENAI_ENDPOINT": "http://model",
+                "OPENAI_API_KEY": "token",
+                "OPENAI_MODEL": "model",
             },
             clear=True,
         ):
             self.assertEqual("ready", AppDatabaseReadiness._trino_probe())
             self.assertEqual("ready", AppDatabaseReadiness._datahub_probe())
-            self.assertEqual("not_required", AppDatabaseReadiness._model_probe())
+            self.assertEqual("ready", AppDatabaseReadiness._model_probe())
+
+    def test_model_probe_retries_one_transient_timeout(self) -> None:
+        response = MagicMock(status=200)
+        response.__enter__.return_value = response
+        environment = {
+            "OPENAI_ENDPOINT": "http://model",
+            "OPENAI_API_KEY": "token",
+            "OPENAI_MODEL": "model",
+        }
+        with patch(
+            "app.services.readiness.urlopen",
+            side_effect=[TimeoutError, response],
+        ) as urlopen_mock, patch.dict("os.environ", environment, clear=True):
+            self.assertEqual("ready", AppDatabaseReadiness._model_probe())
+            self.assertEqual(2, urlopen_mock.call_count)
+
+        with patch(
+            "app.services.readiness.urlopen",
+            side_effect=TimeoutError,
+        ) as urlopen_mock, patch.dict("os.environ", environment, clear=True):
+            self.assertEqual("not_ready", AppDatabaseReadiness._model_probe())
+            self.assertEqual(3, urlopen_mock.call_count)
 
 
 if __name__ == "__main__":

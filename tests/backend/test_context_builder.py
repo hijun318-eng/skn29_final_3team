@@ -60,6 +60,13 @@ class ContextPackageBuilderTest(unittest.TestCase):
         self.assertEqual(1, package.dataset_count)
         self.assertEqual(2, package.column_count)
 
+    def test_rejects_context_without_entitled_assets(self) -> None:
+        with self.assertRaisesRegex(ContextBuildError, "하나 이상의 권한 있는 승인 asset"):
+            self.builder.build(
+                self.request(assets=()),
+                entitled_asset_urns=frozenset(),
+            )
+
     def test_hash_is_deterministic_regardless_of_candidate_order(self) -> None:
         entitled = frozenset({self.pms.urn, self.crm.urn})
         first = self.builder.build(self.request(), entitled)

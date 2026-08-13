@@ -98,9 +98,11 @@ class PostgresAnalysisRepository:
                         """
                         INSERT INTO analysis_v1.analysis_definitions
                             (definition_id, version, owner_id, title,
-                             question_text_redacted, parameters_json, parameter_hash)
+                             question_text_redacted, parameters_json, parameter_hash,
+                             is_saved)
                         VALUES (:definition_id, 1, :owner_id, :title,
-                                :question, CAST(:parameters AS jsonb), :parameter_hash)
+                                :question, CAST(:parameters AS jsonb), :parameter_hash,
+                                true)
                         RETURNING definition_id, version, title, question_text_redacted,
                                   parameters_json AS parameters, created_at
                         """
@@ -129,7 +131,9 @@ class PostgresAnalysisRepository:
                         SELECT definition_id, version, title, question_text_redacted,
                                parameters_json AS parameters, created_at
                         FROM analysis_v1.analysis_definitions
-                        WHERE definition_id = :definition_id AND owner_id = :owner_id
+                        WHERE definition_id = :definition_id
+                          AND owner_id = :owner_id
+                          AND is_saved
                         ORDER BY version DESC LIMIT 1
                         """
                     ),
@@ -153,8 +157,8 @@ class PostgresAnalysisRepository:
                         SELECT definition_id, version, title, question_text_redacted,
                                parameters_json AS parameters, created_at
                         FROM analysis_v1.analysis_definitions
-                        WHERE owner_id = :owner_id
-                        ORDER BY created_at, definition_id
+                        WHERE owner_id = :owner_id AND is_saved
+                        ORDER BY created_at DESC, definition_id DESC
                         """
                     ),
                     {"owner_id": self._owner_id},
@@ -169,6 +173,7 @@ class PostgresAnalysisRepository:
         context: RequestContext,
         as_of: date,
         idempotency_key: str,
+        parameters: dict[str, object] | None = None,
     ) -> tuple[UUID, bool]:
         definition_id = _uuid(definition["definition_id"], "definition_id")
         try:
@@ -223,9 +228,11 @@ class PostgresAnalysisRepository:
                         """
                         INSERT INTO analysis_v1.analysis_run_links
                             (definition_id, definition_version, request_id,
-                             idempotency_key, as_of, timezone_name)
+                             idempotency_key, as_of, timezone_name,
+                             parameters_json, parameter_hash)
                         VALUES (:definition_id, :version, :request_id,
-                                :idempotency_key, :as_of, :timezone)
+                                :idempotency_key, :as_of, :timezone,
+                                CAST(:parameters AS jsonb), :parameter_hash)
                         """
                     ),
                     {
@@ -235,6 +242,13 @@ class PostgresAnalysisRepository:
                         "idempotency_key": idempotency_key,
                         "as_of": as_of,
                         "timezone": context.timezone,
+                        "parameters": json.dumps(
+                            parameters if parameters is not None else definition["parameters"],
+                            ensure_ascii=False,
+                        ),
+                        "parameter_hash": _hash(
+                            parameters if parameters is not None else definition["parameters"]
+                        ),
                     },
                 )
                 return context.request_id, True
@@ -249,12 +263,39 @@ class PostgresAnalysisRepository:
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 저장소를 사용할 수 없습니다.") from error
 
-    def begin_request(self, question: str, context: RequestContext) -> UUID:
+    def begin_request(
+        self,
+        question: str,
+        parameters: dict[str, object],
+        context: RequestContext,
+    ) -> UUID:
         redacted = _redact_question(question)
         if not redacted:
             raise ValueError("redacted question은 비어 있을 수 없습니다.")
+        definition_id = uuid4()
         try:
             with self._engine.begin() as connection:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO analysis_v1.analysis_definitions
+                            (definition_id, version, owner_id, title,
+                             question_text_redacted, parameters_json, parameter_hash,
+                             is_saved)
+                        VALUES (:definition_id, 1, :owner_id, :title,
+                                :question, CAST(:parameters AS jsonb), :parameter_hash,
+                                false)
+                        """
+                    ),
+                    {
+                        "definition_id": definition_id,
+                        "owner_id": self._owner_id,
+                        "title": "Analysis request",
+                        "question": redacted,
+                        "parameters": json.dumps(parameters),
+                        "parameter_hash": _hash(parameters),
+                    },
+                )
                 connection.execute(
                     text(
                         """
@@ -275,6 +316,28 @@ class PostgresAnalysisRepository:
                         "question_hash": _hash(redacted),
                         "trace_id": context.trace_id,
                         "started_at": datetime.now(timezone.utc),
+                    },
+                )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO analysis_v1.analysis_run_links
+                            (definition_id, definition_version, request_id,
+                             idempotency_key, as_of, timezone_name,
+                             parameters_json, parameter_hash)
+                        VALUES (:definition_id, 1, :request_id,
+                                :idempotency_key, :as_of, :timezone,
+                                CAST(:parameters AS jsonb), :parameter_hash)
+                        """
+                    ),
+                    {
+                        "definition_id": definition_id,
+                        "request_id": context.request_id,
+                        "idempotency_key": str(context.request_id),
+                        "as_of": context.as_of,
+                        "timezone": context.timezone,
+                        "parameters": json.dumps(parameters, ensure_ascii=False),
+                        "parameter_hash": _hash(parameters),
                     },
                 )
             return context.request_id
@@ -369,7 +432,18 @@ class PostgresAnalysisRepository:
                     )
                     previous = transition.value
                 if execution and response.data.artifact and response.data.result:
-                    self._save_evidence(connection, request_id, response, execution)
+                    query_execution_id, artifact_id = self._save_evidence(
+                        connection, request_id, response, execution
+                    )
+                else:
+                    query_execution_id, artifact_id = None, None
+                self._save_audit(
+                    connection,
+                    request_id,
+                    response,
+                    query_execution_id,
+                    artifact_id,
+                )
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 실행 결과를 저장할 수 없습니다.") from error
 
@@ -391,11 +465,43 @@ class PostgresAnalysisRepository:
                         "completed_at": datetime.now(timezone.utc),
                     },
                 )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO governance.audit_events
+                            (request_id, actor_user_id, actor_role, action_code,
+                             object_type, object_id, sql_policy_version,
+                             details_json_redacted, trace_id)
+                        SELECT request_id, user_id, user_role, 'ANALYSIS_DENIED',
+                               'ANALYSIS_REQUEST', request_id::text,
+                               sql_policy_version,
+                               CAST(:details AS jsonb), trace_id
+                        FROM chat.analysis_requests
+                        WHERE request_id = :request_id
+                          AND NOT EXISTS (
+                              SELECT 1 FROM governance.audit_events
+                              WHERE request_id = :request_id
+                                AND action_code = 'ANALYSIS_DENIED'
+                          )
+                        """
+                    ),
+                    {
+                        "request_id": request_id,
+                        "details": json.dumps(
+                            {
+                                "status": "DENIED",
+                                "error_type": error_type,
+                                "persistence_version": ANALYSIS_PERSISTENCE_VERSION,
+                            },
+                            sort_keys=True,
+                        ),
+                    },
+                )
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 실행 실패를 저장할 수 없습니다.") from error
 
     @staticmethod
-    def _save_evidence(connection, request_id, response, execution) -> None:
+    def _save_evidence(connection, request_id, response, execution) -> tuple[UUID, UUID]:
         plan = execution["plan"]
         query = execution["query"]
         package = execution["package"]
@@ -425,7 +531,7 @@ class PostgresAnalysisRepository:
                 "query_execution_id": query_execution_id,
                 "request_id": request_id,
                 "generation_mode": (
-                    "TEMPLATE" if str(plan.get("model_version", "")).startswith("TEMPLATE") else "SLLM"
+                    "TEMPLATE" if str(plan.get("model_version", "")).startswith("TEMPLATE") else "LLM"
                 ),
                 "sql_hash": _hash(str(plan["sql"])),
                 "ast": json.dumps({"status": "PASSED"}),
@@ -466,6 +572,62 @@ class PostgresAnalysisRepository:
                     "PARTIAL" if response.data.status is AnalysisStatus.PARTIAL else "FRESH"
                 ),
                 "checksum": _hash({"snapshot": snapshot, "chart": chart, "evidence": evidence}),
+            },
+        )
+        return query_execution_id, artifact.artifact_id
+
+    @staticmethod
+    def _save_audit(
+        connection,
+        request_id: UUID,
+        response: AnalysisResponse,
+        query_execution_id: UUID | None,
+        artifact_id: UUID | None,
+    ) -> None:
+        result = response.data.result
+        evidence = result.evidence if result else None
+        details = {
+            "status": response.data.status.value,
+            "transitions": [item.value for item in response.data.transitions],
+            "route": response.data.route.value if response.data.route else None,
+            "template_id": response.data.template_id,
+            "repair_count": response.data.repair_count,
+            "trace": [step.model_dump(mode="json") for step in response.data.trace],
+            "error_code": response.error.code.value if response.error else None,
+            "query_id": evidence.query_id if evidence else None,
+            "context_release": evidence.context_release if evidence else None,
+            "policy_version": evidence.policy_version if evidence else None,
+            "model_version": evidence.model_version if evidence else None,
+            "persistence_version": ANALYSIS_PERSISTENCE_VERSION,
+        }
+        action = f"ANALYSIS_{response.data.status.value}"
+        object_type = "ANALYSIS_ARTIFACT" if artifact_id else "ANALYSIS_REQUEST"
+        object_id = artifact_id or request_id
+        connection.execute(
+            text(
+                """
+                INSERT INTO governance.audit_events
+                    (request_id, actor_user_id, actor_role, action_code,
+                     object_type, object_id, sql_policy_version,
+                     query_execution_id, artifact_id, details_json_redacted,
+                     trace_id)
+                SELECT request_id, user_id, user_role, :action_code,
+                       :object_type, :object_id, COALESCE(:policy_version, sql_policy_version),
+                       :query_execution_id, :artifact_id, CAST(:details AS jsonb),
+                       trace_id
+                FROM chat.analysis_requests
+                WHERE request_id = :request_id
+                """
+            ),
+            {
+                "request_id": request_id,
+                "action_code": action,
+                "object_type": object_type,
+                "object_id": str(object_id),
+                "policy_version": evidence.policy_version if evidence else None,
+                "query_execution_id": query_execution_id,
+                "artifact_id": artifact_id,
+                "details": json.dumps(details, ensure_ascii=False, sort_keys=True),
             },
         )
 
@@ -531,20 +693,87 @@ class PostgresAnalysisRepository:
     def list_runs(self) -> list[dict[str, Any]]:
         try:
             with self._engine.connect() as connection:
-                request_ids = connection.execute(
+                rows = connection.execute(
                     text(
                         """
-                        SELECT l.request_id
+                        SELECT l.request_id, l.definition_id, l.definition_version,
+                               l.as_of, l.timezone_name, r.status, r.error_type,
+                               r.trace_id, r.started_at, r.completed_at,
+                               q.trino_query_id AS query_id, a.artifact_id
                         FROM analysis_v1.analysis_run_links l
                         JOIN analysis_v1.analysis_definitions d
                           ON d.definition_id = l.definition_id
                          AND d.version = l.definition_version
+                        JOIN chat.analysis_requests r ON r.request_id = l.request_id
+                        LEFT JOIN LATERAL (
+                            SELECT trino_query_id FROM query.query_executions
+                            WHERE request_id = r.request_id
+                            ORDER BY attempt_no DESC LIMIT 1
+                        ) q ON true
+                        LEFT JOIN LATERAL (
+                            SELECT artifact_id FROM artifact.analysis_artifacts
+                            WHERE request_id = r.request_id LIMIT 1
+                        ) a ON true
                         WHERE d.owner_id = :owner_id
-                        ORDER BY l.created_at, l.request_id
+                        ORDER BY l.created_at DESC, l.request_id DESC
                         """
                     ),
                     {"owner_id": self._owner_id},
-                ).scalars()
-                return [self.get_run(request_id) for request_id in request_ids]
+                ).mappings()
+                return [self._run(row) for row in rows]
         except SQLAlchemyError as error:
             raise AnalysisRepositoryUnavailable("Analysis 저장소를 사용할 수 없습니다.") from error
+
+    def get_run_artifact(self, request_id: str | UUID) -> dict[str, Any]:
+        try:
+            with self._engine.connect() as connection:
+                row = connection.execute(
+                    text(
+                        """
+                        SELECT r.request_id, r.trace_id, r.status,
+                               d.question_text_redacted AS question,
+                               a.narrative_markdown AS summary,
+                               a.data_snapshot_json AS table_data,
+                               a.chart_spec_json AS chart_data,
+                               a.evidence_json AS evidence,
+                               a.artifact_id, a.artifact_checksum,
+                               q.trino_query_id AS query_id
+                        FROM analysis_v1.analysis_run_links l
+                        JOIN analysis_v1.analysis_definitions d
+                          ON d.definition_id = l.definition_id
+                         AND d.version = l.definition_version
+                        JOIN chat.analysis_requests r ON r.request_id = l.request_id
+                        JOIN artifact.analysis_artifacts a
+                          ON a.request_id = r.request_id
+                         AND a.status = 'APPROVED'
+                        JOIN query.query_executions q
+                          ON q.query_execution_id = a.query_execution_id
+                         AND q.execution_status = 'SUCCEEDED'
+                        WHERE l.request_id = :request_id
+                          AND d.owner_id = :owner_id
+                        LIMIT 1
+                        """
+                    ),
+                    {
+                        "request_id": _uuid(request_id, "request_id"),
+                        "owner_id": self._owner_id,
+                    },
+                ).mappings().one_or_none()
+        except SQLAlchemyError as error:
+            raise AnalysisRepositoryUnavailable("Analysis 저장소를 사용할 수 없습니다.") from error
+        if row is None:
+            raise KeyError("승인된 Analysis Artifact를 찾을 수 없습니다.")
+        return {
+            "contract_version": ANALYSIS_PERSISTENCE_VERSION,
+            "request_id": row["request_id"],
+            "trace_id": row["trace_id"],
+            "status": row["status"],
+            "question": row["question"],
+            "summary": row["summary"],
+            "table": row["table_data"],
+            "chart": row["chart_data"] or None,
+            "evidence": row["evidence"],
+            "artifact_id": row["artifact_id"],
+            "query_id": row["query_id"],
+            "artifact_checksum": row["artifact_checksum"],
+        }

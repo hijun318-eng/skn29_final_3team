@@ -31,7 +31,7 @@ def _valid(value_type, value):
 
 
 def test_context_reuses_approved_case_join_assets_and_grain():
-    assert CONTEXT["contract_version"] == "I5-3SOURCE-CONTEXT-v1.0.0-DRAFT"
+    assert CONTEXT["contract_version"] == "I5-3SOURCE-CONTEXT-v1.1.0-DRAFT"
     assert CONTEXT["case_id"] == "G120-046"
     assert CONTEXT["synthetic"] is True
     assert CONTEXT["property_id"] == "SYNTHETIC_HOTEL_001"

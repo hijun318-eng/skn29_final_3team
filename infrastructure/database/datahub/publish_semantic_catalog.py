@@ -97,21 +97,18 @@ def publish(
 ) -> dict[str, Any]:
     validate_local_server(server)
     catalog, contract = load_catalog(catalog_path)
-    endpoint = f"{server.rstrip('/')}/aspects?action=ingestProposal"
+    endpoint = f"{server.rstrip('/')}/openapi/v3/entity/dataset?async=false"
     aspect_count = 0
     for urn, aspect_name, aspect in iter_aspects(catalog, contract):
-        proposal = {
-            "proposal": {
-                "entityType": "dataset",
-                "entityUrn": urn,
-                "changeType": "UPSERT",
-                "aspectName": aspect_name,
-                "aspect": {
-                    "contentType": "application/json",
-                    "value": json.dumps(aspect, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+        proposal = [
+            {
+                "urn": urn,
+                aspect_name: {
+                    "value": aspect,
+                    "headers": {},
                 },
             }
-        }
+        ]
         request = Request(
             endpoint,
             data=json.dumps(proposal, ensure_ascii=False).encode("utf-8"),

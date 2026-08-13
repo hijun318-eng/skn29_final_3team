@@ -5,7 +5,7 @@ from enum import Enum
 from typing import TypeAlias
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 CONTRACT_VERSION = "OPENAPI-v1.0.0"
@@ -86,6 +86,28 @@ class AnalysisRequest(ContractModel):
     question: str = Field(min_length=1, max_length=1000)
     template_id: str | None = Field(default=None, max_length=128)
     parameters: dict[str, Scalar] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_period(self) -> "AnalysisRequest":
+        start_value = self.parameters.get("period_start")
+        end_value = self.parameters.get("period_end_exclusive")
+        if start_value is None and end_value is None:
+            return self
+        if not isinstance(start_value, str) or not isinstance(end_value, str):
+            raise ValueError("period_start와 period_end_exclusive를 함께 입력해 주세요.")
+        if any(
+            len(value) != 10 or value[4] != "-" or value[7] != "-"
+            for value in (start_value, end_value)
+        ):
+            raise ValueError("조회 기간은 YYYY-MM-DD 형식이어야 합니다.")
+        try:
+            start = date.fromisoformat(start_value)
+            end = date.fromisoformat(end_value)
+        except ValueError as exc:
+            raise ValueError("유효한 조회 기간을 입력해 주세요.") from exc
+        if start >= end:
+            raise ValueError("종료일(미포함)은 시작일보다 늦어야 합니다.")
+        return self
 
 
 class ErrorBody(ContractModel):
@@ -205,6 +227,11 @@ class ReadinessData(ContractModel):
     dependencies: dict[str, str]
 
 
+class SessionData(ContractModel):
+    status: str = "authenticated"
+    role: Role
+
+
 class EmptyData(ContractModel):
     pass
 
@@ -223,6 +250,12 @@ class HealthResponse(ContractModel):
 
 class ReadinessResponse(ContractModel):
     data: ReadinessData
+    meta: ResponseMeta
+    error: ErrorBody | None = None
+
+
+class SessionResponse(ContractModel):
+    data: SessionData
     meta: ResponseMeta
     error: ErrorBody | None = None
 

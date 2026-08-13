@@ -1,0 +1,54 @@
+{
+  "dataset": "service-demo-v3",
+  "property_id": "SYNTHETIC_HOTEL_001",
+  "seed": 290613,
+  "period": {"start":"2025-01-01","end_exclusive":"2026-08-01","snapshot":"2026-08-01T00:00:00+09:00"},
+  "classification": "educational deterministic synthetic",
+  "targets": {
+    "pms": {"room_inventory":2308,"guests":16000,"reservations":43200,"completed_stays":37800},
+    "pos": {"stores":9,"orders":100000,"items_min_per_order":1,"items_max_per_order":6},
+    "crm": {"members":13500,"customer_maps":11475,"point_transactions":45000},
+    "banquet": {"bookings":2400},
+    "facility": {"master":20,"events":20000,"daily_days":577}
+  },
+  "actual": {
+    "pms": {"room_inventory":2308,"guests":16000,"reservations":43200,"completed_stays":37800},
+    "pos": {"stores":9,"orders":100000,"items_min_per_order":4,"items_max_per_order":5},
+    "crm": {"members":13500,"customer_maps":11475,"point_transactions":45000},
+    "banquet": {"bookings":2400},
+    "facility": {"master":20,"events":20000,"staffing_daily":5770,"resource_daily":4616}
+  },
+  "validations": {
+    "10_pms": {"invalid_rows":0,"stay_outside_inventory":0},
+    "11_pos": {"invalid_rows":0},
+    "12_crm": {"invalid_rows":0},
+    "13_banquet": {"invalid_rows":0},
+    "14_facility": {"invalid_rows":0},
+    "15_cross_source": {"invalid_rows":0},
+    "readonly_write_probes": {"attempted":5,"blocked":5,"counts_unchanged":true},
+    "repeat_hash_match": true
+  },
+  "golden_sha256": {
+    "20_gold_1source.tsv": "a1b101528e4098b8c523c3a6f7eb03546fec9445a55e432e873dde7eb43bfffe",
+    "21_gold_2source.tsv": "13e0eb9d2f56357c780a1d768a3e44b51852d1280ef3ae2d05835d144396b97e",
+    "22_gold_3source.tsv": "462c1aae3a490da10f4340f6da99f55b96d8ab6e205e74b6bf171c8031e7c96e",
+    "23_five_source_smoke.tsv": "50e3465581d6032ab6e962a85cfb4e5182965a1f51afa0c302130339009070e9"
+  },
+  "official_application": {
+    "status": "APPLIED_AND_VERIFIED",
+    "compose_project": "hotel-synthetic-db",
+    "volumes": {
+      "pms": "hotel-synthetic-db_pms-validated-v4-data",
+      "pos": "hotel-synthetic-db_pos-validated-v3-data",
+      "crm": "hotel-synthetic-db_crm-validated-v3-data",
+      "banquet": "hotel-synthetic-db_banquet-validated-v3-data",
+      "facility": "hotel-synthetic-db_facility-validated-v3-data"
+    },
+    "golden_hash_match": true,
+    "datahub_ingestion": "PASS",
+    "asset_binding": "HEALTHY",
+    "rollback_volumes_preserved": true
+  },
+  "validated_at": "2026-08-12T18:56:33+09:00",
+  "status": "VALIDATED"
+}

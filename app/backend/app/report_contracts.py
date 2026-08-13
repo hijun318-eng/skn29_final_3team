@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -83,9 +84,9 @@ class ReportDefinitionListResponse(ReportContractModel):
 
 class ReportBlockRunResponse(ReportContractModel):
     block_id: str
-    artifact_id: str
-    query_id: str
-    snapshot_checksum: str
+    artifact_id: str | None
+    query_id: str | None
+    snapshot_checksum: str | None
     status: Literal["success", "partial", "failed", "cancelled"]
 
 
@@ -107,6 +108,75 @@ class ReportRunListResponse(ReportContractModel):
     items: list[ReportRunResponse]
 
 
+class CreateReportScheduleRequest(ReportContractModel):
+    schedule_id: UUID
+    definition_id: UUID
+    version: int = Field(ge=1)
+    cadence: Literal["daily", "weekly", "monthly"]
+    next_run_at: datetime
+    timezone: Literal["Asia/Seoul"] = "Asia/Seoul"
+
+    @field_validator("next_run_at")
+    @classmethod
+    def require_aware_next_run_at(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("next_run_at에는 timezone offset이 필요합니다.")
+        return value
+
+
+class ReportScheduleResponse(ReportContractModel):
+    schedule_id: UUID
+    definition_id: UUID
+    version: int
+    cadence: Literal["daily", "weekly", "monthly"]
+    next_run_at: datetime
+    timezone: Literal["Asia/Seoul"]
+    enabled: bool
+    last_run_id: UUID | None = None
+
+
+class ReportScheduleListResponse(ReportContractModel):
+    items: list[ReportScheduleResponse]
+
+
+class UpdateReportScheduleRequest(ReportContractModel):
+    enabled: bool
+
+
+class RunDueReportScheduleResponse(ReportContractModel):
+    schedule: ReportScheduleResponse
+    executed: bool
+    run: ReportRunResponse | None = None
+
+
+class CreateReportAssistantDraftRequest(ReportContractModel):
+    artifact_id: UUID
+    instruction: str = Field(default="경영 검토용 보고서 초안을 구성해 줘", min_length=1, max_length=500)
+
+    @field_validator("instruction")
+    @classmethod
+    def reject_blank_instruction(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("instruction은 비어 있을 수 없습니다.")
+        return value.strip()
+
+
+class ReportAssistantTraceResponse(ReportContractModel):
+    model_version: str
+    prompt_id: str
+    prompt_version: str
+    prompt_hash: str
+    attempts: int
+    duration_ms: float
+
+
+class ReportAssistantDraftResponse(ReportContractModel):
+    assistant_request_id: UUID
+    status: Literal["success"]
+    definition: ReportDefinitionResponse
+    trace: ReportAssistantTraceResponse
+
+
 class ManualRunCommandResponse(ReportContractModel):
     contract_version: str
     command_id: str
@@ -114,4 +184,5 @@ class ManualRunCommandResponse(ReportContractModel):
     version: int
     as_of: datetime
     idempotency_key: str
-    status: Literal["queued"]
+    status: Literal["queued", "success", "partial", "failed"]
+    run_id: str | None = None

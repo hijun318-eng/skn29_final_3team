@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
@@ -18,7 +18,14 @@ class AppDatabaseReadiness:
         probe["trino"] = self._trino_probe()
         probe["datahub"] = self._datahub_probe()
         probe["model"] = self._model_probe()
+        probe["report_scheduler"] = self._report_scheduler_probe()
         return probe
+
+    @staticmethod
+    def _report_scheduler_probe() -> str:
+        from app.services.report_scheduler import report_scheduler
+
+        return report_scheduler.status
 
     @staticmethod
     def _database_probe() -> dict[str, str]:
@@ -72,8 +79,6 @@ class AppDatabaseReadiness:
 
     @staticmethod
     def _trino_probe() -> str:
-        if os.getenv("DATA_PLATFORM_MODE", "fake") == "fake":
-            return "not_required"
         url = f"{os.getenv('TRINO_URL', 'http://trino:8080').rstrip('/')}/v1/info"
         try:
             with urlopen(url, timeout=2) as response:
@@ -83,8 +88,6 @@ class AppDatabaseReadiness:
 
     @staticmethod
     def _datahub_probe() -> str:
-        if os.getenv("DATA_PLATFORM_MODE", "fake") != "real":
-            return "not_required"
         url = f"{os.getenv('DATAHUB_GMS_URL', 'http://datahub-gms:8080').rstrip('/')}/config"
         try:
             with urlopen(url, timeout=2) as response:
@@ -94,16 +97,23 @@ class AppDatabaseReadiness:
 
     @staticmethod
     def _model_probe() -> str:
-        mode = os.getenv("MODEL_MODE", "fake")
-        if mode in {"fake", "contract-fake", "template-only"}:
-            return "not_required" if mode == "template-only" else "not_ready"
-        if mode != "openai":
+        endpoint = os.getenv("OPENAI_ENDPOINT", "").rstrip("/")
+        token = os.getenv("OPENAI_API_KEY", "")
+        if not endpoint or not token or not os.getenv("OPENAI_MODEL", ""):
             return "not_ready"
-        endpoint = os.getenv("MODEL_ENDPOINT", "").rstrip("/")
-        if not endpoint:
-            return "not_ready"
-        try:
-            with urlopen(f"{endpoint}/v1/models", timeout=2) as response:
-                return "ready" if response.status == 200 else "not_ready"
-        except (OSError, URLError):
-            return "not_ready"
+        request = Request(
+            f"{endpoint}/v1/models",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+                "User-Agent": "answervice-readiness/1.0",
+            },
+        )
+        for _ in range(3):
+            try:
+                with urlopen(request, timeout=5) as response:
+                    if response.status == 200:
+                        return "ready"
+            except (OSError, URLError):
+                pass
+        return "not_ready"

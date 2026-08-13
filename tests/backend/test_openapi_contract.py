@@ -39,7 +39,10 @@ class OpenApiContractTest(unittest.TestCase):
                 "/analysis/definitions/{definition_id}/runs",
                 "/analysis/runs",
                 "/analysis/runs/{request_id}",
+                "/analysis/runs/{request_id}/artifact",
+                "/auth/session",
                 "/health",
+                "/mcp",
                 "/readiness",
                 "/reports/definitions",
                 "/reports/definitions/{definition_id}/versions/{version}/approve",
@@ -49,6 +52,10 @@ class OpenApiContractTest(unittest.TestCase):
                 "/reports/runs",
                 "/reports/runs/manual",
                 "/reports/runs/{run_id}",
+                "/reports/schedules",
+                "/reports/schedules/{schedule_id}",
+                "/reports/schedules/{schedule_id}/run-due",
+                "/reports/assistant/drafts",
             },
             set(committed["paths"]),
         )
@@ -61,6 +68,7 @@ class OpenApiContractTest(unittest.TestCase):
             {
                 "getHealth",
                 "getReadiness",
+                "getAuthenticatedSession",
                 "submitAnalysis",
                 "analysisCreateDefinition",
                 "analysisListDefinitions",
@@ -68,6 +76,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "analysisReplayDefinition",
                 "analysisListRuns",
                 "analysisGetRun",
+                "analysisGetRunArtifact",
                 "reportCreateDefinition",
                 "reportListDefinitions",
                 "reportApproveVersion",
@@ -77,6 +86,13 @@ class OpenApiContractTest(unittest.TestCase):
                 "reportListRuns",
                 "reportCreateManualRunCommand",
                 "reportGetRun",
+                "reportCreateSchedule",
+                "reportListSchedules",
+                "reportUpdateSchedule",
+                "reportRunDueSchedule",
+                "reportAssistantCreateDraft",
+                "mcpGet",
+                "mcpPost",
             },
             operation_ids,
         )
@@ -112,8 +128,10 @@ class OpenApiContractTest(unittest.TestCase):
             "ApproveReportVersionRequest",
             "CreateManualRunRequest",
             "CreateReportDefinitionRequest",
+            "CreateReportScheduleRequest",
             "ReplaceReportBlocksRequest",
             "ReportBlockRequest",
+            "UpdateReportScheduleRequest",
         ):
             with self.subTest(schema=name):
                 self.assertFalse(schemas[name]["additionalProperties"])

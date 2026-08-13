@@ -1,4 +1,22 @@
 services:
+  app-migrations:
+    profiles: [dev, full, split-host]
+    build:
+      context: ../..
+      dockerfile: app/backend/Dockerfile
+    entrypoint: ["alembic"]
+    command: ["upgrade", "head"]
+    environment:
+      APP_DATABASE_URL: postgresql+psycopg://${APP_ADMIN_USER}:${APP_ADMIN_PASSWORD}@app-postgres:5432/${APP_DB_NAME:-app_db}
+      APP_DB_USER: ${APP_DB_USER}
+      TZ: Asia/Seoul
+    networks:
+      - database-network
+    depends_on:
+      app-postgres:
+        condition: service_healthy
+    restart: "no"
+
   backend:
     profiles: [dev, full, split-host]
     container_name: answervice-backend
@@ -14,12 +32,24 @@ services:
       TRINO_URL: http://trino:8080
       TRINO_USER: ${APP_DB_USER}
       DATAHUB_GMS_URL: http://datahub-gms:8080
-      DATA_PLATFORM_MODE: ${DATA_PLATFORM_MODE:-real}
-      MODEL_MODE: ${MODEL_MODE:-template-only}
+      OPENAI_ENDPOINT: ${OPENAI_ENDPOINT:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      NODE2_MODEL_ENDPOINT: ${NODE2_MODEL_ENDPOINT:-}
+      NODE2_MODEL_API_TOKEN: ${NODE2_MODEL_API_TOKEN:-}
+      NODE2_MODEL: ${NODE2_MODEL:-}
+      REPORT_SCHEDULER_ENABLED: ${REPORT_SCHEDULER_ENABLED:-1}
+      REPORT_SCHEDULER_POLL_SECONDS: ${REPORT_SCHEDULER_POLL_SECONDS:-5}
+      REPORT_SCHEDULER_BATCH_SIZE: ${REPORT_SCHEDULER_BATCH_SIZE:-50}
+      NODE2_MODEL_PROVIDER: ${NODE2_MODEL_PROVIDER:-openai}
+      MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-60}
       AUTH_MODE: ${AUTH_MODE:-release}
       AUTH_PRINCIPALS_FILE: ${AUTH_PRINCIPALS_FILE:-/run/secrets/answervice_auth_principals.json}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://127.0.0.1:13000,http://localhost:13000,http://localhost:5173}
       TZ: Asia/Seoul
+      SKIP_MIGRATIONS: "1"
+    volumes:
+      - ${AUTH_PRINCIPALS_HOST_FILE:-../../infrastructure/database/security/answervice_auth_principals.local.json}:/run/secrets/answervice_auth_principals.json:ro
     ports:
       - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:18000:8000"
     networks:
@@ -28,4 +58,6 @@ services:
     depends_on:
       app-postgres:
         condition: service_healthy
+      app-migrations:
+        condition: service_completed_successfully
     restart: unless-stopped

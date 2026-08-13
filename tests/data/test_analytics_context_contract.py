@@ -128,16 +128,19 @@ def test_required_filter_types_reject_coercion_and_non_finite_numbers():
     )
 
 
-def test_metric_registry_adds_only_the_three_approved_single_asset_metrics():
+def test_metric_registry_keeps_checkout_and_stay_day_revenue_separate():
     metrics = {metric["id"]: metric for metric in CONTRACT["metrics"]}
     assert set(metrics) == {
         "recognized_room_revenue",
+        "stay_day_allocated_room_revenue",
         "expired_points",
         "fnb_net_revenue",
         "facility_revenue",
         "actual_attendees",
     }
-    assert len({metric["asset_fqn"] for metric in metrics.values()}) == len(metrics)
+    assert metrics["recognized_room_revenue"]["field"] == "recognized_room_revenue"
+    assert metrics["stay_day_allocated_room_revenue"]["field"] == "room_revenue"
+    assert metrics["recognized_room_revenue"]["asset_fqn"] == metrics["stay_day_allocated_room_revenue"]["asset_fqn"]
 
     expected = {
         "fnb_net_revenue": (
@@ -184,7 +187,7 @@ def test_view_metrics_preserve_actual_non_forecast_filters_without_sql_predicate
     view_metrics = [metric for metric in CONTRACT["metrics"] if metric["asset_fqn"] in view_fqns]
     assert view_metrics
     expected = [
-        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "SYNTHETIC_ACTUAL_LIKE"},
         {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
     ]
     assert all(metric["required_filters"] == expected for metric in view_metrics)

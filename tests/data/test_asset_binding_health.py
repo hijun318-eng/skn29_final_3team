@@ -28,17 +28,21 @@ def test_asset_bindings_are_unique_exact_pairs():
     }
 
 
-def test_unverified_bindings_cannot_claim_health():
+def test_verified_bindings_have_live_provenance():
     health = load(BINDING_PATH)
-    assert (health["status"], health["runtime_execution"]) == ("BLOCKED", "NOT_RUN")
+    assert (health["status"], health["runtime_execution"]) == ("HEALTHY", "PASS")
     for item in health["bindings"]:
-        assert item["status"] == "PENDING_RUNTIME_VERIFICATION"
-        assert item["verified_at"] is None
+        assert item["status"] == "VERIFIED"
+        assert item["verified_at"].endswith("Z")
         assert re.fullmatch(r"\d+\.\d+\.\d+", item["version"])
-        assert item["provenance"] == {
-            "datahub_exact_search": {"status": "NOT_RUN", "response_sha256": None},
-            "trino_metadata": {"status": "NOT_RUN", "result_sha256": None},
-        }
+        assert item["provenance"]["datahub_exact_search"]["status"] == "PASS"
+        assert item["provenance"]["trino_metadata"]["status"] == "PASS"
+        assert re.fullmatch(
+            r"[0-9a-f]{64}", item["provenance"]["datahub_exact_search"]["response_sha256"]
+        )
+        assert re.fullmatch(
+            r"[0-9a-f]{64}", item["provenance"]["trino_metadata"]["result_sha256"]
+        )
 
 
 def test_verified_timestamp_rule_requires_utc():

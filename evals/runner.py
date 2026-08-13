@@ -1,15 +1,11 @@
-"""Dependency-free deterministic runner for versioned AI node fixtures."""
+"""Adapter-driven evaluator for versioned AI node cases."""
 
 from __future__ import annotations
 
-import argparse
 import json
 from hashlib import sha256
-from pathlib import Path
 from statistics import median
 from typing import Any, Iterable
-
-from src.ai.fake_model import FakeModelAdapter
 
 
 class EvaluationError(ValueError):
@@ -21,10 +17,9 @@ _CASE_FIELDS = {"case_id", "node", "request", "expected_output"}
 
 def evaluate_cases(
     cases: Iterable[dict[str, Any]],
-    adapter: FakeModelAdapter | None = None,
+    adapter: Any,
 ) -> dict[str, Any]:
     """Evaluate fixtures twice and return stable exact-match results."""
-    model = adapter or FakeModelAdapter()
     seen: set[str] = set()
     results = []
 
@@ -41,8 +36,8 @@ def evaluate_cases(
             raise EvaluationError(f"duplicate case_id: {case_id}")
         seen.add(case_id)
 
-        first = model.generate(case["node"], case["request"])
-        second = model.generate(case["node"], case["request"])
+        first = adapter.generate(case["node"], case["request"])
+        second = adapter.generate(case["node"], case["request"])
         deterministic = first == second
         expected_match = first == case["expected_output"]
         results.append(
@@ -65,7 +60,7 @@ def evaluate_cases(
 
 def evaluate_required30(
     cases: Iterable[dict[str, Any]],
-    adapter: FakeModelAdapter | None = None,
+    adapter: Any,
 ) -> dict[str, Any]:
     """Reject incomplete acceptance manifests instead of reporting a partial pass."""
     materialized = list(cases)
@@ -202,17 +197,3 @@ def _stable_hash(value: Any) -> str:
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")
     return sha256(encoded).hexdigest()
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("fixture", type=Path)
-    args = parser.parse_args()
-    cases = json.loads(args.fixture.read_text(encoding="utf-8"))
-    summary = evaluate_cases(cases)
-    print(json.dumps(summary, ensure_ascii=False, sort_keys=True, indent=2))
-    return 0 if summary["failed"] == 0 else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

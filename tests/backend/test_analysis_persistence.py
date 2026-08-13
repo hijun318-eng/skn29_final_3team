@@ -19,7 +19,22 @@ from app.analysis_contracts import (  # noqa: E402
     ReplayAnalysisRequest,
 )
 from app.api import router as analysis_api  # noqa: E402
+from app.adapters.analysis_repository import PostgresAnalysisRepository  # noqa: E402
 from app.contracts import AnalysisRequest, RequestContext  # noqa: E402
+from app.controllers.analysis_controller import AnalysisController  # noqa: E402
+from app.services.analysis_service import AnalysisService  # noqa: E402
+from app.services.routing_service import RoutingService  # noqa: E402
+from tests.support.fakes import FakeDataPlatformAdapter, FakeModelAdapter  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def isolated_test_controller():
+    controller = AnalysisController(
+        AnalysisService(FakeDataPlatformAdapter(), FakeModelAdapter()),
+        RoutingService(),
+    )
+    with patch.object(analysis_api, "_controller", return_value=controller):
+        yield
 
 
 class FakeAnalysisRepository:
@@ -40,8 +55,9 @@ class FakeAnalysisRepository:
         self.question = "합성 객실 운영 현황을 알려줘"
         self.parameters = {"scenario": "success"}
 
-    def begin_request(self, question, request_context):
+    def begin_request(self, question, parameters, request_context):
         self.question = question
+        self.parameters = parameters
         self.request_id = request_context.request_id
         return self.request_id
 
@@ -64,12 +80,13 @@ class FakeAnalysisRepository:
             return {**self.definition, "question": self.question, "parameters": self.parameters}
         return self.definition
 
-    def begin_run(self, definition, context, as_of, idempotency_key):
+    def begin_run(self, definition, context, as_of, idempotency_key, parameters=None):
         if self.request_id is not None:
             return self.request_id, False
         self.request_id = context.request_id
         self.as_of = as_of
         self.idempotency_key = idempotency_key
+        self.parameters = parameters if parameters is not None else definition["parameters"]
         return self.request_id, True
 
     def finish_run(self, request_id, response, execution):
@@ -98,6 +115,24 @@ class FakeAnalysisRepository:
 
     def list_runs(self):
         return [] if self.request_id is None else [self.get_run(self.request_id)]
+
+    def get_run_artifact(self, request_id):
+        response = self.finished[0] if isinstance(self.finished, tuple) else None
+        if response is None or response.data.result is None or response.data.artifact is None:
+            raise KeyError("승인된 Analysis Artifact를 찾을 수 없습니다.")
+        return {
+            "request_id": request_id,
+            "trace_id": "analysis-persistence-trace",
+            "status": response.data.status.value,
+            "question": self.question,
+            "summary": response.data.result.summary,
+            "table": response.data.result.table,
+            "chart": response.data.result.chart,
+            "evidence": response.data.result.evidence,
+            "artifact_id": response.data.artifact.artifact_id,
+            "query_id": response.data.artifact.query_id,
+            "artifact_checksum": "a" * 64,
+        }
 
 
 def context(owner_id: UUID | None = None) -> RequestContext:
@@ -142,11 +177,15 @@ def test_definition_routes_are_owner_scoped_repository_calls_without_values_in_c
     assert "parameters" not in created
 
 
-def test_replay_uses_existing_controller_and_is_idempotent_without_result_exposure():
+def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     owner = uuid4()
     repository = FakeAnalysisRepository(owner)
     first_context = context(owner)
-    payload = ReplayAnalysisRequest(as_of=date(2026, 7, 1), idempotency_key="run-1")
+    payload = ReplayAnalysisRequest(
+        as_of=date(2026, 7, 1),
+        idempotency_key="run-1",
+        parameters={"scenario": "success_changed"},
+    )
     with patch.object(analysis_api, "_analysis_repository", return_value=repository):
         first = analysis_api.replay_analysis_definition(
             repository.definition_id, payload, first_context
@@ -160,9 +199,17 @@ def test_replay_uses_existing_controller_and_is_idempotent_without_result_exposu
     assert first["status"] == "SUCCEEDED"
     assert first["as_of"] == date(2026, 7, 1)
     assert first["artifact_id"]
+    assert repository.parameters == {"scenario": "success_changed"}
     assert set(repository.finished[1]) == {"plan", "query", "package"}
     assert "result" not in first
     assert "sql" not in first
+    with patch.object(analysis_api, "_analysis_repository", return_value=repository):
+        artifact = analysis_api.get_analysis_run_artifact(first["request_id"], context(owner))
+    assert artifact["request_id"] == first["request_id"]
+    assert artifact["artifact_id"] == first["artifact_id"]
+    assert artifact["table"].rows
+    assert "sql" not in artifact
+    assert "parameters" not in artifact
 
 
 def test_direct_analysis_persists_request_query_and_artifact_when_database_is_configured():
@@ -183,6 +230,55 @@ def test_direct_analysis_persists_request_query_and_artifact_when_database_is_co
     assert repository.request_id == request_context.request_id
     assert repository.finished[0] is response
     assert set(repository.finished[1]) == {"plan", "query", "package"}
+
+
+def test_terminal_audit_links_request_query_artifact_and_redacted_trace():
+    owner = uuid4()
+    repository = FakeAnalysisRepository(owner)
+    request_context = context(owner)
+    with patch.object(
+        analysis_api, "_analysis_repository", return_value=repository
+    ), patch.dict(
+        "os.environ", {"APP_RUNTIME_DATABASE_URL": "postgresql://configured"}
+    ):
+        response = analysis_api.analysis(
+            AnalysisRequest(question="합성 객실 운영 현황을 알려줘"),
+            request_context,
+        )
+
+    class RecordingConnection:
+        def __init__(self):
+            self.statement = None
+            self.parameters = None
+
+        def execute(self, statement, parameters):
+            self.statement = str(statement)
+            self.parameters = parameters
+
+    connection = RecordingConnection()
+    query_execution_id = uuid4()
+    artifact_id = response.data.artifact.artifact_id
+    PostgresAnalysisRepository._save_audit(
+        connection,
+        request_context.request_id,
+        response,
+        query_execution_id,
+        artifact_id,
+    )
+
+    details = __import__("json").loads(connection.parameters["details"])
+    assert "INSERT INTO governance.audit_events" in connection.statement
+    assert connection.parameters["request_id"] == request_context.request_id
+    assert connection.parameters["query_execution_id"] == query_execution_id
+    assert connection.parameters["artifact_id"] == artifact_id
+    assert connection.parameters["action_code"] == "ANALYSIS_SUCCEEDED"
+    assert details["status"] == "SUCCEEDED"
+    assert details["query_id"] == response.data.result.evidence.query_id
+    assert [step["stage"] for step in details["trace"]] == [
+        step.stage.value for step in response.data.trace
+    ]
+    assert "question" not in details
+    assert "sql" not in details
 
 
 def test_replay_requires_store_and_existing_owner_definition():

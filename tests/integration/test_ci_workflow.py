@@ -9,12 +9,10 @@ ACTION_PINS = {
     "actions/setup-node": ("49933ea5288caeca8642d1e84afbd3f7d6820020", "v4.4.0"),
 }
 JOB_TIMEOUTS = {
-    "role-scope": 10,
-    "python-contracts": 20,
-    "document-quality": 10,
-    "frontend-contracts": 20,
+    "python-tests": 25,
+    "frontend": 20,
     "compose-config": 10,
-    "quality-gate": 5,
+    "quality": 5,
 }
 
 
@@ -24,7 +22,7 @@ def _workflow() -> str:
 
 def test_actions_use_immutable_official_pins_with_exact_version_comments():
     uses = re.findall(r"(?m)^\s*- uses: ([^\s#]+)\s+#\s+(v\d+\.\d+\.\d+)\s*$", _workflow())
-    assert len(uses) == 7
+    assert len(uses) == 5
     for reference, comment in uses:
         action, separator, sha = reference.partition("@")
         assert separator and action in ACTION_PINS
@@ -45,28 +43,26 @@ def test_all_jobs_have_bounded_timeouts():
         assert re.findall(r"(?m)^    timeout-minutes: (\d+)\s*$", jobs[job]) == [str(timeout)]
 
 
-def test_workflow_keeps_read_only_repository_permission():
+def test_workflow_is_not_role_or_handoff_scoped():
+    source = _workflow()
+    for obsolete in (
+        "role-scope",
+        "handoff",
+        "gate_scope.py",
+        "junhee",
+        "seung",
+        "daesung",
+        "jaehong",
+        "minji",
+    ):
+        assert obsolete not in source
+    assert "python -m pytest -p no:cacheprovider tests -q" in source
+    assert "pull_request:" in source
+
+
+def test_workflow_keeps_read_only_permission_and_common_quality_gate():
     source = _workflow()
     assert source.count("permissions:") == 1
     assert re.search(r"(?m)^permissions:\s*\n  contents: read\s*$", source)
-
-
-def test_test_branch_runs_integration_sized_checks_without_host_deployment():
-    workflow = _workflow()
-    assert "branches: [dev, test, junhee, seung, daesung, jaehong, minji]" in workflow
-    assert "dev|test) targets=(tests)" in workflow
-    assert 'scope_branch="dev"' in workflow
-    assert "self-hosted" not in workflow
-    assert "refresh_test_runtime.ps1" not in workflow
-
-
-def test_product_jobs_run_after_role_scope_failure_without_opening_quality_gate():
-    source = _workflow()
-    for output in ("python", "documents", "frontend", "compose"):
-        assert re.search(
-            rf"(?m)^    if: \$\{{\{{ always\(\) && needs\['role-scope'\]\.outputs\.{output} == 'true'",
-            source,
-        )
-
-    assert 'ROLE_SCOPE: ${{ needs[\'role-scope\'].result }}' in source
-    assert 'if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then' in source
+    assert "needs: [python-tests, frontend, compose-config]" in source
+    assert 'if [[ "$result" != "success" ]]; then' in source

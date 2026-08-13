@@ -13,17 +13,18 @@ def load(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_runtime_evidence_is_truthfully_blocked():
+def test_runtime_evidence_records_the_verified_live_run():
     evidence = load(EVIDENCE_PATH)
     assert evidence["contract_version"] == "I5-DATAHUB-v1.1.0-RUNTIME-DRAFT"
     assert evidence["datahub_version"] == "v1.7.0"
     assert evidence["trino_version"] == "476"
-    assert (evidence["status"], evidence["runtime_execution"]) == ("BLOCKED", "NOT_RUN")
-    assert evidence["blocker"]["required_checkpoint"] == "R1_RUNTIME_HEALTHY"
-    assert evidence["recorded_at"] is None
-    assert all(item["status"] == "NOT_RUN" and item["exit_code"] is None for item in evidence["ingestion_plan"])
-    assert all(item["status"] == "NOT_RUN" for item in evidence["observed"].values())
-    assert not any(item["canonical_sha256"] for item in evidence["observed"].values())
+    assert (evidence["status"], evidence["runtime_execution"]) == ("HEALTHY", "PASS")
+    assert evidence["blocker"] is None
+    assert evidence["recorded_at"].endswith("Z")
+    assert all(item["status"] == "PASS" and item["exit_code"] == 0 for item in evidence["ingestion_plan"])
+    assert all(item["status"] == "PASS" for item in evidence["observed"].values())
+    assert all(item["canonical_sha256"] for item in evidence["observed"].values())
+    assert evidence["observed"]["ingestion"]["records_written"] == 303
 
 
 def test_recipe_order_and_hashes_are_reproducible():
@@ -44,7 +45,7 @@ def test_expected_assets_match_the_serving_contract():
     urns = [view["urn"] for view in contract["views"]]
     assert evidence["expected"]["urns"] == urns
     assert evidence["expected"]["view_count"] == len(contract["views"]) == 8
-    assert evidence["expected"]["column_count"] == sum(len(view["columns"]) for view in contract["views"]) == 116
+    assert evidence["expected"]["column_count"] == sum(len(view["columns"]) for view in contract["views"]) == 117
 
 
 def test_evidence_has_no_secret_bearing_fields():

@@ -13,11 +13,26 @@ from .schema import ContractError, validate_payload
 def normalize_question(payload: dict[str, Any]) -> dict[str, Any]:
     validate_payload("node1_request", payload)
     question = " ".join(payload["question"].split())
-    matched_terms = [
-        (term_id, term)
+    alias_matches = [
+        (term_id, term, alias)
         for term_id, term in payload["business_terms"].items()
-        if any(alias in question for alias in term["aliases"])
+        for alias in term["aliases"]
+        if alias in question
     ]
+    specific_matches = [
+        match
+        for match in alias_matches
+        if not any(
+            match[2] != other[2] and match[2] in other[2]
+            for other in alias_matches
+        )
+    ]
+    matched_terms = list(
+        {
+            term_id: (term_id, term)
+            for term_id, term, _alias in specific_matches
+        }.values()
+    )
     metrics = [term_id for term_id, term in matched_terms if term["kind"] == "metric"]
     dimensions = [term_id for term_id, term in matched_terms if term["kind"] == "dimension"]
     periods = _period_candidates(question, payload["as_of"], payload["timezone"])

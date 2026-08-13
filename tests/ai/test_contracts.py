@@ -114,6 +114,7 @@ VALID_PAYLOADS = {
             "rows": [{"room_revenue": 1000}],
         },
         "metric": "room_revenue",
+        "metric_label": "객실 매출",
         "period": EXECUTION_TIME,
         "filters": [],
         "unit": "KRW",
@@ -135,7 +136,7 @@ VALID_PAYLOADS = {
 
 class ContractTests(unittest.TestCase):
     def test_schema_version_is_explicit(self):
-        self.assertEqual(schema_version(), "MODEL-v1.0.0")
+        self.assertEqual(schema_version(), "MODEL-v1.1.0")
 
     def test_valid_examples(self):
         for definition, payload in VALID_PAYLOADS.items():
@@ -160,13 +161,15 @@ class ContractTests(unittest.TestCase):
         )
         expected_ids = {
             "recognized_room_revenue",
+            "stay_day_allocated_room_revenue",
             "expired_points",
             "fnb_net_revenue",
             "facility_revenue",
             "actual_attendees",
+            "total_guest_revenue_krw",
         }
 
-        self.assertEqual(glossary["version"], "METRIC-GLOSSARY-v1.0.0-DRAFT")
+        self.assertEqual(glossary["version"], "METRIC-GLOSSARY-v1.1.0")
         self.assertEqual(set(glossary), {"version", "metrics"})
         self.assertEqual(set(glossary["metrics"]), expected_ids)
         aliases = [
@@ -178,7 +181,10 @@ class ContractTests(unittest.TestCase):
             self.assertTrue(all(isinstance(alias, str) and alias for alias in values))
             self.assertTrue(any(any("가" <= char <= "힣" for char in alias) for alias in values))
             self.assertTrue(any(any(char.isascii() and char.isalpha() for char in alias) for alias in values))
-        self.assertEqual(len(aliases), len(set(aliases)))
+        duplicate_aliases = {
+            alias for alias in aliases if aliases.count(alias) > 1
+        }
+        self.assertEqual({"객실 매출"}, duplicate_aliases)
 
     def test_node2_accepts_optional_non_empty_normalized_question(self):
         legacy = copy.deepcopy(VALID_PAYLOADS["node2_request"])
@@ -196,16 +202,17 @@ class ContractTests(unittest.TestCase):
         legacy = copy.deepcopy(VALID_PAYLOADS["node2_request"])
         current = copy.deepcopy(legacy)
         current["context_package"]["metrics"][0]["required_filters"] = [
-            {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False}
+            {"field": "is_forecast", "operator": "eq", "parameter_name": "required_filter_1", "value_type": "boolean", "value": False}
         ]
 
         validate_payload("node2_request", legacy)
         validate_payload("node2_request", current)
 
         for invalid_filter in (
-            {"field": "is_forecast", "operator": "raw", "value_type": "boolean", "value": False},
-            {"field": "is_forecast", "operator": "eq", "value_type": "timestamp", "value": "2026-07-01"},
-            {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False, "sql": "1 = 1"},
+            {"field": "is_forecast", "operator": "raw", "parameter_name": "required_filter_1", "value_type": "boolean", "value": False},
+            {"field": "is_forecast", "operator": "eq", "parameter_name": "required_filter_1", "value_type": "timestamp", "value": "2026-07-01"},
+            {"field": "is_forecast", "operator": "eq", "parameter_name": "filter", "value_type": "boolean", "value": False},
+            {"field": "is_forecast", "operator": "eq", "parameter_name": "required_filter_1", "value_type": "boolean", "value": False, "sql": "1 = 1"},
         ):
             invalid = copy.deepcopy(legacy)
             invalid["context_package"]["metrics"][0]["required_filters"] = [invalid_filter]
@@ -237,6 +244,10 @@ class ContractTests(unittest.TestCase):
         repair["attempt"] = 2
         with self.assertRaises(ContractError):
             validate_payload("node2_repair_request", repair)
+
+        contextual_repair = copy.deepcopy(VALID_PAYLOADS["node2_repair_request"])
+        contextual_repair["violation_detail"] = "Context-derived repair constraint"
+        validate_payload("node2_repair_request", contextual_repair)
 
         explanation = copy.deepcopy(VALID_PAYLOADS["node3_request"])
         explanation["g3_result"] = "fail"

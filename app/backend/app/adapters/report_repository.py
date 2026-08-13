@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
-from datetime import datetime
+from calendar import monthrange
+from datetime import datetime, timedelta
 from functools import lru_cache
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import IntegrityError
@@ -33,12 +36,35 @@ def _uuid(value: str, field: str) -> UUID:
         raise ValueError(f"{field}는 UUID 형식이어야 합니다.") from error
 
 
-class PostgresReportRepository:
-    """Owner-scoped REPORT-v1.1 application PostgreSQL 저장소."""
+def _advance_schedule(current: datetime, cadence: str) -> datetime:
+    local = current.astimezone(ZoneInfo("Asia/Seoul"))
+    if cadence == "daily":
+        return local + timedelta(days=1)
+    if cadence == "weekly":
+        return local + timedelta(days=7)
+    if cadence == "monthly":
+        year = local.year + (1 if local.month == 12 else 0)
+        month = 1 if local.month == 12 else local.month + 1
+        return local.replace(year=year, month=month, day=min(local.day, monthrange(year, month)[1]))
+    raise ValueError("지원하지 않는 Report cadence입니다.")
 
-    def __init__(self, database_url: str, owner_id: UUID) -> None:
+
+class PostgresReportRepository:
+    """Owner-scoped Report 저장소이며 관리자는 명시적으로 전체 범위를 관리한다."""
+
+    def __init__(
+        self,
+        database_url: str,
+        owner_id: UUID,
+        *,
+        manage_all: bool = False,
+    ) -> None:
         self._engine = _engine(database_url)
         self._owner_id = owner_id
+        self._manage_all = manage_all
+
+    def _scope_params(self) -> dict[str, object]:
+        return {"owner_id": self._owner_id, "manage_all": self._manage_all}
 
     def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
         if draft.status is not DefinitionStatus.DRAFT:
@@ -65,7 +91,7 @@ class PostgresReportRepository:
                     ),
                     {"definition_id": definition_id},
                 ).scalar_one()
-                if owner != self._owner_id:
+                if owner != self._owner_id and not self._manage_all:
                     raise ValueError("다른 사용자의 Report definition입니다.")
                 connection.execute(
                     text(
@@ -126,13 +152,13 @@ class PostgresReportRepository:
                     FROM report_v1.report_definition_versions v
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
-                      AND d.owner_id = :owner_id
+                      AND (:manage_all OR d.owner_id = :owner_id)
                     """
                 ),
                 {
+                    **self._scope_params(),
                     "definition_id": definition_uuid,
                     "version": version,
-                    "owner_id": self._owner_id,
                 },
             ).mappings().one_or_none()
             if row is None:
@@ -145,7 +171,7 @@ class PostgresReportRepository:
                     FROM report_v1.report_blocks
                     WHERE definition_id = :definition_id
                       AND definition_version = :version
-                    ORDER BY block_id
+                    ORDER BY y, x, block_id
                     """
                 ),
                 {"definition_id": definition_uuid, "version": version},
@@ -182,11 +208,11 @@ class PostgresReportRepository:
                     SELECT v.definition_id, v.version
                     FROM report_v1.report_definition_versions v
                     JOIN report_v1.report_definitions d USING (definition_id)
-                    WHERE d.owner_id = :owner_id
-                    ORDER BY v.definition_id, v.version
+                    WHERE (:manage_all OR d.owner_id = :owner_id)
+                    ORDER BY v.created_at DESC, v.definition_id, v.version DESC
                     """
                 ),
-                {"owner_id": self._owner_id},
+                self._scope_params(),
             ).all()
         return tuple(self.get_version(str(definition_id), version) for definition_id, version in keys)
 
@@ -206,13 +232,14 @@ class PostgresReportRepository:
                     FROM report_v1.report_definitions d
                     WHERE v.definition_id = d.definition_id
                       AND v.definition_id = :definition_id AND v.version = :version
-                      AND d.owner_id = :owner_id AND v.status = 'draft'
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                      AND v.status = 'draft'
                     """
                 ),
                 {
+                    **self._scope_params(),
                     "definition_id": definition_uuid,
                     "version": version,
-                    "owner_id": self._owner_id,
                     "approved_at": approved_at,
                 },
             )
@@ -223,13 +250,13 @@ class PostgresReportRepository:
                         SELECT 1 FROM report_v1.report_definition_versions v
                         JOIN report_v1.report_definitions d USING (definition_id)
                         WHERE v.definition_id = :definition_id AND v.version = :version
-                          AND d.owner_id = :owner_id
+                          AND (:manage_all OR d.owner_id = :owner_id)
                         """
                     ),
                     {
+                        **self._scope_params(),
                         "definition_id": definition_uuid,
                         "version": version,
-                        "owner_id": self._owner_id,
                     },
                 ).first()
                 if existing is None:
@@ -261,11 +288,15 @@ class PostgresReportRepository:
                     FROM report_v1.report_definition_versions v
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
-                      AND d.owner_id = :owner_id
+                      AND (:manage_all OR d.owner_id = :owner_id)
                     FOR UPDATE
                     """
                 ),
-                {"definition_id": definition_uuid, "version": version, "owner_id": self._owner_id},
+                {
+                    **self._scope_params(),
+                    "definition_id": definition_uuid,
+                    "version": version,
+                },
             ).scalar_one_or_none()
             if status is None:
                 raise KeyError("Report definition version을 찾을 수 없습니다.")
@@ -322,13 +353,13 @@ class PostgresReportRepository:
                         JOIN report_v1.report_definitions d USING (definition_id)
                         WHERE v.definition_id = :definition_id
                           AND v.version = :version AND v.status = 'approved'
-                          AND d.owner_id = :owner_id
+                          AND (:manage_all OR d.owner_id = :owner_id)
                         """
                     ),
                     {
+                        **self._scope_params(),
                         "definition_id": definition_id,
                         "version": run.definition_version,
-                        "owner_id": self._owner_id,
                     },
                 ).first()
                 if approved is None:
@@ -380,7 +411,7 @@ class PostgresReportRepository:
         return run
 
     def list_runs(self, definition_id: str | None = None) -> tuple[ReportRun, ...]:
-        parameters: dict[str, object] = {"owner_id": self._owner_id}
+        parameters = self._scope_params()
         filter_sql = ""
         if definition_id is not None:
             parameters["definition_id"] = _uuid(definition_id, "definition_id")
@@ -392,7 +423,7 @@ class PostgresReportRepository:
                     SELECT r.run_id
                     FROM report_v1.report_runs r
                     JOIN report_v1.report_definitions d USING (definition_id)
-                    WHERE d.owner_id = :owner_id {filter_sql}
+                    WHERE (:manage_all OR d.owner_id = :owner_id) {filter_sql}
                     ORDER BY r.created_at, r.run_id
                     """
                 ),
@@ -410,10 +441,11 @@ class PostgresReportRepository:
                            r.policy_version, r.context_hash, r.watermark, r.status
                     FROM report_v1.report_runs r
                     JOIN report_v1.report_definitions d USING (definition_id)
-                    WHERE r.run_id = :run_id AND d.owner_id = :owner_id
+                    WHERE r.run_id = :run_id
+                      AND (:manage_all OR d.owner_id = :owner_id)
                     """
                 ),
-                {"run_id": run_uuid, "owner_id": self._owner_id},
+                {**self._scope_params(), "run_id": run_uuid},
             ).mappings().one_or_none()
             if row is None:
                 raise KeyError("Report run을 찾을 수 없습니다.")
@@ -439,14 +471,14 @@ class PostgresReportRepository:
                 tuple(
                     ReportBlockRun(
                         str(block["block_id"]),
-                        str(block["artifact_id"]),
+                        str(block["artifact_id"]) if block["artifact_id"] else None,
                         block["query_id"],
                         block["snapshot_checksum"],
                         BlockRunStatus(block["status"]),
                     )
                     for block in blocks
-                ),
-            )
+                        ),
+                    )
 
     def queue_manual_run(
         self,
@@ -465,10 +497,15 @@ class PostgresReportRepository:
                     SELECT 1 FROM report_v1.report_definition_versions v
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
-                      AND v.status = 'approved' AND d.owner_id = :owner_id
+                      AND v.status = 'approved'
+                      AND (:manage_all OR d.owner_id = :owner_id)
                     """
                 ),
-                {"definition_id": definition_uuid, "version": version, "owner_id": self._owner_id},
+                {
+                    **self._scope_params(),
+                    "definition_id": definition_uuid,
+                    "version": version,
+                },
             ).first()
             if approved is None:
                 raise ValueError("승인된 Report definition version만 실행할 수 있습니다.")
@@ -500,3 +537,464 @@ class PostgresReportRepository:
             row["idempotency_key"],
             RunStatus(row["status"]),
         )
+
+    def execute_manual_run(self, command_id: str) -> ReportRun:
+        command_uuid = _uuid(command_id, "command_id")
+        run_id = None
+        with self._engine.begin() as connection:
+            command = connection.execute(
+                text(
+                    """
+                    SELECT c.definition_id, c.definition_version, c.as_of, c.run_id
+                    FROM report_v1.report_manual_run_commands c
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE c.command_id = :command_id
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                    FOR UPDATE
+                    """
+                ),
+                {**self._scope_params(), "command_id": command_uuid},
+            ).mappings().one_or_none()
+            if command is None:
+                raise KeyError("Report manual run command를 찾을 수 없습니다.")
+            if command["run_id"] is not None:
+                run_id = command["run_id"]
+            else:
+                blocks = connection.execute(
+                    text(
+                        """
+                        SELECT block_id, block_type, artifact_id, query_id
+                        FROM report_v1.report_blocks
+                        WHERE definition_id = :definition_id
+                          AND definition_version = :version
+                        ORDER BY y, x, block_id
+                        """
+                    ),
+                    {
+                        "definition_id": command["definition_id"],
+                        "version": command["definition_version"],
+                    },
+                ).mappings().all()
+                block_runs = []
+                policy_version = "policy-v1"
+                watermark = {}
+                for block in blocks:
+                    if block["block_type"] == "text":
+                        continue
+                    evidence = connection.execute(
+                        text(
+                            """
+                            SELECT a.artifact_id, q.trino_query_id,
+                                   a.artifact_checksum, r.sql_policy_version
+                            FROM artifact.analysis_artifacts a
+                            JOIN query.query_executions q
+                              ON q.query_execution_id = a.query_execution_id
+                            JOIN chat.analysis_requests r
+                              ON r.request_id = a.request_id
+                            WHERE a.artifact_id = :artifact_id
+                              AND q.trino_query_id = :query_id
+                              AND a.status = 'APPROVED'
+                            """
+                        ),
+                        {
+                            "artifact_id": block["artifact_id"],
+                            "query_id": block["query_id"],
+                        },
+                    ).mappings().one_or_none()
+                    if evidence:
+                        policy_version = evidence["sql_policy_version"]
+                        watermark[str(evidence["artifact_id"])] = evidence["artifact_checksum"]
+                        block_runs.append(
+                            (
+                                block["block_id"],
+                                evidence["artifact_id"],
+                                evidence["trino_query_id"],
+                                evidence["artifact_checksum"],
+                                "success",
+                            )
+                        )
+                    else:
+                        block_runs.append((block["block_id"], None, None, None, "failed"))
+
+                successes = sum(item[4] == "success" for item in block_runs)
+                run_status = (
+                    "success"
+                    if block_runs and successes == len(block_runs)
+                    else "partial"
+                    if successes
+                    else "failed"
+                )
+                run_id = uuid4()
+                context_hash = hashlib.sha256(
+                    json.dumps(watermark, sort_keys=True).encode()
+                ).hexdigest()
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO report_v1.report_runs
+                            (run_id, definition_id, definition_version, as_of,
+                             policy_version, context_hash, watermark, status)
+                        VALUES (:run_id, :definition_id, :version, :as_of,
+                                :policy_version, :context_hash,
+                                CAST(:watermark AS jsonb), :status)
+                        """
+                    ),
+                    {
+                        "run_id": run_id,
+                        "definition_id": command["definition_id"],
+                        "version": command["definition_version"],
+                        "as_of": command["as_of"],
+                        "policy_version": policy_version,
+                        "context_hash": context_hash,
+                        "watermark": json.dumps(watermark, sort_keys=True),
+                        "status": run_status,
+                    },
+                )
+                for block_id, artifact_id, query_id, checksum, status in block_runs:
+                    connection.execute(
+                        text(
+                            """
+                            INSERT INTO report_v1.report_block_runs
+                                (run_id, block_id, artifact_id, query_id,
+                                 snapshot_checksum, status)
+                            VALUES (:run_id, :block_id, :artifact_id, :query_id,
+                                    :checksum, :status)
+                            """
+                        ),
+                        {
+                            "run_id": run_id,
+                            "block_id": block_id,
+                            "artifact_id": artifact_id,
+                            "query_id": query_id,
+                            "checksum": checksum,
+                            "status": status,
+                        },
+                    )
+                connection.execute(
+                    text(
+                        """
+                        UPDATE report_v1.report_manual_run_commands
+                        SET status = :status, run_id = :run_id
+                        WHERE command_id = :command_id
+                        """
+                    ),
+                    {"status": run_status, "run_id": run_id, "command_id": command_uuid},
+                )
+        return self.get_run(str(run_id))
+
+    def create_schedule(
+        self,
+        schedule_id: str,
+        definition_id: str,
+        version: int,
+        cadence: str,
+        timezone_name: str,
+        next_run_at: datetime,
+    ) -> dict[str, object]:
+        schedule_uuid = _uuid(schedule_id, "schedule_id")
+        definition_uuid = _uuid(definition_id, "definition_id")
+        if cadence not in {"daily", "weekly", "monthly"}:
+            raise ValueError("지원하지 않는 Report cadence입니다.")
+        if timezone_name != "Asia/Seoul":
+            raise ValueError("Report schedule timezone은 Asia/Seoul이어야 합니다.")
+        try:
+            with self._engine.begin() as connection:
+                approved = connection.execute(
+                    text(
+                        """
+                        SELECT 1 FROM report_v1.report_definition_versions v
+                        JOIN report_v1.report_definitions d USING (definition_id)
+                        WHERE v.definition_id = :definition_id AND v.version = :version
+                          AND v.status = 'approved'
+                          AND (:manage_all OR d.owner_id = :owner_id)
+                        """
+                    ),
+                    {
+                        **self._scope_params(),
+                        "definition_id": definition_uuid,
+                        "version": version,
+                    },
+                ).first()
+                if approved is None:
+                    raise ValueError("관리 범위의 승인된 Report definition version만 예약할 수 있습니다.")
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO report_v1.report_schedules
+                            (schedule_id, definition_id, definition_version, cadence,
+                             timezone_name, next_run_at)
+                        VALUES (:schedule_id, :definition_id, :version, :cadence,
+                                :timezone_name, :next_run_at)
+                        """
+                    ),
+                    {
+                        "schedule_id": schedule_uuid,
+                        "definition_id": definition_uuid,
+                        "version": version,
+                        "cadence": cadence,
+                        "timezone_name": timezone_name,
+                        "next_run_at": next_run_at,
+                    },
+                )
+        except IntegrityError as error:
+            raise ValueError("같은 Report schedule_id가 이미 존재합니다.") from error
+        return self.get_schedule(str(schedule_uuid))
+
+    def get_assistant_artifact(self, artifact_id: str) -> dict[str, object]:
+        artifact_uuid = _uuid(artifact_id, "artifact_id")
+        with self._engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    SELECT a.artifact_id, a.title, a.narrative_markdown,
+                           a.evidence_json, a.chart_spec_json, a.artifact_checksum,
+                           q.trino_query_id
+                    FROM artifact.analysis_artifacts a
+                    JOIN query.query_executions q
+                      ON q.query_execution_id = a.query_execution_id
+                    WHERE a.artifact_id = :artifact_id AND a.status = 'APPROVED'
+                    """
+                ),
+                {"artifact_id": artifact_uuid},
+            ).mappings().one_or_none()
+        if row is None:
+            raise KeyError("승인된 Analysis Artifact를 찾을 수 없습니다.")
+        return dict(row)
+
+    def start_assistant_request(
+        self,
+        assistant_request_id: str,
+        artifact_id: str,
+        instruction_hash: str,
+        prompt_id: str,
+        prompt_version: str,
+        prompt_hash: str,
+    ) -> None:
+        with self._engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_assistant_requests
+                        (assistant_request_id, owner_id, artifact_id, instruction_hash,
+                         status, prompt_id, prompt_version, prompt_hash)
+                    VALUES (:request_id, :owner_id, :artifact_id, :instruction_hash,
+                            'running', :prompt_id, :prompt_version, :prompt_hash)
+                    """
+                ),
+                {
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                    "artifact_id": _uuid(artifact_id, "artifact_id"),
+                    "instruction_hash": instruction_hash,
+                    "prompt_id": prompt_id,
+                    "prompt_version": prompt_version,
+                    "prompt_hash": prompt_hash,
+                },
+            )
+
+    def complete_assistant_request(
+        self,
+        assistant_request_id: str,
+        definition_id: str,
+        version: int,
+        model_version: str,
+        output_hash: str,
+    ) -> None:
+        with self._engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_assistant_requests
+                    SET status = 'success', definition_id = :definition_id,
+                        definition_version = :version, model_version = :model_version,
+                        output_hash = :output_hash, completed_at = now()
+                    WHERE assistant_request_id = :request_id AND owner_id = :owner_id
+                      AND status = 'running'
+                    """
+                ),
+                {
+                    "definition_id": _uuid(definition_id, "definition_id"),
+                    "version": version,
+                    "model_version": model_version,
+                    "output_hash": output_hash,
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                },
+            )
+
+    def fail_assistant_request(self, assistant_request_id: str, error_code: str) -> None:
+        with self._engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_assistant_requests
+                    SET status = 'failed', error_code = :error_code, completed_at = now()
+                    WHERE assistant_request_id = :request_id AND owner_id = :owner_id
+                      AND status = 'running'
+                    """
+                ),
+                {
+                    "error_code": error_code,
+                    "request_id": _uuid(assistant_request_id, "assistant_request_id"),
+                    "owner_id": self._owner_id,
+                },
+            )
+
+    def get_schedule(self, schedule_id: str) -> dict[str, object]:
+        schedule_uuid = _uuid(schedule_id, "schedule_id")
+        with self._engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    SELECT s.schedule_id, s.definition_id, s.definition_version,
+                           s.cadence, s.timezone_name, s.next_run_at,
+                           s.enabled, s.last_run_id
+                    FROM report_v1.report_schedules s
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE s.schedule_id = :schedule_id
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                    """
+                ),
+                {**self._scope_params(), "schedule_id": schedule_uuid},
+            ).mappings().one_or_none()
+        if row is None:
+            raise KeyError("Report schedule을 찾을 수 없습니다.")
+        return self._schedule_response(row)
+
+    def list_schedules(self) -> tuple[dict[str, object], ...]:
+        with self._engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT s.schedule_id, s.definition_id, s.definition_version,
+                           s.cadence, s.timezone_name, s.next_run_at,
+                           s.enabled, s.last_run_id
+                    FROM report_v1.report_schedules s
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE (:manage_all OR d.owner_id = :owner_id)
+                    ORDER BY s.created_at, s.schedule_id
+                    """
+                ),
+                self._scope_params(),
+            ).mappings().all()
+        return tuple(self._schedule_response(row) for row in rows)
+
+    def list_due_schedule_ids(
+        self,
+        now: datetime,
+        *,
+        limit: int = 50,
+    ) -> tuple[str, ...]:
+        if now.tzinfo is None or now.utcoffset() is None:
+            raise ValueError("now에는 timezone offset이 필요합니다.")
+        if limit < 1 or limit > 100:
+            raise ValueError("Report schedule 조회 limit은 1~100이어야 합니다.")
+        with self._engine.connect() as connection:
+            schedule_ids = connection.execute(
+                text(
+                    """
+                    SELECT s.schedule_id
+                    FROM report_v1.report_schedules s
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE s.enabled AND s.next_run_at <= :now
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                    ORDER BY s.next_run_at, s.schedule_id
+                    LIMIT :limit
+                    """
+                ),
+                {**self._scope_params(), "now": now, "limit": limit},
+            ).scalars().all()
+        return tuple(str(schedule_id) for schedule_id in schedule_ids)
+
+    def set_schedule_enabled(
+        self,
+        schedule_id: str,
+        enabled: bool,
+    ) -> dict[str, object]:
+        schedule_uuid = _uuid(schedule_id, "schedule_id")
+        with self._engine.begin() as connection:
+            updated = connection.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_schedules AS s
+                    SET enabled = :enabled, updated_at = now()
+                    FROM report_v1.report_definitions AS d
+                    WHERE s.schedule_id = :schedule_id
+                      AND d.definition_id = s.definition_id
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                    RETURNING s.schedule_id
+                    """
+                ),
+                {
+                    **self._scope_params(),
+                    "schedule_id": schedule_uuid,
+                    "enabled": enabled,
+                },
+            ).scalar_one_or_none()
+        if updated is None:
+            raise KeyError("Report schedule을 찾을 수 없습니다.")
+        return self.get_schedule(str(updated))
+
+    def run_due_schedule(
+        self,
+        schedule_id: str,
+        now: datetime,
+    ) -> tuple[dict[str, object], ReportRun | None]:
+        schedule_uuid = _uuid(schedule_id, "schedule_id")
+        run = None
+        with self._engine.begin() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    SELECT s.schedule_id, s.definition_id, s.definition_version,
+                           s.cadence, s.timezone_name, s.next_run_at,
+                           s.enabled, s.last_run_id
+                    FROM report_v1.report_schedules s
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE s.schedule_id = :schedule_id
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                    FOR UPDATE OF s
+                    """
+                ),
+                {**self._scope_params(), "schedule_id": schedule_uuid},
+            ).mappings().one_or_none()
+            if row is None:
+                raise KeyError("Report schedule을 찾을 수 없습니다.")
+            if row["enabled"] and row["next_run_at"] <= now:
+                scheduled_for = row["next_run_at"]
+                command = self.queue_manual_run(
+                    str(row["definition_id"]),
+                    row["definition_version"],
+                    scheduled_for,
+                    f"schedule:{schedule_uuid}:{scheduled_for.isoformat()}",
+                )
+                run = self.execute_manual_run(command.command_id)
+                connection.execute(
+                    text(
+                        """
+                        UPDATE report_v1.report_schedules
+                        SET next_run_at = :next_run_at, last_run_id = :run_id,
+                            updated_at = now()
+                        WHERE schedule_id = :schedule_id
+                        """
+                    ),
+                    {
+                        "next_run_at": _advance_schedule(scheduled_for, row["cadence"]),
+                        "run_id": _uuid(run.run_id, "run_id"),
+                        "schedule_id": schedule_uuid,
+                    },
+                )
+        return self.get_schedule(str(schedule_uuid)), run
+
+    @staticmethod
+    def _schedule_response(row) -> dict[str, object]:
+        return {
+            "schedule_id": row["schedule_id"],
+            "definition_id": row["definition_id"],
+            "version": row["definition_version"],
+            "cadence": row["cadence"],
+            "timezone": row["timezone_name"],
+            "next_run_at": row["next_run_at"],
+            "enabled": row["enabled"],
+            "last_run_id": row["last_run_id"],
+        }

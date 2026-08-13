@@ -8,8 +8,7 @@ from uuid import UUID
 BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
-from app.adapters.fake_data_platform import FakeDataPlatformAdapter
-from app.adapters.fake_model import FakeModelAdapter
+from tests.support.fakes import FakeDataPlatformAdapter, FakeModelAdapter
 from app.contracts import AnalysisRequest, PipelineStage, RequestContext, Role
 from app.services.analysis_service import AnalysisService
 from app.services.execution_control import ConcurrentExecutionGate, ModelCallBudget
@@ -28,6 +27,7 @@ class CountingAdapter(FakeDataPlatformAdapter):
 
 class CountingModel(FakeModelAdapter):
     def __init__(self) -> None:
+        super().__init__()
         self.call_count = 0
 
     def generate(self, node, payload):
@@ -71,13 +71,14 @@ class ExecutionControlTest(unittest.TestCase):
     def test_cache_key_isolated_by_entitlement_and_mask_scope(self) -> None:
         self.service.analyze(self.payload, self.context(user=2), self.decision)
         self.service.analyze(self.payload, self.context(user=3), self.decision)
-        self.service.analyze(
+        denied = self.service.analyze(
             self.payload,
             self.context(role=Role.DATA_ADMIN, user=2),
             self.decision,
         )
 
-        self.assertEqual(3, self.adapter.execute_count)
+        self.assertEqual("BLOCKED", denied.data.status.value)
+        self.assertEqual(2, self.adapter.execute_count)
 
     def test_model_calls_never_exceed_budget(self) -> None:
         response = self.service.analyze(self.payload, self.context(), self.decision)

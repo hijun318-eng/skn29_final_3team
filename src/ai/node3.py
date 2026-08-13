@@ -47,7 +47,12 @@ def explain_result(
         if enabled
     ]
     response = {
-        "explanation": f"검증된 shaped result: {rows}",
+        "explanation": (
+            f"검증된 {payload['metric_label']} 결과입니다. "
+            f"기간은 {period['period_start'][:10]}부터 "
+            f"{period['period_end_exclusive'][:10]} 미만이며 단위는 "
+            f"{payload['unit']}입니다. 결과 데이터는 {rows}입니다."
+        ),
         "conditions": conditions,
         "sources": deepcopy(payload["source_ids"]),
         "limitations": limitations,

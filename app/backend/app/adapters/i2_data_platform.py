@@ -9,6 +9,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from app.ports.data_platform import NoEntitledAssetsError
 from src.data.i2_adapters import (
     AdapterError,
     AdapterErrorCode,
@@ -39,7 +40,7 @@ class I2DataPlatformAdapter:
     """R2 I2 contract를 R4 DataPlatform port로 연결한다."""
 
     _CONTEXT_CONTRACT_VERSION = "I4-CONTEXT-v2.3.0-DRAFT"
-    _THREE_SOURCE_CONTEXT_VERSION = "I5-3SOURCE-CONTEXT-v1.0.0-DRAFT"
+    _THREE_SOURCE_CONTEXT_VERSION = "I5-3SOURCE-CONTEXT-v1.1.0-DRAFT"
     _VIEW_CONTRACT_VERSION = "I4-DATA-v1.0.0-DRAFT"
     _BINDING_CONTRACT_VERSION = "ASSET-BINDING-v1.0.0-DRAFT"
 
@@ -81,11 +82,13 @@ query Dataset($urn: String!) {
         binding_path: Path | None = None,
         three_source_path: Path | None = None,
         require_live_metadata: bool = True,
+        allow_template_assets: bool = False,
     ) -> None:
         self._trino_user = trino_user
         self._datahub_url = datahub_url.rstrip("/")
         self._datahub_token = datahub_token
         self._require_live_metadata = require_live_metadata
+        self._allow_template_assets = allow_template_assets
         self._trino = _PartialAwareTrinoAdapter(
             trino_url,
             transport=self._request,
@@ -106,11 +109,6 @@ query Dataset($urn: String!) {
         metric_ids = [metric.get("id") for metric in metrics if isinstance(metric, dict)]
         if len(metric_ids) != len(metrics) or len(metric_ids) != len(set(metric_ids)):
             raise ValueError("analytics context contract metric ids must be unique")
-        if not require_live_metadata:
-            for metric in metrics:
-                for required_filter in metric["required_filters"]:
-                    if required_filter["field"] == "data_period_status":
-                        required_filter["value"] = "YTD_SYNTHETIC"
         self._metrics = tuple(metrics)
         approved_joins = contract.get("approved_joins")
         if (
@@ -152,6 +150,7 @@ query Dataset($urn: String!) {
                 "seed_version": "20260729",
                 "uses": ("approved_pms_crm_pos_join",),
                 "kind": "raw",
+                "column_types": dict(asset.get("column_types") or {}),
             }
             for asset in three_source["assets"]
         )
@@ -252,8 +251,12 @@ query Dataset($urn: String!) {
             }
             for asset in contract["raw_assets"]
         ]
-        self._assets = tuple(views + raw_assets if require_live_metadata else views)
-        self._live_schemas: dict[str, tuple[str, ...]] = {}
+        self._assets = tuple(
+            views + raw_assets
+            if require_live_metadata or allow_template_assets
+            else views
+        )
+        self._live_schemas: dict[str, tuple[dict[str, str], ...]] = {}
 
     @staticmethod
     def _binding_verified(binding: dict[str, Any]) -> bool:
@@ -407,7 +410,7 @@ query Dataset($urn: String!) {
             return []
         selected: list[dict[str, Any]] = []
         column_count = 0
-        query_use = self._query_use(query)
+        query_use = self._query_use(query, context.get("template_id"))
         if self._require_live_metadata:
             if not self._trino.health():
                 raise ValueError("live Trino runtime verification is unavailable")
@@ -417,15 +420,22 @@ query Dataset($urn: String!) {
             if not self._three_source_verified:
                 raise ValueError("versioned 3-source runtime verification is unavailable")
         elif not self._bindings_verified:
-            raise ValueError("Asset Binding runtime verification is unavailable")
-        for asset in self._rank_assets(query):
+            if not self._allow_template_assets or not self._trino.health():
+                raise ValueError("Asset Binding runtime verification is unavailable")
+        for asset in self._rank_assets(query, query_use):
             if column_count + len(asset["columns"]) > 60:
                 continue
             columns = asset["columns"]
+            column_types = dict(asset.get("column_types") or {})
             if self._require_live_metadata:
                 live = self._datahub_dataset(asset["urn"])
                 schema = live.get("schemaMetadata") or {}
-                columns = tuple(field["fieldPath"] for field in schema.get("fields") or ())
+                fields = schema.get("fields") or ()
+                columns = tuple(field["fieldPath"] for field in fields)
+                live_types = {
+                    str(field["fieldPath"]): str(field.get("nativeDataType") or "")
+                    for field in fields
+                }
                 live_name = str(schema.get("name", ""))
                 raw_name = ".".join(asset["fqn"].split(".")[1:])
                 name_matches = (
@@ -443,9 +453,21 @@ query Dataset($urn: String!) {
                     or (live.get("status") or {}).get("removed") is not False
                     or not name_matches
                     or not columns_match
+                    or any(
+                        live_types.get(name) != expected
+                        for name, expected in column_types.items()
+                    )
                 ):
                     raise ValueError("live DataHub metadata does not match the contract")
-            self._live_schemas[asset["urn"]] = asset["columns"]
+                column_types = {
+                    name: live_types[name]
+                    for name in asset["columns"]
+                    if live_types.get(name)
+                }
+            self._live_schemas[asset["urn"]] = tuple(
+                {"name": name, "type": column_types.get(name, "contract")}
+                for name in asset["columns"]
+            )
             item = {key: value for key, value in asset.items() if key != "columns"}
             item["join_ids"] = ()
             selected.append(item)
@@ -475,7 +497,7 @@ query Dataset($urn: String!) {
             selected[0]["required_filters"] = self._three_source_filters
             selected[0]["parameter_bindings"] = self._three_source_parameters
         if self._require_live_metadata and not selected:
-            raise ValueError("live DataHub returned no entitled matching assets")
+            raise NoEntitledAssetsError("live DataHub returned no entitled matching assets")
         return selected
 
     def get_asset_schema(self, urn: str) -> dict[str, Any]:
@@ -484,12 +506,16 @@ query Dataset($urn: String!) {
             raise ValueError("asset was not approved by live DataHub search")
         return {
             "urn": urn,
-            "columns": [{"name": name, "type": "contract"} for name in columns],
+            "columns": [dict(column) for column in columns],
         }
 
-    def _rank_assets(self, query: str) -> tuple[dict[str, Any], ...]:
+    def _rank_assets(
+        self,
+        query: str,
+        query_use: str | None = None,
+    ) -> tuple[dict[str, Any], ...]:
         lowered = query.lower()
-        use = self._query_use(query)
+        use = query_use or self._query_use(query)
         words = set(re.findall(r"[a-z0-9_]{3,}", lowered))
         ranked: list[tuple[int, dict[str, Any]]] = []
         candidates = (
@@ -510,7 +536,9 @@ query Dataset($urn: String!) {
         return tuple(asset for _score, asset in sorted(ranked, key=lambda item: (-item[0], item[1]["fqn"])))
 
     @classmethod
-    def _query_use(cls, query: str) -> str:
+    def _query_use(cls, query: str, template_id: object | None = None) -> str:
+        if template_id == "weekly-room-operations":
+            return "approved_pms_crm_join"
         lowered = query.lower()
         has_crm = any(hint in lowered for hint in cls._CRM_HINTS)
         if (

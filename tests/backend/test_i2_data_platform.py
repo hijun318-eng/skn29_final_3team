@@ -17,6 +17,7 @@ path.insert(0, str(BACKEND))
 from app.adapters.i2_data_platform import I2DataPlatformAdapter
 from app.adapters.contract_model import ContractModelAdapter
 from app.contracts import AnalysisRequest, RequestContext
+from app.ports.data_platform import NoEntitledAssetsError
 from app.services.context_builder import ContextPackageBuilder
 from app.services.context_builder import ContextBuildError
 from app.services.pipeline_support import PipelineSupport
@@ -31,7 +32,12 @@ def live_dataset(adapter, urn):
         "schemaMetadata": {
             "name": asset["fqn"],
             "fields": [
-                {"fieldPath": column, "nativeDataType": "contract"}
+                        {
+                            "fieldPath": column,
+                            "nativeDataType": asset.get("column_types", {}).get(
+                                column, "contract"
+                            ),
+                        }
                 for column in asset["columns"]
             ],
         },
@@ -48,6 +54,18 @@ def simulated_verified_live_adapter():
         if asset["kind"] == "view":
             asset["binding_status"] = "VERIFIED"
     return adapter
+
+
+def test_live_search_without_entitled_assets_uses_typed_context_error():
+    adapter = simulated_verified_live_adapter()
+    adapter._require_live_metadata = True
+    adapter._rank_assets = lambda *_args: ()
+
+    with pytest.raises(NoEntitledAssetsError, match="no entitled matching assets"):
+        adapter.search_assets(
+            "권한 범위 밖의 지표",
+            {"role": "hotel_analyst"},
+        )
 
 
 def verified_binding_path(tmp_path):
@@ -115,16 +133,16 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
-    payload = AnalysisRequest(question="호텔 객실 매출을 분석해 줘")
+    payload = AnalysisRequest(question="체크아웃 기준 객실 매출을 분석해 줘")
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
         as_of=date(2026, 7, 30),
     )
     assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
-    assets, normalized_question = support.select_metric(payload, context, assets)
+    assets, normalized_question, _structured_request = support.select_metric(payload, context, assets)
     package = support.build_context(payload, context, assets)
     sql = (
-        "SELECT property_id, SUM(room_revenue) AS revenue "
+        "SELECT property_id, SUM(recognized_room_revenue) AS revenue "
         "FROM serving.analytics.hotel_daily_metrics "
         "WHERE data_period_status = :required_filter_1 "
         "AND is_forecast = :required_filter_2 "
@@ -132,7 +150,7 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     )
     plan = {
         "sql": sql,
-        "parameters": {"required_filter_1": "ACTUAL", "required_filter_2": False},
+        "parameters": {"required_filter_1": "SYNTHETIC_ACTUAL_LIKE", "required_filter_2": False},
         "references": [
             {
                 "urn": item.urn,
@@ -156,8 +174,44 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     assert package.assets[0].fqn == "serving.analytics.hotel_daily_metrics"
     assert [metric.id for metric in package.metrics] == ["recognized_room_revenue"]
     assert [(item.field, item.value) for item in package.metrics[0].required_filters] == [
-        ("data_period_status", "ACTUAL"),
+        ("data_period_status", "SYNTHETIC_ACTUAL_LIKE"),
         ("is_forecast", False),
+    ]
+
+
+def test_node1_period_candidates_become_typed_context_bindings():
+    adapter = simulated_verified_live_adapter()
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(question="체크아웃 기준 객실 매출")
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+    assets, _, _ = support.select_metric(payload, context, assets)
+
+    package = support.build_context(
+        payload,
+        context,
+        assets,
+        {
+            "period_candidates": [
+                {
+                    "start": "2026-06-01T00:00:00+09:00",
+                    "end_exclusive": "2026-07-01T00:00:00+09:00",
+                    "source_text": "2026년 6월",
+                }
+            ]
+        },
+    )
+
+    assert [
+        (item.name, item.value_type, item.value)
+        for item in package.parameter_bindings[:2]
+    ] == [
+        ("period_start", "date", "2026-06-01"),
+        ("period_end_exclusive", "date", "2026-07-01"),
     ]
 
 
@@ -180,7 +234,7 @@ def test_versioned_trino_mode_uses_approved_contract_without_datahub(tmp_path):
     ]
     assert assets[0]["binding_status"] == "VERIFIED"
     assert assets[0]["binding_version"] == "1.0.0"
-    assert assets[0]["metrics"][0]["required_filters"][0]["value"] == "YTD_SYNTHETIC"
+    assert assets[0]["metrics"][0]["required_filters"][0]["value"] == "SYNTHETIC_ACTUAL_LIKE"
     assert adapter.get_asset_schema(assets[0]["urn"])["columns"]
     assert adapter.search_assets("포인트 소멸 내역", {"role": "hotel_analyst"}) == []
 
@@ -196,7 +250,7 @@ def test_live_mode_fails_closed_without_v17_runtime_evidence():
     adapter._datahub_dataset.assert_not_called()
 
 
-def test_versioned_mode_does_not_expose_pending_binding():
+def test_versioned_mode_uses_verified_default_binding_without_datahub():
     adapter = I2DataPlatformAdapter(
         "http://trino:8080",
         "runtime-user",
@@ -204,12 +258,12 @@ def test_versioned_mode_does_not_expose_pending_binding():
     )
     adapter._datahub_dataset = MagicMock()
 
-    with pytest.raises(ValueError, match="runtime verification"):
-        adapter.search_assets("호텔 객실 매출", {"role": "hotel_analyst"})
+    assets = adapter.search_assets("호텔 객실 매출", {"role": "hotel_analyst"})
 
-    assert {asset["binding_status"] for asset in adapter._assets} == {
-        "PENDING_RUNTIME_VERIFICATION"
-    }
+    assert [asset["fqn"] for asset in assets] == [
+        "serving.analytics.hotel_daily_metrics"
+    ]
+    assert {asset["binding_status"] for asset in adapter._assets} == {"VERIFIED"}
     adapter._datahub_dataset.assert_not_called()
 
 
@@ -275,6 +329,7 @@ def test_null_verified_at_cannot_be_promoted_by_global_health(tmp_path):
     )
     health["status"] = "HEALTHY"
     health["runtime_execution"] = "PASS"
+    health["bindings"][0]["verified_at"] = None
     path = tmp_path / "false-health.json"
     path.write_text(json.dumps(health), encoding="utf-8")
     adapter = I2DataPlatformAdapter(
@@ -434,11 +489,11 @@ def test_selected_assets_without_metric_fail_closed_when_context_is_built():
     ("question", "sql", "parameters", "changed_parameters", "expected_metric"),
     [
         (
-            "호텔 객실 매출",
-            "SELECT SUM(room_revenue) FROM serving.analytics.hotel_daily_metrics "
+            "체크아웃 기준 객실 매출",
+            "SELECT SUM(recognized_room_revenue) FROM serving.analytics.hotel_daily_metrics "
             "WHERE data_period_status = :required_filter_1 "
             "AND is_forecast = :required_filter_2 LIMIT 1000",
-            {"required_filter_1": "ACTUAL", "required_filter_2": False},
+            {"required_filter_1": "SYNTHETIC_ACTUAL_LIKE", "required_filter_2": False},
             {"required_filter_1": "FORECAST", "required_filter_2": True},
             "recognized_room_revenue",
         ),
@@ -465,7 +520,7 @@ def test_g2_enforces_metric_required_filters_for_view_and_crm(
         as_of=date(2026, 7, 30),
     )
     assets = adapter.search_assets(question, context.model_dump(mode="json"))
-    assets, _ = support.select_metric(payload, context, assets)
+    assets, _, _structured_request = support.select_metric(payload, context, assets)
     package = support.build_context(payload, context, assets)
     references = [
         {
@@ -533,7 +588,7 @@ def test_node1_metric_selection_fails_closed_for_missing_ambiguous_and_duplicate
 
     for question, selected_assets in (
         ("호텔 지표", assets),
-        ("객실 매출과 식음 순매출", assets),
+        ("체크아웃 기준 객실 매출과 식음 순매출", assets),
         ("소멸 포인트", assets[:1]),
     ):
         with pytest.raises(ContextBuildError):
@@ -683,11 +738,16 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
         as_of=date(2026, 8, 1),
     )
     assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
-    package = support.build_context(payload, context, assets)
+    assets, normalized_question, structured_request = support.select_metric(
+        payload, context, assets
+    )
+    package = support.build_context(
+        payload, context, assets, structured_request
+    )
     sql = " ".join(
         (
             "WITH pms_source AS (SELECT s.property_id,",
-            "date_trunc('month', s.actual_checkout_at) AS month,",
+            "date_format(date_trunc('month', s.actual_checkout_at AT TIME ZONE 'Asia/Seoul'), '%Y-%m') AS month,",
             "SUM(s.room_revenue) AS room_revenue_krw",
             "FROM pms.public.pms_stays s",
             "JOIN pms.public.pms_reservations r ON s.property_id = r.property_id AND s.reservation_id = r.reservation_id",
@@ -696,30 +756,33 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
             "AND m.valid_from <= s.actual_checkout_at AND (m.valid_to IS NULL OR s.actual_checkout_at < m.valid_to)",
             "JOIN crm.dbo.crm_member_grade_history h ON m.property_id = h.property_id AND m.member_no = h.member_no",
             "AND h.valid_from <= s.actual_checkout_at AND (h.valid_to IS NULL OR s.actual_checkout_at < h.valid_to)",
-            "WHERE s.actual_checkout_at >= DATE ':period_start'",
-            "AND s.actual_checkout_at < DATE ':period_end_exclusive'",
+            "WHERE s.actual_checkout_at >= TIMESTAMP ':period_start 00:00:00 Asia/Seoul'",
+            "AND s.actual_checkout_at < TIMESTAMP ':period_end_exclusive 00:00:00 Asia/Seoul'",
+            "AND s.room_revenue > 0",
             'AND h."grade_code" = :required_filter_1',
             'AND s."complimentary_flag" = :required_filter_2',
             'AND s."house_use_flag" = :required_filter_3',
             'AND s."is_forecast" = :required_filter_4',
             'AND s."property_id" = :required_filter_5',
             'AND s."stay_status" = :required_filter_6',
-            "GROUP BY s.property_id, date_trunc('month', s.actual_checkout_at)),",
+            "GROUP BY s.property_id, date_format(date_trunc('month', s.actual_checkout_at AT TIME ZONE 'Asia/Seoul'), '%Y-%m')),",
             "pos_source AS (SELECT o.property_id,",
-            "date_trunc('month', o.ordered_at) AS month,",
+            "date_format(date_trunc('month', o.ordered_at), '%Y-%m') AS month,",
             "SUM(o.net_amount) AS fnb_revenue_krw",
             "FROM pos.pos_db.pos_orders o",
             "JOIN crm.dbo.crm_customer_map m ON o.property_id = m.property_id AND o.pos_customer_ref = m.pos_customer_ref",
             "AND m.valid_from <= o.ordered_at AND (m.valid_to IS NULL OR o.ordered_at < m.valid_to)",
             "JOIN crm.dbo.crm_member_grade_history h ON m.property_id = h.property_id AND m.member_no = h.member_no",
             "AND h.valid_from <= o.ordered_at AND (h.valid_to IS NULL OR o.ordered_at < h.valid_to)",
-            "WHERE o.ordered_at >= DATE ':period_start'",
-            "AND o.ordered_at < DATE ':period_end_exclusive'",
+            "WHERE o.ordered_at >= TIMESTAMP ':period_start 00:00:00'",
+            "AND o.ordered_at < TIMESTAMP ':period_end_exclusive 00:00:00'",
+            "AND o.order_status IN ('PAID', 'PARTIAL_REFUND')",
+            "AND o.payment_status IN ('PAID', 'PARTIAL_REFUND')",
             'AND h."grade_code" = :required_filter_1',
             'AND o."is_forecast" = :required_filter_7',
             'AND o."property_id" = :required_filter_8',
             'AND o."void_flag" = :required_filter_9',
-            "GROUP BY o.property_id, date_trunc('month', o.ordered_at))",
+            "GROUP BY o.property_id, date_format(date_trunc('month', o.ordered_at), '%Y-%m'))",
             "SELECT COALESCE(p.property_id, f.property_id) AS property_id,",
             "COALESCE(p.month, f.month) AS month,",
             "COALESCE(p.room_revenue_krw, 0) AS room_revenue_krw,",
@@ -737,11 +800,7 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
         {
             "urn": item.urn,
             "fqn": item.fqn,
-            "columns": [
-                column
-                for column in item.columns
-                if column not in {"order_status", "payment_status"}
-            ],
+            "columns": list(item.columns),
             "join_ids": list(package.approved_join_ids),
             "metric_ids": ["total_guest_revenue_krw"],
         }
@@ -768,6 +827,8 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
     plan = ContractModelAdapter._plan(response, "sql", package.parameter_bindings)
 
     assert len(package.assets) == 6
+    assert normalized_question == payload.question
+    assert structured_request["intent_candidates"] == ["aggregate"]
     assert package.approved_join_ids == ("pms_crm_pos_gold_revenue_month_v1",)
     assert [item.name for item in package.parameter_bindings] == [
         "period_start",
@@ -786,11 +847,13 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
             "required_filters": [
                 {
                     "field": item.field,
+                    "asset_fqn": item.field.rsplit(".", 1)[0],
                     "operator": item.operator,
+                    "parameter_name": f"required_filter_{index}",
                     "value_type": item.value_type,
                     "value": item.value,
                 }
-                for item in package.required_filters
+                for index, item in enumerate(package.required_filters, start=1)
             ],
         }
     ]
@@ -811,6 +874,56 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
         for item in model_context["joins"]
     )
     assert support.g2_violation(plan, package) is None
+    unaliased_outer_sql = (
+        sql.replace("p.property_id", "pms_source.property_id")
+        .replace("f.property_id", "pos_source.property_id")
+        .replace("p.month", "pms_source.month")
+        .replace("f.month", "pos_source.month")
+        .replace("p.room_revenue_krw", "pms_source.room_revenue_krw")
+        .replace("f.fnb_revenue_krw", "pos_source.fnb_revenue_krw")
+        .replace("FROM pms_source p FULL OUTER JOIN pos_source f", "FROM pms_source FULL OUTER JOIN pos_source")
+    )
+    assert support.g2_violation({**plan, "sql": unaliased_outer_sql}, package) is None
+    temporal_in_where_sql = sql.replace(
+        " AND m.valid_from <= o.ordered_at AND (m.valid_to IS NULL OR o.ordered_at < m.valid_to)",
+        "",
+    ).replace(
+        " AND h.valid_from <= o.ordered_at AND (h.valid_to IS NULL OR o.ordered_at < h.valid_to)",
+        "",
+    ).replace(
+        "WHERE o.ordered_at >= TIMESTAMP ':period_start 00:00:00'",
+        "WHERE m.valid_from <= o.ordered_at AND (m.valid_to IS NULL OR o.ordered_at < m.valid_to) "
+        "AND h.valid_from <= o.ordered_at AND (h.valid_to IS NULL OR o.ordered_at < h.valid_to) "
+        "AND o.ordered_at >= TIMESTAMP ':period_start 00:00:00'",
+    )
+    assert support.g2_violation({**plan, "sql": temporal_in_where_sql}, package) is None
+    assert support.g2_violation(
+        {
+            **plan,
+            "sql": sql.replace(
+                "AS total_guest_revenue_krw", "AS total_revenue"
+            ),
+        },
+        package,
+    ) == "METRIC_REFERENCE_MISMATCH"
+    assert not support._has_top_level_or(
+        "m.valid_from <= o.ordered_at AND (m.valid_to IS NULL OR o.ordered_at < m.valid_to)"
+    )
+    assert support._has_top_level_or(
+        "o.void_flag = :required_filter_9 OR 1 = 1"
+    )
+    time_hint = support.g2_repair_hint("TIME_SEMANTICS_INVALID", package)
+    assert "TIMESTAMP WITH TIME ZONE" in time_hint
+    assert "DATETIME(3)" in time_hint
+    assert "TIMESTAMP '2026-05-01 00:00:00 Asia/Seoul'" in time_hint
+    assert "TIMESTAMP '2026-05-01 00:00:00'" in time_hint
+    filter_hint = support.g2_repair_hint("METRIC_FILTER_MISSING", package)
+    for index, item in enumerate(package.required_filters, start=1):
+        assert f"{item.field} = :required_filter_{index}" in filter_hint
+    assert "PMS room_revenue > 0" in filter_hint
+    assert "POS order_status IN ('PAID','PARTIAL_REFUND')" in filter_hint
+    assert "POS payment_status IN ('PAID','PARTIAL_REFUND')" in filter_hint
+    assert "Recheck the entire list" in filter_hint
     assert ":required_filter" not in adapter._bind_parameters(
         plan["sql"], plan["parameters"]
     )
@@ -834,8 +947,52 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
             'AND o."void_flag" = :required_filter_9',
             'AND o."void_flag" = :required_filter_9 AND o."void_flag" = :required_filter_9',
         ),
+        sql.replace("AND s.room_revenue > 0", ""),
+        sql.replace("s.room_revenue > 0", "s.room_revenue >= 0"),
+        sql.replace("AND o.order_status IN ('PAID', 'PARTIAL_REFUND')", ""),
+        sql.replace(
+            "o.payment_status IN ('PAID', 'PARTIAL_REFUND')",
+            "o.payment_status IN ('PAID', 'VOID')",
+        ),
     ):
         assert support.g2_violation({**plan, "sql": bypass}, package) == "METRIC_FILTER_MISSING"
+    for bypass in (
+        sql.replace("SELECT s.property_id,", "SELECT"),
+        sql.replace("p.property_id = f.property_id AND ", ""),
+        sql.replace("s.reservation_id = r.reservation_id", "s.property_id = r.reservation_id"),
+        sql.replace("o.pos_customer_ref = m.pos_customer_ref", "o.property_id = m.pos_customer_ref"),
+        sql.replace(
+            "AND m.valid_from <= o.ordered_at AND (m.valid_to IS NULL OR o.ordered_at < m.valid_to)",
+            "",
+        ),
+        sql.replace(
+            "AND h.valid_from <= s.actual_checkout_at AND (h.valid_to IS NULL OR s.actual_checkout_at < h.valid_to)",
+            "",
+        ),
+    ):
+        assert support.g2_violation({**plan, "sql": bypass}, package) == "UNAPPROVED_JOIN"
+    for bypass in (
+        sql.replace(
+            "date_format(date_trunc('month', s.actual_checkout_at AT TIME ZONE 'Asia/Seoul'), '%Y-%m')",
+            "date_format(date_trunc('month', s.actual_checkout_at), '%Y-%m')",
+        ),
+        sql.replace(
+            "date_format(date_trunc('month', o.ordered_at), '%Y-%m')",
+            "date_format(date_trunc('month', o.ordered_at AT TIME ZONE 'Asia/Seoul'), '%Y-%m')",
+        ),
+        sql.replace(
+            "date_format(date_trunc('month', o.ordered_at), '%Y-%m') AS month",
+            "date_trunc('month', o.ordered_at) AS month",
+        ),
+        sql.replace(
+            "TIMESTAMP ':period_start 00:00:00'",
+            "TIMESTAMP ':period_start 00:00:00 Asia/Seoul'",
+        ),
+    ):
+        assert (
+            support.g2_violation({**plan, "sql": bypass}, package)
+            == "TIME_SEMANTICS_INVALID"
+        )
     assert support.g2_violation(
         {**plan, "parameters": {**parameters, "unknown": "value"}}, package
     ) == "PARAMETERS_INVALID"
@@ -976,7 +1133,12 @@ def test_live_raw_asset_accepts_datahub_name_without_catalog_prefix():
             "schemaMetadata": {
                 "name": ".".join(asset["fqn"].split(".")[1:]),
                 "fields": [
-                    {"fieldPath": column, "nativeDataType": "contract"}
+                    {
+                        "fieldPath": column,
+                        "nativeDataType": asset.get("column_types", {}).get(
+                            column, "contract"
+                        ),
+                    }
                     for column in asset["columns"]
                 ],
             },

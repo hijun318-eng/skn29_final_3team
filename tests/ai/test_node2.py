@@ -25,7 +25,12 @@ def derived_payload():
         (ROOT / "src/data/pms_crm_pos_context.i5.v1.json").read_text(encoding="utf-8")
     )
     assets = [
-        {"urn": item["urn"], "trino_fqn": item["fqn"], "columns": item["columns"]}
+        {
+            "urn": item["urn"],
+            "trino_fqn": item["fqn"],
+            "columns": item["columns"],
+            "column_types": item.get("column_types", {}),
+        }
         for item in source["assets"]
     ]
     fqns = {item["trino_fqn"] for item in assets}
@@ -47,6 +52,10 @@ def derived_payload():
         }
         for left, right in chain
     ]
+    required_filters = [
+        {**item, "parameter_name": f"required_filter_{index}"}
+        for index, item in enumerate(source["required_filters"], start=1)
+    ]
     return {
         "question_id": "derived-question",
         "context_package": {
@@ -65,7 +74,7 @@ def derived_payload():
                 "field": "derived.total_guest_revenue_krw",
                 "aggregation": "derived_sum",
                 "time_field": "derived.month",
-                "required_filters": source["required_filters"],
+                "required_filters": required_filters,
             }],
             "joins": joins,
         },
@@ -97,8 +106,8 @@ class Node2Tests(unittest.TestCase):
         context = payload["context_package"]
         context["assets"][0]["columns"] += ["is_forecast", "data_period_status"]
         context["metrics"][0]["required_filters"] = [
-            {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
-            {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
+            {"field": "is_forecast", "operator": "eq", "parameter_name": "required_filter_2", "value_type": "boolean", "value": False},
+            {"field": "data_period_status", "operator": "eq", "parameter_name": "required_filter_1", "value_type": "string", "value": "ACTUAL"},
         ]
 
         response = generate_sql(payload)
@@ -138,6 +147,10 @@ class Node2Tests(unittest.TestCase):
             [{"field": "stay_date", "operator": "eq", "value_type": "date", "value": "2026-07-01T00:00:00"}],
             [{"field": "stay_date", "operator": "eq", "value_type": "number", "value": True}],
         ):
+            filters = [
+                {**item, "parameter_name": f"required_filter_{index}"}
+                for index, item in enumerate(filters, start=1)
+            ]
             payload = copy.deepcopy(VALID_PAYLOADS["node2_request"])
             payload["context_package"]["metrics"][0]["required_filters"] = filters
             with self.subTest(filters=filters):
@@ -149,27 +162,27 @@ class Node2Tests(unittest.TestCase):
         context = payload["context_package"]
         context["assets"][0]["columns"] += ["active", "cutoff_date", "minimum_amount", "segment"]
         context["metrics"][0]["required_filters"] = [
-            {"field": "segment", "operator": "eq", "value_type": "string", "value": "GOLD"},
-            {"field": "minimum_amount", "operator": "eq", "value_type": "number", "value": 12.5},
-            {"field": "cutoff_date", "operator": "eq", "value_type": "date", "value": "2026-07-01"},
-            {"field": "active", "operator": "eq", "value_type": "boolean", "value": True},
+            {"field": "segment", "operator": "eq", "parameter_name": "required_filter_1", "value_type": "string", "value": "GOLD"},
+            {"field": "minimum_amount", "operator": "eq", "parameter_name": "required_filter_2", "value_type": "number", "value": 12.5},
+            {"field": "cutoff_date", "operator": "eq", "parameter_name": "required_filter_3", "value_type": "date", "value": "2026-07-01"},
+            {"field": "active", "operator": "eq", "parameter_name": "required_filter_4", "value_type": "boolean", "value": True},
         ]
 
         response = generate_sql(payload)
 
         self.assertEqual(
-            ["boolean", "date", "number", "string"],
+            ["string", "number", "date", "boolean"],
             [item["value_type"] for item in response["parameters"][2:]],
         )
         self.assertEqual(
-            [True, "2026-07-01", 12.5, "GOLD"],
+            ["GOLD", 12.5, "2026-07-01", True],
             [item["value"] for item in response["parameters"][2:]],
         )
 
     def test_repair_preserves_required_filter_contract(self):
         payload = copy.deepcopy(VALID_PAYLOADS["node2_repair_request"])
         payload["context_package"]["metrics"][0]["required_filters"] = [
-            {"field": "stay_date", "operator": "eq", "value_type": "date", "value": "2026-07-01"}
+            {"field": "stay_date", "operator": "eq", "parameter_name": "required_filter_1", "value_type": "date", "value": "2026-07-01"}
         ]
 
         response = repair_sql(payload)
@@ -199,6 +212,9 @@ class Node2Tests(unittest.TestCase):
         self.assertIn("p.property_id = f.property_id AND p.month = f.month", sql)
         self.assertIn("valid_from <= s.actual_checkout_at", sql)
         self.assertIn("valid_from <= o.ordered_at", sql)
+        self.assertIn("s.room_revenue > 0", sql)
+        self.assertIn("o.order_status IN ('PAID', 'PARTIAL_REFUND')", sql)
+        self.assertIn("o.payment_status IN ('PAID', 'PARTIAL_REFUND')", sql)
         self.assertNotIn("GOLD", sql)
         self.assertNotIn("SYNTHETIC_HOTEL_001", sql)
         expected = json.loads(
@@ -213,6 +229,12 @@ class Node2Tests(unittest.TestCase):
             )
         )
         self.assertTrue(all(item["columns"] for item in response["references"]))
+        order_reference = next(
+            item for item in response["references"]
+            if item["trino_fqn"] == "pos.pos_db.pos_orders"
+        )
+        self.assertIn("order_status", order_reference["columns"])
+        self.assertIn("payment_status", order_reference["columns"])
 
     def test_derived_metric_rejects_unapproved_or_amplifying_context(self):
         for mutate in (

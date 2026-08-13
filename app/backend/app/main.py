@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -10,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.router import router
 from app.api.report_router import report_router
+from app.api.mcp_router import mcp_router
 from app.context import ContextValidationError, request_context
 from app.contracts import (
     CONTRACT_VERSION,
@@ -20,6 +22,7 @@ from app.contracts import (
     OPENAPI_DOCUMENT_VERSION,
     response_meta,
 )
+from app.services.report_scheduler import report_scheduler
 
 
 def _allowed_origins() -> list[str]:
@@ -36,7 +39,20 @@ def _allowed_origins() -> list[str]:
     return origins
 
 
-app = FastAPI(title="Answervice Control Plane", version=OPENAPI_DOCUMENT_VERSION)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    await report_scheduler.start()
+    try:
+        yield
+    finally:
+        await report_scheduler.stop()
+
+
+app = FastAPI(
+    title="Answervice Control Plane",
+    version=OPENAPI_DOCUMENT_VERSION,
+    lifespan=lifespan,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins(),
@@ -51,11 +67,15 @@ app.add_middleware(
         "X-Timezone",
         "X-Trace-Id",
         "X-User-Id",
+        "MCP-Protocol-Version",
+        "Mcp-Method",
+        "Mcp-Name",
     ],
     expose_headers=["X-Request-Id", "X-Trace-Id"],
 )
 app.include_router(router)
 app.include_router(report_router)
+app.include_router(mcp_router)
 
 
 @app.middleware("http")

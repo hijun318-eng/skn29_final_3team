@@ -1,5 +1,5 @@
 {
-  "contract_version": "I5-3SOURCE-CONTEXT-v1.0.0-DRAFT",
+  "contract_version": "I5-3SOURCE-CONTEXT-v1.1.0-DRAFT",
   "case_id": "G120-046",
   "question": "5월과 6월 GOLD 고객의 객실·식음 통합 매출을 보여줘.",
   "synthetic": true,
@@ -14,7 +14,8 @@
     {
       "urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.public.pms_stays,PROD)",
       "fqn": "pms.public.pms_stays",
-      "columns": ["property_id", "reservation_id", "actual_checkout_at", "room_revenue", "stay_status", "complimentary_flag", "house_use_flag", "is_forecast"]
+      "columns": ["property_id", "reservation_id", "actual_checkout_at", "room_revenue", "stay_status", "complimentary_flag", "house_use_flag", "is_forecast"],
+      "column_types": {"actual_checkout_at": "TIMESTAMP WITH TIME ZONE"}
     },
     {
       "urn": "urn:li:dataset:(urn:li:dataPlatform:postgres,pms.pms_db.public.pms_reservations,PROD)",
@@ -39,7 +40,8 @@
     {
       "urn": "urn:li:dataset:(urn:li:dataPlatform:mysql,pos.pos_db.pos_orders,PROD)",
       "fqn": "pos.pos_db.pos_orders",
-      "columns": ["property_id", "pos_customer_ref", "ordered_at", "net_amount", "order_status", "payment_status", "void_flag", "is_forecast"]
+      "columns": ["property_id", "pos_customer_ref", "ordered_at", "net_amount", "order_status", "payment_status", "void_flag", "is_forecast"],
+      "column_types": {"ordered_at": "DATETIME(3)"}
     }
   ],
   "approved_join": {
@@ -83,12 +85,12 @@
     "sql_sha256": "db1d8268c50b287be0638074ad6d52dd0c497a2da4a221775a4df6f0ad480297",
     "canonical_format": "property_id|month|room_revenue_krw|fnb_revenue_krw|total_guest_revenue_krw\\n sorted by property_id,month; header excluded from hash",
     "row_count": 2,
-    "total_guest_revenue_krw": "475972400.00",
+    "total_guest_revenue_krw": "281414226.00",
     "rows": [
-      ["SYNTHETIC_HOTEL_001", "2026-05", "218275200.00", "39326900.00", "257602100.00"],
-      ["SYNTHETIC_HOTEL_001", "2026-06", "180813600.00", "37556700.00", "218370300.00"]
+      ["SYNTHETIC_HOTEL_001", "2026-05", "85050000.00", "58409521.00", "143459521.00"],
+      ["SYNTHETIC_HOTEL_001", "2026-06", "69150000.00", "68804705.00", "137954705.00"]
     ],
-    "result_sha256": "de17b5a22c6718c6e77e37936421c94618945dd31b0c7207f40e51d51b667716",
-    "runtime": {"engine": "Trino 476", "status": "PASS", "verified_at": "2026-08-10T12:39:25+09:00"}
+    "result_sha256": "8461487afe80370768741d2585991aa6dbfae42b2259be5593ed296718752d4d",
+    "runtime": {"engine": "Trino 476", "status": "PASS", "verified_at": "2026-08-12T22:04:42+09:00", "query_id": "20260812_130442_01657_99hzd"}
   }
 }

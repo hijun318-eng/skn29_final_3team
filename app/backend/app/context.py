@@ -30,6 +30,25 @@ def request_context(request: Request) -> RequestContext:
     return getattr(request.state, "context", RequestContext(request_id=request.state.request_id, trace_id=request.state.trace_id))
 
 
+def session_context(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_auth)],
+) -> RequestContext:
+    try:
+        principal = authenticate_token(credentials.credentials if credentials else None)
+    except AuthenticationError as exc:
+        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.ACCESS_DENIED
+        raise ContextValidationError(code, exc.message, exc.status_code) from exc
+    context = RequestContext(
+        request_id=request.state.request_id,
+        trace_id=request.state.trace_id,
+        user_id=principal.subject,
+        role=principal.role,
+    )
+    request.state.context = context
+    return context
+
+
 def analysis_context(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_auth)],

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import logging
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
 
@@ -13,11 +15,12 @@ from app.contracts import (
     ErrorCode,
     PipelineStage,
     RequestContext,
+    Role,
     RouteType,
     StageOutcome,
     TraceStep,
 )
-from app.ports.data_platform import DataPlatformAdapter
+from app.ports.data_platform import DataPlatformAdapter, NoEntitledAssetsError
 from app.ports.model import ModelAdapter
 from app.services.analysis_responses import AnalysisResponseFactory
 from app.services.context_builder import ContextBuildError, ContextPackageBuilder
@@ -29,6 +32,24 @@ from app.services.execution_control import (
 from app.services.pipeline_support import PipelineSupport
 from app.services.routing_service import RouteDecision
 from app.services.state_machine import AnalysisStateMachine
+
+
+logger = logging.getLogger("uvicorn.error")
+
+
+def _model_trace_detail(model: ModelAdapter) -> str:
+    trace = getattr(model, "last_trace", {})
+    return ";".join(
+        (
+            f"node={trace.get('node', 'unknown')}",
+            f"model={trace.get('model_version') or 'unknown'}",
+            f"prompt={trace.get('prompt_id', 'unknown')}@{trace.get('prompt_version', 'unknown')}",
+            f"prompt_hash={trace.get('prompt_hash', 'unknown')}",
+            f"duration_ms={trace.get('duration_ms')}",
+            f"attempts={trace.get('attempts', 1)}",
+            f"status={trace.get('status', 'SUCCESS')}",
+        )
+    )
 
 
 class AnalysisService:
@@ -46,6 +67,7 @@ class AnalysisService:
         self._support = PipelineSupport(
             adapter,
             context_builder or ContextPackageBuilder(),
+            model,
         )
         self._responses = AnalysisResponseFactory()
         self._cache = cache or IsolatedExecutionCache()
@@ -73,15 +95,70 @@ class AnalysisService:
         )[:16]
         self._responses.record(trace, PipelineStage.CONTROLLER, f"audit={audit_id}")
 
-        assets = self._adapter.search_assets(
-            payload.question,
-            context.model_dump(mode="json"),
-        )
+        if context.role is not Role.HOTEL_ANALYST:
+            return self._responses.error(
+                context,
+                machine,
+                trace,
+                PipelineStage.CONTROLLER,
+                AnalysisStatus.BLOCKED,
+                ErrorCode.ACCESS_DENIED,
+                "분석 Agent는 hotel_analyst 역할만 사용할 수 있습니다.",
+                decision,
+            )
+
         try:
-            assets, normalized_question = self._support.select_metric(
+            assets = self._adapter.search_assets(
+                payload.question,
+                {
+                    **context.model_dump(mode="json"),
+                    "template_id": decision.template_id,
+                },
+            )
+        except NoEntitledAssetsError:
+            return self._responses.error(
+                context,
+                machine,
+                trace,
+                PipelineStage.CONTEXT,
+                AnalysisStatus.BLOCKED,
+                ErrorCode.CONTEXT_INCOMPLETE,
+                "질문과 권한 범위에 맞는 승인 데이터 자산을 찾지 못했습니다.",
+                decision,
+            )
+        except (TimeoutError, OSError, ValueError) as error:
+            logger.warning(
+                "context lookup failed: type=%s detail=%s",
+                type(error).__name__,
+                error,
+            )
+            return self._responses.error(
+                context,
+                machine,
+                trace,
+                PipelineStage.CONTEXT,
+                AnalysisStatus.FAILED,
+                ErrorCode.INTERNAL_ERROR,
+                "승인된 데이터 컨텍스트를 조회하지 못했습니다.",
+                decision,
+                retryable=True,
+            )
+        try:
+            assets, normalized_question, structured_request = self._support.select_metric(
                 payload, context, assets
             )
-            package = self._support.build_context(payload, context, assets)
+            if getattr(self._model, "last_trace", {}).get("node") == "node1":
+                self._responses.record(
+                    trace,
+                    PipelineStage.MODEL,
+                    _model_trace_detail(self._model),
+                )
+            package = self._support.build_context(
+                payload,
+                context,
+                assets,
+                structured_request,
+            )
         except ContextBuildError:
             return self._responses.error(
                 context,
@@ -93,22 +170,15 @@ class AnalysisService:
                 "질문에서 권한이 있는 승인 지표 하나를 선택해 주세요.",
                 decision,
             )
+        except (TimeoutError, TypeError, ValueError) as error:
+            logger.warning(
+                "node1 generation failed: type=%s detail=%s",
+                type(error).__name__,
+                error,
+            )
+            return self._responses.model_error(context, machine, trace, decision)
         self._responses.record(trace, PipelineStage.CONTEXT, package.package_hash)
 
-        scenario = str(payload.parameters.get("scenario") or "")
-        g1_error = self._support.g1_error(scenario)
-        if g1_error:
-            error_code, message = g1_error
-            return self._responses.error(
-                context,
-                machine,
-                trace,
-                PipelineStage.G1,
-                AnalysisStatus.BLOCKED,
-                error_code,
-                message,
-                decision,
-            )
         self._responses.record(trace, PipelineStage.G1)
 
         references = [
@@ -154,6 +224,7 @@ class AnalysisService:
         )
         plan = self._cache.get_plan(plan_key)
         plan_cached = plan is not None
+        node2_trace_detail = None
         if plan is not None:
             pass
         elif decision.sql_text:
@@ -173,22 +244,38 @@ class AnalysisService:
                     self._model,
                     "node2",
                     {
-                        "scenario": scenario,
                         "question": normalized_question,
+                        "structured_request": structured_request,
                         "references": references,
                         "request_id": str(context.request_id),
                         "package": package,
                         "context": context,
                     },
                 )
-            except (TimeoutError, TypeError, ValueError):
+                node2_trace_detail = _model_trace_detail(self._model)
+            except (TimeoutError, TypeError, ValueError) as error:
+                logger.warning(
+                    "node2 generation failed: type=%s detail=%s",
+                    type(error).__name__,
+                    error,
+                )
                 return self._responses.model_error(context, machine, trace, decision)
-        if self._support.model_plan_violation(plan):
+        plan_violation = self._support.model_plan_violation(plan)
+        if plan_violation:
+            logger.warning(
+                "node2 plan rejected: reason=%s keys=%s",
+                plan_violation,
+                sorted(plan) if isinstance(plan, dict) else [],
+            )
             return self._responses.model_error(context, machine, trace, decision)
         self._responses.record(
             trace,
             PipelineStage.MODEL,
-            f"{plan.get('model_version')};plan_cache={'hit' if plan_cached else 'miss'}",
+            (
+                f"{node2_trace_detail};plan_cache=miss"
+                if node2_trace_detail
+                else f"node=node2;model={plan.get('model_version')};plan_cache={'hit' if plan_cached else 'template'}"
+            ),
         )
 
         repair_count = 0
@@ -228,16 +315,19 @@ class AnalysisService:
                     self._model,
                     "node2_repair",
                     {
-                        "scenario": scenario,
                         "attempt": repair_count,
                         "references": references,
                         "trace_id": context.trace_id,
                         "rejected_sql": str(plan["sql"]),
                         "violation": violation,
+                        "violation_detail": self._support.g2_repair_hint(
+                            violation, package
+                        ),
                         "package": package,
                         "context": context,
                     },
                 )
+                repair_trace_detail = _model_trace_detail(self._model)
             except (TimeoutError, TypeError, ValueError):
                 return self._responses.model_error(
                     context,
@@ -246,11 +336,24 @@ class AnalysisService:
                     decision,
                     repair_count,
                 )
-            self._responses.record(trace, PipelineStage.REPAIR, "attempt=1")
-            if (
-                self._support.model_plan_violation(plan)
-                or self._support.g2_violation(plan, package)
-            ):
+            self._responses.record(
+                trace,
+                PipelineStage.REPAIR,
+                f"{repair_trace_detail};controller_attempt=1",
+            )
+            repaired_plan_violation = self._support.model_plan_violation(plan)
+            repaired_g2_violation = self._support.g2_violation(plan, package)
+            if repaired_plan_violation or repaired_g2_violation:
+                final_violation = repaired_plan_violation or repaired_g2_violation
+                logger.warning(
+                    "node2 repair rejected: reason=%s sql_sha256=%s",
+                    final_violation,
+                    hashlib.sha256(
+                        str(plan.get("sql") if isinstance(plan, dict) else "").encode(
+                            "utf-8"
+                        )
+                    ).hexdigest()[:16],
+                )
                 return self._responses.error(
                     context,
                     machine,
@@ -261,6 +364,7 @@ class AnalysisService:
                     "SQL repair 1회 후에도 정책 검증을 통과하지 못했습니다.",
                     decision,
                     repair_count,
+                    detail=str(final_violation),
                 )
         self._responses.record(trace, PipelineStage.G2)
 
@@ -396,11 +500,16 @@ class AnalysisService:
                     self._model,
                     "node3",
                     {
-                        "scenario": scenario,
                         "query": query,
                         "assets": assets,
                         "context": context,
+                        "package": package,
                     },
+                )
+                self._responses.record(
+                    trace,
+                    PipelineStage.MODEL,
+                    _model_trace_detail(self._model),
                 )
                 if (
                     not isinstance(explanation, dict)

@@ -11,13 +11,21 @@ import {
   type ReportRun,
   type ReportRunListResponse,
   type ReportRunResponse,
+  type ReportScheduleListResponse,
+  type ReportScheduleResponse,
+  type RunDueReportScheduleResponse,
+  type ReportAssistantDraftResponse,
 } from "../contracts/report.ts";
 import { createUuid } from "../utils/createUuid.ts";
 
 type Fetch = typeof fetch;
 const env = import.meta.env ?? {};
 
-export const usesFixtureReportClient = env.VITE_REPORT_MODE === "fixture" || Boolean(!env.VITE_REPORT_MODE && env.DEV);
+function seoulToday(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+}
 
 export class ReportApiError extends Error {
   readonly status: number;
@@ -30,16 +38,16 @@ export class ReportApiError extends Error {
   }
 }
 
-function contextHeaders(hasBody = false): Record<string, string> {
+function contextHeaders(hasBody = false, explicitToken = ""): Record<string, string> {
+  const token = explicitToken;
+  if (!token) throw new Error("Report 인증 세션이 없습니다.");
   return {
-    Authorization: "Bearer synthetic-local",
+    Authorization: `Bearer ${token}`,
     ...(hasBody ? { "Content-Type": "application/json" } : {}),
-    "X-As-Of": env.VITE_REPORT_AS_OF || "2026-08-04",
+    "X-As-Of": env.VITE_REPORT_AS_OF || seoulToday(),
     "X-Contract-Version": REPORT_REQUEST_CONTEXT_VERSION,
-    "X-Role": "report_admin",
     "X-Timezone": "Asia/Seoul",
     "X-Trace-Id": createUuid(),
-    "X-User-Id": "00000000-0000-0000-0000-000000000001",
   };
 }
 
@@ -54,13 +62,15 @@ async function parse<T>(response: Response): Promise<T> {
 }
 
 export function createReportClient(
-  baseUrl = env.VITE_BACKEND_BASE_URL || "http://127.0.0.1:18000",
+  baseUrl = env.VITE_BACKEND_BASE_URL,
   request: Fetch = fetch,
+  authToken = "",
 ) {
+  if (!baseUrl) throw new Error("VITE_BACKEND_BASE_URL is required");
   const endpoint = (path: string) => `${baseUrl.replace(/\/$/, "")}${path}`;
   const send = (path: string, method = "GET", body?: unknown) => request(endpoint(path), {
     method,
-    headers: contextHeaders(body !== undefined),
+    headers: contextHeaders(body !== undefined, authToken),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
@@ -109,8 +119,46 @@ export function createReportClient(
     async createManualRun(payload: { definition_id: string; version: number; as_of: string; idempotency_key: string }) {
       const response = await parse<ManualRunCommandResponse>(await send("/reports/runs/manual", "POST", payload));
       assertReportContractVersion(response.contract_version);
-      if (response.status !== "queued") throw new Error(`Unexpected manual command status: ${response.status}`);
+      if (!["queued", "success", "partial", "failed"].includes(response.status)) throw new Error(`Unexpected manual command status: ${response.status}`);
       return response;
+    },
+    async createSchedule(payload: {
+      schedule_id: string;
+      definition_id: string;
+      version: number;
+      cadence: "daily" | "weekly" | "monthly";
+      next_run_at: string;
+      timezone: "Asia/Seoul";
+    }): Promise<ReportScheduleResponse> {
+      return parse<ReportScheduleResponse>(await send("/reports/schedules", "POST", payload));
+    },
+    async listSchedules(): Promise<readonly ReportScheduleResponse[]> {
+      return (await parse<ReportScheduleListResponse>(await send("/reports/schedules"))).items;
+    },
+    async setScheduleEnabled(scheduleId: string, enabled: boolean): Promise<ReportScheduleResponse> {
+      return parse<ReportScheduleResponse>(await send(
+        `/reports/schedules/${encodeURIComponent(scheduleId)}`,
+        "PUT",
+        { enabled },
+      ));
+    },
+    async runDueSchedule(scheduleId: string): Promise<RunDueReportScheduleResponse> {
+      return parse<RunDueReportScheduleResponse>(await send(
+        `/reports/schedules/${encodeURIComponent(scheduleId)}/run-due`,
+        "POST",
+      ));
+    },
+    async createAssistantDraft(artifactId: string, instruction: string) {
+      const response = await parse<ReportAssistantDraftResponse>(await send(
+        "/reports/assistant/drafts",
+        "POST",
+        { artifact_id: artifactId, instruction },
+      ));
+      return {
+        requestId: response.assistant_request_id,
+        definition: normalizeReportDefinition(response.definition),
+        trace: response.trace,
+      };
     },
   };
 }

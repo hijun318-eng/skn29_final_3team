@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "MODEL-v1.0.0",
+  "version": "MODEL-v1.1.0",
   "$defs": {
     "model_trace": {
       "type": "object",
@@ -58,6 +58,10 @@
           "type": "array",
           "minItems": 1,
           "items": {"type": "string", "minLength": 1}
+        },
+        "column_types": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "minLength": 1}
         }
       }
     },
@@ -76,10 +80,12 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["field", "operator", "value_type", "value"],
+            "required": ["field", "operator", "parameter_name", "value_type", "value"],
             "properties": {
               "field": {"type": "string", "minLength": 1},
+              "asset_fqn": {"type": "string", "minLength": 1},
               "operator": {"type": "string", "enum": ["eq"]},
+              "parameter_name": {"type": "string", "pattern": "^required_filter_[1-9][0-9]*$"},
               "value_type": {"type": "string", "enum": ["string", "boolean", "number", "date"]},
               "value": {"type": ["string", "number", "boolean"]}
             }
@@ -127,6 +133,14 @@
         "joins": {
           "type": "array",
           "items": {"$ref": "#/$defs/context_join"}
+        },
+        "required_source_predicates": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1}
+          }
         }
       }
     },
@@ -261,14 +275,36 @@
         "model": {"$ref": "#/$defs/model_trace"}
       }
     },
-    "node2_request": {
+      "node2_request": {
       "type": "object",
       "additionalProperties": false,
       "required": ["question_id", "context_package"],
-      "properties": {
-        "question_id": {"type": "string"},
-        "normalized_question": {"type": "string", "minLength": 1},
-        "context_package": {"$ref": "#/$defs/context_package"}
+        "properties": {
+          "question_id": {"type": "string"},
+          "normalized_question": {"type": "string", "minLength": 1},
+          "structured_request": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["intent_candidates", "dimension_candidates", "period_candidates"],
+            "properties": {
+              "intent_candidates": {"type": "array", "items": {"type": "string"}},
+              "dimension_candidates": {"type": "array", "items": {"type": "string"}},
+              "period_candidates": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["start", "end_exclusive", "source_text"],
+                  "properties": {
+                    "start": {"type": "string", "format": "date-time"},
+                    "end_exclusive": {"type": "string", "format": "date-time"},
+                    "source_text": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "context_package": {"$ref": "#/$defs/context_package"}
       }
     },
     "node2_response": {
@@ -306,6 +342,7 @@
         "rejected_sql": {"type": "string"},
         "context_package": {"$ref": "#/$defs/context_package"},
         "normalized_error_code": {"type": "string"},
+        "violation_detail": {"type": "string", "minLength": 1},
         "repair_scope": {"type": "array", "items": {"type": "string"}}
       }
     },
@@ -336,6 +373,7 @@
         "g3_result",
         "shaped_result",
         "metric",
+        "metric_label",
         "period",
         "filters",
         "unit",
@@ -349,6 +387,7 @@
         "g3_result": {"type": "string", "const": "pass"},
         "shaped_result": {"$ref": "#/$defs/shaped_result"},
         "metric": {"type": "string", "minLength": 1},
+        "metric_label": {"type": "string", "minLength": 1},
         "period": {"$ref": "#/$defs/execution_time"},
         "filters": {"type": "array", "items": {"type": "string"}},
         "unit": {"type": "string"},

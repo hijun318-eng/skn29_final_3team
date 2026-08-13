@@ -1,0 +1,48 @@
+﻿{
+    "status":  "OFFICIAL_DATA_APPLIED",
+    "phase":  "P0_PRODUCT_VERIFICATION",
+    "current_phase":  "P0_PRODUCT_VERIFICATION",
+    "completed_files":  [
+                            "README.md",
+                            "manifest.json",
+                            "compose.service-demo-v3.yml",
+                            "01_pms_seed_service_demo_v3.sql",
+                            "10_pms_validation.sql",
+                            "15_cross_source_validation.sql",
+                            "20_gold_1source.sql",
+                            "21_gold_2source.sql",
+                            "22_gold_3source.sql",
+                            "23_five_source_smoke.sql",
+                            "load_verification.md",
+                            "02_pos_seed_service_demo_v3.sql",
+                            "11_pos_validation.sql",
+                            "03_crm_seed_service_demo_v3.sql",
+                            "12_crm_validation.sql",
+                            "04_banquet_seed_service_demo_v3.sql",
+                            "13_banquet_validation.sql",
+                            "05_facility_seed_service_demo_v3.sql",
+                            "14_facility_validation.sql"
+                        ],
+    "next_file":  "Complete actual Analysis replay/history and Report manual/partial-failure HTTP verification before browser regression",
+    "last_updated":  "2026-08-12T19:15:00+09:00",
+    "notes":  "Validated data is active in the official versioned source volumes. Source validations 10-15 are zero, PMS stays outside inventory are zero, Golden 20-23 match service-demo and official Trino on repeat, DataHub ingestion is PASS, and all eight AssetBindings are VERIFIED. Original official volumes remain rollback targets; P0 product verification is still in progress.",
+    "official_replacement_baseline":  {
+        "captured_at":  "2026-08-12T18:14:47+09:00",
+        "volumes":  {
+            "pms":  "hotel-synthetic-db_pms-postgres-data",
+            "pos":  "hotel-synthetic-db_pos-mysql-data",
+            "crm":  "hotel-synthetic-db_crm-mssql-data",
+            "banquet":  "hotel-synthetic-db_banquet-postgres-data",
+            "facility":  "hotel-synthetic-db_facility-clickhouse-data"
+        },
+        "counts":  {
+            "pms":  {"inventory":7304,"guests":100000,"reservations":220000,"stays":167071,"room_revenue":"59451624000.00"},
+            "pos":  {"stores":8,"orders":320000,"items":960000,"net_amount":"21429760000.00"},
+            "crm":  {"members":80000,"maps":80000,"point_transactions":320000},
+            "banquet":  {"bookings":6000,"revenue_rows":10902,"net_revenue":"138700500000.00"},
+            "facility":  {"master":20,"events":700000,"staffing":11690,"resource":6680,"amount":"12600000000"}
+        },
+        "trino_catalogs":  ["banquet","crm","facility","pms","pos","serving"],
+        "rollback":  "Restore the five original volume names above in infrastructure/database/compose.yml and recreate only the five source containers, then re-run Trino/DataHub/backend checks."
+    }
+}

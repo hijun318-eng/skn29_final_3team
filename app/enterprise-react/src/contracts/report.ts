@@ -47,6 +47,22 @@ export function normalizeDraftLayout(blocks: readonly ReportBlock[]): readonly D
   });
 }
 
+export function reorderDraftBlocks(
+  blocks: readonly ReportBlock[],
+  sourceId: string,
+  targetId: string,
+): readonly DraftLayoutBlock[] {
+  const sourceIndex = blocks.findIndex((block) => block.id === sourceId);
+  const targetIndex = blocks.findIndex((block) => block.id === targetId);
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return normalizeDraftLayout(blocks);
+  }
+  const reordered = [...blocks];
+  const [source] = reordered.splice(sourceIndex, 1);
+  reordered.splice(targetIndex, 0, source);
+  return normalizeDraftLayout(reordered);
+}
+
 export function serializeDraftLayout(blocks: readonly ReportBlock[]): string {
   return JSON.stringify(normalizeDraftLayout(blocks));
 }
@@ -62,9 +78,9 @@ export interface ReportDefinitionVersion {
 
 export interface ReportBlockRun {
   readonly blockId: string;
-  readonly artifactId: string;
-  readonly queryId: string;
-  readonly snapshotChecksum: string;
+  readonly artifactId?: string;
+  readonly queryId?: string;
+  readonly snapshotChecksum?: string;
   readonly status: "success" | "partial" | "failed" | "cancelled";
 }
 
@@ -129,9 +145,9 @@ export interface ReportRunResponse {
 
 export interface ReportBlockRunResponse {
   readonly block_id: string;
-  readonly artifact_id: string;
-  readonly query_id: string;
-  readonly snapshot_checksum: string;
+  readonly artifact_id: string | null;
+  readonly query_id: string | null;
+  readonly snapshot_checksum: string | null;
   readonly status: "success" | "partial" | "failed" | "cancelled";
 }
 
@@ -142,7 +158,43 @@ export interface ManualRunCommandResponse {
   readonly version: number;
   readonly as_of: string;
   readonly idempotency_key: string;
-  readonly status: "queued";
+  readonly status: "queued" | "success" | "partial" | "failed";
+  readonly run_id?: string | null;
+}
+
+export interface ReportScheduleResponse {
+  readonly schedule_id: string;
+  readonly definition_id: string;
+  readonly version: number;
+  readonly cadence: "daily" | "weekly" | "monthly";
+  readonly next_run_at: string;
+  readonly timezone: "Asia/Seoul";
+  readonly enabled: boolean;
+  readonly last_run_id: string | null;
+}
+
+export interface ReportScheduleListResponse {
+  readonly items: readonly ReportScheduleResponse[];
+}
+
+export interface RunDueReportScheduleResponse {
+  readonly schedule: ReportScheduleResponse;
+  readonly executed: boolean;
+  readonly run: ReportRunResponse | null;
+}
+
+export interface ReportAssistantDraftResponse {
+  readonly assistant_request_id: string;
+  readonly status: "success";
+  readonly definition: ReportDefinitionResponse;
+  readonly trace: {
+    readonly model_version: string;
+    readonly prompt_id: string;
+    readonly prompt_version: string;
+    readonly prompt_hash: string;
+    readonly attempts: number;
+    readonly duration_ms: number;
+  };
 }
 
 export interface ReportBlockRequest {
@@ -207,9 +259,9 @@ export function normalizeReportRun(response: ReportRunResponse): ReportRun {
     status: response.status,
     blocks: response.blocks.map((block) => ({
       blockId: block.block_id,
-      artifactId: block.artifact_id,
-      queryId: block.query_id,
-      snapshotChecksum: block.snapshot_checksum,
+      artifactId: block.artifact_id ?? undefined,
+      queryId: block.query_id ?? undefined,
+      snapshotChecksum: block.snapshot_checksum ?? undefined,
       status: block.status,
     })),
   });

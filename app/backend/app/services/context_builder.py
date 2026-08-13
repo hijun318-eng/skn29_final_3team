@@ -74,6 +74,7 @@ class ContextAsset:
     metrics: tuple[ContextMetric, ...] = ()
     metric_registry_required: bool = False
     required_filters: tuple[ContextRequiredFilter, ...] = ()
+    column_types: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.urn.strip() or not self.fqn.strip():
@@ -85,6 +86,14 @@ class ContextAsset:
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METADATA,
                 "Context asset에는 하나 이상의 유효한 column이 필요합니다.",
+            )
+        if any(
+            name not in self.columns or not native_type.strip()
+            for name, native_type in self.column_types
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Context column type metadata must reference approved columns.",
             )
 
 
@@ -176,6 +185,7 @@ class ContextPackageBuilder:
                     "urn": asset.urn,
                     "fqn": asset.fqn,
                     "columns": list(asset.columns),
+                    "column_types": dict(asset.column_types),
                     "join_ids": list(asset.join_ids),
                 }
                 for asset in assets
@@ -309,6 +319,11 @@ class ContextPackageBuilder:
 
     @staticmethod
     def _validate_unique_assets(assets: tuple[ContextAsset, ...]) -> None:
+        if not assets:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Context에는 하나 이상의 권한 있는 승인 asset이 필요합니다.",
+            )
         urns = [asset.urn for asset in assets]
         if len(urns) != len(set(urns)):
             raise ContextBuildError(

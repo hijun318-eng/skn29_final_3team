@@ -121,14 +121,18 @@ class ReportDefinitionVersion:
 @dataclass(frozen=True, slots=True)
 class ReportBlockRun:
     block_id: str
-    artifact_id: str
-    query_id: str
-    snapshot_checksum: str
+    artifact_id: str | None
+    query_id: str | None
+    snapshot_checksum: str | None
     status: BlockRunStatus
 
     def __post_init__(self) -> None:
-        if not all((self.block_id, self.artifact_id, self.query_id, self.snapshot_checksum)):
-            raise ValueError("Report block run은 artifact·query·snapshot checksum을 유지해야 합니다.")
+        if not self.block_id:
+            raise ValueError("Report block run block_id is required")
+        if self.status in {BlockRunStatus.SUCCESS, BlockRunStatus.PARTIAL} and not all(
+            (self.artifact_id, self.query_id, self.snapshot_checksum)
+        ):
+            raise ValueError("successful Report block run requires Artifact evidence")
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,5 +165,10 @@ class ManualRunCommand:
     def __post_init__(self) -> None:
         if not self.command_id or not self.definition_id or self.version < 1 or not self.idempotency_key:
             raise ValueError("manual run command 필드는 비어 있을 수 없습니다.")
-        if self.status is not RunStatus.QUEUED:
-            raise ValueError("manual run command는 queued 상태로만 생성합니다.")
+        if self.status not in {
+            RunStatus.QUEUED,
+            RunStatus.SUCCESS,
+            RunStatus.PARTIAL,
+            RunStatus.FAILED,
+        }:
+            raise ValueError("manual run command status is invalid")

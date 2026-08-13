@@ -6,16 +6,16 @@
   "schema_version": "1.0.0",
   "seed_version": "20260729",
   "scenario_version": "1.0.0",
-  "datahub_version": "1.6.0",
+  "datahub_version": "1.7.0",
   "upgrade_compatibility": {
     "contract_version": "I5-DATAHUB-v1.1.0-DRAFT",
-    "status": "CONFIG_VALIDATED",
-    "validation_scope": "CONFIG_ONLY",
-    "runtime_status": "BLOCKED",
-    "runtime_execution": "NOT_RUN",
+    "status": "RUNTIME_VERIFIED",
+    "validation_scope": "LIVE_RUNTIME",
+    "runtime_status": "HEALTHY",
+    "runtime_execution": "PASS",
     "runtime_evidence": "src/data/datahub_runtime_evidence.i5.v1.json",
     "asset_binding_health": "src/data/asset_binding_health.i5.v1.json",
-    "runtime_blocker": "LOCAL_RAM_LIMIT",
+    "runtime_blocker": null,
     "from_version": "v1.6.0",
     "to_version": "v1.7.0",
     "official_release_url": "https://github.com/datahub-project/datahub/releases/tag/v1.7.0",
@@ -50,7 +50,7 @@
       "legacy_lineage_flags": "NOT_CONFIGURED",
       "custom_object_storage_yaml": "NOT_CONFIGURED"
     },
-    "rollback_boundary": "v1.7.0 runtime is approved but blocked by local RAM; retain the v1.6.0 evidence, do not mutate volumes, and require an R1 verified backup and health checkpoint before execution"
+    "rollback_boundary": "v1.7.0 is runtime-verified; retain source rollback volumes and re-run ingestion plus binding verification after any catalog or source schema rollback"
   },
   "recipe": {
     "file": "infrastructure/database/datahub/recipes/serving.i4.yml",
@@ -62,14 +62,14 @@
   "semantic_catalog": {
     "contract_version": "I5-SEMANTIC-CATALOG-v1.0.0-DRAFT",
     "file": "src/data/serving_semantic_catalog.i4.v1.json",
-    "catalog_sha256": "38982b4a536024fb0ce6a2cf42ffcbafbc9beb2f6f8731d6da09c504df6ce7a2",
+    "catalog_sha256": "c681f747f3ca8d25b88fb7bd544ead0e8773d3ef9c152a9def9db42dd3514640",
     "status": "READY_FOR_ISOLATED_VALIDATION",
     "dataset_description_count": 8,
-    "column_description_count": 116,
-    "unique_field_count": 70,
+    "column_description_count": 117,
+    "unique_field_count": 71,
     "publisher": "infrastructure/database/datahub/publish_semantic_catalog.py",
     "verifier": "infrastructure/database/datahub/verify_semantic_catalog.py",
-    "runtime_result": "NOT_RUN"
+    "runtime_result": "VERIFIED"
   },
   "views": [
     {
@@ -174,6 +174,7 @@
         "available_room_nights": "bigint",
         "rooms_sold": "bigint",
         "room_revenue": "decimal(18,2)",
+        "recognized_room_revenue": "decimal(18,2)",
         "occupancy_rate": "decimal(18,6)",
         "adr": "decimal(18,6)",
         "revpar": "decimal(18,6)",
@@ -307,23 +308,23 @@
       "status": "PASS",
       "user": "datahub_ingestion",
       "view_count": 8,
-      "column_count": 116,
-      "canonical_sha256": "d0ee01debeb821a7085cc02a81f8b47cd637f1749e017be1a3b65a9c5a91bc0d"
+      "column_count": 117,
+      "canonical_sha256": "993694e140fdfc33945b08b12505c780b64d886d5b422e058ae854a458d04fb9"
     },
     "trino_select": {
       "status": "PASS",
       "user": "datahub_ingestion",
       "row_counts": {
-        "banquet_monthly_metrics": 305,
-        "facility_daily_metrics": 33380,
-        "fnb_daypart_metrics": 53440,
-        "hotel_daily_metrics": 7304,
-        "hotel_monthly_metrics": 232,
-        "hotel_yearly_metrics": 22,
-        "resource_monthly_metrics": 220,
-        "workforce_monthly_metrics": 385
+        "banquet_monthly_metrics": 95,
+        "facility_daily_metrics": 2561,
+        "fnb_daypart_metrics": 15579,
+        "hotel_daily_metrics": 2308,
+        "hotel_monthly_metrics": 77,
+        "hotel_yearly_metrics": 9,
+        "resource_monthly_metrics": 152,
+        "workforce_monthly_metrics": 190
       },
-      "canonical_sha256": "3c5ff6cc10c4081d903eb21068b54299d1557f857b10a61b9dfeb4b722f1f01d"
+      "canonical_sha256": "60e3ceb7013389bccf3f0d5a948b7f9df212d40dce577f61dc4482c24a037ec2"
     },
     "read_only_policy": {
       "status": "PASS",
@@ -343,10 +344,10 @@
     },
     "datahub_live": {
       "status": "PASS",
-      "datahub_version": "v1.6.0",
+      "datahub_version": "v1.7.0",
       "environment": "task-only answervice-gate0",
       "view_count": 8,
-      "column_count": 116,
+      "column_count": 117,
       "upstream_edge_count": 17,
       "fine_grained_lineage_count": 90,
       "canonical_sha256": "b4e6774e2cd5c5655487d44b0d288d1216cb746fe8afab0388d09f9120388b02",

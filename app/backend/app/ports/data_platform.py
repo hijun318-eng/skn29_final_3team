@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 
+class NoEntitledAssetsError(LookupError):
+    """The authenticated scope has no approved assets matching the request."""
+
+
 class DataPlatformAdapter(Protocol):
     """R2-owned Port. R4 consumes this interface only; it never opens source DB connections."""
 

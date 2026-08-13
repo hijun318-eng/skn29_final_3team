@@ -6,17 +6,14 @@ $ErrorActionPreference = 'Stop'
 
 $backendPath = Split-Path -Parent $PSScriptRoot
 $repositoryRoot = Resolve-Path (Join-Path $backendPath '..\..')
-$databaseCompose = Join-Path $repositoryRoot 'infrastructure\database\compose.yml'
-$backendCompose = Join-Path $backendPath 'compose.fragment.yml'
+$composeFile = Join-Path $repositoryRoot 'compose.yml'
 $environmentFile = Join-Path $repositoryRoot 'infrastructure\database\.env'
 $containerName = 'answervice-backend'
-$previousDataPlatformMode = $env:DATA_PLATFORM_MODE
-$env:DATA_PLATFORM_MODE = 'fake'
 $composeArguments = @(
     'compose',
     '--env-file', $environmentFile,
-    '-f', $databaseCompose,
-    '-f', $backendCompose
+    '-f', $composeFile,
+    '--profile', 'full'
 )
 
 try {
@@ -38,8 +35,8 @@ try {
     do {
         $health = docker inspect --format '{{.State.Health.Status}}' $containerName
         if ($health -eq 'healthy') {
-            $healthResponse = Invoke-RestMethod -Uri 'http://127.0.0.1:18000/health'
-            $readinessResponse = Invoke-RestMethod -Uri 'http://127.0.0.1:18000/readiness'
+            $healthResponse = Invoke-RestMethod -Uri 'http://127.0.0.1:28000/health'
+            $readinessResponse = Invoke-RestMethod -Uri 'http://127.0.0.1:28000/readiness'
             if ($healthResponse.data.status -ne 'healthy') {
                 throw 'Backend /health response is not healthy.'
             }
@@ -48,9 +45,11 @@ try {
                 $readinessResponse.data.dependencies.app_postgres -ne 'ready' -or
                 $readinessResponse.data.dependencies.migration -ne 'ready' -or
                 $readinessResponse.data.dependencies.approved_templates -ne 'ready' -or
-                $readinessResponse.data.dependencies.trino -ne 'not_required'
+                $readinessResponse.data.dependencies.trino -ne 'ready' -or
+                $readinessResponse.data.dependencies.datahub -ne 'ready' -or
+                $readinessResponse.data.dependencies.model -ne 'ready'
             ) {
-                throw 'Backend /readiness did not confirm database, migration, and approved templates.'
+                throw 'Backend /readiness did not confirm all product dependencies.'
             }
             Write-Output 'BACKEND_CONTAINER_READY'
             Write-Output 'BACKEND_DATABASE_READY'
@@ -65,7 +64,6 @@ try {
     throw 'Backend container did not become healthy within 40 seconds.'
 }
 finally {
-    $env:DATA_PLATFORM_MODE = $previousDataPlatformMode
     if ($RemoveAfterVerification) {
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'

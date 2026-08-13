@@ -2,12 +2,12 @@
   "catalog_version": "I5-SEMANTIC-CATALOG-v1.0.0-DRAFT",
   "description_format_version": "1.0.0",
   "source_contract": "src/data/serving_analytics_contract.i4.v1.json",
-  "source_views_sha256": "d0ee01debeb821a7085cc02a81f8b47cd637f1749e017be1a3b65a9c5a91bc0d",
+  "source_views_sha256": "993694e140fdfc33945b08b12505c780b64d886d5b422e058ae854a458d04fb9",
   "synthetic": true,
   "counts": {
     "datasets": 8,
-    "field_occurrences": 116,
-    "unique_fields": 70
+    "field_occurrences": 117,
+    "unique_fields": 71
   },
   "dataset_descriptions": {
     "serving.analytics.banquet_monthly_metrics": "호텔별 월간 연회 예약, 참석 인원과 인식 매출을 함께 보는 합성 분석 View입니다.",
@@ -72,7 +72,8 @@
     "revpar": "판매 가능 객실 1실당 객실 매출입니다.",
     "revpash": "판매 가능 좌석 시간 1시간당 식음 매출입니다.",
     "revpor": "판매된 객실 박 1건당 총운영매출입니다.",
-    "room_revenue": "취소 투숙을 제외하고 인식된 객실 매출입니다.",
+    "room_revenue": "숙박일별로 균등 배분한 객실 운영 매출입니다.",
+    "recognized_room_revenue": "실제 체크아웃 날짜에 전액 인식한 객실 매출입니다.",
     "room_type_code": "객실 유형을 구분하는 코드입니다.",
     "rooms_sold": "실제로 판매된 객실 박 수입니다.",
     "seat_hours_available": "판매할 수 있었던 총 좌석 시간입니다.",
@@ -91,5 +92,5 @@
     "year": "지표를 집계한 연도입니다.",
     "year_month": "지표를 집계한 월의 시작 시각입니다."
   },
-  "catalog_sha256": "38982b4a536024fb0ce6a2cf42ffcbafbc9beb2f6f8731d6da09c504df6ce7a2"
+  "catalog_sha256": "c681f747f3ca8d25b88fb7bd544ead0e8773d3ef9c152a9def9db42dd3514640"
 }

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 from typing import Annotated, Any, Callable
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from app.adapters.fake_data_platform import FakeDataPlatformAdapter
-from app.adapters.fake_model import FakeModelAdapter
 from app.contract_examples import (
     ANALYSIS_REQUEST_EXAMPLES,
     ANALYSIS_RESPONSE_EXAMPLES,
@@ -17,11 +16,12 @@ from app.analysis_contracts import (
     AnalysisDefinitionListResponse,
     AnalysisDefinitionResponse,
     AnalysisRunListResponse,
+    AnalysisRunArtifactResponse,
     AnalysisRunResponse,
     CreateAnalysisDefinitionRequest,
     ReplayAnalysisRequest,
 )
-from app.context import ContextValidationError, analysis_context, request_context
+from app.context import ContextValidationError, analysis_context, request_context, session_context
 from app.contracts import (
     AnalysisRequest,
     AnalysisResponse,
@@ -34,6 +34,8 @@ from app.contracts import (
     ReadinessData,
     ReadinessResponse,
     RequestContext,
+    SessionData,
+    SessionResponse,
     response_meta,
 )
 from app.controllers.analysis_controller import AnalysisController
@@ -47,17 +49,10 @@ def _routing_service() -> RoutingService:
     database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
     if database_url:
         return RoutingService.from_database(database_url)
-    if os.getenv("DATA_PLATFORM_MODE") == "versioned-trino":
-        return RoutingService.for_versioned_trino_demo()
     return RoutingService()
 
 
 def _data_platform():
-    mode = os.getenv("DATA_PLATFORM_MODE", "fake")
-    if mode == "fake":
-        return FakeDataPlatformAdapter()
-    if mode not in {"real", "versioned-trino"}:
-        raise ValueError(f"unsupported DATA_PLATFORM_MODE: {mode}")
     from app.adapters.i2_data_platform import I2DataPlatformAdapter
 
     return I2DataPlatformAdapter(
@@ -65,35 +60,51 @@ def _data_platform():
         os.getenv("TRINO_USER", "answervice"),
         os.getenv("DATAHUB_GMS_URL", "http://datahub-gms:8080"),
         os.getenv("DATAHUB_API_TOKEN"),
-        require_live_metadata=mode == "real",
+        require_live_metadata=True,
+        allow_template_assets=False,
     )
 
 
 def _model():
-    mode = os.getenv("MODEL_MODE", "fake")
-    if mode == "fake":
-        return FakeModelAdapter()
-    from app.adapters.contract_model import ContractModelAdapter, TemplateOnlyModelAdapter
+    from app.adapters.contract_model import ContractModelAdapter
 
-    if mode == "template-only":
-        return TemplateOnlyModelAdapter()
-
-    if mode == "contract-fake":
-        return ContractModelAdapter()
-    if mode == "openai":
-        return ContractModelAdapter.from_openai(
-            os.getenv("MODEL_ENDPOINT", ""),
-            os.getenv("MODEL_API_TOKEN"),
-            float(os.getenv("MODEL_TIMEOUT_SECONDS", "15")),
+    node2_model = os.getenv("NODE2_MODEL", "")
+    if node2_model:
+        node2_provider = os.getenv("NODE2_MODEL_PROVIDER", "openai")
+        use_openai_credentials = node2_provider == "openai"
+        return ContractModelAdapter.from_endpoints(
+            openai_endpoint=os.getenv("OPENAI_ENDPOINT", ""),
+            openai_token=os.getenv("OPENAI_API_KEY", ""),
+            openai_model=os.getenv("OPENAI_MODEL", ""),
+            node2_endpoint=os.getenv(
+                "OPENAI_ENDPOINT" if use_openai_credentials else "NODE2_MODEL_ENDPOINT",
+                "",
+            ),
+            node2_token=os.getenv(
+                "OPENAI_API_KEY" if use_openai_credentials else "NODE2_MODEL_API_TOKEN",
+                "",
+            ),
+            node2_model=node2_model,
+            node2_provider=node2_provider,
+            timeout_seconds=float(os.getenv("MODEL_TIMEOUT_SECONDS", "60")),
         )
-    raise ValueError(f"unsupported MODEL_MODE: {mode}")
+    return ContractModelAdapter.from_openai(
+        endpoint=os.getenv("OPENAI_ENDPOINT", ""),
+        token=os.getenv("OPENAI_API_KEY", ""),
+        model=os.getenv("OPENAI_MODEL", ""),
+        timeout_seconds=float(os.getenv("MODEL_TIMEOUT_SECONDS", "60")),
+    )
+
+
+@lru_cache(maxsize=1)
+def _controller() -> AnalysisController:
+    return AnalysisController(
+        AnalysisService(_data_platform(), _model()),
+        _routing_service(),
+    )
 
 
 router = APIRouter()
-controller = AnalysisController(
-    AnalysisService(_data_platform(), _model()),
-    _routing_service(),
-)
 readiness = AppDatabaseReadiness()
 execution_gate = ConcurrentExecutionGate()
 
@@ -152,6 +163,20 @@ def ready(request: Request) -> ReadinessResponse:
     )
 
 
+@router.get(
+    "/auth/session",
+    response_model=SessionResponse,
+    operation_id="getAuthenticatedSession",
+)
+def authenticated_session(
+    context: Annotated[RequestContext, Depends(session_context)],
+) -> SessionResponse:
+    return SessionResponse(
+        data=SessionData(role=context.role),
+        meta=response_meta(context),
+    )
+
+
 @router.post(
     "/analysis",
     response_model=AnalysisResponse,
@@ -197,8 +222,12 @@ def analysis(
     try:
         if os.getenv("APP_RUNTIME_DATABASE_URL"):
             repository = _analysis_repository(context)
-            _repository_call(lambda: repository.begin_request(payload.question, context))
-        response = controller.submit(payload, context, execution.update)
+            _repository_call(
+                lambda: repository.begin_request(
+                    payload.question, payload.parameters, context
+                )
+            )
+        response = _controller().submit(payload, context, execution.update)
         if repository is not None:
             _repository_call(
                 lambda: repository.finish_run(context.request_id, response, execution)
@@ -270,6 +299,13 @@ def replay_analysis_definition(
     definition = _repository_call(
         lambda: repository.get_definition(definition_id, replay=True)
     )
+    unknown_parameters = set(payload.parameters) - set(definition["parameters"])
+    if unknown_parameters:
+        raise HTTPException(
+            status_code=422,
+            detail=f"정의되지 않은 Analysis parameter: {', '.join(sorted(unknown_parameters))}",
+        )
+    parameters = {**definition["parameters"], **payload.parameters}
     replay_context = context.model_copy(update={"as_of": payload.as_of})
     request_id, created = _repository_call(
         lambda: repository.begin_run(
@@ -277,6 +313,7 @@ def replay_analysis_definition(
             replay_context,
             payload.as_of,
             payload.idempotency_key,
+            parameters,
         )
     )
     if not created:
@@ -289,10 +326,10 @@ def replay_analysis_definition(
         raise HTTPException(status_code=429, detail="동시 분석은 최대 2건까지 실행할 수 있습니다.")
     execution: dict[str, Any] = {}
     try:
-        response = controller.submit(
+        response = _controller().submit(
             AnalysisRequest(
                 question=definition["question"],
-                parameters=definition["parameters"],
+                parameters=parameters,
             ),
             replay_context,
             execution.update,
@@ -337,3 +374,16 @@ def get_analysis_run(
 ) -> dict[str, Any]:
     repository = _analysis_repository(context)
     return _repository_call(lambda: repository.get_run(request_id))
+
+
+@router.get(
+    "/analysis/runs/{request_id}/artifact",
+    operation_id="analysisGetRunArtifact",
+    response_model=AnalysisRunArtifactResponse,
+)
+def get_analysis_run_artifact(
+    request_id: UUID,
+    context: Annotated[RequestContext, Depends(analysis_context)],
+) -> dict[str, Any]:
+    repository = _analysis_repository(context)
+    return _repository_call(lambda: repository.get_run_artifact(request_id))

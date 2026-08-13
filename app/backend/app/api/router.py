@@ -31,6 +31,9 @@ from app.contracts import (
     ErrorResponse,
     HealthData,
     HealthResponse,
+    LoginData,
+    LoginRequest,
+    LoginResponse,
     ReadinessData,
     ReadinessResponse,
     RequestContext,
@@ -38,6 +41,7 @@ from app.contracts import (
     SessionResponse,
     response_meta,
 )
+from app.auth import AuthenticationError, authenticate_credentials, issue_session_token
 from app.controllers.analysis_controller import AnalysisController
 from app.services.analysis_service import AnalysisService
 from app.services.execution_control import ConcurrentExecutionGate
@@ -173,6 +177,32 @@ def authenticated_session(
 ) -> SessionResponse:
     return SessionResponse(
         data=SessionData(role=context.role),
+        meta=response_meta(context),
+    )
+
+
+@router.post(
+    "/auth/login",
+    response_model=LoginResponse,
+    operation_id="createAuthenticatedSession",
+    responses={401: {"model": ErrorResponse, "description": "아이디 또는 비밀번호 불일치"}},
+)
+def login(payload: LoginRequest, request: Request) -> LoginResponse:
+    try:
+        principal = authenticate_credentials(payload.username, payload.password)
+        session_token = issue_session_token(principal)
+    except AuthenticationError as exc:
+        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.ACCESS_DENIED
+        raise ContextValidationError(code, exc.message, exc.status_code) from exc
+    context = RequestContext(
+        request_id=request.state.request_id,
+        trace_id=request.state.trace_id,
+        user_id=principal.subject,
+        role=principal.role,
+    )
+    request.state.context = context
+    return LoginResponse(
+        data=LoginData(role=principal.role, session_token=session_token),
         meta=response_meta(context),
     )
 

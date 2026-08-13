@@ -14,6 +14,7 @@ venv/
 env/
 .pytest_cache/
 .pytest-*/
+.test-tmp/
 .mypy_cache/
 .ruff_cache/
 .coverage
@@ -24,6 +25,8 @@ node_modules/
 .next/
 dist/
 coverage/
+.playwright-cli/
+output/playwright/
 # Local tools and logs
 .tmp/
 .codex-log/

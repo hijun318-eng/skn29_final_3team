@@ -8,6 +8,7 @@ import {
 import { createUuid } from "../utils/createUuid.ts";
 
 export interface AnalysisClient {
+  login(username: string, password: string): Promise<LoginSession>;
   validateSession(): Promise<SessionInfo>;
   analyze(question: string, conversationId: string, parameters: { period_start: string; period_end_exclusive: string }): Promise<AnalysisRun>;
   createDefinition(title: string, question: string, parameters: Record<string, AnalysisValue>): Promise<SavedAnalysisDefinition>;
@@ -20,6 +21,10 @@ export interface AnalysisClient {
 export interface SessionInfo {
   status: "authenticated";
   role: "hotel_analyst" | "report_admin" | "data_admin";
+}
+
+export interface LoginSession extends SessionInfo {
+  session_token: string;
 }
 
 export interface SavedAnalysisDefinition {
@@ -98,6 +103,17 @@ export function createHttpAnalysisClient(
     return payload as T;
   };
   return {
+    async login(username, password) {
+      const payload = await parse<{ data: LoginSession }>(await request(endpoint("/auth/login"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      }));
+      if (payload?.data?.status !== "authenticated" || !payload.data.session_token) {
+        throw new Error("로그인 API가 올바르지 않은 응답을 반환했습니다.");
+      }
+      return payload.data;
+    },
     async validateSession() {
       const payload = await parse<{ data: SessionInfo }>(await request(endpoint("/auth/session"), {
         headers: authenticationHeaders(authToken),

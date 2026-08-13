@@ -140,6 +140,14 @@ html{scrollbar-gutter:stable}body{line-height:1.45;text-rendering:optimizeLegibi
 .report-schedule-list article div { display: grid; gap: 2px; min-width: 0; }
 .report-schedule-list small, .report-schedule-list em { overflow-wrap: anywhere; font-size: 11px; color: #64748b; font-style: normal; }
 .report-layout-help { display: flex; align-items: center; gap: 7px; margin: 14px 0 0; color: var(--muted); font-size: 12px; }
+.report-layout-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.report-layout-toolbar .report-layout-help { margin: 0; }
+.report-new-block-drag { flex: none; cursor: grab; border-style: dashed; }
+.report-new-block-drag:active { cursor: grabbing; }
+.report-api-blocks { position: relative; min-height: 240px; grid-auto-rows: 48px; padding: 12px; border: 1px dashed transparent; border-radius: 12px; background: linear-gradient(rgba(148,163,184,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,.08) 1px,transparent 1px); background-size: calc((100% - 132px)/12 + 12px) 60px; transition: border-color .15s ease, background-color .15s ease; }
+.report-api-blocks.is-drop-ready { border-color: var(--primary); background-color: var(--primary-soft); }
+.report-drop-preview { z-index: 2; min-height: 48px; display: grid; place-items: center; pointer-events: none; color: var(--primary); border: 2px solid var(--primary); border-radius: 10px; background: color-mix(in srgb,var(--primary-soft) 82%,transparent); box-shadow: 0 8px 24px rgba(28,105,212,.18); }
+.report-drop-preview span { padding: 5px 8px; border-radius: 999px; background: #fff; font-size: 11px; font-weight: 700; }
 .report-api-blocks > article { position: relative; min-width: 0; background: #fff; transition: border-color .15s ease, box-shadow .15s ease, opacity .15s ease; }
 .report-api-blocks > article.is-dragging { opacity: .42; }
 .report-api-blocks > article.is-drop-target { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
@@ -156,11 +164,44 @@ html{scrollbar-gutter:stable}body{line-height:1.45;text-rendering:optimizeLegibi
 .report-block-controls button.danger { color: var(--danger); }
 .report-api-blocks textarea { padding: 10px; resize: vertical; }
 .report-api-blocks > article > p { overflow-wrap: anywhere; }
+.report-actual-editor { min-height: 560px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.report-actual-editor .editor-library { margin: 0; border: 0; border-right: 1px solid var(--border); border-radius: 0; }
+.report-actual-editor .editor-workspace { min-height: 560px; }
+.report-actual-editor .editor-topbar { margin: 0; }
+.report-actual-editor .editor-canvas { grid-auto-rows: 48px; align-content: start; }
+.report-actual-editor .editor-block { cursor: default; }
+.report-actual-editor .editor-block > header { align-items: flex-start; }
+.report-actual-editor .editor-block textarea { min-height: 72px; resize: vertical; }
+.report-actual-editor .editor-catalog button[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft); }
+.report-actual-editor .editor-save-state { color: var(--muted); }
 @media (max-width: 600px) {
+  .report-layout-toolbar { align-items: stretch; flex-direction: column; }
   .report-schedule-form, .report-schedule-list article { align-items: stretch; flex-direction: column; }
   .report-schedule-form label, .report-schedule-form button { width: 100%; }
   .report-api-blocks > article { grid-column: 1 / -1 !important; }
+  .report-actual-editor { display: block; }
+  .report-actual-editor .editor-library { border-right: 0; border-bottom: 1px solid var(--border); }
   .report-api-blocks > article > header { flex-direction: column; }
   .report-block-controls { width: 100%; justify-content: flex-start; }
   .report-block-controls small { text-align: left; }
 }
+
+/* Login uses the same enterprise shell tokens as the authenticated workspace. */
+.session-login.ppt-theme { min-height: 100vh; padding: 24px; display: grid; place-items: center; background: #000; background-image: linear-gradient(90deg,rgba(90,105,126,.12) 1px,transparent 1px),linear-gradient(rgba(90,105,126,.08) 1px,transparent 1px); background-size: 280px 100%,100% 180px; }
+.session-login-logo { margin-bottom: 34px; display: flex; align-items: center; gap: 13px; }
+.session-login-logo > span { width: 46px; height: 46px; display: grid; place-items: center; color: #fff; border: 1px solid #fff; background: #1c69d4; font-size: 21px; font-weight: 800; }
+.session-login-logo b { color: #fff; font-size: 19px; letter-spacing: -.02em; }
+.session-login-logo b:after { width: 112px; height: 3px; margin-top: 6px; display: block; content: ""; background: linear-gradient(90deg,#1c69d4 0 18%,#e22718 18% 28%,#fff 28% 100%); }
+.session-login-card > small { color: #5b9cff; font-size: 10px; letter-spacing: .2em; }
+.session-login-card { width: min(520px,calc(100% - 48px)); margin: auto; padding: clamp(28px,4vw,46px); color: #e9edf4; border: 1px solid #2a3443; border-radius: 2px; background: #05070b; box-shadow: none; }
+.session-login-card h1 { margin: 10px 0 9px; color: #fff; font-family: var(--font-body); font-size: 38px; font-weight: 800; letter-spacing: -.03em; }
+.session-login-card > p { color: #9ba8ba; font-size: 13px; }
+.session-login-card form { margin-top: 30px; gap: 17px; }
+.session-login-card label { color: #c0cad8; font-size: 12px; }
+.session-login-card label > span { height: 48px; border: 1px solid #2b3a51; border-radius: 2px; background: #101725; }
+.session-login-card label > span:focus-within { border-color: #1c69d4; box-shadow: 0 0 0 3px rgba(28,105,212,.2); }
+.session-login-card input { color: #fff; background: transparent; }
+.session-login-card button { height: 48px; border-radius: 2px; }
+.session-login-card > em { display: flex; align-items: center; gap: 6px; color: #718097; }
+.session-login-error { color: #ff8b82; border-color: #7b2923; border-radius: 2px; background: #20100f; }
+@media(max-width:520px){.session-login.ppt-theme{padding:14px}.session-login-card{width:100%;padding:28px 22px}}

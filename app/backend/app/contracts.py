@@ -232,6 +232,15 @@ class SessionData(ContractModel):
     role: Role
 
 
+class LoginRequest(ContractModel):
+    username: str = Field(min_length=3, max_length=64, pattern=r"^[a-z0-9._-]+$")
+    password: str = Field(min_length=8, max_length=128)
+
+
+class LoginData(SessionData):
+    session_token: str
+
+
 class EmptyData(ContractModel):
     pass
 
@@ -256,6 +265,12 @@ class ReadinessResponse(ContractModel):
 
 class SessionResponse(ContractModel):
     data: SessionData
+    meta: ResponseMeta
+    error: ErrorBody | None = None
+
+
+class LoginResponse(ContractModel):
+    data: LoginData
     meta: ResponseMeta
     error: ErrorBody | None = None
 

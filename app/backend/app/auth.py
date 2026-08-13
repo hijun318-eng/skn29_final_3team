@@ -4,8 +4,9 @@ import hashlib
 import hmac
 import json
 import os
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -33,7 +34,21 @@ class _PrincipalRecord:
     expires_at: datetime
 
 
+@dataclass(frozen=True)
+class _AccountRecord:
+    username: str
+    password_salt: str
+    password_hash: str
+    password_iterations: int
+    principal: Principal
+    active: bool
+
+
 _RECORD_FIELDS = {"token_sha256", "subject", "role", "not_before", "expires_at"}
+_ACCOUNT_FIELDS = {
+    "username", "password_salt", "password_hash", "password_iterations",
+    "subject", "role", "active",
+}
 _TEST_TOKENS = {
     "runtime-test-token": Principal(UUID(int=1), Role.HOTEL_ANALYST),
     "runtime-report-admin-token": Principal(UUID(int=2), Role.REPORT_ADMIN),
@@ -94,11 +109,111 @@ def _load_principals(path: Path) -> tuple[_PrincipalRecord, ...]:
         raise _authentication_error(503) from exc
 
 
-def _release_principal(token: str, now: datetime) -> Principal:
+def _load_accounts(path: Path) -> tuple[_AccountRecord, ...]:
+    try:
+        if path.stat().st_size > 1_048_576:
+            raise ValueError("account file is too large")
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, list) or not payload:
+            raise ValueError("account file must be a non-empty list")
+        records: list[_AccountRecord] = []
+        usernames: set[str] = set()
+        for item in payload:
+            if not isinstance(item, dict) or set(item) != _ACCOUNT_FIELDS:
+                raise ValueError("account record fields are invalid")
+            username = item["username"]
+            salt = item["password_salt"]
+            digest = item["password_hash"]
+            iterations = item["password_iterations"]
+            if (
+                not isinstance(username, str) or not 3 <= len(username) <= 64
+                or username != username.strip().lower() or username in usernames
+                or not isinstance(salt, str) or len(salt) < 16
+                or not isinstance(digest, str) or len(digest) != 64
+                or not isinstance(iterations, int) or iterations < 200_000
+                or not isinstance(item["active"], bool)
+            ):
+                raise ValueError("account record is invalid")
+            bytes.fromhex(digest)
+            urlsafe_b64decode(salt + "=" * (-len(salt) % 4))
+            records.append(_AccountRecord(
+                username=username,
+                password_salt=salt,
+                password_hash=digest,
+                password_iterations=iterations,
+                principal=Principal(UUID(str(item["subject"])), Role(str(item["role"]))),
+                active=item["active"],
+            ))
+            usernames.add(username)
+        return tuple(records)
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise _authentication_error(503) from exc
+
+
+def _configured_principal_path() -> Path:
     configured_path = os.getenv("AUTH_PRINCIPALS_FILE", "").strip()
     if not configured_path:
         raise _authentication_error(503)
-    records = _load_principals(Path(configured_path))
+    return Path(configured_path)
+
+
+def authenticate_credentials(username: str, password: str) -> Principal:
+    normalized_username = username.strip().lower()
+    if not normalized_username or not password:
+        raise _authentication_error()
+    records = _load_accounts(_configured_principal_path())
+    matched = next((record for record in records if record.username == normalized_username), None)
+    salt = urlsafe_b64decode((matched.password_salt if matched else "AAAAAAAAAAAAAAAAAAAAAA") + "==")
+    iterations = matched.password_iterations if matched else 210_000
+    supplied_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations).hex()
+    expected_hash = matched.password_hash if matched else "0" * 64
+    if matched is None or not matched.active or not hmac.compare_digest(expected_hash, supplied_hash):
+        raise _authentication_error()
+    return matched.principal
+
+
+def _session_secret() -> bytes:
+    secret = os.getenv("AUTH_SESSION_SECRET", "").strip()
+    if len(secret) < 32:
+        raise _authentication_error(503)
+    return secret.encode("utf-8")
+
+
+def issue_session_token(principal: Principal, *, now: datetime | None = None) -> str:
+    issued_at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    ttl = min(86_400, max(900, int(os.getenv("AUTH_SESSION_TTL_SECONDS", "28800"))))
+    payload = json.dumps({
+        "sub": str(principal.subject),
+        "role": principal.role.value,
+        "iat": int(issued_at.timestamp()),
+        "exp": int((issued_at + timedelta(seconds=ttl)).timestamp()),
+    }, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    encoded = urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+    signature = hmac.new(_session_secret(), encoded.encode("ascii"), hashlib.sha256).digest()
+    return f"{encoded}.{urlsafe_b64encode(signature).decode('ascii').rstrip('=')}"
+
+
+def _session_principal(token: str, now: datetime) -> Principal:
+    try:
+        encoded, supplied_signature = token.split(".", 1)
+        expected_signature = hmac.new(_session_secret(), encoded.encode("ascii"), hashlib.sha256).digest()
+        actual_signature = urlsafe_b64decode(supplied_signature + "=" * (-len(supplied_signature) % 4))
+        if not hmac.compare_digest(expected_signature, actual_signature):
+            raise ValueError("invalid signature")
+        payload = json.loads(urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)))
+        if set(payload) != {"sub", "role", "iat", "exp"} or not payload["iat"] <= int(now.timestamp()) < payload["exp"]:
+            raise ValueError("invalid session window")
+        return Principal(UUID(str(payload["sub"])), Role(str(payload["role"])))
+    except AuthenticationError:
+        raise
+    except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        raise _authentication_error() from exc
+
+
+def _release_principal(token: str, now: datetime) -> Principal:
+    if token.count(".") == 1:
+        return _session_principal(token, now)
+    records = _load_principals(_configured_principal_path())
     supplied_digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
     matched = None
     for record in records:

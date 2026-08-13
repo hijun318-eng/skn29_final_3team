@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { normalizeApiResponse, OPENAPI_VERSION, resolveViewState, UI_CONTRACT_VERSION } from "../../app/enterprise-react/src/contracts/analysis.ts";
-import { placeDraftBlock, REPORT_CONTRACT_VERSION, REPORT_RUN_STATUSES, reorderDraftBlocks } from "../../app/enterprise-react/src/contracts/report.ts";
-import { createAnalysisClient, createHttpAnalysisClient } from "../../app/enterprise-react/src/api/analysisClient.ts";
-import { createReportClient, ReportApiError } from "../../app/enterprise-react/src/api/reportClient.ts";
-import { resolveRoute } from "../../app/enterprise-react/src/routing.js";
+import { normalizeApiResponse, OPENAPI_VERSION, resolveViewState, UI_CONTRACT_VERSION } from "../../app/frontend/src/contracts/analysis.ts";
+import { placeDraftBlock, REPORT_CONTRACT_VERSION, REPORT_RUN_STATUSES, reorderDraftBlocks } from "../../app/frontend/src/contracts/report.ts";
+import { createAnalysisClient, createHttpAnalysisClient } from "../../app/frontend/src/api/analysisClient.ts";
+import { createReportClient, ReportApiError } from "../../app/frontend/src/api/reportClient.ts";
+import { resolveRoute } from "../../app/frontend/src/routing.js";
 
-const source = (path) => readFileSync(new URL(`../../app/enterprise-react/src/${path}`, import.meta.url), "utf8");
+const source = (path) => readFileSync(new URL(`../../app/frontend/src/${path}`, import.meta.url), "utf8");
 const productSources = [
   "App.jsx", "routing.js", "api/analysisClient.ts", "api/reportClient.ts",
   "pages/AgentPage.jsx", "pages/ReportsPage.jsx",

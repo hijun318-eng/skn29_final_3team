@@ -55,7 +55,7 @@ def test_root_include_applies_only_the_runtime_identity_override():
 
     assert "- infrastructure/database/compose.yml" in root
     assert "- app/backend/compose.fragment.yml" in root
-    assert "- app/enterprise-react/compose.fragment.yml" in root
+    assert "- app/frontend/compose.fragment.yml" in root
     assert "- infrastructure/database/datahub/compose.consumer.yml" in root
     assert "- compose.app-postgres.override.yml" in root
     assert override == (

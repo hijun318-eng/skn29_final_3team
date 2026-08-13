@@ -5,6 +5,6 @@ include:
   - path:
       - infrastructure/database/compose.yml
       - app/backend/compose.fragment.yml
-      - app/enterprise-react/compose.fragment.yml
+      - app/frontend/compose.fragment.yml
       - infrastructure/database/datahub/compose.consumer.yml
       - compose.app-postgres.override.yml

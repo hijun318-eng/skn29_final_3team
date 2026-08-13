@@ -32,14 +32,14 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: app/enterprise-react
+        working-directory: app/frontend
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: app/enterprise-react/package-lock.json
+          cache-dependency-path: app/frontend/package-lock.json
       - run: npm ci
       - run: npm run build
       - run: node --test ../../tests/frontend/contracts.test.mjs

@@ -185,3 +185,33 @@ html{scrollbar-gutter:stable}body{line-height:1.45;text-rendering:optimizeLegibi
   .report-block-controls { width: 100%; justify-content: flex-start; }
   .report-block-controls small { text-align: left; }
 }
+
+/* Login uses the same enterprise shell tokens as the authenticated workspace. */
+.session-login.ppt-theme { min-height: 100vh; padding: 0; display: grid; grid-template-columns: minmax(360px, .9fr) minmax(460px, 1.1fr); place-items: stretch; background: #000; background-image: linear-gradient(90deg,rgba(90,105,126,.12) 1px,transparent 1px),linear-gradient(rgba(90,105,126,.08) 1px,transparent 1px); background-size: 280px 100%,100% 180px; }
+.session-login-brand { min-width: 0; padding: clamp(28px,5vw,72px); display: flex; flex-direction: column; border-right: 1px solid #2a3443; background: linear-gradient(145deg,rgba(7,24,47,.94),rgba(3,5,9,.98) 68%); }
+.session-login-logo { display: flex; align-items: center; gap: 13px; }
+.session-login-logo > span { width: 46px; height: 46px; display: grid; place-items: center; color: #fff; border: 1px solid #fff; background: #1c69d4; font-size: 21px; font-weight: 800; }
+.session-login-logo b,.session-login-logo small { display: block; }
+.session-login-logo b { color: #fff; font-size: 19px; letter-spacing: -.02em; }
+.session-login-logo b:after { width: 112px; height: 3px; margin-top: 6px; display: block; content: ""; background: linear-gradient(90deg,#1c69d4 0 18%,#e22718 18% 28%,#fff 28% 100%); }
+.session-login-logo small { margin-top: 4px; color: #8f9caf; font-size: 10px; }
+.session-login-intro { margin: auto 0; }
+.session-login-intro > small,.session-login-card > small { color: #5b9cff; font-size: 10px; letter-spacing: .2em; }
+.session-login-intro h2 { margin: 14px 0 18px; color: #fff; font-size: clamp(38px,4.2vw,64px); line-height: 1.12; letter-spacing: -.045em; }
+.session-login-intro p { max-width: 520px; margin: 0; color: #aeb9c9; font-size: 15px; line-height: 1.75; }
+.session-login-security { padding-top: 22px; display: flex; align-items: center; gap: 11px; color: #8fbcff; border-top: 1px solid #26344a; }
+.session-login-security span,.session-login-security b,.session-login-security small { display: block; }
+.session-login-security b { color: #dce6f3; font-size: 10px; letter-spacing: .12em; }
+.session-login-security small { margin-top: 3px; color: #718097; font-size: 10px; }
+.session-login-card { width: min(520px,calc(100% - 48px)); margin: auto; padding: clamp(28px,4vw,46px); color: #e9edf4; border: 1px solid #2a3443; border-radius: 2px; background: #05070b; box-shadow: none; }
+.session-login-card h1 { margin: 10px 0 9px; color: #fff; font-family: var(--font-body); font-size: 38px; font-weight: 800; letter-spacing: -.03em; }
+.session-login-card > p { color: #9ba8ba; font-size: 13px; }
+.session-login-card form { margin-top: 30px; gap: 17px; }
+.session-login-card label { color: #c0cad8; font-size: 12px; }
+.session-login-card label > span { height: 48px; border: 1px solid #2b3a51; border-radius: 2px; background: #101725; }
+.session-login-card label > span:focus-within { border-color: #1c69d4; box-shadow: 0 0 0 3px rgba(28,105,212,.2); }
+.session-login-card input { color: #fff; background: transparent; }
+.session-login-card button { height: 48px; border-radius: 2px; }
+.session-login-card > em { display: flex; align-items: center; gap: 6px; color: #718097; }
+.session-login-error { color: #ff8b82; border-color: #7b2923; border-radius: 2px; background: #20100f; }
+@media(max-width:780px){.session-login.ppt-theme{grid-template-columns:1fr}.session-login-brand{min-height:240px;padding:28px;border-right:0;border-bottom:1px solid #2a3443}.session-login-intro{margin:48px 0 0}.session-login-intro h2{font-size:36px}.session-login-intro p,.session-login-security{display:none}.session-login-card{margin:28px auto}}

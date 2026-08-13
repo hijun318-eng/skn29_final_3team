@@ -44,7 +44,7 @@ Invoke-RestMethod http://127.0.0.1:28000/readiness | ConvertTo-Json -Depth 5
 - `compose.yml`: 전체 서비스 진입점
 - `infrastructure/database/compose.yml`: App DB, 5개 Source DB, Trino
 - `infrastructure/database/datahub/compose.consumer.yml`: DataHub
-- `app/backend/compose.fragment.yml`, `app/enterprise-react/compose.fragment.yml`: Backend·Frontend
+- `app/backend/compose.fragment.yml`, `app/frontend/compose.fragment.yml`: Backend·Frontend
 - `infrastructure/database/sql/ddl/`, `infrastructure/database/sql/app/`: 런타임 DDL·기준 데이터
 - `docs/e2e_mvp/derived/service_demo_v3/01_*`~`05_*`: 현재 Source DB seed
 - `app/backend/migrations/versions/`: App DB 증분 migration
@@ -66,7 +66,7 @@ Invoke-RestMethod http://127.0.0.1:28000/readiness | ConvertTo-Json -Depth 5
 
 ```powershell
 python -m pytest tests/backend tests/ai tests/data tests/integration -q
-Set-Location app/enterprise-react
+Set-Location app/frontend
 npm ci
 npm run test:contracts
 npm run build

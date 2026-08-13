@@ -1,0 +1,21 @@
+source:
+  type: trino
+  config:
+    host_port: trino:8080
+    database: serving
+    username: datahub_ingestion
+    env: PROD
+    platform_instance: serving_v4
+    include_tables: false
+    include_views: true
+    include_view_lineage: true
+    include_view_column_lineage: true
+    ingest_lineage_to_connectors: true
+    schema_pattern:
+      allow: [analytics, reference]
+    table_pattern:
+      allow: ['serving\.(analytics|reference)\.v4_.*']
+sink:
+  type: datahub-rest
+  config:
+    server: http://datahub-gms-quickstart:8080

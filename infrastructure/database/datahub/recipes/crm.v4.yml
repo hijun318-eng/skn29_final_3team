@@ -1,0 +1,15 @@
+source:
+  type: mssql
+  config:
+    host_port: crm-mssql:1433
+    database: ${CRM_DB_NAME}
+    username: ${CRM_READONLY_USER}
+    password: ${CRM_READONLY_PASSWORD}
+    platform_instance: crm_v4
+    include_jobs: false
+    schema_pattern:
+      allow: [walkerhill_v4]
+sink:
+  type: datahub-rest
+  config:
+    server: http://datahub-gms-quickstart:8080

@@ -16,14 +16,14 @@ git switch daesung
 Copy-Item infrastructure/database/.env.example infrastructure/database/.env
 ```
 
-`infrastructure/database/.env`에서 `OPENAI_API_KEY`를 설정한다. 기본 모델은 Node 1·2·Repair·3 모두 `gpt-5.4-mini`이며, endpoint나 모델을 바꾸려는 경우에만 `OPENAI_ENDPOINT`, `OPENAI_MODEL`, `NODE2_MODEL`을 수정한다.
+팀에서 전달받은 `infrastructure/database/.env`를 사용하거나, 직접 만들 때는 모든 `CHANGE_ME_` 값을 교체하고 `OPENAI_API_KEY`를 설정한다. 기본 모델은 Node 1·2·Repair·3 모두 `gpt-5.4-mini`이며, endpoint나 모델을 바꾸려는 경우에만 `OPENAI_ENDPOINT`, `OPENAI_MODEL`, `NODE2_MODEL`을 수정한다.
 
 다음 script는 `.env`의 placeholder login token을 로컬 난수로 교체하고 `hotel_analyst`·`report_admin` principal 파일을 생성한다. raw token과 principal 파일은 Git에서 제외된다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File infrastructure/database/security/provision-release-principals.ps1
-docker compose --profile full up -d --build
-docker compose ps
+docker compose --env-file infrastructure/database/.env --profile full up -d --build
+docker compose --env-file infrastructure/database/.env --profile full ps
 ```
 
 첫 기동은 DataHub와 Source DB 초기화 때문에 시간이 걸릴 수 있다. 준비 상태는 다음처럼 확인한다.
@@ -38,6 +38,18 @@ Invoke-RestMethod http://127.0.0.1:28000/readiness | ConvertTo-Json -Depth 5
 - DataHub: `http://127.0.0.1:19002`
 
 동일한 schema와 합성 snapshot은 추적된 Compose·migration·`docs/e2e_mvp/derived/service_demo_v3/` seed 파일로 생성한다. Docker volume이나 로컬 `.env`를 복사할 필요는 없다.
+
+## 실행 파일 구조
+
+- `compose.yml`: 전체 서비스 진입점
+- `infrastructure/database/compose.yml`: App DB, 5개 Source DB, Trino
+- `infrastructure/database/datahub/compose.consumer.yml`: DataHub
+- `app/backend/compose.fragment.yml`, `app/enterprise-react/compose.fragment.yml`: Backend·Frontend
+- `infrastructure/database/sql/ddl/`, `infrastructure/database/sql/app/`: 런타임 DDL·기준 데이터
+- `docs/e2e_mvp/derived/service_demo_v3/01_*`~`05_*`: 현재 Source DB seed
+- `app/backend/migrations/versions/`: App DB 증분 migration
+
+`infrastructure/database/releases/`와 `infrastructure/database/sql/data/`는 과거 배포·seed 근거이며 현재 루트 Compose가 마운트하지 않는다.
 
 ## Git에 포함하지 않는 값
 

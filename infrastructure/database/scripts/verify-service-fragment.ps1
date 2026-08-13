@@ -27,7 +27,7 @@ $localEnv = if ($EnvFilePath) {
 } elseif (Test-Path -LiteralPath $privateEnv) {
     $privateEnv
 } else {
-    Join-Path $repoRoot '.env.example'
+    Join-Path $databaseRoot '.env.example'
 }
 
 $raw = Get-Content -LiteralPath $fragmentPath -Raw -Encoding UTF8

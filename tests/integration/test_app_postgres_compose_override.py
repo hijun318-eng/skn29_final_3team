@@ -16,7 +16,7 @@ def _config() -> dict:
             "docker",
             "compose",
             "--env-file",
-            ".env.example",
+            "infrastructure/database/.env.example",
             "--profile",
             "dev",
             "config",
@@ -30,6 +30,23 @@ def _config() -> dict:
         text=True,
     )
     return json.loads(result.stdout)
+
+
+def test_canonical_env_example_covers_datahub_runtime_secrets():
+    env_keys = {
+        line.split("=", 1)[0]
+        for line in (ROOT / "infrastructure/database/.env.example").read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#")
+    }
+
+    assert {
+        "DATAHUB_MYSQL_PASSWORD",
+        "DATAHUB_MYSQL_ROOT_PASSWORD",
+        "DATAHUB_SECRET",
+        "DATAHUB_TOKEN_SERVICE_SALT",
+        "DATAHUB_TOKEN_SERVICE_SIGNING_KEY",
+    } <= env_keys
+    assert not (ROOT / ".env.example").exists()
 
 
 def test_root_include_applies_only_the_runtime_identity_override():

@@ -26,7 +26,6 @@
 | `derived/21_AI_작업_인수인계_현재진행상황.md` | S1~S10 순차 판정, 현재 구현 범위, E2E 결과, 미완료 항목과 다음 순서 |
 | `derived/05_sLLM_RunPod_연결_가이드.md` | Adapter 검증과 endpoint 연결 |
 | `derived/22_RunPod_Serverless_vLLM_배포_가이드.md` | Serverless endpoint 전환 절차 |
-| `derived/23_문서정리_실행결과보고서_20260814.md` | 3안 문서 정리 범위, 변경 전후, 삭제·보존·검증 결과 |
 
 `06_데이터_SQL_Web_작업지시서.md`는 과거 Docker 감사 근거로만 보존하며 신규 작업 지시로 사용하지 않는다. 현재 적재 중인 SQL·Compose·검증 파일은 `derived/service_demo_v3/`에만 둔다.
 

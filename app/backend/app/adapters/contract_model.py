@@ -11,7 +11,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from src.ai import schema as ai_schema
-from src.ai.metric_glossary import metric_glossary
+from src.ai.metric_glossary import metric_display_name, metric_glossary
 from src.ai.prompt_registry import get_prompt
 from src.ai.training.benchmark_serving import request_json
 from src.modelops.runtime import ProductionModelClient
@@ -323,7 +323,7 @@ def _seal_sql_parameters(
             rf"(?<![a-z0-9_]){re.escape(alias)}\s*\.\s*\"?{field}\"?"
             for alias in sorted(aliases)
         ]
-        if not asset_fqn:
+        if not asset_fqn or (not aliases and len(package["assets"]) == 1):
             patterns = [rf"(?<![a-z0-9_])(?:[a-z_][a-z0-9_]*\.)?\"?{field}\"?"]
         for pattern in patterns:
             for candidate in literal_candidates:
@@ -485,6 +485,20 @@ def _validate_sql_semantics(node: str, payload: dict[str, Any], sql: str) -> Non
         dimensions = (payload.get("structured_request") or {}).get(
             "dimension_candidates", ()
         )
+        join_ids = {
+            str(item.get("id"))
+            for item in (payload.get("context_package") or {}).get("joins", ())
+            if isinstance(item, dict)
+        }
+        if (
+            not dimensions
+            and "pms_crm_pos_gold_revenue_month_v1" not in join_ids
+            and "전월 대비" not in str(payload.get("normalized_question", ""))
+            and re.search(r"\bgroup\s+by\b", sql, re.IGNORECASE)
+        ):
+            raise ValueError(
+                "model SQL groups by dimensions absent from the structured request"
+            )
         if dimensions and re.search(r"\border\s+by\b", sql, re.IGNORECASE) is None:
             raise ValueError("model SQL does not apply the requested dimension sort")
     if node != "node2" or "전월 대비" not in payload.get("normalized_question", ""):
@@ -694,6 +708,7 @@ class ContractModelAdapter:
                 provider=node2_provider,
             ),
             timeout_seconds=timeout_seconds,
+            max_attempts=3,
         )
         return cls(RoutedProductionModelClient(openai_client, node2_client))
 
@@ -806,10 +821,7 @@ class ContractModelAdapter:
 
     @staticmethod
     def _metric_label(metric_id: str) -> str:
-        aliases = metric_glossary().get(metric_id)
-        if not aliases:
-            raise ValueError("node3 metric has no approved display label")
-        return aliases[0]
+        return metric_display_name(metric_id)
 
     @staticmethod
     def _metric_selection(assets: list[dict[str, Any]]) -> dict[str, Any]:
@@ -966,6 +978,10 @@ class ContractModelAdapter:
         three_source = (
             "pms_crm_pos_gold_revenue_month_v1" in package.approved_join_ids
         )
+        stay_crm_join = (
+            "pms_stay_to_crm_membership_grade_event_time_v1"
+            in package.approved_join_ids
+        )
         execution_time = cls._execution_time(
             context, package.parameter_bindings or None
         )
@@ -1026,6 +1042,25 @@ class ContractModelAdapter:
                     )
                 ]
                 if three_source
+                else [
+                    {
+                        "id": "pms_stay_to_crm_membership_grade_event_time_v1",
+                        "left": left,
+                        "right": right,
+                        "cardinality": "many_to_one_event_time",
+                        "status": "approved",
+                    }
+                    for left, right in (
+                        ("pms.public.pms_stays", "pms.public.pms_reservations"),
+                        ("pms.public.pms_reservations", "pms.public.pms_guests"),
+                        ("pms.public.pms_guests", "crm.dbo.crm_customer_map"),
+                        (
+                            "crm.dbo.crm_customer_map",
+                            "crm.dbo.crm_member_grade_history",
+                        ),
+                    )
+                ]
+                if stay_crm_join
                 else []
             ),
             "required_source_predicates": (

@@ -32,7 +32,14 @@ class CountingModel(FakeModelAdapter):
 
     def generate(self, node, payload):
         self.call_count += 1
-        return super().generate(node, payload)
+        response = super().generate(node, payload)
+        self.last_trace = {
+            "node": node,
+            "model_version": response["model_version"],
+            "prompt_id": f"{node}-prompt",
+            "prompt_version": "v1",
+        }
+        return response
 
 
 class ExecutionControlTest(unittest.TestCase):
@@ -60,6 +67,8 @@ class ExecutionControlTest(unittest.TestCase):
         self.assertEqual(1, self.adapter.execute_count)
         self.assertTrue(second.data.result.evidence.cached)
         self.assertIn("plan_cache=hit", second.data.trace[4].detail)
+        self.assertIn("prompt=node2-prompt@v1", second.data.trace[4].detail)
+        self.assertIn("node2", {item.node for item in second.data.result.evidence.models})
         self.assertIn(PipelineStage.G1, [step.stage for step in second.data.trace])
         self.assertIn(PipelineStage.G2, [step.stage for step in second.data.trace])
         self.assertIn(PipelineStage.G3, [step.stage for step in second.data.trace])

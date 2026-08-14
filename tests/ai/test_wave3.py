@@ -204,6 +204,22 @@ class ProductionClientTests(unittest.TestCase):
         self.assertFalse(client.last_trace["fallback"])
         self.assertNotIn("secret", json.dumps(client.last_trace))
 
+    def test_configured_attempt_limit_is_bounded_and_recorded(self):
+        calls = 0
+
+        def timeout_transport(_node, _payload, _timeout):
+            nonlocal calls
+            calls += 1
+            raise TimeoutError()
+
+        client = ProductionModelClient(timeout_transport, max_attempts=3)
+
+        with self.assertRaisesRegex(TimeoutError, "TIMEOUT"):
+            client.generate("node1", VALID_PAYLOADS["node1_request"])
+
+        self.assertEqual(3, calls)
+        self.assertEqual(3, client.last_trace["attempts"])
+
     def test_schema_failure_opens_circuit_after_two_calls(self):
         calls = 0
 

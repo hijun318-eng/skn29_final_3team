@@ -42,6 +42,94 @@ class Node1Tests(unittest.TestCase):
             "확인할 지표를 알려주세요.",
         )
 
+    def test_explicit_korean_month_range_becomes_one_half_open_period(self):
+        payload = {
+            **VALID_PAYLOADS["node1_request"],
+            "question": "2026년 5월과 6월 객실 매출을 보여줘",
+        }
+
+        result = normalize_question(payload)
+
+        self.assertEqual(
+            result["period_candidates"],
+            [{
+                "start": "2026-05-01T00:00:00+09:00",
+                "end_exclusive": "2026-07-01T00:00:00+09:00",
+                "source_text": "2026년 5월과 6월",
+            }],
+        )
+
+    def test_relative_periods_follow_as_of_and_seoul_calendar(self):
+        expected = {
+            "지난달": ("2026-06-01T00:00:00+09:00", "2026-07-01T00:00:00+09:00"),
+            "지난 주": ("2026-07-20T00:00:00+09:00", "2026-07-27T00:00:00+09:00"),
+            "이번 주": ("2026-07-27T00:00:00+09:00", "2026-07-30T00:00:00+09:00"),
+            "최근 30일": ("2026-06-30T00:00:00+09:00", "2026-07-30T00:00:00+09:00"),
+            "어제": ("2026-07-29T00:00:00+09:00", "2026-07-30T00:00:00+09:00"),
+            "지난 분기": ("2026-04-01T00:00:00+09:00", "2026-07-01T00:00:00+09:00"),
+        }
+        for phrase, boundaries in expected.items():
+            with self.subTest(phrase=phrase):
+                payload = {
+                    **VALID_PAYLOADS["node1_request"],
+                    "question": f"{phrase} 객실 매출을 보여줘",
+                }
+
+                period = normalize_question(payload)["period_candidates"][0]
+
+                self.assertEqual(boundaries, (period["start"], period["end_exclusive"]))
+                self.assertEqual(phrase, period["source_text"])
+
+    def test_last_month_crosses_year_boundary_without_guessing(self):
+        payload = {
+            **VALID_PAYLOADS["node1_request"],
+            "question": "지난달 객실 매출을 보여줘",
+            "as_of": "2026-01-05T00:00:00+09:00",
+        }
+
+        period = normalize_question(payload)["period_candidates"][0]
+
+        self.assertEqual("2025-12-01T00:00:00+09:00", period["start"])
+        self.assertEqual("2026-01-01T00:00:00+09:00", period["end_exclusive"])
+
+    def test_out_of_range_relative_duration_is_not_invented(self):
+        payload = {
+            **VALID_PAYLOADS["node1_request"],
+            "question": "최근 999일 객실 매출을 보여줘",
+        }
+
+        result = normalize_question(payload)
+
+        self.assertEqual([], result["period_candidates"])
+        self.assertIn("period_missing", result["ambiguity"]["reasons"])
+
+    def test_alternative_months_remain_separate_candidates_until_user_selects(self):
+        payload = {
+            **VALID_PAYLOADS["node1_request"],
+            "question": "2026년 5월 또는 6월 객실 매출을 보여줘",
+        }
+
+        result = normalize_question(payload)
+
+        self.assertEqual(
+            [item["start"] for item in result["period_candidates"]],
+            ["2026-05-01T00:00:00+09:00", "2026-06-01T00:00:00+09:00"],
+        )
+
+    def test_selected_period_marker_seals_one_candidate(self):
+        payload = {
+            **VALID_PAYLOADS["node1_request"],
+            "question": "2026년 5월 또는 6월 객실 매출 (선택한 기간: 6월)",
+        }
+
+        result = normalize_question(payload)
+
+        self.assertEqual(len(result["period_candidates"]), 1)
+        self.assertEqual(
+            result["period_candidates"][0]["start"],
+            "2026-06-01T00:00:00+09:00",
+        )
+
     def test_multiple_metrics_are_ambiguous_without_arbitrary_selection(self):
         payload = {
             **VALID_PAYLOADS["node1_request"],

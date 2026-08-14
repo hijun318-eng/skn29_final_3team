@@ -19,8 +19,9 @@ from app.adapters.contract_model import ContractModelAdapter
 from app.contracts import AnalysisRequest, RequestContext
 from app.ports.data_platform import NoEntitledAssetsError
 from app.services.context_builder import ContextPackageBuilder
-from app.services.context_builder import ContextBuildError
+from app.services.context_builder import ContextBuildError, ContextBuildErrorCode
 from app.services.pipeline_support import PipelineSupport
+from src.data.i2_adapters import QueryPage
 
 
 def live_dataset(adapter, urn):
@@ -129,11 +130,46 @@ def test_finished_query_with_warnings_is_preserved_as_partial():
     assert result["rows"] == [{"synthetic_value": 1}]
 
 
+def test_live_query_cancellation_calls_trino_cancel_between_pages():
+    class PagedTrino:
+        def __init__(self):
+            self.cancelled = []
+
+        def execute(self, _sql):
+            return QueryPage(
+                "query-cancelled",
+                "RUNNING",
+                ("value",),
+                ((1,),),
+                "http://trino:8080/v1/statement/query-cancelled/1",
+            )
+
+        def next_page(self, _next_uri):
+            raise AssertionError("cancelled query must not fetch another page")
+
+        def cancel(self, next_uri):
+            self.cancelled.append(next_uri)
+
+    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    trino = PagedTrino()
+    adapter._trino = trino
+    checks = iter((False, True))
+    adapter.bind_cancellation(lambda: next(checks))
+
+    result = adapter.execute_query("SELECT 1", {}, "g2-token")
+
+    assert result["status"] == "CANCELLED"
+    assert trino.cancelled == [
+        "http://trino:8080/v1/statement/query-cancelled/1"
+    ]
+    assert adapter.get_query_status("query-cancelled")["status"] == "CANCELLED"
+
+
 def test_live_datahub_serving_view_passes_context_and_g2_contract():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
-    payload = AnalysisRequest(question="체크아웃 기준 객실 매출을 분석해 줘")
+    payload = AnalysisRequest(question="2026년 6월 체크아웃 기준 객실 매출을 분석해 줘")
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
         as_of=date(2026, 7, 30),
@@ -183,7 +219,7 @@ def test_node1_period_candidates_become_typed_context_bindings():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
     support = PipelineSupport(adapter, ContextPackageBuilder())
-    payload = AnalysisRequest(question="체크아웃 기준 객실 매출")
+    payload = AnalysisRequest(question="2026년 6월 체크아웃 기준 객실 매출")
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
         as_of=date(2026, 7, 30),
@@ -213,6 +249,149 @@ def test_node1_period_candidates_become_typed_context_bindings():
         ("period_start", "date", "2026-06-01"),
         ("period_end_exclusive", "date", "2026-07-01"),
     ]
+
+
+@pytest.mark.parametrize("period_candidates", [[], [{}, {}]])
+def test_node1_requires_one_unambiguous_natural_language_period(period_candidates):
+    adapter = simulated_verified_live_adapter()
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(question="2026년 6월 체크아웃 기준 객실 매출")
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+    assets, _, _ = support.select_metric(payload, context, assets)
+
+    with pytest.raises(ContextBuildError) as caught:
+        support.build_context(
+            payload,
+            context,
+            assets,
+            {"period_candidates": period_candidates},
+        )
+
+    assert caught.value.code is ContextBuildErrorCode.PERIOD_REQUIRED
+
+
+def test_multiple_period_candidates_return_only_their_source_labels():
+    adapter = simulated_verified_live_adapter()
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(question="2026년 6월 체크아웃 기준 객실 매출")
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+    assets, _, _ = support.select_metric(payload, context, assets)
+
+    with pytest.raises(ContextBuildError) as caught:
+        support.build_context(
+            payload,
+            context,
+            assets,
+            {"period_candidates": [
+                {"source_text": "2026년 5월"},
+                {"source_text": "6월"},
+            ]},
+        )
+
+    assert caught.value.code is ContextBuildErrorCode.PERIOD_REQUIRED
+    assert caught.value.suggestions == ("2026년 5월", "6월")
+
+
+def test_node1_ambiguous_metric_returns_only_approved_metric_choices():
+    adapter = simulated_verified_live_adapter()
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(question="2026년 6월 객실 매출을 분석해 줘")
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+
+    with pytest.raises(ContextBuildError) as caught:
+        support.select_metric(payload, context, assets)
+
+    assert caught.value.code is ContextBuildErrorCode.INVALID_METRIC
+    assert caught.value.suggestions == (
+        "인식 객실 매출",
+        "숙박일 배분 객실 매출",
+    )
+
+
+def test_node1_model_cannot_choose_one_metric_from_an_ambiguous_business_term():
+    class ArbitraryNode1:
+        def normalize_question(self, payload):
+            return {
+                "normalized_question": payload["question"],
+                "intent_candidates": ["aggregate"],
+                "metric_candidates": ["recognized_room_revenue"],
+                "selected_metric_id": "recognized_room_revenue",
+                "dimension_candidates": [],
+                "period_candidates": [{
+                    "start": "2026-06-01T00:00:00+09:00",
+                    "end_exclusive": "2026-07-01T00:00:00+09:00",
+                    "source_text": "2026년 6월",
+                }],
+            }
+
+    adapter = simulated_verified_live_adapter()
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = PipelineSupport(adapter, ContextPackageBuilder(), ArbitraryNode1())
+    payload = AnalysisRequest(question="2026년 6월 객실 매출을 분석해 줘")
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+
+    with pytest.raises(ContextBuildError) as caught:
+        support.select_metric(payload, context, assets)
+
+    assert caught.value.code is ContextBuildErrorCode.INVALID_METRIC
+    assert caught.value.suggestions == (
+        "인식 객실 매출",
+        "숙박일 배분 객실 매출",
+    )
+
+
+def test_node1_wrong_explicit_month_is_rejected_instead_of_silently_replaced():
+    class WrongDateNode1:
+        def normalize_question(self, payload):
+            return {
+                "normalized_question": payload["question"],
+                "intent_candidates": ["aggregate"],
+                "metric_candidates": ["recognized_room_revenue"],
+                "selected_metric_id": "recognized_room_revenue",
+                "dimension_candidates": ["business_date"],
+                "period_candidates": [{
+                    "start": "2025-01-01T00:00:00+09:00",
+                    "end_exclusive": "2025-02-01T00:00:00+09:00",
+                    "source_text": "model guess",
+                }],
+            }
+
+    adapter = simulated_verified_live_adapter()
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = PipelineSupport(adapter, ContextPackageBuilder(), WrongDateNode1())
+    payload = AnalysisRequest(question="2026년 6월 체크아웃 기준 객실 매출을 일별로 보여줘")
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+
+    with pytest.raises(ValueError, match="calendar context"):
+        support.select_metric(payload, context, assets)
+
+
+def test_analysis_request_rejects_whitespace_only_question():
+    with pytest.raises(ValueError, match="분석 질문을 입력"):
+        AnalysisRequest(question="   ")
 
 
 def test_versioned_trino_mode_uses_approved_contract_without_datahub(tmp_path):
@@ -422,6 +601,18 @@ def test_pms_crm_question_uses_the_versioned_approved_join():
     assert {join_id for asset in assets for join_id in asset["join_ids"]} == {
         "pms_stay_to_crm_membership_grade_event_time_v1"
     }
+    assert [metric["id"] for asset in assets for metric in asset.get("metrics", ())] == [
+        "recognized_room_revenue"
+    ]
+    _, _, structured = PipelineSupport(adapter, ContextPackageBuilder()).select_metric(
+        AnalysisRequest(question="2026년 6월 인식 객실 매출을 월별로 알려줘"),
+        RequestContext(
+            user_id=UUID("00000000-0000-0000-0000-000000000001"),
+            as_of=date(2026, 7, 30),
+        ),
+        assets,
+    )
+    assert structured["dimension_candidates"] == ["actual_checkout_at"]
 
 
 def test_g2_accepts_the_versioned_pms_crm_join_id():
@@ -489,7 +680,7 @@ def test_selected_assets_without_metric_fail_closed_when_context_is_built():
     ("question", "sql", "parameters", "changed_parameters", "expected_metric"),
     [
         (
-            "체크아웃 기준 객실 매출",
+            "2026년 6월 체크아웃 기준 객실 매출",
             "SELECT SUM(recognized_room_revenue) FROM serving.analytics.hotel_daily_metrics "
             "WHERE data_period_status = :required_filter_1 "
             "AND is_forecast = :required_filter_2 LIMIT 1000",
@@ -498,7 +689,7 @@ def test_selected_assets_without_metric_fail_closed_when_context_is_built():
             "recognized_room_revenue",
         ),
         (
-            "소멸 포인트 합계",
+            "2026년 6월 소멸 포인트 합계",
             "SELECT SUM(points_delta) FROM crm.dbo.crm_point_transactions "
             "WHERE txn_type = :required_filter_1 "
             "AND is_forecast = :required_filter_2 LIMIT 1000",
@@ -563,6 +754,33 @@ def test_g2_enforces_metric_required_filters_for_view_and_crm(
     assert support.g2_violation(
         {**plan, "references": wrong_metric}, package
     ) == "METRIC_REFERENCE_MISMATCH"
+
+
+def test_single_source_filter_repair_hint_does_not_invent_three_source_rules():
+    adapter = simulated_verified_live_adapter()
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(
+        question="2026년 6월 체크아웃 기준 객실 매출",
+        parameters={
+            "period_start": "2026-06-01",
+            "period_end_exclusive": "2026-07-01",
+        },
+    )
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+    assets, _, _ = support.select_metric(payload, context, assets)
+    package = support.build_context(payload, context, assets)
+
+    hint = support.g2_repair_hint("METRIC_FILTER_MISSING", package)
+
+    assert "data_period_status = :required_filter_1" in hint
+    assert "is_forecast = :required_filter_2" in hint
+    assert "POS order_status" not in hint
+    assert "GOLD-grade" not in hint
 
 
 def test_node1_metric_selection_fails_closed_for_missing_ambiguous_and_duplicate():
@@ -1170,7 +1388,7 @@ def test_live_datahub_removed_asset_fails_closed():
         live.search_assets("호텔 객실 매출", {"role": "hotel_analyst"})
 
 
-def test_approved_pms_crm_join_omits_empty_metric_registry():
+def test_approved_pms_crm_join_includes_its_versioned_metric_registry():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
 
@@ -1180,7 +1398,9 @@ def test_approved_pms_crm_join_omits_empty_metric_registry():
     )
 
     assert len(assets) == 5
-    assert all("metrics" not in asset for asset in assets)
+    metrics = [metric for asset in assets for metric in asset.get("metrics", ())]
+    assert [metric["id"] for metric in metrics] == ["recognized_room_revenue"]
+    assert metrics[0]["asset_fqn"] == "pms.public.pms_stays"
 
 
 def test_live_raw_columns_do_not_evict_approved_contract_assets():

@@ -128,6 +128,13 @@
             "title": "Definition Id",
             "type": "string"
           },
+          "parameter_schema": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Parameter Schema",
+            "type": "object"
+          },
           "parameter_types": {
             "additionalProperties": {
               "enum": [
@@ -139,6 +146,15 @@
               "type": "string"
             },
             "title": "Parameter Types",
+            "type": "object"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "semantic_request": {
+            "additionalProperties": true,
+            "title": "Semantic Request",
             "type": "object"
           },
           "status": {
@@ -160,10 +176,89 @@
           "version",
           "status",
           "title",
+          "question",
           "parameter_types",
+          "semantic_request",
+          "parameter_schema",
           "created_at"
         ],
         "title": "AnalysisDefinitionResponse",
+        "type": "object"
+      },
+      "AnalysisProgressData": {
+        "additionalProperties": false,
+        "properties": {
+          "cancel_requested": {
+            "title": "Cancel Requested",
+            "type": "boolean"
+          },
+          "elapsed_seconds": {
+            "minimum": 0.0,
+            "title": "Elapsed Seconds",
+            "type": "number"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AnalysisStatus"
+          },
+          "trace": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TraceStep"
+            },
+            "title": "Trace",
+            "type": "array"
+          },
+          "trace_id": {
+            "title": "Trace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "request_id",
+          "status",
+          "started_at",
+          "elapsed_seconds",
+          "cancel_requested"
+        ],
+        "title": "AnalysisProgressData",
+        "type": "object"
+      },
+      "AnalysisProgressResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/AnalysisProgressData"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ],
+        "title": "AnalysisProgressResponse",
         "type": "object"
       },
       "AnalysisRequest": {
@@ -448,6 +543,30 @@
             ],
             "title": "Error Type"
           },
+          "period_end_exclusive": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End Exclusive"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
           "query_id": {
             "anyOf": [
               {
@@ -458,6 +577,10 @@
               }
             ],
             "title": "Query Id"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
           },
           "request_id": {
             "format": "uuid",
@@ -475,7 +598,8 @@
               "SUCCEEDED",
               "PARTIAL",
               "FAILED",
-              "BLOCKED"
+              "BLOCKED",
+              "CANCELLED"
             ],
             "title": "Status",
             "type": "string"
@@ -497,7 +621,8 @@
           "as_of",
           "timezone",
           "trace_id",
-          "started_at"
+          "started_at",
+          "question"
         ],
         "title": "AnalysisRunResponse",
         "type": "object"
@@ -582,36 +707,20 @@
         "title": "ChartSpec",
         "type": "object"
       },
+      "ClarificationType": {
+        "enum": [
+          "metric",
+          "period"
+        ],
+        "title": "ClarificationType",
+        "type": "string"
+      },
       "CreateAnalysisDefinitionRequest": {
         "additionalProperties": false,
         "properties": {
-          "parameters": {
-            "additionalProperties": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "boolean"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "title": "Parameters",
-            "type": "object"
-          },
-          "question": {
-            "maxLength": 1000,
-            "minLength": 1,
-            "title": "Question",
+          "source_request_id": {
+            "format": "uuid",
+            "title": "Source Request Id",
             "type": "string"
           },
           "title": {
@@ -623,7 +732,7 @@
         },
         "required": [
           "title",
-          "question"
+          "source_request_id"
         ],
         "title": "CreateAnalysisDefinitionRequest",
         "type": "object"
@@ -711,6 +820,28 @@
         "title": "CreateReportDefinitionRequest",
         "type": "object"
       },
+      "CreateReportFromArtifactRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "title"
+        ],
+        "title": "CreateReportFromArtifactRequest",
+        "type": "object"
+      },
       "CreateReportScheduleRequest": {
         "additionalProperties": false,
         "properties": {
@@ -769,6 +900,16 @@
       "ErrorBody": {
         "additionalProperties": false,
         "properties": {
+          "clarification_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClarificationType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "code": {
             "$ref": "#/components/schemas/ErrorCode"
           },
@@ -780,6 +921,14 @@
             "default": false,
             "title": "Retryable",
             "type": "boolean"
+          },
+          "suggestions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestions",
+            "type": "array"
           }
         },
         "required": [
@@ -792,13 +941,24 @@
       "ErrorCode": {
         "enum": [
           "CONTEXT_INCOMPLETE",
+          "CONTEXT_SOURCE_FAILED",
+          "DATA_ASSET_NOT_FOUND",
+          "AUTHENTICATION_REQUIRED",
           "ACCESS_DENIED",
+          "MODEL_CONTRACT_INVALID",
+          "MODEL_TIMEOUT",
           "SQL_POLICY_BLOCKED",
+          "SQL_REPAIR_FAILED",
+          "TRINO_CONNECTION_FAILED",
+          "QUERY_TIMEOUT",
           "QUERY_SOURCE_FAILED",
+          "RESULT_VALIDATION_FAILED",
           "RESULT_EVIDENCE_MISSING",
+          "ARTIFACT_PERSIST_FAILED",
           "PARTIAL_FAILURE",
           "INSUFFICIENT_EVIDENCE",
           "RATE_LIMITED",
+          "REQUEST_CANCELLED",
           "CONTRACT_VERSION_MISMATCH",
           "SCHEMA_VERSION_MISMATCH",
           "INTERNAL_ERROR"
@@ -885,8 +1045,36 @@
             "title": "Filters",
             "type": "object"
           },
+          "gate_history": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateHistoryEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gates": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GateEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "masking": {
             "$ref": "#/components/schemas/MaskingEvidence"
+          },
+          "metrics": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MetricReference"
+            },
+            "title": "Metrics",
+            "type": "array"
           },
           "model_version": {
             "anyOf": [
@@ -898,6 +1086,14 @@
               }
             ],
             "title": "Model Version"
+          },
+          "models": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ModelInvocationEvidence"
+            },
+            "title": "Models",
+            "type": "array"
           },
           "period": {
             "anyOf": [
@@ -941,12 +1137,77 @@
             },
             "title": "Sources",
             "type": "array"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
           }
         },
         "required": [
           "as_of"
         ],
         "title": "Evidence",
+        "type": "object"
+      },
+      "GateEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "g1": {
+            "$ref": "#/components/schemas/StageOutcome"
+          },
+          "g2": {
+            "$ref": "#/components/schemas/StageOutcome"
+          },
+          "g3": {
+            "$ref": "#/components/schemas/StageOutcome"
+          }
+        },
+        "required": [
+          "g1",
+          "g2",
+          "g3"
+        ],
+        "title": "GateEvidence",
+        "type": "object"
+      },
+      "GateHistoryEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "g1": {
+            "items": {
+              "$ref": "#/components/schemas/StageOutcome"
+            },
+            "title": "G1",
+            "type": "array"
+          },
+          "g2": {
+            "items": {
+              "$ref": "#/components/schemas/StageOutcome"
+            },
+            "title": "G2",
+            "type": "array"
+          },
+          "g3": {
+            "items": {
+              "$ref": "#/components/schemas/StageOutcome"
+            },
+            "title": "G3",
+            "type": "array"
+          }
+        },
+        "required": [
+          "g1",
+          "g2",
+          "g3"
+        ],
+        "title": "GateHistoryEvidence",
         "type": "object"
       },
       "GateRequirements": {
@@ -1026,11 +1287,14 @@
         "additionalProperties": false,
         "properties": {
           "role": {
-            "$ref": "#/components/schemas/Role"
-          },
-          "session_token": {
-            "title": "Session Token",
-            "type": "string"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Role"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "default": "authenticated",
@@ -1038,10 +1302,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "role",
-          "session_token"
-        ],
         "title": "LoginData",
         "type": "object"
       },
@@ -1178,15 +1438,63 @@
         "title": "MaskingEvidence",
         "type": "object"
       },
-      "MetricValue": {
+      "MetricReference": {
         "additionalProperties": false,
         "properties": {
+          "definition": {
+            "title": "Definition",
+            "type": "string"
+          },
           "label": {
             "title": "Label",
             "type": "string"
           },
           "metric_id": {
             "title": "Metric Id",
+            "type": "string"
+          },
+          "result_field": {
+            "title": "Result Field",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "metric_id",
+          "result_field",
+          "label",
+          "definition"
+        ],
+        "title": "MetricReference",
+        "type": "object"
+      },
+      "MetricValue": {
+        "additionalProperties": false,
+        "properties": {
+          "definition": {
+            "title": "Definition",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "metric_id": {
+            "title": "Metric Id",
+            "type": "string"
+          },
+          "result_field": {
+            "title": "Result Field",
             "type": "string"
           },
           "unit": {
@@ -1223,10 +1531,41 @@
         },
         "required": [
           "metric_id",
+          "result_field",
           "label",
+          "definition",
           "value"
         ],
         "title": "MetricValue",
+        "type": "object"
+      },
+      "ModelInvocationEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "model_version": {
+            "title": "Model Version",
+            "type": "string"
+          },
+          "node": {
+            "title": "Node",
+            "type": "string"
+          },
+          "prompt_id": {
+            "title": "Prompt Id",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "model_version",
+          "prompt_id",
+          "prompt_version"
+        ],
+        "title": "ModelInvocationEvidence",
         "type": "object"
       },
       "PeriodEvidence": {
@@ -1375,6 +1714,65 @@
           "idempotency_key"
         ],
         "title": "ReplayAnalysisRequest",
+        "type": "object"
+      },
+      "ReportArtifactResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_checksum": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Artifact Checksum",
+            "type": "string"
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "chart": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChartSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/Evidence"
+          },
+          "query_id": {
+            "title": "Query Id",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "table": {
+            "$ref": "#/components/schemas/TableResult"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contract_version",
+          "artifact_id",
+          "query_id",
+          "title",
+          "summary",
+          "table",
+          "evidence",
+          "artifact_checksum"
+        ],
+        "title": "ReportArtifactResponse",
         "type": "object"
       },
       "ReportAssistantDraftResponse": {
@@ -2066,7 +2464,14 @@
         "additionalProperties": false,
         "properties": {
           "role": {
-            "$ref": "#/components/schemas/Role"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Role"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "default": "authenticated",
@@ -2074,9 +2479,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "role"
-        ],
         "title": "SessionData",
         "type": "object"
       },
@@ -2402,6 +2804,8 @@
                                 "guest_id"
                               ]
                             },
+                            "metrics": [],
+                            "models": [],
                             "period": {
                               "end_exclusive": "2026-08-01",
                               "start": "2026-07-01"
@@ -2544,9 +2948,10 @@
                         ]
                       },
                       "error": {
-                        "code": "QUERY_SOURCE_FAILED",
+                        "code": "REQUEST_CANCELLED",
                         "message": "요청이 취소되었습니다.",
-                        "retryable": false
+                        "retryable": false,
+                        "suggestions": []
                       },
                       "meta": {
                         "as_of": "2026-07-30",
@@ -2593,6 +2998,8 @@
                                 "guest_id"
                               ]
                             },
+                            "metrics": [],
+                            "models": [],
                             "period": {
                               "end_exclusive": "2026-08-01",
                               "start": "2026-07-01"
@@ -2736,7 +3143,8 @@
                       "error": {
                         "code": "CONTEXT_INCOMPLETE",
                         "message": "분석 기간을 입력해 주세요.",
-                        "retryable": false
+                        "retryable": false,
+                        "suggestions": []
                       },
                       "meta": {
                         "as_of": "2026-07-30",
@@ -2805,7 +3213,8 @@
                       "error": {
                         "code": "SQL_POLICY_BLOCKED",
                         "message": "허용된 조회 범위에서 질문을 수정해 주세요.",
-                        "retryable": false
+                        "retryable": false,
+                        "suggestions": []
                       },
                       "meta": {
                         "as_of": "2026-07-30",
@@ -2874,7 +3283,8 @@
                       "error": {
                         "code": "RESULT_EVIDENCE_MISSING",
                         "message": "결과 근거가 충분하지 않아 설명을 생성하지 않았습니다.",
-                        "retryable": false
+                        "retryable": false,
+                        "suggestions": []
                       },
                       "meta": {
                         "as_of": "2026-07-30",
@@ -2921,6 +3331,8 @@
                                 "guest_id"
                               ]
                             },
+                            "metrics": [],
+                            "models": [],
                             "period": {
                               "end_exclusive": "2026-08-01",
                               "start": "2026-07-01"
@@ -3001,7 +3413,8 @@
                       "error": {
                         "code": "PARTIAL_FAILURE",
                         "message": "일부 데이터 소스를 조회하지 못했습니다.",
-                        "retryable": true
+                        "retryable": true,
+                        "suggestions": []
                       },
                       "meta": {
                         "as_of": "2026-07-30",
@@ -3048,6 +3461,8 @@
                                 "guest_id"
                               ]
                             },
+                            "metrics": [],
+                            "models": [],
                             "period": {
                               "end_exclusive": "2026-08-01",
                               "start": "2026-07-01"
@@ -3183,6 +3598,8 @@
                                 "guest_id"
                               ]
                             },
+                            "metrics": [],
+                            "models": [],
                             "period": {
                               "end_exclusive": "2026-08-01",
                               "start": "2026-07-01"
@@ -3322,9 +3739,10 @@
                         ]
                       },
                       "error": {
-                        "code": "QUERY_SOURCE_FAILED",
+                        "code": "QUERY_TIMEOUT",
                         "message": "조회 시간이 초과되었습니다.",
-                        "retryable": true
+                        "retryable": true,
+                        "suggestions": []
                       },
                       "meta": {
                         "as_of": "2026-07-30",
@@ -3734,6 +4152,94 @@
         "summary": "Replay Analysis Definition"
       }
     },
+    "/analysis/progress/{trace_id}": {
+      "get": {
+        "operationId": "getAnalysisProgress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trace_id",
+            "required": true,
+            "schema": {
+              "title": "Trace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisProgressResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Analysis Progress"
+      }
+    },
+    "/analysis/progress/{trace_id}/cancel": {
+      "post": {
+        "operationId": "cancelAnalysisProgress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trace_id",
+            "required": true,
+            "schema": {
+              "title": "Trace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisProgressResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Cancel Analysis Progress"
+      }
+    },
     "/analysis/runs": {
       "get": {
         "operationId": "analysisListRuns",
@@ -4013,6 +4519,22 @@
           }
         },
         "summary": "Login"
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "operationId": "deleteAuthenticatedSession",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Logout"
       }
     },
     "/auth/session": {
@@ -4579,6 +5101,104 @@
         "summary": "Approve Version"
       }
     },
+    "/reports/definitions/{definition_id}/versions/{version}/artifacts/{artifact_id}": {
+      "get": {
+        "operationId": "reportGetArtifact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "definition_id",
+            "required": true,
+            "schema": {
+              "title": "Definition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportArtifactResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Report Artifact"
+      }
+    },
     "/reports/definitions/{definition_id}/versions/{version}/blocks": {
       "put": {
         "operationId": "reportReplaceDraftBlocks",
@@ -4765,6 +5385,87 @@
           }
         ],
         "summary": "Create Next Draft"
+      }
+    },
+    "/reports/drafts/from-analysis-artifact": {
+      "post": {
+        "operationId": "reportCreateDraftFromAnalysisArtifact",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-As-Of",
+            "required": true,
+            "schema": {
+              "title": "X-As-Of",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReportFromArtifactRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportDefinitionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Draft From Analysis Artifact"
       }
     },
     "/reports/runs": {

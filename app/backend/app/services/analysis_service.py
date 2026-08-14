@@ -11,6 +11,7 @@ from app.contracts import (
     AnalysisStatus,
     ArtifactReference,
     ChartSpec,
+    ClarificationType,
     ErrorBody,
     ErrorCode,
     PipelineStage,
@@ -23,7 +24,11 @@ from app.contracts import (
 from app.ports.data_platform import DataPlatformAdapter, NoEntitledAssetsError
 from app.ports.model import ModelAdapter
 from app.services.analysis_responses import AnalysisResponseFactory
-from app.services.context_builder import ContextBuildError, ContextPackageBuilder
+from app.services.context_builder import (
+    ContextBuildError,
+    ContextBuildErrorCode,
+    ContextPackageBuilder,
+)
 from app.services.execution_control import (
     IsolatedExecutionCache,
     ModelCallBudget,
@@ -78,12 +83,40 @@ class AnalysisService:
         context: RequestContext,
         decision: RouteDecision,
         execution_sink: Callable[[dict[str, Any]], None] | None = None,
+        progress_sink: Callable[[PipelineStage, StageOutcome], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> AnalysisResponse:
         machine = AnalysisStateMachine()
         trace: list[TraceStep] = []
         budget = ModelCallBudget()
+        def record(
+            target_trace: list[TraceStep],
+            stage: PipelineStage,
+            detail: str | None = None,
+            outcome: StageOutcome = StageOutcome.PASSED,
+        ) -> None:
+            self._responses.record(target_trace, stage, detail, outcome)
+            if progress_sink is not None:
+                progress_sink(stage, outcome)
+
+        def cancelled(stage: PipelineStage) -> AnalysisResponse | None:
+            if cancel_check is None or not cancel_check():
+                return None
+            if progress_sink is not None:
+                progress_sink(stage, StageOutcome.FAILED)
+            return self._responses.error(
+                context,
+                machine,
+                trace,
+                stage,
+                AnalysisStatus.CANCELLED,
+                ErrorCode.REQUEST_CANCELLED,
+                "사용자가 분석 요청을 취소했습니다.",
+                decision,
+            )
+
         machine.transition(AnalysisStatus.ROUTED)
-        self._responses.record(trace, PipelineStage.ROUTER)
+        record(trace, PipelineStage.ROUTER)
         audit_id = secure_cache_key(
             "audit",
             trace_id=context.trace_id,
@@ -93,7 +126,11 @@ class AnalysisService:
             mask_scope=context.role.value,
             policy="policy-v1",
         )[:16]
-        self._responses.record(trace, PipelineStage.CONTROLLER, f"audit={audit_id}")
+        record(trace, PipelineStage.CONTROLLER, f"audit={audit_id}")
+
+        cancelled_response = cancelled(PipelineStage.CONTROLLER)
+        if cancelled_response is not None:
+            return cancelled_response
 
         if context.role is not Role.HOTEL_ANALYST:
             return self._responses.error(
@@ -122,7 +159,7 @@ class AnalysisService:
                 trace,
                 PipelineStage.CONTEXT,
                 AnalysisStatus.BLOCKED,
-                ErrorCode.CONTEXT_INCOMPLETE,
+                ErrorCode.DATA_ASSET_NOT_FOUND,
                 "질문과 권한 범위에 맞는 승인 데이터 자산을 찾지 못했습니다.",
                 decision,
             )
@@ -138,17 +175,20 @@ class AnalysisService:
                 trace,
                 PipelineStage.CONTEXT,
                 AnalysisStatus.FAILED,
-                ErrorCode.INTERNAL_ERROR,
+                ErrorCode.CONTEXT_SOURCE_FAILED,
                 "승인된 데이터 컨텍스트를 조회하지 못했습니다.",
                 decision,
                 retryable=True,
             )
+        cancelled_response = cancelled(PipelineStage.CONTEXT)
+        if cancelled_response is not None:
+            return cancelled_response
         try:
             assets, normalized_question, structured_request = self._support.select_metric(
                 payload, context, assets
             )
             if getattr(self._model, "last_trace", {}).get("node") == "node1":
-                self._responses.record(
+                record(
                     trace,
                     PipelineStage.MODEL,
                     _model_trace_detail(self._model),
@@ -159,7 +199,12 @@ class AnalysisService:
                 assets,
                 structured_request,
             )
-        except ContextBuildError:
+        except ContextBuildError as error:
+            message = (
+                "질문에 분석 기간을 하나만 명확히 포함해 주세요. 예: 2026년 6월 객실 매출을 분석해 줘."
+                if error.code is ContextBuildErrorCode.PERIOD_REQUIRED
+                else "질문이 여러 지표로 해석될 수 있습니다. 분석할 기준을 선택해 주세요."
+            )
             return self._responses.error(
                 context,
                 machine,
@@ -167,19 +212,37 @@ class AnalysisService:
                 PipelineStage.CONTEXT,
                 AnalysisStatus.BLOCKED,
                 ErrorCode.CONTEXT_INCOMPLETE,
-                "질문에서 권한이 있는 승인 지표 하나를 선택해 주세요.",
+                message,
                 decision,
+                suggestions=error.suggestions,
+                clarification_type=(
+                    ClarificationType.PERIOD
+                    if error.code is ContextBuildErrorCode.PERIOD_REQUIRED
+                    else ClarificationType.METRIC
+                ),
             )
-        except (TimeoutError, TypeError, ValueError) as error:
+        except TimeoutError as error:
+            logger.warning(
+                "node1 generation failed: type=%s detail=%s",
+                type(error).__name__,
+                error,
+            )
+            return self._responses.model_error(
+                context, machine, trace, decision, timed_out=True
+            )
+        except (TypeError, ValueError) as error:
             logger.warning(
                 "node1 generation failed: type=%s detail=%s",
                 type(error).__name__,
                 error,
             )
             return self._responses.model_error(context, machine, trace, decision)
-        self._responses.record(trace, PipelineStage.CONTEXT, package.package_hash)
+        record(trace, PipelineStage.CONTEXT, package.package_hash)
 
-        self._responses.record(trace, PipelineStage.G1)
+        record(trace, PipelineStage.G1)
+        cancelled_response = cancelled(PipelineStage.G1)
+        if cancelled_response is not None:
+            return cancelled_response
 
         references = [
             {
@@ -253,7 +316,17 @@ class AnalysisService:
                     },
                 )
                 node2_trace_detail = _model_trace_detail(self._model)
-            except (TimeoutError, TypeError, ValueError) as error:
+                plan["_model_trace_detail"] = node2_trace_detail
+            except TimeoutError as error:
+                logger.warning(
+                    "node2 generation failed: type=%s detail=%s",
+                    type(error).__name__,
+                    error,
+                )
+                return self._responses.model_error(
+                    context, machine, trace, decision, timed_out=True
+                )
+            except (TypeError, ValueError) as error:
                 logger.warning(
                     "node2 generation failed: type=%s detail=%s",
                     type(error).__name__,
@@ -268,13 +341,17 @@ class AnalysisService:
                 sorted(plan) if isinstance(plan, dict) else [],
             )
             return self._responses.model_error(context, machine, trace, decision)
-        self._responses.record(
+        record(
             trace,
             PipelineStage.MODEL,
             (
                 f"{node2_trace_detail};plan_cache=miss"
                 if node2_trace_detail
-                else f"node=node2;model={plan.get('model_version')};plan_cache={'hit' if plan_cached else 'template'}"
+                else (
+                    f"{plan['_model_trace_detail']};plan_cache=hit"
+                    if plan_cached and isinstance(plan.get("_model_trace_detail"), str)
+                    else f"node=node2;model={plan.get('model_version')};plan_cache={'hit' if plan_cached else 'template'}"
+                )
             ),
         )
 
@@ -292,7 +369,28 @@ class AnalysisService:
                 decision,
             )
         if violation:
-            self._responses.record(
+            referenced_assets = {
+                str(item.get("fqn"))
+                for item in plan.get("references", ())
+                if isinstance(item, dict) and item.get("fqn")
+            }
+            approved_assets = {item.fqn for item in package.assets}
+            referenced_join_ids = {
+                str(join_id)
+                for item in plan.get("references", ())
+                if isinstance(item, dict)
+                for join_id in item.get("join_ids", ())
+            }
+            logger.warning(
+                "node2 G2 rejected: reason=%s missing_assets=%s extra_assets=%s "
+                "approved_joins=%s referenced_joins=%s",
+                violation,
+                sorted(approved_assets - referenced_assets),
+                sorted(referenced_assets - approved_assets),
+                sorted(package.approved_join_ids),
+                sorted(referenced_join_ids),
+            )
+            record(
                 trace,
                 PipelineStage.G2,
                 violation,
@@ -328,15 +426,22 @@ class AnalysisService:
                     },
                 )
                 repair_trace_detail = _model_trace_detail(self._model)
-            except (TimeoutError, TypeError, ValueError):
-                return self._responses.model_error(
+                plan["_model_trace_detail"] = repair_trace_detail
+            except (TimeoutError, TypeError, ValueError) as error:
+                logger.warning("node2 repair failed: type=%s", type(error).__name__)
+                return self._responses.error(
                     context,
                     machine,
                     trace,
+                    PipelineStage.REPAIR,
+                    AnalysisStatus.FAILED,
+                    ErrorCode.SQL_REPAIR_FAILED,
+                    "SQL 수정 결과를 검증하지 못했습니다.",
                     decision,
                     repair_count,
+                    retryable=isinstance(error, TimeoutError),
                 )
-            self._responses.record(
+            record(
                 trace,
                 PipelineStage.REPAIR,
                 f"{repair_trace_detail};controller_attempt=1",
@@ -358,15 +463,18 @@ class AnalysisService:
                     context,
                     machine,
                     trace,
-                    PipelineStage.G2,
-                    AnalysisStatus.BLOCKED,
-                    ErrorCode.SQL_POLICY_BLOCKED,
-                    "SQL repair 1회 후에도 정책 검증을 통과하지 못했습니다.",
+                    PipelineStage.REPAIR,
+                    AnalysisStatus.FAILED,
+                    ErrorCode.SQL_REPAIR_FAILED,
+                    "한 차례 수정한 SQL도 안전성 검증을 통과하지 못했습니다.",
                     decision,
                     repair_count,
                     detail=str(final_violation),
                 )
-        self._responses.record(trace, PipelineStage.G2)
+        record(trace, PipelineStage.G2)
+        cancelled_response = cancelled(PipelineStage.G2)
+        if cancelled_response is not None:
+            return cancelled_response
 
         self._cache.put_plan(plan_key, plan)
         gate_token = self._support.gate_token(package, str(plan["sql"]))
@@ -380,15 +488,48 @@ class AnalysisService:
         result_cached = cached_query is not None
         try:
             if cached_query is None:
-                query = self._adapter.execute_query(
-                    plan["sql"],
-                    plan.get("parameters", {}),
-                    gate_token,
-                )
+                bind_cancellation = getattr(self._adapter, "bind_cancellation", None)
+                if bind_cancellation is not None:
+                    bind_cancellation(cancel_check)
+                try:
+                    query = self._adapter.execute_query(
+                        plan["sql"],
+                        plan.get("parameters", {}),
+                        gate_token,
+                    )
+                finally:
+                    if bind_cancellation is not None:
+                        bind_cancellation(None)
                 query = self._adapter.get_query_status(query["query_id"])
             else:
                 query = cached_query
-        except (KeyError, TimeoutError, TypeError, ValueError):
+        except TimeoutError:
+            return self._responses.error(
+                context,
+                machine,
+                trace,
+                PipelineStage.QUERY,
+                AnalysisStatus.FAILED,
+                ErrorCode.QUERY_TIMEOUT,
+                "데이터 조회 시간이 초과되었습니다.",
+                decision,
+                repair_count,
+                retryable=True,
+            )
+        except (OSError, ConnectionError):
+            return self._responses.error(
+                context,
+                machine,
+                trace,
+                PipelineStage.QUERY,
+                AnalysisStatus.FAILED,
+                ErrorCode.TRINO_CONNECTION_FAILED,
+                "데이터 조회 서비스에 연결하지 못했습니다.",
+                decision,
+                repair_count,
+                retryable=True,
+            )
+        except (KeyError, TypeError, ValueError):
             return self._responses.error(
                 context,
                 machine,
@@ -402,7 +543,7 @@ class AnalysisService:
                 retryable=True,
             )
         query_id = str(query.get("query_id", ""))
-        self._responses.record(trace, PipelineStage.QUERY, query_id)
+        record(trace, PipelineStage.QUERY, query_id)
         query_status = query.get("status")
         if query_status == "TIMEOUT":
             try:
@@ -416,7 +557,7 @@ class AnalysisService:
                     trace,
                     PipelineStage.QUERY,
                     AnalysisStatus.FAILED,
-                    ErrorCode.INTERNAL_ERROR,
+                    ErrorCode.QUERY_TIMEOUT,
                     "시간 초과 조회의 종료 상태를 확인할 수 없습니다.",
                     decision,
                     repair_count,
@@ -427,21 +568,23 @@ class AnalysisService:
                 trace,
                 PipelineStage.QUERY,
                 AnalysisStatus.FAILED,
-                ErrorCode.QUERY_SOURCE_FAILED,
+                ErrorCode.QUERY_TIMEOUT,
                 "조회 시간이 초과되어 취소했습니다.",
                 decision,
                 repair_count,
                 retryable=True,
             )
         if query_status == "CANCELLED":
+            if progress_sink is not None:
+                progress_sink(PipelineStage.QUERY, StageOutcome.FAILED)
             return self._responses.error(
                 context,
                 machine,
                 trace,
                 PipelineStage.QUERY,
                 AnalysisStatus.CANCELLED,
-                ErrorCode.QUERY_SOURCE_FAILED,
-                "요청이 취소되었습니다.",
+                ErrorCode.REQUEST_CANCELLED,
+                "사용자가 분석 요청을 취소했습니다.",
                 decision,
                 repair_count,
             )
@@ -471,21 +614,35 @@ class AnalysisService:
                 repair_count,
                 retryable=True,
             )
+        cancelled_response = cancelled(PipelineStage.QUERY)
+        if cancelled_response is not None:
+            return cancelled_response
+
+        query = self._support.normalize_empty_aggregate(query, package)
 
         g3_violation = self._support.g3_violation(query)
         if g3_violation:
+            error_code = (
+                ErrorCode.RESULT_EVIDENCE_MISSING
+                if g3_violation == "EVIDENCE_INCOMPLETE"
+                else ErrorCode.RESULT_VALIDATION_FAILED
+            )
             return self._responses.error(
                 context,
                 machine,
                 trace,
                 PipelineStage.G3,
                 AnalysisStatus.FAILED,
-                ErrorCode.RESULT_EVIDENCE_MISSING,
+                error_code,
                 "근거 또는 결과 범위가 유효하지 않아 Artifact를 생성하지 않았습니다.",
                 decision,
                 repair_count,
+                detail=g3_violation,
             )
-        self._responses.record(trace, PipelineStage.G3)
+        record(trace, PipelineStage.G3)
+        cancelled_response = cancelled(PipelineStage.G3)
+        if cancelled_response is not None:
+            return cancelled_response
         if not result_cached:
             self._cache.put_result(result_key, query)
 
@@ -506,7 +663,7 @@ class AnalysisService:
                         "package": package,
                     },
                 )
-                self._responses.record(
+                record(
                     trace,
                     PipelineStage.MODEL,
                     _model_trace_detail(self._model),
@@ -517,13 +674,18 @@ class AnalysisService:
                     or not isinstance(explanation.get("model_version"), str)
                 ):
                     raise ValueError("invalid node3 response")
-            except (TimeoutError, TypeError, ValueError):
+            except TimeoutError:
                 return self._responses.model_error(
                     context,
                     machine,
                     trace,
                     decision,
                     repair_count,
+                    timed_out=True,
+                )
+            except (TypeError, ValueError):
+                return self._responses.model_error(
+                    context, machine, trace, decision, repair_count
                 )
         artifact_id = self._support.artifact_id(
             context.trace_id,
@@ -535,7 +697,7 @@ class AnalysisService:
             query_id=query["query_id"],
             context_hash=package.package_hash,
         )
-        self._responses.record(trace, PipelineStage.ARTIFACT, str(artifact_id))
+        record(trace, PipelineStage.ARTIFACT, str(artifact_id))
 
         response = self._responses.success(
             support=self._support,

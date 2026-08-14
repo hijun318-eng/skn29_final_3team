@@ -13,13 +13,13 @@ export function StatusBadge({ status }) {
   return <span className={`status status--${status}`}><i />{STATUS_LABEL[status] || status}</span>;
 }
 
-export function MetaStrip({ meta }) {
+export function MetaStrip({ meta, verified = false }) {
   if (!meta) return null;
   return (
     <div className="meta-strip">
       <ShieldCheck size={13} />
-      <span>contract {meta.contractVersion}</span>
-      {meta.asOf && <span>as_of {meta.asOf} · {meta.timezone}</span>}
+      <span>{verified ? "검증된 분석" : "분석 요청 기준"}</span>
+      {meta.asOf && <span>데이터 기준일 {meta.asOf} · 서울 시간</span>}
     </div>
   );
 }

@@ -1,0 +1,14 @@
+source:
+  type: postgres
+  config:
+    host_port: pms-postgres:5432
+    database: ${PMS_DB_NAME}
+    username: ${PMS_READONLY_USER}
+    password: ${PMS_READONLY_PASSWORD}
+    platform_instance: pms_v4
+    schema_pattern:
+      allow: [walkerhill_v4]
+sink:
+  type: datahub-rest
+  config:
+    server: http://datahub-gms-quickstart:8080

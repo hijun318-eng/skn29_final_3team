@@ -80,6 +80,63 @@ class ProductionModelTest(unittest.TestCase):
         self.assertEqual("SELECT 1 LIMIT 1000", plan["sql"])
         self.assertIsNotNone(support.g2_violation(plan, package))
 
+    def test_single_source_unaliased_filters_are_sealed_as_parameters(self) -> None:
+        package = {
+            "execution_time": {
+                "period_start": "2026-06-01T00:00:00+09:00",
+                "period_end_exclusive": "2026-07-01T00:00:00+09:00",
+            },
+            "assets": [{
+                "trino_fqn": "serving.analytics.hotel_daily_metrics",
+                "columns": [
+                    "business_date",
+                    "recognized_room_revenue",
+                    "data_period_status",
+                    "is_forecast",
+                ],
+            }],
+            "metrics": [{
+                "id": "recognized_room_revenue",
+                "field": "serving.analytics.hotel_daily_metrics.recognized_room_revenue",
+                "aggregation": "sum",
+                "time_field": "serving.analytics.hotel_daily_metrics.business_date",
+                "required_filters": [
+                    {
+                        "field": "data_period_status",
+                        "asset_fqn": "serving.analytics.hotel_daily_metrics",
+                        "operator": "eq",
+                        "parameter_name": "required_filter_1",
+                        "value_type": "string",
+                        "value": "SYNTHETIC_ACTUAL_LIKE",
+                    },
+                    {
+                        "field": "is_forecast",
+                        "asset_fqn": "serving.analytics.hotel_daily_metrics",
+                        "operator": "eq",
+                        "parameter_name": "required_filter_2",
+                        "value_type": "boolean",
+                        "value": False,
+                    },
+                ],
+            }],
+        }
+        sql = (
+            "SELECT SUM(recognized_room_revenue) FROM serving.analytics.hotel_daily_metrics "
+            "WHERE business_date >= DATE '2026-06-01' "
+            "AND business_date < DATE '2026-07-01' "
+            "AND data_period_status = 'SYNTHETIC_ACTUAL_LIKE' "
+            "AND is_forecast = false LIMIT 1000"
+        )
+
+        sealed, parameters = contract_model._seal_sql_parameters(sql, package)
+
+        self.assertIn("data_period_status = :required_filter_1", sealed)
+        self.assertIn("is_forecast = :required_filter_2", sealed)
+        self.assertEqual(
+            ["period_start", "period_end_exclusive", "required_filter_1", "required_filter_2"],
+            [item["name"] for item in parameters],
+        )
+
     def test_routed_client_uses_a_separate_openai_model_for_node2(self) -> None:
         adapter = ContractModelAdapter.from_endpoints(
             openai_endpoint="https://api.openai.com",
@@ -103,6 +160,8 @@ class ProductionModelTest(unittest.TestCase):
             {"model": "gpt-5.6-luna", "provider": "openai"},
             node2_transport.keywords,
         )
+        self.assertEqual(2, adapter._model._openai_client._max_attempts)
+        self.assertEqual(3, adapter._model._node2_client._max_attempts)
 
     def test_every_node_sends_its_registered_prompt(self) -> None:
         from src.ai.prompt_registry import get_prompt
@@ -444,6 +503,24 @@ class ProductionModelTest(unittest.TestCase):
             f"{sql} ORDER BY business_date LIMIT 1000",
         )
 
+    def test_node2_rejects_grouping_when_no_dimension_was_requested(self) -> None:
+        payload = self._node2_payload()
+
+        with self.assertRaisesRegex(ValueError, "dimensions absent"):
+            _validate_sql_semantics(
+                "node2",
+                payload,
+                "SELECT property_id, SUM(room_revenue) AS recognized_room_revenue_krw "
+                "FROM pms.public.pms_stays GROUP BY property_id LIMIT 1000",
+            )
+
+        _validate_sql_semantics(
+            "node2",
+            payload,
+            "SELECT SUM(room_revenue) AS recognized_room_revenue_krw "
+            "FROM pms.public.pms_stays LIMIT 1000",
+        )
+
     def test_rejected_model_sql_is_fingerprinted_not_logged(self) -> None:
         original = contract_model.request_json
         rejected_sql = (
@@ -554,6 +631,47 @@ class ProductionModelTest(unittest.TestCase):
             ],
             context["metrics"][0]["required_filters"],
         )
+
+    def test_stay_crm_approved_join_reaches_model_payload(self) -> None:
+        join_id = "pms_stay_to_crm_membership_grade_event_time_v1"
+        fqns = (
+            "pms.public.pms_stays",
+            "pms.public.pms_reservations",
+            "pms.public.pms_guests",
+            "crm.dbo.crm_customer_map",
+            "crm.dbo.crm_member_grade_history",
+        )
+        assets = tuple(
+            ContextAsset(
+                f"urn:li:dataset:{index}",
+                fqn,
+                ("property_id",),
+                join_ids=(join_id,),
+            )
+            for index, fqn in enumerate(fqns)
+        )
+        package = ContextPackageBuilder().build(
+            ContextBuildRequest(
+                "I4-CONTEXT-v2.1.0-DRAFT",
+                "policy-v1",
+                "2026-08-04",
+                "entitlement-hash",
+                assets,
+                100,
+                24_000,
+            ),
+            frozenset(asset.urn for asset in assets),
+        )
+
+        context = ContractModelAdapter._context_package(
+            {
+                "package": package,
+                "context": RequestContext(as_of=date(2026, 8, 4)),
+            }
+        )
+
+        self.assertEqual(4, len(context["joins"]))
+        self.assertEqual({join_id}, {item["id"] for item in context["joins"]})
 
     def test_node3_uses_entitled_metric_instead_of_a_fixed_metric(self) -> None:
         captured = {}

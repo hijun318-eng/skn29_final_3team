@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 from pathlib import Path
 from sys import path
@@ -19,7 +20,10 @@ from app.analysis_contracts import (  # noqa: E402
     ReplayAnalysisRequest,
 )
 from app.api import router as analysis_api  # noqa: E402
-from app.adapters.analysis_repository import PostgresAnalysisRepository  # noqa: E402
+from app.adapters.analysis_repository import (  # noqa: E402
+    AnalysisRepositoryUnavailable,
+    PostgresAnalysisRepository,
+)
 from app.contracts import AnalysisRequest, RequestContext  # noqa: E402
 from app.controllers.analysis_controller import AnalysisController  # noqa: E402
 from app.services.analysis_service import AnalysisService  # noqa: E402
@@ -49,7 +53,10 @@ class FakeAnalysisRepository:
             "version": 1,
             "status": "approved",
             "title": "객실 운영",
+            "question": "합성 객실 운영 현황을 알려줘",
             "parameter_types": {"scenario": "string"},
+            "semantic_request": {"question": "합성 객실 운영 현황을 알려줘"},
+            "parameter_schema": {"scenario": "string"},
             "created_at": datetime(2026, 8, 10, tzinfo=timezone.utc),
         }
         self.question = "합성 객실 운영 현황을 알려줘"
@@ -61,13 +68,8 @@ class FakeAnalysisRepository:
         self.request_id = request_context.request_id
         return self.request_id
 
-    def create_definition(self, title, question, parameters):
-        self.definition.update(
-            title=title,
-            parameter_types={name: "string" for name in parameters},
-        )
-        self.question = question
-        self.parameters = parameters
+    def create_definition_from_run(self, source_request_id, title):
+        self.definition.update(title=title)
         return self.definition
 
     def list_definitions(self):
@@ -111,6 +113,9 @@ class FakeAnalysisRepository:
             "error_type": None,
             "started_at": datetime(2026, 8, 10, tzinfo=timezone.utc),
             "completed_at": datetime(2026, 8, 10, tzinfo=timezone.utc),
+            "question": self.question,
+            "period_start": None,
+            "period_end_exclusive": None,
         }
 
     def list_runs(self):
@@ -144,16 +149,11 @@ def context(owner_id: UUID | None = None) -> RequestContext:
     )
 
 
-def test_definition_request_rejects_client_owned_fields_and_unsafe_parameter_names():
-    base = {"title": "객실 운영", "question": "지난달 객실 운영을 알려줘"}
-    for field in ("definition_id", "owner_id", "status", "request_id", "result"):
+def test_definition_request_accepts_only_title_and_source_request_id():
+    base = {"title": "객실 운영", "source_request_id": str(uuid4())}
+    for field in ("definition_id", "owner_id", "status", "question", "parameters", "result"):
         with pytest.raises(ValidationError):
             CreateAnalysisDefinitionRequest.model_validate({**base, field: "client"})
-    for name in ("sql", "result", "NotSnakeCase", "space key"):
-        with pytest.raises(ValidationError):
-            CreateAnalysisDefinitionRequest.model_validate(
-                {**base, "parameters": {name: "client"}}
-            )
 
 
 def test_definition_routes_are_owner_scoped_repository_calls_without_values_in_contract():
@@ -161,8 +161,7 @@ def test_definition_routes_are_owner_scoped_repository_calls_without_values_in_c
     repository = FakeAnalysisRepository(owner)
     request = CreateAnalysisDefinitionRequest(
         title="객실 운영",
-        question="user@example.com의 객실 운영을 알려줘",
-        parameters={"scenario": "success"},
+        source_request_id=uuid4(),
     )
     with patch.object(analysis_api, "_analysis_repository", return_value=repository):
         created = analysis_api.create_analysis_definition(request, context(owner))
@@ -173,8 +172,9 @@ def test_definition_routes_are_owner_scoped_repository_calls_without_values_in_c
     assert listed == [created]
     assert fetched == created
     assert "parameters" not in created
-    assert "question" not in created
-    assert "parameters" not in created
+    assert created["question"]
+    assert created["semantic_request"]
+    assert created["parameter_schema"]
 
 
 def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
@@ -212,6 +212,31 @@ def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     assert "parameters" not in artifact
 
 
+def test_run_history_uses_confirmed_artifact_period_for_direct_runs():
+    run = PostgresAnalysisRepository._run(
+        {
+            "request_id": uuid4(),
+            "definition_id": uuid4(),
+            "definition_version": 1,
+            "status": "SUCCEEDED",
+            "as_of": date(2026, 8, 13),
+            "timezone_name": "Asia/Seoul",
+            "trace_id": "trace",
+            "query_id": "query",
+            "artifact_id": uuid4(),
+            "error_type": None,
+            "started_at": datetime(2026, 8, 13, tzinfo=timezone.utc),
+            "completed_at": datetime(2026, 8, 13, tzinfo=timezone.utc),
+            "question": "질문",
+            "parameters": {},
+            "artifact_period": {"start": "2026-05-01", "end_exclusive": "2026-07-01"},
+        }
+    )
+
+    assert run["period_start"] == "2026-05-01"
+    assert run["period_end_exclusive"] == "2026-07-01"
+
+
 def test_direct_analysis_persists_request_query_and_artifact_when_database_is_configured():
     owner = uuid4()
     repository = FakeAnalysisRepository(owner)
@@ -230,6 +255,32 @@ def test_direct_analysis_persists_request_query_and_artifact_when_database_is_co
     assert repository.request_id == request_context.request_id
     assert repository.finished[0] is response
     assert set(repository.finished[1]) == {"plan", "query", "package"}
+
+
+def test_direct_analysis_returns_distinct_retryable_error_when_artifact_persistence_fails():
+    owner = uuid4()
+    repository = FakeAnalysisRepository(owner)
+    request_context = context(owner)
+    with patch.object(
+        analysis_api, "_analysis_repository", return_value=repository
+    ), patch.object(
+        repository,
+        "finish_run",
+        side_effect=AnalysisRepositoryUnavailable("persistence unavailable"),
+    ), patch.dict(
+        "os.environ", {"APP_RUNTIME_DATABASE_URL": "postgresql://configured"}
+    ):
+        response = analysis_api.analysis(
+            AnalysisRequest(question="합성 객실 운영 현황을 알려줘"),
+            request_context,
+        )
+
+    payload = json.loads(response.body)
+    assert response.status_code == 503
+    assert payload["error"]["code"] == "ARTIFACT_PERSIST_FAILED"
+    assert payload["error"]["retryable"] is True
+    assert payload["meta"]["trace_id"] == request_context.trace_id
+    assert repository.finished == "ARTIFACT_PERSIST_FAILED"
 
 
 def test_terminal_audit_links_request_query_artifact_and_redacted_trace():

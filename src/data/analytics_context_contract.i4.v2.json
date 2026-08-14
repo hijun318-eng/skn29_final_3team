@@ -140,7 +140,22 @@
         "crm.dbo.crm_member_grade_history"
       ],
       "event_time_field": "pms.public.pms_stays.actual_checkout_at",
-      "cardinality": "many_to_zero_or_one"
+      "cardinality": "many_to_zero_or_one",
+      "metrics": [
+        {
+          "id": "recognized_room_revenue",
+          "asset_fqn": "pms.public.pms_stays",
+          "field": "room_revenue",
+          "aggregation": "sum",
+          "time_field": "actual_checkout_at",
+          "required_filters": [
+            {"field": "stay_status", "operator": "eq", "value_type": "string", "value": "COMPLETED"},
+            {"field": "complimentary_flag", "operator": "eq", "value_type": "boolean", "value": false},
+            {"field": "house_use_flag", "operator": "eq", "value_type": "boolean", "value": false},
+            {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": false}
+          ]
+        }
+      ]
     }
   ]
 }

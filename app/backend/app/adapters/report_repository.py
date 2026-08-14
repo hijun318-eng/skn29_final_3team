@@ -761,6 +761,61 @@ class PostgresReportRepository:
             raise KeyError("승인된 Analysis Artifact를 찾을 수 없습니다.")
         return dict(row)
 
+    def get_transfer_artifact(self, artifact_id: str) -> dict[str, object]:
+        artifact_uuid = _uuid(artifact_id, "artifact_id")
+        with self._engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    SELECT a.artifact_id, a.narrative_markdown,
+                           a.data_snapshot_json, a.chart_spec_json,
+                           q.trino_query_id
+                    FROM artifact.analysis_artifacts a
+                    JOIN query.query_executions q
+                      ON q.query_execution_id = a.query_execution_id
+                    JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                    WHERE a.artifact_id = :artifact_id
+                      AND a.status = 'APPROVED'
+                      AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                      AND r.user_id = :owner_id
+                    """
+                ),
+                {"artifact_id": artifact_uuid, "owner_id": self._owner_id},
+            ).mappings().one_or_none()
+        if row is None:
+            raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
+        return dict(row)
+
+    def get_report_artifact(
+        self,
+        definition_id: str,
+        version: int,
+        artifact_id: str,
+    ) -> dict[str, object]:
+        artifact_uuid = _uuid(artifact_id, "artifact_id")
+        definition = self.get_version(definition_id, version)
+        if not any(block.artifact_id == str(artifact_uuid) for block in definition.blocks):
+            raise KeyError("보고서에 연결된 Analysis Artifact를 찾을 수 없습니다.")
+        with self._engine.connect() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    SELECT a.artifact_id, a.title, a.narrative_markdown,
+                           a.data_snapshot_json, a.evidence_json,
+                           a.chart_spec_json, a.artifact_checksum,
+                           q.trino_query_id
+                    FROM artifact.analysis_artifacts a
+                    JOIN query.query_executions q
+                      ON q.query_execution_id = a.query_execution_id
+                    WHERE a.artifact_id = :artifact_id AND a.status = 'APPROVED'
+                    """
+                ),
+                {"artifact_id": artifact_uuid},
+            ).mappings().one_or_none()
+        if row is None:
+            raise KeyError("승인된 Analysis Artifact를 찾을 수 없습니다.")
+        return dict(row)
+
     def start_assistant_request(
         self,
         assistant_request_id: str,

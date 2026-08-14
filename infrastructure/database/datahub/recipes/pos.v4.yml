@@ -1,0 +1,12 @@
+source:
+  type: mysql
+  config:
+    host_port: pos-mysql:3306
+    database: walkerhill_v4
+    username: ${POS_READONLY_USER}
+    password: ${POS_READONLY_PASSWORD}
+    platform_instance: pos_v4
+sink:
+  type: datahub-rest
+  config:
+    server: http://datahub-gms-quickstart:8080

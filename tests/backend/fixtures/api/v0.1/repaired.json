@@ -26,13 +26,17 @@
         "filters": {
           "hotel": "synthetic"
         },
+        "gate_history": null,
+        "gates": null,
         "masking": {
           "applied": true,
           "fields": [
             "guest_id"
           ]
         },
+        "metrics": [],
         "model_version": null,
+        "models": [],
         "period": {
           "end_exclusive": "2026-08-01",
           "start": "2026-07-01"
@@ -52,7 +56,8 @@
             "seed_version": "20260729",
             "urn": "urn:answervice:dataset:pms.public.reservations"
           }
-        ]
+        ],
+        "timezone": null
       },
       "metrics": [],
       "summary": "검증된 합성 데이터 분석 결과입니다.",

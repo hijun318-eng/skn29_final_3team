@@ -54,9 +54,11 @@
     ]
   },
   "error": {
-    "code": "QUERY_SOURCE_FAILED",
+    "clarification_type": null,
+    "code": "QUERY_TIMEOUT",
     "message": "조회 시간이 초과되었습니다.",
-    "retryable": true
+    "retryable": true,
+    "suggestions": []
   },
   "meta": {
     "as_of": "2026-07-30",

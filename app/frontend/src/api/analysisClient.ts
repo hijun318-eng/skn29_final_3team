@@ -10,8 +10,15 @@ import { createUuid } from "../utils/createUuid.ts";
 export interface AnalysisClient {
   login(username: string, password: string): Promise<LoginSession>;
   validateSession(): Promise<SessionInfo>;
-  analyze(question: string, conversationId: string, parameters: { period_start: string; period_end_exclusive: string }): Promise<AnalysisRun>;
-  createDefinition(title: string, question: string, parameters: Record<string, AnalysisValue>): Promise<SavedAnalysisDefinition>;
+  logout(): Promise<void>;
+  analyze(
+    question: string,
+    conversationId: string,
+    parameters?: Record<string, AnalysisValue>,
+    options?: AnalysisOptions,
+  ): Promise<AnalysisRun>;
+  cancelAnalysis(traceId: string): Promise<AnalysisProgress>;
+  createDefinition(title: string, sourceRequestId: string): Promise<SavedAnalysisDefinition>;
   listDefinitions(): Promise<SavedAnalysisDefinition[]>;
   replayDefinition(definitionId: string, parameters: Record<string, AnalysisValue>): Promise<SavedAnalysisRun>;
   getRunArtifact(requestId: string, conversationId: string): Promise<AnalysisRun>;
@@ -23,16 +30,17 @@ export interface SessionInfo {
   role: "hotel_analyst" | "report_admin" | "data_admin";
 }
 
-export interface LoginSession extends SessionInfo {
-  session_token: string;
-}
+export type LoginSession = SessionInfo;
 
 export interface SavedAnalysisDefinition {
   definition_id: string;
   version: number;
   status: "approved";
   title: string;
+  question: string;
   parameter_types: Record<string, string>;
+  semantic_request: Record<string, unknown>;
+  parameter_schema: Record<string, string>;
   created_at: string;
 }
 
@@ -40,7 +48,7 @@ export interface SavedAnalysisRun {
   request_id: string;
   definition_id: string;
   definition_version: number;
-  status: "RECEIVED" | "SUCCEEDED" | "PARTIAL" | "FAILED" | "BLOCKED";
+  status: "RECEIVED" | "SUCCEEDED" | "PARTIAL" | "FAILED" | "BLOCKED" | "CANCELLED";
   as_of: string;
   timezone: string;
   trace_id: string;
@@ -49,6 +57,24 @@ export interface SavedAnalysisRun {
   error_type: string | null;
   started_at: string;
   completed_at: string | null;
+  question: string;
+  period_start: string | null;
+  period_end_exclusive: string | null;
+}
+
+export interface AnalysisProgress {
+  trace_id: string;
+  request_id: string;
+  status: "RECEIVED" | "ROUTED" | "SUCCEEDED" | "BLOCKED" | "PARTIAL" | "FAILED" | "CANCELLED";
+  started_at: string;
+  elapsed_seconds: number;
+  cancel_requested: boolean;
+  trace: Array<{ stage: string; outcome: string; detail?: string | null }>;
+}
+
+export interface AnalysisOptions {
+  traceId?: string;
+  onProgress?: (progress: AnalysisProgress) => void;
 }
 
 interface SavedAnalysisArtifact {
@@ -65,8 +91,38 @@ interface SavedAnalysisArtifact {
   artifact_checksum: string;
 }
 
+function restoredMetrics(detail: SavedAnalysisArtifact) {
+  return (detail.evidence.metrics ?? []).flatMap((metric) => {
+    const values = detail.table.rows
+      .map((row) => Number(row[metric.metric_id]))
+      .filter(Number.isFinite);
+    if (!values.length) return [];
+    return [{
+      metric_id: metric.metric_id,
+      result_field: metric.result_field,
+      label: metric.label,
+      definition: metric.definition,
+      value: values.reduce((total, value) => total + value, 0),
+      unit: metric.unit ?? null,
+    }];
+  });
+}
+
 type Fetch = typeof fetch;
 const env = import.meta.env ?? {};
+
+export class AnalysisApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly retryable: boolean;
+
+  constructor(status: number, code: string, message: string, retryable = false) {
+    super(message);
+    this.status = status;
+    this.code = code;
+    this.retryable = retryable;
+  }
+}
 
 function seoulToday(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -78,8 +134,7 @@ function seoulToday(): string {
 }
 
 function authenticationHeaders(explicitToken = "") {
-  if (!explicitToken) throw new Error("분석 인증 세션이 없습니다.");
-  return { Authorization: `Bearer ${explicitToken}` };
+  return explicitToken ? { Authorization: `Bearer ${explicitToken}` } : {};
 }
 
 export function createHttpAnalysisClient(
@@ -89,61 +144,107 @@ export function createHttpAnalysisClient(
 ): AnalysisClient {
   if (!baseUrl) throw new Error("VITE_BACKEND_BASE_URL is required");
   const endpoint = (path: string) => `${baseUrl.replace(/\/$/, "")}${path}`;
-  const headers = (json = false) => ({
+  const headers = (json = false, traceId = createUuid()) => ({
     ...(json ? { "Content-Type": "application/json" } : {}),
     ...authenticationHeaders(authToken),
     "X-As-Of": env.VITE_ANALYSIS_AS_OF || seoulToday(),
     "X-Contract-Version": OPENAPI_VERSION,
     "X-Timezone": "Asia/Seoul",
-    "X-Trace-Id": createUuid(),
+    "X-Trace-Id": traceId,
   });
   const parse = async <T>(response: Response): Promise<T> => {
     const payload: any = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload?.error?.message || payload?.detail || `Analysis API request failed (${response.status})`);
+    if (!response.ok) {
+      const error = new AnalysisApiError(
+        response.status,
+        payload?.error?.code || `HTTP_${response.status}`,
+        payload?.error?.message || payload?.detail || "분석 API 요청에 실패했습니다.",
+        Boolean(payload?.error?.retryable) || response.status === 429 || response.status >= 500,
+      );
+      if (response.status === 401 && typeof window !== "undefined") window.dispatchEvent(new CustomEvent("answervice:session-expired"));
+      throw error;
+    }
     return payload as T;
   };
   return {
     async login(username, password) {
       const payload = await parse<{ data: LoginSession }>(await request(endpoint("/auth/login"), {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       }));
-      if (payload?.data?.status !== "authenticated" || !payload.data.session_token) {
+      if (payload?.data?.status !== "authenticated") {
         throw new Error("로그인 API가 올바르지 않은 응답을 반환했습니다.");
       }
       return payload.data;
     },
     async validateSession() {
       const payload = await parse<{ data: SessionInfo }>(await request(endpoint("/auth/session"), {
+        credentials: "include",
         headers: authenticationHeaders(authToken),
       }));
       if (payload?.data?.status !== "authenticated") throw new Error("인증 API가 올바르지 않은 응답을 반환했습니다.");
       return payload.data;
     },
-    async analyze(question, conversationId, parameters) {
-      const response = await request(endpoint("/analysis"), {
+    async logout() {
+      const response = await request(endpoint("/auth/logout"), {
         method: "POST",
-        headers: headers(true),
+        credentials: "include",
+        headers: authenticationHeaders(authToken),
+      });
+      if (!response.ok) await parse(response);
+    },
+    async analyze(question, conversationId, parameters = {}, options = {}) {
+      const traceId = options.traceId || createUuid();
+      const responsePromise = request(endpoint("/analysis"), {
+        method: "POST",
+        credentials: "include",
+        headers: headers(true, traceId),
         body: JSON.stringify({ question, parameters }),
       });
-      const payload = await parse<AnalysisApiResponse>(response);
-      if (!payload?.data || !payload.meta) throw new Error("Analysis API returned an invalid response");
-      return normalizeApiResponse(payload, question, conversationId);
+      const poll = options.onProgress ? window.setInterval(async () => {
+        try {
+          const response = await request(endpoint(`/analysis/progress/${encodeURIComponent(traceId)}`), {
+            credentials: "include",
+            headers: headers(false, traceId),
+          });
+          if (response.status === 404) return;
+          const payload = await parse<{ data: AnalysisProgress }>(response);
+          options.onProgress?.(payload.data);
+        } catch {
+          // The final analysis response owns user-facing errors; polling is best-effort only.
+        }
+      }, 500) : undefined;
+      try {
+        const payload = await parse<AnalysisApiResponse>(await responsePromise);
+        if (!payload?.data || !payload.meta) throw new Error("Analysis API returned an invalid response");
+        return normalizeApiResponse(payload, question, conversationId);
+      } finally {
+        if (poll !== undefined) window.clearInterval(poll);
+      }
     },
-    async createDefinition(title, question, parameters) {
+    async cancelAnalysis(traceId) {
+      const payload = await parse<{ data: AnalysisProgress }>(await request(
+        endpoint(`/analysis/progress/${encodeURIComponent(traceId)}/cancel`),
+        { method: "POST", credentials: "include", headers: headers(false, traceId) },
+      ));
+      return payload.data;
+    },
+    async createDefinition(title, sourceRequestId) {
       return parse<SavedAnalysisDefinition>(await request(endpoint("/analysis/definitions"), {
-        method: "POST", headers: headers(true), body: JSON.stringify({ title, question, parameters }),
+        method: "POST", credentials: "include", headers: headers(true), body: JSON.stringify({ title, source_request_id: sourceRequestId }),
       }));
     },
     async listDefinitions() {
       return (await parse<{ items: SavedAnalysisDefinition[] }>(
-        await request(endpoint("/analysis/definitions"), { headers: headers() }),
+        await request(endpoint("/analysis/definitions"), { credentials: "include", headers: headers() }),
       )).items;
     },
     async replayDefinition(definitionId, parameters) {
       return parse<SavedAnalysisRun>(await request(endpoint(`/analysis/definitions/${encodeURIComponent(definitionId)}/runs`), {
         method: "POST",
+        credentials: "include",
         headers: headers(true),
         body: JSON.stringify({ as_of: env.VITE_ANALYSIS_AS_OF || seoulToday(), idempotency_key: createUuid(), parameters }),
       }));
@@ -151,7 +252,7 @@ export function createHttpAnalysisClient(
     async getRunArtifact(requestId, conversationId) {
       const detail = await parse<SavedAnalysisArtifact>(await request(
         endpoint(`/analysis/runs/${encodeURIComponent(requestId)}/artifact`),
-        { headers: headers() },
+        { credentials: "include", headers: headers() },
       ));
       return normalizeApiResponse({
         data: {
@@ -162,7 +263,7 @@ export function createHttpAnalysisClient(
           },
           result: {
             summary: detail.summary,
-            metrics: [],
+            metrics: restoredMetrics(detail),
             table: detail.table,
             chart: detail.chart,
             evidence: detail.evidence,
@@ -179,7 +280,7 @@ export function createHttpAnalysisClient(
     },
     async listRuns() {
       return (await parse<{ items: SavedAnalysisRun[] }>(
-        await request(endpoint("/analysis/runs"), { headers: headers() }),
+        await request(endpoint("/analysis/runs"), { credentials: "include", headers: headers() }),
       )).items;
     },
   };

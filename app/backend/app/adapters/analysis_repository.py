@@ -74,46 +74,81 @@ class PostgresAnalysisRepository:
             "version": row["version"],
             "status": "approved",
             "title": row["title"],
+            "question": row["question_text_redacted"],
             "parameter_types": _parameter_types(parameters),
+            "semantic_request": dict(row["semantic_request"]),
+            "parameter_schema": dict(row["parameter_schema"]),
             "created_at": row["created_at"],
         }
         if replay:
             definition.update(question=row["question_text_redacted"], parameters=parameters)
         return definition
 
-    def create_definition(
-        self,
-        title: str,
-        question: str,
-        parameters: dict[str, object],
-    ) -> dict[str, Any]:
+    def create_definition_from_run(self, source_request_id: str | UUID, title: str) -> dict[str, Any]:
         definition_id = uuid4()
-        redacted = _redact_question(question)
-        if not redacted:
-            raise ValueError("redacted question은 비어 있을 수 없습니다.")
         try:
             with self._engine.begin() as connection:
+                source = connection.execute(
+                    text(
+                        """
+                        SELECT d.question_text_redacted, a.evidence_json
+                        FROM analysis_v1.analysis_run_links l
+                        JOIN analysis_v1.analysis_definitions d
+                          ON d.definition_id = l.definition_id AND d.version = l.definition_version
+                        JOIN chat.analysis_requests r ON r.request_id = l.request_id
+                        JOIN artifact.analysis_artifacts a ON a.request_id = r.request_id
+                         AND a.status = 'APPROVED'
+                        WHERE l.request_id = :request_id AND d.owner_id = :owner_id
+                          AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                        LIMIT 1
+                        """
+                    ),
+                    {"request_id": _uuid(source_request_id, "source_request_id"), "owner_id": self._owner_id},
+                ).mappings().one_or_none()
+                if source is None:
+                    raise ValueError("성공하거나 허용된 부분 성공 Analysis Artifact만 저장할 수 있습니다.")
+                evidence = dict(source["evidence_json"])
+                period = dict(evidence.get("period") or {})
+                parameters = {
+                    "period_start": period.get("start"),
+                    "period_end_exclusive": period.get("end_exclusive"),
+                }
+                parameters = {key: value for key, value in parameters.items() if value is not None}
+                semantic_request = {
+                    "question": source["question_text_redacted"],
+                    "metric_ids": [item.get("metric_id") for item in evidence.get("metrics", [])],
+                    "filters": evidence.get("filters", {}),
+                    "period": period,
+                    "context_release": evidence.get("context_release"),
+                    "policy_version": evidence.get("policy_version"),
+                    "source_request_id": str(source_request_id),
+                }
+                parameter_schema = {key: "date" for key in parameters}
                 row = connection.execute(
                     text(
                         """
                         INSERT INTO analysis_v1.analysis_definitions
                             (definition_id, version, owner_id, title,
                              question_text_redacted, parameters_json, parameter_hash,
-                             is_saved)
+                             semantic_request_json, parameter_schema_json, is_saved)
                         VALUES (:definition_id, 1, :owner_id, :title,
                                 :question, CAST(:parameters AS jsonb), :parameter_hash,
-                                true)
+                                CAST(:semantic_request AS jsonb), CAST(:parameter_schema AS jsonb), true)
                         RETURNING definition_id, version, title, question_text_redacted,
-                                  parameters_json AS parameters, created_at
+                                  parameters_json AS parameters,
+                                  semantic_request_json AS semantic_request,
+                                  parameter_schema_json AS parameter_schema, created_at
                         """
                     ),
                     {
                         "definition_id": definition_id,
                         "owner_id": self._owner_id,
                         "title": title.strip(),
-                        "question": redacted,
+                        "question": source["question_text_redacted"],
                         "parameters": json.dumps(parameters, ensure_ascii=False),
                         "parameter_hash": _hash(parameters),
+                        "semantic_request": json.dumps(semantic_request, ensure_ascii=False),
+                        "parameter_schema": json.dumps(parameter_schema, ensure_ascii=False),
                     },
                 ).mappings().one()
         except SQLAlchemyError as error:
@@ -129,7 +164,9 @@ class PostgresAnalysisRepository:
                     text(
                         """
                         SELECT definition_id, version, title, question_text_redacted,
-                               parameters_json AS parameters, created_at
+                               parameters_json AS parameters,
+                               semantic_request_json AS semantic_request,
+                               parameter_schema_json AS parameter_schema, created_at
                         FROM analysis_v1.analysis_definitions
                         WHERE definition_id = :definition_id
                           AND owner_id = :owner_id
@@ -155,7 +192,9 @@ class PostgresAnalysisRepository:
                     text(
                         """
                         SELECT definition_id, version, title, question_text_redacted,
-                               parameters_json AS parameters, created_at
+                               parameters_json AS parameters,
+                               semantic_request_json AS semantic_request,
+                               parameter_schema_json AS parameter_schema, created_at
                         FROM analysis_v1.analysis_definitions
                         WHERE owner_id = :owner_id AND is_saved
                         ORDER BY created_at DESC, definition_id DESC
@@ -386,7 +425,6 @@ class PostgresAnalysisRepository:
     ) -> None:
         status = {
             AnalysisStatus.BLOCKED: "DENIED",
-            AnalysisStatus.CANCELLED: "FAILED",
         }.get(response.data.status, response.data.status.value)
         error_type = {
             "ACCESS_DENIED": "PERMISSION",
@@ -448,20 +486,25 @@ class PostgresAnalysisRepository:
             raise AnalysisRepositoryUnavailable("Analysis 실행 결과를 저장할 수 없습니다.") from error
 
     def fail_run(self, request_id: UUID, error_type: str = "UNSUPPORTED") -> None:
+        persistence_failure = error_type == "ARTIFACT_PERSIST_FAILED"
+        stored_status = "FAILED" if persistence_failure else "DENIED"
+        stored_error_type = "PERSISTENCE" if persistence_failure else error_type
+        action_code = "ANALYSIS_FAILED" if persistence_failure else "ANALYSIS_DENIED"
         try:
             with self._engine.begin() as connection:
                 connection.execute(
                     text(
                         """
                         UPDATE chat.analysis_requests
-                        SET status = 'DENIED', error_type = :error_type,
+                        SET status = :status, error_type = :error_type,
                             completed_at = :completed_at
                         WHERE request_id = :request_id AND status = 'RECEIVED'
                         """
                     ),
                     {
                         "request_id": request_id,
-                        "error_type": error_type,
+                        "status": stored_status,
+                        "error_type": stored_error_type,
                         "completed_at": datetime.now(timezone.utc),
                     },
                 )
@@ -472,7 +515,7 @@ class PostgresAnalysisRepository:
                             (request_id, actor_user_id, actor_role, action_code,
                              object_type, object_id, sql_policy_version,
                              details_json_redacted, trace_id)
-                        SELECT request_id, user_id, user_role, 'ANALYSIS_DENIED',
+                        SELECT request_id, user_id, user_role, :action_code,
                                'ANALYSIS_REQUEST', request_id::text,
                                sql_policy_version,
                                CAST(:details AS jsonb), trace_id
@@ -481,16 +524,17 @@ class PostgresAnalysisRepository:
                           AND NOT EXISTS (
                               SELECT 1 FROM governance.audit_events
                               WHERE request_id = :request_id
-                                AND action_code = 'ANALYSIS_DENIED'
+                                AND action_code = :action_code
                           )
                         """
                     ),
                     {
                         "request_id": request_id,
+                        "action_code": action_code,
                         "details": json.dumps(
                             {
-                                "status": "DENIED",
-                                "error_type": error_type,
+                                "status": stored_status,
+                                "error_type": stored_error_type,
                                 "persistence_version": ANALYSIS_PERSISTENCE_VERSION,
                             },
                             sort_keys=True,
@@ -633,9 +677,11 @@ class PostgresAnalysisRepository:
 
     @staticmethod
     def _run(row) -> dict[str, Any]:
-        status = {"DENIED": "BLOCKED", "CANCELLED": "FAILED"}.get(
+        status = {"DENIED": "BLOCKED"}.get(
             row["status"], row["status"]
         )
+        period = dict(row["artifact_period"] or {})
+        parameters = dict(row["parameters"] or {})
         return {
             "contract_version": ANALYSIS_PERSISTENCE_VERSION,
             "request_id": row["request_id"],
@@ -650,6 +696,9 @@ class PostgresAnalysisRepository:
             "error_type": row["error_type"],
             "started_at": row["started_at"],
             "completed_at": row["completed_at"],
+            "question": row["question"],
+            "period_start": period.get("start") or parameters.get("period_start"),
+            "period_end_exclusive": period.get("end_exclusive") or parameters.get("period_end_exclusive"),
         }
 
     def get_run(self, request_id: str | UUID) -> dict[str, Any]:
@@ -659,9 +708,11 @@ class PostgresAnalysisRepository:
                     text(
                         """
                         SELECT l.request_id, l.definition_id, l.definition_version,
-                               l.as_of, l.timezone_name, r.status, r.error_type,
+                               l.as_of, l.timezone_name, l.parameters_json AS parameters,
+                               d.question_text_redacted AS question, r.status, r.error_type,
                                r.trace_id, r.started_at, r.completed_at,
-                               q.trino_query_id AS query_id, a.artifact_id
+                               q.trino_query_id AS query_id, a.artifact_id,
+                               a.evidence_json->'period' AS artifact_period
                         FROM analysis_v1.analysis_run_links l
                         JOIN analysis_v1.analysis_definitions d
                           ON d.definition_id = l.definition_id
@@ -673,7 +724,7 @@ class PostgresAnalysisRepository:
                             ORDER BY attempt_no DESC LIMIT 1
                         ) q ON true
                         LEFT JOIN LATERAL (
-                            SELECT artifact_id FROM artifact.analysis_artifacts
+                            SELECT artifact_id, evidence_json FROM artifact.analysis_artifacts
                             WHERE request_id = r.request_id LIMIT 1
                         ) a ON true
                         WHERE l.request_id = :request_id AND d.owner_id = :owner_id
@@ -697,9 +748,11 @@ class PostgresAnalysisRepository:
                     text(
                         """
                         SELECT l.request_id, l.definition_id, l.definition_version,
-                               l.as_of, l.timezone_name, r.status, r.error_type,
+                               l.as_of, l.timezone_name, l.parameters_json AS parameters,
+                               d.question_text_redacted AS question, r.status, r.error_type,
                                r.trace_id, r.started_at, r.completed_at,
-                               q.trino_query_id AS query_id, a.artifact_id
+                               q.trino_query_id AS query_id, a.artifact_id,
+                               a.evidence_json->'period' AS artifact_period
                         FROM analysis_v1.analysis_run_links l
                         JOIN analysis_v1.analysis_definitions d
                           ON d.definition_id = l.definition_id
@@ -711,7 +764,7 @@ class PostgresAnalysisRepository:
                             ORDER BY attempt_no DESC LIMIT 1
                         ) q ON true
                         LEFT JOIN LATERAL (
-                            SELECT artifact_id FROM artifact.analysis_artifacts
+                            SELECT artifact_id, evidence_json FROM artifact.analysis_artifacts
                             WHERE request_id = r.request_id LIMIT 1
                         ) a ON true
                         WHERE d.owner_id = :owner_id

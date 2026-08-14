@@ -216,7 +216,7 @@ def contract_fixtures() -> dict[str, AnalysisResponse]:
             AnalysisStatus.FAILED,
             (*routed, AnalysisStatus.FAILED),
             error=ErrorBody(
-                code=ErrorCode.QUERY_SOURCE_FAILED,
+                code=ErrorCode.QUERY_TIMEOUT,
                 message="조회 시간이 초과되었습니다.",
                 retryable=True,
             ),
@@ -237,7 +237,7 @@ def contract_fixtures() -> dict[str, AnalysisResponse]:
             AnalysisStatus.CANCELLED,
             (*routed, AnalysisStatus.CANCELLED),
             error=ErrorBody(
-                code=ErrorCode.QUERY_SOURCE_FAILED,
+                code=ErrorCode.REQUEST_CANCELLED,
                 message="요청이 취소되었습니다.",
             ),
         ),

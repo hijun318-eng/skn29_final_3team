@@ -18,6 +18,8 @@ class AnalysisController:
         payload: AnalysisRequest,
         context: RequestContext,
         execution_sink: Callable[[dict[str, Any]], None] | None = None,
+        progress_sink: Callable[[object, object], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
     ) -> AnalysisResponse:
         try:
             decision = self._routing.decide(payload, context.role)
@@ -27,4 +29,6 @@ class AnalysisController:
                 exc.message,
                 403 if exc.code == ErrorCode.ACCESS_DENIED else 422,
             ) from exc
-        return self._service.analyze(payload, context, decision, execution_sink)
+        return self._service.analyze(
+            payload, context, decision, execution_sink, progress_sink, cancel_check
+        )

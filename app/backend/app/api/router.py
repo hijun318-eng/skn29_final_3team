@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import Annotated, Any, Callable
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from app.contract_examples import (
@@ -21,10 +21,12 @@ from app.analysis_contracts import (
     CreateAnalysisDefinitionRequest,
     ReplayAnalysisRequest,
 )
-from app.context import ContextValidationError, analysis_context, request_context, session_context
+from app.context import SESSION_COOKIE, ContextValidationError, analysis_context, optional_session_context, request_context, session_context
 from app.contracts import (
     AnalysisRequest,
+    AnalysisProgressResponse,
     AnalysisResponse,
+    AnalysisStatus,
     EmptyData,
     ErrorBody,
     ErrorCode,
@@ -37,16 +39,18 @@ from app.contracts import (
     ReadinessData,
     ReadinessResponse,
     RequestContext,
+    Role,
     SessionData,
     SessionResponse,
     response_meta,
 )
-from app.auth import AuthenticationError, authenticate_credentials, issue_session_token
+from app.auth import AuthenticationError, authenticate_credentials, issue_session_token, register_session, revoke_session
 from app.controllers.analysis_controller import AnalysisController
 from app.services.analysis_service import AnalysisService
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.routing_service import RoutingService
 from app.services.readiness import AppDatabaseReadiness
+from app.services.analysis_progress import analysis_progress
 
 
 def _routing_service() -> RoutingService:
@@ -173,8 +177,11 @@ def ready(request: Request) -> ReadinessResponse:
     operation_id="getAuthenticatedSession",
 )
 def authenticated_session(
-    context: Annotated[RequestContext, Depends(session_context)],
+    request: Request,
+    context: Annotated[RequestContext | None, Depends(optional_session_context)],
 ) -> SessionResponse:
+    if context is None:
+        return SessionResponse(data=SessionData(status="anonymous"), meta=response_meta(request_context(request)))
     return SessionResponse(
         data=SessionData(role=context.role),
         meta=response_meta(context),
@@ -187,12 +194,13 @@ def authenticated_session(
     operation_id="createAuthenticatedSession",
     responses={401: {"model": ErrorResponse, "description": "아이디 또는 비밀번호 불일치"}},
 )
-def login(payload: LoginRequest, request: Request) -> LoginResponse:
+def login(payload: LoginRequest, request: Request, response: Response) -> LoginResponse:
     try:
         principal = authenticate_credentials(payload.username, payload.password)
         session_token = issue_session_token(principal)
+        register_session(session_token, principal)
     except AuthenticationError as exc:
-        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.ACCESS_DENIED
+        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
         raise ContextValidationError(code, exc.message, exc.status_code) from exc
     context = RequestContext(
         request_id=request.state.request_id,
@@ -201,9 +209,36 @@ def login(payload: LoginRequest, request: Request) -> LoginResponse:
         role=principal.role,
     )
     request.state.context = context
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_token,
+        httponly=True,
+        secure=os.getenv("AUTH_COOKIE_SECURE", "false").strip().lower() == "true",
+        samesite="strict",
+        max_age=min(86_400, max(900, int(os.getenv("AUTH_SESSION_TTL_SECONDS", "28800")))),
+        path="/",
+    )
     return LoginResponse(
-        data=LoginData(role=principal.role, session_token=session_token),
+        data=LoginData(role=principal.role),
         meta=response_meta(context),
+    )
+
+
+@router.post("/auth/logout", status_code=204, operation_id="deleteAuthenticatedSession")
+def logout(
+    request: Request,
+    response: Response,
+    _context: Annotated[RequestContext, Depends(session_context)],
+) -> None:
+    try:
+        revoke_session(getattr(request.state, "session_token", None))
+    except AuthenticationError as exc:
+        raise ContextValidationError(ErrorCode.INTERNAL_ERROR, exc.message, exc.status_code) from exc
+    response.delete_cookie(
+        SESSION_COOKIE,
+        secure=os.getenv("AUTH_COOKIE_SECURE", "false").strip().lower() == "true",
+        samesite="strict",
+        path="/",
     )
 
 
@@ -235,6 +270,12 @@ def analysis(
     ],
     context: Annotated[RequestContext, Depends(analysis_context)],
 ) -> AnalysisResponse | JSONResponse:
+    if context.role is not Role.HOTEL_ANALYST:
+        raise ContextValidationError(
+            ErrorCode.ACCESS_DENIED,
+            "분석 Agent는 호텔 분석가 역할만 사용할 수 있습니다.",
+            403,
+        )
     wait_seconds = float(os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0"))
     if not execution_gate.acquire(wait_seconds):
         response = ErrorResponse(
@@ -247,8 +288,12 @@ def analysis(
             ),
         )
         return JSONResponse(status_code=429, content=response.model_dump(mode="json"))
+    analysis_progress.start(
+        context.trace_id, context.user_id, context.role, context.request_id
+    )
     repository = None
     execution: dict[str, Any] = {}
+    final_status = AnalysisStatus.FAILED
     try:
         if os.getenv("APP_RUNTIME_DATABASE_URL"):
             repository = _analysis_repository(context)
@@ -257,18 +302,86 @@ def analysis(
                     payload.question, payload.parameters, context
                 )
             )
-        response = _controller().submit(payload, context, execution.update)
+        response = _controller().submit(
+            payload,
+            context,
+            execution.update,
+            lambda stage, outcome: analysis_progress.record(
+                context.trace_id, stage, outcome
+            ),
+            lambda: analysis_progress.cancelled(context.trace_id),
+        )
+        final_status = response.data.status
         if repository is not None:
-            _repository_call(
-                lambda: repository.finish_run(context.request_id, response, execution)
-            )
+            try:
+                _repository_call(
+                    lambda: repository.finish_run(context.request_id, response, execution)
+                )
+            except HTTPException as error:
+                if error.status_code != 503:
+                    raise
+                final_status = AnalysisStatus.FAILED
+                try:
+                    repository.fail_run(
+                        context.request_id, ErrorCode.ARTIFACT_PERSIST_FAILED.value
+                    )
+                except Exception:
+                    pass
+                failure = ErrorResponse(
+                    data=EmptyData(),
+                    meta=response_meta(context),
+                    error=ErrorBody(
+                        code=ErrorCode.ARTIFACT_PERSIST_FAILED,
+                        message="분석 결과를 저장하지 못했습니다.",
+                        retryable=True,
+                    ),
+                )
+                return JSONResponse(
+                    status_code=503,
+                    content=failure.model_dump(mode="json"),
+                )
         return response
     except Exception:
         if repository is not None:
             _repository_call(lambda: repository.fail_run(context.request_id))
         raise
     finally:
+        analysis_progress.finish(context.trace_id, final_status)
         execution_gate.release()
+
+
+@router.get(
+    "/analysis/progress/{trace_id}",
+    response_model=AnalysisProgressResponse,
+    operation_id="getAnalysisProgress",
+)
+def get_analysis_progress(
+    trace_id: str,
+    context: Annotated[RequestContext, Depends(session_context)],
+) -> AnalysisProgressResponse:
+    try:
+        data = analysis_progress.get(trace_id, context.user_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="진행 중인 분석을 찾을 수 없습니다.") from error
+    return AnalysisProgressResponse(data=data, meta=response_meta(context))
+
+
+@router.post(
+    "/analysis/progress/{trace_id}/cancel",
+    response_model=AnalysisProgressResponse,
+    operation_id="cancelAnalysisProgress",
+)
+def cancel_analysis_progress(
+    trace_id: str,
+    context: Annotated[RequestContext, Depends(session_context)],
+) -> AnalysisProgressResponse:
+    try:
+        data = analysis_progress.cancel(trace_id, context.user_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="진행 중인 분석을 찾을 수 없습니다.") from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail="이미 종료된 분석입니다.") from error
+    return AnalysisProgressResponse(data=data, meta=response_meta(context))
 
 
 @router.post(
@@ -282,11 +395,7 @@ def create_analysis_definition(
 ) -> dict[str, Any]:
     repository = _analysis_repository(context)
     return _repository_call(
-        lambda: repository.create_definition(
-            payload.title,
-            payload.question,
-            payload.model_dump(mode="json")["parameters"],
-        )
+        lambda: repository.create_definition_from_run(payload.source_request_id, payload.title)
     )
 
 

@@ -1,73 +1,78 @@
 # Answervice
 
-Answervice는 자연어 질문을 승인된 DataHub Context와 read-only Trino SQL로 분석하고, 결과와 근거를 저장된 Analysis·Report로 연결하는 서비스다.
+> 흩어진 호텔 데이터를 대화로 분석하고 보고서까지 만드는 서비스
 
-현재 제품 범위와 계약은 [`docs/e2e_mvp/README.md`](docs/e2e_mvp/README.md)에서 시작한다. 과거 역할별 handoff와 AI 작업 문서는 제품 실행 기준이 아니다.
+[서비스 상세 문서](docs/e2e_mvp/README.md) · [실행 방법](docs/e2e_mvp/LOCAL_SETUP.md)
 
-## 로컬 환경 재현
+## 서비스 소개
 
-필수 도구는 Git, Docker Desktop, PowerShell이다. 모델 호출을 위해 OpenAI-compatible API key도 필요하다.
+호텔에서는 객실, 고객, 식음료, 시설, 연회 데이터를 서로 다른 시스템에서 관리합니다. 필요한 자료를 여러 부서에서 모으고 하나의 표로 만드는 데 시간이 오래 걸리고, 같은 매출도 계산 기준에 따라 결과가 달라질 수 있습니다.
 
-```powershell
-git clone https://github.com/hijun318-eng/skn29_final_3team.git
-Set-Location skn29_final_3team
-git switch daesung
+Answervice는 사용자가 일상적인 말로 질문하면 관련 데이터를 찾아 분석하고, 결과를 표와 차트로 보여주는 서비스입니다. 분석에 사용한 기간과 데이터 출처를 함께 제공하며, 필요한 결과는 보고서에 바로 활용할 수 있습니다.
 
-Copy-Item infrastructure/database/.env.example infrastructure/database/.env
+예를 들어 다음과 같이 질문할 수 있습니다.
+
+> 2026년 5월과 6월 GOLD 고객의 객실과 식음료 매출을 비교해 줘.
+
+## 주요 기능
+
+| 기능 | 설명 |
+|---|---|
+| 대화형 데이터 분석 | 복잡한 조회 방법을 몰라도 한국어로 질문할 수 있습니다. |
+| 여러 데이터 통합 | 객실, 고객, 식음료, 시설, 연회 데이터를 한 번에 살펴볼 수 있습니다. |
+| 기준 확인 | 질문의 기간이나 매출 기준이 분명하지 않으면 사용자에게 다시 확인합니다. |
+| 결과와 출처 제공 | 표, 차트, 설명과 함께 사용한 데이터와 기간을 보여줍니다. |
+| 보고서 만들기 | 분석 결과를 불러와 보고서를 만들고 다시 실행할 수 있습니다. |
+| 사용자별 권한 | 분석 담당자와 보고서 관리자가 필요한 기능만 사용할 수 있습니다. |
+
+## 이용 흐름
+
+```text
+질문하기 → 데이터 분석 → 결과 확인 → 보고서 생성
 ```
 
-팀에서 전달받은 `infrastructure/database/.env`를 사용하거나, 직접 만들 때는 모든 `CHANGE_ME_` 값을 교체하고 `OPENAI_API_KEY`를 설정한다. 기본 모델은 Node 1·2·Repair·3 모두 `gpt-5.4-mini`이며, endpoint나 모델을 바꾸려는 경우에만 `OPENAI_ENDPOINT`, `OPENAI_MODEL`, `NODE2_MODEL`을 수정한다.
+1. 사용자가 호텔 운영에 관한 질문을 입력합니다.
+2. 기간이나 계산 기준이 모호하면 Answervice가 선택지를 보여줍니다.
+3. 여러 시스템의 데이터를 읽기 전용으로 조회합니다.
+4. 결과를 표와 차트로 확인하고 데이터 출처도 함께 살펴봅니다.
+5. 필요한 분석 결과를 보고서에 추가합니다.
 
-다음 script는 `.env`의 두 로그인 계정을 PBKDF2-SHA256으로 해시해 `hotel_analyst`·`report_admin` principal 파일을 생성한다. 비밀번호와 principal 파일은 Git에서 제외된다.
+## 서비스 화면
 
-```powershell
-powershell -ExecutionPolicy Bypass -File infrastructure/database/security/provision-release-principals.ps1
-docker compose --env-file infrastructure/database/.env --profile full up -d --build
-docker compose --env-file infrastructure/database/.env --profile full ps
-```
+| 분석 화면 | 보고서 화면 |
+|---|---|
+| `이미지 등록 예정` | `이미지 등록 예정` |
 
-첫 기동은 DataHub와 Source DB 초기화 때문에 시간이 걸릴 수 있다. 준비 상태는 다음처럼 확인한다.
+## 서비스 구성
 
-```powershell
-Invoke-RestMethod http://127.0.0.1:28000/readiness | ConvertTo-Json -Depth 5
-```
+| 영역 | 역할 | 사용 기술 |
+|---|---|---|
+| 사용자 화면 | 질문, 분석 결과, 차트와 보고서를 보여줍니다. | React |
+| 서비스 서버 | 로그인, 권한, 분석과 보고서 기능을 처리합니다. | FastAPI |
+| 데이터 연결 | 여러 데이터 저장소를 연결하고 필요한 정보를 찾습니다. | DataHub, Trino |
+| AI 분석 | 질문을 이해하고 분석에 필요한 작업을 만듭니다. | LLM |
+| 데이터 저장 | 분석 결과, 보고서와 작업 기록을 보관합니다. | Database |
+| 실행 환경 | 전체 서비스를 같은 방식으로 실행합니다. | Docker Compose |
 
-- Frontend: `http://127.0.0.1:13000`
-- Backend: `http://127.0.0.1:28000`
-- Trino: `http://127.0.0.1:18080`
-- DataHub: `http://127.0.0.1:19002`
+## 데이터 보호
 
-동일한 schema와 합성 snapshot은 추적된 Compose·migration·`docs/e2e_mvp/derived/service_demo_v3/` seed 파일로 생성한다. Docker volume이나 로컬 `.env`를 복사할 필요는 없다.
+- 실제 고객 데이터 대신 프로젝트용 합성 데이터를 사용합니다.
+- 원본 데이터는 읽기 전용으로 조회합니다.
+- 사용자 역할에 따라 화면과 기능 접근을 제한합니다.
+- 비밀번호와 API key 같은 비밀정보는 저장소에 올리지 않습니다.
 
-## 실행 파일 구조
+## 팀 구성
 
-- `compose.yml`: 전체 서비스 진입점
-- `infrastructure/database/compose.yml`: App DB, 5개 Source DB, Trino
-- `infrastructure/database/datahub/compose.consumer.yml`: DataHub
-- `app/backend/compose.fragment.yml`, `app/frontend/compose.fragment.yml`: Backend·Frontend
-- `infrastructure/database/sql/ddl/`, `infrastructure/database/sql/app/`: 런타임 DDL·기준 데이터
-- `docs/e2e_mvp/derived/service_demo_v3/01_*`~`05_*`: 현재 Source DB seed
-- `app/backend/migrations/versions/`: App DB 증분 migration
+| 팀원 | GitHub | 담당 영역 |
+|---|---|---|
+| 박준희 | [hijun318-eng](https://github.com/hijun318-eng) | 프로젝트 통합, 실행 환경, 품질 관리 |
+| 정승 | [jseung89](https://github.com/jseung89) | 데이터 통합 관리, 데이터 연결, 합성 데이터 관리 |
+| 윤대성 | [YoonDaeSung-01](https://github.com/YoonDaeSung-01) | AI 분석 과정, 질문 처리, 모델 평가 |
+| 김재홍 | [kkix1025](https://github.com/kkix1025) | Backend, 로그인과 권한, 데이터 저장 |
+| 송민지 | [nowis1350](https://github.com/nowis1350) | 사용자 화면, 분석 결과, 보고서 기능 |
 
-`infrastructure/database/releases/`와 `infrastructure/database/sql/data/`는 과거 배포·seed 근거이며 현재 루트 Compose가 마운트하지 않는다.
+## 더 알아보기
 
-## Git에 포함하지 않는 값
-
-다음 값은 저장소에 commit하지 않는다.
-
-- `infrastructure/database/.env`
-- `infrastructure/database/security/answervice_auth_principals.local.json`
-- `OPENAI_API_KEY`와 사설 OpenAI-compatible endpoint 인증정보
-- 개인별 DB 비밀번호와 Analyst·Report Admin 로그인 비밀번호
-
-팀원이 같은 외부 모델 endpoint를 사용해야 한다면 `.env` 또는 `OPENAI_API_KEY`와, 기본값이 아닌 경우 `OPENAI_ENDPOINT`를 별도 보안 채널로 전달한다. principal 파일은 provisioning script로 각자 생성할 수 있다.
-
-## 검증
-
-```powershell
-python -m pytest tests/backend tests/ai tests/data tests/integration -q
-Set-Location app/frontend
-npm ci
-npm run test:contracts
-npm run build
-```
+- [E2E 문서 안내](docs/e2e_mvp/README.md): 서비스 범위와 상세 설계
+- [사용자 흐름](docs/e2e_mvp/derived/02_Golden_Path_유저플로우.md): 질문부터 결과와 보고서까지의 흐름
+- [로컬 실행 가이드](docs/e2e_mvp/LOCAL_SETUP.md): 설치, 실행과 종료 방법

@@ -2,15 +2,16 @@
 
 이 폴더는 앞으로 구현 AI가 제품 요구를 확인하는 단일 문서 위치다. 저장소의 다른 문서는 제출 산출물과 과거 이력으로 남아 있을 수 있지만, 사용자가 현재 요청에서 특정하지 않으면 구현 근거로 사용하지 않는다.
 
+로컬 설치·실행·검증·종료 절차는 [`LOCAL_SETUP.md`](LOCAL_SETUP.md)에서 관리한다. root `README.md`는 프로젝트 소개와 빠른 시작만 제공한다.
+
 ## 읽는 순서
 
 1. `derived/01_MVP_PRD.md`
 2. `derived/02_Golden_Path_유저플로우.md`
 3. `derived/03_E2E_아키텍처_및_계약.md`
-4. `derived/04_P0_사용자기능_요구사항_및_검증계획.txt`
-5. 현재 상태 확인이 필요하면 `derived/21_AI_작업_인수인계_현재진행상황.md`
-6. 모델 배포 작업일 때만 RunPod 운영 가이드
-7. 판단 근거가 필요할 때만 `source/` 원문과 `source/08_구조조정_판단기록.md`
+4. 현재 상태와 다음 순서는 `derived/21_AI_작업_인수인계_현재진행상황.md`
+5. 모델 배포 작업일 때만 RunPod 운영 가이드
+6. 판단 근거가 필요할 때만 `source/` 원문과 `source/08_구조조정_판단기록.md`
 
 원문 사이에 범위 차이가 있으면 구조조정 평가서의 “첫 Golden Path를 먼저 연결한다”는 결정을 우선한다. 보안 경계, read-only, G1·G2·G3는 축소하지 않는다.
 
@@ -18,11 +19,11 @@
 
 | 파일 | 용도 |
 |---|---|
+| `LOCAL_SETUP.md` | 로컬 환경 준비, 실행, 검증, 문제 확인과 종료 절차 |
 | `derived/01_MVP_PRD.md` | 현재 MVP 범위와 완료 조건 |
 | `derived/02_Golden_Path_유저플로우.md` | 화면부터 실제 분석 결과까지의 정상·실패 흐름 |
 | `derived/03_E2E_아키텍처_및_계약.md` | 컴포넌트 책임, 모델 계약과 안전 경계 |
-| `derived/04_P0_사용자기능_요구사항_및_검증계획.txt` | 평가 피드백을 반영한 P0 기능 ID, Slice 순서와 검증 시나리오 |
-| `derived/21_AI_작업_인수인계_현재진행상황.md` | 현재 구현 범위, E2E 결과, 미완료 항목과 다음 순서 |
+| `derived/21_AI_작업_인수인계_현재진행상황.md` | S1~S10 순차 판정, 현재 구현 범위, E2E 결과, 미완료 항목과 다음 순서 |
 | `derived/05_sLLM_RunPod_연결_가이드.md` | Adapter 검증과 endpoint 연결 |
 | `derived/22_RunPod_Serverless_vLLM_배포_가이드.md` | Serverless endpoint 전환 절차 |
 

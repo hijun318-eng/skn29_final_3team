@@ -236,7 +236,7 @@ python -m src.ai.training.evaluate_lora \
 
 현재 동결된 `node2_request`에는 `question_id`와 `context_package`만 있고 `normalized_question`이 없다. 학습데이터는 실제 SQL 생성에 필요한 `normalized_question + context_package`를 입력으로 사용한다.
 
-공식 serving을 연결하기 전에 R3·R4가 다음 중 하나로 runtime 계약을 동결해야 한다.
+공식 serving을 연결하기 전에 AI·Backend 담당자가 다음 중 하나로 runtime 계약을 동결해야 한다.
 
 1. `node2_request`에 `normalized_question`을 추가한다.
 2. `question_id`로 서버 상태에서 정규화 질문을 조회해 모델 입력에 합친다.

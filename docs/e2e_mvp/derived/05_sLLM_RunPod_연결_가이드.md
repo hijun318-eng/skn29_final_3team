@@ -218,7 +218,7 @@ Backend의 Slice B routing을 적용한 뒤에도 다음 실제 호출을 확인
 | Node | Endpoint | 상태 |
 |---|---|---|
 | Node1 | OpenAI `gpt-5.4-mini` | strict schema 응답 Pass |
-| Node2 | RunPod `answervice-sql` | 학습 직렬화 및 R3 변환 Pass |
+| Node2 | RunPod `answervice-sql` | 학습 직렬화 및 runtime contract 변환 Pass |
 | Node3 | OpenAI `gpt-5.4-mini` | strict schema 응답 Pass |
 
 Docker backend readiness에서도 OpenAI와 RunPod의 인증된 `/v1/models` probe가

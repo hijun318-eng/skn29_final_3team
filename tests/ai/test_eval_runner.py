@@ -1,7 +1,13 @@
 import copy
+import json
 import unittest
+from pathlib import Path
 
-from evals.runner import EvaluationError, evaluate_cases
+from evals.runner import (
+    EvaluationError,
+    evaluate_cases,
+    validate_model_contract_v2_manifest,
+)
 from tests.support.fakes import ContractFakeModelAdapter as FakeModelAdapter
 from src.ai.training.evaluate_lora import (
     DEFAULT_MODEL,
@@ -27,6 +33,16 @@ def valid_case():
 
 
 class EvaluationRunnerTests(unittest.TestCase):
+    def test_v2_model_eval_skeleton_is_complete_and_does_not_claim_execution(self):
+        path = Path(__file__).resolve().parents[2] / "evals" / "model_contract_v2.manifest.json"
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+
+        summary = validate_model_contract_v2_manifest(manifest)
+
+        self.assertEqual("SKELETON", summary["state"])
+        self.assertEqual("NOT_RUN", summary["model_execution"])
+        self.assertEqual({"node1": 28, "node3": 13}, summary["slice_counts"])
+
     def test_instruct_2507_checkpoint_is_pinned(self):
         self.assertEqual("Qwen/Qwen3-4B-Instruct-2507", DEFAULT_MODEL)
         self.assertEqual("cdbee75f17c01a7cc42f958dc650907174af0554", DEFAULT_REVISION)

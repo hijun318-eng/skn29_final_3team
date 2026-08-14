@@ -6,7 +6,14 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.contracts import ChartSpec, Evidence, TableResult
+from app.contracts import ChartSpec, Evidence, MetricValue, TableResult
+from src.report.domain import BlockFailureCode
+
+
+ReportOrientation = Literal["portrait", "landscape"]
+CurrencyDisplayUnit = Literal[
+    "auto", "one", "thousand", "million", "hundredMillion", "billion"
+]
 
 
 class ReportContractModel(BaseModel):
@@ -19,7 +26,7 @@ class ReportBlockRequest(ReportContractModel):
     artifact_id: str | None = None
     query_id: str | None = None
     columns: int | None = Field(default=None, ge=1, le=12)
-    type: Literal["table", "chart", "text"] = "table"
+    type: Literal["table", "chart", "artifact", "text"] = "table"
     x: int = Field(default=0, ge=0, le=11)
     y: int = Field(default=0, ge=0)
     w: int | None = Field(default=None, ge=1, le=12)
@@ -31,6 +38,8 @@ class CreateReportDefinitionRequest(ReportContractModel):
     definition_id: str = Field(min_length=1)
     title: str = Field(min_length=1)
     blocks: list[ReportBlockRequest] = Field(default_factory=list)
+    orientation: ReportOrientation = "portrait"
+    currency_display_unit: CurrencyDisplayUnit = "auto"
 
 
 class CreateReportFromArtifactRequest(ReportContractModel):
@@ -40,10 +49,13 @@ class CreateReportFromArtifactRequest(ReportContractModel):
 
 class ReplaceReportBlocksRequest(ReportContractModel):
     blocks: list[ReportBlockRequest]
+    orientation: ReportOrientation | None = None
+    currency_display_unit: CurrencyDisplayUnit | None = None
 
 
 class ApproveReportVersionRequest(ReportContractModel):
     approved_at: datetime
+    orientation: ReportOrientation | None = None
 
 
 class CreateManualRunRequest(ReportContractModel):
@@ -66,7 +78,7 @@ class ReportBlockResponse(ReportContractModel):
     artifact_id: str | None
     columns: int
     query_id: str | None
-    type: Literal["table", "chart", "text"]
+    type: Literal["table", "chart", "artifact", "text"]
     x: int
     y: int
     w: int
@@ -82,11 +94,32 @@ class ReportDefinitionResponse(ReportContractModel):
     title: str
     blocks: list[ReportBlockResponse]
     approved_at: datetime | None
+    orientation: ReportOrientation
+    currency_display_unit: CurrencyDisplayUnit
 
 
 class ReportDefinitionListResponse(ReportContractModel):
     contract_version: str
     items: list[ReportDefinitionResponse]
+
+
+class ReportArtifactVersionResponse(ReportContractModel):
+    artifact_id: UUID
+    artifact_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    query_id: str
+
+
+class ReportDocumentResponse(ReportContractModel):
+    definition_id: UUID
+    definition_version: int
+    orientation: Literal["portrait", "landscape"]
+    currency_display_unit: CurrencyDisplayUnit
+    renderer_version: str
+    source_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    html_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    pdf_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    artifact_versions: list[ReportArtifactVersionResponse]
+    confirmed_at: datetime
 
 
 class ReportArtifactResponse(ReportContractModel):
@@ -95,6 +128,7 @@ class ReportArtifactResponse(ReportContractModel):
     query_id: str
     title: str
     summary: str
+    metrics: tuple[MetricValue, ...] = ()
     table: TableResult
     chart: ChartSpec | None = None
     evidence: Evidence
@@ -107,6 +141,9 @@ class ReportBlockRunResponse(ReportContractModel):
     query_id: str | None
     snapshot_checksum: str | None
     status: Literal["success", "partial", "failed", "cancelled"]
+    request_id: UUID | None = None
+    failure_code: BlockFailureCode | None = None
+    failure_message: str | None = Field(default=None, max_length=300)
 
 
 class ReportRunResponse(ReportContractModel):
@@ -203,5 +240,5 @@ class ManualRunCommandResponse(ReportContractModel):
     version: int
     as_of: datetime
     idempotency_key: str
-    status: Literal["queued", "success", "partial", "failed"]
+    status: Literal["queued", "running", "success", "partial", "failed", "cancelled"]
     run_id: str | None = None

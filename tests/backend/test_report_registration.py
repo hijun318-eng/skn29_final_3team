@@ -3,11 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from inspect import signature
+import json
 import os
 from pathlib import Path
 from sys import path
+import sys
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import UUID
 from uuid import uuid4
 
@@ -29,6 +32,7 @@ from app.report_contracts import (  # noqa: E402
     CreateReportFromArtifactRequest,
     CreateReportScheduleRequest,
     ReplaceReportBlocksRequest,
+    ReportArtifactResponse,
     UpdateReportScheduleRequest,
 )
 from src.report.repository import InMemoryReportRepository  # noqa: E402
@@ -51,17 +55,136 @@ def context(role: Role = Role.REPORT_ADMIN) -> RequestContext:
 
 
 class ReportRegistrationTest(unittest.TestCase):
+    def test_report_artifact_exposes_exact_persisted_metric_values(self):
+        fixture = json.loads(
+            (ROOT / "tests" / "backend" / "fixtures" / "api" / "v0.1" / "success.json")
+            .read_text(encoding="utf-8")
+        )
+        result = fixture["data"]["result"]
+        evidence = result["evidence"]
+        evidence["metric_values"] = [{
+            "metric_id": "rooms_sold",
+            "result_field": "occupied_rooms",
+            "label": "판매 객실 수",
+            "definition": "판매 완료 객실 수",
+            "unit": "rooms",
+            "value": 120,
+        }]
+        repository = MagicMock()
+        repository.get_report_artifact.return_value = {
+            "artifact_id": evidence["artifact_id"],
+            "trino_query_id": evidence["query_id"],
+            "title": "판매 객실 분석",
+            "narrative_markdown": result["summary"],
+            "data_snapshot_json": result["table"],
+            "chart_spec_json": result["chart"],
+            "evidence_json": evidence,
+            "artifact_checksum": "a" * 64,
+        }
+        router = MagicMock(repository=repository)
+
+        with patch.object(report_api, "_router", return_value=router):
+            response = report_api.get_report_artifact(
+                "definition-1", 1, evidence["artifact_id"], context(Role.HOTEL_ANALYST)
+            )
+
+        validated = ReportArtifactResponse.model_validate(response)
+        self.assertEqual("occupied_rooms", validated.metrics[0].result_field)
+        self.assertEqual(120, validated.metrics[0].value)
+        self.assertEqual(validated.metrics, validated.evidence.metric_values)
+
+    def test_postgres_artifact_reads_and_writes_are_owner_scoped(self):
+        from app.adapters.report_repository import PostgresReportRepository
+
+        repository = object.__new__(PostgresReportRepository)
+        repository._owner_id = UUID("00000000-0000-0000-0000-000000000001")
+        repository._manage_all = True
+        repository._engine = MagicMock()
+        connection = repository._engine.connect.return_value.__enter__.return_value
+        connection.execute.return_value.mappings.return_value.one_or_none.return_value = None
+        artifact_id = "00000000-0000-0000-0000-000000000099"
+
+        with self.assertRaises(KeyError):
+            repository.get_assistant_artifact(artifact_id)
+
+        statement, parameters = connection.execute.call_args.args
+        sql = str(statement)
+        self.assertIn("JOIN chat.analysis_requests r", sql)
+        self.assertIn("r.user_id = :owner_id", sql)
+        self.assertEqual(repository._owner_id, parameters["owner_id"])
+
+        with self.assertRaises(KeyError):
+            repository.get_transfer_artifact(artifact_id)
+        transfer_sql = str(connection.execute.call_args.args[0])
+        self.assertIn("a.evidence_json", transfer_sql)
+        self.assertIn("r.user_id = :owner_id", transfer_sql)
+
+        write_connection = MagicMock()
+        write_connection.execute.return_value.one_or_none.return_value = None
+        with self.assertRaises(KeyError):
+            repository._require_owned_artifact(
+                write_connection,
+                UUID(artifact_id),
+                "other-owner-query",
+            )
+        write_sql = str(write_connection.execute.call_args.args[0])
+        self.assertIn("r.user_id = :owner_id", write_sql)
+        self.assertIn("q.trino_query_id = :query_id", write_sql)
+
     def test_analysis_artifact_transfer_builds_server_owned_blocks(self):
         class TransferRepository(InMemoryReportRepository):
+            artifact = {
+                "artifact_id": "00000000-0000-0000-0000-000000000099",
+                "artifact_checksum": "a" * 64,
+                "trino_query_id": "query-real",
+                "narrative_markdown": "실제 분석 요약",
+                "data_snapshot_json": {"columns": ["value"], "rows": [{"value": 1}]},
+                "evidence_json": {"metric_values": [{
+                    "result_field": "value", "label": "실적", "unit": "count", "value": 1,
+                }]},
+                "chart_spec_json": {
+                    "chart_type": "bar", "x_field": "value", "y_fields": ["value"],
+                },
+            }
+
             def get_transfer_artifact(self, artifact_id):
-                if artifact_id != "00000000-0000-0000-0000-000000000099":
+                if artifact_id != self.artifact["artifact_id"]:
                     raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
+                return self.artifact
+
+            def get_document_source(self, definition_id, version):
+                report = self.get_version(definition_id, version)
+                artifact = self.artifact
                 return {
-                    "artifact_id": artifact_id,
-                    "trino_query_id": "query-real",
-                    "narrative_markdown": "실제 분석 요약",
-                    "data_snapshot_json": {"columns": ["value"], "rows": [{"value": 1}]},
-                    "chart_spec_json": {"chart_type": "bar", "x_field": "month", "y_fields": ["value"]},
+                    "definition_id": report.definition_id,
+                    "version": report.version,
+                    "title": report.title,
+                    "orientation": report.orientation,
+                    "currency_display_unit": report.currency_display_unit,
+                    "blocks": [{
+                        "block_id": block.block_id,
+                        "title": block.title,
+                        "type": block.type.value,
+                        "x": block.x,
+                        "y": block.y,
+                        "w": block.w,
+                        "h": block.h,
+                        "content": block.content,
+                        "artifact": {
+                            "artifact_id": artifact["artifact_id"],
+                            "artifact_checksum": artifact["artifact_checksum"],
+                            "query_id": artifact["trino_query_id"],
+                            "table": artifact["data_snapshot_json"],
+                            "chart_spec": artifact["chart_spec_json"],
+                            "evidence": artifact["evidence_json"],
+                            "narrative": artifact["narrative_markdown"],
+                        },
+                    } for block in report.blocks],
+                    "artifact_versions": [{
+                        "artifact_id": artifact["artifact_id"],
+                        "artifact_checksum": artifact["artifact_checksum"],
+                        "query_id": artifact["trino_query_id"],
+                    }],
                 }
 
         router = create_report_router(TransferRepository())
@@ -75,11 +198,56 @@ class ReportRegistrationTest(unittest.TestCase):
             )
 
         self.assertEqual("draft", created["status"])
-        self.assertEqual(["text", "chart", "table"], [block["type"] for block in created["blocks"]])
-        self.assertEqual("실제 분석 요약", created["blocks"][0]["content"])
-        for block in created["blocks"][1:]:
-            self.assertEqual(str(payload.artifact_id), block["artifact_id"])
-            self.assertEqual("query-real", block["query_id"])
+        self.assertEqual("landscape", created["orientation"])
+        self.assertEqual("auto", created["currency_display_unit"])
+        self.assertEqual(1, len(created["blocks"]))
+        block = created["blocks"][0]
+        self.assertEqual("artifact", block["type"])
+        self.assertEqual("실제 Artifact 보고서", block["title"])
+        self.assertEqual(str(payload.artifact_id), block["artifact_id"])
+        self.assertEqual("query-real", block["query_id"])
+        self.assertEqual((0, 0, 12, 12), (block["x"], block["y"], block["w"], block["h"]))
+        self.assertEqual({
+            "schemaVersion": "ANSWER-ARTIFACT-BLOCK-v1",
+            "presentationMode": "standard",
+            "sizeMode": "auto",
+            "visibleViews": ["summary", "kpi", "chart", "table"],
+        }, json.loads(block["content"]))
+
+        reloaded = router.get_version(created["definition_id"], 1)
+        self.assertEqual([block], reloaded["blocks"])
+        self.assertEqual(
+            ["table"],
+            report_api._artifact_visible_views({
+                "narrative_markdown": "",
+                "data_snapshot_json": {"columns": ["value"], "rows": [{"value": 0}]},
+                "evidence_json": {"metric_values": []},
+                "chart_spec_json": None,
+            }),
+        )
+
+        fake_html = type(
+            "FakeHTML",
+            (),
+            {
+                "__init__": lambda self, **kwargs: None,
+                "write_pdf": lambda self, **kwargs: b"%PDF-1.7\naggregate",
+            },
+        )
+        from app.services.report_document import approve_report_document
+
+        with patch.dict(sys.modules, {"weasyprint": SimpleNamespace(HTML=fake_html)}):
+            approved = approve_report_document(
+                router.repository,
+                created["definition_id"],
+                1,
+                datetime(2026, 8, 14, tzinfo=timezone.utc),
+                None,
+            )
+        self.assertEqual(DefinitionStatus.APPROVED, approved.status)
+        document = router.repository.get_document(created["definition_id"], 1)
+        self.assertTrue(document["pdf_bytes"].startswith(b"%PDF-"))
+        self.assertIn('data-visible-views="summary kpi chart table"', document["html_snapshot"])
 
         with patch.object(report_api, "_router", return_value=router), self.assertRaises(HTTPException) as missing:
             report_api.create_draft_from_analysis_artifact(
@@ -87,6 +255,30 @@ class ReportRegistrationTest(unittest.TestCase):
                 context(Role.HOTEL_ANALYST),
             )
         self.assertEqual(404, missing.exception.status_code)
+
+    def test_aggregate_artifact_block_is_an_additive_api_type(self):
+        payload = ReplaceReportBlocksRequest.model_validate({
+            "orientation": "landscape",
+            "currency_display_unit": "billion",
+            "blocks": [{
+            "block_id": "00000000-0000-0000-0000-000000000011",
+            "title": "Analysis Artifact",
+            "type": "artifact",
+            "artifact_id": "00000000-0000-0000-0000-000000000099",
+            "query_id": "query-real",
+            "columns": 12,
+            "w": 12,
+            "h": 12,
+            "content": '{"presentationMode":"detail","visibleViews":["summary","kpi","chart","table"]}',
+        }]})
+
+        self.assertEqual("artifact", payload.blocks[0].type)
+        self.assertEqual("landscape", payload.orientation)
+        self.assertEqual("billion", payload.currency_display_unit)
+        with self.assertRaises(ValidationError):
+            ReplaceReportBlocksRequest.model_validate({
+                "blocks": [], "currency_display_unit": "trillion"
+            })
 
     def test_report_routes_require_authentication_and_report_admin(self):
         dependency = signature(report_api.report_admin_context).parameters["context"]
@@ -167,15 +359,24 @@ class ReportRegistrationTest(unittest.TestCase):
             )
             self.assertEqual("text", replaced["blocks"][0]["type"])
             self.assertEqual(1, len(report_api.list_definitions(report_context)["items"]))
-            self.assertEqual(
-                "approved",
-                report_api.approve_version(
-                    "report-1",
-                    1,
-                    ApproveReportVersionRequest(approved_at=approved_at),
-                    report_context,
-                )["status"],
+            fake_html = type(
+                "FakeHTML",
+                (),
+                {
+                    "__init__": lambda self, **kwargs: None,
+                    "write_pdf": lambda self, **kwargs: b"%PDF-1.7\ncontract",
+                },
             )
+            with patch.dict(sys.modules, {"weasyprint": SimpleNamespace(HTML=fake_html)}):
+                self.assertEqual(
+                    "approved",
+                    report_api.approve_version(
+                        "report-1",
+                        1,
+                        ApproveReportVersionRequest(approved_at=approved_at),
+                        report_context,
+                    )["status"],
+                )
             with self.assertRaises(HTTPException) as immutable:
                 report_api.replace_draft_blocks(
                     "report-1", 1, ReplaceReportBlocksRequest(blocks=[]), report_context
@@ -281,6 +482,71 @@ class ReportRegistrationTest(unittest.TestCase):
     "disposable temporary report DB is required",
 )
 class PostgresReportRepositoryTest(unittest.TestCase):
+    def test_display_settings_survive_reload_and_immutable_pdf_approval(self):
+        from app.adapters.report_repository import PostgresReportRepository, _engine
+        from app.services.report_document import approve_report_document
+
+        database_url = os.environ["REPORT_DATABASE_URL"]
+        self.addCleanup(_engine(database_url).dispose)
+        repository = PostgresReportRepository(
+            database_url, uuid4()
+        )
+        definition_id = str(uuid4())
+        block = ReportBlock(
+            str(uuid4()),
+            "핵심 요약",
+            None,
+            12,
+            None,
+            BlockType.TEXT,
+            content="저장된 설정으로 확정합니다.",
+        )
+        repository.add_draft(
+            ReportDefinitionVersion(
+                definition_id,
+                1,
+                DefinitionStatus.DRAFT,
+                "설정 영속화 검증 보고서",
+                (block,),
+            )
+        )
+
+        saved = repository.replace_draft_blocks(
+            definition_id,
+            1,
+            (block,),
+            orientation="landscape",
+            currency_display_unit="million",
+        )
+        reloaded = repository.get_version(definition_id, 1)
+        self.assertEqual(("landscape", "million"), (
+            saved.orientation, saved.currency_display_unit
+        ))
+        self.assertEqual(("landscape", "million"), (
+            reloaded.orientation, reloaded.currency_display_unit
+        ))
+
+        approved = approve_report_document(
+            repository,
+            definition_id,
+            1,
+            datetime.now(timezone.utc),
+            None,
+        )
+        document = repository.get_document(definition_id, 1)
+        self.assertEqual(DefinitionStatus.APPROVED, approved.status)
+        self.assertEqual("landscape", document["orientation"])
+        self.assertEqual("million", document["currency_display_unit"])
+        self.assertIn(
+            '<meta name="answervice-orientation" content="landscape">',
+            document["html_snapshot"],
+        )
+        self.assertIn(
+            '<meta name="answervice-currency-display-unit" content="million">',
+            document["html_snapshot"],
+        )
+        self.assertTrue(document["pdf_bytes"].startswith(b"%PDF-"))
+
     def test_database_owner_scope_layout_history_and_concurrent_idempotency(self):
         from app.adapters.report_repository import PostgresReportRepository, _engine
         from sqlalchemy import text
@@ -289,7 +555,6 @@ class PostgresReportRepositoryTest(unittest.TestCase):
         database_url = os.environ["REPORT_DATABASE_URL"]
         definition_id = str(uuid4())
         block_id = str(uuid4())
-        artifact_id = str(uuid4())
         approved_at = datetime(2026, 8, 4, tzinfo=timezone.utc)
         repository = PostgresReportRepository(database_url, context().user_id)
         other_repository = PostgresReportRepository(
@@ -310,8 +575,11 @@ class PostgresReportRepositoryTest(unittest.TestCase):
                     ReportBlock(
                         block_id,
                         "객실 매출",
-                        artifact_id,
+                        None,
                         6,
+                        None,
+                        BlockType.TEXT,
+                        content="검증된 설명",
                     ),
                 ),
             )
@@ -336,12 +604,21 @@ class PostgresReportRepositoryTest(unittest.TestCase):
             BlockType.TEXT, 0, 0, 6, 2, "왼쪽 관측 결과",
         )
         replaced = repository.replace_draft_blocks(
-            definition_id, 1, (right_block, left_block)
+            definition_id,
+            1,
+            (right_block, left_block),
+            orientation="landscape",
+            currency_display_unit="hundredMillion",
         )
         self.assertEqual(
             [left_block.block_id, right_block.block_id],
             [block.block_id for block in replaced.blocks],
         )
+        self.assertEqual("landscape", replaced.orientation)
+        self.assertEqual("hundredMillion", replaced.currency_display_unit)
+        reloaded = repository.get_version(definition_id, 1)
+        self.assertEqual("landscape", reloaded.orientation)
+        self.assertEqual("hundredMillion", reloaded.currency_display_unit)
         with self.assertRaises(DBAPIError):
             with _engine(database_url).begin() as connection:
                 connection.execute(
@@ -426,15 +703,20 @@ class PostgresReportRepositoryTest(unittest.TestCase):
         with self.assertRaises(KeyError):
             other_repository.set_schedule_enabled(schedule_id, True)
         self.assertTrue(repository.set_schedule_enabled(schedule_id, True)["enabled"])
-        scheduled, scheduled_run = repository.run_due_schedule(
+        scheduled, scheduled_command = repository.queue_due_schedule(
             schedule_id, approved_at.replace(minute=1)
         )
-        self.assertIsNotNone(scheduled_run)
+        self.assertIsNotNone(scheduled_command)
+        repository.claim_manual_run(scheduled_command.command_id)
+        scheduled_run = repository.finish_manual_run(scheduled_command.command_id)
+        scheduled = repository.complete_due_schedule(
+            schedule_id, scheduled_command.as_of, scheduled_run.run_id
+        )
         self.assertEqual(scheduled_run.run_id, str(scheduled["last_run_id"]))
-        unchanged, duplicate_run = repository.run_due_schedule(
+        unchanged, duplicate_command = repository.queue_due_schedule(
             schedule_id, approved_at.replace(minute=1)
         )
-        self.assertIsNone(duplicate_run)
+        self.assertIsNone(duplicate_command)
         self.assertEqual(scheduled["next_run_at"], unchanged["next_run_at"])
         with self.assertRaises(KeyError):
             other_repository.get_schedule(schedule_id)

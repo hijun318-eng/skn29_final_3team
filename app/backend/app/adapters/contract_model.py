@@ -11,10 +11,11 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from src.ai import schema as ai_schema
-from src.ai.metric_glossary import metric_display_name, metric_glossary
+from src.ai.model_contracts import canonical_messages
 from src.ai.prompt_registry import get_prompt
 from src.ai.training.benchmark_serving import request_json
 from src.modelops.runtime import ProductionModelClient
+from src.modelops.runtime import _TRANSPORT_META_KEY
 
 
 logger = logging.getLogger("uvicorn.error")
@@ -164,20 +165,10 @@ def _model_metadata(node: str, model: str) -> dict[str, Any]:
 
 def _openai_payload(model: str, node: str, payload: dict[str, Any]) -> dict[str, Any]:
     schema = _serving_schema(node)
+    model_input = _canonical_model_input(node, payload)
     return {
         "model": model,
-        "messages": [
-            {"role": "system", "content": get_prompt(_PROMPT_IDS[node]).text},
-            {
-                "role": "user",
-                "content": json.dumps(
-                    payload,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-            },
-        ],
+        "messages": canonical_messages(_PROMPT_IDS[node], model_input),
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -383,7 +374,15 @@ def _node2_training_input(payload: dict[str, Any]) -> dict[str, Any]:
                 "id": metric["id"],
                 "alias": metric["id"],
                 "asset": asset,
-                "calculation_sql": f"{metric['aggregation'].upper()}({field})",
+                "calculation_sql": (
+                    None
+                    if metric.get("formula") is not None
+                    else f"{metric['aggregation'].upper()}({field})"
+                ),
+                "result_field": metric.get("result_field") or metric["id"],
+                "unit": metric.get("unit") or "",
+                "formula": metric.get("formula"),
+                "reduction": metric.get("reduction") or "scalar",
                 "description_ko": "Backend가 승인한 metric",
                 "label_ko": metric["id"],
                 "required_columns": [field],
@@ -441,32 +440,23 @@ def _node2_training_input(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _qwen_payload(model: str, node: str, payload: dict[str, Any]) -> dict[str, Any]:
-    if node == "node2":
-        user_payload = _node2_training_input(payload)
-    else:
-        user_payload = payload
+    user_payload = _canonical_model_input(node, payload)
     return {
         "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": get_prompt(_PROMPT_IDS[node]).text,
-            },
-            {
-                "role": "user",
-                "content": json.dumps(
-                    user_payload,
-                    ensure_ascii=False,
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-            },
-        ],
+        "messages": canonical_messages(_PROMPT_IDS[node], user_payload),
         "temperature": 0,
         "max_tokens": 1_280,
         "chat_template_kwargs": {"enable_thinking": False},
         "guided_json": _serving_schema(node),
     }
+
+
+def _canonical_model_input(node: str, payload: dict[str, Any]) -> dict[str, Any]:
+    return (
+        _node2_training_input(payload)
+        if node == "node2" and "context_package" in payload
+        else payload
+    )
 
 
 def _validate_sql_semantics(node: str, payload: dict[str, Any], sql: str) -> None:
@@ -545,6 +535,12 @@ def openai_transport(
     expected_fields = set(_serving_schema(node)["required"])
     if set(result) != expected_fields:
         raise ValueError("model content fields do not match the serving schema")
+    usage = response.get("usage") if isinstance(response.get("usage"), dict) else {}
+    result[_TRANSPORT_META_KEY] = {
+        "model_snapshot": response.get("model") or model,
+        "input_tokens": usage.get("prompt_tokens") or usage.get("input_tokens"),
+        "output_tokens": usage.get("completion_tokens") or usage.get("output_tokens"),
+    }
     if node not in {"node2", "node2_repair"}:
         result["model"] = _model_metadata(node, model)
         return result
@@ -604,6 +600,7 @@ def openai_transport(
         ],
         "parameters": parameters,
         "model": _model_metadata(node, model),
+        _TRANSPORT_META_KEY: result[_TRANSPORT_META_KEY],
     }
     if node == "node2_repair":
         completed.update(trace_id=payload["trace_id"], attempt=payload["attempt"])
@@ -660,6 +657,7 @@ class ContractModelAdapter:
                     provider="openai",
                 ),
                 timeout_seconds=timeout_seconds,
+                model_name=model,
             )
         )
 
@@ -698,6 +696,7 @@ class ContractModelAdapter:
                 provider="openai",
             ),
             timeout_seconds=timeout_seconds,
+            model_name=openai_model,
         )
         node2_client = ProductionModelClient(
             partial(
@@ -709,6 +708,7 @@ class ContractModelAdapter:
             ),
             timeout_seconds=timeout_seconds,
             max_attempts=3,
+            model_name=node2_model,
         )
         return cls(RoutedProductionModelClient(openai_client, node2_client))
 
@@ -792,7 +792,9 @@ class ContractModelAdapter:
                         "rows": rows,
                     },
                     "metric": selected_metric,
-                    "metric_label": self._metric_label(selected_metric),
+                    "metric_label": self._metric_label(
+                        selected_metric, payload.get("package")
+                    ),
                     "metric_selection": metric_selection,
                     "period": self._execution_time(
                         context,
@@ -802,7 +804,7 @@ class ContractModelAdapter:
                         f"{key}={value}"
                         for key, value in query.get("filters", {}).items()
                     ],
-                    "unit": "KRW",
+                    "unit": self._metric_unit(selected_metric, payload.get("package")),
                     "sampling": bool(query.get("sampling", {}).get("applied")),
                     "masking": bool(query.get("masking", {}).get("applied")),
                     "partial": query.get("status") == "PARTIAL",
@@ -820,8 +822,24 @@ class ContractModelAdapter:
         raise ValueError(f"unsupported node: {node}")
 
     @staticmethod
-    def _metric_label(metric_id: str) -> str:
-        return metric_display_name(metric_id)
+    def _metric_term(metric_id: str, package: Any) -> Any:
+        try:
+            return next(term for term in package.metric_terms if term.id == metric_id)
+        except (AttributeError, StopIteration) as error:
+            raise ValueError(
+                f"Approved Context is missing DataHub Metric Glossary Term: {metric_id}"
+            ) from error
+
+    @classmethod
+    def _metric_label(cls, metric_id: str, package: Any) -> str:
+        return cls._metric_term(metric_id, package).label
+
+    @classmethod
+    def _metric_unit(cls, metric_id: str, package: Any) -> str:
+        for metric in getattr(package, "metrics", ()):
+            if metric.id == metric_id and metric.unit:
+                return metric.unit
+        return cls._metric_term(metric_id, package).unit
 
     @staticmethod
     def _metric_selection(assets: list[dict[str, Any]]) -> dict[str, Any]:
@@ -991,6 +1009,10 @@ class ContractModelAdapter:
                 "field": "derived.total_guest_revenue_krw",
                 "aggregation": "derived_sum",
                 "time_field": "derived.month",
+                "result_field": "total_guest_revenue_krw",
+                "unit": cls._metric_unit("total_guest_revenue_krw", package),
+                "formula": None,
+                "reduction": "sum",
                 "required_filters": [
                     required_filter_payload(item)
                     for item in package.required_filters
@@ -1007,6 +1029,17 @@ class ContractModelAdapter:
                     "field": f"{metric.asset_fqn}.{metric.field}",
                     "aggregation": metric.aggregation,
                     "time_field": f"{metric.asset_fqn}.{metric.time_field}",
+                    "result_field": metric.result_field,
+                    "unit": metric.unit,
+                    "formula": (
+                        {
+                            "operator": metric.formula.operator,
+                            "operands": list(metric.formula.operands),
+                        }
+                        if metric.formula is not None
+                        else None
+                    ),
+                    "reduction": metric.reduction,
                     "required_filters": [
                         {
                             "field": item.field,

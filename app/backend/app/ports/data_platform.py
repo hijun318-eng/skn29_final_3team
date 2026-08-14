@@ -7,10 +7,18 @@ class NoEntitledAssetsError(LookupError):
     """The authenticated scope has no approved assets matching the request."""
 
 
+class MetadataUnavailableError(RuntimeError):
+    """Required governed metadata could not be read from DataHub."""
+
+
 class DataPlatformAdapter(Protocol):
     """R2-owned Port. R4 consumes this interface only; it never opens source DB connections."""
 
     def search_assets(self, query: str, context: dict[str, Any]) -> list[dict[str, Any]]: ...
+
+    def get_metric_terms(
+        self, metric_ids: tuple[str, ...]
+    ) -> dict[str, dict[str, Any]]: ...
 
     def get_asset_schema(self, urn: str) -> dict[str, Any]: ...
 

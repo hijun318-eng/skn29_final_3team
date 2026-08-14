@@ -63,6 +63,28 @@ class ContextParameterBinding:
 
 
 @dataclass(frozen=True)
+class ContextMetricFormula:
+    operator: str
+    operands: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        valid_arity = (
+            len(self.operands) == 2
+            if self.operator != "add"
+            else 2 <= len(self.operands) <= 8
+        )
+        if (
+            self.operator not in {"add", "subtract", "multiply", "divide"}
+            or not valid_arity
+            or any(not _is_identifier(operand) for operand in self.operands)
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "Metric formula는 승인된 연산자와 2~8개의 명시적 operand를 사용해야 합니다.",
+            )
+
+
+@dataclass(frozen=True)
 class ContextMetric:
     id: str
     asset_fqn: str
@@ -70,6 +92,74 @@ class ContextMetric:
     aggregation: str
     time_field: str
     required_filters: tuple[ContextRequiredFilter, ...]
+    result_field: str = ""
+    unit: str = ""
+    formula: ContextMetricFormula | None = None
+    reduction: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "result_field", self.result_field or self.id)
+        default_reduction = (
+            "sum"
+            if self.aggregation.lower()
+            in {"sum", "count", "count_distinct", "negative_sum", "derived_sum"}
+            else {
+                "min": "min",
+                "max": "max",
+                "avg": "average",
+                "average": "average",
+            }.get(self.aggregation.lower(), "scalar")
+        )
+        object.__setattr__(self, "reduction", self.reduction or default_reduction)
+        if (
+            not _is_identifier(self.result_field)
+            or self.reduction
+            not in {
+                "sum",
+                "min",
+                "max",
+                "average",
+                "scalar",
+                "weighted_ratio",
+                "recompute",
+            }
+            or (
+                self.formula is not None
+                and self.reduction not in {"weighted_ratio", "recompute", "sum"}
+            )
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "Metric result field, formula와 reduction 계약이 유효하지 않습니다.",
+            )
+
+
+@dataclass(frozen=True)
+class ContextMetricTerm:
+    id: str
+    urn: str
+    label: str
+    aliases: tuple[str, ...]
+    definition: str
+    unit: str
+    version: str
+
+    def __post_init__(self) -> None:
+        if (
+            not _is_identifier(self.id)
+            or self.urn != f"urn:li:glossaryTerm:{self.id}"
+            or not self.label.strip()
+            or not self.aliases
+            or self.label not in self.aliases
+            or any(not alias.strip() for alias in self.aliases)
+            or not self.definition.strip()
+            or not self.unit.strip()
+            or not self.version.strip()
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "DataHub Metric Glossary Term 계약이 유효하지 않습니다.",
+            )
 
 
 @dataclass(frozen=True)
@@ -114,6 +204,7 @@ class ContextBuildRequest:
     token_count: int
     model_context_tokens: int
     parameter_bindings: tuple[ContextParameterBinding, ...] = ()
+    metric_terms: tuple[ContextMetricTerm, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -132,6 +223,7 @@ class ContextPackage:
     metrics: tuple[ContextMetric, ...] = ()
     parameter_bindings: tuple[ContextParameterBinding, ...] = ()
     required_filters: tuple[ContextRequiredFilter, ...] = ()
+    metric_terms: tuple[ContextMetricTerm, ...] = ()
 
 
 class ContextPackageBuilder:
@@ -163,6 +255,12 @@ class ContextPackageBuilder:
                 key=lambda metric: (metric.id, metric.asset_fqn),
             )
         )
+        metric_terms = tuple(sorted(request.metric_terms, key=lambda term: term.id))
+        if len({term.id for term in metric_terms}) != len(metric_terms):
+            raise ContextBuildError(
+                ContextBuildErrorCode.DUPLICATE_METRIC,
+                "DataHub Metric Glossary Term은 중복될 수 없습니다.",
+            )
         required_filters = tuple(
             item for asset in assets for item in asset.required_filters
         )
@@ -204,6 +302,17 @@ class ContextPackageBuilder:
                     "field": metric.field,
                     "aggregation": metric.aggregation,
                     "time_field": metric.time_field,
+                    "result_field": metric.result_field,
+                    "unit": metric.unit,
+                    "formula": (
+                        {
+                            "operator": metric.formula.operator,
+                            "operands": list(metric.formula.operands),
+                        }
+                        if metric.formula is not None
+                        else None
+                    ),
+                    "reduction": metric.reduction,
                     "required_filters": [
                         {
                             "field": item.field,
@@ -215,6 +324,18 @@ class ContextPackageBuilder:
                     ],
                 }
                 for metric in metrics
+            ],
+            "metric_terms": [
+                {
+                    "id": term.id,
+                    "urn": term.urn,
+                    "label": term.label,
+                    "aliases": list(term.aliases),
+                    "definition": term.definition,
+                    "unit": term.unit,
+                    "version": term.version,
+                }
+                for term in metric_terms
             ],
             "token_count": request.token_count,
             "parameter_bindings": [
@@ -258,6 +379,7 @@ class ContextPackageBuilder:
             approved_join_ids=tuple(sorted({join_id for asset in assets for join_id in asset.join_ids})),
             parameter_bindings=request.parameter_bindings,
             required_filters=required_filters,
+            metric_terms=metric_terms,
         )
 
     @staticmethod
@@ -297,7 +419,6 @@ class ContextPackageBuilder:
                 )
                 or metric.field not in columns
                 or metric.time_field not in columns
-                or not metric.required_filters
                 or required_fields.difference(columns)
             ):
                 raise ContextBuildError(
@@ -388,3 +509,9 @@ def _typed_value_is_valid(value_type: str, value: object) -> bool:
         except ValueError:
             return False
     return False
+
+
+def _is_identifier(value: str) -> bool:
+    return bool(value) and value.isascii() and all(
+        character.isalnum() or character == "_" for character in value
+    ) and (value[0].isalpha() or value[0] == "_")

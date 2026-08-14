@@ -33,12 +33,16 @@ class ReportRouterContractTest(unittest.TestCase):
         created = self.router.create_definition({
             "definition_id": "report-1",
             "title": "주간 운영 보고서",
+            "orientation": "landscape",
+            "currency_display_unit": "hundredMillion",
             "blocks": [{
                 "block_id": "block-1", "title": "객실 매출", "artifact_id": "artifact-1",
                 "query_id": "query-1", "columns": 6,
             }],
         })
         self.assertEqual("REPORT-v1.0.0", created["contract_version"])
+        self.assertEqual("landscape", created["orientation"])
+        self.assertEqual("hundredMillion", created["currency_display_unit"])
         approved_at = datetime(2026, 8, 3, tzinfo=timezone.utc).isoformat()
         approved = self.router.approve_version("report-1", 1, approved_at)
         self.assertEqual("approved", approved["status"])
@@ -50,6 +54,8 @@ class ReportRouterContractTest(unittest.TestCase):
         self.assertEqual("artifact-1", next_draft["blocks"][0]["artifact_id"])
         self.assertEqual("table", next_draft["blocks"][0]["type"])
         self.assertEqual(6, next_draft["blocks"][0]["w"])
+        self.assertEqual("landscape", next_draft["orientation"])
+        self.assertEqual("hundredMillion", next_draft["currency_display_unit"])
 
         run = self.router.create_run({
             "run_id": "run-1",
@@ -63,6 +69,7 @@ class ReportRouterContractTest(unittest.TestCase):
             "blocks": [{
                 "block_id": "block-1", "artifact_id": "artifact-1", "query_id": "query-1",
                 "snapshot_checksum": "sha256-1", "status": "partial",
+                "request_id": "request-1",
             }],
         })
         self.assertEqual(1, run["definition_version"])
@@ -88,12 +95,17 @@ class ReportRouterContractTest(unittest.TestCase):
                 "columns": 6,
             }],
         })
-        replaced = self.router.replace_draft_blocks("report-1", 1, {"blocks": [{
+        replaced = self.router.replace_draft_blocks("report-1", 1, {
+            "orientation": "landscape",
+            "currency_display_unit": "million",
+            "blocks": [{
             "block_id": "text-1", "title": "해석", "type": "text", "content": "관측 결과",
             "x": 0, "y": 0, "w": 12, "h": 2,
         }]})
         self.assertEqual("text", replaced["blocks"][0]["type"])
         self.assertIsNone(replaced["blocks"][0]["artifact_id"])
+        self.assertEqual("landscape", replaced["orientation"])
+        self.assertEqual("million", replaced["currency_display_unit"])
 
         approved_at = datetime(2026, 8, 3, tzinfo=timezone.utc).isoformat()
         self.router.approve_version("report-1", 1, approved_at)

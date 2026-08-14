@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any, Final
 
 from .domain import (
+    BlockFailureCode,
     BlockRunStatus,
     BlockType,
     DefinitionStatus,
@@ -55,6 +56,8 @@ class ReportRouter:
             "title": version.title,
             "blocks": [asdict(block) for block in version.blocks],
             "approved_at": version.approved_at.isoformat() if version.approved_at else None,
+            "orientation": version.orientation,
+            "currency_display_unit": version.currency_display_unit,
         }
 
     @staticmethod
@@ -107,7 +110,9 @@ class ReportRouter:
         }
 
     def create_definition(self, payload: dict[str, Any]) -> dict[str, Any]:
-        allowed = {"definition_id", "title", "blocks"}
+        allowed = {
+            "definition_id", "title", "blocks", "orientation", "currency_display_unit"
+        }
         extra = set(payload) - allowed
         if extra:
             raise ReportRouteError(422, f"허용되지 않은 필드: {', '.join(sorted(extra))}")
@@ -119,6 +124,8 @@ class ReportRouter:
                 status=DefinitionStatus.DRAFT,
                 title=payload["title"],
                 blocks=blocks,
+                orientation=payload.get("orientation", "portrait"),
+                currency_display_unit=payload.get("currency_display_unit", "auto"),
             )
             return self._response(self.repository.add_draft(draft))
         except KeyError as error:
@@ -161,7 +168,7 @@ class ReportRouter:
         version: int,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        extra = set(payload) - {"blocks"}
+        extra = set(payload) - {"blocks", "orientation", "currency_display_unit"}
         if extra:
             raise ReportRouteError(422, f"허용되지 않은 필드: {', '.join(sorted(extra))}")
         try:
@@ -170,6 +177,8 @@ class ReportRouter:
                     definition_id,
                     version,
                     self._blocks(payload["blocks"]),
+                    orientation=payload.get("orientation"),
+                    currency_display_unit=payload.get("currency_display_unit"),
                 )
             )
         except KeyError as error:
@@ -195,6 +204,13 @@ class ReportRouter:
                     query_id=block["query_id"],
                     snapshot_checksum=block["snapshot_checksum"],
                     status=BlockRunStatus(block["status"]),
+                    request_id=block.get("request_id"),
+                    failure_code=(
+                        BlockFailureCode(block["failure_code"])
+                        if block.get("failure_code")
+                        else None
+                    ),
+                    failure_message=block.get("failure_message"),
                 )
                 for block in payload.get("blocks", [])
             )

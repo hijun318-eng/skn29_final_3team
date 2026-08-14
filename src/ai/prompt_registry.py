@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from hashlib import sha256
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -25,7 +26,21 @@ class PromptRecord:
         return result
 
 
+def _prompt_asset(name: str) -> str:
+    return (Path(__file__).with_name("prompts") / name).read_text(encoding="utf-8").rstrip("\n")
+
+
 _PROMPTS = {
+    "node1.interpretation.v2": PromptRecord(
+        "node1.interpretation.v2",
+        "PROMPT-v2.0.0",
+        "node1",
+        "development",
+        "base",
+        None,
+        "DRAFT-BASE-v0.1",
+        _prompt_asset("node1.interpretation.v2.txt"),
+    ),
     "node1.normalize": PromptRecord(
         "node1.normalize",
         "PROMPT-v1.2.4",
@@ -124,6 +139,16 @@ _PROMPTS = {
         "적용 조건, 승인 source와 limitation은 각각 conditions, sources, limitations에 입력값 그대로 기록한다. "
         "shaped_result와 제공된 metadata의 값만 사용하며 질문을 재해석하거나 지표를 선택하지 않는다. SQL을 생성·수정하거나 값을 재계산하거나 원인을 추론하거나 근거 없는 사실을 만들지 않는다. "
         "Node 3 JSON schema만 반환하고 Markdown은 반환하지 않는다.",
+    ),
+    "node3.narrative.v2": PromptRecord(
+        "node3.narrative.v2",
+        "PROMPT-v2.0.0",
+        "node3",
+        "development",
+        "base",
+        None,
+        "DRAFT-BASE-v0.1",
+        _prompt_asset("node3.narrative.v2.txt"),
     ),
     "report.assistant": PromptRecord(
         "report.assistant",

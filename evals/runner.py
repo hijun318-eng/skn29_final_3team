@@ -13,6 +13,53 @@ class EvaluationError(ValueError):
 
 
 _CASE_FIELDS = {"case_id", "node", "request", "expected_output"}
+_MODEL_V2_SLICES = {
+    "node1": {
+        "formal_term",
+        "definition_paraphrase",
+        "colloquial",
+        "spacing_error",
+        "typo",
+        "abbreviation",
+        "word_order",
+        "particle_omission",
+        "mixed_ko_en",
+        "honorific",
+        "casual",
+        "imperative",
+        "interrogative",
+        "negation_exclusion",
+        "comparison",
+        "trend",
+        "rank",
+        "multi_clause",
+        "multiple_metrics",
+        "missing_metric",
+        "missing_period",
+        "ambiguous_general_term",
+        "out_of_scope",
+        "relative_period",
+        "absolute_period",
+        "alternative_period",
+        "prompt_injection",
+        "unicode_exact_span",
+    },
+    "node3": {
+        "observation",
+        "comparison",
+        "empty_result",
+        "partial_limitation",
+        "sampling_limitation",
+        "masking_limitation",
+        "cross_fact_swap",
+        "number_unit_grounding",
+        "unsupported_cause_prediction_advice",
+        "internal_identifier_sql_leakage",
+        "optional_source_output",
+        "length_reference_limit",
+        "prompt_injection",
+    },
+}
 
 
 def evaluate_cases(
@@ -67,6 +114,52 @@ def evaluate_required30(
     if len(materialized) != 30:
         raise EvaluationError("required30 must contain exactly 30 cases")
     return evaluate_cases(materialized, adapter)
+
+
+def validate_model_contract_v2_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Validate the offline evaluation plan without claiming a model run."""
+    if set(manifest) != {
+        "manifest_version",
+        "state",
+        "model_execution",
+        "paid_calls_authorized",
+        "contract_release",
+        "cases_path",
+        "nodes",
+    }:
+        raise EvaluationError("model contract evaluation manifest fields are invalid")
+    if (
+        manifest["manifest_version"] != "MODEL-CONTRACT-EVAL-v2.0.0"
+        or manifest["state"] != "SKELETON"
+        or manifest["model_execution"] != "NOT_RUN"
+        or manifest["paid_calls_authorized"] is not False
+        or manifest["contract_release"] != "MODEL-RELEASE-v2.0.0"
+        or manifest["cases_path"] is not None
+        or set(manifest["nodes"]) != set(_MODEL_V2_SLICES)
+    ):
+        raise EvaluationError("model contract evaluation state is invalid")
+
+    for node, expected_slices in _MODEL_V2_SLICES.items():
+        plan = manifest["nodes"][node]
+        if set(plan) != {"required_slices", "critical_gates", "reported_metrics"}:
+            raise EvaluationError(f"{node} evaluation plan fields are invalid")
+        if (
+            set(plan["required_slices"]) != expected_slices
+            or len(plan["required_slices"]) != len(expected_slices)
+            or not plan["critical_gates"]
+            or len(plan["critical_gates"]) != len(set(plan["critical_gates"]))
+            or not plan["reported_metrics"]
+            or len(plan["reported_metrics"]) != len(set(plan["reported_metrics"]))
+        ):
+            raise EvaluationError(f"{node} evaluation coverage is incomplete")
+    return {
+        "state": manifest["state"],
+        "model_execution": manifest["model_execution"],
+        "slice_counts": {
+            node: len(plan["required_slices"])
+            for node, plan in manifest["nodes"].items()
+        },
+    }
 
 
 def compare_runs(baseline: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:

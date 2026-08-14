@@ -15,9 +15,13 @@ from urllib.request import Request, urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from publish_semantic_catalog import (  # noqa: E402
     DEFAULT_CATALOG,
+    DEFAULT_GLOSSARY,
     _headers,
     catalog_marker,
+    canonical_glossary_hash,
+    iter_metric_glossary_aspects,
     load_catalog,
+    load_metric_glossary,
     validate_local_server,
 )
 
@@ -32,12 +36,14 @@ def _aspect_value(entity: dict[str, Any], name: str) -> dict[str, Any]:
 def verify(
     server: str,
     catalog_path: Path = DEFAULT_CATALOG,
+    glossary_path: Path = DEFAULT_GLOSSARY,
     token: str | None = None,
     timeout: float = 30,
     opener: Callable[..., Any] = urlopen,
 ) -> dict[str, Any]:
     validate_local_server(server)
     catalog, contract = load_catalog(catalog_path)
+    glossary = load_metric_glossary(glossary_path)
     marker = catalog_marker(catalog)
     dataset_count = 0
     column_count = 0
@@ -68,12 +74,27 @@ def verify(
 
     if dataset_count != catalog["counts"]["datasets"] or column_count != catalog["counts"]["field_occurrences"]:
         raise ValueError("verified description cardinality mismatch")
+    expected_term_aspects: dict[str, dict[str, dict[str, Any]]] = {}
+    for urn, aspect_name, value in iter_metric_glossary_aspects(glossary):
+        expected_term_aspects.setdefault(urn, {})[aspect_name] = value
+    for urn, expected_aspects in expected_term_aspects.items():
+        query = "aspects=List(glossaryTermKey,glossaryTermInfo)"
+        endpoint = f"{server.rstrip('/')}/entitiesV2/{quote(urn, safe='')}?{query}"
+        request = Request(endpoint, headers=_headers(token), method="GET")
+        with opener(request, timeout=timeout) as response:
+            entity = json.loads(response.read().decode("utf-8"))
+        for aspect_name, expected in expected_aspects.items():
+            if _aspect_value(entity, aspect_name) != expected:
+                raise ValueError(f"DataHub Metric Glossary mismatch: {urn} {aspect_name}")
     return {
         "status": "VERIFIED",
         "catalog_version": catalog["catalog_version"],
         "catalog_sha256": catalog["catalog_sha256"],
         "dataset_descriptions": dataset_count,
         "column_descriptions": column_count,
+        "metric_glossary_terms": len(expected_term_aspects),
+        "metric_glossary_version": glossary["version"],
+        "metric_glossary_sha256": canonical_glossary_hash(glossary),
     }
 
 
@@ -81,11 +102,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", default=os.getenv("DATAHUB_GMS_URL", "http://localhost:18081"))
     parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
+    parser.add_argument("--glossary", type=Path, default=DEFAULT_GLOSSARY)
     parser.add_argument("--timeout", type=float, default=30)
     args = parser.parse_args()
     result = verify(
         args.server,
         args.catalog,
+        args.glossary,
         token=os.getenv("DATAHUB_GMS_TOKEN"),
         timeout=args.timeout,
     )

@@ -1,13 +1,49 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from typing import Any
 
 from src.ai.node1 import normalize_question
 from src.ai.node2 import generate_sql, repair_sql
 from src.ai.node3 import explain_result
+from src.ai.metric_glossary import (
+    metric_definition,
+    metric_display_name,
+    metric_glossary,
+    metric_unit,
+)
 from src.ai.schema import validate_payload
+
+
+def _result_metadata(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    columns = tuple(rows[0]) if rows else ("synthetic_value",)
+    typed_columns = []
+    for name in columns:
+        values = [row.get(name) for row in rows if row.get(name) is not None]
+        value_type = "null"
+        if values:
+            value = values[0]
+            value_type = (
+                "boolean" if isinstance(value, bool)
+                else "integer" if isinstance(value, int)
+                else "number" if isinstance(value, float)
+                else "string" if isinstance(value, str)
+                else "unsupported"
+            )
+        typed_columns.append({"name": name, "type": value_type})
+    canonical_rows = json.dumps(
+        rows,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    return {
+        "columns": typed_columns,
+        "row_count": len(rows),
+        "checksum": hashlib.sha256(canonical_rows.encode("utf-8")).hexdigest(),
+    }
 
 
 class FakeDataPlatformAdapter:
@@ -25,10 +61,37 @@ class FakeDataPlatformAdapter:
         self.scenario = scenario
 
     def search_assets(self, query: str, context: dict[str, Any]) -> list[dict[str, Any]]:
-        return [{**self._asset, "query": query, "context_timezone": context["timezone"]}]
+        term = self.get_metric_terms(("total_guest_revenue_krw",))[
+            "total_guest_revenue_krw"
+        ]
+        return [
+            {
+                **self._asset,
+                "query": query,
+                "context_timezone": context["timezone"],
+                "metric_terms": (term,),
+            }
+        ]
 
     def get_asset_schema(self, urn: str) -> dict[str, Any]:
         return {"urn": urn, "columns": [{"name": "guest_id", "type": "uuid"}]}
+
+    def get_metric_terms(
+        self, metric_ids: tuple[str, ...]
+    ) -> dict[str, dict[str, Any]]:
+        glossary = metric_glossary()
+        return {
+            metric_id: {
+                "id": metric_id,
+                "urn": f"urn:li:glossaryTerm:{metric_id}",
+                "label": metric_display_name(metric_id),
+                "aliases": glossary[metric_id],
+                "definition": metric_definition(metric_id),
+                "unit": metric_unit(metric_id),
+                "version": "FAKE-DATAHUB-GLOSSARY-v1",
+            }
+            for metric_id in metric_ids
+        }
 
     def execute_query(
         self, sql: str, parameters: dict[str, Any], gate_token: str
@@ -62,6 +125,7 @@ class FakeDataPlatformAdapter:
                 "query_id": query_id,
                 "status": status,
                 "rows": rows,
+                "result_metadata": _result_metadata(rows),
                 "evidence_complete": scenario != "g3_failed",
                 "zero_result_suspicious": scenario == "suspicious_zero",
                 "filters": {"dataset": "synthetic"},

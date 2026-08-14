@@ -226,6 +226,15 @@ def _session_store_url() -> str:
     return os.getenv("APP_RUNTIME_DATABASE_URL", "").strip()
 
 
+def _required_session_store_url() -> str | None:
+    database_url = _session_store_url()
+    if database_url:
+        return database_url
+    if os.getenv("AUTH_MODE", "release").strip().lower() == "test":
+        return None
+    raise _authentication_error(503)
+
+
 def _session_window(token: str) -> tuple[datetime, datetime]:
     try:
         encoded = token.split(".", 1)[0]
@@ -239,7 +248,7 @@ def _session_window(token: str) -> tuple[datetime, datetime]:
 
 
 def register_session(token: str, principal: Principal) -> None:
-    database_url = _session_store_url()
+    database_url = _required_session_store_url()
     if not database_url:
         return
     issued_at, expires_at = _session_window(token)
@@ -263,7 +272,7 @@ def register_session(token: str, principal: Principal) -> None:
 
 
 def revoke_session(token: str | None) -> None:
-    database_url = _session_store_url()
+    database_url = _required_session_store_url()
     if not database_url or not token or token.count(".") != 1:
         return
     try:
@@ -278,7 +287,7 @@ def revoke_session(token: str | None) -> None:
 
 
 def _assert_session_active(token: str, principal: Principal, now: datetime) -> None:
-    database_url = _session_store_url()
+    database_url = _required_session_store_url()
     if not database_url:
         return
     try:
@@ -339,3 +348,65 @@ def authenticate_token(token: str | None, *, now: datetime | None = None) -> Pri
     if current_time.tzinfo is None:
         current_time = current_time.replace(tzinfo=timezone.utc)
     return _release_principal(token, current_time.astimezone(timezone.utc))
+
+
+def require_active_subject(
+    subject: UUID,
+    role: Role,
+    *,
+    now: datetime | None = None,
+) -> Principal:
+    """Authorize a background execution without borrowing an interactive token."""
+    mode = os.getenv("AUTH_MODE", "release").strip().lower()
+    if mode == "test":
+        principal = next(
+            (
+                candidate
+                for candidate in _TEST_TOKENS.values()
+                if candidate.subject == subject and candidate.role is role
+            ),
+            None,
+        )
+        if principal is None:
+            raise _authentication_error(403)
+        return principal
+    if mode != "release":
+        raise _authentication_error(503)
+
+    path = _configured_principal_path()
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        first = raw[0] if isinstance(raw, list) and raw else None
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise _authentication_error(503) from exc
+    if not isinstance(first, dict):
+        raise _authentication_error(503)
+
+    if set(first) == _ACCOUNT_FIELDS:
+        matched = next(
+            (
+                record
+                for record in _load_accounts(path)
+                if record.principal.subject == subject
+                and record.principal.role is role
+                and record.active
+            ),
+            None,
+        )
+    elif set(first) == _RECORD_FIELDS:
+        current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        matched = next(
+            (
+                record
+                for record in _load_principals(path)
+                if record.principal.subject == subject
+                and record.principal.role is role
+                and record.not_before <= current < record.expires_at
+            ),
+            None,
+        )
+    else:
+        raise _authentication_error(503)
+    if matched is None:
+        raise _authentication_error(403)
+    return matched.principal

@@ -104,6 +104,11 @@ class ControlPlaneContractTest(unittest.TestCase):
             "ACCESS_DENIED",
             "MODEL_CONTRACT_INVALID",
             "MODEL_TIMEOUT",
+            "MODEL_ENDPOINT_UNAVAILABLE",
+            "MODEL_OUTPUT_UNGROUNDED",
+            "CIRCUIT_OPEN",
+            "INSUFFICIENT_CONTEXT",
+            "UNREPAIRABLE",
             "SQL_POLICY_BLOCKED",
             "SQL_REPAIR_FAILED",
             "TRINO_CONNECTION_FAILED",
@@ -118,6 +123,9 @@ class ControlPlaneContractTest(unittest.TestCase):
             "REQUEST_CANCELLED",
             "CONTRACT_VERSION_MISMATCH",
             "SCHEMA_VERSION_MISMATCH",
+            "RESOURCE_NOT_FOUND",
+            "RESOURCE_CONFLICT",
+            "DEPENDENCY_UNAVAILABLE",
             "INTERNAL_ERROR",
         }
 

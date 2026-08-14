@@ -15,6 +15,7 @@ from tests.support.fakes import (
     ContractFakeModelAdapter as R3FakeModelAdapter,
     FakeDataPlatformAdapter,
     FakeModelAdapter,
+    _result_metadata,
 )
 from app.contracts import (
     AnalysisRequest,
@@ -29,6 +30,7 @@ from app.contracts import (
 from app.services.analysis_service import AnalysisService
 from app.services.analysis_responses import _evidence_filters
 from app.services.context_builder import ContextRequiredFilter
+from app.services.execution_control import IsolatedExecutionCache
 from app.services.pipeline_support import PipelineSupport, _validated_model_periods
 from app.ports.data_platform import NoEntitledAssetsError
 from app.services.routing_service import (
@@ -93,6 +95,7 @@ class ChartDataPlatformAdapter(CountingDataPlatformAdapter):
             "returned_rows": 2,
             "total_rows": 2,
         }
+        result["result_metadata"] = _result_metadata(result["rows"])
         return result
 
 
@@ -131,15 +134,51 @@ class CountingModel(FakeModelAdapter):
     def __init__(self) -> None:
         super().__init__()
         self.calls = 0
+        self.nodes = []
 
     def generate(self, node, payload):
         self.calls += 1
+        self.nodes.append(node)
         return super().generate(node, payload)
+
+
+class CountingCache(IsolatedExecutionCache):
+    def __init__(self) -> None:
+        super().__init__()
+        self.result_puts = 0
+
+    def put_result(self, key, value):
+        self.result_puts += 1
+        return super().put_result(key, value)
 
 
 class TraceEvidenceModel(FakeModelAdapter):
     def generate(self, node, payload):
         response = super().generate(node, payload)
+        self.last_trace = {
+            "node": node,
+            "model_version": response["model_version"],
+            "prompt_id": f"{node}-prompt",
+            "prompt_version": "v1.0.0",
+        }
+        return response
+
+
+class ChartTraceEvidenceModel(TraceEvidenceModel):
+    def generate(self, node, payload):
+        if node != "node2":
+            return super().generate(node, payload)
+        response = {
+            "sql": (
+                "SELECT CAST(guest_id AS VARCHAR) AS month, "
+                "0 AS room_revenue_krw, 0 AS fnb_revenue_krw, "
+                "0 AS total_guest_revenue_krw "
+                "FROM pms.public.pms_guests LIMIT 1000"
+            ),
+            "references": payload["references"],
+            "parameters": {},
+            "model_version": "DRAFT-FAKE-BASE-v0.1",
+        }
         self.last_trace = {
             "node": node,
             "model_version": response["model_version"],
@@ -479,21 +518,20 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertIn("node2", [node for node, _payload in model.requests])
         self.assertEqual(ErrorCode.SQL_REPAIR_FAILED, response.error.code)
 
-    def test_node1_can_validate_semantic_period_beyond_fixed_phrase_rules(self) -> None:
+    def test_node1_rejects_semantic_period_without_a_deterministic_match(self) -> None:
         candidates = [{
             "start": "2026-01-01T00:00:00+09:00",
             "end_exclusive": "2026-08-13T00:00:00+09:00",
             "source_text": "올해 초부터 지금까지",
         }]
 
-        validated = _validated_model_periods(
-            "올해 초부터 지금까지 인식 객실 매출을 분석해 줘",
-            candidates,
-            [],
-            ZoneInfo("Asia/Seoul"),
-        )
-
-        self.assertEqual(candidates, validated)
+        with self.assertRaisesRegex(ValueError, "no deterministic calendar match"):
+            _validated_model_periods(
+                "올해 초부터 지금까지 인식 객실 매출을 분석해 줘",
+                candidates,
+                [],
+                ZoneInfo("Asia/Seoul"),
+            )
 
     def test_node1_accepts_contiguous_model_periods_equal_to_one_calendar_range(self) -> None:
         expected = [{
@@ -785,6 +823,22 @@ class AnalysisPipelineTest(unittest.TestCase):
                         response.data.trace[-1].detail,
                     )
 
+    def test_g3_failure_prevents_node3_result_cache_artifact_and_ui_result(self) -> None:
+        adapter = CountingDataPlatformAdapter()
+        adapter.scenario = "g3_failed"
+        model = CountingModel()
+        cache = CountingCache()
+        service = AnalysisService(adapter, model, cache=cache)
+        payload = AnalysisRequest(question="합성 객실 운영 현황을 알려줘")
+
+        response = service.analyze(payload, self.context, self.decision(payload))
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertNotIn("node3", model.nodes)
+        self.assertEqual(0, cache.result_puts)
+        self.assertIsNone(response.data.artifact)
+        self.assertIsNone(response.data.result)
+
     def test_query_timeout_is_cancelled_and_terminally_verified(self) -> None:
         response = self.analyze("query_timeout")
 
@@ -897,7 +951,7 @@ class AnalysisPipelineTest(unittest.TestCase):
         )
 
     def test_g3_success_links_table_chart_explanation_evidence_and_artifact(self) -> None:
-        service = AnalysisService(ChartDataPlatformAdapter(), TraceEvidenceModel())
+        service = AnalysisService(ChartDataPlatformAdapter(), ChartTraceEvidenceModel())
         payload = AnalysisRequest(question="합성 객실 운영 현황을 알려줘")
 
         response = service.analyze(payload, self.context, self.decision(payload))
@@ -920,6 +974,9 @@ class AnalysisPipelineTest(unittest.TestCase):
         self.assertEqual("객실·식음 통합 매출", evidence.metrics[0].label)
         self.assertTrue(evidence.metrics[0].definition)
         self.assertEqual("KRW", evidence.metrics[0].unit)
+        self.assertEqual(response.data.result.metrics, evidence.metric_values)
+        self.assertEqual("total_guest_revenue_krw", evidence.metric_values[0].result_field)
+        self.assertEqual(475972400, evidence.metric_values[0].value)
         self.assertEqual(
             {"node2", "node3"},
             {invocation.node for invocation in evidence.models},

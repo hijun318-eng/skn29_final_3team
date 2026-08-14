@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from app.adapters.report_repository import PostgresReportRepository
+from app.services.report_execution import ReportExecutionService
 
 
 logger = logging.getLogger("uvicorn.error")
@@ -41,7 +42,7 @@ class ReportScheduler:
     def status(self) -> str:
         return self._status
 
-    async def start(self) -> None:
+    async def start(self, controller, execution_gate) -> None:
         if not _enabled():
             self._status = "not_required"
             return
@@ -56,10 +57,23 @@ class ReportScheduler:
             UUID(int=0),
             manage_all=True,
         )
+        from app.services.report_execution import AnalysisDefinitionReplay
+
+        execution_service = ReportExecutionService(
+            repository,
+            AnalysisDefinitionReplay(
+                database_url,
+                controller,
+                execution_gate,
+                queue_wait_seconds=float(
+                    os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0")
+                ),
+            ),
+        )
         self._stop = asyncio.Event()
         self._status = "starting"
         self._task = asyncio.create_task(
-            self._run(repository, poll_seconds, batch_size),
+            self._run(execution_service, poll_seconds, batch_size),
             name="report-scheduler",
         )
 
@@ -74,7 +88,7 @@ class ReportScheduler:
 
     async def _run(
         self,
-        repository: PostgresReportRepository,
+        execution_service: ReportExecutionService,
         poll_seconds: int,
         batch_size: int,
     ) -> None:
@@ -83,7 +97,7 @@ class ReportScheduler:
             try:
                 await asyncio.to_thread(
                     self.run_once,
-                    repository,
+                    execution_service,
                     datetime.now(timezone.utc),
                     batch_size,
                 )
@@ -98,14 +112,16 @@ class ReportScheduler:
 
     @staticmethod
     def run_once(
-        repository: PostgresReportRepository,
+        execution_service: ReportExecutionService,
         now: datetime,
         batch_size: int = 50,
     ) -> int:
-        schedule_ids = repository.list_due_schedule_ids(now, limit=batch_size)
+        schedule_ids = execution_service.repository.list_due_schedule_ids(
+            now, limit=batch_size
+        )
         executed = 0
         for schedule_id in schedule_ids:
-            schedule, run = repository.run_due_schedule(schedule_id, now)
+            schedule, run = execution_service.run_due_schedule(schedule_id, now)
             if run is None:
                 continue
             executed += 1

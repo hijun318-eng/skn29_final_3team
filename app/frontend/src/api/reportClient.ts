@@ -1,13 +1,20 @@
 import {
   REPORT_REQUEST_CONTEXT_VERSION,
+  assertReportCurrencyDisplayUnit,
   assertReportContractVersion,
+  assertReportOrientation,
   normalizeReportDefinition,
+  normalizeReportDocument,
   normalizeReportRun,
   type ManualRunCommandResponse,
   type ReportBlockRequest,
   type ReportDefinitionListResponse,
   type ReportDefinitionResponse,
   type ReportDefinitionVersion,
+  type ReportDocument,
+  type ReportDocumentResponse,
+  type ReportCurrencyDisplayUnit,
+  type ReportOrientation,
   type ReportRun,
   type ReportRunListResponse,
   type ReportRunResponse,
@@ -21,6 +28,11 @@ import { createUuid } from "../utils/createUuid.ts";
 type Fetch = typeof fetch;
 const env = import.meta.env ?? {};
 
+export interface ReplaceDraftBlocksOptions {
+  readonly orientation?: ReportOrientation;
+  readonly currencyDisplayUnit?: ReportCurrencyDisplayUnit;
+}
+
 function seoulToday(): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
@@ -30,11 +42,27 @@ function seoulToday(): string {
 export class ReportApiError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly retryable: boolean;
+  readonly requiredAction: string;
+  readonly suggestions: string[];
+  readonly missingRequirements: string[];
+  readonly traceId: string;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, options: {
+    retryable?: boolean;
+    requiredAction?: string;
+    suggestions?: string[];
+    missingRequirements?: string[];
+    traceId?: string;
+  } = {}) {
     super(message);
     this.status = status;
     this.code = code;
+    this.retryable = options.retryable ?? false;
+    this.requiredAction = options.requiredAction ?? "NONE";
+    this.suggestions = options.suggestions ?? [];
+    this.missingRequirements = options.missingRequirements ?? [];
+    this.traceId = options.traceId ?? "";
   }
 }
 
@@ -54,11 +82,22 @@ async function parse<T>(response: Response): Promise<T> {
   const payload: any = await response.json().catch(() => ({}));
   if (!response.ok) {
     const code = payload?.error?.code || `HTTP_${response.status}`;
-    const message = payload?.error?.message || payload?.detail || "Report API 요청에 실패했습니다.";
+    const message = payload?.error?.message || "Report API 요청에 실패했습니다.";
     if (response.status === 401 && typeof window !== "undefined") window.dispatchEvent(new CustomEvent("answervice:session-expired"));
-    throw new ReportApiError(response.status, code, message);
+    throw new ReportApiError(response.status, code, message, {
+      retryable: Boolean(payload?.error?.retryable),
+      requiredAction: payload?.error?.required_action,
+      suggestions: payload?.error?.suggestions,
+      missingRequirements: payload?.error?.missing_requirements,
+      traceId: payload?.error?.trace_id,
+    });
   }
   return payload as T;
+}
+
+async function ensureOk(response: Response): Promise<Response> {
+  if (!response.ok) await parse<never>(response);
+  return response;
 }
 
 export function createReportClient(
@@ -103,19 +142,58 @@ export function createReportClient(
       assertReportContractVersion(payload.contract_version);
       return payload;
     },
-    async approveDefinition(definitionId: string, version: number, approvedAt: string) {
+    async approveDefinition(
+      definitionId: string,
+      version: number,
+      approvedAt: string,
+      orientation?: ReportOrientation,
+    ) {
+      if (orientation !== undefined) assertReportOrientation(orientation);
       return normalizeReportDefinition(await parse<ReportDefinitionResponse>(
-        await send(`/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}/approve`, "POST", { approved_at: approvedAt }),
+        await send(`/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}/approve`, "POST", {
+          approved_at: approvedAt,
+          ...(orientation === undefined ? {} : { orientation }),
+        }),
       ));
+    },
+    async getFinalDocument(definitionId: string, version: number): Promise<ReportDocument> {
+      return normalizeReportDocument(await parse<ReportDocumentResponse>(await send(
+        `/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}/document`,
+      )));
+    },
+    async getFinalHtml(definitionId: string, version: number): Promise<string> {
+      return (await ensureOk(await send(
+        `/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}/document.html`,
+      ))).text();
+    },
+    async getFinalPdf(definitionId: string, version: number): Promise<Blob> {
+      return (await ensureOk(await send(
+        `/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}/document.pdf`,
+      ))).blob();
     },
     async createNextDraft(definitionId: string, version: number) {
       return normalizeReportDefinition(await parse<ReportDefinitionResponse>(
         await send(`/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}/drafts`, "POST"),
       ));
     },
-    async replaceDraftBlocks(definitionId: string, version: number, blocks: readonly ReportBlockRequest[]) {
+    async replaceDraftBlocks(
+      definitionId: string,
+      version: number,
+      blocks: readonly ReportBlockRequest[],
+      options: ReplaceDraftBlocksOptions = {},
+    ) {
+      if (options.orientation !== undefined) assertReportOrientation(options.orientation);
+      if (options.currencyDisplayUnit !== undefined) {
+        assertReportCurrencyDisplayUnit(options.currencyDisplayUnit);
+      }
       return normalizeReportDefinition(await parse<ReportDefinitionResponse>(
-        await send(`/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}/blocks`, "PUT", { blocks }),
+        await send(`/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}/blocks`, "PUT", {
+          blocks,
+          ...(options.orientation === undefined ? {} : { orientation: options.orientation }),
+          ...(options.currencyDisplayUnit === undefined
+            ? {}
+            : { currency_display_unit: options.currencyDisplayUnit }),
+        }),
       ));
     },
     async listRuns(definitionId?: string): Promise<readonly ReportRun[]> {

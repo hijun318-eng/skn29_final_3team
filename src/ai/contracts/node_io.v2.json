@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://answervice.local/contracts/node_io.v2.json",
+  "version": "MODEL-v2.0.0",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_scalar", "end_scalar"],
+      "properties": {
+        "start_scalar": {"type": "integer", "minimum": 0},
+        "end_scalar": {"type": "integer", "minimum": 1}
+      }
+    },
+    "dimension_value": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "display_name", "aliases"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "display_name": {"type": "string", "minLength": 1, "maxLength": 120},
+        "aliases": {
+          "type": "array",
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 120}
+        }
+      }
+    },
+    "business_term": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "display_name", "definition", "aliases", "values"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "kind": {"enum": ["metric", "dimension"]},
+        "display_name": {"type": "string", "minLength": 1, "maxLength": 120},
+        "definition": {"type": "string", "minLength": 1, "maxLength": 500},
+        "aliases": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 120}
+        },
+        "values": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {"$ref": "#/$defs/dimension_value"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "metric"}}},
+          "then": {"properties": {"values": {"maxItems": 0}}}
+        }
+      ]
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "matched_text", "span"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "matched_text": {"type": "string", "minLength": 1, "maxLength": 120},
+        "span": {"$ref": "#/$defs/span"}
+      }
+    },
+    "filter_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimension_id", "value_id", "matched_text", "span"],
+      "properties": {
+        "dimension_id": {"$ref": "#/$defs/id"},
+        "value_id": {"$ref": "#/$defs/id"},
+        "matched_text": {"type": "string", "minLength": 1, "maxLength": 120},
+        "span": {"$ref": "#/$defs/span"}
+      }
+    },
+    "period_mention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "source_text", "span"],
+      "properties": {
+        "role": {"enum": ["primary", "baseline", "comparison", "comparison_rule"]},
+        "source_text": {"type": "string", "minLength": 1, "maxLength": 120},
+        "span": {"$ref": "#/$defs/span"}
+      }
+    },
+    "node1_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question", "allowed_intents", "business_terms"],
+      "properties": {
+        "question": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "allowed_intents": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"enum": ["aggregate", "compare", "trend", "rank"]}
+        },
+        "business_terms": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {"$ref": "#/$defs/business_term"}
+        }
+      }
+    },
+    "node1_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent_candidates",
+        "selected_intent",
+        "metric_candidates",
+        "selected_metric_id",
+        "dimension_candidates",
+        "filter_candidates",
+        "period_mentions",
+        "missing_requirements",
+        "ambiguity_codes"
+      ],
+      "properties": {
+        "intent_candidates": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"enum": ["aggregate", "compare", "trend", "rank"]}
+        },
+        "selected_intent": {"type": ["string", "null"], "enum": ["aggregate", "compare", "trend", "rank", null]},
+        "metric_candidates": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/candidate"}},
+        "selected_metric_id": {"type": ["string", "null"], "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"},
+        "dimension_candidates": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/candidate"}},
+        "filter_candidates": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/filter_candidate"}},
+        "period_mentions": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/period_mention"}},
+        "missing_requirements": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {"enum": ["METRIC", "PRIMARY_PERIOD", "BASELINE_PERIOD", "COMPARISON_PERIOD", "COMPARISON_RULE"]}
+        },
+        "ambiguity_codes": {
+          "type": "array",
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {"enum": ["INTENT_AMBIGUOUS", "METRIC_AMBIGUOUS", "DIMENSION_AMBIGUOUS", "FILTER_VALUE_AMBIGUOUS", "PERIOD_AMBIGUOUS", "MULTIPLE_METRICS", "MULTIPLE_INTENTS", "CONTRADICTORY_REQUEST", "OUT_OF_SCOPE"]}
+        }
+      }
+    },
+    "metric_public": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "unit"],
+      "properties": {
+        "label": {"type": "string", "minLength": 1, "maxLength": 80},
+        "unit": {"type": "string", "minLength": 1, "maxLength": 40}
+      }
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "subject_text", "period_text", "value_text", "comparison_text", "required_in_summary"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"},
+        "type": {"enum": ["observation", "comparison", "empty_result"]},
+        "subject_text": {"type": "string", "minLength": 1, "maxLength": 40},
+        "period_text": {"type": "string", "minLength": 1, "maxLength": 40},
+        "value_text": {"type": ["string", "null"], "minLength": 1, "maxLength": 40},
+        "comparison_text": {"type": ["string", "null"], "minLength": 1, "maxLength": 60},
+        "required_in_summary": {"type": "boolean"}
+      },
+      "oneOf": [
+        {"properties": {"type": {"const": "observation"}, "value_text": {"type": "string"}, "comparison_text": {"const": null}}},
+        {"properties": {"type": {"const": "comparison"}, "value_text": {"type": "string"}, "comparison_text": {"type": "string"}}},
+        {"properties": {"type": {"const": "empty_result"}, "value_text": {"const": null}, "comparison_text": {"const": null}}}
+      ]
+    },
+    "limitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "public_text", "required_in_summary"],
+      "properties": {
+        "code": {"enum": ["PARTIAL", "SAMPLING", "MASKING"]},
+        "public_text": {"type": "string", "minLength": 1, "maxLength": 180},
+        "required_in_summary": {"type": "boolean"}
+      }
+    },
+    "node3_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["locale", "metric", "facts", "limitations"],
+      "properties": {
+        "locale": {"const": "ko-KR"},
+        "metric": {"$ref": "#/$defs/metric_public"},
+        "facts": {"type": "array", "minItems": 1, "maxItems": 12, "items": {"$ref": "#/$defs/fact"}},
+        "limitations": {"type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/limitation"}}
+      }
+    },
+    "sentence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "fact_ids", "limitation_codes"],
+      "properties": {
+        "text": {"type": "string", "minLength": 1, "maxLength": 180},
+        "fact_ids": {"type": "array", "maxItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 64}},
+        "limitation_codes": {"type": "array", "maxItems": 1, "uniqueItems": true, "items": {"enum": ["PARTIAL", "SAMPLING", "MASKING"]}}
+      },
+      "oneOf": [
+        {"properties": {"fact_ids": {"minItems": 1}, "limitation_codes": {"maxItems": 0}}},
+        {"properties": {"fact_ids": {"maxItems": 0}, "limitation_codes": {"minItems": 1}}}
+      ]
+    },
+    "node3_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sentences"],
+      "properties": {
+        "sentences": {"type": "array", "minItems": 1, "maxItems": 3, "items": {"$ref": "#/$defs/sentence"}}
+      }
+    }
+  }
+}

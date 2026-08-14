@@ -45,7 +45,7 @@ $env:MODEL_TIMEOUT_SECONDS = "15"
 
 FastAPI·Pydantic code가 API 계약의 단일 원본이다. 분석 응답의 `OPENAPI-v1.0.0` 호환성은 유지하고 FastAPI 문서 버전은 `OPENAPI-v1.1.0-DRAFT`로 분리한다. 문서에는 기존 `/health`, `/readiness`, `/analysis`, Report 관리자 endpoint와 owner 범위의 Analysis Definition·Run 조회 및 재실행 endpoint를 포함한다.
 
-Analysis Definition은 사용자 소유의 불변 버전이며 공개 응답에 질문 원문·parameter 값·SQL·결과 snapshot을 노출하지 않는다. 재실행은 저장 SQL을 사용하지 않고 현재 `AnalysisController`를 호출해 entitlement·Context·G1·G2·G3·repair·binder를 다시 검증한다. 실행 이력은 기존 `chat.analysis_requests` → `query.query_executions` → `artifact.analysis_artifacts`를 재사용하고 Definition과 request의 연결만 저장한다.
+Analysis Definition은 사용자 소유의 불변 버전이며 공개 응답에 parameter 값·SQL·결과 snapshot을 노출하지 않는다. 재실행은 저장 SQL을 사용하지 않고 현재 `AnalysisController`를 호출해 entitlement·Context·G1·G2·G3·repair·binder를 다시 검증한다. 매 실행은 새 `chat.analysis_requests` → `query.query_executions` → `artifact.analysis_artifacts` 이력을 만들고 Definition과 새 request의 연결을 함께 저장한다.
 
 계약 파일과 상태별 fixture를 갱신하거나 drift를 확인하는 명령은 다음과 같다.
 
@@ -60,13 +60,13 @@ python app/backend/scripts/export_openapi.py --check
 - 명세 파일과 fixture는 직접 수정하지 않고 exporter로 다시 생성한다.
 - pagination·sorting·filter·idempotency는 현재 세 endpoint에 적용되지 않으며, 이를 사용하는 endpoint 구현 시 별도 version으로 추가한다.
 
-`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 단일 migration chain이 application schema를 최신 head까지 적용한다. root는 `20260729_01`, 현재 head는 `20260813_14` 하나씩이다. Report와 Analysis endpoint는 application PostgreSQL에 정의·실행·Artifact·예약 이력을 영속화하며 공개 요청·응답은 strict Pydantic schema와 고정 operation ID를 사용한다.
+`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 단일 migration chain이 application schema를 최신 head까지 적용한다. root는 `20260729_01`, 현재 head는 `20260814_20` 하나씩이다. Report와 Analysis endpoint는 application PostgreSQL에 정의·실행·Artifact·예약 이력을 영속화하며 공개 요청·응답은 strict Pydantic schema와 고정 operation ID를 사용한다.
 
 `CONTEXT-REGISTRY-v1.0.0-DRAFT`는 내부 service-only 계약이다. Context record, immutable release, request package binding을 application PostgreSQL에 저장하며 checksum은 정렬된 canonical JSON을 서버에서 SHA-256으로 계산한다. 같은 idempotency key와 같은 payload는 기존 결과를 반환하고, 다른 payload·중복 version·승인되지 않은 record·배포되지 않은 release는 도메인 충돌로 차단한다. 승인·배포 이후 payload와 package는 DB trigger로 변경을 거부한다. 이 단계에는 public router, OpenAPI, live DataHub 조립, Analysis 저장 연결을 추가하지 않는다.
 
 backend 기동 전 `alembic current` 결과가 위 지원 목록에 있는지 확인한다. 저장소에 존재하지 않는 `20260803_03`은 Alembic이 native non-zero로 거부하며 운영 판정 코드 `LEGACY_REVISION_UNSUPPORTED`로 기록한다. 이 상태를 우회하는 추정 migration, 자동 `stamp`, schema·data 변경, `drop`은 금지한다. 보존이 필요한 legacy DB는 변경하지 않고 별도 복구·변환 결정을 요청한다.
 
-Report HTTP는 분석가 소유 초안 작성·조회와 `report_admin`의 전체 정의 승인·수동 실행·예약 실행을 제공한다. 실행 결과 전체를 직접 주입하는 경로는 공개하지 않으며 서버가 승인된 Analysis Artifact를 다시 검증해 block run을 생성한다.
+Report HTTP는 분석가 소유 초안 작성·조회와 `report_admin`의 전체 정의 승인·수동 실행·예약 실행을 제공한다. 수동·예약 실행은 같은 `ReportExecutionService`를 사용하며, Block에 고정된 Analysis Definition/version을 현재 권한·정책과 공통 `as_of`로 재실행한다. 각 Block Run은 새 request/query/artifact 또는 typed failure를 기록하고 일부 Block만 성공하면 Report Run을 `partial`로 보존한다. 기존 Artifact checksum만 읽어 새 실행처럼 성공 처리하는 경로는 없다.
 
 브라우저 CORS는 설정된 exact origin과 credentials·필수 header를 유지하며, 기존 `GET`·`POST`·`OPTIONS`와 draft block 교체용 `PUT` preflight만 허용한다. origin·method·header wildcard는 사용하지 않는다.
 

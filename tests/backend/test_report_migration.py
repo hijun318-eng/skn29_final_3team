@@ -116,6 +116,47 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("generation_mode IN ('LLM', 'TEMPLATE')", upgrade)
         self.assertIn("FALLBACK query history must be reviewed", upgrade)
 
+    def test_report_replay_migration_persists_lineage_and_typed_failure(self):
+        source = (MIGRATIONS / "20260814_20_report_replay_lineage.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('revision = "20260814_20"', source)
+        self.assertIn('down_revision = "20260814_19"', source)
+        self.assertIn("analysis_definition_id", source)
+        self.assertIn("analysis_definition_version", source)
+        self.assertIn("request_id uuid REFERENCES chat.analysis_requests", source)
+        self.assertIn("failure_code", source)
+        self.assertIn("report_block_run_failure_check", source)
+        self.assertIn("status IN ('queued','running','success','partial','failed','cancelled')", source)
+
+    def test_aggregate_artifact_block_migration_extends_every_data_constraint(self):
+        source = (MIGRATIONS / "20260814_22_report_artifact_blocks.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('revision = "20260814_22"', source)
+        self.assertIn('down_revision = "20260814_21"', source)
+        self.assertIn("block_type IN ('table', 'chart', 'artifact', 'text')", source)
+        self.assertGreaterEqual(
+            source.count("block_type IN ('table', 'chart', 'artifact')"),
+            2,
+        )
+        self.assertIn("artifact_id IS NOT NULL", source)
+        self.assertIn("analysis_definition_id IS NOT NULL", source)
+        self.assertIn("must be converted before downgrade", source)
+
+    def test_report_display_settings_are_additive_after_artifact_blocks(self):
+        source = (MIGRATIONS / "20260814_23_report_display_settings.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('revision = "20260814_23"', source)
+        self.assertIn('down_revision = "20260814_22"', source)
+        self.assertIn("ALTER TABLE report_v1.report_definition_versions", source)
+        self.assertIn("orientation varchar(16) NOT NULL DEFAULT 'portrait'", source)
+        self.assertIn("currency_display_unit varchar(24) NOT NULL DEFAULT 'auto'", source)
+        self.assertIn("ALTER TABLE report_v1.report_documents", source)
+        for value in ("auto", "one", "thousand", "million", "hundredMillion", "billion"):
+            self.assertIn(f"'{value}'", source)
+
 
 if __name__ == "__main__":
     unittest.main()

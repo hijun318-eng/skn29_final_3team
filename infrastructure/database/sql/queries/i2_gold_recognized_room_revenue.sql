@@ -21,13 +21,14 @@ JOIN crm.dbo.crm_member_grade_history h
  AND m.member_no = h.member_no
  AND h.valid_from <= s.actual_checkout_at
  AND (h.valid_to IS NULL OR s.actual_checkout_at < h.valid_to)
-WHERE s.stay_status = 'COMPLETED'
+WHERE s.stay_status = :required_filter_1
   AND s.room_revenue > 0
-  AND s.complimentary_flag = false
-  AND s.house_use_flag = false
-  AND s.is_forecast = false
+  AND s.complimentary_flag = :required_filter_2
+  AND s.house_use_flag = :required_filter_3
+  AND s.is_forecast = :required_filter_4
   AND h.grade_code = 'GOLD'
-  AND s.actual_checkout_at >= TIMESTAMP '2026-05-01 00:00:00 Asia/Seoul'
-  AND s.actual_checkout_at < TIMESTAMP '2026-07-01 00:00:00 Asia/Seoul'
+  AND s.actual_checkout_at >= from_iso8601_timestamp(:period_start)
+  AND s.actual_checkout_at < from_iso8601_timestamp(:period_end_exclusive)
 GROUP BY 1
 ORDER BY 1
+LIMIT 1000

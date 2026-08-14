@@ -21,7 +21,11 @@ from app.contracts import (
     StageOutcome,
     TraceStep,
 )
-from app.ports.data_platform import DataPlatformAdapter, NoEntitledAssetsError
+from app.ports.data_platform import (
+    DataPlatformAdapter,
+    MetadataUnavailableError,
+    NoEntitledAssetsError,
+)
 from app.ports.model import ModelAdapter
 from app.services.analysis_responses import AnalysisResponseFactory
 from app.services.context_builder import (
@@ -42,6 +46,20 @@ from app.services.state_machine import AnalysisStateMachine
 logger = logging.getLogger("uvicorn.error")
 
 
+def _model_failure_code(error: BaseException) -> ErrorCode:
+    value = getattr(error, "code", None)
+    if isinstance(value, str):
+        try:
+            return ErrorCode(value)
+        except ValueError:
+            pass
+    if isinstance(error, TimeoutError):
+        return ErrorCode.MODEL_TIMEOUT
+    if isinstance(error, OSError):
+        return ErrorCode.MODEL_ENDPOINT_UNAVAILABLE
+    return ErrorCode.MODEL_CONTRACT_INVALID
+
+
 def _model_trace_detail(model: ModelAdapter) -> str:
     trace = getattr(model, "last_trace", {})
     return ";".join(
@@ -53,6 +71,14 @@ def _model_trace_detail(model: ModelAdapter) -> str:
             f"duration_ms={trace.get('duration_ms')}",
             f"attempts={trace.get('attempts', 1)}",
             f"status={trace.get('status', 'SUCCESS')}",
+            f"input_schema_hash={trace.get('input_schema_hash', 'unknown')}",
+            f"output_schema_hash={trace.get('output_schema_hash', 'unknown')}",
+            f"model_snapshot={trace.get('model_snapshot') or 'unknown'}",
+            f"context_release={trace.get('context_release') or 'unknown'}",
+            f"policy_version={trace.get('policy_version') or 'unknown'}",
+            f"data_release={trace.get('data_release') or 'unknown'}",
+            f"input_tokens={trace.get('input_tokens')}",
+            f"output_tokens={trace.get('output_tokens')}",
         )
     )
 
@@ -199,6 +225,23 @@ class AnalysisService:
                 assets,
                 structured_request,
             )
+        except MetadataUnavailableError as error:
+            logger.warning(
+                "DataHub Metric Glossary lookup failed: type=%s detail=%s",
+                type(error).__name__,
+                error,
+            )
+            return self._responses.error(
+                context,
+                machine,
+                trace,
+                PipelineStage.CONTEXT,
+                AnalysisStatus.FAILED,
+                ErrorCode.CONTEXT_SOURCE_FAILED,
+                "승인된 DataHub Business Glossary를 조회하지 못했습니다.",
+                decision,
+                retryable=True,
+            )
         except ContextBuildError as error:
             message = (
                 "질문에 분석 기간을 하나만 명확히 포함해 주세요. 예: 2026년 6월 객실 매출을 분석해 줘."
@@ -221,22 +264,19 @@ class AnalysisService:
                     else ClarificationType.METRIC
                 ),
             )
-        except TimeoutError as error:
+        except (TimeoutError, OSError, TypeError, ValueError) as error:
             logger.warning(
                 "node1 generation failed: type=%s detail=%s",
                 type(error).__name__,
                 error,
             )
             return self._responses.model_error(
-                context, machine, trace, decision, timed_out=True
+                context,
+                machine,
+                trace,
+                decision,
+                code=_model_failure_code(error),
             )
-        except (TypeError, ValueError) as error:
-            logger.warning(
-                "node1 generation failed: type=%s detail=%s",
-                type(error).__name__,
-                error,
-            )
-            return self._responses.model_error(context, machine, trace, decision)
         record(trace, PipelineStage.CONTEXT, package.package_hash)
 
         record(trace, PipelineStage.G1)
@@ -298,7 +338,13 @@ class AnalysisService:
                     for item in references
                     if item["fqn"] in decision.source_fqns
                 ],
-                "parameters": payload.parameters,
+                "parameters": {
+                    item.name: {
+                        "value_type": item.value_type,
+                        "value": item.value,
+                    }
+                    for item in package.parameter_bindings
+                },
                 "model_version": "TEMPLATE-I2-v1.0.0",
             }
         else:
@@ -317,22 +363,19 @@ class AnalysisService:
                 )
                 node2_trace_detail = _model_trace_detail(self._model)
                 plan["_model_trace_detail"] = node2_trace_detail
-            except TimeoutError as error:
+            except (TimeoutError, OSError, TypeError, ValueError) as error:
                 logger.warning(
                     "node2 generation failed: type=%s detail=%s",
                     type(error).__name__,
                     error,
                 )
                 return self._responses.model_error(
-                    context, machine, trace, decision, timed_out=True
+                    context,
+                    machine,
+                    trace,
+                    decision,
+                    code=_model_failure_code(error),
                 )
-            except (TypeError, ValueError) as error:
-                logger.warning(
-                    "node2 generation failed: type=%s detail=%s",
-                    type(error).__name__,
-                    error,
-                )
-                return self._responses.model_error(context, machine, trace, decision)
         plan_violation = self._support.model_plan_violation(plan)
         if plan_violation:
             logger.warning(
@@ -427,7 +470,7 @@ class AnalysisService:
                 )
                 repair_trace_detail = _model_trace_detail(self._model)
                 plan["_model_trace_detail"] = repair_trace_detail
-            except (TimeoutError, TypeError, ValueError) as error:
+            except (TimeoutError, OSError, TypeError, ValueError) as error:
                 logger.warning("node2 repair failed: type=%s", type(error).__name__)
                 return self._responses.error(
                     context,
@@ -439,7 +482,7 @@ class AnalysisService:
                     "SQL 수정 결과를 검증하지 못했습니다.",
                     decision,
                     repair_count,
-                    retryable=isinstance(error, TimeoutError),
+                    retryable=bool(getattr(error, "retryable", isinstance(error, TimeoutError))),
                 )
             record(
                 trace,
@@ -620,7 +663,7 @@ class AnalysisService:
 
         query = self._support.normalize_empty_aggregate(query, package)
 
-        g3_violation = self._support.g3_violation(query)
+        g3_violation = self._support.g3_violation(query, plan, package)
         if g3_violation:
             error_code = (
                 ErrorCode.RESULT_EVIDENCE_MISSING
@@ -674,21 +717,17 @@ class AnalysisService:
                     or not isinstance(explanation.get("model_version"), str)
                 ):
                     raise ValueError("invalid node3 response")
-            except TimeoutError:
+            except (TimeoutError, OSError, TypeError, ValueError) as error:
                 return self._responses.model_error(
                     context,
                     machine,
                     trace,
                     decision,
                     repair_count,
-                    timed_out=True,
-                )
-            except (TypeError, ValueError):
-                return self._responses.model_error(
-                    context, machine, trace, decision, repair_count
+                    code=_model_failure_code(error),
                 )
         artifact_id = self._support.artifact_id(
-            context.trace_id,
+            str(context.request_id),
             query["query_id"],
             package.package_hash,
         )

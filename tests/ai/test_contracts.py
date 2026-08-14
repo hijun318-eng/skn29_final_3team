@@ -166,12 +166,19 @@ class ContractTests(unittest.TestCase):
             "stay_day_allocated_room_revenue",
             "expired_points",
             "fnb_net_revenue",
+            "fnb_covers",
             "facility_revenue",
             "actual_attendees",
+            "rooms_sold",
+            "available_room_nights",
+            "banquet_recognized_revenue",
+            "facility_usage_count",
+            "facility_downtime_minutes",
+            "total_operating_revenue",
             "total_guest_revenue_krw",
         }
 
-        self.assertEqual(glossary["version"], "METRIC-GLOSSARY-v1.2.0")
+        self.assertEqual(glossary["version"], "METRIC-GLOSSARY-v1.4.0")
         self.assertEqual(set(glossary), {"version", "metrics", "definitions", "units"})
         self.assertEqual(set(glossary["metrics"]), expected_ids)
         self.assertEqual(set(glossary["definitions"]), expected_ids)
@@ -233,8 +240,7 @@ class ContractTests(unittest.TestCase):
 
         empty = copy.deepcopy(legacy)
         empty["context_package"]["metrics"][0]["required_filters"] = []
-        with self.assertRaises(ContractError):
-            validate_payload("node2_request", empty)
+        validate_payload("node2_request", empty)
 
     def test_missing_and_extra_fields_are_rejected(self):
         for definition, payload in VALID_PAYLOADS.items():

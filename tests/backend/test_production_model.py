@@ -3,6 +3,7 @@ import unittest
 from datetime import date
 from pathlib import Path
 from sys import path
+from types import SimpleNamespace
 from uuid import UUID
 
 
@@ -23,12 +24,29 @@ from app.services.context_builder import (
     ContextAsset,
     ContextBuildRequest,
     ContextMetric,
+    ContextMetricTerm,
     ContextPackageBuilder,
     ContextRequiredFilter,
 )
 from app.services.pipeline_support import PipelineSupport
 from tests.support.fakes import ContractFakeModelAdapter as FakeModelAdapter
-from src.modelops.runtime import ProductionModelClient
+from src.modelops.runtime import ModelCircuitOpenError, ProductionModelClient
+
+
+def _package_with_local_test_term(metric_id: str) -> SimpleNamespace:
+    item = I2DataPlatformAdapter(
+        "http://trino:8080", "test", require_live_metadata=False
+    ).get_metric_terms((metric_id,))[metric_id]
+    term = ContextMetricTerm(
+        id=str(item["id"]),
+        urn=str(item["urn"]),
+        label=str(item["label"]),
+        aliases=tuple(map(str, item["aliases"])),
+        definition=str(item["definition"]),
+        unit=str(item["unit"]),
+        version=str(item["version"]),
+    )
+    return SimpleNamespace(metric_terms=(term,), metrics=())
 
 
 class ProductionModelTest(unittest.TestCase):
@@ -186,6 +204,20 @@ class ProductionModelTest(unittest.TestCase):
             _qwen_payload("model", "node2", node2_payload)["messages"][0]["content"],
         )
 
+    def test_openai_and_qwen_use_byte_equivalent_canonical_messages(self) -> None:
+        payloads = {
+            "node1": {"question": "지난달 객실 매출", "business_terms": []},
+            "node2": self._node2_payload(),
+            "node2_repair": {"trace_id": "trace-1", "attempt": 1},
+            "node3": {"locale": "ko-KR", "facts": []},
+        }
+        for node, payload in payloads.items():
+            with self.subTest(node=node):
+                self.assertEqual(
+                    _openai_payload("model", node, payload)["messages"],
+                    _qwen_payload("model", node, payload)["messages"],
+                )
+
     def test_transport_uses_fixed_serving_contract(self) -> None:
         captured = {}
         original = contract_model.request_json
@@ -306,7 +338,7 @@ class ProductionModelTest(unittest.TestCase):
             adapter._generate("node2", self._node2_payload())
         self.assertFalse(client.last_trace["fallback"])
 
-        with self.assertRaisesRegex(TimeoutError, "CIRCUIT_OPEN"):
+        with self.assertRaisesRegex(ModelCircuitOpenError, "CIRCUIT_OPEN"):
             adapter._generate("node2", self._node2_payload())
         self.assertEqual("CIRCUIT_OPEN", client.last_trace["status"])
 
@@ -699,10 +731,12 @@ class ProductionModelTest(unittest.TestCase):
                     }
                 ],
                 "context": RequestContext(as_of=date(2026, 8, 4)),
+                "package": _package_with_local_test_term("expired_points"),
             },
         )
 
         self.assertEqual("expired_points", captured["metric"])
+        self.assertEqual("point", captured["unit"])
         self.assertEqual(
             {
                 "selected_metric_id": "expired_points",
@@ -737,6 +771,7 @@ class ProductionModelTest(unittest.TestCase):
             },
             "assets": assets,
             "context": RequestContext(as_of=date(2026, 8, 4)),
+            "package": _package_with_local_test_term("total_guest_revenue_krw"),
         }
         ContractModelAdapter(Model()).generate(
             "node3",

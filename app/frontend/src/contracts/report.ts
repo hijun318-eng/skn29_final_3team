@@ -2,7 +2,38 @@ export const REPORT_CONTRACT_VERSION = "REPORT-v1.0.0";
 export const REPORT_REQUEST_CONTEXT_VERSION = "OPENAPI-v1.0.0";
 export const REPORT_RUN_STATUSES = ["queued", "running", "success", "partial", "failed", "cancelled"] as const;
 export type ReportRunStatus = typeof REPORT_RUN_STATUSES[number];
-export const REPORT_BLOCK_TYPES = ["table", "chart", "text"] as const;
+export const REPORT_BLOCK_FAILURE_CODES = [
+  "AUTHENTICATION_REQUIRED", "ACCESS_DENIED", "CONTEXT_INCOMPLETE",
+  "CONTEXT_SOURCE_FAILED", "DATA_ASSET_NOT_FOUND",
+  "MODEL_CONTRACT_INVALID", "MODEL_TIMEOUT", "MODEL_ENDPOINT_UNAVAILABLE",
+  "MODEL_OUTPUT_UNGROUNDED", "CIRCUIT_OPEN", "INSUFFICIENT_CONTEXT",
+  "UNREPAIRABLE", "SQL_POLICY_BLOCKED",
+  "SQL_REPAIR_FAILED", "TRINO_CONNECTION_FAILED", "QUERY_TIMEOUT",
+  "QUERY_SOURCE_FAILED", "RESULT_VALIDATION_FAILED",
+  "RESULT_EVIDENCE_MISSING", "ARTIFACT_PERSIST_FAILED", "PARTIAL_FAILURE",
+  "INSUFFICIENT_EVIDENCE", "RATE_LIMITED", "REQUEST_CANCELLED",
+  "CONTRACT_VERSION_MISMATCH", "SCHEMA_VERSION_MISMATCH",
+  "RESOURCE_NOT_FOUND", "RESOURCE_CONFLICT", "DEPENDENCY_UNAVAILABLE",
+  "DEFINITION_NOT_FOUND", "REPLAY_UNAVAILABLE", "INTERNAL_ERROR",
+] as const;
+export type ReportBlockFailureCode = typeof REPORT_BLOCK_FAILURE_CODES[number];
+
+export function seoulWallClockToIso(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!match) throw new Error("서울 실행 시각은 YYYY-MM-DDTHH:mm 형식이어야 합니다.");
+  const [, yearText, monthText, dayText, hourText, minuteText] = match;
+  const [year, month, day, hour, minute] = [yearText, monthText, dayText, hourText, minuteText].map(Number);
+  const wallClock = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  if (
+    wallClock.getUTCFullYear() !== year
+    || wallClock.getUTCMonth() !== month - 1
+    || wallClock.getUTCDate() !== day
+    || wallClock.getUTCHours() !== hour
+    || wallClock.getUTCMinutes() !== minute
+  ) throw new Error("유효한 서울 실행 시각을 입력해 주세요.");
+  return new Date(wallClock.getTime() - 9 * 60 * 60 * 1000).toISOString();
+}
+export const REPORT_BLOCK_TYPES = ["table", "chart", "text", "artifact"] as const;
 export type ReportBlockType = typeof REPORT_BLOCK_TYPES[number];
 
 export interface ReportBlock {
@@ -79,6 +110,67 @@ function normalizedDraftBlock(block: ReportBlock): DraftLayoutBlock {
   };
 }
 
+function minimumDraftHeight(block: ReportBlock): number {
+  return block.type === "artifact" ? 12 : block.type === "chart" ? 7 : block.type === "table" ? 5 : 4;
+}
+
+export function isDraftLayoutValid(blocks: readonly ReportBlock[]): boolean {
+  const positioned = blocks.map((block) => ({
+    ...block,
+    x: block.x,
+    y: block.y,
+    w: block.w,
+    h: block.h,
+  }));
+  if (positioned.some((block) => (
+    typeof block.x !== "number"
+    || typeof block.y !== "number"
+    || typeof block.w !== "number"
+    || typeof block.h !== "number"
+    || !Number.isInteger(block.x)
+    || !Number.isInteger(block.y)
+    || !Number.isInteger(block.w)
+    || !Number.isInteger(block.h)
+    || Number(block.x) < 0
+    || Number(block.y) < 0
+    || Number(block.w) < 1
+    || Number(block.h) < 1
+    || Number(block.x) + Number(block.w) > 12
+  ))) return false;
+  for (let left = 0; left < positioned.length; left += 1) {
+    for (let right = left + 1; right < positioned.length; right += 1) {
+      const a = positioned[left];
+      const b = positioned[right];
+      const [ax, ay, aw, ah] = [Number(a.x), Number(a.y), Number(a.w), Number(a.h)];
+      const [bx, by, bw, bh] = [Number(b.x), Number(b.y), Number(b.w), Number(b.h)];
+      if (ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Keeps a valid server layout byte-for-byte equivalent on open. Invalid or
+ * legacy unpositioned rows are repaired explicitly instead of silently
+ * compacting every saved report during read.
+ */
+export function restoreDraftLayout(blocks: readonly ReportBlock[]): readonly DraftLayoutBlock[] {
+  if (isDraftLayoutValid(blocks)) {
+    return blocks.map((block) => ({
+      ...block,
+      columns: block.w as number,
+      x: block.x as number,
+      y: block.y as number,
+      w: block.w as number,
+      h: block.h as number,
+    }));
+  }
+  return compactDraftLayout(blocks.map((block) => ({
+    ...block,
+    h: Math.max(block.h ?? 1, minimumDraftHeight(block)),
+  })));
+}
+
 /**
  * Packs the dashboard from top to bottom without arbitrary vertical holes.
  * Blocks keep their visual order and preferred width. An unfinished row gives
@@ -148,10 +240,20 @@ export function placeDraftBlock(
     y: rawY,
   };
   let adjusted = normalized;
+  const sourceRowMates = normalized
+    .filter((block) => block.id !== blockId && block.y === source.y)
+    .sort((left, right) => left.x - right.x);
+  const remainingSourceRowWidth = sourceRowMates.reduce((total, block) => total + block.w, 0);
+  if (sourceRowMates.length && remainingSourceRowWidth < 12) {
+    const filler = sourceRowMates.at(-1)!;
+    adjusted = normalized.map((block) => block.id === filler.id
+      ? { ...block, columns: block.w + (12 - remainingSourceRowWidth), w: block.w + (12 - remainingSourceRowWidth) }
+      : block);
+  }
   if (target) {
     const sourceOnLeft = rawX < 6;
     candidate = { ...candidate, columns: 6, w: 6, x: sourceOnLeft ? 0 : 6, y: target.y };
-    adjusted = normalized.map((block) => block.id === target.id
+    adjusted = adjusted.map((block) => block.id === target.id
       ? { ...block, columns: 6, w: 6, x: sourceOnLeft ? 6 : 0 }
       : block);
   }
@@ -162,13 +264,53 @@ export function serializeDraftLayout(blocks: readonly ReportBlock[]): string {
   return JSON.stringify(normalizeDraftLayout(blocks));
 }
 
+export const REPORT_ORIENTATIONS = ["portrait", "landscape"] as const;
+export type ReportOrientation = typeof REPORT_ORIENTATIONS[number];
+export const REPORT_CURRENCY_DISPLAY_UNITS = [
+  "auto", "one", "thousand", "million", "hundredMillion", "billion",
+] as const;
+export type ReportCurrencyDisplayUnit = typeof REPORT_CURRENCY_DISPLAY_UNITS[number];
+
+export function assertReportOrientation(value: unknown): asserts value is ReportOrientation {
+  if (typeof value !== "string" || !(REPORT_ORIENTATIONS as readonly string[]).includes(value)) {
+    throw new Error(`지원하지 않는 Report 용지 방향입니다: ${String(value)}`);
+  }
+}
+
+export function assertReportCurrencyDisplayUnit(value: unknown): asserts value is ReportCurrencyDisplayUnit {
+  if (typeof value !== "string" || !(REPORT_CURRENCY_DISPLAY_UNITS as readonly string[]).includes(value)) {
+    throw new Error(`지원하지 않는 Report 금액 표시 단위입니다: ${String(value)}`);
+  }
+}
+
 export interface ReportDefinitionVersion {
   readonly definitionId: string;
   readonly version: number;
   readonly status: "draft" | "approved";
   readonly title: string;
   readonly blocks: readonly ReportBlock[];
+  readonly orientation: ReportOrientation;
+  readonly currencyDisplayUnit: ReportCurrencyDisplayUnit;
   readonly approvedAt?: string;
+}
+
+export interface ReportArtifactVersion {
+  readonly artifactId: string;
+  readonly artifactChecksum: string;
+  readonly queryId: string;
+}
+
+export interface ReportDocument {
+  readonly definitionId: string;
+  readonly definitionVersion: number;
+  readonly orientation: ReportOrientation;
+  readonly currencyDisplayUnit: ReportCurrencyDisplayUnit;
+  readonly rendererVersion: string;
+  readonly sourceChecksum: string;
+  readonly htmlChecksum: string;
+  readonly pdfChecksum: string;
+  readonly artifactVersions: readonly ReportArtifactVersion[];
+  readonly confirmedAt: string;
 }
 
 export interface ReportBlockRun {
@@ -177,6 +319,9 @@ export interface ReportBlockRun {
   readonly queryId?: string;
   readonly snapshotChecksum?: string;
   readonly status: "success" | "partial" | "failed" | "cancelled";
+  readonly requestId?: string;
+  readonly failureCode?: ReportBlockFailureCode;
+  readonly failureMessage?: string;
 }
 
 export interface ReportRun {
@@ -203,7 +348,26 @@ export interface ReportDefinitionResponse {
   readonly status: "draft" | "approved";
   readonly title: string;
   readonly blocks: readonly ReportBlockResponse[];
+  readonly orientation: ReportOrientation;
+  readonly currency_display_unit: ReportCurrencyDisplayUnit;
   readonly approved_at: string | null;
+}
+
+export interface ReportDocumentResponse {
+  readonly definition_id: string;
+  readonly definition_version: number;
+  readonly orientation: ReportOrientation;
+  readonly currency_display_unit: ReportCurrencyDisplayUnit;
+  readonly renderer_version: string;
+  readonly source_checksum: string;
+  readonly html_checksum: string;
+  readonly pdf_checksum: string;
+  readonly artifact_versions: readonly {
+    readonly artifact_id: string;
+    readonly artifact_checksum: string;
+    readonly query_id: string;
+  }[];
+  readonly confirmed_at: string;
 }
 
 export interface ReportBlockResponse {
@@ -244,6 +408,9 @@ export interface ReportBlockRunResponse {
   readonly query_id: string | null;
   readonly snapshot_checksum: string | null;
   readonly status: "success" | "partial" | "failed" | "cancelled";
+  readonly request_id: string | null;
+  readonly failure_code: ReportBlockFailureCode | null;
+  readonly failure_message: string | null;
 }
 
 export interface ManualRunCommandResponse {
@@ -253,7 +420,7 @@ export interface ManualRunCommandResponse {
   readonly version: number;
   readonly as_of: string;
   readonly idempotency_key: string;
-  readonly status: "queued" | "success" | "partial" | "failed";
+  readonly status: ReportRunStatus;
   readonly run_id?: string | null;
 }
 
@@ -330,13 +497,38 @@ function normalizeBlock(block: ReportBlockResponse): DraftLayoutBlock {
 export function normalizeReportDefinition(response: ReportDefinitionResponse): ReportDefinitionVersion {
   assertReportContractVersion(response.contract_version);
   if (!["draft", "approved"].includes(response.status)) throw new Error(`지원하지 않는 Report 상태입니다: ${response.status}`);
+  assertReportOrientation(response.orientation);
+  assertReportCurrencyDisplayUnit(response.currency_display_unit);
   return {
     definitionId: response.definition_id,
     version: response.version,
     status: response.status,
     title: response.title,
     blocks: response.blocks.map(normalizeBlock),
+    orientation: response.orientation,
+    currencyDisplayUnit: response.currency_display_unit,
     approvedAt: response.approved_at ?? undefined,
+  };
+}
+
+export function normalizeReportDocument(response: ReportDocumentResponse): ReportDocument {
+  assertReportOrientation(response.orientation);
+  assertReportCurrencyDisplayUnit(response.currency_display_unit);
+  return {
+    definitionId: response.definition_id,
+    definitionVersion: response.definition_version,
+    orientation: response.orientation,
+    currencyDisplayUnit: response.currency_display_unit,
+    rendererVersion: response.renderer_version,
+    sourceChecksum: response.source_checksum,
+    htmlChecksum: response.html_checksum,
+    pdfChecksum: response.pdf_checksum,
+    artifactVersions: response.artifact_versions.map((artifact) => ({
+      artifactId: artifact.artifact_id,
+      artifactChecksum: artifact.artifact_checksum,
+      queryId: artifact.query_id,
+    })),
+    confirmedAt: response.confirmed_at,
   };
 }
 
@@ -358,6 +550,9 @@ export function normalizeReportRun(response: ReportRunResponse): ReportRun {
       queryId: block.query_id ?? undefined,
       snapshotChecksum: block.snapshot_checksum ?? undefined,
       status: block.status,
+      requestId: block.request_id ?? undefined,
+      failureCode: block.failure_code ?? undefined,
+      failureMessage: block.failure_message ?? undefined,
     })),
   });
 }
@@ -365,9 +560,10 @@ export function normalizeReportRun(response: ReportRunResponse): ReportRun {
 export function toReportBlockRequest(block: ReportBlock): ReportBlockRequest {
   const type = block.type ?? "text";
   if (!REPORT_BLOCK_TYPES.includes(type)) throw new Error(`API mode에서 지원하지 않는 block type입니다: ${type}`);
-  if ((type === "table" || type === "chart") && !block.artifactId) {
-    throw new Error("table·chart block은 Artifact가 필요합니다.");
+  if (["table", "chart", "artifact"].includes(type) && !block.artifactId) {
+    throw new Error("table·chart·artifact block은 Artifact가 필요합니다.");
   }
+  if (type === "artifact" && !block.queryId) throw new Error("artifact block은 Query 참조가 필요합니다.");
   const content = block.content ?? "";
   if (type === "text" && !content.trim()) throw new Error("text block 내용은 비어 있을 수 없습니다.");
   const w = block.w ?? block.columns;
@@ -394,6 +590,8 @@ export function createDraft(approved: ReportDefinitionVersion): ReportDefinition
     status: "draft",
     title: approved.title,
     blocks: approved.blocks.map((block) => ({ ...block })),
+    orientation: approved.orientation,
+    currencyDisplayUnit: approved.currencyDisplayUnit,
   };
 }
 

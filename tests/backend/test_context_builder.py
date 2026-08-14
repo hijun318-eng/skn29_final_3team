@@ -13,6 +13,7 @@ from app.services.context_builder import (
     ContextBuildErrorCode,
     ContextBuildRequest,
     ContextMetric,
+    ContextMetricFormula,
     ContextPackageBuilder,
     ContextParameterBinding,
     ContextRequiredFilter,
@@ -140,6 +141,88 @@ class ContextPackageBuilderTest(unittest.TestCase):
         with self.assertRaisesRegex(ContextBuildError, "중복"):
             self.builder.build(
                 self.request(assets=(duplicated,)), frozenset({duplicated.urn})
+            )
+
+    def test_metric_without_required_filter_is_valid_for_curated_serving_view(self) -> None:
+        metric = ContextMetric(
+            "recognized_room_revenue",
+            "serving.analytics.v4_hotel_daily_metrics",
+            "recognized_room_revenue",
+            "sum",
+            "business_date",
+            (),
+        )
+        asset = ContextAsset(
+            urn="urn:li:dataset:v4-hotel-daily",
+            fqn=metric.asset_fqn,
+            columns=(metric.field, metric.time_field),
+            metrics=(metric,),
+            metric_registry_required=True,
+        )
+
+        package = self.builder.build(
+            self.request(assets=(asset,)), frozenset({asset.urn})
+        )
+
+        self.assertEqual((metric,), package.metrics)
+        self.assertEqual((), package.metrics[0].required_filters)
+
+    def test_metric_result_formula_unit_and_reduction_are_typed_and_hashed(self) -> None:
+        metric = ContextMetric(
+            "occupancy_rate",
+            "serving.analytics.hotel_daily_metrics",
+            "occupancy_rate",
+            "formula",
+            "business_date",
+            (),
+            result_field="occupancy_rate",
+            unit="ratio",
+            formula=ContextMetricFormula(
+                "divide", ("rooms_sold", "available_room_nights")
+            ),
+            reduction="weighted_ratio",
+        )
+        asset = ContextAsset(
+            urn="urn:li:dataset:hotel-daily",
+            fqn=metric.asset_fqn,
+            columns=(metric.field, metric.time_field),
+            metrics=(metric,),
+            metric_registry_required=True,
+        )
+
+        package = self.builder.build(
+            self.request(assets=(asset,)), frozenset({asset.urn})
+        )
+        changed = self.builder.build(
+            self.request(
+                assets=(
+                    replace(
+                        asset,
+                        metrics=(replace(metric, reduction="recompute"),),
+                    ),
+                )
+            ),
+            frozenset({asset.urn}),
+        )
+
+        self.assertEqual("occupancy_rate", package.metrics[0].result_field)
+        self.assertEqual("ratio", package.metrics[0].unit)
+        self.assertNotEqual(package.package_hash, changed.package_hash)
+
+    def test_metric_formula_and_result_contract_fail_closed(self) -> None:
+        with self.assertRaises(ContextBuildError):
+            ContextMetricFormula("divide", ("only_one",))
+        with self.assertRaises(ContextBuildError):
+            ContextMetricFormula("divide", ("rooms_sold", "SUM(secret_column)"))
+        with self.assertRaises(ContextBuildError):
+            ContextMetric(
+                "metric",
+                self.pms.fqn,
+                "reservation_id",
+                "sum",
+                "check_in_date",
+                (),
+                result_field="bad.field",
             )
 
     def test_package_is_immutable(self) -> None:

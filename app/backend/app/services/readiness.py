@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -14,12 +15,47 @@ class AppDatabaseReadiness:
     """실제 쿼리로 migration·Template·Trino 사용 가능 상태를 확인한다."""
 
     def check(self) -> dict[str, str]:
-        probe = self._database_probe()
-        probe["trino"] = self._trino_probe()
-        probe["datahub"] = self._datahub_probe()
-        probe["model"] = self._model_probe()
+        with ThreadPoolExecutor(max_workers=4, thread_name_prefix="readiness") as pool:
+            database = pool.submit(self._database_probe)
+            trino = pool.submit(self._trino_probe)
+            datahub = pool.submit(self._datahub_probe)
+            model = pool.submit(self._model_probe)
+        probe = database.result()
+        probe["trino"] = trino.result()
+        probe["datahub"] = datahub.result()
+        probe["model"] = model.result()
+        probe["auth_session_store"] = self._auth_probe()
         probe["report_scheduler"] = self._report_scheduler_probe()
         return probe
+
+    @staticmethod
+    def _auth_probe() -> str:
+        mode = os.getenv("AUTH_MODE", "release").strip().lower()
+        if mode == "test":
+            return "not_required"
+        if mode != "release":
+            return "not_ready"
+        principal_file = os.getenv("AUTH_PRINCIPALS_FILE", "").strip()
+        secret = os.getenv("AUTH_SESSION_SECRET", "").strip()
+        if (
+            not os.getenv("APP_RUNTIME_DATABASE_URL", "").strip()
+            or len(secret) < 32
+            or not principal_file
+        ):
+            return "not_ready"
+        path = Path(principal_file)
+        try:
+            return "ready" if path.is_file() and 0 < path.stat().st_size <= 1_048_576 else "not_ready"
+        except OSError:
+            return "not_ready"
+
+    @staticmethod
+    def _probe_timeout() -> float:
+        try:
+            configured = float(os.getenv("READINESS_PROBE_TIMEOUT_SECONDS", "1"))
+        except ValueError:
+            return 1.0
+        return min(2.0, max(0.1, configured))
 
     @staticmethod
     def _report_scheduler_probe() -> str:
@@ -46,7 +82,7 @@ class AppDatabaseReadiness:
                     text(
                         "SELECT count(*) FROM context.analysis_templates "
                         "WHERE template_id = 'weekly-room-operations' "
-                        "AND version = 'I2-v1.0.0' "
+                        "AND version = 'I2-v1.1.0' "
                         "AND status = 'APPROVED' "
                         "AND sql_text IS NOT NULL "
                         "AND source_fqns_json IS NOT NULL"
@@ -81,7 +117,7 @@ class AppDatabaseReadiness:
     def _trino_probe() -> str:
         url = f"{os.getenv('TRINO_URL', 'http://trino:8080').rstrip('/')}/v1/info"
         try:
-            with urlopen(url, timeout=2) as response:
+            with urlopen(url, timeout=AppDatabaseReadiness._probe_timeout()) as response:
                 return "ready" if response.status == 200 else "not_ready"
         except (OSError, URLError):
             return "not_ready"
@@ -90,7 +126,7 @@ class AppDatabaseReadiness:
     def _datahub_probe() -> str:
         url = f"{os.getenv('DATAHUB_GMS_URL', 'http://datahub-gms:8080').rstrip('/')}/config"
         try:
-            with urlopen(url, timeout=2) as response:
+            with urlopen(url, timeout=AppDatabaseReadiness._probe_timeout()) as response:
                 return "ready" if response.status == 200 else "not_ready"
         except (OSError, URLError):
             return "not_ready"
@@ -109,9 +145,12 @@ class AppDatabaseReadiness:
                 "User-Agent": "answervice-readiness/1.0",
             },
         )
-        for _ in range(3):
+        for _ in range(2):
             try:
-                with urlopen(request, timeout=5) as response:
+                with urlopen(
+                    request,
+                    timeout=AppDatabaseReadiness._probe_timeout(),
+                ) as response:
                     if response.status == 200:
                         return "ready"
             except (OSError, URLError):

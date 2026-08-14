@@ -243,7 +243,7 @@
       ],
       "sha256": "e6c2d1ee3ef2246180c9d6985a10e78c44829443acbeaeef9a1ec37c6f1e08fd",
       "sql_file": "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql",
-      "sql_sha256": "4caf6c87ca2ff04e77a46fd3cd963be8b249e70c0886a542b87a4126838672e2"
+      "sql_sha256": "b9e9e562f1f4e8ef48671cd4887f28df2e4240fdafa85a80cfaa296ed1a02780"
     },
     {
       "id": "gold_total_guest_revenue_mom",

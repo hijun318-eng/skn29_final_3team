@@ -13,7 +13,6 @@ export interface AnalysisClient {
   logout(): Promise<void>;
   analyze(
     question: string,
-    conversationId: string,
     parameters?: Record<string, AnalysisValue>,
     options?: AnalysisOptions,
   ): Promise<AnalysisRun>;
@@ -21,7 +20,7 @@ export interface AnalysisClient {
   createDefinition(title: string, sourceRequestId: string): Promise<SavedAnalysisDefinition>;
   listDefinitions(): Promise<SavedAnalysisDefinition[]>;
   replayDefinition(definitionId: string, parameters: Record<string, AnalysisValue>): Promise<SavedAnalysisRun>;
-  getRunArtifact(requestId: string, conversationId: string): Promise<AnalysisRun>;
+  getRunArtifact(requestId: string): Promise<AnalysisRun>;
   listRuns(): Promise<SavedAnalysisRun[]>;
 }
 
@@ -83,29 +82,13 @@ interface SavedAnalysisArtifact {
   status: "SUCCEEDED" | "PARTIAL";
   question: string;
   summary: string;
+  metrics: NonNullable<NonNullable<AnalysisApiResponse["data"]["result"]>["metrics"]>;
   table: { columns: string[]; rows: Array<Record<string, AnalysisValue>> };
   chart: { chart_type: string; x_field: string; y_fields: string[] } | null;
   evidence: NonNullable<NonNullable<AnalysisApiResponse["data"]["result"]>["evidence"]>;
   artifact_id: string;
   query_id: string;
   artifact_checksum: string;
-}
-
-function restoredMetrics(detail: SavedAnalysisArtifact) {
-  return (detail.evidence.metrics ?? []).flatMap((metric) => {
-    const values = detail.table.rows
-      .map((row) => Number(row[metric.metric_id]))
-      .filter(Number.isFinite);
-    if (!values.length) return [];
-    return [{
-      metric_id: metric.metric_id,
-      result_field: metric.result_field,
-      label: metric.label,
-      definition: metric.definition,
-      value: values.reduce((total, value) => total + value, 0),
-      unit: metric.unit ?? null,
-    }];
-  });
 }
 
 type Fetch = typeof fetch;
@@ -115,12 +98,26 @@ export class AnalysisApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly retryable: boolean;
+  readonly requiredAction: string;
+  readonly suggestions: string[];
+  readonly missingRequirements: string[];
+  readonly traceId: string;
 
-  constructor(status: number, code: string, message: string, retryable = false) {
+  constructor(status: number, code: string, message: string, options: {
+    retryable?: boolean;
+    requiredAction?: string;
+    suggestions?: string[];
+    missingRequirements?: string[];
+    traceId?: string;
+  } = {}) {
     super(message);
     this.status = status;
     this.code = code;
-    this.retryable = retryable;
+    this.retryable = options.retryable ?? false;
+    this.requiredAction = options.requiredAction ?? "NONE";
+    this.suggestions = options.suggestions ?? [];
+    this.missingRequirements = options.missingRequirements ?? [];
+    this.traceId = options.traceId ?? "";
   }
 }
 
@@ -158,8 +155,14 @@ export function createHttpAnalysisClient(
       const error = new AnalysisApiError(
         response.status,
         payload?.error?.code || `HTTP_${response.status}`,
-        payload?.error?.message || payload?.detail || "분석 API 요청에 실패했습니다.",
-        Boolean(payload?.error?.retryable) || response.status === 429 || response.status >= 500,
+        payload?.error?.message || "분석 API 요청에 실패했습니다.",
+        {
+          retryable: Boolean(payload?.error?.retryable),
+          requiredAction: payload?.error?.required_action,
+          suggestions: payload?.error?.suggestions,
+          missingRequirements: payload?.error?.missing_requirements,
+          traceId: payload?.error?.trace_id,
+        },
       );
       if (response.status === 401 && typeof window !== "undefined") window.dispatchEvent(new CustomEvent("answervice:session-expired"));
       throw error;
@@ -195,7 +198,7 @@ export function createHttpAnalysisClient(
       });
       if (!response.ok) await parse(response);
     },
-    async analyze(question, conversationId, parameters = {}, options = {}) {
+    async analyze(question, parameters = {}, options = {}) {
       const traceId = options.traceId || createUuid();
       const responsePromise = request(endpoint("/analysis"), {
         method: "POST",
@@ -219,7 +222,7 @@ export function createHttpAnalysisClient(
       try {
         const payload = await parse<AnalysisApiResponse>(await responsePromise);
         if (!payload?.data || !payload.meta) throw new Error("Analysis API returned an invalid response");
-        return normalizeApiResponse(payload, question, conversationId);
+        return normalizeApiResponse(payload, question);
       } finally {
         if (poll !== undefined) window.clearInterval(poll);
       }
@@ -249,7 +252,7 @@ export function createHttpAnalysisClient(
         body: JSON.stringify({ as_of: env.VITE_ANALYSIS_AS_OF || seoulToday(), idempotency_key: createUuid(), parameters }),
       }));
     },
-    async getRunArtifact(requestId, conversationId) {
+    async getRunArtifact(requestId) {
       const detail = await parse<SavedAnalysisArtifact>(await request(
         endpoint(`/analysis/runs/${encodeURIComponent(requestId)}/artifact`),
         { credentials: "include", headers: headers() },
@@ -263,7 +266,7 @@ export function createHttpAnalysisClient(
           },
           result: {
             summary: detail.summary,
-            metrics: restoredMetrics(detail),
+            metrics: detail.metrics ?? [],
             table: detail.table,
             chart: detail.chart,
             evidence: detail.evidence,
@@ -276,7 +279,7 @@ export function createHttpAnalysisClient(
           contract_version: OPENAPI_VERSION,
           timestamp: new Date().toISOString(),
         },
-      }, detail.question, conversationId);
+      }, detail.question);
     },
     async listRuns() {
       return (await parse<{ items: SavedAnalysisRun[] }>(

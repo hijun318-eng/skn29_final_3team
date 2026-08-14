@@ -1,0 +1,38 @@
+{
+  "contract_version": "REPORT-v1.0.0",
+  "artifact_id": "artifact-channel-mix",
+  "query_id": "query-channel-mix",
+  "summary": "온라인 채널이 전체 객실 매출의 가장 큰 비중을 차지합니다.",
+  "table": {
+    "columns": ["channel", "revenue", "share"],
+    "rows": [
+      {"channel": "온라인", "revenue": 510000000, "share": 47.2},
+      {"channel": "오프라인", "revenue": 320000000, "share": 29.6},
+      {"channel": "B2B", "revenue": 170000000, "share": 15.7},
+      {"channel": "제휴", "revenue": 80000000, "share": 7.5}
+    ]
+  },
+  "chart": {
+    "type": "bar",
+    "x_field": "channel",
+    "y_fields": ["revenue"]
+  },
+  "evidence": {
+    "artifact_id": "artifact-channel-mix",
+    "query_id": "query-channel-mix",
+    "as_of": "2026-07-01",
+    "timezone": "Asia/Seoul",
+    "period": {"start": "2026-04-01", "end_exclusive": "2026-07-01"},
+    "filters": {"property": "전체 호텔"},
+    "metric_values": [
+      {"metric_id": "revenue", "result_field": "revenue", "label": "채널 매출", "definition": "분석 서비스가 확정한 채널 매출", "value": 1080000000, "unit": "원"},
+      {"metric_id": "share", "result_field": "share", "label": "매출 비중", "definition": "분석 서비스가 확정한 대표 채널 비중", "value": 47.2, "unit": "%"}
+    ],
+    "metrics": [
+      {"metric_id": "revenue", "result_field": "revenue", "label": "채널 매출", "definition": "예약 채널별 객실 매출", "unit": "원"},
+      {"metric_id": "share", "result_field": "share", "label": "매출 비중", "definition": "전체 객실 매출 대비 비중", "unit": "%"}
+    ],
+    "sources": [{"name": "예약 채널", "urn": "urn:answervice:crm:booking-channel", "fqn": "gold.booking_channel_sales", "schema_version": "4", "seed_version": "2026Q2", "synthetic": true}],
+    "gates": {"g1": "PASSED", "g2": "PASSED", "g3": "PASSED"}
+  }
+}

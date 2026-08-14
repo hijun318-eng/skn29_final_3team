@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import re
 from typing import Annotated
 from uuid import UUID
 
@@ -17,6 +18,11 @@ bearer_auth = HTTPBearer(
     description="서버가 AUTH_PRINCIPALS_FILE의 SHA-256 digest로 검증하는 Bearer token",
 )
 SESSION_COOKIE = "answervice_session"
+_TRACE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
+
+
+def valid_trace_id(value: str | None) -> bool:
+    return bool(value and _TRACE_ID.fullmatch(value))
 
 
 def _request_token(request: Request, credentials: HTTPAuthorizationCredentials | None) -> str | None:
@@ -39,11 +45,17 @@ def session_context(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_auth)],
 ) -> RequestContext:
+    if getattr(request.state, "trace_id_invalid", False):
+        raise ContextValidationError(
+            ErrorCode.CONTEXT_INCOMPLETE,
+            "X-Trace-Id 형식이 올바르지 않습니다.",
+            422,
+        )
     token = _request_token(request, credentials)
     try:
         principal = authenticate_token(token)
     except AuthenticationError as exc:
-        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
+        code = ErrorCode.DEPENDENCY_UNAVAILABLE if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
         raise ContextValidationError(code, exc.message, exc.status_code) from exc
     context = RequestContext(
         request_id=request.state.request_id,
@@ -78,7 +90,7 @@ def analysis_context(
     try:
         principal = authenticate_token(_request_token(request, credentials))
     except AuthenticationError as exc:
-        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
+        code = ErrorCode.DEPENDENCY_UNAVAILABLE if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
         raise ContextValidationError(code, exc.message, exc.status_code) from exc
     try:
         parsed_as_of = date.fromisoformat(as_of)
@@ -98,7 +110,7 @@ def analysis_context(
             raise ContextValidationError(ErrorCode.ACCESS_DENIED, "인증 역할이 일치하지 않습니다.", 403) from exc
     if contract_version != CONTRACT_VERSION:
         raise ContextValidationError(ErrorCode.CONTRACT_VERSION_MISMATCH, "지원하지 않는 API 계약 버전입니다.", 409)
-    if timezone != "Asia/Seoul" or not trace_id.strip():
+    if timezone != "Asia/Seoul" or not valid_trace_id(trace_id):
         raise ContextValidationError(ErrorCode.CONTEXT_INCOMPLETE, "필수 Context 값이 올바르지 않습니다.", 422)
     context = RequestContext(request_id=request.state.request_id, trace_id=trace_id, user_id=principal.subject, role=principal.role, as_of=parsed_as_of, timezone=timezone, contract_version=contract_version)
     request.state.context = context

@@ -30,6 +30,11 @@ export type AnalysisErrorCode =
   | "ACCESS_DENIED"
   | "MODEL_CONTRACT_INVALID"
   | "MODEL_TIMEOUT"
+  | "MODEL_ENDPOINT_UNAVAILABLE"
+  | "MODEL_OUTPUT_UNGROUNDED"
+  | "CIRCUIT_OPEN"
+  | "INSUFFICIENT_CONTEXT"
+  | "UNREPAIRABLE"
   | "SQL_POLICY_BLOCKED"
   | "SQL_REPAIR_FAILED"
   | "TRINO_CONNECTION_FAILED"
@@ -45,7 +50,19 @@ export type AnalysisErrorCode =
   | "REQUEST_CANCELLED"
   | "CONTRACT_VERSION_MISMATCH"
   | "SCHEMA_VERSION_MISMATCH"
+  | "RESOURCE_NOT_FOUND"
+  | "RESOURCE_CONFLICT"
+  | "DEPENDENCY_UNAVAILABLE"
   | "INTERNAL_ERROR";
+
+export type RequiredAction =
+  | "NONE"
+  | "RETRY"
+  | "AUTHENTICATE"
+  | "REQUEST_ACCESS"
+  | "PROVIDE_CONTEXT"
+  | "MODIFY_REQUEST"
+  | "CONTACT_SUPPORT";
 
 export type BackendAnalysisStatus =
   | "RECEIVED"
@@ -177,6 +194,14 @@ export interface AnalysisApiResponse {
           definition: string;
           unit?: string | null;
         }>;
+        metric_values?: Array<{
+          metric_id: string;
+          result_field: string;
+          label: string;
+          definition: string;
+          value: AnalysisValue;
+          unit?: string | null;
+        }>;
         models?: Array<{
           node: string;
           model_version: string;
@@ -201,6 +226,7 @@ export interface AnalysisApiResponse {
           fqn: string;
           schema_version: string;
           seed_version: string;
+          synthetic?: boolean | null;
         }>;
       };
     } | null;
@@ -216,8 +242,11 @@ export interface AnalysisApiResponse {
     code: AnalysisErrorCode;
     message: string;
     retryable: boolean;
+    required_action: RequiredAction;
+    missing_requirements?: string[];
     suggestions?: string[];
     clarification_type?: "metric" | "period" | null;
+    trace_id?: string;
   } | null;
 }
 
@@ -227,11 +256,11 @@ export interface AnalysisSource {
   fqn?: string;
   schemaVersion?: string;
   seedVersion?: string;
-  status: "success" | "failed";
+  synthetic?: boolean;
+  status: "success" | "failed" | "partial" | "delayed" | "unknown";
 }
 
 export interface AnalysisRun {
-  conversationId: string;
   requestId: string;
   traceId: string;
   status: AnalysisRunStatus;
@@ -250,8 +279,11 @@ export interface AnalysisRun {
     code: AnalysisErrorCode;
     message: string;
     retryable?: boolean;
+    required_action?: RequiredAction;
+    missing_requirements?: string[];
     suggestions?: string[];
     clarification_type?: "metric" | "period" | null;
+    trace_id?: string;
   };
   sources: AnalysisSource[];
   trace?: Array<{ stage: string; outcome: string; detail?: string | null }>;
@@ -268,6 +300,9 @@ export function resolveViewState(run: AnalysisRun): AnalysisViewState {
   if (run.status === "queued") return "LOADING";
   if (run.status === "running") return run.delayed ? "DELAYED" : "LOADING";
   if (run.status === "cancelled") return "CANCELLED";
+  if ((run.status === "success" || run.status === "partial") && run.evidenceReady === false) {
+    return "INSUFFICIENT_EVIDENCE";
+  }
   if (run.status === "partial") return "PARTIAL";
   if (
     run.status === "failed"
@@ -285,7 +320,6 @@ export function resolveViewState(run: AnalysisRun): AnalysisViewState {
     return "INSUFFICIENT_EVIDENCE";
   }
   if (run.status === "blocked") return "ERROR";
-  if (run.status === "success" && run.evidenceReady === false) return "INSUFFICIENT_EVIDENCE";
   if (run.status === "success" && run.rowCount === 0) return "EMPTY";
   if (run.status === "success") return "READY";
   return "EMPTY";
@@ -304,7 +338,6 @@ const BACKEND_STATUS_MAP: Record<BackendAnalysisStatus, AnalysisRunStatus> = {
 export function normalizeApiResponse(
   response: AnalysisApiResponse,
   question: string,
-  conversationId: string,
 ): AnalysisRun {
   const status = response.data.status
     ? BACKEND_STATUS_MAP[response.data.status]
@@ -321,22 +354,39 @@ export function normalizeApiResponse(
     && evidence?.period
     && sources.length
     && evidence?.gates
+    && evidence.gates.g1 === "PASSED"
+    && evidence.gates.g2 === "PASSED"
+    && evidence.gates.g3 === "PASSED"
+    && response.data.artifact?.artifact_id === evidence.artifact_id
+    && response.data.artifact?.query_id === evidence.query_id
   );
+  const exposeResult = Boolean(result && evidenceReady);
+  const error = result && !evidenceReady
+    ? {
+        code: "INSUFFICIENT_EVIDENCE" as const,
+        message: "검증 근거가 완전하지 않아 결과를 표시하지 않습니다.",
+        retryable: false,
+        required_action: "NONE" as const,
+        missing_requirements: ["artifact", "query", "period", "sources", "gates"],
+        suggestions: [],
+        clarification_type: null,
+        trace_id: response.meta.trace_id,
+      }
+    : response.error ?? undefined;
   return {
-    conversationId,
     requestId: response.meta.request_id,
     traceId: response.meta.trace_id,
     status,
     question,
-    summary: result?.summary,
+    summary: exposeResult ? result?.summary : undefined,
     rowCount: sampling?.returned_rows,
     evidenceReady: result ? evidenceReady : undefined,
-    artifact: response.data.artifact ? {
+    artifact: exposeResult && response.data.artifact ? {
       artifactId: response.data.artifact.artifact_id,
       queryId: response.data.artifact.query_id,
       contextHash: response.data.artifact.context_hash,
     } : undefined,
-    metrics: (result?.metrics ?? []).map((metric) => ({
+    metrics: (exposeResult ? result?.metrics ?? [] : []).map((metric) => ({
       metricId: metric.metric_id,
       resultField: metric.result_field,
       label: metric.label,
@@ -344,8 +394,8 @@ export function normalizeApiResponse(
       value: metric.value,
       unit: metric.unit ?? null,
     })),
-    table: result?.table,
-    chart: result?.chart ? {
+    table: exposeResult ? result?.table : undefined,
+    chart: exposeResult && result?.chart ? {
       chartType: result.chart.chart_type,
       xField: result.chart.x_field,
       yFields: result.chart.y_fields,
@@ -389,14 +439,15 @@ export function normalizeApiResponse(
         fields: evidence.masking?.fields ?? [],
       },
     } : undefined,
-    error: response.error ?? undefined,
+    error,
     sources: sources.map((source) => ({
       name: source.name,
       urn: source.urn,
       fqn: source.fqn,
       schemaVersion: source.schema_version,
       seedVersion: source.seed_version,
-      status: "success",
+      synthetic: typeof source.synthetic === "boolean" ? source.synthetic : undefined,
+      status: status === "partial" ? "unknown" : "success",
     })),
     trace: response.data.trace?.map(({ stage, outcome, detail }) => ({ stage, outcome, detail })) ?? [],
     meta: {

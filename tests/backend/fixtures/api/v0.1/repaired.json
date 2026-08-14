@@ -34,6 +34,7 @@
             "guest_id"
           ]
         },
+        "metric_values": [],
         "metrics": [],
         "model_version": null,
         "models": [],
@@ -54,6 +55,7 @@
             "name": "PMS reservations",
             "schema_version": "1.0.0",
             "seed_version": "20260729",
+            "synthetic": true,
             "urn": "urn:answervice:dataset:pms.public.reservations"
           }
         ],

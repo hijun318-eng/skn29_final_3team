@@ -42,6 +42,7 @@ def _test_controller() -> AnalysisController:
             os.getenv("TRINO_USER", "answervice-test"),
             os.getenv("DATAHUB_GMS_URL", "http://datahub.invalid"),
             require_live_metadata=False,
+            allow_template_assets=True,
         )
     else:
         data_platform = FakeDataPlatformAdapter()

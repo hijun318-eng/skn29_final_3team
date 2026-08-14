@@ -82,7 +82,8 @@ def test_endpoint_evaluator_applies_g2_and_compares_trino_results(monkeypatch):
         "joins": [],
     }
     sql = (
-        "SELECT SUM(room_revenue) FROM serving.analytics.hotel_daily_metrics "
+        "SELECT SUM(room_revenue) AS recognized_room_revenue "
+        "FROM serving.analytics.hotel_daily_metrics "
         "WHERE business_date >= DATE ':period_start' "
         "AND business_date < DATE ':period_end_exclusive' "
         "AND data_period_status = :required_filter_1 "
@@ -151,7 +152,8 @@ def test_endpoint_evaluator_rejects_literal_or_parameter_mutation(monkeypatch):
         "joins": [],
     }
     sql = (
-        "SELECT SUM(room_revenue) FROM serving.analytics.hotel_daily_metrics "
+        "SELECT SUM(room_revenue) AS recognized_room_revenue "
+        "FROM serving.analytics.hotel_daily_metrics "
         "WHERE business_date >= DATE ':period_start' "
         "AND business_date < DATE ':period_end_exclusive' "
         "AND data_period_status = :required_filter_1 "

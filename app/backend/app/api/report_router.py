@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 import os
 import hashlib
 import json
@@ -7,7 +8,8 @@ from datetime import datetime, timezone
 from typing import Annotated, Any, Callable
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import HTMLResponse
 
 from app.context import analysis_context
 from app.contracts import RequestContext, Role
@@ -22,6 +24,7 @@ from app.report_contracts import (
     ReplaceReportBlocksRequest,
     ReportDefinitionListResponse,
     ReportDefinitionResponse,
+    ReportDocumentResponse,
     ReportArtifactResponse,
     ReportRunListResponse,
     ReportRunResponse,
@@ -68,6 +71,25 @@ def _router(context: RequestContext):
     )
 
 
+def _execution_service(repository):
+    from app.api.router import _controller, execution_gate
+    from app.services.report_execution import (
+        AnalysisDefinitionReplay,
+        ReportExecutionService,
+    )
+
+    database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
+    if not database_url:
+        raise HTTPException(status_code=503, detail="Report repository is unavailable.")
+    replay = AnalysisDefinitionReplay(
+        database_url,
+        _controller(),
+        execution_gate,
+        queue_wait_seconds=float(os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0")),
+    )
+    return ReportExecutionService(repository, replay)
+
+
 def _call(action: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     from src.report.router import ReportRouteError
 
@@ -84,6 +106,24 @@ def _repository_call(action: Callable[[], Any]) -> Any:
         raise HTTPException(status_code=404, detail=str(error.args[0])) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+def _artifact_visible_views(artifact: Mapping[str, Any]) -> list[str]:
+    views: list[str] = []
+    if str(artifact.get("narrative_markdown") or "").strip():
+        views.append("summary")
+    evidence = artifact.get("evidence_json")
+    metrics = evidence.get("metric_values") if isinstance(evidence, Mapping) else None
+    if isinstance(metrics, (list, tuple)) and metrics:
+        views.append("kpi")
+    snapshot = artifact.get("data_snapshot_json")
+    rows = snapshot.get("rows") if isinstance(snapshot, Mapping) else None
+    has_rows = isinstance(rows, (list, tuple)) and bool(rows)
+    if artifact.get("chart_spec_json") and has_rows:
+        views.append("chart")
+    if has_rows:
+        views.append("table")
+    return views
 
 
 @report_router.post(
@@ -119,25 +159,20 @@ def create_draft_from_analysis_artifact(
     )
     artifact_id = str(artifact["artifact_id"])
     query_id = str(artifact["trino_query_id"])
-    blocks = [
-        ReportBlock(
-            str(uuid4()), "분석 요약", None, 12, None,
-            BlockType.TEXT, 0, 0, 12, 4, str(artifact["narrative_markdown"]),
-        )
-    ]
-    y = 4
-    if artifact["chart_spec_json"]:
-        blocks.append(ReportBlock(
-            str(uuid4()), "핵심 추이", artifact_id, 12, query_id,
-            BlockType.CHART, 0, y, 12, 6, json.dumps({"showLegend": True}),
-        ))
-        y += 6
-    blocks.append(ReportBlock(
-        str(uuid4()), "상세 데이터", artifact_id, 12, query_id,
-        BlockType.TABLE, 0, y, 12, 5, json.dumps({"density": "comfortable"}),
-    ))
+    report_title = payload.title.strip()
+    content = json.dumps({
+        "schemaVersion": "ANSWER-ARTIFACT-BLOCK-v1",
+        "presentationMode": "standard",
+        "sizeMode": "auto",
+        "visibleViews": _artifact_visible_views(artifact),
+    }, ensure_ascii=False, separators=(",", ":"))
+    blocks = (ReportBlock(
+        str(uuid4()), report_title, artifact_id, 12, query_id,
+        BlockType.ARTIFACT, 0, 0, 12, 12, content,
+    ),)
     draft = ReportDefinitionVersion(
-        str(uuid4()), 1, DefinitionStatus.DRAFT, payload.title.strip(), tuple(blocks)
+        str(uuid4()), 1, DefinitionStatus.DRAFT, report_title, blocks,
+        orientation="landscape", currency_display_unit="auto",
     )
     _repository_call(lambda: router.repository.add_draft(draft))
     return router._response(draft)
@@ -167,6 +202,7 @@ def get_report_artifact(
         "query_id": artifact["trino_query_id"],
         "title": artifact["title"],
         "summary": artifact["narrative_markdown"],
+        "metrics": (artifact["evidence_json"] or {}).get("metric_values", []),
         "table": artifact["data_snapshot_json"],
         "chart": artifact["chart_spec_json"] or None,
         "evidence": artifact["evidence_json"],
@@ -196,10 +232,116 @@ def approve_version(
     payload: ApproveReportVersionRequest,
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
-    return _call(
-        lambda: _router(context).approve_version(
-            definition_id, version, payload.approved_at.isoformat()
+    from app.services.report_document import (
+        ReportDocumentRenderError,
+        approve_report_document,
+    )
+
+    router = _router(context)
+    try:
+        approved = approve_report_document(
+            router.repository,
+            definition_id,
+            version,
+            payload.approved_at,
+            payload.orientation,
         )
+        return router._response(approved)
+    except ReportDocumentRenderError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Report PDF renderer is unavailable; the draft was not approved.",
+        ) from error
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail=str(error.args[0])) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+def _document_response(document: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "definition_id": document["definition_id"],
+        "definition_version": document["definition_version"],
+        "orientation": document["orientation"],
+        "currency_display_unit": document["currency_display_unit"],
+        "renderer_version": document["renderer_version"],
+        "source_checksum": document["source_checksum"],
+        "html_checksum": document["html_checksum"],
+        "pdf_checksum": document["pdf_checksum"],
+        "artifact_versions": document["artifact_versions"],
+        "confirmed_at": document["confirmed_at"],
+    }
+
+
+@report_router.get(
+    "/reports/definitions/{definition_id}/versions/{version}/document",
+    operation_id="reportGetFinalDocument",
+    response_model=ReportDocumentResponse,
+)
+def get_final_document(
+    definition_id: str,
+    version: int,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> dict[str, Any]:
+    document = _repository_call(
+        lambda: _router(context).repository.get_document(definition_id, version)
+    )
+    return _document_response(document)
+
+
+@report_router.get(
+    "/reports/definitions/{definition_id}/versions/{version}/document.html",
+    operation_id="reportGetFinalHtml",
+    response_class=HTMLResponse,
+)
+def get_final_html(
+    definition_id: str,
+    version: int,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> HTMLResponse:
+    document = _repository_call(
+        lambda: _router(context).repository.get_document(definition_id, version)
+    )
+    return HTMLResponse(
+        content=document["html_snapshot"],
+        headers={
+            "ETag": f'"{document["html_checksum"]}"',
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@report_router.get(
+    "/reports/definitions/{definition_id}/versions/{version}/document.pdf",
+    operation_id="reportGetFinalPdf",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "application/pdf": {"schema": {"type": "string", "format": "binary"}}
+            }
+        }
+    },
+)
+def get_final_pdf(
+    definition_id: str,
+    version: int,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> Response:
+    document = _repository_call(
+        lambda: _router(context).repository.get_document(definition_id, version)
+    )
+    return Response(
+        content=document["pdf_bytes"],
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="report-{definition_id}-v{version}.pdf"',
+            "ETag": f'"{document["pdf_checksum"]}"',
+            "Cache-Control": "private, max-age=31536000, immutable",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -274,10 +416,14 @@ def create_manual_run_command(
     command = _call(
         lambda: router.create_manual_run_command(payload.model_dump(mode="json"))
     )
-    execute = getattr(router.repository, "execute_manual_run", None)
-    if execute is None:
+    if not hasattr(router.repository, "claim_manual_run"):
         return command
-    run = _call(lambda: router._run_response(execute(command["command_id"])))
+    service = _execution_service(router.repository)
+    run = _call(
+        lambda: router._run_response(
+            service.execute_manual_run(command["command_id"])
+        )
+    )
     return {**command, "status": run["status"], "run_id": run["run_id"]}
 
 
@@ -353,8 +499,9 @@ def run_due_schedule(
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
     router = _router(context)
+    service = _execution_service(router.repository)
     schedule, run = _repository_call(
-        lambda: router.repository.run_due_schedule(
+        lambda: service.run_due_schedule(
             schedule_id, datetime.now(timezone.utc)
         )
     )

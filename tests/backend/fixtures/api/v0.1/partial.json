@@ -34,6 +34,7 @@
             "guest_id"
           ]
         },
+        "metric_values": [],
         "metrics": [],
         "model_version": null,
         "models": [],
@@ -54,6 +55,7 @@
             "name": "PMS reservations",
             "schema_version": "1.0.0",
             "seed_version": "20260729",
+            "synthetic": true,
             "urn": "urn:answervice:dataset:pms.public.reservations"
           }
         ],
@@ -129,8 +131,11 @@
     "clarification_type": null,
     "code": "PARTIAL_FAILURE",
     "message": "일부 데이터 소스를 조회하지 못했습니다.",
+    "missing_requirements": [],
+    "required_action": "RETRY",
     "retryable": true,
-    "suggestions": []
+    "suggestions": [],
+    "trace_id": "fixture-partial"
   },
   "meta": {
     "as_of": "2026-07-30",

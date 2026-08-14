@@ -6,6 +6,10 @@ from typing import Mapping
 
 REPORT_CONTRACT_VERSION = "REPORT-v1.0.0"
 REPORT_PROPOSAL_VERSION = "REPORT-v1.1.0-DRAFT"
+REPORT_ORIENTATIONS = frozenset({"portrait", "landscape"})
+CURRENCY_DISPLAY_UNITS = frozenset(
+    {"auto", "one", "thousand", "million", "hundredMillion", "billion"}
+)
 
 
 class DefinitionStatus(StrEnum):
@@ -29,9 +33,37 @@ class BlockRunStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class BlockFailureCode(StrEnum):
+    AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
+    ACCESS_DENIED = "ACCESS_DENIED"
+    CONTEXT_INCOMPLETE = "CONTEXT_INCOMPLETE"
+    CONTEXT_SOURCE_FAILED = "CONTEXT_SOURCE_FAILED"
+    DATA_ASSET_NOT_FOUND = "DATA_ASSET_NOT_FOUND"
+    MODEL_CONTRACT_INVALID = "MODEL_CONTRACT_INVALID"
+    MODEL_TIMEOUT = "MODEL_TIMEOUT"
+    SQL_POLICY_BLOCKED = "SQL_POLICY_BLOCKED"
+    SQL_REPAIR_FAILED = "SQL_REPAIR_FAILED"
+    TRINO_CONNECTION_FAILED = "TRINO_CONNECTION_FAILED"
+    QUERY_TIMEOUT = "QUERY_TIMEOUT"
+    QUERY_SOURCE_FAILED = "QUERY_SOURCE_FAILED"
+    RESULT_VALIDATION_FAILED = "RESULT_VALIDATION_FAILED"
+    RESULT_EVIDENCE_MISSING = "RESULT_EVIDENCE_MISSING"
+    ARTIFACT_PERSIST_FAILED = "ARTIFACT_PERSIST_FAILED"
+    PARTIAL_FAILURE = "PARTIAL_FAILURE"
+    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
+    RATE_LIMITED = "RATE_LIMITED"
+    REQUEST_CANCELLED = "REQUEST_CANCELLED"
+    CONTRACT_VERSION_MISMATCH = "CONTRACT_VERSION_MISMATCH"
+    SCHEMA_VERSION_MISMATCH = "SCHEMA_VERSION_MISMATCH"
+    DEFINITION_NOT_FOUND = "DEFINITION_NOT_FOUND"
+    REPLAY_UNAVAILABLE = "REPLAY_UNAVAILABLE"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
 class BlockType(StrEnum):
     TABLE = "table"
     CHART = "chart"
+    ARTIFACT = "artifact"
     TEXT = "text"
 
 
@@ -60,8 +92,8 @@ class ReportBlock:
             raise ValueError("Report block columns와 w는 같아야 합니다.")
         if self.x < 0 or self.y < 0 or self.w < 1 or self.h < 1 or self.x + self.w > 12:
             raise ValueError("Report block layout은 12-column bounds와 positive height를 지켜야 합니다.")
-        if self.type in (BlockType.TABLE, BlockType.CHART) and not self.artifact_id:
-            raise ValueError("table·chart block은 artifact_id가 필요합니다.")
+        if self.type in (BlockType.TABLE, BlockType.CHART, BlockType.ARTIFACT) and not self.artifact_id:
+            raise ValueError("table·chart·artifact block은 artifact_id가 필요합니다.")
         if self.type is BlockType.TEXT and not self.content.strip():
             raise ValueError("text block은 빈 content를 허용하지 않습니다.")
 
@@ -74,6 +106,8 @@ class ReportDefinitionVersion:
     title: str
     blocks: tuple[ReportBlock, ...]
     approved_at: datetime | None = None
+    orientation: str = "portrait"
+    currency_display_unit: str = "auto"
 
     def __post_init__(self) -> None:
         if not self.definition_id or self.version < 1 or not self.title:
@@ -82,6 +116,10 @@ class ReportDefinitionVersion:
             raise ValueError("승인 version은 approved_at이 필요합니다.")
         if self.status is DefinitionStatus.DRAFT and self.approved_at is not None:
             raise ValueError("draft version에는 approved_at을 기록하지 않습니다.")
+        if self.orientation not in REPORT_ORIENTATIONS:
+            raise ValueError("Report orientation must be portrait or landscape")
+        if self.currency_display_unit not in CURRENCY_DISPLAY_UNITS:
+            raise ValueError("Report currency display unit is invalid")
 
     def approve(self, approved_at: datetime) -> "ReportDefinitionVersion":
         if self.status is not DefinitionStatus.DRAFT:
@@ -93,6 +131,8 @@ class ReportDefinitionVersion:
             title=self.title,
             blocks=self.blocks,
             approved_at=approved_at,
+            orientation=self.orientation,
+            currency_display_unit=self.currency_display_unit,
         )
 
     def next_draft(self) -> "ReportDefinitionVersion":
@@ -104,9 +144,17 @@ class ReportDefinitionVersion:
             status=DefinitionStatus.DRAFT,
             title=self.title,
             blocks=self.blocks,
+            orientation=self.orientation,
+            currency_display_unit=self.currency_display_unit,
         )
 
-    def replace_blocks(self, blocks: tuple[ReportBlock, ...]) -> "ReportDefinitionVersion":
+    def replace_blocks(
+        self,
+        blocks: tuple[ReportBlock, ...],
+        *,
+        orientation: str | None = None,
+        currency_display_unit: str | None = None,
+    ) -> "ReportDefinitionVersion":
         if self.status is not DefinitionStatus.DRAFT:
             raise ValueError("draft Report version만 block layout을 교체할 수 있습니다.")
         return ReportDefinitionVersion(
@@ -115,6 +163,12 @@ class ReportDefinitionVersion:
             status=self.status,
             title=self.title,
             blocks=blocks,
+            orientation=self.orientation if orientation is None else orientation,
+            currency_display_unit=(
+                self.currency_display_unit
+                if currency_display_unit is None
+                else currency_display_unit
+            ),
         )
 
 
@@ -125,14 +179,25 @@ class ReportBlockRun:
     query_id: str | None
     snapshot_checksum: str | None
     status: BlockRunStatus
+    request_id: str | None = None
+    failure_code: BlockFailureCode | None = None
+    failure_message: str | None = None
 
     def __post_init__(self) -> None:
         if not self.block_id:
             raise ValueError("Report block run block_id is required")
         if self.status in {BlockRunStatus.SUCCESS, BlockRunStatus.PARTIAL} and not all(
-            (self.artifact_id, self.query_id, self.snapshot_checksum)
+            (self.request_id, self.artifact_id, self.query_id, self.snapshot_checksum)
         ):
             raise ValueError("successful Report block run requires Artifact evidence")
+        if self.status in {BlockRunStatus.FAILED, BlockRunStatus.CANCELLED} and not all(
+            (self.failure_code, self.failure_message)
+        ):
+            raise ValueError("failed Report block run requires a typed public failure")
+        if self.status is BlockRunStatus.SUCCESS and (
+            self.failure_code is not None or self.failure_message is not None
+        ):
+            raise ValueError("successful Report block run cannot include a failure")
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,8 +232,10 @@ class ManualRunCommand:
             raise ValueError("manual run command 필드는 비어 있을 수 없습니다.")
         if self.status not in {
             RunStatus.QUEUED,
+            RunStatus.RUNNING,
             RunStatus.SUCCESS,
             RunStatus.PARTIAL,
             RunStatus.FAILED,
+            RunStatus.CANCELLED,
         }:
             raise ValueError("manual run command status is invalid")

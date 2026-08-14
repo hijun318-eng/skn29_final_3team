@@ -185,6 +185,40 @@ class PostgresAnalysisRepository:
             raise KeyError("Analysis Definition을 찾을 수 없습니다.")
         return self._definition(row, replay=replay)
 
+    def get_definition_for_report(
+        self,
+        definition_id: str | UUID,
+        version: int,
+    ) -> dict[str, Any]:
+        """Load the exact immutable Analysis version captured by a Report block."""
+        try:
+            with self._engine.connect() as connection:
+                row = connection.execute(
+                    text(
+                        """
+                        SELECT definition_id, version, title, question_text_redacted,
+                               parameters_json AS parameters,
+                               semantic_request_json AS semantic_request,
+                               parameter_schema_json AS parameter_schema, created_at
+                        FROM analysis_v1.analysis_definitions
+                        WHERE definition_id = :definition_id
+                          AND version = :version
+                          AND owner_id = :owner_id
+                          AND status = 'approved'
+                        """
+                    ),
+                    {
+                        "definition_id": _uuid(definition_id, "definition_id"),
+                        "version": version,
+                        "owner_id": self._owner_id,
+                    },
+                ).mappings().one_or_none()
+        except SQLAlchemyError as error:
+            raise AnalysisRepositoryUnavailable("Analysis repository is unavailable.") from error
+        if row is None:
+            raise KeyError("Analysis Definition not found")
+        return self._definition(row, replay=True)
+
     def list_definitions(self) -> list[dict[str, Any]]:
         try:
             with self._engine.connect() as connection:
@@ -823,6 +857,7 @@ class PostgresAnalysisRepository:
             "status": row["status"],
             "question": row["question"],
             "summary": row["summary"],
+            "metrics": (row["evidence"] or {}).get("metric_values", []),
             "table": row["table_data"],
             "chart": row["chart_data"] or None,
             "evidence": row["evidence"],

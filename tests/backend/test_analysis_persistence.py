@@ -131,6 +131,7 @@ class FakeAnalysisRepository:
             "status": response.data.status.value,
             "question": self.question,
             "summary": response.data.result.summary,
+            "metrics": response.data.result.evidence.metric_values,
             "table": response.data.result.table,
             "chart": response.data.result.chart,
             "evidence": response.data.result.evidence,
@@ -208,6 +209,7 @@ def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     assert artifact["request_id"] == first["request_id"]
     assert artifact["artifact_id"] == first["artifact_id"]
     assert artifact["table"].rows
+    assert artifact["metrics"] == artifact["evidence"].metric_values
     assert "sql" not in artifact
     assert "parameters" not in artifact
 

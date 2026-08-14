@@ -1,0 +1,32 @@
+{
+  "manifest_version": "MODEL-RUNTIME-v1.0.0",
+  "models": {
+    "gpt-5.4-mini": {
+      "provider": "openai",
+      "snapshot": "gpt-5.4-mini-2026-03-17",
+      "context_window_tokens": 400000,
+      "max_output_tokens": 128000,
+      "runtime_max_output_tokens": 1280,
+      "safety_margin_tokens": 4096,
+      "source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini"
+    },
+    "gpt-5.4-mini-2026-03-17": {
+      "provider": "openai",
+      "snapshot": "gpt-5.4-mini-2026-03-17",
+      "context_window_tokens": 400000,
+      "max_output_tokens": 128000,
+      "runtime_max_output_tokens": 1280,
+      "safety_margin_tokens": 4096,
+      "source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini"
+    },
+    "Qwen/Qwen3-4B": {
+      "provider": "qwen",
+      "snapshot": "Qwen/Qwen3-4B@1cfa9a7208912126459214e8b04321603b3df60c",
+      "context_window_tokens": 4096,
+      "max_output_tokens": 1280,
+      "runtime_max_output_tokens": 1280,
+      "safety_margin_tokens": 256,
+      "source": "src/modelops/serving_manifest.v0.1.json"
+    }
+  }
+}

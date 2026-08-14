@@ -1,0 +1,40 @@
+{
+  "contract_version": "REPORT-v1.0.0",
+  "artifact_id": "artifact-monthly-revenue",
+  "query_id": "query-monthly-revenue",
+  "summary": "2분기 객실 매출은 4월 이후 완만한 증가세를 보였습니다.",
+  "metrics": [
+    {"metric_id": "room_revenue", "result_field": "room_revenue", "label": "객실 매출", "definition": "분석 서비스가 확정한 대표 객실 매출", "value": 1450000000, "unit": "원"},
+    {"metric_id": "target_revenue", "result_field": "target_revenue", "label": "목표 매출", "definition": "분석 서비스가 확정한 대표 목표 매출", "value": 1440000000, "unit": "원"}
+  ],
+  "table": {
+    "columns": ["month", "room_revenue", "target_revenue"],
+    "rows": [
+      {"month": "1월", "room_revenue": 1260000000, "target_revenue": 1300000000},
+      {"month": "2월", "room_revenue": 1290000000, "target_revenue": 1310000000},
+      {"month": "3월", "room_revenue": 1380000000, "target_revenue": 1350000000},
+      {"month": "4월", "room_revenue": 1420000000, "target_revenue": 1400000000},
+      {"month": "5월", "room_revenue": 1360000000, "target_revenue": 1420000000},
+      {"month": "6월", "room_revenue": 1450000000, "target_revenue": 1440000000}
+    ]
+  },
+  "chart": {
+    "type": "line",
+    "x_field": "month",
+    "y_fields": ["room_revenue", "target_revenue"]
+  },
+  "evidence": {
+    "artifact_id": "artifact-monthly-revenue",
+    "query_id": "query-monthly-revenue",
+    "as_of": "2026-07-01",
+    "timezone": "Asia/Seoul",
+    "period": {"start": "2026-01-01", "end_exclusive": "2026-07-01"},
+    "filters": {"property": "전체 호텔"},
+    "metrics": [
+      {"metric_id": "room_revenue", "result_field": "room_revenue", "label": "객실 매출", "definition": "취소 제외 객실 매출", "unit": "원"},
+      {"metric_id": "target_revenue", "result_field": "target_revenue", "label": "목표 매출", "definition": "월별 객실 매출 목표", "unit": "원"}
+    ],
+    "sources": [{"name": "PMS 매출", "urn": "urn:answervice:pms:room-revenue", "fqn": "gold.hotel_room_revenue", "schema_version": "4", "seed_version": "2026Q2", "synthetic": true}],
+    "gates": {"g1": "PASSED", "g2": "PASSED", "g3": "PASSED"}
+  }
+}

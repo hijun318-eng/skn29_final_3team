@@ -73,10 +73,11 @@ class AuthenticationTest(unittest.TestCase):
         with patch.dict(os.environ, environment, clear=False):
             principal = authenticate_credentials("ANALYST", "analyst1234!")
             token = issue_session_token(principal, now=self.now)
-            restored = authenticate_token(token, now=self.now + timedelta(minutes=1))
+            with self.assertRaises(AuthenticationError) as missing_store:
+                authenticate_token(token, now=self.now + timedelta(minutes=1))
             with self.assertRaises(AuthenticationError):
                 authenticate_token(token, now=self.now + timedelta(hours=9))
-        self.assertEqual(principal, restored)
+        self.assertEqual(503, missing_store.exception.status_code)
 
     def test_login_rejects_unknown_wrong_and_inactive_accounts(self) -> None:
         for name, username, password, active in (
@@ -177,7 +178,7 @@ class AuthenticationTest(unittest.TestCase):
                     CONTRACT_VERSION,
                 )
         self.assertEqual(503, unavailable.exception.status_code)
-        self.assertEqual(ErrorCode.INTERNAL_ERROR, unavailable.exception.code)
+        self.assertEqual(ErrorCode.DEPENDENCY_UNAVAILABLE, unavailable.exception.code)
         self.assertNotIn("runtime-test-token", unavailable.exception.message)
 
 

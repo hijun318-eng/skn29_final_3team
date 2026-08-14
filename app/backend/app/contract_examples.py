@@ -86,6 +86,7 @@ def _source() -> SourceReference:
         name="PMS reservations",
         schema_version="1.0.0",
         seed_version="20260729",
+        synthetic=True,
     )
 
 

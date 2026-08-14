@@ -6,7 +6,7 @@
 
 - `app/api/`: HTTP router와 인증·권한 경계
 - `app/controllers/`: Analysis 실행 흐름 조정
-- `app/services/`: Context, G1·G2·G3, 실행 상태, Report scheduler
+- `app/services/`: Context, G1·G2·G3, 실행 상태, Report 문서·실행·scheduler
 - `app/ports/`: 외부 연동 계약
 - `app/adapters/`: Trino, DataHub, model, PostgreSQL 구현
 - `migrations/versions/`: 단일 Alembic migration chain
@@ -33,7 +33,7 @@ Source DB를 직접 조회하지 않는다. 승인된 Context와 G1을 거쳐 SQ
 - `GET /analysis/progress/{trace_id}`
 - `POST /analysis/progress/{trace_id}/cancel`
 - Analysis Definition·Run·Artifact 조회와 재실행
-- Report 초안·정의·실행·예약·관리 API
+- Report 초안·문서·정의·실행·예약·관리 API
 
 정확한 endpoint와 schema는 FastAPI code 및 `contracts/openapi.v0.1.json`을 기준으로 한다.
 
@@ -75,7 +75,7 @@ uvicorn app.main:app --reload
 
 ## Migration과 계약 검증
 
-현재 저장소의 Alembic head는 `20260813_18`이다. 실제 적용 상태는 DB에서 `alembic current`로 확인하며, 문서의 번호만 보고 적용 완료로 판단하지 않는다.
+현재 저장소의 Alembic head는 `20260814_23`이다. 실제 적용 상태는 DB에서 `alembic current`로 확인하며, 문서의 번호만 보고 적용 완료로 판단하지 않는다.
 
 ```powershell
 python app/backend/scripts/export_openapi.py --check

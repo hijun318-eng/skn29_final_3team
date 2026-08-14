@@ -34,18 +34,26 @@ class _Repository:
         return {"next_run_at": now}, _Run()
 
 
+class _ExecutionService:
+    def __init__(self) -> None:
+        self.repository = _Repository()
+
+    def run_due_schedule(self, schedule_id: str, now: datetime):
+        return self.repository.run_due_schedule(schedule_id, now)
+
+
 class ReportSchedulerTest(unittest.TestCase):
     def test_run_once_uses_server_instant_and_only_counts_executed_runs(self) -> None:
-        repository = _Repository()
+        execution_service = _ExecutionService()
         now = datetime(2026, 8, 13, 9, tzinfo=timezone.utc)
 
-        executed = ReportScheduler.run_once(repository, now, 10)
+        executed = ReportScheduler.run_once(execution_service, now, 10)
 
         self.assertEqual(1, executed)
-        self.assertEqual((now, 10), repository.query)
+        self.assertEqual((now, 10), execution_service.repository.query)
         self.assertEqual(
             [("schedule-1", now), ("schedule-2", now)],
-            repository.executed,
+            execution_service.repository.executed,
         )
 
     def test_enabled_setting_is_strict(self) -> None:

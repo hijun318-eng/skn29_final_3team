@@ -12,7 +12,14 @@ from evals.runner import (
     validate_split_manifest,
 )
 from tests.support.fakes import ContractFakeModelAdapter as FakeModelAdapter
-from src.modelops.runtime import ProductionModelClient, build_trace
+from src.modelops.runtime import (
+    ModelCircuitOpenError,
+    ModelContractInvalidError,
+    ModelEndpointUnavailableError,
+    ProductionModelClient,
+    build_trace,
+    model_runtime_manifest,
+)
 from tests.ai.test_contracts import VALID_PAYLOADS
 
 
@@ -188,6 +195,42 @@ class ProductionClientTests(unittest.TestCase):
         self.assertFalse(client.last_trace["fallback"])
         self.assertEqual(0, client.last_trace["circuit_failures"])
         self.assertGreaterEqual(client.last_trace["duration_ms"], 0)
+        self.assertEqual(64, len(client.last_trace["input_schema_hash"]))
+        self.assertEqual(64, len(client.last_trace["output_schema_hash"]))
+        self.assertNotIn("input_payload", client.last_trace)
+        self.assertNotIn("output_payload", client.last_trace)
+
+    def test_runtime_manifest_owns_model_context_limits(self):
+        model = model_runtime_manifest()["models"]["gpt-5.4-mini"]
+
+        self.assertEqual(400000, model["context_window_tokens"])
+        self.assertEqual("gpt-5.4-mini-2026-03-17", model["snapshot"])
+
+    def test_transport_usage_and_snapshot_are_observed_without_raw_payload(self):
+        adapter = FakeModelAdapter()
+
+        def transport(node, payload, _timeout):
+            result = adapter.generate(node, payload)
+            result["__answervice_transport_meta__"] = {
+                "model_snapshot": "gpt-5.4-mini-2026-03-17",
+                "input_tokens": 123,
+                "output_tokens": 45,
+            }
+            return result
+
+        client = ProductionModelClient(
+            transport,
+            model_name="gpt-5.4-mini",
+        )
+        client.generate("node3", VALID_PAYLOADS["node3_request"])
+
+        self.assertEqual(123, client.last_trace["input_tokens"])
+        self.assertEqual(45, client.last_trace["output_tokens"])
+        self.assertEqual(
+            "gpt-5.4-mini-2026-03-17",
+            client.last_trace["model_snapshot"],
+        )
+        self.assertNotIn("payload", json.dumps(client.last_trace))
 
     def test_timeout_retries_once_then_fails_without_a_result(self):
         calls = []
@@ -200,7 +243,7 @@ class ProductionClientTests(unittest.TestCase):
         with self.assertRaisesRegex(TimeoutError, "TIMEOUT"):
             client.generate("node1", VALID_PAYLOADS["node1_request"])
         self.assertEqual(2, len(calls))
-        self.assertEqual("TIMEOUT", client.last_trace["status"])
+        self.assertEqual("MODEL_TIMEOUT", client.last_trace["status"])
         self.assertFalse(client.last_trace["fallback"])
         self.assertNotIn("secret", json.dumps(client.last_trace))
 
@@ -229,15 +272,52 @@ class ProductionClientTests(unittest.TestCase):
             return {}
 
         client = ProductionModelClient(invalid_transport, failure_threshold=2)
-        with self.assertRaisesRegex(TimeoutError, "SCHEMA_INVALID"):
+        with self.assertRaisesRegex(ModelContractInvalidError, "MODEL_CONTRACT_INVALID"):
             client.generate("node1", VALID_PAYLOADS["node1_request"])
-        with self.assertRaisesRegex(TimeoutError, "SCHEMA_INVALID"):
+        with self.assertRaisesRegex(ModelContractInvalidError, "MODEL_CONTRACT_INVALID"):
             client.generate("node1", VALID_PAYLOADS["node1_request"])
-        with self.assertRaisesRegex(TimeoutError, "CIRCUIT_OPEN"):
+        with self.assertRaisesRegex(ModelCircuitOpenError, "CIRCUIT_OPEN"):
             client.generate("node1", VALID_PAYLOADS["node1_request"])
-        self.assertEqual(4, calls)
+        self.assertEqual(2, calls)
         self.assertEqual("CIRCUIT_OPEN", client.last_trace["status"])
         self.assertEqual(0, client.last_trace["attempts"])
+
+    def test_endpoint_failure_has_its_own_retryable_taxonomy(self):
+        calls = 0
+
+        def unavailable_transport(_node, _payload, _timeout):
+            nonlocal calls
+            calls += 1
+            raise OSError("private endpoint detail")
+
+        client = ProductionModelClient(unavailable_transport)
+        with self.assertRaisesRegex(
+            ModelEndpointUnavailableError,
+            "MODEL_ENDPOINT_UNAVAILABLE",
+        ):
+            client.generate("node1", VALID_PAYLOADS["node1_request"])
+
+        self.assertEqual(2, calls)
+        self.assertEqual("MODEL_ENDPOINT_UNAVAILABLE", client.last_trace["status"])
+        self.assertNotIn("private", json.dumps(client.last_trace))
+
+    def test_invalid_request_contract_does_not_call_or_trip_provider_circuit(self):
+        calls = 0
+
+        def transport(_node, _payload, _timeout):
+            nonlocal calls
+            calls += 1
+            return {}
+
+        client = ProductionModelClient(transport, failure_threshold=1)
+        with self.assertRaisesRegex(
+            ModelContractInvalidError,
+            "MODEL_CONTRACT_INVALID",
+        ):
+            client.generate("node1", {})
+
+        self.assertEqual(0, calls)
+        self.assertEqual(0, client.last_trace["circuit_failures"])
 
     def test_trace_is_reproducible_and_unknown_cost_stays_null(self):
         adapter = FakeModelAdapter()

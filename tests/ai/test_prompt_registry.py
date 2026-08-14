@@ -8,13 +8,15 @@ class PromptRegistryTests(unittest.TestCase):
         first = list_prompt_metadata()
         second = list_prompt_metadata()
         self.assertEqual(first, second)
-        self.assertEqual(len(first), 5)
+        self.assertEqual(len(first), 7)
         self.assertEqual(
             {
+                "node1.interpretation.v2": "PROMPT-v2.0.0",
                 "node1.normalize": "PROMPT-v1.2.4",
                 "node2.repair": "PROMPT-v1.2.13",
                 "node2.sql": "PROMPT-v1.2.15",
                 "node3.explain": "PROMPT-v1.2.2",
+                "node3.narrative.v2": "PROMPT-v2.0.0",
                 "report.assistant": "PROMPT-v1.0.0",
             },
             {item["prompt_id"]: item["version"] for item in first},

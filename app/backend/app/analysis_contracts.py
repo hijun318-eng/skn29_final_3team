@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.contracts import ChartSpec, Evidence, Scalar, TableResult
+from app.contracts import ChartSpec, Evidence, MetricValue, Scalar, TableResult
 
 
 ANALYSIS_PERSISTENCE_VERSION = "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT"
@@ -110,6 +110,7 @@ class AnalysisRunArtifactResponse(AnalysisPersistenceModel):
     status: Literal["SUCCEEDED", "PARTIAL"]
     question: str
     summary: str
+    metrics: tuple[MetricValue, ...] = ()
     table: TableResult
     chart: ChartSpec | None = None
     evidence: Evidence

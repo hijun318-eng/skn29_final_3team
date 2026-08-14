@@ -27,23 +27,29 @@ export function App() {
   const [session, setSession] = useState();
   const [sessionNotice, setSessionNotice] = useState("");
   const [reportEditorMode, setReportEditorMode] = useState(false);
-  const authToken = session?.token || "";
+  const [reportDirty, setReportDirty] = useState(false);
   const role = session?.role || "";
   const [route, setRoute] = useState(() => resolveRoute(window.location.pathname));
-  const [menuOpen, setMenuOpen] = useState(() => window.matchMedia("(min-width: 901px)").matches);
+  const [menuOpen, setMenuOpen] = useState(() => window.matchMedia("(min-width: 1101px)").matches);
   const [isPending, startTransition] = useTransition();
   const [title, description] = route.page === "reports"
     ? reportEditorMode
-      ? ["보고서 편집", "검증된 분석 결과와 설명을 블록으로 구성하고 저장합니다."]
+      ? ["보고서 편집", "근거가 연결된 분석 결과와 설명을 블록으로 구성하고 저장합니다."]
       : ["보고서", "분석 결과를 보고서로 구성하고 편집·검토합니다."]
     : PAGE_META[route.page];
 
   useEffect(() => {
     let active = true;
     createAnalysisClient(fetch).validateSession()
-      .then((restored) => { if (active) setSession({ token: "", role: restored.role }); })
+      .then((restored) => { if (active) setSession({ role: restored.role }); })
       .catch(() => { if (active) setSession(null); });
     return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    const updateDirty = (event) => setReportDirty(Boolean(event.detail));
+    window.addEventListener("answervice:report-dirty", updateDirty);
+    return () => window.removeEventListener("answervice:report-dirty", updateDirty);
   }, []);
 
   useEffect(() => {
@@ -55,13 +61,20 @@ export function App() {
   useEffect(() => {
     const initialRoute = resolveRoute(window.location.pathname);
     if (initialRoute.redirected) { window.history.replaceState({}, "", initialRoute.path); setRoute(initialRoute); }
-    const handlePopState = () => { if (window.matchMedia("(max-width: 900px)").matches) setMenuOpen(false); startTransition(() => setRoute(resolveRoute(window.location.pathname))); };
+    const handlePopState = () => {
+      if (reportDirty && !window.confirm("저장하지 않은 보고서 변경사항이 있습니다. 페이지를 이동할까요?")) {
+        window.history.pushState({}, "", route.path);
+        return;
+      }
+      if (window.matchMedia("(max-width: 1100px)").matches) setMenuOpen(false);
+      startTransition(() => setRoute(resolveRoute(window.location.pathname)));
+    };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [reportDirty, route.path]);
 
   useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 901px)");
+    const desktop = window.matchMedia("(min-width: 1101px)");
     const syncMenu = (event) => setMenuOpen(event.matches);
     desktop.addEventListener("change", syncMenu);
     return () => desktop.removeEventListener("change", syncMenu);
@@ -71,18 +84,19 @@ export function App() {
     const nextRoute = resolveRoute(nextPath);
     if (nextRoute.path === route.path) {
       window.dispatchEvent(new CustomEvent("answervice:navigate", { detail: nextRoute.path }));
-      if (window.matchMedia("(max-width: 900px)").matches) setMenuOpen(false);
+      if (window.matchMedia("(max-width: 1100px)").matches) setMenuOpen(false);
       return;
     }
+    if (reportDirty && !window.confirm("저장하지 않은 보고서 변경사항이 있습니다. 페이지를 이동할까요?")) return;
     window.history.pushState({}, "", nextRoute.path);
-    if (window.matchMedia("(max-width: 900px)").matches) setMenuOpen(false);
+    if (window.matchMedia("(max-width: 1100px)").matches) setMenuOpen(false);
     startTransition(() => setRoute(nextRoute));
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "instant" }));
-  }, [route.path]);
+  }, [reportDirty, route.path]);
 
   const handleReportEditorMode = useCallback((active) => {
     setReportEditorMode(active);
-    if (window.matchMedia("(min-width: 901px)").matches) setMenuOpen(!active);
+    setMenuOpen(window.matchMedia("(min-width: 1101px)").matches && !active);
   }, []);
 
   useEffect(() => {
@@ -93,18 +107,19 @@ export function App() {
     if (route.page === "notFound") return <NotFoundPage onNavigate={navigate} />;
     if (route.page === "reports") {
       if (!["hotel_analyst", "report_admin"].includes(role)) return <RoleAccessPage role={role} onNavigate={navigate} />;
-      return <ReportsPage authToken={authToken} role={role} onEditorMode={handleReportEditorMode} />;
+      return <ReportsPage role={role} onEditorMode={handleReportEditorMode} />;
     }
     if (role !== "hotel_analyst") return <RoleAccessPage role={role} onNavigate={navigate} />;
-    return <AgentPage authToken={authToken} onNavigate={navigate} />;
-  }, [authToken, handleReportEditorMode, navigate, role, route.page]);
+    return <AgentPage onNavigate={navigate} />;
+  }, [handleReportEditorMode, navigate, role, route.page]);
 
   if (session === undefined) return <main className="session-login ppt-theme"><div className="page-loading" role="status"><i /><b>세션을 확인하고 있습니다.</b></div></main>;
   if (!session) return <SessionLogin notice={sessionNotice} onAuthenticated={(nextSession) => { setSession(nextSession); setSessionNotice(""); }} />;
 
   const signOut = async () => {
+    if (reportDirty && !window.confirm("저장하지 않은 보고서 변경사항이 있습니다. 로그아웃할까요?")) return;
     window.dispatchEvent(new CustomEvent("answervice:clear-drafts"));
-    try { await createAnalysisClient(fetch, authToken).logout(); } finally { setSessionNotice(""); setSession(null); }
+    try { await createAnalysisClient(fetch).logout(); } finally { setSessionNotice(""); setSession(null); }
   };
 
   return <><div className={`app-shell ppt-theme ${menuOpen ? "" : "sidebar-collapsed"} ${reportEditorMode ? "report-editor-mode" : ""} ${isPending ? "is-page-pending" : ""} ${sessionNotice ? "session-locked" : ""}`} inert={sessionNotice ? true : undefined} aria-hidden={sessionNotice ? "true" : undefined}>

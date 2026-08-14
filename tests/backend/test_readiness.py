@@ -47,7 +47,7 @@ class AppDatabaseReadinessMigrationTest(unittest.TestCase):
                 self.assertEqual(expected, result["approved_templates"])
                 query = str(connection.execute.call_args_list[1].args[0])
                 self.assertIn("template_id = 'weekly-room-operations'", query)
-                self.assertIn("version = 'I2-v1.0.0'", query)
+                self.assertIn("version = 'I2-v1.1.0'", query)
                 self.assertIn("status = 'APPROVED'", query)
 
     def test_no_database_or_database_error_fail_closed(self) -> None:
@@ -109,6 +109,13 @@ class AppDatabaseReadinessMigrationTest(unittest.TestCase):
             self.assertEqual("ready", AppDatabaseReadiness._datahub_probe())
             self.assertEqual("ready", AppDatabaseReadiness._model_probe())
 
+    def test_release_auth_readiness_requires_database_secret_and_principal_file(self) -> None:
+        with patch.dict("os.environ", {"AUTH_MODE": "release"}, clear=True):
+            self.assertEqual("not_ready", AppDatabaseReadiness._auth_probe())
+
+        with patch.dict("os.environ", {"AUTH_MODE": "test"}, clear=True):
+            self.assertEqual("not_required", AppDatabaseReadiness._auth_probe())
+
     def test_model_probe_retries_one_transient_timeout(self) -> None:
         response = MagicMock(status=200)
         response.__enter__.return_value = response
@@ -129,7 +136,7 @@ class AppDatabaseReadinessMigrationTest(unittest.TestCase):
             side_effect=TimeoutError,
         ) as urlopen_mock, patch.dict("os.environ", environment, clear=True):
             self.assertEqual("not_ready", AppDatabaseReadiness._model_probe())
-            self.assertEqual(3, urlopen_mock.call_count)
+            self.assertEqual(2, urlopen_mock.call_count)
 
 
 if __name__ == "__main__":

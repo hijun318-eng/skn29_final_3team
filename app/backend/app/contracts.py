@@ -65,6 +65,11 @@ class ErrorCode(str, Enum):
     ACCESS_DENIED = "ACCESS_DENIED"
     MODEL_CONTRACT_INVALID = "MODEL_CONTRACT_INVALID"
     MODEL_TIMEOUT = "MODEL_TIMEOUT"
+    MODEL_ENDPOINT_UNAVAILABLE = "MODEL_ENDPOINT_UNAVAILABLE"
+    MODEL_OUTPUT_UNGROUNDED = "MODEL_OUTPUT_UNGROUNDED"
+    CIRCUIT_OPEN = "CIRCUIT_OPEN"
+    INSUFFICIENT_CONTEXT = "INSUFFICIENT_CONTEXT"
+    UNREPAIRABLE = "UNREPAIRABLE"
     SQL_POLICY_BLOCKED = "SQL_POLICY_BLOCKED"
     SQL_REPAIR_FAILED = "SQL_REPAIR_FAILED"
     TRINO_CONNECTION_FAILED = "TRINO_CONNECTION_FAILED"
@@ -79,12 +84,25 @@ class ErrorCode(str, Enum):
     REQUEST_CANCELLED = "REQUEST_CANCELLED"
     CONTRACT_VERSION_MISMATCH = "CONTRACT_VERSION_MISMATCH"
     SCHEMA_VERSION_MISMATCH = "SCHEMA_VERSION_MISMATCH"
+    RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
+    RESOURCE_CONFLICT = "RESOURCE_CONFLICT"
+    DEPENDENCY_UNAVAILABLE = "DEPENDENCY_UNAVAILABLE"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
 class ClarificationType(str, Enum):
     METRIC = "metric"
     PERIOD = "period"
+
+
+class RequiredAction(str, Enum):
+    NONE = "NONE"
+    RETRY = "RETRY"
+    AUTHENTICATE = "AUTHENTICATE"
+    REQUEST_ACCESS = "REQUEST_ACCESS"
+    PROVIDE_CONTEXT = "PROVIDE_CONTEXT"
+    MODIFY_REQUEST = "MODIFY_REQUEST"
+    CONTACT_SUPPORT = "CONTACT_SUPPORT"
 
 
 class RequestContext(ContractModel):
@@ -138,9 +156,60 @@ class AnalysisRequest(ContractModel):
 class ErrorBody(ContractModel):
     code: ErrorCode
     message: str
+    missing_requirements: tuple[str, ...] = ()
+    required_action: RequiredAction = RequiredAction.NONE
     retryable: bool = False
     suggestions: tuple[str, ...] = ()
     clarification_type: ClarificationType | None = None
+    trace_id: str = ""
+
+    def model_post_init(self, __context: object) -> None:
+        if "retryable" not in self.model_fields_set:
+            object.__setattr__(self, "retryable", self.code in _RETRYABLE_ERROR_CODES)
+        if "required_action" not in self.model_fields_set:
+            object.__setattr__(
+                self,
+                "required_action",
+                _REQUIRED_ACTION_BY_ERROR.get(self.code, RequiredAction.NONE),
+            )
+
+
+_RETRYABLE_ERROR_CODES = {
+    ErrorCode.MODEL_TIMEOUT,
+    ErrorCode.MODEL_ENDPOINT_UNAVAILABLE,
+    ErrorCode.CIRCUIT_OPEN,
+    ErrorCode.TRINO_CONNECTION_FAILED,
+    ErrorCode.QUERY_TIMEOUT,
+    ErrorCode.QUERY_SOURCE_FAILED,
+    ErrorCode.ARTIFACT_PERSIST_FAILED,
+    ErrorCode.PARTIAL_FAILURE,
+    ErrorCode.RATE_LIMITED,
+    ErrorCode.DEPENDENCY_UNAVAILABLE,
+}
+
+_REQUIRED_ACTION_BY_ERROR = {
+    ErrorCode.AUTHENTICATION_REQUIRED: RequiredAction.AUTHENTICATE,
+    ErrorCode.ACCESS_DENIED: RequiredAction.REQUEST_ACCESS,
+    ErrorCode.CONTEXT_INCOMPLETE: RequiredAction.PROVIDE_CONTEXT,
+    ErrorCode.INSUFFICIENT_CONTEXT: RequiredAction.PROVIDE_CONTEXT,
+    ErrorCode.DATA_ASSET_NOT_FOUND: RequiredAction.PROVIDE_CONTEXT,
+    ErrorCode.CONTRACT_VERSION_MISMATCH: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.SCHEMA_VERSION_MISMATCH: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.RESOURCE_NOT_FOUND: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.RESOURCE_CONFLICT: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.SQL_POLICY_BLOCKED: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.MODEL_TIMEOUT: RequiredAction.RETRY,
+    ErrorCode.MODEL_ENDPOINT_UNAVAILABLE: RequiredAction.RETRY,
+    ErrorCode.CIRCUIT_OPEN: RequiredAction.RETRY,
+    ErrorCode.TRINO_CONNECTION_FAILED: RequiredAction.RETRY,
+    ErrorCode.QUERY_TIMEOUT: RequiredAction.RETRY,
+    ErrorCode.QUERY_SOURCE_FAILED: RequiredAction.RETRY,
+    ErrorCode.ARTIFACT_PERSIST_FAILED: RequiredAction.RETRY,
+    ErrorCode.PARTIAL_FAILURE: RequiredAction.RETRY,
+    ErrorCode.RATE_LIMITED: RequiredAction.RETRY,
+    ErrorCode.DEPENDENCY_UNAVAILABLE: RequiredAction.RETRY,
+    ErrorCode.INTERNAL_ERROR: RequiredAction.CONTACT_SUPPORT,
+}
 
 
 class ResponseMeta(ContractModel):
@@ -157,6 +226,7 @@ class SourceReference(ContractModel):
     name: str
     schema_version: str
     seed_version: str
+    synthetic: bool | None = None
 
 
 class MetricReference(ContractModel):
@@ -229,6 +299,7 @@ class Evidence(ContractModel):
     policy_version: str | None = None
     model_version: str | None = None
     metrics: tuple[MetricReference, ...] = ()
+    metric_values: tuple[MetricValue, ...] = ()
     models: tuple[ModelInvocationEvidence, ...] = ()
     gates: GateEvidence | None = None
     gate_history: GateHistoryEvidence | None = None
@@ -311,43 +382,53 @@ class EmptyData(ContractModel):
     pass
 
 
-class AnalysisResponse(ContractModel):
+class ResponseContractModel(ContractModel):
+    @model_validator(mode="after")
+    def bind_error_trace(self) -> "ResponseContractModel":
+        error = getattr(self, "error", None)
+        meta = getattr(self, "meta", None)
+        if error is not None and meta is not None and not error.trace_id:
+            object.__setattr__(error, "trace_id", meta.trace_id)
+        return self
+
+
+class AnalysisResponse(ResponseContractModel):
     data: AnalysisData
     meta: ResponseMeta
     error: ErrorBody | None = None
 
 
-class AnalysisProgressResponse(ContractModel):
+class AnalysisProgressResponse(ResponseContractModel):
     data: AnalysisProgressData
     meta: ResponseMeta
     error: ErrorBody | None = None
 
 
-class HealthResponse(ContractModel):
+class HealthResponse(ResponseContractModel):
     data: HealthData
     meta: ResponseMeta
     error: ErrorBody | None = None
 
 
-class ReadinessResponse(ContractModel):
+class ReadinessResponse(ResponseContractModel):
     data: ReadinessData
     meta: ResponseMeta
     error: ErrorBody | None = None
 
 
-class SessionResponse(ContractModel):
+class SessionResponse(ResponseContractModel):
     data: SessionData
     meta: ResponseMeta
     error: ErrorBody | None = None
 
 
-class LoginResponse(ContractModel):
+class LoginResponse(ResponseContractModel):
     data: LoginData
     meta: ResponseMeta
     error: ErrorBody | None = None
 
 
-class ErrorResponse(ContractModel):
+class ErrorResponse(ResponseContractModel):
     data: EmptyData = Field(default_factory=EmptyData)
     meta: ResponseMeta
     error: ErrorBody

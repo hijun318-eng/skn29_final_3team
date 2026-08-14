@@ -168,7 +168,7 @@ services:
       DATAHUB_SECRET: ${DATAHUB_SECRET}
       DATAHUB_VERSION: v1.7.0
     ports:
-      - "127.0.0.1:${DATAHUB_MAPPED_FRONTEND_PORT:-19002}:9002"
+      - "${DATAHUB_MAPPED_FRONTEND_PORT:-19002}:9002"
 
 networks:
   datahub-network: {}

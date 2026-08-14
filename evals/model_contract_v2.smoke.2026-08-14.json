@@ -1,0 +1,135 @@
+{
+  "evidence_version": "MODEL-CONTRACT-v2-SMOKE-2026-08-14",
+  "executed_at": "2026-08-14",
+  "authorization": {
+    "paid_external_calls": true,
+    "request_limit": 10,
+    "requests_sent": 10,
+    "secrets_recorded": false
+  },
+  "scope": {
+    "release_state": "CANDIDATE",
+    "full_corpus_execution": false,
+    "cutover_decision": "BLOCKED",
+    "reason": "This bounded smoke is not a substitute for the required language and grounding corpus."
+  },
+  "pricing_snapshot_usd_per_million_tokens": {
+    "source_date": "2026-08-14",
+    "gpt-5.4-mini": {"input": 0.75, "output": 4.5},
+    "gpt-5.6-luna": {"input": 0.2, "output": 1.2},
+    "gpt-5.6-terra": {"input": 2.0, "output": 12.0},
+    "gpt-5.6-sol": {"input": 5.0, "output": 30.0}
+  },
+  "known_usage_cost_estimate_usd": 0.096434,
+  "known_usage_cost_note": "Estimate covers only responses whose usage was captured. One completed Terra response lacked captured usage; two HTTP 400 requests had no captured usage. This is not an invoice total.",
+  "node1": {
+    "input_case": "explicit single metric alias plus supported relative period",
+    "expected": {
+      "selected_intent": "aggregate",
+      "selected_metric_id": "metric.room_revenue",
+      "period_role": "primary"
+    },
+    "critical_passes": 0,
+    "attempts": [
+      {
+        "model": "gpt-5.4-mini",
+        "variant": "authoritative_prompt_system_role",
+        "status": "SEMANTIC_FAIL",
+        "latency_ms": 2434.5,
+        "input_tokens": 1988,
+        "output_tokens": 62,
+        "observed": "contract-valid but intent, metric, and period were all omitted"
+      },
+      {
+        "model": "gpt-5.6-luna",
+        "variant": "authoritative_prompt_system_role",
+        "status": "SEMANTIC_FAIL",
+        "latency_ms": 3145.4,
+        "input_tokens": 1995,
+        "output_tokens": 186,
+        "observed": "contract-valid but reported METRIC and PRIMARY_PERIOD missing"
+      },
+      {
+        "model": "gpt-5.6-terra",
+        "variant": "authoritative_prompt_system_role",
+        "status": "CONTRACT_FAIL",
+        "observed": "duplicate dimension candidate IDs"
+      },
+      {
+        "model": "gpt-5.6-terra",
+        "variant": "authoritative_prompt_medium_reasoning",
+        "status": "CONTRACT_FAIL",
+        "latency_ms": 4663.6,
+        "input_tokens": 1995,
+        "output_tokens": 338,
+        "reasoning_tokens": 202,
+        "observed": "duplicate dimension candidate IDs and omitted explicit metric and period"
+      },
+      {
+        "model": "gpt-5.6-sol",
+        "variant": "authoritative_prompt_medium_reasoning",
+        "status": "SEMANTIC_FAIL",
+        "latency_ms": 44141.0,
+        "input_tokens": 1995,
+        "output_tokens": 2414,
+        "reasoning_tokens": 2309,
+        "observed": "contract-valid but marked the explicit request as intent and metric ambiguous"
+      },
+      {
+        "model": "gpt-5.4-mini",
+        "variant": "compact_decision_procedure_system_role",
+        "status": "SEMANTIC_FAIL",
+        "latency_ms": 1563.7,
+        "input_tokens": 738,
+        "output_tokens": 62,
+        "observed": "marked the explicit request OUT_OF_SCOPE"
+      },
+      {
+        "model": "gpt-5.4-mini",
+        "variant": "compact_decision_procedure_developer_role",
+        "status": "CONTRACT_FAIL",
+        "latency_ms": 937.7,
+        "input_tokens": 641,
+        "output_tokens": 93,
+        "observed": "found intent and metric but emitted an invalid span and omitted the period"
+      },
+      {
+        "model": "gpt-5.4-mini",
+        "variant": "authoritative_prompt_developer_role_with_positive_example",
+        "status": "SEMANTIC_FAIL",
+        "latency_ms": 1401.7,
+        "input_tokens": 2138,
+        "output_tokens": 59,
+        "observed": "marked the explicit request OUT_OF_SCOPE"
+      }
+    ]
+  },
+  "node3": {
+    "input_case": "one required grounded observation fact",
+    "critical_passes": 0,
+    "attempts": [
+      {
+        "model": "gpt-5.4-mini",
+        "status": "PROVIDER_SCHEMA_REJECTED",
+        "http_status": 400,
+        "observed": "strict provider schema was rejected before model output"
+      },
+      {
+        "model": "gpt-5.4-mini",
+        "status": "PROVIDER_SCHEMA_REJECTED",
+        "http_status": 400,
+        "observed": "provider schema remained incompatible after removing local-only collection and scalar constraints"
+      }
+    ]
+  },
+  "decision": {
+    "keep_current_runtime_model": true,
+    "change_model_now": false,
+    "promote_v2": false,
+    "next_required_work": [
+      "Capture provider 400 error bodies without secrets and derive a provider-compatible Node3 wire schema.",
+      "Run deterministic span extraction before Node1 or redesign the model output to select approved candidate indices instead of generating offsets.",
+      "Run the complete versioned Node1 and Node3 corpus before any model or prompt cutover."
+    ]
+  }
+}

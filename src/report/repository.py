@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime
 from uuid import uuid4
 
@@ -12,6 +13,7 @@ class InMemoryReportRepository:
         self._runs: dict[str, ReportRun] = {}
         self._commands: dict[str, ManualRunCommand] = {}
         self._idempotency: dict[tuple[str, int, str], str] = {}
+        self._documents: dict[tuple[str, int], dict[str, object]] = {}
 
     def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
         if draft.status is not DefinitionStatus.DRAFT:
@@ -37,6 +39,80 @@ class InMemoryReportRepository:
         self._versions[(definition_id, version)] = approved
         return approved
 
+    def get_document_source(self, definition_id: str, version: int) -> dict[str, object]:
+        report = self.get_version(definition_id, version)
+        if report.status is not DefinitionStatus.DRAFT:
+            raise ValueError("Only a draft Report version can be finalized")
+        if any(block.artifact_id for block in report.blocks):
+            raise ValueError("The in-memory contract repository has no Artifact snapshots")
+        return {
+            "definition_id": report.definition_id,
+            "version": report.version,
+            "title": report.title,
+            "orientation": report.orientation,
+            "currency_display_unit": report.currency_display_unit,
+            "blocks": [
+                {
+                    "block_id": block.block_id,
+                    "title": block.title,
+                    "type": block.type.value,
+                    "x": block.x,
+                    "y": block.y,
+                    "w": block.w,
+                    "h": block.h,
+                    "content": block.content,
+                    "artifact": None,
+                }
+                for block in report.blocks
+            ],
+            "artifact_versions": [],
+        }
+
+    def approve_with_document(
+        self,
+        definition_id: str,
+        version: int,
+        approved_at: datetime,
+        orientation: str,
+        currency_display_unit: str,
+        expected_source_checksum: str,
+        html_snapshot: str,
+        pdf_bytes: bytes,
+    ) -> ReportDefinitionVersion:
+        from app.services.report_document import canonical_source_checksum
+
+        source = self.get_document_source(definition_id, version)
+        if source["orientation"] != orientation:
+            raise ValueError("Report orientation changed while the PDF was rendering")
+        if source["currency_display_unit"] != currency_display_unit:
+            raise ValueError("Report currency display unit changed while the PDF was rendering")
+        if canonical_source_checksum(source, orientation) != expected_source_checksum:
+            raise ValueError("Report content changed while the PDF was rendering")
+        approved = self.get_version(definition_id, version).approve(approved_at)
+        document = {
+            "definition_id": definition_id,
+            "definition_version": version,
+            "orientation": orientation,
+            "currency_display_unit": currency_display_unit,
+            "renderer_version": "weasyprint-69",
+            "source_checksum": expected_source_checksum,
+            "html_checksum": hashlib.sha256(html_snapshot.encode("utf-8")).hexdigest(),
+            "pdf_checksum": hashlib.sha256(pdf_bytes).hexdigest(),
+            "html_snapshot": html_snapshot,
+            "pdf_bytes": pdf_bytes,
+            "artifact_versions": source["artifact_versions"],
+            "confirmed_at": approved_at,
+        }
+        self._documents[(definition_id, version)] = document
+        self._versions[(definition_id, version)] = approved
+        return approved
+
+    def get_document(self, definition_id: str, version: int) -> dict[str, object]:
+        try:
+            return self._documents[(definition_id, version)]
+        except KeyError as error:
+            raise KeyError("Final Report document not found") from error
+
     def create_next_draft(self, definition_id: str, approved_version: int) -> ReportDefinitionVersion:
         draft = self.get_version(definition_id, approved_version).next_draft()
         return self.add_draft(draft)
@@ -46,8 +122,15 @@ class InMemoryReportRepository:
         definition_id: str,
         version: int,
         blocks: tuple[ReportBlock, ...],
+        *,
+        orientation: str | None = None,
+        currency_display_unit: str | None = None,
     ) -> ReportDefinitionVersion:
-        replaced = self.get_version(definition_id, version).replace_blocks(blocks)
+        replaced = self.get_version(definition_id, version).replace_blocks(
+            blocks,
+            orientation=orientation,
+            currency_display_unit=currency_display_unit,
+        )
         self._versions[(definition_id, version)] = replaced
         return replaced
 

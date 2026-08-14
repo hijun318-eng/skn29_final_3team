@@ -22,6 +22,12 @@ from app.services.context_builder import ContextPackageBuilder
 from app.services.context_builder import ContextBuildError, ContextBuildErrorCode
 from app.services.pipeline_support import PipelineSupport
 from src.data.i2_adapters import QueryPage
+from src.ai.metric_glossary import (
+    metric_definition,
+    metric_display_name,
+    metric_glossary,
+    metric_unit,
+)
 
 
 def live_dataset(adapter, urn):
@@ -45,16 +51,77 @@ def live_dataset(adapter, urn):
     }
 
 
+def live_glossary_term(urn):
+    metric_id = urn.rsplit(":", 1)[-1]
+    glossary = metric_glossary()
+    return {
+        "urn": urn,
+        "exists": True,
+        "glossaryTermInfo": {
+            "name": metric_display_name(metric_id),
+            "description": metric_definition(metric_id),
+            "termSource": "INTERNAL",
+            "sourceRef": "METRIC-GLOSSARY-v1.4.0",
+            "customProperties": [
+                {"key": "answervice.metric_id", "value": metric_id},
+                {
+                    "key": "answervice.aliases",
+                    "value": json.dumps(glossary[metric_id], ensure_ascii=False),
+                },
+                {"key": "answervice.unit", "value": metric_unit(metric_id)},
+                {
+                    "key": "answervice.glossary_version",
+                    "value": "METRIC-GLOSSARY-v1.4.0",
+                },
+            ],
+        },
+    }
+
+
 def simulated_verified_live_adapter():
     adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
     adapter._bindings_verified = True
     adapter._live_runtime_verified = True
     adapter._trino.health = lambda: True
     adapter._datahub_health = lambda: True
+    adapter._datahub_glossary_term = live_glossary_term
     for asset in adapter._assets:
         if asset["kind"] == "view":
             asset["binding_status"] = "VERIFIED"
     return adapter
+
+
+def test_live_metric_terms_are_read_from_datahub_business_glossary():
+    adapter = simulated_verified_live_adapter()
+
+    terms = adapter.get_metric_terms(("recognized_room_revenue",))
+
+    assert terms["recognized_room_revenue"] == {
+        "id": "recognized_room_revenue",
+        "urn": "urn:li:glossaryTerm:recognized_room_revenue",
+        "label": "인식 객실 매출",
+        "aliases": (
+            "객실 매출",
+            "인식 객실 매출",
+            "체크아웃 기준 객실 매출",
+            "recognized room revenue",
+        ),
+        "definition": "실제 체크아웃 날짜에 전액 인식한 객실 매출입니다.",
+        "unit": "KRW",
+        "version": "METRIC-GLOSSARY-v1.4.0",
+    }
+
+
+def test_live_metric_terms_fail_closed_when_datahub_term_is_missing():
+    adapter = simulated_verified_live_adapter()
+    adapter._datahub_glossary_term = lambda urn: {
+        "urn": urn,
+        "exists": False,
+        "glossaryTermInfo": None,
+    }
+
+    with pytest.raises(RuntimeError, match="Glossary Term"):
+        adapter.get_metric_terms(("recognized_room_revenue",))
 
 
 def test_live_search_without_entitled_assets_uses_typed_context_error():
@@ -165,6 +232,80 @@ def test_live_query_cancellation_calls_trino_cancel_between_pages():
     assert adapter.get_query_status("query-cancelled")["status"] == "CANCELLED"
 
 
+def test_pagination_uses_one_total_deadline_and_cancels_last_next_uri():
+    class PagedTrino:
+        def __init__(self):
+            self.cancelled = []
+
+        def execute(self, _sql):
+            return QueryPage("query-timeout", "RUNNING", ("value",), ((1,),), "next-1")
+
+        def next_page(self, _next_uri):
+            return QueryPage("query-timeout", "RUNNING", ("value",), ((2,),), "next-2")
+
+        def cancel(self, next_uri):
+            self.cancelled.append(next_uri)
+
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080",
+        "runtime-user",
+        query_timeout_seconds=1,
+    )
+    adapter._trino = PagedTrino()
+    clock = iter((0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 1.1, 1.1))
+
+    with patch("app.adapters.i2_data_platform.monotonic", side_effect=lambda: next(clock)):
+        with pytest.raises(TimeoutError, match="deadline"):
+            adapter.execute_query("SELECT 1", {}, "g2-token")
+
+    assert adapter._trino.cancelled == ["next-2"]
+
+
+def test_query_state_is_bounded_and_terminal_read_evicts_it():
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080",
+        "runtime-user",
+        query_state_max_entries=1,
+    )
+    pages = iter(
+        (
+            QueryPage("query-1", "FINISHED", ("value",), ((1,),), None),
+            QueryPage("query-2", "FINISHED", ("value",), ((2,),), None),
+        )
+    )
+    adapter._trino.execute = lambda _sql: next(pages)
+
+    adapter.execute_query("SELECT 1", {}, "g2-token")
+    adapter.execute_query("SELECT 2", {}, "g2-token")
+
+    assert adapter.get_query_status("query-1")["status"] == "NOT_FOUND"
+    assert adapter.get_query_status("query-2")["status"] == "SUCCEEDED"
+    assert adapter.get_query_status("query-2")["status"] == "NOT_FOUND"
+
+
+def test_query_state_expires_after_ttl():
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080",
+        "runtime-user",
+        query_state_ttl_seconds=1,
+    )
+    adapter._trino.execute = lambda _sql: QueryPage(
+        "query-expiring", "FINISHED", ("value",), ((1,),), None
+    )
+    clock = iter((0.0, 0.0, 0.0, 0.5, 1.1))
+
+    with patch("app.adapters.i2_data_platform.monotonic", side_effect=lambda: next(clock)):
+        adapter.execute_query("SELECT 1", {}, "g2-token")
+        assert adapter.get_query_status("query-expiring")["status"] == "SUCCEEDED"
+
+    adapter._trino.execute = lambda _sql: QueryPage(
+        "query-expiring-2", "FINISHED", ("value",), ((1,),), None
+    )
+    with patch("app.adapters.i2_data_platform.monotonic", side_effect=(0.0, 0.0, 0.0, 2.0)):
+        adapter.execute_query("SELECT 1", {}, "g2-token")
+        assert adapter.get_query_status("query-expiring-2")["status"] == "NOT_FOUND"
+
+
 def test_live_datahub_serving_view_passes_context_and_g2_contract():
     adapter = simulated_verified_live_adapter()
     adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
@@ -204,15 +345,243 @@ def test_live_datahub_serving_view_passes_context_and_g2_contract():
     }
 
     assert support.g2_violation(plan, package) is None
+    for projection in ("*", "secret_col", "unknown_alias.secret_col"):
+        unsafe = re.sub(
+            r"SELECT .+? FROM",
+            f"SELECT {projection} FROM",
+            sql,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+        assert support.g2_violation({**plan, "sql": unsafe}, package) == (
+            "REFERENCE_OUTSIDE_CONTEXT"
+        )
+    unsafe_function = re.sub(
+        r"SELECT .+? FROM",
+        "SELECT md5(property_id) FROM",
+        sql,
+        count=1,
+        flags=re.IGNORECASE,
+    )
+    assert support.g2_violation({**plan, "sql": unsafe_function}, package) == (
+        "UNSAFE_SQL"
+    )
     assert normalized_question == payload.question
     assert package.dataset_count == 1
     assert package.column_count <= 60
+
+    rows = [{"property_id": "P1", "revenue": 125000.0}]
+    safe_result = {
+        "query_id": "g3-safe-result",
+        "rows": rows,
+        "result_metadata": support._result_metadata(
+            rows, ("property_id", "revenue")
+        ),
+        "evidence_complete": True,
+        "zero_result_suspicious": False,
+        "filters": {},
+        "sampling": {"applied": False, "returned_rows": 1, "total_rows": 1},
+        "masking": {"applied": False, "fields": ()},
+    }
+    assert support.g3_violation(safe_result, plan, package) is None
+    assert support.g3_violation(
+        {**safe_result, "rows": [{"property_id": "P1", "secret": "x"}]},
+        plan,
+        package,
+    ) == "RESULT_SCHEMA_INVALID"
+    assert support.g3_violation(
+        {
+            **safe_result,
+            "result_metadata": {
+                **safe_result["result_metadata"],
+                "checksum": "0" * 64,
+            },
+        },
+        plan,
+        package,
+    ) == "EVIDENCE_MISMATCH"
+    assert support.g3_violation(
+        {
+            **safe_result,
+            "masking": {"applied": False, "fields": ("revenue",)},
+        },
+        plan,
+        package,
+    ) == "MASKING_EVIDENCE_INVALID"
+
+    pii_rows = [{"email": "guest@example.com"}]
+    pii_plan = {**plan, "sql": "SELECT email FROM pms.public.pms_guests LIMIT 1"}
+    pii_result = {
+        **safe_result,
+        "rows": pii_rows,
+        "result_metadata": support._result_metadata(pii_rows, ("email",)),
+        "sampling": {"applied": False, "returned_rows": 1, "total_rows": 1},
+    }
+    assert support.g3_violation(pii_result, pii_plan, package) == (
+        "SENSITIVE_RESULT_BLOCKED"
+    )
     assert package.assets[0].fqn == "serving.analytics.hotel_daily_metrics"
     assert [metric.id for metric in package.metrics] == ["recognized_room_revenue"]
     assert [(item.field, item.value) for item in package.metrics[0].required_filters] == [
         ("data_period_status", "SYNTHETIC_ACTUAL_LIKE"),
         ("is_forecast", False),
     ]
+
+
+def test_walkerhill_v4_release_uses_only_preferred_v4_assets_and_g2_contract():
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080",
+        "runtime-user",
+        require_live_metadata=False,
+        context_release="walkerhill-v4",
+    )
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(
+        question="2026년 6월 체크아웃 기준 객실 매출을 분석해 줘",
+        parameters={
+            "period_start": "2026-06-01",
+            "period_end_exclusive": "2026-07-01",
+        },
+    )
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+    assets, _, _ = support.select_metric(payload, context, assets)
+    package = support.build_context(payload, context, assets)
+    asset = package.assets[0]
+    plan = {
+        "sql": (
+            "SELECT SUM(recognized_room_revenue) AS recognized_room_revenue "
+            "FROM serving.analytics.v4_hotel_daily_metrics "
+            "WHERE business_date >= :period_start "
+            "AND business_date < :period_end_exclusive LIMIT 1000"
+        ),
+        "parameters": {
+            "period_start": {"value_type": "date", "value": "2026-06-01"},
+            "period_end_exclusive": {"value_type": "date", "value": "2026-07-01"},
+        },
+        "references": [
+            {
+                "urn": asset.urn,
+                "fqn": asset.fqn,
+                "columns": ["business_date", "recognized_room_revenue"],
+                "metric_ids": ["recognized_room_revenue"],
+            }
+        ],
+        "model_version": "TEST-v1",
+    }
+
+    assert support.g2_violation(plan, package) is None
+    assert package.context_release == "walkerhill-v4-schema-2.0.0-catalog-2.0.0"
+    assert package.assets[0].fqn == "serving.analytics.v4_hotel_daily_metrics"
+    assert [metric.id for metric in package.metrics] == ["recognized_room_revenue"]
+    assert all(".v4_" in item["fqn"] for item in assets)
+    assert all(item["deprecated"] is False for item in assets)
+    assert all(item["synthetic"] is True for item in assets)
+    assert all(source.synthetic is True for source in support.sources(assets))
+
+
+def test_walkerhill_v4_metric_selection_drops_unreferenced_search_candidates():
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080",
+        "runtime-user",
+        require_live_metadata=False,
+        context_release="walkerhill-v4",
+    )
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(
+        question="recognized room revenue for June 2026",
+        parameters={
+            "period_start": "2026-06-01",
+            "period_end_exclusive": "2026-07-01",
+        },
+    )
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+
+    candidates = adapter.search_assets(
+        payload.question, context.model_dump(mode="json")
+    )
+    assets, _, _ = support.select_metric(payload, context, candidates)
+
+    assert len(candidates) > 1
+    assert [asset["fqn"] for asset in assets] == [
+        "serving.analytics.v4_hotel_daily_metrics"
+    ]
+
+
+def test_walkerhill_v4_g2_rejects_legacy_default_asset():
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080",
+        "runtime-user",
+        require_live_metadata=False,
+        context_release="walkerhill-v4",
+    )
+    support = PipelineSupport(adapter, ContextPackageBuilder())
+    payload = AnalysisRequest(
+        question="객실 판매량",
+        parameters={
+            "period_start": "2026-06-01",
+            "period_end_exclusive": "2026-07-01",
+        },
+    )
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    package = support.build_context(
+        payload,
+        context,
+        adapter.search_assets(payload.question, context.model_dump(mode="json")),
+    )
+
+    plan = {
+        "sql": "SELECT * FROM serving.analytics.hotel_daily_metrics LIMIT 1000",
+        "parameters": {},
+        "references": [
+            {
+                "urn": "legacy",
+                "fqn": "serving.analytics.hotel_daily_metrics",
+                "columns": ["room_revenue"],
+            }
+        ],
+    }
+
+    plan["parameters"] = {
+        "period_start": {"value_type": "date", "value": "2026-06-01"},
+        "period_end_exclusive": {"value_type": "date", "value": "2026-07-01"},
+    }
+    plan["sql"] = (
+        "SELECT * FROM serving.analytics.hotel_daily_metrics "
+        "WHERE business_date >= :period_start "
+        "AND business_date < :period_end_exclusive LIMIT 1000"
+    )
+    assert support.g2_violation(plan, package) == "REFERENCE_OUTSIDE_CONTEXT"
+
+
+def test_walkerhill_v4_release_checksum_fails_closed_on_tamper(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    contract = json.loads(
+        (root / "app/backend/contracts/walkerhill_v4_context.v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    contract["assets"][0]["fqn"] = "serving.analytics.v4_tampered"
+    path = tmp_path / "tampered-v4-context.json"
+    path.write_text(json.dumps(contract), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="release is not approved"):
+        I2DataPlatformAdapter(
+            "http://trino:8080",
+            "runtime-user",
+            context_release="walkerhill-v4",
+            v4_contract_path=path,
+        )
 
 
 def test_node1_period_candidates_become_typed_context_bindings():
@@ -386,6 +755,36 @@ def test_node1_wrong_explicit_month_is_rejected_instead_of_silently_replaced():
     assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
 
     with pytest.raises(ValueError, match="calendar context"):
+        support.select_metric(payload, context, assets)
+
+
+def test_node1_cannot_invent_dates_for_an_unresolved_relative_period():
+    class InventedDateNode1:
+        def normalize_question(self, payload):
+            return {
+                "normalized_question": payload["question"],
+                "intent_candidates": ["aggregate"],
+                "metric_candidates": ["recognized_room_revenue"],
+                "selected_metric_id": "recognized_room_revenue",
+                "dimension_candidates": [],
+                "period_candidates": [{
+                    "start": "1999-01-01T00:00:00+09:00",
+                    "end_exclusive": "1999-02-01T00:00:00+09:00",
+                    "source_text": "지난 성수기",
+                }],
+            }
+
+    adapter = simulated_verified_live_adapter()
+    adapter._datahub_dataset = lambda urn: live_dataset(adapter, urn)
+    support = PipelineSupport(adapter, ContextPackageBuilder(), InventedDateNode1())
+    payload = AnalysisRequest(question="지난 성수기 객실 매출을 보여줘")
+    context = RequestContext(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        as_of=date(2026, 7, 30),
+    )
+    assets = adapter.search_assets(payload.question, context.model_dump(mode="json"))
+
+    with pytest.raises(ValueError, match="no deterministic calendar match"):
         support.select_metric(payload, context, assets)
 
 
@@ -681,7 +1080,8 @@ def test_selected_assets_without_metric_fail_closed_when_context_is_built():
     [
         (
             "2026년 6월 체크아웃 기준 객실 매출",
-            "SELECT SUM(recognized_room_revenue) FROM serving.analytics.hotel_daily_metrics "
+            "SELECT SUM(recognized_room_revenue) AS recognized_room_revenue "
+            "FROM serving.analytics.hotel_daily_metrics "
             "WHERE data_period_status = :required_filter_1 "
             "AND is_forecast = :required_filter_2 LIMIT 1000",
             {"required_filter_1": "SYNTHETIC_ACTUAL_LIKE", "required_filter_2": False},
@@ -690,7 +1090,8 @@ def test_selected_assets_without_metric_fail_closed_when_context_is_built():
         ),
         (
             "2026년 6월 소멸 포인트 합계",
-            "SELECT SUM(points_delta) FROM crm.dbo.crm_point_transactions "
+            "SELECT SUM(points_delta) AS expired_points "
+            "FROM crm.dbo.crm_point_transactions "
             "WHERE txn_type = :required_filter_1 "
             "AND is_forecast = :required_filter_2 LIMIT 1000",
             {"required_filter_1": "EXPIRE", "required_filter_2": False},
@@ -784,7 +1185,9 @@ def test_single_source_filter_repair_hint_does_not_invent_three_source_rules():
 
 
 def test_node1_metric_selection_fails_closed_for_missing_ambiguous_and_duplicate():
-    adapter = I2DataPlatformAdapter("http://trino:8080", "runtime-user")
+    adapter = I2DataPlatformAdapter(
+        "http://trino:8080", "runtime-user", require_live_metadata=False
+    )
     support = PipelineSupport(adapter, ContextPackageBuilder())
     context = RequestContext(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
@@ -962,6 +1365,25 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
     package = support.build_context(
         payload, context, assets, structured_request
     )
+    changed_period = {
+        **structured_request,
+        "period_candidates": [
+            {
+                "source_text": "7월부터 9월까지",
+                "start": "2026-07-01T00:00:00+09:00",
+                "end_exclusive": "2026-10-01T00:00:00+09:00",
+            }
+        ],
+    }
+    changed_package = support.build_context(payload, context, assets, changed_period)
+    assert [
+        (item.name, item.value)
+        for item in changed_package.parameter_bindings
+        if item.name in {"period_start", "period_end_exclusive"}
+    ] == [
+        ("period_start", "2026-07-01"),
+        ("period_end_exclusive", "2026-10-01"),
+    ]
     sql = " ".join(
         (
             "WITH pms_source AS (SELECT s.property_id,",
@@ -1062,6 +1484,10 @@ def test_three_source_context_preserves_typed_parameters_and_g2_policy(tmp_path)
             "field": "derived.total_guest_revenue_krw",
             "aggregation": "derived_sum",
             "time_field": "derived.month",
+            "result_field": "total_guest_revenue_krw",
+            "unit": "KRW",
+            "formula": None,
+            "reduction": "sum",
             "required_filters": [
                 {
                     "field": item.field,

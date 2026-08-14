@@ -11,7 +11,9 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import IntegrityError
 
+from app.adapters.report_document_repository import PostgresReportDocumentRepositoryMixin
 from src.report.domain import (
+    BlockFailureCode,
     BlockRunStatus,
     BlockType,
     DefinitionStatus,
@@ -49,7 +51,7 @@ def _advance_schedule(current: datetime, cadence: str) -> datetime:
     raise ValueError("지원하지 않는 Report cadence입니다.")
 
 
-class PostgresReportRepository:
+class PostgresReportRepository(PostgresReportDocumentRepositoryMixin):
     """Owner-scoped Report 저장소이며 관리자는 명시적으로 전체 범위를 관리한다."""
 
     def __init__(
@@ -65,6 +67,41 @@ class PostgresReportRepository:
 
     def _scope_params(self) -> dict[str, object]:
         return {"owner_id": self._owner_id, "manage_all": self._manage_all}
+
+    def _require_owned_artifact(
+        self,
+        connection,
+        artifact_id: UUID,
+        query_id: str | None,
+    ) -> tuple[UUID, int]:
+        if not query_id:
+            raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
+        owned = connection.execute(
+            text(
+                """
+                SELECT l.definition_id, l.definition_version
+                FROM artifact.analysis_artifacts a
+                JOIN query.query_executions q
+                  ON q.query_execution_id = a.query_execution_id
+                JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                JOIN analysis_v1.analysis_run_links l ON l.request_id = r.request_id
+                WHERE a.artifact_id = :artifact_id
+                  AND a.status = 'APPROVED'
+                  AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                  AND r.user_id = :owner_id
+                  AND q.trino_query_id = :query_id
+                """
+            ),
+            {
+                "artifact_id": artifact_id,
+                "owner_id": self._owner_id,
+                "query_id": query_id,
+            },
+        ).one_or_none()
+        if owned is None:
+            raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
+
+        return UUID(str(owned[0])), int(owned[1])
 
     def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
         if draft.status is not DefinitionStatus.DRAFT:
@@ -97,26 +134,42 @@ class PostgresReportRepository:
                     text(
                         """
                         INSERT INTO report_v1.report_definition_versions
-                            (definition_id, version, status, title)
-                        VALUES (:definition_id, :version, 'draft', :title)
+                            (definition_id, version, status, title,
+                             orientation, currency_display_unit)
+                        VALUES (:definition_id, :version, 'draft', :title,
+                                :orientation, :currency_display_unit)
                         """
                     ),
                     {
                         "definition_id": definition_id,
                         "version": draft.version,
                         "title": draft.title,
+                        "orientation": draft.orientation,
+                        "currency_display_unit": draft.currency_display_unit,
                     },
                 )
                 for block in draft.blocks:
+                    block_artifact_id = (
+                        _uuid(block.artifact_id, "artifact_id")
+                        if block.artifact_id
+                        else None
+                    )
+                    analysis_lineage = None
+                    if block_artifact_id is not None:
+                        analysis_lineage = self._require_owned_artifact(
+                            connection, block_artifact_id, block.query_id
+                        )
                     connection.execute(
                         text(
                             """
                             INSERT INTO report_v1.report_blocks
                                 (definition_id, definition_version, block_id, title,
-                                 artifact_id, query_id, columns, block_type, x, y, w, h, content)
+                                 artifact_id, query_id, columns, block_type, x, y, w, h, content,
+                                 analysis_definition_id, analysis_definition_version)
                             VALUES (:definition_id, :version, :block_id, :title,
                                     :artifact_id, :query_id, :columns, :block_type,
-                                    :x, :y, :w, :h, :content)
+                                    :x, :y, :w, :h, :content,
+                                    :analysis_definition_id, :analysis_definition_version)
                             """
                         ),
                         {
@@ -124,10 +177,7 @@ class PostgresReportRepository:
                             "version": draft.version,
                             "block_id": _uuid(block.block_id, "block_id"),
                             "title": block.title,
-                            "artifact_id": (
-                                _uuid(block.artifact_id, "artifact_id")
-                                if block.artifact_id else None
-                            ),
+                            "artifact_id": block_artifact_id,
                             "query_id": block.query_id,
                             "columns": block.columns,
                             "block_type": block.type.value,
@@ -136,6 +186,8 @@ class PostgresReportRepository:
                             "w": block.w,
                             "h": block.h,
                             "content": block.content,
+                            "analysis_definition_id": analysis_lineage[0] if analysis_lineage else None,
+                            "analysis_definition_version": analysis_lineage[1] if analysis_lineage else None,
                         },
                     )
         except IntegrityError as error:
@@ -148,7 +200,8 @@ class PostgresReportRepository:
             row = connection.execute(
                 text(
                     """
-                    SELECT v.definition_id, v.version, v.status, v.title, v.approved_at
+                    SELECT v.definition_id, v.version, v.status, v.title, v.approved_at,
+                           v.orientation, v.currency_display_unit
                     FROM report_v1.report_definition_versions v
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE v.definition_id = :definition_id AND v.version = :version
@@ -198,6 +251,8 @@ class PostgresReportRepository:
                     for block in blocks
                 ),
                 approved_at=row["approved_at"],
+                orientation=row["orientation"],
+                currency_display_unit=row["currency_display_unit"],
             )
 
     def list_definitions(self) -> tuple[ReportDefinitionVersion, ...]:
@@ -278,6 +333,9 @@ class PostgresReportRepository:
         definition_id: str,
         version: int,
         blocks: tuple[ReportBlock, ...],
+        *,
+        orientation: str | None = None,
+        currency_display_unit: str | None = None,
     ) -> ReportDefinitionVersion:
         definition_uuid = _uuid(definition_id, "definition_id")
         with self._engine.begin() as connection:
@@ -305,6 +363,25 @@ class PostgresReportRepository:
             connection.execute(
                 text(
                     """
+                    UPDATE report_v1.report_definition_versions
+                    SET orientation = COALESCE(:orientation, orientation),
+                        currency_display_unit = COALESCE(
+                            :currency_display_unit, currency_display_unit
+                        )
+                    WHERE definition_id = :definition_id AND version = :version
+                      AND status = 'draft'
+                    """
+                ),
+                {
+                    "definition_id": definition_uuid,
+                    "version": version,
+                    "orientation": orientation,
+                    "currency_display_unit": currency_display_unit,
+                },
+            )
+            connection.execute(
+                text(
+                    """
                     DELETE FROM report_v1.report_blocks
                     WHERE definition_id = :definition_id AND definition_version = :version
                     """
@@ -312,15 +389,27 @@ class PostgresReportRepository:
                 {"definition_id": definition_uuid, "version": version},
             )
             for block in blocks:
+                block_artifact_id = (
+                    _uuid(block.artifact_id, "artifact_id")
+                    if block.artifact_id
+                    else None
+                )
+                analysis_lineage = None
+                if block_artifact_id is not None:
+                    analysis_lineage = self._require_owned_artifact(
+                        connection, block_artifact_id, block.query_id
+                    )
                 connection.execute(
                     text(
                         """
                         INSERT INTO report_v1.report_blocks
                             (definition_id, definition_version, block_id, title,
-                             artifact_id, query_id, columns, block_type, x, y, w, h, content)
+                             artifact_id, query_id, columns, block_type, x, y, w, h, content,
+                             analysis_definition_id, analysis_definition_version)
                         VALUES (:definition_id, :version, :block_id, :title,
                                 :artifact_id, :query_id, :columns, :block_type,
-                                :x, :y, :w, :h, :content)
+                                :x, :y, :w, :h, :content,
+                                :analysis_definition_id, :analysis_definition_version)
                         """
                     ),
                     {
@@ -328,7 +417,7 @@ class PostgresReportRepository:
                         "version": version,
                         "block_id": _uuid(block.block_id, "block_id"),
                         "title": block.title,
-                        "artifact_id": _uuid(block.artifact_id, "artifact_id") if block.artifact_id else None,
+                        "artifact_id": block_artifact_id,
                         "query_id": block.query_id,
                         "columns": block.columns,
                         "block_type": block.type.value,
@@ -337,6 +426,8 @@ class PostgresReportRepository:
                         "w": block.w,
                         "h": block.h,
                         "content": block.content,
+                        "analysis_definition_id": analysis_lineage[0] if analysis_lineage else None,
+                        "analysis_definition_version": analysis_lineage[1] if analysis_lineage else None,
                     },
                 )
         return self.get_version(definition_id, version)
@@ -452,7 +543,8 @@ class PostgresReportRepository:
             blocks = connection.execute(
                 text(
                     """
-                    SELECT block_id, artifact_id, query_id, snapshot_checksum, status
+                    SELECT block_id, artifact_id, query_id, snapshot_checksum, status,
+                           request_id, failure_code, failure_message
                     FROM report_v1.report_block_runs
                     WHERE run_id = :run_id ORDER BY block_id
                     """
@@ -475,6 +567,9 @@ class PostgresReportRepository:
                         block["query_id"],
                         block["snapshot_checksum"],
                         BlockRunStatus(block["status"]),
+                        str(block["request_id"]) if block["request_id"] else None,
+                        BlockFailureCode(block["failure_code"]) if block["failure_code"] else None,
+                        block["failure_message"],
                     )
                     for block in blocks
                         ),
@@ -538,148 +633,286 @@ class PostgresReportRepository:
             RunStatus(row["status"]),
         )
 
-    def execute_manual_run(self, command_id: str) -> ReportRun:
+    def claim_manual_run(self, command_id: str) -> dict[str, object]:
+        """Atomically claim a command and return immutable replay inputs."""
         command_uuid = _uuid(command_id, "command_id")
-        run_id = None
         with self._engine.begin() as connection:
             command = connection.execute(
                 text(
                     """
-                    SELECT c.definition_id, c.definition_version, c.as_of, c.run_id
+                    SELECT c.definition_id, c.definition_version, c.as_of, c.run_id,
+                           c.status, d.owner_id
                     FROM report_v1.report_manual_run_commands c
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE c.command_id = :command_id
                       AND (:manage_all OR d.owner_id = :owner_id)
-                    FOR UPDATE
+                    FOR UPDATE OF c
                     """
                 ),
                 {**self._scope_params(), "command_id": command_uuid},
             ).mappings().one_or_none()
             if command is None:
-                raise KeyError("Report manual run command를 찾을 수 없습니다.")
+                raise KeyError("Report manual run command not found")
             if command["run_id"] is not None:
-                run_id = command["run_id"]
-            else:
-                blocks = connection.execute(
-                    text(
-                        """
-                        SELECT block_id, block_type, artifact_id, query_id
-                        FROM report_v1.report_blocks
-                        WHERE definition_id = :definition_id
-                          AND definition_version = :version
-                        ORDER BY y, x, block_id
-                        """
-                    ),
-                    {
-                        "definition_id": command["definition_id"],
-                        "version": command["definition_version"],
-                    },
-                ).mappings().all()
-                block_runs = []
-                policy_version = "policy-v1"
-                watermark = {}
-                for block in blocks:
-                    if block["block_type"] == "text":
-                        continue
-                    evidence = connection.execute(
-                        text(
-                            """
-                            SELECT a.artifact_id, q.trino_query_id,
-                                   a.artifact_checksum, r.sql_policy_version
-                            FROM artifact.analysis_artifacts a
-                            JOIN query.query_executions q
-                              ON q.query_execution_id = a.query_execution_id
-                            JOIN chat.analysis_requests r
-                              ON r.request_id = a.request_id
-                            WHERE a.artifact_id = :artifact_id
-                              AND q.trino_query_id = :query_id
-                              AND a.status = 'APPROVED'
-                            """
-                        ),
-                        {
-                            "artifact_id": block["artifact_id"],
-                            "query_id": block["query_id"],
-                        },
-                    ).mappings().one_or_none()
-                    if evidence:
-                        policy_version = evidence["sql_policy_version"]
-                        watermark[str(evidence["artifact_id"])] = evidence["artifact_checksum"]
-                        block_runs.append(
-                            (
-                                block["block_id"],
-                                evidence["artifact_id"],
-                                evidence["trino_query_id"],
-                                evidence["artifact_checksum"],
-                                "success",
-                            )
-                        )
-                    else:
-                        block_runs.append((block["block_id"], None, None, None, "failed"))
+                return {
+                    "claimed": False,
+                    "run_id": str(command["run_id"]),
+                    "status": command["status"],
+                    "blocks": (),
+                }
 
-                successes = sum(item[4] == "success" for item in block_runs)
-                run_status = (
-                    "success"
-                    if block_runs and successes == len(block_runs)
-                    else "partial"
-                    if successes
-                    else "failed"
-                )
-                run_id = uuid4()
-                context_hash = hashlib.sha256(
-                    json.dumps(watermark, sort_keys=True).encode()
-                ).hexdigest()
-                connection.execute(
-                    text(
-                        """
-                        INSERT INTO report_v1.report_runs
-                            (run_id, definition_id, definition_version, as_of,
-                             policy_version, context_hash, watermark, status)
-                        VALUES (:run_id, :definition_id, :version, :as_of,
-                                :policy_version, :context_hash,
-                                CAST(:watermark AS jsonb), :status)
-                        """
-                    ),
+            blocks = connection.execute(
+                text(
+                    """
+                    SELECT block_id, analysis_definition_id,
+                           analysis_definition_version
+                    FROM report_v1.report_blocks
+                    WHERE definition_id = :definition_id
+                      AND definition_version = :version
+                      AND block_type IN ('table', 'chart', 'artifact')
+                    ORDER BY y, x, block_id
+                    """
+                ),
+                {
+                    "definition_id": command["definition_id"],
+                    "version": command["definition_version"],
+                },
+            ).mappings().all()
+            run_id = uuid4()
+            empty_watermark = json.dumps({}, sort_keys=True)
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_runs
+                        (run_id, definition_id, definition_version, as_of,
+                         policy_version, context_hash, watermark, status)
+                    VALUES (:run_id, :definition_id, :version, :as_of,
+                            'pending', :context_hash, CAST(:watermark AS jsonb),
+                            'running')
+                    """
+                ),
+                {
+                    "run_id": run_id,
+                    "definition_id": command["definition_id"],
+                    "version": command["definition_version"],
+                    "as_of": command["as_of"],
+                    "context_hash": hashlib.sha256(empty_watermark.encode()).hexdigest(),
+                    "watermark": empty_watermark,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_manual_run_commands
+                    SET status = 'running', run_id = :run_id
+                    WHERE command_id = :command_id AND status = 'queued'
+                    """
+                ),
+                {"run_id": run_id, "command_id": command_uuid},
+            )
+            return {
+                "claimed": True,
+                "run_id": str(run_id),
+                "definition_id": str(command["definition_id"]),
+                "definition_version": int(command["definition_version"]),
+                "owner_id": UUID(str(command["owner_id"])),
+                "as_of": command["as_of"],
+                "blocks": tuple(
                     {
-                        "run_id": run_id,
-                        "definition_id": command["definition_id"],
-                        "version": command["definition_version"],
-                        "as_of": command["as_of"],
-                        "policy_version": policy_version,
-                        "context_hash": context_hash,
-                        "watermark": json.dumps(watermark, sort_keys=True),
-                        "status": run_status,
-                    },
-                )
-                for block_id, artifact_id, query_id, checksum, status in block_runs:
-                    connection.execute(
-                        text(
-                            """
-                            INSERT INTO report_v1.report_block_runs
-                                (run_id, block_id, artifact_id, query_id,
-                                 snapshot_checksum, status)
-                            VALUES (:run_id, :block_id, :artifact_id, :query_id,
-                                    :checksum, :status)
-                            """
+                        "block_id": str(block["block_id"]),
+                        "analysis_definition_id": (
+                            str(block["analysis_definition_id"])
+                            if block["analysis_definition_id"]
+                            else None
                         ),
-                        {
-                            "run_id": run_id,
-                            "block_id": block_id,
-                            "artifact_id": artifact_id,
-                            "query_id": query_id,
-                            "checksum": checksum,
-                            "status": status,
-                        },
-                    )
-                connection.execute(
+                        "analysis_definition_version": (
+                            int(block["analysis_definition_version"])
+                            if block["analysis_definition_version"] is not None
+                            else None
+                        ),
+                    }
+                    for block in blocks
+                ),
+            }
+
+    def record_block_run(
+        self,
+        run_id: str,
+        block_id: str,
+        *,
+        status: BlockRunStatus,
+        request_id: str | None = None,
+        artifact_id: str | None = None,
+        query_id: str | None = None,
+        snapshot_checksum: str | None = None,
+        policy_version: str | None = None,
+        failure_code: BlockFailureCode | None = None,
+        failure_message: str | None = None,
+    ) -> None:
+        run_uuid = _uuid(run_id, "run_id")
+        block_uuid = _uuid(block_id, "block_id")
+        status = BlockRunStatus(status)
+        failure_code = BlockFailureCode(failure_code) if failure_code else None
+        ReportBlockRun(
+            block_id,
+            artifact_id,
+            query_id,
+            snapshot_checksum,
+            status,
+            request_id,
+            failure_code,
+            failure_message,
+        )
+        with self._engine.begin() as connection:
+            inserted = connection.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_block_runs
+                        (run_id, block_id, request_id, artifact_id, query_id,
+                         snapshot_checksum, policy_version, status,
+                         failure_code, failure_message)
+                    SELECT r.run_id, b.block_id, :request_id, :artifact_id, :query_id,
+                           :checksum, :policy_version, :status,
+                           :failure_code, :failure_message
+                    FROM report_v1.report_runs r
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    JOIN report_v1.report_blocks b
+                      ON b.definition_id = r.definition_id
+                     AND b.definition_version = r.definition_version
+                     AND b.block_id = :block_id
+                    WHERE r.run_id = :run_id AND r.status = 'running'
+                      AND b.block_type IN ('table', 'chart', 'artifact')
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                    ON CONFLICT (run_id, block_id) DO NOTHING
+                    """
+                ),
+                {
+                    **self._scope_params(),
+                    "run_id": run_uuid,
+                    "block_id": block_uuid,
+                    "request_id": _uuid(request_id, "request_id") if request_id else None,
+                    "artifact_id": _uuid(artifact_id, "artifact_id") if artifact_id else None,
+                    "query_id": query_id,
+                    "checksum": snapshot_checksum,
+                    "policy_version": policy_version,
+                    "status": status.value,
+                    "failure_code": failure_code.value if failure_code else None,
+                    "failure_message": failure_message,
+                },
+            )
+            if inserted.rowcount != 1:
+                existing = connection.execute(
                     text(
-                        """
-                        UPDATE report_v1.report_manual_run_commands
-                        SET status = :status, run_id = :run_id
-                        WHERE command_id = :command_id
-                        """
+                        "SELECT 1 FROM report_v1.report_block_runs "
+                        "WHERE run_id = :run_id AND block_id = :block_id"
                     ),
-                    {"status": run_status, "run_id": run_id, "command_id": command_uuid},
-                )
+                    {"run_id": run_uuid, "block_id": block_uuid},
+                ).first()
+                if existing is None:
+                    raise KeyError("running Report block not found")
+
+    def finish_manual_run(self, command_id: str) -> ReportRun:
+        command_uuid = _uuid(command_id, "command_id")
+        with self._engine.begin() as connection:
+            command = connection.execute(
+                text(
+                    """
+                    SELECT c.run_id, c.definition_id, c.definition_version, c.status
+                    FROM report_v1.report_manual_run_commands c
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE c.command_id = :command_id
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                    FOR UPDATE OF c
+                    """
+                ),
+                {**self._scope_params(), "command_id": command_uuid},
+            ).mappings().one_or_none()
+            if command is None or command["run_id"] is None:
+                raise KeyError("claimed Report manual run command not found")
+            run_id = command["run_id"]
+            if command["status"] != RunStatus.RUNNING.value:
+                return self.get_run(str(run_id))
+
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_block_runs
+                        (run_id, block_id, status, failure_code, failure_message)
+                    SELECT :run_id, b.block_id, 'failed', 'REPLAY_UNAVAILABLE',
+                           'The analysis block could not be replayed.'
+                    FROM report_v1.report_blocks b
+                    WHERE b.definition_id = :definition_id
+                      AND b.definition_version = :version
+                      AND b.block_type IN ('table', 'chart', 'artifact')
+                      AND NOT EXISTS (
+                          SELECT 1 FROM report_v1.report_block_runs br
+                          WHERE br.run_id = :run_id AND br.block_id = b.block_id
+                      )
+                    """
+                ),
+                {
+                    "run_id": run_id,
+                    "definition_id": command["definition_id"],
+                    "version": command["definition_version"],
+                },
+            )
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT status, artifact_id, snapshot_checksum, policy_version
+                    FROM report_v1.report_block_runs
+                    WHERE run_id = :run_id
+                    """
+                ),
+                {"run_id": run_id},
+            ).mappings().all()
+            statuses = [row["status"] for row in rows]
+            if not statuses or all(status == "success" for status in statuses):
+                run_status = RunStatus.SUCCESS.value
+            elif any(status in {"success", "partial"} for status in statuses):
+                run_status = RunStatus.PARTIAL.value
+            elif all(status == "cancelled" for status in statuses):
+                run_status = RunStatus.CANCELLED.value
+            else:
+                run_status = RunStatus.FAILED.value
+            watermark = {
+                str(row["artifact_id"]): row["snapshot_checksum"]
+                for row in rows
+                if row["artifact_id"] and row["snapshot_checksum"]
+            }
+            policy_versions = sorted(
+                {str(row["policy_version"]) for row in rows if row["policy_version"]}
+            )
+            policy_version = ",".join(policy_versions) if policy_versions else "unavailable"
+            serialized_watermark = json.dumps(watermark, sort_keys=True)
+            connection.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_runs
+                    SET status = :status, policy_version = :policy_version,
+                        context_hash = :context_hash,
+                        watermark = CAST(:watermark AS jsonb)
+                    WHERE run_id = :run_id AND status = 'running'
+                    """
+                ),
+                {
+                    "run_id": run_id,
+                    "status": run_status,
+                    "policy_version": policy_version,
+                    "context_hash": hashlib.sha256(serialized_watermark.encode()).hexdigest(),
+                    "watermark": serialized_watermark,
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_manual_run_commands
+                    SET status = :status
+                    WHERE command_id = :command_id AND status = 'running'
+                    """
+                ),
+                {"command_id": command_uuid, "status": run_status},
+            )
         return self.get_run(str(run_id))
 
     def create_schedule(
@@ -752,10 +985,14 @@ class PostgresReportRepository:
                     FROM artifact.analysis_artifacts a
                     JOIN query.query_executions q
                       ON q.query_execution_id = a.query_execution_id
-                    WHERE a.artifact_id = :artifact_id AND a.status = 'APPROVED'
+                    JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                    WHERE a.artifact_id = :artifact_id
+                      AND a.status = 'APPROVED'
+                      AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                      AND r.user_id = :owner_id
                     """
                 ),
-                {"artifact_id": artifact_uuid},
+                {"artifact_id": artifact_uuid, "owner_id": self._owner_id},
             ).mappings().one_or_none()
         if row is None:
             raise KeyError("승인된 Analysis Artifact를 찾을 수 없습니다.")
@@ -768,7 +1005,7 @@ class PostgresReportRepository:
                 text(
                     """
                     SELECT a.artifact_id, a.narrative_markdown,
-                           a.data_snapshot_json, a.chart_spec_json,
+                           a.data_snapshot_json, a.evidence_json, a.chart_spec_json,
                            q.trino_query_id
                     FROM artifact.analysis_artifacts a
                     JOIN query.query_executions q
@@ -807,10 +1044,14 @@ class PostgresReportRepository:
                     FROM artifact.analysis_artifacts a
                     JOIN query.query_executions q
                       ON q.query_execution_id = a.query_execution_id
-                    WHERE a.artifact_id = :artifact_id AND a.status = 'APPROVED'
+                    JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                    WHERE a.artifact_id = :artifact_id
+                      AND a.status = 'APPROVED'
+                      AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                      AND r.user_id = :owner_id
                     """
                 ),
-                {"artifact_id": artifact_uuid},
+                {"artifact_id": artifact_uuid, "owner_id": self._owner_id},
             ).mappings().one_or_none()
         if row is None:
             raise KeyError("승인된 Analysis Artifact를 찾을 수 없습니다.")
@@ -990,20 +1231,19 @@ class PostgresReportRepository:
             raise KeyError("Report schedule을 찾을 수 없습니다.")
         return self.get_schedule(str(updated))
 
-    def run_due_schedule(
+    def queue_due_schedule(
         self,
         schedule_id: str,
         now: datetime,
-    ) -> tuple[dict[str, object], ReportRun | None]:
+    ) -> tuple[dict[str, object], ManualRunCommand | None]:
         schedule_uuid = _uuid(schedule_id, "schedule_id")
-        run = None
+        command = None
         with self._engine.begin() as connection:
             row = connection.execute(
                 text(
                     """
-                    SELECT s.schedule_id, s.definition_id, s.definition_version,
-                           s.cadence, s.timezone_name, s.next_run_at,
-                           s.enabled, s.last_run_id
+                    SELECT s.definition_id, s.definition_version, s.cadence,
+                           s.next_run_at, s.enabled
                     FROM report_v1.report_schedules s
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE s.schedule_id = :schedule_id
@@ -1014,16 +1254,66 @@ class PostgresReportRepository:
                 {**self._scope_params(), "schedule_id": schedule_uuid},
             ).mappings().one_or_none()
             if row is None:
-                raise KeyError("Report schedule을 찾을 수 없습니다.")
+                raise KeyError("Report schedule not found")
             if row["enabled"] and row["next_run_at"] <= now:
                 scheduled_for = row["next_run_at"]
-                command = self.queue_manual_run(
-                    str(row["definition_id"]),
-                    row["definition_version"],
-                    scheduled_for,
-                    f"schedule:{schedule_uuid}:{scheduled_for.isoformat()}",
+                command_row = connection.execute(
+                    text(
+                        """
+                        INSERT INTO report_v1.report_manual_run_commands
+                            (command_id, definition_id, definition_version, as_of,
+                             idempotency_key)
+                        VALUES (:command_id, :definition_id, :version, :as_of,
+                                :idempotency_key)
+                        ON CONFLICT (definition_id, definition_version, idempotency_key)
+                        DO UPDATE SET idempotency_key = EXCLUDED.idempotency_key
+                        RETURNING command_id, definition_id, definition_version, as_of,
+                                  idempotency_key, status
+                        """
+                    ),
+                    {
+                        "command_id": uuid4(),
+                        "definition_id": row["definition_id"],
+                        "version": row["definition_version"],
+                        "as_of": scheduled_for,
+                        "idempotency_key": f"schedule:{schedule_uuid}:{scheduled_for.isoformat()}",
+                    },
+                ).mappings().one()
+                command = ManualRunCommand(
+                    str(command_row["command_id"]),
+                    str(command_row["definition_id"]),
+                    command_row["definition_version"],
+                    command_row["as_of"],
+                    command_row["idempotency_key"],
+                    RunStatus(command_row["status"]),
                 )
-                run = self.execute_manual_run(command.command_id)
+        return self.get_schedule(str(schedule_uuid)), command
+
+    def complete_due_schedule(
+        self,
+        schedule_id: str,
+        scheduled_for: datetime,
+        run_id: str,
+    ) -> dict[str, object]:
+        schedule_uuid = _uuid(schedule_id, "schedule_id")
+        run_uuid = _uuid(run_id, "run_id")
+        with self._engine.begin() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    SELECT s.cadence, s.next_run_at
+                    FROM report_v1.report_schedules s
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE s.schedule_id = :schedule_id
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                    FOR UPDATE OF s
+                    """
+                ),
+                {**self._scope_params(), "schedule_id": schedule_uuid},
+            ).mappings().one_or_none()
+            if row is None:
+                raise KeyError("Report schedule not found")
+            if row["next_run_at"] == scheduled_for:
                 connection.execute(
                     text(
                         """
@@ -1035,11 +1325,11 @@ class PostgresReportRepository:
                     ),
                     {
                         "next_run_at": _advance_schedule(scheduled_for, row["cadence"]),
-                        "run_id": _uuid(run.run_id, "run_id"),
+                        "run_id": run_uuid,
                         "schedule_id": schedule_uuid,
                     },
                 )
-        return self.get_schedule(str(schedule_uuid)), run
+        return self.get_schedule(str(schedule_uuid))
 
     @staticmethod
     def _schedule_response(row) -> dict[str, object]:

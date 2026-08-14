@@ -50,7 +50,7 @@ from app.services.analysis_service import AnalysisService
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.routing_service import RoutingService
 from app.services.readiness import AppDatabaseReadiness
-from app.services.analysis_progress import analysis_progress
+from app.services.analysis_progress import AmbiguousTraceError, analysis_progress
 
 
 def _routing_service() -> RoutingService:
@@ -70,6 +70,7 @@ def _data_platform():
         os.getenv("DATAHUB_API_TOKEN"),
         require_live_metadata=True,
         allow_template_assets=False,
+        context_release=os.getenv("ANALYTICS_CONTEXT_RELEASE", "legacy"),
     )
 
 
@@ -165,10 +166,26 @@ def ready(request: Request) -> ReadinessResponse:
         if all(value in {"ready", "not_required"} for value in probe.values())
         else "not_ready"
     )
-    return ReadinessResponse(
+    body = ReadinessResponse(
         data=ReadinessData(status=status, dependencies=probe),
         meta=response_meta(context),
+        error=(
+            None
+            if status == "ready"
+            else ErrorBody(
+                code=ErrorCode.DEPENDENCY_UNAVAILABLE,
+                message="필수 서비스가 준비되지 않았습니다.",
+                missing_requirements=tuple(
+                    name
+                    for name, value in probe.items()
+                    if value not in {"ready", "not_required"}
+                ),
+            )
+        ),
     )
+    if status == "ready":
+        return body
+    return JSONResponse(status_code=503, content=body.model_dump(mode="json"))
 
 
 @router.get(
@@ -200,7 +217,7 @@ def login(payload: LoginRequest, request: Request, response: Response) -> LoginR
         session_token = issue_session_token(principal)
         register_session(session_token, principal)
     except AuthenticationError as exc:
-        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
+        code = ErrorCode.DEPENDENCY_UNAVAILABLE if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
         raise ContextValidationError(code, exc.message, exc.status_code) from exc
     context = RequestContext(
         request_id=request.state.request_id,
@@ -233,7 +250,11 @@ def logout(
     try:
         revoke_session(getattr(request.state, "session_token", None))
     except AuthenticationError as exc:
-        raise ContextValidationError(ErrorCode.INTERNAL_ERROR, exc.message, exc.status_code) from exc
+        raise ContextValidationError(
+            ErrorCode.DEPENDENCY_UNAVAILABLE,
+            exc.message,
+            exc.status_code,
+        ) from exc
     response.delete_cookie(
         SESSION_COOKIE,
         secure=os.getenv("AUTH_COOKIE_SECURE", "false").strip().lower() == "true",
@@ -307,9 +328,9 @@ def analysis(
             context,
             execution.update,
             lambda stage, outcome: analysis_progress.record(
-                context.trace_id, stage, outcome
+                context.request_id, stage, outcome
             ),
-            lambda: analysis_progress.cancelled(context.trace_id),
+            lambda: analysis_progress.cancelled(context.request_id),
         )
         final_status = response.data.status
         if repository is not None:
@@ -346,7 +367,7 @@ def analysis(
             _repository_call(lambda: repository.fail_run(context.request_id))
         raise
     finally:
-        analysis_progress.finish(context.trace_id, final_status)
+        analysis_progress.finish(context.request_id, final_status)
         execution_gate.release()
 
 
@@ -361,6 +382,11 @@ def get_analysis_progress(
 ) -> AnalysisProgressResponse:
     try:
         data = analysis_progress.get(trace_id, context.user_id)
+    except AmbiguousTraceError as error:
+        raise HTTPException(
+            status_code=409,
+            detail="동일한 추적 ID에 여러 분석 요청이 있습니다. 요청 ID로 조회해 주세요.",
+        ) from error
     except KeyError as error:
         raise HTTPException(status_code=404, detail="진행 중인 분석을 찾을 수 없습니다.") from error
     return AnalysisProgressResponse(data=data, meta=response_meta(context))
@@ -377,6 +403,45 @@ def cancel_analysis_progress(
 ) -> AnalysisProgressResponse:
     try:
         data = analysis_progress.cancel(trace_id, context.user_id)
+    except AmbiguousTraceError as error:
+        raise HTTPException(
+            status_code=409,
+            detail="동일한 추적 ID에 여러 분석 요청이 있습니다. 요청 ID로 취소해 주세요.",
+        ) from error
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="진행 중인 분석을 찾을 수 없습니다.") from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail="이미 종료된 분석입니다.") from error
+    return AnalysisProgressResponse(data=data, meta=response_meta(context))
+
+
+@router.get(
+    "/analysis/requests/{request_id}/progress",
+    response_model=AnalysisProgressResponse,
+    operation_id="getAnalysisProgressByRequest",
+)
+def get_analysis_progress_by_request(
+    request_id: UUID,
+    context: Annotated[RequestContext, Depends(session_context)],
+) -> AnalysisProgressResponse:
+    try:
+        data = analysis_progress.get_request(request_id, context.user_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="진행 중인 분석을 찾을 수 없습니다.") from error
+    return AnalysisProgressResponse(data=data, meta=response_meta(context))
+
+
+@router.post(
+    "/analysis/requests/{request_id}/cancel",
+    response_model=AnalysisProgressResponse,
+    operation_id="cancelAnalysisProgressByRequest",
+)
+def cancel_analysis_progress_by_request(
+    request_id: UUID,
+    context: Annotated[RequestContext, Depends(session_context)],
+) -> AnalysisProgressResponse:
+    try:
+        data = analysis_progress.cancel_request(request_id, context.user_id)
     except KeyError as error:
         raise HTTPException(status_code=404, detail="진행 중인 분석을 찾을 수 없습니다.") from error
     except ValueError as error:

@@ -39,7 +39,10 @@ class ReportDomainTest(unittest.TestCase):
             repo.add_draft(self.draft)
 
     def test_run_keeps_definition_context_watermark_and_block_snapshot(self):
-        block_run = ReportBlockRun("block-1", "artifact-1", "query-1", "sha256-1", BlockRunStatus.PARTIAL)
+        block_run = ReportBlockRun(
+            "block-1", "artifact-1", "query-1", "sha256-1",
+            BlockRunStatus.PARTIAL, "request-1",
+        )
         run = ReportRun(
             "run-1", "report-1", 3, datetime(2026, 8, 3, tzinfo=timezone.utc),
             "policy-v1", "context-1", {"pms": "2026-07-28T05:00:00.000Z"},
@@ -61,6 +64,12 @@ class ReportDomainTest(unittest.TestCase):
         )
         self.assertEqual(chart.columns, chart.w)
         self.assertIsNone(text.artifact_id)
+        artifact = ReportBlock(
+            "artifact-whole", "Analysis Artifact", "artifact-1", 12, "query-1",
+            BlockType.ARTIFACT, 0, 7, 12, 12,
+            '{"presentationMode":"standard","visibleViews":["summary","kpi","chart","table"]}',
+        )
+        self.assertEqual(BlockType.ARTIFACT, artifact.type)
         with self.assertRaisesRegex(ValueError, "12-column bounds"):
             ReportBlock("bad", "초과", "artifact-1", 6, None, BlockType.TABLE, 7, 0, 6, 1)
         with self.assertRaisesRegex(ValueError, "positive height"):
@@ -69,6 +78,9 @@ class ReportDomainTest(unittest.TestCase):
             ReportBlock("bad", "차트", None, 6, None, BlockType.CHART)
         with self.assertRaisesRegex(ValueError, "빈 content"):
             ReportBlock("bad", "텍스트", None, 6, None, BlockType.TEXT)
+
+        with self.assertRaisesRegex(ValueError, "artifact_id"):
+            ReportBlock("bad-artifact", "Artifact", None, 12, None, BlockType.ARTIFACT)
 
     def test_only_draft_can_replace_the_complete_block_layout(self):
         text = ReportBlock(

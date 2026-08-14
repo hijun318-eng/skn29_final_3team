@@ -74,9 +74,49 @@
         "field": {"type": "string", "minLength": 1},
         "aggregation": {"type": "string", "minLength": 1},
         "time_field": {"type": "string", "minLength": 1},
+        "result_field": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "unit": {"type": "string"},
+        "formula": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["operator", "operands"],
+              "properties": {
+                "operator": {
+                  "enum": ["add", "subtract", "multiply", "divide"]
+                },
+                "operands": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 8,
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "reduction": {
+          "enum": [
+            "sum",
+            "min",
+            "max",
+            "average",
+            "scalar",
+            "weighted_ratio",
+            "recompute"
+          ]
+        },
         "required_filters": {
           "type": "array",
-          "minItems": 1,
           "items": {
             "type": "object",
             "additionalProperties": false,

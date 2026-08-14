@@ -67,8 +67,11 @@
     "clarification_type": null,
     "code": "SQL_POLICY_BLOCKED",
     "message": "허용된 조회 범위에서 질문을 수정해 주세요.",
+    "missing_requirements": [],
+    "required_action": "MODIFY_REQUEST",
     "retryable": false,
-    "suggestions": []
+    "suggestions": [],
+    "trace_id": "fixture-g2-blocked"
   },
   "meta": {
     "as_of": "2026-07-30",

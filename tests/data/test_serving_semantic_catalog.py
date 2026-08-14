@@ -105,16 +105,23 @@ class ServingSemanticCatalogTest(unittest.TestCase):
         second = publisher.publish("http://127.0.0.1:18081/", opener=fake)
         self.assertEqual(first_state, fake.aspects)
         self.assertEqual(first, second)
-        self.assertEqual(16, first["aspect_upserts"])
-        self.assertEqual(32, len(fake.posts))
+        self.assertEqual(44, first["aspect_upserts"])
+        self.assertEqual(88, len(fake.posts))
         self.assertEqual(
-            {"editableDatasetProperties", "editableSchemaMetadata"},
+            {
+                "editableDatasetProperties",
+                "editableSchemaMetadata",
+                "glossaryTermKey",
+                "glossaryTermInfo",
+            },
             {post["aspectName"] for post in fake.posts},
         )
         result = verifier.verify("http://127.0.0.1:18081", opener=fake)
         self.assertEqual("VERIFIED", result["status"])
         self.assertEqual(8, result["dataset_descriptions"])
         self.assertEqual(117, result["column_descriptions"])
+        self.assertEqual(14, result["metric_glossary_terms"])
+        self.assertEqual("METRIC-GLOSSARY-v1.4.0", result["metric_glossary_version"])
         self.assertEqual(self.catalog["catalog_version"], result["catalog_version"])
         self.assertEqual(self.catalog["catalog_sha256"], result["catalog_sha256"])
 

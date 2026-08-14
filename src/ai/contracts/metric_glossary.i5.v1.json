@@ -1,5 +1,5 @@
 {
-  "version": "METRIC-GLOSSARY-v1.2.0",
+  "version": "METRIC-GLOSSARY-v1.4.0",
   "metrics": {
     "recognized_room_revenue": [
       "객실 매출",
@@ -13,6 +13,16 @@
       "숙박일 기준 객실 매출",
       "stay-day allocated room revenue"
     ],
+    "rooms_sold": [
+      "판매 객실 박수",
+      "객실 판매량",
+      "rooms sold"
+    ],
+    "available_room_nights": [
+      "판매 가능 객실 박수",
+      "가용 객실 박수",
+      "available room nights"
+    ],
     "expired_points": [
       "소멸 포인트",
       "expired points"
@@ -21,6 +31,11 @@
       "식음 순매출",
       "F&B net revenue"
     ],
+    "fnb_covers": [
+      "식음 이용객 수",
+      "식음 커버 수",
+      "F&B covers"
+    ],
     "facility_revenue": [
       "부대시설 매출",
       "facility revenue"
@@ -28,6 +43,26 @@
     "actual_attendees": [
       "실제 연회 참석자 수",
       "actual attendees"
+    ],
+    "banquet_recognized_revenue": [
+      "연회 인식매출",
+      "연회 매출",
+      "banquet recognized revenue"
+    ],
+    "facility_usage_count": [
+      "시설 이용 건수",
+      "부대시설 이용 건수",
+      "facility usage count"
+    ],
+    "facility_downtime_minutes": [
+      "시설 중단시간",
+      "시설 다운타임",
+      "facility downtime"
+    ],
+    "total_operating_revenue": [
+      "통합 운영 매출",
+      "전체 운영 매출",
+      "total operating revenue"
     ],
     "total_guest_revenue_krw": [
       "객실·식음 통합 매출",
@@ -40,19 +75,33 @@
   "definitions": {
     "recognized_room_revenue": "실제 체크아웃 날짜에 전액 인식한 객실 매출입니다.",
     "stay_day_allocated_room_revenue": "숙박일별로 균등 배분한 객실 운영 매출입니다.",
+    "rooms_sold": "해당 영업일에 점유된 합성 객실 박수입니다.",
+    "available_room_nights": "해당 영업일에 판매 가능한 합성 객실 박수입니다.",
     "expired_points": "소멸 거래로 기록된 포인트 감소분을 양수로 환산해 합산한 값입니다.",
     "fnb_net_revenue": "취소·무효 거래를 제외한 식음 순매출입니다.",
+    "fnb_covers": "식음 업장에서 서비스를 이용한 고객 수를 합산한 값입니다.",
     "facility_revenue": "완료된 시설 이용에서 발생한 매출입니다.",
     "actual_attendees": "실제로 참석한 연회 인원입니다.",
+    "banquet_recognized_revenue": "행사일에 귀속된 합성 연회 인식매출입니다.",
+    "facility_usage_count": "완료된 합성 시설 이용 이벤트 건수입니다.",
+    "facility_downtime_minutes": "합성 시설 장애·점검의 중단시간 합계입니다.",
+    "total_operating_revenue": "객실·식음·연회·시설을 일별 사전 집계한 합성 통합 운영 매출입니다.",
     "total_guest_revenue_krw": "동일 고객 등급과 기간 조건으로 집계한 객실 매출과 식음 순매출의 합계입니다."
   },
   "units": {
     "recognized_room_revenue": "KRW",
     "stay_day_allocated_room_revenue": "KRW",
+    "rooms_sold": "room_night",
+    "available_room_nights": "room_night",
     "expired_points": "point",
     "fnb_net_revenue": "KRW",
+    "fnb_covers": "명",
     "facility_revenue": "KRW",
     "actual_attendees": "명",
+    "banquet_recognized_revenue": "KRW",
+    "facility_usage_count": "건",
+    "facility_downtime_minutes": "분",
+    "total_operating_revenue": "KRW",
     "total_guest_revenue_krw": "KRW"
   }
 }

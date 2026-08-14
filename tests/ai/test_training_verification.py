@@ -115,7 +115,10 @@ class TrainingVerificationTests(unittest.TestCase):
         for fqn, columns, metric, filters, parameters in cases:
             with self.subTest(metric=metric["id"]):
                 package = _runtime_package(_context(fqn, columns, metric))
-                prefix = f"SELECT SUM({columns[-1]}) FROM {fqn} WHERE "
+                prefix = (
+                    f"SELECT SUM({columns[-1]}) AS {metric['id']} "
+                    f"FROM {fqn} WHERE "
+                )
                 self.assertIsNone(
                     PipelineSupport.g2_violation(
                         _plan(

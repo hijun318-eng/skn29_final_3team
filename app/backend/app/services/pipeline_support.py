@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from collections import Counter
 from datetime import date, datetime, time
 from uuid import NAMESPACE_URL, UUID, uuid5
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from src.ai.metric_glossary import metric_glossary
+from sqlglot import ErrorLevel, exp, parse
+from sqlglot.errors import ParseError
 
 from app.contracts import (
     AnalysisRequest,
@@ -15,28 +17,20 @@ from app.contracts import (
     RequestContext,
     SourceReference,
 )
-from app.ports.data_platform import DataPlatformAdapter
+from app.ports.data_platform import DataPlatformAdapter, MetadataUnavailableError
 from app.services.context_builder import (
     ContextAsset,
     ContextBuildError,
     ContextBuildErrorCode,
     ContextBuildRequest,
     ContextMetric,
+    ContextMetricFormula,
+    ContextMetricTerm,
     ContextPackage,
     ContextPackageBuilder,
     ContextParameterBinding,
     ContextRequiredFilter,
 )
-
-
-def _metric_glossary() -> dict[str, tuple[str, ...]]:
-    try:
-        return metric_glossary()
-    except (OSError, ValueError) as error:
-        raise ContextBuildError(
-            ContextBuildErrorCode.INVALID_METRIC,
-            "R3 metric glossary 계약을 확인할 수 없습니다.",
-        ) from error
 
 
 def _metric_suggestions(
@@ -80,6 +74,12 @@ def _validated_model_periods(
         raise ValueError("Node1 period_candidates must be arrays")
     if len(model_candidates) > 4:
         raise ValueError("Node1 returned too many period candidates")
+    if not expected_candidates:
+        if model_candidates:
+            raise ValueError(
+                "Node1 period candidate has no deterministic calendar match"
+            )
+        return []
     strict_calendar_match = bool(expected_candidates)
     validated = []
     parsed = []
@@ -183,6 +183,17 @@ class PipelineSupport:
                             )
                             for item in metric["required_filters"]
                         ),
+                        result_field=str(metric.get("result_field") or metric["id"]),
+                        unit=str(metric.get("unit") or ""),
+                        formula=(
+                            ContextMetricFormula(
+                                operator=str(metric["formula"]["operator"]),
+                                operands=tuple(map(str, metric["formula"]["operands"])),
+                            )
+                            if isinstance(metric.get("formula"), dict)
+                            else None
+                        ),
+                        reduction=str(metric.get("reduction") or ""),
                     )
                     for metric in asset.get("metrics", ())
                 ),
@@ -271,22 +282,74 @@ class PipelineSupport:
                 ContextBuildErrorCode.INVALID_METADATA,
                 "Analysis period must be a non-empty half-open range.",
             )
-        parameter_bindings = supplied_bindings or tuple(
+        derived_period_bindings = tuple(
             [
                 ContextParameterBinding(name, "date", period_values[name])
                 for name in ("period_start", "period_end_exclusive")
                 if name in period_values
             ]
-            + [
-                ContextParameterBinding(
-                    f"required_filter_{index}", item.value_type, item.value
-                )
-                for index, item in enumerate(metric_filters, start=1)
-            ]
         )
+        supplied_non_period = tuple(
+            item
+            for item in supplied_bindings
+            if item.name not in {"period_start", "period_end_exclusive"}
+        )
+        derived_filter_bindings = tuple(
+            ContextParameterBinding(
+                f"required_filter_{index}", item.value_type, item.value
+            )
+            for index, item in enumerate(metric_filters, start=1)
+        )
+        if supplied_bindings:
+            supplied_names = {item.name for item in supplied_non_period}
+            parameter_bindings = (
+                (
+                    *derived_period_bindings,
+                    *supplied_non_period,
+                    *(
+                        item
+                        for item in derived_filter_bindings
+                        if item.name not in supplied_names
+                    ),
+                )
+                if derived_period_bindings
+                else supplied_bindings
+            )
+        else:
+            parameter_bindings = (*derived_period_bindings, *derived_filter_bindings)
+        context_releases = {
+            str(asset.get("context_release") or "context-v1") for asset in assets
+        }
+        policy_versions = {
+            str(asset.get("policy_version") or "policy-v1") for asset in assets
+        }
+        if len(context_releases) != 1 or len(policy_versions) != 1:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Context asset은 동일한 release와 policy version을 사용해야 합니다.",
+            )
+        metric_term_payloads = tuple(
+            item
+            for asset in assets
+            for item in asset.get("metric_terms", ())
+            if isinstance(item, dict)
+        )
+        if (
+            isinstance(structured_request, dict)
+            and isinstance(structured_request.get("metric_term"), dict)
+        ):
+            metric_term_payloads = (structured_request["metric_term"],)
+        if not metric_term_payloads:
+            metric_ids = tuple(dict.fromkeys(metric.id for asset in items for metric in asset.metrics))
+            if not metric_ids and any(
+                "pms_crm_pos_gold_revenue_month_v1" in asset.join_ids for asset in items
+            ):
+                metric_ids = ("total_guest_revenue_krw",)
+            if len(metric_ids) == 1:
+                metric_term_payloads = (self._adapter.get_metric_terms(metric_ids)[metric_ids[0]],)
         request = ContextBuildRequest(
-            context_release="context-v1",
-            policy_version="policy-v1",
+            context_release=context_releases.pop(),
+            policy_version=policy_versions.pop(),
             time_version=context.as_of.isoformat(),
             entitlement_hash=hashlib.sha256(
                 f"{context.user_id}:{context.role.value}".encode()
@@ -295,6 +358,18 @@ class PipelineSupport:
             token_count=max(1, len(payload.question.split()) * 4),
             model_context_tokens=24_000,
             parameter_bindings=parameter_bindings,
+            metric_terms=tuple(
+                ContextMetricTerm(
+                    id=str(item["id"]),
+                    urn=str(item["urn"]),
+                    label=str(item["label"]),
+                    aliases=tuple(map(str, item["aliases"])),
+                    definition=str(item["definition"]),
+                    unit=str(item["unit"]),
+                    version=str(item["version"]),
+                )
+                for item in metric_term_payloads
+            ),
         )
         return self._context_builder.build(
             request,
@@ -333,7 +408,24 @@ class PipelineSupport:
                 ContextBuildErrorCode.DUPLICATE_METRIC,
                 "동일한 metric id를 중복 선택할 수 없습니다.",
             )
-        glossary = _metric_glossary()
+        try:
+            metric_terms = self._adapter.get_metric_terms(tuple(candidate_ids))
+        except MetadataUnavailableError:
+            raise
+        except (OSError, TypeError, ValueError) as error:
+            raise MetadataUnavailableError(
+                "DataHub Metric Glossary를 조회하지 못했습니다."
+            ) from error
+        if set(metric_terms) != set(candidate_ids):
+            raise MetadataUnavailableError(
+                "DataHub Metric Glossary가 승인된 Metric 후보를 모두 포함하지 않습니다."
+            )
+        glossary = {}
+        for metric_id in candidate_ids:
+            term = metric_terms[metric_id]
+            label = str(term["label"])
+            aliases = tuple(map(str, term["aliases"]))
+            glossary[metric_id] = (label, *(alias for alias in aliases if alias != label))
         business_terms = {
             metric_id: {"kind": "metric", "aliases": list(glossary[metric_id])}
             for metric_id in candidate_ids
@@ -438,6 +530,12 @@ class PipelineSupport:
                     if isinstance(metric, dict) and metric.get("id") == selected
                 )
             selected_assets.append(item)
+        if not three_source and not any(
+            asset.get("join_ids") for asset in selected_assets
+        ):
+            selected_assets = [
+                asset for asset in selected_assets if asset.get("metrics")
+            ]
         structured_request = {
             "intent_candidates": [
                 item
@@ -450,6 +548,8 @@ class PipelineSupport:
                 if item in business_terms and business_terms[item]["kind"] == "dimension"
             ],
             "period_candidates": model_periods,
+            "selected_metric_id": selected,
+            "metric_term": metric_terms[selected],
         }
         return (
             selected_assets,
@@ -494,6 +594,7 @@ class PipelineSupport:
             )
         ):
             return "UNSAFE_SQL"
+        ast_violation = PipelineSupport._ast_policy_violation(sql, package)
         parameters = plan.get("parameters", {})
         if not isinstance(parameters, dict):
             return "PARAMETERS_INVALID"
@@ -633,7 +734,7 @@ class PipelineSupport:
             return "METRIC_FILTER_MISSING"
         if parameters_invalid:
             return "PARAMETERS_INVALID"
-        return None
+        return ast_violation
 
     @staticmethod
     def g2_repair_hint(violation: str, package: ContextPackage) -> str:
@@ -746,6 +847,108 @@ class PipelineSupport:
             if word in {"select", "insert", "update", "delete", "merge"}
         ]
         return statements == ["select"] and not {"union", "intersect", "except"}.intersection(words)
+
+    @staticmethod
+    def _ast_policy_violation(sql: str, package: ContextPackage) -> str | None:
+        """Fail closed on SQL structure, functions, stars, and non-context columns."""
+        try:
+            statements = parse(sql, read="trino", error_level=ErrorLevel.RAISE)
+        except ParseError:
+            return "UNSAFE_SQL"
+        if len(statements) != 1 or not isinstance(statements[0], exp.Query):
+            return "UNSAFE_SQL"
+        tree = statements[0]
+        if next(tree.find_all(exp.Star), None) is not None:
+            return "REFERENCE_OUTSIDE_CONTEXT"
+        if (
+            not tree.named_selects
+            or len(tree.named_selects) != len(set(tree.named_selects))
+        ):
+            return "UNSAFE_SQL"
+
+        allowed_functions = {
+            "ABS",
+            "AND",
+            "AVG",
+            "CAST",
+            "COALESCE",
+            "COUNT",
+            "DATE_ADD",
+            "FROM_ISO8601_TIMESTAMP",
+            "IF",
+            "MAX",
+            "MIN",
+            "NULLIF",
+            "OR",
+            "ROUND",
+            "ROW_NUMBER",
+            "SUM",
+            "TIMESTAMP_TRUNC",
+            "TIME_TO_STR",
+        }
+        if any(
+            function.sql_name() not in allowed_functions
+            for function in tree.find_all(exp.Func)
+        ):
+            return "UNSAFE_SQL"
+
+        asset_columns = {
+            asset.fqn.lower(): {column.lower() for column in asset.columns}
+            for asset in package.assets
+        }
+        cte_outputs = {
+            cte.alias_or_name.lower(): {
+                expression.alias_or_name.lower()
+                for expression in cte.this.expressions
+                if expression.alias_or_name
+            }
+            for cte in tree.find_all(exp.CTE)
+        }
+        approved_results = {metric.result_field.lower() for metric in package.metrics}
+
+        for select in tree.find_all(exp.Select):
+            direct_tables = [
+                table
+                for table in select.find_all(exp.Table)
+                if table.find_ancestor(exp.Select) is select
+            ]
+            relations: dict[str, set[str]] = {}
+            for table in direct_tables:
+                relation_name = ".".join(
+                    part
+                    for part in (table.catalog, table.db, table.name)
+                    if part
+                ).lower()
+                alias = table.alias_or_name.lower()
+                if relation_name in cte_outputs:
+                    relations[alias] = cte_outputs[relation_name]
+                elif relation_name in asset_columns:
+                    relations[alias] = asset_columns[relation_name]
+                else:
+                    return "REFERENCE_OUTSIDE_CONTEXT"
+
+            projection_aliases = {
+                expression.alias.lower()
+                for expression in select.expressions
+                if expression.alias
+            }
+            for column in select.find_all(exp.Column):
+                if column.find_ancestor(exp.Select) is not select:
+                    continue
+                name = column.name.lower()
+                qualifier = column.table.lower()
+                if qualifier:
+                    if qualifier not in relations or name not in relations[qualifier]:
+                        return "REFERENCE_OUTSIDE_CONTEXT"
+                    continue
+                if name in projection_aliases or name in approved_results:
+                    continue
+                matching_relations = sum(
+                    name in columns for columns in relations.values()
+                )
+                if matching_relations != 1:
+                    return "REFERENCE_OUTSIDE_CONTEXT"
+        return None
 
     @staticmethod
     def _required_filter_matches(
@@ -1278,9 +1481,88 @@ class PipelineSupport:
             return "MODEL_SCHEMA_INVALID"
         return None
 
+    @staticmethod
+    def _result_value_type(value: object) -> str:
+        if value is None:
+            return "null"
+        if isinstance(value, bool):
+            return "boolean"
+        if isinstance(value, int):
+            return "integer"
+        if isinstance(value, float):
+            return "number"
+        if isinstance(value, str):
+            return "string"
+        return "unsupported"
+
     @classmethod
-    def g3_violation(cls, query: dict[str, object]) -> str | None:
+    def _result_metadata(
+        cls,
+        rows: list[dict[str, object]],
+        columns: tuple[str, ...],
+    ) -> dict[str, object]:
+        typed_columns = []
+        for name in columns:
+            kinds = {
+                cls._result_value_type(row.get(name))
+                for row in rows
+                if row.get(name) is not None
+            }
+            if kinds <= {"integer", "number"} and "number" in kinds:
+                kinds = {"number"}
+            value_type = next(iter(kinds)) if len(kinds) == 1 else (
+                "null" if not kinds else "mixed"
+            )
+            typed_columns.append({"name": name, "type": value_type})
+        canonical_rows = json.dumps(
+            rows,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        return {
+            "columns": typed_columns,
+            "row_count": len(rows),
+            "checksum": hashlib.sha256(canonical_rows.encode("utf-8")).hexdigest(),
+        }
+
+    @staticmethod
+    def _projection_aliases(plan: dict[str, object]) -> tuple[str, ...] | None:
+        sql = plan.get("sql")
+        if not isinstance(sql, str):
+            return None
+        try:
+            statements = parse(sql, read="trino", error_level=ErrorLevel.RAISE)
+        except ParseError:
+            return None
+        if len(statements) != 1 or not isinstance(statements[0], exp.Query):
+            return None
+        aliases = tuple(statements[0].named_selects)
+        if not aliases or len(aliases) != len(set(aliases)):
+            return None
+        return aliases
+
+    @staticmethod
+    def _sensitive_result_field(name: str) -> bool:
+        return bool(
+            re.search(
+                r"(?:^|_)(?:email|e_mail|phone|mobile|tel|member_(?:id|no)|"
+                r"guest_id|customer_id|user_id|resident_(?:id|no))(?:_|$)",
+                name,
+                re.IGNORECASE,
+            )
+        )
+
+    @classmethod
+    def g3_violation(
+        cls,
+        query: dict[str, object],
+        plan: dict[str, object],
+        package: ContextPackage,
+    ) -> str | None:
         if not query.get("evidence_complete"):
+            return "EVIDENCE_INCOMPLETE"
+        if not isinstance(query.get("query_id"), str) or not query["query_id"]:
             return "EVIDENCE_INCOMPLETE"
         rows = query.get("rows")
         scalar_types = (str, int, float, bool, type(None))
@@ -1294,6 +1576,16 @@ class PipelineSupport:
             )
         ):
             return "RESULT_SCHEMA_INVALID"
+        expected_columns = cls._projection_aliases(plan)
+        if expected_columns is None or not isinstance(package, ContextPackage):
+            return "RESULT_CONTRACT_INVALID"
+        if any(tuple(row) != expected_columns for row in rows):
+            return "RESULT_SCHEMA_INVALID"
+        if any(cls._sensitive_result_field(name) for name in expected_columns):
+            return "SENSITIVE_RESULT_BLOCKED"
+        actual_metadata = cls._result_metadata(rows, expected_columns)
+        if query.get("result_metadata") != actual_metadata:
+            return "EVIDENCE_MISMATCH"
         filters = query.get("filters", {})
         sampling = query.get("sampling", {})
         masking = query.get("masking", {})
@@ -1304,6 +1596,31 @@ class PipelineSupport:
             or not isinstance(masking, dict)
         ):
             return "EVIDENCE_SCHEMA_INVALID"
+        returned_rows = sampling.get("returned_rows")
+        total_rows = sampling.get("total_rows")
+        sampling_applied = sampling.get("applied")
+        if (
+            not isinstance(sampling_applied, bool)
+            or not isinstance(returned_rows, int)
+            or isinstance(returned_rows, bool)
+            or not isinstance(total_rows, int)
+            or isinstance(total_rows, bool)
+            or returned_rows != len(rows)
+            or total_rows < returned_rows
+            or (not sampling_applied and total_rows != returned_rows)
+        ):
+            return "EVIDENCE_MISMATCH"
+        masking_applied = masking.get("applied")
+        masking_fields = masking.get("fields")
+        if (
+            not isinstance(masking_applied, bool)
+            or not isinstance(masking_fields, (list, tuple))
+            or any(not isinstance(field, str) for field in masking_fields)
+            or len(masking_fields) != len(set(masking_fields))
+            or not set(masking_fields).issubset(expected_columns)
+            or masking_applied != bool(masking_fields)
+        ):
+            return "MASKING_EVIDENCE_INVALID"
         if query.get("zero_result_suspicious"):
             return "SUSPICIOUS_EMPTY_RESULT"
         column_count = max((len(row) for row in rows), default=0)
@@ -1315,9 +1632,9 @@ class PipelineSupport:
             return "RESULT_RANGE_EXCEEDED"
         return None
 
-    @staticmethod
+    @classmethod
     def normalize_empty_aggregate(
-        query: dict[str, object], package: ContextPackage
+        cls, query: dict[str, object], package: ContextPackage
     ) -> dict[str, object]:
         """Turn SQL's one-row NULL aggregate into an honest empty Safe Result."""
         rows = query.get("rows")
@@ -1330,6 +1647,13 @@ class PipelineSupport:
             return query
         normalized = dict(query)
         normalized["rows"] = []
+        metadata = query.get("result_metadata")
+        columns = tuple(
+            str(item["name"])
+            for item in metadata.get("columns", ())
+            if isinstance(item, dict) and isinstance(item.get("name"), str)
+        ) if isinstance(metadata, dict) else tuple(row)
+        normalized["result_metadata"] = cls._result_metadata([], columns)
         sampling = dict(query.get("sampling") or {})
         sampling.update(returned_rows=0, total_rows=0)
         normalized["sampling"] = sampling
@@ -1350,13 +1674,13 @@ class PipelineSupport:
 
     @staticmethod
     def artifact_id(
-        trace_id: str,
+        request_id: str,
         query_id: str,
         context_hash: str,
     ) -> UUID:
         return uuid5(
             NAMESPACE_URL,
-            f"{trace_id}:{query_id}:{context_hash}",
+            f"{request_id}:{query_id}:{context_hash}",
         )
 
     @staticmethod
@@ -1370,6 +1694,11 @@ class PipelineSupport:
                 name=str(asset["name"]),
                 schema_version=str(asset["schema_version"]),
                 seed_version=str(asset["seed_version"]),
+                synthetic=(
+                    asset["synthetic"]
+                    if isinstance(asset.get("synthetic"), bool)
+                    else None
+                ),
             )
             for asset in assets
         )

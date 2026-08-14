@@ -1,0 +1,77 @@
+{
+  "contract_version": "REPORT-v1.0.0",
+  "definition_id": "report-hotel-performance-q2",
+  "version": 2,
+  "status": "draft",
+  "title": "2026년 2분기 호텔 영업 성과 보고서",
+  "orientation": "landscape",
+  "currency_display_unit": "million",
+  "approved_at": null,
+  "blocks": [
+    {
+      "block_id": "block-summary",
+      "title": "경영진 요약",
+      "artifact_id": null,
+      "query_id": null,
+      "columns": 12,
+      "type": "text",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "h": 4,
+      "content": "## 핵심 결론\n객실 매출은 전분기 대비 개선됐지만 온라인 채널 편중이 커졌습니다.\n\n- 성수기 전 직접 예약 전환율을 우선 점검합니다.\n- 객실 단가와 점유율을 함께 모니터링합니다."
+    },
+    {
+      "block_id": "block-revenue-chart",
+      "title": "월별 객실 매출 추이",
+      "artifact_id": "artifact-monthly-revenue",
+      "query_id": "query-monthly-revenue",
+      "columns": 6,
+      "type": "chart",
+      "x": 0,
+      "y": 4,
+      "w": 6,
+      "h": 7,
+      "content": "{\"chartType\":\"line\",\"showLegend\":true}"
+    },
+    {
+      "block_id": "block-revenue-table",
+      "title": "월별 매출 상세",
+      "artifact_id": "artifact-monthly-revenue",
+      "query_id": "query-monthly-revenue",
+      "columns": 6,
+      "type": "table",
+      "x": 6,
+      "y": 4,
+      "w": 6,
+      "h": 7,
+      "content": "{\"density\":\"compact\",\"showRowNumbers\":false}"
+    },
+    {
+      "block_id": "block-channel-chart",
+      "title": "채널별 매출 구성",
+      "artifact_id": "artifact-channel-mix",
+      "query_id": "query-channel-mix",
+      "columns": 6,
+      "type": "chart",
+      "x": 0,
+      "y": 11,
+      "w": 6,
+      "h": 7,
+      "content": "{\"chartType\":\"bar\",\"showLegend\":false}"
+    },
+    {
+      "block_id": "block-channel-table",
+      "title": "채널별 성과 상세",
+      "artifact_id": "artifact-channel-mix",
+      "query_id": "query-channel-mix",
+      "columns": 6,
+      "type": "table",
+      "x": 6,
+      "y": 11,
+      "w": 6,
+      "h": 7,
+      "content": "{\"density\":\"comfortable\",\"showRowNumbers\":true}"
+    }
+  ]
+}

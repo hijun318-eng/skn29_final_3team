@@ -1,5 +1,8 @@
 # DataHub Core 기반 대화형 데이터 분석·자동 리포팅 서비스 최종 기획서
 
+> **문서 상태: SUPERSEDED / 보존용 비규범 자료**
+> 이 문서는 2026-08-03 시점의 종합 기획으로 삭제하지 않고 보존한다. 현재 제품 결정과 완료 기준은 [`product/00_기획서.md`](product/00_기획서.md) → [`product/01_PRD.md`](product/01_PRD.md) → [`product/02_유저플로우.md`](product/02_유저플로우.md) → [`product/03_아키텍처.md`](product/03_아키텍처.md) 순서로 우선한다. 이 문서의 구 일정·역할·데이터·모델·구현 현황은 현재 성공 근거로 사용하지 않는다.
+
 | 항목 | 내용 |
 |---|---|
 | 문서 설명 | Answervice가 해결하려는 문제, 사용자 가치, 제공 범위와 구현 방향을 비개발자도 이해할 수 있도록 정리한 최종 기획서 |
@@ -1200,7 +1203,7 @@ I5 이후 후속 단계로 구현한다. 현재 P0/P1·I5 완료선에서는 메
 | 영역 | 요구사항 | 검증 |
 |---|---|---|
 | 인증 | 향후 SSO 연결이 가능한 인증 경계와 사용자 식별자 | 세션 만료·위조 사용자 거부 |
-| 역할 부여 | P0은 versioned `access-policy.yaml`과 DB migration으로 테스트 사용자·그룹·role을 seed하고 배포 관리자만 변경; 운영·감사 화면은 유효 role과 policy version을 조회 | 역할별 허용/거부와 임의 role 변경 차단 |
+| 역할 부여 | 승인된 분석 Template과 허용 역할을 App DB의 동일 transaction row에 저장하고 승인 절차를 거친 변경만 허용; 별도 정적 역할 파일은 사용하지 않음 | 역할 JSON 형식·비어 있는 승인 역할·미승인 Template·역할 불일치 차단 |
 | 원본 권한 | 서비스 계정과 원본 DB의 읽기 권한을 우회하지 않음 | 쓰기 시도·무권한 테이블 차단 |
 | Trino | system `read-only`, catalog·table·column rule, `system` catalog·procedure 차단, resource group | DDL·DML·passthrough·권한 우회 차단 |
 | SQL 정책 | SQLGlot AST, 허용 dataset·column·JOIN, limit·timeout·scan 제한 | 정책별 negative test |

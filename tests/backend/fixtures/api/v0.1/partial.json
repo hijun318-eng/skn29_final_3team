@@ -13,25 +13,26 @@
     "result": {
       "chart": {
         "chart_type": "line",
-        "x_field": "business_date",
+        "x_field": "bucket_start",
         "y_fields": [
-          "occupied_rooms"
+          "measure_value"
         ]
       },
       "evidence": {
         "artifact_id": "00000000-0000-0000-0000-0000000002ed",
-        "as_of": "2026-07-30",
+        "as_of": "2041-04-02",
         "cached": false,
         "context_release": "context-v1",
+        "evidence_cutoff": null,
         "filters": {
-          "hotel": "synthetic"
+          "scope_code": "example"
         },
         "gate_history": null,
         "gates": null,
         "masking": {
           "applied": true,
           "fields": [
-            "guest_id"
+            "subject_identifier"
           ]
         },
         "metric_values": [],
@@ -39,10 +40,11 @@
         "model_version": null,
         "models": [],
         "period": {
-          "end_exclusive": "2026-08-01",
-          "start": "2026-07-01"
+          "end_exclusive": "2041-04-01",
+          "start": "2041-03-01"
         },
         "policy_version": "policy-v1",
+        "product_release_id": null,
         "query_id": "fixture-query-partial",
         "sampling": {
           "applied": false,
@@ -51,22 +53,22 @@
         },
         "sources": [
           {
-            "fqn": "pms.public.reservations",
-            "name": "PMS reservations",
+            "fqn": "catalog_alpha.schema_beta.fact_observations",
+            "name": "Governed observations",
             "schema_version": "1.0.0",
-            "seed_version": "20260729",
+            "seed_version": "example-release-v1",
             "synthetic": true,
-            "urn": "urn:answervice:dataset:pms.public.reservations"
+            "urn": "urn:example:dataset:catalog-alpha:fact-observations"
           }
         ],
         "timezone": null
       },
       "metrics": [],
-      "summary": "검증된 합성 데이터 분석 결과입니다.",
+      "summary": "문서 예시 계약에 맞는 분석 결과입니다.",
       "table": {
         "columns": [
-          "business_date",
-          "occupied_rooms"
+          "bucket_start",
+          "measure_value"
         ],
         "rows": []
       }
@@ -138,10 +140,10 @@
     "trace_id": "fixture-partial"
   },
   "meta": {
-    "as_of": "2026-07-30",
+    "as_of": "2041-04-02",
     "contract_version": "OPENAPI-v1.0.0",
     "request_id": "00000000-0000-0000-0000-000000000100",
-    "timestamp": "2026-07-30T00:00:00Z",
+    "timestamp": "2041-04-02T00:00:00Z",
     "trace_id": "fixture-partial"
   }
 }

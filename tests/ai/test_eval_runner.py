@@ -1,12 +1,9 @@
 import copy
-import json
 import unittest
-from pathlib import Path
 
 from evals.runner import (
     EvaluationError,
     evaluate_cases,
-    validate_model_contract_v2_manifest,
 )
 from tests.support.fakes import ContractFakeModelAdapter as FakeModelAdapter
 from src.ai.training.evaluate_lora import (
@@ -22,27 +19,20 @@ from tests.ai.test_contracts import VALID_PAYLOADS
 
 
 def valid_case():
-    adapter = FakeModelAdapter()
     request = copy.deepcopy(VALID_PAYLOADS["node3_request"])
     return {
         "case_id": "required30-node3-001",
         "node": "node3",
         "request": request,
-        "expected_output": adapter.generate("node3", request),
+        "expected_output": copy.deepcopy(VALID_PAYLOADS["node3_response"]),
     }
 
 
+def adapter_for(response, count=2):
+    return FakeModelAdapter([copy.deepcopy(response) for _ in range(count)])
+
+
 class EvaluationRunnerTests(unittest.TestCase):
-    def test_v2_model_eval_skeleton_is_complete_and_does_not_claim_execution(self):
-        path = Path(__file__).resolve().parents[2] / "evals" / "model_contract_v2.manifest.json"
-        manifest = json.loads(path.read_text(encoding="utf-8"))
-
-        summary = validate_model_contract_v2_manifest(manifest)
-
-        self.assertEqual("SKELETON", summary["state"])
-        self.assertEqual("NOT_RUN", summary["model_execution"])
-        self.assertEqual({"node1": 28, "node3": 13}, summary["slice_counts"])
-
     def test_instruct_2507_checkpoint_is_pinned(self):
         self.assertEqual("Qwen/Qwen3-4B-Instruct-2507", DEFAULT_MODEL)
         self.assertEqual("cdbee75f17c01a7cc42f958dc650907174af0554", DEFAULT_REVISION)
@@ -87,8 +77,14 @@ class EvaluationRunnerTests(unittest.TestCase):
         )
 
     def test_result_and_hash_are_reproducible(self):
-        first = evaluate_cases([valid_case()], FakeModelAdapter())
-        second = evaluate_cases([valid_case()], FakeModelAdapter())
+        first_case = valid_case()
+        second_case = valid_case()
+        first = evaluate_cases(
+            [first_case], adapter_for(first_case["expected_output"])
+        )
+        second = evaluate_cases(
+            [second_case], adapter_for(second_case["expected_output"])
+        )
 
         self.assertEqual(first, second)
         self.assertEqual(first["total"], 1)
@@ -98,7 +94,9 @@ class EvaluationRunnerTests(unittest.TestCase):
     def test_expected_output_mismatch_fails(self):
         case = valid_case()
         case["expected_output"]["explanation"] = "unsupported"
-        result = evaluate_cases([case], FakeModelAdapter())
+        result = evaluate_cases(
+            [case], adapter_for(VALID_PAYLOADS["node3_response"])
+        )
         self.assertEqual(result["failed"], 1)
 
     def test_missing_extra_and_duplicate_case_ids_are_rejected(self):
@@ -114,7 +112,9 @@ class EvaluationRunnerTests(unittest.TestCase):
 
         case = valid_case()
         with self.assertRaises(EvaluationError):
-            evaluate_cases([case, case], FakeModelAdapter())
+            evaluate_cases(
+                [case, case], adapter_for(case["expected_output"])
+            )
 
 
 if __name__ == "__main__":

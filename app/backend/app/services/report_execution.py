@@ -1,3 +1,5 @@
+"""저장된 Analysis Definition을 현재 owner 권한·기준일·pipeline으로 멱등 replay하고, block 결과가 terminal일 때만 report run과 schedule CAS를 완료한다."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,7 +22,7 @@ from app.contracts import (
     Role,
 )
 from app.controllers.analysis_controller import AnalysisController
-from src.report.domain import BlockFailureCode, BlockRunStatus, ReportRun
+from src.report.domain import BlockFailureCode, BlockRunStatus, ReportRun, RunStatus
 
 
 _PUBLIC_FAILURES = {
@@ -30,13 +32,19 @@ _PUBLIC_FAILURES = {
 
 
 class ExecutionGate(Protocol):
-    def acquire(self, wait_seconds: float = 0) -> bool: ...
+    """ExecutionGate는 실행 gate 구현이 제공해야 할 acquire, release 메서드와 반환 타입을 선언한다."""
+    async def acquire(self, wait_seconds: float = 0) -> bool:
+        """실행 gate 동시 실행 권한을 제한 시간 안에 획득한다."""
+        ...
 
-    def release(self) -> None: ...
+    def release(self) -> None:
+        """실행 gate 동시 실행 권한을 반환해 대기 작업이 진행되게 한다."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
 class ReplayOutcome:
+    """ReplayOutcome 계약에서 허용하는 상태 값을 정의한다."""
     status: BlockRunStatus
     request_id: str | None = None
     artifact_id: str | None = None
@@ -67,7 +75,12 @@ def _failure(
 
 
 class AnalysisDefinitionReplay:
-    """Run one stored Analysis Definition through the current full pipeline."""
+    """저장된 Analysis Definition을 현재 권한·policy·data 기준으로 다시 실행한다.
+
+    DB의 versioned 정의를 입력 권위로 삼되 과거 기간과 실행 결과는 재사용하지 않는다.
+    현재 owner 인증, report ``as_of``, execution gate와 전체 controller pipeline을 거쳐
+    검증된 artifact 증거 또는 ``ReplayOutcome``의 typed failure만 반환한다.
+    """
 
     def __init__(
         self,
@@ -82,7 +95,7 @@ class AnalysisDefinitionReplay:
         self._execution_gate = execution_gate
         self._queue_wait_seconds = queue_wait_seconds
 
-    def execute(
+    async def execute(
         self,
         *,
         owner_id: UUID,
@@ -91,10 +104,16 @@ class AnalysisDefinitionReplay:
         as_of: datetime,
         idempotency_key: str,
     ) -> ReplayOutcome:
+        """한 정의 version을 report 기준일로 봉인해 멱등한 분석 run으로 실행한다.
+
+        owner 활성 권한과 저장 정의를 DB에서 다시 확인하고 기존 기간 binding은 제거한다.
+        idempotency key로 중복 run을 조회하며 gate를 얻은 경우에만 controller를 호출한다.
+        인증·repository·pipeline·persist 실패는 공개 ``BlockFailureCode``로 축약해 반환한다.
+        """
         repository = PostgresAnalysisRepository(self._database_url, owner_id)
         try:
-            require_active_subject(owner_id, Role.HOTEL_ANALYST)
-            definition = repository.get_definition_for_report(
+            await require_active_subject(owner_id, Role.HOTEL_ANALYST)
+            definition = await repository.get_definition_for_report(
                 definition_id, definition_version
             )
         except AuthenticationError:
@@ -131,7 +150,7 @@ class AnalysisDefinitionReplay:
         )
         request_id: UUID | None = None
         try:
-            request_id, created = repository.begin_run(
+            request_id, created = await repository.begin_run(
                 definition,
                 context,
                 report_date,
@@ -139,9 +158,9 @@ class AnalysisDefinitionReplay:
                 parameters,
             )
             if not created:
-                return self._existing_outcome(repository, request_id)
-            if not self._execution_gate.acquire(self._queue_wait_seconds):
-                repository.fail_run(request_id, ErrorCode.RATE_LIMITED.value)
+                return await self._existing_outcome(repository, request_id)
+            if not await self._execution_gate.acquire(self._queue_wait_seconds):
+                await repository.fail_run(request_id, ErrorCode.RATE_LIMITED.value)
                 return _failure(
                     BlockFailureCode.RATE_LIMITED,
                     "The analysis execution limit was reached.",
@@ -150,7 +169,7 @@ class AnalysisDefinitionReplay:
 
             execution: dict[str, object] = {}
             try:
-                response = self._controller.submit(
+                response = await self._controller.submit(
                     AnalysisRequest(
                         question=definition["question"],
                         parameters=parameters,
@@ -159,7 +178,7 @@ class AnalysisDefinitionReplay:
                     execution.update,
                 )
             except ContextValidationError as error:
-                repository.fail_run(
+                await repository.fail_run(
                     request_id,
                     "PERMISSION"
                     if error.code is ErrorCode.ACCESS_DENIED
@@ -171,7 +190,7 @@ class AnalysisDefinitionReplay:
                     request_id=request_id,
                 )
             except Exception:
-                repository.fail_run(request_id)
+                await repository.fail_run(request_id)
                 return _failure(
                     BlockFailureCode.INTERNAL_ERROR,
                     "The analysis replay failed.",
@@ -180,9 +199,9 @@ class AnalysisDefinitionReplay:
             finally:
                 self._execution_gate.release()
 
-            repository.finish_run(request_id, response, execution)
+            await repository.finish_run(request_id, response, execution)
             if response.data.status in {AnalysisStatus.SUCCEEDED, AnalysisStatus.PARTIAL}:
-                artifact = repository.get_run_artifact(request_id)
+                artifact = await repository.get_run_artifact(request_id)
                 failure = response.error
                 return ReplayOutcome(
                     status=(
@@ -209,7 +228,9 @@ class AnalysisDefinitionReplay:
         except AnalysisRepositoryUnavailable:
             if request_id is not None:
                 try:
-                    repository.fail_run(request_id, ErrorCode.ARTIFACT_PERSIST_FAILED.value)
+                    await repository.fail_run(
+                        request_id, ErrorCode.ARTIFACT_PERSIST_FAILED.value
+                    )
                 except Exception:
                     pass
             return _failure(
@@ -225,13 +246,13 @@ class AnalysisDefinitionReplay:
             )
 
     @staticmethod
-    def _existing_outcome(
+    async def _existing_outcome(
         repository: PostgresAnalysisRepository,
         request_id: UUID,
     ) -> ReplayOutcome:
-        run = repository.get_run(request_id)
+        run = await repository.get_run(request_id)
         if run["status"] in {AnalysisStatus.SUCCEEDED.value, AnalysisStatus.PARTIAL.value}:
-            artifact = repository.get_run_artifact(request_id)
+            artifact = await repository.get_run_artifact(request_id)
             return ReplayOutcome(
                 status=(
                     BlockRunStatus.SUCCESS
@@ -265,16 +286,34 @@ class AnalysisDefinitionReplay:
 
 
 class ReportExecutionService:
-    """Common manual and scheduled Report execution path."""
+    """ReportExecutionService는 보고서 실행 서비스에서 execute_manual_run, run_due_schedule 흐름과 선행 도메인 검증 순서를 조정한다.
+
+    Common manual and scheduled Report execution path.
+    """
+
+    _TERMINAL_RUN_STATUSES = frozenset(
+        {
+            RunStatus.SUCCESS,
+            RunStatus.PARTIAL,
+            RunStatus.FAILED,
+            RunStatus.CANCELLED,
+        }
+    )
 
     def __init__(self, repository, replay: AnalysisDefinitionReplay) -> None:
         self.repository = repository
         self._replay = replay
 
-    def execute_manual_run(self, command_id: str) -> ReportRun:
-        claim = self.repository.claim_manual_run(command_id)
+    async def execute_manual_run(self, command_id: str) -> ReportRun:
+        """repository가 원자적으로 claim한 수동 report command의 모든 block을 실행한다.
+
+        이미 claim된 command는 기존 run을 반환한다. 각 block은 저장 definition version으로
+        replay하고 성공·부분·실패 증거를 개별 저장하며, 예상 밖 예외도 typed block 실패로
+        격리한다. 모든 block 기록 후 repository가 계산한 최종 ``ReportRun``을 반환한다.
+        """
+        claim = await self.repository.claim_manual_run(command_id)
         if not claim["claimed"]:
-            return self.repository.get_run(str(claim["run_id"]))
+            return await self.repository.get_run(str(claim["run_id"]))
         for block in claim["blocks"]:
             if (
                 not block["analysis_definition_id"]
@@ -286,7 +325,7 @@ class ReportExecutionService:
                 )
             else:
                 try:
-                    outcome = self._replay.execute(
+                    outcome = await self._replay.execute(
                         owner_id=claim["owner_id"],
                         definition_id=block["analysis_definition_id"],
                         definition_version=block["analysis_definition_version"],
@@ -300,7 +339,7 @@ class ReportExecutionService:
                         BlockFailureCode.INTERNAL_ERROR,
                         "The analysis replay failed.",
                     )
-            self.repository.record_block_run(
+            await self.repository.record_block_run(
                 str(claim["run_id"]),
                 block["block_id"],
                 status=outcome.status,
@@ -312,18 +351,29 @@ class ReportExecutionService:
                 failure_code=outcome.failure_code,
                 failure_message=outcome.failure_message,
             )
-        return self.repository.finish_manual_run(command_id)
+        return await self.repository.finish_manual_run(command_id)
 
-    def run_due_schedule(
+    async def run_due_schedule(
         self,
         schedule_id: str,
         now: datetime,
     ) -> tuple[dict[str, object], ReportRun | None]:
-        schedule, command = self.repository.queue_due_schedule(schedule_id, now)
+        """기준 시각에 due인 schedule을 멱등 command로 queue하고 terminal run까지 처리한다.
+
+        다른 poller가 먼저 queue했거나 아직 실행 중이면 run 없이 현재 schedule을 반환한다.
+        SUCCESS·PARTIAL·FAILED·CANCELLED가 확인된 경우에만 ``complete_due_schedule``로 다음
+        시각을 전진시켜 조기 전진 race가 재시도 window를 건너뛰지 않게 한다.
+        """
+        schedule, command = await self.repository.queue_due_schedule(schedule_id, now)
         if command is None:
             return schedule, None
-        run = self.execute_manual_run(command.command_id)
-        schedule = self.repository.complete_due_schedule(
+        run = await self.execute_manual_run(command.command_id)
+        # A concurrent poller can observe the idempotent command while the first
+        # poller is still executing it. Advancing here would skip the next retry
+        # window before any terminal evidence exists.
+        if run.status not in self._TERMINAL_RUN_STATUSES:
+            return schedule, None
+        schedule = await self.repository.complete_due_schedule(
             schedule_id, command.as_of, run.run_id
         )
         return schedule, run

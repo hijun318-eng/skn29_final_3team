@@ -1,4 +1,4 @@
-"""Register REPORT-v1.0.0 persistence after the existing backend head."""
+"""기존 backend head 뒤에 REPORT-v1.0.0 persistence schema를 등록한다."""
 
 import os
 import re
@@ -20,6 +20,8 @@ def _runtime_role() -> str:
 
 
 def upgrade() -> None:
+    """owner-scoped Report 정의·block·run table과 최소권한 grant를 생성한다."""
+
     op.execute("CREATE SCHEMA report_v1")
     op.execute(
         """
@@ -185,6 +187,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """runtime 권한을 먼저 회수한 뒤 REPORT-v1 schema 전체를 제거한다."""
+
     role = _runtime_role()
     op.execute(f"REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA report_v1 FROM {role}")
     op.execute(f"REVOKE USAGE ON SCHEMA report_v1 FROM {role}")

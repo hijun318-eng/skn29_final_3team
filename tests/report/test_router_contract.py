@@ -1,11 +1,11 @@
 import unittest
 from datetime import datetime, timezone
 
-from src.report.repository import InMemoryReportRepository
 from src.report.router import REPORT_ROUTES, ReportRouteError, create_report_router
+from tests.support.report_repository import InMemoryReportRepository
 
 
-class ReportRouterContractTest(unittest.TestCase):
+class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.router = create_report_router(InMemoryReportRepository())
 
@@ -29,8 +29,8 @@ class ReportRouterContractTest(unittest.TestCase):
         self.assertIn(("GET", "/reports/runs/{run_id}", "get_run"), REPORT_ROUTES)
         self.assertIn(("POST", "/reports/runs/manual", "create_manual_run_command"), REPORT_ROUTES)
 
-    def test_router_creates_approves_and_versions_without_overwriting(self):
-        created = self.router.create_definition({
+    async def test_router_creates_approves_and_versions_without_overwriting(self):
+        created = await self.router.create_definition({
             "definition_id": "report-1",
             "title": "주간 운영 보고서",
             "orientation": "landscape",
@@ -44,12 +44,12 @@ class ReportRouterContractTest(unittest.TestCase):
         self.assertEqual("landscape", created["orientation"])
         self.assertEqual("hundredMillion", created["currency_display_unit"])
         approved_at = datetime(2026, 8, 3, tzinfo=timezone.utc).isoformat()
-        approved = self.router.approve_version("report-1", 1, approved_at)
+        approved = await self.router.approve_version("report-1", 1, approved_at)
         self.assertEqual("approved", approved["status"])
         with self.assertRaises(ReportRouteError) as conflict:
-            self.router.approve_version("report-1", 1, approved_at)
+            await self.router.approve_version("report-1", 1, approved_at)
         self.assertEqual(409, conflict.exception.status_code)
-        next_draft = self.router.create_next_draft("report-1", 1)
+        next_draft = await self.router.create_next_draft("report-1", 1)
         self.assertEqual(2, next_draft["version"])
         self.assertEqual("artifact-1", next_draft["blocks"][0]["artifact_id"])
         self.assertEqual("table", next_draft["blocks"][0]["type"])
@@ -57,7 +57,7 @@ class ReportRouterContractTest(unittest.TestCase):
         self.assertEqual("landscape", next_draft["orientation"])
         self.assertEqual("hundredMillion", next_draft["currency_display_unit"])
 
-        run = self.router.create_run({
+        run = await self.router.create_run({
             "run_id": "run-1",
             "definition_id": "report-1",
             "definition_version": 1,
@@ -75,19 +75,19 @@ class ReportRouterContractTest(unittest.TestCase):
         self.assertEqual(1, run["definition_version"])
         self.assertEqual("artifact-1", run["blocks"][0]["artifact_id"])
         self.assertEqual("sha256-1", run["blocks"][0]["snapshot_checksum"])
-        self.assertEqual(2, len(self.router.list_definitions()["items"]))
-        self.assertEqual("run-1", self.router.list_runs()["items"][0]["run_id"])
-        self.assertEqual("run-1", self.router.get_run("run-1")["run_id"])
+        self.assertEqual(2, len((await self.router.list_definitions())["items"]))
+        self.assertEqual("run-1", (await self.router.list_runs())["items"][0]["run_id"])
+        self.assertEqual("run-1", (await self.router.get_run("run-1"))["run_id"])
         with self.assertRaises(ReportRouteError) as duplicate:
-            self.router.create_run({
+            await self.router.create_run({
                 "run_id": "run-1", "definition_id": "report-1", "definition_version": 1,
                 "as_of": approved_at, "policy_version": "policy-v1", "context_hash": "context-1",
                 "watermark": {}, "status": "success", "blocks": [],
             })
         self.assertEqual(409, duplicate.exception.status_code)
 
-    def test_draft_layout_replace_and_manual_command_trust_boundary(self):
-        self.router.create_definition({
+    async def test_draft_layout_replace_and_manual_command_trust_boundary(self):
+        await self.router.create_definition({
             "definition_id": "report-1",
             "title": "주간 운영 보고서",
             "blocks": [{
@@ -95,7 +95,7 @@ class ReportRouterContractTest(unittest.TestCase):
                 "columns": 6,
             }],
         })
-        replaced = self.router.replace_draft_blocks("report-1", 1, {
+        replaced = await self.router.replace_draft_blocks("report-1", 1, {
             "orientation": "landscape",
             "currency_display_unit": "million",
             "blocks": [{
@@ -108,17 +108,17 @@ class ReportRouterContractTest(unittest.TestCase):
         self.assertEqual("million", replaced["currency_display_unit"])
 
         approved_at = datetime(2026, 8, 3, tzinfo=timezone.utc).isoformat()
-        self.router.approve_version("report-1", 1, approved_at)
+        await self.router.approve_version("report-1", 1, approved_at)
         with self.assertRaises(ReportRouteError) as immutable:
-            self.router.replace_draft_blocks("report-1", 1, {"blocks": []})
+            await self.router.replace_draft_blocks("report-1", 1, {"blocks": []})
         self.assertEqual(409, immutable.exception.status_code)
 
         payload = {
             "definition_id": "report-1", "version": 1,
             "as_of": approved_at, "idempotency_key": "manual-20260803",
         }
-        command = self.router.create_manual_run_command(payload)
-        repeated = self.router.create_manual_run_command(payload)
+        command = await self.router.create_manual_run_command(payload)
+        repeated = await self.router.create_manual_run_command(payload)
         self.assertEqual("queued", command["status"])
         self.assertEqual(command["command_id"], repeated["command_id"])
         self.assertNotIn("run_id", command)
@@ -128,12 +128,12 @@ class ReportRouterContractTest(unittest.TestCase):
         ):
             with self.subTest(forbidden=forbidden):
                 with self.assertRaises(ReportRouteError) as untrusted:
-                    self.router.create_manual_run_command({**payload, forbidden: "client-value"})
+                    await self.router.create_manual_run_command({**payload, forbidden: "client-value"})
                 self.assertEqual(422, untrusted.exception.status_code)
 
-    def test_router_rejects_unknown_fields(self):
+    async def test_router_rejects_unknown_fields(self):
         with self.assertRaises(ReportRouteError) as invalid:
-            self.router.create_definition({
+            await self.router.create_definition({
                 "definition_id": "report-1", "title": "보고서", "blocks": [], "role": "admin",
             })
         self.assertEqual(422, invalid.exception.status_code)

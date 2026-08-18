@@ -1,8 +1,4 @@
-from pathlib import Path
-
-from alembic import op
-from sqlalchemy import text
-
+"""scenario SQL을 설치하지 않고 이미 발행된 revision chain 호환성을 보존한다."""
 
 revision = "20260814_19"
 down_revision = "20260813_18"
@@ -10,28 +6,9 @@ branch_labels = None
 depends_on = None
 
 
-def _template_sql() -> str:
-    root = Path(__file__).resolve().parents[4]
-    path = root / "infrastructure/database/sql/queries/i2_gold_recognized_room_revenue.sql"
-    if not path.is_file():
-        raise RuntimeError("required template SQL is missing")
-    return path.read_text(encoding="utf-8").strip()
-
-
 def upgrade() -> None:
-    op.get_bind().execute(
-        text(
-            "UPDATE context.analysis_templates "
-            "SET version = 'I2-v1.1.0', status = 'APPROVED', sql_text = :sql_text "
-            "WHERE template_id = 'weekly-room-operations'"
-        ),
-        {"sql_text": _template_sql()},
-    )
+    """scenario SQL을 설치하지 않은 채 발행된 revision identity만 보존한다."""
 
 
 def downgrade() -> None:
-    op.execute(
-        "UPDATE context.analysis_templates "
-        "SET version = 'I2-v1.0.0', status = 'DRAFT' "
-        "WHERE template_id = 'weekly-room-operations'"
-    )
+    """호환성 revision이 변경한 DB state가 없으므로 되돌릴 작업도 없다."""

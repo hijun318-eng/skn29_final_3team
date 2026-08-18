@@ -58,14 +58,14 @@ def test_root_include_applies_only_the_runtime_identity_override():
     assert "- app/frontend/compose.fragment.yml" in root
     assert "- infrastructure/database/datahub/compose.consumer.yml" in root
     assert "- compose.app-postgres.override.yml" in root
-    assert override == (
-        "services:\n"
-        "  app-postgres:\n"
-        "    container_name: answervice-app-postgres\n"
-        '    ports: !override ["127.0.0.1:25432:5432"]\n'
-        "  backend:\n"
-        '    ports: !override ["127.0.0.1:28000:8000"]\n'
-    )
+    # 한국어 책임 header 같은 비실행 문서는 허용하되 override가 identity/port 외의
+    # 운영 설정을 바꾸지 않는지는 실제 key 표면으로 검증한다.
+    assert "container_name: answervice-app-postgres" in override
+    assert 'ports: !override ["127.0.0.1:25432:5432"]' in override
+    assert 'ports: !override ["127.0.0.1:28000:8000"]' in override
+    assert override.count("ports: !override") == 2
+    for forbidden in ("environment:", "volumes:", "image:", "command:", "build:"):
+        assert forbidden not in override
 
 
 def test_resolved_app_postgres_keeps_service_contract_except_identity():

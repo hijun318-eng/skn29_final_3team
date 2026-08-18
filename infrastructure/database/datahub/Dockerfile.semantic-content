@@ -1,0 +1,25 @@
+# 책임: dataset semanticContent publisher를 digest 고정 Python runtime과 non-root
+# identity로 조립한다. dependency pin이나 소유권 설정 실패 시 image를 만들지 않는다.
+FROM python:3.13.7-slim-bookworm@sha256:adafcc17694d715c905b4c7bebd96907a1fd5cf183395f0ebc4d3428bd22d92d
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY infrastructure/database/datahub/requirements.semantic-content.txt ./requirements.txt
+RUN pip install --disable-pip-version-check -r requirements.txt \
+    && useradd --create-home --uid 10001 semanticpublisher
+
+COPY --chown=semanticpublisher:semanticpublisher \
+    src/data/datahub_connection.py \
+    infrastructure/database/datahub/verify_datahub_service_tokens.py \
+    infrastructure/database/datahub/dataset_semantic_contract.py \
+    infrastructure/database/datahub/dataset_semantic_clients.py \
+    infrastructure/database/datahub/dataset_semantic_index.py \
+    infrastructure/database/datahub/publish_dataset_semantic_content.py \
+    ./
+
+USER semanticpublisher
+ENTRYPOINT ["python", "publish_dataset_semantic_content.py"]

@@ -9,8 +9,7 @@
       "node2_sql_generation",
       "node2_repair_once",
       "node3_grounded_explanation",
-      "prompt_registry",
-      "deterministic_fake_adapter"
+      "prompt_registry"
     ],
     "excluded_until_i5_followup": [
       "mcp",

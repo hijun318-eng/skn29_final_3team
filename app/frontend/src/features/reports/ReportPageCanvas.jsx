@@ -1,6 +1,10 @@
-import { useLayoutEffect, useRef, useState } from "react";
+/** 실제 A4 비율과 grid를 screen/print 양쪽에서 유지하는 page canvas 모듈이다. */
+import { memo, useLayoutEffect, useRef, useState } from "react";
 
-import "./report-a4.css";
+import "./report-a4-paper.css";
+import "./report-a4-content.css";
+import "./report-a4-artifact.css";
+import "./report-a4-print.css";
 
 const A4_LABELS = {
   portrait: "A4 세로 210 × 297 mm",
@@ -22,7 +26,34 @@ function blockGridStyle(block) {
   };
 }
 
-function ScaledPage({
+function shallowRecordEqual(previous, next) {
+  if (previous === next) return true;
+  if (!previous || !next) return false;
+  const keys = Object.keys(previous);
+  return keys.length === Object.keys(next).length && keys.every((key) => (
+    key === "sourceBlock"
+      ? shallowRecordEqual(previous[key], next[key])
+      : Object.is(previous[key], next[key])
+  ));
+}
+
+function scaledPagePropsEqual(previous, next) {
+  const scalarKeys = [
+    "mode", "orientation", "pageIndex", "pageCount", "renderBlock", "renderHeader",
+    "renderFooter", "renderGridOverlay", "gridClassName", "getGridRef",
+  ];
+  if (!scalarKeys.every((key) => Object.is(previous[key], next[key]))) return false;
+  if (!shallowRecordEqual(
+    { ...previous.page, blocks: undefined },
+    { ...next.page, blocks: undefined },
+  )) return false;
+  const previousBlocks = previous.page.blocks || [];
+  const nextBlocks = next.page.blocks || [];
+  return previousBlocks.length === nextBlocks.length
+    && previousBlocks.every((block, index) => shallowRecordEqual(block, nextBlocks[index]));
+}
+
+const ScaledPage = memo(function ScaledPage({
   mode,
   orientation,
   page,
@@ -131,12 +162,9 @@ function ScaledPage({
       </div>
     </div>
   );
-}
+}, scaledPagePropsEqual);
 
-/**
- * A physical A4 surface for editable HTML reports and print-identical previews.
- * Each page may provide `header`, `footer`, `orientation`, and positioned `blocks`.
- */
+/** 한 A4 page의 block grid와 drop overlay를 렌더링하며 다른 page 변경과 DOM overflow를 격리한다. */
 export function ReportPageCanvas({
   pages = [],
   orientation: documentOrientation = "portrait",

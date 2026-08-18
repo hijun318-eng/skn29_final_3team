@@ -105,6 +105,8 @@
       },
       "filters": { "property": "전체 호텔" },
       "contextRelease": "walkerhill-v4",
+      "productReleaseId": "walkerhill-v4-synthetic",
+      "evidenceCutoff": "2026-07-02",
       "policyVersion": "policy-v1",
       "modelVersion": "sllm-v1",
       "metrics": [

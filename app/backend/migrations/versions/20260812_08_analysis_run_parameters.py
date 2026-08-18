@@ -1,4 +1,4 @@
-"""Persist the immutable parameter snapshot for each Analysis run."""
+"""각 Analysis run의 불변 parameter snapshot과 hash를 영속화한다."""
 
 import os
 import re
@@ -20,6 +20,8 @@ def _runtime_role() -> str:
 
 
 def upgrade() -> None:
+    """기존 row를 빈 parameter 계약으로 backfill한 뒤 snapshot 불변식을 추가한다."""
+
     op.execute(
         "ALTER TABLE analysis_v1.analysis_run_links "
         "ADD COLUMN parameters_json jsonb NOT NULL DEFAULT '{}'::jsonb, "
@@ -37,6 +39,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """parameter hash constraint와 snapshot column을 함께 제거한다."""
+
     op.execute(
         "ALTER TABLE analysis_v1.analysis_run_links "
         "DROP COLUMN parameter_hash, DROP COLUMN parameters_json"

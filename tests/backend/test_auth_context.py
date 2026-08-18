@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 from base64 import urlsafe_b64encode
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -27,9 +27,10 @@ from app.auth import (  # noqa: E402
 )
 from app.context import ContextValidationError, analysis_context  # noqa: E402
 from app.contracts import CONTRACT_VERSION, ErrorCode, Role  # noqa: E402
+from tests.support.auth_dependencies import authenticate_injected_token  # noqa: E402
 
 
-class AuthenticationTest(unittest.TestCase):
+class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.now = datetime(2026, 8, 11, 5, 0, tzinfo=timezone.utc)
         self.directory = tempfile.TemporaryDirectory()
@@ -53,7 +54,7 @@ class AuthenticationTest(unittest.TestCase):
         self.path.write_text(json.dumps(records), encoding="utf-8")
 
     def release_environment(self) -> dict[str, str]:
-        return {"AUTH_MODE": "release", "AUTH_PRINCIPALS_FILE": str(self.path)}
+        return {"AUTH_PRINCIPALS_FILE": str(self.path)}
 
     def account(self, username: str = "analyst", password: str = "analyst1234!") -> dict[str, object]:
         salt = b"0123456789abcdef"
@@ -67,16 +68,16 @@ class AuthenticationTest(unittest.TestCase):
             "active": True,
         }
 
-    def test_credentials_issue_a_signed_expiring_session(self) -> None:
+    async def test_credentials_issue_a_signed_expiring_session(self) -> None:
         self.write([self.account()])
         environment = self.release_environment() | {"AUTH_SESSION_SECRET": "s" * 32}
         with patch.dict(os.environ, environment, clear=False):
             principal = authenticate_credentials("ANALYST", "analyst1234!")
             token = issue_session_token(principal, now=self.now)
             with self.assertRaises(AuthenticationError) as missing_store:
-                authenticate_token(token, now=self.now + timedelta(minutes=1))
+                await authenticate_token(token, now=self.now + timedelta(minutes=1))
             with self.assertRaises(AuthenticationError):
-                authenticate_token(token, now=self.now + timedelta(hours=9))
+                await authenticate_token(token, now=self.now + timedelta(hours=9))
         self.assertEqual(503, missing_store.exception.status_code)
 
     def test_login_rejects_unknown_wrong_and_inactive_accounts(self) -> None:
@@ -92,14 +93,14 @@ class AuthenticationTest(unittest.TestCase):
                         authenticate_credentials(username, password)
                 self.assertEqual(401, denied.exception.status_code)
 
-    def test_release_uses_digest_owned_subject_and_role(self) -> None:
+    async def test_release_uses_digest_owned_subject_and_role(self) -> None:
         self.write([self.record()])
         with patch.dict(os.environ, self.release_environment(), clear=False):
-            principal = authenticate_token("release-token", now=self.now)
+            principal = await authenticate_token("release-token", now=self.now)
         self.assertEqual(UUID("00000000-0000-0000-0000-000000000011"), principal.subject)
         self.assertEqual(Role.HOTEL_ANALYST, principal.role)
 
-    def test_missing_unknown_expired_and_future_tokens_fail_with_401(self) -> None:
+    async def test_missing_unknown_expired_and_future_tokens_fail_with_401(self) -> None:
         cases = {
             "missing": (None, self.record()),
             "empty": (" ", self.record()),
@@ -112,11 +113,11 @@ class AuthenticationTest(unittest.TestCase):
                 self.write([record])
                 with patch.dict(os.environ, self.release_environment(), clear=False):
                     with self.assertRaises(AuthenticationError) as denied:
-                        authenticate_token(token, now=self.now)
+                        await authenticate_token(token, now=self.now)
                 self.assertEqual(401, denied.exception.status_code)
                 self.assertNotIn("release-token", denied.exception.message)
 
-    def test_invalid_principal_files_fail_closed_with_503(self) -> None:
+    async def test_invalid_principal_files_fail_closed_with_503(self) -> None:
         valid = self.record()
         cases = {
             "empty": [],
@@ -131,37 +132,34 @@ class AuthenticationTest(unittest.TestCase):
                 self.write(payload)
                 with patch.dict(os.environ, self.release_environment(), clear=False):
                     with self.assertRaises(AuthenticationError) as unavailable:
-                        authenticate_token("release-token", now=self.now)
+                        await authenticate_token("release-token", now=self.now)
                 self.assertEqual(503, unavailable.exception.status_code)
                 self.assertNotIn("release-token", unavailable.exception.message)
 
         self.path.unlink()
         with patch.dict(os.environ, self.release_environment(), clear=False):
             with self.assertRaises(AuthenticationError) as unreadable:
-                authenticate_token("release-token", now=self.now)
+                await authenticate_token("release-token", now=self.now)
         self.assertEqual(503, unreadable.exception.status_code)
 
-    def test_test_mode_accepts_only_fixed_synthetic_principals(self) -> None:
-        with patch.dict(os.environ, {"AUTH_MODE": "test"}, clear=False):
-            principal = authenticate_token("runtime-report-admin-token")
-            self.assertEqual(UUID(int=2), principal.subject)
-            self.assertEqual(Role.REPORT_ADMIN, principal.role)
-            with self.assertRaises(AuthenticationError) as denied:
-                authenticate_token("arbitrary-token")
+    async def test_injected_test_authenticator_accepts_only_support_principals(self) -> None:
+        principal = await authenticate_injected_token("runtime-report-admin-token")
+        self.assertEqual(UUID(int=2), principal.subject)
+        self.assertEqual(Role.REPORT_ADMIN, principal.role)
+        with self.assertRaises(AuthenticationError) as denied:
+            await authenticate_injected_token("arbitrary-token")
         self.assertEqual(401, denied.exception.status_code)
 
-    def test_default_release_mode_never_falls_back_to_test_principal(self) -> None:
+    async def test_default_release_mode_never_falls_back_to_test_principal(self) -> None:
         environment = os.environ.copy()
-        environment.pop("AUTH_MODE", None)
         environment.pop("AUTH_PRINCIPALS_FILE", None)
         with patch.dict(os.environ, environment, clear=True):
             with self.assertRaises(AuthenticationError) as unavailable:
-                authenticate_token("runtime-test-token", now=self.now)
+                await authenticate_token("runtime-test-token", now=self.now)
         self.assertEqual(503, unavailable.exception.status_code)
 
-    def test_unavailable_release_mapping_is_normalized_without_secret_details(self) -> None:
+    async def test_unavailable_release_mapping_is_normalized_without_secret_details(self) -> None:
         environment = os.environ.copy()
-        environment["AUTH_MODE"] = "release"
         environment.pop("AUTH_PRINCIPALS_FILE", None)
         request = SimpleNamespace(state=SimpleNamespace(request_id=UUID(int=9)))
         credentials = HTTPAuthorizationCredentials(
@@ -169,17 +167,36 @@ class AuthenticationTest(unittest.TestCase):
         )
         with patch.dict(os.environ, environment, clear=True):
             with self.assertRaises(ContextValidationError) as unavailable:
-                analysis_context(
+                await analysis_context(
                     request,
                     credentials,
-                    "2026-08-11",
                     "trace-9",
                     "Asia/Seoul",
                     CONTRACT_VERSION,
+                    authenticate_token,
                 )
         self.assertEqual(503, unavailable.exception.status_code)
         self.assertEqual(ErrorCode.DEPENDENCY_UNAVAILABLE, unavailable.exception.code)
         self.assertNotIn("runtime-test-token", unavailable.exception.message)
+
+    async def test_analysis_context_uses_server_owned_kst_date(self) -> None:
+        request = SimpleNamespace(
+            state=SimpleNamespace(request_id=UUID(int=9), trace_id="trace-9")
+        )
+        credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer", credentials="runtime-test-token"
+        )
+        with patch("app.context._server_kst_date", return_value=date(2026, 8, 15)):
+            context = await analysis_context(
+                request,
+                credentials,
+                "trace-9",
+                "Asia/Seoul",
+                CONTRACT_VERSION,
+                authenticate_injected_token,
+            )
+
+        self.assertEqual(date(2026, 8, 15), context.as_of)
 
 
 if __name__ == "__main__":

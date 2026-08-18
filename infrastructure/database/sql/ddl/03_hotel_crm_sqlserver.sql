@@ -1,3 +1,5 @@
+-- 책임: CRM source의 빈 SQL Server schema와 참조 제약을 정의한다. batch 일부가
+-- 실패하면 후속 schema를 성공으로 오인하지 않도록 sqlcmd 오류 전파를 사용한다.
 -- source_id=crm; engine=SQL Server; database=crm_db
 -- ingestion_role=crm_ingest; query_role=crm_query
 -- datahub_platform_instance=crm_db; trino_catalog=crm
@@ -37,8 +39,7 @@ CREATE TABLE dbo.crm_members (
     CONSTRAINT ck_crm_member_grade CHECK (membership_grade IN ('BASIC','SILVER','GOLD','VIP')),
     CONSTRAINT ck_crm_member_balance CHECK (points_balance >= 0),
     CONSTRAINT ck_crm_member_status CHECK (member_status IN ('ACTIVE','INACTIVE','REVOKED')),
-    CONSTRAINT ck_crm_member_time CHECK (joined_at <= source_updated_at),
-    CONSTRAINT ck_crm_member_synthetic CHECK (is_synthetic = 1)
+    CONSTRAINT ck_crm_member_time CHECK (joined_at <= source_updated_at)
 );
 GO
 
@@ -55,8 +56,7 @@ CREATE TABLE dbo.crm_member_grade_history (
     source_updated_at datetime2(3) NOT NULL,
     CONSTRAINT fk_crm_grade_member FOREIGN KEY (member_no) REFERENCES dbo.crm_members(member_no),
     CONSTRAINT ck_crm_grade_code CHECK (grade_code IN ('BASIC','SILVER','GOLD','VIP')),
-    CONSTRAINT ck_crm_grade_period CHECK (valid_to IS NULL OR valid_to > valid_from),
-    CONSTRAINT ck_crm_grade_synthetic CHECK (is_synthetic = 1)
+    CONSTRAINT ck_crm_grade_period CHECK (valid_to IS NULL OR valid_to > valid_from)
 );
 GO
 
@@ -76,8 +76,7 @@ CREATE TABLE dbo.crm_point_transactions (
     source_updated_at datetime2(3) NOT NULL,
     CONSTRAINT fk_crm_point_member FOREIGN KEY (member_no) REFERENCES dbo.crm_members(member_no),
     CONSTRAINT ck_crm_point_type CHECK (txn_type IN ('EARN','USE','EXPIRE','ADJUST')),
-    CONSTRAINT ck_crm_point_time CHECK (event_at <= source_updated_at),
-    CONSTRAINT ck_crm_point_synthetic CHECK (is_synthetic = 1)
+    CONSTRAINT ck_crm_point_time CHECK (event_at <= source_updated_at)
 );
 GO
 
@@ -100,8 +99,7 @@ CREATE TABLE dbo.crm_customer_map (
     CONSTRAINT ck_crm_map_period CHECK (valid_to IS NULL OR valid_to > valid_from),
     CONSTRAINT ck_crm_map_status CHECK (mapping_status IN ('ACTIVE','REVOKED')),
     CONSTRAINT ck_crm_map_confidence CHECK (mapping_confidence BETWEEN 0 AND 1),
-    CONSTRAINT ck_crm_map_time CHECK (valid_from <= source_updated_at AND (valid_to IS NULL OR valid_to <= source_updated_at)),
-    CONSTRAINT ck_crm_map_synthetic CHECK (is_synthetic = 1)
+    CONSTRAINT ck_crm_map_time CHECK (valid_from <= source_updated_at AND (valid_to IS NULL OR valid_to <= source_updated_at))
 );
 GO
 
@@ -192,10 +190,9 @@ GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'schema_version' AND schema_id = SCHEMA_ID(N'dbo'))
 CREATE TABLE dbo.schema_version (version nvarchar(32) NOT NULL PRIMARY KEY);
-IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'seed_metadata' AND schema_id = SCHEMA_ID(N'dbo'))
-CREATE TABLE dbo.seed_metadata (seed int NOT NULL PRIMARY KEY, data_class nvarchar(16) NOT NULL);
+-- This fixed value versions the reproducible DDL only. Runtime dataset
+-- provenance is emitted by the governed release that performs ingestion.
 IF NOT EXISTS (SELECT 1 FROM dbo.schema_version WHERE version = N'1.0.0') INSERT INTO dbo.schema_version(version) VALUES (N'1.0.0');
-IF NOT EXISTS (SELECT 1 FROM dbo.seed_metadata WHERE seed = 20260729) INSERT INTO dbo.seed_metadata(seed, data_class) VALUES (20260729, N'synthetic');
 GO
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON SCHEMA::dbo TO crm_ingest;

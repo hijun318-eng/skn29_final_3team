@@ -1,3 +1,4 @@
+/** 세션 역할별 허용 메뉴와 반응형 navigation 셸을 제공하는 모듈이다. */
 import { Building2, FileBarChart, MessageSquareText, PanelLeftClose } from "lucide-react";
 import { PAGE_PATHS } from "../../routing";
 
@@ -6,6 +7,7 @@ const NAVIGATION = [
   { id: "reports", path: PAGE_PATHS.reports, label: "보고서", icon: FileBarChart, roles: ["hotel_analyst", "report_admin"] },
 ];
 
+/** 서버 세션 역할에 허용된 경로만 노출하고 선택된 페이지를 접근성 상태로 표시한다. */
 export function AppSidebar({ page, role, onNavigate, open, onClose }) {
   const navigation = NAVIGATION.filter((item) => item.roles.includes(role));
   const roleLabel = role === "report_admin" ? "보고서 관리자" : "호텔 분석가";

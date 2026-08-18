@@ -1,0 +1,418 @@
+"""publisher와 runtime이 동일하게 계산하는 DataHub release projection·checksum 계약을 정의한다."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections.abc import Mapping
+from typing import Any
+
+
+RELEASE_MANIFEST_KEYS = frozenset(
+    {
+        "catalog_version",
+        "catalog_sha256",
+        "glossary_sha256",
+        "datasets",
+        "metric_terms",
+        "dataset_count",
+        "column_count",
+        "metric_term_count",
+        "shared_semantic_sha256",
+    }
+)
+DATASET_MANIFEST_KEYS = frozenset(
+    {
+        "urn",
+        "fqn",
+        "schema_sha1",
+        "table_type",
+        "trino_schema_sha256",
+        "semantic_sha256",
+        "column_count",
+    }
+)
+TERM_MANIFEST_KEYS = frozenset({"id", "urn", "semantic_sha256"})
+RUNTIME_GOVERNANCE_VERSION = "ANSWERVICE-RUNTIME-GOVERNANCE-v1"
+DATASET_RUNTIME_PROPERTY_KEYS = frozenset(
+    {
+        "contract_version",
+        "approval_status",
+        "catalog_version",
+        "catalog_sha256",
+        "schema_context_version",
+        "governance_urns",
+        "release_manifest",
+        "manifest_sha256",
+        "fqn",
+        "policy_version",
+        "schema_version",
+        "seed_version",
+        "synthetic",
+        "entitlements",
+        "grain",
+        "typed_columns",
+        "column_roles",
+        "metrics",
+        "dimensions",
+        "join_graph",
+        "time_rules",
+        "parameter_contract",
+        "query_policy",
+    }
+)
+TERM_RUNTIME_PROPERTY_KEYS = frozenset(
+    {
+        "metric_id",
+        "aliases",
+        "approval_status",
+        "catalog_sha256",
+        "glossary_sha256",
+        "glossary_version",
+        "metric_rule",
+        "unit",
+    }
+)
+
+
+def canonical_json(value: object) -> str:
+    """Unicode를 보존하고 key를 정렬한 공백 없는 JSON으로 직렬화해 환경과 무관한 hash 입력을 만든다."""
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def canonical_sha256(value: object) -> str:
+    """canonical JSON의 UTF-8 bytes를 SHA-256으로 요약해 publisher/runtime 비교용 fingerprint를 만든다."""
+    return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+sha256 = canonical_sha256
+
+
+def datahub_schema_projection(asset: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """asset column에서 DataHub schema hash 계약에 포함되는 이름·순서·native type·nullable만 투영한다."""
+    return [
+        {
+            "name": column["name"],
+            "ordinal_position": column["ordinal_position"],
+            "native_type": column["native_type"],
+            "nullable": column["nullable"],
+        }
+        for column in asset["columns"]
+    ]
+
+
+def datahub_schema_sha1(asset: Mapping[str, Any]) -> str:
+    """DataHub ``schemaMetadata.hash`` 호환 projection을 SHA-1로 계산하며 보안 서명에는 사용하지 않는다."""
+    payload = canonical_json(datahub_schema_projection(asset)).encode("utf-8")
+    # SHA-1은 외부 DataHub wire contract 호환용 식별자이며 release 무결성은 별도의 SHA-256이 담당한다.
+    return hashlib.sha1(payload, usedforsecurity=False).hexdigest()
+
+
+def trino_schema_projection(asset: Mapping[str, Any]) -> dict[str, Any]:
+    """FQN·table type·ordinal 순 column을 live ``information_schema``와 같은 canonical shape로 투영한다."""
+
+    return {
+        "fqn": asset["fqn"],
+        "table_type": asset["table_type"],
+        "columns": [
+            {
+                "ordinal_position": column["ordinal_position"],
+                "name": column["name"],
+                "native_type": column["native_type"],
+                "nullable": column["nullable"],
+            }
+            for column in asset["columns"]
+        ],
+    }
+
+
+def trino_schema_sha256(asset: Mapping[str, Any]) -> str:
+    """Trino relation projection을 SHA-256으로 요약해 배포 뒤 schema drift를 검출할 fingerprint를 만든다."""
+    return canonical_sha256(trino_schema_projection(asset))
+
+
+trino_schema_hash = trino_schema_sha256
+
+
+def asset_semantic_projection(
+    bundle: Mapping[str, Any],
+    asset: Mapping[str, Any],
+) -> dict[str, Any]:
+    """한 asset과 그 FQN을 source로 삼는 metric rule만 정렬해 asset 단위 semantic identity를 만든다."""
+    metrics = sorted(
+        (
+            metric
+            for metric in bundle["metric_rules"]
+            if metric["source"]["field"]["asset_fqn"] == asset["fqn"]
+        ),
+        key=lambda item: item["id"],
+    )
+    return {
+        "asset": asset,
+        "metric_rules": sorted(metrics, key=lambda item: item["id"]),
+    }
+
+
+def asset_semantic_sha256(
+    bundle: Mapping[str, Any],
+    asset: Mapping[str, Any],
+) -> str:
+    """asset 단위 semantic projection의 SHA-256을 계산해 부분 변조와 release 교체를 검출한다."""
+    return canonical_sha256(asset_semantic_projection(bundle, asset))
+
+
+asset_semantic_hash = asset_semantic_sha256
+
+
+def shared_semantic_projection(bundle: Mapping[str, Any]) -> dict[str, Any]:
+    """release 공통 version·native governance·dimension·join·time·parameter·query policy를 canonical 순서로 투영한다."""
+    governance = bundle["governance_entities"]
+    return {
+        "catalog_version": bundle["catalog_version"],
+        "policy_version": bundle["policy_version"],
+        "schema_context_version": bundle["schema_context"]["version"],
+        "governance_entities": {
+            name: sorted(
+                (dict(item) for item in governance[name]),
+                key=lambda item: item["urn"],
+            )
+            for name in governance
+        },
+        "dimensions": sorted(bundle["dimensions"], key=lambda item: item["id"]),
+        "join_graph": {
+            "edges": sorted(bundle["join_graph"]["edges"], key=lambda item: item["id"])
+        },
+        "time_rules": bundle["time_rules"],
+        "parameter_contract": {
+            "style": bundle["parameter_contract"]["style"],
+            "parameters": sorted(
+                bundle["parameter_contract"]["parameters"], key=lambda item: item["name"]
+            ),
+        },
+        "query_policy": bundle["query_policy"],
+    }
+
+
+def validate_governance_reference_coverage(bundle: Mapping[str, Any]) -> None:
+    """공개 governance URN 집합이 asset·term의 실제 owner·domain·lifecycle 참조와 정확히 같은지 검증한다."""
+
+    governed = [
+        *bundle["schema_context"]["assets"],
+        *bundle["metric_terms"],
+    ]
+    references = {
+        "owners": {item["owner_urn"] for item in governed},
+        "domains": {item["domain_urn"] for item in governed},
+        "approved_lifecycles": {
+            item["approved_lifecycle_urn"] for item in governed
+        },
+    }
+    for kind, observed in references.items():
+        declared = {item["urn"] for item in bundle["governance_entities"][kind]}
+        # 부분집합 검사는 미사용 승인 주체를 release에 끼워 넣을 수 있으므로 양방향 exact coverage를 요구한다.
+        if declared != observed:
+            raise ValueError(
+                f"governance_entities.{kind} must exactly match referenced URNs"
+            )
+
+
+def glossary_projection(bundle: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """metric term을 URN 순서로 복사해 glossary checksum의 결정론적 입력을 만든다."""
+    return sorted(
+        (dict(item) for item in bundle["metric_terms"]),
+        key=lambda item: item["urn"],
+    )
+
+
+def glossary_sha256(bundle: Mapping[str, Any]) -> str:
+    """정렬된 glossary projection의 SHA-256을 계산해 정의·alias·governance 변경을 추적한다."""
+    return canonical_sha256(glossary_projection(bundle))
+
+
+glossary_hash = glossary_sha256
+
+
+def catalog_projection(bundle: Mapping[str, Any]) -> dict[str, Any]:
+    """공통 semantic, URN 순 asset semantic, metric id/URN 참조를 결합해 전체 catalog identity를 만든다."""
+    return {
+        "shared": shared_semantic_projection(bundle),
+        "assets": [
+            asset_semantic_projection(bundle, asset)
+            for asset in sorted(
+                bundle["schema_context"]["assets"], key=lambda item: item["urn"]
+            )
+        ],
+        "metric_term_refs": sorted(
+            ({"id": item["id"], "urn": item["urn"]} for item in bundle["metric_terms"]),
+            key=lambda item: item["urn"],
+        ),
+    }
+
+
+def catalog_sha256(bundle: Mapping[str, Any]) -> str:
+    """전체 catalog projection을 SHA-256으로 요약해 모든 runtime 엔터티가 공유할 release fingerprint를 만든다."""
+    return canonical_sha256(catalog_projection(bundle))
+
+
+catalog_hash = catalog_sha256
+
+
+def release_manifest(bundle: Mapping[str, Any]) -> dict[str, Any]:
+    """dataset·term별 fingerprint와 전체 count·공통 hash를 계산해 완전 readback 검증용 manifest를 만든다."""
+    assets = bundle["schema_context"]["assets"]
+    manifest = {
+        "catalog_version": bundle["catalog_version"],
+        "catalog_sha256": catalog_sha256(bundle),
+        "glossary_sha256": glossary_sha256(bundle),
+        "datasets": [
+            {
+                "urn": asset["urn"],
+                "fqn": asset["fqn"],
+                "schema_sha1": datahub_schema_sha1(asset),
+                "table_type": asset["table_type"],
+                "trino_schema_sha256": trino_schema_sha256(asset),
+                "semantic_sha256": asset_semantic_sha256(bundle, asset),
+                "column_count": len(asset["columns"]),
+            }
+            for asset in sorted(assets, key=lambda item: item["urn"])
+        ],
+        "metric_terms": [
+            {
+                "id": term["id"],
+                "urn": term["urn"],
+                "semantic_sha256": canonical_sha256(term),
+            }
+            for term in glossary_projection(bundle)
+        ],
+        "dataset_count": len(assets),
+        "column_count": sum(len(asset["columns"]) for asset in assets),
+        "metric_term_count": len(bundle["metric_terms"]),
+        "shared_semantic_sha256": canonical_sha256(
+            shared_semantic_projection(bundle)
+        ),
+    }
+    # manifest field를 exact set으로 고정해야 publisher/runtime version drift가 조용히 무시되지 않는다.
+    _require_exact_keys(manifest, RELEASE_MANIFEST_KEYS, "release manifest")
+    for item in manifest["datasets"]:
+        _require_exact_keys(item, DATASET_MANIFEST_KEYS, "dataset manifest entry")
+    for item in manifest["metric_terms"]:
+        _require_exact_keys(item, TERM_MANIFEST_KEYS, "term manifest entry")
+    return manifest
+
+
+def manifest_sha256(bundle: Mapping[str, Any]) -> str:
+    """계산된 release manifest 자체의 SHA-256을 반환해 DataHub 엔터티별 복제본이 동일한지 확인하게 한다."""
+    return canonical_sha256(release_manifest(bundle))
+
+
+def shared_semantic_hash(bundle: Mapping[str, Any]) -> str:
+    """release 공통 정책 projection만 SHA-256으로 요약해 asset별 의미와 독립된 변경 증거를 만든다."""
+    return canonical_sha256(shared_semantic_projection(bundle))
+
+
+def dataset_runtime_property_projection(
+    bundle: Mapping[str, Any],
+    asset: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> dict[str, str]:
+    """검증 bundle·asset·manifest를 DataHub dataset에 기록할 정확한 unprefixed 문자열 속성으로 직렬화한다."""
+
+    metrics = sorted(
+        (
+            metric
+            for metric in bundle["metric_rules"]
+            if metric["source"]["field"]["asset_fqn"] == asset["fqn"]
+        ),
+        key=lambda item: item["id"],
+    )
+    terms = {item["id"]: item for item in bundle["metric_terms"]}
+    runtime_metrics = [
+        {
+            "id": metric["id"],
+            "term_urn": terms[metric["id"]]["urn"],
+            "field": metric["source"]["field"]["column"],
+            "aggregation": metric["aggregation"],
+            "time_field": metric["time_field"]["column"],
+            "result_field": metric["result_field"],
+            "reduction": metric["reduction"],
+            "dimensions": metric["dimensions"],
+            "required_filters": [
+                {
+                    "field": item["field"]["column"],
+                    "operator": item["operator"],
+                    "parameter": item["parameter"],
+                }
+                for item in metric["required_filters"]
+            ],
+        }
+        for metric in metrics
+    ]
+    governance_entities = shared_semantic_projection(bundle)["governance_entities"]
+    governance_urns = {
+        name: [item["urn"] for item in values]
+        for name, values in governance_entities.items()
+    }
+    result = {
+        "contract_version": RUNTIME_GOVERNANCE_VERSION,
+        "approval_status": str(asset["approval_status"]),
+        "catalog_version": str(bundle["catalog_version"]),
+        "catalog_sha256": str(manifest["catalog_sha256"]),
+        "schema_context_version": str(bundle["schema_context"]["version"]),
+        "governance_urns": canonical_json(governance_urns),
+        "release_manifest": canonical_json(manifest),
+        "manifest_sha256": canonical_sha256(manifest),
+        "fqn": str(asset["fqn"]),
+        "policy_version": str(bundle["policy_version"]),
+        "schema_version": str(asset["schema_version"]),
+        "seed_version": str(asset["seed_version"]),
+        "synthetic": canonical_json(asset["synthetic"]),
+        "entitlements": canonical_json(asset["entitlements"]),
+        "grain": canonical_json(asset["grain"]),
+        "typed_columns": canonical_json(asset["columns"]),
+        "column_roles": canonical_json(
+            {column["name"]: column["role"] for column in asset["columns"]}
+        ),
+        "metrics": canonical_json(runtime_metrics),
+        "dimensions": canonical_json(bundle["dimensions"]),
+        "join_graph": canonical_json(bundle["join_graph"]),
+        "time_rules": canonical_json(bundle["time_rules"]),
+        "parameter_contract": canonical_json(bundle["parameter_contract"]),
+        "query_policy": canonical_json(bundle["query_policy"]),
+    }
+    _require_exact_keys(result, DATASET_RUNTIME_PROPERTY_KEYS, "dataset properties")
+    return result
+
+
+def term_runtime_property_projection(
+    term: Mapping[str, Any],
+    metric: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> dict[str, str]:
+    """term·metric·manifest를 DataHub Glossary Term에 기록할 정확한 unprefixed 문자열 속성으로 직렬화한다."""
+
+    result = {
+        "metric_id": str(term["id"]),
+        "aliases": canonical_json(term["aliases"]),
+        "approval_status": str(term["approval_status"]),
+        "catalog_sha256": str(manifest["catalog_sha256"]),
+        "glossary_sha256": str(manifest["glossary_sha256"]),
+        "glossary_version": str(term["version"]),
+        "metric_rule": canonical_json(metric),
+        "unit": str(term["unit"]),
+    }
+    _require_exact_keys(result, TERM_RUNTIME_PROPERTY_KEYS, "term properties")
+    return result
+
+
+def _require_exact_keys(
+    value: Mapping[str, Any], expected: frozenset[str], name: str
+) -> None:
+    if set(value) != expected:
+        raise ValueError(f"{name} keys differ from the canonical governance contract")
+
+
+MANIFEST_KEYS = RELEASE_MANIFEST_KEYS
+MANIFEST_DATASET_KEYS = DATASET_MANIFEST_KEYS
+MANIFEST_TERM_KEYS = TERM_MANIFEST_KEYS
+DATASET_PROPERTY_KEYS = DATASET_RUNTIME_PROPERTY_KEYS
+TERM_PROPERTY_KEYS = TERM_RUNTIME_PROPERTY_KEYS

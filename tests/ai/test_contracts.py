@@ -1,16 +1,8 @@
 import copy
 import json
 import unittest
-from pathlib import Path
 
-from src.ai.metric_glossary import metric_definition, metric_display_name, metric_unit
-
-from src.ai.prompt_registry import get_prompt
 from src.ai.schema import ContractError, schema_version, validate_payload
-
-
-def model_trace(prompt_id):
-    return get_prompt(prompt_id).metadata()
 
 
 EXECUTION_TIME = {
@@ -21,37 +13,259 @@ EXECUTION_TIME = {
     "period_end_exclusive": "2026-07-30T12:00:00+09:00",
 }
 
-CONTEXT_PACKAGE = {
-    "context_version": "DRAFT-CONTEXT-v0.1",
-    "policy_version": "DRAFT-POLICY-v0.1",
-    "execution_time": EXECUTION_TIME,
-    "assets": [
-        {
-            "urn": "urn:li:dataset:pms-reservations",
-            "trino_fqn": "pms.public.reservations",
-            "columns": ["stay_date", "room_revenue"],
-        }
-    ],
-    "metrics": [
-        {
-            "id": "room_revenue",
-            "field": "pms.public.reservations.room_revenue",
-            "aggregation": "sum",
-            "time_field": "pms.public.reservations.stay_date",
-        }
-    ],
-    "joins": [],
-}
+def qualified_field(asset_fqn, column):
+    return {"asset_fqn": asset_fqn, "column": column}
 
-SQL_REFERENCES = [
-    {
-        "urn": "urn:li:dataset:pms-reservations",
-        "trino_fqn": "pms.public.reservations",
-        "columns": ["stay_date", "room_revenue"],
-        "join_ids": [],
-        "metric_ids": ["room_revenue"],
+
+def _payload_shape(value):
+    if isinstance(value, dict):
+        return {key: _payload_shape(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_payload_shape(item) for item in value]
+    return type(value).__name__
+
+
+def arbitrary_node2_request(namespace):
+    catalog = f"{namespace}_catalog"
+    fact_fqn = f"{catalog}.semantic.fact_observations"
+    dimension_fqn = f"{catalog}.semantic.dim_entities"
+    metric_id = f"{namespace}_measure"
+    join_id = f"{namespace}_fact_to_dimension"
+    status_parameter = f"{namespace}_status"
+
+    return {
+        "question_id": f"question-{namespace}",
+        "normalized_question": (
+            "aggregate the resolved measure by the resolved dimension"
+        ),
+        "resolved_request": {
+            "intent": "aggregate",
+            "metric_ids": [metric_id],
+            "dimensions": [qualified_field(dimension_fqn, "category_code")],
+            "filters": [
+                {
+                    "field": qualified_field(fact_fqn, "status_code"),
+                    "operator": "eq",
+                    "parameter": status_parameter,
+                }
+            ],
+        },
+        "schema_context": {
+            "version": f"schema-{namespace}",
+            "assets": [
+                {
+                    "urn": f"urn:example:dataset:{namespace}:observations",
+                    "fqn": fact_fqn,
+                    "grain": {
+                        "kind": "event",
+                        "keys": ["observation_id"],
+                    },
+                    "columns": [
+                        {
+                            "name": "observation_id",
+                            "native_type": "varchar",
+                            "nullable": False,
+                            "role": "identifier",
+                        },
+                        {
+                            "name": "entity_id",
+                            "native_type": "bigint",
+                            "nullable": False,
+                            "role": "identifier",
+                        },
+                        {
+                            "name": "observed_at",
+                            "native_type": "timestamp with time zone",
+                            "nullable": False,
+                            "role": "time",
+                        },
+                        {
+                            "name": "amount",
+                            "native_type": "decimal(18,2)",
+                            "nullable": False,
+                            "role": "measure",
+                        },
+                        {
+                            "name": "status_code",
+                            "native_type": "varchar",
+                            "nullable": False,
+                            "role": "attribute",
+                        },
+                    ],
+                },
+                {
+                    "urn": f"urn:example:dataset:{namespace}:entities",
+                    "fqn": dimension_fqn,
+                    "grain": {"kind": "row", "keys": ["entity_id"]},
+                    "columns": [
+                        {
+                            "name": "entity_id",
+                            "native_type": "bigint",
+                            "nullable": False,
+                            "role": "identifier",
+                        },
+                        {
+                            "name": "category_code",
+                            "native_type": "varchar",
+                            "nullable": False,
+                            "role": "dimension",
+                        },
+                        {
+                            "name": "valid_from",
+                            "native_type": "timestamp with time zone",
+                            "nullable": False,
+                            "role": "time",
+                        },
+                        {
+                            "name": "valid_to",
+                            "native_type": "timestamp with time zone",
+                            "nullable": True,
+                            "role": "time",
+                        },
+                    ],
+                },
+            ],
+        },
+        "metric_rules": [
+            {
+                "id": metric_id,
+                "source": {
+                    "kind": "column",
+                    "field": qualified_field(fact_fqn, "amount"),
+                },
+                "aggregation": "sum",
+                "result_field": "resolved_measure",
+                "unit": "arbitrary_unit",
+                "time_field": qualified_field(fact_fqn, "observed_at"),
+                "dimensions": [
+                    qualified_field(dimension_fqn, "category_code")
+                ],
+                "required_filters": [
+                    {
+                        "field": qualified_field(fact_fqn, "status_code"),
+                        "operator": "eq",
+                        "parameter": status_parameter,
+                    }
+                ],
+            }
+        ],
+        "join_graph": {
+            "edges": [
+                {
+                    "id": join_id,
+                    "left": fact_fqn,
+                    "right": dimension_fqn,
+                    "kind": "left",
+                    "cardinality": "many_to_one",
+                    "equality_conditions": [
+                        {
+                            "left_column": "entity_id",
+                            "right_column": "entity_id",
+                        }
+                    ],
+                    "temporal_conditions": [
+                        {
+                            "event_field": qualified_field(
+                                fact_fqn, "observed_at"
+                            ),
+                            "validity_asset_fqn": dimension_fqn,
+                            "valid_from_column": "valid_from",
+                            "valid_to_column": "valid_to",
+                            "end_exclusive": True,
+                        }
+                    ],
+                    "preaggregation": {
+                        "required": False,
+                        "grain": [
+                            qualified_field(fact_fqn, "entity_id"),
+                            qualified_field(fact_fqn, "observed_at"),
+                        ],
+                        "keys": [qualified_field(fact_fqn, "entity_id")],
+                    },
+                }
+            ]
+        },
+        "time_rules": {
+            "timezone": "UTC",
+            "calendar_id": "gregorian",
+            "interval": "[start,end)",
+            "start_parameter": f"{namespace}_window_start",
+            "end_parameter": f"{namespace}_window_end",
+            "fields": [
+                {
+                    "field": qualified_field(fact_fqn, "observed_at"),
+                    "native_type": "timestamp with time zone",
+                    "bucket": "month",
+                    "timezone_mode": "preserve",
+                }
+            ],
+        },
+        "parameter_contract": {
+            "style": "named",
+            "parameters": [
+                {
+                    "name": f"{namespace}_window_start",
+                    "type": "timestamp",
+                    "scope": "time",
+                },
+                {
+                    "name": f"{namespace}_window_end",
+                    "type": "timestamp",
+                    "scope": "time",
+                },
+                {
+                    "name": status_parameter,
+                    "type": "string",
+                    "scope": "filter",
+                },
+            ],
+        },
+        "query_policy": {
+            "dialect": "trino",
+            "statement_type": "select",
+            "read_only": True,
+            "require_limit": True,
+            "max_limit": 500,
+            "allowed_functions": ["date_trunc", "from_iso8601_timestamp", "sum"],
+            "allowed_catalogs": [catalog],
+        },
     }
-]
+
+
+def arbitrary_node2_response(namespace):
+    fact_fqn = f"{namespace}_catalog.semantic.fact_observations"
+    dimension_fqn = f"{namespace}_catalog.semantic.dim_entities"
+    return {
+        "sql": (
+            "SELECT d.category_code, SUM(f.amount) AS resolved_measure "
+            f"FROM {fact_fqn} AS f LEFT JOIN {dimension_fqn} AS d "
+            "ON f.entity_id = d.entity_id "
+            "AND f.observed_at >= d.valid_from AND f.observed_at < d.valid_to "
+            "WHERE f.observed_at >= "
+            f"from_iso8601_timestamp(:{namespace}_window_start) "
+            "AND f.observed_at < "
+            f"from_iso8601_timestamp(:{namespace}_window_end) "
+            f"AND f.status_code = :{namespace}_status "
+            "GROUP BY d.category_code LIMIT 500"
+        ),
+        "used_assets": [fact_fqn, dimension_fqn],
+        "used_columns": [
+            qualified_field(fact_fqn, "amount"),
+            qualified_field(fact_fqn, "entity_id"),
+            qualified_field(fact_fqn, "observed_at"),
+            qualified_field(fact_fqn, "status_code"),
+            qualified_field(dimension_fqn, "category_code"),
+            qualified_field(dimension_fqn, "entity_id"),
+            qualified_field(dimension_fqn, "valid_from"),
+            qualified_field(dimension_fqn, "valid_to"),
+        ],
+        "used_joins": [f"{namespace}_fact_to_dimension"],
+        "used_metrics": [f"{namespace}_measure"],
+    }
+
+
+NODE2_REQUEST = arbitrary_node2_request("quartz")
+NODE2_RESPONSE = arbitrary_node2_response("quartz")
 
 
 VALID_PAYLOADS = {
@@ -84,30 +298,31 @@ VALID_PAYLOADS = {
             "reasons": [],
             "clarification_question": None,
         },
-        "model": model_trace("node1.normalize"),
     },
-    "node2_request": {"question_id": "q-1", "context_package": CONTEXT_PACKAGE},
-    "node2_response": {
-        "sql": "SELECT 1 LIMIT 1",
-        "references": SQL_REFERENCES,
-        "parameters": [],
-        "model": model_trace("node2.sql"),
-    },
+    "node2_request": NODE2_REQUEST,
+    "node2_response": NODE2_RESPONSE,
     "node2_repair_request": {
         "trace_id": "trace-1",
         "attempt": 1,
-        "rejected_sql": "SELECT bad",
-        "context_package": CONTEXT_PACKAGE,
+        "rejected_sql": "SELECT invalid_identifier",
+        **{
+            field: copy.deepcopy(NODE2_REQUEST[field])
+            for field in (
+                "normalized_question",
+                "resolved_request",
+                "schema_context",
+                "metric_rules",
+                "join_graph",
+                "time_rules",
+                "parameter_contract",
+                "query_policy",
+            )
+        },
         "normalized_error_code": "UNKNOWN_COLUMN",
         "repair_scope": ["column"],
     },
     "node2_repair_response": {
-        "trace_id": "trace-1",
-        "attempt": 1,
-        "corrected_sql": "SELECT 1 LIMIT 1",
-        "references": SQL_REFERENCES,
-        "parameters": [],
-        "model": model_trace("node2.repair"),
+        "corrected_sql": NODE2_RESPONSE["sql"],
     },
     "node3_request": {
         "g3_result": "pass",
@@ -131,14 +346,13 @@ VALID_PAYLOADS = {
         "conditions": [],
         "sources": [],
         "limitations": [],
-        "model": model_trace("node3.explain"),
     },
 }
 
 
 class ContractTests(unittest.TestCase):
     def test_schema_version_is_explicit(self):
-        self.assertEqual(schema_version(), "MODEL-v1.1.0")
+        self.assertEqual(schema_version(), "MODEL-v1.3.0")
 
     def test_valid_examples(self):
         for definition, payload in VALID_PAYLOADS.items():
@@ -155,92 +369,192 @@ class ContractTests(unittest.TestCase):
         ambiguous["selected_metric_id"] = None
         validate_payload("node1_response", ambiguous)
 
-    def test_metric_glossary_contains_only_current_product_metric_aliases(self):
-        glossary = json.loads(
-            Path("src/ai/contracts/metric_glossary.i5.v1.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        expected_ids = {
-            "recognized_room_revenue",
-            "stay_day_allocated_room_revenue",
-            "expired_points",
-            "fnb_net_revenue",
-            "fnb_covers",
-            "facility_revenue",
-            "actual_attendees",
-            "rooms_sold",
-            "available_room_nights",
-            "banquet_recognized_revenue",
-            "facility_usage_count",
-            "facility_downtime_minutes",
-            "total_operating_revenue",
-            "total_guest_revenue_krw",
+    def test_node1_accepts_runtime_owned_business_terms(self):
+        request = copy.deepcopy(VALID_PAYLOADS["node1_request"])
+        request["business_terms"] = {
+            "arbitrary_runtime_measure": {
+                "kind": "metric",
+                "aliases": ["Reviewed measure", "검토 측정값"],
+            }
         }
 
-        self.assertEqual(glossary["version"], "METRIC-GLOSSARY-v1.4.0")
-        self.assertEqual(set(glossary), {"version", "metrics", "definitions", "units"})
-        self.assertEqual(set(glossary["metrics"]), expected_ids)
-        self.assertEqual(set(glossary["definitions"]), expected_ids)
-        self.assertEqual(set(glossary["units"]), expected_ids)
-        aliases = [
-            alias.casefold()
-            for values in glossary["metrics"].values()
-            for alias in values
-        ]
-        for values in glossary["metrics"].values():
-            self.assertTrue(all(isinstance(alias, str) and alias for alias in values))
-            self.assertTrue(any(any("가" <= char <= "힣" for char in alias) for alias in values))
-            self.assertTrue(any(any(char.isascii() and char.isalpha() for char in alias) for alias in values))
-        duplicate_aliases = {
-            alias for alias in aliases if aliases.count(alias) > 1
-        }
-        self.assertEqual({"객실 매출"}, duplicate_aliases)
-        self.assertEqual("인식 객실 매출", metric_display_name("recognized_room_revenue"))
-        self.assertEqual("숙박일 배분 객실 매출", metric_display_name("stay_day_allocated_room_revenue"))
-        self.assertEqual(
-            "실제 체크아웃 날짜에 전액 인식한 객실 매출입니다.",
-            metric_definition("recognized_room_revenue"),
+        validate_payload("node1_request", request)
+
+    def test_node2_requires_every_structured_contract(self):
+        required = (
+            "normalized_question",
+            "resolved_request",
+            "schema_context",
+            "metric_rules",
+            "join_graph",
+            "time_rules",
+            "parameter_contract",
+            "query_policy",
         )
-        self.assertEqual("명", metric_unit("actual_attendees"))
+        for field in required:
+            missing = copy.deepcopy(NODE2_REQUEST)
+            missing.pop(field)
+            with self.subTest(missing=field):
+                with self.assertRaises(ContractError):
+                    validate_payload("node2_request", missing)
 
-    def test_node2_accepts_optional_non_empty_normalized_question(self):
-        legacy = copy.deepcopy(VALID_PAYLOADS["node2_request"])
-        current = copy.deepcopy(legacy)
-        current["normalized_question"] = "지난달 객실 매출을 알려줘"
-        empty = copy.deepcopy(legacy)
-        empty["normalized_question"] = ""
+    def test_node2_accepts_arbitrary_isomorphic_schema_contexts(self):
+        quartz = arbitrary_node2_request("quartz")
+        zephyr = arbitrary_node2_request("zephyr")
+        for payload in (quartz, zephyr):
+            validate_payload("node2_request", payload)
+        self.assertNotEqual(
+            quartz["schema_context"]["assets"][0]["fqn"],
+            zephyr["schema_context"]["assets"][0]["fqn"],
+        )
+        self.assertEqual(_payload_shape(quartz), _payload_shape(zephyr))
 
-        validate_payload("node2_request", legacy)
-        validate_payload("node2_request", current)
-        with self.assertRaises(ContractError):
-            validate_payload("node2_request", empty)
+    def test_node2_assets_require_grain_and_typed_columns(self):
+        invalid_payloads = []
+        missing_grain = copy.deepcopy(NODE2_REQUEST)
+        missing_grain["schema_context"]["assets"][0].pop("grain")
+        invalid_payloads.append(missing_grain)
+        empty_grain = copy.deepcopy(NODE2_REQUEST)
+        empty_grain["schema_context"]["assets"][0]["grain"]["keys"] = []
+        invalid_payloads.append(empty_grain)
+        untyped_column = copy.deepcopy(NODE2_REQUEST)
+        untyped_column["schema_context"]["assets"][0]["columns"][0].pop(
+            "native_type"
+        )
+        invalid_payloads.append(untyped_column)
+        column_with_sql = copy.deepcopy(NODE2_REQUEST)
+        column_with_sql["schema_context"]["assets"][0]["columns"][0][
+            "sql"
+        ] = "identifier"
+        invalid_payloads.append(column_with_sql)
 
-    def test_context_metric_accepts_optional_typed_required_filters(self):
-        legacy = copy.deepcopy(VALID_PAYLOADS["node2_request"])
-        current = copy.deepcopy(legacy)
-        current["context_package"]["metrics"][0]["required_filters"] = [
-            {"field": "is_forecast", "operator": "eq", "parameter_name": "required_filter_1", "value_type": "boolean", "value": False}
-        ]
-
-        validate_payload("node2_request", legacy)
-        validate_payload("node2_request", current)
-
-        for invalid_filter in (
-            {"field": "is_forecast", "operator": "raw", "parameter_name": "required_filter_1", "value_type": "boolean", "value": False},
-            {"field": "is_forecast", "operator": "eq", "parameter_name": "required_filter_1", "value_type": "timestamp", "value": "2026-07-01"},
-            {"field": "is_forecast", "operator": "eq", "parameter_name": "filter", "value_type": "boolean", "value": False},
-            {"field": "is_forecast", "operator": "eq", "parameter_name": "required_filter_1", "value_type": "boolean", "value": False, "sql": "1 = 1"},
-        ):
-            invalid = copy.deepcopy(legacy)
-            invalid["context_package"]["metrics"][0]["required_filters"] = [invalid_filter]
-            with self.subTest(required_filter=invalid_filter):
+        for invalid in invalid_payloads:
+            with self.subTest(payload=invalid):
                 with self.assertRaises(ContractError):
                     validate_payload("node2_request", invalid)
 
-        empty = copy.deepcopy(legacy)
-        empty["context_package"]["metrics"][0]["required_filters"] = []
-        validate_payload("node2_request", empty)
+    def test_node2_metric_source_is_column_only_until_formula_execution_is_versioned(self):
+        formula = copy.deepcopy(NODE2_REQUEST)
+        formula["metric_rules"][0]["source"] = {
+            "kind": "formula",
+            "operator": "divide",
+            "operands": ["numerator_measure", "denominator_measure"],
+        }
+        filter_with_value = copy.deepcopy(NODE2_REQUEST)
+        filter_with_value["metric_rules"][0]["required_filters"][0][
+            "value"
+        ] = "embedded-runtime-value"
+        missing_result = copy.deepcopy(NODE2_REQUEST)
+        missing_result["metric_rules"][0].pop("result_field")
+        unsupported_list_filter = copy.deepcopy(NODE2_REQUEST)
+        unsupported_list_filter["metric_rules"][0]["required_filters"][0][
+            "operator"
+        ] = "in"
+        for invalid in (
+            formula,
+            filter_with_value,
+            missing_result,
+            unsupported_list_filter,
+        ):
+            with self.subTest(payload=invalid):
+                with self.assertRaises(ContractError):
+                    validate_payload("node2_request", invalid)
+
+    def test_node2_join_graph_requires_declared_join_semantics(self):
+        no_equality = copy.deepcopy(NODE2_REQUEST)
+        no_equality["join_graph"]["edges"][0]["equality_conditions"] = []
+        open_ended_temporal = copy.deepcopy(NODE2_REQUEST)
+        open_ended_temporal["join_graph"]["edges"][0][
+            "temporal_conditions"
+        ][0]["end_exclusive"] = False
+        no_preaggregation_keys = copy.deepcopy(NODE2_REQUEST)
+        no_preaggregation_keys["join_graph"]["edges"][0][
+            "preaggregation"
+        ].pop("keys")
+        for invalid in (no_equality, open_ended_temporal, no_preaggregation_keys):
+            with self.subTest(payload=invalid):
+                with self.assertRaises(ContractError):
+                    validate_payload("node2_request", invalid)
+
+    def test_node2_time_parameters_and_query_policy_exclude_runtime_values(self):
+        for parameter in NODE2_REQUEST["parameter_contract"]["parameters"]:
+            self.assertEqual(set(parameter), {"name", "type", "scope"})
+
+        invalid_interval = copy.deepcopy(NODE2_REQUEST)
+        invalid_interval["time_rules"]["interval"] = "[start,end]"
+        missing_native_type = copy.deepcopy(NODE2_REQUEST)
+        missing_native_type["time_rules"]["fields"][0].pop("native_type")
+        parameter_value = copy.deepcopy(NODE2_REQUEST)
+        parameter_value["parameter_contract"]["parameters"][0]["value"] = 1
+        missing_parameter_type = copy.deepcopy(NODE2_REQUEST)
+        missing_parameter_type["parameter_contract"]["parameters"][0].pop("type")
+        wrong_dialect = copy.deepcopy(NODE2_REQUEST)
+        wrong_dialect["query_policy"]["dialect"] = "postgres"
+        writable = copy.deepcopy(NODE2_REQUEST)
+        writable["query_policy"]["read_only"] = False
+        no_limit = copy.deepcopy(NODE2_REQUEST)
+        no_limit["query_policy"]["max_limit"] = 0
+        no_catalog = copy.deepcopy(NODE2_REQUEST)
+        no_catalog["query_policy"]["allowed_catalogs"] = []
+        for invalid in (
+            invalid_interval,
+            missing_native_type,
+            parameter_value,
+            missing_parameter_type,
+            wrong_dialect,
+            writable,
+            no_limit,
+            no_catalog,
+        ):
+            with self.subTest(payload=invalid):
+                with self.assertRaises(ContractError):
+                    validate_payload("node2_request", invalid)
+
+    def test_node2_response_is_strict_provenance_only(self):
+        expected_fields = {
+            "sql",
+            "used_assets",
+            "used_columns",
+            "used_joins",
+            "used_metrics",
+        }
+        self.assertEqual(set(NODE2_RESPONSE), expected_fields)
+        for field in expected_fields:
+            missing = copy.deepcopy(NODE2_RESPONSE)
+            missing.pop(field)
+            with self.subTest(missing=field):
+                with self.assertRaises(ContractError):
+                    validate_payload("node2_response", missing)
+        for forbidden in ("references", "parameters", "model"):
+            extra = copy.deepcopy(NODE2_RESPONSE)
+            extra[forbidden] = []
+            with self.subTest(forbidden=forbidden):
+                with self.assertRaises(ContractError):
+                    validate_payload("node2_response", extra)
+        unqualified_column = copy.deepcopy(NODE2_RESPONSE)
+        unqualified_column["used_columns"][0] = "amount"
+        with self.assertRaises(ContractError):
+            validate_payload("node2_response", unqualified_column)
+
+    def test_node2_fixtures_contain_no_scenario_lineage_or_runtime_values(self):
+        payload_text = json.dumps(
+            {
+                "request": NODE2_REQUEST,
+                "response": NODE2_RESPONSE,
+                "repair": VALID_PAYLOADS["node2_repair_request"],
+            },
+            ensure_ascii=False,
+        ).casefold()
+        for forbidden in (
+            "pms.public",
+            "crm.public",
+            "pos.public",
+            "room_revenue",
+            "전월 대비",
+        ):
+            self.assertNotIn(forbidden, payload_text)
+        self.assertNotRegex(payload_text, r"\b20\d{2}-\d{2}-\d{2}\b")
+        self.assertFalse(NODE2_RESPONSE["sql"].lstrip().casefold().startswith("with "))
 
     def test_missing_and_extra_fields_are_rejected(self):
         for definition, payload in VALID_PAYLOADS.items():
@@ -292,7 +606,7 @@ class ContractTests(unittest.TestCase):
 
     def test_nested_missing_and_extra_fields_are_rejected(self):
         missing = copy.deepcopy(VALID_PAYLOADS["node2_request"])
-        missing["context_package"]["execution_time"].pop("timezone")
+        missing["schema_context"]["assets"][0]["grain"].pop("keys")
         with self.assertRaises(ContractError):
             validate_payload("node2_request", missing)
 

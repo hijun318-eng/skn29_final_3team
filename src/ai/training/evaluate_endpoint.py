@@ -1,16 +1,21 @@
-"""Evaluate the product SQL-only vLLM contract against G2 and synthetic Trino."""
+"""evaluate 엔드포인트 학습·평가 데이터의 생성, 실행, 검증 절차와 CLI 진입점을 제공한다.
+
+Evaluate structured SQL model outputs with server-owned runtime bindings.
+"""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import re
+import os
 import subprocess
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Callable
 
+from src.ai.schema import schema_definition
 from src.ai.training.benchmark_serving import request_json
 from src.ai.training.dataset import load_compiled, write_jsonl
 from src.ai.training.evaluate_lora import (
@@ -22,79 +27,85 @@ from src.ai.training.evaluate_lora import (
 )
 from src.ai.training.verify_case_specs import (
     PlanContractError,
-    _context_plan,
-    _declared_parameters,
+    _execute,
     _result_hash,
+    load_binding_manifest,
+    validate_output,
 )
-
-from app.adapters.i2_data_platform import I2DataPlatformAdapter
-from app.services.pipeline_support import PipelineSupport
 
 
 Requester = Callable[[str, str, dict[str, Any] | None, str | None, float], dict[str, Any]]
 
 
 def _schema(node: str) -> dict[str, Any]:
-    field = "sql" if node == "node2" else "corrected_sql"
-    return {
-        "type": "object",
-        "additionalProperties": False,
-        "required": [field],
-        "properties": {field: {"type": "string"}},
-    }
+    """Return the same strict response schema used by offline validation."""
+    return schema_definition(f"{node}_response")
 
 
 def _run_trino(
-    sql: str,
-    parameters: dict[str, Any],
+    executable_sql: str,
     container: str,
     user: str,
+    password: str,
 ) -> tuple[str, str | None, str | None]:
-    sql = I2DataPlatformAdapter._bind_parameters(sql, parameters)
-    completed = subprocess.run(
-        [
-            "docker",
-            "exec",
-            container,
-            "trino",
-            "--server",
-            "http://localhost:8080",
-            "--user",
-            user,
-            "--output-format",
-            "JSON",
-            "--execute",
-            sql,
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=30,
-    )
+    """AST-bound SQL과 password를 각각 stdin과 child 환경으로 분리해 실행한다."""
+    try:
+        completed = _execute(
+            executable_sql,
+            container=container,
+            user=user,
+            password=password,
+            timeout=30,
+        )
+    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        digest = hashlib.sha256(str(error).encode()).hexdigest()
+        return "FAIL", None, digest
     if completed.returncode:
-        lines = [line for line in (completed.stderr or completed.stdout).splitlines() if line.strip()]
-        return "FAIL", None, "\n".join(lines[-4:])
+        diagnostic = completed.stderr or completed.stdout
+        return "FAIL", None, hashlib.sha256(diagnostic.encode()).hexdigest()
     return "PASS", _result_hash(completed.stdout), None
 
 
-def _references(sql: str, context: dict[str, Any]) -> list[dict[str, Any]]:
-    queried = {
-        table.strip('"').lower()
-        for table in re.findall(r"\b(?:from|join)\s+([a-zA-Z0-9_.\"]+)", sql, re.IGNORECASE)
+def _validation_result(
+    node: str,
+    request: dict[str, Any],
+    output: Any,
+    bindings: Mapping[str, object] | None,
+) -> tuple[str, dict[str, Any] | None]:
+    if not isinstance(output, dict):
+        return "MODEL_SCHEMA_INVALID", None
+    try:
+        return "PASS", validate_output(node, request, output, bindings)
+    except PlanContractError as error:
+        return error.code, None
+
+
+def _base_evidence(record: dict[str, Any], response: dict[str, Any], latency_ms: float) -> tuple[dict[str, Any], Any]:
+    choice = response["choices"][0]
+    content = choice["message"]["content"]
+    evidence = {
+        "case_id": record["case_id"],
+        "domain": record["domain"],
+        "node": record["node"],
+        "evaluation_slice": record.get("evaluation_slice"),
+        "latency_ms": latency_ms,
+        "finish_reason": choice.get("finish_reason"),
+        "completion_tokens": response.get("usage", {}).get("completion_tokens"),
+        "content_sha256": hashlib.sha256(str(content).encode()).hexdigest(),
     }
-    join_ids = [join["id"] for join in context["joins"]]
-    metric_ids = [metric["id"] for metric in context["metrics"]]
-    return [
-        {
-            "urn": asset["urn"],
-            "fqn": asset["trino_fqn"],
-            "columns": asset["columns"],
-            "join_ids": join_ids,
-            "metric_ids": metric_ids,
-        }
-        for asset in context["assets"]
-        if asset["trino_fqn"].lower() in queried
-    ]
+    return evidence, content
+
+
+def _invalid_json(evidence: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **evidence,
+        "valid_json": False,
+        "g2": "MODEL_SCHEMA_INVALID",
+        "expected_g2": "NOT_RUN",
+        "trino": "NOT_RUN",
+        "result_match": "NOT_RUN",
+        "sql_exact_match": False,
+    }
 
 
 def evaluate_record(
@@ -102,11 +113,18 @@ def evaluate_record(
     *,
     base_url: str,
     model: str,
+    bindings: Mapping[str, object] | None = None,
     requester: Requester = request_json,
     timeout: float = 60,
     trino_container: str | None = None,
-    trino_user: str = "hotel_analyst",
+    trino_user: str | None = None,
+    trino_password: str | None = None,
 ) -> dict[str, Any]:
+    """한 compiled case를 모델에 보내 G2 검증과 실제 Trino 결과 일치 evidence를 만든다.
+
+    server binding은 모델 입력에서 분리하고 AST 검증 뒤에만 주입하며, JSON·G2·Trino 단계 중
+    하나라도 실패하면 이후 단계를 실행하지 않고 안정된 상태 code로 남긴다.
+    """
     started = time.perf_counter()
     response = requester(
         "POST",
@@ -122,75 +140,59 @@ def evaluate_record(
         None,
         timeout,
     )
-    latency_ms = (time.perf_counter() - started) * 1_000
-    choice = response["choices"][0]
-    content = choice["message"]["content"]
-    evidence = {
-        "case_id": record["case_id"],
-        "domain": record["domain"],
-        "node": record["node"],
-        "evaluation_slice": record.get("evaluation_slice"),
-        "latency_ms": latency_ms,
-        "finish_reason": choice.get("finish_reason"),
-        "completion_tokens": response.get("usage", {}).get("completion_tokens"),
-        "content_sha256": hashlib.sha256(str(content).encode()).hexdigest(),
-    }
+    evidence, content = _base_evidence(
+        record, response, (time.perf_counter() - started) * 1_000
+    )
     try:
         generated = json.loads(content)
-    except (json.JSONDecodeError, TypeError):
-        return {**evidence, "valid_json": False, "g2": "MODEL_SCHEMA_INVALID", "expected_g2": "NOT_RUN", "trino": "NOT_RUN", "result_match": "NOT_RUN", "sql_exact_match": False}
-    field = "sql" if record["node"] == "node2" else "corrected_sql"
-    sql = generated.get(field) if isinstance(generated, dict) else None
-    if not isinstance(sql, str) or not sql.strip():
-        return {**evidence, "valid_json": True, "g2": "MODEL_SCHEMA_INVALID", "expected_g2": "NOT_RUN", "trino": "NOT_RUN", "result_match": "NOT_RUN", "sql_exact_match": False}
+        request = json.loads(record["messages"][1]["content"])
+        expected = json.loads(record["messages"][2]["content"])
+    except (json.JSONDecodeError, TypeError, KeyError):
+        return _invalid_json(evidence)
 
-    payload = json.loads(record["messages"][1]["content"])
-    context = payload["context_package"]
-    try:
-        generated_plan, package = _context_plan(sql, context, _references(sql, context))
-        g2 = PipelineSupport.g2_violation(generated_plan, package)
-    except (PlanContractError, KeyError, ValueError) as error:
-        generated_plan = None
-        g2 = error.code if isinstance(error, PlanContractError) else "PARAMETERS_INVALID"
-    expected_payload = json.loads(record["messages"][2]["content"])
-    expected = expected_payload[field]
-    try:
-        expected_plan, expected_package = _context_plan(
-            expected,
-            context,
-            _references(expected, context),
-            _declared_parameters(expected_payload),
-        )
-        expected_g2 = PipelineSupport.g2_violation(expected_plan, expected_package)
-    except (PlanContractError, KeyError, ValueError) as error:
-        expected_plan = None
-        expected_g2 = error.code if isinstance(error, PlanContractError) else "PARAMETERS_INVALID"
+    node = record["node"]
+    field = "sql" if node == "node2" else "corrected_sql"
+    g2, generated_plan = _validation_result(node, request, generated, bindings)
+    expected_g2, expected_plan = _validation_result(node, request, expected, bindings)
+    generated_sql = generated.get(field) if isinstance(generated, dict) else None
+    expected_sql = expected.get(field) if isinstance(expected, dict) else None
+    exact_match = (
+        isinstance(generated_sql, str)
+        and isinstance(expected_sql, str)
+        and _normalize_sql(generated_sql) == _normalize_sql(expected_sql)
+    )
+
     trino = "NOT_RUN"
-    generated_hash = None
-    expected_hash = None
-    trino_error = None
+    generated_hash = expected_hash = diagnostic_hash = None
     result_match: bool | str = "NOT_RUN"
-    if g2 is None and expected_g2 is None and trino_container:
-        trino, generated_hash, trino_error = _run_trino(
-            generated_plan["sql"], generated_plan["parameters"], trino_container, trino_user
-        )
-        if trino == "PASS":
-            expected_status, expected_hash, _ = _run_trino(
-                expected_plan["sql"], expected_plan["parameters"], trino_container, trino_user
+    if g2 == expected_g2 == "PASS" and trino_container is not None:
+        if not trino_user or not trino_password:
+            trino = "CONFIGURATION_INVALID"
+        else:
+            assert generated_plan is not None and expected_plan is not None
+            trino, generated_hash, diagnostic_hash = _run_trino(
+                generated_plan["executable_sql"], trino_container, trino_user,
+                trino_password,
             )
-            result_match = expected_status == "PASS" and generated_hash == expected_hash
+            if trino == "PASS":
+                expected_status, expected_hash, expected_diagnostic = _run_trino(
+                    expected_plan["executable_sql"], trino_container, trino_user,
+                    trino_password,
+                )
+                result_match = expected_status == "PASS" and generated_hash == expected_hash
+                diagnostic_hash = diagnostic_hash or expected_diagnostic
     return {
         **evidence,
         "valid_json": True,
-        "g2": "PASS" if g2 is None else g2,
-        "expected_g2": "PASS" if expected_g2 is None else expected_g2,
+        "g2": g2,
+        "expected_g2": expected_g2,
         "trino": trino,
         "result_match": result_match,
         "generated_result_sha256": generated_hash,
         "expected_result_sha256": expected_hash,
-        "trino_error": trino_error,
-        "sql_exact_match": _normalize_sql(sql) == _normalize_sql(expected),
-        "sql": sql,
+        "trino_diagnostic_sha256": diagnostic_hash,
+        "sql_exact_match": exact_match,
+        "sql": generated_sql if isinstance(generated_sql, str) else None,
     }
 
 
@@ -206,31 +208,42 @@ def _select_manifest_records(records: list[dict[str, Any]], manifest: dict[str, 
 
 
 def main() -> int:
+    """validation case를 순서대로 endpoint·G2·인증 Trino에 검증하고 첫 실패에서 evidence를 확정한다."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--revision", default=DEFAULT_REVISION)
     parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--bindings", type=Path, required=True)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--trino-container")
-    parser.add_argument("--trino-user", default="hotel_analyst")
+    parser.add_argument("--trino-container", required=True)
+    parser.add_argument(
+        "--trino-user", default=os.getenv("TRINO_RUNTIME_USER", "")
+    )
     args = parser.parse_args()
 
     records = load_compiled(args.data, "validation")
     if args.manifest:
-        records = _select_manifest_records(records, json.loads(args.manifest.read_text(encoding="utf-8")))
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        records = _select_manifest_records(records, manifest)
     if args.limit is not None:
         records = records[: args.limit]
+    if not records:
+        raise ValueError("evaluation selection is empty")
+    binding_manifest = load_binding_manifest(args.bindings)
+    trino_password = os.getenv("TRINO_RUNTIME_PASSWORD", "")
     predictions = []
     for index, record in enumerate(records, 1):
         prediction = evaluate_record(
             record,
             base_url=args.base_url,
             model=args.model,
+            bindings=binding_manifest.get(record["case_id"]),
             trino_container=args.trino_container,
             trino_user=args.trino_user,
+            trino_password=trino_password,
         )
         predictions.append(prediction)
         print(
@@ -256,14 +269,14 @@ def main() -> int:
         "stopped_early": len(predictions) < len(records),
         "valid_json": sum(prediction["valid_json"] for prediction in predictions),
         "g2_pass": sum(prediction["g2"] == "PASS" for prediction in predictions),
-        "expected_g2_pass": sum(prediction.get("expected_g2") == "PASS" for prediction in predictions),
+        "expected_g2_pass": sum(item["expected_g2"] == "PASS" for item in predictions),
         "trino_pass": sum(prediction["trino"] == "PASS" for prediction in predictions),
         "result_match": sum(prediction["result_match"] is True for prediction in predictions),
         "sql_exact_match": sum(prediction["sql_exact_match"] for prediction in predictions),
         "latency_p50_ms": _percentile(latencies, 50),
         "latency_p95_ms": _percentile(latencies, 95),
         "observed": observed_metrics(
-            accuracy=sum(prediction["sql_exact_match"] for prediction in predictions) / len(predictions),
+            accuracy=sum(item["sql_exact_match"] for item in predictions) / len(predictions),
             p50_ms=_percentile(latencies, 50),
             p95_ms=_percentile(latencies, 95),
             peak_vram_bytes=None,

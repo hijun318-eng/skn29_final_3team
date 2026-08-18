@@ -1,18 +1,29 @@
+"""보고서 draft·승인 문서·run·schedule·assistant 명령을 역할별 repository/service에 연결한다."""
+
 from __future__ import annotations
 
-from collections.abc import Mapping
-import os
-import hashlib
-import json
 from datetime import datetime, timezone
-from typing import Annotated, Any, Callable
-from uuid import uuid4
+from inspect import isawaitable
+from typing import Annotated, Any, Awaitable, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import HTMLResponse
 
-from app.context import analysis_context
-from app.contracts import RequestContext, Role
+from app.api.report_router_support import (
+    _artifact_visible_views,
+    _document_response,
+    approve_report_version as _approve_report_version,
+    build_execution_service as _build_execution_service,
+    build_report_router as _build_report_router,
+    create_artifact_draft as _create_artifact_draft,
+    create_assistant_report_draft as _create_assistant_report_draft,
+    final_html_response as _final_html_response,
+    final_pdf_response as _final_pdf_response,
+    report_artifact_response as _report_artifact_response,
+    report_admin_context,
+    report_draft_context,
+)
+from app.contracts import RequestContext
 from app.report_contracts import (
     ApproveReportVersionRequest,
     CreateManualRunRequest,
@@ -39,91 +50,31 @@ from app.report_contracts import (
 report_router = APIRouter()
 
 
-def report_draft_context(
-    context: Annotated[RequestContext, Depends(analysis_context)],
-) -> RequestContext:
-    if context.role not in {Role.HOTEL_ANALYST, Role.REPORT_ADMIN}:
-        raise HTTPException(status_code=403, detail="Report 초안 권한이 없습니다.")
-    return context
-
-
-def report_admin_context(
-    context: Annotated[RequestContext, Depends(analysis_context)],
-) -> RequestContext:
-    if context.role is not Role.REPORT_ADMIN:
-        raise HTTPException(status_code=403, detail="Report 실행 관리 권한이 없습니다.")
-    return context
-
-
 def _router(context: RequestContext):
-    from app.adapters.report_repository import PostgresReportRepository
-    from src.report.router import create_report_router
-
-    database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
-    if not database_url:
-        raise HTTPException(status_code=503, detail="Report 저장소를 사용할 수 없습니다.")
-    return create_report_router(
-        PostgresReportRepository(
-            database_url,
-            context.user_id,
-            manage_all=context.role is Role.REPORT_ADMIN,
-        )
-    )
+    return _build_report_router(context)
 
 
 def _execution_service(repository):
-    from app.api.router import _controller, execution_gate
-    from app.services.report_execution import (
-        AnalysisDefinitionReplay,
-        ReportExecutionService,
-    )
-
-    database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
-    if not database_url:
-        raise HTTPException(status_code=503, detail="Report repository is unavailable.")
-    replay = AnalysisDefinitionReplay(
-        database_url,
-        _controller(),
-        execution_gate,
-        queue_wait_seconds=float(os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0")),
-    )
-    return ReportExecutionService(repository, replay)
+    return _build_execution_service(repository)
 
 
-def _call(action: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+async def _call(action: Callable[[], Awaitable[dict[str, Any]]]) -> dict[str, Any]:
     from src.report.router import ReportRouteError
 
     try:
-        return action()
+        return await action()
     except ReportRouteError as error:
         raise HTTPException(status_code=error.status_code, detail=error.detail) from error
 
 
-def _repository_call(action: Callable[[], Any]) -> Any:
+async def _repository_call(action: Callable[[], Awaitable[Any]]) -> Any:
     try:
-        return action()
+        result = action()
+        return await result if isawaitable(result) else result
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error.args[0])) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-
-
-def _artifact_visible_views(artifact: Mapping[str, Any]) -> list[str]:
-    views: list[str] = []
-    if str(artifact.get("narrative_markdown") or "").strip():
-        views.append("summary")
-    evidence = artifact.get("evidence_json")
-    metrics = evidence.get("metric_values") if isinstance(evidence, Mapping) else None
-    if isinstance(metrics, (list, tuple)) and metrics:
-        views.append("kpi")
-    snapshot = artifact.get("data_snapshot_json")
-    rows = snapshot.get("rows") if isinstance(snapshot, Mapping) else None
-    has_rows = isinstance(rows, (list, tuple)) and bool(rows)
-    if artifact.get("chart_spec_json") and has_rows:
-        views.append("chart")
-    if has_rows:
-        views.append("table")
-    return views
 
 
 @report_router.post(
@@ -131,11 +82,15 @@ def _artifact_visible_views(artifact: Mapping[str, Any]) -> list[str]:
     operation_id="reportCreateDefinition",
     response_model=ReportDefinitionResponse,
 )
-def create_definition(
+async def create_definition(
     payload: CreateReportDefinitionRequest,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    return _call(
+    """검증된 title·block grid·표시 설정으로 소유자 범위의 version 1 draft를 저장한다.
+
+    도메인 필드 오류와 저장 상태 충돌은 ``_call``을 통해 공개 가능한 HTTP 오류로 변환한다.
+    """
+    return await _call(
         lambda: _router(context).create_definition(
             payload.model_dump(mode="json", exclude_none=True)
         )
@@ -147,35 +102,12 @@ def create_definition(
     operation_id="reportCreateDraftFromAnalysisArtifact",
     response_model=ReportDefinitionResponse,
 )
-def create_draft_from_analysis_artifact(
+async def create_draft_from_analysis_artifact(
     payload: CreateReportFromArtifactRequest,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    from src.report.domain import BlockType, DefinitionStatus, ReportBlock, ReportDefinitionVersion
-
-    router = _router(context)
-    artifact = _repository_call(
-        lambda: router.repository.get_transfer_artifact(str(payload.artifact_id))
-    )
-    artifact_id = str(artifact["artifact_id"])
-    query_id = str(artifact["trino_query_id"])
-    report_title = payload.title.strip()
-    content = json.dumps({
-        "schemaVersion": "ANSWER-ARTIFACT-BLOCK-v1",
-        "presentationMode": "standard",
-        "sizeMode": "auto",
-        "visibleViews": _artifact_visible_views(artifact),
-    }, ensure_ascii=False, separators=(",", ":"))
-    blocks = (ReportBlock(
-        str(uuid4()), report_title, artifact_id, 12, query_id,
-        BlockType.ARTIFACT, 0, 0, 12, 12, content,
-    ),)
-    draft = ReportDefinitionVersion(
-        str(uuid4()), 1, DefinitionStatus.DRAFT, report_title, blocks,
-        orientation="landscape", currency_display_unit="auto",
-    )
-    _repository_call(lambda: router.repository.add_draft(draft))
-    return router._response(draft)
+    """분석 산출물 입력의 소유권과 필드를 검증해 draft 산출물을 생성한다."""
+    return await _create_artifact_draft(_router(context), payload, _repository_call)
 
 
 @report_router.get(
@@ -183,31 +115,22 @@ def create_draft_from_analysis_artifact(
     operation_id="reportGetArtifact",
     response_model=ReportArtifactResponse,
 )
-def get_report_artifact(
+async def get_report_artifact(
     definition_id: str,
     version: int,
     artifact_id: str,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    from src.report.domain import REPORT_CONTRACT_VERSION
+    """definition version이 참조하고 사용자가 열람 가능한 분석 artifact만 전송 계약으로 반환한다.
 
-    artifact = _repository_call(
+    저장소가 definition·version·artifact 연결과 소유권을 함께 검사하며 부재는 404로 닫힌다.
+    """
+    artifact = await _repository_call(
         lambda: _router(context).repository.get_report_artifact(
             definition_id, version, artifact_id
         )
     )
-    return {
-        "contract_version": REPORT_CONTRACT_VERSION,
-        "artifact_id": artifact["artifact_id"],
-        "query_id": artifact["trino_query_id"],
-        "title": artifact["title"],
-        "summary": artifact["narrative_markdown"],
-        "metrics": (artifact["evidence_json"] or {}).get("metric_values", []),
-        "table": artifact["data_snapshot_json"],
-        "chart": artifact["chart_spec_json"] or None,
-        "evidence": artifact["evidence_json"],
-        "artifact_checksum": artifact["artifact_checksum"],
-    }
+    return _report_artifact_response(artifact)
 
 
 @report_router.get(
@@ -215,10 +138,11 @@ def get_report_artifact(
     operation_id="reportListDefinitions",
     response_model=ReportDefinitionListResponse,
 )
-def list_definitions(
+async def list_definitions(
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    return _call(lambda: _router(context).list_definitions())
+    """분석가에게 자기 보고서만, 관리자에게 허용된 전체 definition version을 최신순으로 반환한다."""
+    return await _call(lambda: _router(context).list_definitions())
 
 
 @report_router.post(
@@ -226,51 +150,24 @@ def list_definitions(
     operation_id="reportApproveVersion",
     response_model=ReportDefinitionResponse,
 )
-def approve_version(
+async def approve_version(
     definition_id: str,
     version: int,
     payload: ApproveReportVersionRequest,
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
-    from app.services.report_document import (
-        ReportDocumentRenderError,
-        approve_report_document,
+    """관리자가 지정한 draft를 승인 시각에 불변 HTML·PDF 문서와 함께 확정한다.
+
+    저장 orientation 불일치, 비-DRAFT 상태, 미존재 및 renderer 실패는 지원 계층의 구분된
+    409·404·503 응답으로 반환되고 실패 시 승인 write는 남지 않는다.
+    """
+    return await _approve_report_version(
+        _router(context),
+        definition_id,
+        version,
+        payload.approved_at,
+        payload.orientation,
     )
-
-    router = _router(context)
-    try:
-        approved = approve_report_document(
-            router.repository,
-            definition_id,
-            version,
-            payload.approved_at,
-            payload.orientation,
-        )
-        return router._response(approved)
-    except ReportDocumentRenderError as error:
-        raise HTTPException(
-            status_code=503,
-            detail="Report PDF renderer is unavailable; the draft was not approved.",
-        ) from error
-    except KeyError as error:
-        raise HTTPException(status_code=404, detail=str(error.args[0])) from error
-    except ValueError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
-
-
-def _document_response(document: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "definition_id": document["definition_id"],
-        "definition_version": document["definition_version"],
-        "orientation": document["orientation"],
-        "currency_display_unit": document["currency_display_unit"],
-        "renderer_version": document["renderer_version"],
-        "source_checksum": document["source_checksum"],
-        "html_checksum": document["html_checksum"],
-        "pdf_checksum": document["pdf_checksum"],
-        "artifact_versions": document["artifact_versions"],
-        "confirmed_at": document["confirmed_at"],
-    }
 
 
 @report_router.get(
@@ -278,12 +175,16 @@ def _document_response(document: dict[str, Any]) -> dict[str, Any]:
     operation_id="reportGetFinalDocument",
     response_model=ReportDocumentResponse,
 )
-def get_final_document(
+async def get_final_document(
     definition_id: str,
     version: int,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    document = _repository_call(
+    """열람 권한이 있는 승인 version의 renderer·source·HTML·PDF checksum metadata를 반환한다.
+
+    문서 bytes는 포함하지 않으며 저장소에서 찾을 수 없거나 비소유인 대상은 404로 처리한다.
+    """
+    document = await _repository_call(
         lambda: _router(context).repository.get_document(definition_id, version)
     )
     return _document_response(document)
@@ -294,23 +195,19 @@ def get_final_document(
     operation_id="reportGetFinalHtml",
     response_class=HTMLResponse,
 )
-def get_final_html(
+async def get_final_html(
     definition_id: str,
     version: int,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> HTMLResponse:
-    document = _repository_call(
+    """승인 version의 저장 HTML snapshot을 checksum ETag·CSP가 포함된 응답으로 반환한다.
+
+    repository가 definition 소유권과 문서 존재를 검증하며 동적 재렌더링은 수행하지 않는다.
+    """
+    document = await _repository_call(
         lambda: _router(context).repository.get_document(definition_id, version)
     )
-    return HTMLResponse(
-        content=document["html_snapshot"],
-        headers={
-            "ETag": f'"{document["html_checksum"]}"',
-            "Cache-Control": "private, max-age=31536000, immutable",
-            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
+    return _final_html_response(document)
 
 
 @report_router.get(
@@ -325,24 +222,19 @@ def get_final_html(
         }
     },
 )
-def get_final_pdf(
+async def get_final_pdf(
     definition_id: str,
     version: int,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> Response:
-    document = _repository_call(
+    """승인 version에 영속된 PDF/A bytes를 checksum ETag와 version 파일명으로 반환한다.
+
+    요청 시점에 문서를 다시 만들지 않으며 미존재·비소유 대상은 공통 repository 404로 닫힌다.
+    """
+    document = await _repository_call(
         lambda: _router(context).repository.get_document(definition_id, version)
     )
-    return Response(
-        content=document["pdf_bytes"],
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'inline; filename="report-{definition_id}-v{version}.pdf"',
-            "ETag": f'"{document["pdf_checksum"]}"',
-            "Cache-Control": "private, max-age=31536000, immutable",
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
+    return _final_pdf_response(document, definition_id, version)
 
 
 @report_router.post(
@@ -350,12 +242,16 @@ def get_final_pdf(
     operation_id="reportCreateNextDraft",
     response_model=ReportDefinitionResponse,
 )
-def create_next_draft(
+async def create_next_draft(
     definition_id: str,
     version: int,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    return _call(lambda: _router(context).create_next_draft(definition_id, version))
+    """소유한 승인 version을 복제해 다음 번호의 편집 가능한 draft를 원자 생성한다.
+
+    대상 부재는 404, 비승인 기준본이나 동시 version 충돌은 409로 변환한다.
+    """
+    return await _call(lambda: _router(context).create_next_draft(definition_id, version))
 
 
 @report_router.get(
@@ -363,12 +259,16 @@ def create_next_draft(
     operation_id="reportGetDefinitionVersion",
     response_model=ReportDefinitionResponse,
 )
-def get_version(
+async def get_version(
     definition_id: str,
     version: int,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    return _call(lambda: _router(context).get_version(definition_id, version))
+    """사용자 역할 범위에서 definition ID와 version이 일치하는 보고서 계약을 반환한다.
+
+    저장소가 소유권 필터를 적용하며 조회할 수 없는 대상은 404로 정규화한다.
+    """
+    return await _call(lambda: _router(context).get_version(definition_id, version))
 
 
 @report_router.put(
@@ -376,13 +276,14 @@ def get_version(
     operation_id="reportReplaceDraftBlocks",
     response_model=ReportDefinitionResponse,
 )
-def replace_draft_blocks(
+async def replace_draft_blocks(
     definition_id: str,
     version: int,
     payload: ReplaceReportBlocksRequest,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    return _call(
+    """draft blocks 변경을 현재 상태와 충돌 여부를 확인한 뒤 원자적으로 반영한다."""
+    return await _call(
         lambda: _router(context).replace_draft_blocks(
             definition_id,
             version,
@@ -396,11 +297,12 @@ def replace_draft_blocks(
     operation_id="reportListRuns",
     response_model=ReportRunListResponse,
 )
-def list_runs(
+async def list_runs(
     context: Annotated[RequestContext, Depends(report_admin_context)],
     definition_id: str | None = None,
 ) -> dict[str, Any]:
-    return _call(lambda: _router(context).list_runs(definition_id))
+    """관리 권한 범위의 report run을 선택한 definition ID로 좁혀 생성 순서대로 반환한다."""
+    return await _call(lambda: _router(context).list_runs(definition_id))
 
 
 @report_router.post(
@@ -408,22 +310,24 @@ def list_runs(
     operation_id="reportCreateManualRunCommand",
     response_model=ManualRunCommandResponse,
 )
-def create_manual_run_command(
+async def create_manual_run_command(
     payload: CreateManualRunRequest,
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
+    """관리자의 definition version·기준 시각·멱등 키를 수동 실행 명령으로 등록하고 실행한다.
+
+    claim 가능한 영속 repository에서는 같은 멱등 키의 중복 실행을 막고 완료 run ID와 상태를
+    응답한다. 입력·미존재·상태 충돌은 router의 422·404·409 계약을 따른다.
+    """
     router = _router(context)
-    command = _call(
+    command = await _call(
         lambda: router.create_manual_run_command(payload.model_dump(mode="json"))
     )
     if not hasattr(router.repository, "claim_manual_run"):
         return command
     service = _execution_service(router.repository)
-    run = _call(
-        lambda: router._run_response(
-            service.execute_manual_run(command["command_id"])
-        )
-    )
+    executed = await service.execute_manual_run(command["command_id"])
+    run = router._run_response(executed)
     return {**command, "status": run["status"], "run_id": run["run_id"]}
 
 
@@ -432,11 +336,15 @@ def create_manual_run_command(
     operation_id="reportGetRun",
     response_model=ReportRunResponse,
 )
-def get_run(
+async def get_run(
     run_id: str,
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
-    return _call(lambda: _router(context).get_run(run_id))
+    """관리 권한 범위에서 run ID에 해당하는 실행 상태와 block별 evidence를 반환한다.
+
+    조회할 수 없는 run은 저장소의 ``KeyError``를 404로 변환해 존재 여부를 숨긴다.
+    """
+    return await _call(lambda: _router(context).get_run(run_id))
 
 
 @report_router.post(
@@ -444,12 +352,17 @@ def get_run(
     operation_id="reportCreateSchedule",
     response_model=ReportScheduleResponse,
 )
-def create_schedule(
+async def create_schedule(
     payload: CreateReportScheduleRequest,
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
+    """관리자가 지정한 definition version·cadence·timezone·최초 실행 시각을 일정으로 저장한다.
+
+    repository transaction이 대상 version과 schedule ID 고유성을 검증하며 오류는 404 또는
+    422로 매핑된다.
+    """
     repository = _router(context).repository
-    return _repository_call(
+    return await _repository_call(
         lambda: repository.create_schedule(
             str(payload.schedule_id),
             str(payload.definition_id),
@@ -466,11 +379,12 @@ def create_schedule(
     operation_id="reportListSchedules",
     response_model=ReportScheduleListResponse,
 )
-def list_schedules(
+async def list_schedules(
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
+    """관리 권한 범위의 report schedule과 next-run 상태를 생성 순서대로 반환한다."""
     repository = _router(context).repository
-    return {"items": list(_repository_call(repository.list_schedules))}
+    return {"items": list(await _repository_call(repository.list_schedules))}
 
 
 @report_router.put(
@@ -478,13 +392,14 @@ def list_schedules(
     operation_id="reportUpdateSchedule",
     response_model=ReportScheduleResponse,
 )
-def update_schedule(
+async def update_schedule(
     schedule_id: str,
     payload: UpdateReportScheduleRequest,
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
+    """스케줄 변경을 현재 상태와 충돌 여부를 확인한 뒤 원자적으로 반영한다."""
     repository = _router(context).repository
-    return _repository_call(
+    return await _repository_call(
         lambda: repository.set_schedule_enabled(schedule_id, payload.enabled)
     )
 
@@ -494,13 +409,18 @@ def update_schedule(
     operation_id="reportRunDueSchedule",
     response_model=RunDueReportScheduleResponse,
 )
-def run_due_schedule(
+async def run_due_schedule(
     schedule_id: str,
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
+    """관리자가 지정한 schedule이 현재 DUE일 때만 한 번 실행하고 갱신 상태를 반환한다.
+
+    저장소의 next-run claim과 실행 service를 같은 요청에서 사용해 중복 실행을 막으며,
+    아직 DUE가 아니면 새 run을 만들지 않고 ``executed=false``로 응답한다.
+    """
     router = _router(context)
     service = _execution_service(router.repository)
-    schedule, run = _repository_call(
+    schedule, run = await _repository_call(
         lambda: service.run_due_schedule(
             schedule_id, datetime.now(timezone.utc)
         )
@@ -517,127 +437,27 @@ def run_due_schedule(
     operation_id="reportAssistantCreateDraft",
     response_model=ReportAssistantDraftResponse,
 )
-def create_assistant_draft(
+async def create_assistant_draft(
     payload: CreateReportAssistantDraftRequest,
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
-    from app.adapters.report_assistant import (
-        ReportAssistantModelError,
-        generate_report_draft,
-    )
-    from src.ai.prompt_registry import get_prompt
-    from src.report.domain import (
-        BlockType,
-        DefinitionStatus,
-        ReportBlock,
-        ReportDefinitionVersion,
+    """관리자 지시와 승인 artifact로 model 기반 보고서 draft를 생성하고 감사 trace를 반환한다.
+
+    artifact 소유권, model 출력 schema, request 상태 기록은 지원 계층이 검증하며 실패 종류별
+    HTTP 상태를 보존한다.
+    """
+    return await _create_assistant_report_draft(
+        _router(context), payload, _repository_call
     )
 
-    router = _router(context)
-    repository = router.repository
-    artifact = _repository_call(
-        lambda: repository.get_assistant_artifact(str(payload.artifact_id))
-    )
-    assistant_request_id = str(uuid4())
-    definition_id = str(uuid4())
-    prompt = get_prompt("report.assistant")
-    instruction_hash = hashlib.sha256(payload.instruction.encode("utf-8")).hexdigest()
-    _repository_call(
-        lambda: repository.start_assistant_request(
-            assistant_request_id,
-            str(payload.artifact_id),
-            instruction_hash,
-            prompt.prompt_id,
-            prompt.version,
-            str(prompt.metadata()["hash"]),
-        )
-    )
-    model_payload = {
-        "instruction": payload.instruction,
-        "artifact": {
-            "artifact_id": str(artifact["artifact_id"]),
-            "query_id": artifact["trino_query_id"],
-            "title": artifact["title"],
-            "narrative": artifact["narrative_markdown"],
-            "evidence": artifact["evidence_json"],
-            "chart_spec": artifact["chart_spec_json"],
-            "checksum": artifact["artifact_checksum"],
-        },
-    }
-    try:
-        proposal, trace = generate_report_draft(model_payload)
-        draft = ReportDefinitionVersion(
-            definition_id,
-            1,
-            DefinitionStatus.DRAFT,
-            proposal["title"],
-            (
-                ReportBlock(
-                    str(uuid4()), proposal["executive_summary"][:120] or "요약",
-                    None, 12, None, BlockType.TEXT, 0, 0, 12, 2,
-                    proposal["executive_summary"],
-                ),
-                ReportBlock(
-                    str(uuid4()), proposal["table_title"],
-                    str(artifact["artifact_id"]), 12, artifact["trino_query_id"],
-                    BlockType.TABLE, 0, 2, 12, 4,
-                ),
-                ReportBlock(
-                    str(uuid4()), proposal["chart_title"],
-                    str(artifact["artifact_id"]), 12, artifact["trino_query_id"],
-                    BlockType.CHART, 0, 6, 12, 4,
-                ),
-            ),
-        )
-        repository.add_draft(draft)
-        output_hash = hashlib.sha256(
-            json.dumps(proposal, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        ).hexdigest()
-        repository.complete_assistant_request(
-            assistant_request_id,
-            definition_id,
-            1,
-            str(trace["model_version"]),
-            output_hash,
-        )
-    except ReportAssistantModelError as error:
-        repository.fail_assistant_request(assistant_request_id, "MODEL_FAILED")
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "code": "REPORT_ASSISTANT_MODEL_FAILED",
-                "assistant_request_id": assistant_request_id,
-            },
-        ) from error
-    except (ValueError, KeyError) as error:
-        repository.fail_assistant_request(assistant_request_id, "DRAFT_INVALID")
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "REPORT_ASSISTANT_DRAFT_INVALID",
-                "assistant_request_id": assistant_request_id,
-            },
-        ) from error
-    except Exception as error:
-        repository.fail_assistant_request(assistant_request_id, "INTERNAL_FAILED")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "code": "REPORT_ASSISTANT_INTERNAL_FAILED",
-                "assistant_request_id": assistant_request_id,
-            },
-        ) from error
-    return {
-        "assistant_request_id": assistant_request_id,
-        "status": "success",
-        "definition": router._response(draft),
-        "trace": trace,
-    }
 
-
-def create_run_internal(
+async def create_run_internal(
     payload: dict[str, Any],
     context: RequestContext,
 ) -> dict[str, Any]:
-    """Trusted worker adapter hook; intentionally not registered as HTTP."""
-    return _call(lambda: _router(context).create_run(payload))
+    """신뢰된 worker가 전달한 실행 payload를 사용자 범위 router로 검증·영속화한다.
+
+    HTTP route에는 등록되지 않은 내부 adapter hook이며, block evidence와 definition version
+    오류는 공개 router와 동일한 ``ReportRouteError`` 계약으로 정규화한다.
+    """
+    return await _call(lambda: _router(context).create_run(payload))

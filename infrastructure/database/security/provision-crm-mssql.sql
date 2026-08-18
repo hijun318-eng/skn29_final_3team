@@ -1,3 +1,5 @@
+-- 책임: 외부에서 검증된 SQL Server login 이름과 secret으로 CRM query principal을
+-- 최소 read 권한으로 조정한다. sqlcmd 변수 누락이나 DDL 오류는 batch를 실패시킨다.
 USE master;
 GO
 IF SUSER_ID(N'$(QueryUser)') IS NULL

@@ -1,3 +1,5 @@
+"""Query generation mode를 검증된 LLM 경로로 축소하고 과거 fallback을 차단한다."""
+
 from alembic import op
 
 
@@ -8,6 +10,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """live FALLBACK history가 없음을 확인한 뒤 허용 mode를 LLM으로 제한한다."""
+
     op.execute(
         """
         DO $$
@@ -38,6 +42,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """migration chain 복원용 과거 enum만 되살리며 runtime fallback을 구현하지 않는다."""
+
     op.execute(
         "ALTER TABLE query.query_executions "
         "DROP CONSTRAINT query_executions_generation_mode_check"

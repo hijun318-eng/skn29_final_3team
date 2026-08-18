@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
+from functools import wraps
 import os
 from pathlib import Path
 import subprocess
@@ -25,6 +27,7 @@ from app.services.report_execution import (  # noqa: E402
 )
 from app.services.report_document import approve_report_document  # noqa: E402
 from app.adapters.report_repository import PostgresReportRepository  # noqa: E402
+from app.database import dispose_database  # noqa: E402
 from src.report.domain import (  # noqa: E402
     BlockFailureCode,
     BlockRunStatus,
@@ -42,12 +45,25 @@ OWNER = UUID("00000000-0000-0000-0000-000000000001")
 AS_OF = datetime(2026, 8, 14, 15, tzinfo=timezone.utc)
 
 
+class _RedactedDatabaseUrl(str):
+    def __repr__(self) -> str:
+        return "'<redacted-test-database-url>'"
+
+
+def async_test(function):
+    @wraps(function)
+    def run(*args, **kwargs):
+        return asyncio.run(function(*args, **kwargs))
+
+    return run
+
+
 class _Gate:
     def __init__(self, acquired: bool = True) -> None:
         self.acquired = acquired
         self.releases = 0
 
-    def acquire(self, wait_seconds=0):
+    async def acquire(self, wait_seconds=0):
         self.wait_seconds = wait_seconds
         return self.acquired
 
@@ -60,7 +76,7 @@ class _AnalysisRepository:
         self.request_id = uuid4()
         self.finished = None
 
-    def get_definition_for_report(self, definition_id, version):
+    async def get_definition_for_report(self, definition_id, version):
         return {
             "definition_id": definition_id,
             "version": version,
@@ -72,20 +88,20 @@ class _AnalysisRepository:
             },
         }
 
-    def begin_run(self, definition, context, as_of, idempotency_key, parameters):
+    async def begin_run(self, definition, context, as_of, idempotency_key, parameters):
         self.context = context
         self.as_of = as_of
         self.idempotency_key = idempotency_key
         self.parameters = parameters
         return self.request_id, True
 
-    def finish_run(self, request_id, response, execution):
+    async def finish_run(self, request_id, response, execution):
         self.finished = (request_id, response, execution)
 
-    def fail_run(self, request_id, error_type="UNSUPPORTED"):
+    async def fail_run(self, request_id, error_type="UNSUPPORTED"):
         self.finished = (request_id, error_type)
 
-    def get_run_artifact(self, request_id):
+    async def get_run_artifact(self, request_id):
         return {
             "artifact_id": uuid4(),
             "query_id": "query-new",
@@ -95,7 +111,7 @@ class _AnalysisRepository:
 
 
 class _Controller:
-    def submit(self, payload, context, execution_sink):
+    async def submit(self, payload, context, execution_sink):
         self.payload = payload
         self.context = context
         execution_sink({"plan": {}, "query": {}, "package": {}})
@@ -105,7 +121,8 @@ class _Controller:
         )
 
 
-def test_analysis_definition_replay_reseals_period_and_persists_new_evidence():
+@async_test
+async def test_analysis_definition_replay_reseals_period_and_persists_new_evidence():
     repository = _AnalysisRepository()
     controller = _Controller()
     gate = _Gate()
@@ -115,7 +132,7 @@ def test_analysis_definition_replay_reseals_period_and_persists_new_evidence():
         "app.services.report_execution.PostgresAnalysisRepository",
         return_value=repository,
     ), patch("app.services.report_execution.require_active_subject"):
-        outcome = replay.execute(
+        outcome = await replay.execute(
             owner_id=OWNER,
             definition_id=str(uuid4()),
             definition_version=3,
@@ -148,7 +165,7 @@ class _ReportRepository:
             RunStatus.PARTIAL,
         )
 
-    def claim_manual_run(self, command_id):
+    async def claim_manual_run(self, command_id):
         self.command_id = command_id
         return {
             "claimed": True,
@@ -169,10 +186,10 @@ class _ReportRepository:
             ),
         }
 
-    def record_block_run(self, run_id, block_id, **outcome):
+    async def record_block_run(self, run_id, block_id, **outcome):
         self.records.append((run_id, block_id, outcome))
 
-    def finish_manual_run(self, command_id):
+    async def finish_manual_run(self, command_id):
         self.finished_command = command_id
         return self.run
 
@@ -181,7 +198,7 @@ class _Replay:
     def __init__(self) -> None:
         self.calls = []
 
-    def execute(self, **payload):
+    async def execute(self, **payload):
         self.calls.append(payload)
         if payload["definition_id"] == "analysis-1":
             return ReplayOutcome(
@@ -199,12 +216,13 @@ class _Replay:
         )
 
 
-def test_report_execution_replays_every_block_and_isolates_typed_failure():
+@async_test
+async def test_report_execution_replays_every_block_and_isolates_typed_failure():
     repository = _ReportRepository()
     replay = _Replay()
     service = ReportExecutionService(repository, replay)
 
-    run = service.execute_manual_run("command-1")
+    run = await service.execute_manual_run("command-1")
 
     assert run.status is RunStatus.PARTIAL
     assert len(replay.calls) == 2
@@ -215,15 +233,16 @@ def test_report_execution_replays_every_block_and_isolates_typed_failure():
     assert repository.finished_command == "command-1"
 
 
-def test_scheduled_execution_uses_the_same_manual_replay_path():
+@async_test
+async def test_scheduled_execution_uses_the_same_manual_replay_path():
     class ScheduledRepository(_ReportRepository):
-        def queue_due_schedule(self, schedule_id, now):
+        async def queue_due_schedule(self, schedule_id, now):
             self.scheduled_for = now
             return {"schedule_id": schedule_id}, ManualRunCommand(
                 "command-scheduled", self.run.definition_id, 1, now, "schedule-key"
             )
 
-        def complete_due_schedule(self, schedule_id, scheduled_for, run_id):
+        async def complete_due_schedule(self, schedule_id, scheduled_for, run_id):
             self.completed_schedule = (schedule_id, scheduled_for, run_id)
             return {"schedule_id": schedule_id, "last_run_id": run_id}
 
@@ -231,13 +250,53 @@ def test_scheduled_execution_uses_the_same_manual_replay_path():
     replay = _Replay()
     service = ReportExecutionService(repository, replay)
 
-    schedule, run = service.run_due_schedule("schedule-1", AS_OF)
+    schedule, run = await service.run_due_schedule("schedule-1", AS_OF)
 
     assert run is repository.run
     assert schedule["last_run_id"] == run.run_id
     assert repository.command_id == "command-scheduled"
     assert len(replay.calls) == 2
     assert repository.completed_schedule == ("schedule-1", AS_OF, run.run_id)
+
+
+@async_test
+async def test_concurrent_schedule_poll_does_not_advance_a_running_command():
+    class ConcurrentRepository(_ReportRepository):
+        def __init__(self):
+            super().__init__()
+            self.run = ReportRun(
+                self.run.run_id,
+                self.run.definition_id,
+                self.run.definition_version,
+                self.run.as_of,
+                self.run.policy_version,
+                self.run.context_hash,
+                self.run.watermark,
+                RunStatus.RUNNING,
+            )
+
+        async def queue_due_schedule(self, schedule_id, now):
+            return {"schedule_id": schedule_id, "next_run_at": now}, ManualRunCommand(
+                "command-running", self.run.definition_id, 1, now, "schedule-key"
+            )
+
+        async def claim_manual_run(self, command_id):
+            return {"claimed": False, "run_id": self.run.run_id, "blocks": ()}
+
+        async def get_run(self, run_id):
+            assert run_id == self.run.run_id
+            return self.run
+
+        async def complete_due_schedule(self, *_args):
+            raise AssertionError("running schedule must not advance")
+
+    repository = ConcurrentRepository()
+    service = ReportExecutionService(repository, _Replay())
+
+    schedule, run = await service.run_due_schedule("schedule-1", AS_OF)
+
+    assert run is None
+    assert schedule["next_run_at"] == AS_OF
 
 
 @pytest.fixture(scope="module")
@@ -266,7 +325,7 @@ def replay_database():
     if migrated.returncode:
         raise RuntimeError(migrated.stdout + migrated.stderr)
     try:
-        yield url
+        yield _RedactedDatabaseUrl(url)
     finally:
         engine = create_engine(url)
         engine.dispose()
@@ -352,7 +411,8 @@ def _seed_analysis_evidence(engine, *, definition_id, request_id, query_executio
         })
 
 
-def test_postgres_report_run_records_new_replay_lineage_and_partial_failure(replay_database):
+@async_test
+async def test_postgres_report_run_records_new_replay_lineage_and_partial_failure(replay_database):
     engine = create_engine(replay_database)
     definition_id = uuid4()
     source_request_id, replay_request_id = uuid4(), uuid4()
@@ -378,32 +438,32 @@ def test_postgres_report_run_records_new_replay_lineage_and_partial_failure(repl
     report_id = uuid4()
     block_success, block_failed = uuid4(), uuid4()
     repository = PostgresReportRepository(replay_database, OWNER)
-    repository.add_draft(ReportDefinitionVersion(
+    await repository.add_draft(ReportDefinitionVersion(
         str(report_id), 1, DefinitionStatus.DRAFT, "Replay Report", (
             ReportBlock(str(block_success), "Success", str(source_artifact_id), 6, "source-query"),
             ReportBlock(str(block_failed), "Failure", str(source_artifact_id), 6, "source-query", x=6),
         ),
     ))
-    repository.approve(str(report_id), 1, AS_OF)
-    command = repository.queue_manual_run(
+    await repository.approve(str(report_id), 1, AS_OF)
+    command = await repository.queue_manual_run(
         str(report_id), 1, AS_OF, "manual-replay-1"
     )
-    claim = repository.claim_manual_run(command.command_id)
+    claim = await repository.claim_manual_run(command.command_id)
     assert claim["claimed"] is True
     assert all(block["analysis_definition_id"] == str(definition_id) for block in claim["blocks"])
 
-    repository.record_block_run(
+    await repository.record_block_run(
         claim["run_id"], str(block_success), status=BlockRunStatus.SUCCESS,
         request_id=str(replay_request_id), artifact_id=str(replay_artifact_id),
         query_id="replay-query", snapshot_checksum="f" * 64,
         policy_version="policy-current",
     )
-    repository.record_block_run(
+    await repository.record_block_run(
         claim["run_id"], str(block_failed), status=BlockRunStatus.FAILED,
         failure_code=BlockFailureCode.QUERY_SOURCE_FAILED,
         failure_message="The approved source is unavailable.",
     )
-    run = repository.finish_manual_run(command.command_id)
+    run = await repository.finish_manual_run(command.command_id)
 
     assert run.status is RunStatus.PARTIAL
     assert run.blocks[0].artifact_id == str(replay_artifact_id)
@@ -411,11 +471,13 @@ def test_postgres_report_run_records_new_replay_lineage_and_partial_failure(repl
     assert run.blocks[0].request_id == str(replay_request_id)
     assert run.blocks[1].failure_code is BlockFailureCode.QUERY_SOURCE_FAILED
     with pytest.raises(KeyError):
-        PostgresReportRepository(replay_database, uuid4()).get_run(run.run_id)
+        await PostgresReportRepository(replay_database, uuid4()).get_run(run.run_id)
+    await dispose_database()
     engine.dispose()
 
 
-def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_replay(replay_database):
+@async_test
+async def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_replay(replay_database):
     engine = create_engine(replay_database)
     analysis_definition_id = uuid4()
     request_id = uuid4()
@@ -433,7 +495,7 @@ def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_replay(r
     report_id = uuid4()
     block_id = uuid4()
     repository = PostgresReportRepository(replay_database, OWNER)
-    repository.add_draft(ReportDefinitionVersion(
+    await repository.add_draft(ReportDefinitionVersion(
         str(report_id),
         1,
         DefinitionStatus.DRAFT,
@@ -453,9 +515,10 @@ def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_replay(r
                 '{"presentationMode":"standard","visibleViews":["summary","kpi","chart","table"]}',
             ),
         ),
+        orientation="landscape",
     ))
 
-    reloaded = repository.get_version(str(report_id), 1)
+    reloaded = await repository.get_version(str(report_id), 1)
     assert len(reloaded.blocks) == 1
     assert reloaded.blocks[0].type is BlockType.ARTIFACT
     assert reloaded.blocks[0].artifact_id == str(artifact_id)
@@ -468,7 +531,7 @@ def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_replay(r
             return b"%PDF-1.7\naggregate-artifact"
 
     with patch.dict(sys.modules, {"weasyprint": SimpleNamespace(HTML=FakeHTML)}):
-        approved = approve_report_document(
+        approved = await approve_report_document(
             repository,
             str(report_id),
             1,
@@ -477,7 +540,7 @@ def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_replay(r
         )
 
     assert approved.status is DefinitionStatus.APPROVED
-    document = repository.get_document(str(report_id), 1)
+    document = await repository.get_document(str(report_id), 1)
     assert document["pdf_bytes"].startswith(b"%PDF-")
     assert document["artifact_versions"] == [{
         "artifact_id": str(artifact_id),
@@ -489,13 +552,13 @@ def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_replay(r
     assert "<svg" in document["html_snapshot"]
     assert "<table>" in document["html_snapshot"]
 
-    command = repository.queue_manual_run(
+    command = await repository.queue_manual_run(
         str(report_id), 1, AS_OF, "aggregate-artifact-replay"
     )
-    claim = repository.claim_manual_run(command.command_id)
+    claim = await repository.claim_manual_run(command.command_id)
     assert len(claim["blocks"]) == 1
     assert claim["blocks"][0]["block_id"] == str(block_id)
-    repository.record_block_run(
+    await repository.record_block_run(
         claim["run_id"],
         str(block_id),
         status=BlockRunStatus.SUCCESS,
@@ -505,8 +568,9 @@ def test_postgres_aggregate_artifact_survives_save_pdf_and_single_block_replay(r
         snapshot_checksum="f" * 64,
         policy_version="policy-current",
     )
-    run = repository.finish_manual_run(command.command_id)
+    run = await repository.finish_manual_run(command.command_id)
     assert run.status is RunStatus.SUCCESS
     assert len(run.blocks) == 1
     assert run.blocks[0].artifact_id == str(artifact_id)
+    await dispose_database()
     engine.dispose()

@@ -1,0 +1,22 @@
+# 책임: CRM SQL Server의 runtime schema를 정적 table allowlist 없이 수집한다.
+# 접속·schema 탐색·DataHub sink 중 하나라도 실패하면 metadata를 준비 상태로 보지 않는다.
+source:
+  type: mssql
+  config:
+    host_port: ${CRM_DATAHUB_HOST_PORT}
+    database: ${CRM_DB_NAME}
+    username: ${CRM_READONLY_USER}
+    password: ${CRM_READONLY_PASSWORD}
+    env: ${DATAHUB_DATASET_ENV}
+    platform_instance: ${CRM_DATAHUB_PLATFORM_INSTANCE}
+    include_jobs: false
+    convert_urns_to_lowercase: true
+    convert_column_urns_to_lowercase: true
+    schema_pattern:
+      allow: ["${CRM_DATAHUB_SCHEMA}"]
+sink:
+  type: datahub-rest
+  config:
+    server: ${DATAHUB_GMS_URL}
+    token: ${DATAHUB_PUBLISH_API_TOKEN}
+    ca_certificate_path: ${DATAHUB_TLS_CA_FILE}

@@ -1,3 +1,5 @@
+"""revocation과 expiry를 DB에서 추적하는 인증 session persistence를 추가한다."""
+
 import os
 import re
 
@@ -18,6 +20,8 @@ def _runtime_role() -> str:
 
 
 def upgrade() -> None:
+    """token digest만 저장하는 auth session table과 runtime 최소권한을 생성한다."""
+
     op.execute("CREATE SCHEMA IF NOT EXISTS security")
     op.execute("""
         CREATE TABLE security.auth_sessions (
@@ -37,6 +41,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """auth session 권한을 회수하고 security persistence를 제거한다."""
+
     role = _runtime_role()
     op.execute(f"REVOKE SELECT, INSERT, UPDATE ON security.auth_sessions FROM {role}")
     op.execute(f"REVOKE USAGE ON SCHEMA security FROM {role}")

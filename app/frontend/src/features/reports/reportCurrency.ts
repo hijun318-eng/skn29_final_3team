@@ -1,3 +1,4 @@
+/** 보고서 통화 metric의 배율 선택과 손실 없는 표시를 담당하는 모듈이다. */
 import type { CurrencyDisplayPolicy, CurrencyDisplayUnit } from "./reportDocument";
 
 type CurrencyUnitDefinition = {
@@ -13,7 +14,7 @@ const CURRENCY_UNITS: Record<Exclude<CurrencyDisplayUnit, "auto">, CurrencyUnitD
   billion: Object.freeze({ divisor: 1_000_000_000, label: "십억 원" }),
 });
 
-export const REPORT_CURRENCY_OPTIONS = Object.freeze([
+/** 통화 배율 선택 UI가 사용하는 값·라벨 계약이다. */ export const REPORT_CURRENCY_OPTIONS = Object.freeze([
   Object.freeze({ value: "auto", label: "자동" }),
   Object.freeze({ value: "one", label: "원" }),
   Object.freeze({ value: "thousand", label: "천 원" }),
@@ -21,11 +22,13 @@ export const REPORT_CURRENCY_OPTIONS = Object.freeze([
   Object.freeze({ value: "hundredMillion", label: "억 원" }),
 ] as const);
 
+/** 서버 metric unit이 지원 통화 단위인지 엄격히 판별한다. */
 export function isCurrencyMetricUnit(unit?: string | null): boolean {
   const normalized = String(unit ?? "").replaceAll(" ", "").toLocaleUpperCase("en-US");
   return normalized === "원" || normalized === "₩" || normalized === "KRW" || normalized === "KORWON";
 }
 
+/** auto 정책을 실제 값 규모로 결정하며 비수치 입력은 원 단위로 닫는다. */
 export function resolveCurrencyDisplayUnit(
   values: readonly unknown[],
   policy: Pick<CurrencyDisplayPolicy, "displayUnit">,
@@ -41,10 +44,12 @@ export function resolveCurrencyDisplayUnit(
   return "one";
 }
 
+/** 확정 통화 배율의 한국어 표시 라벨을 반환한다. */
 export function currencyDisplayLabel(unit: Exclude<CurrencyDisplayUnit, "auto">): string {
   return CURRENCY_UNITS[unit].label;
 }
 
+/** 원본 금액을 선택 배율로 표시하며 유효하지 않은 값은 대시로 반환한다. */
 export function formatCurrencyAmount(
   value: unknown,
   unit: Exclude<CurrencyDisplayUnit, "auto">,

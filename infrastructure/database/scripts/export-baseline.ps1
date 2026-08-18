@@ -1,62 +1,90 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string]$OutputPath,
-    [string]$BaselineVersion = '2026-07-29.1'
+    [Parameter(Mandatory)] [string]$ReleaseId
 )
 
 $ErrorActionPreference = 'Stop'
+# 이 script는 live service inventory와 Git-tracked runtime input의 checksum만
+# 내보낸다. 질문·dataset 전용 manifest 또는 local secret snapshot은 만들지 않는다.
 $databaseRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = Resolve-Path (Join-Path $databaseRoot '..\..')
+$compose = Join-Path $repoRoot 'compose.yml'
+$semanticCompose = Join-Path $databaseRoot 'datahub\compose.semantic-search.yml'
+$exampleEnv = Join-Path $databaseRoot '.env.example'
 Set-Location $repoRoot
 
 if (git status --short) {
-    throw 'Baseline export requires a clean Git worktree.'
+    throw 'Baseline export requires a clean Git worktree so checksums bind to one commit.'
+}
+if ($ReleaseId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$') {
+    throw 'ReleaseId must be an operator-assigned stable identifier.'
 }
 
-$compose = Join-Path $databaseRoot 'compose.yml'
-$sqlFiles = Get-ChildItem (Join-Path $databaseRoot 'sql') -File -Recurse -Filter '*.sql' | Sort-Object FullName
+# Compose is the service/image source of truth. Deriving this inventory avoids
+# duplicating engine versions and service names in a manually maintained table.
+$composeJson = & docker compose --env-file $exampleEnv -f $compose `
+    -f $semanticCompose `
+    --profile full --profile semantic-search config --format json
+if ($LASTEXITCODE -ne 0) { throw 'Compose configuration could not be resolved.' }
+$resolvedCompose = $composeJson | ConvertFrom-Json
+
+$runtimeRoots = @(
+    'compose.yml',
+    'compose.app-postgres.override.yml',
+    'app/backend/compose.fragment.yml',
+    'app/backend/Dockerfile',
+    'app/backend/entrypoint.sh',
+    'app/frontend/compose.fragment.yml',
+    'infrastructure/database/compose.yml',
+    'infrastructure/database/sql/ddl',
+    'infrastructure/database/sql/app',
+    'infrastructure/database/security',
+    'infrastructure/database/trino/etc',
+    'infrastructure/database/datahub/compose.consumer.yml',
+    'infrastructure/database/datahub/compose.ingestion.yml',
+    'infrastructure/database/datahub/compose.semantic-search.yml',
+    'infrastructure/database/datahub/Dockerfile.semantic-content',
+    'infrastructure/database/datahub/recipes'
+)
+# Only tracked runtime inputs belong in release evidence. This deliberately
+# excludes ignored .env and principal secrets even when they exist beside the
+# provisioning scripts on the operator's machine.
+$trackedRuntimePaths = @(& git ls-files -- @runtimeRoots)
+if ($LASTEXITCODE -ne 0 -or -not $trackedRuntimePaths.Count) {
+    throw 'Tracked runtime inputs could not be resolved from Git.'
+}
+$runtimeFiles = $trackedRuntimePaths | ForEach-Object {
+    Get-Item -LiteralPath (Join-Path $repoRoot $_)
+}
+
 $lines = @(
-    '# Synthetic DB environment baseline',
+    '# Answervice runtime baseline',
     '',
-    "- ENV_BASELINE_VERSION: $BaselineVersion",
+    "- RELEASE_ID: $ReleaseId",
     "- BASE_BRANCH: $(git branch --show-current)",
     "- BASE_SHA: $(git rev-parse HEAD)",
-    '- TIMEZONE: Asia/Seoul',
-    '- SCHEMA_VERSION: 1.0.0',
-    '- SEED_VERSION: 20260729',
-    '- SCENARIO_VERSION: 1.0.0',
+    "- EXPORTED_AT_UTC: $([DateTimeOffset]::UtcNow.ToString('O'))",
     '',
-    '## Service contract',
+    '## Resolved services',
     '',
-    '| Service | Internal endpoint | Host port | Engine | DB / schema |',
-    '|---|---|---:|---|---|',
-    '| app-postgres | app-postgres:5432 | 15432 | PostgreSQL 16.13 | app_db / application schemas |',
-    '| pms-postgres | pms-postgres:5432 | 15433 | PostgreSQL 16.13 | pms_db / public |',
-    '| banquet-postgres | banquet-postgres:5432 | 15434 | PostgreSQL 16.13 | banquet_db / public |',
-    '| pos-mysql | pos-mysql:3306 | 13306 | MySQL 8.4.6 | pos_db |',
-    '| crm-mssql | crm-mssql:1433 | 11433 | SQL Server 2022 CU17 | crm_db / dbo |',
-    '| facility-clickhouse | facility-clickhouse:8123 | 18123, 19000 | ClickHouse 24.8.4.13 | facility / facility |',
-    '| trino | trino:8080 | 18080 | Trino 476 | source 5 catalog + serving |',
-    '',
-    '## Pinned images',
-    '',
-    '| Service | Image |',
-    '|---|---|',
-    '| app-postgres, pms-postgres, banquet-postgres | postgres:16.13-bookworm@sha256:472efd9a66f2b1f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60 |',
-    '| pos-mysql | mysql:8.4.6@sha256:869218921e61d6c3c89820955d63cca42971f0e3e6c1e2792247bbd944ebc6e9 |',
-    '| crm-mssql | mcr.microsoft.com/mssql/server:2022-CU17-ubuntu-22.04@sha256:d252932ef839c24c61c1139cc98f69c85ca774fa7c6bfaaa0015b7eb02b9dc87 |',
-    '| facility-clickhouse | clickhouse/clickhouse-server:24.8.4.13@sha256:b2c51583a6df9c19d613b579a03f237b92e0dfc63433b3fdb567ce223e0fb0f7 |',
-    '| trino | trinodb/trino:476@sha256:00125e40d063bc4816d165482f6044872b18b56026fb959d3b28ce1f96ffbbee |',
-    '',
-    '## Checksums',
-    '',
-    '| Path | SHA256 |',
-    '|---|---|',
-    "| infrastructure/database/compose.yml | $((Get-FileHash $compose -Algorithm SHA256).Hash) |"
+    '| Service | Immutable image/build source | Profiles |',
+    '|---|---|---|'
 )
-foreach ($file in $sqlFiles) {
+foreach ($property in $resolvedCompose.services.PSObject.Properties | Sort-Object Name) {
+    $service = $property.Value
+    $source = if ($service.image) { $service.image } elseif ($service.build) {
+        "build:$($service.build.context):$($service.build.dockerfile)"
+    } else { 'compose-defined' }
+    $profiles = @($service.profiles) -join ','
+    $lines += "| $($property.Name) | $source | $profiles |"
+}
+
+$lines += @('', '## Runtime checksums', '', '| Path | SHA256 |', '|---|---|')
+foreach ($file in $runtimeFiles | Sort-Object FullName -Unique) {
     $relative = $file.FullName.Substring($repoRoot.Path.Length + 1).Replace('\', '/')
-    $lines += "| $relative | $((Get-FileHash $file.FullName -Algorithm SHA256).Hash) |"
+    $hash = (Get-FileHash $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    $lines += "| $relative | $hash |"
 }
 
 $outputParent = Split-Path -Parent $OutputPath

@@ -1,4 +1,4 @@
-"""Allow one aggregate Analysis Artifact to remain one Report block."""
+"""aggregate Analysis Artifact 하나를 Report block 하나로 그대로 보존할 수 있게 한다."""
 
 from alembic import op
 
@@ -10,6 +10,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """artifact block type과 aggregate display_kind를 허용하도록 constraint를 확장한다."""
+
     op.execute(
         "ALTER TABLE report_v1.report_blocks "
         "DROP CONSTRAINT report_block_type_check, "
@@ -41,6 +43,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """새 block type row가 없음을 확인한 뒤 이전 table/chart/text 계약으로 복원한다."""
+
     # Refuse a lossy downgrade. A saved aggregate block must be explicitly
     # converted by the application before returning to the old schema.
     op.execute(

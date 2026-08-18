@@ -1,14 +1,15 @@
 {
   "catalogs": [
-    {"user": "hotel_synthetic_setup", "catalog": "serving", "allow": "all"},
-    {"user": "hotel_synthetic_setup", "catalog": "(pms|pos|crm|facility|banquet)", "allow": "all"},
+    {"user": "answervice_platform_admin", "catalog": "serving", "allow": "all"},
+    {"user": "answervice_platform_admin", "catalog": "(pms|pos|crm|facility|banquet)", "allow": "all"},
     {"user": "datahub_ingestion", "catalog": "system", "allow": "read-only"},
+    {"user": "datahub_ingestion", "catalog": "(serving|pms|pos|crm|facility|banquet)", "allow": "read-only"},
+    {"user": "answervice_runtime", "catalog": "(serving|pms|pos|crm|facility|banquet)", "allow": "read-only"},
     {"catalog": "system", "allow": "none"},
-    {"catalog": "(serving|pms|pos|crm|facility|banquet)", "allow": "read-only"},
     {"catalog": ".*", "allow": "none"}
   ],
   "schemas": [
-    {"user": "hotel_synthetic_setup", "catalog": "serving", "schema": "(analytics|reference)", "owner": true},
+    {"user": "answervice_platform_admin", "catalog": "serving", "schema": ".*", "owner": true},
     {"owner": false}
   ],
   "tables": [
@@ -27,14 +28,14 @@
       "privileges": []
     },
     {
-      "user": "hotel_synthetic_setup",
+      "user": "answervice_platform_admin",
       "catalog": "serving",
-      "schema": "(analytics|reference)",
+      "schema": ".*",
       "table": ".*",
       "privileges": ["SELECT", "INSERT", "DELETE", "UPDATE", "OWNERSHIP", "GRANT_SELECT"]
     },
     {
-      "user": "hotel_synthetic_setup",
+      "user": "answervice_platform_admin",
       "catalog": "(pms|pos|crm|facility|banquet)",
       "schema": ".*",
       "table": ".*",
@@ -47,6 +48,14 @@
       "privileges": []
     },
     {
+      "user": "datahub_ingestion",
+      "catalog": "(serving|pms|pos|crm|facility|banquet)",
+      "schema": ".*",
+      "table": ".*",
+      "privileges": ["SELECT"]
+    },
+    {
+      "user": "answervice_runtime",
       "catalog": "(serving|pms|pos|crm|facility|banquet)",
       "schema": ".*",
       "table": ".*",
@@ -58,9 +67,13 @@
     {"privileges": []}
   ],
   "queries": [
-    {"allow": ["execute"]}
+    {"user": "answervice_platform_admin", "allow": ["execute", "view", "kill"]},
+    {"user": "datahub_ingestion", "allow": ["execute"]},
+    {"user": "answervice_runtime", "allow": ["execute"]},
+    {"allow": []}
   ],
   "system_information": [
+    {"user": "answervice_platform_admin", "allow": ["read"]},
     {"allow": []}
   ]
 }

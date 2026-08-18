@@ -1,3 +1,4 @@
+/** 검증된 분석 표 field를 접근 가능한 Recharts 시각화로 표현하는 모듈이다. */
 import { useId, useMemo } from "react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Label, LabelList, Line,
@@ -21,6 +22,7 @@ const CHART_TYPE_LABELS = {
   "stacked-bar": "누적 막대",
 };
 
+/** 서버 차트 타입의 표기 차이만 정규화하며 미지원 타입은 null로 fail-closed 처리한다. */
 export function normalizeChartType(value) {
   const normalized = String(value ?? "").trim().toLocaleLowerCase("en-US").replaceAll("_", "-");
   return CHART_TYPES.has(normalized) ? normalized : null;
@@ -43,10 +45,12 @@ function chartNumber(value) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+/** 차트 계약을 충족하지 못한 입력을 임의 시각화하지 않고 상태 설명으로 닫는다. */
 function ChartFallback({ title = "차트를 표시할 수 없습니다.", children }) {
   return <div className="enterprise-chart-fallback" role="status"><b>{title}</b><span>{children}</span></div>;
 }
 
+/** 활성 payload의 검증된 series만 값 formatter와 함께 표시한다. */
 function ChartTooltip({ active, label, payload, series, valueFormatter }) {
   if (!active || !payload?.length) return null;
   const visible = payload.filter((item) => item.value !== undefined && item.value !== null);
@@ -61,6 +65,7 @@ function ChartTooltip({ active, label, payload, series, valueFormatter }) {
   </div>;
 }
 
+/** Recharts가 제공한 중심 좌표가 있을 때만 donut 합계 라벨을 렌더링한다. */
 function DonutCenterLabel({ viewBox, value, unit }) {
   if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) return null;
   return <g aria-hidden="true">
@@ -69,6 +74,7 @@ function DonutCenterLabel({ viewBox, value, unit }) {
   </g>;
 }
 
+/** 검증된 필드·수치 계열만 렌더링하고 계약 불일치 시 원본 표를 가리키는 상태 UI를 반환한다. */
 export function EnterpriseChart({
   data = [],
   xKey,

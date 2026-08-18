@@ -1,5 +1,9 @@
+SUPERSEDED / 실행 금지
+이 문서는 2026-08-14 시점의 파생 프롬프트이며 현재 구현 지시나 런타임 계약으로 사용하지 않는다.
+현행 작업 규칙은 저장소 루트 AGENTS.md, 제품 기준은 docs/product/, 검증 상태는 docs/architecture/production-integrity-audit.md를 따른다.
+
 Answervice 엔터프라이즈 목표기능 구현 프롬프트
-문서 상태: READY TO USE
+문서 상태: ARCHIVED — REFERENCE ONLY
 작성 기준일: 2026-08-14
 
 사용 방법
@@ -27,7 +31,7 @@ sLLM/GPT 출력과 외부 metadata는 모두 비신뢰 입력이다. LLM의 Metr
 2. docs/e2e_mvp/README.md
 3. docs/e2e_mvp/derived/01_MVP_PRD.md
 4. docs/e2e_mvp/derived/02_Golden_Path_유저플로우.md
-5. docs/e2e_mvp/derived/03_E2E_아키텍처_및_계약.md
+5. docs/product/03_아키텍처.md
 6. docs/e2e_mvp/derived/04_P0_사용자기능_요구사항_및_검증계획.txt
 7. docs/e2e_mvp/derived/21_AI_작업_인수인계_현재진행상황.md
 8. docs/e2e_mvp/derived/V4_통합_개발계획.md

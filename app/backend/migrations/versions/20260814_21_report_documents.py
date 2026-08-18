@@ -1,4 +1,4 @@
-"""Freeze confirmed Report HTML/PDF documents and Artifact versions."""
+"""확정된 Report HTML/PDF document와 Artifact version snapshot을 불변 보관한다."""
 
 import os
 import re
@@ -20,6 +20,8 @@ def _runtime_role() -> str:
 
 
 def upgrade() -> None:
+    """불변 report document table·mutation 차단 trigger·읽기/삽입 권한을 추가한다."""
+
     op.execute(
         """
         CREATE TABLE report_v1.report_documents (
@@ -61,6 +63,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """document 권한·table·mutation 차단 function을 안전한 역순으로 제거한다."""
+
     role = _runtime_role()
     op.execute(f"REVOKE SELECT, INSERT ON report_v1.report_documents FROM {role}")
     op.execute("DROP TABLE report_v1.report_documents")

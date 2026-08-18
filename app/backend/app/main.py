@@ -1,3 +1,5 @@
+"""FastAPI control plane의 middleware, router, 수명주기와 안전한 오류 envelope를 조립한다."""
+
 from __future__ import annotations
 
 import os
@@ -14,6 +16,7 @@ from app.api.router import _controller, execution_gate, router
 from app.api.report_router import report_router
 from app.api.mcp_router import mcp_router
 from app.context import ContextValidationError, request_context, valid_trace_id
+from app.database import dispose_database
 from app.contracts import (
     EmptyData,
     ErrorBody,
@@ -54,11 +57,23 @@ def _allowed_origins() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    await report_scheduler.start(_controller(), execution_gate)
+    """앱 수명 동안 report scheduler를 구동하고 종료 시 자원을 역순으로 정리한다.
+
+    scheduler 중지, model/data transport 종료, controller cache 해제, DB pool 폐기를 중첩된
+    ``finally``로 보장해 앞선 cleanup 실패가 뒤 자원 누수로 번지지 않게 한다.
+    """
     try:
+        await report_scheduler.start(_controller(), execution_gate)
         yield
     finally:
-        await report_scheduler.stop()
+        try:
+            await report_scheduler.stop()
+        finally:
+            try:
+                await _controller().aclose()
+            finally:
+                _controller.cache_clear()
+                await dispose_database()
 
 
 app = FastAPI(
@@ -74,7 +89,6 @@ app.add_middleware(
     allow_headers=[
         "Authorization",
         "Content-Type",
-        "X-As-Of",
         "X-Contract-Version",
         "X-Role",
         "X-Timezone",
@@ -93,6 +107,11 @@ app.include_router(mcp_router)
 
 @app.middleware("http")
 async def request_context_header(request: Request, call_next):
+    """각 HTTP 요청에 server request ID와 검증된 trace ID를 부여해 응답 header까지 전파한다.
+
+    잘못된 외부 trace는 state에 표시하고 새 trace로 격리해 공격자가 임의 문자열을 log·error
+    correlation 식별자로 고정하지 못하게 한다.
+    """
     request.state.request_id = uuid4()
     supplied_trace_id = request.headers.get("X-Trace-Id")
     request.state.trace_id_invalid = bool(
@@ -111,6 +130,7 @@ async def request_context_header(request: Request, call_next):
 
 @app.exception_handler(ContextValidationError)
 async def context_error(request: Request, exc: ContextValidationError) -> JSONResponse:
+    """권한·계약 Context의 typed 오류 code와 안전한 메시지를 공통 오류 envelope로 변환한다."""
     body = ErrorResponse(
         data=EmptyData(),
         meta=response_meta(request_context(request)),
@@ -121,6 +141,7 @@ async def context_error(request: Request, exc: ContextValidationError) -> JSONRe
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """FastAPI body/header 검증 오류에서 누락 필드만 추출해 typed 422 응답을 만든다."""
     context = request_context(request)
     missing = tuple(
         sorted(
@@ -145,6 +166,7 @@ async def validation_error(request: Request, exc: RequestValidationError) -> JSO
 
 @app.exception_handler(StarletteHTTPException)
 async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """내부 HTTP detail을 노출하지 않고 상태별 공개 error code와 메시지로 정규화한다."""
     context = request_context(request)
     code, message = _HTTP_ERROR_MAP.get(
         exc.status_code,
@@ -164,6 +186,7 @@ async def http_error(request: Request, exc: StarletteHTTPException) -> JSONRespo
 
 @app.exception_handler(Exception)
 async def internal_error(request: Request, _exc: Exception) -> JSONResponse:
+    """예상하지 못한 예외의 내용은 숨기고 request 추적 정보가 있는 typed 500만 반환한다."""
     context = request_context(request)
     body = ErrorResponse(
         data=EmptyData(),

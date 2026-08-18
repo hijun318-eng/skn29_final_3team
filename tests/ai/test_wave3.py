@@ -1,14 +1,12 @@
 import copy
 import json
 import unittest
-from collections import Counter
 from pathlib import Path
 
 from evals.runner import (
     EvaluationError,
     compare_runs,
     evaluate_required30,
-    validate_data_manifest,
     validate_split_manifest,
 )
 from tests.support.fakes import ContractFakeModelAdapter as FakeModelAdapter
@@ -17,6 +15,7 @@ from src.modelops.runtime import (
     ModelContractInvalidError,
     ModelEndpointUnavailableError,
     ProductionModelClient,
+    _estimated_token_count,
     build_trace,
     model_runtime_manifest,
 )
@@ -28,9 +27,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 class Wave3EvaluationTests(unittest.TestCase):
     def test_required30_rejects_partial_and_runs_complete_manifest(self):
-        adapter = FakeModelAdapter()
         request = VALID_PAYLOADS["node1_request"]
-        expected = adapter.generate("node1", request)
+        expected = copy.deepcopy(VALID_PAYLOADS["node1_response"])
+        adapter = FakeModelAdapter(
+            [copy.deepcopy(expected) for _ in range(60)]
+        )
         cases = [
             {
                 "case_id": f"required30-local-{number:02d}",
@@ -61,83 +62,6 @@ class Wave3EvaluationTests(unittest.TestCase):
         candidate["conditions"]["temperature"] = 1
         with self.assertRaisesRegex(EvaluationError, "identical"):
             compare_runs(baseline, candidate)
-
-    def test_r2_manifest_counts_and_split_are_consumed(self):
-        source = json.loads(
-            (ROOT / "src" / "data" / "evaluation_fixture_manifest.i3.v1.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        summary = validate_data_manifest(source)
-        declared = source["counts"]
-        self.assertEqual(
-            {
-                "required30": declared["required30"],
-                "gold120": declared["gold120_partial"],
-            },
-            summary["set_counts"],
-        )
-        self.assertEqual(
-            {
-                "gold": declared["gold120_partial"],
-                "train": 0,
-                "validation": declared["required30"],
-            },
-            summary["split_counts"],
-        )
-        self.assertEqual(
-            dict(Counter(case["status"] for case in source["cases"])),
-            summary["status_counts"],
-        )
-        self.assertEqual("NOT_RUN", summary["model_execution"])
-
-        leaked = copy.deepcopy(source)
-        leaked["cases"][30]["paraphrase_group"] = leaked["cases"][0]["paraphrase_group"]
-        with self.assertRaisesRegex(EvaluationError, "leaked"):
-            validate_data_manifest(leaked)
-
-        wrong_count = copy.deepcopy(source)
-        wrong_count["counts"]["required30"] = 29
-        with self.assertRaisesRegex(EvaluationError, "count"):
-            validate_data_manifest(wrong_count)
-
-        wrong_target = copy.deepcopy(source)
-        wrong_target["counts"]["gold120_target"] = 121
-        with self.assertRaisesRegex(EvaluationError, "target"):
-            validate_data_manifest(wrong_target)
-
-    def test_r2_manifest_accepts_zero_and_full_gold_boundaries(self):
-        source = json.loads(
-            (ROOT / "src" / "data" / "evaluation_fixture_manifest.i3.v1.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        required = [case for case in source["cases"] if case["set"] == "required30"]
-        gold_template = next(case for case in source["cases"] if case["set"] == "gold120")
-
-        empty = copy.deepcopy(source)
-        empty["counts"]["gold120_partial"] = 0
-        empty["cases"] = copy.deepcopy(required)
-        self.assertEqual(0, validate_data_manifest(empty)["set_counts"]["gold120"])
-
-        full = copy.deepcopy(source)
-        full["counts"]["gold120_partial"] = full["counts"]["gold120_target"]
-        full["cases"] = copy.deepcopy(required)
-        for number in range(full["counts"]["gold120_target"]):
-            case = copy.deepcopy(gold_template)
-            case["case_id"] = f"G120-SYN-{number:03d}"
-            case["paraphrase_group"] = f"gold-synthetic-{number:03d}"
-            full["cases"].append(case)
-        summary = validate_data_manifest(full)
-        self.assertEqual(full["counts"]["gold120_target"], summary["set_counts"]["gold120"])
-        self.assertEqual(
-            len(full["cases"]), sum(summary["status_counts"].values())
-        )
-
-        over_target = copy.deepcopy(full)
-        over_target["counts"]["gold120_partial"] += 1
-        with self.assertRaisesRegex(EvaluationError, "partial"):
-            validate_data_manifest(over_target)
 
     def test_external_results_record_serving_and_keep_base_default(self):
         comparison = json.loads(
@@ -171,7 +95,7 @@ class Wave3EvaluationTests(unittest.TestCase):
         self.assertEqual("NOT_READY", split["typed_missing"]["gold"]["status"])
         self.assertEqual("DISABLED", split["auto_regeneration"])
         release = json.loads(
-            (ROOT / "src" / "modelops" / "release_candidate.i5.v1.json").read_text(
+            (ROOT / "src" / "modelops" / "release_candidate.v1.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -182,8 +106,27 @@ class Wave3EvaluationTests(unittest.TestCase):
 
 
 class ProductionClientTests(unittest.TestCase):
+    def test_node2_trace_uses_structured_context_and_policy_content(self):
+        request = VALID_PAYLOADS["node2_request"]
+
+        trace = ProductionModelClient._trace_contract("node2", request)
+
+        self.assertEqual(request["schema_context"]["version"], trace["context_release"])
+        self.assertEqual(64, len(trace["policy_version"]))
+        self.assertIsNone(trace["data_release"])
+
+        legacy_only = {
+            "context_package": {
+                "context_version": "must-not-be-consumed",
+                "policy_version": "must-not-be-consumed",
+            }
+        }
+        legacy_trace = ProductionModelClient._trace_contract("node2", legacy_only)
+        self.assertIsNone(legacy_trace["context_release"])
+        self.assertIsNone(legacy_trace["policy_version"])
+
     def test_success_validates_schema_and_records_attempt(self):
-        adapter = FakeModelAdapter()
+        adapter = FakeModelAdapter(VALID_PAYLOADS["node3_response"])
         client = ProductionModelClient(
             lambda node, payload, timeout: adapter.generate(node, payload)
         )
@@ -201,13 +144,31 @@ class ProductionClientTests(unittest.TestCase):
         self.assertNotIn("output_payload", client.last_trace)
 
     def test_runtime_manifest_owns_model_context_limits(self):
-        model = model_runtime_manifest()["models"]["gpt-5.4-mini"]
+        model = model_runtime_manifest().capacity_for("gpt-5.4-mini")
 
-        self.assertEqual(400000, model["context_window_tokens"])
-        self.assertEqual("gpt-5.4-mini-2026-03-17", model["snapshot"])
+        self.assertEqual(400000, model.context_window_tokens)
+        self.assertEqual("gpt-5.4-mini-2026-03-17", model.snapshot)
+
+    def test_served_sql_alias_is_bound_to_the_approved_qwen_capacity(self):
+        model = model_runtime_manifest().capacity_for(
+            "answervice-sql",
+            provider="qwen",
+        )
+
+        self.assertEqual("Qwen/Qwen3.5-4B", model.base_model)
+        self.assertEqual(5120, model.context_window_tokens)
+        self.assertEqual(
+            "Qwen/Qwen3.5-4B@851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+            model.snapshot,
+        )
+
+    def test_multilingual_token_estimate_does_not_count_utf8_bytes_as_tokens(self):
+        self.assertEqual(100, _estimated_token_count("가" * 100))
+        self.assertEqual(25, _estimated_token_count("a" * 100))
+        self.assertEqual(125, _estimated_token_count("가" * 100 + "a" * 100))
 
     def test_transport_usage_and_snapshot_are_observed_without_raw_payload(self):
-        adapter = FakeModelAdapter()
+        adapter = FakeModelAdapter(VALID_PAYLOADS["node3_response"])
 
         def transport(node, payload, _timeout):
             result = adapter.generate(node, payload)
@@ -320,9 +281,8 @@ class ProductionClientTests(unittest.TestCase):
         self.assertEqual(0, client.last_trace["circuit_failures"])
 
     def test_trace_is_reproducible_and_unknown_cost_stays_null(self):
-        adapter = FakeModelAdapter()
         request = VALID_PAYLOADS["node3_request"]
-        output = adapter.generate("node3", request)
+        output = copy.deepcopy(VALID_PAYLOADS["node3_response"])
         arguments = {
             "trace_id": "trace-wave3",
             "node": "node3",

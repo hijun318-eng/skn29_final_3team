@@ -87,3 +87,8 @@ chroma/
 *.bin
 models/cache/
 mlruns/
+
+# Custom exclusions
+scratch/
+.agents/
+infrastructure/database/releases/

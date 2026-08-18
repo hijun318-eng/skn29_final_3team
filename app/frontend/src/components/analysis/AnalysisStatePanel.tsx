@@ -1,3 +1,4 @@
+/** 분석 실행 상태와 governed 결과·근거를 사용자 화면으로 표현하는 모듈이다. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CircleX, Clock3, FileWarning, LoaderCircle, RotateCcw, SearchX, StopCircle } from "lucide-react";
 import { EnterpriseChart } from "../charts/EnterpriseChart";
@@ -23,28 +24,6 @@ const SOURCE_STATUS: Record<string, string> = {
   SUCCEEDED: "정상", FAILED: "실패", PARTIAL: "일부 응답",
 };
 
-const COLUMN_LABELS: Record<string, string> = {
-  month: "월",
-  business_date: "일자",
-  date: "일자",
-  property_id: "호텔",
-  membership_grade_code: "회원 등급",
-  room_type_code: "객실 유형",
-  actual_checkout_at: "체크아웃 시점",
-  ordered_at: "주문 시점",
-};
-
-const FILTER_LABELS: Record<string, string> = {
-  void_flag: "취소 건",
-  is_forecast: "예측값",
-  property_id: "호텔",
-  stay_status: "투숙 상태",
-  house_use_flag: "사내 사용",
-  complimentary_flag: "무료 제공",
-  membership_grade_code: "고객 등급",
-  grade_code: "고객 등급",
-};
-
 const REQUIRED_ACTION_COPY: Record<string, string> = {
   RETRY: "잠시 후 같은 질문을 다시 분석해 주세요.",
   AUTHENTICATE: "로그인한 뒤 다시 시도해 주세요.",
@@ -68,6 +47,7 @@ function progressMessage(elapsed: number) {
   return "질문은 그대로 보존됩니다. 현재 상태와 경과 시간을 자동으로 갱신합니다.";
 }
 
+/** 서버 내부 단계를 추측하지 않고 경과시간과 취소 가능한 진행 상태만 표시한다. */
 function AnalysisProgress({ elapsed }: { elapsed: number }) {
   return <section className="analysis-trace analysis-trace--indeterminate" aria-label="분석 진행 상태" aria-live="polite">
     <header><div><small>현재 상태</small><h3>승인된 범위에서 분석하고 있습니다</h3></div><span>{elapsed}초 경과</span></header>
@@ -79,8 +59,8 @@ function AnalysisProgress({ elapsed }: { elapsed: number }) {
 function columnLabel(column: string, run: AnalysisRun) {
   return run.metrics.find((item) => item.resultField === column)?.label
     ?? run.evidence?.metrics.find((item) => item.resultField === column)?.label
-    ?? COLUMN_LABELS[column]
-    ?? "구분";
+    // 승인된 metric label이 없으면 canonical result field를 보존해 의미를 임의 추론하지 않는다.
+    ?? column;
 }
 
 function columnUnit(column: string, run: AnalysisRun) {
@@ -95,38 +75,25 @@ function formatPeriod(run: AnalysisRun) {
   return `${period.start.replaceAll("-", ".")}부터 ${period.endExclusive.replaceAll("-", ".")} 전까지`;
 }
 
-function formatFilterValue(field: string, value: unknown) {
-  const key = field.split(".").at(-1) ?? field;
-  if (["void_flag", "is_forecast", "house_use_flag", "complimentary_flag"].includes(key)) {
-    return ["false", "0", "no", "아니요"].includes(String(value).toLocaleLowerCase("ko-KR")) ? "제외" : "포함";
-  }
-  if (key === "stay_status" && value === "COMPLETED") return "투숙 완료";
+function formatFilterValue(value: unknown) {
   if (value === true) return "예";
   if (value === false) return "아니요";
   return String(value ?? "없음");
 }
 
 function filterLabel(field: string) {
-  const key = field.split(".").at(-1) ?? field;
-  return FILTER_LABELS[key] ?? key.replaceAll("_", " ");
+  return field;
 }
 
 function filterEntries(filters: Record<string, unknown>) {
   const seen = new Set<string>();
-  const excluded = new Set<string>();
   const entries = Object.entries(filters).flatMap(([key, value]) => {
-    const entry = { label: filterLabel(key), value: formatFilterValue(key, value) };
-    const normalizedKey = key.split(".").at(-1) ?? key;
-    if (["void_flag", "is_forecast", "house_use_flag", "complimentary_flag"].includes(normalizedKey) && entry.value === "제외") {
-      excluded.add(entry.label);
-      return [];
-    }
+    const entry = { label: filterLabel(key), value: formatFilterValue(value) };
     const signature = `${entry.label}:${entry.value}`;
     if (seen.has(signature)) return [];
     seen.add(signature);
     return [entry];
   });
-  if (excluded.size) entries.push({ label: "기본 제외", value: [...excluded].join("·") });
   return entries;
 }
 
@@ -158,6 +125,7 @@ function compareTableValues(left: unknown, right: unknown) {
   return String(left ?? "").localeCompare(String(right ?? ""), "ko", { numeric: true });
 }
 
+/** 서버가 정규화한 분석 상태와 근거를 렌더링하며, 불완전한 차트 계약은 표로만 fail-closed 표시한다. */
 export function AnalysisStatePanel({
   run,
   onSuggestion,

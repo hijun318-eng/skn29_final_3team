@@ -1,3 +1,4 @@
+/** 인증된 애플리케이션 셸의 세션·권한·라우팅·lazy loading 경계를 조정하는 모듈이다. */
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { AppHeader } from "./components/layout/AppHeader";
 import { AppSidebar } from "./components/layout/AppSidebar";
@@ -14,15 +15,18 @@ const PAGE_META = {
   notFound: ["페이지를 찾을 수 없습니다", "현재 제공되는 경로를 확인해 주세요."],
 };
 
+/** 알 수 없는 경로를 표시하고 유효한 분석 경로로만 복귀시킨다. */
 function NotFoundPage({ onNavigate }) {
   return <section className="not-found" aria-labelledby="not-found-title"><span>404</span><h2 id="not-found-title">지원하지 않는 경로입니다.</h2><button className="primary" onClick={() => onNavigate(PAGE_PATHS.chat)}>데이터 분석으로 이동</button></section>;
 }
 
+/** 세션 역할에 허용되지 않은 화면을 차단하고 가능한 허용 경로만 안내한다. */
 function RoleAccessPage({ role, onNavigate }) {
   const canManageReports = role === "report_admin";
   return <section className="not-found" aria-labelledby="role-access-title"><span>403</span><h2 id="role-access-title">이 화면에 접근할 권한이 없습니다.</h2><p>{canManageReports ? "현재 계정은 보고서 관리 기능만 사용할 수 있습니다." : "현재 계정에 허용된 서비스 메뉴가 없습니다."}</p>{canManageReports && <button className="primary" onClick={() => onNavigate(PAGE_PATHS.reports)}>보고서 관리로 이동</button>}</section>;
 }
 
+/** 세션·권한·라우팅 경계를 소유하며, 인증 확인 전에는 보호된 화면을 렌더링하지 않는다. */
 export function App() {
   const [session, setSession] = useState();
   const [sessionNotice, setSessionNotice] = useState("");

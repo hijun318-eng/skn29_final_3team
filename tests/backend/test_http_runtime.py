@@ -29,7 +29,6 @@ class FastApiRuntimeTest(unittest.TestCase):
         environment = os.environ.copy()
         environment["PYTHONPATH"] = os.pathsep.join([str(BACKEND), str(ROOT)])
         environment.pop("APP_RUNTIME_DATABASE_URL", None)
-        environment["AUTH_MODE"] = "test"
         environment["CORS_ALLOW_ORIGINS"] = (
             "http://localhost:5173,http://localhost:13000,"
             "http://192.168.0.15:13000"
@@ -112,7 +111,6 @@ class FastApiRuntimeTest(unittest.TestCase):
         }
         return {
             "Authorization": f"Bearer {tokens[role]}",
-            "X-As-Of": "2026-07-30",
             "X-Trace-Id": "runtime-test-trace",
             "X-Timezone": "Asia/Seoul",
             "X-Contract-Version": CONTRACT_VERSION,
@@ -128,12 +126,12 @@ class FastApiRuntimeTest(unittest.TestCase):
         parameters = schema["paths"]["/analysis"]["post"]["parameters"]
         names = {parameter["name"].lower() for parameter in parameters}
         expected = {
-            "x-as-of",
             "x-trace-id",
             "x-timezone",
             "x-contract-version",
         }
         self.assertTrue(expected.issubset(names))
+        self.assertNotIn("x-as-of", names)
         self.assertNotIn("authorization", names)
         self.assertNotIn("x-user-id", names)
         self.assertNotIn("x-role", names)
@@ -240,7 +238,7 @@ class FastApiRuntimeTest(unittest.TestCase):
 
     def test_browser_preflight_allows_only_configured_origin(self) -> None:
         requested_headers = {
-            "authorization", "content-type", "x-as-of", "x-contract-version",
+            "authorization", "content-type", "x-contract-version",
             "x-role", "x-timezone", "x-trace-id", "x-user-id",
         }
         for path, method in (
@@ -290,16 +288,21 @@ class FastApiRuntimeTest(unittest.TestCase):
         )
 
     def test_analysis_preserves_context(self) -> None:
+        headers = self.context_headers()
+        headers["X-As-Of"] = "1900-01-01"
         status, response = self.request(
             "/analysis",
             method="POST",
-            headers=self.context_headers(),
+            headers=headers,
             body={"question": "오늘 객실 운영 상태를 요약해줘"},
         )
         self.assertEqual(200, status)
         self.assertEqual("SUCCEEDED", response["data"]["status"])
         self.assertEqual("runtime-test-trace", response["meta"]["trace_id"])
         self.assertEqual(CONTRACT_VERSION, response["meta"]["contract_version"])
+        self.assertNotEqual(
+            "1900-01-01", response["data"]["result"]["evidence"]["as_of"]
+        )
 
     def test_analysis_progress_is_owner_scoped_and_terminal_cancel_is_rejected(self) -> None:
         headers = self.context_headers()
@@ -326,7 +329,12 @@ class FastApiRuntimeTest(unittest.TestCase):
             headers=headers,
         )
         self.assertEqual(200, status)
-        self.assertEqual(progress["data"], by_request["data"])
+        progress_data = dict(progress["data"])
+        by_request_data = dict(by_request["data"])
+        progress_elapsed = progress_data.pop("elapsed_seconds")
+        by_request_elapsed = by_request_data.pop("elapsed_seconds")
+        self.assertEqual(progress_data, by_request_data)
+        self.assertGreaterEqual(by_request_elapsed, progress_elapsed)
 
         status, _ = self.request(
             "/analysis/progress/runtime-progress-trace",
@@ -574,10 +582,13 @@ class RealTemplateHttpRuntimeTest(FastApiRuntimeTest):
         environment.update(
             {
                 "PYTHONPATH": os.pathsep.join([str(BACKEND), str(ROOT)]),
-                "AUTH_MODE": "test",
                 "TEST_REAL_DATA_PLATFORM": "1",
-                "TRINO_URL": f"http://127.0.0.1:{cls.trino.server_port}",
-                "TRINO_USER": "synthetic-runtime",
+                "TRINO_URL": "https://trino.test:8443",
+                "TRINO_TEST_UPSTREAM_URL": (
+                    f"http://127.0.0.1:{cls.trino.server_port}"
+                ),
+                "TRINO_RUNTIME_USER": "synthetic-runtime",
+                "TRINO_RUNTIME_PASSWORD": "test-password",
                 "CORS_ALLOW_ORIGINS": (
                     "http://localhost:5173,http://localhost:13000,"
                     "http://192.168.0.15:13000"
@@ -628,7 +639,7 @@ class RealTemplateHttpRuntimeTest(FastApiRuntimeTest):
     def test_real_template_positive_role_partial_and_cors(self) -> None:
         body = {
             "question": "recognized room revenue summary",
-            "template_id": "weekly-room-operations",
+            "template_id": "approved-analysis-template",
             "parameters": {
                 "period_start": "2026-05-01",
                 "period_end_exclusive": "2026-07-01",

@@ -1,0 +1,17 @@
+# 책임: POS MySQL에서 지정된 runtime database의 현재 schema를 발견해 수집한다.
+# source 연결 또는 DataHub 발행이 불완전하면 후속 semantic 작업을 허용하지 않는다.
+source:
+  type: mysql
+  config:
+    host_port: ${POS_DATAHUB_HOST_PORT}
+    database: ${POS_DATAHUB_DATABASE}
+    username: ${POS_READONLY_USER}
+    password: ${POS_READONLY_PASSWORD}
+    env: ${DATAHUB_DATASET_ENV}
+    platform_instance: ${POS_DATAHUB_PLATFORM_INSTANCE}
+sink:
+  type: datahub-rest
+  config:
+    server: ${DATAHUB_GMS_URL}
+    token: ${DATAHUB_PUBLISH_API_TOKEN}
+    ca_certificate_path: ${DATAHUB_TLS_CA_FILE}

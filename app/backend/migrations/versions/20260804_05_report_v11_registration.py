@@ -1,4 +1,4 @@
-"""Register REPORT-v1.1 layout and server-owned manual commands."""
+"""REPORT-v1.1 layout 계약과 server 소유 manual command를 등록한다."""
 
 import os
 import re
@@ -20,6 +20,8 @@ def _runtime_role() -> str:
 
 
 def upgrade() -> None:
+    """Report block layout constraint와 수동 실행 command persistence를 추가한다."""
+
     op.execute("ALTER TABLE report_v1.report_blocks ADD COLUMN block_type varchar(16)")
     op.execute("ALTER TABLE report_v1.report_blocks ADD COLUMN x smallint")
     op.execute("ALTER TABLE report_v1.report_blocks ADD COLUMN y smallint")
@@ -78,6 +80,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """추가 권한·command table·layout column을 의존성 역순으로 제거한다."""
+
     role = _runtime_role()
     op.execute(f"REVOKE DELETE ON report_v1.report_blocks FROM {role}")
     op.execute(

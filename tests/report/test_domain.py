@@ -12,7 +12,7 @@ from src.report.domain import (
     ReportRun,
     RunStatus,
 )
-from src.report.repository import InMemoryReportRepository
+from tests.support.report_repository import InMemoryReportRepository
 
 
 class ReportDomainTest(unittest.TestCase):

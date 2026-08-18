@@ -25,7 +25,6 @@
 
 - `e2e_mvp/source/`: 사용자가 지정한 원문. 이번 재정의의 근거이지만 최신 제품 계약은 아니다.
 - `e2e_mvp/derived/`: 과거 시점의 작업 문서와 실행 기록. 현재 성공을 자동 증명하지 않는다.
-- `Answervice_기획서.md`: 삭제하지 않고 보존하는 과거 종합 기획서다.
 - `reference/Walkerhill_V4.1_SQL_검토.md`: 실행 금지 판정을 포함한 과거 SQL 후보의 읽기 전용 감사 기록이다.
 - `reference/P0_실행목표_프롬프트.md`: 이전 기준선에서 파생된 실행 금지 archive다. 새 작업은 저장소 루트 `AGENTS.md`와 제품 기준 문서를 직접 따른다.
 - `reference/멀티턴_발화이해_BP_벤치마크.md`: Dialogflow CX, KLUE-DST, CheckList, BFCL, Structured Outputs와 eval BP를 우리 Turn·slot·상태/경로 회귀 계약으로 번역한 참고 자료다. 공개 점수 자체는 제품 Gate가 아니다.

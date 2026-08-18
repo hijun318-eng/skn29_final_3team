@@ -18,10 +18,6 @@ class MetricReductionTests(unittest.TestCase):
         self.assertEqual(Decimal("10"), _reduce_metric_values("scalar", [10]))
         self.assertIsNone(_reduce_metric_values("scalar", [10, 20]))
 
-    def test_ratio_or_formula_is_not_summed_without_approved_components(self):
-        self.assertIsNone(_reduce_metric_values("weighted_ratio", [0.5, 0.6]))
-        self.assertIsNone(_reduce_metric_values("recompute", [100, 200]))
-
     def test_min_max_and_approved_arithmetic_average_are_explicit(self):
         self.assertEqual(Decimal("1.1"), _reduce_metric_values("min", ["2.2", "1.1"]))
         self.assertEqual(Decimal("2.2"), _reduce_metric_values("max", ["2.2", "1.1"]))

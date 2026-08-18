@@ -1,4 +1,4 @@
-"""Persist manual Report execution and failed block evidence."""
+"""수동 Report 실행 상태와 실패한 block의 증거를 영속화한다."""
 
 from alembic import op
 
@@ -10,6 +10,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """partial·failed run을 표현할 nullable evidence와 command-run 연결을 추가한다."""
+
     op.execute(
         "ALTER TABLE report_v1.report_block_runs "
         "ALTER COLUMN artifact_id DROP NOT NULL, "
@@ -29,6 +31,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """실패 상태 확장을 제거하고 기존 필수 evidence 계약으로 되돌린다."""
+
     op.execute(
         "ALTER TABLE report_v1.report_manual_run_commands "
         "DROP COLUMN run_id, DROP CONSTRAINT report_manual_run_commands_status_check, "

@@ -1,3 +1,5 @@
+"""Analysis request 상태 계약에 명시적인 CANCELLED 종결 상태를 추가한다."""
+
 from alembic import op
 
 
@@ -15,6 +17,8 @@ _BASE_STATUSES = (
 
 
 def upgrade() -> None:
+    """기존 상태 constraint를 CANCELLED를 포함하는 계약으로 원자 교체한다."""
+
     op.execute(
         f"ALTER TABLE chat.analysis_requests "
         f"DROP CONSTRAINT IF EXISTS {_STATUS_CONSTRAINT}"
@@ -26,6 +30,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """CANCELLED row가 없음을 확인한 뒤 이전 상태 constraint로 되돌린다."""
+
     op.execute(
         "UPDATE chat.analysis_requests SET status = 'FAILED' "
         "WHERE status = 'CANCELLED'"

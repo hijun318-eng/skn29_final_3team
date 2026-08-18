@@ -1,3 +1,4 @@
+/** artifact library tile과 전체 artifact block 조합 UI를 제공하는 모듈이다. */
 import { GripVertical, Layers3 } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 
@@ -11,6 +12,7 @@ function shortSummary(summary) {
   return value.length > 240 ? `${value.slice(0, 239).trimEnd()}…` : value;
 }
 
+/** governed artifact source의 근거 준비 상태를 표시하고 준비된 항목만 삽입하게 한다. */
 export function ReportArtifactLibraryTile({ source, artifact, disabled = false, onAdd }) {
   const dragId = `artifact:${source.artifactId}`;
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
@@ -33,6 +35,7 @@ export function ReportArtifactLibraryTile({ source, artifact, disabled = false, 
   </article>;
 }
 
+/** 전체 artifact의 선택 view를 근거 상태·통화 정책과 함께 한 블록으로 렌더링한다. */
 export function ReportWholeArtifactBlock({ block, artifact, artifactState, currency, renderView }) {
   if (!artifact || artifactState?.status !== "success") return renderView("table", { height: 5 });
   const settings = wholeArtifactSettings(block) || { visibleViews: WHOLE_ARTIFACT_VIEWS };

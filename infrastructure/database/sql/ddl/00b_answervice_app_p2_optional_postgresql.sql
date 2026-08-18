@@ -1,3 +1,5 @@
+-- 책임: 명시적으로 선택한 P2 배포에만 tool/RAG/ML 저장 구조를 추가한다. pgvector
+-- prerequisite나 제약 생성이 실패하면 optional 기능을 부분 활성화하지 않는다.
 -- Answervice P2 optional PostgreSQL DDL
 -- prerequisite=vector; embedding_dimension=1024; schema_version=1.0.0
 \set ON_ERROR_STOP on
@@ -86,7 +88,7 @@ CREATE INDEX IF NOT EXISTS idx_rag_chunks_embedding_model ON rag.rag_chunks(embe
 
 COMMENT ON TABLE tooling.tool_registry IS 'P2 versioned tool contract; disabled before gate approval';
 COMMENT ON TABLE tooling.tool_runs IS 'P2 tool execution evidence';
-COMMENT ON TABLE rag.rag_documents IS 'P2 synthetic document versions';
+COMMENT ON TABLE rag.rag_documents IS 'Versioned retrieval documents and provenance';
 COMMENT ON TABLE rag.rag_chunks IS 'P2 retrieval chunks with vector(1024)';
 COMMENT ON TABLE ml.feature_sets IS 'P2 feature-set registration payload target';
 

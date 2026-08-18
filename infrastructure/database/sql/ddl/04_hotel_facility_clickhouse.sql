@@ -1,3 +1,5 @@
+-- 책임: facility source의 빈 ClickHouse table 계약과 정렬 key만 생성한다. 운영
+-- event는 외부 ingestion에서 오며 고정 fixture로 누락을 채우지 않는다.
 -- source_id=facility; engine=ClickHouse; database=facility
 -- ingestion_role=facility_ingest; query_role=facility_readonly
 -- datahub_platform_instance=facility; trino_catalog=facility
@@ -19,11 +21,10 @@ CREATE TABLE IF NOT EXISTS facility.facility_master (
     is_active UInt8,
     is_synthetic UInt8,
     source_updated_at DateTime64(3, 'UTC'),
-    CONSTRAINT ck_facility_master_hours CHECK close_hour > open_hour,
-    CONSTRAINT ck_facility_master_synthetic CHECK is_synthetic = 1
+    CONSTRAINT ck_facility_master_hours CHECK close_hour > open_hour
 ) ENGINE = MergeTree
 ORDER BY (property_id, facility_id)
-COMMENT 'Synthetic facility master';
+COMMENT 'Facility master';
 
 CREATE TABLE IF NOT EXISTS facility.facility_events (
     property_id String,
@@ -42,11 +43,10 @@ CREATE TABLE IF NOT EXISTS facility.facility_events (
     is_synthetic UInt8,
     source_updated_at DateTime64(3, 'UTC'),
     CONSTRAINT ck_facility_event_type CHECK event_type IN ('USAGE','INSPECTION','INCIDENT'),
-    CONSTRAINT ck_facility_event_nonnegative CHECK duration_minutes >= 0 AND amount >= 0,
-    CONSTRAINT ck_facility_event_synthetic CHECK is_synthetic = 1
+    CONSTRAINT ck_facility_event_nonnegative CHECK duration_minutes >= 0 AND amount >= 0
 ) ENGINE = MergeTree
 ORDER BY (property_id, facility_id, event_at, event_id)
-COMMENT 'Synthetic facility usage, inspection, and incident events';
+COMMENT 'Facility usage, inspection, and incident events';
 
 CREATE TABLE IF NOT EXISTS facility.hotel_staffing_daily (
     property_id String,
@@ -66,11 +66,10 @@ CREATE TABLE IF NOT EXISTS facility.hotel_staffing_daily (
     is_synthetic UInt8,
     source_updated_at DateTime64(3, 'UTC'),
     CONSTRAINT ck_staffing_hours CHECK scheduled_hours >= 0 AND worked_hours >= 0,
-    CONSTRAINT ck_staffing_vacancies CHECK vacancies <= approved_positions,
-    CONSTRAINT ck_staffing_synthetic CHECK is_synthetic = 1
+    CONSTRAINT ck_staffing_vacancies CHECK vacancies <= approved_positions
 ) ENGINE = MergeTree
 ORDER BY (property_id, business_date, department)
-COMMENT 'Synthetic daily staffing and labor cost';
+COMMENT 'Daily staffing and labor cost';
 
 CREATE TABLE IF NOT EXISTS facility.facility_resource_daily (
     property_id String,
@@ -88,23 +87,18 @@ CREATE TABLE IF NOT EXISTS facility.facility_resource_daily (
     is_synthetic UInt8,
     source_updated_at DateTime64(3, 'UTC'),
     CONSTRAINT ck_resource_nonnegative CHECK energy_kwh >= 0 AND water_m3 >= 0 AND waste_kg >= 0 AND resource_cost >= 0,
-    CONSTRAINT ck_resource_downtime CHECK downtime_hours >= 0 AND downtime_hours <= scheduled_hours,
-    CONSTRAINT ck_resource_synthetic CHECK is_synthetic = 1
+    CONSTRAINT ck_resource_downtime CHECK downtime_hours >= 0 AND downtime_hours <= scheduled_hours
 ) ENGINE = MergeTree
 ORDER BY (property_id, business_date, resource_scope)
-COMMENT 'Synthetic daily energy, water, waste, and resource cost';
+COMMENT 'Daily energy, water, waste, and resource cost';
 
 CREATE TABLE IF NOT EXISTS facility.schema_version (
     version String
 ) ENGINE = ReplacingMergeTree
 ORDER BY version;
-CREATE TABLE IF NOT EXISTS facility.seed_metadata (
-    seed UInt32,
-    data_class LowCardinality(String)
-) ENGINE = ReplacingMergeTree
-ORDER BY seed;
+-- DDL versioning is deterministic. Dataset/release provenance is intentionally
+-- not bootstrapped, because doing so would certify data that was never loaded.
 INSERT INTO facility.schema_version SELECT '1.0.0' WHERE NOT EXISTS (SELECT 1 FROM facility.schema_version WHERE version = '1.0.0');
-INSERT INTO facility.seed_metadata SELECT 20260729, 'synthetic' WHERE NOT EXISTS (SELECT 1 FROM facility.seed_metadata WHERE seed = 20260729);
 
 GRANT SELECT, INSERT, ALTER DELETE ON facility.* TO facility_ingest;
 GRANT SELECT ON facility.* TO facility_readonly;

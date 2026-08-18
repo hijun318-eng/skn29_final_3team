@@ -1,0 +1,139 @@
+/*
+ * 브라우저 인쇄와 canonical PDF가 동일한 물리 page 규칙을 공유한다.
+ * #root selector는 interactive SPA shell만 격리하며, server 최종 HTML은 report-only라
+ * browser shell selector에 의존하지 않는다.
+ */
+
+@page answer-report-portrait {
+  size: A4 portrait;
+  margin: 0;
+}
+
+@page answer-report-landscape {
+  size: A4 landscape;
+  margin: 0;
+}
+
+@media print {
+  body:has([data-report-render-root^="screen-"] .answer-report-canvas[data-report-mode]) {
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  body:has([data-report-render-root^="screen-"] .answer-report-canvas[data-report-mode])
+    #root :has(.answer-report-canvas[data-report-mode]) {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-inline-size: 0 !important;
+    max-inline-size: none !important;
+    overflow: visible !important;
+    background: transparent !important;
+  }
+
+  body:has([data-report-render-root^="screen-"] .answer-report-canvas[data-report-mode]) #root
+    *:not(.answer-report-canvas):not(.answer-report-canvas *):not(:has(.answer-report-canvas)) {
+    display: none !important;
+  }
+
+  body:has([data-report-render-root="screen-editor"] .answer-report-canvas[data-report-mode])
+    .notion-report-editor,
+  body:has([data-report-render-root="screen-editor"] .answer-report-canvas[data-report-mode])
+    .notion-editor-workspace {
+    inline-size: 100% !important;
+    max-inline-size: none !important;
+    display: block !important;
+    grid-column: 1 / -1 !important;
+    grid-template-columns: none !important;
+  }
+
+  .answer-report-canvas[data-report-mode] {
+    display: block;
+    inline-size: 100%;
+    padding: 0;
+    overflow: visible;
+    isolation: isolate;
+    background: transparent;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .answer-report-page-chrome,
+  [data-report-editor-chrome="true"] {
+    display: none !important;
+  }
+
+  .answer-report-page-viewport,
+  .answer-report-page-frame {
+    display: block;
+    inline-size: auto !important;
+    block-size: auto !important;
+    max-inline-size: none;
+    overflow: visible;
+  }
+
+  /* page는 물리 A4 경계를 유지한다. 중첩 내용은 editor/grid에 잘리지 않지만 sheet 밖으로 넘지 않는다. */
+  .answer-report-page {
+    overflow: hidden;
+    transform: none !important;
+    box-shadow: none;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .answer-report-page-viewport:last-child .answer-report-page {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .answer-report-page__header,
+  .answer-report-page__footer,
+  .answer-report-page__block {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .answer-report-canvas[data-report-mode] .answer-report-page__grid,
+  .answer-report-canvas[data-report-mode] .answer-report-page__block,
+  .answer-report-canvas[data-report-mode] .answer-report-page__block > .notion-block,
+  .answer-report-canvas[data-report-mode] .answer-report-page .generated-report-block,
+  .answer-report-canvas[data-report-mode] .report-whole-artifact,
+  .answer-report-canvas[data-report-mode] .report-whole-artifact-views,
+  .answer-report-canvas[data-report-mode] .report-whole-artifact-views > section,
+  .answer-report-canvas[data-report-mode] .analysis-table {
+    overflow: visible !important;
+  }
+
+  .answer-report-canvas[data-report-mode] .analysis-table {
+    max-inline-size: 100%;
+  }
+
+  .answer-report-canvas[data-report-mode] .analysis-table table {
+    inline-size: 100% !important;
+    max-inline-size: 100%;
+    table-layout: fixed !important;
+  }
+
+  .answer-report-canvas[data-report-mode] .analysis-table th,
+  .answer-report-canvas[data-report-mode] .analysis-table td {
+    min-inline-size: 0 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .answer-report-canvas[data-report-mode] .report-whole-artifact-heading b,
+  .answer-report-canvas[data-report-mode] .report-whole-artifact-kpis dt {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .answer-report-canvas[data-report-mode] .report-content-overflow-note {
+    display: none;
+  }
+
+  .answer-report-canvas--editor .answer-report-page__block {
+    border-radius: 0;
+    outline: 0;
+  }
+}

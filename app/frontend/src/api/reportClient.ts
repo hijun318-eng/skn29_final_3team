@@ -1,3 +1,4 @@
+/** 보고서 정의·실행·schedule·최종 asset HTTP 포트를 fail-closed로 제공하는 모듈이다. */
 import {
   REPORT_REQUEST_CONTEXT_VERSION,
   assertReportCurrencyDisplayUnit,
@@ -28,17 +29,13 @@ import { createUuid } from "../utils/createUuid.ts";
 type Fetch = typeof fetch;
 const env = import.meta.env ?? {};
 
+/** 초안 블록 교체와 함께 원자적으로 저장할 문서 표시 옵션이다. */
 export interface ReplaceDraftBlocksOptions {
   readonly orientation?: ReportOrientation;
   readonly currencyDisplayUnit?: ReportCurrencyDisplayUnit;
 }
 
-function seoulToday(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(new Date());
-}
-
+/** 보고서 HTTP 실패의 정책 조치와 trace를 손실 없이 전달하는 공개 오류 타입이다. */
 export class ReportApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -71,7 +68,6 @@ function contextHeaders(hasBody = false, explicitToken = ""): Record<string, str
   return {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(hasBody ? { "Content-Type": "application/json" } : {}),
-    "X-As-Of": env.VITE_REPORT_AS_OF || seoulToday(),
     "X-Contract-Version": REPORT_REQUEST_CONTEXT_VERSION,
     "X-Timezone": "Asia/Seoul",
     "X-Trace-Id": createUuid(),
@@ -79,6 +75,7 @@ function contextHeaders(hasBody = false, explicitToken = ""): Record<string, str
 }
 
 async function parse<T>(response: Response): Promise<T> {
+  // body가 손상된 오류에서도 상태 코드는 보존하되, 성공 데이터는 normalization/assertion을 우회하지 않는다.
   const payload: any = await response.json().catch(() => ({}));
   if (!response.ok) {
     const code = payload?.error?.code || `HTTP_${response.status}`;
@@ -100,6 +97,7 @@ async function ensureOk(response: Response): Promise<Response> {
   return response;
 }
 
+/** 명시된 backend origin에 cookie 인증 보고서 요청을 보내며, 원본 계약 검증 실패를 그대로 전파한다. */
 export function createReportClient(
   baseUrl = env.VITE_BACKEND_BASE_URL,
   request: Fetch = fetch,
@@ -107,10 +105,12 @@ export function createReportClient(
 ) {
   if (!baseUrl) throw new Error("VITE_BACKEND_BASE_URL is required");
   const endpoint = (path: string) => `${baseUrl.replace(/\/$/, "")}${path}`;
-  const send = (path: string, method = "GET", body?: unknown) => request(endpoint(path), {
+  // AbortSignal을 transport까지 전달해야 화면 전환 시 stale 최종문서 요청과 pending 잠금을 함께 해제할 수 있다.
+  const send = (path: string, method = "GET", body?: unknown, signal?: AbortSignal) => request(endpoint(path), {
     method,
     credentials: "include",
     headers: contextHeaders(body !== undefined, authToken),
+    ...(signal ? { signal } : {}),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
@@ -156,9 +156,12 @@ export function createReportClient(
         }),
       ));
     },
-    async getFinalDocument(definitionId: string, version: number): Promise<ReportDocument> {
+    async getFinalDocument(definitionId: string, version: number, signal?: AbortSignal): Promise<ReportDocument> {
       return normalizeReportDocument(await parse<ReportDocumentResponse>(await send(
         `/reports/definitions/${encodeURIComponent(definitionId)}/versions/${version}/document`,
+        "GET",
+        undefined,
+        signal,
       )));
     },
     async getFinalHtml(definitionId: string, version: number): Promise<string> {

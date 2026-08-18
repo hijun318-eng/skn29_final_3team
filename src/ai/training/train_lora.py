@@ -1,4 +1,7 @@
-"""Train a BF16 Qwen3-4B SQL LoRA adapter on one NVIDIA GPU."""
+"""train LoRA 학습·평가 데이터의 생성, 실행, 검증 절차와 CLI 진입점을 제공한다.
+
+Train a BF16 Qwen3-4B SQL LoRA adapter on one NVIDIA GPU.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +16,8 @@ from src.ai.training.dataset import DatasetError, load_compiled
 
 DEFAULT_MODEL = "Qwen/Qwen3-4B-Instruct-2507"
 DEFAULT_REVISION = "cdbee75f17c01a7cc42f958dc650907174af0554"
+# 이 값은 업무 날짜가 아니라 동일 split·shuffle을 재현하기 위한 release seed다.
+# 학습 결과 비교 시 manifest와 함께 변경하므로 질문 기간 계산에는 사용하지 않는다.
 DEFAULT_SEED = 20260729
 
 
@@ -51,6 +56,7 @@ def _sha256(path: Path) -> str:
 
 
 def main() -> int:
+    """검증된 train split을 고정 base revision에 QLoRA 학습하고 adapter와 실행 manifest를 저장한다."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)

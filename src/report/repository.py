@@ -1,121 +1,44 @@
-import hashlib
+"""보고서 router가 저장 방식에 결합되지 않도록 정의·실행·수동 명령 영속 연산을 선언한다."""
+
+from collections.abc import Awaitable
 from datetime import datetime
-from uuid import uuid4
+from typing import Protocol
 
-from .domain import DefinitionStatus, ManualRunCommand, ReportBlock, ReportDefinitionVersion, ReportRun
+from .domain import ManualRunCommand, ReportBlock, ReportDefinitionVersion, ReportRun
 
 
-class InMemoryReportRepository:
-    """R4 등록 전 contract test용 repository; production persistence가 아니다."""
+class ReportRepository(Protocol):
+    """정의 승인 전이, 실행 이력과 멱등 수동 명령을 보존해야 하는 저장소 연산을 규정한다."""
 
-    def __init__(self) -> None:
-        self._versions: dict[tuple[str, int], ReportDefinitionVersion] = {}
-        self._runs: dict[str, ReportRun] = {}
-        self._commands: dict[str, ManualRunCommand] = {}
-        self._idempotency: dict[tuple[str, int, str], str] = {}
-        self._documents: dict[tuple[str, int], dict[str, object]] = {}
+    def add_draft(
+        self, draft: ReportDefinitionVersion
+    ) -> ReportDefinitionVersion | Awaitable[ReportDefinitionVersion]:
+        """검증된 첫 초안을 저장하며 식별자·버전 충돌은 adapter의 타입 오류로 노출한다."""
+        ...
 
-    def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
-        if draft.status is not DefinitionStatus.DRAFT:
-            raise ValueError("draft만 저장할 수 있습니다.")
-        key = (draft.definition_id, draft.version)
-        existing = self._versions.get(key)
-        if existing and existing.status is DefinitionStatus.APPROVED:
-            raise ValueError("승인된 Report version은 덮어쓸 수 없습니다.")
-        self._versions[key] = draft
-        return draft
+    def get_version(
+        self, definition_id: str, version: int
+    ) -> ReportDefinitionVersion | Awaitable[ReportDefinitionVersion]:
+        """정의 식별자와 양의 버전으로 단일 정의를 조회하며 미존재 결과는 숨기지 않는다."""
+        ...
 
-    def get_version(self, definition_id: str, version: int) -> ReportDefinitionVersion:
-        try:
-            return self._versions[(definition_id, version)]
-        except KeyError as error:
-            raise KeyError("Report definition version을 찾을 수 없습니다.") from error
-
-    def list_definitions(self) -> tuple[ReportDefinitionVersion, ...]:
-        return tuple(self._versions[key] for key in sorted(self._versions))
-
-    def approve(self, definition_id: str, version: int, approved_at: datetime) -> ReportDefinitionVersion:
-        approved = self.get_version(definition_id, version).approve(approved_at)
-        self._versions[(definition_id, version)] = approved
-        return approved
-
-    def get_document_source(self, definition_id: str, version: int) -> dict[str, object]:
-        report = self.get_version(definition_id, version)
-        if report.status is not DefinitionStatus.DRAFT:
-            raise ValueError("Only a draft Report version can be finalized")
-        if any(block.artifact_id for block in report.blocks):
-            raise ValueError("The in-memory contract repository has no Artifact snapshots")
-        return {
-            "definition_id": report.definition_id,
-            "version": report.version,
-            "title": report.title,
-            "orientation": report.orientation,
-            "currency_display_unit": report.currency_display_unit,
-            "blocks": [
-                {
-                    "block_id": block.block_id,
-                    "title": block.title,
-                    "type": block.type.value,
-                    "x": block.x,
-                    "y": block.y,
-                    "w": block.w,
-                    "h": block.h,
-                    "content": block.content,
-                    "artifact": None,
-                }
-                for block in report.blocks
-            ],
-            "artifact_versions": [],
-        }
-
-    def approve_with_document(
+    def list_definitions(
         self,
-        definition_id: str,
-        version: int,
-        approved_at: datetime,
-        orientation: str,
-        currency_display_unit: str,
-        expected_source_checksum: str,
-        html_snapshot: str,
-        pdf_bytes: bytes,
-    ) -> ReportDefinitionVersion:
-        from app.services.report_document import canonical_source_checksum
+    ) -> tuple[ReportDefinitionVersion, ...] | Awaitable[tuple[ReportDefinitionVersion, ...]]:
+        """호출자 권한 범위에서 저장된 보고서 정의 버전들을 안정된 tuple로 반환한다."""
+        ...
 
-        source = self.get_document_source(definition_id, version)
-        if source["orientation"] != orientation:
-            raise ValueError("Report orientation changed while the PDF was rendering")
-        if source["currency_display_unit"] != currency_display_unit:
-            raise ValueError("Report currency display unit changed while the PDF was rendering")
-        if canonical_source_checksum(source, orientation) != expected_source_checksum:
-            raise ValueError("Report content changed while the PDF was rendering")
-        approved = self.get_version(definition_id, version).approve(approved_at)
-        document = {
-            "definition_id": definition_id,
-            "definition_version": version,
-            "orientation": orientation,
-            "currency_display_unit": currency_display_unit,
-            "renderer_version": "weasyprint-69",
-            "source_checksum": expected_source_checksum,
-            "html_checksum": hashlib.sha256(html_snapshot.encode("utf-8")).hexdigest(),
-            "pdf_checksum": hashlib.sha256(pdf_bytes).hexdigest(),
-            "html_snapshot": html_snapshot,
-            "pdf_bytes": pdf_bytes,
-            "artifact_versions": source["artifact_versions"],
-            "confirmed_at": approved_at,
-        }
-        self._documents[(definition_id, version)] = document
-        self._versions[(definition_id, version)] = approved
-        return approved
+    def approve(
+        self, definition_id: str, version: int, approved_at: datetime
+    ) -> ReportDefinitionVersion | Awaitable[ReportDefinitionVersion]:
+        """지정 초안을 승인 시각과 함께 원자적으로 전이하며 중복·비초안 승인은 거부한다."""
+        ...
 
-    def get_document(self, definition_id: str, version: int) -> dict[str, object]:
-        try:
-            return self._documents[(definition_id, version)]
-        except KeyError as error:
-            raise KeyError("Final Report document not found") from error
-
-    def create_next_draft(self, definition_id: str, approved_version: int) -> ReportDefinitionVersion:
-        draft = self.get_version(definition_id, approved_version).next_draft()
-        return self.add_draft(draft)
+    def create_next_draft(
+        self, definition_id: str, approved_version: int
+    ) -> ReportDefinitionVersion | Awaitable[ReportDefinitionVersion]:
+        """승인본을 기준으로 내용이 복사된 다음 번호 초안을 원자적으로 생성한다."""
+        ...
 
     def replace_draft_blocks(
         self,
@@ -125,33 +48,23 @@ class InMemoryReportRepository:
         *,
         orientation: str | None = None,
         currency_display_unit: str | None = None,
-    ) -> ReportDefinitionVersion:
-        replaced = self.get_version(definition_id, version).replace_blocks(
-            blocks,
-            orientation=orientation,
-            currency_display_unit=currency_display_unit,
-        )
-        self._versions[(definition_id, version)] = replaced
-        return replaced
+    ) -> ReportDefinitionVersion | Awaitable[ReportDefinitionVersion]:
+        """초안의 블록 전체와 선택적 문서 표시 설정을 한 transaction에서 교체한다."""
+        ...
 
-    def add_run(self, run: ReportRun) -> ReportRun:
-        version = self.get_version(run.definition_id, run.definition_version)
-        if version.status is not DefinitionStatus.APPROVED:
-            raise ValueError("승인된 Report definition version만 실행할 수 있습니다.")
-        if run.run_id in self._runs:
-            raise ValueError("같은 Report run_id를 다시 저장할 수 없습니다.")
-        self._runs[run.run_id] = run
-        return run
+    def add_run(self, run: ReportRun) -> ReportRun | Awaitable[ReportRun]:
+        """정의 버전과 증거가 검증된 보고서 실행을 저장하고 영속 상태를 반환한다."""
+        ...
 
-    def list_runs(self, definition_id: str | None = None) -> tuple[ReportRun, ...]:
-        runs = self._runs.values()
-        return tuple(run for run in runs if definition_id is None or run.definition_id == definition_id)
+    def list_runs(
+        self, definition_id: str | None = None
+    ) -> tuple[ReportRun, ...] | Awaitable[tuple[ReportRun, ...]]:
+        """선택적 정의 ID로 실행 이력을 제한하고 결과를 변경 불가능한 tuple로 반환한다."""
+        ...
 
-    def get_run(self, run_id: str) -> ReportRun:
-        try:
-            return self._runs[run_id]
-        except KeyError as error:
-            raise KeyError("Report run을 찾을 수 없습니다.") from error
+    def get_run(self, run_id: str) -> ReportRun | Awaitable[ReportRun]:
+        """실행 식별자로 단일 실행과 블록 증거를 조회하며 미존재 상태는 호출자에게 전달한다."""
+        ...
 
     def queue_manual_run(
         self,
@@ -159,13 +72,6 @@ class InMemoryReportRepository:
         version: int,
         as_of: datetime,
         idempotency_key: str,
-    ) -> ManualRunCommand:
-        if self.get_version(definition_id, version).status is not DefinitionStatus.APPROVED:
-            raise ValueError("승인된 Report definition version만 실행할 수 있습니다.")
-        key = (definition_id, version, idempotency_key)
-        if command_id := self._idempotency.get(key):
-            return self._commands[command_id]
-        command = ManualRunCommand(str(uuid4()), definition_id, version, as_of, idempotency_key)
-        self._commands[command.command_id] = command
-        self._idempotency[key] = command.command_id
-        return command
+    ) -> ManualRunCommand | Awaitable[ManualRunCommand]:
+        """정의 버전·기준 시각·멱등 키를 원자적으로 등록하고 같은 키에는 기존 명령을 반환한다."""
+        ...

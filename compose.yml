@@ -1,4 +1,6 @@
-name: ${COMPOSE_PROJECT_NAME:-hotel-synthetic-db}
+# 책임: root profile과 하위 overlay를 하나의 배포 DAG로 결합한다. 필수 환경값이
+# 없거나 dependency가 완료되지 않으면 backend를 시작하지 않는 것이 실패 경계다.
+name: ${COMPOSE_PROJECT_NAME:-answervice}
 
 # DataHub Core is restricted to full/split-host by its own fragment.
 include:
@@ -7,4 +9,5 @@ include:
       - app/backend/compose.fragment.yml
       - app/frontend/compose.fragment.yml
       - infrastructure/database/datahub/compose.consumer.yml
+      - infrastructure/database/datahub/compose.ingestion.yml
       - compose.app-postgres.override.yml

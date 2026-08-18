@@ -1,4 +1,4 @@
-"""Separate explicitly saved analyses from transient request definitions."""
+"""명시적으로 저장한 Analysis와 일시적인 request definition을 구분한다."""
 
 from alembic import op
 
@@ -10,6 +10,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """저장 여부를 추가하고 기존 사용자 정의 제목 row를 저장된 항목으로 backfill한다."""
+
     op.execute(
         "ALTER TABLE analysis_v1.analysis_definitions "
         "ADD COLUMN is_saved boolean NOT NULL DEFAULT false"
@@ -34,5 +36,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """저장 항목 조회 index와 is_saved column을 제거한다."""
+
     op.execute("DROP INDEX analysis_v1.idx_analysis_definitions_saved_owner_created")
     op.execute("ALTER TABLE analysis_v1.analysis_definitions DROP COLUMN is_saved")

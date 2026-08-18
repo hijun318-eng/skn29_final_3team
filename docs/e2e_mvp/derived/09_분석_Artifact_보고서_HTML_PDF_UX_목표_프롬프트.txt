@@ -1,5 +1,9 @@
-ANSWERVICE 분석 결과·Artifact·보고서 HTML/PDF 제품 요구사항 및 실행 목표 프롬프트
-문서 상태: PRODUCT DIRECTION + IMPLEMENTATION PROMPT
+SUPERSEDED / 실행 금지
+이 문서는 특정 도메인 예시를 포함한 2026-08-14 파생 자료이며 구현 프롬프트나 현재 보고서 계약으로 사용하지 않는다.
+현행 제품 계약은 docs/product/, 동적 구현 규칙은 저장소 루트 AGENTS.md, 실제 구현 판정은 현재 코드와 검증 증거를 따른다.
+
+ANSWERVICE 분석 결과·Artifact·보고서 HTML/PDF 과거 파생 자료
+문서 상태: ARCHIVED — REFERENCE ONLY
 작성 기준일: 2026-08-14
 
 이 문서는 다음 두 가지를 함께 제공한다.

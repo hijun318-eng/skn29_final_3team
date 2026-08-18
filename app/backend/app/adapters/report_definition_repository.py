@@ -1,0 +1,415 @@
+"""보고서 definition version과 block 배치를 draft·approved 상태 규칙으로 영속화한다."""
+
+from __future__ import annotations
+
+import json
+from uuid import UUID
+
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.adapters.report_repository_common import _uuid
+from src.report.domain import (
+    BlockType,
+    DefinitionStatus,
+    ReportBlock,
+    ReportDefinitionVersion,
+)
+
+
+class ReportDefinitionRepositoryMixin:
+    """보고서 definition version과 block lineage를 소유자 범위에서 저장하고 조회한다.
+
+    draft block의 artifact는 현재 소유자의 승인 분석과 Trino query ID에 연결돼야 하며,
+    승인 전이는 ``draft`` 상태를 조건으로 수행한다. ``_manage_all`` 조합은 definition 접근
+    범위만 확장하고 타인 분석 artifact를 draft에 연결하지는 않는다.
+    """
+    def _scope_params(self) -> dict[str, object]:
+        return {"owner_id": self._owner_id, "manage_all": self._manage_all}
+
+    async def _require_owned_artifact(
+        self,
+        session: AsyncSession,
+        artifact_id: UUID,
+        query_id: str | None,
+    ) -> tuple[UUID, int]:
+        if not query_id:
+            raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
+        owned = (await session.execute(
+            text(
+                """
+                SELECT l.definition_id, l.definition_version
+                FROM artifact.analysis_artifacts a
+                JOIN query.query_executions q
+                  ON q.query_execution_id = a.query_execution_id
+                JOIN chat.analysis_requests r ON r.request_id = a.request_id
+                JOIN analysis_v1.analysis_run_links l ON l.request_id = r.request_id
+                WHERE a.artifact_id = :artifact_id
+                  AND a.status = 'APPROVED'
+                  AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                  AND r.user_id = :owner_id
+                  AND q.trino_query_id = :query_id
+                """
+            ),
+            {
+                "artifact_id": artifact_id,
+                "owner_id": self._owner_id,
+                "query_id": query_id,
+            },
+        )).one_or_none()
+        if owned is None:
+            raise KeyError("본인의 승인된 Analysis Artifact를 찾을 수 없습니다.")
+
+        return UUID(str(owned[0])), int(owned[1])
+
+    async def add_draft(self, draft: ReportDefinitionVersion) -> ReportDefinitionVersion:
+        """draft 레코드를 저장소의 비동기 트랜잭션 안에서 영속화한다."""
+        if draft.status is not DefinitionStatus.DRAFT:
+            raise ValueError("draft만 저장할 수 있습니다.")
+        definition_id = _uuid(draft.definition_id, "definition_id")
+        try:
+            async with self._sessionmaker.begin() as session:
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO report_v1.report_definitions (definition_id, owner_id)
+                        VALUES (:definition_id, :owner_id)
+                        ON CONFLICT (definition_id) DO NOTHING
+                        """
+                    ),
+                    {"definition_id": definition_id, "owner_id": self._owner_id},
+                )
+                owner = (await session.execute(
+                    text(
+                        """
+                        SELECT owner_id FROM report_v1.report_definitions
+                        WHERE definition_id = :definition_id
+                        """
+                    ),
+                    {"definition_id": definition_id},
+                )).scalar_one()
+                if owner != self._owner_id and not self._manage_all:
+                    raise ValueError("다른 사용자의 Report definition입니다.")
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO report_v1.report_definition_versions
+                            (definition_id, version, status, title,
+                             orientation, currency_display_unit)
+                        VALUES (:definition_id, :version, 'draft', :title,
+                                :orientation, :currency_display_unit)
+                        """
+                    ),
+                    {
+                        "definition_id": definition_id,
+                        "version": draft.version,
+                        "title": draft.title,
+                        "orientation": draft.orientation,
+                        "currency_display_unit": draft.currency_display_unit,
+                    },
+                )
+                for block in draft.blocks:
+                    block_artifact_id = (
+                        _uuid(block.artifact_id, "artifact_id")
+                        if block.artifact_id
+                        else None
+                    )
+                    analysis_lineage = None
+                    if block_artifact_id is not None:
+                        analysis_lineage = await self._require_owned_artifact(
+                            session, block_artifact_id, block.query_id
+                        )
+                    await session.execute(
+                        text(
+                            """
+                            INSERT INTO report_v1.report_blocks
+                                (definition_id, definition_version, block_id, title,
+                                 artifact_id, query_id, columns, block_type, x, y, w, h, content,
+                                 analysis_definition_id, analysis_definition_version)
+                            VALUES (:definition_id, :version, :block_id, :title,
+                                    :artifact_id, :query_id, :columns, :block_type,
+                                    :x, :y, :w, :h, :content,
+                                    :analysis_definition_id, :analysis_definition_version)
+                            """
+                        ),
+                        {
+                            "definition_id": definition_id,
+                            "version": draft.version,
+                            "block_id": _uuid(block.block_id, "block_id"),
+                            "title": block.title,
+                            "artifact_id": block_artifact_id,
+                            "query_id": block.query_id,
+                            "columns": block.columns,
+                            "block_type": block.type.value,
+                            "x": block.x,
+                            "y": block.y,
+                            "w": block.w,
+                            "h": block.h,
+                            "content": block.content,
+                            "analysis_definition_id": analysis_lineage[0] if analysis_lineage else None,
+                            "analysis_definition_version": analysis_lineage[1] if analysis_lineage else None,
+                        },
+                    )
+        except IntegrityError as error:
+            raise ValueError("같은 Report definition version이 이미 존재합니다.") from error
+        return draft
+
+    async def get_version(self, definition_id: str, version: int) -> ReportDefinitionVersion:
+        """접근 가능한 definition의 정확한 version과 배치 순 block을 값 객체로 복원한다.
+
+        UUID 형식 오류는 ``ValueError``이며, 누락된 version과 소유 범위 밖 version은 모두
+        ``KeyError``로 반환해 객체 존재를 구분하지 않는다.
+        """
+        definition_uuid = _uuid(definition_id, "definition_id")
+        async with self._sessionmaker() as session:
+            row = (await session.execute(
+                text(
+                    """
+                    SELECT v.definition_id, v.version, v.status, v.title, v.approved_at,
+                           v.orientation, v.currency_display_unit
+                    FROM report_v1.report_definition_versions v
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE v.definition_id = :definition_id AND v.version = :version
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                    """
+                ),
+                {
+                    **self._scope_params(),
+                    "definition_id": definition_uuid,
+                    "version": version,
+                },
+            )).mappings().one_or_none()
+            if row is None:
+                raise KeyError("Report definition version을 찾을 수 없습니다.")
+            blocks = (await session.execute(
+                text(
+                    """
+                    SELECT block_id, title, artifact_id, query_id, columns,
+                           block_type, x, y, w, h, content
+                    FROM report_v1.report_blocks
+                    WHERE definition_id = :definition_id
+                      AND definition_version = :version
+                    ORDER BY y, x, block_id
+                    """
+                ),
+                {"definition_id": definition_uuid, "version": version},
+            )).mappings()
+            return ReportDefinitionVersion(
+                definition_id=str(row["definition_id"]),
+                version=row["version"],
+                status=DefinitionStatus(row["status"]),
+                title=row["title"],
+                blocks=tuple(
+                    ReportBlock(
+                        str(block["block_id"]),
+                        block["title"],
+                        str(block["artifact_id"]) if block["artifact_id"] else None,
+                        block["columns"],
+                        block["query_id"],
+                        BlockType(block["block_type"]),
+                        block["x"],
+                        block["y"],
+                        block["w"],
+                        block["h"],
+                        block["content"],
+                    )
+                    for block in blocks
+                ),
+                approved_at=row["approved_at"],
+                orientation=row["orientation"],
+                currency_display_unit=row["currency_display_unit"],
+            )
+
+    async def list_definitions(self) -> tuple[ReportDefinitionVersion, ...]:
+        """owner scope를 적용한 모든 report version을 생성 시각·ID·version 순서로 복원한다."""
+        async with self._sessionmaker() as session:
+            keys = (await session.execute(
+                text(
+                    """
+                    SELECT v.definition_id, v.version
+                    FROM report_v1.report_definition_versions v
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE (:manage_all OR d.owner_id = :owner_id)
+                    ORDER BY v.created_at DESC, v.definition_id, v.version DESC
+                    """
+                ),
+                self._scope_params(),
+            )).all()
+        return tuple([
+            await self.get_version(str(definition_id), version)
+            for definition_id, version in keys
+        ])
+
+    async def approve(
+        self,
+        definition_id: str,
+        version: int,
+        approved_at: datetime,
+    ) -> ReportDefinitionVersion:
+        """소유자 또는 ``manage_all`` 범위의 draft version을 approved로 비교 갱신한다.
+
+        갱신 행이 없을 때 version 자체가 없거나 비소유면 ``KeyError``, 이미 승인됐거나 다른
+        상태면 ``ValueError``로 구분한다. 성공하면 승인 시각을 포함한 전체 definition 값을
+        다시 조회해 반환한다.
+        """
+        definition_uuid = _uuid(definition_id, "definition_id")
+        async with self._sessionmaker.begin() as session:
+            result = await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_definition_versions v
+                    SET status = 'approved', approved_at = :approved_at
+                    FROM report_v1.report_definitions d
+                    WHERE v.definition_id = d.definition_id
+                      AND v.definition_id = :definition_id AND v.version = :version
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                      AND v.status = 'draft'
+                    """
+                ),
+                {
+                    **self._scope_params(),
+                    "definition_id": definition_uuid,
+                    "version": version,
+                    "approved_at": approved_at,
+                },
+            )
+            if result.rowcount != 1:
+                existing = (await session.execute(
+                    text(
+                        """
+                        SELECT 1 FROM report_v1.report_definition_versions v
+                        JOIN report_v1.report_definitions d USING (definition_id)
+                        WHERE v.definition_id = :definition_id AND v.version = :version
+                          AND (:manage_all OR d.owner_id = :owner_id)
+                        """
+                    ),
+                    {
+                        **self._scope_params(),
+                        "definition_id": definition_uuid,
+                        "version": version,
+                    },
+                )).first()
+                if existing is None:
+                    raise KeyError("Report definition version을 찾을 수 없습니다.")
+                raise ValueError("draft Report version만 승인할 수 있습니다.")
+        return await self.get_version(definition_id, version)
+
+    async def create_next_draft(
+        self,
+        definition_id: str,
+        approved_version: int,
+    ) -> ReportDefinitionVersion:
+        """접근 가능한 승인 version을 복사해 version을 하나 올린 draft를 저장한다.
+
+        기준 version 누락·비소유는 ``KeyError``, 승인본이 아니거나 다음 version이 이미
+        존재하면 ``ValueError``다. block 배치와 표시 설정은 그대로 복제되며 새 version 전체가
+        한 transaction에 삽입된다.
+        """
+        approved = await self.get_version(definition_id, approved_version)
+        return await self.add_draft(approved.next_draft())
+
+    async def replace_draft_blocks(
+        self,
+        definition_id: str,
+        version: int,
+        blocks: tuple[ReportBlock, ...],
+        *,
+        orientation: str | None = None,
+        currency_display_unit: str | None = None,
+    ) -> ReportDefinitionVersion:
+        """draft blocks 변경을 현재 상태와 충돌 여부를 확인한 뒤 원자적으로 반영한다."""
+        definition_uuid = _uuid(definition_id, "definition_id")
+        async with self._sessionmaker.begin() as session:
+            status = (await session.execute(
+                text(
+                    """
+                    SELECT v.status
+                    FROM report_v1.report_definition_versions v
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE v.definition_id = :definition_id AND v.version = :version
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                    FOR UPDATE
+                    """
+                ),
+                {
+                    **self._scope_params(),
+                    "definition_id": definition_uuid,
+                    "version": version,
+                },
+            )).scalar_one_or_none()
+            if status is None:
+                raise KeyError("Report definition version을 찾을 수 없습니다.")
+            if status != DefinitionStatus.DRAFT.value:
+                raise ValueError("draft Report version만 block layout을 교체할 수 있습니다.")
+            await session.execute(
+                text(
+                    """
+                    UPDATE report_v1.report_definition_versions
+                    SET orientation = COALESCE(:orientation, orientation),
+                        currency_display_unit = COALESCE(
+                            :currency_display_unit, currency_display_unit
+                        )
+                    WHERE definition_id = :definition_id AND version = :version
+                      AND status = 'draft'
+                    """
+                ),
+                {
+                    "definition_id": definition_uuid,
+                    "version": version,
+                    "orientation": orientation,
+                    "currency_display_unit": currency_display_unit,
+                },
+            )
+            await session.execute(
+                text(
+                    """
+                    DELETE FROM report_v1.report_blocks
+                    WHERE definition_id = :definition_id AND definition_version = :version
+                    """
+                ),
+                {"definition_id": definition_uuid, "version": version},
+            )
+            for block in blocks:
+                block_artifact_id = (
+                    _uuid(block.artifact_id, "artifact_id")
+                    if block.artifact_id
+                    else None
+                )
+                analysis_lineage = None
+                if block_artifact_id is not None:
+                    analysis_lineage = await self._require_owned_artifact(
+                        session, block_artifact_id, block.query_id
+                    )
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO report_v1.report_blocks
+                            (definition_id, definition_version, block_id, title,
+                             artifact_id, query_id, columns, block_type, x, y, w, h, content,
+                             analysis_definition_id, analysis_definition_version)
+                        VALUES (:definition_id, :version, :block_id, :title,
+                                :artifact_id, :query_id, :columns, :block_type,
+                                :x, :y, :w, :h, :content,
+                                :analysis_definition_id, :analysis_definition_version)
+                        """
+                    ),
+                    {
+                        "definition_id": definition_uuid,
+                        "version": version,
+                        "block_id": _uuid(block.block_id, "block_id"),
+                        "title": block.title,
+                        "artifact_id": block_artifact_id,
+                        "query_id": block.query_id,
+                        "columns": block.columns,
+                        "block_type": block.type.value,
+                        "x": block.x,
+                        "y": block.y,
+                        "w": block.w,
+                        "h": block.h,
+                        "content": block.content,
+                        "analysis_definition_id": analysis_lineage[0] if analysis_lineage else None,
+                        "analysis_definition_version": analysis_lineage[1] if analysis_lineage else None,
+                    },
+                )
+        return await self.get_version(definition_id, version)

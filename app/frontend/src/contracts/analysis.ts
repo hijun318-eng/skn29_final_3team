@@ -1,7 +1,8 @@
-export const UI_CONTRACT_VERSION = "UI-v1.0.0";
-export const OPENAPI_VERSION = "OPENAPI-v1.0.0";
+/** 분석 wire 응답을 fail-closed UI 실행 모델로 정의·정규화하는 계약 모듈이다. */
+/** 프런트 분석 상태 모델의 호환성 버전이다. */ export const UI_CONTRACT_VERSION = "UI-v1.0.0";
+/** 분석 HTTP 요청이 선언하는 OpenAPI 계약 버전이다. */ export const OPENAPI_VERSION = "OPENAPI-v1.0.0";
 
-export type AnalysisRunStatus =
+/** UI가 다루는 정규화된 분석 실행 상태 집합이다. */ export type AnalysisRunStatus =
   | "idle"
   | "queued"
   | "running"
@@ -11,7 +12,7 @@ export type AnalysisRunStatus =
   | "failed"
   | "cancelled";
 
-export type AnalysisViewState =
+/** 실행 상태·근거를 사용자 화면 상태로 축약한 집합이다. */ export type AnalysisViewState =
   | "LOADING"
   | "EMPTY"
   | "READY"
@@ -22,7 +23,7 @@ export type AnalysisViewState =
   | "INSUFFICIENT_EVIDENCE"
   | "CANCELLED";
 
-export type AnalysisErrorCode =
+/** 백엔드가 반환할 수 있는 분석 실패 코드 계약이다. */ export type AnalysisErrorCode =
   | "CONTEXT_INCOMPLETE"
   | "CONTEXT_SOURCE_FAILED"
   | "DATA_ASSET_NOT_FOUND"
@@ -55,7 +56,7 @@ export type AnalysisErrorCode =
   | "DEPENDENCY_UNAVAILABLE"
   | "INTERNAL_ERROR";
 
-export type RequiredAction =
+/** 실패 후 사용자 또는 시스템이 수행해야 하는 후속 조치다. */ export type RequiredAction =
   | "NONE"
   | "RETRY"
   | "AUTHENTICATE"
@@ -64,7 +65,7 @@ export type RequiredAction =
   | "MODIFY_REQUEST"
   | "CONTACT_SUPPORT";
 
-export type BackendAnalysisStatus =
+/** 분석 API wire payload의 원본 상태 집합이다. */ export type BackendAnalysisStatus =
   | "RECEIVED"
   | "ROUTED"
   | "SUCCEEDED"
@@ -73,9 +74,9 @@ export type BackendAnalysisStatus =
   | "FAILED"
   | "CANCELLED";
 
-export type AnalysisValue = string | number | boolean | null;
+/** 표·지표에서 허용되는 직렬화 가능한 원자 값이다. */ export type AnalysisValue = string | number | boolean | null;
 
-export interface AnalysisMetric {
+/** 값과 거버넌스 정의가 함께 검증된 화면 지표다. */ export interface AnalysisMetric {
   metricId: string;
   resultField: string;
   label: string;
@@ -84,7 +85,7 @@ export interface AnalysisMetric {
   unit: string | null;
 }
 
-export interface AnalysisMetricReference {
+/** 결과 field를 거버넌스 지표 메타데이터에 연결하는 근거다. */ export interface AnalysisMetricReference {
   metricId: string;
   resultField: string;
   label: string;
@@ -92,31 +93,31 @@ export interface AnalysisMetricReference {
   unit: string | null;
 }
 
-export interface AnalysisModelEvidence {
+/** 모델 node·release·prompt 추적 정보다. */ export interface AnalysisModelEvidence {
   node: string;
   modelVersion: string;
   promptId: string;
   promptVersion: string;
 }
 
-export interface AnalysisTable {
+/** canonical column과 동일 key의 행으로 구성된 분석 표다. */ export interface AnalysisTable {
   columns: string[];
   rows: Array<Record<string, AnalysisValue>>;
 }
 
-export interface AnalysisChart {
+/** 표 field를 참조하는 검증된 차트 표현 계약이다. */ export interface AnalysisChart {
   chartType: string;
   xField: string;
   yFields: string[];
 }
 
-export interface AnalysisArtifact {
+/** 영속 결과·query 식별자와 checksum을 묶는 artifact 계약이다. */ export interface AnalysisArtifact {
   artifactId: string;
   queryId: string;
   contextHash?: string;
 }
 
-export interface AnalysisEvidence {
+/** 기간·필터·출처·gate를 포함하는 분석 근거 묶음이다. */ export interface AnalysisEvidence {
   artifactId?: string | null;
   queryId?: string | null;
   asOf: string;
@@ -127,6 +128,8 @@ export interface AnalysisEvidence {
   } | null;
   filters: Record<string, AnalysisValue>;
   contextRelease?: string | null;
+  productReleaseId?: string | null;
+  evidenceCutoff?: string | null;
   policyVersion?: string | null;
   modelVersion?: string | null;
   metrics: AnalysisMetricReference[];
@@ -145,7 +148,7 @@ export interface AnalysisEvidence {
   };
 }
 
-export interface AnalysisApiResponse {
+/** OpenAPI 분석 응답의 wire envelope이며 normalizeApiResponse 입력으로만 사용한다. */ export interface AnalysisApiResponse {
   data: {
     status?: BackendAnalysisStatus;
     transitions?: BackendAnalysisStatus[];
@@ -185,6 +188,8 @@ export interface AnalysisApiResponse {
         } | null;
         filters?: Record<string, AnalysisValue>;
         context_release?: string | null;
+        product_release_id?: string | null;
+        evidence_cutoff?: string | null;
         policy_version?: string | null;
         model_version?: string | null;
         metrics?: Array<{
@@ -250,7 +255,7 @@ export interface AnalysisApiResponse {
   } | null;
 }
 
-export interface AnalysisSource {
+/** 화면에 노출 가능한 governed 데이터 출처 식별 정보다. */ export interface AnalysisSource {
   name: string;
   urn: string;
   fqn?: string;
@@ -260,7 +265,7 @@ export interface AnalysisSource {
   status: "success" | "failed" | "partial" | "delayed" | "unknown";
 }
 
-export interface AnalysisRun {
+/** 컴포넌트가 소비하는 완전 정규화 분석 실행 모델이다. */ export interface AnalysisRun {
   requestId: string;
   traceId: string;
   status: AnalysisRunStatus;
@@ -296,6 +301,7 @@ export interface AnalysisRun {
   };
 }
 
+/** 근거 준비 여부까지 반영해 실행을 하나의 fail-closed 화면 상태로 결정한다. */
 export function resolveViewState(run: AnalysisRun): AnalysisViewState {
   if (run.status === "queued") return "LOADING";
   if (run.status === "running") return run.delayed ? "DELAYED" : "LOADING";
@@ -335,6 +341,7 @@ const BACKEND_STATUS_MAP: Record<BackendAnalysisStatus, AnalysisRunStatus> = {
   CANCELLED: "cancelled",
 };
 
+/** wire 응답을 검증·정규화하며 계약 불일치나 근거 누락 시 성공 화면을 만들지 않는다. */
 export function normalizeApiResponse(
   response: AnalysisApiResponse,
   question: string,
@@ -411,6 +418,8 @@ export function normalizeApiResponse(
       } : undefined,
       filters: evidence.filters ?? {},
       contextRelease: evidence.context_release,
+      productReleaseId: evidence.product_release_id,
+      evidenceCutoff: evidence.evidence_cutoff,
       policyVersion: evidence.policy_version,
       modelVersion: evidence.model_version,
       metrics: (evidence.metrics ?? []).map((metric) => ({

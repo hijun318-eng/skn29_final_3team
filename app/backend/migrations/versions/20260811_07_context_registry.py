@@ -1,4 +1,4 @@
-"""Add Context Registry idempotency and immutable state enforcement."""
+"""Context Registry idempotency와 불변 상태 전이를 DB에서 강제한다."""
 
 import os
 import re
@@ -20,6 +20,8 @@ def _runtime_role() -> str:
 
 
 def upgrade() -> None:
+    """registry idempotency key·immutable trigger·허용 상태 전이와 grant를 추가한다."""
+
     for table, identifier in (
         ("context_records", "context_record_id"),
         ("context_releases", "context_release_id"),
@@ -127,6 +129,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """registry grant와 trigger·index·추가 상태 column을 안전한 역순으로 제거한다."""
+
     role = _runtime_role()
     op.execute(f"REVOKE SELECT, INSERT ON context.context_packages FROM {role}")
     op.execute(f"REVOKE SELECT, INSERT, UPDATE ON context.context_releases FROM {role}")

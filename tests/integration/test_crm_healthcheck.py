@@ -3,7 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_PATH = ROOT / "infrastructure" / "database" / "compose.yml"
-MARKER = "/var/opt/mssql/.hotel_synthetic_initialized"
+MARKER = "/var/opt/mssql/.answervice_schema_initialized"
 SQLCMD = "/opt/mssql-tools18/bin/sqlcmd"
 
 

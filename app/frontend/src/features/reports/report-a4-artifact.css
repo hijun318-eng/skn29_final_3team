@@ -1,0 +1,198 @@
+/* Artifact library·전체 Artifact 구성·보고서 page footer 스타일을 격리한다. */
+.report-artifact-library {
+  display: grid;
+  gap: 7px;
+}
+
+.report-artifact-library-tile {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  overflow: hidden;
+  border: 1px solid #2b405c;
+  border-radius: 8px;
+  background: #0c1421;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.report-artifact-library-tile:hover,
+.report-artifact-library-tile:focus-within {
+  border-color: #4f8fe4;
+  background: #111d2d;
+}
+
+.report-artifact-library-tile.is-dragging {
+  opacity: 0.45;
+  transform: scale(0.98);
+}
+
+.report-artifact-library-add,
+.report-artifact-library-drag {
+  min-width: 0;
+  min-height: 50px;
+  color: #dce8f7 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.report-artifact-library-add {
+  padding: 8px 6px 8px 9px !important;
+  display: grid !important;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  text-align: left;
+}
+
+.report-artifact-library-icon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  color: #75adf3;
+  border: 1px solid #2d65a8;
+  border-radius: 7px;
+  background: #102849;
+}
+
+.report-artifact-library-add > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.report-artifact-library-add b,
+.report-artifact-library-add small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-artifact-library-add b { font-size: 12px; }
+.report-artifact-library-add small { color: #8fa2ba; font-size: 10px; }
+.report-artifact-library-drag { border-left: 1px solid #25374e !important; cursor: grab; }
+.report-artifact-library-empty { margin: 0; padding: 10px; color: #91a3ba; font-size: 11px; }
+
+.report-preview-meta-strip {
+  margin-block-end: 10px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #a9b8cc;
+  border: 1px solid #26384e;
+  border-radius: 7px;
+  background: #08111d;
+  font-size: 11px;
+}
+
+.report-preview-meta-strip b { margin-inline-end: auto; color: #edf4fd; font-size: 12px; }
+.report-preview-meta-strip span + span { padding-inline-start: 10px; border-inline-start: 1px solid #30435a; }
+
+.generated-report-block.is-whole-artifact,
+.answer-report-page .notion-block:has(> .report-whole-artifact) {
+  display: flex;
+  flex-direction: column;
+}
+
+.report-whole-artifact {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 2.2mm;
+  overflow: hidden;
+  color: #2f425c;
+}
+
+.report-whole-artifact-heading {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 3mm;
+}
+
+.report-whole-artifact-heading > div { min-width: 0; display: grid; gap: 0.6mm; }
+.report-whole-artifact-heading small { color: #1c69d4; font-size: 6pt; font-weight: 850; letter-spacing: 0.1em; }
+.report-whole-artifact-heading b { overflow: hidden; color: #40536d; font-size: 7pt; text-overflow: ellipsis; white-space: nowrap; }
+.report-whole-artifact-heading > span { flex: none; padding: 1mm 1.8mm; color: #1558a8; border: 0.2mm solid #c7dcf7; border-radius: 99px; background: #eef6ff; font-size: 6.5pt; font-weight: 760; }
+
+.report-whole-artifact-summary {
+  margin: 0;
+  color: #263b58;
+  font-size: 8pt;
+  font-weight: 620;
+  line-height: 1.48;
+}
+
+.report-whole-artifact-kpis {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.5mm;
+}
+
+.report-whole-artifact.is-half .report-whole-artifact-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.report-whole-artifact-kpis dl { min-width: 0; margin: 0; padding: 1.6mm 1.8mm; border: 0.2mm solid #d9e4f0; border-radius: 1.5mm; background: #f6f9fd; }
+.report-whole-artifact-kpis dt { overflow: hidden; color: #62758d; font-size: 6.5pt; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.report-whole-artifact-kpis dt small { margin-inline-start: 1mm; color: #8393a8; font-size: 5.5pt; font-weight: 700; }
+.report-whole-artifact-kpis dd { margin: 0.8mm 0 0; color: #122b50; font-size: 10pt; font-weight: 820; font-variant-numeric: tabular-nums; letter-spacing: -0.025em; }
+.report-whole-artifact-kpis > p,
+.report-whole-artifact-kpis > small { grid-column: 1 / -1; margin: 0; color: #6d7f95; font-size: 6.5pt; }
+
+.report-whole-artifact-views {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  gap: 2mm;
+  overflow: hidden;
+}
+
+.report-whole-artifact.is-half .report-whole-artifact-views { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.answer-report-page--portrait .report-whole-artifact-views:has(> section:nth-child(2)) { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.report-whole-artifact-views > section { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.report-whole-artifact-views h3 { margin: 0 0 1mm; color: #233a5b; font-size: 7.5pt; font-weight: 800; }
+.report-whole-artifact-views .generated-report-chart-live,
+.report-whole-artifact-views .analysis-table { min-height: 0; margin: 0; }
+.report-whole-artifact-views .analysis-table { overflow: auto; }
+.report-whole-artifact-more { margin: 1mm 0 0; color: #60738c; font-size: 6.5pt; font-weight: 680; }
+
+.report-table-sample-note {
+  margin: 1.5mm 0 0;
+  padding: 1.4mm 2mm;
+  color: #526781;
+  border-radius: 1.5mm;
+  background: #f2f6fb;
+  font-size: 6.5pt;
+  line-height: 1.45;
+}
+
+.answer-report-page__footer {
+  min-inline-size: 0;
+  padding-block-start: 2.5mm;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8mm;
+  color: var(--answer-report-muted);
+  border-block-start: 0.25mm solid var(--answer-report-rule);
+  font-size: 7.5pt;
+  line-height: 1.35;
+}
+
+.answer-report-page__footer-slot {
+  min-inline-size: 0;
+  flex: 1;
+}
+
+.answer-report-page__folio {
+  flex: none;
+  color: var(--answer-report-blue);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+}

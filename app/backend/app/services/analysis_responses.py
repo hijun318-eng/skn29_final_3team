@@ -1,7 +1,6 @@
-from __future__ import annotations
+"""검증된 파이프라인 상태와 lineage를 API의 성공·부분·차단·실패 계약으로 조립하고, 허용되지 않은 상태 전이는 예외로 드러낸다."""
 
-import re
-from decimal import Decimal
+from __future__ import annotations
 
 from app.contracts import (
     AnalysisData,
@@ -13,13 +12,10 @@ from app.contracts import (
     ErrorBody,
     ErrorCode,
     Evidence,
-    GateEvidence,
-    GateHistoryEvidence,
     GateRequirements,
     MaskingEvidence,
     MetricReference,
     MetricValue,
-    ModelInvocationEvidence,
     PeriodEvidence,
     PipelineStage,
     RequestContext,
@@ -29,111 +25,18 @@ from app.contracts import (
     TraceStep,
     response_meta,
 )
-from app.services.context_builder import ContextMetricTerm, ContextPackage
+from app.services.analysis_evidence import (
+    _evidence_filters,
+    _gate_evidence,
+    _gate_history,
+    _metric_term,
+    _model_invocations,
+    _reduce_metric_values,
+)
+from app.services.context_builder import ContextPackage
 from app.services.pipeline_support import PipelineSupport
 from app.services.routing_service import RouteDecision
 from app.services.state_machine import AnalysisStateMachine
-
-
-def _evidence_filters(
-    filters: object,
-    package: ContextPackage,
-) -> dict[str, object]:
-    if not isinstance(filters, dict):
-        return {}
-    approved = package.required_filters or tuple(
-        item for metric in package.metrics for item in metric.required_filters
-    )
-    displayed = {}
-    for name, value in filters.items():
-        match = re.fullmatch(r"required_filter_(\d+)", str(name))
-        index = int(match.group(1)) - 1 if match else -1
-        field = approved[index].field if 0 <= index < len(approved) else str(name)
-        displayed[field] = value
-    return displayed
-
-
-def _metric_term(package: ContextPackage, metric_id: str) -> ContextMetricTerm:
-    try:
-        return next(term for term in package.metric_terms if term.id == metric_id)
-    except StopIteration as error:
-        raise ValueError(
-            f"Approved Context is missing DataHub Metric Glossary Term: {metric_id}"
-        ) from error
-
-
-def _model_invocations(trace: list[TraceStep]) -> tuple[ModelInvocationEvidence, ...]:
-    invocations: list[ModelInvocationEvidence] = []
-    for step in trace:
-        if step.stage not in {PipelineStage.MODEL, PipelineStage.REPAIR} or not step.detail:
-            continue
-        fields = {}
-        for item in step.detail.split(";"):
-            key, separator, value = item.partition("=")
-            if separator:
-                fields[key] = value
-        prompt_id, separator, prompt_version = fields.get("prompt", "").rpartition("@")
-        node = fields.get("node")
-        model_version = fields.get("model")
-        if not separator or not node or not model_version or not prompt_id or not prompt_version:
-            continue
-        if "unknown" in {node, model_version, prompt_id, prompt_version}:
-            continue
-        invocations.append(
-            ModelInvocationEvidence(
-                node=node,
-                model_version=model_version,
-                prompt_id=prompt_id,
-                prompt_version=prompt_version,
-            )
-        )
-    return tuple(invocations)
-
-
-def _gate_evidence(trace: list[TraceStep]) -> GateEvidence:
-    outcomes = {
-        step.stage: step.outcome
-        for step in trace
-        if step.stage in {PipelineStage.G1, PipelineStage.G2, PipelineStage.G3}
-    }
-    missing = [
-        stage.value
-        for stage in (PipelineStage.G1, PipelineStage.G2, PipelineStage.G3)
-        if stage not in outcomes
-    ]
-    if missing:
-        raise ValueError(f"successful analysis is missing gate evidence: {', '.join(missing)}")
-    return GateEvidence(
-        g1=outcomes[PipelineStage.G1],
-        g2=outcomes[PipelineStage.G2],
-        g3=outcomes[PipelineStage.G3],
-    )
-
-
-def _gate_history(trace: list[TraceStep]) -> GateHistoryEvidence:
-    return GateHistoryEvidence(
-        g1=tuple(step.outcome for step in trace if step.stage == PipelineStage.G1),
-        g2=tuple(step.outcome for step in trace if step.stage == PipelineStage.G2),
-        g3=tuple(step.outcome for step in trace if step.stage == PipelineStage.G3),
-    )
-
-
-def _reduce_metric_values(reduction: str, values: list[object]) -> Decimal | None:
-    if not values:
-        return None
-    decimals = [Decimal(str(value)) for value in values]
-    if reduction == "sum":
-        return sum(decimals, Decimal(0))
-    if reduction == "min":
-        return min(decimals, default=None)
-    if reduction == "max":
-        return max(decimals, default=None)
-    if reduction == "average" and decimals:
-        return sum(decimals, Decimal(0)) / len(decimals)
-    if reduction == "scalar" and len(decimals) == 1:
-        return decimals[0]
-    # Formula/ratio metrics require approved components, not a sum of row ratios.
-    return None
 
 
 class AnalysisResponseFactory:
@@ -155,6 +58,12 @@ class AnalysisResponseFactory:
         repair_count: int,
         cached: bool = False,
     ) -> AnalysisResponse:
+        """G3를 통과한 query·artifact·context를 성공 또는 부분 성공 응답으로 조립한다.
+
+        runtime metric 규칙대로 행 값을 축약하고 source·기간·model·gate 근거를 함께 고정한다.
+        호출 전 검증된 필드가 없거나 상태 전이가 잘못되면 예외를 숨기지 않으며, query의
+        ``PARTIAL`` 상태만 재시도 가능한 ``PARTIAL_FAILURE``로 표현한다.
+        """
         query_status = query.get("status")
         status = (
             AnalysisStatus.PARTIAL
@@ -163,66 +72,26 @@ class AnalysisResponseFactory:
         )
         machine.transition(status)
         rows = tuple(query["rows"])
-        metrics: tuple[MetricValue, ...] = ()
-        selected_metric = package.metrics[0] if len(package.metrics) == 1 else None
-        selected_term = (
-            _metric_term(package, selected_metric.id) if selected_metric else None
-        )
-        selected_metric_field = selected_metric.result_field if selected_metric else None
-        if selected_metric_field and rows and all(
-            selected_metric_field in row for row in rows
-        ):
-            values = [row[selected_metric_field] for row in rows if row[selected_metric_field] is not None]
-            reduced = _reduce_metric_values(selected_metric.reduction, values)
+        metric_values = []
+        for metric in package.metrics:
+            field = metric.result_field
+            if not rows or not all(field in row for row in rows):
+                continue
+            values = [row[field] for row in rows if row[field] is not None]
+            reduced = _reduce_metric_values(metric.reduction, values)
             if reduced is not None:
-                metrics = (
+                term = _metric_term(package, metric.id)
+                metric_values.append(
                     MetricValue(
-                        metric_id=selected_metric.id,
-                        result_field=selected_metric_field,
-                        label=selected_term.label,
-                        definition=selected_term.definition,
+                        metric_id=metric.id,
+                        result_field=field,
+                        label=term.label,
+                        definition=term.definition,
                         value=int(reduced) if reduced == reduced.to_integral() else float(reduced),
-                        unit=selected_metric.unit or selected_term.unit,
-                    ),
+                        unit=metric.unit or term.unit,
+                    )
                 )
-        revenue_field = next(
-            (
-                field
-                for field in (
-                    "total_guest_revenue_krw",
-                    "recognized_room_revenue_krw",
-                    "room_revenue",
-                )
-                if rows and all(field in row for row in rows)
-            ),
-            None,
-        )
-        if revenue_field == "total_guest_revenue_krw" or (
-            decision.template_id == "weekly-room-operations" and revenue_field
-        ):
-            values = [row[revenue_field] for row in rows if row[revenue_field] is not None]
-            if not values:
-                revenue_field = None
-        if revenue_field == "total_guest_revenue_krw" or (
-            decision.template_id == "weekly-room-operations" and revenue_field
-        ):
-            total = sum(Decimal(str(value)) for value in values)
-            metric_id = (
-                "total_guest_revenue_krw"
-                if revenue_field == "total_guest_revenue_krw"
-                else "recognized_room_revenue"
-            )
-            term = _metric_term(package, metric_id)
-            metrics = (
-                MetricValue(
-                    metric_id=metric_id,
-                    result_field=revenue_field,
-                    label=term.label,
-                    definition=term.definition,
-                    value=int(total) if total == total.to_integral() else float(total),
-                    unit=term.unit,
-                ),
-            )
+        metrics = tuple(metric_values)
         metric_ids = tuple(
             dict.fromkeys(
                 [metric.id for metric in package.metrics]
@@ -256,13 +125,15 @@ class AnalysisResponseFactory:
                 period=(
                     PeriodEvidence.model_validate(query["period"])
                     if query.get("period", {}).get("start")
-                    else support.period(context.as_of)
+                    else support.period(context.as_of, package)
                 ),
                 filters=_evidence_filters(query.get("filters", {}), package),
                 sources=support.sources(assets),
                 query_id=str(query["query_id"]),
                 artifact_id=artifact.artifact_id,
                 context_release=package.context_release,
+                product_release_id=package.product_release_id,
+                evidence_cutoff=package.evidence_cutoff,
                 policy_version=package.policy_version,
                 model_version=str(explanation["model_version"]),
                 metrics=evidence_metrics,
@@ -312,6 +183,11 @@ class AnalysisResponseFactory:
 
     @staticmethod
     def blocked(context: RequestContext, error: ErrorBody) -> AnalysisResponse:
+        """라우팅 이전의 typed 오류를 실행 근거가 없는 ``BLOCKED`` 응답으로 만든다.
+
+        새 상태 머신과 ROUTER 차단 trace를 생성해 SQL이나 모델 실행이 일어난 것처럼 기존
+        전이를 재사용하지 않으며, 호출자가 전달한 ``ErrorBody``를 보존한다.
+        """
         machine = AnalysisStateMachine()
         machine.transition(AnalysisStatus.BLOCKED)
         return AnalysisResponse(
@@ -346,6 +222,11 @@ class AnalysisResponseFactory:
         suggestions: tuple[str, ...] = (),
         clarification_type: ClarificationType | None = None,
     ) -> AnalysisResponse:
+        """실행 중 실패 stage를 trace와 상태 머신에 기록하고 표준 오류 응답을 반환한다.
+
+        ``status``에 따라 BLOCKED/FAILED outcome을 구분하고 route·gate·repair 횟수를 보존한다.
+        허용되지 않은 상태 전이는 ``InvalidTransitionError``를 전파해 모순된 응답 생성을 막는다.
+        """
         AnalysisResponseFactory.record(
             trace,
             stage,
@@ -386,6 +267,11 @@ class AnalysisResponseFactory:
         timed_out: bool = False,
         code: ErrorCode | None = None,
     ) -> AnalysisResponse:
+        """모델 호출 실패 코드를 사용자용 메시지와 재시도 정책이 포함된 응답으로 변환한다.
+
+        명시적 code가 없을 때만 timeout 여부로 기본 코드를 고르고, endpoint·timeout·circuit
+        장애만 재시도 가능하게 표시한다. 지원하지 않는 code는 즉시 ``KeyError``로 드러난다.
+        """
         resolved_code = code or (
             ErrorCode.MODEL_TIMEOUT if timed_out else ErrorCode.MODEL_CONTRACT_INVALID
         )
@@ -422,10 +308,15 @@ class AnalysisResponseFactory:
         detail: str | None = None,
         outcome: StageOutcome = StageOutcome.PASSED,
     ) -> None:
+        """분석 응답 factory 레코드를 저장소의 비동기 트랜잭션 안에서 영속화한다."""
         trace.append(TraceStep(stage=stage, outcome=outcome, detail=detail))
 
     @staticmethod
     def gates(decision: RouteDecision) -> GateRequirements:
+        """서버의 route 판정에 고정된 G1·G2 요구 여부를 API 계약 객체로 복사한다.
+
+        모델 출력이나 클라이언트 입력에서 gate 상태를 추론하지 않아 우회된 검증 요구가 응답에 반영되지 않게 한다.
+        """
         return GateRequirements(
             g1_required=decision.requires_g1,
             g2_required=decision.requires_g2,

@@ -6,13 +6,20 @@ import { AnalysisApiError, createAnalysisClient, createHttpAnalysisClient } from
 import { createReportClient, ReportApiError } from "../../app/frontend/src/api/reportClient.ts";
 import { resolveRoute } from "../../app/frontend/src/routing.js";
 import { dataProvenanceLabel } from "../../app/frontend/src/utils/presentation.ts";
+import { reportFeatureSource, reportSources } from "./report-source-contract.mjs";
 
 const source = (path) => readFileSync(new URL(`../../app/frontend/src/${path}`, import.meta.url), "utf8");
 const nginx = readFileSync(new URL("../../app/frontend/nginx.conf", import.meta.url), "utf8");
 const productSources = [
   "App.jsx", "routing.js", "api/analysisClient.ts", "api/reportClient.ts",
-  "pages/AgentPage.jsx", "pages/ReportsPage.jsx",
+  "pages/AgentPage.jsx",
   "components/analysis/AnalysisStatePanel.tsx", "components/layout/AppHeader.jsx", "components/layout/AppSidebar.jsx",
+].map(source).concat(reportFeatureSource).join("\n");
+const reportA4Styles = [
+  "features/reports/report-a4-paper.css",
+  "features/reports/report-a4-content.css",
+  "features/reports/report-a4-artifact.css",
+  "features/reports/report-a4-print.css",
 ].map(source).join("\n");
 
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
@@ -52,9 +59,8 @@ assert.match(source("pages/AgentPage.jsx"), /clarifiedQuestion\(submittedQuestio
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /어떤 기간으로 분석할까요/);
 assert.match(source("pages/AgentPage.jsx"), /분석할 질문을 입력해 주세요/);
 assert.match(source("pages/AgentPage.jsx"), /MAX_QUESTION_LENGTH\.toLocaleString/);
-assert.match(source("pages/AgentPage.jsx"), /APPROVED_QUESTIONS\.map/);
-assert.match(source("pages/AgentPage.jsx"), /객실·식음 통합 매출을 비교해 줘/);
-assert.match(source("pages/AgentPage.jsx"), /2026년 6월 객실 매출을 일별로 분석해 줘/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /APPROVED_QUESTIONS|객실·식음 통합 매출을 비교해 줘|2026년 6월 객실 매출/);
+assert.match(source("pages/AgentPage.jsx"), /placeholder="분석할 지표, 기간, 조건을 입력하세요\."/);
 assert.match(source("pages/AgentPage.jsx"), /onSuggestion=\{\(suggestion\)/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /analysis-suggestions/);
 assert.match(source("api/analysisClient.ts"), /\/analysis\/progress\/\$\{encodeURIComponent\(traceId\)\}/);
@@ -72,8 +78,8 @@ assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /REQUIRED_ACT
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /run\.error\?\.required_action/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /ERROR_ACTIONS|AT A GLANCE/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /KEY TAKEAWAY|VISUAL|DETAIL|SCOPE/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /actual_checkout_at: "체크아웃 시점"/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /\?\? "구분"/);
+assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /actual_checkout_at|membership_grade_code/);
+assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /\?\? column/);
 assert.match(source("components/auth/SessionLogin.jsx"), /\.login\(nextUsername, password\)/);
 assert.match(source("components/auth/SessionLogin.jsx"), /Caps Lock이 켜져 있습니다/);
 assert.match(source("components/auth/SessionLogin.jsx"), /비밀번호 표시/);
@@ -81,7 +87,11 @@ assert.match(source("components/auth/SessionLogin.jsx"), /onAuthenticated\(\{ ro
 assert.doesNotMatch(source("api/analysisClient.ts"), /session_token/);
 assert.doesNotMatch(source("components/auth/SessionLogin.jsx"), /액세스 토큰/);
 assert.doesNotMatch([
-  source("App.jsx"), source("pages/AgentPage.jsx"), source("pages/ReportsPage.jsx"),
+  source("App.jsx"),
+  source("pages/AgentPage.jsx"),
+  ...Object.entries(reportSources)
+    .filter(([name]) => name !== "reportClient")
+    .map(([, reportSource]) => reportSource),
 ].join("\n"), /authToken/);
 assert.match(source("App.jsx"), /\(min-width: 1101px\)/);
 assert.match(source("styles.css"), /@media\(min-width:901px\) and \(max-width:1100px\)[\s\S]*?\.scrim\{position:fixed;z-index:29;inset:0/);
@@ -98,96 +108,97 @@ assert.match(source("App.jsx"), /현재 계정에 허용된 서비스 메뉴가 
 assert.match(source("App.jsx"), /<AppSidebar page=\{route\.page\} role=\{role\}/);
 assert.match(source("components/layout/AppSidebar.jsx"), /item\.roles\.includes\(role\)/);
 assert.match(source("App.jsx"), /\["보고서 편집", "근거가 연결된 분석 결과와 설명을 블록으로 구성하고 저장합니다\."\]/);
-assert.match(source("pages/ReportsPage.jsx"), /if \(isAdmin\) void loadSchedules\(\)/);
-assert.match(source("pages/ReportsPage.jsx"), /브라우저 위치와 관계없이 서울 현지 시각으로 저장합니다/);
-assert.match(source("pages/ReportsPage.jsx"), /seoulWallClockToIso\(scheduleAt\)/);
-assert.match(source("pages/ReportsPage.jsx"), /setScheduleEnabled\(schedule\.schedule_id, !schedule\.enabled\)/);
-assert.doesNotMatch(source("pages/ReportsPage.jsx"), />due 실행<\/button>/);
-assert.doesNotMatch(source("pages/ReportsPage.jsx"), /REPORT_DRAFT scope|ACTUAL REPORT API/);
-assert.match(source("pages/ReportsPage.jsx"), /DndContext/);
-assert.match(source("pages/ReportsPage.jsx"), /useDraggable/);
-assert.match(source("pages/ReportsPage.jsx"), /PointerSensor/);
-assert.match(source("pages/ReportsPage.jsx"), /TouchSensor/);
-assert.match(source("pages/ReportsPage.jsx"), /KeyboardSensor/);
-assert.match(source("pages/ReportsPage.jsx"), /placeDraftBlock\(current, activeId, position\.requestedX, position\.y\)/);
-assert.match(source("pages/ReportsPage.jsx"), /gridRow:/);
-assert.match(source("pages/ReportsPage.jsx"), /aria-label="보고서 저장"/);
-assert.match(source("pages/ReportsPage.jsx"), /notion-report-editor/);
-assert.match(source("pages/ReportsPage.jsx"), /function MarkdownText/);
-assert.match(source("pages/ReportsPage.jsx"), /MARKDOWN_INSERT_COMMANDS/);
-assert.match(source("pages/ReportsPage.jsx"), /aria-label="Markdown 블록 삽입"/);
-assert.match(source("pages/ReportsPage.jsx"), /aria-activedescendant/);
-assert.match(source("pages/ReportsPage.jsx"), /event\.key === "Home"/);
-assert.match(source("pages/ReportsPage.jsx"), /event\.key === "End"/);
-assert.match(source("pages/ReportsPage.jsx"), /<EnterpriseChart/);
-assert.doesNotMatch(source("pages/ReportsPage.jsx"), /from "recharts"/);
-assert.doesNotMatch(source("pages/ReportsPage.jsx"), /className="legacy-report-row"[^>]*onClick/);
-assert.match(source("pages/ReportsPage.jsx"), /className="editor-tools-scrim" aria-label="블록 도구 닫기"/);
-assert.match(source("pages/ReportsPage.jsx"), /ReactMarkdown/);
-assert.match(source("pages/ReportsPage.jsx"), /remarkGfm/);
-assert.match(source("pages/ReportsPage.jsx"), /function ReportBlockMenu/);
-assert.match(source("pages/ReportsPage.jsx"), /name="report-block-menu"/);
-assert.match(source("pages/ReportsPage.jsx"), /report-resize-handle/);
-assert.match(source("pages/ReportsPage.jsx"), /report-markdown-toolbar/);
-assert.match(source("pages/ReportsPage.jsx"), /id: "artifact-table"/);
-assert.match(source("pages/ReportsPage.jsx"), /id: "artifact-chart"/);
-assert.match(source("pages/ReportsPage.jsx"), /function ReportTemplateTile/);
-assert.match(source("pages/ReportsPage.jsx"), /className="report-template-add"/);
-assert.match(source("pages/ReportsPage.jsx"), /className="report-template-drag"/);
-assert.match(source("pages/ReportsPage.jsx"), /setActivatorNodeRef/);
-assert.match(source("pages/ReportsPage.jsx"), /DragOverlay/);
-assert.match(source("pages/ReportsPage.jsx"), /dropPositionRef\.current/);
-assert.match(source("pages/ReportsPage.jsx"), /원하는 위치로 끌어다 놓으세요/);
-assert.match(source("pages/ReportsPage.jsx"), /행은 빈 공간 없이 자동 정렬됩니다/);
-assert.doesNotMatch(source("pages/ReportsPage.jsx"), /notion-block-toolbar/);
-assert.match(source("pages/ReportsPage.jsx"), /function ReportArtifactContent/);
-assert.match(source("pages/ReportsPage.jsx"), /metric\.result_field === resultField/);
-assert.doesNotMatch(source("pages/ReportsPage.jsx"), /revenue\|_krw/);
-assert.match(source("pages/ReportsPage.jsx"), /REPORT_DIMENSION_LABELS\[column\] \|\| "구분"/);
-assert.doesNotMatch(source("pages/ReportsPage.jsx"), /y_fields\.slice/);
+assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadSchedules\(\)/);
+assert.match(reportSources.operationsPanel, /브라우저 위치와 관계없이 서울 현지 시각으로 저장합니다/);
+assert.match(reportSources.lifecycle, /seoulWallClockToIso\(values\.scheduleAt\)/);
+assert.match(reportSources.operationsPanel, /onSetScheduleEnabled\(schedule\.schedule_id, !schedule\.enabled\)/);
+assert.doesNotMatch(reportSources.operationsPanel, />due 실행<\/button>/);
+assert.doesNotMatch(reportFeatureSource, /REPORT_DRAFT scope|ACTUAL REPORT API/);
+assert.match(reportSources.page, /DndContext/);
+assert.match(reportSources.editorBlock, /useDraggable/);
+assert.match(reportSources.dragAndDrop, /PointerSensor/);
+assert.match(reportSources.dragAndDrop, /TouchSensor/);
+assert.match(reportSources.dragAndDrop, /KeyboardSensor/);
+assert.match(reportSources.dragAndDrop, /placeDraftBlock\(current, activeId, position\.requestedX, position\.y\)/);
+assert.match(reportSources.editorBlock, /gridRow:/);
+assert.match(reportSources.editorToolbar, /aria-label="보고서 저장"/);
+assert.match(reportSources.page, /notion-report-editor/);
+assert.match(reportSources.artifactContent, /memo\(function MarkdownText/);
+assert.match(reportSources.markdownEditor, /MARKDOWN_INSERT_COMMANDS/);
+assert.match(reportSources.markdownEditor, /aria-label="Markdown 블록 삽입"/);
+assert.match(reportSources.markdownEditor, /aria-activedescendant/);
+assert.match(reportSources.markdownEditor, /event\.key === "Home"/);
+assert.match(reportSources.markdownEditor, /event\.key === "End"/);
+assert.match(reportSources.artifactContent, /<EnterpriseChart/);
+assert.doesNotMatch(reportFeatureSource, /from "recharts"/);
+assert.doesNotMatch(reportSources.listView, /className="legacy-report-row"[^>]*onClick/);
+assert.match(reportSources.page, /className="editor-tools-scrim" aria-label="블록 도구 닫기"/);
+assert.match(reportSources.artifactContent, /ReactMarkdown/);
+assert.match(reportSources.artifactContent, /remarkGfm/);
+assert.match(reportSources.blockControls, /memo\(function ReportBlockMenu/);
+assert.match(reportSources.blockControls, /name="report-block-menu"/);
+assert.match(reportSources.editorBlock, /report-resize-handle/);
+assert.match(reportSources.markdownEditor, /report-markdown-toolbar/);
+assert.match(reportSources.presentation, /id: "artifact-table"/);
+assert.match(reportSources.presentation, /id: "artifact-chart"/);
+assert.match(reportSources.blockControls, /memo\(function ReportTemplateTile/);
+assert.match(reportSources.blockControls, /className="report-template-add"/);
+assert.match(reportSources.blockControls, /className="report-template-drag"/);
+assert.match(reportSources.blockControls, /setActivatorNodeRef/);
+assert.match(reportSources.page, /DragOverlay/);
+assert.match(reportSources.dragAndDrop, /dropPositionRef\.current/);
+assert.match(reportSources.toolPanel, /원하는 위치로 끌어다 놓으세요/);
+assert.match(reportSources.toolPanel, /행은 빈 공간 없이 자동 정렬됩니다/);
+assert.doesNotMatch(reportFeatureSource, /notion-block-toolbar/);
+assert.match(reportSources.artifactContent, /memo\(function ReportArtifactContent/);
+assert.match(reportSources.presentation, /metric\.result_field === resultField/);
+assert.doesNotMatch(reportFeatureSource, /revenue\|_krw|REPORT_DIMENSION_LABELS/);
+assert.match(reportSources.presentation, /humanizeColumnIdentifier\(column\)/);
+assert.doesNotMatch(reportSources.artifactContent, /y_fields\.slice/);
 assert.doesNotMatch(source("api/analysisClient.ts"), /restoredMetrics|row\[metric\.metric_id\]/);
-assert.match(source("pages/ReportsPage.jsx"), /function reportEvidenceReady/);
-assert.match(source("pages/ReportsPage.jsx"), /if \(!reportEvidenceReady\(artifact\)\)/);
-assert.match(source("pages/ReportsPage.jsx"), /const canEdit = Boolean\(isDraft && !pending\)/);
-assert.match(source("pages/ReportsPage.jsx"), /aria-busy=\{pending === "save"\}/);
-assert.match(source("pages/ReportsPage.jsx"), /existingDraft/);
-assert.match(source("pages/ReportsPage.jsx"), /window\.confirm\(`확정본 v\$\{current\.version\}을 기준으로 새 편집 버전을 만들까요\?`\)/);
-assert.match(source("pages/ReportsPage.jsx"), /selectedArtifactSource\?\.artifactId/);
-assert.match(source("pages/ReportsPage.jsx"), /선택한 원본으로 AI 초안 생성/);
-assert.match(source("pages/ReportsPage.jsx"), /AI 초안 · 검토 필요/);
-assert.match(source("pages/ReportsPage.jsx"), /status: "loading"/);
-assert.match(source("pages/ReportsPage.jsx"), /artifactState\.status === "empty"/);
-assert.match(source("pages/ReportsPage.jsx"), /artifactState\.status === "error"/);
-assert.match(source("pages/ReportsPage.jsx"), /다시 불러오기/);
-assert.match(source("pages/ReportsPage.jsx"), /screenReaderInstructions/);
-assert.match(source("pages/ReportsPage.jsx"), /실제 호텔 운영 데이터로 해석하지 마세요/);
-assert.doesNotMatch(source("pages/ReportsPage.jsx"), /검증된 데이터/);
-assert.match(source("features/reports/report-a4.css"), /\.answer-report-page \.report-data-provenance/);
-assert.match(source("pages/ReportsPage.jsx"), /onDragMove/);
-assert.match(source("pages/ReportsPage.jsx"), /저장되지 않은 변경/);
-assert.match(source("pages/ReportsPage.jsx"), /저장 실패/);
-assert.match(source("pages/ReportsPage.jsx"), /resizeRow && block\.y === sourceBlock\.y/);
-assert.match(source("pages/ReportsPage.jsx"), /event\.buttons & 1/);
-assert.match(source("pages/ReportsPage.jsx"), /await loadArtifacts\(current\)/);
-assert.match(source("pages/ReportsPage.jsx"), /<ReportArtifactContent block=\{block\}/);
+assert.match(reportSources.evidence, /export function reportEvidenceReady/);
+assert.match(reportSources.artifacts, /if \(!artifact \|\| !reportEvidenceReady\(artifact\)\)/);
+assert.match(reportSources.controller, /const canEdit = Boolean\(isDraft && !lifecycle\.pending\)/);
+assert.match(reportSources.editorCanvas, /aria-busy=\{pending === "save"\}/);
+assert.match(reportSources.controller, /existingDraft/);
+assert.match(reportSources.controller, /window\.confirm\(`확정본 v\$\{current\.version\}을 기준으로 새 편집 버전을 만들까요\?`\)/);
+assert.match(reportSources.controller, /selectedArtifactSource\?\.artifactId/);
+assert.match(reportSources.toolPanel, /선택한 원본으로 AI 초안 생성/);
+assert.match(reportSources.controller, /AI 초안 · 검토 필요/);
+assert.match(reportSources.artifacts, /status: "loading"/);
+assert.match(reportSources.artifactContent, /artifactState\.status === "empty"/);
+assert.match(reportSources.artifactContent, /artifactState\.status === "error"/);
+assert.match(reportSources.artifactContent, /다시 불러오기/);
+assert.match(reportSources.dragAndDrop, /screenReaderInstructions/);
+assert.match(reportSources.artifactContent, /실제 호텔 운영 데이터로 해석하지 마세요/);
+assert.doesNotMatch(reportFeatureSource, /검증된 데이터/);
+assert.match(reportA4Styles, /\.answer-report-page \.report-data-provenance/);
+assert.match(reportSources.page, /onDragMove=\{dnd\.handleDragMove\}/);
+assert.match(reportSources.editorToolbar, /저장되지 않은 변경/);
+assert.match(reportSources.editorToolbar, /저장 실패/);
+assert.match(reportSources.draftMutations, /resizeRow && block\.y === source\.y/);
+assert.match(reportSources.editorBlock, /event\.buttons & 1/);
+assert.match(reportSources.controller, /await artifacts\.loadArtifacts\(current\)/);
+assert.match(reportSources.editorBlock, /<ReportArtifactContent/);
 assert.match(source("styles.css"), /\.report-api-blocks\.notion-canvas>article\{grid-column:var\(--block-x\)\/span var\(--block-w\)\}/);
-assert.match(source("pages/ReportsPage.jsx"), /setView\("editor"\)/);
-assert.match(source("pages/ReportsPage.jsx"), /setView\("document"\)/);
-assert.match(source("pages/ReportsPage.jsx"), /restoreEditorFocus/);
-assert.match(source("pages/ReportsPage.jsx"), /pageCanvasRefs\.current\.values\(\)/);
-assert.match(source("pages/ReportsPage.jsx"), /canvas\.querySelector\("\[data-block-id\]"\)/);
-assert.match(source("pages/ReportsPage.jsx"), /enterprise-reports-list/);
-assert.match(source("pages/ReportsPage.jsx"), /legacy-report-document generated-preview/);
-assert.match(source("pages/ReportsPage.jsx"), /createNextDraft/);
-assert.match(source("pages/ReportsPage.jsx"), /blocks: initialContent \? \[\{/);
-assert.match(source("pages/ReportsPage.jsx"), /resetBlocks\(\[\{ id: blockId, title: "운영 요약"/);
+assert.match(reportSources.controller, /setView\("editor"\)/);
+assert.match(reportSources.controller, /setView\("document"\)/);
+assert.match(reportSources.controller, /focusReportBlock/);
+assert.match(reportSources.controllerSupport, /pageCanvasRefs\.current\.values\(\)/);
+assert.match(reportSources.controllerSupport, /canvas\.querySelector\("\[data-block-id\]"\)/);
+assert.match(reportSources.listView, /enterprise-reports-list/);
+assert.match(reportSources.documentView, /legacy-report-document generated-preview/);
+assert.match(reportSources.lifecycle, /createNextDraft/);
+assert.match(reportSources.lifecycle, /const blocks: ReportBlockRequest\[\] = initialContent \? \[\{/);
+assert.match(reportSources.controller, /blocks: \[\{ id: result\.blockId, title: "운영 요약"/);
 assert.match(source("pages/AgentPage.jsx"), /savedRuns\.slice\(0, visibleRunCount\)/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /<EnterpriseChart/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /label: "기본 제외"/);
+assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /label: "기본 제외"|label: "GOLD"/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /chartFieldsMatchTable/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /차트 필드와 상세 데이터 열이 일치하지 않아/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /dataProvenanceLabel\(run\.sources\)/);
-assert.match(source("utils/presentation.ts"), /합성 데모 데이터/);
+assert.doesNotMatch(source("utils/presentation.ts"), /합성 데모 데이터/);
+assert.match(source("utils/presentation.ts"), /합성 데이터 포함/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /검증된 결과/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /from "recharts"/);
 assert.match(source("components/charts/EnterpriseChart.jsx"), /accessibilityLayer/);
@@ -197,6 +208,8 @@ assert.match(source("pages/AgentPage.jsx"), /event\.key === "Escape"/);
 assert.match(source("pages/AgentPage.jsx"), /previousFocus\?\.focus\?\.\(\)/);
 assert.match(source("pages/AgentPage.jsx"), /aria-controls="analysis-evidence-panel"/);
 assert.match(source("pages/AgentPage.jsx"), /id="analysis-evidence-panel"/);
+assert.match(source("pages/AgentPage.jsx"), /run\.evidence\?\.productReleaseId/);
+assert.match(source("pages/AgentPage.jsx"), /run\.evidence\?\.evidenceCutoff/);
 assert.match(source("pages/AgentPage.jsx"), /evidenceReturnFocusRef\.current\?\.focus\?\.\(\)/);
 assert.match(source("pages/AgentPage.jsx"), /role="tabpanel" aria-labelledby="evidence-tab-/);
 assert.match(source("pages/AgentPage.jsx"), /handleArtifactTabKeyDown/);
@@ -212,7 +225,7 @@ for (const exposedImplementationCopy of [
   /Saved Analysis/, /Run History/, /Authenticated Session/, /세션 종료/,
   /제목 또는 ID 검색/, /window\.location\.reload/,
 ]) assert.doesNotMatch(productSources, exposedImplementationCopy);
-assert.match(source("pages/ReportsPage.jsx"), /<details><summary>기술 정보<\/summary><code>Artifact/);
+assert.match(reportSources.operationsPanel, /<details><summary>기술 정보<\/summary><code>Artifact/);
 assert.match(source("components/layout/AppHeader.jsx"), /호텔 분석가/);
 assert.match(source("components/layout/AppHeader.jsx"), /로그아웃/);
 assert.match(source("pages/AgentPage.jsx"), /className="run-history-panel"/);
@@ -221,7 +234,7 @@ assert.match(source("pages/AgentPage.jsx"), /function reportTitleForRun/);
 assert.match(source("pages/AgentPage.jsx"), /createDraftFromArtifact\(run\.artifact\.artifactId, reportTitle\.trim\(\) \|\| reportTitleForRun\(run\)\)/);
 assert.match(source("pages/AgentPage.jsx"), /definitions\.filter/);
 assert.match(source("pages/AgentPage.jsx"), /filteredDefinitions\.slice\(0, visibleDefinitionCount\)/);
-assert.match(source("pages/ReportsPage.jsx"), /filteredRuns\.slice\(0, visibleRunCount\)/);
+assert.match(reportSources.lifecycle, /filteredRuns\.slice\(0, visibleRunCount\)/);
 assert.match(source("styles.css"), /@media\(max-width:1200px\)[\s\S]*\.chat-layout \.evidence-panel\{position:fixed/);
 assert.doesNotMatch(source("styles.css"), /\.page-stage\{[^}]*animation:[^}]*\sboth\}/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /AnalysisProgress run=\{run\} loading=\{false\}/);
@@ -309,7 +322,10 @@ const apiResponse = {
       evidence: {
         artifact_id: "artifact-1", query_id: "query-1", as_of: "2030-01-02", timezone: "Asia/Seoul",
         period: { start: "2030-01-01", end_exclusive: "2030-01-03" }, filters: {}, cached: false,
-        context_release: "context-v1", policy_version: "policy-v1", model_version: "model-v1",
+        context_release: "context-v1",
+        product_release_id: "walkerhill-v4.3-sql-20260815-derived.1",
+        evidence_cutoff: "2026-08-15",
+        policy_version: "policy-v1", model_version: "model-v1",
         metrics: [{ metric_id: "metric", result_field: "metric", label: "Metric", definition: "Metric definition", unit: "count" }],
         models: [{ node: "node3", model_version: "model-v1", prompt_id: "node3-prompt", prompt_version: "v1" }],
         gates: { g1: "PASSED", g2: "PASSED", g3: "PASSED" },
@@ -330,12 +346,14 @@ assert.equal(normalized.artifact.queryId, "query-1");
 assert.equal(normalized.sources[0].fqn, "catalog.schema.table");
 assert.equal(normalized.sources[0].status, "success");
 assert.equal(normalized.sources[0].synthetic, true);
-assert.equal(dataProvenanceLabel(normalized.sources), "합성 데모 데이터");
-assert.equal(dataProvenanceLabel([{ synthetic: true }, {}]), "합성 데모 데이터 포함");
+assert.equal(dataProvenanceLabel(normalized.sources), "합성 데이터");
+assert.equal(dataProvenanceLabel([{ synthetic: true }, {}]), "합성 데이터 포함");
 assert.equal(dataProvenanceLabel([{ synthetic: false }, {}]), null);
 assert.equal(normalized.metrics[0].definition, "Metric definition");
 assert.equal(normalized.metrics[0].resultField, "metric");
 assert.equal(normalized.evidence.metrics[0].definition, "Metric definition");
+assert.equal(normalized.evidence.productReleaseId, "walkerhill-v4.3-sql-20260815-derived.1");
+assert.equal(normalized.evidence.evidenceCutoff, "2026-08-15");
 assert.equal(normalized.evidence.models[0].promptId, "node3-prompt");
 assert.equal(normalized.evidence.gates.g3, "PASSED");
 assert.deepEqual(normalized.evidence.gateHistory.g2, ["BLOCKED", "PASSED"]);
@@ -387,6 +405,7 @@ assert.equal(analysisRequest.url, "http://backend.test/analysis");
 assert.equal(analysisRequest.init.headers.Authorization, "Bearer runtime-token");
 assert.equal(analysisRequest.init.headers["X-Contract-Version"], OPENAPI_VERSION);
 assert.equal(analysisRequest.init.headers["X-Trace-Id"], "client-trace");
+assert.equal(analysisRequest.init.headers["X-As-Of"], undefined);
 assert.deepEqual(JSON.parse(analysisRequest.init.body).parameters, { period_start: "2030-01-01", period_end_exclusive: "2030-01-03" });
 
 const savedArtifact = {
@@ -461,6 +480,7 @@ const scheduleClient = createReportClient("http://backend.test", async (url, ini
 await scheduleClient.setScheduleEnabled("schedule-1", false);
 assert.equal(scheduleRequest.url, "http://backend.test/reports/schedules/schedule-1");
 assert.equal(scheduleRequest.init.method, "PUT");
+assert.equal(scheduleRequest.init.headers["X-As-Of"], undefined);
 assert.deepEqual(JSON.parse(scheduleRequest.init.body), { enabled: false });
 
 console.log("frontend contract tests passed");

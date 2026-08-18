@@ -23,10 +23,10 @@ const structuredRun = {
   },
 };
 
-assert.equal(analysisTitle(structuredRun), "2026년 7월 GOLD 고객 객실 매출 월별 분석");
-assert.equal(reportTitleForAnalysis(structuredRun), "2026년 7월 GOLD 고객 객실 매출 월별 분석 보고서");
+assert.equal(analysisTitle(structuredRun), "2026년 7월 객실 매출 분석");
+assert.equal(reportTitleForAnalysis(structuredRun), "2026년 7월 객실 매출 분석 보고서");
 assert.doesNotMatch(reportTitleForAnalysis(structuredRun), /이 문장을 제목으로 쓰지 마세요/);
-assert.equal(reportTitleForAnalysis({ question: "원문 질문" }), "호텔 운영 분석 보고서");
+assert.equal(reportTitleForAnalysis({ question: "원문 질문" }), "분석 결과 보고서");
 
 assert.equal(formatMetricValue(0), "0");
 assert.equal(formatMetricValue(null, { unit: "원" }), "—");

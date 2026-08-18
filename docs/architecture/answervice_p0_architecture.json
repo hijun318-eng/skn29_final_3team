@@ -1,0 +1,184 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Answervice P0 대화형 분석 구조",
+    "subtitle": "permission-first 대화 해석과 원자적 Analysis·Presentation·Report terminal commit",
+    "output": "docs/architecture/answervice_p0_architecture.html",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "viewBox": [2050, 920],
+    "legend": {
+      "mode": "all",
+      "entries": {
+        "frontend": { "label": "사용자 화면" },
+        "backend": { "label": "대화·분석·보고서 서비스" },
+        "database": { "label": "상태·승인 데이터" },
+        "cloud": { "label": "공식 의미 체계" },
+        "security": { "label": "정책·안전 Gate" },
+        "external": { "label": "사용자·비신뢰 모델 출력" }
+      }
+    },
+    "views": [
+      {
+        "id": "conversation_path",
+        "label": "1. 같은 대화 이어가기",
+        "focus": ["user", "web", "conversation", "appdb"],
+        "note": "권한 preflight → 결정론적 정규화 → GPT typed 후보 → unique resolver 순서로 승인 조건만 이어갑니다."
+      },
+      {
+        "id": "atomic_analysis",
+        "label": "2. 분석 턴은 새로 검증",
+        "focus": ["conversation", "analysis", "model", "datahub", "gates", "trino", "serving", "sources", "appdb"],
+        "note": "RESOLVED_ANALYSIS만 새 Run을 만들고 결과·command·Turn·head·lease를 한 transaction으로 닫습니다."
+      },
+      {
+        "id": "presentation_report",
+        "label": "3. 표현과 보고서 조합",
+        "focus": ["conversation", "report", "appdb", "analysis"],
+        "note": "표현은 idempotency·CAS·lease 뒤 같은 Artifact의 View를, Report는 검증 lineage와 revision을 원자 저장합니다."
+      },
+      {
+        "id": "semantic_execution",
+        "label": "4. 의미와 실제 조회",
+        "focus": ["datahub", "gates", "trino", "serving", "sources"],
+        "note": "DataHub는 공식 용어·관계를, Rule과 APP Gate는 실행·권한 규칙을, Trino는 read-only 조회를 맡습니다."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "현업 사용자",
+      "sublabel": "질문 · 후속 질문 · 결과 선택",
+      "tag": "P0 actor",
+      "pos": [50, 340],
+      "size": [155, 76]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "React 대화 화면",
+      "sublabel": "턴 목록 · 조건 chip · 결과 카드",
+      "tag": "현재 single-turn UI",
+      "pos": [265, 340],
+      "size": [180, 76]
+    },
+    {
+      "id": "conversation",
+      "type": "backend",
+      "label": "Conversation Orchestrator",
+      "sublabel": "권한 → 정규화 → GPT 후보 → unique resolve",
+      "tag": "P0 신규 계층",
+      "pos": [505, 334],
+      "size": [220, 88]
+    },
+    {
+      "id": "analysis",
+      "type": "backend",
+      "label": "Atomic Analysis Pipeline",
+      "sublabel": "resolved Run · Artifact · terminal transaction",
+      "tag": "실제 경로 존재",
+      "pos": [790, 334],
+      "size": [220, 88]
+    },
+    {
+      "id": "gates",
+      "type": "security",
+      "label": "Rule Layer + APP Gates",
+      "sublabel": "G1 Context · G2 SQL · G3 Result",
+      "tag": "매 분석 턴 재검증",
+      "pos": [1070, 334],
+      "size": [220, 88]
+    },
+    {
+      "id": "trino",
+      "type": "backend",
+      "label": "Trino",
+      "sublabel": "승인 SQL read-only 실행",
+      "tag": "HTTPS · password · CA",
+      "pos": [1350, 340],
+      "size": [165, 76]
+    },
+    {
+      "id": "serving",
+      "type": "database",
+      "label": "승인 분석 Serving",
+      "sublabel": "검증된 통합 view",
+      "tag": "승인 release만 조회",
+      "pos": [1570, 340],
+      "size": [180, 76]
+    },
+    {
+      "id": "sources",
+      "type": "database",
+      "label": "호텔 운영 Source",
+      "sublabel": "PMS · POS · CRM · 연회 · 시설",
+      "tag": "Trino schema 동적 확인",
+      "pos": [1805, 340],
+      "size": [190, 76]
+    },
+    {
+      "id": "datahub",
+      "type": "cloud",
+      "label": "DataHub Business Glossary",
+      "sublabel": "공식 Term · 관계 · schema · 승인",
+      "tag": "live catalog 불완전",
+      "pos": [790, 95],
+      "size": [240, 84]
+    },
+    {
+      "id": "model",
+      "type": "external",
+      "label": "OpenAI-compatible Model",
+      "sublabel": "typed intent · SQL 후보 · 제한된 설명",
+      "tag": "항상 비신뢰 출력",
+      "pos": [1070, 590],
+      "size": [230, 84]
+    },
+    {
+      "id": "appdb",
+      "type": "database",
+      "label": "App PostgreSQL",
+      "sublabel": "Conversation · Turn · Run · Artifact",
+      "tag": "async session · evidence 저장",
+      "pos": [500, 705],
+      "size": [235, 84]
+    },
+    {
+      "id": "report",
+      "type": "backend",
+      "label": "Presentation + Report",
+      "sublabel": "ViewSpec · Draft revision · Report terminal",
+      "tag": "Draft · 승인 · 재실행",
+      "pos": [1350, 705],
+      "size": [245, 84]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "인증된 read-only 데이터 경계",
+      "wraps": ["trino", "serving", "sources"],
+      "pad": 12
+    }
+  ],
+  "connections": [
+    { "id": "user_web", "from": "user", "to": "web", "label": "질문·후속 Turn", "variant": "emphasis", "labelAt": [235, 318] },
+    { "id": "web_conversation", "from": "web", "to": "conversation", "label": "Conversation API", "variant": "security", "labelAt": [475, 318] },
+    { "id": "conversation_analysis", "from": "conversation", "to": "analysis", "label": "RESOLVED_ANALYSIS만", "variant": "emphasis", "labelAt": [758, 312] },
+    { "id": "conversation_appdb", "from": "conversation", "to": "appdb", "label": "command·CAS·lease·Turn", "variant": "security", "fromSide": "bottom", "toSide": "top", "labelAt": [685, 565] },
+    { "id": "analysis_model", "from": "analysis", "to": "model", "label": "SQL candidate", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "via": [[900, 475], [1185, 475]], "labelAt": [1040, 455] },
+    { "id": "datahub_gates", "from": "datahub", "to": "gates", "label": "Term·Asset·schema·version", "variant": "security", "fromSide": "right", "toSide": "top", "via": [[1100, 137], [1180, 137], [1180, 290]], "labelAt": [1240, 250] },
+    { "id": "analysis_gates", "from": "analysis", "to": "gates", "label": "Context·SQL·Result", "variant": "security", "labelAt": [1040, 312] },
+    { "id": "gates_trino", "from": "gates", "to": "trino", "label": "APP-G2 통과", "variant": "emphasis", "labelAt": [1320, 318] },
+    { "id": "trino_serving", "from": "trino", "to": "serving", "label": "query", "variant": "emphasis", "labelAt": [1542, 318] },
+    { "id": "serving_sources", "from": "serving", "to": "sources", "label": "read-only", "variant": "security", "labelAt": [1778, 318] },
+    { "id": "analysis_appdb", "from": "analysis", "to": "appdb", "label": "Run·Artifact·terminal tx", "variant": "security", "fromSide": "bottom", "toSide": "right", "via": [[900, 500], [760, 500], [760, 747]], "labelAt": [805, 480] },
+    { "id": "report_appdb", "from": "report", "to": "appdb", "label": "Draft revision·lineage·Run terminal", "variant": "security", "fromSide": "bottom", "toSide": "bottom", "via": [[1472.5, 840], [617.5, 840]], "labelAt": [1045, 862] },
+    { "id": "report_analysis", "from": "report", "to": "analysis", "label": "승인 Version·snapshot block 재실행", "variant": "emphasis", "fromSide": "top", "toSide": "bottom", "via": [[1472.5, 520], [900, 520]], "labelAt": [1320, 500] }
+  ],
+  "cards": []
+}

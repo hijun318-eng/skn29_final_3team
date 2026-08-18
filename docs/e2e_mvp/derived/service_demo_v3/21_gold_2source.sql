@@ -1,2 +1,0 @@
--- Gold 2: PMS+CRM temporal identity
-SELECT m.membership_grade, count(DISTINCT s.stay_id) completed_stays, sum(s.room_revenue) room_revenue FROM pms.public.pms_stays s JOIN crm.dbo.crm_customer_map cm ON s.guest_id=cm.pms_guest_id AND s.actual_checkin_at>=cm.valid_from AND (cm.valid_to IS NULL OR s.actual_checkin_at<cm.valid_to) JOIN crm.dbo.crm_members m ON cm.member_no=m.member_no GROUP BY 1 ORDER BY 1;

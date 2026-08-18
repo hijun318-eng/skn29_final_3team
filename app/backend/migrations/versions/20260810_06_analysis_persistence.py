@@ -1,4 +1,4 @@
-"""Add owner-scoped Analysis Definition and request links."""
+"""owner 범위의 Analysis Definition과 request 실행 연결을 영속화한다."""
 
 import os
 import re
@@ -20,6 +20,8 @@ def _runtime_role() -> str:
 
 
 def upgrade() -> None:
+    """Analysis version·run link schema를 생성하고 runtime 최소권한을 부여한다."""
+
     op.execute("CREATE SCHEMA analysis_v1")
     op.execute(
         """
@@ -79,6 +81,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Analysis persistence 권한을 회수하고 전용 schema를 제거한다."""
+
     role = _runtime_role()
     op.execute(f"REVOKE SELECT, INSERT ON artifact.analysis_artifacts FROM {role}")
     op.execute(f"REVOKE SELECT, INSERT ON query.query_executions FROM {role}")

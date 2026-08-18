@@ -1,4 +1,7 @@
-"""Generate SQL on a held-out split and report structural exact-match metrics."""
+"""evaluate LoRA 학습·평가 데이터의 생성, 실행, 검증 절차와 CLI 진입점을 제공한다.
+
+Generate SQL on a held-out split and report structural exact-match metrics.
+"""
 
 from __future__ import annotations
 
@@ -26,11 +29,14 @@ _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class EvidenceError(ValueError):
-    """Raised when captured comparison evidence cannot be trusted."""
+    """baseline/candidate capture의 필수 artifact SHA-256이 없거나 달라 비교할 수 없음을 알린다."""
 
 
 def validate_captured_evidence(evidence: Any) -> dict[str, str]:
-    """Require immutable SHA-256 evidence before comparing two captures."""
+    """captured 근거 계약과 도메인 불변식을 검사하고 위반 시 명시적 오류를 발생시킨다.
+
+    Require immutable SHA-256 evidence before comparing two captures.
+    """
     if not isinstance(evidence, dict):
         raise EvidenceError("captured evidence must be an object")
     missing = [field for field in IMMUTABLE_EVIDENCE_FIELDS if field not in evidence]
@@ -49,7 +55,11 @@ def validate_captured_evidence(evidence: Any) -> dict[str, str]:
 def compare_captured_evidence(
     baseline: dict[str, Any], candidate: dict[str, Any]
 ) -> dict[str, Any]:
-    """Return comparable only when every immutable capture hash is identical."""
+    """baseline과 candidate의 여섯 불변 artifact SHA-256을 검증·비교한다.
+
+    필드 누락이나 hash 형식 오류는 ``EvidenceError``로 중단한다. 모든 hash가 같을 때만
+    ``comparable=true``를 반환하고, 그렇지 않으면 정확한 불일치 필드와 양쪽 hash를 보존한다.
+    """
     baseline_hashes = validate_captured_evidence(baseline)
     candidate_hashes = validate_captured_evidence(candidate)
     mismatched = [
@@ -73,7 +83,11 @@ def observed_metrics(
     peak_vram_bytes: int | None,
     cost_usd: float | None = None,
 ) -> dict[str, Any]:
-    """Keep only observed metrics; unknown cost remains explicitly nullable."""
+    """실제로 관측된 정확도·지연·VRAM·비용만 범위 검증해 증거 객체로 묶는다.
+
+    음수나 boolean 수치를 거부하고 관측하지 않은 비용은 추정값으로 채우지 않고 ``None``으로
+    보존한다.
+    """
     if isinstance(accuracy, bool) or not isinstance(accuracy, (int, float)) or not 0 <= accuracy <= 1:
         raise ValueError("accuracy must be between zero and one")
     for name, value in (("p50_ms", p50_ms), ("p95_ms", p95_ms), ("peak_vram_bytes", peak_vram_bytes)):
@@ -101,6 +115,7 @@ def _percentile(values: list[float], percentile: int) -> float:
 
 
 def main() -> int:
+    """고정 model revision과 선택 LoRA로 held-out split을 추론해 구조·SQL exact match를 기록한다."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument(

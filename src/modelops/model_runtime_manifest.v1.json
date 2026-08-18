@@ -1,32 +1,63 @@
 {
-  "manifest_version": "MODEL-RUNTIME-v1.0.0",
-  "models": {
-    "gpt-5.4-mini": {
+  "manifest_version": "MODEL-RUNTIME-v1.1.0",
+  "capacity_profiles": {
+    "openai-gpt-5.4-mini-400k": {
       "provider": "openai",
+      "model_aliases": [
+        "gpt-5.4-mini",
+        "gpt-5.4-mini-2026-03-17"
+      ],
+      "base_model": "gpt-5.4-mini",
       "snapshot": "gpt-5.4-mini-2026-03-17",
       "context_window_tokens": 400000,
-      "max_output_tokens": 128000,
       "runtime_max_output_tokens": 1280,
       "safety_margin_tokens": 4096,
-      "source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini"
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-5.4-mini",
+        "app/backend/app/adapters/model_schemas.py"
+      ]
     },
-    "gpt-5.4-mini-2026-03-17": {
-      "provider": "openai",
-      "snapshot": "gpt-5.4-mini-2026-03-17",
-      "context_window_tokens": 400000,
-      "max_output_tokens": 128000,
-      "runtime_max_output_tokens": 1280,
-      "safety_margin_tokens": 4096,
-      "source": "https://developers.openai.com/api/docs/models/gpt-5.4-mini"
-    },
-    "Qwen/Qwen3-4B": {
+    "qwen3.5-4b-answervice-sql-5120": {
       "provider": "qwen",
-      "snapshot": "Qwen/Qwen3-4B@1cfa9a7208912126459214e8b04321603b3df60c",
-      "context_window_tokens": 4096,
-      "max_output_tokens": 1280,
+      "model_aliases": [
+        "answervice-sql"
+      ],
+      "base_model": "Qwen/Qwen3.5-4B",
+      "snapshot": "Qwen/Qwen3.5-4B@851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+      "context_window_tokens": 5120,
       "runtime_max_output_tokens": 1280,
       "safety_margin_tokens": 256,
-      "source": "src/modelops/serving_manifest.v0.1.json"
+      "sources": [
+        "docs/e2e_mvp/derived/22_RunPod_Serverless_vLLM_배포_가이드.md",
+        "app/backend/app/adapters/model_schemas.py"
+      ]
+    }
+  },
+  "route_profiles": {
+    "primary": {
+      "nodes": [
+        "node1",
+        "node3",
+        "report_assistant"
+      ],
+      "provider_env": null,
+      "default_provider": "openai",
+      "endpoint_env": "OPENAI_ENDPOINT",
+      "token_env": "OPENAI_API_KEY",
+      "model_env": "OPENAI_MODEL",
+      "fallback_route": null
+    },
+    "sql": {
+      "nodes": [
+        "node2",
+        "node2_repair"
+      ],
+      "provider_env": "NODE2_MODEL_PROVIDER",
+      "default_provider": null,
+      "endpoint_env": "NODE2_MODEL_ENDPOINT",
+      "token_env": "NODE2_MODEL_API_TOKEN",
+      "model_env": "NODE2_MODEL",
+      "fallback_route": "primary"
     }
   }
 }

@@ -1,6 +1,5 @@
 import ast
 import hashlib
-import json
 import unittest
 from pathlib import Path
 
@@ -38,7 +37,7 @@ class ControlPlaneContractTest(unittest.TestCase):
             hashlib.sha256(published).hexdigest(),
         )
         self.assertLess(
-            followup.index("UPDATE context.analysis_templates"),
+            followup.index("DELETE FROM context.analysis_templates"),
             followup.index("ALTER COLUMN sql_text SET NOT NULL"),
         )
         self.assertIn(
@@ -90,11 +89,8 @@ class ControlPlaneContractTest(unittest.TestCase):
         self.assertNotIn("app.adapters.fake_data_platform", imports)
 
     def test_contract_version_and_error_codes_are_complete(self) -> None:
-        contracts = (BACKEND / "app" / "contracts.py").read_text(encoding="utf-8")
-        registry = json.loads(
-            (BACKEND / "contracts" / "source_registry.v1.json").read_text(
-                encoding="utf-8"
-            )
+        contracts = (BACKEND / "app" / "contract_core.py").read_text(
+            encoding="utf-8"
         )
         required_codes = {
             "CONTEXT_INCOMPLETE",
@@ -151,7 +147,6 @@ class ControlPlaneContractTest(unittest.TestCase):
         }
 
         self.assertEqual(CONTRACT_VERSION, assigned_version)
-        self.assertEqual(CONTRACT_VERSION, registry["contract_version"])
         self.assertEqual(required_codes, declared_codes)
 
 

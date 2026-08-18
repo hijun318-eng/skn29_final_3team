@@ -1,4 +1,6 @@
-name: ${COMPOSE_PROJECT_NAME:-hotel-synthetic-db}
+# 책임: 저장소에는 schema만 bootstrap하고 각 엔진의 runtime 자격증명은 외부
+# 환경에서 주입한다. healthcheck나 필수 secret 실패는 downstream 시작을 차단한다.
+name: ${COMPOSE_PROJECT_NAME:-answervice}
 
 x-db: &db
   restart: unless-stopped
@@ -24,7 +26,6 @@ services:
     volumes:
       - app-postgres-data:/var/lib/postgresql/data
       - ./sql/ddl/00_answervice_app_postgresql.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ./sql/app/10-reference-data.sql:/docker-entrypoint-initdb.d/10-reference.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -53,7 +54,6 @@ services:
     volumes:
       - pms-postgres-data:/var/lib/postgresql/data
       - ./sql/ddl/01_hotel_pms_postgresql.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ../../docs/e2e_mvp/derived/service_demo_v3/01_pms_seed_service_demo_v3.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -82,7 +82,6 @@ services:
     volumes:
       - banquet-postgres-data:/var/lib/postgresql/data
       - ./sql/ddl/05_hotel_banquet_postgresql.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ../../docs/e2e_mvp/derived/service_demo_v3/04_banquet_seed_service_demo_v3.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
@@ -107,10 +106,11 @@ services:
     volumes:
       - pos-mysql-data:/var/lib/mysql
       - ./sql/ddl/02_hotel_pos_mysql.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ../../docs/e2e_mvp/derived/service_demo_v3/02_pos_seed_service_demo_v3.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping --protocol=tcp -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      # Password is inherited through the child environment, never expanded into
+      # the healthcheck process argv or persisted in Docker inspection output.
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysqladmin ping --protocol=tcp -h 127.0.0.1 -uroot --silent"]
       interval: 10s
       timeout: 5s
       retries: 15
@@ -134,10 +134,11 @@ services:
       - crm-mssql-data:/var/opt/mssql
       - ./mssql/entrypoint.sh:/bootstrap/entrypoint.sh:ro
       - ./sql/ddl/03_hotel_crm_sqlserver.sql:/bootstrap/00-ddl.sql:ro
-      - ../../docs/e2e_mvp/derived/service_demo_v3/03_crm_seed_service_demo_v3.sql:/bootstrap/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
-      test: ["CMD-SHELL", "test -f /var/opt/mssql/.hotel_synthetic_initialized && /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" >/dev/null 2>&1"]
+      # sqlcmd reads SQLCMDPASSWORD from its environment so the secret never
+      # becomes a `-P` process argument visible inside the container.
+      test: ["CMD-SHELL", "test -f /var/opt/mssql/.answervice_schema_initialized && SQLCMDPASSWORD=\"$$MSSQL_SA_PASSWORD\" /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -Q \"SELECT 1\" >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -161,7 +162,6 @@ services:
       - facility-clickhouse-data:/var/lib/clickhouse
       - ./clickhouse/config.d/timezone.xml:/etc/clickhouse-server/config.d/timezone.xml:ro
       - ./sql/ddl/04_hotel_facility_clickhouse.sql:/docker-entrypoint-initdb.d/00-schema.sql:ro
-      - ../../docs/e2e_mvp/derived/service_demo_v3/05_facility_seed_service_demo_v3.sql:/docker-entrypoint-initdb.d/10-synthetic.sql:ro
       - ./security:/security:ro
     healthcheck:
       test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1' >/dev/null"]
@@ -185,53 +185,42 @@ services:
       CRM_READONLY_PASSWORD: ${CRM_READONLY_PASSWORD}
       FACILITY_READONLY_USER: ${FACILITY_READONLY_USER}
       FACILITY_READONLY_PASSWORD: ${FACILITY_READONLY_PASSWORD}
+      TRINO_TLS_KEYSTORE_PASSWORD: ${TRINO_TLS_KEYSTORE_PASSWORD:?TRINO_TLS_KEYSTORE_PASSWORD is required}
+      TRINO_INTERNAL_SHARED_SECRET: ${TRINO_INTERNAL_SHARED_SECRET:?TRINO_INTERNAL_SHARED_SECRET is required}
     depends_on:
       pms-postgres: { condition: service_healthy }
       banquet-postgres: { condition: service_healthy }
       pos-mysql: { condition: service_healthy }
       crm-mssql: { condition: service_healthy }
       facility-clickhouse: { condition: service_healthy }
-    ports: ["127.0.0.1:${TRINO_PORT:-18080}:8080"]
+    ports: ["127.0.0.1:${TRINO_PORT:-18443}:8443"]
     volumes:
       - ./trino/etc:/etc/trino:ro
       - ./sql/ddl:/sql/ddl:ro
+      # Auth hashes, server key material, and the public CA are deployment
+      # inputs. Missing files must fail as bind mounts, never become directories.
+      - ${TRINO_PASSWORD_DB_HOST_FILE:?TRINO_PASSWORD_DB_HOST_FILE is required}:/run/secrets/trino-password.db:ro
+      - ${TRINO_TLS_KEYSTORE_HOST_FILE:?TRINO_TLS_KEYSTORE_HOST_FILE is required}:/run/secrets/trino-keystore.p12:ro
+      - ${TRINO_TLS_CA_HOST_FILE:?TRINO_TLS_CA_HOST_FILE is required}:/run/secrets/trino-ca.pem:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/v1/info >/dev/null"]
+      # /v1/info is intentionally public in Trino; this checks the TLS server
+      # and CA binding only. start.ps1 separately proves authenticated SQL.
+      test: ["CMD-SHELL", "curl --fail --silent --show-error --cacert /run/secrets/trino-ca.pem https://trino:8443/v1/info >/dev/null"]
       interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 30s
-
-  trino-analytics-keeper:
-    <<: *db
-    profiles: [full, split-host]
-    image: "trinodb/trino:476@sha256:00125e40d063bc4816d165482f6044872b18b56026fb959d3b28ce1f96ffbbee"
-    entrypoint: ["sh", "/trino/ensure-analytics-views.sh"]
-    depends_on:
-      trino: { condition: service_healthy }
-    volumes:
-      - ./trino/ensure-analytics-views.sh:/trino/ensure-analytics-views.sh:ro
-      - ./sql/ddl/06_trino_analytics_views.sql:/sql/ddl/06_trino_analytics_views.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "test \"$$(trino --server http://trino:8080 --user hotel_synthetic_setup --output-format TSV --execute \"SELECT count(*) FROM serving.information_schema.tables WHERE table_schema = 'analytics' AND table_name IN ('hotel_daily_metrics', 'fnb_daypart_metrics', 'facility_daily_metrics', 'banquet_monthly_metrics', 'hotel_monthly_metrics', 'hotel_yearly_metrics', 'workforce_monthly_metrics', 'resource_monthly_metrics')\" 2>/dev/null | tail -n 1)\" = 8"]
-      interval: 10s
-      timeout: 8s
+      timeout: 10s
       retries: 20
       start_period: 30s
 
 networks:
   database-network:
-    name: ${COMPOSE_PROJECT_NAME:-hotel-synthetic-db}-network
+    name: ${COMPOSE_PROJECT_NAME:-answervice}-network
 
 volumes:
   app-postgres-data: {}
-  pms-postgres-data:
-    name: hotel-synthetic-db_pms-validated-v4-data
-  banquet-postgres-data:
-    name: hotel-synthetic-db_banquet-validated-v3-data
-  pos-mysql-data:
-    name: hotel-synthetic-db_pos-validated-v3-data
-  crm-mssql-data:
-    name: hotel-synthetic-db_crm-validated-v3-data
-  facility-clickhouse-data:
-    name: hotel-synthetic-db_facility-validated-v3-data
+  # Compose-scoped names prevent a new environment from silently attaching to
+  # an old scenario volume whose provenance cannot be verified.
+  pms-postgres-data: {}
+  banquet-postgres-data: {}
+  pos-mysql-data: {}
+  crm-mssql-data: {}
+  facility-clickhouse-data: {}

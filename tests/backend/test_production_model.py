@@ -1,851 +1,457 @@
+from __future__ import annotations
+
 import json
 import unittest
 from datetime import date
-from pathlib import Path
-from sys import path
 from types import SimpleNamespace
-from uuid import UUID
+from unittest.mock import patch
+
+import httpx
+import pytest
+
+from app.adapters.contract_model import ContractModelAdapter, _openai_payload, _qwen_payload
+from app.adapters.model_schemas import canonical_model_input, serving_schema
+from app.adapters.model_transport import openai_transport
+from src.ai.schema import ContractError, validate_payload
+from src.modelops.runtime import _TRANSPORT_META_KEY
+from tests.ai.test_contracts import VALID_PAYLOADS
 
 
-BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
-path.insert(0, str(BACKEND))
-
-from app.adapters import contract_model
-from app.adapters.contract_model import (
-    ContractModelAdapter,
-    _openai_payload,
-    _qwen_payload,
-    _validate_sql_semantics,
-    openai_transport,
-)
-from app.adapters.i2_data_platform import I2DataPlatformAdapter
-from app.contracts import AnalysisRequest, RequestContext
-from app.services.context_builder import (
-    ContextAsset,
-    ContextBuildRequest,
-    ContextMetric,
-    ContextMetricTerm,
-    ContextPackageBuilder,
-    ContextRequiredFilter,
-)
-from app.services.pipeline_support import PipelineSupport
-from tests.support.fakes import ContractFakeModelAdapter as FakeModelAdapter
-from src.modelops.runtime import ModelCircuitOpenError, ProductionModelClient
-
-
-def _package_with_local_test_term(metric_id: str) -> SimpleNamespace:
-    item = I2DataPlatformAdapter(
-        "http://trino:8080", "test", require_live_metadata=False
-    ).get_metric_terms((metric_id,))[metric_id]
-    term = ContextMetricTerm(
-        id=str(item["id"]),
-        urn=str(item["urn"]),
-        label=str(item["label"]),
-        aliases=tuple(map(str, item["aliases"])),
-        definition=str(item["definition"]),
-        unit=str(item["unit"]),
-        version=str(item["version"]),
-    )
-    return SimpleNamespace(metric_terms=(term,), metrics=())
-
-
-class ProductionModelTest(unittest.TestCase):
-    def test_three_source_model_output_is_not_replaced_by_a_compiler(self) -> None:
-        calls = []
-
-        class Model:
-            def generate(self, node, _payload):
-                calls.append(node)
-                return {
-                    "sql": "SELECT 1 LIMIT 1000",
-                    "references": [],
-                    "parameters": [],
-                    "model": {"model_version": "gpt-5.4-mini"},
+def _contracts(catalog: str = "orbit") -> dict:
+    fqn = f"{catalog}.ops.event_fact"
+    return {
+        "schema_context": {
+            "version": "context-runtime-7",
+            "assets": [
+                {
+                    "urn": f"urn:test:{fqn}",
+                    "fqn": fqn,
+                    "grain": {"kind": "event", "keys": ["occurred_on"]},
+                    "columns": [
+                        {
+                            "name": "occurred_on",
+                            "native_type": "date",
+                            "nullable": False,
+                            "role": "time",
+                        },
+                        {
+                            "name": "amount",
+                            "native_type": "double",
+                            "nullable": False,
+                            "role": "measure",
+                        },
+                    ],
                 }
-
-        question = json.loads(
-            (Path(__file__).resolve().parents[2] / "src/data/pms_crm_pos_context.i5.v1.json").read_text(
-                encoding="utf-8"
-            )
-        )["question"]
-        context = RequestContext(as_of=date(2026, 8, 12))
-        request = AnalysisRequest(
-            question=question,
-            parameters={
-                "period_start": "2026-05-01",
-                "period_end_exclusive": "2026-07-01",
-            },
-        )
-        data = I2DataPlatformAdapter(
-            "http://trino:8080", "test", require_live_metadata=False
-        )
-        support = PipelineSupport(data, ContextPackageBuilder())
-        assets = data.search_assets(question, context.model_dump(mode="json"))
-        package = support.build_context(request, context, assets)
-
-        plan = ContractModelAdapter(Model()).generate(
-            "node2",
+            ],
+        },
+        "metric_rules": [
             {
-                "request_id": str(context.request_id),
-                "question": question,
-                "package": package,
-                "context": context,
-            },
-        )
-
-        self.assertEqual(["node2"], calls)
-        self.assertEqual("gpt-5.4-mini", plan["model_version"])
-        self.assertEqual("SELECT 1 LIMIT 1000", plan["sql"])
-        self.assertIsNotNone(support.g2_violation(plan, package))
-
-    def test_single_source_unaliased_filters_are_sealed_as_parameters(self) -> None:
-        package = {
-            "execution_time": {
-                "period_start": "2026-06-01T00:00:00+09:00",
-                "period_end_exclusive": "2026-07-01T00:00:00+09:00",
-            },
-            "assets": [{
-                "trino_fqn": "serving.analytics.hotel_daily_metrics",
-                "columns": [
-                    "business_date",
-                    "recognized_room_revenue",
-                    "data_period_status",
-                    "is_forecast",
-                ],
-            }],
-            "metrics": [{
-                "id": "recognized_room_revenue",
-                "field": "serving.analytics.hotel_daily_metrics.recognized_room_revenue",
+                "id": "governed_amount",
+                "source": {
+                    "kind": "column",
+                    "field": {"asset_fqn": fqn, "column": "amount"},
+                },
                 "aggregation": "sum",
-                "time_field": "serving.analytics.hotel_daily_metrics.business_date",
-                "required_filters": [
-                    {
-                        "field": "data_period_status",
-                        "asset_fqn": "serving.analytics.hotel_daily_metrics",
-                        "operator": "eq",
-                        "parameter_name": "required_filter_1",
-                        "value_type": "string",
-                        "value": "SYNTHETIC_ACTUAL_LIKE",
-                    },
-                    {
-                        "field": "is_forecast",
-                        "asset_fqn": "serving.analytics.hotel_daily_metrics",
-                        "operator": "eq",
-                        "parameter_name": "required_filter_2",
-                        "value_type": "boolean",
-                        "value": False,
-                    },
-                ],
-            }],
-        }
-        sql = (
-            "SELECT SUM(recognized_room_revenue) FROM serving.analytics.hotel_daily_metrics "
-            "WHERE business_date >= DATE '2026-06-01' "
-            "AND business_date < DATE '2026-07-01' "
-            "AND data_period_status = 'SYNTHETIC_ACTUAL_LIKE' "
-            "AND is_forecast = false LIMIT 1000"
-        )
+                "result_field": "governed_total",
+                "unit": "credits",
+                "time_field": {"asset_fqn": fqn, "column": "occurred_on"},
+                "dimensions": [],
+                "required_filters": [],
+            }
+        ],
+        "join_graph": {"edges": []},
+        "time_rules": {
+            "timezone": "Asia/Seoul",
+            "calendar_id": "gregorian-kr",
+            "interval": "[start,end)",
+            "start_parameter": "window_begin",
+            "end_parameter": "window_stop",
+            "fields": [
+                {
+                    "field": {"asset_fqn": fqn, "column": "occurred_on"},
+                    "native_type": "date",
+                    "bucket": "day",
+                    "timezone_mode": "preserve",
+                }
+            ],
+        },
+        "parameter_contract": {
+            "style": "named",
+            "parameters": [
+                {"name": "window_begin", "type": "date", "scope": "time"},
+                {"name": "window_stop", "type": "date", "scope": "time"},
+            ],
+        },
+        "query_policy": {
+            "dialect": "trino",
+            "statement_type": "select",
+            "read_only": True,
+            "require_limit": True,
+            "max_limit": 100,
+            "allowed_functions": ["SUM", "CAST"],
+            "allowed_catalogs": [catalog],
+        },
+    }
 
-        sealed, parameters = contract_model._seal_sql_parameters(sql, package)
 
-        self.assertIn("data_period_status = :required_filter_1", sealed)
-        self.assertIn("is_forecast = :required_filter_2", sealed)
+def _node2_payload(catalog: str = "orbit") -> dict:
+    return {
+        "question_id": "request-arbitrary-1",
+        "normalized_question": "Summarize the governed amount for the selected interval.",
+        "structured_request": {
+            "intent_candidates": ["aggregate"],
+            "metric_ids": ["governed_amount"],
+            "dimension_fields": [],
+        },
+        "context_package": _contracts(catalog),
+    }
+
+
+def _node2_response(catalog: str = "orbit") -> dict:
+    fqn = f"{catalog}.ops.event_fact"
+    return {
+        "sql": (
+            f"SELECT SUM(e.amount) AS governed_total FROM {fqn} AS e "
+            "WHERE e.occurred_on >= CAST(:window_begin AS DATE) "
+            "AND e.occurred_on < CAST(:window_stop AS DATE) LIMIT 100"
+        ),
+        "used_assets": [fqn],
+        "used_columns": [
+            {"asset_fqn": fqn, "column": "amount"},
+            {"asset_fqn": fqn, "column": "occurred_on"},
+        ],
+        "used_joins": [],
+        "used_metrics": ["governed_amount"],
+    }
+
+
+@pytest.mark.parametrize("catalog", ["orbit", "cobalt"])
+def test_provider_input_uses_the_six_runtime_contracts(catalog: str) -> None:
+    payload = _node2_payload(catalog)
+    model_input = canonical_model_input("node2", payload)
+
+    validate_payload("node2_request", model_input)
+
+    assert set(model_input) == {
+        "question_id",
+        "normalized_question",
+        "resolved_request",
+        "schema_context",
+        "metric_rules",
+        "join_graph",
+        "time_rules",
+        "parameter_contract",
+        "query_policy",
+    }
+    assert all("value" not in item for item in model_input["parameter_contract"]["parameters"])
+    assert set(serving_schema("node2")["required"]) == set(_node2_response(catalog))
+
+
+def test_openai_and_qwen_use_identical_canonical_messages() -> None:
+    payload = canonical_model_input("node2", _node2_payload())
+
+    openai = _openai_payload("gpt-5.4-mini", "node2", payload)
+    qwen = _qwen_payload("answervice-sql", "node2", payload)
+
+    assert openai["messages"] == qwen["messages"]
+    assert json.loads(openai["messages"][1]["content"]) == payload
+    assert openai["max_completion_tokens"] == 1_280
+    assert qwen["max_tokens"] == 1_280
+
+
+def test_openai_and_qwen_schema_dual_adaptation() -> None:
+    payload = canonical_model_input("node2", _node2_payload())
+
+    openai = _openai_payload("gpt-5.4-mini", "node2", payload)
+    qwen = _qwen_payload("answervice-sql", "node2", payload)
+
+    openai_schema = openai["response_format"]["json_schema"]["schema"]
+    qwen_schema = qwen["guided_json"]
+
+    # 1. OpenAI Strict Schema Verification
+    assert openai["response_format"]["json_schema"]["strict"] is True
+    assert openai_schema["type"] == "object"
+    assert openai_schema["additionalProperties"] is False
+    assert set(openai_schema["required"]) == set(openai_schema["properties"].keys())
+    assert "minItems" not in openai_schema["properties"]["used_assets"]
+    assert "uniqueItems" not in openai_schema["properties"]["used_assets"]
+    assert "minLength" not in openai_schema["properties"]["sql"]
+    assert "$defs" in openai_schema
+    assert set(openai_schema["$defs"].keys()) == {"qualified_field"}  # tree-shaked
+    assert openai_schema["$defs"]["qualified_field"]["additionalProperties"] is False
+
+    # 2. Qwen Guided Decoding Schema Preservation
+    assert qwen_schema["properties"]["used_assets"]["minItems"] == 1
+    assert qwen_schema["properties"]["used_assets"]["uniqueItems"] is True
+    assert qwen_schema["properties"]["sql"]["minLength"] == 1
+    assert len(qwen_schema.get("$defs", {})) > 1  # Full definitions preserved for BNF grammar compiler
+
+
+
+class ProductionModelAsyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_transport_validates_request_and_response_contracts(self) -> None:
+        seen = []
+
+        async def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(json.loads(request.content))
+            return httpx.Response(
+                200,
+                json={
+                    "model": "runtime-model-snapshot",
+                    "choices": [
+                        {"message": {"content": json.dumps(_node2_response())}}
+                    ],
+                    "usage": {"prompt_tokens": 11, "completion_tokens": 7},
+                },
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            result = await openai_transport(
+                "https://model.invalid",
+                "token",
+                "node2",
+                canonical_model_input("node2", _node2_payload()),
+                1,
+                model="gpt-5.4-mini",
+                provider="openai",
+                client=client,
+            )
+
+        self.assertEqual(1, len(seen))
+        self.assertEqual(["orbit.ops.event_fact"], result["used_assets"])
+        self.assertNotIn("model", result)
         self.assertEqual(
-            ["period_start", "period_end_exclusive", "required_filter_1", "required_filter_2"],
-            [item["name"] for item in parameters],
+            "gpt-5.4-mini",
+            result[_TRANSPORT_META_KEY]["model_version"],
         )
 
-    def test_routed_client_uses_a_separate_openai_model_for_node2(self) -> None:
-        adapter = ContractModelAdapter.from_endpoints(
-            openai_endpoint="https://api.openai.com",
-            openai_token="openai-token",
-            openai_model="gpt-main",
-            node2_endpoint="https://api.openai.com",
-            node2_token="openai-token",
-            node2_model="gpt-5.6-luna",
-            node2_provider="openai",
-        )
-        main_transport = adapter._model._openai_client._transport
-        node2_transport = adapter._model._node2_client._transport
+    async def test_invalid_runtime_contract_fails_before_network_io(self) -> None:
+        payload = _node2_payload()
+        del payload["context_package"]["schema_context"]["assets"][0]["grain"]
+        called = False
 
-        self.assertEqual(("https://api.openai.com", "openai-token"), main_transport.args)
-        self.assertEqual(
-            {"model": "gpt-main", "provider": "openai"},
-            main_transport.keywords,
-        )
-        self.assertEqual(("https://api.openai.com", "openai-token"), node2_transport.args)
-        self.assertEqual(
-            {"model": "gpt-5.6-luna", "provider": "openai"},
-            node2_transport.keywords,
-        )
-        self.assertEqual(2, adapter._model._openai_client._max_attempts)
-        self.assertEqual(3, adapter._model._node2_client._max_attempts)
+        async def handler(_request: httpx.Request) -> httpx.Response:
+            nonlocal called
+            called = True
+            return httpx.Response(500)
 
-    def test_every_node_sends_its_registered_prompt(self) -> None:
-        from src.ai.prompt_registry import get_prompt
-
-        prompt_ids = {
-            "node1": "node1.normalize",
-            "node2": "node2.sql",
-            "node2_repair": "node2.repair",
-            "node3": "node3.explain",
-        }
-        openai_prompts = {
-            node: _openai_payload("model", node, {})["messages"][0]["content"]
-            for node in prompt_ids
-        }
-        self.assertEqual(4, len(set(openai_prompts.values())))
-        for node, prompt_id in prompt_ids.items():
-            self.assertEqual(get_prompt(prompt_id).text, openai_prompts[node])
-
-        node2_payload = self._node2_payload()
-        self.assertEqual(
-            get_prompt("node2.sql").text,
-            _qwen_payload("model", "node2", node2_payload)["messages"][0]["content"],
-        )
-
-    def test_openai_and_qwen_use_byte_equivalent_canonical_messages(self) -> None:
-        payloads = {
-            "node1": {"question": "지난달 객실 매출", "business_terms": []},
-            "node2": self._node2_payload(),
-            "node2_repair": {"trace_id": "trace-1", "attempt": 1},
-            "node3": {"locale": "ko-KR", "facts": []},
-        }
-        for node, payload in payloads.items():
-            with self.subTest(node=node):
-                self.assertEqual(
-                    _openai_payload("model", node, payload)["messages"],
-                    _qwen_payload("model", node, payload)["messages"],
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            async def transport(node, wire_payload, timeout):
+                return await openai_transport(
+                    "https://model.invalid",
+                    "token",
+                    node,
+                    wire_payload,
+                    timeout,
+                    model="gpt-5.4-mini",
+                    provider="openai",
+                    client=client,
                 )
 
-    def test_transport_uses_fixed_serving_contract(self) -> None:
-        captured = {}
-        original = contract_model.request_json
-        node_payload = self._node2_payload()
+            from app.adapters.async_model_client import AsyncProductionModelClient
 
-        def request(method, url, payload, token, timeout):
-            captured.update(
-                method=method,
-                url=url,
-                payload=payload,
-                token=token,
-                timeout=timeout,
-            )
-            full = FakeModelAdapter().generate("node2", node_payload)
-            response = {
-                "sql": full["sql"],
-                "used_assets": ["pms.public.pms_stays"],
-                "used_metrics": ["recognized_room_revenue_krw"],
-            }
-            return {"choices": [{"message": {"content": json.dumps(response)}}]}
+            runtime = AsyncProductionModelClient(transport)
+            with self.assertRaises((ContractError, ValueError)):
+                await runtime.generate(
+                    "node2",
+                    payload,
+                )
 
-        contract_model.request_json = request
-        try:
-            result = openai_transport(
-                "http://model.local/",
-                "secret-token",
-                "node2",
-                node_payload,
-                7.0,
-            )
-        finally:
-            contract_model.request_json = original
+        self.assertFalse(called)
 
-        self.assertIn("sql", result)
-        self.assertEqual("http://model.local/v1/chat/completions", captured["url"])
-        self.assertEqual("secret-token", captured["token"])
-        self.assertEqual(0, captured["payload"]["temperature"])
-        self.assertEqual(1_280, captured["payload"]["max_tokens"])
-        self.assertEqual(
-            {"enable_thinking": False},
-            captured["payload"]["chat_template_kwargs"],
-        )
-        guided = captured["payload"]["guided_json"]
-        self.assertEqual(
-            {"sql", "used_assets", "used_metrics"}, set(guided["required"])
-        )
-        self.assertFalse(guided["additionalProperties"])
-        model_input = json.loads(captured["payload"]["messages"][1]["content"])
-        self.assertEqual(
-            {"structured_request", "approved_context"}, set(model_input)
-        )
-        self.assertNotIn("normalized_question", captured["payload"]["messages"][1]["content"])
+    async def test_contract_adapter_preserves_untrusted_model_lineage(self) -> None:
+        class ProgrammableModel:
+            last_trace = {"model_version": "runtime-model"}
 
-    def test_transport_does_not_treat_cte_names_as_used_assets(self) -> None:
-        original = contract_model.request_json
-        node_payload = self._node2_payload()
-        node_payload["context_package"]["assets"].append(
+            async def generate(self, node, payload):
+                if node != "node2":
+                    raise AssertionError(f"unexpected node: {node}")
+                validate_payload("node2_request", canonical_model_input(node, payload))
+                return _node2_response()
+
+        adapter = ContractModelAdapter(ProgrammableModel())
+        plan = await adapter.generate(
+            "node2",
             {
-                "urn": "urn:li:dataset:pos",
-                "trino_fqn": "pos.pos_db.pos_orders",
-                "columns": ["net_amount"],
-            }
-        )
-        node_payload["context_package"]["metrics"] = [
-            {
-                "id": "total_guest_revenue_krw",
-                "field": "derived.total_guest_revenue_krw",
-                "aggregation": "derived_sum",
-                "time_field": "derived.month",
-            }
-        ]
-        sql = (
-            "WITH pms_source AS (SELECT SUM(room_revenue) room_revenue_krw "
-            "FROM pms.public.pms_stays), pos_source AS (SELECT SUM(net_amount) "
-            "fnb_revenue_krw FROM pos.pos_db.pos_orders) SELECT room_revenue_krw + "
-            "fnb_revenue_krw total_guest_revenue_krw FROM pms_source JOIN pos_source ON true LIMIT 1000"
-        )
-
-        def request(*_args):
-            response = {
-                "sql": sql,
-                "used_assets": ["pms.public.pms_stays", "pos.pos_db.pos_orders"],
-                "used_metrics": ["total_guest_revenue_krw"],
-            }
-            return {"choices": [{"message": {"content": json.dumps(response)}}]}
-
-        contract_model.request_json = request
-        try:
-            result = openai_transport("http://model", "token", "node2", node_payload, 7)
-        finally:
-            contract_model.request_json = original
-
-        self.assertEqual(sql, result["sql"])
-
-    def test_every_product_node_uses_its_r3_response_schema(self) -> None:
-        expected = {
-            "node2": "sql",
-            "node2_repair": "corrected_sql",
-            "node3": "explanation",
-        }
-        for node, field in expected.items():
-            with self.subTest(node=node):
-                schema = contract_model._response_schema(node)
-                self.assertIn(field, schema["required"])
-                self.assertFalse(schema["additionalProperties"])
-
-        with self.assertRaises(KeyError):
-            contract_model._response_schema("unknown")
-
-    def test_model_failure_never_generates_a_fallback_result(self) -> None:
-        client = ProductionModelClient(
-            lambda _node, _payload, _timeout: (_ for _ in ()).throw(TimeoutError()),
-            failure_threshold=1,
-        )
-        adapter = ContractModelAdapter(client)
-
-        with self.assertRaisesRegex(TimeoutError, "TIMEOUT"):
-            adapter._generate("node2", self._node2_payload())
-        self.assertFalse(client.last_trace["fallback"])
-
-        with self.assertRaisesRegex(ModelCircuitOpenError, "CIRCUIT_OPEN"):
-            adapter._generate("node2", self._node2_payload())
-        self.assertEqual("CIRCUIT_OPEN", client.last_trace["status"])
-
-    def test_plan_ignores_parameters_without_sql_placeholders(self) -> None:
-        response = FakeModelAdapter().generate("node2", self._node2_payload())
-        response["parameters"].append(
-            {"name": "grade_code", "type": "string", "value": "GOLD"}
-        )
-
-        plan = ContractModelAdapter._plan(response, "sql")
-
-        self.assertNotIn("grade_code", plan["parameters"])
-
-    def test_plan_rejects_duplicate_parameter_names(self) -> None:
-        response = FakeModelAdapter().generate("node2", self._node2_payload())
-        response["parameters"].append(dict(response["parameters"][0]))
-
-        with self.assertRaisesRegex(ValueError, "unique"):
-            ContractModelAdapter._plan(response, "sql")
-
-    def test_seal_sql_parameters_types_plain_and_typed_date_literals(self) -> None:
-        package = self._node2_payload()["context_package"]
-        package["metrics"][0]["required_filters"] = [
-            {
-                "field": "data_period_status",
-                "operator": "eq",
-                "value_type": "string",
-                "value": "ACTUAL",
-            }
-        ]
-        sql = (
-            "SELECT 1 FROM pms.public.pms_stays "
-            "WHERE actual_checkout_at >= '2026-08-01' "
-            "AND actual_checkout_at < DATE '2026-08-04' "
-            "AND data_period_status = 'ACTUAL' LIMIT 1000"
-        )
-
-        sealed, parameters = contract_model._seal_sql_parameters(sql, package)
-
-        self.assertIn("actual_checkout_at >= :period_start", sealed)
-        self.assertIn("actual_checkout_at < DATE ':period_end_exclusive'", sealed)
-        self.assertIn("data_period_status = :required_filter_1", sealed)
-        self.assertEqual(
-            [
-                "period_start",
-                "period_end_exclusive",
-                "required_filter_1",
-            ],
-            [item["name"] for item in parameters],
-        )
-
-    def test_seal_normalizes_date_literal_with_midnight_timezone(self) -> None:
-        package = self._node2_payload()["context_package"]
-        sql = (
-            "SELECT 1 FROM pms.public.pms_stays "
-            "WHERE actual_checkout_at >= DATE '2026-08-01T00:00:00+09:00' "
-            "AND actual_checkout_at < DATE '2026-08-04T00:00:00+09:00' LIMIT 1000"
-        )
-
-        sealed, _parameters = contract_model._seal_sql_parameters(sql, package)
-
-        self.assertIn("DATE ':period_start'", sealed)
-        self.assertIn("DATE ':period_end_exclusive'", sealed)
-
-    def test_seal_keeps_same_named_filters_bound_to_their_assets(self) -> None:
-        package = self._node2_payload()["context_package"]
-        package["metrics"][0]["required_filters"] = [
-            {
-                "field": "property_id",
-                "asset_fqn": "pms.public.pms_stays",
-                "operator": "eq",
-                "parameter_name": "required_filter_1",
-                "value_type": "string",
-                "value": "SYNTHETIC_HOTEL_001",
+                "question": _node2_payload()["normalized_question"],
+                "structured_request": _node2_payload()["structured_request"],
+                "request_id": "request-arbitrary-1",
+                "package": SimpleNamespace(runtime_contracts=_contracts()),
+                "context": SimpleNamespace(),
             },
-            {
-                "field": "property_id",
-                "asset_fqn": "pos.pos_db.pos_orders",
-                "operator": "eq",
-                "parameter_name": "required_filter_2",
-                "value_type": "string",
-                "value": "SYNTHETIC_HOTEL_001",
-            },
-        ]
-        sql = (
-            "SELECT 1 FROM pms.public.pms_stays s "
-            "JOIN pos.pos_db.pos_orders o ON s.property_id = o.property_id "
-            "WHERE s.property_id = 'SYNTHETIC_HOTEL_001' "
-            "AND o.property_id = 'SYNTHETIC_HOTEL_001' LIMIT 1000"
         )
 
-        sealed, parameters = contract_model._seal_sql_parameters(sql, package)
+        self.assertEqual(["orbit.ops.event_fact"], plan["declared_assets"])
+        self.assertEqual(["governed_amount"], plan["declared_metrics"])
+        self.assertNotIn("references", plan)
 
-        self.assertIn("s.property_id = :required_filter_1", sealed)
-        self.assertIn("o.property_id = :required_filter_2", sealed)
-        self.assertEqual(
-            ["required_filter_1", "required_filter_2"],
-            [item["name"] for item in parameters[2:]],
-        )
+    async def test_full_stack_validates_all_analysis_nodes_and_separates_trace_metadata(self) -> None:
+        seen_wire_requests: dict[str, dict] = {}
 
-    def test_seal_normalizes_boolean_spelling_for_numeric_flag(self) -> None:
-        package = self._node2_payload()["context_package"]
-        package["metrics"][0]["required_filters"] = [
-            {
-                "field": "is_forecast",
-                "asset_fqn": "pos.pos_db.pos_orders",
-                "operator": "eq",
-                "parameter_name": "required_filter_1",
-                "value_type": "number",
-                "value": 0,
-            }
-        ]
-        sql = (
-            "SELECT 1 FROM pos.pos_db.pos_orders o "
-            "WHERE o.is_forecast = false LIMIT 1000"
-        )
-
-        sealed, parameters = contract_model._seal_sql_parameters(sql, package)
-
-        self.assertIn("o.is_forecast = :required_filter_1", sealed)
-        self.assertEqual(
-            {"name": "required_filter_1", "value_type": "number", "value": 0},
-            parameters[-1],
-        )
-
-    def test_qwen_input_keeps_required_filter_asset_provenance(self) -> None:
-        payload = self._node2_payload()
-        payload["context_package"]["metrics"][0]["required_filters"] = [
-            {
-                "field": "data_period_status",
-                "asset_fqn": "pms.public.pms_stays",
-                "operator": "eq",
-                "parameter_name": "required_filter_1",
-                "value_type": "string",
-                "value": "ACTUAL",
-            }
-        ]
-
-        model_input = json.loads(
-            _qwen_payload("model", "node2", payload)["messages"][1]["content"]
-        )
-
-        self.assertIn(
-            "pms.public.pms_stays.data_period_status = 'ACTUAL'",
-            model_input["structured_request"]["filters"],
-        )
-
-    def test_month_comparison_requires_two_month_window(self) -> None:
-        payload = {"normalized_question": "전월 대비 매출을 알려줘"}
-        with self.assertRaisesRegex(ValueError, "two-month window"):
-            _validate_sql_semantics("node2", payload, "SELECT 1 LIMIT 1")
-
-        _validate_sql_semantics(
-            "node2",
-            payload,
-            "SELECT 1 WHERE x >= date_add('month', -2, "
-            "from_iso8601_timestamp('2026-08-01T00:00:00+09:00')) "
-            "GROUP BY 1 ORDER BY 1 LIMIT 1",
-        )
-
-    def test_node2_requires_the_approved_metric_aggregation(self) -> None:
-        payload = self._node2_payload()
-        with self.assertRaisesRegex(ValueError, "metric aggregation"):
-            _validate_sql_semantics(
-                "node2",
-                payload,
-                "SELECT recognized_room_revenue_krw "
-                "FROM pms.public.pms_stays LIMIT 1000",
+        async def openai_handler(request: httpx.Request) -> httpx.Response:
+            provider_payload = json.loads(request.content)
+            node = provider_payload["response_format"]["json_schema"]["name"].removeprefix(
+                "answervice_"
+            ).removesuffix("_response")
+            wire_request = json.loads(provider_payload["messages"][1]["content"])
+            validate_payload(f"{node}_request", wire_request)
+            seen_wire_requests[node] = wire_request
+            response = {
+                "node1": VALID_PAYLOADS["node1_response"],
+                "node3": VALID_PAYLOADS["node3_response"],
+            }[node]
+            return httpx.Response(
+                200,
+                json={
+                    "model": f"{node}-snapshot",
+                    "choices": [{"message": {"content": json.dumps(response)}}],
+                    "usage": {"prompt_tokens": 17, "completion_tokens": 9},
+                },
             )
 
-        _validate_sql_semantics(
-            "node2",
-            payload,
-            "SELECT SUM(room_revenue) AS recognized_room_revenue_krw "
-            "FROM pms.public.pms_stays LIMIT 1000",
-        )
-
-    def test_node2_requires_requested_dimension_sort(self) -> None:
-        payload = self._node2_payload()
-        payload["structured_request"] = {
-            "dimension_candidates": ["business_date"]
-        }
-        sql = (
-            "SELECT business_date, SUM(room_revenue) AS recognized_room_revenue "
-            "FROM pms.public.pms_stays GROUP BY business_date"
-        )
-
-        with self.assertRaisesRegex(ValueError, "dimension sort"):
-            _validate_sql_semantics("node2", payload, f"{sql} LIMIT 1000")
-
-        _validate_sql_semantics(
-            "node2",
-            payload,
-            f"{sql} ORDER BY business_date LIMIT 1000",
-        )
-
-    def test_node2_rejects_grouping_when_no_dimension_was_requested(self) -> None:
-        payload = self._node2_payload()
-
-        with self.assertRaisesRegex(ValueError, "dimensions absent"):
-            _validate_sql_semantics(
-                "node2",
-                payload,
-                "SELECT property_id, SUM(room_revenue) AS recognized_room_revenue_krw "
-                "FROM pms.public.pms_stays GROUP BY property_id LIMIT 1000",
+        async def node2_handler(request: httpx.Request) -> httpx.Response:
+            provider_payload = json.loads(request.content)
+            wire_request = json.loads(provider_payload["messages"][1]["content"])
+            node = "node2_repair" if "trace_id" in wire_request else "node2"
+            validate_payload(f"{node}_request", wire_request)
+            seen_wire_requests[node] = wire_request
+            response = (
+                {"corrected_sql": _node2_response()["sql"]}
+                if node == "node2_repair"
+                else _node2_response()
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "model": f"runtime-{node}-snapshot",
+                    "choices": [
+                        {"message": {"content": json.dumps(response)}}
+                    ],
+                    "usage": {"prompt_tokens": 17, "completion_tokens": 9},
+                },
             )
 
-        _validate_sql_semantics(
-            "node2",
-            payload,
-            "SELECT SUM(room_revenue) AS recognized_room_revenue_krw "
-            "FROM pms.public.pms_stays LIMIT 1000",
-        )
-
-    def test_rejected_model_sql_is_fingerprinted_not_logged(self) -> None:
-        original = contract_model.request_json
-        rejected_sql = (
-            "SELECT recognized_room_revenue_krw "
-            "FROM pms.public.pms_stays LIMIT 1000"
-        )
-
-        def request(*_args):
-            return {
-                "choices": [
-                    {
-                        "message": {
-                            "content": json.dumps(
-                                {
-                                    "sql": rejected_sql,
-                                    "used_assets": ["pms.public.pms_stays"],
-                                    "used_metrics": ["recognized_room_revenue_krw"],
-                                }
-                            )
-                        }
-                    }
-                ]
-            }
-
-        contract_model.request_json = request
+        openai_http = httpx.AsyncClient(transport=httpx.MockTransport(openai_handler))
+        node2_http = httpx.AsyncClient(transport=httpx.MockTransport(node2_handler))
         try:
-            with self.assertLogs("uvicorn.error", level="WARNING") as captured:
-                with self.assertRaisesRegex(ValueError, "metric aggregation"):
-                    openai_transport(
-                        "http://model", "token", "node2", self._node2_payload(), 7
-                    )
-        finally:
-            contract_model.request_json = original
-
-        log_text = "\n".join(captured.output)
-        self.assertIn("sql_sha256=", log_text)
-        self.assertNotIn(rejected_sql, log_text)
-
-    def test_context_metric_registry_reaches_model_payload(self) -> None:
-        metric = ContextMetric(
-            "recognized_room_revenue",
-            "serving.analytics.hotel_daily_metrics",
-            "room_revenue",
-            "sum",
-            "business_date",
-            (
-                ContextRequiredFilter("data_period_status", "eq", "ACTUAL"),
-                ContextRequiredFilter("is_forecast", "eq", False),
-            ),
-        )
-        asset = ContextAsset(
-            "urn:li:dataset:hotel_daily_metrics",
-            metric.asset_fqn,
-            (
-                "room_revenue",
-                "business_date",
-                "data_period_status",
-                "is_forecast",
-            ),
-            metrics=(metric,),
-            metric_registry_required=True,
-        )
-        package = ContextPackageBuilder().build(
-            ContextBuildRequest(
-                "I4-CONTEXT-v2.1.0-DRAFT",
-                "policy-v1",
-                "2026-08-04",
-                "entitlement-hash",
-                (asset,),
-                100,
-                24_000,
-            ),
-            frozenset({asset.urn}),
-        )
-        context = ContractModelAdapter._context_package(
-            {
-                "package": package,
-                "context": RequestContext(
-                    user_id=UUID("00000000-0000-0000-0000-000000000001"),
-                    as_of=date(2026, 8, 4),
+            with patch(
+                "app.adapters.model_transport.httpx.AsyncClient",
+                side_effect=[openai_http, node2_http],
+            ):
+                adapter = ContractModelAdapter.from_endpoints(
+                    openai_endpoint="https://openai.invalid",
+                    openai_token="openai-token",
+                    openai_model="gpt-5.4-mini",
+                    node2_endpoint="https://node2.invalid",
+                    node2_token="node2-token",
+                    node2_model="answervice-sql",
+                    node2_provider="qwen",
+                    timeout_seconds=2,
+                )
+            normalized = await adapter.normalize_question(
+                dict(VALID_PAYLOADS["node1_request"])
+            )
+            traces = {"node1": dict(adapter.last_trace)}
+            plan = await adapter.generate(
+                "node2",
+                {
+                    "question": _node2_payload()["normalized_question"],
+                    "structured_request": _node2_payload()["structured_request"],
+                    "request_id": "request-arbitrary-1",
+                    "package": SimpleNamespace(runtime_contracts=_contracts()),
+                    "context": SimpleNamespace(),
+                },
+            )
+            traces["node2"] = dict(adapter.last_trace)
+            repaired = await adapter.generate(
+                "node2_repair",
+                {
+                    "trace_id": "trace-arbitrary-1",
+                    "attempt": 1,
+                    "rejected_sql": "SELECT invalid_identifier",
+                    "normalized_question": _node2_payload()["normalized_question"],
+                    "structured_request": _node2_payload()["structured_request"],
+                    "package": SimpleNamespace(runtime_contracts=_contracts()),
+                    "violation": "UNKNOWN_COLUMN",
+                    "violation_detail": "A governed column was not resolved.",
+                },
+            )
+            traces["node2_repair"] = dict(adapter.last_trace)
+            contracts = _contracts()
+            package = SimpleNamespace(
+                runtime_contracts=contracts,
+                metrics=(SimpleNamespace(id="governed_amount", unit="credits"),),
+                metric_terms=(
+                    SimpleNamespace(
+                        id="governed_amount",
+                        label="Governed amount",
+                        unit="credits",
+                    ),
                 ),
-            }
-        )
-
-        self.assertEqual("recognized_room_revenue", context["metrics"][0]["id"])
-        self.assertEqual(
-            "serving.analytics.hotel_daily_metrics.room_revenue",
-            context["metrics"][0]["field"],
-        )
-        self.assertEqual(
-            [
-                {
-                    "field": "data_period_status",
-                    "asset_fqn": "serving.analytics.hotel_daily_metrics",
-                    "operator": "eq",
-                    "parameter_name": "required_filter_1",
-                    "value_type": "string",
-                    "value": "ACTUAL",
-                },
-                {
-                    "field": "is_forecast",
-                    "asset_fqn": "serving.analytics.hotel_daily_metrics",
-                    "operator": "eq",
-                    "parameter_name": "required_filter_2",
-                    "value_type": "boolean",
-                    "value": False,
-                },
-            ],
-            context["metrics"][0]["required_filters"],
-        )
-
-    def test_stay_crm_approved_join_reaches_model_payload(self) -> None:
-        join_id = "pms_stay_to_crm_membership_grade_event_time_v1"
-        fqns = (
-            "pms.public.pms_stays",
-            "pms.public.pms_reservations",
-            "pms.public.pms_guests",
-            "crm.dbo.crm_customer_map",
-            "crm.dbo.crm_member_grade_history",
-        )
-        assets = tuple(
-            ContextAsset(
-                f"urn:li:dataset:{index}",
-                fqn,
-                ("property_id",),
-                join_ids=(join_id,),
+                parameter_bindings=(
+                    SimpleNamespace(
+                        name="window_begin",
+                        value_type="date",
+                        value="2026-08-01",
+                    ),
+                    SimpleNamespace(
+                        name="window_stop",
+                        value_type="date",
+                        value="2026-09-01",
+                    ),
+                ),
             )
-            for index, fqn in enumerate(fqns)
-        )
-        package = ContextPackageBuilder().build(
-            ContextBuildRequest(
-                "I4-CONTEXT-v2.1.0-DRAFT",
-                "policy-v1",
-                "2026-08-04",
-                "entitlement-hash",
-                assets,
-                100,
-                24_000,
-            ),
-            frozenset(asset.urn for asset in assets),
-        )
-
-        context = ContractModelAdapter._context_package(
-            {
-                "package": package,
-                "context": RequestContext(as_of=date(2026, 8, 4)),
-            }
-        )
-
-        self.assertEqual(4, len(context["joins"]))
-        self.assertEqual({join_id}, {item["id"] for item in context["joins"]})
-
-    def test_node3_uses_entitled_metric_instead_of_a_fixed_metric(self) -> None:
-        captured = {}
-
-        class Model:
-            def generate(self, node, payload):
-                captured.update(payload)
-                return {
-                    "explanation": "검증된 결과",
-                    "model": {"model_version": "MODEL-v1"},
-                }
-
-        result = ContractModelAdapter(Model()).generate(
-            "node3",
-            {
-                "query": {
-                    "rows": [],
-                    "query_id": "query-1",
-                    "status": "SUCCEEDED",
-                },
-                "assets": [
-                    {
-                        "urn": "urn:li:dataset:crm-points",
-                        "metrics": ({"id": "expired_points"},),
-                    }
-                ],
-                "context": RequestContext(as_of=date(2026, 8, 4)),
-                "package": _package_with_local_test_term("expired_points"),
-            },
-        )
-
-        self.assertEqual("expired_points", captured["metric"])
-        self.assertEqual("point", captured["unit"])
-        self.assertEqual(
-            {
-                "selected_metric_id": "expired_points",
-                "context_metric_ids": ["expired_points"],
-                "entitled_metric_ids": ["expired_points"],
-            },
-            captured["metric_selection"],
-        )
-        self.assertEqual("검증된 결과", result["summary"])
-
-    def test_node3_passes_approved_six_asset_derived_metric_selection(self) -> None:
-        captured = {}
-
-        class Model:
-            def generate(self, _node, payload):
-                captured.update(payload)
-                return {
-                    "explanation": "derived",
-                    "model": {"model_version": "MODEL-v1"},
-                }
-
-        join_id = "pms_crm_pos_gold_revenue_month_v1"
-        assets = [
-            {"urn": f"urn:li:dataset:source-{index}", "join_ids": (join_id,)}
-            for index in range(6)
-        ]
-        payload = {
-            "query": {
-                "rows": [],
-                "query_id": "query-1",
-                "status": "SUCCEEDED",
-            },
-            "assets": assets,
-            "context": RequestContext(as_of=date(2026, 8, 4)),
-            "package": _package_with_local_test_term("total_guest_revenue_krw"),
-        }
-        ContractModelAdapter(Model()).generate(
-            "node3",
-            payload,
-        )
-
-        self.assertEqual("total_guest_revenue_krw", captured["metric"])
-        self.assertEqual("객실·식음 통합 매출", captured["metric_label"])
-        self.assertEqual(
-            ["total_guest_revenue_krw"] * 6,
-            captured["metric_selection"]["context_metric_ids"],
-        )
-        self.assertEqual(
-            ["total_guest_revenue_krw"],
-            captured["metric_selection"]["entitled_metric_ids"],
-        )
-        self.assertTrue(ContractModelAdapter(FakeModelAdapter()).generate("node3", payload)["summary"])
-
-    def test_node3_metric_selection_fails_closed(self) -> None:
-        invalid_assets = (
-            [],
-            [{"urn": "source", "metrics": ()}],
-            [
+            explanation = await adapter.generate(
+                "node3",
                 {
-                    "urn": "source",
-                    "metrics": ({"id": "metric-a"}, {"id": "metric-b"}),
-                }
-            ],
-            [
-                {
-                    "urn": "source",
-                    "metrics": ({"id": "metric-a"},),
-                    "entitled_metric_ids": ("metric-b",),
-                }
-            ],
-        )
-        for assets in invalid_assets:
-            with self.subTest(assets=assets):
-                with self.assertRaises(ValueError):
-                    ContractModelAdapter._metric_selection(assets)
-
-    @staticmethod
-    def _node2_payload():
-        return {
-            "question_id": "request-1",
-            "context_package": {
-                "context_version": "CTX-v1",
-                "policy_version": "POLICY-v1",
-                "execution_time": {
-                    "as_of": "2026-08-04T00:00:00+09:00",
-                    "timezone": "Asia/Seoul",
-                    "calendar_id": "gregorian-kr",
-                    "period_start": "2026-08-01T00:00:00+09:00",
-                    "period_end_exclusive": "2026-08-04T00:00:00+09:00",
+                    "query": {
+                        "query_id": "query-arbitrary-1",
+                        "status": "SUCCESS",
+                        "rows": [{"governed_total": 42}],
+                        "filters": {},
+                        "sampling": {"applied": False},
+                        "masking": {"applied": False},
+                    },
+                    "package": package,
+                    "context": SimpleNamespace(
+                        timezone="Asia/Seoul",
+                        as_of=date(2026, 8, 16),
+                    ),
+                    "assets": [
+                        {
+                            "urn": "urn:test:orbit.ops.event_fact",
+                            "entitled_metric_ids": ["governed_amount"],
+                        }
+                    ],
                 },
-                "assets": [
-                    {
-                        "urn": "urn:li:dataset:pms",
-                        "trino_fqn": "pms.public.pms_stays",
-                        "columns": ["room_revenue", "actual_checkout_at"],
-                    }
-                ],
-                "metrics": [
-                    {
-                        "id": "recognized_room_revenue_krw",
-                        "field": "pms.public.pms_stays.room_revenue",
-                        "aggregation": "sum",
-                        "time_field": "pms.public.pms_stays.actual_checkout_at",
-                    }
-                ],
-                "joins": [],
-            },
-        }
+            )
+            traces["node3"] = dict(adapter.last_trace)
 
-
-if __name__ == "__main__":
-    unittest.main()
+            self.assertEqual(
+                {"node1", "node2", "node2_repair", "node3"},
+                set(seen_wire_requests),
+            )
+            self.assertNotIn("model", normalized)
+            self.assertNotIn("context_package", seen_wire_requests["node2"])
+            self.assertNotIn("context_package", seen_wire_requests["node2_repair"])
+            self.assertEqual("answervice-sql", plan["model_version"])
+            self.assertEqual("answervice-sql", repaired["model_version"])
+            self.assertEqual("gpt-5.4-mini", explanation["model_version"])
+            self.assertEqual("fixture", explanation["summary"])
+            self.assertEqual(
+                "runtime-node2-snapshot",
+                traces["node2"]["model_snapshot"],
+            )
+            self.assertEqual(
+                "runtime-node2_repair-snapshot",
+                traces["node2_repair"]["model_snapshot"],
+            )
+            self.assertEqual("node3-snapshot", traces["node3"]["model_snapshot"])
+            self.assertTrue(all(trace["input_tokens"] == 17 for trace in traces.values()))
+        finally:
+            if "adapter" in locals():
+                await adapter.aclose()
+            if not openai_http.is_closed:
+                await openai_http.aclose()
+            if not node2_http.is_closed:
+                await node2_http.aclose()

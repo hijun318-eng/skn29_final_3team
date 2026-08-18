@@ -1,3 +1,9 @@
+"""OpenAPI 문서 생성에만 쓰는 결정론적 계약 예시를 제공한다.
+
+이 모듈의 값은 endpoint 실행, 분석 결과 생성, fallback에 참여하지 않는다. 구체 값은
+배포된 OpenAPI snapshot의 직렬화 호환성을 위한 문서 데이터이며 운영 데이터 원본이 아니다.
+"""
+
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
@@ -23,22 +29,22 @@ from app.contracts import (
     SourceReference,
     TableResult,
 )
-from app.trace_examples import fixture_trace
+from app.trace_examples import example_trace
 
 
 ANALYSIS_REQUEST_EXAMPLES = {
     "general": {
         "summary": "일반 분석 질문",
-        "value": {"question": "이번 달 객실 운영 상태를 요약해줘"},
+        "value": {"question": "승인된 기간의 선택 지표를 분석해 주세요"},
     },
     "template": {
         "summary": "승인 Template 요청",
         "value": {
-            "question": "주간 객실 운영 현황",
-            "template_id": "weekly-room-operations",
+            "question": "승인된 Template을 실행해 주세요",
+            "template_id": "approved-analysis-template",
             "parameters": {
-                "period_start": "2026-05-01",
-                "period_end_exclusive": "2026-07-01",
+                "period_start": "2041-03-01",
+                "period_end_exclusive": "2041-04-01",
             },
         },
     },
@@ -73,19 +79,19 @@ def _meta(trace_id: str) -> ResponseMeta:
     return ResponseMeta(
         request_id=UUID("00000000-0000-0000-0000-000000000100"),
         trace_id=trace_id,
-        as_of=date(2026, 7, 30),
+        as_of=date(2041, 4, 2),
         contract_version=CONTRACT_VERSION,
-        timestamp=datetime(2026, 7, 30, tzinfo=timezone.utc),
+        timestamp=datetime(2041, 4, 2, tzinfo=timezone.utc),
     )
 
 
 def _source() -> SourceReference:
     return SourceReference(
-        urn="urn:answervice:dataset:pms.public.reservations",
-        fqn="pms.public.reservations",
-        name="PMS reservations",
+        urn="urn:example:dataset:catalog-alpha:fact-observations",
+        fqn="catalog_alpha.schema_beta.fact_observations",
+        name="Governed observations",
         schema_version="1.0.0",
-        seed_version="20260729",
+        seed_version="example-release-v1",
         synthetic=True,
     )
 
@@ -98,23 +104,23 @@ def _result(
 ) -> AnalysisResult:
     artifact_id = UUID(int=sum(map(ord, name)))
     return AnalysisResult(
-        summary="검증된 합성 데이터 분석 결과입니다.",
+        summary="문서 예시 계약에 맞는 분석 결과입니다.",
         table=TableResult(
-            columns=("business_date", "occupied_rooms"),
+            columns=("bucket_start", "measure_value"),
             rows=rows,
         ),
         chart=ChartSpec(
             chart_type="line",
-            x_field="business_date",
-            y_fields=("occupied_rooms",),
+            x_field="bucket_start",
+            y_fields=("measure_value",),
         ),
         evidence=Evidence(
-            as_of=date(2026, 7, 30),
+            as_of=date(2041, 4, 2),
             period=PeriodEvidence(
-                start=date(2026, 7, 1),
-                end_exclusive=date(2026, 8, 1),
+                start=date(2041, 3, 1),
+                end_exclusive=date(2041, 4, 1),
             ),
-            filters={"hotel": "synthetic"},
+            filters={"scope_code": "example"},
             sources=(_source(),),
             query_id=f"fixture-query-{name}",
             artifact_id=artifact_id,
@@ -125,7 +131,7 @@ def _result(
                 returned_rows=len(rows),
                 total_rows=len(rows),
             ),
-            masking=MaskingEvidence(applied=True, fields=("guest_id",)),
+            masking=MaskingEvidence(applied=True, fields=("subject_identifier",)),
             cached=cached,
         ),
     )
@@ -153,7 +159,7 @@ def _response(
             route=RouteType.GENERAL,
             gates=GateRequirements(g1_required=True, g2_required=True),
             result=result,
-            trace=fixture_trace(name),
+            trace=example_trace(name),
             repair_count=1 if name == "repaired" else 0,
             artifact=artifact,
         ),
@@ -162,7 +168,9 @@ def _response(
     )
 
 
-def contract_fixtures() -> dict[str, AnalysisResponse]:
+def contract_examples() -> dict[str, AnalysisResponse]:
+    """OpenAPI 상태별 응답 예시를 새 객체로 구성해 반환한다."""
+
     routed = (AnalysisStatus.RECEIVED, AnalysisStatus.ROUTED)
     return {
         "success": _response(
@@ -173,8 +181,8 @@ def contract_fixtures() -> dict[str, AnalysisResponse]:
                 "success",
                 rows=(
                     {
-                        "business_date": "2026-07-29",
-                        "occupied_rooms": 120,
+                        "bucket_start": "2041-03-01",
+                        "measure_value": 120,
                     },
                 )
             ),
@@ -256,8 +264,8 @@ def contract_fixtures() -> dict[str, AnalysisResponse]:
                 "repaired",
                 rows=(
                     {
-                        "business_date": "2026-07-29",
-                        "occupied_rooms": 120,
+                        "bucket_start": "2041-03-01",
+                        "measure_value": 120,
                     },
                 ),
             ),
@@ -265,10 +273,16 @@ def contract_fixtures() -> dict[str, AnalysisResponse]:
     }
 
 
+def contract_fixtures() -> dict[str, AnalysisResponse]:
+    """기존 OpenAPI export 호출자를 위한 문서 예시 호환 이름을 제공한다."""
+
+    return contract_examples()
+
+
 ANALYSIS_RESPONSE_EXAMPLES = {
     name: {
         "summary": name.replace("_", " "),
         "value": response.model_dump(mode="json"),
     }
-    for name, response in contract_fixtures().items()
+    for name, response in contract_examples().items()
 }

@@ -1,3 +1,5 @@
+"""보고서 정의·블록·실행·수동 명령의 불변 상태와 승인 전이를 프레임워크 없이 정의한다."""
+
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
@@ -13,11 +15,13 @@ CURRENCY_DISPLAY_UNITS = frozenset(
 
 
 class DefinitionStatus(StrEnum):
+    """보고서 정의 버전이 편집 가능한 초안인지 변경 불가능한 승인본인지 구분한다."""
     DRAFT = "draft"
     APPROVED = "approved"
 
 
 class RunStatus(StrEnum):
+    """보고서 전체 실행 또는 수동 명령의 대기부터 종료까지 허용 상태를 열거한다."""
     QUEUED = "queued"
     RUNNING = "running"
     SUCCESS = "success"
@@ -27,6 +31,7 @@ class RunStatus(StrEnum):
 
 
 class BlockRunStatus(StrEnum):
+    """개별 보고서 블록이 성공·부분 성공·실패·취소 중 어떻게 종료됐는지 표현한다."""
     SUCCESS = "success"
     PARTIAL = "partial"
     FAILED = "failed"
@@ -34,6 +39,7 @@ class BlockRunStatus(StrEnum):
 
 
 class BlockFailureCode(StrEnum):
+    """블록 재실행 실패를 인증·문맥·모델·SQL·쿼리·증거·계약 범주로 안정적으로 분류한다."""
     AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
     ACCESS_DENIED = "ACCESS_DENIED"
     CONTEXT_INCOMPLETE = "CONTEXT_INCOMPLETE"
@@ -61,6 +67,7 @@ class BlockFailureCode(StrEnum):
 
 
 class BlockType(StrEnum):
+    """보고서 격자 블록이 표, 차트, 일반 산출물, 사용자 텍스트 중 무엇을 렌더링할지 지정한다."""
     TABLE = "table"
     CHART = "chart"
     ARTIFACT = "artifact"
@@ -69,6 +76,7 @@ class BlockType(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ReportBlock:
+    """분석 산출물 또는 텍스트를 12열 격자의 유효한 위치와 크기에 배치하는 불변 값 객체다."""
     block_id: str
     title: str
     artifact_id: str | None
@@ -100,6 +108,7 @@ class ReportBlock:
 
 @dataclass(frozen=True, slots=True)
 class ReportDefinitionVersion:
+    """보고서 제목·블록·문서 표시 설정을 버전과 승인 상태에 결속하는 불변 정의다."""
     definition_id: str
     version: int
     status: DefinitionStatus
@@ -122,6 +131,7 @@ class ReportDefinitionVersion:
             raise ValueError("Report currency display unit is invalid")
 
     def approve(self, approved_at: datetime) -> "ReportDefinitionVersion":
+        """초안만 지정 시각의 승인본으로 복제하며 이미 승인된 버전은 변경하지 않고 거부한다."""
         if self.status is not DefinitionStatus.DRAFT:
             raise ValueError("draft Report version만 승인할 수 있습니다.")
         return ReportDefinitionVersion(
@@ -136,6 +146,7 @@ class ReportDefinitionVersion:
         )
 
     def next_draft(self) -> "ReportDefinitionVersion":
+        """승인본의 내용과 표시 설정을 복사해 버전을 하나 올린 편집 가능한 초안을 만든다."""
         if self.status is not DefinitionStatus.APPROVED:
             raise ValueError("승인된 Report version만 다음 draft의 기준이 될 수 있습니다.")
         return ReportDefinitionVersion(
@@ -155,6 +166,7 @@ class ReportDefinitionVersion:
         orientation: str | None = None,
         currency_display_unit: str | None = None,
     ) -> "ReportDefinitionVersion":
+        """초안의 블록 전체와 선택적 표시 설정을 교체한 새 값 객체를 반환하고 승인본 수정은 거부한다."""
         if self.status is not DefinitionStatus.DRAFT:
             raise ValueError("draft Report version만 block layout을 교체할 수 있습니다.")
         return ReportDefinitionVersion(
@@ -174,6 +186,7 @@ class ReportDefinitionVersion:
 
 @dataclass(frozen=True, slots=True)
 class ReportBlockRun:
+    """블록 실행 상태를 성공 시 산출물 증거, 실패 시 공개 가능한 타입 오류와 결속한다."""
     block_id: str
     artifact_id: str | None
     query_id: str | None
@@ -202,6 +215,7 @@ class ReportBlockRun:
 
 @dataclass(frozen=True, slots=True)
 class ReportRun:
+    """정의 버전 실행을 기준 시각, 정책·문맥 해시, 소스 watermark와 블록 결과에 고정한다."""
     run_id: str
     definition_id: str
     definition_version: int
@@ -220,6 +234,7 @@ class ReportRun:
 
 @dataclass(frozen=True, slots=True)
 class ManualRunCommand:
+    """멱등 키로 중복을 식별하는 특정 보고서 정의 버전의 수동 실행 명령을 표현한다."""
     command_id: str
     definition_id: str
     version: int

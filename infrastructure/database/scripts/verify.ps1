@@ -1,96 +1,146 @@
+# 책임: live DB/Trino health, runtime relation discovery, source 계정의 write 거절을
+# 함께 검증한다. 빈 catalog나 privilege regression은 즉시 실패한다.
 [CmdletBinding()]
-param()
+param([string]$EnvFilePath)
 
 $ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
 $databaseRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $databaseRoot)
 $composeFile = Join-Path $databaseRoot 'compose.yml'
-$localEnv = Join-Path $databaseRoot '.env'
-$expectedContract = '1.0.0|20260729|synthetic'
 $probeTable = "verify_readonly_create_$PID"
-
-if (-not (Test-Path -LiteralPath $localEnv)) {
-    throw '.env is missing. Run scripts/start.ps1 after creating an environment file.'
+. (Join-Path $PSScriptRoot 'deployment-environment.ps1')
+Disable-ImplicitComposeEnvironment
+$resolvedEnvFile = Resolve-ExternalDeploymentEnvFile `
+    -Path $EnvFilePath -RepositoryRoot $repoRoot
+$composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvFile)
+$values = Read-DeploymentEnvironment $resolvedEnvFile
+Assert-DeploymentEnvironmentValues -Values $values -RequiredKeys @(
+    'PMS_READONLY_USER', 'PMS_READONLY_PASSWORD', 'PMS_ADMIN_USER',
+    'PMS_ADMIN_PASSWORD', 'PMS_DB_NAME', 'BANQUET_READONLY_USER',
+    'BANQUET_READONLY_PASSWORD', 'BANQUET_ADMIN_USER',
+    'BANQUET_ADMIN_PASSWORD', 'BANQUET_DB_NAME', 'POS_READONLY_USER',
+    'POS_READONLY_PASSWORD', 'POS_ROOT_PASSWORD', 'POS_DB_NAME',
+    'CRM_READONLY_USER', 'CRM_READONLY_PASSWORD', 'CRM_SA_PASSWORD',
+    'CRM_DB_NAME', 'FACILITY_READONLY_USER', 'FACILITY_READONLY_PASSWORD',
+    'FACILITY_ADMIN_USER', 'FACILITY_ADMIN_PASSWORD', 'TRINO_ADMIN_USER',
+    'TRINO_ADMIN_PASSWORD', 'TRINO_TLS_CA_HOST_FILE'
+)
+Assert-ExternalDeploymentFile -Values $values -Key 'TRINO_TLS_CA_HOST_FILE' `
+    -RepositoryRoot $repoRoot | Out-Null
+if ([string]$values['TRINO_ADMIN_USER'] -cne 'answervice_platform_admin') {
+    throw "Deployment environment key 'TRINO_ADMIN_USER' does not match the Trino ACL identity."
 }
-if (Select-String -LiteralPath $localEnv -Pattern '(^|=)CHANGE_ME_' -Quiet) {
-    throw '.env contains CHANGE_ME_ values.'
-}
 
-$values = @{}
-Get-Content -LiteralPath $localEnv -Encoding UTF8 | ForEach-Object {
-    if ($_ -match '^\s*([^#=\s]+)=(.*)$') { $values[$matches[1]] = $matches[2].Trim() }
-}
-
+# Keep Compose invocation and exit-code handling in one boundary. The argument
+# list is intentionally omitted from errors because it can contain passwords.
 function Invoke-Compose {
     param([Parameter(ValueFromRemainingArguments)] [string[]]$Arguments)
 
-    $result = & docker compose --env-file $localEnv -f $composeFile @Arguments
-    if ($LASTEXITCODE -ne 0) { throw 'docker compose command failed. Inspect Compose logs; command arguments are intentionally omitted.' }
+    $result = & docker compose @composeEnvArguments -f $composeFile @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw 'docker compose command failed; inspect the service logs.'
+    }
     return $result
 }
 
-function Assert-Contract {
+# Statement protocol 호출은 container에 mount된 CA로 server identity를 확인하고
+# Basic principal과 X-Trino-User를 동일하게 보낸다. nextUri도 coordinator origin을
+# 벗어나면 credential 전달 전에 거절한다.
+function Invoke-TrinoStatementRequest {
     param(
-        [string]$Name,
-        [string[]]$Result
+        [Parameter(Mandatory)] [ValidateSet('GET', 'POST')] [string]$Method,
+        [Parameter(Mandatory)] [string]$Uri,
+        [string]$Sql = ''
     )
 
-    $actual = (@($Result) -join "`n").Trim()
-    if ($actual -ne $expectedContract) {
-        throw "$Name contract mismatch. Expected $expectedContract, got $actual"
+    if (-not $Uri.StartsWith('https://trino:8443/', [StringComparison]::Ordinal)) {
+        throw 'Trino nextUri escaped the authenticated coordinator origin.'
+    }
+    $previousProbeUser = $env:TRINO_PROBE_USER
+    $previousProbePassword = $env:TRINO_PROBE_PASSWORD
+    $env:TRINO_PROBE_USER = [string]$values['TRINO_ADMIN_USER']
+    $env:TRINO_PROBE_PASSWORD = [string]$values['TRINO_ADMIN_PASSWORD']
+    try {
+        # `--env NAME`은 값 대신 환경 변수 이름만 argv에 넣는다. URI/SQL은 공개
+        # readiness probe이고 credential 두 개만 process environment로 전달한다.
+        $arguments = @(
+            'exec', '-T', '--env', 'TRINO_PROBE_USER',
+            '--env', 'TRINO_PROBE_PASSWORD', '--env', "TRINO_PROBE_URI=$Uri"
+        )
+        $command = if ($Method -eq 'POST') {
+            $arguments += @('--env', "TRINO_PROBE_SQL=$Sql")
+            'auth=$(printf "%s:%s" "$TRINO_PROBE_USER" "$TRINO_PROBE_PASSWORD" | base64 | tr -d "\r\n"); printf "header = \"Authorization: Basic %s\"\n" "$auth" | curl --config - --fail --silent --show-error --cacert /run/secrets/trino-ca.pem --header "X-Trino-User: $TRINO_PROBE_USER" --header "Content-Type: text/plain" --data-binary "$TRINO_PROBE_SQL" "$TRINO_PROBE_URI"'
+        } else {
+            'auth=$(printf "%s:%s" "$TRINO_PROBE_USER" "$TRINO_PROBE_PASSWORD" | base64 | tr -d "\r\n"); printf "header = \"Authorization: Basic %s\"\n" "$auth" | curl --config - --fail --silent --show-error --cacert /run/secrets/trino-ca.pem --header "X-Trino-User: $TRINO_PROBE_USER" "$TRINO_PROBE_URI"'
+        }
+        $response = Invoke-Compose -Arguments ($arguments + @('trino', 'sh', '-ec', $command))
+        return (($response -join "`n") | ConvertFrom-Json)
+    } finally {
+        $env:TRINO_PROBE_USER = $previousProbeUser
+        $env:TRINO_PROBE_PASSWORD = $previousProbePassword
     }
 }
 
-function Assert-RowCount {
-    param(
-        [string]$Name,
-        [string]$Expected,
-        [string[]]$Result
-    )
-
-    $actual = (@($Result) -join "`n").Trim()
-    if ($actual -ne $Expected) {
-        throw "$Name row count mismatch. Expected $Expected, got $actual"
-    }
-    Write-Output "ROW_COUNT|$Name|$actual"
-}
-
+# Trino health와 connector query readiness는 다르다. bounded retry는 실제 인증된
+# statement page를 끝까지 읽으며 startup window만 흡수하고 빈 data를 합성하지 않는다.
 function Invoke-TrinoQuery {
-    param([Parameter(Mandatory)] [string[]]$Arguments)
+    param([Parameter(Mandatory)] [string]$Sql)
 
     for ($attempt = 1; $attempt -le 60; $attempt++) {
-        $previousErrorActionPreference = $ErrorActionPreference
         try {
-            $ErrorActionPreference = 'Continue'
-            $result = & docker compose --env-file $localEnv -f $composeFile @Arguments 2>$null
-            $exitCode = $LASTEXITCODE
+            $page = Invoke-TrinoStatementRequest -Method POST `
+                -Uri 'https://trino:8443/v1/statement' -Sql $Sql
+            $result = @()
+            for ($pageNumber = 0; $pageNumber -lt 120; $pageNumber++) {
+                if ($page.error) { throw [string]$page.error.message }
+                foreach ($row in @($page.data)) {
+                    if (@($row).Count) { $result += [string]$row[0] }
+                }
+                if (-not $page.nextUri) { return $result }
+                $page = Invoke-TrinoStatementRequest -Method GET -Uri ([string]$page.nextUri)
+            }
+            throw 'Trino statement exceeded the page limit.'
+        } catch {
+            Start-Sleep -Seconds 2
         }
-        finally {
-            $ErrorActionPreference = $previousErrorActionPreference
-        }
-        if ($exitCode -eq 0) { return $result }
-        Start-Sleep -Seconds 2
     }
-    throw 'Trino is healthy but did not become query-ready within 120 seconds.'
+    throw 'Authenticated Trino connectors did not become query-ready within 120 seconds.'
 }
 
+# A source contract is considered present only when live metadata exposes at
+# least one relation. Exact names and counts are discovered, never baked here.
+function Assert-CatalogHasRelations {
+    param([Parameter(Mandatory)] [string]$Catalog)
+
+    $result = Invoke-TrinoQuery -Sql (
+        "SELECT count(*) FROM $Catalog.information_schema.tables " +
+        "WHERE table_schema <> 'information_schema'"
+    )
+    $count = [int64]((@($result) | Select-Object -Last 1).Trim())
+    if ($count -lt 1) {
+        throw "Catalog '$Catalog' has no discoverable runtime relations."
+    }
+    Write-Output "CATALOG_RELATIONS|$Catalog|$count"
+}
+
+# A successful CREATE proves a privilege regression. Cleanup runs before the
+# failure is raised so a broken policy cannot leave a misleading probe table.
 function Assert-ComposeDenied {
     param(
-        [string]$Name,
-        [string[]]$Arguments,
-        [scriptblock]$Cleanup
+        [Parameter(Mandatory)] [string]$Name,
+        [Parameter(Mandatory)] [string[]]$Arguments,
+        [Parameter(Mandatory)] [scriptblock]$Cleanup
     )
 
-    $previousErrorActionPreference = $ErrorActionPreference
+    $previousPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        & docker compose --env-file $localEnv -f $composeFile @Arguments *> $null
+        & docker compose @composeEnvArguments -f $composeFile @Arguments *> $null
         $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousPreference
     }
-    finally {
-        $ErrorActionPreference = $previousErrorActionPreference
-    }
-
     if ($exitCode -eq 0) {
         & $Cleanup
         throw "$Name readonly account unexpectedly created a table."
@@ -98,181 +148,78 @@ function Assert-ComposeDenied {
 }
 
 Invoke-Compose -Arguments @('config', '--quiet') | Out-Null
-& powershell -NoProfile -ExecutionPolicy Bypass -File (
-    Join-Path $PSScriptRoot 'verify-service-fragment.ps1'
+
+$services = @(
+    'app-postgres', 'pms-postgres', 'banquet-postgres', 'pos-mysql',
+    'crm-mssql', 'facility-clickhouse', 'trino'
 )
-if ($LASTEXITCODE -ne 0) {
-    throw 'R2 service fragment verification failed.'
-}
-$services = 'app-postgres','pms-postgres','banquet-postgres','pos-mysql','crm-mssql','facility-clickhouse','trino'
-$status = Invoke-Compose -Arguments @('ps', '-a', '--format', 'json') | ForEach-Object { $_ | ConvertFrom-Json }
+$status = Invoke-Compose -Arguments @('ps', '-a', '--format', 'json') |
+    ForEach-Object { $_ | ConvertFrom-Json }
 foreach ($service in $services) {
     if (($status | Where-Object Service -eq $service).Health -ne 'healthy') {
         throw "$service is not healthy."
     }
 }
 
-Assert-Contract 'app-postgres' (Invoke-Compose -Arguments @(
-    'exec', '-T', '--env', "PGPASSWORD=$($values.APP_DB_PASSWORD)",
-    'app-postgres', 'psql', '-U', $values.APP_DB_USER, '-d', $values.APP_DB_NAME, '-tAc',
-    "SELECT concat_ws('|', v.version, s.seed, s.data_class) FROM governance.schema_version v CROSS JOIN governance.seed_metadata s"
-))
-Assert-Contract 'pms-postgres' (Invoke-Compose -Arguments @(
-    'exec', '-T', '--env', "PGPASSWORD=$($values.PMS_READONLY_PASSWORD)",
-    'pms-postgres', 'psql', '-U', $values.PMS_READONLY_USER, '-d', $values.PMS_DB_NAME, '-tAc',
-    "SELECT concat_ws('|', v.version, s.seed, s.data_class) FROM schema_version v CROSS JOIN seed_metadata s"
-))
-Assert-Contract 'banquet-postgres' (Invoke-Compose -Arguments @(
-    'exec', '-T', '--env', "PGPASSWORD=$($values.BANQUET_READONLY_PASSWORD)",
-    'banquet-postgres', 'psql', '-U', $values.BANQUET_READONLY_USER, '-d', $values.BANQUET_DB_NAME, '-tAc',
-    "SELECT concat_ws('|', v.version, s.seed, s.data_class) FROM schema_version v CROSS JOIN seed_metadata s"
-))
-Assert-Contract 'pos-mysql' (Invoke-Compose -Arguments @(
-    'exec', '-T', '--env', "MYSQL_PWD=$($values.POS_READONLY_PASSWORD)",
-    'pos-mysql', 'mysql', "-u$($values.POS_READONLY_USER)", "-D$($values.POS_DB_NAME)", '-N', '-B', '-e',
-    "SELECT CONCAT_WS('|', v.version, s.seed, s.data_class) FROM schema_version v CROSS JOIN seed_metadata s"
-))
-Assert-Contract 'crm-mssql' (Invoke-Compose -Arguments @(
-    'exec', '-T', 'crm-mssql', '/opt/mssql-tools18/bin/sqlcmd',
-    '-S', 'localhost', '-U', $values.CRM_READONLY_USER, '-P', $values.CRM_READONLY_PASSWORD,
-    '-C', '-d', $values.CRM_DB_NAME, '-b', '-h', '-1', '-W', '-Q',
-    "SET NOCOUNT ON; SELECT CONCAT(v.version,'|',s.seed,'|',s.data_class) FROM dbo.schema_version v CROSS JOIN dbo.seed_metadata s"
-))
-Assert-Contract 'facility-clickhouse' (Invoke-Compose -Arguments @(
-    'exec', '-T', 'facility-clickhouse', 'clickhouse-client',
-    '--user', $values.FACILITY_READONLY_USER, '--password', $values.FACILITY_READONLY_PASSWORD,
-    '--query', "SELECT concat(v.version,'|',toString(s.seed),'|',s.data_class) FROM facility.schema_version v CROSS JOIN facility.seed_metadata s FORMAT TSVRaw"
-))
-
-Assert-RowCount 'app-postgres.reference.calendar_daily' '1826' (Invoke-Compose -Arguments @(
-    'exec', '-T', '--env', "PGPASSWORD=$($values.APP_DB_PASSWORD)",
-    'app-postgres', 'psql', '-U', $values.APP_DB_USER, '-d', $values.APP_DB_NAME, '-tAc',
-    'SELECT count(*) FROM reference.calendar_daily'
-))
-Assert-RowCount 'pms-postgres.pms_guests' '100000' (Invoke-Compose -Arguments @(
-    'exec', '-T', '--env', "PGPASSWORD=$($values.PMS_READONLY_PASSWORD)",
-    'pms-postgres', 'psql', '-U', $values.PMS_READONLY_USER, '-d', $values.PMS_DB_NAME, '-tAc',
-    'SELECT count(*) FROM pms_guests'
-))
-Assert-RowCount 'banquet-postgres.banquet_bookings' '6000' (Invoke-Compose -Arguments @(
-    'exec', '-T', '--env', "PGPASSWORD=$($values.BANQUET_READONLY_PASSWORD)",
-    'banquet-postgres', 'psql', '-U', $values.BANQUET_READONLY_USER, '-d', $values.BANQUET_DB_NAME, '-tAc',
-    'SELECT count(*) FROM banquet_bookings'
-))
-Assert-RowCount 'pos-mysql.pos_orders' '320000' (Invoke-Compose -Arguments @(
-    'exec', '-T', '--env', "MYSQL_PWD=$($values.POS_READONLY_PASSWORD)",
-    'pos-mysql', 'mysql', "-u$($values.POS_READONLY_USER)", "-D$($values.POS_DB_NAME)", '-N', '-B', '-e',
-    'SELECT count(*) FROM pos_orders'
-))
-Assert-RowCount 'crm-mssql.crm_members' '80000' (Invoke-Compose -Arguments @(
-    'exec', '-T', 'crm-mssql', '/opt/mssql-tools18/bin/sqlcmd',
-    '-S', 'localhost', '-U', $values.CRM_READONLY_USER, '-P', $values.CRM_READONLY_PASSWORD,
-    '-C', '-d', $values.CRM_DB_NAME, '-b', '-h', '-1', '-W', '-Q', 'SET NOCOUNT ON; SELECT count(*) FROM dbo.crm_members'
-))
-Assert-RowCount 'facility-clickhouse.facility_events' '700000' (Invoke-Compose -Arguments @(
-    'exec', '-T', 'facility-clickhouse', 'clickhouse-client',
-    '--user', $values.FACILITY_READONLY_USER, '--password', $values.FACILITY_READONLY_PASSWORD,
-    '--query', 'SELECT count(*) FROM facility.facility_events FORMAT TSVRaw'
-))
-
-$catalogs = Invoke-TrinoQuery -Arguments @(
-    'exec', '-T', 'trino', 'trino',
-    '--server', 'http://localhost:8080', '--user', 'hotel_synthetic_verify',
-    '--output-format', 'CSV_UNQUOTED', '--execute', 'SHOW CATALOGS'
-)
-$requiredCatalogs = 'serving','pms','banquet','pos','crm','facility'
+$catalogs = Invoke-TrinoQuery -Sql 'SHOW CATALOGS'
+$requiredCatalogs = @('serving', 'pms', 'banquet', 'pos', 'crm', 'facility')
 foreach ($catalog in $requiredCatalogs) {
-    if ($catalogs -notcontains $catalog) { throw "Trino catalog is missing: $catalog" }
+    if ($catalogs -notcontains $catalog) {
+        throw "Trino catalog is missing: $catalog"
+    }
+    Assert-CatalogHasRelations -Catalog $catalog
 }
 
-$viewCountResult = Invoke-TrinoQuery -Arguments @(
-    'exec', '-T', 'trino', 'trino',
-    '--server', 'http://localhost:8080', '--user', 'hotel_synthetic_verify',
-    '--output-format', 'CSV_UNQUOTED',
-    '--execute', "SELECT count(*) FROM serving.information_schema.views WHERE table_schema='analytics'"
-)
-$viewCount = (@($viewCountResult) | Select-Object -Last 1).Trim()
-if ($viewCount -ne '8') {
-    throw "Expected 8 analytics views, got $viewCount."
-}
-
-Assert-ComposeDenied 'pms-postgres' @(
-    'exec', '-T', '--env', "PGPASSWORD=$($values.PMS_READONLY_PASSWORD)",
-    'pms-postgres', 'psql', '-U', $values.PMS_READONLY_USER, '-d', $values.PMS_DB_NAME,
-    '-v', 'ON_ERROR_STOP=1', '-c', "CREATE TABLE public.$probeTable (id integer)"
-) {
+Assert-ComposeDenied -Name 'pms-postgres' -Arguments @(
+    'exec', '-T', '--env', "PROBE_TABLE=$probeTable", 'pms-postgres',
+    'sh', '-ec', 'export PGPASSWORD="$SOURCE_READONLY_PASSWORD"; exec psql -U "$SOURCE_READONLY_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "CREATE TABLE public.$PROBE_TABLE (id integer)"'
+) -Cleanup {
     Invoke-Compose -Arguments @(
-        'exec', '-T', '--env', "PGPASSWORD=$($values.PMS_ADMIN_PASSWORD)",
-        'pms-postgres', 'psql', '-U', $values.PMS_ADMIN_USER, '-d', $values.PMS_DB_NAME,
-        '-v', 'ON_ERROR_STOP=1', '-c', "DROP TABLE IF EXISTS public.$probeTable"
-    ) | Out-Null
-}
-Assert-ComposeDenied 'banquet-postgres' @(
-    'exec', '-T', '--env', "PGPASSWORD=$($values.BANQUET_READONLY_PASSWORD)",
-    'banquet-postgres', 'psql', '-U', $values.BANQUET_READONLY_USER, '-d', $values.BANQUET_DB_NAME,
-    '-v', 'ON_ERROR_STOP=1', '-c', "CREATE TABLE public.$probeTable (id integer)"
-) {
-    Invoke-Compose -Arguments @(
-        'exec', '-T', '--env', "PGPASSWORD=$($values.BANQUET_ADMIN_PASSWORD)",
-        'banquet-postgres', 'psql', '-U', $values.BANQUET_ADMIN_USER, '-d', $values.BANQUET_DB_NAME,
-        '-v', 'ON_ERROR_STOP=1', '-c', "DROP TABLE IF EXISTS public.$probeTable"
-    ) | Out-Null
-}
-Assert-ComposeDenied 'pos-mysql' @(
-    'exec', '-T', '--env', "MYSQL_PWD=$($values.POS_READONLY_PASSWORD)",
-    'pos-mysql', 'mysql', "-u$($values.POS_READONLY_USER)", "-D$($values.POS_DB_NAME)",
-    '-e', "CREATE TABLE $probeTable (id int)"
-) {
-    Invoke-Compose -Arguments @(
-        'exec', '-T', '--env', "MYSQL_PWD=$($values.POS_ROOT_PASSWORD)",
-        'pos-mysql', 'mysql', '-uroot', "-D$($values.POS_DB_NAME)",
-        '-e', "DROP TABLE IF EXISTS $probeTable"
-    ) | Out-Null
-}
-Assert-ComposeDenied 'crm-mssql' @(
-    'exec', '-T', 'crm-mssql', '/opt/mssql-tools18/bin/sqlcmd',
-    '-S', 'localhost', '-U', $values.CRM_READONLY_USER, '-P', $values.CRM_READONLY_PASSWORD,
-    '-C', '-d', $values.CRM_DB_NAME, '-b', '-Q', "CREATE TABLE dbo.$probeTable (id int)"
-) {
-    Invoke-Compose -Arguments @(
-        'exec', '-T', 'crm-mssql', '/opt/mssql-tools18/bin/sqlcmd',
-        '-S', 'localhost', '-U', 'sa', '-P', $values.CRM_SA_PASSWORD,
-        '-C', '-d', $values.CRM_DB_NAME, '-b', '-Q', "DROP TABLE IF EXISTS dbo.$probeTable"
-    ) | Out-Null
-}
-Assert-ComposeDenied 'facility-clickhouse' @(
-    'exec', '-T', 'facility-clickhouse', 'clickhouse-client',
-    '--user', $values.FACILITY_READONLY_USER, '--password', $values.FACILITY_READONLY_PASSWORD,
-    '--query', "CREATE TABLE facility.$probeTable (id UInt8) ENGINE=Memory"
-) {
-    Invoke-Compose -Arguments @(
-        'exec', '-T', 'facility-clickhouse', 'clickhouse-client',
-        '--user', $values.FACILITY_ADMIN_USER, '--password', $values.FACILITY_ADMIN_PASSWORD,
-        '--query', "DROP TABLE IF EXISTS facility.$probeTable"
+        'exec', '-T', '--env', "PROBE_TABLE=$probeTable", 'pms-postgres',
+        'sh', '-ec', 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "DROP TABLE IF EXISTS public.$PROBE_TABLE"'
     ) | Out-Null
 }
 
-$i2Contract = Get-Content -Raw -Encoding UTF8 (
-    Join-Path $databaseRoot '..\..\src\data\i2_contract.v1.json'
-) | ConvertFrom-Json
-$i2Sql = Get-Content -Raw -Encoding UTF8 (
-    Join-Path $databaseRoot 'sql\queries\i2_gold_recognized_room_revenue.sql'
-)
-$i2Rows = Invoke-TrinoQuery -Arguments @(
-    'exec', '-T', 'trino', 'trino',
-    '--server', 'http://localhost:8080', '--user', 'hotel_synthetic_verify',
-    '--output-format', 'TSV', '--execute', $i2Sql
-)
-$i2Canonical = ((@($i2Rows) | ForEach-Object {
-    $_.Trim().Replace("`t", '|')
-}) -join "`n") + "`n"
-$i2HashBytes = [System.Security.Cryptography.SHA256]::Create().ComputeHash(
-    [System.Text.Encoding]::UTF8.GetBytes($i2Canonical)
-)
-$i2Hash = ([System.BitConverter]::ToString($i2HashBytes) -replace '-', '').ToLowerInvariant()
-if ($i2Hash -ne $i2Contract.gold_fixture.sha256) {
-    throw "I2 gold result hash mismatch. Expected $($i2Contract.gold_fixture.sha256), got $i2Hash."
+Assert-ComposeDenied -Name 'banquet-postgres' -Arguments @(
+    'exec', '-T', '--env', "PROBE_TABLE=$probeTable", 'banquet-postgres',
+    'sh', '-ec', 'export PGPASSWORD="$SOURCE_READONLY_PASSWORD"; exec psql -U "$SOURCE_READONLY_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "CREATE TABLE public.$PROBE_TABLE (id integer)"'
+) -Cleanup {
+    Invoke-Compose -Arguments @(
+        'exec', '-T', '--env', "PROBE_TABLE=$probeTable", 'banquet-postgres',
+        'sh', '-ec', 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -c "DROP TABLE IF EXISTS public.$PROBE_TABLE"'
+    ) | Out-Null
 }
-Write-Output "I2_GOLD_HASH_VERIFIED|$i2Hash"
 
-Write-Output 'DATABASE_CONTRACT_VERIFIED'
+Assert-ComposeDenied -Name 'pos-mysql' -Arguments @(
+    'exec', '-T', '--env', "PROBE_TABLE=$probeTable", 'pos-mysql',
+    'sh', '-ec', 'export MYSQL_PWD="$POS_READONLY_PASSWORD"; exec mysql -u "$POS_READONLY_USER" -D "$MYSQL_DATABASE" -e "CREATE TABLE $PROBE_TABLE (id int)"'
+) -Cleanup {
+    Invoke-Compose -Arguments @(
+        'exec', '-T', '--env', "PROBE_TABLE=$probeTable", 'pos-mysql',
+        'sh', '-ec', 'export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"; exec mysql -u root -D "$MYSQL_DATABASE" -e "DROP TABLE IF EXISTS $PROBE_TABLE"'
+    ) | Out-Null
+}
+
+Assert-ComposeDenied -Name 'crm-mssql' -Arguments @(
+    'exec', '-T', '--env', "PROBE_DATABASE=$($values.CRM_DB_NAME)",
+    '--env', "PROBE_TABLE=$probeTable", 'crm-mssql', 'sh', '-ec',
+    'export SQLCMDPASSWORD="$CRM_READONLY_PASSWORD"; exec /opt/mssql-tools18/bin/sqlcmd -S localhost -U "$CRM_READONLY_USER" -C -d "$PROBE_DATABASE" -b -Q "CREATE TABLE dbo.$PROBE_TABLE (id int)"'
+) -Cleanup {
+    Invoke-Compose -Arguments @(
+        'exec', '-T', '--env', "PROBE_DATABASE=$($values.CRM_DB_NAME)",
+        '--env', "PROBE_TABLE=$probeTable", 'crm-mssql', 'sh', '-ec',
+        'export SQLCMDPASSWORD="$MSSQL_SA_PASSWORD"; exec /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -d "$PROBE_DATABASE" -b -Q "DROP TABLE IF EXISTS dbo.$PROBE_TABLE"'
+    ) | Out-Null
+}
+
+Assert-ComposeDenied -Name 'facility-clickhouse' -Arguments @(
+    'exec', '-T', '--env', "PROBE_TABLE=$probeTable", 'facility-clickhouse',
+    'sh', '-ec', 'export CLICKHOUSE_PASSWORD="$FACILITY_READONLY_PASSWORD"; exec clickhouse-client --user "$FACILITY_READONLY_USER" --query "CREATE TABLE $CLICKHOUSE_DB.$PROBE_TABLE (id UInt8) ENGINE=Memory"'
+) -Cleanup {
+    Invoke-Compose -Arguments @(
+        'exec', '-T', '--env', "PROBE_TABLE=$probeTable", 'facility-clickhouse',
+        'sh', '-ec', 'exec clickhouse-client --user "$CLICKHOUSE_USER" --query "DROP TABLE IF EXISTS $CLICKHOUSE_DB.$PROBE_TABLE"'
+    ) | Out-Null
+}
+
+Write-Output 'DATABASE_RUNTIME_CONTRACT_VERIFIED'

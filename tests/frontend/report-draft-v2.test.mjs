@@ -30,6 +30,8 @@ import {
   reportArtifactLibrarySources,
   saveFrontendDraft,
 } from "../../app/frontend/src/features/reports/reportDraftV2.js";
+import { reportEvidenceReady } from "../../app/frontend/src/features/reports/reportArtifactEvidence.ts";
+import { reportFeatureSource, reportSources } from "./report-source-contract.mjs";
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
 
@@ -147,6 +149,8 @@ assert.equal(adaptedAnalysisArtifact.artifact_id, "artifact-revenue");
 assert.equal(adaptedAnalysisArtifact.query_id, "query-revenue");
 assert.equal(adaptedAnalysisArtifact.evidence.artifact_id, "artifact-revenue");
 assert.equal(adaptedAnalysisArtifact.evidence.query_id, "query-revenue");
+assert.equal(adaptedAnalysisArtifact.evidence.product_release_id, "walkerhill-v4-synthetic");
+assert.equal(adaptedAnalysisArtifact.evidence.evidence_cutoff, "2026-07-02");
 assert.equal(adaptedAnalysisArtifact.evidence.period.end_exclusive, "2026-07-01");
 assert.equal(adaptedAnalysisArtifact.evidence.sources[0].urn, "urn:answervice:pms:room-revenue");
 assert.equal(adaptedAnalysisArtifact.evidence.sources[0].synthetic, true);
@@ -287,27 +291,39 @@ const manuallySizedLegacyTable = { ...legacyMonthlyTable, h: 9, content: JSON.st
 assert.equal(fitFrontendArtifactViewBlock(manuallySizedLegacyTable, monthlyArtifact, { orientation: "portrait" }), manuallySizedLegacyTable);
 assert.deepEqual(legacyChart, { id: "legacy-chart", title: "월별 차트", type: "chart", artifactId: monthlyArtifact.artifact_id, content: JSON.stringify({ showLegend: true }), columns: 6, x: 0, y: 0, w: 6, h: 7 }, "legacy sizing must be pure");
 
-const reportsPageSource = readFileSync(new URL("../../app/frontend/src/pages/ReportsPage.jsx", import.meta.url), "utf8");
-assert.match(reportsPageSource, /<ReportCurrencyControl value=\{reportCurrencyPolicy\.displayUnit\}/);
-assert.match(reportsPageSource, /currency=\{reportCurrency\}/);
-assert.match(reportsPageSource, /keyboardEndDropPosition\(blocksRef\.current/);
-assert.match(reportsPageSource, /유효한 위치가 없어 이동을 취소했습니다/);
-assert.match(reportsPageSource, /if \(isDirty\) \{\s*setError\("저장되지 않은 변경사항을 먼저 저장한 뒤 PDF를 확정해 주세요\."\)/);
-assert.match(reportsPageSource, /createAnalysisClient\(fetch\)/);
-assert.match(reportsPageSource, /analysisClient\.listRuns\(\)/);
-assert.match(reportsPageSource, /analysisClient\.getRunArtifact\(source\.requestId \|\| source\.artifactRequestId\)/);
-assert.match(reportsPageSource, /const persistedBlocks = compactDraftLayout\(orderedBlocks\)/);
-assert.doesNotMatch(reportsPageSource, /pdfUnsupportedBlocks|orderedBlocks\.filter\(\(block\) => block\.type !== "artifact"\)/);
-assert.match(reportsPageSource, /disabled=\{Boolean\(pending\) \|\| isDirty\}/);
-assert.match(reportsPageSource, /wholeArtifactTemplateFor/);
-assert.match(reportsPageSource, /wholeArtifactTemplateFor\(libraryArtifact, dropWidth\)\.h/);
-assert.match(reportsPageSource, /sizeMode: "manual"/);
-assert.match(reportsPageSource, /내용에 맞춤/);
-assert.match(reportsPageSource, /applyHydratedArtifactViewSizing\(loadedArtifactMap, definition\)/);
-assert.match(reportsPageSource, /fitAutoArtifactViewLayout\(reflowed\.blocks, artifacts, orientation\)/);
-assert.match(reportsPageSource, /const compacted = compactDraftLayout\(inputBlocks\)/);
-assert.match(reportsPageSource, /fitFrontendArtifactViewBlock\(block, artifacts\[block\.artifactId\], \{ orientation \}\)/);
-assert.match(reportsPageSource, /\["artifact", "chart", "table"\]\.includes\(block\.type\).*sizeMode: "manual"/s);
-assert.match(reportsPageSource, /density: "comfortable", sizeMode: "auto"/);
+assert.match(reportSources.blockControls, /memo\(function ReportCurrencyControl/);
+assert.match(reportSources.controller, /currency=\{reportCurrency\}/);
+assert.match(reportSources.dragAndDrop, /keyboardEndDropPosition\(blocksRef\.current/);
+assert.match(reportSources.dragAndDrop, /유효한 위치가 없어 이동을 취소했습니다/);
+assert.match(
+  reportSources.controller,
+  /if \(draft\.isDirty\) \{\s*lifecycle\.setError\("저장되지 않은 변경사항을 먼저 저장한 뒤 PDF를 확정해 주세요\."\)/,
+);
+assert.match(reportSources.lifecycle, /createAnalysisClient\(fetch\)/);
+assert.match(reportSources.artifacts, /analysisClient\.listRuns\(\)/);
+assert.match(reportSources.artifacts, /analysisClient\.getRunArtifact\(source\.requestId \|\| source\.artifactRequestId\)/);
+assert.match(reportSources.controller, /const persistedBlocks = compactDraftLayout\(draft\.orderedBlocks\)/);
+assert.doesNotMatch(
+  reportFeatureSource,
+  /pdfUnsupportedBlocks|orderedBlocks\.filter\(\(block\) => block\.type !== "artifact"\)/,
+);
+assert.match(reportSources.documentView, /disabled=\{Boolean\(pending\) \|\| isDirty\}/);
+assert.match(reportSources.controller, /wholeArtifactTemplateFor/);
+assert.match(reportSources.dragAndDrop, /wholeArtifactTemplateFor\(libraryArtifact, dropWidth\)\.h/);
+assert.match(reportSources.draftMutations, /sizeMode: "manual"/);
+assert.match(reportSources.blockControls, /내용에 맞춤/);
+assert.match(reportSources.controller, /draftBridgeRef\.current\?\.fitHydratedArtifactViews\(artifactMap\)/);
+assert.match(reportSources.draftState, /fitAutoArtifactViewLayout\(reflowed\.blocks, artifacts, orientation\)/);
+assert.match(reportSources.draftMutations, /const compacted = compactDraftLayout\(inputBlocks\)/);
+assert.match(reportSources.draftMutations, /fitFrontendArtifactViewBlock\(block, artifacts\[block\.artifactId\], \{ orientation \}\)/);
+assert.match(reportSources.draftMutations, /\["artifact", "chart", "table"\]\.includes\(block\.type \?\? ""\)[\s\S]*sizeMode: "manual"/);
+assert.match(reportSources.draftState, /density: "comfortable", sizeMode: "auto"/);
+
+assert.equal(reportEvidenceReady(monthlyArtifact), true);
+assert.equal(
+  reportEvidenceReady({ ...monthlyArtifact, chart: { ...monthlyArtifact.chart, y_fields: ["unknown_measure"] } }),
+  false,
+  "an artifact chart must not reference an ungoverned result field",
+);
 
 console.log("frontend report draft v2 tests passed");

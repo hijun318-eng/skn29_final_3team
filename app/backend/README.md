@@ -1,85 +1,112 @@
-# Answervice FastAPI Backend
+# Answervice Backend
 
-`app/backend`는 인증, Analysis, Report, Context, 안전 경계와 영속성을 제공하는 현재 FastAPI 실행 서비스다. 과거 R4 단독 소유·I1 Gate 방식은 사용하지 않는다.
+`app/backend`는 FastAPI API, 분석·보고서 orchestration, 외부 adapter와 단일 Alembic chain을 소유한다. 과거 R1~R5 역할 소유권은 현재 작업 기준이 아니며 repository root [`AGENTS.md`](../../AGENTS.md)와 [`docs/product/`](../../docs/product/) 계약을 따른다.
 
-## 실행 구조
+## 경계 규칙
 
-- `app/api/`: HTTP router와 인증·권한 경계
-- `app/controllers/`: Analysis 실행 흐름 조정
-- `app/services/`: Context, G1·G2·G3, 실행 상태, Report 문서·실행·scheduler
-- `app/ports/`: 외부 연동 계약
-- `app/adapters/`: Trino, DataHub, model, PostgreSQL 구현
-- `migrations/versions/`: 단일 Alembic migration chain
-- `contracts/openapi.v0.1.json`: exporter로 관리하는 고정 OpenAPI snapshot
-
-Source DB를 직접 조회하지 않는다. 승인된 Context와 G1을 거쳐 SQL을 결정하고, G2를 통과한 read-only SQL만 Trino에서 실행한다. 결과는 G3 통과 후에만 Query·Artifact·Report 근거로 저장한다.
-
-## 인증과 권한
-
-브라우저 인증은 서버 세션과 `HttpOnly`, `SameSite=Strict` cookie를 사용한다. 세션 원문은 저장하지 않고 SHA-256 digest, subject, role, 유효기간과 폐기 상태를 Application PostgreSQL에 저장한다.
-
-- `hotel_analyst`: Analysis와 본인 Report 사용
-- `report_admin`: Report 관리 기능 사용
-- 권한 밖 endpoint: `403`
-- 만료·폐기된 세션: `401`
-
-비밀번호, session 원문, API key를 환경 출력·로그·Git에 남기지 않는다.
-
-## 주요 API
-
-- `GET /health`, `GET /readiness`
-- `POST /auth/login`, `GET /auth/session`, `POST /auth/logout`
-- `POST /analysis`
-- `GET /analysis/progress/{trace_id}`
-- `POST /analysis/progress/{trace_id}/cancel`
-- Analysis Definition·Run·Artifact 조회와 재실행
-- Report 초안·문서·정의·실행·예약·관리 API
-
-정확한 endpoint와 schema는 FastAPI code 및 `contracts/openapi.v0.1.json`을 기준으로 한다.
-
-## 환경 변수
-
-전체 예시는 `infrastructure/database/.env.example`에 있다.
-
-```powershell
-$env:OPENAI_ENDPOINT = "https://api.openai.com"
-$env:OPENAI_API_KEY = "..."
-$env:OPENAI_MODEL = "gpt-5.4-mini"
-$env:NODE2_MODEL_PROVIDER = "openai"
-$env:NODE2_MODEL = "gpt-5.4-mini"
-$env:MODEL_TIMEOUT_SECONDS = "60"
-```
-
-실제 endpoint가 준비되지 않으면 제품 실행을 fake 성공으로 바꾸지 않는다.
+- `api`와 `controllers`는 요청 흐름을 조정하고 비즈니스 처리는 `services`에 위임한다.
+- `services`는 `ports`의 계약에만 의존하며 `adapters`의 구체 구현을 직접 가져오지 않는다.
+- `adapters`만 외부 시스템 계약을 구현한다.
+- PMS, POS, CRM, Facility, Banquet DB에 직접 연결하지 않고 DataHub·Trino adapter 경계를 사용한다.
+- 공통 API 계약 버전은 `OPENAPI-v1.0.0`이다.
 
 ## 실행
 
-전체 E2E 환경은 repository root에서 실행한다.
-
-```powershell
-Copy-Item infrastructure/database/.env.example infrastructure/database/.env
-powershell -ExecutionPolicy Bypass -File infrastructure/database/security/provision-release-principals.ps1
-docker compose --env-file infrastructure/database/.env --profile full up -d --build
-Invoke-RestMethod http://127.0.0.1:28000/readiness | ConvertTo-Json -Depth 5
-```
-
-Backend만 개발 실행할 때는 의존 서비스와 환경 변수를 먼저 준비한다.
+프로젝트 의존성이 준비된 환경에서 다음 명령을 실행한다.
 
 ```powershell
 Set-Location app/backend
 uvicorn app.main:app --reload
 ```
 
-- 로컬 단독 기본 주소: `http://127.0.0.1:8000`
-- root Compose 주소: `http://127.0.0.1:28000`
+- OpenAPI: `http://127.0.0.1:8000/openapi.json`
+- Health: `GET /health`
+- Readiness: `GET /readiness`
+- Analysis: `POST /analysis`
 
-## Migration과 계약 검증
+운영 인증은 서버가 소유한 외부 principal store만 사용한다. 파일은 JSON 배열이며 각 항목에는 `username`, `password_salt`, `password_hash`, `password_iterations`, `subject`, `role`, `active`만 기록한다. provisioning script가 PBKDF2-SHA256 hash를 만들며 raw password는 principal 파일이나 로그에 남기지 않는다. 로그인용 raw password와 session secret이 있는 deployment environment는 저장소 밖에서 별도 보안 채널로 관리한다. 로그인 성공 시 Backend가 HMAC 서명 session을 발급해 App DB에 등록하고 `HttpOnly` cookie로 전달한다. `AUTH_PRINCIPALS_FILE`에는 container 내부 read-only 경로를 지정하며 실제 secret mount는 배포 설정에서 구성한다. principal store나 signed-session 필수값이 없으면 기동하며 합성 계정으로 대체하지 않고 fail closed한다.
 
-현재 저장소의 Alembic head는 `20260814_23`이다. 실제 적용 상태는 DB에서 `alembic current`로 확인하며, 문서의 번호만 보고 적용 완료로 판단하지 않는다.
+Backend는 실제 Trino·DataHub·OpenAI 호환 endpoint만 사용한다. 승인 Template은 DB에서 읽어 G1·G2·Trino·G3를 거치며, 일반 질문은 Node1·Node2·Node3 모델 계약을 실행한다. 테스트 대역을 선택하는 운영 환경 변수나 제품 fallback은 제공하지 않는다.
+
+Backend의 DataHub 조회는 `DATAHUB_GMS_URL` HTTPS origin,
+`DATAHUB_READ_API_TOKEN`, `DATAHUB_READ_ACTOR_URN`, `DATAHUB_TLS_CA_FILE`이 모두 있어야
+조립된다. mutation 전용 `DATAHUB_PUBLISH_API_TOKEN`은 Backend container에 주입하지
+않는다. owned `httpx` transport는 system proxy를 신뢰하지 않고 지정 CA와 Bearer만
+사용하며 readiness도 공개 `/config`가 아니라 인증 actor의 bounded GraphQL 결과를
+검증한다.
 
 ```powershell
-python app/backend/scripts/export_openapi.py --check
-python -m pytest tests/backend tests/report -q
+$env:OPENAI_ENDPOINT = "https://api.openai.com"
+$env:OPENAI_API_KEY = "..."
+$env:OPENAI_MODEL = "gpt-5.4-mini"
+$env:MODEL_TIMEOUT_SECONDS = "15"
 ```
 
-OpenAPI snapshot과 fixture는 직접 편집하지 않고 exporter와 테스트를 사용한다.
+Node2 전용 설정 네 개를 모두 비우면 Node2·Repair도 위 primary route를 공유한다.
+RunPod Qwen route를 사용할 때는 `NODE2_MODEL_PROVIDER`, `NODE2_MODEL_ENDPOINT`,
+`NODE2_MODEL_API_TOKEN`, `NODE2_MODEL`을 모두 선언해야 하며 정확한 값은
+`docs/e2e_mvp/derived/05_sLLM_RunPod_연결_가이드.md`를 따른다. 일부만 선언하면
+readiness와 adapter 생성이 모두 fail-closed한다.
+
+일반 분석은 원문 질문을 `normalized_question`으로 전달하고 request ID는 추적 식별자로 분리한다. 실제 endpoint에는 node별 response schema를 전달하고 동일 schema를 다시 검증한다. timeout·HTTP 오류·잘못된 JSON·schema 불일치·circuit open은 분석 성공이나 Artifact로 저장하지 않는다.
+
+데이터 플랫폼은 요청마다 실제 Trino health와 DataHub dataset URN·name·승인 컬럼을 확인한다. DataHub가 반환한 원본 추가 컬럼은 Context나 응답에 노출하지 않는다. `POST /analysis`는 request, query evidence, G3 이후 Artifact를 한 흐름으로 영속화한다.
+
+## API 계약
+
+FastAPI·Pydantic code가 API 계약의 단일 원본이다. 분석 응답의 `OPENAPI-v1.0.0` 호환성은 유지하고 FastAPI 문서 버전은 `OPENAPI-v1.1.0-DRAFT`로 분리한다. 문서에는 기존 `/health`, `/readiness`, `/analysis`, Report 관리자 endpoint와 owner 범위의 Analysis Definition·Run 조회 및 재실행 endpoint를 포함한다.
+
+Analysis Definition은 사용자 소유의 불변 버전이며 공개 응답에 parameter 값·SQL·결과 snapshot을 노출하지 않는다. 재실행은 저장 SQL을 사용하지 않고 현재 `AnalysisController`를 호출해 entitlement·Context·G1·G2·G3·repair·binder를 다시 검증한다. 매 실행은 새 `chat.analysis_requests` → `query.query_executions` → `artifact.analysis_artifacts` 이력을 만들고 Definition과 새 request의 연결을 함께 저장한다.
+
+계약 파일과 상태별 fixture를 갱신하거나 drift를 확인하는 명령은 다음과 같다.
+
+```powershell
+python app/backend/scripts/export_openapi.py
+python app/backend/scripts/export_openapi.py --check
+```
+
+- 고정 명세: [openapi.v0.1.json](contracts/openapi.v0.1.json)
+- 상태 매핑: [state_mapping.v0.1.json](contracts/state_mapping.v0.1.json)
+- 상태 fixture: `tests/backend/fixtures/api/v0.1/`
+- 명세 파일과 fixture는 직접 수정하지 않고 exporter로 다시 생성한다.
+- pagination·sorting·filter·idempotency는 현재 세 endpoint에 적용되지 않으며, 이를 사용하는 endpoint 구현 시 별도 version으로 추가한다.
+
+`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 단일 migration chain이 application schema를 최신 head까지 적용한다. root는 `20260729_01`, 현재 tracked head는 `20260816_25` 하나씩이다. Report와 Analysis endpoint는 application PostgreSQL에 정의·실행·Artifact·예약 이력을 영속화하며 공개 요청·응답은 strict Pydantic schema와 고정 operation ID를 사용한다.
+
+`CONTEXT-REGISTRY-v1.0.0-DRAFT`는 내부 service-only 계약이다. Context record, immutable release, request package binding을 application PostgreSQL에 저장하며 checksum은 정렬된 canonical JSON을 서버에서 SHA-256으로 계산한다. 같은 idempotency key와 같은 payload는 기존 결과를 반환하고, 다른 payload·중복 version·승인되지 않은 record·배포되지 않은 release는 도메인 충돌로 차단한다. 승인·배포 이후 payload와 package는 DB trigger로 변경을 거부한다. 이 단계에는 public router, OpenAPI, live DataHub 조립, Analysis 저장 연결을 추가하지 않는다.
+
+backend 기동 전 `alembic current` 결과가 위 지원 목록에 있는지 확인한다. 저장소에 존재하지 않는 `20260803_03`은 Alembic이 native non-zero로 거부하며 운영 판정 코드 `LEGACY_REVISION_UNSUPPORTED`로 기록한다. 이 상태를 우회하는 추정 migration, 자동 `stamp`, schema·data 변경, `drop`은 금지한다. 보존이 필요한 legacy DB는 변경하지 않고 별도 복구·변환 결정을 요청한다.
+
+Report HTTP는 분석가 소유 초안 작성·조회와 `report_admin`의 전체 정의 승인·수동 실행·예약 실행을 제공한다. 수동·예약 실행은 같은 `ReportExecutionService`를 사용하며, Block에 고정된 Analysis Definition/version을 현재 권한·정책과 공통 `as_of`로 재실행한다. 각 Block Run은 새 request/query/artifact 또는 typed failure를 기록하고 일부 Block만 성공하면 Report Run을 `partial`로 보존한다. 기존 Artifact checksum만 읽어 새 실행처럼 성공 처리하는 경로는 없다.
+
+브라우저 CORS는 설정된 exact origin과 credentials·필수 header를 유지하며, 기존 `GET`·`POST`·`OPTIONS`와 draft block 교체용 `PUT` preflight만 허용한다. origin·method·header wildcard는 사용하지 않는다.
+
+## Container 검증
+
+repository root에서 다음 명령을 실행하면 기존 database Compose와 R4 backend service fragment를 결합해 `answervice-backend`를 기동한다. `/health`와 `/readiness`에서 application과 `app-postgres` 연결을 모두 검증하며, 성공한 container는 Docker Desktop에서 계속 확인할 수 있다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1 `
+  -EnvFilePath C:\absolute\external\answervice.env
+```
+
+성공 출력은 `BACKEND_CONTAINER_READY`, `BACKEND_DATABASE_READY`다. 검증 후 container까지 제거하려면 `-RemoveAfterVerification`을 추가한다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1 `
+  -EnvFilePath C:\absolute\external\answervice.env -RemoveAfterVerification
+```
+
+backend는 root Compose 기준 `http://127.0.0.1:28000`에서 접근한다.
+
+## Backend 계약 변경
+
+Backend API를 바꾸면 OpenAPI, Frontend 타입·client, 상태 fixture와 같은 Slice의 실제 HTTP 검증을 함께 갱신한다. producer draft나 fake fixture만으로 `APPROVED` 또는 제품 Gate 통과로 표시하지 않는다.
+
+Context Package의 초기 제한은 다음과 같다.
+
+- 최대 dataset 8개
+- 최대 column 60개
+- 최대 `min(6,000 tokens, model context의 25%)`
+- 권한 없는 asset은 package와 model 입력 전에 제외
+- package는 release·policy·time·entitlement·URN/FQN·token과 결정론적 hash를 기록

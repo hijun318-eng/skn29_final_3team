@@ -34,7 +34,7 @@ from src.report.domain import (  # noqa: E402
     ReportBlock,
     ReportDefinitionVersion,
 )
-from src.report.repository import InMemoryReportRepository  # noqa: E402
+from tests.support.report_repository import InMemoryReportRepository  # noqa: E402
 from src.report.router import create_report_router  # noqa: E402
 
 
@@ -123,7 +123,7 @@ class _Repository:
         return "approved"
 
 
-class ReportDocumentTest(unittest.TestCase):
+class ReportDocumentTest(unittest.IsolatedAsyncioTestCase):
     def test_html_is_a4_self_contained_and_escapes_content(self):
         report_source = source()
         checksum = canonical_source_checksum(report_source, "landscape")
@@ -547,7 +547,7 @@ class ReportDocumentTest(unittest.TestCase):
                 self.assertIn("<svg", html)
                 self.assertIn("<table>", html)
 
-    def test_render_failure_never_calls_atomic_approval(self):
+    async def test_render_failure_never_calls_atomic_approval(self):
         class BrokenHTML:
             def __init__(self, **kwargs):
                 pass
@@ -558,7 +558,7 @@ class ReportDocumentTest(unittest.TestCase):
         repository = _Repository(source())
         with patch.dict(sys.modules, {"weasyprint": SimpleNamespace(HTML=BrokenHTML)}):
             with self.assertRaises(ReportDocumentRenderError):
-                approve_report_document(
+                await approve_report_document(
                     repository,
                     str(source()["definition_id"]),
                     3,
@@ -567,14 +567,14 @@ class ReportDocumentTest(unittest.TestCase):
                 )
         self.assertIsNone(repository.finalized)
 
-    def test_approval_cannot_override_saved_orientation(self):
+    async def test_approval_cannot_override_saved_orientation(self):
         report_source = source()
         report_source["orientation"] = "landscape"
         report_source["currency_display_unit"] = "million"
         repository = _Repository(report_source)
 
         with self.assertRaisesRegex(ValueError, "match the saved Report draft"):
-            approve_report_document(
+            await approve_report_document(
                 repository,
                 str(report_source["definition_id"]),
                 3,
@@ -584,7 +584,7 @@ class ReportDocumentTest(unittest.TestCase):
 
         self.assertIsNone(repository.finalized)
 
-    def test_success_passes_pdf_and_source_hash_to_atomic_repository_method(self):
+    async def test_success_passes_pdf_and_source_hash_to_atomic_repository_method(self):
         class FakeHTML:
             def __init__(self, **kwargs):
                 self.html = kwargs["string"]
@@ -596,7 +596,7 @@ class ReportDocumentTest(unittest.TestCase):
         report_source = source()
         repository = _Repository(report_source)
         with patch.dict(sys.modules, {"weasyprint": SimpleNamespace(HTML=FakeHTML)}):
-            result = approve_report_document(
+            result = await approve_report_document(
                 repository,
                 str(report_source["definition_id"]),
                 3,
@@ -612,7 +612,7 @@ class ReportDocumentTest(unittest.TestCase):
         self.assertEqual("auto", repository.finalized[4])
         self.assertTrue(repository.finalized[7].startswith(b"%PDF-"))
 
-    def test_http_approval_creates_read_only_html_and_pdf_for_text_report(self):
+    async def test_http_approval_creates_read_only_html_and_pdf_for_text_report(self):
         class FakeHTML:
             def __init__(self, **kwargs):
                 pass
@@ -656,14 +656,14 @@ class ReportDocumentTest(unittest.TestCase):
         with patch.object(report_api, "_router", return_value=router), patch.dict(
             sys.modules, {"weasyprint": SimpleNamespace(HTML=FakeHTML)}
         ):
-            approved = report_api.approve_version(
+            approved = await report_api.approve_version(
                 definition_id, 1, payload, request_context
             )
-            metadata = report_api.get_final_document(
+            metadata = await report_api.get_final_document(
                 definition_id, 1, request_context
             )
-            html = report_api.get_final_html(definition_id, 1, request_context)
-            pdf = report_api.get_final_pdf(definition_id, 1, request_context)
+            html = await report_api.get_final_html(definition_id, 1, request_context)
+            pdf = await report_api.get_final_pdf(definition_id, 1, request_context)
 
         self.assertEqual("approved", approved["status"])
         self.assertEqual("landscape", approved["orientation"])

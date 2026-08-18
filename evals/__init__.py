@@ -1,1 +1,1 @@
-"""Deterministic evaluation helpers."""
+"""모델 호출 결과의 정확성·재현성·데이터 분할 무결성을 검증하는 평가 도구를 제공한다."""

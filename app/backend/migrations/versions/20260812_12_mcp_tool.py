@@ -1,4 +1,4 @@
-"""Add the first approved MCP tool and immutable run evidence."""
+"""version이 고정된 MCP tool 계약과 불변 실행 증거 schema를 등록한다."""
 
 import json
 import os
@@ -23,6 +23,8 @@ def _runtime_role() -> str:
 
 
 def upgrade() -> None:
+    """MCP registry·run evidence를 만들고 제품 tool 계약 한 건을 version pin으로 등록한다."""
+
     op.execute("CREATE SCHEMA IF NOT EXISTS tooling")
     op.execute(
         """
@@ -95,6 +97,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """MCP run·registry table과 tooling schema를 의존성 역순으로 제거한다."""
+
     op.execute("DROP TABLE tooling.tool_runs")
     op.execute("DROP TABLE tooling.tool_registry")
     op.execute("DROP SCHEMA tooling")

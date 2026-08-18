@@ -1,7 +1,11 @@
+"""OpenAPI 문서 응답에 포함되는 단계 전이 예시를 제공한다."""
+
 from app.contracts import PipelineStage, StageOutcome, TraceStep
 
 
-def fixture_trace(name: str) -> tuple[TraceStep, ...]:
+def example_trace(name: str) -> tuple[TraceStep, ...]:
+    """문서 상태 이름에 대응하는 일반화된 pipeline 전이 예시를 반환한다."""
+
     stages = {
         "g1_clarification": (
             PipelineStage.ROUTER,
@@ -80,3 +84,9 @@ def fixture_trace(name: str) -> tuple[TraceStep, ...]:
         )
         for index, stage in enumerate(stages)
     )
+
+
+def fixture_trace(name: str) -> tuple[TraceStep, ...]:
+    """기존 OpenAPI export API를 보존하는 문서 예시 호환 함수다."""
+
+    return example_trace(name)

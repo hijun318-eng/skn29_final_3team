@@ -47,6 +47,9 @@ class OpenApiContractTest(unittest.TestCase):
                 "/auth/session",
                 "/auth/login",
                 "/auth/logout",
+                "/conversations",
+                "/conversations/{conversation_id}/commands",
+                "/conversations/{conversation_id}/turns",
                 "/health",
                 "/mcp",
                 "/readiness",
@@ -94,6 +97,9 @@ class OpenApiContractTest(unittest.TestCase):
                 "analysisListRuns",
                 "analysisGetRun",
                 "analysisGetRunArtifact",
+                "createConversation",
+                "getConversationTurns",
+                "executeConversationCommand",
                 "reportCreateDefinition",
                 "reportCreateDraftFromAnalysisArtifact",
                 "reportListDefinitions",
@@ -169,6 +175,9 @@ class OpenApiContractTest(unittest.TestCase):
         self.assertIn("repair_count", analysis_data["properties"])
         self.assertIn("artifact", analysis_data["properties"])
         self.assertIn("evidence", analysis_result["properties"])
+        evidence = schema["components"]["schemas"]["Evidence"]["properties"]
+        self.assertIn("product_release_id", evidence)
+        self.assertIn("evidence_cutoff", evidence)
 
     def test_all_fixtures_match_typed_response(self) -> None:
         expected_names = set(contract_fixtures())

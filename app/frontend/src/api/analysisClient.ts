@@ -1,3 +1,4 @@
+/** 분석·인증·저장 실행 HTTP 포트를 구현하고 모든 wire 응답을 계약 모델로 정규화하는 모듈이다. */
 import {
   normalizeApiResponse,
   OPENAPI_VERSION,
@@ -7,6 +8,7 @@ import {
 } from "../contracts/analysis.ts";
 import { createUuid } from "../utils/createUuid.ts";
 
+/** 인증·분석·저장 실행 API가 제공해야 하는 비동기 포트다. 모든 실패는 reject되어 호출자가 상태를 결정한다. */
 export interface AnalysisClient {
   login(username: string, password: string): Promise<LoginSession>;
   validateSession(): Promise<SessionInfo>;
@@ -22,15 +24,74 @@ export interface AnalysisClient {
   replayDefinition(definitionId: string, parameters: Record<string, AnalysisValue>): Promise<SavedAnalysisRun>;
   getRunArtifact(requestId: string): Promise<AnalysisRun>;
   listRuns(): Promise<SavedAnalysisRun[]>;
+  createConversation(): Promise<{ conversation_id: string; created_at: string }>;
+  getConversationTurns(conversationId: string): Promise<ConversationTurnWire[]>;
+  executeTurnCommand(
+    conversationId: string,
+    payload: { user_message: string; expected_head_turn_id?: string | null; idempotency_key?: string },
+  ): Promise<any>;
+  submitTurnCommand(
+    conversationId: string,
+    payload: { user_message: string; expected_head_turn_id?: string | null; idempotency_key?: string },
+  ): Promise<any>;
 }
 
+/**
+ * 서버 데이터베이스에서 수화된 대화 턴의 불변 유선 계약이다.
+ */
+export interface ConversationTurnWire {
+  turn_id: string;
+  conversation_id: string;
+  turn_index: number;
+  user_message: string;
+  route: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
+  source_turn_ids: string[];
+  request_id: string | null;
+  artifact_id: string | null;
+  view_spec_id: string | null;
+  report_definition_id: string | null;
+  resolved_slots: {
+    metric_id?: string | null;
+    dimension_fields?: Array<{ column: string; asset_fqn: string }> | null;
+    time_range?: {
+      start: string;
+      end_exclusive: string;
+      source_text: string;
+    } | null;
+    target_chart_type?: string | null;
+    is_inherited_metric?: boolean;
+    is_inherited_dimension?: boolean;
+    is_inherited_period?: boolean;
+  };
+  created_at: string;
+  artifact_summary?: string | null;
+  view_type?: string | null;
+  spec_json?: Record<string, unknown> | null;
+}
+
+/**
+ * 멀티턴 명령 실행 후 서버가 반환하는 결과 계약이다.
+ */
+export interface ConversationTurnResult {
+  status: string;
+  turn: ConversationTurnWire;
+  conversation: {
+    conversation_id: string;
+    head_turn_id: string;
+    turn_count: number;
+  };
+}
+
+/** 서버가 검증한 현재 세션의 최소 공개 정보다. */
 export interface SessionInfo {
   status: "authenticated";
   role: "hotel_analyst" | "report_admin" | "data_admin";
 }
 
+/** 로그인 성공 응답은 검증된 세션 계약과 동일하다. */
 export type LoginSession = SessionInfo;
 
+/** 재실행 가능한 서버 저장 분석 정의의 wire 계약이다. */
 export interface SavedAnalysisDefinition {
   definition_id: string;
   version: number;
@@ -43,6 +104,7 @@ export interface SavedAnalysisDefinition {
   created_at: string;
 }
 
+/** 저장 분석 실행의 식별자·기간·완료 상태 계약이다. */
 export interface SavedAnalysisRun {
   request_id: string;
   definition_id: string;
@@ -61,6 +123,7 @@ export interface SavedAnalysisRun {
   period_end_exclusive: string | null;
 }
 
+/** trace 기반 진행 조회가 반환하는 서버 관측 상태다. */
 export interface AnalysisProgress {
   trace_id: string;
   request_id: string;
@@ -71,6 +134,7 @@ export interface AnalysisProgress {
   trace: Array<{ stage: string; outcome: string; detail?: string | null }>;
 }
 
+/** 분석 호출의 trace 및 진행 콜백 입력이며 콜백 부재 시 polling을 만들지 않는다. */
 export interface AnalysisOptions {
   traceId?: string;
   onProgress?: (progress: AnalysisProgress) => void;
@@ -94,6 +158,7 @@ interface SavedAnalysisArtifact {
 type Fetch = typeof fetch;
 const env = import.meta.env ?? {};
 
+/** HTTP 오류의 재시도·필요 조치·trace 정보를 보존하는 공개 오류 타입이다. */
 export class AnalysisApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -134,6 +199,7 @@ function authenticationHeaders(explicitToken = "") {
   return explicitToken ? { Authorization: `Bearer ${explicitToken}` } : {};
 }
 
+/** 명시된 backend origin에만 cookie 인증 요청을 보내며 origin 누락 시 즉시 실패하는 분석 클라이언트다. */
 export function createHttpAnalysisClient(
   baseUrl = env.VITE_BACKEND_BASE_URL,
   request: Fetch = fetch,
@@ -144,12 +210,12 @@ export function createHttpAnalysisClient(
   const headers = (json = false, traceId = createUuid()) => ({
     ...(json ? { "Content-Type": "application/json" } : {}),
     ...authenticationHeaders(authToken),
-    "X-As-Of": env.VITE_ANALYSIS_AS_OF || seoulToday(),
     "X-Contract-Version": OPENAPI_VERSION,
     "X-Timezone": "Asia/Seoul",
     "X-Trace-Id": traceId,
   });
   const parse = async <T>(response: Response): Promise<T> => {
+    // 오류 body 파싱 실패 시 빈 오류 메타데이터로만 닫고, 성공 payload는 후속 계약 정규화가 검증한다.
     const payload: any = await response.json().catch(() => ({}));
     if (!response.ok) {
       const error = new AnalysisApiError(
@@ -216,7 +282,7 @@ export function createHttpAnalysisClient(
           const payload = await parse<{ data: AnalysisProgress }>(response);
           options.onProgress?.(payload.data);
         } catch {
-          // The final analysis response owns user-facing errors; polling is best-effort only.
+          // 진행 polling 실패는 최종 분석 응답의 성공·오류 계약을 덮지 않도록 사용자 상태에 반영하지 않는다.
         }
       }, 500) : undefined;
       try {
@@ -286,9 +352,43 @@ export function createHttpAnalysisClient(
         await request(endpoint("/analysis/runs"), { credentials: "include", headers: headers() }),
       )).items;
     },
+    async createConversation() {
+      const payload = await parse<{ status: string; data: { conversation_id: string; created_at: string } }>(
+        await request(endpoint("/conversations"), {
+          method: "POST",
+          credentials: "include",
+          headers: headers(true),
+          body: JSON.stringify({}),
+        }),
+      );
+      return payload.data;
+    },
+    async getConversationTurns(conversationId) {
+      const payload = await parse<{ status: string; data: { conversation_id: string; turns: ConversationTurnWire[] } }>(
+        await request(endpoint(`/conversations/${encodeURIComponent(conversationId)}/turns`), {
+          credentials: "include",
+          headers: headers(),
+        }),
+      );
+      return payload.data?.turns || [];
+    },
+    async executeTurnCommand(conversationId, cmdPayload) {
+      return parse<any>(
+        await request(endpoint(`/conversations/${encodeURIComponent(conversationId)}/commands`), {
+          method: "POST",
+          credentials: "include",
+          headers: headers(true),
+          body: JSON.stringify(cmdPayload),
+        }),
+      );
+    },
+    async submitTurnCommand(conversationId, cmdPayload) {
+      return this.executeTurnCommand(conversationId, cmdPayload);
+    },
   };
 }
 
+/** 환경의 backend origin으로 분석 포트를 구성한다. request/token 인자는 테스트·호스트 어댑터 경계에만 사용한다. */
 export function createAnalysisClient(request: Fetch = fetch, authToken = ""): AnalysisClient {
   return createHttpAnalysisClient(undefined, request, authToken);
 }

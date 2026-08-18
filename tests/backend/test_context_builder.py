@@ -1,5 +1,6 @@
 import unittest
 from dataclasses import FrozenInstanceError, replace
+from datetime import date
 from pathlib import Path
 from sys import path
 
@@ -13,7 +14,7 @@ from app.services.context_builder import (
     ContextBuildErrorCode,
     ContextBuildRequest,
     ContextMetric,
-    ContextMetricFormula,
+    ContextMetricTerm,
     ContextPackageBuilder,
     ContextParameterBinding,
     ContextRequiredFilter,
@@ -78,6 +79,51 @@ class ContextPackageBuilderTest(unittest.TestCase):
 
         self.assertEqual(first.package_hash, second.package_hash)
         self.assertEqual(64, len(first.package_hash))
+
+    def test_product_release_and_cutoff_are_preserved_in_package_hash(self) -> None:
+        entitled = frozenset({self.pms.urn, self.crm.urn})
+        legacy = self.builder.build(self.request(), entitled)
+        shadow_request = replace(
+            self.request(),
+            product_release_id="walkerhill-v4.3-sql-20260815-derived.1",
+            evidence_cutoff=date(2026, 8, 15),
+        )
+        shadow = self.builder.build(shadow_request, entitled)
+        changed_release = self.builder.build(
+            replace(shadow_request, product_release_id="walkerhill-v4.3-next"),
+            entitled,
+        )
+
+        self.assertIsNone(legacy.product_release_id)
+        self.assertIsNone(legacy.evidence_cutoff)
+        self.assertEqual(shadow_request.product_release_id, shadow.product_release_id)
+        self.assertEqual(shadow_request.evidence_cutoff, shadow.evidence_cutoff)
+        self.assertNotEqual(legacy.package_hash, shadow.package_hash)
+        self.assertNotEqual(shadow.package_hash, changed_release.package_hash)
+
+    def test_glossary_checksum_is_preserved_and_changes_package_hash(self) -> None:
+        term = ContextMetricTerm(
+            id="recognized_room_revenue",
+            urn="urn:li:glossaryTerm:recognized_room_revenue",
+            label="인식 객실 매출",
+            aliases=("인식 객실 매출",),
+            definition="체크아웃 날짜에 전액 인식한 객실 매출입니다.",
+            unit="KRW",
+            version="METRIC-GLOSSARY-release",
+            checksum="a" * 64,
+        )
+        entitled = frozenset({self.pms.urn, self.crm.urn})
+        first = self.builder.build(
+            replace(self.request(), metric_terms=(term,)),
+            entitled,
+        )
+        changed = self.builder.build(
+            replace(self.request(), metric_terms=(replace(term, checksum="b" * 64),)),
+            entitled,
+        )
+
+        self.assertEqual("a" * 64, first.metric_terms[0].checksum)
+        self.assertNotEqual(first.package_hash, changed.package_hash)
 
     def test_entitled_metric_and_required_filters_change_package_hash(self) -> None:
         base_filter = ContextRequiredFilter("is_forecast", "eq", False)
@@ -167,20 +213,17 @@ class ContextPackageBuilderTest(unittest.TestCase):
         self.assertEqual((metric,), package.metrics)
         self.assertEqual((), package.metrics[0].required_filters)
 
-    def test_metric_result_formula_unit_and_reduction_are_typed_and_hashed(self) -> None:
+    def test_metric_result_unit_and_reduction_are_typed_and_hashed(self) -> None:
         metric = ContextMetric(
-            "occupancy_rate",
+            "governed_amount",
             "serving.analytics.hotel_daily_metrics",
-            "occupancy_rate",
-            "formula",
+            "amount",
+            "sum",
             "business_date",
             (),
-            result_field="occupancy_rate",
-            unit="ratio",
-            formula=ContextMetricFormula(
-                "divide", ("rooms_sold", "available_room_nights")
-            ),
-            reduction="weighted_ratio",
+            result_field="governed_total",
+            unit="credits",
+            reduction="sum",
         )
         asset = ContextAsset(
             urn="urn:li:dataset:hotel-daily",
@@ -198,22 +241,18 @@ class ContextPackageBuilderTest(unittest.TestCase):
                 assets=(
                     replace(
                         asset,
-                        metrics=(replace(metric, reduction="recompute"),),
+                        metrics=(replace(metric, unit="alternate_credits"),),
                     ),
                 )
             ),
             frozenset({asset.urn}),
         )
 
-        self.assertEqual("occupancy_rate", package.metrics[0].result_field)
-        self.assertEqual("ratio", package.metrics[0].unit)
+        self.assertEqual("governed_total", package.metrics[0].result_field)
+        self.assertEqual("credits", package.metrics[0].unit)
         self.assertNotEqual(package.package_hash, changed.package_hash)
 
-    def test_metric_formula_and_result_contract_fail_closed(self) -> None:
-        with self.assertRaises(ContextBuildError):
-            ContextMetricFormula("divide", ("only_one",))
-        with self.assertRaises(ContextBuildError):
-            ContextMetricFormula("divide", ("rooms_sold", "SUM(secret_column)"))
+    def test_metric_result_contract_fails_closed(self) -> None:
         with self.assertRaises(ContextBuildError):
             ContextMetric(
                 "metric",
@@ -223,6 +262,16 @@ class ContextPackageBuilderTest(unittest.TestCase):
                 "check_in_date",
                 (),
                 result_field="bad.field",
+            )
+        with self.assertRaises(ContextBuildError):
+            ContextMetric(
+                "metric",
+                self.pms.fqn,
+                "reservation_id",
+                "sum",
+                "check_in_date",
+                (),
+                reduction="unsupported",
             )
 
     def test_package_is_immutable(self) -> None:
@@ -240,6 +289,11 @@ class ContextPackageBuilderTest(unittest.TestCase):
             ContextParameterBinding("required_filter_1", "string", "O'Brien"),
             ContextParameterBinding("required_filter_2", "boolean", False),
             ContextParameterBinding("required_filter_3", "number", 0),
+            ContextParameterBinding(
+                "observed_before",
+                "timestamp",
+                "2026-08-15T23:59:59+09:00",
+            ),
         )
         package = self.builder.build(
             replace(self.request(), parameter_bindings=bindings),
@@ -249,8 +303,9 @@ class ContextPackageBuilderTest(unittest.TestCase):
             replace(
                 self.request(),
                 parameter_bindings=(
-                    *bindings[:-1],
+                    *bindings[:-2],
                     ContextParameterBinding("required_filter_3", "number", 1),
+                    bindings[-1],
                 ),
             ),
             frozenset({self.pms.urn, self.crm.urn}),
@@ -264,6 +319,7 @@ class ContextPackageBuilderTest(unittest.TestCase):
             ("required_filter_1", "number", True),
             ("required_filter_1", "number", float("inf")),
             ("required_filter_1", "date", "2026-02-30"),
+            ("required_filter_1", "timestamp", "2026-08-15T23:59:59"),
             ("required_filter_1", "string", ""),
         ):
             with self.subTest(value_type=value_type, value=value):
@@ -281,6 +337,14 @@ class ContextPackageBuilderTest(unittest.TestCase):
                 ),
                 frozenset({self.pms.urn, self.crm.urn}),
             )
+
+    def test_scalar_filter_operators_follow_the_live_contract(self) -> None:
+        for operator in ("eq", "neq", "gt", "gte", "lt", "lte"):
+            with self.subTest(operator=operator):
+                item = ContextRequiredFilter("amount", operator, 1)
+                self.assertEqual(operator, item.operator)
+        with self.assertRaises(ContextBuildError):
+            ContextRequiredFilter("amount", "in", 1)
 
     def test_rejects_more_than_eight_datasets(self) -> None:
         assets = tuple(

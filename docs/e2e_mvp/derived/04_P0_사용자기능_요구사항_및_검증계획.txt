@@ -3,7 +3,7 @@ ANSWERVICE P0 사용자 기능 요구사항 및 구현·검증 계획
 
 문서 ID: ANS-P0-UX-001
 기준일: 2026-08-13
-상위 기준: 01_MVP_PRD.md, 02_Golden_Path_유저플로우.md, 03_E2E_아키텍처_및_계약.md
+상위 기준: ../../product/00_기획서.md, ../../product/01_PRD.md, ../../product/02_유저플로우.md, ../../product/03_아키텍처.md
 목적: 사용자 기능 요구를 구현 가능한 작업과 실제 검증 기준으로 변환한다.
 
 

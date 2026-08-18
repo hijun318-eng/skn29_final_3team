@@ -1,0 +1,81 @@
+# 책임: runtime recipe 디렉터리를 순회해 현재 source catalog를 수집한다. 하나의
+# recipe라도 실패하면 완료 marker 없이 non-zero로 종료한다.
+services:
+  datahub-ingestion:
+    profiles: [metadata-ingestion]
+    image: "acryldata/datahub-ingestion:v1.7.0@sha256:970282eb3b65bdc9d8da0084779b3cfdb37695063c2c9554d738c78ae02f21c5"
+    restart: "no"
+    entrypoint: ["/bin/sh", "-euc"]
+    command:
+      - |
+        found=0
+        for recipe in /recipes/*.runtime.yml; do
+          [ -f "$$recipe" ] || continue
+          found=1
+          datahub ingest -c "$$recipe"
+        done
+        if [ "$$found" -ne 1 ]; then
+          echo 'No runtime DataHub recipe was mounted.' >&2
+          exit 2
+        fi
+    networks: [database-network, datahub-network]
+    depends_on:
+      datahub-gms-quickstart: {condition: service_healthy}
+      pms-postgres: {condition: service_healthy}
+      banquet-postgres: {condition: service_healthy}
+      pos-mysql: {condition: service_healthy}
+      crm-mssql: {condition: service_healthy}
+      facility-clickhouse: {condition: service_healthy}
+      trino: {condition: service_healthy}
+    volumes:
+      - ./datahub/recipes:/recipes:ro
+      - ${TRINO_TLS_CA_HOST_FILE:?TRINO_TLS_CA_HOST_FILE is required}:/run/secrets/trino-ca.pem:ro
+      - ${DATAHUB_TLS_CA_HOST_FILE:?DATAHUB_TLS_CA_HOST_FILE is required}:/run/secrets/datahub-ca.pem:ro
+    environment:
+      DATAHUB_GMS_URL: https://datahub-gms:8443
+      DATAHUB_PUBLISH_API_TOKEN: ${DATAHUB_PUBLISH_API_TOKEN:?DATAHUB_PUBLISH_API_TOKEN is required}
+      DATAHUB_TLS_CA_FILE: /run/secrets/datahub-ca.pem
+      # DataHub 1.7의 일부 초기 /config 요청은 sink별 CA 설정이 적용되기 전에
+      # 발생하므로 requests 전체가 동일한 private CA를 신뢰하도록 강제한다.
+      REQUESTS_CA_BUNDLE: /run/secrets/datahub-ca.pem
+      DATAHUB_TELEMETRY_ENABLED: "false"
+      DATAHUB_DATASET_ENV: ${DATAHUB_DATASET_ENV:-PROD}
+      PMS_DATAHUB_HOST_PORT: pms-postgres:5432
+      PMS_DB_NAME: ${PMS_DB_NAME}
+      PMS_READONLY_USER: ${PMS_READONLY_USER}
+      PMS_READONLY_PASSWORD: ${PMS_READONLY_PASSWORD}
+      PMS_DATAHUB_PLATFORM_INSTANCE: ${PMS_DATAHUB_PLATFORM_INSTANCE:-pms}
+      PMS_DATAHUB_SCHEMA: ${PMS_DATAHUB_SCHEMA:?PMS_DATAHUB_SCHEMA is required}
+      BANQUET_DATAHUB_HOST_PORT: banquet-postgres:5432
+      BANQUET_DB_NAME: ${BANQUET_DB_NAME}
+      BANQUET_READONLY_USER: ${BANQUET_READONLY_USER}
+      BANQUET_READONLY_PASSWORD: ${BANQUET_READONLY_PASSWORD}
+      BANQUET_DATAHUB_PLATFORM_INSTANCE: ${BANQUET_DATAHUB_PLATFORM_INSTANCE:-banquet}
+      BANQUET_DATAHUB_SCHEMA: ${BANQUET_DATAHUB_SCHEMA:?BANQUET_DATAHUB_SCHEMA is required}
+      POS_DATAHUB_HOST_PORT: pos-mysql:3306
+      POS_DATAHUB_DATABASE: ${POS_DATAHUB_DATABASE:?POS_DATAHUB_DATABASE is required}
+      POS_READONLY_USER: ${POS_READONLY_USER}
+      POS_READONLY_PASSWORD: ${POS_READONLY_PASSWORD}
+      POS_DATAHUB_PLATFORM_INSTANCE: ${POS_DATAHUB_PLATFORM_INSTANCE:-pos}
+      CRM_DATAHUB_HOST_PORT: crm-mssql:1433
+      CRM_DB_NAME: ${CRM_DB_NAME}
+      CRM_READONLY_USER: ${CRM_READONLY_USER}
+      CRM_READONLY_PASSWORD: ${CRM_READONLY_PASSWORD}
+      CRM_DATAHUB_PLATFORM_INSTANCE: ${CRM_DATAHUB_PLATFORM_INSTANCE:-crm}
+      CRM_DATAHUB_SCHEMA: ${CRM_DATAHUB_SCHEMA:?CRM_DATAHUB_SCHEMA is required}
+      FACILITY_DATAHUB_HOST_PORT: facility-clickhouse:8123
+      FACILITY_DATAHUB_DATABASE: ${FACILITY_DATAHUB_DATABASE:?FACILITY_DATAHUB_DATABASE is required}
+      FACILITY_READONLY_USER: ${FACILITY_READONLY_USER}
+      FACILITY_READONLY_PASSWORD: ${FACILITY_READONLY_PASSWORD}
+      FACILITY_DATAHUB_PLATFORM_INSTANCE: ${FACILITY_DATAHUB_PLATFORM_INSTANCE:-facility}
+      TRINO_DATAHUB_HOST_PORT: trino:8443
+      TRINO_DATAHUB_USER: ${TRINO_DATAHUB_USER:?TRINO_DATAHUB_USER is required}
+      TRINO_DATAHUB_PASSWORD: ${TRINO_DATAHUB_PASSWORD:?TRINO_DATAHUB_PASSWORD is required}
+      SERVING_DATAHUB_CATALOG: ${SERVING_DATAHUB_CATALOG:-serving}
+      SERVING_DATAHUB_PLATFORM_INSTANCE: ${SERVING_DATAHUB_PLATFORM_INSTANCE:-serving}
+      # Serving schemas are discovered by the recipe. A release-specific schema
+      # default would silently hide newly governed serving assets.
+
+networks:
+  database-network: {}
+  datahub-network: {}

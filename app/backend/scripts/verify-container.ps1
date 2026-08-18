@@ -1,26 +1,30 @@
+# 책임: 실제 Compose backend의 transport health와 모든 product dependency readiness를
+# 함께 검증한다. cached 응답이나 일부 dependency 성공으로 READY를 만들지 않는다.
 param(
-    [switch]$RemoveAfterVerification
+    [switch]$RemoveAfterVerification,
+    [string]$BackendBaseUrl = $env:ANSWERVICE_BACKEND_BASE_URL,
+    [string]$EnvFilePath
 )
 
 $ErrorActionPreference = 'Stop'
 
 $backendPath = Split-Path -Parent $PSScriptRoot
-$repositoryRoot = Resolve-Path (Join-Path $backendPath '..\..')
+$repositoryRoot = (Resolve-Path (Join-Path $backendPath '..\..')).Path
 $composeFile = Join-Path $repositoryRoot 'compose.yml'
-$environmentFile = Join-Path $repositoryRoot 'infrastructure\database\.env'
+. (Join-Path $repositoryRoot 'infrastructure\database\scripts\deployment-environment.ps1')
+Disable-ImplicitComposeEnvironment
+$environmentFile = Resolve-ExternalDeploymentEnvFile `
+    -Path $EnvFilePath -RepositoryRoot $repositoryRoot
+$composeEnvArguments = @(Get-ComposeEnvironmentArguments $environmentFile)
 $containerName = 'answervice-backend'
-$composeArguments = @(
-    'compose',
-    '--env-file', $environmentFile,
+if (-not $BackendBaseUrl) { $BackendBaseUrl = 'http://127.0.0.1:18000' }
+$BackendBaseUrl = $BackendBaseUrl.TrimEnd('/')
+$composeArguments = @('compose') + $composeEnvArguments + @(
     '-f', $composeFile,
     '--profile', 'full'
 )
 
 try {
-    if (-not (Test-Path -LiteralPath $environmentFile)) {
-        throw 'infrastructure/database/.env is required for Compose validation.'
-    }
-
     docker @composeArguments config --quiet
     if ($LASTEXITCODE -ne 0) {
         throw 'Combined database and backend Compose validation failed.'
@@ -31,12 +35,15 @@ try {
         throw 'Backend Compose service start failed.'
     }
 
-    $deadline = (Get-Date).AddSeconds(40)
+    # Container health is only a transport probe. Product readiness below must
+    # independently prove every live dependency and cannot be replaced by a
+    # cached fixture or previously successful response.
+    $deadline = (Get-Date).AddSeconds(180)
     do {
         $health = docker inspect --format '{{.State.Health.Status}}' $containerName
         if ($health -eq 'healthy') {
-            $healthResponse = Invoke-RestMethod -Uri 'http://127.0.0.1:28000/health'
-            $readinessResponse = Invoke-RestMethod -Uri 'http://127.0.0.1:28000/readiness'
+            $healthResponse = Invoke-RestMethod -Uri "$BackendBaseUrl/health"
+            $readinessResponse = Invoke-RestMethod -Uri "$BackendBaseUrl/readiness"
             if ($healthResponse.data.status -ne 'healthy') {
                 throw 'Backend /health response is not healthy.'
             }
@@ -44,7 +51,7 @@ try {
                 $readinessResponse.data.status -ne 'ready' -or
                 $readinessResponse.data.dependencies.app_postgres -ne 'ready' -or
                 $readinessResponse.data.dependencies.migration -ne 'ready' -or
-                $readinessResponse.data.dependencies.approved_templates -ne 'ready' -or
+                $readinessResponse.data.dependencies.analysis_template_registry -ne 'ready' -or
                 $readinessResponse.data.dependencies.trino -ne 'ready' -or
                 $readinessResponse.data.dependencies.datahub -ne 'ready' -or
                 $readinessResponse.data.dependencies.model -ne 'ready'
@@ -61,10 +68,12 @@ try {
         Start-Sleep -Milliseconds 500
     } while ((Get-Date) -lt $deadline)
 
-    throw 'Backend container did not become healthy within 40 seconds.'
+    throw 'Backend container did not become healthy within 180 seconds.'
 }
 finally {
     if ($RemoveAfterVerification) {
+        # Cleanup targets the exact service and then verifies absence. Volumes
+        # and unrelated containers are intentionally outside this operation.
         $previousErrorActionPreference = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {

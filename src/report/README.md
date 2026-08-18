@@ -1,28 +1,12 @@
-# Report Domain
+# 보고서 도메인 계약
 
-`src/report`는 Report domain, repository contract와 framework-neutral route contract를 제공한다. 현재 Report runtime은 이미 FastAPI Backend와 Application PostgreSQL에 등록되어 있다.
+`src/report`는 프레임워크에 종속되지 않은 보고서 도메인 모델과 포트, 라우터 계약을 제공한다. 실제 FastAPI 등록, 인증·인가, PostgreSQL 영속화, 수동 실행, 스케줄 실행은 `app/backend`의 adapter와 service가 담당하며 공통 Alembic 체인을 사용한다.
 
-## 현재 연결
+## 무결성 경계
 
-- FastAPI adapter: `app/backend/app/api/report_router.py`
-- PostgreSQL adapter: `app/backend/app/adapters/report_repository.py`
-- Scheduler: `app/backend/app/services/report_scheduler.py`
-- Runtime 등록: `app/backend/app/main.py`
-- Alembic 등록: `app/backend/migrations/versions/20260804_04_report_registration.py` 이후 Report migration
+- 보고서 저장소는 애플리케이션 조립 단계에서 명시적으로 주입한다. 운영 코드에는 메모리 저장소나 성공 응답 fallback이 없다.
+- 승인된 정의 버전은 불변으로 취급하고, 실행마다 `definition_version`, `as_of`, 정책·컨텍스트·watermark·artifact·query·snapshot checksum을 보존한다.
+- 외부 클라이언트의 수동 실행 요청은 `definition_id`, `version`, `as_of`, `idempotency_key`만 받는다. command ID, 상태, 결과와 실행 증거는 서버가 소유한다.
+- 전체 실행 결과 적재 계약은 신뢰된 내부 worker 경계이며 외부 API로 노출하지 않는다.
 
-공개 API는 인증·권한을 통과한 뒤 Report domain을 호출한다. 실행 결과 전체를 클라이언트가 주입하지 않으며, 서버가 승인된 Analysis Artifact와 현재 policy·context·watermark를 다시 확인한다.
-
-## 파일 역할
-
-- `domain.py`: Report entity, 상태와 versioned contract
-- `repository.py`: repository contract와 테스트용 in-memory 구현
-- `router.py`: framework-neutral route contract
-- `migration_proposal*.sql`: 초기 제안 계약의 회귀 검증 자료
-
-실제 DB 배포 기준은 proposal SQL이 아니라 Backend의 단일 Alembic chain이다.
-
-## 검증
-
-```powershell
-python -m pytest tests/report tests/backend/test_report_registration.py tests/backend/test_report_scheduler.py -q
-```
+공개 API를 바꾸면 `tests/report`의 도메인·라우터 계약과 `tests/backend`의 영속화·실행·스케줄 테스트를 함께 갱신한다.

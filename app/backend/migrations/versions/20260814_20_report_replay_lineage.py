@@ -1,4 +1,4 @@
-"""Persist Report replay lineage and typed block failures."""
+"""Report replay lineage와 typed block failure evidence를 영속화한다."""
 
 from alembic import op
 
@@ -10,6 +10,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Analysis definition·request·policy lineage와 typed failure column을 추가한다."""
+
     op.execute(
         "ALTER TABLE report_v1.report_blocks "
         "ADD COLUMN analysis_definition_id uuid, "
@@ -113,6 +115,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """확장된 상태와 lineage constraint·column을 의존성 역순으로 제거한다."""
+
     # Dropping replay lineage restores the old schema without re-enabling the old
     # checksum-reuse implementation.
     op.execute(

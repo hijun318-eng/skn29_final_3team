@@ -1,4 +1,4 @@
-"""Add owner-scoped Report schedules."""
+"""owner 범위에서 관리되는 Report schedule persistence를 추가한다."""
 
 import os
 import re
@@ -20,6 +20,8 @@ def _runtime_role() -> str:
 
 
 def upgrade() -> None:
+    """schedule 상태·실행 시각 불변식을 가진 table과 runtime 권한을 생성한다."""
+
     op.execute(
         """
         CREATE TABLE report_v1.report_schedules (
@@ -43,4 +45,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Report schedule table을 제거해 이 revision의 상태를 되돌린다."""
+
     op.execute("DROP TABLE report_v1.report_schedules")

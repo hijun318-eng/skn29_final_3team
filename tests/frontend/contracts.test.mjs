@@ -6,6 +6,7 @@ import { AnalysisApiError, createAnalysisClient, createHttpAnalysisClient } from
 import { createReportClient, ReportApiError } from "../../app/frontend/src/api/reportClient.ts";
 import { resolveRoute } from "../../app/frontend/src/routing.js";
 import { dataProvenanceLabel } from "../../app/frontend/src/utils/presentation.ts";
+import { commandErrorRun, hydrateTurnsFromServer } from "../../app/frontend/src/pages/agentPageHelpers.js";
 import { reportFeatureSource, reportSources } from "./report-source-contract.mjs";
 
 const source = (path) => readFileSync(new URL(`../../app/frontend/src/${path}`, import.meta.url), "utf8");
@@ -75,6 +76,8 @@ assert.match(source("contracts/analysis.ts"), /NETWORK_UNAVAILABLE/);
 assert.match(source("pages/AgentPage.jsx"), /NETWORK_UNAVAILABLE/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /REQUIRED_ACTION_COPY\[requiredAction\]/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /run\.error\?\.required_action/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /code: "NO_MATCH"/);
+assert.doesNotMatch(source("pages/agentPageHelpers.js"), /code: "NO_MATCH"/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /ERROR_ACTIONS|AT A GLANCE/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /KEY TAKEAWAY|VISUAL|DETAIL|SCOPE/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /actual_checkout_at|membership_grade_code/);
@@ -382,6 +385,36 @@ const clarification = normalizeApiResponse({
   },
 }, "2026년 6월 객실 매출");
 assert.deepEqual(clarification.error.suggestions, ["인식 객실 매출", "숙박일 배분 객실 매출"]);
+
+const catalogFailure = commandErrorRun("2026년 7월 호텔별 운영매출 보여줘", {
+  status: "FAILED",
+  code: "CONTEXT_SOURCE_FAILED",
+  message: "질문 문제가 아니라 데이터 카탈로그 검증 실패로 분석을 시작하지 못했습니다.",
+  retryable: true,
+  required_action: "CONTACT_SUPPORT",
+  detail: "urn:li:dataset:(internal)",
+});
+assert.equal(catalogFailure.error.code, "CONTEXT_SOURCE_FAILED");
+assert.equal(catalogFailure.error.required_action, "CONTACT_SUPPORT");
+assert.equal(catalogFailure.error.retryable, true);
+assert.equal(catalogFailure.error.detail, undefined);
+
+const hydratedCatalogFailure = hydrateTurnsFromServer([{
+  turn_id: "turn-failed",
+  user_message: "2026년 7월 호텔별 운영매출 보여줘",
+  route: "ANALYSIS",
+  command_status: "FAILED",
+  command_error: {
+    code: "CONTEXT_SOURCE_FAILED",
+    message: "데이터 카탈로그 검증 실패로 분석을 시작하지 못했습니다.",
+    retryable: true,
+    required_action: "CONTACT_SUPPORT",
+    detail: "checksum-internal",
+  },
+}]);
+assert.equal(hydratedCatalogFailure[0].run.error.code, "CONTEXT_SOURCE_FAILED");
+assert.equal(hydratedCatalogFailure[0].run.error.required_action, "CONTACT_SUPPORT");
+assert.equal(hydratedCatalogFailure[0].run.error.detail, undefined);
 
 let analysisRequest;
 const analysisClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {

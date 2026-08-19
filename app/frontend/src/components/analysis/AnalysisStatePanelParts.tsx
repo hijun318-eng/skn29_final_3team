@@ -49,7 +49,8 @@ export const REQUIRED_ACTION_COPY: Record<string, string> = {
 export function errorStateTitle(code?: string) {
   if (["CONTEXT_INCOMPLETE", "INSUFFICIENT_CONTEXT", "DATA_ASSET_NOT_FOUND"].includes(code ?? "")) return "질문 분석 불가 (호텔 데이터 외 질의)";
   if (["PERIOD_REQUIRED"].includes(code ?? "")) return "분석 기간 선택 필요";
-  if (["CONTEXT_SOURCE_FAILED", "TRINO_CONNECTION_FAILED", "QUERY_SOURCE_FAILED", "DEPENDENCY_UNAVAILABLE", "QUERY_TIMEOUT", "MODEL_TIMEOUT"].includes(code ?? "")) return "데이터 조회 지연";
+  if (code === "CONTEXT_SOURCE_FAILED") return "데이터 카탈로그 검증 실패";
+  if (["TRINO_CONNECTION_FAILED", "QUERY_SOURCE_FAILED", "DEPENDENCY_UNAVAILABLE", "QUERY_TIMEOUT", "MODEL_TIMEOUT"].includes(code ?? "")) return "데이터 조회 지연";
   if (["ACCESS_DENIED", "AUTHENTICATION_REQUIRED"].includes(code ?? "")) return "접근 권한 제한";
   if (["MODEL_CONTRACT_INVALID", "MODEL_OUTPUT_UNGROUNDED"].includes(code ?? "")) return "결과 검증 보완 필요";
   if (["MODEL_ENDPOINT_UNAVAILABLE", "CIRCUIT_OPEN"].includes(code ?? "")) return "일시적인 서비스 지연";

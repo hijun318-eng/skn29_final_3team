@@ -1,6 +1,6 @@
 /** AgentPage의 run/turn 상태 변환을 담당하는 순수 헬퍼 모듈이다. React 상태를 갖지 않는다. */
-import { AnalysisApiError } from "../api/analysisClient";
-import { OPENAPI_VERSION } from "../contracts/analysis";
+import { AnalysisApiError } from "../api/analysisClient.ts";
+import { OPENAPI_VERSION } from "../contracts/analysis.ts";
 
 /**
  * 서버 응답 도착 전 화면에 표시할 임시 run 상태를 만든다.
@@ -46,6 +46,32 @@ export function analysisError(error) {
   if (error instanceof AnalysisApiError) return error.message;
   if (error instanceof TypeError) return "서버에 연결할 수 없습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.";
   return error instanceof Error ? error.message : "분석 요청이 실패했습니다.";
+}
+
+/**
+ * conversation command의 공개 오류 필드만 AnalysisRun으로 옮긴다.
+ * 저장된 내부 detail/type은 화면에 복사하지 않으며 catalog 실패를 질문 보완으로 바꾸지 않는다.
+ * @param {string} question - 실패한 사용자 질문.
+ * @param {object} command - command top-level 결과 또는 저장된 command_error.
+ * @returns {object} 서버 code/message/retryable/action을 보존한 실패 run.
+ */
+export function commandErrorRun(question, command) {
+  const source = command?.command_error || command?.error || command || {};
+  const code = typeof source.code === "string" && source.code ? source.code : "INTERNAL_ERROR";
+  const requiredAction = code === "CONTEXT_SOURCE_FAILED" && source.required_action === "PROVIDE_CONTEXT"
+    ? "CONTACT_SUPPORT"
+    : (source.required_action || "CONTACT_SUPPORT");
+  return {
+    ...transientRun(question, "failed"),
+    error: {
+      code,
+      message: typeof source.message === "string" && source.message
+        ? source.message
+        : "분석 서비스를 검증하지 못했습니다. 서비스 관리자 확인 후 다시 시도해 주세요.",
+      retryable: Boolean(source.retryable),
+      required_action: requiredAction,
+    },
+  };
 }
 
 /**
@@ -116,6 +142,8 @@ export function hydrateTurnsFromServer(serverTurns) {
             required_action: "PROVIDE_CONTEXT",
           },
         };
+      } else if (st.command_status === "FAILED" || st.command_error) {
+        run = commandErrorRun(userMessage, st);
       } else if (st.data_snapshot_json) {
         const tableData = st.data_snapshot_json;
         const chartSpec = st.chart_spec_json;
@@ -147,15 +175,12 @@ export function hydrateTurnsFromServer(serverTurns) {
         };
         lastAnalysisRun = run;
       } else {
-        run = {
-          ...transientRun(userMessage, "failed"),
-          error: {
-            code: "NO_MATCH",
-            message: "질문과 일치하는 분석 결과를 생성하지 못했습니다.",
-            retryable: true,
-            required_action: "PROVIDE_CONTEXT",
-          },
-        };
+        run = commandErrorRun(userMessage, {
+          code: "INTERNAL_ERROR",
+          message: "저장된 분석 명령의 결과 상태를 확인하지 못했습니다.",
+          retryable: true,
+          required_action: "CONTACT_SUPPORT",
+        });
       }
 
       hydrated.push({

@@ -62,4 +62,4 @@ if ($PSCmdlet.ShouldProcess(
     }
 }
 
-Write-Output "BASE_METADATA_INGESTED|recipes=$($recipes.Count)"
+Write-Output "BASE_METADATA_INGESTED|recipes=$($recipes.Count)|catalog_ready=false|next=SEMANTIC_CHECK"

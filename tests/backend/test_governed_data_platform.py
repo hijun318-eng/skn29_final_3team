@@ -6,21 +6,28 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import unquote
 
 import httpx
 
 
 ROOT = Path(__file__).resolve().parents[2]
+BACKEND = ROOT / "app" / "backend"
 PUBLISHER = ROOT / "infrastructure" / "database" / "datahub"
+sys.path.insert(0, str(BACKEND))
 sys.path.insert(0, str(PUBLISHER))
 from metadata_aspects import iter_aspects  # noqa: E402
 from metadata_contract import validate_bundle  # noqa: E402
 
+from app.adapters.catalog_snapshot import (  # noqa: E402
+    DEFAULT_CATALOG_RELEASE_TTL_SECONDS,
+)
 from app.adapters.datahub_catalog import DataHubCatalogClient  # noqa: E402
 from app.adapters.governed_data_platform import (  # noqa: E402
     GovernedDataPlatformAdapter,
 )
+from app.adapters.query_governance import QueryGovernanceEngine  # noqa: E402
 from app.adapters.trino_async import TrinoAsyncClient  # noqa: E402
 from app.ports.data_platform import (  # noqa: E402
     MetadataUnavailableError,
@@ -206,6 +213,77 @@ def _bundle() -> dict:
             "allowed_catalogs": ["orbit"],
         },
     }
+
+
+def _bundle_with_ratio() -> dict:
+    """한 asset의 승인 column operands에서 derived ratio를 발행한 runtime fixture를 만든다."""
+
+    bundle = _bundle()
+    fqn = "orbit.lake.helium_fact"
+    domain = "urn:li:domain:helium_operations"
+    owner = "urn:li:corpGroup:helium_operations"
+    count = {
+        "id": "helium_observation_count",
+        "source": {
+            "kind": "column",
+            "field": {"asset_fqn": fqn, "column": "event_id"},
+        },
+        "aggregation": "count",
+        "result_field": "helium_observation_count",
+        "unit": "count",
+        "time_field": {"asset_fqn": fqn, "column": "observed_on"},
+        "reduction": "sum",
+        "dimensions": [],
+        "required_filters": [],
+    }
+    ratio = {
+        "id": "helium_rate",
+        "source": {
+            "kind": "ratio",
+            "numerator_metric_id": "helium_yield",
+            "denominator_metric_id": "helium_observation_count",
+            "zero_policy": "null_on_zero_denominator",
+        },
+        "aggregation": "ratio",
+        "result_field": "helium_rate",
+        "unit": "arbitrary_units_per_observation",
+        "time_field": None,
+        "reduction": "ratio",
+        "dimensions": [],
+        "required_filters": [],
+    }
+    bundle["metric_rules"].extend((count, ratio))
+    bundle["metric_terms"].extend(
+        (
+            {
+                "id": count["id"],
+                "urn": "urn:li:glossaryTerm:helium_observation_count",
+                "name": "Helium observation count",
+                "definition": "Approved count of governed helium observations.",
+                "aliases": ["Helium observation count", "Helium volume"],
+                "unit": count["unit"],
+                "version": "glossary-arbitrary-3",
+                "approval_status": "APPROVED",
+                "owner_urn": owner,
+                "domain_urn": domain,
+                "approved_lifecycle_urn": LIFECYCLE_URN,
+            },
+            {
+                "id": ratio["id"],
+                "urn": "urn:li:glossaryTerm:helium_rate",
+                "name": "Helium rate",
+                "definition": "Approved helium yield per governed observation.",
+                "aliases": ["Helium rate", "Helium average yield"],
+                "unit": ratio["unit"],
+                "version": "glossary-arbitrary-3",
+                "approval_status": "APPROVED",
+                "owner_urn": owner,
+                "domain_urn": domain,
+                "approved_lifecycle_urn": LIFECYCLE_URN,
+            },
+        )
+    )
+    return bundle
 
 
 def _bundle_with_dimension_bridge() -> dict:
@@ -545,6 +623,26 @@ class RuntimeTransport:
 
 
 class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
+    def test_catalog_snapshot_default_and_environment_override_are_explicit(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            default_engine = QueryGovernanceEngine(
+                object(), object(), search_mode="lexical"
+            )
+        with patch.dict(
+            os.environ,
+            {"DATAHUB_CATALOG_TTL_SECONDS": "43200"},
+            clear=True,
+        ):
+            override_engine = QueryGovernanceEngine(
+                object(), object(), search_mode="lexical"
+            )
+
+        self.assertEqual(
+            DEFAULT_CATALOG_RELEASE_TTL_SECONDS,
+            default_engine._loader._ttl_seconds,
+        )
+        self.assertEqual(43_200.0, override_engine._loader._ttl_seconds)
+
     async def asyncSetUp(self) -> None:
         self.transport = RuntimeTransport(_bundle())
         self.datahub_http = httpx.AsyncClient(transport=httpx.MockTransport(self.transport.datahub))
@@ -606,6 +704,43 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 {"role": "hotel_analyst", "parameters": {}},
             )
 
+    async def test_ratio_term_is_discovered_and_projected_without_physical_field(self) -> None:
+        transport = RuntimeTransport(_bundle_with_ratio())
+        datahub_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.datahub))
+        trino_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.trino))
+        catalog = DataHubCatalogClient(
+            "http://datahub.test", client=datahub_http, page_size=2, max_entities=20
+        )
+        trino = TrinoAsyncClient(
+            "https://trino.test", "runtime", "test-password", client=trino_http
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=catalog,
+            trino_client=trino,
+            search_mode="lexical",
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+
+        assets = await adapter.search_assets(
+            "Helium average yield",
+            {"role": "hotel_analyst", "parameters": {}},
+        )
+        terms = await adapter.get_metric_terms(("helium_rate",))
+        metrics = {
+            metric["id"]: metric
+            for asset in assets
+            for metric in asset["metrics"]
+        }
+
+        self.assertEqual("ratio", metrics["helium_rate"]["aggregation"])
+        self.assertEqual("", metrics["helium_rate"]["asset_fqn"])
+        self.assertEqual("helium_yield", metrics["helium_rate"]["numerator_metric_id"])
+        self.assertEqual("ratio", terms["helium_rate"]["kind"])
+
     async def test_explicit_lexical_mode_does_not_call_disabled_semantic_search(self) -> None:
         self.transport.semantic_disabled = True
         catalog = DataHubCatalogClient(
@@ -636,6 +771,42 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 "helium",
                 {"role": "unpublished_role", "parameters": {}},
             )
+
+    async def test_catalog_readiness_requires_manifest_membership_and_all_trino_schemas(self) -> None:
+        stages, receipt = await self.adapter.get_catalog_readiness()
+
+        self.assertEqual(
+            {
+                "semantic_release": "ready",
+                "catalog_manifest": "ready",
+                "trino_schema": "ready",
+            },
+            stages,
+        )
+        self.assertRegex(receipt or "", r"^[^:]+:[0-9a-f]{64}$")
+
+    async def test_catalog_readiness_rejects_manifest_governed_count_mismatch(self) -> None:
+        removed_urn = next(
+            urn for urn in self.transport.datasets if "argon_fact" in urn
+        )
+        self.transport.datasets.pop(removed_urn)
+
+        stages, receipt = await self.adapter.get_catalog_readiness()
+
+        self.assertEqual("ready", stages["semantic_release"])
+        self.assertEqual("not_ready", stages["catalog_manifest"])
+        self.assertEqual("not_ready", stages["trino_schema"])
+        self.assertIsNone(receipt)
+
+    async def test_catalog_readiness_rejects_trino_schema_drift_after_valid_manifest(self) -> None:
+        self.transport.schema_drift = True
+
+        stages, receipt = await self.adapter.get_catalog_readiness()
+
+        self.assertEqual("ready", stages["semantic_release"])
+        self.assertEqual("ready", stages["catalog_manifest"])
+        self.assertEqual("not_ready", stages["trino_schema"])
+        self.assertIsNone(receipt)
 
     async def test_incomplete_governance_and_trino_drift_are_typed_failures(self) -> None:
         first = next(iter(self.transport.datasets.values()))
@@ -783,6 +954,37 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             ["helium_neon_by_event"],
             by_fqn["orbit.reference.neon_dimension"]["join_ids"],
         )
+
+    async def test_join_expansion_cannot_reach_an_unentitled_asset(self) -> None:
+        """seed는 권한이 있어도 join으로 끌려온 metric asset이 비권한이면 fail-closed여야 한다."""
+
+        bundle = _bundle_with_dimension_bridge()
+        for asset in bundle["schema_context"]["assets"]:
+            if asset["fqn"] == "orbit.lake.helium_fact":
+                asset["entitlements"] = {"roles": ["restricted_role"], "domains": []}
+        transport = RuntimeTransport(bundle)
+        datahub_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.datahub))
+        trino_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.trino))
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=DataHubCatalogClient(
+                "http://datahub.test", client=datahub_http, page_size=1, max_entities=20
+            ),
+            trino_client=TrinoAsyncClient(
+                "https://trino.test", "runtime", "test-password", client=trino_http
+            ),
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+
+        # "neon"은 권한 있는 dimension만 seed로 만들지만, 이 asset은 metric이 없어
+        # 인접한 helium_fact가 join 경로로 끌려온다. 그 asset은 이 role에 권한이 없다.
+        with self.assertRaises(MetadataUnavailableError):
+            await adapter.search_assets(
+                "neon", {"role": "hotel_analyst", "parameters": {}}
+            )
 
 
 @unittest.skipUnless(

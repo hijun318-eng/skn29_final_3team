@@ -1,6 +1,7 @@
 # 책임: 외부 deployment environment로 DB·Trino·DataHub를 두 단계로 기동한다.
 # Core 단계는 인증/TLS와 운영자 UI를 준비하고, Catalog 단계는 DataHub가 발급한
-# publish service token으로 source/serving의 물리 metadata만 수집한다. embedding과
+# publish service token으로 source/serving의 물리 metadata만 수집한다. 이 단계는
+# semantic check/publish/read-back 전이므로 catalog ready를 선언하지 않는다. embedding과
 # semantic index는 검색 전략 승인 전 이 기동 경로에 포함하지 않는다.
 [CmdletBinding()]
 param(
@@ -173,7 +174,10 @@ if ($Stage -eq 'Catalog') {
     }
     Invoke-Compose up --detach --wait --wait-timeout 1800 `
         datahub-actions-quickstart frontend-quickstart
-    Write-Output 'DATABASE_CATALOG_METADATA_READY'
+    # Base ingestion 성공은 semantic release 활성화가 아니다. 운영자는 동일 stdin policy로
+    # author_semantic_catalog.py --check를 수행하고, exact predecessor/target checksum 승인 뒤
+    # --publish의 PUBLISHED_AND_VERIFIED receipt를 받아야 backend readiness를 열 수 있다.
+    Write-Output 'DATABASE_BASE_METADATA_INGESTED|catalog_ready=false|next=SEMANTIC_CHECK'
     return
 }
 

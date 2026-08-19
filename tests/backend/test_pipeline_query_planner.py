@@ -61,6 +61,52 @@ def test_single_served_view_is_view_reuse() -> None:
     assert determine_query_strategy(_package(metrics), contracts) == VIEW_REUSE
 
 
+def test_single_served_row_grain_uses_approved_detail_path() -> None:
+    metrics = (
+        ContextMetric(
+            id="average_value",
+            asset_fqn="serving.sample.observation_detail",
+            field="observed_value",
+            aggregation="average",
+            time_field="observed_on",
+            required_filters=(),
+        ),
+    )
+    contracts = {
+        "schema_context": {
+            "assets": [
+                {
+                    "fqn": "serving.sample.observation_detail",
+                    "grain": {"kind": "row", "keys": ["observation_id"]},
+                }
+            ]
+        }
+    }
+
+    assert determine_query_strategy(_package(metrics), contracts) == RAW_APPROVED_DETAIL
+
+
+def test_missing_grain_metadata_fails_closed_to_detail_path() -> None:
+    metrics = (
+        ContextMetric(
+            id="total_value",
+            asset_fqn="serving.sample.daily_values",
+            field="value",
+            aggregation="sum",
+            time_field="observed_on",
+            required_filters=(),
+        ),
+    )
+
+    assert (
+        determine_query_strategy(
+            _package(metrics),
+            {"schema_context": {"assets": []}},
+        )
+        == RAW_APPROVED_DETAIL
+    )
+
+
 def test_two_served_views_same_grain_is_view_compose() -> None:
     metrics = (
         ContextMetric(

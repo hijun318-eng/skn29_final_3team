@@ -166,7 +166,7 @@ Browser
 
 ### 직전 기록이지만 현재 PASS로 승격하면 안 되는 결과
 
-`docs/architecture/production-integrity-audit.md`의 2026-08-16 기록:
+삭제된 `docs/architecture/production-integrity-audit.md`에 남아 있던 2026-08-16 기록:
 
 - Python 510 passed, 30 skipped, 251 subtests passed
 - Frontend 13/13 passed
@@ -295,7 +295,7 @@ Antigravity의 최종 보고는 다음을 분리한다.
 4. `docs/product/01_PRD.md` — Requirement/Gate와 현재 판정
 5. `docs/product/02_유저플로우.md` — 정상·명확화·거부·실패·보고서 흐름
 6. `docs/product/03_아키텍처.md` — 현재/목표 구조와 release 전환
-7. `docs/architecture/production-integrity-audit.md` — overhaul 감사와 과거 검증 기록
+7. `scripts/audit_repository_integrity.py` — 현행 무결성 감사. 과거 기록이던 `docs/architecture/production-integrity-audit.md`는 삭제됐다.
 8. `docs/reference/Antigravity_실제_분석_E2E_실행_인수인계.md` — 다음 실제 E2E 절차
 9. 현재 코드·Compose·migration·runtime read-back — 최종 구현 사실
 

@@ -29,6 +29,10 @@ from app.contracts import AnalysisRequest, AnalysisStatus, ErrorCode, RequestCon
 from app.ports.data_platform import DataPlatformAdapter, NoEntitledAssetsError
 from app.services.context.builder import ContextBuildError
 from app.services.context.model_signals import client_action_signals
+from app.services.conversation.analysis_request import (
+    build_structured_analysis_request,
+    extract_artifact_id,
+)
 from app.services.conversation.report_actions import execute_report_action
 from app.services.conversation.slot_resolver import ConversationSlotResolver, ResolvedTurnSlots
 from app.services.analysis.pipeline_support import PipelineSupport
@@ -150,7 +154,28 @@ class ConversationOrchestrator:
             if existing_cmd["status"] == "RUNNING":
                 return {"status": "BUSY", "code": "CONVERSATION_BUSY", "message": "동일한 명령이 처리 중입니다."}
             if existing_cmd["status"] == "FAILED":
-                return {"status": "FAILED", "code": "COMMAND_FAILED_PREVIOUSLY", "error": existing_cmd.get("error_response")}
+                error = existing_cmd.get("error_response") or {}
+                turns = await self._repo.list_turns(conversation_id)
+                target_turn = next(
+                    (
+                        turn
+                        for turn in turns
+                        if str(turn["turn_id"]) == str(existing_cmd.get("turn_id"))
+                    ),
+                    None,
+                )
+                return {
+                    "status": "FAILED",
+                    "code": error.get("code", ErrorCode.CONTEXT_SOURCE_FAILED.value),
+                    "message": error.get(
+                        "message",
+                        "질문 해석에 필요한 데이터 카탈로그를 검증하지 못했습니다.",
+                    ),
+                    "retryable": bool(error.get("retryable", True)),
+                    "required_action": error.get("required_action", "CONTACT_SUPPORT"),
+                    "turn": target_turn,
+                    "is_idempotent_replay": True,
+                }
 
         # 2. 정규 입력 해시(Canonical Input Hash) 생성
         canonical_input = json.dumps({"msg": user_message, "exp": str(expected_head)}, sort_keys=True)
@@ -246,16 +271,32 @@ class ConversationOrchestrator:
                     "conversation preflight interpretation failed: type=%s",
                     type(error).__name__,
                 )
-                await self._repo.release_lease_on_failure(
-                    conversation_id,
-                    command_id,
-                    {"type": type(error).__name__, "detail": str(error)},
-                )
-                return {
+                public_error = {
                     "status": "FAILED",
                     "code": ErrorCode.CONTEXT_SOURCE_FAILED.value,
-                    "message": "질문 해석에 필요한 거버넌스 런타임을 사용할 수 없습니다.",
+                    "message": "질문 문제가 아니라 데이터 카탈로그 검증 실패로 분석을 시작하지 못했습니다.",
                     "retryable": True,
+                    "required_action": "CONTACT_SUPPORT",
+                }
+                turn_id = uuid4()
+                await self._repo.commit_failed_turn(
+                    conversation_id,
+                    command_id,
+                    turn_id,
+                    len(previous_turns),
+                    user_message,
+                    {
+                        "type": type(error).__name__,
+                        "detail": str(error),
+                        **public_error,
+                    },
+                )
+                updated_turns = await self._repo.list_turns(conversation_id)
+                return {
+                    **public_error,
+                    "turn": next(
+                        turn for turn in updated_turns if turn["turn_id"] == turn_id
+                    ),
                 }
 
             # 5-1. UI가 이미 아는 동작은 자연어로 바꾸지 않고 typed action으로 받는다.
@@ -282,7 +323,7 @@ class ConversationOrchestrator:
             # 7. 3대 라우트 분기 실행
             if slots.route == "ANALYSIS":
                 # 라우트 1: ANALYSIS (실제 데이터 쿼리 파이프라인 실행)
-                analysis_req = self._build_structured_analysis_request(user_message, slots)
+                analysis_req = build_structured_analysis_request(user_message, slots)
                 execution: dict[str, Any] = {}
                 analysis_repo = self._get_analysis_repository(context)
                 if analysis_repo is not None:
@@ -308,7 +349,7 @@ class ConversationOrchestrator:
                             pass
                     raise err
 
-                artifact_id = self._extract_artifact_id(analysis_resp)
+                artifact_id = extract_artifact_id(analysis_resp)
                 request_id = context.request_id
 
             elif slots.route == "PRESENTATION":
@@ -427,62 +468,3 @@ class ConversationOrchestrator:
             error_data = {"type": type(error).__name__, "detail": str(error)}
             await self._repo.release_lease_on_failure(conversation_id, command_id, error_data)
             raise
-
-    @staticmethod
-    def _build_structured_analysis_request(
-        user_message: str,
-        slots: ResolvedTurnSlots,
-    ) -> AnalysisRequest:
-        """확정된 resolved_slots를 typed AnalysisRequest 모델로 감싸 반환합니다.
-
-        상속된 지표/차원/기간이 있을 때 typed ResolvedSlots로 전달하여 하류 컴포넌트(MetricResolver)가
-        불필요한 LLM 호출을 건너뛰고(fast-path) 결정론적 경로를 타도록 유도합니다.
-        """
-        resolved = None
-        # metric_id는 상속뿐 아니라 모호성 해소(disambiguation)로도 확정된다. 이 조건에서
-        # metric_id를 빼면 사용자가 방금 선택한 지표가 하류로 전달되지 않아 Node1이 같은
-        # 질문을 다시 해석하게 되고, 선택 자체가 유실된다.
-        if (
-            slots.metric_id
-            or slots.is_inherited_metric
-            or slots.is_inherited_period
-            or slots.is_inherited_dimension
-            or slots.time_range
-            or slots.user_filters
-        ):
-            dim_ids = tuple(
-                d.get("column", "") if isinstance(d, dict) else str(d)
-                for d in slots.dimension_fields
-                if (isinstance(d, dict) and d.get("column")) or (isinstance(d, str) and d)
-            )
-            resolved = ResolvedSlots(
-                metric_id=slots.metric_id,
-                dimension_ids=dim_ids,
-                user_filters=tuple(dict(f) for f in slots.user_filters),
-                period_start=slots.time_range.start.isoformat() if slots.time_range else None,
-                period_end_exclusive=slots.time_range.end_exclusive.isoformat() if slots.time_range else None,
-            )
-
-        return AnalysisRequest(
-            question=user_message,
-            resolved_slots=resolved,
-        )
-
-    @staticmethod
-    def _extract_artifact_id(analysis_resp: Any) -> UUID | None:
-        """AnalysisResponse 객체에서 생성된 artifact_id를 안전하게 추출합니다."""
-        dumped = analysis_resp.model_dump(mode="python") if hasattr(analysis_resp, "model_dump") else {}
-        data_dict = dumped.get("data") or {}
-
-        art_dict = data_dict.get("artifact") or {}
-        if art_dict.get("artifact_id"):
-            val = art_dict["artifact_id"]
-            return val if isinstance(val, UUID) else UUID(str(val))
-
-        result_dict = data_dict.get("result") or {}
-        evidence_dict = result_dict.get("evidence") or {}
-        if evidence_dict.get("artifact_id"):
-            val = evidence_dict["artifact_id"]
-            return val if isinstance(val, UUID) else UUID(str(val))
-
-        return None

@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark" data-preset="signal-flow">
+<html lang="en" data-theme="dark" data-preset="classic">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 2.14.0">
-  <title>P0 bounded multi-turn 분석 순서 Diagram</title>
+  <title>Answervice v3.4 데이터·의미·선택형 Graph 승인 릴리스 흐름 Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -31,15 +31,11 @@
       } catch (_) {}
     })();
   </script>
-  <!-- Async font load: a blackholed network must not block first paint.
-       The body font stack falls back to system monospace until it lands. -->
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
-        rel="stylesheet" media="print" onload="this.media='all'">
-  <noscript>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  </noscript>
   <style>
+    @font-face { font-family: 'Pretendard'; font-style: normal; font-weight: 400; src: local('Pretendard'), local('Pretendard Regular'), local('Pretendard-Regular'); }
+    @font-face { font-family: 'Pretendard'; font-style: normal; font-weight: 500; src: local('Pretendard Medium'), local('Pretendard-Medium'), local('Pretendard'); }
+    @font-face { font-family: 'Pretendard'; font-style: normal; font-weight: 600; src: local('Pretendard SemiBold'), local('Pretendard-SemiBold'), local('Pretendard'); }
+    @font-face { font-family: 'Pretendard'; font-style: normal; font-weight: 700; src: local('Pretendard Bold'), local('Pretendard-Bold'), local('Pretendard'); }
     /* ==========================================================
        THEME VARIABLES — switch by toggling [data-theme] on <html>
        ========================================================== */
@@ -351,7 +347,7 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace;
+      font-family: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', sans-serif;
       background: var(--bg);
       min-height: 100vh;
       padding: 2rem;
@@ -4836,12 +4832,11 @@
     <div class="header">
       <div class="header-row">
         <div class="pulse-dot"></div>
-        <h1>P0 bounded multi-turn 분석 순서</h1>
+        <h1>Answervice v3.4 데이터·의미·선택형 Graph 승인 릴리스 흐름</h1>
       </div>
-      <p class="subtitle">권한 우선 preflight 뒤 정규화·GPT 후보·unique resolver로 확정하고 Run·View를 원자 종료</p>
     </div>
 
-    <script id="archify-guided-views-data" type="application/json">[{"id":"resolve_turn","label":"1. 후속 턴 해석","focus":["user","web","conversation","appdb","model"],"note":"권한 우선 preflight → 결정론적 정규화 → GPT typed 후보 → 서버 unique resolver 순서로 하나만 확정합니다."},{"id":"analysis_turn","label":"2. 분석 턴 실행","focus":["conversation","model","governance","pipeline","trino","appdb","web"],"note":"RESOLVED_ANALYSIS만 새 Run을 만들고 결과·command·terminal Turn·head·lease를 한 transaction으로 commit합니다."},{"id":"presentation_turn","label":"3. 그래프·표 변경","focus":["user","web","conversation","governance","appdb"],"note":"idempotency 우선, expected-head CAS, active lease 뒤 같은 Artifact의 ViewSpec과 terminal Turn을 원자 commit합니다."},{"id":"clarification","label":"4. 모호하면 실행 중단","focus":["conversation","governance","web","user"],"note":"NEEDS_CLARIFICATION·OUT_OF_DATA_RANGE는 Run 0건인 BLOCKED Turn을 terminal commit하고 응답합니다."}]</script>
+    <script id="archify-guided-views-data" type="application/json">[{"id":"v43_runtime_release","label":"1. V4.3 Runtime 확인","focus":["v43_candidate","source_runtime_check","trino_view_check"],"note":"38개 Table·실제 Row count·읽기 권한·5 Source 연결·13개 승인 View와 Cross-source 조회를 먼저 확인합니다."},{"id":"semantic_release_proof","label":"2. 의미 정본 봉인","focus":["semantic_manifest","semantic_readback","core_gold_e2e"],"note":"DataHub Snapshot·Registry·Rule·Binding·Policy를 같은 semantic release로 묶고 전체를 다시 읽어 Core Gold/E2E로 확인합니다."},{"id":"graph_projection_proof","label":"3. Graph 투영 검증","focus":["semantic_readback","batch_projection","graph_off_on"],"note":"승인 관계만 Batch 투영하고 중복·고아 관계·release mismatch를 검사한 뒤 Graph OFF/ON과 장애 fallback을 비교합니다."},{"id":"extension_release_proof","label":"4. P1 전체 기능 시험","focus":["core_gold_e2e","extension_e2e","graph_off_on"],"note":"MCP·Analysis/RAG/ML·병렬 조합·제한된 재계획·Cross-domain·Graph OFF fallback을 실제 경로로 시험합니다."},{"id":"approve_cutover_v34","label":"5. 복구·승인·전환","focus":["extension_e2e","approved_cutover"],"note":"후보→이전 승인본→후보 복구 훈련과 사람 승인을 통과한 release만 기본값으로 전환합니다."}]</script>
 
     <div class="guided-views no-print" id="guided-views" hidden aria-label="Guided diagram views">
       <button id="guided-view-prev" type="button" aria-label="Previous guided view" title="Previous guided view ([)">&#8592;</button>
@@ -4884,9 +4879,9 @@
 
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read">
-      <svg viewBox="0 0 1760 1040" role="img" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="signal-flow" data-quality-profile="showcase">
-        <title id="archify-diagram-title">P0 bounded multi-turn 분석 순서</title>
-        <desc id="archify-diagram-description">권한 우선 preflight 뒤 정규화·GPT 후보·unique resolver로 확정하고 Run·View를 원자 종료</desc>
+      <svg viewBox="0 0 1040 650" role="img" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
+        <title id="archify-diagram-title">Answervice v3.4 데이터·의미·선택형 Graph 승인 릴리스 흐름</title>
+        <desc id="archify-diagram-description">A workflow diagram generated by Archify.</desc>
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -4909,403 +4904,217 @@
         <!-- Background Grid -->
         <rect width="100%" height="100%" fill="url(#grid)" />
 
-        <!-- Time Segments -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="0" x="48" y="150" width="1664" height="280" rx="10" class="c-lane" stroke-width="1"/>
+        <!-- Swimlanes -->
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-0" x="40" y="52" width="640" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="74" class="t-dim" font-size="10" font-weight="600">01 / Walkerhill V4.3 데이터</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="1" x="48" y="435" width="1664" height="340" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-1" x="40" y="176" width="640" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="198" class="t-dim" font-size="10" font-weight="600">02 / DataHub·Semantic 정본</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="2" x="48" y="780" width="1664" height="150" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-2" x="40" y="300" width="640" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="exception-lane" data-composition-frame-id="lane-2-exception" x="46" y="306" width="628" height="92" rx="8" class="c-security-group" stroke-width="1"/>
+        <text x="54" y="322" class="t-security" font-size="10" font-weight="600">EX / 선택형 Neo4j 확장</text>
 
-        <!-- Lifelines -->
-        <path d="M 152.5 142 L 152.5 975" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 363.5 142 L 363.5 975" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 574.5 142 L 574.5 975" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 785.5 142 L 785.5 975" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 996.5 142 L 996.5 975" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 1207.5 142 L 1207.5 975" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 1418.5 142 L 1418.5 975" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 1629.5 142 L 1629.5 975" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="lane" data-composition-frame-id="lane-3" x="40" y="424" width="640" height="104" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="54" y="446" class="t-dim" font-size="10" font-weight="600">04 / Core·Agent 전체 시험과 전환</text>
 
-        <!-- Activations -->
-        <rect x="358.5" y="188" width="10" height="740" rx="3" class="c-mask"/>
-        <rect x="358.5" y="188" width="10" height="740" rx="3" class="c-frontend" stroke-width="1"/>
-        <rect x="569.5" y="195" width="10" height="733" rx="3" class="c-mask"/>
-        <rect x="569.5" y="195" width="10" height="733" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="1202.5" y="436" width="10" height="283" rx="3" class="c-mask"/>
-        <rect x="1202.5" y="436" width="10" height="283" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="991.5" y="270" width="10" height="605" rx="3" class="c-mask"/>
-        <rect x="991.5" y="270" width="10" height="605" rx="3" class="c-security" stroke-width="1"/>
-        <rect x="1413.5" y="623" width="10" height="43" rx="3" class="c-mask"/>
-        <rect x="1413.5" y="623" width="10" height="43" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="1624.5" y="215" width="10" height="688" rx="3" class="c-mask"/>
-        <rect x="1624.5" y="215" width="10" height="688" rx="3" class="c-database" stroke-width="1"/>
+        <!-- Phase headers -->
+        <line x1="42" y1="35" x2="266" y2="35" class="a-default" stroke-width="1.1"/>
+        <rect x="42" y="27" width="224" height="16" rx="4" class="c-mask"/>
+        <text x="154" y="39" class="t-muted" font-size="8" font-weight="600" text-anchor="middle">데이터 Runtime 확인</text>
+        <line x1="254" y1="35" x2="476" y2="35" class="a-security" stroke-width="1.1"/>
+        <rect x="254" y="27" width="222" height="16" rx="4" class="c-mask"/>
+        <text x="365" y="39" class="t-security" font-size="8" font-weight="600" text-anchor="middle">의미 계약·Core 검증</text>
+        <line x1="454" y1="35" x2="671" y2="35" class="a-emphasis" stroke-width="1.1"/>
+        <rect x="454" y="27" width="217" height="16" rx="4" class="c-mask"/>
+        <text x="562.5" y="39" class="t-backend" font-size="8" font-weight="600" text-anchor="middle">선택형 확장·복구·승인</text>
 
-        <!-- Messages -->
-        <g data-edge-from="user" data-edge-to="web" data-edge-label="‘그 전 달은?’ 같은 후속 턴" data-edge-key="0" data-edge-id="submit_turn">
-          <path data-composition-edge-from="user" data-composition-edge-to="web" data-composition-edge-id="submit_turn" data-composition-points="159.5,170;356.5,170" d="M 159.5 170 L 356.5 170" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="184.39999999999998" y="150" width="147.20000000000002" height="16" rx="3" class="c-mask"/>
-          <text x="258" y="160" class="t-backend" font-size="9" text-anchor="middle">‘그 전 달은?’ 같은 후속 턴</text>
-        </g>
-        </g>
+        <!-- Workflow groups -->
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="group" data-composition-frame-id="group-0" x="250" y="214" width="230" height="58" rx="9" class="c-security-group" stroke-width="1"/>
+        <text x="260" y="228" class="t-security" font-size="7" font-weight="600">정본 Release → 전체 Read-back → Core Gold</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="group" data-composition-frame-id="group-1" x="450" y="338" width="225" height="58" rx="9" class="c-lane" stroke-width="1"/>
+        <text x="460" y="352" class="t-messagebus" font-size="7" font-weight="600">단방향 Batch 투영 → 정합성·OFF/ON·fallback</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="group" data-composition-frame-id="group-2" x="380" y="462" width="295" height="58" rx="9" class="c-lane" stroke-width="1"/>
+        <text x="390" y="476" class="t-backend" font-size="7" font-weight="600">P0 Core + P1 확장 시험 → 복구 훈련 → 승인 전환</text>
 
-        <g data-edge-from="web" data-edge-to="conversation" data-edge-label="idempotency + expected head + 원문" data-edge-key="1" data-edge-id="post_turn">
-          <path data-composition-edge-from="web" data-composition-edge-to="conversation" data-composition-edge-id="post_turn" data-composition-points="370.5,195;567.5,195" d="M 370.5 195 L 567.5 195" class="a-security" data-animate="edge" style="--step:1" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <g data-detail="context">
-          <rect x="374.6" y="175" width="188.8" height="16" rx="3" class="c-mask"/>
-          <text x="469" y="185" class="t-security" font-size="9" text-anchor="middle">idempotency + expected head + 원문</text>
-        </g>
-        </g>
+        <!-- Edge paths -->
+        <path data-edge-from="v43_candidate" data-edge-to="source_runtime_check" data-edge-key="0" data-edge-id="v34_candidate_to_runtime" data-composition-points="118,119;190,119" d="M 118 119 L 190 119" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="source_runtime_check" data-edge-to="trino_view_check" data-edge-key="1" data-edge-id="v34_runtime_to_trino" data-composition-points="220,91;220,70;300,70;300,91" d="M 220 91 L 220 70 L 300 70 L 300 91" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="trino_view_check" data-edge-to="semantic_manifest" data-edge-key="2" data-edge-id="v34_trino_to_semantic" data-composition-points="300,147;300,166;300,166;300,215" d="M 300 147 L 300 166 L 300 166 L 300 215" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="semantic_manifest" data-edge-to="semantic_readback" data-edge-key="3" data-edge-id="v34_manifest_to_readback" data-composition-points="335,243;397,243" d="M 335 243 L 397 243" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="semantic_readback" data-edge-to="core_gold_e2e" data-edge-key="4" data-edge-id="v34_readback_to_core" data-composition-points="430,271;430,352;430,352;430,463" d="M 430 271 L 430 352 L 430 352 L 430 463" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="core_gold_e2e" data-edge-to="extension_e2e" data-edge-key="5" data-edge-id="v34_core_to_extension" data-composition-points="430,463;430,430;500,430;500,463" d="M 430 463 L 430 430 L 500 430 L 500 463" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="extension_e2e" data-edge-to="approved_cutover" data-edge-key="6" data-edge-id="v34_extension_to_cutover" data-composition-points="530,491;591,491" d="M 530 491 L 591 491" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="semantic_readback" data-edge-to="batch_projection" data-edge-key="7" data-edge-id="v34_readback_to_projection" data-composition-points="463,243;520,243;520,315;500,315;500,339" d="M 463 243 L 520 243 L 520 315 L 500 315 L 500 339" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="batch_projection" data-edge-to="graph_off_on" data-edge-key="8" data-edge-id="v34_projection_to_off_on" data-composition-points="538,367;587,367" d="M 538 367 L 587 367" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="graph_off_on" data-edge-to="approved_cutover" data-edge-key="9" data-edge-id="v34_off_on_to_cutover" data-composition-points="625,396;625,414;625,414;625,462" d="M 625 396 L 625 414 L 625 414 L 625 462" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
 
-        <g data-edge-from="conversation" data-edge-to="appdb" data-edge-label="idempotency 우선 조회·active lease·typed focus" data-edge-key="2" data-edge-id="load_state">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="appdb" data-composition-edge-id="load_state" data-composition-points="581.5,220;1622.5,220" d="M 581.5 220 L 1622.5 220" class="a-security" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <g data-detail="context">
-          <rect x="976.4" y="200" width="251.20000000000002" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="210" class="t-security" font-size="9" text-anchor="middle">idempotency 우선 조회·active lease·typed focus</text>
-        </g>
-        </g>
-
-        <g data-edge-from="appdb" data-edge-to="conversation" data-edge-label="승인된 구조화 상태" data-edge-key="3" data-edge-id="state_return">
-          <path data-composition-edge-from="appdb" data-composition-edge-to="conversation" data-composition-edge-id="state_return" data-composition-points="1622.5,248;581.5,248" d="M 1622.5 248 L 581.5 248" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="1049.2" y="228" width="105.60000000000001" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="238" class="t-muted" font-size="9" text-anchor="middle">승인된 구조화 상태</text>
-        </g>
-        </g>
-
-        <g data-edge-from="conversation" data-edge-to="governance" data-edge-label="권한 우선: coarse·object·metadata visibility" data-edge-key="4" data-edge-id="permission_preflight">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="governance" data-composition-edge-id="permission_preflight" data-composition-points="581.5,276;989.5,276" d="M 581.5 276 L 989.5 276" class="a-security" data-animate="edge" style="--step:4" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <g data-detail="context">
-          <rect x="665.1" y="256" width="240.8" height="16" rx="3" class="c-mask"/>
-          <text x="785.5" y="266" class="t-security" font-size="9" text-anchor="middle">권한 우선: coarse·object·metadata visibility</text>
-        </g>
-        </g>
-
-        <g data-edge-from="governance" data-edge-to="conversation" data-edge-label="허용 후보 범위·비인가 이름 0" data-edge-key="5" data-edge-id="permission_scope">
-          <path data-composition-edge-from="governance" data-composition-edge-to="conversation" data-composition-edge-id="permission_scope" data-composition-points="989.5,304;581.5,304" d="M 989.5 304 L 581.5 304" class="a-default" data-animate="edge" style="--step:5" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="706.7" y="284" width="157.6" height="16" rx="3" class="c-mask"/>
-          <text x="785.5" y="294" class="t-muted" font-size="9" text-anchor="middle">허용 후보 범위·비인가 이름 0</text>
-        </g>
-        </g>
-
-        <g data-edge-from="conversation" data-edge-to="model" data-edge-label="결정론적 정규화 결과 + 승인 alias" data-edge-key="6" data-edge-id="resolve_delta">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="model" data-composition-edge-id="resolve_delta" data-composition-points="581.5,332;778.5,332" d="M 581.5 332 L 778.5 332" class="a-default" data-animate="edge" style="--step:6" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="588.2" y="312" width="183.6" height="16" rx="3" class="c-mask"/>
-          <text x="680" y="322" class="t-backend" font-size="9" text-anchor="middle">결정론적 정규화 결과 + 승인 alias</text>
-        </g>
-        </g>
-
-        <g data-edge-from="model" data-edge-to="conversation" data-edge-label="비신뢰 GPT typed candidates" data-edge-key="7" data-edge-id="delta_return">
-          <path data-composition-edge-from="model" data-composition-edge-to="conversation" data-composition-edge-id="delta_return" data-composition-points="778.5,360;581.5,360" d="M 778.5 360 L 581.5 360" class="a-default" data-animate="edge" style="--step:7" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="603.8" y="340" width="152.4" height="16" rx="3" class="c-mask"/>
-          <text x="680" y="350" class="t-muted" font-size="9" text-anchor="middle">비신뢰 GPT typed candidates</text>
-        </g>
-        </g>
-
-        <g data-edge-from="conversation" data-edge-to="governance" data-edge-label="deterministic unique resolver: Term·Rule·source Turn·schema" data-edge-key="8" data-edge-id="validate_anchor">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="governance" data-composition-edge-id="validate_anchor" data-composition-points="581.5,388;989.5,388" d="M 581.5 388 L 989.5 388" class="a-security" data-animate="edge" style="--step:8" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <g data-detail="context">
-          <rect x="626.1" y="368" width="318.8" height="16" rx="3" class="c-mask"/>
-          <text x="785.5" y="378" class="t-security" font-size="9" text-anchor="middle">deterministic unique resolver: Term·Rule·source Turn·schema</text>
-        </g>
-        </g>
-
-        <g data-edge-from="governance" data-edge-to="conversation" data-edge-label="RESOLVED_ANALYSIS / NEEDS_CLARIFICATION / OUT_OF_DATA_RANGE" data-edge-key="9" data-edge-id="resolved_analysis">
-          <path data-composition-edge-from="governance" data-composition-edge-to="conversation" data-composition-edge-id="resolved_analysis" data-composition-points="989.5,416;581.5,416" d="M 989.5 416 L 581.5 416" class="a-default" data-animate="edge" style="--step:9" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="626.1" y="396" width="318.8" height="16" rx="3" class="c-mask"/>
-          <text x="785.5" y="406" class="t-muted" font-size="9" text-anchor="middle">RESOLVED_ANALYSIS / NEEDS_CLARIFICATION / OUT_OF_DATA_RANGE</text>
-        </g>
-        <text data-detail="fine" x="593.5" y="434" class="t-dim" font-size="7">BLOCKED 결과는 Analysis Run 없이 terminal Turn·command·head·lease를 한 transaction으로 commit하고 응답한다.</text>
-        </g>
-
-        <g data-edge-from="conversation" data-edge-to="pipeline" data-edge-label="RESOLVED_ANALYSIS만 새 immutable Run" data-edge-key="10" data-edge-id="start_atomic_run">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="pipeline" data-composition-edge-id="start_atomic_run" data-composition-points="581.5,444;1200.5,444" d="M 581.5 444 L 1200.5 444" class="a-emphasis" data-animate="edge" style="--step:10" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <g data-detail="context">
-          <rect x="791.4" y="424" width="199.20000000000002" height="16" rx="3" class="c-mask"/>
-          <text x="891" y="434" class="t-backend" font-size="9" text-anchor="middle">RESOLVED_ANALYSIS만 새 immutable Run</text>
-        </g>
-        </g>
-
-        <g data-edge-from="pipeline" data-edge-to="appdb" data-edge-label="Run·현재 permission snapshot 저장" data-edge-key="11" data-edge-id="persist_run">
-          <path data-composition-edge-from="pipeline" data-composition-edge-to="appdb" data-composition-edge-id="persist_run" data-composition-points="1214.5,466;1622.5,466" d="M 1214.5 466 L 1622.5 466" class="a-dashed" data-animate="edge" style="--step:11" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
-        <g data-detail="context">
-          <rect x="1326.7" y="446" width="183.6" height="16" rx="3" class="c-mask"/>
-          <text x="1418.5" y="456" class="t-messagebus" font-size="9" text-anchor="middle">Run·현재 permission snapshot 저장</text>
-        </g>
-        </g>
-
-        <g data-edge-from="pipeline" data-edge-to="governance" data-edge-label="DataHub Term·Asset + Rule + APP-G1" data-edge-key="12" data-edge-id="discover_context">
-          <path data-composition-edge-from="pipeline" data-composition-edge-to="governance" data-composition-edge-id="discover_context" data-composition-points="1200.5,491;1003.5,491" d="M 1200.5 491 L 1003.5 491" class="a-security" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <g data-detail="context">
-          <rect x="1007.6" y="471" width="188.8" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="481" class="t-security" font-size="9" text-anchor="middle">DataHub Term·Asset + Rule + APP-G1</text>
-        </g>
-        </g>
-
-        <g data-edge-from="governance" data-edge-to="pipeline" data-edge-label="승인 Context / 확인 필요 / 차단" data-edge-key="13" data-edge-id="context_return">
-          <path data-composition-edge-from="governance" data-composition-edge-to="pipeline" data-composition-edge-id="context_return" data-composition-points="1003.5,519;1200.5,519" d="M 1003.5 519 L 1200.5 519" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="1015.4" y="499" width="173.20000000000002" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="509" class="t-muted" font-size="9" text-anchor="middle">승인 Context / 확인 필요 / 차단</text>
-        </g>
-        </g>
-
-        <g data-edge-from="pipeline" data-edge-to="model" data-edge-label="승인 Context로 SQL 후보" data-edge-key="14" data-edge-id="request_sql">
-          <path data-composition-edge-from="pipeline" data-composition-edge-to="model" data-composition-edge-id="request_sql" data-composition-points="1200.5,547;792.5,547" d="M 1200.5 547 L 792.5 547" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="930.7" y="527" width="131.60000000000002" height="16" rx="3" class="c-mask"/>
-          <text x="996.5" y="537" class="t-backend" font-size="9" text-anchor="middle">승인 Context로 SQL 후보</text>
-        </g>
-        </g>
-
-        <g data-edge-from="model" data-edge-to="pipeline" data-edge-label="typed SQL candidate" data-edge-key="15" data-edge-id="sql_return">
-          <path data-composition-edge-from="model" data-composition-edge-to="pipeline" data-composition-edge-id="sql_return" data-composition-points="792.5,575;1200.5,575" d="M 792.5 575 L 1200.5 575" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="941.1" y="555" width="110.8" height="16" rx="3" class="c-mask"/>
-          <text x="996.5" y="565" class="t-muted" font-size="9" text-anchor="middle">typed SQL candidate</text>
-        </g>
-        </g>
-
-        <g data-edge-from="pipeline" data-edge-to="governance" data-edge-label="APP-G2: AST·allowlist·budget" data-edge-key="16" data-edge-id="validate_sql">
-          <path data-composition-edge-from="pipeline" data-composition-edge-to="governance" data-composition-edge-id="validate_sql" data-composition-points="1200.5,603;1003.5,603" d="M 1200.5 603 L 1003.5 603" class="a-security" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <g data-detail="context">
-          <rect x="1023.2" y="583" width="157.6" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="593" class="t-security" font-size="9" text-anchor="middle">APP-G2: AST·allowlist·budget</text>
-        </g>
-        </g>
-
-        <g data-edge-from="pipeline" data-edge-to="trino" data-edge-label="sealed read-only SQL" data-edge-key="17" data-edge-id="execute">
-          <path data-composition-edge-from="pipeline" data-composition-edge-to="trino" data-composition-edge-id="execute" data-composition-points="1214.5,628;1411.5,628" d="M 1214.5 628 L 1411.5 628" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <g data-detail="context">
-          <rect x="1255" y="608" width="116" height="16" rx="3" class="c-mask"/>
-          <text x="1313" y="618" class="t-backend" font-size="9" text-anchor="middle">sealed read-only SQL</text>
-        </g>
-        </g>
-
-        <g data-edge-from="trino" data-edge-to="pipeline" data-edge-label="rows·query ID·통계" data-edge-key="18" data-edge-id="rows_return">
-          <path data-composition-edge-from="trino" data-composition-edge-to="pipeline" data-composition-edge-id="rows_return" data-composition-points="1411.5,656;1214.5,656" d="M 1411.5 656 L 1214.5 656" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="1260.2" y="636" width="105.60000000000001" height="16" rx="3" class="c-mask"/>
-          <text x="1313" y="646" class="t-muted" font-size="9" text-anchor="middle">rows·query ID·통계</text>
-        </g>
-        </g>
-
-        <g data-edge-from="pipeline" data-edge-to="governance" data-edge-label="APP-G3: schema·노출·근거" data-edge-key="19" data-edge-id="validate_result">
-          <path data-composition-edge-from="pipeline" data-composition-edge-to="governance" data-composition-edge-id="validate_result" data-composition-points="1200.5,681;1003.5,681" d="M 1200.5 681 L 1003.5 681" class="a-security" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <g data-detail="context">
-          <rect x="1033.6" y="661" width="136.8" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="671" class="t-security" font-size="9" text-anchor="middle">APP-G3: schema·노출·근거</text>
-        </g>
-        </g>
-
-        <g data-edge-from="pipeline" data-edge-to="conversation" data-edge-label="Safe Artifact + terminal Run evidence" data-edge-key="20" data-edge-id="analysis_ready">
-          <path data-composition-edge-from="pipeline" data-composition-edge-to="conversation" data-composition-edge-id="analysis_ready" data-composition-points="1200.5,709;581.5,709" d="M 1200.5 709 L 581.5 709" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="788.8" y="689" width="204.4" height="16" rx="3" class="c-mask"/>
-          <text x="891" y="699" class="t-muted" font-size="9" text-anchor="middle">Safe Artifact + terminal Run evidence</text>
-        </g>
-        </g>
-
-        <g data-edge-from="conversation" data-edge-to="appdb" data-edge-label="domain·command·Turn·head·lease 한 transaction" data-edge-key="21" data-edge-id="analysis_terminal_commit">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="appdb" data-composition-edge-id="analysis_terminal_commit" data-composition-points="581.5,737;1622.5,737" d="M 581.5 737 L 1622.5 737" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
-        <g data-detail="context">
-          <rect x="979" y="717" width="246" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="727" class="t-messagebus" font-size="9" text-anchor="middle">domain·command·Turn·head·lease 한 transaction</text>
-        </g>
-        </g>
-
-        <g data-edge-from="conversation" data-edge-to="web" data-edge-label="terminal 응답 + Artifact" data-edge-key="22" data-edge-id="analysis_response">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="web" data-composition-edge-id="analysis_response" data-composition-points="567.5,762;370.5,762" d="M 567.5 762 L 370.5 762" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="400.6" y="742" width="136.8" height="16" rx="3" class="c-mask"/>
-          <text x="469" y="752" class="t-muted" font-size="9" text-anchor="middle">terminal 응답 + Artifact</text>
-        </g>
-        </g>
-
-        <g data-edge-from="user" data-edge-to="web" data-edge-label="‘그래프로’ / ‘다른 그래프로’ / ‘표로’" data-edge-key="23" data-edge-id="submit_view_turn">
-          <path data-composition-edge-from="user" data-composition-edge-to="web" data-composition-edge-id="submit_view_turn" data-composition-points="159.5,787;356.5,787" d="M 159.5 787 L 356.5 787" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="155.8" y="767" width="204.4" height="16" rx="3" class="c-mask"/>
-          <text x="258" y="777" class="t-backend" font-size="9" text-anchor="middle">‘그래프로’ / ‘다른 그래프로’ / ‘표로’</text>
-        </g>
-        </g>
-
-        <g data-edge-from="web" data-edge-to="conversation" data-edge-label="idempotency + expected head + PRESENTATION" data-edge-key="24" data-edge-id="post_view_turn">
-          <path data-composition-edge-from="web" data-composition-edge-to="conversation" data-composition-edge-id="post_view_turn" data-composition-points="370.5,812;567.5,812" d="M 370.5 812 L 567.5 812" class="a-security" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <g data-detail="context">
-          <rect x="353.8" y="792" width="230.4" height="16" rx="3" class="c-mask"/>
-          <text x="469" y="802" class="t-security" font-size="9" text-anchor="middle">idempotency + expected head + PRESENTATION</text>
-        </g>
-        </g>
-
-        <g data-edge-from="conversation" data-edge-to="appdb" data-edge-label="idempotency 우선 → CAS·active lease + source Artifact" data-edge-key="25" data-edge-id="load_artifact">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="appdb" data-composition-edge-id="load_artifact" data-composition-points="581.5,837;1622.5,837" d="M 581.5 837 L 1622.5 837" class="a-security" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <g data-detail="context">
-          <rect x="958.2" y="817" width="287.6" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="827" class="t-security" font-size="9" text-anchor="middle">idempotency 우선 → CAS·active lease + source Artifact</text>
-        </g>
-        </g>
-
-        <g data-edge-from="conversation" data-edge-to="governance" data-edge-label="요청 view에 필요한 grain·column 검사" data-edge-key="26" data-edge-id="check_view">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="governance" data-composition-edge-id="check_view" data-composition-points="581.5,865;989.5,865" d="M 581.5 865 L 989.5 865" class="a-security" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <g data-detail="context">
-          <rect x="685.9" y="845" width="199.20000000000002" height="16" rx="3" class="c-mask"/>
-          <text x="785.5" y="855" class="t-security" font-size="9" text-anchor="middle">요청 view에 필요한 grain·column 검사</text>
-        </g>
-        </g>
-
-        <g data-edge-from="conversation" data-edge-to="appdb" data-edge-label="ViewSpec·command·Turn·head·lease 원자 commit" data-edge-key="27" data-edge-id="persist_view">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="appdb" data-composition-edge-id="persist_view" data-composition-points="581.5,893;1622.5,893" d="M 581.5 893 L 1622.5 893" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
-        <g data-detail="context">
-          <rect x="981.6" y="873" width="240.8" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="883" class="t-messagebus" font-size="9" text-anchor="middle">ViewSpec·command·Turn·head·lease 원자 commit</text>
-        </g>
-        </g>
-
-        <g data-edge-from="conversation" data-edge-to="web" data-edge-label="terminal 응답: 같은 Artifact + 새 ViewSpec" data-edge-key="28" data-edge-id="render_view">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="web" data-composition-edge-id="render_view" data-composition-points="567.5,918;370.5,918" d="M 567.5 918 L 370.5 918" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-        <g data-detail="context">
-          <rect x="353.8" y="898" width="230.4" height="16" rx="3" class="c-mask"/>
-          <text x="469" y="908" class="t-muted" font-size="9" text-anchor="middle">terminal 응답: 같은 Artifact + 새 ViewSpec</text>
-        </g>
-        </g>
-
-        <!-- Segment Labels -->
-        <g data-graph-role="segment-label" data-segment-id="0">
-          <rect x="56" y="128" width="300" height="18" rx="3" class="c-mask"/>
-          <text x="62" y="141" class="t-dim" font-size="9" font-weight="600">command 예약 → permission-first understanding preflight</text>
-        </g>
-        <g data-graph-role="segment-label" data-segment-id="1">
-          <rect x="56" y="413" width="289.6" height="18" rx="3" class="c-mask"/>
-          <text x="62" y="426" class="t-dim" font-size="9" font-weight="600">RESOLVED ANALYSIS — 새 Run·query·terminal transaction</text>
-        </g>
-        <g data-graph-role="segment-label" data-segment-id="2">
-          <rect x="56" y="736" width="263.6" height="18" rx="3" class="c-mask"/>
-          <text x="62" y="749" class="t-dim" font-size="9" font-weight="600">PRESENTATION — idempotency·CAS·lease·원자 commit</text>
-        </g>
-
-        <!-- Participants -->
-        <g id="node-user" data-node-id="user" data-node-label="현업 사용자" tabindex="0" role="button" aria-label="Focus 현업 사용자, 질문·후속 요청, Sequence participant" aria-pressed="false" data-node-kind="external" data-node-sublabel="질문·후속 요청" data-node-context="Sequence participant">
-          <title>현업 사용자 · 질문·후속 요청 · Sequence participant</title>
-          <rect x="62" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="62" y="72" width="181" height="54" rx="6" class="c-external" data-animate="node" style="--step:0" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(68 78) scale(0.6875)">
+        <!-- Nodes -->
+        <g id="node-v43_candidate" data-node-id="v43_candidate" data-node-label="V4.3" tabindex="0" role="button" aria-label="Focus V4.3, 후보 데이터, Walkerhill V4.3 데이터 › 데이터 Runtime 확인" aria-pressed="false" data-node-kind="external" data-node-sublabel="후보 데이터" data-node-tag="checksum·합성" data-node-context="Walkerhill V4.3 데이터 › 데이터 Runtime 확인">
+          <title>V4.3 · 후보 데이터 · Walkerhill V4.3 데이터 › 데이터 Runtime 확인 · checksum·합성</title>
+          <rect x="58" y="91" width="60" height="56" rx="6" class="c-mask"/>
+          <rect x="58" y="91" width="60" height="56" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(64 97) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-detail-anchor x="152.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">현업 사용자</text>
-          <text data-detail="context" x="152.5" y="111" class="t-muted" font-size="7" text-anchor="middle">질문·후속 요청</text>
+          <text data-detail-anchor x="88" y="112" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">V4.3</text>
+          <text data-detail="context" x="88" y="129" class="t-muted" font-size="7.8" text-anchor="middle">후보 데이터</text>
+        <text data-detail="fine" x="88" y="135" class="t-external" font-size="6.6" text-anchor="middle">checksum·합성</text>
         </g>
 
-        <g id="node-web" data-node-id="web" data-node-label="대화 화면" tabindex="0" role="button" aria-label="Focus 대화 화면, 턴·조건 chip·결과 카드, Sequence participant" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="턴·조건 chip·결과 카드" data-node-context="Sequence participant">
-          <title>대화 화면 · 턴·조건 chip·결과 카드 · Sequence participant</title>
-          <rect x="273" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="273" y="72" width="181" height="54" rx="6" class="c-frontend" data-animate="node" style="--step:1" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(279 78) scale(0.6875)">
-            <rect x="2" y="3" width="12" height="10" rx="2"/>
-            <path d="M2 6.5h12"/>
-            <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
-            <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
-          </g>
-          <text data-detail-anchor x="363.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">대화 화면</text>
-          <text data-detail="context" x="363.5" y="111" class="t-muted" font-size="7" text-anchor="middle">턴·조건 chip·결과 카드</text>
-        </g>
-
-        <g id="node-conversation" data-node-id="conversation" data-node-label="Conversation Resolver" tabindex="0" role="button" aria-label="Focus Conversation Resolver, 권한→정규화→GPT→unique resolve, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="권한→정규화→GPT→unique resolve" data-node-context="Sequence participant">
-          <title>Conversation Resolver · 권한→정규화→GPT→unique resolve · Sequence participant</title>
-          <rect x="484" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="484" y="72" width="181" height="54" rx="6" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(490 78) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-detail-anchor x="574.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Conversation Resolver</text>
-          <text data-detail="context" x="574.5" y="111" class="t-muted" font-size="7" text-anchor="middle">권한→정규화→GPT→unique resolve</text>
-        </g>
-
-        <g id="node-model" data-node-id="model" data-node-label="Model Adapter" tabindex="0" role="button" aria-label="Focus Model Adapter, 비신뢰 typed·SQL 후보, Sequence participant" aria-pressed="false" data-node-kind="external" data-node-sublabel="비신뢰 typed·SQL 후보" data-node-context="Sequence participant">
-          <title>Model Adapter · 비신뢰 typed·SQL 후보 · Sequence participant</title>
-          <rect x="695" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="695" y="72" width="181" height="54" rx="6" class="c-external" data-animate="node" style="--step:3" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(701 78) scale(0.6875)">
-            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
-            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
-          </g>
-          <text data-detail-anchor x="785.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Model Adapter</text>
-          <text data-detail="context" x="785.5" y="111" class="t-muted" font-size="7" text-anchor="middle">비신뢰 typed·SQL 후보</text>
-        </g>
-
-        <g id="node-governance" data-node-id="governance" data-node-label="DataHub + Rule + Gates" tabindex="0" role="button" aria-label="Focus DataHub + Rule + Gates, 공식 의미·권한·G1/G2/G3, Sequence participant" aria-pressed="false" data-node-kind="security" data-node-sublabel="공식 의미·권한·G1/G2/G3" data-node-context="Sequence participant">
-          <title>DataHub + Rule + Gates · 공식 의미·권한·G1/G2/G3 · Sequence participant</title>
-          <rect x="906" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="906" y="72" width="181" height="54" rx="6" class="c-security" data-animate="node" style="--step:4" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(912 78) scale(0.6875)">
+        <g id="node-source_runtime_check" data-node-id="source_runtime_check" data-node-label="원천 확인" tabindex="0" role="button" aria-label="Focus 원천 확인, 38 Table·권한, Walkerhill V4.3 데이터 › 데이터 Runtime 확인" aria-pressed="false" data-node-kind="security" data-node-sublabel="38 Table·권한" data-node-context="Walkerhill V4.3 데이터 › 데이터 Runtime 확인">
+          <title>원천 확인 · 38 Table·권한 · Walkerhill V4.3 데이터 › 데이터 Runtime 확인</title>
+          <rect x="190" y="91" width="60" height="56" rx="6" class="c-mask"/>
+          <rect x="190" y="91" width="60" height="56" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(196 97) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-detail-anchor x="996.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">DataHub + Rule + Gates</text>
-          <text data-detail="context" x="996.5" y="111" class="t-muted" font-size="7" text-anchor="middle">공식 의미·권한·G1/G2/G3</text>
+          <text data-detail-anchor x="220" y="112" class="t-primary" font-size="9.6" font-weight="600" text-anchor="middle">원천 확인</text>
+          <text data-detail="context" x="220" y="129" class="t-muted" font-size="6.6" text-anchor="middle">38 Table·권한</text>
         </g>
 
-        <g id="node-pipeline" data-node-id="pipeline" data-node-label="Analysis Pipeline" tabindex="0" role="button" aria-label="Focus Analysis Pipeline, resolved Run·terminal transaction, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="resolved Run·terminal transaction" data-node-context="Sequence participant">
-          <title>Analysis Pipeline · resolved Run·terminal transaction · Sequence participant</title>
-          <rect x="1117" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="1117" y="72" width="181" height="54" rx="6" class="c-backend" data-animate="node" style="--step:5" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1123 78) scale(0.6875)">
+        <g id="node-trino_view_check" data-node-id="trino_view_check" data-node-label="Trino" tabindex="0" role="button" aria-label="Focus Trino, 5개·13 View, Walkerhill V4.3 데이터 › 의미 계약·Core 검증" aria-pressed="false" data-node-kind="backend" data-node-sublabel="5개·13 View" data-node-context="Walkerhill V4.3 데이터 › 의미 계약·Core 검증">
+          <title>Trino · 5개·13 View · Walkerhill V4.3 데이터 › 의미 계약·Core 검증</title>
+          <rect x="270" y="91" width="60" height="56" rx="6" class="c-mask"/>
+          <rect x="270" y="91" width="60" height="56" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(276 97) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="1207.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Analysis Pipeline</text>
-          <text data-detail="context" x="1207.5" y="111" class="t-muted" font-size="7" text-anchor="middle">resolved Run·terminal transaction</text>
+          <text data-detail-anchor x="300" y="112" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Trino</text>
+          <text data-detail="context" x="300" y="129" class="t-muted" font-size="7.8" text-anchor="middle">5개·13 View</text>
         </g>
 
-        <g id="node-trino" data-node-id="trino" data-node-label="Trino" tabindex="0" role="button" aria-label="Focus Trino, 승인 데이터 read-only, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="승인 데이터 read-only" data-node-context="Sequence participant">
-          <title>Trino · 승인 데이터 read-only · Sequence participant</title>
-          <rect x="1328" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="1328" y="72" width="181" height="54" rx="6" class="c-backend" data-animate="node" style="--step:6" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1334 78) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-detail-anchor x="1418.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Trino</text>
-          <text data-detail="context" x="1418.5" y="111" class="t-muted" font-size="7" text-anchor="middle">승인 데이터 read-only</text>
-        </g>
-
-        <g id="node-appdb" data-node-id="appdb" data-node-label="App DB" tabindex="0" role="button" aria-label="Focus App DB, Conversation·Turn·Run·View, Sequence participant" aria-pressed="false" data-node-kind="database" data-node-sublabel="Conversation·Turn·Run·View" data-node-context="Sequence participant">
-          <title>App DB · Conversation·Turn·Run·View · Sequence participant</title>
-          <rect x="1539" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="1539" y="72" width="181" height="54" rx="6" class="c-database" data-animate="node" style="--step:7" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1545 78) scale(0.6875)">
+        <g id="node-semantic_manifest" data-node-id="semantic_manifest" data-node-label="의미 정본" tabindex="0" role="button" aria-label="Focus 의미 정본, Snapshot·Registry, DataHub·Semantic 정본 › 정본 Release → 전체 Read-back → Core Gold › 의미 계약·Core 검증" aria-pressed="false" data-node-kind="database" data-node-sublabel="Snapshot·Registry" data-node-tag="Rule·Policy" data-node-context="DataHub·Semantic 정본 › 정본 Release → 전체 Read-back → Core Gold › 의미 계약·Core 검증">
+          <title>의미 정본 · Snapshot·Registry · DataHub·Semantic 정본 › 정본 Release → 전체 Read-back → Core Gold › 의미 계약·Core 검증 · Rule·Policy</title>
+          <rect x="265" y="215" width="70" height="56" rx="6" class="c-mask"/>
+          <rect x="265" y="215" width="70" height="56" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(271 221) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-detail-anchor x="1629.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">App DB</text>
-          <text data-detail="context" x="1629.5" y="111" class="t-muted" font-size="7" text-anchor="middle">Conversation·Turn·Run·View</text>
+          <text data-detail-anchor x="300" y="236" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">의미 정본</text>
+          <text data-detail="context" x="300" y="253" class="t-muted" font-size="6" text-anchor="middle">Snapshot·Registry</text>
+        <text data-detail="fine" x="300" y="259" class="t-database" font-size="7" text-anchor="middle">Rule·Policy</text>
         </g>
 
+        <g id="node-semantic_readback" data-node-id="semantic_readback" data-node-label="정본 확인" tabindex="0" role="button" aria-label="Focus 정본 확인, version·checksum, DataHub·Semantic 정본 › 정본 Release → 전체 Read-back → Core Gold › 의미 계약·Core 검증" aria-pressed="false" data-node-kind="security" data-node-sublabel="version·checksum" data-node-tag="전체 관계" data-node-context="DataHub·Semantic 정본 › 정본 Release → 전체 Read-back → Core Gold › 의미 계약·Core 검증">
+          <title>정본 확인 · version·checksum · DataHub·Semantic 정본 › 정본 Release → 전체 Read-back → Core Gold › 의미 계약·Core 검증 · 전체 관계</title>
+          <rect x="397" y="215" width="66" height="56" rx="6" class="c-mask"/>
+          <rect x="397" y="215" width="66" height="56" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(403 221) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-detail-anchor x="430" y="236" class="t-primary" font-size="10.7" font-weight="600" text-anchor="middle">정본 확인</text>
+          <text data-detail="context" x="430" y="253" class="t-muted" font-size="6" text-anchor="middle">version·checksum</text>
+        <text data-detail="fine" x="430" y="259" class="t-security" font-size="7" text-anchor="middle">전체 관계</text>
+        </g>
+
+        <g id="node-batch_projection" data-node-id="batch_projection" data-node-label="Batch 투영" tabindex="0" role="button" aria-label="Focus Batch 투영, stable ID·멱등, 선택형 Neo4j 확장 › 단방향 Batch 투영 → 정합성·OFF/ON·fallback › 선택형 확장·복구·승인" aria-pressed="false" data-node-kind="backend" data-node-sublabel="stable ID·멱등" data-node-tag="정본→Graph" data-node-context="선택형 Neo4j 확장 › 단방향 Batch 투영 → 정합성·OFF/ON·fallback › 선택형 확장·복구·승인">
+          <title>Batch 투영 · stable ID·멱등 · 선택형 Neo4j 확장 › 단방향 Batch 투영 → 정합성·OFF/ON·fallback › 선택형 확장·복구·승인 · 정본→Graph</title>
+          <rect x="462" y="339" width="76" height="56" rx="6" class="c-mask"/>
+          <rect x="462" y="339" width="76" height="56" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(468 345) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-detail-anchor x="500" y="360" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Batch 투영</text>
+          <text data-detail="context" x="500" y="377" class="t-muted" font-size="8" text-anchor="middle">stable ID·멱등</text>
+        <text data-detail="fine" x="500" y="383" class="t-backend" font-size="7" text-anchor="middle">정본→Graph</text>
+        </g>
+
+        <g id="node-graph_off_on" data-node-id="graph_off_on" data-node-label="Graph 검사" tabindex="0" role="button" aria-label="Focus Graph 검사, 정합성·OFF/ON, 선택형 Neo4j 확장 › 단방향 Batch 투영 → 정합성·OFF/ON·fallback › 선택형 확장·복구·승인" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="정합성·OFF/ON" data-node-tag="장애→Registry" data-node-context="선택형 Neo4j 확장 › 단방향 Batch 투영 → 정합성·OFF/ON·fallback › 선택형 확장·복구·승인">
+          <title>Graph 검사 · 정합성·OFF/ON · 선택형 Neo4j 확장 › 단방향 Batch 투영 → 정합성·OFF/ON·fallback › 선택형 확장·복구·승인 · 장애→Registry</title>
+          <rect x="587" y="338" width="76" height="58" rx="6" class="c-mask"/>
+          <rect x="587" y="338" width="76" height="58" rx="6" class="c-cloud" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(593 344) scale(0.6875)">
+            <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
+          </g>
+          <text data-detail-anchor x="625" y="359" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Graph 검사</text>
+          <text data-detail="context" x="625" y="376" class="t-muted" font-size="8" text-anchor="middle">정합성·OFF/ON</text>
+        <text data-detail="fine" x="625" y="384" class="t-cloud" font-size="7" text-anchor="middle">장애→Registry</text>
+        </g>
+
+        <g id="node-core_gold_e2e" data-node-id="core_gold_e2e" data-node-label="P0 Core" tabindex="0" role="button" aria-label="Focus P0 Core, Gold·보안, Core·Agent 전체 시험과 전환 › P0 Core + P1 확장 시험 → 복구 훈련 → 승인 전환 › 의미 계약·Core 검증" aria-pressed="false" data-node-kind="security" data-node-sublabel="Gold·보안" data-node-tag="대화·Report" data-node-context="Core·Agent 전체 시험과 전환 › P0 Core + P1 확장 시험 → 복구 훈련 → 승인 전환 › 의미 계약·Core 검증">
+          <title>P0 Core · Gold·보안 · Core·Agent 전체 시험과 전환 › P0 Core + P1 확장 시험 → 복구 훈련 → 승인 전환 › 의미 계약·Core 검증 · 대화·Report</title>
+          <rect x="400" y="463" width="60" height="56" rx="6" class="c-mask"/>
+          <rect x="400" y="463" width="60" height="56" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(406 469) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-detail-anchor x="430" y="484" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">P0 Core</text>
+          <text data-detail="context" x="430" y="501" class="t-muted" font-size="8" text-anchor="middle">Gold·보안</text>
+        <text data-detail="fine" x="430" y="507" class="t-security" font-size="7" text-anchor="middle">대화·Report</text>
+        </g>
+
+        <g id="node-extension_e2e" data-node-id="extension_e2e" data-node-label="P1 확장" tabindex="0" role="button" aria-label="Focus P1 확장, MCP·3 Agent, Core·Agent 전체 시험과 전환 › P0 Core + P1 확장 시험 → 복구 훈련 → 승인 전환 › 선택형 확장·복구·승인" aria-pressed="false" data-node-kind="backend" data-node-sublabel="MCP·3 Agent" data-node-tag="병렬·재계획" data-node-context="Core·Agent 전체 시험과 전환 › P0 Core + P1 확장 시험 → 복구 훈련 → 승인 전환 › 선택형 확장·복구·승인">
+          <title>P1 확장 · MCP·3 Agent · Core·Agent 전체 시험과 전환 › P0 Core + P1 확장 시험 → 복구 훈련 → 승인 전환 › 선택형 확장·복구·승인 · 병렬·재계획</title>
+          <rect x="470" y="463" width="60" height="56" rx="6" class="c-mask"/>
+          <rect x="470" y="463" width="60" height="56" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(476 469) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-detail-anchor x="500" y="484" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">P1 확장</text>
+          <text data-detail="context" x="500" y="501" class="t-muted" font-size="7.8" text-anchor="middle">MCP·3 Agent</text>
+        <text data-detail="fine" x="500" y="507" class="t-backend" font-size="7" text-anchor="middle">병렬·재계획</text>
+        </g>
+
+        <g id="node-approved_cutover" data-node-id="approved_cutover" data-node-label="전환" tabindex="0" role="button" aria-label="Focus 전환, 복구·승인, Core·Agent 전체 시험과 전환 › P0 Core + P1 확장 시험 → 복구 훈련 → 승인 전환 › 선택형 확장·복구·승인" aria-pressed="false" data-node-kind="backend" data-node-sublabel="복구·승인" data-node-tag="실패→rollback" data-node-context="Core·Agent 전체 시험과 전환 › P0 Core + P1 확장 시험 → 복구 훈련 → 승인 전환 › 선택형 확장·복구·승인">
+          <title>전환 · 복구·승인 · Core·Agent 전체 시험과 전환 › P0 Core + P1 확장 시험 → 복구 훈련 → 승인 전환 › 선택형 확장·복구·승인 · 실패→rollback</title>
+          <rect x="591" y="462" width="68" height="58" rx="6" class="c-mask"/>
+          <rect x="591" y="462" width="68" height="58" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(597 468) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-detail-anchor x="625" y="483" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">전환</text>
+          <text data-detail="context" x="625" y="500" class="t-muted" font-size="8" text-anchor="middle">복구·승인</text>
+        <text data-detail="fine" x="625" y="508" class="t-backend" font-size="7" text-anchor="middle">실패→rollback</text>
+        </g>
+
+        <!-- Edge labels -->
+
+
+
+
+
+
+
+
+
+
+
         <!-- Legend -->
-        <g data-legend>
-          <text x="40" y="966" class="t-primary" font-size="12" font-weight="650">Legend</text>
-          <g data-legend-semantic-kind="emphasis" data-legend-x="40" data-legend-baseline="986" data-legend-width="128">
-            <path d="M 40 983 L 74 983" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-            <text x="83" y="986" class="t-muted" font-size="10" font-weight="500">새 분석·실제 조회</text>
+        <g data-legend data-legend-bridge>
+          <text x="20" y="552" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="frontend" data-legend-x="20" data-legend-baseline="572" data-legend-width="53">
+            <rect x="20" y="564" width="14" height="9" rx="2" class="c-frontend" stroke-width="1"/>
+            <text x="42" y="572" class="t-muted" font-size="7.5" font-weight="500">User UI</text>
           </g>
-          <g data-legend-semantic-kind="return" data-legend-x="190" data-legend-baseline="986" data-legend-width="113">
-            <path d="M 190 983 L 224 983" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-            <text x="233" y="986" class="t-muted" font-size="10" font-weight="500">결정·결과 응답</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="검증·전환 작업" data-legend-x="80" data-legend-baseline="572" data-legend-width="104">
+            <rect x="80" y="564" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
+            <text x="102" y="572" class="t-muted" font-size="7.5" font-weight="500">검증·전환 작업</text>
           </g>
-          <g data-legend-semantic-kind="security" data-legend-x="325" data-legend-baseline="986" data-legend-width="138">
-            <path d="M 325 983 L 359 983" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-            <text x="368" y="986" class="t-muted" font-size="10" font-weight="500">상속·권한·Gate 검증</text>
+          <g data-legend-semantic-kind="security" data-legend-kind="security" data-legend-label="품질·권한·승인" data-legend-x="191" data-legend-baseline="572" data-legend-width="104">
+            <rect x="191" y="564" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
+            <text x="213" y="572" class="t-muted" font-size="7.5" font-weight="500">품질·권한·승인</text>
           </g>
-          <g data-legend-semantic-kind="dashed" data-legend-x="485" data-legend-baseline="986" data-legend-width="133">
-            <path d="M 485 983 L 519 983" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
-            <text x="528" y="986" class="t-muted" font-size="10" font-weight="500">상태·ViewSpec 저장</text>
+          <g data-legend-semantic-kind="messagebus" data-legend-x="302" data-legend-baseline="572" data-legend-width="70">
+            <rect x="302" y="564" width="14" height="9" rx="2" class="c-messagebus" stroke-width="1"/>
+            <text x="324" y="572" class="t-muted" font-size="7.5" font-weight="500">Tool action</text>
           </g>
-          <g data-legend-semantic-kind="default" data-legend-x="640" data-legend-baseline="986" data-legend-width="128">
-            <path d="M 640 983 L 674 983" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-            <text x="683" y="986" class="t-muted" font-size="10" font-weight="500">턴 이해·일반 호출</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="정본·저장소" data-legend-x="379" data-legend-baseline="572" data-legend-width="91">
+            <rect x="379" y="564" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
+            <text x="401" y="572" class="t-muted" font-size="7.5" font-weight="500">정본·저장소</text>
+          </g>
+          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="선택형 Graph" data-legend-x="477" data-legend-baseline="572" data-legend-width="96">
+            <rect x="477" y="564" width="14" height="9" rx="2" class="c-cloud" stroke-width="1"/>
+            <text x="499" y="572" class="t-muted" font-size="7.5" font-weight="500">선택형 Graph</text>
+          </g>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="후보 데이터" data-legend-x="580" data-legend-baseline="572" data-legend-width="91">
+            <rect x="580" y="564" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
+            <text x="602" y="572" class="t-muted" font-size="7.5" font-weight="500">후보 데이터</text>
           </g>
         </g>
       </svg>
@@ -6168,13 +5977,11 @@
 
         // Prepend a local()-only @font-face block for each weight so that the
         // sandboxed image-rendering context used during PNG/JPEG/WebP export
-        // can find JetBrains Mono if the user has it installed locally, and
-        // falls through cleanly to the monospace stack otherwise. The usual
-        // Google-Fonts <link> in the host document is unreachable from the
-        // serialized SVG, so url()-sourced faces would just hang.
+        // can find Pretendard when it is installed locally and fall through
+        // cleanly to the Korean system sans-serif stack otherwise.
         var fontFallback = [400, 500, 600, 700].map(function (w) {
-          return "@font-face { font-family: 'JetBrains Mono'; font-weight: " + w +
-                 "; src: local('JetBrains Mono'), local('JetBrainsMono-Regular'); }";
+          return "@font-face { font-family: 'Pretendard'; font-weight: " + w +
+                 "; src: local('Pretendard'), local('Pretendard Variable'); }";
         }).join('\n');
 
         var style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
@@ -6192,7 +5999,7 @@
 
           style.textContent =
             fontFallback + "\n" +
-            "svg { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace; }\n" +
+            "svg { font-family: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', sans-serif; }\n" +
             hostStyle + "\n" +
             ":root, svg { " + darkVars + " }\n" +
             "@media (prefers-color-scheme: light) { :root, svg { " + lightVars + " } }\n" +
@@ -6220,7 +6027,7 @@
           // Keep this order.
           style.textContent =
             fontFallback + "\n" +
-            "svg { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace; }\n" +
+            "svg { font-family: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', sans-serif; }\n" +
             hostStyle + "\n" +
             ":root, svg { " + vars + " }\n";
 
@@ -6331,7 +6138,7 @@
       function fitCanvasText(ctx, text, maxWidth, startSize, minSize, weight) {
         var value = String(text || '').trim();
         var size = startSize;
-        var family = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+        var family = "'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Malgun Gothic', 'Segoe UI', sans-serif";
         while (size > minSize) {
           ctx.font = (weight || '600') + ' ' + size + 'px ' + family;
           if (ctx.measureText(value).width <= maxWidth) return value;
@@ -6422,7 +6229,7 @@
               var fittedSubtitle = fitCanvasText(ctx, subtitle, SHARE_CARD_WIDTH - SHARE_CARD_PADDING * 2 - 280, 13, 11, '500');
               ctx.fillText(fittedSubtitle, SHARE_CARD_PADDING, 87);
 
-              ctx.font = "600 12px 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+              ctx.font = "600 12px 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Malgun Gothic', 'Segoe UI', sans-serif";
               ctx.textAlign = 'right';
               ctx.fillStyle = accent;
               ctx.fillText(cardLabel, SHARE_CARD_WIDTH - SHARE_CARD_PADDING, 50);

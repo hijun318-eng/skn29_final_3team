@@ -11,12 +11,10 @@ from __future__ import annotations
 import math
 from datetime import date, datetime
 
+from src.data.governance_contract import RATIO_ZERO_POLICIES
+
 # 거버넌스 허용 비교 연산자 집합
 FILTER_OPERATORS = frozenset({"eq", "neq", "gt", "gte", "lt", "lte"})
-
-# 비율 지표 0 분모 처리 정책 집합
-RATIO_ZERO_POLICIES = frozenset({"null_on_zero_denominator"})
-
 
 def _value_type(value: object) -> str:
     """Python 원시 객체의 스칼라 값 타입을 표준 문자열로 판정합니다.

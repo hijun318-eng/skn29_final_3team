@@ -230,8 +230,13 @@ def _semantic_roles(
     result: dict[tuple[str, str], str] = {}
     for raw in metrics:
         metric = mapping(raw, "metric rule")
-        field = mapping(mapping(metric.get("source"), "metric source").get("field"), "metric field")
-        result[(str(field.get("asset_fqn")), str(field.get("column")))] = "measure"
+        source = mapping(metric.get("source"), "metric source")
+        kind = source.get("kind")
+        if kind == "column":
+            field = mapping(source.get("field"), "metric field")
+            result[(str(field.get("asset_fqn")), str(field.get("column")))] = "measure"
+        elif kind != "ratio":
+            raise SemanticMetadataError("metric source kind is unsupported")
         for dimension in array(metric.get("dimensions"), "metric dimensions"):
             value = mapping(dimension, "metric dimension")
             result[(str(value.get("asset_fqn")), str(value.get("column")))] = "dimension"
@@ -257,6 +262,7 @@ def _metric_terms(
         if binding.dataset.domain is not None
     }
     metric_by_id = {mapping(item, "metric").get("id"): mapping(item, "metric") for item in metrics}
+    metric_domains = _metric_domains(metric_by_id, domain_by_fqn)
     result = []
     for index, raw in enumerate(array(value, "metric terms", non_empty=True)):
         item = mapping(raw, f"metric term[{index}]")
@@ -265,8 +271,7 @@ def _metric_terms(
         metric = metric_by_id.get(item["id"])
         if metric is None:
             raise SemanticMetadataError("metric term has no matching metric rule")
-        source = mapping(mapping(metric["source"], "metric source")["field"], "metric field")
-        domain = domain_by_fqn.get(str(source.get("asset_fqn")))
+        domain = metric_domains.get(str(item["id"]))
         if domain is None:
             raise SemanticMetadataError("metric source has no live domain")
         result.append(
@@ -278,6 +283,38 @@ def _metric_terms(
                 "approved_lifecycle_urn": lifecycle["urn"],
             }
         )
+    return result
+
+
+def _metric_domains(
+    metrics: Mapping[object, Mapping[str, Any]],
+    domain_by_fqn: Mapping[str, str],
+) -> dict[str, str]:
+    """column source와 동일-domain ratio 참조에서 metric별 native domain을 계산한다."""
+
+    result: dict[str, str] = {}
+    ratio_metrics: list[tuple[str, Mapping[str, Any]]] = []
+    for raw_id, metric in metrics.items():
+        metric_id = str(raw_id)
+        source = mapping(metric.get("source"), "metric source")
+        if source.get("kind") == "column":
+            field = mapping(source.get("field"), "metric field")
+            domain = domain_by_fqn.get(str(field.get("asset_fqn")))
+            if domain is None:
+                raise SemanticMetadataError("metric source has no live domain")
+            result[metric_id] = domain
+        elif source.get("kind") == "ratio":
+            ratio_metrics.append((metric_id, source))
+        else:
+            raise SemanticMetadataError("metric source kind is unsupported")
+    for metric_id, source in ratio_metrics:
+        numerator = result.get(str(source.get("numerator_metric_id")))
+        denominator = result.get(str(source.get("denominator_metric_id")))
+        if numerator is None or numerator != denominator:
+            raise SemanticMetadataError(
+                "ratio metric operands must resolve one live native domain"
+            )
+        result[metric_id] = numerator
     return result
 
 

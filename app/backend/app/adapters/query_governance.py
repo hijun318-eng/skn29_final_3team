@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import json
+import os
 import unicodedata
-from collections import deque
 from typing import Any
 
-from app.adapters.catalog_snapshot import (
-    CatalogSnapshot,
-    CatalogSnapshotLoader,
-    validate_release_manifest,
-)
+from app.adapters.catalog_snapshot import CatalogSnapshot, CatalogSnapshotLoader
+from app.adapters.catalog_snapshot import DEFAULT_CATALOG_RELEASE_TTL_SECONDS
 from app.adapters.datahub_catalog import (
     DataHubCatalogError,
     DataHubCatalogClient,
@@ -22,11 +18,27 @@ from app.adapters.datahub_metadata import (
     GovernedMetadataError,
 )
 from app.adapters.datahub_metadata_types import metric_rule_matches
+from app.adapters.query_join_graph import (
+    common_join_graph,
+    connect_fqns,
+    metric_dependencies,
+    other_endpoints,
+    shortest_path,
+)
+from app.adapters.release_manifest import (
+    coherent_release_datasets,
+    validate_release_manifest,
+)
 from app.adapters.trino_schema import TrinoSchemaDriftError, TrinoSchemaInspector
 from app.ports.data_platform import MetadataUnavailableError, NoEntitledAssetsError
 from app.services.context.builder import ContextBuildError
-from app.services.context.values import RATIO_ZERO_POLICIES
 from app.services.context.contract import GovernedJoin
+from src.data.governance_contract import (
+    canonical_json,
+    metric_source_kind,
+    ratio_operand_ids,
+    RATIO_ZERO_POLICIES,
+)
 
 
 class QueryGovernanceEngine:
@@ -51,10 +63,18 @@ class QueryGovernanceEngine:
         if search_mode not in {"lexical", "hybrid"}:
             raise ValueError("DataHub search mode must be lexical or hybrid")
         self._catalog = catalog
+        # 과거 분석 데이터의 metadata는 운영자가 release 단위로만 변경하므로 snapshot과
+        # readiness receipt는 같은 하루 경계를 쓴다. release 발행 시 Backend를 재기동하고,
+        # 만료 뒤 재검증 실패는 직전 성공 snapshot으로 대체하지 않고 fail-closed로 닫는다.
         ttl = (
             catalog_ttl_seconds
             if catalog_ttl_seconds is not None
-            else float(os.getenv("DATAHUB_CATALOG_TTL_SECONDS", "86400.0"))
+            else float(
+                os.getenv(
+                    "DATAHUB_CATALOG_TTL_SECONDS",
+                    str(DEFAULT_CATALOG_RELEASE_TTL_SECONDS),
+                )
+            )
         )
         self._loader = CatalogSnapshotLoader(catalog, ttl_seconds=ttl)
         self._schema = schema_inspector
@@ -86,10 +106,12 @@ class QueryGovernanceEngine:
                 raise NoEntitledAssetsError(
                     "no matching DataHub asset is entitled for this request"
                 )
-            # join dependency를 확장하기 전에 entitlement를 적용해야 비권한 asset의 schema와 관계가 노출되지 않는다.
+            # seed entitlement만으로는 부족하다. join·metric dependency로 끌려온 중간 asset의
+            # schema와 관계도 노출되므로 확장 결과 전체를 _select_connected가 다시 검증한다.
             selected, graph = self._select_connected(
                 tuple(item[1] for item in entitled),
                 datasets,
+                context,
             )
             self._validate_common_contracts(selected)
             await self._schema.verify(selected)
@@ -121,7 +143,7 @@ class QueryGovernanceEngine:
             )
             for item in selected
         }
-        return [
+        runtime_assets = [
             item.runtime_asset(
                 term_map,
                 join_ids_by_fqn[item.fqn],
@@ -130,6 +152,7 @@ class QueryGovernanceEngine:
             )
             for item in selected
         ]
+        return _with_ratio_metrics(runtime_assets, terms)
 
     async def get_asset_schema(self, urn: str) -> dict[str, Any]:
         """active release 안의 URN만 선택하고 live ``information_schema`` 일치 후 column 계약을 반환한다."""
@@ -171,13 +194,45 @@ class QueryGovernanceEngine:
         return {metric_id: required[metric_id].as_dict() for metric_id in metric_ids}
 
     async def active_context_release(self) -> str:
-        """단일 release·catalog checksum·policy와 완전한 manifest 검증을 통과한 context release를 반환한다."""
+        """완전한 manifest와 전체 live Trino schema 검증을 통과한 context release를 반환한다."""
         try:
             snapshot = await self._loader.load()
             datasets = self._active_datasets(snapshot)
-        except (DataHubCatalogError, GovernedMetadataError) as error:
+            await self._schema.verify(datasets)
+        except (
+            DataHubCatalogError,
+            GovernedMetadataError,
+            TrinoSchemaDriftError,
+        ) as error:
             raise MetadataUnavailableError(str(error)) from error
         return datasets[0].context_release
+
+    async def catalog_readiness(self) -> tuple[dict[str, str], str | None]:
+        """transport 이후 semantic identity·manifest membership·전체 Trino fingerprint를 단계별 검증한다."""
+
+        failed = {
+            "semantic_release": "not_ready",
+            "catalog_manifest": "not_ready",
+            "trino_schema": "not_ready",
+        }
+        try:
+            snapshot = await self._loader.load()
+            datasets = coherent_release_datasets(snapshot, self._expected_release)
+        except (DataHubCatalogError, GovernedMetadataError):
+            return failed, None
+        stages = {**failed, "semantic_release": "ready"}
+        try:
+            validate_release_manifest(snapshot, datasets)
+        except GovernedMetadataError:
+            return stages, None
+        stages["catalog_manifest"] = "ready"
+        try:
+            await self._schema.verify(datasets)
+        except TrinoSchemaDriftError:
+            return stages, None
+        stages["trino_schema"] = "ready"
+        receipt = f"{datasets[0].context_release}:{datasets[0].catalog_checksum}"
+        return stages, receipt
 
     async def _load_search_evidence(self, query: str):
         """명시된 lexical 또는 hybrid 전략으로 snapshot과 검색 증거를 조립한다."""
@@ -199,26 +254,9 @@ class QueryGovernanceEngine:
         self,
         snapshot: CatalogSnapshot,
     ) -> tuple[GovernedDataset, ...]:
-        values = tuple(snapshot.datasets_by_fqn.values())
-        if self._expected_release is not None:
-            values = tuple(
-                item
-                for item in values
-                if item.context_release == self._expected_release
-            )
-            if not values:
-                raise GovernedMetadataError(
-                    "DataHub does not contain the configured context release"
-                )
-        releases = {item.context_release for item in values}
-        checksums = {item.catalog_checksum for item in values}
-        policies = {item.policy_version for item in values}
-        if len(releases) != 1 or len(checksums) != 1 or len(policies) != 1:
-            raise GovernedMetadataError(
-                "DataHub runtime catalog does not resolve one coherent active release"
-            )
-        validate_release_manifest(snapshot, values)
-        return tuple(sorted(values, key=lambda item: item.fqn))
+        datasets = coherent_release_datasets(snapshot, self._expected_release)
+        validate_release_manifest(snapshot, datasets)
+        return datasets
 
     @staticmethod
     def _required_terms(
@@ -251,18 +289,17 @@ class QueryGovernanceEngine:
         domain_urns = {dataset.domain_urn for dataset in datasets}
         checksums = {dataset.catalog_checksum for dataset in datasets}
         for term in snapshot.terms_by_id.values():
-            if term.metric_rule.get("kind") != "ratio" or term.id in result:
+            if metric_source_kind(term.metric_rule) != "ratio" or term.id in result:
                 continue
             if term.domain_urn not in domain_urns or term.catalog_checksum not in checksums:
                 # 이 release에 속하지 않는 ratio term이다 — 이 스코프의 대상이 아니므로 건너뛴다.
                 continue
-            numerator_id = term.metric_rule.get("numerator_metric_id")
-            denominator_id = term.metric_rule.get("denominator_metric_id")
-            zero_policy = term.metric_rule.get("zero_policy")
+            operands = ratio_operand_ids(term.metric_rule)
+            source = term.metric_rule.get("source")
+            numerator_id, denominator_id = operands or (None, None)
+            zero_policy = source.get("zero_policy") if isinstance(source, dict) else None
             if (
-                not isinstance(numerator_id, str)
-                or not isinstance(denominator_id, str)
-                or numerator_id == denominator_id
+                operands is None
                 or numerator_id not in result
                 or denominator_id not in result
                 or zero_policy not in RATIO_ZERO_POLICIES
@@ -277,9 +314,12 @@ class QueryGovernanceEngine:
         self,
         seeds: tuple[GovernedDataset, ...],
         datasets: tuple[GovernedDataset, ...],
+        context: dict[str, Any],
     ) -> tuple[tuple[GovernedDataset, ...], tuple[GovernedJoin, ...]]:
+        """seed·metric dependency·join 경로로 확장한 asset 집합 전체가 ``entitled(context)``를 만족할 때만 반환한다."""
+
         by_fqn = {item.fqn: item for item in datasets}
-        graph = _common_join_graph(datasets)
+        graph = common_join_graph(datasets)
         approved = {
             item.fqn: frozenset(str(column["name"]) for column in item.columns)
             for item in datasets
@@ -292,11 +332,11 @@ class QueryGovernanceEngine:
             anchor = candidate_anchor.fqn
             selected = {anchor}
             for seed in seeds:
-                if seed.fqn in by_fqn and (seed.fqn == anchor or _shortest_path(anchor, seed.fqn, edges)):
+                if seed.fqn in by_fqn and (seed.fqn == anchor or shortest_path(anchor, seed.fqn, edges)):
                     selected.add(seed.fqn)
-            dependencies = _metric_dependencies(tuple(by_fqn[name] for name in selected))
+            dependencies = metric_dependencies(tuple(by_fqn[name] for name in selected))
             for dep in dependencies:
-                if dep in by_fqn and (dep == anchor or _shortest_path(anchor, dep, edges)):
+                if dep in by_fqn and (dep == anchor or shortest_path(anchor, dep, edges)):
                     selected.add(dep)
             metric_seeds = {name for name in selected if by_fqn[name].metrics}
             if not metric_seeds:
@@ -304,24 +344,27 @@ class QueryGovernanceEngine:
                     adjacent = sorted(
                         other
                         for edge in edges
-                        for other in _other_endpoints(edge, seed)
+                        for other in other_endpoints(edge, seed)
                         if other in by_fqn and by_fqn[other].metrics
                     )
                     if adjacent:
                         selected.add(adjacent[0])
                         metric_seeds.add(adjacent[0])
-            selected = _connect_fqns(selected, edges, anchor)
+            selected = connect_fqns(selected, edges, anchor)
             if (
                 metric_seeds
                 and selected.issubset(by_fqn)
                 and len(selected) <= self._max_request_assets
+                # 확장으로 들어온 dependency·경유 asset 하나라도 권한이 없으면 이 anchor를 버리고
+                # 다음 후보를 시도한다. 끝까지 없으면 아래에서 fail-closed로 닫는다.
+                and all(by_fqn[name].entitled(context) for name in selected)
             ):
                 return (
                     tuple(by_fqn[name] for name in sorted(selected)),
                     edges,
                 )
         raise GovernedMetadataError(
-            "governed request assets cannot form a bounded metric join context"
+            "governed request assets cannot form an entitled bounded metric join context"
         )
 
     @staticmethod
@@ -330,7 +373,7 @@ class QueryGovernanceEngine:
     ) -> None:
         for attribute in ("policy_version", "query_policy"):
             values = {
-                _canonical(getattr(item, attribute))
+                canonical_json(getattr(item, attribute))
                 for item in datasets
             }
             if len(values) != 1:
@@ -372,14 +415,60 @@ def _ranked_matches(query_tokens, datasets, terms, semantic_hits):
 def _dataset_tokens(dataset, terms):
     values = [dataset.name, dataset.description, dataset.fqn]
     values.extend(str(column["name"]) for column in dataset.columns)
-    for metric in dataset.metrics:
-        term = terms.get(str(metric["id"]))
-        if term is not None:
-            values.append(term.searchable_text)
+    values.extend(
+        term.searchable_text
+        for term in terms.values()
+        if term.urn in dataset.dataset_terms
+    )
     for dimension in dataset.dimensions:
         if dimension.get("asset_fqn") == dataset.fqn:
             values.extend(map(str, dimension.get("aliases", ())))
     return _unicode_tokens(" ".join(values))
+
+
+def _with_ratio_metrics(assets, terms):
+    """선택 asset의 두 column operand가 모두 있을 때만 derived ratio를 runtime 후보로 투영한다."""
+
+    result = []
+    metric_asset_indexes: dict[str, int] = {}
+    for index, asset in enumerate(assets):
+        item = dict(asset)
+        metrics = [dict(metric) for metric in asset.get("metrics", ())]
+        item["metrics"] = metrics
+        result.append(item)
+        for metric in metrics:
+            metric_id = str(metric.get("id") or "")
+            if metric_id:
+                metric_asset_indexes[metric_id] = index
+    for term in sorted(terms.values(), key=lambda item: item.id):
+        if metric_source_kind(term.metric_rule) != "ratio":
+            continue
+        operands = ratio_operand_ids(term.metric_rule)
+        source = term.metric_rule.get("source")
+        if (
+            operands is None
+            or not isinstance(source, dict)
+            or any(operand not in metric_asset_indexes for operand in operands)
+        ):
+            continue
+        carrier = metric_asset_indexes[operands[0]]
+        result[carrier]["metrics"].append(
+            {
+                "id": term.id,
+                "asset_fqn": "",
+                "field": "",
+                "aggregation": "ratio",
+                "time_field": "",
+                "required_filters": [],
+                "result_field": term.metric_rule["result_field"],
+                "unit": term.unit,
+                "reduction": "ratio",
+                "numerator_metric_id": operands[0],
+                "denominator_metric_id": operands[1],
+                "zero_policy": source["zero_policy"],
+            }
+        )
+    return result
 
 
 def _unicode_tokens(value: str) -> frozenset[str]:
@@ -408,64 +497,3 @@ def _unicode_tokens(value: str) -> frozenset[str]:
                 expanded.add(tok[:-len(p)])
                 break
     return frozenset(expanded)
-
-
-def _common_join_graph(datasets):
-    values = {_canonical(item.join_graph) for item in datasets}
-    if len(values) != 1:
-        raise GovernedMetadataError("DataHub assets disagree on the governed join graph")
-    graph = json.loads(next(iter(values)))
-    if set(graph) != {"edges"} or not isinstance(graph["edges"], list):
-        raise GovernedMetadataError("DataHub governed join graph is invalid")
-    return graph
-
-
-def _metric_dependencies(datasets):
-    result = {item.fqn for item in datasets}
-    for dataset in datasets:
-        for metric in dataset.metrics:
-            result.update(
-                str(item["asset_fqn"])
-                for item in metric.get("dimensions", ())
-            )
-    return result
-
-
-def _other_endpoints(edge, fqn):
-    if edge.left == fqn:
-        return (edge.right,)
-    if edge.right == fqn:
-        return (edge.left,)
-    return ()
-
-
-def _connect_fqns(selected, edges, anchor=None):
-    selected = set(selected)
-    if len(selected) < 2:
-        return selected
-    root = anchor if anchor in selected else sorted(selected)[0]
-    result = {root}
-    for target in sorted(selected - {root}):
-        path = _shortest_path(root, target, edges)
-        if path:
-            result.update(path)
-    return result
-
-
-def _shortest_path(start, target, edges):
-    queue = deque([(start, (start,))])
-    seen = {start}
-    while queue:
-        current, path = queue.popleft()
-        for edge in edges:
-            for neighbor in _other_endpoints(edge, current):
-                if neighbor == target:
-                    return (*path, neighbor)
-                if neighbor not in seen:
-                    seen.add(neighbor)
-                    queue.append((neighbor, (*path, neighbor)))
-    return ()
-
-
-def _canonical(value: object) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

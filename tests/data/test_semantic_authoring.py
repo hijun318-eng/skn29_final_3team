@@ -39,7 +39,10 @@ from semantic_authoring import (  # noqa: E402
     build_authoring_bundle,
 )
 from src.data.governance_contract import catalog_hash  # noqa: E402
-from test_datahub_metadata_publication import arbitrary_bundle  # noqa: E402
+from test_datahub_metadata_publication import (  # noqa: E402
+    arbitrary_bundle,
+    arbitrary_ratio_bundle,
+)
 from test_release_bundle_builder import _runtime  # noqa: E402
 
 
@@ -188,6 +191,26 @@ def test_compact_decisions_compile_without_copying_live_physical_fields():
         asset["fqn"] for asset in expected["schema_context"]["assets"]
     )
     assert actual["metric_rules"] == expected["metric_rules"]
+
+
+def test_compact_decisions_derive_ratio_term_domain_from_live_operands():
+    """Derived ratio는 가짜 물리 field 없이 두 column operand의 live domain을 상속한다."""
+
+    expected = arbitrary_ratio_bundle()
+    _scopes, inventory, datasets, _terms = _runtime(expected)
+    datasets_by_name = {item.name: item for item in datasets}
+    bindings = tuple(
+        ReleaseBinding(relation, datasets_by_name[relation.fqn])
+        for relation in inventory.relations
+    )
+
+    policy = compile_authoring_policy(_decisions(expected), bindings)
+    actual = assemble_authoring_bundle(policy, bindings)
+    ratio = next(item for item in actual["metric_rules"] if item["id"] == "amount_per_event")
+    term = next(item for item in actual["metric_terms"] if item["id"] == "amount_per_event")
+
+    assert ratio["source"]["kind"] == "ratio"
+    assert term["domain_urn"] == expected["metric_terms"][-1]["domain_urn"]
 
 
 def test_policy_cannot_smuggle_physical_schema_or_omit_live_assets():

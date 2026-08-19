@@ -51,10 +51,18 @@ class ConversationRepository:
                t.source_turn_ids, t.request_id, t.artifact_id, t.view_spec_id,
                t.report_definition_id, t.resolved_slots, t.created_at,
                a.data_snapshot_json, a.chart_spec_json, a.narrative_markdown, a.evidence_json,
-               v.view_type, v.spec_json AS view_spec_json
+               v.view_type, v.spec_json AS view_spec_json,
+               command.status AS command_status, command.error_response AS command_error
         FROM chat.turns t
         LEFT JOIN artifact.analysis_artifacts a ON t.artifact_id = a.artifact_id
         LEFT JOIN artifact.view_specs v ON t.view_spec_id = v.view_spec_id
+        LEFT JOIN LATERAL (
+            SELECT c.status, c.error_response
+            FROM chat.turn_commands c
+            WHERE c.turn_id = t.turn_id
+            ORDER BY c.created_at DESC, c.command_id DESC
+            LIMIT 1
+        ) command ON TRUE
         WHERE t.conversation_id = :conv_id
         ORDER BY t.turn_index ASC
         """)
@@ -232,6 +240,62 @@ class ConversationRepository:
                     "err": json.dumps(error_response, default=str),
                     "cmd_id": command_id,
                 })
+
+    async def commit_failed_turn(
+        self,
+        conversation_id: UUID,
+        command_id: UUID,
+        turn_id: UUID,
+        turn_index: int,
+        user_message: str,
+        error_response: dict[str, Any],
+    ) -> None:
+        """사용자에게 반환한 typed 실패를 불변 turn과 command에 함께 기록하고 head를 전진시킨다."""
+
+        now = datetime.now(timezone.utc)
+        async with self._sessionmaker() as session:
+            async with session.begin():
+                # route가 'ANALYSIS' 고정인 이유: 이 메서드는 분석 제출 preflight에서 해석이
+                # 실패했을 때만 호출되므로 turn이 속한 경로는 이미 분석으로 확정돼 있고,
+                # 미결정인 값은 route가 아니라 resolved_slots다. chat.turns.route는 NOT NULL
+                # CHECK ('ANALYSIS','PRESENTATION','REPORT_ACTION')이라 NULL·UNKNOWN 표기를
+                # 쓸 수 없으므로, 실패 사유는 route가 아닌 command 응답에 typed로 남긴다.
+                await session.execute(
+                    text("""
+                    INSERT INTO chat.turns (
+                        turn_id, conversation_id, turn_index, user_message, route,
+                        source_turn_ids, resolved_slots, created_at
+                    ) VALUES (:turn_id, :conv_id, :idx, :msg, 'ANALYSIS', '[]', '{}', :now)
+                    """),
+                    {
+                        "turn_id": turn_id,
+                        "conv_id": conversation_id,
+                        "idx": turn_index,
+                        "msg": user_message,
+                        "now": now,
+                    },
+                )
+                await session.execute(
+                    text("""
+                    UPDATE chat.conversations
+                    SET head_turn_id = :turn_id, turn_count = turn_count + 1,
+                        active_command_id = NULL, lease_expires_at = NULL, updated_at = :now
+                    WHERE conversation_id = :conv_id
+                    """),
+                    {"turn_id": turn_id, "now": now, "conv_id": conversation_id},
+                )
+                await session.execute(
+                    text("""
+                    UPDATE chat.turn_commands
+                    SET status = 'FAILED', turn_id = :turn_id, error_response = :err
+                    WHERE command_id = :cmd_id
+                    """),
+                    {
+                        "turn_id": turn_id,
+                        "err": json.dumps(error_response, default=str),
+                        "cmd_id": command_id,
+                    },
+                )
 
     async def create_view_spec(
         self,

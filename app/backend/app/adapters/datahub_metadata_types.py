@@ -7,7 +7,11 @@ from typing import Any
 
 from app.adapters.datahub_metadata_values import GovernedMetadataError, clone_mapping
 from app.services.context.values import _typed_value_is_valid
-from src.data.governance_contract import canonical_json
+from src.data.governance_contract import (
+    canonical_json,
+    metric_source_kind,
+    ratio_operand_ids,
+)
 
 
 @dataclass(frozen=True)
@@ -44,11 +48,15 @@ class GlossaryMetricTerm:
             "version": self.version,
             "checksum": self.checksum,
         }
-        if self.metric_rule.get("kind") == "ratio":
+        if metric_source_kind(self.metric_rule) == "ratio":
+            operands = ratio_operand_ids(self.metric_rule)
+            source = self.metric_rule.get("source")
             result["kind"] = "ratio"
-            result["numerator_metric_id"] = self.metric_rule.get("numerator_metric_id")
-            result["denominator_metric_id"] = self.metric_rule.get("denominator_metric_id")
-            result["zero_policy"] = self.metric_rule.get("zero_policy")
+            result["numerator_metric_id"] = operands[0] if operands else None
+            result["denominator_metric_id"] = operands[1] if operands else None
+            result["zero_policy"] = (
+                source.get("zero_policy") if isinstance(source, dict) else None
+            )
         return result
 
     @property

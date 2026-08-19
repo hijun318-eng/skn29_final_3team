@@ -34,6 +34,7 @@ DATASET_MANIFEST_KEYS = frozenset(
 )
 TERM_MANIFEST_KEYS = frozenset({"id", "urn", "semantic_sha256"})
 RUNTIME_GOVERNANCE_VERSION = "ANSWERVICE-RUNTIME-GOVERNANCE-v1"
+RATIO_ZERO_POLICIES = frozenset({"null_on_zero_denominator"})
 DATASET_RUNTIME_PROPERTY_KEYS = frozenset(
     {
         "contract_version",
@@ -143,7 +144,7 @@ def asset_semantic_projection(
         (
             metric
             for metric in bundle["metric_rules"]
-            if metric["source"]["field"]["asset_fqn"] == asset["fqn"]
+            if column_metric_asset(metric) == asset["fqn"]
         ),
         key=lambda item: item["id"],
     )
@@ -246,6 +247,14 @@ def catalog_projection(bundle: Mapping[str, Any]) -> dict[str, Any]:
             ({"id": item["id"], "urn": item["urn"]} for item in bundle["metric_terms"]),
             key=lambda item: item["urn"],
         ),
+        "derived_metric_rules": sorted(
+            (
+                dict(metric)
+                for metric in bundle["metric_rules"]
+                if metric_source_kind(metric) == "ratio"
+            ),
+            key=lambda item: item["id"],
+        ),
     }
 
 
@@ -321,7 +330,7 @@ def dataset_runtime_property_projection(
         (
             metric
             for metric in bundle["metric_rules"]
-            if metric["source"]["field"]["asset_fqn"] == asset["fqn"]
+            if column_metric_asset(metric) == asset["fqn"]
         ),
         key=lambda item: item["id"],
     )
@@ -409,6 +418,67 @@ def _require_exact_keys(
 ) -> None:
     if set(value) != expected:
         raise ValueError(f"{name} keys differ from the canonical governance contract")
+
+
+def metric_source_kind(metric: Mapping[str, Any]) -> str:
+    """검증 전후 metric rule에서 source kind를 부작용 없이 읽는다."""
+
+    source = metric.get("source")
+    return str(source.get("kind")) if isinstance(source, Mapping) else ""
+
+
+def column_metric_asset(metric: Mapping[str, Any]) -> str | None:
+    """column metric이 직접 측정하는 asset FQN을 반환하고 derived/invalid rule은 ``None``으로 둔다."""
+
+    source = metric.get("source")
+    field = source.get("field") if isinstance(source, Mapping) else None
+    if (
+        not isinstance(source, Mapping)
+        or source.get("kind") != "column"
+        or not isinstance(field, Mapping)
+    ):
+        return None
+    value = field.get("asset_fqn")
+    return str(value) if isinstance(value, str) else None
+
+
+def ratio_operand_ids(metric: Mapping[str, Any]) -> tuple[str, str] | None:
+    """ratio metric의 서로 다른 분자·분모 metric id를 반환하며 불완전한 참조는 거부 표식으로 둔다."""
+
+    source = metric.get("source")
+    if not isinstance(source, Mapping) or source.get("kind") != "ratio":
+        return None
+    numerator = source.get("numerator_metric_id")
+    denominator = source.get("denominator_metric_id")
+    if (
+        not isinstance(numerator, str)
+        or not numerator
+        or not isinstance(denominator, str)
+        or not denominator
+        or numerator == denominator
+    ):
+        return None
+    return numerator, denominator
+
+
+def metric_asset_fqns(
+    metric: Mapping[str, Any],
+    metrics_by_id: Mapping[str, Mapping[str, Any]],
+) -> frozenset[str]:
+    """column metric의 직접 asset 또는 ratio operand가 측정하는 asset 집합을 projection 연결용으로 반환한다."""
+
+    direct = column_metric_asset(metric)
+    if direct is not None:
+        return frozenset({direct})
+    operands = ratio_operand_ids(metric)
+    if operands is None:
+        return frozenset()
+    resolved = tuple(
+        column_metric_asset(metrics_by_id.get(operand, {})) for operand in operands
+    )
+    if any(asset is None for asset in resolved):
+        return frozenset()
+    return frozenset(str(asset) for asset in resolved)
 
 
 MANIFEST_KEYS = RELEASE_MANIFEST_KEYS

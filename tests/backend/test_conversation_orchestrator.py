@@ -174,6 +174,45 @@ class FakeConversationRepository:
                 cmd["status"] = "FAILED"
                 cmd["error_response"] = error_response
 
+    async def commit_failed_turn(
+        self,
+        conversation_id: UUID,
+        command_id: UUID,
+        turn_id: UUID,
+        turn_index: int,
+        user_message: str,
+        error_response: dict[str, Any],
+    ) -> None:
+        """운영 저장소와 동일하게 typed 실패 turn과 command를 원자적으로 남긴다."""
+
+        turn = {
+            "turn_id": turn_id,
+            "conversation_id": conversation_id,
+            "turn_index": turn_index,
+            "user_message": user_message,
+            "route": "ANALYSIS",
+            "source_turn_ids": [],
+            "request_id": None,
+            "artifact_id": None,
+            "view_spec_id": None,
+            "report_definition_id": None,
+            "resolved_slots": {},
+            "command_status": "FAILED",
+            "command_error": error_response,
+            "created_at": datetime.now(timezone.utc),
+        }
+        self.turns[conversation_id].append(turn)
+        conv = self.conversations[conversation_id]
+        conv["head_turn_id"] = turn_id
+        conv["turn_count"] += 1
+        conv["active_command_id"] = None
+        conv["lease_expires_at"] = None
+        for cmd in self.commands.values():
+            if cmd["command_id"] == command_id:
+                cmd["status"] = "FAILED"
+                cmd["turn_id"] = turn_id
+                cmd["error_response"] = error_response
+
     async def create_view_spec(
         self,
         artifact_id: UUID,
@@ -847,6 +886,14 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("FAILED", result["status"])
         self.assertEqual(ErrorCode.CONTEXT_SOURCE_FAILED.value, result["code"])
+        self.assertTrue(result["retryable"])
+        self.assertEqual("CONTACT_SUPPORT", result["required_action"])
+        self.assertEqual("FAILED", result["turn"]["command_status"])
+        self.assertEqual(
+            ErrorCode.CONTEXT_SOURCE_FAILED.value,
+            result["turn"]["command_error"]["code"],
+        )
+        self.assertEqual(1, self.repo.conversations[conv_id]["turn_count"])
         # 분석은 실행되지 않아야 한다.
         self.assertEqual([], self.submitted_requests)
 

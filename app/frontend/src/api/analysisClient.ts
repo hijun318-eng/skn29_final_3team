@@ -67,6 +67,13 @@ export interface ConversationTurnWire {
   artifact_summary?: string | null;
   view_type?: string | null;
   spec_json?: Record<string, unknown> | null;
+  command_status?: "COMPLETED" | "FAILED" | null;
+  command_error?: {
+    code?: string;
+    message?: string;
+    retryable?: boolean;
+    required_action?: string;
+  } | null;
 }
 
 /**

@@ -7,15 +7,15 @@
 
 | 분류 | 파일 수 |
 |---|---:|
-| archive | 119 |
-| documentation | 136 |
-| production | 242 |
+| archive | 122 |
+| documentation | 135 |
+| production | 268 |
 | project-config | 34 |
-| runtime-config | 54 |
+| runtime-config | 60 |
 | runtime-contract | 8 |
-| test | 115 |
+| test | 122 |
 
-운영 무결성 위반: **2건**
+운영 무결성 위반: **0건**
 
 ## 파일별 검토 결과
 
@@ -65,7 +65,9 @@
 | `app/backend/app/adapters/model_transport.py` | production | REVIEWED |
 | `app/backend/app/adapters/query_execution.py` | production | REVIEWED |
 | `app/backend/app/adapters/query_governance.py` | production | REVIEWED |
+| `app/backend/app/adapters/query_join_graph.py` | production | REVIEWED |
 | `app/backend/app/adapters/query_result_values.py` | production | REVIEWED |
+| `app/backend/app/adapters/release_manifest.py` | production | REVIEWED |
 | `app/backend/app/adapters/report_artifact_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/report_assistant.py` | production | REVIEWED |
 | `app/backend/app/adapters/report_definition_repository.py` | production | REVIEWED |
@@ -98,44 +100,63 @@
 | `app/backend/app/ports/model.py` | production | REVIEWED |
 | `app/backend/app/query_capability.py` | production | REVIEWED |
 | `app/backend/app/report_contracts.py` | production | REVIEWED |
-| `app/backend/app/services/analysis_context_stage.py` | production | REVIEWED |
-| `app/backend/app/services/analysis_evidence.py` | production | REVIEWED |
-| `app/backend/app/services/analysis_model_support.py` | production | REVIEWED |
-| `app/backend/app/services/analysis_pipeline.py` | production | REVIEWED |
-| `app/backend/app/services/analysis_pipeline_state.py` | production | REVIEWED |
-| `app/backend/app/services/analysis_plan_stage.py` | production | REVIEWED |
-| `app/backend/app/services/analysis_progress.py` | production | REVIEWED |
-| `app/backend/app/services/analysis_query_stage.py` | production | REVIEWED |
-| `app/backend/app/services/analysis_responses.py` | production | REVIEWED |
-| `app/backend/app/services/analysis_result_stage.py` | production | REVIEWED |
-| `app/backend/app/services/analysis_service.py` | production | REVIEWED |
-| `app/backend/app/services/context_builder.py` | production | REVIEWED |
-| `app/backend/app/services/context_registry_service.py` | production | REVIEWED |
-| `app/backend/app/services/context_values.py` | production | REVIEWED |
-| `app/backend/app/services/conversation_orchestrator.py` | production | REVIEWED |
-| `app/backend/app/services/conversation_slot_resolver.py` | production | REVIEWED |
+| `app/backend/app/services/__init__.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/__init__.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/evidence.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/model_support.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/pipeline.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/pipeline_state.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/pipeline_support.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/progress.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/responses.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/result_validator.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/service.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/stages/__init__.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/stages/context_stage.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/stages/plan_stage.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/stages/query_stage.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/stages/result_stage.py` | production | REVIEWED |
+| `app/backend/app/services/context/__init__.py` | production | REVIEWED |
+| `app/backend/app/services/context/builder.py` | production | REVIEWED |
+| `app/backend/app/services/context/builder_errors.py` | production | REVIEWED |
+| `app/backend/app/services/context/contract.py` | production | REVIEWED |
+| `app/backend/app/services/context/filter_candidate_resolver.py` | production | REVIEWED |
+| `app/backend/app/services/context/filter_value_resolver.py` | production | REVIEWED |
+| `app/backend/app/services/context/metric_resolver.py` | production | REVIEWED |
+| `app/backend/app/services/context/model_signals.py` | production | REVIEWED |
+| `app/backend/app/services/context/model_time_context.py` | production | REVIEWED |
+| `app/backend/app/services/context/package_types.py` | production | REVIEWED |
+| `app/backend/app/services/context/period_clarification.py` | production | REVIEWED |
+| `app/backend/app/services/context/query_planner.py` | production | REVIEWED |
+| `app/backend/app/services/context/registry_service.py` | production | REVIEWED |
+| `app/backend/app/services/context/runtime_contracts.py` | production | REVIEWED |
+| `app/backend/app/services/context/service.py` | production | REVIEWED |
+| `app/backend/app/services/context/values.py` | production | REVIEWED |
+| `app/backend/app/services/conversation/__init__.py` | production | REVIEWED |
+| `app/backend/app/services/conversation/analysis_request.py` | production | REVIEWED |
+| `app/backend/app/services/conversation/change_set.py` | production | REVIEWED |
+| `app/backend/app/services/conversation/orchestrator.py` | production | REVIEWED |
+| `app/backend/app/services/conversation/report_actions.py` | production | REVIEWED |
+| `app/backend/app/services/conversation/slot_resolver.py` | production | REVIEWED |
+| `app/backend/app/services/conversation/time_algebra.py` | production | REVIEWED |
 | `app/backend/app/services/execution_control.py` | production | REVIEWED |
-| `app/backend/app/services/pipeline_context_contract.py` | production | REVIEWED |
-| `app/backend/app/services/pipeline_context_service.py` | production | REVIEWED |
-| `app/backend/app/services/pipeline_metric_resolver.py` | production | REVIEWED |
-| `app/backend/app/services/pipeline_result_validator.py` | production | REVIEWED |
-| `app/backend/app/services/pipeline_runtime_contracts.py` | production | REVIEWED |
-| `app/backend/app/services/pipeline_sql_guard.py` | production | REVIEWED |
-| `app/backend/app/services/pipeline_sql_join_semantics.py` | production | REVIEWED |
-| `app/backend/app/services/pipeline_sql_metric_semantics.py` | production | REVIEWED |
-| `app/backend/app/services/pipeline_sql_schema.py` | production | REVIEWED |
-| `app/backend/app/services/pipeline_sql_scopes.py` | production | REVIEWED |
-| `app/backend/app/services/pipeline_sql_semantics.py` | production | REVIEWED |
-| `app/backend/app/services/pipeline_support.py` | production | REVIEWED |
 | `app/backend/app/services/readiness.py` | production | REVIEWED |
-| `app/backend/app/services/report_document.py` | production | REVIEWED |
-| `app/backend/app/services/report_document_chart.py` | production | REVIEWED |
-| `app/backend/app/services/report_document_layout.py` | production | REVIEWED |
-| `app/backend/app/services/report_document_types.py` | production | REVIEWED |
-| `app/backend/app/services/report_document_values.py` | production | REVIEWED |
-| `app/backend/app/services/report_execution.py` | production | REVIEWED |
-| `app/backend/app/services/report_scheduler.py` | production | REVIEWED |
+| `app/backend/app/services/report/__init__.py` | production | REVIEWED |
+| `app/backend/app/services/report/chart.py` | production | REVIEWED |
+| `app/backend/app/services/report/document.py` | production | REVIEWED |
+| `app/backend/app/services/report/execution.py` | production | REVIEWED |
+| `app/backend/app/services/report/layout.py` | production | REVIEWED |
+| `app/backend/app/services/report/scheduler.py` | production | REVIEWED |
+| `app/backend/app/services/report/types.py` | production | REVIEWED |
+| `app/backend/app/services/report/values.py` | production | REVIEWED |
 | `app/backend/app/services/routing_service.py` | production | REVIEWED |
+| `app/backend/app/services/sql_guard/__init__.py` | production | REVIEWED |
+| `app/backend/app/services/sql_guard/guard.py` | production | REVIEWED |
+| `app/backend/app/services/sql_guard/join_semantics.py` | production | REVIEWED |
+| `app/backend/app/services/sql_guard/metric_semantics.py` | production | REVIEWED |
+| `app/backend/app/services/sql_guard/schema.py` | production | REVIEWED |
+| `app/backend/app/services/sql_guard/scopes.py` | production | REVIEWED |
+| `app/backend/app/services/sql_guard/semantics.py` | production | REVIEWED |
 | `app/backend/app/services/state_machine.py` | production | REVIEWED |
 | `app/backend/app/trace_examples.py` | production | REVIEWED |
 | `app/backend/compose.fragment.yml` | runtime-config | REVIEWED |
@@ -185,6 +206,7 @@
 | `app/frontend/src/App.jsx` | production | REVIEWED |
 | `app/frontend/src/components/analysis/AnalysisDashboardViews.tsx` | production | REVIEWED |
 | `app/frontend/src/components/analysis/AnalysisStatePanel.tsx` | production | REVIEWED |
+| `app/frontend/src/components/analysis/AnalysisStatePanelParts.tsx` | production | REVIEWED |
 | `app/frontend/src/components/analysis/analysisValueScale.ts` | production | REVIEWED |
 | `app/frontend/src/components/auth/SessionLogin.jsx` | production | REVIEWED |
 | `app/frontend/src/components/charts/EnterpriseChart.jsx` | production | REVIEWED |
@@ -244,6 +266,7 @@
 | `app/frontend/src/features/reports/useReportsPageController.jsx` | production | REVIEWED |
 | `app/frontend/src/main.jsx` | production | REVIEWED |
 | `app/frontend/src/pages/AgentPage.jsx` | production | REVIEWED |
+| `app/frontend/src/pages/agentPageHelpers.js` | production | REVIEWED |
 | `app/frontend/src/pages/ReportsPage.jsx` | production | REVIEWED |
 | `app/frontend/src/routing.js` | production | REVIEWED |
 | `app/frontend/src/styles.css` | production | REVIEWED |
@@ -254,15 +277,14 @@
 | `compose.app-postgres.override.yml` | runtime-config | REVIEWED |
 | `compose.yml` | runtime-config | REVIEWED |
 | `docs/Answervice_기획서.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/answervice_analysis_sequence.html` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/answervice_analysis_sequence.json` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/answervice_data_release_workflow.html` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/answervice_data_release_workflow.json` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/answervice_p0_architecture.html` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/answervice_p0_architecture.json` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/answervice_report_sequence.html` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/answervice_report_sequence.json` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/production-integrity-audit.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/answervice_v3_4_agent_architecture.html` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/answervice_v3_4_agent_architecture.json` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/answervice_v3_4_analysis_sequence.html` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/answervice_v3_4_analysis_sequence.json` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/answervice_v3_4_data_release_workflow.html` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/answervice_v3_4_data_release_workflow.json` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/answervice_v3_4_report_sequence.html` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/answervice_v3_4_report_sequence.json` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/daesung/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -376,7 +398,10 @@
 | `evals/instruct2507.smoke20.f4.jsonl` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.jsonl` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.v2.manifest.json` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/nlu_live_node1.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/nlu_route_accuracy.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/runner.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/semantic_review/answervice_d2_metrics.v1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/split_manifest.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/validation_v2.manifest.json` | archive | ARCHIVE_NON_RUNTIME |
 | `infrastructure/database/.env.example` | project-config | REVIEWED |
@@ -388,6 +413,7 @@
 | `infrastructure/database/datahub/build_runtime_governance_draft.py` | production | REVIEWED |
 | `infrastructure/database/datahub/catalog_governance.py` | production | REVIEWED |
 | `infrastructure/database/datahub/catalog_governance_verify.py` | production | REVIEWED |
+| `infrastructure/database/datahub/check_metric_review.py` | production | REVIEWED |
 | `infrastructure/database/datahub/compose.consumer.yml` | production | REVIEWED |
 | `infrastructure/database/datahub/compose.ingestion.yml` | production | REVIEWED |
 | `infrastructure/database/datahub/compose.semantic-search.yml` | production | REVIEWED |
@@ -403,6 +429,8 @@
 | `infrastructure/database/datahub/metadata_graphql.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metadata_rest.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metadata_wire.py` | production | REVIEWED |
+| `infrastructure/database/datahub/metric_contract.py` | production | REVIEWED |
+| `infrastructure/database/datahub/metric_review_contract.py` | production | REVIEWED |
 | `infrastructure/database/datahub/policy_compiler.py` | production | REVIEWED |
 | `infrastructure/database/datahub/preflight_policy_decisions.py` | production | REVIEWED |
 | `infrastructure/database/datahub/publication_check.py` | production | REVIEWED |
@@ -534,12 +562,18 @@
 | `infrastructure/database/releases/walkerhill_v4_3_20260815_derived_1/run-v43.ps1` | archive | ARCHIVE_NON_RUNTIME |
 | `infrastructure/database/scripts/deployment-environment.ps1` | runtime-config | REVIEWED |
 | `infrastructure/database/scripts/export-baseline.ps1` | runtime-config | REVIEWED |
+| `infrastructure/database/scripts/inspect_release_views.py` | runtime-config | REVIEWED |
+| `infrastructure/database/scripts/recreate-serving-views.ps1` | runtime-config | REVIEWED |
 | `infrastructure/database/scripts/reset.ps1` | runtime-config | REVIEWED |
 | `infrastructure/database/scripts/rollback-datahub-runtime.ps1` | runtime-config | REVIEWED |
 | `infrastructure/database/scripts/start.ps1` | runtime-config | REVIEWED |
 | `infrastructure/database/scripts/stop.ps1` | runtime-config | REVIEWED |
 | `infrastructure/database/scripts/upgrade-datahub-runtime.ps1` | runtime-config | REVIEWED |
+| `infrastructure/database/scripts/verify-release-sources.ps1` | runtime-config | REVIEWED |
+| `infrastructure/database/scripts/verify-release-trino.ps1` | runtime-config | REVIEWED |
 | `infrastructure/database/scripts/verify.ps1` | runtime-config | REVIEWED |
+| `infrastructure/database/scripts/verify_readonly_sql.py` | runtime-config | REVIEWED |
+| `infrastructure/database/scripts/verify_trino_release.py` | runtime-config | REVIEWED |
 | `infrastructure/database/security/provision-app-postgres.sh` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-crm-mssql.sh` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-crm-mssql.sql` | project-config | REVIEWED |
@@ -616,6 +650,7 @@
 | `src/report/router.py` | production | REVIEWED |
 | `tests/.gitkeep` | test | TEST_ONLY |
 | `tests/ai/test_contracts.py` | test | TEST_ONLY |
+| `tests/ai/test_conversation_change_set.py` | test | TEST_ONLY |
 | `tests/ai/test_conversation_slot_resolver.py` | test | TEST_ONLY |
 | `tests/ai/test_eval_runner.py` | test | TEST_ONLY |
 | `tests/ai/test_fake_model.py` | test | TEST_ONLY |
@@ -670,7 +705,11 @@
 | `tests/backend/test_metric_reduction.py` | test | TEST_ONLY |
 | `tests/backend/test_migration_compatibility.py` | test | TEST_ONLY |
 | `tests/backend/test_model_runtime_routing.py` | test | TEST_ONLY |
+| `tests/backend/test_node1_previous_period_anchor.py` | test | TEST_ONLY |
+| `tests/backend/test_node1_signal_wire_contract.py` | test | TEST_ONLY |
 | `tests/backend/test_openapi_contract.py` | test | TEST_ONLY |
+| `tests/backend/test_pipeline_filter_value_resolver.py` | test | TEST_ONLY |
+| `tests/backend/test_pipeline_query_planner.py` | test | TEST_ONLY |
 | `tests/backend/test_pipeline_sql_guard.py` | test | TEST_ONLY |
 | `tests/backend/test_production_model.py` | test | TEST_ONLY |
 | `tests/backend/test_readiness.py` | test | TEST_ONLY |
@@ -688,10 +727,12 @@
 | `tests/data/test_dataset_semantic_content_producer.py` | test | TEST_ONLY |
 | `tests/data/test_existing_database_infrastructure.py` | test | TEST_ONLY |
 | `tests/data/test_governance_contract.py` | test | TEST_ONLY |
+| `tests/data/test_metric_review_contract.py` | test | TEST_ONLY |
 | `tests/data/test_release_archive_integrity.py` | test | TEST_ONLY |
 | `tests/data/test_release_bundle_builder.py` | test | TEST_ONLY |
 | `tests/data/test_release_discovery_sources.py` | test | TEST_ONLY |
 | `tests/data/test_runtime_governance_draft.py` | test | TEST_ONLY |
+| `tests/data/test_runtime_release_verifiers.py` | test | TEST_ONLY |
 | `tests/data/test_semantic_authoring.py` | test | TEST_ONLY |
 | `tests/data/test_semantic_search_profile.py` | test | TEST_ONLY |
 | `tests/frontend/analysis-dashboard.test.mjs` | test | TEST_ONLY |

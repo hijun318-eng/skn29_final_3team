@@ -55,11 +55,8 @@ class GovernedDataPlatformAdapter:
             TrinoSchemaInspector(self._trino),
             expected_context_release=expected_context_release,
             search_mode=search_mode or os.getenv("DATAHUB_SEARCH_MODE", "lexical"),
-            catalog_ttl_seconds=(
-                catalog_ttl_seconds
-                if catalog_ttl_seconds is not None
-                else float(os.getenv("DATAHUB_CATALOG_TTL_SECONDS", "86400.0"))
-            ),
+            # QueryGovernanceEngine 하나가 환경 기본값을 소유해야 adapter별 TTL drift가 없다.
+            catalog_ttl_seconds=catalog_ttl_seconds,
         )
         self._execution = execution or QueryExecutionService(
             self._trino,
@@ -102,6 +99,11 @@ class GovernedDataPlatformAdapter:
     async def get_active_context_release(self) -> str:
         """완전한 manifest 검증을 통과한 단일 active catalog release 식별자를 반환한다."""
         return await self._governance.active_context_release()
+
+    async def get_catalog_readiness(self) -> tuple[dict[str, str], str | None]:
+        """semantic release·manifest·전체 Trino schema 단계와 checksum-bound receipt를 반환한다."""
+
+        return await self._governance.catalog_readiness()
 
     async def execute_query(
         self,

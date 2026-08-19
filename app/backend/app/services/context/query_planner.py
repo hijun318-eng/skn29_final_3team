@@ -5,7 +5,7 @@
 DataHub에 등록된 사전 집계 단위(Grain keys)만으로 가장 비용 효율적인 3대 쿼리 전략을 결정론적으로 선택합니다.
 
 [3대 쿼리 실행 전략]
-1. VIEW_REUSE: 필요한 지표가 단 1개의 사전 집계된 `serving` 뷰에 존재할 때, 별도의 복잡한 조인/집계 없이 뷰를 직접 재사용
+1. VIEW_REUSE: 필요한 지표가 단 1개의 사전 집계된 `serving` 뷰에 존재할 때, 별도의 복잡한 조인 없이 뷰를 직접 재사용
 2. VIEW_COMPOSE: 필요한 지표들이 여러 개의 `serving` 뷰에 분산되어 있으나 집계 Grain(예: 일자, 호텔ID)이 동일하여 안전하게 조인 합성 가능할 때
 3. RAW_APPROVED_DETAIL: 원본 소스 테이블(`raw`, `dwh` 등)을 직접 집계해야 하거나, 뷰 간 Grain이 달라 원천 집계가 필수적인 경우
 """
@@ -33,9 +33,10 @@ def determine_query_strategy(
     1. 지표가 참조하는 물리 테이블 FQN 목록 수집 (Ratio 지표는 분자/분모 지표의 물리 테이블로 대체)
     2. 모든 참조 테이블의 카탈로그가 `serving` 접두사를 가지는지 검사:
        - `serving`이 아닌 원본 테이블이 하나라도 포함되면 -> RAW_APPROVED_DETAIL
-    3. 참조 `serving` 테이블이 정확히 1개이면 -> VIEW_REUSE (단일 뷰 재사용)
-    4. 참조 `serving` 테이블이 여러 개이고 모든 테이블의 Grain 키 집합이 완전히 일치하면 -> VIEW_COMPOSE (뷰 간 합성)
-    5. 그 외 Grain이 불일치하는 경우 -> RAW_APPROVED_DETAIL
+    3. 모든 참조 asset의 Grain이 존재하고 어느 것도 원본 row Grain이 아니어야 view 경로를 허용한다.
+    4. 참조 `serving` 테이블이 정확히 1개이면 -> VIEW_REUSE (단일 뷰 재사용)
+    5. 참조 `serving` 테이블이 여러 개이고 모든 테이블의 Grain 키 집합이 완전히 일치하면 -> VIEW_COMPOSE (뷰 간 합성)
+    6. 그 외 Grain 누락·row Grain·Grain 불일치는 -> RAW_APPROVED_DETAIL
 
     Args:
         package: 검증된 ContextPackage 인스턴스
@@ -66,14 +67,31 @@ def determine_query_strategy(
     if catalogs != {_SERVED_CATALOG}:
         return RAW_APPROVED_DETAIL
 
+    grain_by_fqn = {
+        item["fqn"]: {
+            "kind": str(item["grain"].get("kind") or "").casefold(),
+            "keys": tuple(sorted(item["grain"]["keys"])),
+        }
+        for item in runtime_contracts.get("schema_context", {}).get("assets", ())
+        if isinstance(item, dict)
+        and isinstance(item.get("fqn"), str)
+        and isinstance(item.get("grain"), dict)
+        and isinstance(item["grain"].get("keys"), (list, tuple))
+    }
+    # Grain이 없는 asset을 일부만 비교하면 서로 다른 계산 범위를 같은 grain으로
+    # 오인할 수 있다. 모든 참조 asset이 검증된 grain을 제공할 때만 view 경로를 연다.
+    if not asset_fqns <= set(grain_by_fqn):
+        return RAW_APPROVED_DETAIL
+
+    # ``serving`` catalog에도 원본 1행 grain을 보존한 승인 detail view가 존재할 수 있다.
+    # catalog 이름만 보고 사전 집계 view로 승격하지 않고 grain 의미를 우선한다.
+    if any(grain_by_fqn[fqn]["kind"] == "row" for fqn in asset_fqns):
+        return RAW_APPROVED_DETAIL
+
     if len(asset_fqns) == 1:
         return VIEW_REUSE
 
-    grain_by_fqn = {
-        item["fqn"]: tuple(sorted(item["grain"]["keys"]))
-        for item in runtime_contracts.get("schema_context", {}).get("assets", ())
-    }
-    grains = {grain_by_fqn[fqn] for fqn in asset_fqns if fqn in grain_by_fqn}
+    grains = {grain_by_fqn[fqn]["keys"] for fqn in asset_fqns}
     if len(grains) == 1:
         return VIEW_COMPOSE
 

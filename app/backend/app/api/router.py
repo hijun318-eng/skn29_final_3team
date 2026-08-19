@@ -78,7 +78,7 @@ def _controller() -> AnalysisController:
 
 
 router = APIRouter()
-readiness = AppDatabaseReadiness()
+readiness = AppDatabaseReadiness(lambda: _controller().data_platform)
 execution_gate = ConcurrentExecutionGate()
 
 

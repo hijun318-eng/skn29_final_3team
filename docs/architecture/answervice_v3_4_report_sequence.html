@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark" data-preset="signal-flow">
+<html lang="en" data-theme="dark" data-preset="classic">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 2.14.0">
-  <title>P0 대화 결과 조합·보고서 재실행 순서 Diagram</title>
+  <title>Answervice v3.4 검증 결과 조합·승인 보고서 재실행 흐름 Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -31,15 +31,11 @@
       } catch (_) {}
     })();
   </script>
-  <!-- Async font load: a blackholed network must not block first paint.
-       The body font stack falls back to system monospace until it lands. -->
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap"
-        rel="stylesheet" media="print" onload="this.media='all'">
-  <noscript>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  </noscript>
   <style>
+    @font-face { font-family: 'Pretendard'; font-style: normal; font-weight: 400; src: local('Pretendard'), local('Pretendard Regular'), local('Pretendard-Regular'); }
+    @font-face { font-family: 'Pretendard'; font-style: normal; font-weight: 500; src: local('Pretendard Medium'), local('Pretendard-Medium'), local('Pretendard'); }
+    @font-face { font-family: 'Pretendard'; font-style: normal; font-weight: 600; src: local('Pretendard SemiBold'), local('Pretendard-SemiBold'), local('Pretendard'); }
+    @font-face { font-family: 'Pretendard'; font-style: normal; font-weight: 700; src: local('Pretendard Bold'), local('Pretendard-Bold'), local('Pretendard'); }
     /* ==========================================================
        THEME VARIABLES — switch by toggling [data-theme] on <html>
        ========================================================== */
@@ -351,7 +347,7 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace;
+      font-family: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', sans-serif;
       background: var(--bg);
       min-height: 100vh;
       padding: 2rem;
@@ -4836,12 +4832,11 @@
     <div class="header">
       <div class="header-row">
         <div class="pulse-dot"></div>
-        <h1>P0 대화 결과 조합·보고서 재실행 순서</h1>
+        <h1>Answervice v3.4 검증 결과 조합·승인 보고서 재실행 흐름</h1>
       </div>
-      <p class="subtitle">Draft command·lease·lineage 원자 저장 → 승인본 재실행·terminal commit</p>
     </div>
 
-    <script id="archify-guided-views-data" type="application/json">[{"id":"collect","label":"1. 결과를 보고서에 담기","focus":["analyst","chat","conversation","reportapi","appdb"],"note":"command idempotency·head CAS·lease 뒤 Artifact·ViewSpec·Definition lineage와 draft revision을 원자 commit합니다."},{"id":"freeze","label":"2. 승인본 봉인","focus":["analyst","admin","chat","reportapi","appdb"],"note":"초안을 제출하면 immutable Report Version을 만들고 승인자의 actor·decision을 보존합니다."},{"id":"rerun","label":"3. 현재 권한으로 재실행","focus":["admin","chat","reportapi","appdb","pipeline","trino"],"note":"승인본의 release·report_as_of·subject별 권한 snapshot을 고정하고 block마다 같은 subject snapshot의 새 Run을 만듭니다."},{"id":"evidence","label":"4. 부분 실패와 lineage","focus":["pipeline","trino","reportapi","appdb","chat","admin"],"note":"block 결과·Artifact·근거를 저장한 뒤 Report Run·command·terminal Turn·head·lease를 한 transaction으로 닫습니다."}]</script>
+    <script id="archify-guided-views-data" type="application/json">[{"id":"compose_blocks_v34","label":"1. 검증 결과 담기","focus":["report_author","app_surface","report_coordinator","mcp_boundary","report_service","artifact_database"],"note":"artifact.get으로 권한과 G3 상태를 확인한 결과만 report.add_block으로 초안에 연결합니다."},{"id":"seal_approval_v34","label":"2. 승인본 확정","focus":["report_author","report_approver","app_surface","report_service","artifact_database"],"note":"초안을 변경 불가 Report Version으로 봉인하고 checksum·작성자·승인자·결정을 남깁니다."},{"id":"rerun_report_v34","label":"3. 현재 권한으로 재실행","focus":["report_approver","app_surface","report_service","artifact_database","analysis_runtime"],"note":"각 Block은 현재 RequestContext로 핵심 분석 Core를 다시 통과합니다. 과거 권한이나 결과를 그대로 신뢰하지 않습니다."},{"id":"partial_evidence_v34","label":"4. 일부 실패·근거","focus":["analysis_runtime","report_service","artifact_database","app_surface","report_approver"],"note":"Block별 성공·실패·근거를 저장하고 전체 상태를 성공·일부 성공·실패 중 하나로 원자 종료합니다."}]</script>
 
     <div class="guided-views no-print" id="guided-views" hidden aria-label="Guided diagram views">
       <button id="guided-view-prev" type="button" aria-label="Previous guided view" title="Previous guided view ([)">&#8592;</button>
@@ -4884,9 +4879,9 @@
 
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read">
-      <svg viewBox="0 0 1760 1010" role="img" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="signal-flow" data-quality-profile="showcase">
-        <title id="archify-diagram-title">P0 대화 결과 조합·보고서 재실행 순서</title>
-        <desc id="archify-diagram-description">Draft command·lease·lineage 원자 저장 → 승인본 재실행·terminal commit</desc>
+      <svg viewBox="0 0 1900 1180" role="img" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
+        <title id="archify-diagram-title">Answervice v3.4 검증 결과 조합·승인 보고서 재실행 흐름</title>
+        <desc id="archify-diagram-description">A sequence diagram generated by Archify.</desc>
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -4910,353 +4905,371 @@
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Time Segments -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="0" x="48" y="150" width="1664" height="225" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="0" x="48" y="150" width="1804" height="255" rx="10" class="c-lane" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="1" x="48" y="385" width="1664" height="190" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="1" x="48" y="415" width="1804" height="235" rx="10" class="c-lane" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="2" x="48" y="585" width="1664" height="315" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="segment" data-composition-frame-id="2" x="48" y="660" width="1804" height="380" rx="10" class="c-lane" stroke-width="1"/>
 
         <!-- Lifelines -->
-        <path d="M 152.5 142 L 152.5 945" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 363.5 142 L 363.5 945" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 574.5 142 L 574.5 945" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 785.5 142 L 785.5 945" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 996.5 142 L 996.5 945" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 1207.5 142 L 1207.5 945" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 1418.5 142 L 1418.5 945" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
-        <path d="M 1629.5 142 L 1629.5 945" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 157 142 L 157 1115" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 386.7142857142857 142 L 386.7142857142857 1115" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 616.4285714285714 142 L 616.4285714285714 1115" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 846.1428571428571 142 L 846.1428571428571 1115" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 1075.857142857143 142 L 1075.857142857143 1115" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 1305.5714285714287 142 L 1305.5714285714287 1115" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 1535.2857142857142 142 L 1535.2857142857142 1115" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
+        <path d="M 1765 142 L 1765 1115" class="a-default" stroke-width="0.8" stroke-dasharray="3,7"/>
 
         <!-- Activations -->
-        <rect x="569.5" y="165" width="10" height="731" rx="3" class="c-mask"/>
-        <rect x="569.5" y="165" width="10" height="731" rx="3" class="c-frontend" stroke-width="1"/>
-        <rect x="780.5" y="197" width="10" height="111" rx="3" class="c-mask"/>
-        <rect x="780.5" y="197" width="10" height="111" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="991.5" y="293" width="10" height="603" rx="3" class="c-mask"/>
-        <rect x="991.5" y="293" width="10" height="603" rx="3" class="c-backend" stroke-width="1"/>
-        <rect x="1202.5" y="229" width="10" height="635" rx="3" class="c-mask"/>
-        <rect x="1202.5" y="229" width="10" height="635" rx="3" class="c-database" stroke-width="1"/>
-        <rect x="1413.5" y="689" width="10" height="111" rx="3" class="c-mask"/>
-        <rect x="1413.5" y="689" width="10" height="111" rx="3" class="c-security" stroke-width="1"/>
-        <rect x="1624.5" y="721" width="10" height="47" rx="3" class="c-mask"/>
-        <rect x="1624.5" y="721" width="10" height="47" rx="3" class="c-backend" stroke-width="1"/>
+        <rect x="611.4285714285714" y="170" width="10" height="837" rx="3" class="c-mask"/>
+        <rect x="611.4285714285714" y="170" width="10" height="837" rx="3" class="c-frontend" stroke-width="1"/>
+        <rect x="841.1428571428571" y="203" width="10" height="147" rx="3" class="c-mask"/>
+        <rect x="841.1428571428571" y="203" width="10" height="147" rx="3" class="c-backend" stroke-width="1"/>
+        <rect x="1070.857142857143" y="236" width="10" height="147" rx="3" class="c-mask"/>
+        <rect x="1070.857142857143" y="236" width="10" height="147" rx="3" class="c-security" stroke-width="1"/>
+        <rect x="1300.5714285714287" y="368" width="10" height="604" rx="3" class="c-mask"/>
+        <rect x="1300.5714285714287" y="368" width="10" height="604" rx="3" class="c-backend" stroke-width="1"/>
+        <rect x="1530.2857142857142" y="269" width="10" height="668" rx="3" class="c-mask"/>
+        <rect x="1530.2857142857142" y="269" width="10" height="668" rx="3" class="c-database" stroke-width="1"/>
+        <rect x="1760" y="817" width="10" height="50" rx="3" class="c-mask"/>
+        <rect x="1760" y="817" width="10" height="50" rx="3" class="c-security" stroke-width="1"/>
 
         <!-- Messages -->
-        <g data-edge-from="analyst" data-edge-to="chat" data-edge-label="‘이 결과를 보고서에 담기’" data-edge-key="0" data-edge-id="select_view">
-          <path data-composition-edge-from="analyst" data-composition-edge-to="chat" data-composition-edge-id="select_view" data-composition-points="159.5,170;567.5,170" d="M 159.5 170 L 567.5 170" class="a-default" data-animate="edge" style="--step:0" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <g data-edge-from="report_author" data-edge-to="app_surface" data-edge-label="‘이 결과를 보고서에 담기’" data-edge-key="0" data-edge-id="v34_pick_report_artifact">
+          <path data-composition-edge-from="report_author" data-composition-edge-to="app_surface" data-composition-edge-id="v34_pick_report_artifact" data-composition-points="164,175;609.4285714285714,175" d="M 164 175 L 609.4285714285714 175" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <g data-detail="context">
-          <rect x="292.5" y="150" width="142" height="16" rx="3" class="c-mask"/>
-          <text x="363.5" y="160" class="t-backend" font-size="9" text-anchor="middle">‘이 결과를 보고서에 담기’</text>
+          <rect x="315.7142857142857" y="155" width="142" height="16" rx="3" class="c-mask"/>
+          <text x="386.7142857142857" y="165" class="t-backend" font-size="9" text-anchor="middle">‘이 결과를 보고서에 담기’</text>
         </g>
         </g>
 
-        <g data-edge-from="chat" data-edge-to="conversation" data-edge-label="Artifact·View + command idempotency·expected head" data-edge-key="1" data-edge-id="report_action">
-          <path data-composition-edge-from="chat" data-composition-edge-to="conversation" data-composition-edge-id="report_action" data-composition-points="581.5,202;778.5,202" d="M 581.5 202 L 778.5 202" class="a-emphasis" data-animate="edge" style="--step:1" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <g data-edge-from="app_surface" data-edge-to="report_coordinator" data-edge-label="REPORT_ACTION + artifact_id + 중복 방지 키" data-edge-key="1" data-edge-id="v34_route_report_action">
+          <path data-composition-edge-from="app_surface" data-composition-edge-to="report_coordinator" data-composition-edge-id="v34_route_report_action" data-composition-points="623.4285714285714,208;839.1428571428571,208" d="M 623.4285714285714 208 L 839.1428571428571 208" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g data-detail="context">
-          <rect x="546.6" y="182" width="266.8" height="16" rx="3" class="c-mask"/>
-          <text x="680" y="192" class="t-backend" font-size="9" text-anchor="middle">Artifact·View + command idempotency·expected head</text>
+          <rect x="616.0857142857142" y="188" width="230.4" height="16" rx="3" class="c-mask"/>
+          <text x="731.2857142857142" y="198" class="t-backend" font-size="9" text-anchor="middle">REPORT_ACTION + artifact_id + 중복 방지 키</text>
         </g>
         </g>
 
-        <g data-edge-from="conversation" data-edge-to="appdb" data-edge-label="idempotency→head CAS·lease + owner·release·APP-G3·lineage" data-edge-key="2" data-edge-id="validate_source">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="appdb" data-composition-edge-id="validate_source" data-composition-points="792.5,234;1200.5,234" d="M 792.5 234 L 1200.5 234" class="a-security" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <g data-edge-from="report_coordinator" data-edge-to="mcp_boundary" data-edge-label="artifact.get" data-edge-key="2" data-edge-id="v34_get_artifact">
+          <path data-composition-edge-from="report_coordinator" data-composition-edge-to="mcp_boundary" data-composition-edge-id="v34_get_artifact" data-composition-points="853.1428571428571,241;1068.857142857143,241" d="M 853.1428571428571 241 L 1068.857142857143 241" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g data-detail="context">
-          <rect x="842.3" y="214" width="308.40000000000003" height="16" rx="3" class="c-mask"/>
-          <text x="996.5" y="224" class="t-security" font-size="9" text-anchor="middle">idempotency→head CAS·lease + owner·release·APP-G3·lineage</text>
+          <rect x="923.8" y="221" width="74.4" height="16" rx="3" class="c-mask"/>
+          <text x="961" y="231" class="t-backend" font-size="9" text-anchor="middle">artifact.get</text>
         </g>
         </g>
 
-        <g data-edge-from="appdb" data-edge-to="conversation" data-edge-label="command 예약 + 검증 Artifact·ViewSpec·Definition" data-edge-key="3" data-edge-id="source_return">
-          <path data-composition-edge-from="appdb" data-composition-edge-to="conversation" data-composition-edge-id="source_return" data-composition-points="1200.5,266;792.5,266" d="M 1200.5 266 L 792.5 266" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-edge-from="mcp_boundary" data-edge-to="artifact_database" data-edge-label="소유권·현재 권한·G3·버전·이력 확인" data-edge-key="3" data-edge-id="v34_check_artifact">
+          <path data-composition-edge-from="mcp_boundary" data-composition-edge-to="artifact_database" data-composition-edge-id="v34_check_artifact" data-composition-points="1082.857142857143,274;1528.2857142857142,274" d="M 1082.857142857143 274 L 1528.2857142857142 274" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
         <g data-detail="context">
-          <rect x="865.7" y="246" width="261.6" height="16" rx="3" class="c-mask"/>
-          <text x="996.5" y="256" class="t-muted" font-size="9" text-anchor="middle">command 예약 + 검증 Artifact·ViewSpec·Definition</text>
+          <rect x="1211.1714285714284" y="254" width="188.8" height="16" rx="3" class="c-mask"/>
+          <text x="1305.5714285714284" y="264" class="t-security" font-size="9" text-anchor="middle">소유권·현재 권한·G3·버전·이력 확인</text>
         </g>
         </g>
 
-        <g data-edge-from="conversation" data-edge-to="reportapi" data-edge-label="append hash + expected draft revision" data-edge-key="4" data-edge-id="append_block">
-          <path data-composition-edge-from="conversation" data-composition-edge-to="reportapi" data-composition-edge-id="append_block" data-composition-points="792.5,298;989.5,298" d="M 792.5 298 L 989.5 298" class="a-emphasis" data-animate="edge" style="--step:4" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <g data-edge-from="artifact_database" data-edge-to="mcp_boundary" data-edge-label="승인된 Artifact·View·분석 정의" data-edge-key="4" data-edge-id="v34_return_artifact">
+          <path data-composition-edge-from="artifact_database" data-composition-edge-to="mcp_boundary" data-composition-edge-id="v34_return_artifact" data-composition-points="1528.2857142857142,307;1082.857142857143,307" d="M 1528.2857142857142 307 L 1082.857142857143 307" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
         <g data-detail="context">
-          <rect x="788.8" y="278" width="204.4" height="16" rx="3" class="c-mask"/>
-          <text x="891" y="288" class="t-backend" font-size="9" text-anchor="middle">append hash + expected draft revision</text>
+          <rect x="1221.5714285714284" y="287" width="168" height="16" rx="3" class="c-mask"/>
+          <text x="1305.5714285714284" y="297" class="t-muted" font-size="9" text-anchor="middle">승인된 Artifact·View·분석 정의</text>
         </g>
         </g>
 
-        <g data-edge-from="reportapi" data-edge-to="appdb" data-edge-label="block·order·revision + command·Turn·head·lease 원자 commit" data-edge-key="5" data-edge-id="persist_block">
-          <path data-composition-edge-from="reportapi" data-composition-edge-to="appdb" data-composition-edge-id="persist_block" data-composition-points="1003.5,330;1200.5,330" d="M 1003.5 330 L 1200.5 330" class="a-dashed" data-animate="edge" style="--step:5" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <g data-edge-from="report_coordinator" data-edge-to="mcp_boundary" data-edge-label="report.add_block" data-edge-key="5" data-edge-id="v34_add_report_block">
+          <path data-composition-edge-from="report_coordinator" data-composition-edge-to="mcp_boundary" data-composition-edge-id="v34_add_report_block" data-composition-points="853.1428571428571,340;1068.857142857143,340" d="M 853.1428571428571 340 L 1068.857142857143 340" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g data-detail="context">
-          <rect x="945.2" y="310" width="313.6" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="320" class="t-messagebus" font-size="9" text-anchor="middle">block·order·revision + command·Turn·head·lease 원자 commit</text>
+          <rect x="913.4" y="320" width="95.2" height="16" rx="3" class="c-mask"/>
+          <text x="961" y="330" class="t-backend" font-size="9" text-anchor="middle">report.add_block</text>
         </g>
         </g>
 
-        <g data-edge-from="reportapi" data-edge-to="chat" data-edge-label="보고서 바구니 (n) + 초안 링크" data-edge-key="6" data-edge-id="basket_count">
-          <path data-composition-edge-from="reportapi" data-composition-edge-to="chat" data-composition-edge-id="basket_count" data-composition-points="989.5,362;581.5,362" d="M 989.5 362 L 581.5 362" class="a-default" data-animate="edge" style="--step:6" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-edge-from="mcp_boundary" data-edge-to="report_service" data-edge-label="artifact_id 또는 검증된 Evidence reference" data-edge-key="6" data-edge-id="v34_tool_to_report_service">
+          <path data-composition-edge-from="mcp_boundary" data-composition-edge-to="report_service" data-composition-edge-id="v34_tool_to_report_service" data-composition-points="1082.857142857143,373;1298.5714285714287,373" d="M 1082.857142857143 373 L 1298.5714285714287 373" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
         <g data-detail="context">
-          <rect x="704.1" y="342" width="162.8" height="16" rx="3" class="c-mask"/>
-          <text x="785.5" y="352" class="t-muted" font-size="9" text-anchor="middle">보고서 바구니 (n) + 초안 링크</text>
+          <rect x="1075.5142857142857" y="353" width="230.4" height="16" rx="3" class="c-mask"/>
+          <text x="1190.7142857142858" y="363" class="t-security" font-size="9" text-anchor="middle">artifact_id 또는 검증된 Evidence reference</text>
         </g>
         </g>
 
-        <g data-edge-from="analyst" data-edge-to="chat" data-edge-label="초안 제출·승인 요청" data-edge-key="7" data-edge-id="submit_draft">
-          <path data-composition-edge-from="analyst" data-composition-edge-to="chat" data-composition-edge-id="submit_draft" data-composition-points="159.5,398;567.5,398" d="M 159.5 398 L 567.5 398" class="a-security" data-animate="edge" style="--step:7" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <g data-edge-from="report_service" data-edge-to="artifact_database" data-edge-label="Block·순서·View·revision·lineage 저장" data-edge-key="7" data-edge-id="v34_store_draft_block">
+          <path data-composition-edge-from="report_service" data-composition-edge-to="artifact_database" data-composition-edge-id="v34_store_draft_block" data-composition-points="1312.5714285714287,406;1528.2857142857142,406" d="M 1312.5714285714287 406 L 1528.2857142857142 406" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
         <g data-detail="context">
-          <rect x="308.1" y="378" width="110.8" height="16" rx="3" class="c-mask"/>
-          <text x="363.5" y="388" class="t-security" font-size="9" text-anchor="middle">초안 제출·승인 요청</text>
+          <rect x="1318.2285714285715" y="386" width="204.4" height="16" rx="3" class="c-mask"/>
+          <text x="1420.4285714285716" y="396" class="t-messagebus" font-size="9" text-anchor="middle">Block·순서·View·revision·lineage 저장</text>
         </g>
         </g>
 
-        <g data-edge-from="chat" data-edge-to="reportapi" data-edge-label="block 순서·criticality·View·release 봉인" data-edge-key="8" data-edge-id="freeze_version">
-          <path data-composition-edge-from="chat" data-composition-edge-to="reportapi" data-composition-edge-id="freeze_version" data-composition-points="581.5,430;989.5,430" d="M 581.5 430 L 989.5 430" class="a-security" data-animate="edge" style="--step:8" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <g data-edge-from="report_author" data-edge-to="app_surface" data-edge-label="초안 제출·승인 요청" data-edge-key="8" data-edge-id="v34_submit_report_draft">
+          <path data-composition-edge-from="report_author" data-composition-edge-to="app_surface" data-composition-edge-id="v34_submit_report_draft" data-composition-points="164,438;609.4285714285714,438" d="M 164 438 L 609.4285714285714 438" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
         <g data-detail="context">
-          <rect x="675.5" y="410" width="220" height="16" rx="3" class="c-mask"/>
-          <text x="785.5" y="420" class="t-security" font-size="9" text-anchor="middle">block 순서·criticality·View·release 봉인</text>
+          <rect x="331.31428571428575" y="418" width="110.8" height="16" rx="3" class="c-mask"/>
+          <text x="386.7142857142857" y="428" class="t-backend" font-size="9" text-anchor="middle">초안 제출·승인 요청</text>
         </g>
         </g>
 
-        <g data-edge-from="reportapi" data-edge-to="appdb" data-edge-label="checksum된 immutable Report Version" data-edge-key="9" data-edge-id="persist_version">
-          <path data-composition-edge-from="reportapi" data-composition-edge-to="appdb" data-composition-edge-id="persist_version" data-composition-points="1003.5,462;1200.5,462" d="M 1003.5 462 L 1200.5 462" class="a-dashed" data-animate="edge" style="--step:9" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <g data-edge-from="app_surface" data-edge-to="report_service" data-edge-label="Block 순서·표현·data/semantic release 확정" data-edge-key="9" data-edge-id="v34_freeze_report_version">
+          <path data-composition-edge-from="app_surface" data-composition-edge-to="report_service" data-composition-edge-id="v34_freeze_report_version" data-composition-points="623.4285714285714,471;1298.5714285714287,471" d="M 623.4285714285714 471 L 1298.5714285714287 471" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
         <g data-detail="context">
-          <rect x="1005" y="442" width="194" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="452" class="t-messagebus" font-size="9" text-anchor="middle">checksum된 immutable Report Version</text>
+          <rect x="845.8" y="451" width="230.4" height="16" rx="3" class="c-mask"/>
+          <text x="961" y="461" class="t-security" font-size="9" text-anchor="middle">Block 순서·표현·data/semantic release 확정</text>
         </g>
         </g>
 
-        <g data-edge-from="admin" data-edge-to="chat" data-edge-label="approve / reject" data-edge-key="10" data-edge-id="approval_decision">
-          <path data-composition-edge-from="admin" data-composition-edge-to="chat" data-composition-edge-id="approval_decision" data-composition-points="370.5,494;567.5,494" d="M 370.5 494 L 567.5 494" class="a-security" data-animate="edge" style="--step:10" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <g data-edge-from="report_service" data-edge-to="artifact_database" data-edge-label="checksum이 있는 변경 불가 Report Version 저장" data-edge-key="10" data-edge-id="v34_persist_report_version">
+          <path data-composition-edge-from="report_service" data-composition-edge-to="artifact_database" data-composition-edge-id="v34_persist_report_version" data-composition-points="1312.5714285714287,504;1528.2857142857142,504" d="M 1312.5714285714287 504 L 1528.2857142857142 504" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
         <g data-detail="context">
-          <rect x="421.4" y="474" width="95.2" height="16" rx="3" class="c-mask"/>
-          <text x="469" y="484" class="t-security" font-size="9" text-anchor="middle">approve / reject</text>
+          <rect x="1297.4285714285716" y="484" width="246" height="16" rx="3" class="c-mask"/>
+          <text x="1420.4285714285716" y="494" class="t-messagebus" font-size="9" text-anchor="middle">checksum이 있는 변경 불가 Report Version 저장</text>
         </g>
         </g>
 
-        <g data-edge-from="chat" data-edge-to="reportapi" data-edge-label="actor + decision + version" data-edge-key="11" data-edge-id="store_decision">
-          <path data-composition-edge-from="chat" data-composition-edge-to="reportapi" data-composition-edge-id="store_decision" data-composition-points="581.5,526;989.5,526" d="M 581.5 526 L 989.5 526" class="a-security" data-animate="edge" style="--step:11" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <g data-edge-from="report_approver" data-edge-to="app_surface" data-edge-label="승인 또는 반려" data-edge-key="11" data-edge-id="v34_decide_report">
+          <path data-composition-edge-from="report_approver" data-composition-edge-to="app_surface" data-composition-edge-id="v34_decide_report" data-composition-points="393.7142857142857,537;609.4285714285714,537" d="M 393.7142857142857 537 L 609.4285714285714 537" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
         <g data-detail="context">
-          <rect x="711.9" y="506" width="147.20000000000002" height="16" rx="3" class="c-mask"/>
-          <text x="785.5" y="516" class="t-security" font-size="9" text-anchor="middle">actor + decision + version</text>
+          <rect x="459.1714285714286" y="517" width="84.8" height="16" rx="3" class="c-mask"/>
+          <text x="501.57142857142856" y="527" class="t-security" font-size="9" text-anchor="middle">승인 또는 반려</text>
         </g>
         </g>
 
-        <g data-edge-from="reportapi" data-edge-to="chat" data-edge-label="APPROVED / REJECTED" data-edge-key="12" data-edge-id="approval_result">
-          <path data-composition-edge-from="reportapi" data-composition-edge-to="chat" data-composition-edge-id="approval_result" data-composition-points="989.5,558;581.5,558" d="M 989.5 558 L 581.5 558" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-edge-from="app_surface" data-edge-to="report_service" data-edge-label="승인자·결정·승인본" data-edge-key="12" data-edge-id="v34_record_report_decision">
+          <path data-composition-edge-from="app_surface" data-composition-edge-to="report_service" data-composition-edge-id="v34_record_report_decision" data-composition-points="623.4285714285714,570;1298.5714285714287,570" d="M 623.4285714285714 570 L 1298.5714285714287 570" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
         <g data-detail="context">
-          <rect x="730.1" y="538" width="110.8" height="16" rx="3" class="c-mask"/>
-          <text x="785.5" y="548" class="t-muted" font-size="9" text-anchor="middle">APPROVED / REJECTED</text>
+          <rect x="908.2" y="550" width="105.60000000000001" height="16" rx="3" class="c-mask"/>
+          <text x="961" y="560" class="t-security" font-size="9" text-anchor="middle">승인자·결정·승인본</text>
         </g>
         </g>
 
-        <g data-edge-from="admin" data-edge-to="chat" data-edge-label="승인본 수동 실행" data-edge-key="13" data-edge-id="manual_run">
-          <path data-composition-edge-from="admin" data-composition-edge-to="chat" data-composition-edge-id="manual_run" data-composition-points="370.5,598;567.5,598" d="M 370.5 598 L 567.5 598" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <g data-edge-from="report_service" data-edge-to="artifact_database" data-edge-label="결정 이력 원자 저장" data-edge-key="13" data-edge-id="v34_store_report_decision">
+          <path data-composition-edge-from="report_service" data-composition-edge-to="artifact_database" data-composition-edge-id="v34_store_report_decision" data-composition-points="1312.5714285714287,603;1528.2857142857142,603" d="M 1312.5714285714287 603 L 1528.2857142857142 603" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
         <g data-detail="context">
-          <rect x="421.4" y="578" width="95.2" height="16" rx="3" class="c-mask"/>
-          <text x="469" y="588" class="t-backend" font-size="9" text-anchor="middle">승인본 수동 실행</text>
+          <rect x="1365.0285714285715" y="583" width="110.8" height="16" rx="3" class="c-mask"/>
+          <text x="1420.4285714285716" y="593" class="t-messagebus" font-size="9" text-anchor="middle">결정 이력 원자 저장</text>
         </g>
         </g>
 
-        <g data-edge-from="chat" data-edge-to="reportapi" data-edge-label="version + report_as_of + request hash" data-edge-key="14" data-edge-id="start_report">
-          <path data-composition-edge-from="chat" data-composition-edge-to="reportapi" data-composition-edge-id="start_report" data-composition-points="581.5,630;989.5,630" d="M 581.5 630 L 989.5 630" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <g data-edge-from="report_service" data-edge-to="app_surface" data-edge-label="승인 / 반려 상태" data-edge-key="14" data-edge-id="v34_show_approval">
+          <path data-composition-edge-from="report_service" data-composition-edge-to="app_surface" data-composition-edge-id="v34_show_approval" data-composition-points="1298.5714285714287,636;623.4285714285714,636" d="M 1298.5714285714287 636 L 623.4285714285714 636" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
         <g data-detail="context">
-          <rect x="683.3" y="610" width="204.4" height="16" rx="3" class="c-mask"/>
-          <text x="785.5" y="620" class="t-backend" font-size="9" text-anchor="middle">version + report_as_of + request hash</text>
+          <rect x="913.4" y="616" width="95.2" height="16" rx="3" class="c-mask"/>
+          <text x="961" y="626" class="t-muted" font-size="9" text-anchor="middle">승인 / 반려 상태</text>
         </g>
         </g>
 
-        <g data-edge-from="reportapi" data-edge-to="appdb" data-edge-label="고정 release·actor·subject별 permission snapshot" data-edge-key="15" data-edge-id="persist_report_run">
-          <path data-composition-edge-from="reportapi" data-composition-edge-to="appdb" data-composition-edge-id="persist_report_run" data-composition-points="1003.5,662;1200.5,662" d="M 1003.5 662 L 1200.5 662" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <g data-edge-from="report_approver" data-edge-to="app_surface" data-edge-label="승인본 수동 실행" data-edge-key="15" data-edge-id="v34_start_manual_report">
+          <path data-composition-edge-from="report_approver" data-composition-edge-to="app_surface" data-composition-edge-id="v34_start_manual_report" data-composition-points="393.7142857142857,682;609.4285714285714,682" d="M 393.7142857142857 682 L 609.4285714285714 682" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g data-detail="context">
-          <rect x="971.2" y="642" width="261.6" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="652" class="t-messagebus" font-size="9" text-anchor="middle">고정 release·actor·subject별 permission snapshot</text>
+          <rect x="453.97142857142853" y="662" width="95.2" height="16" rx="3" class="c-mask"/>
+          <text x="501.57142857142856" y="672" class="t-backend" font-size="9" text-anchor="middle">승인본 수동 실행</text>
         </g>
         </g>
 
-        <g data-edge-from="reportapi" data-edge-to="pipeline" data-edge-label="각 block: 해당 subject의 같은 report snapshot으로 새 Run" data-edge-key="16" data-edge-id="run_block">
-          <path data-composition-edge-from="reportapi" data-composition-edge-to="pipeline" data-composition-edge-id="run_block" data-composition-points="1003.5,694;1411.5,694" d="M 1003.5 694 L 1411.5 694" class="a-security" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <g data-edge-from="app_surface" data-edge-to="report_service" data-edge-label="Report Version + report_as_of + 요청 hash" data-edge-key="16" data-edge-id="v34_start_report_run">
+          <path data-composition-edge-from="app_surface" data-composition-edge-to="report_service" data-composition-edge-id="v34_start_report_run" data-composition-points="623.4285714285714,717;1298.5714285714287,717" d="M 623.4285714285714 717 L 1298.5714285714287 717" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         <g data-detail="context">
-          <rect x="1055.9" y="674" width="303.2" height="16" rx="3" class="c-mask"/>
-          <text x="1207.5" y="684" class="t-security" font-size="9" text-anchor="middle">각 block: 해당 subject의 같은 report snapshot으로 새 Run</text>
+          <rect x="848.4" y="697" width="225.20000000000002" height="16" rx="3" class="c-mask"/>
+          <text x="961" y="707" class="t-backend" font-size="9" text-anchor="middle">Report Version + report_as_of + 요청 hash</text>
         </g>
         </g>
 
-        <g data-edge-from="pipeline" data-edge-to="trino" data-edge-label="APP-G1 → G2 → read-only query" data-edge-key="17" data-edge-id="query_block">
-          <path data-composition-edge-from="pipeline" data-composition-edge-to="trino" data-composition-edge-id="query_block" data-composition-points="1425.5,726;1622.5,726" d="M 1425.5 726 L 1622.5 726" class="a-emphasis" data-animate="edge" style="--step:12" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <g data-edge-from="report_service" data-edge-to="artifact_database" data-edge-label="승인본·Block lineage·고정 release 읽기" data-edge-key="17" data-edge-id="v34_load_frozen_report">
+          <path data-composition-edge-from="report_service" data-composition-edge-to="artifact_database" data-composition-edge-id="v34_load_frozen_report" data-composition-points="1312.5714285714287,752;1528.2857142857142,752" d="M 1312.5714285714287 752 L 1528.2857142857142 752" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
         <g data-detail="context">
-          <rect x="1442.6" y="706" width="162.8" height="16" rx="3" class="c-mask"/>
-          <text x="1524" y="716" class="t-backend" font-size="9" text-anchor="middle">APP-G1 → G2 → read-only query</text>
+          <rect x="1315.6285714285716" y="732" width="209.6" height="16" rx="3" class="c-mask"/>
+          <text x="1420.4285714285716" y="742" class="t-security" font-size="9" text-anchor="middle">승인본·Block lineage·고정 release 읽기</text>
         </g>
         </g>
 
-        <g data-edge-from="trino" data-edge-to="pipeline" data-edge-label="rows·query ID" data-edge-key="18" data-edge-id="query_return">
-          <path data-composition-edge-from="trino" data-composition-edge-to="pipeline" data-composition-edge-id="query_return" data-composition-points="1622.5,758;1425.5,758" d="M 1622.5 758 L 1425.5 758" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-edge-from="report_service" data-edge-to="artifact_database" data-edge-label="Report Run + Block별 실행 계획 저장" data-edge-key="18" data-edge-id="v34_create_report_run">
+          <path data-composition-edge-from="report_service" data-composition-edge-to="artifact_database" data-composition-edge-id="v34_create_report_run" data-composition-points="1312.5714285714287,787;1528.2857142857142,787" d="M 1312.5714285714287 787 L 1528.2857142857142 787" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
         <g data-detail="context">
-          <rect x="1484.2" y="738" width="79.60000000000001" height="16" rx="3" class="c-mask"/>
-          <text x="1524" y="748" class="t-muted" font-size="9" text-anchor="middle">rows·query ID</text>
+          <rect x="1323.4285714285716" y="767" width="194" height="16" rx="3" class="c-mask"/>
+          <text x="1420.4285714285716" y="777" class="t-messagebus" font-size="9" text-anchor="middle">Report Run + Block별 실행 계획 저장</text>
         </g>
         </g>
 
-        <g data-edge-from="pipeline" data-edge-to="reportapi" data-edge-label="APP-G3 result Artifact / View 호환 실패" data-edge-key="19" data-edge-id="block_result">
-          <path data-composition-edge-from="pipeline" data-composition-edge-to="reportapi" data-composition-edge-id="block_result" data-composition-points="1411.5,790;1003.5,790" d="M 1411.5 790 L 1003.5 790" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-edge-from="report_service" data-edge-to="analysis_runtime" data-edge-label="각 Block을 현재 RequestContext로 다시 분석" data-edge-key="19" data-edge-id="v34_rerun_each_block">
+          <path data-composition-edge-from="report_service" data-composition-edge-to="analysis_runtime" data-composition-edge-id="v34_rerun_each_block" data-composition-points="1312.5714285714287,822;1758,822" d="M 1312.5714285714287 822 L 1758 822" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
         <g data-detail="context">
-          <rect x="1100.1" y="770" width="214.8" height="16" rx="3" class="c-mask"/>
-          <text x="1207.5" y="780" class="t-muted" font-size="9" text-anchor="middle">APP-G3 result Artifact / View 호환 실패</text>
+          <rect x="1420.0857142857142" y="802" width="230.4" height="16" rx="3" class="c-mask"/>
+          <text x="1535.2857142857142" y="812" class="t-security" font-size="9" text-anchor="middle">각 Block을 현재 RequestContext로 다시 분석</text>
+        </g>
+        <text data-detail="fine" x="1324.5714285714287" y="840" class="t-dim" font-size="7">복잡한 Cross-domain Block만 선택적으로 graph.resolve를 사용할 수 있지만, 후보는 Semantic Contract와 G1이 다시 확인합니다.</text>
+        </g>
+
+        <g data-edge-from="analysis_runtime" data-edge-to="report_service" data-edge-label="G1→Planner→G2→Trino→G3 결과 또는 실패 코드" data-edge-key="20" data-edge-id="v34_block_core_result">
+          <path data-composition-edge-from="analysis_runtime" data-composition-edge-to="report_service" data-composition-edge-id="v34_block_core_result" data-composition-points="1758,857;1312.5714285714287,857" d="M 1758 857 L 1312.5714285714287 857" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-detail="context">
+          <rect x="1420.0857142857142" y="837" width="230.4" height="16" rx="3" class="c-mask"/>
+          <text x="1535.2857142857142" y="847" class="t-muted" font-size="9" text-anchor="middle">G1→Planner→G2→Trino→G3 결과 또는 실패 코드</text>
         </g>
         </g>
 
-        <g data-edge-from="reportapi" data-edge-to="appdb" data-edge-label="Block Run·result Artifact·status·reason·evidence 저장" data-edge-key="20" data-edge-id="persist_block_results">
-          <path data-composition-edge-from="reportapi" data-composition-edge-to="appdb" data-composition-edge-id="persist_block_results" data-composition-points="1003.5,822;1200.5,822" d="M 1003.5 822 L 1200.5 822" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <g data-edge-from="report_service" data-edge-to="artifact_database" data-edge-label="Block 상태·이유·artifact_id·근거 저장" data-edge-key="21" data-edge-id="v34_store_block_evidence">
+          <path data-composition-edge-from="report_service" data-composition-edge-to="artifact_database" data-composition-edge-id="v34_store_block_evidence" data-composition-points="1312.5714285714287,892;1528.2857142857142,892" d="M 1312.5714285714287 892 L 1528.2857142857142 892" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
         <g data-detail="context">
-          <rect x="958.2" y="802" width="287.6" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="812" class="t-messagebus" font-size="9" text-anchor="middle">Block Run·result Artifact·status·reason·evidence 저장</text>
+          <rect x="1318.2285714285715" y="872" width="204.4" height="16" rx="3" class="c-mask"/>
+          <text x="1420.4285714285716" y="882" class="t-messagebus" font-size="9" text-anchor="middle">Block 상태·이유·artifact_id·근거 저장</text>
         </g>
         </g>
 
-        <g data-edge-from="reportapi" data-edge-to="appdb" data-edge-label="Report Run·command·Turn·head·lease terminal transaction" data-edge-key="21" data-edge-id="terminalize_report">
-          <path data-composition-edge-from="reportapi" data-composition-edge-to="appdb" data-composition-edge-id="terminalize_report" data-composition-points="1003.5,854;1200.5,854" d="M 1003.5 854 L 1200.5 854" class="a-dashed" data-animate="edge" style="--step:12" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <g data-edge-from="report_service" data-edge-to="artifact_database" data-edge-label="SUCCEEDED / PARTIAL / FAILED 원자 종료" data-edge-key="22" data-edge-id="v34_terminalize_report_run">
+          <path data-composition-edge-from="report_service" data-composition-edge-to="artifact_database" data-composition-edge-id="v34_terminalize_report_run" data-composition-points="1312.5714285714287,927;1528.2857142857142,927" d="M 1312.5714285714287 927 L 1528.2857142857142 927" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
         <g data-detail="context">
-          <rect x="953" y="834" width="298" height="16" rx="3" class="c-mask"/>
-          <text x="1102" y="844" class="t-messagebus" font-size="9" text-anchor="middle">Report Run·command·Turn·head·lease terminal transaction</text>
+          <rect x="1315.6285714285716" y="907" width="209.6" height="16" rx="3" class="c-mask"/>
+          <text x="1420.4285714285716" y="917" class="t-messagebus" font-size="9" text-anchor="middle">SUCCEEDED / PARTIAL / FAILED 원자 종료</text>
         </g>
         </g>
 
-        <g data-edge-from="reportapi" data-edge-to="chat" data-edge-label="terminal SUCCEEDED / PARTIAL / FAILED + block 근거" data-edge-key="22" data-edge-id="report_result">
-          <path data-composition-edge-from="reportapi" data-composition-edge-to="chat" data-composition-edge-id="report_result" data-composition-points="989.5,886;581.5,886" d="M 989.5 886 L 581.5 886" class="a-default" data-animate="edge" style="--step:12" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-edge-from="report_service" data-edge-to="app_surface" data-edge-label="HTML·PDF + Block별 근거·합성 데이터 표시" data-edge-key="23" data-edge-id="v34_render_report_files">
+          <path data-composition-edge-from="report_service" data-composition-edge-to="app_surface" data-composition-edge-id="v34_render_report_files" data-composition-points="1298.5714285714287,962;623.4285714285714,962" d="M 1298.5714285714287 962 L 623.4285714285714 962" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
         <g data-detail="context">
-          <rect x="649.5" y="866" width="272" height="16" rx="3" class="c-mask"/>
-          <text x="785.5" y="876" class="t-muted" font-size="9" text-anchor="middle">terminal SUCCEEDED / PARTIAL / FAILED + block 근거</text>
+          <rect x="851" y="942" width="220" height="16" rx="3" class="c-mask"/>
+          <text x="961" y="952" class="t-muted" font-size="9" text-anchor="middle">HTML·PDF + Block별 근거·합성 데이터 표시</text>
+        </g>
+        </g>
+
+        <g data-edge-from="app_surface" data-edge-to="report_approver" data-edge-label="전체 성공 / 일부 성공 / 실패" data-edge-key="24" data-edge-id="v34_report_to_approver">
+          <path data-composition-edge-from="app_surface" data-composition-edge-to="report_approver" data-composition-edge-id="v34_report_to_approver" data-composition-points="609.4285714285714,997;393.7142857142857,997" d="M 609.4285714285714 997 L 393.7142857142857 997" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+        <g data-detail="context">
+          <rect x="422.77142857142854" y="977" width="157.6" height="16" rx="3" class="c-mask"/>
+          <text x="501.57142857142856" y="987" class="t-muted" font-size="9" text-anchor="middle">전체 성공 / 일부 성공 / 실패</text>
         </g>
         </g>
 
         <!-- Segment Labels -->
         <g data-graph-role="segment-label" data-segment-id="0">
-          <rect x="56" y="128" width="138.8" height="18" rx="3" class="c-mask"/>
-          <text x="62" y="141" class="t-dim" font-size="9" font-weight="600">대화 결과 → Report Draft</text>
+          <rect x="56" y="128" width="279.2" height="18" rx="3" class="c-mask"/>
+          <text x="62" y="141" class="t-dim" font-size="9" font-weight="600">초안 구성 — 검증된 Artifact를 보고서 Block으로 연결</text>
         </g>
         <g data-graph-role="segment-label" data-segment-id="1">
-          <rect x="56" y="363" width="149.20000000000002" height="18" rx="3" class="c-mask"/>
-          <text x="62" y="376" class="t-dim" font-size="9" font-weight="600">Immutable approval version</text>
+          <rect x="56" y="393" width="222" height="18" rx="3" class="c-mask"/>
+          <text x="62" y="406" class="t-dim" font-size="9" font-weight="600">승인 — 변경 불가 승인본과 결정 이력 보존</text>
         </g>
         <g data-graph-role="segment-label" data-segment-id="2">
-          <rect x="56" y="563" width="320.8" height="18" rx="3" class="c-mask"/>
-          <text x="62" y="576" class="t-dim" font-size="9" font-weight="600">Manual run → block별 새 Analysis Run → 결과 terminalization</text>
+          <rect x="56" y="638" width="289.6" height="18" rx="3" class="c-mask"/>
+          <text x="62" y="651" class="t-dim" font-size="9" font-weight="600">재실행 — Block별 현재 권한·Core 재검증·부분 실패 처리</text>
         </g>
 
         <!-- Participants -->
-        <g id="node-analyst" data-node-id="analyst" data-node-label="현업 분석가" tabindex="0" role="button" aria-label="Focus 현업 분석가, 결과 선택·초안 제출, Sequence participant" aria-pressed="false" data-node-kind="external" data-node-sublabel="결과 선택·초안 제출" data-node-context="Sequence participant">
-          <title>현업 분석가 · 결과 선택·초안 제출 · Sequence participant</title>
-          <rect x="62" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="62" y="72" width="181" height="54" rx="6" class="c-external" data-animate="node" style="--step:0" stroke-width="1.5"/>
+        <g id="node-report_author" data-node-id="report_author" data-node-label="보고서 작성자" tabindex="0" role="button" aria-label="Focus 보고서 작성자, Artifact 선택·초안 제출, Sequence participant" aria-pressed="false" data-node-kind="external" data-node-sublabel="Artifact 선택·초안 제출" data-node-context="Sequence participant">
+          <title>보고서 작성자 · Artifact 선택·초안 제출 · Sequence participant</title>
+          <rect x="62" y="72" width="190" height="54" rx="6" class="c-mask"/>
+          <rect x="62" y="72" width="190" height="54" rx="6" class="c-external" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(68 78) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-detail-anchor x="152.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">현업 분석가</text>
-          <text data-detail="context" x="152.5" y="111" class="t-muted" font-size="7" text-anchor="middle">결과 선택·초안 제출</text>
+          <text data-detail-anchor x="157" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">보고서 작성자</text>
+          <text data-detail="context" x="157" y="111" class="t-muted" font-size="7" text-anchor="middle">Artifact 선택·초안 제출</text>
         </g>
 
-        <g id="node-admin" data-node-id="admin" data-node-label="보고서 관리자" tabindex="0" role="button" aria-label="Focus 보고서 관리자, 검토·승인·수동 실행, Sequence participant" aria-pressed="false" data-node-kind="external" data-node-sublabel="검토·승인·수동 실행" data-node-context="Sequence participant">
-          <title>보고서 관리자 · 검토·승인·수동 실행 · Sequence participant</title>
-          <rect x="273" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="273" y="72" width="181" height="54" rx="6" class="c-external" data-animate="node" style="--step:1" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(279 78) scale(0.6875)">
+        <g id="node-report_approver" data-node-id="report_approver" data-node-label="보고서 승인자" tabindex="0" role="button" aria-label="Focus 보고서 승인자, 검토·승인·수동 실행, Sequence participant" aria-pressed="false" data-node-kind="external" data-node-sublabel="검토·승인·수동 실행" data-node-context="Sequence participant">
+          <title>보고서 승인자 · 검토·승인·수동 실행 · Sequence participant</title>
+          <rect x="291.7142857142857" y="72" width="190" height="54" rx="6" class="c-mask"/>
+          <rect x="291.7142857142857" y="72" width="190" height="54" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(297.7142857142857 78) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-detail-anchor x="363.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">보고서 관리자</text>
-          <text data-detail="context" x="363.5" y="111" class="t-muted" font-size="7" text-anchor="middle">검토·승인·수동 실행</text>
+          <text data-detail-anchor x="386.7142857142857" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">보고서 승인자</text>
+          <text data-detail="context" x="386.7142857142857" y="111" class="t-muted" font-size="7" text-anchor="middle">검토·승인·수동 실행</text>
         </g>
 
-        <g id="node-chat" data-node-id="chat" data-node-label="대화·보고서 화면" tabindex="0" role="button" aria-label="Focus 대화·보고서 화면, 결과 카드·바구니·builder, Sequence participant" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="결과 카드·바구니·builder" data-node-context="Sequence participant">
-          <title>대화·보고서 화면 · 결과 카드·바구니·builder · Sequence participant</title>
-          <rect x="484" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="484" y="72" width="181" height="54" rx="6" class="c-frontend" data-animate="node" style="--step:2" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(490 78) scale(0.6875)">
+        <g id="node-app_surface" data-node-id="app_surface" data-node-label="사용자 화면" tabindex="0" role="button" aria-label="Focus 사용자 화면, 결과 카드·보고서 바구니, Sequence participant" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="결과 카드·보고서 바구니" data-node-context="Sequence participant">
+          <title>사용자 화면 · 결과 카드·보고서 바구니 · Sequence participant</title>
+          <rect x="521.4285714285714" y="72" width="190" height="54" rx="6" class="c-mask"/>
+          <rect x="521.4285714285714" y="72" width="190" height="54" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(527.4285714285714 78) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-detail-anchor x="574.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">대화·보고서 화면</text>
-          <text data-detail="context" x="574.5" y="111" class="t-muted" font-size="7" text-anchor="middle">결과 카드·바구니·builder</text>
+          <text data-detail-anchor x="616.4285714285714" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">사용자 화면</text>
+          <text data-detail="context" x="616.4285714285714" y="111" class="t-muted" font-size="7" text-anchor="middle">결과 카드·보고서 바구니</text>
         </g>
 
-        <g id="node-conversation" data-node-id="conversation" data-node-label="Conversation API" tabindex="0" role="button" aria-label="Focus Conversation API, REPORT_ACTION orchestration, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="REPORT_ACTION orchestration" data-node-context="Sequence participant">
-          <title>Conversation API · REPORT_ACTION orchestration · Sequence participant</title>
-          <rect x="695" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="695" y="72" width="181" height="54" rx="6" class="c-backend" data-animate="node" style="--step:3" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(701 78) scale(0.6875)">
+        <g id="node-report_coordinator" data-node-id="report_coordinator" data-node-label="전체 조율" tabindex="0" role="button" aria-label="Focus 전체 조율, REPORT_ACTION Route, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="REPORT_ACTION Route" data-node-context="Sequence participant">
+          <title>전체 조율 · REPORT_ACTION Route · Sequence participant</title>
+          <rect x="751.1428571428571" y="72" width="190" height="54" rx="6" class="c-mask"/>
+          <rect x="751.1428571428571" y="72" width="190" height="54" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(757.1428571428571 78) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="785.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Conversation API</text>
-          <text data-detail="context" x="785.5" y="111" class="t-muted" font-size="7" text-anchor="middle">REPORT_ACTION orchestration</text>
+          <text data-detail-anchor x="846.1428571428571" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">전체 조율</text>
+          <text data-detail="context" x="846.1428571428571" y="111" class="t-muted" font-size="7" text-anchor="middle">REPORT_ACTION Route</text>
         </g>
 
-        <g id="node-reportapi" data-node-id="reportapi" data-node-label="Report API" tabindex="0" role="button" aria-label="Focus Report API, Draft command·version·run, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Draft command·version·run" data-node-context="Sequence participant">
-          <title>Report API · Draft command·version·run · Sequence participant</title>
-          <rect x="906" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="906" y="72" width="181" height="54" rx="6" class="c-backend" data-animate="node" style="--step:4" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(912 78) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-detail-anchor x="996.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Report API</text>
-          <text data-detail="context" x="996.5" y="111" class="t-muted" font-size="7" text-anchor="middle">Draft command·version·run</text>
-        </g>
-
-        <g id="node-appdb" data-node-id="appdb" data-node-label="App DB" tabindex="0" role="button" aria-label="Focus App DB, Artifact·ViewSpec·Report, Sequence participant" aria-pressed="false" data-node-kind="database" data-node-sublabel="Artifact·ViewSpec·Report" data-node-context="Sequence participant">
-          <title>App DB · Artifact·ViewSpec·Report · Sequence participant</title>
-          <rect x="1117" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="1117" y="72" width="181" height="54" rx="6" class="c-database" data-animate="node" style="--step:5" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1123 78) scale(0.6875)">
-            <ellipse cx="8" cy="4" rx="5" ry="2"/>
-            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
-          </g>
-          <text data-detail-anchor x="1207.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">App DB</text>
-          <text data-detail="context" x="1207.5" y="111" class="t-muted" font-size="7" text-anchor="middle">Artifact·ViewSpec·Report</text>
-        </g>
-
-        <g id="node-pipeline" data-node-id="pipeline" data-node-label="Analysis Pipeline" tabindex="0" role="button" aria-label="Focus Analysis Pipeline, 현재 권한·APP Gates, Sequence participant" aria-pressed="false" data-node-kind="security" data-node-sublabel="현재 권한·APP Gates" data-node-context="Sequence participant">
-          <title>Analysis Pipeline · 현재 권한·APP Gates · Sequence participant</title>
-          <rect x="1328" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="1328" y="72" width="181" height="54" rx="6" class="c-security" data-animate="node" style="--step:6" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1334 78) scale(0.6875)">
+        <g id="node-mcp_boundary" data-node-id="mcp_boundary" data-node-label="안전한 MCP 도구" tabindex="0" role="button" aria-label="Focus 안전한 MCP 도구, artifact.get·report.add_block, Sequence participant" aria-pressed="false" data-node-kind="security" data-node-sublabel="artifact.get·report.add_block" data-node-context="Sequence participant">
+          <title>안전한 MCP 도구 · artifact.get·report.add_block · Sequence participant</title>
+          <rect x="980.8571428571429" y="72" width="190" height="54" rx="6" class="c-mask"/>
+          <rect x="980.8571428571429" y="72" width="190" height="54" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(986.8571428571429 78) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-detail-anchor x="1418.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Analysis Pipeline</text>
-          <text data-detail="context" x="1418.5" y="111" class="t-muted" font-size="7" text-anchor="middle">현재 권한·APP Gates</text>
+          <text data-detail-anchor x="1075.857142857143" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">안전한 MCP 도구</text>
+          <text data-detail="context" x="1075.857142857143" y="111" class="t-muted" font-size="7" text-anchor="middle">artifact.get·report.add_block</text>
         </g>
 
-        <g id="node-trino" data-node-id="trino" data-node-label="Trino" tabindex="0" role="button" aria-label="Focus Trino, 승인 데이터 read-only, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="승인 데이터 read-only" data-node-context="Sequence participant">
-          <title>Trino · 승인 데이터 read-only · Sequence participant</title>
-          <rect x="1539" y="72" width="181" height="54" rx="6" class="c-mask"/>
-          <rect x="1539" y="72" width="181" height="54" rx="6" class="c-backend" data-animate="node" style="--step:7" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1545 78) scale(0.6875)">
+        <g id="node-report_service" data-node-id="report_service" data-node-label="보고서 서비스" tabindex="0" role="button" aria-label="Focus 보고서 서비스, Agent 아님 · 승인 Workflow, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Agent 아님 · 승인 Workflow" data-node-context="Sequence participant">
+          <title>보고서 서비스 · Agent 아님 · 승인 Workflow · Sequence participant</title>
+          <rect x="1210.5714285714287" y="72" width="190" height="54" rx="6" class="c-mask"/>
+          <rect x="1210.5714285714287" y="72" width="190" height="54" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(1216.5714285714287 78) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="1629.5" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Trino</text>
-          <text data-detail="context" x="1629.5" y="111" class="t-muted" font-size="7" text-anchor="middle">승인 데이터 read-only</text>
+          <text data-detail-anchor x="1305.5714285714287" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">보고서 서비스</text>
+          <text data-detail="context" x="1305.5714285714287" y="111" class="t-muted" font-size="7" text-anchor="middle">Agent 아님 · 승인 Workflow</text>
+        </g>
+
+        <g id="node-artifact_database" data-node-id="artifact_database" data-node-label="결과·보고서 저장" tabindex="0" role="button" aria-label="Focus 결과·보고서 저장, Artifact·View·Version·Run, Sequence participant" aria-pressed="false" data-node-kind="database" data-node-sublabel="Artifact·View·Version·Run" data-node-context="Sequence participant">
+          <title>결과·보고서 저장 · Artifact·View·Version·Run · Sequence participant</title>
+          <rect x="1440.2857142857142" y="72" width="190" height="54" rx="6" class="c-mask"/>
+          <rect x="1440.2857142857142" y="72" width="190" height="54" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(1446.2857142857142 78) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-detail-anchor x="1535.2857142857142" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">결과·보고서 저장</text>
+          <text data-detail="context" x="1535.2857142857142" y="111" class="t-muted" font-size="7" text-anchor="middle">Artifact·View·Version·Run</text>
+        </g>
+
+        <g id="node-analysis_runtime" data-node-id="analysis_runtime" data-node-label="핵심 분석 Core" tabindex="0" role="button" aria-label="Focus 핵심 분석 Core, Semantic·G1·G2·Trino·G3, Sequence participant" aria-pressed="false" data-node-kind="security" data-node-sublabel="Semantic·G1·G2·Trino·G3" data-node-context="Sequence participant">
+          <title>핵심 분석 Core · Semantic·G1·G2·Trino·G3 · Sequence participant</title>
+          <rect x="1670" y="72" width="190" height="54" rx="6" class="c-mask"/>
+          <rect x="1670" y="72" width="190" height="54" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(1676 78) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
+          </g>
+          <text data-detail-anchor x="1765" y="94" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">핵심 분석 Core</text>
+          <text data-detail="context" x="1765" y="111" class="t-muted" font-size="7" text-anchor="middle">Semantic·G1·G2·Trino·G3</text>
         </g>
 
         <!-- Legend -->
         <g data-legend>
-          <text x="40" y="936" class="t-primary" font-size="12" font-weight="650">Legend</text>
-          <g data-legend-semantic-kind="emphasis" data-legend-x="40" data-legend-baseline="956" data-legend-width="98">
-            <path d="M 40 953 L 74 953" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-            <text x="83" y="956" class="t-muted" font-size="10" font-weight="500">초안·재실행</text>
+          <text x="40" y="1106" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="emphasis" data-legend-x="40" data-legend-baseline="1126" data-legend-width="118">
+            <path d="M 40 1123 L 74 1123" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+            <text x="83" y="1126" class="t-muted" font-size="10" font-weight="500">MCP·보고서 실행</text>
           </g>
-          <g data-legend-semantic-kind="return" data-legend-x="160" data-legend-baseline="956" data-legend-width="113">
-            <path d="M 160 953 L 194 953" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
-            <text x="203" y="956" class="t-muted" font-size="10" font-weight="500">상태·결과 응답</text>
+          <g data-legend-semantic-kind="return" data-legend-x="180" data-legend-baseline="1126" data-legend-width="113">
+            <path d="M 180 1123 L 214 1123" class="a-default" stroke-width="1.4" stroke-dasharray="3,5" marker-end="url(#arrowhead)"/>
+            <text x="223" y="1126" class="t-muted" font-size="10" font-weight="500">상태·결과 응답</text>
           </g>
-          <g data-legend-semantic-kind="security" data-legend-x="295" data-legend-baseline="956" data-legend-width="123">
-            <path d="M 295 953 L 329 953" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-            <text x="338" y="956" class="t-muted" font-size="10" font-weight="500">소유권·승인·권한</text>
+          <g data-legend-semantic-kind="security" data-legend-x="315" data-legend-baseline="1126" data-legend-width="113">
+            <path d="M 315 1123 L 349 1123" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+            <text x="358" y="1126" class="t-muted" font-size="10" font-weight="500">권한·승인·Gate</text>
           </g>
-          <g data-legend-semantic-kind="dashed" data-legend-x="440" data-legend-baseline="956" data-legend-width="128">
-            <path d="M 440 953 L 474 953" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
-            <text x="483" y="956" class="t-muted" font-size="10" font-weight="500">버전·lineage 저장</text>
+          <g data-legend-semantic-kind="dashed" data-legend-x="450" data-legend-baseline="1126" data-legend-width="113">
+            <path d="M 450 1123 L 484 1123" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+            <text x="493" y="1126" class="t-muted" font-size="10" font-weight="500">버전·근거 저장</text>
           </g>
-          <g data-legend-semantic-kind="default" data-legend-x="590" data-legend-baseline="956" data-legend-width="123">
-            <path d="M 590 953 L 624 953" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
-            <text x="633" y="956" class="t-muted" font-size="10" font-weight="500">사용자·업무 호출</text>
+          <g data-legend-semantic-kind="default" data-legend-x="585" data-legend-baseline="1126" data-legend-width="123">
+            <path d="M 585 1123 L 619 1123" class="a-default" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+            <text x="628" y="1126" class="t-muted" font-size="10" font-weight="500">사용자·업무 요청</text>
           </g>
         </g>
       </svg>
@@ -6119,13 +6132,11 @@
 
         // Prepend a local()-only @font-face block for each weight so that the
         // sandboxed image-rendering context used during PNG/JPEG/WebP export
-        // can find JetBrains Mono if the user has it installed locally, and
-        // falls through cleanly to the monospace stack otherwise. The usual
-        // Google-Fonts <link> in the host document is unreachable from the
-        // serialized SVG, so url()-sourced faces would just hang.
+        // can find Pretendard when it is installed locally and fall through
+        // cleanly to the Korean system sans-serif stack otherwise.
         var fontFallback = [400, 500, 600, 700].map(function (w) {
-          return "@font-face { font-family: 'JetBrains Mono'; font-weight: " + w +
-                 "; src: local('JetBrains Mono'), local('JetBrainsMono-Regular'); }";
+          return "@font-face { font-family: 'Pretendard'; font-weight: " + w +
+                 "; src: local('Pretendard'), local('Pretendard Variable'); }";
         }).join('\n');
 
         var style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
@@ -6143,7 +6154,7 @@
 
           style.textContent =
             fontFallback + "\n" +
-            "svg { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace; }\n" +
+            "svg { font-family: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', sans-serif; }\n" +
             hostStyle + "\n" +
             ":root, svg { " + darkVars + " }\n" +
             "@media (prefers-color-scheme: light) { :root, svg { " + lightVars + " } }\n" +
@@ -6171,7 +6182,7 @@
           // Keep this order.
           style.textContent =
             fontFallback + "\n" +
-            "svg { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', 'Noto Sans Mono CJK SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', monospace; }\n" +
+            "svg { font-family: 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Segoe UI', sans-serif; }\n" +
             hostStyle + "\n" +
             ":root, svg { " + vars + " }\n";
 
@@ -6282,7 +6293,7 @@
       function fitCanvasText(ctx, text, maxWidth, startSize, minSize, weight) {
         var value = String(text || '').trim();
         var size = startSize;
-        var family = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+        var family = "'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Malgun Gothic', 'Segoe UI', sans-serif";
         while (size > minSize) {
           ctx.font = (weight || '600') + ' ' + size + 'px ' + family;
           if (ctx.measureText(value).width <= maxWidth) return value;
@@ -6373,7 +6384,7 @@
               var fittedSubtitle = fitCanvasText(ctx, subtitle, SHARE_CARD_WIDTH - SHARE_CARD_PADDING * 2 - 280, 13, 11, '500');
               ctx.fillText(fittedSubtitle, SHARE_CARD_PADDING, 87);
 
-              ctx.font = "600 12px 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+              ctx.font = "600 12px 'Pretendard', 'Pretendard Variable', 'Noto Sans KR', 'Malgun Gothic', 'Segoe UI', sans-serif";
               ctx.textAlign = 'right';
               ctx.fillStyle = accent;
               ctx.fillText(cardLabel, SHARE_CARD_WIDTH - SHARE_CARD_PADDING, 50);

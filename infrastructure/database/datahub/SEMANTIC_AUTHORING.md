@@ -44,6 +44,14 @@ IdP/DataHub administration process. Authoring checks its URN, display name,
 description, and active status before any mutation; it never creates or repairs an
 identity owner.
 
+Runtime source recipes own physical discovery and `schemaMetadata`. Their pinned
+DataHub v1.7 `simple_add_dataset_properties` transformer uses `PATCH` with
+`replace_existing: false`, so a later base ingestion merges connector properties
+without deleting `answervice.*` semantic properties. Base ingestion is nevertheless
+only `BASE_METADATA_INGESTED`: schema changes remain connector-owned and the semantic
+release becomes ready only after the authoring check/publish transaction re-reads the
+complete manifest and verifies every physical fingerprint against Trino.
+
 Operational invocation is a two-step check-and-publish flow. Install the pinned dependencies from
 `requirements.authoring.txt`. Both steps require `TRINO_DATAHUB_USER`, the
 environment-only secret `TRINO_DATAHUB_PASSWORD`, an HTTPS `TRINO_URL`, and the
@@ -107,6 +115,11 @@ separate change-management system rather than a development-only bypass in this 
 `PUBLISHED_AND_VERIFIED` means the same content-derived catalog hash was rebuilt from
 live DataHub and Trino after publication. Unit tests using `MockTransport` prove only
 wire and validation contracts; they are not live publication evidence.
+
+The Backend keeps the verified catalog snapshot and readiness receipt for the shared
+`86400` second operational TTL. After a new semantic release reaches
+`PUBLISHED_AND_VERIFIED`, recreate the Backend before routing analysis traffic to that
+release so no process can retain the predecessor snapshot for the remainder of its TTL.
 
 Pinned DataHub v1.7 exposes different authoritative fields across its read APIs.
 GlossaryTerm status/lifecycle and editable field-term associations are verified from

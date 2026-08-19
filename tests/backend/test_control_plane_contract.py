@@ -25,6 +25,16 @@ class ControlPlaneContractTest(unittest.TestCase):
             dockerfile,
         )
 
+    def test_docker_healthcheck_is_liveness_not_product_readiness(self) -> None:
+        dockerfile = (BACKEND / "Dockerfile").read_text(encoding="utf-8")
+        healthcheck = dockerfile[dockerfile.index("HEALTHCHECK") :]
+
+        self.assertIn("/health", healthcheck)
+        self.assertNotIn("/readiness", healthcheck)
+        self.assertIn("from urllib.request import urlopen", healthcheck)
+        self.assertNotIn("import httpx", healthcheck)
+        self.assertIn("--timeout=5s", healthcheck)
+
     def test_published_migration_is_immutable_and_followup_is_least_privilege(self) -> None:
         versions = BACKEND / "migrations" / "versions"
         published = (versions / "20260730_02_application_schema.py").read_bytes()

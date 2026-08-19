@@ -10,7 +10,7 @@ import { TurnReportModal } from "../components/TurnReportModal";
 import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
-import { analysisError, clarifiedQuestion, exampleQuestionsFromDefinitions, formatSeoulDateTime, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
+import { analysisError, clarifiedQuestion, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
 
 const RUN_HISTORY_PAGE_SIZE = 20;
 const MAX_QUESTION_LENGTH = 1000;
@@ -204,6 +204,8 @@ export function AgentPage({ onNavigate }) {
       let finalRun;
       if (analysisRaw && analysisRaw.data) {
         finalRun = normalizeApiResponse(analysisRaw, normalized);
+      } else if (data?.status === "FAILED") {
+        finalRun = commandErrorRun(normalized, data);
       } else if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
         const options = data?.disambiguation_options || serverTurn?.resolved_slots?.disambiguation_options || [];
         const clarType = serverTurn?.resolved_slots?.clarification_type || "metric";
@@ -235,15 +237,12 @@ export function AgentPage({ onNavigate }) {
           reportDefinitionId: serverTurn?.report_definition_id,
         };
       } else {
-        finalRun = {
-          ...transientRun(normalized, "failed"),
-          error: {
-            code: "NO_MATCH",
-            message: "질문과 일치하는 분석 결과를 생성하지 못했습니다.",
-            retryable: true,
-            required_action: "PROVIDE_CONTEXT",
-          },
-        };
+        finalRun = commandErrorRun(normalized, {
+          code: "INTERNAL_ERROR",
+          message: "분석 명령의 결과 상태를 확인하지 못했습니다.",
+          retryable: true,
+          required_action: "CONTACT_SUPPORT",
+        });
       }
 
       setTurns((prev) => prev.map((t) => t.turnId === optimisticTurn.turnId ? {

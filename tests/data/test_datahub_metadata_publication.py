@@ -254,6 +254,74 @@ def arbitrary_bundle():
     }
 
 
+def arbitrary_ratio_bundle():
+    """같은 계산 범위의 두 column metric과 derived ratio를 가진 일반 publication fixture를 만든다."""
+
+    bundle = arbitrary_bundle()
+    fqn = "quartz.core.events"
+    field = lambda column: {"asset_fqn": fqn, "column": column}
+    amount = bundle["metric_rules"][0]
+    count = {
+        "id": "event_count",
+        "source": {"kind": "column", "field": field("event_id")},
+        "aggregation": "count",
+        "result_field": "event_count",
+        "unit": "count",
+        "time_field": field("event_at"),
+        "reduction": "sum",
+        "dimensions": deepcopy(amount["dimensions"]),
+        "required_filters": deepcopy(amount["required_filters"]),
+    }
+    ratio = {
+        "id": "amount_per_event",
+        "source": {
+            "kind": "ratio",
+            "numerator_metric_id": "amount_total",
+            "denominator_metric_id": "event_count",
+            "zero_policy": "null_on_zero_denominator",
+        },
+        "aggregation": "ratio",
+        "result_field": "amount_per_event",
+        "unit": "currency_per_event",
+        "time_field": None,
+        "reduction": "ratio",
+        "dimensions": [],
+        "required_filters": [],
+    }
+    bundle["metric_rules"].extend((count, ratio))
+    bundle["metric_terms"].extend(
+        (
+            {
+                "id": "event_count",
+                "urn": "urn:li:glossaryTerm:event_count",
+                "name": "Event Count",
+                "definition": "Approved count of governed events.",
+                "aliases": ["Event Count", "event volume"],
+                "unit": "count",
+                "version": "glossary-r3",
+                "approval_status": "APPROVED",
+                "owner_urn": OWNER,
+                "domain_urn": DOMAIN,
+                "approved_lifecycle_urn": LIFECYCLE,
+            },
+            {
+                "id": "amount_per_event",
+                "urn": "urn:li:glossaryTerm:amount_per_event",
+                "name": "Amount per Event",
+                "definition": "Approved amount divided by governed event count.",
+                "aliases": ["Amount per Event", "average event amount"],
+                "unit": "currency_per_event",
+                "version": "glossary-r3",
+                "approval_status": "APPROVED",
+                "owner_urn": OWNER,
+                "domain_urn": DOMAIN,
+                "approved_lifecycle_urn": LIFECYCLE,
+            },
+        )
+    )
+    return bundle
+
+
 def _aspect_index(bundle):
     result = {}
     for _entity_type, urn, name, value in iter_aspects(bundle):
@@ -269,16 +337,6 @@ def test_glossary_key_uses_canonical_urn_identifier():
     key = _aspect_index(bundle)[term["urn"]]["glossaryTermKey"]
 
     assert key["name"] == term["urn"].removeprefix("urn:li:glossaryTerm:")
-
-
-def _term_associations(asset, bundle):
-    result = {}
-    terms = {term["id"]: term["urn"] for term in bundle["metric_terms"]}
-    for metric in bundle["metric_rules"]:
-        source = metric["source"]["field"]
-        if source["asset_fqn"] == asset["fqn"]:
-            result.setdefault(source["column"], set()).add(terms[metric["id"]])
-    return result
 
 
 def _native(entity, definition):
@@ -307,8 +365,8 @@ def _native(entity, definition):
 
 
 def _graphql_dataset(asset, bundle, aspects):
-    field_terms = _term_associations(asset, bundle)
     properties = aspects[asset["urn"]]["datasetProperties"]
+    dataset_terms = aspects[asset["urn"]]["glossaryTerms"]["terms"]
     entity = {
         "urn": asset["urn"],
         "name": asset["fqn"],
@@ -340,8 +398,8 @@ def _graphql_dataset(asset, bundle, aspects):
         },
         "glossaryTerms": {
             "terms": [
-                {"term": {"urn": urn}}
-                for urn in sorted({urn for values in field_terms.values() for urn in values})
+                {"term": {"urn": item["urn"]}}
+                for item in dataset_terms
             ]
         },
     }
@@ -396,6 +454,45 @@ class SemanticPublicationContractTest(unittest.IsolatedAsyncioTestCase):
         changed = deepcopy(self.bundle)
         changed["schema_context"]["assets"][0]["columns"][3]["native_type"] = "double"
         self.assertNotEqual(catalog_hash(self.bundle), catalog_hash(changed))
+
+    def test_ratio_contract_is_hashed_and_associated_without_fake_column_binding(self):
+        bundle = arbitrary_ratio_bundle()
+        validate_bundle(bundle)
+        aspects = _aspect_index(bundle)
+        ratio_urn = "urn:li:glossaryTerm:amount_per_event"
+        asset = bundle["schema_context"]["assets"][0]
+
+        dataset_terms = {
+            item["urn"] for item in aspects[asset["urn"]]["glossaryTerms"]["terms"]
+        }
+        editable = aspects[asset["urn"]]["editableSchemaMetadata"]
+        field_terms = {
+            item["fieldPath"]: {
+                term["urn"]
+                for term in item.get("glossaryTerms", {}).get("terms", ())
+            }
+            for item in editable["editableSchemaFieldInfo"]
+        }
+        self.assertIn(ratio_urn, dataset_terms)
+        self.assertTrue(all(ratio_urn not in values for values in field_terms.values()))
+        self.assertEqual(4, release_manifest(bundle)["metric_term_count"])
+
+        changed = deepcopy(bundle)
+        changed["metric_rules"][-1]["result_field"] = "amount_per_event_changed"
+        self.assertNotEqual(catalog_hash(bundle), catalog_hash(changed))
+
+    def test_ratio_contract_rejects_missing_or_misaligned_operands(self):
+        bundle = arbitrary_ratio_bundle()
+        missing = deepcopy(bundle)
+        missing["metric_rules"][-1]["source"]["denominator_metric_id"] = "missing"
+        misaligned = deepcopy(bundle)
+        misaligned["metric_rules"][2]["dimensions"] = []
+        nested = deepcopy(bundle)
+        nested["metric_rules"][-1]["source"]["denominator_metric_id"] = "amount_per_event"
+        for invalid in (missing, misaligned, nested):
+            with self.subTest(invalid=invalid["metric_rules"][-1]["source"]):
+                with self.assertRaises(SemanticMetadataError):
+                    validate_bundle(invalid)
 
     def test_contract_rejects_values_formula_and_incomplete_native_governance(self):
         cases = []
@@ -452,6 +549,16 @@ class SemanticPublicationContractTest(unittest.IsolatedAsyncioTestCase):
             parsed = parse_dataset(_graphql_dataset(asset, self.bundle, aspects))
             self.assertEqual(asset["urn"], parsed.urn)
             self.assertEqual(frozenset(asset["entitlements"]["domains"]), parsed.allowed_domains)
+
+        ratio_bundle = arbitrary_ratio_bundle()
+        ratio_aspects = _aspect_index(ratio_bundle)
+        ratio_asset = ratio_bundle["schema_context"]["assets"][0]
+        parsed = parse_dataset(
+            _graphql_dataset(ratio_asset, ratio_bundle, ratio_aspects)
+        )
+        self.assertIn(
+            "urn:li:glossaryTerm:amount_per_event", parsed.dataset_terms
+        )
 
     async def test_mcp_wire_contract_uses_one_injected_audit_stamp(self):
         requests = []

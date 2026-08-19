@@ -148,6 +148,14 @@ def _select_assets_for_metrics(
                 for metric in item.get("metrics", ())
                 if isinstance(metric, dict) and metric.get("id") in keep_ids
             )
+            if synthetic is not None:
+                # 검색 단계의 ratio 항목은 후보 노출용이다. 실행 Context에는 현재
+                # Glossary read-back으로 다시 합성한 한 개의 canonical rule만 둔다.
+                kept = tuple(
+                    metric
+                    for metric in kept
+                    if metric.get("id") != synthetic["id"]
+                )
             if (
                 synthetic is not None
                 and not injected

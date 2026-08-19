@@ -7,9 +7,11 @@ from typing import Any
 
 from src.data.governance_contract import (
     canonical_json,
+    column_metric_asset,
     datahub_schema_projection,
     datahub_schema_sha1,
     dataset_runtime_property_projection,
+    metric_asset_fqns,
     release_manifest,
     term_runtime_property_projection,
 )
@@ -28,6 +30,7 @@ def iter_aspects(bundle: Mapping[str, Any]) -> Iterator[Aspect]:
     validate_bundle(bundle)
     manifest = release_manifest(bundle)
     metrics = list(bundle["metric_rules"])
+    metrics_by_id = {item["id"]: item for item in metrics}
     terms = {item["id"]: item for item in bundle["metric_terms"]}
     yield from _governance_aspects(bundle["governance_entities"])
     for term in bundle["metric_terms"]:
@@ -36,7 +39,12 @@ def iter_aspects(bundle: Mapping[str, Any]) -> Iterator[Aspect]:
         asset_metrics = [
             metric
             for metric in metrics
-            if metric["source"]["field"]["asset_fqn"] == asset["fqn"]
+            if column_metric_asset(metric) == asset["fqn"]
+        ]
+        dataset_term_urns = [
+            str(terms[metric["id"]]["urn"])
+            for metric in metrics
+            if asset["fqn"] in metric_asset_fqns(metric, metrics_by_id)
         ]
         yield from _asset_aspects(
             bundle,
@@ -44,6 +52,7 @@ def iter_aspects(bundle: Mapping[str, Any]) -> Iterator[Aspect]:
             asset_metrics,
             terms,
             manifest,
+            dataset_term_urns,
         )
 
 
@@ -97,6 +106,7 @@ def _asset_aspects(
     metrics: list[Mapping[str, Any]],
     terms: Mapping[str, Mapping[str, Any]],
     manifest: Mapping[str, Any],
+    dataset_term_urns: list[str],
 ) -> Iterator[Aspect]:
     urn, fqn = str(asset["urn"]), str(asset["fqn"])
     field_terms: dict[str, list[str]] = {}
@@ -125,10 +135,7 @@ def _asset_aspects(
         ]
     }
     yield "dataset", urn, "glossaryTerms", {
-        "terms": [
-            {"urn": term_urn}
-            for term_urn in sorted({urn for values in field_terms.values() for urn in values})
-        ]
+        "terms": [{"urn": term_urn} for term_urn in sorted(set(dataset_term_urns))]
     }
 
 

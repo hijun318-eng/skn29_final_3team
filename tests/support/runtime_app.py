@@ -6,7 +6,7 @@ import httpx
 
 from app.api import router as analysis_api
 from app.controllers.analysis_controller import AnalysisController
-from app.services.analysis_service import AnalysisService
+from app.services.analysis import AnalysisService
 from tests.support.analysis_runtime_fixture import (
     AnalysisRuntimeDataPlatformFake,
     MetadataDrivenAnalysisModel,

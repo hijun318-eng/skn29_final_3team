@@ -27,6 +27,7 @@ class GovernedDataPlatformAdapter:
         datahub_ca_file: str | None = None,
         expected_context_release: str | None = None,
         search_mode: str | None = None,
+        catalog_ttl_seconds: float | None = None,
         query_timeout_seconds: float | None = None,
         query_state_ttl_seconds: float | None = None,
         query_state_max_entries: int | None = None,
@@ -54,6 +55,11 @@ class GovernedDataPlatformAdapter:
             TrinoSchemaInspector(self._trino),
             expected_context_release=expected_context_release,
             search_mode=search_mode or os.getenv("DATAHUB_SEARCH_MODE", "lexical"),
+            catalog_ttl_seconds=(
+                catalog_ttl_seconds
+                if catalog_ttl_seconds is not None
+                else float(os.getenv("DATAHUB_CATALOG_TTL_SECONDS", "86400.0"))
+            ),
         )
         self._execution = execution or QueryExecutionService(
             self._trino,

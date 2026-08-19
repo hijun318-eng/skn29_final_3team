@@ -154,6 +154,9 @@ class ProductionModelClient:
             try:
                 response = self._transport(node, payload, self._timeout)
                 transport_meta = response.pop(_TRANSPORT_META_KEY, {})
+                if node == "node1" and isinstance(response, dict):
+                    if response.get("filter_candidates") is None:
+                        response["filter_candidates"] = []
                 validate_payload(f"{node}_response", response)
                 self._failures = 0
                 self.last_trace = {

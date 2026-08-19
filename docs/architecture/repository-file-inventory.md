@@ -8,14 +8,14 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 119 |
-| documentation | 141 |
-| production | 237 |
+| documentation | 136 |
+| production | 242 |
 | project-config | 34 |
 | runtime-config | 54 |
 | runtime-contract | 8 |
-| test | 113 |
+| test | 115 |
 
-운영 무결성 위반: **3건**
+운영 무결성 위반: **2건**
 
 ## 파일별 검토 결과
 
@@ -112,7 +112,7 @@
 | `app/backend/app/services/context_builder.py` | production | REVIEWED |
 | `app/backend/app/services/context_registry_service.py` | production | REVIEWED |
 | `app/backend/app/services/context_values.py` | production | REVIEWED |
-| `app/backend/app/services/conversation_orchestrator.py` | production | VIOLATION |
+| `app/backend/app/services/conversation_orchestrator.py` | production | REVIEWED |
 | `app/backend/app/services/conversation_slot_resolver.py` | production | REVIEWED |
 | `app/backend/app/services/execution_control.py` | production | REVIEWED |
 | `app/backend/app/services/pipeline_context_contract.py` | production | REVIEWED |
@@ -183,12 +183,17 @@
 | `app/frontend/src/api/analysisClient.ts` | production | REVIEWED |
 | `app/frontend/src/api/reportClient.ts` | production | REVIEWED |
 | `app/frontend/src/App.jsx` | production | REVIEWED |
+| `app/frontend/src/components/analysis/AnalysisDashboardViews.tsx` | production | REVIEWED |
 | `app/frontend/src/components/analysis/AnalysisStatePanel.tsx` | production | REVIEWED |
+| `app/frontend/src/components/analysis/analysisValueScale.ts` | production | REVIEWED |
 | `app/frontend/src/components/auth/SessionLogin.jsx` | production | REVIEWED |
 | `app/frontend/src/components/charts/EnterpriseChart.jsx` | production | REVIEWED |
 | `app/frontend/src/components/common/EnterpriseUi.jsx` | production | REVIEWED |
 | `app/frontend/src/components/layout/AppHeader.jsx` | production | REVIEWED |
 | `app/frontend/src/components/layout/AppSidebar.jsx` | production | REVIEWED |
+| `app/frontend/src/components/TurnCard.jsx` | production | REVIEWED |
+| `app/frontend/src/components/TurnEvidenceDrawer.jsx` | production | REVIEWED |
+| `app/frontend/src/components/TurnReportModal.jsx` | production | REVIEWED |
 | `app/frontend/src/contracts/analysis.ts` | production | REVIEWED |
 | `app/frontend/src/contracts/report.ts` | production | REVIEWED |
 | `app/frontend/src/contracts/reportContract.ts` | production | REVIEWED |
@@ -249,7 +254,6 @@
 | `compose.app-postgres.override.yml` | runtime-config | REVIEWED |
 | `compose.yml` | runtime-config | REVIEWED |
 | `docs/Answervice_기획서.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/Answervice_흐름.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/answervice_analysis_sequence.html` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/answervice_analysis_sequence.json` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/answervice_data_release_workflow.html` | documentation | REFERENCE_NON_RUNTIME |
@@ -291,15 +295,28 @@
 | `docs/daily_reports/team_summaries/4주차/주간보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/team_summaries/5주차/20260810.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/team_summaries/5주차/20260811.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/daily_reports/team_summaries/5주차/20260812.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/daily_reports/team_summaries/5주차/20260813.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/daily_reports/team_summaries/5주차/20260814.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/team_summaries/5주차/주간보고.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/deliverables/01_요구사항정의서_29기_3팀.xlsx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/deliverables/02_WBS_29기_3팀.xlsx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/01_요구사항 정의서_29기_3팀.xlsx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/02_WBS_29기_3팀.xlsm` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/03_프로젝트기획서_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/04_수집데이터보고서_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/deliverables/06_데이터베이스저장소설계서_29기_3팀.xlsx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/05_화면설계서_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/06_[별첨]데이터테이블명세서.xlsx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/06_데이터베이스저장소설계서_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/07_데이터전처리결과서_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/08_[별첨]시연영상_29기_3팀.mp4` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/08_중간발표자료_29기_3팀.pptx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/09_머신러닝학습결과서_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/10_학습ML모델_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/11_벡터DB구축결과서_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/12_AI시스템아키텍처_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/13_LLM활용소프트웨어_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/14_자체sLLM인공지능_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/ANTIGRAVITY_DOCKER_RUNTIME_HANDOFF.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/DEVELOPMENT_CHANGELOG_AND_ARCHITECTURE_RECORD.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/01_MVP_PRD.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/02_Golden_Path_유저플로우.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/04_P0_사용자기능_요구사항_및_검증계획.txt` | documentation | REFERENCE_NON_RUNTIME |
@@ -327,6 +344,7 @@
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/13-admin-role-navigation.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/14-lan-agent-success.png` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/V4_통합_개발계획.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/e2e_mvp/LOCAL_SETUP.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/source/00_Answervice_프로젝트_기획서.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/source/01_Answervice_데이터_분석_Core_설계.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -349,24 +367,6 @@
 | `docs/reference/Walkerhill_V4.1_SQL_검토.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/Walkerhill_V4.3_교체_검토_및_실행_보고서.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/멀티턴_발화이해_BP_벤치마크.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[데이터 전처리] 데이터 전처리 결과서_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[데이터 전처리] 머신러닝_딥러닝 학습 결과서_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[데이터 전처리] 학습한 ML_DL 모델_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[기획] WBS_양식 (1)_27기_0팀.xlsx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[기획] WBS_양식(2)_27기_0팀.xlsx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[기획] 프로젝트 기획서_양식_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[데이터 수집 및 저장] 데이터베이스_저장소 설계 문서_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[데이터 수집 및 저장] 수집 데이터 보고서_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[모델링 및 평가] AI 시스템 아키텍처 (멀티 에이전트 아키텍처)_양식_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[모델링 및 평가] 멀티 에이전트 테스트 계획 및 결과 보고서_양식_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[모델링 및 평가] 벡터DB_GraphDB 구축 결과서_양식_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[모델링 및 평가] 자체 sLLM 인공지능_양식 (3, 4번 주제 선택 시 적용)_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[모델배포] 개발된 LLM 연동 웹 애플리케이션_양식_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[모델배포] 서비스 테스트 계획 및  결과 보고서_양식_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[모델배포] 시스템 구성도_양식_27기_0팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[모델배포]_요구사항 정의서_양식_27기_0팀.xlsx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[최종_프로젝트]_중간_발표회_발표(예시)_템플릿_27기_0팀.pptx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/templates/[최종_프로젝트]_최종_발표회_프로젝트 결과보고서_템플릿_27기_0팀.pptx` | documentation | REFERENCE_NON_RUNTIME |
 | `evals/.gitkeep` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/__init__.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/base_comparison.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
@@ -616,6 +616,7 @@
 | `src/report/router.py` | production | REVIEWED |
 | `tests/.gitkeep` | test | TEST_ONLY |
 | `tests/ai/test_contracts.py` | test | TEST_ONLY |
+| `tests/ai/test_conversation_slot_resolver.py` | test | TEST_ONLY |
 | `tests/ai/test_eval_runner.py` | test | TEST_ONLY |
 | `tests/ai/test_fake_model.py` | test | TEST_ONLY |
 | `tests/ai/test_model_contracts_live.py` | test | TEST_ONLY |
@@ -660,6 +661,7 @@
 | `tests/backend/test_context_builder.py` | test | TEST_ONLY |
 | `tests/backend/test_context_registry.py` | test | TEST_ONLY |
 | `tests/backend/test_control_plane_contract.py` | test | TEST_ONLY |
+| `tests/backend/test_conversation_orchestrator.py` | test | TEST_ONLY |
 | `tests/backend/test_database.py` | test | TEST_ONLY |
 | `tests/backend/test_execution_control.py` | test | TEST_ONLY |
 | `tests/backend/test_governed_data_platform.py` | test | TEST_ONLY |

@@ -70,7 +70,7 @@ class AppDatabaseReadiness:
 
     @staticmethod
     def _report_scheduler_probe() -> str:
-        from app.services.report_scheduler import report_scheduler
+        from app.services.report.scheduler import report_scheduler
 
         return report_scheduler.status
 

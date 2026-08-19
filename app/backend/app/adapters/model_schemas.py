@@ -267,6 +267,28 @@ def guided_serving_schema(node: str) -> dict[str, Any]:
     return serving_schema(node)
 
 
+_NODE_OUTPUT_LIMITS: MappingProxyType[str, int] = MappingProxyType(
+    {
+        "node1": 350,
+        "node2": 1280,
+        "node2_repair": 1280,
+        "node3": 500,
+        "report_assistant": 1280,
+    }
+)
+
+
+def bounded_node_output_limit(node: str, capacity_limit: int) -> int:
+    """노드별 필요한 JSON 스키마 크기에 맞춰 출력 토큰 상한을 바운딩한다.
+
+    Node 1(지표/기간 추출, ~100토큰)과 Node 3(한국어 2~4문장 요약, ~250토큰)의
+    불필요한 장문 생성을 제한하여 추론 지연을 대폭 단축하고, Node 2(복잡한 SQL)는
+    전체 용량을 유지한다.
+    """
+    node_limit = _NODE_OUTPUT_LIMITS.get(node, capacity_limit)
+    return min(capacity_limit, node_limit)
+
+
 def openai_payload(model: str, node: str, payload: dict[str, Any]) -> dict[str, Any]:
     """표준 메시지·strict JSON Schema·승인된 출력 한도를 OpenAI 요청으로 묶는다.
 
@@ -277,10 +299,15 @@ def openai_payload(model: str, node: str, payload: dict[str, Any]) -> dict[str, 
         model,
         provider="openai",
     ).runtime_max_output_tokens
+    bounded_limit = bounded_node_output_limit(node, output_limit)
     return {
         "model": model,
         "messages": canonical_messages(PROMPT_IDS[node], payload),
-        "max_completion_tokens": output_limit,
+        # 노드 출력은 재현 가능해야 하는 구조화 판정이다. temperature를 고정하지 않으면
+        # 같은 질문의 route·기간·생략 판정이 호출마다 달라져 trace 재현과 회귀 측정이
+        # 불가능해진다. Qwen 경로와 같은 결정론적 디코딩 계약을 사용한다.
+        "temperature": 0,
+        "max_completion_tokens": bounded_limit,
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -302,11 +329,12 @@ def qwen_payload(model: str, node: str, payload: dict[str, Any]) -> dict[str, An
         model,
         provider="qwen",
     ).runtime_max_output_tokens
+    bounded_limit = bounded_node_output_limit(node, output_limit)
     return {
         "model": model,
         "messages": canonical_messages(PROMPT_IDS[node], payload),
         "temperature": 0,
-        "max_tokens": output_limit,
+        "max_tokens": bounded_limit,
         "chat_template_kwargs": {"enable_thinking": False},
         "guided_json": guided_serving_schema(node),
     }

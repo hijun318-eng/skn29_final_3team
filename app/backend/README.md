@@ -1,6 +1,6 @@
 # Answervice Backend
 
-`app/backend`는 FastAPI API, 분석·보고서 orchestration, 외부 adapter와 단일 Alembic chain을 소유한다. 과거 R1~R5 역할 소유권은 현재 작업 기준이 아니며 repository root [`AGENTS.md`](../../AGENTS.md)와 [`docs/product/`](../../docs/product/) 계약을 따른다.
+`app/backend`는 FastAPI API, 분석·보고서 orchestration, 외부 adapter와 단일 Alembic chain을 소유한다. 현재 구현 기준은 repository root [`AGENTS.md`](../../AGENTS.md)와 [`docs/product/`](../../docs/product/) 계약을 따른다.
 
 ## 경계 규칙
 
@@ -83,7 +83,7 @@ Report HTTP는 분석가 소유 초안 작성·조회와 `report_admin`의 전�
 
 ## Container 검증
 
-repository root에서 다음 명령을 실행하면 기존 database Compose와 R4 backend service fragment를 결합해 `answervice-backend`를 기동한다. `/health`와 `/readiness`에서 application과 `app-postgres` 연결을 모두 검증하며, 성공한 container는 Docker Desktop에서 계속 확인할 수 있다.
+repository root에서 다음 명령을 실행하면 기존 database Compose와 backend service fragment를 결합해 `answervice-backend`를 기동한다. `/health`와 `/readiness`에서 application과 `app-postgres` 연결을 모두 검증하며, 성공한 container는 Docker Desktop에서 계속 확인할 수 있다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1 `

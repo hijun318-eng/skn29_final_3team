@@ -260,7 +260,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 "write_pdf": lambda self, **kwargs: b"%PDF-1.7\naggregate",
             },
         )
-        from app.services.report_document import approve_report_document
+        from app.services.report.document import approve_report_document
 
         with patch.dict(sys.modules, {"weasyprint": SimpleNamespace(HTML=fake_html)}):
             approved = await approve_report_document(
@@ -555,7 +555,7 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_display_settings_survive_reload_and_immutable_pdf_approval(self):
         from app.adapters.report_repository import PostgresReportRepository
-        from app.services.report_document import approve_report_document
+        from app.services.report.document import approve_report_document
 
         database_url = os.environ["REPORT_DATABASE_URL"]
         repository = PostgresReportRepository(

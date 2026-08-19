@@ -45,13 +45,13 @@ class CatalogSnapshot:
 
 
 class CatalogSnapshotLoader:
-    """동시 DataHub readback을 single-flight로 합치고 짧은 TTL 동안만 완전 검증된 snapshot을 재사용한다."""
+    """동시 DataHub readback을 single-flight로 합치고 검증된 snapshot을 TTL 동안 안전하게 재사용한다."""
     def __init__(
         self,
         client: DataHubCatalogClient,
         *,
         max_concurrency: int = 8,
-        ttl_seconds: float = 5.0,
+        ttl_seconds: float = 86400.0,
     ) -> None:
         if max_concurrency < 1 or ttl_seconds <= 0:
             raise ValueError("DataHub metadata concurrency and TTL must be positive")
@@ -306,11 +306,13 @@ def _catalog_bundle(datasets, terms, governance_entities):
         for dataset in ordered_datasets
         for metric in dataset.metrics
     ]
-    if len(runtime_metrics) != len(ordered_terms):
+    column_terms = [term for term in ordered_terms if term.metric_rule.get("kind") != "ratio"]
+    ratio_terms = [term for term in ordered_terms if term.metric_rule.get("kind") == "ratio"]
+    if len(runtime_metrics) != len(column_terms):
         raise GovernedMetadataError(
             "DataHub runtime metrics differ from the release glossary"
         )
-    for term in ordered_terms:
+    for term in column_terms:
         matches = [
             (dataset, metric)
             for dataset, metric in runtime_metrics
@@ -321,6 +323,21 @@ def _catalog_bundle(datasets, terms, governance_entities):
         if len(matches) != 1:
             raise GovernedMetadataError(
                 "DataHub runtime metric and glossary rule differ"
+            )
+    column_term_ids = {term.id for term in column_terms}
+    for term in ratio_terms:
+        numerator_id = term.metric_rule.get("numerator_metric_id")
+        denominator_id = term.metric_rule.get("denominator_metric_id")
+        if (
+            term.domain_urn not in {dataset.domain_urn for dataset in ordered_datasets}
+            or not isinstance(numerator_id, str)
+            or not isinstance(denominator_id, str)
+            or numerator_id == denominator_id
+            or numerator_id not in column_term_ids
+            or denominator_id not in column_term_ids
+        ):
+            raise GovernedMetadataError(
+                "DataHub ratio metric glossary term references an ungoverned numerator or denominator"
             )
     governance_urns = representative.governance_urns
     actual_governance_urns = {

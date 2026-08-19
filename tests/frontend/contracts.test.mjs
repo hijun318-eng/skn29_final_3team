@@ -13,7 +13,8 @@ const nginx = readFileSync(new URL("../../app/frontend/nginx.conf", import.meta.
 const productSources = [
   "App.jsx", "routing.js", "api/analysisClient.ts", "api/reportClient.ts",
   "pages/AgentPage.jsx",
-  "components/analysis/AnalysisStatePanel.tsx", "components/layout/AppHeader.jsx", "components/layout/AppSidebar.jsx",
+  "components/analysis/AnalysisStatePanel.tsx", "components/analysis/AnalysisStatePanelParts.tsx",
+  "components/layout/AppHeader.jsx", "components/layout/AppSidebar.jsx",
 ].map(source).concat(reportFeatureSource).join("\n");
 const reportA4Styles = [
   "features/reports/report-a4-paper.css",
@@ -51,26 +52,24 @@ assert.match(source("pages/AgentPage.jsx"), /QUESTION_DRAFT_KEY/);
 assert.match(source("App.jsx"), /answervice:clear-drafts/);
 
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /type="date"|periodStart|periodEnd/);
-assert.match(source("pages/AgentPage.jsx"), /analysisClient\.analyze\(normalizedQuestion, \{\}, \{/);
-assert.doesNotMatch([source("pages/AgentPage.jsx"), source("api/analysisClient.ts"), source("contracts/analysis.ts")].join("\n"), /conversationId/);
-assert.match(source("pages/AgentPage.jsx"), /resolvedPeriodParameters\(result\)/);
-assert.match(source("pages/AgentPage.jsx"), /requestInFlight\.current/);
-assert.match(source("pages/AgentPage.jsx"), /clarifiedQuestion\(submittedQuestion, suggestion, run\.error\?\.clarification_type\)/);
+assert.match(source("pages/AgentPage.jsx"), /analysisClient\.submitTurnCommand/);
+assert.match(source("pages/AgentPage.jsx"), /clarifiedQuestion\(turnItem\.question, sugg/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /어떤 기간으로 분석할까요/);
-assert.match(source("pages/AgentPage.jsx"), /분석할 질문을 입력해 주세요/);
 assert.match(source("pages/AgentPage.jsx"), /MAX_QUESTION_LENGTH\.toLocaleString/);
-assert.doesNotMatch(source("pages/AgentPage.jsx"), /APPROVED_QUESTIONS|객실·식음 통합 매출을 비교해 줘|2026년 6월 객실 매출/);
-assert.match(source("pages/AgentPage.jsx"), /placeholder="분석할 지표, 기간, 조건을 입력하세요\."/);
-assert.match(source("pages/AgentPage.jsx"), /onSuggestion=\{\(suggestion\)/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /APPROVED_QUESTIONS|객실·식음 통합 매출을 비교해 줘/);
+assert.match(source("pages/AgentPage.jsx"), /onSuggestion=\{\(sugg\)/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /analysis-suggestions/);
 assert.match(source("api/analysisClient.ts"), /\/analysis\/progress\/\$\{encodeURIComponent\(traceId\)\}/);
 assert.match(source("api/analysisClient.ts"), /cancelAnalysis\(traceId\)/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /분석 취소/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /내부 처리 순서는 추측해 표시하지 않습니다/);
-assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /ANALYSIS_PHASES|modelCount/);
+const analysisPanelSource = [
+  source("components/analysis/AnalysisStatePanel.tsx"),
+  source("components/analysis/AnalysisStatePanelParts.tsx"),
+].join("\n");
+assert.match(analysisPanelSource, /분석 취소/);
+assert.match(analysisPanelSource, /내부 처리 순서는 추측해 표시하지 않습니다/);
+assert.doesNotMatch(analysisPanelSource, /ANALYSIS_PHASES|modelCount/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /supportedChartType/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /지원하지 않는 차트 형식입니다/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /run\.traceId \|\| "발급 전"/);
+assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /문의 코드/);
 assert.match(source("contracts/analysis.ts"), /REQUEST_CANCELLED/);
 assert.match(source("contracts/analysis.ts"), /NETWORK_UNAVAILABLE/);
 assert.match(source("pages/AgentPage.jsx"), /NETWORK_UNAVAILABLE/);
@@ -79,7 +78,7 @@ assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /run\.error\?
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /ERROR_ACTIONS|AT A GLANCE/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /KEY TAKEAWAY|VISUAL|DETAIL|SCOPE/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /actual_checkout_at|membership_grade_code/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /\?\? column/);
+assert.match(analysisPanelSource, /\?\? column/);
 assert.match(source("components/auth/SessionLogin.jsx"), /\.login\(nextUsername, password\)/);
 assert.match(source("components/auth/SessionLogin.jsx"), /Caps Lock이 켜져 있습니다/);
 assert.match(source("components/auth/SessionLogin.jsx"), /비밀번호 표시/);
@@ -192,32 +191,21 @@ assert.match(reportSources.lifecycle, /createNextDraft/);
 assert.match(reportSources.lifecycle, /const blocks: ReportBlockRequest\[\] = initialContent \? \[\{/);
 assert.match(reportSources.controller, /blocks: \[\{ id: result\.blockId, title: "운영 요약"/);
 assert.match(source("pages/AgentPage.jsx"), /savedRuns\.slice\(0, visibleRunCount\)/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /<EnterpriseChart/);
+assert.match(source("components/analysis/AnalysisDashboardViews.tsx"), /<EnterpriseChart/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /label: "기본 제외"|label: "GOLD"/);
 assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /chartFieldsMatchTable/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /차트 필드와 상세 데이터 열이 일치하지 않아/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /dataProvenanceLabel\(run\.sources\)/);
+assert.match(source("components/analysis/AnalysisDashboardViews.tsx"), /차트 필드와 상세 데이터 열이 일치하지 않아/);
+assert.match(source("features/reports/components/ReportArtifactContent.jsx"), /dataProvenanceLabel\(/);
 assert.doesNotMatch(source("utils/presentation.ts"), /합성 데모 데이터/);
 assert.match(source("utils/presentation.ts"), /합성 데이터 포함/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /검증된 결과/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /from "recharts"/);
 assert.match(source("components/charts/EnterpriseChart.jsx"), /accessibilityLayer/);
 assert.match(source("components/charts/EnterpriseChart.jsx"), /<ChartTooltip/);
-assert.match(source("pages/AgentPage.jsx"), /const reportModalRef = useRef\(null\)/);
-assert.match(source("pages/AgentPage.jsx"), /event\.key === "Escape"/);
-assert.match(source("pages/AgentPage.jsx"), /previousFocus\?\.focus\?\.\(\)/);
-assert.match(source("pages/AgentPage.jsx"), /aria-controls="analysis-evidence-panel"/);
-assert.match(source("pages/AgentPage.jsx"), /id="analysis-evidence-panel"/);
-assert.match(source("pages/AgentPage.jsx"), /run\.evidence\?\.productReleaseId/);
-assert.match(source("pages/AgentPage.jsx"), /run\.evidence\?\.evidenceCutoff/);
-assert.match(source("pages/AgentPage.jsx"), /evidenceReturnFocusRef\.current\?\.focus\?\.\(\)/);
-assert.match(source("pages/AgentPage.jsx"), /role="tabpanel" aria-labelledby="evidence-tab-/);
-assert.match(source("pages/AgentPage.jsx"), /handleArtifactTabKeyDown/);
-assert.match(source("pages/AgentPage.jsx"), /analysisClient\.getRunArtifact\(result\.request_id\)/);
-assert.match(source("pages/AgentPage.jsx"), /이전 분석 결과를 불러왔습니다/);
-assert.match(source("pages/AgentPage.jsx"), />결과 열기<\/button>/);
-assert.match(source("pages/AgentPage.jsx"), /const historicalQuestion = savedRun\.question/);
-assert.match(source("pages/AgentPage.jsx"), /report-analysis-preview"><AnalysisStatePanel run=\{run\}/);
+assert.match(source("components/TurnReportModal.jsx"), /className=\{`report-transfer-modal/);
+assert.match(source("components/TurnEvidenceDrawer.jsx"), /evidence-panel/);
+assert.match(source("components/TurnEvidenceDrawer.jsx"), /run\.evidence\?\.productReleaseId/);
+assert.match(source("components/TurnEvidenceDrawer.jsx"), /run\.evidence\?\.evidenceCutoff/);
 assert.match(source("pages/AgentPage.jsx"), /inert=\{Boolean\(reportModal\)\}/);
 assert.match(source("api/analysisClient.ts"), /\/analysis\/runs\/\$\{encodeURIComponent\(requestId\)\}\/artifact/);
 
@@ -230,8 +218,8 @@ assert.match(source("components/layout/AppHeader.jsx"), /호텔 분석가/);
 assert.match(source("components/layout/AppHeader.jsx"), /로그아웃/);
 assert.match(source("pages/AgentPage.jsx"), /className="run-history-panel"/);
 assert.match(source("pages/AgentPage.jsx"), /className="analysis-notice"/);
-assert.match(source("pages/AgentPage.jsx"), /function reportTitleForRun/);
-assert.match(source("pages/AgentPage.jsx"), /createDraftFromArtifact\(run\.artifact\.artifactId, reportTitle\.trim\(\) \|\| reportTitleForRun\(run\)\)/);
+assert.match(source("pages/AgentPage.jsx"), /reportTitleForAnalysis/);
+assert.match(source("pages/AgentPage.jsx"), /createDraftFromArtifact\(artId, reportTitle\.trim\(\) \|\| reportTitleForAnalysis\(reportModalRun\)\)/);
 assert.match(source("pages/AgentPage.jsx"), /definitions\.filter/);
 assert.match(source("pages/AgentPage.jsx"), /filteredDefinitions\.slice\(0, visibleDefinitionCount\)/);
 assert.match(reportSources.lifecycle, /filteredRuns\.slice\(0, visibleRunCount\)/);

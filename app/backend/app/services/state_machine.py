@@ -21,12 +21,14 @@ class AnalysisStateMachine:
         AnalysisStatus.RECEIVED: {
             AnalysisStatus.ROUTED,
             AnalysisStatus.BLOCKED,
+            AnalysisStatus.CLARIFICATION_REQUIRED,
             AnalysisStatus.FAILED,
             AnalysisStatus.CANCELLED,
         },
         AnalysisStatus.ROUTED: {
             AnalysisStatus.SUCCEEDED,
             AnalysisStatus.BLOCKED,
+            AnalysisStatus.CLARIFICATION_REQUIRED,
             AnalysisStatus.PARTIAL,
             AnalysisStatus.FAILED,
             AnalysisStatus.CANCELLED,

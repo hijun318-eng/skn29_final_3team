@@ -300,7 +300,9 @@ class MetadataDrivenAnalysisModel:
             "metric_candidates": metric_ids,
             "selected_metric_id": metric_ids[0],
             "dimension_candidates": [],
+            "filter_candidates": [],
             "period_candidates": [{"start": start.isoformat(), "end_exclusive": end.isoformat(), "source_text": "test-fixture-window"}],
+            "period_relationship": "single",
             "ambiguity": {"is_ambiguous": False, "reasons": [], "clarification_question": None},
         }
 

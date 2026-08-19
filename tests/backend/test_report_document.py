@@ -19,15 +19,17 @@ sys.path.insert(0, str(BACKEND))
 from app.api import report_router as report_api  # noqa: E402
 from app.contracts import RequestContext, Role  # noqa: E402
 from app.report_contracts import ApproveReportVersionRequest  # noqa: E402
-from app.services.report_document import (  # noqa: E402
-    _finite_number,
-    _paginate_layout,
-    ReportDocumentRenderError,
+from app.services.report.document import (  # noqa: E402
     approve_report_document,
     build_report_html,
-    canonical_source_checksum,
     render_report_document,
 )
+from app.services.report.layout import _paginate_layout  # noqa: E402
+from app.services.report.types import (  # noqa: E402
+    ReportDocumentRenderError,
+    canonical_source_checksum,
+)
+from app.services.report.values import _finite_number  # noqa: E402
 from src.report.domain import (  # noqa: E402
     BlockType,
     DefinitionStatus,

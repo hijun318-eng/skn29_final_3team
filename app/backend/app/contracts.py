@@ -14,6 +14,7 @@ from app.contract_core import (
     AnalysisStatus,
     ClarificationType,
     ContractModel,
+    DisambiguationOption,
     ErrorBody,
     ErrorCode,
     PipelineStage,
@@ -180,6 +181,7 @@ class AnalysisData(ContractModel):
     trace: tuple[TraceStep, ...] = ()
     repair_count: int = Field(default=0, ge=0, le=1)
     artifact: ArtifactReference | None = None
+    disambiguation_options: tuple[DisambiguationOption, ...] = ()
 
 
 class AnalysisProgressData(ContractModel):

@@ -7,43 +7,15 @@ import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
 import { MetaStrip } from "../components/common/EnterpriseUi";
 import { TurnEvidenceDrawer } from "../components/TurnEvidenceDrawer";
 import { TurnReportModal } from "../components/TurnReportModal";
-import { normalizeApiResponse, OPENAPI_VERSION } from "../contracts/analysis";
+import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
+import { analysisError, clarifiedQuestion, exampleQuestionsFromDefinitions, formatSeoulDateTime, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
 
 const RUN_HISTORY_PAGE_SIZE = 20;
 const MAX_QUESTION_LENGTH = 1000;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
 const CONVERSATION_KEY = "answervice.activeConversationId";
-function transientRun(question, status = "idle") {
-  return {
-    requestId: "", traceId: "", status, question,
-    metrics: [], sources: [],
-    meta: { asOf: "", timezone: "Asia/Seoul", seed: "", schemaVersion: "", contractVersion: OPENAPI_VERSION },
-  };
-}
-
-function clarifiedQuestion(question, suggestion, clarificationType) {
-  const label = clarificationType === "period" ? "기간" : "지표";
-  return `${question.trim()} (선택한 ${label}: ${suggestion})`;
-}
-
-function savedRunStatus(status) {
-  return ({ SUCCESS: "완료", SUCCEEDED: "완료", PARTIAL: "일부 완료", BLOCKED: "완료되지 않음", FAILED: "실패", RECEIVED: "처리 중", QUEUED: "대기 중", RUNNING: "처리 중", CANCELLED: "취소됨" })[status] || "확인 필요";
-}
-
-function analysisError(error) {
-  if (error instanceof AnalysisApiError) return error.message;
-  if (error instanceof TypeError) return "서버에 연결할 수 없습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.";
-  return error instanceof Error ? error.message : "분석 요청이 실패했습니다.";
-}
-
-function formatSeoulDateTime(value) {
-  if (!value) return "시각 정보 없음";
-  return new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-  }).format(new Date(value));
-}
 
 /** 대화형 분석 워크스페이스 최상위 화면을 렌더링한다. */
 export function AgentPage({ onNavigate }) {
@@ -76,6 +48,8 @@ export function AgentPage({ onNavigate }) {
     const normalized = definitionQuery.trim().toLocaleLowerCase("ko-KR");
     return definitions.filter((d) => !normalized || `${d.title} ${d.question}`.toLocaleLowerCase("ko-KR").includes(normalized));
   }, [definitionQuery, definitions]);
+
+  const exampleQuestions = useMemo(() => exampleQuestionsFromDefinitions(definitions), [definitions]);
   const visibleDefinitions = filteredDefinitions.slice(0, visibleDefinitionCount);
   const visibleRuns = savedRuns.slice(0, visibleRunCount);
 
@@ -87,7 +61,55 @@ export function AgentPage({ onNavigate }) {
 
   useEffect(() => {
     refreshSaved().catch((err) => setMessage(err instanceof Error ? err.message : "저장된 분석을 불러오지 못했습니다."));
+
+    const storedConvId = window.sessionStorage.getItem(CONVERSATION_KEY);
+    if (storedConvId) {
+      analysisClient.getConversationTurns(storedConvId)
+        .then((serverTurns) => {
+          if (Array.isArray(serverTurns) && serverTurns.length > 0) {
+            setTurns(hydrateTurnsFromServer(serverTurns));
+          }
+        })
+        .catch((err) => {
+          console.warn("Failed to restore conversation turns on mount:", err);
+          if (err?.status === 404) {
+            window.sessionStorage.removeItem(CONVERSATION_KEY);
+            setConversationId("");
+          }
+        });
+    }
   }, []);
+
+  const handleCancelAnalysis = async (turnId) => {
+    if (activeTraceId.current) {
+      try {
+        await analysisClient.cancelAnalysis(activeTraceId.current);
+      } catch (err) {
+        console.warn("Cancel analysis error:", err);
+      }
+    }
+    requestInFlight.current = false;
+    setSubmitting(false);
+    setTurns((prev) =>
+      prev.map((t) =>
+        t.turnId === turnId || (typeof t.turnId === "string" && t.turnId.startsWith("temp-"))
+          ? {
+              ...t,
+              run: {
+                ...t.run,
+                status: "cancelled",
+                error: {
+                  code: "REQUEST_CANCELLED",
+                  message: "사용자에 의해 분석이 취소되었습니다.",
+                  retryable: true,
+                  required_action: "RETRY",
+                },
+              },
+            }
+          : t
+      )
+    );
+  };
 
   useEffect(() => {
     if (question) window.sessionStorage.setItem(QUESTION_DRAFT_KEY, question);
@@ -114,7 +136,8 @@ export function AgentPage({ onNavigate }) {
     void initConversation();
   };
 
-  const analyzeQuestion = async (nextQuestion) => {
+  // action은 UI가 이미 아는 동작을 자연어로 바꾸지 않고 전달하는 typed 신호다(서버가 재검증).
+  const analyzeQuestion = async (nextQuestion, action = null) => {
     const normalized = nextQuestion.trim();
     if (!normalized) { setInputError("분석할 질문을 입력해 주세요."); return; }
     if (requestInFlight.current) return;
@@ -144,12 +167,28 @@ export function AgentPage({ onNavigate }) {
         cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
           user_message: normalized,
           expected_head_turn_id: headTurnId && !headTurnId.startsWith("temp-") ? headTurnId : undefined,
+          ...(action || {}),
         });
       } catch (cmdErr) {
-        if (cmdErr instanceof AnalysisApiError && (cmdErr.status === 409 || cmdErr.status === 404)) {
+        if (cmdErr instanceof AnalysisApiError && cmdErr.status === 409) {
+          // 409 CAS Conflict: 대화방을 리셋하지 않고 서버의 최신 턴 목록을 다시 불러와 동기화 후 재시도
+          try {
+            const serverTurns = await analysisClient.getConversationTurns(activeConvId);
+            const latestServerTurn = serverTurns.at(-1);
+            const newHeadId = latestServerTurn?.turn_id;
+            cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
+              user_message: normalized,
+              expected_head_turn_id: newHeadId,
+              ...(action || {}),
+            });
+          } catch (retryErr) {
+            throw retryErr;
+          }
+        } else if (cmdErr instanceof AnalysisApiError && cmdErr.status === 404) {
           activeConvId = await initConversation();
           cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
             user_message: normalized,
+            ...(action || {}),
           });
         } else {
           throw cmdErr;
@@ -165,6 +204,22 @@ export function AgentPage({ onNavigate }) {
       let finalRun;
       if (analysisRaw && analysisRaw.data) {
         finalRun = normalizeApiResponse(analysisRaw, normalized);
+      } else if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
+        const options = data?.disambiguation_options || serverTurn?.resolved_slots?.disambiguation_options || [];
+        const clarType = serverTurn?.resolved_slots?.clarification_type || "metric";
+        finalRun = {
+          ...transientRun(normalized, "blocked"),
+          disambiguationOptions: options,
+          error: {
+            code: "CONTEXT_INCOMPLETE",
+            message: "질문이 여러 지표 또는 기간으로 해석될 수 있습니다. 분석할 기준을 선택해 주세요.",
+            clarification_type: clarType,
+            disambiguation_options: options,
+            suggestions: options.map((o) => o.label || o.value || o.metric_id),
+            retryable: false,
+            required_action: "PROVIDE_CONTEXT",
+          },
+        };
       } else if (isPresentation) {
         finalRun = {
           ...(turns.at(-1)?.run || {}),
@@ -196,7 +251,7 @@ export function AgentPage({ onNavigate }) {
         question: normalized,
         run: finalRun,
         resolvedSlots: serverTurn?.resolved_slots || null,
-        viewType: serverTurn?.view_type || null,
+        viewType: serverTurn?.view_type || serverTurn?.resolved_slots?.target_chart_type || (isPresentation ? "CHART" : "SUMMARY"),
       } : t));
 
       void refreshSaved();
@@ -292,11 +347,11 @@ export function AgentPage({ onNavigate }) {
             <small>대화형 데이터 분석</small>
             <h2 id="chat-empty-title">무엇을 분석할까요?</h2>
             <p>호텔 운영 매출, 고객 VOC 리뷰, 연회 취소 행사 등 다양한 지표와 기간을 자연어로 분석해 보세요.</p>
-            <div aria-label="분석 질문 예시">
-              <button type="button" onClick={() => { void analyzeQuestion("2026년 7월 호텔별 운영매출 보여줘"); }}>2026년 7월 호텔별 운영매출 보여줘</button>
-              <button type="button" onClick={() => { void analyzeQuestion("2026년 7월 호텔별 VOC 리뷰 건수 보여줘"); }}>2026년 7월 호텔별 VOC 리뷰 건수 보여줘</button>
-              <button type="button" onClick={() => { void analyzeQuestion("2026년 6월 취소된 연회 행사 수는 몇 건이야?"); }}>2026년 6월 취소된 연회 행사 수는 몇 건이야?</button>
-            </div>
+            {exampleQuestions.length > 0 && (
+              <div aria-label="분석 질문 예시">
+                {exampleQuestions.map((ex) => <button key={ex.id} type="button" onClick={() => { void analyzeQuestion(ex.question); }}>{ex.question}</button>)}
+              </div>
+            )}
           </section>
         )}
 
@@ -316,59 +371,50 @@ export function AgentPage({ onNavigate }) {
                 <div className="message message--agent">
                   <span className="agent-avatar"><Sparkles size={16} /></span>
                   <div className="agent-response-container">
-                    <div className="agent-response-header">
-                      <span className="turn-index-pill">Turn #{idx + 1}</span>
-                      {turnItem.viewType && (
-                        <span className="turn-route-badge route-presentation">
-                          ⚡ {turnItem.viewType} 뷰
-                        </span>
-                      )}
-                    </div>
-
-                    {turnItem.resolvedSlots && (
-                      <div className="turn-slots-strip">
-                        {turnItem.resolvedSlots.metric_id && (
-                          <span className={`slot-chip ${turnItem.resolvedSlots.is_inherited_metric ? "inherited" : "specified"}`}>
-                            {turnItem.resolvedSlots.is_inherited_metric ? "⚡ 지표 상속: " : "🎯 지표: "}{turnItem.resolvedSlots.metric_id}
-                          </span>
-                        )}
-                        {turnItem.resolvedSlots.time_range && (
-                          <span className={`slot-chip ${turnItem.resolvedSlots.is_inherited_period ? "inherited" : "specified"}`}>
-                            {turnItem.resolvedSlots.is_inherited_period ? "📅 기간 상속: " : "📅 기간: "}{turnItem.resolvedSlots.time_range.start} ~ {turnItem.resolvedSlots.time_range.end_exclusive}
-                          </span>
-                        )}
-                        {turnItem.resolvedSlots.dimension_fields?.map((d) => (
-                          <span key={d.column || d} className={`slot-chip ${turnItem.resolvedSlots.is_inherited_dimension ? "inherited" : "specified"}`}>
-                            {turnItem.resolvedSlots.is_inherited_dimension ? "🏢 차원 상속: " : "🏢 차원: "}{d.column || d}
-                          </span>
-                        ))}
-                      </div>
-                    )}
 
                     <AnalysisStatePanel
                       run={turnItem.run}
+                      viewType={turnItem.viewType || turnItem.resolvedSlots?.target_chart_type || "SUMMARY"}
                       suggestionsDisabled={submitting}
                       onSuggestion={(sugg) => void analyzeQuestion(clarifiedQuestion(turnItem.question, sugg, turnItem.run.error?.clarification_type))}
+                      onQuickView={(mode) => {
+                        const quick = quickViewAction(mode, {
+                          hasChart: Boolean(turnItem.run.chart),
+                          hasTable: Boolean(turnItem.run.table?.rows?.length),
+                        });
+                        // 이미 응답에 포함된 차트·표 data는 재조회 없이 뷰만 전환한다.
+                        if (quick) void analyzeQuestion(quick.label, quick.action);
+                        else setTurns((prev) => prev.map((t) => t.turnId === turnItem.turnId ? { ...t, viewType: mode } : t));
+                      }}
                       onRetry={() => void analyzeQuestion(turnItem.question)}
-                      onCancel={() => {}}
+                      onCancel={() => void handleCancelAnalysis(turnItem.turnId)}
+                      onSave={["success", "partial"].includes(turnItem.run.status) ? () => void saveAnalysis(turnItem.run) : undefined}
+                      saveDisabled={savedBusy}
+                      onCreateReportDraft={turnItem.run.artifact && (turnItem.run.rowCount ?? 0) > 0 ? () => {
+                        setReportModalRun(turnItem.run);
+                        setReportTitle(reportTitleForAnalysis(turnItem.run));
+                        setReportModal("draft");
+                      } : undefined}
+                      onPreview={turnItem.run.artifact && (turnItem.run.rowCount ?? 0) > 0 ? () => {
+                        setReportModalRun(turnItem.run);
+                        setReportModal("preview");
+                      } : undefined}
+                      onOpenEvidence={turnItem.run.artifact ? () => {
+                        setSelectedEvidenceRun(turnItem.run);
+                        setEvidenceOpen(true);
+                      } : undefined}
                     />
-
-                    {turnItem.run.artifact && (turnItem.run.rowCount ?? 0) > 0 && (
-                      <div className="analysis-report-actions">
-                        <button className="primary" type="button" onClick={() => { setReportModalRun(turnItem.run); setReportTitle(reportTitleForAnalysis(turnItem.run)); setReportModal("draft"); }}>
-                          <FilePlus2 size={14} />보고서 초안 만들기
+                    {turnItem.run.reportDefinitionId && (
+                      <div className="report-action-direct-nav" style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                          type="button"
+                          className="unified-action-btn unified-action-btn--primary"
+                          onClick={() => onNavigate?.("/reports")}
+                          title="생성된 보고서 초안으로 이동"
+                        >
+                          <FilePlus2 size={13} />
+                          <span>보고서에서 확인하기 (/reports)</span>
                         </button>
-                        <button type="button" onClick={() => { setReportModalRun(turnItem.run); setReportModal("preview"); }}>
-                          <Eye size={14} />결과 미리보기
-                        </button>
-                        <button type="button" aria-controls="analysis-evidence-panel" aria-expanded={evidenceOpen && selectedEvidenceRun === turnItem.run} onClick={() => { setSelectedEvidenceRun(turnItem.run); setEvidenceOpen(true); }}>
-                          <TableProperties size={14} />분석 근거
-                        </button>
-                        {["success", "partial"].includes(turnItem.run.status) && (
-                          <button type="button" disabled={savedBusy} onClick={() => void saveAnalysis(turnItem.run)}>
-                            <Save size={14} />분석 저장
-                          </button>
-                        )}
                       </div>
                     )}
                   </div>
@@ -381,20 +427,6 @@ export function AgentPage({ onNavigate }) {
 
         {/* 하단 고정 분석 질문 입력창 */}
         <form className="chat-input" onSubmit={submitQuestion}>
-          {turns.length > 0 && (
-            <div className="quick-prompts-bar" aria-label="추천 후속 질문">
-              <span className="quick-prompts-label">추천 질문:</span>
-              <button type="button" className="quick-prompt-btn" onClick={() => void analyzeQuestion("그 전 달 데이터는 어때?")}>
-                📅 이전 달과 비교
-              </button>
-              <button type="button" className="quick-prompt-btn" onClick={() => void analyzeQuestion("객실 유형별로 표로 보여줘")}>
-                📊 객실 유형별 표
-              </button>
-              <button type="button" className="quick-prompt-btn" onClick={() => void analyzeQuestion("VIP 고객만 필터링해줘")}>
-                👑 VIP 고객 필터
-              </button>
-            </div>
-          )}
           <div className="question-field">
             <input
               aria-label="분석 질문"
@@ -402,7 +434,7 @@ export function AgentPage({ onNavigate }) {
               value={question}
               maxLength={MAX_QUESTION_LENGTH}
               onChange={(e) => { setQuestion(e.target.value); setInputError(""); }}
-              placeholder="예: 2026년 7월 호텔별 운영매출 보여줘, 그 전 달은?, 표로도 보여줘"
+              placeholder="분석할 지표와 기간을 자연어로 입력하세요"
               aria-describedby="question-help"
               aria-invalid={Boolean(inputError)}
               disabled={submitting}

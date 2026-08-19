@@ -8,7 +8,7 @@ from sys import path
 BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
-from app.services.context_builder import (
+from app.services.context.builder import (
     ContextAsset,
     ContextBuildError,
     ContextBuildErrorCode,
@@ -273,6 +273,92 @@ class ContextPackageBuilderTest(unittest.TestCase):
                 (),
                 reduction="unsupported",
             )
+
+    def test_ratio_metric_has_no_physical_field_and_governed_zero_policy(self) -> None:
+        with self.assertRaises(ContextBuildError):
+            ContextMetric(
+                "adr", "", "", "ratio", "", (),
+                numerator_metric_id="room_revenue",
+                denominator_metric_id="room_nights",
+                zero_policy="unsupported_policy",
+            )
+        with self.assertRaises(ContextBuildError):
+            ContextMetric(
+                "adr", self.pms.fqn, "", "ratio", "", (),
+                numerator_metric_id="room_revenue",
+                denominator_metric_id="room_nights",
+                zero_policy="null_on_zero_denominator",
+            )
+        with self.assertRaises(ContextBuildError):
+            ContextMetric(
+                "adr", "", "", "ratio", "", (),
+                numerator_metric_id="room_revenue",
+                denominator_metric_id="room_revenue",
+                zero_policy="null_on_zero_denominator",
+            )
+        metric = ContextMetric(
+            "adr", "", "", "ratio", "", (),
+            numerator_metric_id="room_revenue",
+            denominator_metric_id="room_nights",
+            zero_policy="null_on_zero_denominator",
+        )
+        self.assertEqual("ratio", metric.reduction)
+
+    def test_exists_metric_requires_a_physical_field_and_defaults_to_scalar_reduction(self) -> None:
+        metric = ContextMetric(
+            "has_flagged_event",
+            self.pms.fqn,
+            "flagged_at",
+            "exists",
+            "check_in_date",
+            (),
+            result_field="resolved_exists",
+            unit="boolean",
+        )
+        self.assertEqual("scalar", metric.reduction)
+
+    def test_ratio_metric_numerator_and_denominator_must_be_sibling_single_metrics(self) -> None:
+        numerator = ContextMetric(
+            "room_revenue", self.pms.fqn, "reservation_id", "sum", "check_in_date", (),
+        )
+        ratio_referencing_missing_denominator = ContextMetric(
+            "adr", "", "", "ratio", "", (),
+            numerator_metric_id="room_revenue",
+            denominator_metric_id="room_nights",
+            zero_policy="null_on_zero_denominator",
+        )
+        asset = ContextAsset(
+            urn=self.pms.urn,
+            fqn=self.pms.fqn,
+            columns=self.pms.columns,
+            metrics=(numerator, ratio_referencing_missing_denominator),
+            metric_registry_required=True,
+        )
+        with self.assertRaisesRegex(ContextBuildError, "분자·분모"):
+            self.builder.build(
+                self.request(assets=(asset,)), frozenset({asset.urn})
+            )
+
+        denominator = ContextMetric(
+            "room_nights", self.pms.fqn, "reservation_id", "count", "check_in_date", (),
+        )
+        ratio = ContextMetric(
+            "adr", "", "", "ratio", "", (),
+            numerator_metric_id="room_revenue",
+            denominator_metric_id="room_nights",
+            zero_policy="null_on_zero_denominator",
+        )
+        complete_asset = ContextAsset(
+            urn=self.pms.urn,
+            fqn=self.pms.fqn,
+            columns=self.pms.columns,
+            metrics=(numerator, denominator, ratio),
+            metric_registry_required=True,
+        )
+        package = self.builder.build(
+            self.request(assets=(complete_asset,)), frozenset({complete_asset.urn})
+        )
+        self.assertEqual(3, len(package.metrics))
 
     def test_package_is_immutable(self) -> None:
         package = self.builder.build(

@@ -227,7 +227,7 @@ def test_missing_binding_manifest_entry_fails_closed():
         ("time", "TIME_RULE_MISMATCH"),
         ("equality", "JOIN_GRAPH_MISMATCH"),
         ("temporal", "JOIN_GRAPH_MISMATCH"),
-        ("preaggregation", "JOIN_GRAPH_MISMATCH"),
+        ("preaggregation", "GRAIN_VIOLATION"),
     ],
 )
 def test_runtime_semantics_reject_incomplete_join_filter_and_time_contracts(mutation, expected_code):

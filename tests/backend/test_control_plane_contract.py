@@ -76,7 +76,7 @@ class ControlPlaneContractTest(unittest.TestCase):
             visit(module)
 
     def test_service_depends_on_port_not_fake_adapter(self) -> None:
-        source = (BACKEND / "app" / "services" / "analysis_service.py").read_text(
+        source = (BACKEND / "app" / "services" / "analysis" / "service.py").read_text(
             encoding="utf-8"
         )
         imports = {
@@ -96,6 +96,10 @@ class ControlPlaneContractTest(unittest.TestCase):
             "CONTEXT_INCOMPLETE",
             "CONTEXT_SOURCE_FAILED",
             "DATA_ASSET_NOT_FOUND",
+            "OUT_OF_DATA_RANGE",
+            "SOURCE_NOT_READY",
+            "GRAIN_VIOLATION",
+            "FILTER_VALUE_NOT_FOUND",
             "AUTHENTICATION_REQUIRED",
             "ACCESS_DENIED",
             "MODEL_CONTRACT_INVALID",

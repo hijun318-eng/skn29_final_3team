@@ -24,8 +24,9 @@ from app.adapters.datahub_metadata import (
 from app.adapters.datahub_metadata_types import metric_rule_matches
 from app.adapters.trino_schema import TrinoSchemaDriftError, TrinoSchemaInspector
 from app.ports.data_platform import MetadataUnavailableError, NoEntitledAssetsError
-from app.services.context_builder import ContextBuildError
-from app.services.pipeline_context_contract import GovernedJoin
+from app.services.context.builder import ContextBuildError
+from app.services.context.values import RATIO_ZERO_POLICIES
+from app.services.context.contract import GovernedJoin
 
 
 class QueryGovernanceEngine:
@@ -41,6 +42,7 @@ class QueryGovernanceEngine:
         expected_context_release: str | None = None,
         max_request_assets: int = MAX_REQUEST_ASSETS,
         search_mode: str = "hybrid",
+        catalog_ttl_seconds: float | None = None,
     ) -> None:
         if expected_context_release is not None and not expected_context_release.strip():
             raise ValueError("expected context release cannot be blank")
@@ -49,7 +51,12 @@ class QueryGovernanceEngine:
         if search_mode not in {"lexical", "hybrid"}:
             raise ValueError("DataHub search mode must be lexical or hybrid")
         self._catalog = catalog
-        self._loader = CatalogSnapshotLoader(catalog)
+        ttl = (
+            catalog_ttl_seconds
+            if catalog_ttl_seconds is not None
+            else float(os.getenv("DATAHUB_CATALOG_TTL_SECONDS", "86400.0"))
+        )
+        self._loader = CatalogSnapshotLoader(catalog, ttl_seconds=ttl)
         self._schema = schema_inspector
         self._expected_release = expected_context_release
         self._max_request_assets = max_request_assets
@@ -241,6 +248,29 @@ class QueryGovernanceEngine:
                 result[term.id] = term
         if not result:
             raise GovernedMetadataError("DataHub has no governed metric terms")
+        domain_urns = {dataset.domain_urn for dataset in datasets}
+        checksums = {dataset.catalog_checksum for dataset in datasets}
+        for term in snapshot.terms_by_id.values():
+            if term.metric_rule.get("kind") != "ratio" or term.id in result:
+                continue
+            if term.domain_urn not in domain_urns or term.catalog_checksum not in checksums:
+                # 이 release에 속하지 않는 ratio term이다 — 이 스코프의 대상이 아니므로 건너뛴다.
+                continue
+            numerator_id = term.metric_rule.get("numerator_metric_id")
+            denominator_id = term.metric_rule.get("denominator_metric_id")
+            zero_policy = term.metric_rule.get("zero_policy")
+            if (
+                not isinstance(numerator_id, str)
+                or not isinstance(denominator_id, str)
+                or numerator_id == denominator_id
+                or numerator_id not in result
+                or denominator_id not in result
+                or zero_policy not in RATIO_ZERO_POLICIES
+            ):
+                raise GovernedMetadataError(
+                    "DataHub ratio metric term references an ungoverned numerator or denominator"
+                )
+            result[term.id] = term
         return result
 
     def _select_connected(
@@ -258,46 +288,47 @@ class QueryGovernanceEngine:
             GovernedJoin.from_mapping(item, approved_assets=approved)
             for item in graph["edges"]
         )
-        anchor = seeds[0].fqn
-        selected = {anchor}
-        for seed in seeds[1 : self._max_request_assets]:
-            if seed.fqn in by_fqn and _shortest_path(anchor, seed.fqn, edges):
-                selected.add(seed.fqn)
-        dependencies = _metric_dependencies(tuple(by_fqn[name] for name in selected))
-        for dep in dependencies:
-            if dep in by_fqn and (dep == anchor or _shortest_path(anchor, dep, edges)):
-                selected.add(dep)
-        metric_seeds = {name for name in selected if by_fqn[name].metrics}
-        if not metric_seeds:
-            for seed in tuple(selected):
-                adjacent = sorted(
-                    other
-                    for edge in edges
-                    for other in _other_endpoints(edge, seed)
-                    if other in by_fqn and by_fqn[other].metrics
+        for candidate_anchor in seeds:
+            anchor = candidate_anchor.fqn
+            selected = {anchor}
+            for seed in seeds:
+                if seed.fqn in by_fqn and (seed.fqn == anchor or _shortest_path(anchor, seed.fqn, edges)):
+                    selected.add(seed.fqn)
+            dependencies = _metric_dependencies(tuple(by_fqn[name] for name in selected))
+            for dep in dependencies:
+                if dep in by_fqn and (dep == anchor or _shortest_path(anchor, dep, edges)):
+                    selected.add(dep)
+            metric_seeds = {name for name in selected if by_fqn[name].metrics}
+            if not metric_seeds:
+                for seed in tuple(selected):
+                    adjacent = sorted(
+                        other
+                        for edge in edges
+                        for other in _other_endpoints(edge, seed)
+                        if other in by_fqn and by_fqn[other].metrics
+                    )
+                    if adjacent:
+                        selected.add(adjacent[0])
+                        metric_seeds.add(adjacent[0])
+            selected = _connect_fqns(selected, edges, anchor)
+            if (
+                metric_seeds
+                and selected.issubset(by_fqn)
+                and len(selected) <= self._max_request_assets
+            ):
+                return (
+                    tuple(by_fqn[name] for name in sorted(selected)),
+                    edges,
                 )
-                if adjacent:
-                    selected.add(adjacent[0])
-                    metric_seeds.add(adjacent[0])
-        selected = _connect_fqns(selected, edges, anchor)
-        if (
-            not metric_seeds
-            or not selected.issubset(by_fqn)
-            or len(selected) > self._max_request_assets
-        ):
-            raise GovernedMetadataError(
-                "governed request assets cannot form a bounded metric join context"
-            )
-        return (
-            tuple(by_fqn[name] for name in sorted(selected)),
-            edges,
+        raise GovernedMetadataError(
+            "governed request assets cannot form a bounded metric join context"
         )
 
     @staticmethod
     def _validate_common_contracts(
         datasets: tuple[GovernedDataset, ...],
     ) -> None:
-        for attribute in ("policy_version", "time_metadata", "query_policy"):
+        for attribute in ("policy_version", "query_policy"):
             values = {
                 _canonical(getattr(item, attribute))
                 for item in datasets
@@ -306,6 +337,15 @@ class QueryGovernanceEngine:
                 raise GovernedMetadataError(
                     f"selected DataHub assets disagree on {attribute}"
                 )
+        calendar_ids = {
+            item.time_metadata.get("calendar_id")
+            for item in datasets
+            if isinstance(getattr(item, "time_metadata", None), dict)
+        }
+        if len(calendar_ids) > 1:
+            raise GovernedMetadataError(
+                "selected DataHub assets disagree on calendar_id"
+            )
 
 
 async def _gather_snapshot_and_semantic(loader, catalog, query):

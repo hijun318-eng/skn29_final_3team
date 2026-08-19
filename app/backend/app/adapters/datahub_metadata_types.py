@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.adapters.datahub_metadata_values import GovernedMetadataError, clone_mapping
-from app.services.context_values import _typed_value_is_valid
+from app.services.context.values import _typed_value_is_valid
 from src.data.governance_contract import canonical_json
 
 
@@ -28,8 +28,13 @@ class GlossaryMetricTerm:
     lifecycle_urn: str
 
     def as_dict(self) -> dict[str, Any]:
-        """모델 context에 공개 가능한 metric 정의만 새 dict로 내보내 내부 rule·권한 정보의 변경을 막는다."""
-        return {
+        """모델 context에 공개 가능한 metric 정의만 새 dict로 내보내 내부 rule·권한 정보의 변경을 막는다.
+
+        ratio metric은 물리 계산 규칙이 없는 대신 승인된 분자·분모 id와 zero_policy를
+        ``metric_rule``에서 그대로 노출한다 — resolver가 후보 집합 대조에만 쓰고, 값 자체는
+        여전히 DataHub 승인 term이 결정한다.
+        """
+        result: dict[str, Any] = {
             "id": self.id,
             "urn": self.urn,
             "label": self.label,
@@ -39,6 +44,12 @@ class GlossaryMetricTerm:
             "version": self.version,
             "checksum": self.checksum,
         }
+        if self.metric_rule.get("kind") == "ratio":
+            result["kind"] = "ratio"
+            result["numerator_metric_id"] = self.metric_rule.get("numerator_metric_id")
+            result["denominator_metric_id"] = self.metric_rule.get("denominator_metric_id")
+            result["zero_policy"] = self.metric_rule.get("zero_policy")
+        return result
 
     @property
     def searchable_text(self) -> str:

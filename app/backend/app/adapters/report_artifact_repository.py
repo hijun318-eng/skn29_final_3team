@@ -55,8 +55,9 @@ class ReportArtifactRepositoryMixin:
             row = (await session.execute(
                 text(
                     """
-                    SELECT a.artifact_id, a.narrative_markdown,
+                    SELECT a.artifact_id, a.title, a.narrative_markdown,
                            a.data_snapshot_json, a.evidence_json, a.chart_spec_json,
+                           a.artifact_checksum,
                            q.trino_query_id
                     FROM artifact.analysis_artifacts a
                     JOIN query.query_executions q

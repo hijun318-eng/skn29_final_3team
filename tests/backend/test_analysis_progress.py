@@ -10,7 +10,7 @@ BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
 from app.contracts import AnalysisStatus, PipelineStage, Role, StageOutcome
-from app.services.analysis_progress import AmbiguousTraceError, AnalysisProgressRegistry
+from app.services.analysis.progress import AmbiguousTraceError, AnalysisProgressRegistry
 
 
 def test_progress_is_owner_scoped_and_preserves_cancelled_terminal_state():
@@ -82,7 +82,7 @@ def test_terminal_progress_expires_from_completion_not_start_time():
     registry.start("long-running", owner, Role.HOTEL_ANALYST, request_id)
     registry.finish(request_id, AnalysisStatus.SUCCEEDED)
     registry._active[request_id].completed_clock = 100
-    with patch("app.services.analysis_progress.monotonic", side_effect=(105, 105, 111)):
+    with patch("app.services.analysis.progress.monotonic", side_effect=(105, 105, 111)):
         assert registry.get_request(request_id, owner)["status"] == "SUCCEEDED"
         with pytest.raises(KeyError):
             registry.get_request(request_id, owner)

@@ -115,9 +115,11 @@ def conversation_orchestrator(controller: Any) -> Any:
     private 멤버를 체이닝하는 대신 ``AnalysisController.data_platform``/``support``
     public property로 같은 connection pool을 그대로 재사용한다.
     """
+    from app.adapters.analysis_repository import PostgresAnalysisRepository
     from app.adapters.conversation_repository import ConversationRepository
+    from app.adapters.report_repository import PostgresReportRepository
     from app.database import get_sessionmaker
-    from app.services.conversation_orchestrator import ConversationOrchestrator
+    from app.services.conversation import ConversationOrchestrator
 
     database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
     if not database_url:
@@ -126,9 +128,26 @@ def conversation_orchestrator(controller: Any) -> Any:
     sessionmaker = get_sessionmaker(database_url)
     repo = ConversationRepository(sessionmaker)
 
+    def _report_repo_factory(owner_id: Any, manage_all: bool = False) -> Any:
+        return PostgresReportRepository(
+            database_url=database_url,
+            owner_id=owner_id,
+            manage_all=manage_all,
+            session_factory=sessionmaker,
+        )
+
+    def _analysis_repo_factory(owner_id: Any) -> Any:
+        return PostgresAnalysisRepository(
+            database_url=database_url,
+            owner_id=owner_id,
+            session_factory=sessionmaker,
+        )
+
     return ConversationOrchestrator(
         repository=repo,
         data_platform=controller.data_platform,
         support=controller.support,
         submit_analysis=controller.submit,
+        report_repository_factory=_report_repo_factory,
+        analysis_repository_factory=_analysis_repo_factory,
     )

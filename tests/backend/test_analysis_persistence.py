@@ -29,7 +29,7 @@ from app.adapters.analysis_repository import (  # noqa: E402
 from app.context import ContextValidationError  # noqa: E402
 from app.contracts import AnalysisRequest, ErrorCode, RequestContext  # noqa: E402
 from app.controllers.analysis_controller import AnalysisController  # noqa: E402
-from app.services.analysis_service import AnalysisService  # noqa: E402
+from app.services.analysis import AnalysisService  # noqa: E402
 from app.services.routing_service import RoutingService  # noqa: E402
 from tests.support.analysis_runtime_fixture import (  # noqa: E402
     AnalysisRuntimeDataPlatformFake,

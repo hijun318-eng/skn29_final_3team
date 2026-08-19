@@ -60,6 +60,7 @@ STATE_MAPPING = {
         "PARTIAL": {"api": "partial", "ui": "PARTIAL"},
         "FAILED": {"api": "failed", "ui": "ERROR"},
         "CANCELLED": {"api": "cancelled", "ui": "CANCELLED"},
+        "CLARIFICATION_REQUIRED": {"api": "blocked", "ui": "EMPTY"},
     },
     "outcome_overrides": {
         "EMPTY": {"api": "success", "ui": "EMPTY"},

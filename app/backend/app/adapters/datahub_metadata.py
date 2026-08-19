@@ -30,7 +30,7 @@ from app.adapters.datahub_metadata_values import (
     string_set,
     term_urns,
 )
-from app.services.context_values import FILTER_OPERATORS
+from app.services.context.values import FILTER_OPERATORS
 from src.data.governance_contract import (
     DATASET_RUNTIME_PROPERTY_KEYS,
     MANIFEST_DATASET_KEYS,

@@ -91,24 +91,11 @@ class ConversationRepository:
 
         async with self._sessionmaker() as session:
             async with session.begin():
-                # 1. 멱등성 명령 등록
-                insert_cmd = text("""
-                INSERT INTO chat.turn_commands (command_id, conversation_id, idempotency_key, canonical_input_hash, status)
-                VALUES (:cmd_id, :conv_id, :idemp, :hash, 'RUNNING')
-                """)
-                try:
-                    await session.execute(insert_cmd, {
-                        "cmd_id": command_id,
-                        "conv_id": conversation_id,
-                        "idemp": idempotency_key,
-                        "hash": input_hash,
-                    })
-                except Exception as e:
-                    if "unique" in str(e).lower() or "duplicate" in str(e).lower():
-                        return False, "IDEMPOTENCY_CONFLICT"
-                    raise
-
-                # 2. 대화방 잠금 및 상태 확인
+                # 1. 대화방 잠금 및 상태 확인
+                # turn_commands.conversation_id가 conversations를 참조하므로, INSERT를
+                # 먼저 하면 그 FK가 잡는 공유 잠금과 이 SELECT FOR UPDATE의 배타 잠금이
+                # 두 동시 트랜잭션 사이에서 서로 반대 순서로 얽혀 deadlock을 만든다.
+                # FOR UPDATE를 항상 먼저 획득해 모든 트랜잭션이 같은 잠금 순서를 쓰게 한다.
                 lock_conv = text("SELECT head_turn_id, active_command_id, lease_expires_at, status FROM chat.conversations WHERE conversation_id = :conv_id FOR UPDATE")
                 res = await session.execute(lock_conv, {"conv_id": conversation_id})
                 conv = res.mappings().first()
@@ -124,6 +111,23 @@ class ConversationRepository:
                 # Lease 검사
                 if conv["active_command_id"] and conv["lease_expires_at"] and conv["lease_expires_at"] > now:
                     return False, "CONVERSATION_BUSY"
+
+                # 2. 멱등성 명령 등록 (conversations 잠금을 확보한 뒤에만 실행)
+                insert_cmd = text("""
+                INSERT INTO chat.turn_commands (command_id, conversation_id, idempotency_key, canonical_input_hash, status)
+                VALUES (:cmd_id, :conv_id, :idemp, :hash, 'RUNNING')
+                """)
+                try:
+                    await session.execute(insert_cmd, {
+                        "cmd_id": command_id,
+                        "conv_id": conversation_id,
+                        "idemp": idempotency_key,
+                        "hash": input_hash,
+                    })
+                except Exception as e:
+                    if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                        return False, "IDEMPOTENCY_CONFLICT"
+                    raise
 
                 # Lease 획득
                 update_conv = text("""
@@ -240,40 +244,13 @@ class ConversationRepository:
         view_spec_id = uuid4()
         async with self._sessionmaker() as session:
             async with session.begin():
-                # 1. 외래키 참조 무결성을 위해 artifact.analysis_artifacts 존재 여부 확인 및 보장
+                # 1. 외래키 참조 무결성을 위해 artifact.analysis_artifacts 존재 여부 엄격 확인
                 check_art = await session.execute(
                     text("SELECT 1 FROM artifact.analysis_artifacts WHERE artifact_id = :art_id"),
                     {"art_id": artifact_id},
                 )
                 if not check_art.scalar():
-                    req_id = artifact_id
-                    await session.execute(
-                        text("""
-                        INSERT INTO chat.analysis_requests (
-                            request_id, conversation_id, request_type, user_id, user_role,
-                            question_text_redacted, question_hash, ambiguity_status,
-                            sql_policy_version, status, trace_id, started_at, completed_at
-                        ) VALUES (
-                            :req_id, NULL, 'CHAT', COALESCE(:uid, '00000000-0000-0000-0000-000000000000'::uuid),
-                            'hotel_analyst', 'Multi-turn Analysis Artifact', 'multi-turn-hash', 'CLEAR',
-                            'v1.0', 'SUCCEEDED', 'multi-turn-trace', NOW(), NOW()
-                        ) ON CONFLICT (request_id) DO NOTHING
-                        """),
-                        {"req_id": req_id, "uid": user_id},
-                    )
-                    await session.execute(
-                        text("""
-                        INSERT INTO artifact.analysis_artifacts (
-                            artifact_id, request_id, artifact_type, title,
-                            data_snapshot_json, chart_spec_json, narrative_markdown,
-                            evidence_json, freshness_status, status, artifact_checksum
-                        ) VALUES (
-                            :art_id, :req_id, 'COMPOSITE', 'Multi-turn Artifact',
-                            '{}'::jsonb, '{}'::jsonb, '', '{}'::jsonb, 'FRESH', 'APPROVED', 'multi-turn-checksum'
-                        ) ON CONFLICT (artifact_id) DO NOTHING
-                        """),
-                        {"art_id": artifact_id, "req_id": req_id},
-                    )
+                    raise ValueError(f"Referenced artifact {artifact_id} does not exist.")
 
                 # 2. ViewSpec 삽입
                 stmt = text("""

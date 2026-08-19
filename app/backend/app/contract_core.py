@@ -29,6 +29,7 @@ class AnalysisStatus(str, Enum):
     PARTIAL = "PARTIAL"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+    CLARIFICATION_REQUIRED = "CLARIFICATION_REQUIRED"
 
 
 class PipelineStage(str, Enum):
@@ -70,6 +71,10 @@ class ErrorCode(str, Enum):
     CONTEXT_INCOMPLETE = "CONTEXT_INCOMPLETE"
     CONTEXT_SOURCE_FAILED = "CONTEXT_SOURCE_FAILED"
     DATA_ASSET_NOT_FOUND = "DATA_ASSET_NOT_FOUND"
+    OUT_OF_DATA_RANGE = "OUT_OF_DATA_RANGE"
+    SOURCE_NOT_READY = "SOURCE_NOT_READY"
+    GRAIN_VIOLATION = "GRAIN_VIOLATION"
+    FILTER_VALUE_NOT_FOUND = "FILTER_VALUE_NOT_FOUND"
     AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
     ACCESS_DENIED = "ACCESS_DENIED"
     MODEL_CONTRACT_INVALID = "MODEL_CONTRACT_INVALID"
@@ -105,6 +110,17 @@ class ClarificationType(str, Enum):
     PERIOD = "period"
 
 
+class DisambiguationOption(ContractModel):
+    """모호성 해소를 위해 사용자에게 제시하는 구조화된 선택지 계약이다."""
+    label: str
+    clarification_type: ClarificationType
+    description: str | None = None
+    metric_id: str | None = None
+    period_start: str | None = None
+    period_end_exclusive: str | None = None
+    value: str | None = None
+
+
 class RequiredAction(str, Enum):
     """오류를 해소하기 위해 클라이언트가 재시도·인증·권한 요청 등 무엇을 해야 하는지 명시한다."""
     NONE = "NONE"
@@ -137,6 +153,7 @@ class ResolvedSlots(ContractModel):
     """
     metric_id: str | None = None
     dimension_ids: tuple[str, ...] = ()
+    user_filters: tuple[dict[str, str], ...] = ()
     period_start: str | None = None
     period_end_exclusive: str | None = None
 
@@ -191,6 +208,7 @@ class ErrorBody(ContractModel):
     retryable: bool = False
     suggestions: tuple[str, ...] = ()
     clarification_type: ClarificationType | None = None
+    disambiguation_options: tuple[DisambiguationOption, ...] = ()
     trace_id: str = ""
 
     def model_post_init(self, __context: object) -> None:
@@ -216,6 +234,7 @@ _RETRYABLE_ERROR_CODES = {
     ErrorCode.PARTIAL_FAILURE,
     ErrorCode.RATE_LIMITED,
     ErrorCode.DEPENDENCY_UNAVAILABLE,
+    ErrorCode.SOURCE_NOT_READY,
 }
 
 _REQUIRED_ACTION_BY_ERROR = {
@@ -224,6 +243,10 @@ _REQUIRED_ACTION_BY_ERROR = {
     ErrorCode.CONTEXT_INCOMPLETE: RequiredAction.PROVIDE_CONTEXT,
     ErrorCode.INSUFFICIENT_CONTEXT: RequiredAction.PROVIDE_CONTEXT,
     ErrorCode.DATA_ASSET_NOT_FOUND: RequiredAction.PROVIDE_CONTEXT,
+    ErrorCode.OUT_OF_DATA_RANGE: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.GRAIN_VIOLATION: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.FILTER_VALUE_NOT_FOUND: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.SOURCE_NOT_READY: RequiredAction.RETRY,
     ErrorCode.CONTRACT_VERSION_MISMATCH: RequiredAction.MODIFY_REQUEST,
     ErrorCode.SCHEMA_VERSION_MISMATCH: RequiredAction.MODIFY_REQUEST,
     ErrorCode.RESOURCE_NOT_FOUND: RequiredAction.MODIFY_REQUEST,

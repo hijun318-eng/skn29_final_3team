@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from app.services.analysis_result_stage import _chart_spec
+from app.services.analysis.stages.result_stage import _chart_spec
 
 
 class AnalysisResultStageChartTest(unittest.TestCase):

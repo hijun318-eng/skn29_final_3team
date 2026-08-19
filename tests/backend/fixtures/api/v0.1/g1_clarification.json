@@ -1,6 +1,7 @@
 {
   "data": {
     "artifact": null,
+    "disambiguation_options": [],
     "gates": {
       "g1_required": true,
       "g2_required": true
@@ -65,6 +66,7 @@
   "error": {
     "clarification_type": null,
     "code": "CONTEXT_INCOMPLETE",
+    "disambiguation_options": [],
     "message": "분석 기간을 입력해 주세요.",
     "missing_requirements": [],
     "required_action": "PROVIDE_CONTEXT",

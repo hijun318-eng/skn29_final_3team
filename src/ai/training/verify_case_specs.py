@@ -24,13 +24,14 @@ BACKEND = Path(__file__).resolve().parents[3] / "app" / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from app.services.context_builder import (  # noqa: E402
+from app.services.context import (  # noqa: E402
     ContextAsset,
     ContextMetric,
     ContextPackage,
+    GovernedJoin,
+    enrich_context_package,
 )
-from app.services.pipeline_context_contract import GovernedJoin, enrich_context_package  # noqa: E402
-from app.services.pipeline_sql_guard import validate_parsed_semantics  # noqa: E402
+from app.services.sql_guard import validate_parsed_semantics  # noqa: E402
 
 
 BINDING_MANIFEST_VERSION = "SERVER-BINDINGS-v1"

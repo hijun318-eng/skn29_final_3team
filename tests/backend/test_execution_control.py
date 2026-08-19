@@ -14,7 +14,7 @@ from tests.support.analysis_runtime_fixture import (
     MetadataDrivenAnalysisModel,
 )
 from app.contracts import AnalysisRequest, PipelineStage, RequestContext, Role
-from app.services.analysis_service import AnalysisService
+from app.services.analysis import AnalysisService
 from app.services.execution_control import ConcurrentExecutionGate, ModelCallBudget
 from app.services.routing_service import RoutingService
 

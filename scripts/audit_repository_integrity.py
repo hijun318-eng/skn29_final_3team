@@ -101,6 +101,23 @@ REQUEST_SPECIFIC_RUNTIME_LITERAL = re.compile(
     r"voc_(?:review_count|low_rating_reviews|negative_reviews|positive_reviews|followup_reviews)",
     re.IGNORECASE,
 )
+# 질문 문구를 직접 훑어 route·기간·차트를 정하는 분기는 동의어·오타·새로운 표현이
+# 나올 때마다 사전을 고쳐야 하고, 승인된 의미 계약을 우회해 사용자의 요청을 조용히
+# 다른 동작으로 바꾼다. 아래는 한국어 의도 어휘가 정규식·문자열 비교 안에 들어간
+# 형태를 잡는다. 판정은 Node1의 typed 신호와 서버 전제조건 검증이 소유해야 한다.
+_ROUTE_INTENT_WORDS = "보고서|리포트|그래프|차트|테이블|막대|꺾은선|시각화|보여줘|나타내줘|담아|바꿔"
+_PERIOD_INTENT_WORDS = (
+    "지난달|저번달|그전달|다음달|올해|금년|작년|전년|지난해|재작년|내년|익년|"
+    "분기|상반기|하반기|최근|지난"
+)
+_INTENT_WORDS = f"{_ROUTE_INTENT_WORDS}|{_PERIOD_INTENT_WORDS}"
+QUESTION_PHRASE_ROUTING = re.compile(
+    # 정규식 리터럴 안에 의도 어휘가 들어간 경우
+    rf"(?:re\.(?:search|match|fullmatch|compile)|new RegExp)\s*\([^)]*(?:{_INTENT_WORDS})"
+    # 발화 문자열 포함 검사로 분기하는 경우. 조사가 붙어도 잡도록 따옴표 안 어디든 허용한다.
+    rf"|[\"'][^\"']*(?:{_INTENT_WORDS})[^\"']*[\"']\s*\)?\s*in\s+"
+    rf"|\.includes\(\s*[\"'][^\"']*(?:{_INTENT_WORDS})[^\"']*[\"']\s*\)",
+)
 PRODUCTION_DOUBLE = re.compile(
     r"\b(?:class|function)\s+(?:Fake|Mock|Stub|InMemory)[A-Za-z0-9_]*\b"
 )
@@ -223,6 +240,14 @@ def _review_text(relative: str, text: str, suffix: str) -> tuple[Finding, ...]:
             Finding(
                 relative,
                 "특정 고객·release·metric literal은 외부 승인 policy에서만 관리해야 합니다.",
+            )
+        )
+    if category == "production" and QUESTION_PHRASE_ROUTING.search(text):
+        findings.append(
+            Finding(
+                relative,
+                "질문 문구로 route·기간·차트를 분기했습니다. Node1의 typed 신호와 "
+                "서버 전제조건 검증으로 판정하세요.",
             )
         )
     if PRODUCTION_DOUBLE.search(text):

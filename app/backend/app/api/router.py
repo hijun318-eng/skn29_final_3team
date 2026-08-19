@@ -64,10 +64,9 @@ from app.api.analysis_router_support import (
     list_analysis_runs,
 )
 from app.controllers.analysis_controller import AnalysisController
-from app.services.analysis_service import AnalysisService
+from app.services.analysis import AnalysisService, analysis_progress
 from app.services.execution_control import ConcurrentExecutionGate
 from app.services.readiness import AppDatabaseReadiness
-from app.services.analysis_progress import analysis_progress
 
 
 @lru_cache(maxsize=1)

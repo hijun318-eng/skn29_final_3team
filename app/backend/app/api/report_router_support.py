@@ -69,7 +69,7 @@ def build_execution_service(repository):
     시간은 환경 계약에서 읽고 임의 기본 분석 결과를 생성하지 않는다.
     """
     from app.api.router import _controller, execution_gate
-    from app.services.report_execution import (
+    from app.services.report.execution import (
         AnalysisDefinitionReplay,
         ReportExecutionService,
     )
@@ -171,7 +171,7 @@ async def approve_report_version(
     renderer 실패는 draft를 승인하지 않은 채 503, 미존재는 404, orientation·상태 충돌은
     409로 매핑한다. 성공할 때만 repository의 문서 포함 승인 transaction이 완료된다.
     """
-    from app.services.report_document import (
+    from app.services.report.document import (
         ReportDocumentRenderError,
         approve_report_document,
     )

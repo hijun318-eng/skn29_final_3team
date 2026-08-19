@@ -97,7 +97,7 @@ class InMemoryReportRepository:
         html_snapshot: str,
         pdf_bytes: bytes,
     ) -> ReportDefinitionVersion:
-        from app.services.report_document import canonical_source_checksum
+        from app.services.report.document import canonical_source_checksum
 
         source = self.get_document_source(definition_id, version)
         if source["orientation"] != orientation:

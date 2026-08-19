@@ -72,7 +72,18 @@
   | "BLOCKED"
   | "PARTIAL"
   | "FAILED"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "CLARIFICATION_REQUIRED";
+
+/** 모호성 해소를 위해 사용자에게 제시하는 구조화된 선택지 계약이다. */ export interface DisambiguationOption {
+  label: string;
+  clarification_type: "metric" | "period";
+  description?: string | null;
+  metric_id?: string | null;
+  period_start?: string | null;
+  period_end_exclusive?: string | null;
+  value?: string | null;
+}
 
 /** 표·지표에서 허용되는 직렬화 가능한 원자 값이다. */ export type AnalysisValue = string | number | boolean | null;
 
@@ -153,6 +164,7 @@
     status?: BackendAnalysisStatus;
     transitions?: BackendAnalysisStatus[];
     trace?: Array<{ stage: string; outcome: string; detail?: string | null }>;
+    disambiguation_options?: DisambiguationOption[];
     artifact?: {
       artifact_id: string;
       query_id: string;
@@ -250,6 +262,7 @@
     required_action: RequiredAction;
     missing_requirements?: string[];
     suggestions?: string[];
+    disambiguation_options?: DisambiguationOption[];
     clarification_type?: "metric" | "period" | null;
     trace_id?: string;
   } | null;
@@ -276,6 +289,7 @@
   rowCount?: number;
   evidenceReady?: boolean;
   artifact?: AnalysisArtifact;
+  disambiguationOptions?: DisambiguationOption[];
   metrics: AnalysisMetric[];
   table?: AnalysisTable | null;
   chart?: AnalysisChart | null;
@@ -287,6 +301,7 @@
     required_action?: RequiredAction;
     missing_requirements?: string[];
     suggestions?: string[];
+    disambiguation_options?: DisambiguationOption[];
     clarification_type?: "metric" | "period" | null;
     trace_id?: string;
   };
@@ -339,6 +354,7 @@ const BACKEND_STATUS_MAP: Record<BackendAnalysisStatus, AnalysisRunStatus> = {
   PARTIAL: "partial",
   FAILED: "failed",
   CANCELLED: "cancelled",
+  CLARIFICATION_REQUIRED: "blocked",
 };
 
 /** wire 응답을 검증·정규화하며 계약 불일치나 근거 누락 시 성공 화면을 만들지 않는다. */
@@ -355,6 +371,7 @@ export function normalizeApiResponse(
   const evidence = result?.evidence;
   const sources = evidence?.sources ?? [];
   const sampling = evidence?.sampling;
+  const disambiguationOptions = response.data.disambiguation_options || response.error?.disambiguation_options || [];
   const evidenceReady = Boolean(
     evidence?.artifact_id
     && evidence?.query_id
@@ -376,10 +393,14 @@ export function normalizeApiResponse(
         required_action: "NONE" as const,
         missing_requirements: ["artifact", "query", "period", "sources", "gates"],
         suggestions: [],
+        disambiguation_options: disambiguationOptions,
         clarification_type: null,
         trace_id: response.meta.trace_id,
       }
-    : response.error ?? undefined;
+    : response.error ? {
+        ...response.error,
+        disambiguation_options: disambiguationOptions,
+      } : undefined;
   return {
     requestId: response.meta.request_id,
     traceId: response.meta.trace_id,
@@ -393,6 +414,7 @@ export function normalizeApiResponse(
       queryId: response.data.artifact.query_id,
       contextHash: response.data.artifact.context_hash,
     } : undefined,
+    disambiguationOptions: disambiguationOptions.length > 0 ? disambiguationOptions : undefined,
     metrics: (exposeResult ? result?.metrics ?? [] : []).map((metric) => ({
       metricId: metric.metric_id,
       resultField: metric.result_field,

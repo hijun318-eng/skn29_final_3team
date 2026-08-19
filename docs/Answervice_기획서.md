@@ -1149,7 +1149,7 @@ I5 이후 후속 단계로 구현한다. 현재 P0/P1·I5 완료선에서는 메
 | 영역 | 잠정 선택 | 현재 구현(2026-07-31) | 적용 이유·주의점 |
 |---|---|---|---|
 | 프론트엔드 | React 19, Vite | React 19.2.7, Vite 8.1.5 — **일치** | 확정 조합의 현재 안정 major를 기준으로 호환성 검증 |
-| 타입 체계 | TypeScript | **미도입** — `typescript` devDependency 없음, 소스는 `.jsx` 10 / `.tsx` 1 / `.ts` 4 | R5 typed client 계약은 현재 JSDoc·contract test로 대체 중. 도입 여부와 시점을 I1에서 결정 |
+| 타입 체계 | TypeScript | **미도입** — `typescript` devDependency 없음, 소스는 `.jsx` 10 / `.tsx` 1 / `.ts` 4 | 프론트엔드 typed client 계약은 현재 JSDoc·contract test로 대체 중. 도입 여부와 시점을 I1에서 결정 |
 | 서버 상태 | TanStack Query | **미도입** | 도입 전까지 polling·cache·error 상태는 화면 모듈이 직접 관리 |
 | 차트 | Apache ECharts | **`recharts` 3.10.0** | 현재 구현은 recharts. 표·KPI 요구를 충족하는지 확인한 뒤 유지 또는 교체를 I1에서 결정 |
 | 보고서 배치 | `react-grid-layout` + 접근성 보완, drag 보조는 `dnd-kit` | **미도입** | 12-column 직렬화·resize를 먼저 충족하고 키보드 대체 조작 별도 구현 |
@@ -1259,7 +1259,7 @@ P0은 별도 IAM 제품을 만들지 않는다. 사용자·그룹·role mapping�
 정확도·p95·VRAM·비용처럼 환경과 모델에 따라 달라지는 목표는 단계 2 baseline을 측정한 뒤 수용치를 고정한다. “보고서 7일 → 수 분”은 실측 전 성과가 아니라 검증할 가설로만 둔다.
 
 > **[미승인] 대표 질문 30건과 metric 승인값의 현재 상태**
-> 위 표의 구성 비율(단일 10·교차 10·모호 5·권한 5)은 **설계 기준**이며, 개별 질문 문항과 metric 승인값은 2026-07-31 기준 아직 확정되지 않았다. `docs/markdown/collaboration/Gate_실행_카드_원장.md`의 R1-W1 카드는 `REPRESENTATIVE_QUESTION=N/A — 승인값 미확정, I1 승인 전 작성 금지`와 `METRIC_CONTRACT=N/A — 승인값 미확정`으로 기록돼 있고, 이는 현재 I1 Contract Freeze의 blocker다. 문항 작성은 R1의 I1 승인 이후에 착수하며, 그전에 작성된 문항은 평가 근거로 사용하지 않는다.
+> 위 표의 구성 비율(단일 10·교차 10·모호 5·권한 5)은 **설계 기준**이며, 개별 질문 문항과 metric 승인값은 2026-07-31 기준 아직 확정되지 않았다. `docs/markdown/collaboration/Gate_실행_카드_원장.md`의 기획 카드는 `REPRESENTATIVE_QUESTION=N/A — 승인값 미확정, I1 승인 전 작성 금지`와 `METRIC_CONTRACT=N/A — 승인값 미확정`으로 기록돼 있고, 이는 현재 I1 Contract Freeze의 blocker다. 문항 작성은 기획·도메인 승인 이후에 착수하며, 그전에 작성된 문항은 평가 근거로 사용하지 않는다.
 
 ### 18.2 검증 매트릭스
 
@@ -1374,23 +1374,23 @@ P1로 분류된 카탈로그 화면 전체보다 **DataHub ingestion과 API 연�
 
 | 역할 | 담당자 | 개인 branch | 주 책임 | 승인 책임 |
 |---|---|---|---|---|
-| **R1** 기술 PM·통합 플랫폼·품질·릴리스 | 박준희 | `junhee` | 공통 계약, 루트 Compose·`.env.example`·CI, 통합 test harness, Gate 판정, 보안·릴리스 증거, 평가 원장 관리 | **제품 수용, 계약 Freeze, 예외 승인, 최종 Gate, release SHA·version 동결** |
-| **R2** 데이터 플랫폼·메타데이터·연합조회 | 정승 | `seung` | 5 source DDL·seed, identity bridge, DataHub recipe·ingestion, Trino catalog·type·JOIN, 정답 fixture | SQL·참조 무결성·connector 결과, 정답 hash |
-| **R3** AI·모델·프롬프트·ModelOps | 윤대성 | `daesung` | Node 1·2·2′·3 I/O schema, prompt registry, fake adapter, 평가 runner, model serving, LoRA 비교 실험 | 모델·prompt·adapter 버전과 실패 분류 |
-| **R4** 백엔드 Control Plane | 김재홍 | `jaehong` | FastAPI·OpenAPI·auth, Controller·Router, Context Builder, G1·G2·G3, Cache, Artifact/Report API, worker | API·migration·정책 버전, Gate 구현 정확성 |
-| **R5** 프론트엔드·자동 리포팅 | 송민지 | `minji` | Chat·Evidence·표·차트, Report grid·editor·run history, Catalog·Audit UI, 상태·접근성 | 화면 계약과 사용성 |
+| **기술 PM·통합 플랫폼·품질·릴리스** | 박준희 | `junhee` | 공통 계약, 루트 Compose·`.env.example`·CI, 통합 test harness, Gate 판정, 보안·릴리스 증거, 평가 원장 관리 | **제품 수용, 계약 Freeze, 예외 승인, 최종 Gate, release SHA·version 동결** |
+| **데이터 플랫폼·메타데이터·연합조회** | 정승 | `seung` | 5 source DDL·seed, identity bridge, DataHub recipe·ingestion, Trino catalog·type·JOIN, 정답 fixture | SQL·참조 무결성·connector 결과, 정답 hash |
+| **AI·모델·프롬프트·ModelOps** | 윤대성 | `daesung` | Node 1·2·2′·3 I/O schema, prompt registry, fake adapter, 평가 runner, model serving, LoRA 비교 실험 | 모델·prompt·adapter 버전과 실패 분류 |
+| **백엔드 Control Plane** | 김재홍 | `jaehong` | FastAPI·OpenAPI·auth, Controller·Router, Context Builder, G1·G2·G3, Cache, Artifact/Report API, worker | API·migration·정책 버전, Gate 구현 정확성 |
+| **프론트엔드·자동 리포팅** | 송민지 | `minji` | Chat·Evidence·표·차트, Report grid·editor·run history, Catalog·Audit UI, 상태·접근성 | 화면 계약과 사용성 |
 
 **19.x 이전 판의 5개 트랙(기획·업무 도메인 / 데이터 엔지니어 / AI·백엔드 / 프론트엔드 / 인프라·QA)에서 옮겨진 책임**은 다음과 같다. 어느 트랙의 책임도 소실되지 않도록 명시한다.
 
 | 구 트랙 | 이관처 | 비고 |
 |---|---|---|
-| 기획·업무 도메인 (질문·지표 정의, 지표 의미·질문 의도·결과 해석 승인) | **R1** | 전담 인원이 없으므로 R1이 겸임한다. 대표 질문·metric 승인값은 R1의 승인 항목이며 현재 미확정 상태다(18.1 참조) |
-| 데이터 엔지니어 | R2 | 명칭만 변경 |
-| AI·백엔드 | **R3 + R4로 분할** | 모델·prompt·평가 = R3, Controller·Gate·Cache·API = R4. Context Builder와 G1·G2·G3의 **구현 소유자는 R4**이며 R3은 Node I/O 계약만 소유한다 |
-| 프론트엔드 | R5 | Report·자동 리포팅 책임이 추가됨 |
-| 인프라·QA (배포, 관측성, 보안·복구·수용 시험, 독립 negative test) | **R1** | 전담 인원이 없으므로 R1이 겸임한다 |
+| 기획·업무 도메인 (질문·지표 정의, 지표 의미·질문 의도·결과 해석 승인) | **기술 PM** | 전담 인원이 없으므로 기술 PM이 겸임한다. 대표 질문·metric 승인값은 기술 PM의 승인 항목이며 현재 미확정 상태다(18.1 참조) |
+| 데이터 엔지니어 | **데이터 엔지니어** | 명칭만 변경 |
+| AI·백엔드 | **AI + 백엔드로 분할** | 모델·prompt·평가 = AI, Controller·Gate·Cache·API = 백엔드. Context Builder와 G1·G2·G3의 **구현 소유자는 백엔드**이며 AI는 Node I/O 계약만 소유한다 |
+| 프론트엔드 | **프론트엔드** | Report·자동 리포팅 책임이 추가됨 |
+| 인프라·QA (배포, 관측성, 보안·복구·수용 시험, 독립 negative test) | **기술 PM** | 전담 인원이 없으므로 기술 PM이 겸임한다 |
 
-gold 세트는 R1(업무 의미)과 R2(SQL·결과)가 공동 승인한다. SQL 정책과 원본 read-only는 R4가 구현하고, **R1이 구현자와 분리된 입장에서 negative test를 수행**한다. R1이 구현과 검증을 겸하는 영역(루트 Compose·CI·통합 harness)에서는 독립성이 확보되지 않으므로, 해당 영역의 검증 결과는 전원 확인 Gate(I0·I5)에서 팀 전체가 재확인한다.
+gold 세트는 기술 PM(업무 의미)과 데이터(SQL·결과)가 공동 승인한다. SQL 정책과 원본 read-only는 백엔드가 구현하고, **기술 PM이 구현자와 분리된 입장에서 negative test를 수행**한다. 기술 PM이 구현과 검증을 겸하는 영역(루트 Compose·CI·통합 harness)에서는 독립성이 확보되지 않으므로, 해당 영역의 검증 결과는 전원 확인 Gate(I0·I5)에서 팀 전체가 재확인한다.
 
 ### 20.2 병렬화 원칙
 
@@ -1420,22 +1420,22 @@ gold 세트는 R1(업무 의미)과 R2(SQL·결과)가 공동 승인한다. SQL 
 **branch 전략.** 역할마다 개인 branch 하나를 고정 사용하고, 통합 branch는 `dev` 하나만 둔다. 개인 branch끼리는 직접 병합하지 않는다.
 
 ```text
-junhee(R1) ─┐
-seung (R2) ─┤
-daesung(R3)─┼─→ dev ─→ (I5 이후) main
-jaehong(R4)─┤
-minji (R5) ─┘
+junhee (PM/QA) ─┐
+seung  (Data)  ─┤
+daesung(AI)    ─┼─→ dev ─→ (I5 이후) main
+jaehong(BE)    ─┤
+minji  (FE)    ─┘
 ```
 
-**실행 단위.** 개별 작업 카드가 아니라 역할·Wave 단위의 `EXECUTION_BUNDLE_ID`(예: `R4-W2`)로 승인한다. 승인된 `TASK_CARD_RANGE` 안에서는 카드별 재승인 없이 진행하고, 목표 통합 Gate 도달·범위 완료·역할 밖 변경 필요·계약 충돌·필수 검증 실패의 5가지 조건에서만 멈춘다. 실행 묶음의 상태·기준 SHA·허용 경로는 `docs/markdown/collaboration/Gate_실행_카드_원장.md`가 단일 기준이다.
+**실행 단위.** 개별 작업 카드가 아니라 역할·Wave 단위의 `EXECUTION_BUNDLE_ID`(예: `BE-W2`)로 승인한다. 승인된 `TASK_CARD_RANGE` 안에서는 카드별 재승인 없이 진행하고, 목표 통합 Gate 도달·범위 완료·역할 밖 변경 필요·계약 충돌·필수 검증 실패의 5가지 조건에서만 멈춘다. 실행 묶음의 상태·기준 SHA·허용 경로는 `docs/markdown/collaboration/Gate_실행_카드_원장.md`가 단일 기준이다.
 
 **경로 소유권.** 각 실행 묶음은 `ALLOWED_PATHS`(수정 가능 경로)와 `FORBIDDEN_PATHS`를 갖는다. 다른 역할 소유 파일은 직접 고치지 않고 change request로 넘긴다. 개인 일일보고와 공용 보고 자동화 경로는 전 역할에 열어 두되, 다른 역할의 개인 일일보고는 차단한다.
 
-**병합 순서.** API·DB·model 연결 전에는 버전이 붙은 fixture와 fake adapter로 병렬 개발한다. 통합 Gate에서는 `R1 공통 계약 → R2 schema·seed → R3 Node schema·fake → R4 OpenAPI·Controller → R5 typed client·mock → R1 Compose·env·CI follow-up` 순으로 병합하고, 각 병합 직후 소비자 contract test를 실행한다.
+**병합 순서.** API·DB·model 연결 전에는 버전이 붙은 fixture와 fake adapter로 병렬 개발한다. 통합 Gate에서는 `공통 계약 → 데이터 schema·seed → AI Node schema·fake → 백엔드 OpenAPI·Controller → 프론트엔드 typed client·mock → 인프라 Compose·env·CI follow-up` 순으로 병합하고, 각 병합 직후 소비자 contract test를 실행한다.
 
 ### 20.5 자동 품질 Gate — GitHub Actions
 
-R1이 매번 수동으로 확인하던 경로·테스트·증거 수집을 자동화하되, **판단 권한은 이관하지 않는다**. 자동화는 객관적으로 검사 가능한 사실만 판정하고, 의미·수용·승인은 R1이 판정한다.
+기술 PM이 매번 수동으로 확인하던 경로·테스트·증거 수집을 자동화하되, **판단 권한은 이관하지 않는다**. 자동화는 객관적으로 검사 가능한 사실만 판정하고, 의미·수용·승인은 기술 PM이 판정한다.
 
 **흐름.**
 
@@ -1443,7 +1443,7 @@ R1이 매번 수동으로 확인하던 경로·테스트·증거 수집을 자�
 개인 branch push
 → role-scope    : origin/dev 대비 변경 경로가 ALLOWED_PATHS 안인지 검사
 → 역할별 검사   : Python contract·문서/WBS·frontend build·Compose 설정
-→ quality-gate  : 결과 집계 + GitHub Actions Summary에 R1 대시보드 출력
+→ quality-gate  : 결과 집계 + GitHub Actions Summary에 품질 대시보드 출력
 → R1이 예외 항목만 검토 → 승인·보완 요청·보류 기록 → dev 병합
 ```
 
@@ -1451,28 +1451,28 @@ R1이 매번 수동으로 확인하던 경로·테스트·증거 수집을 자�
 
 | Job | 검사 내용 | 실행 대상 |
 |---|---|---|
-| `role-scope` | 변경 경로가 `ALLOWED_PATHS` 안인지, `git diff --check`, handoff manifest 정합성, R1 대시보드 생성 | 전 branch |
+| `role-scope` | 변경 경로가 `ALLOWED_PATHS` 안인지, `git diff --check`, handoff manifest 정합성, 품질 대시보드 생성 | 전 branch |
 | `python-contracts` | Python compile 검사, 단위·계약·통합 test | 전 branch |
 | `document-quality` | 문서 정책, WBS 형식, 일일보고 형식 검증 | 전 branch |
-| `frontend-contracts` | `npm ci` 재현 설치, production build, 화면 계약 test | R5·`dev` |
-| `compose-config` | DataHub service fragment, `dev`·`full`·`split-host` 3개 profile 설정 검증 | R1·R2·`dev` |
+| `frontend-contracts` | `npm ci` 재현 설치, production build, 화면 계약 test | minji·`dev` |
+| `compose-config` | DataHub service fragment, `dev`·`full`·`split-host` 3개 profile 설정 검증 | junhee·seung·`dev` |
 | `quality-gate` | 위 결과 집계와 최종 통과 판정 | 전 branch |
 
 **판정 등급과 후속 처리.** 자동화 판정은 원장 상태와 분리해 사용한다.
 
 | 판정 | 의미 | CI 차단 | 후속 처리 |
 |---|---|:---:|---|
-| `PASS` | 경로·SHA·diff·필수 필드·검증이 모두 일치 | — | R1 승인 후보로 표시 |
+| `PASS` | 경로·SHA·diff·필수 필드·검증이 모두 일치 | — | 승인 후보로 표시 |
 | `FAIL` | 허용 경로 침범, 필드 누락·형식 오류, 실패·중단된 검증 | **차단** | 원 소유 역할에 반환 |
-| `REVIEW_REQUIRED` | 미실행 검증, change request, 잔여 위험, 외부 승인 요청 | 차단하지 않음 | R1 검토 큐에 표시 |
+| `REVIEW_REQUIRED` | 미실행 검증, change request, 잔여 위험, 외부 승인 요청 | 차단하지 않음 | 검토 큐에 표시 |
 | `NOT_RUN` | 아직 handoff를 제출하지 않은 진행 중 묶음 | 차단하지 않음 | 제출 대기이며 성공으로 계산하지 않음 |
 | `N/A` | 이미 통합·검증이 끝나 새 handoff가 필요 없음 | — | 추가 구현 없이 유지 |
 
-**차단과 경고를 나눈 이유.** 잔여 위험이나 미실행 검증을 정직하게 기록한 역할이 CI 실패로 불이익을 받으면, 그 항목을 비워 두는 편이 유리해져 Gate가 수집하려는 증거 자체가 사라진다. 따라서 차단은 **증거의 무결성 위반**(경로 침범, 필드 누락, 실패한 검증)에만 적용하고, **불리한 사실의 자발적 보고**는 R1 검토 항목으로만 올린다.
+**차단과 경고를 나눈 이유.** 잔여 위험이나 미실행 검증을 정직하게 기록한 역할이 CI 실패로 불이익을 받으면, 그 항목을 비워 두는 편이 유리해져 Gate가 수집하려는 증거 자체가 사라진다. 따라서 차단은 **증거의 무결성 위반**(경로 침범, 필드 누락, 실패한 검증)에만 적용하고, **불리한 사실의 자발적 보고**는 검토 항목으로만 올린다.
 
 **handoff manifest.** 역할이 통합 판정을 요청하기 전 `handoffs/<EXECUTION_BUNDLE_ID>.json`을 제출한다. 필수 항목은 실행 묶음 ID·역할·branch·기준 SHA·결과 SHA·완료 카드·변경 파일·계약 version·검증 결과·미실행 검증·change request·잔여 위험·외부 승인 필요 여부의 13개다. 초안은 `--write-handoff` 명령으로 생성하며, 이미 제출된 manifest는 덮어쓰지 않는다.
 
-**자동화하지 않는 항목.** 다음은 R1 또는 사용자의 명시적 승인 대상으로 유지한다.
+**자동화하지 않는 항목.** 다음은 기술 PM 또는 사용자의 명시적 승인 대상으로 유지한다.
 
 - 계약·소유권 변경, `ALLOWED_PATHS` 밖 변경, 실패한 검증의 예외 승인
 - 외부 모델 사용, 비용 발생, 데이터 외부 전송, secret 등록, 외부 배포
@@ -1487,7 +1487,7 @@ GitHub Actions에는 읽기 권한만 부여하고 자동 commit·push·merge �
 |---|---|---|
 | 역할별 test 분리 | 현재 전 branch에서 전체 test를 실행해 타 역할 실패가 다른 역할을 차단함 | Wave 2 전 역할별 경로 분기 |
 | `dev` 병합 경로 | `dev`는 경로 검사를 건너뛰고 PR 트리거가 없어 병합 시 검사가 돌지 않음 | PR 트리거 추가 + branch protection 명문화 |
-| 원장 경로 정합성 | 일부 `ALLOWED_PATHS`가 실제 존재하지 않는 경로를 가리킴 | R1 승인 후 원장 교정 |
+| 원장 경로 정합성 | 일부 `ALLOWED_PATHS`가 실제 존재하지 않는 경로를 가리킴 | 기술 PM 승인 후 원장 교정 |
 | 원장 파싱 취약성 | 원장 서식·블록 순서 변경 시 잘못된 허용 경로가 적용될 수 있음 | 명시 키 기반 선택으로 전환 |
 
 ---
@@ -1529,7 +1529,7 @@ GitHub Actions에는 읽기 권한만 부여하고 자동 commit·push·merge �
 | 자동 품질 Gate의 교차 역할 차단 | 한 역할의 실패가 무관한 역할 전체를 정지 | 자기 변경과 무관한 job 실패로 CI red | 역할별 test 경로 분기, 전체 회귀는 `dev`에서만 실행 (§20.5 미해결 사항) |
 | `dev` 병합 경로의 검사 공백 | 검사되지 않은 변경이 통합 branch에 유입 | `dev` 이력에 role scope 판정 기록 없음 | PR 트리거 추가, branch protection 요구사항을 원장에 명문화 |
 | 원장 서식 변경에 의한 Gate 무력화 | 잘못된 허용 경로 적용 또는 검사 우회 | 원장 편집 후 판정 결과가 갑자기 바뀜 | 명시 키 기반 실행 묶음 선택, 파싱 실패 시 통과가 아닌 차단, 원장 파싱 회귀 test |
-| 자동 검사를 사람의 판단으로 오인 | 미검증 산출물의 조기 승인 | 자동 통과를 Gate 통과로 인용 | 자동 판정과 R1 판정의 분리를 Summary·원장·매뉴얼에 동일 문구로 고지 (§20.5) |
+| 자동 검사를 사람의 판단으로 오인 | 미검증 산출물의 조기 승인 | 자동 통과를 Gate 통과로 인용 | 자동 판정과 기술 PM 판정의 분리를 Summary·원장·매뉴얼에 동일 문구로 고지 (§20.5) |
 
 ---
 
@@ -1650,6 +1650,6 @@ GitHub Actions에는 읽기 권한만 부여하고 자동 commit·push·merge �
 | 버전 | 일시 | 요약 |
 |---|---|---|
 | v1.3 | 2026-08-03 11:06 | 승인자가 기술 상세보다 사용자 문제와 서비스 가치를 먼저 이해하도록 한 문장 정의, 문제·해결 표, 쉬운 범위, 사용자 흐름, 최소 성공 조건과 승인 질문을 재구성 |
-| v1.2 | 2026-07-31 | 기획 검토 반영. 제품명 Answervice 정의(§1.1), 10주 참조안과 5.4주 실행 일정의 모순을 범위 축소 방식으로 명시(§20), 역할 구성을 실제 5인 R1~R5 편성으로 재작성하고 구 트랙 책임 이관표 추가(§20.1), 기술 스택에 현재 구현 실측값 열 추가(§16.1), 개발 프로세스·형상 관리와 자동 품질 Gate 章 신설(§20.4·20.5), 대표 질문 30건의 미승인 상태 표기(§18.1), CI Gate 관련 리스크 4건 추가(§21) |
+| v1.2 | 2026-07-31 | 기획 검토 반영. 제품명 Answervice 정의(§1.1), 10주 참조안과 5.4주 실행 일정의 모순을 범위 축소 방식으로 명시(§20), 역할 구성을 실제 5인(PM, 데이터, AI, 백엔드, 프론트엔드) 편성으로 재작성하고 구 트랙 책임 이관표 추가(§20.1), 기술 스택에 현재 구현 실측값 열 추가(§16.1), 개발 프로세스·형상 관리와 자동 품질 Gate 章 신설(§20.4·20.5), 대표 질문 30건의 미승인 상태 표기(§18.1), CI Gate 관련 리스크 4건 추가(§21) |
 | v1.1 | 2026-07-30 09:32 | P2·고객 360을 I5 이후 비차단 후속 단계로 고정하고, 전 Node Base 기준선·1회 LoRA 비교·조건부 제품 채택의 모순을 교정 |
 | v1.0 | 2026-07-28 | DataHub Core 기반 대화형 분석·자동 리포팅 최종 기획서 작성 |

@@ -65,25 +65,25 @@ Trino
 ## 3. 기준 역할
 
 ```text
-R1 박준희
+PM 박준희
 - 최종 통합 검증
 - 공유 환경 적용 승인
 - P2 승인
 - 역할 충돌 최종 판정
 
-R2 정승
+데이터 정승
 - Source DB 5개
 - Source DDL
 - Source seed
 - DataHub
 - Trino catalog·View
 
-R4 김재홍
+백엔드 김재홍
 - Application DB
 - Alembic migration chain
 - OpenAPI
 
-R5 송민지
+프론트엔드 송민지
 - Report migration 초안
 - 최종 Alembic revision 확정 금지
 
@@ -119,10 +119,10 @@ ML 작업카드 담당자
 ### 4.2 예상 역할 폴더
 
 ```text
-R2/
-R4/
-R5/
-R1/
+데이터/
+백엔드/
+프론트엔드/
+PM/
 ML/
 00_공유/
 ```
@@ -194,7 +194,7 @@ REFERENCE_SQL
 
 ---
 
-## 6. R2 Source SQL 매핑
+## 6. 데이터(Source) SQL 매핑
 
 ### 6.1 PMS
 
@@ -284,7 +284,7 @@ PMS와 같은 PostgreSQL이라도 DB, 계정, volume, schema, seed를 공유하�
 
 ```text
 file_type=TRINO_VIEW_DDL
-owner_role=R2
+owner_role=Data
 ```
 
 권장 경로:
@@ -315,7 +315,7 @@ view count:
 ```text
 file_type=TRINO_FEATURE_QUERY
 owner_role=ML 작업카드 담당자
-review_role=R2
+review_role=Data
 ```
 
 권장 경로:
@@ -343,7 +343,7 @@ Feature Query는 read-only SELECT·CTE만 허용한다.
 
 ---
 
-## 8. R4 Application DB SQL 매핑
+## 8. 백엔드 Application DB SQL 매핑
 
 다음 SQL은 Source DB init에 넣지 않는다.
 
@@ -394,13 +394,13 @@ SCHEMA_CONTRACT_MISMATCH
 INCLUDE_P2=false
 ```
 
-R1 승인과 별도 작업 카드가 없으면 P2 SQL을 생성하거나 적용하지 않는다.
+PM 승인과 별도 작업 카드가 없으면 P2 SQL을 생성하거나 적용하지 않는다.
 
 ---
 
-## 9. R5 Report SQL 매핑
+## 9. 프론트엔드 Report SQL 매핑
 
-R5 산출물은 다음으로 제한한다.
+프론트엔드 산출물은 다음으로 제한한다.
 
 ```text
 REPORT_REVIEW_SQL
@@ -423,7 +423,7 @@ Application schema 직접 변경
 
 ---
 
-## 10. R1 통합 Gate SQL 매핑
+## 10. PM 통합 Gate SQL 매핑
 
 다음 SQL은 read-only 통합 검증용이다.
 
@@ -439,7 +439,7 @@ sql/validation/integration/
 
 자동 초기화 시 실행하지 않는다.
 
-R1 Gate는 다음을 확인한다.
+PM Gate는 다음을 확인한다.
 
 ```text
 Application table count
@@ -585,16 +585,16 @@ INCLUDE_P2=false
 
 ```text
 Source DB·seed·DataHub·Trino 로컬 적용:
-R2 명시 승인
+데이터 담당 명시 승인
 
 Application DB·Alembic 로컬 적용:
-R4 명시 승인
+백엔드 담당 명시 승인
 
 공유 환경 적용:
-R1 명시 승인
+PM 명시 승인
 
 P2:
-R1 승인 + 별도 작업 카드
+PM 승인 + 별도 작업 카드
 
 삭제·재생성·volume 초기화·권한 변경:
 별도 명시 승인
@@ -606,7 +606,7 @@ R1 승인 + 별도 작업 카드
 
 ## 16. 생성 산출물
 
-승인된 R2 경로 또는 작업 산출물 경로에 다음을 생성한다.
+승인된 데이터 담당 경로 또는 작업 산출물 경로에 다음을 생성한다.
 
 ```text
 sql-mapping/
@@ -649,8 +649,8 @@ notes
 COPY_TO_SOURCE_INIT
 COPY_TO_TRINO_VIEW_PATH
 COPY_TO_ML_REFERENCE
-HANDOFF_TO_R4
-HANDOFF_TO_R5
+HANDOFF_TO_BACKEND
+HANDOFF_TO_FRONTEND
 KEEP_AS_INTEGRATION_GATE
 KEEP_AS_REFERENCE
 EXCLUDE_FROM_AUTO_INIT
@@ -708,13 +708,13 @@ Alembic migration
 [ ] 통합 ZIP 하나를 입력으로 사용했다.
 [ ] ZIP을 단일 SQL로 오인하지 않았다.
 [ ] manifest와 실제 파일을 대조했다.
-[ ] R2 Source DDL과 seed를 구분했다.
+[ ] Source DDL과 seed를 구분했다.
 [ ] 5개 Source의 DBMS를 확인했다.
 [ ] Trino View를 Source init에서 제외했다.
 [ ] ML Feature Query를 Source init에서 제외했다.
-[ ] Application DB SQL을 R4 전달로 분류했다.
+[ ] Application DB SQL을 백엔드 전달로 분류했다.
 [ ] Report SQL을 자동 실행에서 제외했다.
-[ ] R1 Gate SQL을 read-only 검증으로 분류했다.
+[ ] PM Gate SQL을 read-only 검증으로 분류했다.
 [ ] P2 SQL 기본 제외를 확인했다.
 [ ] 시간 기준을 검증했다.
 [ ] 원본을 수정하지 않았다.
@@ -740,7 +740,7 @@ SEED_VERSION:
 ZIP 무결성:
 manifest 검증:
 
-R2 Source 매핑:
+데이터 Source 매핑:
 - PMS DDL:
 - PMS seed:
 - POS DDL:
@@ -753,9 +753,9 @@ R2 Source 매핑:
 - Banquet seed:
 - Trino View:
 
-R4 전달:
-R5 전달:
-R1 Gate:
+백엔드 전달:
+프론트엔드 전달:
+PM Gate:
 ML 참조 SQL:
 
 자동 초기화 포함:

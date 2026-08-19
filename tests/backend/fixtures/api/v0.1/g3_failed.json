@@ -1,6 +1,7 @@
 {
   "data": {
     "artifact": null,
+    "disambiguation_options": [],
     "gates": {
       "g1_required": true,
       "g2_required": true
@@ -66,6 +67,7 @@
   "error": {
     "clarification_type": null,
     "code": "RESULT_EVIDENCE_MISSING",
+    "disambiguation_options": [],
     "message": "결과 근거가 충분하지 않아 설명을 생성하지 않았습니다.",
     "missing_requirements": [],
     "required_action": "NONE",

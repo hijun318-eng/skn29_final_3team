@@ -20,12 +20,12 @@ BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 sys.path.insert(0, str(BACKEND))
 
 from app.contracts import AnalysisStatus  # noqa: E402
-from app.services.report_execution import (  # noqa: E402
+from app.services.report.execution import (  # noqa: E402
     AnalysisDefinitionReplay,
     ReplayOutcome,
     ReportExecutionService,
 )
-from app.services.report_document import approve_report_document  # noqa: E402
+from app.services.report.document import approve_report_document  # noqa: E402
 from app.adapters.report_repository import PostgresReportRepository  # noqa: E402
 from app.database import dispose_database  # noqa: E402
 from src.report.domain import (  # noqa: E402
@@ -129,9 +129,9 @@ async def test_analysis_definition_replay_reseals_period_and_persists_new_eviden
     replay = AnalysisDefinitionReplay("postgresql://test", controller, gate)
 
     with patch(
-        "app.services.report_execution.PostgresAnalysisRepository",
+        "app.services.report.execution.PostgresAnalysisRepository",
         return_value=repository,
-    ), patch("app.services.report_execution.require_active_subject"):
+    ), patch("app.services.report.execution.require_active_subject"):
         outcome = await replay.execute(
             owner_id=OWNER,
             definition_id=str(uuid4()),

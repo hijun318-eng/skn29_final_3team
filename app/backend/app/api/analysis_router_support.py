@@ -18,7 +18,7 @@ from app.analysis_contracts import (
 )
 from app.context import analysis_context, session_context
 from app.contracts import AnalysisProgressResponse, RequestContext, response_meta
-from app.services.analysis_progress import AmbiguousTraceError
+from app.services.analysis import AmbiguousTraceError
 
 
 analysis_support_router = APIRouter()

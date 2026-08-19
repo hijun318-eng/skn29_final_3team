@@ -29,7 +29,7 @@ from app.context_registry_contracts import (
     CreateContextRelease,
     RecordReference,
 )
-from app.services.context_registry_service import ContextRegistryService
+from app.services.context.registry_service import ContextRegistryService
 
 
 class CanonicalChecksumTest(unittest.TestCase):

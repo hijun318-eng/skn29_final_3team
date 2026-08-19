@@ -1,0 +1,19 @@
+{
+  "orientation": "landscape",
+  "blocks": [
+    {"block_id": "cover", "title": "요약", "type": "text", "x": 0, "y": 0, "w": 12, "h": 4, "content": "요약"},
+    {"block_id": "left", "title": "왼쪽", "type": "text", "x": 0, "y": 4, "w": 6, "h": 7, "content": "왼쪽"},
+    {"block_id": "right", "title": "오른쪽", "type": "text", "x": 6, "y": 4, "w": 6, "h": 5, "content": "오른쪽"},
+    {"block_id": "next", "title": "다음 페이지", "type": "text", "x": 0, "y": 11, "w": 12, "h": 8, "content": "다음 페이지"}
+  ],
+  "expected_pages": [
+    [
+      {"block_id": "cover", "x": 0, "source_y": 0, "page_y": 0, "w": 12, "h": 4},
+      {"block_id": "left", "x": 0, "source_y": 4, "page_y": 4, "w": 6, "h": 7},
+      {"block_id": "right", "x": 6, "source_y": 4, "page_y": 4, "w": 6, "h": 7}
+    ],
+    [
+      {"block_id": "next", "x": 0, "source_y": 11, "page_y": 0, "w": 12, "h": 8}
+    ]
+  ]
+}

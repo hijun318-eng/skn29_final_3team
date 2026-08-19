@@ -1,3 +1,5 @@
+"""APP_DATABASE_URL에 연결된 단일 governance Alembic revision chain을 실행한다."""
+
 from __future__ import annotations
 
 import os
@@ -13,17 +15,34 @@ if database_url:
 
 
 def run_migrations_offline() -> None:
-    context.configure(url=config.get_main_option("sqlalchemy.url"), literal_binds=True, include_schemas=True, version_table_schema="governance")
+    """DB 연결 없이 literal SQL을 만들되 version table 위치는 governance로 고정한다."""
+
+    context.configure(
+        url=config.get_main_option("sqlalchemy.url"),
+        literal_binds=True,
+        include_schemas=True,
+        version_table_schema="governance",
+    )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def run_migrations_online() -> None:
-    connectable = engine_from_config(config.get_section(config.config_ini_section) or {}, prefix="sqlalchemy.", poolclass=pool.NullPool)
+    """전용 non-pooled connection에서 governance schema와 migration을 원자 실행한다."""
+
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section) or {},
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
     with connectable.connect() as connection:
         connection.exec_driver_sql("CREATE SCHEMA IF NOT EXISTS governance")
         connection.commit()
-        context.configure(connection=connection, include_schemas=True, version_table_schema="governance")
+        context.configure(
+            connection=connection,
+            include_schemas=True,
+            version_table_schema="governance",
+        )
         with context.begin_transaction():
             context.run_migrations()
 

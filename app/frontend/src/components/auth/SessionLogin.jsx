@@ -1,3 +1,4 @@
+/** cookie 기반 세션 로그인을 처리하고 재인증 화면에도 재사용되는 인증 UI 모듈이다. */
 import { Eye, EyeOff, KeyRound, ShieldCheck, UserRound } from "lucide-react";
 import { useState } from "react";
 import { AnalysisApiError, createAnalysisClient } from "../../api/analysisClient.ts";
@@ -9,6 +10,7 @@ function loginError(failure) {
   return failure instanceof Error ? failure.message : "인증 정보를 확인할 수 없습니다.";
 }
 
+/** 자격 증명을 세션 API에만 전송하고, 인증 완료 전에는 onAuthenticated를 호출하지 않는 로그인 화면이다. */
 export function SessionLogin({ onAuthenticated, notice = "", embedded = false }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -25,7 +27,7 @@ export function SessionLogin({ onAuthenticated, notice = "", embedded = false })
     setError("");
     try {
       const session = await createAnalysisClient(fetch).login(nextUsername, password);
-      onAuthenticated({ token: "", role: session.role });
+      onAuthenticated({ role: session.role });
     } catch (failure) {
       setError(loginError(failure));
     } finally {

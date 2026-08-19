@@ -1,4 +1,4 @@
-"""Add persisted Report Assistant request outcomes."""
+"""Report Assistant 요청과 최종 결과를 owner 범위로 영속화한다."""
 
 import os
 import re
@@ -20,6 +20,8 @@ def _runtime_role() -> str:
 
 
 def upgrade() -> None:
+    """assistant request 상태·artifact 연결 table과 최소권한을 생성한다."""
+
     op.execute(
         """
         CREATE TABLE report_v1.report_assistant_requests (
@@ -57,4 +59,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """assistant request persistence table을 제거한다."""
+
     op.execute("DROP TABLE report_v1.report_assistant_requests")

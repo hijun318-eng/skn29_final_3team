@@ -1,4 +1,7 @@
-"""Measure a fixed OpenAI-compatible model endpoint without extra dependencies."""
+"""벤치마크 serving 학습·평가 데이터의 생성, 실행, 검증 절차와 CLI 진입점을 제공한다.
+
+Measure a fixed OpenAI-compatible model endpoint without extra dependencies.
+"""
 
 from __future__ import annotations
 
@@ -12,8 +15,8 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Callable
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+
+import httpx
 
 
 Requester = Callable[[str, str, dict[str, Any] | None, str | None, float], dict[str, Any]]
@@ -26,26 +29,32 @@ def request_json(
     token: str | None,
     timeout: float,
 ) -> dict[str, Any]:
+    """HTTP JSON 요청을 timeout 안에서 실행하고 상태 코드와 응답 JSON 타입을 검증한다."""
     headers = {"Accept": "application/json", "User-Agent": "answervice-modelops/1.0"}
-    body = None
     if payload is not None:
         headers["Content-Type"] = "application/json"
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     if token:
         headers["Authorization"] = f"Bearer {token}"
     try:
-        with urlopen(Request(url, data=body, headers=headers, method=method), timeout=timeout) as response:
-            result = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        raise OSError(f"endpoint returned HTTP {exc.code}") from exc
-    except (URLError, TimeoutError) as exc:
+        with httpx.Client(timeout=timeout) as client:
+            response = client.request(method, url, json=payload, headers=headers)
+            response.raise_for_status()
+            result = response.json()
+    except httpx.TimeoutException as exc:
         raise TimeoutError("endpoint request timed out or was unavailable") from exc
+    except httpx.HTTPStatusError as exc:
+        raise OSError(
+            f"endpoint returned HTTP {exc.response.status_code}"
+        ) from exc
+    except httpx.RequestError as exc:
+        raise OSError("endpoint request was unavailable") from exc
     if not isinstance(result, dict):
         raise ValueError("endpoint response must be a JSON object")
     return result
 
 
 def percentile(values: list[float], percent: int) -> float:
+    """percentile 입력에서 비교 가능한 결정론적 요약 값을 계산한다."""
     if not values:
         raise ValueError("at least one latency is required")
     ordered = sorted(values)
@@ -58,6 +67,11 @@ def wait_ready(
     timeout: float,
     requester: Requester,
 ) -> tuple[dict[str, Any], float]:
+    """모델 목록 endpoint가 응답할 때까지 제한 시간 안에서 polling한다.
+
+    각 probe는 5초로 제한하고 전체 deadline이 지나면 마지막 장애를 성공으로 간주하지 않고
+    ``TimeoutError``를 발생시키며, 준비까지 걸린 wall-clock 시간도 함께 반환한다.
+    """
     started = time.perf_counter()
     deadline = started + timeout
     while True:
@@ -80,6 +94,11 @@ def benchmark(
     requester: Requester = request_json,
     peak_vram_bytes: int | None = None,
 ) -> dict[str, Any]:
+    """모델 endpoint 준비 시간과 warm inference 지연·throughput·VRAM 관측치를 수집한다.
+
+    동일 guided schema 요청을 지정 횟수 수행하며 2회 미만 표본이나 비정상 timeout은
+    측정값으로 채우지 않고 입력 오류로 거부한다.
+    """
     if warm_requests < 2 or timeout <= 0:
         raise ValueError("warm_requests must be at least 2 and timeout must be positive")
     base_url = base_url.rstrip("/")
@@ -148,6 +167,7 @@ def benchmark(
 
 
 def main() -> int:
+    """서빙 endpoint benchmark를 실행해 관측 evidence를 stdout과 선택한 JSON 파일에 기록한다."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--model", required=True)

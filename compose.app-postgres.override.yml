@@ -1,3 +1,5 @@
+# 책임: 충돌 없는 로컬 검증에 한해 app DB/backend port를 loopback으로 재매핑한다.
+# 운영 배포 정의를 바꾸지 않도록 이 파일은 명시적으로 결합할 때만 효력이 있다.
 services:
   app-postgres:
     container_name: answervice-app-postgres

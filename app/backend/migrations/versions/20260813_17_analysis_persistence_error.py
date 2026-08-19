@@ -1,3 +1,5 @@
+"""Analysis request 오류 계약에 persistence 실패 유형을 명시적으로 추가한다."""
+
 from alembic import op
 
 
@@ -15,6 +17,8 @@ _BASE_ERROR_TYPES = (
 
 
 def upgrade() -> None:
+    """기존 error_type constraint를 PERSISTENCE를 포함하는 계약으로 교체한다."""
+
     op.execute(
         f"ALTER TABLE chat.analysis_requests "
         f"DROP CONSTRAINT IF EXISTS {_CONSTRAINT}"
@@ -26,6 +30,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """PERSISTENCE row가 없음을 확인한 뒤 이전 error_type 계약으로 복원한다."""
+
     op.execute(
         "UPDATE chat.analysis_requests SET error_type = 'QUERY' "
         "WHERE error_type = 'PERSISTENCE'"

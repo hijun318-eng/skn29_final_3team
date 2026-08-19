@@ -1,4 +1,4 @@
-"""Adapter-driven evaluator for versioned AI node cases."""
+"""버전이 고정된 AI 노드 사례를 adapter로 실행하고 결정론적 평가 증거를 계산한다."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any, Iterable
 
 
 class EvaluationError(ValueError):
-    """Raised when an evaluation case is malformed."""
+    """EvaluationError는 평가 사례·manifest·비교 조건이 계약을 위반했음을 전달한다."""
 
 
 _CASE_FIELDS = {"case_id", "node", "request", "expected_output"}
@@ -19,7 +19,7 @@ def evaluate_cases(
     cases: Iterable[dict[str, Any]],
     adapter: Any,
 ) -> dict[str, Any]:
-    """Evaluate fixtures twice and return stable exact-match results."""
+    """각 사례를 두 번 실행해 출력 재현성과 기대값 exact match를 함께 판정한다."""
     seen: set[str] = set()
     results = []
 
@@ -62,7 +62,7 @@ def evaluate_required30(
     cases: Iterable[dict[str, Any]],
     adapter: Any,
 ) -> dict[str, Any]:
-    """Reject incomplete acceptance manifests instead of reporting a partial pass."""
+    """필수 30개 사례가 모두 제공된 경우에만 acceptance 평가를 실행한다."""
     materialized = list(cases)
     if len(materialized) != 30:
         raise EvaluationError("required30 must contain exactly 30 cases")
@@ -70,7 +70,7 @@ def evaluate_required30(
 
 
 def compare_runs(baseline: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
-    """Compare already captured runs without downloading or calling a model."""
+    """동일 조건에서 수집된 baseline과 candidate의 정확도·지연 증거를 비교한다."""
     if baseline.get("conditions") != candidate.get("conditions"):
         raise EvaluationError("comparison conditions must be identical")
     baseline_cases = _case_results(baseline)
@@ -85,7 +85,7 @@ def compare_runs(baseline: dict[str, Any], candidate: dict[str, Any]) -> dict[st
 
 
 def validate_data_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
-    """Validate the R2 evaluation inventory without claiming model execution."""
+    """모델 실행을 주장하지 않고 R2 평가 inventory의 개수·상태·분할 계약을 검증한다."""
     required = {"manifest_version", "synthetic", "counts", "cases"}
     if not required.issubset(manifest) or manifest["synthetic"] is not True:
         raise EvaluationError("R2 evaluation manifest metadata is invalid")
@@ -144,7 +144,7 @@ def validate_data_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
 
 
 def validate_split_manifest(samples: Iterable[dict[str, Any]]) -> dict[str, int]:
-    """Keep a paraphrase group wholly inside one train/validation/gold split."""
+    """같은 paraphrase group이 train·validation·gold 경계를 넘어 누출되지 않게 검증한다."""
     allowed = {"train", "validation", "gold"}
     groups: dict[str, str] = {}
     counts = {split: 0 for split in sorted(allowed)}
@@ -193,6 +193,8 @@ def _run_metrics(run: dict[str, Any], cases: dict[str, bool]) -> dict[str, Any]:
 
 
 def _stable_hash(value: Any) -> str:
+    # dict 삽입 순서나 JSON 공백이 달라도 같은 출력은 같은 증거가 되어야 baseline 비교가
+    # 재현된다. 따라서 canonical JSON byte를 만든 뒤에만 SHA-256을 계산한다.
     encoded = json.dumps(
         value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ).encode("utf-8")

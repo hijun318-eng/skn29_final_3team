@@ -29,7 +29,6 @@ class FastApiRuntimeTest(unittest.TestCase):
         environment = os.environ.copy()
         environment["PYTHONPATH"] = os.pathsep.join([str(BACKEND), str(ROOT)])
         environment.pop("APP_RUNTIME_DATABASE_URL", None)
-        environment["AUTH_MODE"] = "test"
         environment["CORS_ALLOW_ORIGINS"] = (
             "http://localhost:5173,http://localhost:13000,"
             "http://192.168.0.15:13000"
@@ -112,7 +111,6 @@ class FastApiRuntimeTest(unittest.TestCase):
         }
         return {
             "Authorization": f"Bearer {tokens[role]}",
-            "X-As-Of": "2026-07-30",
             "X-Trace-Id": "runtime-test-trace",
             "X-Timezone": "Asia/Seoul",
             "X-Contract-Version": CONTRACT_VERSION,
@@ -128,17 +126,44 @@ class FastApiRuntimeTest(unittest.TestCase):
         parameters = schema["paths"]["/analysis"]["post"]["parameters"]
         names = {parameter["name"].lower() for parameter in parameters}
         expected = {
-            "x-as-of",
             "x-trace-id",
             "x-timezone",
             "x-contract-version",
         }
         self.assertTrue(expected.issubset(names))
+        self.assertNotIn("x-as-of", names)
         self.assertNotIn("authorization", names)
         self.assertNotIn("x-user-id", names)
         self.assertNotIn("x-role", names)
         self.assertEqual({"BearerAuth": []}, schema["paths"]["/analysis"]["post"]["security"][0])
         self.assertEqual("http", schema["components"]["securitySchemes"]["BearerAuth"]["type"])
+
+    def test_readiness_is_503_with_typed_dependency_evidence_when_not_ready(self) -> None:
+        status, response = self.request("/readiness")
+
+        self.assertEqual(503, status)
+        self.assertEqual("not_ready", response["data"]["status"])
+        self.assertEqual("DEPENDENCY_UNAVAILABLE", response["error"]["code"])
+        self.assertEqual("RETRY", response["error"]["required_action"])
+        self.assertTrue(response["error"]["retryable"])
+        self.assertTrue(response["error"]["missing_requirements"])
+        self.assertEqual(response["meta"]["trace_id"], response["error"]["trace_id"])
+        self.assertNotIn("detail", response)
+
+    def test_framework_404_and_405_use_the_public_error_envelope(self) -> None:
+        for method, path, expected_status, expected_code in (
+            ("GET", "/does-not-exist", 404, "RESOURCE_NOT_FOUND"),
+            ("POST", "/health", 405, "RESOURCE_CONFLICT"),
+        ):
+            with self.subTest(method=method):
+                status, response = self.request(path, method=method)
+                self.assertEqual(expected_status, status)
+                self.assertEqual(expected_code, response["error"]["code"])
+                self.assertEqual(
+                    response["meta"]["trace_id"],
+                    response["error"]["trace_id"],
+                )
+                self.assertNotIn("detail", response)
 
     def test_analysis_and_report_preflight_use_exact_origins(self) -> None:
         for path in ("/analysis", "/reports/definitions"):
@@ -213,7 +238,7 @@ class FastApiRuntimeTest(unittest.TestCase):
 
     def test_browser_preflight_allows_only_configured_origin(self) -> None:
         requested_headers = {
-            "authorization", "content-type", "x-as-of", "x-contract-version",
+            "authorization", "content-type", "x-contract-version",
             "x-role", "x-timezone", "x-trace-id", "x-user-id",
         }
         for path, method in (
@@ -263,16 +288,21 @@ class FastApiRuntimeTest(unittest.TestCase):
         )
 
     def test_analysis_preserves_context(self) -> None:
+        headers = self.context_headers()
+        headers["X-As-Of"] = "1900-01-01"
         status, response = self.request(
             "/analysis",
             method="POST",
-            headers=self.context_headers(),
+            headers=headers,
             body={"question": "오늘 객실 운영 상태를 요약해줘"},
         )
         self.assertEqual(200, status)
         self.assertEqual("SUCCEEDED", response["data"]["status"])
         self.assertEqual("runtime-test-trace", response["meta"]["trace_id"])
         self.assertEqual(CONTRACT_VERSION, response["meta"]["contract_version"])
+        self.assertNotEqual(
+            "1900-01-01", response["data"]["result"]["evidence"]["as_of"]
+        )
 
     def test_analysis_progress_is_owner_scoped_and_terminal_cancel_is_rejected(self) -> None:
         headers = self.context_headers()
@@ -294,6 +324,18 @@ class FastApiRuntimeTest(unittest.TestCase):
         self.assertEqual(response["data"]["status"], progress["data"]["status"])
         self.assertGreater(len(progress["data"]["trace"]), 0)
 
+        status, by_request = self.request(
+            f"/analysis/requests/{response['meta']['request_id']}/progress",
+            headers=headers,
+        )
+        self.assertEqual(200, status)
+        progress_data = dict(progress["data"])
+        by_request_data = dict(by_request["data"])
+        progress_elapsed = progress_data.pop("elapsed_seconds")
+        by_request_elapsed = by_request_data.pop("elapsed_seconds")
+        self.assertEqual(progress_data, by_request_data)
+        self.assertGreaterEqual(by_request_elapsed, progress_elapsed)
+
         status, _ = self.request(
             "/analysis/progress/runtime-progress-trace",
             headers=self.context_headers("report_admin"),
@@ -306,6 +348,40 @@ class FastApiRuntimeTest(unittest.TestCase):
             headers=headers,
         )
         self.assertEqual(409, status)
+
+    def test_same_trace_keeps_distinct_request_progress_and_artifacts(self) -> None:
+        headers = self.context_headers()
+        headers["X-Trace-Id"] = "shared-runtime-correlation"
+        responses = []
+        for question in ("first request", "second request"):
+            status, response = self.request(
+                "/analysis",
+                method="POST",
+                headers=headers,
+                body={"question": question},
+            )
+            self.assertEqual(200, status)
+            responses.append(response)
+
+        request_ids = [item["meta"]["request_id"] for item in responses]
+        artifact_ids = [item["data"]["artifact"]["artifact_id"] for item in responses]
+        self.assertEqual(2, len(set(request_ids)))
+        self.assertEqual(2, len(set(artifact_ids)))
+
+        status, ambiguous = self.request(
+            "/analysis/progress/shared-runtime-correlation",
+            headers=headers,
+        )
+        self.assertEqual(409, status)
+        self.assertEqual("RESOURCE_CONFLICT", ambiguous["error"]["code"])
+
+        for request_id in request_ids:
+            status, progress = self.request(
+                f"/analysis/requests/{request_id}/progress",
+                headers=headers,
+            )
+            self.assertEqual(200, status)
+            self.assertEqual(request_id, progress["data"]["request_id"])
 
     def test_analysis_exposes_repair_trace_and_blocks_g3_artifact(self) -> None:
         status, repaired = self.request(
@@ -396,6 +472,18 @@ class FastApiRuntimeTest(unittest.TestCase):
             response["error"]["code"],
         )
 
+        headers = self.context_headers()
+        headers["X-Trace-Id"] = "invalid trace with spaces"
+        status, response = self.request(
+            "/analysis",
+            method="POST",
+            headers=headers,
+            body={"question": "test"},
+        )
+        self.assertEqual(422, status)
+        self.assertEqual("CONTEXT_INCOMPLETE", response["error"]["code"])
+        self.assertNotEqual("invalid trace with spaces", response["meta"]["trace_id"])
+
     def test_non_analyst_role_is_rejected_before_question_routing(self) -> None:
         for role in ("report_admin", "data_admin"):
             with self.subTest(role=role):
@@ -412,13 +500,17 @@ class FastApiRuntimeTest(unittest.TestCase):
         headers = self.context_headers("report_admin")
         status, response = self.request("/reports/definitions", headers=headers)
         self.assertEqual(503, status)
-        self.assertIn("저장소", response["detail"])
+        self.assertEqual("DEPENDENCY_UNAVAILABLE", response["error"]["code"])
+        self.assertEqual("RETRY", response["error"]["required_action"])
+        self.assertNotIn("detail", response)
 
         status, response = self.request(
             "/reports/definitions", headers=self.context_headers("hotel_analyst")
         )
         self.assertEqual(503, status)
-        self.assertIn("저장소", response["detail"])
+        self.assertEqual("DEPENDENCY_UNAVAILABLE", response["error"]["code"])
+        self.assertEqual(response["meta"]["trace_id"], response["error"]["trace_id"])
+        self.assertNotIn("detail", response)
 
         headers["X-User-Id"] = "00000000-0000-0000-0000-000000000001"
         status, response = self.request("/reports/definitions", headers=headers)
@@ -491,9 +583,16 @@ class RealTemplateHttpRuntimeTest(FastApiRuntimeTest):
             {
                 "PYTHONPATH": os.pathsep.join([str(BACKEND), str(ROOT)]),
                 "TEST_REAL_DATA_PLATFORM": "1",
-                "TRINO_URL": f"http://127.0.0.1:{cls.trino.server_port}",
-                "TRINO_USER": "synthetic-runtime",
-                "CORS_ALLOW_ORIGINS": "http://localhost:5173",
+                "TRINO_URL": "https://trino.test:8443",
+                "TRINO_TEST_UPSTREAM_URL": (
+                    f"http://127.0.0.1:{cls.trino.server_port}"
+                ),
+                "TRINO_RUNTIME_USER": "synthetic-runtime",
+                "TRINO_RUNTIME_PASSWORD": "test-password",
+                "CORS_ALLOW_ORIGINS": (
+                    "http://localhost:5173,http://localhost:13000,"
+                    "http://192.168.0.15:13000"
+                ),
             }
         )
         creation_flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -539,8 +638,8 @@ class RealTemplateHttpRuntimeTest(FastApiRuntimeTest):
 
     def test_real_template_positive_role_partial_and_cors(self) -> None:
         body = {
-            "question": "지난달 객실 매출을 요약해줘",
-            "template_id": "weekly-room-operations",
+            "question": "recognized room revenue summary",
+            "template_id": "approved-analysis-template",
             "parameters": {
                 "period_start": "2026-05-01",
                 "period_end_exclusive": "2026-07-01",

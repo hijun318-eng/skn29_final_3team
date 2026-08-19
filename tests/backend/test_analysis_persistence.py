@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import date, datetime, timezone
+from functools import wraps
 from pathlib import Path
 from sys import path
 from unittest.mock import patch
@@ -24,20 +26,45 @@ from app.adapters.analysis_repository import (  # noqa: E402
     AnalysisRepositoryUnavailable,
     PostgresAnalysisRepository,
 )
-from app.contracts import AnalysisRequest, RequestContext  # noqa: E402
+from app.context import ContextValidationError  # noqa: E402
+from app.contracts import AnalysisRequest, ErrorCode, RequestContext  # noqa: E402
 from app.controllers.analysis_controller import AnalysisController  # noqa: E402
 from app.services.analysis_service import AnalysisService  # noqa: E402
 from app.services.routing_service import RoutingService  # noqa: E402
-from tests.support.fakes import FakeDataPlatformAdapter, FakeModelAdapter  # noqa: E402
+from tests.support.analysis_runtime_fixture import (  # noqa: E402
+    AnalysisRuntimeDataPlatformFake,
+    MetadataDrivenAnalysisModel,
+)
+
+
+def async_test(function):
+    @wraps(function)
+    def run(*args, **kwargs):
+        return asyncio.run(function(*args, **kwargs))
+
+    return run
 
 
 @pytest.fixture(autouse=True)
 def isolated_test_controller():
     controller = AnalysisController(
-        AnalysisService(FakeDataPlatformAdapter(), FakeModelAdapter()),
+        AnalysisService(
+            AnalysisRuntimeDataPlatformFake(),
+            MetadataDrivenAnalysisModel(),
+        ),
         RoutingService(),
     )
-    with patch.object(analysis_api, "_controller", return_value=controller):
+    async def active_context_release() -> str:
+        return "context-v1"
+
+    with (
+        patch.object(analysis_api, "_controller", return_value=controller),
+        patch.object(
+            analysis_api,
+            "_active_analytics_context_release",
+            new=active_context_release,
+        ),
+    ):
         yield
 
 
@@ -55,34 +82,39 @@ class FakeAnalysisRepository:
             "title": "객실 운영",
             "question": "합성 객실 운영 현황을 알려줘",
             "parameter_types": {"scenario": "string"},
-            "semantic_request": {"question": "합성 객실 운영 현황을 알려줘"},
+            "semantic_request": {
+                "question": "합성 객실 운영 현황을 알려줘",
+                "context_release": "context-v1",
+            },
             "parameter_schema": {"scenario": "string"},
             "created_at": datetime(2026, 8, 10, tzinfo=timezone.utc),
         }
         self.question = "합성 객실 운영 현황을 알려줘"
         self.parameters = {"scenario": "success"}
 
-    def begin_request(self, question, parameters, request_context):
+    async def begin_request(self, question, parameters, request_context):
         self.question = question
         self.parameters = parameters
         self.request_id = request_context.request_id
         return self.request_id
 
-    def create_definition_from_run(self, source_request_id, title):
+    async def create_definition_from_run(self, source_request_id, title):
         self.definition.update(title=title)
         return self.definition
 
-    def list_definitions(self):
+    async def list_definitions(self):
         return [self.definition]
 
-    def get_definition(self, definition_id, *, replay=False):
+    async def get_definition(self, definition_id, *, replay=False):
         if definition_id != self.definition_id:
             raise KeyError("Analysis Definition을 찾을 수 없습니다.")
         if replay:
             return {**self.definition, "question": self.question, "parameters": self.parameters}
         return self.definition
 
-    def begin_run(self, definition, context, as_of, idempotency_key, parameters=None):
+    async def begin_run(
+        self, definition, context, as_of, idempotency_key, parameters=None
+    ):
         if self.request_id is not None:
             return self.request_id, False
         self.request_id = context.request_id
@@ -91,13 +123,13 @@ class FakeAnalysisRepository:
         self.parameters = parameters if parameters is not None else definition["parameters"]
         return self.request_id, True
 
-    def finish_run(self, request_id, response, execution):
+    async def finish_run(self, request_id, response, execution):
         self.finished = (response, execution)
 
-    def fail_run(self, request_id, error_type="UNSUPPORTED"):
+    async def fail_run(self, request_id, error_type="UNSUPPORTED"):
         self.finished = error_type
 
-    def get_run(self, request_id):
+    async def get_run(self, request_id):
         status = "RECEIVED" if self.finished is None else self.finished[0].data.status.value
         response = self.finished[0] if isinstance(self.finished, tuple) else None
         return {
@@ -118,10 +150,10 @@ class FakeAnalysisRepository:
             "period_end_exclusive": None,
         }
 
-    def list_runs(self):
-        return [] if self.request_id is None else [self.get_run(self.request_id)]
+    async def list_runs(self):
+        return [] if self.request_id is None else [await self.get_run(self.request_id)]
 
-    def get_run_artifact(self, request_id):
+    async def get_run_artifact(self, request_id):
         response = self.finished[0] if isinstance(self.finished, tuple) else None
         if response is None or response.data.result is None or response.data.artifact is None:
             raise KeyError("승인된 Analysis Artifact를 찾을 수 없습니다.")
@@ -131,6 +163,7 @@ class FakeAnalysisRepository:
             "status": response.data.status.value,
             "question": self.question,
             "summary": response.data.result.summary,
+            "metrics": response.data.result.evidence.metric_values,
             "table": response.data.result.table,
             "chart": response.data.result.chart,
             "evidence": response.data.result.evidence,
@@ -156,7 +189,8 @@ def test_definition_request_accepts_only_title_and_source_request_id():
             CreateAnalysisDefinitionRequest.model_validate({**base, field: "client"})
 
 
-def test_definition_routes_are_owner_scoped_repository_calls_without_values_in_contract():
+@async_test
+async def test_definition_routes_are_owner_scoped_repository_calls_without_values_in_contract():
     owner = uuid4()
     repository = FakeAnalysisRepository(owner)
     request = CreateAnalysisDefinitionRequest(
@@ -164,9 +198,11 @@ def test_definition_routes_are_owner_scoped_repository_calls_without_values_in_c
         source_request_id=uuid4(),
     )
     with patch.object(analysis_api, "_analysis_repository", return_value=repository):
-        created = analysis_api.create_analysis_definition(request, context(owner))
-        listed = analysis_api.list_analysis_definitions(context(owner))["items"]
-        fetched = analysis_api.get_analysis_definition(repository.definition_id, context(owner))
+        created = await analysis_api.create_analysis_definition(request, context(owner))
+        listed = (await analysis_api.list_analysis_definitions(context(owner)))["items"]
+        fetched = await analysis_api.get_analysis_definition(
+            repository.definition_id, context(owner)
+        )
 
     assert created["definition_id"] == repository.definition_id
     assert listed == [created]
@@ -177,7 +213,8 @@ def test_definition_routes_are_owner_scoped_repository_calls_without_values_in_c
     assert created["parameter_schema"]
 
 
-def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
+@async_test
+async def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     owner = uuid4()
     repository = FakeAnalysisRepository(owner)
     first_context = context(owner)
@@ -187,10 +224,10 @@ def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
         parameters={"scenario": "success_changed"},
     )
     with patch.object(analysis_api, "_analysis_repository", return_value=repository):
-        first = analysis_api.replay_analysis_definition(
+        first = await analysis_api.replay_analysis_definition(
             repository.definition_id, payload, first_context
         )
-        second = analysis_api.replay_analysis_definition(
+        second = await analysis_api.replay_analysis_definition(
             repository.definition_id, payload, context(owner)
         )
 
@@ -204,12 +241,43 @@ def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     assert "result" not in first
     assert "sql" not in first
     with patch.object(analysis_api, "_analysis_repository", return_value=repository):
-        artifact = analysis_api.get_analysis_run_artifact(first["request_id"], context(owner))
+        artifact = await analysis_api.get_analysis_run_artifact(
+            first["request_id"], context(owner)
+        )
     assert artifact["request_id"] == first["request_id"]
     assert artifact["artifact_id"] == first["artifact_id"]
     assert artifact["table"].rows
+    assert artifact["metrics"] == artifact["evidence"].metric_values
     assert "sql" not in artifact
     assert "parameters" not in artifact
+
+
+@async_test
+async def test_replay_blocks_saved_definition_from_a_different_context_release():
+    owner = uuid4()
+    repository = FakeAnalysisRepository(owner)
+    repository.definition["semantic_request"]["context_release"] = (
+        "walkerhill-v4-schema-2.0.0-catalog-2.0.0"
+    )
+    payload = ReplayAnalysisRequest(
+        as_of=date(2026, 8, 15),
+        idempotency_key="release-mismatch",
+        parameters={"scenario": "success"},
+    )
+
+    with (
+        patch.object(analysis_api, "_analysis_repository", return_value=repository),
+        pytest.raises(ContextValidationError) as caught,
+    ):
+        await analysis_api.replay_analysis_definition(
+            repository.definition_id,
+            payload,
+            context(owner),
+        )
+
+    assert caught.value.code is ErrorCode.SCHEMA_VERSION_MISMATCH
+    assert caught.value.status_code == 409
+    assert repository.request_id is None
 
 
 def test_run_history_uses_confirmed_artifact_period_for_direct_runs():
@@ -237,7 +305,8 @@ def test_run_history_uses_confirmed_artifact_period_for_direct_runs():
     assert run["period_end_exclusive"] == "2026-07-01"
 
 
-def test_direct_analysis_persists_request_query_and_artifact_when_database_is_configured():
+@async_test
+async def test_direct_analysis_persists_request_query_and_artifact_when_database_is_configured():
     owner = uuid4()
     repository = FakeAnalysisRepository(owner)
     request_context = context(owner)
@@ -246,7 +315,7 @@ def test_direct_analysis_persists_request_query_and_artifact_when_database_is_co
     ), patch.dict(
         "os.environ", {"APP_RUNTIME_DATABASE_URL": "postgresql://configured"}
     ):
-        response = analysis_api.analysis(
+        response = await analysis_api.analysis(
             AnalysisRequest(question="합성 객실 운영 현황을 알려줘"),
             request_context,
         )
@@ -257,7 +326,8 @@ def test_direct_analysis_persists_request_query_and_artifact_when_database_is_co
     assert set(repository.finished[1]) == {"plan", "query", "package"}
 
 
-def test_direct_analysis_returns_distinct_retryable_error_when_artifact_persistence_fails():
+@async_test
+async def test_direct_analysis_returns_distinct_retryable_error_when_artifact_persistence_fails():
     owner = uuid4()
     repository = FakeAnalysisRepository(owner)
     request_context = context(owner)
@@ -270,7 +340,7 @@ def test_direct_analysis_returns_distinct_retryable_error_when_artifact_persiste
     ), patch.dict(
         "os.environ", {"APP_RUNTIME_DATABASE_URL": "postgresql://configured"}
     ):
-        response = analysis_api.analysis(
+        response = await analysis_api.analysis(
             AnalysisRequest(question="합성 객실 운영 현황을 알려줘"),
             request_context,
         )
@@ -283,7 +353,8 @@ def test_direct_analysis_returns_distinct_retryable_error_when_artifact_persiste
     assert repository.finished == "ARTIFACT_PERSIST_FAILED"
 
 
-def test_terminal_audit_links_request_query_artifact_and_redacted_trace():
+@async_test
+async def test_terminal_audit_links_request_query_artifact_and_redacted_trace():
     owner = uuid4()
     repository = FakeAnalysisRepository(owner)
     request_context = context(owner)
@@ -292,7 +363,7 @@ def test_terminal_audit_links_request_query_artifact_and_redacted_trace():
     ), patch.dict(
         "os.environ", {"APP_RUNTIME_DATABASE_URL": "postgresql://configured"}
     ):
-        response = analysis_api.analysis(
+        response = await analysis_api.analysis(
             AnalysisRequest(question="합성 객실 운영 현황을 알려줘"),
             request_context,
         )
@@ -302,14 +373,14 @@ def test_terminal_audit_links_request_query_artifact_and_redacted_trace():
             self.statement = None
             self.parameters = None
 
-        def execute(self, statement, parameters):
+        async def execute(self, statement, parameters):
             self.statement = str(statement)
             self.parameters = parameters
 
     connection = RecordingConnection()
     query_execution_id = uuid4()
     artifact_id = response.data.artifact.artifact_id
-    PostgresAnalysisRepository._save_audit(
+    await PostgresAnalysisRepository._save_audit(
         connection,
         request_context.request_id,
         response,
@@ -332,7 +403,8 @@ def test_terminal_audit_links_request_query_artifact_and_redacted_trace():
     assert "sql" not in details
 
 
-def test_replay_requires_store_and_existing_owner_definition():
+@async_test
+async def test_replay_requires_store_and_existing_owner_definition():
     owner_context = context()
     with patch.dict("os.environ", {}, clear=True):
         with pytest.raises(HTTPException) as unavailable:
@@ -342,7 +414,7 @@ def test_replay_requires_store_and_existing_owner_definition():
     repository = FakeAnalysisRepository(owner_context.user_id)
     with patch.object(analysis_api, "_analysis_repository", return_value=repository):
         with pytest.raises(HTTPException) as missing:
-            analysis_api.replay_analysis_definition(
+            await analysis_api.replay_analysis_definition(
                 uuid4(),
                 ReplayAnalysisRequest(as_of=date(2026, 7, 1), idempotency_key="run-2"),
                 owner_context,

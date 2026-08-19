@@ -1,3 +1,5 @@
+-- 책임: application control-plane의 빈 schema와 데이터 무결성 제약만 생성한다.
+-- 요청별 seed를 넣지 않으며 DDL 하나라도 실패하면 ON_ERROR_STOP으로 bootstrap을 중단한다.
 -- Answervice Application PostgreSQL DDL
 -- schema_version=1.0.0; PostgreSQL>=15; required_extension=pgcrypto
 \set ON_ERROR_STOP on
@@ -302,7 +304,9 @@ CREATE TABLE IF NOT EXISTS model.evaluation_runs (
 
 CREATE TABLE IF NOT EXISTS reference.market_benchmark_annual (
     benchmark_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    benchmark_year smallint NOT NULL CHECK (benchmark_year BETWEEN 2022 AND 2026),
+    -- 데이터 유효기간은 runtime catalog가 판단한다. 배포 연도로 상한을 고정하면
+    -- 다음 연도의 정상 데이터가 schema 단계에서 영구 거절되므로 달력 범위만 검증한다.
+    benchmark_year smallint NOT NULL CHECK (benchmark_year BETWEEN 1 AND 9999),
     population_code varchar(64) NOT NULL,
     occupancy_rate numeric(9,6) CHECK (occupancy_rate BETWEEN 0 AND 1),
     adr_krw numeric(14,2) CHECK (adr_krw >= 0),
@@ -318,7 +322,8 @@ CREATE TABLE IF NOT EXISTS reference.market_benchmark_annual (
 
 CREATE TABLE IF NOT EXISTS reference.demand_index_monthly (
     demand_index_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    year smallint NOT NULL CHECK (year BETWEEN 2022 AND 2026),
+    -- 특정 시연 기간이 아닌 ISO-8601의 일반적인 4자리 달력 연도를 허용한다.
+    year smallint NOT NULL CHECK (year BETWEEN 1 AND 9999),
     month smallint NOT NULL CHECK (month BETWEEN 1 AND 12),
     demand_type varchar(24) NOT NULL CHECK (demand_type IN ('DOMESTIC','INBOUND','EVENT')),
     index_value numeric(12,6) NOT NULL CHECK (index_value >= 0),
@@ -349,9 +354,7 @@ CREATE TABLE IF NOT EXISTS reference.calendar_daily (
     inbound_travel_index numeric(12,6) NOT NULL,
     event_demand_index numeric(12,6) NOT NULL,
     weather_scenario_code varchar(32) NOT NULL,
-    data_period_status varchar(32) NOT NULL CHECK (data_period_status IN (
-        'REFERENCE_CALIBRATED','SYNTHETIC_ACTUAL_LIKE','YTD_SYNTHETIC','FORECAST_SCENARIO'
-    )),
+    data_period_status varchar(32) NOT NULL,
     is_forecast boolean NOT NULL,
     created_at timestamptz NOT NULL
 );
@@ -365,9 +368,9 @@ CREATE INDEX IF NOT EXISTS idx_report_runs_period ON report.report_runs(report_d
 CREATE INDEX IF NOT EXISTS idx_audit_request_time ON governance.audit_events(request_id, created_at);
 
 CREATE TABLE IF NOT EXISTS governance.schema_version (version varchar(32) PRIMARY KEY);
-CREATE TABLE IF NOT EXISTS governance.seed_metadata (seed integer PRIMARY KEY, data_class varchar(16) NOT NULL);
+-- The application schema version is a reproducible compatibility boundary.
+-- No dataset seed is asserted by schema bootstrap.
 INSERT INTO governance.schema_version(version) VALUES ('1.0.0') ON CONFLICT (version) DO NOTHING;
-INSERT INTO governance.seed_metadata(seed, data_class) VALUES (20260729, 'synthetic') ON CONFLICT (seed) DO NOTHING;
 
 COMMENT ON TABLE connection.data_sources IS 'v4.6 source, DataHub recipe, and Trino catalog binding';
 COMMENT ON TABLE connection.ingestion_runs IS 'DataHub ingestion execution evidence';

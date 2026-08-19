@@ -1,6 +1,10 @@
 #!/usr/bin/env sh
+# 책임: PMS/banquet PostgreSQL source에 공통 read-only principal을 최소권한으로
+# 조정한다. source schema나 credential이 없으면 provisioning을 실패시킨다.
 set -eu
 
+# Source credentials are bound through psql variables, and the login is forced
+# into read-only transactions in addition to receiving the engine role.
 psql -v ON_ERROR_STOP=1 \
   --username "$POSTGRES_USER" \
   --dbname "$POSTGRES_DB" \

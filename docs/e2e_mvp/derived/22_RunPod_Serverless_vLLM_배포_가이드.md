@@ -37,6 +37,9 @@ Load Balancer와 custom Docker image는 기본 경로가 실패할 때만 사용
 | LoRA rank | 16 |
 | LoRA alpha | 32 |
 | Runtime model ID | `answervice-sql` |
+| Serving context window | `5120` tokens |
+| Backend max output | `1280` tokens |
+| Backend safety margin | `256` tokens |
 | Adapter model SHA-256 | `90a3d896a22e9148e46c609e978a657cd638cb6ab938d00af54cefcd3715c313` |
 | Pod에서 검증한 vLLM | `0.21.0+cu129` |
 | Pod에서 검증한 Transformers | `5.14.1` |
@@ -314,11 +317,10 @@ Structured Business Request
 
 현재 Backend는 `NODE2_MODEL_ENDPOINT` 뒤에 `/v1/models`와 `/v1/chat/completions`를 붙인다. 따라서 Serverless 공식 base URL 전체를 넣으면 안 된다.
 
-`infrastructure/database/.env`에 다음처럼 설정한다.
+repository root `README.md` 절차로 만든 외부 deployment environment에 다음처럼 설정한다.
 
 ```dotenv
-MODEL_MODE=openai
-
+NODE2_MODEL_PROVIDER=qwen
 NODE2_MODEL_ENDPOINT=https://api.runpod.ai/v2/<ENDPOINT_ID>/openai
 NODE2_MODEL_API_TOKEN=<RUNPOD_API_KEY>
 NODE2_MODEL=answervice-sql
@@ -343,14 +345,19 @@ OPENAI_API_KEY=<기존 secret>
 OPENAI_MODEL=<기존 승인 모델>
 ```
 
-`.env` 원문 또는 Secret 값을 출력하지 않는다.
+외부 deployment environment 원문 또는 Secret 값을 출력하지 않는다.
+`MODEL_MODE`는 Backend가 읽지 않으므로 설정하지 않는다. 위 네 Node2 값은 하나의
+versioned route 계약이며 일부만 선언하거나 `NODE2_MODEL_PROVIDER=openai`로 두면
+Qwen capacity profile과 일치하지 않아 Backend가 fail-closed한다.
 
 ### 9.1 Backend 재기동
 
 repository root에서 실행한다.
 
 ```powershell
-docker compose --env-file infrastructure/database/.env --profile full up -d --force-recreate backend
+$deploymentEnv = Join-Path $env:LOCALAPPDATA 'Answervice\deployment\answervice.env'
+if (-not (Test-Path -LiteralPath $deploymentEnv -PathType Leaf)) { throw '외부 deployment environment가 필요합니다.' }
+docker compose --env-file $deploymentEnv --profile full up -d --force-recreate backend
 docker ps --filter "name=answervice-backend"
 ```
 
@@ -447,9 +454,10 @@ GPU 재고 문제가 있으면 RTX 4090을 primary로 두고 공식 Worker와 �
 
 Serverless가 E2E를 통과하기 전 기존 Pod Endpoint 설정을 삭제하지 않는다.
 
-실패 시 Backend `.env`의 다음 세 값만 기존 Pod 값으로 되돌리고 Backend를 재기동한다.
+실패 시 외부 deployment environment의 다음 네 값만 기존 Pod 값으로 되돌리고 Backend를 재기동한다.
 
 ```dotenv
+NODE2_MODEL_PROVIDER=qwen
 NODE2_MODEL_ENDPOINT=<기존 Pod base URL>
 NODE2_MODEL_API_TOKEN=<기존 Pod token>
 NODE2_MODEL=answervice-sql

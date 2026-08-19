@@ -1,3 +1,5 @@
+/** API idempotency·trace에 사용할 암호학적 UUID를 생성하는 유틸리티 모듈이다. */
+/** 브라우저 암호학 난수만 사용해 RFC 4122 v4 식별자를 만들며 비암호학적 대체값을 사용하지 않는다. */
 export function createUuid() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
 

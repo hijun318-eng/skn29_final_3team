@@ -1,0 +1,7 @@
+#!/bin/sh
+# 운영 경로뿐 아니라 repository inventory와 공개 API 문서화까지 같은 commit gate에서 검증한다.
+set -eu
+
+python scripts/lint_architectural_invariants.py --staged
+python scripts/audit_repository_integrity.py
+exec python scripts/check_code_documentation.py

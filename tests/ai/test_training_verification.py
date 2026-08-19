@@ -1,162 +1,308 @@
-import unittest
+import copy
+import json
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 
+import pytest
+
+from src.ai.sql_policy import validate_sql
+from src.ai.training import verify_case_specs as verifier
 from src.ai.training.verify_case_specs import (
+    BINDING_MANIFEST_VERSION,
     PlanContractError,
-    PipelineSupport,
-    _declared_parameters,
     _result_hash,
     _rows_hash,
-    _runtime_package,
+    load_binding_manifest,
+    validate_g2,
+    validate_output,
 )
+from tests.ai.test_contracts import arbitrary_node2_request, arbitrary_node2_response
 
 
-def _context(fqn, columns, metric):
+def _bindings(request):
+    result = {}
+    timestamp_index = 0
+    for index, parameter in enumerate(request["parameter_contract"]["parameters"]):
+        value_type = parameter["type"]
+        if value_type == "timestamp":
+            value = (
+                datetime(2001, 1, 1, tzinfo=timezone.utc)
+                + timedelta(days=timestamp_index)
+            ).isoformat()
+            timestamp_index += 1
+        elif value_type == "date":
+            value = (datetime(2001, 1, 1) + timedelta(days=index)).date().isoformat()
+        elif value_type == "boolean":
+            value = False
+        elif value_type == "number":
+            value = index + 0.5
+        else:
+            value = f"arbitrary-value-{index}"
+        result[parameter["name"]] = {"value_type": value_type, "value": value}
+    return result
+
+
+def _repair_request(namespace):
+    request = arbitrary_node2_request(namespace)
     return {
-        "context_version": "I4-CONTEXT-v2.0.0",
-        "policy_version": "G2-v1.0.0",
-        "execution_time": {"as_of": "2026-08-01T00:00:00+09:00"},
-        "assets": [{"urn": f"urn:{fqn}", "trino_fqn": fqn, "columns": columns}],
-        "metrics": [metric],
-        "joins": [],
-    }
-
-
-def _plan(fqn, sql, parameters=None, metric_id=None):
-    return {
-        "sql": sql,
-        "references": [{
-            "urn": f"urn:{fqn}",
-            "fqn": fqn,
-            "columns": [],
-            "join_ids": [],
-            "metric_ids": [metric_id] if metric_id else [],
-        }],
-        "parameters": parameters or {},
-    }
-
-
-class TrainingVerificationTests(unittest.TestCase):
-    def test_result_hash_ignores_row_order(self):
-        first = _result_hash('{"name":"B","value":2}\n{"name":"A","value":1}\n')
-        second = _result_hash('{"value":1,"name":"A"}\n{"value":2,"name":"B"}\n')
-
-        self.assertEqual(first, second)
-        self.assertEqual(first, _rows_hash([{"value": 2, "name": "B"}, {"value": 1, "name": "A"}]))
-
-    def test_runtime_package_preserves_typed_metric_filters(self):
-        fqn = "crm.dbo.crm_point_transactions"
-        package = _runtime_package(
-            _context(
-                fqn,
-                ["event_at", "txn_type", "is_forecast", "points_delta"],
-                {
-                    "id": "expired_points",
-                    "field": f"{fqn}.points_delta",
-                    "aggregation": "negative_sum",
-                    "time_field": f"{fqn}.event_at",
-                    "required_filters": [
-                        {"field": "txn_type", "operator": "eq", "value_type": "string", "value": "EXPIRE"},
-                        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
-                    ],
-                },
+        "trace_id": f"trace-{namespace}",
+        "attempt": 1,
+        "rejected_sql": "SELECT invalid_identifier",
+        **{
+            key: copy.deepcopy(request[key])
+            for key in (
+                "normalized_question",
+                "resolved_request",
+                "schema_context",
+                "metric_rules",
+                "join_graph",
+                "time_rules",
+                "parameter_contract",
+                "query_policy",
             )
+        },
+        "normalized_error_code": "UNKNOWN_COLUMN",
+        "repair_scope": ["column"],
+    }
+
+
+def test_result_hash_ignores_row_order():
+    first = _result_hash('{"name":"B","value":2}\n{"name":"A","value":1}\n')
+    second = _result_hash('{"value":1,"name":"A"}\n{"value":2,"name":"B"}\n')
+
+    assert first == second
+    assert first == _rows_hash([{"value": 2, "name": "B"}, {"value": 1, "name": "A"}])
+
+
+def test_single_case_executor_keeps_bound_values_out_of_process_arguments(monkeypatch):
+    observed = {}
+
+    def capture(command, **kwargs):
+        observed["command"] = command
+        observed["input"] = kwargs["input"]
+        observed["env"] = kwargs["env"]
+        return object()
+
+    monkeypatch.setattr(verifier.subprocess, "run", capture)
+    verifier._execute(
+        "SELECT 'server-secret' LIMIT 1",
+        container="trino",
+        user="worker",
+        password="credential-secret",
+    )
+
+    assert "server-secret" not in " ".join(observed["command"])
+    assert "credential-secret" not in " ".join(observed["command"])
+    assert observed["input"] == "SELECT 'server-secret' LIMIT 1\n"
+    assert observed["command"][observed["command"].index("--server") + 1] == "https://trino:8443"
+    assert observed["command"][observed["command"].index("--truststore-path") + 1] == "/run/secrets/trino-ca.pem"
+    assert "--password" in observed["command"]
+    assert observed["env"]["TRINO_PASSWORD"] == "credential-secret"
+
+
+def test_single_case_executor_rejects_missing_password_before_subprocess(monkeypatch):
+    monkeypatch.setattr(
+        verifier.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("subprocess must not run")
+        ),
+    )
+
+    with pytest.raises(ValueError, match="password is required"):
+        verifier._execute(
+            "SELECT 1",
+            container="trino",
+            user="worker",
+            password="",
         )
 
-        metric = package.metrics[0]
-        self.assertEqual("expired_points", metric.id)
-        self.assertEqual(fqn, metric.asset_fqn)
-        self.assertEqual(f"{fqn}.points_delta", metric.field)
-        self.assertEqual("negative_sum", metric.aggregation)
-        self.assertEqual(f"{fqn}.event_at", metric.time_field)
-        self.assertEqual(("EXPIRE", False), tuple(item.value for item in metric.required_filters))
-        self.assertEqual(("string", "boolean"), tuple(item.value_type for item in metric.required_filters))
 
-    def test_runtime_g2_enforces_crm_and_view_metric_filters(self):
-        cases = (
-            (
-                "crm.dbo.crm_point_transactions",
-                ["event_at", "txn_type", "is_forecast", "points_delta"],
-                {
-                    "id": "expired_points",
-                    "field": "crm.dbo.crm_point_transactions.points_delta",
-                    "aggregation": "negative_sum",
-                    "time_field": "crm.dbo.crm_point_transactions.event_at",
-                    "required_filters": [
-                        {"field": "txn_type", "operator": "eq", "value_type": "string", "value": "EXPIRE"},
-                        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
-                    ],
-                },
-                "txn_type = :required_filter_2 AND is_forecast = :required_filter_1",
-                {
-                    "required_filter_1": {"value_type": "boolean", "value": False},
-                    "required_filter_2": {"value_type": "string", "value": "EXPIRE"},
-                },
-            ),
-            (
-                "serving.analytics.hotel_daily_metrics",
-                ["business_date", "data_period_status", "is_forecast", "room_revenue"],
-                {
-                    "id": "recognized_room_revenue",
-                    "field": "serving.analytics.hotel_daily_metrics.room_revenue",
-                    "aggregation": "sum",
-                    "time_field": "serving.analytics.hotel_daily_metrics.business_date",
-                    "required_filters": [
-                        {"field": "data_period_status", "operator": "eq", "value_type": "string", "value": "ACTUAL"},
-                        {"field": "is_forecast", "operator": "eq", "value_type": "boolean", "value": False},
-                    ],
-                },
-                "data_period_status = :required_filter_1 AND is_forecast = :required_filter_2",
-                {
-                    "required_filter_1": {"value_type": "string", "value": "ACTUAL"},
-                    "required_filter_2": {"value_type": "boolean", "value": False},
-                },
-            ),
+def test_validate_output_binds_only_server_values_and_keeps_model_request_value_free():
+    request = arbitrary_node2_request("quartz")
+    original = copy.deepcopy(request)
+    bindings = _bindings(request)
+
+    plan = validate_output(
+        "node2", request, arbitrary_node2_response("quartz"), bindings
+    )
+
+    assert validate_sql(plan["executable_sql"]).placeholders == ()
+    assert set(validate_sql(plan["sql"]).placeholders) == set(bindings)
+    assert request == original
+    model_payload = json.dumps(request, sort_keys=True)
+    assert all(str(item["value"]) not in model_payload for item in bindings.values())
+
+
+def test_validate_output_binds_the_exact_tree_returned_by_contract_validation(monkeypatch):
+    request = arbitrary_node2_request("ember")
+    output = arbitrary_node2_response("ember")
+    observed = {}
+    real_validate = verifier.validate_model_output
+    real_bind = verifier.bind_sql_parameters
+
+    def capture_validate(*args, **kwargs):
+        result = real_validate(*args, **kwargs)
+        observed["validated_tree"] = result.expression
+        return result
+
+    def capture_bind(tree, parameters):
+        observed["bound_tree"] = tree
+        return real_bind(tree, parameters)
+
+    monkeypatch.setattr(verifier, "validate_model_output", capture_validate)
+    monkeypatch.setattr(verifier, "bind_sql_parameters", capture_bind)
+
+    validate_output("node2", request, output, _bindings(request))
+
+    assert observed["bound_tree"] is observed["validated_tree"]
+
+
+def test_validate_output_resolves_multiple_metrics_without_unselected_rules():
+    namespace = "ember"
+    request = arbitrary_node2_request(namespace)
+    output = arbitrary_node2_response(namespace)
+    fact = f"{namespace}_catalog.semantic.fact_observations"
+    second = copy.deepcopy(request["metric_rules"][0])
+    second.update(
+        id=f"{namespace}_count",
+        source={"kind": "column", "field": {"asset_fqn": fact, "column": "observation_id"}},
+        aggregation="count",
+        result_field="resolved_count",
+        unit="arbitrary_count",
+    )
+    request["metric_rules"].append(second)
+    request["resolved_request"]["metric_ids"].append(second["id"])
+    request["query_policy"]["allowed_functions"].append("count")
+    output["sql"] = output["sql"].replace(
+        "SUM(f.amount) AS resolved_measure",
+        "SUM(f.amount) AS resolved_measure, COUNT(f.observation_id) AS resolved_count",
+    )
+    output["used_columns"].append(
+        {"asset_fqn": fact, "column": "observation_id"}
+    )
+    output["used_metrics"].append(second["id"])
+
+    plan = validate_output("node2", request, output, _bindings(request))
+
+    assert validate_sql(plan["executable_sql"]).placeholders == ()
+
+
+@pytest.mark.parametrize("mutation", ["missing", "extra", "type", "value"])
+def test_binding_contract_fails_closed(mutation):
+    request = arbitrary_node2_request("cinder")
+    bindings = _bindings(request)
+    if mutation == "missing":
+        bindings.pop(next(iter(bindings)))
+    elif mutation == "extra":
+        bindings["undeclared"] = {"value_type": "string", "value": "x"}
+    elif mutation == "type":
+        first = next(iter(bindings.values()))
+        first["value_type"] = "string"
+    else:
+        first = next(iter(bindings.values()))
+        first["value"] = "not-a-timestamp"
+
+    with pytest.raises(PlanContractError) as caught:
+        validate_output(
+            "node2", request, arbitrary_node2_response("cinder"), bindings
         )
-        for fqn, columns, metric, filters, parameters in cases:
-            with self.subTest(metric=metric["id"]):
-                package = _runtime_package(_context(fqn, columns, metric))
-                prefix = f"SELECT SUM({columns[-1]}) FROM {fqn} WHERE "
-                self.assertIsNone(
-                    PipelineSupport.g2_violation(
-                        _plan(
-                            fqn,
-                            f"{prefix}{filters} LIMIT 1000",
-                            parameters,
-                            metric["id"],
-                        ),
-                        package,
-                    )
-                )
-                for invalid_sql, invalid_parameters, expected in (
-                    ("is_forecast = :required_filter_1", {"required_filter_1": parameters["required_filter_1"]}, "METRIC_FILTER_MISSING"),
-                    (filters, {**parameters, "required_filter_1": {"value_type": "string", "value": "FORECAST"}}, "METRIC_FILTER_MISSING"),
-                    (filters.replace(" AND ", " OR "), parameters, "METRIC_FILTER_MISSING"),
-                    (filters.replace(":required_filter_1", "'ACTUAL'"), parameters, "METRIC_FILTER_MISSING"),
-                    (filters.replace(":required_filter_1", ":unknown"), parameters, "METRIC_FILTER_MISSING"),
-                ):
-                    self.assertEqual(
-                        expected,
-                        PipelineSupport.g2_violation(
-                            _plan(
-                                fqn,
-                                f"{prefix}{invalid_sql} LIMIT 1000",
-                                invalid_parameters,
-                                metric["id"],
-                            ),
-                            package,
-                        ),
-                    )
 
-    def test_declared_parameter_names_must_be_unique(self):
-        duplicate = {
-            "parameters": [
-                {"name": "required_filter_1", "value_type": "string", "value": "ACTUAL"},
-                {"name": "required_filter_1", "value_type": "string", "value": "FORECAST"},
-            ]
-        }
-        with self.assertRaises(PlanContractError):
-            _declared_parameters(duplicate)
+    assert caught.value.code == "PARAMETER_CONTRACT_MISMATCH"
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_missing_binding_manifest_entry_fails_closed():
+    request = arbitrary_node2_request("quartz")
+    with pytest.raises(PlanContractError) as caught:
+        validate_output("node2", request, arbitrary_node2_response("quartz"), None)
+    assert caught.value.code == "BINDINGS_REQUIRED"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    [
+        ("filter", "REQUIRED_FILTER_MISSING"),
+        ("filter-disjunction", "REQUIRED_FILTER_MISSING"),
+        ("time", "TIME_RULE_MISMATCH"),
+        ("equality", "JOIN_GRAPH_MISMATCH"),
+        ("temporal", "JOIN_GRAPH_MISMATCH"),
+        ("preaggregation", "JOIN_GRAPH_MISMATCH"),
+    ],
+)
+def test_runtime_semantics_reject_incomplete_join_filter_and_time_contracts(mutation, expected_code):
+    namespace = "quartz"
+    request = arbitrary_node2_request(namespace)
+    output = arbitrary_node2_response(namespace)
+    fact = f"{namespace}_catalog.semantic.fact_observations"
+    dimension = f"{namespace}_catalog.semantic.dim_entities"
+    if mutation == "filter":
+        output["sql"] = output["sql"].replace(
+            f"f.status_code = :{namespace}_status",
+            f"f.status_code <> :{namespace}_status",
+        )
+    elif mutation == "filter-disjunction":
+        output["sql"] = output["sql"].replace(
+            f"AND f.status_code = :{namespace}_status",
+            f"OR f.status_code = :{namespace}_status",
+        )
+    elif mutation == "time":
+        output["sql"] = output["sql"].replace(
+            f"f.observed_at < from_iso8601_timestamp(:{namespace}_window_end)",
+            f"f.observed_at <= from_iso8601_timestamp(:{namespace}_window_end)",
+        )
+    elif mutation == "equality":
+        output["sql"] = output["sql"].replace(
+            "f.entity_id = d.entity_id", "f.observation_id = d.entity_id"
+        )
+        output["used_columns"].remove({"asset_fqn": fact, "column": "entity_id"})
+        output["used_columns"].append({"asset_fqn": fact, "column": "observation_id"})
+    elif mutation == "temporal":
+        output["sql"] = output["sql"].replace(
+            " AND f.observed_at >= d.valid_from AND f.observed_at < d.valid_to", ""
+        )
+        output["used_columns"].remove({"asset_fqn": dimension, "column": "valid_from"})
+        output["used_columns"].remove({"asset_fqn": dimension, "column": "valid_to"})
+    else:
+        request["join_graph"]["edges"][0]["preaggregation"]["required"] = True
+
+    with pytest.raises(PlanContractError) as caught:
+        validate_output("node2", request, output, _bindings(request))
+
+    assert caught.value.code == expected_code
+
+
+def test_repair_uses_same_structured_contract_and_rejected_sql_must_stay_rejected():
+    request = _repair_request("zephyr")
+    output = {"corrected_sql": arbitrary_node2_response("zephyr")["sql"]}
+    case = {"node": "node2_repair", "input": request, "expected_output": output}
+
+    plan = validate_g2(case, _bindings(request))
+
+    assert validate_sql(plan["executable_sql"]).placeholders == ()
+
+
+def test_binding_manifest_is_strict_and_server_owned():
+    request = arbitrary_node2_request("ember")
+    bindings = _bindings(request)
+    with NamedTemporaryFile(suffix=".json", delete=False) as handle:
+        path = Path(handle.name)
+    try:
+        path.write_text(
+            json.dumps(
+                {
+                    "version": BINDING_MANIFEST_VERSION,
+                    "cases": {"case-ember": bindings},
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert load_binding_manifest(path) == {"case-ember": bindings}
+        path.write_text(
+            json.dumps({"version": BINDING_MANIFEST_VERSION}), encoding="utf-8"
+        )
+        with pytest.raises(PlanContractError) as caught:
+            load_binding_manifest(path)
+        assert caught.value.code == "BINDING_MANIFEST_INVALID"
+    finally:
+        path.unlink(missing_ok=True)

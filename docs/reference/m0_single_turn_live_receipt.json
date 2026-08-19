@@ -1,0 +1,231 @@
+{
+  "trace_id": "6d045479dc6e446c93625c38ff6b5d4d",
+  "status_code": 200,
+  "response": {
+    "data": {
+      "status": "PARTIAL",
+      "transitions": [
+        "RECEIVED",
+        "ROUTED",
+        "PARTIAL"
+      ],
+      "route": "GENERAL",
+      "template_id": null,
+      "gates": {
+        "g1_required": true,
+        "g2_required": true
+      },
+      "result": {
+        "summary": "2026년 7월 1일부터 2026년 8월 1일 0시 이전까지의 합성 통합 운영매출은 DOUGLAS 2,820,671,143 KRW, GRAND 18,972,381,645 KRW, VISTA 11,212,859,306 KRW입니다. 이 기간은 partial 조건이 적용된 조회 결과입니다. 관측값은 shaped_result에 제시된 각 호텔의 값만 사용했습니다.",
+        "metrics": [
+          {
+            "metric_id": "total_operating_revenue_krw",
+            "result_field": "total_operating_revenue_krw",
+            "label": "합성 통합 운영매출",
+            "definition": "V4.3 객실·식음·연회·시설 component를 영업일·호텔별 합산한 합성 운영매출 proxy이며 공식 회계매출이 아니다.",
+            "unit": "KRW",
+            "value": 33005912094
+          }
+        ],
+        "table": {
+          "columns": [
+            "hotel_code",
+            "total_operating_revenue_krw"
+          ],
+          "rows": [
+            {
+              "hotel_code": "DOUGLAS",
+              "total_operating_revenue_krw": "2820671143.00"
+            },
+            {
+              "hotel_code": "GRAND",
+              "total_operating_revenue_krw": "18972381645.00"
+            },
+            {
+              "hotel_code": "VISTA",
+              "total_operating_revenue_krw": "11212859306.00"
+            }
+          ]
+        },
+        "chart": {
+          "chart_type": "bar",
+          "x_field": "hotel_code",
+          "y_fields": [
+            "total_operating_revenue_krw"
+          ]
+        },
+        "evidence": {
+          "as_of": "2026-08-17",
+          "timezone": "Asia/Seoul",
+          "period": {
+            "start": "2026-07-01",
+            "end_exclusive": "2026-08-01"
+          },
+          "filters": {},
+          "sources": [
+            {
+              "urn": "urn:li:dataset:(urn:li:dataPlatform:trino,serving.serving.analytics_v4_3.hotel_operations_daily,PROD)",
+              "fqn": "serving.analytics_v4_3.hotel_operations_daily",
+              "name": "serving.analytics_v4_3.hotel_operations_daily",
+              "schema_version": "V4.3",
+              "seed_version": "walkerhill-v4.3-sql-20260815-derived.1",
+              "synthetic": true
+            }
+          ],
+          "query_id": "20260817_144002_01015_8xpax",
+          "artifact_id": "dbbbb984-f6df-59c9-b7c6-79f012f47d63",
+          "context_release": "walkerhill-v4.3-catalog.1",
+          "product_release_id": null,
+          "evidence_cutoff": null,
+          "policy_version": "walkerhill-v4.3-runtime-policy.1",
+          "model_version": "gpt-5.4-mini",
+          "metrics": [
+            {
+              "metric_id": "total_operating_revenue_krw",
+              "result_field": "total_operating_revenue_krw",
+              "label": "합성 통합 운영매출",
+              "definition": "V4.3 객실·식음·연회·시설 component를 영업일·호텔별 합산한 합성 운영매출 proxy이며 공식 회계매출이 아니다.",
+              "unit": "KRW"
+            }
+          ],
+          "metric_values": [
+            {
+              "metric_id": "total_operating_revenue_krw",
+              "result_field": "total_operating_revenue_krw",
+              "label": "합성 통합 운영매출",
+              "definition": "V4.3 객실·식음·연회·시설 component를 영업일·호텔별 합산한 합성 운영매출 proxy이며 공식 회계매출이 아니다.",
+              "unit": "KRW",
+              "value": 33005912094
+            }
+          ],
+          "models": [
+            {
+              "node": "node1",
+              "model_version": "gpt-5.4-mini",
+              "prompt_id": "node1.normalize",
+              "prompt_version": "PROMPT-v1.3.0"
+            },
+            {
+              "node": "node2",
+              "model_version": "gpt-5.4-mini",
+              "prompt_id": "node2.sql",
+              "prompt_version": "PROMPT-v1.3.0"
+            },
+            {
+              "node": "node3",
+              "model_version": "gpt-5.4-mini",
+              "prompt_id": "node3.explain",
+              "prompt_version": "PROMPT-v1.2.2"
+            }
+          ],
+          "gates": {
+            "g1": "PASSED",
+            "g2": "PASSED",
+            "g3": "PASSED"
+          },
+          "gate_history": {
+            "g1": [
+              "PASSED"
+            ],
+            "g2": [
+              "PASSED"
+            ],
+            "g3": [
+              "PASSED"
+            ]
+          },
+          "sampling": {
+            "applied": false,
+            "returned_rows": 3,
+            "total_rows": 3
+          },
+          "masking": {
+            "applied": false,
+            "fields": []
+          },
+          "cached": false
+        }
+      },
+      "trace": [
+        {
+          "stage": "ROUTER",
+          "outcome": "PASSED",
+          "detail": null
+        },
+        {
+          "stage": "CONTROLLER",
+          "outcome": "PASSED",
+          "detail": "audit=9f0579b6863103ff"
+        },
+        {
+          "stage": "MODEL",
+          "outcome": "PASSED",
+          "detail": "node=node1;model=gpt-5.4-mini;prompt=node1.normalize@PROMPT-v1.3.0;prompt_hash=d0cd46f6eb0cffc3ab1e7a2af9f2c353e33081de3337a6ecc700e6034ec166a0;duration_ms=1542.077;attempts=1;status=SUCCESS;input_schema_hash=6f39592b742dbf1e5c400b780e227d889559b677e72fe3363de116da078251d0;output_schema_hash=83671e36335d6fa8cedd4acacf636d7e535da8ce7c54e0cd9d0a10faafcdec28;model_snapshot=gpt-5.4-mini-2026-03-17;context_release=unknown;policy_version=unknown;data_release=unknown;input_tokens=662;output_tokens=147"
+        },
+        {
+          "stage": "CONTEXT",
+          "outcome": "PASSED",
+          "detail": "39cdcc7ac5cf37abd01e51d44e5b148d983082d858a714cd52fa0058e2c8e1c4"
+        },
+        {
+          "stage": "G1",
+          "outcome": "PASSED",
+          "detail": null
+        },
+        {
+          "stage": "MODEL",
+          "outcome": "PASSED",
+          "detail": "node=node2;model=gpt-5.4-mini;prompt=node2.sql@PROMPT-v1.3.0;prompt_hash=132d05e8d5c45547afc225a862d45399d9048c0a7e86aa03d36285054037115b;duration_ms=1582.77;attempts=1;status=SUCCESS;input_schema_hash=a2c6ef9961e8bffb7bfc68a80bc371ca1b81580af06a478c134abc66731fe1ca;output_schema_hash=f2c754141a70e689cd7b113be6fe01bf5411dd0ef9e52056b52084bf10314c38;model_snapshot=gpt-5.4-mini-2026-03-17;context_release=walkerhill-v4.3-catalog.1;policy_version=52c581b38a76d9bdc7087754ba7de38e5b0de7d98f205594fa66d521eb18e78f;data_release=unknown;input_tokens=1356;output_tokens=196;plan_cache=miss"
+        },
+        {
+          "stage": "G2",
+          "outcome": "PASSED",
+          "detail": null
+        },
+        {
+          "stage": "QUERY",
+          "outcome": "PASSED",
+          "detail": "20260817_144002_01015_8xpax"
+        },
+        {
+          "stage": "G3",
+          "outcome": "PASSED",
+          "detail": null
+        },
+        {
+          "stage": "MODEL",
+          "outcome": "PASSED",
+          "detail": "node=node3;model=gpt-5.4-mini;prompt=node3.explain@PROMPT-v1.2.2;prompt_hash=561a9dd4c889da4b95e005bbc702ba166245f976b8632e867620f94292f46872;duration_ms=2642.367;attempts=1;status=SUCCESS;input_schema_hash=34c231d09140d73b2311ea41b0491312acf0f65c6234dbeadb6a0c7746e3353e;output_schema_hash=a6e0b5db1592d2d8a86063f64e2ad842417f5856289796a11797d7795f414568;model_snapshot=gpt-5.4-mini-2026-03-17;context_release=unknown;policy_version=unknown;data_release=unknown;input_tokens=663;output_tokens=376"
+        },
+        {
+          "stage": "ARTIFACT",
+          "outcome": "PASSED",
+          "detail": "dbbbb984-f6df-59c9-b7c6-79f012f47d63"
+        }
+      ],
+      "repair_count": 0,
+      "artifact": {
+        "artifact_id": "dbbbb984-f6df-59c9-b7c6-79f012f47d63",
+        "query_id": "20260817_144002_01015_8xpax",
+        "context_hash": "39cdcc7ac5cf37abd01e51d44e5b148d983082d858a714cd52fa0058e2c8e1c4"
+      }
+    },
+    "meta": {
+      "request_id": "684b7a9e-4170-47f7-aa0b-d87244d46fdd",
+      "trace_id": "6d045479dc6e446c93625c38ff6b5d4d",
+      "as_of": "2026-08-17",
+      "contract_version": "OPENAPI-v1.0.0",
+      "timestamp": "2026-08-17T14:40:06.348140Z"
+    },
+    "error": {
+      "code": "PARTIAL_FAILURE",
+      "message": "일부 원천 결과만 반환했습니다.",
+      "missing_requirements": [],
+      "required_action": "RETRY",
+      "retryable": true,
+      "suggestions": [],
+      "clarification_type": null,
+      "trace_id": "6d045479dc6e446c93625c38ff6b5d4d"
+    }
+  }
+}

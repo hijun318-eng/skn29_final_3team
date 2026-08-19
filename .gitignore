@@ -14,6 +14,7 @@ venv/
 env/
 .pytest_cache/
 .pytest-*/
+.pytest_tmp*/
 .test-tmp/
 .mypy_cache/
 .ruff_cache/
@@ -26,7 +27,8 @@ node_modules/
 dist/
 coverage/
 .playwright-cli/
-output/playwright/
+/output/
+/tmp/
 # Local tools and logs
 .tmp/
 .codex-log/
@@ -85,3 +87,8 @@ chroma/
 *.bin
 models/cache/
 mlruns/
+
+# Custom exclusions
+# 불변 과거 release archive 경로는 감사 대상이므로 여기에 나열하지 않는다.
+scratch/
+.agents/

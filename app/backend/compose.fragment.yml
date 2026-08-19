@@ -1,3 +1,5 @@
+# 책임: migration과 runtime DB identity를 분리하고 migration 성공 및 외부 인증
+# secret mount가 확인된 뒤에만 backend를 시작한다.
 services:
   app-migrations:
     profiles: [dev, full, split-host]
@@ -7,7 +9,9 @@ services:
     entrypoint: ["alembic"]
     command: ["upgrade", "head"]
     environment:
-      APP_DATABASE_URL: postgresql+psycopg://${APP_ADMIN_USER}:${APP_ADMIN_PASSWORD}@app-postgres:5432/${APP_DB_NAME:-app_db}
+      # The bootstrap admin only creates the migration role. Alembic itself runs
+      # with the schema-changing identity and never carries superuser credentials.
+      APP_DATABASE_URL: postgresql+psycopg://${APP_MIGRATION_USER}:${APP_MIGRATION_PASSWORD}@app-postgres:5432/${APP_DB_NAME:-app_db}
       APP_DB_USER: ${APP_DB_USER}
       TZ: Asia/Seoul
     networks:
@@ -24,14 +28,23 @@ services:
       context: ../..
       dockerfile: app/backend/Dockerfile
     environment:
-      APP_DATABASE_URL: postgresql+psycopg://${APP_MIGRATION_USER}:${APP_MIGRATION_PASSWORD}@app-postgres:5432/${APP_DB_NAME:-app_db}
+      # Runtime receives only its table-scoped account. Migration credentials
+      # are confined to the one-shot app-migrations service above.
       APP_RUNTIME_DATABASE_URL: postgresql+psycopg://${APP_DB_USER}:${APP_DB_PASSWORD}@app-postgres:5432/${APP_DB_NAME:-app_db}
       APP_DB_USER: ${APP_DB_USER}
       APP_DB_HOST: app-postgres
       APP_DB_PORT: "5432"
-      TRINO_URL: http://trino:8080
-      TRINO_USER: ${APP_DB_USER}
-      DATAHUB_GMS_URL: http://datahub-gms:8080
+      TRINO_URL: https://trino:8443
+      TRINO_RUNTIME_USER: ${TRINO_RUNTIME_USER:?TRINO_RUNTIME_USER is required}
+      TRINO_RUNTIME_PASSWORD: ${TRINO_RUNTIME_PASSWORD:?TRINO_RUNTIME_PASSWORD is required}
+      TRINO_TLS_CA_FILE: /run/secrets/trino-ca.pem
+      DATAHUB_GMS_URL: https://datahub-gms:8443
+      DATAHUB_READ_API_TOKEN: ${DATAHUB_READ_API_TOKEN:?DATAHUB_READ_API_TOKEN is required}
+      DATAHUB_READ_ACTOR_URN: ${DATAHUB_READ_ACTOR_URN:?DATAHUB_READ_ACTOR_URN is required}
+      DATAHUB_TLS_CA_FILE: /run/secrets/datahub-ca.pem
+      # Metadata-only 운영은 lexical을 명시하고 semantic rollout 뒤에만 hybrid로 바꾼다.
+      DATAHUB_SEARCH_MODE: ${DATAHUB_SEARCH_MODE:-lexical}
+      ANALYTICS_CONTEXT_RELEASE: ${ANALYTICS_CONTEXT_RELEASE:-}
       OPENAI_ENDPOINT: ${OPENAI_ENDPOINT:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-}
@@ -41,17 +54,21 @@ services:
       REPORT_SCHEDULER_ENABLED: ${REPORT_SCHEDULER_ENABLED:-1}
       REPORT_SCHEDULER_POLL_SECONDS: ${REPORT_SCHEDULER_POLL_SECONDS:-5}
       REPORT_SCHEDULER_BATCH_SIZE: ${REPORT_SCHEDULER_BATCH_SIZE:-50}
-      NODE2_MODEL_PROVIDER: ${NODE2_MODEL_PROVIDER:-openai}
+      NODE2_MODEL_PROVIDER: ${NODE2_MODEL_PROVIDER:-}
       MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-60}
-      AUTH_MODE: ${AUTH_MODE:-release}
-      AUTH_PRINCIPALS_FILE: ${AUTH_PRINCIPALS_FILE:-/run/secrets/answervice_auth_principals.json}
+      AUTH_PRINCIPALS_FILE: /run/secrets/answervice_auth_principals.json
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?AUTH_SESSION_SECRET is required}
       AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-28800}
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://127.0.0.1:13000,http://localhost:13000,http://localhost:5173}
       TZ: Asia/Seoul
       SKIP_MIGRATIONS: "1"
     volumes:
-      - ${AUTH_PRINCIPALS_HOST_FILE:-../../infrastructure/database/security/answervice_auth_principals.local.json}:/run/secrets/answervice_auth_principals.json:ro
+      # Authentication material is an external deployment secret. There is no
+      # repository-local principal fallback because stale hashes and subjects
+      # must never become valid merely by checking out the project.
+      - ${AUTH_PRINCIPALS_HOST_FILE:?AUTH_PRINCIPALS_HOST_FILE is required}:/run/secrets/answervice_auth_principals.json:ro
+      - ${TRINO_TLS_CA_HOST_FILE:?TRINO_TLS_CA_HOST_FILE is required}:/run/secrets/trino-ca.pem:ro
+      - ${DATAHUB_TLS_CA_HOST_FILE:?DATAHUB_TLS_CA_HOST_FILE is required}:/run/secrets/datahub-ca.pem:ro
     ports:
       - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:18000:8000"
     networks:

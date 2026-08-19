@@ -1,0 +1,192 @@
+# 책임: DataHub dataset metadata와 승인된 embedding artifact를 semantic index에
+# 결합한다. digest/readback/dependency 검증 실패 시 Actions와 UI를 시작하지 않는다.
+x-semantic-search-environment: &semantic-search-environment
+  ELASTICSEARCH_HOST: semantic-elasticsearch
+  ELASTICSEARCH_IMPLEMENTATION: elasticsearch
+  ELASTICSEARCH_PORT: "9200"
+  ELASTICSEARCH_PROTOCOL: http
+  ELASTICSEARCH_USE_SSL: "false"
+  ELASTICSEARCH_SHIM_ENABLED: "true"
+  ELASTICSEARCH_SHIM_ENGINE_TYPE: ELASTICSEARCH_8
+  ELASTICSEARCH_INDEX_BUILDER_MAPPINGS_REINDEX: ${DATAHUB_SEMANTIC_REINDEX_MAPPINGS:-true}
+  ELASTICSEARCH_INDEX_BUILDER_SETTINGS_REINDEX: ${DATAHUB_SEMANTIC_REINDEX_SETTINGS:-true}
+  SEARCH_SERVICE_SEMANTIC_SEARCH_ENABLED: "true"
+  ELASTICSEARCH_SEMANTIC_SEARCH_ENABLED: "true"
+  ELASTICSEARCH_SEMANTIC_SEARCH_ENTITIES: document,dataset
+  EMBEDDING_PROVIDER_TYPE: local
+  LOCAL_EMBEDDING_ENDPOINT: http://ollama:11434/v1/embeddings
+  LOCAL_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:?set OLLAMA_EMBEDDING_MODEL}
+  LOCAL_EMBEDDING_VECTOR_DIMENSION: "768"
+
+services:
+  semantic-elasticsearch:
+    profiles: [semantic-search]
+    image: "docker.elastic.co/elasticsearch/elasticsearch:8.18.2@sha256:7506a97309af9fa3221ce1d60068223aabb613afe96c1d3a0add5f6bb0e0b61c"
+    restart: unless-stopped
+    networks: [datahub-network]
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.enrollment.enabled: "false"
+      ES_JAVA_OPTS: ${DATAHUB_SEMANTIC_ES_JAVA_OPTS:--Xms1g -Xmx1g}
+    ports:
+      - "127.0.0.1:${DATAHUB_SEMANTIC_ES_PORT:-19200}:9200"
+    volumes:
+      - datahub-semantic-elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  ollama:
+    profiles: [semantic-search]
+    image: "ollama/ollama:0.6.8@sha256:50ab2378567a62b811a2967759dd91f254864c3495cbe50576bd8a85bc6edd56"
+    restart: unless-stopped
+    networks: [datahub-network]
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: 24h
+    ports:
+      - "127.0.0.1:${DATAHUB_SEMANTIC_OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - datahub-ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  ollama-model-bootstrap:
+    profiles: [semantic-search]
+    image: "ollama/ollama:0.6.8@sha256:50ab2378567a62b811a2967759dd91f254864c3495cbe50576bd8a85bc6edd56"
+    restart: "no"
+    networks: [datahub-network]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:?set OLLAMA_EMBEDDING_MODEL}
+      OLLAMA_EMBEDDING_MODEL_DIGEST: ${OLLAMA_EMBEDDING_MODEL_DIGEST:?set OLLAMA_EMBEDDING_MODEL_DIGEST}
+    entrypoint: ["ollama"]
+    command: ["pull", "${OLLAMA_EMBEDDING_MODEL:?set OLLAMA_EMBEDDING_MODEL}"]
+    depends_on:
+      ollama: {condition: service_healthy}
+
+  # The legacy engine remains available only when the rollback profile is
+  # selected explicitly. It must not consume resources or become a writer in
+  # the production semantic-search profile.
+  opensearch:
+    profiles: !override [legacy-search]
+
+  system-update-quickstart:
+    depends_on: !override
+      kafka-broker: {condition: service_healthy}
+      mysql: {condition: service_healthy}
+      semantic-elasticsearch: {condition: service_healthy}
+      ollama-model-bootstrap: {condition: service_completed_successfully}
+    environment:
+      <<: *semantic-search-environment
+
+  datahub-gms-quickstart:
+    # consumer compose의 legacy OpenSearch dependency까지 함께 교체해야
+    # `legacy-search` profile이 비활성인 semantic 배포가 dangling service를 만들지 않는다.
+    depends_on: !override
+      kafka-broker: {condition: service_healthy}
+      mysql: {condition: service_healthy}
+      semantic-elasticsearch: {condition: service_healthy}
+      ollama-model-bootstrap: {condition: service_completed_successfully}
+    environment:
+      <<: *semantic-search-environment
+
+  # Clean starts and catalog refreshes discover every runtime recipe before
+  # semantic content is derived. No dataset name or recipe inventory is baked
+  # into this command.
+  datahub-ingestion:
+    profiles: !override [metadata-ingestion, semantic-search]
+    entrypoint: ["/bin/sh", "-euc"]
+    command:
+      - |
+        found=0
+        for recipe in /recipes/*.runtime.yml; do
+          [ -f "$$recipe" ] || continue
+          found=1
+          datahub ingest -c "$$recipe"
+        done
+        if [ "$$found" -ne 1 ]; then
+          echo 'No runtime DataHub recipe was mounted.' >&2
+          exit 2
+        fi
+    depends_on:
+      # Ingestion observes the live catalog. It never waits for a helper that
+      # manufactures a fixed set of scenario views.
+      trino: {condition: service_healthy}
+      datahub-service-token-check: {condition: service_completed_successfully}
+
+  # 이 one-shot은 token text나 actor URN을 출력하지 않고 두 service identity가
+  # 실제 GMS에 존재하며 서로 다른지만 확인한다. 정책 권한은 후속 read/write가
+  # 실제로 수행될 때 GMS authorization에서 다시 fail-closed 검증된다.
+  datahub-service-token-check:
+    profiles: [semantic-search]
+    build:
+      context: ${SEMANTIC_PRODUCER_BUILD_CONTEXT:-.}
+      dockerfile: infrastructure/database/datahub/Dockerfile.semantic-content
+    restart: "no"
+    networks: [datahub-network]
+    entrypoint: ["python", "verify_datahub_service_tokens.py"]
+    environment:
+      DATAHUB_GMS_URL: https://datahub-gms:8443
+      DATAHUB_READ_API_TOKEN: ${DATAHUB_READ_API_TOKEN:?DATAHUB_READ_API_TOKEN is required}
+      DATAHUB_READ_ACTOR_URN: ${DATAHUB_READ_ACTOR_URN:?DATAHUB_READ_ACTOR_URN is required}
+      DATAHUB_PUBLISH_API_TOKEN: ${DATAHUB_PUBLISH_API_TOKEN:?DATAHUB_PUBLISH_API_TOKEN is required}
+      DATAHUB_PUBLISH_ACTOR_URN: ${DATAHUB_PUBLISH_ACTOR_URN:?DATAHUB_PUBLISH_ACTOR_URN is required}
+      DATAHUB_TLS_CA_FILE: /run/secrets/datahub-ca.pem
+    volumes:
+      - ${DATAHUB_TLS_CA_HOST_FILE:?DATAHUB_TLS_CA_HOST_FILE is required}:/run/secrets/datahub-ca.pem:ro
+    depends_on:
+      datahub-gms-quickstart: {condition: service_healthy}
+
+  dataset-semantic-content-bootstrap:
+    profiles: [semantic-search]
+    build:
+      context: ${SEMANTIC_PRODUCER_BUILD_CONTEXT:-.}
+      dockerfile: infrastructure/database/datahub/Dockerfile.semantic-content
+    restart: "no"
+    networks: [datahub-network]
+    entrypoint: ["python", "publish_dataset_semantic_content.py"]
+    command:
+      - "--convergence-seconds"
+      - "${DATAHUB_SEMANTIC_CONVERGENCE_SECONDS:-180}"
+      - "--max-entities"
+      - "${DATAHUB_SEMANTIC_MAX_DATASETS:-10000}"
+      - "--max-chunks"
+      - "${DATAHUB_SEMANTIC_MAX_CHUNKS:-50000}"
+    environment:
+      DATAHUB_GMS_URL: https://datahub-gms:8443
+      DATAHUB_PUBLISH_API_TOKEN: ${DATAHUB_PUBLISH_API_TOKEN:?DATAHUB_PUBLISH_API_TOKEN is required}
+      DATAHUB_PUBLISH_ACTOR_URN: ${DATAHUB_PUBLISH_ACTOR_URN:?DATAHUB_PUBLISH_ACTOR_URN is required}
+      DATAHUB_TLS_CA_FILE: /run/secrets/datahub-ca.pem
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:?set OLLAMA_EMBEDDING_MODEL}
+      OLLAMA_EMBEDDING_MODEL_DIGEST: ${OLLAMA_EMBEDDING_MODEL_DIGEST:?set OLLAMA_EMBEDDING_MODEL_DIGEST}
+      DATAHUB_SEMANTIC_ELASTICSEARCH_URL: http://semantic-elasticsearch:9200
+    volumes:
+      - ${DATAHUB_TLS_CA_HOST_FILE:?DATAHUB_TLS_CA_HOST_FILE is required}:/run/secrets/datahub-ca.pem:ro
+    depends_on:
+      datahub-gms-quickstart: {condition: service_healthy}
+      datahub-service-token-check: {condition: service_completed_successfully}
+      datahub-ingestion: {condition: service_completed_successfully}
+      ollama-model-bootstrap: {condition: service_completed_successfully}
+      semantic-elasticsearch: {condition: service_healthy}
+
+  datahub-actions-quickstart:
+    depends_on:
+      dataset-semantic-content-bootstrap: {condition: service_completed_successfully}
+
+  frontend-quickstart:
+    depends_on:
+      dataset-semantic-content-bootstrap: {condition: service_completed_successfully}
+
+volumes:
+  datahub-semantic-elasticsearch-data: {}
+  datahub-ollama-data: {}

@@ -22,6 +22,7 @@ from app.adapters.context_registry_repository import (
     PostgresContextRegistryRepository,
     canonical_checksum,
 )
+from app.database import dispose_database
 from app.context_registry_contracts import (
     CreateContextPackage,
     CreateContextRecord,
@@ -45,12 +46,12 @@ class CanonicalChecksumTest(unittest.TestCase):
         )
 
 
-class ContextRegistryServiceTest(unittest.TestCase):
-    def test_service_uses_only_injected_repository(self) -> None:
+class ContextRegistryServiceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_service_uses_only_injected_repository(self) -> None:
         expected = object()
 
         class RecordingRepository:
-            def create_record(self, command):
+            async def create_record(self, command):
                 self.command = command
                 return expected
 
@@ -66,7 +67,7 @@ class ContextRegistryServiceTest(unittest.TestCase):
             idempotency_key="record-1",
         )
 
-        self.assertIs(expected, service.create_record(command))
+        self.assertIs(expected, await service.create_record(command))
         self.assertIs(command, repository.command)
 
 
@@ -74,7 +75,7 @@ class ContextRegistryServiceTest(unittest.TestCase):
     os.getenv("MIGRATION_TEST_DATABASE_URL"),
     "MIGRATION_TEST_DATABASE_URL is not configured",
 )
-class PostgresContextRegistryTest(unittest.TestCase):
+class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.base_url = make_url(os.environ["MIGRATION_TEST_DATABASE_URL"])
@@ -101,11 +102,15 @@ class PostgresContextRegistryTest(unittest.TestCase):
         )
         if result.returncode:
             raise RuntimeError(result.stdout + result.stderr)
-        cls.repository = PostgresContextRegistryRepository(cls.url)
+
+    async def asyncSetUp(self) -> None:
+        self.repository = PostgresContextRegistryRepository(self.url)
+
+    async def asyncTearDown(self) -> None:
+        await dispose_database()
 
     @classmethod
     def tearDownClass(cls) -> None:
-        PostgresContextRegistryRepository(cls.url)._engine.dispose()
         admin = create_engine(
             cls.base_url.set(database="postgres"), isolation_level="AUTOCOMMIT"
         )
@@ -131,22 +136,22 @@ class PostgresContextRegistryTest(unittest.TestCase):
         values.update(changes)
         return CreateContextRecord(**values)
 
-    def test_record_idempotency_conflict_and_released_immutability(self) -> None:
+    async def test_record_idempotency_conflict_and_released_immutability(self) -> None:
         command = self._record_command()
-        first = self.repository.create_record(command)
-        repeated = self.repository.create_record(command)
+        first = await self.repository.create_record(command)
+        repeated = await self.repository.create_record(command)
         self.assertEqual(first.context_record_id, repeated.context_record_id)
         with self.assertRaises(ContextRegistryConflict):
-            self.repository.create_record(
+            await self.repository.create_record(
                 command.model_copy(update={"payload": {"asset": "different"}})
             )
         with self.assertRaises(ContextRegistryConflict):
-            self.repository.create_record(
+            await self.repository.create_record(
                 command.model_copy(update={"idempotency_key": f"record-{uuid4()}"})
             )
 
-        approved = self.repository.approve_record(first.context_record_id, uuid4())
-        release = self.repository.create_release(
+        approved = await self.repository.approve_record(first.context_record_id, uuid4())
+        release = await self.repository.create_release(
             CreateContextRelease(
                 release_key=f"demo-{uuid4().hex[:8]}",
                 version_no=1,
@@ -159,7 +164,7 @@ class PostgresContextRegistryTest(unittest.TestCase):
                 idempotency_key=f"release-{uuid4()}",
             )
         )
-        published = self.repository.publish_release(release.context_release_id, uuid4())
+        published = await self.repository.publish_release(release.context_release_id, uuid4())
         engine = create_engine(self.url)
         with self.assertRaises(DBAPIError), engine.begin() as connection:
             connection.execute(
@@ -172,10 +177,10 @@ class PostgresContextRegistryTest(unittest.TestCase):
             )
         engine.dispose()
 
-    def test_package_requires_published_release_and_is_idempotent(self) -> None:
-        record = self.repository.create_record(self._record_command())
-        record = self.repository.approve_record(record.context_record_id, uuid4())
-        release = self.repository.create_release(
+    async def test_package_requires_published_release_and_is_idempotent(self) -> None:
+        record = await self.repository.create_record(self._record_command())
+        record = await self.repository.approve_record(record.context_record_id, uuid4())
+        release = await self.repository.create_release(
             CreateContextRelease(
                 release_key=f"package-{uuid4().hex[:8]}",
                 version_no=1,
@@ -191,14 +196,14 @@ class PostgresContextRegistryTest(unittest.TestCase):
         request_id = uuid4()
         draft_command = self._package_command(request_id, release.context_release_id)
         with self.assertRaises(ContextRegistryConflict):
-            self.repository.create_package(draft_command)
-        release = self.repository.publish_release(release.context_release_id, uuid4())
+            await self.repository.create_package(draft_command)
+        release = await self.repository.publish_release(release.context_release_id, uuid4())
         self._insert_request(request_id, release.context_release_id)
-        first = self.repository.create_package(draft_command)
-        repeated = self.repository.create_package(draft_command)
+        first = await self.repository.create_package(draft_command)
+        repeated = await self.repository.create_package(draft_command)
         self.assertEqual(first.context_package_id, repeated.context_package_id)
         with self.assertRaises(ContextRegistryConflict):
-            self.repository.create_package(
+            await self.repository.create_package(
                 draft_command.model_copy(update={"assets": [{"urn": "different"}]})
             )
 

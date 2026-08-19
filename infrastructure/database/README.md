@@ -1,19 +1,55 @@
 # Docker Compose 합성 운영 DB
 
-5개 업무 사일로와 애플리케이션 관리 DB를 독립 컨테이너·볼륨·계정으로 실행한다. 실제 고객 데이터는 사용하지 않으며 모든 seed는 `20260729`, schema version은 `1.0.0`이다. Trino는 5개 source catalog와 내부 `serving` catalog를 사용한다.
+DataHub의 선택적 Elasticsearch 8.18 + 로컬 Ollama semantic-search 구성과 실제
+검증 절차는 [`datahub/SEMANTIC_SEARCH.md`](datahub/SEMANTIC_SEARCH.md)를 따른다.
+기본 OpenSearch 구성은 semantic-search 완료 증거로 취급하지 않는다.
+
+5개 업무 사일로와 애플리케이션 관리 DB를 독립 컨테이너·볼륨·계정으로 실행한다.
+초기화는 재현 가능한 DDL과 migration만 적용하고 업무 row, 특정 기간 snapshot,
+질문 전용 serving view는 넣지 않는다. Trino는 5개 source catalog와 내부 `serving`
+catalog를 노출하지만, 실제 relation은 `information_schema`에서 런타임에 발견한다.
 
 ```powershell
 cd infrastructure/database
-if (-not (Test-Path .env)) { Copy-Item .env.example .env }
-# 최초 실행 전 .env의 모든 CHANGE_ME_ 값을 로컬 전용 비밀번호로 교체
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1
+$deploymentDirectory = Join-Path $env:LOCALAPPDATA 'Answervice\deployment'
+$secretDirectory = Join-Path $env:LOCALAPPDATA 'Answervice\secrets'
+New-Item -ItemType Directory -Force -Path $deploymentDirectory,$secretDirectory | Out-Null
+$deploymentEnv = Join-Path $deploymentDirectory 'answervice.env'
+Copy-Item .env.example $deploymentEnv
+# $deploymentEnv의 CHANGE_ME_/REQUIRED_ 값을 교체하고 TLS PKI 파일의 절대 경로를 설정한다.
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File security/provision-release-principals.ps1 `
+  -EnvPath $deploymentEnv `
+  -PrincipalPath (Join-Path $secretDirectory 'principals.json')
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File security/provision-trino-password-database.ps1 `
+  -EnvPath $deploymentEnv `
+  -PasswordDatabasePath (Join-Path $secretDirectory 'trino-password.db')
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File scripts/start.ps1 -EnvFilePath $deploymentEnv -Stage Core
+# loopback DataHub UI/OIDC에서 서로 다른 read/publish service actor와 PAT를 발급하고,
+# 최소권한 정책과 actor URN/token을 외부 $deploymentEnv에 기록한다.
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File scripts/start.ps1 -EnvFilePath $deploymentEnv -Stage Catalog
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -EnvFilePath $deploymentEnv
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1 -EnvFilePath $deploymentEnv
 ```
 
-`scripts/reset.ps1 -Force`는 현재 로컬 Docker DB 볼륨을 삭제하고 다시 생성한다. 보존할 데이터가 없는 synthetic 개발 환경인지 확인한 뒤에만 실행한다.
+배포 환경 파일, Trino password database, Trino/DataHub PKCS#12 server keystore,
+DataHub Java truststore, CA PEM과 Backend principal store는 모두 repository 밖 절대
+경로에 둔다. Trino 인증서는 container DNS `trino`, DataHub 인증서는 `datahub-gms`,
+host 접속 주소를 각각 SAN으로 포함해야 한다. script는 저장소 로컬 `.env`를 묵시적으로
+읽거나 만들지 않으며 secret을 생성하지 않는다. `-EnvFilePath`를 생략하면 현재 process
+environment만 사용한다.
 
-최초 실행 시 POS synthetic seed 약 128만 행을 생성하므로 환경에 따라 최대 30분 정도 걸릴 수 있다. `DATABASE_STACK_READY`가 출력될 때까지 초기화 프로세스를 중단하지 않는다.
+`scripts/reset.ps1 -Force`는 Compose project label로 확인한 현재 로컬 DB 볼륨만
+삭제하고 schema부터 다시 생성한다. 보존할 데이터가 없는 개발 환경인지 확인한 뒤에만
+실행한다.
+
+`DATABASE_STACK_READY`는 DB·Trino·DataHub 프로세스와 read-only 계정이 준비됐다는
+뜻이다. 분석 데이터 readiness를 뜻하지 않는다. 승인된 source relation을 준비한 뒤
+`datahub/ingest_runtime_catalog.ps1 -Apply`를 실행하고 `scripts/verify.ps1`의 live
+discovery 검증을 통과해야 한다.
 
 | 서비스 | 엔진 | localhost 포트 | DataHub instance | Trino catalog |
 | --- | --- | ---: | --- | --- |
@@ -23,13 +59,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1
 | pos-mysql | MySQL 8.4.6 | 13306 | pos | pos |
 | crm-mssql | SQL Server 2022 CU17 | 11433 | crm | crm |
 | facility-clickhouse | ClickHouse 24.8.4.13 | 18123 / 19000 | facility | facility |
-| trino | Trino 476 | 18080 | 제외 | `serving`(내부) + source 5개 |
+| trino | Trino 476 | 18443 (HTTPS) | 제외 | `serving`(내부) + source 5개 |
 
-컨테이너 간 접속은 `app-postgres`, `pms-postgres` 등 서비스명과 내부 포트를 사용한다. 모든 외부 포트는 `127.0.0.1`에만 바인딩한다.
+컨테이너 간 접속은 `app-postgres`, `pms-postgres` 등 서비스명과 내부 포트를 사용한다.
+모든 외부 포트는 `127.0.0.1`에만 바인딩한다. Trino의 8080 listener는 shared-secret으로
+인증되는 coordinator 내부 discovery 전용이며 host에는 publish하지 않는다. client query는
+CA 검증·Basic authentication을 거친 8443/18443 HTTPS 경로만 허용한다.
+DataHub GMS도 8443/18081 HTTPS와 Bearer authentication만 허용하며 UI 9002/19002는
+loopback에만 publish한다. `/health` 같은 DataHub 공식 인증 예외는 readiness에만 쓰고,
+catalog read는 `DATAHUB_READ_API_TOKEN`, ingestion·authoring·semantic mutation은 별도
+`DATAHUB_PUBLISH_API_TOKEN`을 전송한다. 두 PAT의 actor도 달라야 하며 Backend에는
+publish credential을 주입하지 않는다.
 
 업무 DB는 `*_READONLY_USER` 계정으로 DataHub와 Trino에 연결한다. 이 계정은 `SELECT` 및 시스템 메타데이터 조회만 허용하며 DML·DDL은 거부한다. `app-postgres`의 `APP_DB_USER`는 앱 읽기·쓰기, `APP_MIGRATION_USER`는 migration 전용이다.
 
-실행 원본은 `sql/ddl`, `sql/app`, `security`, `docs/e2e_mvp/derived/service_demo_v3/`의 5개 Source seed다. `sql/data/`와 `releases/`는 과거 seed·배포 아카이브이며 Compose 초기화 경로에서 사용하지 않는다.
+실행 원본은 `sql/ddl`, `sql/app`, App DB migration, DataHub runtime recipe다.
+`security` script는 외부 principal secret을 생성하지만 저장소 안에 인증 JSON을 만들지
+않는다. `sql/data/`와 `releases/`는 checksum과 과거 재현성을 위한 불변 아카이브이며,
+Compose 초기화·bootstrap·검증 경로에서 참조하지 않는다.
 
 PowerShell 실행 파일은 `scripts`에 모아 관리한다.
 

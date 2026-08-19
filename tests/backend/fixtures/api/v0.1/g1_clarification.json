@@ -66,14 +66,17 @@
     "clarification_type": null,
     "code": "CONTEXT_INCOMPLETE",
     "message": "분석 기간을 입력해 주세요.",
+    "missing_requirements": [],
+    "required_action": "PROVIDE_CONTEXT",
     "retryable": false,
-    "suggestions": []
+    "suggestions": [],
+    "trace_id": "fixture-g1-clarification"
   },
   "meta": {
-    "as_of": "2026-07-30",
+    "as_of": "2041-04-02",
     "contract_version": "OPENAPI-v1.0.0",
     "request_id": "00000000-0000-0000-0000-000000000100",
-    "timestamp": "2026-07-30T00:00:00Z",
+    "timestamp": "2041-04-02T00:00:00Z",
     "trace_id": "fixture-g1-clarification"
   }
 }

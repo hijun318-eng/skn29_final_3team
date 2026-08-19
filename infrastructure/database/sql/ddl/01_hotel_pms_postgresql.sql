@@ -1,3 +1,5 @@
+-- 책임: PMS source의 빈 운영 schema와 관계 무결성만 정의한다. 실제 row는 외부
+-- ingestion 소유이며 schema 생성 실패를 synthetic seed로 보상하지 않는다.
 -- source_id=pms; engine=PostgreSQL; database=pms_db
 -- ingestion_role=pms_ingest; query_role=pms_readonly
 -- datahub_platform_instance=pms_db; trino_catalog=pms
@@ -24,7 +26,7 @@ CREATE TABLE IF NOT EXISTS pms_guests (
     crm_mapping_eligible boolean NOT NULL,
     created_at timestamptz NOT NULL,
     source_updated_at timestamptz NOT NULL,
-    is_synthetic boolean NOT NULL CHECK (is_synthetic),
+    is_synthetic boolean NOT NULL,
     CHECK (created_at <= source_updated_at),
     UNIQUE (property_id, guest_id)
 );
@@ -38,13 +40,12 @@ CREATE TABLE IF NOT EXISTS pms_room_inventory_daily (
     out_of_order_rooms integer NOT NULL CHECK (out_of_order_rooms >= 0),
     house_use_rooms integer NOT NULL CHECK (house_use_rooms >= 0),
     available_room_nights integer NOT NULL CHECK (available_room_nights >= 0),
-    data_period_status varchar(32) NOT NULL CHECK (data_period_status IN ('REFERENCE_CALIBRATED','SYNTHETIC_ACTUAL_LIKE','YTD_SYNTHETIC','FORECAST_SCENARIO')),
+    data_period_status varchar(32) NOT NULL,
     is_forecast boolean NOT NULL,
-    is_synthetic boolean NOT NULL CHECK (is_synthetic),
+    is_synthetic boolean NOT NULL,
     source_updated_at timestamptz NOT NULL,
     UNIQUE (property_id, business_date, room_type_code),
-    CHECK (available_room_nights = physical_rooms - out_of_order_rooms - house_use_rooms),
-    CHECK (is_forecast = (data_period_status = 'FORECAST_SCENARIO'))
+    CHECK (available_room_nights = physical_rooms - out_of_order_rooms - house_use_rooms)
 );
 
 CREATE TABLE IF NOT EXISTS pms_reservations (
@@ -70,9 +71,9 @@ CREATE TABLE IF NOT EXISTS pms_reservations (
     booked_amount numeric(14,2) NOT NULL CHECK (booked_amount >= 0),
     refund_amount numeric(14,2) NOT NULL CHECK (refund_amount >= 0),
     cancellation_fee numeric(14,2) NOT NULL CHECK (cancellation_fee >= 0),
-    data_period_status varchar(32) NOT NULL CHECK (data_period_status IN ('REFERENCE_CALIBRATED','SYNTHETIC_ACTUAL_LIKE','YTD_SYNTHETIC','FORECAST_SCENARIO')),
+    data_period_status varchar(32) NOT NULL,
     is_forecast boolean NOT NULL,
-    is_synthetic boolean NOT NULL CHECK (is_synthetic),
+    is_synthetic boolean NOT NULL,
     source_updated_at timestamptz NOT NULL,
     CHECK (checkout_date > checkin_date),
     CHECK (booked_at < checkin_date::timestamp AT TIME ZONE 'Asia/Seoul'),
@@ -90,8 +91,7 @@ CREATE TABLE IF NOT EXISTS pms_reservations (
          AND cancelled_at IS NULL
          AND refund_amount = 0
          AND cancellation_fee = 0)
-    ),
-    CHECK (is_forecast = (data_period_status = 'FORECAST_SCENARIO'))
+    )
 );
 
 CREATE TABLE IF NOT EXISTS pms_stays (
@@ -110,9 +110,9 @@ CREATE TABLE IF NOT EXISTS pms_stays (
     room_revenue numeric(14,2) NOT NULL CHECK (room_revenue >= 0),
     other_room_charges numeric(14,2) NOT NULL CHECK (other_room_charges >= 0),
     stay_status varchar(20) NOT NULL CHECK (stay_status IN ('EXPECTED','IN_HOUSE','COMPLETED','CANCELLED','NO_SHOW')),
-    data_period_status varchar(32) NOT NULL CHECK (data_period_status IN ('REFERENCE_CALIBRATED','SYNTHETIC_ACTUAL_LIKE','YTD_SYNTHETIC','FORECAST_SCENARIO')),
+    data_period_status varchar(32) NOT NULL,
     is_forecast boolean NOT NULL CHECK (NOT is_forecast),
-    is_synthetic boolean NOT NULL CHECK (is_synthetic),
+    is_synthetic boolean NOT NULL,
     source_updated_at timestamptz NOT NULL,
     CHECK (actual_checkout_at IS NULL OR actual_checkin_at IS NULL OR actual_checkout_at > actual_checkin_at),
     CHECK (
@@ -126,15 +126,15 @@ CREATE TABLE IF NOT EXISTS pms_stays (
 );
 
 CREATE TABLE IF NOT EXISTS schema_version (version varchar(32) PRIMARY KEY);
-CREATE TABLE IF NOT EXISTS seed_metadata (seed integer PRIMARY KEY, data_class varchar(16) NOT NULL);
+-- The fixed value is a reproducible schema contract, not a data snapshot.
+-- Seed identity belongs to the external ingestion release and is deliberately
+-- absent here so an empty source cannot claim production data provenance.
 INSERT INTO schema_version(version) VALUES ('1.0.0') ON CONFLICT (version) DO NOTHING;
-INSERT INTO seed_metadata(seed, data_class) VALUES (20260729, 'synthetic') ON CONFLICT (seed) DO NOTHING;
 
 CREATE OR REPLACE VIEW pms_stays_actual AS
 SELECT *
 FROM pms_stays
-WHERE is_forecast = false
-  AND data_period_status <> 'FORECAST_SCENARIO';
+WHERE is_forecast = false;
 
 CREATE INDEX IF NOT EXISTS idx_pms_reservations_date_status ON pms_reservations(checkin_date, reservation_status);
 CREATE INDEX IF NOT EXISTS idx_pms_reservations_guest_date ON pms_reservations(guest_id, checkin_date);
@@ -142,14 +142,14 @@ CREATE INDEX IF NOT EXISTS idx_pms_stays_guest_checkin ON pms_stays(guest_id, ac
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON pms_guests, pms_room_inventory_daily, pms_reservations, pms_stays TO pms_ingest;
 GRANT SELECT ON pms_guests, pms_room_inventory_daily, pms_reservations, pms_stays, pms_stays_actual TO pms_readonly;
-GRANT SELECT ON schema_version, seed_metadata TO pms_readonly;
+GRANT SELECT ON schema_version TO pms_readonly;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public FROM pms_readonly;
 REVOKE CREATE ON SCHEMA public FROM pms_readonly;
 
-COMMENT ON TABLE pms_guests IS 'Synthetic PMS guest without direct identifiers';
+COMMENT ON TABLE pms_guests IS 'PMS guest projection without direct identifiers';
 COMMENT ON TABLE pms_room_inventory_daily IS 'Daily room supply by room type';
-COMMENT ON TABLE pms_reservations IS 'Synthetic reservation contract and cancellation amounts';
-COMMENT ON TABLE pms_stays IS 'Actual synthetic stay and recognized room revenue';
+COMMENT ON TABLE pms_reservations IS 'Reservation contract and cancellation amounts';
+COMMENT ON TABLE pms_stays IS 'Actual stay and recognized room revenue';
 COMMENT ON COLUMN pms_reservations.booked_amount IS 'Contract value; not recognized room revenue';
 COMMENT ON COLUMN pms_stays.room_revenue IS 'Recognized revenue for completed non-free stays';
 

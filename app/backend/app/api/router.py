@@ -1,8 +1,11 @@
+"""health·readiness·인증·분석 실행 endpoint와 분석 보조 router를 FastAPI에 등록한다."""
+
 from __future__ import annotations
 
+import asyncio
 import os
 from functools import lru_cache
-from typing import Annotated, Any, Callable
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
@@ -13,18 +16,12 @@ from app.contract_examples import (
     ANALYSIS_RESPONSE_EXAMPLES,
 )
 from app.analysis_contracts import (
-    AnalysisDefinitionListResponse,
-    AnalysisDefinitionResponse,
-    AnalysisRunListResponse,
-    AnalysisRunArtifactResponse,
     AnalysisRunResponse,
-    CreateAnalysisDefinitionRequest,
     ReplayAnalysisRequest,
 )
 from app.context import SESSION_COOKIE, ContextValidationError, analysis_context, optional_session_context, request_context, session_context
 from app.contracts import (
     AnalysisRequest,
-    AnalysisProgressResponse,
     AnalysisResponse,
     AnalysisStatus,
     EmptyData,
@@ -45,63 +42,32 @@ from app.contracts import (
     response_meta,
 )
 from app.auth import AuthenticationError, authenticate_credentials, issue_session_token, register_session, revoke_session
+from app.api.analysis_router_runtime import (
+    active_analytics_context_release as _active_analytics_context_release,
+    analysis_repository as _analysis_repository,
+    data_platform as _data_platform,
+    model as _model,
+    repository_call as _repository_call,
+    routing_service as _routing_service,
+)
+from app.api.analysis_router_support import (
+    analysis_support_router,
+    cancel_analysis_progress,
+    cancel_analysis_progress_by_request,
+    create_analysis_definition,
+    get_analysis_definition,
+    get_analysis_progress,
+    get_analysis_progress_by_request,
+    get_analysis_run,
+    get_analysis_run_artifact,
+    list_analysis_definitions,
+    list_analysis_runs,
+)
 from app.controllers.analysis_controller import AnalysisController
 from app.services.analysis_service import AnalysisService
 from app.services.execution_control import ConcurrentExecutionGate
-from app.services.routing_service import RoutingService
 from app.services.readiness import AppDatabaseReadiness
 from app.services.analysis_progress import analysis_progress
-
-
-def _routing_service() -> RoutingService:
-    database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
-    if database_url:
-        return RoutingService.from_database(database_url)
-    return RoutingService()
-
-
-def _data_platform():
-    from app.adapters.i2_data_platform import I2DataPlatformAdapter
-
-    return I2DataPlatformAdapter(
-        os.getenv("TRINO_URL", "http://trino:8080"),
-        os.getenv("TRINO_USER", "answervice"),
-        os.getenv("DATAHUB_GMS_URL", "http://datahub-gms:8080"),
-        os.getenv("DATAHUB_API_TOKEN"),
-        require_live_metadata=True,
-        allow_template_assets=False,
-    )
-
-
-def _model():
-    from app.adapters.contract_model import ContractModelAdapter
-
-    node2_model = os.getenv("NODE2_MODEL", "")
-    if node2_model:
-        node2_provider = os.getenv("NODE2_MODEL_PROVIDER", "openai")
-        use_openai_credentials = node2_provider == "openai"
-        return ContractModelAdapter.from_endpoints(
-            openai_endpoint=os.getenv("OPENAI_ENDPOINT", ""),
-            openai_token=os.getenv("OPENAI_API_KEY", ""),
-            openai_model=os.getenv("OPENAI_MODEL", ""),
-            node2_endpoint=os.getenv(
-                "OPENAI_ENDPOINT" if use_openai_credentials else "NODE2_MODEL_ENDPOINT",
-                "",
-            ),
-            node2_token=os.getenv(
-                "OPENAI_API_KEY" if use_openai_credentials else "NODE2_MODEL_API_TOKEN",
-                "",
-            ),
-            node2_model=node2_model,
-            node2_provider=node2_provider,
-            timeout_seconds=float(os.getenv("MODEL_TIMEOUT_SECONDS", "60")),
-        )
-    return ContractModelAdapter.from_openai(
-        endpoint=os.getenv("OPENAI_ENDPOINT", ""),
-        token=os.getenv("OPENAI_API_KEY", ""),
-        model=os.getenv("OPENAI_MODEL", ""),
-        timeout_seconds=float(os.getenv("MODEL_TIMEOUT_SECONDS", "60")),
-    )
 
 
 @lru_cache(maxsize=1)
@@ -117,34 +83,13 @@ readiness = AppDatabaseReadiness()
 execution_gate = ConcurrentExecutionGate()
 
 
-def _analysis_repository(context: RequestContext):
-    from app.adapters.analysis_repository import PostgresAnalysisRepository
-
-    database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
-    if not database_url:
-        raise HTTPException(status_code=503, detail="Analysis 저장소를 사용할 수 없습니다.")
-    return PostgresAnalysisRepository(database_url, context.user_id)
-
-
-def _repository_call(action: Callable[[], Any]) -> Any:
-    from app.adapters.analysis_repository import AnalysisRepositoryUnavailable
-
-    try:
-        return action()
-    except KeyError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from error
-    except ValueError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
-    except AnalysisRepositoryUnavailable as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-
-
 @router.get(
     "/health",
     response_model=HealthResponse,
     operation_id="getHealth",
 )
 def health(request: Request) -> HealthResponse:
+    """모듈의 외부 의존성 도달 가능성과 최소 응답 계약을 점검한다."""
     context = request_context(request)
     return HealthResponse(
         data=HealthData(status="healthy"),
@@ -157,18 +102,35 @@ def health(request: Request) -> HealthResponse:
     response_model=ReadinessResponse,
     operation_id="getReadiness",
 )
-def ready(request: Request) -> ReadinessResponse:
+async def ready(request: Request) -> ReadinessResponse:
+    """필수 운영 의존성을 probe하고 하나라도 준비되지 않으면 typed 503으로 닫는다."""
     context = request_context(request)
-    probe = readiness.check()
+    probe = await readiness.check()
     status = (
         "ready"
         if all(value in {"ready", "not_required"} for value in probe.values())
         else "not_ready"
     )
-    return ReadinessResponse(
+    body = ReadinessResponse(
         data=ReadinessData(status=status, dependencies=probe),
         meta=response_meta(context),
+        error=(
+            None
+            if status == "ready"
+            else ErrorBody(
+                code=ErrorCode.DEPENDENCY_UNAVAILABLE,
+                message="필수 서비스가 준비되지 않았습니다.",
+                missing_requirements=tuple(
+                    name
+                    for name, value in probe.items()
+                    if value not in {"ready", "not_required"}
+                ),
+            )
+        ),
     )
+    if status == "ready":
+        return body
+    return JSONResponse(status_code=503, content=body.model_dump(mode="json"))
 
 
 @router.get(
@@ -180,6 +142,7 @@ def authenticated_session(
     request: Request,
     context: Annotated[RequestContext | None, Depends(optional_session_context)],
 ) -> SessionResponse:
+    """검증된 세션의 role만 공개하며 자격 증명이 없을 때는 anonymous 상태를 반환한다."""
     if context is None:
         return SessionResponse(data=SessionData(status="anonymous"), meta=response_meta(request_context(request)))
     return SessionResponse(
@@ -194,13 +157,20 @@ def authenticated_session(
     operation_id="createAuthenticatedSession",
     responses={401: {"model": ErrorResponse, "description": "아이디 또는 비밀번호 불일치"}},
 )
-def login(payload: LoginRequest, request: Request, response: Response) -> LoginResponse:
+async def login(payload: LoginRequest, request: Request, response: Response) -> LoginResponse:
+    """계정 자격 증명을 검증하고 revocation 가능한 서버 세션을 등록한다.
+
+    원문 token은 secure 정책이 적용된 HTTP-only cookie로만 전달하며 인증 저장소 장애는
+    정상 로그인으로 가장하지 않고 dependency 오류로 변환한다.
+    """
     try:
-        principal = authenticate_credentials(payload.username, payload.password)
+        principal = await asyncio.to_thread(
+            authenticate_credentials, payload.username, payload.password
+        )
         session_token = issue_session_token(principal)
-        register_session(session_token, principal)
+        await register_session(session_token, principal)
     except AuthenticationError as exc:
-        code = ErrorCode.INTERNAL_ERROR if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
+        code = ErrorCode.DEPENDENCY_UNAVAILABLE if exc.status_code == 503 else ErrorCode.AUTHENTICATION_REQUIRED
         raise ContextValidationError(code, exc.message, exc.status_code) from exc
     context = RequestContext(
         request_id=request.state.request_id,
@@ -225,15 +195,20 @@ def login(payload: LoginRequest, request: Request, response: Response) -> LoginR
 
 
 @router.post("/auth/logout", status_code=204, operation_id="deleteAuthenticatedSession")
-def logout(
+async def logout(
     request: Request,
     response: Response,
     _context: Annotated[RequestContext, Depends(session_context)],
 ) -> None:
+    """현재 세션을 서버 저장소에서 먼저 폐기한 뒤 브라우저 cookie를 삭제한다."""
     try:
-        revoke_session(getattr(request.state, "session_token", None))
+        await revoke_session(getattr(request.state, "session_token", None))
     except AuthenticationError as exc:
-        raise ContextValidationError(ErrorCode.INTERNAL_ERROR, exc.message, exc.status_code) from exc
+        raise ContextValidationError(
+            ErrorCode.DEPENDENCY_UNAVAILABLE,
+            exc.message,
+            exc.status_code,
+        ) from exc
     response.delete_cookie(
         SESSION_COOKIE,
         secure=os.getenv("AUTH_COOKIE_SECURE", "false").strip().lower() == "true",
@@ -263,13 +238,18 @@ def logout(
         500: {"model": ErrorResponse, "description": "안전하게 정규화된 내부 오류"},
     },
 )
-def analysis(
+async def analysis(
     payload: Annotated[
         AnalysisRequest,
         Body(openapi_examples=ANALYSIS_REQUEST_EXAMPLES),
     ],
     context: Annotated[RequestContext, Depends(analysis_context)],
 ) -> AnalysisResponse | JSONResponse:
+    """호텔 분석가의 질문을 동시 실행 한도 안에서 라우팅·분석·영속화한다.
+
+    진행 상태와 취소 신호를 pipeline에 전달하고, artifact 저장 실패는 성공 응답으로
+    덮지 않으며 재시도 가능한 typed 503으로 반환한다.
+    """
     if context.role is not Role.HOTEL_ANALYST:
         raise ContextValidationError(
             ErrorCode.ACCESS_DENIED,
@@ -277,7 +257,7 @@ def analysis(
             403,
         )
     wait_seconds = float(os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0"))
-    if not execution_gate.acquire(wait_seconds):
+    if not await execution_gate.acquire(wait_seconds):
         response = ErrorResponse(
             data=EmptyData(),
             meta=response_meta(context),
@@ -297,24 +277,24 @@ def analysis(
     try:
         if os.getenv("APP_RUNTIME_DATABASE_URL"):
             repository = _analysis_repository(context)
-            _repository_call(
+            await _repository_call(
                 lambda: repository.begin_request(
                     payload.question, payload.parameters, context
                 )
             )
-        response = _controller().submit(
+        response = await _controller().submit(
             payload,
             context,
             execution.update,
             lambda stage, outcome: analysis_progress.record(
-                context.trace_id, stage, outcome
+                context.request_id, stage, outcome
             ),
-            lambda: analysis_progress.cancelled(context.trace_id),
+            lambda: analysis_progress.cancelled(context.request_id),
         )
         final_status = response.data.status
         if repository is not None:
             try:
-                _repository_call(
+                await _repository_call(
                     lambda: repository.finish_run(context.request_id, response, execution)
                 )
             except HTTPException as error:
@@ -322,8 +302,9 @@ def analysis(
                     raise
                 final_status = AnalysisStatus.FAILED
                 try:
-                    repository.fail_run(
-                        context.request_id, ErrorCode.ARTIFACT_PERSIST_FAILED.value
+                    await repository.fail_run(
+                        context.request_id,
+                        ErrorCode.ARTIFACT_PERSIST_FAILED.value,
                     )
                 except Exception:
                     pass
@@ -343,85 +324,11 @@ def analysis(
         return response
     except Exception:
         if repository is not None:
-            _repository_call(lambda: repository.fail_run(context.request_id))
+            await _repository_call(lambda: repository.fail_run(context.request_id))
         raise
     finally:
-        analysis_progress.finish(context.trace_id, final_status)
+        analysis_progress.finish(context.request_id, final_status)
         execution_gate.release()
-
-
-@router.get(
-    "/analysis/progress/{trace_id}",
-    response_model=AnalysisProgressResponse,
-    operation_id="getAnalysisProgress",
-)
-def get_analysis_progress(
-    trace_id: str,
-    context: Annotated[RequestContext, Depends(session_context)],
-) -> AnalysisProgressResponse:
-    try:
-        data = analysis_progress.get(trace_id, context.user_id)
-    except KeyError as error:
-        raise HTTPException(status_code=404, detail="진행 중인 분석을 찾을 수 없습니다.") from error
-    return AnalysisProgressResponse(data=data, meta=response_meta(context))
-
-
-@router.post(
-    "/analysis/progress/{trace_id}/cancel",
-    response_model=AnalysisProgressResponse,
-    operation_id="cancelAnalysisProgress",
-)
-def cancel_analysis_progress(
-    trace_id: str,
-    context: Annotated[RequestContext, Depends(session_context)],
-) -> AnalysisProgressResponse:
-    try:
-        data = analysis_progress.cancel(trace_id, context.user_id)
-    except KeyError as error:
-        raise HTTPException(status_code=404, detail="진행 중인 분석을 찾을 수 없습니다.") from error
-    except ValueError as error:
-        raise HTTPException(status_code=409, detail="이미 종료된 분석입니다.") from error
-    return AnalysisProgressResponse(data=data, meta=response_meta(context))
-
-
-@router.post(
-    "/analysis/definitions",
-    operation_id="analysisCreateDefinition",
-    response_model=AnalysisDefinitionResponse,
-)
-def create_analysis_definition(
-    payload: CreateAnalysisDefinitionRequest,
-    context: Annotated[RequestContext, Depends(analysis_context)],
-) -> dict[str, Any]:
-    repository = _analysis_repository(context)
-    return _repository_call(
-        lambda: repository.create_definition_from_run(payload.source_request_id, payload.title)
-    )
-
-
-@router.get(
-    "/analysis/definitions",
-    operation_id="analysisListDefinitions",
-    response_model=AnalysisDefinitionListResponse,
-)
-def list_analysis_definitions(
-    context: Annotated[RequestContext, Depends(analysis_context)],
-) -> dict[str, Any]:
-    repository = _analysis_repository(context)
-    return {"items": _repository_call(repository.list_definitions)}
-
-
-@router.get(
-    "/analysis/definitions/{definition_id}",
-    operation_id="analysisGetDefinition",
-    response_model=AnalysisDefinitionResponse,
-)
-def get_analysis_definition(
-    definition_id: UUID,
-    context: Annotated[RequestContext, Depends(analysis_context)],
-) -> dict[str, Any]:
-    repository = _analysis_repository(context)
-    return _repository_call(lambda: repository.get_definition(definition_id))
 
 
 @router.post(
@@ -429,15 +336,30 @@ def get_analysis_definition(
     operation_id="analysisReplayDefinition",
     response_model=AnalysisRunResponse,
 )
-def replay_analysis_definition(
+async def replay_analysis_definition(
     definition_id: UUID,
     payload: ReplayAnalysisRequest,
     context: Annotated[RequestContext, Depends(analysis_context)],
 ) -> dict[str, Any]:
+    """저장된 분석 정의를 현재 권한·Context release에서 새로운 run으로 재실행한다.
+
+    활성 release가 달라졌거나 미선언 parameter가 들어오면 실행 전에 거부하고,
+    idempotency key로 생성된 run만 controller에 전달한다.
+    """
     repository = _analysis_repository(context)
-    definition = _repository_call(
+    definition = await _repository_call(
         lambda: repository.get_definition(definition_id, replay=True)
     )
+    saved_release = str(
+        (definition.get("semantic_request") or {}).get("context_release") or ""
+    )
+    active_release = await _active_analytics_context_release()
+    if saved_release != active_release:
+        raise ContextValidationError(
+            ErrorCode.SCHEMA_VERSION_MISMATCH,
+            "저장된 Analysis Definition의 context release가 현재 활성 release와 다릅니다.",
+            409,
+        )
     unknown_parameters = set(payload.parameters) - set(definition["parameters"])
     if unknown_parameters:
         raise HTTPException(
@@ -446,7 +368,7 @@ def replay_analysis_definition(
         )
     parameters = {**definition["parameters"], **payload.parameters}
     replay_context = context.model_copy(update={"as_of": payload.as_of})
-    request_id, created = _repository_call(
+    request_id, created = await _repository_call(
         lambda: repository.begin_run(
             definition,
             replay_context,
@@ -456,16 +378,18 @@ def replay_analysis_definition(
         )
     )
     if not created:
-        run = _repository_call(lambda: repository.get_run(request_id))
+        run = await _repository_call(lambda: repository.get_run(request_id))
         if run["status"] == "RECEIVED":
             raise HTTPException(status_code=409, detail="Analysis Run이 이미 실행 중입니다.")
         return run
-    if not execution_gate.acquire(float(os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0"))):
-        _repository_call(lambda: repository.fail_run(request_id, "UNSUPPORTED"))
+    if not await execution_gate.acquire(
+        float(os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0"))
+    ):
+        await _repository_call(lambda: repository.fail_run(request_id, "UNSUPPORTED"))
         raise HTTPException(status_code=429, detail="동시 분석은 최대 2건까지 실행할 수 있습니다.")
     execution: dict[str, Any] = {}
     try:
-        response = _controller().submit(
+        response = await _controller().submit(
             AnalysisRequest(
                 question=definition["question"],
                 parameters=parameters,
@@ -474,7 +398,7 @@ def replay_analysis_definition(
             execution.update,
         )
     except ContextValidationError as error:
-        _repository_call(
+        await _repository_call(
             lambda: repository.fail_run(
                 request_id,
                 "PERMISSION" if error.code is ErrorCode.ACCESS_DENIED else "UNSUPPORTED",
@@ -482,47 +406,82 @@ def replay_analysis_definition(
         )
         raise
     except Exception:
-        _repository_call(lambda: repository.fail_run(request_id))
+        await _repository_call(lambda: repository.fail_run(request_id))
         raise
     finally:
         execution_gate.release()
-    _repository_call(lambda: repository.finish_run(request_id, response, execution))
-    return _repository_call(lambda: repository.get_run(request_id))
+    await _repository_call(lambda: repository.finish_run(request_id, response, execution))
+    return await _repository_call(lambda: repository.get_run(request_id))
+
+
+# =========================================================================
+# Bounded Governed Multi-turn Endpoints (CONV-001 ~ CONV-010)
+# =========================================================================
+
+@router.post(
+    "/conversations",
+    operation_id="createConversation",
+)
+async def create_conversation(
+    payload: dict[str, Any] = Body(...),
+    context: RequestContext = Depends(session_context),
+) -> dict[str, Any]:
+    """새로운 분석 대화방을 생성한다."""
+    from app.api.analysis_router_runtime import conversation_orchestrator
+    title = str(payload.get("title") or "새 분석 대화").strip()
+    orch = conversation_orchestrator(_controller())
+    conv = await orch._repo.create_conversation(context.user_id, title)
+    return {"status": "SUCCESS", "data": conv}
 
 
 @router.get(
-    "/analysis/runs",
-    operation_id="analysisListRuns",
-    response_model=AnalysisRunListResponse,
+    "/conversations/{conversation_id}/turns",
+    operation_id="getConversationTurns",
 )
-def list_analysis_runs(
-    context: Annotated[RequestContext, Depends(analysis_context)],
+async def get_conversation_turns(
+    conversation_id: UUID,
+    context: RequestContext = Depends(session_context),
 ) -> dict[str, Any]:
-    repository = _analysis_repository(context)
-    return {"items": _repository_call(repository.list_runs)}
+    """대화방의 불변 턴 목록을 순서대로 조회해 프론트엔드 상태를 수화(Hydration)한다."""
+    from app.api.analysis_router_runtime import conversation_orchestrator
+    orch = conversation_orchestrator(_controller())
+    conv = await orch._repo.get_conversation(conversation_id, context.user_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="대화방을 찾을 수 없거나 접근 권한이 없습니다.")
+    turns = await orch._repo.list_turns(conversation_id)
+    return {
+        "status": "SUCCESS",
+        "data": {
+            "conversation": conv,
+            "turns": turns,
+        },
+    }
 
 
-@router.get(
-    "/analysis/runs/{request_id}",
-    operation_id="analysisGetRun",
-    response_model=AnalysisRunResponse,
+@router.post(
+    "/conversations/{conversation_id}/commands",
+    operation_id="executeConversationCommand",
 )
-def get_analysis_run(
-    request_id: UUID,
-    context: Annotated[RequestContext, Depends(analysis_context)],
+async def execute_conversation_command(
+    conversation_id: UUID,
+    payload: dict[str, Any] = Body(...),
+    context: RequestContext = Depends(session_context),
 ) -> dict[str, Any]:
-    repository = _analysis_repository(context)
-    return _repository_call(lambda: repository.get_run(request_id))
+    """대화방에서 발화 명령을 실행하여 라우트(ANALYSIS/PRESENTATION/REPORT_ACTION)를 수행한다."""
+    from app.api.analysis_router_runtime import conversation_orchestrator
+    orch = conversation_orchestrator(_controller())
+    conv = await orch._repo.get_conversation(conversation_id, context.user_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="대화방을 찾을 수 없거나 접근 권한이 없습니다.")
+    if conv["status"] == "ARCHIVED":
+        raise HTTPException(status_code=409, detail="아카이브된 대화방에서는 새 명령을 실행할 수 없습니다.")
+
+    result = await orch.execute_command(conversation_id, payload, context)
+    if result.get("status") == "CONFLICT":
+        raise HTTPException(status_code=409, detail=result.get("message"))
+    if result.get("status") == "BUSY":
+        raise HTTPException(status_code=409, detail=result.get("message"))
+    return {"status": "SUCCESS", "data": result}
 
 
-@router.get(
-    "/analysis/runs/{request_id}/artifact",
-    operation_id="analysisGetRunArtifact",
-    response_model=AnalysisRunArtifactResponse,
-)
-def get_analysis_run_artifact(
-    request_id: UUID,
-    context: Annotated[RequestContext, Depends(analysis_context)],
-) -> dict[str, Any]:
-    repository = _analysis_repository(context)
-    return _repository_call(lambda: repository.get_run_artifact(request_id))
+router.include_router(analysis_support_router)

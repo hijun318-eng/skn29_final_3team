@@ -50,6 +50,9 @@ Qwen3.5 base weight 로딩까지 확인했다.
 | Base revision | `851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a` |
 | LoRA module name | `answervice-sql` |
 | LoRA rank | 16 |
+| Serving context window | `5120` tokens |
+| Backend max output | `1280` tokens |
+| Backend safety margin | `256` tokens |
 
 여기서 `nvidia-smi`의 `CUDA Version: 12.4`는 호스트 드라이버가 표시하는
 지원 버전이다. `cu129`는 설치한 wheel의 빌드 변형 이름이다. 두 문자열이
@@ -218,7 +221,7 @@ Backend의 Slice B routing을 적용한 뒤에도 다음 실제 호출을 확인
 | Node | Endpoint | 상태 |
 |---|---|---|
 | Node1 | OpenAI `gpt-5.4-mini` | strict schema 응답 Pass |
-| Node2 | RunPod `answervice-sql` | 학습 직렬화 및 R3 변환 Pass |
+| Node2 | RunPod `answervice-sql` | 학습 직렬화 및 runtime contract 변환 Pass |
 | Node3 | OpenAI `gpt-5.4-mini` | strict schema 응답 Pass |
 
 Docker backend readiness에서도 OpenAI와 RunPod의 인증된 `/v1/models` probe가
@@ -254,15 +257,15 @@ Structured Business Request
 - Gold Result 비교
 - timeout, 4xx, 5xx, malformed JSON이 성공으로 저장되지 않음
 
-코드가 Node별 routing을 지원하도록 구현된 뒤 사용자가
-`infrastructure/database/.env`에 다음 값을 넣는다.
+코드가 Node별 routing을 지원하도록 구현된 뒤 사용자가 repository root
+`README.md` 절차로 만든 외부 deployment environment에 다음 값을 넣는다.
 
 ```dotenv
-MODEL_MODE=openai
 OPENAI_ENDPOINT=https://api.openai.com
 OPENAI_API_KEY=<사용자가 보관한 OpenAI API key>
 OPENAI_MODEL=<승인한 GPT model>
 
+NODE2_MODEL_PROVIDER=qwen
 NODE2_MODEL_ENDPOINT=<RunPod OpenAI-compatible base URL>
 NODE2_MODEL_API_TOKEN=<RunPod endpoint token>
 NODE2_MODEL=answervice-sql
@@ -279,6 +282,9 @@ https://<POD_ID>-8000.proxy.runpod.net
 
 Backend가 `/v1/chat/completions`를 붙이므로 `NODE2_MODEL_ENDPOINT`에는 `/v1`을
 붙이지 않는다. Serverless 전환은 Pod HTTP E2E가 통과한 뒤 별도로 검증한다.
+`MODEL_MODE`는 runtime 계약에 없는 값이므로 설정하지 않는다. Node2 전용 route는
+provider·endpoint·token·model 네 값을 모두 선언해야 하며 일부만 있으면 readiness와
+모델 adapter 생성이 함께 실패한다.
 
 ## 9. 사용자에게 필요한 작업
 
@@ -286,7 +292,7 @@ Backend가 `/v1/chat/completions`를 붙이므로 `NODE2_MODEL_ENDPOINT`에는 `
 - base model 다운로드에 필요한 Hugging Face 접근 확인
 - GPU Pod 선택과 비용 승인
 - endpoint URL 확인과 인증 token 생성
-- `.env`에 OpenAI·RunPod Secret 입력
+- repository 밖 deployment environment에 OpenAI·RunPod Secret 입력
 
 Secret 값은 채팅에 보내지 않는다. 준비 완료 여부와 endpoint가 `/v1/models`에 응답하는지만 알려주면 된다.
 

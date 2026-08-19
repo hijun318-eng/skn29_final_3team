@@ -1,5 +1,7 @@
 # Answervice 최종평가 MVP PRD
 
+> **SUPERSEDED / 과거 계약:** 현재 PRD는 [`../../product/01_PRD.md`](../../product/01_PRD.md)다. 아래 완료 표시는 V4.1 릴리스 증거로 승계하지 않는다.
+
 | 항목 | 내용 |
 |---|---|
 | 문서 목적 | 최종평가까지 구현할 제품 범위와 Vertical Slice 순서를 고정한다. |

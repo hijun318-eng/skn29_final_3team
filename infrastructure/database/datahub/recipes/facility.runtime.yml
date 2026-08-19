@@ -1,0 +1,17 @@
+# 책임: ClickHouse facility database의 현재 relation metadata를 동적으로 발행한다.
+# database 탐색이나 sink write 실패는 semantic bootstrap을 차단한다.
+source:
+  type: clickhouse
+  config:
+    host_port: ${FACILITY_DATAHUB_HOST_PORT}
+    database: ${FACILITY_DATAHUB_DATABASE}
+    username: ${FACILITY_READONLY_USER}
+    password: ${FACILITY_READONLY_PASSWORD}
+    env: ${DATAHUB_DATASET_ENV}
+    platform_instance: ${FACILITY_DATAHUB_PLATFORM_INSTANCE}
+sink:
+  type: datahub-rest
+  config:
+    server: ${DATAHUB_GMS_URL}
+    token: ${DATAHUB_PUBLISH_API_TOKEN}
+    ca_certificate_path: ${DATAHUB_TLS_CA_FILE}

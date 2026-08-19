@@ -1,7 +1,10 @@
 import copy
 import unittest
 
-from evals.runner import EvaluationError, evaluate_cases
+from evals.runner import (
+    EvaluationError,
+    evaluate_cases,
+)
 from tests.support.fakes import ContractFakeModelAdapter as FakeModelAdapter
 from src.ai.training.evaluate_lora import (
     DEFAULT_MODEL,
@@ -16,14 +19,17 @@ from tests.ai.test_contracts import VALID_PAYLOADS
 
 
 def valid_case():
-    adapter = FakeModelAdapter()
     request = copy.deepcopy(VALID_PAYLOADS["node3_request"])
     return {
         "case_id": "required30-node3-001",
         "node": "node3",
         "request": request,
-        "expected_output": adapter.generate("node3", request),
+        "expected_output": copy.deepcopy(VALID_PAYLOADS["node3_response"]),
     }
+
+
+def adapter_for(response, count=2):
+    return FakeModelAdapter([copy.deepcopy(response) for _ in range(count)])
 
 
 class EvaluationRunnerTests(unittest.TestCase):
@@ -71,8 +77,14 @@ class EvaluationRunnerTests(unittest.TestCase):
         )
 
     def test_result_and_hash_are_reproducible(self):
-        first = evaluate_cases([valid_case()], FakeModelAdapter())
-        second = evaluate_cases([valid_case()], FakeModelAdapter())
+        first_case = valid_case()
+        second_case = valid_case()
+        first = evaluate_cases(
+            [first_case], adapter_for(first_case["expected_output"])
+        )
+        second = evaluate_cases(
+            [second_case], adapter_for(second_case["expected_output"])
+        )
 
         self.assertEqual(first, second)
         self.assertEqual(first["total"], 1)
@@ -82,7 +94,9 @@ class EvaluationRunnerTests(unittest.TestCase):
     def test_expected_output_mismatch_fails(self):
         case = valid_case()
         case["expected_output"]["explanation"] = "unsupported"
-        result = evaluate_cases([case], FakeModelAdapter())
+        result = evaluate_cases(
+            [case], adapter_for(VALID_PAYLOADS["node3_response"])
+        )
         self.assertEqual(result["failed"], 1)
 
     def test_missing_extra_and_duplicate_case_ids_are_rejected(self):
@@ -98,7 +112,9 @@ class EvaluationRunnerTests(unittest.TestCase):
 
         case = valid_case()
         with self.assertRaises(EvaluationError):
-            evaluate_cases([case, case], FakeModelAdapter())
+            evaluate_cases(
+                [case, case], adapter_for(case["expected_output"])
+            )
 
 
 if __name__ == "__main__":

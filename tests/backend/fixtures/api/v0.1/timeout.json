@@ -57,14 +57,17 @@
     "clarification_type": null,
     "code": "QUERY_TIMEOUT",
     "message": "조회 시간이 초과되었습니다.",
+    "missing_requirements": [],
+    "required_action": "RETRY",
     "retryable": true,
-    "suggestions": []
+    "suggestions": [],
+    "trace_id": "fixture-timeout"
   },
   "meta": {
-    "as_of": "2026-07-30",
+    "as_of": "2041-04-02",
     "contract_version": "OPENAPI-v1.0.0",
     "request_id": "00000000-0000-0000-0000-000000000100",
-    "timestamp": "2026-07-30T00:00:00Z",
+    "timestamp": "2041-04-02T00:00:00Z",
     "trace_id": "fixture-timeout"
   }
 }

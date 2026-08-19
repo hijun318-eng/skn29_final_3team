@@ -1,0 +1,19 @@
+# 책임: PMS PostgreSQL의 runtime schema 전체를 DataHub catalog와 동기화한다.
+# 고정 table 목록으로 축소하지 않으며 ingestion 오류는 그대로 실패로 전파한다.
+source:
+  type: postgres
+  config:
+    host_port: ${PMS_DATAHUB_HOST_PORT}
+    database: ${PMS_DB_NAME}
+    username: ${PMS_READONLY_USER}
+    password: ${PMS_READONLY_PASSWORD}
+    env: ${DATAHUB_DATASET_ENV}
+    platform_instance: ${PMS_DATAHUB_PLATFORM_INSTANCE}
+    schema_pattern:
+      allow: ["${PMS_DATAHUB_SCHEMA}"]
+sink:
+  type: datahub-rest
+  config:
+    server: ${DATAHUB_GMS_URL}
+    token: ${DATAHUB_PUBLISH_API_TOKEN}
+    ca_certificate_path: ${DATAHUB_TLS_CA_FILE}

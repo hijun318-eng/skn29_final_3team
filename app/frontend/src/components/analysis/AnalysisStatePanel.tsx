@@ -1,7 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+/** 분석 실행 상태와 governed 결과·근거를 사용자 화면으로 표현하는 모듈이다. */
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CircleX, Clock3, FileWarning, LoaderCircle, RotateCcw, SearchX, StopCircle } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { EnterpriseChart } from "../charts/EnterpriseChart";
 import { resolveViewState, type AnalysisRun, type AnalysisViewState } from "../../contracts/analysis";
+import {
+  analysisTitle, dataProvenanceLabel, formatCompactNumber, formatMetricValue, isNumericValue, metricUnitLabel, seriesColor,
+} from "../../utils/presentation";
 
 const VIEW_COPY: Record<AnalysisViewState, { title: string; description: string; icon: typeof CheckCircle2 }> = {
   LOADING: { title: "분석 중", description: "분석 요청을 처리하고 있습니다.", icon: LoaderCircle },
@@ -20,118 +24,49 @@ const SOURCE_STATUS: Record<string, string> = {
   SUCCEEDED: "정상", FAILED: "실패", PARTIAL: "일부 응답",
 };
 
-const COLUMN_LABELS: Record<string, string> = {
-  month: "월",
-  business_date: "일자",
-  date: "일자",
-  property_id: "호텔",
-  membership_grade_code: "회원 등급",
-  room_type_code: "객실 유형",
+const REQUIRED_ACTION_COPY: Record<string, string> = {
+  RETRY: "잠시 후 같은 질문을 다시 분석해 주세요.",
+  AUTHENTICATE: "로그인한 뒤 다시 시도해 주세요.",
+  REQUEST_ACCESS: "현재 계정에 필요한 데이터 권한을 요청해 주세요.",
+  PROVIDE_CONTEXT: "분석할 지표나 기간을 질문에 추가해 주세요.",
+  MODIFY_REQUEST: "질문의 범위나 조건을 수정해 다시 전송해 주세요.",
+  CONTACT_SUPPORT: "추적 ID와 함께 서비스 관리자에게 문의해 주세요.",
 };
 
-const ERROR_ACTIONS: Record<string, string> = {
-  AUTHENTICATION_REQUIRED: "로그인 상태를 다시 확인해 주세요.",
-  ACCESS_DENIED: "현재 계정의 권한을 관리자에게 확인해 주세요.",
-  DATA_ASSET_NOT_FOUND: "분석 대상이나 지표를 바꾸거나 데이터 권한을 관리자에게 요청해 주세요.",
-  CONTEXT_SOURCE_FAILED: "잠시 후 다시 시도하고, 반복되면 데이터 관리자에게 문의해 주세요.",
-  MODEL_CONTRACT_INVALID: "같은 질문으로 다시 시도하고, 반복되면 추적 ID와 함께 문의해 주세요.",
-  MODEL_TIMEOUT: "잠시 후 같은 질문으로 다시 시도해 주세요.",
-  SQL_POLICY_BLOCKED: "조회하려는 범위와 지표를 더 구체적으로 바꿔 주세요.",
-  SQL_REPAIR_FAILED: "질문 범위를 줄이거나 지표를 하나만 지정해 다시 요청해 주세요.",
-  TRINO_CONNECTION_FAILED: "데이터 조회 서비스가 복구된 뒤 다시 시도해 주세요.",
-  QUERY_TIMEOUT: "기간이나 분석 범위를 줄여 다시 시도해 주세요.",
-  QUERY_SOURCE_FAILED: "잠시 후 다시 시도하고, 반복되면 데이터 관리자에게 문의해 주세요.",
-  RESULT_VALIDATION_FAILED: "기간과 지표를 확인한 뒤 질문을 더 구체적으로 작성해 주세요.",
-  RESULT_EVIDENCE_MISSING: "근거 데이터가 준비된 기간이나 다른 지표로 요청해 주세요.",
-  ARTIFACT_PERSIST_FAILED: "결과 저장소가 복구된 뒤 같은 질문으로 다시 시도해 주세요.",
-  NETWORK_UNAVAILABLE: "네트워크 연결을 확인한 뒤 같은 질문으로 다시 시도해 주세요.",
-  REQUEST_CANCELLED: "필요하면 같은 질문을 다시 전송해 주세요.",
-};
-
-const ANALYSIS_PHASES = [
-  ["질문 해석", "질문의 지표와 기간을 확인합니다."],
-  ["사용 가능한 데이터 확인", "권한이 있는 데이터와 업무 정의를 확인합니다."],
-  ["분석 계획 생성", "승인된 조건으로 조회 계획을 만듭니다."],
-  ["안전성 검증", "읽기 전용 정책과 조회 범위를 검증합니다."],
-  ["데이터 조회", "승인된 데이터 소스에서 결과를 조회합니다."],
-  ["결과 검증", "반환된 값과 근거의 일치 여부를 확인합니다."],
-  ["설명과 Artifact 저장", "설명과 검증 근거를 함께 저장합니다."],
-] as const;
-
-function reachedPhases(run: AnalysisRun) {
-  const trace = run.trace ?? [];
-  const stages = new Set(trace.filter((step) => step.outcome === "PASSED").map((step) => step.stage));
-  const modelCount = trace.filter((step) => step.stage === "MODEL" && step.outcome === "PASSED").length;
-  return [stages.has("ROUTER"), stages.has("CONTEXT") || stages.has("G1"), modelCount >= 2, stages.has("G2"), stages.has("QUERY"), stages.has("G3"), stages.has("ARTIFACT")];
-}
-
-function failedPhase(run: AnalysisRun) {
-  const trace = run.trace ?? [];
-  const failedIndex = trace.findLastIndex((step) => step.outcome === "FAILED");
-  if (failedIndex < 0) return -1;
-  const step = trace[failedIndex];
-  if (step.stage === "ROUTER" || step.stage === "CONTROLLER") return 0;
-  if (step.stage === "CONTEXT" || step.stage === "G1") return 1;
-  if (step.stage === "G2" || step.stage === "REPAIR") return 3;
-  if (step.stage === "QUERY") return 4;
-  if (step.stage === "G3") return 5;
-  if (step.stage === "ARTIFACT") return 6;
-  if (step.stage === "MODEL") {
-    const modelIndex = trace.slice(0, failedIndex + 1).filter((item) => item.stage === "MODEL").length - 1;
-    return [0, 2, 6][Math.min(modelIndex, 2)];
-  }
-  return -1;
+function errorStateTitle(code?: string) {
+  if (["CONTEXT_SOURCE_FAILED", "TRINO_CONNECTION_FAILED", "QUERY_SOURCE_FAILED", "DEPENDENCY_UNAVAILABLE"].includes(code ?? "")) return "데이터 원천 응답 실패";
+  if (["MODEL_CONTRACT_INVALID", "MODEL_OUTPUT_UNGROUNDED"].includes(code ?? "")) return "모델 설명 검증 실패";
+  if (["MODEL_TIMEOUT", "MODEL_ENDPOINT_UNAVAILABLE", "CIRCUIT_OPEN"].includes(code ?? "")) return "모델 응답 실패";
+  return null;
 }
 
 function progressMessage(elapsed: number) {
   if (elapsed >= 60) return "평소보다 오래 걸리고 있지만 요청은 중단되지 않았습니다. 필요하면 분석을 취소할 수 있습니다.";
   if (elapsed >= 30) return "데이터 조회와 결과 검증을 계속 진행하고 있습니다. 완료되는 즉시 결과를 표시합니다.";
   if (elapsed >= 10) return "분석이 계속 진행 중입니다. 현재 단계와 경과 시간을 자동으로 갱신합니다.";
-  return "질문은 그대로 보존됩니다. 현재 진행 단계를 자동으로 갱신합니다.";
+  return "질문은 그대로 보존됩니다. 현재 상태와 경과 시간을 자동으로 갱신합니다.";
 }
 
-function AnalysisProgress({ run, loading, elapsed }: { run: AnalysisRun; loading: boolean; elapsed: number }) {
-  const reached = reachedPhases(run);
-  const done = reached.filter(Boolean).length;
-  const active = reached.findIndex((value) => !value);
-  const failed = loading ? -1 : failedPhase(run);
-  return <section className={`analysis-trace ${loading ? "" : "analysis-trace--complete"}`} aria-label="분석 진행 단계">
-    <header><div><small>검증 흐름</small><h3>{loading ? "안전하게 분석하고 있습니다" : "분석 처리 단계"}</h3></div><span>{loading ? `${elapsed}초 경과` : `${done}/${ANALYSIS_PHASES.length} 완료 · ${elapsed}초`}</span></header>
-    {loading && <p>{progressMessage(elapsed)}</p>}
-    <ol>{ANALYSIS_PHASES.map(([title, description], index) => {
-      const state = reached[index] ? "done" : failed === index ? "failed" : loading && active === index ? "active" : "";
-      return <li className={state} key={title}><i>{state === "done" ? "✓" : state === "failed" ? "!" : index + 1}</i><div><b>{title}</b><small>{description}</small></div><em>{state === "done" ? "완료" : state === "failed" ? "실패" : state === "active" ? "진행 중" : "대기"}</em></li>;
-    })}</ol>
+/** 서버 내부 단계를 추측하지 않고 경과시간과 취소 가능한 진행 상태만 표시한다. */
+function AnalysisProgress({ elapsed }: { elapsed: number }) {
+  return <section className="analysis-trace analysis-trace--indeterminate" aria-label="분석 진행 상태" aria-live="polite">
+    <header><div><small>현재 상태</small><h3>승인된 범위에서 분석하고 있습니다</h3></div><span>{elapsed}초 경과</span></header>
+    <p>{progressMessage(elapsed)}</p>
+    <p className="analysis-progress-boundary">서버가 확정한 결과와 근거가 준비되면 이 화면에 표시합니다. 내부 처리 순서는 추측해 표시하지 않습니다.</p>
   </section>;
 }
 
 function columnLabel(column: string, run: AnalysisRun) {
   return run.metrics.find((item) => item.resultField === column)?.label
     ?? run.evidence?.metrics.find((item) => item.resultField === column)?.label
-    ?? COLUMN_LABELS[column]
+    // 승인된 metric label이 없으면 canonical result field를 보존해 의미를 임의 추론하지 않는다.
     ?? column;
-}
-
-function formatValue(value: unknown, unit?: string | null) {
-  const numeric = typeof value === "number"
-    ? value
-    : typeof value === "string" && /^-?\d+(?:\.\d+)?$/.test(value.trim())
-      ? Number(value)
-      : null;
-  const rendered = numeric !== null && Number.isFinite(numeric)
-    ? numeric.toLocaleString("ko-KR", { maximumFractionDigits: 2 })
-    : String(value ?? "없음");
-  return unit ? `${rendered} ${unit}` : rendered;
 }
 
 function columnUnit(column: string, run: AnalysisRun) {
   return run.metrics.find((item) => item.resultField === column)?.unit
     ?? run.evidence?.metrics.find((item) => item.resultField === column)?.unit
     ?? null;
-}
-
-function formatAxisValue(value: number) {
-  return value.toLocaleString("ko-KR", { notation: "compact", maximumFractionDigits: 1 });
 }
 
 function formatPeriod(run: AnalysisRun) {
@@ -147,7 +82,32 @@ function formatFilterValue(value: unknown) {
 }
 
 function filterLabel(field: string) {
-  return field.split(".").at(-1)?.replaceAll("_", " ") ?? field;
+  return field;
+}
+
+function filterEntries(filters: Record<string, unknown>) {
+  const seen = new Set<string>();
+  const entries = Object.entries(filters).flatMap(([key, value]) => {
+    const entry = { label: filterLabel(key), value: formatFilterValue(value) };
+    const signature = `${entry.label}:${entry.value}`;
+    if (seen.has(signature)) return [];
+    seen.add(signature);
+    return [entry];
+  });
+  return entries;
+}
+
+function tidyAnalysisTitle(value: string) {
+  const words = value.trim().split(/\s+/);
+  return words.filter((word, index) => index === 0 || word !== words[index - 1]).join(" ");
+}
+
+function formatKpiValue(value: unknown, unit?: string | null) {
+  const numeric = Number(value);
+  if (unit === "원" && isNumericValue(value) && Math.abs(numeric) >= 100_000_000) {
+    return formatCompactNumber(numeric);
+  }
+  return formatMetricValue(value, { includeUnit: false });
 }
 
 type TableSort = { column: string; direction: "" | "asc" | "desc" };
@@ -165,6 +125,7 @@ function compareTableValues(left: unknown, right: unknown) {
   return String(left ?? "").localeCompare(String(right ?? ""), "ko", { numeric: true });
 }
 
+/** 서버가 정규화한 분석 상태와 근거를 렌더링하며, 불완전한 차트 계약은 표로만 fail-closed 표시한다. */
 export function AnalysisStatePanel({
   run,
   onSuggestion,
@@ -187,15 +148,52 @@ export function AnalysisStatePanel({
   const chart = showResult ? run.chart : null;
   const table = showResult ? run.table : null;
   const suggestions = run.error?.suggestions ?? [];
+  const requiredAction = run.error?.required_action ?? "NONE";
+  const nextAction = REQUIRED_ACTION_COPY[requiredAction];
+  const failureTitle = errorStateTitle(run.error?.code);
   const [elapsed, setElapsed] = useState(0);
+  const terminalStateRef = useRef<HTMLElement | null>(null);
   const [tableSort, setTableSort] = useState<TableSort>({ column: "", direction: "" });
+  const [chartDisplayOverride, setChartDisplayOverride] = useState("");
+  const chartType = chart?.chartType?.toLocaleLowerCase("en-US") ?? "";
+  const supportedChartType = chartType === "bar" || chartType === "line";
+  const hasTableColumns = Boolean(table?.columns.length);
+  const chartColumns = new Set(table?.columns ?? []);
+  const chartFieldsMatchTable = Boolean(
+    chart
+    && chart.yFields.length > 0
+    && chartColumns.has(chart.xField)
+    && chart.yFields.every((field) => chartColumns.has(field)),
+  );
+  const canRenderChart = supportedChartType && chartFieldsMatchTable;
   const chartLines = chart?.yFields.map((field, index) => ({
-    field,
+    key: field,
     label: columnLabel(field, run),
-    color: ["#4f99f5", "#d6a85f", "#68c6a3", "#9b8afb"][index % 4],
+    color: seriesColor(index),
+    unit: columnUnit(field, run) ?? undefined,
   })) ?? [];
+  const filters = filterEntries(run.evidence?.filters ?? {});
+  const chartTitle = chart ? `${columnLabel(chart.xField, run)}별 ${chartLines.map((line) => line.label).join("·")}` : "";
+  const resultTitle = tidyAnalysisTitle(analysisTitle(run));
+  const provenanceLabel = dataProvenanceLabel(run.sources);
+  const hasLongCategories = Boolean(chart && table?.rows.some((row) => [...String(row[chart.xField] ?? "")].length > 10));
+  const defaultChartDisplayType = chartType === "bar" && hasLongCategories ? "horizontal-bar" : chartType;
+  const chartDisplayOptions = chartType === "bar"
+    ? [{ type: "bar", label: "세로" }, { type: "horizontal-bar", label: "가로" }]
+    : chartType === "line"
+      ? [{ type: "line", label: "선" }, { type: "area", label: "영역" }]
+      : [];
+  const chartDisplayType = chartDisplayOptions.some((option) => option.type === chartDisplayOverride)
+    ? chartDisplayOverride
+    : defaultChartDisplayType;
+  const chartHeight = chartDisplayType === "horizontal-bar"
+    ? Math.max(280, Math.min(420, (table?.rows.length ?? 0) * 46 + 54))
+    : 280;
+  const chartDescription = chart
+    ? `${columnLabel(chart.xField, run)} 기준으로 ${chartLines.map((line) => line.label).join(", ")}을 비교합니다. 같은 값은 아래 상세 데이터 표에서도 확인할 수 있습니다.`
+    : "";
   const numericColumns = new Set(table?.columns.filter((column) => table.rows.some((row) => (
-    typeof row[column] === "number" || (typeof row[column] === "string" && /^-?\d+(?:\.\d+)?$/.test(row[column].trim()))
+    isNumericValue(row[column])
   ))) ?? []);
   const visibleRows = useMemo(() => {
     if (!table?.rows || !tableSort.column) return table?.rows ?? [];
@@ -214,31 +212,47 @@ export function AnalysisStatePanel({
     return () => window.clearInterval(timer);
   }, [run.traceId, viewState]);
 
-  if (viewState === "LOADING") {
-    return <section className="analysis-state analysis-state--loading" aria-live="polite"><header><LoaderCircle className="spin" size={18} aria-hidden="true" /><div><b>{copy.title}</b></div></header><p>{copy.description}</p><button type="button" className="analysis-cancel" disabled={cancelRequested} onClick={onCancel}><StopCircle size={15} />{cancelRequested ? "취소 요청 중" : "분석 취소"}</button><AnalysisProgress run={run} loading elapsed={elapsed} /></section>;
+  useEffect(() => {
+    setChartDisplayOverride("");
+  }, [chartType, run.traceId]);
+
+  useEffect(() => {
+    if (!run.error || viewState === "LOADING" || viewState === "DELAYED") return undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const action = terminalStateRef.current?.querySelector<HTMLElement>(".analysis-suggestions button:not([disabled]), .analysis-retry:not([disabled])");
+      (action ?? terminalStateRef.current)?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [run.error?.code, run.traceId, viewState]);
+
+  if (viewState === "LOADING" || viewState === "DELAYED") {
+    return <section className={`analysis-state analysis-state--${viewState.toLowerCase()}`} aria-live="polite" aria-busy="true"><header><LoaderCircle className="spin" size={18} aria-hidden="true" /><div><b>{copy.title}</b></div></header><p>{copy.description}</p><button type="button" className="analysis-cancel" disabled={cancelRequested} onClick={onCancel}><StopCircle size={15} aria-hidden="true" />{cancelRequested ? "취소 요청 중" : "분석 취소"}</button><AnalysisProgress elapsed={elapsed} /></section>;
   }
 
-  return <section className={`analysis-state analysis-state--${viewState.toLowerCase()}`} aria-live="polite">
-    {!showResult && <header><Icon size={18} aria-hidden="true" /><div><b>{suggestions.length ? run.error?.clarification_type === "period" ? "어떤 기간으로 분석할까요?" : "어떤 지표로 분석할까요?" : run.error?.code === "CONTEXT_INCOMPLETE" ? "추가 정보 필요" : copy.title}</b></div></header>}
+  return <section ref={terminalStateRef} tabIndex={-1} className={`analysis-state analysis-state--${viewState.toLowerCase()}`} aria-live="polite">
+    {!showResult && <header><Icon size={18} aria-hidden="true" /><div><b>{suggestions.length ? run.error?.clarification_type === "period" ? "어떤 기간으로 분석할까요?" : "어떤 지표로 분석할까요?" : run.error?.code === "CONTEXT_INCOMPLETE" ? "추가 정보 필요" : failureTitle || copy.title}</b></div></header>}
     {!showResult && <p>{run.error?.message ?? run.summary ?? copy.description}</p>}
-    {suggestions.length > 0 && <div className="analysis-suggestions" aria-label="분석 지표 선택">{suggestions.map((suggestion) => <button type="button" key={suggestion} disabled={suggestionsDisabled} onClick={() => onSuggestion?.(suggestion)}>{suggestion}</button>)}</div>}
-    {run.error?.retryable && suggestions.length === 0 && <button type="button" className="analysis-retry" onClick={onRetry}><RotateCcw size={14} />같은 질문 다시 분석</button>}
-    {run.error && suggestions.length === 0 && <><p className="analysis-next-action"><b>다음 행동</b> {ERROR_ACTIONS[run.error.code] ?? (run.error.retryable ? "같은 질문을 다시 분석하거나 잠시 후 시도해 주세요." : "입력된 질문을 확인한 뒤 필요한 내용을 보완해 다시 전송해 주세요.")}</p><details className="analysis-error" data-error-code={run.error.code} data-retryable={String(run.error.retryable)}><summary>기술 정보</summary><dl><div><dt>오류 코드</dt><dd>{run.error.code}</dd></div><div><dt>다시 시도</dt><dd>{run.error.retryable ? "가능" : "불가"}</dd></div><div><dt>추적 ID</dt><dd>{run.traceId || "발급 전"}</dd></div></dl></details></>}
+    {suggestions.length > 0 && <div className="analysis-suggestions" aria-label={run.error?.clarification_type === "period" ? "분석 기간 선택" : "분석 지표 선택"}>{suggestions.map((suggestion) => <button type="button" key={suggestion} disabled={suggestionsDisabled} onClick={() => onSuggestion?.(suggestion)}>{suggestion}</button>)}</div>}
+    {!showResult && requiredAction === "RETRY" && suggestions.length === 0 && <button type="button" className="analysis-retry" onClick={onRetry}><RotateCcw size={14} />같은 질문 다시 분석</button>}
+    {!showResult && run.error && suggestions.length === 0 && <>{nextAction && <p className="analysis-next-action"><b>다음 행동</b> {nextAction}</p>}<details className="analysis-error" data-error-code={run.error.code} data-retryable={String(run.error.retryable)}><summary>기술 정보</summary><dl><div><dt>오류 코드</dt><dd>{run.error.code}</dd></div><div><dt>다시 시도</dt><dd>{run.error.retryable ? "가능" : "불가"}</dd></div>{run.error.missing_requirements?.length ? <div><dt>누락 항목</dt><dd>{run.error.missing_requirements.join(", ")}</dd></div> : null}<div><dt>추적 ID</dt><dd>{run.error.trace_id || run.traceId || "발급 전"}</dd></div></dl></details></>}
     {showResult && <div className="analysis-dashboard">
-      <header className="analysis-dashboard-header"><div><span className={`analysis-result-badge ${viewState === "PARTIAL" ? "is-partial" : ""}`}>{viewState === "PARTIAL" ? "일부 데이터" : "검증된 결과"}</span><small>질문에 대한 답변</small><h2>{run.question}</h2></div><div className="analysis-dashboard-meta"><span>데이터 출처 {run.sources.length}개</span>{run.meta.asOf && <span>기준일 {run.meta.asOf}</span>}</div></header>
+      <header className="analysis-dashboard-header"><div><div className="analysis-result-badges"><span className={`analysis-result-badge ${viewState === "PARTIAL" ? "is-partial" : ""}`}>{viewState === "PARTIAL" ? "일부 데이터" : "분석 결과"}</span>{provenanceLabel && <span className="analysis-result-badge is-synthetic">{provenanceLabel}</span>}</div><small>분석 결과</small><h2>{resultTitle}</h2></div><div className="analysis-dashboard-meta"><span>데이터 출처 {run.sources.length}개</span>{run.meta.asOf && <span>기준일 {run.meta.asOf}</span>}</div></header>
+      {provenanceLabel && <p className="data-provenance-note analysis-data-provenance" role="note"><AlertTriangle size={15} aria-hidden="true" /><span><b>{provenanceLabel}</b> 실제 호텔 운영 성과가 아닌 교육·시연용 결과입니다.</span></p>}
+      {viewState === "PARTIAL" && run.error && <div className="analysis-partial-notice analysis-partial-notice--summary" role="status"><AlertTriangle size={15} aria-hidden="true" /><span>{run.error.message}</span>{requiredAction === "RETRY" && onRetry && <button type="button" onClick={onRetry}><RotateCcw size={13} aria-hidden="true" />다시 분석</button>}</div>}
 
-      {run.metrics.length > 0 && <section className="analysis-kpi-section" aria-labelledby="analysis-kpi-title"><header><div><small>AT A GLANCE</small><h3 id="analysis-kpi-title">주요 지표</h3></div><span>{run.metrics.length}개 지표</span></header><div className="analysis-metrics">{run.metrics.map((metric, index) => <article className={index === 0 ? "is-primary" : ""} key={metric.metricId}><small>{metric.label}</small><strong>{formatValue(metric.value)}{metric.unit && <em>{metric.unit}</em>}</strong>{metric.definition && <p>{metric.definition}</p>}</article>)}</div></section>}
+      {run.metrics.length > 0 && <section className="analysis-kpi-section" aria-labelledby="analysis-kpi-title"><header><div><small>핵심 결과</small><h3 id="analysis-kpi-title">주요 지표</h3></div><span>{run.metrics.length}개 지표</span></header><div className="analysis-metrics">{run.metrics.map((metric) => <article key={metric.metricId}><small>{metric.label}</small><strong title={formatMetricValue(metric.value, { unit: metric.unit })}>{formatKpiValue(metric.value, metric.unit)}{metric.unit && metric.value !== null && metric.value !== undefined && metric.value !== "" && <em>{metric.unit}</em>}</strong>{metric.definition && <p>{metric.definition}</p>}</article>)}</div></section>}
 
       <div className="analysis-overview-grid">
-        <section className="analysis-summary-card"><header><small>KEY TAKEAWAY</small><h3>분석 요약</h3></header><p>{run.summary || "표와 차트에서 세부 결과를 확인할 수 있습니다."}</p></section>
-        <section className="analysis-context-card" aria-label="분석 조건"><header><small>SCOPE</small><h3>분석 기준</h3></header><dl><div><dt>조회 기간</dt><dd>{formatPeriod(run)}</dd></div><div><dt>적용 필터</dt><dd>{Object.entries(run.evidence?.filters ?? {}).length ? Object.entries(run.evidence?.filters ?? {}).map(([key, value]) => `${filterLabel(key)}: ${formatFilterValue(value)}`).join(" · ") : "추가 필터 없음"}</dd></div><div><dt>데이터 행</dt><dd>{run.evidence?.sampling.returnedRows.toLocaleString("ko-KR") ?? 0}{run.evidence?.sampling.totalRows !== null && run.evidence?.sampling.totalRows !== undefined ? ` / 전체 ${run.evidence.sampling.totalRows.toLocaleString("ko-KR")}` : ""}</dd></div></dl></section>
+        <section className="analysis-summary-card"><header><small>핵심 해석</small><h3>분석 요약</h3></header><p>{run.summary || "표와 차트에서 세부 결과를 확인할 수 있습니다."}</p></section>
+        <section className="analysis-context-card" aria-label="분석 조건"><header><small>조회 조건</small><h3>분석 기준</h3></header><dl><div><dt>조회 기간</dt><dd>{formatPeriod(run)}</dd></div><div><dt>적용 필터</dt><dd>{filters.length ? <ul className="analysis-filter-list">{filters.map((entry) => <li key={`${entry.label}-${entry.value}`}><span>{entry.label}</span><b>{entry.value}</b></li>)}</ul> : "추가 필터 없음"}</dd></div><div><dt>데이터 행</dt><dd>{run.evidence?.sampling.returnedRows.toLocaleString("ko-KR") ?? 0}{run.evidence?.sampling.totalRows !== null && run.evidence?.sampling.totalRows !== undefined ? ` / 전체 ${run.evidence.sampling.totalRows.toLocaleString("ko-KR")}` : ""}</dd></div></dl></section>
       </div>
 
-      {viewState === "PARTIAL" && <section className="analysis-partial-notice"><b>일부 데이터 소스의 응답을 확인해 주세요.</b><ul>{run.sources.map((source) => <li key={source.urn}><span>{source.name}</span><em>{SOURCE_STATUS[source.status] || "확인 필요"}</em></li>)}</ul></section>}
+      {viewState === "PARTIAL" && <section className="analysis-partial-notice analysis-partial-notice--sources"><b>일부 데이터 소스의 응답을 확인해 주세요.</b><ul>{run.sources.map((source) => <li key={source.urn}><span>{source.name}</span><em>{SOURCE_STATUS[source.status] || "확인 필요"}</em></li>)}</ul></section>}
 
-      {chart && table?.rows.length ? <section className="analysis-result-section analysis-visual-section"><header><div><small>VISUAL</small><h3>추이와 비교</h3></div><span>{table.rows.length.toLocaleString("ko-KR")}개 항목</span></header><figure className="analysis-chart"><ResponsiveContainer width="100%" height={280}>{chart.chartType === "bar" ? <BarChart data={table.rows} margin={{ top: 12, right: 18, bottom: 8, left: 8 }} accessibilityLayer><CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey={chart.xField} name={columnLabel(chart.xField, run)} tickLine={false} tickMargin={10} /><YAxis width={76} tickLine={false} tickFormatter={formatAxisValue} /><Tooltip formatter={(value, _name, item) => [formatValue(value, columnUnit(String(item.dataKey), run)), columnLabel(String(item.dataKey), run)]} labelFormatter={(value) => `${columnLabel(chart.xField, run)} ${value}`} /><Legend />{chartLines.map(({ field, label, color }) => <Bar key={field} dataKey={field} name={label} fill={color} radius={[5, 5, 0, 0]} isAnimationActive={false} />)}</BarChart> : <LineChart data={table.rows} margin={{ top: 12, right: 18, bottom: 8, left: 8 }} accessibilityLayer><CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey={chart.xField} name={columnLabel(chart.xField, run)} tickLine={false} tickMargin={10} /><YAxis width={76} tickLine={false} tickFormatter={formatAxisValue} /><Tooltip formatter={(value, _name, item) => [formatValue(value, columnUnit(String(item.dataKey), run)), columnLabel(String(item.dataKey), run)]} labelFormatter={(value) => `${columnLabel(chart.xField, run)} ${value}`} /><Legend />{chartLines.map(({ field, label, color }) => <Line key={field} dataKey={field} name={label} type="monotone" stroke={color} strokeWidth={3} dot={table.rows.length <= 12} activeDot={{ r: 5 }} isAnimationActive={false} />)}</LineChart>}</ResponsiveContainer><figcaption>{columnLabel(chart.xField, run)} 기준으로 {chartLines.map((line) => line.label).join(", ")}을 비교합니다.</figcaption></figure></section> : null}
+      {chart && table?.rows.length && canRenderChart ? <section className="analysis-result-section analysis-visual-section"><header><div><small>차트</small><h3>{chartTitle}</h3></div><div className="analysis-chart-actions"><span>{table.rows.length.toLocaleString("ko-KR")}개 항목</span>{chartDisplayOptions.length > 0 && <div role="group" aria-label="차트 표현 방식">{chartDisplayOptions.map((option) => <button type="button" key={option.type} aria-pressed={chartDisplayType === option.type} onClick={() => setChartDisplayOverride(option.type)}>{option.label}</button>)}</div>}</div></header><figure className="analysis-chart"><EnterpriseChart data={table.rows} xKey={chart.xField} xLabel={columnLabel(chart.xField, run)} series={chartLines} type={chartDisplayType} height={chartHeight} valueFormatter={(value, item) => formatMetricValue(value, { unit: item?.unit })} axisFormatter={formatCompactNumber} ariaLabel={`${chartTitle} ${chartDisplayType === "horizontal-bar" ? "가로 막대" : chartDisplayType === "bar" ? "세로 막대" : chartDisplayType === "area" ? "영역" : "선"} 차트`} description={chartDescription} /><figcaption>{chartDescription}</figcaption></figure></section> : null}
+      {chart && (!hasTableColumns || (Boolean(table?.rows.length) && !canRenderChart)) ? <section className="analysis-chart-fallback" role="status"><AlertTriangle size={16} aria-hidden="true" /><div><b>{supportedChartType ? "차트 메타데이터를 확인할 수 없습니다." : "지원하지 않는 차트 형식입니다."}</b><p>{supportedChartType ? hasTableColumns ? "차트 필드와 상세 데이터 열이 일치하지 않아 임의로 해석하지 않았습니다. 제공된 데이터는 아래 표에서 확인할 수 있습니다." : "차트와 연결된 상세 데이터가 없어 임의로 시각화하지 않았습니다." : <>데이터를 임의의 차트로 바꾸지 않고 아래 표로 표시합니다. 차트 형식 <code>{chart.chartType || "없음"}</code></>}</p></div></section> : null}
 
-      {table?.columns.length ? <section className="analysis-result-section analysis-data-section"><header><div><small>DETAIL</small><h3>상세 데이터</h3></div><span>{table.rows.length.toLocaleString("ko-KR")}행 · {table.columns.length.toLocaleString("ko-KR")}열</span></header><div className="analysis-table"><table><caption className="sr-only">{run.question} 상세 데이터</caption><thead><tr><th scope="col" className="row-number">#</th>{table.columns.map((column) => <th scope="col" aria-sort={tableSort.column === column ? (tableSort.direction === "asc" ? "ascending" : "descending") : "none"} className={numericColumns.has(column) ? "is-numeric" : ""} key={column}><button type="button" className="analysis-table-sort" aria-label={`${columnLabel(column, run)} 열 정렬`} onClick={() => setTableSort((current) => nextTableSort(current, column))}><span>{columnLabel(column, run)}</span><ArrowUpDown size={12} aria-hidden="true" /></button></th>)}</tr></thead><tbody>{visibleRows.map((row, index) => <tr key={`${run.requestId}-${index}`}><th scope="row" className="row-number">{index + 1}</th>{table.columns.map((column) => <td className={numericColumns.has(column) ? "is-numeric" : ""} key={column}>{formatValue(row[column], columnUnit(column, run))}</td>)}</tr>)}</tbody></table></div></section> : null}
+      {table?.columns.length ? <section className="analysis-result-section analysis-data-section"><header><div><small>데이터</small><h3>상세 데이터</h3></div><span>{table.rows.length.toLocaleString("ko-KR")}행 · {table.columns.length.toLocaleString("ko-KR")}열</span></header><div className="analysis-table" tabIndex={0} aria-label="상세 데이터 표. 표가 넓으면 좌우로 스크롤할 수 있습니다."><table><caption className="sr-only">{resultTitle} 상세 데이터</caption><thead><tr><th scope="col" className="row-number">#</th>{table.columns.map((column) => { const unit = columnUnit(column, run); const label = columnLabel(column, run); return <th scope="col" aria-sort={tableSort.column === column ? (tableSort.direction === "asc" ? "ascending" : "descending") : "none"} className={numericColumns.has(column) ? "is-numeric" : ""} key={column}><button type="button" className="analysis-table-sort" aria-label={`${metricUnitLabel(label, unit)} 열 정렬`} onClick={() => setTableSort((current) => nextTableSort(current, column))}><span>{label}{unit && <small className="analysis-column-unit">{unit}</small>}</span><ArrowUpDown size={12} aria-hidden="true" /></button></th>; })}</tr></thead><tbody>{visibleRows.map((row, index) => <tr key={`${run.requestId}-${index}`}><th scope="row" className="row-number">{index + 1}</th>{table.columns.map((column) => <td className={numericColumns.has(column) ? "is-numeric" : ""} key={column}>{formatMetricValue(row[column], { includeUnit: false })}</td>)}</tr>)}</tbody></table></div></section> : null}
     </div>}
   </section>;
 }

@@ -1,8 +1,0 @@
-{
-  "policy_version": "ACCESS-POLICY-v1.0.0",
-  "analysis_templates": {
-    "weekly-room-operations": {
-      "allowed_roles": ["hotel_analyst"]
-    }
-  }
-}

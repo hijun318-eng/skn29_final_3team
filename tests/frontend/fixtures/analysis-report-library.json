@@ -1,0 +1,148 @@
+{
+  "definitions": [
+    {
+      "definition_id": "analysis-definition-revenue",
+      "version": 3,
+      "title": "월간 객실 매출 추이"
+    }
+  ],
+  "runs": [
+    {
+      "request_id": "request-revenue-new",
+      "definition_id": "analysis-definition-revenue",
+      "definition_version": 3,
+      "status": "SUCCEEDED",
+      "artifact_id": "artifact-revenue",
+      "query_id": "query-revenue",
+      "question": "지난 6개월 객실 매출이 어떻게 됐어?",
+      "period_start": "2026-01-01",
+      "period_end_exclusive": "2026-07-01",
+      "started_at": "2026-07-02T00:00:00Z",
+      "completed_at": "2026-07-02T00:00:02Z"
+    },
+    {
+      "request_id": "request-revenue-old",
+      "definition_id": "analysis-definition-revenue",
+      "definition_version": 2,
+      "status": "SUCCEEDED",
+      "artifact_id": "artifact-revenue",
+      "query_id": "query-revenue-old",
+      "question": "매출 다시 보여줘",
+      "period_start": "2025-07-01",
+      "period_end_exclusive": "2026-01-01",
+      "started_at": "2026-01-02T00:00:00Z",
+      "completed_at": "2026-01-02T00:00:02Z"
+    },
+    {
+      "request_id": "request-occupancy",
+      "definition_id": "analysis-definition-unsaved",
+      "definition_version": 1,
+      "status": "PARTIAL",
+      "artifact_id": "artifact-occupancy",
+      "query_id": "query-occupancy",
+      "question": "점유율 알려줘",
+      "period_start": "2026-06-01",
+      "period_end_exclusive": "2026-07-01",
+      "started_at": "2026-07-03T00:00:00Z",
+      "completed_at": "2026-07-03T00:00:02Z"
+    },
+    {
+      "request_id": "request-failed",
+      "definition_id": "analysis-definition-revenue",
+      "definition_version": 3,
+      "status": "FAILED",
+      "artifact_id": "artifact-failed",
+      "query_id": "query-failed",
+      "question": "실패 질문",
+      "period_start": "2026-01-01",
+      "period_end_exclusive": "2026-07-01",
+      "started_at": "2026-07-04T00:00:00Z",
+      "completed_at": "2026-07-04T00:00:02Z"
+    }
+  ],
+  "artifact": {
+    "requestId": "request-revenue-new",
+    "traceId": "trace-revenue-new",
+    "status": "success",
+    "question": "지난 6개월 객실 매출이 어떻게 됐어?",
+    "summary": "객실 매출은 6월에 14.5억 원을 기록했습니다.",
+    "rowCount": 2,
+    "evidenceReady": true,
+    "artifact": {
+      "artifactId": "artifact-revenue",
+      "queryId": "query-revenue"
+    },
+    "metrics": [
+      {
+        "metricId": "room_revenue",
+        "resultField": "room_revenue",
+        "label": "객실 매출",
+        "definition": "취소 제외 객실 매출",
+        "value": 1450000000,
+        "unit": "원"
+      }
+    ],
+    "table": {
+      "columns": ["month", "room_revenue"],
+      "rows": [
+        { "month": "5월", "room_revenue": 1360000000 },
+        { "month": "6월", "room_revenue": 1450000000 }
+      ]
+    },
+    "chart": {
+      "chartType": "line",
+      "xField": "month",
+      "yFields": ["room_revenue"]
+    },
+    "evidence": {
+      "artifactId": "artifact-revenue",
+      "queryId": "query-revenue",
+      "asOf": "2026-07-02",
+      "timezone": "Asia/Seoul",
+      "period": {
+        "start": "2026-01-01",
+        "endExclusive": "2026-07-01"
+      },
+      "filters": { "property": "전체 호텔" },
+      "contextRelease": "walkerhill-v4",
+      "productReleaseId": "walkerhill-v4-synthetic",
+      "evidenceCutoff": "2026-07-02",
+      "policyVersion": "policy-v1",
+      "modelVersion": "sllm-v1",
+      "metrics": [
+        {
+          "metricId": "room_revenue",
+          "resultField": "room_revenue",
+          "label": "객실 매출",
+          "definition": "취소 제외 객실 매출",
+          "unit": "원"
+        }
+      ],
+      "models": [],
+      "gates": { "g1": "PASSED", "g2": "PASSED", "g3": "PASSED" },
+      "gateHistory": { "g1": ["PASSED"], "g2": ["PASSED"], "g3": ["PASSED"] },
+      "cached": false,
+      "sampling": { "applied": false, "returnedRows": 2, "totalRows": 2 },
+      "masking": { "applied": false, "fields": [] }
+    },
+    "sources": [
+      {
+        "name": "PMS 객실 매출",
+        "urn": "urn:answervice:pms:room-revenue",
+        "fqn": "gold.hotel_room_revenue",
+        "schemaVersion": "4",
+        "seedVersion": "2026Q2",
+        "synthetic": true,
+        "status": "success"
+      }
+    ],
+    "trace": [],
+    "meta": {
+      "asOf": "2026-07-02",
+      "timezone": "Asia/Seoul",
+      "seed": "2026Q2",
+      "schemaVersion": "4",
+      "contractVersion": "OPENAPI-v1.0.0"
+    }
+  }
+}

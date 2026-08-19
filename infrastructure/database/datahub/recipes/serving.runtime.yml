@@ -1,0 +1,30 @@
+# 책임: Trino가 현재 노출하는 serving relation과 view를 schema 이름 고정 없이
+# 수집한다. catalog discovery가 실패하거나 비면 운영 완료 증거를 만들지 않는다.
+source:
+  type: trino
+  config:
+    host_port: ${TRINO_DATAHUB_HOST_PORT}
+    database: ${SERVING_DATAHUB_CATALOG}
+    username: ${TRINO_DATAHUB_USER}
+    password: ${TRINO_DATAHUB_PASSWORD}
+    options:
+      connect_args:
+        http_scheme: https
+        verify: /run/secrets/trino-ca.pem
+    env: ${DATAHUB_DATASET_ENV}
+    platform_instance: ${SERVING_DATAHUB_PLATFORM_INSTANCE}
+    include_tables: true
+    include_views: true
+    # Trino가 모든 catalog에 노출하는 system schema는 업무 dataset이 아니다.
+    # 특정 release schema를 고정하지 않고 system metadata만 일반 규칙으로 제외한다.
+    schema_pattern:
+      deny: ["^information_schema$"]
+    include_view_lineage: true
+    include_view_column_lineage: true
+    ingest_lineage_to_connectors: true
+sink:
+  type: datahub-rest
+  config:
+    server: ${DATAHUB_GMS_URL}
+    token: ${DATAHUB_PUBLISH_API_TOKEN}
+    ca_certificate_path: ${DATAHUB_TLS_CA_FILE}

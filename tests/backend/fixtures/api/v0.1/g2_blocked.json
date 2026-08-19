@@ -67,14 +67,17 @@
     "clarification_type": null,
     "code": "SQL_POLICY_BLOCKED",
     "message": "허용된 조회 범위에서 질문을 수정해 주세요.",
+    "missing_requirements": [],
+    "required_action": "MODIFY_REQUEST",
     "retryable": false,
-    "suggestions": []
+    "suggestions": [],
+    "trace_id": "fixture-g2-blocked"
   },
   "meta": {
-    "as_of": "2026-07-30",
+    "as_of": "2041-04-02",
     "contract_version": "OPENAPI-v1.0.0",
     "request_id": "00000000-0000-0000-0000-000000000100",
-    "timestamp": "2026-07-30T00:00:00Z",
+    "timestamp": "2041-04-02T00:00:00Z",
     "trace_id": "fixture-g2-blocked"
   }
 }

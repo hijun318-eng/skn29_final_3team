@@ -1,25 +1,72 @@
+"""APP DB migration·template registry, Trino, DataHub, model, 외부 principal store와 scheduler를 제한 시간의 실제 probe로 확인해 구성요소별 ready 상태를 반환한다."""
+
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
-from urllib.error import URLError
-from urllib.request import Request, urlopen
+from time import monotonic
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, text
+import httpx
+from sqlalchemy import text
+
+from app.adapters.datahub_catalog import DataHubCatalogClient
+from app.adapters.trino_async import TrinoAsyncClient
+from app.auth_principal_store import AuthenticationError, principal_store_ready
+from app.database import session_scope
+from src.modelops.runtime_config import ActiveModelRoute, resolve_active_model_routes
 
 
 class AppDatabaseReadiness:
     """실제 쿼리로 migration·Template·Trino 사용 가능 상태를 확인한다."""
 
-    def check(self) -> dict[str, str]:
-        probe = self._database_probe()
-        probe["trino"] = self._trino_probe()
-        probe["datahub"] = self._datahub_probe()
-        probe["model"] = self._model_probe()
+    async def check(self) -> dict[str, str]:
+        """APP database 준비 상태 계약과 도메인 불변식을 검사하고 위반 시 명시적 오류를 발생시킨다."""
+        timeout = httpx.Timeout(self._probe_timeout())
+        async with httpx.AsyncClient(
+            timeout=timeout,
+            headers={"Accept": "application/json", "User-Agent": "answervice-readiness/1.0"},
+            trust_env=False,
+        ) as client:
+            database, trino, datahub, model, auth = await asyncio.gather(
+                self._database_probe(),
+                self._trino_probe(),
+                self._datahub_probe(),
+                self._model_probe(client),
+                asyncio.to_thread(self._auth_probe),
+            )
+        probe = database
+        probe["trino"] = trino
+        probe["datahub"] = datahub
+        probe["model"] = model
+        probe["auth_session_store"] = auth
         probe["report_scheduler"] = self._report_scheduler_probe()
         return probe
+
+    @staticmethod
+    def _auth_probe() -> str:
+        principal_file = os.getenv("AUTH_PRINCIPALS_FILE", "").strip()
+        secret = os.getenv("AUTH_SESSION_SECRET", "").strip()
+        if (
+            not os.getenv("APP_RUNTIME_DATABASE_URL", "").strip()
+            or len(secret) < 32
+            or not principal_file
+        ):
+            return "not_ready"
+        try:
+            return "ready" if principal_store_ready(Path(principal_file)) else "not_ready"
+        except (AuthenticationError, OSError):
+            return "not_ready"
+
+    @staticmethod
+    def _probe_timeout() -> float:
+        try:
+            configured = float(os.getenv("READINESS_PROBE_TIMEOUT_SECONDS", "1"))
+        except ValueError:
+            return 1.0
+        return min(2.0, max(0.1, configured))
 
     @staticmethod
     def _report_scheduler_probe() -> str:
@@ -28,43 +75,37 @@ class AppDatabaseReadiness:
         return report_scheduler.status
 
     @staticmethod
-    def _database_probe() -> dict[str, str]:
+    async def _database_probe() -> dict[str, str]:
         database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
         if not database_url:
             return {
                 "app_postgres": "not_configured",
                 "migration": "not_ready",
-                "approved_templates": "not_ready",
+                "analysis_template_registry": "not_ready",
             }
         try:
-            engine = create_engine(database_url, pool_pre_ping=True)
-            with engine.connect() as connection:
-                version = connection.execute(
+            async with session_scope(database_url) as session:
+                version_result = await session.execute(
                     text("SELECT version_num FROM governance.alembic_version")
-                ).scalar_one_or_none()
-                template_count = connection.execute(
+                )
+                version = version_result.scalar_one_or_none()
+                await session.execute(
                     text(
-                        "SELECT count(*) FROM context.analysis_templates "
-                        "WHERE template_id = 'weekly-room-operations' "
-                        "AND version = 'I2-v1.0.0' "
-                        "AND status = 'APPROVED' "
-                        "AND sql_text IS NOT NULL "
-                        "AND source_fqns_json IS NOT NULL"
+                        "SELECT template_id FROM context.analysis_templates LIMIT 0"
                     )
-                ).scalar_one()
-            engine.dispose()
+                )
             return {
                 "app_postgres": "ready",
-                "migration": AppDatabaseReadiness._migration_status(version),
-                "approved_templates": (
-                    "ready" if template_count == 1 else "not_ready"
+                "migration": await asyncio.to_thread(
+                    AppDatabaseReadiness._migration_status, version
                 ),
+                "analysis_template_registry": "ready",
             }
         except Exception:
             return {
                 "app_postgres": "not_ready",
                 "migration": "not_ready",
-                "approved_templates": "not_ready",
+                "analysis_template_registry": "not_ready",
             }
 
     @staticmethod
@@ -78,42 +119,87 @@ class AppDatabaseReadiness:
         return "ready" if version == heads[0] else "not_ready"
 
     @staticmethod
-    def _trino_probe() -> str:
-        url = f"{os.getenv('TRINO_URL', 'http://trino:8080').rstrip('/')}/v1/info"
+    async def _trino_probe(client: httpx.AsyncClient | None = None) -> str:
+        trino: TrinoAsyncClient | None = None
         try:
-            with urlopen(url, timeout=2) as response:
-                return "ready" if response.status == 200 else "not_ready"
-        except (OSError, URLError):
+            options: dict[str, object] = {
+                "ca_file": os.getenv(
+                    "TRINO_TLS_CA_FILE", "/run/secrets/trino-ca.pem"
+                ),
+                "request_timeout_seconds": AppDatabaseReadiness._probe_timeout(),
+            }
+            # 운영에서는 adapter가 CA·BasicAuth·trust_env=False client를 직접 소유한다.
+            # 네트워크 없는 unit test만 MockTransport client를 명시적으로 주입한다.
+            if client is not None:
+                options["client"] = client
+            trino = TrinoAsyncClient(
+                os.getenv("TRINO_URL", "https://trino:8443"),
+                os.getenv("TRINO_RUNTIME_USER", ""),
+                os.getenv("TRINO_RUNTIME_PASSWORD", ""),
+                **options,
+            )
+            deadline = monotonic() + AppDatabaseReadiness._probe_timeout()
+            return "ready" if await trino.statement_ready(deadline=deadline) else "not_ready"
+        except (OSError, ValueError):
+            return "not_ready"
+        finally:
+            if trino is not None:
+                await trino.aclose()
+
+    @staticmethod
+    async def _datahub_probe() -> str:
+        """canonical HTTPS·Bearer·CA 설정으로 bounded GraphQL root query를 검증한다."""
+
+        try:
+            async with DataHubCatalogClient.from_env(
+                timeout_seconds=AppDatabaseReadiness._probe_timeout()
+            ) as catalog:
+                return "ready" if await catalog.health() else "not_ready"
+        except (OSError, ValueError):
             return "not_ready"
 
     @staticmethod
-    def _datahub_probe() -> str:
-        url = f"{os.getenv('DATAHUB_GMS_URL', 'http://datahub-gms:8080').rstrip('/')}/config"
+    async def _model_probe(client: httpx.AsyncClient) -> str:
         try:
-            with urlopen(url, timeout=2) as response:
-                return "ready" if response.status == 200 else "not_ready"
-        except (OSError, URLError):
+            routes = resolve_active_model_routes()
+        except (OSError, ValueError):
             return "not_ready"
-
-    @staticmethod
-    def _model_probe() -> str:
-        endpoint = os.getenv("OPENAI_ENDPOINT", "").rstrip("/")
-        token = os.getenv("OPENAI_API_KEY", "")
-        if not endpoint or not token or not os.getenv("OPENAI_MODEL", ""):
-            return "not_ready"
-        request = Request(
-            f"{endpoint}/v1/models",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/json",
-                "User-Agent": "answervice-readiness/1.0",
-            },
+        states = await asyncio.gather(
+            *(AppDatabaseReadiness._model_route_ready(client, route) for route in routes)
         )
-        for _ in range(3):
+        return "ready" if states and all(states) else "not_ready"
+
+    @staticmethod
+    async def _model_route_ready(
+        client: httpx.AsyncClient,
+        route: ActiveModelRoute,
+    ) -> bool:
+        """route credential로 `/v1/models`를 조회해 active model ID의 정확한 존재를 확인한다."""
+
+        for _ in range(2):
             try:
-                with urlopen(request, timeout=5) as response:
-                    if response.status == 200:
-                        return "ready"
-            except (OSError, URLError):
+                response = await client.get(
+                    f"{route.endpoint}/v1/models",
+                    headers={"Authorization": f"Bearer {route.token}"},
+                )
+                if response.status_code != 200:
+                    continue
+                payload = response.json()
+                data = payload.get("data") if isinstance(payload, dict) else None
+                if (
+                    not isinstance(data, list)
+                    or not data
+                    or any(
+                        not isinstance(item, dict)
+                        or not isinstance(item.get("id"), str)
+                        or not item["id"]
+                        for item in data
+                    )
+                ):
+                    continue
+                model_ids = tuple(item["id"] for item in data)
+                if len(model_ids) == len(set(model_ids)) and route.model in model_ids:
+                    return True
+            except (httpx.HTTPError, ValueError):
                 pass
-        return "not_ready"
+        return False

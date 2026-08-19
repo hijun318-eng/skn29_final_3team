@@ -1,32 +1,36 @@
-# Answervice MVP E2E 문서
+# Answervice MVP E2E 참고 문서
 
-이 폴더는 앞으로 구현 AI가 제품 요구를 확인하는 단일 문서 위치다. 저장소의 다른 문서는 제출 산출물과 과거 이력으로 남아 있을 수 있지만, 사용자가 현재 요청에서 특정하지 않으면 구현 근거로 사용하지 않는다.
+> **문서 상태: SUPPORTING / NON-NORMATIVE**
+> 현재 제품 기준은 [`../README.md`](../README.md)와 [`../product/`](../product/)의 4개 문서다. 이 폴더는 원문·과거 E2E 계약·실행 이력을 보존한다. 과거 완료 상태를 현재 V4.1 완료 증거로 사용하지 않는다.
 
-## 읽는 순서
+## 현재 작업의 읽는 순서
 
-1. `derived/01_MVP_PRD.md`
-2. `derived/02_Golden_Path_유저플로우.md`
-3. `derived/03_E2E_아키텍처_및_계약.md`
-4. `derived/04_P0_사용자기능_요구사항_및_검증계획.txt`
-5. 현재 상태 확인이 필요하면 `derived/21_AI_작업_인수인계_현재진행상황.md`
-6. 모델 배포 작업일 때만 RunPod 운영 가이드
-7. 판단 근거가 필요할 때만 `source/` 원문과 `source/08_구조조정_판단기록.md`
+1. `../product/00_기획서.md`
+2. `../product/01_PRD.md`
+3. `../product/02_유저플로우.md`
+4. `../product/03_아키텍처.md`
 
-원문 사이에 범위 차이가 있으면 구조조정 평가서의 “첫 Golden Path를 먼저 연결한다”는 결정을 우선한다. 보안 경계, read-only, G1·G2·G3는 축소하지 않는다.
+## 이 폴더를 참고할 때의 읽는 순서
+
+1. 보존 원문이 필요하면 `source/`에서 사용자가 지정한 00~04를 읽는다.
+2. 과거 contract가 필요하면 `derived/01_MVP_PRD.md` → `02_Golden_Path_유저플로우.md`를 읽되, 아키텍처는 과거 사본을 두지 않고 [`../product/03_아키텍처.md`](../product/03_아키텍처.md)만 사용한다.
+3. 과거 진행 기록은 `derived/21_AI_작업_인수인계_현재진행상황.md`를 읽되 현재 코드·runtime에서 재검증한다.
+4. 모델 배포 작업일 때만 RunPod 운영 가이드를 읽는다.
+
+원문 사이에 범위 차이가 있으면 현재 `docs/product/` 계약을 우선한다. 원문의 보안 경계, read-only, G1·G2·G3, Definition/Run/Result 분리는 현재 문서가 명시적으로 대체하지 않는 한 보존한다.
 
 ## 정리 문서
 
 | 파일 | 용도 |
 |---|---|
-| `derived/01_MVP_PRD.md` | 현재 MVP 범위와 완료 조건 |
-| `derived/02_Golden_Path_유저플로우.md` | 화면부터 실제 분석 결과까지의 정상·실패 흐름 |
-| `derived/03_E2E_아키텍처_및_계약.md` | 컴포넌트 책임, 모델 계약과 안전 경계 |
+| `derived/01_MVP_PRD.md` | 과거 MVP 범위와 완료 조건 |
+| `derived/02_Golden_Path_유저플로우.md` | 과거 화면부터 분석 결과까지의 정상·실패 흐름 |
 | `derived/04_P0_사용자기능_요구사항_및_검증계획.txt` | 평가 피드백을 반영한 P0 기능 ID, Slice 순서와 검증 시나리오 |
-| `derived/21_AI_작업_인수인계_현재진행상황.md` | 현재 구현 범위, E2E 결과, 미완료 항목과 다음 순서 |
+| `derived/21_AI_작업_인수인계_현재진행상황.md` | 2026-08-13 구현·E2E snapshot |
 | `derived/05_sLLM_RunPod_연결_가이드.md` | Adapter 검증과 endpoint 연결 |
 | `derived/22_RunPod_Serverless_vLLM_배포_가이드.md` | Serverless endpoint 전환 절차 |
 
-`06_데이터_SQL_Web_작업지시서.md`는 과거 Docker 감사 근거로만 보존하며 신규 작업 지시로 사용하지 않는다. 현재 적재 중인 SQL·Compose·검증 파일은 `derived/service_demo_v3/`에만 둔다.
+`06_데이터_SQL_Web_작업지시서.md`는 과거 Docker 감사 근거일 뿐 신규 작업 지시로 사용하지 않는다. 요청별 seed·정답 SQL·Compose를 모았던 `derived/service_demo_v3/`는 삭제됐으며, 현재 runtime은 Source DB schema와 DataHub·Trino 동적 discovery 외의 데모 적재 경로를 제공하지 않는다.
 
 ## 고정 원문
 

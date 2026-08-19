@@ -1,7 +1,8 @@
-export const UI_CONTRACT_VERSION = "UI-v1.0.0";
-export const OPENAPI_VERSION = "OPENAPI-v1.0.0";
+/** 분석 wire 응답을 fail-closed UI 실행 모델로 정의·정규화하는 계약 모듈이다. */
+/** 프런트 분석 상태 모델의 호환성 버전이다. */ export const UI_CONTRACT_VERSION = "UI-v1.0.0";
+/** 분석 HTTP 요청이 선언하는 OpenAPI 계약 버전이다. */ export const OPENAPI_VERSION = "OPENAPI-v1.0.0";
 
-export type AnalysisRunStatus =
+/** UI가 다루는 정규화된 분석 실행 상태 집합이다. */ export type AnalysisRunStatus =
   | "idle"
   | "queued"
   | "running"
@@ -11,7 +12,7 @@ export type AnalysisRunStatus =
   | "failed"
   | "cancelled";
 
-export type AnalysisViewState =
+/** 실행 상태·근거를 사용자 화면 상태로 축약한 집합이다. */ export type AnalysisViewState =
   | "LOADING"
   | "EMPTY"
   | "READY"
@@ -22,7 +23,7 @@ export type AnalysisViewState =
   | "INSUFFICIENT_EVIDENCE"
   | "CANCELLED";
 
-export type AnalysisErrorCode =
+/** 백엔드가 반환할 수 있는 분석 실패 코드 계약이다. */ export type AnalysisErrorCode =
   | "CONTEXT_INCOMPLETE"
   | "CONTEXT_SOURCE_FAILED"
   | "DATA_ASSET_NOT_FOUND"
@@ -30,6 +31,11 @@ export type AnalysisErrorCode =
   | "ACCESS_DENIED"
   | "MODEL_CONTRACT_INVALID"
   | "MODEL_TIMEOUT"
+  | "MODEL_ENDPOINT_UNAVAILABLE"
+  | "MODEL_OUTPUT_UNGROUNDED"
+  | "CIRCUIT_OPEN"
+  | "INSUFFICIENT_CONTEXT"
+  | "UNREPAIRABLE"
   | "SQL_POLICY_BLOCKED"
   | "SQL_REPAIR_FAILED"
   | "TRINO_CONNECTION_FAILED"
@@ -45,9 +51,21 @@ export type AnalysisErrorCode =
   | "REQUEST_CANCELLED"
   | "CONTRACT_VERSION_MISMATCH"
   | "SCHEMA_VERSION_MISMATCH"
+  | "RESOURCE_NOT_FOUND"
+  | "RESOURCE_CONFLICT"
+  | "DEPENDENCY_UNAVAILABLE"
   | "INTERNAL_ERROR";
 
-export type BackendAnalysisStatus =
+/** 실패 후 사용자 또는 시스템이 수행해야 하는 후속 조치다. */ export type RequiredAction =
+  | "NONE"
+  | "RETRY"
+  | "AUTHENTICATE"
+  | "REQUEST_ACCESS"
+  | "PROVIDE_CONTEXT"
+  | "MODIFY_REQUEST"
+  | "CONTACT_SUPPORT";
+
+/** 분석 API wire payload의 원본 상태 집합이다. */ export type BackendAnalysisStatus =
   | "RECEIVED"
   | "ROUTED"
   | "SUCCEEDED"
@@ -56,9 +74,9 @@ export type BackendAnalysisStatus =
   | "FAILED"
   | "CANCELLED";
 
-export type AnalysisValue = string | number | boolean | null;
+/** 표·지표에서 허용되는 직렬화 가능한 원자 값이다. */ export type AnalysisValue = string | number | boolean | null;
 
-export interface AnalysisMetric {
+/** 값과 거버넌스 정의가 함께 검증된 화면 지표다. */ export interface AnalysisMetric {
   metricId: string;
   resultField: string;
   label: string;
@@ -67,7 +85,7 @@ export interface AnalysisMetric {
   unit: string | null;
 }
 
-export interface AnalysisMetricReference {
+/** 결과 field를 거버넌스 지표 메타데이터에 연결하는 근거다. */ export interface AnalysisMetricReference {
   metricId: string;
   resultField: string;
   label: string;
@@ -75,31 +93,31 @@ export interface AnalysisMetricReference {
   unit: string | null;
 }
 
-export interface AnalysisModelEvidence {
+/** 모델 node·release·prompt 추적 정보다. */ export interface AnalysisModelEvidence {
   node: string;
   modelVersion: string;
   promptId: string;
   promptVersion: string;
 }
 
-export interface AnalysisTable {
+/** canonical column과 동일 key의 행으로 구성된 분석 표다. */ export interface AnalysisTable {
   columns: string[];
   rows: Array<Record<string, AnalysisValue>>;
 }
 
-export interface AnalysisChart {
+/** 표 field를 참조하는 검증된 차트 표현 계약이다. */ export interface AnalysisChart {
   chartType: string;
   xField: string;
   yFields: string[];
 }
 
-export interface AnalysisArtifact {
+/** 영속 결과·query 식별자와 checksum을 묶는 artifact 계약이다. */ export interface AnalysisArtifact {
   artifactId: string;
   queryId: string;
   contextHash?: string;
 }
 
-export interface AnalysisEvidence {
+/** 기간·필터·출처·gate를 포함하는 분석 근거 묶음이다. */ export interface AnalysisEvidence {
   artifactId?: string | null;
   queryId?: string | null;
   asOf: string;
@@ -110,6 +128,8 @@ export interface AnalysisEvidence {
   } | null;
   filters: Record<string, AnalysisValue>;
   contextRelease?: string | null;
+  productReleaseId?: string | null;
+  evidenceCutoff?: string | null;
   policyVersion?: string | null;
   modelVersion?: string | null;
   metrics: AnalysisMetricReference[];
@@ -128,7 +148,7 @@ export interface AnalysisEvidence {
   };
 }
 
-export interface AnalysisApiResponse {
+/** OpenAPI 분석 응답의 wire envelope이며 normalizeApiResponse 입력으로만 사용한다. */ export interface AnalysisApiResponse {
   data: {
     status?: BackendAnalysisStatus;
     transitions?: BackendAnalysisStatus[];
@@ -168,6 +188,8 @@ export interface AnalysisApiResponse {
         } | null;
         filters?: Record<string, AnalysisValue>;
         context_release?: string | null;
+        product_release_id?: string | null;
+        evidence_cutoff?: string | null;
         policy_version?: string | null;
         model_version?: string | null;
         metrics?: Array<{
@@ -175,6 +197,14 @@ export interface AnalysisApiResponse {
           result_field: string;
           label: string;
           definition: string;
+          unit?: string | null;
+        }>;
+        metric_values?: Array<{
+          metric_id: string;
+          result_field: string;
+          label: string;
+          definition: string;
+          value: AnalysisValue;
           unit?: string | null;
         }>;
         models?: Array<{
@@ -201,6 +231,7 @@ export interface AnalysisApiResponse {
           fqn: string;
           schema_version: string;
           seed_version: string;
+          synthetic?: boolean | null;
         }>;
       };
     } | null;
@@ -216,22 +247,25 @@ export interface AnalysisApiResponse {
     code: AnalysisErrorCode;
     message: string;
     retryable: boolean;
+    required_action: RequiredAction;
+    missing_requirements?: string[];
     suggestions?: string[];
     clarification_type?: "metric" | "period" | null;
+    trace_id?: string;
   } | null;
 }
 
-export interface AnalysisSource {
+/** 화면에 노출 가능한 governed 데이터 출처 식별 정보다. */ export interface AnalysisSource {
   name: string;
   urn: string;
   fqn?: string;
   schemaVersion?: string;
   seedVersion?: string;
-  status: "success" | "failed";
+  synthetic?: boolean;
+  status: "success" | "failed" | "partial" | "delayed" | "unknown";
 }
 
-export interface AnalysisRun {
-  conversationId: string;
+/** 컴포넌트가 소비하는 완전 정규화 분석 실행 모델이다. */ export interface AnalysisRun {
   requestId: string;
   traceId: string;
   status: AnalysisRunStatus;
@@ -250,8 +284,11 @@ export interface AnalysisRun {
     code: AnalysisErrorCode;
     message: string;
     retryable?: boolean;
+    required_action?: RequiredAction;
+    missing_requirements?: string[];
     suggestions?: string[];
     clarification_type?: "metric" | "period" | null;
+    trace_id?: string;
   };
   sources: AnalysisSource[];
   trace?: Array<{ stage: string; outcome: string; detail?: string | null }>;
@@ -264,10 +301,14 @@ export interface AnalysisRun {
   };
 }
 
+/** 근거 준비 여부까지 반영해 실행을 하나의 fail-closed 화면 상태로 결정한다. */
 export function resolveViewState(run: AnalysisRun): AnalysisViewState {
   if (run.status === "queued") return "LOADING";
   if (run.status === "running") return run.delayed ? "DELAYED" : "LOADING";
   if (run.status === "cancelled") return "CANCELLED";
+  if ((run.status === "success" || run.status === "partial") && run.evidenceReady === false) {
+    return "INSUFFICIENT_EVIDENCE";
+  }
   if (run.status === "partial") return "PARTIAL";
   if (
     run.status === "failed"
@@ -285,7 +326,6 @@ export function resolveViewState(run: AnalysisRun): AnalysisViewState {
     return "INSUFFICIENT_EVIDENCE";
   }
   if (run.status === "blocked") return "ERROR";
-  if (run.status === "success" && run.evidenceReady === false) return "INSUFFICIENT_EVIDENCE";
   if (run.status === "success" && run.rowCount === 0) return "EMPTY";
   if (run.status === "success") return "READY";
   return "EMPTY";
@@ -301,10 +341,10 @@ const BACKEND_STATUS_MAP: Record<BackendAnalysisStatus, AnalysisRunStatus> = {
   CANCELLED: "cancelled",
 };
 
+/** wire 응답을 검증·정규화하며 계약 불일치나 근거 누락 시 성공 화면을 만들지 않는다. */
 export function normalizeApiResponse(
   response: AnalysisApiResponse,
   question: string,
-  conversationId: string,
 ): AnalysisRun {
   const status = response.data.status
     ? BACKEND_STATUS_MAP[response.data.status]
@@ -321,22 +361,39 @@ export function normalizeApiResponse(
     && evidence?.period
     && sources.length
     && evidence?.gates
+    && evidence.gates.g1 === "PASSED"
+    && evidence.gates.g2 === "PASSED"
+    && evidence.gates.g3 === "PASSED"
+    && response.data.artifact?.artifact_id === evidence.artifact_id
+    && response.data.artifact?.query_id === evidence.query_id
   );
+  const exposeResult = Boolean(result && evidenceReady);
+  const error = result && !evidenceReady
+    ? {
+        code: "INSUFFICIENT_EVIDENCE" as const,
+        message: "검증 근거가 완전하지 않아 결과를 표시하지 않습니다.",
+        retryable: false,
+        required_action: "NONE" as const,
+        missing_requirements: ["artifact", "query", "period", "sources", "gates"],
+        suggestions: [],
+        clarification_type: null,
+        trace_id: response.meta.trace_id,
+      }
+    : response.error ?? undefined;
   return {
-    conversationId,
     requestId: response.meta.request_id,
     traceId: response.meta.trace_id,
     status,
     question,
-    summary: result?.summary,
+    summary: exposeResult ? result?.summary : undefined,
     rowCount: sampling?.returned_rows,
     evidenceReady: result ? evidenceReady : undefined,
-    artifact: response.data.artifact ? {
+    artifact: exposeResult && response.data.artifact ? {
       artifactId: response.data.artifact.artifact_id,
       queryId: response.data.artifact.query_id,
       contextHash: response.data.artifact.context_hash,
     } : undefined,
-    metrics: (result?.metrics ?? []).map((metric) => ({
+    metrics: (exposeResult ? result?.metrics ?? [] : []).map((metric) => ({
       metricId: metric.metric_id,
       resultField: metric.result_field,
       label: metric.label,
@@ -344,8 +401,8 @@ export function normalizeApiResponse(
       value: metric.value,
       unit: metric.unit ?? null,
     })),
-    table: result?.table,
-    chart: result?.chart ? {
+    table: exposeResult ? result?.table : undefined,
+    chart: exposeResult && result?.chart ? {
       chartType: result.chart.chart_type,
       xField: result.chart.x_field,
       yFields: result.chart.y_fields,
@@ -361,6 +418,8 @@ export function normalizeApiResponse(
       } : undefined,
       filters: evidence.filters ?? {},
       contextRelease: evidence.context_release,
+      productReleaseId: evidence.product_release_id,
+      evidenceCutoff: evidence.evidence_cutoff,
       policyVersion: evidence.policy_version,
       modelVersion: evidence.model_version,
       metrics: (evidence.metrics ?? []).map((metric) => ({
@@ -389,14 +448,15 @@ export function normalizeApiResponse(
         fields: evidence.masking?.fields ?? [],
       },
     } : undefined,
-    error: response.error ?? undefined,
+    error,
     sources: sources.map((source) => ({
       name: source.name,
       urn: source.urn,
       fqn: source.fqn,
       schemaVersion: source.schema_version,
       seedVersion: source.seed_version,
-      status: "success",
+      synthetic: typeof source.synthetic === "boolean" ? source.synthetic : undefined,
+      status: status === "partial" ? "unknown" : "success",
     })),
     trace: response.data.trace?.map(({ stage, outcome, detail }) => ({ stage, outcome, detail })) ?? [],
     meta: {

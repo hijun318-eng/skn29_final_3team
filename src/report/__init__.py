@@ -1,4 +1,4 @@
-"""Independent REPORT-v1.1.0-DRAFT proposal owned by R5."""
+"""보고서 도메인의 계약, 저장소, 라우팅 구성 요소를 제공한다."""
 
 from .domain import (
     REPORT_CONTRACT_VERSION,
@@ -13,7 +13,7 @@ from .domain import (
     ReportRun,
     RunStatus,
 )
-from .repository import InMemoryReportRepository
+from .repository import ReportRepository
 from .router import create_report_router
 
 __all__ = [
@@ -28,6 +28,6 @@ __all__ = [
     "ReportDefinitionVersion",
     "ReportRun",
     "RunStatus",
-    "InMemoryReportRepository",
+    "ReportRepository",
     "create_report_router",
 ]

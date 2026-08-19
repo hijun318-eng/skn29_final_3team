@@ -1,0 +1,19 @@
+# 책임: banquet PostgreSQL이 현재 공개한 schema를 DataHub에 수집한다. 연결 또는
+# metadata 발행 실패는 부분 성공으로 간주하지 않고 ingestion job을 실패시킨다.
+source:
+  type: postgres
+  config:
+    host_port: ${BANQUET_DATAHUB_HOST_PORT}
+    database: ${BANQUET_DB_NAME}
+    username: ${BANQUET_READONLY_USER}
+    password: ${BANQUET_READONLY_PASSWORD}
+    env: ${DATAHUB_DATASET_ENV}
+    platform_instance: ${BANQUET_DATAHUB_PLATFORM_INSTANCE}
+    schema_pattern:
+      allow: ["${BANQUET_DATAHUB_SCHEMA}"]
+sink:
+  type: datahub-rest
+  config:
+    server: ${DATAHUB_GMS_URL}
+    token: ${DATAHUB_PUBLISH_API_TOKEN}
+    ca_certificate_path: ${DATAHUB_TLS_CA_FILE}

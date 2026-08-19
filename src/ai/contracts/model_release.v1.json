@@ -1,0 +1,44 @@
+{
+  "manifest_version": "MODEL-RELEASE-v1.3.0",
+  "state": "ACTIVE",
+  "schema_contract": "v1",
+  "schema_version": "MODEL-v1.3.0",
+  "schema_sha256": "ca4a40a4da459654be9c48caf3837becfb44bdcadd5378594b6d4d63dfc9113e",
+  "nodes": {
+    "node1": {
+      "prompt_id": "node1.normalize",
+      "prompt_version": "PROMPT-v1.3.0",
+      "prompt_sha256": "d0cd46f6eb0cffc3ab1e7a2af9f2c353e33081de3337a6ecc700e6034ec166a0",
+      "request_definition": "node1_request",
+      "response_definition": "node1_response"
+    },
+    "node2": {
+      "prompt_id": "node2.sql",
+      "prompt_version": "PROMPT-v1.3.0",
+      "prompt_sha256": "132d05e8d5c45547afc225a862d45399d9048c0a7e86aa03d36285054037115b",
+      "request_definition": "node2_request",
+      "response_definition": "node2_response"
+    },
+    "node2_repair": {
+      "prompt_id": "node2.repair",
+      "prompt_version": "PROMPT-v1.3.0",
+      "prompt_sha256": "082850c51bdad1f291517e9ea970953163bb0f878511fa308b88af327ffea17f",
+      "request_definition": "node2_repair_request",
+      "response_definition": "node2_repair_response"
+    },
+    "node3": {
+      "prompt_id": "node3.explain",
+      "prompt_version": "PROMPT-v1.2.2",
+      "prompt_sha256": "561a9dd4c889da4b95e005bbc702ba166245f976b8632e867620f94292f46872",
+      "request_definition": "node3_request",
+      "response_definition": "node3_response"
+    },
+    "report_assistant": {
+      "prompt_id": "report.assistant",
+      "prompt_version": "PROMPT-v1.0.0",
+      "prompt_sha256": "c9c6f1b34e57ed40830670a5107a66fd096544b92662de88cc28b98142b7b6a3",
+      "request_definition": "report_assistant_request",
+      "response_definition": "report_assistant_response"
+    }
+  }
+}

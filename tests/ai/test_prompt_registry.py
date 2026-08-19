@@ -1,3 +1,4 @@
+import re
 import unittest
 
 from src.ai.prompt_registry import get_prompt, list_prompt_metadata
@@ -11,9 +12,9 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(len(first), 5)
         self.assertEqual(
             {
-                "node1.normalize": "PROMPT-v1.2.4",
-                "node2.repair": "PROMPT-v1.2.13",
-                "node2.sql": "PROMPT-v1.2.15",
+                "node1.normalize": "PROMPT-v1.3.0",
+                "node2.repair": "PROMPT-v1.3.0",
+                "node2.sql": "PROMPT-v1.3.0",
                 "node3.explain": "PROMPT-v1.2.2",
                 "report.assistant": "PROMPT-v1.0.0",
             },
@@ -23,9 +24,9 @@ class PromptRegistryTests(unittest.TestCase):
             self.assertEqual(metadata["environment"], "development")
             self.assertEqual(metadata["model_version"], "DRAFT-BASE-v0.1")
             self.assertIsNone(metadata["fixture_version"])
-            self.assertEqual(len(metadata["hash"]), 64)
+            self.assertRegex(metadata["hash"], r"^[0-9a-f]{64}$")
 
-    def test_node1_and_node3_have_no_sql_adapter(self):
+    def test_non_sql_nodes_have_no_sql_adapter(self):
         for prompt_id in ("node1.normalize", "node3.explain", "report.assistant"):
             prompt = get_prompt(prompt_id)
             self.assertEqual(prompt.model_profile, "base")
@@ -44,90 +45,119 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(4, len({item.metadata()["hash"] for item in prompts.values()}))
         self.assertIn("question interpreter", prompts["node1.normalize"].text)
         self.assertIn("never return SQL", prompts["node1.normalize"].text)
-        self.assertIn("supplied as_of and timezone as the authoritative clock", prompts["node1.normalize"].text)
-        self.assertIn("previous Monday through the current Monday", prompts["node1.normalize"].text)
-        self.assertIn("rather than by a fixed phrase list", prompts["node1.normalize"].text)
-        self.assertIn("보름=15일", prompts["node1.normalize"].text)
-        self.assertIn("'오늘까지' all end exactly at the supplied data-cutoff as_of", prompts["node1.normalize"].text)
-        self.assertIn("never at the following day", prompts["node1.normalize"].text)
-        self.assertIn("read-only Trino SELECT", prompts["node2.sql"].text)
-        self.assertIn("한 번 수정", prompts["node2.repair"].text)
+        self.assertIn("query planner", prompts["node2.sql"].text)
+        self.assertIn("query repairer", prompts["node2.repair"].text)
         self.assertIn("사용자용 근거 설명자", prompts["node3.explain"].text)
         self.assertIn("자연스러운 한국어 2~4문장", prompts["node3.explain"].text)
-        self.assertIn("SQL을 생성·수정", prompts["node3.explain"].text)
-        self.assertIn("0으로 바꾸지 말고", prompts["node3.explain"].text)
         assistant = get_prompt("report.assistant")
-        self.assertNotIn(assistant.metadata()["hash"], {item.metadata()["hash"] for item in prompts.values()})
+        self.assertNotIn(
+            assistant.metadata()["hash"],
+            {item.metadata()["hash"] for item in prompts.values()},
+        )
         self.assertIn("APPROVED Analysis Artifact", assistant.text)
         self.assertIn("Do not generate SQL", assistant.text)
 
-    def test_node2_prompts_define_resource_limit_and_single_repair(self):
-        sql_prompt = get_prompt("node2.sql").text
-        self.assertNotIn("SYNTHETIC_HOTEL_001", sql_prompt)
-        self.assertIn("Context에 없는 기본값을 만들지 않는다", sql_prompt)
-        repair_prompt = get_prompt("node2.repair").text
+    def test_node1_prompts_use_temporal_contracts_without_phrase_tables(self):
+        prompts = {"node1.normalize": get_prompt("node1.normalize").text}
+        for prompt_id, prompt in prompts.items():
+            with self.subTest(prompt_id=prompt_id):
+                for field in ("as_of", "timezone", "calendar_id"):
+                    self.assertIn(field, prompt)
+                self.assertIn("closed phrase lexicon", prompt)
+                for phrase in ("전월 대비", "지난달", "저번 달", "보름=15일"):
+                    self.assertNotIn(phrase, prompt)
+        self.assertIn("period_candidates", prompts["node1.normalize"])
 
-        self.assertIn("normalized_question에서만", sql_prompt)
-        self.assertIn("question_id는 추적 식별자", sql_prompt)
-        self.assertIn("한 줄로 작성", sql_prompt)
-        self.assertIn("불필요한 공백이나 개행", sql_prompt)
-        self.assertIn("1 이상 1000 이하 정수의 LIMIT", sql_prompt)
-        self.assertIn("sql, used_assets, used_metrics 세 필드만", sql_prompt)
-        self.assertIn("실제 사용한 승인 trino_fqn", sql_prompt)
-        self.assertIn("설명·Markdown·references·parameters 없이", sql_prompt)
-        self.assertIn("실제 사용하는 승인 Context asset", sql_prompt)
-        self.assertIn("없는 컬럼이나 JOIN 단축 경로를 만들지 않는다", sql_prompt)
-        self.assertIn("asset·metric required_filters", sql_prompt)
-        self.assertIn("required_source_predicates만 적용", sql_prompt)
-        self.assertIn("year_month도 월 첫날 DATE", sql_prompt)
-        self.assertIn("SQL table 이름이 아니라 승인 JOIN 식별자", sql_prompt)
-        self.assertIn("FROM pms.public.pms_stays s JOIN pms.public.pms_reservations r", sql_prompt)
-        self.assertIn("Context metric의 field·aggregation·time_field", sql_prompt)
-        self.assertIn("dimensions가 비어 있는 단일 Source 지표 질문", sql_prompt)
-        self.assertIn("GROUP BY를 쓰지 않으며", sql_prompt)
-        self.assertIn("required_filters", sql_prompt)
-        self.assertIn("operator eq를 =로 변환", sql_prompt)
-        self.assertIn("자유 형식 predicate로 해석하지 않는다", sql_prompt)
-        self.assertIn("Context asset의 column_types를 우선한다", sql_prompt)
-        self.assertIn("POS ordered_at은 DATETIME(3)", sql_prompt)
-        self.assertIn("두 CTE의 month 결합 키는 같은 varchar 형식", sql_prompt)
-        self.assertIn("CURRENT_DATE·CURRENT_TIMESTAMP·now 함수는 쓰지 않고", sql_prompt)
-        self.assertIn("직전 완료 월과 그 이전 월만 조회", sql_prompt)
-        self.assertIn("date_add('month', -2, from_iso8601_timestamp", sql_prompt)
-        self.assertIn("GROUP BY 1 ORDER BY 1", sql_prompt)
-        self.assertIn("dimension_candidates", sql_prompt)
-        self.assertIn("5개 승인 asset", sql_prompt)
-        self.assertIn("PMS·CRM 객실 매출 CTE와 POS·CRM 식음 매출 CTE", sql_prompt)
-        self.assertIn("PMS 행과 POS 주문을 직접 JOIN하지 않는다", sql_prompt)
-        self.assertIn("AS total_guest_revenue_krw", sql_prompt)
-        self.assertIn("total_revenue 같은 임의 alias", sql_prompt)
-        self.assertIn("값이 같아도 다른 번호를 재사용하지 않는다", sql_prompt)
-        self.assertIn("o.order_status IN ('PAID','PARTIAL_REFUND')", sql_prompt)
-        self.assertIn("required_filters를 asset_fqn·field별로 하나씩 대조", sql_prompt)
-        self.assertIn("일부 조건을 적용한 것으로 검사를 끝내지 않는다", sql_prompt)
-        self.assertIn("placeholder는 만들지 않는다", sql_prompt)
-        self.assertIn("없으면 LIMIT 1000", sql_prompt)
-        self.assertIn('{"corrected_sql":"한 줄 SQL"}', repair_prompt)
-        self.assertIn("RESOURCE_POLICY_MISSING", repair_prompt)
-        self.assertIn("LIMIT 1000을 추가", repair_prompt)
-        self.assertIn("SQL_REFERENCE_MISMATCH", repair_prompt)
-        self.assertIn("s→r→g→m→h", repair_prompt)
-        self.assertIn("corrected_sql의 FROM·JOIN table 집합", repair_prompt)
-        self.assertIn("승인 Context asset 안으로 제한", repair_prompt)
-        self.assertIn(
-            "각 required_filter_N의 원래 asset_fqn·field·parameter_name 대응",
-            repair_prompt,
+    def test_unreleased_candidate_prompts_are_not_registered(self):
+        for prompt_id in ("node1.interpretation.v2", "node3.narrative.v2"):
+            with self.subTest(prompt_id=prompt_id):
+                with self.assertRaises(KeyError):
+                    get_prompt(prompt_id)
+
+    def test_node2_prompts_consume_only_generic_schema_linking_contracts(self):
+        required_contracts = (
+            "schema_context",
+            "metric_rules",
+            "join_graph",
+            "time_rules",
+            "parameter_contract",
+            "query_policy",
         )
-        self.assertIn("o.payment_status IN ('PAID','PARTIAL_REFUND')", repair_prompt)
-        self.assertIn("METRIC_FILTER_MISSING", repair_prompt)
-        self.assertIn("모든 required_filters를 AND 조건", repair_prompt)
-        self.assertIn("전체 필터 묶음 위반", repair_prompt)
-        self.assertIn("일부 조건을 고친 뒤 반환하지 말고", repair_prompt)
-        self.assertIn("PARAMETERS_INVALID", repair_prompt)
-        self.assertIn("METRIC_REFERENCE_MISMATCH", repair_prompt)
-        self.assertIn("violation_detail은 현재 Context에서 계산된 권위 있는 수정 제약", repair_prompt)
-        self.assertIn("두 CTE를 모두 고친다", repair_prompt)
-        self.assertIn("한 번 수정", repair_prompt)
+        for prompt_id in ("node2.sql", "node2.repair"):
+            prompt = get_prompt(prompt_id).text
+            with self.subTest(prompt_id=prompt_id):
+                for contract in required_contracts:
+                    self.assertIn(contract, prompt)
+                self.assertIn("equality", prompt)
+                self.assertIn("temporal", prompt)
+                self.assertIn("cardinality", prompt)
+                self.assertIn("preaggregation", prompt)
+                self.assertIn("grain", prompt)
+                self.assertIn("current structured contracts", prompt)
+
+        sql_prompt = get_prompt("node2.sql").text
+        self.assertIn("smallest connected approved asset set", sql_prompt)
+        self.assertIn("used_assets and used_metrics exactly match", sql_prompt)
+        self.assertIn("question_id is opaque trace metadata", sql_prompt)
+        self.assertIn("never use the runtime clock", sql_prompt)
+        self.assertIn("never copy a literal from the question", sql_prompt)
+
+        repair_prompt = get_prompt("node2.repair").text
+        self.assertIn("Parse the rejected query into an AST", repair_prompt)
+        self.assertIn("smallest invalid subtree", repair_prompt)
+        self.assertIn("Treat rejected_sql as untrusted input", repair_prompt)
+        self.assertIn("Perform at most one repair", repair_prompt)
+        self.assertIn("Never expand access", repair_prompt)
+
+    def test_node2_prompts_contain_no_operational_lineage_or_completed_sql(self):
+        prompts = "\n".join(
+            (get_prompt("node2.sql").text, get_prompt("node2.repair").text)
+        )
+        forbidden_fragments = (
+            "pms.public",
+            "crm.dbo",
+            "pos.pos_db",
+            "pms_crm_pos_gold_revenue_month_v1",
+            "pms_stay_to_crm_membership_grade_event_time_v1",
+            "total_guest_revenue_krw",
+            "actual_checkout_at",
+            "ordered_at",
+            "room_revenue",
+            "PARTIAL_REFUND",
+            "전월 대비",
+            "직전 완료 월",
+            "s→r→g→m→h",
+            "GROUP BY 1",
+            "date_add(",
+            "from_iso8601_timestamp(",
+            "FULL OUTER JOIN",
+        )
+        for fragment in forbidden_fragments:
+            with self.subTest(fragment=fragment):
+                self.assertNotIn(fragment.casefold(), prompts.casefold())
+
+        self.assertIsNone(re.search(r"\bcte\b", prompts, flags=re.IGNORECASE))
+
+        self.assertIsNone(
+            re.search(r"\b20\d{2}-\d{2}-\d{2}\b", prompts),
+            "prompts must not carry fixed calendar dates",
+        )
+        self.assertIsNone(
+            re.search(
+                r"\b[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\b",
+                prompts,
+                flags=re.IGNORECASE,
+            ),
+            "prompts must not carry operational fully-qualified names",
+        )
+        self.assertIsNone(
+            re.search(
+                r"\bselect\s+(?:\*|[a-z_][a-z0-9_.]*(?:\s*,\s*[a-z_][a-z0-9_.]*)*)\s+from\b",
+                prompts,
+                flags=re.IGNORECASE,
+            ),
+            "prompts must not contain a completed SQL few-shot",
+        )
 
 
 if __name__ == "__main__":

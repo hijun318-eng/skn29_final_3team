@@ -5,9 +5,11 @@ import { AppSidebar } from "./components/layout/AppSidebar";
 import { SessionLogin } from "./components/auth/SessionLogin";
 import { createAnalysisClient } from "./api/analysisClient.ts";
 import { PAGE_PATHS, resolveRoute } from "./routing";
+import { REPORT_BUILDER_V2 } from "./features/reports/reportBuilderFlags";
 
 const AgentPage = lazy(() => import("./pages/AgentPage").then((module) => ({ default: module.AgentPage })));
 const ReportsPage = lazy(() => import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })));
+const REPORT_REVIEW_MODE = import.meta.env.VITE_REPORT_REVIEW_MODE === "true";
 
 const PAGE_META = {
   chat: ["데이터 분석", "자연어로 질문하면 지표와 기간을 해석해 데이터를 분석합니다."],
@@ -28,7 +30,7 @@ function RoleAccessPage({ role, onNavigate }) {
 
 /** 세션·권한·라우팅 경계를 소유하며, 인증 확인 전에는 보호된 화면을 렌더링하지 않는다. */
 export function App() {
-  const [session, setSession] = useState();
+  const [session, setSession] = useState(() => REPORT_REVIEW_MODE ? { role: "report_admin" } : undefined);
   const [sessionNotice, setSessionNotice] = useState("");
   const [reportEditorMode, setReportEditorMode] = useState(false);
   const [reportDirty, setReportDirty] = useState(false);
@@ -43,6 +45,7 @@ export function App() {
     : PAGE_META[route.page];
 
   useEffect(() => {
+    if (REPORT_REVIEW_MODE) return undefined;
     let active = true;
     createAnalysisClient(fetch).validateSession()
       .then((restored) => { if (active) setSession({ role: restored.role }); })
@@ -57,6 +60,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (REPORT_REVIEW_MODE) return undefined;
     const expireSession = () => setSessionNotice("세션이 만료되었습니다. 작성 중인 내용은 유지됩니다. 다시 로그인해 주세요.");
     window.addEventListener("answervice:session-expired", expireSession);
     return () => window.removeEventListener("answervice:session-expired", expireSession);
@@ -121,13 +125,14 @@ export function App() {
   if (!session) return <SessionLogin notice={sessionNotice} onAuthenticated={(nextSession) => { setSession(nextSession); setSessionNotice(""); }} />;
 
   const signOut = async () => {
+    if (REPORT_REVIEW_MODE) return;
     if (reportDirty && !window.confirm("저장하지 않은 보고서 변경사항이 있습니다. 로그아웃할까요?")) return;
     window.dispatchEvent(new CustomEvent("answervice:clear-drafts"));
     try { await createAnalysisClient(fetch).logout(); } finally { setSessionNotice(""); setSession(null); }
   };
 
-  return <><div className={`app-shell ppt-theme ${menuOpen ? "" : "sidebar-collapsed"} ${reportEditorMode ? "report-editor-mode" : ""} ${isPending ? "is-page-pending" : ""} ${sessionNotice ? "session-locked" : ""}`} inert={sessionNotice ? true : undefined} aria-hidden={sessionNotice ? "true" : undefined}>
+  return <><div className={`app-shell ppt-theme ${menuOpen ? "" : "sidebar-collapsed"} ${reportEditorMode ? "report-editor-mode" : ""} ${reportEditorMode && REPORT_BUILDER_V2 ? "report-builder-v2-mode" : ""} ${isPending ? "is-page-pending" : ""} ${sessionNotice ? "session-locked" : ""}`} inert={sessionNotice ? true : undefined} aria-hidden={sessionNotice ? "true" : undefined}>
     <AppSidebar page={route.page} role={role} onNavigate={navigate} open={menuOpen} onClose={() => setMenuOpen(false)} />
-    <div className="workspace"><AppHeader title={title} description={description} role={role} onMenu={() => setMenuOpen(true)} onSignOut={signOut} /><div className="page-progress" aria-hidden="true" /><main className="page-stage" key={route.path} aria-busy={isPending}><Suspense fallback={<div className="page-loading"><i /><b>페이지를 준비하고 있습니다.</b></div>}>{content}</Suspense></main></div>
+    <div className="workspace"><AppHeader title={title} description={description} role={role} onMenu={() => setMenuOpen(true)} onSignOut={REPORT_REVIEW_MODE ? undefined : signOut} /><div className="page-progress" aria-hidden="true" /><main className="page-stage" key={route.path} aria-busy={isPending}><Suspense fallback={<div className="page-loading"><i /><b>페이지를 준비하고 있습니다.</b></div>}>{content}</Suspense></main></div>
   </div>{sessionNotice && <div className="session-reauth-layer" role="dialog" aria-modal="true" aria-label="세션 만료"><SessionLogin embedded notice={sessionNotice} onAuthenticated={(nextSession) => { setSession(nextSession); setSessionNotice(""); }} /></div>}</>;
 }

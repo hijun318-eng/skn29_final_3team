@@ -1,6 +1,6 @@
 /** 단일 A4 editor block의 내용·선택·resize·명령을 격리하는 모듈이다. */
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Columns2, GripVertical } from "lucide-react";
+import { Columns2, GripVertical, Lock } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 
 import { dataProvenanceLabel } from "../../../utils/presentation";
@@ -32,7 +32,8 @@ function editorBlockPropsEqual(previous, next) {
     && previous.currency === next.currency
     && previous.isDraft === next.isDraft
     && previous.selected === next.selected
-    && previous.dragging === next.dragging;
+    && previous.dragging === next.dragging
+    && previous.locked === next.locked;
 }
 
 /** 단일 편집 블록과 제어기를 렌더링하며 custom comparator가 변경된 block field만 다시 그린다. */
@@ -45,6 +46,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   isDraft,
   selected,
   dragging,
+  locked,
   onSelect,
   onUpdate,
   onMove,
@@ -52,6 +54,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   onSetting,
   onDuplicate,
   onDelete,
+  onToggleLock,
   onRetryArtifact,
 }) {
   const {
@@ -60,7 +63,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
     setNodeRef,
     setActivatorNodeRef,
     transform,
-  } = useDraggable({ id: block.id, disabled: !isDraft });
+  } = useDraggable({ id: block.id, disabled: !isDraft || locked });
   const resizeStart = useRef(null);
   const resizePreviewRef = useRef(null);
   const [resizePreview, setResizePreview] = useState(null);
@@ -69,7 +72,10 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
 
   useEffect(() => () => window.clearTimeout(titleTimerRef.current), []);
 
-  const selectBlock = useCallback(() => onSelect(block.id), [block.id, onSelect]);
+  const selectBlock = useCallback((event) => onSelect(block.id, event), [block.id, onSelect]);
+  const selectBlockFromKeyboard = useCallback((event) => {
+    if (event.target.matches?.(":focus-visible")) onSelect(block.id);
+  }, [block.id, onSelect]);
   const updateBlock = useCallback(
     (change, record) => onUpdate(block.id, change, record),
     [block.id, onUpdate],
@@ -88,6 +94,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   );
   const duplicateBlock = useCallback(() => onDuplicate(block.id), [block.id, onDuplicate]);
   const deleteBlock = useCallback(() => onDelete(block.id), [block.id, onDelete]);
+  const toggleLock = useCallback(() => onToggleLock(block.id), [block.id, onToggleLock]);
   const retryArtifact = useCallback(
     () => onRetryArtifact?.(block.artifactId),
     [block.artifactId, onRetryArtifact],
@@ -242,15 +249,15 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
       ref={setNodeRef}
       data-block-id={block.id}
       tabIndex={-1}
-      className={`editor-block notion-block ${selected ? "selected" : ""} ${dragging ? "dragging is-dragging" : ""}`}
-      aria-label={`${block.title || "제목 없음"} 블록${selected ? ", 선택됨" : ""}`}
+      className={`editor-block notion-block ${selected ? "selected" : ""} ${dragging ? "dragging is-dragging" : ""} ${locked ? "locked" : ""}`}
+      aria-label={`${block.title || "제목 없음"} 블록${selected ? ", 선택됨" : ""}${locked ? ", 잠김" : ""}`}
       onClick={selectBlock}
-      onFocusCapture={selectBlock}
+      onFocusCapture={selectBlockFromKeyboard}
       style={style}
     >
       <header className="report-block-chrome">
         <div className="report-block-title">
-          {isDraft && (
+          {isDraft && !locked && (
             <button
               ref={setActivatorNodeRef}
               type="button"
@@ -263,6 +270,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
               <GripVertical size={17} />
             </button>
           )}
+          {isDraft && locked && <Lock className="report-block-locked-icon" size={15} aria-hidden="true" />}
           <span>{block.type === "text" ? "텍스트" : block.type === "artifact" ? "Artifact 전체" : block.type === "chart" ? "차트 보기" : "표 보기"}</span>
           {block.type !== "text" && <DataProvenanceBadge artifact={artifact} />}
         </div>
@@ -270,11 +278,13 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
           <ReportBlockMenu
             block={block}
             artifact={artifact}
+            locked={locked}
             onMove={moveBlock}
             onResize={resizeBlock}
             onSetting={setBlockSetting}
             onDuplicate={duplicateBlock}
             onDelete={deleteBlock}
+            onToggleLock={toggleLock}
           />
         )}
       </header>
@@ -296,7 +306,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
         />
       ) : <h2>{block.title}</h2>}
       {body}
-      {isDraft && (
+      {isDraft && !locked && (
         <button
           type="button"
           className="report-resize-handle"

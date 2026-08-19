@@ -1,6 +1,6 @@
 /** 보고서 block의 통화·표현·크기·복제·삭제 제어기를 제공하는 모듈이다. */
 import { memo, useRef } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, GripVertical, MoreHorizontal, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Copy, GripVertical, Lock, MoreHorizontal, Trash2, Unlock } from "lucide-react";
 import { useDraggable } from "@dnd-kit/core";
 
 import { artifactViewBlockSettings } from "../reportDraftV2";
@@ -34,11 +34,13 @@ export const ReportCurrencyControl = memo(function ReportCurrencyControl({
 export const ReportBlockMenu = memo(function ReportBlockMenu({
   block,
   artifact,
+  locked = false,
   onMove,
   onResize,
   onSetting,
   onDuplicate,
   onDelete,
+  onToggleLock,
 }) {
   const detailsRef = useRef(null);
   const settings = blockSettings(block);
@@ -95,6 +97,7 @@ export const ReportBlockMenu = memo(function ReportBlockMenu({
               <button
                 type="button"
                 className={(block.w ?? block.columns) === width ? "active" : ""}
+                disabled={locked}
                 onClick={() => onResize(width)}
                 key={width}
               >
@@ -106,18 +109,18 @@ export const ReportBlockMenu = memo(function ReportBlockMenu({
         <section>
           <span>블록 높이</span>
           <div className="report-block-height">
-            <button type="button" aria-label="높이 줄이기" onClick={() => onResize(block.w ?? block.columns, (block.h ?? 4) - 1)}>−</button>
+            <button type="button" aria-label="높이 줄이기" disabled={locked} onClick={() => onResize(block.w ?? block.columns, (block.h ?? 4) - 1)}>−</button>
             <output>{block.h ?? 4}단</output>
-            <button type="button" aria-label="높이 늘리기" onClick={() => onResize(block.w ?? block.columns, (block.h ?? 4) + 1)}>+</button>
+            <button type="button" aria-label="높이 늘리기" disabled={locked} onClick={() => onResize(block.w ?? block.columns, (block.h ?? 4) + 1)}>+</button>
           </div>
         </section>
         <section>
           <span>위치 이동</span>
           <div className="report-block-moves">
-            <button type="button" aria-label="왼쪽으로 이동" title="왼쪽으로 이동" onClick={() => onMove(-1, 0)}><ArrowLeft size={14} /></button>
-            <button type="button" aria-label="위로 이동" title="위로 이동" disabled={(block.y ?? 0) === 0} onClick={() => onMove(0, -1)}><ArrowUp size={14} /></button>
-            <button type="button" aria-label="아래로 이동" title="아래로 이동" onClick={() => onMove(0, 1)}><ArrowDown size={14} /></button>
-            <button type="button" aria-label="오른쪽으로 이동" title="오른쪽으로 이동" onClick={() => onMove(1, 0)}><ArrowRight size={14} /></button>
+            <button type="button" aria-label="왼쪽으로 이동" title="왼쪽으로 이동" disabled={locked} onClick={() => onMove(-1, 0)}><ArrowLeft size={14} /></button>
+            <button type="button" aria-label="위로 이동" title="위로 이동" disabled={locked || (block.y ?? 0) === 0} onClick={() => onMove(0, -1)}><ArrowUp size={14} /></button>
+            <button type="button" aria-label="아래로 이동" title="아래로 이동" disabled={locked} onClick={() => onMove(0, 1)}><ArrowDown size={14} /></button>
+            <button type="button" aria-label="오른쪽으로 이동" title="오른쪽으로 이동" disabled={locked} onClick={() => onMove(1, 0)}><ArrowRight size={14} /></button>
           </div>
         </section>
         {block.type === "chart" && (
@@ -192,7 +195,10 @@ export const ReportBlockMenu = memo(function ReportBlockMenu({
         )}
         <div className="report-block-menu-actions">
           <button type="button" onClick={onDuplicate}><Copy size={14} />복제</button>
-          <button type="button" className="danger" onClick={onDelete}><Trash2 size={14} />삭제</button>
+          <button type="button" onClick={onToggleLock}>
+            {locked ? <><Unlock size={14} />잠금 해제</> : <><Lock size={14} />잠금</>}
+          </button>
+          <button type="button" className="danger" disabled={locked} title={locked ? "잠긴 블록은 삭제할 수 없습니다" : undefined} onClick={onDelete}><Trash2 size={14} />삭제</button>
         </div>
       </div>
     </details>

@@ -41,6 +41,7 @@ function scaledPagePropsEqual(previous, next) {
   const scalarKeys = [
     "mode", "orientation", "pageIndex", "pageCount", "renderBlock", "renderHeader",
     "renderFooter", "renderGridOverlay", "gridClassName", "getGridRef",
+    "zoom",
   ];
   if (!scalarKeys.every((key) => Object.is(previous[key], next[key]))) return false;
   if (!shallowRecordEqual(
@@ -65,6 +66,7 @@ const ScaledPage = memo(function ScaledPage({
   renderGridOverlay,
   gridClassName,
   getGridRef,
+  zoom,
 }) {
   const viewportRef = useRef(null);
   const pageRef = useRef(null);
@@ -81,7 +83,7 @@ const ScaledPage = memo(function ScaledPage({
       const naturalWidth = pageElement.offsetWidth;
       const naturalHeight = pageElement.offsetHeight;
       if (!naturalWidth || !naturalHeight) return;
-      const scale = Math.min(1, viewport.clientWidth / naturalWidth);
+      const scale = Math.min(1, viewport.clientWidth / naturalWidth) * zoom;
       const next = {
         scale,
         width: naturalWidth * scale,
@@ -104,14 +106,14 @@ const ScaledPage = memo(function ScaledPage({
     const observer = new ResizeObserver(resize);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [orientation]);
+  }, [orientation, zoom]);
 
   const header = renderHeader ? renderHeader(context) : page.header;
   const footer = renderFooter ? renderFooter(context) : page.footer;
   const pageLabel = page.ariaLabel || `보고서 ${pageNumber}/${pageCount}페이지, ${A4_LABELS[orientation]}`;
 
   return (
-    <div className="answer-report-page-viewport" ref={viewportRef}>
+    <div className="answer-report-page-viewport" data-report-page-index={pageIndex} ref={viewportRef}>
       {mode === "editor" && (
         <div
           className="answer-report-page-chrome"
@@ -177,6 +179,7 @@ export function ReportPageCanvas({
   getGridRef,
   ariaLabel = "보고서 페이지",
   className = "",
+  zoom = 1,
 }) {
   const mode = requestedMode === "preview" ? "preview" : "editor";
   if (typeof renderBlock !== "function") {
@@ -204,6 +207,7 @@ export function ReportPageCanvas({
             renderGridOverlay={renderGridOverlay}
             gridClassName={gridClassName}
             getGridRef={getGridRef}
+            zoom={zoom}
             key={page.id || pageIndex}
           />
         );

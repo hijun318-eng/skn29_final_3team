@@ -1,11 +1,11 @@
 /** 보고서 하위 hook과 memo renderer를 목록·문서·editor 화면 계약으로 합성하는 controller 모듈이다. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import { compactDraftLayout, toReportBlockRequest } from "../../contracts/report";
 import { DEFAULT_FRONTEND_CURRENCY_POLICY, createFrontendDraftSnapshot, loadFrontendDraft, saveFrontendDraft } from "./reportDraftV2";
 import { useReportArtifacts } from "./useReportArtifacts";
 import { useReportDraftState } from "./useReportDraftState";
 import { useReportDragAndDrop } from "./useReportDragAndDrop";
+import { useReportEditorTools } from "./useReportEditorTools";
 import { useReportLifecycleState } from "./useReportLifecycleState";
 import {
   ARTIFACT_TEMPLATES,
@@ -25,10 +25,13 @@ import {
   wholeArtifactTemplate,
 } from "./reportPageControllerSupport";
 import { reportStatusLabel } from "./reportPageLabels";
-
+import { REPORT_BUILDER_V2 } from "./reportBuilderFlags";
+import { REPORT_REVIEW_LIFECYCLE_OPTIONS, REPORT_REVIEW_MODE } from "./reportReviewMode";
 /** 보고서 lifecycle·artifact·draft·DND를 화면 계약으로 합성하고 stale open generation을 폐기한다. */
 export function useReportsPageController({ role, onEditorMode }) {
-  const lifecycle = useReportLifecycleState({ role });
+  const lifecycle = useReportLifecycleState(REPORT_REVIEW_MODE
+    ? { role, ...REPORT_REVIEW_LIFECYCLE_OPTIONS }
+    : { role });
   const isAdmin = role === "report_admin";
   const [view, setView] = useState("list");
   const [toolPanelOpen, setToolPanelOpen] = useState(true);
@@ -38,7 +41,7 @@ export function useReportsPageController({ role, onEditorMode }) {
   const draftBridgeRef = useRef(null);
   const dndBridgeRef = useRef(null);
   const openRequestRef = useRef(0);
-
+  const reviewAutoOpenRef = useRef(false);
   const handleHydratedArtifacts = useCallback((artifactMap) => {
     draftBridgeRef.current?.fitHydratedArtifactViews(artifactMap);
   }, []);
@@ -84,6 +87,18 @@ export function useReportsPageController({ role, onEditorMode }) {
     () => new Map(draft.orderedBlocks.map((block, index) => [block.id, index + 1])),
     [draft.orderedBlocks],
   );
+  const editorTools = useReportEditorTools({
+    blocks: draft.blocks,
+    commitBlocks: draft.commitBlocks,
+    orientation: draft.reportOrientation,
+    primaryBlockId: draft.selectedBlockId,
+    reportKey: lifecycle.selectedDefinition
+      ? `${lifecycle.selectedDefinition.definitionId}:${lifecycle.selectedDefinition.version}`
+      : "",
+    requestFocus: requestBlockFocus,
+    resizeBlock: draft.resizeBlock,
+    selectPrimary: draft.selectBlock,
+  });
   const selectedArtifact = artifacts.artifactSelection
     ? artifacts.artifacts[artifacts.artifactSelection]
     : null;
@@ -118,7 +133,7 @@ export function useReportsPageController({ role, onEditorMode }) {
     reportPages,
     reportTemplateMap: REPORT_TEMPLATE_MAP,
     setEditorAnnouncement: draft.announce,
-    setSelectedBlockId: draft.selectBlock,
+    setSelectedBlockId: editorTools.selectBlock,
     viewArtifactTemplateFor,
     wholeArtifactTemplateFor,
   });
@@ -218,6 +233,15 @@ export function useReportsPageController({ role, onEditorMode }) {
     if (recoverLocalDraft) lifecycle.setNotice("이 브라우저에 남아 있던 구성을 복구했습니다. 서버 저장본과 다르므로 검토한 뒤 저장해 주세요.");
     await artifacts.loadArtifacts(editable, true);
   }, [applyDefinition, artifacts, lifecycle]);
+
+  useEffect(() => {
+    if (!REPORT_REVIEW_MODE || !REPORT_BUILDER_V2 || reviewAutoOpenRef.current) return;
+    if (lifecycle.definitionState !== "ready") return;
+    const reviewDefinition = lifecycle.definitions[0];
+    if (!reviewDefinition) return;
+    reviewAutoOpenRef.current = true;
+    void openEditor(reviewDefinition);
+  }, [lifecycle.definitionState, lifecycle.definitions, openEditor]);
 
   const saveDraft = useCallback(async () => {
     const definition = lifecycle.selectedDefinition;
@@ -330,6 +354,12 @@ export function useReportsPageController({ role, onEditorMode }) {
     }
   }, [dnd.pageCanvasRefs, draft.selectedBlockId, lifecycle.selectedDefinition, openEditor]);
   const handleEditorKeyDown = useCallback((event) => {
+    const textField = ["input", "textarea", "select"].includes(event.target.tagName.toLowerCase());
+    if (!textField && canEdit && ["Delete", "Backspace"].includes(event.key)) {
+      event.preventDefault();
+      editorTools.deleteSelected();
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey)) return;
     const key = event.key.toLowerCase();
     if (key === "s" && canEdit) {
@@ -337,12 +367,13 @@ export function useReportsPageController({ role, onEditorMode }) {
       void saveDraft();
       return;
     }
-    const textField = ["input", "textarea"].includes(event.target.tagName.toLowerCase());
     if (textField && !event.target.closest?.(".notion-block")) return;
-    if (key === "z" && event.shiftKey) { event.preventDefault(); draft.redo(); }
+    if (key === "c") { event.preventDefault(); editorTools.copySelected(); }
+    else if (key === "v" && canEdit) { event.preventDefault(); editorTools.pasteBlocks(); }
+    else if (key === "z" && event.shiftKey) { event.preventDefault(); draft.redo(); }
     else if (key === "z") { event.preventDefault(); draft.undo(); }
     else if (key === "y") { event.preventDefault(); draft.redo(); }
-  }, [canEdit, draft.redo, draft.undo, saveDraft]);
+  }, [canEdit, draft.redo, draft.undo, editorTools, saveDraft]);
   const loadRuns = useCallback(() => { void lifecycle.loadRuns(); }, [lifecycle.loadRuns]);
   const runDefinition = useCallback(() => { void lifecycle.runDefinition(); }, [lifecycle.runDefinition]);
   const createSchedule = useCallback(() => { void lifecycle.createSchedule(); }, [lifecycle.createSchedule]);
@@ -396,22 +427,19 @@ export function useReportsPageController({ role, onEditorMode }) {
     return <GeneratedReportBlock block={block} number={reportBlockNumbers.get(block.id)} rowOffset={0} artifact={block.artifactId ? artifacts.artifacts[block.artifactId] : null} artifactState={artifactStateFor(block.artifactId)} currency={reportCurrency} orientation={draft.reportOrientation} onRetry={block.artifactId ? () => artifacts.retryArtifact(block.artifactId) : undefined} />;
   }, [artifactStateFor, artifacts.artifacts, artifacts.retryArtifact, draft.reportOrientation, reportBlockNumbers, reportCurrency]);
   const {
-    deleteBlock: deleteDraftBlock,
     duplicateBlock: duplicateDraftBlock,
     moveBlock: moveDraftBlock,
     resizeBlock: resizeDraftBlock,
-    selectBlock: selectDraftBlock,
-    selectedBlockId,
     setBlockSetting: setDraftBlockSetting,
     updateBlock: updateDraftBlock,
   } = draft;
   const renderEditorBlock = useCallback((layoutBlock, context) => {
     const block = layoutBlock.sourceBlock || layoutBlock;
-    return <ReportEditorBlock block={block} rowOffset={context.page.offsetY} artifact={block.artifactId ? artifacts.artifacts[block.artifactId] : null} artifactState={artifactStateFor(block.artifactId)} currency={reportCurrency} isDraft={canEdit} selected={selectedBlockId === block.id} dragging={dnd.draggedBlockId === block.id} onSelect={selectDraftBlock} onUpdate={updateDraftBlock} onMove={moveDraftBlock} onResize={resizeDraftBlock} onSetting={setDraftBlockSetting} onDuplicate={duplicateDraftBlock} onDelete={deleteDraftBlock} onRetryArtifact={artifacts.retryArtifact} />;
+    return <ReportEditorBlock block={block} rowOffset={context.page.offsetY} artifact={block.artifactId ? artifacts.artifacts[block.artifactId] : null} artifactState={artifactStateFor(block.artifactId)} currency={reportCurrency} isDraft={canEdit} selected={editorTools.selectedBlockIds.has(block.id)} dragging={dnd.draggedBlockId === block.id} locked={editorTools.lockedBlockIds.has(block.id)} onSelect={editorTools.selectBlock} onUpdate={updateDraftBlock} onMove={moveDraftBlock} onResize={resizeDraftBlock} onSetting={setDraftBlockSetting} onDuplicate={duplicateDraftBlock} onDelete={editorTools.deleteBlock} onToggleLock={editorTools.toggleBlockLock} onRetryArtifact={artifacts.retryArtifact} />;
   }, [
-    artifactStateFor, artifacts.artifacts, artifacts.retryArtifact, canEdit, deleteDraftBlock,
-    dnd.draggedBlockId, duplicateDraftBlock, moveDraftBlock, reportCurrency, resizeDraftBlock,
-    selectDraftBlock, selectedBlockId, setDraftBlockSetting, updateDraftBlock,
+    artifactStateFor, artifacts.artifacts, artifacts.retryArtifact, canEdit, dnd.draggedBlockId,
+    duplicateDraftBlock, editorTools, moveDraftBlock, reportCurrency, resizeDraftBlock, setDraftBlockSetting,
+    updateDraftBlock,
   ]);
 
   const activeTemplate = dnd.draggedBlockId.startsWith("template:")
@@ -427,12 +455,14 @@ export function useReportsPageController({ role, onEditorMode }) {
     activeInsert,
     approveDefinition,
     artifacts,
+    builderV2: REPORT_BUILDER_V2,
     canEdit,
     createAssistantDraft,
     createSchedule,
     createDefinition,
     dnd,
     draft,
+    editorTools,
     errorRef,
     handleEditorKeyDown,
     isAdmin,

@@ -271,7 +271,11 @@ export function useReportDraftState(
     return true;
   }, [commitBlocks, reportContext, selectBlock]);
 
-  const addTemplateBlock = useCallback((templateId: string, position: DraftInsertPosition | null = null): boolean => {
+  const addTemplateBlock = useCallback((
+    templateId: string,
+    position: DraftInsertPosition | null = null,
+    settings: { chartType?: string } = {},
+  ): boolean => {
     if (!optionsRef.current.editable) return false;
     const template = optionsRef.current.templates?.get(templateId);
     if (!template) return false;
@@ -300,7 +304,7 @@ export function useReportDraftState(
         type,
         title: `${source.title} ${type === "chart" ? "차트" : "표"}`,
         content: type === "chart"
-          ? JSON.stringify({ showLegend: true, sizeMode: "auto" })
+          ? JSON.stringify({ chartType: settings.chartType, showLegend: true, sizeMode: "auto" })
           : JSON.stringify({ density: "comfortable", sizeMode: "auto" }),
         x: position?.x ?? 0,
         y: position?.y ?? defaultY,

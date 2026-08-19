@@ -38,6 +38,8 @@ export { ReportEditorBlock } from "./ReportEditorBlock";
 export { ReportDocumentView } from "./ReportDocumentView";
 /** A4 editor canvas 컴포넌트를 재노출한다. */
 export { ReportEditorCanvas } from "./ReportEditorCanvas";
+/** 선택 블록의 상세 속성과 로컬 편집 도구 패널을 재노출한다. */
+export { ReportPropertiesPanel } from "./ReportPropertiesPanel";
 /** editor toolbar 컴포넌트를 재노출한다. */
 export { ReportEditorToolbar } from "./ReportEditorToolbar";
 /** 보고서 목록 화면 컴포넌트를 재노출한다. */

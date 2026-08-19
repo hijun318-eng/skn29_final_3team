@@ -62,10 +62,13 @@ class AppDatabaseReadiness:
 
     @staticmethod
     def _probe_timeout() -> float:
+        # readiness는 새 TLS client로 Trino·DataHub·model을 실제 probe한다. 1초는 정상
+        # handshake/query도 간헐적으로 끊었으므로, 총 지연을 무한히 늘리지 않는 기존
+        # 2초 상한을 production 기본값과 invalid configuration fallback에 함께 사용한다.
         try:
-            configured = float(os.getenv("READINESS_PROBE_TIMEOUT_SECONDS", "1"))
+            configured = float(os.getenv("READINESS_PROBE_TIMEOUT_SECONDS", "2"))
         except ValueError:
-            return 1.0
+            return 2.0
         return min(2.0, max(0.1, configured))
 
     @staticmethod

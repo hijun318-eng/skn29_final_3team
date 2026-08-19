@@ -35,6 +35,41 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify.ps1 -EnvFileP
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop.ps1 -EnvFilePath $deploymentEnv
 ```
 
+## D0/D1 release 검증과 Trino View 복구
+
+현재 source row를 다시 생성하지 않는 읽기 전용 D0 검증과 memory connector의 D1 View
+복구는 release id와 외부 deployment env를 명시해 실행한다. verifier는 release manifest
+전체 checksum을 먼저 확인하며 evidence 경로에는 SQL 원문이나 credential 대신 file/query
+hash와 실행시간만 기록한다.
+
+```powershell
+$releaseId = 'walkerhill-v4.3-sql-20260815-derived.1'
+$evidence = Join-Path $PWD 'output\d0-d1\<base-sha>'
+
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File scripts/verify-release-sources.ps1 `
+  -EnvFilePath $deploymentEnv -ReleaseId $releaseId -EvidenceDirectory $evidence
+
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File scripts/recreate-serving-views.ps1 `
+  -EnvFilePath $deploymentEnv -ReleaseId $releaseId -IncludeValidation
+
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File scripts/verify-release-trino.ps1 `
+  -EnvFilePath $deploymentEnv -ReleaseId $releaseId -EvidenceDirectory $evidence
+```
+
+`recreate-serving-views.ps1`은 파일명 목록을 복제하지 않는다. manifest와 SQL metadata/AST에서
+실행 순서와 정확한 View identity를 구하고 live read-back을 exact 비교하므로 Trino 재시작
+후에도 같은 명령을 사용한다. 최초 publish 전 collision 검사를 포함한 preflight는 이미
+schema가 존재할 수 있는 멱등 recovery와 다른 계약이므로 자동 재실행하지 않는다.
+
+`verify-release-sources.ps1`의 파일별 시간은 현재 데이터에 대한 validation 실행시간이지
+최초 적재시간이 아니다. 불변 archive의 `run-v43.ps1`은 과거 container 이름과 무인증
+Trino 경로를 전제로 하므로 현재 runtime 재적재에 사용하지 않는다. 파일별 실제 적재시간을
+새로 만들려면 운영 볼륨을 건드리지 않는 빈 disposable 환경에서 release 전체를 replay하고
+그 receipt를 별도로 고정해야 한다.
+
 배포 환경 파일, Trino password database, Trino/DataHub PKCS#12 server keystore,
 DataHub Java truststore, CA PEM과 Backend principal store는 모두 repository 밖 절대
 경로에 둔다. Trino 인증서는 container DNS `trino`, DataHub 인증서는 `datahub-gms`,

@@ -9,6 +9,7 @@
 # http://localhost:8080`)를 가정하는데 현재 런타임은 둘 다 다르다.
 [CmdletBinding()]
 param(
+    [Parameter(Mandatory)] [string]$ReleaseId,
     [string]$EnvFilePath,
     # 검증 SQL까지 함께 실행해 cross-source 무결성을 확인한다.
     [switch]$IncludeValidation
@@ -19,15 +20,64 @@ $ErrorActionPreference = 'Stop'
 $databaseRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent (Split-Path -Parent $databaseRoot)
 $composeFile = Join-Path $databaseRoot 'compose.yml'
-# 아카이브 경로에는 한글 디렉터리명이 있다. 스크립트 파일 인코딩에 따라 리터럴 비교가
-# 깨질 수 있으므로 이름을 직접 적지 않고 릴리스 폴더에서 `06_trino_serving`을 찾아 쓴다.
-$releaseRoot = Join-Path $databaseRoot 'releases/walkerhill_v4_3_20260815_derived_1'
-$servingSqlRoot = (
-    Get-ChildItem -LiteralPath $releaseRoot -Directory -Recurse -Filter '06_trino_serving' |
-    Select-Object -First 1
-).FullName
-if (-not $servingSqlRoot) {
-    throw "serving SQL directory was not found under $releaseRoot"
+$viewInspector = Join-Path $PSScriptRoot 'inspect_release_views.py'
+if ($ReleaseId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$') {
+    throw 'ReleaseId format is invalid.'
+}
+$releaseMatches = @()
+foreach ($directory in Get-ChildItem -LiteralPath (Join-Path $databaseRoot 'releases') -Directory) {
+    $candidate = Join-Path $directory.FullName 'manifest.json'
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+    try {
+        $document = Get-Content -LiteralPath $candidate -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        throw "Release manifest is not valid JSON: $candidate"
+    }
+    if ([string]$document.release_id -ceq $ReleaseId) {
+        $releaseMatches += [pscustomobject]@{
+            Directory = $directory.FullName
+            Manifest = $candidate
+            Document = $document
+        }
+    }
+}
+if ($releaseMatches.Count -ne 1) {
+    throw "ReleaseId must resolve to exactly one manifest: $ReleaseId"
+}
+$releaseRoot = $releaseMatches[0].Directory
+$manifestPath = $releaseMatches[0].Manifest
+$manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$releaseId = [string]$manifest.release_id
+$manifestViewCount = [int]$manifest.expected.serving_views
+$servingSchema = [string]$manifest.namespaces.serving
+if ([string]::IsNullOrWhiteSpace($releaseId) -or $manifestViewCount -lt 1 -or
+    $servingSchema -notmatch '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$') {
+    throw 'release manifest does not declare a valid release id and serving view count.'
+}
+$servingParts = $servingSchema.Split('.')
+$servingCatalog = $servingParts[0]
+$servingDatabase = $servingParts[1]
+
+# 실행 파일·순서·필수/검증 구분·정확한 View 목록은 파일명 배열이 아니라 manifest와
+# SQL metadata/AST에서 결정한다. planner가 manifest 전체 checksum도 함께 검증한다.
+$previousBytecode = $env:PYTHONDONTWRITEBYTECODE
+$env:PYTHONDONTWRITEBYTECODE = '1'
+try {
+    $planOutput = & python $viewInspector --manifest $manifestPath --schema $servingSchema
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Trino serving recovery plan could not be derived from the release.'
+    }
+} finally {
+    $env:PYTHONDONTWRITEBYTECODE = $previousBytecode
+}
+try {
+    $recoveryPlan = ($planOutput -join "`n") | ConvertFrom-Json
+} catch {
+    throw 'Trino serving recovery planner returned invalid JSON.'
+}
+if ([string]$recoveryPlan.release_id -cne $releaseId -or
+    [int]$recoveryPlan.view_count -ne $manifestViewCount) {
+    throw 'Trino recovery plan differs from the selected release manifest.'
 }
 . (Join-Path $PSScriptRoot 'deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
@@ -37,23 +87,6 @@ $composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvFile)
 $values = Read-DeploymentEnvironment $resolvedEnvFile
 Assert-DeploymentEnvironmentValues -Values $values -RequiredKeys @(
     'TRINO_ADMIN_USER', 'TRINO_ADMIN_PASSWORD'
-)
-
-# View 생성은 순서에 의존한다. schema가 먼저 있어야 하고, 통합 View는 도메인 View를
-# 참조하므로 파일 순서를 임의로 바꾸면 실패한다.
-$viewFiles = @(
-    '10_trino_serving_schema.sql',
-    '20_trino_room_views.sql',
-    '21_trino_fnb_views.sql',
-    '22_trino_membership_views.sql',
-    '23_trino_banquet_views.sql',
-    '24_trino_facility_views.sql',
-    '25_trino_integrated_hotel_views.sql',
-    '26_trino_voc_views.sql'
-)
-$validationFiles = @(
-    '30_trino_cross_source_validation.sql',
-    '31_trino_event_counterfactual_validation.sql'
 )
 
 # docker compose는 진행 상황을 stderr로 출력한다. 최상위 $ErrorActionPreference='Stop'
@@ -79,11 +112,11 @@ function Invoke-Compose {
 # 비밀번호는 argv가 아니라 process environment로만 전달한다. Trino CLI는 TRINO_PASSWORD를
 # 읽으므로 `--password`에 값을 붙이지 않는다.
 function Invoke-TrinoSqlFile {
-    param([Parameter(Mandatory)] [string]$FileName)
+    param([Parameter(Mandatory)] [string]$RelativePath)
 
-    $localPath = Join-Path $servingSqlRoot $FileName
+    $localPath = Join-Path $releaseRoot $RelativePath
     if (-not (Test-Path -LiteralPath $localPath)) {
-        throw "serving SQL file is missing: $FileName"
+        throw "serving SQL file is missing: $RelativePath"
     }
     Invoke-Compose -Arguments @('cp', $localPath, 'trino:/tmp/serving_current.sql') | Out-Null
 
@@ -104,42 +137,32 @@ function Invoke-TrinoSqlFile {
     $text = ($output -join "`n")
     # 검증 SQL은 실패를 exit code가 아니라 결과 행의 FAIL 문자열로 알린다.
     if ($text -match '(?m)"FAIL"') {
-        throw "serving SQL reported FAIL: $FileName"
+        throw "serving SQL reported FAIL: $RelativePath"
     }
-    Write-Output "SERVING_SQL_APPLIED|$FileName"
+    Write-Output "SERVING_SQL_APPLIED|$RelativePath"
 }
 
-# 기대 View 수는 상수로 적지 않고 이번에 실제 실행한 SQL에서 센다. 파일이 늘거나 줄면
-# 기대치도 함께 따라가므로 검증이 낡지 않는다.
-function Get-DeclaredViewCount {
-    param([Parameter(Mandatory)] [string[]]$FileNames)
-
-    $total = 0
-    foreach ($name in $FileNames) {
-        $text = Get-Content -LiteralPath (Join-Path $servingSqlRoot $name) -Raw
-        $total += ([regex]::Matches($text, '(?im)^\s*CREATE\s+(OR\s+REPLACE\s+)?VIEW\s')).Count
-    }
-    return $total
+# 최초 publish 전 collision=0을 요구하는 preflight는 이미 schema가 존재하는 멱등 recovery와
+# 계약이 다르므로 자동 재실행하지 않는다. 필수 DDL과 사후 validation만 실행한다.
+$executionPlan = @($recoveryPlan.files | Where-Object {
+    [string]$_.mode -eq 'required' -or
+    ($IncludeValidation -and [string]$_.mode -eq 'validation')
+} | Sort-Object execution_order)
+if (-not $executionPlan.Count) {
+    throw 'Trino recovery plan selected no executable files.'
 }
-
-$appliedFiles = @($viewFiles)
-foreach ($file in $viewFiles) {
-    Invoke-TrinoSqlFile -FileName $file
-}
-if ($IncludeValidation) {
-    foreach ($file in $validationFiles) {
-        Invoke-TrinoSqlFile -FileName $file
-    }
-    $appliedFiles += $validationFiles
+foreach ($entry in $executionPlan) {
+    Invoke-TrinoSqlFile -RelativePath ([string]$entry.relative_path)
 }
 
 # 생성 직후 실제 relation 수를 인증 경로로 다시 읽어, 빈 catalog나 일부 누락을 성공으로
-# 보고하지 않는다. memory connector는 재시작으로 조용히 비므로 read-back이 유일한 증거다.
-$expectedViews = Get-DeclaredViewCount -FileNames $appliedFiles
-$countSql = @'
-SELECT count(*) FROM serving.information_schema.tables
-WHERE table_schema <> 'information_schema';
-'@
+# 보고하지 않는다. SQL 선언 수와 manifest 기대 수부터 일치해야 하며, memory connector에
+# 남은 stale View까지 허용하지 않도록 live read-back도 exact match한다.
+$countSql = @"
+SELECT table_name FROM $servingCatalog.information_schema.tables
+WHERE table_schema = '$servingDatabase' AND table_type = 'VIEW'
+ORDER BY table_name;
+"@
 $countPath = Join-Path ([IO.Path]::GetTempPath()) "serving-view-count-$PID.sql"
 [IO.File]::WriteAllText($countPath, ($countSql -replace "`r`n", "`n"), [Text.UTF8Encoding]::new($false))
 try {
@@ -162,8 +185,19 @@ try {
     $env:TRINO_PASSWORD = $previousPassword
 }
 
-$observed = [int](($countOutput -join "`n") -replace '[^0-9]', '')
-if ($observed -lt $expectedViews) {
-    throw "serving catalog has $observed relations but $expectedViews views were declared."
+$observedViews = @(($countOutput -join "`n") -split "`r?`n" | ForEach-Object {
+    if ($_ -match '^\s*"?([a-z][a-z0-9_]*)"?\s*$') { $Matches[1] }
+})
+$declaredNames = @($recoveryPlan.views | ForEach-Object {
+    ([string]$_).Split('.')[-1]
+} | Sort-Object)
+$observedViews = @($observedViews | Sort-Object)
+if ($observedViews.Count -ne $manifestViewCount) {
+    throw "serving catalog has $($observedViews.Count) views but manifest expects $manifestViewCount."
 }
-Write-Output "SERVING_VIEWS_RECREATED|$observed"
+$difference = @(Compare-Object -ReferenceObject $declaredNames -DifferenceObject $observedViews)
+if ($difference.Count) {
+    throw 'serving live View identities differ from release SQL declarations.'
+}
+foreach ($name in $observedViews) { Write-Output "SERVING_VIEW_VERIFIED|$name" }
+Write-Output "SERVING_VIEWS_RECREATED|$releaseId|$($observedViews.Count)"

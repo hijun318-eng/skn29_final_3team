@@ -166,8 +166,16 @@ class TrinoAsyncClient:
     def _page(payload: dict[str, Any]) -> QueryPage:
         error = payload.get("error")
         if isinstance(error, dict):
+            # Trino는 DELETE 취소 후 stats.state보다 error payload를 먼저 반환하며,
+            # errorName=USER_CANCELED이 권위 있는 typed 분류다. 메시지 문자열 비교로
+            # 취소를 판정하면 locale/version에 따라 일반 QUERY 오류로 퇴행한다.
+            error_name = str(error.get("errorName") or "")
             raise AdapterError(
-                AdapterErrorCode.QUERY,
+                (
+                    AdapterErrorCode.CANCELLED
+                    if error_name == "USER_CANCELED"
+                    else AdapterErrorCode.QUERY
+                ),
                 str(error.get("message") or "query failed"),
             )
         stats = payload.get("stats") or {}

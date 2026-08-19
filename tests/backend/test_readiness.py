@@ -40,6 +40,22 @@ class _Session:
 
 
 class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
+    def test_probe_timeout_uses_bounded_two_second_production_budget(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(2.0, AppDatabaseReadiness._probe_timeout())
+        for configured, expected in (
+            ("0.01", 0.1),
+            ("1.5", 1.5),
+            ("20", 2.0),
+            ("invalid", 2.0),
+        ):
+            with self.subTest(configured=configured), patch.dict(
+                "os.environ",
+                {"READINESS_PROBE_TIMEOUT_SECONDS": configured},
+                clear=True,
+            ):
+                self.assertEqual(expected, AppDatabaseReadiness._probe_timeout())
+
     async def test_empty_analysis_template_registry_is_ready(self) -> None:
         current_head = current_migration_head()
         session = _Session([

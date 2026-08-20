@@ -64,7 +64,11 @@ def build_records(specs: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """검증된 spec을 versioned system prompt와 canonical user/assistant JSON 메시지로 compile한다."""
     records = []
     for spec in specs:
-        prompt_id = "node2.sql" if spec["node"] == "node2" else "node2.repair"
+        if spec["node"] == "node2" and set(spec["expected_output"]) != {"sql"}:
+            raise DatasetError("Node2 training requires the SQL-only output shape")
+        prompt_id = (
+            "node2.sql_only" if spec["node"] == "node2" else "node2.repair"
+        )
         records.append(
             {
                 **{key: spec[key] for key in SPEC_FIELDS - {"input", "expected_output"}},
@@ -223,6 +227,13 @@ def _validate_messages(node: str, messages: Any) -> None:
     except json.JSONDecodeError as error:
         raise DatasetError("user and assistant content must be JSON") from error
     _validate_input(node, input_value)
+    prompt_id = "node2.sql_only" if node == "node2" else "node2.repair"
+    if messages[0]["content"] != get_prompt(prompt_id).text:
+        raise DatasetError("system prompt must match the versioned training prompt")
+    if node == "node2" and (
+        not isinstance(output_value, dict) or set(output_value) != {"sql"}
+    ):
+        raise DatasetError("Node2 training requires the SQL-only output shape")
     validate_model_output(node, output_value, input_value)
     _reject_pii(messages)
 
@@ -265,7 +276,9 @@ def _validate_sql_contract(
 
     requested_metrics = set(request["resolved_request"]["metric_ids"])
     claimed_metrics = (
-        set(output["used_metrics"]) if node == "node2" else requested_metrics
+        set(output["used_metrics"])
+        if node == "node2" and "used_metrics" in output
+        else requested_metrics
     )
     metrics = {item["id"]: item for item in request["metric_rules"]}
     if claimed_metrics != requested_metrics or not claimed_metrics.issubset(metrics):
@@ -288,7 +301,7 @@ def _validate_sql_contract(
         raise DatasetError("resolved metric fields must be referenced by SQL")
 
     inferred_joins = _inferred_join_ids(request, result, physical_tables)
-    if node == "node2":
+    if node == "node2" and "used_assets" in output:
         if {_canonical_fqn(item) for item in output["used_assets"]} != physical_tables:
             raise DatasetError("used_assets must exactly match SQL physical tables")
         claimed_columns = {_field_identity(item) for item in output["used_columns"]}

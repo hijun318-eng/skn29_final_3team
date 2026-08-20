@@ -81,7 +81,7 @@ Browser
 
 핵심 역할:
 
-- `hotel_analyst`: 자연어 분석, 결과·근거 확인, Artifact에서 Report 초안 생성
+- `analyst`: 자연어 분석, 결과·근거 확인, Artifact에서 Report 초안 생성
 - `report_admin`: Report 검토·승인·최종 산출물 확인
 - DataHub read principal과 publish principal은 분리
 - App runtime DB 계정과 migration 계정은 분리
@@ -166,7 +166,7 @@ Browser
 
 ### 직전 기록이지만 현재 PASS로 승격하면 안 되는 결과
 
-`docs/architecture/production-integrity-audit.md`의 2026-08-16 기록:
+삭제된 `docs/architecture/production-integrity-audit.md`에 남아 있던 2026-08-16 기록:
 
 - Python 510 passed, 30 skipped, 251 subtests passed
 - Frontend 13/13 passed
@@ -225,7 +225,7 @@ Browser action
 - 특정 acceptance 질문만 통과시키는 분기·JSON·SQL·fixture를 production에 추가하지 않는다.
 - 오류는 가장 좁은 일반 계약 경계에서 수정한다.
 - migration 변경이 필요하면 배포된 revision을 수정하지 말고 새 revision을 추가한다.
-- 기능 파일은 500줄 기본 상한과 책임 분리를 지킨다.
+- 기능 파일은 고정 줄 수가 아니라 책임 경계와 응집도를 기준으로 분리한다.
 - 코드 변경과 한국어 책임 문서를 같은 patch에서 갱신한다.
 
 ### 6단계 — 전체 Gate와 문서 판정
@@ -295,7 +295,7 @@ Antigravity의 최종 보고는 다음을 분리한다.
 4. `docs/product/01_PRD.md` — Requirement/Gate와 현재 판정
 5. `docs/product/02_유저플로우.md` — 정상·명확화·거부·실패·보고서 흐름
 6. `docs/product/03_아키텍처.md` — 현재/목표 구조와 release 전환
-7. `docs/architecture/production-integrity-audit.md` — overhaul 감사와 과거 검증 기록
+7. `scripts/audit_repository_integrity.py` — 현행 무결성 감사. 과거 기록이던 `docs/architecture/production-integrity-audit.md`는 삭제됐다.
 8. `docs/reference/Antigravity_실제_분석_E2E_실행_인수인계.md` — 다음 실제 E2E 절차
 9. 현재 코드·Compose·migration·runtime read-back — 최종 구현 사실
 

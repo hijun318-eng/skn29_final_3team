@@ -1,6 +1,7 @@
 {
   "data": {
     "artifact": null,
+    "disambiguation_options": [],
     "gates": {
       "g1_required": true,
       "g2_required": true
@@ -66,6 +67,7 @@
   "error": {
     "clarification_type": null,
     "code": "REQUEST_CANCELLED",
+    "disambiguation_options": [],
     "message": "요청이 취소되었습니다.",
     "missing_requirements": [],
     "required_action": "NONE",

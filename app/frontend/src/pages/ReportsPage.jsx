@@ -1,7 +1,7 @@
 /** 보고서 controller를 목록·문서·A4 편집기 컴포넌트에 배선하는 얇은 화면 모듈이다. */
 import { AlertTriangle, Check } from "lucide-react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
 import {
   ReportCurrencyControl,
@@ -10,14 +10,17 @@ import {
   ReportEditorToolbar,
   ReportListView,
   ReportOperationsPanel,
+  ReportPropertiesPanel,
   ReportTemplateTile,
   ReportToolPanel,
 } from "../features/reports/components";
 import { useReportsPageController } from "../features/reports/useReportsPageController";
+import { ReportBuilderV2 } from "../features/reports/v2/ReportBuilderV2";
+import { ReportPresentation } from "../features/reports/v2/ReportPresentation";
 
 /** 보고서 controller의 상태를 목록·최종본·편집기 뷰에 배선하며 memoized 하위 경계를 유지한다. */
-export function ReportsPage({ role, onEditorMode }) {
-  const page = useReportsPageController({ role, onEditorMode });
+export function ReportsPage({ role, isAdmin, onEditorMode }) {
+  const page = useReportsPageController({ role, isAdmin, onEditorMode });
   const { artifacts, dnd, draft, lifecycle } = page;
   const editorCurrencyControl = useMemo(() => (
     <ReportCurrencyControl
@@ -33,6 +36,10 @@ export function ReportsPage({ role, onEditorMode }) {
       disabled={lifecycle.selectedDefinition?.status === "approved"}
     />
   ), [draft.changeCurrencyDisplayUnit, draft.reportCurrencyPolicy.displayUnit, lifecycle.selectedDefinition?.status]);
+  const addChartBlock = useCallback(
+    (chartType) => draft.addTemplateBlock("artifact-chart", null, { chartType }),
+    [draft.addTemplateBlock],
+  );
 
   if (page.view === "list") {
     return <ReportListView
@@ -87,6 +94,146 @@ export function ReportsPage({ role, onEditorMode }) {
   }
 
   const ActiveInsertIcon = page.activeInsert?.icon;
+  const toolbar = <ReportEditorToolbar
+    builderV2={page.builderV2}
+    currencyControl={editorCurrencyControl}
+    history={draft.history}
+    isAdmin={page.isAdmin}
+    isDraft={page.isDraft}
+    isDirty={draft.isDirty}
+    onChangeOrientation={draft.changeOrientation}
+    onChangeViewScale={page.changeEditorViewScale}
+    onCompactLayout={draft.compactLayout}
+    onLeave={page.leaveEditor}
+    onPreview={page.previewEditor}
+    onRedo={draft.redo}
+    onRun={page.runDefinition}
+    onSave={page.saveDraft}
+    onToggleTools={page.toggleToolPanel}
+    onUndo={draft.undo}
+    orientation={draft.reportOrientation}
+    pending={lifecycle.pending}
+    reportTitle={lifecycle.selectedDefinition?.title}
+    saveStatus={draft.saveState}
+    selectedDefinition={lifecycle.selectedDefinition}
+    toolPanelOpen={page.toolPanelOpen}
+    toolToggleRef={page.toolToggleRef}
+    viewScale={page.editorViewScale}
+  />;
+  const library = page.toolPanelOpen ? <ReportToolPanel
+    analysisLibraryState={artifacts.analysisLibraryState}
+    artifactOptions={artifacts.artifactOptions}
+    artifactSelection={artifacts.artifactSelection}
+    artifactStates={artifacts.artifactStates}
+    artifactTemplates={page.artifactTemplates}
+    artifacts={artifacts.artifacts}
+    assistantInstruction={lifecycle.assistantInstruction}
+    canEdit={page.canEdit}
+    isDraft={page.isDraft}
+    onAddChart={addChartBlock}
+    onAddTemplate={draft.addTemplateBlock}
+    onAddWholeArtifact={draft.addWholeArtifact}
+    onClose={page.closeToolPanel}
+    onCreateAssistantDraft={page.createAssistantDraft}
+    onSelectArtifact={artifacts.setArtifactSelection}
+    orderedBlocks={draft.orderedBlocks}
+    panelRef={page.toolPanelRef}
+    pending={lifecycle.pending}
+    reportTemplates={page.reportTemplates}
+    selectedArtifact={page.selectedArtifact}
+    selectedArtifactPeriod={page.selectedArtifact?.evidence?.period}
+    selectedArtifactSource={page.selectedArtifactSource}
+    selectedDefinition={lifecycle.selectedDefinition}
+    selectedBlockId={draft.selectedBlockId}
+    setAssistantInstruction={lifecycle.setAssistantInstruction}
+    setSelectedBlockId={page.selectOutlineBlock}
+    TemplateTile={ReportTemplateTile}
+  /> : null;
+  const workspace = <>
+    {lifecycle.error && <p ref={page.errorRef} tabIndex={-1} className="report-api-state error" role="alert"><AlertTriangle size={17} />{lifecycle.error}</p>}
+    {lifecycle.notice && <p className="report-api-state notion-editor-notice" role="status"><Check size={17} />{lifecycle.notice}</p>}
+    <ReportEditorCanvas
+      activeArtifactTitle={page.activeArtifactSource?.title}
+      activeInsert={page.activeInsert}
+      alignmentGuides={dnd.alignmentGuides}
+      canEdit={page.canEdit}
+      draggedBlockId={dnd.draggedBlockId}
+      dropPosition={dnd.dropPosition}
+      onAddText={page.addTextBlock}
+      onRegisterCanvas={dnd.registerPageCanvas}
+      orientation={draft.reportOrientation}
+      orderedBlocks={draft.orderedBlocks}
+      pages={page.reportPages}
+      pending={lifecycle.pending}
+      renderBlock={page.renderEditorBlock}
+      renderFooter={page.renderFooter}
+      renderHeader={page.renderHeader}
+      reportTitle={lifecycle.selectedDefinition?.title}
+      viewScale={page.editorViewScale}
+    />
+    {page.isAdmin && lifecycle.selectedDefinition?.status === "approved" && <ReportOperationsPanel
+      assistantTrace={lifecycle.assistantTrace}
+      cadence={lifecycle.cadence}
+      filteredRunCount={lifecycle.filteredRuns.length}
+      onCreateSchedule={page.createSchedule}
+      onLoadRuns={page.loadRuns}
+      onRetryRun={page.runDefinition}
+      onSelectRun={lifecycle.setSelectedRun}
+      onSetScheduleEnabled={lifecycle.setScheduleEnabled}
+      onShowMoreRuns={lifecycle.showMoreRuns}
+      pending={lifecycle.pending}
+      runQuery={lifecycle.runQuery}
+      runs={lifecycle.runs}
+      scheduleAt={lifecycle.scheduleAt}
+      schedules={lifecycle.selectedSchedules}
+      selectedRun={lifecycle.selectedRun}
+      setCadence={lifecycle.setCadence}
+      setRunQuery={lifecycle.setRunQuery}
+      setScheduleAt={lifecycle.setScheduleAt}
+      visibleRunCount={lifecycle.visibleRunCount}
+      visibleRuns={lifecycle.visibleRuns}
+    />}
+    {lifecycle.assistantTrace && lifecycle.selectedDefinition?.status !== "approved" && <details className="card editor-advanced"><summary>AI 처리 정보</summary><p>초안 생성을 완료했습니다. · {(lifecycle.assistantTrace.duration_ms / 1000).toFixed(1)}초</p></details>}
+    <p className="sr-only" aria-live="polite">{draft.editorAnnouncement}</p>
+  </>;
+  const properties = <ReportPropertiesPanel
+    artifact={page.editorTools.primaryBlock?.artifactId ? artifacts.artifacts[page.editorTools.primaryBlock.artifactId] : null}
+    canEdit={page.canEdit}
+    editorTools={page.editorTools}
+    onSetting={draft.setBlockSetting}
+    onUpdate={draft.updateBlock}
+    orientation={draft.reportOrientation}
+    pageCount={page.reportPages.length}
+  />;
+  const editor = page.builderV2 ? <ReportBuilderV2
+    canvas={workspace}
+    library={library}
+    libraryOpen={page.toolPanelOpen}
+    onKeyDown={page.handleEditorKeyDown}
+    onPointerMove={dnd.handlePointerMove}
+    orientation={draft.reportOrientation}
+    pages={page.reportPages}
+    presentation={<ReportPresentation
+      orientation={draft.reportOrientation}
+      pages={page.reportPages}
+      renderBlock={page.renderPreviewBlock}
+      renderFooter={page.renderFooter}
+      renderHeader={page.renderHeader}
+      reportTitle={lifecycle.selectedDefinition?.title}
+    />}
+    properties={properties}
+    reportTitle={lifecycle.selectedDefinition?.title}
+    toolbar={toolbar}
+  /> : <div
+    className={`enterprise-report-editor notion-report-editor ${page.toolPanelOpen ? "" : "tools-collapsed"}`}
+    onPointerMoveCapture={dnd.handlePointerMove}
+    onKeyDown={page.handleEditorKeyDown}
+  >
+    {page.toolPanelOpen && <button type="button" className="editor-tools-scrim" aria-label="블록 도구 닫기" onClick={page.closeToolPanel} />}
+    {library}
+    <main className="editor-workspace notion-editor-workspace">{toolbar}{workspace}</main>
+  </div>;
+
   return <DndContext
     sensors={dnd.sensors}
     onDragStart={dnd.handleDragStart}
@@ -95,107 +242,7 @@ export function ReportsPage({ role, onEditorMode }) {
     onDragCancel={dnd.handleDragCancel}
     accessibility={dnd.accessibility}
   >
-    <div
-      className={`enterprise-report-editor notion-report-editor ${page.toolPanelOpen ? "" : "tools-collapsed"}`}
-      onPointerMoveCapture={dnd.handlePointerMove}
-      onKeyDown={page.handleEditorKeyDown}
-    >
-      {page.toolPanelOpen && <button type="button" className="editor-tools-scrim" aria-label="블록 도구 닫기" onClick={page.closeToolPanel} />}
-      {page.toolPanelOpen && <ReportToolPanel
-        analysisLibraryState={artifacts.analysisLibraryState}
-        artifactOptions={artifacts.artifactOptions}
-        artifactSelection={artifacts.artifactSelection}
-        artifactStates={artifacts.artifactStates}
-        artifactTemplates={page.artifactTemplates}
-        artifacts={artifacts.artifacts}
-        assistantInstruction={lifecycle.assistantInstruction}
-        canEdit={page.canEdit}
-        isDraft={page.isDraft}
-        onAddTemplate={draft.addTemplateBlock}
-        onAddWholeArtifact={draft.addWholeArtifact}
-        onClose={page.closeToolPanel}
-        onCreateAssistantDraft={page.createAssistantDraft}
-        onSelectArtifact={artifacts.setArtifactSelection}
-        orderedBlocks={draft.orderedBlocks}
-        panelRef={page.toolPanelRef}
-        pending={lifecycle.pending}
-        reportTemplates={page.reportTemplates}
-        selectedArtifact={page.selectedArtifact}
-        selectedArtifactPeriod={page.selectedArtifact?.evidence?.period}
-        selectedArtifactSource={page.selectedArtifactSource}
-        selectedDefinition={lifecycle.selectedDefinition}
-        selectedBlockId={draft.selectedBlockId}
-        setAssistantInstruction={lifecycle.setAssistantInstruction}
-        setSelectedBlockId={draft.selectBlock}
-        TemplateTile={ReportTemplateTile}
-      />}
-      <main className="editor-workspace notion-editor-workspace">
-        <ReportEditorToolbar
-          currencyControl={editorCurrencyControl}
-          history={draft.history}
-          isAdmin={page.isAdmin}
-          isDraft={page.isDraft}
-          isDirty={draft.isDirty}
-          onChangeOrientation={draft.changeOrientation}
-          onLeave={page.leaveEditor}
-          onPreview={page.previewEditor}
-          onRedo={draft.redo}
-          onRun={page.runDefinition}
-          onSave={page.saveDraft}
-          onToggleTools={page.toggleToolPanel}
-          onUndo={draft.undo}
-          orientation={draft.reportOrientation}
-          pending={lifecycle.pending}
-          saveStatus={draft.saveState}
-          selectedDefinition={lifecycle.selectedDefinition}
-          toolPanelOpen={page.toolPanelOpen}
-          toolToggleRef={page.toolToggleRef}
-        />
-        {lifecycle.error && <p ref={page.errorRef} tabIndex={-1} className="report-api-state error" role="alert"><AlertTriangle size={17} />{lifecycle.error}</p>}
-        {lifecycle.notice && <p className="report-api-state notion-editor-notice" role="status"><Check size={17} />{lifecycle.notice}</p>}
-        <ReportEditorCanvas
-          activeArtifactTitle={page.activeArtifactSource?.title}
-          activeInsert={page.activeInsert}
-          canEdit={page.canEdit}
-          draggedBlockId={dnd.draggedBlockId}
-          dropPosition={dnd.dropPosition}
-          onAddText={page.addTextBlock}
-          onRegisterCanvas={dnd.registerPageCanvas}
-          orientation={draft.reportOrientation}
-          orderedBlocks={draft.orderedBlocks}
-          pages={page.reportPages}
-          pending={lifecycle.pending}
-          renderBlock={page.renderEditorBlock}
-          renderFooter={page.renderFooter}
-          renderHeader={page.renderHeader}
-          reportTitle={lifecycle.selectedDefinition?.title}
-        />
-        {page.isAdmin && lifecycle.selectedDefinition?.status === "approved" && <ReportOperationsPanel
-          assistantTrace={lifecycle.assistantTrace}
-          cadence={lifecycle.cadence}
-          filteredRunCount={lifecycle.filteredRuns.length}
-          onCreateSchedule={page.createSchedule}
-          onLoadRuns={page.loadRuns}
-          onRetryRun={page.runDefinition}
-          onSelectRun={lifecycle.setSelectedRun}
-          onSetScheduleEnabled={lifecycle.setScheduleEnabled}
-          onShowMoreRuns={lifecycle.showMoreRuns}
-          pending={lifecycle.pending}
-          runQuery={lifecycle.runQuery}
-          runs={lifecycle.runs}
-          scheduleAt={lifecycle.scheduleAt}
-          schedules={lifecycle.selectedSchedules}
-          selectedRun={lifecycle.selectedRun}
-          setCadence={lifecycle.setCadence}
-          setRunQuery={lifecycle.setRunQuery}
-          setScheduleAt={lifecycle.setScheduleAt}
-          visibleRunCount={lifecycle.visibleRunCount}
-          visibleRuns={lifecycle.visibleRuns}
-        />}
-        {lifecycle.assistantTrace && lifecycle.selectedDefinition?.status !== "approved" && <details className="card editor-advanced"><summary>AI 처리 정보</summary><p>초안 생성을 완료했습니다. · {(lifecycle.assistantTrace.duration_ms / 1000).toFixed(1)}초</p></details>}
-        <p className="sr-only" aria-live="polite">{draft.editorAnnouncement}</p>
-      </main>
-    </div>
+    {editor}
     <DragOverlay dropAnimation={{ duration: 160, easing: "ease-out" }}>
       {page.activeInsert && <div className="report-template-overlay">{ActiveInsertIcon && <ActiveInsertIcon size={16} />}<span><b>{page.activeArtifactSource?.title || page.activeInsert.title}</b><small>{page.activeArtifactSource ? "Artifact 전체로 추가" : "캔버스에 놓아 추가"}</small></span></div>}
     </DragOverlay>

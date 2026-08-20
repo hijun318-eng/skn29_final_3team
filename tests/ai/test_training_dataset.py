@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from src.ai.prompt_registry import get_prompt
 from src.ai.training.dataset import (
     DatasetError,
     _validate_sql,
@@ -31,17 +32,30 @@ class TrainingDatasetTests(unittest.TestCase):
         )
         for spec in specs:
             expected_fields = (
-                {"sql", "used_assets", "used_columns", "used_joins", "used_metrics"}
+                {"sql"}
                 if spec["node"] == "node2"
                 else {"corrected_sql"}
             )
             self.assertEqual(set(spec["expected_output"]), expected_fields)
             for parameter in spec["input"]["parameter_contract"]["parameters"]:
                 self.assertEqual(set(parameter), {"name", "type", "scope"})
+        for record in records:
+            if record["node"] == "node2":
+                self.assertEqual(
+                    get_prompt("node2.sql_only").text,
+                    record["messages"][0]["content"],
+                )
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "dataset.jsonl"
             write_jsonl(output, records)
             self.assertEqual(load_compiled(output), records)
+
+    def test_legacy_lineage_specs_are_not_compiled_for_sql_only_training(self):
+        legacy = copy.deepcopy(load_specs(EXAMPLE)[0])
+        legacy["expected_output"] = arbitrary_node2_response("quartz")
+
+        with self.assertRaisesRegex(DatasetError, "SQL-only output shape"):
+            build_records([legacy])
 
     def test_split_leakage_is_rejected(self):
         specs = load_specs(EXAMPLE)
@@ -129,6 +143,15 @@ class TrainingDatasetTests(unittest.TestCase):
             with self.subTest(message=message):
                 with self.assertRaisesRegex(DatasetError, message):
                     validate_model_output("node2", candidate, request)
+
+    def test_sql_only_output_uses_request_and_ast_as_authoritative_lineage(self):
+        request = arbitrary_node2_request("quartz")
+        legacy = arbitrary_node2_response("quartz")
+
+        result = validate_model_output("node2", {"sql": legacy["sql"]}, request)
+
+        self.assertTrue(result.ok, result.violations)
+        self.assertEqual(set(legacy["used_assets"]), set(result.physical_tables))
 
     def test_typed_time_parameters_require_ast_conversion(self):
         request = arbitrary_node2_request("quartz")

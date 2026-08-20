@@ -43,7 +43,7 @@
   - `serving.analytics_v4_3.hotel_operations_daily`: 2024-01-01 ~ 2026-08-31, 2,922행
   - `serving.analytics_v4_3.voc_daily`: 2024-01-01 ~ 2026-08-31, 15,532행
   - `serving.analytics_v4_3.banquet_daily`: 2024-01-01 ~ 2026-08-31, 2,922행
-- 실제 외부 principal 파일에는 `hotel_analyst`, `report_admin` 두 역할의 active 계정이 존재한다.
+- 실제 외부 principal 파일에는 `analyst`, `report_admin` 두 역할의 active 계정이 존재한다.
 
 이 증거는 DataHub/Trino runtime 경계만 증명한다. Browser, Backend HTTP, 실제 model, App DB artifact, Report/PDF까지 같은 요청으로 연결됐다는 뜻은 아니다.
 
@@ -259,7 +259,7 @@ Invoke-RestMethod "$backend/readiness"
 
 - Browser에서 `POST /auth/login` 성공
 - `HttpOnly`, `SameSite=Strict`, 배포 정책에 맞는 `Secure` cookie
-- 이어지는 `GET /auth/session`이 `hotel_analyst`
+- 이어지는 `GET /auth/session`이 `analyst`
 - Frontend의 권한 메뉴가 서버 응답과 일치
 - 새로고침 뒤 session 복원
 
@@ -362,7 +362,7 @@ DB 행을 직접 수정해 연결을 맞추지 않는다. 연결이 틀리면 E2
 
 ### 11.2 analyst 권한의 부정 검증
 
-`hotel_analyst`로는 report draft 생성·편집은 가능하지만 승인 endpoint는 403이어야 한다. UI 버튼이 숨겨졌다는 사실만으로 권한 검증을 끝내지 말고 실제 API 거부를 확인한다.
+`analyst`로는 report draft 생성·편집은 가능하지만 승인 endpoint는 403이어야 한다. UI 버튼이 숨겨졌다는 사실만으로 권한 검증을 끝내지 말고 실제 API 거부를 확인한다.
 
 ### 11.3 report_admin 승인과 최종 asset
 

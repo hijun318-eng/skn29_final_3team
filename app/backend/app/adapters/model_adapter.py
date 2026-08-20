@@ -235,12 +235,22 @@ class ContractModelAdapter:
             "model_version": self._trace_model_version(),
         }
         if include_lineage:
-            plan.update(
-                declared_assets=list(response["used_assets"]),
-                declared_columns=list(response["used_columns"]),
-                declared_joins=list(response["used_joins"]),
-                declared_metrics=list(response["used_metrics"]),
+            lineage_fields = (
+                "used_assets",
+                "used_columns",
+                "used_joins",
+                "used_metrics",
             )
+            present = {field for field in lineage_fields if field in response}
+            if present and present != set(lineage_fields):
+                raise ValueError("Node2 lineage must be complete or omitted")
+            if present:
+                plan.update(
+                    declared_assets=list(response["used_assets"]),
+                    declared_columns=list(response["used_columns"]),
+                    declared_joins=list(response["used_joins"]),
+                    declared_metrics=list(response["used_metrics"]),
+                )
         return plan
 
     def _trace_model_version(self) -> str:

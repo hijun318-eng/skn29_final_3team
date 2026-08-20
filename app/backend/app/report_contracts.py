@@ -54,8 +54,9 @@ class CreateReportFromArtifactRequest(ReportContractModel):
 
 
 class ReplaceReportBlocksRequest(ReportContractModel):
-    """초안의 전체 블록 배열을 교체하고 필요할 때 페이지 방향과 통화 단위도 함께 변경한다."""
+    """초안의 제목·전체 블록 배열·페이지 방향·통화 단위를 한 저장 요청으로 변경한다."""
     blocks: list[ReportBlockRequest]
+    title: str | None = Field(default=None, min_length=1, max_length=255)
     orientation: ReportOrientation | None = None
     currency_display_unit: CurrencyDisplayUnit | None = None
 
@@ -67,10 +68,9 @@ class ApproveReportVersionRequest(ReportContractModel):
 
 
 class CreateManualRunRequest(ReportContractModel):
-    """보고서 정의 버전, 실행 기준 시각과 멱등 키로 수동 실행을 큐에 등록한다."""
+    """보고서 정의 버전과 멱등 키만 받아 서버 기준일의 수동 실행을 등록한다."""
     definition_id: str = Field(min_length=1)
     version: int = Field(ge=1)
-    as_of: datetime
     idempotency_key: str = Field(min_length=1)
 
     @field_validator("idempotency_key")

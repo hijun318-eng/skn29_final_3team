@@ -11,7 +11,9 @@ from sqlalchemy import engine_from_config, pool
 config = context.config
 database_url = os.getenv("APP_DATABASE_URL")
 if database_url:
-    config.set_main_option("sqlalchemy.url", database_url)
+    # Alembic stores this option in ConfigParser, where percent is interpolation
+    # syntax. URL-encoded credentials must remain literal connection data.
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:

@@ -5,6 +5,7 @@
       "context_hash": "fixture-context-empty",
       "query_id": "fixture-query-empty"
     },
+    "disambiguation_options": [],
     "gates": {
       "g1_required": true,
       "g2_required": true

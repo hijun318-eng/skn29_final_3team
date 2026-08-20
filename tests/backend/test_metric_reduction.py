@@ -7,7 +7,7 @@ from sys import path
 BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
-from app.services.analysis_responses import _reduce_metric_values
+from app.services.analysis.evidence import _reduce_metric_values
 
 
 class MetricReductionTests(unittest.TestCase):

@@ -6,13 +6,13 @@ from collections.abc import Iterator, Mapping
 from typing import Any
 
 from src.data.governance_contract import (
-    canonical_json,
-    datahub_schema_projection,
-    datahub_schema_sha1,
+    column_metric_asset,
     dataset_runtime_property_projection,
+    metric_asset_fqns,
     release_manifest,
     term_runtime_property_projection,
 )
+from src.data.metric_governance import metric_visibility
 from metadata_contract import (
     PROPERTY_PREFIX,
     validate_bundle,
@@ -28,6 +28,7 @@ def iter_aspects(bundle: Mapping[str, Any]) -> Iterator[Aspect]:
     validate_bundle(bundle)
     manifest = release_manifest(bundle)
     metrics = list(bundle["metric_rules"])
+    metrics_by_id = {item["id"]: item for item in metrics}
     terms = {item["id"]: item for item in bundle["metric_terms"]}
     yield from _governance_aspects(bundle["governance_entities"])
     for term in bundle["metric_terms"]:
@@ -36,7 +37,13 @@ def iter_aspects(bundle: Mapping[str, Any]) -> Iterator[Aspect]:
         asset_metrics = [
             metric
             for metric in metrics
-            if metric["source"]["field"]["asset_fqn"] == asset["fqn"]
+            if column_metric_asset(metric) == asset["fqn"]
+        ]
+        dataset_term_urns = [
+            str(terms[metric["id"]]["urn"])
+            for metric in metrics
+            if metric["id"] in terms
+            and asset["fqn"] in metric_asset_fqns(metric, metrics_by_id)
         ]
         yield from _asset_aspects(
             bundle,
@@ -44,6 +51,7 @@ def iter_aspects(bundle: Mapping[str, Any]) -> Iterator[Aspect]:
             asset_metrics,
             terms,
             manifest,
+            dataset_term_urns,
         )
 
 
@@ -63,7 +71,7 @@ def aspect_counts(bundle: Mapping[str, Any]) -> dict[str, int]:
         "aspects": (
             2 * len(governance["domains"])
             + 3 * len(governance["approved_lifecycles"])
-            + 8 * assets
+            + 7 * assets
             + 5 * terms
         ),
     }
@@ -97,10 +105,13 @@ def _asset_aspects(
     metrics: list[Mapping[str, Any]],
     terms: Mapping[str, Mapping[str, Any]],
     manifest: Mapping[str, Any],
+    dataset_term_urns: list[str],
 ) -> Iterator[Aspect]:
     urn, fqn = str(asset["urn"]), str(asset["fqn"])
     field_terms: dict[str, list[str]] = {}
     for metric in metrics:
+        if metric_visibility(metric) != "BUSINESS":
+            continue
         column = str(metric["source"]["field"]["column"])
         field_terms.setdefault(column, []).append(str(terms[metric["id"]]["urn"]))
     runtime_properties = dataset_runtime_property_projection(bundle, asset, manifest)
@@ -114,7 +125,6 @@ def _asset_aspects(
         "description": asset["description"],
         "customProperties": properties,
     }
-    yield "dataset", urn, "schemaMetadata", _schema_metadata(asset)
     yield "dataset", urn, "status", _status(asset)
     yield "dataset", urn, "ownership", _ownership(asset)
     yield "dataset", urn, "domains", {"domains": [asset["domain_urn"]]}
@@ -125,10 +135,7 @@ def _asset_aspects(
         ]
     }
     yield "dataset", urn, "glossaryTerms", {
-        "terms": [
-            {"urn": term_urn}
-            for term_urn in sorted({urn for values in field_terms.values() for urn in values})
-        ]
+        "terms": [{"urn": term_urn} for term_urn in sorted(set(dataset_term_urns))]
     }
 
 
@@ -161,37 +168,6 @@ def _term_aspects(
     yield "glossaryTerm", urn, "status", _status(term)
     yield "glossaryTerm", urn, "ownership", _ownership(term)
     yield "glossaryTerm", urn, "domains", {"domains": [term["domain_urn"]]}
-
-
-def _schema_metadata(asset: Mapping[str, Any]) -> dict[str, Any]:
-    raw_schema = datahub_schema_projection(asset)
-    return {
-        "schemaName": asset["schema_name"],
-        "platform": asset["platform_urn"],
-        "version": asset["schema_metadata_version"],
-        "dataset": asset["urn"],
-        "hash": datahub_schema_sha1(asset),
-        "platformSchema": {
-            "com.linkedin.schema.OtherSchema": {"rawSchema": canonical_json(raw_schema)}
-        },
-        "fields": [
-            {
-                "fieldPath": column["name"],
-                "nullable": column["nullable"],
-                "description": column["description"],
-                "type": {
-                    "type": {
-                        f"com.linkedin.schema.{str(column['logical_type']).title()}Type": {}
-                    }
-                },
-                "nativeDataType": column["native_type"],
-                "recursive": False,
-                "isPartOfKey": column["is_part_of_key"],
-            }
-            for column in asset["columns"]
-        ],
-        "primaryKeys": list(asset["grain"]["keys"]),
-    }
 
 
 def _editable_field(column: Mapping[str, Any], term_urns: list[str]) -> dict[str, Any]:

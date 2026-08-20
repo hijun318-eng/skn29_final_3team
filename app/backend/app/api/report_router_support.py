@@ -12,8 +12,9 @@ from uuid import uuid4
 from fastapi import Depends, HTTPException, Response
 from fastapi.responses import HTMLResponse
 
+from app.authorization import has_capability
 from app.context import analysis_context
-from app.contracts import RequestContext, Role
+from app.contracts import Capability, RequestContext
 from app.report_contracts import (
     CreateReportAssistantDraftRequest,
     CreateReportFromArtifactRequest,
@@ -27,7 +28,7 @@ def report_draft_context(
     context: Annotated[RequestContext, Depends(analysis_context)],
 ) -> RequestContext:
     """호텔 분석가와 보고서 관리자만 draft 작업에 사용할 Context를 통과시킨다."""
-    if context.role not in {Role.HOTEL_ANALYST, Role.REPORT_ADMIN}:
+    if not has_capability(context.role, Capability.DRAFT_REPORT):
         raise HTTPException(status_code=403, detail="Report 초안 권한이 없습니다.")
     return context
 
@@ -36,7 +37,7 @@ def report_admin_context(
     context: Annotated[RequestContext, Depends(analysis_context)],
 ) -> RequestContext:
     """승인·실행 관리 작업을 ``REPORT_ADMIN`` 주체로만 제한한다."""
-    if context.role is not Role.REPORT_ADMIN:
+    if not has_capability(context.role, Capability.MANAGE_REPORT):
         raise HTTPException(status_code=403, detail="Report 실행 관리 권한이 없습니다.")
     return context
 
@@ -57,7 +58,7 @@ def build_report_router(context: RequestContext):
         PostgresReportRepository(
             database_url,
             context.user_id,
-            manage_all=context.role is Role.REPORT_ADMIN,
+            manage_all=has_capability(context.role, Capability.MANAGE_REPORT),
         )
     )
 
@@ -69,7 +70,7 @@ def build_execution_service(repository):
     시간은 환경 계약에서 읽고 임의 기본 분석 결과를 생성하지 않는다.
     """
     from app.api.router import _controller, execution_gate
-    from app.services.report_execution import (
+    from app.services.report.execution import (
         AnalysisDefinitionReplay,
         ReportExecutionService,
     )
@@ -171,7 +172,7 @@ async def approve_report_version(
     renderer 실패는 draft를 승인하지 않은 채 503, 미존재는 404, orientation·상태 충돌은
     409로 매핑한다. 성공할 때만 repository의 문서 포함 승인 transaction이 완료된다.
     """
-    from app.services.report_document import (
+    from app.services.report.document import (
         ReportDocumentRenderError,
         approve_report_document,
     )

@@ -261,9 +261,8 @@ def test_endpoint_uses_strict_schema_and_never_sends_server_binding_values(monke
     )
 
     schema = _schema("node2")
-    assert set(schema["required"]) == {
-        "sql", "used_assets", "used_columns", "used_joins", "used_metrics",
-    }
+    assert schema["required"] == ["sql"]
+    assert set(schema["properties"]) == {"sql"}
     assert schema["additionalProperties"] is False
     sent = json.dumps(observed["request"], sort_keys=True)
     assert all(item["value"] not in sent for item in bindings.values())

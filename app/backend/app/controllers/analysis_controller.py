@@ -6,7 +6,7 @@ from typing import Any, Callable
 
 from app.context import ContextValidationError
 from app.contracts import AnalysisRequest, AnalysisResponse, ErrorCode, RequestContext
-from app.services.analysis_service import AnalysisService
+from app.services.analysis import AnalysisService
 from app.services.routing_service import RoutingError, RoutingService
 
 

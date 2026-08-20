@@ -9,7 +9,7 @@ from uuid import UUID
 
 from sqlalchemy import text
 
-from app.services.report_document import canonical_source_checksum
+from app.services.report.document import canonical_source_checksum
 from src.report.domain import CURRENCY_DISPLAY_UNITS, DefinitionStatus
 
 

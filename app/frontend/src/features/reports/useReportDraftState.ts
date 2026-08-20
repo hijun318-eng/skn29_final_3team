@@ -191,6 +191,15 @@ export function useReportDraftState(
     if (result && commitBlocks(result.blocks)) announce(result.announcement);
   }, [announce, commitBlocks]);
 
+  const compactLayout = useCallback((): boolean => {
+    const current = blocksRef.current;
+    const compacted = compactDraftLayout(current) as readonly DraftReportBlock[];
+    if (JSON.stringify(compacted) === JSON.stringify(current)) { announce("블록이 이미 12열 격자에 맞게 정돈되어 있습니다."); return false; }
+    const committed = commitBlocks(compacted);
+    if (committed) announce("블록을 기존 12열 격자와 시각 순서에 맞게 정돈했습니다.");
+    return committed;
+  }, [announce, commitBlocks]);
+
   const setBlockSetting = useCallback((blockId: string, name: string, value: unknown) => {
     const source = blocksRef.current.find((block) => block.id === blockId);
     if (!source) return;
@@ -271,7 +280,7 @@ export function useReportDraftState(
     return true;
   }, [commitBlocks, reportContext, selectBlock]);
 
-  const addTemplateBlock = useCallback((templateId: string, position: DraftInsertPosition | null = null): boolean => {
+  const addTemplateBlock = useCallback((templateId: string, position: DraftInsertPosition | null = null, settings: { readonly chartType?: string } = {}): boolean => {
     if (!optionsRef.current.editable) return false;
     const template = optionsRef.current.templates?.get(templateId);
     if (!template) return false;
@@ -300,7 +309,7 @@ export function useReportDraftState(
         type,
         title: `${source.title} ${type === "chart" ? "차트" : "표"}`,
         content: type === "chart"
-          ? JSON.stringify({ showLegend: true, sizeMode: "auto" })
+          ? JSON.stringify({ showLegend: true, sizeMode: "auto", ...(settings.chartType ? { chartType: settings.chartType } : {}) })
           : JSON.stringify({ density: "comfortable", sizeMode: "auto" }),
         x: position?.x ?? 0,
         y: position?.y ?? defaultY,
@@ -470,6 +479,7 @@ export function useReportDraftState(
     updateBlock,
     moveBlock,
     resizeBlock,
+    compactLayout,
     setBlockSetting,
     addTemplateBlock,
     insertArtifact,
@@ -483,7 +493,7 @@ export function useReportDraftState(
     addTemplateBlock, announce, beginSave, blocks, changeCurrencyDisplayUnit, changeOrientation,
     clearSaveFailure, commitBlocks, deleteBlock, duplicateBlock, editorAnnouncement,
     fitHydratedArtifactViews, history, insertArtifact, isDirty, markSaveFailed, markSaved,
-    moveBlock, orderedBlocks, redo, reportCurrencyPolicy, reportOrientation, resetBlocks,
+    compactLayout, moveBlock, orderedBlocks, redo, reportCurrencyPolicy, reportOrientation, resetBlocks,
     resetDraft, resizeBlock, saveFailed, saveState, selectBlock, selectedBlock,
     selectedBlockId, setBlockSetting, undo, updateBlock,
   ]);

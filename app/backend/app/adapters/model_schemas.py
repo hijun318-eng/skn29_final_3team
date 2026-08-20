@@ -48,8 +48,27 @@ def response_schema(node: str) -> dict[str, Any]:
 
 
 def serving_schema(node: str) -> dict[str, Any]:
-    """서빙 엔드포인트가 반환해야 할 노드별 응답 스키마를 구성한다."""
+    """현재 provider에 요구할 노드별 응답 스키마를 구성한다.
+
+    Node2 내부 계약은 전환 기간에 legacy lineage 응답과 SQL-only 응답을 모두
+    허용한다. 활성 provider prompt는 아직 다섯 필드를 요구하므로 structured output은
+    legacy 형태로 고정해 기존 GPT 동작을 바꾸지 않는다.
+    """
+    if node == "node2":
+        return schema_definition("node2_legacy_response")
     return response_schema(node)
+
+
+@lru_cache(maxsize=None)
+def sql_only_serving_schema(node: str) -> dict[str, Any]:
+    """향후 SQL-only Node2 release가 guided decoding에 사용할 응답 스키마를 반환한다.
+
+    활성 provider payload에는 아직 연결하지 않는다. Qwen adapter 활성화 시 SQL-only
+    prompt와 이 스키마를 같은 release에서 선택해야 한다.
+    """
+    if node != "node2":
+        raise ValueError("SQL-only serving schema is supported only for node2")
+    return schema_definition("node2_sql_only_response")
 
 
 def node2_training_input(payload: dict[str, Any]) -> dict[str, Any]:
@@ -267,6 +286,28 @@ def guided_serving_schema(node: str) -> dict[str, Any]:
     return serving_schema(node)
 
 
+_NODE_OUTPUT_LIMITS: MappingProxyType[str, int] = MappingProxyType(
+    {
+        "node1": 350,
+        "node2": 1280,
+        "node2_repair": 1280,
+        "node3": 500,
+        "report_assistant": 1280,
+    }
+)
+
+
+def bounded_node_output_limit(node: str, capacity_limit: int) -> int:
+    """노드별 필요한 JSON 스키마 크기에 맞춰 출력 토큰 상한을 바운딩한다.
+
+    Node 1(지표/기간 추출, ~100토큰)과 Node 3(한국어 2~4문장 요약, ~250토큰)의
+    불필요한 장문 생성을 제한하여 추론 지연을 대폭 단축하고, Node 2(복잡한 SQL)는
+    전체 용량을 유지한다.
+    """
+    node_limit = _NODE_OUTPUT_LIMITS.get(node, capacity_limit)
+    return min(capacity_limit, node_limit)
+
+
 def openai_payload(model: str, node: str, payload: dict[str, Any]) -> dict[str, Any]:
     """표준 메시지·strict JSON Schema·승인된 출력 한도를 OpenAI 요청으로 묶는다.
 
@@ -277,10 +318,15 @@ def openai_payload(model: str, node: str, payload: dict[str, Any]) -> dict[str, 
         model,
         provider="openai",
     ).runtime_max_output_tokens
+    bounded_limit = bounded_node_output_limit(node, output_limit)
     return {
         "model": model,
         "messages": canonical_messages(PROMPT_IDS[node], payload),
-        "max_completion_tokens": output_limit,
+        # 노드 출력은 재현 가능해야 하는 구조화 판정이다. temperature를 고정하지 않으면
+        # 같은 질문의 route·기간·생략 판정이 호출마다 달라져 trace 재현과 회귀 측정이
+        # 불가능해진다. Qwen 경로와 같은 결정론적 디코딩 계약을 사용한다.
+        "temperature": 0,
+        "max_completion_tokens": bounded_limit,
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -302,11 +348,12 @@ def qwen_payload(model: str, node: str, payload: dict[str, Any]) -> dict[str, An
         model,
         provider="qwen",
     ).runtime_max_output_tokens
+    bounded_limit = bounded_node_output_limit(node, output_limit)
     return {
         "model": model,
         "messages": canonical_messages(PROMPT_IDS[node], payload),
         "temperature": 0,
-        "max_tokens": output_limit,
+        "max_tokens": bounded_limit,
         "chat_template_kwargs": {"enable_thinking": False},
         "guided_json": guided_serving_schema(node),
     }

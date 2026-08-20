@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import text
 
+from app.authorization import role_is_entitled
 from app.contracts import AnalysisRequest, ErrorCode, Role, RouteType
 from app.database import session_scope
 
@@ -109,7 +110,7 @@ class RoutingService:
     async def decide(
         self,
         payload: AnalysisRequest,
-        role: Role = Role.HOTEL_ANALYST,
+        role: Role = Role.ANALYST,
     ) -> RouteDecision:
         """요청의 template 선택과 인증된 역할을 DB 승인 계약에 대조해 route를 결정한다.
 
@@ -124,7 +125,7 @@ class RoutingService:
                 ErrorCode.ACCESS_DENIED,
                 "승인되지 않은 Template입니다.",
             )
-        if role not in template.allowed_roles:
+        if not role_is_entitled(role, template.allowed_roles):
             raise RoutingError(
                 ErrorCode.ACCESS_DENIED,
                 "Template 실행 권한이 없습니다.",

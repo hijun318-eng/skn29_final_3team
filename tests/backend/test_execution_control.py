@@ -14,7 +14,7 @@ from tests.support.analysis_runtime_fixture import (
     MetadataDrivenAnalysisModel,
 )
 from app.contracts import AnalysisRequest, PipelineStage, RequestContext, Role
-from app.services.analysis_service import AnalysisService
+from app.services.analysis import AnalysisService
 from app.services.execution_control import ConcurrentExecutionGate, ModelCallBudget
 from app.services.routing_service import RoutingService
 
@@ -55,7 +55,7 @@ class ExecutionControlTest(unittest.IsolatedAsyncioTestCase):
         self.decision = await RoutingService().decide(self.payload)
 
     @staticmethod
-    def context(role=Role.HOTEL_ANALYST, user=2):
+    def context(role=Role.ANALYST, user=2):
         return RequestContext(
             request_id=UUID(int=user + 10),
             trace_id=f"trace-{user}",

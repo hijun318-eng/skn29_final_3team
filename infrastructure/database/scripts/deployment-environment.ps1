@@ -56,6 +56,44 @@ function Resolve-ExternalDeploymentEnvFile {
     return $resolvedPath
 }
 
+function Resolve-ExplicitDeploymentEnvFile {
+    <#
+    운영 기본값은 외부 env만 허용한다. 명시적 local-development switch가 있을 때만
+    repository 내부의 gitignored regular file을 허용해, local secret 사용이 묵시적
+    fallback이나 commit 가능한 설정으로 바뀌지 않게 한다.
+    #>
+    param(
+        [AllowEmptyString()] [string]$Path,
+        [Parameter(Mandatory)] [string]$RepositoryRoot,
+        [switch]$AllowRepositoryLocalDevelopment
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
+    if (-not (Test-FullyQualifiedFileSystemPath $Path) -or
+        -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw 'EnvFilePath must reference an existing absolute file.'
+    }
+    $resolvedPath = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $Path).Path)
+    $resolvedRepository = [IO.Path]::GetFullPath(
+        (Resolve-Path -LiteralPath $RepositoryRoot).Path
+    ).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $repositoryPrefix = $resolvedRepository + [IO.Path]::DirectorySeparatorChar
+    $isRepositoryLocal = $resolvedPath.StartsWith(
+        $repositoryPrefix,
+        [StringComparison]::OrdinalIgnoreCase
+    )
+    if (-not $isRepositoryLocal) { return $resolvedPath }
+    if (-not $AllowRepositoryLocalDevelopment) {
+        throw 'Repository-local env requires -AllowRepositoryLocalDevelopment.'
+    }
+
+    & git -C $resolvedRepository check-ignore -q -- $resolvedPath
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Repository-local development env must be covered by .gitignore.'
+    }
+    return $resolvedPath
+}
+
 function Get-ComposeEnvironmentArguments {
     <#
     검증된 env path만 Docker Compose CLI argument로 변환한다. path가 없으면 빈 배열을
@@ -155,6 +193,45 @@ function Assert-ExternalDeploymentFile {
         [StringComparison]::OrdinalIgnoreCase
     )) {
         throw "Deployment environment key '$Key' must reference a file outside the repository."
+    }
+    return $resolved
+}
+
+function Assert-ExplicitDeploymentFile {
+    <#
+    운영 기본값은 외부 file을 요구한다. local-development가 명시된 경우에만 repository
+    내부의 gitignored regular file을 허용해, 개발 secret도 추적 가능한 설정 파일이나
+    missing bind-mount directory로 바뀌지 않게 한다.
+    #>
+    param(
+        [Parameter(Mandatory)] $Values,
+        [Parameter(Mandatory)] [string]$Key,
+        [Parameter(Mandatory)] [string]$RepositoryRoot,
+        [switch]$AllowRepositoryLocalDevelopment
+    )
+
+    Assert-DeploymentEnvironmentValues -Values $Values -RequiredKeys @($Key)
+    $path = [string]$Values[$Key]
+    if (-not (Test-FullyQualifiedFileSystemPath $path) -or
+        -not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        throw "Deployment environment key '$Key' must reference an existing absolute file."
+    }
+    $resolved = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $path).Path)
+    $repository = [IO.Path]::GetFullPath(
+        (Resolve-Path -LiteralPath $RepositoryRoot).Path
+    ).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $repositoryPrefix = $repository + [IO.Path]::DirectorySeparatorChar
+    $isRepositoryLocal = $resolved.StartsWith(
+        $repositoryPrefix,
+        [StringComparison]::OrdinalIgnoreCase
+    )
+    if (-not $isRepositoryLocal) { return $resolved }
+    if (-not $AllowRepositoryLocalDevelopment) {
+        throw "Deployment environment key '$Key' must reference a file outside the repository."
+    }
+    & git -C $repository check-ignore -q -- $resolved
+    if ($LASTEXITCODE -ne 0) {
+        throw "Repository-local deployment file '$Key' must be covered by .gitignore."
     }
     return $resolved
 }

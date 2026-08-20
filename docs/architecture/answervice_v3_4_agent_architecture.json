@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Answervice v3.4 · 계층별 기술 아키텍처",
+    "output": "answervice_v3_4_agent_architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [2048, 1160],
+    "views": [
+      {
+        "id": "system_walkthrough_v34",
+        "label": "전체 흐름",
+        "focus": ["portal_entry", "api_guard", "flow_director", "numbers_agent", "tool_analysis", "turn_resolution", "contract_context", "query_strategy", "gate_g1", "sql_candidate", "gate_g2", "federated_query", "gate_g3", "artifact_repository"],
+        "note": "질문이 담당 선택, 안전한 Tool, 의미·권한 검사, 읽기 전용 조회, 결과 검증을 거쳐 재사용 가능한 결과가 됩니다."
+      },
+      {
+        "id": "agent_responsibility_v34",
+        "label": "Agent 역할 구분",
+        "focus": ["flow_director", "numbers_agent", "evidence_agent", "forecast_agent", "tool_analysis", "tool_rag", "tool_ml"],
+        "note": "전체 조율은 경로를 고르고 결과를 합칩니다. 분석·문서 근거·예측 Agent는 서로 다른 문제만 맡으며 직접 DB를 실행하지 않습니다."
+      },
+      {
+        "id": "governed_core_v34",
+        "label": "핵심 분석 Core",
+        "focus": ["tool_analysis", "turn_resolution", "contract_context", "query_strategy", "gate_g1", "sql_candidate", "gate_g2", "federated_query", "gate_g3", "hotel_sources", "artifact_repository"],
+        "note": "Neo4j가 없어도 ResolvedSlots부터 G1·G2·Trino·G3·Artifact까지의 기본 분석 경로는 독립적으로 동작합니다."
+      },
+      {
+        "id": "optional_graph_v34",
+        "label": "선택형 Graph 보강",
+        "focus": ["tool_semantic", "tool_graph", "metadata_snapshot", "semantic_registry", "graph_projector", "semantic_graph", "contract_context", "gate_g1"],
+        "note": "승인 관계만 Neo4j에 단방향 투영합니다. graph.resolve는 후보만 찾고 Semantic Contract와 G1이 다시 결정합니다."
+      },
+      {
+        "id": "reuse_report_v34",
+        "label": "결과 재사용·보고서",
+        "focus": ["tool_artifact", "tool_report", "artifact_repository", "report_service", "dialogue_memory", "portal_entry"],
+        "note": "검증된 Artifact를 다시 읽고 보고서 Block에 연결합니다. 보고서는 Agent가 아니라 권한과 승인 절차를 지키는 Service입니다."
+      }
+    ]
+  },
+  "components": [
+    {"id": "portal_entry", "type": "frontend", "label": "0. 사용자 화면", "sublabel": "React · 질문·근거·차트·보고서", "tag": "경영진·실무자", "pos": [40, 45], "size": [220, 100]},
+    {"id": "api_guard", "type": "security", "label": "1. 접속·권한 확인", "sublabel": "FastAPI · RequestContext · Auth · RBAC", "tag": "서버가 신원·기준 시점 생성", "pos": [320, 45], "size": [300, 100]},
+    {"id": "dialogue_memory", "type": "database", "label": "2. 대화 상태", "sublabel": "ResolvedSlots · ChangeSet · CAS · Lease · Idempotency", "tag": "서버가 확정 조건 관리", "pos": [680, 45], "size": [340, 100]},
+    {"id": "shared_controls", "type": "security", "label": "공통 안전·추적", "sublabel": "Fail-closed · Read-only · Policy · Audit · Version · Trace · Evaluation", "tag": "모든 Layer에 적용", "pos": [1080, 45], "size": [870, 100]},
+
+    {"id": "flow_director", "type": "backend", "label": "3. 전체 조율 담당", "sublabel": "General Orchestrator · 질문 분류 · 담당 선택 · 병렬 실행 · 결과 합치기 · 최종 확인", "tag": "Route · State · Harness", "pos": [620, 205], "size": [760, 100]},
+    {"id": "numbers_agent", "type": "backend", "label": "4A. 수치 분석 담당", "sublabel": "Analysis Agent · KPI·집계·비교·추세·원인", "tag": "Governed Core만 호출", "pos": [250, 360], "size": [340, 100]},
+    {"id": "evidence_agent", "type": "cloud", "label": "4B. 문서 근거 담당", "sublabel": "RAG Agent · 문서 검색·출처·Evidence", "tag": "정형 KPI 계산은 하지 않음", "pos": [750, 360], "size": [300, 100]},
+    {"id": "forecast_agent", "type": "backend", "label": "4C. 예측 담당", "sublabel": "ML Agent · 짧은 기간 KPI 예측", "tag": "모델 버전·입력 범위 표시", "pos": [1110, 360], "size": [300, 100]},
+
+    {"id": "tool_analysis", "type": "security", "label": "5A. analysis.run", "sublabel": "검증된 정형 분석 실행", "tag": "Core 우회 금지", "pos": [40, 535], "size": [230, 90]},
+    {"id": "tool_semantic", "type": "security", "label": "5B. semantic.resolve", "sublabel": "업무 용어→Metric·Grain·Time", "tag": "읽기 전용", "pos": [300, 535], "size": [230, 90]},
+    {"id": "tool_graph", "type": "cloud", "label": "5C. graph.resolve", "sublabel": "복잡한 관계 후보 탐색", "tag": "선택형 · 자유 Cypher 금지", "pos": [560, 535], "size": [230, 90]},
+    {"id": "tool_rag", "type": "cloud", "label": "5D. rag.search", "sublabel": "문서 근거·출처 검색", "tag": "Top-K Evidence", "pos": [820, 535], "size": [230, 90]},
+    {"id": "tool_ml", "type": "backend", "label": "5E. ml.predict", "sublabel": "승인된 예측 Task 실행", "tag": "Baseline 비교", "pos": [1080, 535], "size": [230, 90]},
+    {"id": "tool_artifact", "type": "database", "label": "5F. artifact.get", "sublabel": "승인된 분석 결과 읽기", "tag": "현재 권한 재확인", "pos": [1340, 535], "size": [250, 90]},
+    {"id": "tool_report", "type": "backend", "label": "5G. report.add_block", "sublabel": "검증 결과를 보고서 항목에 연결", "tag": "Raw 결과 복사 금지", "pos": [1620, 535], "size": [330, 90]},
+
+    {"id": "turn_resolution", "type": "backend", "label": "6. 질문 조건 확정", "sublabel": "ResolvedSlots · TimeAlgebra · Policy", "tag": "모호하면 추가 질문", "pos": [40, 720], "size": [180, 90]},
+    {"id": "contract_context", "type": "database", "label": "7. 분석 재료 묶기", "sublabel": "Semantic Contract · ContextPackage", "tag": "정본으로 후보 재검증", "pos": [246, 720], "size": [180, 90]},
+    {"id": "query_strategy", "type": "backend", "label": "8. 조회 경로 선택", "sublabel": "REUSE · COMPOSE · 승인 상세", "tag": "Query Planner", "pos": [452, 720], "size": [180, 90]},
+    {"id": "gate_g1", "type": "security", "label": "9. G1 계획 검사", "sublabel": "Metric·Grain·Time·Join·권한", "tag": "부적합 계획 차단", "pos": [658, 720], "size": [180, 90]},
+    {"id": "sql_candidate", "type": "backend", "label": "10. SQL 후보", "sublabel": "승인 Context만 사용", "tag": "LLM은 후보만 생성", "pos": [864, 720], "size": [180, 90]},
+    {"id": "gate_g2", "type": "security", "label": "11. G2 SQL 검사", "sublabel": "SQLGlot · Join·Fan-out·비용", "tag": "읽기 전용 · Repair ≤ 1", "pos": [1070, 720], "size": [180, 90]},
+    {"id": "federated_query", "type": "cloud", "label": "12. 통합 조회", "sublabel": "Trino · 5 Source · View 13개", "tag": "Timeout·Cancel", "pos": [1276, 720], "size": [200, 90]},
+    {"id": "gate_g3", "type": "security", "label": "13. G3 결과 검사", "sublabel": "구조·단위·Masking·근거", "tag": "검증 결과만 통과", "pos": [1502, 720], "size": [180, 90]},
+    {"id": "artifact_repository", "type": "database", "label": "14. 분석 결과 저장", "sublabel": "Definition·Run·immutable Artifact·View·Report", "tag": "App PostgreSQL · 재사용·버전·이력", "pos": [1708, 720], "size": [290, 90]},
+
+    {"id": "metadata_snapshot", "type": "database", "label": "15A. 데이터 위치 정본", "sublabel": "DataHub Snapshot · Dataset·Column·Lineage", "tag": "어디에 있는가", "pos": [40, 925], "size": [320, 100]},
+    {"id": "semantic_registry", "type": "database", "label": "15B. 업무 의미 정본", "sublabel": "Registry · 계산식·Grain·Time·Join·Alias", "tag": "어떻게 써야 하는가", "pos": [400, 925], "size": [340, 100]},
+    {"id": "graph_projector", "type": "backend", "label": "15C. 관계 투영 만들기", "sublabel": "Release Batch · 검사 · 멱등 Upsert", "tag": "정본→Graph 단방향", "pos": [780, 925], "size": [250, 100]},
+    {"id": "semantic_graph", "type": "cloud", "label": "15D. 선택형 의미 Graph", "sublabel": "Neo4j · Read-only · 고정 Traversal", "tag": "후보 발견만 담당", "pos": [1070, 925], "size": [280, 100]},
+    {"id": "hotel_sources", "type": "external", "label": "16. 호텔 운영 원천", "sublabel": "PMS·Banquet(PostgreSQL) · POS(MySQL) · CRM/VOC(SQL Server) · Facility(ClickHouse)", "tag": "Walkerhill V4.3 · 합성 데이터", "pos": [1390, 925], "size": [560, 100]},
+    {"id": "report_service", "type": "backend", "label": "4D. 보고서 서비스", "sublabel": "Draft·부분 실패·관리자 승인·HTML·PDF", "tag": "Agent가 아님", "pos": [1500, 360], "size": [450, 100]}
+  ],
+  "boundaries": [
+    {"kind": "region", "label": "L1~L4 · 사용자·API·대화 상태", "wraps": ["portal_entry", "api_guard", "dialogue_memory"], "pad": 18},
+    {"kind": "region", "label": "L10 · AI 조율 계층 — Agent는 문제 종류별 3개", "wraps": ["flow_director", "numbers_agent", "evidence_agent", "forecast_agent"], "pad": 18},
+    {"kind": "security-group", "label": "L9 · 안전한 MCP Tool 경계", "wraps": ["tool_analysis", "tool_semantic", "tool_graph", "tool_rag", "tool_ml", "tool_artifact", "tool_report"], "pad": 18},
+    {"kind": "security-group", "label": "L4~L8 · 결정론적 분석 Core — Graph 없이도 동작", "wraps": ["turn_resolution", "contract_context", "query_strategy", "gate_g1", "sql_candidate", "gate_g2", "federated_query", "gate_g3", "artifact_repository"], "pad": 18},
+    {"kind": "region", "label": "L5 / L5E · 의미 정본 + 선택형 Graph 보강", "wraps": ["metadata_snapshot", "semantic_registry", "graph_projector", "semantic_graph"], "pad": 18}
+  ],
+  "connections": [
+    {"id": "v34_portal_to_api", "from": "portal_entry", "to": "api_guard", "label": "질문·행동", "variant": "emphasis"},
+    {"id": "v34_api_to_director", "from": "api_guard", "to": "flow_director", "label": "검증된 RequestContext", "variant": "security", "fromSide": "bottom", "toSide": "top"},
+    {"id": "v34_director_to_state", "from": "flow_director", "to": "dialogue_memory", "label": "조건·변경·실행 상태", "variant": "dashed", "fromSide": "top", "toSide": "bottom"},
+    {"id": "v34_director_to_numbers", "from": "flow_director", "to": "numbers_agent", "variant": "emphasis", "fromSide": "bottom", "toSide": "top"},
+    {"id": "v34_director_to_evidence", "from": "flow_director", "to": "evidence_agent", "variant": "dashed", "fromSide": "bottom", "toSide": "top"},
+    {"id": "v34_director_to_forecast", "from": "flow_director", "to": "forecast_agent", "variant": "dashed", "fromSide": "bottom", "toSide": "top"},
+    {"id": "v34_numbers_to_analysis", "from": "numbers_agent", "to": "tool_analysis", "variant": "emphasis", "fromSide": "bottom", "toSide": "top"},
+    {"id": "v34_numbers_to_semantic", "from": "numbers_agent", "to": "tool_semantic", "variant": "security", "fromSide": "bottom", "toSide": "top"},
+    {"id": "v34_numbers_to_graph", "from": "numbers_agent", "to": "tool_graph", "label": "복잡한 관계·재계획 때만", "variant": "dashed", "fromSide": "bottom", "toSide": "top"},
+    {"id": "v34_evidence_to_tool", "from": "evidence_agent", "to": "tool_rag", "variant": "dashed", "fromSide": "bottom", "toSide": "top"},
+    {"id": "v34_forecast_to_tool", "from": "forecast_agent", "to": "tool_ml", "variant": "dashed", "fromSide": "bottom", "toSide": "top"},
+    {"id": "v34_analysis_to_resolution", "from": "tool_analysis", "to": "turn_resolution", "variant": "emphasis", "fromSide": "bottom", "toSide": "top"},
+    {"id": "v34_resolution_to_context", "from": "turn_resolution", "to": "contract_context", "variant": "emphasis"},
+    {"id": "v34_context_to_planner", "from": "contract_context", "to": "query_strategy", "variant": "emphasis"},
+    {"id": "v34_planner_to_g1", "from": "query_strategy", "to": "gate_g1", "variant": "security"},
+    {"id": "v34_g1_to_sql", "from": "gate_g1", "to": "sql_candidate", "variant": "security"},
+    {"id": "v34_sql_to_g2", "from": "sql_candidate", "to": "gate_g2", "variant": "security"},
+    {"id": "v34_g2_to_trino", "from": "gate_g2", "to": "federated_query", "variant": "emphasis"},
+    {"id": "v34_trino_to_g3", "from": "federated_query", "to": "gate_g3", "variant": "security"},
+    {"id": "v34_g3_to_artifact", "from": "gate_g3", "to": "artifact_repository", "variant": "security"},
+    {"id": "v34_semantic_tool_to_context", "from": "tool_semantic", "to": "contract_context", "variant": "security", "fromSide": "bottom", "toSide": "top"},
+    {"id": "v34_metadata_to_context", "from": "metadata_snapshot", "to": "contract_context", "variant": "security", "fromSide": "top", "toSide": "bottom"},
+    {"id": "v34_registry_to_context", "from": "semantic_registry", "to": "contract_context", "variant": "security", "fromSide": "top", "toSide": "bottom"},
+    {"id": "v34_metadata_to_projector", "from": "metadata_snapshot", "to": "graph_projector", "variant": "dashed", "fromSide": "bottom", "toSide": "bottom", "via": [[200, 1070], [905, 1070]]},
+    {"id": "v34_registry_to_projector", "from": "semantic_registry", "to": "graph_projector", "variant": "dashed"},
+    {"id": "v34_projector_to_graph", "from": "graph_projector", "to": "semantic_graph", "variant": "dashed"},
+    {"id": "v34_graph_candidate_to_context", "from": "semantic_graph", "to": "contract_context", "label": "후보만 반환 · 정본에서 재검증", "variant": "dashed", "fromSide": "top", "toSide": "bottom", "via": [[1210, 855], [336, 855]], "labelAt": [800, 842]},
+    {"id": "v34_sources_to_trino", "from": "hotel_sources", "to": "federated_query", "label": "승인 View로 읽기", "variant": "emphasis", "fromSide": "top", "toSide": "bottom"},
+    {"id": "v34_artifact_tool_to_store", "from": "tool_artifact", "to": "artifact_repository", "variant": "security", "fromSide": "bottom", "toSide": "top", "via": [[1465, 665], [1853, 665]]},
+    {"id": "v34_report_tool_to_service", "from": "tool_report", "to": "report_service", "variant": "emphasis", "fromSide": "top", "toSide": "bottom"}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "Agent와 Stage를 구분", "items": ["Agent는 분석·문서 근거·예측을 맡고, Resolve→Planner→G1→SQL→G2→Trino→G3는 Core Stage다."]},
+    {"dot": "violet", "title": "Neo4j의 정확한 역할", "items": ["Neo4j=후보 발견 · Semantic Contract=결정 · G1/G2/G3=검증 · Trino=실행"]},
+    {"dot": "rose", "title": "실패해도 지키는 원칙", "items": ["Graph 장애는 Registry-only로 복귀하지만 권한·PII·쓰기·미승인 Join은 즉시 차단한다."]}
+  ]
+}

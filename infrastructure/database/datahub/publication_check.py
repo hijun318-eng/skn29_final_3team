@@ -75,6 +75,7 @@ def physical_scope_sha256(bundle: Mapping[str, Any]) -> str:
             "platform_urn": asset["platform_urn"],
             "schema_name": asset["schema_name"],
             "schema_metadata_version": asset["schema_metadata_version"],
+            "datahub_schema_hash": asset["datahub_schema_hash"],
             "dataset_key": asset["dataset_key"],
             "table_type": asset["table_type"],
             "columns": [

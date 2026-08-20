@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import tempfile
 import unittest
@@ -40,6 +41,22 @@ class _Session:
 
 
 class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
+    def test_probe_timeout_uses_bounded_two_second_production_budget(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(2.0, AppDatabaseReadiness._probe_timeout())
+        for configured, expected in (
+            ("0.01", 0.1),
+            ("1.5", 1.5),
+            ("20", 2.0),
+            ("invalid", 2.0),
+        ):
+            with self.subTest(configured=configured), patch.dict(
+                "os.environ",
+                {"READINESS_PROBE_TIMEOUT_SECONDS": configured},
+                clear=True,
+            ):
+                self.assertEqual(expected, AppDatabaseReadiness._probe_timeout())
+
     async def test_empty_analysis_template_registry_is_ready(self) -> None:
         current_head = current_migration_head()
         session = _Session([
@@ -160,7 +177,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
             "password_hash": "0" * 64,
             "password_iterations": 210_000,
             "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "hotel_analyst",
+            "role": "analyst",
             "active": True,
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -185,7 +202,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
         record = {
             "token_sha256": "0" * 64,
             "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "hotel_analyst",
+            "role": "analyst",
             "not_before": (now - timedelta(minutes=2)).isoformat(),
             "expires_at": (now + timedelta(minutes=1)).isoformat(),
         }
@@ -310,6 +327,17 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
             patch.object(probe, "_database_probe", AsyncMock(return_value={})),
             patch.object(probe, "_trino_probe", AsyncMock(return_value="ready")) as trino,
             patch.object(probe, "_datahub_probe", AsyncMock(return_value="ready")) as datahub,
+            patch.object(
+                probe,
+                "_catalog_release_probe",
+                AsyncMock(
+                    return_value={
+                        "semantic_release": "ready",
+                        "catalog_manifest": "ready",
+                        "trino_schema": "ready",
+                    }
+                ),
+            ),
             patch.object(probe, "_model_probe", AsyncMock(return_value="ready")),
             patch.object(probe, "_auth_probe", return_value="ready"),
             patch.object(probe, "_report_scheduler_probe", return_value="ready"),
@@ -319,7 +347,8 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
         trino.assert_awaited_once_with()
         datahub.assert_awaited_once_with()
         self.assertEqual("ready", result["trino"])
-        self.assertEqual("ready", result["datahub"])
+        self.assertEqual("ready", result["datahub_transport"])
+        self.assertEqual("ready", result["catalog_manifest"])
 
     async def test_datahub_probe_uses_canonical_environment_client(self) -> None:
         class Catalog:
@@ -348,6 +377,119 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(catalog.entered)
         self.assertTrue(catalog.exited)
+
+    async def test_catalog_release_probe_caches_only_complete_checksum_receipt(self) -> None:
+        class Platform:
+            calls = 0
+
+            async def get_catalog_readiness(self):
+                self.calls += 1
+                return (
+                    {
+                        "semantic_release": "ready",
+                        "catalog_manifest": "ready",
+                        "trino_schema": "ready",
+                    },
+                    "release-1:" + "a" * 64,
+                )
+
+        platform = Platform()
+        probe = AppDatabaseReadiness(lambda: platform)
+        first = await probe._catalog_release_probe()
+        second = await probe._catalog_release_probe()
+
+        self.assertEqual(first, second)
+        self.assertEqual(1, platform.calls)
+
+    def test_catalog_release_cache_ttl_defaults_and_caps_at_one_day(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            default = AppDatabaseReadiness._release_cache_ttl()
+        with patch.dict(
+            "os.environ",
+            {"RELEASE_READINESS_CACHE_TTL_SECONDS": "172800"},
+            clear=True,
+        ):
+            capped = AppDatabaseReadiness._release_cache_ttl()
+        with patch.dict(
+            "os.environ",
+            {"RELEASE_READINESS_CACHE_TTL_SECONDS": "invalid"},
+            clear=True,
+        ):
+            invalid = AppDatabaseReadiness._release_cache_ttl()
+
+        self.assertEqual(86_400.0, default)
+        self.assertEqual(86_400.0, capped)
+        self.assertEqual(86_400.0, invalid)
+
+    async def test_catalog_release_cache_expiry_never_returns_stale_success(self) -> None:
+        class Platform:
+            calls = 0
+
+            async def get_catalog_readiness(self):
+                self.calls += 1
+                if self.calls == 1:
+                    return (
+                        {
+                            "semantic_release": "ready",
+                            "catalog_manifest": "ready",
+                            "trino_schema": "ready",
+                        },
+                        "release-1:" + "a" * 64,
+                    )
+                return (
+                    {
+                        "semantic_release": "ready",
+                        "catalog_manifest": "not_ready",
+                        "trino_schema": "not_ready",
+                    },
+                    None,
+                )
+
+        platform = Platform()
+        probe = AppDatabaseReadiness(lambda: platform)
+        self.assertEqual(
+            "ready", (await probe._catalog_release_probe())["catalog_manifest"]
+        )
+        probe._release_cache_expires_at = 0.0
+        expired = await probe._catalog_release_probe()
+
+        self.assertEqual("not_ready", expired["catalog_manifest"])
+        self.assertEqual("not_ready", expired["trino_schema"])
+        self.assertIsNone(probe._release_cache)
+
+    async def test_catalog_release_probe_timeout_fails_closed(self) -> None:
+        class Platform:
+            async def get_catalog_readiness(self):
+                await asyncio.sleep(0.1)
+                raise AssertionError("cancelled release probe must not complete")
+
+        probe = AppDatabaseReadiness(lambda: Platform())
+        with patch.object(probe, "_release_probe_timeout", return_value=0.01):
+            result = await probe._catalog_release_probe()
+
+        self.assertEqual(
+            {
+                "semantic_release": "not_ready",
+                "catalog_manifest": "not_ready",
+                "trino_schema": "not_ready",
+            },
+            result,
+        )
+
+    async def test_catalog_release_provider_contract_error_fails_closed(self) -> None:
+        class PlatformWithoutReadinessContract:
+            pass
+
+        probe = AppDatabaseReadiness(lambda: PlatformWithoutReadinessContract())
+
+        self.assertEqual(
+            {
+                "semantic_release": "not_ready",
+                "catalog_manifest": "not_ready",
+                "trino_schema": "not_ready",
+            },
+            await probe._catalog_release_probe(),
+        )
 
     async def test_model_probe_retries_one_transient_timeout(self) -> None:
         environment = {

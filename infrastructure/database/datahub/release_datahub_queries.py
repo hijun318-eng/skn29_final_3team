@@ -29,6 +29,9 @@ query ReleaseDataset($urn: String!) {
       version name platformUrn hash
       fields { fieldPath nativeDataType nullable isPartOfKey description }
     }
+    editableSchemaMetadata {
+      editableSchemaFieldInfo { fieldPath description }
+    }
   }
 }
 """.strip()

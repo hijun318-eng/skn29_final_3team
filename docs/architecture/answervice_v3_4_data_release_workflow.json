@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Answervice v3.4 데이터·의미·선택형 Graph 승인 릴리스 흐름",
+    "output": "answervice_v3_4_data_release_workflow.html",
+    "quality_profile": "showcase",
+    "viewBox": [1040, 650],
+    "legend": {
+      "mode": "all",
+      "entries": {
+        "external": {"label": "후보 데이터"},
+        "database": {"label": "정본·저장소"},
+        "cloud": {"label": "선택형 Graph"},
+        "security": {"label": "품질·권한·승인"},
+        "backend": {"label": "검증·전환 작업"}
+      }
+    },
+    "views": [
+      {"id": "v43_runtime_release", "label": "1. V4.3 Runtime 확인", "focus": ["v43_candidate", "source_runtime_check", "trino_view_check"], "note": "38개 Table·실제 Row count·읽기 권한·5 Source 연결·13개 승인 View와 Cross-source 조회를 먼저 확인합니다."},
+      {"id": "semantic_release_proof", "label": "2. 의미 정본 봉인", "focus": ["semantic_manifest", "semantic_readback", "core_gold_e2e"], "note": "DataHub Snapshot·Registry·Rule·Binding·Policy를 같은 semantic release로 묶고 전체를 다시 읽어 Core Gold/E2E로 확인합니다."},
+      {"id": "graph_projection_proof", "label": "3. Graph 투영 검증", "focus": ["semantic_readback", "batch_projection", "graph_off_on"], "note": "승인 관계만 Batch 투영하고 중복·고아 관계·release mismatch를 검사한 뒤 Graph OFF/ON과 장애 fallback을 비교합니다."},
+      {"id": "extension_release_proof", "label": "4. P1 전체 기능 시험", "focus": ["core_gold_e2e", "extension_e2e", "graph_off_on"], "note": "MCP·Analysis/RAG/ML·병렬 조합·제한된 재계획·Cross-domain·Graph OFF fallback을 실제 경로로 시험합니다."},
+      {"id": "approve_cutover_v34", "label": "5. 복구·승인·전환", "focus": ["extension_e2e", "approved_cutover"], "note": "후보→이전 승인본→후보 복구 훈련과 사람 승인을 통과한 release만 기본값으로 전환합니다."
+      }
+    ]
+  },
+  "lanes": [
+    {"id": "data_release_lane", "label": "Walkerhill V4.3 데이터"},
+    {"id": "semantic_release_lane", "label": "DataHub·Semantic 정본"},
+    {"id": "graph_extension_lane", "label": "선택형 Neo4j 확장", "variant": "exception"},
+    {"id": "product_gate_lane", "label": "Core·Agent 전체 시험과 전환"}
+  ],
+  "phases": [
+    {"id": "runtime_phase_v34", "label": "데이터 Runtime 확인", "fromCol": 0, "toCol": 1},
+    {"id": "contract_phase_v34", "label": "의미 계약·Core 검증", "fromCol": 2, "toCol": 3, "variant": "security"},
+    {"id": "promotion_phase_v34", "label": "선택형 확장·복구·승인", "fromCol": 4, "toCol": 5, "variant": "emphasis"}
+  ],
+  "groups": [
+    {"id": "semantic_authority_group", "label": "정본 Release → 전체 Read-back → Core Gold", "lane": "semantic_release_lane", "fromCol": 2, "toCol": 3, "variant": "security"},
+    {"id": "graph_sidecar_group", "label": "단방향 Batch 투영 → 정합성·OFF/ON·fallback", "lane": "graph_extension_lane", "fromCol": 4, "toCol": 5, "variant": "dashed"},
+    {"id": "promotion_gate_group", "label": "P0 Core + P1 확장 시험 → 복구 훈련 → 승인 전환", "lane": "product_gate_lane", "fromCol": 3, "toCol": 5, "variant": "emphasis"}
+  ],
+  "mainPath": ["v43_candidate", "source_runtime_check", "trino_view_check", "semantic_manifest", "semantic_readback", "core_gold_e2e", "extension_e2e", "approved_cutover"],
+  "nodes": [
+    {"id": "v43_candidate", "lane": "data_release_lane", "col": 0, "type": "external", "label": "V4.3", "sublabel": "후보 데이터", "tag": "checksum·합성", "width": 60, "height": 56},
+    {"id": "source_runtime_check", "lane": "data_release_lane", "col": 1, "type": "security", "label": "원천 확인", "sublabel": "38 Table·권한", "width": 60, "height": 56},
+    {"id": "trino_view_check", "lane": "data_release_lane", "col": 2, "type": "backend", "label": "Trino", "sublabel": "5개·13 View", "width": 60, "height": 56},
+
+    {"id": "semantic_manifest", "lane": "semantic_release_lane", "col": 2, "type": "database", "label": "의미 정본", "sublabel": "Snapshot·Registry", "tag": "Rule·Policy", "width": 70, "height": 56},
+    {"id": "semantic_readback", "lane": "semantic_release_lane", "col": 3, "type": "security", "label": "정본 확인", "sublabel": "version·checksum", "tag": "전체 관계", "width": 66, "height": 56},
+
+    {"id": "batch_projection", "lane": "graph_extension_lane", "col": 4, "type": "backend", "label": "Batch 투영", "sublabel": "stable ID·멱등", "tag": "정본→Graph", "width": 76, "height": 56},
+    {"id": "graph_off_on", "lane": "graph_extension_lane", "col": 5, "type": "cloud", "label": "Graph 검사", "sublabel": "정합성·OFF/ON", "tag": "장애→Registry", "width": 76, "height": 58},
+
+    {"id": "core_gold_e2e", "lane": "product_gate_lane", "col": 3, "type": "security", "label": "P0 Core", "sublabel": "Gold·보안", "tag": "대화·Report", "width": 60, "height": 56},
+    {"id": "extension_e2e", "lane": "product_gate_lane", "col": 4, "type": "backend", "label": "P1 확장", "sublabel": "MCP·3 Agent", "tag": "병렬·재계획", "width": 60, "height": 56},
+    {"id": "approved_cutover", "lane": "product_gate_lane", "col": 5, "type": "backend", "label": "전환", "sublabel": "복구·승인", "tag": "실패→rollback", "width": 68, "height": 58}
+  ],
+  "edges": [
+    {"id": "v34_candidate_to_runtime", "from": "v43_candidate", "to": "source_runtime_check", "variant": "emphasis", "role": "main"},
+    {"id": "v34_runtime_to_trino", "from": "source_runtime_check", "to": "trino_view_check", "variant": "security", "role": "main", "fromSide": "top", "toSide": "top", "route": "up-channel", "channelY": 70},
+    {"id": "v34_trino_to_semantic", "from": "trino_view_check", "to": "semantic_manifest", "variant": "security", "role": "main", "fromSide": "bottom", "toSide": "top", "route": "drop"},
+    {"id": "v34_manifest_to_readback", "from": "semantic_manifest", "to": "semantic_readback", "variant": "security", "role": "main"},
+    {"id": "v34_readback_to_core", "from": "semantic_readback", "to": "core_gold_e2e", "variant": "security", "role": "main", "fromSide": "bottom", "toSide": "top", "route": "drop"},
+    {"id": "v34_core_to_extension", "from": "core_gold_e2e", "to": "extension_e2e", "variant": "emphasis", "role": "main", "fromSide": "top", "toSide": "top", "route": "up-channel", "channelY": 430},
+    {"id": "v34_extension_to_cutover", "from": "extension_e2e", "to": "approved_cutover", "variant": "security", "role": "main"},
+
+    {"id": "v34_readback_to_projection", "from": "semantic_readback", "to": "batch_projection", "variant": "dashed", "role": "branch", "fromSide": "right", "toSide": "top", "via": [[520, 243], [520, 315], [500, 315]]},
+    {"id": "v34_projection_to_off_on", "from": "batch_projection", "to": "graph_off_on", "variant": "dashed", "role": "branch"},
+    {"id": "v34_off_on_to_cutover", "from": "graph_off_on", "to": "approved_cutover", "variant": "dashed", "role": "return", "fromSide": "bottom", "toSide": "top", "route": "drop"}
+  ],
+  "cards": []
+}

@@ -81,6 +81,30 @@ jobs:
           --profile full
           --profile semantic-search
           config --quiet
+      # override 파일은 텍스트 assert만으로는 병합 실패를 잡지 못한다. 실제 전개까지
+      # 확인해야 root compose 변경이 override의 service·env 이름을 깨뜨린 경우가 드러난다.
+      - name: Validate app-postgres override merge
+        run: >-
+          docker compose
+          --env-file infrastructure/database/.env.example
+          -f compose.yml
+          -f compose.app-postgres.override.yml
+          --profile full
+          config --quiet
+      # start.ps1의 Catalog stage가 실제로 결합하는 조합이다. ingestion fragment는 다른
+      # 어떤 CI 단계에서도 전개되지 않으므로 여기서만 병합 계약이 검증된다.
+      - name: Validate metadata-ingestion catalog merge
+        env:
+          SEMANTIC_PRODUCER_BUILD_CONTEXT: ${{ github.workspace }}
+        run: >-
+          docker compose
+          --env-file infrastructure/database/.env.example
+          -f infrastructure/database/compose.yml
+          -f infrastructure/database/datahub/compose.consumer.yml
+          -f infrastructure/database/datahub/compose.ingestion.yml
+          --profile full
+          --profile metadata-ingestion
+          config --quiet
 
   quality:
     if: always()

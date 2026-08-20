@@ -29,6 +29,7 @@ export { MARKDOWN_INSERT_COMMANDS, MarkdownBlockEditor } from "./MarkdownBlockEd
 /** 블록·통화·template 제어기를 재노출한다. */
 export {
   ReportBlockMenu,
+  ReportBlockSettings,
   ReportCurrencyControl,
   ReportTemplateTile,
 } from "./ReportBlockControls";
@@ -40,6 +41,8 @@ export { ReportDocumentView } from "./ReportDocumentView";
 export { ReportEditorCanvas } from "./ReportEditorCanvas";
 /** editor toolbar 컴포넌트를 재노출한다. */
 export { ReportEditorToolbar } from "./ReportEditorToolbar";
+/** 선택 블록 속성과 Artifact lineage 패널을 재노출한다. */
+export { ReportPropertiesPanel } from "./ReportPropertiesPanel";
 /** 보고서 목록 화면 컴포넌트를 재노출한다. */
 export { ReportListView } from "./ReportListView";
 /** 실행·schedule 운영 패널을 재노출한다. */

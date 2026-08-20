@@ -101,7 +101,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(report_api, "_router", return_value=router):
             response = await report_api.get_report_artifact(
-                "definition-1", 1, evidence["artifact_id"], context(Role.HOTEL_ANALYST)
+                "definition-1", 1, evidence["artifact_id"], context(Role.ANALYST)
             )
 
         validated = ReportArtifactResponse.model_validate(response)
@@ -220,7 +220,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         )
         with patch.object(report_api, "_router", return_value=router):
             created = await report_api.create_draft_from_analysis_artifact(
-                payload, context(Role.HOTEL_ANALYST)
+                payload, context(Role.ANALYST)
             )
 
         self.assertEqual("draft", created["status"])
@@ -260,7 +260,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                 "write_pdf": lambda self, **kwargs: b"%PDF-1.7\naggregate",
             },
         )
-        from app.services.report_document import approve_report_document
+        from app.services.report.document import approve_report_document
 
         with patch.dict(sys.modules, {"weasyprint": SimpleNamespace(HTML=fake_html)}):
             approved = await approve_report_document(
@@ -278,12 +278,13 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(report_api, "_router", return_value=router), self.assertRaises(HTTPException) as missing:
             await report_api.create_draft_from_analysis_artifact(
                 payload.model_copy(update={"artifact_id": uuid4()}),
-                context(Role.HOTEL_ANALYST),
+                context(Role.ANALYST),
             )
         self.assertEqual(404, missing.exception.status_code)
 
     def test_aggregate_artifact_block_is_an_additive_api_type(self):
         payload = ReplaceReportBlocksRequest.model_validate({
+            "title": "Analysis Artifact Review",
             "orientation": "landscape",
             "currency_display_unit": "billion",
             "blocks": [{
@@ -299,6 +300,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         }]})
 
         self.assertEqual("artifact", payload.blocks[0].type)
+        self.assertEqual("Analysis Artifact Review", payload.title)
         self.assertEqual("landscape", payload.orientation)
         self.assertEqual("billion", payload.currency_display_unit)
         with self.assertRaises(ValidationError):
@@ -310,14 +312,14 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         dependency = signature(report_api.report_admin_context).parameters["context"]
         self.assertIn("analysis_context", repr(dependency.annotation))
         self.assertEqual(Role.REPORT_ADMIN, report_api.report_admin_context(context()).role)
-        for role in (Role.HOTEL_ANALYST, Role.DATA_ADMIN):
+        for role in (Role.ANALYST, Role.DATA_ADMIN):
             with self.assertRaises(HTTPException) as denied:
                 report_api.report_admin_context(context(role))
             self.assertEqual(403, denied.exception.status_code)
 
     def test_report_repository_scope_follows_authenticated_role(self):
         for role, manage_all in (
-            (Role.HOTEL_ANALYST, False),
+            (Role.ANALYST, False),
             (Role.REPORT_ADMIN, True),
         ):
             with self.subTest(role=role), patch.dict(
@@ -425,19 +427,22 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
 
             command_payload = {
                 "definition_id": "report-1", "version": 1,
-                "as_of": approved_at, "idempotency_key": "manual-1",
+                "idempotency_key": "manual-1",
             }
             command = await report_api.create_manual_run_command(
                 CreateManualRunRequest.model_validate(command_payload), report_context
             )
             self.assertEqual("queued", command["status"])
+            self.assertEqual(
+                report_context.as_of.isoformat(), command["as_of"].split("T", 1)[0]
+            )
             self.assertNotIn("run_id", command)
             with self.assertRaises(ValidationError):
                 CreateManualRunRequest.model_validate(
                     {**command_payload, "idempotency_key": " "}
                 )
             for forbidden in (
-                "command_id", "run_id", "status", "policy_version", "context_hash",
+                "as_of", "command_id", "run_id", "status", "policy_version", "context_hash",
                 "watermark", "blocks", "result",
             ):
                 with self.subTest(forbidden=forbidden):
@@ -555,7 +560,7 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_display_settings_survive_reload_and_immutable_pdf_approval(self):
         from app.adapters.report_repository import PostgresReportRepository
-        from app.services.report_document import approve_report_document
+        from app.services.report.document import approve_report_document
 
         database_url = os.environ["REPORT_DATABASE_URL"]
         repository = PostgresReportRepository(
@@ -585,6 +590,7 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
             definition_id,
             1,
             (block,),
+            title="제목·설정 영속화 검증 보고서",
             orientation="landscape",
             currency_display_unit="million",
         )
@@ -595,6 +601,8 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(("landscape", "million"), (
             reloaded.orientation, reloaded.currency_display_unit
         ))
+        self.assertEqual("제목·설정 영속화 검증 보고서", saved.title)
+        self.assertEqual(saved.title, reloaded.title)
 
         approved = await approve_report_document(
             repository,

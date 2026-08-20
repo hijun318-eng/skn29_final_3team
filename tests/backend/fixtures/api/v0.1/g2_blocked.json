@@ -1,6 +1,7 @@
 {
   "data": {
     "artifact": null,
+    "disambiguation_options": [],
     "gates": {
       "g1_required": true,
       "g2_required": true
@@ -66,6 +67,7 @@
   "error": {
     "clarification_type": null,
     "code": "SQL_POLICY_BLOCKED",
+    "disambiguation_options": [],
     "message": "허용된 조회 범위에서 질문을 수정해 주세요.",
     "missing_requirements": [],
     "required_action": "MODIFY_REQUEST",

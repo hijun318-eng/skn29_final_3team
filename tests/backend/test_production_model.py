@@ -10,7 +10,11 @@ import httpx
 import pytest
 
 from app.adapters.contract_model import ContractModelAdapter, _openai_payload, _qwen_payload
-from app.adapters.model_schemas import canonical_model_input, serving_schema
+from app.adapters.model_schemas import (
+    canonical_model_input,
+    serving_schema,
+    sql_only_serving_schema,
+)
 from app.adapters.model_transport import openai_transport
 from src.ai.schema import ContractError, validate_payload
 from src.modelops.runtime import _TRANSPORT_META_KEY
@@ -145,6 +149,21 @@ def test_provider_input_uses_the_six_runtime_contracts(catalog: str) -> None:
     }
     assert all("value" not in item for item in model_input["parameter_contract"]["parameters"])
     assert set(serving_schema("node2")["required"]) == set(_node2_response(catalog))
+
+
+def test_sql_only_schema_is_dormant_while_active_provider_schema_remains_legacy() -> None:
+    active = serving_schema("node2")
+    sql_only = sql_only_serving_schema("node2")
+
+    assert set(active["required"]) == {
+        "sql",
+        "used_assets",
+        "used_columns",
+        "used_joins",
+        "used_metrics",
+    }
+    assert sql_only["required"] == ["sql"]
+    assert set(sql_only["properties"]) == {"sql"}
 
 
 def test_openai_and_qwen_use_identical_canonical_messages() -> None:
@@ -284,6 +303,35 @@ class ProductionModelAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["orbit.ops.event_fact"], plan["declared_assets"])
         self.assertEqual(["governed_amount"], plan["declared_metrics"])
         self.assertNotIn("references", plan)
+
+    async def test_contract_adapter_accepts_sql_only_without_declared_lineage(self) -> None:
+        class ProgrammableModel:
+            last_trace = {"model_version": "runtime-model"}
+
+            async def generate(self, node, payload):
+                if node != "node2":
+                    raise AssertionError(f"unexpected node: {node}")
+                validate_payload("node2_request", canonical_model_input(node, payload))
+                return {"sql": _node2_response()["sql"]}
+
+        adapter = ContractModelAdapter(ProgrammableModel())
+        plan = await adapter.generate(
+            "node2",
+            {
+                "question": _node2_payload()["normalized_question"],
+                "structured_request": _node2_payload()["structured_request"],
+                "request_id": "request-arbitrary-sql-only",
+                "package": SimpleNamespace(runtime_contracts=_contracts()),
+                "context": SimpleNamespace(),
+            },
+        )
+
+        self.assertEqual(_node2_response()["sql"], plan["sql"])
+        self.assertEqual("runtime-model", plan["model_version"])
+        self.assertNotIn("declared_assets", plan)
+        self.assertNotIn("declared_columns", plan)
+        self.assertNotIn("declared_joins", plan)
+        self.assertNotIn("declared_metrics", plan)
 
     async def test_full_stack_validates_all_analysis_nodes_and_separates_trace_metadata(self) -> None:
         seen_wire_requests: dict[str, dict] = {}

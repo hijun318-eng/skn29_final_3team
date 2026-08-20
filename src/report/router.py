@@ -190,7 +190,7 @@ class ReportRouter:
         payload: dict[str, Any],
     ) -> dict[str, Any]:
         """초안 블록 전체와 선택적 표시 설정을 검증·교체하고 입력·미존재·충돌 오류를 구분한다."""
-        extra = set(payload) - {"blocks", "orientation", "currency_display_unit"}
+        extra = set(payload) - {"blocks", "title", "orientation", "currency_display_unit"}
         if extra:
             raise ReportRouteError(422, f"허용되지 않은 필드: {', '.join(sorted(extra))}")
         try:
@@ -199,6 +199,7 @@ class ReportRouter:
                     definition_id,
                     version,
                     self._blocks(payload["blocks"]),
+                    title=payload.get("title"),
                     orientation=payload.get("orientation"),
                     currency_display_unit=payload.get("currency_display_unit"),
                 ))

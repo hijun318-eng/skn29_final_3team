@@ -25,7 +25,7 @@ from app.contracts import (
     OPENAPI_DOCUMENT_VERSION,
     response_meta,
 )
-from app.services.report_scheduler import report_scheduler
+from app.services.report.scheduler import report_scheduler
 
 
 _HTTP_ERROR_MAP = {

@@ -20,9 +20,11 @@ from src.data.governance_contract import (  # noqa: E402
     canonical_json,
     catalog_hash,
     datahub_schema_sha1,
+    dataset_runtime_property_keys,
     dataset_runtime_property_projection,
     glossary_hash,
     release_manifest,
+    runtime_governance_version,
     shared_semantic_hash,
     term_runtime_property_projection,
     trino_schema_hash,
@@ -48,7 +50,7 @@ def test_shared_schema_vectors_cover_order_type_nullability_and_table_type():
     manifest_asset = {
         item["urn"]: item for item in release_manifest(bundle)["datasets"]
     }[asset["urn"]]
-    assert manifest_asset["schema_sha1"] == datahub_schema_sha1(asset)
+    assert manifest_asset["schema_sha1"] == asset["datahub_schema_hash"]
     assert manifest_asset["trino_schema_sha256"] == trino_schema_hash(asset)
     for field, replacement in (
         ("table_type", "VIEW"),
@@ -60,6 +62,21 @@ def test_shared_schema_vectors_cover_order_type_nullability_and_table_type():
         target = changed if field == "table_type" else changed["columns"][0]
         target[field] = replacement
         assert trino_schema_hash(changed) != trino_schema_hash(asset)
+
+
+def test_datahub_and_trino_schema_authorities_are_independent():
+    """Connector schema hash와 Trino typed fingerprint를 서로 대체하지 않는다."""
+
+    bundle = arbitrary_bundle()
+    asset = bundle["schema_context"]["assets"][0]
+    changed = deepcopy(bundle)
+    changed_asset = changed["schema_context"]["assets"][0]
+    changed_asset["datahub_schema_hash"] = "connector-owned-schema-hash"
+
+    original_manifest = release_manifest(bundle)["datasets"][0]
+    changed_manifest = release_manifest(changed)["datasets"][0]
+    assert changed_manifest["schema_sha1"] != original_manifest["schema_sha1"]
+    assert changed_manifest["trino_schema_sha256"] == original_manifest["trino_schema_sha256"]
 
 
 def test_glossary_set_order_is_not_hash_authoritative():
@@ -77,9 +94,17 @@ def test_runtime_property_projections_have_one_exact_shared_shape():
     term = next(item for item in bundle["metric_terms"] if item["id"] == metric["id"])
     dataset_properties = dataset_runtime_property_projection(bundle, asset, manifest)
     term_properties = term_runtime_property_projection(term, metric, manifest)
-    assert set(dataset_properties) == DATASET_RUNTIME_PROPERTY_KEYS
+    assert set(dataset_properties) == dataset_runtime_property_keys(
+        runtime_governance_version(bundle)
+    )
     assert set(term_properties) == TERM_RUNTIME_PROPERTY_KEYS
     assert "value" not in canonical_json(dataset_properties)
+
+
+def test_default_dataset_runtime_contract_is_v2():
+    assert DATASET_RUNTIME_PROPERTY_KEYS == dataset_runtime_property_keys(
+        contract.RUNTIME_GOVERNANCE_VERSION_V2
+    )
 
 
 def test_dataset_metric_projection_is_independent_of_policy_input_order():

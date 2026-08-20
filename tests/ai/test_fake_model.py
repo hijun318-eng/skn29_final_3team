@@ -28,10 +28,20 @@ class ContractFakeModelTests(unittest.TestCase):
         )
 
     def test_response_schema_is_validated(self):
-        adapter = ContractFakeModelAdapter({"sql": "SELECT 1 LIMIT 1"})
+        partial_lineage = {
+            "sql": "SELECT 1 LIMIT 1",
+            "used_assets": ["arbitrary_catalog.semantic.fact"],
+        }
+        adapter = ContractFakeModelAdapter(partial_lineage)
 
         with self.assertRaises(ContractError):
             adapter.generate("node2", VALID_PAYLOADS["node2_request"])
+
+        sql_only = ContractFakeModelAdapter({"sql": "SELECT 1 LIMIT 1"})
+        self.assertEqual(
+            {"sql": "SELECT 1 LIMIT 1"},
+            sql_only.generate("node2", VALID_PAYLOADS["node2_request"]),
+        )
 
     def test_callable_queue_receives_a_copy_and_returns_an_independent_copy(self):
         observed = {}

@@ -24,13 +24,14 @@ BACKEND = Path(__file__).resolve().parents[3] / "app" / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from app.services.context_builder import (  # noqa: E402
+from app.services.context import (  # noqa: E402
     ContextAsset,
     ContextMetric,
     ContextPackage,
+    GovernedJoin,
+    enrich_context_package,
 )
-from app.services.pipeline_context_contract import GovernedJoin, enrich_context_package  # noqa: E402
-from app.services.pipeline_sql_guard import validate_parsed_semantics  # noqa: E402
+from app.services.sql_guard import validate_parsed_semantics  # noqa: E402
 
 
 BINDING_MANIFEST_VERSION = "SERVER-BINDINGS-v1"
@@ -214,7 +215,7 @@ def validate_output(
         raise PlanContractError("CONTEXT_SCHEMA_INVALID", str(error)) from error
     assert checked.expression is not None
     plan = None
-    if node == "node2":
+    if node == "node2" and "used_assets" in output:
         plan = {
             "declared_assets": output["used_assets"],
             "declared_columns": output["used_columns"],

@@ -27,7 +27,7 @@ export function SessionLogin({ onAuthenticated, notice = "", embedded = false })
     setError("");
     try {
       const session = await createAnalysisClient(fetch).login(nextUsername, password);
-      onAuthenticated({ role: session.role });
+      onAuthenticated(session);
     } catch (failure) {
       setError(loginError(failure));
     } finally {

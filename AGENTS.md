@@ -40,13 +40,11 @@ Answervice는 사용자의 자연어 질문을 승인된 업무 정의와 데이
 - 기존 port·adapter·service로 충분하면 같은 책임의 추상화나 의존성을 추가하지 않는다.
 - 근거 없이 microservice, 범용 agent framework, 별도 queue를 도입하지 않는다.
 
-## 파일 크기와 분리
+## 책임 분리
 
-- production source의 기본 상한은 파일당 500줄이다.
-- 501~800줄은 실제로 하나의 응집된 책임이며 분리가 계약을 더 불명확하게 만들 때만 허용한다.
-- 예외 파일은 첫 12줄 안에 `architecture-max-lines: N -- 구체적인 한국어 사유`를 기록하고 `scripts/lint_architectural_invariants.py`를 통과해야 한다.
-- 800줄을 넘는 production source는 예외 없이 책임별 모듈·port·adapter·service·component로 분리한다.
-- 주석을 추가한다는 이유로 상한을 넘기지 않는다. 중복 설명을 줄이거나 책임을 분리한다.
+- 파일 줄 수를 고정 상한으로 검사하지 않는다.
+- 파일 크기와 무관하게 UI, API, 도메인 규칙, transport, persistence, policy의 책임 경계와 응집도를 기준으로 분리한다.
+- 단순히 줄 수를 줄이기 위한 무의미한 위임 모듈이나 중복 추상화는 만들지 않는다.
 
 ## 동적 데이터·AI 계약
 

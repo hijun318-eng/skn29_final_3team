@@ -271,7 +271,7 @@ NODE2_RESPONSE = arbitrary_node2_response("quartz")
 VALID_PAYLOADS = {
     "node1_request": {
         "question": "이번 달 객실 매출을 보여줘",
-        "role_hint": "hotel_analyst",
+        "role_hint": "analyst",
         "as_of": "2026-07-30T12:00:00+09:00",
         "timezone": "Asia/Seoul",
         "calendar_id": "gregorian-kr",
@@ -286,6 +286,7 @@ VALID_PAYLOADS = {
         "metric_candidates": ["room_revenue"],
         "selected_metric_id": "room_revenue",
         "dimension_candidates": [],
+        "filter_candidates": [],
         "period_candidates": [
             {
                 "start": "2026-07-01T00:00:00+09:00",
@@ -293,6 +294,7 @@ VALID_PAYLOADS = {
                 "source_text": "이번 달",
             }
         ],
+        "period_relationship": "single",
         "ambiguity": {
             "is_ambiguous": False,
             "reasons": [],
@@ -352,7 +354,7 @@ VALID_PAYLOADS = {
 
 class ContractTests(unittest.TestCase):
     def test_schema_version_is_explicit(self):
-        self.assertEqual(schema_version(), "MODEL-v1.3.0")
+        self.assertEqual(schema_version(), "MODEL-v1.12.0")
 
     def test_valid_examples(self):
         for definition, payload in VALID_PAYLOADS.items():
@@ -433,7 +435,7 @@ class ContractTests(unittest.TestCase):
                 with self.assertRaises(ContractError):
                     validate_payload("node2_request", invalid)
 
-    def test_node2_metric_source_is_column_only_until_formula_execution_is_versioned(self):
+    def test_node2_metric_source_rejects_ungoverned_kinds(self):
         formula = copy.deepcopy(NODE2_REQUEST)
         formula["metric_rules"][0]["source"] = {
             "kind": "formula",
@@ -459,6 +461,88 @@ class ContractTests(unittest.TestCase):
             with self.subTest(payload=invalid):
                 with self.assertRaises(ContractError):
                     validate_payload("node2_request", invalid)
+
+    def test_node2_metric_source_accepts_governed_ratio_shape(self):
+        namespace = "quartz"
+        numerator_id = f"{namespace}_measure"
+        with_ratio = copy.deepcopy(NODE2_REQUEST)
+        with_ratio["metric_rules"].append(
+            {
+                "id": f"{namespace}_denominator",
+                "source": {
+                    "kind": "column",
+                    "field": qualified_field(
+                        f"{namespace}_catalog.semantic.fact_observations", "amount"
+                    ),
+                },
+                "aggregation": "count",
+                "result_field": "resolved_denominator",
+                "unit": "arbitrary_unit",
+                "time_field": qualified_field(
+                    f"{namespace}_catalog.semantic.fact_observations", "observed_at"
+                ),
+                "dimensions": [],
+                "required_filters": [],
+            }
+        )
+        with_ratio["metric_rules"].append(
+            {
+                "id": f"{namespace}_ratio",
+                "source": {
+                    "kind": "ratio",
+                    "numerator_metric_id": numerator_id,
+                    "denominator_metric_id": f"{namespace}_denominator",
+                    "zero_policy": "null_on_zero_denominator",
+                },
+                "aggregation": "ratio",
+                "result_field": "resolved_ratio",
+                "unit": "arbitrary_unit",
+                "time_field": None,
+                "dimensions": [],
+                "required_filters": [],
+            }
+        )
+        validate_payload("node2_request", with_ratio)
+
+        missing_denominator = copy.deepcopy(with_ratio)
+        missing_denominator["metric_rules"][-1]["source"].pop("denominator_metric_id")
+        unsupported_zero_policy = copy.deepcopy(with_ratio)
+        unsupported_zero_policy["metric_rules"][-1]["source"]["zero_policy"] = "zero_fill"
+        bad_aggregation = copy.deepcopy(with_ratio)
+        bad_aggregation["metric_rules"][-1]["aggregation"] = "divide"
+        for invalid in (missing_denominator, unsupported_zero_policy, bad_aggregation):
+            with self.subTest(payload=invalid):
+                with self.assertRaises(ContractError):
+                    validate_payload("node2_request", invalid)
+
+    def test_node2_metric_source_accepts_governed_exists_aggregation(self):
+        namespace = "quartz"
+        with_exists = copy.deepcopy(NODE2_REQUEST)
+        with_exists["metric_rules"].append(
+            {
+                "id": f"{namespace}_exists",
+                "source": {
+                    "kind": "column",
+                    "field": qualified_field(
+                        f"{namespace}_catalog.semantic.fact_observations", "flagged_at"
+                    ),
+                },
+                "aggregation": "exists",
+                "result_field": "resolved_exists",
+                "unit": "boolean",
+                "time_field": qualified_field(
+                    f"{namespace}_catalog.semantic.fact_observations", "observed_at"
+                ),
+                "dimensions": [],
+                "required_filters": [],
+            }
+        )
+        validate_payload("node2_request", with_exists)
+
+        bad_aggregation = copy.deepcopy(with_exists)
+        bad_aggregation["metric_rules"][-1]["aggregation"] = "boolean"
+        with self.assertRaises(ContractError):
+            validate_payload("node2_request", bad_aggregation)
 
     def test_node2_join_graph_requires_declared_join_semantics(self):
         no_equality = copy.deepcopy(NODE2_REQUEST)
@@ -510,7 +594,7 @@ class ContractTests(unittest.TestCase):
                 with self.assertRaises(ContractError):
                     validate_payload("node2_request", invalid)
 
-    def test_node2_response_is_strict_provenance_only(self):
+    def test_node2_response_accepts_sql_only_or_complete_legacy_lineage(self):
         expected_fields = {
             "sql",
             "used_assets",
@@ -519,12 +603,20 @@ class ContractTests(unittest.TestCase):
             "used_metrics",
         }
         self.assertEqual(set(NODE2_RESPONSE), expected_fields)
-        for field in expected_fields:
-            missing = copy.deepcopy(NODE2_RESPONSE)
-            missing.pop(field)
-            with self.subTest(missing=field):
+        validate_payload("node2_response", NODE2_RESPONSE)
+        validate_payload("node2_response", {"sql": NODE2_RESPONSE["sql"]})
+
+        missing_sql = copy.deepcopy(NODE2_RESPONSE)
+        missing_sql.pop("sql")
+        with self.assertRaises(ContractError):
+            validate_payload("node2_response", missing_sql)
+
+        for field in expected_fields - {"sql"}:
+            partial_lineage = copy.deepcopy(NODE2_RESPONSE)
+            partial_lineage.pop(field)
+            with self.subTest(partial_lineage=field):
                 with self.assertRaises(ContractError):
-                    validate_payload("node2_response", missing)
+                    validate_payload("node2_response", partial_lineage)
         for forbidden in ("references", "parameters", "model"):
             extra = copy.deepcopy(NODE2_RESPONSE)
             extra[forbidden] = []

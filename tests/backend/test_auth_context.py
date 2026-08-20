@@ -24,9 +24,10 @@ from app.auth import (  # noqa: E402
     authenticate_credentials,
     authenticate_token,
     issue_session_token,
+    require_active_subject_with_capability,
 )
 from app.context import ContextValidationError, analysis_context  # noqa: E402
-from app.contracts import CONTRACT_VERSION, ErrorCode, Role  # noqa: E402
+from app.contracts import CONTRACT_VERSION, Capability, ErrorCode, Role  # noqa: E402
 from tests.support.auth_dependencies import authenticate_injected_token  # noqa: E402
 
 
@@ -43,7 +44,7 @@ class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
         record: dict[str, object] = {
             "token_sha256": hashlib.sha256(token.encode("utf-8")).hexdigest(),
             "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "hotel_analyst",
+            "role": "analyst",
             "not_before": (self.now - timedelta(minutes=1)).isoformat(),
             "expires_at": (self.now + timedelta(minutes=1)).isoformat(),
         }
@@ -64,7 +65,7 @@ class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
             "password_hash": hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 210_000).hex(),
             "password_iterations": 210_000,
             "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "hotel_analyst",
+            "role": "analyst",
             "active": True,
         }
 
@@ -98,7 +99,32 @@ class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
         with patch.dict(os.environ, self.release_environment(), clear=False):
             principal = await authenticate_token("release-token", now=self.now)
         self.assertEqual(UUID("00000000-0000-0000-0000-000000000011"), principal.subject)
-        self.assertEqual(Role.HOTEL_ANALYST, principal.role)
+        self.assertEqual(Role.ANALYST, principal.role)
+
+    async def test_background_subject_reloads_platform_capability_from_account_store(self) -> None:
+        account = {**self.account(), "role": "platform_admin"}
+        self.write([account])
+        with patch.dict(os.environ, self.release_environment(), clear=False):
+            principal = await require_active_subject_with_capability(
+                UUID(str(account["subject"])),
+                Capability.RUN_ANALYSIS,
+                now=self.now,
+            )
+
+        self.assertEqual(Role.PLATFORM_ADMIN, principal.role)
+
+    async def test_background_subject_rejects_role_without_required_capability(self) -> None:
+        account = {**self.account(), "role": "report_admin"}
+        self.write([account])
+        with patch.dict(os.environ, self.release_environment(), clear=False):
+            with self.assertRaises(AuthenticationError) as denied:
+                await require_active_subject_with_capability(
+                    UUID(str(account["subject"])),
+                    Capability.RUN_ANALYSIS,
+                    now=self.now,
+                )
+
+        self.assertEqual(403, denied.exception.status_code)
 
     async def test_missing_unknown_expired_and_future_tokens_fail_with_401(self) -> None:
         cases = {

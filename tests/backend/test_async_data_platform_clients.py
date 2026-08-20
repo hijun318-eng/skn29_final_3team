@@ -201,6 +201,20 @@ class DataHubCatalogClientTests(unittest.IsolatedAsyncioTestCase):
 
 
 class TrinoAsyncClientTests(unittest.IsolatedAsyncioTestCase):
+    def test_typed_user_cancelled_payload_maps_to_cancelled(self) -> None:
+        with self.assertRaises(AdapterError) as raised:
+            TrinoAsyncClient._page({
+                "id": "query-1",
+                "stats": {"state": "FAILED"},
+                "error": {
+                    "errorName": "USER_CANCELED",
+                    "errorType": "USER_ERROR",
+                    "message": "upstream-localized-message",
+                },
+            })
+
+        self.assertEqual(AdapterErrorCode.CANCELLED, raised.exception.code)
+
     async def test_rejects_cross_origin_or_credentialed_next_uri(self) -> None:
         called = False
 

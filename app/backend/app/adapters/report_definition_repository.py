@@ -315,10 +315,11 @@ class ReportDefinitionRepositoryMixin:
         version: int,
         blocks: tuple[ReportBlock, ...],
         *,
+        title: str | None = None,
         orientation: str | None = None,
         currency_display_unit: str | None = None,
     ) -> ReportDefinitionVersion:
-        """draft blocks 변경을 현재 상태와 충돌 여부를 확인한 뒤 원자적으로 반영한다."""
+        """draft 제목·blocks 변경을 현재 상태와 충돌 여부를 확인한 뒤 원자적으로 반영한다."""
         definition_uuid = _uuid(definition_id, "definition_id")
         async with self._sessionmaker.begin() as session:
             status = (await session.execute(
@@ -346,7 +347,8 @@ class ReportDefinitionRepositoryMixin:
                 text(
                     """
                     UPDATE report_v1.report_definition_versions
-                    SET orientation = COALESCE(:orientation, orientation),
+                    SET title = COALESCE(:title, title),
+                        orientation = COALESCE(:orientation, orientation),
                         currency_display_unit = COALESCE(
                             :currency_display_unit, currency_display_unit
                         )
@@ -357,6 +359,7 @@ class ReportDefinitionRepositoryMixin:
                 {
                     "definition_id": definition_uuid,
                     "version": version,
+                    "title": title,
                     "orientation": orientation,
                     "currency_display_unit": currency_display_unit,
                 },

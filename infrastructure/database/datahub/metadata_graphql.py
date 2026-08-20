@@ -7,6 +7,10 @@ from typing import Any
 
 from metadata_aspects import iter_aspects
 from metadata_contract import PROPERTY_PREFIX
+from src.data.governance_contract import (
+    datahub_schema_readback_sha1,
+    metric_asset_fqns,
+)
 
 
 DATASET_QUERY = """
@@ -29,6 +33,9 @@ query PublishedDataset($urn: String!) {
         fieldPath nativeDataType nullable isPartOfKey description
         glossaryTerms { terms { term { urn } } }
       }
+    }
+    editableSchemaMetadata {
+      editableSchemaFieldInfo { fieldPath description }
     }
   }
 }
@@ -250,17 +257,17 @@ def _assert_dataset(
         not isinstance(schema, dict)
         or schema.get("name") != asset["schema_name"]
         or schema.get("version") != asset["schema_metadata_version"]
-        or schema.get("hash") != aspects["schemaMetadata"]["hash"]
     ):
         raise ValueError("DataHub base schema identity readback mismatch")
-    expected_terms = _field_terms(asset, metrics, terms)
     # WHY: pinned v1.7은 editableSchemaMetadata의 field glossary 연결을
     # schemaMetadata.fields.glossaryTerms에 투영하지 않는다. 컬럼별 exact mapping은
     # Rest.li aspect 검증이 담당하고 GraphQL은 dataset aggregate를 교차검증한다.
-    _assert_fields(schema.get("fields"), asset["columns"])
-    if _term_urns(value.get("glossaryTerms")) != {
-        urn for values in expected_terms.values() for urn in values
-    }:
+    if _assert_fields(schema.get("fields"), asset["columns"]) != asset["datahub_schema_hash"]:
+        raise ValueError("DataHub base schema fingerprint readback mismatch")
+    _assert_editable_descriptions(value.get("editableSchemaMetadata"), asset["columns"])
+    if _term_urns(value.get("glossaryTerms")) != _dataset_terms(
+        asset, metrics, terms
+    ):
         raise ValueError("DataHub dataset glossary association readback mismatch")
 
 
@@ -287,7 +294,7 @@ def _assert_term(
 def _assert_fields(
     value: object,
     columns: list[Mapping[str, Any]],
-) -> None:
+) -> str:
     if not isinstance(value, list):
         raise ValueError("DataHub base schema fields are missing")
     fields = {
@@ -297,27 +304,65 @@ def _assert_fields(
         raise ValueError("DataHub base schema field set mismatch")
     for column in columns:
         field = fields[column["name"]]
+        if not isinstance(field.get("nativeDataType"), str) or not field["nativeDataType"].strip():
+            raise ValueError(
+                f"DataHub schema field native type is missing: {column['name']}"
+            )
         for graph_name, contract_name in (
-            ("nativeDataType", "native_type"),
             ("nullable", "nullable"),
             ("isPartOfKey", "is_part_of_key"),
-            ("description", "description"),
         ):
             if field.get(graph_name) != column[contract_name]:
                 raise ValueError(f"DataHub schema field mismatch: {column['name']}.{graph_name}")
+    return datahub_schema_readback_sha1(
+        [
+            {
+                "ordinal_position": ordinal,
+                "name": field["fieldPath"],
+                "native_type": field["nativeDataType"].strip(),
+                "nullable": field["nullable"],
+            }
+            for ordinal, field in enumerate(value, start=1)
+        ]
+    )
 
 
-def _field_terms(
+def _assert_editable_descriptions(
+    value: object,
+    columns: list[Mapping[str, Any]],
+) -> None:
+    if not isinstance(value, dict) or not isinstance(
+        value.get("editableSchemaFieldInfo"), list
+    ):
+        raise ValueError("DataHub editable schema fields are missing")
+    fields = value["editableSchemaFieldInfo"]
+    by_name = {
+        field.get("fieldPath"): field for field in fields if isinstance(field, dict)
+    }
+    if len(by_name) != len(fields) or set(by_name) != {
+        column["name"] for column in columns
+    }:
+        raise ValueError("DataHub editable schema field set mismatch")
+    for column in columns:
+        if by_name[column["name"]].get("description") != column["description"]:
+            raise ValueError(
+                f"DataHub editable field description mismatch: {column['name']}"
+            )
+
+
+def _dataset_terms(
     asset: Mapping[str, Any],
     metrics: list[Mapping[str, Any]],
     terms: Mapping[str, Mapping[str, Any]],
-) -> dict[str, set[str]]:
-    result: dict[str, set[str]] = {}
-    for metric in metrics:
-        source = metric["source"]["field"]
-        if source["asset_fqn"] == asset["fqn"]:
-            result.setdefault(source["column"], set()).add(terms[metric["id"]]["urn"])
-    return result
+) -> set[str]:
+    """직접 column metric과 operand로 연결된 derived ratio term의 dataset association을 계산한다."""
+
+    metrics_by_id = {str(metric["id"]): metric for metric in metrics}
+    return {
+        str(terms[str(metric["id"])]["urn"])
+        for metric in metrics
+        if asset["fqn"] in metric_asset_fqns(metric, metrics_by_id)
+    }
 
 
 def _assert_custom_properties(value: object, expected: Mapping[str, str]) -> None:

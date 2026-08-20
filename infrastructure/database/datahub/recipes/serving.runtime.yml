@@ -18,10 +18,19 @@ source:
     # Trino가 모든 catalog에 노출하는 system schema는 업무 dataset이 아니다.
     # 특정 release schema를 고정하지 않고 system metadata만 일반 규칙으로 제외한다.
     schema_pattern:
-      deny: ["^information_schema$"]
+      deny: ["^(information_schema|system)$"]
     include_view_lineage: true
     include_view_column_lineage: true
     ingest_lineage_to_connectors: true
+transformers:
+  # DataHub 1.7 SQL source는 incremental_properties를 노출하지 않는다. PATCH semantics는
+  # 의미 custom property를 보존하면서 connector가 소유한 schemaMetadata만 갱신하므로,
+  # schema drift는 read-back 시점에 그대로 의미 release를 무효화한다.
+  - type: simple_add_dataset_properties
+    config:
+      semantics: PATCH
+      replace_existing: false
+      properties: {}
 sink:
   type: datahub-rest
   config:

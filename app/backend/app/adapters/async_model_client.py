@@ -146,6 +146,9 @@ class AsyncProductionModelClient(ProductionModelClient):
                 async with asyncio.timeout(remaining):
                     response = await self._transport(node, wire_payload, remaining)
                 transport_meta = response.pop(_TRANSPORT_META_KEY, {})
+                if node == "node1" and isinstance(response, dict):
+                    if response.get("filter_candidates") is None:
+                        response["filter_candidates"] = []
                 validate_payload(response_definition(node), response)
                 await self._record_success()
                 self.last_trace = {

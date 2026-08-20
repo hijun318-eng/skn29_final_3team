@@ -210,7 +210,7 @@ export function createReportClient(
         await send(`/reports/runs/${encodeURIComponent(runId)}`),
       ));
     },
-    async createManualRun(payload: { definition_id: string; version: number; as_of: string; idempotency_key: string }) {
+    async createManualRun(payload: { definition_id: string; version: number; idempotency_key: string }) {
       const response = await parse<ManualRunCommandResponse>(await send("/reports/runs/manual", "POST", payload));
       assertReportContractVersion(response.contract_version);
       if (!["queued", "success", "partial", "failed"].includes(response.status)) throw new Error(`Unexpected manual command status: ${response.status}`);

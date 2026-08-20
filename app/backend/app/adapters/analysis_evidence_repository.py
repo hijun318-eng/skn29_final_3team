@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -14,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.adapters.analysis_repository_common import AnalysisRepositoryUnavailable, _hash
 from app.analysis_contracts import ANALYSIS_PERSISTENCE_VERSION
 from app.contracts import AnalysisResponse, AnalysisStatus
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class AnalysisEvidenceRepositoryMixin:
@@ -38,6 +41,7 @@ class AnalysisEvidenceRepositoryMixin:
         """
         status = {
             AnalysisStatus.BLOCKED: "DENIED",
+            AnalysisStatus.CLARIFICATION_REQUIRED: "CLARIFYING",
         }.get(response.data.status, response.data.status.value)
         error_type = {
             "ACCESS_DENIED": "PERMISSION",
@@ -96,6 +100,7 @@ class AnalysisEvidenceRepositoryMixin:
                     artifact_id,
                 )
         except SQLAlchemyError as error:
+            logger.error("finish_run DB error: %s", error, exc_info=True)
             raise AnalysisRepositoryUnavailable("Analysis 실행 결과를 저장할 수 없습니다.") from error
 
     async def fail_run(self, request_id: UUID, error_type: str = "UNSUPPORTED") -> None:

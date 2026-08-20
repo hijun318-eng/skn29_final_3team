@@ -144,8 +144,13 @@ import type {
   readonly updateBlock: (blockId: string, change: Partial<DraftReportBlock>, record?: boolean) => void;
   readonly moveBlock: (blockId: string, deltaX: number, deltaY: number) => void;
   readonly resizeBlock: (blockId: string, width: number, height?: number) => void;
+  readonly compactLayout: () => boolean;
   readonly setBlockSetting: (blockId: string, name: string, value: unknown) => void;
-  readonly addTemplateBlock: (templateId: string, position?: DraftInsertPosition | null) => boolean;
+  readonly addTemplateBlock: (
+    templateId: string,
+    position?: DraftInsertPosition | null,
+    settings?: { readonly chartType?: string },
+  ) => boolean;
   readonly insertArtifact: (artifactId: string, position?: DraftInsertPosition | null) => boolean;
   readonly addWholeArtifact: (artifactId: string, position?: DraftInsertPosition | null) => boolean;
   readonly duplicateBlock: (blockId: string) => void;

@@ -9,7 +9,7 @@ from app.contracts import Role
 
 
 INJECTED_PRINCIPALS = {
-    "runtime-test-token": Principal(UUID(int=1), Role.HOTEL_ANALYST),
+    "runtime-test-token": Principal(UUID(int=1), Role.ANALYST),
     "runtime-report-admin-token": Principal(UUID(int=2), Role.REPORT_ADMIN),
     "runtime-data-admin-token": Principal(UUID(int=3), Role.DATA_ADMIN),
 }

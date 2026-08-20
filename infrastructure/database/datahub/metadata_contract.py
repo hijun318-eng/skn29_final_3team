@@ -17,23 +17,26 @@ from metadata_contract_primitives import (
     unique_texts as _unique_texts,
     urn as _urn,
 )
+from metric_contract import validate_metrics
+from metric_governance_contract import (
+    validate_metric_terms,
+    validate_v2_metric_release,
+)
 
 from src.data.governance_contract import (
     RUNTIME_GOVERNANCE_VERSION as CONTRACT_VERSION,
     validate_governance_reference_coverage,
 )
+from src.data.entitlement_roles import validate_entitlement_roles
 
 
 PROPERTY_PREFIX = "answervice."
 _COLUMN_ROLES = {"identifier", "dimension", "measure", "time", "attribute"}
 _GRAIN_KINDS = {"row", "event", "periodic", "aggregate"}
-_AGGREGATIONS = {"sum", "count", "count_distinct", "min", "max", "average", "none"}
 _JOIN_KINDS = {"inner", "left", "right", "full"}
 _CARDINALITIES = {"one_to_one", "many_to_one", "one_to_many", "many_to_many"}
-_FILTER_OPERATORS = {"eq", "neq", "gt", "gte", "lt", "lte"}
 _PARAMETER_TYPES = {"string", "boolean", "number", "date", "timestamp"}
 _PARAMETER_SCOPES = {"time", "filter", "limit"}
-_REDUCTIONS = {"sum", "min", "max", "average", "scalar"}
 _TIME_BUCKETS = {"none", "day", "week", "month", "quarter", "year"}
 _TIMEZONE_MODES = {"preserve", "context"}
 _DATASET_ORIGINS = {"DEV", "TEST", "QA", "UAT", "EI", "PRE", "STG", "NON_PROD", "PROD", "CORP", "RVW", "PRD", "TST", "SIT", "SBX", "SANDBOX", "CERT"}
@@ -75,13 +78,22 @@ def validate_bundle(bundle: Mapping[str, Any]) -> None:
     _reject_runtime_values(bundle)
     governance = _validate_governance_entities(bundle["governance_entities"])
     assets = _validate_schema_context(bundle["schema_context"], governance)
+    asset_domains = {
+        asset["fqn"]: asset["domain_urn"]
+        for asset in bundle["schema_context"]["assets"]
+    }
     parameters = _validate_parameters(bundle["parameter_contract"])
-    metrics = _validate_metrics(bundle["metric_rules"], assets, parameters)
-    _validate_metric_terms(bundle["metric_terms"], metrics, governance)
+    metrics, metric_domains = validate_metrics(
+        bundle["metric_rules"], assets, parameters, asset_domains
+    )
+    validate_metric_terms(
+        bundle["metric_terms"], metrics, metric_domains, governance
+    )
     _validate_dimensions(bundle["dimensions"], assets)
     _validate_joins(bundle["join_graph"], assets)
     _validate_time_rules(bundle["time_rules"], assets, parameters)
     _validate_query_policy(bundle["query_policy"], assets)
+    validate_v2_metric_release(bundle, metrics)
     try:
         validate_governance_reference_coverage(bundle)
     except ValueError as error:
@@ -137,7 +149,7 @@ def _validate_schema_context(
                 "synthetic", "approval_status", "entitlements", "grain", "columns",
                 "owner_urn", "domain_urn", "approved_lifecycle_urn",
                 "platform_urn", "schema_name", "schema_metadata_version",
-                "dataset_key",
+                "datahub_schema_hash", "dataset_key",
                 "table_type",
             },
             f"asset[{index}]",
@@ -163,6 +175,10 @@ def _validate_schema_context(
         ):
             raise SemanticMetadataError("dataset_key must exactly identify its dataset URN")
         _text(asset["schema_name"], f"asset[{index}].schema_name")
+        _text(
+            asset["datahub_schema_hash"],
+            f"asset[{index}].datahub_schema_hash",
+        )
         _text(asset["table_type"], f"asset[{index}].table_type")
         if (
             not isinstance(asset["schema_metadata_version"], int)
@@ -192,6 +208,12 @@ def _validate_schema_context(
         entitlements = _mapping(asset["entitlements"], f"{fqn}.entitlements")
         _exact_keys(entitlements, {"roles", "domains"}, f"{fqn}.entitlements")
         roles = _unique_texts(entitlements["roles"], f"{fqn}.entitlements.roles")
+        try:
+            validate_entitlement_roles(roles)
+        except ValueError as error:
+            raise SemanticMetadataError(
+                f"{fqn} entitlement role is unsupported"
+            ) from error
         domains = _unique_texts(entitlements["domains"], f"{fqn}.entitlements.domains")
         if not roles and not domains:
             raise SemanticMetadataError(f"{fqn} entitlements cannot be empty")
@@ -219,8 +241,8 @@ def _validate_schema_context(
         key_columns = {
             column["name"] for column in asset["columns"] if column["is_part_of_key"]
         }
-        if key_columns != set(keys):
-            raise SemanticMetadataError(f"{fqn} grain keys differ from schema key columns")
+        if not key_columns <= set(keys):
+            raise SemanticMetadataError(f"{fqn} grain removes a physical schema key")
         columns_by_fqn[fqn] = columns
     return columns_by_fqn
 
@@ -277,111 +299,6 @@ def _validate_parameters(value: object) -> dict[str, tuple[str, str]]:
             raise SemanticMetadataError("parameter definitions must be unique and typed")
         result[name] = (item["type"], item["scope"])
     return result
-
-
-def _validate_metrics(value: object, assets: Mapping[str, frozenset[str]], parameters: Mapping[str, tuple[str, str]]) -> dict[str, Mapping[str, Any]]:
-    metrics: dict[str, Mapping[str, Any]] = {}
-    required = {"id", "source", "aggregation", "result_field", "unit", "time_field", "reduction", "dimensions", "required_filters"}
-    for index, raw in enumerate(
-        _list(value, "metric_rules", non_empty=True, limit=64)
-    ):
-        metric = _mapping(raw, f"metric[{index}]")
-        _exact_keys(metric, required, f"metric[{index}]")
-        metric_id = _identifier(metric["id"], f"metric[{index}].id")
-        if metric_id in metrics or metric["aggregation"] not in _AGGREGATIONS or metric["reduction"] not in _REDUCTIONS:
-            raise SemanticMetadataError("metric ids must be unique and aggregations supported")
-        _identifier(metric["result_field"], f"metric[{index}].result_field")
-        _text(metric["unit"], f"metric[{index}].unit")
-        source = _mapping(metric["source"], f"metric[{index}].source")
-        _exact_keys(source, {"kind", "field"}, f"metric[{index}].source")
-        if source["kind"] != "column":
-            raise SemanticMetadataError("only executable column-source metrics are supported")
-        source_asset, _source_column = _qualified(
-            source["field"], assets, f"metric[{index}].source.field"
-        )
-        if metric["time_field"] is None:
-            raise SemanticMetadataError("published metrics require a governed time field")
-        time_asset, _time_column = _qualified(
-            metric["time_field"], assets, f"metric[{index}].time_field"
-        )
-        if time_asset != source_asset:
-            raise SemanticMetadataError("metric time fields must belong to the source asset")
-        for dimension in _list(
-            metric["dimensions"], f"metric[{index}].dimensions", limit=64
-        ):
-            _qualified(dimension, assets, f"metric[{index}].dimension")
-        for raw_filter in _list(
-            metric["required_filters"],
-            f"metric[{index}].required_filters",
-            limit=32,
-        ):
-            item = _mapping(raw_filter, f"metric[{index}].filter")
-            _exact_keys(item, {"field", "operator", "parameter"}, f"metric[{index}].filter")
-            filter_asset, _filter_column = _qualified(
-                item["field"], assets, f"metric[{index}].filter.field"
-            )
-            name = _text(item["parameter"], f"metric[{index}].filter.parameter")
-            if (
-                filter_asset != source_asset
-                or item["operator"] not in _FILTER_OPERATORS
-                or parameters.get(name, (None, None))[1] != "filter"
-            ):
-                raise SemanticMetadataError("metric filters require declared scalar filter parameters")
-        metrics[metric_id] = metric
-    return metrics
-
-
-def _validate_metric_terms(
-    value: object,
-    metrics: Mapping[str, Mapping[str, Any]],
-    governance: Mapping[str, frozenset[str]],
-) -> None:
-    terms: dict[str, Mapping[str, Any]] = {}
-    urns: set[str] = set()
-    versions: set[str] = set()
-    for index, raw in enumerate(
-        _list(value, "metric_terms", non_empty=True, limit=64)
-    ):
-        term = _mapping(raw, f"metric_term[{index}]")
-        _exact_keys(
-            term,
-            {
-                "id", "urn", "name", "definition", "aliases", "unit", "version",
-                "approval_status", "owner_urn", "domain_urn", "approved_lifecycle_urn",
-            },
-            f"metric_term[{index}]",
-        )
-        metric_id = _identifier(term["id"], f"metric_term[{index}].id")
-        urn = _text(term["urn"], f"metric_term[{index}].urn")
-        _text(term["name"], f"metric_term[{index}].name")
-        _text(term["definition"], f"metric_term[{index}].definition")
-        versions.add(_text(term["version"], f"metric_term[{index}].version"))
-        if term["approval_status"] != "APPROVED":
-            raise SemanticMetadataError("metric terms must be explicitly approved")
-        _urn(term["owner_urn"], "urn:li:corpGroup:", f"metric_term[{index}].owner_urn")
-        _urn(term["domain_urn"], "urn:li:domain:", f"metric_term[{index}].domain_urn")
-        _urn(
-            term["approved_lifecycle_urn"],
-            "urn:li:lifecycleStageType:",
-            f"metric_term[{index}].approved_lifecycle_urn",
-        )
-        if (
-            term["owner_urn"] not in governance["owners"]
-            or term["domain_urn"] not in governance["domains"]
-            or term["approved_lifecycle_urn"] not in governance["approved_lifecycles"]
-        ):
-            raise SemanticMetadataError("metric term native governance references are undeclared")
-        aliases = _unique_texts(term["aliases"], f"metric_term[{index}].aliases", non_empty=True)
-        if metric_id in terms or urn in urns or not urn.startswith("urn:li:glossaryTerm:"):
-            raise SemanticMetadataError("metric term ids and URNs must be unique")
-        if metric_id not in metrics or term["unit"] != metrics[metric_id]["unit"] or term["name"] not in aliases:
-            raise SemanticMetadataError("metric terms must exactly describe metric rules")
-        terms[metric_id] = term
-        urns.add(urn)
-    if set(terms) != set(metrics):
-        raise SemanticMetadataError("every metric rule requires exactly one glossary term")
-    if len(versions) != 1:
-        raise SemanticMetadataError("one publication bundle must use one glossary version")
 
 
 def _validate_dimensions(value: object, assets: Mapping[str, frozenset[str]]) -> None:

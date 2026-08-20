@@ -413,6 +413,40 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({"plan", "query", "package"}, set(execution))
         self.assertTrue(progress)
 
+    async def test_view_reuse_uses_typed_sql_without_calling_node2(self):
+        """승인 단일 Serving View는 Node 1 결과를 다시 추측하지 않고 AST로 실행한다."""
+
+        serving_fqn = "serving.semantic.observations"
+        asset = copy.deepcopy(ASSET)
+        asset["fqn"] = serving_fqn
+        asset["metrics"][0]["asset_fqn"] = serving_fqn
+        asset["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
+        asset["time_metadata"]["fields"][0]["field"]["asset_fqn"] = serving_fqn
+        asset["query_policy"]["allowed_catalogs"] = ["serving"]
+        adapter = AsyncRuntimeDataPlatform(asset=asset)
+        model = model_with()
+        execution = {}
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            model=model,
+            execution_sink=execution.update,
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(1, adapter.execute_count)
+        self.assertEqual(["node1", "node3"], [node for node, _ in model.calls])
+        self.assertEqual("typed_sql_compiler", execution["plan"]["plan_source"])
+        self.assertIn("SUM", execution["plan"]["sql"])
+        model_traces = [
+            step.detail
+            for step in response.data.trace
+            if step.stage is PipelineStage.MODEL
+        ]
+        self.assertTrue(
+            any("node=typed_sql_compiler" in detail for detail in model_traces)
+        )
+
     async def test_multi_metric_request_reaches_result_without_single_metric_collapse(self):
         count_metric_id = "observation_count"
         count_field = "observation_count"

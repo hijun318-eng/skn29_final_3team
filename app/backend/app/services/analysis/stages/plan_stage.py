@@ -29,6 +29,7 @@ from app.services.analysis.logical_plan import (
     AnalysisPlanError,
     AnalysisPlanErrorCode,
 )
+from app.services.analysis.typed_sql_compiler import TYPED_SQL_COMPILER_VERSION
 from app.services.context.builder import ContextPackage
 from app.services.execution_control import IsolatedExecutionCache, secure_cache_key
 from app.services.analysis.pipeline_support import PipelineSupport
@@ -125,6 +126,7 @@ class AnalysisPlanStage:
             template=decision.template_id,
             parameters=state.payload.parameters,
             analysis_plan_checksum=analysis_plan.checksum,
+            typed_sql_compiler=TYPED_SQL_COMPILER_VERSION,
             **state.common_key,
         )
         plan = self._cache.get_plan(plan_key)
@@ -152,35 +154,39 @@ class AnalysisPlanStage:
                 "model_version": "TEMPLATE-I2-v1.0.0",
             }
         else:
-            # 2-B. LLM Node 2를 호출하여 SQL 계획 생성
-            try:
-                plan = await state.budget.call(
-                    self._model,
-                    "node2",
-                    {
-                        "question": state.normalized_question,
-                        "structured_request": structured_for_model,
-                        "references": state.references,
-                        "request_id": str(context.request_id),
-                        "package": package,
-                        "context": context,
-                    },
-                )
-                node2_trace_detail = model_trace_detail(self._model)
-                plan["_model_trace_detail"] = node2_trace_detail
-            except (TimeoutError, OSError, TypeError, ValueError) as error:
-                logger.warning(
-                    "node2 generation failed: type=%s detail=%s",
-                    type(error).__name__,
-                    error,
-                )
-                return self._responses.model_error(
-                    context,
-                    state.machine,
-                    state.trace,
-                    decision,
-                    code=model_failure_code(error),
-                )
+            # 2-B. 단일 승인 Serving View의 공통 연산은 질문을 다시 해석하지 않고
+            # 서버 소유 typed plan에서 직접 AST를 만든다. 현재 구조 범위 밖이면 기존
+            # Node 2 후보를 사용하되 아래의 동일한 G2 검증을 생략하지 않는다.
+            plan = self._support.typed_sql_plan(analysis_plan, package)
+            if plan is None:
+                try:
+                    plan = await state.budget.call(
+                        self._model,
+                        "node2",
+                        {
+                            "question": state.normalized_question,
+                            "structured_request": structured_for_model,
+                            "references": state.references,
+                            "request_id": str(context.request_id),
+                            "package": package,
+                            "context": context,
+                        },
+                    )
+                    node2_trace_detail = model_trace_detail(self._model)
+                    plan["_model_trace_detail"] = node2_trace_detail
+                except (TimeoutError, OSError, TypeError, ValueError) as error:
+                    logger.warning(
+                        "node2 generation failed: type=%s detail=%s",
+                        type(error).__name__,
+                        error,
+                    )
+                    return self._responses.model_error(
+                        context,
+                        state.machine,
+                        state.trace,
+                        decision,
+                        code=model_failure_code(error),
+                    )
 
         if isinstance(plan, dict):
             # 모델이나 캐시가 이 값을 소유하지 못하도록 G2 직전에 현재 Context에서
@@ -206,7 +212,11 @@ class AnalysisPlanStage:
                     f"{plan['_model_trace_detail']};plan_cache=hit"
                     if plan_cached
                     and isinstance(plan.get("_model_trace_detail"), str)
-                    else f"node=node2;model={plan.get('model_version')};plan_cache={'hit' if plan_cached else 'template'}"
+                    else (
+                        f"node={plan.get('plan_source', 'node2')};"
+                        f"model={plan.get('model_version')};"
+                        f"plan_cache={'hit' if plan_cached else 'template' if decision.sql_text else 'miss'}"
+                    )
                 )
             ),
         )
@@ -274,6 +284,25 @@ class AnalysisPlanStage:
                     ErrorCode.SQL_POLICY_BLOCKED,
                     "승인된 Template SQL이 현재 G2 정책을 통과하지 못했습니다.",
                     decision,
+                )
+
+            # 결정론적 컴파일러 결과의 실패는 모델에게 SQL을 다시 쓰게 해서 우회하지
+            # 않는다. 이는 compiler 또는 release 계약 결함이므로 동일 G2 원인으로 닫는다.
+            if plan.get("plan_source") == "typed_sql_compiler":
+                return self._responses.error(
+                    context,
+                    state.machine,
+                    state.trace,
+                    PipelineStage.G2,
+                    AnalysisStatus.BLOCKED,
+                    (
+                        ErrorCode.GRAIN_VIOLATION
+                        if violation == "GRAIN_VIOLATION"
+                        else ErrorCode.SQL_POLICY_BLOCKED
+                    ),
+                    "승인된 분석 계획을 실행 SQL로 변환했지만 현재 SQL 정책을 통과하지 못했습니다.",
+                    decision,
+                    detail=str(violation),
                 )
 
             # 4. 1회 한정 자가 수리 (Repair Loop)

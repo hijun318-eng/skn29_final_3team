@@ -9,7 +9,7 @@
 |---|---:|
 | archive | 130 |
 | documentation | 138 |
-| production | 303 |
+| production | 304 |
 | project-config | 38 |
 | runtime-config | 65 |
 | runtime-contract | 10 |
@@ -122,6 +122,7 @@
 | `app/backend/app/services/analysis/stages/plan_stage.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/stages/query_stage.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/stages/result_stage.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/typed_sql_compiler.py` | production | REVIEWED |
 | `app/backend/app/services/context/__init__.py` | production | REVIEWED |
 | `app/backend/app/services/context/builder.py` | production | REVIEWED |
 | `app/backend/app/services/context/builder_errors.py` | production | REVIEWED |

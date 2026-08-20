@@ -53,6 +53,15 @@ Metric/Semantic Model adapter도 동일 bundle을 재구성해야 하며, 두 �
   `period_comparison`의 출력 grain과 `time_trend`의 시간 GROUP/오름차순 정렬,
   `top_n`·`bottom_n`의 첫 출력 Metric 정렬 방향, 차원 순서의 안정적 tie-breaker와 정확한
   LIMIT이 다르면 실행하지 않는다.
+- JOIN이 없는 승인 `VIEW_REUSE` 계획은 `ANSWERVICE-TYPED-SQL-v1.0.0` 컴파일러가 질문
+  원문을 다시 보지 않고 SQLGlot AST로 생성한다. 단일 공통 시간 필드와 필터 scope가 확인된
+  집계·분해·추이·순위·기간 비교 및 동일 scope 복수 Metric·ratio를 지원하며, 생성 결과도
+  기존 G2가 다시 파싱·검증·바인딩한다. 이 구조 범위 밖은 기존 Node 2+G2 경로를 유지한다.
+- 2026-08-21 로컬 배포 스택의 실제 DataHub·Trino 경로에서 단일 `VIEW_REUSE` 집계 smoke를
+  실행했다. 응답 trace는 Node 1 → `typed_sql_compiler` → G2 → Trino → G3 → Node 3 순서였고
+  Node 2·repair 호출 없이 G1/G2/G3를 모두 통과했다. UI 결과는 active release의 기간·호텔
+  필터와 Trino 집계값을 표시했고 브라우저 console 오류·경고는 0건이었다. 이는 단일 live
+  smoke 증거이며 전체 Metric·연산 조합의 정확도·지연 회귀를 대신하지 않는다.
 - Node 2에는 전체 계산 범위인 `metric_ids`와 사용자 출력인 `output_metric_ids`를 분리해
   전달한다. SUPPORT operand는 SQL 검증·reduction 원본에만 유지하고 API table·chart에는
   BUSINESS Glossary Term이 결합된 Metric만 노출한다.
@@ -74,10 +83,10 @@ Metric/Semantic Model adapter도 동일 bundle을 재구성해야 하며, 두 �
   JOIN equality field 집합이 검증된 unique/grain key 전체를 포함해야 한다.
 - allocation expression·basis 계약이 없으므로 one-side Measure를 many-side Dimension으로
   분해하는 계획과 many-to-many JOIN은 거부한다.
-- SQL Generator는 아직 typed plan에서 AST를 결정론적으로 생성하지 않는다. 현재 단계는
-  LLM SQL 앞의 논리 계획과 뒤의 AST Guard가 같은 결정을 강제하는 전환 경계다. 즉,
-  복수 Metric과 범용 연산 계약은 활성화됐지만 생성 성공률은 catalog-generated eval로
-  별도 입증해야 한다.
+- 다중 asset `VIEW_COMPOSE`·`RAW_APPROVED_DETAIL`과 `DIRECT_JOIN`·`PREAGGREGATE`·
+  `SEMI_JOIN` 물리 형태는 아직 typed plan에서 결정론적으로 생성하지 않는다. 현재 컴파일러는
+  단일 승인 Serving View 경계만 열며, JOIN 경로는 LLM SQL 앞의 논리 계획과 뒤의 AST Guard가
+  동일 팬아웃 결정을 강제하는 전환 상태다.
 - `latest_snapshot`은 후보 capability에 명시했지만 active runtime read-back과 전용 SQL AST
   생성·검증이 없으므로 실행 경로에서는 의도적으로 차단한다.
 - DataHub native 발행, `METRICS_ENABLED`, Trino ACL/principal, Redis, Legacy property 삭제는 변경하지 않았다.
@@ -94,7 +103,9 @@ Metric/Semantic Model adapter도 동일 bundle을 재구성해야 하며, 두 �
 2. 구조 Gate가 표시한 `TIME_GRAIN_CONTRACT_REQUIRED`, `COMPARISON_WINDOW_CONTRACT_REQUIRED`,
    `TIME_MODE_NOT_IMPLEMENTED`, `JOIN_GRAPH_REQUIRED`를 업무 승인 계약과 실행 구현으로 줄인다.
 3. 구조 Gate와 분리된 사람 검토 Gold로 Node 1 자연어 해석과 실제 Node 1→G3 결과 정확도를 측정한다.
-4. `latest_snapshot`과 공통 연산 SQL을 typed plan에서 SQLGlot AST로 결정론적으로 생성한다.
+4. `latest_snapshot`과 다중 asset의 `DIRECT_JOIN`·`PREAGGREGATE`·`SEMI_JOIN` SQL을 typed
+   plan에서 SQLGlot AST로 결정론적으로 생성한다. 단일 `VIEW_REUSE` 집계 live smoke는
+   통과했지만, 전체 Metric·연산 조합의 결과 정확도·지연 회귀는 별도 Gate로 계속 입증한다.
 5. edge role/domain entitlement를 별도 정책으로 추가하고 node·column·Metric·edge 교집합을 검증한다.
 6. 한 도메인 Native shadow publish/read-back과 Legacy canonical equality를 통과시킨다.
 7. release 단위 cutover 전 실제 DataHub·Trino·Backend·Playwright E2E를 같은 release ID로 실행한다.

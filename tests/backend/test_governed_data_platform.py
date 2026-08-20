@@ -6,21 +6,29 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import unquote
 
 import httpx
 
 
 ROOT = Path(__file__).resolve().parents[2]
+BACKEND = ROOT / "app" / "backend"
 PUBLISHER = ROOT / "infrastructure" / "database" / "datahub"
+sys.path.insert(0, str(BACKEND))
 sys.path.insert(0, str(PUBLISHER))
 from metadata_aspects import iter_aspects  # noqa: E402
 from metadata_contract import validate_bundle  # noqa: E402
+from src.data.governance_contract import datahub_schema_sha1  # noqa: E402
 
+from app.adapters.catalog_snapshot import (  # noqa: E402
+    DEFAULT_CATALOG_RELEASE_TTL_SECONDS,
+)
 from app.adapters.datahub_catalog import DataHubCatalogClient  # noqa: E402
 from app.adapters.governed_data_platform import (  # noqa: E402
     GovernedDataPlatformAdapter,
 )
+from app.adapters.query_governance import QueryGovernanceEngine  # noqa: E402
 from app.adapters.trino_async import TrinoAsyncClient  # noqa: E402
 from app.ports.data_platform import (  # noqa: E402
     MetadataUnavailableError,
@@ -30,6 +38,45 @@ from app.query_capability import issue_query_capability  # noqa: E402
 
 
 LIFECYCLE_URN = "urn:li:lifecycleStageType:approved"
+
+
+def _v2_metric_governance(
+    *,
+    name: str,
+    definition: str,
+    aliases: list[str],
+    grain_kind: str = "event",
+    grain_keys: list[str] | None = None,
+    dimensions: list[str] | None = None,
+) -> dict:
+    """운영 runtime과 같은 v2 fail-closed 계약을 합성 fixture에 부여한다."""
+
+    return {
+        "visibility": "BUSINESS",
+        "semantic": {
+            "name": name,
+            "definition": definition,
+            "aliases": aliases,
+        },
+        "grain": {
+            "kind": grain_kind,
+            "keys": grain_keys or ["event_id"],
+            "dimensions": dimensions or [],
+        },
+        "time": {
+            "field": "observed_on",
+            "semantics": "event_time",
+            "timezone": "Asia/Seoul",
+            "interval": "[start,end)",
+        },
+        "join": {"required": False, "allowed_edge_ids": []},
+        "permission": {
+            "roles": ["analyst"],
+            "contains_pii": False,
+            "synthetic": False,
+        },
+        "query_strategies": ["RAW_APPROVED_DETAIL"],
+    }
 
 
 def _bundle() -> dict:
@@ -44,6 +91,8 @@ def _bundle() -> dict:
         fqn = f"orbit.lake.{name}_fact"
         urn = f"urn:li:dataset:(urn:li:dataPlatform:trino,{fqn},PROD)"
         domain_urn = f"urn:li:domain:{domain}"
+        definition = f"Approved aggregate for {name} observations."
+        aliases = [alias, f"{name.title()} aggregate"]
         assets.append(
             {
                 "urn": urn,
@@ -53,7 +102,7 @@ def _bundle() -> dict:
                 "seed_version": "data-arbitrary-9",
                 "synthetic": False,
                 "approval_status": "APPROVED",
-                "entitlements": {"roles": ["hotel_analyst"], "domains": []},
+                "entitlements": {"roles": ["analyst"], "domains": []},
                 "grain": {"kind": "event", "keys": ["event_id"]},
                 "columns": [
                     {
@@ -101,6 +150,7 @@ def _bundle() -> dict:
                 "table_type": "BASE TABLE",
             }
         )
+        assets[-1]["datahub_schema_hash"] = datahub_schema_sha1(assets[-1])
         metrics.append(
             {
                 "id": f"{name}_yield",
@@ -115,6 +165,11 @@ def _bundle() -> dict:
                 "reduction": "sum",
                 "dimensions": [],
                 "required_filters": [],
+                "governance": _v2_metric_governance(
+                    name=alias,
+                    definition=definition,
+                    aliases=aliases,
+                ),
             }
         )
         terms.append(
@@ -122,8 +177,8 @@ def _bundle() -> dict:
                 "id": f"{name}_yield",
                 "urn": f"urn:li:glossaryTerm:{name}_yield",
                 "name": alias,
-                "definition": f"Approved aggregate for {name} observations.",
-                "aliases": [alias, f"{name.title()} aggregate"],
+                "definition": definition,
+                "aliases": aliases,
                 "unit": "arbitrary_units",
                 "version": "glossary-arbitrary-3",
                 "approval_status": "APPROVED",
@@ -208,6 +263,87 @@ def _bundle() -> dict:
     }
 
 
+def _bundle_with_ratio() -> dict:
+    """한 asset의 승인 column operands에서 derived ratio를 발행한 runtime fixture를 만든다."""
+
+    bundle = _bundle()
+    fqn = "orbit.lake.helium_fact"
+    domain = "urn:li:domain:helium_operations"
+    owner = "urn:li:corpGroup:helium_operations"
+    count = {
+        "id": "helium_observation_count",
+        "source": {
+            "kind": "column",
+            "field": {"asset_fqn": fqn, "column": "event_id"},
+        },
+        "aggregation": "count",
+        "result_field": "helium_observation_count",
+        "unit": "count",
+        "time_field": {"asset_fqn": fqn, "column": "observed_on"},
+        "reduction": "sum",
+        "dimensions": [],
+        "required_filters": [],
+        "governance": _v2_metric_governance(
+            name="Helium observation count",
+            definition="Approved count of governed helium observations.",
+            aliases=["Helium observation count", "Helium volume"],
+        ),
+    }
+    ratio = {
+        "id": "helium_rate",
+        "source": {
+            "kind": "ratio",
+            "numerator_metric_id": "helium_yield",
+            "denominator_metric_id": "helium_observation_count",
+            "zero_policy": "null_on_zero_denominator",
+        },
+        "aggregation": "ratio",
+        "result_field": "helium_rate",
+        "unit": "arbitrary_units_per_observation",
+        "time_field": None,
+        "reduction": "ratio",
+        "dimensions": [],
+        "required_filters": [],
+        "governance": _v2_metric_governance(
+            name="Helium rate",
+            definition="Approved helium yield per governed observation.",
+            aliases=["Helium rate", "Helium average yield"],
+        ),
+    }
+    bundle["metric_rules"].extend((count, ratio))
+    bundle["metric_terms"].extend(
+        (
+            {
+                "id": count["id"],
+                "urn": "urn:li:glossaryTerm:helium_observation_count",
+                "name": "Helium observation count",
+                "definition": "Approved count of governed helium observations.",
+                "aliases": ["Helium observation count", "Helium volume"],
+                "unit": count["unit"],
+                "version": "glossary-arbitrary-3",
+                "approval_status": "APPROVED",
+                "owner_urn": owner,
+                "domain_urn": domain,
+                "approved_lifecycle_urn": LIFECYCLE_URN,
+            },
+            {
+                "id": ratio["id"],
+                "urn": "urn:li:glossaryTerm:helium_rate",
+                "name": "Helium rate",
+                "definition": "Approved helium yield per governed observation.",
+                "aliases": ["Helium rate", "Helium average yield"],
+                "unit": ratio["unit"],
+                "version": "glossary-arbitrary-3",
+                "approval_status": "APPROVED",
+                "owner_urn": owner,
+                "domain_urn": domain,
+                "approved_lifecycle_urn": LIFECYCLE_URN,
+            },
+        )
+    )
+    return bundle
+
+
 def _bundle_with_dimension_bridge() -> dict:
     bundle = _bundle()
     fact_fqn = "orbit.lake.helium_fact"
@@ -225,7 +361,7 @@ def _bundle_with_dimension_bridge() -> dict:
             "seed_version": "data-arbitrary-9",
             "synthetic": False,
             "approval_status": "APPROVED",
-            "entitlements": {"roles": ["hotel_analyst"], "domains": []},
+            "entitlements": {"roles": ["analyst"], "domains": []},
             "grain": {"kind": "row", "keys": ["event_id"]},
             "columns": [
                 {
@@ -263,6 +399,8 @@ def _bundle_with_dimension_bridge() -> dict:
             "table_type": "BASE TABLE",
         }
     )
+    dimension_asset = bundle["schema_context"]["assets"][-1]
+    dimension_asset["datahub_schema_hash"] = datahub_schema_sha1(dimension_asset)
     bundle["dimensions"].append(
         {
             "id": "neon_category",
@@ -312,7 +450,6 @@ def _graphql_entities(bundle: dict) -> tuple[dict[str, dict], dict[str, dict]]:
             item["fieldPath"]: item
             for item in editable["editableSchemaFieldInfo"]
         }
-        schema_aspect = aspects[("dataset", urn, "schemaMetadata")]
         fields = []
         for column in asset["columns"]:
             editable_field = by_name[column["name"]]
@@ -352,8 +489,15 @@ def _graphql_entities(bundle: dict) -> tuple[dict[str, dict], dict[str, dict]]:
             "schemaMetadata": {
                 "version": 1,
                 "name": asset["fqn"],
-                "hash": schema_aspect["hash"],
+                # Connector-owned schema read-back is independent from the
+                # semantic publisher aspects assembled above.
+                "hash": asset["datahub_schema_hash"],
                 "fields": fields,
+            },
+            "editableSchemaMetadata": {
+                "editableSchemaFieldInfo": copy.deepcopy(
+                    editable["editableSchemaFieldInfo"]
+                )
             },
         }
     terms = {}
@@ -545,6 +689,26 @@ class RuntimeTransport:
 
 
 class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
+    def test_catalog_snapshot_default_and_environment_override_are_explicit(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            default_engine = QueryGovernanceEngine(
+                object(), object(), search_mode="lexical"
+            )
+        with patch.dict(
+            os.environ,
+            {"DATAHUB_CATALOG_TTL_SECONDS": "43200"},
+            clear=True,
+        ):
+            override_engine = QueryGovernanceEngine(
+                object(), object(), search_mode="lexical"
+            )
+
+        self.assertEqual(
+            DEFAULT_CATALOG_RELEASE_TTL_SECONDS,
+            default_engine._loader._ttl_seconds,
+        )
+        self.assertEqual(43_200.0, override_engine._loader._ttl_seconds)
+
     async def asyncSetUp(self) -> None:
         self.transport = RuntimeTransport(_bundle())
         self.datahub_http = httpx.AsyncClient(transport=httpx.MockTransport(self.transport.datahub))
@@ -574,7 +738,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_publisher_aspect_mock_contract_and_prebound_sql_passthrough(self) -> None:
         assets = await self.adapter.search_assets(
             "helium",
-            {"role": "hotel_analyst", "parameters": {}},
+            {"role": "analyst", "parameters": {}},
         )
         term = await self.adapter.get_metric_terms(("helium_yield",))
         schema = await self.adapter.get_asset_schema(assets[0]["urn"])
@@ -603,8 +767,45 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(MetadataUnavailableError):
             await self.adapter.search_assets(
                 "helium",
-                {"role": "hotel_analyst", "parameters": {}},
+                {"role": "analyst", "parameters": {}},
             )
+
+    async def test_ratio_term_is_discovered_and_projected_without_physical_field(self) -> None:
+        transport = RuntimeTransport(_bundle_with_ratio())
+        datahub_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.datahub))
+        trino_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.trino))
+        catalog = DataHubCatalogClient(
+            "http://datahub.test", client=datahub_http, page_size=2, max_entities=20
+        )
+        trino = TrinoAsyncClient(
+            "https://trino.test", "runtime", "test-password", client=trino_http
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=catalog,
+            trino_client=trino,
+            search_mode="lexical",
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+
+        assets = await adapter.search_assets(
+            "Helium average yield",
+            {"role": "analyst", "parameters": {}},
+        )
+        terms = await adapter.get_metric_terms(("helium_rate",))
+        metrics = {
+            metric["id"]: metric
+            for asset in assets
+            for metric in asset["metrics"]
+        }
+
+        self.assertEqual("ratio", metrics["helium_rate"]["aggregation"])
+        self.assertEqual("", metrics["helium_rate"]["asset_fqn"])
+        self.assertEqual("helium_yield", metrics["helium_rate"]["numerator_metric_id"])
+        self.assertEqual("ratio", terms["helium_rate"]["kind"])
 
     async def test_explicit_lexical_mode_does_not_call_disabled_semantic_search(self) -> None:
         self.transport.semantic_disabled = True
@@ -626,7 +827,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         assets = await adapter.search_assets(
             "helium",
-            {"role": "hotel_analyst", "parameters": {}},
+            {"role": "analyst", "parameters": {}},
         )
         self.assertEqual(["orbit.lake.helium_fact"], [item["fqn"] for item in assets])
 
@@ -637,6 +838,42 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 {"role": "unpublished_role", "parameters": {}},
             )
 
+    async def test_catalog_readiness_requires_manifest_membership_and_all_trino_schemas(self) -> None:
+        stages, receipt = await self.adapter.get_catalog_readiness()
+
+        self.assertEqual(
+            {
+                "semantic_release": "ready",
+                "catalog_manifest": "ready",
+                "trino_schema": "ready",
+            },
+            stages,
+        )
+        self.assertRegex(receipt or "", r"^[^:]+:[0-9a-f]{64}$")
+
+    async def test_catalog_readiness_rejects_manifest_governed_count_mismatch(self) -> None:
+        removed_urn = next(
+            urn for urn in self.transport.datasets if "argon_fact" in urn
+        )
+        self.transport.datasets.pop(removed_urn)
+
+        stages, receipt = await self.adapter.get_catalog_readiness()
+
+        self.assertEqual("ready", stages["semantic_release"])
+        self.assertEqual("not_ready", stages["catalog_manifest"])
+        self.assertEqual("not_ready", stages["trino_schema"])
+        self.assertIsNone(receipt)
+
+    async def test_catalog_readiness_rejects_trino_schema_drift_after_valid_manifest(self) -> None:
+        self.transport.schema_drift = True
+
+        stages, receipt = await self.adapter.get_catalog_readiness()
+
+        self.assertEqual("ready", stages["semantic_release"])
+        self.assertEqual("ready", stages["catalog_manifest"])
+        self.assertEqual("not_ready", stages["trino_schema"])
+        self.assertIsNone(receipt)
+
     async def test_incomplete_governance_and_trino_drift_are_typed_failures(self) -> None:
         first = next(iter(self.transport.datasets.values()))
         first["properties"]["customProperties"] = [
@@ -646,7 +883,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         ]
         with self.assertRaises(MetadataUnavailableError):
             await self.adapter.search_assets(
-                "helium", {"role": "hotel_analyst", "parameters": {}}
+                "helium", {"role": "analyst", "parameters": {}}
             )
         self.transport = RuntimeTransport(_bundle())
         self.transport.schema_drift = True
@@ -661,7 +898,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.adapter = GovernedDataPlatformAdapter("https://trino.test", "runtime", datahub_client=catalog, trino_client=trino)
         with self.assertRaises(MetadataUnavailableError):
             await self.adapter.search_assets(
-                "helium", {"role": "hotel_analyst", "parameters": {}}
+                "helium", {"role": "analyst", "parameters": {}}
             )
 
     async def test_execution_rejects_rebinding_after_phase_three(self) -> None:
@@ -708,7 +945,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     )
         with self.assertRaises(MetadataUnavailableError):
             await self.adapter.search_assets(
-                "helium", {"role": "hotel_analyst", "parameters": {}}
+                "helium", {"role": "analyst", "parameters": {}}
             )
 
     async def test_native_governance_detail_drift_fails_closed(self) -> None:
@@ -743,7 +980,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 try:
                     with self.assertRaises(MetadataUnavailableError):
                         await adapter.search_assets(
-                            "helium", {"role": "hotel_analyst", "parameters": {}}
+                            "helium", {"role": "analyst", "parameters": {}}
                         )
                 finally:
                     await adapter.aclose()
@@ -766,7 +1003,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         try:
             assets = await adapter.search_assets(
-                "neon", {"role": "hotel_analyst", "parameters": {}}
+                "neon", {"role": "analyst", "parameters": {}}
             )
         finally:
             await adapter.aclose()
@@ -783,6 +1020,44 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             ["helium_neon_by_event"],
             by_fqn["orbit.reference.neon_dimension"]["join_ids"],
         )
+
+    async def test_join_expansion_cannot_reach_an_unentitled_asset(self) -> None:
+        """seed는 권한이 있어도 join으로 끌려온 metric asset이 비권한이면 fail-closed여야 한다."""
+
+        bundle = _bundle_with_dimension_bridge()
+        for asset in bundle["schema_context"]["assets"]:
+            if asset["fqn"] == "orbit.lake.helium_fact":
+                asset["entitlements"] = {"roles": ["report_admin"], "domains": []}
+        for metric in bundle["metric_rules"]:
+            source = metric["source"]
+            if (
+                source["kind"] == "column"
+                and source["field"]["asset_fqn"] == "orbit.lake.helium_fact"
+            ):
+                metric["governance"]["permission"]["roles"] = ["report_admin"]
+        transport = RuntimeTransport(bundle)
+        datahub_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.datahub))
+        trino_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.trino))
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=DataHubCatalogClient(
+                "http://datahub.test", client=datahub_http, page_size=1, max_entities=20
+            ),
+            trino_client=TrinoAsyncClient(
+                "https://trino.test", "runtime", "test-password", client=trino_http
+            ),
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+
+        # "neon"은 권한 있는 dimension만 seed로 만들지만, 이 asset은 metric이 없어
+        # 인접한 helium_fact가 join 경로로 끌려온다. 그 asset은 이 role에 권한이 없다.
+        with self.assertRaises(MetadataUnavailableError):
+            await adapter.search_assets(
+                "neon", {"role": "analyst", "parameters": {}}
+            )
 
 
 @unittest.skipUnless(
@@ -809,7 +1084,7 @@ class LiveGovernanceSmokeTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(MetadataUnavailableError):
                 await adapter.search_assets(
                     os.getenv("LIVE_GOVERNANCE_SMOKE_QUERY", "runtime governance"),
-                    {"role": "hotel_analyst", "parameters": {}},
+                    {"role": "analyst", "parameters": {}},
                 )
         finally:
             await adapter.aclose()

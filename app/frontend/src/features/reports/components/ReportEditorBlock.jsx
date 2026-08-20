@@ -46,7 +46,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   isDraft,
   selected,
   dragging,
-  locked,
+  locked = false,
   onSelect,
   onUpdate,
   onMove,
@@ -94,7 +94,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
   );
   const duplicateBlock = useCallback(() => onDuplicate(block.id), [block.id, onDuplicate]);
   const deleteBlock = useCallback(() => onDelete(block.id), [block.id, onDelete]);
-  const toggleLock = useCallback(() => onToggleLock(block.id), [block.id, onToggleLock]);
+  const toggleLock = useCallback(() => onToggleLock?.(block.id), [block.id, onToggleLock]);
   const retryArtifact = useCallback(
     () => onRetryArtifact?.(block.artifactId),
     [block.artifactId, onRetryArtifact],
@@ -199,7 +199,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
 
   let body;
   if (block.type === "text") {
-    body = <MarkdownBlockEditor block={block} disabled={!isDraft} onUpdate={updateBlock} />;
+    body = <MarkdownBlockEditor block={block} disabled={!isDraft || locked} onUpdate={updateBlock} />;
   } else if (block.type === "artifact") {
     body = (
       <ReportWholeArtifactBlock
@@ -293,6 +293,7 @@ export const ReportEditorBlock = memo(function ReportEditorBlock({
           className="notion-block-title"
           aria-label={`${block.title || "제목 없음"} 제목`}
           value={block.title}
+          disabled={locked}
           onChange={(event) => {
             const record = !titleTransactionRef.current;
             titleTransactionRef.current = true;

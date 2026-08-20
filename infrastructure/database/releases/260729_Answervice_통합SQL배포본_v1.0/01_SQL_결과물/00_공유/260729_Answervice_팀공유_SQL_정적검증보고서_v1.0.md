@@ -8,12 +8,12 @@
 
 ## 역할별 산출물
 
-- R2 Source DDL: 5개
-- R2 Source seed: 5개
-- R2 Trino View: 1개
-- R4 Application DDL: 1개
-- R5 실행형 DDL: 0개, read-only 검토 SQL만 포함
-- R1 실행형 DDL: 0개, read-only Gate만 포함
+- 데이터(정승) Source DDL: 5개
+- 데이터(정승) Source seed: 5개
+- 데이터(정승) Trino View: 1개
+- 백엔드(김재홍) Application DDL: 1개
+- 프론트엔드(송민지) 실행형 DDL: 0개, read-only 검토 SQL만 포함
+- PM/검증(박준희) 실행형 DDL: 0개, read-only Gate만 포함
 - ML Source write SQL: 0개
 
 ## 파일 검증

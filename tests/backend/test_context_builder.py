@@ -8,7 +8,7 @@ from sys import path
 BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
-from app.services.context_builder import (
+from app.services.context.builder import (
     ContextAsset,
     ContextBuildError,
     ContextBuildErrorCode,
@@ -19,6 +19,23 @@ from app.services.context_builder import (
     ContextParameterBinding,
     ContextRequiredFilter,
 )
+from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
+
+
+def _v2_metric(*args, **kwargs) -> ContextMetric:
+    """실행 가능한 fixture Metric을 운영과 같은 v2 권한 계약으로 만든다."""
+
+    asset_fqn = str(kwargs.get("asset_fqn", args[1] if len(args) > 1 else ""))
+    kwargs.setdefault("governance_version", RUNTIME_GOVERNANCE_VERSION_V2)
+    kwargs.setdefault("allowed_roles", ("analyst",))
+    kwargs.setdefault("contains_pii", False)
+    kwargs.setdefault("allowed_join_ids", ())
+    kwargs.setdefault("join_required", False)
+    kwargs.setdefault(
+        "query_strategies",
+        ("VIEW_REUSE",) if asset_fqn.startswith("serving.") else ("RAW_APPROVED_DETAIL",),
+    )
+    return ContextMetric(*args, **kwargs)
 
 
 class ContextPackageBuilderTest(unittest.TestCase):
@@ -42,14 +59,31 @@ class ContextPackageBuilderTest(unittest.TestCase):
         token_count: int = 1_000,
         model_context_tokens: int = 16_000,
     ) -> ContextBuildRequest:
+        selected_assets = assets if assets is not None else (self.pms, self.crm)
+        metric_terms = tuple(
+            ContextMetricTerm(
+                id=metric.id,
+                urn=f"urn:li:glossaryTerm:{metric.id}",
+                label=metric.id,
+                aliases=(metric.id,),
+                definition=f"Test fixture definition for {metric.id}.",
+                unit=metric.unit or "test_unit",
+                version="fixture-v2",
+                checksum=f"fixture-{metric.id}",
+            )
+            for asset in selected_assets
+            for metric in asset.metrics
+            if metric.visibility == "BUSINESS"
+        )
         return ContextBuildRequest(
             context_release="context-v1",
             policy_version="policy-v1",
             time_version="time-v1",
             entitlement_hash="entitlement-hash",
-            assets=assets if assets is not None else (self.pms, self.crm),
+            assets=selected_assets,
             token_count=token_count,
             model_context_tokens=model_context_tokens,
+            metric_terms=metric_terms,
         )
 
     def test_filters_unauthorized_assets_before_package_creation(self) -> None:
@@ -127,7 +161,7 @@ class ContextPackageBuilderTest(unittest.TestCase):
 
     def test_entitled_metric_and_required_filters_change_package_hash(self) -> None:
         base_filter = ContextRequiredFilter("is_forecast", "eq", False)
-        metric = ContextMetric(
+        metric = _v2_metric(
             "recognized_room_revenue",
             "serving.analytics.hotel_daily_metrics",
             "room_revenue",
@@ -145,7 +179,7 @@ class ContextPackageBuilderTest(unittest.TestCase):
         first = self.builder.build(
             self.request(assets=(asset,)), frozenset({asset.urn})
         )
-        changed_metric = ContextMetric(
+        changed_metric = _v2_metric(
             metric.id,
             metric.asset_fqn,
             metric.field,
@@ -168,7 +202,7 @@ class ContextPackageBuilderTest(unittest.TestCase):
         self.assertNotEqual(first.package_hash, second.package_hash)
 
     def test_duplicate_metric_id_fails_closed(self) -> None:
-        metric = ContextMetric(
+        metric = _v2_metric(
             "duplicate",
             self.pms.fqn,
             "reservation_id",
@@ -190,7 +224,7 @@ class ContextPackageBuilderTest(unittest.TestCase):
             )
 
     def test_metric_without_required_filter_is_valid_for_curated_serving_view(self) -> None:
-        metric = ContextMetric(
+        metric = _v2_metric(
             "recognized_room_revenue",
             "serving.analytics.v4_hotel_daily_metrics",
             "recognized_room_revenue",
@@ -214,7 +248,7 @@ class ContextPackageBuilderTest(unittest.TestCase):
         self.assertEqual((), package.metrics[0].required_filters)
 
     def test_metric_result_unit_and_reduction_are_typed_and_hashed(self) -> None:
-        metric = ContextMetric(
+        metric = _v2_metric(
             "governed_amount",
             "serving.analytics.hotel_daily_metrics",
             "amount",
@@ -273,6 +307,92 @@ class ContextPackageBuilderTest(unittest.TestCase):
                 (),
                 reduction="unsupported",
             )
+
+    def test_ratio_metric_has_no_physical_field_and_governed_zero_policy(self) -> None:
+        with self.assertRaises(ContextBuildError):
+            ContextMetric(
+                "adr", "", "", "ratio", "", (),
+                numerator_metric_id="room_revenue",
+                denominator_metric_id="room_nights",
+                zero_policy="unsupported_policy",
+            )
+        with self.assertRaises(ContextBuildError):
+            ContextMetric(
+                "adr", self.pms.fqn, "", "ratio", "", (),
+                numerator_metric_id="room_revenue",
+                denominator_metric_id="room_nights",
+                zero_policy="null_on_zero_denominator",
+            )
+        with self.assertRaises(ContextBuildError):
+            ContextMetric(
+                "adr", "", "", "ratio", "", (),
+                numerator_metric_id="room_revenue",
+                denominator_metric_id="room_revenue",
+                zero_policy="null_on_zero_denominator",
+            )
+        metric = ContextMetric(
+            "adr", "", "", "ratio", "", (),
+            numerator_metric_id="room_revenue",
+            denominator_metric_id="room_nights",
+            zero_policy="null_on_zero_denominator",
+        )
+        self.assertEqual("ratio", metric.reduction)
+
+    def test_exists_metric_requires_a_physical_field_and_defaults_to_scalar_reduction(self) -> None:
+        metric = ContextMetric(
+            "has_flagged_event",
+            self.pms.fqn,
+            "flagged_at",
+            "exists",
+            "check_in_date",
+            (),
+            result_field="resolved_exists",
+            unit="boolean",
+        )
+        self.assertEqual("scalar", metric.reduction)
+
+    def test_ratio_metric_numerator_and_denominator_must_be_sibling_single_metrics(self) -> None:
+        numerator = _v2_metric(
+            "room_revenue", self.pms.fqn, "reservation_id", "sum", "check_in_date", (),
+        )
+        ratio_referencing_missing_denominator = _v2_metric(
+            "adr", "", "", "ratio", "", (),
+            numerator_metric_id="room_revenue",
+            denominator_metric_id="room_nights",
+            zero_policy="null_on_zero_denominator",
+        )
+        asset = ContextAsset(
+            urn=self.pms.urn,
+            fqn=self.pms.fqn,
+            columns=self.pms.columns,
+            metrics=(numerator, ratio_referencing_missing_denominator),
+            metric_registry_required=True,
+        )
+        with self.assertRaisesRegex(ContextBuildError, "분자·분모"):
+            self.builder.build(
+                self.request(assets=(asset,)), frozenset({asset.urn})
+            )
+
+        denominator = _v2_metric(
+            "room_nights", self.pms.fqn, "reservation_id", "count", "check_in_date", (),
+        )
+        ratio = _v2_metric(
+            "adr", "", "", "ratio", "", (),
+            numerator_metric_id="room_revenue",
+            denominator_metric_id="room_nights",
+            zero_policy="null_on_zero_denominator",
+        )
+        complete_asset = ContextAsset(
+            urn=self.pms.urn,
+            fqn=self.pms.fqn,
+            columns=self.pms.columns,
+            metrics=(numerator, denominator, ratio),
+            metric_registry_required=True,
+        )
+        package = self.builder.build(
+            self.request(assets=(complete_asset,)), frozenset({complete_asset.urn})
+        )
+        self.assertEqual(3, len(package.metrics))
 
     def test_package_is_immutable(self) -> None:
         package = self.builder.build(

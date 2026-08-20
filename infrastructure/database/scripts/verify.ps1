@@ -9,6 +9,8 @@ $databaseRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent (Split-Path -Parent $databaseRoot)
 $composeFile = Join-Path $databaseRoot 'compose.yml'
 $probeTable = "verify_readonly_create_$PID"
+$trinoProbeScriptPath = Join-Path ([IO.Path]::GetTempPath()) "trino-probe-$PID.sh"
+$trinoProbeScriptContainerPath = '/tmp/trino-probe.sh'
 . (Join-Path $PSScriptRoot 'deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
 $resolvedEnvFile = Resolve-ExternalDeploymentEnvFile `
@@ -37,11 +39,54 @@ if ([string]$values['TRINO_ADMIN_USER'] -cne 'answervice_platform_admin') {
 function Invoke-Compose {
     param([Parameter(ValueFromRemainingArguments)] [string[]]$Arguments)
 
-    $result = & docker compose @composeEnvArguments -f $composeFile @Arguments
+    # docker compose는 진행 상황(예: `cp`의 Copying/Copied)을 stderr로 출력한다.
+    # 최상위 $ErrorActionPreference='Stop' 아래에서는 그 stderr 줄 하나하나가
+    # NativeCommandError로 승격되어 exit 0인 호출도 즉시 종료시킨다. 실제 성공
+    # 여부는 $LASTEXITCODE로만 판단하고, stderr 승격은 이 경계에서만 끈다.
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $result = & docker compose @composeEnvArguments -f $composeFile @Arguments 2>&1 |
+            Where-Object { $_ -isnot [Management.Automation.ErrorRecord] }
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
     if ($LASTEXITCODE -ne 0) {
         throw 'docker compose command failed; inspect the service logs.'
     }
     return $result
+}
+
+# Windows PowerShell은 중첩된 큰따옴표가 많은 shell 명령 문자열을 native 프로세스
+# argv로 넘길 때 재인용을 깨뜨린다(예: `sh -ec "<nested quotes>"`). 이를 피하기 위해
+# probe 로직을 고정 스크립트 파일로 container에 한 번 복사하고 이후에는 인자 없는
+# 파일 경로만 넘긴다. 스크립트 자체에는 credential을 담지 않고 환경 변수로만 읽는다.
+function Install-TrinoProbeScript {
+    if ($script:trinoProbeScriptInstalled) { return }
+    $scriptBody = @'
+#!/bin/sh
+set -eu
+auth=$(printf '%s:%s' "$TRINO_PROBE_USER" "$TRINO_PROBE_PASSWORD" | base64 | tr -d '\r\n')
+config_file=$(mktemp)
+printf 'header = "Authorization: Basic %s"\n' "$auth" > "$config_file"
+if [ "$TRINO_PROBE_METHOD" = 'POST' ]; then
+    curl --config "$config_file" --fail --silent --show-error \
+        --cacert /run/secrets/trino-ca.pem \
+        --header "X-Trino-User: $TRINO_PROBE_USER" \
+        --header 'Content-Type: text/plain' \
+        --data-binary "$TRINO_PROBE_SQL" \
+        "$TRINO_PROBE_URI"
+else
+    curl --config "$config_file" --fail --silent --show-error \
+        --cacert /run/secrets/trino-ca.pem \
+        --header "X-Trino-User: $TRINO_PROBE_USER" \
+        "$TRINO_PROBE_URI"
+fi
+rm -f "$config_file"
+'@
+    [IO.File]::WriteAllText($trinoProbeScriptPath, ($scriptBody -replace "`r`n", "`n"), [Text.UTF8Encoding]::new($false))
+    Invoke-Compose -Arguments @('cp', $trinoProbeScriptPath, "trino:$trinoProbeScriptContainerPath") | Out-Null
+    $script:trinoProbeScriptInstalled = $true
 }
 
 # Statement protocol 호출은 container에 mount된 CA로 server identity를 확인하고
@@ -57,24 +102,23 @@ function Invoke-TrinoStatementRequest {
     if (-not $Uri.StartsWith('https://trino:8443/', [StringComparison]::Ordinal)) {
         throw 'Trino nextUri escaped the authenticated coordinator origin.'
     }
+    Install-TrinoProbeScript
     $previousProbeUser = $env:TRINO_PROBE_USER
     $previousProbePassword = $env:TRINO_PROBE_PASSWORD
     $env:TRINO_PROBE_USER = [string]$values['TRINO_ADMIN_USER']
     $env:TRINO_PROBE_PASSWORD = [string]$values['TRINO_ADMIN_PASSWORD']
     try {
-        # `--env NAME`은 값 대신 환경 변수 이름만 argv에 넣는다. URI/SQL은 공개
+        # `--env NAME`은 값 대신 환경 변수 이름만 argv에 넣는다. URI/SQL/Method는 공개
         # readiness probe이고 credential 두 개만 process environment로 전달한다.
         $arguments = @(
             'exec', '-T', '--env', 'TRINO_PROBE_USER',
-            '--env', 'TRINO_PROBE_PASSWORD', '--env', "TRINO_PROBE_URI=$Uri"
+            '--env', 'TRINO_PROBE_PASSWORD', '--env', "TRINO_PROBE_URI=$Uri",
+            '--env', "TRINO_PROBE_METHOD=$Method"
         )
-        $command = if ($Method -eq 'POST') {
+        if ($Method -eq 'POST') {
             $arguments += @('--env', "TRINO_PROBE_SQL=$Sql")
-            'auth=$(printf "%s:%s" "$TRINO_PROBE_USER" "$TRINO_PROBE_PASSWORD" | base64 | tr -d "\r\n"); printf "header = \"Authorization: Basic %s\"\n" "$auth" | curl --config - --fail --silent --show-error --cacert /run/secrets/trino-ca.pem --header "X-Trino-User: $TRINO_PROBE_USER" --header "Content-Type: text/plain" --data-binary "$TRINO_PROBE_SQL" "$TRINO_PROBE_URI"'
-        } else {
-            'auth=$(printf "%s:%s" "$TRINO_PROBE_USER" "$TRINO_PROBE_PASSWORD" | base64 | tr -d "\r\n"); printf "header = \"Authorization: Basic %s\"\n" "$auth" | curl --config - --fail --silent --show-error --cacert /run/secrets/trino-ca.pem --header "X-Trino-User: $TRINO_PROBE_USER" "$TRINO_PROBE_URI"'
         }
-        $response = Invoke-Compose -Arguments ($arguments + @('trino', 'sh', '-ec', $command))
+        $response = Invoke-Compose -Arguments ($arguments + @('trino', 'sh', $trinoProbeScriptContainerPath))
         return (($response -join "`n") | ConvertFrom-Json)
     } finally {
         $env:TRINO_PROBE_USER = $previousProbeUser
@@ -94,8 +138,13 @@ function Invoke-TrinoQuery {
             $result = @()
             for ($pageNumber = 0; $pageNumber -lt 120; $pageNumber++) {
                 if ($page.error) { throw [string]$page.error.message }
-                foreach ($row in @($page.data)) {
-                    if (@($row).Count) { $result += [string]$row[0] }
+                # `@($null)`는 PowerShell에서 원소 1개(값 $null)짜리 배열이 된다(빈
+                # 배열이 아니다). data가 없는 page(QUEUED/RUNNING 등)에서 이 wrap을
+                # 그대로 foreach에 넣으면 매번 `$null[0]` 인덱싱으로 터진다.
+                if ($null -ne $page.data) {
+                    foreach ($row in $page.data) {
+                        $result += [string]$row[0]
+                    }
                 }
                 if (-not $page.nextUri) { return $result }
                 $page = Invoke-TrinoStatementRequest -Method GET -Uri ([string]$page.nextUri)

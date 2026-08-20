@@ -64,12 +64,13 @@ P0의 인수 대상은 **단일 호스트·통제된 네트워크의 release can
 
 | 역할 | P0 권한 | 제외 |
 |---|---|---|
-| `hotel_analyst` | 허용된 자연어 분석, 본인 Analysis 저장·재실행, Report 초안 작성·승인 요청 | Report 승인·공개, 권한 밖 원문·개인정보 조회 |
+| `analyst` | 허용된 자연어 분석, 본인 Analysis 저장·재실행, Report 초안 작성·승인 요청 | Report 승인·공개, 권한 밖 원문·개인정보 조회 |
 | `report_admin` | 승인 큐 조회, 승인·반려, 승인된 버전 수동 실행, Run 이력 조회 | 임의 자연어 분석과 데이터 권한 우회 |
+| `platform_admin` | 통제된 단일 호스트에서 현재 애플리케이션 Capability 전체를 검증 | DataHub publish, Trino setup, Source DB 관리와 사용자별 객체 권한 우회 |
 | 사업책임자 | P0에서는 승인된 결과·보고서의 수혜자 | 별도 로그인 역할과 직접 질의 UI |
 | 데이터 거버넌스 담당자 | DataHub에서 Term·Domain·Owner·승인·관계를 관리 | 애플리케이션 내부 관리 UI |
 
-사업책임자 직접 질의를 발표하려면 별도 역할·권한·화면을 구현하고 이 문서를 변경해야 한다. 현재 P0에서는 `hotel_analyst`가 사업 질문을 실행하고 사업책임자가 검증된 결과를 소비한다.
+사업책임자 직접 질의를 발표하려면 별도 역할·권한·화면을 구현하고 이 문서를 변경해야 한다. 현재 P0에서는 `analyst`가 사업 질문을 실행하고 사업책임자가 검증된 결과를 소비한다. `platform_admin` 권한은 사용자명 분기가 아니라 서버 Role→Capability 정책으로만 부여하며, 보고서 재실행의 effective subject와 App의 read-only service identity를 바꾸지 않는다.
 
 ## 4. P0 지원 질문 계약
 
@@ -239,7 +240,7 @@ Turn을 commit하기 전의 precondition 실패는 위 `run_status` 표에 넣�
 | RPT-001 | analyst는 자신이 소유한 Definition으로 Report 초안을 만들고 승인 큐로 전달할 수 있다. Draft mutation은 `draft_revision/expected_revision` CAS와 append idempotency hash를 사용하고 선택 block append·순서·revision 증가를 한 transaction으로 commit한다. stale 편집은 `409 REPORT_DRAFT_CONFLICT`로 기존 block을 덮지 않는다. report_admin은 할당·소유권 범위 안에서 승인·반려하며 actor·decision·version을 감사한다. | `PARTIAL` |
 | RPT-002 | 승인 버전은 stable block ID·order·`is_required`·criticality policy version, layout·static text·참조 Definition·parameter schema·`period_mode`·ViewSpec과 초안 Conversation의 product/semantic release를 checksum으로 고정한다. preview의 `source_artifact_id`와 실행의 `result_artifact_id`를 구분한다. 새 release나 criticality 변경은 새 Version·재승인이 필요하다. | `PARTIAL` |
 | RPT-003 | 수동 실행 actor는 `report_admin`, 각 block의 effective subject는 Definition 원 소유자, Trino 접속은 App service identity다. Run은 승인 Version의 product/semantic release만 사용하며 실행 불가하면 생성 전 `409 RESOURCE_CONFLICT`다. 시작 시 subject별 현재 권한과 하나의 `report_as_of`를 `report_permission_snapshot_id`로 고정하고 모든 child Analysis Run이 이를 참조한다. idempotency hash는 `report_as_of`를 포함한다. `ABSOLUTE` 기간은 유지하고 승인된 `RELATIVE` template만 report_as_of에서 해석한다. | `PARTIAL` |
-| RPT-004 | Block별 새 `result_artifact_id`, status·reason·checksum·Term/Asset/query 근거와 actor·effective subject·service identity·policy version을 보존하고 매 실행 APP-G3를 통과한다. 저장 ViewSpec은 field role·grain·type compatibility를 새 Artifact에서 다시 검증해 적용하며 불일치 시 `VIEW_SCHEMA_INCOMPATIBLE`로 block을 실패시킨다. source Artifact 값·screenshot·과거 query를 대체 결과로 사용하지 않는다. P0 열람은 소유 `hotel_analyst`와 권한 있는 `report_admin`으로 제한한다. | `PARTIAL` |
+| RPT-004 | Block별 새 `result_artifact_id`, status·reason·checksum·Term/Asset/query 근거와 actor·effective subject·service identity·policy version을 보존하고 매 실행 APP-G3를 통과한다. 저장 ViewSpec은 field role·grain·type compatibility를 새 Artifact에서 다시 검증해 적용하며 불일치 시 `VIEW_SCHEMA_INCOMPATIBLE`로 block을 실패시킨다. source Artifact 값·screenshot·과거 query를 대체 결과로 사용하지 않는다. P0 열람은 소유 `analyst`와 권한 있는 `report_admin`으로 제한한다. | `PARTIAL` |
 | RPT-005 | 재시작 후 승인 버전·Run·Block Run·artifact를 App DB에서 복원한다. | `READY_TO_VERIFY` |
 
 `VIEW_SCHEMA_INCOMPATIBLE`는 Analysis `reason_code`가 아니라 Report 실행의 별도 `report_block_reason_code` enum이다. OpenAPI·App DB·Frontend가 같은 enum을 사용하고 필수/선택 block 정책이 이를 Report Run의 `FAILED/PARTIAL`로 승격한다.

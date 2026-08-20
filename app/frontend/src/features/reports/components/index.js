@@ -29,6 +29,7 @@ export { MARKDOWN_INSERT_COMMANDS, MarkdownBlockEditor } from "./MarkdownBlockEd
 /** 블록·통화·template 제어기를 재노출한다. */
 export {
   ReportBlockMenu,
+  ReportBlockSettings,
   ReportCurrencyControl,
   ReportTemplateTile,
 } from "./ReportBlockControls";

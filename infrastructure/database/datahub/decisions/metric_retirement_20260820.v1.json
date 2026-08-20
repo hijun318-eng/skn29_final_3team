@@ -1,0 +1,38 @@
+{
+  "contract_version": "answervice.metric_retirement_decision.v1",
+  "decision_id": "metric-retirement-20260820-01",
+  "decision_status": "APPROVED",
+  "authorization_basis": "EXPLICIT_PRODUCT_SCOPE_DECISION",
+  "authorized_by": "project_owner",
+  "recorded_at": "2026-08-20T00:30:45.9112110+09:00",
+  "reason": "프로젝트 소유자의 명시적 제품 범위 결정에 따라 더 이상 제공하지 않는 6개 legacy Business Metric을 활성 semantic catalog에서 제거한다.",
+  "previous_catalog_version": "walkerhill-v4.3-sql-20260815-derived.1",
+  "previous_catalog_sha256": "d619acf33fee3380188cc19800d3f53d682919e22836a2d3726791c4cc0222d9",
+  "target_catalog_version": "walkerhill-v4.3-sql-20260815-derived.1-retirement-20260820.1",
+  "retirements": [
+    {
+      "metric_id": "banquet_cancelled_events",
+      "term_urn": "urn:li:glossaryTerm:answervice_banquet_cancelled_events"
+    },
+    {
+      "metric_id": "voc_followup_reviews",
+      "term_urn": "urn:li:glossaryTerm:answervice_voc_followup_reviews"
+    },
+    {
+      "metric_id": "voc_low_rating_reviews",
+      "term_urn": "urn:li:glossaryTerm:answervice_voc_low_rating_reviews"
+    },
+    {
+      "metric_id": "voc_negative_reviews",
+      "term_urn": "urn:li:glossaryTerm:answervice_voc_negative_reviews"
+    },
+    {
+      "metric_id": "voc_positive_reviews",
+      "term_urn": "urn:li:glossaryTerm:answervice_voc_positive_reviews"
+    },
+    {
+      "metric_id": "voc_review_count",
+      "term_urn": "urn:li:glossaryTerm:answervice_voc_review_count"
+    }
+  ]
+}

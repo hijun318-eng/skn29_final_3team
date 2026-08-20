@@ -7,6 +7,17 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+from src.data.metric_governance import (
+    DATASET_RUNTIME_PROPERTY_KEYS,
+    RATIO_ZERO_POLICIES,
+    RUNTIME_GOVERNANCE_VERSION,
+    RUNTIME_GOVERNANCE_VERSION_V2,
+    TERM_RUNTIME_PROPERTY_KEYS,
+    business_metric_ids,
+    dataset_runtime_property_keys,
+    runtime_governance_version,
+)
+
 
 RELEASE_MANIFEST_KEYS = frozenset(
     {
@@ -33,48 +44,6 @@ DATASET_MANIFEST_KEYS = frozenset(
     }
 )
 TERM_MANIFEST_KEYS = frozenset({"id", "urn", "semantic_sha256"})
-RUNTIME_GOVERNANCE_VERSION = "ANSWERVICE-RUNTIME-GOVERNANCE-v1"
-DATASET_RUNTIME_PROPERTY_KEYS = frozenset(
-    {
-        "contract_version",
-        "approval_status",
-        "catalog_version",
-        "catalog_sha256",
-        "schema_context_version",
-        "governance_urns",
-        "release_manifest",
-        "manifest_sha256",
-        "fqn",
-        "policy_version",
-        "schema_version",
-        "seed_version",
-        "synthetic",
-        "entitlements",
-        "grain",
-        "typed_columns",
-        "column_roles",
-        "metrics",
-        "dimensions",
-        "join_graph",
-        "time_rules",
-        "parameter_contract",
-        "query_policy",
-    }
-)
-TERM_RUNTIME_PROPERTY_KEYS = frozenset(
-    {
-        "metric_id",
-        "aliases",
-        "approval_status",
-        "catalog_sha256",
-        "glossary_sha256",
-        "glossary_version",
-        "metric_rule",
-        "unit",
-    }
-)
-
-
 def canonical_json(value: object) -> str:
     """Unicode를 보존하고 key를 정렬한 공백 없는 JSON으로 직렬화해 환경과 무관한 hash 입력을 만든다."""
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -102,8 +71,29 @@ def datahub_schema_projection(asset: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def datahub_schema_sha1(asset: Mapping[str, Any]) -> str:
-    """DataHub ``schemaMetadata.hash`` 호환 projection을 SHA-1로 계산하며 보안 서명에는 사용하지 않는다."""
-    payload = canonical_json(datahub_schema_projection(asset)).encode("utf-8")
+    """asset 형식의 DataHub field projection을 SHA-1 fingerprint로 계산한다."""
+
+    return datahub_schema_readback_sha1(datahub_schema_projection(asset))
+
+
+def datahub_schema_readback_sha1(fields: list[Mapping[str, Any]]) -> str:
+    """connector가 반환한 field 순서·원본 타입·nullable의 독립 fingerprint를 만든다.
+
+    DataHub connector에 따라 ``schemaMetadata.hash``가 비어 있을 수 있으므로 그 값을
+    성공 조건으로 사용하지 않는다. 호출자는 실제 GraphQL field read-back을 이 공통
+    shape로 투영해야 하며, Trino 실행 타입 fingerprint는 별도로 계산한다.
+    """
+
+    projection = [
+        {
+            "name": field["name"],
+            "ordinal_position": field["ordinal_position"],
+            "native_type": field["native_type"],
+            "nullable": field["nullable"],
+        }
+        for field in fields
+    ]
+    payload = canonical_json(projection).encode("utf-8")
     # SHA-1은 외부 DataHub wire contract 호환용 식별자이며 release 무결성은 별도의 SHA-256이 담당한다.
     return hashlib.sha1(payload, usedforsecurity=False).hexdigest()
 
@@ -143,7 +133,7 @@ def asset_semantic_projection(
         (
             metric
             for metric in bundle["metric_rules"]
-            if metric["source"]["field"]["asset_fqn"] == asset["fqn"]
+            if column_metric_asset(metric) == asset["fqn"]
         ),
         key=lambda item: item["id"],
     )
@@ -246,6 +236,14 @@ def catalog_projection(bundle: Mapping[str, Any]) -> dict[str, Any]:
             ({"id": item["id"], "urn": item["urn"]} for item in bundle["metric_terms"]),
             key=lambda item: item["urn"],
         ),
+        "derived_metric_rules": sorted(
+            (
+                dict(metric)
+                for metric in bundle["metric_rules"]
+                if metric_source_kind(metric) == "ratio"
+            ),
+            key=lambda item: item["id"],
+        ),
     }
 
 
@@ -268,7 +266,7 @@ def release_manifest(bundle: Mapping[str, Any]) -> dict[str, Any]:
             {
                 "urn": asset["urn"],
                 "fqn": asset["fqn"],
-                "schema_sha1": datahub_schema_sha1(asset),
+                "schema_sha1": asset["datahub_schema_hash"],
                 "table_type": asset["table_type"],
                 "trino_schema_sha256": trino_schema_sha256(asset),
                 "semantic_sha256": asset_semantic_sha256(bundle, asset),
@@ -317,19 +315,26 @@ def dataset_runtime_property_projection(
 ) -> dict[str, str]:
     """검증 bundle·asset·manifest를 DataHub dataset에 기록할 정확한 unprefixed 문자열 속성으로 직렬화한다."""
 
+    version = runtime_governance_version(bundle)
+    all_metrics = list(bundle["metric_rules"])
     metrics = sorted(
         (
             metric
-            for metric in bundle["metric_rules"]
-            if metric["source"]["field"]["asset_fqn"] == asset["fqn"]
+            for metric in all_metrics
+            if column_metric_asset(metric) == asset["fqn"]
         ),
         key=lambda item: item["id"],
     )
     terms = {item["id"]: item for item in bundle["metric_terms"]}
+    business_ids = business_metric_ids(all_metrics)
     runtime_metrics = [
         {
             "id": metric["id"],
-            "term_urn": terms[metric["id"]]["urn"],
+            "term_urn": (
+                terms[metric["id"]]["urn"]
+                if metric["id"] in business_ids
+                else None
+            ),
             "field": metric["source"]["field"]["column"],
             "aggregation": metric["aggregation"],
             "time_field": metric["time_field"]["column"],
@@ -353,7 +358,7 @@ def dataset_runtime_property_projection(
         for name, values in governance_entities.items()
     }
     result = {
-        "contract_version": RUNTIME_GOVERNANCE_VERSION,
+        "contract_version": version,
         "approval_status": str(asset["approval_status"]),
         "catalog_version": str(bundle["catalog_version"]),
         "catalog_sha256": str(manifest["catalog_sha256"]),
@@ -379,7 +384,15 @@ def dataset_runtime_property_projection(
         "parameter_contract": canonical_json(bundle["parameter_contract"]),
         "query_policy": canonical_json(bundle["query_policy"]),
     }
-    _require_exact_keys(result, DATASET_RUNTIME_PROPERTY_KEYS, "dataset properties")
+    if version == RUNTIME_GOVERNANCE_VERSION_V2:
+        result["metric_rules"] = canonical_json(
+            sorted(all_metrics, key=lambda item: item["id"])
+        )
+    _require_exact_keys(
+        result,
+        dataset_runtime_property_keys(version),
+        "dataset properties",
+    )
     return result
 
 
@@ -409,6 +422,67 @@ def _require_exact_keys(
 ) -> None:
     if set(value) != expected:
         raise ValueError(f"{name} keys differ from the canonical governance contract")
+
+
+def metric_source_kind(metric: Mapping[str, Any]) -> str:
+    """검증 전후 metric rule에서 source kind를 부작용 없이 읽는다."""
+
+    source = metric.get("source")
+    return str(source.get("kind")) if isinstance(source, Mapping) else ""
+
+
+def column_metric_asset(metric: Mapping[str, Any]) -> str | None:
+    """column metric이 직접 측정하는 asset FQN을 반환하고 derived/invalid rule은 ``None``으로 둔다."""
+
+    source = metric.get("source")
+    field = source.get("field") if isinstance(source, Mapping) else None
+    if (
+        not isinstance(source, Mapping)
+        or source.get("kind") != "column"
+        or not isinstance(field, Mapping)
+    ):
+        return None
+    value = field.get("asset_fqn")
+    return str(value) if isinstance(value, str) else None
+
+
+def ratio_operand_ids(metric: Mapping[str, Any]) -> tuple[str, str] | None:
+    """ratio metric의 서로 다른 분자·분모 metric id를 반환하며 불완전한 참조는 거부 표식으로 둔다."""
+
+    source = metric.get("source")
+    if not isinstance(source, Mapping) or source.get("kind") != "ratio":
+        return None
+    numerator = source.get("numerator_metric_id")
+    denominator = source.get("denominator_metric_id")
+    if (
+        not isinstance(numerator, str)
+        or not numerator
+        or not isinstance(denominator, str)
+        or not denominator
+        or numerator == denominator
+    ):
+        return None
+    return numerator, denominator
+
+
+def metric_asset_fqns(
+    metric: Mapping[str, Any],
+    metrics_by_id: Mapping[str, Mapping[str, Any]],
+) -> frozenset[str]:
+    """column metric의 직접 asset 또는 ratio operand가 측정하는 asset 집합을 projection 연결용으로 반환한다."""
+
+    direct = column_metric_asset(metric)
+    if direct is not None:
+        return frozenset({direct})
+    operands = ratio_operand_ids(metric)
+    if operands is None:
+        return frozenset()
+    resolved = tuple(
+        column_metric_asset(metrics_by_id.get(operand, {})) for operand in operands
+    )
+    if any(asset is None for asset in resolved):
+        return frozenset()
+    return frozenset(str(asset) for asset in resolved)
 
 
 MANIFEST_KEYS = RELEASE_MANIFEST_KEYS

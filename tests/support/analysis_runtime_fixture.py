@@ -16,6 +16,7 @@ from typing import Any
 from sqlglot import exp
 
 from src.ai.schema import validate_payload
+from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +44,13 @@ def default_analysis_runtime_metadata() -> AnalysisRuntimeMetadata:
         "unit": "fixture_units",
         "reduction": "sum",
         "dimensions": [],
+        "governance_version": RUNTIME_GOVERNANCE_VERSION_V2,
+        "visibility": "BUSINESS",
+        "allowed_roles": ["analyst"],
+        "contains_pii": False,
+        "allowed_join_ids": [],
+        "join_required": False,
+        "query_strategies": ["RAW_APPROVED_DETAIL"],
         "required_filters": [{
             "field": "record_state",
             "operator": "eq",
@@ -300,7 +308,9 @@ class MetadataDrivenAnalysisModel:
             "metric_candidates": metric_ids,
             "selected_metric_id": metric_ids[0],
             "dimension_candidates": [],
+            "filter_candidates": [],
             "period_candidates": [{"start": start.isoformat(), "end_exclusive": end.isoformat(), "source_text": "test-fixture-window"}],
+            "period_relationship": "single",
             "ambiguity": {"is_ambiguous": False, "reasons": [], "clarification_question": None},
         }
 

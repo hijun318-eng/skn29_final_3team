@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "connector": "iceberg",
+  "coercions": [
+    {
+      "view": "serving.analytics_v4_3.voc_review_detail",
+      "column": "submitted_at",
+      "source_type": "timestamp(3) with time zone",
+      "target_type": "timestamp(6) with time zone",
+      "reason": "Iceberg v2 stores timestamp-with-time-zone values at microsecond precision; widening from millisecond precision appends zeros and preserves the instant."
+    },
+    {
+      "view": "serving.analytics_v4_3.voc_review_detail",
+      "column": "rating_overall",
+      "source_type": "smallint",
+      "target_type": "integer",
+      "reason": "Iceberg has a 32-bit integer type and no smallint type; widening preserves every source value."
+    },
+    {
+      "view": "serving.analytics_v4_3.voc_review_detail",
+      "column": "rating_service",
+      "source_type": "smallint",
+      "target_type": "integer",
+      "reason": "Iceberg has a 32-bit integer type and no smallint type; widening preserves every source value."
+    },
+    {
+      "view": "serving.analytics_v4_3.voc_review_detail",
+      "column": "rating_cleanliness",
+      "source_type": "smallint",
+      "target_type": "integer",
+      "reason": "Iceberg has a 32-bit integer type and no smallint type; widening preserves every source value."
+    },
+    {
+      "view": "serving.analytics_v4_3.voc_review_detail",
+      "column": "rating_food",
+      "source_type": "smallint",
+      "target_type": "integer",
+      "reason": "Iceberg has a 32-bit integer type and no smallint type; widening preserves every source value."
+    },
+    {
+      "view": "serving.analytics_v4_3.voc_review_detail",
+      "column": "rating_facility",
+      "source_type": "smallint",
+      "target_type": "integer",
+      "reason": "Iceberg has a 32-bit integer type and no smallint type; widening preserves every source value."
+    },
+    {
+      "view": "serving.analytics_v4_3.voc_review_detail",
+      "column": "rating_value",
+      "source_type": "smallint",
+      "target_type": "integer",
+      "reason": "Iceberg has a 32-bit integer type and no smallint type; widening preserves every source value."
+    },
+    {
+      "view": "serving.analytics_v4_3.voc_review_detail",
+      "column": "language_code",
+      "source_type": "char(2)",
+      "target_type": "varchar(2)",
+      "reason": "Iceberg stores strings without fixed-width CHAR semantics; both values remain the same two-character ISO code."
+    },
+    {
+      "view": "serving.analytics_v4_3.voc_review_detail",
+      "column": "prior_visit_count",
+      "source_type": "smallint",
+      "target_type": "integer",
+      "reason": "Iceberg has a 32-bit integer type and no smallint type; widening preserves every source value."
+    }
+  ]
+}

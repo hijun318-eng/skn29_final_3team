@@ -1,0 +1,437 @@
+{
+    "release_id":  "walkerhill-v4.3-sql-20260815-derived.1",
+    "source_release_id":  "walkerhill-v4.3-sql-20260815",
+    "schema_version":  "4.3.0",
+    "generator_version":  "sql-v1.1.0",
+    "created_at_kst":  "2026-08-15T19:02:16.5927140",
+    "source_archive":  {
+                           "name":  "Walkerhill_V4.3_2026년8월까지_P1_1-3_수정본.zip",
+                           "bytes":  133547,
+                           "sha256":  "615618e6be89f0851821f15a9a1bb84dcdabb9cf8ea5ea0c0c48b0221030c284"
+                       },
+    "period":  {
+                   "start":  "2024-01-01",
+                   "end":  "2026-08-31",
+                   "evidence_cutoff":  "2026-08-15T12:00:00+09:00",
+                   "scenario_as_of":  "2026-08-31"
+               },
+    "base_seed":  20260814,
+    "namespaces":  {
+                       "source":  "walkerhill_v4_3",
+                       "serving":  "serving.analytics_v4_3"
+                   },
+    "expected":  {
+                     "physical_tables":  38,
+                     "physical_columns":  410,
+                     "serving_views":  13,
+                     "rows":  7815868,
+                     "pms_rows":  2519447,
+                     "banquet_rows":  84954,
+                     "pos_rows":  3324815,
+                     "crm_rows":  1093947,
+                     "facility_rows":  792705
+                 },
+    "changes":  [
+                    {
+                        "file":  "01_V4.3_생성_및_서빙_SQL/03_mysql_pos/50_mysql_pos_validation.sql",
+                        "reason":  "현재 seed 산식으로 재현되는 bridge 주문 101,573건과 validator 기대값을 일치시킴"
+                    },
+                    {
+                        "file":  "01_V4.3_생성_및_서빙_SQL/02_postgresql_banquet/32_postgresql_banquet_revenue_block_seed.sql",
+                        "reason":  "PMS와 같은 2026-09-01 exclusive release boundary로 pickup/checkout clamp"
+                    },
+                    {
+                        "file":  "01_V4.3_생성_및_서빙_SQL/05_clickhouse_facility/*.sql",
+                        "reason":  "INSERT target column, 논리 PK duplicate gate, read-only grant 및 ClickHouse 24.8 JOIN table-function alias 명시"
+                    },
+                    {
+                        "file":  "01_V4.3_생성_및_서빙_SQL/03_mysql_pos/41_mysql_pos_readonly_grant.sql",
+                        "reason":  "V4.3 namespace의 POS SELECT 권한을 기존 read-only role에 부여"
+                    },
+                    {
+                        "file":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/25_trino_integrated_hotel_views.sql",
+                        "reason":  "동일 confidence 이벤트의 대표값을 event_id로 결정론적 tie-break"
+                    },
+                    {
+                        "file":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/*.sql",
+                        "reason":  "Trino JOIN USING으로 병합된 키를 원본 alias로 재참조할 때 발생하는 COLUMN_NOT_FOUND를 명시적 ON 조건으로 제거"
+                    },
+                    {
+                        "file":  "02_V4.3_현실성_검증_SQL/06_trino_serving/32_trino_realism_validation.sql",
+                        "reason":  "Trino JOIN USING으로 병합된 키를 원본 alias로 재참조할 때 발생하는 COLUMN_NOT_FOUND를 명시적 ON 조건으로 제거"
+                    },
+                    {
+                        "file":  "01_V4.3_생성_및_서빙_SQL/04_sqlserver_crm/*.sql",
+                        "reason":  "모든 CRM SQL의 실행 database를 crm_db로 이중 강제"
+                    },
+                    {
+                        "file":  "01_V4.3_생성_및_서빙_SQL/04_sqlserver_crm/31_sqlserver_crm_point_transaction_seed.sql",
+                        "reason":  "회원별 최대 3회 차감 후에도 중간·최종 포인트 잔액이 음수가 되지 않도록 최초 적립 하한을 보정"
+                    },
+                    {
+                        "file":  "01_V4.3_생성_및_서빙_SQL/04_sqlserver_crm/33_sqlserver_crm_voc_review_seed.sql",
+                        "reason":  "SQL Server Error 701/8632 방지를 위해 optimizer 경계를 분할하고 CHECKOUT 여정의 rating_food를 scope 계약에 맞게 NULL 처리"
+                    },
+                    {
+                        "file":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/30_trino_cross_source_validation.sql",
+                        "reason":  "Trino 150-stage hard limit 안에서 22개 검증을 모두 실행하도록 동일 check set을 8개 독립 result set으로 분할"
+                    },
+                    {
+                        "file":  "cleanup-master-misload.sql",
+                        "reason":  "오적재된 master.walkerhill_v4_3 exact candidate만 제거하는 승인 전용 cleanup"
+                    }
+                ],
+    "canonical_tree_sha256":  "2f3ad153a12beaea0af050c406f1f5e0d20a5219d6a1fd48528c3bc43d689e27",
+    "files":  [
+                  {
+                      "relative_path":  "00_문서/데이터_구조_요약.md",
+                      "bytes":  7421,
+                      "sha256":  "770b6f53f41fbdec8706d6fa0f1ebf5506b3770a1a48c3f52bc37de593dcf1c8"
+                  },
+                  {
+                      "relative_path":  "00_문서/독립_검증_요청서.md",
+                      "bytes":  4165,
+                      "sha256":  "79b96323dab7958848fdbc8fa8856e9ad56a4471cba701fa51c7dfdffe2574cd"
+                  },
+                  {
+                      "relative_path":  "00_문서/품질_보고서.md",
+                      "bytes":  3728,
+                      "sha256":  "a0fe521792f856bde5ca851cccebab9dade7e8f56c3b242cb65f8b9c7b73ffc0"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/01_postgresql_pms/00_postgresql_pms_preflight_readonly.sql",
+                      "bytes":  1118,
+                      "sha256":  "01c9fb3ace5f81b618d7ec4bf7392d88676c66856ef259dba871d371dbe9d540"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/01_postgresql_pms/10_postgresql_pms_reference_ddl.sql",
+                      "bytes":  13407,
+                      "sha256":  "cef726306adc5e539a7efa6d331e7b0ba50d3ab9ed8b9eeae23d73adccb27e56"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/01_postgresql_pms/11_postgresql_pms_operation_ddl.sql",
+                      "bytes":  20125,
+                      "sha256":  "ba26173cce6a6c176c23aedc3362970a4da932c8cdc87a7698b44d7426533022"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/01_postgresql_pms/20_postgresql_pms_reference_seed.sql",
+                      "bytes":  11423,
+                      "sha256":  "5b62e808a92d0689d61540e853cde3018bf1e896bf4c232beb8120460205312d"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/01_postgresql_pms/21_postgresql_pms_event_seed.sql",
+                      "bytes":  5009,
+                      "sha256":  "eac0342cc6650c1739f4dd6119665dbe1129ebdd14b3de3465ef78201f2575de"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/01_postgresql_pms/30_postgresql_pms_inventory_seed.sql",
+                      "bytes":  6420,
+                      "sha256":  "9a1ed9a69d28f9becd08cb0b0e4cb6d4bbeb7fc584769d73e19fd5a88f26e51c"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/01_postgresql_pms/31_postgresql_pms_guest_reservation_seed.sql",
+                      "bytes":  15387,
+                      "sha256":  "0224e9105451de7dfa3f868c4b0b8070860c42df67a38b9b330cfa23068cadfe"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/01_postgresql_pms/32_postgresql_pms_status_stay_seed.sql",
+                      "bytes":  6255,
+                      "sha256":  "55fe0bfa1aae05dadad6fe655bae021eff4c4a09cc116ff3d6c574927bad86f2"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/01_postgresql_pms/33_postgresql_pms_folio_seed.sql",
+                      "bytes":  2910,
+                      "sha256":  "c611d1383804de2b805f2f79ef1a2517608610c96cab21e1387451892d464347"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/01_postgresql_pms/40_postgresql_pms_constraints_indexes.sql",
+                      "bytes":  9405,
+                      "sha256":  "debe28e06202e1af370ef1463664174336c431d22ed69a2314e8eed28823fa94"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/01_postgresql_pms/50_postgresql_pms_validation.sql",
+                      "bytes":  9786,
+                      "sha256":  "487c164debe21a38f5d40628156742d1283c436a070dfe639d746d490f46bdcf"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/02_postgresql_banquet/00_postgresql_banquet_preflight_readonly.sql",
+                      "bytes":  846,
+                      "sha256":  "dda56e54b1d408ec5fc8eb08e1c5b820f67992f3b963905b1baaeff07c5b3bea"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/02_postgresql_banquet/10_postgresql_banquet_ddl.sql",
+                      "bytes":  10996,
+                      "sha256":  "e5dd056a447653211ba06e9ae557792ad21bc03145f54f6f482e5e993d131c71"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/02_postgresql_banquet/20_postgresql_banquet_venue_seed.sql",
+                      "bytes":  2044,
+                      "sha256":  "487d82f8d0c9225eed44c97e9f8eee730d0411942ffb29ebe7f1eb57a895a59a"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/02_postgresql_banquet/30_postgresql_banquet_booking_seed.sql",
+                      "bytes":  4045,
+                      "sha256":  "309eba24ad76425dc8ed663202557dde192e39985a6c25b6a8da279817210953"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/02_postgresql_banquet/31_postgresql_banquet_status_history_seed.sql",
+                      "bytes":  1574,
+                      "sha256":  "a394d38d37fae7c904a558c46c677d6c203fe8d65ef06530a4f16567f77fe53e"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/02_postgresql_banquet/32_postgresql_banquet_revenue_block_seed.sql",
+                      "bytes":  3299,
+                      "sha256":  "618214535c1b23b7ee5a34317e7bfec1faa0d29567bbee01c2559a94477636fb"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/02_postgresql_banquet/40_postgresql_banquet_constraints_indexes.sql",
+                      "bytes":  3719,
+                      "sha256":  "75907a1bbeb04502f24e195baf3866e35b874149c98119b1fd4021a596881f08"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/02_postgresql_banquet/50_postgresql_banquet_validation.sql",
+                      "bytes":  6917,
+                      "sha256":  "127aa84b3816b1f73ebfcaf71354bf523431377db452c0cea55dcaadc6dccc61"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/03_mysql_pos/00_mysql_pos_preflight_readonly.sql",
+                      "bytes":  784,
+                      "sha256":  "0d98aca33d6bd8a374eab2d433c96b0dc214f661b7fc64b542da2fb4fedd784b"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/03_mysql_pos/10_mysql_pos_ddl.sql",
+                      "bytes":  8624,
+                      "sha256":  "4c1647f2dc9eac2785757c0fdc6ffc4fc39dac2ce75b7c011690cf3a4433da7f"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/03_mysql_pos/20_mysql_pos_outlet_menu_seed.sql",
+                      "bytes":  3567,
+                      "sha256":  "bce2c4eaf15b157ae30ab6eac25dab341459758a9d1fe969409197ed1616546c"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/03_mysql_pos/21_mysql_pos_menu_price_history_seed.sql",
+                      "bytes":  1968,
+                      "sha256":  "b2516d56135cc8ad624d63eaa8eb37e8439c6ea7aa48ef64b75152bff25a3903"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/03_mysql_pos/30_mysql_pos_order_seed.sql",
+                      "bytes":  7902,
+                      "sha256":  "6d60a39d9d2a282728391a96d598fc315ae30bd9f171a0f0892cecc3f3caf85e"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/03_mysql_pos/31_mysql_pos_order_item_seed.sql",
+                      "bytes":  2496,
+                      "sha256":  "9dc362ec44a616de82acb2aab8cda5df46ec73646f5797e50233ce9751f9e4c9"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/03_mysql_pos/32_mysql_pos_payment_refund_seed.sql",
+                      "bytes":  1876,
+                      "sha256":  "f98983e8f9ed6b6a0a9f4e6294344cdbf4be49215cc9d24b4126e03102ce65b3"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/03_mysql_pos/40_mysql_pos_constraints_indexes.sql",
+                      "bytes":  2478,
+                      "sha256":  "312e7094a2c5f131c9a56cf8033fab4875f768cbde1ff48c6b79471fdff0f4cb"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/03_mysql_pos/41_mysql_pos_readonly_grant.sql",
+                      "bytes":  267,
+                      "sha256":  "036ddefaf56f338a411d7416d7f6a5bbd22152c87728bfd5558967bf08bd5866"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/03_mysql_pos/50_mysql_pos_validation.sql",
+                      "bytes":  7255,
+                      "sha256":  "963eee6d3a8b67b97aecbcbed412f8da4746a84e561d861f27b7782e30685119"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/04_sqlserver_crm/00_sqlserver_crm_preflight_readonly.sql",
+                      "bytes":  815,
+                      "sha256":  "de3eacde72e80e764c8f8000c6307eb3dd900b94ac753a73cab50f96d0204d2f"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/04_sqlserver_crm/10_sqlserver_crm_ddl.sql",
+                      "bytes":  22588,
+                      "sha256":  "e01df54ff768ca336a5c08b27d00f59b204abd4caaf084491e7a48f13016e370"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/04_sqlserver_crm/20_sqlserver_crm_tier_member_seed.sql",
+                      "bytes":  2075,
+                      "sha256":  "45b238954a223dabd962df070e2035657cc72937bcc5c2479e08bc1231b28340"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/04_sqlserver_crm/30_sqlserver_crm_grade_history_seed.sql",
+                      "bytes":  1618,
+                      "sha256":  "5a782a74d44337d795d10c8646b519adfcb795a59107312d428c149538eac2c5"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/04_sqlserver_crm/31_sqlserver_crm_point_transaction_seed.sql",
+                      "bytes":  5183,
+                      "sha256":  "5abf6a1efcc00fce98b3684f15e97411fe6c880dd24560d140cebc0612d359b7"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/04_sqlserver_crm/32_sqlserver_crm_customer_map_seed.sql",
+                      "bytes":  1481,
+                      "sha256":  "8ce6ae30c9e4f0cfb2351b693a696032879f1ef6aa67e16728368bac23ec4a2c"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/04_sqlserver_crm/33_sqlserver_crm_voc_review_seed.sql",
+                      "bytes":  25365,
+                      "sha256":  "f60bcebfd86e8e83aa3c208ea901e26be3d26baa13a8765d79e102af52ec0c0e"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/04_sqlserver_crm/40_sqlserver_crm_constraints_indexes.sql",
+                      "bytes":  8254,
+                      "sha256":  "7a66b875a15c1c3de367a3ef79491ecb784f2763a32ef99f3a4829bc7e45ae20"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/04_sqlserver_crm/50_sqlserver_crm_validation.sql",
+                      "bytes":  8756,
+                      "sha256":  "174cd5b569fd1796f024b9727493736f53d3da48e0f6176d58e16403cf1975bc"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/05_clickhouse_facility/00_clickhouse_facility_preflight_readonly.sql",
+                      "bytes":  570,
+                      "sha256":  "bd1651a618cca64d4aeaca99921a21a11aecf7413fae15c1da5939064361cb3e"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/05_clickhouse_facility/10_clickhouse_facility_ddl.sql",
+                      "bytes":  6856,
+                      "sha256":  "329412526827c031b73c14ba719f2e27bd76353990fac075795e05cebb9af735"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/05_clickhouse_facility/20_clickhouse_facility_master_seed.sql",
+                      "bytes":  2238,
+                      "sha256":  "de84d9c5969218f8a2a659bc0d35ac9cee5f249d890e14d48b268e31dd35b163"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/05_clickhouse_facility/30_clickhouse_facility_usage_seed.sql",
+                      "bytes":  3295,
+                      "sha256":  "f67555e687f1da46d1eca38a3bb292c6aa65f11022e5ac5793d39ac03400cda9"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/05_clickhouse_facility/31_clickhouse_facility_incident_seed.sql",
+                      "bytes":  2437,
+                      "sha256":  "a80fed50b625f8a1d7186bb86be69ac650afbb655ae0ba1b1fb705aca780a5af"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/05_clickhouse_facility/32_clickhouse_facility_staffing_seed.sql",
+                      "bytes":  2443,
+                      "sha256":  "c672e9eceb42c1ab3de0574f48e29dd77de058220cafb405c2d655f60c6fcd9f"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/05_clickhouse_facility/33_clickhouse_facility_resource_seed.sql",
+                      "bytes":  2439,
+                      "sha256":  "f8084a40a13f63ca75db0610fd71291af5214133ea289ec6f54f90913851138a"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/05_clickhouse_facility/40_clickhouse_facility_indexes_settings.sql",
+                      "bytes":  871,
+                      "sha256":  "9e282bf882dbab411058f029dfab067828d7e8f33eb31ed8679c4a72a44fce11"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/05_clickhouse_facility/41_clickhouse_facility_readonly_grant.sql",
+                      "bytes":  289,
+                      "sha256":  "2590e14df7a96bf355ea8feb65f6a3b532075eb57e7a8292b78c04970048ea88"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/05_clickhouse_facility/50_clickhouse_facility_validation.sql",
+                      "bytes":  4639,
+                      "sha256":  "5cec065b2555a68812d1738f29255e13061d3ef0b0a1c313eb1bd22ace3c1fa4"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/00_trino_source_preflight_readonly.sql",
+                      "bytes":  1285,
+                      "sha256":  "b015a13478f2885ed390fed8b65fadac9e4ade28f6ca8e175929546809a151ad"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/10_trino_serving_schema.sql",
+                      "bytes":  299,
+                      "sha256":  "41e4721f2b55ace4bda1685134bf02417cf6cded8142ec57237497daa5c96262"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/20_trino_room_views.sql",
+                      "bytes":  4399,
+                      "sha256":  "b18ef0a129191cbe411dcd24c704dc9c39d4aa6a772812414ea4f630f6b656da"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/21_trino_fnb_views.sql",
+                      "bytes":  2577,
+                      "sha256":  "c94738a8742e800fcce8269f0c9f7ff6d46ee434eccb4facb1e973f840a8f775"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/22_trino_membership_views.sql",
+                      "bytes":  1774,
+                      "sha256":  "8f73e9645df029489c700c4e887d1c71e5322888dfe17db522f9e76de814f609"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/23_trino_banquet_views.sql",
+                      "bytes":  4209,
+                      "sha256":  "7c3a23f93b071b288700931274ea9a2f1b61ae8f9ceb802d219404c8b20fffb3"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/24_trino_facility_views.sql",
+                      "bytes":  4923,
+                      "sha256":  "5b6d4b2ec059346979eb28c67c3d26061cb563581354a2c8431e5dda31cc37cf"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/25_trino_integrated_hotel_views.sql",
+                      "bytes":  7898,
+                      "sha256":  "d03630196fec34cbbfde12e36b44a24f86844c810da38c507f01995f3dff81ba"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/26_trino_voc_views.sql",
+                      "bytes":  9628,
+                      "sha256":  "9f97f539a242abb96ec4afd37c722bd9385787c8d4a482964733f001e1b2bd3b"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/30_trino_cross_source_validation.sql",
+                      "bytes":  11285,
+                      "sha256":  "ff410576767b1e9f00b6976ca75ea7f4fe26328bcb24ed16f7d209a89cab71c3"
+                  },
+                  {
+                      "relative_path":  "01_V4.3_생성_및_서빙_SQL/06_trino_serving/31_trino_event_counterfactual_validation.sql",
+                      "bytes":  8203,
+                      "sha256":  "5e1240f6718ad52ecfaa0086d6d255358ed2cca88265da0f8a93c47910781c0e"
+                  },
+                  {
+                      "relative_path":  "02_V4.3_현실성_검증_SQL/01_postgresql_pms/51_postgresql_pms_realism_validation.sql",
+                      "bytes":  5404,
+                      "sha256":  "7c2edde756dfd8fbaa73276549e6494746c37ac62d4431f2ed27a16869e35585"
+                  },
+                  {
+                      "relative_path":  "02_V4.3_현실성_검증_SQL/02_postgresql_banquet/51_postgresql_banquet_realism_validation.sql",
+                      "bytes":  4901,
+                      "sha256":  "e889493b2611ae1d99f81c7fe82d37180ac7d6491ce12b6e1acf6401ee865f7e"
+                  },
+                  {
+                      "relative_path":  "02_V4.3_현실성_검증_SQL/03_mysql_pos/51_mysql_pos_realism_validation.sql",
+                      "bytes":  4507,
+                      "sha256":  "bab2d9014adf56afa837cdc18e89958108b9b9ec4315be2079c500fa2aff022d"
+                  },
+                  {
+                      "relative_path":  "02_V4.3_현실성_검증_SQL/04_sqlserver_crm/51_sqlserver_crm_realism_validation.sql",
+                      "bytes":  5318,
+                      "sha256":  "6ce69bcdf049801bd5b90d49955f9447f8ca2c60c9a4413c3afe3ec148aba3d0"
+                  },
+                  {
+                      "relative_path":  "02_V4.3_현실성_검증_SQL/05_clickhouse_facility/51_clickhouse_facility_realism_validation.sql",
+                      "bytes":  4669,
+                      "sha256":  "b09a74e00997a97f860184cc90a439f3ca268ef0a099a884728e44aac2f98b17"
+                  },
+                  {
+                      "relative_path":  "02_V4.3_현실성_검증_SQL/06_trino_serving/32_trino_realism_validation.sql",
+                      "bytes":  11971,
+                      "sha256":  "a1693c237d7d1207cd36fc1a3fc5b088fbfd2161fb8be7e17df8f521e91d9bc0"
+                  },
+                  {
+                      "relative_path":  "cleanup-master-misload.sql",
+                      "bytes":  1004,
+                      "sha256":  "5c4e06307e2e09a458559aca4700a7d6f981193ef610e57050b14c545dcfe323"
+                  },
+                  {
+                      "relative_path":  "run-v43.ps1",
+                      "bytes":  8675,
+                      "sha256":  "960b6e647003163c86d12c312de3bffdd3e13885132d1c6de8bac01b633f7343"
+                  }
+              ]
+}

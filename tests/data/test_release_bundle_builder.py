@@ -33,6 +33,7 @@ from src.data.governance_contract import (  # noqa: E402
     term_runtime_property_projection,
 )
 from test_datahub_metadata_publication import arbitrary_bundle  # noqa: E402
+from test_metric_governance_v2 import _v2_bundle  # noqa: E402
 
 
 PREFIX = "answervice."
@@ -115,7 +116,7 @@ def _runtime(bundle):
                 description=asset["description"],
                 schema_name=asset["schema_name"],
                 schema_version=asset["schema_metadata_version"],
-                schema_hash=datahub_schema_sha1(asset),
+                schema_hash=asset["datahub_schema_hash"],
                 removed=False,
                 owners=(owner,),
                 domain=domain,
@@ -173,6 +174,30 @@ def test_dynamic_release_is_built_only_after_both_readiness_stages_pass():
     assert result.report.base_ingestion.expected_column_count == 9
     assert result.bundle is not None
     assert catalog_hash(result.bundle) == catalog_hash(bundle)
+    assert release_manifest(result.bundle) == release_manifest(bundle)
+
+
+def test_v2_release_readback_preserves_hidden_support_rules():
+    """live Dataset property가 Glossary에 없는 SUPPORT Rule까지 동일하게 복원한다."""
+
+    bundle = _v2_bundle()
+    scopes, inventory, datasets, terms = _runtime(bundle)
+    result = asyncio.run(
+        inspect_release(scopes, FakeTrino(inventory), FakeDataHub(datasets, terms))
+    )
+
+    assert result.report.semantic_release.status == "READY"
+    assert result.bundle is not None
+    assert {item["id"] for item in result.bundle["metric_rules"]} == {
+        "amount_total",
+        "event_count",
+        "account_count",
+        "amount_per_event",
+    }
+    assert {item["id"] for item in result.bundle["metric_terms"]} == {
+        "account_count",
+        "amount_per_event",
+    }
     assert release_manifest(result.bundle) == release_manifest(bundle)
 
 

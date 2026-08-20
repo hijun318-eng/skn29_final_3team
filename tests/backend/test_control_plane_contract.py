@@ -25,6 +25,16 @@ class ControlPlaneContractTest(unittest.TestCase):
             dockerfile,
         )
 
+    def test_docker_healthcheck_is_liveness_not_product_readiness(self) -> None:
+        dockerfile = (BACKEND / "Dockerfile").read_text(encoding="utf-8")
+        healthcheck = dockerfile[dockerfile.index("HEALTHCHECK") :]
+
+        self.assertIn("/health", healthcheck)
+        self.assertNotIn("/readiness", healthcheck)
+        self.assertIn("from urllib.request import urlopen", healthcheck)
+        self.assertNotIn("import httpx", healthcheck)
+        self.assertIn("--timeout=5s", healthcheck)
+
     def test_published_migration_is_immutable_and_followup_is_least_privilege(self) -> None:
         versions = BACKEND / "migrations" / "versions"
         published = (versions / "20260730_02_application_schema.py").read_bytes()
@@ -76,7 +86,7 @@ class ControlPlaneContractTest(unittest.TestCase):
             visit(module)
 
     def test_service_depends_on_port_not_fake_adapter(self) -> None:
-        source = (BACKEND / "app" / "services" / "analysis_service.py").read_text(
+        source = (BACKEND / "app" / "services" / "analysis" / "service.py").read_text(
             encoding="utf-8"
         )
         imports = {
@@ -96,8 +106,13 @@ class ControlPlaneContractTest(unittest.TestCase):
             "CONTEXT_INCOMPLETE",
             "CONTEXT_SOURCE_FAILED",
             "DATA_ASSET_NOT_FOUND",
+            "OUT_OF_DATA_RANGE",
+            "SOURCE_NOT_READY",
+            "GRAIN_VIOLATION",
+            "FILTER_VALUE_NOT_FOUND",
             "AUTHENTICATION_REQUIRED",
             "ACCESS_DENIED",
+            "SEMANTIC_CONTRACT_INVALID",
             "MODEL_CONTRACT_INVALID",
             "MODEL_TIMEOUT",
             "MODEL_ENDPOINT_UNAVAILABLE",

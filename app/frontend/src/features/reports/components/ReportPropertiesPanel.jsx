@@ -23,6 +23,7 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
 }) {
   const [snapshotName, setSnapshotName] = useState("");
   const block = editorTools.primaryBlock;
+  const blockLocked = block ? editorTools.lockedBlockIds.has(block.id) : false;
   const settings = blockSettings(block ?? {});
   const selectedCount = editorTools.selectedBlockIds.size;
   const lockedSelectedCount = [...editorTools.selectedBlockIds]
@@ -36,7 +37,7 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
       <div>
         <button type="button" onClick={() => editorTools.setSelectedLocks(true)} disabled={!canEdit}><Lock size={14} />잠금</button>
         <button type="button" onClick={() => editorTools.setSelectedLocks(false)} disabled={!canEdit || !lockedSelectedCount}><Unlock size={14} />해제</button>
-        <button type="button" className="danger" onClick={editorTools.deleteSelected} disabled={!canEdit || lockedSelectedCount === selectedCount}><Trash2 size={14} />삭제</button>
+        <button type="button" className="danger" onClick={editorTools.deleteSelected} disabled={!canEdit || lockedSelectedCount > 0}><Trash2 size={14} />삭제</button>
       </div>
     </section>}
 
@@ -48,17 +49,17 @@ export const ReportPropertiesPanel = memo(function ReportPropertiesPanel({
 
     {block ? <section className="report-block-properties" key={block.id}>
       <h3>선택 블록</h3>
-      <label><span>제목</span><input defaultValue={block.title} disabled={!canEdit} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== block.title) onUpdate(block.id, { title }); }} /></label>
-      <dl><div><dt>유형</dt><dd>{block.type}</dd></div><div><dt>위치</dt><dd>{(block.x ?? 0) + 1}열 · {(block.y ?? 0) + 1}행</dd></div><div><dt>크기</dt><dd>{block.w ?? block.columns}/12 · {block.h}단</dd></div><div><dt>상태</dt><dd>{editorTools.lockedBlockIds.has(block.id) ? "잠김" : "편집 가능"}</dd></div></dl>
-      <div className="report-property-lock"><button type="button" onClick={() => editorTools.toggleBlockLock(block.id)} disabled={!canEdit}>{editorTools.lockedBlockIds.has(block.id) ? <><Unlock size={14} />잠금 해제</> : <><Lock size={14} />블록 잠금</>}</button></div>
+      <label><span>제목</span><input defaultValue={block.title} disabled={!canEdit || blockLocked} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== block.title) onUpdate(block.id, { title }); }} /></label>
+      <dl><div><dt>유형</dt><dd>{block.type}</dd></div><div><dt>위치</dt><dd>{(block.x ?? 0) + 1}열 · {(block.y ?? 0) + 1}행</dd></div><div><dt>크기</dt><dd>{block.w ?? block.columns}/12 · {block.h}단</dd></div><div><dt>상태</dt><dd>{blockLocked ? "잠김" : "편집 가능"}</dd></div></dl>
+      <div className="report-property-lock"><button type="button" onClick={() => editorTools.toggleBlockLock(block.id)} disabled={!canEdit}>{blockLocked ? <><Unlock size={14} />잠금 해제</> : <><Lock size={14} />블록 잠금</>}</button></div>
       <span className="report-property-label">8단계 크기</span>
       <div className="report-size-presets">{editorTools.sizePresets.map((preset) => <button type="button" title={`${preset.width}/12 · ${preset.height}단`} aria-label={`${preset.index}단계 ${preset.label}`} className={(block.w ?? block.columns) === preset.width && block.h === preset.height ? "active" : ""} onClick={() => editorTools.resizePrimary(preset)} disabled={!canEdit || editorTools.lockedBlockIds.has(block.id)} key={preset.index}><b>{preset.index}</b><small>{preset.label}</small></button>)}</div>
       {block.type === "chart" && <>
-        <label><span>차트 유형</span><select value={settings.chartType || artifact?.chart?.chart_type || "bar"} disabled={!canEdit} onChange={(event) => onSetting(block.id, "chartType", event.target.value)}>{REPORT_CHART_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-        <label className="report-property-check"><input type="checkbox" checked={settings.showLegend !== false} disabled={!canEdit} onChange={(event) => onSetting(block.id, "showLegend", event.target.checked)} /><span>범례 표시</span></label>
+        <label><span>차트 유형</span><select value={settings.chartType || artifact?.chart?.chart_type || "bar"} disabled={!canEdit || blockLocked} onChange={(event) => onSetting(block.id, "chartType", event.target.value)}>{REPORT_CHART_OPTIONS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+        <label className="report-property-check"><input type="checkbox" checked={settings.showLegend !== false} disabled={!canEdit || blockLocked} onChange={(event) => onSetting(block.id, "showLegend", event.target.checked)} /><span>범례 표시</span></label>
       </>}
-      {block.type !== "text" && <div className="report-property-evidence"><span>Source / Evidence</span><b>{sourceLabel(artifact)}</b><small>Artifact {block.artifactId || "연결 없음"}</small>{block.artifactChecksum && <code>{block.artifactChecksum}</code>}</div>}
-      <div className="report-property-actions"><button type="button" onClick={() => { editorTools.copySelected(); editorTools.pasteBlocks(); }} disabled={!canEdit}><Copy size={14} />복제</button><button type="button" className="danger" onClick={() => editorTools.deleteBlock(block.id)} disabled={!canEdit || editorTools.lockedBlockIds.has(block.id)}><Trash2 size={14} />삭제</button></div>
+      {block.type !== "text" && <div className="report-property-evidence"><span>Source / Evidence</span><b>{sourceLabel(artifact)}</b><small>Artifact {block.artifactId || "연결 없음"}</small>{block.queryId && <small>Query {block.queryId}</small>}{block.artifactChecksum && <code>{block.artifactChecksum}</code>}</div>}
+      <div className="report-property-actions"><button type="button" onClick={() => { editorTools.copySelected(); editorTools.pasteBlocks(); }} disabled={!canEdit}><Copy size={14} />복제</button><button type="button" className="danger" onClick={() => editorTools.deleteBlock(block.id)} disabled={!canEdit || blockLocked}><Trash2 size={14} />삭제</button></div>
     </section> : <section className="report-properties-empty"><dl><div><dt>용지 방향</dt><dd>{orientation === "landscape" ? "A4 가로" : "A4 세로"}</dd></div><div><dt>페이지</dt><dd>{pageCount}페이지</dd></div></dl><p>보고서 블록을 선택하면 크기와 표현 속성을 편집할 수 있습니다.</p></section>}
 
     <section>

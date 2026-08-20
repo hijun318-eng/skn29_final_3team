@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Answervice v3.4 후속 질문·선택형 Graph 보강·안전한 분석 흐름",
+    "output": "answervice_v3_4_analysis_sequence.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [1900, 1160],
+    "legend": {
+      "mode": "all",
+      "entries": {
+        "default": {"label": "사용자 요청·Agent 판단"},
+        "emphasis": {"label": "MCP 호출·실제 실행"},
+        "security": {"label": "정본·권한·Gate 검증"},
+        "dashed": {"label": "선택형 Graph·상태 저장"},
+        "return": {"label": "후보·검증 결과"}
+      }
+    },
+    "views": [
+      {"id": "turn_resolution_v34", "label": "1. 후속 질문 이해", "focus": ["user_surface", "route_control", "number_worker", "data_runtime"], "note": "서버가 이전에 확정한 조건과 현재 권한을 읽고 SET·CLEAR·ADD·REMOVE·PRESERVE 변경분을 확정합니다."},
+      {"id": "semantic_discovery_v34", "label": "2. 의미·관계 찾기", "focus": ["number_worker", "safe_tools", "semantic_authority", "optional_graph"], "note": "단순 KPI는 Registry만 사용하고, 복잡한 관계나 후보 부족 때만 graph.resolve를 호출해 후보를 정본에서 다시 검증합니다."},
+      {"id": "core_execution_v34", "label": "3. 안전한 분석 실행", "focus": ["number_worker", "safe_tools", "governed_core", "data_runtime"], "note": "analysis.run은 Planner→G1→SQL→G2→Trino→G3를 통과한 결과만 Artifact로 저장합니다."},
+      {"id": "graph_fallback_v34", "label": "4. Graph 장애·재계획", "focus": ["safe_tools", "semantic_authority", "optional_graph", "governed_core"], "note": "Graph 장애는 Registry-only로 돌아가고, 관계·경로 실패만 최대 1회 재계획합니다. 보안 실패는 즉시 종료합니다."},
+      {"id": "artifact_fastpath_v34", "label": "5. 같은 결과 다시 표현", "focus": ["user_surface", "route_control", "governed_core", "data_runtime"], "note": "차트·표 변경은 Trino를 다시 부르지 않고 기존 Artifact의 ViewSpec만 검사해 저장합니다."}
+    ]
+  },
+  "participants": [
+    {"id": "user_surface", "type": "frontend", "label": "사용자·화면", "sublabel": "질문·후속 요청·결과"},
+    {"id": "route_control", "type": "backend", "label": "전체 조율", "sublabel": "Route·State·최종 확인"},
+    {"id": "number_worker", "type": "backend", "label": "수치 분석 담당", "sublabel": "Analysis Agent"},
+    {"id": "safe_tools", "type": "security", "label": "안전한 MCP 도구", "sublabel": "semantic·graph·analysis"},
+    {"id": "semantic_authority", "type": "database", "label": "의미 정본", "sublabel": "DataHub·Semantic Registry"},
+    {"id": "optional_graph", "type": "cloud", "label": "선택형 의미 Graph", "sublabel": "Neo4j · 후보 발견만"},
+    {"id": "governed_core", "type": "security", "label": "핵심 분석 Core", "sublabel": "Planner·G1·G2·G3"},
+    {"id": "data_runtime", "type": "database", "label": "조회·결과 저장", "sublabel": "Trino·App PostgreSQL"}
+  ],
+  "segments": [
+    {"from": 150, "to": 400, "label": "질문 이해 — 이전 조건과 현재 권한으로 변경분 확정"},
+    {"from": 405, "to": 575, "label": "의미 탐색 — Registry 우선, 복잡한 관계만 Graph 후보 보강"},
+    {"from": 580, "to": 905, "label": "분석 실행 — Core Gate를 통과한 결과만 저장·응답"},
+    {"from": 910, "to": 1080, "label": "빠른 재사용 — 같은 결과의 표현만 안전하게 변경"}
+  ],
+  "messages": [
+    {"id": "v34_followup_question", "from": "user_surface", "to": "route_control", "y": 175, "label": "‘그 전 달은?’ 같은 후속 질문", "variant": "default"},
+    {"id": "v34_load_server_state", "from": "route_control", "to": "data_runtime", "y": 205, "label": "확정 조건·현재 초점·중복 방지 상태 읽기", "variant": "security"},
+    {"id": "v34_return_resolved_slots", "from": "data_runtime", "to": "route_control", "y": 235, "label": "ResolvedSlots·ChangeSet 기준", "variant": "return"},
+    {"id": "v34_send_typed_turn", "from": "route_control", "to": "number_worker", "y": 265, "label": "정리된 질문 + 현재 권한 + 기준 시점", "variant": "default"},
+    {"id": "v34_resolve_semantics", "from": "number_worker", "to": "safe_tools", "y": 295, "label": "semantic.resolve", "variant": "emphasis"},
+    {"id": "v34_read_authority", "from": "safe_tools", "to": "semantic_authority", "y": 325, "label": "업무 용어·Metric·Grain·Time·승인 자산 조회", "variant": "security"},
+    {"id": "v34_authority_context", "from": "semantic_authority", "to": "safe_tools", "y": 355, "label": "정본 Context + semantic_release", "variant": "return"},
+    {"id": "v34_simple_context", "from": "safe_tools", "to": "number_worker", "y": 385, "label": "단순 KPI면 바로 사용할 Context", "variant": "return"},
+    {"id": "v34_optional_graph_call", "from": "number_worker", "to": "safe_tools", "y": 420, "label": "graph.resolve — 복잡한 관계·후보 부족 때만", "variant": "dashed"},
+    {"id": "v34_fixed_graph_query", "from": "safe_tools", "to": "optional_graph", "y": 448, "label": "고정·파라미터 Traversal · read-only", "variant": "security"},
+    {"id": "v34_graph_candidates", "from": "optional_graph", "to": "safe_tools", "y": 476, "label": "후보 Metric·자산·경로·투영 버전 또는 장애", "variant": "return", "note": "Timeout/Down이면 GRAPH_ENRICHMENT_UNAVAILABLE을 남기고 Registry-only Context로 돌아갑니다."},
+    {"id": "v34_recheck_candidates", "from": "safe_tools", "to": "semantic_authority", "y": 504, "label": "Graph 후보를 Semantic Contract로 다시 확인", "variant": "security"},
+    {"id": "v34_approved_candidates", "from": "semantic_authority", "to": "safe_tools", "y": 532, "label": "승인된 후보만 반환 / 승인 경로 없으면 차단", "variant": "return"},
+    {"id": "v34_candidate_context", "from": "safe_tools", "to": "number_worker", "y": 560, "label": "Candidate Context + warning · 관계 재계획 ≤ 1", "variant": "return", "note": "ACCESS_DENIED·PII·쓰기·미승인 Join·범위 밖 요청은 Graph fallback이나 재계획으로 우회하지 않습니다."},
+
+    {"id": "v34_confirm_analysis_route", "from": "route_control", "to": "number_worker", "y": 610, "label": "STRUCTURED_ANALYSIS 실행 확정", "variant": "default"},
+    {"id": "v34_run_analysis_tool", "from": "number_worker", "to": "safe_tools", "y": 638, "label": "analysis.run", "variant": "emphasis"},
+    {"id": "v34_submit_context_package", "from": "safe_tools", "to": "governed_core", "y": 666, "label": "ResolvedSlots + Semantic Contract + ContextPackage", "variant": "security"},
+    {"id": "v34_execute_readonly", "from": "governed_core", "to": "data_runtime", "y": 694, "label": "Planner→G1→SQL→G2 통과 후 Trino 읽기", "variant": "emphasis"},
+    {"id": "v34_return_rows", "from": "data_runtime", "to": "governed_core", "y": 722, "label": "결과 행·query_id·실행 통계", "variant": "return"},
+    {"id": "v34_store_artifact", "from": "governed_core", "to": "data_runtime", "y": 750, "label": "G3 통과 AnalysisArtifact 불변 저장", "variant": "dashed"},
+    {"id": "v34_return_artifact_ref", "from": "data_runtime", "to": "governed_core", "y": 778, "label": "artifact_id + provenance", "variant": "return"},
+    {"id": "v34_tool_result", "from": "governed_core", "to": "safe_tools", "y": 806, "label": "검증 결과 / 제한된 실패 코드", "variant": "return"},
+    {"id": "v34_agent_result", "from": "safe_tools", "to": "number_worker", "y": 834, "label": "구조화 AgentResult", "variant": "return"},
+    {"id": "v34_analysis_to_director", "from": "number_worker", "to": "route_control", "y": 862, "label": "검증 결과 + provenance", "variant": "return"},
+    {"id": "v34_user_answer", "from": "route_control", "to": "user_surface", "y": 890, "label": "검증된 답변·근거·다운로드", "variant": "return"},
+
+    {"id": "v34_view_change", "from": "user_surface", "to": "route_control", "y": 920, "label": "‘같은 결과를 그래프로’", "variant": "default"},
+    {"id": "v34_fetch_artifact", "from": "route_control", "to": "data_runtime", "y": 948, "label": "기존 Artifact·현재 View 읽기", "variant": "security"},
+    {"id": "v34_artifact_payload", "from": "data_runtime", "to": "route_control", "y": 976, "label": "검증 결과 + 허용 컬럼·집계 단위", "variant": "return"},
+    {"id": "v34_check_view", "from": "route_control", "to": "governed_core", "y": 1004, "label": "ViewSpec 호환·마스킹 검사 — SQL 없음", "variant": "security"},
+    {"id": "v34_save_view", "from": "governed_core", "to": "data_runtime", "y": 1032, "label": "새 ViewSpec과 완료 Turn 저장", "variant": "dashed"},
+    {"id": "v34_render_same_result", "from": "route_control", "to": "user_surface", "y": 1060, "label": "같은 값 + 새 표현", "variant": "return"}
+  ],
+  "activations": [
+    {"participant": "route_control", "from": 170, "to": 1070, "type": "backend"},
+    {"participant": "number_worker", "from": 260, "to": 870, "type": "backend"},
+    {"participant": "safe_tools", "from": 290, "to": 842, "type": "security"},
+    {"participant": "semantic_authority", "from": 320, "to": 540, "type": "database"},
+    {"participant": "optional_graph", "from": 440, "to": 485, "type": "cloud"},
+    {"participant": "governed_core", "from": 650, "to": 1040, "type": "security"},
+    {"participant": "data_runtime", "from": 200, "to": 1040, "type": "database"}
+  ],
+  "cards": []
+}

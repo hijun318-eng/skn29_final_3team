@@ -22,7 +22,7 @@ export const ReportEditorCanvas = memo(function ReportEditorCanvas({
   renderFooter,
   renderHeader,
   reportTitle,
-  zoom,
+  viewScale,
 }) {
   const renderGridOverlay = useCallback((context) => <>
     {alignmentGuides?.pageId === context.page.id && <div className="report-alignment-guides" aria-hidden="true">
@@ -45,7 +45,7 @@ export const ReportEditorCanvas = memo(function ReportEditorCanvas({
       getGridRef={onRegisterCanvas}
       renderGridOverlay={renderGridOverlay}
       renderBlock={renderBlock}
-      zoom={zoom}
+      viewScale={viewScale}
     />
   </section>;
 });

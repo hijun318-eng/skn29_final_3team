@@ -5,6 +5,7 @@
       "context_hash": "fixture-context-partial",
       "query_id": "fixture-query-partial"
     },
+    "disambiguation_options": [],
     "gates": {
       "g1_required": true,
       "g2_required": true
@@ -132,6 +133,7 @@
   "error": {
     "clarification_type": null,
     "code": "PARTIAL_FAILURE",
+    "disambiguation_options": [],
     "message": "일부 데이터 소스를 조회하지 못했습니다.",
     "missing_requirements": [],
     "required_action": "RETRY",

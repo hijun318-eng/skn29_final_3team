@@ -1,7 +1,8 @@
 /** 기존 보고서 상태와 명령을 V2 전용 3단 편집 화면에 배치하는 프레젠테이션 어댑터다. */
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Expand, Keyboard, PanelRightClose, PanelRightOpen, Shrink } from "lucide-react";
+import { Expand, HelpCircle, Keyboard, PanelRightClose, PanelRightOpen, Shrink } from "lucide-react";
 
+import { ReportShortcutHelp } from "./ReportShortcutHelp";
 import "./report-builder-v2.css";
 
 /** 파생된 A4 페이지를 별도 저장 상태 없이 탐색하고 V2 로컬 화면 상태만 관리한다. */
@@ -13,6 +14,7 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
   onPointerMove,
   orientation,
   pages,
+  presentation,
   properties,
   reportTitle,
   toolbar,
@@ -22,6 +24,7 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [propertiesOpen, setPropertiesOpen] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const fullscreenSupported = typeof document !== "undefined" && Boolean(document.fullscreenEnabled);
 
   useEffect(() => {
@@ -63,6 +66,7 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
       setFullscreen(false);
     }
   }, [fullscreenSupported]);
+  const closeShortcutHelp = useCallback(() => setShortcutHelpOpen(false), []);
 
   return <div
     ref={rootRef}
@@ -95,6 +99,8 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
           <div><b>{reportTitle || "보고서 초안"}</b><span>{orientation === "landscape" ? "A4 가로 297 × 210mm" : "A4 세로 210 × 297mm"}</span><small>12 COLUMN · GRID SNAP</small></div>
           <nav aria-label="작업 화면 설정">
             <span title="입력 중에는 편집 단축키가 동작하지 않습니다."><Keyboard size={14} />Shift+클릭 다중 선택</span>
+            <button type="button" onClick={() => setShortcutHelpOpen(true)} aria-haspopup="dialog"><HelpCircle size={14} />단축키</button>
+            {presentation}
             <button type="button" onClick={() => setPropertiesOpen((open) => !open)} aria-pressed={propertiesOpen}>{propertiesOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}속성</button>
             {fullscreenSupported && <button type="button" onClick={toggleFullscreen} aria-pressed={fullscreen}>{fullscreen ? <Shrink size={14} /> : <Expand size={14} />}{fullscreen ? "축소" : "전체화면"}</button>}
           </nav>
@@ -103,5 +109,6 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
       </main>
       {propertiesOpen && properties}
     </div>
+    <ReportShortcutHelp open={shortcutHelpOpen} onClose={closeShortcutHelp} />
   </div>;
 });

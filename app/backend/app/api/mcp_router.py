@@ -17,7 +17,9 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.adapters.analysis_repository import AnalysisRepositoryUnavailable, PostgresAnalysisRepository
 from app.auth import AuthenticationError, Principal
+from app.authorization import has_capability
 from app.context import TokenAuthenticator, bearer_auth, token_authenticator
+from app.contracts import Capability
 from app.database import session_scope
 
 
@@ -180,7 +182,7 @@ async def mcp_post(
         return _rpc_error(request_id, -32602, "MCP clientInfo is required")
     if method == "tools/list":
         tools = []
-        if principal.role.value == "hotel_analyst" and await _enabled_tool():
+        if has_capability(principal.role, Capability.READ_ANALYSIS) and await _enabled_tool():
             tools.append({
                 "name": TOOL_NAME,
                 "title": "Get Analysis Run",
@@ -202,7 +204,7 @@ async def mcp_post(
         return _rpc_error(request_id, -32602, "request_id is required and no additional arguments are allowed")
     started = time.perf_counter()
     trace_id = request.state.trace_id
-    if principal.role.value != "hotel_analyst":
+    if not has_capability(principal.role, Capability.READ_ANALYSIS):
         await _record_run(principal, trace_id, arguments, "DENIED", started, {}, "ACCESS_DENIED")
         return _rpc_error(request_id, -32001, "Tool access denied")
     try:

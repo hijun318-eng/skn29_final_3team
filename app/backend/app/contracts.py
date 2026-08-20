@@ -12,8 +12,10 @@ from app.contract_core import (
     OPENAPI_DOCUMENT_VERSION,
     AnalysisRequest,
     AnalysisStatus,
+    Capability,
     ClarificationType,
     ContractModel,
+    DisambiguationOption,
     ErrorBody,
     ErrorCode,
     PipelineStage,
@@ -180,6 +182,7 @@ class AnalysisData(ContractModel):
     trace: tuple[TraceStep, ...] = ()
     repair_count: int = Field(default=0, ge=0, le=1)
     artifact: ArtifactReference | None = None
+    disambiguation_options: tuple[DisambiguationOption, ...] = ()
 
 
 class AnalysisProgressData(ContractModel):
@@ -205,9 +208,10 @@ class ReadinessData(ContractModel):
 
 
 class SessionData(ContractModel):
-    """현재 인증 세션 상태와 서버가 확인한 역할을 반환하며 미확인 역할은 비워 둔다."""
+    """현재 인증 세션 상태와 서버가 확인한 역할·Capability를 반환한다."""
     status: str = "authenticated"
     role: Role | None = None
+    capabilities: tuple[Capability, ...] = ()
 
 
 class LoginRequest(ContractModel):

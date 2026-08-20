@@ -1,12 +1,14 @@
 # 책임: 외부 deployment environment로 DB·Trino·DataHub를 두 단계로 기동한다.
 # Core 단계는 인증/TLS와 운영자 UI를 준비하고, Catalog 단계는 DataHub가 발급한
-# publish service token으로 source/serving의 물리 metadata만 수집한다. embedding과
+# publish service token으로 source/serving의 물리 metadata만 수집한다. 이 단계는
+# semantic check/publish/read-back 전이므로 catalog ready를 선언하지 않는다. embedding과
 # semantic index는 검색 전략 승인 전 이 기동 경로에 포함하지 않는다.
 [CmdletBinding()]
 param(
     [string]$EnvFilePath,
     [ValidateSet('Core', 'Catalog')]
-    [string]$Stage = 'Core'
+    [string]$Stage = 'Core',
+    [switch]$AllowRepositoryLocalDevelopment
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,8 +19,9 @@ $dataHubComposeFile = Join-Path $databaseRoot 'datahub/compose.consumer.yml'
 $dataHubIngestionFile = Join-Path $databaseRoot 'datahub/compose.ingestion.yml'
 . (Join-Path $PSScriptRoot 'deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
-$resolvedEnvFile = Resolve-ExternalDeploymentEnvFile `
-    -Path $EnvFilePath -RepositoryRoot $repoRoot
+$resolvedEnvFile = Resolve-ExplicitDeploymentEnvFile `
+    -Path $EnvFilePath -RepositoryRoot $repoRoot `
+    -AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvFile)
 $deploymentEnvironment = Read-DeploymentEnvironment $resolvedEnvFile
 
@@ -40,7 +43,12 @@ $requiredKeys = @(
     'DATAHUB_TLS_KEYSTORE_PASSWORD', 'DATAHUB_TLS_TRUSTSTORE_PASSWORD',
     'TRINO_ADMIN_USER', 'TRINO_ADMIN_PASSWORD', 'TRINO_RUNTIME_USER',
     'TRINO_RUNTIME_PASSWORD', 'TRINO_DATAHUB_USER', 'TRINO_DATAHUB_PASSWORD',
-    'TRINO_INTERNAL_SHARED_SECRET', 'TRINO_TLS_KEYSTORE_PASSWORD'
+    'TRINO_INTERNAL_SHARED_SECRET', 'TRINO_TLS_KEYSTORE_PASSWORD',
+    'SERVING_CATALOG_DB_USER', 'SERVING_CATALOG_DB_PASSWORD',
+    'SERVING_CATALOG_ADMIN_CLIENT_ID', 'SERVING_CATALOG_ADMIN_CLIENT_SECRET',
+    'SERVING_CATALOG_TRINO_PRINCIPAL', 'SERVING_OBJECT_STORE_ACCESS_KEY',
+    'SERVING_OBJECT_STORE_SECRET_KEY', 'SERVING_OBJECT_STORE_BUCKET',
+    'SERVING_OBJECT_STORE_REGION'
 )
 if ($Stage -eq 'Catalog') {
     $requiredKeys += @(
@@ -57,10 +65,14 @@ Assert-DeploymentEnvironmentValues `
 foreach ($fileKey in @(
     'TRINO_PASSWORD_DB_HOST_FILE', 'TRINO_TLS_KEYSTORE_HOST_FILE',
     'TRINO_TLS_CA_HOST_FILE', 'DATAHUB_TLS_KEYSTORE_HOST_FILE',
-    'DATAHUB_TLS_TRUSTSTORE_HOST_FILE', 'DATAHUB_TLS_CA_HOST_FILE'
+    'DATAHUB_TLS_TRUSTSTORE_HOST_FILE', 'DATAHUB_TLS_CA_HOST_FILE',
+    'SERVING_CATALOG_BOOTSTRAP_CREDENTIALS_HOST_FILE',
+    'SERVING_CATALOG_TOKEN_PUBLIC_KEY_HOST_FILE',
+    'SERVING_CATALOG_TOKEN_PRIVATE_KEY_HOST_FILE'
 )) {
-    Assert-ExternalDeploymentFile -Values $deploymentEnvironment `
-        -Key $fileKey -RepositoryRoot $repoRoot | Out-Null
+    Assert-ExplicitDeploymentFile -Values $deploymentEnvironment `
+        -Key $fileKey -RepositoryRoot $repoRoot `
+        -AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment | Out-Null
 }
 
 $trinoIdentities = [ordered]@{
@@ -77,7 +89,9 @@ foreach ($entry in $trinoIdentities.GetEnumerator()) {
 $boundedSecrets = @(
     'TRINO_ADMIN_PASSWORD', 'TRINO_RUNTIME_PASSWORD', 'TRINO_DATAHUB_PASSWORD',
     'TRINO_TLS_KEYSTORE_PASSWORD', 'DATAHUB_SYSTEM_CLIENT_SECRET',
-    'DATAHUB_TLS_KEYSTORE_PASSWORD', 'DATAHUB_TLS_TRUSTSTORE_PASSWORD'
+    'DATAHUB_TLS_KEYSTORE_PASSWORD', 'DATAHUB_TLS_TRUSTSTORE_PASSWORD',
+    'SERVING_CATALOG_DB_PASSWORD', 'SERVING_CATALOG_ADMIN_CLIENT_SECRET',
+    'SERVING_OBJECT_STORE_SECRET_KEY'
 )
 if ($Stage -eq 'Catalog') {
     $boundedSecrets += @('DATAHUB_READ_API_TOKEN', 'DATAHUB_PUBLISH_API_TOKEN')
@@ -89,6 +103,11 @@ foreach ($secretKey in $boundedSecrets) {
 }
 if (([string]$deploymentEnvironment['TRINO_INTERNAL_SHARED_SECRET']).Length -lt 32) {
     throw 'TRINO_INTERNAL_SHARED_SECRET must contain at least 32 characters.'
+}
+if (([string]$deploymentEnvironment['SERVING_CATALOG_DB_PASSWORD']).Length -lt 16 -or
+    ([string]$deploymentEnvironment['SERVING_CATALOG_ADMIN_CLIENT_SECRET']).Length -lt 24 -or
+    ([string]$deploymentEnvironment['SERVING_OBJECT_STORE_SECRET_KEY']).Length -lt 24) {
+    throw 'Serving persistence secrets do not meet the minimum length contract.'
 }
 if ($Stage -eq 'Catalog') {
     $readActor = [string]$deploymentEnvironment['DATAHUB_READ_ACTOR_URN']
@@ -141,7 +160,8 @@ function Invoke-Compose {
 Invoke-Compose config --quiet
 $coreServices = @(
     'app-postgres', 'pms-postgres', 'banquet-postgres', 'pos-mysql',
-    'crm-mssql', 'facility-clickhouse', 'trino', 'datahub-gms-quickstart'
+    'crm-mssql', 'facility-clickhouse', 'serving-catalog', 'trino',
+    'datahub-gms-quickstart'
 )
 $coreStartupServices = @($coreServices + 'system-update-quickstart')
 
@@ -171,11 +191,45 @@ if ($Stage -eq 'Catalog') {
     if ($LASTEXITCODE -ne 0 -or [string]$ingestionExit -cne '0') {
         throw 'DataHub metadata ingestion failed; inspect its masked logs.'
     }
+    $completionLogs = @(& docker logs --tail 20 $ingestionContainer[0] 2>&1)
+    if ($LASTEXITCODE -ne 0 -or
+        'ANSWERVICE_RUNTIME_CATALOG_INGESTION_COMPLETE' -notin $completionLogs) {
+        throw 'DataHub metadata ingestion exited without its completion marker.'
+    }
     Invoke-Compose up --detach --wait --wait-timeout 1800 `
         datahub-actions-quickstart frontend-quickstart
-    Write-Output 'DATABASE_CATALOG_METADATA_READY'
+    # Base ingestion 성공은 semantic release 활성화가 아니다. 운영자는 동일 stdin policy로
+    # author_semantic_catalog.py --check를 수행하고, exact predecessor/target checksum 승인 뒤
+    # --publish의 PUBLISHED_AND_VERIFIED receipt를 받아야 backend readiness를 열 수 있다.
+    Write-Output 'DATABASE_BASE_METADATA_INGESTED|catalog_ready=false|next=SEMANTIC_CHECK'
     return
 }
+
+# Polaris와 object store를 먼저 준비한 뒤 management API에서 Trino 전용 principal을
+# 멱등 구성한다. 발급 credential을 동일 env file에 원자적으로 결속한 다음에야 Trino
+# container를 생성하므로, bootstrap admin identity가 query runtime으로 새지 않는다.
+Invoke-Compose up --detach --wait --wait-timeout 300 serving-catalog
+if ($resolvedEnvFile) {
+    $initializerArguments = @(
+        (Join-Path $PSScriptRoot 'initialize_serving_catalog.py'),
+        '--env-file', $resolvedEnvFile
+    )
+    if ($AllowRepositoryLocalDevelopment) {
+        $initializerArguments += '--allow-repository-local-development'
+    }
+    & python @initializerArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Polaris serving catalog initialization failed.'
+    }
+    $deploymentEnvironment = Read-DeploymentEnvironment $resolvedEnvFile
+}
+Assert-DeploymentEnvironmentValues -Values $deploymentEnvironment -RequiredKeys @(
+    'SERVING_CATALOG_TRINO_CLIENT_ID', 'SERVING_CATALOG_TRINO_CLIENT_SECRET'
+)
+if (([string]$deploymentEnvironment['SERVING_CATALOG_TRINO_CLIENT_SECRET']).Length -lt 16) {
+    throw 'SERVING_CATALOG_TRINO_CLIENT_SECRET must contain at least 16 characters.'
+}
+Invoke-Compose config --quiet
 
 # GMS가 healthy가 된 뒤에만 SystemUpdate가 policy/schema registry를 초기화한다.
 # one-shot 성공까지 기다려야 이후 Catalog 단계가 반쯤 초기화된 control plane을 쓰지 않는다.

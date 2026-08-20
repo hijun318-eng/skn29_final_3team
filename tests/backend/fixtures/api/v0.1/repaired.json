@@ -5,6 +5,7 @@
       "context_hash": "fixture-context-repaired",
       "query_id": "fixture-query-repaired"
     },
+    "disambiguation_options": [],
     "gates": {
       "g1_required": true,
       "g2_required": true

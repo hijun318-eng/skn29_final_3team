@@ -1,4 +1,4 @@
-# 책임: 외부 deployment credential로 Trino 476 PBKDF2 password database를 원자
+# 책임: 외부 deployment credential로 Trino 483 PBKDF2 password database를 원자
 # 생성한다. canonical identity·강도·외부 경로 검증 실패 시 기존 파일을 덮지 않는다.
 [CmdletBinding(SupportsShouldProcess)]
 param(
@@ -51,7 +51,7 @@ if ($resolvedPasswordPath.StartsWith(
     throw 'PasswordDatabasePath must remain outside the repository.'
 }
 
-# Trino 476의 file authenticator는 PBKDF2WithHmacSHA1 형식을 읽는다. 충분한
+# Trino 483의 file authenticator는 PBKDF2WithHmacSHA1 형식을 읽는다. 충분한
 # iteration과 매 identity별 random salt를 사용하고 plaintext는 파일에 기록하지 않는다.
 $iterations = 210000
 $passwords = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)

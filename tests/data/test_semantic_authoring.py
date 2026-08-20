@@ -18,6 +18,7 @@ for entry in (str(ROOT), str(DATAHUB), str(ROOT / "tests" / "data")):
 from metadata_contract_primitives import SemanticMetadataError  # noqa: E402
 from policy_compiler import (  # noqa: E402
     DECISION_CONTRACT_VERSION,
+    DECISION_CONTRACT_VERSION_V2,
     compile_authoring_policy,
 )
 from author_semantic_catalog import (  # noqa: E402
@@ -25,6 +26,10 @@ from author_semantic_catalog import (  # noqa: E402
     apply_authoring_release,
 )
 from release_bundle import ReleaseBinding  # noqa: E402
+from release_bundle import (  # noqa: E402
+    assemble_catalog_snapshot_bundle,
+    rebase_catalog_snapshot_entitlements,
+)
 from release_datahub import DataHubDiscoveryError  # noqa: E402
 from publication_check import (  # noqa: E402
     physical_scope_sha256,
@@ -33,14 +38,21 @@ from publication_check import (  # noqa: E402
 )
 from semantic_authoring import (  # noqa: E402
     AUTHORING_CONTRACT_VERSION,
+    AUTHORING_CONTRACT_VERSION_V2,
+    AUTHORING_CONTRACT_VERSION_V4,
     CLEAN_CATALOG_SHA256,
     assemble_authoring_bundle,
     build_authoring_candidate,
     build_authoring_bundle,
+    migrate_authoring_policy,
 )
 from src.data.governance_contract import catalog_hash  # noqa: E402
-from test_datahub_metadata_publication import arbitrary_bundle  # noqa: E402
+from test_datahub_metadata_publication import (  # noqa: E402
+    arbitrary_bundle,
+    arbitrary_ratio_bundle,
+)
 from test_release_bundle_builder import _runtime  # noqa: E402
+from test_metric_governance_v2 import _v2_bundle  # noqa: E402
 
 
 def _policy(bundle):
@@ -53,7 +65,6 @@ def _policy(bundle):
         "assets": [
             {
                 "fqn": asset["fqn"],
-                "description": asset["description"],
                 "schema_version": asset["schema_version"],
                 "seed_version": asset["seed_version"],
                 "synthetic": asset["synthetic"],
@@ -66,7 +77,6 @@ def _policy(bundle):
                         "logical_type": column["logical_type"],
                         "is_part_of_key": column["is_part_of_key"],
                         "role": column["role"],
-                        "description": column["description"],
                     }
                     for column in asset["columns"]
                 ],
@@ -170,6 +180,42 @@ def test_stdin_policy_binds_only_semantics_to_live_physical_metadata():
         ]
 
 
+def test_current_authoring_uses_only_live_datahub_descriptions():
+    """재수집된 dataset/field 설명을 stale policy 복사본보다 우선한다."""
+
+    bundle = arbitrary_bundle()
+    policy = _policy(bundle)
+    _scopes, _inventory, _datasets, bindings = _physical(bundle)
+    target = bindings[0]
+    live_fields = (
+        replace(target.dataset.fields[0], description="Live connector field description."),
+        *target.dataset.fields[1:],
+    )
+    live_target = replace(
+        target,
+        dataset=replace(
+            target.dataset,
+            description="Live connector dataset description.",
+            fields=live_fields,
+        ),
+    )
+    live_bindings = (live_target, *bindings[1:])
+
+    actual = assemble_authoring_bundle(policy, live_bindings)
+    asset = next(
+        item
+        for item in actual["schema_context"]["assets"]
+        if item["fqn"] == live_target.relation.fqn
+    )
+
+    assert asset["description"] == "Live connector dataset description."
+    assert asset["columns"][0]["description"] == "Live connector field description."
+    smuggled = deepcopy(policy)
+    smuggled["assets"][0]["description"] = "Stale copied description."
+    with pytest.raises(SemanticMetadataError, match="keys differ"):
+        assemble_authoring_bundle(smuggled, live_bindings)
+
+
 def test_compact_decisions_compile_without_copying_live_physical_fields():
     """결정 입력은 578개 물리 필드를 복제하지 않고 live binding으로 policy를 만든다."""
 
@@ -190,6 +236,97 @@ def test_compact_decisions_compile_without_copying_live_physical_fields():
     assert actual["metric_rules"] == expected["metric_rules"]
 
 
+def test_policy_roles_accept_only_canonical_roles():
+    """발행기는 canonical analyst만 허용하고 임의 Role 문자열을 거부한다."""
+
+    expected = arbitrary_bundle()
+    _scopes, inventory, datasets, _terms = _runtime(expected)
+    by_name = {item.name: item for item in datasets}
+    bindings = tuple(
+        ReleaseBinding(relation, by_name[relation.fqn])
+        for relation in inventory.relations
+    )
+    canonical = _decisions(expected)
+    assert compile_authoring_policy(canonical, bindings)["assets"][0][
+        "entitlements"
+    ]["roles"] == ["analyst"]
+
+    invalid = deepcopy(canonical)
+    invalid["roles"] = ["unknown-role"]
+    with pytest.raises(SemanticMetadataError, match="unsupported role"):
+        compile_authoring_policy(invalid, bindings)
+
+
+def test_v2_decisions_compile_hidden_support_rules_without_publishing_terms():
+    """v2 승인 입력은 SUPPORT Rule을 보존하되 Business Term으로 승격하지 않는다."""
+
+    expected = _v2_bundle()
+    _scopes, inventory, datasets, _terms = _runtime(expected)
+    datasets_by_name = {item.name: item for item in datasets}
+    bindings = tuple(
+        ReleaseBinding(relation, datasets_by_name[relation.fqn])
+        for relation in inventory.relations
+    )
+    decisions = _decisions(expected)
+    decisions["contract_version"] = DECISION_CONTRACT_VERSION_V2
+
+    policy = compile_authoring_policy(decisions, bindings)
+    actual = assemble_authoring_bundle(policy, bindings)
+
+    assert policy["contract_version"] == AUTHORING_CONTRACT_VERSION_V4
+    assert {item["id"] for item in actual["metric_rules"]} == {
+        "amount_total",
+        "event_count",
+        "account_count",
+        "amount_per_event",
+    }
+    assert {item["id"] for item in actual["metric_terms"]} == {
+        "account_count",
+        "amount_per_event",
+    }
+
+
+def test_authoring_boundaries_reject_cross_version_metric_contracts():
+    """입력 envelope만 v2로 바꿔 governance 필드 누락을 우회할 수 없다."""
+
+    v1 = arbitrary_bundle()
+    _scopes, _inventory, _datasets, bindings = _physical(v1)
+    v2_policy = _policy(v1)
+    v2_policy["contract_version"] = AUTHORING_CONTRACT_VERSION_V2
+    with pytest.raises(SemanticMetadataError, match="versions differ"):
+        assemble_authoring_bundle(v2_policy, bindings)
+
+    v2 = _v2_bundle()
+    _scopes, inventory, datasets, _terms = _runtime(v2)
+    by_name = {item.name: item for item in datasets}
+    v2_bindings = tuple(
+        ReleaseBinding(relation, by_name[relation.fqn])
+        for relation in inventory.relations
+    )
+    with pytest.raises(SemanticMetadataError, match="versions differ"):
+        compile_authoring_policy(_decisions(v2), v2_bindings)
+
+
+def test_compact_decisions_derive_ratio_term_domain_from_live_operands():
+    """Derived ratio는 가짜 물리 field 없이 두 column operand의 live domain을 상속한다."""
+
+    expected = arbitrary_ratio_bundle()
+    _scopes, inventory, datasets, _terms = _runtime(expected)
+    datasets_by_name = {item.name: item for item in datasets}
+    bindings = tuple(
+        ReleaseBinding(relation, datasets_by_name[relation.fqn])
+        for relation in inventory.relations
+    )
+
+    policy = compile_authoring_policy(_decisions(expected), bindings)
+    actual = assemble_authoring_bundle(policy, bindings)
+    ratio = next(item for item in actual["metric_rules"] if item["id"] == "amount_per_event")
+    term = next(item for item in actual["metric_terms"] if item["id"] == "amount_per_event")
+
+    assert ratio["source"]["kind"] == "ratio"
+    assert term["domain_urn"] == expected["metric_terms"][-1]["domain_urn"]
+
+
 def test_policy_cannot_smuggle_physical_schema_or_omit_live_assets():
     bundle = arbitrary_bundle()
     policy = _policy(bundle)
@@ -204,17 +341,17 @@ def test_policy_cannot_smuggle_physical_schema_or_omit_live_assets():
         assemble_authoring_bundle(policy, bindings)
 
 
-def test_policy_key_claim_must_match_live_datahub_key_metadata():
+def test_policy_key_claim_must_match_approved_semantic_grain():
     bundle = arbitrary_bundle()
     policy = _policy(bundle)
     _scopes, _inventory, _datasets, bindings = _physical(bundle)
     policy["assets"][0]["columns"][0]["is_part_of_key"] = False
-    with pytest.raises(SemanticMetadataError, match="column identity"):
+    with pytest.raises(SemanticMetadataError, match="grain keys differ"):
         assemble_authoring_bundle(policy, bindings)
 
 
-def test_checked_policy_may_promote_a_key_missing_from_view_ingestion():
-    """view ingestion이 표현하지 못한 grain key는 검토한 policy가 선언해 발행한다."""
+def test_approved_grain_survives_when_connector_has_no_physical_key():
+    """connector가 표현하지 못한 physical key와 승인된 업무 grain을 혼동하지 않는다."""
 
     bundle = arbitrary_bundle()
     policy = _policy(bundle)
@@ -231,8 +368,13 @@ def test_checked_policy_may_promote_a_key_missing_from_view_ingestion():
 
     actual = assemble_authoring_bundle(policy, bindings)
 
-    promoted = actual["schema_context"]["assets"][1]["columns"][0]
-    assert promoted["is_part_of_key"] is True
+    asset = next(
+        item
+        for item in actual["schema_context"]["assets"]
+        if item["fqn"] == target.relation.fqn
+    )
+    assert asset["columns"][0]["is_part_of_key"] is False
+    assert asset["grain"]["keys"] == ["account_id"]
 
 
 def test_checked_synthetic_release_preserves_provenance():
@@ -267,6 +409,106 @@ def test_async_bootstrap_accepts_ungoverned_base_metadata_without_inference():
         build_authoring_bundle(_policy(bundle), scopes, TrinoPort(), DataHubPort())
     )
     assert catalog_hash(actual) == catalog_hash(bundle)
+
+
+def test_authoring_predecessor_ignores_dataset_outside_the_approved_scope():
+    bundle = arbitrary_bundle()
+    policy = _policy(bundle)
+    scopes, inventory, datasets, _terms = _runtime(bundle)
+    outside = replace(
+        datasets[0],
+        urn=datasets[0].urn.replace("ember.core.accounts", "ember.system.metadata"),
+        dataset_key_name=datasets[0].dataset_key_name.replace(
+            "ember.core.accounts", "ember.system.metadata"
+        ),
+        name="ember.system.metadata",
+        qualified_name="ember.system.metadata",
+        schema_name="ember.system.metadata",
+        custom_properties={},
+    )
+
+    class TrinoPort:
+        async def discover(self, requested):
+            assert requested == scopes
+            return inventory
+
+    class DataHubPort:
+        async def discover_datasets(self, requested):
+            assert requested == scopes
+            return (*datasets, outside)
+
+    candidate = asyncio.run(
+        build_authoring_candidate(policy, scopes, TrinoPort(), DataHubPort())
+    )
+
+    assert candidate.previous_catalog_sha256 == catalog_hash(bundle)
+    assert catalog_hash(candidate.bundle) == catalog_hash(bundle)
+
+
+def test_catalog_snapshot_migration_preserves_meaning_but_rediscovers_physical_values():
+    source = arbitrary_bundle()
+    _scopes, _inventory, datasets, terms = _runtime(source)
+    snapshot = assemble_catalog_snapshot_bundle(datasets, terms)
+    policy = migrate_authoring_policy(
+        snapshot,
+        catalog_version="sample-catalog-iceberg.1",
+        policy_version="sample-policy-analyst.1",
+        schema_context_version="sample-schema-iceberg.1",
+        roles=("analyst",),
+    )
+    _physical_scopes, _physical_inventory, _base, bindings = _physical(source)
+
+    target = assemble_authoring_bundle(policy, bindings)
+
+    assert target["catalog_version"] == "sample-catalog-iceberg.1"
+    assert target["policy_version"] == "sample-policy-analyst.1"
+    assert target["schema_context"]["version"] == "sample-schema-iceberg.1"
+    assert all(
+        asset["entitlements"]["roles"] == ["analyst"]
+        for asset in target["schema_context"]["assets"]
+    )
+    assert {
+        item["id"]: item for item in policy["metric_rules"]
+    } == {
+        item["id"]: item for item in source["metric_rules"]
+    }
+    assert policy["query_policy"] == source["query_policy"]
+    assert "native_type" not in policy["assets"][0]["columns"][0]
+    assert "nullable" not in policy["assets"][0]["columns"][0]
+    assert "ordinal_position" not in policy["assets"][0]["columns"][0]
+
+
+def test_catalog_snapshot_migration_rejects_unregistered_target_role():
+    source = arbitrary_bundle()
+    _scopes, _inventory, datasets, terms = _runtime(source)
+    snapshot = assemble_catalog_snapshot_bundle(datasets, terms)
+
+    with pytest.raises(SemanticMetadataError, match="roles are unsupported"):
+        migrate_authoring_policy(
+            snapshot,
+            catalog_version="sample-catalog.2",
+            policy_version="sample-policy.2",
+            schema_context_version="sample-schema.2",
+            roles=("unregistered_role",),
+        )
+
+
+def test_catalog_snapshot_rebases_signed_unregistered_source_role_without_aliasing():
+    source = arbitrary_bundle()
+    for asset in source["schema_context"]["assets"]:
+        asset["entitlements"]["roles"] = ["retired_source_role", "analyst"]
+    _scopes, _inventory, datasets, terms = _runtime(source)
+
+    rebased = rebase_catalog_snapshot_entitlements(
+        datasets,
+        terms,
+        ("analyst",),
+    )
+
+    assert all(
+        asset["entitlements"]["roles"] == ["analyst"]
+        for asset in rebased["schema_context"]["assets"]
+    )
 
 
 def test_check_mode_is_read_only_and_returns_publish_binding_hashes():

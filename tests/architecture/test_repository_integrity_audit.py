@@ -15,6 +15,7 @@ def test_classifies_tests_archives_and_runtime_contracts_separately() -> None:
     assert _classify("tests/support/fakes.py") == "test"
     assert _classify("infrastructure/database/releases/r1/manifest.json") == "archive"
     assert _classify("src/ai/contracts/node_io.v0.1.json") == "runtime-contract"
+    assert _classify("infrastructure/database/trino/etc/iceberg-view-coercions.json") == "runtime-contract"
     assert _classify("app/backend/app/main.py") == "production"
 
 
@@ -107,8 +108,8 @@ def test_rejects_already_corrupted_unicode_text(monkeypatch, tmp_path) -> None:
     assert "Unicode 대체문자" in findings[0].reason
 
 
-def test_rejects_ignored_repository_local_env(tmp_path) -> None:
-    """Git ignore가 실제 평문 secret 파일을 운영 입력으로 정당화하지 않는다."""
+def test_rejects_unignored_repository_local_env(tmp_path) -> None:
+    """추적 위험이 있는 평문 secret 파일은 repository-local 입력으로 허용하지 않는다."""
 
     (tmp_path / ".env").write_text("SECRET=not-a-real-secret\n", encoding="utf-8")
 
@@ -116,6 +117,15 @@ def test_rejects_ignored_repository_local_env(tmp_path) -> None:
 
     assert len(findings) == 1
     assert findings[0].path == ".env"
+
+
+def test_allows_git_ignored_repository_local_env(monkeypatch, tmp_path) -> None:
+    """명시적으로 ignore된 개발용 .env는 commit 대상에서 분리한다."""
+
+    (tmp_path / ".env").write_text("SECRET=not-a-real-secret\n", encoding="utf-8")
+    monkeypatch.setattr(integrity_audit, "_is_git_ignored", lambda path, root: True)
+
+    assert _local_secret_findings(tmp_path) == ()
 
 
 def test_rejects_secret_values_in_process_arguments() -> None:

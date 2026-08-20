@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Answervice v3.4 검증 결과 조합·승인 보고서 재실행 흐름",
+    "output": "answervice_v3_4_report_sequence.html",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [1900, 1180],
+    "legend": {
+      "mode": "all",
+      "entries": {
+        "default": {"label": "사용자·업무 요청"},
+        "emphasis": {"label": "MCP·보고서 실행"},
+        "security": {"label": "권한·승인·Gate"},
+        "dashed": {"label": "버전·근거 저장"},
+        "return": {"label": "상태·결과 응답"}
+      }
+    },
+    "views": [
+      {"id": "compose_blocks_v34", "label": "1. 검증 결과 담기", "focus": ["report_author", "app_surface", "report_coordinator", "mcp_boundary", "report_service", "artifact_database"], "note": "artifact.get으로 권한과 G3 상태를 확인한 결과만 report.add_block으로 초안에 연결합니다."},
+      {"id": "seal_approval_v34", "label": "2. 승인본 확정", "focus": ["report_author", "report_approver", "app_surface", "report_service", "artifact_database"], "note": "초안을 변경 불가 Report Version으로 봉인하고 checksum·작성자·승인자·결정을 남깁니다."},
+      {"id": "rerun_report_v34", "label": "3. 현재 권한으로 재실행", "focus": ["report_approver", "app_surface", "report_service", "artifact_database", "analysis_runtime"], "note": "각 Block은 현재 RequestContext로 핵심 분석 Core를 다시 통과합니다. 과거 권한이나 결과를 그대로 신뢰하지 않습니다."},
+      {"id": "partial_evidence_v34", "label": "4. 일부 실패·근거", "focus": ["analysis_runtime", "report_service", "artifact_database", "app_surface", "report_approver"], "note": "Block별 성공·실패·근거를 저장하고 전체 상태를 성공·일부 성공·실패 중 하나로 원자 종료합니다."}
+    ]
+  },
+  "participants": [
+    {"id": "report_author", "type": "external", "label": "보고서 작성자", "sublabel": "Artifact 선택·초안 제출"},
+    {"id": "report_approver", "type": "external", "label": "보고서 승인자", "sublabel": "검토·승인·수동 실행"},
+    {"id": "app_surface", "type": "frontend", "label": "사용자 화면", "sublabel": "결과 카드·보고서 바구니"},
+    {"id": "report_coordinator", "type": "backend", "label": "전체 조율", "sublabel": "REPORT_ACTION Route"},
+    {"id": "mcp_boundary", "type": "security", "label": "안전한 MCP 도구", "sublabel": "artifact.get·report.add_block"},
+    {"id": "report_service", "type": "backend", "label": "보고서 서비스", "sublabel": "Agent 아님 · 승인 Workflow"},
+    {"id": "artifact_database", "type": "database", "label": "결과·보고서 저장", "sublabel": "Artifact·View·Version·Run"},
+    {"id": "analysis_runtime", "type": "security", "label": "핵심 분석 Core", "sublabel": "Semantic·G1·G2·Trino·G3"}
+  ],
+  "segments": [
+    {"from": 150, "to": 405, "label": "초안 구성 — 검증된 Artifact를 보고서 Block으로 연결"},
+    {"from": 415, "to": 650, "label": "승인 — 변경 불가 승인본과 결정 이력 보존"},
+    {"from": 660, "to": 1040, "label": "재실행 — Block별 현재 권한·Core 재검증·부분 실패 처리"}
+  ],
+  "messages": [
+    {"id": "v34_pick_report_artifact", "from": "report_author", "to": "app_surface", "y": 175, "label": "‘이 결과를 보고서에 담기’", "variant": "default"},
+    {"id": "v34_route_report_action", "from": "app_surface", "to": "report_coordinator", "y": 208, "label": "REPORT_ACTION + artifact_id + 중복 방지 키", "variant": "emphasis"},
+    {"id": "v34_get_artifact", "from": "report_coordinator", "to": "mcp_boundary", "y": 241, "label": "artifact.get", "variant": "emphasis"},
+    {"id": "v34_check_artifact", "from": "mcp_boundary", "to": "artifact_database", "y": 274, "label": "소유권·현재 권한·G3·버전·이력 확인", "variant": "security"},
+    {"id": "v34_return_artifact", "from": "artifact_database", "to": "mcp_boundary", "y": 307, "label": "승인된 Artifact·View·분석 정의", "variant": "return"},
+    {"id": "v34_add_report_block", "from": "report_coordinator", "to": "mcp_boundary", "y": 340, "label": "report.add_block", "variant": "emphasis"},
+    {"id": "v34_tool_to_report_service", "from": "mcp_boundary", "to": "report_service", "y": 373, "label": "artifact_id 또는 검증된 Evidence reference", "variant": "security"},
+    {"id": "v34_store_draft_block", "from": "report_service", "to": "artifact_database", "y": 406, "label": "Block·순서·View·revision·lineage 저장", "variant": "dashed"},
+
+    {"id": "v34_submit_report_draft", "from": "report_author", "to": "app_surface", "y": 438, "label": "초안 제출·승인 요청", "variant": "default"},
+    {"id": "v34_freeze_report_version", "from": "app_surface", "to": "report_service", "y": 471, "label": "Block 순서·표현·data/semantic release 확정", "variant": "security"},
+    {"id": "v34_persist_report_version", "from": "report_service", "to": "artifact_database", "y": 504, "label": "checksum이 있는 변경 불가 Report Version 저장", "variant": "dashed"},
+    {"id": "v34_decide_report", "from": "report_approver", "to": "app_surface", "y": 537, "label": "승인 또는 반려", "variant": "security"},
+    {"id": "v34_record_report_decision", "from": "app_surface", "to": "report_service", "y": 570, "label": "승인자·결정·승인본", "variant": "security"},
+    {"id": "v34_store_report_decision", "from": "report_service", "to": "artifact_database", "y": 603, "label": "결정 이력 원자 저장", "variant": "dashed"},
+    {"id": "v34_show_approval", "from": "report_service", "to": "app_surface", "y": 636, "label": "승인 / 반려 상태", "variant": "return"},
+
+    {"id": "v34_start_manual_report", "from": "report_approver", "to": "app_surface", "y": 682, "label": "승인본 수동 실행", "variant": "emphasis"},
+    {"id": "v34_start_report_run", "from": "app_surface", "to": "report_service", "y": 717, "label": "Report Version + report_as_of + 요청 hash", "variant": "emphasis"},
+    {"id": "v34_load_frozen_report", "from": "report_service", "to": "artifact_database", "y": 752, "label": "승인본·Block lineage·고정 release 읽기", "variant": "security"},
+    {"id": "v34_create_report_run", "from": "report_service", "to": "artifact_database", "y": 787, "label": "Report Run + Block별 실행 계획 저장", "variant": "dashed"},
+    {"id": "v34_rerun_each_block", "from": "report_service", "to": "analysis_runtime", "y": 822, "label": "각 Block을 현재 RequestContext로 다시 분석", "variant": "security", "note": "복잡한 Cross-domain Block만 선택적으로 graph.resolve를 사용할 수 있지만, 후보는 Semantic Contract와 G1이 다시 확인합니다."},
+    {"id": "v34_block_core_result", "from": "analysis_runtime", "to": "report_service", "y": 857, "label": "G1→Planner→G2→Trino→G3 결과 또는 실패 코드", "variant": "return"},
+    {"id": "v34_store_block_evidence", "from": "report_service", "to": "artifact_database", "y": 892, "label": "Block 상태·이유·artifact_id·근거 저장", "variant": "dashed"},
+    {"id": "v34_terminalize_report_run", "from": "report_service", "to": "artifact_database", "y": 927, "label": "SUCCEEDED / PARTIAL / FAILED 원자 종료", "variant": "dashed"},
+    {"id": "v34_render_report_files", "from": "report_service", "to": "app_surface", "y": 962, "label": "HTML·PDF + Block별 근거·합성 데이터 표시", "variant": "return"},
+    {"id": "v34_report_to_approver", "from": "app_surface", "to": "report_approver", "y": 997, "label": "전체 성공 / 일부 성공 / 실패", "variant": "return"}
+  ],
+  "activations": [
+    {"participant": "app_surface", "from": 170, "to": 1007, "type": "frontend"},
+    {"participant": "report_coordinator", "from": 203, "to": 350, "type": "backend"},
+    {"participant": "mcp_boundary", "from": 236, "to": 383, "type": "security"},
+    {"participant": "report_service", "from": 368, "to": 972, "type": "backend"},
+    {"participant": "artifact_database", "from": 269, "to": 937, "type": "database"},
+    {"participant": "analysis_runtime", "from": 817, "to": 867, "type": "security"}
+  ],
+  "cards": []
+}

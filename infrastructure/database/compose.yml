@@ -170,10 +170,131 @@ services:
       retries: 15
       start_period: 20s
 
+  serving-catalog-postgres:
+    <<: *db
+    profiles: [full, split-host]
+    container_name: serving-catalog-postgres
+    image: "postgres:16.13-bookworm@sha256:472efd9a66f2b2f1a5aeb18b28de74332e6ef88c2b93a1a5d812fb6db67a5f60"
+    environment:
+      POSTGRES_DB: ${SERVING_CATALOG_DB_NAME:-serving_catalog}
+      POSTGRES_USER: ${SERVING_CATALOG_DB_USER:?SERVING_CATALOG_DB_USER is required}
+      POSTGRES_PASSWORD: ${SERVING_CATALOG_DB_PASSWORD:?SERVING_CATALOG_DB_PASSWORD is required}
+      TZ: Asia/Seoul
+    command: ["postgres", "-c", "password_encryption=scram-sha-256"]
+    volumes:
+      - serving-catalog-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  serving-object-store:
+    <<: *db
+    profiles: [full, split-host]
+    container_name: serving-object-store
+    image: "rustfs/rustfs:1.0.0-beta.8@sha256:fa19210ac4697c79d7ccca1ec9b0eb91aebacc6691991ffb14014bb3c67e6cc3"
+    environment:
+      RUSTFS_ACCESS_KEY: ${SERVING_OBJECT_STORE_ACCESS_KEY:?SERVING_OBJECT_STORE_ACCESS_KEY is required}
+      RUSTFS_SECRET_KEY: ${SERVING_OBJECT_STORE_SECRET_KEY:?SERVING_OBJECT_STORE_SECRET_KEY is required}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "false"
+    volumes:
+      - serving-object-store-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:9000/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  serving-object-store-bootstrap:
+    profiles: [full, split-host]
+    restart: "no"
+    image: "amazon/aws-cli:2.35.21@sha256:238583846e731f31c9848dae26c5a560769ff35c4c5368a4cb6be5816683e485"
+    networks: [database-network]
+    depends_on:
+      serving-object-store: { condition: service_healthy }
+    environment:
+      AWS_ACCESS_KEY_ID: ${SERVING_OBJECT_STORE_ACCESS_KEY:?SERVING_OBJECT_STORE_ACCESS_KEY is required}
+      AWS_SECRET_ACCESS_KEY: ${SERVING_OBJECT_STORE_SECRET_KEY:?SERVING_OBJECT_STORE_SECRET_KEY is required}
+      AWS_DEFAULT_REGION: ${SERVING_OBJECT_STORE_REGION:-ap-northeast-2}
+      SERVING_OBJECT_STORE_BUCKET: ${SERVING_OBJECT_STORE_BUCKET:-answervice-serving}
+    entrypoint: "/bin/sh"
+    command:
+      - -ec
+      - |
+        if aws --endpoint-url http://serving-object-store:9000 s3api head-bucket \
+          --bucket "$$SERVING_OBJECT_STORE_BUCKET" >/dev/null 2>&1; then
+          exit 0
+        fi
+        aws --endpoint-url http://serving-object-store:9000 s3api create-bucket \
+          --bucket "$$SERVING_OBJECT_STORE_BUCKET"
+
+  serving-catalog-bootstrap:
+    profiles: [full, split-host]
+    restart: "no"
+    image: "apache/polaris-admin-tool:1.7.0@sha256:3d8a24cea57aef3b71a0d7b09e5d2278d01e7e1b30071bf6648f2a6953322cca"
+    networks: [database-network]
+    depends_on:
+      serving-catalog-postgres: { condition: service_healthy }
+    environment:
+      POLARIS_PERSISTENCE_TYPE: relational-jdbc
+      POLARIS_PERSISTENCE_RELATIONAL_JDBC_DATABASE_TYPE: postgresql
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://serving-catalog-postgres:5432/${SERVING_CATALOG_DB_NAME:-serving_catalog}
+      QUARKUS_DATASOURCE_USERNAME: ${SERVING_CATALOG_DB_USER:?SERVING_CATALOG_DB_USER is required}
+      QUARKUS_DATASOURCE_PASSWORD: ${SERVING_CATALOG_DB_PASSWORD:?SERVING_CATALOG_DB_PASSWORD is required}
+    volumes:
+      - ${SERVING_CATALOG_BOOTSTRAP_CREDENTIALS_HOST_FILE:?SERVING_CATALOG_BOOTSTRAP_CREDENTIALS_HOST_FILE is required}:/run/secrets/serving-catalog-bootstrap.credentials:ro
+    command:
+      - bootstrap
+      - --credentials-file=/run/secrets/serving-catalog-bootstrap.credentials
+
+  serving-catalog:
+    <<: *db
+    profiles: [full, split-host]
+    container_name: serving-catalog
+    image: "apache/polaris:1.7.0@sha256:3495f67f38cca33892a045f7dd3f46eb52387f0fd52d4145538a772fd8aedad7"
+    depends_on:
+      serving-catalog-bootstrap: { condition: service_completed_successfully }
+      serving-object-store-bootstrap: { condition: service_completed_successfully }
+    environment:
+      POLARIS_PERSISTENCE_TYPE: relational-jdbc
+      POLARIS_PERSISTENCE_RELATIONAL_JDBC_DATABASE_TYPE: postgresql
+      POLARIS_PERSISTENCE_RELATIONAL_JDBC_MAX_RETRIES: "5"
+      POLARIS_PERSISTENCE_RELATIONAL_JDBC_INITIAL_DELAY_IN_MS: "100"
+      POLARIS_PERSISTENCE_RELATIONAL_JDBC_MAX_DURATION_IN_MS: "5000"
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://serving-catalog-postgres:5432/${SERVING_CATALOG_DB_NAME:-serving_catalog}
+      QUARKUS_DATASOURCE_USERNAME: ${SERVING_CATALOG_DB_USER:?SERVING_CATALOG_DB_USER is required}
+      QUARKUS_DATASOURCE_PASSWORD: ${SERVING_CATALOG_DB_PASSWORD:?SERVING_CATALOG_DB_PASSWORD is required}
+      POLARIS_REALM_CONTEXT_REALMS: ANSWERVICE
+      polaris.realm-context.require-header: "true"
+      QUARKUS_OTEL_SDK_DISABLED: "true"
+      polaris.features."SUPPORTED_CATALOG_STORAGE_TYPES": '["S3"]'
+      polaris.authentication.token-broker.type: rsa-key-pair
+      polaris.authentication.token-broker.rsa-key-pair.public-key-file: /run/secrets/serving-catalog-token-public.pem
+      polaris.authentication.token-broker.rsa-key-pair.private-key-file: /run/secrets/serving-catalog-token-private.pem
+      AWS_REGION: ${SERVING_OBJECT_STORE_REGION:-ap-northeast-2}
+      AWS_ACCESS_KEY_ID: ${SERVING_OBJECT_STORE_ACCESS_KEY:?SERVING_OBJECT_STORE_ACCESS_KEY is required}
+      AWS_SECRET_ACCESS_KEY: ${SERVING_OBJECT_STORE_SECRET_KEY:?SERVING_OBJECT_STORE_SECRET_KEY is required}
+    ports:
+      - "127.0.0.1:${SERVING_CATALOG_API_PORT:-18181}:8181"
+    volumes:
+      - ${SERVING_CATALOG_TOKEN_PUBLIC_KEY_HOST_FILE:?SERVING_CATALOG_TOKEN_PUBLIC_KEY_HOST_FILE is required}:/run/secrets/serving-catalog-token-public.pem:ro
+      - ${SERVING_CATALOG_TOKEN_PRIVATE_KEY_HOST_FILE:?SERVING_CATALOG_TOKEN_PRIVATE_KEY_HOST_FILE is required}:/run/secrets/serving-catalog-token-private.pem:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8182/q/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
   trino:
     <<: *db
     profiles: [full, split-host]
-    image: "trinodb/trino:476@sha256:00125e40d063bc4816d165482f6044872b18b56026fb959d3b28ce1f96ffbbee"
+    image: "trinodb/trino:483@sha256:db58cc93e593a2706553745f276bb119c9810e69918be56ecde088ba7ccb0534"
     environment:
       PMS_READONLY_USER: ${PMS_READONLY_USER}
       PMS_READONLY_PASSWORD: ${PMS_READONLY_PASSWORD}
@@ -187,12 +308,15 @@ services:
       FACILITY_READONLY_PASSWORD: ${FACILITY_READONLY_PASSWORD}
       TRINO_TLS_KEYSTORE_PASSWORD: ${TRINO_TLS_KEYSTORE_PASSWORD:?TRINO_TLS_KEYSTORE_PASSWORD is required}
       TRINO_INTERNAL_SHARED_SECRET: ${TRINO_INTERNAL_SHARED_SECRET:?TRINO_INTERNAL_SHARED_SECRET is required}
+      SERVING_CATALOG_CLIENT_ID: ${SERVING_CATALOG_TRINO_CLIENT_ID:?SERVING_CATALOG_TRINO_CLIENT_ID is required}
+      SERVING_CATALOG_CLIENT_SECRET: ${SERVING_CATALOG_TRINO_CLIENT_SECRET:?SERVING_CATALOG_TRINO_CLIENT_SECRET is required}
     depends_on:
       pms-postgres: { condition: service_healthy }
       banquet-postgres: { condition: service_healthy }
       pos-mysql: { condition: service_healthy }
       crm-mssql: { condition: service_healthy }
       facility-clickhouse: { condition: service_healthy }
+      serving-catalog: { condition: service_healthy }
     ports: ["127.0.0.1:${TRINO_PORT:-18443}:8443"]
     volumes:
       - ./trino/etc:/etc/trino:ro
@@ -224,3 +348,5 @@ volumes:
   pos-mysql-data: {}
   crm-mssql-data: {}
   facility-clickhouse-data: {}
+  serving-catalog-postgres-data: {}
+  serving-object-store-data: {}

@@ -46,10 +46,11 @@ class ReportRepository(Protocol):
         version: int,
         blocks: tuple[ReportBlock, ...],
         *,
+        title: str | None = None,
         orientation: str | None = None,
         currency_display_unit: str | None = None,
     ) -> ReportDefinitionVersion | Awaitable[ReportDefinitionVersion]:
-        """초안의 블록 전체와 선택적 문서 표시 설정을 한 transaction에서 교체한다."""
+        """초안의 제목·블록 전체·선택적 문서 표시 설정을 한 transaction에서 교체한다."""
         ...
 
     def add_run(self, run: ReportRun) -> ReportRun | Awaitable[ReportRun]:

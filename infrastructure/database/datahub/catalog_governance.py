@@ -1,5 +1,4 @@
 """live DataHub 스키마와 릴리스 SQL로 카탈로그 거버넌스를 결정론적으로 발행한다."""
-# architecture-max-lines: 600 -- 사전검증과 발행이 동일 계획 불변식을 공유해야 계약 드리프트를 막는다.
 
 from __future__ import annotations
 

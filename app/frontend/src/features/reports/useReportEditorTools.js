@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { createUuid } from "../../utils/createUuid.ts";
+import { compactDraftLayout } from "../../contracts/report.ts";
 
 const SNAPSHOT_LIMIT = 20;
 
@@ -63,7 +64,6 @@ export function useReportEditorTools({
   const [lockedBlockIds, setLockedBlockIds] = useState(() => new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [snapshots, setSnapshots] = useState([]);
-  const [zoom, setZoom] = useState(0.85);
   const clipboardRef = useRef([]);
 
   useEffect(() => {
@@ -71,7 +71,6 @@ export function useReportEditorTools({
     setLockedBlockIds(new Set());
     setSearchQuery("");
     setSnapshots([]);
-    setZoom(0.85);
     clipboardRef.current = [];
   }, [reportKey]);
 
@@ -87,14 +86,16 @@ export function useReportEditorTools({
 
   const selectBlock = useCallback((blockId, event) => {
     const additive = Boolean(event?.shiftKey);
-    setSelectedBlockIds((current) => {
-      if (!additive) return new Set([blockId]);
-      const next = new Set(current);
-      if (next.has(blockId)) next.delete(blockId); else next.add(blockId);
-      return next;
-    });
-    selectPrimary(blockId);
-  }, [selectPrimary]);
+    if (!additive) {
+      setSelectedBlockIds(new Set([blockId]));
+      selectPrimary(blockId);
+      return;
+    }
+    const next = new Set(selectedBlockIds);
+    if (next.has(blockId)) next.delete(blockId); else next.add(blockId);
+    setSelectedBlockIds(next);
+    if (!next.has(primaryBlockId)) selectPrimary([...next][0] ?? "");
+  }, [primaryBlockId, selectPrimary, selectedBlockIds]);
 
   const toggleBlockLock = useCallback((blockId) => {
     setLockedBlockIds((current) => {
@@ -113,9 +114,10 @@ export function useReportEditorTools({
   }, [selectedBlockIds]);
 
   const deleteBlocks = useCallback((ids) => {
-    const deletable = new Set([...ids].filter((id) => !lockedBlockIds.has(id)));
+    if ([...ids].some((id) => lockedBlockIds.has(id))) return false;
+    const deletable = new Set(ids);
     if (!deletable.size) return false;
-    const ordered = blocks.filter((block) => !deletable.has(block.id));
+    const ordered = compactDraftLayout(blocks.filter((block) => !deletable.has(block.id)));
     if (!commitBlocks(ordered)) return false;
     const nextId = ordered[0]?.id ?? "";
     setSelectedBlockIds(nextId ? new Set([nextId]) : new Set());
@@ -149,7 +151,7 @@ export function useReportEditorTools({
       title: `${block.title || "제목 없음"} 복사본`,
       y: startY + (block.y ?? 0) - minY,
     }));
-    if (!commitBlocks([...blocks, ...pasted])) return false;
+    if (!commitBlocks(compactDraftLayout([...blocks, ...pasted]))) return false;
     const ids = new Set(pasted.map((block) => block.id));
     const primary = pasted[0]?.id ?? "";
     setSelectedBlockIds(ids);
@@ -227,8 +229,6 @@ export function useReportEditorTools({
     sizePresets,
     snapshots,
     toggleBlockLock,
-    zoom,
-    setZoom,
     resizePrimary,
   };
 }

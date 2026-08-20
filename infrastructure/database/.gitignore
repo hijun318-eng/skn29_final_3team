@@ -1,2 +1,5 @@
 .env
 security/answervice_auth_principals.local.json
+security/serving-catalog-bootstrap.local.txt
+security/serving-catalog-token-public.local.pem
+security/serving-catalog-token-private.local.pem

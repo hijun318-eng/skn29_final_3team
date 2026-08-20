@@ -28,7 +28,7 @@ WORKDIR /workspace/app/backend
 USER appuser
 EXPOSE 8000
 
-HEALTHCHECK --interval=5s --timeout=2s --start-period=10s --retries=6 \
-    CMD python -c "import httpx; response = httpx.get('http://127.0.0.1:8000/readiness', timeout=3); response.raise_for_status()"
+HEALTHCHECK --interval=5s --timeout=5s --start-period=10s --retries=6 \
+    CMD python -c "from urllib.request import urlopen; response = urlopen('http://127.0.0.1:8000/health', timeout=1); response.close()"
 
 ENTRYPOINT ["sh", "./entrypoint.sh"]

@@ -5,7 +5,7 @@ import { KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors } fro
 import { placeDraftBlock } from "../../contracts/report.ts";
 import { keyboardEndDropPosition, moveFrontendBlock } from "./reportDraftV2.js";
 
-/** 이동 대상과 형제 블록의 좌·중·우 및 상·중·하가 일치하는 12칸 가이드를 계산한다. */
+/** 이동 대상과 형제 블록의 좌·중·우 및 상·중·하가 일치하는 12열 guide를 계산한다. */
 export function computeReportAlignmentGuides(position, blocks, activeId) {
   if (!position) return null;
   const siblings = blocks.filter((block) => block.id !== activeId);

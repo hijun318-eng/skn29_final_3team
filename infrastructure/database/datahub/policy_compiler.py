@@ -16,10 +16,31 @@ from metadata_contract_primitives import (
     unique_texts,
 )
 from release_bundle import ReleaseBinding
-from semantic_authoring import AUTHORING_CONTRACT_VERSION
+from semantic_authoring import (
+    AUTHORING_CONTRACT_VERSION_V3,
+    AUTHORING_CONTRACT_VERSION_V4,
+)
+from src.data.metric_governance import (
+    RUNTIME_GOVERNANCE_VERSION_V1,
+    RUNTIME_GOVERNANCE_VERSION_V2,
+    metric_contract_version,
+)
+from src.data.entitlement_roles import validate_entitlement_roles
 
 
-DECISION_CONTRACT_VERSION = "answervice.policy_decisions.v1"
+DECISION_CONTRACT_VERSION_V1 = "answervice.policy_decisions.v1"
+DECISION_CONTRACT_VERSION_V2 = "answervice.policy_decisions.v2"
+DECISION_CONTRACT_VERSION = DECISION_CONTRACT_VERSION_V1
+_DECISION_VERSIONS = {
+    DECISION_CONTRACT_VERSION_V1: (
+        AUTHORING_CONTRACT_VERSION_V3,
+        RUNTIME_GOVERNANCE_VERSION_V1,
+    ),
+    DECISION_CONTRACT_VERSION_V2: (
+        AUTHORING_CONTRACT_VERSION_V4,
+        RUNTIME_GOVERNANCE_VERSION_V2,
+    ),
+}
 _DECISION_KEYS = {
     "contract_version",
     "catalog_version",
@@ -55,8 +76,10 @@ def compile_authoring_policy(
 
     source = mapping(decision, "policy decisions")
     exact_keys(source, _DECISION_KEYS, "policy decisions")
-    if source["contract_version"] != DECISION_CONTRACT_VERSION:
+    versions = _DECISION_VERSIONS.get(source["contract_version"])
+    if versions is None:
         raise SemanticMetadataError("policy decision contract version is unsupported")
+    authoring_version, expected_runtime_version = versions
     if not bindings:
         raise SemanticMetadataError("policy decisions require live release bindings")
     owner = _governance(source["owner"], "owner", "urn:li:corpGroup:")
@@ -67,12 +90,26 @@ def compile_authoring_policy(
         approved=True,
     )
     roles = list(unique_texts(source["roles"], "policy roles", non_empty=True))
+    try:
+        validate_entitlement_roles(roles)
+    except ValueError as error:
+        raise SemanticMetadataError("policy roles contain an unsupported role") from error
     grain_overrides = _grain_overrides(source["asset_grains"])
     live_fqns = {binding.relation.fqn for binding in bindings}
     if not set(grain_overrides) <= live_fqns:
         raise SemanticMetadataError("grain decisions reference an unknown live asset")
 
     metrics = deepcopy(array(source["metric_rules"], "metric rules", non_empty=True))
+    try:
+        actual_runtime_version = metric_contract_version(
+            mapping(item, "metric rule") for item in metrics
+        )
+    except ValueError as error:
+        raise SemanticMetadataError("metric governance version is invalid") from error
+    if actual_runtime_version != expected_runtime_version:
+        raise SemanticMetadataError(
+            "policy decision and metric governance versions differ"
+        )
     terms = _metric_terms(source["metric_terms"], metrics, owner, lifecycle, bindings)
     time_rules = _time_rules(source["time_rules"], bindings)
     semantic_roles = _semantic_roles(metrics, source["dimensions"], time_rules)
@@ -90,7 +127,7 @@ def compile_authoring_policy(
         for binding in sorted(bindings, key=lambda item: item.relation.fqn)
     ]
     return {
-        "contract_version": AUTHORING_CONTRACT_VERSION,
+        "contract_version": authoring_version,
         "catalog_version": text(source["catalog_version"], "catalog version"),
         "policy_version": text(source["policy_version"], "policy version"),
         "schema_context_version": text(
@@ -201,14 +238,10 @@ def _asset(
                 "logical_type": _logical_type(physical.native_type),
                 "is_part_of_key": key,
                 "role": role,
-                "description": _canonical_text(
-                    field.description, f"{relation.fqn}.{field.name}.description"
-                ),
             }
         )
     return {
         "fqn": relation.fqn,
-        "description": _canonical_text(dataset.description, f"{relation.fqn}.description"),
         "schema_version": text(source["schema_version"], "schema version"),
         "seed_version": text(source["seed_version"], "seed version"),
         "synthetic": source["synthetic"],
@@ -230,8 +263,13 @@ def _semantic_roles(
     result: dict[tuple[str, str], str] = {}
     for raw in metrics:
         metric = mapping(raw, "metric rule")
-        field = mapping(mapping(metric.get("source"), "metric source").get("field"), "metric field")
-        result[(str(field.get("asset_fqn")), str(field.get("column")))] = "measure"
+        source = mapping(metric.get("source"), "metric source")
+        kind = source.get("kind")
+        if kind == "column":
+            field = mapping(source.get("field"), "metric field")
+            result[(str(field.get("asset_fqn")), str(field.get("column")))] = "measure"
+        elif kind != "ratio":
+            raise SemanticMetadataError("metric source kind is unsupported")
         for dimension in array(metric.get("dimensions"), "metric dimensions"):
             value = mapping(dimension, "metric dimension")
             result[(str(value.get("asset_fqn")), str(value.get("column")))] = "dimension"
@@ -257,6 +295,7 @@ def _metric_terms(
         if binding.dataset.domain is not None
     }
     metric_by_id = {mapping(item, "metric").get("id"): mapping(item, "metric") for item in metrics}
+    metric_domains = _metric_domains(metric_by_id, domain_by_fqn)
     result = []
     for index, raw in enumerate(array(value, "metric terms", non_empty=True)):
         item = mapping(raw, f"metric term[{index}]")
@@ -265,8 +304,7 @@ def _metric_terms(
         metric = metric_by_id.get(item["id"])
         if metric is None:
             raise SemanticMetadataError("metric term has no matching metric rule")
-        source = mapping(mapping(metric["source"], "metric source")["field"], "metric field")
-        domain = domain_by_fqn.get(str(source.get("asset_fqn")))
+        domain = metric_domains.get(str(item["id"]))
         if domain is None:
             raise SemanticMetadataError("metric source has no live domain")
         result.append(
@@ -278,6 +316,38 @@ def _metric_terms(
                 "approved_lifecycle_urn": lifecycle["urn"],
             }
         )
+    return result
+
+
+def _metric_domains(
+    metrics: Mapping[object, Mapping[str, Any]],
+    domain_by_fqn: Mapping[str, str],
+) -> dict[str, str]:
+    """column source와 동일-domain ratio 참조에서 metric별 native domain을 계산한다."""
+
+    result: dict[str, str] = {}
+    ratio_metrics: list[tuple[str, Mapping[str, Any]]] = []
+    for raw_id, metric in metrics.items():
+        metric_id = str(raw_id)
+        source = mapping(metric.get("source"), "metric source")
+        if source.get("kind") == "column":
+            field = mapping(source.get("field"), "metric field")
+            domain = domain_by_fqn.get(str(field.get("asset_fqn")))
+            if domain is None:
+                raise SemanticMetadataError("metric source has no live domain")
+            result[metric_id] = domain
+        elif source.get("kind") == "ratio":
+            ratio_metrics.append((metric_id, source))
+        else:
+            raise SemanticMetadataError("metric source kind is unsupported")
+    for metric_id, source in ratio_metrics:
+        numerator = result.get(str(source.get("numerator_metric_id")))
+        denominator = result.get(str(source.get("denominator_metric_id")))
+        if numerator is None or numerator != denominator:
+            raise SemanticMetadataError(
+                "ratio metric operands must resolve one live native domain"
+            )
+        result[metric_id] = numerator
     return result
 
 

@@ -55,7 +55,7 @@ powershell -ExecutionPolicy Bypass -File infrastructure/database/security/provis
 
 기본 역할은 다음과 같다.
 
-- `hotel_analyst`: 분석과 본인 Report 사용
+- `analyst`: 분석과 본인 Report 사용
 - `report_admin`: Report 관리 사용
 
 로그인 ID와 비밀번호는 `.env`에서 확인하며 문서나 로그에 복사하지 않는다.

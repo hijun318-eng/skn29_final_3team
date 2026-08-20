@@ -1,2 +1,2 @@
-/** 운영 기본값을 바꾸지 않고 검토 빌드에서만 Report Builder V2 화면을 활성화한다. */
-export const REPORT_BUILDER_V2 = import.meta.env.VITE_REPORT_BUILDER_V2 === "true";
+/** 실제 보고서 편집기는 V2를 기본 사용하고 명시적 false에서만 안전한 기존 화면으로 되돌린다. */
+export const REPORT_BUILDER_V2 = import.meta.env.VITE_REPORT_BUILDER_V2 !== "false";

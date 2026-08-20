@@ -29,6 +29,7 @@ class AnalysisStatus(str, Enum):
     PARTIAL = "PARTIAL"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+    CLARIFICATION_REQUIRED = "CLARIFICATION_REQUIRED"
 
 
 class PipelineStage(str, Enum):
@@ -54,9 +55,20 @@ class StageOutcome(str, Enum):
 
 class Role(str, Enum):
     """인증 주체에게 부여할 수 있는 분석·보고서·데이터 관리 역할의 허용 집합이다."""
-    HOTEL_ANALYST = "hotel_analyst"
+    ANALYST = "analyst"
     REPORT_ADMIN = "report_admin"
     DATA_ADMIN = "data_admin"
+    PLATFORM_ADMIN = "platform_admin"
+
+
+class Capability(str, Enum):
+    """역할 이름과 분리해 API·데이터·보고서 경계가 검사할 수 있는 서비스 권한이다."""
+
+    RUN_ANALYSIS = "analysis.run"
+    READ_ANALYSIS = "analysis.read"
+    DRAFT_REPORT = "report.draft"
+    MANAGE_REPORT = "report.manage"
+    MANAGE_DATA = "data.manage"
 
 
 class RouteType(str, Enum):
@@ -69,7 +81,12 @@ class ErrorCode(str, Enum):
     """인증, 문맥, 모델, SQL, 쿼리, 증거, 의존성 실패를 안정적인 API 코드로 분류한다."""
     CONTEXT_INCOMPLETE = "CONTEXT_INCOMPLETE"
     CONTEXT_SOURCE_FAILED = "CONTEXT_SOURCE_FAILED"
+    SEMANTIC_CONTRACT_INVALID = "SEMANTIC_CONTRACT_INVALID"
     DATA_ASSET_NOT_FOUND = "DATA_ASSET_NOT_FOUND"
+    OUT_OF_DATA_RANGE = "OUT_OF_DATA_RANGE"
+    SOURCE_NOT_READY = "SOURCE_NOT_READY"
+    GRAIN_VIOLATION = "GRAIN_VIOLATION"
+    FILTER_VALUE_NOT_FOUND = "FILTER_VALUE_NOT_FOUND"
     AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
     ACCESS_DENIED = "ACCESS_DENIED"
     MODEL_CONTRACT_INVALID = "MODEL_CONTRACT_INVALID"
@@ -105,6 +122,17 @@ class ClarificationType(str, Enum):
     PERIOD = "period"
 
 
+class DisambiguationOption(ContractModel):
+    """모호성 해소를 위해 사용자에게 제시하는 구조화된 선택지 계약이다."""
+    label: str
+    clarification_type: ClarificationType
+    description: str | None = None
+    metric_id: str | None = None
+    period_start: str | None = None
+    period_end_exclusive: str | None = None
+    value: str | None = None
+
+
 class RequiredAction(str, Enum):
     """오류를 해소하기 위해 클라이언트가 재시도·인증·권한 요청 등 무엇을 해야 하는지 명시한다."""
     NONE = "NONE"
@@ -122,7 +150,7 @@ class RequestContext(ContractModel):
     trace_id: str = Field(default_factory=lambda: uuid4().hex)
     conversation_id: UUID | None = None
     user_id: UUID = UUID(int=0)
-    role: Role = Role.HOTEL_ANALYST
+    role: Role = Role.ANALYST
     as_of: date = Field(default_factory=date.today)
     timezone: str = "Asia/Seoul"
     contract_version: str = CONTRACT_VERSION
@@ -137,6 +165,7 @@ class ResolvedSlots(ContractModel):
     """
     metric_id: str | None = None
     dimension_ids: tuple[str, ...] = ()
+    user_filters: tuple[dict[str, str], ...] = ()
     period_start: str | None = None
     period_end_exclusive: str | None = None
 
@@ -191,6 +220,7 @@ class ErrorBody(ContractModel):
     retryable: bool = False
     suggestions: tuple[str, ...] = ()
     clarification_type: ClarificationType | None = None
+    disambiguation_options: tuple[DisambiguationOption, ...] = ()
     trace_id: str = ""
 
     def model_post_init(self, __context: object) -> None:
@@ -206,6 +236,7 @@ class ErrorBody(ContractModel):
 
 
 _RETRYABLE_ERROR_CODES = {
+    ErrorCode.CONTEXT_SOURCE_FAILED,
     ErrorCode.MODEL_TIMEOUT,
     ErrorCode.MODEL_ENDPOINT_UNAVAILABLE,
     ErrorCode.CIRCUIT_OPEN,
@@ -216,14 +247,21 @@ _RETRYABLE_ERROR_CODES = {
     ErrorCode.PARTIAL_FAILURE,
     ErrorCode.RATE_LIMITED,
     ErrorCode.DEPENDENCY_UNAVAILABLE,
+    ErrorCode.SOURCE_NOT_READY,
 }
 
 _REQUIRED_ACTION_BY_ERROR = {
+    ErrorCode.CONTEXT_SOURCE_FAILED: RequiredAction.CONTACT_SUPPORT,
+    ErrorCode.SEMANTIC_CONTRACT_INVALID: RequiredAction.CONTACT_SUPPORT,
     ErrorCode.AUTHENTICATION_REQUIRED: RequiredAction.AUTHENTICATE,
     ErrorCode.ACCESS_DENIED: RequiredAction.REQUEST_ACCESS,
     ErrorCode.CONTEXT_INCOMPLETE: RequiredAction.PROVIDE_CONTEXT,
     ErrorCode.INSUFFICIENT_CONTEXT: RequiredAction.PROVIDE_CONTEXT,
     ErrorCode.DATA_ASSET_NOT_FOUND: RequiredAction.PROVIDE_CONTEXT,
+    ErrorCode.OUT_OF_DATA_RANGE: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.GRAIN_VIOLATION: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.FILTER_VALUE_NOT_FOUND: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.SOURCE_NOT_READY: RequiredAction.RETRY,
     ErrorCode.CONTRACT_VERSION_MISMATCH: RequiredAction.MODIFY_REQUEST,
     ErrorCode.SCHEMA_VERSION_MISMATCH: RequiredAction.MODIFY_REQUEST,
     ErrorCode.RESOURCE_NOT_FOUND: RequiredAction.MODIFY_REQUEST,

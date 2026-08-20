@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "MODEL-v1.3.0",
+  "version": "MODEL-v1.12.0",
   "$defs": {
     "execution_time": {
       "type": "object",
@@ -87,7 +87,7 @@
         "parameter": {"type": "string", "minLength": 1}
       }
     },
-    "metric_source": {
+    "column_metric_source": {
       "type": "object",
       "additionalProperties": false,
       "required": ["kind", "field"],
@@ -95,6 +95,23 @@
         "kind": {"type": "string", "const": "column"},
         "field": {"$ref": "#/$defs/qualified_field"}
       }
+    },
+    "ratio_metric_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "numerator_metric_id", "denominator_metric_id", "zero_policy"],
+      "properties": {
+        "kind": {"type": "string", "const": "ratio"},
+        "numerator_metric_id": {"type": "string", "minLength": 1},
+        "denominator_metric_id": {"type": "string", "minLength": 1},
+        "zero_policy": {"type": "string", "enum": ["null_on_zero_denominator"]}
+      }
+    },
+    "metric_source": {
+      "oneOf": [
+        {"$ref": "#/$defs/column_metric_source"},
+        {"$ref": "#/$defs/ratio_metric_source"}
+      ]
     },
     "context_metric": {
       "type": "object",
@@ -114,7 +131,7 @@
         "source": {"$ref": "#/$defs/metric_source"},
         "aggregation": {
           "type": "string",
-          "enum": ["sum", "count", "count_distinct", "min", "max", "average", "none"]
+          "enum": ["sum", "count", "count_distinct", "min", "max", "average", "none", "ratio", "exists"]
         },
         "result_field": {
           "type": "string",
@@ -287,6 +304,15 @@
         "timezone_mode": {"type": "string", "enum": ["preserve", "context"]}
       }
     },
+    "comparison_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_parameter", "end_parameter"],
+      "properties": {
+        "start_parameter": {"type": "string", "minLength": 1},
+        "end_parameter": {"type": "string", "minLength": 1}
+      }
+    },
     "time_rules": {
       "type": "object",
       "additionalProperties": false,
@@ -304,6 +330,12 @@
         "interval": {"type": "string", "const": "[start,end)"},
         "start_parameter": {"type": "string", "minLength": 1},
         "end_parameter": {"type": "string", "minLength": 1},
+        "comparison_window": {
+          "oneOf": [
+            {"$ref": "#/$defs/comparison_window"},
+            {"type": "null"}
+          ]
+        },
         "fields": {
           "type": "array",
           "minItems": 1,
@@ -411,6 +443,15 @@
         "as_of": {"type": "string", "format": "date-time"},
         "timezone": {"type": "string", "minLength": 1},
         "calendar_id": {"type": "string", "minLength": 1},
+        "previous_period": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["start", "end_exclusive"],
+          "properties": {
+            "start": {"type": "string", "format": "date-time"},
+            "end_exclusive": {"type": "string", "format": "date-time"}
+          }
+        },
         "allowed_routes": {
           "type": "array",
           "minItems": 1,
@@ -443,7 +484,9 @@
         "metric_candidates",
         "selected_metric_id",
         "dimension_candidates",
+        "filter_candidates",
         "period_candidates",
+        "period_relationship",
         "ambiguity"
       ],
       "properties": {
@@ -451,7 +494,39 @@
         "intent_candidates": {"type": "array", "items": {"type": "string"}},
         "metric_candidates": {"type": "array", "items": {"type": "string"}},
         "selected_metric_id": {"type": ["string", "null"], "minLength": 1},
+        "requested_route": {
+          "type": ["string", "null"],
+          "enum": ["ANALYSIS", "PRESENTATION", "REPORT_ACTION", null]
+        },
+        "presentation_type": {
+          "type": ["string", "null"],
+          "enum": [
+            "SUMMARY",
+            "TABLE",
+            "BAR",
+            "LINE",
+            "PIE",
+            "HORIZONTAL_BAR",
+            "DONUT",
+            null
+          ]
+        },
+        "is_elliptical": {"type": ["boolean", "null"]},
         "dimension_candidates": {"type": "array", "items": {"type": "string"}},
+        "filter_candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["dimension_id", "value_text", "exclude"],
+            "properties": {
+              "dimension_id": {"type": "string", "minLength": 1},
+              "value_text": {"type": "string", "minLength": 1},
+              "exclude": {"type": "boolean"}
+            }
+          }
+        },
+        "period_relationship": {"type": "string", "enum": ["single", "comparison"]},
         "period_candidates": {
           "type": "array",
           "items": {
@@ -509,6 +584,20 @@
       }
     },
     "node2_response": {
+      "oneOf": [
+        {"$ref": "#/$defs/node2_sql_only_response"},
+        {"$ref": "#/$defs/node2_legacy_response"}
+      ]
+    },
+    "node2_sql_only_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sql"],
+      "properties": {
+        "sql": {"type": "string", "minLength": 1}
+      }
+    },
+    "node2_legacy_response": {
       "type": "object",
       "additionalProperties": false,
       "required": [

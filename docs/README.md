@@ -28,6 +28,10 @@
 - `reference/Walkerhill_V4.1_SQL_검토.md`: 실행 금지 판정을 포함한 과거 SQL 후보의 읽기 전용 감사 기록이다.
 - `reference/P0_실행목표_프롬프트.md`: 이전 기준선에서 파생된 실행 금지 archive다. 새 작업은 저장소 루트 `AGENTS.md`와 제품 기준 문서를 직접 따른다.
 - `reference/멀티턴_발화이해_BP_벤치마크.md`: Dialogflow CX, KLUE-DST, CheckList, BFCL, Structured Outputs와 eval BP를 우리 Turn·slot·상태/경로 회귀 계약으로 번역한 참고 자료다. 공개 점수 자체는 제품 Gate가 아니다.
+- `reference/datahub_search_flow.md`: DataHub의 일반 검색 개념과 Answervice의 실제 `lexical`/`hybrid` 검색, release·권한·Glossary·Trino 검증 경계를 대조한 참고 자료다. 구현 설명이며 live E2E 완료 증거는 아니다.
+- `reference/DataHub_검색_구조_및_Answervice_적용.md`: DataHub 검색·색인 핵심 개념을 서론·본론·결론 순서로 설명하고, 호텔 업무 예시와 Answervice의 ingestion·governance·Context·Trino 실행 경계를 함께 정리한 학습용 참고 자료다.
+- `reference/DataHub_검색_흐름_효율성_및_일반성_비교.md`: 현재 검색 흐름의 효율성과 일반성을 코드 기반 LLM 판단과 DataHub 공식 문서 조사로 각각 평가하고, 두 결론과 control/request plane 개선 방향을 비교한 참고 자료다.
+- `reference/DataHub_Core_UI_설정_상태_점검_2026-08-19.md`: Docker Compose 포트와 실제 호스팅 IP의 DataHub UI 접근을 점검한 기록이다. 현재 UI 접근 차단으로 Glossary·Domain·Owner는 `NOT_OBSERVED`이며, live 완료 증거가 아니다.
 - `reference/Runtime_governance_V4.3_승인검토안.md`: V4.3 serving SQL AST와 컬럼 설명에서 생성한 비권위 DRAFT다. 업무 승인 전에는 DataHub runtime governance로 발행하지 않는다.
 - `reference/Runtime_governance_V4.3_업무승인.md`: V4.3 생성식과 동일하게 제한한 통합매출·이벤트·VOC·연회 취소의 업무 승인 기록이다. 실제 발행은 별도의 live check에서 확인한 target·predecessor checksum과 전체 read-back을 요구한다.
 - `architecture/`: 최신 Archify 원본 JSON 4개와 HTML 4개만 유지한다. 모두 showcase 9/9와 1440·1600·1920·2048 containment를 통과했고 1440 light/dark를 수동 확인했다. 이는 그림 품질 `GO`이며 제품 구현 완료 증거는 아니다.

@@ -1,7 +1,7 @@
 /** governed 분석 값을 도메인 추론 없이 제목·숫자·색상으로 표현하는 유틸리티 모듈이다. */
 /** 차트 계열 순번에만 의존하는 접근성 검토 완료 색상 팔레트다. */
 export const ENTERPRISE_SERIES_COLORS = [
-  "#5b9df5",
+  "#3d8ef0",
   "#d3a45c",
   "#6bc49b",
   "#b58cf2",

@@ -1,6 +1,7 @@
 /** 실제 A4 비율과 grid를 screen/print 양쪽에서 유지하는 page canvas 모듈이다. */
 import { memo, useLayoutEffect, useRef, useState } from "react";
 
+import { normalizeReportEditorScale, resolveReportEditorScale } from "./reportEditorViewport";
 import "./report-a4-paper.css";
 import "./report-a4-content.css";
 import "./report-a4-artifact.css";
@@ -40,8 +41,8 @@ function shallowRecordEqual(previous, next) {
 function scaledPagePropsEqual(previous, next) {
   const scalarKeys = [
     "mode", "orientation", "pageIndex", "pageCount", "renderBlock", "renderHeader",
-    "renderFooter", "renderGridOverlay", "gridClassName", "getGridRef",
-    "zoom",
+    "renderFooter", "renderGridOverlay", "gridClassName", "getGridRef", "viewScale",
+    "pageNumberOffset", "pageCountOverride",
   ];
   if (!scalarKeys.every((key) => Object.is(previous[key], next[key]))) return false;
   if (!shallowRecordEqual(
@@ -60,19 +61,22 @@ const ScaledPage = memo(function ScaledPage({
   page,
   pageIndex,
   pageCount,
+  pageNumberOffset,
+  pageCountOverride,
   renderBlock,
   renderHeader,
   renderFooter,
   renderGridOverlay,
   gridClassName,
   getGridRef,
-  zoom,
+  viewScale,
 }) {
   const viewportRef = useRef(null);
   const pageRef = useRef(null);
   const [frame, setFrame] = useState(null);
-  const pageNumber = pageIndex + 1;
-  const context = { mode, orientation, page, pageIndex, pageNumber, pageCount };
+  const pageNumber = pageIndex + 1 + pageNumberOffset;
+  const resolvedPageCount = pageCountOverride ?? pageCount;
+  const context = { mode, orientation, page, pageIndex, pageNumber, pageCount: resolvedPageCount };
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -83,7 +87,18 @@ const ScaledPage = memo(function ScaledPage({
       const naturalWidth = pageElement.offsetWidth;
       const naturalHeight = pageElement.offsetHeight;
       if (!naturalWidth || !naturalHeight) return;
-      const scale = Math.min(1, viewport.clientWidth / naturalWidth) * zoom;
+      const toolbarBottom = document.querySelector(".notion-editor-topbar")
+        ?.getBoundingClientRect().bottom ?? 0;
+      const availableHeight = Math.max(320, window.innerHeight - Math.max(0, toolbarBottom) - 56);
+      const scale = mode === "editor"
+        ? resolveReportEditorScale(
+          viewScale,
+          viewport.clientWidth / naturalWidth,
+          availableHeight / naturalHeight,
+        )
+        : mode === "presentation"
+          ? Math.min(1, viewport.clientWidth / naturalWidth, viewport.clientHeight / naturalHeight)
+        : Math.min(1, viewport.clientWidth / naturalWidth);
       const next = {
         scale,
         width: naturalWidth * scale,
@@ -99,18 +114,21 @@ const ScaledPage = memo(function ScaledPage({
     };
 
     resize();
+    window.addEventListener("resize", resize);
     if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", resize);
       return () => window.removeEventListener("resize", resize);
     }
     const observer = new ResizeObserver(resize);
     observer.observe(viewport);
-    return () => observer.disconnect();
-  }, [orientation, zoom]);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", resize);
+    };
+  }, [mode, orientation, viewScale]);
 
   const header = renderHeader ? renderHeader(context) : page.header;
   const footer = renderFooter ? renderFooter(context) : page.footer;
-  const pageLabel = page.ariaLabel || `보고서 ${pageNumber}/${pageCount}페이지, ${A4_LABELS[orientation]}`;
+  const pageLabel = page.ariaLabel || `보고서 ${pageNumber}/${resolvedPageCount}페이지, ${A4_LABELS[orientation]}`;
 
   return (
     <div className="answer-report-page-viewport" data-report-page-index={pageIndex} ref={viewportRef}>
@@ -157,7 +175,7 @@ const ScaledPage = memo(function ScaledPage({
           <footer className="answer-report-page__footer">
             <div className="answer-report-page__footer-slot">{footer}</div>
             <span className="answer-report-page__folio" aria-label={`${pageNumber}/${pageCount}페이지`}>
-              {String(pageNumber).padStart(2, "0")} / {String(pageCount).padStart(2, "0")}
+              {String(pageNumber).padStart(2, "0")} / {String(resolvedPageCount).padStart(2, "0")}
             </span>
           </footer>
         </article>
@@ -179,9 +197,11 @@ export function ReportPageCanvas({
   getGridRef,
   ariaLabel = "보고서 페이지",
   className = "",
-  zoom = 1,
+  viewScale = "fit-width",
+  pageNumberOffset = 0,
+  pageCountOverride,
 }) {
-  const mode = requestedMode === "preview" ? "preview" : "editor";
+  const mode = ["preview", "presentation"].includes(requestedMode) ? requestedMode : "editor";
   if (typeof renderBlock !== "function") {
     throw new TypeError("ReportPageCanvas requires a renderBlock callback.");
   }
@@ -190,6 +210,7 @@ export function ReportPageCanvas({
     <section
       className={`answer-report-canvas answer-report-canvas--${mode} ${className}`.trim()}
       data-report-mode={mode}
+      data-report-view-scale={normalizeReportEditorScale(viewScale)}
       aria-label={ariaLabel}
     >
       {pages.map((page, pageIndex) => {
@@ -201,13 +222,15 @@ export function ReportPageCanvas({
             page={page}
             pageIndex={pageIndex}
             pageCount={pages.length}
+            pageNumberOffset={pageNumberOffset}
+            pageCountOverride={pageCountOverride}
             renderBlock={renderBlock}
             renderHeader={renderHeader}
             renderFooter={renderFooter}
             renderGridOverlay={renderGridOverlay}
             gridClassName={gridClassName}
             getGridRef={getGridRef}
-            zoom={zoom}
+            viewScale={viewScale}
             key={page.id || pageIndex}
           />
         );

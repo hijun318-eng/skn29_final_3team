@@ -9,6 +9,10 @@
       "api": "cancelled",
       "ui": "CANCELLED"
     },
+    "CLARIFICATION_REQUIRED": {
+      "api": "blocked",
+      "ui": "EMPTY"
+    },
     "FAILED": {
       "api": "failed",
       "ui": "ERROR"

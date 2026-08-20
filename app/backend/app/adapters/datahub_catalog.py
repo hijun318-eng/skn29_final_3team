@@ -68,6 +68,9 @@ query GovernedDataset($urn: String!) {
         glossaryTerms { terms { term { urn } } }
       }
     }
+    editableSchemaMetadata {
+      editableSchemaFieldInfo { fieldPath description }
+    }
   }
 }
 """.strip()

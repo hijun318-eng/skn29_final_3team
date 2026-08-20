@@ -20,9 +20,10 @@ from app.contracts import (
     Role,
 )
 from app.ports.data_platform import NoEntitledAssetsError
-from app.services.analysis_service import AnalysisService
+from app.services.analysis import AnalysisService
 from app.services.routing_service import RoutingService
 from src.ai.schema import validate_payload
+from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
 ASSET_FQN = "orion_catalog.analytics.observations"
@@ -51,6 +52,13 @@ METRIC = {
     "unit": "arbitrary_unit",
     "reduction": "sum",
     "dimensions": [],
+    "visibility": "BUSINESS",
+    "governance_version": RUNTIME_GOVERNANCE_VERSION_V2,
+    "allowed_roles": ["analyst"],
+    "contains_pii": False,
+    "allowed_join_ids": [],
+    "join_required": False,
+    "query_strategies": ["RAW_APPROVED_DETAIL"],
     "required_filters": [
         {
             "field": "state_code",
@@ -116,6 +124,7 @@ NODE1_RESPONSE = {
     "metric_candidates": [METRIC_ID],
     "selected_metric_id": METRIC_ID,
     "dimension_candidates": [],
+    "filter_candidates": [],
     "period_candidates": [
         {
             "start": "2042-06-01T00:00:00+09:00",
@@ -123,6 +132,7 @@ NODE1_RESPONSE = {
             "source_text": "reviewed-window",
         }
     ],
+    "period_relationship": "single",
     "ambiguity": {
         "is_ambiguous": False,
         "reasons": [],
@@ -160,6 +170,56 @@ MISSING_FILTER_PLAN = {
         {"asset_fqn": ASSET_FQN, "column": "observed_on"},
     ],
 }
+COMPARISON_ASSET = copy.deepcopy(ASSET)
+COMPARISON_ASSET["time_metadata"]["comparison_window"] = {
+    "start_parameter": "comparison_start",
+    "end_parameter": "comparison_end",
+}
+
+COMPARISON_NODE1_RESPONSE = copy.deepcopy(NODE1_RESPONSE)
+COMPARISON_NODE1_RESPONSE["period_candidates"] = [
+    {
+        "start": "2042-06-01T00:00:00+09:00",
+        "end_exclusive": "2042-07-01T00:00:00+09:00",
+        "source_text": "reviewed-window",
+    },
+    {
+        "start": "2042-05-01T00:00:00+09:00",
+        "end_exclusive": "2042-06-01T00:00:00+09:00",
+        "source_text": "prior-reviewed-window",
+    },
+]
+COMPARISON_NODE1_RESPONSE["period_relationship"] = "comparison"
+
+COMPARISON_SQL = (
+    f"SELECT SUM(o.amount) FILTER (WHERE o.observed_on >= CAST(:window_start AS DATE) "
+    "AND o.observed_on < CAST(:window_end AS DATE)) AS "
+    f"{RESULT_FIELD}, "
+    "SUM(o.amount) FILTER (WHERE o.observed_on >= CAST(:comparison_start AS DATE) "
+    "AND o.observed_on < CAST(:comparison_end AS DATE)) AS "
+    f"{RESULT_FIELD}__comparison "
+    f"FROM {ASSET_FQN} AS o WHERE o.state_code = :state_filter LIMIT 100"
+)
+COMPARISON_PLAN = {**VALID_PLAN, "sql": COMPARISON_SQL}
+COMPARISON_RESULT = {
+    "query_id": "query-arbitrary-comparison-1",
+    "status": "SUCCEEDED",
+    "rows": [{RESULT_FIELD: 17, f"{RESULT_FIELD}__comparison": 11}],
+    "result_metadata": {
+        "columns": [
+            {"name": RESULT_FIELD, "type": "integer"},
+            {"name": f"{RESULT_FIELD}__comparison", "type": "integer"},
+        ],
+        "row_count": 1,
+        "checksum": "2f10ad5af815d065ef29da49b3f45734e879b205e7152adbc2abe0bbf675ecff",
+    },
+    "evidence_complete": True,
+    "zero_result_suspicious": False,
+    "filters": {"state_code": "accepted"},
+    "sampling": {"applied": False, "returned_rows": 1, "total_rows": 1},
+    "masking": {"applied": False, "fields": []},
+}
+
 NODE3_RESPONSE = {
     "summary": "Reviewed explanation for the governed result.",
     "model_version": "programmable-v1",
@@ -223,10 +283,11 @@ class AsyncProgrammableModel:
 
 
 class AsyncRuntimeDataPlatform:
-    def __init__(self, *, search_error=None, execute_error=None, result=None):
+    def __init__(self, *, search_error=None, execute_error=None, result=None, asset=None):
         self.search_error = search_error
         self.execute_error = execute_error
         self.result = copy.deepcopy(result or QUERY_RESULT)
+        self.asset = copy.deepcopy(asset or ASSET)
         self.search_count = 0
         self.execute_count = 0
         self.cancelled = []
@@ -236,7 +297,7 @@ class AsyncRuntimeDataPlatform:
         self.search_count += 1
         if self.search_error is not None:
             raise self.search_error
-        return [copy.deepcopy(ASSET)]
+        return [copy.deepcopy(self.asset)]
 
     async def get_asset_schema(self, urn):
         if urn != ASSET_URN:
@@ -279,7 +340,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
             request_id=UUID("10000000-0000-0000-0000-000000000001"),
             trace_id="arbitrary-pipeline-trace",
             user_id=UUID("20000000-0000-0000-0000-000000000002"),
-            role=Role.HOTEL_ANALYST,
+            role=Role.ANALYST,
             as_of=date(2042, 6, 15),
         )
         self.payload = AnalysisRequest(question=REQUEST_TEXT)
@@ -389,6 +450,20 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([], model.calls)
         self.assertEqual(0, adapter.execute_count)
 
+    async def test_unapproved_query_strategy_is_semantic_not_model_failure(self):
+        incompatible = copy.deepcopy(ASSET)
+        incompatible["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=AsyncRuntimeDataPlatform(asset=incompatible)
+        )
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ErrorCode.SEMANTIC_CONTRACT_INVALID, response.error.code)
+        self.assertNotEqual(ErrorCode.MODEL_CONTRACT_INVALID, response.error.code)
+        self.assertEqual(["node1"], [node for node, _ in model.calls])
+        self.assertEqual(0, adapter.execute_count)
+
     async def test_multiple_programmed_periods_request_clarification(self):
         ambiguous = copy.deepcopy(NODE1_RESPONSE)
         ambiguous["period_candidates"].append(
@@ -408,11 +483,30 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
             model=model_with(node1=ambiguous)
         )
 
-        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(AnalysisStatus.CLARIFICATION_REQUIRED, response.data.status)
         self.assertEqual(ErrorCode.CONTEXT_INCOMPLETE, response.error.code)
         self.assertEqual(ClarificationType.PERIOD, response.error.clarification_type)
         self.assertEqual(("reviewed-window", "alternate-reviewed-window"), response.error.suggestions)
         self.assertEqual(["node1"], [node for node, _ in model.calls])
+        self.assertEqual(0, adapter.execute_count)
+
+    async def test_comparison_period_relationship_projects_metric_over_two_windows(self):
+        adapter = AsyncRuntimeDataPlatform(asset=COMPARISON_ASSET, result=COMPARISON_RESULT)
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            model=model_with(node1=COMPARISON_NODE1_RESPONSE, node2=COMPARISON_PLAN),
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(1, adapter.execute_count)
+
+    async def test_comparison_relationship_without_a_governed_comparison_window_is_rejected(self):
+        response, adapter, model, _service = await self.run_pipeline(
+            model=model_with(node1=COMPARISON_NODE1_RESPONSE, node2=COMPARISON_PLAN),
+        )
+
+        self.assertEqual(AnalysisStatus.CLARIFICATION_REQUIRED, response.data.status)
         self.assertEqual(0, adapter.execute_count)
 
     async def test_model_timeout_and_query_connection_error_are_typed(self):

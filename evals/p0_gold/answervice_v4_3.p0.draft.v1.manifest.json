@@ -1,0 +1,23 @@
+{
+  "contract_version": "answervice.p0_gold.v1",
+  "status": "DRAFT",
+  "data_release_id": "walkerhill-v4.3-sql-20260815-derived.1",
+  "semantic_candidate_sha256": "5aa571eee3a3b42393ab9bacbc130bf33e3b835922404d5d25bb8356c12edd8d",
+  "semantic_release_id": null,
+  "product_release_id": null,
+  "as_of": "2026-08-19",
+  "timezone": "Asia/Seoul",
+  "case_file": "answervice_v4_3.p0.draft.v1.jsonl",
+  "case_content_sha256": "f487f9c323282b114b858730ce09142eaebc5e64c7e1b02ccfc2129434e92d7b",
+  "case_count": 55,
+  "coverage_targets": {
+    "STRUCTURED": 30,
+    "SAFETY": 15,
+    "MULTI_TURN": 10
+  },
+  "provenance": {
+    "source": "Answervice v3.4 D2/T1 requirements and the SQL-bound semantic review candidate",
+    "notes": "Legacy eval files are not reused as product Gold because they lack the current data, semantic, and product release binding.",
+    "training_exposure": "NOT_USED_IN_TRAINING_OR_PROMPT"
+  }
+}

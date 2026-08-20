@@ -6,7 +6,7 @@ from dataclasses import replace
 import pytest
 from sqlglot import exp, parse_one
 
-from app.services.context_builder import (
+from app.services.context.builder import (
     ContextAsset,
     ContextBuildRequest,
     ContextMetric,
@@ -15,9 +15,10 @@ from app.services.context_builder import (
     ContextParameterBinding,
     ContextRequiredFilter,
 )
-from app.services.pipeline_context_contract import GovernedJoin, enrich_context_package
-from app.services.pipeline_sql_guard import apply_guard_decision, validate_plan
+from app.services.context.contract import GovernedJoin, enrich_context_package
+from app.services.sql_guard import apply_guard_decision, validate_plan
 from src.ai.schema import ContractError, validate_payload
+from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
 def _package(fqn: str = "orbit.ops.event_fact"):
@@ -36,6 +37,12 @@ def _package(fqn: str = "orbit.ops.event_fact"):
                 required_filters=(ContextRequiredFilter("active", "eq", True),),
                 result_field="governed_total",
                 unit="credits",
+                governance_version=RUNTIME_GOVERNANCE_VERSION_V2,
+                allowed_roles=("analyst",),
+                contains_pii=False,
+                allowed_join_ids=(),
+                join_required=False,
+                query_strategies=("RAW_APPROVED_DETAIL",),
             ),
         ),
         metric_registry_required=True,
@@ -543,7 +550,7 @@ def test_join_kind_and_post_join_preaggregation_decoys_fail_closed() -> None:
         {"sql": post_join_grouping},
         _joined_package(preaggregation=True),
     )
-    assert decision.violation == "JOIN_GRAPH_MISMATCH"
+    assert decision.violation == "GRAIN_VIOLATION"
     assert "direct child scope" in decision.detail
 
 
@@ -581,7 +588,7 @@ def test_governed_preaggregation_requires_proven_child_scope_lineage() -> None:
     )
     assert {
         validate_plan({"sql": sql}, package).violation for sql in mutations
-    } == {"JOIN_GRAPH_MISMATCH", "METRIC_RULE_MISMATCH"}
+    } == {"GRAIN_VIOLATION", "METRIC_RULE_MISMATCH"}
 
 
 @pytest.mark.parametrize(
@@ -656,3 +663,305 @@ def test_multiple_selected_column_metrics_share_one_governed_output_scope() -> N
 
     assert accepted.ok, accepted
     assert rejected.violation == "METRIC_RULE_MISMATCH"
+
+
+def test_ratio_metric_projects_numerator_and_denominator_with_nullif_zero_guard() -> None:
+    package = _package()
+    numerator = package.metrics[0]
+    denominator = replace(
+        numerator,
+        id="governed_count",
+        field="active",
+        aggregation="count",
+        result_field="governed_count",
+        unit="rows",
+        required_filters=(),
+    )
+    ratio = ContextMetric(
+        id="governed_ratio",
+        asset_fqn="",
+        field="",
+        aggregation="ratio",
+        time_field="",
+        required_filters=(),
+        result_field="governed_ratio",
+        unit="ratio",
+        numerator_metric_id="governed_amount",
+        denominator_metric_id="governed_count",
+        zero_policy="null_on_zero_denominator",
+        governance_version=RUNTIME_GOVERNANCE_VERSION_V2,
+        allowed_roles=("analyst",),
+        contains_pii=False,
+        allowed_join_ids=(),
+        join_required=False,
+        query_strategies=("RAW_APPROVED_DETAIL",),
+    )
+    contracts = deepcopy(package.runtime_contracts)
+    denominator_rule = deepcopy(contracts["metric_rules"][0])
+    denominator_rule.update(
+        id=denominator.id,
+        source={
+            "kind": "column",
+            "field": {"asset_fqn": denominator.asset_fqn, "column": denominator.field},
+        },
+        aggregation="count",
+        result_field=denominator.result_field,
+        unit=denominator.unit,
+        required_filters=[],
+    )
+    contracts["metric_rules"].append(denominator_rule)
+    contracts["metric_rules"].append(
+        {
+            "id": ratio.id,
+            "source": {
+                "kind": "ratio",
+                "numerator_metric_id": "governed_amount",
+                "denominator_metric_id": "governed_count",
+                "zero_policy": "null_on_zero_denominator",
+            },
+            "aggregation": "ratio",
+            "result_field": ratio.result_field,
+            "unit": ratio.unit,
+            "time_field": None,
+            "dimensions": [],
+            "required_filters": [],
+        }
+    )
+    contracts["query_policy"]["allowed_functions"].extend(["COUNT", "NULLIF"])
+    package = replace(
+        package,
+        metrics=(numerator, denominator, ratio),
+        runtime_contracts=contracts,
+    )
+    sql = _sql().replace(
+        "SUM(e.amount) AS governed_total",
+        "SUM(e.amount) AS governed_total, COUNT(e.active) AS governed_count, "
+        "SUM(e.amount) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
+    )
+
+    accepted = validate_plan({"sql": sql}, package)
+    swapped = validate_plan(
+        {"sql": sql.replace(
+            "SUM(e.amount) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
+            "COUNT(e.active) / NULLIF(SUM(e.amount), 0) AS governed_ratio",
+        )},
+        package,
+    )
+    missing_nullif = validate_plan(
+        {"sql": sql.replace(
+            "SUM(e.amount) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
+            "SUM(e.amount) / COUNT(e.active) AS governed_ratio",
+        )},
+        package,
+    )
+
+    assert accepted.ok, accepted
+    assert swapped.violation == "METRIC_RULE_MISMATCH"
+    assert missing_nullif.violation == "METRIC_RULE_MISMATCH"
+
+
+def _exists_package():
+    package = _package()
+    exists_metric = replace(
+        package.metrics[0],
+        id="governed_exists",
+        field="active",
+        aggregation="exists",
+        result_field="governed_exists",
+        unit="boolean",
+        required_filters=(),
+    )
+    contracts = deepcopy(package.runtime_contracts)
+    exists_rule = deepcopy(contracts["metric_rules"][0])
+    exists_rule.update(
+        id=exists_metric.id,
+        source={
+            "kind": "column",
+            "field": {"asset_fqn": exists_metric.asset_fqn, "column": exists_metric.field},
+        },
+        aggregation="exists",
+        result_field=exists_metric.result_field,
+        unit=exists_metric.unit,
+        required_filters=[],
+    )
+    contracts["metric_rules"].append(exists_rule)
+    contracts["query_policy"]["allowed_functions"].append("COUNT")
+    return replace(
+        package,
+        metrics=(package.metrics[0], exists_metric),
+        runtime_contracts=contracts,
+    )
+
+
+def test_exists_metric_projects_count_greater_than_zero() -> None:
+    package = _exists_package()
+    sql = _sql().replace(
+        "SUM(e.amount) AS governed_total",
+        "SUM(e.amount) AS governed_total, COUNT(e.active) > 0 AS governed_exists",
+    )
+
+    accepted = validate_plan({"sql": sql}, package)
+
+    assert accepted.ok, accepted
+
+
+def test_exists_metric_rejects_a_bare_unfiltered_count() -> None:
+    package = _exists_package()
+    sql = _sql().replace(
+        "SUM(e.amount) AS governed_total",
+        "SUM(e.amount) AS governed_total, COUNT(e.active) AS governed_exists",
+    )
+
+    rejected = validate_plan({"sql": sql}, package)
+
+    assert rejected.violation == "METRIC_RULE_MISMATCH"
+
+
+def test_exists_metric_rejects_a_non_zero_threshold() -> None:
+    package = _exists_package()
+    sql = _sql().replace(
+        "SUM(e.amount) AS governed_total",
+        "SUM(e.amount) AS governed_total, COUNT(e.active) > 1 AS governed_exists",
+    )
+
+    rejected = validate_plan({"sql": sql}, package)
+
+    assert rejected.violation == "METRIC_RULE_MISMATCH"
+
+
+def _comparison_package():
+    package = _package()
+    contracts = deepcopy(package.runtime_contracts)
+    contracts["time_rules"]["comparison_window"] = {
+        "start_parameter": "comparison_begin",
+        "end_parameter": "comparison_stop",
+    }
+    contracts["parameter_contract"]["parameters"].extend(
+        [
+            {"name": "comparison_begin", "type": "date", "scope": "time"},
+            {"name": "comparison_stop", "type": "date", "scope": "time"},
+        ]
+    )
+    return replace(
+        package,
+        runtime_contracts=contracts,
+        parameter_bindings=(
+            *package.parameter_bindings,
+            ContextParameterBinding("comparison_begin", "date", "2026-06-01"),
+            ContextParameterBinding("comparison_stop", "date", "2026-07-01"),
+        ),
+    )
+
+
+_COMPARISON_SQL = """
+    SELECT
+      SUM(e.amount) FILTER (
+        WHERE e.occurred_on >= CAST(:window_begin AS DATE) AND e.occurred_on < CAST(:window_stop AS DATE)
+      ) AS governed_total,
+      SUM(e.amount) FILTER (
+        WHERE e.occurred_on >= CAST(:comparison_begin AS DATE) AND e.occurred_on < CAST(:comparison_stop AS DATE)
+      ) AS governed_total__comparison
+    FROM orbit.ops.event_fact AS e
+    WHERE e.active = :active_flag
+    LIMIT 100
+"""
+
+
+def test_comparison_window_projects_metric_twice_with_filter_predicates() -> None:
+    package = _comparison_package()
+
+    accepted = validate_plan({"sql": _COMPARISON_SQL}, package)
+
+    assert accepted.ok, accepted
+
+
+def test_comparison_window_rejects_a_bare_unfiltered_projection() -> None:
+    package = _comparison_package()
+    sql = _COMPARISON_SQL.replace(
+        "SUM(e.amount) FILTER (\n"
+        "        WHERE e.occurred_on >= CAST(:comparison_begin AS DATE) AND e.occurred_on < CAST(:comparison_stop AS DATE)\n"
+        "      ) AS governed_total__comparison",
+        "SUM(e.amount) AS governed_total__comparison",
+    )
+
+    rejected = validate_plan({"sql": sql}, package)
+
+    assert rejected.violation == "METRIC_RULE_MISMATCH"
+
+
+def test_comparison_window_rejects_swapped_primary_and_comparison_predicates() -> None:
+    package = _comparison_package()
+    swapped_sql = """
+        SELECT
+          SUM(e.amount) FILTER (
+            WHERE e.occurred_on >= CAST(:comparison_begin AS DATE) AND e.occurred_on < CAST(:comparison_stop AS DATE)
+          ) AS governed_total,
+          SUM(e.amount) FILTER (
+            WHERE e.occurred_on >= CAST(:window_begin AS DATE) AND e.occurred_on < CAST(:window_stop AS DATE)
+          ) AS governed_total__comparison
+        FROM orbit.ops.event_fact AS e
+        WHERE e.active = :active_flag
+        LIMIT 100
+    """
+
+    rejected = validate_plan({"sql": swapped_sql}, package)
+
+    assert rejected.violation == "TIME_RULE_MISMATCH"
+
+
+def test_comparison_window_declared_but_unused_keeps_single_window_shape() -> None:
+    package = _comparison_package()
+    package = replace(
+        package,
+        parameter_bindings=tuple(
+            item
+            for item in package.parameter_bindings
+            if item.name not in {"comparison_begin", "comparison_stop"}
+        ),
+    )
+
+    accepted = validate_plan({"sql": _sql()}, package)
+
+    assert accepted.ok, accepted
+
+
+def test_exists_metric_and_comparison_window_together_are_rejected() -> None:
+    package = _comparison_package()
+    exists_metric = replace(
+        package.metrics[0],
+        id="governed_exists",
+        field="active",
+        aggregation="exists",
+        result_field="governed_exists",
+        unit="boolean",
+        required_filters=(),
+    )
+    contracts = deepcopy(package.runtime_contracts)
+    exists_rule = deepcopy(contracts["metric_rules"][0])
+    exists_rule.update(
+        id=exists_metric.id,
+        source={
+            "kind": "column",
+            "field": {"asset_fqn": exists_metric.asset_fqn, "column": exists_metric.field},
+        },
+        aggregation="exists",
+        result_field=exists_metric.result_field,
+        unit=exists_metric.unit,
+        required_filters=[],
+    )
+    contracts["metric_rules"].append(exists_rule)
+    contracts["query_policy"]["allowed_functions"].append("COUNT")
+    package = replace(
+        package,
+        metrics=(package.metrics[0], exists_metric),
+        runtime_contracts=contracts,
+    )
+    sql = _COMPARISON_SQL.replace(
+        "AS governed_total__comparison",
+        "AS governed_total__comparison,\n      COUNT(e.active) > 0 AS governed_exists",
+    )
+
+    rejected = validate_plan({"sql": sql}, package)
+
+    assert rejected.violation == "METRIC_RULE_MISMATCH"
+    assert "Exists metric" in rejected.detail

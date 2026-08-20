@@ -27,9 +27,29 @@ from release_bundle import ReleaseBinding
 from release_datahub import PROPERTY_PREFIX, DataHubDataset, dataset_key
 from release_scope import ReleaseScope
 from release_trino import TrinoInventory
+from src.data.metric_governance import (
+    RUNTIME_GOVERNANCE_VERSION_V1,
+    RUNTIME_GOVERNANCE_VERSION_V2,
+    metric_contract_version,
+)
+from src.data.entitlement_roles import validate_entitlement_roles
 
 
-AUTHORING_CONTRACT_VERSION = "answervice.semantic_authoring.v1"
+AUTHORING_CONTRACT_VERSION_V1 = "answervice.semantic_authoring.v1"
+AUTHORING_CONTRACT_VERSION_V2 = "answervice.semantic_authoring.v2"
+AUTHORING_CONTRACT_VERSION_V3 = "answervice.semantic_authoring.v3"
+AUTHORING_CONTRACT_VERSION_V4 = "answervice.semantic_authoring.v4"
+AUTHORING_CONTRACT_VERSION = AUTHORING_CONTRACT_VERSION_V3
+AUTHORING_RUNTIME_VERSIONS = {
+    AUTHORING_CONTRACT_VERSION_V1: RUNTIME_GOVERNANCE_VERSION_V1,
+    AUTHORING_CONTRACT_VERSION_V2: RUNTIME_GOVERNANCE_VERSION_V2,
+    AUTHORING_CONTRACT_VERSION_V3: RUNTIME_GOVERNANCE_VERSION_V1,
+    AUTHORING_CONTRACT_VERSION_V4: RUNTIME_GOVERNANCE_VERSION_V2,
+}
+CURRENT_AUTHORING_FOR_RUNTIME = {
+    RUNTIME_GOVERNANCE_VERSION_V1: AUTHORING_CONTRACT_VERSION_V3,
+    RUNTIME_GOVERNANCE_VERSION_V2: AUTHORING_CONTRACT_VERSION_V4,
+}
 CLEAN_CATALOG_SHA256 = "0" * 64
 _POLICY_KEYS = {
     "contract_version",
@@ -60,12 +80,18 @@ _ASSET_KEYS = {
     "domain_urn",
     "approved_lifecycle_urn",
 }
+_CURRENT_ASSET_KEYS = _ASSET_KEYS - {"description"}
 _COLUMN_KEYS = {
     "name",
     "logical_type",
     "is_part_of_key",
     "role",
     "description",
+}
+_CURRENT_COLUMN_KEYS = _COLUMN_KEYS - {"description"}
+_CURRENT_AUTHORING_VERSIONS = {
+    AUTHORING_CONTRACT_VERSION_V3,
+    AUTHORING_CONTRACT_VERSION_V4,
 }
 
 
@@ -103,6 +129,97 @@ class AuthoringCandidate:
     previous_catalog_sha256: str
 
 
+def migrate_authoring_policy(
+    source_bundle: Mapping[str, Any],
+    *,
+    catalog_version: str,
+    policy_version: str,
+    schema_context_version: str,
+    roles: tuple[str, ...],
+) -> dict[str, Any]:
+    """검증된 이전 release에서 의미만 보존한 새 authoring policy를 만든다.
+
+    ordinal/native type/nullability와 dataset identity는 복사하지 않는다. target
+    authoring 단계가 live DataHub와 Trino에서 다시 채우므로 schema migration을
+    문자열 치환이나 특정 relation 예외로 처리하지 않는다.
+    """
+
+    validate_bundle(source_bundle)
+    try:
+        validate_entitlement_roles(roles)
+    except ValueError as error:
+        raise SemanticMetadataError("target authoring roles are unsupported") from error
+    if not roles:
+        raise SemanticMetadataError("target authoring roles cannot be empty")
+    runtime_version = metric_contract_version(
+        array(source_bundle["metric_rules"], "metric rules", non_empty=True)
+    )
+    contract_version = CURRENT_AUTHORING_FOR_RUNTIME.get(runtime_version)
+    if contract_version is None:
+        raise SemanticMetadataError("source runtime governance version is unsupported")
+
+    def version(value: str, context: str) -> str:
+        result = text(value, context)
+        if len(result) > 255:
+            raise SemanticMetadataError(f"{context} exceeds its length bound")
+        return result
+
+    migrated_metrics = deepcopy(source_bundle["metric_rules"])
+    for metric in migrated_metrics:
+        governance = metric.get("governance")
+        if isinstance(governance, dict):
+            permission = governance.get("permission")
+            if isinstance(permission, dict):
+                permission["roles"] = list(roles)
+    assets = []
+    for source in source_bundle["schema_context"]["assets"]:
+        entitlements = deepcopy(source["entitlements"])
+        entitlements["roles"] = list(roles)
+        assets.append(
+            {
+                "fqn": source["fqn"],
+                "schema_version": source["schema_version"],
+                "seed_version": source["seed_version"],
+                "synthetic": source["synthetic"],
+                "approval_status": source["approval_status"],
+                "entitlements": entitlements,
+                "grain": deepcopy(source["grain"]),
+                "columns": [
+                    {
+                        "name": column["name"],
+                        "logical_type": column["logical_type"],
+                        "is_part_of_key": column["is_part_of_key"],
+                        "role": column["role"],
+                    }
+                    for column in source["columns"]
+                ],
+                "owner_urn": source["owner_urn"],
+                "domain_urn": source["domain_urn"],
+                "approved_lifecycle_urn": source["approved_lifecycle_urn"],
+            }
+        )
+    policy = {
+        "contract_version": contract_version,
+        "catalog_version": version(catalog_version, "target catalog version"),
+        "policy_version": version(policy_version, "target policy version"),
+        "schema_context_version": version(
+            schema_context_version, "target schema context version"
+        ),
+        "governance_entities": deepcopy(source_bundle["governance_entities"]),
+        "assets": assets,
+        "metric_rules": migrated_metrics,
+        "metric_terms": deepcopy(source_bundle["metric_terms"]),
+        "dimensions": deepcopy(source_bundle["dimensions"]),
+        "join_graph": deepcopy(source_bundle["join_graph"]),
+        "time_rules": deepcopy(source_bundle["time_rules"]),
+        "parameter_contract": deepcopy(source_bundle["parameter_contract"]),
+        "query_policy": deepcopy(source_bundle["query_policy"]),
+    }
+    # Shape와 Role 검증은 target binding 전에도 가능한 범위에서 즉시 수행한다.
+    _asset_policies(policy["assets"], contract_version)
+    return policy
+
+
 async def build_authoring_bundle(
     policy: Mapping[str, Any],
     scopes: tuple[ReleaseScope, ...],
@@ -124,10 +241,15 @@ async def build_authoring_candidate(
 
     inventory = await trino.discover(scopes)
     datasets = await datahub.discover_datasets(scopes)
-    previous = _previous_catalog_sha256(datasets)
     stage, bindings = reconcile_base(scopes, inventory, datasets)
     if not stage.ready:
         raise BaseMetadataNotReady(stage)
+    # Discovery는 같은 platform instance의 과거/connector system dataset을 포함할 수
+    # 있다. predecessor는 승인 scope와 exact 대조된 binding에 대해서만 계산해야 하며,
+    # 범위 밖 entity가 authoring 대상에 들어오거나 정상 release를 partial로 만들 수 없다.
+    previous = _previous_catalog_sha256(
+        tuple(binding.dataset for binding in bindings)
+    )
     return AuthoringCandidate(assemble_authoring_bundle(policy, bindings), previous)
 
 
@@ -139,9 +261,21 @@ def assemble_authoring_bundle(
 
     policy = mapping(policy, "semantic authoring policy")
     exact_keys(policy, _POLICY_KEYS, "semantic authoring policy")
-    if policy["contract_version"] != AUTHORING_CONTRACT_VERSION:
+    contract_version = policy["contract_version"]
+    expected_runtime_version = AUTHORING_RUNTIME_VERSIONS.get(contract_version)
+    if expected_runtime_version is None:
         raise SemanticMetadataError("semantic authoring contract version is unsupported")
-    policies = _asset_policies(policy["assets"])
+    try:
+        actual_runtime_version = metric_contract_version(
+            array(policy["metric_rules"], "metric rules", non_empty=True)
+        )
+    except ValueError as error:
+        raise SemanticMetadataError("metric governance version is invalid") from error
+    if actual_runtime_version != expected_runtime_version:
+        raise SemanticMetadataError(
+            "semantic authoring and metric governance versions differ"
+        )
+    policies = _asset_policies(policy["assets"], contract_version)
     live = {binding.relation.fqn: binding for binding in bindings}
     if set(policies) != set(live):
         raise SemanticMetadataError(
@@ -154,7 +288,8 @@ def assemble_authoring_bundle(
         "schema_context": {
             "version": deepcopy(policy["schema_context_version"]),
             "assets": [
-                _asset(live[name], policies[name]) for name in sorted(live)
+                _asset(live[name], policies[name], contract_version)
+                for name in sorted(live)
             ],
         },
         "metric_rules": deepcopy(policy["metric_rules"]),
@@ -169,13 +304,18 @@ def assemble_authoring_bundle(
     return bundle
 
 
-def _asset_policies(value: object) -> dict[str, Mapping[str, Any]]:
+def _asset_policies(
+    value: object,
+    contract_version: object,
+) -> dict[str, Mapping[str, Any]]:
+    current = contract_version in _CURRENT_AUTHORING_VERSIONS
+    expected_keys = _CURRENT_ASSET_KEYS if current else _ASSET_KEYS
     result: dict[str, Mapping[str, Any]] = {}
     for index, raw in enumerate(
         array(value, "semantic policy assets", non_empty=True, limit=1_000)
     ):
         item = mapping(raw, f"semantic policy asset[{index}]")
-        exact_keys(item, _ASSET_KEYS, f"semantic policy asset[{index}]")
+        exact_keys(item, expected_keys, f"semantic policy asset[{index}]")
         name = fqn(item["fqn"], f"semantic policy asset[{index}].fqn")
         if name in result:
             raise SemanticMetadataError("semantic policy asset FQNs are duplicate")
@@ -186,6 +326,7 @@ def _asset_policies(value: object) -> dict[str, Mapping[str, Any]]:
 def _asset(
     binding: ReleaseBinding,
     policy: Mapping[str, Any],
+    contract_version: str,
 ) -> dict[str, Any]:
     relation, dataset = binding.relation, binding.dataset
     platform, key_name, origin = dataset_key(dataset.urn)
@@ -195,11 +336,18 @@ def _asset(
         or len(dataset.fields) != len(relation.columns)
     ):
         raise SemanticMetadataError("live DataHub dataset identity is incomplete")
-    columns = _columns(policy["columns"], binding)
+    current = contract_version in _CURRENT_AUTHORING_VERSIONS
+    columns = _columns(
+        policy["columns"], policy["grain"], binding, current=current
+    )
     return {
         "urn": dataset.urn,
         "fqn": relation.fqn,
-        "description": deepcopy(policy["description"]),
+        "description": (
+            text(dataset.description, f"{relation.fqn} live dataset description")
+            if current
+            else deepcopy(policy["description"])
+        ),
         "schema_version": deepcopy(policy["schema_version"]),
         "seed_version": deepcopy(policy["seed_version"]),
         "synthetic": deepcopy(policy["synthetic"]),
@@ -213,33 +361,51 @@ def _asset(
         "platform_urn": platform,
         "schema_name": dataset.schema_name,
         "schema_metadata_version": dataset.schema_version,
+        "datahub_schema_hash": dataset.schema_hash,
         "dataset_key": {"platform": platform, "name": key_name, "origin": origin},
         "table_type": relation.table_type,
     }
 
 
-def _columns(value: object, binding: ReleaseBinding) -> list[dict[str, Any]]:
+def _columns(
+    value: object,
+    grain_value: object,
+    binding: ReleaseBinding,
+    *,
+    current: bool,
+) -> list[dict[str, Any]]:
     policies = array(value, f"{binding.relation.fqn} columns", non_empty=True)
     if len(policies) != len(binding.relation.columns):
         raise SemanticMetadataError("semantic policy column count differs from live schema")
+    grain = mapping(grain_value, f"{binding.relation.fqn} grain")
+    exact_keys(grain, {"kind", "keys"}, f"{binding.relation.fqn} grain")
+    grain_keys = {
+        text(item, f"{binding.relation.fqn} grain key")
+        for item in array(
+            grain["keys"], f"{binding.relation.fqn} grain keys", non_empty=True
+        )
+    }
     result = []
+    policy_keys = set()
     for index, (raw, physical, datahub) in enumerate(
         zip(policies, binding.relation.columns, binding.dataset.fields), start=1
     ):
         policy = mapping(raw, f"{binding.relation.fqn} column[{index}]")
-        exact_keys(policy, _COLUMN_KEYS, f"{binding.relation.fqn} column[{index}]")
+        exact_keys(
+            policy,
+            _CURRENT_COLUMN_KEYS if current else _COLUMN_KEYS,
+            f"{binding.relation.fqn} column[{index}]",
+        )
         name = text(policy["name"], f"{binding.relation.fqn} column[{index}].name")
         policy_key = policy["is_part_of_key"]
+        if policy_key is True:
+            policy_keys.add(name)
         if (
             physical.ordinal_position != index
             or physical.name != name
             or datahub.name != name
             or datahub.is_part_of_key is None
             or not isinstance(policy_key, bool)
-            # WHY: ingestion이 이미 발견한 key를 policy가 제거하면 grain이 축소되어
-            # 중복 집계 위험이 생긴다. 반대로 view/ClickHouse에서 표현되지 않은 key는
-            # 서명된 semantic policy가 선언하고 발행 schema read-back으로 고정할 수 있다.
-            or (datahub.is_part_of_key is True and policy_key is not True)
         ):
             raise SemanticMetadataError(
                 "semantic policy column identity differs from live DataHub and Trino"
@@ -251,10 +417,26 @@ def _columns(value: object, binding: ReleaseBinding) -> list[dict[str, Any]]:
                 "native_type": physical.native_type,
                 "logical_type": deepcopy(policy["logical_type"]),
                 "nullable": physical.nullable,
-                "is_part_of_key": policy_key,
+                # 물리 key는 connector read-back 소유다. 승인된 업무 grain은 별도
+                # policy에 남으며 아래 subset 불변식으로 물리 key 축소를 차단한다.
+                "is_part_of_key": datahub.is_part_of_key,
                 "role": deepcopy(policy["role"]),
-                "description": deepcopy(policy["description"]),
+                "description": (
+                    text(
+                        datahub.description,
+                        f"{binding.relation.fqn}.{physical.name} live description",
+                    )
+                    if current
+                    else deepcopy(policy["description"])
+                ),
             }
+        )
+    physical_keys = {
+        field.name for field in binding.dataset.fields if field.is_part_of_key is True
+    }
+    if policy_keys != grain_keys or not physical_keys <= grain_keys:
+        raise SemanticMetadataError(
+            "semantic grain keys differ from policy columns or remove a physical key"
         )
     return result
 

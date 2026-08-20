@@ -99,6 +99,12 @@ def test_runtime_and_publishers_use_separate_service_credentials() -> None:
         assert any("DATAHUB_TLS_CA_HOST_FILE" in item for item in service["volumes"])
     assert "DATAHUB_READ_API_TOKEN" in backend["environment"]
     assert "DATAHUB_READ_ACTOR_URN" in backend["environment"]
+    assert backend["environment"]["DATAHUB_CATALOG_TTL_SECONDS"] == (
+        "${DATAHUB_CATALOG_TTL_SECONDS:-86400}"
+    )
+    assert backend["environment"]["RELEASE_READINESS_CACHE_TTL_SECONDS"] == (
+        "${RELEASE_READINESS_CACHE_TTL_SECONDS:-86400}"
+    )
     for publisher in (ingestion, semantic):
         assert "DATAHUB_PUBLISH_API_TOKEN" in publisher["environment"]
         assert "DATAHUB_READ_API_TOKEN" not in publisher["environment"]

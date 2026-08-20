@@ -10,7 +10,7 @@ from unittest.mock import patch
 BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
-from app.services.report_scheduler import ReportScheduler, _enabled  # noqa: E402
+from app.services.report.scheduler import ReportScheduler, _enabled  # noqa: E402
 from src.report.domain import RunStatus  # noqa: E402
 
 

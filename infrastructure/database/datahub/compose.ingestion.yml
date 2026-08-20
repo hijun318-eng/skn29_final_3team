@@ -1,5 +1,6 @@
-# 책임: runtime recipe 디렉터리를 순회해 현재 source catalog를 수집한다. 하나의
-# recipe라도 실패하면 완료 marker 없이 non-zero로 종료한다.
+# 책임: runtime recipe 디렉터리를 순회해 현재 source catalog를 수집한다. 각 recipe는
+# DataHub 1.7 PATCH transformer로 semantic custom properties를 보존하되 physical schema
+# aspect는 갱신한다. 하나라도 실패하면 완료 marker 없이 non-zero로 종료한다.
 services:
   datahub-ingestion:
     profiles: [metadata-ingestion]
@@ -18,6 +19,7 @@ services:
           echo 'No runtime DataHub recipe was mounted.' >&2
           exit 2
         fi
+        echo 'ANSWERVICE_RUNTIME_CATALOG_INGESTION_COMPLETE'
     networks: [database-network, datahub-network]
     depends_on:
       datahub-gms-quickstart: {condition: service_healthy}

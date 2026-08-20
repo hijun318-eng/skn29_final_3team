@@ -1,6 +1,7 @@
 {
   "data": {
     "artifact": null,
+    "disambiguation_options": [],
     "gates": {
       "g1_required": true,
       "g2_required": true
@@ -56,6 +57,7 @@
   "error": {
     "clarification_type": null,
     "code": "QUERY_TIMEOUT",
+    "disambiguation_options": [],
     "message": "조회 시간이 초과되었습니다.",
     "missing_requirements": [],
     "required_action": "RETRY",

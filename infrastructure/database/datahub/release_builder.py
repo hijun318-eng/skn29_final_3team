@@ -20,9 +20,9 @@ from release_datahub import (
 )
 from release_scope import ReleaseScope
 from release_trino import PhysicalRelation, TrinoInventory
-from src.data.governance_contract import (
-    DATASET_RUNTIME_PROPERTY_KEYS,
-    RUNTIME_GOVERNANCE_VERSION,
+from src.data.metric_governance import (
+    SUPPORTED_RUNTIME_GOVERNANCE_VERSIONS,
+    dataset_runtime_property_keys,
 )
 
 
@@ -250,11 +250,11 @@ def _base_fields_match(
     relation: PhysicalRelation,
     dataset: DataHubDataset,
 ) -> bool:
-    """Check coverage/order here; semantic readiness later requires exact Trino types.
+    """여기서는 coverage/order와 connector field 완전성만 확인한다.
 
     Source connectors and Trino expose different native type vocabularies, so treating
-    their raw type strings as equal would reject valid base ingestion. The canonical
-    typed-column and schema-hash comparison in ``assemble_release_bundle`` is exact.
+    their raw type strings as equal would reject valid base ingestion. Semantic readiness
+    compares a connector field fingerprint and a Trino execution fingerprint independently.
     """
 
     if len(relation.columns) != len(dataset.fields):
@@ -323,9 +323,10 @@ def _governed_counts(bindings: tuple[ReleaseBinding, ...]) -> tuple[int, int]:
             for key, value in binding.dataset.custom_properties.items()
             if key.startswith(PROPERTY_PREFIX)
         }
+        version = properties.get("contract_version")
         if (
-            set(properties) == DATASET_RUNTIME_PROPERTY_KEYS
-            and properties.get("contract_version") == RUNTIME_GOVERNANCE_VERSION
+            version in SUPPORTED_RUNTIME_GOVERNANCE_VERSIONS
+            and set(properties) == dataset_runtime_property_keys(version)
         ):
             count += 1
             columns += len(binding.relation.columns)

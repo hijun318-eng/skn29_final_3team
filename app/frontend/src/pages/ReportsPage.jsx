@@ -16,10 +16,11 @@ import {
 } from "../features/reports/components";
 import { useReportsPageController } from "../features/reports/useReportsPageController";
 import { ReportBuilderV2 } from "../features/reports/v2/ReportBuilderV2";
+import { ReportPresentation } from "../features/reports/v2/ReportPresentation";
 
 /** 보고서 controller의 상태를 목록·최종본·편집기 뷰에 배선하며 memoized 하위 경계를 유지한다. */
-export function ReportsPage({ role, onEditorMode }) {
-  const page = useReportsPageController({ role, onEditorMode });
+export function ReportsPage({ role, isAdmin, onEditorMode }) {
+  const page = useReportsPageController({ role, isAdmin, onEditorMode });
   const { artifacts, dnd, draft, lifecycle } = page;
   const editorCurrencyControl = useMemo(() => (
     <ReportCurrencyControl
@@ -35,7 +36,7 @@ export function ReportsPage({ role, onEditorMode }) {
       disabled={lifecycle.selectedDefinition?.status === "approved"}
     />
   ), [draft.changeCurrencyDisplayUnit, draft.reportCurrencyPolicy.displayUnit, lifecycle.selectedDefinition?.status]);
-  const addChart = useCallback(
+  const addChartBlock = useCallback(
     (chartType) => draft.addTemplateBlock("artifact-chart", null, { chartType }),
     [draft.addTemplateBlock],
   );
@@ -93,6 +94,32 @@ export function ReportsPage({ role, onEditorMode }) {
   }
 
   const ActiveInsertIcon = page.activeInsert?.icon;
+  const toolbar = <ReportEditorToolbar
+    builderV2={page.builderV2}
+    currencyControl={editorCurrencyControl}
+    history={draft.history}
+    isAdmin={page.isAdmin}
+    isDraft={page.isDraft}
+    isDirty={draft.isDirty}
+    onChangeOrientation={draft.changeOrientation}
+    onChangeViewScale={page.changeEditorViewScale}
+    onCompactLayout={draft.compactLayout}
+    onLeave={page.leaveEditor}
+    onPreview={page.previewEditor}
+    onRedo={draft.redo}
+    onRun={page.runDefinition}
+    onSave={page.saveDraft}
+    onToggleTools={page.toggleToolPanel}
+    onUndo={draft.undo}
+    orientation={draft.reportOrientation}
+    pending={lifecycle.pending}
+    reportTitle={lifecycle.selectedDefinition?.title}
+    saveStatus={draft.saveState}
+    selectedDefinition={lifecycle.selectedDefinition}
+    toolPanelOpen={page.toolPanelOpen}
+    toolToggleRef={page.toolToggleRef}
+    viewScale={page.editorViewScale}
+  />;
   const library = page.toolPanelOpen ? <ReportToolPanel
     analysisLibraryState={artifacts.analysisLibraryState}
     artifactOptions={artifacts.artifactOptions}
@@ -101,16 +128,13 @@ export function ReportsPage({ role, onEditorMode }) {
     artifactTemplates={page.artifactTemplates}
     artifacts={artifacts.artifacts}
     assistantInstruction={lifecycle.assistantInstruction}
-    builderV2={page.builderV2}
     canEdit={page.canEdit}
     isDraft={page.isDraft}
+    onAddChart={addChartBlock}
     onAddTemplate={draft.addTemplateBlock}
-    onAddChart={addChart}
     onAddWholeArtifact={draft.addWholeArtifact}
     onClose={page.closeToolPanel}
     onCreateAssistantDraft={page.createAssistantDraft}
-    onSearch={page.editorTools.setSearchQuery}
-    onSearchResult={page.editorTools.focusSearchResult}
     onSelectArtifact={artifacts.setArtifactSelection}
     orderedBlocks={draft.orderedBlocks}
     panelRef={page.toolPanelRef}
@@ -121,36 +145,10 @@ export function ReportsPage({ role, onEditorMode }) {
     selectedArtifactSource={page.selectedArtifactSource}
     selectedDefinition={lifecycle.selectedDefinition}
     selectedBlockId={draft.selectedBlockId}
-    searchQuery={page.editorTools.searchQuery}
-    searchResults={page.editorTools.searchResults}
     setAssistantInstruction={lifecycle.setAssistantInstruction}
-    setSelectedBlockId={page.editorTools.selectBlock}
+    setSelectedBlockId={page.selectOutlineBlock}
     TemplateTile={ReportTemplateTile}
   /> : null;
-  const toolbar = <ReportEditorToolbar
-    builderV2={page.builderV2}
-    currencyControl={editorCurrencyControl}
-    history={draft.history}
-    isAdmin={page.isAdmin}
-    isDraft={page.isDraft}
-    isDirty={draft.isDirty}
-    onChangeOrientation={draft.changeOrientation}
-    onLeave={page.leaveEditor}
-    onPreview={page.previewEditor}
-    onRedo={draft.redo}
-    onRun={page.runDefinition}
-    onSave={page.saveDraft}
-    onToggleTools={page.toggleToolPanel}
-    onUndo={draft.undo}
-    orientation={draft.reportOrientation}
-    pending={lifecycle.pending}
-    saveStatus={draft.saveState}
-    selectedDefinition={lifecycle.selectedDefinition}
-    toolPanelOpen={page.toolPanelOpen}
-    toolToggleRef={page.toolToggleRef}
-    zoom={page.editorTools.zoom}
-    onZoom={page.editorTools.setZoom}
-  />;
   const workspace = <>
     {lifecycle.error && <p ref={page.errorRef} tabIndex={-1} className="report-api-state error" role="alert"><AlertTriangle size={17} />{lifecycle.error}</p>}
     {lifecycle.notice && <p className="report-api-state notion-editor-notice" role="status"><Check size={17} />{lifecycle.notice}</p>}
@@ -171,7 +169,7 @@ export function ReportsPage({ role, onEditorMode }) {
       renderFooter={page.renderFooter}
       renderHeader={page.renderHeader}
       reportTitle={lifecycle.selectedDefinition?.title}
-      zoom={page.builderV2 ? page.editorTools.zoom : 1}
+      viewScale={page.editorViewScale}
     />
     {page.isAdmin && lifecycle.selectedDefinition?.status === "approved" && <ReportOperationsPanel
       assistantTrace={lifecycle.assistantTrace}
@@ -199,9 +197,7 @@ export function ReportsPage({ role, onEditorMode }) {
     <p className="sr-only" aria-live="polite">{draft.editorAnnouncement}</p>
   </>;
   const properties = <ReportPropertiesPanel
-    artifact={page.editorTools.primaryBlock?.artifactId
-      ? artifacts.artifacts[page.editorTools.primaryBlock.artifactId]
-      : null}
+    artifact={page.editorTools.primaryBlock?.artifactId ? artifacts.artifacts[page.editorTools.primaryBlock.artifactId] : null}
     canEdit={page.canEdit}
     editorTools={page.editorTools}
     onSetting={draft.setBlockSetting}
@@ -217,6 +213,14 @@ export function ReportsPage({ role, onEditorMode }) {
     onPointerMove={dnd.handlePointerMove}
     orientation={draft.reportOrientation}
     pages={page.reportPages}
+    presentation={<ReportPresentation
+      orientation={draft.reportOrientation}
+      pages={page.reportPages}
+      renderBlock={page.renderPreviewBlock}
+      renderFooter={page.renderFooter}
+      renderHeader={page.renderHeader}
+      reportTitle={lifecycle.selectedDefinition?.title}
+    />}
     properties={properties}
     reportTitle={lifecycle.selectedDefinition?.title}
     toolbar={toolbar}

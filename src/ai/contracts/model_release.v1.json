@@ -7,8 +7,8 @@
   "nodes": {
     "node1": {
       "prompt_id": "node1.normalize",
-      "prompt_version": "PROMPT-v1.16.0",
-      "prompt_sha256": "c904bfb753cc4997ccfb1e9b6f1d21a22d46a07d9e5c309b1105b58a3ac0b4d7",
+      "prompt_version": "PROMPT-v1.17.0",
+      "prompt_sha256": "40802f2831862d5ad41814979f3b21c2a917b456de1610114c18bbbbe6ba683d",
       "request_definition": "node1_request",
       "response_definition": "node1_response"
     },

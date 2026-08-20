@@ -311,6 +311,104 @@ def test_logical_analysis_plan_is_compiled_from_runtime_slots_not_question_text(
     assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
 
 
+def test_logical_plan_projects_validated_filter_predicates_to_unique_fields() -> None:
+    package = _package()
+
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "intent_candidates": ["general"],
+            "period_relationship": "single",
+            "filter_fields": [
+                {
+                    "asset_fqn": "orbit.ops.event_fact",
+                    "column": "active",
+                    "operator": "eq",
+                    "value_text": "true",
+                },
+                {
+                    "asset_fqn": "orbit.ops.event_fact",
+                    "column": "active",
+                    "operator": "neq",
+                    "value_text": "false",
+                },
+            ],
+        },
+        package,
+    )
+
+    assert [item.as_dict() for item in plan.filter_fields] == [
+        {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+    ]
+    assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
+
+
+def test_logical_plan_removes_eq_filtered_field_from_aggregate_grouping() -> None:
+    """값이 고정된 필터 필드는 aggregate GROUP BY로 중복 실행하지 않는다."""
+
+    package = _ranked_package()
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "analysis_operation": "aggregate",
+            "intent_candidates": ["aggregate"],
+            "period_relationship": "single",
+            "dimension_fields": [
+                {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+            ],
+            "filter_fields": [
+                {
+                    "asset_fqn": "orbit.ops.event_fact",
+                    "column": "active",
+                    "operator": "eq",
+                    "value_text": "true",
+                }
+            ],
+        },
+        package,
+    )
+
+    assert plan.operation is AnalysisOperation.AGGREGATE
+    assert plan.dimension_fields == ()
+    assert [item.as_dict() for item in plan.filter_fields] == [
+        {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+    ]
+    assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
+
+
+@pytest.mark.parametrize(
+    "invalid_filter",
+    [
+        {"asset_fqn": "orbit.ops.event_fact", "column": "active"},
+        {
+            "asset_fqn": "orbit.ops.event_fact",
+            "column": "active",
+            "operator": "contains",
+            "value_text": "true",
+        },
+        {
+            "asset_fqn": "orbit.ops.event_fact",
+            "column": "active",
+            "operator": "eq",
+            "value_text": "",
+        },
+    ],
+)
+def test_logical_plan_rejects_invalid_filter_predicate_contract(
+    invalid_filter: dict[str, str],
+) -> None:
+    with pytest.raises(AnalysisPlanError, match="filter_fields"):
+        build_analysis_plan(
+            {
+                "selected_metric_id": "governed_amount",
+                "intent_candidates": ["general"],
+                "period_relationship": "single",
+                "filter_fields": [invalid_filter],
+            },
+            _package(),
+        )
+
+
 def test_logical_plan_rejects_a_dimension_not_bound_to_the_selected_metric() -> None:
     package = _joined_package()
 
@@ -1174,4 +1272,4 @@ def test_exists_metric_and_comparison_window_together_are_rejected() -> None:
     rejected = validate_plan({"sql": sql}, package)
 
     assert rejected.violation == "METRIC_RULE_MISMATCH"
-    assert "Exists metric" in rejected.detail
+    assert rejected.detail.endswith("exists")

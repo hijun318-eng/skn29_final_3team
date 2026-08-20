@@ -46,6 +46,29 @@ class AnalysisTimeMode(str, Enum):
     LATEST_SNAPSHOT = "latest_snapshot"
 
 
+ACTIVE_ANALYSIS_TIME_MODES = frozenset({AnalysisTimeMode.RANGE})
+PERIOD_COMPARISON_UNSUPPORTED_AGGREGATIONS = frozenset({"exists", "ratio"})
+
+
+def active_analysis_capabilities() -> dict[str, object]:
+    """현재 Backend와 SQL Guard가 실제로 구현한 분석 capability를 반환한다.
+
+    카탈로그가 선언한 희망 기능과 실행 코드가 지원하는 기능을 같은 것으로 간주하지 않도록
+    enum·최대 지표 수·시간 mode·기간 비교 제한을 기계 판독 가능한 계약으로 공개한다.
+    """
+
+    return {
+        "version": ANALYSIS_PLAN_VERSION,
+        "max_metrics_per_plan": MAX_ANALYSIS_METRICS,
+        "operations": sorted(item.value for item in AnalysisOperation),
+        "time_modes": sorted(item.value for item in ACTIVE_ANALYSIS_TIME_MODES),
+        "period_comparison_unsupported_aggregations": sorted(
+            PERIOD_COMPARISON_UNSUPPORTED_AGGREGATIONS
+        ),
+        "ranking_tie_breaker": "all_dimensions_ascending",
+    }
+
+
 class AnalysisPlanErrorCode(str, Enum):
     """논리 계획 컴파일 실패를 사용자 입력과 거버넌스 결함으로 구분한다."""
 
@@ -181,10 +204,13 @@ def build_analysis_plan(
         schemas,
         "dimension_fields",
     )
-    filters = _requested_fields(
+    filters = _requested_filter_fields(
         structured_request.get("filter_fields"),
         schemas,
-        "filter_fields",
+    )
+    dimensions = _without_constant_aggregate_dimensions(
+        dimensions,
+        structured_request,
     )
     allowed_dimensions = _shared_dimensions(output_metric_ids, rules)
     if any(item.qualified not in allowed_dimensions for item in dimensions):
@@ -691,6 +717,79 @@ def _requested_fields(
     return tuple(sorted(fields))
 
 
+def _requested_filter_fields(
+    value: object,
+    schemas: Mapping[str, Mapping[str, Any]],
+) -> tuple[PlannedField, ...]:
+    """검증된 필터 predicate에서 논리 계획에 필요한 물리 필드만 투영한다.
+
+    Context 단계의 ``filter_fields``는 실제 값 검증을 위해 operator와 value_text를
+    함께 보존한다. AnalysisPlan은 값 자체를 소유하지 않고 context_package_hash로
+    결합하므로, 여기서는 predicate 계약을 엄격히 검사한 뒤 asset/column만 중복 없이
+    기록한다. 같은 필드의 여러 값 필터도 하나의 물리 의존성으로 표현된다.
+    """
+
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "filter_fields는 구조화된 필터 배열이어야 합니다.",
+        )
+    fields: set[PlannedField] = set()
+    required = {"asset_fqn", "column", "operator", "value_text"}
+    for item in value:
+        if not isinstance(item, Mapping) or set(item) != required:
+            raise _error(
+                AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+                "filter_fields 항목은 asset_fqn, column, operator, value_text만 포함해야 합니다.",
+            )
+        if item["operator"] not in {"eq", "neq"} or not isinstance(
+            item["value_text"], str
+        ) or not item["value_text"].strip():
+            raise _error(
+                AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+                "filter_fields predicate 계약이 유효하지 않습니다.",
+            )
+        field = _field_from_payload(
+            {"asset_fqn": item["asset_fqn"], "column": item["column"]}
+        )
+        schema = schemas.get(field.asset_fqn)
+        if schema is None or field.column not in schema["fields"]:
+            raise _error(
+                AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+                "filter_fields가 승인된 asset schema 범위를 벗어났습니다.",
+            )
+        fields.add(field)
+    return tuple(sorted(fields))
+
+
+def _without_constant_aggregate_dimensions(
+    dimensions: tuple[PlannedField, ...],
+    request: Mapping[str, object],
+) -> tuple[PlannedField, ...]:
+    """동등 필터로 고정된 필드를 전체 집계의 불필요한 GROUP BY에서 제외한다.
+
+    Node 1은 같은 업무 필드를 필터와 차원 후보로 함께 반환할 수 있다. ``eq`` 필터가
+    적용된 필드는 결과 집합 전체에서 상수이므로 aggregate의 그룹 키로 남겨도 값은
+    달라지지 않지만, 논리 계획의 단일 값 계약에는 어긋난다. 질문 문자열이나 업무 값을
+    다시 해석하지 않고 검증된 predicate 구조만 사용해 중복 역할을 제거한다. 필터 자체는
+    계획과 Context에 그대로 남으므로 접근 범위와 근거는 보존된다.
+    """
+
+    if request.get("analysis_operation") != AnalysisOperation.AGGREGATE.value:
+        return dimensions
+    raw_filters = request.get("filter_fields")
+    if not isinstance(raw_filters, (list, tuple)):
+        return dimensions
+    constant_fields = {
+        PlannedField(str(item["asset_fqn"]), str(item["column"]))
+        for item in raw_filters
+        if isinstance(item, Mapping) and item.get("operator") == "eq"
+    }
+    return tuple(item for item in dimensions if item not in constant_fields)
+
+
 def _field_from_payload(value: object) -> PlannedField:
     if not isinstance(value, Mapping) or set(value) != {"asset_fqn", "column"}:
         raise _error(
@@ -901,12 +1000,12 @@ def _time_contract(
             AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
             "요청한 time mode가 현재 AnalysisPlan version에 없습니다.",
         ) from error
-    # 현재 runtime v2는 모든 지표에 반개방 기간 파라미터를 요구한다. latest snapshot은
-    # 후보 계약에만 존재하며 명시적 runtime sidecar가 발행되기 전에는 추정해 열지 않는다.
-    if mode is AnalysisTimeMode.LATEST_SNAPSHOT:
+    # 현재 runtime v2는 모든 지표에 반개방 기간 파라미터를 요구한다. 후보 mode를 enum에
+    # 추가하는 것만으로 실행을 열지 않고, 실제 구현 capability에 포함된 mode만 허용한다.
+    if mode not in ACTIVE_ANALYSIS_TIME_MODES:
         raise _error(
             AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
-            "최신 스냅샷 선택 규칙이 활성 Runtime Context에 아직 발행되지 않았습니다.",
+            "요청한 시간 선택 규칙이 활성 Runtime Context에 아직 구현·발행되지 않았습니다.",
         )
     fields = tuple(
         sorted(

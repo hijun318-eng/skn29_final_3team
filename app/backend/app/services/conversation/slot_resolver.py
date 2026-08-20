@@ -220,6 +220,11 @@ class ConversationSlotResolver:
                         is_inherited_metric=False,
                         is_inherited_dimension=True if last_analysis_slots.get("dimension_fields") else False,
                         is_inherited_period=is_inherited_period,
+                        analysis_operation=last_slots.get("analysis_operation"),
+                        result_limit=last_slots.get("result_limit"),
+                        comparison_time_range=cls._parse_stored_time_range(
+                            last_slots.get("comparison_time_range")
+                        ),
                     )
                 elif opt_type == "period" or matched_option.get("period_start"):
                     p_start = date.fromisoformat(matched_option["period_start"])
@@ -242,6 +247,11 @@ class ConversationSlotResolver:
                         is_inherited_metric=True if not node1_output.get("selected_metric_id") and resolved_metric else False,
                         is_inherited_dimension=True if last_analysis_slots.get("dimension_fields") else False,
                         is_inherited_period=False,
+                        analysis_operation=last_slots.get("analysis_operation"),
+                        result_limit=last_slots.get("result_limit"),
+                        comparison_time_range=cls._parse_stored_time_range(
+                            last_slots.get("comparison_time_range")
+                        ),
                     )
 
         # -------------------------------------------------------------
@@ -346,13 +356,7 @@ class ConversationSlotResolver:
         # 3. ANALYSIS 라우트: 슬롯 상속 & Delta 병합
         # -------------------------------------------------------------
         is_followup = cls._is_followup_question(
-            msg,
             node1_output,
-            (
-                stored_analysis_metric_ids[0]
-                if len(stored_analysis_metric_ids) == 1
-                else last_slots.get("metric_id")
-            ),
         )
 
         # 3-1. 단일 지표 ChangeSet 호환성을 유지하면서 복수 지표 묶음을 원자적으로 적용한다.
@@ -487,41 +491,22 @@ class ConversationSlotResolver:
     @classmethod
     def _is_followup_question(
         cls,
-        msg: str,
         node1_output: dict[str, Any],
-        last_metric_id: str | None,
     ) -> bool:
         """이번 발화가 직전 턴의 슬롯을 상속할 생략문인지 판정합니다.
 
-        생략 여부는 질문 자체의 문법 판단이므로 Node1이 `is_elliptical`로 해석하고, 서버는
-        그 신호를 대화 상태와 대조해 확정한다. 신호가 없으면 상속을 추측하지 않고 False로
-        닫아, 슬롯이 비면 상위 단계가 재질의로 처리하게 한다(잘못된 상속보다 안전).
+        생략 여부는 질문 자체의 문법 판단이므로 Node1이 `is_elliptical`로 해석한다.
+        신호가 없으면 상속을 추측하지 않고 False로 닫는다. 새 지표 후보가 있더라도 지표
+        자체는 아래 ChangeSet이 교체하고, 생략된 기간·차원·필터만 호환 범위에서 이어갈 수
+        있어야 하므로 여기서 전체 후속 문맥을 끊지 않는다.
 
         Args:
-            msg: 사용자 발화(현재 판단에는 쓰지 않으며 추적용으로 유지)
             node1_output: Node 1 정규화 결과
-            last_metric_id: 직전 턴에서 확정된 지표 ID
 
         Returns:
             직전 턴 슬롯을 상속할 후속 질의인지 여부
         """
         if node1_output.get("is_elliptical") is not True:
-            return False
-
-        # MetricResolver는 승인 검증을 마친 지표 집합을 `metric_ids`로 싣고, 검증 전
-        # 원본 Node1 응답은 `metric_candidates`를 쓴다. 두 생산자를 모두 읽지 않으면
-        # 이 가드가 운영 경로에서 항상 통과해 새 지표 질문까지 후속 질의로 오인한다.
-        metric_candidates = node1_output.get("metric_ids")
-        if not isinstance(metric_candidates, list):
-            metric_candidates = node1_output.get("metric_candidates")
-        if (
-            isinstance(metric_candidates, list)
-            and metric_candidates
-            and last_metric_id is not None
-            and last_metric_id not in metric_candidates
-        ):
-            # 생략문이더라도 이번 턴 후보가 직전 지표를 포함하지 않으면 이어가는 분석이
-            # 아니므로 상속하지 않는다. 이 판단은 대화 상태를 아는 서버만 할 수 있다.
             return False
 
         return True

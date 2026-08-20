@@ -1087,18 +1087,15 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(
     os.getenv("TEST_REAL_DATA_PLATFORM") == "1",
-    "opt-in live DataHub/Trino fail-closed smoke",
+    "opt-in live canonical DataHub/Trino smoke",
 )
 class LiveGovernanceSmokeTest(unittest.IsolatedAsyncioTestCase):
     def _adapter(self, *, search_mode: str = "lexical") -> GovernedDataPlatformAdapter:
         return GovernedDataPlatformAdapter(
             os.getenv("TRINO_URL", "https://127.0.0.1:18443"),
             os.getenv("TRINO_RUNTIME_USER", ""),
-            os.getenv("DATAHUB_GMS_URL", "https://127.0.0.1:18081"),
-            os.getenv("DATAHUB_API_TOKEN"),
             trino_password=os.getenv("TRINO_RUNTIME_PASSWORD", ""),
             trino_ca_file=os.getenv("TRINO_TLS_CA_FILE", ""),
-            datahub_ca_file=os.getenv("DATAHUB_TLS_CA_FILE", ""),
             expected_context_release=os.getenv("ANALYTICS_CONTEXT_RELEASE") or None,
             search_mode=search_mode,
         )
@@ -1114,10 +1111,19 @@ class LiveGovernanceSmokeTest(unittest.IsolatedAsyncioTestCase):
         finally:
             await adapter.aclose()
 
-    async def test_current_incomplete_catalog_is_not_accepted(self) -> None:
+    async def test_active_catalog_release_is_ready(self) -> None:
         adapter = self._adapter()
         try:
-            with self.assertRaises(MetadataUnavailableError):
-                await adapter.get_active_context_release()
+            stages, receipt = await adapter.get_catalog_readiness()
+            self.assertEqual(
+                stages,
+                {
+                    "semantic_release": "ready",
+                    "catalog_manifest": "ready",
+                    "trino_schema": "ready",
+                },
+            )
+            self.assertTrue(receipt)
+            self.assertTrue(await adapter.get_active_context_release())
         finally:
             await adapter.aclose()

@@ -366,6 +366,8 @@ def test_conversation_slot_resolver_disambiguation_metric_selection():
         "resolved_slots": {
             "ambiguity_status": "NEEDS_CLARIFICATION",
             "clarification_type": "metric",
+            "analysis_operation": "aggregate",
+            "result_limit": None,
             "time_range": {
                 "start": "2025-08-01",
                 "end_exclusive": "2025-09-01",
@@ -402,6 +404,8 @@ def test_conversation_slot_resolver_disambiguation_metric_selection():
     assert turn2_slots.metric_id == "room_revenue"
     assert turn2_slots.is_inherited_metric is False  # 모호성 해소로 새로 확정됨
     assert turn2_slots.is_inherited_period is True  # 1턴의 2025년 8월 기간을 상속
+    assert turn2_slots.analysis_operation == "aggregate"
+    assert turn2_slots.result_limit is None
     assert turn2_slots.time_range is not None
     assert turn2_slots.time_range.start == date(2025, 8, 1)
     assert turn2_slots.time_range.end_exclusive == date(2025, 9, 1)
@@ -843,19 +847,32 @@ def test_slot_inheritance_requires_an_explicit_elliptical_signal():
         assert slots.is_inherited_metric is False, absent
 
 
-def test_elliptical_signal_does_not_override_server_state_check():
-    """생략문 신호가 있어도 이번 턴 후보가 직전 지표를 포함하지 않으면 상속하지 않는지 검증.
+def test_elliptical_metric_change_replaces_metric_but_keeps_compatible_context():
+    """후속 턴이 지표를 바꿔도 생략한 기간·필터는 별도 슬롯으로 이어 간다."""
 
-    이 판단은 대화 상태를 아는 서버만 할 수 있으므로 모델 신호가 이를 덮어써서는 안 된다.
-    """
+    previous = _prior_analysis_turn()
+    previous["resolved_slots"]["user_filters"] = [
+        {
+            "asset_fqn": "serving.shared_daily",
+            "column": "hotel_code",
+            "operator": "eq",
+            "value_text": "VISTA",
+        }
+    ]
     slots = ConversationSlotResolver.resolve(
         user_message="취소율은?",
-        node1_output={"is_elliptical": True, "metric_ids": ["cancellation_rate"]},
-        previous_turns=[_prior_analysis_turn()],
+        node1_output={
+            "is_elliptical": True,
+            "selected_metric_ids": ["cancellation_rate"],
+        },
+        previous_turns=[previous],
         as_of=date(2026, 8, 18),
     )
 
+    assert slots.metric_id == "cancellation_rate"
     assert slots.is_inherited_metric is False
+    assert slots.is_inherited_period is True
+    assert slots.user_filters == tuple(previous["resolved_slots"]["user_filters"])
 
 
 def test_presentation_yields_when_the_question_changes_the_query_shape():

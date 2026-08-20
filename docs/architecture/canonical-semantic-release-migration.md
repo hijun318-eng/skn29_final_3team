@@ -59,6 +59,12 @@ Metric/Semantic Model adapter도 동일 bundle을 재구성해야 하며, 두 �
 - 기존 runtime v2 root shape을 변경하지 않고, asset별 Dimension/Time 의미는
   `ANSWERVICE-ANALYSIS-CAPABILITY-v1` sidecar 계약으로 분리했다. 현재 14개 후보 뷰의
   sidecar는 review-only이며 active DataHub release에는 아직 발행하지 않았다.
+- `evals/catalog_regression.py`는 후보 SQL checksum, capability sidecar와 Backend의 실제
+  연산/time mode snapshot을 결합해 자연어·정답 SQL 없는 구조 회귀 행렬을 생성한다.
+  현재 BUSINESS Metric 44개의 단일 조합 1,179건과 모든 Metric pair 946건, 총 2,125건이다.
+  cross-asset pair 888건은 관계를 추측하지 않고 `JOIN_GRAPH_REQUIRED`로 차단한다.
+- review-only 후보는 관측 파일이 있어도 채점하지 않는다. 업무 승인, `runtime_source=true`,
+  동일 candidate checksum의 active release read-back 증거가 모두 있어야 scorer가 열린다.
 
 ## 의도적으로 열지 않은 기능
 
@@ -85,8 +91,18 @@ Metric/Semantic Model adapter도 동일 bundle을 재구성해야 하며, 두 �
 ## 다음 Gate
 
 1. candidate Metric의 base grain·additivity를 승인하고 capability sidecar를 DataHub에 발행·read-back한다.
-2. 공개 Metric×허용 Dimension×연산 조합을 catalog에서 생성해 Node 1→G3 회귀율을 측정한다.
-3. `latest_snapshot`과 공통 연산 SQL을 typed plan에서 SQLGlot AST로 결정론적으로 생성한다.
-4. edge role/domain entitlement를 별도 정책으로 추가하고 node·column·Metric·edge 교집합을 검증한다.
-5. 한 도메인 Native shadow publish/read-back과 Legacy canonical equality를 통과시킨다.
-6. release 단위 cutover 전 실제 DataHub·Trino·Backend·Playwright E2E를 같은 release ID로 실행한다.
+2. 구조 Gate가 표시한 `TIME_GRAIN_CONTRACT_REQUIRED`, `COMPARISON_WINDOW_CONTRACT_REQUIRED`,
+   `TIME_MODE_NOT_IMPLEMENTED`, `JOIN_GRAPH_REQUIRED`를 업무 승인 계약과 실행 구현으로 줄인다.
+3. 구조 Gate와 분리된 사람 검토 Gold로 Node 1 자연어 해석과 실제 Node 1→G3 결과 정확도를 측정한다.
+4. `latest_snapshot`과 공통 연산 SQL을 typed plan에서 SQLGlot AST로 결정론적으로 생성한다.
+5. edge role/domain entitlement를 별도 정책으로 추가하고 node·column·Metric·edge 교집합을 검증한다.
+6. 한 도메인 Native shadow publish/read-back과 Legacy canonical equality를 통과시킨다.
+7. release 단위 cutover 전 실제 DataHub·Trino·Backend·Playwright E2E를 같은 release ID로 실행한다.
+
+## Live 검증 환경 계약
+
+로컬 단위 테스트와 외부 플랫폼 검사는 같은 것으로 계산하지 않는다. 실제 검증 runner에는
+`TEST_REAL_DATA_PLATFORM=1`, canonical `DATAHUB_READ_*`, DataHub/Trino URL·CA·runtime credential을
+프로세스 환경으로 주입한다. 배포 상태 Gate에는 `ANSWERVICE_RUNTIME_URL`을 별도로 주입하며,
+`/readiness`의 전체 dependency가 `ready`여야 통과한다. 비밀값은 저장소 파일이나 테스트
+인자에 복사하지 않고 배포 secret 또는 gitignored 운영 `.env`에서 실행 시점에만 전달한다.

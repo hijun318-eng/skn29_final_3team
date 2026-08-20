@@ -12,7 +12,7 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(len(first), 6)
         self.assertEqual(
             {
-                "node1.normalize": "PROMPT-v1.16.0",
+                "node1.normalize": "PROMPT-v1.17.0",
                 "node2.repair": "PROMPT-v1.4.0",
                 "node2.sql": "PROMPT-v1.8.0",
                 "node2.sql_only": "PROMPT-v1.2.0",
@@ -85,6 +85,7 @@ class PromptRegistryTests(unittest.TestCase):
                     self.assertNotIn(phrase, prompt)
         self.assertIn("period_candidates", prompts["node1.normalize"])
         self.assertIn("period_relationship", prompts["node1.normalize"])
+        self.assertIn("multi-metric aggregate", prompts["node1.normalize"])
 
     def test_unreleased_candidate_prompts_are_not_registered(self):
         for prompt_id in ("node1.interpretation.v2", "node3.narrative.v2"):

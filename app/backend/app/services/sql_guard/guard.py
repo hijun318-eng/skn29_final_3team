@@ -27,6 +27,7 @@ from app.services.sql_guard.schema import (
 from app.services.analysis.logical_plan import (
     AnalysisOperation,
     AnalysisPlanError,
+    PERIOD_COMPARISON_UNSUPPORTED_AGGREGATIONS,
     validate_analysis_plan_payload,
 )
 from app.services.sql_guard.scopes import projection_scope_evidence
@@ -253,19 +254,19 @@ def validate_parsed_semantics(
                 "AnalysisPlan 연산과 실제 기간 parameter binding이 일치하지 않습니다.",
             )
 
-        if is_comparison and any(
-            str(item.aggregation).casefold() == "ratio" for item in metrics
-        ):
+        unsupported_comparison = sorted(
+            {
+                str(item.aggregation).casefold()
+                for item in metrics
+                if str(item.aggregation).casefold()
+                in PERIOD_COMPARISON_UNSUPPORTED_AGGREGATIONS
+            }
+        )
+        if is_comparison and unsupported_comparison:
             return _semantic_blocked(
                 "METRIC_RULE_MISMATCH",
-                "Ratio metric과 기간 비교의 동시 사용은 아직 거버넌스되지 않았습니다.",
-            )
-        if is_comparison and any(
-            str(item.aggregation).casefold() == "exists" for item in metrics
-        ):
-            return _semantic_blocked(
-                "METRIC_RULE_MISMATCH",
-                "Exists metric과 기간 비교의 동시 사용은 아직 거버넌스되지 않았습니다.",
+                "기간 비교가 아직 거버넌스되지 않은 집계가 포함되었습니다: "
+                + ", ".join(unsupported_comparison),
             )
 
         output_scope = None

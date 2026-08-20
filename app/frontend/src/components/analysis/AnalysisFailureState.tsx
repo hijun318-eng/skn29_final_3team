@@ -209,8 +209,8 @@ export function analysisFailurePresentation(
       tone: "restricted",
       category: "안전 정책",
       title: "안전한 분석 범위를 벗어난 요청입니다",
-      reason: "요청한 방식은 승인된 읽기 전용 분석 정책에 맞지 않습니다.",
-      nextStep: "데이터 변경 지시를 제외하고 조회할 지표와 기간만 입력해 주세요.",
+      reason: messageOr("요청한 방식은 승인된 읽기 전용 분석 정책에 맞지 않습니다.", error?.message),
+      nextStep: defaultNextStep(run) || "질문의 지표·기간·분류 조건을 조정해 다시 분석해 주세요.",
     };
   }
 

@@ -51,6 +51,11 @@ assert.doesNotMatch([
   source("components/auth/SessionLogin.jsx"), source("api/analysisClient.ts"), source("api/reportClient.ts"),
 ].join("\n"), /localStorage|sessionStorage/);
 assert.match(source("pages/AgentPage.jsx"), /QUESTION_DRAFT_KEY/);
+assert.match(source("pages/AgentPage.jsx"), /setConversationId\(""\);[\s\S]*?sessionStorage\.removeItem\(CONVERSATION_KEY\)/);
+assert.match(source("pages/AgentPage.jsx"), /setEvidenceOpen\(false\);[\s\S]*?setSelectedEvidenceRun\(null\)/);
+assert.match(source("pages/AgentPage.jsx"), /onClose=\{\(\) => \{[\s\S]*?setEvidenceOpen\(false\);[\s\S]*?setSelectedEvidenceRun\(null\)/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /catch\s*\{[\s\S]*?return conversationId;/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /const initConversation = async \(\) => \{[\s\S]*?setTurns\(\[\]\);[\s\S]*?return nextId;/);
 assert.match(source("App.jsx"), /answervice:clear-drafts/);
 
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /type="date"|periodStart|periodEnd/);
@@ -421,6 +426,54 @@ const hydratedCatalogFailure = hydrateTurnsFromServer([{
 assert.equal(hydratedCatalogFailure[0].run.error.code, "CONTEXT_SOURCE_FAILED");
 assert.equal(hydratedCatalogFailure[0].run.error.required_action, "CONTACT_SUPPORT");
 assert.equal(hydratedCatalogFailure[0].run.error.detail, undefined);
+
+const hydratedSuccess = hydrateTurnsFromServer([{
+  turn_id: "turn-success",
+  user_message: "임의 지표를 보여줘",
+  route: "ANALYSIS",
+  command_status: "COMPLETED",
+  request_id: "persisted-request",
+  artifact_id: "persisted-artifact",
+  narrative_markdown: "임의 지표는 123입니다.",
+  data_snapshot_json: { columns: ["generic_value"], rows: [{ generic_value: 123 }] },
+  chart_spec_json: { chart_type: "bar", x_field: "label", y_fields: ["generic_value"] },
+  evidence_json: {
+    artifact_id: "persisted-artifact",
+    query_id: "persisted-query",
+    as_of: "2031-04-05",
+    timezone: "Asia/Seoul",
+    filters: {},
+    metrics: [{
+      metric_id: "generic_metric",
+      result_field: "generic_value",
+      label: "Generic Metric",
+      definition: "A governed generic metric.",
+      unit: "COUNT",
+    }],
+    metric_values: [{
+      metric_id: "generic_metric",
+      result_field: "generic_value",
+      label: "Generic Metric",
+      definition: "A governed generic metric.",
+      value: 123,
+      unit: "COUNT",
+    }],
+    sources: [{
+      name: "generic_source",
+      urn: "urn:li:dataset:(generic)",
+      fqn: "generic.catalog.source",
+      schema_version: "v1",
+      seed_version: "release-1",
+      synthetic: false,
+    }],
+  },
+}]);
+assert.equal(hydratedSuccess[0].run.metrics[0].metricId, "generic_metric");
+assert.equal(hydratedSuccess[0].run.metrics[0].resultField, "generic_value");
+assert.equal(hydratedSuccess[0].run.metrics[0].value, 123);
+assert.equal(hydratedSuccess[0].run.chart.chartType, "bar");
+assert.equal(hydratedSuccess[0].run.evidence.metrics[0].resultField, "generic_value");
+assert.equal(hydratedSuccess[0].run.sources[0].schemaVersion, "v1");
 
 let analysisRequest;
 const analysisClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {

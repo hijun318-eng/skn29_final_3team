@@ -66,8 +66,9 @@ class AnalysisPlanStage:
             )
         except AnalysisPlanError as error:
             logger.warning(
-                "logical analysis plan rejected: reason=%s",
+                "logical analysis plan rejected: reason=%s detail=%s",
                 error.code.value,
+                error,
             )
             state.record(
                 PipelineStage.G2,

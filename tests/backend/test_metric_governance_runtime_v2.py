@@ -29,7 +29,7 @@ from app.adapters.datahub_metadata import parse_dataset, parse_glossary_term  # 
 from app.adapters.datahub_metadata_values import GovernedMetadataError  # noqa: E402
 from app.adapters.query_governance import QueryGovernanceEngine  # noqa: E402
 from app.adapters.model_context import metric_selection  # noqa: E402
-from app.contracts import AnalysisRequest, RequestContext, Role  # noqa: E402
+from app.contracts import AnalysisRequest, RequestContext, ResolvedSlots, Role  # noqa: E402
 from app.ports.data_platform import NoEntitledAssetsError  # noqa: E402
 from app.services.analysis.responses import _business_metrics  # noqa: E402
 from app.services.context.metric_resolver import MetricResolver  # noqa: E402
@@ -276,6 +276,70 @@ class _MultiMetricNormalizer(_Normalizer):
         return result
 
 
+class _InconsistentCompatibilityProjectionNormalizer(_MultiMetricNormalizer):
+    async def normalize_question(self, payload: dict) -> dict:
+        """권위 목록은 맞지만 단일 호환 projection만 잘못 반환하는 모델 응답."""
+
+        result = await super().normalize_question(payload)
+        result["selected_metric_id"] = "amount_per_event"
+        result["measurement_source_text"] = "Amount per Event"
+        return result
+
+
+class _CrossMetricComparisonNormalizer(_MultiMetricNormalizer):
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result.update(
+            {
+                "intent_candidates": ["period_comparison"],
+                "analysis_operation": "period_comparison",
+                "period_candidates": [],
+                "period_relationship": "comparison",
+                "ambiguity": {
+                    "is_ambiguous": False,
+                    "reasons": [],
+                    "clarification_question": None,
+                },
+            }
+        )
+        return result
+
+
+class _TwoPeriodMultiMetricNormalizer(_CrossMetricComparisonNormalizer):
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result["period_candidates"] = [
+            {
+                "start": "2026-07-01T00:00:00+09:00",
+                "end_exclusive": "2026-08-01T00:00:00+09:00",
+                "source_text": "first period",
+            },
+            {
+                "start": "2026-08-01T00:00:00+09:00",
+                "end_exclusive": "2026-08-19T00:00:00+09:00",
+                "source_text": "second period",
+            },
+        ]
+        return result
+
+
+class _InconsistentSelectedNormalizer(_Normalizer):
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result.update(
+            {
+                "normalized_question": "Ambiguous measurement for the selected period",
+                "measurement_source_text": "ambiguous measurement",
+                "measurement_source_texts": ["ambiguous measurement"],
+                "metric_candidates": ["amount_per_event", "account_count"],
+                "metric_resolution": "selected",
+                "selected_metric_id": "amount_per_event",
+                "selected_metric_ids": ["amount_per_event"],
+            }
+        )
+        return result
+
+
 class _SupportNormalizer(_Normalizer):
     async def normalize_question(self, payload: dict) -> dict:
         result = await super().normalize_question(payload)
@@ -441,6 +505,118 @@ def test_node1_preserves_multiple_explicit_business_metrics_as_one_analysis_scop
     } == set(structured["metric_ids"])
 
 
+def test_node1_compatibility_projections_are_derived_from_authoritative_lists() -> None:
+    """중복 단일 필드 불일치는 유효한 복수 지표 요청을 서비스 장애로 만들지 않는다."""
+
+    engine = _engine(_runtime_bundle())
+    question = "Amount per Event and Account Count"
+    assets = asyncio.run(
+        engine.search_assets(
+            question,
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    resolver = MetricResolver(engine, _InconsistentCompatibilityProjectionNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-projection-reconciliation",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    _selected_assets, _question, structured = asyncio.run(
+        resolver.resolve(
+            AnalysisRequest(question=question, parameters={"active": True}),
+            context,
+            assets,
+        )
+    )
+
+    assert structured["selected_metric_id"] is None
+    assert structured["selected_metric_ids"] == [
+        "amount_per_event",
+        "account_count",
+    ]
+
+
+def test_cross_metric_comparison_uses_one_shared_period_without_requesting_a_second() -> None:
+    engine = _engine(_runtime_bundle())
+    question = "Amount per Event and Account Count"
+    assets = asyncio.run(
+        engine.search_assets(
+            question,
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    resolver = MetricResolver(engine, _CrossMetricComparisonNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-cross-metric-comparison",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    _selected_assets, _question, structured = asyncio.run(
+        resolver.resolve(
+            AnalysisRequest(
+                question=question,
+                parameters={"active": True},
+                resolved_slots=ResolvedSlots(
+                    period_start="2026-08-01",
+                    period_end_exclusive="2026-08-19",
+                ),
+            ),
+            context,
+            assets,
+        )
+    )
+
+    assert structured["selected_metric_ids"] == [
+        "amount_per_event",
+        "account_count",
+    ]
+    assert structured["analysis_operation"] == "aggregate"
+    assert structured["intent_candidates"] == ["aggregate"]
+    assert structured["period_relationship"] == "single"
+    assert structured["period_candidates"] == [
+        {
+            "start": "2026-08-01",
+            "end_exclusive": "2026-08-19",
+            "source_text": "2026-08-01 ~ 2026-08-19",
+        }
+    ]
+
+
+def test_two_period_multi_metric_comparison_remains_period_comparison() -> None:
+    engine = _engine(_runtime_bundle())
+    question = "Amount per Event and Account Count across two periods"
+    assets = asyncio.run(
+        engine.search_assets(
+            question,
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    resolver = MetricResolver(engine, _TwoPeriodMultiMetricNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-two-period-comparison",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    with pytest.raises(ContextBuildError, match="Ratio metric"):
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(question=question, parameters={"active": True}),
+                context,
+                assets,
+            )
+        )
+
+
 def test_support_metric_search_reaches_asset_and_returns_typed_unavailable_error() -> None:
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
@@ -555,6 +731,51 @@ def test_unresolved_metric_returns_typed_options_instead_of_internal_error() -> 
         "2026-08-01"
     )
     assert raised.value.partial_context["selected_metric_id"] is None
+
+
+def test_inconsistent_selected_metric_is_downgraded_to_safe_clarification() -> None:
+    engine = _engine(_runtime_bundle())
+    amount_assets = asyncio.run(
+        engine.search_assets(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    account_assets = asyncio.run(
+        engine.search_assets(
+            "account",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    resolver = MetricResolver(engine, _InconsistentSelectedNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-inconsistent-selected-metric",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 20),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="ambiguous measurement",
+                    parameters={"active": True},
+                ),
+                context,
+                amount_assets + account_assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.INVALID_METRIC
+    assert {
+        option.metric_id for option in raised.value.disambiguation_options
+    } == {"amount_per_event", "account_count"}
+    assert raised.value.partial_context is not None
+    assert raised.value.partial_context["selected_metric_id"] is None
+    assert raised.value.partial_context["selected_metric_ids"] == []
+    assert raised.value.partial_context["metric_resolution"] == "ambiguous"
 
 
 def test_unsupported_measurement_does_not_fall_back_to_all_business_metrics() -> None:

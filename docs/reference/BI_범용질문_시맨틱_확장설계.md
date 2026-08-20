@@ -62,6 +62,11 @@ projection이다. 서버는 원문 포함 여부와 다음 일관성을 검증�
 - `unsupported`: 측정 개념은 있지만 공개 지표가 없으므로 `METRIC_NOT_AVAILABLE`로 종료하며 전체 지표로 fallback하지 않는다.
 - `missing`: 질문에 측정 개념 자체가 없으므로 지표를 입력하도록 명확화를 요청한다.
 
+모델이 `selected`라고 응답하면서 `metric_candidates`와 `selected_metric_ids`를 서로 다르게
+반환하면 서버 장애로 처리하거나 임의 지표를 실행하지 않는다. DataHub에서 확인된 BUSINESS
+후보만 남기고 선택값은 비운 뒤 typed 지표 명확화로 낮춘다. 반면 후보 밖 ID, 권한 밖 Metric,
+연산·의도 불일치처럼 안전하게 명확화할 근거가 없는 계약 위반은 계속 fail-closed로 닫는다.
+
 미지원은 영구 차단을 뜻하지 않는다. 운영 질문에서 드러난 후보는 source field, grain, time semantics, aggregation, dimension binding, permission을 검토한 뒤 새 semantic release의 `BUSINESS` 지표로 승인할 수 있다. 예를 들어 현재 review 후보에는 예약 1건 기준 `room_reservation_count`와 예약 객실박 기준 `booked_room_nights`가 별개로 존재한다. 둘을 `occupied_room_nights`와 임의로 합치지 않고 업무 정의가 승인된 항목만 활성화한다.
 
 ### 질문 연산
@@ -107,8 +112,23 @@ BUSINESS Metric을 요약한다. Node 2의 `metric_ids`는 SUPPORT 계산 의존
    팬아웃 결정표를 다시 통과해야 한다. Node 1 복수 Metric·연산·result limit 슬롯과
    연산별 SQL AST 검증은 active model release에 반영했다. 후보 planning sidecar의 DataHub
    발행·read-back과 `latest_snapshot` SQL 생성은 아직 활성화 Gate 밖이다.
-5. **검증 필요 — catalog-generated regression:** 예시 질문 개수가 아니라 모든 공개 지표×가능 연산×바인딩 차원 조합에서 계획 생성과 가드 통과를 검증한다.
+5. **부분 완료 — catalog-generated structural regression:** 예시 질문을 만들지 않고 SQL checksum에
+   결속된 후보에서 단일 Metric×가능 연산×바인딩 차원 1,179건과 모든 BUSINESS Metric pair
+   946건을 생성한다. 현재 총 2,125건 중 756건은 구조상 `READY`, 1,369건은 명시적 blocker가
+   있다. cross-asset pair 888건은 JOIN 계약이 없어 `JOIN_GRAPH_REQUIRED`이며, time grain·비교
+   window·snapshot executor가 없는 조합도 별도 코드로 차단한다. 이 Gate는 Node 1 자연어
+   정확도나 실제 결과 정확도를 대신하지 않으며, review-only 후보는 채점할 수 없다.
 6. **배포 Gate:** semantic publish check, 명시적 승인, publish, 전체 read-back, backend E2E, 배포 UI Playwright를 같은 release ID에서 통과한다.
+
+구조 Gate는 다음처럼 읽기 전용으로 재현한다. 기본 출력은 case 전체를 생략한 checksum·집계이며,
+상세 감사에만 `--include-cases`를 사용한다.
+
+```powershell
+python evals/catalog_regression_runner.py `
+  --semantic-candidate evals/semantic_review/answervice_bi_coverage.v1.json `
+  --sql-directory infrastructure/database/serving_candidates/walkerhill_bi_v1 `
+  --check
+```
 
 ## 하지 않는 것
 

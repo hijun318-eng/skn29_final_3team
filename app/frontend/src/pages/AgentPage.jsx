@@ -117,23 +117,25 @@ export function AgentPage({ onNavigate }) {
   }, [question]);
 
   const initConversation = async () => {
-    try {
-      const conv = await analysisClient.createConversation();
-      const nextId = conv.conversation_id;
-      setConversationId(nextId);
-      window.sessionStorage.setItem(CONVERSATION_KEY, nextId);
-      setTurns([]);
-      return nextId;
-    } catch {
-      return conversationId;
-    }
+    const conv = await analysisClient.createConversation();
+    const nextId = conv.conversation_id;
+    setConversationId(nextId);
+    window.sessionStorage.setItem(CONVERSATION_KEY, nextId);
+    return nextId;
   };
 
   const handleNewChat = () => {
     setQuestion("");
     setInputError("");
+    setConversationId("");
+    window.sessionStorage.removeItem(CONVERSATION_KEY);
     setTurns([]);
-    void initConversation();
+    setEvidenceOpen(false);
+    setSelectedEvidenceRun(null);
+    setReportModal("");
+    setReportModalRun(null);
+    setReportTitle("");
+    setMessage("");
   };
 
   // action은 UI가 이미 아는 동작을 자연어로 바꾸지 않고 전달하는 typed 신호다(서버가 재검증).
@@ -145,11 +147,12 @@ export function AgentPage({ onNavigate }) {
     setInputError("");
     setQuestion("");
     setSubmitting(true);
+    setEvidenceOpen(false);
+    setSelectedEvidenceRun(null);
     setMessage("");
     const traceId = createUuid();
     activeTraceId.current = traceId;
 
-    let activeConvId = conversationId || await initConversation();
     const optimisticTurn = {
       turnId: `temp-${Date.now()}`,
       question: normalized,
@@ -161,6 +164,8 @@ export function AgentPage({ onNavigate }) {
     window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
 
     try {
+      let activeConvId = conversationId;
+      if (!activeConvId) activeConvId = await initConversation();
       const headTurnId = turns.length > 0 ? turns.at(-1)?.turnId : undefined;
       let cmdResponse;
       try {
@@ -478,7 +483,10 @@ export function AgentPage({ onNavigate }) {
       <TurnEvidenceDrawer
         open={evidenceOpen}
         run={activeEvidenceRun}
-        onClose={() => setEvidenceOpen(false)}
+        onClose={() => {
+          setEvidenceOpen(false);
+          setSelectedEvidenceRun(null);
+        }}
         onCopy={copyEvidence}
       />
 

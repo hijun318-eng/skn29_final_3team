@@ -7,13 +7,13 @@
 
 | 분류 | 파일 수 |
 |---|---:|
-| archive | 128 |
+| archive | 130 |
 | documentation | 138 |
 | production | 303 |
 | project-config | 38 |
 | runtime-config | 65 |
 | runtime-contract | 10 |
-| test | 138 |
+| test | 139 |
 
 운영 무결성 위반: **0건**
 
@@ -422,6 +422,8 @@
 | `evals/.gitkeep` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/__init__.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/base_comparison.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/catalog_regression.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/catalog_regression_runner.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.f3.failure.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.f3.jsonl` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.f4.failure.json` | archive | ARCHIVE_NON_RUNTIME |
@@ -783,6 +785,7 @@
 | `tests/backend/test_runtime_lifecycle.py` | test | TEST_ONLY |
 | `tests/data/test_bi_coverage_candidate.py` | test | TEST_ONLY |
 | `tests/data/test_catalog_governance.py` | test | TEST_ONLY |
+| `tests/data/test_catalog_regression.py` | test | TEST_ONLY |
 | `tests/data/test_datahub_metadata_publication.py` | test | TEST_ONLY |
 | `tests/data/test_datahub_runtime_recipes.py` | test | TEST_ONLY |
 | `tests/data/test_datahub_security_boundary.py` | test | TEST_ONLY |

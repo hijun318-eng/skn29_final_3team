@@ -57,6 +57,44 @@ _ANALYSIS_OPERATIONS = frozenset(
 )
 
 
+def _reconcile_comparison_axis(
+    *,
+    analysis_operation: str | None,
+    relationship: str,
+    intents: list[str],
+    periods: list[dict[str, Any]],
+    selected_metric_ids: list[str],
+    measurement_source_texts: list[str],
+    selected_dimensions: list[str],
+    result_limit: object,
+    ambiguity: object,
+) -> tuple[str | None, str, list[str]]:
+    """두 지표 비교를 불완전한 두 기간 비교로 오인한 Node 1 출력을 보정한다.
+
+    질문 문자열을 다시 파싱하지 않고 이미 검증된 구조만 사용한다. 서로 다른 측정값이
+    둘 이상 확정됐고 두 번째 기간 증거가 없으며 모호성도 선언되지 않은 경우에는
+    ``period_comparison``이 성립할 수 없다. 이때 하나의 공유 기간에서 지표들을 나란히
+    조회하는 aggregate/breakdown으로만 좁혀 복구한다. 두 기간이 실제로 있거나 시간
+    모호성이 남아 있으면 그대로 두어 기존 PERIOD_REQUIRED 경계가 닫도록 한다.
+    """
+
+    is_ambiguous = (
+        isinstance(ambiguity, dict) and ambiguity.get("is_ambiguous") is True
+    )
+    if not (
+        analysis_operation == "period_comparison"
+        and relationship == "comparison"
+        and len(periods) < 2
+        and len(selected_metric_ids) > 1
+        and len(measurement_source_texts) == len(selected_metric_ids)
+        and result_limit is None
+        and not is_ambiguous
+    ):
+        return analysis_operation, relationship, intents
+    reconciled = "breakdown" if selected_dimensions else "aggregate"
+    return reconciled, "single", [reconciled]
+
+
 def _suggestions(
     metric_ids: list[str],
     glossary: dict[str, tuple[str, ...]],
@@ -516,16 +554,14 @@ class MetricResolver:
         measurement_source_texts = [item.strip() for item in raw_measurements]
         if len(measurement_source_texts) != len(set(measurement_source_texts)):
             raise ValueError("Node1 measurement_source_texts 에 중복 구간이 있습니다.")
-        measurement_source_text = normalized.get("measurement_source_text")
         expected_single_measurement = (
             measurement_source_texts[0]
             if len(measurement_source_texts) == 1
             else None
         )
-        if measurement_source_text != expected_single_measurement:
-            raise ValueError(
-                "Node1 measurement_source_text 는 단일 measurement_source_texts의 호환 projection이어야 합니다."
-            )
+        # measurement_source_texts가 질문 근거의 권위 목록이다. 단일 호환 projection은
+        # 의미를 추가하지 않으므로 모델 출력과 대조하지 않고 서버가 결정론적으로 만든다.
+        measurement_source_text = expected_single_measurement
 
         raw_selected_ids = normalized.get("selected_metric_ids")
         if (
@@ -538,14 +574,12 @@ class MetricResolver:
                 "Node1 selected_metric_ids 는 고유한 지표 ID 4개 이하여야 합니다."
             )
         selected_metric_ids = list(raw_selected_ids)
-        selected = normalized.get("selected_metric_id")
         expected_single_selected = (
             selected_metric_ids[0] if len(selected_metric_ids) == 1 else None
         )
-        if selected != expected_single_selected:
-            raise ValueError(
-                "Node1 selected_metric_id 는 단일 selected_metric_ids의 호환 projection이어야 합니다."
-            )
+        # selected_metric_ids가 권위 목록이다. 단일 호환 필드는 모델이 따로 결정하게 두면
+        # 같은 응답 안에서도 불일치할 수 있으므로 서버가 목록에서 항상 재계산한다.
+        selected = expected_single_selected
 
         analysis_operation = normalized.get("analysis_operation")
         result_limit = normalized.get("result_limit")
@@ -588,6 +622,18 @@ class MetricResolver:
             for item in raw_metric_ids
             if item in candidate_ids
         ]
+        analysis_operation, relationship, intents = _reconcile_comparison_axis(
+            analysis_operation=analysis_operation,
+            relationship=relationship,
+            intents=intents,
+            periods=periods,
+            selected_metric_ids=selected_metric_ids,
+            measurement_source_texts=measurement_source_texts,
+            selected_dimensions=selected_dimensions,
+            result_limit=result_limit,
+            ambiguity=normalized.get("ambiguity"),
+        )
+        is_comparison = relationship == "comparison"
         requested_support_ids = list(
             dict.fromkeys(
                 item
@@ -642,16 +688,41 @@ class MetricResolver:
                 partial_context=partial_context,
             )
         if metric_resolution == "selected":
-            if (
-                not measurement_source_texts
-                or len(measurement_source_texts) != len(selected_metric_ids)
-                or not selected_metric_ids
-                or suggestion_ids != selected_metric_ids
-                or analysis_operation is None
-                or intents != [analysis_operation]
-            ):
+            selection_contract_matches = (
+                bool(measurement_source_texts)
+                and len(measurement_source_texts) == len(selected_metric_ids)
+                and bool(selected_metric_ids)
+                and suggestion_ids == selected_metric_ids
+            )
+            if not selection_contract_matches:
+                # 모델이 ``selected``라고 하면서 다른 후보를 함께 반환하면 어느 지표도
+                # 실행하지 않는다. 유효한 BUSINESS 후보만 남긴 typed 명확화로 낮춰
+                # 사용자 질문을 서비스 장애로 오인시키지 않되, 임의 지표 자동 선택도 막는다.
+                unresolved_ids = list(
+                    dict.fromkeys([*suggestion_ids, *selected_metric_ids])
+                )
+                clarification_context = {
+                    **partial_context,
+                    "metric_ids": unresolved_ids,
+                    "metric_candidates": unresolved_ids,
+                    "metric_resolution": (
+                        "ambiguous" if len(unresolved_ids) > 1 else "missing"
+                    ),
+                    "selected_metric_id": None,
+                    "selected_metric_ids": [],
+                }
+                raise ContextBuildError(
+                    ContextBuildErrorCode.INVALID_METRIC,
+                    "질문을 하나의 승인 지표로 확정하지 못했습니다.",
+                    _suggestions(unresolved_ids, glossary),
+                    disambiguation_options=_disambiguation_options_for_metrics(
+                        unresolved_ids, metric_terms
+                    ),
+                    partial_context=clarification_context,
+                )
+            if analysis_operation is None or intents != [analysis_operation]:
                 raise ValueError(
-                    "Node1 selected 지표 판정과 후보가 일치하지 않습니다."
+                    "Node1 selected 분석 연산과 의도가 일치하지 않습니다."
                 )
         elif selected_metric_ids:
             raise ValueError(

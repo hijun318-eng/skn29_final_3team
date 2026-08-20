@@ -1,6 +1,11 @@
 /** AgentPage의 run/turn 상태 변환을 담당하는 순수 헬퍼 모듈이다. React 상태를 갖지 않는다. */
 import { AnalysisApiError } from "../api/analysisClient.ts";
-import { OPENAPI_VERSION } from "../contracts/analysis.ts";
+import {
+  OPENAPI_VERSION,
+  normalizeAnalysisChart,
+  normalizeAnalysisEvidence,
+  normalizeAnalysisMetrics,
+} from "../contracts/analysis.ts";
 
 /**
  * 서버 응답 도착 전 화면에 표시할 임시 run 상태를 만든다.
@@ -128,8 +133,12 @@ export function hydrateTurnsFromServer(serverTurns) {
 
       if (isPresentation) {
         const tableData = st.data_snapshot_json || lastAnalysisRun?.table || null;
-        const chartSpec = st.chart_spec_json || lastAnalysisRun?.chart || null;
-        const evidence = st.evidence_json || lastAnalysisRun?.evidence || {};
+        const chartSpec = st.chart_spec_json
+          ? normalizeAnalysisChart(st.chart_spec_json)
+          : lastAnalysisRun?.chart || null;
+        const evidence = st.evidence_json
+          ? normalizeAnalysisEvidence(st.evidence_json)
+          : lastAnalysisRun?.evidence;
         run = {
           ...(lastAnalysisRun || transientRun(userMessage, "success")),
           question: userMessage,
@@ -137,7 +146,7 @@ export function hydrateTurnsFromServer(serverTurns) {
           summary: `Trino 원천 쿼리 재실행 없이 ${st.view_type || "TABLE"} 뷰로 전환했습니다.`,
           table: tableData,
           chart: chartSpec,
-          evidence: evidence,
+          evidence,
           viewSpecId: st.view_spec_id,
         };
       } else if (isReportAction) {
@@ -170,6 +179,11 @@ export function hydrateTurnsFromServer(serverTurns) {
         const tableData = st.data_snapshot_json;
         const chartSpec = st.chart_spec_json;
         const evidence = st.evidence_json || {};
+        const normalizedEvidence = normalizeAnalysisEvidence(evidence);
+        const metricValues = Array.isArray(evidence.metric_values)
+          ? evidence.metric_values
+          : [];
+        const sources = Array.isArray(evidence.sources) ? evidence.sources : [];
         run = {
           ...transientRun(userMessage, "success"),
           requestId: st.request_id || "",
@@ -178,10 +192,18 @@ export function hydrateTurnsFromServer(serverTurns) {
           question: userMessage,
           summary: st.narrative_markdown || userMessage,
           table: tableData || null,
-          chart: chartSpec || null,
-          evidence: evidence || {},
-          metrics: Array.isArray(evidence?.metrics) ? evidence.metrics : [],
-          sources: Array.isArray(evidence?.sources) ? evidence.sources : [],
+          chart: normalizeAnalysisChart(chartSpec) || null,
+          evidence: normalizedEvidence,
+          metrics: normalizeAnalysisMetrics(metricValues),
+          sources: sources.map((source) => ({
+            name: source.name,
+            urn: source.urn,
+            fqn: source.fqn,
+            schemaVersion: source.schema_version,
+            seedVersion: source.seed_version,
+            synthetic: typeof source.synthetic === "boolean" ? source.synthetic : undefined,
+            status: "success",
+          })),
           artifact: st.artifact_id ? {
             artifactId: st.artifact_id,
             queryId: evidence?.query_id || "",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import ssl
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -105,7 +106,7 @@ class DataHubConnectionSettings:
             raise DataHubConnectionError("DataHub timeout must be positive")
         return httpx.AsyncClient(
             headers=self.authorization_headers,
-            verify=str(self.ca_file),
+            verify=ssl.create_default_context(cafile=str(self.ca_file)),
             timeout=httpx.Timeout(timeout_seconds),
             trust_env=False,
         )

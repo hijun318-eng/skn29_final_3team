@@ -9,6 +9,11 @@
 문서에 없는 기능을 목업이 지원한다고 추정하지 않는다. 코드와 기존 README/Handoff 내용이
 다를 때는 현재 `ReportBuilder.jsx`와 관련 모듈의 동작을 기준으로 작성했다.
 
+이 문서는 **외부 목업 폴더에 접근할 수 없는 에이전트도 사용할 수 있는 자급형 명세서**다.
+기능 설명뿐 아니라 핵심 상태, 데이터 구조, 배치 알고리즘, Drag/Resize/History/Page/Template,
+Chart registry와 디자인 토큰의 구현 예시를 뒤쪽 부록에 포함한다. 로컬 경로는 원본 추적용이며
+이 문서를 이해하기 위한 필수 조건이 아니다.
+
 ## 2. 코드 위치와 실행 주소
 
 목업 프로젝트:
@@ -1169,3 +1174,874 @@ docs/report_builder/FRONTEND_ENHANCEMENT_HANDOFF.md
 ```
 
 코드에서 확인한 사실과 구현 제안을 구분해 답한다.
+
+---
+
+# 자급형 구현 코드 부록
+
+아래 내용은 원본 폴더에 접근하지 못하는 에이전트가 목업의 구현 방식을 이해하기 위한 코드
+참조다. 실서비스에 그대로 복사하는 코드가 아니라 기능의 입력·상태·출력을 확인하는 기준이다.
+
+## 39. Package와 진입 구조
+
+목업의 최소 package 구성:
+
+```json
+{
+  "name": "answervice-report-prototype",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node src/report/prototype.test.mjs"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "lucide-react": "1.25.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "recharts": "3.10.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.0.3",
+    "vite": "8.1.5"
+  }
+}
+```
+
+Component 책임 구조:
+
+```text
+ReportBuilder
+├─ DndContext
+├─ BrandSidebar
+├─ Topbar
+├─ Library
+│  ├─ Search
+│  ├─ TemplateThumb / TemplateCard
+│  ├─ LibraryItem
+│  └─ PageList
+├─ Workspace
+│  ├─ WorkspaceToolbar
+│  ├─ OverflowBanner
+│  └─ PageCanvas
+│     ├─ ReportBlock
+│     │  └─ BlockContent
+│     └─ AlignmentGuides
+├─ Properties
+│  ├─ ChartDataFields
+│  ├─ SwatchPicker
+│  └─ CommentThread
+├─ PresentationOverlay
+├─ DragOverlay
+└─ ShortcutsPanel
+```
+
+원본은 위 책임을 대부분 `ReportBuilder.jsx` 한 파일에 둔다. 실서비스에서는 이 구조를 참고하되
+기존 `useReportsPageController`, draft hook, component 경계를 유지한다.
+
+## 40. 데이터 구조의 코드 표현
+
+원본은 TypeScript type 없이 JavaScript object를 사용한다. 동등한 의미를 type으로 표현하면
+다음과 같다.
+
+```ts
+type Orientation = "portrait" | "landscape";
+
+type Comment = {
+  id: string;
+  author: string;
+  text: string;
+  at: string;
+};
+
+type BaseBlock = {
+  id: string;
+  kind: "cover" | "heading" | "kpi" | "goal" | "chart" |
+        "table" | "image" | "summary" | "text";
+  title: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  locked?: boolean;
+  comments?: Comment[];
+  fontScale?: 0.85 | 1 | 1.25 | 1.5;
+  textColor?: number | null;
+};
+
+type KpiBlock = BaseBlock & {
+  kind: "kpi";
+  value?: string;
+  delta?: string;
+  deltaYoY?: string;
+  compareBase?: "prevMonth" | "prevYear";
+};
+
+type GoalBlock = BaseBlock & {
+  kind: "goal";
+  current?: string | number;
+  target?: string | number;
+  unit?: string;
+};
+
+type ChartBlock = BaseBlock & {
+  kind: "chart";
+  chartType: "line" | "area" | "bar" | "horizontalBar" |
+             "stackedBar" | "pie" | "donut" | "radar" |
+             "radial" | "scatter" | "composed";
+  legend?: boolean;
+  labels?: boolean;
+  dimension?: "month" | "division";
+  series?: string[];
+  colors?: number[];
+  note?: string;
+  focusCategory?: string;
+};
+
+type TableBlock = BaseBlock & {
+  kind: "table";
+  rows?: Array<{
+    division: string;
+    revenue: string;
+    change: string;
+    margin: string;
+  }>;
+  highlightThreshold?: string | number;
+};
+
+type ImageBlock = BaseBlock & {
+  kind: "image";
+  src?: string;
+  alt?: string;
+};
+
+type TextBlock = BaseBlock & {
+  kind: "cover" | "heading" | "summary" | "text";
+  text?: string;
+};
+
+type Page = {
+  id: string;
+  name: string;
+  orientation: Orientation;
+  blocks: Array<BaseBlock>;
+};
+
+type UserTemplate = {
+  id: string;
+  name: string;
+  builtin?: boolean;
+  orientation: Orientation;
+  pageWidth: number;
+  blocks: Array<BaseBlock>;
+};
+
+type NamedSnapshot = {
+  id: string;
+  name: string;
+  pages: Page[];
+};
+```
+
+실서비스 차이:
+
+```text
+목업: id, kind, pixel geometry, 직접 수정 가능한 mock values
+실서비스: UUID, type, 12열 x/y/w/h, artifactId/queryId, lineage
+```
+
+## 41. 전체 React 상태 코드
+
+목업의 편집 상태는 다음 hooks로 구성된다.
+
+```jsx
+const [pages, setPages] = useState(makeInitialPages);
+const [pageId, setPageId] = useState("dashboard");
+const [selectedId, setSelectedId] = useState("trend");
+const [preview, setPreview] = useState(false);
+const [zoom, setZoom] = useState(.72);
+const [fontId, setFontId] = useState(FONT_OPTIONS[0].id);
+const [activeItem, setActiveItem] = useState(null);
+const [presenting, setPresenting] = useState(false);
+const [presentIndex, setPresentIndex] = useState(0);
+const [presentZoom, setPresentZoom] = useState(1);
+const [overflowNotice, setOverflowNotice] = useState("");
+const [clipboard, setClipboard] = useState(null);
+const [multiSelectedIds, setMultiSelectedIds] = useState(() => new Set());
+const [helpOpen, setHelpOpen] = useState(false);
+const [templates, setTemplates] = useState(() => STARTER_TEMPLATES);
+const [snapshots, setSnapshots] = useState([]);
+const [searchQuery, setSearchQuery] = useState("");
+const [history, setHistory] = useState({ past: [], future: [] });
+```
+
+실서비스에서 `pages/templates/comments/snapshots`를 그대로 하나의 local state로 만들면 안 된다.
+현재 backend contract가 권위를 가져야 하는 상태와 session-only 편의 상태를 먼저 분리한다.
+
+## 42. Grid와 자동 배치 실제 코드
+
+목업의 `layout.js` 전체 핵심은 다음과 같다.
+
+```js
+export const GRID_COLUMNS = 8;
+export const PAGE_MARGIN = 40;
+export const BLOCK_GAP = 16;
+export const ROW_GAP = 20;
+export const ROW_STEP = 24;
+
+export const clamp = (value, min, max) =>
+  Math.min(Math.max(value, min), max);
+
+export const grid = (pageWidth) => ({
+  column: (pageWidth - PAGE_MARGIN * 2) / GRID_COLUMNS,
+});
+
+export const spanWidth = (span, pageWidth) =>
+  grid(pageWidth).column * clamp(span, 1, GRID_COLUMNS) - BLOCK_GAP;
+
+export const widthSpan = (width, pageWidth) =>
+  clamp(
+    Math.round((width + BLOCK_GAP) / grid(pageWidth).column),
+    1,
+    GRID_COLUMNS,
+  );
+
+export const snapColumn = (x, pageWidth, width) => {
+  const column = grid(pageWidth).column;
+  const maxIndex = GRID_COLUMNS - widthSpan(width, pageWidth);
+  return PAGE_MARGIN
+    + clamp(Math.round((x - PAGE_MARGIN) / column), 0, maxIndex) * column;
+};
+
+export function packPageBlocks(
+  blocks,
+  pageWidth,
+  { stretchLastToFillRow = false } = {},
+) {
+  const column = grid(pageWidth).column;
+  const ordered = [...blocks].sort((a, b) => a.y - b.y || a.x - b.x);
+  const packed = [];
+  let row = [];
+  let rowCols = 0;
+  let y = PAGE_MARGIN;
+
+  const flushRow = () => {
+    if (!row.length) return;
+    let finalRow = row;
+    if (stretchLastToFillRow && rowCols < GRID_COLUMNS) {
+      const lastIndex = row.length - 1;
+      const extraColumns = GRID_COLUMNS - rowCols;
+      finalRow = row.map((item, index) => index === lastIndex
+        ? { ...item, width: item.width + extraColumns * column }
+        : item);
+    }
+    const rowHeight = Math.max(...finalRow.map((item) => item.height));
+    for (const item of finalRow) {
+      packed.push({ ...item, y, height: rowHeight });
+    }
+    y += rowHeight + ROW_GAP;
+    row = [];
+    rowCols = 0;
+  };
+
+  for (const item of ordered) {
+    const span = widthSpan(item.width, pageWidth);
+    if (rowCols > 0 && rowCols + span > GRID_COLUMNS) flushRow();
+    row.push({
+      ...item,
+      x: PAGE_MARGIN + rowCols * column,
+      width: spanWidth(span, pageWidth),
+    });
+    rowCols += span;
+    if (rowCols >= GRID_COLUMNS) flushRow();
+  }
+  flushRow();
+  return packed;
+}
+```
+
+실서비스 적용 시에는 위 코드를 복사하지 않고 12열 `compactDraftLayout`과
+`placeDraftBlock` 계열 helper가 같은 책임을 수행하는지 확인한다.
+
+## 43. Selection과 History 코드
+
+### 주 선택 + Shift 보조 선택
+
+```jsx
+const selectedIds = new Set(multiSelectedIds);
+if (selectedId) selectedIds.add(selectedId);
+
+const handleSelect = (id, shiftKey) => {
+  if (!shiftKey || !id) {
+    setSelectedId(id);
+    setMultiSelectedIds(new Set());
+    return;
+  }
+  setMultiSelectedIds((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+};
+```
+
+### 전체 pages Snapshot 기반 History
+
+```jsx
+const pagesRef = useRef(pages);
+useEffect(() => { pagesRef.current = pages; }, [pages]);
+
+const commitPages = (updater) => setPages((current) => {
+  const next = typeof updater === "function" ? updater(current) : updater;
+  if (next === current) return current;
+  setHistory((history) => ({
+    past: [...history.past.slice(-39), current],
+    future: [],
+  }));
+  return next;
+});
+
+const undo = () => setHistory((history) => {
+  if (!history.past.length) return history;
+  const previous = history.past.at(-1);
+  const current = pagesRef.current;
+  setPages(previous);
+  return {
+    past: history.past.slice(0, -1),
+    future: [current, ...history.future].slice(0, 40),
+  };
+});
+
+const redo = () => setHistory((history) => {
+  if (!history.future.length) return history;
+  const [next, ...future] = history.future;
+  const current = pagesRef.current;
+  setPages(next);
+  return {
+    past: [...history.past, current].slice(-40),
+    future,
+  };
+});
+```
+
+실서비스는 전체 pages가 아니라 기존 draft block history와 `commitBlocks`를 사용해야 한다.
+
+## 44. Library DnD와 내부 Drag 코드
+
+### Library Item
+
+```jsx
+function LibraryItem({ item, onAdd }) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `library:${item.id}`,
+    data: item,
+  });
+
+  return (
+    <button
+      ref={setNodeRef}
+      className={`library-card ${isDragging ? "dragging" : ""}`}
+      onClick={() => onAdd(item)}
+      {...attributes}
+      {...listeners}
+    >
+      <span><item.icon size={15} /></span>
+      <b>{item.title}</b>
+      <GripVertical size={13} />
+    </button>
+  );
+}
+```
+
+### Pointer Sensor
+
+```jsx
+const sensors = useSensors(
+  useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+);
+```
+
+### Library Drop 좌표 변환
+
+```jsx
+const onDragEnd = ({ active, over }) => {
+  const item = active.data.current;
+  const target = String(over?.id || "");
+  if (item && target === `page:${page.id}`) {
+    const rect = document
+      .querySelector(`[data-page-id="${page.id}"]`)
+      ?.getBoundingClientRect();
+    const translated = active.rect.current.translated;
+    addBlock(item, rect && translated ? {
+      x: (translated.left - rect.left) / zoom,
+      y: (translated.top - rect.top) / zoom,
+    } : undefined);
+  }
+  setActiveItem(null);
+};
+```
+
+### 내부 블록 Drag/Resize 핵심
+
+```js
+const dx = (event.clientX - startX) / zoom;
+const dy = (event.clientY - startY) / zoom;
+
+if (mode === "move") {
+  onChange({
+    x: snapColumn(startItem.x + dx, pageWidth, item.width),
+    y: clamp(
+      Math.round((startItem.y + dy) / ROW_STEP) * ROW_STEP,
+      0,
+      pageHeight - item.height,
+    ),
+  });
+}
+
+if (direction.includes("e")) width = startItem.width + dx;
+if (direction.includes("w")) width = startItem.width - dx;
+if (direction.includes("s")) height = startItem.height + dy;
+if (direction.includes("n")) height = startItem.height - dy;
+
+width = spanWidth(widthSpan(width, pageWidth), pageWidth);
+height = clamp(
+  Math.round(height / ROW_STEP) * ROW_STEP,
+  72,
+  pageHeight,
+);
+```
+
+Pointer move 중에는 대상 블록만 변경하고 Pointer up에서 다음을 실행한다.
+
+```js
+const commitLayout = () => commitPages((pages) => pages.map((candidate) =>
+  candidate.id === page.id
+    ? { ...candidate, blocks: repackPage(candidate.blocks, candidate.orientation) }
+    : candidate,
+));
+```
+
+이 분리는 Gesture 중 다른 블록이 움직이는 현상을 피하고 Undo를 한 단계로 만든다.
+
+## 45. 블록 추가·복제·Overflow 코드
+
+### A4 높이 검사
+
+```js
+const pageFits = (blocks, orientation) => {
+  if (!blocks.length) return true;
+  const bottom = Math.max(...blocks.map((block) => block.y + block.height));
+  return bottom <= A4[orientation].height - PAGE_MARGIN;
+};
+```
+
+### 공통 Commit Guard
+
+```jsx
+const commitIfFits = (nextBlockId, packed) => {
+  if (!pageFits(packed, page.orientation)) {
+    setOverflowNotice(
+      `"${page.name}" 페이지가 이미 가득 찼습니다. `
+      + "블록 크기를 줄이거나 새 페이지를 추가해 주세요.",
+    );
+    return;
+  }
+  commitPages((items) => items.map((candidate) =>
+    candidate.id === page.id
+      ? { ...candidate, blocks: packed }
+      : candidate,
+  ));
+  setSelectedId(nextBlockId);
+};
+```
+
+### 복제의 필드 보존
+
+```jsx
+const cloneBlock = (source, position) => {
+  const size = A4[page.orientation];
+  const x = snapColumn(position?.x ?? source.x, size.width, source.width);
+  const y = clamp(
+    Math.round((position?.y ?? source.y) / ROW_STEP) * ROW_STEP,
+    0,
+    size.height - source.height,
+  );
+  const next = {
+    ...source,
+    id: uid(source.kind),
+    x,
+    y,
+    comments: [],
+  };
+  commitIfFits(
+    next.id,
+    repackPage([...page.blocks, next], page.orientation),
+  );
+};
+```
+
+실서비스에서는 `...source` 방식이 lineage 필드까지 보존되는지 타입과 sanitizer 테스트로 확인하고
+ID는 반드시 기존 `createUuid`를 사용한다.
+
+## 46. Page와 Template 코드
+
+### Orientation 변경
+
+```jsx
+const updatePage = (change) => commitPages((pages) => pages.map((candidate) => {
+  if (candidate.id !== page.id) return candidate;
+  const orientation = change.orientation || candidate.orientation;
+  const reflow = change.orientation
+    && change.orientation !== candidate.orientation;
+
+  const blocks = reflow
+    ? candidate.blocks.map((block) => {
+      const span = widthSpan(block.width, A4[candidate.orientation].width);
+      return {
+        ...block,
+        width: spanWidth(span, A4[orientation].width),
+        height: Math.min(block.height, A4[orientation].height),
+      };
+    })
+    : candidate.blocks;
+
+  return {
+    ...candidate,
+    ...change,
+    blocks: repackPage(blocks, orientation),
+  };
+}));
+```
+
+### Page 추가/복제/삭제/이동
+
+```jsx
+const addPage = (orientation) => {
+  const id = uid("page");
+  commitPages((pages) => [...pages, {
+    id,
+    name: orientation === "portrait" ? "새 세로 페이지" : "새 가로 페이지",
+    orientation,
+    blocks: [],
+  }]);
+  setPageId(id);
+  clearSelection();
+};
+
+const duplicatePage = (id) => {
+  const source = pages.find((page) => page.id === id);
+  if (!source) return;
+  const clone = {
+    ...source,
+    id: uid("page"),
+    name: `${source.name} 복사본`,
+    blocks: source.blocks.map((block) => ({
+      ...block,
+      id: uid(block.kind),
+      comments: [],
+    })),
+  };
+  commitPages((pages) => {
+    const index = pages.findIndex((page) => page.id === id);
+    return [...pages.slice(0, index + 1), clone, ...pages.slice(index + 1)];
+  });
+};
+
+const deletePage = (id) => {
+  if (pages.length <= 1) return;
+  commitPages((pages) => pages.filter((page) => page.id !== id));
+};
+
+const movePage = (id, delta) => commitPages((pages) => {
+  const index = pages.findIndex((page) => page.id === id);
+  const target = index + delta;
+  if (target < 0 || target >= pages.length) return pages;
+  const next = [...pages];
+  [next[index], next[target]] = [next[target], next[index]];
+  return next;
+});
+```
+
+### Template 저장과 적용
+
+```jsx
+const saveAsTemplate = () => {
+  const name = window.prompt("템플릿 이름", `${page.name} 템플릿`);
+  if (!name) return;
+  setTemplates((templates) => [...templates, {
+    id: uid("template"),
+    name,
+    orientation: page.orientation,
+    pageWidth: A4[page.orientation].width,
+    blocks: page.blocks,
+  }]);
+};
+
+const applyTemplate = (template) => {
+  const id = uid("page");
+  const targetWidth = A4[template.orientation].width;
+  const cloned = template.blocks.map((block) => {
+    const span = widthSpan(block.width, template.pageWidth);
+    return {
+      ...block,
+      id: uid(block.kind),
+      width: spanWidth(span, targetWidth),
+      comments: [],
+    };
+  });
+  commitPages((pages) => [...pages, {
+    id,
+    name: template.name,
+    orientation: template.orientation,
+    blocks: repackPage(cloned, template.orientation),
+  }]);
+  setPageId(id);
+  clearSelection();
+};
+```
+
+실서비스 Template은 위 blocks를 그대로 DB에 저장하지 않고 Artifact slot과 schema requirement를
+저장해야 한다.
+
+## 47. Chart registry와 데이터 코드
+
+### 11종 registry
+
+```js
+export const chartTypes = [
+  ["line", "라인"],
+  ["area", "영역"],
+  ["bar", "세로 막대"],
+  ["horizontalBar", "가로 막대"],
+  ["stackedBar", "누적 막대"],
+  ["pie", "파이"],
+  ["donut", "도넛"],
+  ["radar", "레이더"],
+  ["radial", "방사형"],
+  ["scatter", "산점도"],
+  ["composed", "혼합"],
+].map(([id, label]) => ({ id, label }));
+
+const DYNAMIC_CHART_TYPES = [
+  "line",
+  "area",
+  "bar",
+  "stackedBar",
+  "composed",
+];
+```
+
+### 지표 registry
+
+```js
+export const monthlyMetricFields = [
+  { key: "revenue", label: "총 매출(억)" },
+  { key: "roomRevenue", label: "객실 매출(억)" },
+  { key: "fnbRevenue", label: "F&B 매출(억)" },
+  { key: "occ", label: "OCC(%)" },
+  { key: "adr", label: "ADR(원)" },
+];
+
+export const divisionMetricFields = [
+  { key: "revenue", label: "매출(억)" },
+  { key: "change", label: "전월 대비(%)" },
+  { key: "margin", label: "영업이익률(%)" },
+];
+```
+
+### Chart 분기 구조
+
+```text
+pie/donut      → PieChart + Cell + focusCategory opacity
+radar          → RadarChart
+radial         → RadialBarChart
+scatter        → ScatterChart(month index, revenue)
+horizontalBar  → vertical-layout BarChart(divisions)
+stackedBar     → BarChart + shared stackId
+composed       → first series Bar + remaining Line
+area           → AreaChart
+bar            → BarChart
+default        → LineChart
+```
+
+실서비스는 이 registry 이름을 그대로 API에 채택하지 않는다. 현재 backend의 kebab-case 이름과
+canonical renderer capability를 기준으로 versioned mapping을 만든다.
+
+## 48. Theme와 CSS 디자인 토큰
+
+### Theme 코드
+
+```js
+export const PALETTE = [
+  "#176fe5", "#50a2ff", "#20b486", "#e6a23c", "#805ad5",
+  "#e15b64", "#2fb6b2", "#f2b134", "#5b6f89", "#0f766e",
+];
+
+export const FONT_OPTIONS = [
+  { id: "sans", label: "고딕 (기본)", family: "Inter, 'Noto Sans KR', sans-serif" },
+  { id: "serif", label: "명조", family: "'Noto Serif KR', serif" },
+  { id: "round", label: "둥근 고딕", family: "'Gowun Dodum', sans-serif" },
+];
+
+export const FONT_SIZE_BASE = 16;
+export const FONT_SIZE_STEPS = [
+  { id: "sm", label: "작게", scale: 0.85 },
+  { id: "md", label: "보통", scale: 1 },
+  { id: "lg", label: "크게", scale: 1.25 },
+  { id: "xl", label: "아주 크게", scale: 1.5 },
+];
+```
+
+### CSS 핵심값
+
+```css
+:root {
+  color: #e8edf5;
+  background: #070b11;
+  --blue: #176fe5;
+  --line: #202d40;
+  --panel: #0b121c;
+}
+
+.brand-sidebar { width: 224px; background: #05080e; }
+.topbar { height: 104px; background: #05090f; }
+.editor-grid {
+  grid-template-columns: 244px minmax(620px, 1fr) 258px;
+}
+.library,
+.properties { background: #09101a; }
+.workspace {
+  background-color: #151a22;
+  background-image: radial-gradient(#2d3643 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+.a4-page {
+  overflow: hidden;
+  color: #1a2635;
+  background: #fff;
+  box-shadow: 0 20px 70px rgba(0, 0, 0, .35);
+}
+.report-object {
+  border: 1px solid #dce5ef;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(38, 58, 82, .06);
+}
+.report-object.selected {
+  outline: 2px solid #176fe5;
+  outline-offset: 2px;
+}
+.report-object.locked {
+  outline: 1.5px dashed #f0c36e;
+  outline-offset: 2px;
+}
+```
+
+### 반응형 한계
+
+```css
+body { min-width: 1180px; }
+
+@media (max-width: 1360px) {
+  body { min-width: 1050px; }
+  .editor-grid {
+    grid-template-columns: 220px minmax(570px, 1fr) 235px;
+  }
+}
+```
+
+실서비스 V2 CSS는 반드시 `[data-report-builder="v2"]` 아래로 scope하고 위 전역 selector를
+복사하지 않는다.
+
+## 49. Preview와 Export 코드
+
+### HTML Export
+
+```js
+async function exportHtml(fontFamily) {
+  const source = document.querySelector(".preview-pages")
+    || document.querySelector(".page-shell")?.parentElement;
+  const clone = source?.cloneNode(true);
+  if (!clone) return;
+
+  clone.querySelectorAll(".object-chrome,.resize-point")
+    .forEach((node) => node.remove());
+
+  let css = "";
+  for (const sheet of document.styleSheets) {
+    try {
+      css += [...sheet.cssRules].map((rule) => rule.cssText).join("\n");
+    } catch {
+      // cross-origin stylesheet는 읽지 못한다.
+    }
+  }
+
+  const html = `<!doctype html>
+  <html lang="ko">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width">
+      <title>Answervice Report</title>
+      <style>${css}</style>
+    </head>
+    <body class="html-export">${clone.outerHTML}</body>
+  </html>`;
+
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+  link.download = "answervice-report.html";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+```
+
+### Print CSS 개념
+
+```css
+@page portraitPage { size: A4 portrait; margin: 0; }
+@page landscapePage { size: A4 landscape; margin: 0; }
+
+.a4-page.portrait { page: portraitPage; }
+.a4-page.landscape { page: landscapePage; }
+
+@media print {
+  .brand-sidebar,
+  .editor-grid,
+  .topbar { display: none !important; }
+
+  .object-chrome,
+  .resize-point { display: none !important; }
+
+  .page-shell { break-after: page; }
+}
+```
+
+이 코드는 기능을 설명하기 위한 목업 기준이다. 실서비스에서는 기존 backend document source,
+renderer version, source/html/pdf checksum과 WeasyPrint 경로만 사용한다.
+
+## 50. 외부 목업 폴더 없이 작업하는 방법
+
+다른 에이전트가 이 MD 하나만 받았을 때 다음 순서로 작업한다.
+
+```text
+1. 1~38절에서 기능과 현재 제약을 읽는다.
+2. 39~49절의 코드 부록에서 상태·입력·알고리즘을 확인한다.
+3. seung의 기존 controller/draft/renderer에서 대응 지점을 찾는다.
+4. 목업 기능을 다음 네 종류로 분류한다.
+   - 이미 구현됨
+   - 프론트만 수정하면 됨
+   - 백엔드·DB·renderer가 필요함
+   - mock 전용이라 이식 금지
+5. 기존 12열, Artifact lineage, canonical HTML/PDF를 보존하는 최소 변경을 설계한다.
+6. 기능 하나씩 구현하고 테스트한다.
+```
+
+원본 목업 폴더가 없어도 위 설명과 코드 부록으로 기능·상태·배치 방식·디자인 기준을 판단할 수
+있다. 다만 픽셀 단위 시각 비교가 필요할 때만 실행 중인 `http://192.168.0.37:4174/` 화면 또는
+별도 Screenshot을 요청한다.

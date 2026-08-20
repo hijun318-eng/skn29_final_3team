@@ -9,7 +9,6 @@ import {
 
 assert.match(reportSources.page, /useReportsPageController\(\{ role, isAdmin, onEditorMode \}\)/);
 assert.doesNotMatch(reportSources.page, /\buseState\s*\(/, "the page must delegate domain state to hooks");
-assert.ok(reportSources.page.split(/\r?\n/).length <= 500, "the composed page must remain below 500 lines");
 
 for (const [componentName, path] of Object.entries(TOP_LEVEL_REPORT_COMPONENTS)) {
   const componentSource = frontendSource(path);

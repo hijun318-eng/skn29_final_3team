@@ -78,17 +78,18 @@ Copy-Item infrastructure/database/.env.example $deploymentEnv
 ```
 
 외부 `$deploymentEnv`의 모든 `CHANGE_ME_`·`REQUIRED_` 값을 교체하고 `OPENAI_API_KEY`를
-설정한다. 저장소 내부 `.env`는 만들거나 묵시적으로 읽지 않는다. Trino server keystore와
+설정한다. 운영 기본값은 저장소 내부 `.env`를 묵시적으로 읽지 않는다. 로컬 개발에서는
+gitignored `.env`를 `-AllowRepositoryLocalDevelopment`와 함께 명시할 수 있다. Trino server keystore와
 CA PEM은 운영 PKI에서 발급해 저장소 밖 절대 경로로 설정하며 인증서 SAN에는 `trino`와
 `127.0.0.1`을 포함한다. Node2 전용 변수 네 개가 모두 비면 Node 1·2·Repair·3과
 Report Assistant가 primary `gpt-5.4-mini` route를 공유한다. Node2를 별도 endpoint로
 분리할 때는 `NODE2_MODEL_PROVIDER`, `NODE2_MODEL_ENDPOINT`, `NODE2_MODEL_API_TOKEN`,
 `NODE2_MODEL`을 모두 설정하며 일부 설정은 fail-closed한다.
 
-다음 script는 외부 deployment environment의 두 로그인 계정을 PBKDF2-SHA256으로
+다음 script는 deployment environment의 두 로그인 계정을 PBKDF2-SHA256으로
 해시하고 Trino의 세 역할을 별도 PBKDF2 verifier로 만든다. 인증
-principal은 저장소 밖의 명시적 경로에만 생성되며, 그 절대 경로가 외부 env에 기록된다.
-저장소 안의 정적 principal JSON으로 fallback하지 않는다.
+principal은 운영에서는 저장소 밖의 명시적 경로에 생성한다. 로컬 개발 경로를 쓰는 경우
+명시적 switch와 `.gitignore` 검증을 통과해야 하며 정적 principal JSON으로 fallback하지 않는다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass `
@@ -99,6 +100,12 @@ powershell -ExecutionPolicy Bypass `
   -File infrastructure/database/security/provision-trino-password-database.ps1 `
   -EnvPath $deploymentEnv `
   -PasswordDatabasePath (Join-Path $secretDirectory 'trino-password.db')
+powershell -ExecutionPolicy Bypass `
+  -File infrastructure/database/security/provision-serving-catalog-secrets.ps1 `
+  -EnvPath $deploymentEnv `
+  -CredentialsPath (Join-Path $secretDirectory 'serving-catalog-bootstrap.json') `
+  -TokenPublicKeyPath (Join-Path $secretDirectory 'serving-catalog-token-public.pem') `
+  -TokenPrivateKeyPath (Join-Path $secretDirectory 'serving-catalog-token-private.pem')
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File infrastructure/database/scripts/start.ps1 `
   -EnvFilePath $deploymentEnv -Stage Core
@@ -109,7 +116,8 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -EnvFilePath $deploymentEnv -Stage Catalog
 ```
 
-`Core` 단계는 clean volume에서 schema와 source read-only 계정, Trino, 인증된 DataHub
+`Core` 단계는 clean volume에서 schema와 source read-only 계정, 영속 serving catalog,
+Trino, 인증된 DataHub
 GMS/UI까지만 준비한다. `Catalog` 단계는 서로 다른 service actor·PAT를 실제 GMS에서
 확인한 뒤 runtime recipe, dataset `semanticContent`, embedding을 순서대로 갱신한다.
 업무 row나 특정 질문용 serving view는 생성하지 않으며, 발견·권한·semantic 계약 중

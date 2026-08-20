@@ -283,7 +283,7 @@ async def replace_draft_blocks(
     payload: ReplaceReportBlocksRequest,
     context: Annotated[RequestContext, Depends(report_draft_context)],
 ) -> dict[str, Any]:
-    """draft blocks 변경을 현재 상태와 충돌 여부를 확인한 뒤 원자적으로 반영한다."""
+    """draft 제목·blocks·표시 설정을 현재 상태와 충돌 확인 후 원자적으로 반영한다."""
     return await _call(
         lambda: _router(context).replace_draft_blocks(
             definition_id,

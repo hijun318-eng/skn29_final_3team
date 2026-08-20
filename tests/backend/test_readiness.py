@@ -177,7 +177,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
             "password_hash": "0" * 64,
             "password_iterations": 210_000,
             "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "hotel_analyst",
+            "role": "analyst",
             "active": True,
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -202,7 +202,7 @@ class AppDatabaseReadinessMigrationTest(unittest.IsolatedAsyncioTestCase):
         record = {
             "token_sha256": "0" * 64,
             "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "hotel_analyst",
+            "role": "analyst",
             "not_before": (now - timedelta(minutes=2)).isoformat(),
             "expires_at": (now + timedelta(minutes=1)).isoformat(),
         }

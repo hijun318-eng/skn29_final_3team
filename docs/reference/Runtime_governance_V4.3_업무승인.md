@@ -20,7 +20,7 @@
 - 금액 단위는 원화 `KRW`이며 V4.3 안에서만 합산한다.
 - 일별 serving grain은 원칙적으로 `business_date + hotel_code`다. 월별 view는
   `month_start + hotel_code`이며 일별 additive component를 `SUM`한다.
-- `hotel_analyst`는 합성 데이터 표시가 유지되는 분석 경로에서 승인된 지표만 조회할 수 있다.
+- `analyst`는 합성 데이터 표시가 유지되는 분석 경로에서 승인된 지표만 조회할 수 있다.
 - 비율과 평균은 일별 결과를 단순 평균하지 않는다. 승인된 분자·분모를 먼저 합산한 뒤 다시 계산한다.
 - 분모가 0이면 `NULL`을 유지한다. 0%나 0원으로 바꾸어 의미를 만들지 않는다.
 - future scenario인 2026-08-16~2026-08-31 값은 관측 실적이 아니라 동결 합성 시나리오로 표시한다.
@@ -134,7 +134,7 @@ room_revenue_krw
 | `voc_followup_reviews` | 합성 후속확인 리뷰 수, 후속조치 리뷰 수 | `voc_daily.followup_reviews` | `sum / sum` | `count` | V4.3에서는 rating 1~2 규칙 |
 | `banquet_cancelled_events` | 합성 취소 연회 건수, 취소 행사 수 | `banquet_daily.cancelled_events` | `sum / sum` | `count` | 행사일 기준, 취소 수수료 의미 없음 |
 
-`hotel_analyst`가 synthetic provenance가 표시되는 분석 경로에서 위 후보를 조회하도록 승인한다.
+`analyst`가 synthetic provenance가 표시되는 분석 경로에서 위 후보를 조회하도록 승인한다.
 실제 policy에서는 각 source asset의 serving domain entitlement도 함께 요구한다.
 
 ### 기술 보류

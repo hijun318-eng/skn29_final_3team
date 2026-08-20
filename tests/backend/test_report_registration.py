@@ -101,7 +101,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(report_api, "_router", return_value=router):
             response = await report_api.get_report_artifact(
-                "definition-1", 1, evidence["artifact_id"], context(Role.HOTEL_ANALYST)
+                "definition-1", 1, evidence["artifact_id"], context(Role.ANALYST)
             )
 
         validated = ReportArtifactResponse.model_validate(response)
@@ -220,7 +220,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         )
         with patch.object(report_api, "_router", return_value=router):
             created = await report_api.create_draft_from_analysis_artifact(
-                payload, context(Role.HOTEL_ANALYST)
+                payload, context(Role.ANALYST)
             )
 
         self.assertEqual("draft", created["status"])
@@ -278,12 +278,13 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         with patch.object(report_api, "_router", return_value=router), self.assertRaises(HTTPException) as missing:
             await report_api.create_draft_from_analysis_artifact(
                 payload.model_copy(update={"artifact_id": uuid4()}),
-                context(Role.HOTEL_ANALYST),
+                context(Role.ANALYST),
             )
         self.assertEqual(404, missing.exception.status_code)
 
     def test_aggregate_artifact_block_is_an_additive_api_type(self):
         payload = ReplaceReportBlocksRequest.model_validate({
+            "title": "Analysis Artifact Review",
             "orientation": "landscape",
             "currency_display_unit": "billion",
             "blocks": [{
@@ -299,6 +300,7 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         }]})
 
         self.assertEqual("artifact", payload.blocks[0].type)
+        self.assertEqual("Analysis Artifact Review", payload.title)
         self.assertEqual("landscape", payload.orientation)
         self.assertEqual("billion", payload.currency_display_unit)
         with self.assertRaises(ValidationError):
@@ -310,14 +312,14 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
         dependency = signature(report_api.report_admin_context).parameters["context"]
         self.assertIn("analysis_context", repr(dependency.annotation))
         self.assertEqual(Role.REPORT_ADMIN, report_api.report_admin_context(context()).role)
-        for role in (Role.HOTEL_ANALYST, Role.DATA_ADMIN):
+        for role in (Role.ANALYST, Role.DATA_ADMIN):
             with self.assertRaises(HTTPException) as denied:
                 report_api.report_admin_context(context(role))
             self.assertEqual(403, denied.exception.status_code)
 
     def test_report_repository_scope_follows_authenticated_role(self):
         for role, manage_all in (
-            (Role.HOTEL_ANALYST, False),
+            (Role.ANALYST, False),
             (Role.REPORT_ADMIN, True),
         ):
             with self.subTest(role=role), patch.dict(
@@ -588,6 +590,7 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
             definition_id,
             1,
             (block,),
+            title="제목·설정 영속화 검증 보고서",
             orientation="landscape",
             currency_display_unit="million",
         )
@@ -598,6 +601,8 @@ class PostgresReportRepositoryTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(("landscape", "million"), (
             reloaded.orientation, reloaded.currency_display_unit
         ))
+        self.assertEqual("제목·설정 영속화 검증 보고서", saved.title)
+        self.assertEqual(saved.title, reloaded.title)
 
         approved = await approve_report_document(
             repository,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,7 @@ from release_datahub_queries import (
     TERM_QUERY,
 )
 from release_scope import ReleaseScope
+from src.data.governance_contract import datahub_schema_readback_sha1
 
 
 PROPERTY_PREFIX = "answervice."
@@ -274,9 +275,27 @@ def _dataset(value: dict[str, Any]) -> DataHubDataset:
     properties = _optional_mapping(value.get("properties"))
     schema = _mapping(value.get("schemaMetadata"), "dataset.schemaMetadata")
     status = _optional_mapping(value.get("status"))
-    fields = tuple(_field(item) for item in _list(schema.get("fields"), "schema fields"))
+    native_fields = tuple(
+        _field(item) for item in _list(schema.get("fields"), "schema fields")
+    )
+    editable_descriptions = _editable_descriptions(
+        value.get("editableSchemaMetadata"),
+        {field.name for field in native_fields},
+    )
+    fields = tuple(
+        replace(
+            field,
+            description=editable_descriptions.get(field.name) or field.description,
+        )
+        for field in native_fields
+    )
     if not fields or len({field.name for field in fields}) != len(fields):
         raise DataHubDiscoveryError("DataHub schema fields are empty or duplicated")
+    if any(
+        field.native_type is None or field.nullable is None
+        for field in fields
+    ):
+        raise DataHubDiscoveryError("DataHub schema field type or nullability is missing")
     version = schema.get("version")
     if not isinstance(version, int) or isinstance(version, bool) or version < 0:
         raise DataHubDiscoveryError("DataHub schema version is invalid")
@@ -293,7 +312,17 @@ def _dataset(value: dict[str, Any]) -> DataHubDataset:
         description=_optional_text(properties.get("description")),
         schema_name=_text(schema.get("name"), "schema name"),
         schema_version=version,
-        schema_hash=_string(schema.get("hash"), "schema hash"),
+        schema_hash=datahub_schema_readback_sha1(
+            [
+                {
+                    "name": field.name,
+                    "ordinal_position": ordinal,
+                    "native_type": field.native_type,
+                    "nullable": field.nullable,
+                }
+                for ordinal, field in enumerate(fields, start=1)
+            ]
+        ),
         removed=status.get("removed") if isinstance(status.get("removed"), bool) else None,
         owners=_owners(value.get("ownership")),
         domain=_domain(value.get("domain")),
@@ -366,6 +395,28 @@ def _field(value: object) -> DataHubField:
         is_part_of_key=key if isinstance(key, bool) else None,
         description=_optional_text(item.get("description")),
     )
+
+
+def _editable_descriptions(
+    value: object,
+    native_names: set[str],
+) -> dict[str, str | None]:
+    """DataHub editable field 설명을 native field identity에만 결합한다."""
+
+    editable = _optional_mapping(value)
+    raw_fields = editable.get("editableSchemaFieldInfo") or []
+    if not isinstance(raw_fields, list):
+        raise DataHubDiscoveryError("DataHub editable schema fields are invalid")
+    result: dict[str, str | None] = {}
+    for raw in raw_fields:
+        field = _mapping(raw, "editable schema field")
+        name = _text(field.get("fieldPath"), "editable schema field path")
+        if name in result or name not in native_names:
+            raise DataHubDiscoveryError(
+                "DataHub editable schema fields are duplicate or unknown"
+            )
+        result[name] = _optional_text(field.get("description"))
+    return result
 
 
 def _owners(value: object) -> tuple[NativeEntity, ...]:

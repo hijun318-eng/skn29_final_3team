@@ -71,7 +71,7 @@ def _v2_metric_governance(
         },
         "join": {"required": False, "allowed_edge_ids": []},
         "permission": {
-            "roles": ["hotel_analyst"],
+            "roles": ["analyst"],
             "contains_pii": False,
             "synthetic": False,
         },
@@ -102,7 +102,7 @@ def _bundle() -> dict:
                 "seed_version": "data-arbitrary-9",
                 "synthetic": False,
                 "approval_status": "APPROVED",
-                "entitlements": {"roles": ["hotel_analyst"], "domains": []},
+                "entitlements": {"roles": ["analyst"], "domains": []},
                 "grain": {"kind": "event", "keys": ["event_id"]},
                 "columns": [
                     {
@@ -150,6 +150,7 @@ def _bundle() -> dict:
                 "table_type": "BASE TABLE",
             }
         )
+        assets[-1]["datahub_schema_hash"] = datahub_schema_sha1(assets[-1])
         metrics.append(
             {
                 "id": f"{name}_yield",
@@ -360,7 +361,7 @@ def _bundle_with_dimension_bridge() -> dict:
             "seed_version": "data-arbitrary-9",
             "synthetic": False,
             "approval_status": "APPROVED",
-            "entitlements": {"roles": ["hotel_analyst"], "domains": []},
+            "entitlements": {"roles": ["analyst"], "domains": []},
             "grain": {"kind": "row", "keys": ["event_id"]},
             "columns": [
                 {
@@ -398,6 +399,8 @@ def _bundle_with_dimension_bridge() -> dict:
             "table_type": "BASE TABLE",
         }
     )
+    dimension_asset = bundle["schema_context"]["assets"][-1]
+    dimension_asset["datahub_schema_hash"] = datahub_schema_sha1(dimension_asset)
     bundle["dimensions"].append(
         {
             "id": "neon_category",
@@ -488,8 +491,13 @@ def _graphql_entities(bundle: dict) -> tuple[dict[str, dict], dict[str, dict]]:
                 "name": asset["fqn"],
                 # Connector-owned schema read-back is independent from the
                 # semantic publisher aspects assembled above.
-                "hash": datahub_schema_sha1(asset),
+                "hash": asset["datahub_schema_hash"],
                 "fields": fields,
+            },
+            "editableSchemaMetadata": {
+                "editableSchemaFieldInfo": copy.deepcopy(
+                    editable["editableSchemaFieldInfo"]
+                )
             },
         }
     terms = {}
@@ -730,7 +738,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def test_publisher_aspect_mock_contract_and_prebound_sql_passthrough(self) -> None:
         assets = await self.adapter.search_assets(
             "helium",
-            {"role": "hotel_analyst", "parameters": {}},
+            {"role": "analyst", "parameters": {}},
         )
         term = await self.adapter.get_metric_terms(("helium_yield",))
         schema = await self.adapter.get_asset_schema(assets[0]["urn"])
@@ -759,7 +767,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(MetadataUnavailableError):
             await self.adapter.search_assets(
                 "helium",
-                {"role": "hotel_analyst", "parameters": {}},
+                {"role": "analyst", "parameters": {}},
             )
 
     async def test_ratio_term_is_discovered_and_projected_without_physical_field(self) -> None:
@@ -785,7 +793,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         assets = await adapter.search_assets(
             "Helium average yield",
-            {"role": "hotel_analyst", "parameters": {}},
+            {"role": "analyst", "parameters": {}},
         )
         terms = await adapter.get_metric_terms(("helium_rate",))
         metrics = {
@@ -819,7 +827,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         assets = await adapter.search_assets(
             "helium",
-            {"role": "hotel_analyst", "parameters": {}},
+            {"role": "analyst", "parameters": {}},
         )
         self.assertEqual(["orbit.lake.helium_fact"], [item["fqn"] for item in assets])
 
@@ -875,7 +883,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         ]
         with self.assertRaises(MetadataUnavailableError):
             await self.adapter.search_assets(
-                "helium", {"role": "hotel_analyst", "parameters": {}}
+                "helium", {"role": "analyst", "parameters": {}}
             )
         self.transport = RuntimeTransport(_bundle())
         self.transport.schema_drift = True
@@ -890,7 +898,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.adapter = GovernedDataPlatformAdapter("https://trino.test", "runtime", datahub_client=catalog, trino_client=trino)
         with self.assertRaises(MetadataUnavailableError):
             await self.adapter.search_assets(
-                "helium", {"role": "hotel_analyst", "parameters": {}}
+                "helium", {"role": "analyst", "parameters": {}}
             )
 
     async def test_execution_rejects_rebinding_after_phase_three(self) -> None:
@@ -937,7 +945,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     )
         with self.assertRaises(MetadataUnavailableError):
             await self.adapter.search_assets(
-                "helium", {"role": "hotel_analyst", "parameters": {}}
+                "helium", {"role": "analyst", "parameters": {}}
             )
 
     async def test_native_governance_detail_drift_fails_closed(self) -> None:
@@ -972,7 +980,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 try:
                     with self.assertRaises(MetadataUnavailableError):
                         await adapter.search_assets(
-                            "helium", {"role": "hotel_analyst", "parameters": {}}
+                            "helium", {"role": "analyst", "parameters": {}}
                         )
                 finally:
                     await adapter.aclose()
@@ -995,7 +1003,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         try:
             assets = await adapter.search_assets(
-                "neon", {"role": "hotel_analyst", "parameters": {}}
+                "neon", {"role": "analyst", "parameters": {}}
             )
         finally:
             await adapter.aclose()
@@ -1019,14 +1027,14 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         bundle = _bundle_with_dimension_bridge()
         for asset in bundle["schema_context"]["assets"]:
             if asset["fqn"] == "orbit.lake.helium_fact":
-                asset["entitlements"] = {"roles": ["restricted_role"], "domains": []}
+                asset["entitlements"] = {"roles": ["report_admin"], "domains": []}
         for metric in bundle["metric_rules"]:
             source = metric["source"]
             if (
                 source["kind"] == "column"
                 and source["field"]["asset_fqn"] == "orbit.lake.helium_fact"
             ):
-                metric["governance"]["permission"]["roles"] = ["restricted_role"]
+                metric["governance"]["permission"]["roles"] = ["report_admin"]
         transport = RuntimeTransport(bundle)
         datahub_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.datahub))
         trino_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.trino))
@@ -1048,7 +1056,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         # 인접한 helium_fact가 join 경로로 끌려온다. 그 asset은 이 role에 권한이 없다.
         with self.assertRaises(MetadataUnavailableError):
             await adapter.search_assets(
-                "neon", {"role": "hotel_analyst", "parameters": {}}
+                "neon", {"role": "analyst", "parameters": {}}
             )
 
 
@@ -1076,7 +1084,7 @@ class LiveGovernanceSmokeTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(MetadataUnavailableError):
                 await adapter.search_assets(
                     os.getenv("LIVE_GOVERNANCE_SMOKE_QUERY", "runtime governance"),
-                    {"role": "hotel_analyst", "parameters": {}},
+                    {"role": "analyst", "parameters": {}},
                 )
         finally:
             await adapter.aclose()

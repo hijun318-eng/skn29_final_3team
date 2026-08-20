@@ -103,9 +103,9 @@ class FastApiRuntimeTest(unittest.TestCase):
             return exc.code, json.load(exc)
 
     @staticmethod
-    def context_headers(role: str = "hotel_analyst") -> dict[str, str]:
+    def context_headers(role: str = "analyst") -> dict[str, str]:
         tokens = {
-            "hotel_analyst": "runtime-test-token",
+            "analyst": "runtime-test-token",
             "report_admin": "runtime-report-admin-token",
             "data_admin": "runtime-data-admin-token",
         }
@@ -218,7 +218,7 @@ class FastApiRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(200, status)
         self.assertEqual("authenticated", accepted["data"]["status"])
-        self.assertEqual("hotel_analyst", accepted["data"]["role"])
+        self.assertEqual("analyst", accepted["data"]["role"])
 
     def test_invalid_period_is_rejected_at_the_http_contract(self) -> None:
         status, response = self.request(
@@ -505,7 +505,7 @@ class FastApiRuntimeTest(unittest.TestCase):
         self.assertNotIn("detail", response)
 
         status, response = self.request(
-            "/reports/definitions", headers=self.context_headers("hotel_analyst")
+            "/reports/definitions", headers=self.context_headers("analyst")
         )
         self.assertEqual(503, status)
         self.assertEqual("DEPENDENCY_UNAVAILABLE", response["error"]["code"])

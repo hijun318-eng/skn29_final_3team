@@ -81,7 +81,7 @@ Browser
 
 핵심 역할:
 
-- `hotel_analyst`: 자연어 분석, 결과·근거 확인, Artifact에서 Report 초안 생성
+- `analyst`: 자연어 분석, 결과·근거 확인, Artifact에서 Report 초안 생성
 - `report_admin`: Report 검토·승인·최종 산출물 확인
 - DataHub read principal과 publish principal은 분리
 - App runtime DB 계정과 migration 계정은 분리
@@ -225,7 +225,7 @@ Browser action
 - 특정 acceptance 질문만 통과시키는 분기·JSON·SQL·fixture를 production에 추가하지 않는다.
 - 오류는 가장 좁은 일반 계약 경계에서 수정한다.
 - migration 변경이 필요하면 배포된 revision을 수정하지 말고 새 revision을 추가한다.
-- 기능 파일은 500줄 기본 상한과 책임 분리를 지킨다.
+- 기능 파일은 고정 줄 수가 아니라 책임 경계와 응집도를 기준으로 분리한다.
 - 코드 변경과 한국어 책임 문서를 같은 patch에서 갱신한다.
 
 ### 6단계 — 전체 Gate와 문서 판정

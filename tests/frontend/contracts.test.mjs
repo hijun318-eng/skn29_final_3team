@@ -15,6 +15,7 @@ const productSources = [
   "App.jsx", "routing.js", "api/analysisClient.ts", "api/reportClient.ts",
   "pages/AgentPage.jsx",
   "components/analysis/AnalysisStatePanel.tsx", "components/analysis/AnalysisStatePanelParts.tsx",
+  "components/analysis/AnalysisFailureState.tsx",
   "components/layout/AppHeader.jsx", "components/layout/AppSidebar.jsx",
 ].map(source).concat(reportFeatureSource).join("\n");
 const reportA4Styles = [
@@ -55,16 +56,17 @@ assert.match(source("App.jsx"), /answervice:clear-drafts/);
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /type="date"|periodStart|periodEnd/);
 assert.match(source("pages/AgentPage.jsx"), /analysisClient\.submitTurnCommand/);
 assert.match(source("pages/AgentPage.jsx"), /clarifiedQuestion\(turnItem\.question, sugg/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /어떤 기간으로 분석할까요/);
+assert.match(source("components/analysis/AnalysisFailureState.tsx"), /분석 기간을 선택해 주세요/);
 assert.match(source("pages/AgentPage.jsx"), /MAX_QUESTION_LENGTH\.toLocaleString/);
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /APPROVED_QUESTIONS|객실·식음 통합 매출을 비교해 줘/);
 assert.match(source("pages/AgentPage.jsx"), /onSuggestion=\{\(sugg\)/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /analysis-suggestions/);
+assert.match(source("components/analysis/AnalysisFailureState.tsx"), /analysis-diagnostic__options/);
 assert.match(source("api/analysisClient.ts"), /\/analysis\/progress\/\$\{encodeURIComponent\(traceId\)\}/);
 assert.match(source("api/analysisClient.ts"), /cancelAnalysis\(traceId\)/);
 const analysisPanelSource = [
   source("components/analysis/AnalysisStatePanel.tsx"),
   source("components/analysis/AnalysisStatePanelParts.tsx"),
+  source("components/analysis/AnalysisFailureState.tsx"),
 ].join("\n");
 assert.match(analysisPanelSource, /분석 취소/);
 assert.match(analysisPanelSource, /내부 처리 순서는 추측해 표시하지 않습니다/);
@@ -74,8 +76,10 @@ assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /문�
 assert.match(source("contracts/analysis.ts"), /REQUEST_CANCELLED/);
 assert.match(source("contracts/analysis.ts"), /NETWORK_UNAVAILABLE/);
 assert.match(source("pages/AgentPage.jsx"), /NETWORK_UNAVAILABLE/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /REQUIRED_ACTION_COPY\[requiredAction\]/);
-assert.match(source("components/analysis/AnalysisStatePanel.tsx"), /run\.error\?\.required_action/);
+assert.match(source("components/analysis/AnalysisFailureState.tsx"), /REQUIRED_ACTION_COPY\[action\]/);
+assert.match(source("components/analysis/AnalysisFailureState.tsx"), /run\.error\?\.required_action/);
+assert.doesNotMatch(source("components/analysis/AnalysisFailureState.tsx"), /2026년 7월|추천 질문으로 바로 분석하기|requestId|traceId/);
+assert.doesNotMatch(source("components/TurnEvidenceDrawer.jsx"), /<dt>Request<\/dt>|<dt>Trace<\/dt>|run\.requestId|run\.traceId/);
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /code: "NO_MATCH"/);
 assert.doesNotMatch(source("pages/agentPageHelpers.js"), /code: "NO_MATCH"/);
 assert.doesNotMatch(source("components/analysis/AnalysisStatePanel.tsx"), /ERROR_ACTIONS|AT A GLANCE/);
@@ -100,8 +104,9 @@ assert.match(source("styles.css"), /@media\(min-width:901px\) and \(max-width:11
 assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.runAnalysis\)/);
 assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.manageReport\)/);
 assert.match(source("App.jsx"), /!canRunAnalysis && canUseReports && route\.page === "chat"/);
-assert.match(source("App.jsx"), /세션이 만료되었습니다\. 작성 중인 내용은 유지됩니다/);
-assert.match(source("App.jsx"), /session-reauth-layer/);
+assert.match(source("App.jsx"), /세션이 만료되었습니다\. 안전을 위해 사용자 임시 상태를 지웠습니다/);
+assert.match(source("App.jsx"), /clearAuthenticatedBrowserState\(\)/);
+assert.doesNotMatch(source("App.jsx"), /session-reauth-layer/);
 assert.match(source("App.jsx"), /answervice:report-dirty/);
 assert.match(source("App.jsx"), /reportDirty && !window\.confirm\("저장하지 않은 보고서 변경사항이 있습니다\. 페이지를 이동할까요\?"\)/);
 assert.match(source("App.jsx"), /reportDirty && !window\.confirm\("저장하지 않은 보고서 변경사항이 있습니다\. 로그아웃할까요\?"\)/);
@@ -458,9 +463,9 @@ assert.equal(analysisRequest.init.method, "POST");
 const sessionClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
   assert.equal(url, "http://backend.test/auth/session");
   assert.equal(init.headers.Authorization, "Bearer runtime-token");
-  return new Response(JSON.stringify({ data: { status: "authenticated", role: "hotel_analyst", capabilities: ["analysis.run", "analysis.read", "report.draft"] } }), { status: 200 });
+  return new Response(JSON.stringify({ data: { status: "authenticated", role: "analyst", capabilities: ["analysis.run", "analysis.read", "report.draft"] } }), { status: 200 });
 }, "runtime-token");
-assert.deepEqual(await sessionClient.validateSession(), { status: "authenticated", role: "hotel_analyst", capabilities: ["analysis.run", "analysis.read", "report.draft"] });
+assert.deepEqual(await sessionClient.validateSession(), { status: "authenticated", role: "analyst", capabilities: ["analysis.run", "analysis.read", "report.draft"] });
 
 let loginRequest;
 const loginClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {

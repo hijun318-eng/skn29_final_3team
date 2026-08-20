@@ -136,11 +136,13 @@ class InMemoryReportRepository:
         version: int,
         blocks: tuple[ReportBlock, ...],
         *,
+        title: str | None = None,
         orientation: str | None = None,
         currency_display_unit: str | None = None,
     ) -> ReportDefinitionVersion:
         replaced = self.get_version(definition_id, version).replace_blocks(
             blocks,
+            title=title,
             orientation=orientation,
             currency_display_unit=currency_display_unit,
         )

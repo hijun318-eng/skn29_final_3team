@@ -17,14 +17,15 @@ from metadata_contract_primitives import (
 )
 from release_bundle import ReleaseBinding
 from semantic_authoring import (
-    AUTHORING_CONTRACT_VERSION_V1,
-    AUTHORING_CONTRACT_VERSION_V2,
+    AUTHORING_CONTRACT_VERSION_V3,
+    AUTHORING_CONTRACT_VERSION_V4,
 )
 from src.data.metric_governance import (
     RUNTIME_GOVERNANCE_VERSION_V1,
     RUNTIME_GOVERNANCE_VERSION_V2,
     metric_contract_version,
 )
+from src.data.entitlement_roles import validate_entitlement_roles
 
 
 DECISION_CONTRACT_VERSION_V1 = "answervice.policy_decisions.v1"
@@ -32,11 +33,11 @@ DECISION_CONTRACT_VERSION_V2 = "answervice.policy_decisions.v2"
 DECISION_CONTRACT_VERSION = DECISION_CONTRACT_VERSION_V1
 _DECISION_VERSIONS = {
     DECISION_CONTRACT_VERSION_V1: (
-        AUTHORING_CONTRACT_VERSION_V1,
+        AUTHORING_CONTRACT_VERSION_V3,
         RUNTIME_GOVERNANCE_VERSION_V1,
     ),
     DECISION_CONTRACT_VERSION_V2: (
-        AUTHORING_CONTRACT_VERSION_V2,
+        AUTHORING_CONTRACT_VERSION_V4,
         RUNTIME_GOVERNANCE_VERSION_V2,
     ),
 }
@@ -89,6 +90,10 @@ def compile_authoring_policy(
         approved=True,
     )
     roles = list(unique_texts(source["roles"], "policy roles", non_empty=True))
+    try:
+        validate_entitlement_roles(roles)
+    except ValueError as error:
+        raise SemanticMetadataError("policy roles contain an unsupported role") from error
     grain_overrides = _grain_overrides(source["asset_grains"])
     live_fqns = {binding.relation.fqn for binding in bindings}
     if not set(grain_overrides) <= live_fqns:
@@ -233,14 +238,10 @@ def _asset(
                 "logical_type": _logical_type(physical.native_type),
                 "is_part_of_key": key,
                 "role": role,
-                "description": _canonical_text(
-                    field.description, f"{relation.fqn}.{field.name}.description"
-                ),
             }
         )
     return {
         "fqn": relation.fqn,
-        "description": _canonical_text(dataset.description, f"{relation.fqn}.description"),
         "schema_version": text(source["schema_version"], "schema version"),
         "seed_version": text(source["seed_version"], "seed version"),
         "synthetic": source["synthetic"],

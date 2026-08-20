@@ -44,7 +44,7 @@ class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
         record: dict[str, object] = {
             "token_sha256": hashlib.sha256(token.encode("utf-8")).hexdigest(),
             "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "hotel_analyst",
+            "role": "analyst",
             "not_before": (self.now - timedelta(minutes=1)).isoformat(),
             "expires_at": (self.now + timedelta(minutes=1)).isoformat(),
         }
@@ -65,7 +65,7 @@ class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
             "password_hash": hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 210_000).hex(),
             "password_iterations": 210_000,
             "subject": "00000000-0000-0000-0000-000000000011",
-            "role": "hotel_analyst",
+            "role": "analyst",
             "active": True,
         }
 
@@ -99,7 +99,7 @@ class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
         with patch.dict(os.environ, self.release_environment(), clear=False):
             principal = await authenticate_token("release-token", now=self.now)
         self.assertEqual(UUID("00000000-0000-0000-0000-000000000011"), principal.subject)
-        self.assertEqual(Role.HOTEL_ANALYST, principal.role)
+        self.assertEqual(Role.ANALYST, principal.role)
 
     async def test_background_subject_reloads_platform_capability_from_account_store(self) -> None:
         account = {**self.account(), "role": "platform_admin"}

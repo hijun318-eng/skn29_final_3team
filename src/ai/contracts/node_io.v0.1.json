@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "MODEL-v1.11.0",
+  "version": "MODEL-v1.12.0",
   "$defs": {
     "execution_time": {
       "type": "object",
@@ -584,6 +584,20 @@
       }
     },
     "node2_response": {
+      "oneOf": [
+        {"$ref": "#/$defs/node2_sql_only_response"},
+        {"$ref": "#/$defs/node2_legacy_response"}
+      ]
+    },
+    "node2_sql_only_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sql"],
+      "properties": {
+        "sql": {"type": "string", "minLength": 1}
+      }
+    },
+    "node2_legacy_response": {
       "type": "object",
       "additionalProperties": false,
       "required": [

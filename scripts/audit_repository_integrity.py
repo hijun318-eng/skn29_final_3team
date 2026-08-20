@@ -77,6 +77,9 @@ ALLOWED_RUNTIME_JSON = {
     "src/modelops/release_candidate.v1.json": "non-ready release evidence",
     "src/modelops/serving_manifest.v0.1.json": "historical serving evidence",
     "infrastructure/database/trino/etc/access-control-rules.json": "Trino policy config",
+    "infrastructure/database/trino/etc/iceberg-view-coercions.json": (
+        "versioned and validated Iceberg view type-coercion contract"
+    ),
     "infrastructure/database/datahub/decisions/metric_retirement_20260820.v1.json": (
         "validated product-scope retirement decision"
     ),
@@ -280,8 +283,24 @@ def _review_text(relative: str, text: str, suffix: str) -> tuple[Finding, ...]:
     return tuple(findings)
 
 
+def _is_git_ignored(path: Path, root: Path) -> bool:
+    """로컬 설정 파일이 현재 저장소의 ignore 정책으로 보호되는지 확인한다."""
+
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return False
+    result = subprocess.run(
+        ["git", "check-ignore", "--quiet", "--", relative.as_posix()],
+        cwd=root,
+        check=False,
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
 def _local_secret_findings(root: Path = REPOSITORY_ROOT) -> tuple[Finding, ...]:
-    """Git ignore 여부와 무관하게 저장소 내부의 실제 ``.env`` secret 파일을 차단한다."""
+    """추적되거나 ignore 보호가 없는 repository-local ``.env``를 차단한다."""
 
     findings: list[Finding] = []
     excluded = {".git", "node_modules", "__pycache__"}
@@ -297,6 +316,7 @@ def _local_secret_findings(root: Path = REPOSITORY_ROOT) -> tuple[Finding, ...]:
                 part.startswith((".pytest", ".codex"))
                 for part in relative_path.parts
             )
+            or _is_git_ignored(path, root)
         ):
             continue
         try:
@@ -306,7 +326,7 @@ def _local_secret_findings(root: Path = REPOSITORY_ROOT) -> tuple[Finding, ...]:
         findings.append(
             Finding(
                 relative,
-                "평문 자격증명 위험이 있는 repository-local .env 대신 명시적 외부 secret 파일을 사용하세요.",
+                "repository-local .env는 반드시 Git ignore로 보호하거나 외부 secret 파일로 이동하세요.",
             )
         )
     return tuple(findings)

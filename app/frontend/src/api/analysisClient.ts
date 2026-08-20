@@ -101,7 +101,7 @@ export interface SessionInfo {
 export type LoginSession = SessionInfo;
 
 const SESSION_ROLES = new Set<ServiceRole>([
-  "hotel_analyst",
+  "analyst",
   "report_admin",
   "data_admin",
   "platform_admin",

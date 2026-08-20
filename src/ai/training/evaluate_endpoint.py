@@ -38,8 +38,11 @@ Requester = Callable[[str, str, dict[str, Any] | None, str | None, float], dict[
 
 
 def _schema(node: str) -> dict[str, Any]:
-    """Return the same strict response schema used by offline validation."""
-    return schema_definition(f"{node}_response")
+    """학습 대상과 동일한 SQL-only/repair 응답 스키마를 endpoint 평가 요청에 사용한다."""
+    definition = (
+        "node2_sql_only_response" if node == "node2" else f"{node}_response"
+    )
+    return schema_definition(definition)
 
 
 def _run_trino(

@@ -20,6 +20,7 @@ from release_scope import (  # noqa: E402
     load_release_scopes_with_serving,
 )
 from release_trino import TrinoDiscoveryError, TrinoMetadataClient  # noqa: E402
+from src.data.governance_contract import datahub_schema_readback_sha1  # noqa: E402
 from author_semantic_catalog import (  # noqa: E402
     author_and_verify,
     parse_args as parse_authoring_args,
@@ -331,7 +332,9 @@ def test_datahub_discovery_filters_by_platform_instance_before_detail_lookup():
                             "version": 0,
                             "name": "lake.curated.events",
                             "platformUrn": "urn:li:dataPlatform:postgres",
-                            "hash": "source-hash",
+                            # Pinned DataHub connector는 schemaMetadata.hash를 비워 둘 수
+                            # 있으므로 실제 field read-back fingerprint가 권위 값이다.
+                            "hash": "",
                             "fields": [
                                 {
                                     "fieldPath": "event_id",
@@ -341,6 +344,14 @@ def test_datahub_discovery_filters_by_platform_instance_before_detail_lookup():
                                     "description": None,
                                 }
                             ],
+                        },
+                        "editableSchemaMetadata": {
+                            "editableSchemaFieldInfo": [
+                                {
+                                    "fieldPath": "event_id",
+                                    "description": "Curated event identifier.",
+                                }
+                            ]
                         },
                     }
                 }
@@ -362,6 +373,17 @@ def test_datahub_discovery_filters_by_platform_instance_before_detail_lookup():
 
     assert [dataset.urn for dataset in datasets] == [target]
     assert detail_calls == [target]
+    assert datasets[0].schema_hash == datahub_schema_readback_sha1(
+        [
+            {
+                "ordinal_position": 1,
+                "name": "event_id",
+                "native_type": "bigint",
+                "nullable": False,
+            }
+        ]
+    )
+    assert datasets[0].fields[0].description == "Curated event identifier."
 
 
 def test_glossary_discovery_uses_rest_status_and_live_lifecycle_definition():

@@ -54,7 +54,7 @@ METRIC = {
     "dimensions": [],
     "visibility": "BUSINESS",
     "governance_version": RUNTIME_GOVERNANCE_VERSION_V2,
-    "allowed_roles": ["hotel_analyst"],
+    "allowed_roles": ["analyst"],
     "contains_pii": False,
     "allowed_join_ids": [],
     "join_required": False,
@@ -340,7 +340,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
             request_id=UUID("10000000-0000-0000-0000-000000000001"),
             trace_id="arbitrary-pipeline-trace",
             user_id=UUID("20000000-0000-0000-0000-000000000002"),
-            role=Role.HOTEL_ANALYST,
+            role=Role.ANALYST,
             as_of=date(2042, 6, 15),
         )
         self.payload = AnalysisRequest(question=REQUEST_TEXT)

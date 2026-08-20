@@ -110,7 +110,7 @@ class RoutingService:
     async def decide(
         self,
         payload: AnalysisRequest,
-        role: Role = Role.HOTEL_ANALYST,
+        role: Role = Role.ANALYST,
     ) -> RouteDecision:
         """요청의 template 선택과 인증된 역할을 DB 승인 계약에 대조해 route를 결정한다.
 

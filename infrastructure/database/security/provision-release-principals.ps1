@@ -1,5 +1,5 @@
-# 책임: 외부 env/secret 경로에 release principal의 PBKDF2 verifier를 생성·회전한다.
-# repository 내부 경로나 약한 credential은 파일을 쓰기 전에 거절한다.
+# 책임: 운영 외부 또는 명시적 gitignored 개발 경로에 release principal의 PBKDF2
+# verifier를 생성·회전한다. 묵시적 local fallback과 약한 credential은 쓰기 전에 거절한다.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
@@ -7,26 +7,41 @@ param(
     [Parameter(Mandatory)]
     [string]$PrincipalPath,
     [string]$AnalystUsername,
-    [ValidateSet('hotel_analyst', 'report_admin', 'data_admin', 'platform_admin')]
+    [ValidateSet('analyst', 'report_admin', 'data_admin', 'platform_admin')]
     [string]$AnalystRole,
     [int]$SessionTtlSeconds = 0,
-    [switch]$PromptAnalystPassword
+    [switch]$PromptAnalystPassword,
+    [switch]$AllowRepositoryLocalDevelopment
 )
 
 $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $scriptRoot '..\..\..'))
 . (Join-Path $scriptRoot '../scripts/deployment-environment.ps1')
-$resolvedEnvPath = Resolve-ExternalDeploymentEnvFile `
-    -Path $EnvPath -RepositoryRoot $repoRoot
+$resolvedEnvPath = Resolve-ExplicitDeploymentEnvFile `
+    -Path $EnvPath -RepositoryRoot $repoRoot `
+    -AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment
 $resolvedPrincipalPath = [IO.Path]::GetFullPath($PrincipalPath)
 $principalParent = Split-Path -Parent $resolvedPrincipalPath
 if (-not (Test-FullyQualifiedFileSystemPath $PrincipalPath) -or
     -not (Test-Path -LiteralPath $principalParent -PathType Container)) {
     throw 'PrincipalPath must be an absolute path whose parent directory already exists.'
 }
-if ($resolvedPrincipalPath.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
-    throw 'PrincipalPath must remain outside the repository so authentication data cannot be committed.'
+$repositoryPrefix = $repoRoot.TrimEnd(
+    [IO.Path]::DirectorySeparatorChar,
+    [IO.Path]::AltDirectorySeparatorChar
+) + [IO.Path]::DirectorySeparatorChar
+if ($resolvedPrincipalPath.StartsWith(
+    $repositoryPrefix,
+    [StringComparison]::OrdinalIgnoreCase
+)) {
+    if (-not $AllowRepositoryLocalDevelopment) {
+        throw 'Repository-local PrincipalPath requires -AllowRepositoryLocalDevelopment.'
+    }
+    & git -C $repoRoot check-ignore -q -- $resolvedPrincipalPath
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Repository-local PrincipalPath must be covered by .gitignore.'
+    }
 }
 $envText = [IO.File]::ReadAllText($resolvedEnvPath)
 
@@ -124,7 +139,7 @@ $definitions = @(
         username_env = 'ANALYST_LOGIN_ID'
         password_env = 'ANALYST_LOGIN_PASSWORD'
         role_env = 'ANALYST_LOGIN_ROLE'
-        default_role = 'hotel_analyst'
+        default_role = 'analyst'
     },
     [ordered]@{
         username_env = 'REPORT_ADMIN_LOGIN_ID'
@@ -133,7 +148,7 @@ $definitions = @(
         default_role = 'report_admin'
     }
 )
-$allowedRoles = @('hotel_analyst', 'report_admin', 'data_admin', 'platform_admin')
+$allowedRoles = @('analyst', 'report_admin', 'data_admin', 'platform_admin')
 $existing = @()
 if (Test-Path -LiteralPath $resolvedPrincipalPath) {
     try { $existing = @((Get-Content -Raw -LiteralPath $resolvedPrincipalPath | ConvertFrom-Json)) }

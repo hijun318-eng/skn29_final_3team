@@ -18,7 +18,7 @@ source:
     # Trino가 모든 catalog에 노출하는 system schema는 업무 dataset이 아니다.
     # 특정 release schema를 고정하지 않고 system metadata만 일반 규칙으로 제외한다.
     schema_pattern:
-      deny: ["^information_schema$"]
+      deny: ["^(information_schema|system)$"]
     include_view_lineage: true
     include_view_column_lineage: true
     ingest_lineage_to_connectors: true

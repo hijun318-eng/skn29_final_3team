@@ -12,7 +12,7 @@ export const CAPABILITY = {
 export type ServiceCapability = typeof CAPABILITY[keyof typeof CAPABILITY];
 
 /** Backend 인증 계약이 반환할 수 있는 사용자 Role 문자열의 허용 집합이다. */
-export type ServiceRole = "hotel_analyst" | "report_admin" | "data_admin" | "platform_admin";
+export type ServiceRole = "analyst" | "report_admin" | "data_admin" | "platform_admin";
 
 /** 서버 세션이 반환한 Capability 배열만으로 화면 기능 노출 여부를 판정한다. */
 export function hasCapability(

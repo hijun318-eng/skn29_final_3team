@@ -164,17 +164,18 @@ class ReportDefinitionVersion:
         self,
         blocks: tuple[ReportBlock, ...],
         *,
+        title: str | None = None,
         orientation: str | None = None,
         currency_display_unit: str | None = None,
     ) -> "ReportDefinitionVersion":
-        """초안의 블록 전체와 선택적 표시 설정을 교체한 새 값 객체를 반환하고 승인본 수정은 거부한다."""
+        """초안의 제목·블록·표시 설정을 교체한 새 값 객체를 반환하고 승인본 수정은 거부한다."""
         if self.status is not DefinitionStatus.DRAFT:
             raise ValueError("draft Report version만 block layout을 교체할 수 있습니다.")
         return ReportDefinitionVersion(
             definition_id=self.definition_id,
             version=self.version,
             status=self.status,
-            title=self.title,
+            title=self.title if title is None else title,
             blocks=blocks,
             orientation=self.orientation if orientation is None else orientation,
             currency_display_unit=(

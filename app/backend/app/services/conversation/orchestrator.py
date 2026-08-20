@@ -236,8 +236,11 @@ class ConversationOrchestrator:
                             period_start=last_time["start"],
                             period_end_exclusive=last_time["end_exclusive"],
                         )
+                    # `search_query`는 짧은 후속 발화의 자산 recall을 높이는 검색 전용 힌트다.
+                    # 의도·생략 여부·새 주제 판정은 사용자가 실제로 쓴 원문을 기준으로 해야
+                    # 하므로 모델 입력까지 보강 문자열로 바꾸지 않는다.
                     _, _nq, structured = await self._support.select_metric(
-                        AnalysisRequest(question=search_query, resolved_slots=preflight_slots), context, assets,
+                        AnalysisRequest(question=user_message, resolved_slots=preflight_slots), context, assets,
                     )
                     node1_res = structured
             except NoEntitledAssetsError:

@@ -27,6 +27,7 @@ from src.data.governance_contract import (
     RUNTIME_GOVERNANCE_VERSION as CONTRACT_VERSION,
     validate_governance_reference_coverage,
 )
+from src.data.entitlement_roles import validate_entitlement_roles
 
 
 PROPERTY_PREFIX = "answervice."
@@ -148,7 +149,7 @@ def _validate_schema_context(
                 "synthetic", "approval_status", "entitlements", "grain", "columns",
                 "owner_urn", "domain_urn", "approved_lifecycle_urn",
                 "platform_urn", "schema_name", "schema_metadata_version",
-                "dataset_key",
+                "datahub_schema_hash", "dataset_key",
                 "table_type",
             },
             f"asset[{index}]",
@@ -174,6 +175,10 @@ def _validate_schema_context(
         ):
             raise SemanticMetadataError("dataset_key must exactly identify its dataset URN")
         _text(asset["schema_name"], f"asset[{index}].schema_name")
+        _text(
+            asset["datahub_schema_hash"],
+            f"asset[{index}].datahub_schema_hash",
+        )
         _text(asset["table_type"], f"asset[{index}].table_type")
         if (
             not isinstance(asset["schema_metadata_version"], int)
@@ -203,6 +208,12 @@ def _validate_schema_context(
         entitlements = _mapping(asset["entitlements"], f"{fqn}.entitlements")
         _exact_keys(entitlements, {"roles", "domains"}, f"{fqn}.entitlements")
         roles = _unique_texts(entitlements["roles"], f"{fqn}.entitlements.roles")
+        try:
+            validate_entitlement_roles(roles)
+        except ValueError as error:
+            raise SemanticMetadataError(
+                f"{fqn} entitlement role is unsupported"
+            ) from error
         domains = _unique_texts(entitlements["domains"], f"{fqn}.entitlements.domains")
         if not roles and not domains:
             raise SemanticMetadataError(f"{fqn} entitlements cannot be empty")
@@ -230,8 +241,8 @@ def _validate_schema_context(
         key_columns = {
             column["name"] for column in asset["columns"] if column["is_part_of_key"]
         }
-        if key_columns != set(keys):
-            raise SemanticMetadataError(f"{fqn} grain keys differ from schema key columns")
+        if not key_columns <= set(keys):
+            raise SemanticMetadataError(f"{fqn} grain removes a physical schema key")
         columns_by_fqn[fqn] = columns
     return columns_by_fqn
 

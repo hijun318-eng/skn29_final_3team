@@ -31,7 +31,7 @@ def _node1_request(**overrides: object) -> dict[str, object]:
     """계약을 만족하는 최소 node1_request를 만들고 지정한 키만 덮어쓴다."""
     request: dict[str, object] = {
         "question": "그 전 달은?",
-        "role_hint": "hotel_analyst",
+        "role_hint": "analyst",
         "as_of": "2026-08-19T00:00:00+09:00",
         "timezone": "Asia/Seoul",
         "calendar_id": "gregorian",

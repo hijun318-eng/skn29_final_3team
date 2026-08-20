@@ -28,6 +28,10 @@
   | "CONTEXT_SOURCE_FAILED"
   | "SEMANTIC_CONTRACT_INVALID"
   | "DATA_ASSET_NOT_FOUND"
+  | "OUT_OF_DATA_RANGE"
+  | "SOURCE_NOT_READY"
+  | "GRAIN_VIOLATION"
+  | "FILTER_VALUE_NOT_FOUND"
   | "AUTHENTICATION_REQUIRED"
   | "ACCESS_DENIED"
   | "MODEL_CONTRACT_INVALID"
@@ -333,8 +337,11 @@ export function resolveViewState(run: AnalysisRun): AnalysisViewState {
     return "INSUFFICIENT_EVIDENCE";
   }
   if (run.status === "failed") return "ERROR";
-  if (run.status === "blocked" && run.error?.code === "CONTEXT_INCOMPLETE") return "EMPTY";
-  if (run.status === "blocked" && run.error?.code === "ACCESS_DENIED") return "FORBIDDEN";
+  if (
+    run.status === "blocked"
+    && ["CONTEXT_INCOMPLETE", "INSUFFICIENT_CONTEXT", "DATA_ASSET_NOT_FOUND", "OUT_OF_DATA_RANGE", "FILTER_VALUE_NOT_FOUND", "GRAIN_VIOLATION"].includes(run.error?.code ?? "")
+  ) return "EMPTY";
+  if (run.status === "blocked" && ["ACCESS_DENIED", "AUTHENTICATION_REQUIRED"].includes(run.error?.code ?? "")) return "FORBIDDEN";
   if (
     run.status === "blocked"
     && (run.error?.code === "RESULT_EVIDENCE_MISSING" || run.error?.code === "INSUFFICIENT_EVIDENCE")

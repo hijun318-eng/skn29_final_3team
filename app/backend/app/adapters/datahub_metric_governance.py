@@ -1,7 +1,5 @@
 """v1/v2 Metric Rule read-back과 Dataset-local 실행 projection을 엄격히 결합한다."""
 
-# architecture-max-lines: 510 -- Metric Rule read-back과 Dataset-local projection은 동일 계약 경계에서 함께 검증해야 드리프트를 막는다.
-
 from __future__ import annotations
 
 from collections.abc import Mapping

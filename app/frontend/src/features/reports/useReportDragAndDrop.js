@@ -2,8 +2,31 @@
 import { useCallback, useRef, useState } from "react";
 import { KeyboardSensor, PointerSensor, TouchSensor, useSensor, useSensors } from "@dnd-kit/core";
 
-import { placeDraftBlock } from "../../contracts/report";
-import { keyboardEndDropPosition, moveFrontendBlock } from "./reportDraftV2";
+import { placeDraftBlock } from "../../contracts/report.ts";
+import { keyboardEndDropPosition, moveFrontendBlock } from "./reportDraftV2.js";
+
+/** 이동 대상과 형제 블록의 좌·중·우 및 상·중·하가 일치하는 12열 guide를 계산한다. */
+export function computeReportAlignmentGuides(position, blocks, activeId) {
+  if (!position) return null;
+  const siblings = blocks.filter((block) => block.id !== activeId);
+  const xPoints = [position.x, position.x + position.w / 2, position.x + position.w];
+  const yPoints = [position.y, position.y + position.h / 2, position.y + position.h];
+  const siblingX = new Set(siblings.flatMap((block) => {
+    const x = block.x ?? 0;
+    const width = block.w ?? block.columns ?? 12;
+    return [x, x + width / 2, x + width];
+  }));
+  const siblingY = new Set(siblings.flatMap((block) => {
+    const y = block.y ?? 0;
+    const height = block.h ?? 1;
+    return [y, y + height / 2, y + height];
+  }));
+  const vertical = [...new Set(xPoints.filter((value) => siblingX.has(value)))];
+  const horizontal = [...new Set(yPoints.filter((value) => siblingY.has(value)))];
+  return vertical.length || horizontal.length
+    ? { pageId: position.pageId, vertical, horizontal }
+    : null;
+}
 
 function reportKeyboardCoordinates(event, { currentCoordinates }) {
   const movement = {
@@ -34,6 +57,7 @@ export function useReportDragAndDrop({
 }) {
   const [draggedBlockId, setDraggedBlockId] = useState("");
   const [dropPosition, setDropPosition] = useState(null);
+  const [alignmentGuides, setAlignmentGuides] = useState(null);
   const lastDropOutcomeRef = useRef({ success: false, message: "" });
   const pageCanvasRefs = useRef(new Map());
   const dragPointerRef = useRef(null);
@@ -137,6 +161,7 @@ export function useReportDragAndDrop({
     dropPositionRef.current = null;
     setDraggedBlockId("");
     setDropPosition(null);
+    setAlignmentGuides(null);
   }, []);
 
   const handleDragStart = useCallback(({ active, activatorEvent }) => {
@@ -153,7 +178,8 @@ export function useReportDragAndDrop({
     const position = dragDestination(active, delta);
     dropPositionRef.current = position;
     setDropPosition(position);
-  }, [dragDestination]);
+    setAlignmentGuides(computeReportAlignmentGuides(position, blocksRef.current, String(active.id)));
+  }, [blocksRef, dragDestination]);
 
   const handleDragEnd = useCallback(({ active, delta }) => {
     const activeId = String(active.id);
@@ -208,6 +234,7 @@ export function useReportDragAndDrop({
   }, [blocksRef, dragLabel]);
 
   return {
+    alignmentGuides,
     accessibility: {
       screenReaderInstructions: { draggable: "블록을 이동하려면 Enter 또는 Space를 누르세요. 방향키로 위치를 바꾸고 Enter 또는 Space로 놓습니다. Escape를 누르면 취소합니다." },
       announcements: {

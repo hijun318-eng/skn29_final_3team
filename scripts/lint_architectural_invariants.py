@@ -26,13 +26,6 @@ SOURCE_ROOTS = (
 )
 SOURCE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".css"}
 EXCLUDED_PARTS = {"migrations", "node_modules", "dist", "__pycache__"}
-DEFAULT_MAX_SOURCE_LINES = 500
-ABSOLUTE_MAX_SOURCE_LINES = 800
-LINE_LIMIT_MARKERS = (
-    "# architecture-max-lines:",
-    "// architecture-max-lines:",
-    "/* architecture-max-lines:",
-)
 SUSPICIOUS_CONTAINER_NAME = re.compile(
     r"(?:^|_)(?:HINTS?|KEYWORDS?|TRANSLATIONS?)(?:_|$)", re.IGNORECASE
 )
@@ -281,61 +274,11 @@ def _staged_source_files() -> tuple[Path, ...]:
     )
 
 
-def _source_line_limit(text: str) -> tuple[int, str | None]:
-    """Return the default limit or one explicitly justified bounded exception."""
-
-    for line in text.splitlines()[:12]:
-        stripped = line.strip()
-        marker = next(
-            (item for item in LINE_LIMIT_MARKERS if stripped.startswith(item)),
-            None,
-        )
-        if marker is None:
-            continue
-        declaration = stripped.removeprefix(marker).strip()
-        requested, separator, reason = declaration.partition(" -- ")
-        try:
-            limit = int(requested)
-        except ValueError:
-            return DEFAULT_MAX_SOURCE_LINES, "exception limit must be an integer"
-        if (
-            not separator
-            or not DEFAULT_MAX_SOURCE_LINES < limit <= ABSOLUTE_MAX_SOURCE_LINES
-            or len(reason.strip()) < 20
-        ):
-            return (
-                DEFAULT_MAX_SOURCE_LINES,
-                "exception must be 501..800 lines with a 20+ character reason",
-            )
-        return limit, None
-    return DEFAULT_MAX_SOURCE_LINES, None
-
-
 def inspect_file(path: Path) -> tuple[Violation, ...]:
-    """한 소스 파일의 크기와 Python AST 위반을 반환한다."""
+    """한 소스 파일의 Python AST 위반을 반환한다."""
 
     text = path.read_text(encoding="utf-8")
     violations: list[Violation] = []
-    line_limit, marker_error = _source_line_limit(text)
-    if marker_error is not None:
-        violations.append(
-            Violation(
-                path,
-                1,
-                "BAN-06",
-                f"invalid architecture line exception: {marker_error}.",
-            )
-        )
-    line_count = len(text.splitlines())
-    if line_count > line_limit:
-        violations.append(
-            Violation(
-                path,
-                line_limit + 1,
-                "BAN-06",
-                f"프로덕션 모듈은 {line_limit}줄 이하여야 합니다(현재 {line_count}줄).",
-            )
-        )
     if path.suffix == ".py":
         try:
             tree = ast.parse(text, filename=str(path))

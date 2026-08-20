@@ -46,7 +46,7 @@ def default_analysis_runtime_metadata() -> AnalysisRuntimeMetadata:
         "dimensions": [],
         "governance_version": RUNTIME_GOVERNANCE_VERSION_V2,
         "visibility": "BUSINESS",
-        "allowed_roles": ["hotel_analyst"],
+        "allowed_roles": ["analyst"],
         "contains_pii": False,
         "allowed_join_ids": [],
         "join_required": False,

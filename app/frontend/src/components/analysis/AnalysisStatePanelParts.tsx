@@ -35,27 +35,11 @@ export const VIEW_COPY: Record<AnalysisViewState, { title: string; description: 
 export const REQUIRED_ACTION_COPY: Record<string, string> = {
   RETRY: "잠시 후 같은 질문을 다시 분석해 주세요.",
   AUTHENTICATE: "로그인한 뒤 다시 시도해 주세요.",
-  REQUEST_ACCESS: "현재 계정에 필요한 데이터 권한을 요청해 주세요.",
+  REQUEST_ACCESS: "현재 계정에서 사용할 수 있는 지표나 분석 범위로 질문을 바꿔 주세요.",
   PROVIDE_CONTEXT: "분석할 지표나 기간을 질문에 추가해 주세요.",
   MODIFY_REQUEST: "질문의 범위나 조건을 수정해 다시 전송해 주세요.",
-  CONTACT_SUPPORT: "지속적으로 문제가 발생할 경우 서비스 관리자에게 문의해 주세요.",
+  CONTACT_SUPPORT: "현재는 분석을 계속할 수 없습니다. 잠시 후 다시 확인해 주세요.",
 };
-
-/**
- * 서버 오류 코드를 사용자가 이해할 수 있는 제목으로 바꾼다.
- * @param {string} [code] - 서버가 반환한 ErrorCode.
- * @returns {string} 표시용 제목. 매핑이 없으면 일반 안내 제목.
- */
-export function errorStateTitle(code?: string) {
-  if (["CONTEXT_INCOMPLETE", "INSUFFICIENT_CONTEXT", "DATA_ASSET_NOT_FOUND"].includes(code ?? "")) return "질문 분석 불가 (호텔 데이터 외 질의)";
-  if (["PERIOD_REQUIRED"].includes(code ?? "")) return "분석 기간 선택 필요";
-  if (code === "CONTEXT_SOURCE_FAILED") return "데이터 카탈로그 검증 실패";
-  if (["TRINO_CONNECTION_FAILED", "QUERY_SOURCE_FAILED", "DEPENDENCY_UNAVAILABLE", "QUERY_TIMEOUT", "MODEL_TIMEOUT"].includes(code ?? "")) return "데이터 조회 지연";
-  if (["ACCESS_DENIED", "AUTHENTICATION_REQUIRED"].includes(code ?? "")) return "접근 권한 제한";
-  if (["MODEL_CONTRACT_INVALID", "MODEL_OUTPUT_UNGROUNDED"].includes(code ?? "")) return "결과 검증 보완 필요";
-  if (["MODEL_ENDPOINT_UNAVAILABLE", "CIRCUIT_OPEN"].includes(code ?? "")) return "일시적인 서비스 지연";
-  return "분석 처리 안내";
-}
 
 /**
  * 경과 시간대별 진행 안내 문구를 만든다. 내부 처리 단계를 추측하지 않는다.

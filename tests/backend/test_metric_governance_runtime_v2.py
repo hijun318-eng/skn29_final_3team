@@ -47,8 +47,8 @@ from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V1  # noqa: E4
 
 def _runtime_bundle(
     *,
-    asset_roles: tuple[str, ...] = ("hotel_analyst",),
-    metric_roles: tuple[str, ...] = ("hotel_analyst",),
+    asset_roles: tuple[str, ...] = ("analyst",),
+    metric_roles: tuple[str, ...] = ("analyst",),
     contains_pii: bool = False,
 ) -> dict:
     bundle = _v2_bundle()
@@ -120,11 +120,11 @@ def _engine(bundle: dict) -> QueryGovernanceEngine:
 def test_v1_metric_is_read_compatible_but_never_runtime_permitted() -> None:
     legacy_metric = {
         "governance_version": RUNTIME_GOVERNANCE_VERSION_V1,
-        "allowed_roles": ("hotel_analyst",),
+        "allowed_roles": ("analyst",),
         "contains_pii": False,
     }
 
-    assert runtime_metric_permitted(legacy_metric, "hotel_analyst") is False
+    assert runtime_metric_permitted(legacy_metric, "analyst") is False
     assert runtime_metric_permitted(legacy_metric, "platform_admin") is False
 
 
@@ -143,7 +143,7 @@ def test_support_operands_execute_but_are_not_business_candidates() -> None:
     assets = asyncio.run(
         engine.search_assets(
             "Amount per Event",
-            {"role": "hotel_analyst", "parameters": {"active": True}},
+            {"role": "analyst", "parameters": {"active": True}},
         )
     )
     metrics = {
@@ -180,7 +180,7 @@ def test_platform_admin_inherits_existing_metric_and_asset_entitlements() -> Non
 def test_metric_role_and_pii_policy_fail_closed_after_asset_entitlement() -> None:
     role_restricted = _engine(
         _runtime_bundle(
-            asset_roles=("hotel_analyst", "data_admin"),
+            asset_roles=("analyst", "data_admin"),
             metric_roles=("data_admin",),
         )
     )
@@ -188,7 +188,7 @@ def test_metric_role_and_pii_policy_fail_closed_after_asset_entitlement() -> Non
         asyncio.run(
             role_restricted.search_assets(
                 "Amount per Event",
-                {"role": "hotel_analyst", "parameters": {"active": True}},
+                {"role": "analyst", "parameters": {"active": True}},
             )
         )
 
@@ -197,7 +197,7 @@ def test_metric_role_and_pii_policy_fail_closed_after_asset_entitlement() -> Non
         asyncio.run(
             pii.search_assets(
                 "Amount per Event",
-                {"role": "hotel_analyst", "parameters": {"active": True}},
+                {"role": "analyst", "parameters": {"active": True}},
             )
         )
     with pytest.raises(NoEntitledAssetsError, match="business metric"):
@@ -241,7 +241,7 @@ def test_node1_receives_only_business_metric_while_context_keeps_operands() -> N
     assets = asyncio.run(
         engine.search_assets(
             "Amount per Event",
-            {"role": "hotel_analyst", "parameters": {"active": True}},
+            {"role": "analyst", "parameters": {"active": True}},
         )
     )
     model = _Normalizer()
@@ -250,7 +250,7 @@ def test_node1_receives_only_business_metric_while_context_keeps_operands() -> N
         request_id=UUID("10000000-0000-0000-0000-000000000001"),
         trace_id="v2-runtime-governance",
         user_id=UUID("20000000-0000-0000-0000-000000000002"),
-        role=Role.HOTEL_ANALYST,
+        role=Role.ANALYST,
         as_of=date(2026, 8, 19),
     )
 

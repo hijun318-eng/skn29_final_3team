@@ -10,10 +10,11 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from app.contract_core import Capability, Role
+from src.data.entitlement_roles import normalize_entitlement_roles
 
 
 _ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
-    Role.HOTEL_ANALYST: frozenset(
+    Role.ANALYST: frozenset(
         {
             Capability.RUN_ANALYSIS,
             Capability.READ_ANALYSIS,
@@ -31,7 +32,7 @@ _ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
 }
 
 _EFFECTIVE_ROLES: dict[Role, frozenset[Role]] = {
-    Role.HOTEL_ANALYST: frozenset({Role.HOTEL_ANALYST}),
+    Role.ANALYST: frozenset({Role.ANALYST}),
     Role.REPORT_ADMIN: frozenset({Role.REPORT_ADMIN}),
     Role.DATA_ADMIN: frozenset({Role.DATA_ADMIN}),
     Role.PLATFORM_ADMIN: frozenset(Role),
@@ -64,15 +65,18 @@ def effective_roles(role: Role) -> frozenset[Role]:
 def role_is_entitled(role: Role | str, allowed_roles: Iterable[Role | str]) -> bool:
     """인증 Role이 외부 계약의 허용 Role 중 하나를 직접 또는 명시적 상속으로 만족하는지 판정한다.
 
-    알 수 없는 Role 문자열은 허용으로 보정하지 않고 거부한다. 이는 오래된 metadata나
-    오타가 관리자 권한으로 승격되는 것을 막는 fail-closed 경계다.
+    알 수 없는 Role 문자열은 허용으로 보정하지 않고 거부한다. 외부 metadata도
+    현재 canonical Role과 정확히 일치해야 한다.
     """
 
     try:
         authenticated = role if isinstance(role, Role) else Role(str(role))
         allowed = frozenset(
-            item if isinstance(item, Role) else Role(str(item))
-            for item in allowed_roles
+            Role(item)
+            for item in normalize_entitlement_roles(
+                item.value if isinstance(item, Role) else item
+                for item in allowed_roles
+            )
         )
     except ValueError:
         return False

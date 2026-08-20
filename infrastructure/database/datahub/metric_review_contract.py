@@ -17,6 +17,7 @@ from metadata_contract_primitives import (
     unique_texts,
 )
 from runtime_governance_draft import GovernanceDraft
+from src.data.entitlement_roles import validate_entitlement_roles
 
 
 CONTRACT_VERSION = "answervice.metric_review.v1"
@@ -85,6 +86,12 @@ def validate_metric_review(
     allowed_roles = frozenset(
         unique_texts(candidate["allowed_roles"], "allowed roles", non_empty=True)
     )
+    try:
+        validate_entitlement_roles(allowed_roles)
+    except ValueError as error:
+        raise SemanticMetadataError(
+            "metric review contains an unsupported authentication role"
+        ) from error
     views = {
         view.fqn: {field.name for field in view.fields}
         for view in sql_evidence.views

@@ -66,8 +66,8 @@ def test_recipes_use_runtime_schema_or_database_scope_not_table_allowlists():
     config = serving["source"]["config"]
     assert config["include_tables"] is True
     assert config["include_views"] is True
-    # Serving은 release schema를 고정하지 않고 Trino system metadata만 제외한다.
-    assert config["schema_pattern"] == {"deny": ["^information_schema$"]}
+    # Serving은 release schema를 고정하지 않고 connector system metadata만 제외한다.
+    assert config["schema_pattern"] == {"deny": ["^(information_schema|system)$"]}
 
 
 def test_ingestion_profile_runs_every_runtime_recipe_without_static_asset_lists():
@@ -88,6 +88,9 @@ def test_ingestion_profile_runs_every_runtime_recipe_without_static_asset_lists(
     assert "-Apply" in script and "BASE_METADATA_INGESTED" in script
     assert "catalog_ready=false|next=SEMANTIC_CHECK" in script
     assert "docker wait $ingestionContainer[0]" in script
+    assert "ANSWERVICE_RUNTIME_CATALOG_INGESTION_COMPLETE" in service["command"][0]
+    assert "ANSWERVICE_RUNTIME_CATALOG_INGESTION_COMPLETE" in script
+    assert "docker logs --tail 20" in script
     assert "compose.semantic-search.yml" not in script
     assert "dataset-semantic-content-bootstrap" not in script
     assert "PUBLISHED" not in script and "VERIFIED" not in script

@@ -19,7 +19,7 @@ def test_progress_is_owner_scoped_and_preserves_cancelled_terminal_state():
     other = UUID("00000000-0000-0000-0000-000000000002")
     request_id = UUID("00000000-0000-0000-0000-000000000003")
 
-    registry.start("progress-trace", owner, Role.HOTEL_ANALYST, request_id)
+    registry.start("progress-trace", owner, Role.ANALYST, request_id)
     registry.record(request_id, PipelineStage.ROUTER, StageOutcome.PASSED)
 
     with pytest.raises(KeyError):
@@ -44,8 +44,8 @@ def test_same_trace_never_overwrites_server_owned_requests():
     first = UUID("00000000-0000-0000-0000-000000000003")
     second = UUID("00000000-0000-0000-0000-000000000004")
 
-    registry.start("shared-correlation", owner, Role.HOTEL_ANALYST, first)
-    registry.start("shared-correlation", owner, Role.HOTEL_ANALYST, second)
+    registry.start("shared-correlation", owner, Role.ANALYST, first)
+    registry.start("shared-correlation", owner, Role.ANALYST, second)
     registry.record(first, PipelineStage.ROUTER)
     registry.record(second, PipelineStage.CONTEXT)
 
@@ -65,9 +65,9 @@ def test_progress_registry_enforces_size_bound_without_cross_request_mutation():
     first = UUID("00000000-0000-0000-0000-000000000003")
     second = UUID("00000000-0000-0000-0000-000000000004")
 
-    registry.start("first", owner, Role.HOTEL_ANALYST, first)
+    registry.start("first", owner, Role.ANALYST, first)
     registry.finish(first, AnalysisStatus.SUCCEEDED)
-    registry.start("second", owner, Role.HOTEL_ANALYST, second)
+    registry.start("second", owner, Role.ANALYST, second)
 
     with pytest.raises(KeyError):
         registry.get_request(first, owner)
@@ -79,7 +79,7 @@ def test_terminal_progress_expires_from_completion_not_start_time():
     owner = UUID("00000000-0000-0000-0000-000000000001")
     request_id = UUID("00000000-0000-0000-0000-000000000003")
 
-    registry.start("long-running", owner, Role.HOTEL_ANALYST, request_id)
+    registry.start("long-running", owner, Role.ANALYST, request_id)
     registry.finish(request_id, AnalysisStatus.SUCCEEDED)
     registry._active[request_id].completed_clock = 100
     with patch("app.services.analysis.progress.monotonic", side_effect=(105, 105, 111)):

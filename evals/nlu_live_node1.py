@@ -111,7 +111,7 @@ def build_request(case: LiveCase) -> dict[str, object]:
     """
     request: dict[str, object] = {
         "question": case.text,
-        "role_hint": "hotel_analyst",
+        "role_hint": "analyst",
         "as_of": AS_OF,
         "timezone": "Asia/Seoul",
         "calendar_id": "gregorian",

@@ -37,8 +37,9 @@ from app.adapters.datahub_metadata_values import (
 from src.data.governance_contract import (
     MANIFEST_DATASET_KEYS,
     TERM_RUNTIME_PROPERTY_KEYS,
-    datahub_schema_sha1,
+    datahub_schema_readback_sha1,
 )
+from src.data.entitlement_roles import validate_entitlement_roles
 
 
 _COLUMN_ROLES = {"identifier", "dimension", "measure", "time", "attribute"}
@@ -119,6 +120,7 @@ def parse_dataset(value: object) -> GovernedDataset:
     schema_metadata = value.get("schemaMetadata")
     columns, field_terms, schema_hash, trino_schema_columns = _schema_fields(
         schema_metadata,
+        value.get("editableSchemaMetadata"),
         typed_columns,
         column_roles,
     )
@@ -133,6 +135,12 @@ def parse_dataset(value: object) -> GovernedDataset:
     if set(entitlements) != {"roles", "domains"}:
         raise GovernedMetadataError("DataHub entitlement fields are invalid")
     roles = string_set(entitlements["roles"], "allowed roles")
+    try:
+        validate_entitlement_roles(roles)
+    except ValueError as error:
+        raise GovernedMetadataError(
+            "DataHub entitlement metadata contains an unsupported role"
+        ) from error
     domains = string_set(entitlements["domains"], "allowed domains")
     if not roles and not domains:
         raise GovernedMetadataError("DataHub entitlement metadata is empty")
@@ -166,6 +174,11 @@ def parse_dataset(value: object) -> GovernedDataset:
     ):
         raise GovernedMetadataError("DataHub schema metadata version is invalid")
     grain = _grain(_json_object(custom["grain"], "grain"), columns)
+    physical_keys = {
+        item["name"] for item in typed_columns if item["is_part_of_key"]
+    }
+    if not physical_keys <= set(grain["keys"]):
+        raise GovernedMetadataError("DataHub grain removes a physical schema key")
     synthetic = _json_boolean(custom["synthetic"], "synthetic flag")
     join_graph = _join_graph(_json_object(custom["join_graph"], "join graph"))
     metric_rules = parse_release_metric_rules(
@@ -220,6 +233,7 @@ def parse_dataset(value: object) -> GovernedDataset:
         "platform_urn": platform_urn,
         "schema_name": schema_name,
         "schema_metadata_version": schema_metadata_version,
+        "datahub_schema_hash": schema_hash,
         "dataset_key": physical_key,
         "table_type": table_type,
     }
@@ -269,7 +283,7 @@ def parse_dataset(value: object) -> GovernedDataset:
     )
 
 
-def _schema_fields(value, typed_columns, column_roles):
+def _schema_fields(value, editable_value, typed_columns, column_roles):
     if not isinstance(value, dict) or not isinstance(value.get("fields"), list):
         raise GovernedMetadataError("DataHub schema field metadata is missing")
     expected = {}
@@ -294,7 +308,12 @@ def _schema_fields(value, typed_columns, column_roles):
         raise GovernedMetadataError("DataHub column roles differ from typed columns")
     columns = []
     trino_columns = []
+    datahub_columns = []
     associations = {}
+    editable_descriptions = _editable_descriptions(
+        editable_value,
+        set(expected),
+    )
     for field in value["fields"]:
         if not isinstance(field, dict):
             raise GovernedMetadataError("DataHub schema field is invalid")
@@ -303,13 +322,24 @@ def _schema_fields(value, typed_columns, column_roles):
         if governed is None or name in associations:
             raise GovernedMetadataError("DataHub schema fields differ from typed columns")
         if (
-            field.get("nativeDataType") != governed["native_type"]
+            not isinstance(field.get("nativeDataType"), str)
+            or not field["nativeDataType"].strip()
             or field.get("nullable") is not governed["nullable"]
             or field.get("isPartOfKey") is not governed["is_part_of_key"]
-            or field.get("description") != governed["description"]
+            or (
+                editable_descriptions.get(name) or field.get("description")
+            ) != governed["description"]
         ):
             raise GovernedMetadataError("DataHub native and governed column metadata differ")
         associations[name] = term_urns(field.get("glossaryTerms"))
+        datahub_columns.append(
+            {
+                "ordinal_position": len(datahub_columns) + 1,
+                "name": name,
+                "native_type": field["nativeDataType"].strip(),
+                "nullable": field["nullable"],
+            }
+        )
         columns.append(
             {
                 "name": name,
@@ -335,13 +365,34 @@ def _schema_fields(value, typed_columns, column_roles):
         )
     if set(associations) != set(expected):
         raise GovernedMetadataError("DataHub schema field set is incomplete")
-    schema_hash = required_text(value.get("hash"), "schema metadata hash")
-    expected_hash = datahub_schema_sha1({"columns": typed_columns})
-    if schema_hash != expected_hash:
-        raise GovernedMetadataError(
-            "DataHub schema hash differs from governed typed columns"
-        )
+    schema_hash = datahub_schema_readback_sha1(datahub_columns)
     return tuple(columns), associations, schema_hash, tuple(trino_columns)
+
+
+def _editable_descriptions(value, native_names):
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise GovernedMetadataError("DataHub editable schema metadata is invalid")
+    fields = value.get("editableSchemaFieldInfo") or []
+    if not isinstance(fields, list):
+        raise GovernedMetadataError("DataHub editable schema fields are invalid")
+    result = {}
+    for field in fields:
+        if not isinstance(field, dict):
+            raise GovernedMetadataError("DataHub editable schema field is invalid")
+        name = required_text(field.get("fieldPath"), "editable schema field path")
+        description = field.get("description")
+        if (
+            name in result
+            or name not in native_names
+            or (description is not None and not isinstance(description, str))
+        ):
+            raise GovernedMetadataError(
+                "DataHub editable schema field identity is invalid"
+            )
+        result[name] = description.strip() if isinstance(description, str) else None
+    return result
 
 
 def _manifest_dataset_entry(manifest, urn):

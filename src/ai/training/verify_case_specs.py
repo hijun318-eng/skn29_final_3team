@@ -215,7 +215,7 @@ def validate_output(
         raise PlanContractError("CONTEXT_SCHEMA_INVALID", str(error)) from error
     assert checked.expression is not None
     plan = None
-    if node == "node2":
+    if node == "node2" and "used_assets" in output:
         plan = {
             "declared_assets": output["used_assets"],
             "declared_columns": output["used_columns"],

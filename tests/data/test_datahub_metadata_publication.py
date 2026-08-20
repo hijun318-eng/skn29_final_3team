@@ -19,6 +19,7 @@ sys.path.insert(0, str(BACKEND))
 from metadata_aspects import iter_aspects  # noqa: E402
 from src.data.governance_contract import (  # noqa: E402
     catalog_hash,
+    datahub_schema_readback_sha1,
     datahub_schema_sha1,
     glossary_hash,
     release_manifest,
@@ -120,6 +121,8 @@ def arbitrary_bundle():
             ],
         },
     ]
+    for asset in assets:
+        asset["datahub_schema_hash"] = datahub_schema_sha1(asset)
     field = lambda asset, column: {"asset_fqn": asset, "column": column}
     metrics = [
         {
@@ -385,7 +388,7 @@ def _graphql_dataset(asset, bundle, aspects):
             "name": asset["schema_name"],
             # schemaMetadata는 ingestion connector가 소유한다. 이 fixture는
             # semantic publisher 결과가 아니라 connector read-back을 모델링한다.
-            "hash": datahub_schema_sha1(asset),
+            "hash": asset["datahub_schema_hash"],
             "fields": [
                 {
                     "fieldPath": column["name"],
@@ -398,6 +401,13 @@ def _graphql_dataset(asset, bundle, aspects):
                 }
                 for column in asset["columns"]
             ],
+        },
+        "editableSchemaMetadata": {
+            "editableSchemaFieldInfo": deepcopy(
+                aspects[asset["urn"]]["editableSchemaMetadata"][
+                    "editableSchemaFieldInfo"
+                ]
+            )
         },
         "glossaryTerms": {
             "terms": [
@@ -562,6 +572,36 @@ class SemanticPublicationContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(
             "urn:li:glossaryTerm:amount_per_event", parsed.dataset_terms
         )
+
+    def test_runtime_uses_connector_field_fingerprint_when_native_hash_is_empty(self):
+        """빈 DataHub native hash와 Trino와 다른 connector 타입 표기를 안전하게 분리한다."""
+
+        bundle = deepcopy(self.bundle)
+        asset = bundle["schema_context"]["assets"][0]
+        readback_columns = [
+            {
+                "ordinal_position": column["ordinal_position"],
+                "name": column["name"],
+                "native_type": (
+                    "BIGINT" if column["name"] == "event_id" else column["native_type"]
+                ),
+                "nullable": column["nullable"],
+            }
+            for column in asset["columns"]
+        ]
+        asset["datahub_schema_hash"] = datahub_schema_readback_sha1(readback_columns)
+        aspects = _aspect_index(bundle)
+        entity = _graphql_dataset(asset, bundle, aspects)
+        entity["schemaMetadata"]["hash"] = ""
+        entity["schemaMetadata"]["fields"][0]["nativeDataType"] = "BIGINT"
+        entity["schemaMetadata"]["fields"][0]["description"] = (
+            "Native connector description."
+        )
+
+        parsed = parse_dataset(entity)
+
+        self.assertEqual(asset["datahub_schema_hash"], parsed.schema_hash)
+        self.assertEqual("bigint", parsed.trino_schema_columns[0]["native_type"])
 
     async def test_mcp_wire_contract_uses_one_injected_audit_stamp(self):
         requests = []

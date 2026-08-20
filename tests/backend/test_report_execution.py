@@ -134,7 +134,7 @@ async def test_analysis_definition_replay_reseals_period_and_persists_new_eviden
         return_value=repository,
     ), patch(
         "app.services.report.execution.require_active_subject_with_capability",
-        return_value=Principal(OWNER, Role.HOTEL_ANALYST),
+        return_value=Principal(OWNER, Role.ANALYST),
     ):
         outcome = await replay.execute(
             owner_id=OWNER,
@@ -363,7 +363,7 @@ def _seed_analysis_evidence(engine, *, definition_id, request_id, query_executio
                 (request_id, request_type, user_id, user_role,
                  question_text_redacted, question_hash, ambiguity_status,
                  sql_policy_version, status, trace_id, started_at, completed_at)
-            VALUES (:request_id, 'CHAT', :owner_id, 'hotel_analyst',
+            VALUES (:request_id, 'CHAT', :owner_id, 'analyst',
                     'recognized room revenue summary', :hash, 'CLEAR',
                     'policy-current', 'SUCCEEDED', :trace_id, now(), now())
         """), {

@@ -116,7 +116,7 @@ def _runtime(bundle):
                 description=asset["description"],
                 schema_name=asset["schema_name"],
                 schema_version=asset["schema_metadata_version"],
-                schema_hash=datahub_schema_sha1(asset),
+                schema_hash=asset["datahub_schema_hash"],
                 removed=False,
                 owners=(owner,),
                 domain=domain,

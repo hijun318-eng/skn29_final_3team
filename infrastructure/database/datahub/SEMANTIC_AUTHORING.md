@@ -25,9 +25,10 @@ The authoring transaction performs these gates in order:
 7. Re-read DataHub and Trino until the exact catalog hash converges within the bounded
    timeout. Partial or drifting publication returns a non-zero result.
 
-The stdin object uses contract version `answervice.semantic_authoring.v1` for the
-existing all-public metric contract or `answervice.semantic_authoring.v2` for the
-visibility- and execution-governed metric contract. Its top-level fields are:
+New publications use `answervice.semantic_authoring.v3` for the all-public metric
+contract or `answervice.semantic_authoring.v4` for the visibility- and
+execution-governed metric contract. The legacy v1/v2 envelopes remain parseable but
+are not emitted by migration or policy compilation. Its top-level fields are:
 
 - `contract_version`, `catalog_version`, `policy_version`,
   `schema_context_version`
@@ -120,11 +121,12 @@ python infrastructure/database/datahub/retire_semantic_metrics.py `
 if ($LASTEXITCODE -ne 0) { throw 'Metric retirement read-back failed.' }
 ```
 
-Each policy asset identifies only its three-part `fqn` and approved semantic facts:
-description, semantic/data versions, provenance, approval, entitlements, grain,
-column roles/descriptions/key claims, and native governance references. A policy
-asset cannot contain a dataset URN, platform, table type, native type, ordinal, or
-nullability.
+Each current policy asset identifies only its three-part `fqn` and approved semantic
+facts: semantic/data versions, provenance, approval, entitlements, grain, column
+logical roles/key claims, and native governance references. Dataset and field
+descriptions come only from live DataHub connector read-back. A policy asset cannot
+contain a dataset URN, platform, table type, native type, ordinal, nullability, or a
+copied physical description.
 
 Every referenced CorpGroup owner must already be provisioned by the organization’s
 IdP/DataHub administration process. Authoring checks its URN, display name,

@@ -96,6 +96,7 @@ class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
             }],
         })
         replaced = await self.router.replace_draft_blocks("report-1", 1, {
+            "title": "주간 운영 보고서 · 검토본",
             "orientation": "landscape",
             "currency_display_unit": "million",
             "blocks": [{
@@ -103,6 +104,7 @@ class ReportRouterContractTest(unittest.IsolatedAsyncioTestCase):
             "x": 0, "y": 0, "w": 12, "h": 2,
         }]})
         self.assertEqual("text", replaced["blocks"][0]["type"])
+        self.assertEqual("주간 운영 보고서 · 검토본", replaced["title"])
         self.assertIsNone(replaced["blocks"][0]["artifact_id"])
         self.assertEqual("landscape", replaced["orientation"])
         self.assertEqual("million", replaced["currency_display_unit"])

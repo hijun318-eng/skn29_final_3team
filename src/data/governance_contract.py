@@ -71,8 +71,29 @@ def datahub_schema_projection(asset: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def datahub_schema_sha1(asset: Mapping[str, Any]) -> str:
-    """DataHub ``schemaMetadata.hash`` 호환 projection을 SHA-1로 계산하며 보안 서명에는 사용하지 않는다."""
-    payload = canonical_json(datahub_schema_projection(asset)).encode("utf-8")
+    """asset 형식의 DataHub field projection을 SHA-1 fingerprint로 계산한다."""
+
+    return datahub_schema_readback_sha1(datahub_schema_projection(asset))
+
+
+def datahub_schema_readback_sha1(fields: list[Mapping[str, Any]]) -> str:
+    """connector가 반환한 field 순서·원본 타입·nullable의 독립 fingerprint를 만든다.
+
+    DataHub connector에 따라 ``schemaMetadata.hash``가 비어 있을 수 있으므로 그 값을
+    성공 조건으로 사용하지 않는다. 호출자는 실제 GraphQL field read-back을 이 공통
+    shape로 투영해야 하며, Trino 실행 타입 fingerprint는 별도로 계산한다.
+    """
+
+    projection = [
+        {
+            "name": field["name"],
+            "ordinal_position": field["ordinal_position"],
+            "native_type": field["native_type"],
+            "nullable": field["nullable"],
+        }
+        for field in fields
+    ]
+    payload = canonical_json(projection).encode("utf-8")
     # SHA-1은 외부 DataHub wire contract 호환용 식별자이며 release 무결성은 별도의 SHA-256이 담당한다.
     return hashlib.sha1(payload, usedforsecurity=False).hexdigest()
 
@@ -245,7 +266,7 @@ def release_manifest(bundle: Mapping[str, Any]) -> dict[str, Any]:
             {
                 "urn": asset["urn"],
                 "fqn": asset["fqn"],
-                "schema_sha1": datahub_schema_sha1(asset),
+                "schema_sha1": asset["datahub_schema_hash"],
                 "table_type": asset["table_type"],
                 "trino_schema_sha256": trino_schema_sha256(asset),
                 "semantic_sha256": asset_semantic_sha256(bundle, asset),

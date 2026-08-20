@@ -48,8 +48,27 @@ def response_schema(node: str) -> dict[str, Any]:
 
 
 def serving_schema(node: str) -> dict[str, Any]:
-    """서빙 엔드포인트가 반환해야 할 노드별 응답 스키마를 구성한다."""
+    """현재 provider에 요구할 노드별 응답 스키마를 구성한다.
+
+    Node2 내부 계약은 전환 기간에 legacy lineage 응답과 SQL-only 응답을 모두
+    허용한다. 활성 provider prompt는 아직 다섯 필드를 요구하므로 structured output은
+    legacy 형태로 고정해 기존 GPT 동작을 바꾸지 않는다.
+    """
+    if node == "node2":
+        return schema_definition("node2_legacy_response")
     return response_schema(node)
+
+
+@lru_cache(maxsize=None)
+def sql_only_serving_schema(node: str) -> dict[str, Any]:
+    """향후 SQL-only Node2 release가 guided decoding에 사용할 응답 스키마를 반환한다.
+
+    활성 provider payload에는 아직 연결하지 않는다. Qwen adapter 활성화 시 SQL-only
+    prompt와 이 스키마를 같은 release에서 선택해야 한다.
+    """
+    if node != "node2":
+        raise ValueError("SQL-only serving schema is supported only for node2")
+    return schema_definition("node2_sql_only_response")
 
 
 def node2_training_input(payload: dict[str, Any]) -> dict[str, Any]:

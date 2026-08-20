@@ -55,7 +55,7 @@ class ExecutionControlTest(unittest.IsolatedAsyncioTestCase):
         self.decision = await RoutingService().decide(self.payload)
 
     @staticmethod
-    def context(role=Role.HOTEL_ANALYST, user=2):
+    def context(role=Role.ANALYST, user=2):
         return RequestContext(
             request_id=UUID(int=user + 10),
             trace_id=f"trace-{user}",

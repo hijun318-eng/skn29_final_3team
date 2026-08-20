@@ -1,7 +1,6 @@
-# 책임: Trino `serving` catalog의 분석 View를 현재 런타임 인증 계약으로 재생성한다.
-# `serving`은 memory connector이므로 Trino를 재시작하면 View가 사라진다. 이 스크립트는
-# release 아카이브의 SQL을 원본 그대로 사용하되, 실행 경로만 현재 운영 계약(HTTPS,
-# password 인증, 현재 compose project)에 맞춘다.
+# 책임: release manifest의 분석 View를 선택한 serving namespace에 멱등 발행한다.
+# namespace 변경과 connector별 출력 타입 호환은 문자열 치환이 아닌 SQLGlot AST
+# 경계에서만 수행하고, target catalog 설정에서 connector 종류를 직접 읽는다.
 #
 # 아카이브의 `run-v43.ps1`을 쓰지 않는 이유는 두 가지다. 첫째, 그 스크립트는 release
 # manifest에 sha256으로 고정된 불변 기록이라 수정 대상이 아니다. 둘째, 그 안의 실행
@@ -11,6 +10,8 @@
 param(
     [Parameter(Mandatory)] [string]$ReleaseId,
     [string]$EnvFilePath,
+    [string]$TargetSchema,
+    [switch]$AllowRepositoryLocalDevelopment,
     # 검증 SQL까지 함께 실행해 cross-source 무결성을 확인한다.
     [switch]$IncludeValidation
 )
@@ -21,6 +22,8 @@ $databaseRoot = Split-Path -Parent $PSScriptRoot
 $repoRoot = Split-Path -Parent (Split-Path -Parent $databaseRoot)
 $composeFile = Join-Path $databaseRoot 'compose.yml'
 $viewInspector = Join-Path $PSScriptRoot 'inspect_release_views.py'
+$sqlRenderer = Join-Path $PSScriptRoot 'render_release_serving_sql.py'
+$icebergViewCoercions = Join-Path $databaseRoot 'trino/etc/iceberg-view-coercions.json'
 if ($ReleaseId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$') {
     throw 'ReleaseId format is invalid.'
 }
@@ -54,9 +57,28 @@ if ([string]::IsNullOrWhiteSpace($releaseId) -or $manifestViewCount -lt 1 -or
     $servingSchema -notmatch '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$') {
     throw 'release manifest does not declare a valid release id and serving view count.'
 }
-$servingParts = $servingSchema.Split('.')
-$servingCatalog = $servingParts[0]
-$servingDatabase = $servingParts[1]
+if ([string]::IsNullOrWhiteSpace($TargetSchema)) { $TargetSchema = $servingSchema }
+if ($TargetSchema -notmatch '^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$') {
+    throw 'TargetSchema must use lowercase catalog.schema form.'
+}
+$targetParts = $TargetSchema.Split('.')
+$servingCatalog = $targetParts[0]
+$servingDatabase = $targetParts[1]
+$targetCatalogPath = Join-Path $databaseRoot "trino/etc/catalog/$servingCatalog.properties"
+if (-not (Test-Path -LiteralPath $targetCatalogPath -PathType Leaf)) {
+    throw "Target catalog configuration is missing: $servingCatalog"
+}
+$connectorValues = @(Get-Content -LiteralPath $targetCatalogPath -Encoding UTF8 |
+    ForEach-Object {
+        if ($_ -match '^\s*connector\.name\s*=\s*([a-z][a-z0-9_-]*)\s*$') {
+            $Matches[1]
+        }
+    })
+if ($connectorValues.Count -ne 1) {
+    throw "Target catalog must declare exactly one connector.name: $servingCatalog"
+}
+$targetConnector = [string]$connectorValues[0]
+$requiresIcebergCompatibility = $targetConnector -ceq 'iceberg'
 
 # 실행 파일·순서·필수/검증 구분·정확한 View 목록은 파일명 배열이 아니라 manifest와
 # SQL metadata/AST에서 결정한다. planner가 manifest 전체 checksum도 함께 검증한다.
@@ -81,8 +103,9 @@ if ([string]$recoveryPlan.release_id -cne $releaseId -or
 }
 . (Join-Path $PSScriptRoot 'deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
-$resolvedEnvFile = Resolve-ExternalDeploymentEnvFile `
-    -Path $EnvFilePath -RepositoryRoot $repoRoot
+$resolvedEnvFile = Resolve-ExplicitDeploymentEnvFile `
+    -Path $EnvFilePath -RepositoryRoot $repoRoot `
+    -AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvFile)
 $values = Read-DeploymentEnvironment $resolvedEnvFile
 Assert-DeploymentEnvironmentValues -Values $values -RequiredKeys @(
@@ -100,11 +123,20 @@ function Invoke-Compose {
         $ErrorActionPreference = 'Continue'
         $output = & docker compose @composeEnvArguments -f $composeFile @Arguments 2>&1 |
             Where-Object { $_ -isnot [Management.Automation.ErrorRecord] }
+        $exitCode = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previousPreference
     }
-    if ($LASTEXITCODE -ne 0) {
-        throw 'docker compose command failed; inspect the Trino service logs.'
+    if ($exitCode -ne 0) {
+        # Trino CLI의 실제 parser/connector 오류는 진단에 필수다. 다만 compose argv나
+        # process environment는 포함하지 않고, 도구가 반환한 마지막 출력만 제한한다.
+        $diagnostic = @($output | ForEach-Object { [string]$_ } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Select-Object -Last 25) -join "`n"
+        if ([string]::IsNullOrWhiteSpace($diagnostic)) {
+            $diagnostic = 'native command returned no diagnostic output.'
+        }
+        throw "docker compose command failed (exit=$exitCode):`n$diagnostic"
     }
     return $output
 }
@@ -118,7 +150,36 @@ function Invoke-TrinoSqlFile {
     if (-not (Test-Path -LiteralPath $localPath)) {
         throw "serving SQL file is missing: $RelativePath"
     }
-    Invoke-Compose -Arguments @('cp', $localPath, 'trino:/tmp/serving_current.sql') | Out-Null
+    $renderedPath = $null
+    $executionPath = $localPath
+    if ($TargetSchema -cne $servingSchema -or $requiresIcebergCompatibility) {
+        if ($requiresIcebergCompatibility -and
+            -not (Test-Path -LiteralPath $icebergViewCoercions -PathType Leaf)) {
+            throw 'Iceberg View coercion contract is missing.'
+        }
+        $renderedPath = Join-Path ([IO.Path]::GetTempPath()) (
+            "serving-rendered-$PID-$([guid]::NewGuid().ToString('N')).sql"
+        )
+        $rendererArguments = @(
+            $sqlRenderer, '--input', $localPath, '--output', $renderedPath,
+            '--source-schema', $servingSchema, '--target-schema', $TargetSchema
+        )
+        if ($requiresIcebergCompatibility) {
+            $rendererArguments += @('--coercions', $icebergViewCoercions)
+        }
+        & python @rendererArguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "serving SQL AST rendering failed: $RelativePath"
+        }
+        $executionPath = $renderedPath
+    }
+    try {
+        Invoke-Compose -Arguments @('cp', $executionPath, 'trino:/tmp/serving_current.sql') | Out-Null
+    } finally {
+        if ($renderedPath -and (Test-Path -LiteralPath $renderedPath -PathType Leaf)) {
+            Remove-Item -LiteralPath $renderedPath -Force
+        }
+    }
 
     $previousPassword = $env:TRINO_PASSWORD
     $env:TRINO_PASSWORD = [string]$values['TRINO_ADMIN_PASSWORD']
@@ -139,7 +200,7 @@ function Invoke-TrinoSqlFile {
     if ($text -match '(?m)"FAIL"') {
         throw "serving SQL reported FAIL: $RelativePath"
     }
-    Write-Output "SERVING_SQL_APPLIED|$RelativePath"
+    Write-Output "SERVING_SQL_APPLIED|$TargetSchema|$RelativePath"
 }
 
 # 최초 publish 전 collision=0을 요구하는 preflight는 이미 schema가 존재하는 멱등 recovery와
@@ -156,8 +217,8 @@ foreach ($entry in $executionPlan) {
 }
 
 # 생성 직후 실제 relation 수를 인증 경로로 다시 읽어, 빈 catalog나 일부 누락을 성공으로
-# 보고하지 않는다. SQL 선언 수와 manifest 기대 수부터 일치해야 하며, memory connector에
-# 남은 stale View까지 허용하지 않도록 live read-back도 exact match한다.
+# 보고하지 않는다. SQL 선언 수와 manifest 기대 수부터 일치해야 하며, target catalog에
+# 남은 extra View까지 허용하지 않도록 live read-back도 exact match한다.
 $countSql = @"
 SELECT table_name FROM $servingCatalog.information_schema.tables
 WHERE table_schema = '$servingDatabase' AND table_type = 'VIEW'
@@ -200,4 +261,4 @@ if ($difference.Count) {
     throw 'serving live View identities differ from release SQL declarations.'
 }
 foreach ($name in $observedViews) { Write-Output "SERVING_VIEW_VERIFIED|$name" }
-Write-Output "SERVING_VIEWS_RECREATED|$releaseId|$($observedViews.Count)"
+Write-Output "SERVING_VIEWS_RECREATED|$releaseId|$TargetSchema|$($observedViews.Count)"

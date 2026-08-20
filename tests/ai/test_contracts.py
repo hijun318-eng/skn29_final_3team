@@ -271,7 +271,7 @@ NODE2_RESPONSE = arbitrary_node2_response("quartz")
 VALID_PAYLOADS = {
     "node1_request": {
         "question": "이번 달 객실 매출을 보여줘",
-        "role_hint": "hotel_analyst",
+        "role_hint": "analyst",
         "as_of": "2026-07-30T12:00:00+09:00",
         "timezone": "Asia/Seoul",
         "calendar_id": "gregorian-kr",
@@ -354,7 +354,7 @@ VALID_PAYLOADS = {
 
 class ContractTests(unittest.TestCase):
     def test_schema_version_is_explicit(self):
-        self.assertEqual(schema_version(), "MODEL-v1.11.0")
+        self.assertEqual(schema_version(), "MODEL-v1.12.0")
 
     def test_valid_examples(self):
         for definition, payload in VALID_PAYLOADS.items():
@@ -594,7 +594,7 @@ class ContractTests(unittest.TestCase):
                 with self.assertRaises(ContractError):
                     validate_payload("node2_request", invalid)
 
-    def test_node2_response_is_strict_provenance_only(self):
+    def test_node2_response_accepts_sql_only_or_complete_legacy_lineage(self):
         expected_fields = {
             "sql",
             "used_assets",
@@ -603,12 +603,20 @@ class ContractTests(unittest.TestCase):
             "used_metrics",
         }
         self.assertEqual(set(NODE2_RESPONSE), expected_fields)
-        for field in expected_fields:
-            missing = copy.deepcopy(NODE2_RESPONSE)
-            missing.pop(field)
-            with self.subTest(missing=field):
+        validate_payload("node2_response", NODE2_RESPONSE)
+        validate_payload("node2_response", {"sql": NODE2_RESPONSE["sql"]})
+
+        missing_sql = copy.deepcopy(NODE2_RESPONSE)
+        missing_sql.pop("sql")
+        with self.assertRaises(ContractError):
+            validate_payload("node2_response", missing_sql)
+
+        for field in expected_fields - {"sql"}:
+            partial_lineage = copy.deepcopy(NODE2_RESPONSE)
+            partial_lineage.pop(field)
+            with self.subTest(partial_lineage=field):
                 with self.assertRaises(ContractError):
-                    validate_payload("node2_response", missing)
+                    validate_payload("node2_response", partial_lineage)
         for forbidden in ("references", "parameters", "model"):
             extra = copy.deepcopy(NODE2_RESPONSE)
             extra[forbidden] = []

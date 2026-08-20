@@ -250,11 +250,11 @@ def _base_fields_match(
     relation: PhysicalRelation,
     dataset: DataHubDataset,
 ) -> bool:
-    """Check coverage/order here; semantic readiness later requires exact Trino types.
+    """여기서는 coverage/order와 connector field 완전성만 확인한다.
 
     Source connectors and Trino expose different native type vocabularies, so treating
-    their raw type strings as equal would reject valid base ingestion. The canonical
-    typed-column and schema-hash comparison in ``assemble_release_bundle`` is exact.
+    their raw type strings as equal would reject valid base ingestion. Semantic readiness
+    compares a connector field fingerprint and a Trino execution fingerprint independently.
     """
 
     if len(relation.columns) != len(dataset.fields):

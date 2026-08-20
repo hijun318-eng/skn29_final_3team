@@ -62,7 +62,7 @@ def _scope() -> dict[str, object]:
         },
         "join": {"required": False, "allowed_edge_ids": []},
         "permission": {
-            "roles": ["observer"],
+            "roles": ["analyst"],
             "contains_pii": False,
             "synthetic": False,
         },
@@ -121,7 +121,7 @@ def _candidate() -> dict[str, object]:
         "serving_schema": "serving.sample",
         "source_sql_sha256": "a" * 64,
         "business_metric_target_count": 1,
-        "allowed_roles": ["observer"],
+        "allowed_roles": ["analyst"],
         "review_owner_candidate_urn": "urn:li:corpGroup:sample_stewards",
         "metrics": [amount, events, ratio],
     }
@@ -146,6 +146,16 @@ def test_review_rejects_release_drift_and_ratio_scope_drift():
     candidate = _candidate()
     candidate["metrics"][2]["time"]["timezone"] = "Asia/Seoul"
     with pytest.raises(SemanticMetadataError, match="one physical calculation scope"):
+        validate_metric_review(candidate, _evidence())
+
+
+def test_review_rejects_unregistered_authentication_roles():
+    candidate = _candidate()
+    candidate["allowed_roles"] = ["unregistered_role"]
+    for metric in candidate["metrics"]:
+        metric["permission"]["roles"] = ["unregistered_role"]
+
+    with pytest.raises(SemanticMetadataError, match="unsupported authentication role"):
         validate_metric_review(candidate, _evidence())
 
 

@@ -19,6 +19,7 @@ services:
           echo 'No runtime DataHub recipe was mounted.' >&2
           exit 2
         fi
+        echo 'ANSWERVICE_RUNTIME_CATALOG_INGESTION_COMPLETE'
     networks: [database-network, datahub-network]
     depends_on:
       datahub-gms-quickstart: {condition: service_healthy}

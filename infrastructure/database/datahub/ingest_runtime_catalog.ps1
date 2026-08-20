@@ -3,7 +3,8 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [switch]$Apply,
-    [string]$EnvFilePath
+    [string]$EnvFilePath,
+    [switch]$AllowRepositoryLocalDevelopment
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,8 +19,9 @@ $composeFiles = @(
 $repoRoot = Split-Path -Parent (Split-Path -Parent $databaseRoot)
 . (Join-Path $databaseRoot 'scripts/deployment-environment.ps1')
 Disable-ImplicitComposeEnvironment
-$resolvedEnvFile = Resolve-ExternalDeploymentEnvFile `
-    -Path $EnvFilePath -RepositoryRoot $repoRoot
+$resolvedEnvFile = Resolve-ExplicitDeploymentEnvFile `
+    -Path $EnvFilePath -RepositoryRoot $repoRoot `
+    -AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $resolvedEnvFile)
 $recipes = Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'recipes') `
     -Filter '*.runtime.yml' -File | Sort-Object Name
@@ -59,6 +61,11 @@ if ($PSCmdlet.ShouldProcess(
     $ingestionExit = & docker wait $ingestionContainer[0]
     if ($LASTEXITCODE -ne 0 -or [string]$ingestionExit -cne '0') {
         throw 'DataHub metadata ingestion failed.'
+    }
+    $completionLogs = @(& docker logs --tail 20 $ingestionContainer[0] 2>&1)
+    if ($LASTEXITCODE -ne 0 -or
+        'ANSWERVICE_RUNTIME_CATALOG_INGESTION_COMPLETE' -notin $completionLogs) {
+        throw 'DataHub metadata ingestion exited without its completion marker.'
     }
 }
 

@@ -27,7 +27,7 @@ def _v2_metric(*args, **kwargs) -> ContextMetric:
 
     asset_fqn = str(kwargs.get("asset_fqn", args[1] if len(args) > 1 else ""))
     kwargs.setdefault("governance_version", RUNTIME_GOVERNANCE_VERSION_V2)
-    kwargs.setdefault("allowed_roles", ("hotel_analyst",))
+    kwargs.setdefault("allowed_roles", ("analyst",))
     kwargs.setdefault("contains_pii", False)
     kwargs.setdefault("allowed_join_ids", ())
     kwargs.setdefault("join_required", False)

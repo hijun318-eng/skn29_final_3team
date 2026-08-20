@@ -55,7 +55,7 @@ class StageOutcome(str, Enum):
 
 class Role(str, Enum):
     """인증 주체에게 부여할 수 있는 분석·보고서·데이터 관리 역할의 허용 집합이다."""
-    HOTEL_ANALYST = "hotel_analyst"
+    ANALYST = "analyst"
     REPORT_ADMIN = "report_admin"
     DATA_ADMIN = "data_admin"
     PLATFORM_ADMIN = "platform_admin"
@@ -150,7 +150,7 @@ class RequestContext(ContractModel):
     trace_id: str = Field(default_factory=lambda: uuid4().hex)
     conversation_id: UUID | None = None
     user_id: UUID = UUID(int=0)
-    role: Role = Role.HOTEL_ANALYST
+    role: Role = Role.ANALYST
     as_of: date = Field(default_factory=date.today)
     timezone: str = "Asia/Seoul"
     contract_version: str = CONTRACT_VERSION

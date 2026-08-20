@@ -26,17 +26,22 @@ def test_platform_admin_has_all_current_application_capabilities() -> None:
 
 
 def test_ordinary_roles_do_not_gain_cross_role_entitlements() -> None:
-    assert role_is_entitled(Role.HOTEL_ANALYST, [Role.HOTEL_ANALYST])
-    assert not role_is_entitled(Role.HOTEL_ANALYST, [Role.REPORT_ADMIN])
-    assert not role_is_entitled(Role.REPORT_ADMIN, [Role.HOTEL_ANALYST])
-    assert not role_is_entitled(Role.DATA_ADMIN, [Role.HOTEL_ANALYST])
+    assert role_is_entitled(Role.ANALYST, [Role.ANALYST])
+    assert not role_is_entitled(Role.ANALYST, [Role.REPORT_ADMIN])
+    assert not role_is_entitled(Role.REPORT_ADMIN, [Role.ANALYST])
+    assert not role_is_entitled(Role.DATA_ADMIN, [Role.ANALYST])
 
 
 def test_platform_admin_satisfies_existing_external_role_contracts() -> None:
-    assert role_is_entitled(Role.PLATFORM_ADMIN, [Role.HOTEL_ANALYST])
+    assert role_is_entitled(Role.PLATFORM_ADMIN, [Role.ANALYST])
     assert role_is_entitled(Role.PLATFORM_ADMIN, [Role.REPORT_ADMIN])
     assert role_is_entitled(Role.PLATFORM_ADMIN, [Role.DATA_ADMIN])
+    assert role_is_entitled(Role.PLATFORM_ADMIN, ["analyst"])
+    assert role_is_entitled(Role.ANALYST, ["analyst"])
     assert not role_is_entitled(Role.PLATFORM_ADMIN, ["unknown-role"])
+    assert not role_is_entitled(
+        Role.PLATFORM_ADMIN, ["unknown-role", "analyst"]
+    )
 
 
 def test_session_data_exposes_server_owned_capabilities() -> None:

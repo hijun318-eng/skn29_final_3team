@@ -211,7 +211,7 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
         return CreateContextPackage(
             request_id=request_id,
             context_release_id=release_id,
-            user_scope={"role": "hotel_analyst"},
+            user_scope={"role": "analyst"},
             assets=[{"urn": "urn:li:dataset:pms"}],
             metrics=[{"id": "room_revenue"}],
             joins=[],
@@ -233,7 +233,7 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
                          question_text_redacted, question_hash, ambiguity_status,
                          context_release_id, sql_policy_version, status, trace_id,
                          started_at)
-                    VALUES (:request_id, 'CHAT', :user_id, 'hotel_analyst',
+                    VALUES (:request_id, 'CHAT', :user_id, 'analyst',
                             '합성 매출', :hash, 'CLEAR', :release_id,
                             'policy-v1', 'RECEIVED', :trace_id, now())
                     """

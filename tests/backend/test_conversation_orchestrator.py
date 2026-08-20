@@ -242,12 +242,22 @@ class FakeDataPlatformAdapter:
 
     def __init__(self, assets: list[dict[str, Any]] | None = None) -> None:
         self.assets: list[dict[str, Any]] = list(assets or ())
+        self.assets_by_query: dict[str, list[dict[str, Any]]] = {}
+        self.queries: list[str] = []
         # 특정 발화에서 운영과 동일한 typed 실패를 재현하기 위한 프로그래밍 지점.
         self.search_error: Exception | None = None
 
+    def program_search(self, query: str, assets: list[dict[str, Any]]) -> None:
+        """특정 검색어에 반환할 승인 자산을 등록한다."""
+
+        self.assets_by_query[query] = list(assets)
+
     async def search_assets(self, query: str, filters: dict[str, Any]) -> list[dict[str, Any]]:
+        self.queries.append(query)
         if self.search_error is not None:
             raise self.search_error
+        if query in self.assets_by_query:
+            return list(self.assets_by_query[query])
         return list(self.assets)
 
 
@@ -312,6 +322,7 @@ class FakeReportRepository:
         version: int,
         blocks: tuple[ReportBlock, ...],
         *,
+        title: str | None = None,
         orientation: str | None = None,
         currency_display_unit: str | None = None,
     ) -> ReportDefinitionVersion:
@@ -325,7 +336,7 @@ class FakeReportRepository:
             definition_id=current.definition_id,
             version=current.version,
             status=current.status,
-            title=current.title,
+            title=current.title if title is None else title,
             blocks=blocks,
             orientation=orientation or current.orientation,
             currency_display_unit=currency_display_unit or current.currency_display_unit,
@@ -344,6 +355,7 @@ class FakePipelineSupport:
 
     def __init__(self, structured: dict[str, Any] | None = None) -> None:
         self.structured: dict[str, Any] = dict(structured or {"selected_metric_id": "room_revenue"})
+        self.questions: list[str] = []
         # 발화별로 Node1이 낼 신호(route, presentation_type 등)를 프로그래밍한다. 운영에서
         # route는 Node1 응답 계약으로만 전달되므로, 테스트도 문장이 아니라 이 신호로 라우팅한다.
         self.signals_by_message: dict[str, dict[str, Any]] = {}
@@ -353,6 +365,7 @@ class FakePipelineSupport:
         self.signals_by_message[message] = dict(signals)
 
     async def select_metric(self, req: AnalysisRequest, context: RequestContext, assets: list[dict[str, Any]]):
+        self.questions.append(req.question)
         structured = dict(self.structured)
         structured.update(self.signals_by_message.get(req.question, {}))
         return assets, req.question, structured
@@ -378,7 +391,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             request_id=UUID("00000000-0000-0000-0000-000000000002"),
             trace_id="test-trace",
             user_id=self.user_id,
-            role=Role.HOTEL_ANALYST,
+            role=Role.ANALYST,
             as_of=date(2026, 8, 18),
             timezone="Asia/Seoul",
         )
@@ -829,6 +842,71 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
 
 
 
+
+    async def test_search_fallback_never_rewrites_the_user_message_for_interpretation(self) -> None:
+        """검색 보강용 직전 지표가 새 턴의 의미와 생략 여부를 오염시키지 않는지 검증.
+
+        자산 검색은 짧은 후속 발화를 찾기 위해 직전 지표를 보조 힌트로 쓸 수 있다.
+        그러나 모델이 보는 질문까지 보강 문자열로 바꾸면 새 주제가 이전 지표로 변하거나,
+        생략문이 완결문으로 바뀐다. 검색어와 해석 원문은 별도 계약이어야 한다.
+        """
+        conv = await self.repo.create_conversation(self.user_id, "검색 보강 경계")
+        conv_id = conv["conversation_id"]
+        first_message = "2025년 8월 객실 매출 보여줘"
+        second_message = "식음 매출을 보여줘"
+        room_asset = {"urn": "urn:li:dataset:(serving,room_daily,PROD)"}
+
+        self.support.program(
+            first_message,
+            selected_metric_id="room_revenue",
+            metric_ids=["room_revenue"],
+            period_candidates=[
+                {
+                    "start": "2025-08-01",
+                    "end_exclusive": "2025-09-01",
+                    "source_text": "2025년 8월",
+                }
+            ],
+            is_elliptical=False,
+            requested_route="ANALYSIS",
+        )
+        first = await self.orchestrator.execute_command(
+            conversation_id=conv_id,
+            payload={"user_message": first_message},
+            context=self.context,
+        )
+        head = first["turn"]["turn_id"]
+
+        # 새 주제 원문 검색은 비지만, 직전 지표를 붙인 보조 검색에서는 자산을 찾는 상황.
+        self.data_platform.assets = []
+        self.data_platform.program_search(second_message, [])
+        self.data_platform.program_search(f"room_revenue {second_message}", [room_asset])
+        self.support.program(
+            second_message,
+            selected_metric_id=None,
+            metric_ids=["fnb_revenue"],
+            is_elliptical=False,
+            requested_route="ANALYSIS",
+        )
+
+        second = await self.orchestrator.execute_command(
+            conversation_id=conv_id,
+            payload={
+                "user_message": second_message,
+                "expected_head_turn_id": str(head),
+            },
+            context=self.context,
+        )
+
+        self.assertEqual(
+            self.data_platform.queries[-2:],
+            [second_message, f"room_revenue {second_message}"],
+        )
+        self.assertEqual(self.support.questions[-1], second_message)
+        slots = second["turn"]["resolved_slots"]
+        self.assertIsNone(slots["metric_id"])
+        self.assertFalse(slots["is_inherited_metric"])
+        self.assertTrue(slots["is_inherited_period"])
 
     async def test_off_topic_message_does_not_inherit_the_previous_analysis(self) -> None:
         """분석과 무관한 발화가 직전 분석을 물려받아 엉뚱한 답을 내지 않는지 검증.

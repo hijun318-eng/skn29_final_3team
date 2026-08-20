@@ -111,8 +111,6 @@ export function TurnEvidenceDrawer({ open, run, onClose, onCopy }) {
               <div><dt>Query</dt><dd>{run.artifact?.queryId || run.artifact?.query_id || "없음"}</dd></div>
               <div><dt>Product Release</dt><dd>{run.evidence?.productReleaseId || "없음"}</dd></div>
               <div><dt>Evidence Cutoff</dt><dd>{run.evidence?.evidenceCutoff || "없음"}</dd></div>
-              <div><dt>Request</dt><dd>{run.requestId}</dd></div>
-              <div><dt>Trace</dt><dd>{run.traceId}</dd></div>
             </dl>
           </details>
         </div>

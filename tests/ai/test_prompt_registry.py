@@ -9,12 +9,13 @@ class PromptRegistryTests(unittest.TestCase):
         first = list_prompt_metadata()
         second = list_prompt_metadata()
         self.assertEqual(first, second)
-        self.assertEqual(len(first), 5)
+        self.assertEqual(len(first), 6)
         self.assertEqual(
             {
                 "node1.normalize": "PROMPT-v1.10.0",
                 "node2.repair": "PROMPT-v1.3.0",
                 "node2.sql": "PROMPT-v1.6.0",
+                "node2.sql_only": "PROMPT-v1.0.0",
                 "node3.explain": "PROMPT-v1.2.3",
                 "report.assistant": "PROMPT-v1.0.0",
             },
@@ -22,7 +23,12 @@ class PromptRegistryTests(unittest.TestCase):
         )
         for metadata in first:
             self.assertEqual(metadata["environment"], "development")
-            self.assertEqual(metadata["model_version"], "DRAFT-BASE-v0.1")
+            self.assertEqual(
+                "DRAFT-QWEN35-2B-v1"
+                if metadata["prompt_id"] == "node2.sql_only"
+                else "DRAFT-BASE-v0.1",
+                metadata["model_version"],
+            )
             self.assertIsNone(metadata["fixture_version"])
             self.assertRegex(metadata["hash"], r"^[0-9a-f]{64}$")
 
@@ -56,6 +62,17 @@ class PromptRegistryTests(unittest.TestCase):
         )
         self.assertIn("APPROVED Analysis Artifact", assistant.text)
         self.assertIn("Do not generate SQL", assistant.text)
+
+    def test_sql_only_node2_prompt_is_dormant_and_has_one_output_field(self):
+        prompt = get_prompt("node2.sql_only")
+
+        self.assertEqual("node2", prompt.node)
+        self.assertEqual("sql-only", prompt.model_profile)
+        self.assertIn("JSON object with sql", prompt.text)
+        self.assertNotIn("used_assets", prompt.text)
+        self.assertNotIn("used_columns", prompt.text)
+        self.assertNotIn("used_joins", prompt.text)
+        self.assertNotIn("used_metrics", prompt.text)
 
     def test_node1_prompts_use_temporal_contracts_without_phrase_tables(self):
         prompts = {"node1.normalize": get_prompt("node1.normalize").text}

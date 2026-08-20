@@ -4,8 +4,10 @@ import { AppHeader } from "./components/layout/AppHeader";
 import { AppSidebar } from "./components/layout/AppSidebar";
 import { SessionLogin } from "./components/auth/SessionLogin";
 import { createAnalysisClient } from "./api/analysisClient.ts";
+import { clearAuthenticatedBrowserState } from "./authenticatedBrowserState.js";
 import { CAPABILITY, hasCapability } from "./authorization.ts";
 import { PAGE_PATHS, resolveRoute } from "./routing";
+import { REPORT_BUILDER_V2 } from "./features/reports/reportBuilderFlags";
 
 const AgentPage = lazy(() => import("./pages/AgentPage").then((module) => ({ default: module.AgentPage })));
 const ReportsPage = lazy(() => import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })));
@@ -51,7 +53,12 @@ export function App() {
     let active = true;
     createAnalysisClient(fetch).validateSession()
       .then((restored) => { if (active) setSession(restored); })
-      .catch(() => { if (active) setSession(null); });
+      .catch(() => {
+        if (active) {
+          clearAuthenticatedBrowserState();
+          setSession(null);
+        }
+      });
     return () => { active = false; };
   }, []);
 
@@ -62,7 +69,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const expireSession = () => setSessionNotice("세션이 만료되었습니다. 작성 중인 내용은 유지됩니다. 다시 로그인해 주세요.");
+    const expireSession = () => {
+      clearAuthenticatedBrowserState();
+      setReportDirty(false);
+      setSessionNotice("세션이 만료되었습니다. 안전을 위해 사용자 임시 상태를 지웠습니다. 다시 로그인해 주세요.");
+      setSession(null);
+    };
     window.addEventListener("answervice:session-expired", expireSession);
     return () => window.removeEventListener("answervice:session-expired", expireSession);
   }, []);
@@ -128,11 +140,18 @@ export function App() {
   const signOut = async () => {
     if (reportDirty && !window.confirm("저장하지 않은 보고서 변경사항이 있습니다. 로그아웃할까요?")) return;
     window.dispatchEvent(new CustomEvent("answervice:clear-drafts"));
-    try { await createAnalysisClient(fetch).logout(); } finally { setSessionNotice(""); setSession(null); }
+    try {
+      await createAnalysisClient(fetch).logout();
+    } finally {
+      clearAuthenticatedBrowserState();
+      setReportDirty(false);
+      setSessionNotice("");
+      setSession(null);
+    }
   };
 
-  return <><div className={`app-shell ppt-theme ${menuOpen ? "" : "sidebar-collapsed"} ${reportEditorMode ? "report-editor-mode" : ""} ${isPending ? "is-page-pending" : ""} ${sessionNotice ? "session-locked" : ""}`} inert={sessionNotice ? true : undefined} aria-hidden={sessionNotice ? "true" : undefined}>
+  return <div className={`app-shell ppt-theme ${menuOpen ? "" : "sidebar-collapsed"} ${reportEditorMode ? "report-editor-mode" : ""} ${reportEditorMode && REPORT_BUILDER_V2 ? "report-builder-v2-mode" : ""} ${isPending ? "is-page-pending" : ""}`}>
     <AppSidebar page={route.page} role={role} capabilities={capabilities} onNavigate={navigate} open={menuOpen} onClose={() => setMenuOpen(false)} />
     <div className="workspace"><AppHeader title={title} description={description} role={role} onMenu={() => setMenuOpen(true)} onSignOut={signOut} /><div className="page-progress" aria-hidden="true" /><main className="page-stage" key={route.path} aria-busy={isPending}><Suspense fallback={<div className="page-loading"><i /><b>페이지를 준비하고 있습니다.</b></div>}>{content}</Suspense></main></div>
-  </div>{sessionNotice && <div className="session-reauth-layer" role="dialog" aria-modal="true" aria-label="세션 만료"><SessionLogin embedded notice={sessionNotice} onAuthenticated={(nextSession) => { setSession(nextSession); setSessionNotice(""); }} /></div>}</>;
+  </div>;
 }

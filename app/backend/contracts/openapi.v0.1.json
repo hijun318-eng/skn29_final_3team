@@ -1955,7 +1955,7 @@
       },
       "ReplaceReportBlocksRequest": {
         "additionalProperties": false,
-        "description": "초안의 전체 블록 배열을 교체하고 필요할 때 페이지 방향과 통화 단위도 함께 변경한다.",
+        "description": "초안의 제목·전체 블록 배열·페이지 방향·통화 단위를 한 저장 요청으로 변경한다.",
         "properties": {
           "blocks": {
             "items": {
@@ -1997,6 +1997,19 @@
               }
             ],
             "title": "Orientation"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
           }
         },
         "required": [
@@ -2977,7 +2990,7 @@
       "Role": {
         "description": "인증 주체에게 부여할 수 있는 분석·보고서·데이터 관리 역할의 허용 집합이다.",
         "enum": [
-          "hotel_analyst",
+          "analyst",
           "report_admin",
           "data_admin",
           "platform_admin"
@@ -6010,7 +6023,7 @@
     },
     "/reports/definitions/{definition_id}/versions/{version}/blocks": {
       "put": {
-        "description": "draft blocks 변경을 현재 상태와 충돌 여부를 확인한 뒤 원자적으로 반영한다.",
+        "description": "draft 제목·blocks·표시 설정을 현재 상태와 충돌 확인 후 원자적으로 반영한다.",
         "operationId": "reportReplaceDraftBlocks",
         "parameters": [
           {

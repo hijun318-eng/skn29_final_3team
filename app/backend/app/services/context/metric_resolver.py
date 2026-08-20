@@ -18,7 +18,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.contracts import AnalysisRequest, ClarificationType, DisambiguationOption, RequestContext
 from app.ports.data_platform import DataPlatformAdapter, MetadataUnavailableError
 from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
-from app.services.context.values import RATIO_ZERO_POLICIES
+from app.services.context.metric_execution_scope import (
+    ratio_reference as _ratio_reference,
+    select_assets_for_metrics as _select_assets_for_metrics,
+    synthetic_ratio_metric as _synthetic_ratio_metric,
+)
 from app.services.context.filter_candidate_resolver import (
     dimension_terms as _resolve_dimension_terms,
     resolve_filter_candidates,
@@ -80,101 +84,6 @@ def _model_periods(candidates: object, timezone: ZoneInfo) -> list[dict[str, Any
     return validated
 
 
-def _ratio_reference(
-    metric_terms: dict[str, dict[str, object]],
-    candidate_ids: list[str],
-    metric_id: str,
-) -> dict[str, str] | None:
-    term = metric_terms[metric_id]
-    if term.get("kind") != "ratio":
-        return None
-    numerator_id = term.get("numerator_metric_id")
-    denominator_id = term.get("denominator_metric_id")
-    zero_policy = term.get("zero_policy")
-    if (
-        not isinstance(numerator_id, str)
-        or not isinstance(denominator_id, str)
-        or numerator_id == denominator_id
-        or numerator_id not in candidate_ids
-        or denominator_id not in candidate_ids
-        or metric_terms[numerator_id].get("kind", "column") != "column"
-        or metric_terms[denominator_id].get("kind", "column") != "column"
-        or not isinstance(zero_policy, str)
-        or zero_policy not in RATIO_ZERO_POLICIES
-    ):
-        raise ContextBuildError(
-            ContextBuildErrorCode.INVALID_METRIC,
-            "Ratio metric term의 분자·분모 참조가 승인된 단일 metric을 가리키지 않습니다.",
-        )
-    return {
-        "numerator_metric_id": numerator_id,
-        "denominator_metric_id": denominator_id,
-        "zero_policy": zero_policy,
-    }
-
-
-def _synthetic_ratio_metric(
-    metric_id: str,
-    term: dict[str, object],
-    ratio: dict[str, str],
-) -> dict[str, object]:
-    return {
-        "id": metric_id,
-        "asset_fqn": "",
-        "field": "",
-        "aggregation": "ratio",
-        "time_field": "",
-        "required_filters": [],
-        "result_field": metric_id,
-        "unit": str(term.get("unit") or ""),
-        "numerator_metric_id": ratio["numerator_metric_id"],
-        "denominator_metric_id": ratio["denominator_metric_id"],
-        "zero_policy": ratio["zero_policy"],
-    }
-
-
-def _select_assets_for_metrics(
-    assets: list[dict[str, object]],
-    keep_ids: set[str],
-    synthetic: dict[str, object] | None,
-) -> list[dict[str, object]]:
-    selected_assets: list[dict[str, object]] = []
-    injected = False
-    for asset in assets:
-        item = dict(asset)
-        if "metrics" in item:
-            kept = tuple(
-                metric
-                for metric in item.get("metrics", ())
-                if isinstance(metric, dict) and metric.get("id") in keep_ids
-            )
-            if synthetic is not None:
-                # 검색 단계의 ratio 항목은 후보 노출용이다. 실행 Context에는 현재
-                # Glossary read-back으로 다시 합성한 한 개의 canonical rule만 둔다.
-                kept = tuple(
-                    metric
-                    for metric in kept
-                    if metric.get("id") != synthetic["id"]
-                )
-            if (
-                synthetic is not None
-                and not injected
-                and any(metric.get("id") == synthetic["numerator_metric_id"] for metric in kept)
-            ):
-                kept = kept + (synthetic,)
-                injected = True
-            item["metrics"] = kept
-        selected_assets.append(item)
-    if synthetic is not None and not injected:
-        raise ContextBuildError(
-            ContextBuildErrorCode.INVALID_METRIC,
-            "Ratio metric의 분자 metric이 승인된 asset에서 발견되지 않았습니다.",
-        )
-    if not any(asset.get("join_ids") for asset in selected_assets):
-        selected_assets = [asset for asset in selected_assets if asset.get("metrics")]
-    return selected_assets
-
-
 class MetricResolver:
     """승인된 자산 메타데이터 및 용어사전과 사용자의 질의를 대조하여 단일 지표를 확정하는 리졸버."""
 
@@ -200,22 +109,31 @@ class MetricResolver:
                 "선택된 DataHub 자산들이 단일 거버넌스 캘린더를 공유하지 않습니다."
             )
         calendar_id = next(iter(calendar_ids))
-        candidates = [
+        executable_metrics = [
             metric
             for asset in assets
             for metric in asset.get("metrics", ())
             if isinstance(metric, dict) and isinstance(metric.get("id"), str)
+        ]
+        executable_ids = [str(metric["id"]) for metric in executable_metrics]
+        if len(executable_ids) != len(set(executable_ids)):
+            raise ContextBuildError(
+                ContextBuildErrorCode.DUPLICATE_METRIC,
+                "런타임 메타데이터에 중복된 지표 식별자가 존재합니다.",
+            )
+        executable_by_id = {
+            str(metric["id"]): metric for metric in executable_metrics
+        }
+        candidates = [
+            metric
+            for metric in executable_metrics
+            if metric.get("visibility", "BUSINESS") == "BUSINESS"
         ]
         candidate_ids = [str(metric["id"]) for metric in candidates]
         if not candidate_ids:
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METRIC,
                 "런타임 메타데이터에서 거버넌스 지표를 찾을 수 없습니다.",
-            )
-        if len(candidate_ids) != len(set(candidate_ids)):
-            raise ContextBuildError(
-                ContextBuildErrorCode.DUPLICATE_METRIC,
-                "런타임 메타데이터에 중복된 지표 식별자가 존재합니다.",
             )
         try:
             metric_terms = await self._adapter.get_metric_terms(tuple(candidate_ids))
@@ -286,12 +204,19 @@ class MetricResolver:
                     payload.resolved_slots.user_filters, dimension_terms, allowed_dimensions
                 )
 
-                pre_ratio = _ratio_reference(metric_terms, candidate_ids, pre_metric)
+                pre_ratio = _ratio_reference(
+                    metric_terms, executable_by_id, pre_metric
+                )
                 pre_keep_ids = {pre_metric}
                 pre_synthetic = None
                 if pre_ratio is not None:
                     pre_keep_ids |= {pre_ratio["numerator_metric_id"], pre_ratio["denominator_metric_id"]}
-                    pre_synthetic = _synthetic_ratio_metric(pre_metric, metric_terms[pre_metric], pre_ratio)
+                    pre_synthetic = _synthetic_ratio_metric(
+                        pre_metric,
+                        metric_terms[pre_metric],
+                        pre_ratio,
+                        executable_by_id[pre_metric],
+                    )
                 selected_assets = _select_assets_for_metrics(assets, pre_keep_ids, pre_synthetic)
 
                 periods: list[dict[str, Any]] = []
@@ -316,7 +241,11 @@ class MetricResolver:
                     "period_relationship": "single",
                     "selected_metric_id": pre_metric,
                     "metric_term": metric_terms[pre_metric],
-                    "metric_terms": {mid: metric_terms[mid] for mid in pre_keep_ids},
+                    "metric_terms": {
+                        mid: metric_terms[mid]
+                        for mid in pre_keep_ids
+                        if mid in metric_terms
+                    },
                 }
                 return selected_assets, payload.question, structured_request
 
@@ -397,7 +326,7 @@ class MetricResolver:
                 _suggestions(target_cand_ids, glossary),
                 disambiguation_options=_disambiguation_options_for_metrics(target_cand_ids, metric_terms),
             )
-        ratio = _ratio_reference(metric_terms, candidate_ids, selected)
+        ratio = _ratio_reference(metric_terms, executable_by_id, selected)
         if is_comparison and ratio is not None:
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METRIC,
@@ -407,7 +336,12 @@ class MetricResolver:
         synthetic = None
         if ratio is not None:
             keep_ids |= {ratio["numerator_metric_id"], ratio["denominator_metric_id"]}
-            synthetic = _synthetic_ratio_metric(selected, metric_terms[selected], ratio)
+            synthetic = _synthetic_ratio_metric(
+                selected,
+                metric_terms[selected],
+                ratio,
+                executable_by_id[selected],
+            )
         selected_assets = _select_assets_for_metrics(assets, keep_ids, synthetic)
         allowed_dimensions = {
             identifier
@@ -448,7 +382,9 @@ class MetricResolver:
             ),
             "is_elliptical": normalized.get("is_elliptical"),
             "metric_term": metric_terms[selected],
-            "metric_terms": {mid: metric_terms[mid] for mid in keep_ids},
+            "metric_terms": {
+                mid: metric_terms[mid] for mid in keep_ids if mid in metric_terms
+            },
         }
         question = normalized.get("normalized_question")
         if not isinstance(question, str) or not question.strip():

@@ -77,6 +77,9 @@ ALLOWED_RUNTIME_JSON = {
     "src/modelops/release_candidate.v1.json": "non-ready release evidence",
     "src/modelops/serving_manifest.v0.1.json": "historical serving evidence",
     "infrastructure/database/trino/etc/access-control-rules.json": "Trino policy config",
+    "infrastructure/database/datahub/decisions/metric_retirement_20260820.v1.json": (
+        "validated product-scope retirement decision"
+    ),
 }
 PROHIBITED_RUNTIME_REFERENCES = {
     "docs/e2e_mvp/derived/service_demo_v3": "과거 demo seed",

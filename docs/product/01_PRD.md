@@ -66,10 +66,11 @@ P0의 인수 대상은 **단일 호스트·통제된 네트워크의 release can
 |---|---|---|
 | `hotel_analyst` | 허용된 자연어 분석, 본인 Analysis 저장·재실행, Report 초안 작성·승인 요청 | Report 승인·공개, 권한 밖 원문·개인정보 조회 |
 | `report_admin` | 승인 큐 조회, 승인·반려, 승인된 버전 수동 실행, Run 이력 조회 | 임의 자연어 분석과 데이터 권한 우회 |
+| `platform_admin` | 통제된 단일 호스트에서 현재 애플리케이션 Capability 전체를 검증 | DataHub publish, Trino setup, Source DB 관리와 사용자별 객체 권한 우회 |
 | 사업책임자 | P0에서는 승인된 결과·보고서의 수혜자 | 별도 로그인 역할과 직접 질의 UI |
 | 데이터 거버넌스 담당자 | DataHub에서 Term·Domain·Owner·승인·관계를 관리 | 애플리케이션 내부 관리 UI |
 
-사업책임자 직접 질의를 발표하려면 별도 역할·권한·화면을 구현하고 이 문서를 변경해야 한다. 현재 P0에서는 `hotel_analyst`가 사업 질문을 실행하고 사업책임자가 검증된 결과를 소비한다.
+사업책임자 직접 질의를 발표하려면 별도 역할·권한·화면을 구현하고 이 문서를 변경해야 한다. 현재 P0에서는 `hotel_analyst`가 사업 질문을 실행하고 사업책임자가 검증된 결과를 소비한다. `platform_admin` 권한은 사용자명 분기가 아니라 서버 Role→Capability 정책으로만 부여하며, 보고서 재실행의 effective subject와 App의 read-only service identity를 바꾸지 않는다.
 
 ## 4. P0 지원 질문 계약
 

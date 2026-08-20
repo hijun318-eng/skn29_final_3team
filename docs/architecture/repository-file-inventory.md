@@ -7,13 +7,13 @@
 
 | 분류 | 파일 수 |
 |---|---:|
-| archive | 122 |
+| archive | 127 |
 | documentation | 135 |
-| production | 268 |
+| production | 279 |
 | project-config | 34 |
-| runtime-config | 60 |
-| runtime-contract | 8 |
-| test | 122 |
+| runtime-config | 61 |
+| runtime-contract | 9 |
+| test | 128 |
 
 운영 무결성 위반: **0건**
 
@@ -58,6 +58,7 @@
 | `app/backend/app/adapters/datahub_metadata.py` | production | REVIEWED |
 | `app/backend/app/adapters/datahub_metadata_types.py` | production | REVIEWED |
 | `app/backend/app/adapters/datahub_metadata_values.py` | production | REVIEWED |
+| `app/backend/app/adapters/datahub_metric_governance.py` | production | REVIEWED |
 | `app/backend/app/adapters/governed_data_platform.py` | production | REVIEWED |
 | `app/backend/app/adapters/model_adapter.py` | production | REVIEWED |
 | `app/backend/app/adapters/model_context.py` | production | REVIEWED |
@@ -67,6 +68,7 @@
 | `app/backend/app/adapters/query_governance.py` | production | REVIEWED |
 | `app/backend/app/adapters/query_join_graph.py` | production | REVIEWED |
 | `app/backend/app/adapters/query_result_values.py` | production | REVIEWED |
+| `app/backend/app/adapters/query_search_evidence.py` | production | REVIEWED |
 | `app/backend/app/adapters/release_manifest.py` | production | REVIEWED |
 | `app/backend/app/adapters/report_artifact_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/report_assistant.py` | production | REVIEWED |
@@ -88,6 +90,7 @@
 | `app/backend/app/api/router.py` | production | REVIEWED |
 | `app/backend/app/auth.py` | production | REVIEWED |
 | `app/backend/app/auth_principal_store.py` | production | REVIEWED |
+| `app/backend/app/authorization.py` | production | REVIEWED |
 | `app/backend/app/context.py` | production | REVIEWED |
 | `app/backend/app/context_registry_contracts.py` | production | REVIEWED |
 | `app/backend/app/contract_core.py` | production | REVIEWED |
@@ -122,6 +125,7 @@
 | `app/backend/app/services/context/contract.py` | production | REVIEWED |
 | `app/backend/app/services/context/filter_candidate_resolver.py` | production | REVIEWED |
 | `app/backend/app/services/context/filter_value_resolver.py` | production | REVIEWED |
+| `app/backend/app/services/context/metric_execution_scope.py` | production | REVIEWED |
 | `app/backend/app/services/context/metric_resolver.py` | production | REVIEWED |
 | `app/backend/app/services/context/model_signals.py` | production | REVIEWED |
 | `app/backend/app/services/context/model_time_context.py` | production | REVIEWED |
@@ -190,6 +194,7 @@
 | `app/backend/migrations/versions/20260814_23_report_display_settings.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260816_24_remove_demo_template.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260816_25_template_role_authorization.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260819_26_platform_admin_capability.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -204,6 +209,7 @@
 | `app/frontend/src/api/analysisClient.ts` | production | REVIEWED |
 | `app/frontend/src/api/reportClient.ts` | production | REVIEWED |
 | `app/frontend/src/App.jsx` | production | REVIEWED |
+| `app/frontend/src/authorization.ts` | production | REVIEWED |
 | `app/frontend/src/components/analysis/AnalysisDashboardViews.tsx` | production | REVIEWED |
 | `app/frontend/src/components/analysis/AnalysisStatePanel.tsx` | production | REVIEWED |
 | `app/frontend/src/components/analysis/AnalysisStatePanelParts.tsx` | production | REVIEWED |
@@ -400,6 +406,11 @@
 | `evals/instruct2507.smoke20.v2.manifest.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/nlu_live_node1.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/nlu_route_accuracy.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/p0_gold.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/p0_gold/answervice_v4_3.p0.draft.v1.jsonl` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/p0_gold/answervice_v4_3.p0.draft.v1.manifest.json` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/p0_gold_runner.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/p0_gold_scoring.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/runner.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/semantic_review/answervice_d2_metrics.v1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/split_manifest.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
@@ -414,12 +425,14 @@
 | `infrastructure/database/datahub/catalog_governance.py` | production | REVIEWED |
 | `infrastructure/database/datahub/catalog_governance_verify.py` | production | REVIEWED |
 | `infrastructure/database/datahub/check_metric_review.py` | production | REVIEWED |
+| `infrastructure/database/datahub/check_metric_review_transition.py` | production | REVIEWED |
 | `infrastructure/database/datahub/compose.consumer.yml` | production | REVIEWED |
 | `infrastructure/database/datahub/compose.ingestion.yml` | production | REVIEWED |
 | `infrastructure/database/datahub/compose.semantic-search.yml` | production | REVIEWED |
 | `infrastructure/database/datahub/dataset_semantic_clients.py` | production | REVIEWED |
 | `infrastructure/database/datahub/dataset_semantic_contract.py` | production | REVIEWED |
 | `infrastructure/database/datahub/dataset_semantic_index.py` | production | REVIEWED |
+| `infrastructure/database/datahub/decisions/metric_retirement_20260820.v1.json` | runtime-contract | REVIEWED |
 | `infrastructure/database/datahub/Dockerfile.semantic-content` | production | REVIEWED |
 | `infrastructure/database/datahub/http_client.py` | production | REVIEWED |
 | `infrastructure/database/datahub/ingest_runtime_catalog.ps1` | production | REVIEWED |
@@ -430,7 +443,10 @@
 | `infrastructure/database/datahub/metadata_rest.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metadata_wire.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metric_contract.py` | production | REVIEWED |
+| `infrastructure/database/datahub/metric_governance_contract.py` | production | REVIEWED |
+| `infrastructure/database/datahub/metric_retirement.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metric_review_contract.py` | production | REVIEWED |
+| `infrastructure/database/datahub/metric_review_transition.py` | production | REVIEWED |
 | `infrastructure/database/datahub/policy_compiler.py` | production | REVIEWED |
 | `infrastructure/database/datahub/preflight_policy_decisions.py` | production | REVIEWED |
 | `infrastructure/database/datahub/publication_check.py` | production | REVIEWED |
@@ -451,6 +467,7 @@
 | `infrastructure/database/datahub/release_trino.py` | production | REVIEWED |
 | `infrastructure/database/datahub/requirements.authoring.txt` | production | REVIEWED |
 | `infrastructure/database/datahub/requirements.semantic-content.txt` | production | REVIEWED |
+| `infrastructure/database/datahub/retire_semantic_metrics.py` | production | REVIEWED |
 | `infrastructure/database/datahub/runtime_governance_draft.py` | production | REVIEWED |
 | `infrastructure/database/datahub/SEMANTIC_AUTHORING.md` | documentation | REFERENCE_NON_RUNTIME |
 | `infrastructure/database/datahub/semantic_authoring.py` | production | REVIEWED |
@@ -636,6 +653,7 @@
 | `src/ai/training/verify_case_specs.py` | production | REVIEWED |
 | `src/data/datahub_connection.py` | production | REVIEWED |
 | `src/data/governance_contract.py` | production | REVIEWED |
+| `src/data/metric_governance.py` | production | REVIEWED |
 | `src/modelops/model_candidate.instruct2507.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `src/modelops/model_decision.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `src/modelops/model_runtime_manifest.v1.json` | runtime-contract | REVIEWED |
@@ -660,6 +678,7 @@
 | `tests/ai/test_node1.py` | test | TEST_ONLY |
 | `tests/ai/test_node2.py` | test | TEST_ONLY |
 | `tests/ai/test_node3.py` | test | TEST_ONLY |
+| `tests/ai/test_p0_gold.py` | test | TEST_ONLY |
 | `tests/ai/test_prompt_registry.py` | test | TEST_ONLY |
 | `tests/ai/test_report_assistant_contract.py` | test | TEST_ONLY |
 | `tests/ai/test_runtime_model_configuration.py` | test | TEST_ONLY |
@@ -693,6 +712,7 @@
 | `tests/backend/test_async_database.py` | test | TEST_ONLY |
 | `tests/backend/test_async_model_transport.py` | test | TEST_ONLY |
 | `tests/backend/test_auth_context.py` | test | TEST_ONLY |
+| `tests/backend/test_authorization.py` | test | TEST_ONLY |
 | `tests/backend/test_context_builder.py` | test | TEST_ONLY |
 | `tests/backend/test_context_registry.py` | test | TEST_ONLY |
 | `tests/backend/test_control_plane_contract.py` | test | TEST_ONLY |
@@ -702,6 +722,7 @@
 | `tests/backend/test_governed_data_platform.py` | test | TEST_ONLY |
 | `tests/backend/test_http_runtime.py` | test | TEST_ONLY |
 | `tests/backend/test_mcp_protocol.py` | test | TEST_ONLY |
+| `tests/backend/test_metric_governance_runtime_v2.py` | test | TEST_ONLY |
 | `tests/backend/test_metric_reduction.py` | test | TEST_ONLY |
 | `tests/backend/test_migration_compatibility.py` | test | TEST_ONLY |
 | `tests/backend/test_model_runtime_routing.py` | test | TEST_ONLY |
@@ -727,7 +748,10 @@
 | `tests/data/test_dataset_semantic_content_producer.py` | test | TEST_ONLY |
 | `tests/data/test_existing_database_infrastructure.py` | test | TEST_ONLY |
 | `tests/data/test_governance_contract.py` | test | TEST_ONLY |
+| `tests/data/test_metric_governance_v2.py` | test | TEST_ONLY |
+| `tests/data/test_metric_retirement.py` | test | TEST_ONLY |
 | `tests/data/test_metric_review_contract.py` | test | TEST_ONLY |
+| `tests/data/test_metric_review_transition.py` | test | TEST_ONLY |
 | `tests/data/test_release_archive_integrity.py` | test | TEST_ONLY |
 | `tests/data/test_release_bundle_builder.py` | test | TEST_ONLY |
 | `tests/data/test_release_discovery_sources.py` | test | TEST_ONLY |

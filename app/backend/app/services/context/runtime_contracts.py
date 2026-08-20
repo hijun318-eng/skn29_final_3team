@@ -314,6 +314,7 @@ def _time_rules(
     required = {
         (metric.asset_fqn, metric.time_field)
         for metric in package.metrics
+        if metric.aggregation.lower() != "ratio"
     }
     actual = {(item["field"]["asset_fqn"], item["field"]["column"]) for item in fields}
     if not required.issubset(actual):

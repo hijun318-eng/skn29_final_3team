@@ -27,9 +27,20 @@ from release_bundle import ReleaseBinding
 from release_datahub import PROPERTY_PREFIX, DataHubDataset, dataset_key
 from release_scope import ReleaseScope
 from release_trino import TrinoInventory
+from src.data.metric_governance import (
+    RUNTIME_GOVERNANCE_VERSION_V1,
+    RUNTIME_GOVERNANCE_VERSION_V2,
+    metric_contract_version,
+)
 
 
-AUTHORING_CONTRACT_VERSION = "answervice.semantic_authoring.v1"
+AUTHORING_CONTRACT_VERSION_V1 = "answervice.semantic_authoring.v1"
+AUTHORING_CONTRACT_VERSION_V2 = "answervice.semantic_authoring.v2"
+AUTHORING_CONTRACT_VERSION = AUTHORING_CONTRACT_VERSION_V1
+AUTHORING_RUNTIME_VERSIONS = {
+    AUTHORING_CONTRACT_VERSION_V1: RUNTIME_GOVERNANCE_VERSION_V1,
+    AUTHORING_CONTRACT_VERSION_V2: RUNTIME_GOVERNANCE_VERSION_V2,
+}
 CLEAN_CATALOG_SHA256 = "0" * 64
 _POLICY_KEYS = {
     "contract_version",
@@ -139,8 +150,20 @@ def assemble_authoring_bundle(
 
     policy = mapping(policy, "semantic authoring policy")
     exact_keys(policy, _POLICY_KEYS, "semantic authoring policy")
-    if policy["contract_version"] != AUTHORING_CONTRACT_VERSION:
+    contract_version = policy["contract_version"]
+    expected_runtime_version = AUTHORING_RUNTIME_VERSIONS.get(contract_version)
+    if expected_runtime_version is None:
         raise SemanticMetadataError("semantic authoring contract version is unsupported")
+    try:
+        actual_runtime_version = metric_contract_version(
+            array(policy["metric_rules"], "metric rules", non_empty=True)
+        )
+    except ValueError as error:
+        raise SemanticMetadataError("metric governance version is invalid") from error
+    if actual_runtime_version != expected_runtime_version:
+        raise SemanticMetadataError(
+            "semantic authoring and metric governance versions differ"
+        )
     policies = _asset_policies(policy["assets"])
     live = {binding.relation.fqn: binding for binding in bindings}
     if set(policies) != set(live):

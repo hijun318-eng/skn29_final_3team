@@ -7,6 +7,7 @@ import {
   type AnalysisValue,
 } from "../contracts/analysis.ts";
 import { createUuid } from "../utils/createUuid.ts";
+import { CAPABILITY, type ServiceCapability, type ServiceRole } from "../authorization.ts";
 
 /** 인증·분석·저장 실행 API가 제공해야 하는 비동기 포트다. 모든 실패는 reject되어 호출자가 상태를 결정한다. */
 export interface AnalysisClient {
@@ -92,11 +93,32 @@ export interface ConversationTurnResult {
 /** 서버가 검증한 현재 세션의 최소 공개 정보다. */
 export interface SessionInfo {
   status: "authenticated";
-  role: "hotel_analyst" | "report_admin" | "data_admin";
+  role: ServiceRole;
+  capabilities: ServiceCapability[];
 }
 
 /** 로그인 성공 응답은 검증된 세션 계약과 동일하다. */
 export type LoginSession = SessionInfo;
+
+const SESSION_ROLES = new Set<ServiceRole>([
+  "hotel_analyst",
+  "report_admin",
+  "data_admin",
+  "platform_admin",
+]);
+const SESSION_CAPABILITIES = new Set<ServiceCapability>(Object.values(CAPABILITY));
+
+/** 인증 응답이 지원 Role과 중복 없는 Capability만 포함하는지 런타임에서 검증한다. */
+function isSessionInfo(value: unknown): value is SessionInfo {
+  if (!value || typeof value !== "object") return false;
+  const session = value as Partial<SessionInfo>;
+  return session.status === "authenticated"
+    && typeof session.role === "string"
+    && SESSION_ROLES.has(session.role as ServiceRole)
+    && Array.isArray(session.capabilities)
+    && session.capabilities.length === new Set(session.capabilities).size
+    && session.capabilities.every((item) => SESSION_CAPABILITIES.has(item));
+}
 
 /** 재실행 가능한 서버 저장 분석 정의의 wire 계약이다. */
 export interface SavedAnalysisDefinition {
@@ -193,15 +215,6 @@ export class AnalysisApiError extends Error {
   }
 }
 
-function seoulToday(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
 function authenticationHeaders(explicitToken = "") {
   return explicitToken ? { Authorization: `Bearer ${explicitToken}` } : {};
 }
@@ -250,7 +263,7 @@ export function createHttpAnalysisClient(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       }));
-      if (payload?.data?.status !== "authenticated") {
+      if (!isSessionInfo(payload?.data)) {
         throw new Error("로그인 API가 올바르지 않은 응답을 반환했습니다.");
       }
       return payload.data;
@@ -260,7 +273,7 @@ export function createHttpAnalysisClient(
         credentials: "include",
         headers: authenticationHeaders(authToken),
       }));
-      if (payload?.data?.status !== "authenticated") throw new Error("인증 API가 올바르지 않은 응답을 반환했습니다.");
+      if (!isSessionInfo(payload?.data)) throw new Error("인증 API가 올바르지 않은 응답을 반환했습니다.");
       return payload.data;
     },
     async logout() {
@@ -322,7 +335,7 @@ export function createHttpAnalysisClient(
         method: "POST",
         credentials: "include",
         headers: headers(true),
-        body: JSON.stringify({ as_of: env.VITE_ANALYSIS_AS_OF || seoulToday(), idempotency_key: createUuid(), parameters }),
+        body: JSON.stringify({ idempotency_key: createUuid(), parameters }),
       }));
     },
     async getRunArtifact(requestId) {

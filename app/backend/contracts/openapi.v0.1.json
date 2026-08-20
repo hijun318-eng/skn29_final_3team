@@ -743,6 +743,7 @@
           "ACCESS_DENIED",
           "CONTEXT_INCOMPLETE",
           "CONTEXT_SOURCE_FAILED",
+          "SEMANTIC_CONTRACT_INVALID",
           "DATA_ASSET_NOT_FOUND",
           "MODEL_CONTRACT_INVALID",
           "MODEL_TIMEOUT",
@@ -765,6 +766,18 @@
           "INTERNAL_ERROR"
         ],
         "title": "BlockFailureCode",
+        "type": "string"
+      },
+      "Capability": {
+        "description": "역할 이름과 분리해 API·데이터·보고서 경계가 검사할 수 있는 서비스 권한이다.",
+        "enum": [
+          "analysis.run",
+          "analysis.read",
+          "report.draft",
+          "report.manage",
+          "data.manage"
+        ],
+        "title": "Capability",
         "type": "string"
       },
       "ChartSpec": {
@@ -829,13 +842,8 @@
       },
       "CreateManualRunRequest": {
         "additionalProperties": false,
-        "description": "보고서 정의 버전, 실행 기준 시각과 멱등 키로 수동 실행을 큐에 등록한다.",
+        "description": "보고서 정의 버전과 멱등 키만 받아 서버 기준일의 수동 실행을 등록한다.",
         "properties": {
-          "as_of": {
-            "format": "date-time",
-            "title": "As Of",
-            "type": "string"
-          },
           "definition_id": {
             "minLength": 1,
             "title": "Definition Id",
@@ -855,7 +863,6 @@
         "required": [
           "definition_id",
           "version",
-          "as_of",
           "idempotency_key"
         ],
         "title": "CreateManualRunRequest",
@@ -1161,6 +1168,7 @@
         "enum": [
           "CONTEXT_INCOMPLETE",
           "CONTEXT_SOURCE_FAILED",
+          "SEMANTIC_CONTRACT_INVALID",
           "DATA_ASSET_NOT_FOUND",
           "OUT_OF_DATA_RANGE",
           "SOURCE_NOT_READY",
@@ -1556,6 +1564,14 @@
         "additionalProperties": false,
         "description": "로그인 성공 시 확정된 세션 상태와 역할을 SessionData 형식으로 반환한다.",
         "properties": {
+          "capabilities": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
           "role": {
             "anyOf": [
               {
@@ -1991,13 +2007,8 @@
       },
       "ReplayAnalysisRequest": {
         "additionalProperties": false,
-        "description": "정의 재실행의 기준일·멱등 키와 허용된 스칼라 매개변수를 입력받아 중복 실행을 통제한다.",
+        "description": "정의 재실행의 멱등 키와 허용된 스칼라 매개변수만 받아 중복 실행을 통제한다.\n\n기준일은 인증된 요청의 서버 소유 ``RequestContext``에서만 가져오며 일반 replay에\n역사 시점 주입 통로를 만들지 않는다.",
         "properties": {
-          "as_of": {
-            "format": "date",
-            "title": "As Of",
-            "type": "string"
-          },
           "idempotency_key": {
             "maxLength": 128,
             "minLength": 1,
@@ -2029,7 +2040,6 @@
           }
         },
         "required": [
-          "as_of",
           "idempotency_key"
         ],
         "title": "ReplayAnalysisRequest",
@@ -2969,7 +2979,8 @@
         "enum": [
           "hotel_analyst",
           "report_admin",
-          "data_admin"
+          "data_admin",
+          "platform_admin"
         ],
         "title": "Role",
         "type": "string"
@@ -3045,8 +3056,16 @@
       },
       "SessionData": {
         "additionalProperties": false,
-        "description": "현재 인증 세션 상태와 서버가 확인한 역할을 반환하며 미확인 역할은 비워 둔다.",
+        "description": "현재 인증 세션 상태와 서버가 확인한 역할·Capability를 반환한다.",
         "properties": {
+          "capabilities": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "title": "Capabilities",
+            "type": "array"
+          },
           "role": {
             "anyOf": [
               {
@@ -6559,7 +6578,7 @@
     },
     "/reports/runs/manual": {
       "post": {
-        "description": "관리자의 definition version·기준 시각·멱등 키를 수동 실행 명령으로 등록하고 실행한다.\n\nclaim 가능한 영속 repository에서는 같은 멱등 키의 중복 실행을 막고 완료 run ID와 상태를\n응답한다. 입력·미존재·상태 충돌은 router의 422·404·409 계약을 따른다.",
+        "description": "관리자의 definition version·멱등 키를 서버 기준일의 수동 실행 명령으로 등록한다.\n\nclaim 가능한 영속 repository에서는 같은 멱등 키의 중복 실행을 막고 완료 run ID와 상태를\n응답한다. 일반 replay에는 client 기준일 입력을 허용하지 않으며, 입력·미존재·상태 충돌은\nrouter의 422·404·409 계약을 따른다.",
         "operationId": "reportCreateManualRunCommand",
         "parameters": [
           {

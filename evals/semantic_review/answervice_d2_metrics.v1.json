@@ -27,7 +27,7 @@
         "column": "available_room_nights"
       },
       "grain": {
-        "kind": "hotel_business_day",
+        "kind": "periodic",
         "keys": ["business_date", "hotel_code"],
         "dimensions": ["hotel_code"]
       },
@@ -68,7 +68,7 @@
         "column": "occupied_room_nights"
       },
       "grain": {
-        "kind": "hotel_business_day",
+        "kind": "periodic",
         "keys": ["business_date", "hotel_code"],
         "dimensions": ["hotel_code"]
       },
@@ -109,7 +109,7 @@
         "column": "room_revenue_krw"
       },
       "grain": {
-        "kind": "hotel_business_day",
+        "kind": "periodic",
         "keys": ["business_date", "hotel_code"],
         "dimensions": ["hotel_code"]
       },
@@ -150,7 +150,7 @@
         "metric_ids": ["occupied_room_nights", "available_room_nights"]
       },
       "grain": {
-        "kind": "hotel_business_day",
+        "kind": "periodic",
         "keys": ["business_date", "hotel_code"],
         "dimensions": ["hotel_code"]
       },
@@ -191,7 +191,7 @@
         "metric_ids": ["room_revenue", "occupied_room_nights"]
       },
       "grain": {
-        "kind": "hotel_business_day",
+        "kind": "periodic",
         "keys": ["business_date", "hotel_code"],
         "dimensions": ["hotel_code"]
       },
@@ -232,7 +232,7 @@
         "metric_ids": ["room_revenue", "available_room_nights"]
       },
       "grain": {
-        "kind": "hotel_business_day",
+        "kind": "periodic",
         "keys": ["business_date", "hotel_code"],
         "dimensions": ["hotel_code"]
       },
@@ -273,7 +273,7 @@
         "column": "fnb_revenue_krw"
       },
       "grain": {
-        "kind": "hotel_business_day",
+        "kind": "periodic",
         "keys": ["business_date", "hotel_code"],
         "dimensions": ["hotel_code"]
       },
@@ -314,7 +314,7 @@
         "column": "banquet_revenue_krw"
       },
       "grain": {
-        "kind": "hotel_business_day",
+        "kind": "periodic",
         "keys": ["business_date", "hotel_code"],
         "dimensions": ["hotel_code"]
       },
@@ -355,7 +355,7 @@
         "column": "facility_revenue_krw"
       },
       "grain": {
-        "kind": "hotel_business_day",
+        "kind": "periodic",
         "keys": ["business_date", "hotel_code"],
         "dimensions": ["hotel_code"]
       },
@@ -380,7 +380,7 @@
       "query_strategies": ["VIEW_REUSE"]
     },
     {
-      "id": "total_operating_revenue",
+      "id": "total_operating_revenue_krw",
       "name": "Total Operating Revenue",
       "visibility": "BUSINESS",
       "review_status": "REVIEW_REQUIRED",
@@ -396,7 +396,7 @@
         "column": "total_operating_revenue_krw"
       },
       "grain": {
-        "kind": "hotel_business_day",
+        "kind": "periodic",
         "keys": ["business_date", "hotel_code"],
         "dimensions": ["hotel_code"]
       },
@@ -410,7 +410,7 @@
         "required": false,
         "allowed_edge_ids": []
       },
-      "aliases": ["총 운영 매출", "총영업매출", "운영 총매출"],
+      "aliases": ["총 운영 매출", "총 운영매출", "총영업매출", "운영 총매출"],
       "permission": {
         "roles": ["hotel_analyst"],
         "contains_pii": false,
@@ -437,7 +437,7 @@
         "column": "overtime_hours"
       },
       "grain": {
-        "kind": "hotel_business_day",
+        "kind": "periodic",
         "keys": ["business_date", "hotel_code"],
         "dimensions": ["hotel_code"]
       },
@@ -478,7 +478,7 @@
         "column": "rating_overall"
       },
       "grain": {
-        "kind": "voc_review",
+        "kind": "row",
         "keys": ["voc_review_id"],
         "dimensions": ["hotel_code", "source_channel", "touchpoint", "selected_category"]
       },
@@ -503,8 +503,8 @@
       "query_strategies": ["RAW_APPROVED_DETAIL"]
     },
     {
-      "id": "voc_review_count",
-      "name": "VOC Review Count",
+      "id": "voc_average_rating_review_count",
+      "name": "VOC Average Rating Review Count",
       "visibility": "SUPPORT",
       "review_status": "REVIEW_REQUIRED",
       "definition": "선택 범위에서 중복되지 않는 VOC 리뷰 수로 평균 평점 계산용 분모다.",
@@ -519,7 +519,7 @@
         "column": "voc_review_id"
       },
       "grain": {
-        "kind": "voc_review",
+        "kind": "row",
         "keys": ["voc_review_id"],
         "dimensions": ["hotel_code", "source_channel", "touchpoint", "selected_category"]
       },
@@ -540,7 +540,7 @@
         "synthetic": true
       },
       "unit": "review",
-      "result_field": "voc_review_count",
+      "result_field": "voc_average_rating_review_count",
       "query_strategies": ["RAW_APPROVED_DETAIL"]
     },
     {
@@ -552,15 +552,15 @@
       "formula": {
         "kind": "RATIO",
         "numerator_metric_id": "voc_rating_points",
-        "denominator_metric_id": "voc_review_count",
+        "denominator_metric_id": "voc_average_rating_review_count",
         "zero_policy": "null_on_zero_denominator"
       },
       "source": {
         "kind": "METRIC_OPERANDS",
-        "metric_ids": ["voc_rating_points", "voc_review_count"]
+        "metric_ids": ["voc_rating_points", "voc_average_rating_review_count"]
       },
       "grain": {
-        "kind": "voc_review",
+        "kind": "row",
         "keys": ["voc_review_id"],
         "dimensions": ["hotel_code", "source_channel", "touchpoint", "selected_category"]
       },

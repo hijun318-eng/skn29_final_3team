@@ -58,6 +58,17 @@ class Role(str, Enum):
     HOTEL_ANALYST = "hotel_analyst"
     REPORT_ADMIN = "report_admin"
     DATA_ADMIN = "data_admin"
+    PLATFORM_ADMIN = "platform_admin"
+
+
+class Capability(str, Enum):
+    """역할 이름과 분리해 API·데이터·보고서 경계가 검사할 수 있는 서비스 권한이다."""
+
+    RUN_ANALYSIS = "analysis.run"
+    READ_ANALYSIS = "analysis.read"
+    DRAFT_REPORT = "report.draft"
+    MANAGE_REPORT = "report.manage"
+    MANAGE_DATA = "data.manage"
 
 
 class RouteType(str, Enum):
@@ -70,6 +81,7 @@ class ErrorCode(str, Enum):
     """인증, 문맥, 모델, SQL, 쿼리, 증거, 의존성 실패를 안정적인 API 코드로 분류한다."""
     CONTEXT_INCOMPLETE = "CONTEXT_INCOMPLETE"
     CONTEXT_SOURCE_FAILED = "CONTEXT_SOURCE_FAILED"
+    SEMANTIC_CONTRACT_INVALID = "SEMANTIC_CONTRACT_INVALID"
     DATA_ASSET_NOT_FOUND = "DATA_ASSET_NOT_FOUND"
     OUT_OF_DATA_RANGE = "OUT_OF_DATA_RANGE"
     SOURCE_NOT_READY = "SOURCE_NOT_READY"
@@ -240,6 +252,7 @@ _RETRYABLE_ERROR_CODES = {
 
 _REQUIRED_ACTION_BY_ERROR = {
     ErrorCode.CONTEXT_SOURCE_FAILED: RequiredAction.CONTACT_SUPPORT,
+    ErrorCode.SEMANTIC_CONTRACT_INVALID: RequiredAction.CONTACT_SUPPORT,
     ErrorCode.AUTHENTICATION_REQUIRED: RequiredAction.AUTHENTICATE,
     ErrorCode.ACCESS_DENIED: RequiredAction.REQUEST_ACCESS,
     ErrorCode.CONTEXT_INCOMPLETE: RequiredAction.PROVIDE_CONTEXT,

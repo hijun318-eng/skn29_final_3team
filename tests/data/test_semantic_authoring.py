@@ -18,6 +18,7 @@ for entry in (str(ROOT), str(DATAHUB), str(ROOT / "tests" / "data")):
 from metadata_contract_primitives import SemanticMetadataError  # noqa: E402
 from policy_compiler import (  # noqa: E402
     DECISION_CONTRACT_VERSION,
+    DECISION_CONTRACT_VERSION_V2,
     compile_authoring_policy,
 )
 from author_semantic_catalog import (  # noqa: E402
@@ -33,6 +34,7 @@ from publication_check import (  # noqa: E402
 )
 from semantic_authoring import (  # noqa: E402
     AUTHORING_CONTRACT_VERSION,
+    AUTHORING_CONTRACT_VERSION_V2,
     CLEAN_CATALOG_SHA256,
     assemble_authoring_bundle,
     build_authoring_candidate,
@@ -44,6 +46,7 @@ from test_datahub_metadata_publication import (  # noqa: E402
     arbitrary_ratio_bundle,
 )
 from test_release_bundle_builder import _runtime  # noqa: E402
+from test_metric_governance_v2 import _v2_bundle  # noqa: E402
 
 
 def _policy(bundle):
@@ -191,6 +194,56 @@ def test_compact_decisions_compile_without_copying_live_physical_fields():
         asset["fqn"] for asset in expected["schema_context"]["assets"]
     )
     assert actual["metric_rules"] == expected["metric_rules"]
+
+
+def test_v2_decisions_compile_hidden_support_rules_without_publishing_terms():
+    """v2 승인 입력은 SUPPORT Rule을 보존하되 Business Term으로 승격하지 않는다."""
+
+    expected = _v2_bundle()
+    _scopes, inventory, datasets, _terms = _runtime(expected)
+    datasets_by_name = {item.name: item for item in datasets}
+    bindings = tuple(
+        ReleaseBinding(relation, datasets_by_name[relation.fqn])
+        for relation in inventory.relations
+    )
+    decisions = _decisions(expected)
+    decisions["contract_version"] = DECISION_CONTRACT_VERSION_V2
+
+    policy = compile_authoring_policy(decisions, bindings)
+    actual = assemble_authoring_bundle(policy, bindings)
+
+    assert policy["contract_version"] == AUTHORING_CONTRACT_VERSION_V2
+    assert {item["id"] for item in actual["metric_rules"]} == {
+        "amount_total",
+        "event_count",
+        "account_count",
+        "amount_per_event",
+    }
+    assert {item["id"] for item in actual["metric_terms"]} == {
+        "account_count",
+        "amount_per_event",
+    }
+
+
+def test_authoring_boundaries_reject_cross_version_metric_contracts():
+    """입력 envelope만 v2로 바꿔 governance 필드 누락을 우회할 수 없다."""
+
+    v1 = arbitrary_bundle()
+    _scopes, _inventory, _datasets, bindings = _physical(v1)
+    v2_policy = _policy(v1)
+    v2_policy["contract_version"] = AUTHORING_CONTRACT_VERSION_V2
+    with pytest.raises(SemanticMetadataError, match="versions differ"):
+        assemble_authoring_bundle(v2_policy, bindings)
+
+    v2 = _v2_bundle()
+    _scopes, inventory, datasets, _terms = _runtime(v2)
+    by_name = {item.name: item for item in datasets}
+    v2_bindings = tuple(
+        ReleaseBinding(relation, by_name[relation.fqn])
+        for relation in inventory.relations
+    )
+    with pytest.raises(SemanticMetadataError, match="versions differ"):
+        compile_authoring_policy(_decisions(v2), v2_bindings)
 
 
 def test_compact_decisions_derive_ratio_term_domain_from_live_operands():

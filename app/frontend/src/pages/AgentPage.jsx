@@ -345,7 +345,7 @@ export function AgentPage({ onNavigate }) {
           <section className="chat-empty-state" aria-labelledby="chat-empty-title">
             <small>대화형 데이터 분석</small>
             <h2 id="chat-empty-title">무엇을 분석할까요?</h2>
-            <p>호텔 운영 매출, 고객 VOC 리뷰, 연회 취소 행사 등 다양한 지표와 기간을 자연어로 분석해 보세요.</p>
+            <p>호텔 운영 매출, 객실 지표, 고객 VOC 평점 등 다양한 지표와 기간을 자연어로 분석해 보세요.</p>
             {exampleQuestions.length > 0 && (
               <div aria-label="분석 질문 예시">
                 {exampleQuestions.map((ex) => <button key={ex.id} type="button" onClick={() => { void analyzeQuestion(ex.question); }}>{ex.question}</button>)}

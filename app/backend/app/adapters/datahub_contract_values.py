@@ -11,6 +11,10 @@ from app.adapters.datahub_metadata_values import (
     fqn,
     required_text,
 )
+from src.data.metric_governance import (
+    SUPPORTED_RUNTIME_GOVERNANCE_VERSIONS,
+    dataset_runtime_property_keys,
+)
 
 
 PROPERTY_PREFIX = "answervice."
@@ -27,6 +31,27 @@ def governed_properties(value, expected):
     # 알 수 없는 key도 거부해야 publisher와 runtime의 contract version 불일치를 숨기지 않는다.
     if set(governed) != expected:
         raise GovernedMetadataError("DataHub governed custom properties are incomplete")
+    return governed
+
+
+def dataset_governed_properties(value):
+    """Dataset runtime version을 먼저 읽고 그 버전의 exact property 집합만 허용한다."""
+
+    properties = custom_properties(value)
+    governed = {
+        key[len(PROPERTY_PREFIX):]: item
+        for key, item in properties.items()
+        if key.startswith(PROPERTY_PREFIX)
+    }
+    version = governed.get("contract_version")
+    if version not in SUPPORTED_RUNTIME_GOVERNANCE_VERSIONS:
+        raise GovernedMetadataError(
+            "DataHub runtime governance version is unsupported"
+        )
+    if set(governed) != dataset_runtime_property_keys(version):
+        raise GovernedMetadataError(
+            "DataHub governed custom properties are incomplete"
+        )
     return governed
 
 

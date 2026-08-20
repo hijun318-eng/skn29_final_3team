@@ -27,6 +27,11 @@ from src.data.governance_contract import (
     RATIO_ZERO_POLICIES,
     shared_semantic_hash,
 )
+from src.data.metric_governance import (
+    RUNTIME_GOVERNANCE_VERSION_V1,
+    RUNTIME_GOVERNANCE_VERSION_V2,
+    business_metric_ids,
+)
 
 if TYPE_CHECKING:  # 순환 import를 만들지 않도록 snapshot 타입은 검사 시점에만 참조한다.
     from app.adapters.catalog_snapshot import CatalogSnapshot
@@ -50,7 +55,13 @@ def coherent_release_datasets(
     releases = {item.context_release for item in datasets}
     checksums = {item.catalog_checksum for item in datasets}
     policies = {item.policy_version for item in datasets}
-    if len(releases) != 1 or len(checksums) != 1 or len(policies) != 1:
+    contracts = {item.contract_version for item in datasets}
+    if (
+        len(releases) != 1
+        or len(checksums) != 1
+        or len(policies) != 1
+        or len(contracts) != 1
+    ):
         raise GovernedMetadataError(
             "DataHub runtime catalog does not resolve one coherent active release"
         )
@@ -155,29 +166,75 @@ def _catalog_bundle(datasets, terms, governance_entities):
     ordered_terms = sorted(terms.values(), key=lambda value: value.urn)
     representative = ordered_datasets[0]
     shared_attributes = (
-        "context_release", "policy_version", "schema_context_version",
+        "contract_version", "context_release", "policy_version", "schema_context_version",
         "governance_urns", "dimensions", "join_graph", "time_rules",
-        "parameter_contract", "query_policy",
+        "parameter_contract", "query_policy", "metric_rules",
     )
     for name in shared_attributes:
         if len({canonical_json(getattr(item, name)) for item in ordered_datasets}) != 1:
             raise GovernedMetadataError(
                 f"DataHub release datasets disagree on {name}"
             )
+    if representative.contract_version == RUNTIME_GOVERNANCE_VERSION_V1:
+        metric_rules = _v1_metric_rules(ordered_datasets, ordered_terms)
+    elif representative.contract_version == RUNTIME_GOVERNANCE_VERSION_V2:
+        metric_rules = _v2_metric_rules(ordered_datasets, ordered_terms)
+    else:
+        raise GovernedMetadataError("DataHub runtime governance version is unsupported")
+    governance_urns = representative.governance_urns
+    actual_governance_urns = {
+        name: {item["urn"] for item in values}
+        for name, values in governance_entities.items()
+    }
+    if actual_governance_urns != {
+        name: set(values) for name, values in governance_urns.items()
+    }:
+        raise GovernedMetadataError(
+            "DataHub native governance details differ from the release URNs"
+        )
+    for term in ordered_terms:
+        if (
+            not term.owner_urns.issubset(governance_urns["owners"])
+            or term.domain_urn not in governance_urns["domains"]
+            or term.lifecycle_urn not in governance_urns["approved_lifecycles"]
+        ):
+            raise GovernedMetadataError(
+                "DataHub glossary governance is outside the release"
+            )
+    return {
+        "catalog_version": representative.context_release,
+        "policy_version": representative.policy_version,
+        "governance_entities": {
+            name: [dict(item) for item in values]
+            for name, values in governance_entities.items()
+        },
+        "schema_context": {
+            "version": representative.schema_context_version,
+            "assets": [item.catalog_asset for item in ordered_datasets],
+        },
+        "metric_rules": metric_rules,
+        "metric_terms": [_term_projection(item) for item in ordered_terms],
+        "dimensions": list(representative.dimensions),
+        "join_graph": representative.join_graph,
+        "time_rules": representative.time_rules,
+        "parameter_contract": representative.parameter_contract,
+        "query_policy": representative.query_policy,
+    }
+
+
+def _v1_metric_rules(datasets, terms) -> list[dict[str, object]]:
     runtime_metrics = [
-        (dataset, metric)
-        for dataset in ordered_datasets
-        for metric in dataset.metrics
+        (dataset, metric) for dataset in datasets for metric in dataset.metrics
     ]
     column_terms = [
-        term for term in ordered_terms if metric_source_kind(term.metric_rule) == "column"
+        term for term in terms if metric_source_kind(term.metric_rule) == "column"
     ]
     ratio_terms = [
-        term for term in ordered_terms if metric_source_kind(term.metric_rule) == "ratio"
+        term for term in terms if metric_source_kind(term.metric_rule) == "ratio"
     ]
     if (
         len(runtime_metrics) != len(column_terms)
-        or len(column_terms) + len(ratio_terms) != len(ordered_terms)
+        or len(column_terms) + len(ratio_terms) != len(terms)
     ):
         raise GovernedMetadataError(
             "DataHub runtime metrics differ from the release glossary"
@@ -220,45 +277,75 @@ def _catalog_bundle(datasets, terms, governance_entities):
             raise GovernedMetadataError(
                 "DataHub ratio metric glossary term references an ungoverned numerator or denominator"
             )
-    governance_urns = representative.governance_urns
-    actual_governance_urns = {
-        name: {item["urn"] for item in values}
-        for name, values in governance_entities.items()
+    return [item.metric_rule for item in terms]
+
+
+def _v2_metric_rules(datasets, terms) -> list[dict[str, object]]:
+    rules = list(datasets[0].metric_rules)
+    by_id = {str(item["id"]): item for item in rules}
+    runtime_metrics = [
+        (dataset, metric) for dataset in datasets for metric in dataset.metrics
+    ]
+    expected_columns = {
+        metric_id
+        for metric_id, rule in by_id.items()
+        if metric_source_kind(rule) == "column"
     }
-    if actual_governance_urns != {
-        name: set(values) for name, values in governance_urns.items()
-    }:
+    observed_columns = [str(metric["id"]) for _dataset, metric in runtime_metrics]
+    expected_terms = business_metric_ids(rules)
+    if (
+        len(observed_columns) != len(set(observed_columns))
+        or set(observed_columns) != expected_columns
+        or {term.id for term in terms} != expected_terms
+    ):
         raise GovernedMetadataError(
-            "DataHub native governance details differ from the release URNs"
+            "DataHub v2 runtime rules and business glossary differ"
         )
-    for term in ordered_terms:
+    dataset_by_fqn = {dataset.fqn: dataset for dataset in datasets}
+    for dataset, metric in runtime_metrics:
+        rule = by_id.get(str(metric["id"]))
         if (
-            not term.owner_urns.issubset(governance_urns["owners"])
-            or term.domain_urn not in governance_urns["domains"]
-            or term.lifecycle_urn not in governance_urns["approved_lifecycles"]
+            rule is None
+            or canonical_json(metric.get("metric_rule")) != canonical_json(rule)
+            or rule["source"].get("field", {}).get("asset_fqn") != dataset.fqn
+        ):
+            raise GovernedMetadataError("DataHub v2 local metric rule differs")
+    terms_by_id = {term.id: term for term in terms}
+    for metric_id in expected_terms:
+        rule = by_id[metric_id]
+        term = terms_by_id[metric_id]
+        governance = rule["governance"]
+        semantic = governance["semantic"]
+        source_fqn = _metric_source_fqn(rule, by_id)
+        dataset = dataset_by_fqn.get(source_fqn)
+        if (
+            dataset is None
+            or canonical_json(term.metric_rule) != canonical_json(rule)
+            or term.label != semantic["name"]
+            or term.definition != semantic["definition"]
+            or list(term.aliases) != semantic["aliases"]
+            or term.unit != rule["unit"]
+            or term.domain_urn != dataset.domain_urn
+            or term.urn not in dataset.dataset_terms
         ):
             raise GovernedMetadataError(
-                "DataHub glossary governance is outside the release"
+                "DataHub v2 business term differs from its metric rule"
             )
-    return {
-        "catalog_version": representative.context_release,
-        "policy_version": representative.policy_version,
-        "governance_entities": {
-            name: [dict(item) for item in values]
-            for name, values in governance_entities.items()
-        },
-        "schema_context": {
-            "version": representative.schema_context_version,
-            "assets": [item.catalog_asset for item in ordered_datasets],
-        },
-        "metric_rules": [item.metric_rule for item in ordered_terms],
-        "metric_terms": [_term_projection(item) for item in ordered_terms],
-        "dimensions": list(representative.dimensions),
-        "join_graph": representative.join_graph,
-        "time_rules": representative.time_rules,
-        "parameter_contract": representative.parameter_contract,
-        "query_policy": representative.query_policy,
-    }
+    return rules
+
+
+def _metric_source_fqn(
+    rule: dict[str, object],
+    rules: dict[str, dict[str, object]],
+) -> str:
+    source = rule["source"]
+    if source.get("kind") == "column":
+        return str(source["field"]["asset_fqn"])
+    operands = ratio_operand_ids(rule)
+    operand = rules.get((operands or ("", ""))[0])
+    if operand is None or operand["source"].get("kind") != "column":
+        raise GovernedMetadataError("DataHub v2 ratio source is unresolved")
+    return str(operand["source"]["field"]["asset_fqn"])
 
 
 def _term_projection(value: GlossaryMetricTerm) -> dict[str, object]:

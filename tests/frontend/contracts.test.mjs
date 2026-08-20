@@ -85,7 +85,7 @@ assert.match(analysisPanelSource, /\?\? column/);
 assert.match(source("components/auth/SessionLogin.jsx"), /\.login\(nextUsername, password\)/);
 assert.match(source("components/auth/SessionLogin.jsx"), /Caps Lock이 켜져 있습니다/);
 assert.match(source("components/auth/SessionLogin.jsx"), /비밀번호 표시/);
-assert.match(source("components/auth/SessionLogin.jsx"), /onAuthenticated\(\{ role: session\.role \}\)/);
+assert.match(source("components/auth/SessionLogin.jsx"), /onAuthenticated\(session\)/);
 assert.doesNotMatch(source("api/analysisClient.ts"), /session_token/);
 assert.doesNotMatch(source("components/auth/SessionLogin.jsx"), /액세스 토큰/);
 assert.doesNotMatch([
@@ -97,18 +97,18 @@ assert.doesNotMatch([
 ].join("\n"), /authToken/);
 assert.match(source("App.jsx"), /\(min-width: 1101px\)/);
 assert.match(source("styles.css"), /@media\(min-width:901px\) and \(max-width:1100px\)[\s\S]*?\.scrim\{position:fixed;z-index:29;inset:0/);
-assert.match(source("App.jsx"), /role === "report_admin"/);
-assert.match(source("App.jsx"), /role !== "hotel_analyst"/);
-assert.match(source("App.jsx"), /route\.page === "chat"\) navigate\(PAGE_PATHS\.reports\)/);
+assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.runAnalysis\)/);
+assert.match(source("App.jsx"), /hasCapability\(capabilities, CAPABILITY\.manageReport\)/);
+assert.match(source("App.jsx"), /!canRunAnalysis && canUseReports && route\.page === "chat"/);
 assert.match(source("App.jsx"), /세션이 만료되었습니다\. 작성 중인 내용은 유지됩니다/);
 assert.match(source("App.jsx"), /session-reauth-layer/);
 assert.match(source("App.jsx"), /answervice:report-dirty/);
 assert.match(source("App.jsx"), /reportDirty && !window\.confirm\("저장하지 않은 보고서 변경사항이 있습니다\. 페이지를 이동할까요\?"\)/);
 assert.match(source("App.jsx"), /reportDirty && !window\.confirm\("저장하지 않은 보고서 변경사항이 있습니다\. 로그아웃할까요\?"\)/);
-assert.match(source("App.jsx"), /\["hotel_analyst", "report_admin"\]\.includes\(role\)/);
 assert.match(source("App.jsx"), /현재 계정에 허용된 서비스 메뉴가 없습니다/);
-assert.match(source("App.jsx"), /<AppSidebar page=\{route\.page\} role=\{role\}/);
-assert.match(source("components/layout/AppSidebar.jsx"), /item\.roles\.includes\(role\)/);
+assert.match(source("App.jsx"), /<AppSidebar page=\{route\.page\} role=\{role\} capabilities=\{capabilities\}/);
+assert.match(source("components/layout/AppSidebar.jsx"), /hasCapability\(capabilities, item\.capability\)/);
+assert.match(source("authorization.ts"), /platform_admin/);
 assert.match(source("App.jsx"), /\["보고서 편집", "근거가 연결된 분석 결과와 설명을 블록으로 구성하고 저장합니다\."\]/);
 assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadSchedules\(\)/);
 assert.match(reportSources.operationsPanel, /브라우저 위치와 관계없이 서울 현지 시각으로 저장합니다/);
@@ -217,7 +217,8 @@ for (const exposedImplementationCopy of [
   /제목 또는 ID 검색/, /window\.location\.reload/,
 ]) assert.doesNotMatch(productSources, exposedImplementationCopy);
 assert.match(reportSources.operationsPanel, /<details><summary>기술 정보<\/summary><code>Artifact/);
-assert.match(source("components/layout/AppHeader.jsx"), /호텔 분석가/);
+assert.match(source("authorization.ts"), /호텔 분석가/);
+assert.match(source("authorization.ts"), /플랫폼 관리자/);
 assert.match(source("components/layout/AppHeader.jsx"), /로그아웃/);
 assert.match(source("pages/AgentPage.jsx"), /className="run-history-panel"/);
 assert.match(source("pages/AgentPage.jsx"), /className="analysis-notice"/);
@@ -457,17 +458,17 @@ assert.equal(analysisRequest.init.method, "POST");
 const sessionClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
   assert.equal(url, "http://backend.test/auth/session");
   assert.equal(init.headers.Authorization, "Bearer runtime-token");
-  return new Response(JSON.stringify({ data: { status: "authenticated", role: "hotel_analyst" } }), { status: 200 });
+  return new Response(JSON.stringify({ data: { status: "authenticated", role: "hotel_analyst", capabilities: ["analysis.run", "analysis.read", "report.draft"] } }), { status: 200 });
 }, "runtime-token");
-assert.deepEqual(await sessionClient.validateSession(), { status: "authenticated", role: "hotel_analyst" });
+assert.deepEqual(await sessionClient.validateSession(), { status: "authenticated", role: "hotel_analyst", capabilities: ["analysis.run", "analysis.read", "report.draft"] });
 
 let loginRequest;
 const loginClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
   loginRequest = { url, init };
-  return new Response(JSON.stringify({ data: { status: "authenticated", role: "report_admin" } }), { status: 200 });
+  return new Response(JSON.stringify({ data: { status: "authenticated", role: "report_admin", capabilities: ["report.draft", "report.manage"] } }), { status: 200 });
 });
 assert.deepEqual(await loginClient.login("admin", "admin1234!"), {
-  status: "authenticated", role: "report_admin",
+  status: "authenticated", role: "report_admin", capabilities: ["report.draft", "report.manage"],
 });
 assert.equal(loginRequest.url, "http://backend.test/auth/login");
 assert.deepEqual(JSON.parse(loginRequest.init.body), { username: "admin", password: "admin1234!" });

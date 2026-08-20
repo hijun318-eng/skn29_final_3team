@@ -23,6 +23,7 @@ from app.ports.data_platform import NoEntitledAssetsError
 from app.services.analysis import AnalysisService
 from app.services.routing_service import RoutingService
 from src.ai.schema import validate_payload
+from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
 ASSET_FQN = "orion_catalog.analytics.observations"
@@ -51,6 +52,13 @@ METRIC = {
     "unit": "arbitrary_unit",
     "reduction": "sum",
     "dimensions": [],
+    "visibility": "BUSINESS",
+    "governance_version": RUNTIME_GOVERNANCE_VERSION_V2,
+    "allowed_roles": ["hotel_analyst"],
+    "contains_pii": False,
+    "allowed_join_ids": [],
+    "join_required": False,
+    "query_strategies": ["RAW_APPROVED_DETAIL"],
     "required_filters": [
         {
             "field": "state_code",
@@ -440,6 +448,20 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
         self.assertEqual(ErrorCode.DATA_ASSET_NOT_FOUND, response.error.code)
         self.assertEqual([], model.calls)
+        self.assertEqual(0, adapter.execute_count)
+
+    async def test_unapproved_query_strategy_is_semantic_not_model_failure(self):
+        incompatible = copy.deepcopy(ASSET)
+        incompatible["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=AsyncRuntimeDataPlatform(asset=incompatible)
+        )
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ErrorCode.SEMANTIC_CONTRACT_INVALID, response.error.code)
+        self.assertNotEqual(ErrorCode.MODEL_CONTRACT_INVALID, response.error.code)
+        self.assertEqual(["node1"], [node for node, _ in model.calls])
         self.assertEqual(0, adapter.execute_count)
 
     async def test_multiple_programmed_periods_request_clarification(self):

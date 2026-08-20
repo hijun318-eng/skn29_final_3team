@@ -7,6 +7,17 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+from src.data.metric_governance import (
+    DATASET_RUNTIME_PROPERTY_KEYS,
+    RATIO_ZERO_POLICIES,
+    RUNTIME_GOVERNANCE_VERSION,
+    RUNTIME_GOVERNANCE_VERSION_V2,
+    TERM_RUNTIME_PROPERTY_KEYS,
+    business_metric_ids,
+    dataset_runtime_property_keys,
+    runtime_governance_version,
+)
+
 
 RELEASE_MANIFEST_KEYS = frozenset(
     {
@@ -33,49 +44,6 @@ DATASET_MANIFEST_KEYS = frozenset(
     }
 )
 TERM_MANIFEST_KEYS = frozenset({"id", "urn", "semantic_sha256"})
-RUNTIME_GOVERNANCE_VERSION = "ANSWERVICE-RUNTIME-GOVERNANCE-v1"
-RATIO_ZERO_POLICIES = frozenset({"null_on_zero_denominator"})
-DATASET_RUNTIME_PROPERTY_KEYS = frozenset(
-    {
-        "contract_version",
-        "approval_status",
-        "catalog_version",
-        "catalog_sha256",
-        "schema_context_version",
-        "governance_urns",
-        "release_manifest",
-        "manifest_sha256",
-        "fqn",
-        "policy_version",
-        "schema_version",
-        "seed_version",
-        "synthetic",
-        "entitlements",
-        "grain",
-        "typed_columns",
-        "column_roles",
-        "metrics",
-        "dimensions",
-        "join_graph",
-        "time_rules",
-        "parameter_contract",
-        "query_policy",
-    }
-)
-TERM_RUNTIME_PROPERTY_KEYS = frozenset(
-    {
-        "metric_id",
-        "aliases",
-        "approval_status",
-        "catalog_sha256",
-        "glossary_sha256",
-        "glossary_version",
-        "metric_rule",
-        "unit",
-    }
-)
-
-
 def canonical_json(value: object) -> str:
     """Unicode를 보존하고 key를 정렬한 공백 없는 JSON으로 직렬화해 환경과 무관한 hash 입력을 만든다."""
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -326,19 +294,26 @@ def dataset_runtime_property_projection(
 ) -> dict[str, str]:
     """검증 bundle·asset·manifest를 DataHub dataset에 기록할 정확한 unprefixed 문자열 속성으로 직렬화한다."""
 
+    version = runtime_governance_version(bundle)
+    all_metrics = list(bundle["metric_rules"])
     metrics = sorted(
         (
             metric
-            for metric in bundle["metric_rules"]
+            for metric in all_metrics
             if column_metric_asset(metric) == asset["fqn"]
         ),
         key=lambda item: item["id"],
     )
     terms = {item["id"]: item for item in bundle["metric_terms"]}
+    business_ids = business_metric_ids(all_metrics)
     runtime_metrics = [
         {
             "id": metric["id"],
-            "term_urn": terms[metric["id"]]["urn"],
+            "term_urn": (
+                terms[metric["id"]]["urn"]
+                if metric["id"] in business_ids
+                else None
+            ),
             "field": metric["source"]["field"]["column"],
             "aggregation": metric["aggregation"],
             "time_field": metric["time_field"]["column"],
@@ -362,7 +337,7 @@ def dataset_runtime_property_projection(
         for name, values in governance_entities.items()
     }
     result = {
-        "contract_version": RUNTIME_GOVERNANCE_VERSION,
+        "contract_version": version,
         "approval_status": str(asset["approval_status"]),
         "catalog_version": str(bundle["catalog_version"]),
         "catalog_sha256": str(manifest["catalog_sha256"]),
@@ -388,7 +363,15 @@ def dataset_runtime_property_projection(
         "parameter_contract": canonical_json(bundle["parameter_contract"]),
         "query_policy": canonical_json(bundle["query_policy"]),
     }
-    _require_exact_keys(result, DATASET_RUNTIME_PROPERTY_KEYS, "dataset properties")
+    if version == RUNTIME_GOVERNANCE_VERSION_V2:
+        result["metric_rules"] = canonical_json(
+            sorted(all_metrics, key=lambda item: item["id"])
+        )
+    _require_exact_keys(
+        result,
+        dataset_runtime_property_keys(version),
+        "dataset properties",
+    )
     return result
 
 

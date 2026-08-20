@@ -11,8 +11,6 @@ from metadata_contract import PROPERTY_PREFIX, validate_bundle
 from release_datahub import DataHubDataset, DataHubTerm, NativeEntity, dataset_key
 from release_trino import PhysicalRelation
 from src.data.governance_contract import (
-    DATASET_RUNTIME_PROPERTY_KEYS,
-    RUNTIME_GOVERNANCE_VERSION,
     TERM_RUNTIME_PROPERTY_KEYS,
     canonical_sha256,
     datahub_schema_sha1,
@@ -20,6 +18,12 @@ from src.data.governance_contract import (
     release_manifest,
     term_runtime_property_projection,
     trino_schema_sha256,
+)
+from src.data.metric_governance import (
+    RUNTIME_GOVERNANCE_VERSION_V1,
+    SUPPORTED_RUNTIME_GOVERNANCE_VERSIONS,
+    dataset_runtime_property_keys,
+    metric_contract_version,
 )
 
 
@@ -42,10 +46,12 @@ def semantic_surface_issues(bindings: tuple[ReleaseBinding, ...]) -> tuple[str, 
     for binding in bindings:
         dataset = binding.dataset
         properties = _governed_properties(dataset)
-        if set(properties) != DATASET_RUNTIME_PROPERTY_KEYS:
-            issues.append(f"semantic_properties:{binding.relation.fqn}")
-        elif properties.get("contract_version") != RUNTIME_GOVERNANCE_VERSION:
+        version = properties.get("contract_version")
+        if version not in SUPPORTED_RUNTIME_GOVERNANCE_VERSIONS:
             issues.append(f"semantic_contract_version:{binding.relation.fqn}")
+            issues.append(f"semantic_properties:{binding.relation.fqn}")
+        elif set(properties) != dataset_runtime_property_keys(version):
+            issues.append(f"semantic_properties:{binding.relation.fqn}")
         if dataset.removed is not False:
             issues.append(f"active_status:{binding.relation.fqn}")
         if len(dataset.owners) != 1 or dataset.owners[0].entity_type != "CorpGroup":
@@ -92,7 +98,8 @@ def assemble_release_bundle(
     anchor = _anchor_properties(bindings)
     manifest = _json_object(anchor["release_manifest"], "release manifest")
     assets = [_asset(binding) for binding in sorted(bindings, key=lambda item: item.relation.fqn)]
-    metric_terms, metric_rules = _terms(terms)
+    metric_terms, term_metric_rules = _terms(terms)
+    metric_rules = _release_metric_rules(anchor, term_metric_rules)
     governance = _governance_entities(assets, metric_terms, bindings, terms)
     bundle: dict[str, Any] = {
         "catalog_version": anchor["catalog_version"],
@@ -129,6 +136,9 @@ def assemble_release_bundle(
 def _anchor_properties(bindings: tuple[ReleaseBinding, ...]) -> dict[str, str]:
     if not bindings:
         raise SemanticBundleError("release has no dataset properties")
+    anchor = _governed_properties(bindings[0].dataset)
+    version = _runtime_version(anchor)
+    expected_keys = dataset_runtime_property_keys(version)
     shared_keys = {
         "catalog_version",
         "catalog_sha256",
@@ -143,16 +153,26 @@ def _anchor_properties(bindings: tuple[ReleaseBinding, ...]) -> dict[str, str]:
         "parameter_contract",
         "query_policy",
     }
-    anchor = _governed_properties(bindings[0].dataset)
-    if set(anchor) != DATASET_RUNTIME_PROPERTY_KEYS:
+    if version != RUNTIME_GOVERNANCE_VERSION_V1:
+        shared_keys.add("metric_rules")
+    if set(anchor) != expected_keys:
         raise SemanticBundleError("dataset semantic property keys are incomplete")
     for binding in bindings[1:]:
         actual = _governed_properties(binding.dataset)
-        if set(actual) != DATASET_RUNTIME_PROPERTY_KEYS or any(
-            actual[key] != anchor[key] for key in shared_keys
+        if (
+            _runtime_version(actual) != version
+            or set(actual) != expected_keys
+            or any(actual[key] != anchor[key] for key in shared_keys)
         ):
             raise SemanticBundleError("datasets do not share one semantic release identity")
     return anchor
+
+
+def _runtime_version(properties: Mapping[str, str]) -> str:
+    version = properties.get("contract_version")
+    if version not in SUPPORTED_RUNTIME_GOVERNANCE_VERSIONS:
+        raise SemanticBundleError("dataset semantic contract version is unsupported")
+    return version
 
 
 def _asset(binding: ReleaseBinding) -> dict[str, Any]:
@@ -260,6 +280,28 @@ def _terms(
     if len({item["id"] for item in metric_rules}) != len(metric_rules):
         raise SemanticBundleError("glossary metric ids are duplicated")
     return metric_terms, sorted(metric_rules, key=lambda item: item["id"])
+
+
+def _release_metric_rules(
+    anchor: Mapping[str, str],
+    term_metric_rules: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    version = _runtime_version(anchor)
+    if version == RUNTIME_GOVERNANCE_VERSION_V1:
+        return term_metric_rules
+    raw_rules = _json_array(anchor["metric_rules"], "metric rules")
+    if not raw_rules or any(not isinstance(item, dict) for item in raw_rules):
+        raise SemanticBundleError("metric rules must be a non-empty object array")
+    rules = list(raw_rules)
+    try:
+        if metric_contract_version(rules) != version:
+            raise SemanticBundleError("metric rules differ from dataset contract version")
+    except ValueError as error:
+        raise SemanticBundleError("metric rule governance versions are invalid") from error
+    metric_ids = [_required_text(item.get("id"), "metric id") for item in rules]
+    if len(metric_ids) != len(set(metric_ids)):
+        raise SemanticBundleError("metric rule ids are duplicated")
+    return sorted(rules, key=lambda item: item["id"])
 
 
 def _governance_entities(

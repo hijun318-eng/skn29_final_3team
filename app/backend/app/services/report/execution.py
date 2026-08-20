@@ -18,14 +18,14 @@ from app.adapters.analysis_repository import (
     AnalysisRepositoryUnavailable,
     PostgresAnalysisRepository,
 )
-from app.auth import AuthenticationError, require_active_subject
+from app.auth import AuthenticationError, require_active_subject_with_capability
 from app.context import ContextValidationError
 from app.contracts import (
     AnalysisRequest,
     AnalysisStatus,
+    Capability,
     ErrorCode,
     RequestContext,
-    Role,
 )
 from app.controllers.analysis_controller import AnalysisController
 from src.report.domain import BlockFailureCode, BlockRunStatus, ReportRun, RunStatus
@@ -120,7 +120,10 @@ class AnalysisDefinitionReplay:
         """저장된 분석 정의 1건을 재생 실행합니다."""
         repository = PostgresAnalysisRepository(self._database_url, owner_id)
         try:
-            await require_active_subject(owner_id, Role.HOTEL_ANALYST)
+            owner = await require_active_subject_with_capability(
+                owner_id,
+                Capability.RUN_ANALYSIS,
+            )
             definition = await repository.get_definition_for_report(
                 definition_id, definition_version
             )
@@ -150,7 +153,7 @@ class AnalysisDefinitionReplay:
             request_id=uuid4(),
             trace_id=uuid4().hex,
             user_id=owner_id,
-            role=Role.HOTEL_ANALYST,
+            role=owner.role,
             as_of=report_date,
             timezone="Asia/Seoul",
         )

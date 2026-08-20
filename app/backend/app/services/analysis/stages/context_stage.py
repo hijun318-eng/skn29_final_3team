@@ -202,6 +202,21 @@ class AnalysisContextStage:
                 decision,
             )
         except ContextBuildError as error:
+            if error.code in {
+                ContextBuildErrorCode.GOVERNANCE_VERSION_UNSUPPORTED,
+                ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+            }:
+                return self._responses.error(
+                    context,
+                    state.machine,
+                    state.trace,
+                    PipelineStage.CONTEXT,
+                    AnalysisStatus.BLOCKED,
+                    ErrorCode.SEMANTIC_CONTRACT_INVALID,
+                    str(error),
+                    decision,
+                    detail=str(error),
+                )
             if error.code is ContextBuildErrorCode.OUT_OF_DATA_RANGE:
                 return self._responses.error(
                     context,

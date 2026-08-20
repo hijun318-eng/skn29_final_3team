@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from inspect import isawaitable
 from typing import Annotated, Any, Awaitable, Callable
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import HTMLResponse
@@ -314,14 +315,24 @@ async def create_manual_run_command(
     payload: CreateManualRunRequest,
     context: Annotated[RequestContext, Depends(report_admin_context)],
 ) -> dict[str, Any]:
-    """관리자의 definition version·기준 시각·멱등 키를 수동 실행 명령으로 등록하고 실행한다.
+    """관리자의 definition version·멱등 키를 서버 기준일의 수동 실행 명령으로 등록한다.
 
     claim 가능한 영속 repository에서는 같은 멱등 키의 중복 실행을 막고 완료 run ID와 상태를
-    응답한다. 입력·미존재·상태 충돌은 router의 422·404·409 계약을 따른다.
+    응답한다. 일반 replay에는 client 기준일 입력을 허용하지 않으며, 입력·미존재·상태 충돌은
+    router의 422·404·409 계약을 따른다.
     """
     router = _router(context)
+    server_as_of = datetime.combine(
+        context.as_of,
+        datetime.min.time(),
+        tzinfo=ZoneInfo(context.timezone),
+    )
+    command_payload = {
+        **payload.model_dump(mode="json"),
+        "as_of": server_as_of.isoformat(),
+    }
     command = await _call(
-        lambda: router.create_manual_run_command(payload.model_dump(mode="json"))
+        lambda: router.create_manual_run_command(command_payload)
     )
     if not hasattr(router.repository, "claim_manual_run"):
         return command

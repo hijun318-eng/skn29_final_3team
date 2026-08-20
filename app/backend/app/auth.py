@@ -21,7 +21,8 @@ from app.auth_principal_store import (
     _principal_store_kind,
 )
 from app.database import session_scope
-from app.contracts import Role
+from app.authorization import has_capability
+from app.contracts import Capability, Role
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -58,7 +59,7 @@ def _session_secret() -> bytes:
 def issue_session_token(principal: Principal, *, now: datetime | None = None) -> str:
     """주체·역할·고유 세션 ID·제한된 유효기간을 담은 HMAC 서명 token을 발급한다."""
     issued_at = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-    ttl = min(86_400, max(900, int(os.getenv("AUTH_SESSION_TTL_SECONDS", "28800"))))
+    ttl = min(86_400, max(900, int(os.getenv("AUTH_SESSION_TTL_SECONDS", "86400"))))
     payload = json.dumps({
         "sid": str(uuid4()),
         "sub": str(principal.subject),
@@ -259,3 +260,43 @@ async def require_active_subject(
     if matched is None:
         raise _authentication_error(403)
     return matched.principal
+
+
+async def require_active_subject_with_capability(
+    subject: UUID,
+    capability: Capability,
+    *,
+    now: datetime | None = None,
+) -> Principal:
+    """Background 실행 전에 주체의 현재 Role이 필요한 Capability를 유지하는지 재확인한다.
+
+    저장된 보고서의 과거 Role을 신뢰하거나 관리자 actor의 권한을 빌리지 않는다. 외부
+    principal store에서 같은 subject의 현재 활성 Role을 다시 읽고, 정확히 하나의 Role만
+    Capability를 만족할 때 그 Principal을 반환한다. 중복·모호한 Role은 권한 확대로
+    보정하지 않고 403으로 닫는다.
+    """
+
+    path = _configured_principal_path()
+    kind = await asyncio.to_thread(_principal_store_kind, path)
+    if kind == "account":
+        records = await asyncio.to_thread(_load_accounts, path)
+        principals = {
+            record.principal
+            for record in records
+            if record.principal.subject == subject
+            and record.active
+            and has_capability(record.principal.role, capability)
+        }
+    else:
+        current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        records = await asyncio.to_thread(_load_principals, path)
+        principals = {
+            record.principal
+            for record in records
+            if record.principal.subject == subject
+            and record.not_before <= current < record.expires_at
+            and has_capability(record.principal.role, capability)
+        }
+    if len(principals) != 1:
+        raise _authentication_error(403)
+    return next(iter(principals))

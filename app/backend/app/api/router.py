@@ -24,6 +24,7 @@ from app.contracts import (
     AnalysisRequest,
     AnalysisResponse,
     AnalysisStatus,
+    Capability,
     EmptyData,
     ErrorBody,
     ErrorCode,
@@ -42,6 +43,7 @@ from app.contracts import (
     response_meta,
 )
 from app.auth import AuthenticationError, authenticate_credentials, issue_session_token, register_session, revoke_session
+from app.authorization import capabilities_for, has_capability
 from app.api.analysis_router_runtime import (
     active_analytics_context_release as _active_analytics_context_release,
     analysis_repository as _analysis_repository,
@@ -145,7 +147,10 @@ def authenticated_session(
     if context is None:
         return SessionResponse(data=SessionData(status="anonymous"), meta=response_meta(request_context(request)))
     return SessionResponse(
-        data=SessionData(role=context.role),
+        data=SessionData(
+            role=context.role,
+            capabilities=capabilities_for(context.role),
+        ),
         meta=response_meta(context),
     )
 
@@ -184,11 +189,14 @@ async def login(payload: LoginRequest, request: Request, response: Response) -> 
         httponly=True,
         secure=os.getenv("AUTH_COOKIE_SECURE", "false").strip().lower() == "true",
         samesite="strict",
-        max_age=min(86_400, max(900, int(os.getenv("AUTH_SESSION_TTL_SECONDS", "28800")))),
+        max_age=min(86_400, max(900, int(os.getenv("AUTH_SESSION_TTL_SECONDS", "86400")))),
         path="/",
     )
     return LoginResponse(
-        data=LoginData(role=principal.role),
+        data=LoginData(
+            role=principal.role,
+            capabilities=capabilities_for(principal.role),
+        ),
         meta=response_meta(context),
     )
 
@@ -249,7 +257,7 @@ async def analysis(
     진행 상태와 취소 신호를 pipeline에 전달하고, artifact 저장 실패는 성공 응답으로
     덮지 않으며 재시도 가능한 typed 503으로 반환한다.
     """
-    if context.role is not Role.HOTEL_ANALYST:
+    if not has_capability(context.role, Capability.RUN_ANALYSIS):
         raise ContextValidationError(
             ErrorCode.ACCESS_DENIED,
             "분석 Agent는 호텔 분석가 역할만 사용할 수 있습니다.",
@@ -366,12 +374,12 @@ async def replay_analysis_definition(
             detail=f"정의되지 않은 Analysis parameter: {', '.join(sorted(unknown_parameters))}",
         )
     parameters = {**definition["parameters"], **payload.parameters}
-    replay_context = context.model_copy(update={"as_of": payload.as_of})
+    replay_context = context
     request_id, created = await _repository_call(
         lambda: repository.begin_run(
             definition,
             replay_context,
-            payload.as_of,
+            context.as_of,
             payload.idempotency_key,
             parameters,
         )

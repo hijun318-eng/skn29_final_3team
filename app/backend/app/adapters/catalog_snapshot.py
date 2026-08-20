@@ -118,7 +118,12 @@ class CatalogSnapshotLoader:
             if dataset_has_runtime_governance(item)
         )
         active_checksums = {dataset.catalog_checksum for dataset in datasets}
-        parsed_terms = tuple(parse_glossary_term(item) for item in raw_terms)
+        # Soft-deleted historical Term은 search 결과나 customProperties가 남아 있을 수
+        # 있다. 현재 release membership에서 제외하되, 활성 dataset manifest가 여전히
+        # 그 Term을 참조하면 아래 release 검증이 누락으로 fail-closed한다.
+        parsed_terms = tuple(
+            parse_glossary_term(item) for item in _active_term_records(raw_terms)
+        )
         terms = tuple(
             term
             for term in parsed_terms
@@ -187,6 +192,19 @@ def _term_with_rest_status(term, status_record, lifecycle_stages):
     result = dict(term)
     result["status"] = normalized
     return result
+
+
+def _active_term_records(values):
+    """Rest.li status가 완전한 활성 Term만 runtime parser 입력으로 남긴다."""
+
+    result = []
+    for value in values:
+        status = value.get("status") if isinstance(value, dict) else None
+        if not isinstance(status, dict) or not isinstance(status.get("removed"), bool):
+            raise GovernedMetadataError("DataHub glossary term status is incomplete")
+        if status["removed"] is False:
+            result.append(value)
+    return tuple(result)
 
 def _unique_index(values, attribute: str, label: str):
     result = {}

@@ -7,7 +7,7 @@ from typing import Any
 
 from metadata_aspects import iter_aspects
 from metadata_contract import PROPERTY_PREFIX
-from src.data.governance_contract import metric_asset_fqns
+from src.data.governance_contract import datahub_schema_sha1, metric_asset_fqns
 
 
 DATASET_QUERY = """
@@ -251,7 +251,7 @@ def _assert_dataset(
         not isinstance(schema, dict)
         or schema.get("name") != asset["schema_name"]
         or schema.get("version") != asset["schema_metadata_version"]
-        or schema.get("hash") != aspects["schemaMetadata"]["hash"]
+        or schema.get("hash") != datahub_schema_sha1(asset)
     ):
         raise ValueError("DataHub base schema identity readback mismatch")
     # WHY: pinned v1.7은 editableSchemaMetadata의 field glossary 연결을

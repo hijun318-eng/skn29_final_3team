@@ -14,7 +14,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.context.builder import ContextPackage
+from app.services.context.builder import (
+    ContextBuildError,
+    ContextBuildErrorCode,
+    ContextPackage,
+)
 
 VIEW_REUSE = "VIEW_REUSE"
 VIEW_COMPOSE = "VIEW_COMPOSE"
@@ -61,11 +65,14 @@ def determine_query_strategy(
         asset_fqns.add(metric.asset_fqn)
 
     if not asset_fqns:
-        raise ValueError("쿼리 전략 결정을 위해 최소 1개 이상의 지표 참조 자산이 필요합니다.")
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METRIC,
+            "쿼리 전략 결정을 위해 최소 1개 이상의 지표 참조 자산이 필요합니다.",
+        )
 
     catalogs = {fqn.split(".", 1)[0] for fqn in asset_fqns}
     if catalogs != {_SERVED_CATALOG}:
-        return RAW_APPROVED_DETAIL
+        return _enforce_metric_strategy(package, RAW_APPROVED_DETAIL)
 
     grain_by_fqn = {
         item["fqn"]: {
@@ -81,18 +88,30 @@ def determine_query_strategy(
     # Grain이 없는 asset을 일부만 비교하면 서로 다른 계산 범위를 같은 grain으로
     # 오인할 수 있다. 모든 참조 asset이 검증된 grain을 제공할 때만 view 경로를 연다.
     if not asset_fqns <= set(grain_by_fqn):
-        return RAW_APPROVED_DETAIL
+        return _enforce_metric_strategy(package, RAW_APPROVED_DETAIL)
 
     # ``serving`` catalog에도 원본 1행 grain을 보존한 승인 detail view가 존재할 수 있다.
     # catalog 이름만 보고 사전 집계 view로 승격하지 않고 grain 의미를 우선한다.
     if any(grain_by_fqn[fqn]["kind"] == "row" for fqn in asset_fqns):
-        return RAW_APPROVED_DETAIL
+        return _enforce_metric_strategy(package, RAW_APPROVED_DETAIL)
 
     if len(asset_fqns) == 1:
-        return VIEW_REUSE
+        return _enforce_metric_strategy(package, VIEW_REUSE)
 
     grains = {grain_by_fqn[fqn]["keys"] for fqn in asset_fqns}
     if len(grains) == 1:
-        return VIEW_COMPOSE
+        return _enforce_metric_strategy(package, VIEW_COMPOSE)
 
-    return RAW_APPROVED_DETAIL
+    return _enforce_metric_strategy(package, RAW_APPROVED_DETAIL)
+
+
+def _enforce_metric_strategy(package: ContextPackage, strategy: str) -> str:
+    """구조적으로 계산한 전략이 모든 v2 실행 Metric의 허용 집합 안인지 확인한다."""
+
+    governed = [metric for metric in package.metrics if metric.query_strategies]
+    if any(strategy not in metric.query_strategies for metric in governed):
+        raise ContextBuildError(
+            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+            "계산된 Query Strategy가 DataHub Metric governance 범위를 벗어났습니다.",
+        )
+    return strategy

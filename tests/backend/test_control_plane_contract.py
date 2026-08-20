@@ -112,6 +112,7 @@ class ControlPlaneContractTest(unittest.TestCase):
             "FILTER_VALUE_NOT_FOUND",
             "AUTHENTICATION_REQUIRED",
             "ACCESS_DENIED",
+            "SEMANTIC_CONTRACT_INVALID",
             "MODEL_CONTRACT_INVALID",
             "MODEL_TIMEOUT",
             "MODEL_ENDPOINT_UNAVAILABLE",

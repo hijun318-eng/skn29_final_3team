@@ -121,6 +121,13 @@ def _metric(item: dict[str, Any]) -> ContextMetric:
         numerator_metric_id=str(item.get("numerator_metric_id") or ""),
         denominator_metric_id=str(item.get("denominator_metric_id") or ""),
         zero_policy=str(item.get("zero_policy") or ""),
+        visibility=str(item.get("visibility") or "BUSINESS"),
+        governance_version=str(item.get("governance_version") or ""),
+        allowed_roles=tuple(map(str, item.get("allowed_roles", ()))),
+        contains_pii=item.get("contains_pii") is True,
+        allowed_join_ids=tuple(map(str, item.get("allowed_join_ids", ()))),
+        join_required=item.get("join_required") is True,
+        query_strategies=tuple(map(str, item.get("query_strategies", ()))),
     )
 
 
@@ -352,7 +359,17 @@ class PipelineContextService:
                     )
 
         # 6. 용어사전(Glossary Term) 조회 및 ContextPackage 생성
-        metric_ids = tuple(dict.fromkeys(metric.id for asset in items for metric in asset.metrics))
+        metric_ids = tuple(
+            dict.fromkeys(metric.id for asset in items for metric in asset.metrics)
+        )
+        business_metric_ids = tuple(
+            dict.fromkeys(
+                metric.id
+                for asset in items
+                for metric in asset.metrics
+                if metric.visibility == "BUSINESS"
+            )
+        )
         if not metric_ids:
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METRIC,
@@ -368,13 +385,13 @@ class PipelineContextService:
             if isinstance(structured_request, dict)
             else None
         )
-        if isinstance(single_term, dict) and len(metric_ids) == 1:
-            term_payloads = {metric_ids[0]: single_term}
+        if isinstance(single_term, dict) and len(business_metric_ids) == 1:
+            term_payloads = {business_metric_ids[0]: single_term}
         if not isinstance(term_payloads, dict):
-            term_payloads = await self._adapter.get_metric_terms(metric_ids)
-        if set(term_payloads) != set(metric_ids) or any(
+            term_payloads = await self._adapter.get_metric_terms(business_metric_ids)
+        if set(term_payloads) != set(business_metric_ids) or any(
             not isinstance(term_payloads.get(metric_id), dict)
-            for metric_id in metric_ids
+            for metric_id in business_metric_ids
         ):
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METRIC,
@@ -405,7 +422,7 @@ class PipelineContextService:
                     version=str(term_payloads[metric_id]["version"]),
                     checksum=str(term_payloads[metric_id]["checksum"]),
                 )
-                for metric_id in metric_ids
+                for metric_id in business_metric_ids
             ),
         )
         package = self._context_builder.build(

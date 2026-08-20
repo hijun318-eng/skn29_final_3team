@@ -19,6 +19,7 @@ sys.path.insert(0, str(BACKEND))
 sys.path.insert(0, str(PUBLISHER))
 from metadata_aspects import iter_aspects  # noqa: E402
 from metadata_contract import validate_bundle  # noqa: E402
+from src.data.governance_contract import datahub_schema_sha1  # noqa: E402
 
 from app.adapters.catalog_snapshot import (  # noqa: E402
     DEFAULT_CATALOG_RELEASE_TTL_SECONDS,
@@ -39,6 +40,45 @@ from app.query_capability import issue_query_capability  # noqa: E402
 LIFECYCLE_URN = "urn:li:lifecycleStageType:approved"
 
 
+def _v2_metric_governance(
+    *,
+    name: str,
+    definition: str,
+    aliases: list[str],
+    grain_kind: str = "event",
+    grain_keys: list[str] | None = None,
+    dimensions: list[str] | None = None,
+) -> dict:
+    """운영 runtime과 같은 v2 fail-closed 계약을 합성 fixture에 부여한다."""
+
+    return {
+        "visibility": "BUSINESS",
+        "semantic": {
+            "name": name,
+            "definition": definition,
+            "aliases": aliases,
+        },
+        "grain": {
+            "kind": grain_kind,
+            "keys": grain_keys or ["event_id"],
+            "dimensions": dimensions or [],
+        },
+        "time": {
+            "field": "observed_on",
+            "semantics": "event_time",
+            "timezone": "Asia/Seoul",
+            "interval": "[start,end)",
+        },
+        "join": {"required": False, "allowed_edge_ids": []},
+        "permission": {
+            "roles": ["hotel_analyst"],
+            "contains_pii": False,
+            "synthetic": False,
+        },
+        "query_strategies": ["RAW_APPROVED_DETAIL"],
+    }
+
+
 def _bundle() -> dict:
     assets = []
     metrics = []
@@ -51,6 +91,8 @@ def _bundle() -> dict:
         fqn = f"orbit.lake.{name}_fact"
         urn = f"urn:li:dataset:(urn:li:dataPlatform:trino,{fqn},PROD)"
         domain_urn = f"urn:li:domain:{domain}"
+        definition = f"Approved aggregate for {name} observations."
+        aliases = [alias, f"{name.title()} aggregate"]
         assets.append(
             {
                 "urn": urn,
@@ -122,6 +164,11 @@ def _bundle() -> dict:
                 "reduction": "sum",
                 "dimensions": [],
                 "required_filters": [],
+                "governance": _v2_metric_governance(
+                    name=alias,
+                    definition=definition,
+                    aliases=aliases,
+                ),
             }
         )
         terms.append(
@@ -129,8 +176,8 @@ def _bundle() -> dict:
                 "id": f"{name}_yield",
                 "urn": f"urn:li:glossaryTerm:{name}_yield",
                 "name": alias,
-                "definition": f"Approved aggregate for {name} observations.",
-                "aliases": [alias, f"{name.title()} aggregate"],
+                "definition": definition,
+                "aliases": aliases,
                 "unit": "arbitrary_units",
                 "version": "glossary-arbitrary-3",
                 "approval_status": "APPROVED",
@@ -235,6 +282,11 @@ def _bundle_with_ratio() -> dict:
         "reduction": "sum",
         "dimensions": [],
         "required_filters": [],
+        "governance": _v2_metric_governance(
+            name="Helium observation count",
+            definition="Approved count of governed helium observations.",
+            aliases=["Helium observation count", "Helium volume"],
+        ),
     }
     ratio = {
         "id": "helium_rate",
@@ -251,6 +303,11 @@ def _bundle_with_ratio() -> dict:
         "reduction": "ratio",
         "dimensions": [],
         "required_filters": [],
+        "governance": _v2_metric_governance(
+            name="Helium rate",
+            definition="Approved helium yield per governed observation.",
+            aliases=["Helium rate", "Helium average yield"],
+        ),
     }
     bundle["metric_rules"].extend((count, ratio))
     bundle["metric_terms"].extend(
@@ -390,7 +447,6 @@ def _graphql_entities(bundle: dict) -> tuple[dict[str, dict], dict[str, dict]]:
             item["fieldPath"]: item
             for item in editable["editableSchemaFieldInfo"]
         }
-        schema_aspect = aspects[("dataset", urn, "schemaMetadata")]
         fields = []
         for column in asset["columns"]:
             editable_field = by_name[column["name"]]
@@ -430,7 +486,9 @@ def _graphql_entities(bundle: dict) -> tuple[dict[str, dict], dict[str, dict]]:
             "schemaMetadata": {
                 "version": 1,
                 "name": asset["fqn"],
-                "hash": schema_aspect["hash"],
+                # Connector-owned schema read-back is independent from the
+                # semantic publisher aspects assembled above.
+                "hash": datahub_schema_sha1(asset),
                 "fields": fields,
             },
         }
@@ -962,6 +1020,13 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         for asset in bundle["schema_context"]["assets"]:
             if asset["fqn"] == "orbit.lake.helium_fact":
                 asset["entitlements"] = {"roles": ["restricted_role"], "domains": []}
+        for metric in bundle["metric_rules"]:
+            source = metric["source"]
+            if (
+                source["kind"] == "column"
+                and source["field"]["asset_fqn"] == "orbit.lake.helium_fact"
+            ):
+                metric["governance"]["permission"]["roles"] = ["restricted_role"]
         transport = RuntimeTransport(bundle)
         datahub_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.datahub))
         trino_http = httpx.AsyncClient(transport=httpx.MockTransport(transport.trino))

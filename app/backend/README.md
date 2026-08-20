@@ -26,6 +26,8 @@ uvicorn app.main:app --reload
 
 운영 인증은 서버가 소유한 외부 principal store만 사용한다. 파일은 JSON 배열이며 각 항목에는 `username`, `password_salt`, `password_hash`, `password_iterations`, `subject`, `role`, `active`만 기록한다. provisioning script가 PBKDF2-SHA256 hash를 만들며 raw password는 principal 파일이나 로그에 남기지 않는다. 로그인용 raw password와 session secret이 있는 deployment environment는 저장소 밖에서 별도 보안 채널로 관리한다. 로그인 성공 시 Backend가 HMAC 서명 session을 발급해 App DB에 등록하고 `HttpOnly` cookie로 전달한다. `AUTH_PRINCIPALS_FILE`에는 container 내부 read-only 경로를 지정하며 실제 secret mount는 배포 설정에서 구성한다. principal store나 signed-session 필수값이 없으면 기동하며 합성 계정으로 대체하지 않고 fail closed한다.
 
+권한 판정은 사용자명이 아니라 서버가 검증한 Role과 중앙 Capability 정책을 사용한다. `platform_admin`은 통제된 인수환경에서 분석·보고서·데이터 관리의 현재 애플리케이션 Capability 전체를 가지지만, DataHub publish·Trino setup·Source DB 계정 같은 service identity를 상속하지 않는다. 외부 env의 `ANALYST_LOGIN_ROLE`로 계정 Role을 회전해도 provisioning은 기존 subject를 보존하므로 저장 Analysis·Report 소유권을 끊지 않는다.
+
 Backend는 실제 Trino·DataHub·OpenAI 호환 endpoint만 사용한다. 승인 Template은 DB에서 읽어 G1·G2·Trino·G3를 거치며, 일반 질문은 Node1·Node2·Node3 모델 계약을 실행한다. 테스트 대역을 선택하는 운영 환경 변수나 제품 fallback은 제공하지 않는다.
 
 Backend의 DataHub 조회는 `DATAHUB_GMS_URL` HTTPS origin,

@@ -29,6 +29,7 @@ from app.services.context.package_types import (
     ContextParameterBinding,
     ContextRequiredFilter,
 )
+from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 # 오류·값 객체는 별도 모듈이 선언하지만, 호출자들이 오랫동안 사용해 온 공개 표면은
 # 이 모듈이므로 그대로 재노출한다.
@@ -84,6 +85,21 @@ class ContextPackageBuilder:
                 ContextBuildErrorCode.DUPLICATE_METRIC,
                 "DataHub Metric Glossary Term은 중복될 수 없습니다.",
             )
+        governance_versions = {metric.governance_version for metric in metrics}
+        if metrics and governance_versions != {RUNTIME_GOVERNANCE_VERSION_V2}:
+            raise ContextBuildError(
+                ContextBuildErrorCode.GOVERNANCE_VERSION_UNSUPPORTED,
+                "Production 분석에는 Metric별 권한이 완전한 v2 governance release가 필요합니다.",
+            )
+        governed_v2 = bool(metrics)
+        business_metric_ids = {
+            metric.id for metric in metrics if metric.visibility == "BUSINESS"
+        }
+        if governed_v2 and {term.id for term in metric_terms} != business_metric_ids:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "v2 BUSINESS Metric과 DataHub Glossary Term 범위가 다릅니다.",
+            )
         required_filters = tuple(
             item for asset in assets for item in asset.required_filters
         )
@@ -131,6 +147,13 @@ class ContextPackageBuilder:
                     "numerator_metric_id": metric.numerator_metric_id,
                     "denominator_metric_id": metric.denominator_metric_id,
                     "zero_policy": metric.zero_policy,
+                    "visibility": metric.visibility,
+                    "governance_version": metric.governance_version,
+                    "allowed_roles": list(metric.allowed_roles),
+                    "contains_pii": metric.contains_pii,
+                    "allowed_join_ids": list(metric.allowed_join_ids),
+                    "join_required": metric.join_required,
+                    "query_strategies": list(metric.query_strategies),
                     "required_filters": [
                         {
                             "field": item.field,

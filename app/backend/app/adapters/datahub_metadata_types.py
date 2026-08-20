@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.adapters.datahub_metadata_values import GovernedMetadataError, clone_mapping
+from app.adapters.datahub_metric_governance import runtime_metric_permitted
+from app.authorization import role_is_entitled
 from app.services.context.values import _typed_value_is_valid
 from src.data.governance_contract import (
     canonical_json,
@@ -68,6 +70,7 @@ class GlossaryMetricTerm:
 @dataclass(frozen=True)
 class GovernedDataset:
     """한 dataset의 release fingerprint, entitlement, schema, metric, join·time·query 정책을 불변으로 묶는다."""
+    contract_version: str
     urn: str
     fqn: str
     name: str
@@ -95,6 +98,7 @@ class GovernedDataset:
     field_terms: dict[str, frozenset[str]]
     dataset_terms: frozenset[str]
     metrics: tuple[dict[str, Any], ...]
+    metric_rules: tuple[dict[str, Any], ...]
     dimensions: tuple[dict[str, Any], ...]
     join_graph: dict[str, Any]
     time_metadata: dict[str, Any]
@@ -108,11 +112,16 @@ class GovernedDataset:
     @property
     def metric_term_urns(self) -> frozenset[str]:
         """dataset metric이 참조하는 Glossary Term URN 집합을 중복 없는 불변 값으로 반환한다."""
-        return frozenset(str(metric["term_urn"]) for metric in self.metrics)
+        return frozenset(
+            str(metric["term_urn"])
+            for metric in self.metrics
+            if isinstance(metric.get("term_urn"), str)
+        )
 
     def entitled(self, context: dict[str, Any]) -> bool:
         """요청 role 또는 domain 중 하나가 DataHub entitlement와 일치할 때만 asset 접근을 허용한다."""
-        role = str(context.get("role") or "")
+        raw_role = context.get("role")
+        role = str(getattr(raw_role, "value", raw_role) or "")
         raw_domains = context.get("domains") or ()
         domains = (
             {str(item) for item in raw_domains}
@@ -121,7 +130,7 @@ class GovernedDataset:
         )
         decisions = []
         if self.allowed_roles:
-            decisions.append(role in self.allowed_roles)
+            decisions.append(role_is_entitled(role, self.allowed_roles))
         if self.allowed_domains:
             decisions.append(bool(self.allowed_domains & domains))
         return any(decisions)
@@ -132,12 +141,22 @@ class GovernedDataset:
         join_ids: tuple[str, ...],
         join_graph: dict[str, Any],
         parameters: dict[str, Any],
+        request_context: dict[str, Any],
     ) -> dict[str, Any]:
         """검증된 term·join·typed parameter를 결합해 SQL 생성기가 소비할 asset context를 만들고 누락 입력은 거부한다."""
         parameter_types = _parameter_types(self.parameter_contract)
+        raw_role = request_context.get("role")
+        role = str(getattr(raw_role, "value", raw_role) or "")
         metrics = []
         for raw in self.metrics:
-            term = terms[str(raw["term_urn"])]
+            if not runtime_metric_permitted(raw, role):
+                continue
+            term_urn = raw.get("term_urn")
+            term = terms.get(str(term_urn)) if isinstance(term_urn, str) else None
+            if raw.get("visibility") == "BUSINESS" and term is None:
+                raise GovernedMetadataError(
+                    "DataHub business metric is missing its Glossary term"
+                )
             filters = [
                 _runtime_filter(item, parameter_types, parameters)
                 for item in raw["required_filters"]
@@ -150,10 +169,17 @@ class GovernedDataset:
                     "aggregation": raw["aggregation"],
                     "time_field": raw["time_field"],
                     "result_field": raw["result_field"],
-                    "unit": term.unit,
+                    "unit": str(raw.get("unit") or (term.unit if term else "")),
                     "reduction": raw["reduction"],
                     "dimensions": [dict(item) for item in raw["dimensions"]],
                     "required_filters": filters,
+                    "visibility": raw["visibility"],
+                    "governance_version": raw["governance_version"],
+                    "allowed_roles": list(raw["allowed_roles"]),
+                    "contains_pii": raw["contains_pii"],
+                    "allowed_join_ids": list(raw["allowed_join_ids"]),
+                    "join_required": raw["join_required"],
+                    "query_strategies": list(raw["query_strategies"]),
                 }
             )
         return {
@@ -166,10 +192,14 @@ class GovernedDataset:
             "synthetic": self.synthetic,
             "context_release": self.context_release,
             "policy_version": self.policy_version,
+            "contract_version": self.contract_version,
             "grain": dict(self.grain),
             "join_ids": list(join_ids),
             "join_graph": clone_mapping(join_graph),
             "metrics": metrics,
+            "entitled_metric_ids": sorted(
+                item["id"] for item in metrics if item["visibility"] == "BUSINESS"
+            ),
             "dimensions": [dict(item) for item in self.dimensions],
             "required_filters": [],
             "time_metadata": clone_mapping(self.time_metadata),
@@ -226,6 +256,9 @@ def metric_rule_projection(
     term: GlossaryMetricTerm,
 ) -> dict[str, Any]:
     """dataset 내부 metric을 Glossary Term의 canonical 계산 규칙 shape로 투영해 checksum 비교 입력을 만든다."""
+    published_rule = metric.get("metric_rule")
+    if isinstance(published_rule, dict):
+        return clone_mapping(published_rule)
     return {
         "id": metric["id"],
         "source": {

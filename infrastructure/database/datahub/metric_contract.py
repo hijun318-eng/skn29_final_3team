@@ -12,8 +12,17 @@ from metadata_contract_primitives import (
     identifier,
     mapping,
     text,
+    unique_texts,
 )
 from src.data.governance_contract import RATIO_ZERO_POLICIES
+from src.data.metric_governance import (
+    METRIC_RULE_KEYS_V1,
+    METRIC_RULE_KEYS_V2,
+    METRIC_VISIBILITIES,
+    QUERY_STRATEGIES,
+    RUNTIME_GOVERNANCE_VERSION_V2,
+    metric_rule_contract_version,
+)
 
 
 _AGGREGATIONS = {
@@ -28,19 +37,6 @@ _AGGREGATIONS = {
 }
 _REDUCTIONS = {"sum", "min", "max", "average", "scalar", "ratio"}
 _FILTER_OPERATORS = {"eq", "neq", "gt", "gte", "lt", "lte"}
-_METRIC_KEYS = {
-    "id",
-    "source",
-    "aggregation",
-    "result_field",
-    "unit",
-    "time_field",
-    "reduction",
-    "dimensions",
-    "required_filters",
-}
-
-
 def validate_metrics(
     value: object,
     assets: Mapping[str, frozenset[str]],
@@ -51,9 +47,19 @@ def validate_metrics(
 
     metrics: dict[str, Mapping[str, Any]] = {}
     domains: dict[str, str] = {}
+    versions: set[str] = set()
     for index, raw in enumerate(array(value, "metric_rules", non_empty=True, limit=64)):
         metric = mapping(raw, f"metric[{index}]")
-        exact_keys(metric, _METRIC_KEYS, f"metric[{index}]")
+        try:
+            version = metric_rule_contract_version(metric)
+        except ValueError as error:
+            raise SemanticMetadataError(str(error)) from error
+        versions.add(version)
+        exact_keys(
+            metric,
+            set(METRIC_RULE_KEYS_V2 if version == RUNTIME_GOVERNANCE_VERSION_V2 else METRIC_RULE_KEYS_V1),
+            f"metric[{index}]",
+        )
         metric_id = identifier(metric["id"], f"metric[{index}].id")
         if metric_id in metrics:
             raise SemanticMetadataError("metric ids must be unique")
@@ -79,13 +85,119 @@ def validate_metrics(
             _validate_ratio_shape(metric, source, f"metric[{index}]")
         else:
             raise SemanticMetadataError("only column and governed ratio metrics are supported")
+        if version == RUNTIME_GOVERNANCE_VERSION_V2:
+            _validate_v2_governance(metric, f"metric[{index}]")
         metrics[metric_id] = metric
+
+    if len(versions) != 1:
+        raise SemanticMetadataError(
+            "one semantic release cannot mix metric governance versions"
+        )
 
     for metric_id, metric in metrics.items():
         if mapping(metric["source"], f"metric[{metric_id}].source").get("kind") != "ratio":
             continue
         domains[metric_id] = _validate_ratio_references(metric, metrics, domains)
     return metrics, domains
+
+
+def _validate_v2_governance(metric: Mapping[str, Any], context: str) -> None:
+    """v2의 업무 의미·권한·실행 제한 shape를 물리 교차검증 전에 엄격히 확인한다."""
+
+    governance = mapping(metric["governance"], f"{context}.governance")
+    exact_keys(
+        governance,
+        {
+            "visibility",
+            "semantic",
+            "grain",
+            "time",
+            "join",
+            "permission",
+            "query_strategies",
+        },
+        f"{context}.governance",
+    )
+    if governance["visibility"] not in METRIC_VISIBILITIES:
+        raise SemanticMetadataError("metric visibility is unsupported")
+    semantic = mapping(governance["semantic"], f"{context}.governance.semantic")
+    exact_keys(
+        semantic,
+        {"name", "definition", "aliases"},
+        f"{context}.governance.semantic",
+    )
+    name = text(semantic["name"], f"{context}.governance.semantic.name")
+    aliases = unique_texts(
+        semantic["aliases"],
+        f"{context}.governance.semantic.aliases",
+        non_empty=True,
+    )
+    text(semantic["definition"], f"{context}.governance.semantic.definition")
+    if name not in aliases:
+        raise SemanticMetadataError("metric semantic aliases must include its name")
+
+    grain = mapping(governance["grain"], f"{context}.governance.grain")
+    exact_keys(grain, {"kind", "keys", "dimensions"}, f"{context}.governance.grain")
+    text(grain["kind"], f"{context}.governance.grain.kind")
+    unique_texts(grain["keys"], f"{context}.governance.grain.keys", non_empty=True)
+    dimensions = unique_texts(
+        grain["dimensions"], f"{context}.governance.grain.dimensions"
+    )
+
+    time = mapping(governance["time"], f"{context}.governance.time")
+    exact_keys(
+        time,
+        {"field", "semantics", "timezone", "interval"},
+        f"{context}.governance.time",
+    )
+    for key in ("field", "semantics", "timezone"):
+        text(time[key], f"{context}.governance.time.{key}")
+    if time["interval"] != "[start,end)":
+        raise SemanticMetadataError("metric time interval must be half-open")
+
+    join = mapping(governance["join"], f"{context}.governance.join")
+    exact_keys(join, {"required", "allowed_edge_ids"}, f"{context}.governance.join")
+    edges = unique_texts(
+        join["allowed_edge_ids"], f"{context}.governance.join.allowed_edge_ids"
+    )
+    if not isinstance(join["required"], bool) or join["required"] != bool(edges):
+        raise SemanticMetadataError("metric join requirement and allowed edges disagree")
+
+    permission = mapping(
+        governance["permission"], f"{context}.governance.permission"
+    )
+    exact_keys(
+        permission,
+        {"roles", "contains_pii", "synthetic"},
+        f"{context}.governance.permission",
+    )
+    unique_texts(
+        permission["roles"], f"{context}.governance.permission.roles", non_empty=True
+    )
+    if not isinstance(permission["contains_pii"], bool) or not isinstance(
+        permission["synthetic"], bool
+    ):
+        raise SemanticMetadataError("metric permission flags must be boolean")
+    strategies = set(
+        unique_texts(
+            governance["query_strategies"],
+            f"{context}.governance.query_strategies",
+            non_empty=True,
+        )
+    )
+    if not strategies <= QUERY_STRATEGIES:
+        raise SemanticMetadataError("metric query strategy is unsupported")
+
+    if metric["source"].get("kind") == "column":
+        time_field = mapping(metric["time_field"], f"{context}.time_field")
+        if time["field"] != time_field.get("column"):
+            raise SemanticMetadataError("metric time governance differs from its executable field")
+        executable_dimensions = {
+            str(mapping(item, f"{context}.dimension").get("column"))
+            for item in array(metric["dimensions"], f"{context}.dimensions")
+        }
+        if set(dimensions) != executable_dimensions:
+            raise SemanticMetadataError("metric grain dimensions differ from executable dimensions")
 
 
 def _validate_column_metric(

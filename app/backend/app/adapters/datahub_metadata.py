@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.adapters.datahub_contract_values import (
+    dataset_governed_properties as _dataset_governed_properties,
     dataset_key as _dataset_key,
     grain as _grain,
     governance_urns as _governance_urns,
@@ -14,9 +15,12 @@ from app.adapters.datahub_contract_values import (
     json_boolean as _json_boolean,
     json_object as _json_object,
     parameter_contract as _parameter_contract,
-    qualified_fields as _qualified_fields,
     query_policy as _query_policy,
     time_rules as _time_rules,
+)
+from app.adapters.datahub_metric_governance import (
+    parse_release_metric_rules,
+    parse_runtime_metrics,
 )
 from app.adapters.datahub_metadata_types import GlossaryMetricTerm, GovernedDataset
 from app.adapters.datahub_metadata_values import (
@@ -30,19 +34,14 @@ from app.adapters.datahub_metadata_values import (
     string_set,
     term_urns,
 )
-from app.services.context.values import FILTER_OPERATORS
 from src.data.governance_contract import (
-    DATASET_RUNTIME_PROPERTY_KEYS,
     MANIFEST_DATASET_KEYS,
-    RUNTIME_GOVERNANCE_VERSION,
     TERM_RUNTIME_PROPERTY_KEYS,
     datahub_schema_sha1,
 )
 
 
 _COLUMN_ROLES = {"identifier", "dimension", "measure", "time", "attribute"}
-_AGGREGATIONS = {"sum", "count", "count_distinct", "min", "max", "average", "none"}
-_REDUCTIONS = {"sum", "min", "max", "average", "scalar"}
 
 
 def parse_glossary_term(value: object) -> GlossaryMetricTerm:
@@ -100,13 +99,8 @@ def parse_dataset(value: object) -> GovernedDataset:
     properties = value.get("properties")
     if not isinstance(properties, dict):
         raise GovernedMetadataError("DataHub dataset properties are missing")
-    custom = _governed_properties(
-        properties.get("customProperties"),
-        DATASET_RUNTIME_PROPERTY_KEYS,
-    )
+    custom = _dataset_governed_properties(properties.get("customProperties"))
     # custom property만 믿으면 DataHub native 승인 철회나 소유권 변경을 우회할 수 있어 두 표현을 함께 검증한다.
-    if custom["contract_version"] != RUNTIME_GOVERNANCE_VERSION:
-        raise GovernedMetadataError("DataHub runtime governance version is unsupported")
     if custom["approval_status"] != "APPROVED":
         raise GovernedMetadataError("DataHub runtime governance is not approved")
     asset_fqn = fqn(custom["fqn"])
@@ -134,13 +128,6 @@ def parse_dataset(value: object) -> GovernedDataset:
     )
     dimensions = _dimensions(
         _json_array(custom["dimensions"], "dimensions")
-    )
-    metrics = _metrics(
-        _json_array(custom["metrics"], "metrics"),
-        columns,
-        field_terms,
-        dataset_terms,
-        parameter_contract,
     )
     entitlements = _json_object(custom["entitlements"], "entitlements")
     if set(entitlements) != {"roles", "domains"}:
@@ -179,6 +166,29 @@ def parse_dataset(value: object) -> GovernedDataset:
     ):
         raise GovernedMetadataError("DataHub schema metadata version is invalid")
     grain = _grain(_json_object(custom["grain"], "grain"), columns)
+    synthetic = _json_boolean(custom["synthetic"], "synthetic flag")
+    join_graph = _join_graph(_json_object(custom["join_graph"], "join graph"))
+    metric_rules = parse_release_metric_rules(
+        _json_array(custom["metric_rules"], "metric rules")
+        if "metric_rules" in custom
+        else None,
+        custom["contract_version"],
+    )
+    metrics = parse_runtime_metrics(
+        _json_array(custom["metrics"], "metrics"),
+        columns=columns,
+        field_terms=field_terms,
+        dataset_terms=dataset_terms,
+        parameters=parameter_contract,
+        contract_version=custom["contract_version"],
+        metric_rules=metric_rules,
+        asset_fqn=asset_fqn,
+        allowed_roles=frozenset(roles),
+        grain=grain,
+        synthetic=synthetic,
+        time_rules=time_rules,
+        join_graph=join_graph,
+    )
     governance = _governance_urns(
         _json_object(custom["governance_urns"], "governance URNs")
     )
@@ -199,7 +209,7 @@ def parse_dataset(value: object) -> GovernedDataset:
         "description": required_text(properties.get("description"), "asset description"),
         "schema_version": required_text(custom["schema_version"], "schema version"),
         "seed_version": required_text(custom["seed_version"], "seed version"),
-        "synthetic": _json_boolean(custom["synthetic"], "synthetic flag"),
+        "synthetic": synthetic,
         "approval_status": custom["approval_status"],
         "entitlements": entitlements,
         "grain": grain,
@@ -214,6 +224,7 @@ def parse_dataset(value: object) -> GovernedDataset:
         "table_type": table_type,
     }
     return GovernedDataset(
+        contract_version=custom["contract_version"],
         urn=urn,
         fqn=asset_fqn,
         name=asset_fqn,
@@ -243,8 +254,9 @@ def parse_dataset(value: object) -> GovernedDataset:
         field_terms=field_terms,
         dataset_terms=dataset_terms,
         metrics=metrics,
+        metric_rules=metric_rules,
         dimensions=dimensions,
-        join_graph=_join_graph(_json_object(custom["join_graph"], "join graph")),
+        join_graph=join_graph,
         time_metadata=time_metadata,
         time_rules=time_rules,
         parameter_contract=parameter_contract,
@@ -344,79 +356,6 @@ def _manifest_dataset_entry(manifest, urn):
             "DataHub release manifest lacks the dataset fingerprint"
         )
     return matches[0]
-
-
-def _metrics(values, columns, field_terms, dataset_terms, parameters):
-    if len(values) > 64:
-        raise GovernedMetadataError("DataHub metrics must be a bounded array")
-    column_names = {item["name"] for item in columns}
-    parameter_types = {
-        item["name"]: (item["type"], item["scope"])
-        for item in parameters["parameters"]
-    }
-    metrics = []
-    ids = set()
-    required = {
-        "id", "term_urn", "field", "aggregation", "time_field", "result_field",
-        "reduction", "dimensions", "required_filters",
-    }
-    for raw in values:
-        if not isinstance(raw, dict) or set(raw) != required:
-            raise GovernedMetadataError("DataHub metric fields are invalid")
-        metric_id = identifier(raw["id"], "metric id")
-        term_urn = required_text(raw["term_urn"], "metric term urn")
-        field = required_text(raw["field"], "metric field")
-        time_field = required_text(raw["time_field"], "metric time field")
-        visible_field_terms = field_terms.get(field, frozenset())
-        if (
-            metric_id in ids
-            or field not in column_names
-            or time_field not in column_names
-            or raw["aggregation"] not in _AGGREGATIONS
-            or raw["reduction"] not in _REDUCTIONS
-            or term_urn not in dataset_terms
-            # WHY: DataHub v1.7은 editableSchemaMetadata에 저장된 연결을
-            # schemaMetadata.fields.glossaryTerms로 투영하지 않는다. dataset-level
-            # association과 checksum-bound metrics는 항상 검증하고, field projection이
-            # 실제로 보일 때만 동일 term인지 추가로 대조한다.
-            or (visible_field_terms and term_urn not in visible_field_terms)
-        ):
-            raise GovernedMetadataError("DataHub metric governance is inconsistent")
-        ids.add(metric_id)
-        metrics.append(
-            {
-                "id": metric_id,
-                "term_urn": term_urn,
-                "field": field,
-                "aggregation": raw["aggregation"],
-                "time_field": time_field,
-                "result_field": identifier(raw["result_field"], "metric result field"),
-                "reduction": raw["reduction"],
-                "dimensions": _qualified_fields(raw["dimensions"], "metric dimensions"),
-                "required_filters": _filter_contracts(
-                    raw["required_filters"], column_names, parameter_types
-                ),
-            }
-        )
-    return tuple(metrics)
-
-
-def _filter_contracts(values, columns, parameters):
-    if not isinstance(values, list) or len(values) > 32:
-        raise GovernedMetadataError("DataHub required filters must be bounded")
-    result = []
-    for item in values:
-        if not isinstance(item, dict) or set(item) != {"field", "operator", "parameter"}:
-            raise GovernedMetadataError("DataHub required filter fields are invalid")
-        name = required_text(item["parameter"], "filter parameter")
-        if (
-            item["field"] not in columns
-            or item["operator"] not in FILTER_OPERATORS
-            or parameters.get(name, (None, None))[1] != "filter"
-        ):
-            raise GovernedMetadataError("DataHub required filter governance is invalid")
-        result.append(dict(item))
-    return result
 
 
 def _dimensions(values):

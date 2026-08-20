@@ -38,7 +38,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     () => options.analysisClient ?? createAnalysisClient(fetch),
     [options.analysisClient],
   );
-  const isAdmin = options.isAdmin ?? options.role === "report_admin";
+  const isAdmin = options.isAdmin ?? ["report_admin", "platform_admin"].includes(options.role ?? "");
   const autoLoad = options.autoLoad ?? true;
 
   const [definitions, setDefinitions] = useState<readonly ReportDefinitionVersion[]>([]);
@@ -282,7 +282,6 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     const receipt = await mutate("run", () => reportClient.createManualRun({
       definition_id: definition.definitionId,
       version: definition.version,
-      as_of: runOptions.asOf ?? new Date().toISOString(),
       idempotency_key: runOptions.idempotencyKey ?? createUuid(),
     }));
     if (!receipt) return null;

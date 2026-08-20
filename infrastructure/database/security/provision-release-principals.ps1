@@ -5,7 +5,12 @@ param(
     [Parameter(Mandatory)]
     [string]$EnvPath,
     [Parameter(Mandatory)]
-    [string]$PrincipalPath
+    [string]$PrincipalPath,
+    [string]$AnalystUsername,
+    [ValidateSet('hotel_analyst', 'report_admin', 'data_admin', 'platform_admin')]
+    [string]$AnalystRole,
+    [int]$SessionTtlSeconds = 0,
+    [switch]$PromptAnalystPassword
 )
 
 $ErrorActionPreference = 'Stop'
@@ -72,8 +77,41 @@ function Get-PasswordHash([string]$Password, [byte[]]$Salt, [int]$Iterations) {
     finally { $derive.Dispose() }
 }
 
-# Login ID와 raw password는 command parameter로 받지 않는다. operator가 보호된
-# 외부 env를 먼저 갱신해야 하며 이 script는 해당 file의 verifier만 파생한다.
+# 계정 회전 모드는 username·Role만 일반 parameter로 받고 password는 secure prompt로만
+# 입력한다. 원문 password가 argv, process 목록, script log에 남지 않게 한 뒤 외부 env와
+# verifier를 같은 실행에서 갱신한다. 기본 모드는 기존 외부 env만 읽는다.
+if ($AnalystUsername) {
+    Set-EnvValue 'ANALYST_LOGIN_ID' $AnalystUsername.ToLowerInvariant()
+}
+if ($AnalystRole) {
+    Set-EnvValue 'ANALYST_LOGIN_ROLE' $AnalystRole
+}
+if ($SessionTtlSeconds) {
+    if ($SessionTtlSeconds -lt 900 -or $SessionTtlSeconds -gt 86400) {
+        throw 'SessionTtlSeconds must be between 900 and 86400.'
+    }
+    Set-EnvValue 'AUTH_SESSION_TTL_SECONDS' ([string]$SessionTtlSeconds)
+}
+if ($PromptAnalystPassword) {
+    $securePassword = Read-Host 'Analyst password' -AsSecureString
+    $passwordPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
+    try {
+        $plainPassword = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($passwordPointer)
+        if ($plainPassword.Length -lt 12) {
+            throw 'Analyst password must contain at least 12 characters.'
+        }
+        Set-EnvValue 'ANALYST_LOGIN_PASSWORD' $plainPassword
+    } finally {
+        if ($passwordPointer -ne [IntPtr]::Zero) {
+            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($passwordPointer)
+        }
+        $plainPassword = $null
+        $securePassword = $null
+    }
+}
+
+# Login ID와 raw password를 일반 command parameter로 받지 않는다. 보호된 외부 env 또는
+# 위 secure prompt에서만 읽고 principal 파일에는 PBKDF2 verifier만 기록한다.
 $sessionSecret = Read-EnvValue 'AUTH_SESSION_SECRET'
 if (-not $sessionSecret -or $sessionSecret.StartsWith('CHANGE_ME_')) {
     $sessionSecret = New-RandomValue
@@ -82,9 +120,20 @@ if (-not $sessionSecret -or $sessionSecret.StartsWith('CHANGE_ME_')) {
 Set-EnvValue 'AUTH_PRINCIPALS_HOST_FILE' $resolvedPrincipalPath
 
 $definitions = @(
-    [ordered]@{ username_env = 'ANALYST_LOGIN_ID'; password_env = 'ANALYST_LOGIN_PASSWORD'; role = 'hotel_analyst' },
-    [ordered]@{ username_env = 'REPORT_ADMIN_LOGIN_ID'; password_env = 'REPORT_ADMIN_LOGIN_PASSWORD'; role = 'report_admin' }
+    [ordered]@{
+        username_env = 'ANALYST_LOGIN_ID'
+        password_env = 'ANALYST_LOGIN_PASSWORD'
+        role_env = 'ANALYST_LOGIN_ROLE'
+        default_role = 'hotel_analyst'
+    },
+    [ordered]@{
+        username_env = 'REPORT_ADMIN_LOGIN_ID'
+        password_env = 'REPORT_ADMIN_LOGIN_PASSWORD'
+        role_env = $null
+        default_role = 'report_admin'
+    }
 )
+$allowedRoles = @('hotel_analyst', 'report_admin', 'data_admin', 'platform_admin')
 $existing = @()
 if (Test-Path -LiteralPath $resolvedPrincipalPath) {
     try { $existing = @((Get-Content -Raw -LiteralPath $resolvedPrincipalPath | ConvertFrom-Json)) }
@@ -94,13 +143,20 @@ $iterations = 210000
 $principals = foreach ($definition in $definitions) {
     $username = (Read-EnvValue $definition.username_env).ToLowerInvariant()
     $password = Read-EnvValue $definition.password_env
+    $configuredRole = if ($definition.role_env) { Read-EnvValue $definition.role_env } else { '' }
+    $role = if ($configuredRole) { $configuredRole } else { $definition.default_role }
     if (-not $username -or $username.StartsWith('change_me_') -or -not $password -or $password.StartsWith('CHANGE_ME_')) {
         throw "$($definition.username_env) and $($definition.password_env) must be set in the external deployment env file"
     }
-    if ($username -notmatch '^[a-z0-9._-]{3,64}$' -or $password.Length -lt 12) {
-        throw "$($definition.role) login must use a valid username and a password of at least 12 characters"
+    if ($role -notin $allowedRoles) {
+        throw "$($definition.role_env) must contain a supported authentication role"
     }
-    $matching = @($existing | Where-Object { $_.username -eq $username -and $_.role -eq $definition.role }) | Select-Object -First 1
+    if ($username -notmatch '^[a-z0-9._-]{3,64}$' -or $password.Length -lt 12) {
+        throw "$role login must use a valid username and a password of at least 12 characters"
+    }
+    # Role 회전은 같은 사람의 저장 Analysis·Report 소유권을 끊지 않아야 한다. username은
+    # principal 파일에서 unique하므로 기존 subject를 Role과 무관하게 보존한다.
+    $matching = @($existing | Where-Object { $_.username -eq $username }) | Select-Object -First 1
     $salt = [byte[]]::new(16)
     $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
     $generator.GetBytes($salt)
@@ -111,7 +167,7 @@ $principals = foreach ($definition in $definitions) {
         password_hash = Get-PasswordHash $password $salt $iterations
         password_iterations = $iterations
         subject = if ($matching) { $matching.subject } else { [guid]::NewGuid().ToString() }
-        role = $definition.role
+        role = $role
         active = $true
     }
 }

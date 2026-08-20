@@ -19,6 +19,7 @@ sys.path.insert(0, str(BACKEND))
 from metadata_aspects import iter_aspects  # noqa: E402
 from src.data.governance_contract import (  # noqa: E402
     catalog_hash,
+    datahub_schema_sha1,
     glossary_hash,
     release_manifest,
     trino_schema_hash,
@@ -382,7 +383,9 @@ def _graphql_dataset(asset, bundle, aspects):
         "schemaMetadata": {
             "version": asset["schema_metadata_version"],
             "name": asset["schema_name"],
-            "hash": aspects[asset["urn"]]["schemaMetadata"]["hash"],
+            # schemaMetadata는 ingestion connector가 소유한다. 이 fixture는
+            # semantic publisher 결과가 아니라 connector read-back을 모델링한다.
+            "hash": datahub_schema_sha1(asset),
             "fields": [
                 {
                     "fieldPath": column["name"],
@@ -596,16 +599,13 @@ class SemanticPublicationContractTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(requests)
         self.assertTrue(all(path == "/aspects" for path, _ in requests))
         self.assertFalse(any("/openapi/" in path for path, _ in requests))
-        schema = next(
-            json.loads(body["aspect"]["value"])
-            for _path, body in requests
-            if body["entityType"] == "dataset"
-            and body["aspectName"] == "schemaMetadata"
-        )
-        self.assertIn("com.linkedin.schema.OtherSchema", schema["platformSchema"])
-        self.assertIn(
-            "com.linkedin.schema.NumberType",
-            schema["fields"][0]["type"]["type"],
+        self.assertFalse(
+            any(
+                body["entityType"] == "dataset"
+                and body["aspectName"] == "schemaMetadata"
+                for _path, body in requests
+            ),
+            "semantic publisher must not overwrite connector-owned schemaMetadata",
         )
         wire = json.dumps(
             [

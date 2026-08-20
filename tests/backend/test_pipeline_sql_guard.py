@@ -18,6 +18,7 @@ from app.services.context.builder import (
 from app.services.context.contract import GovernedJoin, enrich_context_package
 from app.services.sql_guard import apply_guard_decision, validate_plan
 from src.ai.schema import ContractError, validate_payload
+from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
 def _package(fqn: str = "orbit.ops.event_fact"):
@@ -36,6 +37,12 @@ def _package(fqn: str = "orbit.ops.event_fact"):
                 required_filters=(ContextRequiredFilter("active", "eq", True),),
                 result_field="governed_total",
                 unit="credits",
+                governance_version=RUNTIME_GOVERNANCE_VERSION_V2,
+                allowed_roles=("hotel_analyst",),
+                contains_pii=False,
+                allowed_join_ids=(),
+                join_required=False,
+                query_strategies=("RAW_APPROVED_DETAIL",),
             ),
         ),
         metric_registry_required=True,
@@ -682,6 +689,12 @@ def test_ratio_metric_projects_numerator_and_denominator_with_nullif_zero_guard(
         numerator_metric_id="governed_amount",
         denominator_metric_id="governed_count",
         zero_policy="null_on_zero_denominator",
+        governance_version=RUNTIME_GOVERNANCE_VERSION_V2,
+        allowed_roles=("hotel_analyst",),
+        contains_pii=False,
+        allowed_join_ids=(),
+        join_required=False,
+        query_strategies=("RAW_APPROVED_DETAIL",),
     )
     contracts = deepcopy(package.runtime_contracts)
     denominator_rule = deepcopy(contracts["metric_rules"][0])

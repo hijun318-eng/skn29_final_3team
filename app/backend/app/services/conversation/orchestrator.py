@@ -25,7 +25,8 @@ from typing import Any, Callable
 from uuid import UUID, uuid4
 
 from app.adapters.conversation_repository import ConversationRepository
-from app.contracts import AnalysisRequest, AnalysisStatus, ErrorCode, RequestContext, ResolvedSlots
+from app.authorization import has_capability
+from app.contracts import AnalysisRequest, AnalysisStatus, Capability, ErrorCode, RequestContext, ResolvedSlots
 from app.ports.data_platform import DataPlatformAdapter, NoEntitledAssetsError
 from app.services.context.builder import ContextBuildError
 from app.services.context.model_signals import client_action_signals
@@ -90,7 +91,7 @@ class ConversationOrchestrator:
         """요청 사용자의 권한과 격리 범위가 적용된 ReportRepository 인스턴스를 반환합니다."""
         if self._report_repository_factory is not None:
             if callable(self._report_repository_factory):
-                is_admin = getattr(context.role, "value", str(context.role)) == "report_admin"
+                is_admin = has_capability(context.role, Capability.MANAGE_REPORT)
                 return self._report_repository_factory(context.user_id, is_admin)
             return self._report_repository_factory
         from app.adapters.report_repository import PostgresReportRepository
@@ -98,7 +99,7 @@ class ConversationOrchestrator:
         database_url = os.getenv("APP_RUNTIME_DATABASE_URL")
         if not database_url:
             raise ValueError("Report 저장소(APP_RUNTIME_DATABASE_URL)가 구성되지 않았습니다.")
-        is_admin = getattr(context.role, "value", str(context.role)) == "report_admin"
+        is_admin = has_capability(context.role, Capability.MANAGE_REPORT)
         return PostgresReportRepository(
             database_url=database_url,
             owner_id=context.user_id,

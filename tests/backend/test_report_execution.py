@@ -19,7 +19,8 @@ from sqlalchemy.engine import make_url
 BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 sys.path.insert(0, str(BACKEND))
 
-from app.contracts import AnalysisStatus  # noqa: E402
+from app.auth_principal_store import Principal  # noqa: E402
+from app.contracts import AnalysisStatus, Role  # noqa: E402
 from app.services.report.execution import (  # noqa: E402
     AnalysisDefinitionReplay,
     ReplayOutcome,
@@ -131,7 +132,10 @@ async def test_analysis_definition_replay_reseals_period_and_persists_new_eviden
     with patch(
         "app.services.report.execution.PostgresAnalysisRepository",
         return_value=repository,
-    ), patch("app.services.report.execution.require_active_subject"):
+    ), patch(
+        "app.services.report.execution.require_active_subject_with_capability",
+        return_value=Principal(OWNER, Role.HOTEL_ANALYST),
+    ):
         outcome = await replay.execute(
             owner_id=OWNER,
             definition_id=str(uuid4()),

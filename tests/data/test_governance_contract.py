@@ -20,9 +20,11 @@ from src.data.governance_contract import (  # noqa: E402
     canonical_json,
     catalog_hash,
     datahub_schema_sha1,
+    dataset_runtime_property_keys,
     dataset_runtime_property_projection,
     glossary_hash,
     release_manifest,
+    runtime_governance_version,
     shared_semantic_hash,
     term_runtime_property_projection,
     trino_schema_hash,
@@ -77,9 +79,17 @@ def test_runtime_property_projections_have_one_exact_shared_shape():
     term = next(item for item in bundle["metric_terms"] if item["id"] == metric["id"])
     dataset_properties = dataset_runtime_property_projection(bundle, asset, manifest)
     term_properties = term_runtime_property_projection(term, metric, manifest)
-    assert set(dataset_properties) == DATASET_RUNTIME_PROPERTY_KEYS
+    assert set(dataset_properties) == dataset_runtime_property_keys(
+        runtime_governance_version(bundle)
+    )
     assert set(term_properties) == TERM_RUNTIME_PROPERTY_KEYS
     assert "value" not in canonical_json(dataset_properties)
+
+
+def test_default_dataset_runtime_contract_is_v2():
+    assert DATASET_RUNTIME_PROPERTY_KEYS == dataset_runtime_property_keys(
+        contract.RUNTIME_GOVERNANCE_VERSION_V2
+    )
 
 
 def test_dataset_metric_projection_is_independent_of_policy_input_order():

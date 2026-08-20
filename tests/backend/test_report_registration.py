@@ -425,19 +425,22 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
 
             command_payload = {
                 "definition_id": "report-1", "version": 1,
-                "as_of": approved_at, "idempotency_key": "manual-1",
+                "idempotency_key": "manual-1",
             }
             command = await report_api.create_manual_run_command(
                 CreateManualRunRequest.model_validate(command_payload), report_context
             )
             self.assertEqual("queued", command["status"])
+            self.assertEqual(
+                report_context.as_of.isoformat(), command["as_of"].split("T", 1)[0]
+            )
             self.assertNotIn("run_id", command)
             with self.assertRaises(ValidationError):
                 CreateManualRunRequest.model_validate(
                     {**command_payload, "idempotency_key": " "}
                 )
             for forbidden in (
-                "command_id", "run_id", "status", "policy_version", "context_hash",
+                "as_of", "command_id", "run_id", "status", "policy_version", "context_hash",
                 "watermark", "blocks", "result",
             ):
                 with self.subTest(forbidden=forbidden):

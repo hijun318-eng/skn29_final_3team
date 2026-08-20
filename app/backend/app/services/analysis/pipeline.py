@@ -13,12 +13,13 @@ from app.contracts import (
     AnalysisRequest,
     AnalysisResponse,
     AnalysisStatus,
+    Capability,
     ErrorCode,
     PipelineStage,
     RequestContext,
-    Role,
     StageOutcome,
 )
+from app.authorization import has_capability
 from app.ports.data_platform import DataPlatformAdapter
 from app.ports.model import ModelAdapter
 from app.services.analysis.pipeline_state import AnalysisPipelineState
@@ -89,7 +90,7 @@ class AnalysisPipeline:
             return cancelled
 
         # 2. 역할 권한(RBAC) 검증
-        if context.role is not Role.HOTEL_ANALYST:
+        if not has_capability(context.role, Capability.RUN_ANALYSIS):
             return self._responses.error(
                 context,
                 state.machine,

@@ -16,8 +16,8 @@ import {
 import { useReportsPageController } from "../features/reports/useReportsPageController";
 
 /** 보고서 controller의 상태를 목록·최종본·편집기 뷰에 배선하며 memoized 하위 경계를 유지한다. */
-export function ReportsPage({ role, onEditorMode }) {
-  const page = useReportsPageController({ role, onEditorMode });
+export function ReportsPage({ role, isAdmin, onEditorMode }) {
+  const page = useReportsPageController({ role, isAdmin, onEditorMode });
   const { artifacts, dnd, draft, lifecycle } = page;
   const editorCurrencyControl = useMemo(() => (
     <ReportCurrencyControl

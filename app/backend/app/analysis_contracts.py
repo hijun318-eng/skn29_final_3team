@@ -48,8 +48,12 @@ class CreateAnalysisDefinitionRequest(AnalysisPersistenceModel):
 
 
 class ReplayAnalysisRequest(AnalysisPersistenceModel):
-    """정의 재실행의 기준일·멱등 키와 허용된 스칼라 매개변수를 입력받아 중복 실행을 통제한다."""
-    as_of: date
+    """정의 재실행의 멱등 키와 허용된 스칼라 매개변수만 받아 중복 실행을 통제한다.
+
+    기준일은 인증된 요청의 서버 소유 ``RequestContext``에서만 가져오며 일반 replay에
+    역사 시점 주입 통로를 만들지 않는다.
+    """
+
     idempotency_key: str = Field(min_length=1, max_length=128)
     parameters: dict[str, Scalar] = Field(default_factory=dict)
 

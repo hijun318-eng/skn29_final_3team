@@ -16,10 +16,30 @@ from metadata_contract_primitives import (
     unique_texts,
 )
 from release_bundle import ReleaseBinding
-from semantic_authoring import AUTHORING_CONTRACT_VERSION
+from semantic_authoring import (
+    AUTHORING_CONTRACT_VERSION_V1,
+    AUTHORING_CONTRACT_VERSION_V2,
+)
+from src.data.metric_governance import (
+    RUNTIME_GOVERNANCE_VERSION_V1,
+    RUNTIME_GOVERNANCE_VERSION_V2,
+    metric_contract_version,
+)
 
 
-DECISION_CONTRACT_VERSION = "answervice.policy_decisions.v1"
+DECISION_CONTRACT_VERSION_V1 = "answervice.policy_decisions.v1"
+DECISION_CONTRACT_VERSION_V2 = "answervice.policy_decisions.v2"
+DECISION_CONTRACT_VERSION = DECISION_CONTRACT_VERSION_V1
+_DECISION_VERSIONS = {
+    DECISION_CONTRACT_VERSION_V1: (
+        AUTHORING_CONTRACT_VERSION_V1,
+        RUNTIME_GOVERNANCE_VERSION_V1,
+    ),
+    DECISION_CONTRACT_VERSION_V2: (
+        AUTHORING_CONTRACT_VERSION_V2,
+        RUNTIME_GOVERNANCE_VERSION_V2,
+    ),
+}
 _DECISION_KEYS = {
     "contract_version",
     "catalog_version",
@@ -55,8 +75,10 @@ def compile_authoring_policy(
 
     source = mapping(decision, "policy decisions")
     exact_keys(source, _DECISION_KEYS, "policy decisions")
-    if source["contract_version"] != DECISION_CONTRACT_VERSION:
+    versions = _DECISION_VERSIONS.get(source["contract_version"])
+    if versions is None:
         raise SemanticMetadataError("policy decision contract version is unsupported")
+    authoring_version, expected_runtime_version = versions
     if not bindings:
         raise SemanticMetadataError("policy decisions require live release bindings")
     owner = _governance(source["owner"], "owner", "urn:li:corpGroup:")
@@ -73,6 +95,16 @@ def compile_authoring_policy(
         raise SemanticMetadataError("grain decisions reference an unknown live asset")
 
     metrics = deepcopy(array(source["metric_rules"], "metric rules", non_empty=True))
+    try:
+        actual_runtime_version = metric_contract_version(
+            mapping(item, "metric rule") for item in metrics
+        )
+    except ValueError as error:
+        raise SemanticMetadataError("metric governance version is invalid") from error
+    if actual_runtime_version != expected_runtime_version:
+        raise SemanticMetadataError(
+            "policy decision and metric governance versions differ"
+        )
     terms = _metric_terms(source["metric_terms"], metrics, owner, lifecycle, bindings)
     time_rules = _time_rules(source["time_rules"], bindings)
     semantic_roles = _semantic_roles(metrics, source["dimensions"], time_rules)
@@ -90,7 +122,7 @@ def compile_authoring_policy(
         for binding in sorted(bindings, key=lambda item: item.relation.fqn)
     ]
     return {
-        "contract_version": AUTHORING_CONTRACT_VERSION,
+        "contract_version": authoring_version,
         "catalog_version": text(source["catalog_version"], "catalog version"),
         "policy_version": text(source["policy_version"], "policy version"),
         "schema_context_version": text(

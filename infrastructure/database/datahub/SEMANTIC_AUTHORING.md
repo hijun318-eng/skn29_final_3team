@@ -25,13 +25,100 @@ The authoring transaction performs these gates in order:
 7. Re-read DataHub and Trino until the exact catalog hash converges within the bounded
    timeout. Partial or drifting publication returns a non-zero result.
 
-The stdin object uses contract version
-`answervice.semantic_authoring.v1`. Its top-level fields are:
+The stdin object uses contract version `answervice.semantic_authoring.v1` for the
+existing all-public metric contract or `answervice.semantic_authoring.v2` for the
+visibility- and execution-governed metric contract. Its top-level fields are:
 
 - `contract_version`, `catalog_version`, `policy_version`,
   `schema_context_version`
 - `governance_entities`, `assets`, `metric_rules`, `metric_terms`
 - `dimensions`, `join_graph`, `time_rules`, `parameter_contract`, `query_policy`
+
+An authoring envelope and every Metric Rule in that envelope must use the same
+governance generation. A v1 envelope accepts only the v1 Rule shape. A v2 envelope
+requires every Rule to include one exact `governance` object containing semantic,
+grain, time, join, permission, visibility, and allowed query-strategy facts. Mixed
+or partially upgraded releases fail before publication.
+
+In v2, only `BUSINESS` Rules have exactly one reviewed DataHub Glossary Term and
+field/dataset term association. `SUPPORT` Rules are executable operands, not
+business concepts: they must not have a Glossary Term or association. They are not
+removed from governance. The complete BUSINESS and SUPPORT registry is checksum-
+bound into every release Dataset property, read back after publication, and used by
+the Backend to enforce metric role, PII, join-edge, grain/time, and query-strategy
+boundaries. Runtime ratio calculation can therefore consume hidden operands without
+exposing them as selectable business metrics.
+
+The existing v1 catalog remains readable. Creating a v2 check result does not
+publish or activate it; publication still requires the explicit optimistic-
+concurrency command below, and runtime activation remains a separate operator
+action.
+
+Before compiling a reviewed Metric candidate into a v2 policy decision, compare it
+with the current live release. This gate validates the candidate against its SQL
+release, reconstructs the current semantic bundle from DataHub and Trino, and
+computes added, retained, and retirement-candidate BUSINESS Metric IDs. It has no
+mutation path and always returns `publishable: false`.
+
+```powershell
+python infrastructure/database/datahub/check_metric_review_transition.py `
+  --candidate evals/semantic_review/answervice_d2_metrics.v1.json `
+  --sql-directory <reviewed-serving-sql-directory> `
+  --serving-schema <selected-live-serving-schema> `
+  --check
+```
+
+`DEPRECATION_REVIEW_REQUIRED` exits with code 3. A missing live BUSINESS Metric is
+not interpreted as an approved deletion, even when the new candidate itself has
+already passed review. The operator must either add the existing Metric to the new
+review or record an explicit retirement decision in the external change-management
+boundary before policy compilation. This prevents a D2 rollout from silently
+removing previously published service capabilities.
+
+An approved product-scope removal uses the separate, versioned Metric retirement
+transaction. A decision binds each Metric ID to its exact Glossary Term URN, the
+predecessor catalog version and checksum, a new target catalog version, authority,
+timestamp, and reason. The implementation is entity-agnostic: Metric names live only
+in the reviewed decision, never in runtime branching code. It also rejects a removal
+that leaves a retained ratio Metric pointing to a retired operand.
+
+Run the mutation-free check first. It re-discovers the full DataHub and Trino release
+and returns decision, predecessor, and target SHA-256 values.
+
+```powershell
+$retirement = 'infrastructure/database/datahub/decisions/<decision>.json'
+$checked = python infrastructure/database/datahub/retire_semantic_metrics.py `
+  --decision $retirement --serving-schema <selected-live-serving-schema> --check
+if ($LASTEXITCODE -ne 0) { throw 'Metric retirement check failed.' }
+```
+
+Pass all three returned hashes to the explicit publish command. It first upserts the
+new complete Dataset release, then soft-deletes the retired Glossary Terms. A retry
+after an interruption detects an already-converged target release and completes only
+the missing Term status updates.
+
+```powershell
+python infrastructure/database/datahub/retire_semantic_metrics.py `
+  --decision $retirement --serving-schema <selected-live-serving-schema> `
+  --publish `
+  --expected-decision-sha256 $checkedDecisionSha256 `
+  --expected-previous-catalog-sha256 $checkedPreviousCatalogSha256 `
+  --expected-target-catalog-sha256 $checkedTargetCatalogSha256
+if ($LASTEXITCODE -ne 0) { throw 'Metric retirement publication failed.' }
+```
+
+Finally, use the read-only identity for a separate read-back. Verification requires
+the target catalog to reconstruct from DataHub and live Trino and every retired Term
+to retain its identity while reporting `status.removed=true`.
+
+```powershell
+python infrastructure/database/datahub/retire_semantic_metrics.py `
+  --decision $retirement --serving-schema <selected-live-serving-schema> `
+  --verify `
+  --expected-decision-sha256 $checkedDecisionSha256 `
+  --expected-target-catalog-sha256 $checkedTargetCatalogSha256
+if ($LASTEXITCODE -ne 0) { throw 'Metric retirement read-back failed.' }
+```
 
 Each policy asset identifies only its three-part `fqn` and approved semantic facts:
 description, semantic/data versions, provenance, approval, entitlements, grain,
@@ -52,6 +139,10 @@ only `BASE_METADATA_INGESTED`: schema changes remain connector-owned and the sem
 release becomes ready only after the authoring check/publish transaction re-reads the
 complete manifest and verifies every physical fingerprint against Trino.
 
+The semantic publisher never writes `schemaMetadata`; it only verifies the connector-
+owned schema against the live Trino relation before and after semantic publication.
+This prevents two writers from racing over physical field order, types, and schema hash.
+
 Operational invocation is a two-step check-and-publish flow. Install the pinned dependencies from
 `requirements.authoring.txt`. Both steps require `TRINO_DATAHUB_USER`, the
 environment-only secret `TRINO_DATAHUB_PASSWORD`, an HTTPS `TRINO_URL`, and the
@@ -70,13 +161,14 @@ live physical scope and emits the policy hash, physical-scope hash, current
 predecessor catalog hash, target catalog hash, actor, and subject.
 
 When the approval system stores only business decisions rather than 578 copied
-physical fields, pipe the compact `answervice.policy_decisions.v1` object to
-`preflight_policy_decisions.py`. The compiler takes dataset URNs, domains, column
-order, native types, nullability, and descriptions from the same live DataHub and
-Trino release, then runs the normal authoring discovery a second time to reject
-drift. Its output contains the expanded policy and publication check that the
-operator reviews together. The compact decision file is not a runtime metadata
-source.
+physical fields, pipe the compact `answervice.policy_decisions.v1` or matching v2
+object to `preflight_policy_decisions.py`. The compiler takes dataset URNs, domains,
+column order, native types, nullability, and descriptions from the same live DataHub
+and Trino release, then runs the normal authoring discovery a second time to reject
+drift. A v1 decision compiles only to a v1 authoring envelope and a v2 decision only
+to v2; cross-version input fails closed. Its output contains the expanded policy and
+publication check that the operator reviews together. The compact decision file is
+not a runtime metadata source.
 
 ```powershell
 $checkResult = $compactDecisionJson | python `

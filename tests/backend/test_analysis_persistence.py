@@ -219,7 +219,6 @@ async def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     repository = FakeAnalysisRepository(owner)
     first_context = context(owner)
     payload = ReplayAnalysisRequest(
-        as_of=date(2026, 7, 1),
         idempotency_key="run-1",
         parameters={"scenario": "success_changed"},
     )
@@ -234,7 +233,7 @@ async def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     assert first == second
     assert first["request_id"] == first_context.request_id
     assert first["status"] == "SUCCEEDED"
-    assert first["as_of"] == date(2026, 7, 1)
+    assert first["as_of"] == first_context.as_of
     assert first["artifact_id"]
     assert repository.parameters == {"scenario": "success_changed"}
     assert set(repository.finished[1]) == {"plan", "query", "package"}
@@ -260,7 +259,6 @@ async def test_replay_blocks_saved_definition_from_a_different_context_release()
         "walkerhill-v4-schema-2.0.0-catalog-2.0.0"
     )
     payload = ReplayAnalysisRequest(
-        as_of=date(2026, 8, 15),
         idempotency_key="release-mismatch",
         parameters={"scenario": "success"},
     )
@@ -416,16 +414,17 @@ async def test_replay_requires_store_and_existing_owner_definition():
         with pytest.raises(HTTPException) as missing:
             await analysis_api.replay_analysis_definition(
                 uuid4(),
-                ReplayAnalysisRequest(as_of=date(2026, 7, 1), idempotency_key="run-2"),
+                ReplayAnalysisRequest(idempotency_key="run-2"),
                 owner_context,
             )
     assert missing.value.status_code == 404
 
 
-def test_replay_request_rejects_client_owned_status_and_blank_idempotency():
+def test_replay_request_rejects_client_owned_fields_and_blank_idempotency():
+    for field, value in (("as_of", "2026-07-01"), ("status", "SUCCEEDED")):
+        with pytest.raises(ValidationError):
+            ReplayAnalysisRequest.model_validate(
+                {"idempotency_key": "run", field: value}
+            )
     with pytest.raises(ValidationError):
-        ReplayAnalysisRequest.model_validate(
-            {"as_of": "2026-07-01", "idempotency_key": "run", "status": "SUCCEEDED"}
-        )
-    with pytest.raises(ValidationError):
-        ReplayAnalysisRequest(as_of=date(2026, 7, 1), idempotency_key=" ")
+        ReplayAnalysisRequest(idempotency_key=" ")

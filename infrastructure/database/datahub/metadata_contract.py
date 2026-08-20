@@ -18,6 +18,10 @@ from metadata_contract_primitives import (
     urn as _urn,
 )
 from metric_contract import validate_metrics
+from metric_governance_contract import (
+    validate_metric_terms,
+    validate_v2_metric_release,
+)
 
 from src.data.governance_contract import (
     RUNTIME_GOVERNANCE_VERSION as CONTRACT_VERSION,
@@ -81,13 +85,14 @@ def validate_bundle(bundle: Mapping[str, Any]) -> None:
     metrics, metric_domains = validate_metrics(
         bundle["metric_rules"], assets, parameters, asset_domains
     )
-    _validate_metric_terms(
+    validate_metric_terms(
         bundle["metric_terms"], metrics, metric_domains, governance
     )
     _validate_dimensions(bundle["dimensions"], assets)
     _validate_joins(bundle["join_graph"], assets)
     _validate_time_rules(bundle["time_rules"], assets, parameters)
     _validate_query_policy(bundle["query_policy"], assets)
+    validate_v2_metric_release(bundle, metrics)
     try:
         validate_governance_reference_coverage(bundle)
     except ValueError as error:
@@ -283,65 +288,6 @@ def _validate_parameters(value: object) -> dict[str, tuple[str, str]]:
             raise SemanticMetadataError("parameter definitions must be unique and typed")
         result[name] = (item["type"], item["scope"])
     return result
-
-
-def _validate_metric_terms(
-    value: object,
-    metrics: Mapping[str, Mapping[str, Any]],
-    metric_domains: Mapping[str, str],
-    governance: Mapping[str, frozenset[str]],
-) -> None:
-    terms: dict[str, Mapping[str, Any]] = {}
-    urns: set[str] = set()
-    versions: set[str] = set()
-    for index, raw in enumerate(
-        _list(value, "metric_terms", non_empty=True, limit=64)
-    ):
-        term = _mapping(raw, f"metric_term[{index}]")
-        _exact_keys(
-            term,
-            {
-                "id", "urn", "name", "definition", "aliases", "unit", "version",
-                "approval_status", "owner_urn", "domain_urn", "approved_lifecycle_urn",
-            },
-            f"metric_term[{index}]",
-        )
-        metric_id = _identifier(term["id"], f"metric_term[{index}].id")
-        urn = _text(term["urn"], f"metric_term[{index}].urn")
-        _text(term["name"], f"metric_term[{index}].name")
-        _text(term["definition"], f"metric_term[{index}].definition")
-        versions.add(_text(term["version"], f"metric_term[{index}].version"))
-        if term["approval_status"] != "APPROVED":
-            raise SemanticMetadataError("metric terms must be explicitly approved")
-        _urn(term["owner_urn"], "urn:li:corpGroup:", f"metric_term[{index}].owner_urn")
-        _urn(term["domain_urn"], "urn:li:domain:", f"metric_term[{index}].domain_urn")
-        _urn(
-            term["approved_lifecycle_urn"],
-            "urn:li:lifecycleStageType:",
-            f"metric_term[{index}].approved_lifecycle_urn",
-        )
-        if (
-            term["owner_urn"] not in governance["owners"]
-            or term["domain_urn"] not in governance["domains"]
-            or term["approved_lifecycle_urn"] not in governance["approved_lifecycles"]
-        ):
-            raise SemanticMetadataError("metric term native governance references are undeclared")
-        aliases = _unique_texts(term["aliases"], f"metric_term[{index}].aliases", non_empty=True)
-        if metric_id in terms or urn in urns or not urn.startswith("urn:li:glossaryTerm:"):
-            raise SemanticMetadataError("metric term ids and URNs must be unique")
-        if (
-            metric_id not in metrics
-            or term["unit"] != metrics[metric_id]["unit"]
-            or term["name"] not in aliases
-            or term["domain_urn"] != metric_domains.get(metric_id)
-        ):
-            raise SemanticMetadataError("metric terms must exactly describe metric rules")
-        terms[metric_id] = term
-        urns.add(urn)
-    if set(terms) != set(metrics):
-        raise SemanticMetadataError("every metric rule requires exactly one glossary term")
-    if len(versions) != 1:
-        raise SemanticMetadataError("one publication bundle must use one glossary version")
 
 
 def _validate_dimensions(value: object, assets: Mapping[str, frozenset[str]]) -> None:

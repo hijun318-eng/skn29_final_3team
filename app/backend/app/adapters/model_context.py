@@ -95,7 +95,11 @@ def metric_selection(assets: list[dict[str, Any]], package: Any) -> dict[str, An
     """
     if not assets:
         raise ValueError("node3 requires entitled Context assets")
-    selected = {str(metric.id) for metric in getattr(package, "metrics", ())}
+    selected = {
+        str(metric.id)
+        for metric in getattr(package, "metrics", ())
+        if getattr(metric, "visibility", "BUSINESS") == "BUSINESS"
+    }
     if len(selected) != 1:
         raise ValueError("node3 requires exactly one resolved Context metric")
     selected_metric = next(iter(selected))

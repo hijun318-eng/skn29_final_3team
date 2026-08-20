@@ -20,9 +20,9 @@ from release_datahub import (
 )
 from release_scope import ReleaseScope
 from release_trino import PhysicalRelation, TrinoInventory
-from src.data.governance_contract import (
-    DATASET_RUNTIME_PROPERTY_KEYS,
-    RUNTIME_GOVERNANCE_VERSION,
+from src.data.metric_governance import (
+    SUPPORTED_RUNTIME_GOVERNANCE_VERSIONS,
+    dataset_runtime_property_keys,
 )
 
 
@@ -323,9 +323,10 @@ def _governed_counts(bindings: tuple[ReleaseBinding, ...]) -> tuple[int, int]:
             for key, value in binding.dataset.custom_properties.items()
             if key.startswith(PROPERTY_PREFIX)
         }
+        version = properties.get("contract_version")
         if (
-            set(properties) == DATASET_RUNTIME_PROPERTY_KEYS
-            and properties.get("contract_version") == RUNTIME_GOVERNANCE_VERSION
+            version in SUPPORTED_RUNTIME_GOVERNANCE_VERSIONS
+            and set(properties) == dataset_runtime_property_keys(version)
         ):
             count += 1
             columns += len(binding.relation.columns)

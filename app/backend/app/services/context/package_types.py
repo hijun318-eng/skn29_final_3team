@@ -23,6 +23,10 @@ from app.services.context.values import (
     _value_type,
 )
 from app.services.context.builder_errors import ContextBuildError, ContextBuildErrorCode
+from src.data.metric_governance import (
+    QUERY_STRATEGIES,
+    RUNTIME_GOVERNANCE_VERSION_V2,
+)
 
 @dataclass(frozen=True)
 class ContextRequiredFilter:
@@ -78,9 +82,33 @@ class ContextMetric:
     numerator_metric_id: str = ""
     denominator_metric_id: str = ""
     zero_policy: str = ""
+    visibility: str = "BUSINESS"
+    governance_version: str = ""
+    allowed_roles: tuple[str, ...] = ()
+    contains_pii: bool = False
+    allowed_join_ids: tuple[str, ...] = ()
+    join_required: bool = False
+    query_strategies: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "result_field", self.result_field or self.id)
+        if self.visibility not in {"BUSINESS", "SUPPORT"}:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "Metric visibility 계약이 유효하지 않습니다.",
+            )
+        if self.governance_version == RUNTIME_GOVERNANCE_VERSION_V2 and (
+            not self.allowed_roles
+            or len(self.allowed_roles) != len(set(self.allowed_roles))
+            or self.contains_pii is not False
+            or self.join_required != bool(self.allowed_join_ids)
+            or not self.query_strategies
+            or not set(self.query_strategies) <= QUERY_STRATEGIES
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "v2 Metric 권한·PII·Join·Query Strategy 계약이 유효하지 않습니다.",
+            )
         aggregation = self.aggregation.lower()
         if aggregation == "ratio":
             if (

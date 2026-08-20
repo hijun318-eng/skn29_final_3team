@@ -11,13 +11,15 @@ BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 
-from app.services.context.builder import ContextMetric, ContextPackage
+from app.services.context.builder import ContextBuildError, ContextMetric, ContextPackage
+from app.services.context.builder_errors import ContextBuildErrorCode
 from app.services.context.query_planner import (
     RAW_APPROVED_DETAIL,
     VIEW_COMPOSE,
     VIEW_REUSE,
     determine_query_strategy,
 )
+from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
 def _package(metrics: tuple[ContextMetric, ...]) -> ContextPackage:
@@ -249,3 +251,39 @@ def test_ratio_metric_resolves_strategy_from_referenced_base_metrics() -> None:
 def test_no_metrics_fails_closed() -> None:
     with pytest.raises(ValueError):
         determine_query_strategy(_package(()), {"schema_context": {"assets": []}})
+
+
+def test_v2_metric_must_explicitly_allow_the_structural_strategy() -> None:
+    metric = ContextMetric(
+        id="governed_value",
+        asset_fqn="serving.generic.daily_value",
+        field="value",
+        aggregation="sum",
+        time_field="observed_on",
+        required_filters=(),
+        governance_version=RUNTIME_GOVERNANCE_VERSION_V2,
+        allowed_roles=("analyst",),
+        query_strategies=(RAW_APPROVED_DETAIL,),
+    )
+    contracts = {
+        "schema_context": {
+            "assets": [
+                {
+                    "fqn": metric.asset_fqn,
+                    "grain": {"kind": "periodic", "keys": ["observed_on"]},
+                }
+            ]
+        }
+    }
+
+    with pytest.raises(ContextBuildError, match="Query Strategy") as caught:
+        determine_query_strategy(_package((metric,)), contracts)
+    assert caught.value.code is ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED
+
+    allowed = ContextMetric(
+        **{
+            **metric.__dict__,
+            "query_strategies": (VIEW_REUSE,),
+        }
+    )
+    assert determine_query_strategy(_package((allowed,)), contracts) == VIEW_REUSE

@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import text
 
+from app.authorization import role_is_entitled
 from app.contracts import AnalysisRequest, ErrorCode, Role, RouteType
 from app.database import session_scope
 
@@ -124,7 +125,7 @@ class RoutingService:
                 ErrorCode.ACCESS_DENIED,
                 "승인되지 않은 Template입니다.",
             )
-        if role not in template.allowed_roles:
+        if not role_is_entitled(role, template.allowed_roles):
             raise RoutingError(
                 ErrorCode.ACCESS_DENIED,
                 "Template 실행 권한이 없습니다.",

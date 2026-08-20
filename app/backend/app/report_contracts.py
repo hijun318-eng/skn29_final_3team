@@ -67,10 +67,9 @@ class ApproveReportVersionRequest(ReportContractModel):
 
 
 class CreateManualRunRequest(ReportContractModel):
-    """보고서 정의 버전, 실행 기준 시각과 멱등 키로 수동 실행을 큐에 등록한다."""
+    """보고서 정의 버전과 멱등 키만 받아 서버 기준일의 수동 실행을 등록한다."""
     definition_id: str = Field(min_length=1)
     version: int = Field(ge=1)
-    as_of: datetime
     idempotency_key: str = Field(min_length=1)
 
     @field_validator("idempotency_key")

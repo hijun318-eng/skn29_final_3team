@@ -33,8 +33,7 @@ import type {
   readonly initialContent: string;
 }
 
-/** 수동 실행의 선택적 기준시각 입력이다. */ export interface ManualRunOptions {
-  readonly asOf?: string;
+/** 수동 실행의 선택적 멱등 식별자 입력이다. 기준일은 서버가 소유한다. */ export interface ManualRunOptions {
   readonly idempotencyKey?: string;
 }
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import unicodedata
 from typing import Any
 
 from app.adapters.catalog_snapshot import CatalogSnapshot, CatalogSnapshotLoader
@@ -18,6 +17,12 @@ from app.adapters.datahub_metadata import (
     GovernedMetadataError,
 )
 from app.adapters.datahub_metadata_types import metric_rule_matches
+from app.adapters.query_search_evidence import (
+    gather_snapshot_and_semantic as _gather_snapshot_and_semantic,
+    ranked_matches as _ranked_matches,
+    unicode_tokens as _unicode_tokens,
+    with_ratio_metrics as _with_ratio_metrics,
+)
 from app.adapters.query_join_graph import (
     common_join_graph,
     connect_fqns,
@@ -39,6 +44,7 @@ from src.data.governance_contract import (
     ratio_operand_ids,
     RATIO_ZERO_POLICIES,
 )
+from src.data.metric_governance import business_metric_ids
 
 
 class QueryGovernanceEngine:
@@ -149,10 +155,21 @@ class QueryGovernanceEngine:
                 join_ids_by_fqn[item.fqn],
                 selected_graph,
                 raw_parameters,
+                context,
             )
             for item in selected
         ]
-        return _with_ratio_metrics(runtime_assets, terms)
+        governed_assets = _with_ratio_metrics(runtime_assets, terms, context)
+        if not any(
+            metric.get("visibility", "BUSINESS") == "BUSINESS"
+            for asset in governed_assets
+            for metric in asset.get("metrics", ())
+            if isinstance(metric, dict)
+        ):
+            raise NoEntitledAssetsError(
+                "no matching DataHub business metric is entitled for this request"
+            )
+        return governed_assets
 
     async def get_asset_schema(self, urn: str) -> dict[str, Any]:
         """active release 안의 URN만 선택하고 live ``information_schema`` 일치 후 column 계약을 반환한다."""
@@ -266,6 +283,12 @@ class QueryGovernanceEngine:
         result = {}
         for dataset in datasets:
             for metric in dataset.metrics:
+                if metric.get("visibility") == "SUPPORT":
+                    if metric.get("term_urn") is not None:
+                        raise GovernedMetadataError(
+                            "DataHub support metric exposes a Glossary term"
+                        )
+                    continue
                 term_urn = str(metric["term_urn"])
                 term = snapshot.terms_by_urn.get(term_urn)
                 if (
@@ -288,26 +311,40 @@ class QueryGovernanceEngine:
             raise GovernedMetadataError("DataHub has no governed metric terms")
         domain_urns = {dataset.domain_urn for dataset in datasets}
         checksums = {dataset.catalog_checksum for dataset in datasets}
+        published_rules = (
+            {str(item["id"]): item for item in datasets[0].metric_rules}
+            if datasets[0].metric_rules
+            else {term.id: term.metric_rule for term in snapshot.terms_by_id.values()}
+        )
         for term in snapshot.terms_by_id.values():
             if metric_source_kind(term.metric_rule) != "ratio" or term.id in result:
                 continue
             if term.domain_urn not in domain_urns or term.catalog_checksum not in checksums:
                 # 이 release에 속하지 않는 ratio term이다 — 이 스코프의 대상이 아니므로 건너뛴다.
                 continue
+            published = published_rules.get(term.id)
             operands = ratio_operand_ids(term.metric_rule)
             source = term.metric_rule.get("source")
             numerator_id, denominator_id = operands or (None, None)
             zero_policy = source.get("zero_policy") if isinstance(source, dict) else None
             if (
                 operands is None
-                or numerator_id not in result
-                or denominator_id not in result
+                or published is None
+                or canonical_json(published) != canonical_json(term.metric_rule)
+                or numerator_id not in published_rules
+                or denominator_id not in published_rules
+                or metric_source_kind(published_rules[numerator_id]) != "column"
+                or metric_source_kind(published_rules[denominator_id]) != "column"
                 or zero_policy not in RATIO_ZERO_POLICIES
             ):
                 raise GovernedMetadataError(
                     "DataHub ratio metric term references an ungoverned numerator or denominator"
                 )
             result[term.id] = term
+        if set(result) != business_metric_ids(published_rules.values()):
+            raise GovernedMetadataError(
+                "DataHub business metric Glossary coverage is incomplete"
+            )
         return result
 
     def _select_connected(
@@ -389,111 +426,3 @@ class QueryGovernanceEngine:
             raise GovernedMetadataError(
                 "selected DataHub assets disagree on calendar_id"
             )
-
-
-async def _gather_snapshot_and_semantic(loader, catalog, query):
-    import asyncio
-
-    return tuple(
-        await asyncio.gather(loader.load(), catalog.semantic_search(query))
-    )
-
-
-def _ranked_matches(query_tokens, datasets, terms, semantic_hits):
-    semantic_rank = {hit.urn: index for index, hit in enumerate(semantic_hits)}
-    ranked = []
-    for dataset in datasets:
-        asset_tokens = _dataset_tokens(dataset, terms)
-        overlap = len(query_tokens & asset_tokens)
-        rank = semantic_rank.get(dataset.urn)
-        if overlap or rank is not None:
-            score = (rank is not None, overlap, -(rank or 0), dataset.fqn)
-            ranked.append((score, dataset))
-    return tuple(item for item in sorted(ranked, key=lambda item: item[0], reverse=True))
-
-
-def _dataset_tokens(dataset, terms):
-    values = [dataset.name, dataset.description, dataset.fqn]
-    values.extend(str(column["name"]) for column in dataset.columns)
-    values.extend(
-        term.searchable_text
-        for term in terms.values()
-        if term.urn in dataset.dataset_terms
-    )
-    for dimension in dataset.dimensions:
-        if dimension.get("asset_fqn") == dataset.fqn:
-            values.extend(map(str, dimension.get("aliases", ())))
-    return _unicode_tokens(" ".join(values))
-
-
-def _with_ratio_metrics(assets, terms):
-    """선택 asset의 두 column operand가 모두 있을 때만 derived ratio를 runtime 후보로 투영한다."""
-
-    result = []
-    metric_asset_indexes: dict[str, int] = {}
-    for index, asset in enumerate(assets):
-        item = dict(asset)
-        metrics = [dict(metric) for metric in asset.get("metrics", ())]
-        item["metrics"] = metrics
-        result.append(item)
-        for metric in metrics:
-            metric_id = str(metric.get("id") or "")
-            if metric_id:
-                metric_asset_indexes[metric_id] = index
-    for term in sorted(terms.values(), key=lambda item: item.id):
-        if metric_source_kind(term.metric_rule) != "ratio":
-            continue
-        operands = ratio_operand_ids(term.metric_rule)
-        source = term.metric_rule.get("source")
-        if (
-            operands is None
-            or not isinstance(source, dict)
-            or any(operand not in metric_asset_indexes for operand in operands)
-        ):
-            continue
-        carrier = metric_asset_indexes[operands[0]]
-        result[carrier]["metrics"].append(
-            {
-                "id": term.id,
-                "asset_fqn": "",
-                "field": "",
-                "aggregation": "ratio",
-                "time_field": "",
-                "required_filters": [],
-                "result_field": term.metric_rule["result_field"],
-                "unit": term.unit,
-                "reduction": "ratio",
-                "numerator_metric_id": operands[0],
-                "denominator_metric_id": operands[1],
-                "zero_policy": source["zero_policy"],
-            }
-        )
-    return result
-
-
-def _unicode_tokens(value: str) -> frozenset[str]:
-    normalized = unicodedata.normalize("NFKC", value).casefold()
-    tokens: list[str] = []
-    current: list[str] = []
-    for character in normalized:
-        category = unicodedata.category(character)
-        if category[:1] in {"L", "N", "M"} or character == "_":
-            current.append(character)
-        elif current:
-            tokens.append("".join(current))
-            current = []
-    if current:
-        tokens.append("".join(current))
-
-    # 한국어 조사/접미사 분리 및 파싱 지원으로 자유 형식 자연어 질의 매칭력 극대화
-    korean_particles = (
-        "에서는", "에서", "으로", "에는", "별로", "마다", "부터", "까지",
-        "은", "는", "이", "가", "을", "를", "의", "에", "로", "별", "도", "과", "와", "만",
-    )
-    expanded = set(tokens)
-    for tok in tokens:
-        for p in korean_particles:
-            if len(tok) > len(p) + 1 and tok.endswith(p):
-                expanded.add(tok[:-len(p)])
-                break
-    return frozenset(expanded)

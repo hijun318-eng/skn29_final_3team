@@ -26,6 +26,7 @@
 /** 백엔드가 반환할 수 있는 분석 실패 코드 계약이다. */ export type AnalysisErrorCode =
   | "CONTEXT_INCOMPLETE"
   | "CONTEXT_SOURCE_FAILED"
+  | "SEMANTIC_CONTRACT_INVALID"
   | "DATA_ASSET_NOT_FOUND"
   | "AUTHENTICATION_REQUIRED"
   | "ACCESS_DENIED"

@@ -50,6 +50,48 @@ the Backend to enforce metric role, PII, join-edge, grain/time, and query-strate
 boundaries. Runtime ratio calculation can therefore consume hidden operands without
 exposing them as selectable business metrics.
 
+## Runtime natural-language resolution
+
+The runtime follows the same separation used by mature semantic BI products:
+business names and synonyms belong to governed semantic metadata, while selectable
+dimension values come from the approved field rather than from application phrase
+rules. Looker filter suggestions query the field's distinct values, Snowflake Cortex
+Analyst combines semantic synonyms and sample values with reviewed queries, and
+Power BI Q&A relies on model names, synonyms, and row-label modeling. These are
+reference patterns, not runtime dependencies:
+
+- [Looker filter suggestions](https://docs.cloud.google.com/looker/docs/changing-filter-suggestions)
+- [Snowflake verified query suggestions](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-analyst/verified-query-suggestions)
+- [Power BI Q&A linguistic schema](https://learn.microsoft.com/en-us/power-bi/natural-language/q-and-a-tooling-advanced)
+
+Answervice applies that boundary as follows:
+
+1. DataHub supplies the approved dimension ID, aliases, asset FQN, and column. No
+   hotel name, Korean transliteration table, or request-specific phrase branch is
+   embedded in production code.
+2. Node 1 first detects a named filter from the user's text without touching Trino.
+   Presentation and report-action turns, and analysis questions with no named
+   filter, perform no dimension suggestion query.
+3. Only the referenced approved dimension may run a bounded live `SELECT DISTINCT`
+   query. A domain with more than 64 values is treated as high-cardinality and no
+   partial candidate list is sent to the model. Complete low-cardinality domains
+   use a short process-local TTL controlled by
+   `DIMENSION_VALUE_CACHE_TTL_SECONDS` (30--3,600 seconds; default 300).
+4. If canonicalization is needed, Node 1 receives the complete candidate list once.
+   The selected value is still untrusted until the server performs a parameterized,
+   case-insensitive exact lookup against the same approved field.
+5. A stated restriction is never silently dropped. A candidate that cannot be
+   canonicalized remains the exact source span and ends in a typed unresolved-filter
+   response if the live lookup cannot prove one match.
+
+Relative dates use the request's governed `as_of`, timezone, and calendar rather
+than the runtime clock. A month with no year inherits the year of `as_of`. Any
+current, incomplete interval is capped to `[start, as_of)`; the `as_of` business date
+itself is excluded, future-only intervals are rejected, and user-facing explanations
+must describe `end_exclusive` as "before" that date. This is deliberately stricter
+than products that expose an `includeToday` toggle: Answervice's data contract fixes
+that toggle to false for reproducible analysis.
+
 The existing v1 catalog remains readable. Creating a v2 check result does not
 publish or activate it; publication still requires the explicit optimistic-
 concurrency command below, and runtime activation remains a separate operator

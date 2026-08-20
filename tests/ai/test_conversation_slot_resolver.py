@@ -56,6 +56,26 @@ def test_time_algebra_confirms_node1_typed_period():
     assert naive.end_exclusive == date(2025, 10, 1)
 
 
+def test_time_algebra_caps_every_current_interval_before_today():
+    """문구와 무관하게 현재 구간은 완료된 영업일 ``date < as_of``만 포함한다."""
+
+    resolved, inherited = TimeAlgebraEngine.resolve_time(
+        "8월 비스타 호텔 매출",
+        _node1_period(
+            "2026-08-01T00:00:00+09:00",
+            "2026-09-01T00:00:00+09:00",
+            "8월",
+        ),
+        None,
+        date(2026, 8, 20),
+    )
+
+    assert inherited is False
+    assert resolved is not None
+    assert resolved.start == date(2026, 8, 1)
+    assert resolved.end_exclusive == date(2026, 8, 20)
+
+
 def test_time_algebra_rejects_malformed_candidate_without_synthesizing_period():
     """반개구간 불변식을 깨는 후보는 채택하지 않고, 기본 기간을 합성하지도 않는지 검증.
 
@@ -528,7 +548,8 @@ def test_time_algebra_does_not_reimplement_as_of_anchored_expressions():
         resolved, _ = TimeAlgebraEngine.resolve_time(message, {}, None, as_of)
         assert resolved is None, f"서버가 '{message}'를 자체 파싱했습니다."
 
-    # Node 1이 해석한 후보가 오면 그대로 확정된다.
+    # Node 1이 현재 날짜를 포함하는 미완료 구간을 반환해도 데이터 경계는
+    # [start, as_of)로 제한된다.
     rolling, _ = TimeAlgebraEngine.resolve_time(
         "최근 3개월간 객실 매출",
         _node1_period("2026-06-01", "2026-09-01", "최근 3개월간"),
@@ -537,7 +558,7 @@ def test_time_algebra_does_not_reimplement_as_of_anchored_expressions():
     )
     assert rolling is not None
     assert rolling.start == date(2026, 6, 1)
-    assert rolling.end_exclusive == date(2026, 9, 1)
+    assert rolling.end_exclusive == as_of
 
 
 def test_conversation_slot_resolver_backtracking_across_presentation_turn():

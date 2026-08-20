@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import date
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -154,6 +155,8 @@ class PipelineResultValidator:
             return "MASKING_EVIDENCE_INVALID"
         if query.get("zero_result_suspicious"):
             return "SUSPICIOUS_EMPTY_RESULT"
+        if cls._ratio_value_violation(rows, package):
+            return "EVIDENCE_MISMATCH"
         column_count = max((len(row) for row in rows), default=0)
         if (
             len(rows) > cls.MAX_RESULT_ROWS
@@ -162,6 +165,46 @@ class PipelineResultValidator:
         ):
             return "RESULT_RANGE_EXCEEDED"
         return None
+
+    @staticmethod
+    def _ratio_value_violation(
+        rows: list[dict[str, object]],
+        package: ContextPackage,
+    ) -> bool:
+        """Reject ratio cells that disagree with their governed operands.
+
+        G2 verifies the SQL AST, while this G3 check proves the returned value
+        is numerically consistent with the numerator and denominator in each
+        shaped row. A small relative tolerance covers DOUBLE serialization only.
+        """
+
+        by_id = {metric.id: metric for metric in package.metrics}
+        for metric in package.metrics:
+            if metric.reduction != "ratio":
+                continue
+            numerator = by_id.get(metric.numerator_metric_id)
+            denominator = by_id.get(metric.denominator_metric_id)
+            if numerator is None or denominator is None:
+                return True
+            for row in rows:
+                try:
+                    numerator_value = Decimal(str(row[numerator.result_field]))
+                    denominator_value = Decimal(str(row[denominator.result_field]))
+                    actual_raw = row[metric.result_field]
+                    if denominator_value == 0:
+                        if actual_raw is not None:
+                            return True
+                        continue
+                    if actual_raw is None:
+                        return True
+                    actual = Decimal(str(actual_raw))
+                    expected = numerator_value / denominator_value
+                except (InvalidOperation, KeyError, TypeError, ValueError):
+                    return True
+                tolerance = max(Decimal("1e-12"), abs(expected) * Decimal("1e-9"))
+                if abs(actual - expected) > tolerance:
+                    return True
+        return False
 
     @classmethod
     def normalize_empty_aggregate(

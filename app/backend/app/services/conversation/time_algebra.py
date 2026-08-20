@@ -74,12 +74,32 @@ class TimeAlgebraEngine:
         """
         candidate = cls._first_valid_candidate(node1_output.get("period_candidates"))
         if candidate is not None:
-            return candidate, False
+            return cls.complete_data_range(candidate, as_of), False
 
         if last_time_range is not None:
-            return last_time_range, True
+            return cls.complete_data_range(last_time_range, as_of), True
 
         return None, False
+
+    @staticmethod
+    def complete_data_range(
+        resolved: ResolvedTimeRange,
+        as_of: date,
+    ) -> ResolvedTimeRange:
+        """오늘을 포함한 기간을 오늘 시작 시점 미포함 경계로 제한한다.
+
+        서비스는 완료된 영업일 데이터만 공개한다. 사용자 표현과 무관한 typed 날짜
+        경계로서 과거 기간은 유지하고, 현재 진행 중인 기간은 ``[start, as_of)``로
+        바꾸며, 미래에만 걸친 기간은 상위 Context gate가 범위 오류로 차단하도록 둔다.
+        """
+
+        if resolved.start < as_of < resolved.end_exclusive:
+            return ResolvedTimeRange(
+                start=resolved.start,
+                end_exclusive=as_of,
+                source_text=resolved.source_text,
+            )
+        return resolved
 
     @classmethod
     def _first_valid_candidate(cls, candidates: object) -> ResolvedTimeRange | None:

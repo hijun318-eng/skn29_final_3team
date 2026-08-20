@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "MODEL-v1.12.0",
+  "version": "MODEL-v1.13.0",
   "$defs": {
     "execution_time": {
       "type": "object",
@@ -468,6 +468,12 @@
               "aliases": {
                 "type": "array",
                 "minItems": 1,
+                "items": {"type": "string", "minLength": 1}
+              },
+              "value_candidates": {
+                "type": "array",
+                "maxItems": 64,
+                "uniqueItems": true,
                 "items": {"type": "string", "minLength": 1}
               }
             }

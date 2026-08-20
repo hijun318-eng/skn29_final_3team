@@ -25,6 +25,16 @@ PROMPT_IDS = MappingProxyType(
 )
 
 
+def _stable_unique_mappings(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """동일한 계약 객체를 최초 등장 순서대로 한 번만 보존한다."""
+    unique: list[dict[str, Any]] = []
+    for value in values:
+        item = dict(value)
+        if item not in unique:
+            unique.append(item)
+    return unique
+
+
 def request_definition(node: str) -> str:
     """모델 노드 요청이 따라야 할 JSON Schema definition을 반환한다."""
     try:
@@ -113,27 +123,27 @@ def node2_training_input(payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(item, dict)
         and (item.get("asset_fqn"), item.get("column")) in approved_dimensions
     ]
-    seen_dims = set()
-    unique_dims = []
-    for item in filtered_dimensions:
-        key = (item["asset_fqn"], item["column"])
-        if key not in seen_dims:
-            seen_dims.add(key)
-            unique_dims.append(item)
-    resolved_dimensions = unique_dims or [
-        dict(item)
-        for metric in contracts["metric_rules"]
-        for item in metric["dimensions"]
-    ]
+    resolved_dimensions = _stable_unique_mappings(filtered_dimensions) or (
+        _stable_unique_mappings(
+            [
+                dict(item)
+                for metric in contracts["metric_rules"]
+                for item in metric["dimensions"]
+            ]
+        )
+    )
+    resolved_filters = _stable_unique_mappings(
+        [
+            dict(item)
+            for metric in contracts["metric_rules"]
+            for item in metric["required_filters"]
+        ]
+    )
     resolved_request = {
         "intent": intents[0],
         "metric_ids": list(metric_ids),
         "dimensions": resolved_dimensions,
-        "filters": [
-            dict(item)
-            for metric in contracts["metric_rules"]
-            for item in metric["required_filters"]
-        ],
+        "filters": resolved_filters,
     }
     if "rejected_sql" in payload:
         return {

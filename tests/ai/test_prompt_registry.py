@@ -12,11 +12,11 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(len(first), 6)
         self.assertEqual(
             {
-                "node1.normalize": "PROMPT-v1.10.0",
+                "node1.normalize": "PROMPT-v1.12.0",
                 "node2.repair": "PROMPT-v1.3.0",
-                "node2.sql": "PROMPT-v1.6.0",
-                "node2.sql_only": "PROMPT-v1.0.0",
-                "node3.explain": "PROMPT-v1.2.3",
+                "node2.sql": "PROMPT-v1.7.0",
+                "node2.sql_only": "PROMPT-v1.1.0",
+                "node3.explain": "PROMPT-v1.2.4",
                 "report.assistant": "PROMPT-v1.0.0",
             },
             {item["prompt_id"]: item["version"] for item in first},
@@ -119,7 +119,7 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("question_id is opaque trace metadata", sql_prompt)
         self.assertIn("never use the runtime clock", sql_prompt)
         self.assertIn("never copy a literal from the question", sql_prompt)
-        self.assertIn("numerator_expression / NULLIF(denominator_expression, 0)", sql_prompt)
+        self.assertIn("CAST(numerator_expression AS DOUBLE) / NULLIF(denominator_expression, 0)", sql_prompt)
         self.assertIn("time_rules.comparison_window", sql_prompt)
         self.assertIn("__comparison", sql_prompt)
         self.assertIn("COUNT(field) > 0", sql_prompt)

@@ -19,6 +19,7 @@ const server = await createServer({
 });
 
 try {
+  const { commandClarificationMessage, commandClarificationType, savedRunStatus } = await server.ssrLoadModule("/src/pages/agentPageHelpers.js");
   const { AnalysisStatePanel } = await server.ssrLoadModule("/src/components/analysis/AnalysisStatePanel.tsx");
   const { normalizeApiResponse } = await server.ssrLoadModule("/src/contracts/analysis.ts");
   const run = normalizeApiResponse(response, "7월 PLATINUM 장기 투숙 우수 고객 객실 유형별 매출을 분석해줘");
@@ -32,6 +33,17 @@ try {
   assert.doesNotMatch(html, />0<em>억 원<\/em>/);
   assert.doesNotMatch(html, /고객 고객/);
   assert.match(agentSource, /turnItem\.run\.artifact && \(turnItem\.run\.rowCount \?\? 0\) > 0/);
+  assert.equal(commandClarificationType({ clarification_type: "period" }, null), "period");
+  assert.equal(
+    commandClarificationType({}, { resolved_slots: { clarification_type: "metric" } }),
+    "metric",
+  );
+  assert.equal(
+    commandClarificationMessage({ message: "분석 기간을 입력해 주세요." }, "period"),
+    "분석 기간을 입력해 주세요.",
+  );
+  assert.match(commandClarificationMessage({}, "metric"), /분석할 지표/);
+  assert.equal(savedRunStatus("CLARIFYING"), "입력 필요");
 
   // 차트 뷰(CHART)로 전환했을 때만 차트 표현 방식 세그먼트와 실제 차트 markup이 나온다.
   const chartHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, { run, viewType: "CHART" }));

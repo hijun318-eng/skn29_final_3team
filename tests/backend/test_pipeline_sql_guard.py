@@ -736,21 +736,28 @@ def test_ratio_metric_projects_numerator_and_denominator_with_nullif_zero_guard(
     sql = _sql().replace(
         "SUM(e.amount) AS governed_total",
         "SUM(e.amount) AS governed_total, COUNT(e.active) AS governed_count, "
-        "SUM(e.amount) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
+        "CAST(SUM(e.amount) AS DOUBLE) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
     )
 
     accepted = validate_plan({"sql": sql}, package)
     swapped = validate_plan(
         {"sql": sql.replace(
-            "SUM(e.amount) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
-            "COUNT(e.active) / NULLIF(SUM(e.amount), 0) AS governed_ratio",
+            "CAST(SUM(e.amount) AS DOUBLE) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
+            "CAST(COUNT(e.active) AS DOUBLE) / NULLIF(SUM(e.amount), 0) AS governed_ratio",
         )},
         package,
     )
     missing_nullif = validate_plan(
         {"sql": sql.replace(
+            "CAST(SUM(e.amount) AS DOUBLE) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
+            "CAST(SUM(e.amount) AS DOUBLE) / COUNT(e.active) AS governed_ratio",
+        )},
+        package,
+    )
+    integer_division = validate_plan(
+        {"sql": sql.replace(
+            "CAST(SUM(e.amount) AS DOUBLE) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
             "SUM(e.amount) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
-            "SUM(e.amount) / COUNT(e.active) AS governed_ratio",
         )},
         package,
     )
@@ -758,6 +765,7 @@ def test_ratio_metric_projects_numerator_and_denominator_with_nullif_zero_guard(
     assert accepted.ok, accepted
     assert swapped.violation == "METRIC_RULE_MISMATCH"
     assert missing_nullif.violation == "METRIC_RULE_MISMATCH"
+    assert integer_division.violation == "METRIC_RULE_MISMATCH"
 
 
 def _exists_package():

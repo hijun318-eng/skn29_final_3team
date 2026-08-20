@@ -35,7 +35,9 @@
         "field": "business_date",
         "semantics": "BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
@@ -76,7 +78,9 @@
         "field": "business_date",
         "semantics": "BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
@@ -117,7 +121,9 @@
         "field": "business_date",
         "semantics": "BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
@@ -158,13 +164,15 @@
         "field": "business_date",
         "semantics": "BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
         "allowed_edge_ids": []
       },
-      "aliases": ["객실 점유율", "점유율", "occupancy"],
+      "aliases": ["객실 점유율", "점유율", "투숙률", "occupancy"],
       "permission": {
         "roles": ["analyst"],
         "contains_pii": false,
@@ -199,7 +207,9 @@
         "field": "business_date",
         "semantics": "BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
@@ -240,7 +250,9 @@
         "field": "business_date",
         "semantics": "BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
@@ -281,7 +293,9 @@
         "field": "business_date",
         "semantics": "BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
@@ -322,7 +336,9 @@
         "field": "business_date",
         "semantics": "BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
@@ -363,7 +379,9 @@
         "field": "business_date",
         "semantics": "BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
@@ -404,13 +422,15 @@
         "field": "business_date",
         "semantics": "BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
         "allowed_edge_ids": []
       },
-      "aliases": ["총 운영 매출", "총 운영매출", "총영업매출", "운영 총매출"],
+      "aliases": ["총 운영 매출", "총 운영매출", "총영업매출", "운영 총매출", "호텔 매출", "호텔 전체 매출", "호텔 총매출"],
       "permission": {
         "roles": ["analyst"],
         "contains_pii": false,
@@ -445,7 +465,9 @@
         "field": "business_date",
         "semantics": "BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
@@ -486,7 +508,9 @@
         "field": "business_date",
         "semantics": "SOURCE_BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
@@ -527,7 +551,9 @@
         "field": "business_date",
         "semantics": "SOURCE_BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,
@@ -568,7 +594,9 @@
         "field": "business_date",
         "semantics": "SOURCE_BUSINESS_DATE",
         "timezone": "Asia/Seoul",
-        "interval": "[start,end)"
+        "interval": "[start,end)",
+        "bucket": "day",
+        "timezone_mode": "preserve"
       },
       "join": {
         "required": false,

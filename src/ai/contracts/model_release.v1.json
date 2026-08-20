@@ -1,21 +1,21 @@
 {
-  "manifest_version": "MODEL-RELEASE-v1.14.0",
+  "manifest_version": "MODEL-RELEASE-v1.18.0",
   "state": "ACTIVE",
   "schema_contract": "v1",
-  "schema_version": "MODEL-v1.12.0",
-  "schema_sha256": "3d08f16e901823042bbce9363ab563c46d660298327e4163db7cafa71d4a10ab",
+  "schema_version": "MODEL-v1.13.0",
+  "schema_sha256": "4b06f6e3f75a0565c0d29761ec4ecad4eec1aa37bc56aaf85348c0dde6a0ddd9",
   "nodes": {
     "node1": {
       "prompt_id": "node1.normalize",
-      "prompt_version": "PROMPT-v1.10.0",
-      "prompt_sha256": "f3dac8338a0305fdb469fcac3e8e7de8e63627409fa83b292c98c92111db9920",
+      "prompt_version": "PROMPT-v1.12.0",
+      "prompt_sha256": "2ca2d4be202a9c3f9f57cfe1064e308980752766614073e1aac4f08c7e0fad89",
       "request_definition": "node1_request",
       "response_definition": "node1_response"
     },
     "node2": {
       "prompt_id": "node2.sql",
-      "prompt_version": "PROMPT-v1.6.0",
-      "prompt_sha256": "d4c497e697d9cfdac59d5521c7d380b64a09fc7c33fbf09a4310673ad92041d1",
+      "prompt_version": "PROMPT-v1.7.0",
+      "prompt_sha256": "7b030d743d77ab88acec1a349eece69c36044bcefe9009d69aa9c000341a72b8",
       "request_definition": "node2_request",
       "response_definition": "node2_response"
     },
@@ -28,8 +28,8 @@
     },
     "node3": {
       "prompt_id": "node3.explain",
-      "prompt_version": "PROMPT-v1.2.3",
-      "prompt_sha256": "3189269cc26e186695a1342412daf05f238e381271a0ed2e6187915b8143277d",
+      "prompt_version": "PROMPT-v1.2.4",
+      "prompt_sha256": "bbf2d33eab8de98f1f3fc1f7ec5bd4108eaf4d59d349acaba655cd1b64f56ef8",
       "request_definition": "node3_request",
       "response_definition": "node3_response"
     },

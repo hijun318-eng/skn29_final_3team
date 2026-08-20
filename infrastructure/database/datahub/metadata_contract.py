@@ -372,7 +372,10 @@ def _validate_time_rules(value: object, assets: Mapping[str, frozenset[str]], pa
             raise SemanticMetadataError("time field bucket or timezone mode is unsupported")
 
 
-def _validate_query_policy(value: object, assets: Mapping[str, frozenset[str]]) -> None:
+def _validate_query_policy(
+    value: object,
+    assets: Mapping[str, frozenset[str]],
+) -> None:
     policy = _mapping(value, "query_policy")
     required = {"dialect", "statement_type", "read_only", "require_limit", "max_limit", "allowed_functions", "allowed_catalogs"}
     _exact_keys(policy, required, "query_policy")
@@ -384,6 +387,48 @@ def _validate_query_policy(value: object, assets: Mapping[str, frozenset[str]]) 
     _unique_texts(policy["allowed_functions"], "query_policy.allowed_functions")
     if set(_unique_texts(policy["allowed_catalogs"], "query_policy.allowed_catalogs", non_empty=True)) != catalogs:
         raise SemanticMetadataError("query_policy.allowed_catalogs must exactly match schema assets")
+
+
+def validate_metric_query_policy(bundle: Mapping[str, Any]) -> None:
+    """새 authoring 후보의 함수 허용 범위가 Metric 계산식을 완전히 포함하는지 검사한다.
+
+    과거 live release readback에는 소급하지 않는다. 따라서 모순된 predecessor를 읽어
+    고친 successor를 만들 수는 있지만, 새 후보가 같은 모순을 반복해 발행되지는 않는다.
+    """
+    policy = _mapping(bundle.get("query_policy"), "query_policy")
+    metrics = [
+        _mapping(item, "metric rule")
+        for item in _list(bundle.get("metric_rules"), "metric_rules", non_empty=True)
+    ]
+    allowed_functions = {
+        item.casefold()
+        for item in _unique_texts(
+            policy.get("allowed_functions"), "query_policy.allowed_functions"
+        )
+    }
+    aggregation_functions = {
+        "sum": "sum",
+        "count": "count",
+        "count_distinct": "count",
+        "min": "min",
+        "max": "max",
+        "average": "avg",
+    }
+    required_functions = {
+        function
+        for metric in metrics
+        for function in (aggregation_functions.get(str(metric["aggregation"])),)
+        if function is not None
+    }
+    if any(
+        _mapping(metric["source"], "metric source").get("kind") == "ratio"
+        for metric in metrics
+    ):
+        required_functions.add("nullif")
+    if not required_functions <= allowed_functions:
+        raise SemanticMetadataError(
+            "query_policy.allowed_functions does not cover governed Metric calculations"
+        )
 
 
 def _qualified(value: object, assets: Mapping[str, frozenset[str]], context: str) -> tuple[str, str]:

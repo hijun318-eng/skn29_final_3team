@@ -18,7 +18,11 @@ for entry in (str(ROOT), str(DATAHUB), str(BACKEND), str(ROOT / "tests" / "data"
         sys.path.insert(0, entry)
 
 from metadata_aspects import iter_aspects  # noqa: E402
-from metadata_contract import SemanticMetadataError, validate_bundle  # noqa: E402
+from metadata_contract import (  # noqa: E402
+    SemanticMetadataError,
+    validate_bundle,
+    validate_metric_query_policy,
+)
 from app.adapters.catalog_snapshot import CatalogSnapshot  # noqa: E402
 from app.adapters.datahub_metadata import parse_dataset, parse_glossary_term  # noqa: E402
 from app.adapters.release_manifest import validate_release_manifest  # noqa: E402
@@ -266,3 +270,17 @@ def test_v2_rejects_ratio_governance_different_from_operands() -> None:
 
     with pytest.raises(SemanticMetadataError, match="must match both"):
         validate_bundle(bundle)
+
+
+def test_v2_rejects_query_policy_without_ratio_zero_guard_function() -> None:
+    """Ratio 규칙은 요구하면서 NULLIF 실행은 금지하는 모순된 release를 거부한다."""
+
+    bundle = _v2_bundle()
+    bundle["query_policy"]["allowed_functions"] = [
+        item
+        for item in bundle["query_policy"]["allowed_functions"]
+        if item.casefold() != "nullif"
+    ]
+
+    with pytest.raises(SemanticMetadataError, match="does not cover"):
+        validate_metric_query_policy(bundle)

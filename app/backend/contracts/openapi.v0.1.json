@@ -632,6 +632,7 @@
           "status": {
             "enum": [
               "RECEIVED",
+              "CLARIFYING",
               "SUCCEEDED",
               "PARTIAL",
               "FAILED",

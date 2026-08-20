@@ -31,6 +31,7 @@ from app.adapters.query_governance import QueryGovernanceEngine  # noqa: E402
 from app.adapters.model_context import metric_selection  # noqa: E402
 from app.contracts import AnalysisRequest, RequestContext, Role  # noqa: E402
 from app.ports.data_platform import NoEntitledAssetsError  # noqa: E402
+from app.services.analysis.responses import _business_metrics  # noqa: E402
 from app.services.context.metric_resolver import MetricResolver  # noqa: E402
 from app.services.context.metric_execution_scope import select_assets_for_metrics  # noqa: E402
 from app.services.context.builder import ContextBuildError, ContextPackageBuilder  # noqa: E402
@@ -236,6 +237,13 @@ class _Normalizer:
         }
 
 
+class _AmbiguousNormalizer(_Normalizer):
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result["selected_metric_id"] = None
+        return result
+
+
 def test_node1_receives_only_business_metric_while_context_keeps_operands() -> None:
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
@@ -300,9 +308,50 @@ def test_node1_receives_only_business_metric_while_context_keeps_operands() -> N
         "amount_per_event",
     }
     assert {term.id for term in package.metric_terms} == {"amount_per_event"}
+    assert {metric.id for metric in _business_metrics(package)} == {
+        "amount_per_event"
+    }
     assert metric_selection(selected_assets, package)["selected_metric_id"] == (
         "amount_per_event"
     )
+
+
+def test_unresolved_metric_returns_typed_options_instead_of_internal_error() -> None:
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        engine.search_assets(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    resolver = MetricResolver(engine, _AmbiguousNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-ambiguous-metric",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 20),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="ambiguous measurement",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.disambiguation_options
+    assert raised.value.disambiguation_options[0].metric_id == "amount_per_event"
+    assert raised.value.partial_context is not None
+    assert raised.value.partial_context["period_candidates"][0]["start"].startswith(
+        "2026-08-01"
+    )
+    assert raised.value.partial_context["selected_metric_id"] is None
 
 
 def test_selected_v2_metric_prunes_unapproved_join_edges() -> None:

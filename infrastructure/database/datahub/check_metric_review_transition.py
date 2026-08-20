@@ -78,6 +78,24 @@ async def check_live_transition(
     승인 없이 policy compilation으로 넘어가지 못하도록 상태를 반환한다.
     """
 
+    _validation, _baseline, transition = await load_live_review_context(
+        candidate,
+        args,
+    )
+    return transition
+
+
+async def load_live_review_context(
+    candidate: dict[str, object],
+    args: argparse.Namespace,
+) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
+    """검증 receipt·live baseline·전환 계획을 한 discovery 시점에서 함께 반환한다.
+
+    승인 CLI가 transition 검사와 policy decision 작성 사이에 다른 release를 읽지
+    않도록 read-only discovery 결과를 공유한다. 반환값 자체는 승인이나 발행 권한을
+    만들지 않는다.
+    """
+
     review_schema = candidate.get("serving_schema")
     release_id = candidate.get("release_id")
     if not isinstance(review_schema, str) or not isinstance(release_id, str):
@@ -127,7 +145,8 @@ async def check_live_transition(
         discovered = await inspect_release(scopes, trino, datahub)
     if discovered.bundle is None:
         raise ReleaseNotReady(discovered.report)
-    return plan_metric_review_transition(candidate, validation, discovered.bundle)
+    transition = plan_metric_review_transition(candidate, validation, discovered.bundle)
+    return validation, discovered.bundle, transition
 
 
 def load_candidate(path: Path) -> dict[str, object]:

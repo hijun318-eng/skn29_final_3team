@@ -80,12 +80,13 @@ export function createAnalysisValueScale(
   return {
     isCurrency: (unit) => isCurrencyMetricUnit(unit),
     format(value, unit, field) {
-      if (!isCurrencyMetricUnit(unit)) return formatMetricValue(value, { includeUnit: false });
+      if (!isCurrencyMetricUnit(unit)) return formatMetricValue(value, { includeUnit: false, unit });
       return formatCurrencyAmount(value, unitFor(field), { maximumFractionDigits: 1 });
     },
     unitLabel(unit, field) {
       if (!unit) return null;
-      return isCurrencyMetricUnit(unit) ? currencyDisplayLabel(unitFor(field)) : unit;
+      if (isCurrencyMetricUnit(unit)) return currencyDisplayLabel(unitFor(field));
+      return unit.trim().toLowerCase() === "ratio" ? "%" : unit;
     },
     exact: (value, unit) => formatMetricValue(value, { unit: unit ?? undefined }),
     sharedCurrencyLabel(fields) {

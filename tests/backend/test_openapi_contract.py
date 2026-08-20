@@ -133,6 +133,7 @@ class OpenApiContractTest(unittest.TestCase):
                 self.assertFalse(schemas[name]["additionalProperties"])
         run = schemas["AnalysisRunResponse"]["properties"]
         self.assertIn("CANCELLED", run["status"]["enum"])
+        self.assertIn("CLARIFYING", run["status"]["enum"])
         for forbidden in ("sql", "parameters", "result", "snapshot"):
             self.assertNotIn(forbidden, run)
 

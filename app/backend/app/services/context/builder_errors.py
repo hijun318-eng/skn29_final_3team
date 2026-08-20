@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from app.contract_core import DisambiguationOption
 
@@ -38,8 +39,13 @@ class ContextBuildError(ValueError):
         message: str,
         suggestions: tuple[str, ...] = (),
         disambiguation_options: tuple[DisambiguationOption, ...] = (),
+        partial_context: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.suggestions = suggestions
         self.disambiguation_options = disambiguation_options
+        # User-correctable ambiguity may still contain trusted period/dimension
+        # signals.  The conversation state machine persists these so the next
+        # selection completes the same request instead of starting over.
+        self.partial_context = dict(partial_context) if partial_context is not None else None

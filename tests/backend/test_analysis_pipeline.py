@@ -17,9 +17,10 @@ from app.contracts import (
     ErrorCode,
     PipelineStage,
     RequestContext,
+    ResolvedSlots,
     Role,
 )
-from app.ports.data_platform import NoEntitledAssetsError
+from app.ports.data_platform import NoEntitledAssetsError, NoMetricMatchError
 from app.services.analysis import AnalysisService
 from app.services.routing_service import RoutingService
 from src.ai.schema import validate_payload
@@ -386,6 +387,53 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({"plan", "query", "package"}, set(execution))
         self.assertTrue(progress)
 
+    async def test_ungrounded_node3_numbers_are_replaced_with_evidence_summary(self):
+        response, adapter, model, _service = await self.run_pipeline(
+            model=model_with(
+                node3={
+                    "summary": "The governed total is 999,999.",
+                    "model_version": "programmable-v1",
+                }
+            )
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertNotIn("999,999", response.data.result.summary)
+        self.assertIn("17", response.data.result.summary)
+        self.assertEqual(
+            "GROUNDED-NARRATIVE-v1.0.0",
+            response.data.result.evidence.model_version,
+        )
+        self.assertEqual(1, adapter.execute_count)
+        self.assertEqual(["node1", "node2", "node3"], [node for node, _ in model.calls])
+
+    async def test_grounded_node3_numbers_are_preserved(self):
+        summary = "The governed total is 17 for the requested period."
+        response, _adapter, _model, _service = await self.run_pipeline(
+            model=model_with(
+                node3={"summary": summary, "model_version": "programmable-v1"}
+            )
+        )
+
+        self.assertEqual(summary, response.data.result.summary)
+        self.assertEqual(
+            "programmable-v1",
+            response.data.result.evidence.model_version,
+        )
+
+    async def test_node3_contract_failure_uses_grounded_result_instead_of_hiding_query(self):
+        response, adapter, _model, _service = await self.run_pipeline(
+            model=model_with(node3=ValueError("invalid node3 contract"))
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertIn("17", response.data.result.summary)
+        self.assertEqual(
+            "GROUNDED-NARRATIVE-v1.0.0",
+            response.data.result.evidence.model_version,
+        )
+        self.assertEqual(1, adapter.execute_count)
+
     async def test_one_g2_repair_uses_only_the_programmed_repair_response(self):
         model = model_with(node2=MISSING_FILTER_PLAN, repair=VALID_PLAN)
 
@@ -449,6 +497,67 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ErrorCode.DATA_ASSET_NOT_FOUND, response.error.code)
         self.assertEqual([], model.calls)
         self.assertEqual(0, adapter.execute_count)
+
+    async def test_new_analysis_without_metric_requests_metric_context(self):
+        adapter = AsyncRuntimeDataPlatform(
+            search_error=NoMetricMatchError("no governed metric matches the request")
+        )
+
+        response, adapter, model, _service = await self.run_pipeline(adapter=adapter)
+
+        self.assertEqual(AnalysisStatus.CLARIFICATION_REQUIRED, response.data.status)
+        self.assertEqual(ErrorCode.CONTEXT_INCOMPLETE, response.error.code)
+        self.assertEqual(ClarificationType.METRIC, response.error.clarification_type)
+        self.assertIn("분석할 지표", response.error.message)
+        self.assertEqual(1, adapter.search_count)
+        self.assertEqual([], model.calls)
+        self.assertEqual(0, adapter.execute_count)
+
+    async def test_partial_conversation_slots_return_exact_clarification_cause(self):
+        """서버가 아는 지표·기간 누락은 자산 없음으로 뭉개지 않고 typed 원인을 돌려준다."""
+
+        adapter = AsyncRuntimeDataPlatform(
+            search_error=NoEntitledAssetsError("must not search partial slots")
+        )
+        self.payload = AnalysisRequest(
+            question="arbitrary period without a metric",
+            resolved_slots=ResolvedSlots(
+                period_start="2042-06-01",
+                period_end_exclusive="2042-07-01",
+            ),
+        )
+        metric_response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter
+        )
+
+        self.assertEqual(
+            AnalysisStatus.CLARIFICATION_REQUIRED,
+            metric_response.data.status,
+        )
+        self.assertEqual(ErrorCode.CONTEXT_INCOMPLETE, metric_response.error.code)
+        self.assertEqual(
+            ClarificationType.METRIC,
+            metric_response.error.clarification_type,
+        )
+        self.assertEqual(0, adapter.search_count)
+        self.assertEqual([], model.calls)
+
+        self.payload = AnalysisRequest(
+            question="arbitrary metric without a period",
+            resolved_slots=ResolvedSlots(metric_id=METRIC_ID),
+        )
+        period_response, adapter, model, _service = await self.run_pipeline()
+
+        self.assertEqual(
+            AnalysisStatus.CLARIFICATION_REQUIRED,
+            period_response.data.status,
+        )
+        self.assertEqual(
+            ClarificationType.PERIOD,
+            period_response.error.clarification_type,
+        )
+        self.assertEqual(0, adapter.search_count)
+        self.assertEqual([], model.calls)
 
     async def test_unapproved_query_strategy_is_semantic_not_model_failure(self):
         incompatible = copy.deepcopy(ASSET)

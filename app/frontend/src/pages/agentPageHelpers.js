@@ -29,12 +29,34 @@ export function clarifiedQuestion(question, suggestion, clarificationType) {
 }
 
 /**
+ * conversation command가 알려 준 보완 대상이 지표인지 기간인지 exact enum으로 고정한다.
+ * @param {object} command - command top-level 응답 data.
+ * @param {object|null|undefined} serverTurn - 저장된 서버 turn.
+ * @returns {"metric"|"period"} 화면이 사용할 보완 대상.
+ */
+export function commandClarificationType(command, serverTurn) {
+  const value = command?.clarification_type
+    ?? serverTurn?.resolved_slots?.clarification_type;
+  return value === "period" ? "period" : "metric";
+}
+
+/** 서버의 공개 안내를 우선하고, 없으면 typed 보완 대상별 원인 문구를 반환한다. */
+export function commandClarificationMessage(command, clarificationType) {
+  if (typeof command?.message === "string" && command.message.trim()) {
+    return command.message.trim();
+  }
+  return clarificationType === "period"
+    ? "분석을 시작하려면 분석할 기간을 함께 입력해 주세요."
+    : "새 분석을 시작하려면 분석할 지표를 함께 입력해 주세요.";
+}
+
+/**
  * 서버 분석 상태 코드를 화면 표시용 한국어 라벨로 변환한다.
  * @param {string} status - 서버가 반환한 분석 상태 코드.
  * @returns {string} 매핑되는 한국어 라벨, 매핑 없으면 "확인 필요".
  */
 export function savedRunStatus(status) {
-  return ({ SUCCESS: "완료", SUCCEEDED: "완료", PARTIAL: "일부 완료", BLOCKED: "완료되지 않음", FAILED: "실패", RECEIVED: "처리 중", QUEUED: "대기 중", RUNNING: "처리 중", CANCELLED: "취소됨" })[status] || "확인 필요";
+  return ({ SUCCESS: "완료", SUCCEEDED: "완료", PARTIAL: "일부 완료", BLOCKED: "완료되지 않음", CLARIFYING: "입력 필요", FAILED: "실패", RECEIVED: "처리 중", QUEUED: "대기 중", RUNNING: "처리 중", CANCELLED: "취소됨" })[status] || "확인 필요";
 }
 
 /**
@@ -134,7 +156,7 @@ export function hydrateTurnsFromServer(serverTurns) {
           disambiguationOptions: options,
           error: {
             code: "CONTEXT_INCOMPLETE",
-            message: "질문이 여러 지표 또는 기간으로 해석될 수 있습니다. 분석할 기준을 선택해 주세요.",
+            message: commandClarificationMessage(st, clarType),
             clarification_type: clarType,
             disambiguation_options: options,
             suggestions: options.map((o) => o.label || o.value || o.metric_id),

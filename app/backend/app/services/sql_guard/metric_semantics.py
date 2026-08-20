@@ -6,7 +6,7 @@
 
 [지원하는 지표 집계 형태]
 1. 기본 집계: SUM(col), COUNT(col), COUNT(DISTINCT col), AVG(col), MIN(col), MAX(col)
-2. 파생 지표 (Ratio Metric): `분자식 / NULLIF(분모식, 0)` 형태의 비율 지표를 분자/분모 각각 재귀적으로 검증
+2. 파생 지표 (Ratio Metric): `CAST(분자식 AS DOUBLE) / NULLIF(분모식, 0)` 형태의 비율 지표를 분자/분모 각각 재귀적으로 검증
 3. 존재/조건 확인 지표 (Exists Metric): `COUNT(col) > 0` 형태의 Boolean 판별 지표
 4. 다중 기간 비교 지표: `AGG(col) FILTER (WHERE ...)` 형태의 윈도우 필터 분리 검증
 5. CTE/서브쿼리 롤업: 하위 CTE에서 집계된 컬럼을 상위 쿼리에서 재집계(Rollup)하는 리니지 추적
@@ -122,7 +122,7 @@ def _match_ratio_expression(
     assets: dict[str, tuple[Any, frozenset[str]]],
     scope: ScopeEvidence,
 ) -> frozenset[tuple[str, str, str]] | None:
-    """비율 지표의 필수 형태인 '분자식 / NULLIF(분모식, 0)' 구문을 검증합니다."""
+    """Trino 정수 나눗셈을 막는 ``CAST(분자식 AS DOUBLE) / NULLIF(분모식, 0)``를 검증합니다."""
     if metric.zero_policy != "null_on_zero_denominator" or not isinstance(expression, exp.Div):
         return None
     numerator = metrics_by_id.get(metric.numerator_metric_id)
@@ -130,8 +130,12 @@ def _match_ratio_expression(
     if numerator is None or denominator is None:
         return None
     denominator_node = expression.expression
+    numerator_node = expression.this
     if (
-        not isinstance(denominator_node, exp.Nullif)
+        not isinstance(numerator_node, exp.Cast)
+        or not isinstance(numerator_node.args.get("to"), exp.DataType)
+        or numerator_node.args["to"].this != exp.DataType.Type.DOUBLE
+        or not isinstance(denominator_node, exp.Nullif)
         or not isinstance(denominator_node.expression, exp.Literal)
         or denominator_node.expression.is_string
         or str(denominator_node.expression.this) != "0"
@@ -143,7 +147,11 @@ def _match_ratio_expression(
     except ValueError:
         return None
     numerator_where = _match_expression(
-        expression.this, str(numerator.aggregation).casefold(), numerator_field, scope, frozenset()
+        numerator_node.this,
+        str(numerator.aggregation).casefold(),
+        numerator_field,
+        scope,
+        frozenset(),
     )
     denominator_where = _match_expression(
         denominator_node.this, str(denominator.aggregation).casefold(), denominator_field, scope, frozenset()

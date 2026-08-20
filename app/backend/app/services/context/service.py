@@ -295,7 +295,19 @@ class PipelineContextService:
         if is_comparison_request:
             window_pairs.append((comparison_start, comparison_end))
         for window_start, window_end in window_pairs:
-            if period_values and period_values[window_start] >= period_values[window_end]:
+            if not period_values:
+                continue
+            start_date = date.fromisoformat(period_values[window_start])
+            end_date = date.fromisoformat(period_values[window_end])
+            if start_date >= context.as_of:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+                    "요청 기간은 오늘 이전의 완료된 영업일을 포함해야 합니다.",
+                )
+            if end_date > context.as_of:
+                period_values[window_end] = context.as_of.isoformat()
+                end_date = context.as_of
+            if start_date >= end_date:
                 raise ContextBuildError(
                     ContextBuildErrorCode.INVALID_METADATA,
                     "분석 기간은 비어있지 않은 반개구간 [start, end) 이어야 합니다.",

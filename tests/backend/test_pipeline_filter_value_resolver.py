@@ -16,8 +16,10 @@ if str(BACKEND) not in sys.path:
 
 from app.services.context.filter_value_resolver import (
     FilterValueUnresolvedError,
+    discover_dimension_values,
     resolve_filter_value,
 )
+from app.services.context.metric_resolver import MetricResolver
 
 
 def async_test(function):
@@ -33,11 +35,13 @@ class _FakeAdapter:
         self._rows = rows
         self._status = status
         self.executed_sql: str | None = None
+        self.execute_count = 0
 
     async def execute_query(self, sql, parameters, gate_token):
         assert parameters == {}
         assert gate_token
         self.executed_sql = sql
+        self.execute_count += 1
         return {"query_id": "q-1"}
 
     async def get_query_status(self, query_id):
@@ -60,6 +64,65 @@ async def test_resolve_filter_value_returns_the_single_matched_value():
     assert '"hotel_name"' in adapter.executed_sql
     assert "FROM serving.room_daily" in adapter.executed_sql
     assert "sunset" in adapter.executed_sql.lower()
+
+
+@async_test
+async def test_resolve_filter_value_binds_only_the_canonical_candidate():
+    adapter = _FakeAdapter(rows=[{"matched_value": "VISTA"}])
+
+    resolved = await resolve_filter_value(
+        adapter, "serving.operations_daily", "property_code", "eq", "VISTA"
+    )
+
+    assert resolved.value == "VISTA"
+    assert "vista" in adapter.executed_sql.lower()
+
+
+@async_test
+async def test_discover_dimension_values_returns_only_a_complete_bounded_live_domain():
+    adapter = _FakeAdapter(
+        rows=[
+            {"candidate_value": "VISTA"},
+            {"candidate_value": "GRAND"},
+            {"candidate_value": "DOUGLAS"},
+        ]
+    )
+
+    values = await discover_dimension_values(
+        adapter,
+        "serving.operations_daily",
+        "hotel_code",
+    )
+
+    assert values == ("VISTA", "GRAND", "DOUGLAS")
+    assert "LIMIT 65" in adapter.executed_sql
+
+
+@async_test
+async def test_discover_dimension_values_rejects_a_partial_high_cardinality_domain():
+    adapter = _FakeAdapter(
+        rows=[{"candidate_value": f"VALUE_{index}"} for index in range(65)]
+    )
+
+    values = await discover_dimension_values(
+        adapter,
+        "serving.large_dimension",
+        "entity_code",
+    )
+
+    assert values == ()
+
+
+@async_test
+async def test_metric_resolver_caches_bounded_dimension_domains_for_its_ttl():
+    adapter = _FakeAdapter(rows=[{"candidate_value": "VISTA"}])
+    resolver = MetricResolver(adapter, object())
+
+    first = await resolver._dimension_values("serving.operations_daily", "hotel_code")
+    second = await resolver._dimension_values("serving.operations_daily", "hotel_code")
+
+    assert first == second == ("VISTA",)
+    assert adapter.execute_count == 1
 
 
 @async_test

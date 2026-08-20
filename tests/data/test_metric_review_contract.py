@@ -59,6 +59,8 @@ def _scope() -> dict[str, object]:
             "semantics": "OBSERVATION_DATE",
             "timezone": "UTC",
             "interval": "[start,end)",
+            "bucket": "day",
+            "timezone_mode": "preserve",
         },
         "join": {"required": False, "allowed_edge_ids": []},
         "permission": {
@@ -184,3 +186,16 @@ def test_d2_review_candidate_matches_the_pinned_release_sql():
     assert result["business_metric_count"] == 10
     assert result["support_metric_count"] == 4
     assert result["publishable"] is False
+
+    occupancy = next(
+        item for item in candidate["metrics"] if item["id"] == "occupancy_rate"
+    )
+    assert "투숙률" in occupancy["aliases"]
+    total_revenue = next(
+        item
+        for item in candidate["metrics"]
+        if item["id"] == "total_operating_revenue_krw"
+    )
+    assert {"호텔 매출", "호텔 전체 매출", "호텔 총매출"} <= set(
+        total_revenue["aliases"]
+    )

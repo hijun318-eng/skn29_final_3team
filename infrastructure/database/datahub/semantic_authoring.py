@@ -13,7 +13,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from metadata_contract import validate_bundle
+from metadata_contract import validate_bundle, validate_metric_query_policy
 from metadata_contract_primitives import (
     SemanticMetadataError,
     array,
@@ -301,6 +301,7 @@ def assemble_authoring_bundle(
         "query_policy": deepcopy(policy["query_policy"]),
     }
     validate_bundle(bundle)
+    validate_metric_query_policy(bundle)
     return bundle
 
 

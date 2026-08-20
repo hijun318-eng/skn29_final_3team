@@ -35,7 +35,11 @@ from app.adapters.release_manifest import (
     validate_release_manifest,
 )
 from app.adapters.trino_schema import TrinoSchemaDriftError, TrinoSchemaInspector
-from app.ports.data_platform import MetadataUnavailableError, NoEntitledAssetsError
+from app.ports.data_platform import (
+    MetadataUnavailableError,
+    NoEntitledAssetsError,
+    NoMetricMatchError,
+)
 from app.services.context.builder import ContextBuildError
 from app.services.context.contract import GovernedJoin
 from src.data.governance_contract import (
@@ -96,7 +100,7 @@ class QueryGovernanceEngine:
         """Unicode token과 semantic hit로 asset을 순위화한 뒤 권한 있는 연결 graph만 runtime context로 반환한다."""
         query_tokens = _unicode_tokens(query)
         if not query_tokens:
-            raise NoEntitledAssetsError("the request has no searchable Unicode tokens")
+            raise NoMetricMatchError("the request has no searchable Unicode tokens")
         try:
             snapshot, semantic_hits = await self._load_search_evidence(query)
             datasets = self._active_datasets(snapshot)
@@ -104,7 +108,7 @@ class QueryGovernanceEngine:
             # lexical과 semantic 증거를 함께 요구 가능한 일반 경로로 유지해 특정 질문용 키워드 사전을 만들지 않는다.
             ranked = _ranked_matches(query_tokens, datasets, terms, semantic_hits)
             if not ranked:
-                raise NoEntitledAssetsError(
+                raise NoMetricMatchError(
                     "no governed DataHub asset matches the request"
                 )
             entitled = [item for item in ranked if item[1].entitled(context)]

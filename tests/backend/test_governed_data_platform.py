@@ -33,6 +33,7 @@ from app.adapters.trino_async import TrinoAsyncClient  # noqa: E402
 from app.ports.data_platform import (  # noqa: E402
     MetadataUnavailableError,
     NoEntitledAssetsError,
+    NoMetricMatchError,
 )
 from app.query_capability import issue_query_capability  # noqa: E402
 
@@ -830,6 +831,30 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             {"role": "analyst", "parameters": {}},
         )
         self.assertEqual(["orbit.lake.helium_fact"], [item["fqn"] for item in assets])
+
+    async def test_lexical_no_match_is_distinct_from_entitlement_denial(self) -> None:
+        catalog = DataHubCatalogClient(
+            "http://datahub.test",
+            client=self.datahub_http,
+            page_size=1,
+            max_entities=20,
+        )
+        trino = TrinoAsyncClient(
+            "https://trino.test", "runtime", "test-password", client=self.trino_http
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=catalog,
+            trino_client=trino,
+            search_mode="lexical",
+        )
+
+        with self.assertRaises(NoMetricMatchError):
+            await adapter.search_assets(
+                "2042-06",
+                {"role": "analyst", "parameters": {}},
+            )
 
     async def test_entitlement_is_only_the_published_role_domain_policy(self) -> None:
         with self.assertRaises(NoEntitledAssetsError):

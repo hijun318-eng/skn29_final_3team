@@ -38,11 +38,25 @@ from app.services.analysis.evidence import (
     _gate_history,
     _metric_term,
     _model_invocations,
-    _reduce_metric_values,
+    _reduce_context_metric,
 )
-from app.services.context.builder import ContextPackage
+from app.services.context.builder import ContextMetric, ContextPackage
 from app.services.routing_service import RouteDecision
 from app.services.state_machine import AnalysisStateMachine
+
+
+def _business_metrics(package: ContextPackage) -> tuple[ContextMetric, ...]:
+    """Return only metrics that have an approved user-facing glossary term.
+
+    SUPPORT metrics remain in ``ContextPackage.metrics`` because ratio metrics need
+    their operands during planning and execution.  They deliberately have no
+    BUSINESS glossary term, so they must not leak into result values or evidence.
+    The context builder already enforces an exact BUSINESS metric/term boundary;
+    using that boundary here keeps every derived metric on the same path.
+    """
+
+    business_ids = {term.id for term in package.metric_terms}
+    return tuple(metric for metric in package.metrics if metric.id in business_ids)
 
 
 class AnalysisResponseFactory:
@@ -73,13 +87,13 @@ class AnalysisResponseFactory:
         )
         machine.transition(status)
         rows = tuple(query["rows"])
+        presentation_metrics = _business_metrics(package)
         metric_values = []
-        for metric in package.metrics:
+        for metric in presentation_metrics:
             field = metric.result_field
             if not rows or not all(field in row for row in rows):
                 continue
-            values = [row[field] for row in rows if row[field] is not None]
-            reduced = _reduce_metric_values(metric.reduction, values)
+            reduced = _reduce_context_metric(metric, package, rows)
             if reduced is not None:
                 term = _metric_term(package, metric.id)
                 metric_values.append(
@@ -93,13 +107,10 @@ class AnalysisResponseFactory:
                     )
                 )
         metrics = tuple(metric_values)
-        metric_ids = tuple(
-            dict.fromkeys(
-                [metric.id for metric in package.metrics]
-                + [metric.metric_id for metric in metrics]
-            )
-        )
-        result_fields = {metric.id: metric.result_field for metric in package.metrics}
+        metric_ids = tuple(metric.id for metric in presentation_metrics)
+        result_fields = {
+            metric.id: metric.result_field for metric in presentation_metrics
+        }
         result_fields.update(
             {metric.metric_id: metric.result_field for metric in metrics}
         )

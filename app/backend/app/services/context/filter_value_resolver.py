@@ -38,6 +38,51 @@ class ResolvedFilterValue:
     value: str
 
 
+_MAX_DISCOVERED_VALUES = 64
+
+
+async def discover_dimension_values(
+    adapter: DataPlatformAdapter,
+    asset_fqn: str,
+    column: str,
+) -> tuple[str, ...]:
+    """승인된 저카디널리티 차원 필드의 실제 값 후보를 제한된 범위로 조회한다.
+
+    의미 기반 BI 도구의 실데이터 값 추천 방식처럼 최대 64개까지만 언어 해석기에
+    전달한다. 65번째 값이 확인되면 일부 목록을 전체 후보처럼 오인하지 않도록 빈
+    결과를 반환한다.
+    """
+
+    sql = (
+        f'SELECT DISTINCT "{column}" AS candidate_value '
+        f"FROM {asset_fqn} "
+        f'WHERE "{column}" IS NOT NULL '
+        f"LIMIT {_MAX_DISCOVERED_VALUES + 1}"
+    )
+    validation = validate_sql(sql)
+    validation.raise_for_violations()
+    executable_sql = bind_sql_parameters(validation.expression, {})
+    scope_hash = sha256(
+        f"dimension-value-domain:{asset_fqn}:{column}".encode()
+    ).hexdigest()
+    gate_token = issue_query_capability(scope_hash, executable_sql)
+    submitted = await adapter.execute_query(executable_sql, {}, gate_token)
+    query = await adapter.get_query_status(str(submitted["query_id"]))
+    rows = query.get("rows")
+    if query.get("status") not in {"SUCCEEDED", "PARTIAL"} or not isinstance(rows, list):
+        return ()
+    values = tuple(
+        str(row["candidate_value"])
+        for row in rows
+        if isinstance(row, dict)
+        and row.get("candidate_value") is not None
+        and str(row["candidate_value"]).strip()
+    )
+    if len(values) > _MAX_DISCOVERED_VALUES or len(values) != len(set(values)):
+        return ()
+    return values
+
+
 async def resolve_filter_value(
     adapter: DataPlatformAdapter,
     asset_fqn: str,
@@ -60,6 +105,9 @@ async def resolve_filter_value(
     Raises:
         FilterValueUnresolvedError: 매칭되는 값이 없거나 2개 이상 모호한 경우
     """
+    candidate = value_text.strip()
+    if not candidate:
+        raise FilterValueUnresolvedError("필터 값 후보가 비어 있습니다.")
     sql = (
         f'SELECT DISTINCT "{column}" AS matched_value '
         f"FROM {asset_fqn} "
@@ -70,7 +118,7 @@ async def resolve_filter_value(
     validation.raise_for_violations()
     executable_sql = bind_sql_parameters(
         validation.expression,
-        {"candidate_value": {"value_type": "string", "value": value_text}},
+        {"candidate_value": {"value_type": "string", "value": candidate}},
     )
     scope_hash = sha256(f"filter-value-check:{asset_fqn}:{column}".encode()).hexdigest()
     gate_token = issue_query_capability(scope_hash, executable_sql)

@@ -359,13 +359,19 @@ class FakePipelineSupport:
         # 발화별로 Node1이 낼 신호(route, presentation_type 등)를 프로그래밍한다. 운영에서
         # route는 Node1 응답 계약으로만 전달되므로, 테스트도 문장이 아니라 이 신호로 라우팅한다.
         self.signals_by_message: dict[str, dict[str, Any]] = {}
+        self.errors_by_message: dict[str, Exception] = {}
 
     def program(self, message: str, **signals: Any) -> None:
         """특정 발화에 대해 Node1이 반환할 신호를 등록한다."""
         self.signals_by_message[message] = dict(signals)
 
+    def program_error(self, message: str, error: Exception) -> None:
+        self.errors_by_message[message] = error
+
     async def select_metric(self, req: AnalysisRequest, context: RequestContext, assets: list[dict[str, Any]]):
         self.questions.append(req.question)
+        if req.question in self.errors_by_message:
+            raise self.errors_by_message[req.question]
         structured = dict(self.structured)
         structured.update(self.signals_by_message.get(req.question, {}))
         return assets, req.question, structured
@@ -1006,4 +1012,129 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("CLARIFICATION_REQUIRED", result["status"])
         self.assertEqual(1, len(result["disambiguation_options"]))
         self.assertEqual("room_revenue", result["disambiguation_options"][0]["metric_id"])
+        self.assertEqual([], self.submitted_requests)
+
+    async def test_preflight_clarification_persists_period_and_filter_for_metric_choice(self) -> None:
+        """운영 preflight의 부분 슬롯이 다음 선택에서 같은 분석 요청으로 이어진다."""
+
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        question = "8월 비스타 호텔 매출"
+        filter_field = {
+            "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+            "column": "hotel_code",
+        }
+        options = (
+            DisambiguationOption(
+                label="Room Revenue",
+                metric_id="room_revenue",
+                description="객실 운영 매출",
+                clarification_type=ClarificationType.METRIC,
+                value="room_revenue",
+            ),
+            DisambiguationOption(
+                label="Total Operating Revenue",
+                metric_id="total_operating_revenue_krw",
+                description="호텔 전체 운영 매출",
+                clarification_type=ClarificationType.METRIC,
+                value="total_operating_revenue_krw",
+            ),
+        )
+        partial_context = {
+            "intent_candidates": ["general"],
+            "metric_ids": ["room_revenue", "total_operating_revenue_krw"],
+            "metric_candidates": ["room_revenue", "total_operating_revenue_krw"],
+            "selected_metric_id": None,
+            "dimension_fields": [filter_field],
+            "filter_fields": [
+                {
+                    **filter_field,
+                    "operator": "eq",
+                    "value_text": "비스타 호텔",
+                }
+            ],
+            "period_candidates": [
+                {
+                    "start": "2026-08-01T00:00:00+09:00",
+                    "end_exclusive": "2026-09-01T00:00:00+09:00",
+                    "source_text": "8월",
+                }
+            ],
+            "period_relationship": "single",
+            "requested_route": "ANALYSIS",
+            "is_elliptical": False,
+        }
+        self.support.program_error(
+            question,
+            ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "질문이 여러 지표로 해석될 수 있습니다.",
+                disambiguation_options=options,
+                partial_context=partial_context,
+            ),
+        )
+        self.support.program(
+            "Total Operating Revenue",
+            selected_metric_id="total_operating_revenue_krw",
+            metric_ids=["total_operating_revenue_krw"],
+            period_candidates=partial_context["period_candidates"],
+            period_relationship="single",
+            requested_route="ANALYSIS",
+            is_elliptical=False,
+        )
+
+        conversation = await self.repo.create_conversation(self.user_id, "부분 슬롯 재질의")
+        first = await self.orchestrator.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": question},
+            context=self.context,
+        )
+
+        self.assertEqual("CLARIFICATION_REQUIRED", first["status"])
+        self.assertEqual([], self.submitted_requests)
+        first_slots = first["turn"]["resolved_slots"]
+        self.assertEqual("2026-08-01", first_slots["time_range"]["start"])
+        self.assertEqual("2026-08-18", first_slots["time_range"]["end_exclusive"])
+        self.assertEqual("비스타 호텔", first_slots["user_filters"][0]["value_text"])
+
+        second = await self.orchestrator.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": "Total Operating Revenue",
+                "expected_head_turn_id": str(first["turn"]["turn_id"]),
+            },
+            context=self.context,
+        )
+
+        self.assertEqual("SUCCESS", second["status"])
+        resolved = self.submitted_requests[-1].resolved_slots
+        self.assertIsNotNone(resolved)
+        self.assertEqual("total_operating_revenue_krw", resolved.metric_id)
+        self.assertEqual("2026-08-01", resolved.period_start)
+        self.assertEqual("2026-08-18", resolved.period_end_exclusive)
+        self.assertEqual("비스타 호텔", resolved.user_filters[0]["value_text"])
+
+    async def test_preflight_period_requirement_preserves_typed_cause(self) -> None:
+        """사전 해석에서 기간만 빠져도 metric 기본값으로 바꾸지 않는다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "기간 보완")
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        self.data_platform.search_error = ContextBuildError(
+            ContextBuildErrorCode.PERIOD_REQUIRED,
+            "조회 기간이 필요합니다.",
+        )
+        result = await self.orchestrator.execute_command(
+            conversation_id=conv["conversation_id"],
+            payload={"user_message": "객실 매출을 보여줘"},
+            context=self.context,
+        )
+
+        self.assertEqual("CLARIFICATION_REQUIRED", result["status"])
+        self.assertEqual("period", result["clarification_type"])
+        self.assertEqual(
+            "분석을 시작하려면 분석할 기간을 함께 입력해 주세요.",
+            result["message"],
+        )
+        self.assertEqual("PROVIDE_CONTEXT", result["required_action"])
         self.assertEqual([], self.submitted_requests)

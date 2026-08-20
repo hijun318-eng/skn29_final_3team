@@ -98,7 +98,15 @@ class AnalysisRunResponse(AnalysisPersistenceModel):
     request_id: UUID
     definition_id: UUID
     definition_version: int
-    status: Literal["RECEIVED", "SUCCEEDED", "PARTIAL", "FAILED", "BLOCKED", "CANCELLED"]
+    status: Literal[
+        "RECEIVED",
+        "CLARIFYING",
+        "SUCCEEDED",
+        "PARTIAL",
+        "FAILED",
+        "BLOCKED",
+        "CANCELLED",
+    ]
     as_of: date
     timezone: str
     trace_id: str

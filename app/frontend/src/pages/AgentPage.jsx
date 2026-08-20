@@ -10,7 +10,7 @@ import { TurnReportModal } from "../components/TurnReportModal";
 import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
-import { analysisError, clarifiedQuestion, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
+import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
 
 const RUN_HISTORY_PAGE_SIZE = 20;
 const MAX_QUESTION_LENGTH = 1000;
@@ -208,13 +208,13 @@ export function AgentPage({ onNavigate }) {
         finalRun = commandErrorRun(normalized, data);
       } else if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
         const options = data?.disambiguation_options || serverTurn?.resolved_slots?.disambiguation_options || [];
-        const clarType = serverTurn?.resolved_slots?.clarification_type || "metric";
+        const clarType = commandClarificationType(data, serverTurn);
         finalRun = {
           ...transientRun(normalized, "blocked"),
           disambiguationOptions: options,
           error: {
             code: "CONTEXT_INCOMPLETE",
-            message: "질문이 여러 지표 또는 기간으로 해석될 수 있습니다. 분석할 기준을 선택해 주세요.",
+            message: commandClarificationMessage(data, clarType),
             clarification_type: clarType,
             disambiguation_options: options,
             suggestions: options.map((o) => o.label || o.value || o.metric_id),

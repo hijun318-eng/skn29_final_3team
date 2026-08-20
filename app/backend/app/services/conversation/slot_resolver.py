@@ -184,6 +184,14 @@ class ConversationSlotResolver:
             options = last_slots.get("disambiguation_options", [])
             pending_metric = last_slots.get("metric_id")
             pending_time = last_slots.get("time_range")
+            pending_dimensions = tuple(
+                last_slots.get("dimension_fields")
+                or last_analysis_slots.get("dimension_fields", ())
+            )
+            pending_filters = tuple(
+                last_slots.get("user_filters")
+                or last_analysis_slots.get("user_filters", ())
+            )
             opt_type = last_slots.get("clarification_type") or "metric"
             matched_option = cls.match_disambiguation_option(msg, options)
 
@@ -200,8 +208,8 @@ class ConversationSlotResolver:
                     return ResolvedTurnSlots(
                         route="ANALYSIS",
                         metric_id=resolved_metric,
-                        dimension_fields=tuple(last_analysis_slots.get("dimension_fields", ())) if last_analysis_slots else (),
-                        user_filters=tuple(last_analysis_slots.get("user_filters", ())) if last_analysis_slots else (),
+                        dimension_fields=pending_dimensions,
+                        user_filters=pending_filters,
                         time_range=time_range,
                         target_chart_type=target_chart_type,
                         source_turn_ids=(str(last_turn["turn_id"]),) if last_turn else (),
@@ -222,8 +230,8 @@ class ConversationSlotResolver:
                     return ResolvedTurnSlots(
                         route="ANALYSIS",
                         metric_id=resolved_metric,
-                        dimension_fields=tuple(last_analysis_slots.get("dimension_fields", ())) if last_analysis_slots else (),
-                        user_filters=tuple(last_analysis_slots.get("user_filters", ())) if last_analysis_slots else (),
+                        dimension_fields=pending_dimensions,
+                        user_filters=pending_filters,
                         time_range=time_range,
                         target_chart_type=target_chart_type,
                         source_turn_ids=(str(last_turn["turn_id"]),) if last_turn else (),

@@ -9,6 +9,10 @@ class NoEntitledAssetsError(LookupError):
     """인증된 role·domain 범위에 자연어 요청과 일치하는 승인 asset이 없음을 알린다."""
 
 
+class NoMetricMatchError(NoEntitledAssetsError):
+    """질문에서 승인된 BUSINESS 지표를 특정할 검색 증거가 없음을 알린다."""
+
+
 class MetadataUnavailableError(RuntimeError):
     """필수 DataHub metadata가 없거나 checksum·schema 검증에 실패해 안전하게 분석할 수 없음을 알린다."""
 

@@ -161,6 +161,17 @@ class GovernedDataset:
                 _runtime_filter(item, parameter_types, parameters)
                 for item in raw["required_filters"]
             ]
+            raw_rule = raw.get("metric_rule")
+            raw_governance = (
+                raw_rule.get("governance")
+                if isinstance(raw_rule, dict)
+                else None
+            )
+            semantic = (
+                raw_governance.get("semantic")
+                if isinstance(raw_governance, dict)
+                else None
+            )
             metrics.append(
                 {
                     "id": raw["id"],
@@ -180,6 +191,10 @@ class GovernedDataset:
                     "allowed_join_ids": list(raw["allowed_join_ids"]),
                     "join_required": raw["join_required"],
                     "query_strategies": list(raw["query_strategies"]),
+                    # SUPPORT 지표는 Glossary Term을 발행하지 않지만, 검증된 v2 rule의
+                    # 의미 정보는 resolver가 "미지원 지표"를 식별하는 데 필요하다.
+                    # 계산식·권한·물리 필드는 노출하지 않고 semantic projection만 전달한다.
+                    "semantic": clone_mapping(semantic) if isinstance(semantic, dict) else None,
                 }
             )
         return {

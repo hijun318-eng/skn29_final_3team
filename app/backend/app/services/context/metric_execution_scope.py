@@ -87,12 +87,30 @@ def synthetic_ratio_metric(
 def select_assets_for_metrics(
     assets: list[dict[str, object]],
     keep_ids: set[str],
-    synthetic: dict[str, object] | None,
+    synthetic: dict[str, object] | tuple[dict[str, object], ...] | None,
 ) -> list[dict[str, object]]:
-    """선택 Metric과 operand만 남기고 v2 Metric이 허용한 join edge 밖을 제거한다."""
+    """선택 Metric과 operand만 남기고 공통 허용 JOIN edge 밖을 제거한다.
+
+    ``synthetic``은 기존 단일 ratio 호출과 신규 복수 ratio 호출을 함께 받는다. 각 ratio는
+    자신의 분자 asset에 정확히 한 번만 삽입되며, 하나라도 삽입 위치를 증명하지 못하면
+    부분 계획으로 진행하지 않고 닫는다.
+    """
 
     selected_assets: list[dict[str, object]] = []
-    injected = False
+    synthetic_metrics = (
+        ()
+        if synthetic is None
+        else (synthetic,)
+        if isinstance(synthetic, dict)
+        else tuple(synthetic)
+    )
+    synthetic_ids = {str(item.get("id")) for item in synthetic_metrics}
+    if len(synthetic_ids) != len(synthetic_metrics) or "" in synthetic_ids:
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METRIC,
+            "Synthetic ratio metric ID는 비어 있지 않고 고유해야 합니다.",
+        )
+    injected: set[str] = set()
     for asset in assets:
         item = dict(asset)
         if "metrics" in item:
@@ -101,20 +119,23 @@ def select_assets_for_metrics(
                 for metric in item.get("metrics", ())
                 if isinstance(metric, dict) and metric.get("id") in keep_ids
             )
-            if synthetic is not None:
+            if synthetic_metrics:
                 kept = tuple(
-                    metric for metric in kept if metric.get("id") != synthetic["id"]
+                    metric
+                    for metric in kept
+                    if str(metric.get("id")) not in synthetic_ids
                 )
-            if (
-                synthetic is not None
-                and not injected
+            additions = tuple(
+                ratio
+                for ratio in synthetic_metrics
+                if str(ratio["id"]) not in injected
                 and any(
-                    metric.get("id") == synthetic["numerator_metric_id"]
+                    metric.get("id") == ratio["numerator_metric_id"]
                     for metric in kept
                 )
-            ):
-                kept = kept + (synthetic,)
-                injected = True
+            )
+            kept = kept + additions
+            injected.update(str(ratio["id"]) for ratio in additions)
             item["metrics"] = kept
             item["entitled_metric_ids"] = sorted(
                 str(metric["id"])
@@ -122,10 +143,10 @@ def select_assets_for_metrics(
                 if metric.get("visibility", "BUSINESS") == "BUSINESS"
             )
         selected_assets.append(item)
-    if synthetic is not None and not injected:
+    if synthetic_ids != injected:
         raise ContextBuildError(
             ContextBuildErrorCode.INVALID_METRIC,
-            "Ratio metric의 분자 metric이 승인된 asset에서 발견되지 않았습니다.",
+            "Ratio metric의 분자 metric이 승인된 asset에서 모두 발견되지 않았습니다.",
         )
     selected_assets = _restrict_v2_joins(selected_assets)
     if not any(asset.get("join_ids") for asset in selected_assets):
@@ -150,16 +171,10 @@ def _restrict_v2_joins(
             ContextBuildErrorCode.GOVERNANCE_VERSION_UNSUPPORTED,
             "Production 분석에는 단일 v2 runtime governance release가 필요합니다.",
         )
-    scopes = {
-        tuple(sorted(map(str, metric.get("allowed_join_ids", ()))))
-        for metric in metrics
-    }
-    if len(scopes) != 1:
-        raise ContextBuildError(
-            ContextBuildErrorCode.INVALID_METRIC,
-            "선택 Metric들의 허용 join 범위가 서로 다릅니다.",
-        )
-    allowed = set(next(iter(scopes), ()))
+    scopes = [set(map(str, metric.get("allowed_join_ids", ()))) for metric in metrics]
+    # 여러 Metric의 권한을 합집합으로 넓히면 한 Metric이 금지한 edge가 다른 Metric을
+    # 통해 우회된다. 컨텍스트에는 모든 계산 Metric이 공통으로 허용한 edge만 남긴다.
+    allowed = set.intersection(*scopes) if scopes else set()
     join_required = any(metric.get("join_required") is True for metric in metrics)
     retained_ids: set[str] = set()
     result = []

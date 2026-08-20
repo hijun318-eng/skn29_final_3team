@@ -63,7 +63,7 @@ class AnalysisContextStage:
         # 실패로 뭉개지 않는다. 어떤 값이 비었는지는 서버가 이미 알고 있으므로 model이나
         # 자산 검색을 다시 호출하지 않고 정확한 clarification 원인으로 닫는다.
         resolved = payload.resolved_slots
-        if resolved is not None and not resolved.metric_id:
+        if resolved is not None and not resolved.resolved_metric_ids:
             return self._responses.clarification_required(
                 context,
                 state.machine,
@@ -275,6 +275,18 @@ class AnalysisContextStage:
                     PipelineStage.CONTEXT,
                     AnalysisStatus.BLOCKED,
                     ErrorCode.FILTER_VALUE_NOT_FOUND,
+                    str(error),
+                    decision,
+                    detail=str(error),
+                )
+            if error.code is ContextBuildErrorCode.METRIC_NOT_AVAILABLE:
+                return self._responses.error(
+                    context,
+                    state.machine,
+                    state.trace,
+                    PipelineStage.CONTEXT,
+                    AnalysisStatus.BLOCKED,
+                    ErrorCode.METRIC_NOT_AVAILABLE,
                     str(error),
                     decision,
                     detail=str(error),

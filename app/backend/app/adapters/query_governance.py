@@ -17,6 +17,7 @@ from app.adapters.datahub_metadata import (
     GovernedMetadataError,
 )
 from app.adapters.datahub_metadata_types import metric_rule_matches
+from app.adapters.legacy_semantic_release import compile_legacy_semantic_release
 from app.adapters.query_search_evidence import (
     gather_snapshot_and_semantic as _gather_snapshot_and_semantic,
     ranked_matches as _ranked_matches,
@@ -24,7 +25,6 @@ from app.adapters.query_search_evidence import (
     with_ratio_metrics as _with_ratio_metrics,
 )
 from app.adapters.query_join_graph import (
-    common_join_graph,
     connect_fqns,
     metric_dependencies,
     other_endpoints,
@@ -42,6 +42,7 @@ from app.ports.data_platform import (
 )
 from app.services.context.builder import ContextBuildError
 from app.services.context.contract import GovernedJoin
+from app.services.context.semantic_release import CanonicalSemanticRelease
 from src.data.governance_contract import (
     canonical_json,
     metric_source_kind,
@@ -91,6 +92,8 @@ class QueryGovernanceEngine:
         self._expected_release = expected_context_release
         self._max_request_assets = max_request_assets
         self._search_mode = search_mode
+        self._compiled_snapshot: CatalogSnapshot | None = None
+        self._compiled_release: CanonicalSemanticRelease | None = None
 
     async def search_assets(
         self,
@@ -103,7 +106,8 @@ class QueryGovernanceEngine:
             raise NoMetricMatchError("the request has no searchable Unicode tokens")
         try:
             snapshot, semantic_hits = await self._load_search_evidence(query)
-            datasets = self._active_datasets(snapshot)
+            release = self._active_release(snapshot)
+            datasets = self._datasets_for_release(snapshot, release)
             terms = self._required_terms(snapshot, datasets)
             # lexical과 semantic 증거를 함께 요구 가능한 일반 경로로 유지해 특정 질문용 키워드 사전을 만들지 않는다.
             ranked = _ranked_matches(query_tokens, datasets, terms, semantic_hits)
@@ -122,6 +126,7 @@ class QueryGovernanceEngine:
                 tuple(item[1] for item in entitled),
                 datasets,
                 context,
+                release.joins,
             )
             self._validate_common_contracts(selected)
             await self._schema.verify(selected)
@@ -248,6 +253,14 @@ class QueryGovernanceEngine:
             return stages, None
         stages["catalog_manifest"] = "ready"
         try:
+            release = self._active_release(snapshot)
+            datasets = self._datasets_for_release(snapshot, release)
+        except GovernedMetadataError:
+            # Legacy manifest가 유효해도 canonical compiler와 실행 계약이 불일치하면
+            # 실제 요청은 실패한다. readiness도 같은 실행 경계를 통과해야 한다.
+            stages["semantic_release"] = "not_ready"
+            return stages, None
+        try:
             await self._schema.verify(datasets)
         except TrinoSchemaDriftError:
             return stages, None
@@ -275,8 +288,46 @@ class QueryGovernanceEngine:
         self,
         snapshot: CatalogSnapshot,
     ) -> tuple[GovernedDataset, ...]:
-        datasets = coherent_release_datasets(snapshot, self._expected_release)
-        validate_release_manifest(snapshot, datasets)
+        release = self._active_release(snapshot)
+        return self._datasets_for_release(snapshot, release)
+
+    def _active_release(
+        self,
+        snapshot: CatalogSnapshot,
+    ) -> CanonicalSemanticRelease:
+        """같은 cached snapshot은 한 번만 canonical typed graph로 컴파일해 원자적으로 재사용한다."""
+
+        if self._compiled_snapshot is snapshot and self._compiled_release is not None:
+            return self._compiled_release
+        release = compile_legacy_semantic_release(
+            snapshot,
+            self._expected_release,
+        )
+        # 완성된 불변 projection만 게시한다. 컴파일 도중 실패하면 직전 release로
+        # fallback하지 않고 예외를 전파해 요청을 fail-closed한다.
+        self._compiled_snapshot = snapshot
+        self._compiled_release = release
+        return release
+
+    @staticmethod
+    def _datasets_for_release(
+        snapshot: CatalogSnapshot,
+        release: CanonicalSemanticRelease,
+    ) -> tuple[GovernedDataset, ...]:
+        """canonical release membership 순서대로 기존 runtime dataset projection을 연결한다."""
+
+        try:
+            datasets = tuple(
+                snapshot.datasets_by_fqn[item.fqn] for item in release.assets
+            )
+        except KeyError as error:  # pragma: no cover - compiler membership 검증의 이중 방어다.
+            raise GovernedMetadataError(
+                "canonical release references an unavailable runtime dataset"
+            ) from error
+        if {item.catalog_checksum for item in datasets} != {release.catalog_checksum}:
+            raise GovernedMetadataError(
+                "canonical release dataset membership changed after compilation"
+            )
         return datasets
 
     @staticmethod
@@ -356,19 +407,11 @@ class QueryGovernanceEngine:
         seeds: tuple[GovernedDataset, ...],
         datasets: tuple[GovernedDataset, ...],
         context: dict[str, Any],
+        edges: tuple[GovernedJoin, ...],
     ) -> tuple[tuple[GovernedDataset, ...], tuple[GovernedJoin, ...]]:
         """seed·metric dependency·join 경로로 확장한 asset 집합 전체가 ``entitled(context)``를 만족할 때만 반환한다."""
 
         by_fqn = {item.fqn: item for item in datasets}
-        graph = common_join_graph(datasets)
-        approved = {
-            item.fqn: frozenset(str(column["name"]) for column in item.columns)
-            for item in datasets
-        }
-        edges = tuple(
-            GovernedJoin.from_mapping(item, approved_assets=approved)
-            for item in graph["edges"]
-        )
         for candidate_anchor in seeds:
             anchor = candidate_anchor.fqn
             selected = {anchor}

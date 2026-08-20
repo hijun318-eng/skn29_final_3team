@@ -16,10 +16,12 @@ if str(BACKEND) not in sys.path:
 
 from app.services.context.filter_value_resolver import (
     FilterValueUnresolvedError,
+    ResolvedFilterValue,
     discover_dimension_values,
     resolve_filter_value,
 )
 from app.services.context.metric_resolver import MetricResolver
+from app.services.context.service import _inject_turn_filters
 
 
 def async_test(function):
@@ -155,3 +157,57 @@ async def test_resolve_filter_value_rejects_non_succeeded_query():
         await resolve_filter_value(
             adapter, "serving.room_daily", "hotel_name", "eq", "sunset"
         )
+
+
+def test_turn_filter_is_applied_to_ratio_operands_but_not_ratio_metric():
+    """사용자 필터가 ratio 실행 operand에는 적용되고 ratio 정의 자체는 바꾸지 않는지 검증한다."""
+
+    asset_fqn = "serving.analytics.hotel_operations_daily"
+    assets = [
+        {
+            "fqn": asset_fqn,
+            "metrics": [
+                {
+                    "id": "occupied_room_nights",
+                    "aggregation": "sum",
+                    "required_filters": [],
+                },
+                {
+                    "id": "available_room_nights",
+                    "aggregation": "sum",
+                    "required_filters": [],
+                },
+                {
+                    "id": "occupancy_rate",
+                    "aggregation": "ratio",
+                    "required_filters": [],
+                },
+            ],
+        }
+    ]
+
+    filtered = _inject_turn_filters(
+        assets,
+        [
+            ResolvedFilterValue(
+                asset_fqn=asset_fqn,
+                column="hotel_code",
+                operator="eq",
+                value="VISTA",
+            )
+        ],
+    )
+
+    metrics = {item["id"]: item for item in filtered[0]["metrics"]}
+    expected = [
+        {
+            "field": "hotel_code",
+            "operator": "eq",
+            "value": "VISTA",
+            "value_type": "string",
+            "parameter": "user_filter_0",
+        }
+    ]
+    assert metrics["occupied_room_nights"]["required_filters"] == expected
+    assert metrics["available_room_nights"]["required_filters"] == expected
+    assert metrics["occupancy_rate"]["required_filters"] == []

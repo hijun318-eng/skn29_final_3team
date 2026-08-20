@@ -25,6 +25,7 @@ from metric_governance_contract import (
 
 from src.data.governance_contract import (
     RUNTIME_GOVERNANCE_VERSION as CONTRACT_VERSION,
+    SEMANTIC_RELEASE_KEYS,
     validate_governance_reference_coverage,
 )
 from src.data.entitlement_roles import validate_entitlement_roles
@@ -41,19 +42,7 @@ _TIME_BUCKETS = {"none", "day", "week", "month", "quarter", "year"}
 _TIMEZONE_MODES = {"preserve", "context"}
 _DATASET_ORIGINS = {"DEV", "TEST", "QA", "UAT", "EI", "PRE", "STG", "NON_PROD", "PROD", "CORP", "RVW", "PRD", "TST", "SIT", "SBX", "SANDBOX", "CERT"}
 _LOGICAL_TYPES = {"boolean", "fixed", "string", "bytes", "number", "date", "time", "enum", "null", "map", "array", "union", "record"}
-_ROOT_KEYS = {
-    "catalog_version",
-    "policy_version",
-    "governance_entities",
-    "schema_context",
-    "metric_rules",
-    "metric_terms",
-    "dimensions",
-    "join_graph",
-    "time_rules",
-    "parameter_contract",
-    "query_policy",
-}
+_ROOT_KEYS = SEMANTIC_RELEASE_KEYS
 
 
 def load_bundle(path: Any) -> dict[str, Any]:
@@ -325,7 +314,14 @@ def _validate_joins(value: object, assets: Mapping[str, frozenset[str]]) -> None
         _exact_keys(edge, required, f"join[{index}]")
         edge_id = _identifier(edge["id"], f"join[{index}].id")
         left, right = str(edge["left"]), str(edge["right"])
-        if edge_id in ids or left not in assets or right not in assets or edge["kind"] not in _JOIN_KINDS or edge["cardinality"] not in _CARDINALITIES:
+        if (
+            edge_id in ids
+            or left == right
+            or left not in assets
+            or right not in assets
+            or edge["kind"] not in _JOIN_KINDS
+            or edge["cardinality"] not in _CARDINALITIES
+        ):
             raise SemanticMetadataError("join endpoints, kind, cardinality, and id must be governed")
         ids.add(edge_id)
         conditions = _list(edge["equality_conditions"], f"join[{index}].equality_conditions", non_empty=True)
@@ -346,10 +342,32 @@ def _validate_joins(value: object, assets: Mapping[str, frozenset[str]]) -> None
         _exact_keys(preaggregation, {"required", "grain", "keys"}, f"join[{index}].preaggregation")
         if not isinstance(preaggregation["required"], bool):
             raise SemanticMetadataError("preaggregation.required must be boolean")
+        preaggregation_assets: set[str] = set()
         for name in ("grain", "keys"):
             fields = _list(preaggregation[name], f"join[{index}].preaggregation.{name}", non_empty=True)
             for field in fields:
-                _qualified(field, assets, f"join[{index}].preaggregation.{name}")
+                asset_fqn, _column = _qualified(
+                    field,
+                    assets,
+                    f"join[{index}].preaggregation.{name}",
+                )
+                preaggregation_assets.add(asset_fqn)
+        if len(preaggregation_assets) != 1:
+            raise SemanticMetadataError(
+                "join preaggregation fields must target exactly one endpoint"
+            )
+        many_endpoint = {
+            "many_to_one": left,
+            "one_to_many": right,
+        }.get(str(edge["cardinality"]))
+        if (
+            preaggregation["required"] is True
+            and many_endpoint is not None
+            and preaggregation_assets != {many_endpoint}
+        ):
+            raise SemanticMetadataError(
+                "required join preaggregation must target the many endpoint"
+            )
 
 
 def _validate_time_rules(value: object, assets: Mapping[str, frozenset[str]], parameters: Mapping[str, tuple[str, str]]) -> None:

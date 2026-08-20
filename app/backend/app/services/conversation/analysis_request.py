@@ -20,6 +20,7 @@ def build_structured_analysis_request(
     # model이 같은 질문을 다시 해석해 사용자의 선택과 다른 metric을 고를 수 있다.
     if (
         slots.metric_id
+        or slots.metric_ids
         or slots.is_inherited_metric
         or slots.is_inherited_period
         or slots.is_inherited_dimension
@@ -36,6 +37,7 @@ def build_structured_analysis_request(
         )
         resolved = ResolvedSlots(
             metric_id=slots.metric_id,
+            metric_ids=slots.metric_ids,
             dimension_ids=dimension_ids,
             user_filters=tuple(dict(item) for item in slots.user_filters),
             period_start=(
@@ -46,6 +48,18 @@ def build_structured_analysis_request(
                 if slots.time_range
                 else None
             ),
+            comparison_period_start=(
+                slots.comparison_time_range.start.isoformat()
+                if slots.comparison_time_range
+                else None
+            ),
+            comparison_period_end_exclusive=(
+                slots.comparison_time_range.end_exclusive.isoformat()
+                if slots.comparison_time_range
+                else None
+            ),
+            analysis_operation=slots.analysis_operation,
+            result_limit=slots.result_limit,
         )
     return AnalysisRequest(question=user_message, resolved_slots=resolved)
 

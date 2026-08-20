@@ -25,6 +25,10 @@ from app.ports.model import ModelAdapter
 from app.services.analysis.model_support import model_failure_code, model_trace_detail
 from app.services.analysis.pipeline_state import AnalysisPipelineState
 from app.services.analysis.responses import AnalysisResponseFactory
+from app.services.analysis.logical_plan import (
+    AnalysisPlanError,
+    AnalysisPlanErrorCode,
+)
 from app.services.context.builder import ContextPackage
 from app.services.execution_control import IsolatedExecutionCache, secure_cache_key
 from app.services.analysis.pipeline_support import PipelineSupport
@@ -53,12 +57,73 @@ class AnalysisPlanStage:
         context = state.context
         decision = state.decision
 
+        # SQL 문자열을 생성하기 전에 지표·연산·차원·시간·JOIN 물리 전략을 서버가
+        # 확정한다. 질문 문구나 모델 추정은 권한 및 팬아웃 결정을 열 수 없다.
+        try:
+            analysis_plan = self._support.analysis_plan(
+                state.structured_request,
+                package,
+            )
+        except AnalysisPlanError as error:
+            logger.warning(
+                "logical analysis plan rejected: reason=%s",
+                error.code.value,
+            )
+            state.record(
+                PipelineStage.G2,
+                error.code.value,
+                StageOutcome.BLOCKED,
+            )
+            if error.code is AnalysisPlanErrorCode.JOIN_PERMISSION_DENIED:
+                public_code = ErrorCode.ACCESS_DENIED
+                message = "선택한 분석 조합에 필요한 데이터 관계 권한이 없습니다."
+            elif error.code in {
+                AnalysisPlanErrorCode.FANOUT_UNSAFE,
+                AnalysisPlanErrorCode.JOIN_PATH_UNAVAILABLE,
+            }:
+                public_code = ErrorCode.GRAIN_VIOLATION
+                message = "선택한 지표와 차원을 안전한 집계 단위로 결합할 수 없습니다."
+            else:
+                public_code = ErrorCode.SQL_POLICY_BLOCKED
+                message = "선택한 지표·차원·기간으로 안전한 분석 계획을 만들 수 없습니다."
+            return self._responses.error(
+                context,
+                state.machine,
+                state.trace,
+                PipelineStage.G2,
+                AnalysisStatus.BLOCKED,
+                public_code,
+                message,
+                decision,
+                detail=error.code.value,
+            )
+        analysis_plan_payload = analysis_plan.as_dict()
+        state.analysis_plan = analysis_plan_payload
+        structured_for_model = {
+            **state.structured_request,
+            "metric_ids": list(analysis_plan.dependency_metric_ids),
+            "selected_metric_ids": list(analysis_plan.output_metric_ids),
+            "selected_metric_id": (
+                analysis_plan.output_metric_ids[0]
+                if len(analysis_plan.output_metric_ids) == 1
+                else None
+            ),
+            "dimension_fields": [
+                item.as_dict() for item in analysis_plan.dimension_fields
+            ],
+            "filter_fields": [item.as_dict() for item in analysis_plan.filter_fields],
+            "analysis_operation": analysis_plan.operation.value,
+            "analysis_time_bucket": analysis_plan.time_bucket,
+            "analysis_result_limit": analysis_plan.result_limit,
+        }
+
         # 1. 격리된 실행 캐시 확인
         plan_key = secure_cache_key(
             "sql-plan",
             question=state.normalized_question,
             template=decision.template_id,
             parameters=state.payload.parameters,
+            analysis_plan_checksum=analysis_plan.checksum,
             **state.common_key,
         )
         plan = self._cache.get_plan(plan_key)
@@ -93,7 +158,7 @@ class AnalysisPlanStage:
                     "node2",
                     {
                         "question": state.normalized_question,
-                        "structured_request": state.structured_request,
+                        "structured_request": structured_for_model,
                         "references": state.references,
                         "request_id": str(context.request_id),
                         "package": package,
@@ -116,6 +181,10 @@ class AnalysisPlanStage:
                     code=model_failure_code(error),
                 )
 
+        if isinstance(plan, dict):
+            # 모델이나 캐시가 이 값을 소유하지 못하도록 G2 직전에 현재 Context에서
+            # 컴파일한 payload로 항상 덮어쓴다.
+            plan["analysis_plan"] = analysis_plan_payload
         plan_violation = self._support.model_plan_violation(plan)
         if plan_violation:
             logger.warning(
@@ -218,7 +287,7 @@ class AnalysisPlanStage:
                         "trace_id": context.trace_id,
                         "rejected_sql": str(plan["sql"]),
                         "normalized_question": state.normalized_question,
-                        "structured_request": state.structured_request,
+                        "structured_request": structured_for_model,
                         "violation": violation,
                         "violation_detail": self._support.g2_repair_hint(
                             violation, package
@@ -229,6 +298,7 @@ class AnalysisPlanStage:
                 )
                 repair_trace_detail = model_trace_detail(self._model)
                 plan["_model_trace_detail"] = repair_trace_detail
+                plan["analysis_plan"] = analysis_plan_payload
             except (TimeoutError, OSError, TypeError, ValueError) as error:
                 logger.warning("node2 repair failed: type=%s", type(error).__name__)
                 return self._responses.error(

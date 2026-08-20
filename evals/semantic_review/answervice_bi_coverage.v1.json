@@ -1,0 +1,269 @@
+{
+  "contract_version": "answervice.bi_coverage_candidate.v2",
+  "state": "REVIEW_REQUIRED",
+  "runtime_source": false,
+  "release_id": "walkerhill-bi-serving-v1.20260820.1",
+  "source_release_id": "walkerhill-v4.3-sql-20260815-derived.1",
+  "serving_schema": "serving.analytics_v4_3",
+  "source_sql_sha256": "78e49ad5bfd5224e1ec3532aadd56bf9af43c2dc7c71895735e4ffa55c53dfcf",
+  "views": [
+    {"fqn": "serving.analytics_v4_3.room_stay_night_fact", "grain_keys": ["stay_id", "business_date"]},
+    {"fqn": "serving.analytics_v4_3.room_kpi_daily_by_type", "grain_keys": ["business_date", "hotel_code", "room_type_code"]},
+    {"fqn": "serving.analytics_v4_3.room_reservation_fact", "grain_keys": ["reservation_id"]},
+    {"fqn": "serving.analytics_v4_3.fnb_order_fact", "grain_keys": ["order_id"]},
+    {"fqn": "serving.analytics_v4_3.banquet_event_fact", "grain_keys": ["banquet_event_id"]},
+    {"fqn": "serving.analytics_v4_3.banquet_revenue_fact", "grain_keys": ["revenue_line_id"]},
+    {"fqn": "serving.analytics_v4_3.facility_usage_fact", "grain_keys": ["usage_event_id"]},
+    {"fqn": "serving.analytics_v4_3.facility_incident_fact", "grain_keys": ["incident_id"]},
+    {"fqn": "serving.analytics_v4_3.facility_resource_daily_fact", "grain_keys": ["business_date", "facility_id"]},
+    {"fqn": "serving.analytics_v4_3.staffing_daily_fact", "grain_keys": ["business_date", "hotel_code", "department", "shift_code"]},
+    {"fqn": "serving.analytics_v4_3.membership_current_snapshot", "grain_keys": ["snapshot_date", "member_no"]},
+    {"fqn": "serving.analytics_v4_3.membership_point_fact", "grain_keys": ["point_txn_id"]},
+    {"fqn": "serving.analytics_v4_3.voc_review_fact", "grain_keys": ["voc_review_id"]},
+    {"fqn": "serving.analytics_v4_3.operating_revenue_daily_fact", "grain_keys": ["business_date", "hotel_code"]}
+  ],
+  "dimension_families": [
+    {"id": "business_date", "aliases": ["영업일", "날짜", "일별"], "columns": ["business_date"]},
+    {"id": "hotel", "aliases": ["호텔", "호텔별"], "columns": ["hotel_code"]},
+    {"id": "room_type", "aliases": ["객실 유형", "객실 타입"], "columns": ["room_type_code", "room_type_name"]},
+    {"id": "booking_channel", "aliases": ["예약 채널", "채널별"], "columns": ["booking_channel"]},
+    {"id": "market_segment", "aliases": ["시장 세그먼트", "고객군"], "columns": ["market_segment"]},
+    {"id": "reservation_status", "aliases": ["예약 상태", "상태별"], "columns": ["reservation_status"]},
+    {"id": "outlet", "aliases": ["식음 업장", "업장별"], "columns": ["outlet_id", "outlet_name"]},
+    {"id": "outlet_category", "aliases": ["업장 유형"], "columns": ["outlet_category"]},
+    {"id": "service_period", "aliases": ["식사 시간대", "서비스 시간대"], "columns": ["service_period"]},
+    {"id": "order_status", "aliases": ["주문 상태"], "columns": ["order_status"]},
+    {"id": "venue", "aliases": ["행사장", "연회장"], "columns": ["venue_id", "venue_name"]},
+    {"id": "venue_category", "aliases": ["행사장 유형"], "columns": ["venue_category"]},
+    {"id": "event_type", "aliases": ["행사 유형", "연회 유형"], "columns": ["event_type"]},
+    {"id": "booking_status", "aliases": ["연회 예약 상태"], "columns": ["booking_status"]},
+    {"id": "facility", "aliases": ["시설", "시설별"], "columns": ["facility_id", "facility_name"]},
+    {"id": "facility_type", "aliases": ["시설 유형"], "columns": ["facility_type"]},
+    {"id": "usage_type", "aliases": ["시설 이용 유형"], "columns": ["usage_type"]},
+    {"id": "incident_type", "aliases": ["시설 사고 유형", "불편 유형"], "columns": ["incident_type"]},
+    {"id": "severity", "aliases": ["심각도"], "columns": ["severity"]},
+    {"id": "department", "aliases": ["부서", "부서별"], "columns": ["department"]},
+    {"id": "shift", "aliases": ["근무조", "근무조별"], "columns": ["shift_code"]},
+    {"id": "membership_tier", "aliases": ["회원 등급", "멤버십 등급"], "columns": ["tier_code", "tier_name"]},
+    {"id": "member_status", "aliases": ["회원 상태"], "columns": ["member_status"]},
+    {"id": "point_transaction_type", "aliases": ["포인트 거래 유형"], "columns": ["txn_type"]},
+    {"id": "voc_channel", "aliases": ["VOC 채널", "수집 채널"], "columns": ["source_channel"]},
+    {"id": "voc_touchpoint", "aliases": ["VOC 접점", "고객 접점"], "columns": ["touchpoint"]},
+    {"id": "voc_category", "aliases": ["VOC 유형", "VOC 범주"], "columns": ["selected_category"]},
+    {"id": "sentiment", "aliases": ["감성", "감성별"], "columns": ["sentiment_label"]},
+    {"id": "voc_topic", "aliases": ["VOC 주제", "주제별"], "columns": ["primary_topic"]}
+  ],
+  "planning_contract": {
+    "version": "ANSWERVICE-ANALYSIS-CAPABILITY-v1",
+    "max_metrics_per_plan": 4,
+    "operations": ["aggregate", "breakdown", "time_trend", "top_n", "bottom_n", "period_comparison"],
+    "assets": [
+      {
+        "fqn": "serving.analytics_v4_3.room_stay_night_fact",
+        "time": {"mode": "range", "field": "business_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "business_date", "columns": ["business_date"]},
+          {"id": "hotel", "columns": ["hotel_code"]},
+          {"id": "room_type", "columns": ["room_type_code", "room_type_name"]},
+          {"id": "booking_channel", "columns": ["booking_channel"]},
+          {"id": "market_segment", "columns": ["market_segment"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.room_kpi_daily_by_type",
+        "time": {"mode": "range", "field": "business_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "business_date", "columns": ["business_date"]},
+          {"id": "hotel", "columns": ["hotel_code"]},
+          {"id": "room_type", "columns": ["room_type_code", "room_type_name"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.room_reservation_fact",
+        "time": {"mode": "range", "field": "booked_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "hotel", "columns": ["hotel_code"]},
+          {"id": "room_type", "columns": ["room_type_code", "room_type_name"]},
+          {"id": "booking_channel", "columns": ["booking_channel"]},
+          {"id": "market_segment", "columns": ["market_segment"]},
+          {"id": "reservation_status", "columns": ["reservation_status"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.fnb_order_fact",
+        "time": {"mode": "range", "field": "business_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "business_date", "columns": ["business_date"]},
+          {"id": "hotel", "columns": ["hotel_code"]},
+          {"id": "outlet", "columns": ["outlet_id", "outlet_name"]},
+          {"id": "outlet_category", "columns": ["outlet_category"]},
+          {"id": "service_period", "columns": ["service_period"]},
+          {"id": "order_status", "columns": ["order_status"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.banquet_event_fact",
+        "time": {"mode": "range", "field": "event_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "hotel", "columns": ["hotel_code"]},
+          {"id": "venue", "columns": ["venue_id", "venue_name"]},
+          {"id": "venue_category", "columns": ["venue_category"]},
+          {"id": "event_type", "columns": ["event_type"]},
+          {"id": "booking_status", "columns": ["booking_status"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.banquet_revenue_fact",
+        "time": {"mode": "range", "field": "business_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "business_date", "columns": ["business_date"]},
+          {"id": "hotel", "columns": ["hotel_code"]},
+          {"id": "venue", "columns": ["venue_id", "venue_name"]},
+          {"id": "venue_category", "columns": ["venue_category"]},
+          {"id": "event_type", "columns": ["event_type"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.facility_usage_fact",
+        "time": {"mode": "range", "field": "business_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "business_date", "columns": ["business_date"]},
+          {"id": "hotel", "columns": ["hotel_code"]},
+          {"id": "facility", "columns": ["facility_id", "facility_name"]},
+          {"id": "facility_type", "columns": ["facility_type"]},
+          {"id": "usage_type", "columns": ["usage_type"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.facility_incident_fact",
+        "time": {"mode": "range", "field": "business_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "business_date", "columns": ["business_date"]},
+          {"id": "hotel", "columns": ["hotel_code"]},
+          {"id": "facility", "columns": ["facility_id", "facility_name"]},
+          {"id": "facility_type", "columns": ["facility_type"]},
+          {"id": "incident_type", "columns": ["incident_type"]},
+          {"id": "severity", "columns": ["severity"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.facility_resource_daily_fact",
+        "time": {"mode": "range", "field": "business_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "business_date", "columns": ["business_date"]},
+          {"id": "hotel", "columns": ["hotel_code"]},
+          {"id": "facility", "columns": ["facility_id", "facility_name"]},
+          {"id": "facility_type", "columns": ["facility_type"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.staffing_daily_fact",
+        "time": {"mode": "range", "field": "business_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "business_date", "columns": ["business_date"]},
+          {"id": "hotel", "columns": ["hotel_code"]},
+          {"id": "department", "columns": ["department"]},
+          {"id": "shift", "columns": ["shift_code"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.membership_current_snapshot",
+        "time": {"mode": "latest_snapshot", "field": "snapshot_date", "default": "max_source_value_lte_as_of"},
+        "dimensions": [
+          {"id": "membership_tier", "columns": ["tier_code", "tier_name"]},
+          {"id": "member_status", "columns": ["member_status"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.membership_point_fact",
+        "time": {"mode": "range", "field": "business_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "business_date", "columns": ["business_date"]},
+          {"id": "membership_tier", "columns": ["tier_code", "tier_name"]},
+          {"id": "member_status", "columns": ["member_status"]},
+          {"id": "point_transaction_type", "columns": ["txn_type"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.voc_review_fact",
+        "time": {"mode": "range", "field": "business_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "business_date", "columns": ["business_date"]},
+          {"id": "hotel", "columns": ["hotel_code"]},
+          {"id": "outlet", "columns": ["outlet_id"]},
+          {"id": "facility", "columns": ["facility_id"]},
+          {"id": "voc_channel", "columns": ["source_channel"]},
+          {"id": "voc_touchpoint", "columns": ["touchpoint"]},
+          {"id": "voc_category", "columns": ["selected_category"]},
+          {"id": "sentiment", "columns": ["sentiment_label"]},
+          {"id": "voc_topic", "columns": ["primary_topic"]}
+        ]
+      },
+      {
+        "fqn": "serving.analytics_v4_3.operating_revenue_daily_fact",
+        "time": {"mode": "range", "field": "business_date", "default": "required_period"},
+        "dimensions": [
+          {"id": "business_date", "columns": ["business_date"]},
+          {"id": "hotel", "columns": ["hotel_code"]}
+        ]
+      }
+    ]
+  },
+  "metrics": [
+    {"id": "room_revenue", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.room_stay_night_fact", "column": "room_revenue_krw", "aggregation": "sum"},
+    {"id": "room_guest_nights", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.room_stay_night_fact", "column": "guest_nights", "aggregation": "sum"},
+    {"id": "available_room_nights", "visibility": "SUPPORT", "asset": "serving.analytics_v4_3.room_kpi_daily_by_type", "column": "available_room_nights", "aggregation": "sum"},
+    {"id": "occupied_room_nights", "visibility": "SUPPORT", "asset": "serving.analytics_v4_3.room_kpi_daily_by_type", "column": "occupied_room_nights", "aggregation": "sum"},
+    {"id": "room_revenue_kpi_operand", "visibility": "SUPPORT", "asset": "serving.analytics_v4_3.room_kpi_daily_by_type", "column": "room_revenue_krw", "aggregation": "sum"},
+    {"id": "occupancy_rate", "visibility": "BUSINESS", "operands": ["occupied_room_nights", "available_room_nights"]},
+    {"id": "adr", "visibility": "BUSINESS", "operands": ["room_revenue_kpi_operand", "occupied_room_nights"]},
+    {"id": "revpar", "visibility": "BUSINESS", "operands": ["room_revenue_kpi_operand", "available_room_nights"]},
+    {"id": "room_reservation_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.room_reservation_fact", "column": "reservation_count", "aggregation": "sum"},
+    {"id": "booked_room_nights", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.room_reservation_fact", "column": "booked_room_nights", "aggregation": "sum"},
+    {"id": "booked_room_amount", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.room_reservation_fact", "column": "booked_amount_krw", "aggregation": "sum"},
+    {"id": "fnb_revenue", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.fnb_order_fact", "column": "fnb_revenue_krw", "aggregation": "sum"},
+    {"id": "fnb_order_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.fnb_order_fact", "column": "order_count", "aggregation": "sum"},
+    {"id": "completed_fnb_order_count", "visibility": "SUPPORT", "asset": "serving.analytics_v4_3.fnb_order_fact", "column": "completed_order_count", "aggregation": "sum"},
+    {"id": "fnb_covers", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.fnb_order_fact", "column": "covers", "aggregation": "sum"},
+    {"id": "fnb_average_check", "visibility": "BUSINESS", "operands": ["fnb_revenue", "completed_fnb_order_count"]},
+    {"id": "banquet_event_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.banquet_event_fact", "column": "event_count", "aggregation": "sum"},
+    {"id": "banquet_completed_event_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.banquet_event_fact", "column": "completed_event_count", "aggregation": "sum"},
+    {"id": "banquet_cancelled_event_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.banquet_event_fact", "column": "cancelled_event_count", "aggregation": "sum"},
+    {"id": "banquet_attendees", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.banquet_event_fact", "column": "actual_attendees", "aggregation": "sum"},
+    {"id": "banquet_contracted_amount", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.banquet_event_fact", "column": "contracted_amount_krw", "aggregation": "sum"},
+    {"id": "banquet_revenue", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.banquet_revenue_fact", "column": "banquet_revenue_krw", "aggregation": "sum"},
+    {"id": "facility_revenue", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.facility_usage_fact", "column": "facility_revenue_krw", "aggregation": "sum"},
+    {"id": "facility_usage_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.facility_usage_fact", "column": "usage_count", "aggregation": "sum"},
+    {"id": "facility_guest_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.facility_usage_fact", "column": "facility_guests", "aggregation": "sum"},
+    {"id": "facility_duration_minutes", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.facility_usage_fact", "column": "duration_minutes", "aggregation": "sum"},
+    {"id": "facility_incident_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.facility_incident_fact", "column": "incident_count", "aggregation": "sum"},
+    {"id": "high_severity_incident_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.facility_incident_fact", "column": "high_severity_incident_count", "aggregation": "sum"},
+    {"id": "facility_impacted_guest_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.facility_incident_fact", "column": "guest_impact_count", "aggregation": "sum"},
+    {"id": "incident_impact_minutes", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.facility_incident_fact", "column": "impact_minutes", "aggregation": "sum"},
+    {"id": "energy_consumption", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.facility_resource_daily_fact", "column": "energy_kwh", "aggregation": "sum"},
+    {"id": "water_consumption", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.facility_resource_daily_fact", "column": "water_m3", "aggregation": "sum"},
+    {"id": "waste_generation", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.facility_resource_daily_fact", "column": "waste_kg", "aggregation": "sum"},
+    {"id": "planned_staff_hours", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.staffing_daily_fact", "column": "planned_hours", "aggregation": "sum"},
+    {"id": "actual_staff_hours", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.staffing_daily_fact", "column": "actual_hours", "aggregation": "sum"},
+    {"id": "guest_facing_fte", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.staffing_daily_fact", "column": "guest_facing_fte", "aggregation": "sum"},
+    {"id": "overtime_hours", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.staffing_daily_fact", "column": "overtime_hours", "aggregation": "sum"},
+    {"id": "member_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.membership_current_snapshot", "column": "member_count", "aggregation": "sum"},
+    {"id": "membership_points_balance", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.membership_current_snapshot", "column": "points_balance", "aggregation": "sum"},
+    {"id": "points_earned", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.membership_point_fact", "column": "points_earned", "aggregation": "sum"},
+    {"id": "points_redeemed", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.membership_point_fact", "column": "points_redeemed", "aggregation": "sum"},
+    {"id": "points_expired", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.membership_point_fact", "column": "points_expired", "aggregation": "sum"},
+    {"id": "voc_review_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.voc_review_fact", "column": "review_count", "aggregation": "sum"},
+    {"id": "voc_low_rating_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.voc_review_fact", "column": "low_rating_review_count", "aggregation": "sum"},
+    {"id": "voc_negative_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.voc_review_fact", "column": "negative_review_count", "aggregation": "sum"},
+    {"id": "voc_followup_count", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.voc_review_fact", "column": "followup_review_count", "aggregation": "sum"},
+    {"id": "voc_rating_points", "visibility": "SUPPORT", "asset": "serving.analytics_v4_3.voc_review_fact", "column": "rating_points", "aggregation": "sum"},
+    {"id": "voc_average_rating", "visibility": "BUSINESS", "operands": ["voc_rating_points", "voc_review_count"]},
+    {"id": "total_operating_revenue_krw", "visibility": "BUSINESS", "asset": "serving.analytics_v4_3.operating_revenue_daily_fact", "column": "total_operating_revenue_krw", "aggregation": "sum"}
+  ],
+  "activation_gaps": [
+    "업무 정의·별칭·공개 여부와 metric additivity에 대한 승인",
+    "planning_contract의 DataHub publication 및 active release read-back",
+    "catalog-generated Metric×Dimension×연산 조합의 생성 성공률 검증",
+    "latest_snapshot SQL 생성 및 SQL Guard 검증"
+  ]
+}

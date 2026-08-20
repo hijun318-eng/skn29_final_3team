@@ -19,6 +19,7 @@ from app.services.context.builder import ContextPackage, ContextPackageBuilder
 from app.services.context.service import PipelineContextService
 from app.services.context.metric_resolver import MetricResolver
 from app.services.analysis.result_validator import PipelineResultValidator
+from app.services.analysis.logical_plan import AnalysisPlan, build_analysis_plan
 from app.services.sql_guard.guard import apply_guard_decision, validate_plan
 
 
@@ -71,6 +72,15 @@ class PipelineSupport:
             return decision.violation
         apply_guard_decision(plan, decision)
         return None
+
+    @staticmethod
+    def analysis_plan(
+        structured_request: dict[str, object],
+        package: ContextPackage,
+    ) -> AnalysisPlan:
+        """검증된 구조화 슬롯과 Runtime Context를 버전형 논리 분석 계획으로 컴파일합니다."""
+
+        return build_analysis_plan(structured_request, package)
 
     def g2_repair_hint(self, violation: str, package: ContextPackage) -> str:
         """G2 위반 발생 시 모델 재작성을 유도하기 위한 구체적인 수리 힌트를 생성합니다."""

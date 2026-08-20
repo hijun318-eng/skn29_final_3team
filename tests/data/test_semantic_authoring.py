@@ -45,6 +45,7 @@ from semantic_authoring import (  # noqa: E402
     build_authoring_candidate,
     build_authoring_bundle,
     migrate_authoring_policy,
+    _previous_catalog_sha256,
 )
 from src.data.governance_contract import catalog_hash  # noqa: E402
 from test_datahub_metadata_publication import (  # noqa: E402
@@ -443,6 +444,28 @@ def test_authoring_predecessor_ignores_dataset_outside_the_approved_scope():
 
     assert candidate.previous_catalog_sha256 == catalog_hash(bundle)
     assert catalog_hash(candidate.bundle) == catalog_hash(bundle)
+
+
+def test_predecessor_allows_only_manifest_complete_scope_expansion():
+    """기존 release가 완전할 때만 base-ingested 신규 자산을 scope에 추가할 수 있다."""
+    bundle = arbitrary_bundle()
+    _scopes, _inventory, governed, _terms = _runtime(bundle)
+    new_base_asset = replace(
+        governed[0],
+        urn=governed[0].urn.replace("ember.core.accounts", "ember.core.new_fact"),
+        dataset_key_name=governed[0].dataset_key_name.replace(
+            "ember.core.accounts", "ember.core.new_fact"
+        ),
+        name="ember.core.new_fact",
+        qualified_name="ember.core.new_fact",
+        schema_name="ember.core.new_fact",
+        custom_properties={},
+    )
+
+    assert _previous_catalog_sha256((*governed, new_base_asset)) == catalog_hash(bundle)
+
+    with pytest.raises(SemanticMetadataError, match="partial or conflicting"):
+        _previous_catalog_sha256((governed[0], new_base_asset))
 
 
 def test_catalog_snapshot_migration_preserves_meaning_but_rediscovers_physical_values():

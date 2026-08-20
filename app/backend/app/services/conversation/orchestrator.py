@@ -212,9 +212,20 @@ class ConversationOrchestrator:
                 # 2차: 자산 미발견 시 이전 분석 지표를 결합하여 후속 단답형 질의("4월은?", "비스타는?") 검색
                 if not assets:
                     last_analysis_metric = next(
-                        (t.get("resolved_slots", {}).get("metric_id")
+                        (
+                            t.get("resolved_slots", {}).get("metric_id")
+                            or " ".join(
+                                map(
+                                    str,
+                                    t.get("resolved_slots", {}).get("metric_ids", ()),
+                                )
+                            )
                          for t in reversed(previous_turns)
-                         if t.get("route") == "ANALYSIS" and t.get("resolved_slots", {}).get("metric_id")),
+                         if t.get("route") == "ANALYSIS"
+                         and (
+                             t.get("resolved_slots", {}).get("metric_id")
+                             or t.get("resolved_slots", {}).get("metric_ids")
+                         )),
                         None,
                     )
                     if last_analysis_metric:
@@ -254,6 +265,34 @@ class ConversationOrchestrator:
                 # 지표·기간이 여러 갈래로 해석되는 상태다. 빈 신호로 계속 진행하면 같은
                 # 모호성을 파이프라인에서 다시 만난다. 운영 resolver가 함께 반환한 확정
                 # 슬롯은 clarification turn에 저장해 다음 선택이 같은 요청을 완결하게 한다.
+                if error.code is ContextBuildErrorCode.METRIC_NOT_AVAILABLE:
+                    public_error = {
+                        "status": "FAILED",
+                        "code": ErrorCode.METRIC_NOT_AVAILABLE.value,
+                        "message": str(error),
+                        "retryable": False,
+                        "required_action": "MODIFY_REQUEST",
+                    }
+                    turn_id = uuid4()
+                    await self._repo.commit_failed_turn(
+                        conversation_id,
+                        command_id,
+                        turn_id,
+                        len(previous_turns),
+                        user_message,
+                        {
+                            "type": type(error).__name__,
+                            "detail": str(error),
+                            **public_error,
+                        },
+                    )
+                    updated_turns = await self._repo.list_turns(conversation_id)
+                    return {
+                        **public_error,
+                        "turn": next(
+                            turn for turn in updated_turns if turn["turn_id"] == turn_id
+                        ),
+                    }
                 clarification_type = (
                     "period"
                     if error.code is ContextBuildErrorCode.PERIOD_REQUIRED
@@ -466,6 +505,7 @@ class ConversationOrchestrator:
                 report_definition_id=report_def_id,
                 resolved_slots={
                     "metric_id": slots.metric_id,
+                    "metric_ids": list(slots.metric_ids),
                     "dimension_fields": [dict(d) for d in slots.dimension_fields],
                     "user_filters": [dict(f) for f in slots.user_filters],
                     "time_range": {
@@ -473,7 +513,14 @@ class ConversationOrchestrator:
                         "end_exclusive": slots.time_range.end_exclusive.isoformat(),
                         "source_text": slots.time_range.source_text,
                     } if slots.time_range else None,
+                    "comparison_time_range": {
+                        "start": slots.comparison_time_range.start.isoformat(),
+                        "end_exclusive": slots.comparison_time_range.end_exclusive.isoformat(),
+                        "source_text": slots.comparison_time_range.source_text,
+                    } if slots.comparison_time_range else None,
                     "target_chart_type": slots.target_chart_type,
+                    "analysis_operation": slots.analysis_operation,
+                    "result_limit": slots.result_limit,
                     "ambiguity_status": ambiguity_status,
                     "clarification_type": clarification_type or last_slots.get("clarification_type"),
                     "disambiguation_options": [

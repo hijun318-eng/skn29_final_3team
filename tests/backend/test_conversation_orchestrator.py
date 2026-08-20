@@ -1014,6 +1014,31 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("room_revenue", result["disambiguation_options"][0]["metric_id"])
         self.assertEqual([], self.submitted_requests)
 
+    async def test_support_metric_request_is_failed_without_public_metric_fallback(self) -> None:
+        """내부 계산 지표 요청을 공개 지표 전체 선택 화면으로 바꾸지 않는다."""
+        conv = await self.repo.create_conversation(self.user_id, "내부 지표 요청")
+        conv_id = conv["conversation_id"]
+
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        self.data_platform.search_error = ContextBuildError(
+            ContextBuildErrorCode.METRIC_NOT_AVAILABLE,
+            "요청한 '예약된 객실 수' 지표는 다른 지표 계산을 위한 내부 값이므로 직접 분석할 수 없습니다.",
+        )
+
+        result = await self.orchestrator.execute_command(
+            conversation_id=conv_id,
+            payload={"user_message": "이번 달 예약된 객실 수를 알려줘"},
+            context=self.context,
+        )
+
+        self.assertEqual("FAILED", result["status"])
+        self.assertEqual(ErrorCode.METRIC_NOT_AVAILABLE.value, result["code"])
+        self.assertEqual("MODIFY_REQUEST", result["required_action"])
+        self.assertNotIn("suggestions", result)
+        self.assertEqual("FAILED", result["turn"]["command_status"])
+        self.assertEqual([], self.submitted_requests)
+
     async def test_preflight_clarification_persists_period_and_filter_for_metric_choice(self) -> None:
         """운영 preflight의 부분 슬롯이 다음 선택에서 같은 분석 요청으로 이어진다."""
 

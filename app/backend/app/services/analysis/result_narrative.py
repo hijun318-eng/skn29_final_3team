@@ -102,8 +102,8 @@ def explanation_is_grounded(
     ):
         return False
     if package is not None:
-        metric = _selected_business_metric(package)
-        if (metric.unit or "").casefold() == "ratio" and (
+        metrics = _business_metrics(package)
+        if any((metric.unit or "").casefold() == "ratio" for metric in metrics) and (
             "%" not in summary or "ratio" in summary.casefold()
         ):
             return False
@@ -112,10 +112,30 @@ def explanation_is_grounded(
     return not result_numbers or any(value in result_numbers for value in mentioned)
 
 
-def _selected_business_metric(package: ContextPackage) -> ContextMetric:
+def _business_metrics(package: ContextPackage) -> tuple[ContextMetric, ...]:
+    """Glossary Term이 결합된 사용자 출력 Metric만 안정 순서로 반환한다."""
+
+    terms = tuple(getattr(package, "metric_terms", ()))
+    term_ids = (
+        {term.id for term in terms}
+        if terms
+        else {
+            metric.id
+            for metric in getattr(package, "metrics", ())
+            if metric.visibility == "BUSINESS"
+        }
+    )
     metrics = tuple(
         metric for metric in package.metrics if metric.visibility == "BUSINESS"
+        and metric.id in term_ids
     )
+    if not metrics:
+        raise ValueError("grounded narrative requires BUSINESS metrics")
+    return metrics
+
+
+def _selected_business_metric(package: ContextPackage) -> ContextMetric:
+    metrics = _business_metrics(package)
     if len(metrics) != 1:
         raise ValueError("grounded narrative requires exactly one BUSINESS metric")
     return metrics[0]
@@ -164,9 +184,33 @@ def grounded_summary(query: dict[str, Any], package: ContextPackage) -> str:
     rows = query.get("rows")
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         raise ValueError("grounded narrative rows are invalid")
-    metric = _selected_business_metric(package)
-    term = next(term for term in package.metric_terms if term.id == metric.id)
     period = _period_label(query.get("period"))
+    metrics = _business_metrics(package)
+    terms = {term.id: term for term in package.metric_terms}
+    if len(metrics) > 1:
+        values = [
+            (
+                terms[metric.id].label,
+                _metric_value(metric, package, rows),
+                metric.unit or terms[metric.id].unit,
+            )
+            for metric in metrics
+        ]
+        available = [
+            f"{label} {_format_value(value, unit)}"
+            for label, value, unit in values
+            if value is not None
+        ]
+        missing = [label for label, value, _unit in values if value is None]
+        if not available:
+            return f"{period}의 요청 지표들에 표시할 수 있는 관측값이 없습니다."
+        summary = f"{period} 기준 계산 결과는 {', '.join(available)}입니다."
+        if missing:
+            summary += f" {', '.join(missing)}에는 표시할 수 있는 관측값이 없습니다."
+        return summary
+
+    metric = metrics[0]
+    term = terms[metric.id]
     value = _metric_value(metric, package, rows)
     if value is None:
         return f"{period}의 {term.label}에 표시할 수 있는 관측값이 없습니다."

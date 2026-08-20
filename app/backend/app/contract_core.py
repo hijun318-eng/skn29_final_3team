@@ -87,6 +87,7 @@ class ErrorCode(str, Enum):
     SOURCE_NOT_READY = "SOURCE_NOT_READY"
     GRAIN_VIOLATION = "GRAIN_VIOLATION"
     FILTER_VALUE_NOT_FOUND = "FILTER_VALUE_NOT_FOUND"
+    METRIC_NOT_AVAILABLE = "METRIC_NOT_AVAILABLE"
     AUTHENTICATION_REQUIRED = "AUTHENTICATION_REQUIRED"
     ACCESS_DENIED = "ACCESS_DENIED"
     MODEL_CONTRACT_INVALID = "MODEL_CONTRACT_INVALID"
@@ -164,10 +165,64 @@ class ResolvedSlots(ContractModel):
     건너뛰되 거버넌스 대조 검증은 유지한다.
     """
     metric_id: str | None = None
+    metric_ids: tuple[str, ...] = ()
     dimension_ids: tuple[str, ...] = ()
     user_filters: tuple[dict[str, str], ...] = ()
     period_start: str | None = None
     period_end_exclusive: str | None = None
+    comparison_period_start: str | None = None
+    comparison_period_end_exclusive: str | None = None
+    analysis_operation: str | None = None
+    result_limit: int | None = None
+
+    @model_validator(mode="after")
+    def validate_analysis_shape(self) -> "ResolvedSlots":
+        """단일·복수 지표 호환 필드와 연산별 LIMIT 불변식을 검증한다."""
+
+        metrics = self.metric_ids or ((self.metric_id,) if self.metric_id else ())
+        if (
+            not 0 <= len(metrics) <= 4
+            or len(metrics) != len(set(metrics))
+            or any(not isinstance(item, str) or not item.strip() for item in metrics)
+        ):
+            raise ValueError("resolved metric_ids는 고유한 비어 있지 않은 ID 4개 이하여야 합니다.")
+        if self.metric_id is not None and metrics != (self.metric_id,):
+            raise ValueError("metric_id는 단일 metric_ids의 호환 projection이어야 합니다.")
+        operations = {
+            "aggregate",
+            "breakdown",
+            "time_trend",
+            "top_n",
+            "bottom_n",
+            "period_comparison",
+        }
+        if self.analysis_operation is not None and self.analysis_operation not in operations:
+            raise ValueError("analysis_operation이 지원 계약 범위를 벗어났습니다.")
+        comparison_values = (
+            self.comparison_period_start,
+            self.comparison_period_end_exclusive,
+        )
+        if any(comparison_values) != all(comparison_values):
+            raise ValueError("비교 기간 시작일과 종료일은 함께 지정해야 합니다.")
+        if all(comparison_values) != (
+            self.analysis_operation == "period_comparison"
+        ):
+            raise ValueError(
+                "period_comparison 연산과 비교 기간 슬롯은 함께 지정해야 합니다."
+            )
+        if self.result_limit is not None and (
+            self.analysis_operation not in {"top_n", "bottom_n"}
+            or isinstance(self.result_limit, bool)
+            or not 1 <= self.result_limit <= 100
+        ):
+            raise ValueError("result_limit은 top_n·bottom_n에서만 1~100으로 지정할 수 있습니다.")
+        return self
+
+    @property
+    def resolved_metric_ids(self) -> tuple[str, ...]:
+        """신규 복수 필드와 기존 단일 필드를 하나의 권위 목록으로 반환한다."""
+
+        return self.metric_ids or ((self.metric_id,) if self.metric_id else ())
 
 
 class AnalysisRequest(ContractModel):
@@ -261,6 +316,7 @@ _REQUIRED_ACTION_BY_ERROR = {
     ErrorCode.OUT_OF_DATA_RANGE: RequiredAction.MODIFY_REQUEST,
     ErrorCode.GRAIN_VIOLATION: RequiredAction.MODIFY_REQUEST,
     ErrorCode.FILTER_VALUE_NOT_FOUND: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.METRIC_NOT_AVAILABLE: RequiredAction.MODIFY_REQUEST,
     ErrorCode.SOURCE_NOT_READY: RequiredAction.RETRY,
     ErrorCode.CONTRACT_VERSION_MISMATCH: RequiredAction.MODIFY_REQUEST,
     ErrorCode.SCHEMA_VERSION_MISMATCH: RequiredAction.MODIFY_REQUEST,

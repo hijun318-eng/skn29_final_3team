@@ -106,6 +106,7 @@ def _node2_payload(catalog: str = "orbit") -> dict:
         "structured_request": {
             "intent_candidates": ["aggregate"],
             "metric_ids": ["governed_amount"],
+            "selected_metric_ids": ["governed_amount"],
             "dimension_fields": [],
         },
         "context_package": _contracts(catalog),
@@ -149,6 +150,9 @@ def test_provider_input_uses_the_six_runtime_contracts(catalog: str) -> None:
         "query_policy",
     }
     assert all("value" not in item for item in model_input["parameter_contract"]["parameters"])
+    assert model_input["resolved_request"]["intent"] == "aggregate"
+    assert model_input["resolved_request"]["time_bucket"] == "none"
+    assert model_input["resolved_request"]["result_limit"] is None
     assert set(serving_schema("node2")["required"]) == set(_node2_response(catalog))
 
 
@@ -194,12 +198,35 @@ def test_ratio_request_deduplicates_shared_dimensions_and_filters() -> None:
         "occupancy_rate",
         "occupied_rooms",
     ]
+    payload["structured_request"]["selected_metric_ids"] = ["occupancy_rate"]
+    payload["structured_request"]["dimension_fields"] = [shared_dimension]
 
     model_input = canonical_model_input("node2", payload)
 
     validate_payload("node2_request", model_input)
+    assert model_input["resolved_request"]["output_metric_ids"] == ["occupancy_rate"]
     assert model_input["resolved_request"]["dimensions"] == [shared_dimension]
     assert model_input["resolved_request"]["filters"] == [shared_filter]
+
+
+def test_available_metric_dimensions_are_not_grouped_without_user_selection() -> None:
+    contracts = _contracts()
+    dimension = {"asset_fqn": "orbit.ops.event_fact", "column": "occurred_on"}
+    contracts["metric_rules"][0]["dimensions"] = [dimension]
+    payload = _node2_payload()
+    payload["context_package"] = contracts
+
+    model_input = canonical_model_input("node2", payload)
+
+    assert model_input["resolved_request"]["dimensions"] == []
+
+
+def test_node2_rejects_implicit_business_outputs() -> None:
+    payload = _node2_payload()
+    payload["structured_request"].pop("selected_metric_ids")
+
+    with pytest.raises(ValueError, match="explicit BUSINESS output"):
+        canonical_model_input("node2", payload)
 
 
 def test_sql_only_schema_is_dormant_while_active_provider_schema_remains_legacy() -> None:

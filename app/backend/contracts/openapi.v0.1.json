@@ -1175,6 +1175,7 @@
           "SOURCE_NOT_READY",
           "GRAIN_VIOLATION",
           "FILTER_VALUE_NOT_FOUND",
+          "METRIC_NOT_AVAILABLE",
           "AUTHENTICATION_REQUIRED",
           "ACCESS_DENIED",
           "MODEL_CONTRACT_INVALID",
@@ -2895,6 +2896,39 @@
         "additionalProperties": false,
         "description": "멀티턴 대화에서 이전 턴의 슬롯을 구조화된 형태로 상속할 때 사용한다.\n\nOrchestrator가 ConversationSlotResolver로 확정한 지표·차원·기간을\nMetricResolver의 pre-resolved fast-path에 전달하여 Node 1 LLM 호출을\n건너뛰되 거버넌스 대조 검증은 유지한다.",
         "properties": {
+          "analysis_operation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Operation"
+          },
+          "comparison_period_end_exclusive": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Period End Exclusive"
+          },
+          "comparison_period_start": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Period Start"
+          },
           "dimension_ids": {
             "default": [],
             "items": {
@@ -2913,6 +2947,14 @@
               }
             ],
             "title": "Metric Id"
+          },
+          "metric_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Metric Ids",
+            "type": "array"
           },
           "period_end_exclusive": {
             "anyOf": [
@@ -2935,6 +2977,17 @@
               }
             ],
             "title": "Period Start"
+          },
+          "result_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Limit"
           },
           "user_filters": {
             "default": [],

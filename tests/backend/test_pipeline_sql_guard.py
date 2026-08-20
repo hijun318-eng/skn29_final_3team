@@ -16,6 +16,12 @@ from app.services.context.builder import (
     ContextRequiredFilter,
 )
 from app.services.context.contract import GovernedJoin, enrich_context_package
+from app.services.analysis.logical_plan import (
+    AnalysisOperation,
+    AnalysisPlanError,
+    build_analysis_plan,
+    validate_analysis_plan_payload,
+)
 from app.services.sql_guard import apply_guard_decision, validate_plan
 from src.ai.schema import ContractError, validate_payload
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
@@ -177,11 +183,17 @@ def _sql(
 
 def _joined_package(*, kind: str = "inner", preaggregation: bool = False):
     package = _package()
+    joined_metric = replace(
+        package.metrics[0],
+        allowed_join_ids=("customer_edge",),
+        join_required=True,
+    )
     fact = replace(
         package.assets[0],
         columns=(*package.assets[0].columns, "customer_id"),
         column_types=(*package.assets[0].column_types, ("customer_id", "varchar")),
         join_ids=("customer_edge",),
+        metrics=(joined_metric,),
     )
     dimension = ContextAsset(
         urn="urn:test:orbit.ops.customer_dim",
@@ -246,9 +258,196 @@ def _joined_package(*, kind: str = "inner", preaggregation: bool = False):
         dataset_count=2,
         column_count=len(fact.columns) + len(dimension.columns),
         approved_join_ids=(join.id,),
+        metrics=(joined_metric,),
         runtime_contracts=contracts,
         join_graph=(join,),
     )
+
+
+def test_v2_metric_must_allow_every_join_edge_used_by_sql() -> None:
+    package = _joined_package()
+    denied_metric = replace(
+        package.metrics[0],
+        allowed_join_ids=(),
+        join_required=False,
+    )
+    denied = replace(package, metrics=(denied_metric,))
+
+    decision = validate_plan({"sql": _joined_sql()}, denied)
+
+    assert decision.violation == "JOIN_PERMISSION_DENIED"
+
+
+def test_guard_records_the_runtime_fanout_decision() -> None:
+    decision = validate_plan({"sql": _joined_sql()}, _joined_package())
+
+    assert decision.ok, decision
+    assert decision.ast_evidence is not None
+    assert decision.ast_evidence["fanout_plans"] == [
+        {
+            "join_id": "customer_edge",
+            "plan": "DIRECT_JOIN",
+            "reason": "UNIQUE_ONE_SIDE",
+        }
+    ]
+
+
+def test_logical_analysis_plan_is_compiled_from_runtime_slots_not_question_text() -> None:
+    package = _package()
+
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "intent_candidates": ["general"],
+            "period_relationship": "single",
+        },
+        package,
+    )
+
+    assert plan.operation is AnalysisOperation.AGGREGATE
+    assert plan.output_metric_ids == ("governed_amount",)
+    assert plan.period_parameters == (("window_begin", "window_stop"),)
+    assert plan.context_package_hash == package.package_hash
+    assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
+
+
+def test_logical_plan_rejects_a_dimension_not_bound_to_the_selected_metric() -> None:
+    package = _joined_package()
+
+    with pytest.raises(AnalysisPlanError, match="binding"):
+        build_analysis_plan(
+            {
+                "selected_metric_id": "governed_amount",
+                "intent_candidates": ["breakdown"],
+                "period_relationship": "single",
+                "dimension_fields": [
+                    {
+                        "asset_fqn": "orbit.ops.customer_dim",
+                        "column": "segment",
+                    }
+                ],
+            },
+            package,
+        )
+
+
+def test_logical_plan_checksum_cannot_be_reused_with_another_context() -> None:
+    package = _package()
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "intent_candidates": ["aggregate"],
+            "period_relationship": "single",
+        },
+        package,
+    ).as_dict()
+    plan["context_package_hash"] = "different-context"
+
+    with pytest.raises(AnalysisPlanError, match="checksum"):
+        validate_analysis_plan_payload(plan, package)
+
+
+def _ranked_package():
+    package = _package()
+    contracts = deepcopy(package.runtime_contracts)
+    contracts["metric_rules"][0]["dimensions"] = [
+        {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+    ]
+    return replace(package, runtime_contracts=contracts)
+
+
+def test_guard_enforces_top_n_order_direction_and_exact_result_limit() -> None:
+    package = _ranked_package()
+    plan = build_analysis_plan(
+        {
+            "selected_metric_ids": ["governed_amount"],
+            "analysis_operation": "top_n",
+            "result_limit": 5,
+            "dimension_fields": [
+                {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+            ],
+            "period_relationship": "single",
+        },
+        package,
+    )
+    sql = """
+        SELECT e.active, SUM(e.amount) AS governed_total
+        FROM orbit.ops.event_fact AS e
+        WHERE e.occurred_on >= CAST(:window_begin AS DATE)
+          AND e.occurred_on < CAST(:window_stop AS DATE)
+          AND e.active = :active_flag
+        GROUP BY e.active
+        ORDER BY governed_total DESC, active ASC
+        LIMIT 5
+    """
+
+    accepted = validate_plan(
+        {"sql": sql, "analysis_plan": plan.as_dict()},
+        package,
+    )
+    wrong_direction = validate_plan(
+        {
+            "sql": sql.replace("DESC", "ASC"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+    wrong_limit = validate_plan(
+        {
+            "sql": sql.replace("LIMIT 5", "LIMIT 6"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+    missing_tie_breaker = validate_plan(
+        {
+            "sql": sql.replace(", active ASC", ""),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+
+    assert accepted.ok, accepted
+    assert wrong_direction.violation == "ANALYSIS_OPERATION_MISMATCH"
+    assert wrong_limit.violation == "ANALYSIS_OPERATION_MISMATCH"
+    assert missing_tie_breaker.violation == "ANALYSIS_OPERATION_MISMATCH"
+
+
+def test_guard_enforces_time_trend_group_projection_and_ascending_order() -> None:
+    package = _package()
+    plan = build_analysis_plan(
+        {
+            "selected_metric_ids": ["governed_amount"],
+            "analysis_operation": "time_trend",
+            "period_relationship": "single",
+        },
+        package,
+    )
+    sql = """
+        SELECT e.occurred_on AS period, SUM(e.amount) AS governed_total
+        FROM orbit.ops.event_fact AS e
+        WHERE e.occurred_on >= CAST(:window_begin AS DATE)
+          AND e.occurred_on < CAST(:window_stop AS DATE)
+          AND e.active = :active_flag
+        GROUP BY e.occurred_on
+        ORDER BY period ASC
+        LIMIT 100
+    """
+
+    accepted = validate_plan(
+        {"sql": sql, "analysis_plan": plan.as_dict()},
+        package,
+    )
+    descending = validate_plan(
+        {
+            "sql": sql.replace("period ASC", "period DESC"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+
+    assert accepted.ok, accepted
+    assert descending.violation == "ANALYSIS_OPERATION_MISMATCH"
 
 
 def _joined_sql(
@@ -401,8 +600,11 @@ def test_live_node2_contract_rejects_formula_metadata() -> None:
         "resolved_request": {
             "intent": "aggregate",
             "metric_ids": ["governed_amount"],
+            "output_metric_ids": ["governed_amount"],
             "dimensions": [],
             "filters": deepcopy(package.runtime_contracts["metric_rules"][0]["required_filters"]),
+            "time_bucket": "none",
+            "result_limit": None,
         },
         **deepcopy(package.runtime_contracts),
     }

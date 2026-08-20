@@ -63,6 +63,10 @@ class ResolvedTurnSlots:
     is_inherited_dimension: bool
     is_inherited_period: bool
     change_set: AnalysisChangeSet = ()
+    metric_ids: tuple[str, ...] = ()
+    analysis_operation: str | None = None
+    result_limit: int | None = None
+    comparison_time_range: ResolvedTimeRange | None = None
 
 
 class ConversationSlotResolver:
@@ -273,7 +277,37 @@ class ConversationSlotResolver:
         # -------------------------------------------------------------
         # 2. PRESENTATION 라우트 감지 (표현/시각화 전환 서술어 의도)
         # -------------------------------------------------------------
-        candidate_metric = node1_output.get("selected_metric_id")
+        raw_candidate_metrics = node1_output.get("selected_metric_ids")
+        candidate_metric_ids = tuple(
+            item
+            for item in (
+                raw_candidate_metrics
+                if isinstance(raw_candidate_metrics, (list, tuple))
+                else ()
+            )
+            if isinstance(item, str) and item
+        )
+        candidate_metric = (
+            candidate_metric_ids[0]
+            if len(candidate_metric_ids) == 1
+            else node1_output.get("selected_metric_id")
+            if not candidate_metric_ids
+            else None
+        )
+        if not candidate_metric_ids and isinstance(candidate_metric, str):
+            candidate_metric_ids = (candidate_metric,)
+        stored_analysis_metric_ids = tuple(
+            item
+            for item in (
+                last_analysis_slots.get("metric_ids")
+                or (
+                    [last_analysis_slots.get("metric_id")]
+                    if last_analysis_slots.get("metric_id")
+                    else []
+                )
+            )
+            if isinstance(item, str) and item
+        )
 
         # PRESENTATION은 저장된 Artifact를 다시 그릴 뿐 질의를 재실행하지 않는다. 따라서
         # 무엇을 측정할지(metric), 어떻게 나눌지(dimension), 어떤 행을 볼지(filter) 중 하나라도
@@ -281,7 +315,7 @@ class ConversationSlotResolver:
         # 게이트를 거치는 ANALYSIS로 보낸다. 그러지 않으면 사용자가 요청한 분해·필터가
         # 조용히 사라지고 이전 결과가 다시 표시된다.
         changes_query_shape = bool(
-            candidate_metric
+            candidate_metric_ids
             or node1_output.get("dimension_fields")
             or node1_output.get("filter_fields")
         )
@@ -300,19 +334,76 @@ class ConversationSlotResolver:
                 is_inherited_metric=True if last_turn else False,
                 is_inherited_dimension=True if last_turn else False,
                 is_inherited_period=True if last_turn else False,
+                metric_ids=stored_analysis_metric_ids,
+                analysis_operation=last_analysis_slots.get("analysis_operation"),
+                result_limit=last_analysis_slots.get("result_limit"),
+                comparison_time_range=cls._parse_stored_time_range(
+                    last_analysis_slots.get("comparison_time_range")
+                ),
             )
 
         # -------------------------------------------------------------
         # 3. ANALYSIS 라우트: 슬롯 상속 & Delta 병합
         # -------------------------------------------------------------
         is_followup = cls._is_followup_question(
-            msg, node1_output, last_analysis_slots.get("metric_id") or last_slots.get("metric_id")
+            msg,
+            node1_output,
+            (
+                stored_analysis_metric_ids[0]
+                if len(stored_analysis_metric_ids) == 1
+                else last_slots.get("metric_id")
+            ),
         )
 
-        # 3-1. metric_id 변경분 계산 및 적용
-        inherited_metric_id = last_analysis_slots.get("metric_id") or last_slots.get("metric_id")
-        metric_change = derive_metric_change(candidate_metric, is_followup, inherited_metric_id)
-        metric_id, is_inherited_metric = apply_metric_change(metric_change)
+        # 3-1. 단일 지표 ChangeSet 호환성을 유지하면서 복수 지표 묶음을 원자적으로 적용한다.
+        inherited_metric_id = (
+            stored_analysis_metric_ids[0]
+            if len(stored_analysis_metric_ids) == 1
+            else last_slots.get("metric_id")
+        )
+        metric_changes: tuple[Any, ...] = ()
+        if len(candidate_metric_ids) > 1:
+            metric_ids = candidate_metric_ids
+            metric_id = None
+            is_inherited_metric = False
+        elif not candidate_metric_ids and is_followup and len(stored_analysis_metric_ids) > 1:
+            metric_ids = stored_analysis_metric_ids
+            metric_id = None
+            is_inherited_metric = True
+        else:
+            metric_change = derive_metric_change(
+                candidate_metric,
+                is_followup,
+                inherited_metric_id,
+            )
+            metric_id, is_inherited_metric = apply_metric_change(metric_change)
+            metric_ids = (metric_id,) if metric_id else ()
+            metric_changes = (metric_change,)
+
+        operations = {
+            "aggregate",
+            "breakdown",
+            "time_trend",
+            "top_n",
+            "bottom_n",
+            "period_comparison",
+        }
+        candidate_operation = node1_output.get("analysis_operation")
+        if candidate_operation not in operations:
+            candidate_operation = None
+        analysis_operation = candidate_operation or (
+            last_analysis_slots.get("analysis_operation") if is_followup else None
+        )
+        candidate_result_limit = node1_output.get("result_limit")
+        result_limit = (
+            candidate_result_limit
+            if candidate_operation in {"top_n", "bottom_n"}
+            and isinstance(candidate_result_limit, int)
+            and not isinstance(candidate_result_limit, bool)
+            else last_analysis_slots.get("result_limit")
+            if is_followup and analysis_operation in {"top_n", "bottom_n"}
+            else None
+        )
 
         # 3-2. dimension_fields 변경분 계산 및 적용
         candidate_dims = tuple(
@@ -343,7 +434,7 @@ class ConversationSlotResolver:
         user_filters, _is_inherited_filter = apply_dimension_changes(
             filter_changes, inherited_filters, field="user_filters"
         )
-        change_set = (metric_change, *dimension_changes, *filter_changes)
+        change_set = (*metric_changes, *dimension_changes, *filter_changes)
 
         # 3-4. 시간 범위 해석 (TimeAlgebraEngine 적용)
         last_time_range = (
@@ -357,6 +448,20 @@ class ConversationSlotResolver:
             last_time_range=last_time_range,
             as_of=as_of_date,
         )
+        comparison_time_range = TimeAlgebraEngine.resolve_comparison_time(
+            node1_output,
+            as_of_date,
+        )
+        if (
+            comparison_time_range is None
+            and is_followup
+            and analysis_operation == "period_comparison"
+        ):
+            comparison_time_range = cls._parse_stored_time_range(
+                last_analysis_slots.get("comparison_time_range")
+            )
+        if analysis_operation != "period_comparison":
+            comparison_time_range = None
 
         # 3-5. 초기 시각화 선호도 판별
         target_chart_type = cls._resolve_initial_chart_type(msg, node1_output)
@@ -373,6 +478,10 @@ class ConversationSlotResolver:
             is_inherited_dimension=is_inherited_dimension,
             is_inherited_period=is_inherited_period,
             change_set=change_set,
+            metric_ids=metric_ids,
+            analysis_operation=analysis_operation,
+            result_limit=result_limit,
+            comparison_time_range=comparison_time_range,
         )
 
     @classmethod

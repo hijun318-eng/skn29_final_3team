@@ -17,8 +17,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.context.contract import GovernedJoin
+from app.services.context.fanout_policy import (
+    AssetGrainEvidence,
+    FanoutDecision,
+    FanoutPlan,
+    GrainSafetyEvidence,
+    RelatedSideUse,
+    decide_fanout_plan,
+)
 from app.services.sql_guard.schema import canonical_fqn, field_identity, reverse_operator
 from app.services.sql_guard.scopes import ProjectionScopeEvidence, SourceEvidence
+from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
 @dataclass(frozen=True)
@@ -34,6 +43,7 @@ class JoinDecision:
     violation: str | None
     used_join_ids: frozenset[str] = frozenset()
     code: str = "JOIN_GRAPH_MISMATCH"
+    fanout_decisions: tuple[FanoutDecision, ...] = ()
 
 
 def join_violation(
@@ -124,7 +134,181 @@ def join_violation(
         for item in scope.all_comparisons
     ):
         return JoinDecision("SQL에 승인되지 않은 테이블 간 비교 조건식이 포함되어 있습니다.")
-    return JoinDecision(None, frozenset(used))
+    if error := _metric_join_permission_violation(package, frozenset(used)):
+        return JoinDecision(error, code="JOIN_PERMISSION_DENIED")
+    fanout, error = _fanout_decisions(
+        package,
+        tuple(item for item in graph if item.id in used),
+        joined_sources,
+        scope,
+        assets,
+    )
+    if error:
+        return JoinDecision(error, code="GRAIN_VIOLATION")
+    return JoinDecision(None, frozenset(used), fanout_decisions=fanout)
+
+
+def _metric_join_permission_violation(
+    package: Any,
+    used_join_ids: frozenset[str],
+) -> str | None:
+    """v2 Metric의 edge whitelist가 실제 SQL JOIN 전체를 허용하는지 확인한다."""
+
+    if not used_join_ids:
+        return None
+    governed = [
+        metric
+        for metric in tuple(getattr(package, "metrics", ()))
+        if str(getattr(metric, "governance_version", ""))
+        == RUNTIME_GOVERNANCE_VERSION_V2
+    ]
+    if not governed:
+        return None
+    denied = [
+        str(metric.id)
+        for metric in governed
+        if not used_join_ids <= set(getattr(metric, "allowed_join_ids", ()))
+    ]
+    if denied:
+        return (
+            "실제 SQL JOIN edge가 선택 Metric의 allowed_join_ids 범위를 벗어났습니다: "
+            + ", ".join(sorted(denied))
+        )
+    return None
+
+
+def _fanout_decisions(
+    package: Any,
+    joins: tuple[GovernedJoin, ...],
+    sources: dict[str, SourceEvidence],
+    scope: ProjectionScopeEvidence,
+    assets: dict[str, tuple[Any, frozenset[str]]],
+) -> tuple[tuple[FanoutDecision, ...], str | None]:
+    """실제 SQL이 사용한 edge마다 measure 방향과 grain 증거로 팬아웃 계획을 검증한다."""
+
+    measure_assets = frozenset(
+        canonical_fqn(str(metric.asset_fqn))
+        for metric in tuple(getattr(package, "metrics", ()))
+        if str(getattr(metric, "aggregation", "")).casefold() != "ratio"
+        and str(getattr(metric, "asset_fqn", ""))
+    )
+    if not measure_assets:
+        return (), "JOIN된 SQL의 Measure source asset을 Runtime Context에서 확인할 수 없습니다."
+    group_assets = {
+        _asset_name(field, assets) for field in scope.scope.group_fields
+    } - {""}
+    result: list[FanoutDecision] = []
+    for join in joins:
+        left_component, right_component = _edge_components(join, joins)
+        measure_sides = frozenset(
+            endpoint
+            for endpoint, component in (
+                (canonical_fqn(join.left), left_component),
+                (canonical_fqn(join.right), right_component),
+            )
+            if component & measure_assets
+        )
+        if not measure_sides:
+            return (), f"조인 {join.id!r} 어느 쪽에도 Measure grain 증거가 없습니다."
+        if len(measure_sides) == 2:
+            related_use = RelatedSideUse.SECOND_MEASURE
+            common = tuple(join.equality_conditions)
+        else:
+            non_measure_component = (
+                right_component
+                if canonical_fqn(join.left) in measure_sides
+                else left_component
+            )
+            related_use = (
+                RelatedSideUse.DIMENSION_BREAKDOWN
+                if non_measure_component & group_assets
+                else RelatedSideUse.FILTER_ONLY
+            )
+            common = ()
+        try:
+            evidence = GrainSafetyEvidence(
+                measure_assets=measure_sides,
+                related_side_use=related_use,
+                assets=tuple(
+                    _asset_grain_evidence(package, endpoint)
+                    for endpoint in sorted({join.left, join.right})
+                ),
+                common_grain_bindings=common,
+            )
+            decision = decide_fanout_plan(join, evidence)
+        except ValueError as error:
+            return (), f"조인 {join.id!r}의 grain 증거가 유효하지 않습니다: {error}"
+        if decision.plan is FanoutPlan.REJECT:
+            return (), (
+                f"조인 {join.id!r}의 팬아웃 안전성을 증명하지 못했습니다: "
+                f"{decision.reason.value}"
+            )
+        if decision.plan is FanoutPlan.SEMI_JOIN:
+            # 이 함수에 도달한 edge는 실제 AST의 일반 JOIN 절이다. SEMI_JOIN 결정은
+            # EXISTS/IN 격리 형태가 필요하므로 현재 JOIN을 성공으로 오인하지 않는다.
+            return (), f"조인 {join.id!r}은 Measure 중복 방지를 위해 SEMI_JOIN 격리가 필요합니다."
+        if decision.plan is FanoutPlan.PREAGGREGATE:
+            if error := _preaggregation_violation(join, sources, assets):
+                return (), error
+        result.append(decision)
+    return tuple(sorted(result, key=lambda item: item.join_id)), None
+
+
+def _asset_grain_evidence(package: Any, asset_fqn: str) -> AssetGrainEvidence:
+    contracts = getattr(package, "runtime_contracts", None)
+    context = contracts.get("schema_context") if isinstance(contracts, dict) else None
+    raw_assets = context.get("assets") if isinstance(context, dict) else None
+    matches = [
+        item
+        for item in raw_assets or ()
+        if isinstance(item, dict) and canonical_fqn(str(item.get("fqn"))) == asset_fqn
+    ]
+    if len(matches) != 1:
+        raise ValueError("asset grain metadata must resolve exactly once")
+    columns = matches[0].get("columns")
+    grain = matches[0].get("grain")
+    if not isinstance(columns, list) or not isinstance(grain, dict):
+        raise ValueError("asset grain metadata is incomplete")
+    fields = frozenset(
+        f"{asset_fqn}.{item['name']}"
+        for item in columns
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    )
+    raw_keys = grain.get("keys")
+    if len(fields) != len(columns) or not isinstance(raw_keys, list) or not raw_keys:
+        raise ValueError("asset grain fields are invalid")
+    key = tuple(f"{asset_fqn}.{item}" for item in map(str, raw_keys))
+    return AssetGrainEvidence(
+        asset_fqn=asset_fqn,
+        available_fields=fields,
+        unique_key_sets=(key,),
+    )
+
+
+def _edge_components(
+    removed: GovernedJoin,
+    joins: tuple[GovernedJoin, ...],
+) -> tuple[frozenset[str], frozenset[str]]:
+    adjacency: dict[str, set[str]] = {}
+    for join in joins:
+        if join.id == removed.id:
+            continue
+        left, right = canonical_fqn(join.left), canonical_fqn(join.right)
+        adjacency.setdefault(left, set()).add(right)
+        adjacency.setdefault(right, set()).add(left)
+
+    def walk(start: str) -> frozenset[str]:
+        pending = [start]
+        visited: set[str] = set()
+        while pending:
+            node = pending.pop()
+            if node in visited:
+                continue
+            visited.add(node)
+            pending.extend(adjacency.get(node, ()))
+        return frozenset(visited)
+
+    return walk(canonical_fqn(removed.left)), walk(canonical_fqn(removed.right))
 
 
 def _preaggregation_violation(

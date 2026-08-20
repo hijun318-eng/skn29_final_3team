@@ -102,6 +102,13 @@ class AnalysisResultStage:
                 "summary": f"승인된 분석에서 {len(query['rows'])}건을 조회했습니다.",
                 "model_version": "TEMPLATE-RESULT-v1.0.0",
             }
+        elif len(package.metric_terms) != 1:
+            # 현재 Node 3 release는 단일 Metric 설명 계약이다. 복수 지표를 첫 지표로
+            # 축소하지 않고, G3가 승인한 모든 BUSINESS Metric을 결정론적으로 요약한다.
+            explanation = {
+                "summary": grounded_summary(query, package),
+                "model_version": "GROUNDED-MULTI-NARRATIVE-v1.0.0",
+            }
         else:
             try:
                 explanation = await state.budget.call(
@@ -168,11 +175,19 @@ class AnalysisResultStage:
         )
 
         # 4. 차트 규격 조립 및 주입
-        rows = query["rows"]
+        if response.data.result is not None:
+            rows = [dict(row) for row in response.data.result.table.rows]
+        else:
+            rows = []
         if rows and response.data.result is not None:
+            business_ids = {term.id for term in package.metric_terms}
             chart = _chart_spec(
                 rows,
-                tuple(metric.result_field for metric in package.metrics),
+                tuple(
+                    metric.result_field
+                    for metric in package.metrics
+                    if metric.id in business_ids
+                ),
             )
             if chart is not None:
                 response.data.result.chart = chart

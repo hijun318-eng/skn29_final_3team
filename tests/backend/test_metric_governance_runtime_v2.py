@@ -34,7 +34,11 @@ from app.ports.data_platform import NoEntitledAssetsError  # noqa: E402
 from app.services.analysis.responses import _business_metrics  # noqa: E402
 from app.services.context.metric_resolver import MetricResolver  # noqa: E402
 from app.services.context.metric_execution_scope import select_assets_for_metrics  # noqa: E402
-from app.services.context.builder import ContextBuildError, ContextPackageBuilder  # noqa: E402
+from app.services.context.builder import (  # noqa: E402
+    ContextBuildError,
+    ContextBuildErrorCode,
+    ContextPackageBuilder,
+)
 from app.services.context.service import PipelineContextService  # noqa: E402
 from metadata_aspects import iter_aspects  # noqa: E402
 from metadata_contract import validate_bundle  # noqa: E402
@@ -218,9 +222,15 @@ class _Normalizer:
         self.input = deepcopy(payload)
         return {
             "normalized_question": "Amount per Event for the selected period",
-            "intent_candidates": ["general"],
+            "intent_candidates": ["aggregate"],
+            "measurement_source_text": "Amount per Event",
+            "measurement_source_texts": ["Amount per Event"],
             "metric_candidates": ["amount_per_event"],
+            "metric_resolution": "selected",
             "selected_metric_id": "amount_per_event",
+            "selected_metric_ids": ["amount_per_event"],
+            "analysis_operation": "aggregate",
+            "result_limit": None,
             "dimension_candidates": [],
             "filter_candidates": [],
             "period_candidates": [
@@ -240,11 +250,75 @@ class _Normalizer:
 class _AmbiguousNormalizer(_Normalizer):
     async def normalize_question(self, payload: dict) -> dict:
         result = await super().normalize_question(payload)
+        result["measurement_source_text"] = "measurement"
+        result["measurement_source_texts"] = ["measurement"]
+        result["metric_candidates"] = ["amount_per_event", "account_count"]
+        result["metric_resolution"] = "ambiguous"
         result["selected_metric_id"] = None
+        result["selected_metric_ids"] = []
         return result
 
 
-def test_node1_receives_only_business_metric_while_context_keeps_operands() -> None:
+class _MultiMetricNormalizer(_Normalizer):
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result.update(
+            {
+                "normalized_question": "Amount per Event and Account Count for the selected period",
+                "measurement_source_text": None,
+                "measurement_source_texts": ["Amount per Event", "Account Count"],
+                "metric_candidates": ["amount_per_event", "account_count"],
+                "metric_resolution": "selected",
+                "selected_metric_id": None,
+                "selected_metric_ids": ["amount_per_event", "account_count"],
+            }
+        )
+        return result
+
+
+class _SupportNormalizer(_Normalizer):
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result["normalized_question"] = "Support amount_total for the selected period"
+        result["measurement_source_text"] = "Support amount_total"
+        result["measurement_source_texts"] = ["Support amount_total"]
+        result["metric_candidates"] = ["amount_total"]
+        result["metric_resolution"] = "unsupported"
+        result["selected_metric_id"] = None
+        result["selected_metric_ids"] = []
+        result["analysis_operation"] = None
+        return result
+
+
+class _UnsupportedNormalizer(_Normalizer):
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result["normalized_question"] = "Unapproved measurement for the selected period"
+        result["measurement_source_text"] = "Unapproved measurement"
+        result["measurement_source_texts"] = ["Unapproved measurement"]
+        result["metric_candidates"] = []
+        result["metric_resolution"] = "unsupported"
+        result["selected_metric_id"] = None
+        result["selected_metric_ids"] = []
+        result["analysis_operation"] = None
+        return result
+
+
+class _MissingNormalizer(_Normalizer):
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result["normalized_question"] = "Selected period only"
+        result["measurement_source_text"] = None
+        result["measurement_source_texts"] = []
+        result["metric_candidates"] = []
+        result["metric_resolution"] = "missing"
+        result["selected_metric_id"] = None
+        result["selected_metric_ids"] = []
+        result["analysis_operation"] = None
+        return result
+
+
+def test_node1_can_identify_support_metric_but_only_business_metric_is_selectable() -> None:
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
         engine.search_assets(
@@ -276,8 +350,11 @@ def test_node1_receives_only_business_metric_while_context_keeps_operands() -> N
         for identifier, term in model.input["business_terms"].items()
         if term["kind"] == "metric"
     } == {"amount_per_event"}
-    assert "amount_total" not in model.input["business_terms"]
-    assert "event_count" not in model.input["business_terms"]
+    assert {
+        identifier
+        for identifier, term in model.input["business_terms"].items()
+        if term["kind"] == "support_metric"
+    } == {"amount_total", "event_count"}
     assert structured["selected_metric_id"] == "amount_per_event"
     assert set(structured["metric_ids"]) == {
         "amount_total",
@@ -316,14 +393,139 @@ def test_node1_receives_only_business_metric_while_context_keeps_operands() -> N
     )
 
 
-def test_unresolved_metric_returns_typed_options_instead_of_internal_error() -> None:
+def test_node1_preserves_multiple_explicit_business_metrics_as_one_analysis_scope() -> None:
+    engine = _engine(_runtime_bundle())
+    question = "Amount per Event and Account Count"
+    assets = asyncio.run(
+        engine.search_assets(
+            question,
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    resolver = MetricResolver(engine, _MultiMetricNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-multi-metric",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    selected_assets, _question, structured = asyncio.run(
+        resolver.resolve(
+            AnalysisRequest(question=question, parameters={"active": True}),
+            context,
+            assets,
+        )
+    )
+
+    assert structured["selected_metric_id"] is None
+    assert structured["selected_metric_ids"] == [
+        "amount_per_event",
+        "account_count",
+    ]
+    assert set(structured["metric_ids"]) == {
+        "amount_total",
+        "event_count",
+        "amount_per_event",
+        "account_count",
+    }
+    assert set(structured["metric_terms"]) == {
+        "amount_per_event",
+        "account_count",
+    }
+    assert {
+        metric["id"]
+        for asset in selected_assets
+        for metric in asset["metrics"]
+    } == set(structured["metric_ids"])
+
+
+def test_support_metric_search_reaches_asset_and_returns_typed_unavailable_error() -> None:
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
+        engine.search_assets(
+            "Support amount_total",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    resolver = MetricResolver(engine, _SupportNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-support-metric",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 20),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="Support amount_total",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.METRIC_NOT_AVAILABLE
+    assert "Support amount_total" in str(raised.value)
+    assert raised.value.suggestions == ()
+
+
+def test_support_metric_model_signal_must_be_internally_consistent() -> None:
+    class _InconsistentSupportNormalizer(_SupportNormalizer):
+        async def normalize_question(self, payload: dict) -> dict:
+            result = await super().normalize_question(payload)
+            result["metric_resolution"] = "ambiguous"
+            return result
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        engine.search_assets(
+            "Support amount_total",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    resolver = MetricResolver(engine, _InconsistentSupportNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-inconsistent-support-metric",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 20),
+    )
+
+    with pytest.raises(ValueError, match="support 지표 판정과 후보"):
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="Support amount_total",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+
+def test_unresolved_metric_returns_typed_options_instead_of_internal_error() -> None:
+    engine = _engine(_runtime_bundle())
+    amount_assets = asyncio.run(
         engine.search_assets(
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )
     )
+    account_assets = asyncio.run(
+        engine.search_assets(
+            "account",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    assets = amount_assets + account_assets
     resolver = MetricResolver(engine, _AmbiguousNormalizer())
     context = RequestContext(
         request_id=UUID("10000000-0000-0000-0000-000000000001"),
@@ -345,13 +547,83 @@ def test_unresolved_metric_returns_typed_options_instead_of_internal_error() -> 
             )
         )
 
-    assert raised.value.disambiguation_options
-    assert raised.value.disambiguation_options[0].metric_id == "amount_per_event"
+    assert {
+        option.metric_id for option in raised.value.disambiguation_options
+    } == {"amount_per_event", "account_count"}
     assert raised.value.partial_context is not None
     assert raised.value.partial_context["period_candidates"][0]["start"].startswith(
         "2026-08-01"
     )
     assert raised.value.partial_context["selected_metric_id"] is None
+
+
+def test_unsupported_measurement_does_not_fall_back_to_all_business_metrics() -> None:
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        engine.search_assets(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    resolver = MetricResolver(engine, _UnsupportedNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-unsupported-metric",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 20),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="Unapproved measurement",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.METRIC_NOT_AVAILABLE
+    assert raised.value.disambiguation_options == ()
+    assert raised.value.suggestions == ()
+
+
+def test_missing_measurement_alone_offers_approved_business_metrics() -> None:
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        engine.search_assets(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    resolver = MetricResolver(engine, _MissingNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-missing-metric",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 20),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="Selected period only",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.INVALID_METRIC
+    assert [
+        option.metric_id for option in raised.value.disambiguation_options
+    ] == ["amount_per_event"]
 
 
 def test_selected_v2_metric_prunes_unapproved_join_edges() -> None:

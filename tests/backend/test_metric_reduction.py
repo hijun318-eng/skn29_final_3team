@@ -9,6 +9,7 @@ BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
 
 from app.services.analysis.evidence import _reduce_context_metric, _reduce_metric_values
+from app.services.analysis.responses import _presentation_rows
 from app.services.analysis.result_narrative import _format_value, explanation_is_grounded
 from app.services.analysis.result_validator import PipelineResultValidator
 from app.services.context.builder import ContextMetric
@@ -77,6 +78,35 @@ class MetricReductionTests(unittest.TestCase):
     def test_ratio_display_is_percent_rounded_and_zero_is_not_erased(self):
         self.assertEqual("65.23%", _format_value(Decimal("0.652306318"), "ratio"))
         self.assertEqual("0 KRW", _format_value(Decimal("0"), "KRW"))
+
+    def test_support_metric_columns_are_hidden_only_from_user_presentation(self):
+        package = SimpleNamespace(
+            metrics=(
+                SimpleNamespace(id="numerator", result_field="internal_numerator"),
+                SimpleNamespace(id="denominator", result_field="internal_denominator"),
+                SimpleNamespace(id="ratio", result_field="business_ratio"),
+            ),
+            metric_terms=(SimpleNamespace(id="ratio"),),
+        )
+        source_rows = (
+            {
+                "business_date": "2026-08-01",
+                "internal_numerator": 8,
+                "internal_denominator": 10,
+                "business_ratio": 0.8,
+            },
+        )
+
+        self.assertEqual(
+            (
+                {
+                    "business_date": "2026-08-01",
+                    "business_ratio": 0.8,
+                },
+            ),
+            _presentation_rows(package, source_rows),
+        )
+        self.assertIn("internal_numerator", source_rows[0])
 
     def test_narrative_rejects_inclusive_wording_for_exclusive_period_end(self):
         query = {

@@ -164,6 +164,16 @@ export function analysisFailurePresentation(
     };
   }
 
+  if (code === "METRIC_NOT_AVAILABLE") {
+    return {
+      tone: "empty",
+      category: "지표 지원 범위",
+      title: "이 지표는 아직 직접 분석할 수 없습니다",
+      reason: messageOr("요청한 값은 다른 지표 계산에만 사용하는 내부 지표입니다.", error?.message),
+      nextStep: "같은 업무 목적을 나타내는 공개 지표를 선택하거나, 필요한 지표의 공개 승인을 요청해 주세요.",
+    };
+  }
+
   if (code === "GRAIN_VIOLATION") {
     return {
       tone: "clarification",

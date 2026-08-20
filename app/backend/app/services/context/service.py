@@ -85,6 +85,12 @@ def _inject_turn_filters(
                     new_metrics.append(metric)
                     continue
                 metric_copy = dict(metric)
+                # ratio는 물리 필드가 없는 계산 계약이며 required_filters가 항상 비어 있어야
+                # 한다. 같은 asset의 분자·분모 column metric에 적용된 WHERE 조건이 두
+                # operand의 범위를 함께 제한하므로 ratio 자체에 필터를 복제하지 않는다.
+                if str(metric_copy.get("aggregation") or "").casefold() == "ratio":
+                    new_metrics.append(metric_copy)
+                    continue
                 required = list(metric_copy.get("required_filters") or ())
                 for index, turn_filter in enumerate(turn_filters):
                     if turn_filter.asset_fqn != str(asset_copy.get("fqn", "")):

@@ -59,6 +59,34 @@ def _business_metrics(package: ContextPackage) -> tuple[ContextMetric, ...]:
     return tuple(metric for metric in package.metrics if metric.id in business_ids)
 
 
+def _presentation_rows(
+    package: ContextPackage,
+    rows: tuple[dict[str, object], ...],
+) -> tuple[dict[str, object], ...]:
+    """내부 계산 Metric 컬럼을 제거한 사용자용 결과 행을 반환한다.
+
+    SUPPORT Metric은 ratio 검증·reduction을 위해 원시 query 실행 상태에만 남긴다.
+    승인된 BUSINESS Glossary Term이 없으므로 API table·chart와 이 table에서 영속되는
+    artifact snapshot에는 노출하지 않는다. 차원·시간 컬럼과 BUSINESS Metric 결과 필드는
+    입력 순서를 그대로 보존한다.
+    """
+
+    business_ids = {term.id for term in package.metric_terms}
+    hidden_fields = {
+        metric.result_field
+        for metric in package.metrics
+        if metric.id not in business_ids
+    }
+    return tuple(
+        {
+            field: value
+            for field, value in row.items()
+            if field not in hidden_fields
+        }
+        for row in rows
+    )
+
+
 class AnalysisResponseFactory:
     """분석 실행 결과를 공통 API 계약(AnalysisResponse)으로 조립하는 팩토리 클래스."""
 
@@ -86,14 +114,15 @@ class AnalysisResponseFactory:
             else AnalysisStatus.SUCCEEDED
         )
         machine.transition(status)
-        rows = tuple(query["rows"])
+        source_rows = tuple(query["rows"])
+        rows = _presentation_rows(package, source_rows)
         presentation_metrics = _business_metrics(package)
         metric_values = []
         for metric in presentation_metrics:
             field = metric.result_field
-            if not rows or not all(field in row for row in rows):
+            if not source_rows or not all(field in row for row in source_rows):
                 continue
-            reduced = _reduce_context_metric(metric, package, rows)
+            reduced = _reduce_context_metric(metric, package, source_rows)
             if reduced is not None:
                 term = _metric_term(package, metric.id)
                 metric_values.append(

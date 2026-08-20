@@ -81,6 +81,21 @@ class TimeAlgebraEngine:
 
         return None, False
 
+    @classmethod
+    def resolve_comparison_time(
+        cls,
+        node1_output: dict[str, Any],
+        as_of: date,
+    ) -> ResolvedTimeRange | None:
+        """명시적 두 기간 비교의 두 번째 반개구간을 질문 순서 그대로 확정한다."""
+
+        if node1_output.get("period_relationship") != "comparison":
+            return None
+        candidates = cls._valid_candidates(node1_output.get("period_candidates"))
+        if len(candidates) != 2:
+            return None
+        return cls.complete_data_range(candidates[1], as_of)
+
     @staticmethod
     def complete_data_range(
         resolved: ResolvedTimeRange,
@@ -116,8 +131,16 @@ class TimeAlgebraEngine:
         Returns:
             확정 가능한 첫 기간 또는 None
         """
+        values = cls._valid_candidates(candidates)
+        return values[0] if values else None
+
+    @classmethod
+    def _valid_candidates(cls, candidates: object) -> tuple[ResolvedTimeRange, ...]:
+        """형식과 반개구간 불변식을 만족하는 typed 기간 후보를 순서대로 반환한다."""
+
         if not isinstance(candidates, list):
-            return None
+            return ()
+        values: list[ResolvedTimeRange] = []
         for candidate in candidates:
             if not isinstance(candidate, dict):
                 continue
@@ -128,12 +151,14 @@ class TimeAlgebraEngine:
                 continue
             if start >= end_exclusive:
                 continue
-            return ResolvedTimeRange(
-                start=start,
-                end_exclusive=end_exclusive,
-                source_text=str(candidate.get("source_text") or ""),
+            values.append(
+                ResolvedTimeRange(
+                    start=start,
+                    end_exclusive=end_exclusive,
+                    source_text=str(candidate.get("source_text") or ""),
+                )
             )
-        return None
+        return tuple(values)
 
     @staticmethod
     def add_months(dt: date, months: int) -> date:

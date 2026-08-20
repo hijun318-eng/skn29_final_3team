@@ -12,6 +12,7 @@ from app.services.conversation.slot_resolver import (
     ConversationSlotResolver,
     ResolvedTimeRange,
 )
+from app.services.conversation.analysis_request import build_structured_analysis_request
 from app.services.conversation.time_algebra import TimeAlgebraEngine
 
 
@@ -192,7 +193,6 @@ def test_conversation_slot_resolver_routes_and_views():
             "time_range": prev_turn1["resolved_slots"]["time_range"],
         },
     }
-
     # Turn 3: 표현을 지목하지 않은 전환 요청은 허용 목록을 순환한다 (BAR -> LINE)
     turn3_slots = ConversationSlotResolver.resolve(
         user_message="다른 차트로 나타내줘",
@@ -222,6 +222,99 @@ def test_conversation_slot_resolver_routes_and_views():
     )
     assert turn5_slots.route == "REPORT_ACTION"
     assert turn5_slots.source_turn_ids == ("turn-1", "turn-2")
+
+
+def test_conversation_slots_preserve_multi_metric_operation_and_followup_inheritance():
+    period = _node1_period(
+        "2026-07-01T00:00:00+09:00",
+        "2026-08-01T00:00:00+09:00",
+        "2026년 7월",
+    )
+    first = ConversationSlotResolver.resolve(
+        user_message="2026년 7월 객실 매출과 점유율을 비교 없이 보여줘",
+        node1_output={
+            "selected_metric_id": None,
+            "selected_metric_ids": ["room_revenue", "occupancy_rate"],
+            "analysis_operation": "aggregate",
+            "result_limit": None,
+            **period,
+        },
+        previous_turns=[],
+        as_of=date(2026, 8, 18),
+    )
+
+    assert first.metric_id is None
+    assert first.metric_ids == ("room_revenue", "occupancy_rate")
+    assert first.analysis_operation == "aggregate"
+
+    prior = {
+        "turn_id": "multi-1",
+        "route": "ANALYSIS",
+        "resolved_slots": {
+            "metric_id": None,
+            "metric_ids": list(first.metric_ids),
+            "analysis_operation": first.analysis_operation,
+            "result_limit": None,
+            "dimension_fields": [],
+            "user_filters": [],
+            "time_range": {
+                "start": "2026-07-01",
+                "end_exclusive": "2026-08-01",
+                "source_text": "2026년 7월",
+            },
+        },
+    }
+    followup = ConversationSlotResolver.resolve(
+        user_message="그 전 기간은?",
+        node1_output={"is_elliptical": True, "period_candidates": []},
+        previous_turns=[prior],
+        as_of=date(2026, 8, 18),
+    )
+
+    assert followup.metric_id is None
+    assert followup.metric_ids == first.metric_ids
+    assert followup.is_inherited_metric is True
+    assert followup.analysis_operation == "aggregate"
+
+
+def test_period_comparison_keeps_both_windows_through_typed_analysis_request():
+    slots = ConversationSlotResolver.resolve(
+        user_message="2026년 7월과 6월 매출을 비교해줘",
+        node1_output={
+            "selected_metric_id": "room_revenue",
+            "selected_metric_ids": ["room_revenue"],
+            "analysis_operation": "period_comparison",
+            "result_limit": None,
+            "period_relationship": "comparison",
+            "period_candidates": [
+                {
+                    "start": "2026-07-01T00:00:00+09:00",
+                    "end_exclusive": "2026-08-01T00:00:00+09:00",
+                    "source_text": "2026년 7월",
+                },
+                {
+                    "start": "2026-06-01T00:00:00+09:00",
+                    "end_exclusive": "2026-07-01T00:00:00+09:00",
+                    "source_text": "6월",
+                },
+            ],
+        },
+        previous_turns=[],
+        as_of=date(2026, 8, 18),
+    )
+
+    request = build_structured_analysis_request(
+        "2026년 7월과 6월 매출을 비교해줘",
+        slots,
+    )
+
+    assert slots.time_range is not None
+    assert slots.comparison_time_range is not None
+    assert slots.comparison_time_range.start == date(2026, 6, 1)
+    assert request.resolved_slots is not None
+    assert request.resolved_slots.period_start == "2026-07-01"
+    assert request.resolved_slots.comparison_period_start == "2026-06-01"
+    assert request.resolved_slots.analysis_operation == "period_comparison"
 
 
 def test_conversation_slot_resolver_metric_and_period_inheritance():

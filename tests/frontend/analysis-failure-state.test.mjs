@@ -78,6 +78,18 @@ try {
   assert.match(metricHtml, /인식 객실 매출/);
   assert.doesNotMatch(metricHtml, /추천 질문/);
 
+  const unavailableMetricHtml = render({
+    ...baseRun,
+    error: {
+      code: "METRIC_NOT_AVAILABLE",
+      message: "요청한 '예약된 객실 수' 지표는 다른 지표 계산을 위한 내부 값이므로 직접 분석할 수 없습니다.",
+      required_action: "MODIFY_REQUEST",
+    },
+  }, "EMPTY");
+  assert.match(unavailableMetricHtml, /이 지표는 아직 직접 분석할 수 없습니다/);
+  assert.match(unavailableMetricHtml, /예약된 객실 수/);
+  assert.doesNotMatch(unavailableMetricHtml, /internal-request-id|internal-trace-id|승인된 지표.*승인된 지표/);
+
   const deniedHtml = render({
     ...baseRun,
     error: {

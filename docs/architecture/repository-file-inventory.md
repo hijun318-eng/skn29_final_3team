@@ -7,13 +7,13 @@
 
 | 분류 | 파일 수 |
 |---|---:|
-| archive | 130 |
+| archive | 132 |
 | documentation | 138 |
 | production | 307 |
 | project-config | 38 |
 | runtime-config | 65 |
 | runtime-contract | 10 |
-| test | 140 |
+| test | 142 |
 
 운영 무결성 위반: **0건**
 
@@ -431,6 +431,8 @@
 | `evals/instruct2507.smoke20.f4.jsonl` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.jsonl` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.v2.manifest.json` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/metric_retrieval.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/metric_retrieval_runner.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/nlu_live_node1.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/nlu_route_accuracy.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/p0_gold.py` | archive | ARCHIVE_NON_RUNTIME |
@@ -716,9 +718,11 @@
 | `tests/ai/test_conversation_topic_transitions.py` | test | TEST_ONLY |
 | `tests/ai/test_eval_runner.py` | test | TEST_ONLY |
 | `tests/ai/test_fake_model.py` | test | TEST_ONLY |
+| `tests/ai/test_metric_retrieval.py` | test | TEST_ONLY |
 | `tests/ai/test_model_contracts_live.py` | test | TEST_ONLY |
 | `tests/ai/test_model_decision.py` | test | TEST_ONLY |
 | `tests/ai/test_model_transport_policy_contract.py` | test | TEST_ONLY |
+| `tests/ai/test_nlu_live_node1_eval.py` | test | TEST_ONLY |
 | `tests/ai/test_node1.py` | test | TEST_ONLY |
 | `tests/ai/test_node2.py` | test | TEST_ONLY |
 | `tests/ai/test_node3.py` | test | TEST_ONLY |

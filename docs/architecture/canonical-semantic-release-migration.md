@@ -60,12 +60,20 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
 - 기존 `AnalysisPlanStage` 앞에서 `ANSWERVICE-ANALYSIS-PLAN-v2` 논리 계획을 컴파일한다.
   출력 Metric 1~4개, 연산 enum, asset별 물리 Dimension, 기간 parameter, query strategy와
   edge별 팬아웃 결정을 Context package hash에 결합하며 SQL plan cache key에도 포함한다.
-- Node 1 active contract를 `MODEL-v1.17.0`으로 올려 질문당 BUSINESS Metric 1~4개,
+- Node 1 active contract를 `MODEL-v1.20.0`으로 올려 질문당 BUSINESS Metric 1~4개,
   `analysis_operation`, `result_limit`을 typed slot으로 전달한다. 기존 단일
   `selected_metric_id`는 한 개일 때만 채워지는 호환 projection이며, 대화 저장·상속은
-  `metric_ids` 전체를 보존한다. active release manifest는 `MODEL-RELEASE-v1.23.0`, Node 1
-  prompt는 `PROMPT-v1.18.0`이며 특정 호텔 질문 해석기가 아니라 supplied governed BI
-  metadata만 사용하는 범용 역할로 고정했다.
+  `metric_ids` 전체를 보존한다. 직전의 확정 기간과 결과 형태는 최소 typed 컨텍스트인
+  `previous_period`와 `previous_result_shape`로만 전달한다. 결과 형태가 생략된 후속 질문은
+  operation을 `null`로 반환해 직전 shape를 보존하고, 명시된 shape만 교체한다. active
+  range 지표가 확정됐지만 기간 슬롯만 비면 동일 원문을 `interpretation_recheck`로 정확히
+  한 번 재검토하고, 두 번째도 비면 기본 기간을 만들지 않고 typed 명확화로 닫는다.
+  선택된 분석의 결과 형태가 비정상적으로 비면 같은 원문을 해당 슬롯에 한해 한 번만
+  재검토하며, 서버가 질문 문구를 파싱해 임의 연산으로 대체하지 않는다. active
+  release manifest는 `MODEL-RELEASE-v1.31.0`, Node 1 prompt는 `PROMPT-v1.25.0`이며 특정
+  호텔 질문 해석기가 아니라 supplied governed BI metadata만 사용하는 범용 역할로 고정했다.
+  Node 3 prompt `PROMPT-v1.2.5`는 시작 포함 경계와 종료 미포함 경계의 한국어 표현을
+  각각 `부터`, `전까지`로 분리해 결과 문구가 기간 계약과 어긋나지 않게 한다.
 - SQL Guard는 실제 AST가 사용한 JOIN edge를 각 v2 Metric의 `allowed_join_ids`와 대조하고,
   같은 edge에 대해 논리 계획과 동일한 팬아웃 결정표를 다시 실행한다. 필요한
   `PREAGGREGATE`나 `SEMI_JOIN` 형태가 실제 AST에 없으면 `GRAIN_VIOLATION`으로 닫는다.

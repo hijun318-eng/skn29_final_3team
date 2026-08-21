@@ -177,8 +177,16 @@ class ConversationSlotResolver:
         last_slots = last_turn.get("resolved_slots", {}) if last_turn else {}
         last_chart_type = (last_slots.get("target_chart_type") or "SUMMARY").upper()
 
-        # 이전 ANALYSIS 턴 역추적 (중간에 PRESENTATION/CLARIFICATION 턴이 끼어 있어도 원천 분석 지표/차원 보존)
-        last_analysis = next((t for t in reversed(previous_turns) if t.get("route") == "ANALYSIS"), None)
+        # 이전 확정 ANALYSIS 턴 역추적. route만 ANALYSIS인 실패·명확화 턴은 실행된
+        # 분석 상태가 아니므로 상속 원본이 될 수 없다.
+        last_analysis = next(
+            (
+                turn
+                for turn in reversed(previous_turns)
+                if cls.is_resolved_analysis_turn(turn)
+            ),
+            None,
+        )
         last_analysis_slots = last_analysis.get("resolved_slots", {}) if last_analysis else {}
 
         # -------------------------------------------------------------
@@ -408,7 +416,6 @@ class ConversationSlotResolver:
             if is_followup and analysis_operation in {"top_n", "bottom_n"}
             else None
         )
-
         # 3-2. dimension_fields 변경분 계산 및 적용
         candidate_dims = tuple(
             dict(d) for d in (node1_output.get("dimension_fields") or ()) if isinstance(d, dict)
@@ -418,7 +425,19 @@ class ConversationSlotResolver:
             if last_analysis_slots.get("dimension_fields")
             else tuple(dict(d) for d in last_slots.get("dimension_fields", ()))
         )
-        dimension_changes = derive_dimension_changes(candidate_dims, inherited_dims, is_followup)
+        # Node 1은 결과 형태를 생략한 후속 질문에서 operation을 null로 보내므로 기존
+        # 차원을 보존한다. 반대로 명시적인 aggregate와 빈 차원 목록은 전체값으로의
+        # 전환이며, 이전 GROUP BY를 CLEAR해야 한다. 질문 문자열은 다시 파싱하지 않는다.
+        preserve_dimensions = not (
+            is_followup
+            and candidate_operation == "aggregate"
+            and not candidate_dims
+        )
+        dimension_changes = derive_dimension_changes(
+            candidate_dims,
+            inherited_dims,
+            is_followup and preserve_dimensions,
+        )
         dimension_fields, is_inherited_dimension = apply_dimension_changes(
             dimension_changes, inherited_dims
         )
@@ -486,7 +505,16 @@ class ConversationSlotResolver:
             user_filters=user_filters,
             time_range=time_range,
             target_chart_type=target_chart_type,
-            source_turn_ids=(str(last_turn["turn_id"]),) if last_turn and (is_inherited_metric or is_inherited_period or is_inherited_dimension) else (),
+            source_turn_ids=(
+                (str((last_analysis or last_turn)["turn_id"]),)
+                if (last_analysis or last_turn)
+                and (
+                    is_inherited_metric
+                    or is_inherited_period
+                    or is_inherited_dimension
+                )
+                else ()
+            ),
             is_inherited_metric=is_inherited_metric,
             is_inherited_dimension=is_inherited_dimension,
             is_inherited_period=is_inherited_period,
@@ -504,10 +532,10 @@ class ConversationSlotResolver:
     ) -> bool:
         """이번 발화가 직전 턴의 슬롯을 상속할 생략문인지 판정합니다.
 
-        생략 여부는 질문 자체의 문법 판단이므로 Node1이 `is_elliptical`로 해석한다.
-        신호가 없으면 상속을 추측하지 않고 False로 닫는다. 새 지표 후보가 있더라도 지표
-        자체는 아래 ChangeSet이 교체하고, 생략된 기간·차원·필터만 호환 범위에서 이어갈 수
-        있어야 하므로 여기서 전체 후속 문맥을 끊지 않는다.
+        생략 여부는 우선 Node1의 `is_elliptical`로 해석한다. 모델이 이 신호를 놓쳐도
+        측정 대상 없이 분석 연산만 확정된 typed 구조는 그 자체로 이전 Metric이 필요한
+        요청이므로 같은 문맥 의존 상태로 취급한다. 새 지표 후보가 있으면 아래 ChangeSet이
+        교체하고, 생략된 기간·차원·필터만 호환 범위에서 이어간다.
 
         Args:
             node1_output: Node 1 정규화 결과
@@ -515,10 +543,49 @@ class ConversationSlotResolver:
         Returns:
             직전 턴 슬롯을 상속할 후속 질의인지 여부
         """
-        if node1_output.get("is_elliptical") is not True:
-            return False
+        return cls.is_context_dependent_followup(node1_output)
 
-        return True
+    @classmethod
+    def is_context_dependent_followup(
+        cls,
+        node1_output: dict[str, Any],
+    ) -> bool:
+        """typed Node 1 구조만으로 이전 분석 상태가 필요한 요청인지 판정한다.
+
+        모델의 명시적 ``is_elliptical`` 신호가 우선이다. 다만 측정 대상은 없고
+        결과 연산만 명시된 요청은 그 연산을 적용할 Metric이 현재 발화에 없으므로
+        구조적으로도 문맥 의존적이다. 이는 질문 문구나 업무 값 목록을 해석하지 않는다.
+        실제 상속 가능 여부는 이전 확정 분석 슬롯 존재 여부가 별도로 결정한다.
+        """
+
+        if node1_output.get("is_elliptical") is True:
+            return True
+        operations = {
+            "aggregate",
+            "breakdown",
+            "time_trend",
+            "top_n",
+            "bottom_n",
+            "period_comparison",
+        }
+        return (
+            node1_output.get("metric_resolution") == "missing"
+            and not node1_output.get("measurement_source_texts")
+            and node1_output.get("analysis_operation") in operations
+        )
+
+    @staticmethod
+    def is_resolved_analysis_turn(turn: dict[str, Any]) -> bool:
+        """실패·명확화 상태가 아닌 확정 Metric 분석 턴만 상속 원본으로 허용한다."""
+
+        if turn.get("route") != "ANALYSIS":
+            return False
+        slots = turn.get("resolved_slots")
+        if not isinstance(slots, dict):
+            return False
+        if slots.get("ambiguity_status") == "NEEDS_CLARIFICATION":
+            return False
+        return bool(slots.get("metric_id") or slots.get("metric_ids"))
 
     @classmethod
     def _resolve_presentation_chart_type(

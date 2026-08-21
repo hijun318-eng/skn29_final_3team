@@ -3,7 +3,8 @@
 [이 스크립트가 답하는 질문]
 계약·프롬프트·서버 확정 로직은 단위/계약 테스트로 이미 검증된다. 여기서 남는 미검증
 항목은 하나다. **실제 모델이 `requested_route`·`presentation_type`·`is_elliptical`·
-`period_candidates`를 지시대로 채우는가.**
+`period_candidates`·`analysis_operation`을 지시대로 채우고, 서버가 직전 결과 형태와
+합성한 최종 연산까지 올바르게 확정하는가.**
 
 [비용과 승인]
 운영 model endpoint를 실제로 호출하므로 요금이 발생하고 질문 텍스트가 외부로 전송된다.
@@ -33,11 +34,20 @@ for entry in (str(BACKEND), str(ROOT)):
         sys.path.insert(0, entry)
 
 from src.ai.schema import ContractError, validate_payload  # noqa: E402
+from app.services.conversation.slot_resolver import (  # noqa: E402
+    ConversationSlotResolver,
+    ResolvedTurnSlots,
+)
 
 AS_OF = "2026-08-19T00:00:00+09:00"
 PREVIOUS_PERIOD = {
     "start": "2025-08-01T00:00:00+09:00",
     "end_exclusive": "2025-09-01T00:00:00+09:00",
+}
+PREVIOUS_RESULT_SHAPE = {
+    "analysis_operation": "breakdown",
+    "dimension_count": 1,
+    "result_limit": None,
 }
 BUSINESS_TERMS = {
     "room_revenue": {"kind": "metric", "aliases": ["객실 매출", "객실 수익"]},
@@ -55,23 +65,30 @@ class LiveCase:
         route: 기대하는 `requested_route`
         elliptical: 기대하는 `is_elliptical`
         anchored: 기간이 직전 턴 앵커 기준으로 해석되어야 하는지 여부
+        operation: 서버가 직전 shape와 합성한 뒤 기대하는 최종 분석 연산. None이면
+            비분석 route라 이 항목을 채점하지 않는다.
     """
 
     text: str
     route: str | None
     elliptical: bool
     anchored: bool = False
+    operation: str | None = None
 
 
 CASES: tuple[LiveCase, ...] = (
-    LiveCase("2025년 8월 객실 매출 보여줘", "ANALYSIS", False),
+    LiveCase("2025년 8월 객실 매출 보여줘", "ANALYSIS", False, operation="aggregate"),
     LiveCase("꺾은선으로 보여줘", "PRESENTATION", True),
     LiveCase("한눈에 들어오게 바꿔줘", "PRESENTATION", True),
     LiveCase("이거 리포트로 정리해줘", "REPORT_ACTION", True),
     LiveCase("결재 올릴 수 있게 정리해줘", "REPORT_ACTION", True),
-    LiveCase("그 전 달은?", "ANALYSIS", True, anchored=True),
-    LiveCase("호텔별로도 나눠서 보여줘", "ANALYSIS", True),
-    LiveCase("취소 사유를 분석해줘", "ANALYSIS", False),
+    LiveCase("그 전 달은?", "ANALYSIS", True, anchored=True, operation="breakdown"),
+    LiveCase("호텔별로도 나눠서 보여줘", "ANALYSIS", True, operation="breakdown"),
+    LiveCase("취소 사유를 분석해줘", "ANALYSIS", False, operation="aggregate"),
+    # 아래 발화는 호텔·객실이라는 특정 도메인 값이 없어도 이전 breakdown을 보존하거나
+    # aggregate로 교체하는지를 검증한다. 운영 분기가 아니라 유료 live quality gate다.
+    LiveCase("9월은?", "ANALYSIS", True, operation="breakdown"),
+    LiveCase("하나의 전체 값으로 합쳐줘", "ANALYSIS", True, operation="aggregate"),
 )
 
 
@@ -118,13 +135,17 @@ def build_request(case: LiveCase) -> dict[str, object]:
         "allowed_routes": ["general", "template"],
         "business_terms": BUSINESS_TERMS,
         "previous_period": dict(PREVIOUS_PERIOD),
+        "previous_result_shape": dict(PREVIOUS_RESULT_SHAPE),
     }
     validate_payload("node1_request", request)
     return request
 
 
-def _server_route(case: LiveCase, response: dict[str, object]) -> str:
-    """모델 신호를 서버 라우팅 계약에 통과시켜 최종 라우트를 얻습니다.
+def _server_resolution(
+    case: LiveCase,
+    response: dict[str, object],
+) -> ResolvedTurnSlots:
+    """모델 신호를 서버 슬롯 계약에 통과시켜 최종 해석을 얻습니다.
 
     사용자가 실제로 겪는 결과는 모델의 원신호가 아니라 서버가 전제조건까지 확인해
     확정한 라우트다. 따라서 품질 지표도 이 값으로 측정한다.
@@ -134,10 +155,8 @@ def _server_route(case: LiveCase, response: dict[str, object]) -> str:
         response: 모델이 반환한 node1_response
 
     Returns:
-        서버가 확정한 라우트
+        서버가 확정한 ``ResolvedTurnSlots``
     """
-    from app.services.conversation.slot_resolver import ConversationSlotResolver
-
     signals = dict(response)
     # MetricResolver가 승인 검증 뒤 싣는 필드명으로 맞춰, 운영과 같은 입력을 준다.
     signals["dimension_fields"] = [
@@ -152,6 +171,14 @@ def _server_route(case: LiveCase, response: dict[str, object]) -> str:
             "artifact_id": "artifact-1",
             "resolved_slots": {
                 "metric_id": "room_revenue",
+                "metric_ids": ["room_revenue"],
+                "analysis_operation": "breakdown",
+                "dimension_fields": [
+                    {
+                        "asset_fqn": "serving.room_daily",
+                        "column": "hotel_code",
+                    }
+                ],
                 "target_chart_type": "SUMMARY",
                 "time_range": {
                     "start": "2025-08-01",
@@ -166,7 +193,7 @@ def _server_route(case: LiveCase, response: dict[str, object]) -> str:
         node1_output=signals,
         previous_turns=previous_turns,
         as_of=date(2026, 8, 19),
-    ).route
+    )
 
 
 def judge(case: LiveCase, response: dict[str, object]) -> dict[str, object]:
@@ -184,19 +211,27 @@ def judge(case: LiveCase, response: dict[str, object]) -> dict[str, object]:
     if isinstance(periods, list) and periods and isinstance(periods[0], dict):
         first_start = str(periods[0].get("start", ""))
     anchored_ok = (not case.anchored) or first_start.startswith("2025-07")
-    server_route = _server_route(case, response)
+    resolution = _server_resolution(case, response)
+    operation_ok = (
+        case.operation is None
+        or resolution.analysis_operation == case.operation
+    )
     return {
         "utterance": case.text,
         "route_expected": case.route,
         "model_signal": response.get("requested_route"),
         "signal_ok": response.get("requested_route") == case.route,
-        "server_route": server_route,
-        "route_ok": server_route == case.route,
+        "server_route": resolution.route,
+        "route_ok": resolution.route == case.route,
         "elliptical_expected": case.elliptical,
         "elliptical_actual": response.get("is_elliptical"),
         "elliptical_ok": response.get("is_elliptical") is case.elliptical,
         "period_start": first_start,
         "anchor_ok": anchored_ok,
+        "operation_expected": case.operation,
+        "operation_model_signal": response.get("analysis_operation"),
+        "operation_resolved": resolution.analysis_operation,
+        "operation_ok": operation_ok,
     }
 
 
@@ -267,7 +302,10 @@ def main() -> int:
     results = asyncio.run(run_live(args.env_file, repeat=max(1, args.repeat)))
     print(json.dumps(results, ensure_ascii=False, indent=2))
     ok = all(
-        row.get("route_ok") and row.get("elliptical_ok") and row.get("anchor_ok")
+        row.get("route_ok")
+        and row.get("elliptical_ok")
+        and row.get("anchor_ok")
+        and row.get("operation_ok")
         for row in results
     )
     return 0 if ok else 1

@@ -41,6 +41,38 @@ from app.services.analysis.pipeline_support import PipelineSupport
 logger = logging.getLogger("uvicorn.error")
 
 
+def _clarification_resolved_by_inheritance(
+    error: ContextBuildError,
+    slots: ResolvedTurnSlots,
+) -> bool:
+    """Node 1이 명시한 생략형 질문만 이전 확정 슬롯으로 명확화가 끝났는지 판정한다.
+
+    지표가 모호하거나 새 질문에 필요한 기간이 없는 상태를 임의로 상속하면 다른 분석을
+    실행할 수 있다. 따라서 ``is_elliptical``이 참이고, 누락 원인과 같은 종류의 슬롯을
+    ``ConversationSlotResolver``가 실제로 상속한 경우에만 preflight 차단을 해제한다.
+    하류 분석 파이프라인은 이 슬롯을 active release와 다시 대조한다.
+    """
+
+    partial = getattr(error, "partial_context", None)
+    if not isinstance(partial, dict) or not (
+        ConversationSlotResolver.is_context_dependent_followup(partial)
+    ):
+        return False
+    if error.code is ContextBuildErrorCode.INVALID_METRIC:
+        return (
+            partial.get("metric_resolution") == "missing"
+            and slots.is_inherited_metric
+            and bool(slots.metric_ids)
+        )
+    if error.code is ContextBuildErrorCode.PERIOD_REQUIRED:
+        return (
+            not partial.get("period_candidates")
+            and slots.is_inherited_period
+            and slots.time_range is not None
+        )
+    return False
+
+
 class ConversationOrchestrator:
     """멀티턴 대화의 상태 머신, 동시성 제어 및 라우트 실행을 담당하는 오케스트레이터."""
 
@@ -223,32 +255,40 @@ class ConversationOrchestrator:
                     # 직전 승인 Metric을 결합해 recall을 재시도한다. metadata 장애는 전파한다.
                     assets = []
 
-                # 2차: 자산 미발견 시 이전 분석 지표를 결합해 기간·필터만 남은 후속 발화를 검색
+                # 2차: 자산 미발견 시 이전 분석 지표를 typed 후보 우선순위로 전달한다.
+                # 질문 문자열에 Metric ID를 붙이면 DataHub lexical rank가 다른 revenue 자산까지
+                # 끌어와 bounded scope를 깨뜨리고, Node 1의 생략문 판정 증거도 오염된다.
                 if not assets:
-                    last_analysis_metric = next(
+                    last_analysis_metric_ids = next(
                         (
-                            t.get("resolved_slots", {}).get("metric_id")
-                            or " ".join(
-                                map(
-                                    str,
-                                    t.get("resolved_slots", {}).get("metric_ids", ()),
+                            tuple(
+                                item
+                                for item in (
+                                    t.get("resolved_slots", {}).get("metric_ids")
+                                    or (
+                                        [t.get("resolved_slots", {}).get("metric_id")]
+                                        if t.get("resolved_slots", {}).get("metric_id")
+                                        else []
+                                    )
                                 )
+                                if isinstance(item, str) and item
                             )
-                         for t in reversed(previous_turns)
-                         if t.get("route") == "ANALYSIS"
-                         and (
-                             t.get("resolved_slots", {}).get("metric_id")
-                             or t.get("resolved_slots", {}).get("metric_ids")
-                         )),
-                        None,
+                            for t in reversed(previous_turns)
+                            if ConversationSlotResolver.is_resolved_analysis_turn(t)
+                            and (
+                                t.get("resolved_slots", {}).get("metric_id")
+                                or t.get("resolved_slots", {}).get("metric_ids")
+                            )
+                        ),
+                        (),
                     )
-                    if last_analysis_metric:
-                        followup_search_query = (
-                            f"{last_analysis_metric} {user_message}"
-                        )
+                    if last_analysis_metric_ids:
                         candidate_set = await self._data_platform.search_asset_candidates(
-                            followup_search_query,
-                            search_context,
+                            user_message,
+                            {
+                                **search_context,
+                                "preferred_metric_ids": list(last_analysis_metric_ids),
+                            },
                         )
                         assets = list(candidate_set.assets)
 
@@ -259,16 +299,59 @@ class ConversationOrchestrator:
 
                 if assets:
                     preflight_slots = None
-                    last_time = next(
-                        (t.get("resolved_slots", {}).get("time_range")
-                         for t in reversed(previous_turns)
-                         if t.get("resolved_slots", {}).get("time_range")),
+                    last_resolved_analysis = next(
+                        (
+                            turn
+                            for turn in reversed(previous_turns)
+                            if ConversationSlotResolver.is_resolved_analysis_turn(
+                                turn
+                            )
+                        ),
                         None,
                     )
-                    if last_time and isinstance(last_time, dict) and last_time.get("start") and last_time.get("end_exclusive"):
+                    last_analysis_slots = (
+                        last_resolved_analysis.get("resolved_slots", {})
+                        if last_resolved_analysis
+                        else {}
+                    )
+                    last_time = last_analysis_slots.get("time_range")
+                    comparison_time = last_analysis_slots.get(
+                        "comparison_time_range"
+                    )
+                    dimension_ids = tuple(
+                        str(item["column"])
+                        for item in last_analysis_slots.get(
+                            "dimension_fields", ()
+                        )
+                        if isinstance(item, dict) and item.get("column")
+                    )
+                    if last_analysis_slots:
                         preflight_slots = ResolvedSlots(
-                            period_start=last_time["start"],
-                            period_end_exclusive=last_time["end_exclusive"],
+                            dimension_ids=dimension_ids,
+                            period_start=(
+                                last_time.get("start")
+                                if isinstance(last_time, dict)
+                                else None
+                            ),
+                            period_end_exclusive=(
+                                last_time.get("end_exclusive")
+                                if isinstance(last_time, dict)
+                                else None
+                            ),
+                            comparison_period_start=(
+                                comparison_time.get("start")
+                                if isinstance(comparison_time, dict)
+                                else None
+                            ),
+                            comparison_period_end_exclusive=(
+                                comparison_time.get("end_exclusive")
+                                if isinstance(comparison_time, dict)
+                                else None
+                            ),
+                            analysis_operation=last_analysis_slots.get(
+                                "analysis_operation"
+                            ),
+                            result_limit=last_analysis_slots.get("result_limit"),
                         )
                     # 직전 Metric 결합은 짧은 후속 발화의 자산 recall을 높이는 검색 전용 힌트다.
                     # 의도·생략 여부·새 주제 판정은 사용자가 실제로 쓴 원문을 기준으로 해야
@@ -287,10 +370,18 @@ class ConversationOrchestrator:
                 # 지표·기간이 여러 갈래로 해석되는 상태다. 빈 신호로 계속 진행하면 같은
                 # 모호성을 파이프라인에서 다시 만난다. 운영 resolver가 함께 반환한 확정
                 # 슬롯은 clarification turn에 저장해 다음 선택이 같은 요청을 완결하게 한다.
-                if error.code is ContextBuildErrorCode.METRIC_NOT_AVAILABLE:
+                if error.code in {
+                    ContextBuildErrorCode.METRIC_NOT_AVAILABLE,
+                    ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+                }:
+                    public_code = (
+                        ErrorCode.METRIC_NOT_AVAILABLE
+                        if error.code is ContextBuildErrorCode.METRIC_NOT_AVAILABLE
+                        else ErrorCode.OUT_OF_DATA_RANGE
+                    )
                     public_error = {
                         "status": "FAILED",
-                        "code": ErrorCode.METRIC_NOT_AVAILABLE.value,
+                        "code": public_code.value,
                         "message": str(error),
                         "retryable": False,
                         "required_action": "MODIFY_REQUEST",
@@ -404,6 +495,14 @@ class ConversationOrchestrator:
                 as_of=context.as_of,
                 timezone_str=context.timezone,
             )
+            if (
+                preflight_clarification is not None
+                and _clarification_resolved_by_inheritance(
+                    preflight_clarification,
+                    slots,
+                )
+            ):
+                preflight_clarification = None
 
             turn_id = uuid4()
             turn_index = len(previous_turns)

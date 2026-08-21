@@ -244,7 +244,11 @@ class FakeDataPlatformAdapter:
     def __init__(self, assets: list[dict[str, Any]] | None = None) -> None:
         self.assets: list[dict[str, Any]] = list(assets or ())
         self.assets_by_query: dict[str, list[dict[str, Any]]] = {}
+        self.assets_by_preference: dict[
+            tuple[str, tuple[str, ...]], list[dict[str, Any]]
+        ] = {}
         self.queries: list[str] = []
+        self.search_contexts: list[dict[str, Any]] = []
         # 특정 발화에서 운영과 동일한 typed 실패를 재현하기 위한 프로그래밍 지점.
         self.search_error: Exception | None = None
 
@@ -253,10 +257,24 @@ class FakeDataPlatformAdapter:
 
         self.assets_by_query[query] = list(assets)
 
+    def program_preferred_search(
+        self,
+        query: str,
+        preferred_metric_ids: tuple[str, ...],
+        assets: list[dict[str, Any]],
+    ) -> None:
+        """구조화된 이전 Metric 우선순위가 있을 때의 후보 검색 결과를 등록한다."""
+
+        self.assets_by_preference[(query, preferred_metric_ids)] = list(assets)
+
     async def search_assets(self, query: str, filters: dict[str, Any]) -> list[dict[str, Any]]:
         self.queries.append(query)
+        self.search_contexts.append(dict(filters))
         if self.search_error is not None:
             raise self.search_error
+        preferred = tuple(filters.get("preferred_metric_ids") or ())
+        if (query, preferred) in self.assets_by_preference:
+            return list(self.assets_by_preference[(query, preferred)])
         if query in self.assets_by_query:
             return list(self.assets_by_query[query])
         return list(self.assets)
@@ -901,10 +919,14 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         )
         head = first["turn"]["turn_id"]
 
-        # 새 주제 원문 검색은 비지만, 직전 지표를 붙인 보조 검색에서는 자산을 찾는 상황.
+        # 새 주제 원문 검색은 비지만, 직전 지표를 typed 우선순위로 준 검색에서는 자산을 찾는 상황.
         self.data_platform.assets = []
         self.data_platform.program_search(second_message, [])
-        self.data_platform.program_search(f"room_revenue {second_message}", [room_asset])
+        self.data_platform.program_preferred_search(
+            second_message,
+            ("room_revenue",),
+            [room_asset],
+        )
         self.support.program(
             second_message,
             selected_metric_id=None,
@@ -924,13 +946,141 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             self.data_platform.queries[-2:],
-            [second_message, f"room_revenue {second_message}"],
+            [second_message, second_message],
+        )
+        self.assertNotIn(
+            "preferred_metric_ids",
+            self.data_platform.search_contexts[-2],
+        )
+        self.assertEqual(
+            ["room_revenue"],
+            self.data_platform.search_contexts[-1]["preferred_metric_ids"],
         )
         self.assertEqual(self.support.questions[-1], second_message)
         slots = second["turn"]["resolved_slots"]
         self.assertIsNone(slots["metric_id"])
         self.assertFalse(slots["is_inherited_metric"])
         self.assertTrue(slots["is_inherited_period"])
+
+    async def test_period_only_followup_uses_typed_metric_hint_and_executes_inherited_metric(self) -> None:
+        """기간만 바꾼 생략문이 이전 Metric을 상속한 뒤 전체 분석 Gate를 다시 통과한다."""
+
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "기간 변경 후속 질문",
+        )
+        first_message = "2026년 3월 호텔별 객실 매출"
+        second_message = "4월은?"
+        room_asset = {"urn": "urn:li:dataset:(serving,room_daily,PROD)"}
+        self.support.program(
+            first_message,
+            selected_metric_id="room_revenue",
+            selected_metric_ids=["room_revenue"],
+            metric_ids=["room_revenue"],
+            period_candidates=[
+                {
+                    "start": "2026-03-01",
+                    "end_exclusive": "2026-04-01",
+                    "source_text": "2026년 3월",
+                }
+            ],
+            dimension_fields=[
+                {
+                    "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+                    "column": "hotel_code",
+                }
+            ],
+            analysis_operation="breakdown",
+            is_elliptical=False,
+            requested_route="ANALYSIS",
+        )
+        first = await self.orchestrator.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": first_message},
+            context=self.context,
+        )
+
+        self.data_platform.assets = []
+        self.data_platform.program_search(second_message, [])
+        self.data_platform.program_preferred_search(
+            second_message,
+            ("room_revenue",),
+            [room_asset],
+        )
+        partial_context = {
+            "intent_candidates": [],
+            "metric_ids": [],
+            "metric_candidates": [],
+            "metric_resolution": "missing",
+            "measurement_source_text": None,
+            "measurement_source_texts": [],
+            "selected_metric_id": None,
+            "selected_metric_ids": [],
+            "analysis_operation": None,
+            "result_limit": None,
+            "dimension_candidates": [],
+            "dimension_fields": [],
+            "filter_fields": [],
+            "period_candidates": [
+                {
+                    "start": "2026-04-01T00:00:00+09:00",
+                    "end_exclusive": "2026-05-01T00:00:00+09:00",
+                    "source_text": "4월",
+                }
+            ],
+            "period_relationship": "single",
+            "requested_route": "ANALYSIS",
+            "presentation_type": None,
+            "is_elliptical": True,
+        }
+        self.support.program_error(
+            second_message,
+            ContextBuildError(
+                ContextBuildErrorCode.INVALID_METRIC,
+                "질문에 분석할 지표가 포함되지 않았습니다.",
+                partial_context=partial_context,
+            ),
+        )
+
+        second = await self.orchestrator.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": second_message,
+                "expected_head_turn_id": str(first["turn"]["turn_id"]),
+            },
+            context=self.context,
+        )
+
+        self.assertEqual("SUCCESS", second["status"])
+        self.assertEqual(
+            [second_message, second_message],
+            self.data_platform.queries[-2:],
+        )
+        self.assertEqual(
+            ["room_revenue"],
+            self.data_platform.search_contexts[-1]["preferred_metric_ids"],
+        )
+        slots = second["turn"]["resolved_slots"]
+        self.assertEqual("room_revenue", slots["metric_id"])
+        self.assertEqual(["room_revenue"], slots["metric_ids"])
+        self.assertTrue(slots["is_inherited_metric"])
+        self.assertTrue(slots["is_inherited_dimension"])
+        self.assertFalse(slots["is_inherited_period"])
+        self.assertEqual("breakdown", slots["analysis_operation"])
+        self.assertEqual(
+            [
+                {
+                    "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+                    "column": "hotel_code",
+                }
+            ],
+            slots["dimension_fields"],
+        )
+        self.assertEqual("2026-04-01", slots["time_range"]["start"])
+        self.assertEqual("2026-05-01", slots["time_range"]["end_exclusive"])
+        self.assertEqual(2, len(self.submitted_requests))
 
     async def test_latest_snapshot_topic_does_not_inherit_previous_range(self) -> None:
         """새 snapshot 지표는 직전 range를 질문에 없던 cutoff로 재해석하지 않는다."""
@@ -1117,6 +1267,29 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ErrorCode.METRIC_NOT_AVAILABLE.value, result["code"])
         self.assertEqual("MODIFY_REQUEST", result["required_action"])
         self.assertNotIn("suggestions", result)
+        self.assertEqual("FAILED", result["turn"]["command_status"])
+        self.assertEqual([], self.submitted_requests)
+
+    async def test_future_period_is_failed_with_typed_range_error(self) -> None:
+        """데이터 기준일 이후 기간은 서비스 장애가 아니라 수정 가능한 범위 오류로 보존한다."""
+
+        conv = await self.repo.create_conversation(self.user_id, "미래 기간")
+        from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
+
+        self.data_platform.search_error = ContextBuildError(
+            ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+            "요청 기간은 데이터 기준일보다 이전에 시작해야 합니다.",
+        )
+
+        result = await self.orchestrator.execute_command(
+            conversation_id=conv["conversation_id"],
+            payload={"user_message": "다음 분기 매출을 알려줘"},
+            context=self.context,
+        )
+
+        self.assertEqual("FAILED", result["status"])
+        self.assertEqual(ErrorCode.OUT_OF_DATA_RANGE.value, result["code"])
+        self.assertEqual("MODIFY_REQUEST", result["required_action"])
         self.assertEqual("FAILED", result["turn"]["command_status"])
         self.assertEqual([], self.submitted_requests)
 

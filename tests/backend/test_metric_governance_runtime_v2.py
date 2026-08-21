@@ -525,9 +525,11 @@ def test_metric_role_and_pii_policy_fail_closed_after_asset_entitlement() -> Non
 class _Normalizer:
     def __init__(self) -> None:
         self.input: dict | None = None
+        self.inputs: list[dict] = []
 
     async def normalize_question(self, payload: dict) -> dict:
         self.input = deepcopy(payload)
+        self.inputs.append(deepcopy(payload))
         return {
             "normalized_question": "Amount per Event for the selected period",
             "intent_candidates": ["aggregate"],
@@ -574,6 +576,80 @@ class _SnapshotNormalizer(_Normalizer):
         result = await super().normalize_question(payload)
         result["normalized_question"] = "Amount per Event at the latest governed snapshot"
         result["period_candidates"] = []
+        return result
+
+
+class _PeriodRecheckNormalizer(_Normalizer):
+    """첫 해석에서 기간을 놓치고 bounded recheck에서만 typed 기간을 반환한다."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        if "interpretation_recheck" not in payload:
+            result["period_candidates"] = []
+        return result
+
+
+class _UnresolvedPeriodNormalizer(_Normalizer):
+    """bounded recheck 뒤에도 질문에서 기간을 확정하지 못하는 모델 응답."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result["period_candidates"] = []
+        return result
+
+
+class _FuturePeriodRecheckNormalizer(_Normalizer):
+    """첫 해석의 미래 구간을 bounded recheck에서 과거 구간으로 바로잡는다."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        if "interpretation_recheck" not in payload:
+            result["period_candidates"] = [
+                {
+                    "start": "2027-08-01T00:00:00+09:00",
+                    "end_exclusive": "2027-08-02T00:00:00+09:00",
+                    "source_text": "selected period",
+                }
+            ]
+        return result
+
+
+class _UnresolvedFuturePeriodNormalizer(_Normalizer):
+    """bounded recheck 뒤에도 데이터 기준일 이후의 기간을 반환한다."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result["period_candidates"] = [
+            {
+                "start": "2027-08-01T00:00:00+09:00",
+                "end_exclusive": "2027-08-02T00:00:00+09:00",
+                "source_text": "selected period",
+            }
+        ]
+        return result
+
+
+class _OperationRecheckNormalizer(_Normalizer):
+    """첫 해석에서 결과 형태를 놓치고 bounded recheck에서만 완성한다."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        if payload.get("interpretation_recheck") != {
+            "target": "analysis_operation",
+            "attempt": 1,
+        }:
+            result["intent_candidates"] = []
+            result["analysis_operation"] = None
+        return result
+
+
+class _UnresolvedOperationNormalizer(_Normalizer):
+    """bounded recheck 뒤에도 선택된 분석의 결과 형태를 완성하지 못한다."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result["intent_candidates"] = []
+        result["analysis_operation"] = None
         return result
 
 
@@ -711,6 +787,7 @@ class _MissingNormalizer(_Normalizer):
     async def normalize_question(self, payload: dict) -> dict:
         result = await super().normalize_question(payload)
         result["normalized_question"] = "Selected period only"
+        result["intent_candidates"] = []
         result["measurement_source_text"] = None
         result["measurement_source_texts"] = []
         result["metric_candidates"] = []
@@ -718,6 +795,7 @@ class _MissingNormalizer(_Normalizer):
         result["selected_metric_id"] = None
         result["selected_metric_ids"] = []
         result["analysis_operation"] = None
+        result["is_elliptical"] = True
         return result
 
 
@@ -808,7 +886,8 @@ def test_latest_snapshot_contract_reaches_context_without_inventing_a_period() -
             )
         )
     )
-    resolver = MetricResolver(engine, _SnapshotNormalizer())
+    model = _SnapshotNormalizer()
+    resolver = MetricResolver(engine, model)
     context = RequestContext(
         request_id=UUID("10000000-0000-0000-0000-000000000001"),
         trace_id="snapshot-runtime-contract",
@@ -835,6 +914,8 @@ def test_latest_snapshot_contract_reaches_context_without_inventing_a_period() -
 
     assert structured["time_mode"] == "latest_snapshot"
     assert structured["period_candidates"] == []
+    assert len(model.inputs) == 1
+    assert "interpretation_recheck" not in model.inputs[0]
     assert package.runtime_contracts["time_rules"]["selection"] == (
         "max_source_value_lt_as_of"
     )
@@ -853,6 +934,247 @@ def test_latest_snapshot_contract_reaches_context_without_inventing_a_period() -
         "time_mode": "latest_snapshot",
         "snapshot_cutoff": "2026-08-19",
         "selection": "max_source_value_lt_as_of",
+    }
+
+
+def test_range_metric_rechecks_a_missing_period_once_before_clarifying() -> None:
+    """range Metric의 기간 누락만 한 번 재검토하고 두 번째 typed 기간을 사용한다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        engine.search_assets(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    model = _PeriodRecheckNormalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="range-period-recheck",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    _selected_assets, _question, structured = asyncio.run(
+        resolver.resolve(
+            AnalysisRequest(
+                question="Amount per Event",
+                parameters={"active": True},
+            ),
+            context,
+            assets,
+        )
+    )
+
+    assert len(model.inputs) == 2
+    assert "interpretation_recheck" not in model.inputs[0]
+    assert model.inputs[1]["interpretation_recheck"] == {
+        "target": "period_candidates",
+        "attempt": 1,
+    }
+    assert structured["period_candidates"] == [
+        {
+            "start": "2026-08-01T00:00:00+09:00",
+            "end_exclusive": "2026-08-02T00:00:00+09:00",
+            "source_text": "2026-08-01",
+        }
+    ]
+
+
+def test_range_metric_still_clarifies_when_the_bounded_recheck_has_no_period() -> None:
+    """두 번째 해석도 기간이 없으면 기본 기간을 합성하거나 세 번째 호출을 하지 않는다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        engine.search_assets(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    model = _UnresolvedPeriodNormalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="range-period-recheck-unresolved",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="Amount per Event",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.PERIOD_REQUIRED
+    assert len(model.inputs) == 2
+    assert model.inputs[1]["interpretation_recheck"] == {
+        "target": "period_candidates",
+        "attempt": 1,
+    }
+
+
+def test_range_metric_rechecks_a_future_period_before_execution() -> None:
+    """미래에서 시작하는 모델 기간을 그대로 실행하지 않고 같은 기간 슬롯만 재검토한다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        engine.search_assets(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    model = _FuturePeriodRecheckNormalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="future-period-recheck",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    _selected_assets, _question, structured = asyncio.run(
+        resolver.resolve(
+            AnalysisRequest(
+                question="Amount per Event",
+                parameters={"active": True},
+            ),
+            context,
+            assets,
+        )
+    )
+
+    assert len(model.inputs) == 2
+    assert model.inputs[1]["interpretation_recheck"] == {
+        "target": "period_candidates",
+        "attempt": 1,
+    }
+    assert structured["period_candidates"][0]["start"].startswith("2026-08-01")
+
+
+def test_range_metric_rejects_a_future_period_after_one_recheck() -> None:
+    """두 번째 해석도 미래이면 세 번째 호출이나 빈 결과 쿼리 대신 typed 범위 오류로 닫는다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        engine.search_assets(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    model = _UnresolvedFuturePeriodNormalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="future-period-recheck-unresolved",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="Amount per Event",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.OUT_OF_DATA_RANGE
+    assert len(model.inputs) == 2
+
+
+def test_selected_analysis_rechecks_a_missing_result_shape_once() -> None:
+    """선택된 Metric의 결과 형태 누락만 재검토하고 두 번째 typed 연산을 사용한다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        engine.search_assets(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    model = _OperationRecheckNormalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="analysis-operation-recheck",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    _selected_assets, _question, structured = asyncio.run(
+        resolver.resolve(
+            AnalysisRequest(
+                question="Amount per Event",
+                parameters={"active": True},
+            ),
+            context,
+            assets,
+        )
+    )
+
+    assert len(model.inputs) == 2
+    assert "interpretation_recheck" not in model.inputs[0]
+    assert model.inputs[1]["interpretation_recheck"] == {
+        "target": "analysis_operation",
+        "attempt": 1,
+    }
+    assert structured["analysis_operation"] == "aggregate"
+    assert structured["intent_candidates"] == ["aggregate"]
+
+
+def test_selected_analysis_rejects_an_unresolved_shape_after_one_recheck() -> None:
+    """두 번째 해석도 결과 형태가 비면 기본 연산이나 세 번째 호출을 만들지 않는다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        engine.search_assets(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    model = _UnresolvedOperationNormalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="analysis-operation-recheck-unresolved",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    with pytest.raises(ValueError, match="정확히 1개의 분석 의도"):
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="Amount per Event",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert len(model.inputs) == 2
+    assert model.inputs[1]["interpretation_recheck"] == {
+        "target": "analysis_operation",
+        "attempt": 1,
     }
 
 
@@ -989,6 +1311,51 @@ def test_node1_compatibility_projections_are_derived_from_authoritative_lists() 
         "amount_per_event",
         "account_count",
     ]
+
+
+def test_node1_receives_typed_previous_shape_without_entering_metric_fast_path() -> None:
+    """지표 없는 선행 슬롯은 현재 질문을 재해석하되 직전 결과 형태만 컨텍스트로 준다."""
+
+    engine = _engine(_runtime_bundle())
+    question = "Amount per Event"
+    assets = asyncio.run(
+        engine.search_assets(
+            question,
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    model = _Normalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="v2-runtime-previous-result-shape",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    _selected_assets, _question, structured = asyncio.run(
+        resolver.resolve(
+            AnalysisRequest(
+                question=question,
+                parameters={"active": True},
+                resolved_slots=ResolvedSlots(
+                    dimension_ids=("prior_dimension",),
+                    analysis_operation="breakdown",
+                ),
+            ),
+            context,
+            assets,
+        )
+    )
+
+    assert model.input is not None
+    assert model.input["previous_result_shape"] == {
+        "analysis_operation": "breakdown",
+        "dimension_count": 1,
+        "result_limit": None,
+    }
+    assert structured["selected_metric_ids"] == ["amount_per_event"]
 
 
 def test_cross_metric_comparison_uses_one_shared_period_without_requesting_a_second() -> None:
@@ -1293,6 +1660,8 @@ def test_missing_measurement_alone_offers_approved_business_metrics() -> None:
         )
 
     assert raised.value.code is ContextBuildErrorCode.INVALID_METRIC
+    assert raised.value.partial_context["analysis_operation"] is None
+    assert raised.value.partial_context["intent_candidates"] == []
     assert [
         option.metric_id for option in raised.value.disambiguation_options
     ] == ["amount_per_event"]

@@ -41,7 +41,10 @@ from app.services.context.model_signals import (
     PRESENTATION_TYPES,
     enum_signal,
 )
-from app.services.context.model_time_context import previous_period_anchor
+from app.services.context.model_time_context import (
+    previous_period_anchor,
+    previous_result_shape,
+)
 from app.services.context.runtime_contracts import (
     time_parameter_names,
     time_selection_mode,
@@ -153,7 +156,7 @@ def _complete_periods_before_as_of(
     periods: list[dict[str, Any]],
     as_of: datetime,
 ) -> list[dict[str, Any]]:
-    """Cap intervals that contain the current business date at ``as_of``."""
+    """현재 진행 중인 구간의 미포함 종료 경계를 ``as_of``로 닫는다."""
 
     completed: list[dict[str, Any]] = []
     for period in periods:
@@ -164,6 +167,115 @@ def _complete_periods_before_as_of(
             item["end_exclusive"] = as_of.isoformat()
         completed.append(item)
     return completed
+
+
+def _range_period_recheck_required(
+    normalized: dict[str, Any],
+    assets: list[dict[str, object]],
+    candidate_ids: list[str],
+    metric_terms: dict[str, dict[str, object]],
+    executable_by_id: dict[str, dict[str, object]],
+    as_of: datetime,
+) -> bool:
+    """확정된 range Metric에서 기간 슬롯만 비었을 때 1회 재검토가 필요한지 판정한다.
+
+    질문 문구를 파싱하지 않고 첫 Node 1 출력과 active release 계약만 사용한다. snapshot
+    Metric, 비분석 route, 미확정 Metric은 기간 범위를 요구하지 않거나 다른 명확화가 먼저이므로
+    재호출하지 않는다. 실행 scope 구성 오류는 하류의 기존 typed gate가 그대로 보고한다.
+    """
+
+    raw_periods = normalized.get("period_candidates")
+    ambiguity = normalized.get("ambiguity")
+    if isinstance(ambiguity, dict) and ambiguity.get("is_ambiguous") is True:
+        return False
+    future_start = False
+    if isinstance(raw_periods, list):
+        try:
+            future_start = any(
+                isinstance(item, dict)
+                and datetime.fromisoformat(str(item["start"])) >= as_of
+                for item in raw_periods
+            )
+        except (KeyError, TypeError, ValueError):
+            future_start = False
+    if raw_periods != [] and not future_start:
+        return False
+    if normalized.get("metric_resolution") != "selected":
+        return False
+    if enum_signal(normalized.get("requested_route"), CONVERSATION_ROUTES) in {
+        "PRESENTATION",
+        "REPORT_ACTION",
+    }:
+        return False
+    raw_ids = normalized.get("selected_metric_ids")
+    if (
+        not isinstance(raw_ids, list)
+        or not 1 <= len(raw_ids) <= 4
+        or len(raw_ids) != len(set(raw_ids))
+        or any(not isinstance(item, str) or item not in candidate_ids for item in raw_ids)
+    ):
+        return False
+    keep_ids = set(raw_ids)
+    synthetic: list[dict[str, object]] = []
+    try:
+        for metric_id in raw_ids:
+            ratio = _ratio_reference(metric_terms, executable_by_id, metric_id)
+            if ratio is None:
+                continue
+            keep_ids.update(
+                {
+                    ratio["numerator_metric_id"],
+                    ratio["denominator_metric_id"],
+                }
+            )
+            synthetic.append(
+                _synthetic_ratio_metric(
+                    metric_id,
+                    metric_terms[metric_id],
+                    ratio,
+                    executable_by_id[metric_id],
+                )
+            )
+        selected_assets = _select_assets_for_metrics(
+            assets,
+            keep_ids,
+            tuple(synthetic),
+        )
+        return time_selection_mode(selected_assets) == "range"
+    except (ContextBuildError, KeyError, TypeError, ValueError):
+        return False
+
+
+def _analysis_shape_recheck_required(normalized: dict[str, Any]) -> bool:
+    """선택된 분석 요청의 결과 형태 슬롯이 불완전하면 1회 재검토를 요구한다.
+
+    ``analysis_operation``과 ``intent_candidates``는 같은 결정을 표현하는 active Node 1
+    계약의 typed 필드다. BUSINESS Metric이 선택된 분석인데 두 필드가 비었거나 서로
+    다르면 질문 문장을 서버에서 재해석하지 않고 모델에 한 번만 재검토시킨다.
+    """
+
+    if normalized.get("metric_resolution") != "selected":
+        return False
+    if enum_signal(normalized.get("requested_route"), CONVERSATION_ROUTES) in {
+        "PRESENTATION",
+        "REPORT_ACTION",
+    }:
+        return False
+    raw_ids = normalized.get("selected_metric_ids")
+    if (
+        not isinstance(raw_ids, list)
+        or not 1 <= len(raw_ids) <= 4
+        or len(raw_ids) != len(set(raw_ids))
+        or any(not isinstance(item, str) or not item for item in raw_ids)
+    ):
+        return False
+    operation = normalized.get("analysis_operation")
+    raw_intents = normalized.get("intent_candidates")
+    return not (
+        operation in _ANALYSIS_OPERATIONS
+        and isinstance(raw_intents, list)
+        and raw_intents == [operation]
+    )
 
 
 class MetricResolver:
@@ -465,14 +577,15 @@ class MetricResolver:
                 ContextBuildErrorCode.INVALID_METADATA,
                 "구조화된 Node1 resolver 모델 호출기가 필요합니다.",
             )
+        as_of_datetime = datetime.combine(
+            context.as_of,
+            time.min,
+            timezone,
+        )
         node1_input = {
             "question": payload.question,
             "role_hint": context.role.value,
-            "as_of": datetime.combine(
-                context.as_of,
-                time.min,
-                timezone,
-            ).isoformat(),
+            "as_of": as_of_datetime.isoformat(),
             "timezone": context.timezone,
             "calendar_id": calendar_id,
             "allowed_routes": ["general", "template"],
@@ -484,6 +597,9 @@ class MetricResolver:
         previous_period = previous_period_anchor(payload.resolved_slots, timezone)
         if previous_period is not None:
             node1_input["previous_period"] = previous_period
+        prior_shape = previous_result_shape(payload.resolved_slots)
+        if prior_shape is not None:
+            node1_input["previous_result_shape"] = prior_shape
         normalized = await normalizer(node1_input)
         if not isinstance(normalized, dict):
             raise ValueError("Node1 응답은 객체여야 합니다.")
@@ -536,10 +652,55 @@ class MetricResolver:
             normalized = await normalizer(node1_input)
             if not isinstance(normalized, dict):
                 raise ValueError("Node1 재해석 응답은 객체여야 합니다.")
+        interpretation_rechecked = False
+        if _range_period_recheck_required(
+            normalized,
+            assets,
+            candidate_ids,
+            metric_terms,
+            executable_by_id,
+            as_of_datetime,
+        ):
+            node1_input["interpretation_recheck"] = {
+                "target": "period_candidates",
+                "attempt": 1,
+            }
+            normalized = await normalizer(node1_input)
+            if not isinstance(normalized, dict):
+                raise ValueError("Node1 기간 재검토 응답은 객체여야 합니다.")
+            interpretation_rechecked = True
+        if (
+            not interpretation_rechecked
+            and _analysis_shape_recheck_required(normalized)
+        ):
+            node1_input["interpretation_recheck"] = {
+                "target": "analysis_operation",
+                "attempt": 1,
+            }
+            normalized = await normalizer(node1_input)
+            if not isinstance(normalized, dict):
+                raise ValueError("Node1 결과 형태 재검토 응답은 객체여야 합니다.")
         periods = _complete_periods_before_as_of(
             _model_periods(normalized.get("period_candidates"), timezone),
-            datetime.combine(context.as_of, time.min, timezone),
+            as_of_datetime,
         )
+        ambiguity = normalized.get("ambiguity")
+        period_is_ambiguous = (
+            isinstance(ambiguity, dict)
+            and ambiguity.get("is_ambiguous") is True
+        )
+        if (
+            normalized.get("metric_resolution") == "selected"
+            and not period_is_ambiguous
+            and any(
+                datetime.fromisoformat(str(item["start"])) >= as_of_datetime
+                for item in periods
+            )
+        ):
+            raise ContextBuildError(
+                ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+                "요청 기간은 데이터 기준일보다 이전에 시작해야 합니다.",
+            )
         relationship = normalized.get("period_relationship")
         if relationship not in ("single", "comparison"):
             raise ValueError("Node1 period_relationship 은 'single' 또는 'comparison' 이어야 합니다.")
@@ -549,7 +710,12 @@ class MetricResolver:
             for item in normalized.get("intent_candidates", ())
             if isinstance(item, str) and item
         ]
-        if len(intents) != 1:
+        shape_elided_followup = (
+            normalized.get("metric_resolution") == "missing"
+            and normalized.get("is_elliptical") is True
+            and not intents
+        )
+        if len(intents) != 1 and not shape_elided_followup:
             raise ValueError("Node1은 정확히 1개의 분석 의도를 선택해야 합니다.")
         raw_dimensions = normalized.get("dimension_candidates", ())
         if not isinstance(raw_dimensions, list):
@@ -614,6 +780,13 @@ class MetricResolver:
         result_limit = normalized.get("result_limit")
         if analysis_operation is not None and analysis_operation not in _ANALYSIS_OPERATIONS:
             raise ValueError("Node1 analysis_operation 값이 유효하지 않습니다.")
+        if shape_elided_followup:
+            if analysis_operation is not None:
+                raise ValueError(
+                    "Node1 결과 형태 생략 후속 질문은 분석 연산을 지정할 수 없습니다."
+                )
+        elif analysis_operation is not None and intents != [analysis_operation]:
+            raise ValueError("Node1 분석 연산과 의도가 일치하지 않습니다.")
         if result_limit is not None and (
             analysis_operation not in {"top_n", "bottom_n"}
             or isinstance(result_limit, bool)
@@ -749,7 +922,7 @@ class MetricResolver:
                     ),
                     partial_context=clarification_context,
                 )
-            if analysis_operation is None or intents != [analysis_operation]:
+            if analysis_operation is None:
                 raise ValueError(
                     "Node1 selected 분석 연산과 의도가 일치하지 않습니다."
                 )

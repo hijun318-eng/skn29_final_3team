@@ -160,9 +160,9 @@ class RequestContext(ContractModel):
 class ResolvedSlots(ContractModel):
     """멀티턴 대화에서 이전 턴의 슬롯을 구조화된 형태로 상속할 때 사용한다.
 
-    Orchestrator가 ConversationSlotResolver로 확정한 지표·차원·기간을
-    MetricResolver의 pre-resolved fast-path에 전달하여 Node 1 LLM 호출을
-    건너뛰되 거버넌스 대조 검증은 유지한다.
+    지표가 확정된 슬롯은 MetricResolver의 pre-resolved fast-path로 전달해 Node 1
+    재해석을 생략하고, 지표가 비어 있는 슬롯은 직전 기간·결과 형태만 Node 1의 typed
+    대화 컨텍스트로 제공한다. 두 경로 모두 active governance 대조 검증을 유지한다.
     """
     metric_id: str | None = None
     metric_ids: tuple[str, ...] = ()

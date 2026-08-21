@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "MODEL-v1.17.0",
+  "version": "MODEL-v1.20.0",
   "$defs": {
     "execution_time": {
       "type": "object",
@@ -484,6 +484,46 @@
           "properties": {
             "start": {"type": "string", "format": "date-time"},
             "end_exclusive": {"type": "string", "format": "date-time"}
+          }
+        },
+        "previous_result_shape": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["analysis_operation", "dimension_count", "result_limit"],
+          "properties": {
+            "analysis_operation": {
+              "type": "string",
+              "enum": [
+                "aggregate",
+                "breakdown",
+                "time_trend",
+                "top_n",
+                "bottom_n",
+                "period_comparison"
+              ]
+            },
+            "dimension_count": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 60
+            },
+            "result_limit": {
+              "type": ["integer", "null"],
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        },
+        "interpretation_recheck": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["target", "attempt"],
+          "properties": {
+            "target": {
+              "type": "string",
+              "enum": ["period_candidates", "analysis_operation"]
+            },
+            "attempt": {"type": "integer", "const": 1}
           }
         },
         "allowed_routes": {

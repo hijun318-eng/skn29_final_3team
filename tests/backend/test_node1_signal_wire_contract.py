@@ -1,8 +1,9 @@
 """운영 Node1 클라이언트가 새 신호를 실제 전선(wire)에서 주고받는지 종단 검증.
 
 [검증 대상]
-Node1 요청에 대화 앵커(`previous_period`)가 실려 나가고, 응답의 route/표현/생략문 신호가
-계약 검증을 통과해 호출자에게 전달되는지를 운영 어댑터(`ContractModelAdapter`)로 확인한다.
+Node1 요청에 대화 앵커(`previous_period`, `previous_result_shape`)가 실려 나가고, 응답의
+route/표현/생략문 신호가 계약 검증을 통과해 호출자에게 전달되는지를 운영 어댑터
+(`ContractModelAdapter`)로 확인한다.
 모델 자체의 판단 정확도는 여기서 측정하지 않는다.
 
 [경계]
@@ -46,6 +47,11 @@ def async_test(function):
 ANCHOR = {
     "start": "2025-08-01T00:00:00+09:00",
     "end_exclusive": "2025-09-01T00:00:00+09:00",
+}
+RESULT_SHAPE = {
+    "analysis_operation": "breakdown",
+    "dimension_count": 1,
+    "result_limit": None,
 }
 
 
@@ -107,6 +113,43 @@ async def test_conversation_anchor_reaches_the_model_over_the_wire():
     wire_request, _ = await _run_node1(request, dict(VALID_PAYLOADS["node1_response"]))
 
     assert wire_request["previous_period"] == ANCHOR
+
+
+@async_test
+async def test_previous_result_shape_reaches_the_model_over_the_wire():
+    """직전 결과 형태가 계약을 통과해 모델 전선에 그대로 실리는지 검증."""
+
+    request = dict(VALID_PAYLOADS["node1_request"])
+    request["previous_result_shape"] = dict(RESULT_SHAPE)
+
+    wire_request, _ = await _run_node1(
+        request,
+        dict(VALID_PAYLOADS["node1_response"]),
+    )
+
+    assert wire_request["previous_result_shape"] == RESULT_SHAPE
+
+
+@pytest.mark.parametrize("target", ["period_candidates", "analysis_operation"])
+@async_test
+async def test_bounded_interpretation_recheck_reaches_the_model_over_the_wire(target):
+    """서버 소유 재검토 지시가 변형되지 않고 두 번째 Node1 요청에 실리는지 검증."""
+
+    request = dict(VALID_PAYLOADS["node1_request"])
+    request["interpretation_recheck"] = {
+        "target": target,
+        "attempt": 1,
+    }
+
+    wire_request, _ = await _run_node1(
+        request,
+        dict(VALID_PAYLOADS["node1_response"]),
+    )
+
+    assert wire_request["interpretation_recheck"] == {
+        "target": target,
+        "attempt": 1,
+    }
 
 
 @async_test

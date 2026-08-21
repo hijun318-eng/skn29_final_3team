@@ -847,6 +847,118 @@ def test_slot_inheritance_requires_an_explicit_elliptical_signal():
         assert slots.is_inherited_metric is False, absent
 
 
+def test_followup_result_shape_is_inherited_or_replaced_from_typed_operation_signal():
+    """생략된 결과 형태는 보존하고 명시된 전체값 전환은 이전 GROUP BY를 제거한다."""
+
+    previous = _prior_analysis_turn()
+    previous["resolved_slots"].update(
+        {
+            "analysis_operation": "breakdown",
+            "dimension_fields": [
+                {
+                    "asset_fqn": "serving.room_daily",
+                    "column": "hotel_code",
+                }
+            ],
+        }
+    )
+
+    shape_elided = ConversationSlotResolver.resolve(
+        user_message="임의의 기간 변경 후속 발화",
+        node1_output={
+            "is_elliptical": True,
+            "metric_resolution": "missing",
+            "analysis_operation": None,
+        },
+        previous_turns=[previous],
+        as_of=date(2026, 8, 18),
+    )
+    assert shape_elided.analysis_operation == "breakdown"
+    assert shape_elided.is_inherited_dimension is True
+    assert [item["column"] for item in shape_elided.dimension_fields] == ["hotel_code"]
+
+    explicit_overall = ConversationSlotResolver.resolve(
+        user_message="임의의 전체값 전환 후속 발화",
+        node1_output={
+            # 모델이 is_elliptical을 놓쳐도 아래 typed 구조는 Metric 없이는
+            # 실행 불가능하므로 문맥 의존 후속 요청으로 판정해야 한다.
+            "is_elliptical": False,
+            "metric_resolution": "missing",
+            "measurement_source_texts": [],
+            "analysis_operation": "aggregate",
+            "intent_candidates": ["aggregate"],
+        },
+        previous_turns=[previous],
+        as_of=date(2026, 8, 18),
+    )
+    assert explicit_overall.analysis_operation == "aggregate"
+    assert explicit_overall.dimension_fields == ()
+    assert explicit_overall.is_inherited_dimension is False
+
+    for standalone in (
+        {
+            "is_elliptical": False,
+            "metric_resolution": "missing",
+            "measurement_source_texts": [],
+            "analysis_operation": None,
+        },
+        {
+            "is_elliptical": False,
+            "metric_resolution": "unsupported",
+            "measurement_source_texts": ["새 측정값"],
+            "analysis_operation": "aggregate",
+        },
+    ):
+        assert ConversationSlotResolver.is_context_dependent_followup(standalone) is False
+
+
+def test_inheritance_skips_failed_and_clarification_analysis_turns():
+    """실행되지 않은 ANALYSIS 턴이 마지막 확정 분석 상태를 가리지 않는다."""
+
+    resolved = _prior_analysis_turn()
+    resolved["resolved_slots"].update(
+        {
+            "analysis_operation": "breakdown",
+            "dimension_fields": [
+                {"asset_fqn": "serving.room_daily", "column": "hotel_code"}
+            ],
+            "ambiguity_status": "CLEAR",
+        }
+    )
+    failed = {
+        "turn_id": "turn-failed",
+        "route": "ANALYSIS",
+        "resolved_slots": {},
+    }
+    clarification = {
+        "turn_id": "turn-clarification",
+        "route": "ANALYSIS",
+        "resolved_slots": {
+            "metric_id": None,
+            "metric_ids": [],
+            "ambiguity_status": "NEEDS_CLARIFICATION",
+        },
+    }
+
+    slots = ConversationSlotResolver.resolve(
+        user_message="임의의 기간 변경 후속 발화",
+        node1_output={
+            "is_elliptical": True,
+            "metric_resolution": "missing",
+            "measurement_source_texts": [],
+            "analysis_operation": None,
+            **_node1_period("2025-09-01", "2025-10-01", "임의 기간"),
+        },
+        previous_turns=[resolved, failed, clarification],
+        as_of=date(2026, 8, 18),
+    )
+
+    assert slots.metric_id == "room_revenue"
+    assert slots.analysis_operation == "breakdown"
+    assert [item["column"] for item in slots.dimension_fields] == ["hotel_code"]
+    assert slots.source_turn_ids == ("turn-1",)
+
+
 def test_elliptical_metric_change_replaces_metric_but_keeps_compatible_context():
     """후속 턴이 지표를 바꿔도 생략한 기간·필터는 별도 슬롯으로 이어 간다."""
 

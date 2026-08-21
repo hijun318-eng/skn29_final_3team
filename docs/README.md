@@ -31,6 +31,7 @@
 - `reference/datahub_search_flow.md`: DataHub의 일반 검색 개념과 Answervice의 실제 `lexical`/`hybrid` 검색, release·권한·Glossary·Trino 검증 경계를 대조한 참고 자료다. 구현 설명이며 live E2E 완료 증거는 아니다.
 - `reference/DataHub_검색_구조_및_Answervice_적용.md`: DataHub 검색·색인 핵심 개념을 서론·본론·결론 순서로 설명하고, 호텔 업무 예시와 Answervice의 ingestion·governance·Context·Trino 실행 경계를 함께 정리한 학습용 참고 자료다.
 - `reference/DataHub_검색_흐름_효율성_및_일반성_비교.md`: 현재 검색 흐름의 효율성과 일반성을 코드 기반 LLM 판단과 DataHub 공식 문서 조사로 각각 평가하고, 두 결론과 control/request plane 개선 방향을 비교한 참고 자료다.
+- `reference/DataHub_사용_방식_객관적_재평가_및_실사용_사례_2026-08-20.md`: 최신 `dev`의 DataHub 검색·권한·Metric governance를 LLM 코드 평가와 Pinterest·Deutsche Telekom·Trustpilot 등 실제 사례 조사로 재평가하고 두 결론을 비교한 참고 자료다.
 - `reference/DataHub_Core_UI_설정_상태_점검_2026-08-19.md`: Docker Compose 포트와 실제 호스팅 IP의 DataHub UI 접근을 점검한 기록이다. 현재 UI 접근 차단으로 Glossary·Domain·Owner는 `NOT_OBSERVED`이며, live 완료 증거가 아니다.
 - `reference/Runtime_governance_V4.3_승인검토안.md`: V4.3 serving SQL AST와 컬럼 설명에서 생성한 비권위 DRAFT다. 업무 승인 전에는 DataHub runtime governance로 발행하지 않는다.
 - `reference/Runtime_governance_V4.3_업무승인.md`: V4.3 생성식과 동일하게 제한한 통합매출·이벤트·VOC·연회 취소의 업무 승인 기록이다. 실제 발행은 별도의 live check에서 확인한 target·predecessor checksum과 전체 read-back을 요구한다.

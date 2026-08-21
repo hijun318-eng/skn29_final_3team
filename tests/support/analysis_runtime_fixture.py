@@ -15,6 +15,7 @@ from typing import Any
 
 from sqlglot import exp
 
+from app.ports.data_platform import AssetCandidateSet, ExecutionAssetSelection
 from src.ai.schema import validate_payload
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
@@ -153,6 +154,29 @@ class AnalysisRuntimeDataPlatformFake:
         self.closed = False
 
     async def search_assets(self, query: str, context: dict[str, Any]) -> list[dict[str, Any]]:
+        return [deepcopy(asset) for asset in self.metadata.assets]
+
+    async def search_asset_candidates(
+        self,
+        query: str,
+        context: dict[str, Any],
+    ) -> AssetCandidateSet:
+        """주입된 fixture를 immutable receipt가 있는 후보 집합으로 반환한다."""
+
+        return AssetCandidateSet(
+            assets=tuple(await self.search_assets(query, context)),
+            context_release=str(self.metadata.assets[0]["context_release"]),
+            catalog_checksum="1" * 64,
+            canonical_checksum="2" * 64,
+        )
+
+    async def resolve_execution_assets(
+        self,
+        selection: ExecutionAssetSelection,
+        context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """테스트가 주입한 전체 fixture를 production 후처리 검증에 전달한다."""
+
         return [deepcopy(asset) for asset in self.metadata.assets]
 
     async def get_asset_schema(self, urn: str) -> dict[str, Any]:

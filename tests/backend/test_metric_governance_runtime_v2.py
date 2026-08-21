@@ -38,7 +38,13 @@ from app.contracts import (  # noqa: E402
     Role,
     SnapshotEvidence,
 )
-from app.ports.data_platform import NoEntitledAssetsError  # noqa: E402
+from app.ports.data_platform import (  # noqa: E402
+    ExecutionAssetSelection,
+    GovernedFieldReference,
+    NoEntitledAssetsError,
+    ReleaseReceiptChangedError,
+    UnsupportedSemanticError,
+)
 from app.services.analysis.responses import _business_metrics  # noqa: E402
 from app.services.analysis.result_validator import PipelineResultValidator  # noqa: E402
 from app.services.context.metric_resolver import MetricResolver  # noqa: E402
@@ -171,6 +177,182 @@ def test_support_operands_execute_but_are_not_business_candidates() -> None:
     assert metrics["event_count"]["visibility"] == "SUPPORT"
     assert metrics["amount_per_event"]["visibility"] == "BUSINESS"
     assert assets[0]["entitled_metric_ids"] == ["amount_per_event"]
+
+
+def test_candidate_retrieval_does_not_require_execution_filter_values() -> None:
+    """Node 1 후보 pass는 아직 선택되지 않은 Metric의 필터 값을 미리 바인딩하지 않는다."""
+
+    engine = _engine(_runtime_bundle())
+
+    candidates = asyncio.run(
+        engine.search_asset_candidates(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {}},
+        )
+    )
+
+    assert candidates.context_release
+    assert len(candidates.catalog_checksum) == 64
+    assert len(candidates.canonical_checksum) == 64
+    assert {
+        item["id"]
+        for asset in candidates.assets
+        for item in asset["metrics"]
+    } == {"amount_total", "event_count", "amount_per_event"}
+    assert all(
+        metric["required_filters"] == []
+        for asset in candidates.assets
+        for metric in asset["metrics"]
+    )
+
+
+def test_execution_resolution_rebinds_selected_metrics_to_the_same_release() -> None:
+    """후보 payload가 아니라 receipt와 선택 ID로 active release에서 실행 자산을 재구성한다."""
+
+    engine = _engine(_runtime_bundle())
+    candidates = asyncio.run(
+        engine.search_asset_candidates(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {}},
+        )
+    )
+    selection = ExecutionAssetSelection(
+        output_metric_ids=("amount_per_event",),
+        execution_metric_ids=(
+            "amount_per_event",
+            "amount_total",
+            "event_count",
+        ),
+        field_references=(),
+        receipt_context_release=candidates.context_release,
+        receipt_catalog_checksum=candidates.catalog_checksum,
+        receipt_canonical_checksum=candidates.canonical_checksum,
+    )
+
+    assets = asyncio.run(
+        engine.resolve_execution_assets(
+            selection,
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+
+    metrics = {
+        item["id"]: item
+        for asset in assets
+        for item in asset["metrics"]
+    }
+    assert set(metrics) == {"amount_total", "event_count", "amount_per_event"}
+    assert metrics["amount_total"]["required_filters"][0]["value"] is True
+    assert metrics["event_count"]["required_filters"][0]["value"] is True
+
+
+def test_execution_resolution_derives_ratio_dimensions_from_operands() -> None:
+    """ratio 자체의 빈 물리 차원 대신 두 operand가 공유하고 release가 승인한 차원을 사용한다."""
+
+    bundle = _runtime_bundle()
+    bundle["dimensions"].append(
+        {
+            "id": "event_account",
+            "aliases": ["event account", "account"],
+            "definition": "Governed account identifier on an event.",
+            "asset_fqn": "quartz.core.events",
+            "column": "account_id",
+        }
+    )
+    validate_bundle(bundle)
+    engine = _engine(bundle)
+    candidates = asyncio.run(
+        engine.search_asset_candidates(
+            "Amount per Event by account",
+            {"role": "analyst", "parameters": {}},
+        )
+    )
+    selection = ExecutionAssetSelection(
+        output_metric_ids=("amount_per_event",),
+        execution_metric_ids=(
+            "amount_per_event",
+            "amount_total",
+            "event_count",
+        ),
+        field_references=(
+            GovernedFieldReference(
+                asset_fqn="quartz.core.events",
+                column="account_id",
+            ),
+        ),
+        receipt_context_release=candidates.context_release,
+        receipt_catalog_checksum=candidates.catalog_checksum,
+        receipt_canonical_checksum=candidates.canonical_checksum,
+    )
+
+    assets = asyncio.run(
+        engine.resolve_execution_assets(
+            selection,
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+
+    assert {asset["fqn"] for asset in assets} == {"quartz.core.events"}
+
+
+def test_execution_resolution_rejects_a_changed_candidate_receipt() -> None:
+    """같은 Metric ID라도 candidate 이후 release identity가 달라지면 실행하지 않는다."""
+
+    engine = _engine(_runtime_bundle())
+    candidates = asyncio.run(
+        engine.search_asset_candidates(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {}},
+        )
+    )
+    selection = ExecutionAssetSelection(
+        output_metric_ids=("amount_per_event",),
+        execution_metric_ids=(
+            "amount_per_event",
+            "amount_total",
+            "event_count",
+        ),
+        field_references=(),
+        receipt_context_release=candidates.context_release,
+        receipt_catalog_checksum=candidates.catalog_checksum,
+        receipt_canonical_checksum="f" * 64,
+    )
+
+    with pytest.raises(ReleaseReceiptChangedError, match="changed after candidate"):
+        asyncio.run(
+            engine.resolve_execution_assets(
+                selection,
+                {"role": "analyst", "parameters": {"active": True}},
+            )
+        )
+
+
+def test_execution_resolution_rejects_missing_ratio_operands() -> None:
+    """공개 ratio만 선택하고 숨은 operand를 누락한 실행 scope는 재구성하지 않는다."""
+
+    engine = _engine(_runtime_bundle())
+    candidates = asyncio.run(
+        engine.search_asset_candidates(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {}},
+        )
+    )
+    selection = ExecutionAssetSelection(
+        output_metric_ids=("amount_per_event",),
+        execution_metric_ids=("amount_per_event",),
+        field_references=(),
+        receipt_context_release=candidates.context_release,
+        receipt_catalog_checksum=candidates.catalog_checksum,
+        receipt_canonical_checksum=candidates.canonical_checksum,
+    )
+
+    with pytest.raises(UnsupportedSemanticError, match="dependencies differ"):
+        asyncio.run(
+            engine.resolve_execution_assets(
+                selection,
+                {"role": "analyst", "parameters": {"active": True}},
+            )
+        )
 
 
 def test_platform_admin_inherits_existing_metric_and_asset_entitlements() -> None:

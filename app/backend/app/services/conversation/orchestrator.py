@@ -203,13 +203,27 @@ class ConversationOrchestrator:
             preflight_clarification: ContextBuildError | None = None
             try:
                 # 1차: user_message 원문으로 검색
-                assets = await self._data_platform.search_assets(
-                    user_message,
-                    {"role": context.role.value if hasattr(context.role, "value") else str(context.role)},
-                )
-                search_query = user_message
+                search_context = {
+                    "role": (
+                        context.role.value
+                        if hasattr(context.role, "value")
+                        else str(context.role)
+                    )
+                }
+                try:
+                    candidate_set = (
+                        await self._data_platform.search_asset_candidates(
+                            user_message,
+                            search_context,
+                        )
+                    )
+                    assets = list(candidate_set.assets)
+                except NoEntitledAssetsError:
+                    # 검색 결과가 없거나 현재 role에 보이는 후보가 없으면 같은 principal로만
+                    # 직전 승인 Metric을 결합해 recall을 재시도한다. metadata 장애는 전파한다.
+                    assets = []
 
-                # 2차: 자산 미발견 시 이전 분석 지표를 결합하여 후속 단답형 질의("4월은?", "비스타는?") 검색
+                # 2차: 자산 미발견 시 이전 분석 지표를 결합해 기간·필터만 남은 후속 발화를 검색
                 if not assets:
                     last_analysis_metric = next(
                         (
@@ -229,11 +243,19 @@ class ConversationOrchestrator:
                         None,
                     )
                     if last_analysis_metric:
-                        search_query = f"{last_analysis_metric} {user_message}"
-                        assets = await self._data_platform.search_assets(
-                            search_query,
-                            {"role": context.role.value if hasattr(context.role, "value") else str(context.role)},
+                        followup_search_query = (
+                            f"{last_analysis_metric} {user_message}"
                         )
+                        candidate_set = await self._data_platform.search_asset_candidates(
+                            followup_search_query,
+                            search_context,
+                        )
+                        assets = list(candidate_set.assets)
+
+                if not assets:
+                    raise NoEntitledAssetsError(
+                        "conversation preflight found no entitled candidate"
+                    )
 
                 if assets:
                     preflight_slots = None
@@ -248,7 +270,7 @@ class ConversationOrchestrator:
                             period_start=last_time["start"],
                             period_end_exclusive=last_time["end_exclusive"],
                         )
-                    # `search_query`는 짧은 후속 발화의 자산 recall을 높이는 검색 전용 힌트다.
+                    # 직전 Metric 결합은 짧은 후속 발화의 자산 recall을 높이는 검색 전용 힌트다.
                     # 의도·생략 여부·새 주제 판정은 사용자가 실제로 쓴 원문을 기준으로 해야
                     # 하므로 모델 입력까지 보강 문자열로 바꾸지 않는다.
                     _, _nq, structured = await self._support.select_metric(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections import deque
 from typing import Any
 
 from app.adapters.catalog_snapshot import CatalogSnapshot, CatalogSnapshotLoader
@@ -16,7 +17,7 @@ from app.adapters.datahub_metadata import (
     GovernedDataset,
     GovernedMetadataError,
 )
-from app.adapters.datahub_metadata_types import metric_rule_matches
+from app.adapters.datahub_metadata_types import GlossaryMetricTerm, metric_rule_matches
 from app.adapters.legacy_semantic_release import compile_legacy_semantic_release
 from app.adapters.query_search_evidence import (
     gather_snapshot_and_semantic as _gather_snapshot_and_semantic,
@@ -28,7 +29,6 @@ from app.adapters.query_join_graph import (
     connect_fqns,
     metric_dependencies,
     other_endpoints,
-    shortest_path,
 )
 from app.adapters.release_manifest import (
     coherent_release_datasets,
@@ -36,13 +36,17 @@ from app.adapters.release_manifest import (
 )
 from app.adapters.trino_schema import TrinoSchemaDriftError, TrinoSchemaInspector
 from app.ports.data_platform import (
+    AssetCandidateSet,
+    ExecutionAssetSelection,
     MetadataUnavailableError,
     NoEntitledAssetsError,
     NoMetricMatchError,
+    ReleaseReceiptChangedError,
+    UnsupportedSemanticError,
 )
 from app.services.context.builder import ContextBuildError
 from app.services.context.contract import GovernedJoin
-from app.services.context.semantic_release import CanonicalSemanticRelease
+from app.services.context.semantic_release import CanonicalMetric, CanonicalSemanticRelease
 from src.data.governance_contract import (
     canonical_json,
     metric_source_kind,
@@ -101,6 +105,130 @@ class QueryGovernanceEngine:
         context: dict[str, Any],
     ) -> list[dict[str, Any]]:
         """Unicode token과 semantic hit로 asset을 순위화한 뒤 권한 있는 연결 graph만 runtime context로 반환한다."""
+
+        _release, selected, graph, terms = await self._search_selection(
+            query,
+            context,
+        )
+        try:
+            await self._schema.verify(selected)
+            return self._project_assets(
+                selected,
+                graph,
+                terms,
+                context,
+                candidate=False,
+            )
+        except NoEntitledAssetsError:
+            raise
+        except (GovernedMetadataError, TrinoSchemaDriftError) as error:
+            raise MetadataUnavailableError(str(error)) from error
+
+    async def search_asset_candidates(
+        self,
+        query: str,
+        context: dict[str, Any],
+    ) -> AssetCandidateSet:
+        """질문 해석용 후보를 실행 parameter·Trino schema binding 없이 release receipt와 반환한다."""
+
+        release, selected, graph, terms = await self._search_selection(
+            query,
+            context,
+        )
+        try:
+            assets = self._project_assets(
+                selected,
+                graph,
+                terms,
+                context,
+                candidate=True,
+            )
+        except NoEntitledAssetsError:
+            raise
+        except GovernedMetadataError as error:
+            raise MetadataUnavailableError(str(error)) from error
+        return AssetCandidateSet(
+            assets=tuple(assets),
+            context_release=release.catalog_version,
+            catalog_checksum=release.catalog_checksum,
+            canonical_checksum=release.canonical_checksum,
+        )
+
+    async def resolve_execution_assets(
+        self,
+        selection: ExecutionAssetSelection,
+        context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Node 1 선택을 동일 active release에 다시 결속해 최소 권한 실행 subgraph로 확장한다."""
+
+        try:
+            snapshot = await self._loader.load()
+            release = self._active_release(snapshot)
+            if (
+                release.catalog_version != selection.receipt_context_release
+                or release.catalog_checksum != selection.receipt_catalog_checksum
+                or release.canonical_checksum
+                != selection.receipt_canonical_checksum
+            ):
+                raise ReleaseReceiptChangedError(
+                    "active semantic release changed after candidate retrieval"
+                )
+            datasets = self._datasets_for_release(snapshot, release)
+            terms = self._required_terms(snapshot, datasets)
+            selected, graph = self._execution_component(
+                release,
+                datasets,
+                terms,
+                selection,
+                context,
+            )
+            await self._schema.verify(selected)
+            assets = self._project_assets(
+                selected,
+                graph,
+                terms,
+                context,
+                candidate=False,
+            )
+            projected_metric_ids = {
+                str(metric.get("id") or "")
+                for asset in assets
+                for metric in asset.get("metrics", ())
+                if isinstance(metric, dict)
+            }
+            if not set(selection.execution_metric_ids).issubset(
+                projected_metric_ids
+            ):
+                raise NoEntitledAssetsError(
+                    "selected metrics are not executable for the request principal"
+                )
+            return assets
+        except (
+            NoEntitledAssetsError,
+            ReleaseReceiptChangedError,
+            UnsupportedSemanticError,
+        ):
+            raise
+        except (
+            ContextBuildError,
+            DataHubCatalogError,
+            GovernedMetadataError,
+            TrinoSchemaDriftError,
+        ) as error:
+            raise MetadataUnavailableError(str(error)) from error
+
+    async def _search_selection(
+        self,
+        query: str,
+        context: dict[str, Any],
+    ) -> tuple[
+        CanonicalSemanticRelease,
+        tuple[GovernedDataset, ...],
+        tuple[GovernedJoin, ...],
+        dict[str, GlossaryMetricTerm],
+    ]:
+        """질문 증거로 bounded 후보 component를 고르고 검증된 release 객체와 함께 반환한다."""
+
         query_tokens = _unicode_tokens(query)
         if not query_tokens:
             raise NoMetricMatchError("the request has no searchable Unicode tokens")
@@ -129,16 +257,27 @@ class QueryGovernanceEngine:
                 release.joins,
             )
             self._validate_common_contracts(selected)
-            await self._schema.verify(selected)
         except NoEntitledAssetsError:
             raise
         except (
             ContextBuildError,
             DataHubCatalogError,
             GovernedMetadataError,
-            TrinoSchemaDriftError,
         ) as error:
             raise MetadataUnavailableError(str(error)) from error
+        return release, selected, graph, terms
+
+    @staticmethod
+    def _project_assets(
+        selected: tuple[GovernedDataset, ...],
+        graph: tuple[GovernedJoin, ...],
+        terms: dict[str, GlossaryMetricTerm],
+        context: dict[str, Any],
+        *,
+        candidate: bool,
+    ) -> list[dict[str, Any]]:
+        """검증된 node를 후보 또는 실행 projection으로 만들고 공개 Metric 존재를 강제한다."""
+
         term_map = {term.urn: term for term in terms.values()}
         raw_parameters = context.get("parameters") or {}
         if not isinstance(raw_parameters, dict):
@@ -158,17 +297,27 @@ class QueryGovernanceEngine:
             )
             for item in selected
         }
-        runtime_assets = [
-            item.runtime_asset(
-                term_map,
-                join_ids_by_fqn[item.fqn],
-                selected_graph,
-                raw_parameters,
-                context,
-            )
-            for item in selected
-        ]
-        governed_assets = _with_ratio_metrics(runtime_assets, terms, context)
+        governed_assets = _with_ratio_metrics(
+            [
+                item.candidate_asset(
+                    term_map,
+                    join_ids_by_fqn[item.fqn],
+                    selected_graph,
+                    context,
+                )
+                if candidate
+                else item.runtime_asset(
+                    term_map,
+                    join_ids_by_fqn[item.fqn],
+                    selected_graph,
+                    raw_parameters,
+                    context,
+                )
+                for item in selected
+            ],
+            terms,
+            context,
+        )
         if not any(
             metric.get("visibility", "BUSINESS") == "BUSINESS"
             for asset in governed_assets
@@ -401,6 +550,222 @@ class QueryGovernanceEngine:
                 "DataHub business metric Glossary coverage is incomplete"
             )
         return result
+
+    def _execution_component(
+        self,
+        release: CanonicalSemanticRelease,
+        datasets: tuple[GovernedDataset, ...],
+        terms: dict[str, GlossaryMetricTerm],
+        selection: ExecutionAssetSelection,
+        context: dict[str, Any],
+    ) -> tuple[tuple[GovernedDataset, ...], tuple[GovernedJoin, ...]]:
+        """선택 Metric·필드가 요구하는 exact release path만 실행 component로 해결한다."""
+
+        metrics_by_id = {item.id: item for item in release.metrics}
+        selected_metrics = tuple(
+            metrics_by_id.get(metric_id)
+            for metric_id in selection.execution_metric_ids
+        )
+        output_metrics = tuple(
+            metrics_by_id.get(metric_id)
+            for metric_id in selection.output_metric_ids
+        )
+        if any(item is None for item in (*selected_metrics, *output_metrics)):
+            raise UnsupportedSemanticError(
+                "selected metric is outside the active semantic release"
+            )
+        executable = tuple(item for item in selected_metrics if item is not None)
+        outputs = tuple(item for item in output_metrics if item is not None)
+        if any(item.visibility != "BUSINESS" for item in outputs):
+            raise UnsupportedSemanticError(
+                "execution output contains a non-business metric"
+            )
+
+        expected_ids = set(selection.output_metric_ids)
+        for metric_id in selection.output_metric_ids:
+            term = terms.get(metric_id)
+            operands = (
+                ratio_operand_ids(term.metric_rule)
+                if term is not None
+                else None
+            )
+            if operands is not None:
+                expected_ids.update(operands)
+        if set(selection.execution_metric_ids) != expected_ids:
+            raise UnsupportedSemanticError(
+                "execution metric dependencies differ from the active release"
+            )
+
+        release_dimension_fields = {
+            f"{item.asset_fqn}.{item.column}" for item in release.dimensions
+        }
+        allowed_field_sets = [
+            self._metric_dimension_scope(
+                item.id,
+                metrics_by_id,
+                terms,
+                frozenset(),
+            )
+            for item in outputs
+        ]
+        common_fields = (
+            set.intersection(*allowed_field_sets) if allowed_field_sets else set()
+        ) & release_dimension_fields
+        requested_fields = {
+            f"{item.asset_fqn}.{item.column}"
+            for item in selection.field_references
+        }
+        if not requested_fields.issubset(common_fields):
+            raise UnsupportedSemanticError(
+                "selected field is not a common governed metric dimension"
+            )
+
+        required_fqns = {
+            fqn for metric in executable for fqn in metric.source_assets
+        } | {item.asset_fqn for item in selection.field_references}
+        if not required_fqns:
+            raise UnsupportedSemanticError("execution selection has no source asset")
+        edge_scopes = [set(item.allowed_join_ids) for item in executable]
+        allowed_edge_ids = (
+            set.intersection(*edge_scopes) if edge_scopes else set()
+        )
+        allowed_edges = tuple(
+            edge for edge in release.joins if edge.id in allowed_edge_ids
+        )
+        anchor = min(required_fqns)
+        connected, used_edges = self._execution_paths(
+            required_fqns,
+            allowed_edges,
+            anchor,
+        )
+        if not required_fqns.issubset(connected):
+            raise UnsupportedSemanticError(
+                "selected metrics and dimensions have no unique commonly approved join path"
+            )
+        by_fqn = {item.fqn: item for item in datasets}
+        if connected.issubset(by_fqn) and not all(
+            by_fqn[name].entitled(context) for name in connected
+        ):
+            raise NoEntitledAssetsError(
+                "execution subgraph contains an asset outside the request entitlement"
+            )
+        if not self._valid_candidate_component(connected, by_fqn, context):
+            raise UnsupportedSemanticError(
+                "execution subgraph is not an entitled bounded contract component"
+            )
+        return tuple(by_fqn[name] for name in sorted(connected)), used_edges
+
+    @staticmethod
+    def _metric_dimension_scope(
+        metric_id: str,
+        metrics_by_id: dict[str, CanonicalMetric],
+        terms: dict[str, GlossaryMetricTerm],
+        visiting: frozenset[str],
+    ) -> set[str]:
+        """column Metric 차원 또는 ratio operand의 공통 차원을 실행 선택 범위로 계산한다."""
+
+        metric = metrics_by_id.get(metric_id)
+        if metric is None or metric_id in visiting:
+            raise UnsupportedSemanticError(
+                "selected metric dimension dependencies are invalid"
+            )
+        if metric.source_kind != "ratio":
+            return set(metric.dimension_fields)
+        term = terms.get(metric_id)
+        operands = ratio_operand_ids(term.metric_rule) if term is not None else None
+        if operands is None:
+            raise UnsupportedSemanticError(
+                "selected ratio metric has no governed dimension dependencies"
+            )
+        scopes = [
+            QueryGovernanceEngine._metric_dimension_scope(
+                operand_id,
+                metrics_by_id,
+                terms,
+                visiting | {metric_id},
+            )
+            for operand_id in operands
+        ]
+        return set.intersection(*scopes)
+
+    @staticmethod
+    def _execution_paths(
+        required: set[str],
+        edges: tuple[GovernedJoin, ...],
+        anchor: str,
+    ) -> tuple[set[str], tuple[GovernedJoin, ...]]:
+        """유일한 승인 최단 경로만 선택해 실행 graph의 불필요하거나 모호한 edge를 제거한다."""
+
+        if anchor not in required:
+            return set(), ()
+        connected = {anchor}
+        used: dict[str, GovernedJoin] = {}
+        for target in sorted(required - {anchor}):
+            path_edges = QueryGovernanceEngine._unique_shortest_edge_path(
+                anchor,
+                target,
+                edges,
+            )
+            if not path_edges:
+                return set(), ()
+            for edge in path_edges:
+                connected.update((edge.left, edge.right))
+                used[edge.id] = edge
+        return connected, tuple(used[name] for name in sorted(used))
+
+    @staticmethod
+    def _unique_shortest_edge_path(
+        start: str,
+        target: str,
+        edges: tuple[GovernedJoin, ...],
+    ) -> tuple[GovernedJoin, ...]:
+        """병렬 edge와 동률 우회 경로가 없는 경우에만 유일한 최단 edge 경로를 반환한다."""
+
+        adjacency: dict[str, list[tuple[str, GovernedJoin]]] = {}
+        for edge in edges:
+            adjacency.setdefault(edge.left, []).append((edge.right, edge))
+            adjacency.setdefault(edge.right, []).append((edge.left, edge))
+        distances = {start: 0}
+        path_counts = {start: 1}
+        predecessors: dict[str, tuple[str, GovernedJoin]] = {}
+        queue = deque([start])
+        target_distance: int | None = None
+        while queue:
+            current = queue.popleft()
+            distance = distances[current]
+            if target_distance is not None and distance >= target_distance:
+                continue
+            for neighbor, edge in sorted(
+                adjacency.get(current, ()),
+                key=lambda item: (item[0], item[1].id),
+            ):
+                candidate_distance = distance + 1
+                known_distance = distances.get(neighbor)
+                if known_distance is None:
+                    distances[neighbor] = candidate_distance
+                    path_counts[neighbor] = path_counts[current]
+                    if path_counts[current] == 1:
+                        predecessors[neighbor] = (current, edge)
+                    queue.append(neighbor)
+                    if neighbor == target:
+                        target_distance = candidate_distance
+                elif known_distance == candidate_distance:
+                    path_counts[neighbor] = min(
+                        2,
+                        path_counts[neighbor] + path_counts[current],
+                    )
+                    predecessors.pop(neighbor, None)
+        if path_counts.get(target) != 1:
+            return ()
+        result: list[GovernedJoin] = []
+        current = target
+        while current != start:
+            predecessor = predecessors.get(current)
+            if predecessor is None:  # pragma: no cover - 단일 경로 count와 함께 유지되는 불변식이다.
+                return ()
+            current, edge = predecessor
+            result.append(edge)
+        return tuple(reversed(result))
 
     def _select_connected(
         self,

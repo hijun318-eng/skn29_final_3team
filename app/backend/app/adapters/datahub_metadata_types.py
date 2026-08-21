@@ -135,6 +135,23 @@ class GovernedDataset:
             decisions.append(bool(self.allowed_domains & domains))
         return any(decisions)
 
+    def candidate_asset(
+        self,
+        terms: dict[str, GlossaryMetricTerm],
+        join_ids: tuple[str, ...],
+        join_graph: dict[str, Any],
+        request_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """실행 파라미터를 요구하지 않는 Node 1용 최소권한 후보 projection을 반환한다."""
+
+        return self._project_asset(
+            terms,
+            join_ids,
+            join_graph,
+            parameters=None,
+            request_context=request_context,
+        )
+
     def runtime_asset(
         self,
         terms: dict[str, GlossaryMetricTerm],
@@ -143,7 +160,27 @@ class GovernedDataset:
         parameters: dict[str, Any],
         request_context: dict[str, Any],
     ) -> dict[str, Any]:
-        """검증된 term·join·typed parameter를 결합해 SQL 생성기가 소비할 asset context를 만들고 누락 입력은 거부한다."""
+        """검증된 term·join·typed parameter를 결합해 SQL 생성기가 소비할 asset context를 만든다."""
+
+        return self._project_asset(
+            terms,
+            join_ids,
+            join_graph,
+            parameters=parameters,
+            request_context=request_context,
+        )
+
+    def _project_asset(
+        self,
+        terms: dict[str, GlossaryMetricTerm],
+        join_ids: tuple[str, ...],
+        join_graph: dict[str, Any],
+        *,
+        parameters: dict[str, Any] | None,
+        request_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """후보와 실행 projection의 공통 필드를 만들고 실행 단계에서만 필터 값을 바인딩한다."""
+
         parameter_types = _parameter_types(self.parameter_contract)
         raw_role = request_context.get("role")
         role = str(getattr(raw_role, "value", raw_role) or "")
@@ -157,10 +194,14 @@ class GovernedDataset:
                 raise GovernedMetadataError(
                     "DataHub business metric is missing its Glossary term"
                 )
-            filters = [
-                _runtime_filter(item, parameter_types, parameters)
-                for item in raw["required_filters"]
-            ]
+            filters = (
+                []
+                if parameters is None
+                else [
+                    _runtime_filter(item, parameter_types, parameters)
+                    for item in raw["required_filters"]
+                ]
+            )
             raw_rule = raw.get("metric_rule")
             raw_governance = (
                 raw_rule.get("governance")

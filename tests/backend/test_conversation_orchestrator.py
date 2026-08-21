@@ -32,6 +32,7 @@ from app.contracts import (
     RequestContext,
     Role,
 )
+from app.ports.data_platform import AssetCandidateSet, NoEntitledAssetsError
 from app.services.conversation.orchestrator import ConversationOrchestrator
 
 
@@ -259,6 +260,23 @@ class FakeDataPlatformAdapter:
         if query in self.assets_by_query:
             return list(self.assets_by_query[query])
         return list(self.assets)
+
+    async def search_asset_candidates(
+        self,
+        query: str,
+        filters: dict[str, Any],
+    ) -> AssetCandidateSet:
+        """프로그래밍된 후보를 production과 같은 non-empty receipt 계약으로 감싼다."""
+
+        assets = await self.search_assets(query, filters)
+        if not assets:
+            raise NoEntitledAssetsError("no programmed entitled candidates")
+        return AssetCandidateSet(
+            assets=tuple(assets),
+            context_release=str(assets[0].get("context_release") or "test-release"),
+            catalog_checksum="1" * 64,
+            canonical_checksum="2" * 64,
+        )
 
 
 from src.report.domain import (

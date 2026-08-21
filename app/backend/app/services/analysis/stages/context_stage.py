@@ -2,10 +2,11 @@
 
 [핵심 목적]
 사용자 인증 및 세션 정보를 바탕으로:
-1. DataHub 권한 자산 검색(`search_assets`)
+1. DataHub 권한 후보와 active release receipt 검색(`search_asset_candidates`)
 2. Node 1을 통한 질문 정규화 및 지표/차원/기간 해석(`select_metric`)
-3. `ContextPackage` 및 `RuntimeContextPackage` 불변 스냅샷 빌드
-4. G1 게이트 통과 기록 및 캐시 키(`common_key`) 생성
+3. 선택 결과를 동일 release에서 권한·JOIN·schema 검증된 실행 subgraph로 재해결
+4. `ContextPackage` 및 `RuntimeContextPackage` 불변 스냅샷 빌드
+5. G1 게이트 통과 기록 및 캐시 키(`common_key`) 생성
 을 수행합니다.
 """
 
@@ -25,6 +26,7 @@ from app.ports.data_platform import (
     MetadataUnavailableError,
     NoEntitledAssetsError,
     NoMetricMatchError,
+    ReleaseReceiptChangedError,
     UnsupportedSemanticError,
 )
 from app.ports.model import ModelAdapter
@@ -77,7 +79,7 @@ class AnalysisContextStage:
         # 1. 사용자 질문에 부합하는 승인된 DataHub 자산 검색
         try:
             try:
-                assets = await self._adapter.search_assets(
+                candidates = await self._adapter.search_asset_candidates(
                     payload.question,
                     {
                         **context.model_dump(mode="json"),
@@ -86,9 +88,16 @@ class AnalysisContextStage:
                     },
                 )
             except NoEntitledAssetsError:
-                if payload.resolved_slots and payload.resolved_slots.metric_id:
-                    fallback_query = f"{payload.resolved_slots.metric_id} {payload.question}"
-                    assets = await self._adapter.search_assets(
+                resolved_metric_ids = (
+                    payload.resolved_slots.resolved_metric_ids
+                    if payload.resolved_slots is not None
+                    else ()
+                )
+                if resolved_metric_ids:
+                    fallback_query = (
+                        f"{' '.join(resolved_metric_ids)} {payload.question}"
+                    )
+                    candidates = await self._adapter.search_asset_candidates(
                         fallback_query,
                         {
                             **context.model_dump(mode="json"),
@@ -200,20 +209,46 @@ class AnalysisContextStage:
 
         # 2. 지표/차원/기간 해석 및 ContextPackage 빌드
         try:
-            assets, normalized_question, structured_request = (
-                await self._support.select_metric(payload, context, assets)
+            _candidate_scope, normalized_question, structured_request = (
+                await self._support.select_metric(
+                    payload,
+                    context,
+                    list(candidates.assets),
+                )
             )
             if getattr(self._model, "last_trace", {}).get("node") == "node1":
                 state.record(PipelineStage.MODEL, model_trace_detail(self._model))
+            assets = await self._support.resolve_execution_assets(
+                payload,
+                context,
+                candidates,
+                structured_request,
+            )
             package = await self._support.build_context(
                 payload,
                 context,
                 assets,
                 structured_request,
             )
-        except MetadataUnavailableError as error:
-            logger.warning(
-                "DataHub Metric Glossary lookup failed: type=%s detail=%s",
+        except ReleaseReceiptChangedError as error:
+            logger.info(
+                "semantic release changed during context resolution: type=%s",
+                type(error).__name__,
+            )
+            return self._responses.error(
+                context,
+                state.machine,
+                state.trace,
+                PipelineStage.CONTEXT,
+                AnalysisStatus.FAILED,
+                ErrorCode.CONTEXT_SOURCE_FAILED,
+                "분석 도중 승인 데이터 카탈로그가 갱신되었습니다. 잠시 후 같은 질문을 다시 분석해 주세요.",
+                decision,
+                retryable=True,
+            )
+        except UnsupportedSemanticError as error:
+            logger.info(
+                "execution semantic resolution rejected: type=%s detail=%s",
                 type(error).__name__,
                 error,
             )
@@ -223,9 +258,38 @@ class AnalysisContextStage:
                 state.trace,
                 PipelineStage.CONTEXT,
                 AnalysisStatus.BLOCKED,
-                ErrorCode.INSUFFICIENT_CONTEXT,
-                "요청을 해석할 수 있는 승인 지표 또는 차원 계약을 찾지 못했습니다. 분석할 업무 지표와 필요한 경우 기간·분해 기준을 포함해 질문해 주세요.",
+                ErrorCode.SEMANTIC_CONTRACT_INVALID,
+                "선택한 지표와 분해 기준을 함께 실행할 수 있는 승인 관계·분석 단위 계약이 없습니다.",
                 decision,
+                detail=str(error),
+            )
+        except NoEntitledAssetsError:
+            return self._responses.error(
+                context,
+                state.machine,
+                state.trace,
+                PipelineStage.CONTEXT,
+                AnalysisStatus.BLOCKED,
+                ErrorCode.DATA_ASSET_NOT_FOUND,
+                "요청한 지표 조합을 실행하는 데 필요한 승인 데이터 범위에 접근할 수 없습니다.",
+                decision,
+            )
+        except MetadataUnavailableError as error:
+            logger.warning(
+                "execution metadata or schema validation failed: type=%s detail=%s",
+                type(error).__name__,
+                error,
+            )
+            return self._responses.error(
+                context,
+                state.machine,
+                state.trace,
+                PipelineStage.CONTEXT,
+                AnalysisStatus.FAILED,
+                ErrorCode.CONTEXT_SOURCE_FAILED,
+                "분석에 필요한 승인 메타데이터와 실제 데이터 스키마를 확인하지 못했습니다. 잠시 후 다시 분석해 주세요.",
+                decision,
+                retryable=True,
             )
         except ContextBuildError as error:
             if error.code in {

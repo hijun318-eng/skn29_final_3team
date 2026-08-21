@@ -129,6 +129,20 @@ try {
   assert.match(policyHtml, /질문의 범위나 조건을 수정해 다시 전송해 주세요/);
   assert.doesNotMatch(policyHtml, /데이터 변경 지시를 제외/);
 
+  const semanticContractHtml = render({
+    ...baseRun,
+    error: {
+      code: "SEMANTIC_CONTRACT_INVALID",
+      message: "선택한 지표와 분해 기준을 함께 실행할 수 있는 승인 관계·분석 단위 계약이 없습니다.",
+      retryable: false,
+      required_action: "MODIFY_REQUEST",
+    },
+  }, "ERROR");
+  assert.match(semanticContractHtml, /data-tone="restricted"/);
+  assert.match(semanticContractHtml, /이 지표 조합을 안전하게 분석할 수 없습니다/);
+  assert.match(semanticContractHtml, /승인 관계·분석 단위 계약/);
+  assert.doesNotMatch(semanticContractHtml, /internal-request-id|internal-trace-id/);
+
   const emptyHtml = render({ ...baseRun, status: "success", rowCount: 0, error: undefined }, "EMPTY");
   assert.match(emptyHtml, /조건에 맞는 결과가 없습니다/);
   assert.doesNotMatch(emptyHtml, /analysis-diagnostic__action/);

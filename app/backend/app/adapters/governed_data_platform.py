@@ -10,6 +10,7 @@ from app.adapters.query_execution import QueryExecutionService
 from app.adapters.query_governance import QueryGovernanceEngine
 from app.adapters.trino_async import TrinoAsyncClient
 from app.adapters.trino_schema import TrinoSchemaInspector
+from app.ports.data_platform import AssetCandidateSet, ExecutionAssetSelection
 
 
 class GovernedDataPlatformAdapter:
@@ -84,6 +85,24 @@ class GovernedDataPlatformAdapter:
     ) -> list[dict[str, Any]]:
         """자연어와 인증 context를 live governance에 연결해 권한·schema가 검증된 runtime asset만 반환한다."""
         return await self._governance.search_assets(query, context)
+
+    async def search_asset_candidates(
+        self,
+        query: str,
+        context: dict[str, Any],
+    ) -> AssetCandidateSet:
+        """실행 값이나 Trino schema를 먼저 요구하지 않는 승인 후보와 release receipt를 반환한다."""
+
+        return await self._governance.search_asset_candidates(query, context)
+
+    async def resolve_execution_assets(
+        self,
+        selection: ExecutionAssetSelection,
+        context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Node 1 선택을 active release 전체에서 다시 해결해 검증된 실행 subgraph를 반환한다."""
+
+        return await self._governance.resolve_execution_assets(selection, context)
 
     async def get_metric_terms(
         self,

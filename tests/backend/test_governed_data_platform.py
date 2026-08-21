@@ -32,9 +32,11 @@ from app.adapters.governed_data_platform import (  # noqa: E402
 from app.adapters.query_governance import QueryGovernanceEngine  # noqa: E402
 from app.adapters.trino_async import TrinoAsyncClient  # noqa: E402
 from app.ports.data_platform import (  # noqa: E402
+    ExecutionAssetSelection,
     MetadataUnavailableError,
     NoEntitledAssetsError,
     NoMetricMatchError,
+    UnsupportedSemanticError,
 )
 from app.query_capability import issue_query_capability  # noqa: E402
 from app.services.context.contract import GovernedJoin  # noqa: E402
@@ -431,6 +433,77 @@ def _bundle_with_dimension_bridge() -> dict:
             },
         }
     )
+    validate_bundle(bundle)
+    return bundle
+
+
+def _bundle_with_metric_join() -> dict:
+    """두 공개 Metric이 같은 승인 edge만 공유하는 일반 multi-asset release를 만든다."""
+
+    bundle = _bundle()
+    edge_id = "helium_argon_by_event"
+    bundle["join_graph"]["edges"].append(
+        {
+            "id": edge_id,
+            "left": "orbit.lake.helium_fact",
+            "right": "orbit.lake.argon_fact",
+            "kind": "inner",
+            "cardinality": "one_to_one",
+            "equality_conditions": [
+                {"left_column": "event_id", "right_column": "event_id"}
+            ],
+            "temporal_conditions": [],
+            "preaggregation": {
+                "required": False,
+                "grain": [
+                    {
+                        "asset_fqn": "orbit.lake.helium_fact",
+                        "column": "event_id",
+                    }
+                ],
+                "keys": [
+                    {
+                        "asset_fqn": "orbit.lake.helium_fact",
+                        "column": "event_id",
+                    }
+                ],
+            },
+        }
+    )
+    for metric in bundle["metric_rules"]:
+        metric["governance"]["join"] = {
+            "required": True,
+            "allowed_edge_ids": [edge_id],
+        }
+    validate_bundle(bundle)
+    return bundle
+
+
+def _bundle_with_unentitled_metric_join() -> dict:
+    """검색 가능 node와 권한 밖 node가 한 edge로 이어진 negative release를 만든다."""
+
+    bundle = _bundle_with_metric_join()
+    for asset in bundle["schema_context"]["assets"]:
+        if asset["fqn"] == "orbit.lake.argon_fact":
+            asset["entitlements"] = {"roles": ["report_admin"], "domains": []}
+    for metric in bundle["metric_rules"]:
+        if metric["id"] == "argon_yield":
+            metric["governance"]["permission"]["roles"] = ["report_admin"]
+    validate_bundle(bundle)
+    return bundle
+
+
+def _bundle_with_ambiguous_metric_join() -> dict:
+    """같은 두 자산 사이의 관계 의미를 고를 근거가 없는 병렬 edge release를 만든다."""
+
+    bundle = _bundle_with_metric_join()
+    parallel = copy.deepcopy(bundle["join_graph"]["edges"][0])
+    parallel["id"] = "helium_argon_by_alternate_event"
+    bundle["join_graph"]["edges"].append(parallel)
+    for metric in bundle["metric_rules"]:
+        metric["governance"]["join"]["allowed_edge_ids"] = sorted(
+            ("helium_argon_by_event", "helium_argon_by_alternate_event")
+        )
     validate_bundle(bundle)
     return bundle
 
@@ -931,6 +1004,172 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("", metrics["helium_rate"]["asset_fqn"])
         self.assertEqual("helium_yield", metrics["helium_rate"]["numerator_metric_id"])
         self.assertEqual("ratio", terms["helium_rate"]["kind"])
+
+    async def test_execution_resolution_uses_only_the_common_approved_join_path(self) -> None:
+        """복수 Metric 선택은 active graph의 공통 whitelist edge만 실행 context에 남긴다."""
+
+        transport = RuntimeTransport(_bundle_with_metric_join())
+        datahub_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.datahub)
+        )
+        trino_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.trino)
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=DataHubCatalogClient(
+                "http://datahub.test",
+                client=datahub_http,
+                page_size=2,
+                max_entities=20,
+            ),
+            trino_client=TrinoAsyncClient(
+                "https://trino.test",
+                "runtime",
+                "test-password",
+                client=trino_http,
+            ),
+            search_mode="lexical",
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+        context = {"role": "analyst", "parameters": {}}
+        candidates = await adapter.search_asset_candidates(
+            "Helium yield and Argon output",
+            context,
+        )
+        selection = ExecutionAssetSelection(
+            output_metric_ids=("helium_yield", "argon_yield"),
+            execution_metric_ids=("helium_yield", "argon_yield"),
+            field_references=(),
+            receipt_context_release=candidates.context_release,
+            receipt_catalog_checksum=candidates.catalog_checksum,
+            receipt_canonical_checksum=candidates.canonical_checksum,
+        )
+        self.assertEqual([], transport.trino_statements)
+
+        assets = await adapter.resolve_execution_assets(selection, context)
+
+        self.assertTrue(transport.trino_statements)
+        self.assertTrue(
+            all(
+                "information_schema" in statement
+                for statement in transport.trino_statements
+            )
+        )
+        self.assertEqual(
+            {"orbit.lake.helium_fact", "orbit.lake.argon_fact"},
+            {item["fqn"] for item in assets},
+        )
+        for asset in assets:
+            self.assertEqual(["helium_argon_by_event"], asset["join_ids"])
+            self.assertEqual(
+                ["helium_argon_by_event"],
+                [edge["id"] for edge in asset["join_graph"]["edges"]],
+            )
+
+    async def test_execution_resolution_rejects_an_unentitled_join_node(self) -> None:
+        """후보에 없던 Metric을 주입해도 권한 밖 중간·대상 node로 실행 범위를 넓히지 못한다."""
+
+        transport = RuntimeTransport(_bundle_with_unentitled_metric_join())
+        datahub_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.datahub)
+        )
+        trino_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.trino)
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=DataHubCatalogClient(
+                "http://datahub.test",
+                client=datahub_http,
+                page_size=2,
+                max_entities=20,
+            ),
+            trino_client=TrinoAsyncClient(
+                "https://trino.test",
+                "runtime",
+                "test-password",
+                client=trino_http,
+            ),
+            search_mode="lexical",
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+        context = {"role": "analyst", "parameters": {}}
+        candidates = await adapter.search_asset_candidates(
+            "Helium yield",
+            context,
+        )
+        selection = ExecutionAssetSelection(
+            output_metric_ids=("helium_yield", "argon_yield"),
+            execution_metric_ids=("helium_yield", "argon_yield"),
+            field_references=(),
+            receipt_context_release=candidates.context_release,
+            receipt_catalog_checksum=candidates.catalog_checksum,
+            receipt_canonical_checksum=candidates.canonical_checksum,
+        )
+
+        with self.assertRaisesRegex(
+            NoEntitledAssetsError,
+            "outside the request entitlement",
+        ):
+            await adapter.resolve_execution_assets(selection, context)
+
+    async def test_execution_resolution_rejects_ambiguous_parallel_join_edges(self) -> None:
+        """동일 endpoint의 승인 edge가 둘이면 질문별 추측 없이 관계 계약 보강을 요구한다."""
+
+        transport = RuntimeTransport(_bundle_with_ambiguous_metric_join())
+        datahub_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.datahub)
+        )
+        trino_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.trino)
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=DataHubCatalogClient(
+                "http://datahub.test",
+                client=datahub_http,
+                page_size=2,
+                max_entities=20,
+            ),
+            trino_client=TrinoAsyncClient(
+                "https://trino.test",
+                "runtime",
+                "test-password",
+                client=trino_http,
+            ),
+            search_mode="lexical",
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+        context = {"role": "analyst", "parameters": {}}
+        candidates = await adapter.search_asset_candidates(
+            "Helium yield and Argon output",
+            context,
+        )
+        selection = ExecutionAssetSelection(
+            output_metric_ids=("helium_yield", "argon_yield"),
+            execution_metric_ids=("helium_yield", "argon_yield"),
+            field_references=(),
+            receipt_context_release=candidates.context_release,
+            receipt_catalog_checksum=candidates.catalog_checksum,
+            receipt_canonical_checksum=candidates.canonical_checksum,
+        )
+
+        with self.assertRaisesRegex(
+            UnsupportedSemanticError,
+            "no unique commonly approved join path",
+        ):
+            await adapter.resolve_execution_assets(selection, context)
+        self.assertEqual([], transport.trino_statements)
 
     async def test_explicit_lexical_mode_does_not_call_disabled_semantic_search(self) -> None:
         self.transport.semantic_disabled = True

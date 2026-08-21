@@ -184,6 +184,19 @@ export function analysisFailurePresentation(
     };
   }
 
+  if (code === "SEMANTIC_CONTRACT_INVALID") {
+    return {
+      tone: "restricted",
+      category: "분석 계약 확인",
+      title: "이 지표 조합을 안전하게 분석할 수 없습니다",
+      reason: messageOr(
+        "선택한 지표와 분류 기준을 연결하는 승인 관계 또는 분석 단위 계약이 없습니다.",
+        error?.message,
+      ),
+      nextStep: "지표나 분류 기준을 줄여 다시 질문하거나, 필요한 관계 계약의 승인을 요청해 주세요.",
+    };
+  }
+
   if (["CONTEXT_INCOMPLETE", "INSUFFICIENT_CONTEXT"].includes(code)) {
     return {
       tone: "clarification",

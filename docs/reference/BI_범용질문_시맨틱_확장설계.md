@@ -143,11 +143,16 @@ BUSINESS Metric을 요약한다. Node 2의 `metric_ids`는 SUPPORT 계산 의존
    정확도나 실제 결과 정확도를 대신하지 않으며, review-only 후보는 채점할 수 없다.
 6. **배포 Gate:** semantic publish check, 명시적 승인, publish, 전체 read-back, backend E2E, 배포 UI Playwright를 같은 release ID에서 통과한다.
 
-현재 2-pass는 검색 후 Node 1이라는 순서는 갖췄지만, 검색 pass가 후보와 실행 subgraph를 동시에
-만든다. 다음 구현은 첫 pass를 Metric·Dataset·Glossary 요약 후보로 제한하고, Node 1 선택 후 서버가
-active release에서 필요한 dependency와 승인 JOIN만 다시 확장하는 별도 typed execution-resolution
-단계다. 이때 첫 pass payload는 힌트일 뿐 실행 권위가 아니며 release checksum·node·column·Metric·edge
-권한을 다시 확인한다. 이 분리가 완료되기 전에는 naïve top-5 절단이나 질문별 예외를 추가하지 않는다.
+후보와 실행 subgraph의 권위 경계는 분리했다. 첫 pass는 실행 filter 값을 요구하거나 Trino schema를
+조회하지 않고 권한 있는 후보와 active release checksum receipt를 반환한다. Node 1이 Metric·Dimension을
+선택하면 서버가 candidate payload가 아니라 같은 release 전체에서 ratio operand·source asset·공통 허용
+JOIN의 유일 최단 경로를 다시 계산하고, 선택 subgraph에 대해서만 node·Metric 권한과 live schema를
+검증한다. 병렬 edge 또는 동률 경로는 질문 문구로 추측하지 않고 semantic contract 오류로 닫는다.
+
+남은 검색 과제는 첫 pass가 아직 최대 8개 자산의 완전한 dependency component라는 점이다. 다음 단계는
+Metric·Dataset·Glossary 식별자와 요약 time contract만 갖는 compact candidate projection을 만들고,
+서로 다른 calendar/time mode 후보의 recall을 독립적으로 평가한 뒤 선택 후 호환 실행 계약으로 좁히는
+것이다. dependency를 잘라낸 단순 top-5나 특정 질문별 예외는 추가하지 않는다.
 
 구조 Gate는 다음처럼 읽기 전용으로 재현한다. 기본 출력은 case 전체를 생략한 checksum·집계이며,
 상세 감사에만 `--include-cases`를 사용한다.

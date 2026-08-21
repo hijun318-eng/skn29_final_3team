@@ -20,7 +20,14 @@ from app.contracts import (
     ResolvedSlots,
     Role,
 )
-from app.ports.data_platform import NoEntitledAssetsError, NoMetricMatchError
+from app.ports.data_platform import (
+    AssetCandidateSet,
+    ExecutionAssetSelection,
+    NoEntitledAssetsError,
+    NoMetricMatchError,
+    ReleaseReceiptChangedError,
+    UnsupportedSemanticError,
+)
 from app.services.analysis import AnalysisService
 from app.services.analysis.result_validator import PipelineResultValidator
 from app.services.routing_service import RoutingService
@@ -297,6 +304,7 @@ class AsyncRuntimeDataPlatform:
         self,
         *,
         search_error=None,
+        resolve_error=None,
         execute_error=None,
         result=None,
         asset=None,
@@ -304,6 +312,7 @@ class AsyncRuntimeDataPlatform:
         metric_terms=None,
     ):
         self.search_error = search_error
+        self.resolve_error = resolve_error
         self.execute_error = execute_error
         self.result = copy.deepcopy(result or QUERY_RESULT)
         self.asset = copy.deepcopy(asset or ASSET)
@@ -312,6 +321,8 @@ class AsyncRuntimeDataPlatform:
             metric_terms or {METRIC_ID: METRIC_TERM}
         )
         self.search_count = 0
+        self.resolve_count = 0
+        self.last_execution_selection = None
         self.execute_count = 0
         self.cancelled = []
         self.closed = False
@@ -320,6 +331,25 @@ class AsyncRuntimeDataPlatform:
         self.search_count += 1
         if self.search_error is not None:
             raise self.search_error
+        return [copy.deepcopy(self.asset)]
+
+    async def search_asset_candidates(self, query, context):
+        return AssetCandidateSet(
+            assets=tuple(await self.search_assets(query, context)),
+            context_release=str(self.asset["context_release"]),
+            catalog_checksum="1" * 64,
+            canonical_checksum="2" * 64,
+        )
+
+    async def resolve_execution_assets(
+        self,
+        selection: ExecutionAssetSelection,
+        context,
+    ):
+        self.resolve_count += 1
+        self.last_execution_selection = selection
+        if self.resolve_error is not None:
+            raise self.resolve_error
         return [copy.deepcopy(self.asset)]
 
     async def get_asset_schema(self, urn):
@@ -408,6 +438,11 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertLess(stages.index(PipelineStage.G2), stages.index(PipelineStage.G3))
         self.assertEqual(response.data.artifact.artifact_id, response.data.result.evidence.artifact_id)
         self.assertEqual(17, response.data.result.metrics[0].value)
+        self.assertEqual(1, adapter.resolve_count)
+        self.assertEqual(
+            (METRIC_ID,),
+            adapter.last_execution_selection.output_metric_ids,
+        )
         self.assertEqual(1, adapter.execute_count)
         self.assertEqual(["node1", "node2", "node3"], [node for node, _ in model.calls])
         self.assertEqual({"plan", "query", "package"}, set(execution))
@@ -647,6 +682,37 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([], model.calls)
         self.assertEqual(0, adapter.execute_count)
 
+    async def test_release_change_during_execution_resolution_is_retryable(self):
+        """후보 이후 release 교체는 입력 부족이 아니라 재시도 가능한 catalog 충돌이다."""
+
+        adapter = AsyncRuntimeDataPlatform(
+            resolve_error=ReleaseReceiptChangedError("release receipt changed")
+        )
+
+        response, adapter, model, _service = await self.run_pipeline(adapter=adapter)
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.CONTEXT_SOURCE_FAILED, response.error.code)
+        self.assertTrue(response.error.retryable)
+        self.assertIn("카탈로그가 갱신", response.error.message)
+        self.assertEqual(["node1"], [node for node, _ in model.calls])
+        self.assertEqual(0, adapter.execute_count)
+
+    async def test_execution_graph_gap_is_a_semantic_contract_failure(self):
+        """승인 JOIN·grain 부재를 모델 장애나 사용자 기간 누락으로 오분류하지 않는다."""
+
+        adapter = AsyncRuntimeDataPlatform(
+            resolve_error=UnsupportedSemanticError("no unique approved join path")
+        )
+
+        response, adapter, model, _service = await self.run_pipeline(adapter=adapter)
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ErrorCode.SEMANTIC_CONTRACT_INVALID, response.error.code)
+        self.assertIn("승인 관계", response.error.message)
+        self.assertEqual(["node1"], [node for node, _ in model.calls])
+        self.assertEqual(0, adapter.execute_count)
+
     async def test_new_analysis_without_metric_requests_metric_context(self):
         adapter = AsyncRuntimeDataPlatform(
             search_error=NoMetricMatchError("no governed metric matches the request")
@@ -747,6 +813,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
             response.model_dump(mode="json"),
         )
         self.assertEqual(1, adapter.search_count)
+        self.assertEqual(1, adapter.resolve_count)
         self.assertEqual(1, adapter.execute_count)
         self.assertEqual(["node3"], [node for node, _ in model.calls])
         evidence = response.data.result.evidence

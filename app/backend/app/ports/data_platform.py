@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 
@@ -17,8 +18,104 @@ class MetadataUnavailableError(RuntimeError):
     """필수 DataHub metadata가 없거나 checksum·schema 검증에 실패해 안전하게 분석할 수 없음을 알린다."""
 
 
+class ReleaseReceiptChangedError(MetadataUnavailableError):
+    """후보 검색 뒤 active semantic release identity가 달라져 같은 분석을 계속할 수 없음을 알린다."""
+
+
 class UnsupportedSemanticError(ValueError):
     """선택된 catalog release가 요청한 분석 의미를 명시적으로 지원하지 않음을 알린다."""
+
+
+def _checksum(value: str, name: str) -> None:
+    """release receipt checksum이 canonical SHA-256 문자열인지 검증한다."""
+
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ValueError(f"{name} must be a lowercase SHA-256 checksum")
+
+
+@dataclass(frozen=True, order=True)
+class GovernedFieldReference:
+    """Node 1이 선택했지만 active release에서 다시 확인해야 하는 물리 필드 참조다."""
+
+    asset_fqn: str
+    column: str
+
+    def __post_init__(self) -> None:
+        """빈 asset·column이 실행 그래프 확장 입력으로 들어오지 못하게 막는다."""
+
+        if (
+            not isinstance(self.asset_fqn, str)
+            or not self.asset_fqn.strip()
+            or not isinstance(self.column, str)
+            or not self.column.strip()
+        ):
+            raise ValueError("governed field reference must be non-empty")
+
+
+@dataclass(frozen=True)
+class AssetCandidateSet:
+    """질문 해석용 bounded 후보와 그 후보를 만든 active release receipt를 묶는다.
+
+    ``assets``는 Node 1 힌트일 뿐 실행 권위가 아니다. 실행 전에는 아래 receipt와
+    선택 ID를 사용해 DataHub active release 전체에서 subgraph를 다시 해결해야 한다.
+    """
+
+    assets: tuple[dict[str, Any], ...]
+    context_release: str
+    catalog_checksum: str
+    canonical_checksum: str
+
+    def __post_init__(self) -> None:
+        """빈 후보나 불완전 release identity를 요청 경계에서 즉시 거부한다."""
+
+        if (
+            not isinstance(self.assets, tuple)
+            or not self.assets
+            or any(not isinstance(item, dict) for item in self.assets)
+            or not isinstance(self.context_release, str)
+            or not self.context_release.strip()
+        ):
+            raise ValueError("asset candidate set and context release must be non-empty")
+        _checksum(self.catalog_checksum, "catalog checksum")
+        _checksum(self.canonical_checksum, "canonical checksum")
+
+
+@dataclass(frozen=True)
+class ExecutionAssetSelection:
+    """Node 1 선택을 active release의 최소 실행 subgraph로 재해결하는 typed 입력이다."""
+
+    output_metric_ids: tuple[str, ...]
+    execution_metric_ids: tuple[str, ...]
+    field_references: tuple[GovernedFieldReference, ...]
+    receipt_context_release: str
+    receipt_catalog_checksum: str
+    receipt_canonical_checksum: str
+
+    def __post_init__(self) -> None:
+        """출력·계산 Metric과 release receipt의 최소 불변식을 검증한다."""
+
+        if (
+            not 1 <= len(self.output_metric_ids) <= 4
+            or len(set(self.output_metric_ids)) != len(self.output_metric_ids)
+            or not self.execution_metric_ids
+            or len(set(self.execution_metric_ids)) != len(self.execution_metric_ids)
+            or not set(self.output_metric_ids).issubset(self.execution_metric_ids)
+            or any(
+                not isinstance(item, str) or not item.strip()
+                for item in self.execution_metric_ids
+            )
+            or len(set(self.field_references)) != len(self.field_references)
+            or tuple(sorted(self.field_references)) != self.field_references
+            or not isinstance(self.receipt_context_release, str)
+            or not self.receipt_context_release.strip()
+        ):
+            raise ValueError("execution asset selection is incomplete or non-canonical")
+        _checksum(self.receipt_catalog_checksum, "receipt catalog checksum")
+        _checksum(self.receipt_canonical_checksum, "receipt canonical checksum")
 
 
 class DataPlatformAdapter(Protocol):
@@ -35,6 +132,22 @@ class DataPlatformAdapter(Protocol):
         context: dict[str, Any],
     ) -> list[dict[str, Any]]:
         """자연어와 인증 context로 승인 asset을 찾아 권한·schema 검증된 runtime 계약을 반환한다."""
+        ...
+
+    async def search_asset_candidates(
+        self,
+        query: str,
+        context: dict[str, Any],
+    ) -> AssetCandidateSet:
+        """실행 값을 바인딩하지 않은 승인 후보와 immutable release receipt를 반환한다."""
+        ...
+
+    async def resolve_execution_assets(
+        self,
+        selection: ExecutionAssetSelection,
+        context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """선택 ID를 active release에 재결속해 권한·JOIN·schema 검증된 subgraph를 반환한다."""
         ...
 
     async def get_metric_terms(

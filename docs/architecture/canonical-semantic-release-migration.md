@@ -40,6 +40,15 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
   유지한다. 검색 hit가 요청 자산 상한을 넘을 때 전체 검색을 실패시키거나 자산을 임의 절단하지
   않고, 각 seed의 Metric·Dimension dependency와 승인 JOIN 경로가 완전한 component만 순위대로
   원자적으로 추가한다. 편입된 node 전체의 entitlement·policy·calendar 계약을 다시 검증한다.
+- 후보 검색과 실행 권위를 typed port로 분리했다. 첫 pass는 실행 parameter를 바인딩하거나 Trino
+  `information_schema`를 조회하지 않고, 권한 필터를 통과한 후보와 active release의 catalog·canonical
+  checksum receipt를 Node 1에 제공한다. Node 1의 Metric·Dimension 선택 뒤에는 candidate payload를
+  신뢰하지 않고 같은 receipt의 전체 `CanonicalSemanticRelease`에서 operand·source asset·필드와
+  공통 승인 JOIN 경로를 다시 계산한다. 선택된 최소 subgraph만 principal 권한과 live schema를
+  재검증하며, 병렬 edge나 동률 최단 경로처럼 관계 의미가 하나로 확정되지 않으면 임의 선택하지 않는다.
+- 후보 이후 release receipt가 바뀐 경우는 재시도 가능한 catalog 충돌, 실행 node 권한 부족은
+  비노출 자산 부재, 승인 JOIN·공통 dimension·grain 부재는 semantic contract 오류로 구분한다.
+  분석 오류 화면도 이 구분을 사용해 사용자 입력 부족과 서비스·거버넌스 문제를 섞지 않는다.
 - Legacy와 향후 Native shadow 결과가 같은지 source 종류를 제외하고 비교하는 checksum·section diff를 추가했다.
 - 팬아웃 정책은 질문 문구가 아니라 Measure 위치, JOIN 방향, JOIN equality key를 포함하는
   asset grain/unique key 집합, 승인된 공통 grain binding으로 `DIRECT_JOIN`, `PREAGGREGATE`,
@@ -115,10 +124,10 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
   아직 없으므로 review-only 후보가 이 코드만으로 운영 실행 범위에 들어오지는 않는다. Context는
   지표 선택 전에 기간 누락을 차단하지 않고 선택 Metric의 승인 time mode를 확인한 뒤 `range`만
   기간을 요구한다. 대화가 `range`에서 `latest_snapshot`으로 전환되면 직전 기간도 상속하지 않는다.
-- 현재 첫 번째 검색 pass가 Node 1에 줄 후보와 실행 가능한 JOIN subgraph를 한 번에 반환하는 구조는
-  남아 있다. 무근거 JOIN을 열지 않는 안전한 중간 상태이지만, 후보 회수율과 최소 실행 context를
-  독립 최적화할 수 없으므로 `candidate retrieval`과 선택 후 `execution graph resolution`을 분리하는
-  typed port는 다음 Gate다.
+- 후보와 실행 권위의 typed 경계는 분리했지만 첫 pass payload는 아직 최대 8개 자산의 완전한
+  dependency component다. Metric·Glossary·Dataset 요약만 담는 더 작은 candidate projection과
+  서로 다른 calendar/time mode 후보를 함께 회수한 뒤 선택 후 단일 실행 계약으로 좁히는 구조는
+  아직 열지 않았다. compact top-N을 위해 dependency를 잘라내거나 calendar를 임의 병합하지 않는다.
 - DataHub native mutation, `METRICS_ENABLED`, Trino ACL/principal, Redis, Legacy property 삭제는 변경하지 않았다.
 
 ## 전체 CatalogSnapshot이 남는 이유
@@ -129,10 +138,9 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
 
 ## 다음 Gate
 
-1. DataHub 검색의 상위 승인 후보는 식별자·용어·요약 시간 계약만 반환하고, Node 1이 선택한
-   Metric·Dimension을 서버가 active release checksum에 다시 결속한 뒤 필요한 승인 JOIN 경로와
-   dependency만 확장하는 `execution graph resolution` port를 추가한다. 후보와 실행 단계 모두에서
-   node·column·Metric·edge 권한을 재검증하며 candidate payload 자체를 실행 권위로 신뢰하지 않는다.
+1. 첫 pass를 권한 있는 Metric·Glossary·Dataset 식별자와 요약 시간 계약의 compact candidate
+   projection으로 줄인다. 검색 recall은 asset component가 아니라 Metric 단위로 평가하고, 서로 다른
+   calendar/time mode 후보를 Node 1 선택 전 합치되 실행 단계에서는 하나의 호환 계약만 허용한다.
 2. active release native Metric shadow를 별도 publish identity로 발행하고 read identity의 Rest.li aspect와
    GraphQL 관계 read-back을 통과시킨다. 이는 runtime cutover 승인이 아니다.
 3. candidate Metric의 base grain·additivity를 승인한 뒤 canonical release로 컴파일한다. planning

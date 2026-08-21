@@ -252,6 +252,58 @@ separate change-management system rather than a development-only bypass in this 
 live DataHub and Trino after publication. Unit tests using `MockTransport` prove only
 wire and validation contracts; they are not live publication evidence.
 
+## DataHub v1.7 native Metric shadow Gate
+
+The canonical Dataset/Glossary release remains the runtime authority. A separate
+out-of-place shadow projects only approved `BUSINESS` Metrics into DataHub's native
+`metric` entity and its `metricUpstreams` / `metricRelationships` edges. It does not
+copy the complete capability, permission, grain, fan-out, or query-policy JSON into
+another DataHub custom property. `SUPPORT` operands remain checksum-bound execution
+facts and are not searchable native Metric entities.
+
+The workflow always rediscovers the current active manifest from the complete scoped
+catalog. Completely ungoverned, base-ingested candidates may coexist outside that
+manifest; a Dataset with even one partial `answervice.*` property is not silently
+excluded. Every active member is also compared with live Trino before a shadow
+projection is accepted.
+
+Run the read-only check first:
+
+```powershell
+$nativeCheck = python infrastructure/database/datahub/author_native_metric_shadow.py `
+  --check --serving-schema analytics_v4_3 | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { throw 'Native Metric shadow check failed.' }
+```
+
+Publication is a separate operation with the mutation-only DataHub identity. Both
+the active catalog checksum and projection checksum from that exact check are
+required, so a changed release cannot reuse an older receipt:
+
+```powershell
+python infrastructure/database/datahub/author_native_metric_shadow.py `
+  --publish --serving-schema analytics_v4_3 `
+  --expected-catalog-sha256 $nativeCheck.catalog_sha256 `
+  --expected-projection-sha256 $nativeCheck.projection_sha256
+if ($LASTEXITCODE -ne 0) { throw 'Native Metric shadow publication failed.' }
+```
+
+Finally, use the read-only identity for independent Rest.li and GraphQL read-back.
+The GraphQL check verifies Metric identity plus exact Dataset, SchemaField, and Metric
+edge membership rather than treating stored JSON alone as graph evidence:
+
+```powershell
+python infrastructure/database/datahub/author_native_metric_shadow.py `
+  --verify --serving-schema analytics_v4_3 `
+  --expected-catalog-sha256 $nativeCheck.catalog_sha256 `
+  --expected-projection-sha256 $nativeCheck.projection_sha256
+if ($LASTEXITCODE -ne 0) { throw 'Native Metric shadow read-back failed.' }
+```
+
+`SHADOW_READBACK_VERIFIED_NOT_ACTIVE` is intentionally not a runtime cutover state.
+Native reader parity, permission/fan-out policy coverage, release approval, and the
+same-release Backend/Trino/browser gates are still required before changing the
+runtime source.
+
 The Backend keeps the verified catalog snapshot and readiness receipt for the shared
 `86400` second operational TTL. After a new semantic release reaches
 `PUBLISHED_AND_VERIFIED`, recreate the Backend before routing analysis traffic to that

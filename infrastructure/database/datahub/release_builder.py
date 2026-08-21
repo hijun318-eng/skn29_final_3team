@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from typing import Any, Protocol
 
@@ -9,6 +10,7 @@ from release_bundle import (
     ReleaseBinding,
     SemanticBundleError,
     assemble_release_bundle,
+    catalog_snapshot_bindings,
     release_term_urns,
     semantic_surface_issues,
 )
@@ -24,6 +26,7 @@ from src.data.metric_governance import (
     SUPPORTED_RUNTIME_GOVERNANCE_VERSIONS,
     dataset_runtime_property_keys,
 )
+from src.data.governance_contract import trino_schema_sha256
 
 
 @dataclass(frozen=True)
@@ -178,6 +181,64 @@ async def build_release_bundle(
     if result.bundle is None:
         raise ReleaseNotReady(result.report)
     return result.bundle
+
+
+async def build_active_release_bundle(
+    scopes: tuple[ReleaseScope, ...],
+    trino: TrinoDiscoveryPort,
+    datahub: DataHubDiscoveryPort,
+) -> dict[str, Any]:
+    """미승인 물리 자산과 분리해 manifest가 지정한 현재 active release를 재구성한다.
+
+    전체 scoped catalog는 신규 base-ingested 후보를 포함할 수 있다. 이 함수는
+    ``answervice.*`` publication property가 하나라도 있는 Dataset을 숨기지 않고 모두
+    predecessor 후보로 모은 뒤, 단일 manifest의 exact membership과 DataHub aspect를
+    재검증한다. manifest 밖의 무거버넌스 Dataset은 runtime release에 넣지 않지만,
+    manifest 구성원 전부는 live Trino fingerprint와 다시 일치해야 한다.
+    """
+
+    inventory: TrinoInventory = await trino.discover(scopes)
+    datasets: tuple[DataHubDataset, ...] = await datahub.discover_datasets(scopes)
+    governed = tuple(
+        dataset
+        for dataset in datasets
+        if any(
+            key.startswith(PROPERTY_PREFIX)
+            for key in dataset.custom_properties
+        )
+    )
+    bindings = catalog_snapshot_bindings(governed)
+    term_urns = release_term_urns(bindings)
+    terms = await datahub.discover_terms(term_urns)
+    bundle = assemble_release_bundle(bindings, terms)
+    _verify_active_trino_release(bundle, inventory)
+    return bundle
+
+
+def _verify_active_trino_release(
+    bundle: Mapping[str, Any],
+    inventory: TrinoInventory,
+) -> None:
+    """active manifest 구성원의 live Trino relation identity와 schema만 exact 대조한다."""
+
+    relations = {relation.fqn: relation for relation in inventory.relations}
+    if len(relations) != len(inventory.relations):
+        raise SemanticBundleError("live Trino inventory contains duplicate relations")
+    for asset in bundle["schema_context"]["assets"]:
+        relation = relations.get(str(asset["fqn"]))
+        if relation is None:
+            raise SemanticBundleError(
+                f"active release is missing from live Trino: {asset['fqn']}"
+            )
+        live_projection = {
+            "fqn": relation.fqn,
+            "table_type": relation.table_type,
+            "columns": [column.contract_value() for column in relation.columns],
+        }
+        if trino_schema_sha256(live_projection) != trino_schema_sha256(asset):
+            raise SemanticBundleError(
+                f"active release Trino schema differs: {asset['fqn']}"
+            )
 
 
 def reconcile_base(

@@ -112,9 +112,13 @@ BUSINESS Metric을 요약한다. Node 2의 `metric_ids`는 SUPPORT 계산 의존
    팬아웃 결정표를 다시 통과해야 한다. Node 1 복수 Metric·연산·result limit 슬롯과
    연산별 SQL AST 검증은 active model release에 반영했다. 추가로 단일 승인 `VIEW_REUSE`의
    집계·분해·추이·순위·기간비교는 `AnalysisPlan`에서 SQLGlot AST로 결정론적으로 생성하며,
-   동일 시간·필터 scope의 복수 Metric과 ratio도 같은 G2를 통과해야 실행한다. 후보 planning
-   sidecar의 DataHub 발행·read-back, `latest_snapshot`, 다중 asset JOIN AST 생성은 아직
-   활성화 Gate 밖이다. 2026-08-21 배포 UI의 단일 승인 뷰 집계에서는 실행 trace에 Node 2가
+   동일 시간·필터 scope의 복수 Metric과 ratio도 같은 G2를 통과해야 실행한다. planning
+   capability 전체를 DataHub JSON 문서로 복제하는 방식은 채택하지 않았다. 대신 현재 active
+   release의 BUSINESS Metric을 DataHub v1.7 native Metric·Dataset/SchemaField 관계로 투영하는
+   check/publish/read-back Gate를 추가했고, SUPPORT·permission·grain·fan-out 정책은 canonical
+   execution contract에 유지한다. 실제 live check는 BUSINESS 10개와 native 관계 26개를 계산했지만
+   `CHECKED_NOT_PUBLISHED`이며, 미승인 14개 후보와 runtime cutover는 열지 않았다.
+   `latest_snapshot`, 다중 asset JOIN AST 생성은 아직 활성화 Gate 밖이다. 2026-08-21 배포 UI의 단일 승인 뷰 집계에서는 실행 trace에 Node 2가
    없고 `typed_sql_compiler`와 G2·Trino·G3가 순서대로 통과했으며, 브라우저 console 오류·경고도
    없었다. 이 smoke 결과를 전체 조합 회귀 통과로 확대 해석하지 않는다.
 5. **부분 완료 — catalog-generated structural regression:** 예시 질문을 만들지 않고 SQL checksum에

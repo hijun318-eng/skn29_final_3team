@@ -11,9 +11,10 @@ Backend가 검증된 active release를 `CanonicalSemanticRelease` 불변 typed g
 - `CanonicalSemanticRelease`: 전체 active release의 asset·Metric·Dimension·JOIN과 checksum
 - `RuntimeContextPackage`: 사용자 권한과 질문 범위로 축소된 요청 단위 subgraph
 
-DataHub Dataset custom properties는 현재 Legacy transport다. 향후 DataHub native
-Metric/Semantic Model adapter도 동일 bundle을 재구성해야 하며, 두 결과의 canonical checksum이
-같을 때만 release 단위 전환 후보가 된다.
+DataHub Dataset custom properties는 현재 Legacy transport이자 runtime authority다. DataHub
+v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS Metric만 투영하지만,
+발행·재조회가 끝나도 runtime authority를 자동 전환하지 않는다. 향후 Native reader가 동일 bundle을
+재구성하고 Legacy 결과와 canonical checksum이 같을 때만 release 단위 전환 후보가 된다.
 
 ## 확인된 writer·reader·validator
 
@@ -68,6 +69,20 @@ Metric/Semantic Model adapter도 동일 bundle을 재구성해야 하며, 두 �
 - 기존 runtime v2 root shape을 변경하지 않고, asset별 Dimension/Time 의미는
   `ANSWERVICE-ANALYSIS-CAPABILITY-v1` sidecar 계약으로 분리했다. 현재 14개 후보 뷰의
   sidecar는 review-only이며 active DataHub release에는 아직 발행하지 않았다.
+- planning capability 전체를 거대한 Dataset custom property로 다시 복제하지 않는다. DataHub v1.7이
+  native로 지원하는 BUSINESS Metric identity와 Metric→Dataset·SchemaField·Metric 관계만 native
+  aspect로 투영하고, SUPPORT operand와 permission·grain·fan-out·query policy는 checksum-bound
+  canonical execution contract에 남긴다. 근거 모델은 DataHub v1.7의
+  [`MetricInfo`](https://github.com/datahub-project/datahub/blob/v1.7.0/metadata-models/src/main/pegasus/com/linkedin/metric/MetricInfo.pdl)와
+  [`MetricUpstreams`](https://github.com/datahub-project/datahub/blob/v1.7.0/metadata-models/src/main/pegasus/com/linkedin/metric/MetricUpstreams.pdl)다.
+- `author_native_metric_shadow.py`는 전체 scoped catalog를 읽되 manifest에 정확히 속한 active release만
+  재구성한다. 따라서 base-ingested 미승인 후보는 제외하지만 `answervice.*` property가 일부라도 있는
+  partial release는 숨기지 않고 실패한다. active 구성원은 live Trino schema fingerprint도 다시 대조한다.
+- 2026-08-21 실제 DataHub v1.7 read-only probe에서 native `METRIC` entity가 사용 가능하고 기존
+  Metric은 0개임을 확인했다. live `analytics_v4_3` check는 active BUSINESS Metric 10개,
+  SUPPORT Metric 4개, native aspect 72개, Dataset edge 10개, SchemaField edge 14개,
+  Metric derivation edge 2개를 계산했다. 상태는 `CHECKED_NOT_PUBLISHED`이며 live mutation과 runtime
+  cutover는 수행하지 않았다.
 - `evals/catalog_regression.py`는 후보 SQL checksum, capability sidecar와 Backend의 실제
   연산/time mode snapshot을 결합해 자연어·정답 SQL 없는 구조 회귀 행렬을 생성한다.
   현재 BUSINESS Metric 44개의 단일 조합 1,179건과 모든 Metric pair 946건, 총 2,125건이다.
@@ -89,7 +104,7 @@ Metric/Semantic Model adapter도 동일 bundle을 재구성해야 하며, 두 �
   동일 팬아웃 결정을 강제하는 전환 상태다.
 - `latest_snapshot`은 후보 capability에 명시했지만 active runtime read-back과 전용 SQL AST
   생성·검증이 없으므로 실행 경로에서는 의도적으로 차단한다.
-- DataHub native 발행, `METRICS_ENABLED`, Trino ACL/principal, Redis, Legacy property 삭제는 변경하지 않았다.
+- DataHub native mutation, `METRICS_ENABLED`, Trino ACL/principal, Redis, Legacy property 삭제는 변경하지 않았다.
 
 ## 전체 CatalogSnapshot이 남는 이유
 
@@ -99,16 +114,20 @@ Metric/Semantic Model adapter도 동일 bundle을 재구성해야 하며, 두 �
 
 ## 다음 Gate
 
-1. candidate Metric의 base grain·additivity를 승인하고 capability sidecar를 DataHub에 발행·read-back한다.
-2. 구조 Gate가 표시한 `TIME_GRAIN_CONTRACT_REQUIRED`, `COMPARISON_WINDOW_CONTRACT_REQUIRED`,
+1. active release native Metric shadow를 별도 publish identity로 발행하고 read identity의 Rest.li aspect와
+   GraphQL 관계 read-back을 통과시킨다. 이는 runtime cutover 승인이 아니다.
+2. candidate Metric의 base grain·additivity를 승인한 뒤 canonical release로 컴파일한다. planning
+   capability 전체를 별도 JSON 문서로 DataHub에 복제하지 않고, native 지원 영역과 execution-only
+   정책을 분리한다.
+3. 구조 Gate가 표시한 `TIME_GRAIN_CONTRACT_REQUIRED`, `COMPARISON_WINDOW_CONTRACT_REQUIRED`,
    `TIME_MODE_NOT_IMPLEMENTED`, `JOIN_GRAPH_REQUIRED`를 업무 승인 계약과 실행 구현으로 줄인다.
-3. 구조 Gate와 분리된 사람 검토 Gold로 Node 1 자연어 해석과 실제 Node 1→G3 결과 정확도를 측정한다.
-4. `latest_snapshot`과 다중 asset의 `DIRECT_JOIN`·`PREAGGREGATE`·`SEMI_JOIN` SQL을 typed
+4. 구조 Gate와 분리된 사람 검토 Gold로 Node 1 자연어 해석과 실제 Node 1→G3 결과 정확도를 측정한다.
+5. `latest_snapshot`과 다중 asset의 `DIRECT_JOIN`·`PREAGGREGATE`·`SEMI_JOIN` SQL을 typed
    plan에서 SQLGlot AST로 결정론적으로 생성한다. 단일 `VIEW_REUSE` 집계 live smoke는
    통과했지만, 전체 Metric·연산 조합의 결과 정확도·지연 회귀는 별도 Gate로 계속 입증한다.
-5. edge role/domain entitlement를 별도 정책으로 추가하고 node·column·Metric·edge 교집합을 검증한다.
-6. 한 도메인 Native shadow publish/read-back과 Legacy canonical equality를 통과시킨다.
-7. release 단위 cutover 전 실제 DataHub·Trino·Backend·Playwright E2E를 같은 release ID로 실행한다.
+6. edge role/domain entitlement를 별도 정책으로 추가하고 node·column·Metric·edge 교집합을 검증한다.
+7. 한 도메인 Native reader와 Legacy canonical equality를 통과시킨다.
+8. release 단위 cutover 전 실제 DataHub·Trino·Backend·Playwright E2E를 같은 release ID로 실행한다.
 
 ## Live 검증 환경 계약
 

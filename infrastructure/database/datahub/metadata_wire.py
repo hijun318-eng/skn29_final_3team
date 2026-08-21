@@ -10,6 +10,7 @@ from typing import Any
 ENTITY_PATHS = {
     "dataset": "dataset",
     "glossaryTerm": "glossaryterm",
+    "metric": "metric",
     "domain": "domain",
     "tag": "tag",
     "lifecycleStageType": "lifecyclestagetype",
@@ -26,6 +27,10 @@ _SUPPORTED_ASPECTS = frozenset(
         "glossaryTerms",
         "glossaryTermKey",
         "glossaryTermInfo",
+        "metricKey",
+        "metricInfo",
+        "metricRelationships",
+        "metricUpstreams",
         "domainKey",
         "domainProperties",
         "tagKey",
@@ -122,6 +127,17 @@ def _proposal_aspect_value(
                 )
     elif name == "glossaryTerms":
         value = _proposal_glossary_terms(value, audit)
+    elif name == "metricInfo":
+        value.setdefault("created", dict(audit))
+        value.setdefault("lastModified", dict(audit))
+    elif name == "metricRelationships":
+        for edge in (*value.get("derivedFrom", []), *value.get("relatedMetrics", [])):
+            edge.setdefault("created", dict(audit))
+            edge.setdefault("lastModified", dict(audit))
+    elif name == "metricUpstreams":
+        for edge in (*value.get("datasetUpstreams", []), *value.get("fieldUpstreams", [])):
+            edge.setdefault("created", dict(audit))
+            edge.setdefault("lastModified", dict(audit))
     elif name == "domainProperties":
         value.setdefault("customProperties", {})
         value.setdefault("created", dict(audit))

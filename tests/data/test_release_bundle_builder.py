@@ -11,7 +11,13 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(DATAHUB))
 sys.path.insert(0, str(ROOT / "tests/data"))
 
-from release_builder import ReleaseNotReady, build_release_bundle, inspect_release  # noqa: E402
+from release_builder import (  # noqa: E402
+    ReleaseNotReady,
+    build_active_release_bundle,
+    build_release_bundle,
+    inspect_release,
+)
+from release_bundle import SemanticBundleError  # noqa: E402
 from release_datahub import (  # noqa: E402
     DataHubDataset,
     DataHubField,
@@ -233,6 +239,85 @@ def test_complete_base_schema_does_not_imply_semantic_readiness():
     assert any(issue.startswith("approved_lifecycle:") for issue in result.report.semantic_release.issues)
     assert result.bundle is None
     assert datahub.term_calls == 0
+
+
+def test_active_release_ignores_only_completely_ungoverned_physical_candidates():
+    """manifest 밖 신규 Dataset은 strict authoring을 막되 현재 active read-back에는 섞이지 않는다."""
+
+    bundle = arbitrary_bundle()
+    scopes, inventory, datasets, terms = _runtime(bundle)
+    source = datasets[0]
+    source_relation = inventory.relations[0]
+    candidate_name = "review_candidate"
+    candidate = replace(
+        source,
+        urn="urn:li:dataset:(urn:li:dataPlatform:test,review_candidate,PROD)",
+        dataset_key_name=(
+            f"{source.dataset_key_name.split('.', 1)[0]}.{candidate_name}"
+        ),
+        name=f"{source_relation.scope.catalog}.{source_relation.scope.schema}.{candidate_name}",
+        qualified_name=(
+            f"{source_relation.scope.catalog}.{source_relation.scope.schema}.{candidate_name}"
+        ),
+        schema_name=(
+            f"{source.schema_name.rsplit('.', 1)[0]}.{candidate_name}"
+        ),
+        custom_properties={},
+        owners=(),
+        domain=None,
+        lifecycle=None,
+    )
+    candidate_relation = PhysicalRelation(
+        source_relation.scope,
+        candidate_name,
+        source_relation.table_type,
+        source_relation.columns,
+    )
+    expanded_inventory = TrinoInventory(
+        tuple(sorted((*inventory.relations, candidate_relation), key=lambda item: item.fqn)),
+        inventory.query_ids,
+    )
+    datahub = FakeDataHub((*datasets, candidate), terms)
+
+    strict = asyncio.run(
+        inspect_release(scopes, FakeTrino(expanded_inventory), datahub)
+    )
+    active = asyncio.run(
+        build_active_release_bundle(
+            scopes,
+            FakeTrino(expanded_inventory),
+            datahub,
+        )
+    )
+
+    assert strict.bundle is None
+    assert strict.report.base_ingestion.status == "READY"
+    assert strict.report.semantic_release.status == "NOT_READY"
+    assert catalog_hash(active) == catalog_hash(bundle)
+    assert candidate_name not in {
+        item["fqn"].rsplit(".", 1)[-1]
+        for item in active["schema_context"]["assets"]
+    }
+
+
+def test_active_release_does_not_hide_partially_governed_candidates():
+    """answervice property가 일부라도 있는 후보는 무거버넌스로 가장해 제외할 수 없다."""
+
+    bundle = arbitrary_bundle()
+    scopes, inventory, datasets, terms = _runtime(bundle)
+    partial = replace(
+        datasets[0],
+        urn="urn:li:dataset:(urn:li:dataPlatform:test,partial_candidate,PROD)",
+        custom_properties={f"{PREFIX}contract_version": "partial"},
+    )
+    with pytest.raises(SemanticBundleError):
+        asyncio.run(
+            build_active_release_bundle(
+                scopes,
+                FakeTrino(inventory),
+                FakeDataHub((*datasets, partial), terms),
+            )
+        )
 
 
 def test_coordinated_shape_with_stale_hash_still_fails_closed():

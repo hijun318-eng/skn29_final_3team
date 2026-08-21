@@ -9,11 +9,11 @@
 |---|---:|
 | archive | 130 |
 | documentation | 138 |
-| production | 304 |
+| production | 307 |
 | project-config | 38 |
 | runtime-config | 65 |
 | runtime-contract | 10 |
-| test | 139 |
+| test | 140 |
 
 운영 무결성 위반: **0건**
 
@@ -448,6 +448,7 @@
 | `infrastructure/database/clickhouse/config.d/timezone.xml` | project-config | REVIEWED |
 | `infrastructure/database/compose.yml` | runtime-config | REVIEWED |
 | `infrastructure/database/datahub/approve_metric_review.py` | production | REVIEWED |
+| `infrastructure/database/datahub/author_native_metric_shadow.py` | production | REVIEWED |
 | `infrastructure/database/datahub/author_semantic_catalog.py` | production | REVIEWED |
 | `infrastructure/database/datahub/build_release_bundle.py` | production | REVIEWED |
 | `infrastructure/database/datahub/build_runtime_governance_draft.py` | production | REVIEWED |
@@ -478,6 +479,8 @@
 | `infrastructure/database/datahub/metric_review_decision.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metric_review_transition.py` | production | REVIEWED |
 | `infrastructure/database/datahub/migrate_semantic_policy.py` | production | REVIEWED |
+| `infrastructure/database/datahub/native_metric_publication.py` | production | REVIEWED |
+| `infrastructure/database/datahub/native_metric_shadow.py` | production | REVIEWED |
 | `infrastructure/database/datahub/policy_compiler.py` | production | REVIEWED |
 | `infrastructure/database/datahub/preflight_policy_decisions.py` | production | REVIEWED |
 | `infrastructure/database/datahub/publication_check.py` | production | REVIEWED |
@@ -788,6 +791,7 @@
 | `tests/data/test_catalog_governance.py` | test | TEST_ONLY |
 | `tests/data/test_catalog_regression.py` | test | TEST_ONLY |
 | `tests/data/test_datahub_metadata_publication.py` | test | TEST_ONLY |
+| `tests/data/test_datahub_native_metric_shadow.py` | test | TEST_ONLY |
 | `tests/data/test_datahub_runtime_recipes.py` | test | TEST_ONLY |
 | `tests/data/test_datahub_security_boundary.py` | test | TEST_ONLY |
 | `tests/data/test_dataset_semantic_content_producer.py` | test | TEST_ONLY |

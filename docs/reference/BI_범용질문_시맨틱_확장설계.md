@@ -49,6 +49,14 @@ base ingestion 직후 semantic republish·전체 read-back 없이 Backend를 열
 
 ### 지표 판정과 승인 경계
 
+질문은 바로 Node 1에 보내지 않는다. Backend가 active DataHub release와 Glossary에서 현재
+principal에게 허용된 자산을 lexical·semantic 증거로 먼저 순위화하고, 그 bounded context만
+Node 1에 공급한다. 검색 hit가 많으면 단순 top-N으로 잘라 dependency나 JOIN 경로를 끊지 않고,
+Metric·Dimension dependency와 승인 경로가 완전한 component를 순위대로 최대 8개 자산까지
+편입한다. component의 중간 node를 포함해 entitlement·공통 policy·calendar 계약이 하나라도
+다르면 그 component만 제외한다. 이는 특정 질문 사전이나 질문 정규식이 아니라 active release의
+그래프와 계약으로 동작한다.
+
 Node 1은 먼저 승인 용어와 독립적으로 질문에 쓰인 측정 대상의 원문 연속 구간을
 `measurement_source_texts`에 질문 순서대로 최대 4개 추출하고, 그 다음 요청 전체의 지표
 판정을 `selected`, `ambiguous`, `unsupported`, `missing` 중 하나로 반환한다. 기존
@@ -95,6 +103,9 @@ BUSINESS Metric을 요약한다. Node 2의 `metric_ids`는 SUPPORT 계산 의존
 
 - 사건·일 지표는 기간이 필요하다. 연도가 생략된 월은 질문의 타임존과 `as_of`의 연도를 쓰되, 완료 기간은 `end_exclusive <= as_of`여야 한다.
 - `membership_current_snapshot`같은 스냅샷은 질문에 기간이 없을 때 소스의 `MAX(snapshot_date)`를 쓴다. 배포 시각이나 `CURRENT_DATE`를 쓰지 않는다.
+- 기간 필요 여부는 자산 검색 전 문장만 보고 결정하지 않는다. 선택 Metric의 DataHub time mode가
+  `range`일 때만 기간을 요구하며, `latest_snapshot`은 서버 `as_of`보다 작은 source time의 최댓값을
+  사용한다. 같은 대화의 직전 `range`도 snapshot 질문에 상속하지 않는다.
 - 미래 기간, 열린 기간, 해석 불가 기간은 임의 보정하지 않고 기간 오류로 반환한다.
 
 ### 차원과 필터
@@ -131,6 +142,12 @@ BUSINESS Metric을 요약한다. Node 2의 `metric_ids`는 SUPPORT 계산 의존
    capability가 확인되어 기존 time-mode blocker에서 해제됐다. 이 Gate는 Node 1 자연어
    정확도나 실제 결과 정확도를 대신하지 않으며, review-only 후보는 채점할 수 없다.
 6. **배포 Gate:** semantic publish check, 명시적 승인, publish, 전체 read-back, backend E2E, 배포 UI Playwright를 같은 release ID에서 통과한다.
+
+현재 2-pass는 검색 후 Node 1이라는 순서는 갖췄지만, 검색 pass가 후보와 실행 subgraph를 동시에
+만든다. 다음 구현은 첫 pass를 Metric·Dataset·Glossary 요약 후보로 제한하고, Node 1 선택 후 서버가
+active release에서 필요한 dependency와 승인 JOIN만 다시 확장하는 별도 typed execution-resolution
+단계다. 이때 첫 pass payload는 힌트일 뿐 실행 권위가 아니며 release checksum·node·column·Metric·edge
+권한을 다시 확인한다. 이 분리가 완료되기 전에는 naïve top-5 절단이나 질문별 예외를 추가하지 않는다.
 
 구조 Gate는 다음처럼 읽기 전용으로 재현한다. 기본 출력은 case 전체를 생략한 checksum·집계이며,
 상세 감사에만 `--include-cases`를 사용한다.

@@ -663,7 +663,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(0, adapter.execute_count)
 
     async def test_partial_conversation_slots_return_exact_clarification_cause(self):
-        """서버가 아는 지표·기간 누락은 자산 없음으로 뭉개지 않고 typed 원인을 돌려준다."""
+        """지표 누락은 즉시, range 기간 누락은 선택 자산의 시간 계약 확인 후 구분한다."""
 
         adapter = AsyncRuntimeDataPlatform(
             search_error=NoEntitledAssetsError("must not search partial slots")
@@ -705,8 +705,57 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
             ClarificationType.PERIOD,
             period_response.error.clarification_type,
         )
-        self.assertEqual(0, adapter.search_count)
+        self.assertEqual(1, adapter.search_count)
         self.assertEqual([], model.calls)
+
+    async def test_pre_resolved_latest_snapshot_without_period_reaches_typed_execution(self):
+        """기간 없는 typed 슬롯도 승인 time mode가 snapshot이면 검색 이후 실행까지 도달한다."""
+
+        snapshot_fqn = "serving.semantic.current_snapshot"
+        snapshot_asset = copy.deepcopy(ASSET)
+        snapshot_asset["fqn"] = snapshot_fqn
+        snapshot_asset["metrics"][0]["asset_fqn"] = snapshot_fqn
+        snapshot_asset["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
+        snapshot_asset["time_metadata"] = {
+            "calendar_id": "gregorian-test",
+            "mode": "latest_snapshot",
+            "selection": "max_source_value_lt_as_of",
+            "as_of_parameter": "snapshot_as_of",
+            "fields": copy.deepcopy(ASSET["time_metadata"]["fields"]),
+        }
+        snapshot_asset["time_metadata"]["fields"][0]["field"]["asset_fqn"] = (
+            snapshot_fqn
+        )
+        snapshot_asset["query_policy"]["allowed_functions"].append("max")
+        snapshot_asset["query_policy"]["allowed_catalogs"] = ["serving"]
+        self.payload = AnalysisRequest(
+            question="summarize the governed current observation measure",
+            resolved_slots=ResolvedSlots(
+                metric_id=METRIC_ID,
+                metric_ids=(METRIC_ID,),
+                analysis_operation="aggregate",
+            ),
+        )
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=AsyncRuntimeDataPlatform(asset=snapshot_asset),
+        )
+
+        self.assertEqual(
+            AnalysisStatus.SUCCEEDED,
+            response.data.status,
+            response.model_dump(mode="json"),
+        )
+        self.assertEqual(1, adapter.search_count)
+        self.assertEqual(1, adapter.execute_count)
+        self.assertEqual(["node3"], [node for node, _ in model.calls])
+        evidence = response.data.result.evidence
+        self.assertIsNone(evidence.period)
+        self.assertEqual(self.context.as_of, evidence.snapshot.cutoff)
+        self.assertEqual(
+            "max_source_value_lt_as_of",
+            evidence.snapshot.selection,
+        )
 
     async def test_unapproved_query_strategy_is_semantic_not_model_failure(self):
         incompatible = copy.deepcopy(ASSET)

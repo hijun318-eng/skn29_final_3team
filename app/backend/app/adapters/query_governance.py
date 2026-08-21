@@ -409,47 +409,85 @@ class QueryGovernanceEngine:
         context: dict[str, Any],
         edges: tuple[GovernedJoin, ...],
     ) -> tuple[tuple[GovernedDataset, ...], tuple[GovernedJoin, ...]]:
-        """seed·metric dependency·join 경로로 확장한 asset 집합 전체가 ``entitled(context)``를 만족할 때만 반환한다."""
+        """순위 seed의 완전한 dependency component만 bounded context에 원자적으로 추가한다."""
 
         by_fqn = {item.fqn: item for item in datasets}
         for candidate_anchor in seeds:
             anchor = candidate_anchor.fqn
-            selected = {anchor}
-            for seed in seeds:
-                if seed.fqn in by_fqn and (seed.fqn == anchor or shortest_path(anchor, seed.fqn, edges)):
-                    selected.add(seed.fqn)
-            dependencies = metric_dependencies(tuple(by_fqn[name] for name in selected))
-            for dep in dependencies:
-                if dep in by_fqn and (dep == anchor or shortest_path(anchor, dep, edges)):
-                    selected.add(dep)
-            metric_seeds = {name for name in selected if by_fqn[name].metrics}
-            if not metric_seeds:
-                for seed in tuple(selected):
-                    adjacent = sorted(
-                        other
-                        for edge in edges
-                        for other in other_endpoints(edge, seed)
-                        if other in by_fqn and by_fqn[other].metrics
-                    )
-                    if adjacent:
-                        selected.add(adjacent[0])
-                        metric_seeds.add(adjacent[0])
-            selected = connect_fqns(selected, edges, anchor)
-            if (
-                metric_seeds
-                and selected.issubset(by_fqn)
-                and len(selected) <= self._max_request_assets
-                # 확장으로 들어온 dependency·경유 asset 하나라도 권한이 없으면 이 anchor를 버리고
-                # 다음 후보를 시도한다. 끝까지 없으면 아래에서 fail-closed로 닫는다.
-                and all(by_fqn[name].entitled(context) for name in selected)
+            selected = self._seed_component(candidate_anchor, by_fqn, edges)
+            if not self._valid_candidate_component(
+                selected,
+                by_fqn,
+                context,
             ):
-                return (
-                    tuple(by_fqn[name] for name in sorted(selected)),
-                    edges,
-                )
+                continue
+            for seed in seeds:
+                component = self._seed_component(seed, by_fqn, edges)
+                required = selected | component
+                connected = connect_fqns(required, edges, anchor)
+                # 한 seed의 dependency나 경유 node 일부만 넣으면 Node 1에 실행 불가능한
+                # 후보를 노출한다. 전체 component가 들어오지 않으면 그 seed만 건너뛴다.
+                if required.issubset(connected) and self._valid_candidate_component(
+                    connected,
+                    by_fqn,
+                    context,
+                ):
+                    selected = connected
+            return tuple(by_fqn[name] for name in sorted(selected)), edges
         raise GovernedMetadataError(
             "governed request assets cannot form an entitled bounded metric join context"
         )
+
+    @staticmethod
+    def _seed_component(
+        seed: GovernedDataset,
+        by_fqn: dict[str, GovernedDataset],
+        edges: tuple[GovernedJoin, ...],
+    ) -> set[str]:
+        """seed가 Node 1 후보로 유효하기 위한 metric·dimension·경로 폐쇄 집합을 만든다."""
+
+        required = {seed.fqn}
+        if not seed.metrics:
+            adjacent = sorted(
+                other
+                for edge in edges
+                for other in other_endpoints(edge, seed.fqn)
+                if other in by_fqn and by_fqn[other].metrics
+            )
+            if not adjacent:
+                return set()
+            required.add(adjacent[0])
+        required.update(
+            metric_dependencies(tuple(by_fqn[name] for name in required))
+        )
+        if not required.issubset(by_fqn):
+            return set()
+        connected = connect_fqns(required, edges, seed.fqn)
+        return connected if required.issubset(connected) else set()
+
+    def _valid_candidate_component(
+        self,
+        selected: set[str],
+        by_fqn: dict[str, GovernedDataset],
+        context: dict[str, Any],
+    ) -> bool:
+        """bounded·entitled·공통 실행 계약을 모두 만족하는 완전한 후보 집합인지 판정한다."""
+
+        if (
+            not selected
+            or not selected.issubset(by_fqn)
+            or len(selected) > self._max_request_assets
+            or not any(by_fqn[name].metrics for name in selected)
+            or not all(by_fqn[name].entitled(context) for name in selected)
+        ):
+            return False
+        try:
+            self._validate_common_contracts(
+                tuple(by_fqn[name] for name in sorted(selected))
+            )
+        except GovernedMetadataError:
+            return False
+        return True
 
     @staticmethod
     def _validate_common_contracts(

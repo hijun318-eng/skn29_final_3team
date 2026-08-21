@@ -446,20 +446,29 @@ class ConversationSlotResolver:
             or cls._parse_stored_time_range(last_slots.get("time_range"))
         ) if previous_turns else None
 
-        time_range, is_inherited_period = TimeAlgebraEngine.resolve_time(
-            user_message=msg,
-            node1_output=node1_output,
-            last_time_range=last_time_range,
-            as_of=as_of_date,
-        )
-        comparison_time_range = TimeAlgebraEngine.resolve_comparison_time(
-            node1_output,
-            as_of_date,
-        )
+        # latest_snapshot은 source time의 서버 기준일 전 MAX를 선택하므로 질문이나
+        # 직전 턴의 range를 물려받지 않는다. 이 mode는 DataHub 후보를 고른 뒤
+        # MetricResolver가 확정한 typed 신호이며, 문장 패턴으로 추측하지 않는다.
+        if node1_output.get("time_mode") == "latest_snapshot":
+            time_range = None
+            is_inherited_period = False
+            comparison_time_range = None
+        else:
+            time_range, is_inherited_period = TimeAlgebraEngine.resolve_time(
+                user_message=msg,
+                node1_output=node1_output,
+                last_time_range=last_time_range,
+                as_of=as_of_date,
+            )
+            comparison_time_range = TimeAlgebraEngine.resolve_comparison_time(
+                node1_output,
+                as_of_date,
+            )
         if (
             comparison_time_range is None
             and is_followup
             and analysis_operation == "period_comparison"
+            and node1_output.get("time_mode") != "latest_snapshot"
         ):
             comparison_time_range = cls._parse_stored_time_range(
                 last_analysis_slots.get("comparison_time_range")

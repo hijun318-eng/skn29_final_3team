@@ -914,6 +914,69 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(slots["is_inherited_metric"])
         self.assertTrue(slots["is_inherited_period"])
 
+    async def test_latest_snapshot_topic_does_not_inherit_previous_range(self) -> None:
+        """새 snapshot 지표는 직전 range를 질문에 없던 cutoff로 재해석하지 않는다."""
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "시간 mode 전환",
+        )
+        first_message = "show the governed period metric for August 2025"
+        self.support.program(
+            first_message,
+            selected_metric_id="period_metric",
+            metric_ids=["period_metric"],
+            period_candidates=[
+                {
+                    "start": "2025-08-01",
+                    "end_exclusive": "2025-09-01",
+                    "source_text": "August 2025",
+                }
+            ],
+            time_mode="range",
+            is_elliptical=False,
+            requested_route="ANALYSIS",
+        )
+        first = await self.orchestrator.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": first_message},
+            context=self.context,
+        )
+
+        second_message = "show the current snapshot metric by governed category"
+        self.support.program(
+            second_message,
+            selected_metric_id="current_snapshot_metric",
+            metric_ids=["current_snapshot_metric"],
+            dimension_fields=[
+                {
+                    "asset_fqn": "orion_catalog.analytics.current_snapshot",
+                    "column": "category_code",
+                }
+            ],
+            period_candidates=[],
+            time_mode="latest_snapshot",
+            is_elliptical=False,
+            requested_route="ANALYSIS",
+        )
+        second = await self.orchestrator.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": second_message,
+                "expected_head_turn_id": str(first["turn"]["turn_id"]),
+            },
+            context=self.context,
+        )
+
+        slots = second["turn"]["resolved_slots"]
+        self.assertEqual("current_snapshot_metric", slots["metric_id"])
+        self.assertIsNone(slots["time_range"])
+        self.assertFalse(slots["is_inherited_period"])
+        request = self.submitted_requests[-1]
+        self.assertIsNotNone(request.resolved_slots)
+        self.assertIsNone(request.resolved_slots.period_start)
+        self.assertIsNone(request.resolved_slots.period_end_exclusive)
+
     async def test_off_topic_message_does_not_inherit_the_previous_analysis(self) -> None:
         """분석과 무관한 발화가 직전 분석을 물려받아 엉뚱한 답을 내지 않는지 검증.
 

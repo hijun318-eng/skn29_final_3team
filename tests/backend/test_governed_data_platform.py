@@ -6,6 +6,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import unquote
 
@@ -36,6 +37,7 @@ from app.ports.data_platform import (  # noqa: E402
     NoMetricMatchError,
 )
 from app.query_capability import issue_query_capability  # noqa: E402
+from app.services.context.contract import GovernedJoin  # noqa: E402
 
 
 LIFECYCLE_URN = "urn:li:lifecycleStageType:approved"
@@ -709,6 +711,128 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             default_engine._loader._ttl_seconds,
         )
         self.assertEqual(43_200.0, override_engine._loader._ttl_seconds)
+
+    def test_ranked_connected_candidates_keep_a_bounded_complete_component(self) -> None:
+        """검색 hit가 상한보다 많아도 상위 연결 component 전체를 버리지 않는다."""
+
+        datasets = tuple(
+            SimpleNamespace(
+                fqn=f"orbit.analytics.candidate_{index}",
+                metrics=({"dimensions": []},),
+                policy_version="policy-v1",
+                query_policy={"dialect": "trino", "read_only": True},
+                time_metadata={"calendar_id": "calendar-v1"},
+                entitled=lambda _context: True,
+            )
+            for index in range(5)
+        )
+        edges = tuple(
+            GovernedJoin(
+                id=f"candidate_{index}_to_{index + 1}",
+                left=datasets[index].fqn,
+                right=datasets[index + 1].fqn,
+                kind="inner",
+                cardinality="many_to_one",
+                equality_conditions=(("left_id", "right_id"),),
+                temporal_conditions=(),
+                preaggregation_required=False,
+                preaggregation_grain=("left_id",),
+                preaggregation_keys=("left_id",),
+            )
+            for index in range(4)
+        )
+        engine = QueryGovernanceEngine(
+            object(),
+            object(),
+            max_request_assets=3,
+            search_mode="lexical",
+        )
+
+        selected, selected_graph = engine._select_connected(
+            datasets,
+            datasets,
+            {"role": "analyst"},
+            edges,
+        )
+
+        self.assertEqual(
+            [
+                "orbit.analytics.candidate_0",
+                "orbit.analytics.candidate_1",
+                "orbit.analytics.candidate_2",
+            ],
+            [item.fqn for item in selected],
+        )
+        self.assertEqual(edges, selected_graph)
+
+    def test_candidate_dependency_component_is_never_partially_admitted(self) -> None:
+        """의존 자산까지 넣을 공간이 없으면 seed 일부만 후보 context에 남기지 않는다."""
+
+        fqns = tuple(f"orbit.analytics.asset_{index}" for index in range(4))
+        datasets = (
+            SimpleNamespace(
+                fqn=fqns[0],
+                metrics=({"dimensions": []},),
+                policy_version="policy-v1",
+                query_policy={"dialect": "trino"},
+                time_metadata={"calendar_id": "calendar-v1"},
+                entitled=lambda _context: True,
+            ),
+            SimpleNamespace(
+                fqn=fqns[1],
+                metrics=({"dimensions": []},),
+                policy_version="policy-v1",
+                query_policy={"dialect": "trino"},
+                time_metadata={"calendar_id": "calendar-v1"},
+                entitled=lambda _context: True,
+            ),
+            SimpleNamespace(
+                fqn=fqns[2],
+                metrics=({"dimensions": [{"asset_fqn": fqns[3]}]},),
+                policy_version="policy-v1",
+                query_policy={"dialect": "trino"},
+                time_metadata={"calendar_id": "calendar-v1"},
+                entitled=lambda _context: True,
+            ),
+            SimpleNamespace(
+                fqn=fqns[3],
+                metrics=(),
+                policy_version="policy-v1",
+                query_policy={"dialect": "trino"},
+                time_metadata={"calendar_id": "calendar-v1"},
+                entitled=lambda _context: True,
+            ),
+        )
+        edges = tuple(
+            GovernedJoin(
+                id=f"asset_{index}_to_{index + 1}",
+                left=fqns[index],
+                right=fqns[index + 1],
+                kind="inner",
+                cardinality="many_to_one",
+                equality_conditions=(("left_id", "right_id"),),
+                temporal_conditions=(),
+                preaggregation_required=False,
+                preaggregation_grain=("left_id",),
+                preaggregation_keys=("left_id",),
+            )
+            for index in range(3)
+        )
+        engine = QueryGovernanceEngine(
+            object(),
+            object(),
+            max_request_assets=3,
+            search_mode="lexical",
+        )
+
+        selected, _ = engine._select_connected(
+            datasets[:3],
+            datasets,
+            {"role": "analyst"},
+            edges,
+        )
+
+        self.assertEqual(fqns[:2], tuple(item.fqn for item in selected))
 
     async def asyncSetUp(self) -> None:
         self.transport = RuntimeTransport(_bundle())

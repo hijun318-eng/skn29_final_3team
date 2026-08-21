@@ -36,6 +36,10 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
 - readiness도 실제 요청과 동일한 canonical compile gate를 통과해야 `ready`가 된다.
 - 실제 검색 경로의 JOIN 탐색은 Dataset별 `join_graph` JSON을 다시 조립하지 않고, 컴파일된
   `GovernedJoin` tuple을 사용한다.
+- 질문 해석 전에 DataHub의 lexical·semantic 증거로 승인 자산을 순위화하는 기존 2-pass 순서를
+  유지한다. 검색 hit가 요청 자산 상한을 넘을 때 전체 검색을 실패시키거나 자산을 임의 절단하지
+  않고, 각 seed의 Metric·Dimension dependency와 승인 JOIN 경로가 완전한 component만 순위대로
+  원자적으로 추가한다. 편입된 node 전체의 entitlement·policy·calendar 계약을 다시 검증한다.
 - Legacy와 향후 Native shadow 결과가 같은지 source 종류를 제외하고 비교하는 checksum·section diff를 추가했다.
 - 팬아웃 정책은 질문 문구가 아니라 Measure 위치, JOIN 방향, JOIN equality key를 포함하는
   asset grain/unique key 집합, 승인된 공통 grain binding으로 `DIRECT_JOIN`, `PREAGGREGATE`,
@@ -46,7 +50,9 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
 - Node 1 active contract를 `MODEL-v1.17.0`으로 올려 질문당 BUSINESS Metric 1~4개,
   `analysis_operation`, `result_limit`을 typed slot으로 전달한다. 기존 단일
   `selected_metric_id`는 한 개일 때만 채워지는 호환 projection이며, 대화 저장·상속은
-  `metric_ids` 전체를 보존한다.
+  `metric_ids` 전체를 보존한다. active release manifest는 `MODEL-RELEASE-v1.23.0`, Node 1
+  prompt는 `PROMPT-v1.18.0`이며 특정 호텔 질문 해석기가 아니라 supplied governed BI
+  metadata만 사용하는 범용 역할로 고정했다.
 - SQL Guard는 실제 AST가 사용한 JOIN edge를 각 v2 Metric의 `allowed_join_ids`와 대조하고,
   같은 edge에 대해 논리 계획과 동일한 팬아웃 결정표를 다시 실행한다. 필요한
   `PREAGGREGATE`나 `SEMI_JOIN` 형태가 실제 AST에 없으면 `GRAIN_VIOLATION`으로 닫는다.
@@ -106,7 +112,13 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
   동일 팬아웃 결정을 강제하는 전환 상태다.
 - `latest_snapshot`의 typed plan·SQLGlot 생성·G2 AST 검증·서버 기준일 binding·G3/API/UI
   증거 경로는 구현했다. 다만 active DataHub v2 reader가 해당 계약을 발행·재조회한 release는
-  아직 없으므로 review-only 후보가 이 코드만으로 운영 실행 범위에 들어오지는 않는다.
+  아직 없으므로 review-only 후보가 이 코드만으로 운영 실행 범위에 들어오지는 않는다. Context는
+  지표 선택 전에 기간 누락을 차단하지 않고 선택 Metric의 승인 time mode를 확인한 뒤 `range`만
+  기간을 요구한다. 대화가 `range`에서 `latest_snapshot`으로 전환되면 직전 기간도 상속하지 않는다.
+- 현재 첫 번째 검색 pass가 Node 1에 줄 후보와 실행 가능한 JOIN subgraph를 한 번에 반환하는 구조는
+  남아 있다. 무근거 JOIN을 열지 않는 안전한 중간 상태이지만, 후보 회수율과 최소 실행 context를
+  독립 최적화할 수 없으므로 `candidate retrieval`과 선택 후 `execution graph resolution`을 분리하는
+  typed port는 다음 Gate다.
 - DataHub native mutation, `METRICS_ENABLED`, Trino ACL/principal, Redis, Legacy property 삭제는 변경하지 않았다.
 
 ## 전체 CatalogSnapshot이 남는 이유
@@ -117,23 +129,27 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
 
 ## 다음 Gate
 
-1. active release native Metric shadow를 별도 publish identity로 발행하고 read identity의 Rest.li aspect와
+1. DataHub 검색의 상위 승인 후보는 식별자·용어·요약 시간 계약만 반환하고, Node 1이 선택한
+   Metric·Dimension을 서버가 active release checksum에 다시 결속한 뒤 필요한 승인 JOIN 경로와
+   dependency만 확장하는 `execution graph resolution` port를 추가한다. 후보와 실행 단계 모두에서
+   node·column·Metric·edge 권한을 재검증하며 candidate payload 자체를 실행 권위로 신뢰하지 않는다.
+2. active release native Metric shadow를 별도 publish identity로 발행하고 read identity의 Rest.li aspect와
    GraphQL 관계 read-back을 통과시킨다. 이는 runtime cutover 승인이 아니다.
-2. candidate Metric의 base grain·additivity를 승인한 뒤 canonical release로 컴파일한다. planning
+3. candidate Metric의 base grain·additivity를 승인한 뒤 canonical release로 컴파일한다. planning
    capability 전체를 별도 JSON 문서로 DataHub에 복제하지 않고, native 지원 영역과 execution-only
    정책을 분리한다.
-3. 구조 Gate가 표시한 `TIME_GRAIN_CONTRACT_REQUIRED`, `COMPARISON_WINDOW_CONTRACT_REQUIRED`,
+4. 구조 Gate가 표시한 `TIME_GRAIN_CONTRACT_REQUIRED`, `COMPARISON_WINDOW_CONTRACT_REQUIRED`,
    혼합 time mode의 `TIME_MODE_NOT_IMPLEMENTED`, `JOIN_GRAPH_REQUIRED`를 업무 승인 계약과
    실행 구현으로 줄인다. 단일 `latest_snapshot` 조합은 더 이상 executor 미구현으로 차단하지 않는다.
-4. 구조 Gate와 분리된 사람 검토 Gold로 Node 1 자연어 해석과 실제 Node 1→G3 결과 정확도를 측정한다.
-5. `latest_snapshot` 후보의 query policy·DataHub read-back·active release 연결을 승인한 뒤
+5. 구조 Gate와 분리된 사람 검토 Gold로 Node 1 자연어 해석과 실제 Node 1→G3 결과 정확도를 측정한다.
+6. `latest_snapshot` 후보의 query policy·DataHub read-back·active release 연결을 승인한 뒤
    같은 release에서 실제 Trino 결과와 UI 증거를 검증한다. 다중 asset의 `DIRECT_JOIN`·
    `PREAGGREGATE`·`SEMI_JOIN` SQL은 승인 edge·key·cardinality가 갖춰진 범위부터 typed plan으로
    결정론적으로 생성한다. 단일 `VIEW_REUSE` 집계 live smoke는 통과했지만, 전체 Metric·연산
    조합의 결과 정확도·지연 회귀는 별도 Gate로 계속 입증한다.
-6. edge role/domain entitlement를 별도 정책으로 추가하고 node·column·Metric·edge 교집합을 검증한다.
-7. 한 도메인 Native reader와 Legacy canonical equality를 통과시킨다.
-8. release 단위 cutover 전 실제 DataHub·Trino·Backend·Playwright E2E를 같은 release ID로 실행한다.
+7. edge role/domain entitlement를 별도 정책으로 추가하고 node·column·Metric·edge 교집합을 검증한다.
+8. 한 도메인 Native reader와 Legacy canonical equality를 통과시킨다.
+9. release 단위 cutover 전 실제 DataHub·Trino·Backend·Playwright E2E를 같은 release ID로 실행한다.
 
 ## Live 검증 환경 계약
 

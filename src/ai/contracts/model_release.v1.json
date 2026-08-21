@@ -1,5 +1,5 @@
 {
-  "manifest_version": "MODEL-RELEASE-v1.22.0",
+  "manifest_version": "MODEL-RELEASE-v1.23.0",
   "state": "ACTIVE",
   "schema_contract": "v1",
   "schema_version": "MODEL-v1.17.0",
@@ -7,8 +7,8 @@
   "nodes": {
     "node1": {
       "prompt_id": "node1.normalize",
-      "prompt_version": "PROMPT-v1.17.0",
-      "prompt_sha256": "40802f2831862d5ad41814979f3b21c2a917b456de1610114c18bbbbe6ba683d",
+      "prompt_version": "PROMPT-v1.18.0",
+      "prompt_sha256": "8ed67af8f51cb7805677cb8ea1980e5d767a59b4bd058ef60754588bcc562bfc",
       "request_definition": "node1_request",
       "response_definition": "node1_response"
     },

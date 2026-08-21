@@ -59,9 +59,10 @@ class AnalysisContextStage:
         context = state.context
         decision = state.decision
 
-        # ConversationSlotResolver가 기간 또는 지표만 확정한 typed 요청은 DataHub 검색
-        # 실패로 뭉개지 않는다. 어떤 값이 비었는지는 서버가 이미 알고 있으므로 model이나
-        # 자산 검색을 다시 호출하지 않고 정확한 clarification 원인으로 닫는다.
+        # ConversationSlotResolver가 기간만 확정하고 지표를 찾지 못한 typed 요청은
+        # DataHub 검색 실패로 뭉개지 않는다. 반대로 기간 누락은 여기서 닫지 않는다.
+        # 선택 지표의 DataHub time mode가 range인지 latest_snapshot인지 확인한 뒤에만
+        # MetricResolver가 기간 필요 여부를 판정할 수 있다.
         resolved = payload.resolved_slots
         if resolved is not None and not resolved.resolved_metric_ids:
             return self._responses.clarification_required(
@@ -73,19 +74,6 @@ class AnalysisContextStage:
                 decision,
                 clarification_type=ClarificationType.METRIC,
             )
-        if resolved is not None and not (
-            resolved.period_start and resolved.period_end_exclusive
-        ):
-            return self._responses.clarification_required(
-                context,
-                state.machine,
-                state.trace,
-                PipelineStage.CONTEXT,
-                "질문에 시작일·종료일 또는 하나의 상대 기간을 명확히 포함해 주세요.",
-                decision,
-                clarification_type=ClarificationType.PERIOD,
-            )
-
         # 1. 사용자 질문에 부합하는 승인된 DataHub 자산 검색
         try:
             try:
@@ -171,7 +159,7 @@ class AnalysisContextStage:
                 PipelineStage.CONTEXT,
                 AnalysisStatus.BLOCKED,
                 ErrorCode.DATA_ASSET_NOT_FOUND,
-                "호텔 데이터 분석과 관련이 없거나 분석할 지표를 찾을 수 없습니다. 분석하고자 하는 호텔 지표(객실 매출, 투숙률, 식음료, 연회, 고객 리뷰 등)와 기간을 포함하여 질문해 주세요.",
+                "요청과 일치하고 접근 권한이 있는 승인 데이터 자산 또는 지표를 찾지 못했습니다. 분석할 업무 지표와 필요한 경우 기간·분해 기준을 포함해 질문해 주세요.",
                 decision,
             )
         except (TimeoutError, OSError, ValueError) as error:
@@ -236,7 +224,7 @@ class AnalysisContextStage:
                 PipelineStage.CONTEXT,
                 AnalysisStatus.BLOCKED,
                 ErrorCode.INSUFFICIENT_CONTEXT,
-                "호텔 데이터 분석과 관련이 없거나 지원되지 않는 요청입니다. 분석할 지표(객실 매출, 투숙률, 식음료, 연회, VOC 등)를 포함하여 질문해 주세요.",
+                "요청을 해석할 수 있는 승인 지표 또는 차원 계약을 찾지 못했습니다. 분석할 업무 지표와 필요한 경우 기간·분해 기준을 포함해 질문해 주세요.",
                 decision,
             )
         except ContextBuildError as error:

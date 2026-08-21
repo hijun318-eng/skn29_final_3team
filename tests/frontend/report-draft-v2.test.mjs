@@ -12,6 +12,7 @@ import {
   adaptAnalysisRunArtifact,
   analysisArtifactTitle,
   analysisRunArtifactSources,
+  analysisTimeLabel,
   artifactViewBlockSettings,
   artifactMetricCards,
   createFrontendDraftSnapshot,
@@ -159,6 +160,24 @@ assert.equal(Object.hasOwn(adaptedAnalysisArtifact, "question"), false);
 assert.deepEqual(analysisLibraryFixture.artifact, analysisArtifactBefore, "analysis adaptation must not mutate the API result");
 assert.equal(analysisArtifactTitle(adaptedAnalysisArtifact), "2026-01-01–2026-07-01 객실 매출 분석");
 assert.equal(adaptAnalysisRunArtifact({ ...analysisLibraryFixture.artifact, evidenceReady: false }), null);
+
+const snapshotRun = structuredClone(analysisLibraryFixture.artifact);
+delete snapshotRun.evidence.period;
+snapshotRun.evidence.snapshot = {
+  cutoff: "2026-08-20",
+  selection: "max_source_value_lt_as_of",
+};
+const adaptedSnapshotArtifact = adaptAnalysisRunArtifact(snapshotRun);
+assert.deepEqual(adaptedSnapshotArtifact.evidence.snapshot, {
+  cutoff: "2026-08-20",
+  selection: "max_source_value_lt_as_of",
+});
+assert.equal(analysisTimeLabel(adaptedSnapshotArtifact.evidence), "2026-08-20 이전 최신 스냅샷");
+assert.equal(
+  analysisArtifactTitle(adaptedSnapshotArtifact),
+  "2026-08-20 이전 최신 스냅샷 객실 매출 분석",
+);
+assert.equal(reportEvidenceReady(adaptedSnapshotArtifact), true);
 
 const insertedAnalysisArtifact = insertFrontendArtifact([], {
   ...analysisSources[1],
@@ -320,6 +339,18 @@ assert.match(reportSources.draftMutations, /\["artifact", "chart", "table"\]\.in
 assert.match(reportSources.draftState, /density: "comfortable", sizeMode: "auto"/);
 
 assert.equal(reportEvidenceReady(monthlyArtifact), true);
+const snapshotArtifact = structuredClone(monthlyArtifact);
+delete snapshotArtifact.evidence.period;
+snapshotArtifact.evidence.snapshot = {
+  cutoff: "2026-08-20",
+  selection: "max_source_value_lt_as_of",
+};
+assert.equal(reportEvidenceReady(snapshotArtifact), true);
+snapshotArtifact.evidence.period = {
+  start: "2026-08-01",
+  end_exclusive: "2026-08-21",
+};
+assert.equal(reportEvidenceReady(snapshotArtifact), false);
 assert.equal(
   reportEvidenceReady({ ...monthlyArtifact, chart: { ...monthlyArtifact.chart, y_fields: ["unknown_measure"] } }),
   false,

@@ -133,7 +133,7 @@ export interface SavedAnalysisDefinition {
   created_at: string;
 }
 
-/** 저장 분석 실행의 식별자·기간·완료 상태 계약이다. */
+/** 저장 분석 실행의 식별자·시간 근거·완료 상태 계약이다. */
 export interface SavedAnalysisRun {
   request_id: string;
   definition_id: string;
@@ -150,6 +150,8 @@ export interface SavedAnalysisRun {
   question: string;
   period_start: string | null;
   period_end_exclusive: string | null;
+  snapshot_cutoff?: string | null;
+  snapshot_selection?: "max_source_value_lt_as_of" | null;
 }
 
 /** trace 기반 진행 조회가 반환하는 서버 관측 상태다. */

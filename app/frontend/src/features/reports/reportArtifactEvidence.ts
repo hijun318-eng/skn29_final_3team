@@ -1,15 +1,19 @@
 /** 보고서 artifact의 렌더 가능 근거 불변식을 한곳에서 판정하는 모듈이다. */
-/** artifact/query/period/source/gate identity가 모두 확인된 artifact만 렌더 가능하다고 판정한다. */
+/** artifact/query/time evidence/source/gate identity가 모두 확인된 artifact만 렌더 가능하다고 판정한다. */
 export function reportEvidenceReady(artifact: any): boolean {
   const evidence = artifact?.evidence;
   const metricFields = new Set((evidence?.metrics ?? []).map((metric: any) => metric.result_field));
+  const hasPeriod = Boolean(evidence?.period?.start && evidence?.period?.end_exclusive);
+  const hasSnapshot = Boolean(
+    evidence?.snapshot?.cutoff
+    && evidence?.snapshot?.selection === "max_source_value_lt_as_of"
+  );
   return Boolean(
     artifact?.artifact_id
     && artifact?.query_id
     && evidence?.artifact_id === artifact.artifact_id
     && evidence?.query_id === artifact.query_id
-    && evidence?.period?.start
-    && evidence?.period?.end_exclusive
+    && hasPeriod !== hasSnapshot
     && evidence?.sources?.length
     && evidence?.gates?.g1 === "PASSED"
     && evidence?.gates?.g2 === "PASSED"

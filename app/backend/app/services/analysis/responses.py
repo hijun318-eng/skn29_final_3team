@@ -24,6 +24,7 @@ from app.contracts import (
     MetricReference,
     MetricValue,
     PeriodEvidence,
+    SnapshotEvidence,
     PipelineStage,
     RequestContext,
     SamplingEvidence,
@@ -107,6 +108,10 @@ class AnalysisResponseFactory:
         cached: bool = False,
     ) -> AnalysisResponse:
         """G3 게이트를 통과한 정상 실행 결과를 SUCCEEDED 또는 PARTIAL 상태의 AnalysisResponse로 조립합니다."""
+        period_payload = query.get("period")
+        snapshot_payload = query.get("snapshot")
+        if period_payload and snapshot_payload:
+            raise ValueError("실행 결과에는 period와 snapshot 증거를 함께 넣을 수 없습니다.")
         query_status = query.get("status")
         status = (
             AnalysisStatus.PARTIAL
@@ -164,9 +169,18 @@ class AnalysisResponseFactory:
                 as_of=context.as_of,
                 timezone=context.timezone,
                 period=(
-                    PeriodEvidence.model_validate(query["period"])
-                    if query.get("period", {}).get("start")
-                    else support.period(context.as_of, package)
+                    PeriodEvidence.model_validate(period_payload)
+                    if isinstance(period_payload, dict) and period_payload.get("start")
+                    else (
+                        None
+                        if snapshot_payload
+                        else support.period(context.as_of, package)
+                    )
+                ),
+                snapshot=(
+                    SnapshotEvidence.model_validate(snapshot_payload)
+                    if snapshot_payload
+                    else None
                 ),
                 filters=_evidence_filters(query.get("filters", {}), package),
                 sources=support.sources(assets),

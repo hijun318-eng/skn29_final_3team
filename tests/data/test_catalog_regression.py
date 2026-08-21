@@ -179,10 +179,19 @@ def test_time_and_comparison_gaps_are_visible_instead_of_silently_enabled() -> N
         "COMPARISON_WINDOW_CONTRACT_REQUIRED" in case["technical_blockers"]
         for case in comparison_cases
     )
-    assert all(
-        "TIME_MODE_NOT_IMPLEMENTED" in case["technical_blockers"]
+    snapshot_cases = [
+        case
         for case in single_cases
         if set(case["asset_fqns"]) <= snapshot_assets
+    ]
+    assert snapshot_cases and all(
+        "TIME_MODE_NOT_IMPLEMENTED" not in case["technical_blockers"]
+        for case in snapshot_cases
+    )
+    assert all(
+        "TIME_TREND_REQUIRES_RANGE" in case["technical_blockers"]
+        for case in snapshot_cases
+        if case["operation"] == "time_trend"
     )
     assert all(
         "PERIOD_COMPARISON_AGGREGATION_UNSUPPORTED"

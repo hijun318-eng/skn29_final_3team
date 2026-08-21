@@ -524,7 +524,7 @@
       },
       "AnalysisRunResponse": {
         "additionalProperties": false,
-        "description": "정의 버전별 재실행 상태, 기준일·시간대, 추적·쿼리·산출물 ID와 완료 시각을 반환한다.",
+        "description": "정의 버전별 재실행 상태, 시간 근거, 추적·쿼리·산출물 ID와 완료 시각을 반환한다.",
         "properties": {
           "artifact_id": {
             "anyOf": [
@@ -623,6 +623,30 @@
             "format": "uuid",
             "title": "Request Id",
             "type": "string"
+          },
+          "snapshot_cutoff": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Cutoff"
+          },
+          "snapshot_selection": {
+            "anyOf": [
+              {
+                "const": "max_source_value_lt_as_of",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Selection"
           },
           "started_at": {
             "format": "date-time",
@@ -1403,6 +1427,16 @@
           },
           "sampling": {
             "$ref": "#/components/schemas/SamplingEvidence"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "sources": {
             "default": [],
@@ -3178,6 +3212,28 @@
           "meta"
         ],
         "title": "SessionResponse",
+        "type": "object"
+      },
+      "SnapshotEvidence": {
+        "additionalProperties": false,
+        "description": "기준일 전에 source의 최신 스냅샷을 선택했다는 실행 규칙을 기록한다.",
+        "properties": {
+          "cutoff": {
+            "format": "date",
+            "title": "Cutoff",
+            "type": "string"
+          },
+          "selection": {
+            "const": "max_source_value_lt_as_of",
+            "title": "Selection",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cutoff",
+          "selection"
+        ],
+        "title": "SnapshotEvidence",
         "type": "object"
       },
       "SourceReference": {

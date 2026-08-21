@@ -4,7 +4,7 @@
 DataPlatformAdapter(DataHub/Trino)를 통해:
 1. 런타임 스키마 및 비즈니스 용어사전 조회
 2. 차원 필터 값 실데이터 검증 및 주입 (Filter Value Resolution)
-3. 반개방 구간(Half-Open Range) 시간 파라미터 바인딩 생성 및 데이터 기준일(Cutoff) 초과 검사
+3. 승인된 반개방 기간 또는 최신 스냅샷 시간 파라미터 바인딩과 기준일(Cutoff) 검사
 4. ContextPackage 생성 후 런타임 계약(`runtime_contracts`)과 조인 그래프를 결합한 최종 `RuntimeContextPackage` 반환
 """
 
@@ -42,6 +42,8 @@ from app.services.context.runtime_contracts import (
     comparison_time_parameter_names,
     filter_parameter_bindings,
     schema_columns,
+    snapshot_parameter_name,
+    time_selection_mode,
     time_parameter_names,
 )
 from src.modelops.runtime import estimate_token_count
@@ -56,6 +58,146 @@ def _period_suggestions(candidates: object) -> tuple[str, ...]:
         if isinstance(candidate, dict)
         and isinstance(candidate.get("source_text"), str)
     )
+
+
+def _time_bindings(
+    payload: AnalysisRequest,
+    structured_request: dict[str, Any] | None,
+    context: RequestContext,
+    assets: list[dict[str, object]],
+) -> tuple[
+    tuple[ContextParameterBinding, ...],
+    dict[str, str],
+    list[tuple[str, str]],
+]:
+    """governed range 또는 최신 snapshot mode에 맞는 서버 소유 binding을 만든다."""
+
+    if time_selection_mode(assets) == "latest_snapshot":
+        relationship = (
+            structured_request.get("period_relationship")
+            if isinstance(structured_request, dict)
+            else None
+        )
+        periods = (
+            structured_request.get("period_candidates")
+            if isinstance(structured_request, dict)
+            else None
+        )
+        if relationship == "comparison" or periods:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "최신 스냅샷 분석은 기간 범위 또는 기간 비교로 재해석할 수 없습니다.",
+            )
+        name = snapshot_parameter_name(assets)
+        supplied = payload.parameters.get(name)
+        cutoff = context.as_of.isoformat()
+        if supplied is not None and supplied != cutoff:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "최신 스냅샷 기준일은 서버가 확정한 분석 기준일과 일치해야 합니다.",
+            )
+        return (ContextParameterBinding(name, "date", cutoff),), {}, []
+    return _range_time_bindings(payload, structured_request, context, assets)
+
+
+def _range_time_bindings(
+    payload: AnalysisRequest,
+    structured_request: dict[str, Any] | None,
+    context: RequestContext,
+    assets: list[dict[str, object]],
+) -> tuple[
+    tuple[ContextParameterBinding, ...],
+    dict[str, str],
+    list[tuple[str, str]],
+]:
+    start_parameter, end_parameter = time_parameter_names(assets)
+    comparison_names = comparison_time_parameter_names(assets)
+    relationship = (
+        structured_request.get("period_relationship")
+        if isinstance(structured_request, dict)
+        else None
+    )
+    is_comparison_request = relationship == "comparison"
+    if is_comparison_request and comparison_names is None:
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METADATA,
+            "선택된 자산들이 거버넌스 비교 윈도우를 지원하지 않습니다.",
+        )
+    comparison_start, comparison_end = comparison_names or ("", "")
+    window_names = (start_parameter, end_parameter, comparison_start, comparison_end)
+    period_values = {
+        name: payload.parameters[name]
+        for name in window_names
+        if name and name in payload.parameters
+    }
+    if not period_values and structured_request is not None:
+        candidates = structured_request.get("period_candidates")
+        expected_count = 2 if is_comparison_request else 1
+        if not isinstance(candidates, list) or len(candidates) != expected_count:
+            raise ContextBuildError(
+                ContextBuildErrorCode.PERIOD_REQUIRED,
+                "기간 비교 분석은 정확히 2개의 기간 범위를 요구합니다."
+                if is_comparison_request
+                else "분석 기간은 정확히 1개의 기간 범위로 해석되어야 합니다.",
+                _period_suggestions(candidates),
+            )
+        windows = [(start_parameter, end_parameter, candidates[0])]
+        if is_comparison_request:
+            windows.append((comparison_start, comparison_end, candidates[1]))
+        period_values = {}
+        for window_start, window_end, candidate in windows:
+            if not isinstance(candidate, dict):
+                raise ContextBuildError(
+                    ContextBuildErrorCode.INVALID_METADATA,
+                    "Node1 기간 후보 항목은 객체여야 합니다.",
+                )
+            try:
+                period_values[window_start] = datetime.fromisoformat(
+                    str(candidate["start"])
+                ).date().isoformat()
+                period_values[window_end] = datetime.fromisoformat(
+                    str(candidate["end_exclusive"])
+                ).date().isoformat()
+            except (KeyError, ValueError) as error:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.INVALID_METADATA,
+                    "Node1 기간 후보가 올바른 ISO 날짜-시간 형식이 아닙니다.",
+                ) from error
+    expected_names = {start_parameter, end_parameter}
+    if is_comparison_request:
+        expected_names |= {comparison_start, comparison_end}
+    if period_values and set(period_values) != expected_names:
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METADATA,
+            "분석 기간은 시작과 종료 경계값을 모두 포함해야 합니다.",
+        )
+    window_pairs = [(start_parameter, end_parameter)]
+    if is_comparison_request:
+        window_pairs.append((comparison_start, comparison_end))
+    for window_start, window_end in window_pairs:
+        if not period_values:
+            continue
+        start_date = date.fromisoformat(period_values[window_start])
+        end_date = date.fromisoformat(period_values[window_end])
+        if start_date >= context.as_of:
+            raise ContextBuildError(
+                ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+                "요청 기간은 오늘 이전의 완료된 영업일을 포함해야 합니다.",
+            )
+        if end_date > context.as_of:
+            period_values[window_end] = context.as_of.isoformat()
+            end_date = context.as_of
+        if start_date >= end_date:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "분석 기간은 비어있지 않은 반개구간 [start, end) 이어야 합니다.",
+            )
+    bindings = tuple(
+        ContextParameterBinding(name, "date", period_values[name])
+        for name in window_names
+        if name and name in period_values
+    )
+    return bindings, period_values, window_pairs
 
 
 def _required_filter(item: dict[str, Any]) -> ContextRequiredFilter:
@@ -235,97 +377,13 @@ class PipelineContextService:
             for asset in assets
         )
 
-        # 4. 시간 파라미터 및 비교 윈도우 계산
-        start_parameter, end_parameter = time_parameter_names(assets)
-        comparison_names = comparison_time_parameter_names(assets)
-        relationship = (
-            structured_request.get("period_relationship")
-            if isinstance(structured_request, dict)
-            else None
-        )
-        is_comparison_request = relationship == "comparison"
-        if is_comparison_request and comparison_names is None:
-            raise ContextBuildError(
-                ContextBuildErrorCode.INVALID_METADATA,
-                "선택된 자산들이 거버넌스 비교 윈도우를 지원하지 않습니다.",
-            )
-        comparison_start, comparison_end = comparison_names or ("", "")
-        window_names = (start_parameter, end_parameter, comparison_start, comparison_end)
-        period_values = {
-            name: payload.parameters[name]
-            for name in window_names
-            if name and name in payload.parameters
-        }
-        if not period_values and structured_request is not None:
-            candidates = structured_request.get("period_candidates")
-            expected_count = 2 if is_comparison_request else 1
-            if not isinstance(candidates, list) or len(candidates) != expected_count:
-                raise ContextBuildError(
-                    ContextBuildErrorCode.PERIOD_REQUIRED,
-                    "기간 비교 분석은 정확히 2개의 기간 범위를 요구합니다."
-                    if is_comparison_request
-                    else "분석 기간은 정확히 1개의 기간 범위로 해석되어야 합니다.",
-                    _period_suggestions(candidates),
-                )
-            windows = [(start_parameter, end_parameter, candidates[0])]
-            if is_comparison_request:
-                windows.append((comparison_start, comparison_end, candidates[1]))
-            period_values = {}
-            for window_start, window_end, candidate in windows:
-                if not isinstance(candidate, dict):
-                    raise ContextBuildError(
-                        ContextBuildErrorCode.INVALID_METADATA,
-                        "Node1 기간 후보 항목은 객체여야 합니다.",
-                    )
-                try:
-                    period_values[window_start] = datetime.fromisoformat(
-                        str(candidate["start"])
-                    ).date().isoformat()
-                    period_values[window_end] = datetime.fromisoformat(
-                        str(candidate["end_exclusive"])
-                    ).date().isoformat()
-                except (KeyError, ValueError) as error:
-                    raise ContextBuildError(
-                        ContextBuildErrorCode.INVALID_METADATA,
-                        "Node1 기간 후보가 올바른 ISO 날짜-시간 형식이 아닙니다.",
-                    ) from error
-        expected_names = {start_parameter, end_parameter}
-        if is_comparison_request:
-            expected_names |= {comparison_start, comparison_end}
-        if period_values and set(period_values) != expected_names:
-            raise ContextBuildError(
-                ContextBuildErrorCode.INVALID_METADATA,
-                "분석 기간은 시작과 종료 경계값을 모두 포함해야 합니다.",
-            )
-        window_pairs = [(start_parameter, end_parameter)]
-        if is_comparison_request:
-            window_pairs.append((comparison_start, comparison_end))
-        for window_start, window_end in window_pairs:
-            if not period_values:
-                continue
-            start_date = date.fromisoformat(period_values[window_start])
-            end_date = date.fromisoformat(period_values[window_end])
-            if start_date >= context.as_of:
-                raise ContextBuildError(
-                    ContextBuildErrorCode.OUT_OF_DATA_RANGE,
-                    "요청 기간은 오늘 이전의 완료된 영업일을 포함해야 합니다.",
-                )
-            if end_date > context.as_of:
-                period_values[window_end] = context.as_of.isoformat()
-                end_date = context.as_of
-            if start_date >= end_date:
-                raise ContextBuildError(
-                    ContextBuildErrorCode.INVALID_METADATA,
-                    "분석 기간은 비어있지 않은 반개구간 [start, end) 이어야 합니다.",
-                )
-        period_bindings = tuple(
-            ContextParameterBinding(name, "date", period_values[name])
-            for name in window_names
-            if name and name in period_values
+        # 4. governed 기간 또는 최신 스냅샷 기준일 binding 계산
+        time_bindings, period_values, window_pairs = _time_bindings(
+            payload, structured_request, context, assets
         )
         governed_filters = filter_parameter_bindings(assets)
         parameter_bindings = (
-            *period_bindings,
+            *time_bindings,
             *governed_filters,
         )
 

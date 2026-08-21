@@ -362,6 +362,29 @@ assert.deepEqual(normalized.evidence.gateHistory.g2, ["BLOCKED", "PASSED"]);
 assert.deepEqual(normalized.evidence.masking.fields, ["guest_id"]);
 assert.equal(normalized.meta.synthetic, undefined);
 
+const snapshotResponse = structuredClone(apiResponse);
+delete snapshotResponse.data.result.evidence.period;
+snapshotResponse.data.result.evidence.snapshot = {
+  cutoff: "2030-01-02",
+  selection: "max_source_value_lt_as_of",
+};
+const normalizedSnapshot = normalizeApiResponse(snapshotResponse, "question");
+assert.equal(resolveViewState(normalizedSnapshot), "READY");
+assert.deepEqual(normalizedSnapshot.evidence.snapshot, {
+  cutoff: "2030-01-02",
+  selection: "max_source_value_lt_as_of",
+});
+
+const conflictingTimeEvidence = structuredClone(snapshotResponse);
+conflictingTimeEvidence.data.result.evidence.period = {
+  start: "2030-01-01",
+  end_exclusive: "2030-01-03",
+};
+assert.equal(
+  resolveViewState(normalizeApiResponse(conflictingTimeEvidence, "question")),
+  "INSUFFICIENT_EVIDENCE",
+);
+
 const partialResponse = structuredClone(apiResponse);
 partialResponse.data.status = "PARTIAL";
 const partial = normalizeApiResponse(partialResponse, "question");

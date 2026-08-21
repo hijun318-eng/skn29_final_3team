@@ -314,11 +314,21 @@ def validate_parsed_semantics(
                 ):
                     return _semantic_blocked("REQUIRED_FILTER_MISSING", error)
                 if error := time_rule_violation(
-                    package, primary_comparisons, assets, metric, window="primary"
+                    package,
+                    primary_comparisons,
+                    assets,
+                    metric,
+                    window="primary",
+                    result=result,
                 ):
                     return _semantic_blocked("TIME_RULE_MISMATCH", error)
                 if error := time_rule_violation(
-                    package, comparison_comparisons, assets, metric, window="comparison"
+                    package,
+                    comparison_comparisons,
+                    assets,
+                    metric,
+                    window="comparison",
+                    result=result,
                 ):
                     return _semantic_blocked("TIME_RULE_MISMATCH", error)
                 continue
@@ -344,7 +354,9 @@ def validate_parsed_semantics(
                 str(metric.id),
             ):
                 return _semantic_blocked("REQUIRED_FILTER_MISSING", error)
-            if error := time_rule_violation(package, comparisons, assets, metric):
+            if error := time_rule_violation(
+                package, comparisons, assets, metric, result=result
+            ):
                 return _semantic_blocked("TIME_RULE_MISMATCH", error)
 
         # 6. 논리 연산의 출력 grain·정렬·순위 LIMIT 검증

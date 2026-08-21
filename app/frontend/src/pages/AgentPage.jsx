@@ -462,7 +462,11 @@ export function AgentPage({ onNavigate }) {
                     <b>{savedRunStatus(item.status)}</b>
                     <small>{formatSeoulDateTime(item.completed_at || item.started_at)}</small>
                     <small>{item.question}</small>
-                    <small>{item.period_start && item.period_end_exclusive ? `${item.period_start} ~ ${item.period_end_exclusive} 미포함` : "기간 없음"}</small>
+                    <small>{item.period_start && item.period_end_exclusive
+                      ? `${item.period_start} ~ ${item.period_end_exclusive} 미포함`
+                      : item.snapshot_cutoff && item.snapshot_selection === "max_source_value_lt_as_of"
+                        ? `${item.snapshot_cutoff} 이전 최신 스냅샷`
+                        : "시간 기준 없음"}</small>
                   </span>
                   {item.artifact_id && (
                     <button type="button" disabled={savedBusy} onClick={() => void analyzeQuestion(item.question)}>

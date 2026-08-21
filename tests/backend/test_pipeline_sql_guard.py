@@ -19,6 +19,7 @@ from app.services.context.contract import GovernedJoin, enrich_context_package
 from app.services.analysis.logical_plan import (
     AnalysisOperation,
     AnalysisPlanError,
+    AnalysisTimeMode,
     build_analysis_plan,
     validate_analysis_plan_payload,
 )
@@ -394,6 +395,33 @@ def _view_reuse_package(package):
     )
 
 
+def _snapshot_view_reuse_package():
+    """특정 도메인 이름 없이 기준일 전 최신 snapshot 계약을 구성한다."""
+
+    package = _view_reuse_package(_package())
+    contracts = deepcopy(package.runtime_contracts)
+    contracts["time_rules"] = {
+        "timezone": "Asia/Seoul",
+        "calendar_id": "gregorian-kr",
+        "mode": "latest_snapshot",
+        "selection": "max_source_value_lt_as_of",
+        "as_of_parameter": "snapshot_as_of",
+        "fields": deepcopy(package.runtime_contracts["time_rules"]["fields"]),
+    }
+    contracts["parameter_contract"]["parameters"] = [
+        {"name": "snapshot_as_of", "type": "date", "scope": "time"},
+        {"name": "active_flag", "type": "boolean", "scope": "filter"},
+    ]
+    return replace(
+        package,
+        runtime_contracts=contracts,
+        parameter_bindings=(
+            ContextParameterBinding("snapshot_as_of", "date", "2026-08-20"),
+            ContextParameterBinding("active_flag", "boolean", True),
+        ),
+    )
+
+
 def _multi_metric_view_reuse_package(*, shared_filters: bool = True):
     """같은 물리 뷰의 두 지표가 필터 의미를 공유하거나 분리하는 계약을 만든다."""
 
@@ -545,6 +573,104 @@ def test_typed_sql_compiler_builds_time_trend_and_period_comparison() -> None:
     comparison["analysis_plan"] = comparison_plan.as_dict()
     accepted = validate_plan(comparison, comparison_package)
     assert accepted.ok, accepted
+
+
+def test_typed_sql_compiler_builds_and_guards_latest_snapshot_selection() -> None:
+    """명시적 계약은 source의 기준일 전 MAX snapshot 하나만 선택해 G2를 통과한다."""
+
+    package = _snapshot_view_reuse_package()
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "analysis_operation": "aggregate",
+            "period_relationship": "single",
+        },
+        package,
+    )
+
+    assert plan.time_mode is AnalysisTimeMode.LATEST_SNAPSHOT
+    assert plan.period_parameters == ()
+    assert plan.snapshot_parameter == "snapshot_as_of"
+    assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
+
+    candidate = compile_typed_sql(plan, package)
+    assert candidate is not None
+    sql = str(candidate["sql"])
+    assert "MAX(snapshot_lookup.occurred_on)" in sql
+    assert "snapshot_lookup.occurred_on < CAST(:snapshot_as_of AS DATE)" in sql
+    assert "source_view.occurred_on = (SELECT" in sql
+    candidate["analysis_plan"] = plan.as_dict()
+    accepted = validate_plan(candidate, package)
+    assert accepted.ok, accepted
+
+
+@pytest.mark.parametrize("mutation", ["inclusive_cutoff", "wrong_reducer", "non_conjunctive"])
+def test_latest_snapshot_guard_rejects_semantic_shape_mutations(mutation: str) -> None:
+    """기준일 경계·MAX reducer·최상위 AND equality가 달라지면 실행 전에 차단한다."""
+
+    package = _snapshot_view_reuse_package()
+    package.runtime_contracts["query_policy"]["allowed_functions"].append("MIN")
+    if mutation == "non_conjunctive":
+        contracts = deepcopy(package.runtime_contracts)
+        contracts["metric_rules"][0]["required_filters"] = []
+        contracts["parameter_contract"]["parameters"] = [
+            {"name": "snapshot_as_of", "type": "date", "scope": "time"}
+        ]
+        package = replace(
+            package,
+            metrics=(replace(package.metrics[0], required_filters=()),),
+            runtime_contracts=contracts,
+            parameter_bindings=(
+                ContextParameterBinding("snapshot_as_of", "date", "2026-08-20"),
+            ),
+        )
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "analysis_operation": "aggregate",
+            "period_relationship": "single",
+        },
+        package,
+    )
+    candidate = compile_typed_sql(plan, package)
+    assert candidate is not None
+    expression = parse_one(str(candidate["sql"]), read="trino")
+    if mutation == "inclusive_cutoff":
+        cutoff = next(
+            item
+            for item in expression.find_all(exp.LT)
+            if item.find(exp.Placeholder) is not None
+        )
+        cutoff.replace(exp.LTE(this=cutoff.this.copy(), expression=cutoff.expression.copy()))
+    elif mutation == "wrong_reducer":
+        reducer = next(expression.find_all(exp.Max))
+        reducer.replace(exp.Min(this=reducer.this.copy()))
+    else:
+        where = expression.args["where"]
+        where.set("this", exp.or_(where.this.copy(), exp.Boolean(this=True)))
+    rejected = validate_plan(
+        {"sql": expression.sql(dialect="trino"), "analysis_plan": plan.as_dict()},
+        package,
+    )
+    assert rejected.violation == "TIME_RULE_MISMATCH"
+
+
+@pytest.mark.parametrize("operation", ["time_trend", "period_comparison"])
+def test_latest_snapshot_plan_does_not_invent_range_operations(operation: str) -> None:
+    """스냅샷 계약을 추이 또는 두 기간 비교로 재해석하지 않는다."""
+
+    with pytest.raises(AnalysisPlanError) as captured:
+        build_analysis_plan(
+            {
+                "selected_metric_id": "governed_amount",
+                "analysis_operation": operation,
+                "period_relationship": (
+                    "comparison" if operation == "period_comparison" else "single"
+                ),
+            },
+            _snapshot_view_reuse_package(),
+        )
+    assert captured.value.code.value == "TIME_MODE_NOT_GOVERNED"
 
 
 def test_typed_sql_compiler_does_not_guess_a_join_or_mixed_filter_scope() -> None:

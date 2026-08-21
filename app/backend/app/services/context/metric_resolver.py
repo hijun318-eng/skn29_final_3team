@@ -42,7 +42,10 @@ from app.services.context.model_signals import (
     enum_signal,
 )
 from app.services.context.model_time_context import previous_period_anchor
-from app.services.context.runtime_contracts import time_parameter_names
+from app.services.context.runtime_contracts import (
+    time_parameter_names,
+    time_selection_mode,
+)
 
 
 _ANALYSIS_OPERATIONS = frozenset(
@@ -370,6 +373,7 @@ class MetricResolver:
                     pre_keep_ids,
                     tuple(pre_synthetic),
                 )
+                analysis_time_mode = time_selection_mode(selected_assets)
 
                 periods: list[dict[str, Any]] = []
                 if payload.resolved_slots.period_start and payload.resolved_slots.period_end_exclusive:
@@ -392,6 +396,16 @@ class MetricResolver:
                             ),
                         }
                     )
+                if analysis_time_mode == "latest_snapshot":
+                    if (
+                        payload.resolved_slots.analysis_operation
+                        in {"time_trend", "period_comparison"}
+                        or periods
+                    ):
+                        raise ContextBuildError(
+                            ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                            "최신 스냅샷 지표에는 기간 범위·추이·기간 비교 전략이 승인되지 않았습니다.",
+                        )
 
                 structured_request = {
                     "intent_candidates": [
@@ -409,6 +423,7 @@ class MetricResolver:
                     "period_relationship": (
                         "comparison" if len(periods) == 2 else "single"
                     ),
+                    "time_mode": analysis_time_mode,
                     "selected_metric_id": (
                         resolved_metric_ids[0]
                         if len(resolved_metric_ids) == 1
@@ -759,37 +774,6 @@ class MetricResolver:
                 "요청한 분석 지표는 현재 승인된 분석 범위에 없습니다.",
                 partial_context=partial_context,
             )
-        has_saved_period = not is_comparison and all(
-            name in payload.parameters for name in time_parameter_names(assets)
-        )
-        if is_comparison:
-            if len(periods) != 2:
-                raise ContextBuildError(
-                    ContextBuildErrorCode.PERIOD_REQUIRED,
-                    "기간 비교 분석은 정확히 2개의 기간 범위를 요구합니다.",
-                    _period_suggestions(periods),
-                    disambiguation_options=_disambiguation_options_for_periods(periods),
-                    partial_context=partial_context,
-                )
-        elif not has_saved_period and len(periods) != 1:
-            if (
-                payload.resolved_slots is not None
-                and payload.resolved_slots.period_start
-                and payload.resolved_slots.period_end_exclusive
-            ):
-                periods = [{
-                    "start": payload.resolved_slots.period_start,
-                    "end_exclusive": payload.resolved_slots.period_end_exclusive,
-                    "source_text": f"{payload.resolved_slots.period_start} ~ {payload.resolved_slots.period_end_exclusive}",
-                }]
-            else:
-                raise ContextBuildError(
-                    ContextBuildErrorCode.PERIOD_REQUIRED,
-                    "분석 기간은 정확히 1개의 기간 범위로 해석되어야 합니다.",
-                    _period_suggestions(periods),
-                    disambiguation_options=_disambiguation_options_for_periods(periods),
-                    partial_context=partial_context,
-                )
         if metric_resolution == "missing":
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METRIC,
@@ -836,6 +820,62 @@ class MetricResolver:
             keep_ids,
             tuple(synthetic),
         )
+        analysis_time_mode = time_selection_mode(selected_assets)
+        partial_context["time_mode"] = analysis_time_mode
+        if analysis_time_mode == "latest_snapshot":
+            if is_comparison or analysis_operation in {
+                "time_trend",
+                "period_comparison",
+            }:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                    "최신 스냅샷 지표에는 추이 또는 기간 비교 전략이 승인되지 않았습니다.",
+                    partial_context=partial_context,
+                )
+            if periods:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED,
+                    "기간 범위를 최신 스냅샷 기준일로 임의 변환할 수 없습니다.",
+                    partial_context=partial_context,
+                )
+        else:
+            has_saved_period = not is_comparison and all(
+                name in payload.parameters
+                for name in time_parameter_names(selected_assets)
+            )
+            if is_comparison:
+                if len(periods) != 2:
+                    raise ContextBuildError(
+                        ContextBuildErrorCode.PERIOD_REQUIRED,
+                        "기간 비교 분석은 정확히 2개의 기간 범위를 요구합니다.",
+                        _period_suggestions(periods),
+                        disambiguation_options=_disambiguation_options_for_periods(periods),
+                        partial_context=partial_context,
+                    )
+            elif not has_saved_period and len(periods) != 1:
+                if (
+                    payload.resolved_slots is not None
+                    and payload.resolved_slots.period_start
+                    and payload.resolved_slots.period_end_exclusive
+                ):
+                    periods = [
+                        {
+                            "start": payload.resolved_slots.period_start,
+                            "end_exclusive": payload.resolved_slots.period_end_exclusive,
+                            "source_text": (
+                                f"{payload.resolved_slots.period_start} ~ "
+                                f"{payload.resolved_slots.period_end_exclusive}"
+                            ),
+                        }
+                    ]
+                else:
+                    raise ContextBuildError(
+                        ContextBuildErrorCode.PERIOD_REQUIRED,
+                        "분석 기간은 정확히 1개의 기간 범위로 해석되어야 합니다.",
+                        _period_suggestions(periods),
+                        disambiguation_options=_disambiguation_options_for_periods(periods),
+                        partial_context=partial_context,
+                    )
         structured_request = {
             "intent_candidates": intents,
             "metric_ids": sorted(keep_ids),
@@ -844,6 +884,7 @@ class MetricResolver:
             "filter_fields": filter_fields,
             "period_candidates": periods,
             "period_relationship": relationship,
+            "time_mode": analysis_time_mode,
             "selected_metric_id": selected,
             "selected_metric_ids": selected_metric_ids,
             "analysis_operation": analysis_operation,

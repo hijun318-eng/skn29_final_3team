@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from typing import Literal
 from uuid import UUID
 
 from pydantic import Field, model_validator
@@ -70,6 +71,13 @@ class PeriodEvidence(ContractModel):
     end_exclusive: date
 
 
+class SnapshotEvidence(ContractModel):
+    """기준일 전에 source의 최신 스냅샷을 선택했다는 실행 규칙을 기록한다."""
+
+    cutoff: date
+    selection: Literal["max_source_value_lt_as_of"]
+
+
 class SamplingEvidence(ContractModel):
     """결과 샘플링 여부와 반환 행 수, 확인 가능한 경우 전체 행 수를 증거로 남긴다."""
     applied: bool = False
@@ -123,6 +131,7 @@ class Evidence(ContractModel):
     as_of: date
     timezone: str | None = None
     period: PeriodEvidence | None = None
+    snapshot: SnapshotEvidence | None = None
     filters: dict[str, Scalar] = Field(default_factory=dict)
     sources: tuple[SourceReference, ...] = ()
     query_id: str | None = None
@@ -140,6 +149,14 @@ class Evidence(ContractModel):
     sampling: SamplingEvidence = Field(default_factory=SamplingEvidence)
     masking: MaskingEvidence = Field(default_factory=MaskingEvidence)
     cached: bool = False
+
+    @model_validator(mode="after")
+    def validate_time_evidence(self) -> "Evidence":
+        """기간 범위와 최신 스냅샷 증거가 한 실행에 동시에 섞이는 것을 막는다."""
+
+        if self.period is not None and self.snapshot is not None:
+            raise ValueError("period와 snapshot 실행 증거는 동시에 지정할 수 없습니다.")
+        return self
 
 
 class AnalysisResult(ContractModel):

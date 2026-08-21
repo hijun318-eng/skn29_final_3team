@@ -214,7 +214,9 @@ class AnalysisEvidenceRepositoryMixin:
                 "scan_bytes": int(query.get("scan_bytes", 0)),
                 "result_checksum": _hash(snapshot),
                 "sources": json.dumps([item.urn for item in package.assets]),
-                "cutoff": json.dumps(evidence.get("period") or {}),
+                "cutoff": json.dumps(
+                    evidence.get("period") or evidence.get("snapshot") or {}
+                ),
             },
         )
         artifact = response.data.artifact

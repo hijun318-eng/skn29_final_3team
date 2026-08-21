@@ -305,6 +305,37 @@ def test_run_history_uses_confirmed_artifact_period_for_direct_runs():
     assert run["period_end_exclusive"] == "2026-07-01"
 
 
+def test_run_history_preserves_latest_snapshot_time_evidence():
+    run = PostgresAnalysisRepository._run(
+        {
+            "request_id": uuid4(),
+            "definition_id": uuid4(),
+            "definition_version": 1,
+            "status": "SUCCEEDED",
+            "as_of": date(2026, 8, 20),
+            "timezone_name": "Asia/Seoul",
+            "trace_id": "snapshot-trace",
+            "query_id": "snapshot-query",
+            "artifact_id": uuid4(),
+            "error_type": None,
+            "started_at": datetime(2026, 8, 20, tzinfo=timezone.utc),
+            "completed_at": datetime(2026, 8, 20, tzinfo=timezone.utc),
+            "question": "최신 회원 수",
+            "parameters": {},
+            "artifact_period": None,
+            "artifact_snapshot": {
+                "cutoff": "2026-08-20",
+                "selection": "max_source_value_lt_as_of",
+            },
+        }
+    )
+
+    assert run["period_start"] is None
+    assert run["period_end_exclusive"] is None
+    assert run["snapshot_cutoff"] == "2026-08-20"
+    assert run["snapshot_selection"] == "max_source_value_lt_as_of"
+
+
 @async_test
 async def test_direct_analysis_persists_request_query_and_artifact_when_database_is_configured():
     owner = uuid4()

@@ -106,7 +106,7 @@ BUSINESS Metric을 요약한다. Node 2의 `metric_ids`는 SUPPORT 계산 의존
 1. **완료 — 물리 확장:** 신규 14개 뷰 생성, 18개 조정, DataHub 스키마·리니지 수집.
 2. **완료 — 안전 런타임 보강:** SUPPORT와 일반 미지원 지표를 전체 BUSINESS 지표 목록으로 잘못 fallback하지 않고 `METRIC_NOT_AVAILABLE`로 구분한다. 지표를 생략한 질문과 여러 승인 지표가 실제로 모호한 질문은 별도로 구분하며, 사용자가 차원을 요청하지 않으면 임의 `GROUP BY`를 생성하지 않는다.
 3. **승인 필요 — 시맨틱 후보:** 업무 담당자가 지표 이름·정의·단위·집계·필터·공개 여부를 검토한다. 승인 전에는 DataHub에 검색되더라도 분석 실행 소스가 아니다.
-4. **부분 완료 — 계획 계약:** 기존 runtime v2 shape은 유지하고 `ANSWERVICE-ANALYSIS-PLAN-v1`과
+4. **부분 완료 — 계획 계약:** 기존 active runtime v2 release는 유지하고 `ANSWERVICE-ANALYSIS-PLAN-v2`와
    `ANSWERVICE-ANALYSIS-CAPABILITY-v1` sidecar를 추가했다. 14개 후보 뷰의 asset별 dimension/time
    binding 및 최대 4개 Metric·범용 연산을 검증하며, 실제 SQL JOIN은 Metric edge whitelist와
    팬아웃 결정표를 다시 통과해야 한다. Node 1 복수 Metric·연산·result limit 슬롯과
@@ -118,14 +118,17 @@ BUSINESS Metric을 요약한다. Node 2의 `metric_ids`는 SUPPORT 계산 의존
    check/publish/read-back Gate를 추가했고, SUPPORT·permission·grain·fan-out 정책은 canonical
    execution contract에 유지한다. 실제 live check는 BUSINESS 10개와 native 관계 26개를 계산했지만
    `CHECKED_NOT_PUBLISHED`이며, 미승인 14개 후보와 runtime cutover는 열지 않았다.
-   `latest_snapshot`, 다중 asset JOIN AST 생성은 아직 활성화 Gate 밖이다. 2026-08-21 배포 UI의 단일 승인 뷰 집계에서는 실행 trace에 Node 2가
+   단일 `latest_snapshot`의 typed plan·SQLGlot AST·G2·서버 기준일 binding·G3/API/UI 증거는
+   구현했지만 해당 계약을 가진 DataHub release의 publish/read-back과 runtime activation은 아직
+   Gate 밖이다. 다중 asset JOIN AST 생성도 승인 edge가 없어 열지 않았다. 2026-08-21 배포 UI의 단일 승인 뷰 집계에서는 실행 trace에 Node 2가
    없고 `typed_sql_compiler`와 G2·Trino·G3가 순서대로 통과했으며, 브라우저 console 오류·경고도
    없었다. 이 smoke 결과를 전체 조합 회귀 통과로 확대 해석하지 않는다.
 5. **부분 완료 — catalog-generated structural regression:** 예시 질문을 만들지 않고 SQL checksum에
    결속된 후보에서 단일 Metric×가능 연산×바인딩 차원 1,179건과 모든 BUSINESS Metric pair
-   946건을 생성한다. 현재 총 2,125건 중 756건은 구조상 `READY`, 1,369건은 명시적 blocker가
+   946건을 생성한다. 현재 총 2,125건 중 771건은 구조상 `READY`, 1,354건은 명시적 blocker가
    있다. cross-asset pair 888건은 JOIN 계약이 없어 `JOIN_GRAPH_REQUIRED`이며, time grain·비교
-   window·snapshot executor가 없는 조합도 별도 코드로 차단한다. 이 Gate는 Node 1 자연어
+   window·혼합 time mode 조합도 별도 코드로 차단한다. 단일 snapshot 조합 27건은 executor
+   capability가 확인되어 기존 time-mode blocker에서 해제됐다. 이 Gate는 Node 1 자연어
    정확도나 실제 결과 정확도를 대신하지 않으며, review-only 후보는 채점할 수 없다.
 6. **배포 Gate:** semantic publish check, 명시적 승인, publish, 전체 read-back, backend E2E, 배포 UI Playwright를 같은 release ID에서 통과한다.
 

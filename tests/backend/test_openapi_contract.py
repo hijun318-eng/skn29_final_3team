@@ -134,6 +134,8 @@ class OpenApiContractTest(unittest.TestCase):
         run = schemas["AnalysisRunResponse"]["properties"]
         self.assertIn("CANCELLED", run["status"]["enum"])
         self.assertIn("CLARIFYING", run["status"]["enum"])
+        self.assertIn("snapshot_cutoff", run)
+        self.assertIn("snapshot_selection", run)
         for forbidden in ("sql", "parameters", "result", "snapshot"):
             self.assertNotIn(forbidden, run)
 

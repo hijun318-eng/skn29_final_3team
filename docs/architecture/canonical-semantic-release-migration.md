@@ -40,7 +40,7 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
 - 팬아웃 정책은 질문 문구가 아니라 Measure 위치, JOIN 방향, JOIN equality key를 포함하는
   asset grain/unique key 집합, 승인된 공통 grain binding으로 `DIRECT_JOIN`, `PREAGGREGATE`,
   `SEMI_JOIN`, `REJECT`를 결정한다.
-- 기존 `AnalysisPlanStage` 앞에서 `ANSWERVICE-ANALYSIS-PLAN-v1` 논리 계획을 컴파일한다.
+- 기존 `AnalysisPlanStage` 앞에서 `ANSWERVICE-ANALYSIS-PLAN-v2` 논리 계획을 컴파일한다.
   출력 Metric 1~4개, 연산 enum, asset별 물리 Dimension, 기간 parameter, query strategy와
   edge별 팬아웃 결정을 Context package hash에 결합하며 SQL plan cache key에도 포함한다.
 - Node 1 active contract를 `MODEL-v1.17.0`으로 올려 질문당 BUSINESS Metric 1~4개,
@@ -54,10 +54,12 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
   `period_comparison`의 출력 grain과 `time_trend`의 시간 GROUP/오름차순 정렬,
   `top_n`·`bottom_n`의 첫 출력 Metric 정렬 방향, 차원 순서의 안정적 tie-breaker와 정확한
   LIMIT이 다르면 실행하지 않는다.
-- JOIN이 없는 승인 `VIEW_REUSE` 계획은 `ANSWERVICE-TYPED-SQL-v1.0.0` 컴파일러가 질문
+- JOIN이 없는 승인 `VIEW_REUSE` 계획은 `ANSWERVICE-TYPED-SQL-v1.1.0` 컴파일러가 질문
   원문을 다시 보지 않고 SQLGlot AST로 생성한다. 단일 공통 시간 필드와 필터 scope가 확인된
   집계·분해·추이·순위·기간 비교 및 동일 scope 복수 Metric·ratio를 지원하며, 생성 결과도
-  기존 G2가 다시 파싱·검증·바인딩한다. 이 구조 범위 밖은 기존 Node 2+G2 경로를 유지한다.
+  기존 G2가 다시 파싱·검증·바인딩한다. `latest_snapshot`은 서버 `as_of` 기준일 전의 실제
+  source time 최댓값을 scalar subquery로 선택하며, 질문의 기간을 cutoff로 임의 변환하지 않는다.
+  이 구조 범위 밖은 기존 Node 2+G2 경로를 유지한다.
 - 2026-08-21 로컬 배포 스택의 실제 DataHub·Trino 경로에서 단일 `VIEW_REUSE` 집계 smoke를
   실행했다. 응답 trace는 Node 1 → `typed_sql_compiler` → G2 → Trino → G3 → Node 3 순서였고
   Node 2·repair 호출 없이 G1/G2/G3를 모두 통과했다. UI 결과는 active release의 기간·호텔
@@ -102,8 +104,9 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
   `SEMI_JOIN` 물리 형태는 아직 typed plan에서 결정론적으로 생성하지 않는다. 현재 컴파일러는
   단일 승인 Serving View 경계만 열며, JOIN 경로는 LLM SQL 앞의 논리 계획과 뒤의 AST Guard가
   동일 팬아웃 결정을 강제하는 전환 상태다.
-- `latest_snapshot`은 후보 capability에 명시했지만 active runtime read-back과 전용 SQL AST
-  생성·검증이 없으므로 실행 경로에서는 의도적으로 차단한다.
+- `latest_snapshot`의 typed plan·SQLGlot 생성·G2 AST 검증·서버 기준일 binding·G3/API/UI
+  증거 경로는 구현했다. 다만 active DataHub v2 reader가 해당 계약을 발행·재조회한 release는
+  아직 없으므로 review-only 후보가 이 코드만으로 운영 실행 범위에 들어오지는 않는다.
 - DataHub native mutation, `METRICS_ENABLED`, Trino ACL/principal, Redis, Legacy property 삭제는 변경하지 않았다.
 
 ## 전체 CatalogSnapshot이 남는 이유
@@ -120,11 +123,14 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
    capability 전체를 별도 JSON 문서로 DataHub에 복제하지 않고, native 지원 영역과 execution-only
    정책을 분리한다.
 3. 구조 Gate가 표시한 `TIME_GRAIN_CONTRACT_REQUIRED`, `COMPARISON_WINDOW_CONTRACT_REQUIRED`,
-   `TIME_MODE_NOT_IMPLEMENTED`, `JOIN_GRAPH_REQUIRED`를 업무 승인 계약과 실행 구현으로 줄인다.
+   혼합 time mode의 `TIME_MODE_NOT_IMPLEMENTED`, `JOIN_GRAPH_REQUIRED`를 업무 승인 계약과
+   실행 구현으로 줄인다. 단일 `latest_snapshot` 조합은 더 이상 executor 미구현으로 차단하지 않는다.
 4. 구조 Gate와 분리된 사람 검토 Gold로 Node 1 자연어 해석과 실제 Node 1→G3 결과 정확도를 측정한다.
-5. `latest_snapshot`과 다중 asset의 `DIRECT_JOIN`·`PREAGGREGATE`·`SEMI_JOIN` SQL을 typed
-   plan에서 SQLGlot AST로 결정론적으로 생성한다. 단일 `VIEW_REUSE` 집계 live smoke는
-   통과했지만, 전체 Metric·연산 조합의 결과 정확도·지연 회귀는 별도 Gate로 계속 입증한다.
+5. `latest_snapshot` 후보의 query policy·DataHub read-back·active release 연결을 승인한 뒤
+   같은 release에서 실제 Trino 결과와 UI 증거를 검증한다. 다중 asset의 `DIRECT_JOIN`·
+   `PREAGGREGATE`·`SEMI_JOIN` SQL은 승인 edge·key·cardinality가 갖춰진 범위부터 typed plan으로
+   결정론적으로 생성한다. 단일 `VIEW_REUSE` 집계 live smoke는 통과했지만, 전체 Metric·연산
+   조합의 결과 정확도·지연 회귀는 별도 Gate로 계속 입증한다.
 6. edge role/domain entitlement를 별도 정책으로 추가하고 node·column·Metric·edge 교집합을 검증한다.
 7. 한 도메인 Native reader와 Legacy canonical equality를 통과시킨다.
 8. release 단위 cutover 전 실제 DataHub·Trino·Backend·Playwright E2E를 같은 release ID로 실행한다.

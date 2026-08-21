@@ -74,6 +74,16 @@ def _period_numbers(period: object) -> set[Decimal]:
     return result
 
 
+def _snapshot_numbers(snapshot: object) -> set[Decimal]:
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("cutoff"), str):
+        return set()
+    try:
+        value = date.fromisoformat(str(snapshot["cutoff"])[:10])
+    except ValueError:
+        return set()
+    return {Decimal(value.year), Decimal(value.month), Decimal(value.day)}
+
+
 def explanation_is_grounded(
     summary: str,
     query: dict[str, Any],
@@ -86,7 +96,11 @@ def explanation_is_grounded(
         return False
     mentioned = _numbers(summary)
     result_numbers = _derived_numbers(rows)
-    allowed = result_numbers | _period_numbers(query.get("period"))
+    allowed = (
+        result_numbers
+        | _period_numbers(query.get("period"))
+        | _snapshot_numbers(query.get("snapshot"))
+    )
     period = query.get("period")
     if isinstance(period, dict):
         compact = summary.replace(" ", "")
@@ -167,6 +181,18 @@ def _period_label(period: object) -> str:
     return f"{start.isoformat()}부터 {end.isoformat()} 전까지"
 
 
+def _time_label(query: dict[str, Any]) -> str:
+    snapshot = query.get("snapshot")
+    if isinstance(snapshot, dict) and isinstance(snapshot.get("cutoff"), str):
+        try:
+            cutoff = date.fromisoformat(str(snapshot["cutoff"])[:10])
+        except ValueError:
+            pass
+        else:
+            return f"{cutoff.isoformat()} 이전 최신 스냅샷"
+    return _period_label(query.get("period"))
+
+
 def _format_value(value: Decimal, unit: str) -> str:
     displayed = value * 100 if unit.lower() == "ratio" else value
     if unit.lower() == "ratio":
@@ -184,7 +210,7 @@ def grounded_summary(query: dict[str, Any], package: ContextPackage) -> str:
     rows = query.get("rows")
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         raise ValueError("grounded narrative rows are invalid")
-    period = _period_label(query.get("period"))
+    period = _time_label(query)
     metrics = _business_metrics(package)
     terms = {term.id: term for term in package.metric_terms}
     if len(metrics) > 1:

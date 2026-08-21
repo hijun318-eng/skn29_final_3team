@@ -52,6 +52,7 @@
           "returned_rows": 0,
           "total_rows": 0
         },
+        "snapshot": null,
         "sources": [
           {
             "fqn": "catalog_alpha.schema_beta.fact_observations",

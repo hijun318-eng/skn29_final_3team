@@ -143,6 +143,10 @@
     start: string;
     endExclusive: string;
   } | null;
+  snapshot?: {
+    cutoff: string;
+    selection: "max_source_value_lt_as_of";
+  } | null;
   filters: Record<string, AnalysisValue>;
   contextRelease?: string | null;
   productReleaseId?: string | null;
@@ -203,6 +207,10 @@
         period?: {
           start: string;
           end_exclusive: string;
+        } | null;
+        snapshot?: {
+          cutoff: string;
+          selection: "max_source_value_lt_as_of";
         } | null;
         filters?: Record<string, AnalysisValue>;
         context_release?: string | null;
@@ -411,6 +419,10 @@ export function normalizeAnalysisEvidence(
       start: evidence.period.start,
       endExclusive: evidence.period.end_exclusive,
     } : undefined,
+    snapshot: evidence.snapshot ? {
+      cutoff: evidence.snapshot.cutoff,
+      selection: evidence.snapshot.selection,
+    } : undefined,
     filters: evidence.filters ?? {},
     contextRelease: evidence.context_release,
     productReleaseId: evidence.product_release_id,
@@ -460,10 +472,17 @@ export function normalizeApiResponse(
   const sources = evidence?.sources ?? [];
   const sampling = evidence?.sampling;
   const disambiguationOptions = response.data.disambiguation_options || response.error?.disambiguation_options || [];
+  const hasPeriodEvidence = Boolean(
+    evidence?.period?.start && evidence?.period?.end_exclusive
+  );
+  const hasSnapshotEvidence = Boolean(
+    evidence?.snapshot?.cutoff
+    && evidence.snapshot.selection === "max_source_value_lt_as_of"
+  );
   const evidenceReady = Boolean(
     evidence?.artifact_id
     && evidence?.query_id
-    && evidence?.period
+    && hasPeriodEvidence !== hasSnapshotEvidence
     && sources.length
     && evidence?.gates
     && evidence.gates.g1 === "PASSED"
@@ -479,7 +498,7 @@ export function normalizeApiResponse(
         message: "검증 근거가 완전하지 않아 결과를 표시하지 않습니다.",
         retryable: false,
         required_action: "NONE" as const,
-        missing_requirements: ["artifact", "query", "period", "sources", "gates"],
+        missing_requirements: ["artifact", "query", "time_evidence", "sources", "gates"],
         suggestions: [],
         disambiguation_options: disambiguationOptions,
         clarification_type: null,

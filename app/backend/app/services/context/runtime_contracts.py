@@ -258,6 +258,13 @@ def _joins(
 
 _TIME_METADATA_KEYS = {"calendar_id", "start_parameter", "end_parameter", "fields"}
 _TIME_METADATA_KEYS_WITH_COMPARISON = _TIME_METADATA_KEYS | {"comparison_window"}
+_SNAPSHOT_TIME_METADATA_KEYS = {
+    "calendar_id",
+    "mode",
+    "selection",
+    "as_of_parameter",
+    "fields",
+}
 
 
 def _comparison_window(
@@ -291,13 +298,24 @@ def _time_rules(
     approved: dict[str, frozenset[str]],
 ) -> dict[str, Any]:
     metadata = _common_contract(assets, "time_metadata")
-    if set(metadata) not in (
-        _TIME_METADATA_KEYS,
-        _TIME_METADATA_KEYS_WITH_COMPARISON,
-    ) or not isinstance(metadata["fields"], list):
+    mode = str(metadata.get("mode") or "range")
+    valid_shape = (
+        mode == "range"
+        and set(metadata) in (_TIME_METADATA_KEYS, _TIME_METADATA_KEYS_WITH_COMPARISON)
+    ) or (
+        mode == "latest_snapshot"
+        and set(metadata) == _SNAPSHOT_TIME_METADATA_KEYS
+        and metadata.get("selection") == "max_source_value_lt_as_of"
+        and bool(str(metadata.get("as_of_parameter") or ""))
+    )
+    if not valid_shape or not isinstance(metadata["fields"], list):
         raise _invalid("런타임 time_metadata 가 누락되었거나 유효하지 않습니다.")
-    comparison_window = _comparison_window(
-        metadata, str(metadata["start_parameter"]), str(metadata["end_parameter"])
+    comparison_window = (
+        _comparison_window(
+            metadata, str(metadata["start_parameter"]), str(metadata["end_parameter"])
+        )
+        if mode == "range"
+        else None
     )
     fields = []
     for item in metadata["fields"]:
@@ -319,14 +337,24 @@ def _time_rules(
     actual = {(item["field"]["asset_fqn"], item["field"]["column"]) for item in fields}
     if not required.issubset(actual):
         raise _invalid("지표 시간 필드가 런타임 시간 메타데이터에 정의되어 있지 않습니다.")
-    return {
+    common = {
         "timezone": context.timezone,
         "calendar_id": str(metadata["calendar_id"]),
+        "fields": fields,
+    }
+    if mode == "latest_snapshot":
+        return {
+            **common,
+            "mode": mode,
+            "selection": "max_source_value_lt_as_of",
+            "as_of_parameter": str(metadata["as_of_parameter"]),
+        }
+    return {
+        **common,
         "interval": "[start,end)",
         "start_parameter": str(metadata["start_parameter"]),
         "end_parameter": str(metadata["end_parameter"]),
         "comparison_window": comparison_window,
-        "fields": fields,
     }
 
 
@@ -334,11 +362,15 @@ def _parameter_contract(
     package: Any,
     assets: list[dict[str, object]],
 ) -> dict[str, Any]:
-    start_name, end_name = time_parameter_names(assets)
-    time_names = {start_name, end_name}
-    comparison_names = comparison_time_parameter_names(assets)
-    if comparison_names is not None:
-        time_names |= set(comparison_names)
+    mode = time_selection_mode(assets)
+    if mode == "latest_snapshot":
+        time_names = {snapshot_parameter_name(assets)}
+    else:
+        start_name, end_name = time_parameter_names(assets)
+        time_names = {start_name, end_name}
+        comparison_names = comparison_time_parameter_names(assets)
+        if comparison_names is not None:
+            time_names |= set(comparison_names)
     filter_names = {item.name for item in filter_parameter_bindings(assets)}
     parameters = []
     for item in package.parameter_bindings:
@@ -380,6 +412,8 @@ def _model_filter(
 def time_parameter_names(assets: list[dict[str, object]]) -> tuple[str, str]:
     """모든 런타임 자산이 공유하는 시간 메타데이터로부터 시작/종료 파라미터 이름을 추출합니다."""
     metadata = _common_contract(assets, "time_metadata")
+    if str(metadata.get("mode") or "range") != "range":
+        raise _invalid("최신 스냅샷 계약에는 기간 경계 파라미터가 없습니다.")
     start = str(metadata.get("start_parameter") or "")
     end = str(metadata.get("end_parameter") or "")
     if not start or not end or start == end:
@@ -392,11 +426,37 @@ def comparison_time_parameter_names(
 ) -> tuple[str, str] | None:
     """비교 윈도우의 시작/종료 파라미터 이름을 추출합니다 (없으면 None)."""
     metadata = _common_contract(assets, "time_metadata")
+    if str(metadata.get("mode") or "range") != "range":
+        return None
     start, end = str(metadata.get("start_parameter") or ""), str(metadata.get("end_parameter") or "")
     comparison = _comparison_window(metadata, start, end)
     if comparison is None:
         return None
     return comparison["start_parameter"], comparison["end_parameter"]
+
+
+def time_selection_mode(assets: list[dict[str, object]]) -> str:
+    """선택 자산들이 공유하는 명시적 시간 선택 mode를 반환한다."""
+
+    metadata = _common_contract(assets, "time_metadata")
+    mode = str(metadata.get("mode") or "range")
+    if mode not in {"range", "latest_snapshot"}:
+        raise _invalid("런타임 시간 선택 mode가 지원 범위를 벗어납니다.")
+    return mode
+
+
+def snapshot_parameter_name(assets: list[dict[str, object]]) -> str:
+    """최신 스냅샷의 서버 소유 기준일 파라미터 이름을 반환한다."""
+
+    metadata = _common_contract(assets, "time_metadata")
+    name = str(metadata.get("as_of_parameter") or "")
+    if (
+        str(metadata.get("mode") or "range") != "latest_snapshot"
+        or metadata.get("selection") != "max_source_value_lt_as_of"
+        or not name
+    ):
+        raise _invalid("런타임 최신 스냅샷 기준일 계약이 유효하지 않습니다.")
+    return name
 
 
 def filter_parameter_bindings(

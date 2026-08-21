@@ -53,6 +53,8 @@ from app.services.context.runtime_contracts import (
     comparison_time_parameter_names,
     filter_parameter_bindings,
     schema_columns,
+    snapshot_parameter_name,
+    time_selection_mode,
     time_parameter_names,
 )
 from app.services.context.service import PipelineContextService
@@ -91,6 +93,8 @@ __all__ = [
     "comparison_time_parameter_names",
     "filter_parameter_bindings",
     "schema_columns",
+    "snapshot_parameter_name",
+    "time_selection_mode",
     "time_parameter_names",
     "PipelineContextService",
     "FILTER_OPERATORS",

@@ -24,7 +24,7 @@ from app.services.context.fanout_policy import (
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
-ANALYSIS_PLAN_VERSION = "ANSWERVICE-ANALYSIS-PLAN-v1"
+ANALYSIS_PLAN_VERSION = "ANSWERVICE-ANALYSIS-PLAN-v2"
 MAX_ANALYSIS_METRICS = 4
 
 
@@ -46,7 +46,9 @@ class AnalysisTimeMode(str, Enum):
     LATEST_SNAPSHOT = "latest_snapshot"
 
 
-ACTIVE_ANALYSIS_TIME_MODES = frozenset({AnalysisTimeMode.RANGE})
+ACTIVE_ANALYSIS_TIME_MODES = frozenset(
+    {AnalysisTimeMode.RANGE, AnalysisTimeMode.LATEST_SNAPSHOT}
+)
 PERIOD_COMPARISON_UNSUPPORTED_AGGREGATIONS = frozenset({"exists", "ratio"})
 
 
@@ -138,6 +140,7 @@ class AnalysisPlan:
     time_fields: tuple[PlannedField, ...]
     time_bucket: str
     period_parameters: tuple[tuple[str, str], ...]
+    snapshot_parameter: str | None
     result_limit: int | None
     query_strategy: str
     joins: tuple[PlannedJoin, ...]
@@ -167,6 +170,7 @@ class AnalysisPlan:
                 {"start_parameter": start, "end_parameter": end}
                 for start, end in self.period_parameters
             ],
+            "snapshot_parameter": self.snapshot_parameter,
             "result_limit": self.result_limit,
             "query_strategy": self.query_strategy,
             "joins": [item.as_dict() for item in self.joins],
@@ -221,7 +225,7 @@ def build_analysis_plan(
 
     operation = _operation(structured_request, dimensions, output_metric_ids, rules)
     result_limit = _result_limit(operation, structured_request, contracts)
-    time_mode, time_fields, time_bucket, periods = _time_contract(
+    time_mode, time_fields, time_bucket, periods, snapshot_parameter = _time_contract(
         operation,
         structured_request,
         output_metric_ids,
@@ -263,6 +267,7 @@ def build_analysis_plan(
             {"start_parameter": start, "end_parameter": end}
             for start, end in periods
         ],
+        "snapshot_parameter": snapshot_parameter,
         "result_limit": result_limit,
         "query_strategy": str(getattr(package, "query_strategy", "")),
         "joins": [item.as_dict() for item in planned_joins],
@@ -280,6 +285,7 @@ def build_analysis_plan(
         time_fields=time_fields,
         time_bucket=time_bucket,
         period_parameters=periods,
+        snapshot_parameter=snapshot_parameter,
         result_limit=result_limit,
         query_strategy=values["query_strategy"],
         joins=planned_joins,
@@ -307,6 +313,7 @@ def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPl
         "time_fields",
         "time_bucket",
         "period_parameters",
+        "snapshot_parameter",
         "result_limit",
         "query_strategy",
         "joins",
@@ -350,6 +357,7 @@ def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPl
         )
         output_ids = tuple(map(str, value["output_metric_ids"]))
         dependency_ids = tuple(map(str, value["dependency_metric_ids"]))
+        snapshot_parameter = value["snapshot_parameter"]
     except (KeyError, TypeError, ValueError) as error:
         raise _error(
             AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
@@ -361,6 +369,10 @@ def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPl
         or len(time_fields) != len(value["time_fields"])
         or len(joins) != len(value["joins"])
         or len(periods) != len(value["period_parameters"])
+        or (
+            snapshot_parameter is not None
+            and (not isinstance(snapshot_parameter, str) or not snapshot_parameter)
+        )
     ):
         raise _error(
             AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
@@ -423,7 +435,18 @@ def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPl
             }
         )
     )
-    if time_mode is not AnalysisTimeMode.RANGE or tuple(sorted(time_fields)) != expected_time_fields:
+    time_rules = contracts["time_rules"]
+    if not isinstance(time_rules, Mapping):
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "AnalysisPlan time_rules가 유효하지 않습니다.",
+        )
+    governed_mode = str(time_rules.get("mode") or AnalysisTimeMode.RANGE.value)
+    if (
+        time_mode.value != governed_mode
+        or time_mode not in ACTIVE_ANALYSIS_TIME_MODES
+        or tuple(sorted(time_fields)) != expected_time_fields
+    ):
         raise _error(
             AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
             "AnalysisPlan time field 또는 mode가 현재 Runtime Context와 일치하지 않습니다.",
@@ -446,12 +469,6 @@ def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPl
             AnalysisPlanErrorCode.INVALID_OPERATION,
             "AnalysisPlan result_limit이 현재 query policy 범위를 벗어났습니다.",
         )
-    time_rules = contracts["time_rules"]
-    if not isinstance(time_rules, Mapping):
-        raise _error(
-            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
-            "AnalysisPlan time_rules가 유효하지 않습니다.",
-        )
     declared_buckets = {
         _field_from_payload(item["field"]): str(item.get("bucket") or "none")
         for item in time_rules.get("fields", ())
@@ -468,26 +485,44 @@ def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPl
             AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
             "AnalysisPlan time bucket이 현재 Runtime Context와 일치하지 않습니다.",
         )
-    expected_periods = [
-        (
-            str(time_rules.get("start_parameter") or ""),
-            str(time_rules.get("end_parameter") or ""),
-        )
-    ]
-    comparison = time_rules.get("comparison_window")
-    if operation is AnalysisOperation.PERIOD_COMPARISON:
-        if not isinstance(comparison, Mapping):
-            raise _error(
-                AnalysisPlanErrorCode.PERIOD_CONTRACT_MISMATCH,
-                "AnalysisPlan 비교 기간 계약이 Runtime Context에 없습니다.",
-            )
+    expected_periods: list[tuple[str, str]] = []
+    expected_snapshot_parameter: str | None = None
+    if time_mode is AnalysisTimeMode.RANGE:
         expected_periods.append(
             (
-                str(comparison.get("start_parameter") or ""),
-                str(comparison.get("end_parameter") or ""),
+                str(time_rules.get("start_parameter") or ""),
+                str(time_rules.get("end_parameter") or ""),
             )
         )
-    if periods != tuple(expected_periods):
+        comparison = time_rules.get("comparison_window")
+        if operation is AnalysisOperation.PERIOD_COMPARISON:
+            if not isinstance(comparison, Mapping):
+                raise _error(
+                    AnalysisPlanErrorCode.PERIOD_CONTRACT_MISMATCH,
+                    "AnalysisPlan 비교 기간 계약이 Runtime Context에 없습니다.",
+                )
+            expected_periods.append(
+                (
+                    str(comparison.get("start_parameter") or ""),
+                    str(comparison.get("end_parameter") or ""),
+                )
+            )
+    else:
+        expected_snapshot_parameter = str(time_rules.get("as_of_parameter") or "")
+        if (
+            time_rules.get("selection") != "max_source_value_lt_as_of"
+            or not expected_snapshot_parameter
+            or operation
+            in {AnalysisOperation.TIME_TREND, AnalysisOperation.PERIOD_COMPARISON}
+        ):
+            raise _error(
+                AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
+                "AnalysisPlan 최신 스냅샷 선택 계약이 Runtime Context와 일치하지 않습니다.",
+            )
+    if (
+        periods != tuple(expected_periods)
+        or snapshot_parameter != expected_snapshot_parameter
+    ):
         raise _error(
             AnalysisPlanErrorCode.PERIOD_CONTRACT_MISMATCH,
             "AnalysisPlan 기간 파라미터가 현재 Runtime Context와 일치하지 않습니다.",
@@ -519,6 +554,7 @@ def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPl
         time_fields=time_fields,
         time_bucket=str(value["time_bucket"]),
         period_parameters=periods,
+        snapshot_parameter=snapshot_parameter,
         result_limit=result_limit,
         query_strategy=str(value["query_strategy"]),
         joins=joins,
@@ -991,8 +1027,16 @@ def _time_contract(
     tuple[PlannedField, ...],
     str,
     tuple[tuple[str, str], ...],
+    str | None,
 ]:
-    requested_mode = str(request.get("time_mode") or AnalysisTimeMode.RANGE.value)
+    time_rules = contracts.get("time_rules")
+    if not isinstance(time_rules, Mapping):
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "Runtime time_rules가 유효하지 않습니다.",
+        )
+    governed_mode = str(time_rules.get("mode") or AnalysisTimeMode.RANGE.value)
+    requested_mode = str(request.get("time_mode") or governed_mode)
     try:
         mode = AnalysisTimeMode(requested_mode)
     except ValueError as error:
@@ -1000,9 +1044,7 @@ def _time_contract(
             AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
             "요청한 time mode가 현재 AnalysisPlan version에 없습니다.",
         ) from error
-    # 현재 runtime v2는 모든 지표에 반개방 기간 파라미터를 요구한다. 후보 mode를 enum에
-    # 추가하는 것만으로 실행을 열지 않고, 실제 구현 capability에 포함된 mode만 허용한다.
-    if mode not in ACTIVE_ANALYSIS_TIME_MODES:
+    if mode not in ACTIVE_ANALYSIS_TIME_MODES or mode.value != governed_mode:
         raise _error(
             AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
             "요청한 시간 선택 규칙이 활성 Runtime Context에 아직 구현·발행되지 않았습니다.",
@@ -1016,12 +1058,6 @@ def _time_contract(
             }
         )
     )
-    time_rules = contracts.get("time_rules")
-    if not isinstance(time_rules, Mapping):
-        raise _error(
-            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
-            "Runtime time_rules가 유효하지 않습니다.",
-        )
     declared = {
         _field_from_payload(item["field"]): str(item.get("bucket") or "none")
         for item in time_rules.get("fields", ())
@@ -1033,12 +1069,31 @@ def _time_contract(
             "선택 지표의 time field가 Runtime time_rules에 완전히 선언되지 않았습니다.",
         )
     buckets = {declared[item] for item in fields}
-    if operation is AnalysisOperation.TIME_TREND and len(buckets) != 1:
+    if operation is AnalysisOperation.TIME_TREND and (
+        mode is not AnalysisTimeMode.RANGE or len(buckets) != 1
+    ):
         raise _error(
             AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
             "추이 지표들의 승인 time bucket이 서로 달라 하나의 계획으로 합칠 수 없습니다.",
         )
     bucket = next(iter(buckets)) if operation is AnalysisOperation.TIME_TREND else "none"
+    bound_names = {
+        str(item.name) for item in tuple(getattr(package, "parameter_bindings", ()))
+    }
+    if mode is AnalysisTimeMode.LATEST_SNAPSHOT:
+        parameter = str(time_rules.get("as_of_parameter") or "")
+        if (
+            time_rules.get("selection") != "max_source_value_lt_as_of"
+            or operation
+            in {AnalysisOperation.TIME_TREND, AnalysisOperation.PERIOD_COMPARISON}
+            or not parameter
+            or parameter not in bound_names
+        ):
+            raise _error(
+                AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
+                "최신 스냅샷은 승인된 기준일 전 MAX 선택 규칙과 서버 binding을 요구합니다.",
+            )
+        return mode, fields, bucket, (), parameter
     start = str(time_rules.get("start_parameter") or "")
     end = str(time_rules.get("end_parameter") or "")
     periods: list[tuple[str, str]] = [(start, end)]
@@ -1055,15 +1110,12 @@ def _time_contract(
                 str(comparison.get("end_parameter") or ""),
             )
         )
-    bound_names = {
-        str(item.name) for item in tuple(getattr(package, "parameter_bindings", ()))
-    }
     if any(not a or not b or a == b or {a, b} - bound_names for a, b in periods):
         raise _error(
             AnalysisPlanErrorCode.PERIOD_CONTRACT_MISMATCH,
             "AnalysisPlan 기간 파라미터가 서버 소유 binding과 일치하지 않습니다.",
         )
-    return mode, fields, bucket, tuple(periods)
+    return mode, fields, bucket, tuple(periods), None
 
 
 def _metric_source_assets(

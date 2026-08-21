@@ -93,7 +93,7 @@ class AnalysisDefinitionListResponse(AnalysisPersistenceModel):
 
 
 class AnalysisRunResponse(AnalysisPersistenceModel):
-    """정의 버전별 재실행 상태, 기준일·시간대, 추적·쿼리·산출물 ID와 완료 시각을 반환한다."""
+    """정의 버전별 재실행 상태, 시간 근거, 추적·쿼리·산출물 ID와 완료 시각을 반환한다."""
     contract_version: str = ANALYSIS_PERSISTENCE_VERSION
     request_id: UUID
     definition_id: UUID
@@ -118,6 +118,8 @@ class AnalysisRunResponse(AnalysisPersistenceModel):
     question: str
     period_start: date | None = None
     period_end_exclusive: date | None = None
+    snapshot_cutoff: date | None = None
+    snapshot_selection: Literal["max_source_value_lt_as_of"] | None = None
 
 
 class AnalysisRunListResponse(AnalysisPersistenceModel):

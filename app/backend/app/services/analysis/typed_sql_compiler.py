@@ -22,7 +22,7 @@ from app.services.analysis.logical_plan import (
 from app.services.context.query_planner import VIEW_REUSE
 
 
-TYPED_SQL_COMPILER_VERSION = "ANSWERVICE-TYPED-SQL-v1.0.0"
+TYPED_SQL_COMPILER_VERSION = "ANSWERVICE-TYPED-SQL-v1.1.0"
 _SUPPORTED_AGGREGATIONS = frozenset(
     {"sum", "count", "count_distinct", "average", "min", "max", "exists"}
 )
@@ -43,7 +43,7 @@ def typed_sql_capabilities() -> dict[str, object]:
         "version": TYPED_SQL_COMPILER_VERSION,
         "query_strategies": [VIEW_REUSE],
         "operations": sorted(item.value for item in AnalysisOperation),
-        "time_modes": [AnalysisTimeMode.RANGE.value],
+        "time_modes": sorted(item.value for item in AnalysisTimeMode),
         "max_physical_assets": 1,
         "join_plans": [],
     }
@@ -63,7 +63,6 @@ def compile_typed_sql(
     if (
         plan.query_strategy != VIEW_REUSE
         or plan.joins
-        or plan.time_mode is not AnalysisTimeMode.RANGE
     ):
         return None
 
@@ -143,23 +142,42 @@ def compile_typed_sql(
     if dimension_aliases is None:
         return None
 
-    primary = _period_predicate(
-        time_field,
-        table_alias,
-        plan.period_parameters[0],
-        time_type,
-    )
-    comparison = (
-        _period_predicate(
+    if plan.time_mode is AnalysisTimeMode.RANGE:
+        if not plan.period_parameters or plan.snapshot_parameter is not None:
+            return None
+        primary = _period_predicate(
             time_field,
             table_alias,
-            plan.period_parameters[1],
+            plan.period_parameters[0],
             time_type,
         )
-        if plan.operation is AnalysisOperation.PERIOD_COMPARISON
-        and len(plan.period_parameters) == 2
-        else None
-    )
+        comparison = (
+            _period_predicate(
+                time_field,
+                table_alias,
+                plan.period_parameters[1],
+                time_type,
+            )
+            if plan.operation is AnalysisOperation.PERIOD_COMPARISON
+            and len(plan.period_parameters) == 2
+            else None
+        )
+    else:
+        if (
+            plan.period_parameters
+            or not plan.snapshot_parameter
+            or plan.operation
+            in {AnalysisOperation.TIME_TREND, AnalysisOperation.PERIOD_COMPARISON}
+        ):
+            return None
+        primary = _latest_snapshot_predicate(
+            time_field,
+            source_fqn,
+            table_alias,
+            plan.snapshot_parameter,
+            time_type,
+        )
+        comparison = None
     if plan.operation is AnalysisOperation.PERIOD_COMPARISON and comparison is None:
         return None
 
@@ -333,6 +351,32 @@ def _period_predicate(
             this=column.copy(),
             expression=_cast_parameter(end, native_type),
         ),
+    )
+
+
+def _latest_snapshot_predicate(
+    field: PlannedField,
+    source_fqn: str,
+    table_alias: str,
+    parameter: str,
+    native_type: str,
+) -> exp.Expression:
+    """기준일 전의 실제 source 최댓값 하나를 선택하는 scalar subquery를 만든다."""
+
+    lookup_alias = "snapshot_lookup"
+    lookup = (
+        exp.select(exp.Max(this=exp.column(field.column, table=lookup_alias)))
+        .from_(exp.to_table(source_fqn).as_(lookup_alias))
+        .where(
+            exp.LT(
+                this=exp.column(field.column, table=lookup_alias),
+                expression=_cast_parameter(parameter, native_type),
+            )
+        )
+    )
+    return exp.EQ(
+        this=exp.column(field.column, table=table_alias),
+        expression=exp.Subquery(this=lookup),
     )
 
 

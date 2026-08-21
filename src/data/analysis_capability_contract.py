@@ -25,7 +25,7 @@ ANALYSIS_OPERATIONS = frozenset(
 TIME_MODES = frozenset({"range", "latest_snapshot"})
 TIME_DEFAULTS = {
     "range": "required_period",
-    "latest_snapshot": "max_source_value_lte_as_of",
+    "latest_snapshot": "max_source_value_lt_as_of",
 }
 
 

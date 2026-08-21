@@ -30,11 +30,36 @@ def execution_time(
     if not isinstance(contracts, dict) or set(contracts) != _CONTRACT_NAMES:
         raise ValueError("runtime Context contracts are incomplete")
     time_rules = contracts["time_rules"]
-    start_name = str(time_rules["start_parameter"])
-    end_name = str(time_rules["end_parameter"])
     timezone = ZoneInfo(context.timezone)
     as_of = datetime.combine(context.as_of, time.min, timezone)
     bindings = {item.name: item for item in package.parameter_bindings}
+    mode = str(time_rules.get("mode") or "range")
+    if mode == "latest_snapshot":
+        parameter = str(time_rules.get("as_of_parameter") or "")
+        binding = bindings.get(parameter)
+        if (
+            time_rules.get("selection") != "max_source_value_lt_as_of"
+            or binding is None
+            or binding.value_type != "date"
+            or not isinstance(binding.value, str)
+        ):
+            raise ValueError("runtime Context snapshot binding is incomplete")
+        try:
+            cutoff = date.fromisoformat(binding.value)
+        except ValueError as error:
+            raise ValueError("runtime Context snapshot cutoff is not an ISO date") from error
+        return {
+            "as_of": as_of.isoformat(),
+            "timezone": context.timezone,
+            "calendar_id": str(time_rules["calendar_id"]),
+            "time_mode": mode,
+            "snapshot_cutoff": cutoff.isoformat(),
+            "selection": "max_source_value_lt_as_of",
+        }
+    if mode != "range":
+        raise ValueError("runtime Context time mode is unsupported")
+    start_name = str(time_rules["start_parameter"])
+    end_name = str(time_rules["end_parameter"])
     if {start_name, end_name}.difference(bindings):
         raise ValueError("runtime Context period bindings are incomplete")
     start, end = bindings[start_name], bindings[end_name]

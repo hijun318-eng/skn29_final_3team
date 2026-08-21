@@ -19,7 +19,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from app.contracts import PeriodEvidence, SourceReference
+from app.contracts import PeriodEvidence, SnapshotEvidence, SourceReference
 from app.query_capability import issue_query_capability
 from app.services.context.builder import ContextPackage
 
@@ -248,6 +248,30 @@ class PipelineResultValidator:
         return PeriodEvidence(start=date.fromisoformat(start), end_exclusive=date.fromisoformat(end))
 
     @staticmethod
+    def snapshot(package: ContextPackage) -> SnapshotEvidence:
+        """ContextPackage의 서버 소유 기준일 binding에서 snapshot evidence를 만든다."""
+
+        contracts = getattr(package, "runtime_contracts", None) or {}
+        time_rules = contracts.get("time_rules") or {}
+        if (
+            time_rules.get("mode") != "latest_snapshot"
+            or time_rules.get("selection") != "max_source_value_lt_as_of"
+        ):
+            raise ValueError("런타임 최신 스냅샷 계약이 불완전합니다.")
+        bindings = {item.name: item for item in package.parameter_bindings}
+        binding = bindings.get(time_rules.get("as_of_parameter"))
+        if (
+            binding is None
+            or binding.value_type != "date"
+            or not isinstance(binding.value, str)
+        ):
+            raise ValueError("런타임 스냅샷 기준일 binding이 불완전합니다.")
+        return SnapshotEvidence(
+            cutoff=date.fromisoformat(binding.value),
+            selection="max_source_value_lt_as_of",
+        )
+
+    @staticmethod
     def gate_token(package: ContextPackage, sql: str) -> str:
         """G2 검증을 통과한 SQL과 ContextPackage 해시에 결속된 실행 capability 토큰을 발급합니다."""
         return issue_query_capability(package.package_hash, sql)
@@ -278,10 +302,25 @@ class PipelineResultValidator:
         contracts = getattr(package, "runtime_contracts", None) or {}
         time_rules = contracts.get("time_rules") or {}
         bindings = {item.name: item.value for item in package.parameter_bindings}
-        start_name = time_rules.get("start_parameter")
-        end_name = time_rules.get("end_parameter")
-        if start_name not in bindings or end_name not in bindings:
-            raise ValueError("런타임 기간 파라미터 바인딩이 불완전합니다.")
+        mode = str(time_rules.get("mode") or "range")
+        if mode == "latest_snapshot":
+            snapshot = PipelineResultValidator.snapshot(package)
+            time_evidence: dict[str, object] = {
+                "snapshot": snapshot.model_dump(mode="json")
+            }
+        elif mode == "range":
+            start_name = time_rules.get("start_parameter")
+            end_name = time_rules.get("end_parameter")
+            if start_name not in bindings or end_name not in bindings:
+                raise ValueError("런타임 기간 파라미터 바인딩이 불완전합니다.")
+            time_evidence = {
+                "period": {
+                    "start": bindings[start_name],
+                    "end_exclusive": bindings[end_name],
+                }
+            }
+        else:
+            raise ValueError("지원되지 않는 런타임 시간 선택 mode입니다.")
         filter_names = {
             item["parameter"]
             for metric in contracts.get("metric_rules", ())
@@ -290,10 +329,7 @@ class PipelineResultValidator:
         if not filter_names.issubset(bindings):
             raise ValueError("런타임 필터 파라미터 바인딩이 불완전합니다.")
         return {
-            "period": {
-                "start": bindings[start_name],
-                "end_exclusive": bindings[end_name],
-            },
+            **time_evidence,
             "filters": {name: bindings[name] for name in sorted(filter_names)},
         }
 

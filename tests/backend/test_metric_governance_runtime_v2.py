@@ -28,10 +28,19 @@ from app.adapters.datahub_metric_governance import runtime_metric_permitted  # n
 from app.adapters.datahub_metadata import parse_dataset, parse_glossary_term  # noqa: E402
 from app.adapters.datahub_metadata_values import GovernedMetadataError  # noqa: E402
 from app.adapters.query_governance import QueryGovernanceEngine  # noqa: E402
-from app.adapters.model_context import metric_selection  # noqa: E402
-from app.contracts import AnalysisRequest, RequestContext, ResolvedSlots, Role  # noqa: E402
+from app.adapters.model_context import execution_time, metric_selection  # noqa: E402
+from app.contracts import (  # noqa: E402
+    AnalysisRequest,
+    Evidence,
+    PeriodEvidence,
+    RequestContext,
+    ResolvedSlots,
+    Role,
+    SnapshotEvidence,
+)
 from app.ports.data_platform import NoEntitledAssetsError  # noqa: E402
 from app.services.analysis.responses import _business_metrics  # noqa: E402
+from app.services.analysis.result_validator import PipelineResultValidator  # noqa: E402
 from app.services.context.metric_resolver import MetricResolver  # noqa: E402
 from app.services.context.metric_execution_scope import select_assets_for_metrics  # noqa: E402
 from app.services.context.builder import (  # noqa: E402
@@ -259,6 +268,37 @@ class _AmbiguousNormalizer(_Normalizer):
         return result
 
 
+class _SnapshotNormalizer(_Normalizer):
+    async def normalize_question(self, payload: dict) -> dict:
+        """기간 표현이 없는 질문을 최신 snapshot 단일 집계로 해석한다."""
+
+        result = await super().normalize_question(payload)
+        result["normalized_question"] = "Amount per Event at the latest governed snapshot"
+        result["period_candidates"] = []
+        return result
+
+
+def _latest_snapshot_assets(assets: list[dict[str, object]]) -> list[dict[str, object]]:
+    """임의 자산의 range 계약을 도메인 비의존 최신 snapshot 계약으로 전환한다."""
+
+    selected = deepcopy(assets)
+    for asset in selected:
+        metadata = dict(asset["time_metadata"])
+        asset["time_metadata"] = {
+            "calendar_id": metadata["calendar_id"],
+            "mode": "latest_snapshot",
+            "selection": "max_source_value_lt_as_of",
+            "as_of_parameter": "snapshot_as_of",
+            "fields": deepcopy(metadata["fields"]),
+        }
+        policy = dict(asset["query_policy"])
+        policy["allowed_functions"] = list(
+            dict.fromkeys([*policy["allowed_functions"], "max"])
+        )
+        asset["query_policy"] = policy
+    return selected
+
+
 class _MultiMetricNormalizer(_Normalizer):
     async def normalize_question(self, payload: dict) -> dict:
         result = await super().normalize_question(payload)
@@ -455,6 +495,118 @@ def test_node1_can_identify_support_metric_but_only_business_metric_is_selectabl
     assert metric_selection(selected_assets, package)["selected_metric_id"] == (
         "amount_per_event"
     )
+
+
+def test_latest_snapshot_contract_reaches_context_without_inventing_a_period() -> None:
+    """선택 자산 계약이 snapshot이면 기간을 요구하지 않고 서버 기준일을 결속한다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = _latest_snapshot_assets(
+        asyncio.run(
+            engine.search_assets(
+                "Amount per Event",
+                {"role": "analyst", "parameters": {"active": True}},
+            )
+        )
+    )
+    resolver = MetricResolver(engine, _SnapshotNormalizer())
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="snapshot-runtime-contract",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+    request = AnalysisRequest(
+        question="Amount per Event",
+        parameters={"active": True},
+    )
+
+    selected_assets, _question, structured = asyncio.run(
+        resolver.resolve(request, context, assets)
+    )
+    package = asyncio.run(
+        PipelineContextService(engine, ContextPackageBuilder()).build(
+            request,
+            context,
+            selected_assets,
+            structured,
+        )
+    )
+
+    assert structured["time_mode"] == "latest_snapshot"
+    assert structured["period_candidates"] == []
+    assert package.runtime_contracts["time_rules"]["selection"] == (
+        "max_source_value_lt_as_of"
+    )
+    assert {
+        item.name: (item.value_type, item.value)
+        for item in package.parameter_bindings
+    }["snapshot_as_of"] == ("date", "2026-08-19")
+    assert PipelineResultValidator.execution_evidence(package)["snapshot"] == {
+        "cutoff": "2026-08-19",
+        "selection": "max_source_value_lt_as_of",
+    }
+    assert execution_time(context, package) == {
+        "as_of": "2026-08-19T00:00:00+09:00",
+        "timezone": "Asia/Seoul",
+        "calendar_id": "iso8601",
+        "time_mode": "latest_snapshot",
+        "snapshot_cutoff": "2026-08-19",
+        "selection": "max_source_value_lt_as_of",
+    }
+
+
+def test_latest_snapshot_contract_rejects_unapproved_period_coercion() -> None:
+    """질문의 기간 범위를 snapshot cutoff로 조용히 바꾸지 않는다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = _latest_snapshot_assets(
+        asyncio.run(
+            engine.search_assets(
+                "Amount per Event",
+                {"role": "analyst", "parameters": {"active": True}},
+            )
+        )
+    )
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="snapshot-period-rejected",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            MetricResolver(engine, _Normalizer()).resolve(
+                AnalysisRequest(
+                    question="Amount per Event",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED
+
+
+def test_result_evidence_rejects_mixed_time_modes() -> None:
+    """한 artifact가 range와 snapshot 실행을 동시에 주장하지 못하게 한다."""
+
+    with pytest.raises(ValueError, match="동시에"):
+        Evidence(
+            as_of=date(2026, 8, 20),
+            period=PeriodEvidence(
+                start=date(2026, 8, 1),
+                end_exclusive=date(2026, 8, 20),
+            ),
+            snapshot=SnapshotEvidence(
+                cutoff=date(2026, 8, 20),
+                selection="max_source_value_lt_as_of",
+            ),
+        )
 
 
 def test_node1_preserves_multiple_explicit_business_metrics_as_one_analysis_scope() -> None:

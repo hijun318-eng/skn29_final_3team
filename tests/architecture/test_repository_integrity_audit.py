@@ -108,10 +108,13 @@ def test_rejects_already_corrupted_unicode_text(monkeypatch, tmp_path) -> None:
     assert "Unicode 대체문자" in findings[0].reason
 
 
-def test_rejects_unignored_repository_local_env(tmp_path) -> None:
+def test_rejects_unignored_repository_local_env(monkeypatch, tmp_path) -> None:
     """추적 위험이 있는 평문 secret 파일은 repository-local 입력으로 허용하지 않는다."""
 
     (tmp_path / ".env").write_text("SECRET=not-a-real-secret\n", encoding="utf-8")
+    # pytest basetemp가 저장소의 ignored 임시 경로 아래에 있어도 이 테스트는
+    # unignored 입력 경계 자체를 결정론적으로 검증해야 한다.
+    monkeypatch.setattr(integrity_audit, "_is_git_ignored", lambda path, root: False)
 
     findings = _local_secret_findings(tmp_path)
 

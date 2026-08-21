@@ -1,6 +1,11 @@
 /** AgentPage의 run/turn 상태 변환을 담당하는 순수 헬퍼 모듈이다. React 상태를 갖지 않는다. */
 import { AnalysisApiError } from "../api/analysisClient.ts";
-import { OPENAPI_VERSION } from "../contracts/analysis.ts";
+import {
+  OPENAPI_VERSION,
+  normalizeAnalysisChart,
+  normalizeAnalysisEvidence,
+  normalizeAnalysisMetrics,
+} from "../contracts/analysis.ts";
 
 /**
  * 서버 응답 도착 전 화면에 표시할 임시 run 상태를 만든다.
@@ -29,12 +34,34 @@ export function clarifiedQuestion(question, suggestion, clarificationType) {
 }
 
 /**
+ * conversation command가 알려 준 보완 대상이 지표인지 기간인지 exact enum으로 고정한다.
+ * @param {object} command - command top-level 응답 data.
+ * @param {object|null|undefined} serverTurn - 저장된 서버 turn.
+ * @returns {"metric"|"period"} 화면이 사용할 보완 대상.
+ */
+export function commandClarificationType(command, serverTurn) {
+  const value = command?.clarification_type
+    ?? serverTurn?.resolved_slots?.clarification_type;
+  return value === "period" ? "period" : "metric";
+}
+
+/** 서버의 공개 안내를 우선하고, 없으면 typed 보완 대상별 원인 문구를 반환한다. */
+export function commandClarificationMessage(command, clarificationType) {
+  if (typeof command?.message === "string" && command.message.trim()) {
+    return command.message.trim();
+  }
+  return clarificationType === "period"
+    ? "분석을 시작하려면 분석할 기간을 함께 입력해 주세요."
+    : "새 분석을 시작하려면 분석할 지표를 함께 입력해 주세요.";
+}
+
+/**
  * 서버 분석 상태 코드를 화면 표시용 한국어 라벨로 변환한다.
  * @param {string} status - 서버가 반환한 분석 상태 코드.
  * @returns {string} 매핑되는 한국어 라벨, 매핑 없으면 "확인 필요".
  */
 export function savedRunStatus(status) {
-  return ({ SUCCESS: "완료", SUCCEEDED: "완료", PARTIAL: "일부 완료", BLOCKED: "완료되지 않음", FAILED: "실패", RECEIVED: "처리 중", QUEUED: "대기 중", RUNNING: "처리 중", CANCELLED: "취소됨" })[status] || "확인 필요";
+  return ({ SUCCESS: "완료", SUCCEEDED: "완료", PARTIAL: "일부 완료", BLOCKED: "완료되지 않음", CLARIFYING: "입력 필요", FAILED: "실패", RECEIVED: "처리 중", QUEUED: "대기 중", RUNNING: "처리 중", CANCELLED: "취소됨" })[status] || "확인 필요";
 }
 
 /**
@@ -106,8 +133,12 @@ export function hydrateTurnsFromServer(serverTurns) {
 
       if (isPresentation) {
         const tableData = st.data_snapshot_json || lastAnalysisRun?.table || null;
-        const chartSpec = st.chart_spec_json || lastAnalysisRun?.chart || null;
-        const evidence = st.evidence_json || lastAnalysisRun?.evidence || {};
+        const chartSpec = st.chart_spec_json
+          ? normalizeAnalysisChart(st.chart_spec_json)
+          : lastAnalysisRun?.chart || null;
+        const evidence = st.evidence_json
+          ? normalizeAnalysisEvidence(st.evidence_json)
+          : lastAnalysisRun?.evidence;
         run = {
           ...(lastAnalysisRun || transientRun(userMessage, "success")),
           question: userMessage,
@@ -115,7 +146,7 @@ export function hydrateTurnsFromServer(serverTurns) {
           summary: `Trino 원천 쿼리 재실행 없이 ${st.view_type || "TABLE"} 뷰로 전환했습니다.`,
           table: tableData,
           chart: chartSpec,
-          evidence: evidence,
+          evidence,
           viewSpecId: st.view_spec_id,
         };
       } else if (isReportAction) {
@@ -134,7 +165,7 @@ export function hydrateTurnsFromServer(serverTurns) {
           disambiguationOptions: options,
           error: {
             code: "CONTEXT_INCOMPLETE",
-            message: "질문이 여러 지표 또는 기간으로 해석될 수 있습니다. 분석할 기준을 선택해 주세요.",
+            message: commandClarificationMessage(st, clarType),
             clarification_type: clarType,
             disambiguation_options: options,
             suggestions: options.map((o) => o.label || o.value || o.metric_id),
@@ -148,6 +179,11 @@ export function hydrateTurnsFromServer(serverTurns) {
         const tableData = st.data_snapshot_json;
         const chartSpec = st.chart_spec_json;
         const evidence = st.evidence_json || {};
+        const normalizedEvidence = normalizeAnalysisEvidence(evidence);
+        const metricValues = Array.isArray(evidence.metric_values)
+          ? evidence.metric_values
+          : [];
+        const sources = Array.isArray(evidence.sources) ? evidence.sources : [];
         run = {
           ...transientRun(userMessage, "success"),
           requestId: st.request_id || "",
@@ -156,10 +192,18 @@ export function hydrateTurnsFromServer(serverTurns) {
           question: userMessage,
           summary: st.narrative_markdown || userMessage,
           table: tableData || null,
-          chart: chartSpec || null,
-          evidence: evidence || {},
-          metrics: Array.isArray(evidence?.metrics) ? evidence.metrics : [],
-          sources: Array.isArray(evidence?.sources) ? evidence.sources : [],
+          chart: normalizeAnalysisChart(chartSpec) || null,
+          evidence: normalizedEvidence,
+          metrics: normalizeAnalysisMetrics(metricValues),
+          sources: sources.map((source) => ({
+            name: source.name,
+            urn: source.urn,
+            fqn: source.fqn,
+            schemaVersion: source.schema_version,
+            seedVersion: source.seed_version,
+            synthetic: typeof source.synthetic === "boolean" ? source.synthetic : undefined,
+            status: "success",
+          })),
           artifact: st.artifact_id ? {
             artifactId: st.artifact_id,
             queryId: evidence?.query_id || "",

@@ -28,7 +28,7 @@ from app.adapters.conversation_repository import ConversationRepository
 from app.authorization import has_capability
 from app.contracts import AnalysisRequest, AnalysisStatus, Capability, ErrorCode, RequestContext, ResolvedSlots
 from app.ports.data_platform import DataPlatformAdapter, NoEntitledAssetsError
-from app.services.context.builder import ContextBuildError
+from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
 from app.services.context.model_signals import client_action_signals
 from app.services.conversation.analysis_request import (
     build_structured_analysis_request,
@@ -200,6 +200,7 @@ class ConversationOrchestrator:
 
             # 5. Node 1 사전 발화 정규화 (DataHub 자산 검색)
             node1_res: dict[str, Any] = {}
+            preflight_clarification: ContextBuildError | None = None
             try:
                 # 1차: user_message 원문으로 검색
                 assets = await self._data_platform.search_assets(
@@ -211,9 +212,20 @@ class ConversationOrchestrator:
                 # 2차: 자산 미발견 시 이전 분석 지표를 결합하여 후속 단답형 질의("4월은?", "비스타는?") 검색
                 if not assets:
                     last_analysis_metric = next(
-                        (t.get("resolved_slots", {}).get("metric_id")
+                        (
+                            t.get("resolved_slots", {}).get("metric_id")
+                            or " ".join(
+                                map(
+                                    str,
+                                    t.get("resolved_slots", {}).get("metric_ids", ()),
+                                )
+                            )
                          for t in reversed(previous_turns)
-                         if t.get("route") == "ANALYSIS" and t.get("resolved_slots", {}).get("metric_id")),
+                         if t.get("route") == "ANALYSIS"
+                         and (
+                             t.get("resolved_slots", {}).get("metric_id")
+                             or t.get("resolved_slots", {}).get("metric_ids")
+                         )),
                         None,
                     )
                     if last_analysis_metric:
@@ -251,22 +263,77 @@ class ConversationOrchestrator:
                 node1_res = {}
             except ContextBuildError as error:
                 # 지표·기간이 여러 갈래로 해석되는 상태다. 빈 신호로 계속 진행하면 같은
-                # 모호성을 파이프라인에서 다시 만나므로, 사용자 선택지를 그대로 돌려준다.
-                await self._repo.release_lease_on_failure(
-                    conversation_id,
-                    command_id,
-                    {"type": type(error).__name__, "detail": str(error)},
+                # 모호성을 파이프라인에서 다시 만난다. 운영 resolver가 함께 반환한 확정
+                # 슬롯은 clarification turn에 저장해 다음 선택이 같은 요청을 완결하게 한다.
+                if error.code is ContextBuildErrorCode.METRIC_NOT_AVAILABLE:
+                    public_error = {
+                        "status": "FAILED",
+                        "code": ErrorCode.METRIC_NOT_AVAILABLE.value,
+                        "message": str(error),
+                        "retryable": False,
+                        "required_action": "MODIFY_REQUEST",
+                    }
+                    turn_id = uuid4()
+                    await self._repo.commit_failed_turn(
+                        conversation_id,
+                        command_id,
+                        turn_id,
+                        len(previous_turns),
+                        user_message,
+                        {
+                            "type": type(error).__name__,
+                            "detail": str(error),
+                            **public_error,
+                        },
+                    )
+                    updated_turns = await self._repo.list_turns(conversation_id)
+                    return {
+                        **public_error,
+                        "turn": next(
+                            turn for turn in updated_turns if turn["turn_id"] == turn_id
+                        ),
+                    }
+                clarification_type = (
+                    "period"
+                    if error.code is ContextBuildErrorCode.PERIOD_REQUIRED
+                    else "metric"
                 )
-                return {
-                    "status": "CLARIFICATION_REQUIRED",
-                    "code": ErrorCode.CONTEXT_INCOMPLETE.value,
-                    "message": str(error),
-                    "disambiguation_options": [
-                        option.model_dump(mode="json") if hasattr(option, "model_dump") else option
-                        for option in (getattr(error, "disambiguation_options", ()) or ())
-                    ],
-                    "suggestions": list(getattr(error, "suggestions", ()) or ()),
-                }
+                public_message = (
+                    "분석을 시작하려면 분석할 기간을 함께 입력해 주세요."
+                    if error.code is ContextBuildErrorCode.PERIOD_REQUIRED
+                    else "분석할 지표를 확정하지 못했습니다. 하나의 지표를 선택하거나 질문에 포함해 주세요."
+                )
+                partial_context = getattr(error, "partial_context", None)
+                if (
+                    error.code in {
+                        ContextBuildErrorCode.INVALID_METRIC,
+                        ContextBuildErrorCode.PERIOD_REQUIRED,
+                    }
+                    and isinstance(partial_context, dict)
+                ):
+                    node1_res = dict(partial_context)
+                    preflight_clarification = error
+                else:
+                    # Legacy/test producers without partial typed slots cannot be
+                    # persisted safely; retain the stateless typed response.
+                    await self._repo.release_lease_on_failure(
+                        conversation_id,
+                        command_id,
+                        {"type": type(error).__name__, "detail": str(error)},
+                    )
+                    return {
+                        "status": "CLARIFICATION_REQUIRED",
+                        "code": ErrorCode.CONTEXT_INCOMPLETE.value,
+                        "message": public_message,
+                        "clarification_type": clarification_type,
+                        "retryable": False,
+                        "required_action": "PROVIDE_CONTEXT",
+                        "disambiguation_options": [
+                            option.model_dump(mode="json") if hasattr(option, "model_dump") else option
+                            for option in (getattr(error, "disambiguation_options", ()) or ())
+                        ],
+                        "suggestions": list(getattr(error, "suggestions", ()) or ()),
+                    }
             except Exception as error:
                 # 메타데이터·모델·전송 실패는 해석 자체를 신뢰할 수 없다는 뜻이다. 빈
                 # 신호로 진행하면 route·상속·기간이 조용히 기본값으로 떨어져 사용자가
@@ -325,7 +392,7 @@ class ConversationOrchestrator:
             analysis_resp = None
 
             # 7. 3대 라우트 분기 실행
-            if slots.route == "ANALYSIS":
+            if slots.route == "ANALYSIS" and preflight_clarification is None:
                 # 라우트 1: ANALYSIS (실제 데이터 쿼리 파이프라인 실행)
                 analysis_req = build_structured_analysis_request(user_message, slots)
                 execution: dict[str, Any] = {}
@@ -382,10 +449,20 @@ class ConversationOrchestrator:
                 report_repo = self._get_report_repository(context)
                 report_def_id, artifact_id = await execute_report_action(report_repo, previous_turns)
 
-            # 모호성 해소 요구사항 확인
-            is_clarification = False
-            disambiguation_options = ()
-            clarification_type = None
+            # 모호성 해소 요구사항 확인. Preflight에서 이미 확정된 typed 선택지는
+            # 분석을 중복 실행하지 않고 그대로 turn 상태로 승격한다.
+            is_clarification = preflight_clarification is not None
+            disambiguation_options = (
+                getattr(preflight_clarification, "disambiguation_options", ())
+                if preflight_clarification is not None
+                else ()
+            )
+            clarification_type = (
+                "period"
+                if preflight_clarification is not None
+                and preflight_clarification.code is ContextBuildErrorCode.PERIOD_REQUIRED
+                else "metric" if preflight_clarification is not None else None
+            )
 
             if analysis_resp is not None:
                 resp_status = getattr(getattr(analysis_resp, "data", None), "status", None)
@@ -428,6 +505,7 @@ class ConversationOrchestrator:
                 report_definition_id=report_def_id,
                 resolved_slots={
                     "metric_id": slots.metric_id,
+                    "metric_ids": list(slots.metric_ids),
                     "dimension_fields": [dict(d) for d in slots.dimension_fields],
                     "user_filters": [dict(f) for f in slots.user_filters],
                     "time_range": {
@@ -435,7 +513,14 @@ class ConversationOrchestrator:
                         "end_exclusive": slots.time_range.end_exclusive.isoformat(),
                         "source_text": slots.time_range.source_text,
                     } if slots.time_range else None,
+                    "comparison_time_range": {
+                        "start": slots.comparison_time_range.start.isoformat(),
+                        "end_exclusive": slots.comparison_time_range.end_exclusive.isoformat(),
+                        "source_text": slots.comparison_time_range.source_text,
+                    } if slots.comparison_time_range else None,
                     "target_chart_type": slots.target_chart_type,
+                    "analysis_operation": slots.analysis_operation,
+                    "result_limit": slots.result_limit,
                     "ambiguity_status": ambiguity_status,
                     "clarification_type": clarification_type or last_slots.get("clarification_type"),
                     "disambiguation_options": [
@@ -465,6 +550,18 @@ class ConversationOrchestrator:
                     opt.model_dump(mode="json") if hasattr(opt, "model_dump") else opt
                     for opt in disambiguation_options
                 ] if is_clarification else [],
+                "code": ErrorCode.CONTEXT_INCOMPLETE.value if is_clarification else None,
+                "message": (
+                    "분석을 시작하려면 분석할 기간을 함께 입력해 주세요."
+                    if clarification_type == "period"
+                    else "분석할 지표를 확정하지 못했습니다. 하나의 지표를 선택하거나 질문에 포함해 주세요."
+                ) if is_clarification else None,
+                "clarification_type": clarification_type if is_clarification else None,
+                "retryable": False if is_clarification else None,
+                "required_action": "PROVIDE_CONTEXT" if is_clarification else None,
+                "suggestions": list(
+                    getattr(preflight_clarification, "suggestions", ()) or ()
+                ) if preflight_clarification is not None else [],
                 "analysis_response": analysis_resp.model_dump(mode="json") if analysis_resp and hasattr(analysis_resp, "model_dump") else None,
             }
 

@@ -16,6 +16,10 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
 from author_semantic_catalog import load_stdin_document  # noqa: E402
+from metric_review_decision import (  # noqa: E402
+    APPROVAL_CONTRACT_VERSION,
+    unwrap_metric_review_approval,
+)
 from policy_compiler import compile_authoring_policy  # noqa: E402
 from release_builder import reconcile_base  # noqa: E402
 from release_bundle import ReleaseBinding  # noqa: E402
@@ -121,10 +125,16 @@ async def preflight_decisions(
 
 
 async def async_main(argv: list[str] | None = None) -> int:
-    """stdin 결정을 preflight하고 canonical JSON 하나만 표준 출력에 기록한다."""
+    """stdin 결정 또는 승인 receipt를 preflight하고 canonical JSON을 기록한다."""
 
     args = parse_args(argv)
-    result = await preflight_decisions(load_stdin_document(), args)
+    document = load_stdin_document()
+    decision = (
+        unwrap_metric_review_approval(document)
+        if document.get("contract_version") == APPROVAL_CONTRACT_VERSION
+        else document
+    )
+    result = await preflight_decisions(decision, args)
     if args.output is None:
         print(canonical_json(result))
     else:

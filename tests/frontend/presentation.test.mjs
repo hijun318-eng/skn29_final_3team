@@ -31,6 +31,8 @@ assert.equal(reportTitleForAnalysis({ question: "원문 질문" }), "분석 결�
 assert.equal(formatMetricValue(0), "0");
 assert.equal(formatMetricValue(null, { unit: "원" }), "—");
 assert.equal(formatMetricValue("1250000", { unit: "원" }), "1,250,000 원");
+assert.equal(formatMetricValue(0.652306318, { unit: "ratio" }), "65.23%");
+assert.equal(formatMetricValue(0.652306318, { unit: "ratio", includeUnit: false }), "65.23");
 assert.equal(formatMetricValue(-12.345, { maximumFractionDigits: 1 }), "-12.3");
 assert.equal(formatMetricValue("계산 불가", { unit: "원" }), "계산 불가");
 assert.equal(formatCompactNumber(125000000), "1.3억");

@@ -74,12 +74,47 @@ class TimeAlgebraEngine:
         """
         candidate = cls._first_valid_candidate(node1_output.get("period_candidates"))
         if candidate is not None:
-            return candidate, False
+            return cls.complete_data_range(candidate, as_of), False
 
         if last_time_range is not None:
-            return last_time_range, True
+            return cls.complete_data_range(last_time_range, as_of), True
 
         return None, False
+
+    @classmethod
+    def resolve_comparison_time(
+        cls,
+        node1_output: dict[str, Any],
+        as_of: date,
+    ) -> ResolvedTimeRange | None:
+        """명시적 두 기간 비교의 두 번째 반개구간을 질문 순서 그대로 확정한다."""
+
+        if node1_output.get("period_relationship") != "comparison":
+            return None
+        candidates = cls._valid_candidates(node1_output.get("period_candidates"))
+        if len(candidates) != 2:
+            return None
+        return cls.complete_data_range(candidates[1], as_of)
+
+    @staticmethod
+    def complete_data_range(
+        resolved: ResolvedTimeRange,
+        as_of: date,
+    ) -> ResolvedTimeRange:
+        """오늘을 포함한 기간을 오늘 시작 시점 미포함 경계로 제한한다.
+
+        서비스는 완료된 영업일 데이터만 공개한다. 사용자 표현과 무관한 typed 날짜
+        경계로서 과거 기간은 유지하고, 현재 진행 중인 기간은 ``[start, as_of)``로
+        바꾸며, 미래에만 걸친 기간은 상위 Context gate가 범위 오류로 차단하도록 둔다.
+        """
+
+        if resolved.start < as_of < resolved.end_exclusive:
+            return ResolvedTimeRange(
+                start=resolved.start,
+                end_exclusive=as_of,
+                source_text=resolved.source_text,
+            )
+        return resolved
 
     @classmethod
     def _first_valid_candidate(cls, candidates: object) -> ResolvedTimeRange | None:
@@ -96,8 +131,16 @@ class TimeAlgebraEngine:
         Returns:
             확정 가능한 첫 기간 또는 None
         """
+        values = cls._valid_candidates(candidates)
+        return values[0] if values else None
+
+    @classmethod
+    def _valid_candidates(cls, candidates: object) -> tuple[ResolvedTimeRange, ...]:
+        """형식과 반개구간 불변식을 만족하는 typed 기간 후보를 순서대로 반환한다."""
+
         if not isinstance(candidates, list):
-            return None
+            return ()
+        values: list[ResolvedTimeRange] = []
         for candidate in candidates:
             if not isinstance(candidate, dict):
                 continue
@@ -108,12 +151,14 @@ class TimeAlgebraEngine:
                 continue
             if start >= end_exclusive:
                 continue
-            return ResolvedTimeRange(
-                start=start,
-                end_exclusive=end_exclusive,
-                source_text=str(candidate.get("source_text") or ""),
+            values.append(
+                ResolvedTimeRange(
+                    start=start,
+                    end_exclusive=end_exclusive,
+                    source_text=str(candidate.get("source_text") or ""),
+                )
             )
-        return None
+        return tuple(values)
 
     @staticmethod
     def add_months(dt: date, months: int) -> date:

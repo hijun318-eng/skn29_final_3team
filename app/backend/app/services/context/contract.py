@@ -125,6 +125,21 @@ class GovernedJoin:
             for item in condition[:3]
         ):
             raise _invalid("조인 시계열 조건이 관련 없는 자산을 참조하고 있습니다.")
+        preaggregation_assets = {
+            _field_asset(item) for item in (*grain, *keys)
+        }
+        if len(preaggregation_assets) != 1:
+            raise _invalid("조인 사전집계 필드는 정확히 한쪽 자산에만 속해야 합니다.")
+        many_endpoint = {
+            "many_to_one": join.left,
+            "one_to_many": join.right,
+        }.get(join.cardinality)
+        if (
+            join.preaggregation_required
+            and many_endpoint is not None
+            and preaggregation_assets != {many_endpoint}
+        ):
+            raise _invalid("조인 사전집계는 카디널리티의 many 측 자산을 대상으로 해야 합니다.")
         return join
 
     def as_dict(self) -> dict[str, Any]:

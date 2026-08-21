@@ -133,4 +133,17 @@ def _dataset_tokens(dataset, terms):
     for dimension in dataset.dimensions:
         if dimension.get("asset_fqn") == dataset.fqn:
             values.extend(map(str, dimension.get("aliases", ())))
+    # SUPPORT metric은 사용자 선택용 Glossary Term이 없지만, 사용자가 그 값을 직접
+    # 요청했을 때 올바른 자산까지 recall해야 typed availability 오류를 줄 수 있다.
+    # 검증된 local metric rule의 semantic만 검색 증거로 사용한다.
+    for metric in dataset.metrics:
+        rule = metric.get("metric_rule")
+        governance = rule.get("governance") if isinstance(rule, dict) else None
+        semantic = governance.get("semantic") if isinstance(governance, dict) else None
+        if isinstance(semantic, dict):
+            values.append(str(semantic.get("name") or ""))
+            values.append(str(semantic.get("definition") or ""))
+            aliases = semantic.get("aliases")
+            if isinstance(aliases, (list, tuple)):
+                values.extend(map(str, aliases))
     return unicode_tokens(" ".join(values))

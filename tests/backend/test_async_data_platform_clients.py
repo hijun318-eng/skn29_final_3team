@@ -172,6 +172,35 @@ class DataHubCatalogClientTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await network_client.aclose()
 
+    async def test_owned_transport_uses_ssl_context_and_disables_proxy(self) -> None:
+        owned_http = AsyncMock()
+        tls_context = object()
+        ca_file = Path(__file__).resolve()
+        with (
+            patch(
+                "app.adapters.datahub_catalog.ssl.create_default_context",
+                return_value=tls_context,
+            ) as context_factory,
+            patch(
+                "app.adapters.datahub_catalog.httpx.AsyncClient",
+                return_value=owned_http,
+            ) as client_factory,
+        ):
+            client = DataHubCatalogClient(
+                "https://datahub:8443",
+                "catalog-token",
+                ca_file=ca_file,
+                expected_actor_urn="urn:li:corpuser:service_catalog_reader",
+            )
+            await client.aclose()
+
+        context_factory.assert_called_once_with(cafile=str(ca_file))
+        kwargs = client_factory.call_args.kwargs
+        self.assertIs(kwargs["verify"], tls_context)
+        self.assertFalse(kwargs["trust_env"])
+        self.assertEqual(kwargs["headers"], {"Authorization": "Bearer catalog-token"})
+        owned_http.aclose.assert_awaited_once_with()
+
     async def test_duplicate_paginated_urn_fails_closed(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             body = json.loads(request.content)
@@ -370,20 +399,29 @@ class TrinoAsyncClientTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_owned_transport_disables_environment_proxy_trust(self) -> None:
         owned_http = AsyncMock()
-        with patch(
-            "app.adapters.trino_async.httpx.AsyncClient",
-            return_value=owned_http,
-        ) as factory:
+        tls_context = object()
+        ca_file = Path(__file__).resolve()
+        with (
+            patch(
+                "app.adapters.trino_async.ssl.create_default_context",
+                return_value=tls_context,
+            ) as context_factory,
+            patch(
+                "app.adapters.trino_async.httpx.AsyncClient",
+                return_value=owned_http,
+            ) as factory,
+        ):
             client = TrinoAsyncClient(
                 "https://trino:8443",
                 "service-user",
                 "test-password",
-                ca_file=Path(__file__).resolve(),
+                ca_file=ca_file,
             )
             await client.aclose()
 
+        context_factory.assert_called_once_with(cafile=str(ca_file))
         factory.assert_called_once_with(
-            verify=str(Path(__file__).resolve()),
+            verify=tls_context,
             trust_env=False,
         )
         owned_http.aclose.assert_awaited_once_with()

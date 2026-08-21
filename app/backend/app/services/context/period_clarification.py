@@ -8,6 +8,8 @@ Node1이 기간을 단일 구간으로 좁히지 못했을 때, 서버가 사용
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.contracts import ClarificationType, DisambiguationOption
 
 
@@ -30,10 +32,11 @@ def period_suggestions(candidates: object) -> tuple[str, ...]:
     )
 
 
-def _disambiguation_options_for_metrics(
+def disambiguation_options_for_metrics(
     metric_ids: list[str],
     metric_terms: dict[str, dict[str, Any]],
 ) -> tuple[DisambiguationOption, ...]:
+    """승인된 지표 후보를 typed 사용자 선택지로 변환합니다."""
     options: list[DisambiguationOption] = []
     for mid in metric_ids:
         term = metric_terms.get(mid, {})

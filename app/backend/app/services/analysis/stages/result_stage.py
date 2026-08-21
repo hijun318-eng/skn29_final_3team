@@ -21,13 +21,16 @@ from app.contracts import (
 from app.ports.model import ModelAdapter
 from app.services.analysis.model_support import (
     is_numeric,
-    model_failure_code,
     model_trace_detail,
 )
 from app.services.analysis.pipeline_state import AnalysisPipelineState
 from app.services.analysis.responses import AnalysisResponseFactory
 from app.services.context.builder import ContextPackage
 from app.services.analysis.pipeline_support import PipelineSupport
+from app.services.analysis.result_narrative import (
+    explanation_is_grounded,
+    grounded_summary,
+)
 
 
 def _chart_spec(
@@ -99,6 +102,13 @@ class AnalysisResultStage:
                 "summary": f"승인된 분석에서 {len(query['rows'])}건을 조회했습니다.",
                 "model_version": "TEMPLATE-RESULT-v1.0.0",
             }
+        elif len(package.metric_terms) != 1:
+            # 현재 Node 3 release는 단일 Metric 설명 계약이다. 복수 지표를 첫 지표로
+            # 축소하지 않고, G3가 승인한 모든 BUSINESS Metric을 결정론적으로 요약한다.
+            explanation = {
+                "summary": grounded_summary(query, package),
+                "model_version": "GROUNDED-MULTI-NARRATIVE-v1.0.0",
+            }
         else:
             try:
                 explanation = await state.budget.call(
@@ -121,15 +131,19 @@ class AnalysisResultStage:
                     or not isinstance(explanation.get("model_version"), str)
                 ):
                     raise ValueError("Node3 응답 형식이 올바르지 않습니다.")
-            except (TimeoutError, OSError, TypeError, ValueError) as error:
-                return self._responses.model_error(
-                    context,
-                    state.machine,
-                    state.trace,
-                    decision,
-                    state.repair_count,
-                    code=model_failure_code(error),
-                )
+                if not explanation_is_grounded(explanation["summary"], query, package):
+                    explanation = {
+                        "summary": grounded_summary(query, package),
+                        "model_version": "GROUNDED-NARRATIVE-v1.0.0",
+                    }
+            except (TimeoutError, OSError, TypeError, ValueError):
+                # SQL과 G3 결과가 이미 승인된 뒤의 설명 실패는 분석값까지 숨길 이유가 없다.
+                # 모델 응답을 복구하거나 추정하지 않고 같은 governed rows에서 만든 요약으로
+                # 대체해 결과·설명 수치를 항상 일치시킨다.
+                explanation = {
+                    "summary": grounded_summary(query, package),
+                    "model_version": "GROUNDED-NARRATIVE-v1.0.0",
+                }
 
         # 2. 결정론적 아티팩트 참조 ID 발급
         artifact_id = self._support.artifact_id(
@@ -161,11 +175,19 @@ class AnalysisResultStage:
         )
 
         # 4. 차트 규격 조립 및 주입
-        rows = query["rows"]
+        if response.data.result is not None:
+            rows = [dict(row) for row in response.data.result.table.rows]
+        else:
+            rows = []
         if rows and response.data.result is not None:
+            business_ids = {term.id for term in package.metric_terms}
             chart = _chart_spec(
                 rows,
-                tuple(metric.result_field for metric in package.metrics),
+                tuple(
+                    metric.result_field
+                    for metric in package.metrics
+                    if metric.id in business_ids
+                ),
             )
             if chart is not None:
                 response.data.result.chart = chart

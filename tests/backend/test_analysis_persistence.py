@@ -178,7 +178,9 @@ def context(owner_id: UUID | None = None) -> RequestContext:
         request_id=uuid4(),
         trace_id="analysis-persistence-trace",
         user_id=owner_id or uuid4(),
-        as_of=date(2026, 8, 1),
+        # The runtime contract excludes the as_of business date. Keep at least
+        # one completed day in the fixture's generated month-to-date interval.
+        as_of=date(2026, 8, 2),
     )
 
 

@@ -16,6 +16,17 @@ from app.services.context.builder import (
     ContextRequiredFilter,
 )
 from app.services.context.contract import GovernedJoin, enrich_context_package
+from app.services.analysis.logical_plan import (
+    AnalysisOperation,
+    AnalysisPlanError,
+    build_analysis_plan,
+    validate_analysis_plan_payload,
+)
+from app.services.analysis.typed_sql_compiler import (
+    TYPED_SQL_COMPILER_VERSION,
+    compile_typed_sql,
+)
+from app.services.context.query_planner import VIEW_REUSE
 from app.services.sql_guard import apply_guard_decision, validate_plan
 from src.ai.schema import ContractError, validate_payload
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
@@ -177,11 +188,17 @@ def _sql(
 
 def _joined_package(*, kind: str = "inner", preaggregation: bool = False):
     package = _package()
+    joined_metric = replace(
+        package.metrics[0],
+        allowed_join_ids=("customer_edge",),
+        join_required=True,
+    )
     fact = replace(
         package.assets[0],
         columns=(*package.assets[0].columns, "customer_id"),
         column_types=(*package.assets[0].column_types, ("customer_id", "varchar")),
         join_ids=("customer_edge",),
+        metrics=(joined_metric,),
     )
     dimension = ContextAsset(
         urn="urn:test:orbit.ops.customer_dim",
@@ -246,9 +263,554 @@ def _joined_package(*, kind: str = "inner", preaggregation: bool = False):
         dataset_count=2,
         column_count=len(fact.columns) + len(dimension.columns),
         approved_join_ids=(join.id,),
+        metrics=(joined_metric,),
         runtime_contracts=contracts,
         join_graph=(join,),
     )
+
+
+def test_v2_metric_must_allow_every_join_edge_used_by_sql() -> None:
+    package = _joined_package()
+    denied_metric = replace(
+        package.metrics[0],
+        allowed_join_ids=(),
+        join_required=False,
+    )
+    denied = replace(package, metrics=(denied_metric,))
+
+    decision = validate_plan({"sql": _joined_sql()}, denied)
+
+    assert decision.violation == "JOIN_PERMISSION_DENIED"
+
+
+def test_guard_records_the_runtime_fanout_decision() -> None:
+    decision = validate_plan({"sql": _joined_sql()}, _joined_package())
+
+    assert decision.ok, decision
+    assert decision.ast_evidence is not None
+    assert decision.ast_evidence["fanout_plans"] == [
+        {
+            "join_id": "customer_edge",
+            "plan": "DIRECT_JOIN",
+            "reason": "UNIQUE_ONE_SIDE",
+        }
+    ]
+
+
+def test_logical_analysis_plan_is_compiled_from_runtime_slots_not_question_text() -> None:
+    package = _package()
+
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "intent_candidates": ["general"],
+            "period_relationship": "single",
+        },
+        package,
+    )
+
+    assert plan.operation is AnalysisOperation.AGGREGATE
+    assert plan.output_metric_ids == ("governed_amount",)
+    assert plan.period_parameters == (("window_begin", "window_stop"),)
+    assert plan.context_package_hash == package.package_hash
+    assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
+
+
+def test_logical_plan_projects_validated_filter_predicates_to_unique_fields() -> None:
+    package = _package()
+
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "intent_candidates": ["general"],
+            "period_relationship": "single",
+            "filter_fields": [
+                {
+                    "asset_fqn": "orbit.ops.event_fact",
+                    "column": "active",
+                    "operator": "eq",
+                    "value_text": "true",
+                },
+                {
+                    "asset_fqn": "orbit.ops.event_fact",
+                    "column": "active",
+                    "operator": "neq",
+                    "value_text": "false",
+                },
+            ],
+        },
+        package,
+    )
+
+    assert [item.as_dict() for item in plan.filter_fields] == [
+        {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+    ]
+    assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
+
+
+def test_logical_plan_removes_eq_filtered_field_from_aggregate_grouping() -> None:
+    """값이 고정된 필터 필드는 aggregate GROUP BY로 중복 실행하지 않는다."""
+
+    package = _ranked_package()
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "analysis_operation": "aggregate",
+            "intent_candidates": ["aggregate"],
+            "period_relationship": "single",
+            "dimension_fields": [
+                {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+            ],
+            "filter_fields": [
+                {
+                    "asset_fqn": "orbit.ops.event_fact",
+                    "column": "active",
+                    "operator": "eq",
+                    "value_text": "true",
+                }
+            ],
+        },
+        package,
+    )
+
+    assert plan.operation is AnalysisOperation.AGGREGATE
+    assert plan.dimension_fields == ()
+    assert [item.as_dict() for item in plan.filter_fields] == [
+        {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+    ]
+    assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
+
+
+def _view_reuse_package(package):
+    """동형 테스트 계약을 승인 Serving 단일 뷰 전략으로 전환한다."""
+
+    return replace(
+        package,
+        metrics=tuple(
+            replace(metric, query_strategies=(VIEW_REUSE,))
+            for metric in package.metrics
+        ),
+        query_strategy=VIEW_REUSE,
+    )
+
+
+def _multi_metric_view_reuse_package(*, shared_filters: bool = True):
+    """같은 물리 뷰의 두 지표가 필터 의미를 공유하거나 분리하는 계약을 만든다."""
+
+    package = _view_reuse_package(_package())
+    first = package.metrics[0]
+    second = replace(
+        first,
+        id="governed_count",
+        field="active",
+        aggregation="count",
+        result_field="governed_count",
+        unit="rows",
+        required_filters=first.required_filters if shared_filters else (),
+    )
+    contracts = deepcopy(package.runtime_contracts)
+    second_rule = deepcopy(contracts["metric_rules"][0])
+    second_rule.update(
+        id=second.id,
+        source={
+            "kind": "column",
+            "field": {"asset_fqn": second.asset_fqn, "column": second.field},
+        },
+        aggregation="count",
+        result_field=second.result_field,
+        unit=second.unit,
+        required_filters=(
+            deepcopy(contracts["metric_rules"][0]["required_filters"])
+            if shared_filters
+            else []
+        ),
+    )
+    contracts["metric_rules"].append(second_rule)
+    contracts["query_policy"]["allowed_functions"].append("COUNT")
+    return replace(
+        package,
+        metrics=(first, second),
+        runtime_contracts=contracts,
+    )
+
+
+def test_typed_sql_compiler_builds_a_guarded_view_reuse_aggregate() -> None:
+    """특정 지표명 없이 단일 Serving View 집계를 SQLGlot AST로 생성한다."""
+
+    package = _view_reuse_package(_package())
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "analysis_operation": "aggregate",
+            "period_relationship": "single",
+        },
+        package,
+    )
+
+    candidate = compile_typed_sql(plan, package)
+
+    assert candidate is not None
+    assert candidate["model_version"] == TYPED_SQL_COMPILER_VERSION
+    assert candidate["plan_source"] == "typed_sql_compiler"
+    candidate["analysis_plan"] = plan.as_dict()
+    accepted = validate_plan(candidate, package)
+    assert accepted.ok, accepted
+    assert accepted.ast_evidence is not None
+    assert accepted.ast_evidence["analysis_operation"] == "aggregate"
+
+
+def test_typed_sql_compiler_handles_multiple_metrics_with_one_filter_scope() -> None:
+    """같은 시간·필터 의미를 공유하는 여러 Metric은 한 SELECT로 안전하게 합성한다."""
+
+    package = _multi_metric_view_reuse_package()
+    plan = build_analysis_plan(
+        {
+            "selected_metric_ids": ["governed_amount", "governed_count"],
+            "analysis_operation": "aggregate",
+            "period_relationship": "single",
+        },
+        package,
+    )
+
+    candidate = compile_typed_sql(plan, package)
+
+    assert candidate is not None
+    candidate["analysis_plan"] = plan.as_dict()
+    accepted = validate_plan(candidate, package)
+    assert accepted.ok, accepted
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected_order"),
+    [("top_n", "DESC"), ("bottom_n", "ASC")],
+)
+def test_typed_sql_compiler_builds_stable_ranked_view_reuse_queries(
+    operation: str,
+    expected_order: str,
+) -> None:
+    """순위 연산은 첫 지표와 모든 차원 tie-breaker를 계획 순서로 생성한다."""
+
+    package = _view_reuse_package(_ranked_package())
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "analysis_operation": operation,
+            "result_limit": 5,
+            "dimension_fields": [
+                {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+            ],
+            "period_relationship": "single",
+        },
+        package,
+    )
+
+    candidate = compile_typed_sql(plan, package)
+
+    assert candidate is not None
+    assert f"governed_total {expected_order}" in str(candidate["sql"])
+    candidate["analysis_plan"] = plan.as_dict()
+    accepted = validate_plan(candidate, package)
+    assert accepted.ok, accepted
+
+
+def test_typed_sql_compiler_builds_time_trend_and_period_comparison() -> None:
+    """같은 컴파일 경로가 시간 추이와 두 반개방 기간의 조건부 집계를 모두 지원한다."""
+
+    trend_package = _view_reuse_package(_package())
+    trend_plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "analysis_operation": "time_trend",
+            "period_relationship": "single",
+        },
+        trend_package,
+    )
+    trend = compile_typed_sql(trend_plan, trend_package)
+    assert trend is not None
+    trend["analysis_plan"] = trend_plan.as_dict()
+    assert validate_plan(trend, trend_package).ok
+
+    comparison_package = _view_reuse_package(_comparison_package())
+    comparison_plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "analysis_operation": "period_comparison",
+            "period_relationship": "comparison",
+        },
+        comparison_package,
+    )
+    comparison = compile_typed_sql(comparison_plan, comparison_package)
+    assert comparison is not None
+    assert "FILTER(WHERE" in str(comparison["sql"]).replace(" ", "")
+    comparison["analysis_plan"] = comparison_plan.as_dict()
+    accepted = validate_plan(comparison, comparison_package)
+    assert accepted.ok, accepted
+
+
+def test_typed_sql_compiler_does_not_guess_a_join_or_mixed_filter_scope() -> None:
+    """단일 뷰 경계를 벗어난 계획은 SQL을 만들지 않고 기존 guarded 경로로 남긴다."""
+
+    joined = _joined_package()
+    joined_plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "analysis_operation": "aggregate",
+            "period_relationship": "single",
+        },
+        joined,
+    )
+    assert compile_typed_sql(joined_plan, joined) is None
+
+    mixed = _multi_metric_view_reuse_package(shared_filters=False)
+    mixed_plan = build_analysis_plan(
+        {
+            "selected_metric_ids": ["governed_amount", "governed_count"],
+            "analysis_operation": "aggregate",
+            "period_relationship": "single",
+        },
+        mixed,
+    )
+    assert compile_typed_sql(mixed_plan, mixed) is None
+
+
+def test_typed_sql_compiler_builds_a_ratio_from_governed_operands() -> None:
+    """동일 scope의 분자·분모는 DOUBLE/NULLIF 비율식과 원본 증거를 함께 생성한다."""
+
+    package = _multi_metric_view_reuse_package()
+    numerator, denominator = (
+        replace(metric, visibility="SUPPORT") for metric in package.metrics
+    )
+    ratio = ContextMetric(
+        id="governed_ratio",
+        asset_fqn="",
+        field="",
+        aggregation="ratio",
+        time_field="",
+        required_filters=(),
+        result_field="governed_ratio",
+        unit="ratio",
+        numerator_metric_id=numerator.id,
+        denominator_metric_id=denominator.id,
+        zero_policy="null_on_zero_denominator",
+        governance_version=RUNTIME_GOVERNANCE_VERSION_V2,
+        allowed_roles=("analyst",),
+        contains_pii=False,
+        allowed_join_ids=(),
+        join_required=False,
+        query_strategies=(VIEW_REUSE,),
+    )
+    contracts = deepcopy(package.runtime_contracts)
+    contracts["metric_rules"].append(
+        {
+            "id": ratio.id,
+            "source": {
+                "kind": "ratio",
+                "numerator_metric_id": numerator.id,
+                "denominator_metric_id": denominator.id,
+                "zero_policy": ratio.zero_policy,
+            },
+            "aggregation": "ratio",
+            "result_field": ratio.result_field,
+            "unit": ratio.unit,
+            "time_field": None,
+            "dimensions": [],
+            "required_filters": [],
+        }
+    )
+    contracts["query_policy"]["allowed_functions"].append("NULLIF")
+    package = replace(
+        package,
+        metrics=(numerator, denominator, ratio),
+        runtime_contracts=contracts,
+    )
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": ratio.id,
+            "analysis_operation": "aggregate",
+            "period_relationship": "single",
+        },
+        package,
+    )
+
+    candidate = compile_typed_sql(plan, package)
+
+    assert candidate is not None
+    assert "NULLIF" in str(candidate["sql"])
+    candidate["analysis_plan"] = plan.as_dict()
+    accepted = validate_plan(candidate, package)
+    assert accepted.ok, accepted
+
+
+@pytest.mark.parametrize(
+    "invalid_filter",
+    [
+        {"asset_fqn": "orbit.ops.event_fact", "column": "active"},
+        {
+            "asset_fqn": "orbit.ops.event_fact",
+            "column": "active",
+            "operator": "contains",
+            "value_text": "true",
+        },
+        {
+            "asset_fqn": "orbit.ops.event_fact",
+            "column": "active",
+            "operator": "eq",
+            "value_text": "",
+        },
+    ],
+)
+def test_logical_plan_rejects_invalid_filter_predicate_contract(
+    invalid_filter: dict[str, str],
+) -> None:
+    with pytest.raises(AnalysisPlanError, match="filter_fields"):
+        build_analysis_plan(
+            {
+                "selected_metric_id": "governed_amount",
+                "intent_candidates": ["general"],
+                "period_relationship": "single",
+                "filter_fields": [invalid_filter],
+            },
+            _package(),
+        )
+
+
+def test_logical_plan_rejects_a_dimension_not_bound_to_the_selected_metric() -> None:
+    package = _joined_package()
+
+    with pytest.raises(AnalysisPlanError, match="binding"):
+        build_analysis_plan(
+            {
+                "selected_metric_id": "governed_amount",
+                "intent_candidates": ["breakdown"],
+                "period_relationship": "single",
+                "dimension_fields": [
+                    {
+                        "asset_fqn": "orbit.ops.customer_dim",
+                        "column": "segment",
+                    }
+                ],
+            },
+            package,
+        )
+
+
+def test_logical_plan_checksum_cannot_be_reused_with_another_context() -> None:
+    package = _package()
+    plan = build_analysis_plan(
+        {
+            "selected_metric_id": "governed_amount",
+            "intent_candidates": ["aggregate"],
+            "period_relationship": "single",
+        },
+        package,
+    ).as_dict()
+    plan["context_package_hash"] = "different-context"
+
+    with pytest.raises(AnalysisPlanError, match="checksum"):
+        validate_analysis_plan_payload(plan, package)
+
+
+def _ranked_package():
+    package = _package()
+    contracts = deepcopy(package.runtime_contracts)
+    contracts["metric_rules"][0]["dimensions"] = [
+        {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+    ]
+    return replace(package, runtime_contracts=contracts)
+
+
+def test_guard_enforces_top_n_order_direction_and_exact_result_limit() -> None:
+    package = _ranked_package()
+    plan = build_analysis_plan(
+        {
+            "selected_metric_ids": ["governed_amount"],
+            "analysis_operation": "top_n",
+            "result_limit": 5,
+            "dimension_fields": [
+                {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+            ],
+            "period_relationship": "single",
+        },
+        package,
+    )
+    sql = """
+        SELECT e.active, SUM(e.amount) AS governed_total
+        FROM orbit.ops.event_fact AS e
+        WHERE e.occurred_on >= CAST(:window_begin AS DATE)
+          AND e.occurred_on < CAST(:window_stop AS DATE)
+          AND e.active = :active_flag
+        GROUP BY e.active
+        ORDER BY governed_total DESC, active ASC
+        LIMIT 5
+    """
+
+    accepted = validate_plan(
+        {"sql": sql, "analysis_plan": plan.as_dict()},
+        package,
+    )
+    wrong_direction = validate_plan(
+        {
+            "sql": sql.replace("DESC", "ASC"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+    wrong_limit = validate_plan(
+        {
+            "sql": sql.replace("LIMIT 5", "LIMIT 6"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+    missing_tie_breaker = validate_plan(
+        {
+            "sql": sql.replace(", active ASC", ""),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+
+    assert accepted.ok, accepted
+    assert wrong_direction.violation == "ANALYSIS_OPERATION_MISMATCH"
+    assert wrong_limit.violation == "ANALYSIS_OPERATION_MISMATCH"
+    assert missing_tie_breaker.violation == "ANALYSIS_OPERATION_MISMATCH"
+
+
+def test_guard_enforces_time_trend_group_projection_and_ascending_order() -> None:
+    package = _package()
+    plan = build_analysis_plan(
+        {
+            "selected_metric_ids": ["governed_amount"],
+            "analysis_operation": "time_trend",
+            "period_relationship": "single",
+        },
+        package,
+    )
+    sql = """
+        SELECT e.occurred_on AS period, SUM(e.amount) AS governed_total
+        FROM orbit.ops.event_fact AS e
+        WHERE e.occurred_on >= CAST(:window_begin AS DATE)
+          AND e.occurred_on < CAST(:window_stop AS DATE)
+          AND e.active = :active_flag
+        GROUP BY e.occurred_on
+        ORDER BY period ASC
+        LIMIT 100
+    """
+
+    accepted = validate_plan(
+        {"sql": sql, "analysis_plan": plan.as_dict()},
+        package,
+    )
+    descending = validate_plan(
+        {
+            "sql": sql.replace("period ASC", "period DESC"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+
+    assert accepted.ok, accepted
+    assert descending.violation == "ANALYSIS_OPERATION_MISMATCH"
 
 
 def _joined_sql(
@@ -401,8 +963,11 @@ def test_live_node2_contract_rejects_formula_metadata() -> None:
         "resolved_request": {
             "intent": "aggregate",
             "metric_ids": ["governed_amount"],
+            "output_metric_ids": ["governed_amount"],
             "dimensions": [],
             "filters": deepcopy(package.runtime_contracts["metric_rules"][0]["required_filters"]),
+            "time_bucket": "none",
+            "result_limit": None,
         },
         **deepcopy(package.runtime_contracts),
     }
@@ -736,21 +1301,28 @@ def test_ratio_metric_projects_numerator_and_denominator_with_nullif_zero_guard(
     sql = _sql().replace(
         "SUM(e.amount) AS governed_total",
         "SUM(e.amount) AS governed_total, COUNT(e.active) AS governed_count, "
-        "SUM(e.amount) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
+        "CAST(SUM(e.amount) AS DOUBLE) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
     )
 
     accepted = validate_plan({"sql": sql}, package)
     swapped = validate_plan(
         {"sql": sql.replace(
-            "SUM(e.amount) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
-            "COUNT(e.active) / NULLIF(SUM(e.amount), 0) AS governed_ratio",
+            "CAST(SUM(e.amount) AS DOUBLE) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
+            "CAST(COUNT(e.active) AS DOUBLE) / NULLIF(SUM(e.amount), 0) AS governed_ratio",
         )},
         package,
     )
     missing_nullif = validate_plan(
         {"sql": sql.replace(
+            "CAST(SUM(e.amount) AS DOUBLE) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
+            "CAST(SUM(e.amount) AS DOUBLE) / COUNT(e.active) AS governed_ratio",
+        )},
+        package,
+    )
+    integer_division = validate_plan(
+        {"sql": sql.replace(
+            "CAST(SUM(e.amount) AS DOUBLE) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
             "SUM(e.amount) / NULLIF(COUNT(e.active), 0) AS governed_ratio",
-            "SUM(e.amount) / COUNT(e.active) AS governed_ratio",
         )},
         package,
     )
@@ -758,6 +1330,7 @@ def test_ratio_metric_projects_numerator_and_denominator_with_nullif_zero_guard(
     assert accepted.ok, accepted
     assert swapped.violation == "METRIC_RULE_MISMATCH"
     assert missing_nullif.violation == "METRIC_RULE_MISMATCH"
+    assert integer_division.violation == "METRIC_RULE_MISMATCH"
 
 
 def _exists_package():
@@ -964,4 +1537,4 @@ def test_exists_metric_and_comparison_window_together_are_rejected() -> None:
     rejected = validate_plan({"sql": sql}, package)
 
     assert rejected.violation == "METRIC_RULE_MISMATCH"
-    assert "Exists metric" in rejected.detail
+    assert rejected.detail.endswith("exists")

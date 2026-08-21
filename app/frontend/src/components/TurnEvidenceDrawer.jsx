@@ -6,7 +6,7 @@ import { SectionTitle } from "./common/EnterpriseUi";
 const ARTIFACT_TABS = [["report", "보고서"], ["sources", "데이터 출처"], ["run", "실행 정보"]];
 
 function savedRunStatus(status) {
-  return ({ SUCCESS: "완료", SUCCEEDED: "완료", PARTIAL: "일부 완료", BLOCKED: "완료되지 않음", FAILED: "실패" })[status] || "확인 필요";
+  return ({ SUCCESS: "완료", SUCCEEDED: "완료", PARTIAL: "일부 완료", BLOCKED: "완료되지 않음", CLARIFYING: "입력 필요", FAILED: "실패" })[status] || "확인 필요";
 }
 
 function filterSummary(filters = {}) {

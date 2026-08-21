@@ -33,6 +33,7 @@ from app.adapters.trino_async import TrinoAsyncClient  # noqa: E402
 from app.ports.data_platform import (  # noqa: E402
     MetadataUnavailableError,
     NoEntitledAssetsError,
+    NoMetricMatchError,
 )
 from app.query_capability import issue_query_capability  # noqa: E402
 
@@ -831,6 +832,30 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(["orbit.lake.helium_fact"], [item["fqn"] for item in assets])
 
+    async def test_lexical_no_match_is_distinct_from_entitlement_denial(self) -> None:
+        catalog = DataHubCatalogClient(
+            "http://datahub.test",
+            client=self.datahub_http,
+            page_size=1,
+            max_entities=20,
+        )
+        trino = TrinoAsyncClient(
+            "https://trino.test", "runtime", "test-password", client=self.trino_http
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=catalog,
+            trino_client=trino,
+            search_mode="lexical",
+        )
+
+        with self.assertRaises(NoMetricMatchError):
+            await adapter.search_assets(
+                "2042-06",
+                {"role": "analyst", "parameters": {}},
+            )
+
     async def test_entitlement_is_only_the_published_role_domain_policy(self) -> None:
         with self.assertRaises(NoEntitledAssetsError):
             await self.adapter.search_assets(
@@ -1062,18 +1087,15 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(
     os.getenv("TEST_REAL_DATA_PLATFORM") == "1",
-    "opt-in live DataHub/Trino fail-closed smoke",
+    "opt-in live canonical DataHub/Trino smoke",
 )
 class LiveGovernanceSmokeTest(unittest.IsolatedAsyncioTestCase):
     def _adapter(self, *, search_mode: str = "lexical") -> GovernedDataPlatformAdapter:
         return GovernedDataPlatformAdapter(
             os.getenv("TRINO_URL", "https://127.0.0.1:18443"),
             os.getenv("TRINO_RUNTIME_USER", ""),
-            os.getenv("DATAHUB_GMS_URL", "https://127.0.0.1:18081"),
-            os.getenv("DATAHUB_API_TOKEN"),
             trino_password=os.getenv("TRINO_RUNTIME_PASSWORD", ""),
             trino_ca_file=os.getenv("TRINO_TLS_CA_FILE", ""),
-            datahub_ca_file=os.getenv("DATAHUB_TLS_CA_FILE", ""),
             expected_context_release=os.getenv("ANALYTICS_CONTEXT_RELEASE") or None,
             search_mode=search_mode,
         )
@@ -1089,10 +1111,19 @@ class LiveGovernanceSmokeTest(unittest.IsolatedAsyncioTestCase):
         finally:
             await adapter.aclose()
 
-    async def test_current_incomplete_catalog_is_not_accepted(self) -> None:
+    async def test_active_catalog_release_is_ready(self) -> None:
         adapter = self._adapter()
         try:
-            with self.assertRaises(MetadataUnavailableError):
-                await adapter.get_active_context_release()
+            stages, receipt = await adapter.get_catalog_readiness()
+            self.assertEqual(
+                stages,
+                {
+                    "semantic_release": "ready",
+                    "catalog_manifest": "ready",
+                    "trino_schema": "ready",
+                },
+            )
+            self.assertTrue(receipt)
+            self.assertTrue(await adapter.get_active_context_release())
         finally:
             await adapter.aclose()

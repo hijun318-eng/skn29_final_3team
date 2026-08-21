@@ -1,35 +1,35 @@
 {
-  "manifest_version": "MODEL-RELEASE-v1.14.0",
+  "manifest_version": "MODEL-RELEASE-v1.22.0",
   "state": "ACTIVE",
   "schema_contract": "v1",
-  "schema_version": "MODEL-v1.12.0",
-  "schema_sha256": "3d08f16e901823042bbce9363ab563c46d660298327e4163db7cafa71d4a10ab",
+  "schema_version": "MODEL-v1.17.0",
+  "schema_sha256": "a805755cd95355f50c028122e7d080ecaf2b23cd05630764f48183ec67dc3150",
   "nodes": {
     "node1": {
       "prompt_id": "node1.normalize",
-      "prompt_version": "PROMPT-v1.10.0",
-      "prompt_sha256": "f3dac8338a0305fdb469fcac3e8e7de8e63627409fa83b292c98c92111db9920",
+      "prompt_version": "PROMPT-v1.17.0",
+      "prompt_sha256": "40802f2831862d5ad41814979f3b21c2a917b456de1610114c18bbbbe6ba683d",
       "request_definition": "node1_request",
       "response_definition": "node1_response"
     },
     "node2": {
       "prompt_id": "node2.sql",
-      "prompt_version": "PROMPT-v1.6.0",
-      "prompt_sha256": "d4c497e697d9cfdac59d5521c7d380b64a09fc7c33fbf09a4310673ad92041d1",
+      "prompt_version": "PROMPT-v1.8.0",
+      "prompt_sha256": "d6f8711b53d8f66acb05463d5daa47ad8b4aa561be9049bdf010c2df607664f4",
       "request_definition": "node2_request",
       "response_definition": "node2_response"
     },
     "node2_repair": {
       "prompt_id": "node2.repair",
-      "prompt_version": "PROMPT-v1.3.0",
-      "prompt_sha256": "082850c51bdad1f291517e9ea970953163bb0f878511fa308b88af327ffea17f",
+      "prompt_version": "PROMPT-v1.4.0",
+      "prompt_sha256": "fd6c04a991c1809d37f512dc8893c5941a46f34c9082d0c327a2c6741fbf102e",
       "request_definition": "node2_repair_request",
       "response_definition": "node2_repair_response"
     },
     "node3": {
       "prompt_id": "node3.explain",
-      "prompt_version": "PROMPT-v1.2.3",
-      "prompt_sha256": "3189269cc26e186695a1342412daf05f238e381271a0ed2e6187915b8143277d",
+      "prompt_version": "PROMPT-v1.2.4",
+      "prompt_sha256": "bbf2d33eab8de98f1f3fc1f7ec5bd4108eaf4d59d349acaba655cd1b64f56ef8",
       "request_definition": "node3_request",
       "response_definition": "node3_response"
     },

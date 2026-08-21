@@ -32,6 +32,7 @@
   | "SOURCE_NOT_READY"
   | "GRAIN_VIOLATION"
   | "FILTER_VALUE_NOT_FOUND"
+  | "METRIC_NOT_AVAILABLE"
   | "AUTHENTICATION_REQUIRED"
   | "ACCESS_DENIED"
   | "MODEL_CONTRACT_INVALID"
@@ -365,6 +366,85 @@ const BACKEND_STATUS_MAP: Record<BackendAnalysisStatus, AnalysisRunStatus> = {
   CLARIFICATION_REQUIRED: "blocked",
 };
 
+type WireAnalysisResult = NonNullable<AnalysisApiResponse["data"]["result"]>;
+type WireAnalysisMetric = NonNullable<WireAnalysisResult["metrics"]>[number];
+type WireAnalysisChart = WireAnalysisResult["chart"];
+type WireAnalysisEvidence = WireAnalysisResult["evidence"];
+
+/** Backend snake_case 지표 값을 화면의 단일 camelCase 계약으로 변환한다. */
+export function normalizeAnalysisMetrics(
+  metrics: WireAnalysisMetric[] | undefined,
+): AnalysisMetric[] {
+  return (metrics ?? []).map((metric) => ({
+    metricId: metric.metric_id,
+    resultField: metric.result_field,
+    label: metric.label,
+    definition: metric.definition,
+    value: metric.value,
+    unit: metric.unit ?? null,
+  }));
+}
+
+/** Backend 차트 field 이름을 화면 차트 계약으로 변환한다. */
+export function normalizeAnalysisChart(
+  chart: WireAnalysisChart,
+): AnalysisChart | undefined {
+  return chart ? {
+    chartType: chart.chart_type,
+    xField: chart.x_field,
+    yFields: chart.y_fields,
+  } : undefined;
+}
+
+/** 즉시 응답과 저장 턴 복원이 동일하게 소비할 분석 근거 계약을 만든다. */
+export function normalizeAnalysisEvidence(
+  evidence: WireAnalysisEvidence | undefined,
+): AnalysisEvidence | undefined {
+  if (!evidence) return undefined;
+  const sampling = evidence.sampling;
+  return {
+    artifactId: evidence.artifact_id,
+    queryId: evidence.query_id,
+    asOf: evidence.as_of,
+    timezone: evidence.timezone,
+    period: evidence.period ? {
+      start: evidence.period.start,
+      endExclusive: evidence.period.end_exclusive,
+    } : undefined,
+    filters: evidence.filters ?? {},
+    contextRelease: evidence.context_release,
+    productReleaseId: evidence.product_release_id,
+    evidenceCutoff: evidence.evidence_cutoff,
+    policyVersion: evidence.policy_version,
+    modelVersion: evidence.model_version,
+    metrics: (evidence.metrics ?? []).map((metric) => ({
+      metricId: metric.metric_id,
+      resultField: metric.result_field,
+      label: metric.label,
+      definition: metric.definition,
+      unit: metric.unit ?? null,
+    })),
+    models: (evidence.models ?? []).map((model) => ({
+      node: model.node,
+      modelVersion: model.model_version,
+      promptId: model.prompt_id,
+      promptVersion: model.prompt_version,
+    })),
+    gates: evidence.gates,
+    gateHistory: evidence.gate_history,
+    cached: evidence.cached ?? false,
+    sampling: {
+      applied: sampling?.applied ?? false,
+      returnedRows: sampling?.returned_rows ?? 0,
+      totalRows: sampling?.total_rows ?? null,
+    },
+    masking: {
+      applied: evidence.masking?.applied ?? false,
+      fields: evidence.masking?.fields ?? [],
+    },
+  };
+}
+
 /** wire 응답을 검증·정규화하며 계약 불일치나 근거 누락 시 성공 화면을 만들지 않는다. */
 export function normalizeApiResponse(
   response: AnalysisApiResponse,
@@ -423,61 +503,10 @@ export function normalizeApiResponse(
       contextHash: response.data.artifact.context_hash,
     } : undefined,
     disambiguationOptions: disambiguationOptions.length > 0 ? disambiguationOptions : undefined,
-    metrics: (exposeResult ? result?.metrics ?? [] : []).map((metric) => ({
-      metricId: metric.metric_id,
-      resultField: metric.result_field,
-      label: metric.label,
-      definition: metric.definition,
-      value: metric.value,
-      unit: metric.unit ?? null,
-    })),
+    metrics: normalizeAnalysisMetrics(exposeResult ? result?.metrics : undefined),
     table: exposeResult ? result?.table : undefined,
-    chart: exposeResult && result?.chart ? {
-      chartType: result.chart.chart_type,
-      xField: result.chart.x_field,
-      yFields: result.chart.y_fields,
-    } : undefined,
-    evidence: evidence ? {
-      artifactId: evidence.artifact_id,
-      queryId: evidence.query_id,
-      asOf: evidence.as_of,
-      timezone: evidence.timezone,
-      period: evidence.period ? {
-        start: evidence.period.start,
-        endExclusive: evidence.period.end_exclusive,
-      } : undefined,
-      filters: evidence.filters ?? {},
-      contextRelease: evidence.context_release,
-      productReleaseId: evidence.product_release_id,
-      evidenceCutoff: evidence.evidence_cutoff,
-      policyVersion: evidence.policy_version,
-      modelVersion: evidence.model_version,
-      metrics: (evidence.metrics ?? []).map((metric) => ({
-        metricId: metric.metric_id,
-        resultField: metric.result_field,
-        label: metric.label,
-        definition: metric.definition,
-        unit: metric.unit ?? null,
-      })),
-      models: (evidence.models ?? []).map((model) => ({
-        node: model.node,
-        modelVersion: model.model_version,
-        promptId: model.prompt_id,
-        promptVersion: model.prompt_version,
-      })),
-      gates: evidence.gates,
-      gateHistory: evidence.gate_history,
-      cached: evidence.cached ?? false,
-      sampling: {
-        applied: sampling?.applied ?? false,
-        returnedRows: sampling?.returned_rows ?? 0,
-        totalRows: sampling?.total_rows ?? null,
-      },
-      masking: {
-        applied: evidence.masking?.applied ?? false,
-        fields: evidence.masking?.fields ?? [],
-      },
-    } : undefined,
+    chart: exposeResult ? normalizeAnalysisChart(result?.chart) : undefined,
+    evidence: normalizeAnalysisEvidence(evidence),
     error,
     sources: sources.map((source) => ({
       name: source.name,

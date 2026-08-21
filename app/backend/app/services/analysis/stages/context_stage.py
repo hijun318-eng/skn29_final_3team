@@ -24,6 +24,7 @@ from app.ports.data_platform import (
     DataPlatformAdapter,
     MetadataUnavailableError,
     NoEntitledAssetsError,
+    NoMetricMatchError,
     UnsupportedSemanticError,
 )
 from app.ports.model import ModelAdapter
@@ -58,6 +59,33 @@ class AnalysisContextStage:
         context = state.context
         decision = state.decision
 
+        # ConversationSlotResolver가 기간 또는 지표만 확정한 typed 요청은 DataHub 검색
+        # 실패로 뭉개지 않는다. 어떤 값이 비었는지는 서버가 이미 알고 있으므로 model이나
+        # 자산 검색을 다시 호출하지 않고 정확한 clarification 원인으로 닫는다.
+        resolved = payload.resolved_slots
+        if resolved is not None and not resolved.resolved_metric_ids:
+            return self._responses.clarification_required(
+                context,
+                state.machine,
+                state.trace,
+                PipelineStage.CONTEXT,
+                "질문에 분석할 지표를 명확히 포함해 주세요.",
+                decision,
+                clarification_type=ClarificationType.METRIC,
+            )
+        if resolved is not None and not (
+            resolved.period_start and resolved.period_end_exclusive
+        ):
+            return self._responses.clarification_required(
+                context,
+                state.machine,
+                state.trace,
+                PipelineStage.CONTEXT,
+                "질문에 시작일·종료일 또는 하나의 상대 기간을 명확히 포함해 주세요.",
+                decision,
+                clarification_type=ClarificationType.PERIOD,
+            )
+
         # 1. 사용자 질문에 부합하는 승인된 DataHub 자산 검색
         try:
             try:
@@ -82,6 +110,16 @@ class AnalysisContextStage:
                     )
                 else:
                     raise
+        except NoMetricMatchError:
+            return self._responses.clarification_required(
+                context,
+                state.machine,
+                state.trace,
+                PipelineStage.CONTEXT,
+                "새 분석을 시작하려면 분석할 지표를 함께 입력해 주세요.",
+                decision,
+                clarification_type=ClarificationType.METRIC,
+            )
         except MetadataUnavailableError as error:
             logger.warning(
                 "runtime catalog lookup failed: type=%s detail=%s",
@@ -237,6 +275,18 @@ class AnalysisContextStage:
                     PipelineStage.CONTEXT,
                     AnalysisStatus.BLOCKED,
                     ErrorCode.FILTER_VALUE_NOT_FOUND,
+                    str(error),
+                    decision,
+                    detail=str(error),
+                )
+            if error.code is ContextBuildErrorCode.METRIC_NOT_AVAILABLE:
+                return self._responses.error(
+                    context,
+                    state.machine,
+                    state.trace,
+                    PipelineStage.CONTEXT,
+                    AnalysisStatus.BLOCKED,
+                    ErrorCode.METRIC_NOT_AVAILABLE,
                     str(error),
                     decision,
                     detail=str(error),

@@ -19,6 +19,23 @@ from src.data.metric_governance import (
 )
 
 
+SEMANTIC_RELEASE_KEYS = frozenset(
+    {
+        "catalog_version",
+        "policy_version",
+        "governance_entities",
+        "schema_context",
+        "metric_rules",
+        "metric_terms",
+        "dimensions",
+        "join_graph",
+        "time_rules",
+        "parameter_contract",
+        "query_policy",
+    }
+)
+
+
 RELEASE_MANIFEST_KEYS = frozenset(
     {
         "catalog_version",

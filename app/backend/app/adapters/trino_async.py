@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ssl
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -80,7 +81,7 @@ class TrinoAsyncClient:
             if not ca_path.is_absolute() or not resolved_ca_path.is_file():
                 raise ValueError("Trino CA file is unavailable")
             transport = httpx.AsyncClient(
-                verify=str(resolved_ca_path),
+                verify=ssl.create_default_context(cafile=str(resolved_ca_path)),
                 trust_env=False,
             )
         else:

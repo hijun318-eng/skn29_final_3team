@@ -10,7 +10,7 @@ import { TurnReportModal } from "../components/TurnReportModal";
 import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
-import { analysisError, clarifiedQuestion, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
+import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
 
 const RUN_HISTORY_PAGE_SIZE = 20;
 const MAX_QUESTION_LENGTH = 1000;
@@ -117,23 +117,25 @@ export function AgentPage({ onNavigate }) {
   }, [question]);
 
   const initConversation = async () => {
-    try {
-      const conv = await analysisClient.createConversation();
-      const nextId = conv.conversation_id;
-      setConversationId(nextId);
-      window.sessionStorage.setItem(CONVERSATION_KEY, nextId);
-      setTurns([]);
-      return nextId;
-    } catch {
-      return conversationId;
-    }
+    const conv = await analysisClient.createConversation();
+    const nextId = conv.conversation_id;
+    setConversationId(nextId);
+    window.sessionStorage.setItem(CONVERSATION_KEY, nextId);
+    return nextId;
   };
 
   const handleNewChat = () => {
     setQuestion("");
     setInputError("");
+    setConversationId("");
+    window.sessionStorage.removeItem(CONVERSATION_KEY);
     setTurns([]);
-    void initConversation();
+    setEvidenceOpen(false);
+    setSelectedEvidenceRun(null);
+    setReportModal("");
+    setReportModalRun(null);
+    setReportTitle("");
+    setMessage("");
   };
 
   // action은 UI가 이미 아는 동작을 자연어로 바꾸지 않고 전달하는 typed 신호다(서버가 재검증).
@@ -145,11 +147,12 @@ export function AgentPage({ onNavigate }) {
     setInputError("");
     setQuestion("");
     setSubmitting(true);
+    setEvidenceOpen(false);
+    setSelectedEvidenceRun(null);
     setMessage("");
     const traceId = createUuid();
     activeTraceId.current = traceId;
 
-    let activeConvId = conversationId || await initConversation();
     const optimisticTurn = {
       turnId: `temp-${Date.now()}`,
       question: normalized,
@@ -161,6 +164,8 @@ export function AgentPage({ onNavigate }) {
     window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
 
     try {
+      let activeConvId = conversationId;
+      if (!activeConvId) activeConvId = await initConversation();
       const headTurnId = turns.length > 0 ? turns.at(-1)?.turnId : undefined;
       let cmdResponse;
       try {
@@ -208,13 +213,13 @@ export function AgentPage({ onNavigate }) {
         finalRun = commandErrorRun(normalized, data);
       } else if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
         const options = data?.disambiguation_options || serverTurn?.resolved_slots?.disambiguation_options || [];
-        const clarType = serverTurn?.resolved_slots?.clarification_type || "metric";
+        const clarType = commandClarificationType(data, serverTurn);
         finalRun = {
           ...transientRun(normalized, "blocked"),
           disambiguationOptions: options,
           error: {
             code: "CONTEXT_INCOMPLETE",
-            message: "질문이 여러 지표 또는 기간으로 해석될 수 있습니다. 분석할 기준을 선택해 주세요.",
+            message: commandClarificationMessage(data, clarType),
             clarification_type: clarType,
             disambiguation_options: options,
             suggestions: options.map((o) => o.label || o.value || o.metric_id),
@@ -478,7 +483,10 @@ export function AgentPage({ onNavigate }) {
       <TurnEvidenceDrawer
         open={evidenceOpen}
         run={activeEvidenceRun}
-        onClose={() => setEvidenceOpen(false)}
+        onClose={() => {
+          setEvidenceOpen(false);
+          setSelectedEvidenceRun(null);
+        }}
         onCopy={copyEvidence}
       />
 

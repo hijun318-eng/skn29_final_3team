@@ -17,10 +17,12 @@ from app.contracts import (
     ErrorCode,
     PipelineStage,
     RequestContext,
+    ResolvedSlots,
     Role,
 )
-from app.ports.data_platform import NoEntitledAssetsError
+from app.ports.data_platform import NoEntitledAssetsError, NoMetricMatchError
 from app.services.analysis import AnalysisService
+from app.services.analysis.result_validator import PipelineResultValidator
 from app.services.routing_service import RoutingService
 from src.ai.schema import validate_payload
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
@@ -121,8 +123,14 @@ METRIC_TERM = {
 NODE1_RESPONSE = {
     "normalized_question": "aggregate the resolved observation measure",
     "intent_candidates": ["aggregate"],
+    "measurement_source_text": "governed observation measure",
+    "measurement_source_texts": ["governed observation measure"],
     "metric_candidates": [METRIC_ID],
+    "metric_resolution": "selected",
     "selected_metric_id": METRIC_ID,
+    "selected_metric_ids": [METRIC_ID],
+    "analysis_operation": "aggregate",
+    "result_limit": None,
     "dimension_candidates": [],
     "filter_candidates": [],
     "period_candidates": [
@@ -190,6 +198,8 @@ COMPARISON_NODE1_RESPONSE["period_candidates"] = [
     },
 ]
 COMPARISON_NODE1_RESPONSE["period_relationship"] = "comparison"
+COMPARISON_NODE1_RESPONSE["intent_candidates"] = ["period_comparison"]
+COMPARISON_NODE1_RESPONSE["analysis_operation"] = "period_comparison"
 
 COMPARISON_SQL = (
     f"SELECT SUM(o.amount) FILTER (WHERE o.observed_on >= CAST(:window_start AS DATE) "
@@ -283,11 +293,24 @@ class AsyncProgrammableModel:
 
 
 class AsyncRuntimeDataPlatform:
-    def __init__(self, *, search_error=None, execute_error=None, result=None, asset=None):
+    def __init__(
+        self,
+        *,
+        search_error=None,
+        execute_error=None,
+        result=None,
+        asset=None,
+        schema=None,
+        metric_terms=None,
+    ):
         self.search_error = search_error
         self.execute_error = execute_error
         self.result = copy.deepcopy(result or QUERY_RESULT)
         self.asset = copy.deepcopy(asset or ASSET)
+        self.schema = copy.deepcopy(schema or SCHEMA)
+        self.metric_terms = copy.deepcopy(
+            metric_terms or {METRIC_ID: METRIC_TERM}
+        )
         self.search_count = 0
         self.execute_count = 0
         self.cancelled = []
@@ -302,10 +325,14 @@ class AsyncRuntimeDataPlatform:
     async def get_asset_schema(self, urn):
         if urn != ASSET_URN:
             raise ValueError("unknown runtime asset")
-        return copy.deepcopy(SCHEMA)
+        return copy.deepcopy(self.schema)
 
     async def get_metric_terms(self, metric_ids):
-        return {METRIC_ID: copy.deepcopy(METRIC_TERM)} if tuple(metric_ids) == (METRIC_ID,) else {}
+        return {
+            metric_id: copy.deepcopy(self.metric_terms[metric_id])
+            for metric_id in metric_ids
+            if metric_id in self.metric_terms
+        }
 
     async def execute_query(self, sql, parameters, gate_token):
         self.execute_count += 1
@@ -386,6 +413,176 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({"plan", "query", "package"}, set(execution))
         self.assertTrue(progress)
 
+    async def test_view_reuse_uses_typed_sql_without_calling_node2(self):
+        """승인 단일 Serving View는 Node 1 결과를 다시 추측하지 않고 AST로 실행한다."""
+
+        serving_fqn = "serving.semantic.observations"
+        asset = copy.deepcopy(ASSET)
+        asset["fqn"] = serving_fqn
+        asset["metrics"][0]["asset_fqn"] = serving_fqn
+        asset["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
+        asset["time_metadata"]["fields"][0]["field"]["asset_fqn"] = serving_fqn
+        asset["query_policy"]["allowed_catalogs"] = ["serving"]
+        adapter = AsyncRuntimeDataPlatform(asset=asset)
+        model = model_with()
+        execution = {}
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            model=model,
+            execution_sink=execution.update,
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(1, adapter.execute_count)
+        self.assertEqual(["node1", "node3"], [node for node, _ in model.calls])
+        self.assertEqual("typed_sql_compiler", execution["plan"]["plan_source"])
+        self.assertIn("SUM", execution["plan"]["sql"])
+        model_traces = [
+            step.detail
+            for step in response.data.trace
+            if step.stage is PipelineStage.MODEL
+        ]
+        self.assertTrue(
+            any("node=typed_sql_compiler" in detail for detail in model_traces)
+        )
+
+    async def test_multi_metric_request_reaches_result_without_single_metric_collapse(self):
+        count_metric_id = "observation_count"
+        count_field = "observation_count"
+        asset = copy.deepcopy(ASSET)
+        count_metric = copy.deepcopy(asset["metrics"][0])
+        count_metric.update(
+            {
+                "id": count_metric_id,
+                "aggregation": "count",
+                "result_field": count_field,
+                "unit": "events",
+                "reduction": "sum",
+            }
+        )
+        asset["metrics"].append(count_metric)
+        asset["query_policy"]["allowed_functions"].append("COUNT")
+        count_term = {
+            **METRIC_TERM,
+            "id": count_metric_id,
+            "urn": f"urn:li:glossaryTerm:{count_metric_id}",
+            "label": "Observation count",
+            "aliases": ["Observation count"],
+            "definition": "Count of governed observations.",
+            "unit": "events",
+            "checksum": "count-term-checksum",
+        }
+        rows = [{RESULT_FIELD: 17, count_field: 3}]
+        result = {
+            **QUERY_RESULT,
+            "rows": rows,
+            "result_metadata": PipelineResultValidator.result_metadata(
+                rows,
+                (RESULT_FIELD, count_field),
+            ),
+            "sampling": {"applied": False, "returned_rows": 1, "total_rows": 1},
+        }
+        node1 = {
+            **NODE1_RESPONSE,
+            "normalized_question": "aggregate both governed observation measures",
+            "measurement_source_text": None,
+            "measurement_source_texts": [
+                "governed observation measure",
+                "observation count",
+            ],
+            "metric_candidates": [METRIC_ID, count_metric_id],
+            "selected_metric_id": None,
+            "selected_metric_ids": [METRIC_ID, count_metric_id],
+        }
+        plan = {
+            **VALID_PLAN,
+            "sql": (
+                f"SELECT SUM(o.amount) AS {RESULT_FIELD}, "
+                f"COUNT(o.amount) AS {count_field} FROM {ASSET_FQN} AS o "
+                "WHERE o.observed_on >= CAST(:window_start AS DATE) "
+                "AND o.observed_on < CAST(:window_end AS DATE) "
+                "AND o.state_code = :state_filter LIMIT 100"
+            ),
+            "declared_metrics": [METRIC_ID, count_metric_id],
+        }
+        adapter = AsyncRuntimeDataPlatform(
+            asset=asset,
+            result=result,
+            metric_terms={METRIC_ID: METRIC_TERM, count_metric_id: count_term},
+        )
+        original_payload = self.payload
+        self.payload = AnalysisRequest(
+            question="summarize the governed observation measure and observation count"
+        )
+        try:
+            response, _adapter, model, _service = await self.run_pipeline(
+                adapter=adapter,
+                model=model_with(node1=node1, node2=plan),
+            )
+        finally:
+            self.payload = original_payload
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(
+            {METRIC_ID, count_metric_id},
+            {metric.metric_id for metric in response.data.result.metrics},
+        )
+        self.assertIn("17", response.data.result.summary)
+        self.assertIn("3", response.data.result.summary)
+        self.assertEqual(
+            "GROUNDED-MULTI-NARRATIVE-v1.0.0",
+            response.data.result.evidence.model_version,
+        )
+        self.assertEqual(["node1", "node2"], [node for node, _ in model.calls])
+
+    async def test_ungrounded_node3_numbers_are_replaced_with_evidence_summary(self):
+        response, adapter, model, _service = await self.run_pipeline(
+            model=model_with(
+                node3={
+                    "summary": "The governed total is 999,999.",
+                    "model_version": "programmable-v1",
+                }
+            )
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertNotIn("999,999", response.data.result.summary)
+        self.assertIn("17", response.data.result.summary)
+        self.assertEqual(
+            "GROUNDED-NARRATIVE-v1.0.0",
+            response.data.result.evidence.model_version,
+        )
+        self.assertEqual(1, adapter.execute_count)
+        self.assertEqual(["node1", "node2", "node3"], [node for node, _ in model.calls])
+
+    async def test_grounded_node3_numbers_are_preserved(self):
+        summary = "The governed total is 17 for the requested period."
+        response, _adapter, _model, _service = await self.run_pipeline(
+            model=model_with(
+                node3={"summary": summary, "model_version": "programmable-v1"}
+            )
+        )
+
+        self.assertEqual(summary, response.data.result.summary)
+        self.assertEqual(
+            "programmable-v1",
+            response.data.result.evidence.model_version,
+        )
+
+    async def test_node3_contract_failure_uses_grounded_result_instead_of_hiding_query(self):
+        response, adapter, _model, _service = await self.run_pipeline(
+            model=model_with(node3=ValueError("invalid node3 contract"))
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertIn("17", response.data.result.summary)
+        self.assertEqual(
+            "GROUNDED-NARRATIVE-v1.0.0",
+            response.data.result.evidence.model_version,
+        )
+        self.assertEqual(1, adapter.execute_count)
+
     async def test_one_g2_repair_uses_only_the_programmed_repair_response(self):
         model = model_with(node2=MISSING_FILTER_PLAN, repair=VALID_PLAN)
 
@@ -450,6 +647,67 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([], model.calls)
         self.assertEqual(0, adapter.execute_count)
 
+    async def test_new_analysis_without_metric_requests_metric_context(self):
+        adapter = AsyncRuntimeDataPlatform(
+            search_error=NoMetricMatchError("no governed metric matches the request")
+        )
+
+        response, adapter, model, _service = await self.run_pipeline(adapter=adapter)
+
+        self.assertEqual(AnalysisStatus.CLARIFICATION_REQUIRED, response.data.status)
+        self.assertEqual(ErrorCode.CONTEXT_INCOMPLETE, response.error.code)
+        self.assertEqual(ClarificationType.METRIC, response.error.clarification_type)
+        self.assertIn("분석할 지표", response.error.message)
+        self.assertEqual(1, adapter.search_count)
+        self.assertEqual([], model.calls)
+        self.assertEqual(0, adapter.execute_count)
+
+    async def test_partial_conversation_slots_return_exact_clarification_cause(self):
+        """서버가 아는 지표·기간 누락은 자산 없음으로 뭉개지 않고 typed 원인을 돌려준다."""
+
+        adapter = AsyncRuntimeDataPlatform(
+            search_error=NoEntitledAssetsError("must not search partial slots")
+        )
+        self.payload = AnalysisRequest(
+            question="arbitrary period without a metric",
+            resolved_slots=ResolvedSlots(
+                period_start="2042-06-01",
+                period_end_exclusive="2042-07-01",
+            ),
+        )
+        metric_response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter
+        )
+
+        self.assertEqual(
+            AnalysisStatus.CLARIFICATION_REQUIRED,
+            metric_response.data.status,
+        )
+        self.assertEqual(ErrorCode.CONTEXT_INCOMPLETE, metric_response.error.code)
+        self.assertEqual(
+            ClarificationType.METRIC,
+            metric_response.error.clarification_type,
+        )
+        self.assertEqual(0, adapter.search_count)
+        self.assertEqual([], model.calls)
+
+        self.payload = AnalysisRequest(
+            question="arbitrary metric without a period",
+            resolved_slots=ResolvedSlots(metric_id=METRIC_ID),
+        )
+        period_response, adapter, model, _service = await self.run_pipeline()
+
+        self.assertEqual(
+            AnalysisStatus.CLARIFICATION_REQUIRED,
+            period_response.data.status,
+        )
+        self.assertEqual(
+            ClarificationType.PERIOD,
+            period_response.error.clarification_type,
+        )
+        self.assertEqual(0, adapter.search_count)
+        self.assertEqual([], model.calls)
+
     async def test_unapproved_query_strategy_is_semantic_not_model_failure(self):
         incompatible = copy.deepcopy(ASSET)
         incompatible["metrics"][0]["query_strategies"] = ["VIEW_REUSE"]
@@ -500,6 +758,35 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
         self.assertEqual(1, adapter.execute_count)
+
+    async def test_pre_resolved_comparison_keeps_both_windows_and_skips_node1(self):
+        original_payload = self.payload
+        self.payload = AnalysisRequest(
+            question="compare the two governed periods",
+            resolved_slots=ResolvedSlots(
+                metric_id=METRIC_ID,
+                metric_ids=(METRIC_ID,),
+                period_start="2042-06-01",
+                period_end_exclusive="2042-07-01",
+                comparison_period_start="2042-05-01",
+                comparison_period_end_exclusive="2042-06-01",
+                analysis_operation="period_comparison",
+            ),
+        )
+        try:
+            response, adapter, model, _service = await self.run_pipeline(
+                adapter=AsyncRuntimeDataPlatform(
+                    asset=COMPARISON_ASSET,
+                    result=COMPARISON_RESULT,
+                ),
+                model=model_with(node2=COMPARISON_PLAN),
+            )
+        finally:
+            self.payload = original_payload
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertEqual(1, adapter.execute_count)
+        self.assertEqual(["node2", "node3"], [node for node, _ in model.calls])
 
     async def test_comparison_relationship_without_a_governed_comparison_window_is_rejected(self):
         response, adapter, model, _service = await self.run_pipeline(

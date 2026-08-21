@@ -10,10 +10,10 @@ import { formatCompactNumber, formatMetricValue, isNumericValue, metricUnitLabel
  * KPI 카드의 숫자 표기를 결정한다. 1억 이상은 단위 문자열과 무관하게 축약해 카드 안에서 한 줄로 읽히게 하며,
  * 손실 없는 원값은 호출부가 `title` 속성으로 함께 노출한다.
  */
-function formatKpiValue(value: unknown) {
+function formatKpiValue(value: unknown, unit?: string | null) {
   const numeric = Number(value);
   if (isNumericValue(value) && Math.abs(numeric) >= 100_000_000) return formatCompactNumber(numeric);
-  return formatMetricValue(value, { includeUnit: false });
+  return formatMetricValue(value, { includeUnit: false, unit });
 }
 
 /** 대화형 AI 내러티브 요약을 렌더링한다. 데이터 출처 고지는 보고서 artifact 화면이 담당한다. */
@@ -44,18 +44,18 @@ export function AnalysisKpiSection({ run, valueScale }: { run: AnalysisRun; valu
       {/* 차트·표 섹션과 같은 (eyebrow + 제목 + 우측 메타) 헤더 구조를 공유해 시선 이동을 단순화한다. */}
       <header>
         <div><small>핵심 지표</small><h3 id="analysis-kpi-title">주요 KPI</h3></div>
-        <span>{hasBreakdown ? `전체 합계 · ${rows.length}개 항목별 상세` : `${run.metrics?.length ?? 0}개 지표`}</span>
+        <span>{hasBreakdown ? `전체 · ${rows.length}개 항목별 상세` : `${run.metrics?.length ?? 0}개 지표`}</span>
       </header>
       <div className="analysis-metrics">
         {run.metrics.map((metric) => (
           <article key={`total-${metric.metricId}`} className="analysis-metric-card--total">
             {/* 배지와 지표명을 세로로 쌓아, 지표명이 길어도 배지 위로 겹치지 않게 한다. */}
             <div className="metric-header-strip">
-              {hasBreakdown && <span className="metric-badge-total">전체 합계</span>}
+              {hasBreakdown && <span className="metric-badge-total">전체</span>}
               <small>{metric.label}</small>
             </div>
             <strong title={valueScale.exact(metric.value, metric.unit)}>
-              {valueScale.isCurrency(metric.unit) ? valueScale.format(metric.value, metric.unit, metric.resultField) : formatKpiValue(metric.value)}
+              {valueScale.isCurrency(metric.unit) ? valueScale.format(metric.value, metric.unit, metric.resultField) : formatKpiValue(metric.value, metric.unit)}
               {metric.unit && metric.value !== null && metric.value !== undefined && metric.value !== "" && <em>{valueScale.unitLabel(metric.unit, metric.resultField)}</em>}
             </strong>
             {metric.definition && <p>{metric.definition}</p>}
@@ -68,7 +68,7 @@ export function AnalysisKpiSection({ run, valueScale }: { run: AnalysisRun; valu
             if (rowVal === undefined || rowVal === null) return null;
             const numericTotal = Number(metric.value);
             const numericRow = Number(rowVal);
-            const sharePercent = !Number.isNaN(numericTotal) && !Number.isNaN(numericRow) && numericTotal > 0
+            const sharePercent = metric.unit?.trim().toLowerCase() !== "ratio" && !Number.isNaN(numericTotal) && !Number.isNaN(numericRow) && numericTotal > 0
               ? ((numericRow / numericTotal) * 100).toFixed(1)
               : null;
             return (
@@ -78,7 +78,7 @@ export function AnalysisKpiSection({ run, valueScale }: { run: AnalysisRun; valu
                   <small>{metric.label}</small>
                 </div>
                 <strong title={valueScale.exact(rowVal, metric.unit)}>
-                  {valueScale.isCurrency(metric.unit) ? valueScale.format(rowVal, metric.unit, metric.resultField) : formatKpiValue(rowVal)}
+                  {valueScale.isCurrency(metric.unit) ? valueScale.format(rowVal, metric.unit, metric.resultField) : formatKpiValue(rowVal, metric.unit)}
                   {metric.unit && rowVal !== "" && <em>{valueScale.unitLabel(metric.unit, metric.resultField)}</em>}
                 </strong>
                 {sharePercent && <p className="metric-share-text">전체의 <b>{sharePercent}%</b> 비중</p>}

@@ -85,6 +85,12 @@ def _inject_turn_filters(
                     new_metrics.append(metric)
                     continue
                 metric_copy = dict(metric)
+                # ratio는 물리 필드가 없는 계산 계약이며 required_filters가 항상 비어 있어야
+                # 한다. 같은 asset의 분자·분모 column metric에 적용된 WHERE 조건이 두
+                # operand의 범위를 함께 제한하므로 ratio 자체에 필터를 복제하지 않는다.
+                if str(metric_copy.get("aggregation") or "").casefold() == "ratio":
+                    new_metrics.append(metric_copy)
+                    continue
                 required = list(metric_copy.get("required_filters") or ())
                 for index, turn_filter in enumerate(turn_filters):
                     if turn_filter.asset_fqn != str(asset_copy.get("fqn", "")):
@@ -295,7 +301,19 @@ class PipelineContextService:
         if is_comparison_request:
             window_pairs.append((comparison_start, comparison_end))
         for window_start, window_end in window_pairs:
-            if period_values and period_values[window_start] >= period_values[window_end]:
+            if not period_values:
+                continue
+            start_date = date.fromisoformat(period_values[window_start])
+            end_date = date.fromisoformat(period_values[window_end])
+            if start_date >= context.as_of:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.OUT_OF_DATA_RANGE,
+                    "요청 기간은 오늘 이전의 완료된 영업일을 포함해야 합니다.",
+                )
+            if end_date > context.as_of:
+                period_values[window_end] = context.as_of.isoformat()
+                end_date = context.as_of
+            if start_date >= end_date:
                 raise ContextBuildError(
                     ContextBuildErrorCode.INVALID_METADATA,
                     "분석 기간은 비어있지 않은 반개구간 [start, end) 이어야 합니다.",

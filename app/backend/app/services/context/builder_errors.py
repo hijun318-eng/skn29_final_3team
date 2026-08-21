@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from app.contract_core import DisambiguationOption
 
@@ -25,6 +26,7 @@ class ContextBuildErrorCode(str, Enum):
     PERIOD_REQUIRED = "PERIOD_REQUIRED"  # 필수 기간 조건 누락
     OUT_OF_DATA_RANGE = "OUT_OF_DATA_RANGE"  # 허용 데이터 범위 벗어남
     FILTER_VALUE_NOT_FOUND = "FILTER_VALUE_NOT_FOUND"  # 필터 값 조회 실패
+    METRIC_NOT_AVAILABLE = "METRIC_NOT_AVAILABLE"  # 내부 계산용 또는 비공개 지표 직접 요청
     GOVERNANCE_VERSION_UNSUPPORTED = "GOVERNANCE_VERSION_UNSUPPORTED"
     QUERY_STRATEGY_NOT_APPROVED = "QUERY_STRATEGY_NOT_APPROVED"
 
@@ -38,8 +40,13 @@ class ContextBuildError(ValueError):
         message: str,
         suggestions: tuple[str, ...] = (),
         disambiguation_options: tuple[DisambiguationOption, ...] = (),
+        partial_context: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.suggestions = suggestions
         self.disambiguation_options = disambiguation_options
+        # User-correctable ambiguity may still contain trusted period/dimension
+        # signals.  The conversation state machine persists these so the next
+        # selection completes the same request instead of starting over.
+        self.partial_context = dict(partial_context) if partial_context is not None else None

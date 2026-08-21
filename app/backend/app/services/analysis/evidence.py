@@ -19,7 +19,7 @@ from app.contracts import (
     PipelineStage,
     TraceStep,
 )
-from app.services.context.builder import ContextMetricTerm, ContextPackage
+from app.services.context.builder import ContextMetric, ContextMetricTerm, ContextPackage
 
 
 def _evidence_filters(
@@ -148,3 +148,34 @@ def _reduce_metric_values(reduction: str, values: list[object]) -> Decimal | Non
     if reduction == "scalar":
         return numbers[0] if len(numbers) == 1 else None
     return numbers[0] if len(numbers) == 1 else None
+
+
+def _reduce_context_metric(
+    metric: ContextMetric,
+    package: ContextPackage,
+    rows: tuple[dict[str, object], ...] | list[dict[str, object]],
+) -> Decimal | None:
+    """Reduce one metric, deriving ratios from their governed SUPPORT operands.
+
+    A ratio across dimension rows is a ratio of operand totals, never an average
+    or sum of row ratios. This also keeps the user-facing KPI independent of
+    floating-point display artifacts in the projected ratio column.
+    """
+
+    if metric.reduction != "ratio":
+        return _reduce_metric_values(
+            metric.reduction,
+            [row.get(metric.result_field) for row in rows],
+        )
+    by_id = {item.id: item for item in package.metrics}
+    numerator = by_id.get(metric.numerator_metric_id)
+    denominator = by_id.get(metric.denominator_metric_id)
+    if numerator is None or denominator is None or not rows:
+        return None
+    numerator_values = [row.get(numerator.result_field) for row in rows]
+    denominator_values = [row.get(denominator.result_field) for row in rows]
+    if any(value is None for value in (*numerator_values, *denominator_values)):
+        return None
+    numerator_total = sum(Decimal(str(value)) for value in numerator_values)
+    denominator_total = sum(Decimal(str(value)) for value in denominator_values)
+    return numerator_total / denominator_total if denominator_total else None

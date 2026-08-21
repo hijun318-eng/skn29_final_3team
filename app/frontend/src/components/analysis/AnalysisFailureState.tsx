@@ -164,6 +164,16 @@ export function analysisFailurePresentation(
     };
   }
 
+  if (code === "METRIC_NOT_AVAILABLE") {
+    return {
+      tone: "empty",
+      category: "지표 지원 범위",
+      title: "이 지표는 아직 직접 분석할 수 없습니다",
+      reason: messageOr("요청한 값은 다른 지표 계산에만 사용하는 내부 지표입니다.", error?.message),
+      nextStep: "같은 업무 목적을 나타내는 공개 지표를 선택하거나, 필요한 지표의 공개 승인을 요청해 주세요.",
+    };
+  }
+
   if (code === "GRAIN_VIOLATION") {
     return {
       tone: "clarification",
@@ -199,8 +209,8 @@ export function analysisFailurePresentation(
       tone: "restricted",
       category: "안전 정책",
       title: "안전한 분석 범위를 벗어난 요청입니다",
-      reason: "요청한 방식은 승인된 읽기 전용 분석 정책에 맞지 않습니다.",
-      nextStep: "데이터 변경 지시를 제외하고 조회할 지표와 기간만 입력해 주세요.",
+      reason: messageOr("요청한 방식은 승인된 읽기 전용 분석 정책에 맞지 않습니다.", error?.message),
+      nextStep: defaultNextStep(run) || "질문의 지표·기간·분류 조건을 조정해 다시 분석해 주세요.",
     };
   }
 

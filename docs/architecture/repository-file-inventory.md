@@ -7,13 +7,13 @@
 
 | 분류 | 파일 수 |
 |---|---:|
-| archive | 127 |
-| documentation | 140 |
-| production | 294 |
-| project-config | 36 |
-| runtime-config | 64 |
+| archive | 130 |
+| documentation | 145 |
+| production | 304 |
+| project-config | 38 |
+| runtime-config | 65 |
 | runtime-contract | 10 |
-| test | 134 |
+| test | 139 |
 
 운영 무결성 위반: **0건**
 
@@ -60,6 +60,7 @@
 | `app/backend/app/adapters/datahub_metadata_values.py` | production | REVIEWED |
 | `app/backend/app/adapters/datahub_metric_governance.py` | production | REVIEWED |
 | `app/backend/app/adapters/governed_data_platform.py` | production | REVIEWED |
+| `app/backend/app/adapters/legacy_semantic_release.py` | production | REVIEWED |
 | `app/backend/app/adapters/model_adapter.py` | production | REVIEWED |
 | `app/backend/app/adapters/model_context.py` | production | REVIEWED |
 | `app/backend/app/adapters/model_schemas.py` | production | REVIEWED |
@@ -106,12 +107,14 @@
 | `app/backend/app/services/__init__.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/__init__.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/evidence.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/logical_plan.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/model_support.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/pipeline.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/pipeline_state.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/pipeline_support.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/progress.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/responses.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/result_narrative.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/result_validator.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/service.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/stages/__init__.py` | production | REVIEWED |
@@ -119,10 +122,12 @@
 | `app/backend/app/services/analysis/stages/plan_stage.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/stages/query_stage.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/stages/result_stage.py` | production | REVIEWED |
+| `app/backend/app/services/analysis/typed_sql_compiler.py` | production | REVIEWED |
 | `app/backend/app/services/context/__init__.py` | production | REVIEWED |
 | `app/backend/app/services/context/builder.py` | production | REVIEWED |
 | `app/backend/app/services/context/builder_errors.py` | production | REVIEWED |
 | `app/backend/app/services/context/contract.py` | production | REVIEWED |
+| `app/backend/app/services/context/fanout_policy.py` | production | REVIEWED |
 | `app/backend/app/services/context/filter_candidate_resolver.py` | production | REVIEWED |
 | `app/backend/app/services/context/filter_value_resolver.py` | production | REVIEWED |
 | `app/backend/app/services/context/metric_execution_scope.py` | production | REVIEWED |
@@ -134,6 +139,7 @@
 | `app/backend/app/services/context/query_planner.py` | production | REVIEWED |
 | `app/backend/app/services/context/registry_service.py` | production | REVIEWED |
 | `app/backend/app/services/context/runtime_contracts.py` | production | REVIEWED |
+| `app/backend/app/services/context/semantic_release.py` | production | REVIEWED |
 | `app/backend/app/services/context/service.py` | production | REVIEWED |
 | `app/backend/app/services/context/values.py` | production | REVIEWED |
 | `app/backend/app/services/conversation/__init__.py` | production | REVIEWED |
@@ -158,6 +164,7 @@
 | `app/backend/app/services/sql_guard/guard.py` | production | REVIEWED |
 | `app/backend/app/services/sql_guard/join_semantics.py` | production | REVIEWED |
 | `app/backend/app/services/sql_guard/metric_semantics.py` | production | REVIEWED |
+| `app/backend/app/services/sql_guard/operation_semantics.py` | production | REVIEWED |
 | `app/backend/app/services/sql_guard/schema.py` | production | REVIEWED |
 | `app/backend/app/services/sql_guard/scopes.py` | production | REVIEWED |
 | `app/backend/app/services/sql_guard/semantics.py` | production | REVIEWED |
@@ -196,6 +203,7 @@
 | `app/backend/migrations/versions/20260816_25_template_role_authorization.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260819_26_platform_admin_capability.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260820_27_canonical_analyst_role.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260820_28_analysis_transition_status_width.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -304,6 +312,7 @@
 | `docs/architecture/answervice_v3_4_data_release_workflow.json` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/answervice_v3_4_report_sequence.html` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/answervice_v3_4_report_sequence.json` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/architecture/canonical-semantic-release-migration.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/daesung/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -402,10 +411,14 @@
 | `docs/product/03_아키텍처.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/Antigravity_실제_분석_E2E_실행_인수인계.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/reference/BI_범용질문_시맨틱_확장설계.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/reference/Canonical_Semantic_Graph_기반_DataHub_점진_전환_통합_평가_2026-08-20.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/Codex_to_Antigravity_전체_인수인계.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/datahub_search_flow.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/DataHub_검색_구조_및_Answervice_적용.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/DataHub_검색_흐름_효율성_및_일반성_비교.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/reference/DataHub_네이티브_시맨틱_모델_중심_제안_객관적_평가_2026-08-20.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/reference/DataHub_사용_방식_객관적_재평가_및_실사용_사례_2026-08-20.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/m0_single_turn_live_receipt.json` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/P0_실행목표_프롬프트.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/Runtime_governance_V4.3_승인검토안.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -417,6 +430,8 @@
 | `evals/.gitkeep` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/__init__.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/base_comparison.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/catalog_regression.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/catalog_regression_runner.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.f3.failure.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.f3.jsonl` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.f4.failure.json` | archive | ARCHIVE_NON_RUNTIME |
@@ -431,6 +446,7 @@
 | `evals/p0_gold_runner.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/p0_gold_scoring.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/runner.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/semantic_review/answervice_bi_coverage.v1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/semantic_review/answervice_d2_metrics.v1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/split_manifest.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/validation_v2.manifest.json` | archive | ARCHIVE_NON_RUNTIME |
@@ -438,6 +454,7 @@
 | `infrastructure/database/.gitignore` | project-config | REVIEWED |
 | `infrastructure/database/clickhouse/config.d/timezone.xml` | project-config | REVIEWED |
 | `infrastructure/database/compose.yml` | runtime-config | REVIEWED |
+| `infrastructure/database/datahub/approve_metric_review.py` | production | REVIEWED |
 | `infrastructure/database/datahub/author_semantic_catalog.py` | production | REVIEWED |
 | `infrastructure/database/datahub/build_release_bundle.py` | production | REVIEWED |
 | `infrastructure/database/datahub/build_runtime_governance_draft.py` | production | REVIEWED |
@@ -465,6 +482,7 @@
 | `infrastructure/database/datahub/metric_governance_contract.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metric_retirement.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metric_review_contract.py` | production | REVIEWED |
+| `infrastructure/database/datahub/metric_review_decision.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metric_review_transition.py` | production | REVIEWED |
 | `infrastructure/database/datahub/migrate_semantic_policy.py` | production | REVIEWED |
 | `infrastructure/database/datahub/policy_compiler.py` | production | REVIEWED |
@@ -623,6 +641,8 @@
 | `infrastructure/database/security/provision-serving-catalog-secrets.ps1` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-source-postgres.sh` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-trino-password-database.ps1` | project-config | REVIEWED |
+| `infrastructure/database/serving_candidates/walkerhill_bi_v1/10_reusable_fact_views.sql` | project-config | REVIEWED |
+| `infrastructure/database/serving_candidates/walkerhill_bi_v1/20_reconciliation_validation.sql` | project-config | REVIEWED |
 | `infrastructure/database/sql/app/01_bounded_multi_turn.sql` | project-config | REVIEWED |
 | `infrastructure/database/sql/data/260729_01_pms_postgresql_2022_2026_v2.2.sql` | archive | ARCHIVE_NON_RUNTIME |
 | `infrastructure/database/sql/data/260729_02_pos_mysql_2022_2026_v2.2.sql` | archive | ARCHIVE_NON_RUNTIME |
@@ -676,6 +696,7 @@
 | `src/ai/training/requirements.txt` | production | REVIEWED |
 | `src/ai/training/train_lora.py` | production | REVIEWED |
 | `src/ai/training/verify_case_specs.py` | production | REVIEWED |
+| `src/data/analysis_capability_contract.py` | production | REVIEWED |
 | `src/data/datahub_connection.py` | production | REVIEWED |
 | `src/data/entitlement_roles.py` | production | REVIEWED |
 | `src/data/governance_contract.py` | production | REVIEWED |
@@ -740,12 +761,14 @@
 | `tests/backend/test_async_model_transport.py` | test | TEST_ONLY |
 | `tests/backend/test_auth_context.py` | test | TEST_ONLY |
 | `tests/backend/test_authorization.py` | test | TEST_ONLY |
+| `tests/backend/test_canonical_semantic_release.py` | test | TEST_ONLY |
 | `tests/backend/test_context_builder.py` | test | TEST_ONLY |
 | `tests/backend/test_context_registry.py` | test | TEST_ONLY |
 | `tests/backend/test_control_plane_contract.py` | test | TEST_ONLY |
 | `tests/backend/test_conversation_orchestrator.py` | test | TEST_ONLY |
 | `tests/backend/test_database.py` | test | TEST_ONLY |
 | `tests/backend/test_execution_control.py` | test | TEST_ONLY |
+| `tests/backend/test_fanout_policy.py` | test | TEST_ONLY |
 | `tests/backend/test_governed_data_platform.py` | test | TEST_ONLY |
 | `tests/backend/test_http_runtime.py` | test | TEST_ONLY |
 | `tests/backend/test_mcp_protocol.py` | test | TEST_ONLY |
@@ -768,7 +791,9 @@
 | `tests/backend/test_report_scheduler.py` | test | TEST_ONLY |
 | `tests/backend/test_routing_service.py` | test | TEST_ONLY |
 | `tests/backend/test_runtime_lifecycle.py` | test | TEST_ONLY |
+| `tests/data/test_bi_coverage_candidate.py` | test | TEST_ONLY |
 | `tests/data/test_catalog_governance.py` | test | TEST_ONLY |
+| `tests/data/test_catalog_regression.py` | test | TEST_ONLY |
 | `tests/data/test_datahub_metadata_publication.py` | test | TEST_ONLY |
 | `tests/data/test_datahub_runtime_recipes.py` | test | TEST_ONLY |
 | `tests/data/test_datahub_security_boundary.py` | test | TEST_ONLY |
@@ -778,6 +803,7 @@
 | `tests/data/test_metric_governance_v2.py` | test | TEST_ONLY |
 | `tests/data/test_metric_retirement.py` | test | TEST_ONLY |
 | `tests/data/test_metric_review_contract.py` | test | TEST_ONLY |
+| `tests/data/test_metric_review_decision.py` | test | TEST_ONLY |
 | `tests/data/test_metric_review_transition.py` | test | TEST_ONLY |
 | `tests/data/test_release_archive_integrity.py` | test | TEST_ONLY |
 | `tests/data/test_release_bundle_builder.py` | test | TEST_ONLY |

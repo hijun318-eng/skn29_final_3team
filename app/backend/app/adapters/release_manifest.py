@@ -72,7 +72,25 @@ def validate_release_manifest(
     snapshot: CatalogSnapshot,
     datasets: tuple[GovernedDataset, ...],
 ) -> None:
-    """선택 dataset의 단일 manifest를 전체 snapshot membership·count·semantic checksum과 대조하고 불일치를 거부한다."""
+    """선택 dataset의 단일 manifest를 전체 snapshot membership·count·semantic checksum과 대조한다."""
+
+    _validated_release_bundle(snapshot, datasets)
+
+
+def validated_release_bundle(
+    snapshot: CatalogSnapshot,
+    datasets: tuple[GovernedDataset, ...],
+) -> dict[str, object]:
+    """manifest 검증을 통과한 현재 release를 저장소 중립 publication bundle로 재구성한다."""
+
+    return _validated_release_bundle(snapshot, datasets)
+
+
+def _validated_release_bundle(
+    snapshot: CatalogSnapshot,
+    datasets: tuple[GovernedDataset, ...],
+) -> dict[str, object]:
+    """release 검증과 bundle 재구성을 한 번만 수행하는 내부 구현이다."""
     if not datasets:
         raise GovernedMetadataError("DataHub release has no governed datasets")
     # 각 엔터티의 부분 checksum만 믿지 않고 전체 membership을 재계산해야 누락된 DataHub 페이지도 검출된다.
@@ -159,6 +177,7 @@ def validate_release_manifest(
         expected = expected_terms[urn]["semantic_sha256"]
         if expected != canonical_sha256(_term_projection(term)):
             raise GovernedMetadataError("DataHub metric term semantic checksum differs")
+    return bundle
 
 
 def _catalog_bundle(datasets, terms, governance_entities):

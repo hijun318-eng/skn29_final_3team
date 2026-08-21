@@ -110,6 +110,7 @@ class ControlPlaneContractTest(unittest.TestCase):
             "SOURCE_NOT_READY",
             "GRAIN_VIOLATION",
             "FILTER_VALUE_NOT_FOUND",
+            "METRIC_NOT_AVAILABLE",
             "AUTHENTICATION_REQUIRED",
             "ACCESS_DENIED",
             "SEMANTIC_CONTRACT_INVALID",

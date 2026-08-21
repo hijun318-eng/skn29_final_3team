@@ -52,9 +52,12 @@ export function formatMetricValue(
   if (value === null || value === undefined || value === "") return "—";
   const numeric = numericValue(value);
   if (numeric === null) return String(value);
-  const rendered = numeric.toLocaleString("ko-KR", { maximumFractionDigits: options.maximumFractionDigits ?? 2 });
+  const ratio = options.unit?.trim().toLowerCase() === "ratio";
+  const rendered = (ratio ? numeric * 100 : numeric).toLocaleString("ko-KR", {
+    maximumFractionDigits: options.maximumFractionDigits ?? 2,
+  });
   if (options.includeUnit === false || !options.unit) return rendered;
-  return `${rendered} ${options.unit}`;
+  return ratio ? `${rendered}%` : `${rendered} ${options.unit}`;
 }
 
 /** 유한 숫자만 compact 표기로 줄이고 유효하지 않은 값은 대시로 표시한다. */

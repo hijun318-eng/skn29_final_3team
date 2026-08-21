@@ -38,11 +38,53 @@ from app.services.analysis.evidence import (
     _gate_history,
     _metric_term,
     _model_invocations,
-    _reduce_metric_values,
+    _reduce_context_metric,
 )
-from app.services.context.builder import ContextPackage
+from app.services.context.builder import ContextMetric, ContextPackage
 from app.services.routing_service import RouteDecision
 from app.services.state_machine import AnalysisStateMachine
+
+
+def _business_metrics(package: ContextPackage) -> tuple[ContextMetric, ...]:
+    """Return only metrics that have an approved user-facing glossary term.
+
+    SUPPORT metrics remain in ``ContextPackage.metrics`` because ratio metrics need
+    their operands during planning and execution.  They deliberately have no
+    BUSINESS glossary term, so they must not leak into result values or evidence.
+    The context builder already enforces an exact BUSINESS metric/term boundary;
+    using that boundary here keeps every derived metric on the same path.
+    """
+
+    business_ids = {term.id for term in package.metric_terms}
+    return tuple(metric for metric in package.metrics if metric.id in business_ids)
+
+
+def _presentation_rows(
+    package: ContextPackage,
+    rows: tuple[dict[str, object], ...],
+) -> tuple[dict[str, object], ...]:
+    """내부 계산 Metric 컬럼을 제거한 사용자용 결과 행을 반환한다.
+
+    SUPPORT Metric은 ratio 검증·reduction을 위해 원시 query 실행 상태에만 남긴다.
+    승인된 BUSINESS Glossary Term이 없으므로 API table·chart와 이 table에서 영속되는
+    artifact snapshot에는 노출하지 않는다. 차원·시간 컬럼과 BUSINESS Metric 결과 필드는
+    입력 순서를 그대로 보존한다.
+    """
+
+    business_ids = {term.id for term in package.metric_terms}
+    hidden_fields = {
+        metric.result_field
+        for metric in package.metrics
+        if metric.id not in business_ids
+    }
+    return tuple(
+        {
+            field: value
+            for field, value in row.items()
+            if field not in hidden_fields
+        }
+        for row in rows
+    )
 
 
 class AnalysisResponseFactory:
@@ -72,14 +114,15 @@ class AnalysisResponseFactory:
             else AnalysisStatus.SUCCEEDED
         )
         machine.transition(status)
-        rows = tuple(query["rows"])
+        source_rows = tuple(query["rows"])
+        rows = _presentation_rows(package, source_rows)
+        presentation_metrics = _business_metrics(package)
         metric_values = []
-        for metric in package.metrics:
+        for metric in presentation_metrics:
             field = metric.result_field
-            if not rows or not all(field in row for row in rows):
+            if not source_rows or not all(field in row for row in source_rows):
                 continue
-            values = [row[field] for row in rows if row[field] is not None]
-            reduced = _reduce_metric_values(metric.reduction, values)
+            reduced = _reduce_context_metric(metric, package, source_rows)
             if reduced is not None:
                 term = _metric_term(package, metric.id)
                 metric_values.append(
@@ -93,13 +136,10 @@ class AnalysisResponseFactory:
                     )
                 )
         metrics = tuple(metric_values)
-        metric_ids = tuple(
-            dict.fromkeys(
-                [metric.id for metric in package.metrics]
-                + [metric.metric_id for metric in metrics]
-            )
-        )
-        result_fields = {metric.id: metric.result_field for metric in package.metrics}
+        metric_ids = tuple(metric.id for metric in presentation_metrics)
+        result_fields = {
+            metric.id: metric.result_field for metric in presentation_metrics
+        }
         result_fields.update(
             {metric.metric_id: metric.result_field for metric in metrics}
         )

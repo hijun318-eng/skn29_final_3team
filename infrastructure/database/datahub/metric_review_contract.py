@@ -244,10 +244,23 @@ def _validate_scope(
     keys = frozenset(unique_texts(grain["keys"], f"{context}.grain.keys", non_empty=True))
     dimensions = frozenset(unique_texts(grain["dimensions"], f"{context}.grain.dimensions"))
     time = mapping(metric["time"], f"{context}.time")
-    exact_keys(time, {"field", "semantics", "timezone", "interval"}, f"{context}.time")
+    exact_keys(
+        time,
+        {
+            "field",
+            "semantics",
+            "timezone",
+            "interval",
+            "bucket",
+            "timezone_mode",
+        },
+        f"{context}.time",
+    )
     time_field = identifier(time["field"], f"{context}.time.field")
     text(time["semantics"], f"{context}.time.semantics")
     text(time["timezone"], f"{context}.time.timezone")
+    text(time["bucket"], f"{context}.time.bucket")
+    text(time["timezone_mode"], f"{context}.time.timezone_mode")
     if time["interval"] != "[start,end)":
         raise SemanticMetadataError("metric time intervals must use half-open boundaries")
     join = mapping(metric["join"], f"{context}.join")

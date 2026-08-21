@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ssl
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -169,7 +170,7 @@ query GovernanceLifecycleStages {
         self._expected_actor_urn = expected_actor_urn
         self._client = client or httpx.AsyncClient(
             headers=self._headers,
-            verify=str(resolved_ca_path),
+            verify=ssl.create_default_context(cafile=str(resolved_ca_path)),
             timeout=httpx.Timeout(timeout_seconds),
             trust_env=False,
         )

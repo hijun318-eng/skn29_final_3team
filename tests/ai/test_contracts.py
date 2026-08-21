@@ -41,6 +41,7 @@ def arbitrary_node2_request(namespace):
         "resolved_request": {
             "intent": "aggregate",
             "metric_ids": [metric_id],
+            "output_metric_ids": [metric_id],
             "dimensions": [qualified_field(dimension_fqn, "category_code")],
             "filters": [
                 {
@@ -49,6 +50,8 @@ def arbitrary_node2_request(namespace):
                     "parameter": status_parameter,
                 }
             ],
+            "time_bucket": "none",
+            "result_limit": None,
         },
         "schema_context": {
             "version": f"schema-{namespace}",
@@ -283,8 +286,14 @@ VALID_PAYLOADS = {
     "node1_response": {
         "normalized_question": "이번 달 객실 매출을 보여줘",
         "intent_candidates": ["aggregate"],
+        "measurement_source_text": "객실 매출",
+        "measurement_source_texts": ["객실 매출"],
         "metric_candidates": ["room_revenue"],
+        "metric_resolution": "selected",
         "selected_metric_id": "room_revenue",
+        "selected_metric_ids": ["room_revenue"],
+        "analysis_operation": "aggregate",
+        "result_limit": None,
         "dimension_candidates": [],
         "filter_candidates": [],
         "period_candidates": [
@@ -354,7 +363,7 @@ VALID_PAYLOADS = {
 
 class ContractTests(unittest.TestCase):
     def test_schema_version_is_explicit(self):
-        self.assertEqual(schema_version(), "MODEL-v1.12.0")
+        self.assertEqual(schema_version(), "MODEL-v1.17.0")
 
     def test_valid_examples(self):
         for definition, payload in VALID_PAYLOADS.items():
@@ -368,8 +377,35 @@ class ContractTests(unittest.TestCase):
             validate_payload("node1_response", missing)
 
         ambiguous = copy.deepcopy(VALID_PAYLOADS["node1_response"])
+        ambiguous["metric_candidates"] = ["room_revenue", "fnb_revenue"]
+        ambiguous["metric_resolution"] = "ambiguous"
         ambiguous["selected_metric_id"] = None
+        ambiguous["selected_metric_ids"] = []
         validate_payload("node1_response", ambiguous)
+
+    def test_node1_metric_resolution_is_required_and_typed(self):
+        missing = copy.deepcopy(VALID_PAYLOADS["node1_response"])
+        missing.pop("metric_resolution")
+        with self.assertRaises(ContractError):
+            validate_payload("node1_response", missing)
+
+        unsupported = copy.deepcopy(VALID_PAYLOADS["node1_response"])
+        unsupported["measurement_source_text"] = "객실 매출"
+        unsupported["metric_candidates"] = []
+        unsupported["metric_resolution"] = "unsupported"
+        unsupported["selected_metric_id"] = None
+        unsupported["selected_metric_ids"] = []
+        validate_payload("node1_response", unsupported)
+
+        no_measurement = copy.deepcopy(VALID_PAYLOADS["node1_response"])
+        no_measurement["measurement_source_text"] = None
+        no_measurement["measurement_source_texts"] = []
+        no_measurement["metric_candidates"] = []
+        no_measurement["metric_resolution"] = "missing"
+        no_measurement["selected_metric_id"] = None
+        no_measurement["selected_metric_ids"] = []
+        no_measurement["analysis_operation"] = None
+        validate_payload("node1_response", no_measurement)
 
     def test_node1_accepts_runtime_owned_business_terms(self):
         request = copy.deepcopy(VALID_PAYLOADS["node1_request"])

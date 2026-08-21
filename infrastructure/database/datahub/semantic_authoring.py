@@ -11,9 +11,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
+import json
 from typing import Any, Protocol
 
-from metadata_contract import validate_bundle
+from metadata_contract import validate_bundle, validate_metric_query_policy
 from metadata_contract_primitives import (
     SemanticMetadataError,
     array,
@@ -301,6 +302,7 @@ def assemble_authoring_bundle(
         "query_policy": deepcopy(policy["query_policy"]),
     }
     validate_bundle(bundle)
+    validate_metric_query_policy(bundle)
     return bundle
 
 
@@ -442,26 +444,68 @@ def _columns(
 
 
 def _previous_catalog_sha256(datasets: tuple[DataHubDataset, ...]) -> str:
-    governed = [
-        {
+    governed = {
+        dataset.urn: {
             key.removeprefix(PROPERTY_PREFIX): value
             for key, value in dataset.custom_properties.items()
             if key.startswith(PROPERTY_PREFIX)
         }
         for dataset in datasets
-    ]
-    if not any(governed):
+        if any(key.startswith(PROPERTY_PREFIX) for key in dataset.custom_properties)
+    }
+    if not governed:
         return CLEAN_CATALOG_SHA256
-    hashes = [item.get("catalog_sha256") for item in governed]
-    if (
-        any(not item for item in governed)
-        or any(not isinstance(value, str) for value in hashes)
-        or len(set(hashes)) != 1
-    ):
+    hashes = [item.get("catalog_sha256") for item in governed.values()]
+    if any(not isinstance(value, str) for value in hashes) or len(set(hashes)) != 1:
         raise SemanticMetadataError(
             "live DataHub contains a partial or conflicting semantic release"
         )
     value = hashes[0]
     if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
         raise SemanticMetadataError("live DataHub catalog checksum is invalid")
+
+    # Scope 확장에서는 이전 release 자산과 base-ingested 신규 자산이 함께 발견된다.
+    # 신규 자산에 semantic property가 없다는 이유만으로 전이를 막지는 않되, 각 기존
+    # 자산에 복제된 manifest가 동일하고 그 manifest의 dataset 집합이 정확히 모두
+    # 존재할 때에만 predecessor를 인정한다. 기존 자산 하나가 빠진 교체·축소는 여전히
+    # partial release로 닫히므로 이 경로가 삭제 승인 우회가 되지 않는다.
+    manifests: list[dict[str, Any]] = []
+    for properties in governed.values():
+        raw_manifest = properties.get("release_manifest")
+        if not isinstance(raw_manifest, str):
+            raise SemanticMetadataError(
+                "live DataHub contains a partial or conflicting semantic release"
+            )
+        try:
+            manifest = json.loads(raw_manifest)
+        except json.JSONDecodeError as error:
+            raise SemanticMetadataError(
+                "live DataHub release manifest is invalid"
+            ) from error
+        if not isinstance(manifest, dict) or manifest.get("catalog_sha256") != value:
+            raise SemanticMetadataError("live DataHub release manifest is invalid")
+        manifests.append(manifest)
+    canonical_manifests = {
+        json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        for item in manifests
+    }
+    if len(canonical_manifests) != 1:
+        raise SemanticMetadataError(
+            "live DataHub contains a partial or conflicting semantic release"
+        )
+    manifest_datasets = manifests[0].get("datasets")
+    if not isinstance(manifest_datasets, list):
+        raise SemanticMetadataError("live DataHub release manifest is invalid")
+    expected_urns = {
+        item.get("urn")
+        for item in manifest_datasets
+        if isinstance(item, dict) and isinstance(item.get("urn"), str)
+    }
+    if (
+        len(expected_urns) != len(manifest_datasets)
+        or set(governed) != expected_urns
+    ):
+        raise SemanticMetadataError(
+            "live DataHub contains a partial or conflicting semantic release"
+        )
     return value

@@ -24,7 +24,14 @@ from app.services.sql_guard.schema import (
     declared_assets,
     declared_metrics,
 )
+from app.services.analysis.logical_plan import (
+    AnalysisOperation,
+    AnalysisPlanError,
+    PERIOD_COMPARISON_UNSUPPORTED_AGGREGATIONS,
+    validate_analysis_plan_payload,
+)
 from app.services.sql_guard.scopes import projection_scope_evidence
+from app.services.sql_guard.operation_semantics import operation_violation
 from app.services.sql_guard.semantics import (
     join_violation,
     match_metric,
@@ -164,6 +171,14 @@ def validate_parsed_semantics(
         return _semantic_blocked("SQL_POLICY_INVALID", "SQL 정책 검증에 실패한 AST입니다.")
     try:
         policy = _query_policy(package)
+        logical_plan = None
+        if plan is not None and "analysis_plan" in plan:
+            try:
+                logical_plan = validate_analysis_plan_payload(
+                    plan["analysis_plan"], package
+                )
+            except AnalysisPlanError as error:
+                return _semantic_blocked("ANALYSIS_PLAN_MISMATCH", error.code.value)
         assets = approved_assets(package)
         physical_tables = set(result.physical_tables)
 
@@ -231,20 +246,27 @@ def validate_parsed_semantics(
         is_comparison = bool(comparison_window) and str(
             comparison_window.get("start_parameter")
         ) in bound_names
-
-        if is_comparison and any(
-            str(item.aggregation).casefold() == "ratio" for item in metrics
-        ):
+        if logical_plan is not None and (
+            logical_plan.operation is AnalysisOperation.PERIOD_COMPARISON
+        ) != is_comparison:
             return _semantic_blocked(
-                "METRIC_RULE_MISMATCH",
-                "Ratio metric과 기간 비교의 동시 사용은 아직 거버넌스되지 않았습니다.",
+                "ANALYSIS_PLAN_MISMATCH",
+                "AnalysisPlan 연산과 실제 기간 parameter binding이 일치하지 않습니다.",
             )
-        if is_comparison and any(
-            str(item.aggregation).casefold() == "exists" for item in metrics
-        ):
+
+        unsupported_comparison = sorted(
+            {
+                str(item.aggregation).casefold()
+                for item in metrics
+                if str(item.aggregation).casefold()
+                in PERIOD_COMPARISON_UNSUPPORTED_AGGREGATIONS
+            }
+        )
+        if is_comparison and unsupported_comparison:
             return _semantic_blocked(
                 "METRIC_RULE_MISMATCH",
-                "Exists metric과 기간 비교의 동시 사용은 아직 거버넌스되지 않았습니다.",
+                "기간 비교가 아직 거버넌스되지 않은 집계가 포함되었습니다: "
+                + ", ".join(unsupported_comparison),
             )
 
         output_scope = None
@@ -325,8 +347,18 @@ def validate_parsed_semantics(
             if error := time_rule_violation(package, comparisons, assets, metric):
                 return _semantic_blocked("TIME_RULE_MISMATCH", error)
 
-        # 6. 조인 위상(Join Graph Topology) 검증
+        # 6. 논리 연산의 출력 grain·정렬·순위 LIMIT 검증
         assert output_scope is not None
+        if logical_plan is not None:
+            if error := operation_violation(
+                logical_plan,
+                result,
+                package,
+                output_scope,
+            ):
+                return _semantic_blocked("ANALYSIS_OPERATION_MISMATCH", error)
+
+        # 7. 조인 위상(Join Graph Topology) 검증
         join = join_violation(package, physical_tables, output_scope, assets)
         if join.violation:
             return _semantic_blocked(join.code, join.violation)
@@ -336,7 +368,7 @@ def validate_parsed_semantics(
             if error:
                 return _semantic_blocked("MODEL_LINEAGE_MISMATCH", error)
 
-        # 7. 검증 완료 SemanticDecision 반환
+        # 8. 검증 완료 SemanticDecision 반환
         return SemanticDecision(
             violation=None,
             detail="",
@@ -347,6 +379,20 @@ def validate_parsed_semantics(
                 "functions": list(result.functions),
                 "join_count": len(result.joins),
                 "limit": result.limit,
+                "analysis_plan_checksum": (
+                    logical_plan.checksum if logical_plan is not None else None
+                ),
+                "analysis_operation": (
+                    logical_plan.operation.value if logical_plan is not None else None
+                ),
+                "fanout_plans": [
+                    {
+                        "join_id": item.join_id,
+                        "plan": item.plan.value,
+                        "reason": item.reason.value,
+                    }
+                    for item in join.fanout_decisions
+                ],
             },
         )
     except (KeyError, TypeError, ValueError) as error:

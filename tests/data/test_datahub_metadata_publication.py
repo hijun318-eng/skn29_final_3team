@@ -262,6 +262,7 @@ def arbitrary_ratio_bundle():
     """같은 계산 범위의 두 column metric과 derived ratio를 가진 일반 publication fixture를 만든다."""
 
     bundle = arbitrary_bundle()
+    bundle["query_policy"]["allowed_functions"].append("nullif")
     fqn = "quartz.core.events"
     field = lambda column: {"asset_fqn": fqn, "column": column}
     amount = bundle["metric_rules"][0]

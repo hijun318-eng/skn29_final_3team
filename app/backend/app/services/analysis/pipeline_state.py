@@ -47,6 +47,7 @@ class AnalysisPipelineState:
         normalized_question: Node 1을 통해 정규화된 질문 문자열
         structured_request: 지표, 차원, 필터, 기간 구조화 요청 딕셔너리
         package: 최소 권한 검증을 통과한 불변 ContextPackage
+        analysis_plan: SQL 생성 전에 서버가 확정한 버전형 논리 분석 계획
         references: 데이터 리니지 참조 목록
         plan: LLM이 생성하고 G2 가드를 통과한 실행 계획
         query: Trino 엔진 실행 결과 딕셔너리
@@ -66,6 +67,7 @@ class AnalysisPipelineState:
     normalized_question: str = ""
     structured_request: dict[str, Any] = field(default_factory=dict)
     package: ContextPackage | None = None
+    analysis_plan: dict[str, Any] | None = None
     references: list[dict[str, Any]] = field(default_factory=list)
     common_key: dict[str, Any] = field(default_factory=dict)
     plan_key: str = ""

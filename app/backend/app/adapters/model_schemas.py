@@ -25,6 +25,16 @@ PROMPT_IDS = MappingProxyType(
 )
 
 
+def _stable_unique_mappings(values: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """동일한 계약 객체를 최초 등장 순서대로 한 번만 보존한다."""
+    unique: list[dict[str, Any]] = []
+    for value in values:
+        item = dict(value)
+        if item not in unique:
+            unique.append(item)
+    return unique
+
+
 def request_definition(node: str) -> str:
     """모델 노드 요청이 따라야 할 JSON Schema definition을 반환한다."""
     try:
@@ -93,12 +103,59 @@ def node2_training_input(payload: dict[str, Any]) -> dict[str, Any]:
     intents = list(structured.get("intent_candidates", ()))
     if len(intents) != 1 or not isinstance(intents[0], str):
         raise ValueError("Node 2 requires one resolved intent")
+    analysis_operation = structured.get("analysis_operation")
+    if analysis_operation is not None and (
+        not isinstance(analysis_operation, str) or not analysis_operation.strip()
+    ):
+        raise ValueError("Node 2 analysis operation must be a non-empty string")
+    operation = analysis_operation or intents[0]
+    operations = {
+        "aggregate",
+        "breakdown",
+        "time_trend",
+        "top_n",
+        "bottom_n",
+        "period_comparison",
+    }
+    if operation not in operations:
+        raise ValueError("Node 2 analysis operation is outside the active contract")
+    time_bucket = structured.get("analysis_time_bucket", "none")
+    if time_bucket not in {"none", "day", "week", "month", "quarter", "year"}:
+        raise ValueError("Node 2 analysis time bucket is outside the active contract")
+    if operation == "time_trend" and time_bucket == "none":
+        raise ValueError("Node 2 time trend requires a governed time bucket")
+    result_limit = structured.get("analysis_result_limit")
+    if result_limit is not None and (
+        operation not in {"top_n", "bottom_n"}
+        or isinstance(result_limit, bool)
+        or not isinstance(result_limit, int)
+        or not 1 <= result_limit <= 100
+    ):
+        raise ValueError("Node 2 result limit is outside the active contract")
+    if operation in {"top_n", "bottom_n"} and result_limit is None:
+        raise ValueError("Node 2 ranking operation requires result_limit")
     metric_ids = list(structured.get("metric_ids", ()))
     if not metric_ids:
         metric_ids = [item["id"] for item in contracts["metric_rules"]]
     approved_metric_ids = {item["id"] for item in contracts["metric_rules"]}
     if set(metric_ids) != approved_metric_ids or len(metric_ids) != len(set(metric_ids)):
         raise ValueError("Node 2 metric resolution differs from metric_rules")
+    raw_output_metric_ids = structured.get("selected_metric_ids")
+    if raw_output_metric_ids is None:
+        selected_metric_id = structured.get("selected_metric_id")
+        if isinstance(selected_metric_id, str) and selected_metric_id:
+            raw_output_metric_ids = [selected_metric_id]
+        else:
+            raise ValueError("Node 2 requires explicit BUSINESS output metric IDs")
+    if not isinstance(raw_output_metric_ids, (list, tuple)):
+        raise ValueError("Node 2 output metric IDs must be a structured array")
+    output_metric_ids = list(raw_output_metric_ids)
+    if (
+        not 1 <= len(output_metric_ids) <= 4
+        or len(output_metric_ids) != len(set(output_metric_ids))
+        or any(not isinstance(item, str) or item not in approved_metric_ids for item in output_metric_ids)
+    ):
+        raise ValueError("Node 2 output metric IDs differ from the approved execution scope")
     dimensions = structured.get("dimension_fields", ())
     if not isinstance(dimensions, (list, tuple)):
         raise ValueError("Node 2 resolved dimensions must be structured fields")
@@ -113,27 +170,24 @@ def node2_training_input(payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(item, dict)
         and (item.get("asset_fqn"), item.get("column")) in approved_dimensions
     ]
-    seen_dims = set()
-    unique_dims = []
-    for item in filtered_dimensions:
-        key = (item["asset_fqn"], item["column"])
-        if key not in seen_dims:
-            seen_dims.add(key)
-            unique_dims.append(item)
-    resolved_dimensions = unique_dims or [
-        dict(item)
-        for metric in contracts["metric_rules"]
-        for item in metric["dimensions"]
-    ]
-    resolved_request = {
-        "intent": intents[0],
-        "metric_ids": list(metric_ids),
-        "dimensions": resolved_dimensions,
-        "filters": [
+    # 승인된 차원 목록은 "사용 가능" 계약이지 자동 GROUP BY 지시가 아니다.
+    # 질문이 차원을 선택하지 않았으면 전체 집계가 유지되어야 한다.
+    resolved_dimensions = _stable_unique_mappings(filtered_dimensions)
+    resolved_filters = _stable_unique_mappings(
+        [
             dict(item)
             for metric in contracts["metric_rules"]
             for item in metric["required_filters"]
-        ],
+        ]
+    )
+    resolved_request = {
+        "intent": operation,
+        "metric_ids": list(metric_ids),
+        "output_metric_ids": output_metric_ids,
+        "dimensions": resolved_dimensions,
+        "filters": resolved_filters,
+        "time_bucket": time_bucket,
+        "result_limit": result_limit,
     }
     if "rejected_sql" in payload:
         return {

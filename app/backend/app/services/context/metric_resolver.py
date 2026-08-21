@@ -115,6 +115,14 @@ def _suggestions(
     return tuple(values)
 
 
+def _candidate_metric_rank(metric: dict[str, object]) -> tuple[bool, int]:
+    """후보 adapter가 제공한 양의 rank를 우선하고 rank 없는 기존 adapter 순서는 안정적으로 유지한다."""
+
+    value = metric.get("candidate_rank")
+    valid = isinstance(value, int) and not isinstance(value, bool) and value > 0
+    return (not valid, value if valid else 0)
+
+
 def _model_periods(candidates: object, timezone: ZoneInfo) -> list[dict[str, Any]]:
     if not isinstance(candidates, list) or len(candidates) > 4:
         raise ValueError("Node1 period_candidates 는 최대 4개 항목 이내의 배열이어야 합니다.")
@@ -235,6 +243,7 @@ class MetricResolver:
             if metric.get("visibility", "BUSINESS") == "BUSINESS"
             and metric.get("candidate_selectable", True) is True
         ]
+        candidates.sort(key=_candidate_metric_rank)
         candidate_ids = [str(metric["id"]) for metric in candidates]
         if not candidate_ids:
             raise ContextBuildError(

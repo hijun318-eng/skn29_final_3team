@@ -1090,10 +1090,13 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             set(metrics),
         )
         self.assertTrue(metrics["helium_rate"]["candidate_selectable"])
+        self.assertEqual(1, metrics["helium_rate"]["candidate_rank"])
         self.assertFalse(metrics["helium_yield"]["candidate_selectable"])
+        self.assertIsNone(metrics["helium_yield"]["candidate_rank"])
         self.assertFalse(
             metrics["helium_observation_count"]["candidate_selectable"]
         )
+        self.assertIsNone(metrics["helium_observation_count"]["candidate_rank"])
         self.assertEqual([], transport.trino_statements)
 
     async def test_candidate_projection_omits_unrelated_same_asset_metrics(self) -> None:
@@ -1157,6 +1160,15 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         }
 
         self.assertEqual({"helium_yield", "argon_yield"}, selectable_ids)
+        self.assertEqual(
+            {1, 2},
+            {
+                int(metric["candidate_rank"])
+                for asset in candidates.assets
+                for metric in asset["metrics"]
+                if metric.get("candidate_selectable") is True
+            },
+        )
         self.assertEqual([], self.transport.trino_statements)
         selection = ExecutionAssetSelection(
             output_metric_ids=("helium_yield", "argon_yield"),

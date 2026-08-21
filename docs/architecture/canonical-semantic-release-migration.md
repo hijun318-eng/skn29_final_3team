@@ -108,6 +108,13 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
   연산/time mode snapshot을 결합해 자연어·정답 SQL 없는 구조 회귀 행렬을 생성한다.
   현재 BUSINESS Metric 44개의 단일 조합 1,179건과 모든 Metric pair 946건, 총 2,125건이다.
   cross-asset pair 888건은 관계를 추측하지 않고 `JOIN_GRAPH_REQUIRED`로 차단한다.
+- `evals/metric_retrieval_runner.py`는 active release의 BUSINESS Glossary label·alias 전체를
+  질문 fixture 없이 probe로 만들고 후보 rank의 top-1·recall@K·precision@K·MRR을 측정한다.
+  승인 label·alias의 exact match는 definition token overlap보다 우선하지만, 부분 일치는 기존
+  Unicode lexical score를 유지한다. 2026-08-21 analyst live release의 10개 Metric·42개 probe에서
+  top-1, recall@5, MRR은 모두 1.0이고 retrieval 오류는 0이었다. precision@5 0.505159는 공유
+  `Revenue` 용어로 여러 합법 후보가 남는 값을 포함하므로 사람 검토 Gold 없이 release 차단
+  임계값으로 고정하지 않는다.
 - review-only 후보는 관측 파일이 있어도 채점하지 않는다. 업무 승인, `runtime_source=true`,
   동일 candidate checksum의 active release read-back 증거가 모두 있어야 scorer가 열린다.
 
@@ -130,8 +137,10 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
   기간을 요구한다. 대화가 `range`에서 `latest_snapshot`으로 전환되면 직전 기간도 상속하지 않는다.
 - Node 1에 전달되는 용어 선택지는 compact Metric projection으로 줄였지만, 그 projection을 만들기
   위한 내부 첫 pass는 아직 Dataset semantic search와 최대 8개 자산의 완전한 dependency component를
-  사용한다. DataHub Glossary Term 자체의 semantic hit와 서로 다른 calendar/time mode 후보를 함께
-  회수한 뒤 선택 후 단일 시간 계약으로 좁히는 구조는 아직 열지 않았다. 실행 dependency를 잘라낸
+  사용한다. 현재 Dataset semanticContent가 연결 Glossary text를 이미 포함하고 live catalog-generated
+  retrieval Gate가 전부 통과했으므로, 별도 Glossary semantic API 호출은 근거 없이 추가하지 않았다.
+  Native Metric은 아직 미발행이므로 검색 권위가 아니다. 서로 다른 calendar/time mode 후보를 함께
+  회수한 뒤 선택 후 단일 시간 계약으로 좁히는 구조도 아직 열지 않았다. 실행 dependency를 잘라낸
   단순 top-N이나 calendar 임의 병합은 하지 않는다.
 - DataHub native mutation, `METRICS_ENABLED`, Trino ACL/principal, Redis, Legacy property 삭제는 변경하지 않았다.
 
@@ -143,10 +152,11 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
 
 ## 다음 Gate
 
-1. DataHub semantic search 증거를 Dataset뿐 아니라 지원되는 Glossary Term/native Metric 관계까지
-   확장하고, catalog-generated Metric retrieval recall·precision을 별도 Gate로 측정한다. 혼합
-   calendar/time mode는 현재 단일 `calendar_id` Node 1 계약을 먼저 Metric 선택과 기간 해석의 두 typed
-   단계로 분리한 뒤에만 열며, 실행 단계에서는 하나의 호환 시간 계약만 허용한다.
+1. 완료한 catalog-generated retrieval Gate를 배포 release마다 재실행하고, 별도 사람 검토 Gold에서
+   자연어 paraphrase·복합 지표 표현의 top-1/recall 저하가 관측될 때만 Glossary lexical search 또는
+   read-back 완료 Native Metric 관계를 추가 증거로 연다. 현재 42개 canonical probe 결과만으로 자연어
+   정확도를 주장하지 않는다. 혼합 calendar/time mode는 단일 `calendar_id` Node 1 계약을 먼저 Metric
+   선택과 기간 해석의 두 typed 단계로 분리한 뒤에만 열며, 실행에서는 하나의 호환 시간 계약만 허용한다.
 2. active release native Metric shadow를 별도 publish identity로 발행하고 read identity의 Rest.li aspect와
    GraphQL 관계 read-back을 통과시킨다. 이는 runtime cutover 승인이 아니다.
 3. candidate Metric의 base grain·additivity를 승인한 뒤 canonical release로 컴파일한다. planning
@@ -172,3 +182,7 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
 프로세스 환경으로 주입한다. 배포 상태 Gate에는 `ANSWERVICE_RUNTIME_URL`을 별도로 주입하며,
 `/readiness`의 전체 dependency가 `ready`여야 통과한다. 비밀값은 저장소 파일이나 테스트
 인자에 복사하지 않고 배포 secret 또는 gitignored 운영 `.env`에서 실행 시점에만 전달한다.
+
+```powershell
+python evals/metric_retrieval_runner.py
+```

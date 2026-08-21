@@ -99,6 +99,7 @@ def with_ratio_metrics(assets, terms, context):
 def compact_candidate_assets(
     assets: list[dict[str, Any]],
     terms: Mapping[str, GlossaryMetricTerm],
+    query_text: str,
     query_tokens: frozenset[str],
     asset_priorities: Mapping[str, int],
     max_candidate_metrics: int,
@@ -113,18 +114,29 @@ def compact_candidate_assets(
         if isinstance(metric, dict) and isinstance(metric.get("id"), str)
     ]
     metrics_by_id = {str(metric["id"]): metric for _asset, metric in metric_records}
+    normalized_query = _normalized_phrase(query_text)
     ranked = sorted(
         (
             (
-                len(query_tokens & _metric_tokens(metric, terms.get(str(metric["id"])))),
+                int(
+                    normalized_query
+                    in _metric_exact_phrases(
+                        metric,
+                        terms.get(str(metric["id"])),
+                    )
+                ),
+                len(
+                    query_tokens
+                    & _metric_tokens(metric, terms.get(str(metric["id"])))
+                ),
                 int(asset_priorities.get(str(asset.get("fqn") or ""), 0)),
                 str(metric["id"]),
             )
             for asset, metric in metric_records
         ),
-        key=lambda item: (-item[0], -item[1], item[2]),
+        key=lambda item: (-item[0], -item[1], -item[2], item[3]),
     )
-    direct = [item for item in ranked if item[0] > 0]
+    direct = [item for item in ranked if item[0] > 0 or item[1] > 0]
     preferred = tuple(
         dict.fromkeys(
             metric_id
@@ -136,7 +148,7 @@ def compact_candidate_assets(
     )
     ranked_business_ids = [
         metric_id
-        for _overlap, _priority, metric_id in (direct or ranked)
+        for _exact, _overlap, _priority, metric_id in (direct or ranked)
         if metrics_by_id[metric_id].get("visibility", "BUSINESS") == "BUSINESS"
         and metric_id not in preferred
     ]
@@ -144,20 +156,20 @@ def compact_candidate_assets(
     selectable_ids.update(
         ranked_business_ids[: max(0, max_candidate_metrics - len(preferred))]
     )
-    strongest_business_overlap = max(
+    strongest_business_score = max(
         (
-            overlap
-            for overlap, _priority, metric_id in direct
+            (exact, overlap)
+            for exact, overlap, _priority, metric_id in direct
             if metrics_by_id[metric_id].get("visibility", "BUSINESS")
             == "BUSINESS"
         ),
-        default=0,
+        default=(0, 0),
     )
     directly_matched_support_ids = [
         metric_id
-        for overlap, _priority, metric_id in direct
+        for exact, overlap, _priority, metric_id in direct
         if metrics_by_id[metric_id].get("visibility") == "SUPPORT"
-        and overlap >= strongest_business_overlap
+        and (exact, overlap) >= strongest_business_score
     ]
     selectable_ids.update(
         directly_matched_support_ids[:max_candidate_metrics]
@@ -172,7 +184,7 @@ def compact_candidate_assets(
         fallback = next(
             (
                 metric_id
-                for _overlap, _priority, metric_id in ranked
+                for _exact, _overlap, _priority, metric_id in ranked
                 if metrics_by_id[metric_id].get("visibility", "BUSINESS")
                 == "BUSINESS"
             ),
@@ -180,6 +192,23 @@ def compact_candidate_assets(
         )
         if fallback is not None:
             selectable_ids.add(fallback)
+
+    ordered_selectable_ids = tuple(
+        dict.fromkeys(
+            (
+                *preferred,
+                *(
+                    metric_id
+                    for _exact, _overlap, _priority, metric_id in ranked
+                    if metric_id in selectable_ids and metric_id not in preferred
+                ),
+            )
+        )
+    )
+    candidate_ranks = {
+        metric_id: index
+        for index, metric_id in enumerate(ordered_selectable_ids, start=1)
+    }
 
     execution_ids = set(selectable_ids)
     for metric_id in tuple(selectable_ids):
@@ -209,6 +238,7 @@ def compact_candidate_assets(
                 continue
             metric = dict(raw_metric)
             metric["candidate_selectable"] = metric_id in selectable_ids
+            metric["candidate_rank"] = candidate_ranks.get(metric_id)
             metrics.append(metric)
         item["metrics"] = metrics
         item["entitled_metric_ids"] = sorted(
@@ -307,6 +337,34 @@ def _metric_tokens(
         if isinstance(aliases, (list, tuple)):
             values.extend(map(str, aliases))
     return unicode_tokens(" ".join(values))
+
+
+def _metric_exact_phrases(
+    metric: Mapping[str, Any],
+    term: GlossaryMetricTerm | None,
+) -> frozenset[str]:
+    """승인 label·alias와 식별 필드만 정의 토큰보다 강한 exact-match 증거로 만든다."""
+
+    values = [str(metric.get("id") or ""), str(metric.get("result_field") or "")]
+    if term is not None:
+        values.extend((term.label, *term.aliases))
+    semantic = metric.get("semantic")
+    if isinstance(semantic, Mapping):
+        values.append(str(semantic.get("name") or ""))
+        aliases = semantic.get("aliases")
+        if isinstance(aliases, (list, tuple)):
+            values.extend(map(str, aliases))
+    return frozenset(
+        normalized
+        for value in values
+        if (normalized := _normalized_phrase(value))
+    )
+
+
+def _normalized_phrase(value: str) -> str:
+    """exact-match용 문구를 NFKC·casefold·공백 기준으로만 정규화한다."""
+
+    return " ".join(unicodedata.normalize("NFKC", value).casefold().split())
 
 
 def _metric_dimension_fields(

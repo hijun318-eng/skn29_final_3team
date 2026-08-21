@@ -154,14 +154,19 @@ JOIN의 유일 최단 경로를 다시 계산하고, 선택 subgraph에 대해�
 Node 1의 실제 선택지는 DataHub Glossary label·alias·definition과 Dataset lexical/semantic rank로
 bounded Metric projection을 만든다. ratio operand는 실행 의존성으로 남아도 Node 1 선택지에서는 제외하고,
 멀티턴의 확정 Metric은 질문 문자열 보정이 아니라 active release의 Metric→Dataset 관계로 다시 찾는다.
-따라서 같은 Dataset의 무관한 Metric 전체를 LLM에 보내는 구조는 제거했지만, 내부 asset recall은 여전히
-최대 8개 완전한 dependency component와 Dataset 단위 semantic search를 사용한다.
+승인 label·alias·ID의 exact match는 definition의 부분 token 일치보다 앞서고, `candidate_rank`를 Node 1
+용어 순서에도 반영한다. 그래도 실행 권한은 rank가 아니라 선택 후 exact subgraph Gate가 결정한다.
 
-다음 검색 과제는 DataHub가 지원하는 Glossary Term/native Metric semantic hit를 함께 사용해 Metric
-retrieval recall·precision을 catalog-generated case로 측정하는 것이다. 서로 다른 calendar/time mode는
-현재 단일 `calendar_id` Node 1 계약에서 섞지 않는다. Metric 선택과 기간 해석을 별도 typed 단계로
-분리한 뒤 선택된 Metric들의 호환 시간 계약만 허용해야 한다. dependency를 잘라낸 단순 top-5나 특정
-질문별 예외는 추가하지 않는다.
+`evals/metric_retrieval_runner.py`는 active release의 모든 BUSINESS label·alias를 자동 probe로 만든다.
+2026-08-21 analyst live release의 10개 Metric·42개 probe에서 top-1·recall@5·MRR은 1.0,
+retrieval 오류는 0이었다. precision@5 0.505159는 공유 용어로 인한 합법적 다수 후보를
+포함하므로, 사람 검토 Gold 없이 임의 최소치를 release Gate로 고정하지 않는다.
+Dataset semanticContent가 연결 Glossary text를 이미 포함하고 canonical probe가 전부 통과했으므로
+별도 Glossary semantic API 호출은 추가하지 않았다. Native Metric도 발행·read-back 전에는 검색 권위가 아니다.
+
+서로 다른 calendar/time mode는 현재 단일 `calendar_id` Node 1 계약에서 섞지 않는다.
+Metric 선택과 기간 해석을 별도 typed 단계로 분리한 뒤 선택된 Metric들의 호환 시간 계약만
+허용해야 한다. dependency를 잘라낸 단순 top-5나 특정 질문별 예외는 추가하지 않는다.
 
 구조 Gate는 다음처럼 읽기 전용으로 재현한다. 기본 출력은 case 전체를 생략한 checksum·집계이며,
 상세 감사에만 `--include-cases`를 사용한다.

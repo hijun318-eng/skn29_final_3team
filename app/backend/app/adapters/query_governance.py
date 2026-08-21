@@ -158,6 +158,7 @@ class QueryGovernanceEngine:
                     candidate=True,
                 ),
                 terms,
+                query,
                 _unicode_tokens(query),
                 asset_priorities,
                 self._max_candidate_metrics,

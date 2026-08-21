@@ -27,6 +27,7 @@ class GovernedDataPlatformAdapter:
         trino_ca_file: str | None = None,
         datahub_ca_file: str | None = None,
         expected_context_release: str | None = None,
+        max_candidate_metrics: int = QueryGovernanceEngine.MAX_CANDIDATE_METRICS,
         search_mode: str | None = None,
         catalog_ttl_seconds: float | None = None,
         query_timeout_seconds: float | None = None,
@@ -55,6 +56,7 @@ class GovernedDataPlatformAdapter:
             self._datahub,
             TrinoSchemaInspector(self._trino),
             expected_context_release=expected_context_release,
+            max_candidate_metrics=max_candidate_metrics,
             search_mode=search_mode or os.getenv("DATAHUB_SEARCH_MODE", "lexical"),
             # QueryGovernanceEngine 하나가 환경 기본값을 소유해야 adapter별 TTL drift가 없다.
             catalog_ttl_seconds=catalog_ttl_seconds,

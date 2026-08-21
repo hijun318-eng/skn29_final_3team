@@ -321,6 +321,7 @@ class AsyncRuntimeDataPlatform:
             metric_terms or {METRIC_ID: METRIC_TERM}
         )
         self.search_count = 0
+        self.search_contexts = []
         self.resolve_count = 0
         self.last_execution_selection = None
         self.execute_count = 0
@@ -329,6 +330,7 @@ class AsyncRuntimeDataPlatform:
 
     async def search_assets(self, query, context):
         self.search_count += 1
+        self.search_contexts.append(copy.deepcopy(context))
         if self.search_error is not None:
             raise self.search_error
         return [copy.deepcopy(self.asset)]
@@ -725,6 +727,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ClarificationType.METRIC, response.error.clarification_type)
         self.assertIn("분석할 지표", response.error.message)
         self.assertEqual(1, adapter.search_count)
+        self.assertEqual([], adapter.search_contexts[0]["preferred_metric_ids"])
         self.assertEqual([], model.calls)
         self.assertEqual(0, adapter.execute_count)
 
@@ -772,6 +775,10 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
             period_response.error.clarification_type,
         )
         self.assertEqual(1, adapter.search_count)
+        self.assertEqual(
+            [METRIC_ID],
+            adapter.search_contexts[0]["preferred_metric_ids"],
+        )
         self.assertEqual([], model.calls)
 
     async def test_pre_resolved_latest_snapshot_without_period_reaches_typed_execution(self):

@@ -20,6 +20,7 @@ from app.adapters.datahub_metadata import (
 from app.adapters.datahub_metadata_types import GlossaryMetricTerm, metric_rule_matches
 from app.adapters.legacy_semantic_release import compile_legacy_semantic_release
 from app.adapters.query_search_evidence import (
+    compact_candidate_assets as _compact_candidate_assets,
     gather_snapshot_and_semantic as _gather_snapshot_and_semantic,
     ranked_matches as _ranked_matches,
     unicode_tokens as _unicode_tokens,
@@ -60,6 +61,7 @@ class QueryGovernanceEngine:
     """정적 질문 분기 없이 DataHub 검색 증거로 asset을 선택하고 join·entitlement·schema drift를 fail-closed로 통제한다."""
 
     MAX_REQUEST_ASSETS = 8
+    MAX_CANDIDATE_METRICS = 24
 
     def __init__(
         self,
@@ -68,6 +70,7 @@ class QueryGovernanceEngine:
         *,
         expected_context_release: str | None = None,
         max_request_assets: int = MAX_REQUEST_ASSETS,
+        max_candidate_metrics: int = MAX_CANDIDATE_METRICS,
         search_mode: str = "hybrid",
         catalog_ttl_seconds: float | None = None,
     ) -> None:
@@ -75,6 +78,8 @@ class QueryGovernanceEngine:
             raise ValueError("expected context release cannot be blank")
         if max_request_assets < 1:
             raise ValueError("request asset limit must be positive")
+        if max_candidate_metrics < 1:
+            raise ValueError("candidate metric limit must be positive")
         if search_mode not in {"lexical", "hybrid"}:
             raise ValueError("DataHub search mode must be lexical or hybrid")
         self._catalog = catalog
@@ -95,6 +100,7 @@ class QueryGovernanceEngine:
         self._schema = schema_inspector
         self._expected_release = expected_context_release
         self._max_request_assets = max_request_assets
+        self._max_candidate_metrics = max_candidate_metrics
         self._search_mode = search_mode
         self._compiled_snapshot: CatalogSnapshot | None = None
         self._compiled_release: CanonicalSemanticRelease | None = None
@@ -106,10 +112,13 @@ class QueryGovernanceEngine:
     ) -> list[dict[str, Any]]:
         """Unicode token과 semantic hit로 asset을 순위화한 뒤 권한 있는 연결 graph만 runtime context로 반환한다."""
 
-        _release, selected, graph, terms = await self._search_selection(
-            query,
-            context,
-        )
+        (
+            _release,
+            selected,
+            graph,
+            terms,
+            _asset_priorities,
+        ) = await self._search_selection(query, context, for_interpretation=False)
         try:
             await self._schema.verify(selected)
             return self._project_assets(
@@ -131,18 +140,40 @@ class QueryGovernanceEngine:
     ) -> AssetCandidateSet:
         """질문 해석용 후보를 실행 parameter·Trino schema binding 없이 release receipt와 반환한다."""
 
-        release, selected, graph, terms = await self._search_selection(
-            query,
-            context,
-        )
+        (
+            release,
+            selected,
+            graph,
+            terms,
+            asset_priorities,
+        ) = await self._search_selection(query, context, for_interpretation=True)
+        preferred_metric_ids = self._preferred_metric_ids(context)
         try:
-            assets = self._project_assets(
-                selected,
-                graph,
+            assets = _compact_candidate_assets(
+                self._project_assets(
+                    selected,
+                    graph,
+                    terms,
+                    context,
+                    candidate=True,
+                ),
                 terms,
-                context,
-                candidate=True,
+                _unicode_tokens(query),
+                asset_priorities,
+                self._max_candidate_metrics,
+                preferred_metric_ids,
             )
+            selectable_metric_ids = {
+                str(metric.get("id") or "")
+                for asset in assets
+                for metric in asset.get("metrics", ())
+                if isinstance(metric, dict)
+                and metric.get("candidate_selectable") is True
+            }
+            if not set(preferred_metric_ids).issubset(selectable_metric_ids):
+                raise NoEntitledAssetsError(
+                    "preferred metrics are not selectable for the request principal"
+                )
         except NoEntitledAssetsError:
             raise
         except GovernedMetadataError as error:
@@ -221,13 +252,16 @@ class QueryGovernanceEngine:
         self,
         query: str,
         context: dict[str, Any],
+        *,
+        for_interpretation: bool,
     ) -> tuple[
         CanonicalSemanticRelease,
         tuple[GovernedDataset, ...],
         tuple[GovernedJoin, ...],
         dict[str, GlossaryMetricTerm],
+        dict[str, int],
     ]:
-        """질문 증거로 bounded 후보 component를 고르고 검증된 release 객체와 함께 반환한다."""
+        """질문 증거로 bounded 후보 scope를 고르고 검증된 release 객체와 함께 반환한다."""
 
         query_tokens = _unicode_tokens(query)
         if not query_tokens:
@@ -239,24 +273,62 @@ class QueryGovernanceEngine:
             terms = self._required_terms(snapshot, datasets)
             # lexical과 semantic 증거를 함께 요구 가능한 일반 경로로 유지해 특정 질문용 키워드 사전을 만들지 않는다.
             ranked = _ranked_matches(query_tokens, datasets, terms, semantic_hits)
-            if not ranked:
+            preferred_metric_ids = self._preferred_metric_ids(context)
+            preferred_datasets = self._preferred_metric_datasets(
+                preferred_metric_ids,
+                datasets,
+                terms,
+            )
+            ordered_by_fqn: dict[str, GovernedDataset] = {}
+            for item in (*preferred_datasets, *(entry[1] for entry in ranked)):
+                ordered_by_fqn.setdefault(item.fqn, item)
+            ordered_datasets = tuple(ordered_by_fqn.values())
+            if not ordered_datasets:
                 raise NoMetricMatchError(
                     "no governed DataHub asset matches the request"
                 )
-            entitled = [item for item in ranked if item[1].entitled(context)]
+            if preferred_datasets and not all(
+                item.entitled(context) for item in preferred_datasets
+            ):
+                raise NoEntitledAssetsError(
+                    "preferred DataHub metric asset is outside the request entitlement"
+                )
+            entitled = [item for item in ordered_datasets if item.entitled(context)]
             if not entitled:
                 raise NoEntitledAssetsError(
                     "no matching DataHub asset is entitled for this request"
                 )
             # seed entitlement만으로는 부족하다. join·metric dependency로 끌려온 중간 asset의
             # schema와 관계도 노출되므로 확장 결과 전체를 _select_connected가 다시 검증한다.
-            selected, graph = self._select_connected(
-                tuple(item[1] for item in entitled),
-                datasets,
-                context,
-                release.joins,
+            selected, graph = (
+                self._select_interpretation_scope(
+                    tuple(entitled),
+                    datasets,
+                    context,
+                    release.joins,
+                )
+                if for_interpretation
+                else self._select_connected(
+                    tuple(entitled),
+                    datasets,
+                    context,
+                    release.joins,
+                )
             )
-            self._validate_common_contracts(selected)
+            if not {item.fqn for item in preferred_datasets}.issubset(
+                {item.fqn for item in selected}
+            ):
+                raise UnsupportedSemanticError(
+                    "preferred metrics do not share a bounded governed candidate component"
+                )
+            if not for_interpretation:
+                self._validate_common_contracts(selected)
+            selected_fqns = {item.fqn for item in selected}
+            asset_priorities = {
+                item.fqn: len(ordered_datasets) - index
+                for index, item in enumerate(ordered_datasets)
+                if item.fqn in selected_fqns
+            }
         except NoEntitledAssetsError:
             raise
         except (
@@ -265,7 +337,115 @@ class QueryGovernanceEngine:
             GovernedMetadataError,
         ) as error:
             raise MetadataUnavailableError(str(error)) from error
-        return release, selected, graph, terms
+        return release, selected, graph, terms, asset_priorities
+
+    def _select_interpretation_scope(
+        self,
+        seeds: tuple[GovernedDataset, ...],
+        datasets: tuple[GovernedDataset, ...],
+        context: dict[str, Any],
+        edges: tuple[GovernedJoin, ...],
+    ) -> tuple[tuple[GovernedDataset, ...], tuple[GovernedJoin, ...]]:
+        """JOIN 가능성을 선결하지 않고 완전한 seed dependency component를 bounded 후보 범위에 합친다."""
+
+        by_fqn = {item.fqn: item for item in datasets}
+        selected: set[str] = set()
+        for seed in seeds:
+            component = self._seed_component(seed, by_fqn, edges)
+            if not self._valid_candidate_component(component, by_fqn, context):
+                continue
+            expanded = selected | component
+            if self._valid_interpretation_scope(expanded, by_fqn, context):
+                selected = expanded
+        if not selected:
+            raise GovernedMetadataError(
+                "governed interpretation candidates cannot form a bounded contract scope"
+            )
+        return tuple(by_fqn[name] for name in sorted(selected)), edges
+
+    def _valid_interpretation_scope(
+        self,
+        selected: set[str],
+        by_fqn: dict[str, GovernedDataset],
+        context: dict[str, Any],
+    ) -> bool:
+        """후보 union에는 실행 JOIN·query policy 대신 bounded 권한과 단일 calendar만 요구한다."""
+
+        if (
+            not selected
+            or not selected.issubset(by_fqn)
+            or len(selected) > self._max_request_assets
+            or not any(by_fqn[name].metrics for name in selected)
+            or not all(by_fqn[name].entitled(context) for name in selected)
+        ):
+            return False
+        calendar_ids = {
+            str(by_fqn[name].time_metadata.get("calendar_id") or "")
+            for name in selected
+        }
+        return len(calendar_ids) == 1 and "" not in calendar_ids
+
+    @staticmethod
+    def _preferred_metric_ids(context: dict[str, Any]) -> tuple[str, ...]:
+        """서버가 확정한 멀티턴 Metric 힌트만 중복 없는 비권위 후보 우선순위로 읽는다."""
+
+        raw = context.get("preferred_metric_ids") or ()
+        if not isinstance(raw, (list, tuple)) or any(
+            not isinstance(item, str) or not item.strip() for item in raw
+        ):
+            raise MetadataUnavailableError(
+                "preferred metric candidate context is invalid"
+            )
+        return tuple(dict.fromkeys(item.strip() for item in raw))
+
+    @staticmethod
+    def _preferred_metric_datasets(
+        metric_ids: tuple[str, ...],
+        datasets: tuple[GovernedDataset, ...],
+        terms: dict[str, GlossaryMetricTerm],
+    ) -> tuple[GovernedDataset, ...]:
+        """column Metric 또는 ratio operand가 속한 Dataset을 active release에서 정확히 찾는다."""
+
+        if not metric_ids:
+            return ()
+        dataset_by_metric_id = {
+            str(metric["id"]): dataset
+            for dataset in datasets
+            for metric in dataset.metrics
+        }
+        resolved_ids: set[str] = set()
+        required_datasets: list[GovernedDataset] = []
+        for metric_id in metric_ids:
+            direct = dataset_by_metric_id.get(metric_id)
+            if direct is not None:
+                resolved_ids.add(metric_id)
+                required_datasets.append(direct)
+                continue
+            term = terms.get(metric_id)
+            operands = (
+                ratio_operand_ids(term.metric_rule)
+                if term is not None
+                else None
+            )
+            operand_datasets = tuple(
+                dataset_by_metric_id.get(operand_id)
+                for operand_id in (operands or ())
+            )
+            if operands is not None and all(
+                item is not None for item in operand_datasets
+            ):
+                resolved_ids.add(metric_id)
+                required_datasets.extend(
+                    item for item in operand_datasets if item is not None
+                )
+        if resolved_ids != set(metric_ids):
+            raise NoMetricMatchError(
+                "preferred metric is outside the active semantic release"
+            )
+        unique_by_fqn: dict[str, GovernedDataset] = {}
+        for item in required_datasets:
+            unique_by_fqn.setdefault(item.fqn, item)
+        return tuple(unique_by_fqn.values())
 
     @staticmethod
     def _project_assets(

@@ -907,6 +907,44 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(fqns[:2], tuple(item.fqn for item in selected))
 
+    def test_interpretation_scope_unions_independent_policies_only_with_one_calendar(self) -> None:
+        """후보 recall은 독립 실행 policy를 허용하되 현재 Node 1이 해석할 수 없는 혼합 calendar는 넣지 않는다."""
+
+        datasets = tuple(
+            SimpleNamespace(
+                fqn=f"orbit.analytics.scope_{index}",
+                metrics=({"dimensions": []},),
+                policy_version=f"policy-v{index + 1}",
+                query_policy={"strategy": f"strategy-{index + 1}"},
+                time_metadata={
+                    "calendar_id": (
+                        "calendar-shared" if index < 2 else "calendar-distinct"
+                    )
+                },
+                entitled=lambda _context: True,
+            )
+            for index in range(3)
+        )
+        engine = QueryGovernanceEngine(
+            object(),
+            object(),
+            max_request_assets=3,
+            search_mode="lexical",
+        )
+
+        selected, selected_graph = engine._select_interpretation_scope(
+            datasets,
+            datasets,
+            {"role": "analyst"},
+            (),
+        )
+
+        self.assertEqual(
+            tuple(item.fqn for item in datasets[:2]),
+            tuple(item.fqn for item in selected),
+        )
+        self.assertEqual((), selected_graph)
+
     async def asyncSetUp(self) -> None:
         self.transport = RuntimeTransport(_bundle())
         self.datahub_http = httpx.AsyncClient(transport=httpx.MockTransport(self.transport.datahub))
@@ -1004,6 +1042,137 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("", metrics["helium_rate"]["asset_fqn"])
         self.assertEqual("helium_yield", metrics["helium_rate"]["numerator_metric_id"])
         self.assertEqual("ratio", terms["helium_rate"]["kind"])
+
+    async def test_candidate_projection_limits_choices_but_keeps_ratio_dependencies(self) -> None:
+        """Metric 후보 상한은 Node 1 선택지만 줄이고 ratio operand 실행 계약은 제거하지 않는다."""
+
+        transport = RuntimeTransport(_bundle_with_ratio())
+        datahub_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.datahub)
+        )
+        trino_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.trino)
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=DataHubCatalogClient(
+                "http://datahub.test",
+                client=datahub_http,
+                page_size=2,
+                max_entities=20,
+            ),
+            trino_client=TrinoAsyncClient(
+                "https://trino.test",
+                "runtime",
+                "test-password",
+                client=trino_http,
+            ),
+            max_candidate_metrics=1,
+            search_mode="lexical",
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+
+        candidates = await adapter.search_asset_candidates(
+            "Helium average yield",
+            {"role": "analyst", "parameters": {}},
+        )
+        metrics = {
+            str(metric["id"]): metric
+            for asset in candidates.assets
+            for metric in asset["metrics"]
+        }
+
+        self.assertEqual(
+            {"helium_rate", "helium_yield", "helium_observation_count"},
+            set(metrics),
+        )
+        self.assertTrue(metrics["helium_rate"]["candidate_selectable"])
+        self.assertFalse(metrics["helium_yield"]["candidate_selectable"])
+        self.assertFalse(
+            metrics["helium_observation_count"]["candidate_selectable"]
+        )
+        self.assertEqual([], transport.trino_statements)
+
+    async def test_candidate_projection_omits_unrelated_same_asset_metrics(self) -> None:
+        """직접 Glossary 증거가 강한 column Metric은 같은 Dataset의 무관한 지표를 끌고 오지 않는다."""
+
+        transport = RuntimeTransport(_bundle_with_ratio())
+        datahub_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.datahub)
+        )
+        trino_http = httpx.AsyncClient(
+            transport=httpx.MockTransport(transport.trino)
+        )
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino.test",
+            "runtime",
+            datahub_client=DataHubCatalogClient(
+                "http://datahub.test",
+                client=datahub_http,
+                page_size=2,
+                max_entities=20,
+            ),
+            trino_client=TrinoAsyncClient(
+                "https://trino.test",
+                "runtime",
+                "test-password",
+                client=trino_http,
+            ),
+            max_candidate_metrics=1,
+            search_mode="lexical",
+        )
+        self.addAsyncCleanup(datahub_http.aclose)
+        self.addAsyncCleanup(trino_http.aclose)
+        self.addAsyncCleanup(adapter.aclose)
+
+        candidates = await adapter.search_asset_candidates(
+            "Helium observation count",
+            {"role": "analyst", "parameters": {}},
+        )
+        metric_ids = {
+            str(metric["id"])
+            for asset in candidates.assets
+            for metric in asset["metrics"]
+        }
+
+        self.assertEqual({"helium_observation_count"}, metric_ids)
+        self.assertEqual([], transport.trino_statements)
+
+    async def test_candidates_keep_disconnected_metrics_until_execution_resolution(self) -> None:
+        """같은 시간 계약의 복수 후보는 JOIN 부재로 숨기지 않고 선택 후 semantic Gate에서 차단한다."""
+
+        context = {"role": "analyst", "parameters": {}}
+        candidates = await self.adapter.search_asset_candidates(
+            "Helium yield and Argon output",
+            context,
+        )
+        selectable_ids = {
+            str(metric["id"])
+            for asset in candidates.assets
+            for metric in asset["metrics"]
+            if metric.get("candidate_selectable") is True
+        }
+
+        self.assertEqual({"helium_yield", "argon_yield"}, selectable_ids)
+        self.assertEqual([], self.transport.trino_statements)
+        selection = ExecutionAssetSelection(
+            output_metric_ids=("helium_yield", "argon_yield"),
+            execution_metric_ids=("helium_yield", "argon_yield"),
+            field_references=(),
+            receipt_context_release=candidates.context_release,
+            receipt_catalog_checksum=candidates.catalog_checksum,
+            receipt_canonical_checksum=candidates.canonical_checksum,
+        )
+
+        with self.assertRaisesRegex(
+            UnsupportedSemanticError,
+            "no unique commonly approved join path",
+        ):
+            await self.adapter.resolve_execution_assets(selection, context)
+        self.assertEqual([], self.transport.trino_statements)
 
     async def test_execution_resolution_uses_only_the_common_approved_join_path(self) -> None:
         """복수 Metric 선택은 active graph의 공통 whitelist edge만 실행 context에 남긴다."""
@@ -1488,5 +1657,62 @@ class LiveGovernanceSmokeTest(unittest.IsolatedAsyncioTestCase):
             )
             self.assertTrue(receipt)
             self.assertTrue(await adapter.get_active_context_release())
+        finally:
+            await adapter.aclose()
+
+    async def test_live_compact_candidates_use_glossary_without_schema_gate(self) -> None:
+        """live Glossary label 후보 검색은 선택 전 Trino schema I/O 없이 bounded Metric만 노출한다."""
+
+        adapter = self._adapter()
+        try:
+            governance = adapter._governance
+            snapshot = await governance._loader.load()
+            release = governance._active_release(snapshot)
+            datasets = governance._datasets_for_release(snapshot, release)
+            terms = governance._required_terms(snapshot, datasets)
+            entitled_fqns = {
+                item.fqn for item in datasets if item.entitled({"role": "analyst"})
+            }
+            eligible = next(
+                (
+                    metric
+                    for metric in release.metrics
+                    if metric.visibility == "BUSINESS"
+                    and metric.source_kind == "column"
+                    and set(metric.source_assets).issubset(entitled_fqns)
+                    and (
+                        not metric.allowed_roles
+                        or "analyst" in metric.allowed_roles
+                    )
+                ),
+                None,
+            )
+            self.assertIsNotNone(eligible)
+
+            class RejectSchemaInspection:
+                """candidate pass에서 schema 검사가 호출되면 즉시 실패시키는 live sentinel이다."""
+
+                async def verify(self, _datasets) -> None:
+                    raise AssertionError(
+                        "candidate search must not inspect Trino schema"
+                    )
+
+            governance._schema = RejectSchemaInspection()
+            candidates = await adapter.search_asset_candidates(
+                terms[eligible.id].label,
+                {"role": "analyst", "parameters": {}},
+            )
+            selectable_ids = {
+                str(metric["id"])
+                for asset in candidates.assets
+                for metric in asset["metrics"]
+                if metric.get("candidate_selectable") is True
+            }
+
+            self.assertIn(eligible.id, selectable_ids)
+            self.assertLessEqual(
+                len(selectable_ids),
+                QueryGovernanceEngine.MAX_CANDIDATE_METRICS,
+            )
         finally:
             await adapter.aclose()

@@ -77,36 +77,19 @@ class AnalysisContextStage:
                 clarification_type=ClarificationType.METRIC,
             )
         # 1. 사용자 질문에 부합하는 승인된 DataHub 자산 검색
+        candidate_search_context = {
+            **context.model_dump(mode="json"),
+            "template_id": decision.template_id,
+            "parameters": payload.parameters,
+            "preferred_metric_ids": list(
+                resolved.resolved_metric_ids if resolved is not None else ()
+            ),
+        }
         try:
-            try:
-                candidates = await self._adapter.search_asset_candidates(
-                    payload.question,
-                    {
-                        **context.model_dump(mode="json"),
-                        "template_id": decision.template_id,
-                        "parameters": payload.parameters,
-                    },
-                )
-            except NoEntitledAssetsError:
-                resolved_metric_ids = (
-                    payload.resolved_slots.resolved_metric_ids
-                    if payload.resolved_slots is not None
-                    else ()
-                )
-                if resolved_metric_ids:
-                    fallback_query = (
-                        f"{' '.join(resolved_metric_ids)} {payload.question}"
-                    )
-                    candidates = await self._adapter.search_asset_candidates(
-                        fallback_query,
-                        {
-                            **context.model_dump(mode="json"),
-                            "template_id": decision.template_id,
-                            "parameters": payload.parameters,
-                        },
-                    )
-                else:
-                    raise
+            candidates = await self._adapter.search_asset_candidates(
+                payload.question,
+                candidate_search_context,
+            )
         except NoMetricMatchError:
             return self._responses.clarification_required(
                 context,
@@ -155,7 +138,7 @@ class AnalysisContextStage:
                 state.trace,
                 PipelineStage.CONTEXT,
                 AnalysisStatus.BLOCKED,
-                ErrorCode.SQL_POLICY_BLOCKED,
+                ErrorCode.SEMANTIC_CONTRACT_INVALID,
                 str(error),
                 decision,
                 detail=str(error),

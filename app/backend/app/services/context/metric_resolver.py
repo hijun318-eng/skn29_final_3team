@@ -233,6 +233,7 @@ class MetricResolver:
             metric
             for metric in executable_metrics
             if metric.get("visibility", "BUSINESS") == "BUSINESS"
+            and metric.get("candidate_selectable", True) is True
         ]
         candidate_ids = [str(metric["id"]) for metric in candidates]
         if not candidate_ids:
@@ -268,7 +269,11 @@ class MetricResolver:
         support_terms: dict[str, dict[str, object]] = {}
         for metric in executable_metrics:
             metric_id = str(metric["id"])
-            if metric_id in candidate_ids or metric.get("visibility") != "SUPPORT":
+            if (
+                metric_id in candidate_ids
+                or metric.get("visibility") != "SUPPORT"
+                or metric.get("candidate_selectable", True) is not True
+            ):
                 continue
             semantic = metric.get("semantic")
             if not isinstance(semantic, dict):

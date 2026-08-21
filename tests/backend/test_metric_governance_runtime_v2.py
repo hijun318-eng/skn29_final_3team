@@ -42,6 +42,7 @@ from app.ports.data_platform import (  # noqa: E402
     ExecutionAssetSelection,
     GovernedFieldReference,
     NoEntitledAssetsError,
+    NoMetricMatchError,
     ReleaseReceiptChangedError,
     UnsupportedSemanticError,
 )
@@ -131,8 +132,17 @@ class _Schema:
         return None
 
 
-def _engine(bundle: dict) -> QueryGovernanceEngine:
-    engine = QueryGovernanceEngine(object(), _Schema(), search_mode="lexical")
+def _engine(
+    bundle: dict,
+    *,
+    max_candidate_metrics: int = QueryGovernanceEngine.MAX_CANDIDATE_METRICS,
+) -> QueryGovernanceEngine:
+    engine = QueryGovernanceEngine(
+        object(),
+        _Schema(),
+        search_mode="lexical",
+        max_candidate_metrics=max_candidate_metrics,
+    )
     engine._loader = _Loader(_snapshot(bundle))
     return engine
 
@@ -203,6 +213,113 @@ def test_candidate_retrieval_does_not_require_execution_filter_values() -> None:
         metric["required_filters"] == []
         for asset in candidates.assets
         for metric in asset["metrics"]
+    )
+
+
+def test_node1_candidate_terms_exclude_nonselectable_ratio_dependencies() -> None:
+    """compact 후보의 ratio operand는 실행에는 남지만 Node 1의 공개·SUPPORT 선택지에는 노출하지 않는다."""
+
+    engine = _engine(_runtime_bundle(), max_candidate_metrics=1)
+    candidates = asyncio.run(
+        engine.search_asset_candidates(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {}},
+        )
+    )
+    model = _Normalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000011"),
+        trace_id="compact-candidate-ratio-dependencies",
+        user_id=UUID("20000000-0000-0000-0000-000000000012"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    asyncio.run(
+        resolver.resolve(
+            AnalysisRequest(
+                question="Amount per Event",
+                parameters={"active": True},
+            ),
+            context,
+            list(candidates.assets),
+        )
+    )
+
+    assert model.input is not None
+    assert {
+        identifier
+        for identifier, term in model.input["business_terms"].items()
+        if term["kind"] == "metric"
+    } == {"amount_per_event"}
+    assert not {
+        identifier
+        for identifier, term in model.input["business_terms"].items()
+        if term["kind"] == "support_metric"
+    }
+
+
+def test_preferred_metric_seeds_candidates_without_question_keyword_rules() -> None:
+    """멀티턴 확정 Metric은 질문 문자열 재작성 없이 active release 관계로 후보 Dataset을 찾는다."""
+
+    engine = _engine(_runtime_bundle(), max_candidate_metrics=1)
+
+    candidates = asyncio.run(
+        engine.search_asset_candidates(
+            "selected interval only",
+            {
+                "role": "analyst",
+                "parameters": {},
+                "preferred_metric_ids": ["amount_per_event"],
+            },
+        )
+    )
+
+    selectable_ids = {
+        str(metric["id"])
+        for asset in candidates.assets
+        for metric in asset["metrics"]
+        if metric["candidate_selectable"] is True
+    }
+    assert selectable_ids == {"amount_per_event"}
+
+    with pytest.raises(NoMetricMatchError, match="outside the active semantic release"):
+        asyncio.run(
+            engine.search_asset_candidates(
+                "selected interval only",
+                {
+                    "role": "analyst",
+                    "parameters": {},
+                    "preferred_metric_ids": ["retired_metric"],
+                },
+            )
+        )
+
+
+def test_compact_candidates_keep_an_explicit_support_metric_as_nonbusiness_choice() -> None:
+    """SUPPORT의 고유 승인 semantic이 직접 일치하면 공개 BUSINESS로 바꾸지 않고 availability 판정에 남긴다."""
+
+    engine = _engine(_runtime_bundle(), max_candidate_metrics=1)
+
+    candidates = asyncio.run(
+        engine.search_asset_candidates(
+            "amount_total",
+            {"role": "analyst", "parameters": {}},
+        )
+    )
+    metrics = {
+        str(metric["id"]): metric
+        for asset in candidates.assets
+        for metric in asset["metrics"]
+    }
+
+    assert metrics["amount_total"]["visibility"] == "SUPPORT"
+    assert metrics["amount_total"]["candidate_selectable"] is True
+    assert any(
+        metric["visibility"] == "BUSINESS"
+        and metric["candidate_selectable"] is True
+        for metric in metrics.values()
     )
 
 

@@ -53,9 +53,11 @@ base ingestion 직후 semantic republish·전체 read-back 없이 Backend를 열
 principal에게 허용된 자산을 lexical·semantic 증거로 먼저 순위화하고, 그 bounded context만
 Node 1에 공급한다. 검색 hit가 많으면 단순 top-N으로 잘라 dependency나 JOIN 경로를 끊지 않고,
 Metric·Dimension dependency와 승인 경로가 완전한 component를 순위대로 최대 8개 자산까지
-편입한다. component의 중간 node를 포함해 entitlement·공통 policy·calendar 계약이 하나라도
-다르면 그 component만 제외한다. 이는 특정 질문 사전이나 질문 정규식이 아니라 active release의
-그래프와 계약으로 동작한다.
+편입한다. 각 component 내부는 중간 node까지 entitlement·공통 policy·calendar 계약을
+모두 통과해야 한다. 다만 서로 독립적인 component는 같은 calendar인 경우 후보 해석
+범위에서 함께 회수할 수 있고, Node 1 선택 후에 실행 subgraph를 다시 계산할 때
+공통 policy·JOIN·grain이 없으면 typed semantic error로 닫힌다. 이는 특정 질문 사전이나
+질문 정규식이 아니라 active release의 그래프와 계약으로 동작한다.
 
 Node 1은 먼저 승인 용어와 독립적으로 질문에 쓰인 측정 대상의 원문 연속 구간을
 `measurement_source_texts`에 질문 순서대로 최대 4개 추출하고, 그 다음 요청 전체의 지표
@@ -149,10 +151,17 @@ BUSINESS Metric을 요약한다. Node 2의 `metric_ids`는 SUPPORT 계산 의존
 JOIN의 유일 최단 경로를 다시 계산하고, 선택 subgraph에 대해서만 node·Metric 권한과 live schema를
 검증한다. 병렬 edge 또는 동률 경로는 질문 문구로 추측하지 않고 semantic contract 오류로 닫는다.
 
-남은 검색 과제는 첫 pass가 아직 최대 8개 자산의 완전한 dependency component라는 점이다. 다음 단계는
-Metric·Dataset·Glossary 식별자와 요약 time contract만 갖는 compact candidate projection을 만들고,
-서로 다른 calendar/time mode 후보의 recall을 독립적으로 평가한 뒤 선택 후 호환 실행 계약으로 좁히는
-것이다. dependency를 잘라낸 단순 top-5나 특정 질문별 예외는 추가하지 않는다.
+Node 1의 실제 선택지는 DataHub Glossary label·alias·definition과 Dataset lexical/semantic rank로
+bounded Metric projection을 만든다. ratio operand는 실행 의존성으로 남아도 Node 1 선택지에서는 제외하고,
+멀티턴의 확정 Metric은 질문 문자열 보정이 아니라 active release의 Metric→Dataset 관계로 다시 찾는다.
+따라서 같은 Dataset의 무관한 Metric 전체를 LLM에 보내는 구조는 제거했지만, 내부 asset recall은 여전히
+최대 8개 완전한 dependency component와 Dataset 단위 semantic search를 사용한다.
+
+다음 검색 과제는 DataHub가 지원하는 Glossary Term/native Metric semantic hit를 함께 사용해 Metric
+retrieval recall·precision을 catalog-generated case로 측정하는 것이다. 서로 다른 calendar/time mode는
+현재 단일 `calendar_id` Node 1 계약에서 섞지 않는다. Metric 선택과 기간 해석을 별도 typed 단계로
+분리한 뒤 선택된 Metric들의 호환 시간 계약만 허용해야 한다. dependency를 잘라낸 단순 top-5나 특정
+질문별 예외는 추가하지 않는다.
 
 구조 Gate는 다음처럼 읽기 전용으로 재현한다. 기본 출력은 case 전체를 생략한 checksum·집계이며,
 상세 감사에만 `--include-cases`를 사용한다.

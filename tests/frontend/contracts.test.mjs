@@ -11,6 +11,10 @@ import { reportFeatureSource, reportSources } from "./report-source-contract.mjs
 
 const source = (path) => readFileSync(new URL(`../../app/frontend/src/${path}`, import.meta.url), "utf8");
 const nginx = readFileSync(new URL("../../app/frontend/nginx.conf", import.meta.url), "utf8");
+const frontendCompose = readFileSync(new URL("../../app/frontend/compose.fragment.yml", import.meta.url), "utf8");
+const frontendDockerfile = readFileSync(new URL("../../app/frontend/Dockerfile", import.meta.url), "utf8");
+const frontendPackage = JSON.parse(readFileSync(new URL("../../app/frontend/package.json", import.meta.url), "utf8"));
+const viteConfig = readFileSync(new URL("../../app/frontend/vite.config.js", import.meta.url), "utf8");
 const productSources = [
   "App.jsx", "routing.js", "api/analysisClient.ts", "api/reportClient.ts",
   "pages/AgentPage.jsx",
@@ -30,6 +34,12 @@ assert.equal(OPENAPI_VERSION, "OPENAPI-v1.0.0");
 assert.equal(REPORT_CONTRACT_VERSION, "REPORT-v1.0.0");
 assert.match(nginx, /location \/assets\/ \{[\s\S]*try_files \$uri =404/);
 assert.match(nginx, /Cache-Control "no-cache, no-store, must-revalidate"/);
+assert.match(nginx, /location \/api\/ \{[\s\S]*proxy_pass http:\/\/backend:8000\//);
+assert.equal(frontendPackage.scripts["dev:compose"], "vite --mode compose");
+assert.match(viteConfig, /composeMode \? "http:\/\/127\.0\.0\.1:28000"/);
+assert.match(viteConfig, /composeMode \? "\/api"/);
+assert.match(frontendCompose, /VITE_BACKEND_BASE_URL: "\$\{VITE_BACKEND_BASE_URL:-\/api\}"/);
+assert.match(frontendDockerfile, /ARG VITE_BACKEND_BASE_URL=\/api/);
 assert.deepEqual(REPORT_RUN_STATUSES, ["queued", "running", "success", "partial", "failed", "cancelled"]);
 assert.equal(resolveRoute("/").path, "/agent");
 assert.equal(resolveRoute("/agent").page, "chat");

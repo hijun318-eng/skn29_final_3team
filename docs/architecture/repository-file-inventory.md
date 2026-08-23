@@ -8,12 +8,12 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 138 |
-| documentation | 100 |
-| production | 316 |
+| documentation | 110 |
+| production | 319 |
 | project-config | 39 |
 | runtime-config | 72 |
 | runtime-contract | 13 |
-| test | 153 |
+| test | 154 |
 
 운영 무결성 위반: **0건**
 
@@ -247,6 +247,7 @@
 | `app/frontend/src/components/auth/SessionLogin.jsx` | production | REVIEWED |
 | `app/frontend/src/components/charts/EnterpriseChart.jsx` | production | REVIEWED |
 | `app/frontend/src/components/common/EnterpriseUi.jsx` | production | REVIEWED |
+| `app/frontend/src/components/common/ThemeToggle.jsx` | production | REVIEWED |
 | `app/frontend/src/components/layout/AppHeader.jsx` | production | REVIEWED |
 | `app/frontend/src/components/layout/AppSidebar.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnEvidenceDrawer.jsx` | production | REVIEWED |
@@ -259,6 +260,7 @@
 | `app/frontend/src/features/reports/components/index.js` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/MarkdownBlockEditor.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportArtifactContent.jsx` | production | REVIEWED |
+| `app/frontend/src/features/reports/components/ReportAssistantPanel.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportBlockControls.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportDocumentView.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportEditorBlock.jsx` | production | REVIEWED |
@@ -313,6 +315,7 @@
 | `app/frontend/src/pages/ReportsPage.jsx` | production | REVIEWED |
 | `app/frontend/src/routing.js` | production | REVIEWED |
 | `app/frontend/src/styles.css` | production | REVIEWED |
+| `app/frontend/src/themePreference.js` | production | REVIEWED |
 | `app/frontend/src/utils/createUuid.ts` | production | REVIEWED |
 | `app/frontend/src/utils/presentation.ts` | production | REVIEWED |
 | `app/frontend/vite.config.js` | runtime-config | REVIEWED |
@@ -366,6 +369,9 @@
 | `docs/daily_reports/team_summaries/5주차/20260813.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/team_summaries/5주차/20260814.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/team_summaries/5주차/주간보고.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/daily_reports/team_summaries/6주차/20260818.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/daily_reports/team_summaries/6주차/20260819.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/daily_reports/team_summaries/6주차/주간보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/01_요구사항 정의서_29기_3팀.xlsx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/02_WBS_29기_3팀.xlsm` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/03_프로젝트기획서_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
@@ -396,6 +402,13 @@
 | `docs/product/02_유저플로우.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/product/03_아키텍처.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/README.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/reference/Canonical_Semantic_Graph_기반_DataHub_점진_전환_통합_평가_2026-08-20.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/reference/datahub_search_flow.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/reference/DataHub_검색_구조_및_Answervice_적용.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/reference/DataHub_검색_흐름_효율성_및_일반성_비교.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/reference/DataHub_네이티브_시맨틱_모델_중심_제안_객관적_평가_2026-08-20.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/reference/DataHub_사용_방식_객관적_재평가_및_실사용_사례_2026-08-20.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/reference/목업_하드코딩_감사_2026-08-19.md` | documentation | REFERENCE_NON_RUNTIME |
 | `evals/__init__.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/base_comparison.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/catalog_regression.py` | archive | ARCHIVE_NON_RUNTIME |
@@ -839,6 +852,7 @@
 | `tests/frontend/report-page-architecture.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/report-source-contract.mjs` | test | TEST_ONLY |
 | `tests/frontend/run.mjs` | test | TEST_ONLY |
+| `tests/frontend/theme.test.mjs` | test | TEST_ONLY |
 | `tests/integration/test_answervice_runtime.py` | test | TEST_ONLY |
 | `tests/integration/test_app_postgres_compose_override.py` | test | TEST_ONLY |
 | `tests/integration/test_ci_workflow.py` | test | TEST_ONLY |

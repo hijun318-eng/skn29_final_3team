@@ -35,8 +35,9 @@
 - `e2e_mvp/source/`: 사용자가 지정한 원문. 이번 재정의의 근거이지만 최신 제품 계약은 아니다.
 - `e2e_mvp/derived/`: 과거 시점의 작업 문서와 실행 기록. 현재 성공을 자동 증명하지 않는다.
 - `Answervice_기획서.md`: 삭제하지 않고 보존하는 과거 종합 기획서다.
+- `reference/`: 현재 보존하는 자료는 DataHub 검색 구조·흐름, native semantic 전환과 실사용 사례의 비교 평가 및 목업·하드코딩 감사다. 학습·검토용 참고 자료이며 제품 계약이나 현재 live 완료 증거가 아니다.
 - `architecture/`: 최신 Archify 원본 JSON 4개와 HTML 4개만 유지한다. 모두 showcase 9/9와 1440·1600·1920·2048 containment를 통과했고 1440 light/dark를 수동 확인했다. 이는 그림 품질 `GO`이며 제품 구현 완료 증거는 아니다.
-- `daily_reports/`, `deliverables/`, `templates/`: 일지·제출물·양식이다. 제품 요구의 권위 원본이 아니다.
+- `daily_reports/`, `deliverables/`, `templates/`: 팀원별 일지, 6주차 일일·주간 요약, 제출물·양식이다. 제품 요구의 권위 원본이 아니다.
 
 ## 상태와 증거 규칙
 

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections import deque
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping
@@ -24,7 +23,7 @@ from app.services.context.fanout_policy import (
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
-ANALYSIS_PLAN_VERSION = "ANSWERVICE-ANALYSIS-PLAN-v2"
+ANALYSIS_PLAN_VERSION = "ANSWERVICE-ANALYSIS-PLAN-v3"
 MAX_ANALYSIS_METRICS = 4
 
 
@@ -112,6 +111,32 @@ class PlannedField:
         return {"asset_fqn": self.asset_fqn, "column": self.column}
 
 
+@dataclass(frozen=True, order=True)
+class PlannedFilter:
+    """값을 노출하지 않고 서버 소유 파라미터에 결속한 필터 predicate다."""
+
+    asset_fqn: str
+    column: str
+    operator: str
+    parameter: str
+
+    @property
+    def qualified(self) -> str:
+        """필터가 참조하는 완전 수식 필드 이름을 반환한다."""
+
+        return f"{self.asset_fqn}.{self.column}"
+
+    def as_dict(self) -> dict[str, str]:
+        """원시 값 없이 검증 가능한 필터 계획을 직렬화한다."""
+
+        return {
+            "asset_fqn": self.asset_fqn,
+            "column": self.column,
+            "operator": self.operator,
+            "parameter": self.parameter,
+        }
+
+
 @dataclass(frozen=True)
 class PlannedJoin:
     """한 governed JOIN edge에 대해 결정된 팬아웃 처리 방식과 근거다."""
@@ -135,7 +160,7 @@ class AnalysisPlan:
     output_metric_ids: tuple[str, ...]
     dependency_metric_ids: tuple[str, ...]
     dimension_fields: tuple[PlannedField, ...]
-    filter_fields: tuple[PlannedField, ...]
+    filter_fields: tuple[PlannedFilter, ...]
     time_mode: AnalysisTimeMode
     time_fields: tuple[PlannedField, ...]
     time_bucket: str
@@ -211,6 +236,7 @@ def build_analysis_plan(
     filters = _requested_filter_fields(
         structured_request.get("filter_fields"),
         schemas,
+        contracts,
     )
     dimensions = _without_constant_aggregate_dimensions(
         dimensions,
@@ -338,7 +364,7 @@ def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPl
         operation = AnalysisOperation(str(value["operation"]))
         time_mode = AnalysisTimeMode(str(value["time_mode"]))
         dimensions = tuple(_field_from_payload(item) for item in value["dimension_fields"])
-        filters = tuple(_field_from_payload(item) for item in value["filter_fields"])
+        filters = tuple(_filter_from_payload(item) for item in value["filter_fields"])
         time_fields = tuple(_field_from_payload(item) for item in value["time_fields"])
         joins = tuple(
             PlannedJoin(
@@ -414,7 +440,7 @@ def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPl
         tuple(sorted(dimensions))
         != _requested_fields(value["dimension_fields"], schemas, "dimension_fields")
         or tuple(sorted(filters))
-        != _requested_fields(value["filter_fields"], schemas, "filter_fields")
+        != _validated_planned_filters(value["filter_fields"], schemas, contracts)
         or tuple(sorted(time_fields))
         != _requested_fields(value["time_fields"], schemas, "time_fields")
         or any(
@@ -573,10 +599,14 @@ def _runtime_contracts(package: object) -> Mapping[str, Any]:
         "parameter_contract",
         "query_policy",
     }
-    if not isinstance(contracts, Mapping) or set(contracts) != required:
+    if (
+        not isinstance(contracts, Mapping)
+        or not required.issubset(contracts)
+        or set(contracts) - required - {"filter_rules"}
+    ):
         raise _error(
             AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
-            "AnalysisPlan에는 여섯 개의 검증된 Runtime Context 계약이 필요합니다.",
+            "AnalysisPlan Runtime Context 계약 구성이 유효하지 않습니다.",
         )
     return contracts
 
@@ -756,14 +786,9 @@ def _requested_fields(
 def _requested_filter_fields(
     value: object,
     schemas: Mapping[str, Mapping[str, Any]],
-) -> tuple[PlannedField, ...]:
-    """검증된 필터 predicate에서 논리 계획에 필요한 물리 필드만 투영한다.
-
-    Context 단계의 ``filter_fields``는 실제 값 검증을 위해 operator와 value_text를
-    함께 보존한다. AnalysisPlan은 값 자체를 소유하지 않고 context_package_hash로
-    결합하므로, 여기서는 predicate 계약을 엄격히 검사한 뒤 asset/column만 중복 없이
-    기록한다. 같은 필드의 여러 값 필터도 하나의 물리 의존성으로 표현된다.
-    """
+    contracts: Mapping[str, Any],
+) -> tuple[PlannedFilter, ...]:
+    """검증된 사용자 필터를 값 없이 서버 소유 named parameter에 결속한다."""
 
     if value is None:
         return ()
@@ -772,7 +797,16 @@ def _requested_filter_fields(
             AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
             "filter_fields는 구조화된 필터 배열이어야 합니다.",
         )
-    fields: set[PlannedField] = set()
+    available = _available_filter_rules(contracts, schemas)
+    by_signature: dict[tuple[str, str, str], list[PlannedFilter]] = {}
+    for item in available:
+        by_signature.setdefault(
+            (item.asset_fqn, item.column, item.operator), []
+        ).append(item)
+    for candidates in by_signature.values():
+        candidates.sort(key=lambda item: item.parameter)
+
+    fields: list[PlannedFilter] = []
     required = {"asset_fqn", "column", "operator", "value_text"}
     for item in value:
         if not isinstance(item, Mapping) or set(item) != required:
@@ -796,8 +830,115 @@ def _requested_filter_fields(
                 AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
                 "filter_fields가 승인된 asset schema 범위를 벗어났습니다.",
             )
-        fields.add(field)
+        signature = (field.asset_fqn, field.column, str(item["operator"]))
+        candidates = by_signature.get(signature, [])
+        if not candidates:
+            raise _error(
+                AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+                "filter_fields predicate에 대응하는 서버 소유 파라미터가 없습니다.",
+            )
+        fields.append(candidates.pop(0))
+    if len(fields) != len(set(fields)):
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "filter_fields에는 중복 predicate를 포함할 수 없습니다.",
+        )
     return tuple(sorted(fields))
+
+
+def _validated_planned_filters(
+    value: object,
+    schemas: Mapping[str, Mapping[str, Any]],
+    contracts: Mapping[str, Any],
+) -> tuple[PlannedFilter, ...]:
+    """직렬화된 필터 계획이 현재 Runtime Context의 승인 predicate인지 검증한다."""
+
+    if not isinstance(value, (list, tuple)):
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "AnalysisPlan filter_fields는 배열이어야 합니다.",
+        )
+    filters = tuple(_filter_from_payload(item) for item in value)
+    available = set(_available_filter_rules(contracts, schemas))
+    if len(filters) != len(set(filters)) or not set(filters).issubset(available):
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "AnalysisPlan filter predicate가 현재 Runtime Context와 일치하지 않습니다.",
+        )
+    return tuple(sorted(filters))
+
+
+def _available_filter_rules(
+    contracts: Mapping[str, Any],
+    schemas: Mapping[str, Mapping[str, Any]],
+) -> tuple[PlannedFilter, ...]:
+    """asset-level 필터를 우선하고 구버전 계약은 Metric 필터로 제한해 호환한다."""
+
+    raw_rules = contracts.get("filter_rules")
+    legacy_fallback = raw_rules is None
+    if legacy_fallback:
+        metric_rules = contracts.get("metric_rules")
+        raw_rules = [
+            item
+            for metric in (metric_rules if isinstance(metric_rules, list) else ())
+            if isinstance(metric, Mapping)
+            for item in metric.get("required_filters", ())
+        ]
+    if not isinstance(raw_rules, list):
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "Runtime Context filter_rules가 배열이 아닙니다.",
+        )
+    parameter_contract = contracts.get("parameter_contract")
+    parameters = (
+        parameter_contract.get("parameters")
+        if isinstance(parameter_contract, Mapping)
+        else None
+    )
+    if not isinstance(parameters, list):
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "Runtime Context parameter_contract가 유효하지 않습니다.",
+        )
+    filter_parameters = {
+        str(item.get("name"))
+        for item in parameters
+        if isinstance(item, Mapping) and item.get("scope") == "filter"
+    }
+    result: list[PlannedFilter] = []
+    for item in raw_rules:
+        if not isinstance(item, Mapping) or set(item) != {
+            "field",
+            "operator",
+            "parameter",
+        }:
+            raise _error(
+                AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+                "Runtime Context filter rule 형식이 유효하지 않습니다.",
+            )
+        field = _field_from_payload(item["field"])
+        operator = str(item["operator"])
+        parameter = str(item["parameter"])
+        schema = schemas.get(field.asset_fqn)
+        if (
+            schema is None
+            or field.column not in schema["fields"]
+            or operator not in {"eq", "neq"}
+            or parameter not in filter_parameters
+        ):
+            raise _error(
+                AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+                "Runtime Context filter rule이 schema 또는 parameter 범위를 벗어났습니다.",
+            )
+        result.append(
+            PlannedFilter(field.asset_fqn, field.column, operator, parameter)
+        )
+    if len(result) != len(set(result)) and not legacy_fallback:
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "Runtime Context filter rule이 중복되었습니다.",
+        )
+    return tuple(sorted(set(result)))
 
 
 def _without_constant_aggregate_dimensions(
@@ -840,6 +981,28 @@ def _field_from_payload(value: object) -> PlannedField:
             "계획 필드의 asset_fqn과 column은 비어 있을 수 없습니다.",
         )
     return PlannedField(asset_fqn, column)
+
+
+def _filter_from_payload(value: object) -> PlannedFilter:
+    """직렬화된 필터 predicate를 strict typed 값으로 복원한다."""
+
+    required = {"asset_fqn", "column", "operator", "parameter"}
+    if not isinstance(value, Mapping) or set(value) != required:
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "계획 필터는 asset_fqn, column, operator, parameter만 포함해야 합니다.",
+        )
+    field = _field_from_payload(
+        {"asset_fqn": value["asset_fqn"], "column": value["column"]}
+    )
+    operator = str(value["operator"])
+    parameter = str(value["parameter"])
+    if operator not in {"eq", "neq"} or not parameter:
+        raise _error(
+            AnalysisPlanErrorCode.INVALID_RUNTIME_CONTRACT,
+            "계획 필터 operator 또는 parameter가 유효하지 않습니다.",
+        )
+    return PlannedFilter(field.asset_fqn, field.column, operator, parameter)
 
 
 def _operation(
@@ -1259,24 +1422,38 @@ def _minimal_join_tree(
     anchor = min(targets)
     selected: dict[str, object] = {}
     for target in sorted(targets - {anchor}):
-        pending: deque[tuple[str, tuple[object, ...]]] = deque([(anchor, ())])
-        visited = {anchor}
-        path: tuple[object, ...] | None = None
-        while pending:
-            node, edges = pending.popleft()
-            if node == target:
-                path = edges
-                break
+        distances = {anchor: 0}
+        frontier = [anchor]
+        while frontier:
+            node = frontier.pop(0)
             for edge in sorted(by_node.get(node, ()), key=lambda item: str(item.id)):
                 neighbor = str(edge.right) if str(edge.left) == node else str(edge.left)
-                if neighbor in visited:
-                    continue
-                visited.add(neighbor)
-                pending.append((neighbor, (*edges, edge)))
-        if path is None:
+                if neighbor not in distances:
+                    distances[neighbor] = distances[node] + 1
+                    frontier.append(neighbor)
+        if target not in distances:
             raise _error(
                 AnalysisPlanErrorCode.JOIN_PATH_UNAVAILABLE,
                 "분석에 필요한 asset들이 승인된 JOIN graph로 연결되지 않습니다.",
+            )
+        path_counts = {anchor: 1}
+        paths: dict[str, tuple[object, ...] | None] = {anchor: ()}
+        for node in sorted(distances, key=lambda item: (distances[item], item)):
+            for edge in sorted(by_node.get(node, ()), key=lambda item: str(item.id)):
+                neighbor = str(edge.right) if str(edge.left) == node else str(edge.left)
+                if distances.get(neighbor) != distances[node] + 1:
+                    continue
+                previous = path_counts.get(neighbor, 0)
+                path_counts[neighbor] = min(2, previous + path_counts.get(node, 0))
+                candidate = (
+                    (*paths[node], edge) if paths.get(node) is not None else None
+                )
+                paths[neighbor] = candidate if previous == 0 else None
+        path = paths.get(target)
+        if path_counts.get(target) != 1 or path is None:
+            raise _error(
+                AnalysisPlanErrorCode.JOIN_PATH_UNAVAILABLE,
+                "분석 asset 사이에 복수 최단 JOIN 경로가 있어 하나를 임의 선택할 수 없습니다.",
             )
         selected.update({str(edge.id): edge for edge in path})
     return tuple(selected[key] for key in sorted(selected))

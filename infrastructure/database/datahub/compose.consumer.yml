@@ -216,13 +216,26 @@ services:
       DATAHUB_GMS_HOST: datahub-gms
       DATAHUB_GMS_PORT: "8443"
       DATAHUB_GMS_PROTOCOL: https
+      KAFKA_BOOTSTRAP_SERVER: broker:29092
+      SCHEMA_REGISTRY_URL: https://datahub-gms:8443/schema-registry/api/
+      # Search/metadata consumer 환경은 원격 ingestion execution을 수행하지 않는다.
+      # 별도 승인된 executor 환경만 이 값을 true로 명시해야 한다.
+      DATAHUB_ACTIONS_INGESTION_EXECUTOR_ENABLED: "false"
       DATAHUB_SYSTEM_CLIENT_ID: ${DATAHUB_SYSTEM_CLIENT_ID:-__datahub_system}
       DATAHUB_SYSTEM_CLIENT_SECRET: ${DATAHUB_SYSTEM_CLIENT_SECRET:?DATAHUB_SYSTEM_CLIENT_SECRET is required}
       METADATA_SERVICE_AUTH_ENABLED: "true"
       REQUESTS_CA_BUNDLE: /run/secrets/datahub-ca.pem
+      # image startup은 Python requests가 아니라 curl로 /health를 확인한다.
+      # curl은 REQUESTS_CA_BUNDLE을 읽지 않으므로 private CA를 별도로 지정해야 한다.
+      CURL_CA_BUNDLE: /run/secrets/datahub-ca.pem
+      DATAHUB_TLS_CA_FILE: /run/secrets/datahub-ca.pem
       DATAHUB_VERSION: v1.7.0
     volumes:
       - ${DATAHUB_TLS_CA_HOST_FILE:?DATAHUB_TLS_CA_HOST_FILE is required}:/run/secrets/datahub-ca.pem:ro
+      # v1.7의 bundled doc-propagation config는 GMS scheme을 http로 고정하고,
+      # system action 둘 다 private-CA Schema Registry 설정을 전달하지 않는다.
+      - ./actions/doc_propagation_action.yaml:/etc/datahub/actions/system/conf/doc_propagation_action.yaml:ro
+      - ./actions/executor.yaml:/etc/datahub/actions/system/conf/executor.yaml:ro
 
   frontend-quickstart:
     <<: *datahub-service

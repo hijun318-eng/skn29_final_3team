@@ -55,13 +55,14 @@ class ExecutionControlTest(unittest.IsolatedAsyncioTestCase):
         self.decision = await RoutingService().decide(self.payload)
 
     @staticmethod
-    def context(role=Role.ANALYST, user=2):
+    def context(role=Role.ANALYST, user=2, *, require_fresh_query=False):
         return RequestContext(
             request_id=UUID(int=user + 10),
             trace_id=f"trace-{user}",
             user_id=UUID(int=user),
             role=role,
             as_of=date(2026, 7, 30),
+            require_fresh_query=require_fresh_query,
         )
 
     async def test_plan_and_result_cache_are_separate_and_gates_still_run(self) -> None:
@@ -99,6 +100,18 @@ class ExecutionControlTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("BLOCKED", denied.data.status.value)
         self.assertEqual(2, self.adapter.execute_count)
+
+    async def test_saved_definition_replay_bypasses_result_cache(self) -> None:
+        first = await self.service.analyze(self.payload, self.context(), self.decision)
+        replay = await self.service.analyze(
+            self.payload,
+            self.context(require_fresh_query=True),
+            self.decision,
+        )
+
+        self.assertEqual(2, self.adapter.execute_count)
+        self.assertFalse(first.data.result.evidence.cached)
+        self.assertFalse(replay.data.result.evidence.cached)
 
     async def test_model_calls_never_exceed_budget(self) -> None:
         response = await self.service.analyze(

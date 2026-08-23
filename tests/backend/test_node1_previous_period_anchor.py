@@ -27,6 +27,7 @@ from app.services.context.model_time_context import (  # noqa: E402
     previous_result_shape,
 )
 from src.ai.schema import ContractError, validate_payload  # noqa: E402
+from tests.ai.test_contracts import NODE1_INTERPRETATION_CONTEXT  # noqa: E402
 
 SEOUL = ZoneInfo("Asia/Seoul")
 RESULT_SHAPE = {
@@ -46,6 +47,7 @@ def _node1_request(**overrides: object) -> dict[str, object]:
         "calendar_id": "gregorian",
         "allowed_routes": ["general", "template"],
         "business_terms": {"room_revenue": {"kind": "metric", "aliases": ["객실 매출"]}},
+        "interpretation_context": NODE1_INTERPRETATION_CONTEXT,
     }
     request.update(overrides)
     return request

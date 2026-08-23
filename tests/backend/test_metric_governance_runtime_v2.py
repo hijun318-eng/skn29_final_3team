@@ -48,7 +48,10 @@ from app.ports.data_platform import (  # noqa: E402
 )
 from app.services.analysis.responses import _business_metrics  # noqa: E402
 from app.services.analysis.result_validator import PipelineResultValidator  # noqa: E402
-from app.services.context.metric_resolver import MetricResolver  # noqa: E402
+from app.services.context.metric_resolver import (  # noqa: E402
+    MetricResolver,
+    _validate_selected_data_availability,
+)
 from app.services.context.metric_execution_scope import select_assets_for_metrics  # noqa: E402
 from app.services.context.builder import (  # noqa: E402
     ContextBuildError,
@@ -147,6 +150,16 @@ def _engine(
     return engine
 
 
+async def _candidate_assets(
+    engine: QueryGovernanceEngine,
+    query: str,
+    context: dict,
+) -> list[dict]:
+    """production의 candidate API를 통해 resolver 입력 projection을 복원한다."""
+
+    return list((await engine.search_asset_candidates(query, context)).assets)
+
+
 def test_v1_metric_is_read_compatible_but_never_runtime_permitted() -> None:
     legacy_metric = {
         "governance_version": RUNTIME_GOVERNANCE_VERSION_V1,
@@ -171,7 +184,8 @@ def test_support_operands_execute_but_are_not_business_candidates() -> None:
     engine = _engine(_runtime_bundle())
 
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -297,6 +311,141 @@ def test_preferred_metric_seeds_candidates_without_question_keyword_rules() -> N
         )
 
 
+def test_pre_resolved_ratio_keeps_an_independent_business_operand_term() -> None:
+    """ratio의 독립 BUSINESS 분자는 출력이 아니어도 Context 계보에서 누락하지 않는다."""
+
+    engine = _engine(_runtime_bundle(), max_candidate_metrics=1)
+    candidates = asyncio.run(
+        engine.search_asset_candidates(
+            "selected interval only",
+            {
+                "role": "analyst",
+                "parameters": {},
+                "preferred_metric_ids": ["amount_per_event"],
+            },
+        )
+    )
+    assets = [deepcopy(asset) for asset in candidates.assets]
+    for asset in assets:
+        for metric in asset["metrics"]:
+            if metric["id"] == "amount_total":
+                metric["visibility"] = "BUSINESS"
+
+    original_get_metric_terms = engine.get_metric_terms
+    amount_total_term = {
+        "id": "amount_total",
+        "urn": "urn:li:glossaryTerm:amount_total",
+        "label": "Amount Total",
+        "aliases": ["Amount Total"],
+        "definition": "Governed amount numerator.",
+        "unit": "credits",
+        "version": "v2",
+        "checksum": "a" * 64,
+        "kind": "metric",
+    }
+
+    async def get_metric_terms(
+        metric_ids: tuple[str, ...],
+        context: dict[str, object] | None = None,
+    ):
+        if metric_ids == ("amount_total",):
+            return {"amount_total": deepcopy(amount_total_term)}
+        return await original_get_metric_terms(metric_ids, context)
+
+    engine.get_metric_terms = get_metric_terms  # type: ignore[method-assign]
+    model = _Normalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000021"),
+        trace_id="v2-runtime-pre-resolved-business-ratio-operand",
+        user_id=UUID("20000000-0000-0000-0000-000000000022"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    selected_assets, _question, structured = asyncio.run(
+        resolver.resolve(
+            AnalysisRequest(
+                question="selected interval only",
+                resolved_slots=ResolvedSlots(
+                    metric_id="amount_per_event",
+                    metric_ids=("amount_per_event",),
+                    period_start="2026-08-01",
+                    period_end_exclusive="2026-08-02",
+                    analysis_operation="aggregate",
+                ),
+            ),
+            context,
+            assets,
+        )
+    )
+
+    assert model.input is None
+    assert set(structured["metric_ids"]) == {
+        "amount_per_event",
+        "amount_total",
+        "event_count",
+    }
+    assert set(structured["metric_terms"]) == {
+        "amount_per_event",
+        "amount_total",
+    }
+    assert {
+        metric["id"]
+        for asset in selected_assets
+        for metric in asset["metrics"]
+        if metric["visibility"] == "BUSINESS"
+    } == {"amount_per_event", "amount_total"}
+
+
+def test_pre_resolved_ratio_period_comparison_is_a_typed_unsupported_strategy() -> None:
+    """미승인 ratio 기간 비교는 지표 모호성이 아니라 실행 전 semantic 차단이다."""
+
+    engine = _engine(_runtime_bundle(), max_candidate_metrics=1)
+    assets = asyncio.run(
+        _candidate_assets(
+            engine,
+            "selected intervals only",
+            {
+                "role": "analyst",
+                "parameters": {},
+                "preferred_metric_ids": ["amount_per_event"],
+            },
+        )
+    )
+    model = _Normalizer()
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000023"),
+        trace_id="v2-runtime-pre-resolved-ratio-comparison",
+        user_id=UUID("20000000-0000-0000-0000-000000000024"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            MetricResolver(engine, model).resolve(
+                AnalysisRequest(
+                    question="selected intervals only",
+                    resolved_slots=ResolvedSlots(
+                        metric_id="amount_per_event",
+                        metric_ids=("amount_per_event",),
+                        period_start="2026-08-01",
+                        period_end_exclusive="2026-08-02",
+                        comparison_period_start="2026-07-01",
+                        comparison_period_end_exclusive="2026-07-02",
+                        analysis_operation="period_comparison",
+                    ),
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.QUERY_STRATEGY_NOT_APPROVED
+    assert model.input is None
+
+
 def test_compact_candidates_keep_an_explicit_support_metric_as_nonbusiness_choice() -> None:
     """SUPPORT의 고유 승인 semantic이 직접 일치하면 공개 BUSINESS로 바꾸지 않고 availability 판정에 남긴다."""
 
@@ -316,11 +465,50 @@ def test_compact_candidates_keep_an_explicit_support_metric_as_nonbusiness_choic
 
     assert metrics["amount_total"]["visibility"] == "SUPPORT"
     assert metrics["amount_total"]["candidate_selectable"] is True
-    assert any(
+    assert not any(
         metric["visibility"] == "BUSINESS"
         and metric["candidate_selectable"] is True
         for metric in metrics.values()
     )
+
+
+def test_dimension_only_search_does_not_expand_to_unrelated_business_metrics() -> None:
+    """Dataset recall만 있는 질문은 임의 BUSINESS 후보를 열지 않고 typed closure로 닫는다."""
+
+    engine = _engine(_runtime_bundle())
+
+    with pytest.raises(NoMetricMatchError, match="no governed metric has evidence"):
+        asyncio.run(
+            engine.search_asset_candidates(
+                "cohort",
+                {"role": "analyst", "parameters": {}},
+            )
+        )
+
+
+def test_dimension_alias_inside_metric_definition_is_not_metric_evidence() -> None:
+    """Dimension 별칭이 Metric 정의에도 있어도 Dimension-only 요청은 닫힌다."""
+
+    bundle = _runtime_bundle()
+    bundle["metric_terms"][0]["definition"] += " cohort별 값을 분석합니다."
+    matching_rule = next(
+        rule
+        for rule in bundle["metric_rules"]
+        if rule["id"] == bundle["metric_terms"][0]["id"]
+    )
+    matching_rule["governance"]["semantic"]["definition"] = bundle[
+        "metric_terms"
+    ][0]["definition"]
+    validate_bundle(bundle)
+    engine = _engine(bundle)
+
+    with pytest.raises(NoMetricMatchError, match="no governed metric has evidence"):
+        asyncio.run(
+            engine.search_asset_candidates(
+                "cohort",
+                {"role": "analyst", "parameters": {}},
+            )
+        )
 
 
 def test_execution_resolution_rebinds_selected_metrics_to_the_same_release() -> None:
@@ -476,7 +664,8 @@ def test_platform_admin_inherits_existing_metric_and_asset_entitlements() -> Non
     engine = _engine(_runtime_bundle())
 
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "platform_admin", "parameters": {"active": True}},
         )
@@ -499,7 +688,8 @@ def test_metric_role_and_pii_policy_fail_closed_after_asset_entitlement() -> Non
     )
     with pytest.raises(NoEntitledAssetsError, match="business metric"):
         asyncio.run(
-            role_restricted.search_assets(
+            _candidate_assets(
+                role_restricted,
                 "Amount per Event",
                 {"role": "analyst", "parameters": {"active": True}},
             )
@@ -508,14 +698,16 @@ def test_metric_role_and_pii_policy_fail_closed_after_asset_entitlement() -> Non
     pii = _engine(_runtime_bundle(contains_pii=True))
     with pytest.raises(NoEntitledAssetsError, match="business metric"):
         asyncio.run(
-            pii.search_assets(
+            _candidate_assets(
+                pii,
                 "Amount per Event",
                 {"role": "analyst", "parameters": {"active": True}},
             )
         )
     with pytest.raises(NoEntitledAssetsError, match="business metric"):
         asyncio.run(
-            pii.search_assets(
+            _candidate_assets(
+                pii,
                 "Amount per Event",
                 {"role": "platform_admin", "parameters": {"active": True}},
             )
@@ -584,6 +776,32 @@ class _PeriodRecheckNormalizer(_Normalizer):
 
     async def normalize_question(self, payload: dict) -> dict:
         result = await super().normalize_question(payload)
+        if "interpretation_recheck" not in payload:
+            result["period_candidates"] = []
+        return result
+
+
+class _MissingMetricPeriodRecheckNormalizer(_Normalizer):
+    """기간-only 후속 질문에서 첫 기간 해석만 누락한 모델 응답."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result.update(
+            {
+                "intent_candidates": [],
+                "measurement_source_text": None,
+                "measurement_source_texts": [],
+                "metric_candidates": [],
+                "metric_resolution": "missing",
+                "selected_metric_id": None,
+                "selected_metric_ids": [],
+                "analysis_operation": None,
+                "is_elliptical": True,
+                # 이 route는 모델의 provisional 해석이다. 상위 typed ANALYSIS action이
+                # 결합될 수 있으므로 기간 슬롯 recheck를 막아서는 안 된다.
+                "requested_route": "PRESENTATION",
+            }
+        )
         if "interpretation_recheck" not in payload:
             result["period_candidates"] = []
         return result
@@ -802,7 +1020,8 @@ class _MissingNormalizer(_Normalizer):
 def test_node1_can_identify_support_metric_but_only_business_metric_is_selectable() -> None:
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -831,11 +1050,11 @@ def test_node1_can_identify_support_metric_but_only_business_metric_is_selectabl
         for identifier, term in model.input["business_terms"].items()
         if term["kind"] == "metric"
     } == {"amount_per_event"}
-    assert {
+    assert not {
         identifier
         for identifier, term in model.input["business_terms"].items()
         if term["kind"] == "support_metric"
-    } == {"amount_total", "event_count"}
+    }
     assert structured["selected_metric_id"] == "amount_per_event"
     assert set(structured["metric_ids"]) == {
         "amount_total",
@@ -848,6 +1067,11 @@ def test_node1_can_identify_support_metric_but_only_business_metric_is_selectabl
         for asset in selected_assets
         for metric in asset["metrics"]
     } == {"amount_total", "event_count", "amount_per_event"}
+
+    # 제품 receipt는 필수 계보지만 data watermark는 manifest가 제공할 때만
+    # 존재한다. 발행 시각이나 wall clock을 evidence cutoff로 꾸며내지 않는다.
+    for asset in selected_assets:
+        asset["product_release_id"] = "verified-product-release"
 
     package = asyncio.run(
         PipelineContextService(engine, ContextPackageBuilder()).build(
@@ -866,6 +1090,8 @@ def test_node1_can_identify_support_metric_but_only_business_metric_is_selectabl
         "amount_per_event",
     }
     assert {term.id for term in package.metric_terms} == {"amount_per_event"}
+    assert package.product_release_id == "verified-product-release"
+    assert package.evidence_cutoff is None
     assert {metric.id for metric in _business_metrics(package)} == {
         "amount_per_event"
     }
@@ -880,7 +1106,8 @@ def test_latest_snapshot_contract_reaches_context_without_inventing_a_period() -
     engine = _engine(_runtime_bundle())
     assets = _latest_snapshot_assets(
         asyncio.run(
-            engine.search_assets(
+        _candidate_assets(
+            engine,
                 "Amount per Event",
                 {"role": "analyst", "parameters": {"active": True}},
             )
@@ -942,7 +1169,8 @@ def test_range_metric_rechecks_a_missing_period_once_before_clarifying() -> None
 
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -983,12 +1211,61 @@ def test_range_metric_rechecks_a_missing_period_once_before_clarifying() -> None
     ]
 
 
+def test_missing_metric_followup_rechecks_only_the_period_before_clarifying() -> None:
+    """기간-only 후속 질문도 기간을 1회 복구하되 Metric을 임의 선택하지 않는다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        _candidate_assets(
+            engine,
+            "Amount per Event 2026-08-01",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    model = _MissingMetricPeriodRecheckNormalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000001"),
+        trace_id="missing-metric-period-recheck",
+        user_id=UUID("20000000-0000-0000-0000-000000000002"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    with pytest.raises(ContextBuildError) as raised:
+        asyncio.run(
+            resolver.resolve(
+                AnalysisRequest(
+                    question="Amount per Event 2026-08-01",
+                    parameters={"active": True},
+                ),
+                context,
+                assets,
+            )
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.INVALID_METRIC
+    assert raised.value.partial_context["period_candidates"] == [
+        {
+            "start": "2026-08-01T00:00:00+09:00",
+            "end_exclusive": "2026-08-02T00:00:00+09:00",
+            "source_text": "2026-08-01",
+        }
+    ]
+    assert len(model.inputs) == 2
+    assert model.inputs[1]["interpretation_recheck"] == {
+        "target": "period_candidates",
+        "attempt": 1,
+    }
+
+
 def test_range_metric_still_clarifies_when_the_bounded_recheck_has_no_period() -> None:
     """두 번째 해석도 기간이 없으면 기본 기간을 합성하거나 세 번째 호출을 하지 않는다."""
 
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1028,7 +1305,8 @@ def test_range_metric_rechecks_a_future_period_before_execution() -> None:
 
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1067,7 +1345,8 @@ def test_range_metric_rejects_a_future_period_after_one_recheck() -> None:
 
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1098,12 +1377,45 @@ def test_range_metric_rejects_a_future_period_after_one_recheck() -> None:
     assert len(model.inputs) == 2
 
 
+def test_release_bound_availability_rejects_period_before_run_creation() -> None:
+    partial = {"metric_ids": ["room_revenue"]}
+    asset = {
+        "product_release_id": "phase7-release",
+        "data_available_from": "2025-07-01",
+        "data_available_through": "2025-08-31",
+    }
+
+    with pytest.raises(ContextBuildError) as raised:
+        _validate_selected_data_availability(
+            [asset],
+            [
+                {
+                    "start": "2026-08-01",
+                    "end_exclusive": "2026-09-01",
+                    "source_text": "이번 달",
+                }
+            ],
+            partial,
+        )
+
+    assert raised.value.code is ContextBuildErrorCode.OUT_OF_DATA_RANGE
+    assert raised.value.suggestions == ("2025-07-01 ~ 2025-08-31",)
+    assert raised.value.partial_context == {
+        "metric_ids": ["room_revenue"],
+        "data_availability": {
+            "data_available_from": "2025-07-01",
+            "data_available_through": "2025-08-31",
+        },
+    }
+
+
 def test_selected_analysis_rechecks_a_missing_result_shape_once() -> None:
     """선택된 Metric의 결과 형태 누락만 재검토하고 두 번째 typed 연산을 사용한다."""
 
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1139,12 +1451,62 @@ def test_selected_analysis_rechecks_a_missing_result_shape_once() -> None:
     assert structured["intent_candidates"] == ["aggregate"]
 
 
+def test_sealed_conversation_default_builds_presentation_ready_time_series_only_in_conversation() -> None:
+    """같은 Node1 aggregate도 explicit Conversation capability에서만 day series로 좁힌다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        _candidate_assets(
+            engine,
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    for asset in assets:
+        asset["conversation_default_operation"] = "time_trend"
+    direct_context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000031"),
+        trace_id="direct-aggregate-default",
+        user_id=UUID("20000000-0000-0000-0000-000000000032"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+    conversation_context = direct_context.model_copy(
+        update={
+            "request_id": UUID("10000000-0000-0000-0000-000000000033"),
+            "trace_id": "conversation-time-trend-default",
+            "conversation_id": UUID("30000000-0000-0000-0000-000000000034"),
+        }
+    )
+
+    _assets, _question, direct = asyncio.run(
+        MetricResolver(engine, _Normalizer()).resolve(
+            AnalysisRequest(question="Amount per Event", parameters={"active": True}),
+            direct_context,
+            deepcopy(assets),
+        )
+    )
+    _assets, _question, conversation = asyncio.run(
+        MetricResolver(engine, _Normalizer()).resolve(
+            AnalysisRequest(question="Amount per Event", parameters={"active": True}),
+            conversation_context,
+            deepcopy(assets),
+        )
+    )
+
+    assert direct["analysis_operation"] == "aggregate"
+    assert direct["intent_candidates"] == ["aggregate"]
+    assert conversation["analysis_operation"] == "time_trend"
+    assert conversation["intent_candidates"] == ["time_trend"]
+
+
 def test_selected_analysis_rejects_an_unresolved_shape_after_one_recheck() -> None:
     """두 번째 해석도 결과 형태가 비면 기본 연산이나 세 번째 호출을 만들지 않는다."""
 
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1184,7 +1546,8 @@ def test_latest_snapshot_contract_rejects_unapproved_period_coercion() -> None:
     engine = _engine(_runtime_bundle())
     assets = _latest_snapshot_assets(
         asyncio.run(
-            engine.search_assets(
+        _candidate_assets(
+            engine,
                 "Amount per Event",
                 {"role": "analyst", "parameters": {"active": True}},
             )
@@ -1234,7 +1597,8 @@ def test_node1_preserves_multiple_explicit_business_metrics_as_one_analysis_scop
     engine = _engine(_runtime_bundle())
     question = "Amount per Event and Account Count"
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             question,
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1284,7 +1648,8 @@ def test_node1_compatibility_projections_are_derived_from_authoritative_lists() 
     engine = _engine(_runtime_bundle())
     question = "Amount per Event and Account Count"
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             question,
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1319,7 +1684,8 @@ def test_node1_receives_typed_previous_shape_without_entering_metric_fast_path()
     engine = _engine(_runtime_bundle())
     question = "Amount per Event"
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             question,
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1362,7 +1728,8 @@ def test_cross_metric_comparison_uses_one_shared_period_without_requesting_a_sec
     engine = _engine(_runtime_bundle())
     question = "Amount per Event and Account Count"
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             question,
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1411,7 +1778,8 @@ def test_two_period_multi_metric_comparison_remains_period_comparison() -> None:
     engine = _engine(_runtime_bundle())
     question = "Amount per Event and Account Count across two periods"
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             question,
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1437,12 +1805,13 @@ def test_two_period_multi_metric_comparison_remains_period_comparison() -> None:
 
 def test_support_metric_search_reaches_asset_and_returns_typed_unavailable_error() -> None:
     engine = _engine(_runtime_bundle())
-    assets = asyncio.run(
-        engine.search_assets(
+    candidates = asyncio.run(
+        engine.search_asset_candidates(
             "Support amount_total",
             {"role": "analyst", "parameters": {"active": True}},
         )
     )
+    assets = list(candidates.assets)
     resolver = MetricResolver(engine, _SupportNormalizer())
     context = RequestContext(
         request_id=UUID("10000000-0000-0000-0000-000000000001"),
@@ -1477,12 +1846,13 @@ def test_support_metric_model_signal_must_be_internally_consistent() -> None:
             return result
 
     engine = _engine(_runtime_bundle())
-    assets = asyncio.run(
-        engine.search_assets(
+    candidates = asyncio.run(
+        engine.search_asset_candidates(
             "Support amount_total",
             {"role": "analyst", "parameters": {"active": True}},
         )
     )
+    assets = list(candidates.assets)
     resolver = MetricResolver(engine, _InconsistentSupportNormalizer())
     context = RequestContext(
         request_id=UUID("10000000-0000-0000-0000-000000000001"),
@@ -1508,13 +1878,15 @@ def test_support_metric_model_signal_must_be_internally_consistent() -> None:
 def test_unresolved_metric_returns_typed_options_instead_of_internal_error() -> None:
     engine = _engine(_runtime_bundle())
     amount_assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )
     )
     account_assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "account",
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1554,13 +1926,15 @@ def test_unresolved_metric_returns_typed_options_instead_of_internal_error() -> 
 def test_inconsistent_selected_metric_is_downgraded_to_safe_clarification() -> None:
     engine = _engine(_runtime_bundle())
     amount_assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )
     )
     account_assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "account",
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1599,7 +1973,8 @@ def test_inconsistent_selected_metric_is_downgraded_to_safe_clarification() -> N
 def test_unsupported_measurement_does_not_fall_back_to_all_business_metrics() -> None:
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )
@@ -1633,7 +2008,8 @@ def test_unsupported_measurement_does_not_fall_back_to_all_business_metrics() ->
 def test_missing_measurement_alone_offers_approved_business_metrics() -> None:
     engine = _engine(_runtime_bundle())
     assets = asyncio.run(
-        engine.search_assets(
+        _candidate_assets(
+            engine,
             "Amount per Event",
             {"role": "analyst", "parameters": {"active": True}},
         )

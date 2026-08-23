@@ -69,6 +69,15 @@ ALLOWED_RUNTIME_JSON = {
     "app/frontend/package-lock.json": "frontend dependency lock",
     "app/backend/contracts/openapi.v0.1.json": "generated API contract snapshot",
     "app/backend/contracts/state_mapping.v0.1.json": "versioned state contract",
+    "app/backend/contracts/analysis_capability.single_asset.v1.json": (
+        "sealed catalog-bound single-asset analysis capability contract"
+    ),
+    "app/backend/contracts/analysis_capability.bounded_multi_turn.v1.json": (
+        "sealed catalog-bound bounded multi-turn analysis capability contract"
+    ),
+    "app/backend/contracts/analysis_capability.multi_asset_join.v1.json": (
+        "sealed catalog-bound multi-asset JOIN analysis capability contract"
+    ),
     "src/ai/contracts/model_release.v1.json": "provider response schema manifest",
     "src/ai/contracts/node_io.v0.1.json": "versioned node I/O schema",
     "src/modelops/model_runtime_manifest.v1.json": "validated model capacity manifest",

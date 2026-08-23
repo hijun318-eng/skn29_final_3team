@@ -72,6 +72,32 @@ def test_internal_consumers_share_authenticated_encrypted_gms_boundary() -> None
     assert actions["environment"]["METADATA_SERVICE_AUTH_ENABLED"] == "true"
     assert "DATAHUB_SYSTEM_CLIENT_SECRET" in actions["environment"]
     assert actions["environment"]["REQUESTS_CA_BUNDLE"] == "/run/secrets/datahub-ca.pem"
+    assert actions["environment"]["CURL_CA_BUNDLE"] == "/run/secrets/datahub-ca.pem"
+    assert actions["environment"]["KAFKA_BOOTSTRAP_SERVER"] == "broker:29092"
+    assert actions["environment"]["SCHEMA_REGISTRY_URL"] == (
+        "https://datahub-gms:8443/schema-registry/api/"
+    )
+    assert actions["environment"]["DATAHUB_ACTIONS_INGESTION_EXECUTOR_ENABLED"] == (
+        "false"
+    )
+
+    for config_name in ("doc_propagation_action.yaml", "executor.yaml"):
+        config = _yaml(DATAHUB / "actions" / config_name)
+        connection = config["source"]["config"]["connection"]
+        assert connection["bootstrap"] == "${KAFKA_BOOTSTRAP_SERVER:-localhost:9092}"
+        assert connection["schema_registry_url"] == (
+            "${SCHEMA_REGISTRY_URL:-http://localhost:8081}"
+        )
+        assert connection["schema_registry_config"]["ssl.ca.location"] == (
+            "${DATAHUB_TLS_CA_FILE:-/run/secrets/datahub-ca.pem}"
+        )
+        assert config["datahub"]["server"].startswith(
+            "${DATAHUB_GMS_PROTOCOL:-http}://"
+        )
+    executor = _yaml(DATAHUB / "actions" / "executor.yaml")
+    assert executor["enabled"] == (
+        "${DATAHUB_ACTIONS_INGESTION_EXECUTOR_ENABLED:-false}"
+    )
 
     frontend = services["frontend-quickstart"]
     assert frontend["environment"]["DATAHUB_GMS_USE_SSL"] == "true"
@@ -104,6 +130,9 @@ def test_runtime_and_publishers_use_separate_service_credentials() -> None:
     )
     assert backend["environment"]["RELEASE_READINESS_CACHE_TTL_SECONDS"] == (
         "${RELEASE_READINESS_CACHE_TTL_SECONDS:-86400}"
+    )
+    assert backend["environment"]["DATAHUB_SEARCH_MODE"] == (
+        "${DATAHUB_SEARCH_MODE:-datahub_lexical}"
     )
     for publisher in (ingestion, semantic):
         assert "DATAHUB_PUBLISH_API_TOKEN" in publisher["environment"]

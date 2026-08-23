@@ -67,10 +67,24 @@ class PipelineSupport:
         self,
         payload: AnalysisRequest,
         context: RequestContext,
-        assets: list[dict[str, object]],
+        candidates: AssetCandidateSet,
     ) -> tuple[list[dict[str, object]], str, dict[str, object]]:
         """질문과 자산 메타데이터를 대조하여 단일 지표 및 구조화 요청 객체를 확정합니다."""
-        return await self._resolver.resolve(payload, context, assets)
+        if (
+            candidates.product_release_id is None
+            or candidates.runtime_projection_checksum is None
+        ):
+            from app.ports.data_platform import MetadataUnavailableError
+
+            raise MetadataUnavailableError(
+                "Node1 grounding requires an active RuntimeCatalogProjection receipt"
+            )
+        return await self._resolver.resolve(
+            payload,
+            context,
+            list(candidates.assets),
+            candidate_set=candidates,
+        )
 
     async def resolve_execution_assets(
         self,
@@ -127,6 +141,10 @@ class PipelineSupport:
                 receipt_context_release=candidates.context_release,
                 receipt_catalog_checksum=candidates.catalog_checksum,
                 receipt_canonical_checksum=candidates.canonical_checksum,
+                receipt_product_release_id=candidates.product_release_id,
+                receipt_runtime_projection_checksum=(
+                    candidates.runtime_projection_checksum
+                ),
             )
         except ValueError as error:
             raise UnsupportedSemanticError(

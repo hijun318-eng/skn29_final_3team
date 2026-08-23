@@ -45,7 +45,12 @@ query NativeMetricReadback($urn: String!) {
     path
     exists
     platform { urn }
-    info { name description }
+    info {
+      name
+      description
+      expression { dialects { dialect expression } }
+    }
+    aiContext { synonyms instructions examples customInstructions }
     status { removed lifecycleStage { urn } }
     ownership {
       owners {
@@ -194,13 +199,34 @@ async def _verify_native_metric_graph(
             or not isinstance(metric.get("info"), Mapping)
             or metric["info"].get("name") != info["name"]
             or metric["info"].get("description") != info["description"]
+            or metric["info"].get("expression") != info["expression"]
         ):
             raise NativeMetricShadowError(
                 "DataHub native Metric GraphQL identity differs"
             )
+        _assert_native_ai_context_graph(metric.get("aiContext"), aspects["aiContext"])
         _assert_native_governance_graph(metric, aspects, urn)
         _assert_native_lineage_graph(metric, aspects)
     return len(grouped)
+
+
+def _assert_native_ai_context_graph(
+    actual: object,
+    expected: Mapping[str, Any],
+) -> None:
+    """GraphQL optional field의 명시적 null과 Rest.li key 부재를 동등하게 대조한다."""
+
+    if not isinstance(actual, Mapping):
+        raise NativeMetricShadowError("DataHub native Metric AI Context differs")
+    try:
+        assert_contains(actual, expected, "metric.aiContext")
+    except ValueError as error:
+        raise NativeMetricShadowError(
+            "DataHub native Metric AI Context differs"
+        ) from error
+    optional = {"synonyms", "instructions", "examples", "customInstructions"}
+    if any(actual.get(name) is not None for name in optional - set(expected)):
+        raise NativeMetricShadowError("DataHub native Metric AI Context differs")
 
 
 def _assert_native_governance_graph(
@@ -221,7 +247,7 @@ def _assert_native_governance_graph(
     if (
         not isinstance(status, Mapping)
         or status.get("removed") is not False
-        or _nested_urn(lifecycle) != aspects["status"]["lifecycleStage"]
+        or _nested_urn(lifecycle) != aspects["status"].get("lifecycleStage")
         or not isinstance(owners, list)
         or len(owners) != 1
         or not isinstance(owners[0], Mapping)

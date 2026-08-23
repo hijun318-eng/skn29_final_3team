@@ -179,15 +179,25 @@ class ConversationSlotResolver:
 
         # 이전 확정 ANALYSIS 턴 역추적. route만 ANALYSIS인 실패·명확화 턴은 실행된
         # 분석 상태가 아니므로 상속 원본이 될 수 없다.
-        last_analysis = next(
-            (
-                turn
-                for turn in reversed(previous_turns)
-                if cls.is_resolved_analysis_turn(turn)
-            ),
-            None,
-        )
+        eligible_analyses = [
+            turn for turn in previous_turns if cls.is_resolved_analysis_turn(turn)
+        ]
+        last_analysis = eligible_analyses[-1] if eligible_analyses else None
         last_analysis_slots = last_analysis.get("resolved_slots", {}) if last_analysis else {}
+        # OUT_OF_DATA_RANGE는 실행된 Analysis가 아니므로 source Turn이나 focus가 될 수
+        # 없다. 다만 사용자가 바로 다음 Turn에서 가용 절대 기간만 고치면, 차단된 요청의
+        # 확정 Metric·filter·dimension intent는 한 번만 재사용할 수 있어야 한다. 이
+        # pending intent는 성공 Artifact 상속과 분리하고 즉시 직전 Turn에만 한정한다.
+        pending_range_slots = (
+            last_slots
+            if last_turn is not None
+            and last_turn.get("route") == "ANALYSIS"
+            and last_turn.get("terminal_status") == "BLOCKED"
+            and last_turn.get("reason_code") == "OUT_OF_DATA_RANGE"
+            and bool(last_slots.get("metric_id") or last_slots.get("metric_ids"))
+            else {}
+        )
+        analysis_inheritance_slots = last_analysis_slots or pending_range_slots
 
         # -------------------------------------------------------------
         # 0. Disambiguation 후속 선택 처리
@@ -224,7 +234,11 @@ class ConversationSlotResolver:
                         user_filters=pending_filters,
                         time_range=time_range,
                         target_chart_type=target_chart_type,
-                        source_turn_ids=(str(last_turn["turn_id"]),) if last_turn else (),
+                        source_turn_ids=(
+                            (str(last_analysis["turn_id"]),)
+                            if last_analysis is not None
+                            else ()
+                        ),
                         is_inherited_metric=False,
                         is_inherited_dimension=True if last_analysis_slots.get("dimension_fields") else False,
                         is_inherited_period=is_inherited_period,
@@ -251,7 +265,11 @@ class ConversationSlotResolver:
                         user_filters=pending_filters,
                         time_range=time_range,
                         target_chart_type=target_chart_type,
-                        source_turn_ids=(str(last_turn["turn_id"]),) if last_turn else (),
+                        source_turn_ids=(
+                            (str(last_analysis["turn_id"]),)
+                            if last_analysis is not None
+                            else ()
+                        ),
                         is_inherited_metric=True if not node1_output.get("selected_metric_id") and resolved_metric else False,
                         is_inherited_dimension=True if last_analysis_slots.get("dimension_fields") else False,
                         is_inherited_period=False,
@@ -272,13 +290,16 @@ class ConversationSlotResolver:
             requested_route = None
 
         if requested_route == "REPORT_ACTION":
-            source_turn_ids = []
-            for t in reversed(previous_turns):
-                if t.get("artifact_id") and str(t["turn_id"]) not in source_turn_ids:
-                    source_turn_ids.insert(0, str(t["turn_id"]))
-                    if len(source_turn_ids) >= 2:
-                        break
-            fallback_turn_ids = [str(t["turn_id"]) for t in previous_turns[-2:]] if previous_turns else []
+            source_turn_ids: list[str] = []
+            seen_artifacts: set[str] = set()
+            for turn in reversed(eligible_analyses):
+                artifact = str(turn["artifact_id"])
+                if artifact in seen_artifacts:
+                    continue
+                seen_artifacts.add(artifact)
+                source_turn_ids.insert(0, str(turn["turn_id"]))
+                if len(source_turn_ids) >= 2:
+                    break
             return ResolvedTurnSlots(
                 route="REPORT_ACTION",
                 metric_id=None,
@@ -286,7 +307,7 @@ class ConversationSlotResolver:
                 user_filters=(),
                 time_range=None,
                 target_chart_type=None,
-                source_turn_ids=tuple(source_turn_ids or fallback_turn_ids),
+                source_turn_ids=tuple(source_turn_ids),
                 is_inherited_metric=False,
                 is_inherited_dimension=False,
                 is_inherited_period=False,
@@ -317,10 +338,10 @@ class ConversationSlotResolver:
         stored_analysis_metric_ids = tuple(
             item
             for item in (
-                last_analysis_slots.get("metric_ids")
+                analysis_inheritance_slots.get("metric_ids")
                 or (
-                    [last_analysis_slots.get("metric_id")]
-                    if last_analysis_slots.get("metric_id")
+                    [analysis_inheritance_slots.get("metric_id")]
+                    if analysis_inheritance_slots.get("metric_id")
                     else []
                 )
             )
@@ -348,10 +369,14 @@ class ConversationSlotResolver:
                 user_filters=tuple(last_analysis_slots.get("user_filters", ())) if last_analysis_slots else tuple(last_slots.get("user_filters", ())),
                 time_range=cls._parse_stored_time_range(last_analysis_slots.get("time_range")) or cls._parse_stored_time_range(last_slots.get("time_range")),
                 target_chart_type=target_view,
-                source_turn_ids=(str(last_turn["turn_id"]),) if last_turn else (),
-                is_inherited_metric=True if last_turn else False,
-                is_inherited_dimension=True if last_turn else False,
-                is_inherited_period=True if last_turn else False,
+                source_turn_ids=(
+                    (str(last_analysis["turn_id"]),)
+                    if last_analysis is not None
+                    else ()
+                ),
+                is_inherited_metric=last_analysis is not None,
+                is_inherited_dimension=last_analysis is not None,
+                is_inherited_period=last_analysis is not None,
                 metric_ids=stored_analysis_metric_ids,
                 analysis_operation=last_analysis_slots.get("analysis_operation"),
                 result_limit=last_analysis_slots.get("result_limit"),
@@ -363,8 +388,11 @@ class ConversationSlotResolver:
         # -------------------------------------------------------------
         # 3. ANALYSIS 라우트: 슬롯 상속 & Delta 병합
         # -------------------------------------------------------------
-        is_followup = cls._is_followup_question(
-            node1_output,
+        is_followup = (
+            cls._is_followup_question(node1_output)
+            or bool(pending_range_slots)
+            and not candidate_metric_ids
+            and bool(node1_output.get("period_candidates"))
         )
 
         # 3-1. 단일 지표 ChangeSet 호환성을 유지하면서 복수 지표 묶음을 원자적으로 적용한다.
@@ -404,7 +432,9 @@ class ConversationSlotResolver:
         if candidate_operation not in operations:
             candidate_operation = None
         analysis_operation = candidate_operation or (
-            last_analysis_slots.get("analysis_operation") if is_followup else None
+            analysis_inheritance_slots.get("analysis_operation")
+            if is_followup
+            else None
         )
         candidate_result_limit = node1_output.get("result_limit")
         result_limit = (
@@ -412,7 +442,7 @@ class ConversationSlotResolver:
             if candidate_operation in {"top_n", "bottom_n"}
             and isinstance(candidate_result_limit, int)
             and not isinstance(candidate_result_limit, bool)
-            else last_analysis_slots.get("result_limit")
+            else analysis_inheritance_slots.get("result_limit")
             if is_followup and analysis_operation in {"top_n", "bottom_n"}
             else None
         )
@@ -421,8 +451,8 @@ class ConversationSlotResolver:
             dict(d) for d in (node1_output.get("dimension_fields") or ()) if isinstance(d, dict)
         )
         inherited_dims = (
-            tuple(dict(d) for d in last_analysis_slots["dimension_fields"])
-            if last_analysis_slots.get("dimension_fields")
+            tuple(dict(d) for d in analysis_inheritance_slots["dimension_fields"])
+            if analysis_inheritance_slots.get("dimension_fields")
             else tuple(dict(d) for d in last_slots.get("dimension_fields", ()))
         )
         # Node 1은 결과 형태를 생략한 후속 질문에서 operation을 null로 보내므로 기존
@@ -447,8 +477,8 @@ class ConversationSlotResolver:
             dict(f) for f in (node1_output.get("filter_fields") or ()) if isinstance(f, dict)
         )
         inherited_filters = (
-            tuple(dict(f) for f in last_analysis_slots["user_filters"])
-            if last_analysis_slots.get("user_filters")
+            tuple(dict(f) for f in analysis_inheritance_slots["user_filters"])
+            if analysis_inheritance_slots.get("user_filters")
             else tuple(dict(f) for f in last_slots.get("user_filters", ()))
         )
         filter_changes = derive_dimension_changes(
@@ -462,7 +492,11 @@ class ConversationSlotResolver:
         # 3-4. 시간 범위 해석 (TimeAlgebraEngine 적용)
         last_time_range = (
             cls._parse_stored_time_range(last_analysis_slots.get("time_range"))
-            or cls._parse_stored_time_range(last_slots.get("time_range"))
+            or (
+                cls._parse_stored_time_range(last_slots.get("time_range"))
+                if not pending_range_slots
+                else None
+            )
         ) if previous_turns else None
 
         # latest_snapshot은 source time의 서버 기준일 전 MAX를 선택하므로 질문이나
@@ -489,9 +523,21 @@ class ConversationSlotResolver:
             and analysis_operation == "period_comparison"
             and node1_output.get("time_mode") != "latest_snapshot"
         ):
-            comparison_time_range = cls._parse_stored_time_range(
-                last_analysis_slots.get("comparison_time_range")
-            )
+            prior_ranges = [
+                (turn, cls._parse_stored_time_range(
+                    turn.get("resolved_slots", {}).get("time_range")
+                ))
+                for turn in eligible_analyses[-2:]
+            ]
+            prior_ranges = [item for item in prior_ranges if item[1] is not None]
+            if len(prior_ranges) == 2:
+                time_range = prior_ranges[-1][1]
+                comparison_time_range = prior_ranges[-2][1]
+                is_inherited_period = True
+            else:
+                comparison_time_range = cls._parse_stored_time_range(
+                    last_analysis_slots.get("comparison_time_range")
+                )
         if analysis_operation != "period_comparison":
             comparison_time_range = None
 
@@ -506,8 +552,11 @@ class ConversationSlotResolver:
             time_range=time_range,
             target_chart_type=target_chart_type,
             source_turn_ids=(
-                (str((last_analysis or last_turn)["turn_id"]),)
-                if (last_analysis or last_turn)
+                tuple(str(turn["turn_id"]) for turn in eligible_analyses[-2:])
+                if analysis_operation == "period_comparison"
+                and len(eligible_analyses) >= 2
+                else (str(last_analysis["turn_id"]),)
+                if last_analysis is not None
                 and (
                     is_inherited_metric
                     or is_inherited_period
@@ -579,6 +628,11 @@ class ConversationSlotResolver:
         """실패·명확화 상태가 아닌 확정 Metric 분석 턴만 상속 원본으로 허용한다."""
 
         if turn.get("route") != "ANALYSIS":
+            return False
+        terminal_status = turn.get("terminal_status")
+        if terminal_status is not None and terminal_status != "SUCCEEDED":
+            return False
+        if terminal_status is not None and not turn.get("artifact_id"):
             return False
         slots = turn.get("resolved_slots")
         if not isinstance(slots, dict):

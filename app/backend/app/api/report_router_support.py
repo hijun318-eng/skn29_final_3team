@@ -12,7 +12,7 @@ from uuid import uuid4
 from fastapi import Depends, HTTPException, Response
 from fastapi.responses import HTMLResponse
 
-from app.authorization import has_capability
+from app.authorization import has_capability, permission_snapshot_id
 from app.context import analysis_context
 from app.contracts import Capability, RequestContext
 from app.report_contracts import (
@@ -59,6 +59,12 @@ def build_report_router(context: RequestContext):
             database_url,
             context.user_id,
             manage_all=has_capability(context.role, Capability.MANAGE_REPORT),
+            product_release_id=context.product_release_id,
+            permission_snapshot_id=(
+                context.permission_snapshot_id
+                or permission_snapshot_id(context.user_id, context.role)
+            ),
+            semantic_release_id=context.semantic_release_id,
         )
     )
 

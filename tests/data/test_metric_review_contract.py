@@ -139,6 +139,49 @@ def test_generic_review_candidate_is_valid_but_never_publishable():
     assert result["publishable"] is False
 
 
+def test_governed_owner_can_seal_an_approved_review():
+    """승인 상태는 owner·timezone timestamp와 모든 Metric 상태가 함께 바뀔 때만 유효하다."""
+
+    candidate = _candidate()
+    candidate.update(
+        {
+            "review_status": "APPROVED",
+            "reviewer": "urn:li:corpGroup:sample_stewards",
+            "reviewed_at": "2026-08-23T12:34:56+09:00",
+        }
+    )
+    for metric in candidate["metrics"]:
+        metric["review_status"] = "APPROVED"
+
+    result = validate_metric_review(candidate, _evidence())
+
+    assert result["status"] == "VALID_APPROVED_REVIEW"
+    assert result["approval_status"] == "APPROVED"
+    assert result["publishable"] is True
+
+
+def test_approved_review_rejects_a_different_reviewer_or_partial_metric_state():
+    """승인자 위조와 일부 Metric만 승인된 혼합 상태를 fail-closed한다."""
+
+    candidate = _candidate()
+    candidate.update(
+        {
+            "review_status": "APPROVED",
+            "reviewer": "urn:li:corpGroup:another_group",
+            "reviewed_at": "2026-08-23T12:34:56+09:00",
+        }
+    )
+    for metric in candidate["metrics"]:
+        metric["review_status"] = "APPROVED"
+    with pytest.raises(SemanticMetadataError, match="governed owner"):
+        validate_metric_review(candidate, _evidence())
+
+    candidate["reviewer"] = "urn:li:corpGroup:sample_stewards"
+    candidate["metrics"][0]["review_status"] = "REVIEW_REQUIRED"
+    with pytest.raises(SemanticMetadataError, match="review-level"):
+        validate_metric_review(candidate, _evidence())
+
+
 def test_review_rejects_release_drift_and_ratio_scope_drift():
     candidate = _candidate()
     candidate["source_sql_sha256"] = "b" * 64
@@ -185,7 +228,9 @@ def test_d2_review_candidate_matches_the_pinned_release_sql():
 
     assert result["business_metric_count"] == 10
     assert result["support_metric_count"] == 4
-    assert result["publishable"] is False
+    assert result["status"] == "VALID_APPROVED_REVIEW"
+    assert result["approval_status"] == "APPROVED"
+    assert result["publishable"] is True
 
     occupancy = next(
         item for item in candidate["metrics"] if item["id"] == "occupancy_rate"

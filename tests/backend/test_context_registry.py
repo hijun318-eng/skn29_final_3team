@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -28,6 +30,16 @@ from app.context_registry_contracts import (
     CreateContextRecord,
     CreateContextRelease,
     RecordReference,
+)
+from app.capability_contracts import (
+    CatalogReceipt,
+    ImageReceipt,
+    MigrationReceipt,
+    ModelReceipt,
+    ProductReleaseEvidence,
+    ProductReleaseEvidenceManifest,
+    ProductReleaseVector,
+    SourceReceipt,
 )
 from app.services.context.registry_service import ContextRegistryService
 
@@ -76,6 +88,8 @@ class ContextRegistryServiceTest(unittest.IsolatedAsyncioTestCase):
     "MIGRATION_TEST_DATABASE_URL is not configured",
 )
 class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
+    loop_factory = asyncio.SelectorEventLoop
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.base_url = make_url(os.environ["MIGRATION_TEST_DATABASE_URL"])
@@ -105,6 +119,10 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
 
     async def asyncSetUp(self) -> None:
         self.repository = PostgresContextRegistryRepository(self.url)
+        self.product_release_id = "context-registry-test-release"
+        self.permission_snapshot_id = "context-registry-test-permission"
+        self.semantic_release_id = "context-registry-test-semantic"
+        self._insert_product_manifest()
 
     async def asyncTearDown(self) -> None:
         await dispose_database()
@@ -202,6 +220,22 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
         first = await self.repository.create_package(draft_command)
         repeated = await self.repository.create_package(draft_command)
         self.assertEqual(first.context_package_id, repeated.context_package_id)
+        self.assertEqual(self.product_release_id, first.product_release_id)
+        engine = create_engine(self.url)
+        with engine.connect() as connection:
+            binding_count = connection.execute(
+                text(
+                    "SELECT count(*) FROM governance.product_release_bindings "
+                    "WHERE object_kind = 'CONTEXT' AND object_id = :object_id "
+                    "AND product_release_id = :product_release_id"
+                ),
+                {
+                    "object_id": str(first.context_package_id),
+                    "product_release_id": self.product_release_id,
+                },
+            ).scalar_one()
+        engine.dispose()
+        self.assertEqual(1, binding_count)
         with self.assertRaises(ContextRegistryConflict):
             await self.repository.create_package(
                 draft_command.model_copy(update={"assets": [{"urn": "different"}]})
@@ -211,6 +245,9 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
         return CreateContextPackage(
             request_id=request_id,
             context_release_id=release_id,
+            product_release_id=self.product_release_id,
+            permission_snapshot_id=self.permission_snapshot_id,
+            semantic_release_id=self.semantic_release_id,
             user_scope={"role": "analyst"},
             assets=[{"urn": "urn:li:dataset:pms"}],
             metrics=[{"id": "room_revenue"}],
@@ -221,6 +258,75 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
             token_count=200,
             idempotency_key=f"package-{uuid4()}",
         )
+
+    def _insert_product_manifest(self) -> None:
+        evidence = ProductReleaseEvidence(
+            source=SourceReceipt(commit_sha="1" * 40, dirty=False),
+            images=(ImageReceipt(component="context-test", digest="sha256:" + "2" * 64),),
+            migration=MigrationReceipt(revision="20260822_32", chain_sha256="3" * 64),
+            model=ModelReceipt(release_id="model-test", manifest_sha256="4" * 64),
+            catalog=CatalogReceipt(
+                release_id=self.semantic_release_id,
+                manifest_sha256="5" * 64,
+                projection_sha256="6" * 64,
+            ),
+            release_vector=ProductReleaseVector(
+                data_release_id="data-test",
+                semantic_release_id=self.semantic_release_id,
+                prompt_release_id="prompt-test",
+                policy_release_id="policy-test",
+                runtime_release_id="runtime-test",
+            ),
+        )
+        manifest = ProductReleaseEvidenceManifest.seal(
+            product_release_id=self.product_release_id,
+            evidence=evidence,
+            created_at=datetime(2026, 8, 22, tzinfo=timezone.utc),
+        )
+        document = manifest.model_dump(mode="json")
+        engine = create_engine(self.url)
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO governance.product_release_manifests (
+                        product_release_id, contract_version, manifest_sha256,
+                        manifest_json, source_commit_sha, source_dirty,
+                        dirty_patch_sha256, image_digests_json,
+                        migration_revision, migration_chain_sha256,
+                        model_release_id, model_manifest_sha256,
+                        catalog_release_id, catalog_manifest_sha256,
+                        catalog_projection_sha256, release_vector_json, created_at
+                    ) VALUES (
+                        :product_release_id, 'ProductReleaseEvidenceManifest.v1',
+                        :manifest_sha256, CAST(:manifest_json AS jsonb),
+                        :source_commit_sha, false, NULL,
+                        CAST(:images AS jsonb), :migration_revision,
+                        :migration_chain_sha256, :model_release_id,
+                        :model_manifest_sha256, :catalog_release_id,
+                        :catalog_manifest_sha256, :catalog_projection_sha256,
+                        CAST(:release_vector AS jsonb), :created_at
+                    ) ON CONFLICT (product_release_id) DO NOTHING
+                    """
+                ),
+                {
+                    "product_release_id": manifest.product_release_id,
+                    "manifest_sha256": manifest.manifest_sha256,
+                    "manifest_json": json.dumps(document),
+                    "source_commit_sha": evidence.source.commit_sha,
+                    "images": json.dumps(document["evidence"]["images"]),
+                    "migration_revision": evidence.migration.revision,
+                    "migration_chain_sha256": evidence.migration.chain_sha256,
+                    "model_release_id": evidence.model.release_id,
+                    "model_manifest_sha256": evidence.model.manifest_sha256,
+                    "catalog_release_id": evidence.catalog.release_id,
+                    "catalog_manifest_sha256": evidence.catalog.manifest_sha256,
+                    "catalog_projection_sha256": evidence.catalog.projection_sha256,
+                    "release_vector": json.dumps(document["evidence"]["release_vector"]),
+                    "created_at": manifest.created_at,
+                },
+            )
+        engine.dispose()
 
     def _insert_request(self, request_id, release_id) -> None:
         engine = create_engine(self.url)

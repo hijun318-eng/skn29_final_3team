@@ -196,7 +196,7 @@ class AnalysisContextStage:
                 await self._support.select_metric(
                     payload,
                     context,
-                    list(candidates.assets),
+                    candidates,
                 )
             )
             if getattr(self._model, "last_trace", {}).get("node") == "node1":

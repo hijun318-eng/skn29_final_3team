@@ -201,16 +201,15 @@ class DataHubCatalogClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["headers"], {"Authorization": "Bearer catalog-token"})
         owned_http.aclose.assert_awaited_once_with()
 
-    async def test_duplicate_paginated_urn_fails_closed(self) -> None:
+    async def test_duplicate_scrolled_urn_fails_closed(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:
             body = json.loads(request.content)
-            start = body["variables"]["input"]["start"]
+            cursor = body["variables"]["input"].get("scrollId")
             return httpx.Response(
                 200,
-                json={"data": {"searchAcrossEntities": {
-                    "start": start,
+                json={"data": {"scrollAcrossEntities": {
                     "count": 1,
-                    "total": 2,
+                    "nextScrollId": "next" if cursor is None else "final",
                     "searchResults": [{
                         "entity": {"urn": "urn:li:dataset:duplicate", "type": "DATASET"},
                         "matchedFields": [],
@@ -318,12 +317,27 @@ class TrinoAsyncClientTests(unittest.IsolatedAsyncioTestCase):
                 "https://trino:8443/next/query-1",
                 deadline=monotonic() + 5,
             )
+            await client.cancel_query(
+                "query-1",
+                "https://trino:8443/next/query-1",
+                deadline=monotonic() + 5,
+            )
+            with self.assertRaises(AdapterError) as raised:
+                await client.cancel_query(
+                    "other-query",
+                    "https://trino:8443/next/query-1",
+                    deadline=monotonic() + 5,
+                )
         finally:
             await http.aclose()
 
         self.assertEqual(first.rows, ((1,),))
         self.assertEqual(second.rows, ((2,),))
-        self.assertEqual([item.method for item in requests], ["POST", "GET", "DELETE"])
+        self.assertEqual(raised.exception.code, AdapterErrorCode.UPSTREAM)
+        self.assertEqual(
+            [item.method for item in requests],
+            ["POST", "GET", "DELETE", "DELETE"],
+        )
         self.assertTrue(
             all(item.headers["x-trino-user"] == "service-user" for item in requests)
         )
@@ -428,6 +442,59 @@ class TrinoAsyncClientTests(unittest.IsolatedAsyncioTestCase):
 
 
 class GovernedAdapterAsyncBoundaryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_auxiliary_query_does_not_consume_main_lifecycle_attempt(self) -> None:
+        class DataHubStub:
+            async def aclose(self) -> None:
+                return None
+
+        class TrinoStub:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def execute(self, _sql: str, *, deadline: float) -> QueryPage:
+                self.calls += 1
+                return QueryPage(
+                    f"query-{self.calls}",
+                    "FINISHED",
+                    ("value",),
+                    ((self.calls,),),
+                    None,
+                )
+
+            async def aclose(self) -> None:
+                return None
+
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino:8443",
+            "service-user",
+            datahub_client=DataHubStub(),
+            trino_client=TrinoStub(),
+        )
+        lifecycle_events: list[dict[str, object]] = []
+
+        async def lifecycle_sink(event: dict[str, object]) -> None:
+            lifecycle_events.append(event)
+
+        adapter.bind_query_lifecycle(lifecycle_sink)
+        sql = "SELECT 1"
+        token = issue_query_capability("5" * 64, sql)
+
+        auxiliary = await adapter.execute_auxiliary_query(sql, {}, token)
+        main = await adapter.execute_query(sql, {}, token)
+        cached_auxiliary = await adapter.get_query_status(auxiliary["query_id"])
+        await adapter.aclose()
+
+        self.assertEqual("SUCCEEDED", auxiliary["status"])
+        self.assertEqual("SUCCEEDED", cached_auxiliary["status"])
+        self.assertEqual("SUCCEEDED", main["status"])
+        self.assertEqual(
+            [("TERMINAL", "query-2")],
+            [
+                (event["event_type"], event["query_id"])
+                for event in lifecycle_events
+            ],
+        )
+
     async def test_pages_results_and_closes_clients(self) -> None:
         class DataHubStub:
             closed = False
@@ -437,6 +504,7 @@ class GovernedAdapterAsyncBoundaryTests(unittest.IsolatedAsyncioTestCase):
 
         class TrinoStub:
             closed = False
+            durable_cancellations: list[tuple[str, str]] = []
 
             async def execute(self, _sql: str, *, deadline: float) -> QueryPage:
                 self.deadline = deadline
@@ -471,6 +539,16 @@ class GovernedAdapterAsyncBoundaryTests(unittest.IsolatedAsyncioTestCase):
             ) -> None:
                 self.deadline = deadline
 
+            async def cancel_query(
+                self,
+                query_id: str,
+                next_uri: str,
+                *,
+                deadline: float,
+            ) -> None:
+                self.deadline = deadline
+                self.durable_cancellations.append((query_id, next_uri))
+
             async def aclose(self) -> None:
                 self.closed = True
 
@@ -482,6 +560,12 @@ class GovernedAdapterAsyncBoundaryTests(unittest.IsolatedAsyncioTestCase):
             datahub_client=datahub,
             trino_client=trino,
         )
+        lifecycle_events: list[dict[str, object]] = []
+
+        async def lifecycle_sink(event: dict[str, object]) -> None:
+            lifecycle_events.append(event)
+
+        adapter.bind_query_lifecycle(lifecycle_sink)
 
         sql = "SELECT 1"
         result = await adapter.execute_query(
@@ -491,13 +575,78 @@ class GovernedAdapterAsyncBoundaryTests(unittest.IsolatedAsyncioTestCase):
         )
         cached = await adapter.get_query_status("query-1")
         repeated = await adapter.get_query_status("query-1")
+        durable_cancel = await adapter.cancel_query_at(
+            "query-1",
+            "https://trino:8443/next/query-1",
+        )
         await adapter.aclose()
 
         self.assertEqual(result["rows"], [{"value": 1}, {"value": 2}])
         self.assertEqual(cached["status"], "SUCCEEDED")
         self.assertEqual(cached, repeated)
+        self.assertEqual(durable_cancel["status"], "CANCELLED")
+        self.assertEqual(
+            trino.durable_cancellations,
+            [("query-1", "https://trino:8443/next/query-1")],
+        )
+        self.assertEqual(
+            [event["event_type"] for event in lifecycle_events],
+            ["SUBMITTED", "HEARTBEAT", "TERMINAL"],
+        )
+        self.assertTrue(all("sql" not in event for event in lifecycle_events))
         self.assertTrue(datahub.closed)
         self.assertTrue(trino.closed)
+
+    async def test_submission_evidence_failure_cancels_before_query_is_polled(self) -> None:
+        class DataHubStub:
+            async def aclose(self) -> None:
+                return None
+
+        class TrinoStub:
+            def __init__(self) -> None:
+                self.cancelled: list[str] = []
+                self.polled = False
+
+            async def execute(self, _sql: str, *, deadline: float) -> QueryPage:
+                return QueryPage(
+                    "query-durable-failure",
+                    "RUNNING",
+                    ("value",),
+                    (),
+                    "https://trino:8443/next/query-durable-failure",
+                )
+
+            async def next_page(self, _next_uri: str, *, deadline: float) -> QueryPage:
+                self.polled = True
+                raise AssertionError("query must not be polled without durable evidence")
+
+            async def cancel(self, next_uri: str, *, deadline: float) -> None:
+                self.cancelled.append(next_uri)
+
+            async def aclose(self) -> None:
+                return None
+
+        trino = TrinoStub()
+        adapter = GovernedDataPlatformAdapter(
+            "https://trino:8443",
+            "service-user",
+            datahub_client=DataHubStub(),
+            trino_client=trino,
+        )
+
+        async def rejected_lifecycle(_event: dict[str, object]) -> None:
+            raise RuntimeError("durable lifecycle unavailable")
+
+        adapter.bind_query_lifecycle(rejected_lifecycle)
+        sql = "SELECT 1"
+        with self.assertRaisesRegex(RuntimeError, "durable lifecycle unavailable"):
+            await adapter.execute_query(sql, {}, issue_query_capability("4" * 64, sql))
+
+        self.assertFalse(trino.polled)
+        self.assertEqual(
+            trino.cancelled,
+            ["https://trino:8443/next/query-durable-failure"],
+        )
 
 
 if __name__ == "__main__":

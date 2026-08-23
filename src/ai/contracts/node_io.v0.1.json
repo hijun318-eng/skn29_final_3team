@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "MODEL-v1.20.0",
+  "version": "MODEL-v1.21.0",
   "$defs": {
     "execution_time": {
       "type": "object",
@@ -459,6 +459,196 @@
         }
       }
     },
+    "node1_interpretation_time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "calendar_id", "time_field"],
+      "properties": {
+        "mode": {"type": "string", "enum": ["range", "latest_snapshot"]},
+        "calendar_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "time_field": {"type": ["string", "null"], "minLength": 1, "maxLength": 128}
+      }
+    },
+    "node1_interpretation_metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "datahub_urn",
+        "canonical_id",
+        "canonical_name",
+        "label",
+        "definition",
+        "synonyms",
+        "unit",
+        "aggregation",
+        "time_semantics",
+        "allowed_dimension_ids",
+        "allowed_filter_ids",
+        "positive_examples",
+        "negative_examples",
+        "approval_status",
+        "quality_status",
+        "source_authority"
+      ],
+      "properties": {
+        "datahub_urn": {"type": "string", "minLength": 1, "maxLength": 512},
+        "canonical_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "canonical_name": {"type": "string", "minLength": 1, "maxLength": 128},
+        "label": {"type": "string", "minLength": 1, "maxLength": 160},
+        "definition": {"type": "string", "minLength": 1, "maxLength": 1200},
+        "synonyms": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 33,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 160}
+        },
+        "unit": {"type": "string", "minLength": 1, "maxLength": 64},
+        "aggregation": {"type": "string", "minLength": 1, "maxLength": 64},
+        "time_semantics": {"$ref": "#/$defs/node1_interpretation_time"},
+        "allowed_dimension_ids": {
+          "type": "array",
+          "maxItems": 60,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 128}
+        },
+        "allowed_filter_ids": {
+          "type": "array",
+          "maxItems": 60,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 128}
+        },
+        "positive_examples": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 240}
+        },
+        "negative_examples": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 240}
+        },
+        "approval_status": {"type": "string", "const": "APPROVED"},
+        "quality_status": {"type": "string", "const": "ACTIVE_RELEASE_VERIFIED"},
+        "source_authority": {
+          "type": "string",
+          "enum": ["DATAHUB_NATIVE_METRIC_V1", "DATAHUB_GLOSSARY_MIGRATION_V1"]
+        }
+      }
+    },
+    "node1_interpretation_dimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_id",
+        "label",
+        "synonyms",
+        "asset_urn",
+        "column",
+        "filter_allowed"
+      ],
+      "properties": {
+        "canonical_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "label": {"type": "string", "minLength": 1, "maxLength": 80},
+        "synonyms": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 80}
+        },
+        "asset_urn": {"type": "string", "minLength": 1, "maxLength": 512},
+        "column": {"type": "string", "minLength": 1, "maxLength": 128},
+        "filter_allowed": {"type": "boolean", "const": true}
+      }
+    },
+    "node1_interpretation_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "source_authority",
+        "release_evidence",
+        "permission_snapshot_id",
+        "retrieval_evidence",
+        "metrics",
+        "dimensions"
+      ],
+      "properties": {
+        "schema_version": {"type": "string", "const": "Node1InterpretationContext.v1"},
+        "source_authority": {
+          "type": "string",
+          "enum": ["DATAHUB_NATIVE_METRIC_V1", "DATAHUB_GLOSSARY_MIGRATION_V1"]
+        },
+        "release_evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "product_release_id",
+            "semantic_release_id",
+            "catalog_sha256",
+            "canonical_sha256",
+            "runtime_projection_sha256"
+          ],
+          "properties": {
+            "product_release_id": {"type": "string", "minLength": 1, "maxLength": 160},
+            "semantic_release_id": {"type": "string", "minLength": 1, "maxLength": 256},
+            "catalog_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "canonical_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "runtime_projection_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          }
+        },
+        "permission_snapshot_id": {"type": "string", "minLength": 1, "maxLength": 160},
+        "retrieval_evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "asset_urns", "metric_ranks"],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["lexical", "lexical_shadow", "datahub_lexical", "hybrid"]
+            },
+            "asset_urns": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {"type": "string", "minLength": 1, "maxLength": 512}
+            },
+            "metric_ranks": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 24,
+              "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["metric_id", "rank"],
+                "properties": {
+                  "metric_id": {"type": "string", "minLength": 1, "maxLength": 128},
+                  "rank": {"type": "integer", "minimum": 1, "maximum": 24}
+                }
+              }
+            }
+          }
+        },
+        "metrics": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 24,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/node1_interpretation_metric"}
+        },
+        "dimensions": {
+          "type": "array",
+          "maxItems": 60,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/node1_interpretation_dimension"}
+        }
+      }
+    },
     "node1_request": {
       "type": "object",
       "additionalProperties": false,
@@ -469,7 +659,8 @@
         "timezone",
         "calendar_id",
         "allowed_routes",
-        "business_terms"
+        "business_terms",
+        "interpretation_context"
       ],
       "properties": {
         "question": {"type": "string", "minLength": 1},
@@ -552,7 +743,8 @@
               }
             }
           }
-        }
+        },
+        "interpretation_context": {"$ref": "#/$defs/node1_interpretation_context"}
       }
     },
     "node1_response": {

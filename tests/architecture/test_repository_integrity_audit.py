@@ -15,6 +15,9 @@ def test_classifies_tests_archives_and_runtime_contracts_separately() -> None:
     assert _classify("tests/support/fakes.py") == "test"
     assert _classify("infrastructure/database/releases/r1/manifest.json") == "archive"
     assert _classify("src/ai/contracts/node_io.v0.1.json") == "runtime-contract"
+    assert _classify(
+        "app/backend/contracts/analysis_capability.single_asset.v1.json"
+    ) == "runtime-contract"
     assert _classify("infrastructure/database/trino/etc/iceberg-view-coercions.json") == "runtime-contract"
     assert _classify("app/backend/app/main.py") == "production"
 

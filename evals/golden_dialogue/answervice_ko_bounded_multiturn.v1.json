@@ -1,0 +1,173 @@
+{
+  "schema_version": "answervice.bounded_multi_turn_gold.v1",
+  "dataset_id": "answervice_ko_bounded_multiturn.v1",
+  "status": "SEALED",
+  "sealed_at": "2026-08-22T00:00:00+09:00",
+  "source": "P0 Golden Dialogue GD-01~03과 Phase 7 transaction/lineage Gate를 Phase 6 single-asset release 위에 사전 등록",
+  "input_product_release_id": "ANSWERVICE-PHASE6-SINGLE-ASSET:a870572a2f3dd0f599fd35a64c437252182f8def90dd4dff86532dfcdbf11a50",
+  "scope": {
+    "metric_id": "room_revenue",
+    "business_label": "인식 객실 매출",
+    "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
+    "calendar_id": "iso8601",
+    "timezone": "Asia/Seoul",
+    "approved_grain": "day",
+    "data_available_from": "2025-07-01",
+    "data_available_through": "2025-08-31"
+  },
+  "thresholds": {
+    "min_dialogue_exact_match": 1.0,
+    "max_turn_count_mismatch": 0,
+    "max_run_count_mismatch": 0,
+    "max_query_count_mismatch": 0,
+    "max_artifact_count_mismatch": 0,
+    "max_view_count_mismatch": 0,
+    "max_report_block_count_mismatch": 0,
+    "max_lineage_mismatch": 0,
+    "max_focus_transition_mismatch": 0,
+    "max_duplicate_mutation_count": 0,
+    "max_unsafe_silent_execution_rate": 0.0
+  },
+  "dialogues": [
+    {
+      "dialogue_id": "GD-01",
+      "clock_mode": "FIXED_ISOLATED_INTEGRATION",
+      "wall_clock_anchor": "2025-09-02",
+      "turns": [
+        {
+          "turn": 1,
+          "utterance": "2025년 8월 인식 객실 매출을 보여줘.",
+          "route": "ANALYSIS",
+          "terminal_status": "SUCCEEDED",
+          "analysis_operation": "time_trend",
+          "period": {"start": "2025-08-01", "end_exclusive": "2025-09-01"},
+          "source_turns": [],
+          "delta": {"turns": 1, "runs": 1, "queries": 1, "artifacts": 1, "views": 1, "report_blocks": 0}
+        },
+        {
+          "turn": 2,
+          "utterance": "그 전 달은?",
+          "route": "ANALYSIS",
+          "terminal_status": "SUCCEEDED",
+          "analysis_operation": "time_trend",
+          "period": {"start": "2025-07-01", "end_exclusive": "2025-08-01"},
+          "source_turns": [1],
+          "inherited_fields": ["metric_ids", "dimension_fields", "user_filters"],
+          "changed_fields": ["time_range"],
+          "delta": {"turns": 1, "runs": 1, "queries": 1, "artifacts": 1, "views": 1, "report_blocks": 0}
+        },
+        {
+          "turn": 3,
+          "utterance": "두 달 비교 분석해줘.",
+          "route": "ANALYSIS",
+          "terminal_status": "SUCCEEDED",
+          "analysis_operation": "period_comparison",
+          "period": {"start": "2025-07-01", "end_exclusive": "2025-08-01"},
+          "comparison_period": {"start": "2025-08-01", "end_exclusive": "2025-09-01"},
+          "source_turns": [1, 2],
+          "delta": {"turns": 1, "runs": 1, "queries": 1, "artifacts": 1, "views": 1, "report_blocks": 0}
+        }
+      ],
+      "totals": {"turns": 3, "runs": 3, "queries": 3, "artifacts": 3, "views": 3, "report_blocks": 0}
+    },
+    {
+      "dialogue_id": "GD-02",
+      "clock_mode": "FIXED_ISOLATED_INTEGRATION",
+      "wall_clock_anchor": "2025-09-02",
+      "turns": [
+        {
+          "turn": 1,
+          "utterance": "2025년 7월 인식 객실 매출을 보여줘.",
+          "route": "ANALYSIS",
+          "terminal_status": "SUCCEEDED",
+          "analysis_operation": "time_trend",
+          "period": {"start": "2025-07-01", "end_exclusive": "2025-08-01"},
+          "source_turns": [],
+          "view": "DEFAULT",
+          "delta": {"turns": 1, "runs": 1, "queries": 1, "artifacts": 1, "views": 1, "report_blocks": 0}
+        },
+        {
+          "turn": 2,
+          "utterance": "그래프로 띄워줘.",
+          "route": "PRESENTATION",
+          "terminal_status": "SUCCEEDED",
+          "source_turns": [1],
+          "view": "LINE",
+          "delta": {"turns": 1, "runs": 0, "queries": 0, "artifacts": 0, "views": 1, "report_blocks": 0}
+        },
+        {
+          "turn": 3,
+          "utterance": "다른 그래프로 띄워줘.",
+          "route": "PRESENTATION",
+          "terminal_status": "SUCCEEDED",
+          "source_turns": [1],
+          "view": "BAR",
+          "delta": {"turns": 1, "runs": 0, "queries": 0, "artifacts": 0, "views": 1, "report_blocks": 0}
+        },
+        {
+          "turn": 4,
+          "utterance": "표로도 띄워줘.",
+          "route": "PRESENTATION",
+          "terminal_status": "SUCCEEDED",
+          "source_turns": [1],
+          "view": "TABLE",
+          "delta": {"turns": 1, "runs": 0, "queries": 0, "artifacts": 0, "views": 1, "report_blocks": 0}
+        },
+        {
+          "turn": 5,
+          "utterance": "현재 그래프와 표를 보고서에 담아줘.",
+          "route": "REPORT_ACTION",
+          "terminal_status": "SUCCEEDED",
+          "source_turns": [1],
+          "report_block_views": [3, 4],
+          "report_block_types": ["chart", "table"],
+          "delta": {"turns": 1, "runs": 0, "queries": 0, "artifacts": 0, "views": 0, "report_blocks": 2}
+        }
+      ],
+      "totals": {"turns": 5, "runs": 1, "queries": 1, "artifacts": 1, "views": 4, "report_blocks": 2}
+    },
+    {
+      "dialogue_id": "GD-03",
+      "clock_mode": "CURRENT_BACKEND_KST",
+      "wall_clock_anchor": "2026-08-22",
+      "turns": [
+        {
+          "turn": 1,
+          "utterance": "이번 달 인식 객실 매출을 보여줘.",
+          "route": "ANALYSIS",
+          "terminal_status": "BLOCKED",
+          "reason_code": "OUT_OF_DATA_RANGE",
+          "analysis_operation": "time_trend",
+          "period": {"start": "2026-08-01", "end_exclusive": "2026-08-22"},
+          "source_turns": [],
+          "suggested_absolute_range": {"start": "2025-07-01", "end_exclusive": "2025-09-01"},
+          "delta": {"turns": 1, "runs": 0, "queries": 0, "artifacts": 0, "views": 0, "report_blocks": 0}
+        },
+        {
+          "turn": 2,
+          "utterance": "2025년 8월로 볼게.",
+          "route": "ANALYSIS",
+          "terminal_status": "SUCCEEDED",
+          "analysis_operation": "time_trend",
+          "period": {"start": "2025-08-01", "end_exclusive": "2025-09-01"},
+          "source_turns": [],
+          "delta": {"turns": 1, "runs": 1, "queries": 1, "artifacts": 1, "views": 1, "report_blocks": 0}
+        }
+      ],
+      "initial_blocked_totals": {"turns": 1, "runs": 0, "queries": 0, "artifacts": 0, "views": 0, "report_blocks": 0},
+      "totals": {"turns": 2, "runs": 1, "queries": 1, "artifacts": 1, "views": 1, "report_blocks": 0}
+    }
+  ],
+  "negative_dialogues": [
+    {"case_id": "NEG-ANCHOR-AMBIGUOUS", "expected": "BLOCKED_NEEDS_CLARIFICATION", "max_queries": 0},
+    {"case_id": "NEG-PERMISSION-REVOKED", "expected": "ACCESS_DENIED", "max_new_mutations": 0},
+    {"case_id": "NEG-PINNED-RELEASE-STILL-EXECUTABLE", "expected": "CONTINUE_PINNED", "max_release_rebindings": 0},
+    {"case_id": "NEG-PINNED-RELEASE-UNAVAILABLE", "expected": "RESOURCE_CONFLICT", "max_new_mutations": 0},
+    {"case_id": "NEG-STALE-HEAD", "expected": "CONVERSATION_CONFLICT", "max_duplicate_mutations": 0},
+    {"case_id": "NEG-IDEMPOTENCY-REPLAY", "expected": "EXACT_REPLAY", "max_duplicate_mutations": 0},
+    {"case_id": "NEG-IDEMPOTENCY-MISMATCH", "expected": "IDEMPOTENCY_CONFLICT", "max_duplicate_mutations": 0},
+    {"case_id": "NEG-VIEW-SCHEMA-INCOMPATIBLE", "expected": "BLOCKED", "max_queries": 0},
+    {"case_id": "NEG-UNSUPPORTED-INTENT", "expected": "BLOCKED_UNSUPPORTED_INTENT", "max_queries": 0}
+  ],
+  "content_sha256": "28c4f67d2a6aef982c70845282977bbde89f991b16d40de3c95ff22f6a8fc0da"
+}

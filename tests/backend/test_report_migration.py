@@ -157,6 +157,27 @@ class ReportMigrationTest(unittest.TestCase):
         for value in ("auto", "one", "thousand", "million", "hundredMillion", "billion"):
             self.assertIn(f"'{value}'", source)
 
+    def test_phase4_report_receipts_are_additive_complete_and_immutable(self):
+        source = (MIGRATIONS / "20260822_32_report_release_receipts.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('revision = "20260822_32"', source)
+        self.assertIn('down_revision = "20260822_31"', source)
+        for table in ("report_definition_versions", "report_runs"):
+            self.assertIn(f"ALTER TABLE report_v1.{table}", source)
+        for column in (
+            "product_release_id",
+            "permission_snapshot_id",
+            "semantic_release_id",
+        ):
+            self.assertGreaterEqual(source.count(column), 4)
+        self.assertIn("report_definition_release_receipt_complete", source)
+        self.assertIn("report_run_release_receipt_complete", source)
+        self.assertIn("REFERENCES governance.product_release_manifests", source)
+        self.assertIn("Report release receipt is immutable", source)
+        self.assertIn("report_definition_release_receipt_immutable", source)
+        self.assertIn("report_run_release_receipt_immutable", source)
+
 
 if __name__ == "__main__":
     unittest.main()

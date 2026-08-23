@@ -361,14 +361,15 @@ def _expression_source(
     expression: exp.Expression | None,
     sources: dict[str, SourceEvidence],
 ) -> SourceEvidence | None:
-    if not isinstance(expression, exp.Table):
+    if not isinstance(expression, (exp.Table, exp.Subquery)):
         return None
     alias = expression.args.get("alias")
-    key = (
-        identifier_node(alias.this)
-        if isinstance(alias, exp.TableAlias)
-        else identifier_node(expression.this)
-    )
+    if isinstance(alias, exp.TableAlias):
+        key = identifier_node(alias.this)
+    elif isinstance(expression, exp.Table):
+        key = identifier_node(expression.this)
+    else:
+        return None
     return sources.get(key)
 
 

@@ -1,0 +1,43 @@
+# DataHub v1.7 문서 전파 action을 프로젝트 Kafka와 인증된 TLS GMS에만 결속한다.
+# private-CA Schema Registry가 없으면 시작하지 않아 다른 환경으로 우회하지 않는다.
+name: ${DATAHUB_ACTIONS_DOC_PROPAGATION_CONSUMER_GROUP_ID:-datahub_doc_propagation_action}
+enabled: ${DATAHUB_ACTIONS_DOC_PROPAGATION_ENABLED:-true}
+source:
+  type: kafka
+  config:
+    connection:
+      bootstrap: ${KAFKA_BOOTSTRAP_SERVER:-localhost:9092}
+      schema_registry_url: ${SCHEMA_REGISTRY_URL:-http://localhost:8081}
+      schema_registry_config:
+        ssl.ca.location: ${DATAHUB_TLS_CA_FILE:-/run/secrets/datahub-ca.pem}
+      consumer_config:
+        max.poll.interval.ms: ${MAX_POLL_INTERVAL_MS:-60000}
+    topic_routes:
+      mcl: ${METADATA_CHANGE_LOG_VERSIONED_TOPIC_NAME:-MetadataChangeLog_Versioned_v1}
+      pe: ${PLATFORM_EVENT_TOPIC_NAME:-PlatformEvent_v1}
+    enable_mcl_pre_deserialization_filter: true
+filters:
+  - type: event_type
+    config:
+      filter:
+        MetadataChangeLogEvent_v1:
+          event:
+            - entityType: schemaField
+              aspectName: documentation
+        EntityChangeEvent_v1:
+          event:
+            - category: DOCUMENTATION
+              entityType: schemaField
+action:
+  type: doc_propagation
+  config:
+    columns_enabled: ${DATAHUB_ACTIONS_DOC_PROPAGATION_COLUMNS_ENABLED:-true}
+    max_propagation_depth: ${DATAHUB_ACTIONS_DOC_PROPAGATION_MAX_PROPAGATION_DEPTH:-5}
+    max_propagation_fanout: ${DATAHUB_ACTIONS_DOC_PROPAGATION_MAX_PROPAGATION_FANOUT:-1000}
+    max_propagation_time_millis: ${DATAHUB_ACTIONS_DOC_PROPAGATION_MAX_PROPAGATION_TIME_MILLIS:-3600000}
+    rate_limit_propagated_writes: ${DATAHUB_ACTIONS_DOC_PROPAGATION_RATE_LIMIT_PROPAGATED_WRITES:-1500}
+    rate_limit_propagated_writes_period: ${DATAHUB_ACTIONS_DOC_PROPAGATION_RATE_LIMIT_PROPAGATED_WRITES_PERIOD:-15}
+datahub:
+  server: "${DATAHUB_GMS_PROTOCOL:-http}://${DATAHUB_GMS_HOST:-localhost}:${DATAHUB_GMS_PORT:-8080}"
+  extra_headers:
+    Authorization: "Basic ${DATAHUB_SYSTEM_CLIENT_ID:-__datahub_system}:${DATAHUB_SYSTEM_CLIENT_SECRET:-JohnSnowKnowsNothing}"

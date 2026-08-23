@@ -25,6 +25,21 @@ class _Model(_Platform):
 
 
 class RuntimeLifecycleTests(unittest.IsolatedAsyncioTestCase):
+    async def test_incompatible_runtime_contract_stops_before_scheduler_side_effects(self) -> None:
+        scheduler = AsyncMock()
+        with (
+            patch(
+                "app.main.validate_model_runtime_compatibility",
+                side_effect=RuntimeError("incompatible runtime"),
+            ),
+            patch("app.main.report_scheduler", scheduler),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "incompatible runtime"):
+                async with lifespan(None):
+                    self.fail("incompatible runtime must not start")
+
+        scheduler.start.assert_not_awaited()
+
     async def test_lifespan_restart_rebuilds_closed_runtime_clients(self) -> None:
         first_platform = _Platform()
         second_platform = _Platform()
@@ -43,6 +58,10 @@ class RuntimeLifecycleTests(unittest.IsolatedAsyncioTestCase):
                 side_effect=(first_model, second_model),
             ),
             patch("app.api.router._routing_service", return_value=object()),
+            patch(
+                "app.main.validate_model_runtime_compatibility",
+                return_value={},
+            ),
             patch("app.main.report_scheduler", scheduler),
             patch("app.main.dispose_database", AsyncMock()) as dispose,
         ):

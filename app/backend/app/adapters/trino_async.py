@@ -19,6 +19,7 @@ class AdapterErrorCode(str, Enum):
     CANCELLED = "CANCELLED"
     UPSTREAM = "UPSTREAM"
     QUERY = "QUERY"
+    NOT_FOUND = "NOT_FOUND"
 
 
 class AdapterError(RuntimeError):
@@ -145,6 +146,8 @@ class TrinoAsyncClient:
             code = (
                 AdapterErrorCode.FORBIDDEN
                 if error.response.status_code in {401, 403}
+                else AdapterErrorCode.NOT_FOUND
+                if error.response.status_code == 404
                 else AdapterErrorCode.UPSTREAM
             )
             raise AdapterError(
@@ -234,6 +237,32 @@ class TrinoAsyncClient:
         """검증된 same-origin ``nextUri``에 DELETE를 보내 진행 중인 Trino statement를 취소한다."""
         self._validate_next_uri(next_uri)
         await self._request("DELETE", next_uri, None, deadline=deadline)
+
+    async def cancel_query(
+        self,
+        query_id: str,
+        next_uri: str,
+        *,
+        deadline: float | None = None,
+    ) -> None:
+        """durable URI가 동일 query id의 same-origin 경로임을 확인한 뒤 취소한다."""
+
+        self.validate_query_uri(query_id, next_uri)
+        await self._request("DELETE", next_uri, None, deadline=deadline)
+
+    def validate_query_uri(self, query_id: str, next_uri: str) -> None:
+        """URI의 origin과 path query identity를 network·persistence 전에 검증한다."""
+
+        self._validate_next_uri(next_uri)
+        try:
+            uri = httpx.URL(next_uri)
+        except (TypeError, ValueError) as error:
+            raise AdapterError(AdapterErrorCode.UPSTREAM, "Trino nextUri is invalid") from error
+        if not isinstance(query_id, str) or not query_id or query_id not in uri.path.split("/"):
+            raise AdapterError(
+                AdapterErrorCode.UPSTREAM,
+                "Trino nextUri does not belong to the durable query id",
+            )
 
     def _validate_next_uri(self, value: str) -> None:
         try:

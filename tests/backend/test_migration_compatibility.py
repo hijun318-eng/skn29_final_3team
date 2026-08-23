@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -44,6 +46,13 @@ KNOWN_REVISIONS = (
     "20260819_26",
     "20260820_27",
     "20260820_28",
+    "20260822_29",
+    "20260822_30",
+    "20260822_31",
+    "20260822_32",
+    "20260822_33",
+    "20260823_34",
+    "20260823_35",
 )
 LEGACY_REVISION_UNSUPPORTED = "LEGACY_REVISION_UNSUPPORTED"
 
@@ -69,7 +78,7 @@ class MigrationGraphTest(unittest.TestCase):
         script = ScriptDirectory.from_config(config)
 
         self.assertEqual(["20260729_01"], script.get_bases())
-        self.assertEqual(["20260820_28"], script.get_heads())
+        self.assertEqual(["20260823_35"], script.get_heads())
         self.assertEqual(
             set(KNOWN_REVISIONS),
             {item.revision for item in script.walk_revisions()},
@@ -168,7 +177,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         result = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)
-        self.assertEqual("20260820_28", self.revision(self.empty_database))
+        self.assertEqual("20260823_35", self.revision(self.empty_database))
         engine = create_engine(self.base_url.set(database=self.empty_database))
         with engine.connect() as connection:
             widths = connection.execute(
@@ -194,7 +203,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
-        self.assertEqual("20260820_28", self.revision(self.known_database))
+        self.assertEqual("20260823_35", self.revision(self.known_database))
 
     def test_report_head_upgrades_to_analysis_persistence_head(self) -> None:
         database = self.create_database("migration_report")
@@ -205,7 +214,7 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
         head = alembic("upgrade", "head", database_url=url)
 
         self.assertEqual(0, head.returncode, head.stdout + head.stderr)
-        self.assertEqual("20260820_28", self.revision(database))
+        self.assertEqual("20260823_35", self.revision(database))
 
     def test_analysis_head_roundtrips_through_context_registry_and_run_parameters(self) -> None:
         database = self.create_database("migration_context")
@@ -215,13 +224,260 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, upgrade.returncode, upgrade.stdout + upgrade.stderr)
-        self.assertEqual("20260820_28", self.revision(database))
+        self.assertEqual("20260823_35", self.revision(database))
         downgrade = alembic("downgrade", "20260810_06", database_url=url)
         self.assertEqual(0, downgrade.returncode, downgrade.stdout + downgrade.stderr)
         self.assertEqual("20260810_06", self.revision(database))
+        engine = create_engine(self.base_url.set(database=database))
+        with engine.connect() as connection:
+            rolled_back = connection.execute(
+                text(
+                    """
+                    SELECT to_regclass('chat.turns'),
+                           to_regclass('chat.turn_commands'),
+                           to_regclass('artifact.view_specs'),
+                           to_regclass('governance.phase_20260822_30_preexisting_objects'),
+                           EXISTS (
+                               SELECT 1 FROM information_schema.columns
+                               WHERE table_schema = 'chat'
+                                 AND table_name = 'conversations'
+                                 AND column_name = 'head_turn_id'
+                           ),
+                           EXISTS (
+                               SELECT 1 FROM information_schema.columns
+                               WHERE table_schema = 'query'
+                                 AND table_name = 'query_executions'
+                                 AND column_name = 'trino_cancel_uri'
+                           )
+                    """
+                )
+            ).one()
+        engine.dispose()
+        self.assertEqual((None, None, None, None, False, False), tuple(rolled_back))
         second_upgrade = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
+        self.assertEqual("20260823_35", self.revision(database))
+
+    def test_phase1_downgrade_preserves_preexisting_manual_conversation_objects(self) -> None:
+        database = self.create_database("migration_conversation_legacy")
+        url = self.base_url.set(database=database).render_as_string(hide_password=False)
+        before_phase1 = alembic("upgrade", "20260822_29", database_url=url)
+        self.assertEqual(0, before_phase1.returncode, before_phase1.stdout + before_phase1.stderr)
+        engine = create_engine(self.base_url.set(database=database))
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE artifact.view_specs (
+                        view_spec_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                        artifact_id uuid NOT NULL REFERENCES artifact.analysis_artifacts(artifact_id),
+                        view_type varchar(32) NOT NULL,
+                        spec_json jsonb NOT NULL,
+                        created_at timestamptz NOT NULL DEFAULT now()
+                    );
+                    CREATE TABLE chat.turns (
+                        turn_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                        conversation_id uuid NOT NULL REFERENCES chat.conversations(conversation_id),
+                        turn_index integer NOT NULL,
+                        user_message text NOT NULL,
+                        route varchar(32) NOT NULL,
+                        source_turn_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+                        request_id uuid REFERENCES chat.analysis_requests(request_id),
+                        artifact_id uuid REFERENCES artifact.analysis_artifacts(artifact_id),
+                        view_spec_id uuid REFERENCES artifact.view_specs(view_spec_id),
+                        report_definition_id uuid REFERENCES report.report_definitions(report_definition_id),
+                        resolved_slots jsonb NOT NULL DEFAULT '{}'::jsonb,
+                        created_at timestamptz NOT NULL DEFAULT now(),
+                        UNIQUE (conversation_id, turn_index)
+                    );
+                    CREATE TABLE chat.turn_commands (
+                        command_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+                        conversation_id uuid NOT NULL REFERENCES chat.conversations(conversation_id),
+                        idempotency_key varchar(128) NOT NULL,
+                        canonical_input_hash char(64) NOT NULL,
+                        status varchar(32) NOT NULL,
+                        turn_id uuid REFERENCES chat.turns(turn_id),
+                        error_response jsonb,
+                        created_at timestamptz NOT NULL DEFAULT now(),
+                        UNIQUE (conversation_id, idempotency_key)
+                    );
+                    ALTER TABLE chat.conversations
+                        ADD COLUMN head_turn_id uuid REFERENCES chat.turns(turn_id),
+                        ADD COLUMN turn_count integer NOT NULL DEFAULT 0,
+                        ADD COLUMN active_command_id uuid REFERENCES chat.turn_commands(command_id),
+                        ADD COLUMN lease_expires_at timestamptz;
+                    ALTER TABLE query.query_executions
+                        ADD COLUMN trino_cancel_uri text;
+                    CREATE INDEX idx_chat_turns_conv
+                        ON chat.turns(conversation_id, turn_index);
+                    CREATE INDEX idx_view_specs_artifact
+                        ON artifact.view_specs(artifact_id)
+                    """
+                )
+            )
+        engine.dispose()
+
+        upgraded = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+        downgraded = alembic("downgrade", "20260822_29", database_url=url)
+        self.assertEqual(0, downgraded.returncode, downgraded.stdout + downgraded.stderr)
+
+        engine = create_engine(self.base_url.set(database=database))
+        with engine.connect() as connection:
+            preserved = connection.execute(
+                text(
+                    """
+                    SELECT to_regclass('chat.turns') IS NOT NULL,
+                           to_regclass('chat.turn_commands') IS NOT NULL,
+                           to_regclass('artifact.view_specs') IS NOT NULL,
+                           to_regclass('chat.idx_chat_turns_conv') IS NOT NULL,
+                           to_regclass('artifact.idx_view_specs_artifact') IS NOT NULL,
+                           EXISTS (
+                               SELECT 1 FROM information_schema.columns
+                               WHERE table_schema = 'chat'
+                                 AND table_name = 'conversations'
+                                 AND column_name = 'head_turn_id'
+                           ),
+                           NOT EXISTS (
+                               SELECT 1 FROM information_schema.columns
+                               WHERE table_schema = 'chat'
+                                 AND table_name = 'turn_commands'
+                                 AND column_name = 'product_release_id'
+                           ),
+                           EXISTS (
+                               SELECT 1 FROM information_schema.columns
+                               WHERE table_schema = 'query'
+                                 AND table_name = 'query_executions'
+                                 AND column_name = 'trino_cancel_uri'
+                           )
+                    """
+                )
+            ).one()
+        engine.dispose()
+        self.assertEqual(
+            (True, True, True, True, True, True, True, True),
+            tuple(preserved),
+        )
+
+        second_upgrade = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
+        self.assertEqual("20260823_35", self.revision(database))
+
+    def test_capability_evidence_contract_roundtrips_and_is_immutable(self) -> None:
+        database = self.create_database("migration_evidence")
+        url = self.base_url.set(database=database).render_as_string(hide_password=False)
+        upgrade = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, upgrade.returncode, upgrade.stdout + upgrade.stderr)
+
+        engine = create_engine(self.base_url.set(database=database))
+        release_id = "ANSWERVICE-PRODUCT-RELEASE-v1:" + "9" * 64
+        image_receipts = [{"component": "backend", "digest": "sha256:" + "4" * 64}]
+        release_vector = {
+            "data_release_id": "data-v1",
+            "semantic_release_id": "semantic-v1",
+            "prompt_release_id": "prompt-v1",
+            "policy_release_id": "policy-v1",
+            "runtime_release_id": "runtime-v1",
+        }
+        manifest = {
+            "schema_version": "ProductReleaseEvidenceManifest.v1",
+            "product_release_id": release_id,
+            "manifest_sha256": "1" * 64,
+            "created_at": "2026-08-22T00:00:00Z",
+            "evidence": {
+                "source": {
+                    "commit_sha": "2" * 40,
+                    "dirty": True,
+                    "dirty_patch_sha256": "3" * 64,
+                },
+                "images": image_receipts,
+                "migration": {"revision": "20260822_29", "chain_sha256": "5" * 64},
+                "model": {
+                    "release_id": "MODEL-RELEASE-v1.32.0",
+                    "manifest_sha256": "6" * 64,
+                },
+                "catalog": {
+                    "release_id": "catalog-v1",
+                    "manifest_sha256": "7" * 64,
+                    "projection_sha256": "8" * 64,
+                },
+                "release_vector": release_vector,
+            },
+        }
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO governance.product_release_manifests (
+                        product_release_id, contract_version, manifest_sha256,
+                        manifest_json, source_commit_sha, source_dirty,
+                        dirty_patch_sha256, image_digests_json, migration_revision,
+                        migration_chain_sha256, model_release_id,
+                        model_manifest_sha256, catalog_release_id,
+                        catalog_manifest_sha256, catalog_projection_sha256,
+                        release_vector_json, created_at
+                    ) VALUES (
+                        :release_id, 'ProductReleaseEvidenceManifest.v1', :manifest_sha,
+                        CAST(:manifest AS jsonb), :source_commit, true,
+                        :patch_sha, CAST(:images AS jsonb), '20260822_29',
+                        :migration_sha, 'MODEL-RELEASE-v1.32.0',
+                        :model_sha, 'catalog-v1', :catalog_sha, :projection_sha,
+                        CAST(:release_vector AS jsonb), now()
+                    )
+                    """
+                ),
+                {
+                    "release_id": release_id,
+                    "manifest_sha": "1" * 64,
+                    "manifest": json.dumps(manifest),
+                    "source_commit": "2" * 40,
+                    "patch_sha": "3" * 64,
+                    "images": json.dumps(image_receipts),
+                    "migration_sha": "5" * 64,
+                    "model_sha": "6" * 64,
+                    "catalog_sha": "7" * 64,
+                    "projection_sha": "8" * 64,
+                    "release_vector": json.dumps(release_vector),
+                },
+            )
+            for object_kind in (
+                "CONVERSATION", "TURN", "CONTEXT", "RUN", "ARTIFACT", "VIEW", "REPORT"
+            ):
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO governance.product_release_bindings (
+                            object_kind, object_id, product_release_id,
+                            permission_snapshot_id, semantic_release_id,
+                            capability_release_vector_json, evidence_refs_json
+                        ) VALUES (
+                            :kind, :object_id, :release_id, 'permission-v1',
+                            'semantic-v1', '{"analysis.run":"1.0.0"}'::jsonb, '[]'::jsonb
+                        )
+                        """
+                    ),
+                    {"kind": object_kind, "object_id": object_kind.lower(), "release_id": release_id},
+                )
+        with engine.connect() as connection:
+            count = connection.execute(
+                text("SELECT count(*) FROM governance.product_release_bindings")
+            ).scalar_one()
+            self.assertEqual(7, count)
+            with self.assertRaises(DBAPIError):
+                connection.execute(
+                    text(
+                        "UPDATE governance.product_release_bindings "
+                        "SET semantic_release_id = 'changed' WHERE object_kind = 'RUN'"
+                    )
+                )
+        engine.dispose()
+
+        downgrade = alembic("downgrade", "20260820_28", database_url=url)
+        self.assertEqual(0, downgrade.returncode, downgrade.stdout + downgrade.stderr)
         self.assertEqual("20260820_28", self.revision(database))
+        second_upgrade = alembic("upgrade", "head", database_url=url)
+        self.assertEqual(0, second_upgrade.returncode, second_upgrade.stdout + second_upgrade.stderr)
+        self.assertEqual("20260823_35", self.revision(database))
 
 
 if __name__ == "__main__":

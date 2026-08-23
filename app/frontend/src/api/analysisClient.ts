@@ -29,11 +29,23 @@ export interface AnalysisClient {
   getConversationTurns(conversationId: string): Promise<ConversationTurnWire[]>;
   executeTurnCommand(
     conversationId: string,
-    payload: { user_message: string; expected_head_turn_id?: string | null; idempotency_key?: string },
+    payload: {
+      user_message: string;
+      expected_head_turn_id: string | null;
+      idempotency_key: string;
+      requested_route?: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
+      presentation_type?: "SUMMARY" | "TABLE" | "BAR" | "LINE" | "PIE" | "HORIZONTAL_BAR" | "DONUT";
+    },
   ): Promise<any>;
   submitTurnCommand(
     conversationId: string,
-    payload: { user_message: string; expected_head_turn_id?: string | null; idempotency_key?: string },
+    payload: {
+      user_message: string;
+      expected_head_turn_id: string | null;
+      idempotency_key: string;
+      requested_route?: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
+      presentation_type?: "SUMMARY" | "TABLE" | "BAR" | "LINE" | "PIE" | "HORIZONTAL_BAR" | "DONUT";
+    },
   ): Promise<any>;
 }
 
@@ -47,19 +59,48 @@ export interface ConversationTurnWire {
   user_message: string;
   route: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
   source_turn_ids: string[];
+  reply_to_turn_id: string | null;
+  clarifies_turn_id: string | null;
+  terminal_status: "SUCCEEDED" | "BLOCKED" | "PARTIAL" | "FAILED" | "CANCELLED";
+  reason_code: string | null;
   request_id: string | null;
   artifact_id: string | null;
   view_spec_id: string | null;
   report_definition_id: string | null;
   resolved_slots: {
+    business_terms?: string[];
     metric_id?: string | null;
+    metric_ids?: string[];
     dimension_fields?: Array<{ column: string; asset_fqn: string }> | null;
+    user_filters?: Array<{
+      column: string;
+      asset_fqn: string;
+      operator?: string;
+      value_text?: string;
+    }> | null;
     time_range?: {
       start: string;
       end_exclusive: string;
       source_text: string;
     } | null;
+    comparison_time_range?: {
+      start: string;
+      end_exclusive: string;
+      source_text: string;
+    } | null;
     target_chart_type?: string | null;
+    change_set?: Array<{
+      field: string;
+      operation: "SET" | "CLEAR" | "ADD_VALUE" | "REMOVE_VALUE" | "PRESERVE";
+      value: unknown;
+    }>;
+    analysis_plan_observation?: {
+      query_strategy: string;
+      source_assets: string[];
+      join_ids: string[];
+      time_bucket: string | null;
+      analysis_plan_sha256: string;
+    } | null;
     is_inherited_metric?: boolean;
     is_inherited_dimension?: boolean;
     is_inherited_period?: boolean;

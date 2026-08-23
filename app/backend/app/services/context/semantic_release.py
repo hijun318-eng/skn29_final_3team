@@ -506,10 +506,21 @@ def _compile_metrics(
             and not time_field.startswith(f"{source_asset.fqn}.")
         ) or any(
             not field.startswith(f"{source_asset.fqn}.")
-            for field in (*dimension_fields, *(item[0] for item in filters))
+            for field in (item[0] for item in filters)
         ):
             raise CanonicalSemanticReleaseError(
-                "semantic release metric fields span multiple execution assets"
+                "semantic release metric calculation fields span multiple execution assets"
+            )
+        reachable_assets = _reachable_assets(
+            source_asset.fqn,
+            tuple(item for item in joins if item.id in allowed_join_ids),
+        )
+        if any(
+            _field_asset(field, assets_by_fqn) not in reachable_assets
+            for field in dimension_fields
+        ):
+            raise CanonicalSemanticReleaseError(
+                "semantic release metric dimension is outside its approved join graph"
             )
         if not set(grain_keys).issubset(
             {column.name for column in source_asset.columns}
@@ -540,6 +551,37 @@ def _compile_metrics(
             )
         )
     return tuple(result)
+
+
+def _reachable_assets(
+    source_fqn: str,
+    joins: tuple[GovernedJoin, ...],
+) -> frozenset[str]:
+    adjacency: dict[str, set[str]] = {}
+    for join in joins:
+        adjacency.setdefault(join.left, set()).add(join.right)
+        adjacency.setdefault(join.right, set()).add(join.left)
+    pending = [source_fqn]
+    visited: set[str] = set()
+    while pending:
+        current = pending.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        pending.extend(adjacency.get(current, ()))
+    return frozenset(visited)
+
+
+def _field_asset(
+    field: str,
+    assets: Mapping[str, CanonicalAsset],
+) -> str:
+    matches = [fqn for fqn in assets if field.startswith(f"{fqn}.")]
+    if len(matches) != 1:
+        raise CanonicalSemanticReleaseError(
+            "semantic release field does not resolve one asset"
+        )
+    return matches[0]
 
 
 def _metric_source_assets(

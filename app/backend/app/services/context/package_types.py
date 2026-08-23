@@ -101,7 +101,7 @@ class ContextMetric:
             not self.allowed_roles
             or len(self.allowed_roles) != len(set(self.allowed_roles))
             or self.contains_pii is not False
-            or self.join_required != bool(self.allowed_join_ids)
+            or (self.join_required and not self.allowed_join_ids)
             or not self.query_strategies
             or not set(self.query_strategies) <= QUERY_STRATEGIES
         ):

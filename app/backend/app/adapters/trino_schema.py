@@ -31,20 +31,42 @@ class TrinoSchemaInspector:
 
     async def verify(self, datasets: tuple[GovernedDataset, ...]) -> None:
         """각 dataset의 table type·정렬된 column·SHA-256을 live Trino 값과 비교하고 하나라도 다르면 거부한다."""
+        await self.fingerprints(datasets)
+
+    async def fingerprints(
+        self,
+        datasets: tuple[GovernedDataset, ...],
+    ) -> tuple[dict[str, object], ...]:
+        """전체 relation을 live 검증하고 out-of-band projection용 fingerprint를 반환한다."""
+
         if not datasets:
             raise TrinoSchemaDriftError("no selected DataHub datasets to verify")
+        result = []
         for dataset in datasets:
             actual_type, actual_columns = await self.relation(dataset.fqn)
             expected_columns = tuple(dataset.trino_schema_columns)
+            relation_sha256 = _schema_hash(
+                dataset.fqn,
+                actual_type,
+                actual_columns,
+            )
             if (
                 actual_type != dataset.table_type
                 or actual_columns != expected_columns
-                or _schema_hash(dataset.fqn, actual_type, actual_columns)
-                != dataset.trino_schema_checksum
+                or relation_sha256 != dataset.trino_schema_checksum
             ):
                 raise TrinoSchemaDriftError(
                     f"Trino information_schema differs from DataHub for {dataset.fqn}"
                 )
+            result.append(
+                {
+                    "fqn": dataset.fqn,
+                    "table_type": actual_type,
+                    "column_count": len(actual_columns),
+                    "relation_sha256": relation_sha256,
+                }
+            )
+        return tuple(sorted(result, key=lambda item: str(item["fqn"])))
 
     async def relation(
         self,

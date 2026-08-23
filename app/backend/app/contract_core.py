@@ -113,6 +113,11 @@ class ErrorCode(str, Enum):
     SCHEMA_VERSION_MISMATCH = "SCHEMA_VERSION_MISMATCH"
     RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
     RESOURCE_CONFLICT = "RESOURCE_CONFLICT"
+    CONVERSATION_CONFLICT = "CONVERSATION_CONFLICT"
+    CONVERSATION_BUSY = "CONVERSATION_BUSY"
+    CONVERSATION_ARCHIVED = "CONVERSATION_ARCHIVED"
+    IDEMPOTENCY_CONFLICT = "IDEMPOTENCY_CONFLICT"
+    REPORT_DRAFT_CONFLICT = "REPORT_DRAFT_CONFLICT"
     DEPENDENCY_UNAVAILABLE = "DEPENDENCY_UNAVAILABLE"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
@@ -149,12 +154,17 @@ class RequestContext(ContractModel):
     """요청·추적 식별자, 인증 주체, 기준일, 시간대와 계약 버전을 한 분석 실행에 고정한다."""
     request_id: UUID = Field(default_factory=uuid4)
     trace_id: str = Field(default_factory=lambda: uuid4().hex)
+    require_fresh_query: bool = False
     conversation_id: UUID | None = None
     user_id: UUID = UUID(int=0)
     role: Role = Role.ANALYST
     as_of: date = Field(default_factory=date.today)
     timezone: str = "Asia/Seoul"
     contract_version: str = CONTRACT_VERSION
+    permission_snapshot_id: str | None = None
+    product_release_id: str | None = None
+    semantic_release_id: str | None = None
+    command_id: UUID | None = None
 
 
 class ResolvedSlots(ContractModel):
@@ -303,6 +313,9 @@ _RETRYABLE_ERROR_CODES = {
     ErrorCode.RATE_LIMITED,
     ErrorCode.DEPENDENCY_UNAVAILABLE,
     ErrorCode.SOURCE_NOT_READY,
+    ErrorCode.CONVERSATION_CONFLICT,
+    ErrorCode.CONVERSATION_BUSY,
+    ErrorCode.REPORT_DRAFT_CONFLICT,
 }
 
 _REQUIRED_ACTION_BY_ERROR = {
@@ -322,6 +335,11 @@ _REQUIRED_ACTION_BY_ERROR = {
     ErrorCode.SCHEMA_VERSION_MISMATCH: RequiredAction.MODIFY_REQUEST,
     ErrorCode.RESOURCE_NOT_FOUND: RequiredAction.MODIFY_REQUEST,
     ErrorCode.RESOURCE_CONFLICT: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.CONVERSATION_CONFLICT: RequiredAction.RETRY,
+    ErrorCode.CONVERSATION_BUSY: RequiredAction.RETRY,
+    ErrorCode.CONVERSATION_ARCHIVED: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.IDEMPOTENCY_CONFLICT: RequiredAction.MODIFY_REQUEST,
+    ErrorCode.REPORT_DRAFT_CONFLICT: RequiredAction.RETRY,
     ErrorCode.SQL_POLICY_BLOCKED: RequiredAction.MODIFY_REQUEST,
     ErrorCode.MODEL_TIMEOUT: RequiredAction.RETRY,
     ErrorCode.MODEL_ENDPOINT_UNAVAILABLE: RequiredAction.RETRY,

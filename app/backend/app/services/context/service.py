@@ -213,12 +213,26 @@ def _inject_turn_filters(
     assets: list[dict[str, object]],
     turn_filters: list[ResolvedFilterValue],
 ) -> list[dict[str, object]]:
-    """실제 Trino DB 조회를 통해 검증된 turn 필터를 대상 테이블의 지표 required_filters에 병합합니다."""
+    """검증된 turn 필터를 asset 계약과 해당 asset의 leaf Metric에 함께 병합한다."""
     if not turn_filters:
         return assets
     updated: list[dict[str, object]] = []
     for asset in assets:
         asset_copy = dict(asset)
+        asset_required = list(asset_copy.get("required_filters") or ())
+        for index, turn_filter in enumerate(turn_filters):
+            if turn_filter.asset_fqn != str(asset_copy.get("fqn", "")):
+                continue
+            asset_required.append(
+                {
+                    "field": turn_filter.column,
+                    "operator": turn_filter.operator,
+                    "value": turn_filter.value,
+                    "value_type": "string",
+                    "parameter": f"user_filter_{index}",
+                }
+            )
+        asset_copy["required_filters"] = asset_required
         metrics = asset_copy.get("metrics")
         if isinstance(metrics, (list, tuple)):
             new_metrics = []
@@ -303,7 +317,10 @@ class PipelineContextService:
         for asset in assets:
             urn = str(asset["urn"])
             if urn not in schemas:
-                schemas[urn] = await self._adapter.get_asset_schema(urn)
+                schemas[urn] = await self._adapter.get_asset_schema(
+                    urn,
+                    context.model_dump(mode="json"),
+                )
         validated_schemas = {
             urn: schema_columns(schema) for urn, schema in schemas.items()
         }
@@ -400,6 +417,12 @@ class PipelineContextService:
             for asset in assets
             if asset.get("evidence_cutoff")
         }
+        product_receipt_presence = [
+            bool(asset.get("product_release_id")) for asset in assets
+        ]
+        evidence_cutoff_presence = [
+            bool(asset.get("evidence_cutoff")) for asset in assets
+        ]
         if (
             len(releases) != 1
             or not next(iter(releases), "")
@@ -407,7 +430,12 @@ class PipelineContextService:
             or not next(iter(policies), "")
             or len(product_releases) > 1
             or len(evidence_cutoffs) > 1
-            or bool(product_releases) != bool(evidence_cutoffs)
+            or (any(product_receipt_presence) and not all(product_receipt_presence))
+            or (any(evidence_cutoff_presence) and not all(evidence_cutoff_presence))
+            # evidence_cutoff은 data watermark가 release manifest에 있을 때만
+            # 선택적으로 제공한다. 반대로 cutoff가 release receipt 없이 단독으로
+            # 전달되는 것은 출처를 증명할 수 없으므로 거부한다.
+            or (bool(evidence_cutoffs) and not bool(product_releases))
         ):
             raise ContextBuildError(
                 ContextBuildErrorCode.INVALID_METADATA,
@@ -464,7 +492,10 @@ class PipelineContextService:
         if isinstance(single_term, dict) and len(business_metric_ids) == 1:
             term_payloads = {business_metric_ids[0]: single_term}
         if not isinstance(term_payloads, dict):
-            term_payloads = await self._adapter.get_metric_terms(business_metric_ids)
+            term_payloads = await self._adapter.get_metric_terms(
+                business_metric_ids,
+                context.model_dump(mode="json"),
+            )
         if set(term_payloads) != set(business_metric_ids) or any(
             not isinstance(term_payloads.get(metric_id), dict)
             for metric_id in business_metric_ids

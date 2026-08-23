@@ -31,6 +31,46 @@ class ReportDomainTest(unittest.TestCase):
         self.assertEqual(DefinitionStatus.DRAFT, next_draft.status)
         self.assertEqual("artifact-1", next_draft.blocks[0].artifact_id)
 
+    def test_definition_and_run_require_complete_release_receipts(self):
+        receipt = {
+            "product_release_id": "product-v1",
+            "permission_snapshot_id": "permission-v1",
+            "semantic_release_id": "semantic-v1",
+        }
+        draft = ReportDefinitionVersion(
+            "report-receipt",
+            1,
+            DefinitionStatus.DRAFT,
+            "Receipt report",
+            (self.block,),
+            **receipt,
+        )
+        approved = draft.approve(datetime(2026, 8, 3, tzinfo=timezone.utc))
+        self.assertEqual("product-v1", approved.next_draft().product_release_id)
+        run = ReportRun(
+            "run-receipt",
+            draft.definition_id,
+            1,
+            datetime(2026, 8, 3, tzinfo=timezone.utc),
+            "policy-v1",
+            "context-v1",
+            {},
+            RunStatus.SUCCESS,
+            product_release_id=receipt["product_release_id"],
+            permission_snapshot_id=receipt["permission_snapshot_id"],
+            semantic_release_id=receipt["semantic_release_id"],
+        )
+        self.assertEqual("semantic-v1", run.semantic_release_id)
+        with self.assertRaisesRegex(ValueError, "receipt must be complete"):
+            ReportDefinitionVersion(
+                "report-incomplete",
+                1,
+                DefinitionStatus.DRAFT,
+                "Incomplete",
+                (self.block,),
+                product_release_id="product-v1",
+            )
+
     def test_repository_rejects_approved_version_overwrite(self):
         repo = InMemoryReportRepository()
         repo.add_draft(self.draft)

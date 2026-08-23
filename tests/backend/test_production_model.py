@@ -99,6 +99,14 @@ def _contracts(catalog: str = "orbit") -> dict:
     }
 
 
+def _runtime_contracts(catalog: str = "orbit") -> dict:
+    """봉인 provider 계약에 runtime-only asset filter registry를 결합한다."""
+
+    contracts = _contracts(catalog)
+    contracts["filter_rules"] = []
+    return contracts
+
+
 def _node2_payload(catalog: str = "orbit") -> dict:
     return {
         "question_id": "request-arbitrary-1",
@@ -373,7 +381,7 @@ class ProductionModelAsyncTests(unittest.IsolatedAsyncioTestCase):
                 "question": _node2_payload()["normalized_question"],
                 "structured_request": _node2_payload()["structured_request"],
                 "request_id": "request-arbitrary-1",
-                "package": SimpleNamespace(runtime_contracts=_contracts()),
+                "package": SimpleNamespace(runtime_contracts=_runtime_contracts()),
                 "context": SimpleNamespace(),
             },
         )
@@ -399,7 +407,7 @@ class ProductionModelAsyncTests(unittest.IsolatedAsyncioTestCase):
                 "question": _node2_payload()["normalized_question"],
                 "structured_request": _node2_payload()["structured_request"],
                 "request_id": "request-arbitrary-sql-only",
-                "package": SimpleNamespace(runtime_contracts=_contracts()),
+                "package": SimpleNamespace(runtime_contracts=_runtime_contracts()),
                 "context": SimpleNamespace(),
             },
         )
@@ -484,7 +492,7 @@ class ProductionModelAsyncTests(unittest.IsolatedAsyncioTestCase):
                     "question": _node2_payload()["normalized_question"],
                     "structured_request": _node2_payload()["structured_request"],
                     "request_id": "request-arbitrary-1",
-                    "package": SimpleNamespace(runtime_contracts=_contracts()),
+                    "package": SimpleNamespace(runtime_contracts=_runtime_contracts()),
                     "context": SimpleNamespace(),
                 },
             )
@@ -497,13 +505,13 @@ class ProductionModelAsyncTests(unittest.IsolatedAsyncioTestCase):
                     "rejected_sql": "SELECT invalid_identifier",
                     "normalized_question": _node2_payload()["normalized_question"],
                     "structured_request": _node2_payload()["structured_request"],
-                    "package": SimpleNamespace(runtime_contracts=_contracts()),
+                    "package": SimpleNamespace(runtime_contracts=_runtime_contracts()),
                     "violation": "UNKNOWN_COLUMN",
                     "violation_detail": "A governed column was not resolved.",
                 },
             )
             traces["node2_repair"] = dict(adapter.last_trace)
-            contracts = _contracts()
+            contracts = _runtime_contracts()
             package = SimpleNamespace(
                 runtime_contracts=contracts,
                 metrics=(SimpleNamespace(id="governed_amount", unit="credits"),),
@@ -560,6 +568,8 @@ class ProductionModelAsyncTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("model", normalized)
             self.assertNotIn("context_package", seen_wire_requests["node2"])
             self.assertNotIn("context_package", seen_wire_requests["node2_repair"])
+            self.assertNotIn("filter_rules", seen_wire_requests["node2"])
+            self.assertNotIn("filter_rules", seen_wire_requests["node2_repair"])
             self.assertEqual("answervice-sql", plan["model_version"])
             self.assertEqual("answervice-sql", repaired["model_version"])
             self.assertEqual("gpt-5.4-mini", explanation["model_version"])

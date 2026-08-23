@@ -43,7 +43,9 @@ from app.contracts import (
     response_meta,
 )
 from app.auth import AuthenticationError, authenticate_credentials, issue_session_token, register_session, revoke_session
-from app.authorization import capabilities_for, has_capability
+from app.authorization import capabilities_for, has_capability, permission_snapshot_id
+from app.conversation_contracts import ConversationCommandRequest
+from app.context import ContextValidationError
 from app.api.analysis_router_runtime import (
     active_analytics_context_release as _active_analytics_context_release,
     analysis_repository as _analysis_repository,
@@ -82,6 +84,26 @@ def _controller() -> AnalysisController:
 router = APIRouter()
 readiness = AppDatabaseReadiness(lambda: _controller().data_platform)
 execution_gate = ConcurrentExecutionGate()
+
+
+async def _active_product_release_receipt() -> tuple[str, str]:
+    """Read one executable active product/semantic release pair fail-closed."""
+
+    platform = _controller().data_platform
+    semantic_before = await platform.get_active_context_release()
+    stages, product_release = await platform.get_catalog_readiness()
+    semantic_after = await platform.get_active_context_release()
+    if (
+        semantic_before != semantic_after
+        or not product_release
+        or any(value != "ready" for value in stages.values())
+    ):
+        raise ContextValidationError(
+            ErrorCode.DEPENDENCY_UNAVAILABLE,
+            "활성 product release receipt를 원자적으로 확정하지 못했습니다.",
+            503,
+        )
+    return product_release, semantic_after
 
 
 @router.get(
@@ -360,7 +382,7 @@ async def replay_analysis_definition(
     saved_release = str(
         (definition.get("semantic_request") or {}).get("context_release") or ""
     )
-    active_release = await _active_analytics_context_release()
+    product_release, active_release = await _active_product_release_receipt()
     if saved_release != active_release:
         raise ContextValidationError(
             ErrorCode.SCHEMA_VERSION_MISMATCH,
@@ -374,7 +396,17 @@ async def replay_analysis_definition(
             detail=f"정의되지 않은 Analysis parameter: {', '.join(sorted(unknown_parameters))}",
         )
     parameters = {**definition["parameters"], **payload.parameters}
-    replay_context = context
+    replay_context = context.model_copy(
+        update={
+            "product_release_id": product_release,
+            "permission_snapshot_id": permission_snapshot_id(
+                context.user_id,
+                context.role,
+            ),
+            "semantic_release_id": active_release,
+            "require_fresh_query": True,
+        }
+    )
     request_id, created = await _repository_call(
         lambda: repository.begin_run(
             definition,
@@ -389,6 +421,8 @@ async def replay_analysis_definition(
         if run["status"] == "RECEIVED":
             raise HTTPException(status_code=409, detail="Analysis Run이 이미 실행 중입니다.")
         return run
+    if request_id != replay_context.request_id:
+        raise HTTPException(status_code=409, detail="Analysis Run identity가 일치하지 않습니다.")
     if not await execution_gate.acquire(
         float(os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0"))
     ):
@@ -437,7 +471,7 @@ async def create_conversation(
     from app.api.analysis_router_runtime import conversation_orchestrator
     title = str(payload.get("title") or "새 분석 대화").strip()
     orch = conversation_orchestrator(_controller())
-    conv = await orch._repo.create_conversation(context.user_id, title)
+    conv = await orch.create_conversation(context, title)
     return {"status": "SUCCESS", "data": conv}
 
 
@@ -471,7 +505,7 @@ async def get_conversation_turns(
 )
 async def execute_conversation_command(
     conversation_id: UUID,
-    payload: dict[str, Any] = Body(...),
+    payload: ConversationCommandRequest,
     context: RequestContext = Depends(session_context),
 ) -> dict[str, Any]:
     """대화방에서 발화 명령을 실행하여 라우트(ANALYSIS/PRESENTATION/REPORT_ACTION)를 수행한다."""
@@ -481,13 +515,37 @@ async def execute_conversation_command(
     if not conv:
         raise HTTPException(status_code=404, detail="대화방을 찾을 수 없거나 접근 권한이 없습니다.")
     if conv["status"] == "ARCHIVED":
-        raise HTTPException(status_code=409, detail="아카이브된 대화방에서는 새 명령을 실행할 수 없습니다.")
+        raise ContextValidationError(
+            ErrorCode.CONVERSATION_ARCHIVED,
+            "아카이브된 대화방에서는 새 명령을 실행할 수 없습니다.",
+            409,
+        )
 
-    result = await orch.execute_command(conversation_id, payload, context)
-    if result.get("status") == "CONFLICT":
-        raise HTTPException(status_code=409, detail=result.get("message"))
-    if result.get("status") == "BUSY":
-        raise HTTPException(status_code=409, detail=result.get("message"))
+    result = await orch.execute_command(
+        conversation_id,
+        payload.model_dump(mode="python"),
+        context,
+    )
+    if result.get("status") in {"CONFLICT", "BUSY"}:
+        raw_code = str(result.get("code") or "")
+        code_map = {
+            "CONVERSATION_CONFLICT": ErrorCode.CONVERSATION_CONFLICT,
+            "CONVERSATION_BUSY": ErrorCode.CONVERSATION_BUSY,
+            "CONVERSATION_ARCHIVED": ErrorCode.CONVERSATION_ARCHIVED,
+            "IDEMPOTENCY_CONFLICT": ErrorCode.IDEMPOTENCY_CONFLICT,
+            "IDEMPOTENCY_PAYLOAD_MISMATCH": ErrorCode.IDEMPOTENCY_CONFLICT,
+            "RESOURCE_CONFLICT": ErrorCode.RESOURCE_CONFLICT,
+            "PRODUCT_RELEASE_MISMATCH": ErrorCode.RESOURCE_CONFLICT,
+            "ACCESS_DENIED": ErrorCode.ACCESS_DENIED,
+            "PERMISSION_SNAPSHOT_MISMATCH": ErrorCode.ACCESS_DENIED,
+        }
+        public_code = code_map.get(raw_code, ErrorCode.RESOURCE_CONFLICT)
+        status_code = 403 if public_code is ErrorCode.ACCESS_DENIED else 409
+        raise ContextValidationError(
+            public_code,
+            str(result.get("message") or "현재 대화 상태와 요청이 충돌합니다."),
+            status_code,
+        )
     return {"status": "SUCCESS", "data": result}
 
 

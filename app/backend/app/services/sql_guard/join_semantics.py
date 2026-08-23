@@ -16,6 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from sqlglot import exp
+
 from app.services.context.contract import GovernedJoin
 from app.services.context.fanout_policy import (
     AssetGrainEvidence,
@@ -25,8 +27,19 @@ from app.services.context.fanout_policy import (
     RelatedSideUse,
     decide_fanout_plan,
 )
-from app.services.sql_guard.schema import canonical_fqn, field_identity, reverse_operator
-from app.services.sql_guard.scopes import ProjectionScopeEvidence, SourceEvidence
+from app.services.sql_guard.schema import (
+    canonical_fqn,
+    comparison_evidence,
+    field_identity,
+    reverse_operator,
+    source_aliases,
+)
+from app.services.sql_guard.scopes import (
+    ProjectionScopeEvidence,
+    SourceEvidence,
+    scope_evidence,
+)
+from src.ai.sql_policy import SqlValidationResult
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
@@ -51,6 +64,9 @@ def join_violation(
     physical_tables: set[str],
     scope: ProjectionScopeEvidence,
     assets: dict[str, tuple[Any, frozenset[str]]],
+    *,
+    result: SqlValidationResult | None = None,
+    logical_plan: Any | None = None,
 ) -> JoinDecision:
     """출력 스코프의 실제 JOIN 구문들을 runtime join_graph와 정밀 대조하여 검증합니다.
 
@@ -64,6 +80,19 @@ def join_violation(
         JoinDecision 객체 (위반 여부 및 사용된 조인 ID 목록)
     """
     graph: tuple[GovernedJoin, ...] = tuple(getattr(package, "join_graph", ()))
+    if (
+        len(physical_tables) == 2
+        and len(scope.physical_tables) == 1
+        and not scope.joins
+    ):
+        return _semi_join_decision(
+            package,
+            physical_tables,
+            scope,
+            assets,
+            result,
+            logical_plan,
+        )
     if set(scope.physical_tables) != physical_tables:
         return JoinDecision(
             "출력 스코프는 거버넌스 승인을 받은 모든 물리 테이블을 정확히 한 번씩만 참조해야 합니다."
@@ -146,6 +175,199 @@ def join_violation(
     if error:
         return JoinDecision(error, code="GRAIN_VIOLATION")
     return JoinDecision(None, frozenset(used), fanout_decisions=fanout)
+
+
+def _semi_join_decision(
+    package: Any,
+    physical_tables: set[str],
+    scope: ProjectionScopeEvidence,
+    assets: dict[str, tuple[Any, frozenset[str]]],
+    result: SqlValidationResult | None,
+    logical_plan: Any | None,
+) -> JoinDecision:
+    """filter-only many side를 정확한 correlated EXISTS shape로만 승인한다."""
+
+    if (
+        result is None
+        or result.expression is None
+        or not isinstance(scope.scope.expression, exp.Select)
+        or logical_plan is None
+        or len(getattr(logical_plan, "joins", ())) != 1
+        or getattr(logical_plan.joins[0], "plan", "")
+        != FanoutPlan.SEMI_JOIN.value
+    ):
+        return JoinDecision("SEMI_JOIN은 서버 소유 AnalysisPlan과 SQL AST 증거가 필요합니다.")
+    graph = tuple(getattr(package, "join_graph", ()))
+    candidates = [item for item in graph if _endpoints(item) == physical_tables]
+    if (
+        len(candidates) != 1
+        or candidates[0].id != logical_plan.joins[0].join_id
+    ):
+        return JoinDecision("SEMI_JOIN은 정확히 1개의 승인 edge와 일치해야 합니다.")
+    join = candidates[0]
+    oriented = _oriented_many_one(join)
+    if oriented is None:
+        return JoinDecision("SEMI_JOIN은 one-to-many 계열 cardinality만 지원합니다.")
+    many_asset, one_asset = oriented
+    base = scope.scope.base_source
+    if base is None or base.endpoint != one_asset:
+        return JoinDecision("SEMI_JOIN의 Measure source는 고유성이 증명된 one side여야 합니다.")
+
+    where = scope.scope.expression.args.get("where")
+    if not isinstance(where, exp.Where) or where.this is None:
+        return JoinDecision("SEMI_JOIN의 correlated EXISTS 조건이 누락되었습니다.")
+    conjuncts = _top_level_conjuncts(where.this)
+    exists_nodes = [item for item in conjuncts if isinstance(_unwrap(item), exp.Exists)]
+    if (
+        len(exists_nodes) != 1
+        or any(
+            isinstance(node, (exp.Or, exp.Not))
+            for node in where.this.walk()
+        )
+    ):
+        return JoinDecision("SEMI_JOIN은 최상위 AND에 정확히 1개의 EXISTS만 허용합니다.")
+    exists = _unwrap(exists_nodes[0])
+    assert isinstance(exists, exp.Exists)
+    inner = exists.this
+    if not isinstance(inner, exp.Select) or not _minimal_semi_select(inner):
+        return JoinDecision("SEMI_JOIN subquery는 SELECT 1과 WHERE predicate만 포함해야 합니다.")
+    scopes = scope_evidence(result)
+    inner_scope = scopes.get(id(inner))
+    if (
+        inner_scope is None
+        or inner_scope.physical_tables != (many_asset,)
+        or inner_scope.joins
+        or inner_scope.group_fields
+    ):
+        return JoinDecision("SEMI_JOIN subquery는 many side 물리 테이블 하나만 참조해야 합니다.")
+    inner_where = inner.args.get("where")
+    inner_conjuncts = (
+        _top_level_conjuncts(inner_where.this)
+        if isinstance(inner_where, exp.Where) and inner_where.this is not None
+        else ()
+    )
+    comparison_types = (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE)
+    if not inner_conjuncts or any(
+        not isinstance(_unwrap(item), comparison_types) for item in inner_conjuncts
+    ):
+        return JoinDecision("SEMI_JOIN subquery WHERE는 승인 비교 predicate의 AND만 허용합니다.")
+
+    aliases = source_aliases(result)
+    comparisons = comparison_evidence(inner, aliases, result.physical_tables)
+    required = _required_join_comparisons(join, assets)
+    if not required.issubset(comparisons):
+        return JoinDecision("SEMI_JOIN correlation에 승인 join key가 누락되었습니다.")
+    allowed = _join_comparisons(join, assets)
+    if any(
+        _is_cross_asset(item, assets) and item not in allowed
+        for item in comparisons
+    ):
+        return JoinDecision("SEMI_JOIN에 승인되지 않은 cross-asset 비교가 포함되었습니다.")
+
+    many_filters = [
+        item
+        for item in getattr(logical_plan, "filter_fields", ())
+        if canonical_fqn(str(item.asset_fqn)) == many_asset
+    ]
+    if not many_filters or any(
+        (field_identity(item.qualified, assets), item.operator, f":{item.parameter}")
+        not in comparisons
+        for item in many_filters
+    ):
+        return JoinDecision("SEMI_JOIN many side의 계획 필터 predicate가 누락되었습니다.")
+    root_comparisons = set(scope.scope.where_comparisons)
+    if any(
+        canonical_fqn(str(item.asset_fqn)) == one_asset
+        and (
+            field_identity(item.qualified, assets),
+            item.operator,
+            f":{item.parameter}",
+        )
+        not in root_comparisons
+        for item in getattr(logical_plan, "filter_fields", ())
+    ):
+        return JoinDecision("SEMI_JOIN one side의 계획 필터 predicate가 누락되었습니다.")
+    if error := _metric_join_permission_violation(package, frozenset({join.id})):
+        return JoinDecision(error, code="JOIN_PERMISSION_DENIED")
+    try:
+        decision = decide_fanout_plan(
+            join,
+            GrainSafetyEvidence(
+                measure_assets=frozenset({one_asset}),
+                related_side_use=RelatedSideUse.FILTER_ONLY,
+                assets=tuple(
+                    _asset_grain_evidence(package, endpoint)
+                    for endpoint in sorted(physical_tables)
+                ),
+            ),
+        )
+    except ValueError as error:
+        return JoinDecision(str(error), code="GRAIN_VIOLATION")
+    if (
+        decision.plan is not FanoutPlan.SEMI_JOIN
+        or logical_plan.joins[0].reason != decision.reason.value
+    ):
+        return JoinDecision(
+            "SEMI_JOIN AST와 서버 fan-out 결정이 일치하지 않습니다.",
+            code="GRAIN_VIOLATION",
+        )
+    return JoinDecision(
+        None,
+        frozenset({join.id}),
+        fanout_decisions=(decision,),
+    )
+
+
+def _minimal_semi_select(value: exp.Select) -> bool:
+    if len(value.expressions) != 1:
+        return False
+    projection = value.expressions[0]
+    projection = projection.this if isinstance(projection, exp.Alias) else projection
+    if (
+        not isinstance(projection, exp.Literal)
+        or projection.is_string
+        or str(projection.this) != "1"
+    ):
+        return False
+    required = value.args.get("from_") is not None and value.args.get("where") is not None
+    forbidden = {
+        "joins",
+        "group",
+        "having",
+        "qualify",
+        "order",
+        "limit",
+        "offset",
+        "with_",
+        "distinct",
+    }
+    return bool(required) and not any(value.args.get(name) for name in forbidden)
+
+
+def _top_level_conjuncts(value: exp.Expression) -> tuple[exp.Expression, ...]:
+    pending = [value]
+    result: list[exp.Expression] = []
+    while pending:
+        item = _unwrap(pending.pop())
+        if isinstance(item, exp.And):
+            pending.extend((item.expression, item.this))
+        else:
+            result.append(item)
+    return tuple(result)
+
+
+def _unwrap(value: exp.Expression) -> exp.Expression:
+    while isinstance(value, exp.Paren):
+        value = value.this
+    return value
+
+
+def _oriented_many_one(join: GovernedJoin) -> tuple[str, str] | None:
+    if join.cardinality == "many_to_one":
+        return canonical_fqn(join.left), canonical_fqn(join.right)
+    if join.cardinality == "one_to_many":
+        return canonical_fqn(join.right), canonical_fqn(join.left)
+    return None
 
 
 def _metric_join_permission_violation(

@@ -84,12 +84,22 @@ export function analysisError(error) {
  */
 export function commandErrorRun(question, command) {
   const source = command?.command_error || command?.error || command || {};
-  const code = typeof source.code === "string" && source.code ? source.code : "INTERNAL_ERROR";
+  const code = typeof source.code === "string" && source.code
+    ? source.code
+    : (command?.reason_code || "INTERNAL_ERROR");
+  const terminalStatus = String(source.status || command?.terminal_status || "FAILED").toUpperCase();
+  const runStatus = terminalStatus === "BLOCKED"
+    ? "blocked"
+    : terminalStatus === "PARTIAL"
+      ? "partial"
+      : terminalStatus === "CANCELLED"
+        ? "cancelled"
+        : "failed";
   const requiredAction = code === "CONTEXT_SOURCE_FAILED" && source.required_action === "PROVIDE_CONTEXT"
     ? "CONTACT_SUPPORT"
     : (source.required_action || "CONTACT_SUPPORT");
   return {
-    ...transientRun(question, "failed"),
+    ...transientRun(question, runStatus),
     error: {
       code,
       message: typeof source.message === "string" && source.message
@@ -131,7 +141,7 @@ export function hydrateTurnsFromServer(serverTurns) {
       const userMessage = st.user_message || "";
       let run;
 
-      if (isPresentation) {
+      if (isPresentation && st.terminal_status === "SUCCEEDED") {
         const tableData = st.data_snapshot_json || lastAnalysisRun?.table || null;
         const chartSpec = st.chart_spec_json
           ? normalizeAnalysisChart(st.chart_spec_json)
@@ -149,7 +159,7 @@ export function hydrateTurnsFromServer(serverTurns) {
           evidence,
           viewSpecId: st.view_spec_id,
         };
-      } else if (isReportAction) {
+      } else if (isReportAction && st.terminal_status === "SUCCEEDED") {
         run = {
           ...(lastAnalysisRun || transientRun(userMessage, "success")),
           question: userMessage,
@@ -174,6 +184,8 @@ export function hydrateTurnsFromServer(serverTurns) {
           },
         };
       } else if (st.command_status === "FAILED" || st.command_error) {
+        run = commandErrorRun(userMessage, st);
+      } else if (["BLOCKED", "PARTIAL", "FAILED", "CANCELLED"].includes(st.terminal_status)) {
         run = commandErrorRun(userMessage, st);
       } else if (st.data_snapshot_json) {
         const tableData = st.data_snapshot_json;

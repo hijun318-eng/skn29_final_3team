@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Mapping
 
 
@@ -27,6 +28,8 @@ TIME_DEFAULTS = {
     "range": "required_period",
     "latest_snapshot": "max_source_value_lt_as_of",
 }
+COMPARISON_START_PARAMETER = "comparison_start_date"
+COMPARISON_END_PARAMETER = "comparison_end_date"
 
 
 class AnalysisCapabilityError(ValueError):
@@ -50,6 +53,9 @@ class AssetAnalysisCapability:
     time_field: str
     time_default: str
     dimensions: tuple[DimensionBinding, ...]
+    data_available_from: date | None = None
+    data_available_through: date | None = None
+    conversation_default_operation: str | None = None
 
 
 @dataclass(frozen=True)
@@ -65,6 +71,118 @@ class AnalysisCapabilityContract:
         """FQN이 일치하는 asset capability를 반환한다."""
 
         return next((item for item in self.assets if item.asset_fqn == fqn), None)
+
+
+def apply_analysis_capability_contract(
+    contract: AnalysisCapabilityContract,
+    assets: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """검증된 App sidecar의 per-asset 연산 계약만 runtime asset에 결속한다.
+
+    DataHub가 소유한 물리 field·time mode·dimension binding과 sidecar가 정확히
+    일치할 때만 비교 윈도우를 추가한다. sidecar에 없는 asset이나 snapshot asset은
+    확장하지 않으며, 이미 존재하는 서로 다른 계약도 덮어쓰지 않는다.
+    """
+
+    result: list[dict[str, object]] = []
+    comparison_enabled = "period_comparison" in contract.operations
+    expected_window = {
+        "start_parameter": COMPARISON_START_PARAMETER,
+        "end_parameter": COMPARISON_END_PARAMETER,
+    }
+    for raw_asset in assets:
+        asset = dict(raw_asset)
+        fqn = str(asset.get("fqn") or "")
+        capability = contract.asset(fqn)
+        if capability is None:
+            result.append(asset)
+            continue
+        metadata = asset.get("time_metadata")
+        dimensions = asset.get("dimensions")
+        if not isinstance(metadata, Mapping) or not isinstance(dimensions, list):
+            raise AnalysisCapabilityError(
+                "runtime asset is missing governed time or dimension metadata"
+            )
+        mode = str(metadata.get("mode") or "range")
+        fields = metadata.get("fields")
+        if mode != capability.time_mode or not isinstance(fields, list):
+            raise AnalysisCapabilityError(
+                "analysis capability time mode differs from runtime metadata"
+            )
+        matching_time_fields = [
+            item
+            for item in fields
+            if isinstance(item, Mapping)
+            and isinstance(item.get("field"), Mapping)
+            and item["field"].get("asset_fqn") == fqn
+            and item["field"].get("column") == capability.time_field
+        ]
+        if len(matching_time_fields) != 1:
+            raise AnalysisCapabilityError(
+                "analysis capability time field differs from runtime metadata"
+            )
+        dimension_columns: dict[str, set[str]] = {}
+        for item in dimensions:
+            if (
+                isinstance(item, Mapping)
+                and item.get("asset_fqn") == fqn
+                and isinstance(item.get("id"), str)
+                and isinstance(item.get("column"), str)
+            ):
+                dimension_columns.setdefault(str(item["id"]), set()).add(
+                    str(item["column"])
+                )
+        if any(
+            not set(binding.columns) <= dimension_columns.get(binding.id, set())
+            for binding in capability.dimensions
+        ):
+            raise AnalysisCapabilityError(
+                "analysis capability dimension differs from runtime metadata"
+            )
+        if comparison_enabled and mode == "range":
+            existing = metadata.get("comparison_window")
+            if existing is not None and existing != expected_window:
+                raise AnalysisCapabilityError(
+                    "runtime comparison window differs from the sealed capability"
+                )
+            enriched = dict(metadata)
+            enriched["comparison_window"] = dict(expected_window)
+            asset["time_metadata"] = enriched
+        if capability.data_available_from is not None:
+            available_from = capability.data_available_from.isoformat()
+            available_through = capability.data_available_through
+            if available_through is None:  # pragma: no cover - compiler invariant
+                raise AnalysisCapabilityError(
+                    "analysis capability availability range is incomplete"
+                )
+            through = available_through.isoformat()
+            expected_values = {
+                "data_available_from": available_from,
+                "data_available_through": through,
+                # RuntimeContextPackage의 기존 evidence cutoff 계약과 같은
+                # release-bound watermark를 사용한다. wall clock과는 별개다.
+                "evidence_cutoff": through,
+            }
+            if any(
+                asset.get(name) not in (None, value)
+                for name, value in expected_values.items()
+            ):
+                raise AnalysisCapabilityError(
+                    "runtime data availability differs from the sealed capability"
+                )
+            asset.update(expected_values)
+        if capability.conversation_default_operation is not None:
+            default_operation = capability.conversation_default_operation
+            if asset.get("conversation_default_operation") not in (
+                None,
+                default_operation,
+            ):
+                raise AnalysisCapabilityError(
+                    "runtime Conversation default operation differs from the sealed capability"
+                )
+            asset["conversation_default_operation"] = default_operation
+        result.append(asset)
+    return result
 
 
 def compile_analysis_capability_contract(
@@ -100,7 +218,17 @@ def compile_analysis_capability_contract(
     seen_assets: set[str] = set()
     for index, raw_asset in enumerate(_list(root["assets"], "analysis assets")):
         asset = _mapping(raw_asset, f"analysis asset[{index}]")
-        _exact_keys(asset, {"fqn", "time", "dimensions"}, f"analysis asset[{index}]")
+        required_asset_keys = {"fqn", "time", "dimensions"}
+        optional_asset_keys = {
+            "data_availability",
+            "conversation_default_operation",
+        }
+        if not required_asset_keys <= set(asset) or not set(asset) <= (
+            required_asset_keys | optional_asset_keys
+        ):
+            raise AnalysisCapabilityError(
+                f"analysis asset[{index}] fields do not match the contract"
+            )
         fqn = _text(asset["fqn"], f"analysis asset[{index}].fqn")
         available = available_fields_by_asset.get(fqn)
         if fqn in seen_assets or available is None:
@@ -121,6 +249,60 @@ def compile_analysis_capability_contract(
             raise AnalysisCapabilityError(
                 "analysis capability time binding is outside its asset schema or mode"
             )
+
+        conversation_default_operation: str | None = None
+        if asset.get("conversation_default_operation") is not None:
+            conversation_default_operation = _text(
+                asset["conversation_default_operation"],
+                f"{fqn}.conversation_default_operation",
+            )
+            # Only a governed range time series can be a generally reusable
+            # presentation-ready default. Ranking, comparison and breakdown
+            # require additional user slots and must never be synthesized.
+            if (
+                conversation_default_operation != "time_trend"
+                or mode != "range"
+                or conversation_default_operation not in operations
+            ):
+                raise AnalysisCapabilityError(
+                    "analysis capability Conversation default operation is unsupported"
+                )
+
+        available_from: date | None = None
+        available_through: date | None = None
+        raw_availability = asset.get("data_availability")
+        if raw_availability is not None:
+            availability = _mapping(raw_availability, f"{fqn}.data_availability")
+            _exact_keys(
+                availability,
+                {"data_available_from", "data_available_through"},
+                f"{fqn}.data_availability",
+            )
+            if mode != "range":
+                raise AnalysisCapabilityError(
+                    "analysis capability data availability requires range time mode"
+                )
+            try:
+                available_from = date.fromisoformat(
+                    _text(
+                        availability["data_available_from"],
+                        f"{fqn}.data_availability.data_available_from",
+                    )
+                )
+                available_through = date.fromisoformat(
+                    _text(
+                        availability["data_available_through"],
+                        f"{fqn}.data_availability.data_available_through",
+                    )
+                )
+            except ValueError as error:
+                raise AnalysisCapabilityError(
+                    "analysis capability data availability date is invalid"
+                ) from error
+            if available_from > available_through:
+                raise AnalysisCapabilityError(
+                    "analysis capability data availability range is invalid"
+                )
 
         dimensions: list[DimensionBinding] = []
         seen_dimensions: set[str] = set()
@@ -163,6 +345,9 @@ def compile_analysis_capability_contract(
                 time_field=field,
                 time_default=default,
                 dimensions=tuple(sorted(dimensions, key=lambda item: item.id)),
+                data_available_from=available_from,
+                data_available_through=available_through,
+                conversation_default_operation=conversation_default_operation,
             )
         )
     if not assets:

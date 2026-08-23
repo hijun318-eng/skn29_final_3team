@@ -14,11 +14,24 @@ from src.data.datahub_connection import DataHubConnectionSettings
 
 
 class DataHubCatalogError(RuntimeError):
-    """DataHub 응답이 없거나 불완전해 신뢰 가능한 카탈로그를 구성할 수 없음을 알린다."""
+    """DataHub 응답이 없거나 불완전해 신뢰 가능한 카탈로그를 구성할 수 없음을 알린다.
+
+    ``category``는 관측·전환 판단용 실패 분류다. ``timeout``은 응답 시간 초과,
+    ``transport``는 연결·HTTP 상태 실패, ``protocol``은 인증된 응답이 계약을 위반한
+    경우이며 기본값은 계약 위반이다. 값은 로그에만 쓰고 사용자 응답에는 노출하지 않는다.
+    """
+
+    def __init__(self, message: str, *, category: str = "protocol") -> None:
+        super().__init__(message)
+        self.category = category
 
 
 class DataHubSemanticSearchError(DataHubCatalogError):
     """설정된 DataHub가 의미 검색 계약을 수행하지 못했음을 일반 조회 실패와 구분한다."""
+
+
+class DataHubSearchUnavailableError(DataHubCatalogError):
+    """질문 단위 lexical 검색이 실패했음을 카탈로그 열거 실패와 구분해 알린다."""
 
 
 @dataclass(frozen=True)
@@ -32,11 +45,22 @@ class DataHubSearchHit:
 class DataHubCatalogClient:
     """실시간 DataHub graph의 dataset·용어·거버넌스 엔터티를 제한된 페이지 크기로 읽는다."""
 
+    MAX_CANDIDATE_RESULTS = 50
+    MAX_CANDIDATE_QUERY_CHARACTERS = 256
+
     _SEARCH_QUERY = """
 query SearchAcrossEntities($input: SearchAcrossEntitiesInput!) {
   searchAcrossEntities(input: $input) {
     start count total
-    searchResults { entity { urn type } matchedFields { name value } }
+    searchResults { entity { urn type } }
+  }
+}
+""".strip()
+    _SCROLL_QUERY = """
+query ScrollAcrossEntities($input: ScrollAcrossEntitiesInput!) {
+  scrollAcrossEntities(input: $input) {
+    nextScrollId count
+    searchResults { entity { urn type } }
   }
 }
 """.strip()
@@ -125,7 +149,7 @@ query GovernanceLifecycleStages {
         expected_actor_urn: str | None = None,
         timeout_seconds: float = 10.0,
         page_size: int = 50,
-        max_entities: int = 10_000,
+        max_entities: int = 100_000,
     ) -> None:
         endpoint = httpx.URL(base_url)
         if (
@@ -181,7 +205,7 @@ query GovernanceLifecycleStages {
         *,
         timeout_seconds: float = 10.0,
         page_size: int = 50,
-        max_entities: int = 10_000,
+        max_entities: int = 100_000,
     ) -> DataHubCatalogClient:
         """canonical DataHub 환경 계약으로 proxy 우회가 없는 production client를 만든다."""
 
@@ -212,9 +236,13 @@ query GovernanceLifecycleStages {
             response.raise_for_status()
             payload = response.json()
         except httpx.TimeoutException as error:
-            raise DataHubCatalogError("live DataHub lookup timed out") from error
+            raise DataHubCatalogError(
+                "live DataHub lookup timed out", category="timeout"
+            ) from error
         except (httpx.HTTPError, ValueError) as error:
-            raise DataHubCatalogError("live DataHub lookup failed") from error
+            raise DataHubCatalogError(
+                "live DataHub lookup failed", category="transport"
+            ) from error
         if not isinstance(payload, dict):
             raise DataHubCatalogError("live DataHub returned a non-object response")
         errors = payload.get("errors")
@@ -227,19 +255,113 @@ query GovernanceLifecycleStages {
 
     async def list_datasets(self) -> tuple[DataHubSearchHit, ...]:
         """모든 dataset URN을 페이지 누락·중복 없이 수집하고 순서가 고정된 tuple로 반환한다."""
-        return await self._search(
-            field="searchAcrossEntities",
-            query_text="*",
-            entity_types=("DATASET",),
-        )
+        return await self._scroll(entity_types=("DATASET",))
 
     async def list_glossary_terms(self) -> tuple[DataHubSearchHit, ...]:
         """모든 Glossary Term URN을 bounded pagination으로 수집하고 불완전한 결과는 거부한다."""
-        return await self._search(
-            field="searchAcrossEntities",
-            query_text="*",
-            entity_types=("GLOSSARY_TERM",),
-        )
+        return await self._scroll(entity_types=("GLOSSARY_TERM",))
+
+    async def search_candidates(
+        self,
+        query_text: str,
+        *,
+        entity_types: tuple[str, ...],
+        count: int,
+    ) -> tuple[DataHubSearchHit, ...]:
+        """질문에서 유도한 질의 하나로 bounded top-K 후보만 읽고 DataHub 반환 순서를 보존한다.
+
+        전체 열거(``list_datasets``)와 달리 pagination을 하지 않는다. 반환 순서 자체가
+        DataHub의 relevance 증거이므로 호출자는 index를 rank로 쓸 수 있다. 결과는 아직
+        권한 검증을 거치지 않았으므로 backend entitlement filter 이전에 후보·prompt·응답
+        어디에도 노출하면 안 된다.
+
+        실패는 열거 실패와 구분해 ``DataHubSearchUnavailableError``로 닫는다.
+        """
+
+        normalized_query = query_text.strip()
+        if not normalized_query:
+            raise DataHubSearchUnavailableError("search query is empty")
+        if len(normalized_query) > self.MAX_CANDIDATE_QUERY_CHARACTERS:
+            raise ValueError("search query exceeds the bounded candidate length")
+        if (
+            not entity_types
+            or len(entity_types) != len(set(entity_types))
+            or any(not isinstance(item, str) or not item for item in entity_types)
+        ):
+            raise ValueError("search entity types are required")
+        if (
+            isinstance(count, bool)
+            or count < 1
+            or count > self.MAX_CANDIDATE_RESULTS
+        ):
+            raise ValueError("search count is outside the bounded candidate range")
+        try:
+            data = await self.graphql(
+                self._SEARCH_QUERY,
+                {
+                    "input": {
+                        "types": list(entity_types),
+                        "query": normalized_query,
+                        "start": 0,
+                        "count": count,
+                        # 후보 rank는 반환 순서만 사용한다. entitlement 전 metadata 값과
+                        # highlight payload를 불필요하게 읽지 않도록 둘 다 비활성화한다.
+                        "searchFlags": {
+                            "skipAggregates": True,
+                            "skipHighlighting": True,
+                        },
+                    }
+                },
+            )
+        except DataHubCatalogError as error:
+            raise DataHubSearchUnavailableError(
+                "live DataHub candidate search failed",
+                category=error.category,
+            ) from error
+        page = data.get("searchAcrossEntities")
+        results = page.get("searchResults") if isinstance(page, dict) else None
+        start = page.get("start") if isinstance(page, dict) else None
+        returned_count = page.get("count") if isinstance(page, dict) else None
+        total = page.get("total") if isinstance(page, dict) else None
+        if (
+            not isinstance(results, list)
+            or len(results) > count
+            or type(start) is not int
+            or start != 0
+            or type(returned_count) is not int
+            # DataHub Core 1.7의 ``count``는 실제 반환 행 수가 아니라 요청 window를
+            # 되돌릴 수 있다. 행 수보다 작거나 요청 상한보다 큰 응답만 거부한다.
+            or returned_count < len(results)
+            or returned_count > count
+            or type(total) is not int
+            or total < len(results)
+            or len(results) != min(total, count)
+        ):
+            raise DataHubSearchUnavailableError(
+                "live DataHub candidate search result is invalid"
+            )
+        hits: list[DataHubSearchHit] = []
+        seen: set[str] = set()
+        for item in results:
+            try:
+                parsed_hit = self._search_hit(item)
+            except DataHubCatalogError as error:
+                raise DataHubSearchUnavailableError(
+                    "live DataHub candidate search hit is invalid"
+                ) from error
+            if parsed_hit.entity_type not in entity_types:
+                raise DataHubSearchUnavailableError(
+                    "live DataHub candidate search returned a wrong entity type"
+                )
+            if parsed_hit.urn in seen:
+                raise DataHubSearchUnavailableError(
+                    "live DataHub candidate search returned a duplicate entity URN"
+                )
+            seen.add(parsed_hit.urn)
+            # GraphQL selection에 없는 matchedFields를 잘못된 proxy/fake가 보내더라도
+            # entitlement 전 candidate evidence에는 URN·type 외 값을 보존하지 않는다.
+            hits.append(DataHubSearchHit(parsed_hit.urn, parsed_hit.entity_type))
+        return tuple(hits)
 
     async def semantic_search(
         self,
@@ -258,6 +380,90 @@ query GovernanceLifecycleStages {
             raise DataHubSemanticSearchError(
                 "live DataHub semantic search is unavailable"
             ) from error
+
+    async def _scroll(
+        self,
+        *,
+        entity_types: tuple[str, ...],
+    ) -> tuple[DataHubSearchHit, ...]:
+        """``scrollAcrossEntities``로 release 전체 멤버십을 열거한다.
+
+        offset pagination은 10,000건 경계에서 조용히 잘리므로 canonical snapshot 열거는
+        scroll cursor만 사용한다. ``nextScrollId``가 없어질 때까지 진행하고, 중복 URN,
+        진행 없는 페이지, ``max_entities`` 초과를 각각 계약 위반으로 닫아 잘린 카탈로그를
+        완전한 것으로 오인하지 않는다. 질문 relevance와 무관한 열거 전용 경로다.
+        """
+
+        scroll_id: str | None = None
+        seen_scroll_ids: set[str] = set()
+        hits: list[DataHubSearchHit] = []
+        seen: set[str] = set()
+        while True:
+            request_input: dict[str, object] = {
+                "types": list(entity_types),
+                "query": "*",
+                "count": self._page_size,
+                "searchFlags": {
+                    "skipAggregates": True,
+                    "skipHighlighting": True,
+                },
+                # DataHub 공식 deep-pagination 계약은 score가 아닌 안정 URN
+                # 정렬을 요구한다. cursor와 함께 매 페이지 같은 정렬을 보낸다.
+                "sortInput": {
+                    "sortCriteria": [
+                        {"field": "urn", "sortOrder": "ASCENDING"}
+                    ]
+                },
+            }
+            if scroll_id is not None:
+                request_input["scrollId"] = scroll_id
+            data = await self.graphql(self._SCROLL_QUERY, {"input": request_input})
+            page = data.get("scrollAcrossEntities")
+            if not isinstance(page, dict):
+                raise DataHubCatalogError(
+                    "live DataHub scrollAcrossEntities result is missing"
+                )
+            results = page.get("searchResults")
+            next_scroll_id = page.get("nextScrollId")
+            count = page.get("count")
+            if (
+                not isinstance(results, list)
+                or type(count) is not int
+                or count < 0
+                # DataHub Core 1.7은 마지막 scroll page에서도 요청 window 크기를
+                # ``count``로 되돌릴 수 있다. 실제 행 수와 같다고 가정하지 않고,
+                # 응답 행 수를 수용하는 요청 상한인지만 검증한다.
+                or count < len(results)
+                or count > self._page_size
+                or len(results) > self._page_size
+                or not (next_scroll_id is None or isinstance(next_scroll_id, str))
+                or next_scroll_id == ""
+            ):
+                raise DataHubCatalogError("live DataHub scroll pagination is invalid")
+            for item in results:
+                hit = self._search_hit(item)
+                if hit.entity_type not in entity_types:
+                    raise DataHubCatalogError(
+                        "live DataHub scroll returned a wrong entity type"
+                    )
+                if hit.urn in seen:
+                    raise DataHubCatalogError(
+                        "live DataHub scroll returned a duplicate entity URN"
+                    )
+                seen.add(hit.urn)
+                hits.append(hit)
+            if len(hits) > self._max_entities:
+                raise DataHubCatalogError(
+                    "live DataHub scroll exceeded the catalog entity bound"
+                )
+            if next_scroll_id is None:
+                return tuple(hits)
+            if not results:
+                raise DataHubCatalogError("live DataHub scroll made no progress")
+            if next_scroll_id == scroll_id or next_scroll_id in seen_scroll_ids:
+                raise DataHubCatalogError("live DataHub scroll cursor did not advance")
+            seen_scroll_ids.add(next_scroll_id)
+            scroll_id = next_scroll_id
 
     async def _search(
         self,
@@ -296,13 +502,16 @@ query GovernanceLifecycleStages {
             page_start = page.get("start")
             if (
                 not isinstance(results, list)
-                or not isinstance(total, int)
-                or not isinstance(count, int)
-                or not isinstance(page_start, int)
+                or type(total) is not int
+                or type(count) is not int
+                or type(page_start) is not int
                 or total < 0
                 or count < 0
+                or count < len(results)
+                or count > self._page_size
                 or page_start != start
                 or total > self._max_entities
+                or len(results) != min(self._page_size, total - start)
             ):
                 raise DataHubCatalogError("live DataHub search pagination is invalid")
             for item in results:
@@ -385,9 +594,13 @@ query GovernanceLifecycleStages {
             response.raise_for_status()
             payload = response.json()
         except httpx.TimeoutException as error:
-            raise DataHubCatalogError("live DataHub status lookup timed out") from error
+            raise DataHubCatalogError(
+                "live DataHub status lookup timed out", category="timeout"
+            ) from error
         except (httpx.HTTPError, ValueError) as error:
-            raise DataHubCatalogError("live DataHub status lookup failed") from error
+            raise DataHubCatalogError(
+                "live DataHub status lookup failed", category="transport"
+            ) from error
         aspects = payload.get("aspects") if isinstance(payload, dict) else None
         wrapper = aspects.get("status") if isinstance(aspects, dict) else None
         value = wrapper.get("value") if isinstance(wrapper, dict) else None

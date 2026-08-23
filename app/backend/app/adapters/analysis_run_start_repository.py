@@ -36,6 +36,13 @@ class AnalysisRunStartRepositoryMixin:
     ) -> tuple[UUID, bool]:
         """실행 처리를 중복 실행 방지 조건과 함께 시작한다."""
         definition_id = _uuid(definition["definition_id"], "definition_id")
+        receipt = (
+            context.product_release_id,
+            context.permission_snapshot_id,
+            context.semantic_release_id,
+        )
+        if not all(receipt):
+            raise ValueError("Analysis replay receipt가 완전하지 않습니다.")
         try:
             async with self._sessionmaker.begin() as session:
                 existing = (await session.execute(
@@ -65,22 +72,33 @@ class AnalysisRunStartRepositoryMixin:
                     text(
                         """
                         INSERT INTO chat.analysis_requests
-                            (request_id, request_type, user_id, user_role,
+                            (request_id, conversation_id, command_id,
+                             request_type, user_id, user_role,
                              question_text_redacted, question_hash, ambiguity_status,
-                             sql_policy_version, status, trace_id, started_at)
-                        VALUES (:request_id, 'CHAT', :user_id, :user_role,
+                             sql_policy_version, status, trace_id, started_at,
+                             product_release_id, permission_snapshot_id,
+                             semantic_release_id)
+                        VALUES (:request_id, :conversation_id, :command_id,
+                                'CHAT', :user_id, :user_role,
                                 :question, :question_hash, 'CLEAR',
-                                'policy-v1', 'RECEIVED', :trace_id, :started_at)
+                                'policy-v1', 'RECEIVED', :trace_id, :started_at,
+                                :product_release_id, :permission_snapshot_id,
+                                :semantic_release_id)
                         """
                     ),
                     {
                         "request_id": context.request_id,
+                        "conversation_id": context.conversation_id,
+                        "command_id": context.command_id,
                         "user_id": self._owner_id,
                         "user_role": context.role.value,
                         "question": definition["question"],
                         "question_hash": _hash(definition["question"]),
                         "trace_id": context.trace_id,
                         "started_at": datetime.now(timezone.utc),
+                        "product_release_id": context.product_release_id,
+                        "permission_snapshot_id": context.permission_snapshot_id,
+                        "semantic_release_id": context.semantic_release_id,
                     },
                 )
                 await session.execute(
@@ -109,6 +127,27 @@ class AnalysisRunStartRepositoryMixin:
                         "parameter_hash": _hash(
                             parameters if parameters is not None else definition["parameters"]
                         ),
+                    },
+                )
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO governance.product_release_bindings (
+                            object_kind, object_id, product_release_id,
+                            permission_snapshot_id, semantic_release_id,
+                            capability_release_vector_json, evidence_refs_json
+                        ) VALUES (
+                            'RUN', :object_id, :product_release_id,
+                            :permission_snapshot_id, :semantic_release_id,
+                            '{"analysis.run":"1.0.0"}'::jsonb, '[]'::jsonb
+                        )
+                        """
+                    ),
+                    {
+                        "object_id": str(context.request_id),
+                        "product_release_id": context.product_release_id,
+                        "permission_snapshot_id": context.permission_snapshot_id,
+                        "semantic_release_id": context.semantic_release_id,
                     },
                 )
                 return context.request_id, True
@@ -161,22 +200,33 @@ class AnalysisRunStartRepositoryMixin:
                     text(
                         """
                         INSERT INTO chat.analysis_requests
-                            (request_id, request_type, user_id, user_role,
+                            (request_id, conversation_id, command_id,
+                             request_type, user_id, user_role,
                              question_text_redacted, question_hash, ambiguity_status,
-                             sql_policy_version, status, trace_id, started_at)
-                        VALUES (:request_id, 'CHAT', :user_id, :user_role,
+                             sql_policy_version, status, trace_id, started_at,
+                             product_release_id, permission_snapshot_id,
+                             semantic_release_id)
+                        VALUES (:request_id, :conversation_id, :command_id,
+                                'CHAT', :user_id, :user_role,
                                 :question, :question_hash, 'CLEAR',
-                                'policy-v1', 'RECEIVED', :trace_id, :started_at)
+                                'policy-v1', 'RECEIVED', :trace_id, :started_at,
+                                :product_release_id, :permission_snapshot_id,
+                                :semantic_release_id)
                         """
                     ),
                     {
                         "request_id": context.request_id,
+                        "conversation_id": context.conversation_id,
+                        "command_id": context.command_id,
                         "user_id": self._owner_id,
                         "user_role": context.role.value,
                         "question": redacted,
                         "question_hash": _hash(redacted),
                         "trace_id": context.trace_id,
                         "started_at": datetime.now(timezone.utc),
+                        "product_release_id": context.product_release_id,
+                        "permission_snapshot_id": context.permission_snapshot_id,
+                        "semantic_release_id": context.semantic_release_id,
                     },
                 )
                 await session.execute(
@@ -201,6 +251,43 @@ class AnalysisRunStartRepositoryMixin:
                         "parameter_hash": _hash(parameters),
                     },
                 )
+                receipt = (
+                    context.product_release_id,
+                    context.permission_snapshot_id,
+                    context.semantic_release_id,
+                )
+                if context.command_id is not None or any(receipt):
+                    if not all(
+                        (
+                            context.product_release_id,
+                            context.permission_snapshot_id,
+                            context.semantic_release_id,
+                        )
+                    ):
+                        raise ValueError("Analysis Run receipt가 완전하지 않습니다.")
+                    if context.command_id is not None and context.conversation_id is None:
+                        raise ValueError("Conversation Analysis identity가 완전하지 않습니다.")
+                    await session.execute(
+                        text(
+                            """
+                            INSERT INTO governance.product_release_bindings (
+                                object_kind, object_id, product_release_id,
+                                permission_snapshot_id, semantic_release_id,
+                                capability_release_vector_json, evidence_refs_json
+                            ) VALUES (
+                                'RUN', :object_id, :product_release_id,
+                                :permission_snapshot_id, :semantic_release_id,
+                                '{"analysis.run":"1.0.0"}'::jsonb, '[]'::jsonb
+                            )
+                            """
+                        ),
+                        {
+                            "object_id": str(context.request_id),
+                            "product_release_id": context.product_release_id,
+                            "permission_snapshot_id": context.permission_snapshot_id,
+                            "semantic_release_id": context.semantic_release_id,
+                        },
+                    )
             return context.request_id
         except IntegrityError as error:
             raise ValueError("같은 Analysis request가 이미 존재합니다.") from error

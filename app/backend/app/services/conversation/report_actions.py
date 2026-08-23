@@ -13,12 +13,24 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID, uuid4
 
 from src.report.domain import BlockType, DefinitionStatus, ReportBlock, ReportDefinitionVersion
 
 logger = logging.getLogger("uvicorn.error")
+
+
+@dataclass(frozen=True)
+class ReportActionPlan:
+    """종결 트랜잭션 전에 준비하는 불변 Report 변경 계획."""
+
+    report_definition_id: UUID
+    artifact_id: UUID
+    draft: ReportDefinitionVersion | None = None
+    replacement_version: int | None = None
+    replacement_blocks: tuple[ReportBlock, ...] = ()
 
 
 def _select_target_turns(previous_turns: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -30,6 +42,37 @@ def _select_target_turns(previous_turns: list[dict[str, Any]]) -> list[dict[str,
     Returns:
         최대 2개의 고유 Artifact를 가진 턴 목록 (시간 오름차순)
     """
+    current_artifact = next(
+        (
+            str(turn["artifact_id"])
+            for turn in reversed(previous_turns)
+            if turn.get("route") == "ANALYSIS"
+            and turn.get("terminal_status", "SUCCEEDED") == "SUCCEEDED"
+            and turn.get("artifact_id")
+        ),
+        None,
+    )
+    visible_views: list[dict[str, Any]] = []
+    seen_view_types: set[str] = set()
+    for turn in reversed(previous_turns):
+        view_type = str(
+            turn.get("view_type")
+            or turn.get("resolved_slots", {}).get("target_chart_type")
+            or ""
+        ).upper()
+        if (
+            turn.get("view_spec_id")
+            and turn.get("terminal_status", "SUCCEEDED") == "SUCCEEDED"
+            and str(turn.get("artifact_id")) == current_artifact
+            and view_type not in seen_view_types
+        ):
+            visible_views.insert(0, turn)
+            seen_view_types.add(view_type)
+            if len(visible_views) >= 2:
+                break
+    if visible_views:
+        return visible_views
+
     distinct_target_turns: list[dict[str, Any]] = []
     seen_artifacts: set[UUID] = set()
 
@@ -70,6 +113,35 @@ async def _blocks_for_turn(
     art_title = str(artifact.get("title") or turn_msg or "분석").strip()
 
     blocks: list[ReportBlock] = []
+
+    if turn_item.get("view_spec_id"):
+        view_type = str(
+            turn_item.get("view_type")
+            or turn_item.get("resolved_slots", {}).get("target_chart_type")
+            or "TABLE"
+        ).upper()
+        block_type = BlockType.TABLE if view_type == "TABLE" else BlockType.CHART
+        title_suffix = "표" if block_type is BlockType.TABLE else "차트"
+        height = 5 if block_type is BlockType.TABLE else 7
+        blocks.append(
+            ReportBlock(
+                block_id=str(uuid4()),
+                title=f"{art_title} {title_suffix}" if multi_source else title_suffix,
+                artifact_id=art_id_str,
+                columns=12,
+                query_id=query_id_str,
+                type=block_type,
+                x=0,
+                y=current_y,
+                w=12,
+                h=height,
+                content="",
+                view_spec_id=str(turn_item["view_spec_id"]),
+            )
+        )
+        return blocks, current_y + height, (
+            turn_msg[:40].strip() if turn_msg else ""
+        )
 
     # 1. TEXT 블록: 생성된 내러티브 마크다운 요약
     narrative = str(artifact.get("narrative_markdown") or "").strip()
@@ -135,11 +207,11 @@ async def _blocks_for_turn(
     return blocks, current_y, (turn_msg[:40].strip() if turn_msg else "")
 
 
-async def execute_report_action(
+async def plan_report_action(
     report_repo: Any,
     previous_turns: list[dict[str, Any]],
-) -> tuple[UUID, UUID]:
-    """REPORT_ACTION 라우트의 실데이터 블록 조립과 초안(Draft) 영속화를 총괄 실행합니다.
+) -> ReportActionPlan:
+    """Validate sources and prepare a report mutation without writing state.
 
     [처리 흐름]
     1. 선행 분석 결과(Artifact)가 존재하는지 검증 (없으면 ValueError)
@@ -206,6 +278,8 @@ async def execute_report_action(
             break
 
     report_def_id = None
+    replacement_version = None
+    replacement_blocks: tuple[ReportBlock, ...] = ()
     if existing_report_def_id:
         try:
             existing_ver = await report_repo.get_version(str(existing_report_def_id), 1)
@@ -233,16 +307,14 @@ async def execute_report_action(
                             w=block.w,
                             h=block.h,
                             content=block.content,
+                            view_spec_id=block.view_spec_id,
                         )
                     )
                     curr_y += block.h
 
                 combined_blocks = tuple(existing_blocks + adjusted_new_blocks)
-                await report_repo.replace_draft_blocks(
-                    definition_id=str(existing_report_def_id),
-                    version=existing_ver.version,
-                    blocks=combined_blocks,
-                )
+                replacement_version = existing_ver.version
+                replacement_blocks = combined_blocks
                 report_def_id = existing_report_def_id
         except Exception as update_err:
             logger.info("기존 draft %s 갱신 실패, 새 draft 생성으로 대체: %s", existing_report_def_id, update_err)
@@ -261,6 +333,56 @@ async def execute_report_action(
             orientation="portrait",
             currency_display_unit="auto",
         )
-        await report_repo.add_draft(draft_def)
+    else:
+        draft_def = None
 
-    return report_def_id, distinct_target_turns[-1]["artifact_id"]
+    return ReportActionPlan(
+        report_definition_id=UUID(str(report_def_id)),
+        artifact_id=UUID(str(distinct_target_turns[-1]["artifact_id"])),
+        draft=draft_def,
+        replacement_version=replacement_version,
+        replacement_blocks=replacement_blocks,
+    )
+
+
+async def apply_report_action_plan(
+    report_repo: Any,
+    plan: ReportActionPlan,
+    session: Any | None = None,
+) -> None:
+    """준비된 Report 변경을 가능하면 호출자 세션의 트랜잭션 안에서 적용한다."""
+
+    if plan.draft is not None:
+        writer = getattr(report_repo, "add_draft_in_session", None)
+        if session is not None and callable(writer):
+            await writer(session, plan.draft)
+        else:
+            await report_repo.add_draft(plan.draft)
+        return
+    if plan.replacement_version is None:
+        raise ValueError("Report action plan has no terminal mutation")
+    writer = getattr(report_repo, "replace_draft_blocks_in_session", None)
+    if session is not None and callable(writer):
+        await writer(
+            session,
+            str(plan.report_definition_id),
+            plan.replacement_version,
+            plan.replacement_blocks,
+        )
+    else:
+        await report_repo.replace_draft_blocks(
+            definition_id=str(plan.report_definition_id),
+            version=plan.replacement_version,
+            blocks=plan.replacement_blocks,
+        )
+
+
+async def execute_report_action(
+    report_repo: Any,
+    previous_turns: list[dict[str, Any]],
+) -> tuple[UUID, UUID]:
+    """Conversation 밖의 호출자를 위해 계획과 적용을 연속 수행하는 호환 래퍼."""
+
+    plan = await plan_report_action(report_repo, previous_turns)
+    await apply_report_action_plan(report_repo, plan)
+    return plan.report_definition_id, plan.artifact_id

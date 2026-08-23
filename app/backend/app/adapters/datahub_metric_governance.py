@@ -331,7 +331,7 @@ def _governance(rule: dict[str, Any]) -> None:
     if not isinstance(join, dict) or set(join) != {"required", "allowed_edge_ids"}:
         raise GovernedMetadataError("DataHub metric join governance is invalid")
     edges = string_set(join["allowed_edge_ids"], "metric allowed join ids")
-    if not isinstance(join["required"], bool) or join["required"] != bool(edges):
+    if not isinstance(join["required"], bool) or (join["required"] and not edges):
         raise GovernedMetadataError("DataHub metric join requirement is inconsistent")
     permission = value["permission"]
     if not isinstance(permission, dict) or set(permission) != {"roles", "contains_pii", "synthetic"}:
@@ -346,7 +346,12 @@ def _governance(rule: dict[str, Any]) -> None:
     if not strategies or not strategies <= QUERY_STRATEGIES:
         raise GovernedMetadataError("DataHub metric query strategy is invalid")
     if rule["source"]["kind"] == "column":
-        dimensions = {item["column"] for item in rule["dimensions"]}
+        source_asset = str(rule["source"]["field"]["asset_fqn"])
+        dimensions = {
+            item["column"]
+            for item in rule["dimensions"]
+            if item["asset_fqn"] == source_asset
+        }
         if (
             time["field"] != rule["time_field"]["column"]
             or set(grain["dimensions"]) != dimensions

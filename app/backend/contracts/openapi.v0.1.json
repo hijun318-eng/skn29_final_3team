@@ -842,6 +842,79 @@
         "title": "ClarificationType",
         "type": "string"
       },
+      "ConversationCommandRequest": {
+        "additionalProperties": false,
+        "description": "head를 변경하는 모든 command가 명시해야 하는 client 입력이다.\n\n첫 턴도 ``expected_head_turn_id: null``을 보내야 한다. 필드 생략과 서버가 확인한 빈 head를\n구분해 오래된 client가 CAS를 우회하지 못하게 한다.",
+        "properties": {
+          "expected_head_turn_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Head Turn Id"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "presentation_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "SUMMARY",
+                  "TABLE",
+                  "BAR",
+                  "LINE",
+                  "PIE",
+                  "HORIZONTAL_BAR",
+                  "DONUT"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Presentation Type"
+          },
+          "requested_route": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ANALYSIS",
+                  "PRESENTATION",
+                  "REPORT_ACTION"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requested Route"
+          },
+          "user_message": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "User Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_message",
+          "idempotency_key",
+          "expected_head_turn_id"
+        ],
+        "title": "ConversationCommandRequest",
+        "type": "object"
+      },
       "CreateAnalysisDefinitionRequest": {
         "additionalProperties": false,
         "description": "기존 분석 요청을 재사용 가능한 정의로 저장할 때 제목과 원본 요청 ID만 수신한다.",
@@ -1225,6 +1298,11 @@
           "SCHEMA_VERSION_MISMATCH",
           "RESOURCE_NOT_FOUND",
           "RESOURCE_CONFLICT",
+          "CONVERSATION_CONFLICT",
+          "CONVERSATION_BUSY",
+          "CONVERSATION_ARCHIVED",
+          "IDEMPOTENCY_CONFLICT",
+          "REPORT_DRAFT_CONFLICT",
           "DEPENDENCY_UNAVAILABLE",
           "INTERNAL_ERROR"
         ],
@@ -5448,9 +5526,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "title": "Payload",
-                "type": "object"
+                "$ref": "#/components/schemas/ConversationCommandRequest"
               }
             }
           },

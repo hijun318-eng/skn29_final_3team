@@ -108,6 +108,7 @@ def build_runtime_contracts(
             }
         )
     metric_rules = _metric_rules(package, raw_by_fqn, approved)
+    filter_rules = _asset_filter_rules(assets, approved)
     joins = _joins(package, assets, approved)
     time_rules = _time_rules(package, assets, context, approved)
     query_policy = _common_contract(assets, "query_policy")
@@ -121,6 +122,7 @@ def build_runtime_contracts(
                 "assets": schema_assets,
             },
             "metric_rules": metric_rules,
+            "filter_rules": filter_rules,
             "join_graph": {"edges": [item.as_dict() for item in joins]},
             "time_rules": time_rules,
             "parameter_contract": parameter_contract,
@@ -209,6 +211,42 @@ def _metric_rules(
             }
         )
     return rules
+
+
+def _asset_filter_rules(
+    assets: list[dict[str, object]],
+    approved: dict[str, frozenset[str]],
+) -> list[dict[str, Any]]:
+    """필터 전용 asset도 SQL 계획에 보존되도록 turn predicate를 독립 계약으로 만든다."""
+
+    rules: list[dict[str, Any]] = []
+    for asset in assets:
+        fqn = str(asset.get("fqn") or "")
+        values = asset.get("required_filters", ())
+        if not isinstance(values, (list, tuple)):
+            raise _invalid("런타임 asset 필수 필터 목록은 배열이어야 합니다.")
+        for item in values:
+            rules.append(_model_filter(item, fqn, approved))
+    identities = {
+        (
+            item["field"]["asset_fqn"],
+            item["field"]["column"],
+            item["operator"],
+            item["parameter"],
+        )
+        for item in rules
+    }
+    if len(identities) != len(rules):
+        raise _invalid("런타임 asset 필터 predicate가 중복되었습니다.")
+    return sorted(
+        rules,
+        key=lambda item: (
+            item["field"]["asset_fqn"],
+            item["field"]["column"],
+            item["operator"],
+            item["parameter"],
+        ),
+    )
 
 
 def _ratio_metric_rule(metric: Any) -> dict[str, Any]:

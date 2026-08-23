@@ -55,7 +55,10 @@ def isolated_test_controller():
         RoutingService(),
     )
     async def active_context_release() -> str:
-        return "context-v1"
+        return "fixture-context-v1"
+
+    async def active_product_release_receipt() -> tuple[str, str]:
+        return "fixture-product-release", "fixture-context-v1"
 
     with (
         patch.object(analysis_api, "_controller", return_value=controller),
@@ -63,6 +66,11 @@ def isolated_test_controller():
             analysis_api,
             "_active_analytics_context_release",
             new=active_context_release,
+        ),
+        patch.object(
+            analysis_api,
+            "_active_product_release_receipt",
+            new=active_product_release_receipt,
         ),
     ):
         yield
@@ -73,6 +81,7 @@ class FakeAnalysisRepository:
         self.owner_id = owner_id
         self.definition_id = uuid4()
         self.request_id: UUID | None = None
+        self.run_context: RequestContext | None = None
         self.finished = None
         self.definition = {
             "contract_version": "ANALYSIS-PERSISTENCE-v1.0.0-DRAFT",
@@ -84,7 +93,7 @@ class FakeAnalysisRepository:
             "parameter_types": {"scenario": "string"},
             "semantic_request": {
                 "question": "합성 객실 운영 현황을 알려줘",
-                "context_release": "context-v1",
+                "context_release": "fixture-context-v1",
             },
             "parameter_schema": {"scenario": "string"},
             "created_at": datetime(2026, 8, 10, tzinfo=timezone.utc),
@@ -118,6 +127,7 @@ class FakeAnalysisRepository:
         if self.request_id is not None:
             return self.request_id, False
         self.request_id = context.request_id
+        self.run_context = context
         self.as_of = as_of
         self.idempotency_key = idempotency_key
         self.parameters = parameters if parameters is not None else definition["parameters"]
@@ -239,6 +249,12 @@ async def test_replay_is_idempotent_and_approved_artifact_is_owner_scoped():
     assert first["artifact_id"]
     assert repository.parameters == {"scenario": "success_changed"}
     assert set(repository.finished[1]) == {"plan", "query", "package"}
+    assert repository.finished[0].data.result.evidence.cached is False
+    assert repository.run_context is not None
+    assert repository.run_context.product_release_id == "fixture-product-release"
+    assert repository.run_context.permission_snapshot_id
+    assert repository.run_context.semantic_release_id == "fixture-context-v1"
+    assert repository.run_context.require_fresh_query is True
     assert "result" not in first
     assert "sql" not in first
     with patch.object(analysis_api, "_analysis_repository", return_value=repository):

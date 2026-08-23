@@ -29,14 +29,19 @@ from app.ports.data_platform import (
     UnsupportedSemanticError,
 )
 from app.services.analysis import AnalysisService
+from app.services.analysis.pipeline_support import PipelineSupport
 from app.services.analysis.result_validator import PipelineResultValidator
+from app.services.context.builder import ContextPackageBuilder
 from app.services.routing_service import RoutingService
 from src.ai.schema import validate_payload
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
 ASSET_FQN = "orion_catalog.analytics.observations"
-ASSET_URN = "urn:example:dataset:orion-observations"
+ASSET_URN = (
+    "urn:li:dataset:(urn:li:dataPlatform:trino,"
+    "orion_catalog.analytics.observations,PROD)"
+)
 METRIC_ID = "observed_measure"
 RESULT_FIELD = "observed_total"
 REQUEST_TEXT = "summarize the governed observation measure"
@@ -310,6 +315,7 @@ class AsyncRuntimeDataPlatform:
         asset=None,
         schema=None,
         metric_terms=None,
+        resolved_assets=None,
     ):
         self.search_error = search_error
         self.resolve_error = resolve_error
@@ -320,6 +326,9 @@ class AsyncRuntimeDataPlatform:
         self.metric_terms = copy.deepcopy(
             metric_terms or {METRIC_ID: METRIC_TERM}
         )
+        self.resolved_assets = copy.deepcopy(
+            resolved_assets if resolved_assets is not None else [self.asset]
+        )
         self.search_count = 0
         self.search_contexts = []
         self.resolve_count = 0
@@ -328,7 +337,7 @@ class AsyncRuntimeDataPlatform:
         self.cancelled = []
         self.closed = False
 
-    async def search_assets(self, query, context):
+    async def _candidate_assets(self, query, context):
         self.search_count += 1
         self.search_contexts.append(copy.deepcopy(context))
         if self.search_error is not None:
@@ -336,11 +345,25 @@ class AsyncRuntimeDataPlatform:
         return [copy.deepcopy(self.asset)]
 
     async def search_asset_candidates(self, query, context):
+        assets = tuple(await self._candidate_assets(query, context))
+        rank = 1
+        for asset in assets:
+            for metric in asset.get("metrics", ()):
+                if metric.get("visibility", "BUSINESS") == "BUSINESS":
+                    metric["candidate_selectable"] = True
+                    metric["candidate_rank"] = rank
+                    metric["source_authority"] = "DATAHUB_NATIVE_METRIC_V1"
+                    metric["source_urn"] = f"urn:li:metric:{metric['id']}"
+                    rank += 1
         return AssetCandidateSet(
-            assets=tuple(await self.search_assets(query, context)),
+            assets=assets,
             context_release=str(self.asset["context_release"]),
             catalog_checksum="1" * 64,
             canonical_checksum="2" * 64,
+            product_release_id="pipeline-test-product-release",
+            runtime_projection_checksum="3" * 64,
+            source_authority="DATAHUB_NATIVE_METRIC_V1",
+            retrieval_mode="lexical",
         )
 
     async def resolve_execution_assets(
@@ -352,14 +375,14 @@ class AsyncRuntimeDataPlatform:
         self.last_execution_selection = selection
         if self.resolve_error is not None:
             raise self.resolve_error
-        return [copy.deepcopy(self.asset)]
+        return copy.deepcopy(self.resolved_assets)
 
-    async def get_asset_schema(self, urn):
+    async def get_asset_schema(self, urn, context=None):
         if urn != ASSET_URN:
             raise ValueError("unknown runtime asset")
         return copy.deepcopy(self.schema)
 
-    async def get_metric_terms(self, metric_ids):
+    async def get_metric_terms(self, metric_ids, context=None):
         return {
             metric_id: copy.deepcopy(self.metric_terms[metric_id])
             for metric_id in metric_ids
@@ -830,6 +853,105 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
             "max_source_value_lt_as_of",
             evidence.snapshot.selection,
         )
+
+    async def test_pre_resolved_filter_only_asset_is_rebound_before_typed_request(self):
+        """검색 후보 밖의 상속 필터도 동일 release 실행 subgraph에서 보존한다."""
+
+        related_fqn = "orion_catalog.analytics.observation_flags"
+        related_urn = (
+            "urn:li:dataset:(urn:li:dataPlatform:trino,"
+            "orion_catalog.analytics.observation_flags,PROD)"
+        )
+        join_id = "observations_to_flags"
+        candidate = copy.deepcopy(ASSET)
+        candidate["metrics"][0]["allowed_join_ids"] = [join_id]
+        candidate["dimensions"] = []
+
+        resolved_fact = copy.deepcopy(candidate)
+        resolved_fact["join_ids"] = [join_id]
+        resolved_fact["join_graph"] = {"edges": [{"id": join_id}]}
+        related = {
+            **copy.deepcopy(ASSET),
+            "urn": related_urn,
+            "fqn": related_fqn,
+            "name": "Arbitrary observation flags",
+            "grain": {"kind": "event", "keys": ["observation_id"]},
+            "join_ids": [join_id],
+            "join_graph": {"edges": [{"id": join_id}]},
+            "metrics": [],
+            "dimensions": [
+                {
+                    "id": "flag_state",
+                    "asset_fqn": related_fqn,
+                    "column": "flag_state",
+                    "aliases": ["Flag state"],
+                }
+            ],
+        }
+        adapter = AsyncRuntimeDataPlatform(
+            asset=candidate,
+            resolved_assets=[resolved_fact, related],
+        )
+        model = model_with()
+        payload = AnalysisRequest(
+            question="summarize observations having an accepted related flag",
+            resolved_slots=ResolvedSlots(
+                metric_id=METRIC_ID,
+                metric_ids=(METRIC_ID,),
+                user_filters=(
+                    {
+                        "asset_fqn": related_fqn,
+                        "column": "flag_state",
+                        "operator": "eq",
+                        "value_text": "accepted",
+                    },
+                ),
+                period_start="2042-06-01",
+                period_end_exclusive="2042-07-01",
+                analysis_operation="aggregate",
+            ),
+        )
+        candidates = await adapter.search_asset_candidates(
+            payload.question,
+            {
+                **self.context.model_dump(mode="json"),
+                "preferred_metric_ids": [METRIC_ID],
+                "parameters": {},
+            },
+        )
+        support = PipelineSupport(
+            adapter,
+            ContextPackageBuilder(),
+            model,
+        )
+
+        _assets, normalized, structured = await support.select_metric(
+            payload,
+            self.context,
+            candidates,
+        )
+
+        self.assertEqual(payload.question, normalized)
+        self.assertEqual(
+            [
+                {
+                    "asset_fqn": related_fqn,
+                    "column": "flag_state",
+                    "operator": "eq",
+                    "value_text": "accepted",
+                }
+            ],
+            structured["filter_fields"],
+        )
+        self.assertEqual(1, adapter.resolve_count)
+        self.assertEqual(
+            {(related_fqn, "flag_state")},
+            {
+                (item.asset_fqn, item.column)
+                for item in adapter.last_execution_selection.field_references
+            },
+        )
+        self.assertEqual([], model.calls)
 
     async def test_unapproved_query_strategy_is_semantic_not_model_failure(self):
         incompatible = copy.deepcopy(ASSET)

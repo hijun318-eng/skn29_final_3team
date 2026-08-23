@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import unicodedata
 from typing import Any, Mapping
 
@@ -14,25 +13,50 @@ from app.adapters.datahub_metadata_types import GlossaryMetricTerm
 from src.data.governance_contract import metric_source_kind, ratio_operand_ids
 
 
-async def gather_snapshot_and_semantic(loader, catalog, query):
-    """같은 요청의 catalog snapshot과 semantic search 결과를 병렬로 읽는다."""
+def ranked_matches(
+    query_tokens,
+    datasets,
+    terms,
+    semantic_hits,
+    *,
+    search_only: bool = False,
+):
+    """DataHub가 돌려준 검색 순위를 우선 신호로, 어휘 overlap을 보조 신호로 Dataset을 정렬한다.
 
-    return tuple(
-        await asyncio.gather(loader.load(), catalog.semantic_search(query))
-    )
+    ``semantic_hits``는 semantic 또는 lexical 검색이 돌려준 순서 그대로의 hit이며 index가
+    곧 rank다. Glossary Term hit은 그 용어를 실제로 보유한 dataset으로만 전달해, 검색이
+    용어를 맞혔을 때 해당 자산이 후보에 들어오게 한다. 이 함수는 순위만 계산하고 권한은
+    보지 않으므로 호출자가 반드시 entitlement filter를 뒤에 적용해야 한다.
+    """
 
-
-def ranked_matches(query_tokens, datasets, terms, semantic_hits):
-    """어휘 overlap과 DataHub semantic rank를 결합해 Dataset 후보를 정렬한다."""
-
-    semantic_rank = {hit.urn: index for index, hit in enumerate(semantic_hits)}
+    search_rank = {hit.urn: index for index, hit in enumerate(semantic_hits)}
     ranked = []
     for dataset in datasets:
         asset_tokens = _dataset_tokens(dataset, terms)
         overlap = len(query_tokens & asset_tokens)
-        rank = semantic_rank.get(dataset.urn)
-        if overlap or rank is not None:
-            score = (rank is not None, overlap, -(rank or 0), dataset.fqn)
+        rank = min(
+            (
+                value
+                for value in (
+                    search_rank.get(dataset.urn),
+                    *(
+                        search_rank.get(term_urn)
+                        for term_urn in dataset.dataset_terms
+                    ),
+                )
+                if value is not None
+            ),
+            default=None,
+        )
+        if rank is not None or (overlap and not search_only):
+            # 외부 검색을 사용하는 mode에서는 DataHub 반환 rank가 overlap보다
+            # 먼저다. overlap은 canonical metadata 검증과 동률 보조 신호일 뿐이다.
+            score = (
+                rank is not None,
+                -(rank if rank is not None else 0),
+                overlap,
+                dataset.fqn,
+            )
             ranked.append((score, dataset))
     return tuple(
         item for item in sorted(ranked, key=lambda item: item[0], reverse=True)
@@ -44,6 +68,7 @@ def with_ratio_metrics(assets, terms, context):
 
     result = []
     metric_asset_indexes: dict[str, int] = {}
+    metrics_by_id: dict[str, dict[str, Any]] = {}
     for index, asset in enumerate(assets):
         item = dict(asset)
         metrics = [dict(metric) for metric in asset.get("metrics", ())]
@@ -53,6 +78,7 @@ def with_ratio_metrics(assets, terms, context):
             metric_id = str(metric.get("id") or "")
             if metric_id:
                 metric_asset_indexes[metric_id] = index
+                metrics_by_id[metric_id] = metric
     raw_role = context.get("role")
     role = str(getattr(raw_role, "value", raw_role) or "")
     for term in sorted(terms.values(), key=lambda item: item.id):
@@ -70,6 +96,17 @@ def with_ratio_metrics(assets, terms, context):
         ):
             continue
         carrier = metric_asset_indexes[operands[0]]
+        ratio_dimensions = set.intersection(
+            *(
+                _metric_dimension_fields(
+                    operand,
+                    metrics_by_id=metrics_by_id,
+                    terms=terms,
+                    visiting=frozenset({term.id}),
+                )
+                for operand in operands
+            )
+        )
         result[carrier]["metrics"].append(
             {
                 "id": term.id,
@@ -84,6 +121,10 @@ def with_ratio_metrics(assets, terms, context):
                 "numerator_metric_id": operands[0],
                 "denominator_metric_id": operands[1],
                 "zero_policy": source["zero_policy"],
+                "dimensions": [
+                    {"asset_fqn": asset_fqn, "column": column}
+                    for asset_fqn, column in sorted(ratio_dimensions)
+                ],
                 **policy,
             }
         )
@@ -104,6 +145,8 @@ def compact_candidate_assets(
     asset_priorities: Mapping[str, int],
     max_candidate_metrics: int,
     preferred_metric_ids: tuple[str, ...] = (),
+    search_metric_ranks: Mapping[str, int] | None = None,
+    require_search_metric: bool = False,
 ) -> list[dict[str, Any]]:
     """DataHub 용어 증거가 강한 Metric만 선택 후보로 남기고 계산 의존성은 비선택 실행 항목으로 보존한다."""
 
@@ -115,7 +158,13 @@ def compact_candidate_assets(
     ]
     metrics_by_id = {str(metric["id"]): metric for _asset, metric in metric_records}
     normalized_query = _normalized_phrase(query_text)
-    ranked = sorted(
+    dimension_tokens = _candidate_dimension_tokens(assets)
+    metric_query_tokens = frozenset(
+        token
+        for token in query_tokens
+        if unicode_tokens(token).isdisjoint(dimension_tokens)
+    )
+    unranked = tuple(
         (
             (
                 int(
@@ -126,15 +175,30 @@ def compact_candidate_assets(
                     )
                 ),
                 len(
-                    query_tokens
+                    metric_query_tokens
                     & _metric_tokens(metric, terms.get(str(metric["id"])))
                 ),
                 int(asset_priorities.get(str(asset.get("fqn") or ""), 0)),
                 str(metric["id"]),
             )
             for asset, metric in metric_records
+        )
+    )
+    external_ranks = search_metric_ranks or {}
+    ranked = sorted(
+        unranked,
+        key=(
+            lambda item: (
+                -item[0],
+                -item[1],
+                item[3] not in external_ranks,
+                external_ranks.get(item[3], 0),
+                -item[2],
+                item[3],
+            )
+            if require_search_metric
+            else (-item[0], -item[1], -item[2], item[3])
         ),
-        key=lambda item: (-item[0], -item[1], -item[2], item[3]),
     )
     direct = [item for item in ranked if item[0] > 0 or item[1] > 0]
     preferred = tuple(
@@ -146,16 +210,6 @@ def compact_candidate_assets(
             == "BUSINESS"
         )
     )
-    ranked_business_ids = [
-        metric_id
-        for _exact, _overlap, _priority, metric_id in (direct or ranked)
-        if metrics_by_id[metric_id].get("visibility", "BUSINESS") == "BUSINESS"
-        and metric_id not in preferred
-    ]
-    selectable_ids = set(preferred)
-    selectable_ids.update(
-        ranked_business_ids[: max(0, max_candidate_metrics - len(preferred))]
-    )
     strongest_business_score = max(
         (
             (exact, overlap)
@@ -164,6 +218,36 @@ def compact_candidate_assets(
             == "BUSINESS"
         ),
         default=(0, 0),
+    )
+    strongest_support_score = max(
+        (
+            (exact, overlap)
+            for exact, overlap, _priority, metric_id in direct
+            if metrics_by_id[metric_id].get("visibility") == "SUPPORT"
+        ),
+        default=(0, 0),
+    )
+    ranked_business_ids = [
+        metric_id
+        for exact, overlap, priority, metric_id in (
+            ranked if require_search_metric else direct
+        )
+        if metrics_by_id[metric_id].get("visibility", "BUSINESS") == "BUSINESS"
+        and metric_id not in preferred
+        # DataHub mode는 반드시 Search가 찾은 Term 또는 Dataset 안에서만 움직인다.
+        # Dataset hit 안에서는 승인된 local Glossary evidence로 Metric을 구분한다.
+        # 이는 전체 snapshot fallback이 아니며 join으로 확장된 미검색 asset(priority=0)은
+        # 선택 후보가 될 수 없다.
+        and (
+            not require_search_metric
+            or metric_id in external_ranks
+            or (priority > 0 and (exact > 0 or overlap > 0))
+        )
+        and (exact, overlap) >= strongest_support_score
+    ]
+    selectable_ids = set(preferred)
+    selectable_ids.update(
+        ranked_business_ids[: max(0, max_candidate_metrics - len(preferred))]
     )
     directly_matched_support_ids = [
         metric_id
@@ -174,24 +258,6 @@ def compact_candidate_assets(
     selectable_ids.update(
         directly_matched_support_ids[:max_candidate_metrics]
     )
-
-    # SUPPORT만 직접 일치해도 Node 1이 "미공개 지표"로 분류할 수 있어야 하지만,
-    # 후보 계약에는 사용자가 선택할 수 있는 BUSINESS Metric도 최소 하나 있어야 한다.
-    if not any(
-        metrics_by_id[metric_id].get("visibility", "BUSINESS") == "BUSINESS"
-        for metric_id in selectable_ids
-    ):
-        fallback = next(
-            (
-                metric_id
-                for _exact, _overlap, _priority, metric_id in ranked
-                if metrics_by_id[metric_id].get("visibility", "BUSINESS")
-                == "BUSINESS"
-            ),
-            None,
-        )
-        if fallback is not None:
-            selectable_ids.add(fallback)
 
     ordered_selectable_ids = tuple(
         dict.fromkeys(
@@ -261,6 +327,29 @@ def compact_candidate_assets(
     return result
 
 
+def _candidate_dimension_tokens(assets: list[dict[str, Any]]) -> frozenset[str]:
+    """후보 asset의 승인 Dimension 식별자·별칭을 Metric overlap 증거와 분리한다.
+
+    Dimension만 말한 질문이 Metric 정의 안의 같은 단어 때문에 임의 BUSINESS
+    Metric으로 번지는 것을 막는다. Metric의 exact label·alias 일치는 별도 강한
+    증거로 유지하므로, 같은 단어가 실제 Metric 이름인 경우까지 차단하지 않는다.
+    """
+
+    values: list[str] = []
+    for asset in assets:
+        for dimension in asset.get("dimensions", ()):
+            if not isinstance(dimension, Mapping):
+                continue
+            values.extend(
+                str(dimension.get(name) or "")
+                for name in ("id", "name", "column", "field")
+            )
+            aliases = dimension.get("aliases")
+            if isinstance(aliases, (list, tuple)):
+                values.extend(map(str, aliases))
+    return unicode_tokens(" ".join(values))
+
+
 def unicode_tokens(value: str) -> frozenset[str]:
     """Unicode 문자·숫자를 언어 중립 token으로 만들고 한국어 조사를 보조 분리한다."""
 
@@ -282,6 +371,7 @@ def unicode_tokens(value: str) -> frozenset[str]:
     )
     expanded = set(tokens)
     for token in tokens:
+        expanded.update(part for part in token.split("_") if part)
         for particle in particles:
             if len(token) > len(particle) + 1 and token.endswith(particle):
                 expanded.add(token[:-len(particle)])

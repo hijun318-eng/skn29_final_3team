@@ -26,7 +26,7 @@ from src.data.governance_contract import (  # noqa: E402
     trino_schema_hash,
 )
 from metadata_contract import SemanticMetadataError, validate_bundle  # noqa: E402
-from metadata_graphql import _assert_release_membership  # noqa: E402
+from metadata_graphql import _assert_release_membership, _dataset_terms  # noqa: E402
 from metadata_rest import assert_contains, preflight_owner_entities  # noqa: E402
 from metadata_wire import metadata_change_proposals  # noqa: E402
 from publish_semantic_catalog import publish_bundle  # noqa: E402
@@ -255,6 +255,18 @@ def arbitrary_bundle():
             "allowed_functions": ["sum", "count"],
             "allowed_catalogs": ["ember", "quartz"],
         },
+    }
+
+
+def test_graphql_dataset_terms_exclude_support_metrics_without_native_terms():
+    bundle = arbitrary_bundle()
+    support = deepcopy(bundle["metric_rules"][0])
+    support["id"] = "amount_support_operand"
+    metrics = [*bundle["metric_rules"], support]
+    terms = {item["id"]: item for item in bundle["metric_terms"]}
+
+    assert _dataset_terms(bundle["schema_context"]["assets"][0], metrics, terms) == {
+        "urn:li:glossaryTerm:amount_total"
     }
 
 

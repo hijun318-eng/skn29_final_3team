@@ -57,6 +57,7 @@ class AppDatabaseReadiness:
         probe["model"] = model
         probe["auth_session_store"] = auth
         probe["report_scheduler"] = self._report_scheduler_probe()
+        probe["conversation_recovery"] = self._conversation_recovery_probe()
         return probe
 
     @staticmethod
@@ -118,6 +119,12 @@ class AppDatabaseReadiness:
         from app.services.report.scheduler import report_scheduler
 
         return report_scheduler.status
+
+    @staticmethod
+    def _conversation_recovery_probe() -> str:
+        from app.services.conversation.reconciler import conversation_recovery_worker
+
+        return conversation_recovery_worker.status
 
     @staticmethod
     async def _database_probe() -> dict[str, str]:

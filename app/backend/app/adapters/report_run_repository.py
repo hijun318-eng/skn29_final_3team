@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 
 from sqlalchemy import text
@@ -33,7 +34,9 @@ class ReportRunRepositoryMixin:
                 approved = (await session.execute(
                     text(
                         """
-                        SELECT 1 FROM report_v1.report_definition_versions v
+                        SELECT v.product_release_id, v.permission_snapshot_id,
+                               v.semantic_release_id
+                        FROM report_v1.report_definition_versions v
                         JOIN report_v1.report_definitions d USING (definition_id)
                         WHERE v.definition_id = :definition_id
                           AND v.version = :version AND v.status = 'approved'
@@ -45,18 +48,54 @@ class ReportRunRepositoryMixin:
                         "definition_id": definition_id,
                         "version": run.definition_version,
                     },
-                )).first()
+                )).mappings().one_or_none()
                 if approved is None:
                     raise ValueError("승인된 Report definition version만 실행할 수 있습니다.")
+                definition_receipt_values = (
+                    approved["product_release_id"],
+                    approved["permission_snapshot_id"],
+                    approved["semantic_release_id"],
+                )
+                if any(definition_receipt_values) and not all(definition_receipt_values):
+                    raise ValueError("Stored Report definition receipt is incomplete")
+                definition_receipt = (
+                    tuple(str(value) for value in definition_receipt_values)
+                    if all(definition_receipt_values)
+                    else None
+                )
+                supplied_receipt = (
+                    run.product_release_id,
+                    run.permission_snapshot_id,
+                    run.semantic_release_id,
+                )
+                if any(supplied_receipt) and not all(supplied_receipt):
+                    raise ValueError("Report run release receipt must be complete")
+                if all(supplied_receipt):
+                    supplied_receipt = tuple(str(value) for value in supplied_receipt)
+                    if supplied_receipt != definition_receipt:
+                        raise ValueError(
+                            "Report run release receipt does not match its definition"
+                        )
+                receipt = definition_receipt
+                if receipt is None:
+                    current_receipt = await self._resolve_report_receipt(
+                        session, (None, None, None)
+                    )
+                    if current_receipt is not None:
+                        raise ValueError("Legacy Report definition has no release receipt")
                 await session.execute(
                     text(
                         """
                         INSERT INTO report_v1.report_runs
                             (run_id, definition_id, definition_version, as_of,
-                             policy_version, context_hash, watermark, status)
+                             policy_version, context_hash, watermark, status,
+                             product_release_id, permission_snapshot_id,
+                             semantic_release_id)
                         VALUES (:run_id, :definition_id, :definition_version, :as_of,
                                 :policy_version, :context_hash,
-                                CAST(:watermark AS jsonb), :status)
+                                CAST(:watermark AS jsonb), :status,
+                                :product_release_id, :permission_snapshot_id,
+                                :semantic_release_id)
                         """
                     ),
                     {
@@ -68,6 +107,9 @@ class ReportRunRepositoryMixin:
                         "context_hash": run.context_hash,
                         "watermark": json.dumps(dict(run.watermark)),
                         "status": run.status.value,
+                        "product_release_id": receipt[0] if receipt else None,
+                        "permission_snapshot_id": receipt[1] if receipt else None,
+                        "semantic_release_id": receipt[2] if receipt else None,
                     },
                 )
                 for block in run.blocks:
@@ -90,9 +132,21 @@ class ReportRunRepositoryMixin:
                             "status": block.status.value,
                         },
                     )
+                await self._bind_report_receipt(
+                    session,
+                    object_id=f"run:{run_id}",
+                    receipt=receipt,
+                )
         except IntegrityError as error:
             raise ValueError("같은 Report run_id를 다시 저장할 수 없습니다.") from error
-        return run
+        if receipt is None:
+            return run
+        return replace(
+            run,
+            product_release_id=receipt[0],
+            permission_snapshot_id=receipt[1],
+            semantic_release_id=receipt[2],
+        )
 
     async def list_runs(self, definition_id: str | None = None) -> tuple[ReportRun, ...]:
         """owner scope의 run ID를 선택적 definition UUID로 좁혀 생성 순서대로 복원한다."""
@@ -128,7 +182,9 @@ class ReportRunRepositoryMixin:
                 text(
                     """
                     SELECT r.run_id, r.definition_id, r.definition_version, r.as_of,
-                           r.policy_version, r.context_hash, r.watermark, r.status
+                           r.policy_version, r.context_hash, r.watermark, r.status,
+                           r.product_release_id, r.permission_snapshot_id,
+                           r.semantic_release_id
                     FROM report_v1.report_runs r
                     JOIN report_v1.report_definitions d USING (definition_id)
                     WHERE r.run_id = :run_id
@@ -181,5 +237,8 @@ class ReportRunRepositoryMixin:
                         block["failure_message"],
                     )
                     for block in blocks
-                        ),
-                    )
+                ),
+                product_release_id=row["product_release_id"],
+                permission_snapshot_id=row["permission_snapshot_id"],
+                semantic_release_id=row["semantic_release_id"],
+            )

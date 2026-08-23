@@ -1,0 +1,23 @@
+{
+  "as_of": "2026-08-19",
+  "case_content_sha256": "ed11e981e13375b91718e43b8de4fb15293be06e2f1e2b2c901d676a969c7528",
+  "case_count": 55,
+  "case_file": "answervice_v4_3.p0.candidate.v2.jsonl",
+  "contract_version": "answervice.p0_gold.v1",
+  "coverage_targets": {
+    "MULTI_TURN": 10,
+    "SAFETY": 15,
+    "STRUCTURED": 30
+  },
+  "data_release_id": "walkerhill-v4.3-sql-20260815-derived.1",
+  "product_release_id": null,
+  "provenance": {
+    "notes": "Domain-owner approved semantic mappings, intent and safety decisions, and independent result assertions; external same-release binding remains required.",
+    "source": "Answervice v3.4 D2/T1 requirements and the SQL-bound semantic review candidate",
+    "training_exposure": "NOT_USED_IN_TRAINING_OR_PROMPT"
+  },
+  "semantic_candidate_sha256": "262805b5e06b05c1d70ec760c31d3af7a968208f56e468ed2c069b9250958c9e",
+  "semantic_release_id": null,
+  "status": "DRAFT",
+  "timezone": "Asia/Seoul"
+}

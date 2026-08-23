@@ -317,7 +317,7 @@ def test_logical_analysis_plan_is_compiled_from_runtime_slots_not_question_text(
     assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
 
 
-def test_logical_plan_projects_validated_filter_predicates_to_unique_fields() -> None:
+def test_logical_plan_preserves_the_governed_filter_predicate_identity() -> None:
     package = _package()
 
     plan = build_analysis_plan(
@@ -332,19 +332,18 @@ def test_logical_plan_projects_validated_filter_predicates_to_unique_fields() ->
                     "operator": "eq",
                     "value_text": "true",
                 },
-                {
-                    "asset_fqn": "orbit.ops.event_fact",
-                    "column": "active",
-                    "operator": "neq",
-                    "value_text": "false",
-                },
             ],
         },
         package,
     )
 
     assert [item.as_dict() for item in plan.filter_fields] == [
-        {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+        {
+            "asset_fqn": "orbit.ops.event_fact",
+            "column": "active",
+            "operator": "eq",
+            "parameter": "active_flag",
+        }
     ]
     assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
 
@@ -377,7 +376,12 @@ def test_logical_plan_removes_eq_filtered_field_from_aggregate_grouping() -> Non
     assert plan.operation is AnalysisOperation.AGGREGATE
     assert plan.dimension_fields == ()
     assert [item.as_dict() for item in plan.filter_fields] == [
-        {"asset_fqn": "orbit.ops.event_fact", "column": "active"}
+        {
+            "asset_fqn": "orbit.ops.event_fact",
+            "column": "active",
+            "operator": "eq",
+            "parameter": "active_flag",
+        }
     ]
     assert validate_analysis_plan_payload(plan.as_dict(), package) == plan
 

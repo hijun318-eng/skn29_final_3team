@@ -60,6 +60,14 @@ assert.match(source("App.jsx"), /answervice:clear-drafts/);
 
 assert.doesNotMatch(source("pages/AgentPage.jsx"), /type="date"|periodStart|periodEnd/);
 assert.match(source("pages/AgentPage.jsx"), /analysisClient\.submitTurnCommand/);
+assert.match(source("pages/AgentPage.jsx"), /analysisClient\.replayDefinition\(definition\.definition_id, \{\}\)/);
+assert.doesNotMatch(source("pages/AgentPage.jsx"), /onClick=\{\(\) => void analyzeQuestion\(d\.question\)\}/);
+assert.match(source("pages/AgentPage.jsx"), /stale head는 서버 이력으로 복원만 한다/);
+assert.match(source("pages/AgentPage.jsx"), /setTurns\(hydrateTurnsFromServer\(serverTurns\)\)/);
+assert.doesNotMatch(
+  source("pages/AgentPage.jsx"),
+  /cmdErr\.status === 409[\s\S]*?submitTurnCommand[\s\S]*?else if \(cmdErr/,
+);
 assert.match(source("pages/AgentPage.jsx"), /clarifiedQuestion\(turnItem\.question, sugg/);
 assert.match(source("components/analysis/AnalysisFailureState.tsx"), /분석 기간을 선택해 주세요/);
 assert.match(source("pages/AgentPage.jsx"), /MAX_QUESTION_LENGTH\.toLocaleString/);

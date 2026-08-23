@@ -361,6 +361,9 @@ def _dataset_terms(
     return {
         str(terms[str(metric["id"])]["urn"])
         for metric in metrics
+        # SUPPORT operands are execution facts and intentionally have no searchable
+        # GlossaryTerm. This must match metadata_aspects._asset_aspects exactly.
+        if str(metric["id"]) in terms
         if asset["fqn"] in metric_asset_fqns(metric, metrics_by_id)
     }
 

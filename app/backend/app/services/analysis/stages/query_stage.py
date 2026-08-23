@@ -69,7 +69,11 @@ class AnalysisQueryStage:
             sql=executable_sql,
             **state.common_key,
         )
-        cached_query = self._cache.get_result(result_key)
+        cached_query = (
+            None
+            if context.require_fresh_query
+            else self._cache.get_result(result_key)
+        )
         result_cached = cached_query is not None
 
         # 1. Trino 쿼리 실행 (캐시 미스 시)

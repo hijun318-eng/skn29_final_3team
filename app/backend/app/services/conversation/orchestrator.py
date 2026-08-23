@@ -17,15 +17,19 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import os
+from collections.abc import Mapping
+from datetime import date
 from typing import Any, Callable
 from uuid import UUID, uuid4
 
 from app.adapters.conversation_repository import ConversationRepository
-from app.authorization import has_capability
+from app.authorization import has_capability, permission_snapshot_id
+from app.conversation_contracts import (
+    ConversationCommandRequest,
+    canonical_command_input_hash,
+)
 from app.contracts import AnalysisRequest, AnalysisStatus, Capability, ErrorCode, RequestContext, ResolvedSlots
 from app.ports.data_platform import DataPlatformAdapter, NoEntitledAssetsError
 from app.services.context.builder import ContextBuildError, ContextBuildErrorCode
@@ -34,7 +38,10 @@ from app.services.conversation.analysis_request import (
     build_structured_analysis_request,
     extract_artifact_id,
 )
-from app.services.conversation.report_actions import execute_report_action
+from app.services.conversation.report_actions import (
+    apply_report_action_plan,
+    plan_report_action,
+)
 from app.services.conversation.slot_resolver import ConversationSlotResolver, ResolvedTurnSlots
 from app.services.analysis.pipeline_support import PipelineSupport
 
@@ -73,6 +80,316 @@ def _clarification_resolved_by_inheritance(
     return False
 
 
+def _clarification_resolved_by_range_correction(
+    error: ContextBuildError,
+    slots: ResolvedTurnSlots,
+    previous_turns: list[dict[str, Any]],
+) -> bool:
+    """Allow one exact absolute-period correction to reuse pending Metric intent.
+
+    A range-blocked Turn is never data lineage.  It may supply only its already
+    validated Metric/dimension/filter intent to the immediately following Turn,
+    and only when Node 1 has independently produced a new absolute period.
+    """
+
+    last_turn = previous_turns[-1] if previous_turns else None
+    return bool(
+        error.code is ContextBuildErrorCode.INVALID_METRIC
+        and last_turn is not None
+        and last_turn.get("route") == "ANALYSIS"
+        and last_turn.get("terminal_status") == "BLOCKED"
+        and last_turn.get("reason_code") == ErrorCode.OUT_OF_DATA_RANGE.value
+        and slots.is_inherited_metric
+        and bool(slots.metric_ids)
+        and slots.time_range is not None
+        and not slots.is_inherited_period
+        and not slots.source_turn_ids
+    )
+
+
+def _analysis_terminal(response: Any) -> tuple[str, str | None]:
+    """Map the typed Analysis result to the persisted terminal Turn contract."""
+
+    status = getattr(getattr(response, "data", None), "status", None)
+    dumped = (
+        response.model_dump(mode="json")
+        if response is not None and hasattr(response, "model_dump")
+        else {}
+    )
+    if status is None and isinstance(dumped, dict):
+        data = dumped.get("data")
+        if isinstance(data, dict):
+            status = data.get("status")
+    value = status.value if hasattr(status, "value") else str(status or "FAILED")
+    if value == "CLARIFICATION_REQUIRED":
+        value = "BLOCKED"
+    if value not in {"SUCCEEDED", "BLOCKED", "PARTIAL", "FAILED", "CANCELLED"}:
+        value = "FAILED"
+    error = getattr(response, "error", None)
+    code = getattr(error, "code", None)
+    if code is None and isinstance(dumped, dict):
+        dumped_error = dumped.get("error")
+        if isinstance(dumped_error, dict):
+            code = dumped_error.get("code")
+    reason = code.value if hasattr(code, "value") else str(code) if code else None
+    return value, reason
+
+
+def _view_contract(response: Any, artifact_id: UUID) -> dict[str, Any]:
+    """Create the immutable default View payload from the Safe Artifact response."""
+
+    chart = getattr(
+        getattr(getattr(response, "data", None), "result", None),
+        "chart",
+        None,
+    )
+    if chart is None and response is not None and hasattr(response, "model_dump"):
+        dumped = response.model_dump(mode="json")
+        data = dumped.get("data") if isinstance(dumped, dict) else None
+        result = data.get("result") if isinstance(data, dict) else None
+        chart = result.get("chart") if isinstance(result, dict) else None
+    raw_type = str(
+        (
+            chart.get("chart_type")
+            if isinstance(chart, dict)
+            else getattr(chart, "chart_type", "")
+        )
+        or "TABLE"
+    ).upper()
+    view_type = {
+        "HORIZONTAL_BAR": "BAR",
+        "DONUT": "PIE",
+    }.get(raw_type, raw_type)
+    if view_type not in {"TABLE", "BAR", "LINE", "PIE", "AREA", "SCATTER", "KPI"}:
+        view_type = "TABLE"
+    spec = {
+        "chart_type": view_type.lower(),
+        "source_artifact_id": str(artifact_id),
+    }
+    if chart is not None:
+        x_field = (
+            chart.get("x_field")
+            if isinstance(chart, dict)
+            else getattr(chart, "x_field", None)
+        )
+        y_fields = (
+            chart.get("y_fields", ())
+            if isinstance(chart, dict)
+            else getattr(chart, "y_fields", ())
+        )
+        spec.update(
+            {
+                "x_field": str(x_field) if x_field is not None else None,
+                "y_fields": list(y_fields or ()),
+            }
+        )
+    return {"view_type": view_type, "spec_json": spec}
+
+
+def _presentation_view_contract(
+    source_turn: dict[str, Any],
+    requested_type: str,
+) -> dict[str, Any]:
+    """Safe Artifact의 저장 schema 역할 안에서만 새 표현 계약을 만든다."""
+
+    artifact_id = source_turn.get("artifact_id")
+    snapshot = source_turn.get("data_snapshot_json")
+    chart = source_turn.get("chart_spec_json")
+    if (
+        not artifact_id
+        or not isinstance(snapshot, dict)
+        or not isinstance(chart, dict)
+    ):
+        raise ValueError("표현 전환에 필요한 Safe Artifact schema가 없습니다.")
+    raw_columns = snapshot.get("columns")
+    if not isinstance(raw_columns, list) or any(
+        not isinstance(column, str) or not column for column in raw_columns
+    ):
+        raise ValueError("Artifact column schema가 유효하지 않습니다.")
+    columns = tuple(dict.fromkeys(raw_columns))
+    if len(columns) != len(raw_columns) or not columns:
+        raise ValueError("Artifact column schema가 중복되었거나 비어 있습니다.")
+
+    view_type = {
+        "HORIZONTAL_BAR": "BAR",
+        "DONUT": "PIE",
+        "SUMMARY": "TABLE",
+    }.get(requested_type.upper(), requested_type.upper())
+    if view_type not in {"TABLE", "BAR", "LINE", "PIE", "AREA"}:
+        raise ValueError("요청한 표현은 현재 renderer allowlist 밖입니다.")
+    spec: dict[str, Any] = {
+        "chart_type": view_type.lower(),
+        "source_artifact_id": str(artifact_id),
+        "columns": list(columns),
+        "sort": [],
+        "format": {},
+    }
+    if view_type == "TABLE":
+        return {"view_type": view_type, "spec_json": spec}
+
+    x_field = chart.get("x_field")
+    raw_y_fields = chart.get("y_fields")
+    if (
+        not isinstance(x_field, str)
+        or x_field not in columns
+        or not isinstance(raw_y_fields, (list, tuple))
+        or not raw_y_fields
+        or any(
+            not isinstance(field, str)
+            or field == x_field
+            or field not in columns
+            for field in raw_y_fields
+        )
+    ):
+        raise ValueError("Artifact의 승인 축·series로 요청한 표현을 만들 수 없습니다.")
+    if view_type in {"LINE", "AREA"} and x_field != "period":
+        raise ValueError("시간축 역할이 없는 Artifact를 추이 그래프로 바꿀 수 없습니다.")
+    spec.update(
+        {
+            "x_field": x_field,
+            "y_fields": list(dict.fromkeys(raw_y_fields)),
+            "sort": (
+                [{"field": x_field, "direction": "ASC"}]
+                if x_field == "period"
+                else []
+            ),
+        }
+    )
+    return {"view_type": view_type, "spec_json": spec}
+
+
+def _slot_provenance(
+    slots: ResolvedTurnSlots,
+) -> dict[str, dict[str, Any]]:
+    """Persist field-level SET/INHERIT provenance without copying transcript text."""
+
+    source = slots.source_turn_ids[-1] if slots.source_turn_ids else None
+
+    def item(inherited: bool, present: bool) -> dict[str, Any]:
+        return {
+            "operation": "INHERIT" if inherited else "SET" if present else "REMOVE",
+            "source_turn_id": source if inherited else None,
+            "provenance": "USER_REQUESTED",
+        }
+
+    return {
+        "metric_ids": item(slots.is_inherited_metric, bool(slots.metric_ids)),
+        "dimension_fields": item(
+            slots.is_inherited_dimension,
+            bool(slots.dimension_fields),
+        ),
+        "user_filters": item(
+            any(
+                change.field == "user_filters" and change.op.value == "PRESERVE"
+                for change in slots.change_set
+            ),
+            bool(slots.user_filters),
+        ),
+        "time_range": item(slots.is_inherited_period, slots.time_range is not None),
+    }
+
+
+def _business_terms_for_turn(
+    node1_output: Mapping[str, Any],
+    previous_slots: Mapping[str, Any],
+    slots: ResolvedTurnSlots,
+) -> list[str]:
+    """Persist bounded Node 1 source spans or inherit the prior approved spans.
+
+    These strings are evidence of the actual interpretation, not canonical
+    labels synthesized from an expected answer.  Invalid or oversized model
+    output is omitted so evaluation observes a mismatch instead of fabricated
+    success.
+    """
+
+    raw = node1_output.get("measurement_source_texts")
+    if isinstance(raw, list) and 0 < len(raw) <= 4 and all(
+        isinstance(item, str) and item.strip() for item in raw
+    ):
+        values = [item.strip() for item in raw]
+        if len(values) == len(set(values)):
+            return values
+    inherited = previous_slots.get("business_terms")
+    if (
+        (slots.is_inherited_metric or slots.route in {"PRESENTATION", "REPORT_ACTION"})
+        and isinstance(inherited, list)
+        and len(inherited) <= 4
+        and all(isinstance(item, str) and item for item in inherited)
+    ):
+        return list(inherited)
+    return []
+
+
+def _safe_analysis_observation(execution: Mapping[str, Any]) -> dict[str, Any]:
+    """Extract only governed plan identity; never persist SQL, parameters, or rows."""
+
+    plan = execution.get("plan")
+    package = execution.get("package")
+    analysis_plan = plan.get("analysis_plan") if isinstance(plan, Mapping) else None
+    if not isinstance(analysis_plan, Mapping) or package is None:
+        return {}
+    output_ids = analysis_plan.get("output_metric_ids")
+    raw_joins = analysis_plan.get("joins")
+    if (
+        not isinstance(output_ids, list)
+        or not output_ids
+        or any(not isinstance(item, str) or not item for item in output_ids)
+        or not isinstance(raw_joins, list)
+    ):
+        return {}
+    metrics = {
+        str(getattr(metric, "id", "")): metric
+        for metric in tuple(getattr(package, "metrics", ()))
+        if getattr(metric, "id", None)
+    }
+
+    def assets(metric_id: str, trail: frozenset[str] = frozenset()) -> set[str]:
+        if metric_id in trail:
+            return set()
+        metric = metrics.get(metric_id)
+        if metric is None:
+            return set()
+        asset = str(getattr(metric, "asset_fqn", "") or "")
+        if asset:
+            return {asset}
+        operands = (
+            str(getattr(metric, "numerator_metric_id", "") or ""),
+            str(getattr(metric, "denominator_metric_id", "") or ""),
+        )
+        if not all(operands):
+            return set()
+        return set().union(
+            *(assets(operand, trail | {metric_id}) for operand in operands)
+        )
+
+    source_assets = sorted(
+        set().union(*(assets(metric_id) for metric_id in output_ids))
+    )
+    join_ids = []
+    for item in raw_joins:
+        if not isinstance(item, Mapping) or not isinstance(item.get("join_id"), str):
+            return {}
+        join_ids.append(str(item["join_id"]))
+    query_strategy = analysis_plan.get("query_strategy")
+    time_bucket = analysis_plan.get("time_bucket")
+    checksum = analysis_plan.get("checksum")
+    if (
+        not source_assets
+        or not isinstance(query_strategy, str)
+        or not query_strategy
+        or not isinstance(time_bucket, str)
+        or not isinstance(checksum, str)
+    ):
+        return {}
+    return {
+        "query_strategy": query_strategy,
+        "source_assets": source_assets,
+        "join_ids": sorted(join_ids),
+        "time_bucket": time_bucket,
+        "analysis_plan_sha256": checksum,
+    }
+
+
 class ConversationOrchestrator:
     """멀티턴 대화의 상태 머신, 동시성 제어 및 라우트 실행을 담당하는 오케스트레이터."""
 
@@ -82,7 +399,7 @@ class ConversationOrchestrator:
         data_platform: DataPlatformAdapter,
         support: PipelineSupport,
         submit_analysis: Callable[..., Any],
-        report_repository_factory: Callable[[UUID, bool], Any] | Any | None = None,
+        report_repository_factory: Callable[[RequestContext, bool], Any] | Any | None = None,
         analysis_repository_factory: Callable[[UUID], Any] | Any | None = None,
     ) -> None:
         """대화 오케스트레이터의 필수 의존성을 주입받아 초기화합니다.
@@ -124,7 +441,7 @@ class ConversationOrchestrator:
         if self._report_repository_factory is not None:
             if callable(self._report_repository_factory):
                 is_admin = has_capability(context.role, Capability.MANAGE_REPORT)
-                return self._report_repository_factory(context.user_id, is_admin)
+                return self._report_repository_factory(context, is_admin)
             return self._report_repository_factory
         from app.adapters.report_repository import PostgresReportRepository
 
@@ -136,8 +453,138 @@ class ConversationOrchestrator:
             database_url=database_url,
             owner_id=context.user_id,
             manage_all=is_admin,
+            product_release_id=context.product_release_id,
+            permission_snapshot_id=context.permission_snapshot_id,
+            semantic_release_id=context.semantic_release_id,
             session_factory=self._repo._sessionmaker,
         )
+
+    async def _release_receipt(
+        self,
+        product_release_id: str | None = None,
+        semantic_release_id: str | None = None,
+    ) -> tuple[str, str]:
+        """새 대화는 active, 기존 대화는 pinned immutable release를 검증한다."""
+
+        if product_release_id is not None:
+            checker = getattr(
+                self._data_platform,
+                "get_product_release_readiness",
+                None,
+            )
+            if callable(checker):
+                stages, receipt, observed_semantic = await checker(
+                    product_release_id
+                )
+                if (
+                    receipt != product_release_id
+                    or observed_semantic != semantic_release_id
+                    or any(value != "ready" for value in stages.values())
+                ):
+                    raise RuntimeError(
+                        "pinned product release is no longer executable"
+                    )
+                return product_release_id, str(observed_semantic)
+
+        semantic_before = await self._data_platform.get_active_context_release()
+        stages, product_release = await self._data_platform.get_catalog_readiness()
+        semantic_after = await self._data_platform.get_active_context_release()
+        if (
+            semantic_before != semantic_after
+            or not product_release
+            or any(value != "ready" for value in stages.values())
+        ):
+            raise RuntimeError("active product release receipt를 원자적으로 확정하지 못했습니다.")
+        return product_release, semantic_after
+
+    async def create_conversation(
+        self,
+        context: RequestContext,
+        title: str,
+    ) -> dict[str, Any]:
+        """서버 권한·active release를 pin한 새 Conversation을 만든다."""
+
+        product_release, semantic_release = await self._release_receipt()
+        permission_receipt = permission_snapshot_id(context.user_id, context.role)
+        return await self._repo.create_conversation(
+            context.user_id,
+            title,
+            product_release_id=product_release,
+            permission_snapshot_id=permission_receipt,
+            semantic_release_id=semantic_release,
+            wall_clock_anchor=context.as_of,
+        )
+
+    async def _existing_command_result(
+        self,
+        conversation_id: UUID,
+        existing_command: dict[str, Any],
+        canonical_hash: str,
+    ) -> dict[str, Any]:
+        """저장 hash가 일치한 뒤에만 terminal 또는 RUNNING command를 replay한다."""
+
+        if str(existing_command["canonical_input_hash"]).strip() != canonical_hash:
+            return {
+                "status": "CONFLICT",
+                "code": ErrorCode.IDEMPOTENCY_CONFLICT.value,
+                "message": "같은 idempotency key의 authoritative payload가 다릅니다.",
+            }
+        if existing_command["status"] == "COMPLETED" and existing_command["turn_id"]:
+            turns = await self._repo.list_turns(conversation_id)
+            target_turn = next(
+                (
+                    turn
+                    for turn in turns
+                    if str(turn["turn_id"]) == str(existing_command["turn_id"])
+                ),
+                None,
+            )
+            terminal_status = (
+                str(target_turn.get("terminal_status")) if target_turn else None
+            )
+            status = (
+                "CLARIFICATION_REQUIRED"
+                if target_turn
+                and target_turn.get("resolved_slots", {}).get("ambiguity_status")
+                == "NEEDS_CLARIFICATION"
+                else "SUCCESS"
+                if terminal_status in {None, "SUCCEEDED"}
+                else terminal_status
+            )
+            return {
+                "status": status,
+                "code": target_turn.get("reason_code") if target_turn else None,
+                "is_idempotent_replay": True,
+                "turn": target_turn,
+            }
+        if existing_command["status"] == "RUNNING":
+            return {
+                "status": "BUSY",
+                "code": "CONVERSATION_BUSY",
+                "message": "동일한 명령이 처리 중입니다.",
+            }
+        error = existing_command.get("error_response") or {}
+        turns = await self._repo.list_turns(conversation_id)
+        target_turn = next(
+            (
+                turn
+                for turn in turns
+                if str(turn["turn_id"]) == str(existing_command.get("turn_id"))
+            ),
+            None,
+        )
+        return {
+            "status": "FAILED",
+            "code": error.get("code", ErrorCode.CONTEXT_SOURCE_FAILED.value),
+            "message": error.get(
+                "message",
+                "질문 해석에 필요한 데이터 카탈로그를 검증하지 못했습니다.",
+            ),
+            "retryable": bool(error.get("retryable", True)),
+            "required_action": error.get("required_action", "CONTACT_SUPPORT"),
+            "turn": target_turn,
+            "is_idempotent_replay": True,
+        }
 
     async def execute_command(
         self,
@@ -169,63 +616,88 @@ class ConversationOrchestrator:
         Returns:
             대화 턴 실행 결과 딕셔너리 (status, turn, conversation, disambiguation_options 등)
         """
-        user_message = str(payload.get("user_message") or "").strip()
-        if not user_message:
-            raise ValueError("user_message must not be empty")
+        command = ConversationCommandRequest.model_validate(payload)
+        user_message = command.user_message
+        idempotency_key = command.idempotency_key
+        expected_head_uuid = command.expected_head_turn_id
+        if context.conversation_id not in {None, conversation_id}:
+            raise ValueError("RequestContext conversation_id가 path identity와 다릅니다.")
+        conversation = await self._repo.get_conversation(conversation_id, context.user_id)
+        if conversation is None:
+            return {
+                "status": "CONFLICT",
+                "code": "CONVERSATION_NOT_FOUND",
+                "message": "대화방을 찾을 수 없거나 접근 권한이 없습니다.",
+            }
+        current_permission = permission_snapshot_id(context.user_id, context.role)
+        if conversation["permission_snapshot_id"] != current_permission:
+            return {
+                "status": "CONFLICT",
+                "code": ErrorCode.ACCESS_DENIED.value,
+                "message": "Conversation 생성 이후 권한 snapshot이 변경되었습니다.",
+            }
+        try:
+            current_product, current_semantic = await self._release_receipt(
+                str(conversation["product_release_id"]),
+                str(conversation["semantic_release_id"]),
+            )
+        except RuntimeError:
+            return {
+                "status": "CONFLICT",
+                "code": ErrorCode.RESOURCE_CONFLICT.value,
+                "message": "Conversation에 고정된 product release를 더 이상 실행할 수 없습니다.",
+            }
+        wall_clock_anchor = conversation["wall_clock_anchor"]
+        if isinstance(wall_clock_anchor, str):
+            wall_clock_anchor = date.fromisoformat(wall_clock_anchor)
+        command_id = uuid4()
+        context = context.model_copy(
+            update={
+                "conversation_id": conversation_id,
+                "permission_snapshot_id": current_permission,
+                "product_release_id": current_product,
+                "semantic_release_id": current_semantic,
+                "command_id": command_id,
+                "as_of": wall_clock_anchor,
+            }
+        )
+        input_hash = canonical_command_input_hash(command, conversation_id, context)
 
-        idempotency_key = str(payload.get("idempotency_key") or str(uuid4()))
-        expected_head = payload.get("expected_head_turn_id")
-        expected_head_uuid = UUID(expected_head) if expected_head else None
-
-        # 1. 멱등성 검사 (이미 실행된 커맨드인 경우 즉시 캐시 결과 반환)
+        # 저장 hash를 비교하기 전에는 어떤 terminal 결과도 replay하지 않는다.
         existing_cmd = await self._repo.get_command(conversation_id, idempotency_key)
         if existing_cmd:
-            if existing_cmd["status"] == "COMPLETED" and existing_cmd["turn_id"]:
-                turns = await self._repo.list_turns(conversation_id)
-                target_turn = next((t for t in turns if str(t["turn_id"]) == str(existing_cmd["turn_id"])), None)
-                return {"status": "SUCCESS", "is_idempotent_replay": True, "turn": target_turn}
-            if existing_cmd["status"] == "RUNNING":
-                return {"status": "BUSY", "code": "CONVERSATION_BUSY", "message": "동일한 명령이 처리 중입니다."}
-            if existing_cmd["status"] == "FAILED":
-                error = existing_cmd.get("error_response") or {}
-                turns = await self._repo.list_turns(conversation_id)
-                target_turn = next(
-                    (
-                        turn
-                        for turn in turns
-                        if str(turn["turn_id"]) == str(existing_cmd.get("turn_id"))
-                    ),
-                    None,
-                )
-                return {
-                    "status": "FAILED",
-                    "code": error.get("code", ErrorCode.CONTEXT_SOURCE_FAILED.value),
-                    "message": error.get(
-                        "message",
-                        "질문 해석에 필요한 데이터 카탈로그를 검증하지 못했습니다.",
-                    ),
-                    "retryable": bool(error.get("retryable", True)),
-                    "required_action": error.get("required_action", "CONTACT_SUPPORT"),
-                    "turn": target_turn,
-                    "is_idempotent_replay": True,
-                }
-
-        # 2. 정규 입력 해시(Canonical Input Hash) 생성
-        canonical_input = json.dumps({"msg": user_message, "exp": str(expected_head)}, sort_keys=True)
-        input_hash = hashlib.sha256(canonical_input.encode("utf-8")).hexdigest()
+            return await self._existing_command_result(
+                conversation_id,
+                existing_cmd,
+                input_hash,
+            )
 
         # 3. CAS(Compare-And-Swap) 검사 및 동시성 Lease 획득
-        command_id = uuid4()
         lease_ok, lease_error = await self._repo.acquire_lease_and_check_cas(
             conversation_id=conversation_id,
             expected_head_turn_id=expected_head_uuid,
             command_id=command_id,
             idempotency_key=idempotency_key,
             input_hash=input_hash,
+            effective_subject_id=context.user_id,
+            product_release_id=current_product,
+            permission_snapshot_id=current_permission,
+            semantic_release_id=current_semantic,
         )
         if not lease_ok:
+            if lease_error == "IDEMPOTENCY_EXISTS":
+                raced = await self._repo.get_command(conversation_id, idempotency_key)
+                if raced is not None:
+                    return await self._existing_command_result(
+                        conversation_id,
+                        raced,
+                        input_hash,
+                    )
             return {"status": "CONFLICT", "code": lease_error, "message": f"동시성 충돌 또는 권한 오류 ({lease_error})"}
 
+        previous_turns: list[dict[str, Any]] = []
+        analysis_repo: Any = None
+        analysis_started = False
         try:
             # 4. 이전 불변 턴 목록 조회
             previous_turns = await self._repo.list_turns(conversation_id)
@@ -233,6 +705,11 @@ class ConversationOrchestrator:
             # 5. Node 1 사전 발화 정규화 (DataHub 자산 검색)
             node1_res: dict[str, Any] = {}
             preflight_clarification: ContextBuildError | None = None
+            action_signals = client_action_signals(payload)
+            reuses_existing_result = action_signals.get("requested_route") in {
+                "PRESENTATION",
+                "REPORT_ACTION",
+            }
             try:
                 # 1차: user_message 원문으로 검색
                 search_context = {
@@ -240,26 +717,62 @@ class ConversationOrchestrator:
                         context.role.value
                         if hasattr(context.role, "value")
                         else str(context.role)
-                    )
+                    ),
+                    "product_release_id": current_product,
+                    "semantic_release_id": current_semantic,
                 }
-                try:
-                    candidate_set = (
-                        await self._data_platform.search_asset_candidates(
-                            user_message,
-                            search_context,
-                        )
-                    )
-                    assets = list(candidate_set.assets)
-                except NoEntitledAssetsError:
-                    # 검색 결과가 없거나 현재 role에 보이는 후보가 없으면 같은 principal로만
-                    # 직전 승인 Metric을 결합해 recall을 재시도한다. metadata 장애는 전파한다.
+                if reuses_existing_result:
+                    # Typed Presentation/Report action은 이미 admission을 통과한 기존
+                    # Artifact/View만 재사용한다. 새 Metric/기간 해석을 호출하면 불필요한
+                    # clarification이나 metadata 장애가 zero-query action을 막을 수 있다.
                     assets = []
+                else:
+                    try:
+                        candidate_set = (
+                            await self._data_platform.search_asset_candidates(
+                                user_message,
+                                search_context,
+                            )
+                        )
+                        assets = list(candidate_set.assets)
+                    except NoEntitledAssetsError:
+                        # 검색 결과가 없거나 현재 role에 보이는 후보가 없으면 같은 principal로만
+                        # 직전 승인 Metric을 결합해 recall을 재시도한다. metadata 장애는 전파한다.
+                        assets = []
 
                 # 2차: 자산 미발견 시 이전 분석 지표를 typed 후보 우선순위로 전달한다.
                 # 질문 문자열에 Metric ID를 붙이면 DataHub lexical rank가 다른 revenue 자산까지
                 # 끌어와 bounded scope를 깨뜨리고, Node 1의 생략문 판정 증거도 오염된다.
-                if not assets:
-                    last_analysis_metric_ids = next(
+                if not reuses_existing_result and not assets:
+                    last_turn = previous_turns[-1] if previous_turns else None
+                    last_turn_slots = (
+                        last_turn.get("resolved_slots", {}) if last_turn else {}
+                    )
+                    # OUT_OF_DATA_RANGE는 source/focus 자격이 없지만, 바로 다음
+                    # 기간-only 수정에서 같은 승인 Asset을 다시 찾기 위한 검색 힌트는
+                    # 제공할 수 있다. 이 값은 Node 1 후보 scope에만 쓰이며 resolver가
+                    # 새 절대 기간을 독립적으로 확정하지 못하면 실행되지 않는다.
+                    pending_range_metric_ids = (
+                        tuple(
+                            item
+                            for item in (
+                                last_turn_slots.get("metric_ids")
+                                or (
+                                    [last_turn_slots.get("metric_id")]
+                                    if last_turn_slots.get("metric_id")
+                                    else []
+                                )
+                            )
+                            if isinstance(item, str) and item
+                        )
+                        if last_turn is not None
+                        and last_turn.get("route") == "ANALYSIS"
+                        and last_turn.get("terminal_status") == "BLOCKED"
+                        and last_turn.get("reason_code")
+                        == ErrorCode.OUT_OF_DATA_RANGE.value
+                        else ()
+                    )
+                    last_analysis_metric_ids = pending_range_metric_ids or next(
                         (
                             tuple(
                                 item
@@ -292,12 +805,13 @@ class ConversationOrchestrator:
                         )
                         assets = list(candidate_set.assets)
 
-                if not assets:
+                if reuses_existing_result:
+                    node1_res = {}
+                elif not assets:
                     raise NoEntitledAssetsError(
                         "conversation preflight found no entitled candidate"
                     )
-
-                if assets:
+                else:
                     preflight_slots = None
                     last_resolved_analysis = next(
                         (
@@ -357,7 +871,9 @@ class ConversationOrchestrator:
                     # 의도·생략 여부·새 주제 판정은 사용자가 실제로 쓴 원문을 기준으로 해야
                     # 하므로 모델 입력까지 보강 문자열로 바꾸지 않는다.
                     _, _nq, structured = await self._support.select_metric(
-                        AnalysisRequest(question=user_message, resolved_slots=preflight_slots), context, assets,
+                        AnalysisRequest(question=user_message, resolved_slots=preflight_slots),
+                        context,
+                        candidate_set,
                     )
                     node1_res = structured
             except NoEntitledAssetsError:
@@ -380,24 +896,39 @@ class ConversationOrchestrator:
                         else ErrorCode.OUT_OF_DATA_RANGE
                     )
                     public_error = {
-                        "status": "FAILED",
+                        "status": "BLOCKED",
                         "code": public_code.value,
                         "message": str(error),
                         "retryable": False,
                         "required_action": "MODIFY_REQUEST",
                     }
                     turn_id = uuid4()
-                    await self._repo.commit_failed_turn(
-                        conversation_id,
-                        command_id,
-                        turn_id,
-                        len(previous_turns),
-                        user_message,
-                        {
-                            "type": type(error).__name__,
-                            "detail": str(error),
-                            **public_error,
+                    partial_context = getattr(error, "partial_context", None)
+                    await self._repo.commit_turn(
+                        conversation_id=conversation_id,
+                        command_id=command_id,
+                        turn_id=turn_id,
+                        turn_index=len(previous_turns),
+                        user_message=user_message,
+                        route="ANALYSIS",
+                        source_turn_ids=[],
+                        request_id=None,
+                        artifact_id=None,
+                        view_spec_id=None,
+                        report_definition_id=None,
+                        resolved_slots={
+                            **(
+                                dict(partial_context)
+                                if isinstance(partial_context, dict)
+                                else {}
+                            ),
+                            "ambiguity_status": "CLEAR",
                         },
+                        product_release_id=current_product,
+                        permission_snapshot_id=current_permission,
+                        semantic_release_id=current_semantic,
+                        terminal_status="BLOCKED",
+                        reason_code=public_code.value,
                     )
                     updated_turns = await self._repo.list_turns(conversation_id)
                     return {
@@ -485,7 +1016,7 @@ class ConversationOrchestrator:
 
             # 5-1. UI가 이미 아는 동작은 자연어로 바꾸지 않고 typed action으로 받는다.
             # 신호는 후보일 뿐이며 재사용 가능 여부는 아래 라우팅 계약이 다시 확인한다.
-            node1_res = {**node1_res, **client_action_signals(payload)}
+            node1_res = {**node1_res, **action_signals}
 
             # 6. 결정론적 슬롯/시간 리졸버로 슬롯 및 라우트 확정
             slots: ResolvedTurnSlots = ConversationSlotResolver.resolve(
@@ -497,9 +1028,16 @@ class ConversationOrchestrator:
             )
             if (
                 preflight_clarification is not None
-                and _clarification_resolved_by_inheritance(
-                    preflight_clarification,
-                    slots,
+                and (
+                    _clarification_resolved_by_inheritance(
+                        preflight_clarification,
+                        slots,
+                    )
+                    or _clarification_resolved_by_range_correction(
+                        preflight_clarification,
+                        slots,
+                        previous_turns,
+                    )
                 )
             ):
                 preflight_clarification = None
@@ -511,64 +1049,114 @@ class ConversationOrchestrator:
             view_spec_id = None
             report_def_id = None
             analysis_resp = None
+            terminal_writer = None
+            view_spec = None
+            route_block_message: str | None = None
+            execution: dict[str, Any] = {}
 
             # 7. 3대 라우트 분기 실행
             if slots.route == "ANALYSIS" and preflight_clarification is None:
                 # 라우트 1: ANALYSIS (실제 데이터 쿼리 파이프라인 실행)
                 analysis_req = build_structured_analysis_request(user_message, slots)
-                execution: dict[str, Any] = {}
                 analysis_repo = self._get_analysis_repository(context)
                 if analysis_repo is not None:
                     await analysis_repo.begin_request(user_message, {}, context)
+                    analysis_started = True
+                bind_query_lifecycle = getattr(
+                    self._data_platform,
+                    "bind_query_lifecycle",
+                    None,
+                )
+                lifecycle_bound = False
+                if analysis_repo is not None and callable(bind_query_lifecycle):
+                    async def _record_query_lifecycle(event: dict[str, Any]) -> None:
+                        await analysis_repo.record_query_lifecycle(
+                            context.request_id,
+                            event,
+                        )
+
+                    bind_query_lifecycle(_record_query_lifecycle)
+                    lifecycle_bound = True
                 try:
                     import inspect
                     if callable(self._submit_analysis):
                         sig = inspect.signature(self._submit_analysis)
                         if "execution_sink" in sig.parameters or len(sig.parameters) >= 3:
-                            analysis_resp = await self._submit_analysis(analysis_req, context, execution.update)
+                            analysis_resp = await self._submit_analysis(
+                                analysis_req,
+                                context,
+                                execution.update,
+                            )
                         else:
                             analysis_resp = await self._submit_analysis(analysis_req, context)
                     else:
                         analysis_resp = await self._submit_analysis(analysis_req, context)
-
-                    if analysis_repo is not None and analysis_resp is not None:
-                        await analysis_repo.finish_run(context.request_id, analysis_resp, execution)
-                except Exception as err:
-                    if analysis_repo is not None:
-                        try:
-                            await analysis_repo.fail_run(context.request_id)
-                        except Exception:
-                            pass
-                    raise err
+                finally:
+                    if lifecycle_bound:
+                        bind_query_lifecycle(None)
 
                 artifact_id = extract_artifact_id(analysis_resp)
                 request_id = context.request_id
+                if analysis_repo is not None and analysis_resp is not None:
+                    async def _write_analysis_terminal(session: Any) -> None:
+                        await analysis_repo.finish_run_in_session(
+                            session,
+                            context.request_id,
+                            analysis_resp,
+                            execution,
+                        )
+
+                    terminal_writer = _write_analysis_terminal
 
             elif slots.route == "PRESENTATION":
                 # 라우트 2: PRESENTATION (Trino 쿼리 0건 실행, 동일 Artifact에 대한 ViewSpec 생성)
-                target_artifact_id = None
-                for t in reversed(previous_turns):
-                    if t.get("artifact_id"):
-                        target_artifact_id = t["artifact_id"]
-                        break
+                source_ids = set(slots.source_turn_ids)
+                target_turn = next(
+                    (
+                        turn
+                        for turn in reversed(previous_turns)
+                        if str(turn.get("turn_id")) in source_ids
+                        and ConversationSlotResolver.is_resolved_analysis_turn(turn)
+                    ),
+                    None,
+                )
+                target_artifact_id = (
+                    target_turn.get("artifact_id") if target_turn else None
+                )
                 if not target_artifact_id:
                     raise ValueError("시각화를 전환할 선행 분석 결과(Artifact)가 없습니다.")
 
-                view_spec_id = await self._repo.create_view_spec(
-                    artifact_id=target_artifact_id,
-                    view_type=slots.target_chart_type or "TABLE",
-                    spec_json={
-                        "chart_type": (slots.target_chart_type or "TABLE").lower(),
-                        "source_artifact_id": str(target_artifact_id),
-                    },
-                    user_id=context.user_id,
-                )
+                view_spec_id = uuid4()
                 artifact_id = target_artifact_id
+                try:
+                    view_spec = _presentation_view_contract(
+                        target_turn,
+                        slots.target_chart_type or "TABLE",
+                    )
+                except ValueError as error:
+                    # A renderer request must not escape as an untyped command
+                    # failure after the source Artifact was already resolved.
+                    # Preserve the immutable source lineage, commit a terminal
+                    # BLOCKED Turn, and leave both focus pointers unchanged.
+                    view_spec_id = None
+                    view_spec = None
+                    route_block_message = str(error)
 
             elif slots.route == "REPORT_ACTION":
                 # 라우트 3: REPORT_ACTION (Trino 쿼리 0건 실행, 선행 Artifact들을 Report Draft에 연결)
                 report_repo = self._get_report_repository(context)
-                report_def_id, artifact_id = await execute_report_action(report_repo, previous_turns)
+                report_plan = await plan_report_action(report_repo, previous_turns)
+                report_def_id = report_plan.report_definition_id
+                artifact_id = report_plan.artifact_id
+
+                async def _write_report_terminal(session: Any) -> None:
+                    await apply_report_action_plan(
+                        report_repo,
+                        report_plan,
+                        session,
+                    )
+
+                terminal_writer = _write_report_terminal
 
             # 모호성 해소 요구사항 확인. Preflight에서 이미 확정된 typed 선택지는
             # 분석을 중복 실행하지 않고 그대로 turn 상태로 승격한다.
@@ -607,8 +1195,38 @@ class ConversationOrchestrator:
                         clarification_type = clarification_type.value
 
             last_slots = previous_turns[-1].get("resolved_slots", {}) if previous_turns else {}
+            business_terms = _business_terms_for_turn(node1_res, last_slots, slots)
+            analysis_observation = _safe_analysis_observation(execution)
             ambiguity_status = "NEEDS_CLARIFICATION" if is_clarification else (
                 "RESOLVED" if last_slots.get("ambiguity_status") == "NEEDS_CLARIFICATION" else "CLEAR"
+            )
+            terminal_status, reason_code = (
+                _analysis_terminal(analysis_resp)
+                if analysis_resp is not None
+                else ("SUCCEEDED", None)
+            )
+            if is_clarification:
+                terminal_status, reason_code = "BLOCKED", "NEEDS_CLARIFICATION"
+            elif route_block_message is not None:
+                terminal_status = "BLOCKED"
+                reason_code = ErrorCode.RESULT_VALIDATION_FAILED.value
+            if (
+                slots.route == "ANALYSIS"
+                and terminal_status == "SUCCEEDED"
+                and artifact_id is not None
+            ):
+                view_spec_id = uuid4()
+                view_spec = _view_contract(analysis_resp, artifact_id)
+            clarifies_turn_id = (
+                UUID(str(previous_turns[-1]["turn_id"]))
+                if previous_turns
+                and (
+                    last_slots.get("ambiguity_status") == "NEEDS_CLARIFICATION"
+                    or previous_turns[-1].get("reason_code")
+                    == ErrorCode.OUT_OF_DATA_RANGE.value
+                )
+                and not is_clarification
+                else None
             )
 
             # 8. 단일 DB 트랜잭션으로 Turn 영속화 및 Lease 해제
@@ -625,6 +1243,7 @@ class ConversationOrchestrator:
                 view_spec_id=view_spec_id,
                 report_definition_id=report_def_id,
                 resolved_slots={
+                    "business_terms": business_terms,
                     "metric_id": slots.metric_id,
                     "metric_ids": list(slots.metric_ids),
                     "dimension_fields": [dict(d) for d in slots.dimension_fields],
@@ -652,7 +1271,25 @@ class ConversationOrchestrator:
                     "is_inherited_metric": slots.is_inherited_metric,
                     "is_inherited_dimension": slots.is_inherited_dimension,
                     "is_inherited_period": slots.is_inherited_period,
+                    "slot_provenance": _slot_provenance(slots),
+                    "change_set": [
+                        {
+                            "field": change.field,
+                            "operation": change.op.value,
+                            "value": change.value,
+                        }
+                        for change in slots.change_set
+                    ],
+                    "analysis_plan_observation": analysis_observation,
                 },
+                product_release_id=current_product,
+                permission_snapshot_id=current_permission,
+                semantic_release_id=current_semantic,
+                terminal_writer=terminal_writer,
+                terminal_status=terminal_status,
+                reason_code=reason_code,
+                clarifies_turn_id=clarifies_turn_id,
+                view_spec=view_spec,
             )
 
             # 9. 수화(Hydration)된 최신 턴 목록 반환
@@ -660,7 +1297,13 @@ class ConversationOrchestrator:
             latest_turn = next((t for t in updated_turns if t["turn_id"] == turn_id), None)
 
             return {
-                "status": "CLARIFICATION_REQUIRED" if is_clarification else "SUCCESS",
+                "status": (
+                    "CLARIFICATION_REQUIRED"
+                    if is_clarification
+                    else "SUCCESS"
+                    if terminal_status == "SUCCEEDED"
+                    else terminal_status
+                ),
                 "turn": latest_turn,
                 "conversation": {
                     "conversation_id": str(conversation_id),
@@ -671,15 +1314,25 @@ class ConversationOrchestrator:
                     opt.model_dump(mode="json") if hasattr(opt, "model_dump") else opt
                     for opt in disambiguation_options
                 ] if is_clarification else [],
-                "code": ErrorCode.CONTEXT_INCOMPLETE.value if is_clarification else None,
+                "code": (
+                    ErrorCode.CONTEXT_INCOMPLETE.value
+                    if is_clarification
+                    else reason_code
+                ),
                 "message": (
                     "분석을 시작하려면 분석할 기간을 함께 입력해 주세요."
                     if clarification_type == "period"
                     else "분석할 지표를 확정하지 못했습니다. 하나의 지표를 선택하거나 질문에 포함해 주세요."
-                ) if is_clarification else None,
+                ) if is_clarification else route_block_message,
                 "clarification_type": clarification_type if is_clarification else None,
                 "retryable": False if is_clarification else None,
-                "required_action": "PROVIDE_CONTEXT" if is_clarification else None,
+                "required_action": (
+                    "PROVIDE_CONTEXT"
+                    if is_clarification
+                    else "MODIFY_REQUEST"
+                    if route_block_message is not None
+                    else None
+                ),
                 "suggestions": list(
                     getattr(preflight_clarification, "suggestions", ()) or ()
                 ) if preflight_clarification is not None else [],
@@ -687,6 +1340,42 @@ class ConversationOrchestrator:
             }
 
         except Exception as error:
-            error_data = {"type": type(error).__name__, "detail": str(error)}
-            await self._repo.release_lease_on_failure(conversation_id, command_id, error_data)
+            error_data = {
+                "type": type(error).__name__,
+                "code": "CONVERSATION_COMMAND_FAILED",
+                "message": "대화 명령 실행을 안전하게 종료했습니다.",
+                "retryable": True,
+            }
+            failure_committed = False
+            if analysis_started and analysis_repo is not None:
+                async def _write_analysis_failure(session: Any) -> None:
+                    await analysis_repo.fail_run_in_session(
+                        session,
+                        context.request_id,
+                        "UNSUPPORTED",
+                    )
+
+                try:
+                    await self._repo.commit_failed_turn(
+                        conversation_id,
+                        command_id,
+                        uuid4(),
+                        len(previous_turns),
+                        user_message,
+                        error_data,
+                        request_id=context.request_id,
+                        terminal_writer=_write_analysis_failure,
+                    )
+                    failure_committed = True
+                except Exception as terminal_error:
+                    logger.error(
+                        "atomic conversation failure commit failed: type=%s",
+                        type(terminal_error).__name__,
+                    )
+            if not failure_committed:
+                await self._repo.release_lease_on_failure(
+                    conversation_id,
+                    command_id,
+                    error_data,
+                )
             raise

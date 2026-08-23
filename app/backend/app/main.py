@@ -26,6 +26,8 @@ from app.contracts import (
     response_meta,
 )
 from app.services.report.scheduler import report_scheduler
+from app.services.conversation.reconciler import conversation_recovery_worker
+from app.runtime_release import validate_model_runtime_compatibility
 
 
 _HTTP_ERROR_MAP = {
@@ -62,7 +64,9 @@ async def lifespan(_app: FastAPI):
     scheduler 중지, model/data transport 종료, controller cache 해제, DB pool 폐기를 중첩된
     ``finally``로 보장해 앞선 cleanup 실패가 뒤 자원 누수로 번지지 않게 한다.
     """
+    validate_model_runtime_compatibility()
     try:
+        await conversation_recovery_worker.start(_controller().data_platform)
         await report_scheduler.start(_controller(), execution_gate)
         yield
     finally:
@@ -70,10 +74,13 @@ async def lifespan(_app: FastAPI):
             await report_scheduler.stop()
         finally:
             try:
-                await _controller().aclose()
+                await conversation_recovery_worker.stop()
             finally:
-                _controller.cache_clear()
-                await dispose_database()
+                try:
+                    await _controller().aclose()
+                finally:
+                    _controller.cache_clear()
+                    await dispose_database()
 
 
 app = FastAPI(

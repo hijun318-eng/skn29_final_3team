@@ -18,11 +18,18 @@ from app.services.analysis.logical_plan import (
     AnalysisPlan,
     AnalysisTimeMode,
     PlannedField,
+    PlannedFilter,
 )
-from app.services.context.query_planner import VIEW_REUSE
+from app.services.context.contract import GovernedJoin
+from app.services.context.fanout_policy import FanoutPlan
+from app.services.context.query_planner import (
+    RAW_APPROVED_DETAIL,
+    VIEW_COMPOSE,
+    VIEW_REUSE,
+)
 
 
-TYPED_SQL_COMPILER_VERSION = "ANSWERVICE-TYPED-SQL-v1.1.0"
+TYPED_SQL_COMPILER_VERSION = "ANSWERVICE-TYPED-SQL-v1.2.0"
 _SUPPORTED_AGGREGATIONS = frozenset(
     {"sum", "count", "count_distinct", "average", "min", "max", "exists"}
 )
@@ -41,11 +48,15 @@ def typed_sql_capabilities() -> dict[str, object]:
 
     return {
         "version": TYPED_SQL_COMPILER_VERSION,
-        "query_strategies": [VIEW_REUSE],
+        "query_strategies": [RAW_APPROVED_DETAIL, VIEW_COMPOSE, VIEW_REUSE],
         "operations": sorted(item.value for item in AnalysisOperation),
         "time_modes": sorted(item.value for item in AnalysisTimeMode),
-        "max_physical_assets": 1,
-        "join_plans": [],
+        "max_physical_assets": 2,
+        "join_plans": [
+            FanoutPlan.DIRECT_JOIN.value,
+            FanoutPlan.PREAGGREGATE.value,
+            FanoutPlan.SEMI_JOIN.value,
+        ],
     }
 
 
@@ -60,12 +71,6 @@ def compile_typed_sql(
     검증을 강제해야 한다.
     """
 
-    if (
-        plan.query_strategy != VIEW_REUSE
-        or plan.joins
-    ):
-        return None
-
     contracts = getattr(package, "runtime_contracts", None)
     if not isinstance(contracts, Mapping):
         return None
@@ -79,6 +84,11 @@ def compile_typed_sql(
         or set(rules) != dependency_ids
         or set(package_metrics) != dependency_ids
     ):
+        return None
+
+    if plan.joins:
+        return _compile_joined_sql(plan, package, contracts, rules)
+    if plan.query_strategy != VIEW_REUSE:
         return None
 
     leaf_rules = tuple(
@@ -252,6 +262,555 @@ def compile_typed_sql(
         "model_version": TYPED_SQL_COMPILER_VERSION,
         "plan_source": "typed_sql_compiler",
     }
+
+
+def _compile_joined_sql(
+    plan: AnalysisPlan,
+    package: object,
+    contracts: Mapping[str, Any],
+    rules: Mapping[str, Mapping[str, Any]],
+) -> dict[str, object] | None:
+    """정확히 두 asset과 한 governed edge인 Phase 9 계획을 AST로 컴파일한다."""
+
+    if (
+        len(plan.joins) != 1
+        or plan.query_strategy
+        not in {RAW_APPROVED_DETAIL, VIEW_COMPOSE, VIEW_REUSE}
+        or plan.operation
+        not in {AnalysisOperation.AGGREGATE, AnalysisOperation.BREAKDOWN}
+        or plan.time_mode is not AnalysisTimeMode.RANGE
+        or len(plan.period_parameters) != 1
+        or plan.snapshot_parameter is not None
+    ):
+        return None
+    graph = tuple(getattr(package, "join_graph", ()))
+    matches = [item for item in graph if str(item.id) == plan.joins[0].join_id]
+    if len(matches) != 1 or not isinstance(matches[0], GovernedJoin):
+        return None
+    edge = matches[0]
+    endpoints = frozenset({str(edge.left), str(edge.right)})
+    if len(endpoints) != 2:
+        return None
+
+    leaf_rules = {
+        metric_id: rule
+        for metric_id, rule in rules.items()
+        if _source_kind(rule) == "column"
+    }
+    if not leaf_rules or any(
+        str(rule.get("aggregation") or "").casefold()
+        not in _SUPPORTED_AGGREGATIONS
+        for rule in leaf_rules.values()
+    ):
+        return None
+    measure_assets = {
+        _field(rule.get("source", {}).get("field")).asset_fqn
+        for rule in leaf_rules.values()
+    }
+    referenced_assets = {
+        item.asset_fqn
+        for item in (*plan.dimension_fields, *plan.filter_fields, *plan.time_fields)
+    } | measure_assets
+    if referenced_assets != endpoints or not measure_assets.issubset(endpoints):
+        return None
+
+    time_fields = {item.asset_fqn: item for item in plan.time_fields}
+    if len(time_fields) != len(plan.time_fields) or not measure_assets.issubset(time_fields):
+        return None
+    time_types = {
+        asset: _time_native_type(contracts.get("time_rules"), field)
+        for asset, field in time_fields.items()
+    }
+    if any(value is None for value in time_types.values()):
+        return None
+    filters = _joined_filter_rules(plan, rules)
+    if filters is None or any(item[0] not in endpoints for item in filters):
+        return None
+
+    projection_ids = tuple(
+        dict.fromkeys((*plan.output_metric_ids, *plan.dependency_metric_ids))
+    )
+    metric_aliases = {
+        metric_id: str(rules[metric_id].get("result_field") or "")
+        for metric_id in projection_ids
+    }
+    if (
+        any(not value for value in metric_aliases.values())
+        or len({value.casefold() for value in metric_aliases.values()})
+        != len(metric_aliases)
+    ):
+        return None
+    dimension_aliases = _dimension_aliases(
+        tuple(plan.dimension_fields),
+        plan.time_fields[0],
+        plan.operation,
+        frozenset(value.casefold() for value in metric_aliases.values()),
+    )
+    if dimension_aliases is None:
+        return None
+
+    strategy = plan.joins[0].plan
+    if strategy == FanoutPlan.DIRECT_JOIN.value:
+        query = _compile_direct_join(
+            plan,
+            edge,
+            rules,
+            projection_ids,
+            metric_aliases,
+            dimension_aliases,
+            filters,
+            time_fields,
+            time_types,
+        )
+    elif strategy == FanoutPlan.PREAGGREGATE.value:
+        query = _compile_preaggregate_join(
+            plan,
+            edge,
+            rules,
+            projection_ids,
+            metric_aliases,
+            dimension_aliases,
+            filters,
+            time_fields,
+            time_types,
+        )
+    elif strategy == FanoutPlan.SEMI_JOIN.value:
+        query = _compile_semi_join(
+            plan,
+            edge,
+            rules,
+            projection_ids,
+            metric_aliases,
+            dimension_aliases,
+            filters,
+            time_fields,
+            time_types,
+            measure_assets,
+        )
+    else:
+        return None
+    if query is None:
+        return None
+    query = _bounded_limit(query, plan, contracts)
+    if query is None:
+        return None
+    return {
+        "sql": query.sql(dialect="trino"),
+        "model_version": TYPED_SQL_COMPILER_VERSION,
+        "plan_source": "typed_sql_compiler",
+    }
+
+
+def _compile_direct_join(
+    plan: AnalysisPlan,
+    edge: GovernedJoin,
+    rules: Mapping[str, Mapping[str, Any]],
+    projection_ids: tuple[str, ...],
+    metric_aliases: Mapping[str, str],
+    dimension_aliases: Mapping[PlannedField, str],
+    filters: tuple[tuple[str, str, str, str], ...],
+    time_fields: Mapping[str, PlannedField],
+    time_types: Mapping[str, str | None],
+) -> exp.Select | None:
+    aliases = {str(edge.left): "joined_left", str(edge.right): "joined_right"}
+    projections = _joined_projections(
+        plan,
+        rules,
+        projection_ids,
+        metric_aliases,
+        dimension_aliases,
+        aliases,
+    )
+    if projections is None:
+        return None
+    predicates = _time_and_filter_predicates(
+        plan, aliases, filters, time_fields, time_types
+    )
+    join_predicates = _edge_predicates(edge, aliases)
+    if not join_predicates:
+        return None
+    query = (
+        exp.select(*projections)
+        .from_(exp.to_table(str(edge.left)).as_(aliases[str(edge.left)]))
+        .join(
+            exp.to_table(str(edge.right)).as_(aliases[str(edge.right)]),
+            on=exp.and_(*join_predicates),
+            join_type=str(edge.kind).upper(),
+        )
+    )
+    if predicates:
+        query = query.where(*predicates)
+    if plan.dimension_fields:
+        query = query.group_by(
+            *(
+                exp.column(item.column, table=aliases[item.asset_fqn])
+                for item in plan.dimension_fields
+            )
+        )
+    return query
+
+
+def _compile_preaggregate_join(
+    plan: AnalysisPlan,
+    edge: GovernedJoin,
+    rules: Mapping[str, Mapping[str, Any]],
+    projection_ids: tuple[str, ...],
+    metric_aliases: Mapping[str, str],
+    dimension_aliases: Mapping[PlannedField, str],
+    filters: tuple[tuple[str, str, str, str], ...],
+    time_fields: Mapping[str, PlannedField],
+    time_types: Mapping[str, str | None],
+) -> exp.Select | None:
+    oriented = _many_one_assets(edge)
+    if oriented is None:
+        return None
+    many_asset, one_asset = oriented
+    many_alias, child_alias, one_alias = "many_source", "many_preaggregated", "one_source"
+    group_columns = _preaggregation_columns(edge, many_asset)
+    if not group_columns or any(
+        item.asset_fqn != one_asset for item in plan.dimension_fields
+    ):
+        return None
+    many_leaf_ids = tuple(
+        metric_id
+        for metric_id, rule in rules.items()
+        if _source_kind(rule) == "column"
+        and _field(rule.get("source", {}).get("field")).asset_fqn == many_asset
+    )
+    if not many_leaf_ids:
+        return None
+    child_metric_projections: list[exp.Expression] = []
+    for metric_id in many_leaf_ids:
+        rule = rules[metric_id]
+        aggregation = str(rule.get("aggregation") or "").casefold()
+        if aggregation not in {"sum", "count", "count_distinct", "min", "max"}:
+            return None
+        expression = _metric_expression(metric_id, rules, many_alias, frozenset())
+        if expression is None:
+            return None
+        child_metric_projections.append(expression.as_(metric_aliases[metric_id]))
+    child = exp.select(
+        *(
+            exp.column(column, table=many_alias).as_(column)
+            for column in group_columns
+        ),
+        *child_metric_projections,
+    ).from_(exp.to_table(many_asset).as_(many_alias))
+    child_predicates = _time_and_filter_predicates(
+        plan,
+        {many_asset: many_alias},
+        tuple(item for item in filters if item[0] == many_asset),
+        {many_asset: time_fields[many_asset]},
+        {many_asset: time_types[many_asset]},
+    )
+    if child_predicates:
+        child = child.where(*child_predicates)
+    child = child.group_by(
+        *(exp.column(column, table=many_alias) for column in group_columns)
+    )
+
+    aliases = {many_asset: child_alias, one_asset: one_alias}
+    projections = _joined_projections(
+        plan,
+        rules,
+        projection_ids,
+        metric_aliases,
+        dimension_aliases,
+        aliases,
+        preaggregated_asset=many_asset,
+    )
+    if projections is None:
+        return None
+    join_predicates = _edge_predicates(edge, aliases)
+    if not join_predicates:
+        return None
+    query = (
+        exp.select(*projections)
+        .from_(exp.to_table(one_asset).as_(one_alias))
+        .join(
+            exp.Subquery(this=child).as_(child_alias),
+            on=exp.and_(*join_predicates),
+            join_type=str(edge.kind).upper(),
+        )
+    )
+    root_predicates = _time_and_filter_predicates(
+        plan,
+        {one_asset: one_alias},
+        tuple(item for item in filters if item[0] == one_asset),
+        (
+            {one_asset: time_fields[one_asset]}
+            if one_asset in time_fields
+            else {}
+        ),
+        (
+            {one_asset: time_types[one_asset]}
+            if one_asset in time_types
+            else {}
+        ),
+    )
+    if root_predicates:
+        query = query.where(*root_predicates)
+    if plan.dimension_fields:
+        query = query.group_by(
+            *(exp.column(item.column, table=one_alias) for item in plan.dimension_fields)
+        )
+    return query
+
+
+def _compile_semi_join(
+    plan: AnalysisPlan,
+    edge: GovernedJoin,
+    rules: Mapping[str, Mapping[str, Any]],
+    projection_ids: tuple[str, ...],
+    metric_aliases: Mapping[str, str],
+    dimension_aliases: Mapping[PlannedField, str],
+    filters: tuple[tuple[str, str, str, str], ...],
+    time_fields: Mapping[str, PlannedField],
+    time_types: Mapping[str, str | None],
+    measure_assets: set[str],
+) -> exp.Select | None:
+    oriented = _many_one_assets(edge)
+    if oriented is None:
+        return None
+    many_asset, one_asset = oriented
+    if measure_assets != {one_asset} or any(
+        item.asset_fqn != one_asset for item in plan.dimension_fields
+    ):
+        return None
+    many_filters = tuple(item for item in filters if item[0] == many_asset)
+    if not many_filters:
+        return None
+    one_alias, many_alias = "one_source", "filter_source"
+    aliases = {one_asset: one_alias, many_asset: many_alias}
+    projections = _joined_projections(
+        plan,
+        rules,
+        projection_ids,
+        metric_aliases,
+        dimension_aliases,
+        {one_asset: one_alias},
+    )
+    if projections is None:
+        return None
+    correlations = _edge_predicates(edge, aliases)
+    if not correlations:
+        return None
+    inner = exp.select(exp.Literal.number(1)).from_(
+        exp.to_table(many_asset).as_(many_alias)
+    ).where(
+        *correlations,
+        *(_filter_predicate(item, many_alias) for item in many_filters),
+    )
+    query = exp.select(*projections).from_(
+        exp.to_table(one_asset).as_(one_alias)
+    )
+    root_predicates = _time_and_filter_predicates(
+        plan,
+        {one_asset: one_alias},
+        tuple(item for item in filters if item[0] == one_asset),
+        {one_asset: time_fields[one_asset]},
+        {one_asset: time_types[one_asset]},
+    )
+    query = query.where(*root_predicates, exp.Exists(this=inner))
+    if plan.dimension_fields:
+        query = query.group_by(
+            *(exp.column(item.column, table=one_alias) for item in plan.dimension_fields)
+        )
+    return query
+
+
+def _joined_projections(
+    plan: AnalysisPlan,
+    rules: Mapping[str, Mapping[str, Any]],
+    projection_ids: tuple[str, ...],
+    metric_aliases: Mapping[str, str],
+    dimension_aliases: Mapping[PlannedField, str],
+    aliases: Mapping[str, str],
+    *,
+    preaggregated_asset: str | None = None,
+) -> list[exp.Expression] | None:
+    projections: list[exp.Expression] = [
+        exp.column(item.column, table=aliases[item.asset_fqn]).as_(
+            dimension_aliases[item]
+        )
+        for item in plan.dimension_fields
+        if item.asset_fqn in aliases
+    ]
+    if len(projections) != len(plan.dimension_fields):
+        return None
+    for metric_id in projection_ids:
+        expression = _joined_metric_expression(
+            metric_id,
+            rules,
+            aliases,
+            frozenset(),
+            preaggregated_asset=preaggregated_asset,
+        )
+        if expression is None:
+            return None
+        projections.append(expression.as_(metric_aliases[metric_id]))
+    return projections
+
+
+def _joined_metric_expression(
+    metric_id: str,
+    rules: Mapping[str, Mapping[str, Any]],
+    aliases: Mapping[str, str],
+    visiting: frozenset[str],
+    *,
+    preaggregated_asset: str | None,
+) -> exp.Expression | None:
+    if metric_id in visiting or metric_id not in rules:
+        return None
+    rule = rules[metric_id]
+    source = rule.get("source")
+    if not isinstance(source, Mapping):
+        return None
+    if source.get("kind") == "ratio":
+        numerator = _joined_metric_expression(
+            str(source.get("numerator_metric_id") or ""),
+            rules,
+            aliases,
+            visiting | {metric_id},
+            preaggregated_asset=preaggregated_asset,
+        )
+        denominator = _joined_metric_expression(
+            str(source.get("denominator_metric_id") or ""),
+            rules,
+            aliases,
+            visiting | {metric_id},
+            preaggregated_asset=preaggregated_asset,
+        )
+        if (
+            numerator is None
+            or denominator is None
+            or source.get("zero_policy") != "null_on_zero_denominator"
+        ):
+            return None
+        return exp.Div(
+            this=exp.Cast(this=numerator, to=exp.DataType.build("DOUBLE")),
+            expression=exp.Nullif(
+                this=denominator,
+                expression=exp.Literal.number(0),
+            ),
+        )
+    if source.get("kind") != "column":
+        return None
+    field = _field(source.get("field"))
+    alias = aliases.get(field.asset_fqn)
+    if alias is None:
+        return None
+    if field.asset_fqn == preaggregated_asset:
+        return exp.Sum(this=exp.column(str(rule.get("result_field")), table=alias))
+    return _metric_expression(metric_id, rules, alias, frozenset())
+
+
+def _joined_filter_rules(
+    plan: AnalysisPlan,
+    rules: Mapping[str, Mapping[str, Any]],
+) -> tuple[tuple[str, str, str, str], ...] | None:
+    values = {
+        (item.asset_fqn, item.column, item.operator, item.parameter)
+        for item in plan.filter_fields
+    }
+    for rule in rules.values():
+        if _source_kind(rule) != "column":
+            continue
+        signature = _filter_signature(rule)
+        if signature == (("", "", "", ""),):
+            return None
+        values.update(signature)
+    return tuple(sorted(values))
+
+
+def _time_and_filter_predicates(
+    plan: AnalysisPlan,
+    aliases: Mapping[str, str],
+    filters: tuple[tuple[str, str, str, str], ...],
+    time_fields: Mapping[str, PlannedField],
+    time_types: Mapping[str, str | None],
+) -> list[exp.Expression]:
+    predicates: list[exp.Expression] = []
+    for asset in sorted(aliases):
+        if asset in time_fields and time_types.get(asset):
+            predicates.append(
+                _period_predicate(
+                    time_fields[asset],
+                    aliases[asset],
+                    plan.period_parameters[0],
+                    str(time_types[asset]),
+                )
+            )
+    predicates.extend(
+        _filter_predicate(item, aliases[item[0]])
+        for item in filters
+        if item[0] in aliases
+    )
+    return predicates
+
+
+def _edge_predicates(
+    edge: GovernedJoin,
+    aliases: Mapping[str, str],
+) -> list[exp.Expression]:
+    predicates: list[exp.Expression] = []
+    for left, right in edge.equality_conditions:
+        left_field = _edge_field(left, aliases)
+        right_field = _edge_field(right, aliases)
+        if left_field is None or right_field is None:
+            return []
+        predicates.append(exp.EQ(this=left_field, expression=right_field))
+    if edge.temporal_conditions:
+        return []
+    return predicates
+
+
+def _edge_field(value: str, aliases: Mapping[str, str]) -> exp.Column | None:
+    matches = [asset for asset in aliases if value.startswith(f"{asset}.")]
+    if len(matches) != 1:
+        return None
+    asset = matches[0]
+    column = value.removeprefix(f"{asset}.")
+    if not column or "." in column:
+        return None
+    return exp.column(column, table=aliases[asset])
+
+
+def _many_one_assets(edge: GovernedJoin) -> tuple[str, str] | None:
+    if edge.cardinality == "many_to_one":
+        return str(edge.left), str(edge.right)
+    if edge.cardinality == "one_to_many":
+        return str(edge.right), str(edge.left)
+    return None
+
+
+def _preaggregation_columns(
+    edge: GovernedJoin,
+    asset_fqn: str,
+) -> tuple[str, ...]:
+    result = []
+    for value in (*edge.preaggregation_grain, *edge.preaggregation_keys):
+        prefix = f"{asset_fqn}."
+        if not value.startswith(prefix):
+            continue
+        column = value.removeprefix(prefix)
+        if not column or "." in column:
+            return ()
+        result.append(column)
+    return tuple(dict.fromkeys(result))
+
+
+def _bounded_limit(
+    query: exp.Select,
+    plan: AnalysisPlan,
+    contracts: Mapping[str, Any],
+) -> exp.Select | None:
+    policy = contracts.get("query_policy")
+    max_limit = policy.get("max_limit") if isinstance(policy, Mapping) else None
+    limit = plan.result_limit if plan.result_limit is not None else max_limit
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        return None
+    return query.limit(limit)
 
 
 def _rules_by_id(value: object) -> dict[str, Mapping[str, Any]]:

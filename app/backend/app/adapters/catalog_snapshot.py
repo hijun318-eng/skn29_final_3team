@@ -163,7 +163,18 @@ class CatalogSnapshotLoader:
                 )
             return value
 
-        return tuple(await asyncio.gather(*(one(urn) for urn in urns)))
+        tasks = [asyncio.create_task(one(urn)) for urn in urns]
+        try:
+            return tuple(await asyncio.gather(*tasks))
+        except BaseException:
+            # gather는 첫 오류를 호출자에게 전달한 뒤 아직 실행 중인 sibling을 자동
+            # 취소하지 않는다. token cleanup·client close와 요청이 경쟁하지 않도록 모든
+            # sibling을 취소하고 terminal 상태를 회수한 뒤 원래 오류를 전파한다.
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
 
 def _term_with_rest_status(term, status_record, lifecycle_stages):

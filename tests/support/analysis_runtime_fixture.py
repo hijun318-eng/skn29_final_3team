@@ -32,7 +32,10 @@ class AnalysisRuntimeMetadata:
 
 def default_analysis_runtime_metadata() -> AnalysisRuntimeMetadata:
     fqn = "quasar_lab.semantic.measure_events"
-    urn = "urn:test-fixture:dataset:measure-events"
+    urn = (
+        "urn:li:dataset:(urn:li:dataPlatform:trino,"
+        "quasar_lab.semantic.measure_events,PROD)"
+    )
     metric_id = "reviewed_measure"
     result_field = "reviewed_total"
     metric = {
@@ -153,7 +156,7 @@ class AnalysisRuntimeDataPlatformFake:
         self.executed_sql: list[str] = []
         self.closed = False
 
-    async def search_assets(self, query: str, context: dict[str, Any]) -> list[dict[str, Any]]:
+    async def _candidate_assets(self, query: str, context: dict[str, Any]) -> list[dict[str, Any]]:
         return [deepcopy(asset) for asset in self.metadata.assets]
 
     async def search_asset_candidates(
@@ -163,11 +166,25 @@ class AnalysisRuntimeDataPlatformFake:
     ) -> AssetCandidateSet:
         """주입된 fixture를 immutable receipt가 있는 후보 집합으로 반환한다."""
 
+        assets = await self._candidate_assets(query, context)
+        rank = 1
+        for asset in assets:
+            for metric in asset.get("metrics", ()):
+                if metric.get("visibility", "BUSINESS") == "BUSINESS":
+                    metric["candidate_selectable"] = True
+                    metric["candidate_rank"] = rank
+                    metric["source_authority"] = "DATAHUB_NATIVE_METRIC_V1"
+                    metric["source_urn"] = f"urn:li:metric:{metric['id']}"
+                    rank += 1
         return AssetCandidateSet(
-            assets=tuple(await self.search_assets(query, context)),
+            assets=tuple(assets),
             context_release=str(self.metadata.assets[0]["context_release"]),
             catalog_checksum="1" * 64,
             canonical_checksum="2" * 64,
+            product_release_id="fixture-product-release",
+            runtime_projection_checksum="3" * 64,
+            source_authority="DATAHUB_NATIVE_METRIC_V1",
+            retrieval_mode="lexical",
         )
 
     async def resolve_execution_assets(
@@ -179,12 +196,20 @@ class AnalysisRuntimeDataPlatformFake:
 
         return [deepcopy(asset) for asset in self.metadata.assets]
 
-    async def get_asset_schema(self, urn: str) -> dict[str, Any]:
+    async def get_asset_schema(
+        self,
+        urn: str,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         if urn not in self.metadata.schemas:
             raise ValueError("unknown test fixture asset")
         return deepcopy(self.metadata.schemas[urn])
 
-    async def get_metric_terms(self, metric_ids: tuple[str, ...]) -> dict[str, dict[str, Any]]:
+    async def get_metric_terms(
+        self,
+        metric_ids: tuple[str, ...],
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, dict[str, Any]]:
         return {
             metric_id: deepcopy(self.metadata.metric_terms[metric_id])
             for metric_id in metric_ids

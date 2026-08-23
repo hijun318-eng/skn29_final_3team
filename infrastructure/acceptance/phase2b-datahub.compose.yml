@@ -1,0 +1,35 @@
+# Phase 2B~3 전용 DataHub Core acceptance overlay.
+# 반드시 CLI의 `-p answervice-phase2b-datahub`와 함께 사용한다. project flag가 빠져도
+# port/network/volume이 현재 answervice stack과 겹치지 않도록 이름을 명시한다.
+services:
+  # 동일 Docker VM의 현재 stack을 유지한 채 acceptance를 병행하므로, 소규모
+  # metadata fixture에 충분한 JVM heap을 명시해 Trino Gold query의 memory pressure를
+  # 격리한다. volume·topic·index 내용이나 현재 project resource는 변경하지 않는다.
+  kafka-broker:
+    environment:
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m"
+
+  opensearch:
+    environment:
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+
+  datahub-gms-quickstart:
+    ports: !override
+      - "127.0.0.1:38081:8443"
+      - "127.0.0.1:34319:4319"
+
+  frontend-quickstart:
+    ports: !override
+      - "127.0.0.1:39002:9002"
+
+networks:
+  datahub-network:
+    name: answervice-phase2b-datahub_datahub-network
+
+volumes:
+  datahub-kafka-data:
+    name: answervice-phase2b-datahub_datahub-kafka-data
+  datahub-mysql-data:
+    name: answervice-phase2b-datahub_datahub-mysql-data
+  datahub-opensearch-data:
+    name: answervice-phase2b-datahub_datahub-opensearch-data

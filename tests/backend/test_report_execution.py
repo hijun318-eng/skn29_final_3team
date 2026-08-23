@@ -20,6 +20,7 @@ BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 sys.path.insert(0, str(BACKEND))
 
 from app.auth_principal_store import Principal  # noqa: E402
+from app.authorization import permission_snapshot_id  # noqa: E402
 from app.contracts import AnalysisStatus, Role  # noqa: E402
 from app.services.report.execution import (  # noqa: E402
     AnalysisDefinitionReplay,
@@ -54,6 +55,12 @@ class _RedactedDatabaseUrl(str):
 def async_test(function):
     @wraps(function)
     def run(*args, **kwargs):
+        if sys.platform == "win32":
+            loop = asyncio.SelectorEventLoop()
+            try:
+                return loop.run_until_complete(function(*args, **kwargs))
+            finally:
+                loop.close()
         return asyncio.run(function(*args, **kwargs))
 
     return run
@@ -142,6 +149,9 @@ async def test_analysis_definition_replay_reseals_period_and_persists_new_eviden
             definition_version=3,
             as_of=AS_OF,
             idempotency_key="report:run:block",
+            product_release_id="product-report-v1",
+            permission_snapshot_id=permission_snapshot_id(OWNER, Role.ANALYST),
+            semantic_release_id="semantic-report-v1",
         )
 
     assert outcome.status is BlockRunStatus.SUCCESS
@@ -151,6 +161,8 @@ async def test_analysis_definition_replay_reseals_period_and_persists_new_eviden
     assert repository.parameters == {"property": "walkerhill"}
     assert controller.payload.parameters == {"property": "walkerhill"}
     assert repository.as_of.isoformat() == "2026-08-15"
+    assert repository.context.product_release_id == "product-report-v1"
+    assert repository.context.semantic_release_id == "semantic-report-v1"
     assert repository.finished[0] == repository.request_id
     assert gate.releases == 1
 
@@ -167,6 +179,9 @@ class _ReportRepository:
             "context-current",
             {},
             RunStatus.PARTIAL,
+            product_release_id="product-report-v1",
+            permission_snapshot_id="permission-report-v1",
+            semantic_release_id="semantic-report-v1",
         )
 
     async def claim_manual_run(self, command_id):
@@ -176,6 +191,9 @@ class _ReportRepository:
             "run_id": self.run.run_id,
             "owner_id": OWNER,
             "as_of": AS_OF,
+            "product_release_id": self.run.product_release_id,
+            "permission_snapshot_id": self.run.permission_snapshot_id,
+            "semantic_release_id": self.run.semantic_release_id,
             "blocks": (
                 {
                     "block_id": "block-1",
@@ -234,6 +252,9 @@ async def test_report_execution_replays_every_block_and_isolates_typed_failure()
     assert repository.records[0][2]["query_id"] == "new-query-1"
     assert repository.records[1][2]["failure_code"] is BlockFailureCode.QUERY_SOURCE_FAILED
     assert replay.calls[0]["idempotency_key"].endswith(":block-1")
+    assert replay.calls[0]["product_release_id"] == "product-report-v1"
+    assert replay.calls[0]["permission_snapshot_id"] == "permission-report-v1"
+    assert replay.calls[0]["semantic_release_id"] == "semantic-report-v1"
     assert repository.finished_command == "command-1"
 
 

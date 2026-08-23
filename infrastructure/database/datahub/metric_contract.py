@@ -160,7 +160,7 @@ def _validate_v2_governance(metric: Mapping[str, Any], context: str) -> None:
     edges = unique_texts(
         join["allowed_edge_ids"], f"{context}.governance.join.allowed_edge_ids"
     )
-    if not isinstance(join["required"], bool) or join["required"] != bool(edges):
+    if not isinstance(join["required"], bool) or (join["required"] and not edges):
         raise SemanticMetadataError("metric join requirement and allowed edges disagree")
 
     permission = mapping(
@@ -192,9 +192,12 @@ def _validate_v2_governance(metric: Mapping[str, Any], context: str) -> None:
         time_field = mapping(metric["time_field"], f"{context}.time_field")
         if time["field"] != time_field.get("column"):
             raise SemanticMetadataError("metric time governance differs from its executable field")
+        source_asset = str(metric["source"]["field"]["asset_fqn"])
         executable_dimensions = {
-            str(mapping(item, f"{context}.dimension").get("column"))
+            str(value.get("column"))
             for item in array(metric["dimensions"], f"{context}.dimensions")
+            for value in (mapping(item, f"{context}.dimension"),)
+            if value.get("asset_fqn") == source_asset
         }
         if set(dimensions) != executable_dimensions:
             raise SemanticMetadataError("metric grain dimensions differ from executable dimensions")

@@ -221,7 +221,9 @@ def test_conversation_slot_resolver_routes_and_views():
         as_of=as_of,
     )
     assert turn5_slots.route == "REPORT_ACTION"
-    assert turn5_slots.source_turn_ids == ("turn-1", "turn-2")
+    # Presentation은 기존 Artifact의 표현일 뿐 새 데이터 근거가 아니다.
+    # Report의 source lineage에는 성공한 Analysis Turn만 포함한다.
+    assert turn5_slots.source_turn_ids == ("turn-1",)
 
 
 def test_conversation_slots_preserve_multi_metric_operation_and_followup_inheritance():

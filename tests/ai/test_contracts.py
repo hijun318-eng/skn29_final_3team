@@ -270,6 +270,49 @@ def arbitrary_node2_response(namespace):
 NODE2_REQUEST = arbitrary_node2_request("quartz")
 NODE2_RESPONSE = arbitrary_node2_response("quartz")
 
+NODE1_INTERPRETATION_CONTEXT = {
+    "schema_version": "Node1InterpretationContext.v1",
+    "source_authority": "DATAHUB_NATIVE_METRIC_V1",
+    "release_evidence": {
+        "product_release_id": "test-product-release",
+        "semantic_release_id": "test-semantic-release",
+        "catalog_sha256": "1" * 64,
+        "canonical_sha256": "2" * 64,
+        "runtime_projection_sha256": "3" * 64,
+    },
+    "permission_snapshot_id": "test-permission-receipt",
+    "retrieval_evidence": {
+        "mode": "datahub_lexical",
+        "asset_urns": ["urn:li:dataset:(urn:li:dataPlatform:trino,serving.room_daily,PROD)"],
+        "metric_ranks": [{"metric_id": "room_revenue", "rank": 1}],
+    },
+    "metrics": [
+        {
+            "datahub_urn": "urn:li:metric:room_revenue",
+            "canonical_id": "room_revenue",
+            "canonical_name": "room_revenue",
+            "label": "객실 매출",
+            "definition": "승인된 객실 매출 합계",
+            "synonyms": ["객실 매출"],
+            "unit": "KRW",
+            "aggregation": "sum",
+            "time_semantics": {
+                "mode": "range",
+                "calendar_id": "gregorian-kr",
+                "time_field": "business_date",
+            },
+            "allowed_dimension_ids": [],
+            "allowed_filter_ids": [],
+            "positive_examples": [],
+            "negative_examples": [],
+            "approval_status": "APPROVED",
+            "quality_status": "ACTIVE_RELEASE_VERIFIED",
+            "source_authority": "DATAHUB_NATIVE_METRIC_V1",
+        }
+    ],
+    "dimensions": [],
+}
+
 
 VALID_PAYLOADS = {
     "node1_request": {
@@ -282,6 +325,7 @@ VALID_PAYLOADS = {
         "business_terms": {
             "room_revenue": {"kind": "metric", "aliases": ["객실 매출"]}
         },
+        "interpretation_context": copy.deepcopy(NODE1_INTERPRETATION_CONTEXT),
     },
     "node1_response": {
         "normalized_question": "이번 달 객실 매출을 보여줘",
@@ -363,7 +407,7 @@ VALID_PAYLOADS = {
 
 class ContractTests(unittest.TestCase):
     def test_schema_version_is_explicit(self):
-        self.assertEqual(schema_version(), "MODEL-v1.20.0")
+        self.assertEqual(schema_version(), "MODEL-v1.21.0")
 
     def test_valid_examples(self):
         for definition, payload in VALID_PAYLOADS.items():

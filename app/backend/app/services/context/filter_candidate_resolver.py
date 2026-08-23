@@ -49,25 +49,41 @@ def validated_pre_filters(
     dimension_terms: dict[str, dict[str, object]],
     allowed_dimensions: set[str],
 ) -> list[dict[str, str]]:
-    """이전 대화 턴에서 상속된 필터 목록이 이번 요청의 승인된 차원 자산/컬럼 범위 내에 여전히 유효한지 재검증합니다."""
+    """상속 필터 전체를 현재 승인 차원에 재결속하며 부분 성공을 허용하지 않는다."""
+
     dim_field_keys = {
         (str(term.get("field", {}).get("asset_fqn")), str(term.get("field", {}).get("column")))
         for identifier, term in dimension_terms.items()
         if identifier in allowed_dimensions
     }
-    return [
-        {
-            "asset_fqn": str(item.get("asset_fqn", "")),
-            "column": str(item.get("column", "")),
-            "operator": str(item.get("operator", "")),
-            "value_text": str(item.get("value_text", "")),
-        }
-        for item in user_filters
-        if isinstance(item, dict)
-        and (str(item.get("asset_fqn", "")), str(item.get("column", ""))) in dim_field_keys
-        and str(item.get("operator", "")) in _ALLOWED_OPERATORS
-        and str(item.get("value_text", ""))
-    ]
+    required = {"asset_fqn", "column", "operator", "value_text"}
+    resolved: list[dict[str, str]] = []
+    signatures: set[tuple[str, str, str]] = set()
+    for item in user_filters:
+        if not isinstance(item, dict) or set(item) != required:
+            raise ValueError("상속 필터는 승인된 typed predicate 형식이어야 합니다.")
+        asset_fqn = str(item["asset_fqn"]).strip()
+        column = str(item["column"]).strip()
+        operator = str(item["operator"]).strip()
+        value_text = str(item["value_text"]).strip()
+        signature = (asset_fqn, column, operator)
+        if (
+            (asset_fqn, column) not in dim_field_keys
+            or operator not in _ALLOWED_OPERATORS
+            or not value_text
+            or signature in signatures
+        ):
+            raise ValueError("상속 필터가 현재 승인 차원 predicate와 일치하지 않습니다.")
+        signatures.add(signature)
+        resolved.append(
+            {
+                "asset_fqn": asset_fqn,
+                "column": column,
+                "operator": operator,
+                "value_text": value_text,
+            }
+        )
+    return resolved
 
 
 def resolve_filter_candidates(

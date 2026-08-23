@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from app.adapters.datahub_catalog import DataHubCatalogClient
 from app.adapters.query_execution import QueryExecutionService
 from app.adapters.query_governance import QueryGovernanceEngine
+from app.adapters.runtime_catalog_repository import (
+    PostgresRuntimeCatalogProjectionRepository,
+)
 from app.adapters.trino_async import TrinoAsyncClient
 from app.adapters.trino_schema import TrinoSchemaInspector
 from app.ports.data_platform import AssetCandidateSet, ExecutionAssetSelection
@@ -37,6 +40,7 @@ class GovernedDataPlatformAdapter:
         trino_client: TrinoAsyncClient | None = None,
         governance: QueryGovernanceEngine | None = None,
         execution: QueryExecutionService | None = None,
+        projection_repository: PostgresRuntimeCatalogProjectionRepository | None = None,
     ) -> None:
         if datahub_client is None and any(
             value is not None
@@ -57,9 +61,11 @@ class GovernedDataPlatformAdapter:
             TrinoSchemaInspector(self._trino),
             expected_context_release=expected_context_release,
             max_candidate_metrics=max_candidate_metrics,
-            search_mode=search_mode or os.getenv("DATAHUB_SEARCH_MODE", "lexical"),
+            search_mode=search_mode
+            or os.getenv("DATAHUB_SEARCH_MODE", "datahub_lexical"),
             # QueryGovernanceEngine 하나가 환경 기본값을 소유해야 adapter별 TTL drift가 없다.
             catalog_ttl_seconds=catalog_ttl_seconds,
+            projection_repository=projection_repository,
         )
         self._execution = execution or QueryExecutionService(
             self._trino,
@@ -79,14 +85,6 @@ class GovernedDataPlatformAdapter:
                 else int(os.getenv("TRINO_QUERY_STATE_MAX_ENTRIES", "200"))
             ),
         )
-
-    async def search_assets(
-        self,
-        query: str,
-        context: dict[str, Any],
-    ) -> list[dict[str, Any]]:
-        """자연어와 인증 context를 live governance에 연결해 권한·schema가 검증된 runtime asset만 반환한다."""
-        return await self._governance.search_assets(query, context)
 
     async def search_asset_candidates(
         self,
@@ -109,13 +107,18 @@ class GovernedDataPlatformAdapter:
     async def get_metric_terms(
         self,
         metric_ids: tuple[str, ...],
+        context: dict[str, Any] | None = None,
     ) -> dict[str, dict[str, Any]]:
         """요청 metric id를 active release의 승인 Glossary Term 정의로 해석하며 누락·충돌은 실패로 전파한다."""
-        return await self._governance.get_metric_terms(metric_ids)
+        return await self._governance.get_metric_terms(metric_ids, context)
 
-    async def get_asset_schema(self, urn: str) -> dict[str, Any]:
+    async def get_asset_schema(
+        self,
+        urn: str,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """DataHub URN에 대응하고 현재 Trino와 일치하는 column schema만 서비스 계층에 제공한다."""
-        return await self._governance.get_asset_schema(urn)
+        return await self._governance.get_asset_schema(urn, context)
 
     async def get_active_context_release(self) -> str:
         """완전한 manifest 검증을 통과한 단일 active catalog release 식별자를 반환한다."""
@@ -126,6 +129,24 @@ class GovernedDataPlatformAdapter:
 
         return await self._governance.catalog_readiness()
 
+    async def get_product_release_readiness(
+        self,
+        product_release_id: str,
+    ) -> tuple[dict[str, str], str | None, str | None]:
+        """active pointer와 무관하게 고정 product release의 실행 가능성을 검증한다."""
+
+        stages, receipt = await self._governance.catalog_readiness(
+            product_release_id
+        )
+        if receipt != product_release_id or any(
+            value != "ready" for value in stages.values()
+        ):
+            return stages, receipt, None
+        semantic_release = await self._governance.active_context_release(
+            product_release_id
+        )
+        return stages, receipt, semantic_release
+
     async def execute_query(
         self,
         sql: str,
@@ -135,6 +156,16 @@ class GovernedDataPlatformAdapter:
         """G2 capability가 exact SQL에 결속된 query만 Trino로 실행하고 bounded evidence 결과를 반환한다."""
         return await self._execution.execute(sql, parameters, gate_token)
 
+    async def execute_auxiliary_query(
+        self,
+        sql: str,
+        parameters: dict[str, Any],
+        gate_token: str,
+    ) -> dict[str, Any]:
+        """필터 값 검증 query를 본 분석의 durable lifecycle attempt와 분리한다."""
+
+        return await self._execution.execute_auxiliary(sql, parameters, gate_token)
+
     async def get_query_status(self, query_id: str) -> dict[str, Any]:
         """TTL 내에 보존된 terminal query 상태를 조회하며 만료·미확인 id는 ``NOT_FOUND``로 명시한다."""
         return await self._execution.get_status(query_id)
@@ -143,9 +174,26 @@ class GovernedDataPlatformAdapter:
         """진행 중인 Trino next URI를 취소하고 local 상태도 ``CANCELLED`` terminal 결과로 정리한다."""
         return await self._execution.cancel(query_id)
 
+    async def cancel_query_at(
+        self,
+        query_id: str,
+        cancel_uri: str,
+    ) -> dict[str, Any]:
+        """process 재시작과 무관하게 DB에 남은 exact coordinator URI로 query를 취소한다."""
+
+        return await self._execution.cancel_at(query_id, cancel_uri)
+
     def bind_cancellation(self, check: Callable[[], bool] | None) -> None:
         """현재 async context 전용 취소 predicate를 실행 서비스에 연결해 다른 요청과 상태가 섞이지 않게 한다."""
         self._execution.bind_cancellation(check)
+
+    def bind_query_lifecycle(
+        self,
+        sink: Callable[[dict[str, Any]], Awaitable[None]] | None,
+    ) -> None:
+        """현재 async request의 durable query lifecycle callback을 실행 서비스에 결속한다."""
+
+        self._execution.bind_lifecycle_sink(sink)
 
     async def get_source_health(self) -> list[dict[str, Any]]:
         """DataHub와 Trino probe를 병렬 수행해 각 source의 ``HEALTHY``/``UNHEALTHY`` 상태를 독립적으로 반환한다."""
@@ -157,6 +205,7 @@ class GovernedDataPlatformAdapter:
 
     async def aclose(self) -> None:
         """adapter가 조합한 DataHub·Trino client의 비동기 resource를 모두 정리한다."""
+        await self._governance.aclose()
         await self._datahub.aclose()
         await self._trino.aclose()
 

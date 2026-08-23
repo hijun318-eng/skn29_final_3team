@@ -1,0 +1,113 @@
+# Phase 10 same-release Backend/Frontend candidate overlay.
+# Invoke only with `docker compose -p answervice-phase2b-datahub` after the
+# isolated database, release manifest, and ephemeral DataHub read token exist.
+services:
+  phase10-app-migrations:
+    image: answervice-phase10-backend:candidate
+    build:
+      context: ../..
+      dockerfile: app/backend/Dockerfile
+      labels:
+        io.answervice.component: phase10-backend
+        io.answervice.source.commit-sha: ${PHASE10_SOURCE_COMMIT_SHA:?PHASE10_SOURCE_COMMIT_SHA is required}
+        io.answervice.source.dirty: ${PHASE10_SOURCE_DIRTY:?PHASE10_SOURCE_DIRTY is required}
+        io.answervice.source.patch-sha256: ${PHASE10_SOURCE_PATCH_SHA256:?PHASE10_SOURCE_PATCH_SHA256 is required}
+    entrypoint: ["alembic"]
+    command: ["upgrade", "head"]
+    environment:
+      APP_DATABASE_URL: postgresql+psycopg://phase10_migrator@phase4-app-db:5432/phase10_p0_same_release_acceptance
+      APP_DB_USER: phase10_runtime
+      TZ: Asia/Seoul
+    networks:
+      - datahub-network
+    restart: "no"
+    mem_limit: 512m
+    labels:
+      io.answervice.scope: phase10-same-release-candidate
+      io.answervice.owner: codex-isolated-acceptance
+
+  phase10-backend:
+    image: answervice-phase10-backend:candidate
+    container_name: answervice-phase2b-datahub-phase10-backend
+    environment:
+      APP_RUNTIME_DATABASE_URL: postgresql+psycopg://phase10_runtime@phase4-app-db:5432/phase10_p0_same_release_acceptance
+      APP_DB_USER: phase10_runtime
+      APP_DB_HOST: phase4-app-db
+      APP_DB_PORT: "5432"
+      TRINO_URL: https://trino:18443
+      TRINO_RUNTIME_USER: ${TRINO_RUNTIME_USER:?TRINO_RUNTIME_USER is required}
+      TRINO_RUNTIME_PASSWORD: ${TRINO_RUNTIME_PASSWORD:?TRINO_RUNTIME_PASSWORD is required}
+      TRINO_TLS_CA_FILE: /run/secrets/trino-ca.pem
+      DATAHUB_GMS_URL: https://datahub-gms:8443
+      DATAHUB_READ_API_TOKEN: ${PHASE10_DATAHUB_READ_API_TOKEN:?PHASE10_DATAHUB_READ_API_TOKEN is required}
+      DATAHUB_READ_ACTOR_URN: ${PHASE10_DATAHUB_READ_ACTOR_URN:?PHASE10_DATAHUB_READ_ACTOR_URN is required}
+      DATAHUB_TLS_CA_FILE: /run/secrets/datahub-ca.pem
+      DATAHUB_SEARCH_MODE: datahub_lexical
+      DATAHUB_CATALOG_TTL_SECONDS: "60"
+      RELEASE_READINESS_CACHE_TTL_SECONDS: "60"
+      RELEASE_READINESS_TIMEOUT_SECONDS: "60"
+      OPENAI_ENDPOINT: ${OPENAI_ENDPOINT:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      NODE2_MODEL_PROVIDER: ${NODE2_MODEL_PROVIDER:-}
+      NODE2_MODEL_ENDPOINT: ${NODE2_MODEL_ENDPOINT:-}
+      NODE2_MODEL_API_TOKEN: ${NODE2_MODEL_API_TOKEN:-}
+      NODE2_MODEL: ${NODE2_MODEL:-}
+      MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-60}
+      REPORT_SCHEDULER_ENABLED: "0"
+      READINESS_PROBE_TIMEOUT_SECONDS: "3"
+      AUTH_PRINCIPALS_FILE: /run/secrets/answervice_auth_principals.json
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?AUTH_SESSION_SECRET is required}
+      AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-86400}
+      CORS_ALLOW_ORIGINS: http://127.0.0.1:43000
+      TZ: Asia/Seoul
+      SKIP_MIGRATIONS: "1"
+    volumes:
+      - ${AUTH_PRINCIPALS_HOST_FILE:?AUTH_PRINCIPALS_HOST_FILE is required}:/run/secrets/answervice_auth_principals.json:ro
+      - ${TRINO_TLS_CA_HOST_FILE:?TRINO_TLS_CA_HOST_FILE is required}:/run/secrets/trino-ca.pem:ro
+      - ${DATAHUB_TLS_CA_HOST_FILE:?DATAHUB_TLS_CA_HOST_FILE is required}:/run/secrets/datahub-ca.pem:ro
+    ports:
+      - "127.0.0.1:48000:8000"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+      - trino:host-gateway
+    networks:
+      datahub-network:
+        aliases:
+          - backend
+    restart: "no"
+    mem_limit: 768m
+    labels:
+      io.answervice.scope: phase10-same-release-candidate
+      io.answervice.owner: codex-isolated-acceptance
+
+  phase10-frontend:
+    image: answervice-phase10-frontend:candidate
+    container_name: answervice-phase2b-datahub-phase10-frontend
+    build:
+      context: ../../app/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_BASE_URL: /api
+      labels:
+        io.answervice.component: phase10-frontend
+        io.answervice.source.commit-sha: ${PHASE10_SOURCE_COMMIT_SHA:?PHASE10_SOURCE_COMMIT_SHA is required}
+        io.answervice.source.dirty: ${PHASE10_SOURCE_DIRTY:?PHASE10_SOURCE_DIRTY is required}
+        io.answervice.source.patch-sha256: ${PHASE10_SOURCE_PATCH_SHA256:?PHASE10_SOURCE_PATCH_SHA256 is required}
+    depends_on:
+      phase10-backend:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:43000:8080"
+    networks:
+      - datahub-network
+    restart: "no"
+    mem_limit: 128m
+    labels:
+      io.answervice.scope: phase10-same-release-candidate
+      io.answervice.owner: codex-isolated-acceptance
+
+networks:
+  datahub-network:
+    external: true
+    name: answervice-phase2b-datahub_datahub-network

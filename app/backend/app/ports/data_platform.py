@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 
 
 class NoEntitledAssetsError(LookupError):
@@ -68,6 +68,10 @@ class AssetCandidateSet:
     context_release: str
     catalog_checksum: str
     canonical_checksum: str
+    product_release_id: str | None = None
+    runtime_projection_checksum: str | None = None
+    source_authority: str | None = None
+    retrieval_mode: str | None = None
 
     def __post_init__(self) -> None:
         """빈 후보나 불완전 release identity를 요청 경계에서 즉시 거부한다."""
@@ -82,6 +86,30 @@ class AssetCandidateSet:
             raise ValueError("asset candidate set and context release must be non-empty")
         _checksum(self.catalog_checksum, "catalog checksum")
         _checksum(self.canonical_checksum, "canonical checksum")
+        if (self.product_release_id is None) != (
+            self.runtime_projection_checksum is None
+        ):
+            raise ValueError("product release and runtime projection receipts must be paired")
+        if self.product_release_id is not None:
+            if not self.product_release_id.strip() or len(self.product_release_id) > 160:
+                raise ValueError("product release receipt is invalid")
+            _checksum(
+                self.runtime_projection_checksum,
+                "runtime projection checksum",
+            )
+            if (
+                not isinstance(self.source_authority, str)
+                or not self.source_authority.strip()
+                or not isinstance(self.retrieval_mode, str)
+                or not self.retrieval_mode.strip()
+            ):
+                raise ValueError("candidate source authority and retrieval mode are required")
+        elif self.source_authority is not None or self.retrieval_mode is not None:
+            if not all(
+                isinstance(item, str) and item.strip()
+                for item in (self.source_authority, self.retrieval_mode)
+            ):
+                raise ValueError("candidate source authority or retrieval mode is invalid")
 
 
 @dataclass(frozen=True)
@@ -94,6 +122,8 @@ class ExecutionAssetSelection:
     receipt_context_release: str
     receipt_catalog_checksum: str
     receipt_canonical_checksum: str
+    receipt_product_release_id: str | None = None
+    receipt_runtime_projection_checksum: str | None = None
 
     def __post_init__(self) -> None:
         """출력·계산 Metric과 release receipt의 최소 불변식을 검증한다."""
@@ -116,6 +146,20 @@ class ExecutionAssetSelection:
             raise ValueError("execution asset selection is incomplete or non-canonical")
         _checksum(self.receipt_catalog_checksum, "receipt catalog checksum")
         _checksum(self.receipt_canonical_checksum, "receipt canonical checksum")
+        if (self.receipt_product_release_id is None) != (
+            self.receipt_runtime_projection_checksum is None
+        ):
+            raise ValueError("product release and runtime projection receipts must be paired")
+        if self.receipt_product_release_id is not None:
+            if (
+                not self.receipt_product_release_id.strip()
+                or len(self.receipt_product_release_id) > 160
+            ):
+                raise ValueError("product release receipt is invalid")
+            _checksum(
+                self.receipt_runtime_projection_checksum,
+                "receipt runtime projection checksum",
+            )
 
 
 class DataPlatformAdapter(Protocol):
@@ -125,14 +169,6 @@ class DataPlatformAdapter(Protocol):
     서비스 계층이 source DB 연결 정보나 외부 client 세부사항에 의존하지 않게
     만드는 신뢰 경계이며, 실패를 빈 결과로 바꾸지 않는다.
     """
-
-    async def search_assets(
-        self,
-        query: str,
-        context: dict[str, Any],
-    ) -> list[dict[str, Any]]:
-        """자연어와 인증 context로 승인 asset을 찾아 권한·schema 검증된 runtime 계약을 반환한다."""
-        ...
 
     async def search_asset_candidates(
         self,
@@ -151,12 +187,18 @@ class DataPlatformAdapter(Protocol):
         ...
 
     async def get_metric_terms(
-        self, metric_ids: tuple[str, ...]
+        self,
+        metric_ids: tuple[str, ...],
+        context: dict[str, Any] | None = None,
     ) -> dict[str, dict[str, Any]]:
         """고유한 metric id들을 active DataHub release의 승인 용어 정의로 해석한다."""
         ...
 
-    async def get_asset_schema(self, urn: str) -> dict[str, Any]:
+    async def get_asset_schema(
+        self,
+        urn: str,
+        context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """URN asset의 governed column과 live Trino가 일치할 때만 schema payload를 반환한다."""
         ...
 
@@ -168,10 +210,23 @@ class DataPlatformAdapter(Protocol):
         """semantic release·manifest·Trino schema 상태와 검증 receipt를 반환한다."""
         ...
 
+    async def get_product_release_readiness(
+        self,
+        product_release_id: str,
+    ) -> tuple[dict[str, str], str | None, str | None]:
+        """고정 product release의 readiness receipt와 semantic release를 반환한다."""
+        ...
+
     async def execute_query(
         self, sql: str, parameters: dict[str, Any], gate_token: str
     ) -> dict[str, Any]:
         """parameter binding이 끝나고 capability로 승인된 exact SQL을 실행해 typed evidence를 반환한다."""
+        ...
+
+    async def execute_auxiliary_query(
+        self, sql: str, parameters: dict[str, Any], gate_token: str
+    ) -> dict[str, Any]:
+        """동일 실행 가드를 쓰되 본 분석 lifecycle attempt와 분리된 Context query를 실행한다."""
         ...
 
     async def get_query_status(self, query_id: str) -> dict[str, Any]:
@@ -180,6 +235,21 @@ class DataPlatformAdapter(Protocol):
 
     async def cancel_query(self, query_id: str) -> dict[str, Any]:
         """진행 중인 query를 coordinator와 local state에서 취소하고 terminal 결과를 반환한다."""
+        ...
+
+    async def cancel_query_at(
+        self,
+        query_id: str,
+        cancel_uri: str,
+    ) -> dict[str, Any]:
+        """durable same-query coordinator URI로 재시작 뒤 orphan query를 취소한다."""
+        ...
+
+    def bind_query_lifecycle(
+        self,
+        sink: Callable[[dict[str, Any]], Awaitable[None]] | None,
+    ) -> None:
+        """현재 request의 query submission·heartbeat·terminal evidence sink를 결속한다."""
         ...
 
     async def get_source_health(self) -> list[dict[str, Any]]:

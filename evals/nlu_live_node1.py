@@ -54,6 +54,66 @@ BUSINESS_TERMS = {
     "fnb_revenue": {"kind": "metric", "aliases": ["식음 매출", "F&B 매출"]},
     "hotel_code": {"kind": "dimension", "aliases": ["호텔", "지점"]},
 }
+INTERPRETATION_CONTEXT = {
+    "schema_version": "Node1InterpretationContext.v1",
+    "source_authority": "DATAHUB_NATIVE_METRIC_V1",
+    "release_evidence": {
+        "product_release_id": "node1-live-eval-product-release",
+        "semantic_release_id": "node1-live-eval-semantic-release",
+        "catalog_sha256": "1" * 64,
+        "canonical_sha256": "2" * 64,
+        "runtime_projection_sha256": "3" * 64,
+    },
+    "permission_snapshot_id": "node1-live-eval-permission",
+    "retrieval_evidence": {
+        "mode": "datahub_lexical",
+        "asset_urns": [
+            "urn:li:dataset:(urn:li:dataPlatform:trino,serving.room_daily,PROD)"
+        ],
+        "metric_ranks": [
+            {"metric_id": "room_revenue", "rank": 1},
+            {"metric_id": "fnb_revenue", "rank": 2},
+        ],
+    },
+    "metrics": [
+        {
+            "datahub_urn": f"urn:li:metric:{metric_id}",
+            "canonical_id": metric_id,
+            "canonical_name": metric_id,
+            "label": aliases[0],
+            "definition": f"승인된 {aliases[0]} 합계",
+            "synonyms": aliases,
+            "unit": "KRW",
+            "aggregation": "sum",
+            "time_semantics": {
+                "mode": "range",
+                "calendar_id": "gregorian",
+                "time_field": "business_date",
+            },
+            "allowed_dimension_ids": ["hotel_code"],
+            "allowed_filter_ids": ["hotel_code"],
+            "positive_examples": [],
+            "negative_examples": [],
+            "approval_status": "APPROVED",
+            "quality_status": "ACTIVE_RELEASE_VERIFIED",
+            "source_authority": "DATAHUB_NATIVE_METRIC_V1",
+        }
+        for metric_id, aliases in (
+            ("room_revenue", ["객실 매출", "객실 수익"]),
+            ("fnb_revenue", ["식음 매출", "F&B 매출"]),
+        )
+    ],
+    "dimensions": [
+        {
+            "canonical_id": "hotel_code",
+            "label": "호텔",
+            "synonyms": ["호텔", "지점"],
+            "asset_urn": "urn:li:dataset:(urn:li:dataPlatform:trino,serving.room_daily,PROD)",
+            "column": "hotel_code",
+            "filter_allowed": True,
+        }
+    ],
+}
 
 
 @dataclass(frozen=True)
@@ -84,7 +144,9 @@ CASES: tuple[LiveCase, ...] = (
     LiveCase("결재 올릴 수 있게 정리해줘", "REPORT_ACTION", True),
     LiveCase("그 전 달은?", "ANALYSIS", True, anchored=True, operation="breakdown"),
     LiveCase("호텔별로도 나눠서 보여줘", "ANALYSIS", True, operation="breakdown"),
-    LiveCase("취소 사유를 분석해줘", "ANALYSIS", False, operation="aggregate"),
+    # 승인된 측정값 없이 원인 범주만 요청한다. Node1은 임의 Metric이나 aggregate를
+    # 만들지 않고 ANALYSIS route만 후보로 남겨 서버의 typed clarification에 맡긴다.
+    LiveCase("취소 사유를 분석해줘", "ANALYSIS", False),
     # 아래 발화는 호텔·객실이라는 특정 도메인 값이 없어도 이전 breakdown을 보존하거나
     # aggregate로 교체하는지를 검증한다. 운영 분기가 아니라 유료 live quality gate다.
     LiveCase("9월은?", "ANALYSIS", True, operation="breakdown"),
@@ -134,6 +196,7 @@ def build_request(case: LiveCase) -> dict[str, object]:
         "calendar_id": "gregorian",
         "allowed_routes": ["general", "template"],
         "business_terms": BUSINESS_TERMS,
+        "interpretation_context": INTERPRETATION_CONTEXT,
         "previous_period": dict(PREVIOUS_PERIOD),
         "previous_result_shape": dict(PREVIOUS_RESULT_SHAPE),
     }

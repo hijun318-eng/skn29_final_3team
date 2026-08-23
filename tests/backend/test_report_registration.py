@@ -24,6 +24,7 @@ BACKEND = ROOT / "app" / "backend"
 path.insert(0, str(BACKEND))
 
 from app.api import report_router as report_api  # noqa: E402
+from app.authorization import permission_snapshot_id  # noqa: E402
 from app.contracts import RequestContext, Role  # noqa: E402
 from app.main import app  # noqa: E402
 from app.report_contracts import (  # noqa: E402
@@ -335,6 +336,11 @@ class ReportRegistrationTest(unittest.IsolatedAsyncioTestCase):
                     "postgresql://report-db",
                     context(role).user_id,
                     manage_all=manage_all,
+                    product_release_id=None,
+                    permission_snapshot_id=permission_snapshot_id(
+                        context(role).user_id, role
+                    ),
+                    semantic_release_id=None,
                 )
 
     async def test_report_v11_routes_replace_draft_and_keep_result_ingestion_internal(self):

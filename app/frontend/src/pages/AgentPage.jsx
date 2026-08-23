@@ -151,6 +151,7 @@ export function AgentPage({ onNavigate }) {
     setSelectedEvidenceRun(null);
     setMessage("");
     const traceId = createUuid();
+    const commandIdempotencyKey = createUuid();
     activeTraceId.current = traceId;
 
     const optimisticTurn = {
@@ -170,30 +171,27 @@ export function AgentPage({ onNavigate }) {
       let cmdResponse;
       try {
         cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
-          user_message: normalized,
-          expected_head_turn_id: headTurnId && !headTurnId.startsWith("temp-") ? headTurnId : undefined,
           ...(action || {}),
+          user_message: normalized,
+          expected_head_turn_id: headTurnId && !headTurnId.startsWith("temp-") ? headTurnId : null,
+          idempotency_key: commandIdempotencyKey,
         });
       } catch (cmdErr) {
         if (cmdErr instanceof AnalysisApiError && cmdErr.status === 409) {
-          // 409 CAS Conflict: 대화방을 리셋하지 않고 서버의 최신 턴 목록을 다시 불러와 동기화 후 재시도
-          try {
-            const serverTurns = await analysisClient.getConversationTurns(activeConvId);
-            const latestServerTurn = serverTurns.at(-1);
-            const newHeadId = latestServerTurn?.turn_id;
-            cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
-              user_message: normalized,
-              expected_head_turn_id: newHeadId,
-              ...(action || {}),
-            });
-          } catch (retryErr) {
-            throw retryErr;
-          }
+          // stale head는 서버 이력으로 복원만 한다. 새 head에 같은 명령을 자동
+          // 재제출하면 사용자가 보지 못한 Turn 뒤에서 의도가 달라질 수 있다.
+          const serverTurns = await analysisClient.getConversationTurns(activeConvId);
+          setTurns(hydrateTurnsFromServer(serverTurns));
+          setQuestion(normalized);
+          window.sessionStorage.setItem(QUESTION_DRAFT_KEY, normalized);
+          throw cmdErr;
         } else if (cmdErr instanceof AnalysisApiError && cmdErr.status === 404) {
           activeConvId = await initConversation();
           cmdResponse = await analysisClient.submitTurnCommand(activeConvId, {
-            user_message: normalized,
             ...(action || {}),
+            user_message: normalized,
+            expected_head_turn_id: null,
+            idempotency_key: commandIdempotencyKey,
           });
         } else {
           throw cmdErr;
@@ -209,7 +207,7 @@ export function AgentPage({ onNavigate }) {
       let finalRun;
       if (analysisRaw && analysisRaw.data) {
         finalRun = normalizeApiResponse(analysisRaw, normalized);
-      } else if (data?.status === "FAILED") {
+      } else if (["BLOCKED", "FAILED", "PARTIAL", "CANCELLED"].includes(data?.status)) {
         finalRun = commandErrorRun(normalized, data);
       } else if (data?.status === "CLARIFICATION_REQUIRED" || serverTurn?.resolved_slots?.ambiguity_status === "NEEDS_CLARIFICATION") {
         const options = data?.disambiguation_options || serverTurn?.resolved_slots?.disambiguation_options || [];
@@ -301,6 +299,41 @@ export function AgentPage({ onNavigate }) {
     finally { setSavedBusy(false); }
   };
 
+  const replaySavedDefinition = async (definition) => {
+    if (requestInFlight.current || savedBusy) return;
+    requestInFlight.current = true;
+    setSavedBusy(true);
+    setSubmitting(true);
+    setEvidenceOpen(false);
+    setSelectedEvidenceRun(null);
+    setMessage("저장 분석을 현재 권한과 릴리스에서 다시 실행하고 있습니다.");
+    try {
+      const receipt = await analysisClient.replayDefinition(definition.definition_id, {});
+      if (!["SUCCEEDED", "PARTIAL"].includes(receipt.status)) {
+        throw new Error("저장 분석 재실행이 완료 상태가 아닙니다.");
+      }
+      const run = await analysisClient.getRunArtifact(receipt.request_id);
+      setConversationId("");
+      window.sessionStorage.removeItem(CONVERSATION_KEY);
+      setTurns([{
+        turnId: `saved-${receipt.request_id}`,
+        question: definition.question,
+        run: { ...run, question: definition.question },
+        resolvedSlots: null,
+        viewType: "SUMMARY",
+      }]);
+      setMessage("저장 분석을 새 실행으로 완료했습니다.");
+      await refreshSaved();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "저장 분석을 다시 실행하지 못했습니다.");
+    } finally {
+      requestInFlight.current = false;
+      setSavedBusy(false);
+      setSubmitting(false);
+      window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+    }
+  };
+
   const createReportDraft = async () => {
     const artId = reportModalRun?.artifact?.artifactId || reportModalRun?.artifact?.artifact_id;
     if (!artId) return;
@@ -333,7 +366,7 @@ export function AgentPage({ onNavigate }) {
         </label>
         {visibleDefinitions.length === 0 && <small className="chat-history-empty">아직 저장된 분석이 없습니다.</small>}
         {visibleDefinitions.map((d) => (
-          <button disabled={savedBusy} title={d.question} onClick={() => void analyzeQuestion(d.question)} key={d.definition_id}>
+          <button disabled={savedBusy} title={d.question} onClick={() => void replaySavedDefinition(d)} key={d.definition_id}>
             <MessageSquareText size={15} /><span>{d.title}<small>다시 분석하기</small></span>
           </button>
         ))}
@@ -469,7 +502,7 @@ export function AgentPage({ onNavigate }) {
                         : "시간 기준 없음"}</small>
                   </span>
                   {item.artifact_id && (
-                    <button type="button" disabled={savedBusy} onClick={() => void analyzeQuestion(item.question)}>
+                    <button type="button" disabled={savedBusy} onClick={() => void replaySavedDefinition(item)}>
                       다시 실행
                     </button>
                   )}

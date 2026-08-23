@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:compose": "vite --mode compose",
     "build": "vite build",
     "test": "node ../../tests/frontend/run.mjs",
     "test:contracts": "node ../../tests/frontend/contracts.test.mjs",

@@ -23,7 +23,15 @@ from app.services.context.fanout_policy import (
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
 
 
-ANALYSIS_PLAN_VERSION = "ANSWERVICE-ANALYSIS-PLAN-v3"
+ANALYSIS_PLAN_VERSION = "ANSWERVICE-ANALYSIS-PLAN-v4"
+ANALYSIS_TIME_BUCKETS = frozenset({"day", "week", "month", "quarter", "year"})
+_SAFE_TIME_ROLLUPS = {
+    "day": ANALYSIS_TIME_BUCKETS,
+    "week": frozenset({"week"}),
+    "month": frozenset({"month", "quarter", "year"}),
+    "quarter": frozenset({"quarter", "year"}),
+    "year": frozenset({"year"}),
+}
 MAX_ANALYSIS_METRICS = 4
 
 
@@ -501,12 +509,18 @@ def validate_analysis_plan_payload(value: object, package: object) -> AnalysisPl
         if isinstance(item, Mapping) and "field" in item
     }
     time_buckets = {declared_buckets.get(item) for item in time_fields}
-    expected_bucket = (
-        next(iter(time_buckets))
-        if operation is AnalysisOperation.TIME_TREND and len(time_buckets) == 1
-        else "none"
+    planned_bucket = str(value["time_bucket"])
+    bucket_valid = (
+        operation is AnalysisOperation.TIME_TREND
+        and len(time_buckets) == 1
+        and next(iter(time_buckets), None) in _SAFE_TIME_ROLLUPS
+        and planned_bucket
+        in _SAFE_TIME_ROLLUPS[str(next(iter(time_buckets)))]
+    ) or (
+        operation is not AnalysisOperation.TIME_TREND
+        and planned_bucket == "none"
     )
-    if None in time_buckets or str(value["time_bucket"]) != expected_bucket:
+    if None in time_buckets or not bucket_valid:
         raise _error(
             AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
             "AnalysisPlan time bucket이 현재 Runtime Context와 일치하지 않습니다.",
@@ -1239,7 +1253,27 @@ def _time_contract(
             AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
             "추이 지표들의 승인 time bucket이 서로 달라 하나의 계획으로 합칠 수 없습니다.",
         )
-    bucket = next(iter(buckets)) if operation is AnalysisOperation.TIME_TREND else "none"
+    requested_bucket = request.get("analysis_time_bucket")
+    if operation is AnalysisOperation.TIME_TREND:
+        source_bucket = next(iter(buckets))
+        if (
+            not isinstance(requested_bucket, str)
+            or requested_bucket not in ANALYSIS_TIME_BUCKETS
+            or source_bucket not in _SAFE_TIME_ROLLUPS
+            or requested_bucket not in _SAFE_TIME_ROLLUPS[source_bucket]
+        ):
+            raise _error(
+                AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
+                "요청한 시간 grain은 source time bucket에서 안전하게 roll-up할 수 없습니다.",
+            )
+        bucket = requested_bucket
+    else:
+        if requested_bucket not in {None, "none"}:
+            raise _error(
+                AnalysisPlanErrorCode.TIME_MODE_NOT_GOVERNED,
+                "시간 추이 이외 연산은 analysis time bucket을 지정할 수 없습니다.",
+            )
+        bucket = "none"
     bound_names = {
         str(item.name) for item in tuple(getattr(package, "parameter_bindings", ()))
     }

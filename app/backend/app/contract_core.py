@@ -183,6 +183,7 @@ class ResolvedSlots(ContractModel):
     comparison_period_start: str | None = None
     comparison_period_end_exclusive: str | None = None
     analysis_operation: str | None = None
+    analysis_time_bucket: str | None = None
     result_limit: int | None = None
 
     @model_validator(mode="after")
@@ -208,6 +209,15 @@ class ResolvedSlots(ContractModel):
         }
         if self.analysis_operation is not None and self.analysis_operation not in operations:
             raise ValueError("analysis_operation이 지원 계약 범위를 벗어났습니다.")
+        time_buckets = {"day", "week", "month", "quarter", "year"}
+        if self.analysis_time_bucket is not None and self.analysis_time_bucket not in time_buckets:
+            raise ValueError("analysis_time_bucket이 지원 계약 범위를 벗어났습니다.")
+        if (self.analysis_operation == "time_trend") != (
+            self.analysis_time_bucket is not None
+        ):
+            raise ValueError(
+                "time_trend 연산과 analysis_time_bucket은 함께 지정해야 합니다."
+            )
         comparison_values = (
             self.comparison_period_start,
             self.comparison_period_end_exclusive,

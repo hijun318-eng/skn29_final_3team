@@ -311,7 +311,37 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
                     CREATE INDEX idx_chat_turns_conv
                         ON chat.turns(conversation_id, turn_index);
                     CREATE INDEX idx_view_specs_artifact
-                        ON artifact.view_specs(artifact_id)
+                        ON artifact.view_specs(artifact_id);
+                    INSERT INTO chat.conversations (
+                        conversation_id, owner_user_id, title, status,
+                        created_at, updated_at, turn_count
+                    ) VALUES (
+                        '00000000-0000-0000-0000-000000000101',
+                        '00000000-0000-0000-0000-000000000102',
+                        'legacy migration conversation', 'ACTIVE',
+                        TIMESTAMPTZ '2026-08-18 01:50:37+09',
+                        TIMESTAMPTZ '2026-08-18 01:51:05+09', 1
+                    );
+                    INSERT INTO chat.turns (
+                        turn_id, conversation_id, turn_index, user_message,
+                        route, source_turn_ids, resolved_slots
+                    ) VALUES (
+                        '00000000-0000-0000-0000-000000000103',
+                        '00000000-0000-0000-0000-000000000101',
+                        0, 'legacy request', 'ANALYSIS', '[]'::jsonb, '{}'::jsonb
+                    );
+                    INSERT INTO chat.turn_commands (
+                        command_id, conversation_id, idempotency_key,
+                        canonical_input_hash, status, turn_id
+                    ) VALUES (
+                        '00000000-0000-0000-0000-000000000104',
+                        '00000000-0000-0000-0000-000000000101',
+                        'legacy-command', repeat('a', 64), 'COMPLETED',
+                        '00000000-0000-0000-0000-000000000103'
+                    );
+                    UPDATE chat.conversations
+                    SET head_turn_id = '00000000-0000-0000-0000-000000000103'
+                    WHERE conversation_id = '00000000-0000-0000-0000-000000000101'
                     """
                 )
             )
@@ -319,6 +349,56 @@ class IsolatedPostgresUpgradeTest(unittest.TestCase):
 
         upgraded = alembic("upgrade", "head", database_url=url)
         self.assertEqual(0, upgraded.returncode, upgraded.stdout + upgraded.stderr)
+        legacy_release = (
+            "ANSWERVICE-LEGACY-UNVERIFIED-v1:"
+            "d3ad30ebad6b36f0c0347df769096c886031fd59d3afd1d34feb88e98e7dcdb6"
+        )
+        with engine.connect() as connection:
+            backfilled = connection.execute(
+                text(
+                    """
+                    SELECT conversation.product_release_id,
+                           conversation.permission_snapshot_id,
+                           conversation.semantic_release_id,
+                           conversation.wall_clock_anchor::text,
+                           turn.product_release_id,
+                           turn.permission_snapshot_id,
+                           turn.semantic_release_id,
+                           turn.terminal_status,
+                           command.effective_subject_id::text,
+                           command.product_release_id,
+                           EXISTS (
+                               SELECT 1
+                               FROM governance.product_release_manifests manifest
+                               WHERE manifest.product_release_id = :legacy_release
+                           )
+                    FROM chat.conversations conversation
+                    JOIN chat.turns turn
+                      ON turn.conversation_id = conversation.conversation_id
+                    JOIN chat.turn_commands command
+                      ON command.conversation_id = conversation.conversation_id
+                    WHERE conversation.conversation_id =
+                        '00000000-0000-0000-0000-000000000101'
+                    """
+                ),
+                {"legacy_release": legacy_release},
+            ).one()
+        self.assertEqual(
+            (
+                legacy_release,
+                "legacy-unverified",
+                "legacy-unverified",
+                "2026-08-18",
+                legacy_release,
+                "legacy-unverified",
+                "legacy-unverified",
+                "SUCCEEDED",
+                "00000000-0000-0000-0000-000000000102",
+                legacy_release,
+                True,
+            ),
+            tuple(backfilled),
+        )
         downgraded = alembic("downgrade", "20260822_29", database_url=url)
         self.assertEqual(0, downgraded.returncode, downgraded.stdout + downgraded.stderr)
 

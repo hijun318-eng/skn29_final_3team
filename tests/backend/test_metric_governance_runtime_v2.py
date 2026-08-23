@@ -552,18 +552,9 @@ def test_execution_resolution_rebinds_selected_metrics_to_the_same_release() -> 
 
 
 def test_execution_resolution_derives_ratio_dimensions_from_operands() -> None:
-    """ratio 자체의 빈 물리 차원 대신 두 operand가 공유하고 release가 승인한 차원을 사용한다."""
+    """전역 registry에 없어도 typed operand 공통 차원을 후보·실행에 결속한다."""
 
     bundle = _runtime_bundle()
-    bundle["dimensions"].append(
-        {
-            "id": "event_account",
-            "aliases": ["event account", "account"],
-            "definition": "Governed account identifier on an event.",
-            "asset_fqn": "quartz.core.events",
-            "column": "account_id",
-        }
-    )
     validate_bundle(bundle)
     engine = _engine(bundle)
     candidates = asyncio.run(
@@ -571,6 +562,17 @@ def test_execution_resolution_derives_ratio_dimensions_from_operands() -> None:
             "Amount per Event by account",
             {"role": "analyst", "parameters": {}},
         )
+    )
+    projected_dimensions = [
+        dimension
+        for asset in candidates.assets
+        for dimension in asset.get("dimensions", ())
+    ]
+    assert any(
+        item["asset_fqn"] == "quartz.core.events"
+        and item["column"] == "account_id"
+        and item["id"].startswith("derived_")
+        for item in projected_dimensions
     )
     selection = ExecutionAssetSelection(
         output_metric_ids=("amount_per_event",),
@@ -598,6 +600,43 @@ def test_execution_resolution_derives_ratio_dimensions_from_operands() -> None:
     )
 
     assert {asset["fqn"] for asset in assets} == {"quartz.core.events"}
+
+
+def test_execution_resolution_does_not_derive_unbound_typed_attributes() -> None:
+    """typed column이어도 Metric dimension binding에 없는 attribute는 실행 필드가 아니다."""
+
+    engine = _engine(_runtime_bundle())
+    candidates = asyncio.run(
+        engine.search_asset_candidates(
+            "Amount per Event",
+            {"role": "analyst", "parameters": {}},
+        )
+    )
+    selection = ExecutionAssetSelection(
+        output_metric_ids=("amount_per_event",),
+        execution_metric_ids=(
+            "amount_per_event",
+            "amount_total",
+            "event_count",
+        ),
+        field_references=(
+            GovernedFieldReference(
+                asset_fqn="quartz.core.events",
+                column="active",
+            ),
+        ),
+        receipt_context_release=candidates.context_release,
+        receipt_catalog_checksum=candidates.catalog_checksum,
+        receipt_canonical_checksum=candidates.canonical_checksum,
+    )
+
+    with pytest.raises(UnsupportedSemanticError, match="governed release dimensions"):
+        asyncio.run(
+            engine.resolve_execution_assets(
+                selection,
+                {"role": "analyst", "parameters": {"active": True}},
+            )
+        )
 
 
 def test_execution_resolution_rejects_a_changed_candidate_receipt() -> None:
@@ -732,6 +771,7 @@ class _Normalizer:
             "selected_metric_id": "amount_per_event",
             "selected_metric_ids": ["amount_per_event"],
             "analysis_operation": "aggregate",
+            "analysis_time_bucket": None,
             "result_limit": None,
             "dimension_candidates": [],
             "filter_candidates": [],
@@ -868,6 +908,15 @@ class _UnresolvedOperationNormalizer(_Normalizer):
         result = await super().normalize_question(payload)
         result["intent_candidates"] = []
         result["analysis_operation"] = None
+        return result
+
+
+class _BucketOperationConflictNormalizer(_Normalizer):
+    """재검토 뒤에도 일반 집계와 유효한 시간 버킷을 함께 반환한다."""
+
+    async def normalize_question(self, payload: dict) -> dict:
+        result = await super().normalize_question(payload)
+        result["analysis_time_bucket"] = "month"
         return result
 
 
@@ -1451,6 +1500,48 @@ def test_selected_analysis_rechecks_a_missing_result_shape_once() -> None:
     assert structured["intent_candidates"] == ["aggregate"]
 
 
+def test_selected_analysis_reconciles_a_governed_bucket_after_bounded_recheck() -> None:
+    """유효한 버킷은 질문 재파싱 없이 일반 집계 충돌을 time trend로 좁힌다."""
+
+    engine = _engine(_runtime_bundle())
+    assets = asyncio.run(
+        _candidate_assets(
+            engine,
+            "Amount per Event",
+            {"role": "analyst", "parameters": {"active": True}},
+        )
+    )
+    model = _BucketOperationConflictNormalizer()
+    resolver = MetricResolver(engine, model)
+    context = RequestContext(
+        request_id=UUID("10000000-0000-0000-0000-000000000041"),
+        trace_id="analysis-bucket-reconciliation",
+        user_id=UUID("20000000-0000-0000-0000-000000000042"),
+        role=Role.ANALYST,
+        as_of=date(2026, 8, 19),
+    )
+
+    _selected_assets, _question, structured = asyncio.run(
+        resolver.resolve(
+            AnalysisRequest(
+                question="Amount per Event",
+                parameters={"active": True},
+            ),
+            context,
+            assets,
+        )
+    )
+
+    assert len(model.inputs) == 2
+    assert model.inputs[1]["interpretation_recheck"] == {
+        "target": "analysis_operation",
+        "attempt": 1,
+    }
+    assert structured["analysis_operation"] == "time_trend"
+    assert structured["intent_candidates"] == ["time_trend"]
+    assert structured["analysis_time_bucket"] == "month"
+
+
 def test_sealed_conversation_default_builds_presentation_ready_time_series_only_in_conversation() -> None:
     """같은 Node1 aggregate도 explicit Conversation capability에서만 day series로 좁힌다."""
 
@@ -1718,6 +1809,7 @@ def test_node1_receives_typed_previous_shape_without_entering_metric_fast_path()
     assert model.input is not None
     assert model.input["previous_result_shape"] == {
         "analysis_operation": "breakdown",
+        "analysis_time_bucket": None,
         "dimension_count": 1,
         "result_limit": None,
     }

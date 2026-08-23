@@ -9,12 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
 
 from app.services.context.contract import GovernedJoin
-
-if TYPE_CHECKING:
-    from app.services.context.semantic_release import CanonicalAsset
 
 
 class RelatedSideUse(str, Enum):
@@ -159,18 +155,6 @@ def _oriented_assets(join: GovernedJoin) -> tuple[str, str]:
     if join.cardinality == "one_to_many":
         return join.right, join.left
     raise ValueError("fan-out planning requires a supported cardinality")
-
-
-def canonical_asset_grain_evidence(asset: CanonicalAsset) -> AssetGrainEvidence:
-    """canonical asset의 schema와 grain key를 JOIN planner가 검증할 고유성 증거로 투영한다."""
-
-    fields = frozenset(f"{asset.fqn}.{column.name}" for column in asset.columns)
-    key = tuple(f"{asset.fqn}.{column}" for column in asset.grain_keys)
-    return AssetGrainEvidence(
-        asset_fqn=asset.fqn,
-        available_fields=fields,
-        unique_key_sets=(key,) if key else (),
-    )
 
 
 def _validate_evidence(

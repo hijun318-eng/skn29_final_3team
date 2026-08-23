@@ -7,13 +7,13 @@
 
 | 분류 | 파일 수 |
 |---|---:|
-| archive | 139 |
-| documentation | 154 |
-| production | 319 |
-| project-config | 59 |
+| archive | 138 |
+| documentation | 100 |
+| production | 316 |
+| project-config | 39 |
 | runtime-config | 72 |
 | runtime-contract | 13 |
-| test | 170 |
+| test | 153 |
 
 운영 무결성 위반: **0건**
 
@@ -249,7 +249,6 @@
 | `app/frontend/src/components/common/EnterpriseUi.jsx` | production | REVIEWED |
 | `app/frontend/src/components/layout/AppHeader.jsx` | production | REVIEWED |
 | `app/frontend/src/components/layout/AppSidebar.jsx` | production | REVIEWED |
-| `app/frontend/src/components/TurnCard.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnEvidenceDrawer.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnReportModal.jsx` | production | REVIEWED |
 | `app/frontend/src/contracts/analysis.ts` | production | REVIEWED |
@@ -301,11 +300,9 @@
 | `app/frontend/src/features/reports/useReportArtifacts.ts` | production | REVIEWED |
 | `app/frontend/src/features/reports/useReportDraftState.ts` | production | REVIEWED |
 | `app/frontend/src/features/reports/useReportDragAndDrop.js` | production | REVIEWED |
-| `app/frontend/src/features/reports/useReportEditorKeyboard.ts` | production | REVIEWED |
 | `app/frontend/src/features/reports/useReportEditorTools.js` | production | REVIEWED |
 | `app/frontend/src/features/reports/useReportLifecycleState.ts` | production | REVIEWED |
 | `app/frontend/src/features/reports/useReportsPageController.jsx` | production | REVIEWED |
-| `app/frontend/src/features/reports/useReportTitleDraft.ts` | production | REVIEWED |
 | `app/frontend/src/features/reports/v2/report-builder-v2.css` | production | REVIEWED |
 | `app/frontend/src/features/reports/v2/ReportBuilderV2.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/v2/ReportPresentation.jsx` | production | REVIEWED |
@@ -322,6 +319,7 @@
 | `CLAUDE.md` | documentation | REFERENCE_NON_RUNTIME |
 | `compose.app-postgres.override.yml` | runtime-config | REVIEWED |
 | `compose.yml` | runtime-config | REVIEWED |
+| `data/node2_sft/verified/walkerhill_smoke.trino_pass.jsonl` | project-config | REVIEWED |
 | `docs/Answervice_기획서.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/answervice_v3_4_agent_architecture.html` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/answervice_v3_4_agent_architecture.json` | documentation | REFERENCE_NON_RUNTIME |
@@ -384,36 +382,8 @@
 | `docs/deliverables/12_AI시스템아키텍처_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/13_LLM활용소프트웨어_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/14_자체sLLM인공지능_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/deliverables/ANTIGRAVITY_DOCKER_RUNTIME_HANDOFF.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/deliverables/DEVELOPMENT_CHANGELOG_AND_ARCHITECTURE_RECORD.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/deliverables/Qwen3.5-2B_Node2_학습_실행가이드.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/01_MVP_PRD.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/derived/02_Golden_Path_유저플로우.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/04_P0_사용자기능_요구사항_및_검증계획.txt` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/05_sLLM_RunPod_연결_가이드.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/06_데이터_SQL_Web_작업지시서.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/07_Node1_Node3_목표_런타임_프롬프트.txt` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/08_엔터프라이즈_목표기능_구현_프롬프트.txt` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/09_분석_Artifact_보고서_HTML_PDF_UX_목표_프롬프트.txt` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/21_AI_작업_인수인계_현재진행상황.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/22_RunPod_Serverless_vLLM_배포_가이드.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/ADR_Report_HTML_to_PDF_Renderer.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/p0_analysis_three_source_success.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/p0_report_partial_failure.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/01-login.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/03-agent-home-1440x900.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/04-golden-result-1440x900.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/05-artifact-run-trace-1440x900.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/06-agent-home-contrast-fixed-1440x900.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/07-golden-result-korean-1440x900.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/08-report-admin-scheduled-run.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/09-agent-saved-artifact-restored.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/10-report-partial-failure.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/11-report-auto-scheduler.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/12-report-drag-layout.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/13-admin-role-navigation.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/runtime_evidence/2026-08-13/14-lan-agent-success.png` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/derived/V4_통합_개발계획.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/LOCAL_SETUP.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/source/00_Answervice_프로젝트_기획서.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -421,40 +391,11 @@
 | `docs/e2e_mvp/source/02_Answervice_sLLM_모델_학습_평가.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/source/03_Answervice_구현_운영_검증.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/e2e_mvp/source/04_Answervice_단계별_구현_가이드.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/source/05_프로젝트_구조조정_평가서.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/e2e_mvp/source/08_구조조정_판단기록.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/product/00_기획서.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/product/01_PRD.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/product/02_유저플로우.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/product/03_아키텍처.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/README.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/Antigravity_실제_분석_E2E_실행_인수인계.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/BI_범용질문_시맨틱_확장설계.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/Codex_to_Antigravity_전체_인수인계.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Analysis_Agent_전환_실행프롬프트.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Analysis_Agent_전환전략.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase0_10_회고_Graph_Foundation_평가.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase0A_현행정합성감사.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase0B_compatibility_evidence_Gate.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase10_P0_Same_Release_Gate.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase1_Conversation_Safety_Gate.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase2_Search_Gate.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase3_Capability_Gate.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase4_RuntimeCatalogProjection_Gate.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase5_Node1_Grounding_Gate.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase6_Single_Asset_Analysis_Gate.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase7_Bounded_Multi_Turn_Gate.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase8_Native_Semantic_Shadow_Gate.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_Phase9_Multi_Asset_JOIN_Gate.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/DataHub_Core_공식사용_BP_조사.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/m0_single_turn_live_receipt.json` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/P0_실행목표_프롬프트.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/Runtime_governance_V4.3_승인검토안.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/Runtime_governance_V4.3_업무승인.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/Walkerhill_V4.1_SQL_검토.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/Walkerhill_V4.3_교체_검토_및_실행_보고서.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/reference/멀티턴_발화이해_BP_벤치마크.md` | documentation | REFERENCE_NON_RUNTIME |
-| `evals/.gitkeep` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/__init__.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/base_comparison.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/catalog_regression.py` | archive | ARCHIVE_NON_RUNTIME |
@@ -486,27 +427,6 @@
 | `evals/single_asset_analysis_gold/answervice_ko_single_asset.v1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/split_manifest.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/validation_v2.manifest.json` | archive | ARCHIVE_NON_RUNTIME |
-| `infrastructure/acceptance/phase-gates.compose.yml` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase10-candidate.compose.yml` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase10_browser_receipt.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase10_candidate_database.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase10_candidate_release.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase10_candidate_services.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase10_host_validation.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase10_p0_gold_oracle.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase10_p0_same_release.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase2b-datahub.compose.yml` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase2b_datahub_candidate.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase3a_datahub_capability.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase3b_native_metric_shadow.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase4-runtime-projection.compose.yml` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase4_runtime_catalog_projection.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase5_node1_grounding.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase6_single_asset_analysis.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase7_bounded_multi_turn.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase8_native_semantic_shadow.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase9_join_authoring.py` | project-config | REVIEWED |
-| `infrastructure/acceptance/phase9_multi_asset_join.py` | project-config | REVIEWED |
 | `infrastructure/database/.env.example` | project-config | REVIEWED |
 | `infrastructure/database/.gitignore` | project-config | REVIEWED |
 | `infrastructure/database/clickhouse/config.d/timezone.xml` | project-config | REVIEWED |
@@ -733,12 +653,14 @@
 | `infrastructure/database/trino/etc/jvm.config` | runtime-config | REVIEWED |
 | `infrastructure/database/trino/etc/node.properties` | runtime-config | REVIEWED |
 | `infrastructure/database/trino/etc/password-authenticator.properties` | runtime-config | REVIEWED |
-| `notebooks/.gitkeep` | project-config | REVIEWED |
+| `infrastructure/handoff/AI_SETUP_AGENT.md` | documentation | REFERENCE_NON_RUNTIME |
+| `infrastructure/handoff/Install-HandoffConfig.ps1` | project-config | REVIEWED |
+| `infrastructure/handoff/New-HandoffBundle.ps1` | project-config | REVIEWED |
+| `infrastructure/handoff/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `scripts/audit_repository_integrity.py` | production | REVIEWED |
 | `scripts/check_code_documentation.py` | production | REVIEWED |
 | `scripts/lint_architectural_invariants.py` | production | REVIEWED |
-| `src/.gitkeep` | project-config | REVIEWED |
 | `src/ai/__init__.py` | production | REVIEWED |
 | `src/ai/contracts/model_release.v1.json` | runtime-contract | REVIEWED |
 | `src/ai/contracts/node_io.v0.1.json` | runtime-contract | REVIEWED |
@@ -777,7 +699,6 @@
 | `src/report/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `src/report/repository.py` | production | REVIEWED |
 | `src/report/router.py` | production | REVIEWED |
-| `tests/.gitkeep` | test | TEST_ONLY |
 | `tests/ai/test_contracts.py` | test | TEST_ONLY |
 | `tests/ai/test_conversation_change_set.py` | test | TEST_ONLY |
 | `tests/ai/test_conversation_slot_resolver.py` | test | TEST_ONLY |
@@ -852,8 +773,6 @@
 | `tests/backend/test_openapi_contract.py` | test | TEST_ONLY |
 | `tests/backend/test_phase10_runtime_audit_grants.py` | test | TEST_ONLY |
 | `tests/backend/test_phase10_runtime_query_grants.py` | test | TEST_ONLY |
-| `tests/backend/test_phase4_acceptance_entrypoint.py` | test | TEST_ONLY |
-| `tests/backend/test_phase5_acceptance_entrypoint.py` | test | TEST_ONLY |
 | `tests/backend/test_phase9_multi_asset_join.py` | test | TEST_ONLY |
 | `tests/backend/test_pipeline_filter_value_resolver.py` | test | TEST_ONLY |
 | `tests/backend/test_pipeline_query_planner.py` | test | TEST_ONLY |
@@ -886,20 +805,6 @@
 | `tests/data/test_metric_review_contract.py` | test | TEST_ONLY |
 | `tests/data/test_metric_review_decision.py` | test | TEST_ONLY |
 | `tests/data/test_metric_review_transition.py` | test | TEST_ONLY |
-| `tests/data/test_phase10_browser_receipt.py` | test | TEST_ONLY |
-| `tests/data/test_phase10_candidate_database.py` | test | TEST_ONLY |
-| `tests/data/test_phase10_candidate_release.py` | test | TEST_ONLY |
-| `tests/data/test_phase10_candidate_services.py` | test | TEST_ONLY |
-| `tests/data/test_phase10_host_validation.py` | test | TEST_ONLY |
-| `tests/data/test_phase10_p0_gold_oracle.py` | test | TEST_ONLY |
-| `tests/data/test_phase10_p0_same_release.py` | test | TEST_ONLY |
-| `tests/data/test_phase2b_datahub_candidate.py` | test | TEST_ONLY |
-| `tests/data/test_phase3a_datahub_capability.py` | test | TEST_ONLY |
-| `tests/data/test_phase3b_native_metric_shadow.py` | test | TEST_ONLY |
-| `tests/data/test_phase6_single_asset_analysis.py` | test | TEST_ONLY |
-| `tests/data/test_phase7_bounded_multiturn.py` | test | TEST_ONLY |
-| `tests/data/test_phase8_native_semantic_shadow.py` | test | TEST_ONLY |
-| `tests/data/test_phase9_multi_asset_acceptance.py` | test | TEST_ONLY |
 | `tests/data/test_release_archive_integrity.py` | test | TEST_ONLY |
 | `tests/data/test_release_bundle_builder.py` | test | TEST_ONLY |
 | `tests/data/test_release_discovery_sources.py` | test | TEST_ONLY |

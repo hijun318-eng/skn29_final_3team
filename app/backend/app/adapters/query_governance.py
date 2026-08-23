@@ -176,6 +176,13 @@ class QueryGovernanceEngine:
         self._compiled_release: CanonicalSemanticRelease | None = None
         self._phrase_index_snapshot: CatalogSnapshot | None = None
         self._phrase_index: GovernedPhraseIndex | None = None
+        self._verified_projection_key: tuple[str, str] | None = None
+        self._verified_projection_expires_at = 0.0
+        self._verified_projection_ttl_seconds = min(
+            DEFAULT_CATALOG_RELEASE_TTL_SECONDS,
+            max(0.1, ttl),
+        )
+        self._verified_projection_lock = asyncio.Lock()
 
     async def search_asset_candidates(
         self,
@@ -808,11 +815,11 @@ class QueryGovernanceEngine:
     ) -> str:
         """완전한 manifest와 전체 live Trino schema 검증을 통과한 context release를 반환한다."""
         try:
-            snapshot, release, _active = await self._load_runtime_catalog(
+            snapshot, release, active_projection = await self._load_runtime_catalog(
                 product_release_id=product_release_id
             )
             datasets = self._datasets_for_release(snapshot, release)
-            await self._schema.verify(datasets)
+            await self._verify_runtime_projection_schema(datasets, active_projection)
         except (
             DataHubCatalogError,
             GovernedMetadataError,
@@ -821,6 +828,36 @@ class QueryGovernanceEngine:
         ) as error:
             raise MetadataUnavailableError(str(error)) from error
         return datasets[0].context_release
+
+    async def _verify_runtime_projection_schema(
+        self,
+        datasets: tuple[GovernedDataset, ...],
+        active_projection: ActiveRuntimeCatalogProjection | None,
+    ) -> None:
+        """불변 projection receipt별 전체 Trino schema 검증을 bounded TTL 동안 공유한다."""
+
+        if active_projection is None:
+            await self._schema.verify(datasets)
+            return
+        key = (
+            active_projection.projection.projection_id,
+            active_projection.product_release_id,
+        )
+        now = time.monotonic()
+        if self._verified_projection_key == key and now < self._verified_projection_expires_at:
+            return
+        async with self._verified_projection_lock:
+            now = time.monotonic()
+            if (
+                self._verified_projection_key == key
+                and now < self._verified_projection_expires_at
+            ):
+                return
+            await self._schema.verify(datasets)
+            self._verified_projection_key = key
+            self._verified_projection_expires_at = (
+                time.monotonic() + self._verified_projection_ttl_seconds
+            )
 
     async def catalog_readiness(
         self,
@@ -871,7 +908,7 @@ class QueryGovernanceEngine:
             return stages, None
         stages["semantic_release"] = "ready"
         try:
-            await self._schema.verify(datasets)
+            await self._verify_runtime_projection_schema(datasets, active_projection)
         except TrinoSchemaDriftError:
             return stages, None
         stages["trino_schema"] = "ready"
@@ -1343,6 +1380,15 @@ class QueryGovernanceEngine:
         release_dimension_fields = {
             f"{item.asset_fqn}.{item.column}" for item in release.dimensions
         }
+        for metric_id in selection.output_metric_ids:
+            release_dimension_fields.update(
+                self._metric_dimension_scope(
+                    metric_id,
+                    metrics_by_id,
+                    terms,
+                    frozenset(),
+                )
+            )
         requested_fields = {
             f"{item.asset_fqn}.{item.column}"
             for item in selection.field_references

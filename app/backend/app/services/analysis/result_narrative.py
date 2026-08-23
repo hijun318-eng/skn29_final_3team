@@ -148,13 +148,6 @@ def _business_metrics(package: ContextPackage) -> tuple[ContextMetric, ...]:
     return metrics
 
 
-def _selected_business_metric(package: ContextPackage) -> ContextMetric:
-    metrics = _business_metrics(package)
-    if len(metrics) != 1:
-        raise ValueError("grounded narrative requires exactly one BUSINESS metric")
-    return metrics[0]
-
-
 def _metric_value(
     metric: ContextMetric,
     package: ContextPackage,

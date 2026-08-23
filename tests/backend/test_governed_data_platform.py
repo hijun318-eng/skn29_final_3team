@@ -1178,6 +1178,18 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             stages, receipt = await governance.catalog_readiness()
             self.assertEqual("phase4-product-a", receipt)
             self.assertTrue(all(value == "ready" for value in stages.values()))
+            verified_statement_count = len(self.transport.trino_statements)
+            self.assertEqual(
+                release.catalog_version,
+                await governance.active_context_release(),
+            )
+            cached_stages, cached_receipt = await governance.catalog_readiness()
+            self.assertEqual(stages, cached_stages)
+            self.assertEqual(receipt, cached_receipt)
+            self.assertEqual(
+                verified_statement_count,
+                len(self.transport.trino_statements),
+            )
 
             selection = ExecutionAssetSelection(
                 output_metric_ids=("helium_yield",),

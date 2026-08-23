@@ -12,6 +12,12 @@ branch_labels = None
 depends_on = None
 
 
+_LEGACY_PRODUCT_RELEASE_ID = (
+    "ANSWERVICE-LEGACY-UNVERIFIED-v1:"
+    "d3ad30ebad6b36f0c0347df769096c886031fd59d3afd1d34feb88e98e7dcdb6"
+)
+
+
 def _runtime_role() -> str:
     role = os.getenv("APP_DB_USER", "")
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", role):
@@ -218,6 +224,48 @@ def upgrade() -> None:
             ADD COLUMN IF NOT EXISTS product_release_id varchar(160),
             ADD COLUMN IF NOT EXISTS permission_snapshot_id varchar(160),
             ADD COLUMN IF NOT EXISTS semantic_release_id varchar(256)
+        """
+    )
+
+    # 기존 대화 이력은 아직 release evidence가 없으므로 현재 candidate로 가장하지
+    # 않는다. Phase 0B가 봉인한 explicit sentinel로만 결정적으로 backfill한다.
+    op.execute(
+        f"""
+        UPDATE chat.conversations
+        SET product_release_id = '{_LEGACY_PRODUCT_RELEASE_ID}',
+            permission_snapshot_id = 'legacy-unverified',
+            semantic_release_id = 'legacy-unverified',
+            release_pinned_at = created_at
+        WHERE product_release_id IS NULL
+          AND permission_snapshot_id IS NULL
+          AND semantic_release_id IS NULL
+          AND release_pinned_at IS NULL
+        """
+    )
+    op.execute(
+        f"""
+        UPDATE chat.turns
+        SET product_release_id = '{_LEGACY_PRODUCT_RELEASE_ID}',
+            permission_snapshot_id = 'legacy-unverified',
+            semantic_release_id = 'legacy-unverified'
+        WHERE product_release_id IS NULL
+          AND permission_snapshot_id IS NULL
+          AND semantic_release_id IS NULL
+        """
+    )
+    op.execute(
+        f"""
+        UPDATE chat.turn_commands AS command
+        SET effective_subject_id = conversation.owner_user_id,
+            product_release_id = '{_LEGACY_PRODUCT_RELEASE_ID}',
+            permission_snapshot_id = 'legacy-unverified',
+            semantic_release_id = 'legacy-unverified'
+        FROM chat.conversations AS conversation
+        WHERE command.conversation_id = conversation.conversation_id
+          AND command.effective_subject_id IS NULL
+          AND command.product_release_id IS NULL
+          AND command.permission_snapshot_id IS NULL
+          AND command.semantic_release_id IS NULL
         """
     )
 

@@ -26,7 +26,11 @@ from app.auth import (  # noqa: E402
     issue_session_token,
     require_active_subject_with_capability,
 )
-from app.context import ContextValidationError, analysis_context  # noqa: E402
+from app.context import (  # noqa: E402
+    ContextValidationError,
+    _server_kst_date,
+    analysis_context,
+)
 from app.contracts import CONTRACT_VERSION, Capability, ErrorCode, Role  # noqa: E402
 from tests.support.auth_dependencies import authenticate_injected_token  # noqa: E402
 
@@ -223,6 +227,28 @@ class AuthenticationTest(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(date(2026, 8, 15), context.as_of)
+
+    def test_phase10_acceptance_clock_requires_exact_mode_and_iso_date(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "ANSWERVICE_ACCEPTANCE_MODE": "phase10-p0-gold",
+                "ANSWERVICE_ACCEPTANCE_AS_OF": "2026-08-19",
+            },
+            clear=False,
+        ):
+            self.assertEqual(date(2026, 8, 19), _server_kst_date())
+
+        with patch.dict(
+            os.environ,
+            {
+                "ANSWERVICE_ACCEPTANCE_MODE": "phase10-p0-gold",
+                "ANSWERVICE_ACCEPTANCE_AS_OF": "invalid",
+            },
+            clear=False,
+        ):
+            with self.assertRaises(ContextValidationError):
+                _server_kst_date()
 
 
 if __name__ == "__main__":

@@ -46,9 +46,10 @@ $env:MODEL_TIMEOUT_SECONDS = "15"
 
 Node2 전용 설정 네 개를 모두 비우면 Node2·Repair도 위 primary route를 공유한다.
 RunPod Qwen route를 사용할 때는 `NODE2_MODEL_PROVIDER`, `NODE2_MODEL_ENDPOINT`,
-`NODE2_MODEL_API_TOKEN`, `NODE2_MODEL`을 모두 선언해야 하며 정확한 값은
-`docs/e2e_mvp/derived/05_sLLM_RunPod_연결_가이드.md`를 따른다. 일부만 선언하면
-readiness와 adapter 생성이 모두 fail-closed한다.
+`NODE2_MODEL_API_TOKEN`, `NODE2_MODEL`을 모두 선언해야 한다. provider·model alias와
+capacity는 `src/modelops/model_runtime_manifest.v1.json`, 비활성 예시는
+`infrastructure/database/.env.example`을 따른다. 실제 endpoint와 token은 배포 환경에서만
+주입하며 일부만 선언하면 readiness와 adapter 생성이 모두 fail-closed한다.
 
 일반 분석은 원문 질문을 `normalized_question`으로 전달하고 request ID는 추적 식별자로 분리한다. 실제 endpoint에는 node별 response schema를 전달하고 동일 schema를 다시 검증한다. timeout·HTTP 오류·잘못된 JSON·schema 불일치·circuit open은 분석 성공이나 Artifact로 저장하지 않는다.
 

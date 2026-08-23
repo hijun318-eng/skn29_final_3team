@@ -28,6 +28,7 @@ def _elliptical_response(operation: str | None) -> dict[str, object]:
             "selected_metric_id": None,
             "selected_metric_ids": [],
             "analysis_operation": operation,
+            "analysis_time_bucket": None,
             "result_limit": None,
             "dimension_candidates": [],
             "filter_candidates": [],

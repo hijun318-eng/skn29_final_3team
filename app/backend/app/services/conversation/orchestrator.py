@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from collections.abc import Mapping
 from datetime import date
 from typing import Any, Callable
@@ -46,6 +47,17 @@ from app.services.conversation.slot_resolver import ConversationSlotResolver, Re
 from app.services.analysis.pipeline_support import PipelineSupport
 
 logger = logging.getLogger("uvicorn.error")
+
+_WRITE_SQL_KEYWORD = re.compile(
+    r"(?<![A-Za-z0-9_])(?:INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE)(?![A-Za-z0-9_])",
+    re.IGNORECASE,
+)
+
+
+def _explicit_write_sql_intent(user_message: str) -> bool:
+    """명시적인 SQL write keyword가 포함된 요청을 모델·metadata 전에 차단한다."""
+
+    return _WRITE_SQL_KEYWORD.search(user_message) is not None
 
 
 def _clarification_resolved_by_inheritance(
@@ -289,6 +301,19 @@ def _slot_provenance(
     }
 
 
+def _source_business_terms(node1_output: Mapping[str, Any]) -> list[str]:
+    """Return only bounded, unique measurement spans already validated upstream."""
+
+    raw = node1_output.get("measurement_source_texts")
+    if isinstance(raw, list) and 0 < len(raw) <= 4 and all(
+        isinstance(item, str) and item.strip() for item in raw
+    ):
+        values = [item.strip() for item in raw]
+        if len(values) == len(set(values)):
+            return values
+    return []
+
+
 def _business_terms_for_turn(
     node1_output: Mapping[str, Any],
     previous_slots: Mapping[str, Any],
@@ -302,13 +327,9 @@ def _business_terms_for_turn(
     success.
     """
 
-    raw = node1_output.get("measurement_source_texts")
-    if isinstance(raw, list) and 0 < len(raw) <= 4 and all(
-        isinstance(item, str) and item.strip() for item in raw
-    ):
-        values = [item.strip() for item in raw]
-        if len(values) == len(set(values)):
-            return values
+    source_terms = _source_business_terms(node1_output)
+    if source_terms:
+        return source_terms
     inherited = previous_slots.get("business_terms")
     if (
         (slots.is_inherited_metric or slots.route in {"PRESENTATION", "REPORT_ACTION"})
@@ -366,10 +387,19 @@ def _safe_analysis_observation(execution: Mapping[str, Any]) -> dict[str, Any]:
         set().union(*(assets(metric_id) for metric_id in output_ids))
     )
     join_ids = []
+    join_plans = []
     for item in raw_joins:
-        if not isinstance(item, Mapping) or not isinstance(item.get("join_id"), str):
+        if (
+            not isinstance(item, Mapping)
+            or not isinstance(item.get("join_id"), str)
+            or not item["join_id"]
+            or not isinstance(item.get("plan"), str)
+            or not item["plan"]
+        ):
             return {}
-        join_ids.append(str(item["join_id"]))
+        join_id = str(item["join_id"])
+        join_ids.append(join_id)
+        join_plans.append({"join_id": join_id, "plan": str(item["plan"])})
     query_strategy = analysis_plan.get("query_strategy")
     time_bucket = analysis_plan.get("time_bucket")
     checksum = analysis_plan.get("checksum")
@@ -385,6 +415,10 @@ def _safe_analysis_observation(execution: Mapping[str, Any]) -> dict[str, Any]:
         "query_strategy": query_strategy,
         "source_assets": source_assets,
         "join_ids": sorted(join_ids),
+        "join_plans": sorted(
+            join_plans,
+            key=lambda item: (item["join_id"], item["plan"]),
+        ),
         "time_bucket": time_bucket,
         "analysis_plan_sha256": checksum,
     }
@@ -702,6 +736,61 @@ class ConversationOrchestrator:
             # 4. 이전 불변 턴 목록 조회
             previous_turns = await self._repo.list_turns(conversation_id)
 
+            if _explicit_write_sql_intent(user_message):
+                turn_id = uuid4()
+                await self._repo.commit_turn(
+                    conversation_id=conversation_id,
+                    command_id=command_id,
+                    turn_id=turn_id,
+                    turn_index=len(previous_turns),
+                    user_message=user_message,
+                    route="ANALYSIS",
+                    source_turn_ids=[],
+                    request_id=None,
+                    artifact_id=None,
+                    view_spec_id=None,
+                    report_definition_id=None,
+                    resolved_slots={
+                        "business_terms": ["SQL 쓰기"],
+                        "metric_id": None,
+                        "metric_ids": [],
+                        "dimension_fields": [],
+                        "user_filters": [],
+                        "time_range": None,
+                        "comparison_time_range": None,
+                        "target_chart_type": None,
+                        "analysis_operation": None,
+                        "analysis_time_bucket": None,
+                        "result_limit": None,
+                        "ambiguity_status": "CLEAR",
+                        "clarification_type": None,
+                        "disambiguation_options": [],
+                        "pending_user_message": None,
+                        "is_inherited_metric": False,
+                        "is_inherited_dimension": False,
+                        "is_inherited_period": False,
+                        "slot_provenance": {},
+                        "change_set": [],
+                        "analysis_plan_observation": {},
+                    },
+                    product_release_id=current_product,
+                    permission_snapshot_id=current_permission,
+                    semantic_release_id=current_semantic,
+                    terminal_status="BLOCKED",
+                    reason_code=ErrorCode.SQL_POLICY_BLOCKED.value,
+                )
+                updated_turns = await self._repo.list_turns(conversation_id)
+                return {
+                    "status": "BLOCKED",
+                    "code": ErrorCode.SQL_POLICY_BLOCKED.value,
+                    "message": "읽기 전용 분석에서는 SQL 쓰기 요청을 실행할 수 없습니다.",
+                    "retryable": False,
+                    "required_action": "MODIFY_REQUEST",
+                    "turn": next(
+                        turn for turn in updated_turns if turn["turn_id"] == turn_id
+                    ),
+                }
+
             # 5. Node 1 사전 발화 정규화 (DataHub 자산 검색)
             node1_res: dict[str, Any] = {}
             preflight_clarification: ContextBuildError | None = None
@@ -865,6 +954,9 @@ class ConversationOrchestrator:
                             analysis_operation=last_analysis_slots.get(
                                 "analysis_operation"
                             ),
+                            analysis_time_bucket=last_analysis_slots.get(
+                                "analysis_time_bucket"
+                            ),
                             result_limit=last_analysis_slots.get("result_limit"),
                         )
                     # 직전 Metric 결합은 짧은 후속 발화의 자산 recall을 높이는 검색 전용 힌트다.
@@ -904,6 +996,15 @@ class ConversationOrchestrator:
                     }
                     turn_id = uuid4()
                     partial_context = getattr(error, "partial_context", None)
+                    blocked_slots = (
+                        dict(partial_context)
+                        if isinstance(partial_context, dict)
+                        else {}
+                    )
+                    blocked_slots["business_terms"] = _source_business_terms(
+                        blocked_slots
+                    )
+                    blocked_slots["ambiguity_status"] = "CLEAR"
                     await self._repo.commit_turn(
                         conversation_id=conversation_id,
                         command_id=command_id,
@@ -916,14 +1017,7 @@ class ConversationOrchestrator:
                         artifact_id=None,
                         view_spec_id=None,
                         report_definition_id=None,
-                        resolved_slots={
-                            **(
-                                dict(partial_context)
-                                if isinstance(partial_context, dict)
-                                else {}
-                            ),
-                            "ambiguity_status": "CLEAR",
-                        },
+                        resolved_slots=blocked_slots,
                         product_release_id=current_product,
                         permission_snapshot_id=current_permission,
                         semantic_release_id=current_semantic,
@@ -1260,6 +1354,7 @@ class ConversationOrchestrator:
                     } if slots.comparison_time_range else None,
                     "target_chart_type": slots.target_chart_type,
                     "analysis_operation": slots.analysis_operation,
+                    "analysis_time_bucket": slots.analysis_time_bucket,
                     "result_limit": slots.result_limit,
                     "ambiguity_status": ambiguity_status,
                     "clarification_type": clarification_type or last_slots.get("clarification_type"),

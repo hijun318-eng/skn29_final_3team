@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime
+import os
 import re
 from typing import Annotated
 from uuid import UUID
@@ -27,6 +28,7 @@ bearer_auth = HTTPBearer(
 SESSION_COOKIE = "answervice_session"
 _TRACE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
 _KST = ZoneInfo("Asia/Seoul")
+_PHASE10_ACCEPTANCE_MODE = "phase10-p0-gold"
 DatabaseSession = Annotated[AsyncSession, Depends(get_database_session)]
 TokenAuthenticator = Callable[[str | None], Awaitable[Principal]]
 
@@ -42,7 +44,31 @@ def valid_trace_id(value: str | None) -> bool:
 
 
 def _server_kst_date() -> date:
-    return datetime.now(_KST).date()
+    """서버 기준일을 반환하되 격리 Phase 10 평가의 봉인 기준일만 허용한다.
+
+    일반 실행은 항상 KST 시계를 사용한다. Candidate Compose가 정확한 acceptance mode와
+    봉인 Gold에서 읽은 날짜를 함께 제공한 경우에만 재현 가능한 평가 시계를 사용하며,
+    한쪽만 설정되거나 날짜가 잘못되면 실제 시각으로 조용히 fallback하지 않는다.
+    """
+
+    mode = os.getenv("ANSWERVICE_ACCEPTANCE_MODE")
+    configured_as_of = os.getenv("ANSWERVICE_ACCEPTANCE_AS_OF")
+    if mode is None and configured_as_of is None:
+        return datetime.now(_KST).date()
+    if mode != _PHASE10_ACCEPTANCE_MODE or not configured_as_of:
+        raise ContextValidationError(
+            ErrorCode.CONTEXT_INCOMPLETE,
+            "격리 Acceptance 기준일 설정이 완전하지 않습니다.",
+            500,
+        )
+    try:
+        return date.fromisoformat(configured_as_of)
+    except ValueError as error:
+        raise ContextValidationError(
+            ErrorCode.CONTEXT_INCOMPLETE,
+            "격리 Acceptance 기준일 형식이 올바르지 않습니다.",
+            500,
+        ) from error
 
 
 def _request_token(request: Request, credentials: HTTPAuthorizationCredentials | None) -> str | None:
@@ -90,6 +116,7 @@ async def session_context(
         trace_id=request.state.trace_id,
         user_id=principal.subject,
         role=principal.role,
+        as_of=_server_kst_date(),
     )
     request.state.context = context
     request.state.session_token = token

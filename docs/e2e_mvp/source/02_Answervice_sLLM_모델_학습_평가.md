@@ -6,7 +6,6 @@
 | 최우선 품질 | 실제 조회 결과가 Gold Result와 일치하는가 |
 | 비교 원칙 | 같은 데이터 snapshot·Context·decoding·실행 환경에서 비교 |
 | 학습 원칙 | Base benchmark와 오류 분석 뒤 반복 Model Error가 있을 때만 Adapter 학습 |
-| 관련 시각 자료 | [sLLM 실험 Visual](02_Answervice_sLLM_실험_Visual.html) |
 
 > 모델 이름이 “최신”이거나 일반 벤치마크 점수가 높다는 이유만으로 채택하지 않는다. Answervice의 Trino Text-to-SQL 과제에서 정확도·제약 준수·운영 비용을 직접 측정한다.
 

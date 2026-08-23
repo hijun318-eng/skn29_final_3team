@@ -5,7 +5,6 @@
 | 문서 역할 | 구현 구조, 통합·보안·AI 평가, CI와 재현 가능한 Demo 기준 정의 |
 | 완료 판단 | 설치 화면이 아니라 Golden E2E의 실제 동작과 근거가 있는 검증 결과 |
 | 배포 표현 | 실제 Production이 아닌 `Production-like Demo Environment` |
-| 관련 시각 자료 | [구현·검증 Visual](03_Answervice_구현_검증_Visual.html) |
 
 > 이 문서는 구현·검증 계약이다. 아래 항목은 테스트를 실행하기 전까지 `Pass`가 아니며, 결과는 `Pass / Fail / Not Run / Blocked`로 구분해 기록한다.
 

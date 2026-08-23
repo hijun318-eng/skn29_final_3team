@@ -219,49 +219,6 @@ async def authenticate_token(token: str | None, *, now: datetime | None = None) 
     return await _release_principal(token, current_time.astimezone(timezone.utc))
 
 
-async def require_active_subject(
-    subject: UUID,
-    role: Role,
-    *,
-    now: datetime | None = None,
-) -> Principal:
-    """대화형 token을 재사용하지 않고 background 실행 주체의 활성 권한을 다시 확인한다.
-
-    계정 파일이면 active 상태를, digest principal 파일이면 not-before/expiry 구간을 검사하며
-    요청 subject와 role이 모두 정확히 일치하지 않으면 403으로 거부한다.
-    """
-    path = _configured_principal_path()
-    kind = await asyncio.to_thread(_principal_store_kind, path)
-    if kind == "account":
-        records = await asyncio.to_thread(_load_accounts, path)
-        matched = next(
-            (
-                record
-                for record in records
-                if record.principal.subject == subject
-                and record.principal.role is role
-                and record.active
-            ),
-            None,
-        )
-    else:
-        current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
-        records = await asyncio.to_thread(_load_principals, path)
-        matched = next(
-            (
-                record
-                for record in records
-                if record.principal.subject == subject
-                and record.principal.role is role
-                and record.not_before <= current < record.expires_at
-            ),
-            None,
-        )
-    if matched is None:
-        raise _authentication_error(403)
-    return matched.principal
-
-
 async def require_active_subject_with_capability(
     subject: UUID,
     capability: Capability,

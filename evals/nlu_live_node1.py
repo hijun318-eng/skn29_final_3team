@@ -46,6 +46,7 @@ PREVIOUS_PERIOD = {
 }
 PREVIOUS_RESULT_SHAPE = {
     "analysis_operation": "breakdown",
+    "analysis_time_bucket": None,
     "dimension_count": 1,
     "result_limit": None,
 }

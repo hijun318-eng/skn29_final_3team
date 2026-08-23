@@ -84,9 +84,3 @@ def example_trace(name: str) -> tuple[TraceStep, ...]:
         )
         for index, stage in enumerate(stages)
     )
-
-
-def fixture_trace(name: str) -> tuple[TraceStep, ...]:
-    """기존 OpenAPI export API를 보존하는 문서 예시 호환 함수다."""
-
-    return example_trace(name)

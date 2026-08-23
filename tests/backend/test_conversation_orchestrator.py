@@ -62,7 +62,13 @@ def test_safe_analysis_observation_excludes_sql_rows_and_parameters() -> None:
                 "parameters": {"hidden": "value"},
                 "analysis_plan": {
                     "output_metric_ids": ["sample_revenue"],
-                    "joins": [],
+                    "joins": [
+                        {
+                            "join_id": "approved_join",
+                            "plan": "PREAGGREGATE",
+                            "reason": "MULTI_FACT_COMMON_GRAIN",
+                        }
+                    ],
                     "query_strategy": "VIEW_REUSE",
                     "time_bucket": "month",
                     "checksum": "a" * 64,
@@ -76,7 +82,10 @@ def test_safe_analysis_observation_excludes_sql_rows_and_parameters() -> None:
     assert result == {
         "query_strategy": "VIEW_REUSE",
         "source_assets": ["serving.sample.daily"],
-        "join_ids": [],
+        "join_ids": ["approved_join"],
+        "join_plans": [
+            {"join_id": "approved_join", "plan": "PREAGGREGATE"}
+        ],
         "time_bucket": "month",
         "analysis_plan_sha256": "a" * 64,
     }
@@ -736,6 +745,32 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.submitted_requests), 1)
         self.assertEqual(self.submitted_requests[0].question, "2025년 8월 1일 ~ 8월 15일 객실 매출 보여줘")
 
+    async def test_explicit_write_sql_is_blocked_before_model_and_query_pipeline(self) -> None:
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "SQL write 차단",
+        )
+
+        result = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": "DELETE FROM voc_review를 실행해줘"},
+            context=self.context,
+        )
+
+        self.assertEqual("BLOCKED", result["status"])
+        self.assertEqual(ErrorCode.SQL_POLICY_BLOCKED.value, result["code"])
+        self.assertEqual("BLOCKED", result["turn"]["terminal_status"])
+        self.assertEqual(
+            ErrorCode.SQL_POLICY_BLOCKED.value,
+            result["turn"]["reason_code"],
+        )
+        self.assertEqual(
+            ["SQL 쓰기"],
+            result["turn"]["resolved_slots"]["business_terms"],
+        )
+        self.assertEqual([], self.support.questions)
+        self.assertEqual([], self.submitted_requests)
+
     async def test_analysis_route_binds_and_clears_durable_query_lifecycle(self) -> None:
         """실제 query service가 내는 lifecycle event가 admitted Run 저장소로 연결된다."""
 
@@ -1063,6 +1098,18 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             },
             context=self.context,
         )
+        self.assertIn(
+            {
+                "field": "time_range",
+                "operation": "SET",
+                "value": {
+                    "start": "2025-07-01",
+                    "end_exclusive": "2025-08-01",
+                    "source_text": "그 전 달",
+                },
+            },
+            second["turn"]["resolved_slots"]["change_set"],
+        )
         third = await self.execute_command(
             conversation_id=conv_id,
             payload={
@@ -1114,6 +1161,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
                 }
             ],
             analysis_operation="time_trend",
+            analysis_time_bucket="day",
             requested_route="ANALYSIS",
             is_elliptical=False,
         )
@@ -1207,6 +1255,16 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res2["turn"]["route"], "PRESENTATION")
         self.assertEqual(res2["turn"]["artifact_id"], art_id)
         self.assertIsNotNone(res2["turn"]["view_spec_id"])
+        self.assertEqual(
+            res2["turn"]["resolved_slots"]["change_set"],
+            [
+                {
+                    "field": "target_chart_type",
+                    "operation": "SET",
+                    "value": "TABLE",
+                }
+            ],
+        )
         # submit_analysis는 Turn 1에서만 1회 호출됨
         self.assertEqual(len(self.submitted_requests), 1)
 
@@ -2288,6 +2346,10 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             context=self.context,
         )
         self.assertEqual("BLOCKED", first["status"])
+        self.assertEqual(
+            ["인식 객실 매출"],
+            first["turn"]["resolved_slots"]["business_terms"],
+        )
         self.assertEqual([], self.submitted_requests)
 
         second = await self.execute_command(

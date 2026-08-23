@@ -29,7 +29,7 @@ from app.services.context.query_planner import (
 )
 
 
-TYPED_SQL_COMPILER_VERSION = "ANSWERVICE-TYPED-SQL-v1.2.0"
+TYPED_SQL_COMPILER_VERSION = "ANSWERVICE-TYPED-SQL-v1.3.1"
 _SUPPORTED_AGGREGATIONS = frozenset(
     {"sum", "count", "count_distinct", "average", "min", "max", "exists"}
 )
@@ -41,23 +41,6 @@ _COMPARISON_OPERATORS: dict[str, type[exp.Binary]] = {
     "lt": exp.LT,
     "lte": exp.LTE,
 }
-
-
-def typed_sql_capabilities() -> dict[str, object]:
-    """현재 결정론적 SQL 컴파일러가 실제로 여는 구조적 capability를 반환한다."""
-
-    return {
-        "version": TYPED_SQL_COMPILER_VERSION,
-        "query_strategies": [RAW_APPROVED_DETAIL, VIEW_COMPOSE, VIEW_REUSE],
-        "operations": sorted(item.value for item in AnalysisOperation),
-        "time_modes": sorted(item.value for item in AnalysisTimeMode),
-        "max_physical_assets": 2,
-        "join_plans": [
-            FanoutPlan.DIRECT_JOIN.value,
-            FanoutPlan.PREAGGREGATE.value,
-            FanoutPlan.SEMI_JOIN.value,
-        ],
-    }
 
 
 def compile_typed_sql(
@@ -127,6 +110,9 @@ def compile_typed_sql(
     if any(item[0] != source_fqn for item in filters):
         return None
 
+    # G3 must receive the governed operands used by derived ratios.  They remain
+    # internal execution evidence: the response layer removes SUPPORT-only fields
+    # from API tables, charts, and the persisted presentation snapshot.
     projection_ids = tuple(
         dict.fromkeys((*plan.output_metric_ids, *plan.dependency_metric_ids))
     )
@@ -192,9 +178,19 @@ def compile_typed_sql(
         return None
 
     projections: list[exp.Expression] = []
+    group_expressions = {
+        field: _group_expression(
+            field,
+            table_alias,
+            time_field,
+            plan.operation,
+            plan.time_bucket,
+        )
+        for field in grouped_fields
+    }
     for field in grouped_fields:
         projections.append(
-            exp.column(field.column, table=table_alias).as_(dimension_aliases[field])
+            group_expressions[field].copy().as_(dimension_aliases[field])
         )
     for metric_id in projection_ids:
         expression = _metric_expression(metric_id, rules, table_alias, frozenset())
@@ -232,7 +228,7 @@ def compile_typed_sql(
         )
     if grouped_fields:
         query = query.group_by(
-            *(exp.column(item.column, table=table_alias) for item in grouped_fields)
+            *(group_expressions[item].copy() for item in grouped_fields)
         )
 
     if plan.operation in {AnalysisOperation.TOP_N, AnalysisOperation.BOTTOM_N}:
@@ -246,9 +242,12 @@ def compile_typed_sql(
                 for item in plan.dimension_fields
             ),
         )
-    elif plan.operation is AnalysisOperation.TIME_TREND:
+    elif grouped_fields:
         query = query.order_by(
-            exp.Ordered(this=exp.column(dimension_aliases[time_field]), desc=False)
+            *(
+                exp.Ordered(this=exp.column(dimension_aliases[item]), desc=False)
+                for item in grouped_fields
+            )
         )
 
     policy = contracts.get("query_policy")
@@ -332,7 +331,7 @@ def _compile_joined_sql(
     )
     metric_aliases = {
         metric_id: str(rules[metric_id].get("result_field") or "")
-        for metric_id in projection_ids
+        for metric_id in plan.dependency_metric_ids
     }
     if (
         any(not value for value in metric_aliases.values())
@@ -391,6 +390,13 @@ def _compile_joined_sql(
         return None
     if query is None:
         return None
+    if plan.operation is AnalysisOperation.BREAKDOWN:
+        query = query.order_by(
+            *(
+                exp.Ordered(this=exp.column(dimension_aliases[item]), desc=False)
+                for item in plan.dimension_fields
+            )
+        )
     query = _bounded_limit(query, plan, contracts)
     if query is None:
         return None
@@ -866,9 +872,10 @@ def _filter_signature(
 
 
 def _grouped_fields(plan: AnalysisPlan) -> tuple[PlannedField, ...]:
-    fields = list(plan.dimension_fields)
-    if plan.operation is AnalysisOperation.TIME_TREND and plan.time_fields[0] not in fields:
+    fields: list[PlannedField] = []
+    if plan.operation is AnalysisOperation.TIME_TREND:
         fields.append(plan.time_fields[0])
+    fields.extend(item for item in plan.dimension_fields if item not in fields)
     return tuple(fields)
 
 
@@ -891,6 +898,31 @@ def _dimension_aliases(
         aliases[field] = alias
         used.add(alias.casefold())
     return aliases
+
+
+def _group_expression(
+    field: PlannedField,
+    table_alias: str,
+    time_field: PlannedField,
+    operation: AnalysisOperation,
+    time_bucket: str,
+) -> exp.Expression:
+    """계획의 논리 시간 grain을 물리 source field의 결정론적 AST로 컴파일한다."""
+
+    column = exp.column(field.column, table=table_alias)
+    if (
+        operation is not AnalysisOperation.TIME_TREND
+        or field != time_field
+        or time_bucket == "day"
+    ):
+        return column
+    return exp.Cast(
+        this=exp.TimestampTrunc(
+            this=column,
+            unit=exp.Var(this=time_bucket.upper()),
+        ),
+        to=exp.DataType.build("DATE"),
+    )
 
 
 def _period_predicate(

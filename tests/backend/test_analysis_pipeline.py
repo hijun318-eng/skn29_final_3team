@@ -142,6 +142,7 @@ NODE1_RESPONSE = {
     "selected_metric_id": METRIC_ID,
     "selected_metric_ids": [METRIC_ID],
     "analysis_operation": "aggregate",
+    "analysis_time_bucket": None,
     "result_limit": None,
     "dimension_candidates": [],
     "filter_candidates": [],

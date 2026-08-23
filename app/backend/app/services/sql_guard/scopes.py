@@ -153,7 +153,16 @@ def resolve_scope_operand(
     scope: ScopeEvidence,
 ) -> str | None:
     """스코프 내의 표현식 노드를 'FQN.column' 또는 ':named_param' 형태로 해석합니다."""
-    while isinstance(value, (exp.Cast, exp.Paren, exp.FromISO8601Timestamp)):
+    while isinstance(
+        value,
+        (
+            exp.Cast,
+            exp.Paren,
+            exp.FromISO8601Timestamp,
+            exp.TimestampTrunc,
+            exp.DateTrunc,
+        ),
+    ):
         value = value.this
     if isinstance(value, exp.Placeholder):
         return f":{value.name}"

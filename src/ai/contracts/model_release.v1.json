@@ -1,20 +1,20 @@
 {
-  "manifest_version": "MODEL-RELEASE-v1.34.0",
+  "manifest_version": "MODEL-RELEASE-v1.35.1",
   "state": "ACTIVE",
   "schema_contract": "v1",
-  "schema_version": "MODEL-v1.21.0",
-  "schema_sha256": "8c86291a80e3548f8297ebae880de4c466a6c9dc50791b7a6b51847e2bb28ad1",
+  "schema_version": "MODEL-v1.22.0",
+  "schema_sha256": "bc89f3cabbcd29ac7498051d189c916498fc7401e39707474b067dbcfc24acdf",
   "compatible_runtime": {
-    "analysis_plan_version": "ANSWERVICE-ANALYSIS-PLAN-v3",
-    "typed_sql_compiler_version": "ANSWERVICE-TYPED-SQL-v1.2.0",
+    "analysis_plan_version": "ANSWERVICE-ANALYSIS-PLAN-v4",
+    "typed_sql_compiler_version": "ANSWERVICE-TYPED-SQL-v1.3.1",
     "canonical_semantic_release_version": "ANSWERVICE-CANONICAL-SEMANTIC-RELEASE-v1",
     "runtime_governance_version": "ANSWERVICE-RUNTIME-GOVERNANCE-v2"
   },
   "nodes": {
     "node1": {
       "prompt_id": "node1.normalize",
-      "prompt_version": "PROMPT-v1.26.1",
-      "prompt_sha256": "51923118c1ab4d74181c4f10bd56145d821253b3e6a8bad346ac772e1a762649",
+      "prompt_version": "PROMPT-v1.27.0",
+      "prompt_sha256": "2d2fbb7231a7bd7662796ee55940cc13f8c7ab73838dd35a89c3858dbd2c6237",
       "request_definition": "node1_request",
       "response_definition": "node1_response"
     },

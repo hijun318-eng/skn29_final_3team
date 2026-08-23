@@ -74,30 +74,6 @@ def test_provider_alias_and_https_must_match_manifest(
         resolve_active_model_routes(PRIMARY | NODE2 | override)
 
 
-@pytest.mark.parametrize(
-    "relative",
-    (
-        "docs/e2e_mvp/derived/05_sLLM_RunPod_연결_가이드.md",
-        "docs/e2e_mvp/derived/22_RunPod_Serverless_vLLM_배포_가이드.md",
-    ),
-)
-def test_runpod_guides_declare_complete_qwen_route(relative: str) -> None:
-    source = (ROOT / relative).read_text(encoding="utf-8")
-    blocks = re.findall(r"```dotenv\s*(.*?)```", source, flags=re.DOTALL)
-    node2_blocks = tuple(block for block in blocks if "NODE2_MODEL=" in block)
-
-    assert node2_blocks
-    assert "MODEL_MODE=" not in source
-    assert "| Serving context window | `5120` tokens |" in source
-    assert "| Backend max output | `1280` tokens |" in source
-    assert "| Backend safety margin | `256` tokens |" in source
-    for block in node2_blocks:
-        assert "NODE2_MODEL_PROVIDER=qwen" in block
-        assert "NODE2_MODEL_ENDPOINT=" in block
-        assert "NODE2_MODEL_API_TOKEN=" in block
-        assert "NODE2_MODEL=answervice-sql" in block
-
-
 def test_repository_example_leaves_optional_node2_route_fully_inactive() -> None:
     source = (ROOT / "infrastructure/database/.env.example").read_text(
         encoding="utf-8"

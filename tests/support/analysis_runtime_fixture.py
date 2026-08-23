@@ -361,6 +361,7 @@ class MetadataDrivenAnalysisModel:
             "selected_metric_id": metric_ids[0],
             "selected_metric_ids": [metric_ids[0]],
             "analysis_operation": "aggregate",
+            "analysis_time_bucket": None,
             "result_limit": None,
             "dimension_candidates": [],
             "filter_candidates": [],

@@ -28,7 +28,6 @@
       "runtime_max_output_tokens": 1280,
       "safety_margin_tokens": 256,
       "sources": [
-        "docs/e2e_mvp/derived/22_RunPod_Serverless_vLLM_배포_가이드.md",
         "app/backend/app/adapters/model_schemas.py"
       ]
     }

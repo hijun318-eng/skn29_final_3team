@@ -27,6 +27,7 @@ from app.services.analysis.typed_sql_compiler import (
     TYPED_SQL_COMPILER_VERSION,
     compile_typed_sql,
 )
+from app.services.analysis.result_validator import PipelineResultValidator
 from app.services.context.query_planner import VIEW_REUSE
 from app.services.sql_guard import apply_guard_decision, validate_plan
 from src.ai.schema import ContractError, validate_payload
@@ -553,6 +554,7 @@ def test_typed_sql_compiler_builds_time_trend_and_period_comparison() -> None:
         {
             "selected_metric_id": "governed_amount",
             "analysis_operation": "time_trend",
+            "analysis_time_bucket": "day",
             "period_relationship": "single",
         },
         trend_package,
@@ -766,9 +768,32 @@ def test_typed_sql_compiler_builds_a_ratio_from_governed_operands() -> None:
 
     assert candidate is not None
     assert "NULLIF" in str(candidate["sql"])
+    assert str(candidate["sql"]).count(" AS governed_total") == 1
+    assert str(candidate["sql"]).count(" AS governed_count") == 1
+    assert str(candidate["sql"]).count(" AS governed_ratio") == 1
     candidate["analysis_plan"] = plan.as_dict()
     accepted = validate_plan(candidate, package)
     assert accepted.ok, accepted
+
+    apply_guard_decision(candidate, accepted)
+    columns = tuple(candidate["ast_evidence"]["projection_aliases"])
+    rows = [
+        {
+            "governed_ratio": 2.0,
+            "governed_total": 10.0,
+            "governed_count": 5,
+        }
+    ]
+    query = {
+        "evidence_complete": True,
+        "query_id": "ratio-evidence-query",
+        "rows": rows,
+        "result_metadata": PipelineResultValidator.result_metadata(rows, columns),
+        "filters": {},
+        "sampling": {"applied": False, "returned_rows": 1, "total_rows": 1},
+        "masking": {"applied": False, "fields": []},
+    }
+    assert PipelineResultValidator.g3_violation(query, candidate, package) is None
 
 
 @pytest.mark.parametrize(
@@ -912,6 +937,7 @@ def test_guard_enforces_time_trend_group_projection_and_ascending_order() -> Non
         {
             "selected_metric_ids": ["governed_amount"],
             "analysis_operation": "time_trend",
+            "analysis_time_bucket": "day",
             "period_relationship": "single",
         },
         package,
@@ -941,6 +967,65 @@ def test_guard_enforces_time_trend_group_projection_and_ascending_order() -> Non
 
     assert accepted.ok, accepted
     assert descending.violation == "ANALYSIS_OPERATION_MISMATCH"
+
+
+def test_monthly_time_trend_compiles_exact_rollup_and_rejects_ast_mutations() -> None:
+    """일 단위 source의 월 추이는 compiler 소유 DATE_TRUNC 구조만 허용한다."""
+
+    package = _view_reuse_package(_package())
+    plan = build_analysis_plan(
+        {
+            "selected_metric_ids": ["governed_amount"],
+            "analysis_operation": "time_trend",
+            "analysis_time_bucket": "month",
+            "period_relationship": "single",
+        },
+        package,
+    )
+    candidate = compile_typed_sql(plan, package)
+    assert candidate is not None
+    assert "DATE_TRUNC('MONTH', source_view.occurred_on)" in str(candidate["sql"])
+    candidate["analysis_plan"] = plan.as_dict()
+    accepted = validate_plan(candidate, package)
+    assert accepted.ok, accepted
+
+    wrong_unit = parse_one(str(candidate["sql"]), dialect="trino")
+    for truncation in wrong_unit.find_all(exp.TimestampTrunc):
+        truncation.set("unit", exp.Var(this="QUARTER"))
+    wrong_unit_decision = validate_plan(
+        {
+            "sql": wrong_unit.sql(dialect="trino"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+
+    missing_cast = parse_one(str(candidate["sql"]), dialect="trino")
+    for cast in tuple(missing_cast.find_all(exp.Cast)):
+        if isinstance(cast.this, exp.TimestampTrunc):
+            cast.replace(cast.this.copy())
+    missing_cast_decision = validate_plan(
+        {
+            "sql": missing_cast.sql(dialect="trino"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+
+    wrong_field = parse_one(str(candidate["sql"]), dialect="trino")
+    for truncation in wrong_field.find_all(exp.TimestampTrunc):
+        truncation.set("this", exp.column("active", table="source_view"))
+    wrong_field_decision = validate_plan(
+        {
+            "sql": wrong_field.sql(dialect="trino"),
+            "analysis_plan": plan.as_dict(),
+        },
+        package,
+    )
+
+    assert wrong_unit_decision.violation == "ANALYSIS_OPERATION_MISMATCH"
+    assert missing_cast_decision.violation == "ANALYSIS_OPERATION_MISMATCH"
+    assert wrong_field_decision.violation == "ANALYSIS_OPERATION_MISMATCH"
 
 
 def _joined_sql(

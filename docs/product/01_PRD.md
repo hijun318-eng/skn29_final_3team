@@ -177,7 +177,7 @@ P0 멀티턴은 각 Analysis Run을 이어서 수정하는 Agent memory가 아�
 | ANL-008 | APP-G3는 결과 schema·행수·금액 범위·노출 정책·근거 완전성을 검사한다. APP-G3는 의미 정확성을 보증한다고 표현하지 않는다. | `READY_TO_VERIFY` |
 | ANL-009 | 표·차트·요약·사용한 Metric·기간·출처·query ID·경고가 같은 server artifact에서 렌더링된다. 하드코딩 KPI가 없다. | `READY_TO_VERIFY` |
 | ANL-010 | 대표 경로와 회원 교차 검증 경로가 승인 Gold Result와 허용 오차 안에서 일치한다. | `BLOCKED` |
-| ANL-011 | sealed utterance manifest가 존댓말/반말, 조사·띄어쓰기, 어순, 경미 오탈자, 승인 별칭, 한/영 혼용, 후속 지시어와 의미 contrast를 포함한다. 같은 의미는 같은 resolved request hash/clarification으로 수렴한다. 숫자·날짜·단위·부정·비교 방향·`이상/초과`·호텔/등급·대체/추가 token은 보존하고, 이를 바꿀 수 있는 교정은 확인한다. unsupported intent·권한 우회·prompt injection을 허용 질문으로 변조하지 않는다. calibration 뒤 threshold를 봉인한다. 평가 설계는 [멀티턴·발화 이해 BP와 벤치마크 적용](../reference/멀티턴_발화이해_BP_벤치마크.md)을 따라 CheckList `MFT/INV/DIR/NEG`, BFCL 방식의 per-Turn backend state/path oracle, KLUE 방식의 joint slot exact match를 적용한다. 공개 benchmark·leaderboard 점수 자체는 제품 Gate 증거가 아니다. 현재 공백 정리·alias substring parser와 NOT_RUN eval은 증거가 아니다. | `NOT_STARTED` |
+| ANL-011 | sealed utterance manifest가 존댓말/반말, 조사·띄어쓰기, 어순, 경미 오탈자, 승인 별칭, 한/영 혼용, 후속 지시어와 의미 contrast를 포함한다. 같은 의미는 같은 resolved request hash/clarification으로 수렴한다. 숫자·날짜·단위·부정·비교 방향·`이상/초과`·호텔/등급·대체/추가 token은 보존하고, 이를 바꿀 수 있는 교정은 확인한다. unsupported intent·권한 우회·prompt injection을 허용 질문으로 변조하지 않는다. calibration 뒤 threshold를 봉인한다. 평가 설계는 CheckList `MFT/INV/DIR/NEG`, BFCL 방식의 per-Turn backend state/path oracle, KLUE 방식의 joint slot exact match를 적용한다. 공개 benchmark·leaderboard 점수 자체는 제품 Gate 증거가 아니다. 현재 공백 정리·alias substring parser와 NOT_RUN eval은 증거가 아니다. | `NOT_STARTED` |
 
 ### CONV — 제한된 멀티턴 Conversation·Turn
 

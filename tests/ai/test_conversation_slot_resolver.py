@@ -226,6 +226,34 @@ def test_conversation_slot_resolver_routes_and_views():
     assert turn5_slots.source_turn_ids == ("turn-1",)
 
 
+def test_initial_chart_defaults_follow_typed_operation_and_metric_unit() -> None:
+    resolve = ConversationSlotResolver._resolve_initial_chart_type
+
+    assert resolve("", {"analysis_operation": "time_trend"}) == "LINE"
+    assert resolve("", {"analysis_operation": "period_comparison"}) == "BAR"
+    assert resolve("", {"analysis_operation": "top_n"}) == "BAR"
+    assert resolve(
+        "",
+        {
+            "analysis_operation": "breakdown",
+            "selected_metric_ids": ["occupancy_rate"],
+            "metric_terms": {"occupancy_rate": {"unit": "ratio"}},
+        },
+    ) == "SUMMARY"
+    assert resolve(
+        "",
+        {
+            "analysis_operation": "breakdown",
+            "selected_metric_ids": ["voc_average_rating"],
+            "metric_terms": {"voc_average_rating": {"unit": "rating_1_to_5"}},
+        },
+    ) == "BAR"
+    assert resolve(
+        "",
+        {"analysis_operation": "time_trend", "presentation_type": "TABLE"},
+    ) == "TABLE"
+
+
 def test_conversation_slots_preserve_multi_metric_operation_and_followup_inheritance():
     period = _node1_period(
         "2026-07-01T00:00:00+09:00",

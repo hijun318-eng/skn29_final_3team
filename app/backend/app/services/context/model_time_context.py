@@ -93,8 +93,18 @@ def previous_result_shape(
         or not 1 <= result_limit <= 100
     ):
         return None
+    analysis_time_bucket = getattr(
+        resolved_slots, "analysis_time_bucket", None
+    )
+    if (
+        operation == "time_trend"
+        and analysis_time_bucket
+        not in {"day", "week", "month", "quarter", "year"}
+    ) or (operation != "time_trend" and analysis_time_bucket is not None):
+        return None
     return {
         "analysis_operation": operation,
+        "analysis_time_bucket": analysis_time_bucket,
         "dimension_count": len(dimensions),
         "result_limit": result_limit,
     }

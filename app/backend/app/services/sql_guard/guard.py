@@ -204,6 +204,15 @@ def validate_parsed_semantics(
 
         # 2. 사용 함수 화이트리스트 검증
         allowed_functions = {str(item).upper() for item in policy["allowed_functions"]} | {"CAST", "TRY_CAST"}
+        if (
+            logical_plan is not None
+            and logical_plan.operation is AnalysisOperation.TIME_TREND
+            and logical_plan.time_bucket in {"week", "month", "quarter", "year"}
+        ):
+            # DATE_TRUNC는 일반 query policy를 넓히지 않는다. 서버가 검증한 coarser
+            # time_trend 계획에서만 parser의 canonical function 이름을 임시 허용하고,
+            # 아래 operation semantics가 field·unit·CAST·GROUP BY 형태를 정확히 대조한다.
+            allowed_functions.add("TIMESTAMP_TRUNC")
         if not set(result.functions).issubset(allowed_functions):
             return _semantic_blocked(
                 "FUNCTION_POLICY_MISMATCH",

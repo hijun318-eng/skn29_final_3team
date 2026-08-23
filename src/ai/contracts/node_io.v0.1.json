@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "MODEL-v1.21.0",
+  "version": "MODEL-v1.22.0",
   "$defs": {
     "execution_time": {
       "type": "object",
@@ -680,7 +680,7 @@
         "previous_result_shape": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["analysis_operation", "dimension_count", "result_limit"],
+          "required": ["analysis_operation", "analysis_time_bucket", "dimension_count", "result_limit"],
           "properties": {
             "analysis_operation": {
               "type": "string",
@@ -692,6 +692,10 @@
                 "bottom_n",
                 "period_comparison"
               ]
+            },
+            "analysis_time_bucket": {
+              "type": ["string", "null"],
+              "enum": ["day", "week", "month", "quarter", "year", null]
             },
             "dimension_count": {
               "type": "integer",
@@ -760,6 +764,7 @@
         "selected_metric_id",
         "selected_metric_ids",
         "analysis_operation",
+        "analysis_time_bucket",
         "result_limit",
         "dimension_candidates",
         "filter_candidates",
@@ -803,6 +808,10 @@
             "period_comparison",
             null
           ]
+        },
+        "analysis_time_bucket": {
+          "type": ["string", "null"],
+          "enum": ["day", "week", "month", "quarter", "year", null]
         },
         "result_limit": {
           "type": ["integer", "null"],

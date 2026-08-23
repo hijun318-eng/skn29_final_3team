@@ -19,6 +19,8 @@ from typing import Any, Sequence
 
 from app.services.conversation.change_set import (
     AnalysisChangeSet,
+    ChangeOperation,
+    SlotChange,
     apply_dimension_changes,
     apply_metric_change,
     derive_dimension_changes,
@@ -67,6 +69,7 @@ class ResolvedTurnSlots:
     analysis_operation: str | None = None
     result_limit: int | None = None
     comparison_time_range: ResolvedTimeRange | None = None
+    analysis_time_bucket: str | None = None
 
 
 class ConversationSlotResolver:
@@ -243,6 +246,7 @@ class ConversationSlotResolver:
                         is_inherited_dimension=True if last_analysis_slots.get("dimension_fields") else False,
                         is_inherited_period=is_inherited_period,
                         analysis_operation=last_slots.get("analysis_operation"),
+                        analysis_time_bucket=last_slots.get("analysis_time_bucket"),
                         result_limit=last_slots.get("result_limit"),
                         comparison_time_range=cls._parse_stored_time_range(
                             last_slots.get("comparison_time_range")
@@ -274,6 +278,7 @@ class ConversationSlotResolver:
                         is_inherited_dimension=True if last_analysis_slots.get("dimension_fields") else False,
                         is_inherited_period=False,
                         analysis_operation=last_slots.get("analysis_operation"),
+                        analysis_time_bucket=last_slots.get("analysis_time_bucket"),
                         result_limit=last_slots.get("result_limit"),
                         comparison_time_range=cls._parse_stored_time_range(
                             last_slots.get("comparison_time_range")
@@ -377,8 +382,16 @@ class ConversationSlotResolver:
                 is_inherited_metric=last_analysis is not None,
                 is_inherited_dimension=last_analysis is not None,
                 is_inherited_period=last_analysis is not None,
+                change_set=(
+                    SlotChange(
+                        "target_chart_type",
+                        ChangeOperation.SET,
+                        target_view,
+                    ),
+                ),
                 metric_ids=stored_analysis_metric_ids,
                 analysis_operation=last_analysis_slots.get("analysis_operation"),
+                analysis_time_bucket=last_analysis_slots.get("analysis_time_bucket"),
                 result_limit=last_analysis_slots.get("result_limit"),
                 comparison_time_range=cls._parse_stored_time_range(
                     last_analysis_slots.get("comparison_time_range")
@@ -434,6 +447,16 @@ class ConversationSlotResolver:
         analysis_operation = candidate_operation or (
             analysis_inheritance_slots.get("analysis_operation")
             if is_followup
+            else None
+        )
+        candidate_time_bucket = node1_output.get("analysis_time_bucket")
+        if candidate_time_bucket not in {"day", "week", "month", "quarter", "year"}:
+            candidate_time_bucket = None
+        analysis_time_bucket = (
+            candidate_time_bucket
+            if candidate_operation == "time_trend"
+            else analysis_inheritance_slots.get("analysis_time_bucket")
+            if is_followup and analysis_operation == "time_trend"
             else None
         )
         candidate_result_limit = node1_output.get("result_limit")
@@ -541,6 +564,64 @@ class ConversationSlotResolver:
         if analysis_operation != "period_comparison":
             comparison_time_range = None
 
+        # Metric·dimension과 동일하게 기간 변경도 durable ChangeSet에 남긴다. Node 1의
+        # typed period candidate가 있으면 SET, 직전 범위를 그대로 썼으면 PRESERVE이며,
+        # 비교 범위를 새로 붙이는 전이는 ADD_VALUE다. 질문 문구를 다시 해석하지 않는다.
+        period_changes: list[SlotChange] = []
+        if time_range is not None:
+            period_changes.append(
+                SlotChange(
+                    "time_range",
+                    (
+                        ChangeOperation.PRESERVE
+                        if is_inherited_period
+                        else ChangeOperation.SET
+                    ),
+                    {
+                        "start": time_range.start.isoformat(),
+                        "end_exclusive": time_range.end_exclusive.isoformat(),
+                        "source_text": time_range.source_text,
+                    },
+                )
+            )
+        elif last_time_range is not None:
+            period_changes.append(
+                SlotChange("time_range", ChangeOperation.CLEAR, None)
+            )
+
+        last_comparison_time_range = cls._parse_stored_time_range(
+            last_analysis_slots.get("comparison_time_range")
+        )
+        if comparison_time_range is not None:
+            comparison_is_preserved = (
+                last_comparison_time_range is not None
+                and comparison_time_range.start == last_comparison_time_range.start
+                and comparison_time_range.end_exclusive
+                == last_comparison_time_range.end_exclusive
+            )
+            period_changes.append(
+                SlotChange(
+                    "comparison_time_range",
+                    (
+                        ChangeOperation.PRESERVE
+                        if comparison_is_preserved
+                        else ChangeOperation.ADD_VALUE
+                        if last_comparison_time_range is None
+                        else ChangeOperation.SET
+                    ),
+                    {
+                        "start": comparison_time_range.start.isoformat(),
+                        "end_exclusive": comparison_time_range.end_exclusive.isoformat(),
+                        "source_text": comparison_time_range.source_text,
+                    },
+                )
+            )
+        elif last_comparison_time_range is not None:
+            period_changes.append(
+                SlotChange("comparison_time_range", ChangeOperation.CLEAR, None)
+            )
+        change_set = (*change_set, *period_changes)
+
         # 3-5. 초기 시각화 선호도 판별
         target_chart_type = cls._resolve_initial_chart_type(msg, node1_output)
 
@@ -572,6 +653,7 @@ class ConversationSlotResolver:
             analysis_operation=analysis_operation,
             result_limit=result_limit,
             comparison_time_range=comparison_time_range,
+            analysis_time_bucket=analysis_time_bucket,
         )
 
     @classmethod
@@ -680,7 +762,7 @@ class ConversationSlotResolver:
     ) -> str:
         """ANALYSIS 라우트에서 질문이 명시한 초기 시각화 타입을 확정합니다.
 
-        표현을 지목하지 않은 질문은 표/차트를 강제하지 않고 요약(``SUMMARY``)으로 연다.
+        표현을 지목하지 않은 질문은 확정된 연산과 출력 지표 unit으로 기본 표현을 정한다.
 
         Args:
             msg: 사용자 발화(현재 분기 판단에는 쓰지 않으며 추적용으로 유지)
@@ -689,7 +771,39 @@ class ConversationSlotResolver:
         Returns:
             허용 목록에 속하는 뷰 타입
         """
-        return cls._presentation_signal(node1_output) or "SUMMARY"
+        signal = cls._presentation_signal(node1_output)
+        if signal is not None:
+            return signal
+        if not node1_output:
+            return "SUMMARY"
+        operation = node1_output.get("analysis_operation")
+        if operation == "time_trend":
+            return "LINE"
+        if operation in {"period_comparison", "top_n", "bottom_n"}:
+            return "BAR"
+        if operation != "breakdown":
+            return "SUMMARY"
+
+        raw_ids = node1_output.get("selected_metric_ids")
+        metric_ids = (
+            [item for item in raw_ids if isinstance(item, str) and item]
+            if isinstance(raw_ids, (list, tuple))
+            else []
+        )
+        raw_terms = node1_output.get("metric_terms")
+        units = []
+        if metric_ids and isinstance(raw_terms, dict):
+            for metric_id in metric_ids:
+                term = raw_terms.get(metric_id)
+                unit = term.get("unit") if isinstance(term, dict) else None
+                if not isinstance(unit, str) or not unit.strip():
+                    units = []
+                    break
+                units.append(unit.strip().casefold())
+        rate_or_per_unit = bool(units) and all(
+            unit == "ratio" or "_per_" in unit for unit in units
+        )
+        return "SUMMARY" if rate_or_per_unit else "BAR"
 
     @classmethod
     def _presentation_signal(cls, node1_output: dict[str, Any] | None) -> str | None:

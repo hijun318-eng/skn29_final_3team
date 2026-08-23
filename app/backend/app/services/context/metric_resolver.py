@@ -70,6 +70,7 @@ _ANALYSIS_OPERATIONS = frozenset(
         "period_comparison",
     }
 )
+_ANALYSIS_TIME_BUCKETS = frozenset({"day", "week", "month", "quarter", "year"})
 
 
 def _reconcile_comparison_axis(
@@ -428,11 +429,94 @@ def _analysis_shape_recheck_required(normalized: dict[str, Any]) -> bool:
         return False
     operation = normalized.get("analysis_operation")
     raw_intents = normalized.get("intent_candidates")
-    return not (
+    if not (
         operation in _ANALYSIS_OPERATIONS
         and isinstance(raw_intents, list)
         and raw_intents == [operation]
-    )
+    ):
+        return True
+    if "analysis_time_bucket" not in normalized:
+        return True
+    dimensions = normalized.get("dimension_candidates")
+    if not isinstance(dimensions, list):
+        return True
+    result_limit = normalized.get("result_limit")
+    bucket = normalized.get("analysis_time_bucket")
+    if operation == "aggregate":
+        return bool(dimensions) or result_limit is not None or bucket is not None
+    if operation == "breakdown":
+        return not dimensions or result_limit is not None or bucket is not None
+    if operation == "time_trend":
+        return bucket not in _ANALYSIS_TIME_BUCKETS or result_limit is not None
+    if operation in {"top_n", "bottom_n"}:
+        return (
+            not dimensions
+            or isinstance(result_limit, bool)
+            or not isinstance(result_limit, int)
+            or not 1 <= result_limit <= 100
+            or bucket is not None
+        )
+    return result_limit is not None or bucket is not None
+
+
+def _reconcile_analysis_bucket_signal(normalized: dict[str, Any]) -> dict[str, Any]:
+    """유효한 시간 버킷과 일반 집계 형태의 충돌만 ``time_trend``로 정규화한다.
+
+    bounded recheck 뒤에도 Node1이 ``aggregate`` 또는 ``breakdown``과 유효한
+    ``analysis_time_bucket``을 함께 반환할 수 있다. 버킷은 time trend에서만 허용되는
+    더 좁은 typed 신호이므로 이 두 일반 형태에 한해 연산을 맞춘다. 버킷·기간·지표를
+    새로 추론하지 않으며 ranking·period comparison 충돌은 계속 fail-closed다.
+    """
+
+    operation = normalized.get("analysis_operation")
+    bucket = normalized.get("analysis_time_bucket")
+    if (
+        normalized.get("metric_resolution") == "selected"
+        and enum_signal(normalized.get("requested_route"), CONVERSATION_ROUTES)
+        not in {"PRESENTATION", "REPORT_ACTION"}
+        and operation in {"aggregate", "breakdown"}
+        and bucket in _ANALYSIS_TIME_BUCKETS
+        and normalized.get("result_limit") is None
+    ):
+        reconciled = dict(normalized)
+        reconciled["analysis_operation"] = "time_trend"
+        reconciled["intent_candidates"] = ["time_trend"]
+        return reconciled
+    return normalized
+
+
+def _common_source_time_bucket(assets: list[dict[str, object]]) -> str:
+    """동일 release asset들의 공통 물리 time grain을 대화 기본 추이에만 사용한다."""
+
+    buckets: set[str] = set()
+    for asset in assets:
+        metadata = asset.get("time_metadata")
+        fields = metadata.get("fields") if isinstance(metadata, dict) else None
+        if not isinstance(fields, list) or not fields:
+            raise ContextBuildError(
+                ContextBuildErrorCode.INVALID_METADATA,
+                "Conversation 기본 추이에 필요한 time metadata가 없습니다.",
+            )
+        for field in fields:
+            target = field.get("field") if isinstance(field, dict) else None
+            if (
+                isinstance(target, dict)
+                and target.get("asset_fqn") != asset.get("fqn")
+            ):
+                continue
+            bucket = field.get("bucket") if isinstance(field, dict) else None
+            if bucket not in _ANALYSIS_TIME_BUCKETS:
+                raise ContextBuildError(
+                    ContextBuildErrorCode.INVALID_METADATA,
+                    "Conversation 기본 추이의 source time bucket이 유효하지 않습니다.",
+                )
+            buckets.add(str(bucket))
+    if len(buckets) != 1:
+        raise ContextBuildError(
+            ContextBuildErrorCode.INVALID_METADATA,
+            "Conversation 기본 추이의 source time bucket이 서로 다릅니다.",
+        )
+    return next(iter(buckets))
 
 
 def _finalize_metric_scope(
@@ -490,6 +574,7 @@ def _structured_request(
     relationship: str,
     analysis_time_mode: str,
     analysis_operation: str | None,
+    analysis_time_bucket: str | None,
     result_limit: int | None,
     metric_terms: dict[str, dict[str, object]],
     model_signals: dict[str, object] | None = None,
@@ -512,6 +597,9 @@ def _structured_request(
         "selected_metric_id": selected,
         "selected_metric_ids": output_ids,
         "analysis_operation": analysis_operation,
+        "analysis_time_bucket": (
+            analysis_time_bucket if analysis_operation == "time_trend" else "none"
+        ),
         "result_limit": result_limit,
         # Ratio operand는 독립 BUSINESS Metric일 수 있다. 출력 Metric만 남기면 실행
         # asset의 BUSINESS 범위와 Glossary 범위가 달라져 Context Gate가 닫히므로,
@@ -931,6 +1019,13 @@ class MetricResolver:
                     periods,
                     preflight_context,
                 )
+                pre_time_bucket = (
+                    payload.resolved_slots.analysis_time_bucket
+                    if pre_operation == "time_trend"
+                    else None
+                )
+                if pre_operation == "time_trend" and pre_time_bucket is None:
+                    pre_time_bucket = _common_source_time_bucket(selected_assets)
                 structured_request = _structured_request(
                     intents=pre_intents,
                     keep_ids=pre_keep_ids,
@@ -942,6 +1037,7 @@ class MetricResolver:
                     relationship="comparison" if len(periods) == 2 else "single",
                     analysis_time_mode=analysis_time_mode,
                     analysis_operation=pre_operation,
+                    analysis_time_bucket=pre_time_bucket,
                     result_limit=payload.resolved_slots.result_limit,
                     metric_terms=metric_terms,
                 )
@@ -1068,6 +1164,7 @@ class MetricResolver:
             normalized = await normalizer(node1_input)
             if not isinstance(normalized, dict):
                 raise ValueError("Node1 결과 형태 재검토 응답은 객체여야 합니다.")
+        normalized = _reconcile_analysis_bucket_signal(normalized)
         periods = _complete_periods_before_as_of(
             _model_periods(normalized.get("period_candidates"), timezone),
             as_of_datetime,
@@ -1165,16 +1262,27 @@ class MetricResolver:
         selected = expected_single_selected
 
         analysis_operation = normalized.get("analysis_operation")
+        if "analysis_time_bucket" not in normalized:
+            raise ValueError("Node1 analysis_time_bucket 필드가 필요합니다.")
+        analysis_time_bucket = normalized.get("analysis_time_bucket")
         result_limit = normalized.get("result_limit")
         if analysis_operation is not None and analysis_operation not in _ANALYSIS_OPERATIONS:
             raise ValueError("Node1 analysis_operation 값이 유효하지 않습니다.")
         if shape_elided_followup:
-            if analysis_operation is not None:
+            if analysis_operation is not None or analysis_time_bucket is not None:
                 raise ValueError(
-                    "Node1 결과 형태 생략 후속 질문은 분석 연산을 지정할 수 없습니다."
+                    "Node1 결과 형태 생략 후속 질문은 분석 연산·시간 버킷을 지정할 수 없습니다."
                 )
         elif analysis_operation is not None and intents != [analysis_operation]:
             raise ValueError("Node1 분석 연산과 의도가 일치하지 않습니다.")
+        if analysis_time_bucket is not None and analysis_time_bucket not in _ANALYSIS_TIME_BUCKETS:
+            raise ValueError("Node1 analysis_time_bucket 값이 유효하지 않습니다.")
+        if (analysis_operation == "time_trend") != (
+            analysis_time_bucket is not None
+        ):
+            raise ValueError(
+                "Node1 time_trend와 analysis_time_bucket이 일치하지 않습니다."
+            )
         if result_limit is not None and (
             analysis_operation not in {"top_n", "bottom_n"}
             or isinstance(result_limit, bool)
@@ -1241,6 +1349,7 @@ class MetricResolver:
             "selected_metric_id": selected,
             "selected_metric_ids": selected_metric_ids,
             "analysis_operation": analysis_operation,
+            "analysis_time_bucket": analysis_time_bucket,
             "result_limit": result_limit,
             "dimension_candidates": selected_dimensions,
             "dimension_fields": [
@@ -1443,6 +1552,9 @@ class MetricResolver:
             intents,
             partial_context,
         )
+        if analysis_operation == "time_trend" and analysis_time_bucket is None:
+            analysis_time_bucket = _common_source_time_bucket(selected_assets)
+            partial_context["analysis_time_bucket"] = analysis_time_bucket
         availability = _validate_selected_data_availability(
             selected_assets,
             periods,
@@ -1459,6 +1571,7 @@ class MetricResolver:
             relationship=relationship,
             analysis_time_mode=analysis_time_mode,
             analysis_operation=analysis_operation,
+            analysis_time_bucket=analysis_time_bucket,
             result_limit=result_limit,
             metric_terms=metric_terms,
             model_signals={
@@ -1471,6 +1584,8 @@ class MetricResolver:
                     normalized.get("presentation_type"), PRESENTATION_TYPES
                 ),
                 "is_elliptical": normalized.get("is_elliptical"),
+                "measurement_source_text": measurement_source_text,
+                "measurement_source_texts": measurement_source_texts,
             },
         )
         if availability is not None:

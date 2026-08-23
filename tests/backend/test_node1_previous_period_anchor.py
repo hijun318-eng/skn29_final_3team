@@ -32,6 +32,7 @@ from tests.ai.test_contracts import NODE1_INTERPRETATION_CONTEXT  # noqa: E402
 SEOUL = ZoneInfo("Asia/Seoul")
 RESULT_SHAPE = {
     "analysis_operation": "breakdown",
+    "analysis_time_bucket": None,
     "dimension_count": 1,
     "result_limit": None,
 }
@@ -118,12 +119,16 @@ def test_contract_rejects_unbounded_or_unknown_interpretation_recheck(recheck):
 @pytest.mark.parametrize(
     "shape",
     [
-        {"analysis_operation": "breakdown", "dimension_count": 1},
+        {
+            "analysis_operation": "breakdown",
+            "dimension_count": 1,
+            "result_limit": None,
+        },
         {**RESULT_SHAPE, "dimension_id": "hotel_code"},
         {**RESULT_SHAPE, "analysis_operation": "raw_sql"},
         {**RESULT_SHAPE, "dimension_count": 61},
     ],
-    ids=["missing_limit", "physical_dimension_leak", "unknown_operation", "too_many_dimensions"],
+    ids=["missing_time_bucket", "physical_dimension_leak", "unknown_operation", "too_many_dimensions"],
 )
 def test_contract_rejects_malformed_previous_result_shape(shape):
     """물리 식별자나 계약 밖 결과 형태가 Node1 요청에 섞이면 닫히는지 검증."""

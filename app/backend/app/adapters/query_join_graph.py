@@ -6,27 +6,7 @@ entitlement도 판단하지 않는다. 권한 검증은 호출자인 ``query_gov
 
 from __future__ import annotations
 
-import json
 from collections import deque
-
-from app.adapters.datahub_metadata import GovernedMetadataError
-from src.data.governance_contract import canonical_json
-
-
-def common_join_graph(datasets):
-    """선택된 dataset 전체가 동일한 join graph를 공표했는지 확인하고 그 graph를 반환한다.
-
-    dataset마다 다른 graph를 들고 있으면 release 경계가 깨진 것이므로 병합하지 않고
-    ``GovernedMetadataError``로 닫는다. ``{"edges": [...]}`` 이외의 shape도 같은 오류로 거부한다.
-    """
-
-    values = {canonical_json(item.join_graph) for item in datasets}
-    if len(values) != 1:
-        raise GovernedMetadataError("DataHub assets disagree on the governed join graph")
-    graph = json.loads(next(iter(values)))
-    if set(graph) != {"edges"} or not isinstance(graph["edges"], list):
-        raise GovernedMetadataError("DataHub governed join graph is invalid")
-    return graph
 
 
 def metric_dependencies(datasets):

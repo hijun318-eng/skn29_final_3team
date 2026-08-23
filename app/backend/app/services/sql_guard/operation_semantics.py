@@ -8,7 +8,7 @@ from sqlglot import exp
 
 from app.services.analysis.logical_plan import AnalysisOperation, AnalysisPlan
 from app.services.sql_guard.schema import canonical_fqn, canonical_identifier
-from app.services.sql_guard.scopes import ProjectionScopeEvidence
+from app.services.sql_guard.scopes import ProjectionScopeEvidence, resolve_scope_operand
 from src.ai.sql_policy import SqlValidationResult
 
 
@@ -47,6 +47,10 @@ def operation_violation(
 
     if group_count != len(expected_groups) or group_fields != expected_groups:
         return "SQL GROUP BY가 AnalysisPlan의 차원·시간 grain과 정확히 일치하지 않습니다."
+
+    if plan.operation is AnalysisOperation.TIME_TREND:
+        if error := _time_trend_bucket_violation(plan, result, output_scope):
+            return error
 
     projected_origins = set(output_scope.scope.column_origins.values())
     if not expected_groups <= projected_origins:
@@ -92,10 +96,34 @@ def operation_violation(
             for alias, origin in output_scope.scope.column_origins.items()
             if origin == _field_identity(plan.time_fields[0])
         }
-        if not ordered or not any(_orders_alias(ordered[0], alias) for alias in time_aliases):
+        dimension_aliases = _dimension_aliases(plan, output_scope)
+        if (
+            len(time_aliases) != 1
+            or dimension_aliases is None
+            or len(ordered) != len(dimension_aliases) + 1
+            or not any(_orders_alias(ordered[0], alias) for alias in time_aliases)
+        ):
             return "time_trend는 governed time projection을 오름차순 정렬해야 합니다."
-        if bool(ordered[0].args.get("desc")):
+        if bool(ordered[0].args.get("desc")) or any(
+            not _orders_alias(order_expression, alias)
+            or bool(order_expression.args.get("desc"))
+            for order_expression, alias in zip(
+                ordered[1:], dimension_aliases, strict=True
+            )
+        ):
             return "time_trend의 시간 정렬은 오름차순이어야 합니다."
+    elif plan.operation in {
+        AnalysisOperation.BREAKDOWN,
+        AnalysisOperation.PERIOD_COMPARISON,
+    }:
+        dimension_aliases = _dimension_aliases(plan, output_scope)
+        if dimension_aliases is None or len(ordered) != len(dimension_aliases):
+            return "차원 결과는 모든 GROUP BY 필드의 안정적인 오름차순 정렬을 요구합니다."
+        for order_expression, alias in zip(ordered, dimension_aliases, strict=True):
+            if not _orders_alias(order_expression, alias) or bool(
+                order_expression.args.get("desc")
+            ):
+                return "차원 결과 ORDER BY가 AnalysisPlan 차원 순서와 일치하지 않습니다."
     return None
 
 
@@ -105,6 +133,71 @@ def _output_result_field(plan: AnalysisPlan, package: Any) -> str:
     if metric is None:
         raise ValueError("AnalysisPlan 출력 Metric이 Runtime Context에 없습니다.")
     return canonical_identifier(metric.result_field)
+
+
+def _time_trend_bucket_violation(
+    plan: AnalysisPlan,
+    result: SqlValidationResult,
+    output_scope: ProjectionScopeEvidence,
+) -> str | None:
+    """시간 projection과 GROUP BY가 계획 grain의 정확한 구조인지 검증한다."""
+
+    if result.expression is None or len(plan.time_fields) != 1:
+        return "time_trend 시간 AST를 검증할 수 없습니다."
+    identity = _field_identity(plan.time_fields[0])
+    aliases = [
+        alias
+        for alias, origin in output_scope.scope.column_origins.items()
+        if origin == identity
+    ]
+    if len(aliases) != 1 or canonical_identifier(aliases[0]) != "period":
+        return "time_trend 시간 projection은 단일 period alias여야 합니다."
+    projection = output_scope.scope.projections.get(aliases[0])
+    if projection is None:
+        return "time_trend period projection을 찾을 수 없습니다."
+    value = projection.this if isinstance(projection, exp.Alias) else projection
+    group = output_scope.scope.expression.args.get("group")
+    matching_groups = [
+        item
+        for item in (group.expressions if isinstance(group, exp.Group) else ())
+        if resolve_scope_operand(item, output_scope.scope) == identity
+    ]
+    if len(matching_groups) != 1:
+        return "time_trend period GROUP BY를 유일하게 확인할 수 없습니다."
+
+    truncations = tuple(
+        node
+        for node in result.expression.walk()
+        if isinstance(node, (exp.TimestampTrunc, exp.DateTrunc))
+    )
+    if plan.time_bucket == "day":
+        if truncations or not isinstance(value, exp.Column):
+            return "day time_trend는 governed time field를 변환 없이 사용해야 합니다."
+        if resolve_scope_operand(value, output_scope.scope) != identity:
+            return "day time_trend projection이 governed time field와 다릅니다."
+    else:
+        if not isinstance(value, exp.Cast):
+            return "coarser time_trend는 DATE로 CAST한 DATE_TRUNC projection을 요구합니다."
+        target_type = value.args.get("to")
+        truncated = value.this
+        if (
+            not isinstance(target_type, exp.DataType)
+            or target_type.sql(dialect="trino").upper() != "DATE"
+            or not isinstance(truncated, (exp.TimestampTrunc, exp.DateTrunc))
+        ):
+            return "coarser time_trend의 CAST·DATE_TRUNC 구조가 계약과 다릅니다."
+        unit = truncated.args.get("unit")
+        unit_name = getattr(unit, "name", "")
+        if str(unit_name).casefold() != plan.time_bucket:
+            return "DATE_TRUNC calendar unit이 AnalysisPlan time bucket과 다릅니다."
+        if resolve_scope_operand(truncated.this, output_scope.scope) != identity:
+            return "DATE_TRUNC operand가 governed time field와 다릅니다."
+        if len(truncations) != 2:
+            return "coarser time_trend는 projection과 GROUP BY의 DATE_TRUNC만 허용합니다."
+
+    if matching_groups[0].sql(dialect="trino") != value.sql(dialect="trino"):
+        return "time_trend projection과 GROUP BY 시간 표현식이 동일하지 않습니다."
+    return None
 
 
 def _dimension_aliases(

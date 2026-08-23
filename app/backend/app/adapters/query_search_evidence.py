@@ -9,7 +9,10 @@ from app.adapters.datahub_metric_governance import (
     runtime_metric_permitted,
     runtime_metric_policy,
 )
-from app.adapters.datahub_metadata_types import GlossaryMetricTerm
+from app.adapters.datahub_metadata_types import (
+    DERIVED_DIMENSION_ID_PREFIX,
+    GlossaryMetricTerm,
+)
 from src.data.governance_contract import metric_source_kind, ratio_operand_ids
 
 
@@ -339,6 +342,12 @@ def _candidate_dimension_tokens(assets: list[dict[str, Any]]) -> frozenset[str]:
     for asset in assets:
         for dimension in asset.get("dimensions", ()):
             if not isinstance(dimension, Mapping):
+                continue
+            if str(dimension.get("id") or "").startswith(
+                DERIVED_DIMENSION_ID_PREFIX
+            ):
+                # Metric binding에서 보완한 차원은 Node1 후보에는 필요하지만, 같은
+                # Metric의 어휘를 검색 전에 제거하는 전역 dimension stop-token은 아니다.
                 continue
             values.extend(
                 str(dimension.get(name) or "")

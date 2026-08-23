@@ -59,6 +59,7 @@ def build_structured_analysis_request(
                 else None
             ),
             analysis_operation=slots.analysis_operation,
+            analysis_time_bucket=slots.analysis_time_bucket,
             result_limit=slots.result_limit,
         )
     return AnalysisRequest(question=user_message, resolved_slots=resolved)

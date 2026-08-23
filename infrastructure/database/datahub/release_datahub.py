@@ -525,11 +525,5 @@ def _text(value: object, context: str) -> str:
     return value
 
 
-def _string(value: object, context: str) -> str:
-    if not isinstance(value, str):
-        raise DataHubDiscoveryError(f"{context} must be text")
-    return value
-
-
 def _optional_text(value: object) -> str | None:
     return value if isinstance(value, str) and value.strip() else None

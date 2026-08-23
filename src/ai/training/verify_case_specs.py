@@ -173,10 +173,26 @@ def _runtime_package(request: dict[str, Any], bindings: dict[str, dict[str, Any]
 
 
 def _runtime_metric(rule: dict[str, Any]) -> ContextMetric:
+    source = rule["source"]
+    if source.get("kind") == "ratio":
+        if rule["aggregation"] != "ratio" or rule["time_field"] is not None:
+            raise PlanContractError("METRIC_RULE_MISMATCH")
+        return ContextMetric(
+            id=rule["id"],
+            asset_fqn="",
+            field="",
+            aggregation="ratio",
+            time_field="",
+            required_filters=(),
+            result_field=rule["result_field"],
+            unit=rule["unit"],
+            numerator_metric_id=source["numerator_metric_id"],
+            denominator_metric_id=source["denominator_metric_id"],
+            zero_policy=source["zero_policy"],
+        )
     time_field = rule["time_field"]
     if not isinstance(time_field, dict):
         raise PlanContractError("METRIC_RULE_MISMATCH")
-    source = rule["source"]
     if source.get("kind") != "column" or not isinstance(source.get("field"), dict):
         raise PlanContractError("METRIC_RULE_MISMATCH")
     field = source["field"]

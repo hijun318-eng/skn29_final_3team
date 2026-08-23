@@ -3019,6 +3019,17 @@
             ],
             "title": "Analysis Operation"
           },
+          "analysis_time_bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Time Bucket"
+          },
           "comparison_period_end_exclusive": {
             "anyOf": [
               {

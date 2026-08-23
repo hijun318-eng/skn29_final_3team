@@ -166,7 +166,6 @@ Docker volume이나 외부 deployment env, principal·Trino secret을 다른 환
 - `infrastructure/database/sql/ddl/`, `infrastructure/database/sql/app/`: schema-only 런타임 DDL
 - `infrastructure/database/datahub/recipes/*.runtime.yml`: runtime metadata discovery 설정
 - `docs/product/`: 현재 제품·PRD·사용자 흐름·아키텍처 기준
-- `docs/reference/Walkerhill_V4.1_SQL_검토.md`: 현재 실행 경로가 아닌 과거 후보의 NO-GO 감사 기록
 - `app/backend/migrations/versions/`: App DB 증분 migration
 
 `infrastructure/database/releases/`와 `infrastructure/database/sql/data/`는 재현성과

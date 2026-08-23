@@ -30,6 +30,10 @@ coverage/
 .playwright-cli/
 /output/
 /tmp/
+
+# Local-only phase acceptance harness
+/infrastructure/acceptance/
+
 # Local tools and logs
 .tmp/
 .codex-log/

@@ -43,6 +43,8 @@ export { ReportEditorCanvas } from "./ReportEditorCanvas";
 export { ReportEditorToolbar } from "./ReportEditorToolbar";
 /** 선택 블록 속성과 Artifact lineage 패널을 재노출한다. */
 export { ReportPropertiesPanel } from "./ReportPropertiesPanel";
+/** 실제 assistant 요청과 처리 receipt를 표시하는 대화형 패널을 재노출한다. */
+export { ReportAssistantPanel } from "./ReportAssistantPanel";
 /** 보고서 목록 화면 컴포넌트를 재노출한다. */
 export { ReportListView } from "./ReportListView";
 /** 실행·schedule 운영 패널을 재노출한다. */

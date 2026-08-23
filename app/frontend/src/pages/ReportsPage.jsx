@@ -10,6 +10,7 @@ import {
   ReportEditorToolbar,
   ReportListView,
   ReportOperationsPanel,
+  ReportAssistantPanel,
   ReportPropertiesPanel,
   ReportTemplateTile,
   ReportToolPanel,
@@ -145,6 +146,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
     selectedArtifactSource={page.selectedArtifactSource}
     selectedDefinition={lifecycle.selectedDefinition}
     selectedBlockId={draft.selectedBlockId}
+    showAssistant={!page.builderV2}
     setAssistantInstruction={lifecycle.setAssistantInstruction}
     setSelectedBlockId={page.selectOutlineBlock}
     TemplateTile={ReportTemplateTile}
@@ -205,7 +207,18 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
     orientation={draft.reportOrientation}
     pageCount={page.reportPages.length}
   />;
+  const assistant = <ReportAssistantPanel
+    artifact={page.selectedArtifact}
+    canEdit={page.canEdit}
+    instruction={lifecycle.assistantInstruction}
+    onInstructionChange={lifecycle.setAssistantInstruction}
+    onSubmit={page.createAssistantDraft}
+    pending={lifecycle.pending}
+    selectedBlock={page.editorTools.primaryBlock}
+    trace={lifecycle.assistantTrace}
+  />;
   const editor = page.builderV2 ? <ReportBuilderV2
+    assistant={assistant}
     canvas={workspace}
     library={library}
     libraryOpen={page.toolPanelOpen}

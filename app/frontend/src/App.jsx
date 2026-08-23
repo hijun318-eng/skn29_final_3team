@@ -8,6 +8,7 @@ import { clearAuthenticatedBrowserState } from "./authenticatedBrowserState.js";
 import { CAPABILITY, hasCapability } from "./authorization.ts";
 import { PAGE_PATHS, resolveRoute } from "./routing";
 import { REPORT_BUILDER_V2 } from "./features/reports/reportBuilderFlags";
+import { nextTheme, readTheme, saveTheme } from "./themePreference";
 
 const AgentPage = lazy(() => import("./pages/AgentPage").then((module) => ({ default: module.AgentPage })));
 const ReportsPage = lazy(() => import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })));
@@ -32,6 +33,7 @@ function RoleAccessPage({ canUseReports, onNavigate }) {
 export function App() {
   const [session, setSession] = useState();
   const [sessionNotice, setSessionNotice] = useState("");
+  const [theme, setTheme] = useState(() => readTheme());
   const [reportEditorMode, setReportEditorMode] = useState(false);
   const [reportDirty, setReportDirty] = useState(false);
   const role = session?.role || "";
@@ -43,11 +45,18 @@ export function App() {
   const [route, setRoute] = useState(() => resolveRoute(window.location.pathname));
   const [menuOpen, setMenuOpen] = useState(() => window.matchMedia("(min-width: 1101px)").matches);
   const [isPending, startTransition] = useTransition();
+  const themeClass = theme === "dark" ? "ppt-theme theme-dark" : "theme-light";
+  const toggleTheme = useCallback(() => setTheme(nextTheme), []);
   const [title, description] = route.page === "reports"
     ? reportEditorMode
       ? ["보고서 편집", "근거가 연결된 분석 결과와 설명을 블록으로 구성하고 저장합니다."]
       : ["보고서", "분석 결과를 보고서로 구성하고 편집·검토합니다."]
     : PAGE_META[route.page];
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    saveTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     let active = true;
@@ -134,8 +143,8 @@ export function App() {
     return <AgentPage onNavigate={navigate} />;
   }, [canManageReports, canRunAnalysis, canUseReports, handleReportEditorMode, navigate, role, route.page]);
 
-  if (session === undefined) return <main className="session-login ppt-theme"><div className="page-loading" role="status"><i /><b>세션을 확인하고 있습니다.</b></div></main>;
-  if (!session) return <SessionLogin notice={sessionNotice} onAuthenticated={(nextSession) => { setSession(nextSession); setSessionNotice(""); }} />;
+  if (session === undefined) return <main className={`session-login ${themeClass}`}><div className="page-loading" role="status"><i /><b>세션을 확인하고 있습니다.</b></div></main>;
+  if (!session) return <SessionLogin theme={theme} onToggleTheme={toggleTheme} notice={sessionNotice} onAuthenticated={(nextSession) => { setSession(nextSession); setSessionNotice(""); }} />;
 
   const signOut = async () => {
     if (reportDirty && !window.confirm("저장하지 않은 보고서 변경사항이 있습니다. 로그아웃할까요?")) return;
@@ -150,8 +159,8 @@ export function App() {
     }
   };
 
-  return <div className={`app-shell ppt-theme ${menuOpen ? "" : "sidebar-collapsed"} ${reportEditorMode ? "report-editor-mode" : ""} ${reportEditorMode && REPORT_BUILDER_V2 ? "report-builder-v2-mode" : ""} ${isPending ? "is-page-pending" : ""}`}>
+  return <div className={`app-shell ${themeClass} ${menuOpen ? "" : "sidebar-collapsed"} ${reportEditorMode ? "report-editor-mode" : ""} ${reportEditorMode && REPORT_BUILDER_V2 ? "report-builder-v2-mode" : ""} ${isPending ? "is-page-pending" : ""}`}>
     <AppSidebar page={route.page} role={role} capabilities={capabilities} onNavigate={navigate} open={menuOpen} onClose={() => setMenuOpen(false)} />
-    <div className="workspace"><AppHeader title={title} description={description} role={role} onMenu={() => setMenuOpen(true)} onSignOut={signOut} /><div className="page-progress" aria-hidden="true" /><main className="page-stage" key={route.path} aria-busy={isPending}><Suspense fallback={<div className="page-loading"><i /><b>페이지를 준비하고 있습니다.</b></div>}>{content}</Suspense></main></div>
+    <div className="workspace"><AppHeader title={title} description={description} role={role} theme={theme} onMenu={() => setMenuOpen(true)} onSignOut={signOut} onToggleTheme={toggleTheme} /><div className="page-progress" aria-hidden="true" /><main className="page-stage" key={route.path} aria-busy={isPending}><Suspense fallback={<div className="page-loading"><i /><b>페이지를 준비하고 있습니다.</b></div>}>{content}</Suspense></main></div>
   </div>;
 }

@@ -307,15 +307,16 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     await lifecycle.loadFinalDocument(approved);
   }, [applyDefinition, draft.blocksRef, draft.isDirty, draft.reportOrientation, isDraft, lifecycle]);
 
-  const createAssistantDraft = useCallback(async () => {
-    if (!selectedArtifactSource?.artifactId || !selectedArtifact || !lifecycle.assistantInstruction.trim()) return;
+  const createAssistantDraft = useCallback(async (instruction = lifecycle.assistantInstruction) => {
+    if (!selectedArtifactSource?.artifactId || !selectedArtifact || !instruction.trim()) return null;
     const result = await lifecycle.requestAssistantDraft(
       selectedArtifactSource.artifactId,
-      lifecycle.assistantInstruction,
+      instruction,
     );
-    if (!result) return;
+    if (!result) return null;
     applyDefinition(result.definition, { currencyPolicy: DEFAULT_FRONTEND_CURRENCY_POLICY });
     setView("editor");
+    return result;
   }, [applyDefinition, lifecycle, selectedArtifact, selectedArtifactSource]);
 
   const leaveEditor = useCallback(() => {

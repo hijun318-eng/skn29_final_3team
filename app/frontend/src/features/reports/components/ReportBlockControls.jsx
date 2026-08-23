@@ -191,7 +191,7 @@ export const ReportTemplateTile = memo(function ReportTemplateTile({
         title={`${template.title} 블록 바로 추가`}
       >
         <Icon size={15} />
-        <span>{template.title}<small>{template.description}</small></span>
+        <span><b>{template.title}</b><small>{template.description}</small></span>
       </button>
       <button
         ref={setActivatorNodeRef}

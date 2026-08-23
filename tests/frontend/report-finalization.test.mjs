@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { createReportClient } from "../../app/frontend/src/api/reportClient.ts";
 import {
@@ -6,6 +7,8 @@ import {
   normalizeReportDocument,
 } from "../../app/frontend/src/contracts/report.ts";
 import { reportFeatureSource, reportSources, sourceSection } from "./report-source-contract.mjs";
+
+const applicationStyles = readFileSync(new URL("../../app/frontend/src/styles.css", import.meta.url), "utf8");
 
 const definition = {
   contract_version: "REPORT-v1.0.0",
@@ -119,6 +122,9 @@ assert.doesNotMatch(reportFeatureSource, /현재 PDF에 포함되지 않아 확�
 assert.match(reportSources.documentView, /disabled=\{Boolean\(pending\) \|\| isDirty\}/);
 assert.match(reportSources.documentView, /PDF 새 탭에서 열기/);
 assert.match(reportSources.documentView, /PDF 다운로드/);
+assert.match(applicationStyles, /\.theme-light \[data-report-render-root="screen-preview"\] \.answer-report-canvas--preview/);
+assert.match(applicationStyles, /--answer-report-workbench:#e8eef6/);
+assert.doesNotMatch(applicationStyles, /\.theme-light \[data-report-render-root="print"\]/);
 assert.match(
   reportSources.controller,
   /replaceDraftBlocks\([\s\S]*\{ orientation: draft\.reportOrientation, currencyDisplayUnit: draft\.reportCurrencyPolicy\.displayUnit \}/,

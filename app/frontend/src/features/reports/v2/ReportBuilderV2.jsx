@@ -1,12 +1,13 @@
 /** 기존 보고서 상태와 명령을 V2 전용 3단 편집 화면에 배치하는 프레젠테이션 어댑터다. */
 import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { Expand, HelpCircle, Keyboard, PanelRightClose, PanelRightOpen, Shrink } from "lucide-react";
+import { Expand, HelpCircle, Keyboard, PanelRightClose, Settings2, Shrink, Sparkles } from "lucide-react";
 
 import { ReportShortcutHelp } from "./ReportShortcutHelp";
 import "./report-builder-v2.css";
 
 /** 파생된 A4 페이지를 별도 저장 상태 없이 탐색하고 V2 로컬 화면 상태만 관리한다. */
 export const ReportBuilderV2 = memo(function ReportBuilderV2({
+  assistant,
   canvas,
   library,
   libraryOpen,
@@ -23,6 +24,7 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
   const workspaceRef = useRef(null);
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [propertiesOpen, setPropertiesOpen] = useState(true);
+  const [rightPanel, setRightPanel] = useState(assistant ? "assistant" : "properties");
   const [fullscreen, setFullscreen] = useState(false);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const fullscreenSupported = typeof document !== "undefined" && Boolean(document.fullscreenEnabled);
@@ -67,6 +69,10 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
     }
   }, [fullscreenSupported]);
   const closeShortcutHelp = useCallback(() => setShortcutHelpOpen(false), []);
+  const toggleRightPanel = useCallback((panel) => {
+    setPropertiesOpen((open) => panel === rightPanel ? !open : true);
+    setRightPanel(panel);
+  }, [rightPanel]);
 
   return <div
     ref={rootRef}
@@ -101,13 +107,17 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
             <span title="입력 중에는 편집 단축키가 동작하지 않습니다."><Keyboard size={14} />Shift+클릭 다중 선택</span>
             <button type="button" onClick={() => setShortcutHelpOpen(true)} aria-haspopup="dialog"><HelpCircle size={14} />단축키</button>
             {presentation}
-            <button type="button" onClick={() => setPropertiesOpen((open) => !open)} aria-pressed={propertiesOpen}>{propertiesOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}속성</button>
+            {assistant && <button type="button" onClick={() => toggleRightPanel("assistant")} aria-pressed={propertiesOpen && rightPanel === "assistant"}><Sparkles size={14} />AI Assistant</button>}
+            <button type="button" onClick={() => toggleRightPanel("properties")} aria-pressed={propertiesOpen && rightPanel === "properties"}>{propertiesOpen && rightPanel === "properties" ? <PanelRightClose size={14} /> : <Settings2 size={14} />}속성</button>
             {fullscreenSupported && <button type="button" onClick={toggleFullscreen} aria-pressed={fullscreen}>{fullscreen ? <Shrink size={14} /> : <Expand size={14} />}{fullscreen ? "축소" : "전체화면"}</button>}
           </nav>
         </div>
         {canvas}
       </main>
-      {propertiesOpen && properties}
+      {(assistant || properties) && <div className="builder-inspector" hidden={!propertiesOpen}>
+        <div className="builder-inspector-view" hidden={rightPanel !== "assistant"}>{assistant}</div>
+        <div className="builder-inspector-view" hidden={rightPanel !== "properties"}>{properties}</div>
+      </div>}
     </div>
     <ReportShortcutHelp open={shortcutHelpOpen} onClose={closeShortcutHelp} />
   </div>;

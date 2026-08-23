@@ -1,22 +1,31 @@
-/** React build와 명시적 개발 backend proxy만 구성하는 Vite 모듈이다. */
+/** React build와 명시적 개발·Compose backend proxy 경계를 구성하는 Vite 모듈이다. */
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-const developmentBackendOrigin = process.env.ANSWERVICE_DEV_BACKEND_ORIGIN?.trim();
+/** 일반 개발은 명시적 origin만 허용하고 compose mode에서만 공식 loopback backend 계약을 적용한다. */
+export default defineConfig(({ mode }) => {
+  const composeMode = mode === "compose";
+  const developmentBackendOrigin = process.env.ANSWERVICE_DEV_BACKEND_ORIGIN?.trim()
+    || (composeMode ? "http://127.0.0.1:28000" : "");
+  const backendBaseUrl = process.env.VITE_BACKEND_BASE_URL?.trim()
+    || (composeMode ? "/api" : "");
 
-/** 개발 origin이 명시된 경우에만 API proxy를 열고, 미설정 환경에서는 외부 대상을 추정하지 않는다. */
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    host: true,
-    ...(developmentBackendOrigin ? {
-      proxy: {
-        "/api": {
-          target: developmentBackendOrigin,
-          changeOrigin: true,
-          rewrite: (path) => path.startsWith("/api") ? path.slice(4) : path,
-        },
-      },
+  return {
+    plugins: [react()],
+    ...(backendBaseUrl ? {
+      define: { "import.meta.env.VITE_BACKEND_BASE_URL": JSON.stringify(backendBaseUrl) },
     } : {}),
-  },
+    server: {
+      host: true,
+      ...(developmentBackendOrigin ? {
+        proxy: {
+          "/api": {
+            target: developmentBackendOrigin,
+            changeOrigin: true,
+            rewrite: (path) => path.startsWith("/api") ? path.slice(4) : path,
+          },
+        },
+      } : {}),
+    },
+  };
 });

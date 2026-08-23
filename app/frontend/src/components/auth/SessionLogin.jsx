@@ -2,6 +2,7 @@
 import { Eye, EyeOff, KeyRound, ShieldCheck, UserRound } from "lucide-react";
 import { useState } from "react";
 import { AnalysisApiError, createAnalysisClient } from "../../api/analysisClient.ts";
+import { ThemeToggle } from "../common/ThemeToggle";
 
 function loginError(failure) {
   if (failure instanceof AnalysisApiError && failure.status === 401) return "아이디 또는 비밀번호를 확인해 주세요.";
@@ -11,7 +12,7 @@ function loginError(failure) {
 }
 
 /** 자격 증명을 세션 API에만 전송하고, 인증 완료 전에는 onAuthenticated를 호출하지 않는 로그인 화면이다. */
-export function SessionLogin({ onAuthenticated, notice = "", embedded = false }) {
+export function SessionLogin({ onAuthenticated, notice = "", embedded = false, theme = "light", onToggleTheme }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -36,8 +37,10 @@ export function SessionLogin({ onAuthenticated, notice = "", embedded = false })
   };
 
   const Root = embedded ? "div" : "main";
-  return <Root className={`session-login ppt-theme ${embedded ? "session-login-embedded" : ""}`}>
+  const themeClass = theme === "dark" ? "ppt-theme theme-dark" : "theme-light";
+  return <Root className={`session-login ${themeClass} ${embedded ? "session-login-embedded" : ""}`}>
     <section className="session-login-card" aria-labelledby="session-login-title">
+      {onToggleTheme && <ThemeToggle className="session-theme-toggle" theme={theme} onToggle={onToggleTheme} />}
       <div className="session-login-logo"><span>AS</span><b>ANSWERVICE</b></div>
       <small>안전한 로그인</small>
       <h1 id="session-login-title">로그인</h1>

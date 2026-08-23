@@ -7,6 +7,7 @@ import {
   Inbox,
   LoaderCircle,
   RotateCcw,
+  Search,
   ShieldAlert,
 } from "lucide-react";
 
@@ -41,7 +42,7 @@ export const ReportListView = memo(function ReportListView({
           <FilePlus2 size={15} />새 보고서
         </button>
         {definitionState === "ready" && <>
-          <label className="report-search"><span>검색</span><input aria-label="보고서 검색" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="보고서 제목 검색" /></label>
+          <label className="report-search"><Search size={15} aria-hidden="true" /><span className="sr-only">보고서 검색</span><input aria-label="보고서 검색" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="보고서 제목으로 검색" /></label>
           <label><span>상태</span><select aria-label="보고서 상태" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">전체</option><option value="draft">초안</option><option value="approved">확정</option></select></label>
         </>}
         <button type="button" className="report-refresh" onClick={onRefresh} disabled={Boolean(pending)}><RotateCcw size={14} />새로고침</button>

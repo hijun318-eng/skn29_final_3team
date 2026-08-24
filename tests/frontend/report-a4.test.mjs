@@ -39,6 +39,9 @@ assert.match(styleSources["report-a4-paper.css"], /color-scheme: light/);
 assert.match(styleSources["report-a4-content.css"], /\.ppt-theme \.answer-report-page \.report-table-sort\s*\{[\s\S]*background: transparent !important/);
 assert.match(styleSources["report-a4-content.css"], /\.ppt-theme \.answer-report-page \.report-table-sort > span\s*\{[\s\S]*color: #253b59 !important/);
 assert.match(styleSources["report-a4-content.css"], /\.ppt-theme \.answer-report-page \.generated-report-copy[\s\S]*color: #33465f !important/);
+assert.match(styleSources["report-a4-content.css"], /\.answer-report-page \.report-empty-canvas > span\s*\{[\s\S]*color: #176fe5;[\s\S]*background: #e8f2ff;/);
+assert.match(styleSources["report-a4-content.css"], /\.answer-report-page \.report-empty-canvas h2\s*\{[\s\S]*color: #213b59;/);
+assert.match(styleSources["report-a4-content.css"], /\.answer-report-page \.report-empty-canvas button\s*\{[\s\S]*color: #174f98;[\s\S]*background: #fff;/);
 assert.match(styles, /overflow-x: clip/);
 
 const print = styleSources["report-a4-print.css"];
@@ -51,6 +54,7 @@ assert.match(print, /\.answer-report-canvas\[data-report-mode\] \.answer-report-
 assert.match(print, /\.analysis-table table\s*\{[\s\S]*table-layout: fixed !important/);
 assert.match(print, /\.analysis-table td\s*\{[\s\S]*white-space: normal !important/);
 assert.match(print, /\[data-report-editor-chrome="true"\][\s\S]*display: none !important/);
+assert.match(print, /\[data-report-builder="v2"\],[\s\S]*\.report-builder-v2-layout,[\s\S]*\.builder-workspace\s*\{[\s\S]*display: block !important;[\s\S]*grid-template-columns: none !important/);
 assert.match(print, /break-inside: avoid/);
 assert.doesNotMatch(styles, /@media\s*\(max-width:/);
 

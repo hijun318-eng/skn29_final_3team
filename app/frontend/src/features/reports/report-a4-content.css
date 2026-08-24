@@ -286,6 +286,32 @@
   background: #f5f9ff;
 }
 
+.answer-report-page .report-empty-canvas > span {
+  color: #176fe5;
+  border: 1px solid #b9d1ee;
+  background: #e8f2ff;
+}
+
+.answer-report-page .report-empty-canvas h2 {
+  color: #213b59;
+}
+
+.answer-report-page .report-empty-canvas p {
+  color: #5b7088;
+}
+
+.answer-report-page .report-empty-canvas button {
+  color: #174f98;
+  border-color: #aac5e5;
+  background: #fff;
+}
+
+.answer-report-page .report-empty-canvas button:hover:not(:disabled) {
+  color: #0f56b8;
+  border-color: #75a3d8;
+  background: #eaf3ff;
+}
+
 .answer-report-page .editor-artifact-chart {
   margin-block-start: 0;
   padding: 0;

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 CONVERSATION_ROUTES = frozenset({"ANALYSIS", "PRESENTATION", "REPORT_ACTION"})
 PRESENTATION_TYPES = frozenset(
-    {"SUMMARY", "TABLE", "BAR", "LINE", "PIE", "HORIZONTAL_BAR", "DONUT"}
+    {"SUMMARY", "KPI", "TABLE", "BAR", "LINE", "PIE", "HORIZONTAL_BAR", "DONUT", "FULL"}
 )
 
 

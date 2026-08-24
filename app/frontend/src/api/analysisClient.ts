@@ -5,9 +5,26 @@ import {
   type AnalysisApiResponse,
   type AnalysisRun,
   type AnalysisValue,
+  type ConversationCommandProgress,
 } from "../contracts/analysis.ts";
 import { createUuid } from "../utils/createUuid.ts";
 import { CAPABILITY, type ServiceCapability, type ServiceRole } from "../authorization.ts";
+
+/** conversation command API가 받는 구조화된 사용자 명령 계약이다. */
+export interface ConversationCommandPayload {
+  user_message: string;
+  expected_head_turn_id?: string | null;
+  idempotency_key?: string;
+  requested_route?: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
+  presentation_type?: "SUMMARY" | "KPI" | "TABLE" | "BAR" | "LINE" | "PIE" | "HORIZONTAL_BAR" | "DONUT" | "FULL";
+}
+
+/** command 요청의 추적·취소와 향후 typed progress 전달 지점을 제공하는 선택 옵션이다. */
+export interface SubmitTurnCommandOptions {
+  traceId?: string;
+  signal?: AbortSignal;
+  onProgress?: (progress: ConversationCommandProgress) => void;
+}
 
 /** 인증·분석·저장 실행 API가 제공해야 하는 비동기 포트다. 모든 실패는 reject되어 호출자가 상태를 결정한다. */
 export interface AnalysisClient {
@@ -29,11 +46,13 @@ export interface AnalysisClient {
   getConversationTurns(conversationId: string): Promise<ConversationTurnWire[]>;
   executeTurnCommand(
     conversationId: string,
-    payload: { user_message: string; expected_head_turn_id?: string | null; idempotency_key?: string },
+    payload: ConversationCommandPayload,
+    options?: SubmitTurnCommandOptions,
   ): Promise<any>;
   submitTurnCommand(
     conversationId: string,
-    payload: { user_message: string; expected_head_turn_id?: string | null; idempotency_key?: string },
+    payload: ConversationCommandPayload,
+    options?: SubmitTurnCommandOptions,
   ): Promise<any>;
 }
 
@@ -392,18 +411,20 @@ export function createHttpAnalysisClient(
       );
       return payload.data?.turns || [];
     },
-    async executeTurnCommand(conversationId, cmdPayload) {
+    async executeTurnCommand(conversationId, cmdPayload, options = {}) {
       return parse<any>(
         await request(endpoint(`/conversations/${encodeURIComponent(conversationId)}/commands`), {
           method: "POST",
           credentials: "include",
-          headers: headers(true),
+          headers: headers(true, options.traceId || createUuid()),
           body: JSON.stringify(cmdPayload),
+          signal: options.signal,
         }),
       );
     },
-    async submitTurnCommand(conversationId, cmdPayload) {
-      return this.executeTurnCommand(conversationId, cmdPayload);
+    async submitTurnCommand(conversationId, cmdPayload, options = {}) {
+      // 백엔드 command progress transport가 확정되기 전에는 onProgress를 호출하거나 polling하지 않는다.
+      return this.executeTurnCommand(conversationId, cmdPayload, options);
     },
   };
 }

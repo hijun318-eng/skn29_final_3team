@@ -4,7 +4,12 @@ import {
   LoaderCircle,
   StopCircle,
 } from "lucide-react";
-import { resolveViewState, type AnalysisRun, type AnalysisViewState } from "../../contracts/analysis";
+import {
+  resolveViewState,
+  type AnalysisProcessViewModel,
+  type AnalysisRun,
+  type AnalysisViewState,
+} from "../../contracts/analysis";
 import { createAnalysisValueScale } from "./analysisValueScale";
 import { AnalysisFailureState } from "./AnalysisFailureState";
 import {
@@ -18,15 +23,18 @@ import {
   columnLabel,
   columnUnit,
   compareTableValues,
+  createAnalysisProcessViewModel,
   nextTableSort,
   tidyAnalysisTitle,
   type TableSort,
 } from "./AnalysisStatePanelParts";
 import {
+  AnalysisArtifactReuseNotice,
   AnalysisConversationalSummary,
   AnalysisDataSection,
   AnalysisKpiSection,
   AnalysisUnifiedToolbar,
+  AnalysisUnavailableView,
   AnalysisVisualSection,
 } from "./AnalysisDashboardViews";
 
@@ -45,6 +53,8 @@ export function AnalysisStatePanel({
   onCreateReportDraft,
   onOpenEvidence,
   onPreview,
+  artifactReuse = null,
+  processViewModel = null,
   saveDisabled = false,
   cancelRequested = false,
   suggestionsDisabled = false,
@@ -52,13 +62,15 @@ export function AnalysisStatePanel({
   run: AnalysisRun;
   viewType?: ViewTypeMode;
   onSuggestion?: (suggestion: string) => void;
-  onQuickView?: (view: "SUMMARY" | "KPI" | "CHART" | "TABLE" | "REPORT" | "FULL") => void;
+  onQuickView?: (view: "SUMMARY" | "KPI" | "CHART" | "TABLE" | "REPORT") => void;
   onRetry?: () => void;
   onCancel?: () => void;
   onSave?: () => void;
   onCreateReportDraft?: () => void;
   onOpenEvidence?: () => void;
   onPreview?: () => void;
+  artifactReuse?: { pending?: boolean; viewSpecId?: string | null } | null;
+  processViewModel?: AnalysisProcessViewModel | null;
   saveDisabled?: boolean;
   cancelRequested?: boolean;
   suggestionsDisabled?: boolean;
@@ -73,21 +85,25 @@ export function AnalysisStatePanel({
   const terminalStateRef = useRef<HTMLElement | null>(null);
   const [tableSort, setTableSort] = useState<TableSort>({ column: "", direction: "" });
   const [chartDisplayOverride, setChartDisplayOverride] = useState("");
-  const [localView, setLocalView] = useState<string>(viewType);
 
-  useEffect(() => {
-    setLocalView(viewType);
-  }, [viewType]);
-
-  const normalizedViewType = (localView || "SUMMARY").toUpperCase();
+  const normalizedViewType = (viewType || "SUMMARY").toUpperCase();
   const isSummaryMode = normalizedViewType === "SUMMARY";
   const isKpiMode = normalizedViewType === "KPI";
-  const isChartMode = ["CHART", "BAR", "LINE", "AREA", "HORIZONTAL_BAR", "PIE"].includes(normalizedViewType);
+  const isChartMode = ["CHART", "BAR", "LINE", "AREA", "HORIZONTAL_BAR", "PIE", "DONUT"].includes(normalizedViewType);
   const isTableMode = normalizedViewType === "TABLE";
   const isFullMode = normalizedViewType === "FULL";
+  const hasMetrics = Boolean(run.metrics?.length);
+  const hasTableRows = Boolean(table?.columns?.length && table?.rows?.length);
+  const isPresentationPending = Boolean(artifactReuse?.pending);
+  const displayedProcessViewModel = processViewModel ?? createAnalysisProcessViewModel({
+    kind: isPresentationPending ? "PRESENTATION" : "ANALYSIS",
+    status: "running",
+    elapsedSeconds: elapsed,
+    cancelRequested,
+  });
 
   const chartType = (
-    ["BAR", "LINE", "AREA", "HORIZONTAL_BAR", "PIE"].includes(normalizedViewType)
+    ["BAR", "LINE", "AREA", "HORIZONTAL_BAR", "PIE", "DONUT"].includes(normalizedViewType)
       ? normalizedViewType.toLowerCase().replace("_", "-")
       : chart?.chartType?.toLocaleLowerCase("en-US") || "bar"
   );
@@ -152,11 +168,11 @@ export function AnalysisStatePanel({
   useEffect(() => {
     const serverElapsed = Math.floor(run.elapsedSeconds ?? 0);
     setElapsed(serverElapsed);
-    if (viewState !== "LOADING") return undefined;
+    if (viewState !== "LOADING" && viewState !== "DELAYED" && !isPresentationPending) return undefined;
     const startedAt = Date.now() - serverElapsed * 1000;
     const timer = window.setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
     return () => window.clearInterval(timer);
-  }, [run.traceId, viewState]);
+  }, [isPresentationPending, run.elapsedSeconds, run.traceId, viewState]);
 
   useEffect(() => {
     setChartDisplayOverride("");
@@ -171,8 +187,7 @@ export function AnalysisStatePanel({
     return () => window.cancelAnimationFrame(frame);
   }, [run.error?.code, run.traceId, viewState]);
 
-  const handleViewChange = (newView: "SUMMARY" | "KPI" | "CHART" | "TABLE" | "FULL") => {
-    setLocalView(newView);
+  const handleViewChange = (newView: "SUMMARY" | "KPI" | "CHART" | "TABLE") => {
     onQuickView?.(newView);
   };
 
@@ -188,7 +203,7 @@ export function AnalysisStatePanel({
           <StopCircle size={15} aria-hidden="true" />
           {cancelRequested ? "취소 요청 중" : "분석 취소"}
         </button>
-        <AnalysisProgress elapsed={elapsed} />
+        <AnalysisProgress model={displayedProcessViewModel} />
       </section>
     );
   }
@@ -207,60 +222,70 @@ export function AnalysisStatePanel({
 
       {showResult && (
         <div className="analysis-conversational-container">
-          {/* 1. 최상단: AI 자연어 대화형 답변 */}
-          <AnalysisConversationalSummary run={run} />
+          {isPresentationPending
+            ? <AnalysisProgress model={displayedProcessViewModel} />
+            : artifactReuse && <AnalysisArtifactReuseNotice run={run} pending={false} />}
 
-          {/* 2. 중간 시각화 영역: 활성화된 뷰에 따라 유연하게 렌더링 */}
-          <div className="analysis-visual-body">
-            {isSummaryMode && run.metrics?.length > 0 && (
-              <AnalysisKpiSection run={run} valueScale={valueScale} />
+          {!isPresentationPending && <div className="analysis-visual-body">
+            {isSummaryMode && (
+              <div className="analysis-summary-stack">
+                <AnalysisConversationalSummary run={run} />
+                {hasMetrics && <AnalysisKpiSection run={run} valueScale={valueScale} />}
+              </div>
             )}
 
             {isKpiMode && (
-              <AnalysisKpiSection run={run} valueScale={valueScale} />
+              hasMetrics
+                ? <AnalysisKpiSection run={run} valueScale={valueScale} />
+                : <AnalysisUnavailableView view="KPI" />
             )}
 
             {isChartMode && (
-              <AnalysisVisualSection
-                run={run}
-                chart={chart}
-                table={table}
-                canRenderChart={canRenderChart}
-                supportedChartType={supportedChartType}
-                hasTableColumns={hasTableColumns}
-                chartTitle={chartTitle}
-                chartDisplayOptions={chartDisplayOptions}
-                chartDisplayType={chartDisplayType}
-                setChartDisplayOverride={setChartDisplayOverride}
-                chartLines={chartLines}
-                chartHeight={chartHeight}
-                chartDescription={chartDescription}
-                columnLabel={columnLabel}
-                valueScale={valueScale}
-                chartCurrencyField={chartCurrencyField}
-              />
+              chart
+                ? <AnalysisVisualSection
+                    run={run}
+                    chart={chart}
+                    table={table}
+                    canRenderChart={canRenderChart}
+                    supportedChartType={supportedChartType}
+                    hasTableColumns={hasTableColumns}
+                    chartTitle={chartTitle}
+                    chartDisplayOptions={chartDisplayOptions}
+                    chartDisplayType={chartDisplayType}
+                    setChartDisplayOverride={setChartDisplayOverride}
+                    chartLines={chartLines}
+                    chartHeight={chartHeight}
+                    chartDescription={chartDescription}
+                    columnLabel={columnLabel}
+                    valueScale={valueScale}
+                    chartCurrencyField={chartCurrencyField}
+                  />
+                : <AnalysisUnavailableView view="CHART" />
             )}
 
             {isTableMode && (
-              <AnalysisDataSection
-                run={run}
-                table={table}
-                resultTitle={resultTitle}
-                tableSort={tableSort}
-                setTableSort={setTableSort}
-                nextTableSort={nextTableSort}
-                numericColumns={numericColumns}
-                visibleRows={visibleRows}
-                columnLabel={columnLabel}
-                columnUnit={columnUnit}
-                valueScale={valueScale}
-              />
+              hasTableRows
+                ? <AnalysisDataSection
+                    run={run}
+                    table={table}
+                    resultTitle={resultTitle}
+                    tableSort={tableSort}
+                    setTableSort={setTableSort}
+                    nextTableSort={nextTableSort}
+                    numericColumns={numericColumns}
+                    visibleRows={visibleRows}
+                    columnLabel={columnLabel}
+                    columnUnit={columnUnit}
+                    valueScale={valueScale}
+                  />
+                : <AnalysisUnavailableView view="TABLE" />
             )}
 
             {isFullMode && (
               <div className="analysis-full-view-stack">
-                <AnalysisKpiSection run={run} valueScale={valueScale} />
-                <AnalysisVisualSection
+                <AnalysisConversationalSummary run={run} />
+                {hasMetrics && <AnalysisKpiSection run={run} valueScale={valueScale} />}
+                {chart && <AnalysisVisualSection
                   run={run}
                   chart={chart}
                   table={table}
@@ -277,8 +302,8 @@ export function AnalysisStatePanel({
                   columnLabel={columnLabel}
                   valueScale={valueScale}
                   chartCurrencyField={chartCurrencyField}
-                />
-                <AnalysisDataSection
+                />}
+                {hasTableRows && <AnalysisDataSection
                   run={run}
                   table={table}
                   resultTitle={resultTitle}
@@ -290,24 +315,21 @@ export function AnalysisStatePanel({
                   columnLabel={columnLabel}
                   columnUnit={columnUnit}
                   valueScale={valueScale}
-                />
+                />}
               </div>
             )}
-          </div>
+          </div>}
 
-          {/* 3. 하단: 일체형 세그먼트 뷰 전환 탭 + 통합 액션 툴바 */}
-          <AnalysisUnifiedToolbar
-            activeView={localView}
-            onViewChange={handleViewChange}
+          {!isPresentationPending && <AnalysisUnifiedToolbar
+            activeView={viewType}
+            onViewChange={onQuickView ? handleViewChange : undefined}
             onSave={onSave}
             onCreateReportDraft={onCreateReportDraft}
             onOpenEvidence={onOpenEvidence}
             onPreview={onPreview}
             saveDisabled={saveDisabled}
-            hasMetrics={Boolean(run.metrics?.length)}
-            hasChart={Boolean(chart && canRenderChart)}
-            hasTable={Boolean(table?.rows?.length)}
-          />
+            viewActionsDisabled={suggestionsDisabled || Boolean(artifactReuse?.pending)}
+          />}
         </div>
       )}
     </section>

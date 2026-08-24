@@ -524,6 +524,8 @@ class BackendComposeContractTest(unittest.TestCase):
         self.assertIn(
             '"${BACKEND_BIND_ADDRESS:-127.0.0.1}:18000:8000"', compose
         )
+        self.assertIn("http://127.0.0.1:5173", compose)
+        self.assertIn("http://localhost:5173", compose)
         self.assertNotIn('- "0.0.0.0:18000:8000"', compose)
         self.assertNotIn("CORS_ALLOW_ORIGINS: *", compose)
 

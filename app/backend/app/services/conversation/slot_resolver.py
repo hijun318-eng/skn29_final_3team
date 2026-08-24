@@ -44,7 +44,7 @@ class ResolvedTurnSlots:
         dimension_fields: 그룹화 차원 필드 튜플 (예: [{'asset_fqn': '...', 'column': 'hotel_id'}])
         user_filters: 사용자 지정 필터 튜플 (예: [{'asset_fqn': '...', 'column': 'hotel_name', 'operator': '=', 'value_text': '비스타'}])
         time_range: 확정된 반개구간 [start, end_exclusive) 기간 범위
-        target_chart_type: 목표 뷰/시각화 타입 ('SUMMARY', 'TABLE', 'BAR', 'LINE', 'PIE' 등)
+        target_chart_type: 목표 뷰/시각화 타입 ('SUMMARY', 'KPI', 'TABLE', 'BAR', 'FULL' 등)
         source_turn_ids: 이번 턴 결정에 영향을 준 이전 참조 턴 ID 목록
         is_inherited_metric: 지표가 이전 턴에서 상속되었는지 여부
         is_inherited_dimension: 차원이 이전 턴에서 상속되었는지 여부
@@ -72,7 +72,7 @@ class ResolvedTurnSlots:
 class ConversationSlotResolver:
     """멀티턴 대화 슬롯 해석 및 라우트 결정 상태 머신."""
 
-    ALLOWED_CHART_TYPES = ("SUMMARY", "TABLE", "BAR", "LINE", "PIE", "HORIZONTAL_BAR", "DONUT")
+    ALLOWED_CHART_TYPES = ("SUMMARY", "KPI", "TABLE", "BAR", "LINE", "PIE", "HORIZONTAL_BAR", "DONUT", "FULL")
     CHART_CYCLE_ALLOWLIST = ("BAR", "LINE", "HORIZONTAL_BAR")
     CONVERSATION_ROUTES = ("ANALYSIS", "PRESENTATION", "REPORT_ACTION")
 

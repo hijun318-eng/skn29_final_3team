@@ -1,14 +1,14 @@
 {
-  "manifest_version": "MODEL-RELEASE-v1.22.0",
+  "manifest_version": "MODEL-RELEASE-v1.23.0",
   "state": "ACTIVE",
   "schema_contract": "v1",
-  "schema_version": "MODEL-v1.17.0",
-  "schema_sha256": "a805755cd95355f50c028122e7d080ecaf2b23cd05630764f48183ec67dc3150",
+  "schema_version": "MODEL-v1.18.0",
+  "schema_sha256": "857c0efabc42530b11e6d6fa996366be21e67c6bb22a26b2bd35f8bf7241e562",
   "nodes": {
     "node1": {
       "prompt_id": "node1.normalize",
-      "prompt_version": "PROMPT-v1.17.0",
-      "prompt_sha256": "40802f2831862d5ad41814979f3b21c2a917b456de1610114c18bbbbe6ba683d",
+      "prompt_version": "PROMPT-v1.18.0",
+      "prompt_sha256": "112f8f36599268173c2be3c522d9c4d3a0bd772d61f985c72aae68aea07e9ea4",
       "request_definition": "node1_request",
       "response_definition": "node1_response"
     },

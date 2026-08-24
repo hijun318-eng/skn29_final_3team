@@ -390,6 +390,8 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.submitted_requests: list[AnalysisRequest] = []
         self.support.program("표로 보여줘", requested_route="PRESENTATION", selected_metric_id=None, presentation_type="TABLE")
         self.support.program("차트로 나타내줘", requested_route="PRESENTATION", selected_metric_id=None, presentation_type="BAR")
+        self.support.program("KPI만 보기", requested_route="PRESENTATION", selected_metric_id=None, presentation_type="KPI")
+        self.support.program("전체 결과 보기", requested_route="PRESENTATION", selected_metric_id=None, presentation_type="FULL")
         self.support.program("현재 내용을 보고서에 담아줘", requested_route="REPORT_ACTION", selected_metric_id=None)
         self.support.program("이 내용도 보고서에 담아줘", requested_route="REPORT_ACTION", selected_metric_id=None)
         self.user_id = UUID("00000000-0000-0000-0000-000000000001")
@@ -478,6 +480,36 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res2["turn"]["artifact_id"], art_id)
         self.assertIsNotNone(res2["turn"]["view_spec_id"])
         # submit_analysis는 Turn 1에서만 1회 호출됨
+        self.assertEqual(len(self.submitted_requests), 1)
+
+    async def test_typed_progressive_views_reuse_one_artifact_with_zero_queries(self) -> None:
+        """UI의 KPI·전체 typed action이 같은 Artifact에 ViewSpec만 추가하고 분석을 재실행하지 않는지 검증."""
+        conv = await self.repo.create_conversation(self.user_id, "점진적 결과 보기")
+        result = await self.orchestrator.execute_command(
+            conversation_id=conv["conversation_id"],
+            payload={"user_message": "2025년 8월 객실 매출 보여줘"},
+            context=self.context,
+        )
+        artifact_id = result["turn"]["artifact_id"]
+        head_turn_id = result["turn"]["turn_id"]
+
+        for user_message, presentation_type in (("KPI만 보기", "KPI"), ("전체 결과 보기", "FULL")):
+            result = await self.orchestrator.execute_command(
+                conversation_id=conv["conversation_id"],
+                payload={
+                    "user_message": user_message,
+                    "expected_head_turn_id": str(head_turn_id),
+                    "requested_route": "PRESENTATION",
+                    "presentation_type": presentation_type,
+                },
+                context=self.context,
+            )
+            self.assertEqual(result["turn"]["route"], "PRESENTATION")
+            self.assertEqual(result["turn"]["artifact_id"], artifact_id)
+            view_spec = self.repo.view_specs[result["turn"]["view_spec_id"]]
+            self.assertEqual(view_spec["view_type"], presentation_type)
+            head_turn_id = result["turn"]["turn_id"]
+
         self.assertEqual(len(self.submitted_requests), 1)
 
     async def test_idempotent_command_replay(self) -> None:

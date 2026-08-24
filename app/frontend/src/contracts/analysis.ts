@@ -23,6 +23,31 @@
   | "INSUFFICIENT_EVIDENCE"
   | "CANCELLED";
 
+/** 분석 과정의 개별 단계가 서버에서 확인된 현재 상태를 표현한다. */
+export type ProcessState = "pending" | "active" | "complete" | "blocked" | "failed" | "cancelled";
+
+/** 서버 progress 한 항목을 화면에 표시하기 위한 최소 단계 계약이다. */
+export interface AnalysisProcessStep {
+  id: string;
+  label: string;
+  state: ProcessState;
+  description?: string;
+}
+
+/** 분석 실행과 기존 Artifact 표현 준비를 같은 패널에서 구분해 표시하는 ViewModel이다. */
+export interface AnalysisProcessViewModel {
+  kind: "ANALYSIS" | "PRESENTATION";
+  status: "running" | "success" | "blocked" | "failed" | "cancelled";
+  elapsedSeconds: number;
+  cancelRequested: boolean;
+  steps: AnalysisProcessStep[];
+}
+
+/** 향후 command progress 어댑터가 ViewModel로 정규화해 전달할 최소 프런트 계약이다. */
+export interface ConversationCommandProgress extends AnalysisProcessViewModel {
+  traceId: string;
+}
+
 /** 백엔드가 반환할 수 있는 분석 실패 코드 계약이다. */ export type AnalysisErrorCode =
   | "CONTEXT_INCOMPLETE"
   | "CONTEXT_SOURCE_FAILED"

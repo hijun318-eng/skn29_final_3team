@@ -8,12 +8,12 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 130 |
-| documentation | 145 |
-| production | 304 |
+| documentation | 146 |
+| production | 307 |
 | project-config | 38 |
 | runtime-config | 65 |
 | runtime-contract | 10 |
-| test | 139 |
+| test | 140 |
 
 운영 무결성 위반: **0건**
 
@@ -229,6 +229,7 @@
 | `app/frontend/src/components/auth/SessionLogin.jsx` | production | REVIEWED |
 | `app/frontend/src/components/charts/EnterpriseChart.jsx` | production | REVIEWED |
 | `app/frontend/src/components/common/EnterpriseUi.jsx` | production | REVIEWED |
+| `app/frontend/src/components/common/ThemeToggle.jsx` | production | REVIEWED |
 | `app/frontend/src/components/layout/AppHeader.jsx` | production | REVIEWED |
 | `app/frontend/src/components/layout/AppSidebar.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnCard.jsx` | production | REVIEWED |
@@ -242,6 +243,7 @@
 | `app/frontend/src/features/reports/components/index.js` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/MarkdownBlockEditor.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportArtifactContent.jsx` | production | REVIEWED |
+| `app/frontend/src/features/reports/components/ReportAssistantPanel.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportBlockControls.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportDocumentView.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportEditorBlock.jsx` | production | REVIEWED |
@@ -298,6 +300,7 @@
 | `app/frontend/src/pages/ReportsPage.jsx` | production | REVIEWED |
 | `app/frontend/src/routing.js` | production | REVIEWED |
 | `app/frontend/src/styles.css` | production | REVIEWED |
+| `app/frontend/src/themePreference.js` | production | REVIEWED |
 | `app/frontend/src/utils/createUuid.ts` | production | REVIEWED |
 | `app/frontend/src/utils/presentation.ts` | production | REVIEWED |
 | `app/frontend/vite.config.js` | runtime-config | REVIEWED |
@@ -366,6 +369,7 @@
 | `docs/deliverables/12_AI시스템아키텍처_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/13_LLM활용소프트웨어_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/14_자체sLLM인공지능_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/15_시스템구성도_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/ANTIGRAVITY_DOCKER_RUNTIME_HANDOFF.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/DEVELOPMENT_CHANGELOG_AND_ARCHITECTURE_RECORD.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/Qwen3.5-2B_Node2_학습_실행가이드.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -839,6 +843,7 @@
 | `tests/frontend/report-page-architecture.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/report-source-contract.mjs` | test | TEST_ONLY |
 | `tests/frontend/run.mjs` | test | TEST_ONLY |
+| `tests/frontend/theme.test.mjs` | test | TEST_ONLY |
 | `tests/integration/test_answervice_runtime.py` | test | TEST_ONLY |
 | `tests/integration/test_app_postgres_compose_override.py` | test | TEST_ONLY |
 | `tests/integration/test_ci_workflow.py` | test | TEST_ONLY |

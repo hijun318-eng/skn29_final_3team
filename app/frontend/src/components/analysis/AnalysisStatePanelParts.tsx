@@ -13,10 +13,24 @@ import {
   LoaderCircle,
   SearchX,
 } from "lucide-react";
-import type { AnalysisRun, AnalysisViewState } from "../../contracts/analysis";
+import type {
+  AnalysisProcessStep,
+  AnalysisProcessViewModel,
+  AnalysisRun,
+  AnalysisViewState,
+  ProcessState,
+} from "../../contracts/analysis";
+
+/** 기존 import 경로를 사용하는 화면·테스트를 위해 과정 ViewModel 타입을 다시 공개한다. */
+export type { AnalysisProcessStep, AnalysisProcessViewModel, ProcessState } from "../../contracts/analysis";
 
 /** 결과 표의 정렬 상태. direction이 빈 문자열이면 정렬 해제를 뜻한다. */
 export type TableSort = { column: string; direction: "" | "asc" | "desc" };
+
+/** ViewModel 생성 시 서버에서 확인한 단계가 없으면 일반 상태 한 단계만 허용한다. */
+export interface AnalysisProcessViewModelInput extends Omit<AnalysisProcessViewModel, "steps"> {
+  steps?: AnalysisProcessStep[];
+}
 
 /** 서버가 확정한 분석 뷰 상태별 제목·설명·아이콘. 상태 판정은 하지 않고 표시만 담당한다. */
 export const VIEW_COPY: Record<AnalysisViewState, { title: string; description: string; icon: typeof CheckCircle2 }> = {
@@ -48,25 +62,96 @@ export const REQUIRED_ACTION_COPY: Record<string, string> = {
  */
 export function progressMessage(elapsed: number) {
   if (elapsed >= 60) return "평소보다 오래 걸리고 있지만 요청은 중단되지 않았습니다. 필요하면 분석을 취소할 수 있습니다.";
-  if (elapsed >= 30) return "데이터 조회와 결과 검증을 계속 진행하고 있습니다. 완료되는 즉시 결과를 표시합니다.";
-  if (elapsed >= 10) return "분석이 계속 진행 중입니다. 현재 단계와 경과 시간을 자동으로 갱신합니다.";
-  return "질문은 그대로 보존됩니다. 현재 상태와 경과 시간을 자동으로 갱신합니다.";
+  return "서버가 확인한 현재 상태와 경과 시간만 표시합니다.";
 }
 
-/** 서버 내부 단계를 추측하지 않고 경과시간과 취소 가능한 진행 상태만 표시한다. */
-export function AnalysisProgress({ elapsed }: { elapsed: number }) {
+/**
+ * 서버 progress를 표시용 ViewModel로 정규화한다. progress가 없으면 경과 시간으로 세부 단계를 만들지 않는다.
+ * @param {AnalysisProcessViewModelInput} input - 요청 종류, 상태, 경과 시간과 선택적인 서버 단계.
+ * @returns {AnalysisProcessViewModel} 화면에서 바로 사용할 과정 ViewModel.
+ */
+export function createAnalysisProcessViewModel(input: AnalysisProcessViewModelInput): AnalysisProcessViewModel {
+  const terminalStepState: Record<AnalysisProcessViewModel["status"], ProcessState> = {
+    running: "active",
+    success: "complete",
+    blocked: "blocked",
+    failed: "failed",
+    cancelled: "cancelled",
+  };
+  const fallbackLabel = input.kind === "PRESENTATION"
+    ? "요청한 보기를 준비하고 있습니다"
+    : "분석 요청을 처리하고 있습니다";
+
+  return {
+    kind: input.kind,
+    status: input.status,
+    elapsedSeconds: Math.max(0, Math.floor(input.elapsedSeconds)),
+    cancelRequested: input.cancelRequested,
+    steps: input.steps?.length
+      ? input.steps.map((step) => ({ ...step }))
+      : [{ id: `${input.kind.toLowerCase()}-status`, label: fallbackLabel, state: terminalStepState[input.status] }],
+  };
+}
+
+const PROCESS_STATE_COPY: Record<ProcessState, string> = {
+  pending: "대기",
+  active: "진행 중",
+  complete: "완료",
+  blocked: "진행 불가",
+  failed: "실패",
+  cancelled: "취소됨",
+};
+
+function processStepClass(state: ProcessState) {
+  if (state === "complete") return "done";
+  if (state === "active") return "active";
+  if (["blocked", "failed", "cancelled"].includes(state)) return "failed";
+  return "";
+}
+
+function processStepMarker(state: ProcessState, index: number) {
+  if (state === "complete") return "✓";
+  if (state === "active") return "•";
+  if (state === "cancelled") return "–";
+  if (state === "blocked" || state === "failed") return "×";
+  return String(index + 1);
+}
+
+/** 서버가 확인한 과정 단계만 렌더링하며 ANALYSIS와 PRESENTATION 안내 문맥을 분리한다. */
+export function AnalysisProgress({ model }: { model: AnalysisProcessViewModel }) {
+  const isPresentation = model.kind === "PRESENTATION";
   return (
-    <section className="analysis-trace analysis-trace--indeterminate" aria-label="분석 진행 상태" aria-live="polite">
+    <section
+      className="analysis-trace analysis-trace--indeterminate"
+      aria-label={isPresentation ? "보기 준비 상태" : "분석 진행 상태"}
+      aria-live="polite"
+      data-process-kind={model.kind}
+      data-process-status={model.status}
+    >
       <header>
         <div>
-          <small>현재 상태</small>
-          <h3>승인된 범위에서 분석하고 있습니다</h3>
+          <small>{isPresentation ? "표현 준비" : "분석 과정"}</small>
+          <h3>{isPresentation ? "기존 분석 결과로 보기를 준비합니다" : "승인된 범위에서 분석하고 있습니다"}</h3>
         </div>
-        <span>{elapsed}초 경과</span>
+        <span>{model.cancelRequested ? "취소 요청됨" : `${model.elapsedSeconds}초 경과`}</span>
       </header>
-      <p>{progressMessage(elapsed)}</p>
+      <ol>
+        {model.steps.map((step, index) => (
+          <li key={step.id} className={processStepClass(step.state)} data-state={step.state}>
+            <i aria-hidden="true">{processStepMarker(step.state, index)}</i>
+            <div>
+              <b>{step.label}</b>
+              {step.description && <small>{step.description}</small>}
+            </div>
+            <em>{PROCESS_STATE_COPY[step.state]}</em>
+          </li>
+        ))}
+      </ol>
+      {!isPresentation && model.status === "running" && <p>{progressMessage(model.elapsedSeconds)}</p>}
       <p className="analysis-progress-boundary">
-        서버가 확정한 결과와 근거가 준비되면 이 화면에 표시합니다. 내부 처리 순서는 추측해 표시하지 않습니다.
+        {isPresentation
+          ? "기존 분석 결과와 근거를 유지하고 요청한 표현만 준비합니다."
+          : "서버가 확인한 단계만 표시하며 내부 처리 순서는 추측해 표시하지 않습니다."}
       </p>
     </section>
   );

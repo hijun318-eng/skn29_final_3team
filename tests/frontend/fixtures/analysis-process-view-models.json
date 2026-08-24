@@ -1,0 +1,58 @@
+{
+  "analysisActive": {
+    "kind": "ANALYSIS",
+    "status": "running",
+    "elapsedSeconds": 12,
+    "cancelRequested": false,
+    "steps": [
+      { "id": "question", "label": "질문 확인", "state": "complete" },
+      { "id": "scope", "label": "지표·기간·데이터 범위 확인", "state": "active" },
+      { "id": "plan", "label": "분석 계획 및 안전성 검증", "state": "pending" },
+      { "id": "query", "label": "데이터 조회", "state": "pending" },
+      { "id": "verify", "label": "결과 검증", "state": "pending" },
+      { "id": "answer", "label": "답변 준비", "state": "pending" }
+    ]
+  },
+  "presentationActive": {
+    "kind": "PRESENTATION",
+    "status": "running",
+    "elapsedSeconds": 3,
+    "cancelRequested": false,
+    "steps": [
+      { "id": "artifact", "label": "이전 분석 결과 확인", "state": "complete" },
+      { "id": "compose", "label": "요청한 보기 구성", "state": "active" },
+      { "id": "response", "label": "응답 준비", "state": "pending" }
+    ]
+  },
+  "complete": {
+    "kind": "PRESENTATION",
+    "status": "success",
+    "elapsedSeconds": 4,
+    "cancelRequested": false,
+    "steps": [
+      { "id": "artifact", "label": "이전 분석 결과 확인", "state": "complete" },
+      { "id": "compose", "label": "요청한 보기 구성", "state": "complete" },
+      { "id": "response", "label": "응답 준비", "state": "complete" }
+    ]
+  },
+  "failed": {
+    "kind": "ANALYSIS",
+    "status": "failed",
+    "elapsedSeconds": 8,
+    "cancelRequested": false,
+    "steps": [
+      { "id": "question", "label": "질문 확인", "state": "complete" },
+      { "id": "scope", "label": "분석 범위 확인", "state": "failed", "description": "서버가 요청을 처리하지 못했습니다." }
+    ]
+  },
+  "cancelled": {
+    "kind": "ANALYSIS",
+    "status": "cancelled",
+    "elapsedSeconds": 5,
+    "cancelRequested": true,
+    "steps": [
+      { "id": "question", "label": "질문 확인", "state": "complete" },
+      { "id": "scope", "label": "분석 범위 확인", "state": "cancelled" }
+    ]
+  }
+}

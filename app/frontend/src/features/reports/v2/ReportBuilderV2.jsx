@@ -23,7 +23,11 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
   const rootRef = useRef(null);
   const workspaceRef = useRef(null);
   const [activePageIndex, setActivePageIndex] = useState(0);
-  const [propertiesOpen, setPropertiesOpen] = useState(true);
+  const [propertiesOpen, setPropertiesOpen] = useState(() => (
+    typeof window === "undefined"
+    || typeof window.matchMedia !== "function"
+    || window.matchMedia("(min-width: 1180px)").matches
+  ));
   const [rightPanel, setRightPanel] = useState(assistant ? "assistant" : "properties");
   const [fullscreen, setFullscreen] = useState(false);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
@@ -115,6 +119,7 @@ export const ReportBuilderV2 = memo(function ReportBuilderV2({
         {canvas}
       </main>
       {(assistant || properties) && <div className="builder-inspector" hidden={!propertiesOpen}>
+        <button type="button" className="builder-inspector-dismiss" onClick={() => setPropertiesOpen(false)} aria-label="오른쪽 패널 닫기"><PanelRightClose size={16} /></button>
         <div className="builder-inspector-view" hidden={rightPanel !== "assistant"}>{assistant}</div>
         <div className="builder-inspector-view" hidden={rightPanel !== "properties"}>{properties}</div>
       </div>}

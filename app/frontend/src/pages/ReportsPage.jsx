@@ -20,7 +20,7 @@ import { ReportBuilderV2 } from "../features/reports/v2/ReportBuilderV2";
 import { ReportPresentation } from "../features/reports/v2/ReportPresentation";
 
 /** 보고서 controller의 상태를 목록·최종본·편집기 뷰에 배선하며 memoized 하위 경계를 유지한다. */
-export function ReportsPage({ role, isAdmin, onEditorMode }) {
+export function ReportsPage({ role, isAdmin, onEditorMode, theme, onToggleTheme }) {
   const page = useReportsPageController({ role, isAdmin, onEditorMode });
   const { artifacts, dnd, draft, lifecycle } = page;
   const editorCurrencyControl = useMemo(() => (
@@ -111,6 +111,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
     onRun={page.runDefinition}
     onSave={page.saveDraft}
     onToggleTools={page.toggleToolPanel}
+    onToggleTheme={onToggleTheme}
     onUndo={draft.undo}
     orientation={draft.reportOrientation}
     pending={lifecycle.pending}
@@ -119,6 +120,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
     selectedDefinition={lifecycle.selectedDefinition}
     toolPanelOpen={page.toolPanelOpen}
     toolToggleRef={page.toolToggleRef}
+    theme={theme}
     viewScale={page.editorViewScale}
   />;
   const library = page.toolPanelOpen ? <ReportToolPanel
@@ -233,6 +235,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
       renderFooter={page.renderFooter}
       renderHeader={page.renderHeader}
       reportTitle={lifecycle.selectedDefinition?.title}
+      theme={theme}
     />}
     properties={properties}
     reportTitle={lifecycle.selectedDefinition?.title}

@@ -134,7 +134,10 @@ try {
   assert.doesNotMatch(emptyHtml, /analysis-diagnostic__action/);
 
   assert.match(styles, /grid-template-columns:minmax\(0,1\.4fr\) minmax\(220px,\.8fr\)/);
-  assert.match(styles, /@media\(max-width:720px\)/);
+  assert.match(styles, /\.analysis-diagnostic__options button:disabled\{[^}]*opacity:1[^}]*background:#0b121d/);
+  assert.match(styles, /\.theme-light \.analysis-diagnostic\{[^}]*background:#fff/);
+  assert.match(styles, /\.theme-light \.analysis-diagnostic\[data-tone="service"\]\{[^}]*--diagnostic-accent:#155fbe/);
+  assert.match(styles, /@media\(max-width:900px\)/);
   assert.match(styles, /@media\(prefers-reduced-motion:reduce\)/);
 } finally {
   await server.close();

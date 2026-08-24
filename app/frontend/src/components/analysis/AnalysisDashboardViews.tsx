@@ -1,6 +1,6 @@
 /** 분석 대시보드의 대화형 요약, KPI, 차트, 데이터 테이블, 통합 뷰·액션 툴바 서브 컴포넌트들을 렌더링하는 모듈이다. */
 import React from "react";
-import { AlertTriangle, ArrowUpDown, BarChart3, Eye, FilePlus2, LayoutGrid, MessageSquare, Save, Search, TableProperties, Target } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, BarChart3, Eye, FilePlus2, Link2, MessageSquareText, Save, Search, TableProperties, Target } from "lucide-react";
 import { EnterpriseChart } from "../charts/EnterpriseChart";
 import { type AnalysisRun } from "../../contracts/analysis";
 import { type AnalysisValueScale } from "./analysisValueScale";
@@ -25,33 +25,60 @@ export function AnalysisConversationalSummary({ run }: { run: AnalysisRun }) {
   );
 }
 
+/** 동일 Artifact를 재조회 없이 다시 표현한 후속 응답임을 계보 ID와 함께 표시한다. */
+export function AnalysisArtifactReuseNotice({
+  run,
+  pending = false,
+}: {
+  run: AnalysisRun;
+  pending?: boolean;
+}) {
+  return (
+    <div className={`analysis-artifact-reuse ${pending ? "is-pending" : ""}`} role="status">
+      <Link2 size={15} aria-hidden="true" />
+      <div>
+        <b>{pending ? "기존 분석 결과로 보기를 준비하고 있습니다" : "기존 분석 결과 재사용"}</b>
+        <small>추가 데이터 조회 없이 같은 Artifact와 근거를 사용합니다.</small>
+      </div>
+      <code title={run.artifact?.artifactId}>{run.artifact?.artifactId || "Artifact 연결 확인 중"}</code>
+    </div>
+  );
+}
+
+/** 요청한 표현에 필요한 승인 데이터가 없을 때 임의 생성 없이 다음 행동을 안내한다. */
+export function AnalysisUnavailableView({ view }: { view: "KPI" | "CHART" | "TABLE" }) {
+  const label = { KPI: "KPI", CHART: "그래프", TABLE: "상세 표" }[view];
+  const Icon = { KPI: Target, CHART: BarChart3, TABLE: TableProperties }[view];
+  return (
+    <section className="analysis-view-unavailable" role="status" data-view={view.toLowerCase()}>
+      <Icon size={17} aria-hidden="true" />
+      <div>
+        <b>현재 분석 결과로는 {label} 보기를 만들 수 없습니다.</b>
+        <p>기존 Artifact에 필요한 데이터가 없어 값을 임의로 생성하지 않았습니다.</p>
+      </div>
+    </section>
+  );
+}
+
 /**
- * 핵심 KPI 지표 카드 목록 및 차원 세부 분해(Breakdown: 전체 합계 + 항목별 개별 지표)를 렌더링한다.
+ * Artifact가 명시한 승인 KPI만 카드로 렌더링하며 상세 행을 새 KPI처럼 파생하지 않는다.
  * 금액은 `valueScale`이 결과 한 건 단위로 확정한 통화 배율만 사용하고, 손실 없는 원값은 `title`로 노출한다.
  */
 export function AnalysisKpiSection({ run, valueScale }: { run: AnalysisRun; valueScale: AnalysisValueScale }) {
   if (!run.metrics || run.metrics.length === 0) return null;
-  const rows = run.table?.rows ?? [];
-  const columns = run.table?.columns ?? [];
-  const chartX = run.chart?.xField;
-  const dimensionCol = chartX && columns.includes(chartX)
-    ? chartX
-    : columns.find((c) => rows.some((r) => typeof r[c] === "string" && !isNumericValue(r[c])));
-  const hasBreakdown = Boolean(dimensionCol && rows.length > 1 && rows.length <= 16);
 
   return (
     <section className="analysis-kpi-section" aria-labelledby="analysis-kpi-title">
       {/* 차트·표 섹션과 같은 (eyebrow + 제목 + 우측 메타) 헤더 구조를 공유해 시선 이동을 단순화한다. */}
       <header>
         <div><small>핵심 지표</small><h3 id="analysis-kpi-title">주요 KPI</h3></div>
-        <span>{hasBreakdown ? `전체 · ${rows.length}개 항목별 상세` : `${run.metrics?.length ?? 0}개 지표`}</span>
+        <span>{run.metrics.length}개 승인 지표</span>
       </header>
       <div className="analysis-metrics">
         {run.metrics.map((metric) => (
           <article key={`total-${metric.metricId}`} className="analysis-metric-card--total">
             {/* 배지와 지표명을 세로로 쌓아, 지표명이 길어도 배지 위로 겹치지 않게 한다. */}
             <div className="metric-header-strip">
-              {hasBreakdown && <span className="metric-badge-total">전체</span>}
               <small>{metric.label}</small>
             </div>
             <strong title={valueScale.exact(metric.value, metric.unit)}>
@@ -61,31 +88,6 @@ export function AnalysisKpiSection({ run, valueScale }: { run: AnalysisRun; valu
             {metric.definition && <p>{metric.definition}</p>}
           </article>
         ))}
-        {hasBreakdown && dimensionCol && rows.flatMap((row, idx) => {
-          const dimVal = String(row[dimensionCol] ?? `항목 ${idx + 1}`);
-          return run.metrics.map((metric) => {
-            const rowVal = row[metric.resultField] ?? row[metric.metricId];
-            if (rowVal === undefined || rowVal === null) return null;
-            const numericTotal = Number(metric.value);
-            const numericRow = Number(rowVal);
-            const sharePercent = metric.unit?.trim().toLowerCase() !== "ratio" && !Number.isNaN(numericTotal) && !Number.isNaN(numericRow) && numericTotal > 0
-              ? ((numericRow / numericTotal) * 100).toFixed(1)
-              : null;
-            return (
-              <article key={`item-${dimVal}-${metric.metricId}`} className="analysis-metric-card--item">
-                <div className="metric-header-strip">
-                  <span className="metric-dim-badge">{dimVal}</span>
-                  <small>{metric.label}</small>
-                </div>
-                <strong title={valueScale.exact(rowVal, metric.unit)}>
-                  {valueScale.isCurrency(metric.unit) ? valueScale.format(rowVal, metric.unit, metric.resultField) : formatKpiValue(rowVal, metric.unit)}
-                  {metric.unit && rowVal !== "" && <em>{valueScale.unitLabel(metric.unit, metric.resultField)}</em>}
-                </strong>
-                {sharePercent && <p className="metric-share-text">전체의 <b>{sharePercent}%</b> 비중</p>}
-              </article>
-            );
-          });
-        })}
       </div>
     </section>
   );
@@ -214,41 +216,44 @@ export function AnalysisDataSection({
   );
 }
 
-/** 점진적 뷰 전환 세그먼트 탭과 액션 버튼들을 하나의 일체형 툴바로 렌더링한다. */
+/** 후속 표현 요청과 저장·보고서·근거 액션을 하나의 일체형 툴바로 렌더링한다. */
 export function AnalysisUnifiedToolbar({
   activeView, onViewChange, onSave, onCreateReportDraft, onOpenEvidence, onPreview,
-  saveDisabled = false, hasMetrics = false, hasChart = false, hasTable = false,
+  saveDisabled = false, viewActionsDisabled = false,
 }: {
-  activeView: string; onViewChange?: (view: "SUMMARY" | "KPI" | "CHART" | "TABLE" | "FULL") => void;
+  activeView: string; onViewChange?: (view: "SUMMARY" | "KPI" | "CHART" | "TABLE") => void;
   onSave?: () => void; onCreateReportDraft?: () => void; onOpenEvidence?: () => void; onPreview?: () => void;
-  saveDisabled?: boolean; hasMetrics?: boolean; hasChart?: boolean; hasTable?: boolean;
+  saveDisabled?: boolean; viewActionsDisabled?: boolean;
 }) {
   const norm = activeView.toUpperCase();
+  const currentView = ["BAR", "LINE", "AREA", "HORIZONTAL_BAR", "PIE", "DONUT"].includes(norm) ? "CHART" : norm;
+  const viewRequests = [
+    { mode: "SUMMARY" as const, label: "요약으로 보기", icon: MessageSquareText },
+    { mode: "TABLE" as const, label: "표로 보기", icon: TableProperties },
+    { mode: "CHART" as const, label: "그래프로 보기", icon: BarChart3 },
+    { mode: "KPI" as const, label: "KPI만 보기", icon: Target },
+  ];
+  const hasActions = Boolean(onViewChange || onSave || onCreateReportDraft || onOpenEvidence || onPreview);
+  if (!hasActions) return null;
   return (
-    <div className="analysis-unified-toolbar" aria-label="뷰 전환 및 분석 액션">
-      <div className="view-segment-group" role="tablist" aria-label="시각화 모드">
-        <button type="button" role="tab" aria-selected={norm === "SUMMARY"} className={`segment-btn ${norm === "SUMMARY" ? "active" : ""}`} onClick={() => onViewChange?.("SUMMARY")}>
-          <MessageSquare size={13} /><span>대화 요약</span>
-        </button>
-        {hasMetrics && (
-          <button type="button" role="tab" aria-selected={norm === "KPI"} className={`segment-btn ${norm === "KPI" ? "active" : ""}`} onClick={() => onViewChange?.("KPI")}>
-            <Target size={13} /><span>주요 지표</span>
-          </button>
-        )}
-        {hasChart && (
-          <button type="button" role="tab" aria-selected={["CHART", "BAR", "LINE", "AREA", "HORIZONTAL_BAR"].includes(norm)} className={`segment-btn ${["CHART", "BAR", "LINE", "AREA", "HORIZONTAL_BAR"].includes(norm) ? "active" : ""}`} onClick={() => onViewChange?.("CHART")}>
-            <BarChart3 size={13} /><span>그래프</span>
-          </button>
-        )}
-        {hasTable && (
-          <button type="button" role="tab" aria-selected={norm === "TABLE"} className={`segment-btn ${norm === "TABLE" ? "active" : ""}`} onClick={() => onViewChange?.("TABLE")}>
-            <TableProperties size={13} /><span>상세 표</span>
-          </button>
-        )}
-        <button type="button" role="tab" aria-selected={norm === "FULL"} className={`segment-btn ${norm === "FULL" ? "active" : ""}`} onClick={() => onViewChange?.("FULL")}>
-          <LayoutGrid size={13} /><span>전체</span>
-        </button>
-      </div>
+    <div className="analysis-unified-toolbar" aria-label="후속 요청 및 분석 액션">
+      {onViewChange && (
+        <div className="view-segment-group" role="group" aria-label="이 결과로 추가 요청">
+          <span>이어서 보기</span>
+          {viewRequests.map(({ mode, label, icon: ViewIcon }) => (
+            <button
+              type="button"
+              key={mode}
+              aria-pressed={currentView === mode}
+              className={`segment-btn ${currentView === mode ? "active" : ""}`}
+              disabled={viewActionsDisabled || currentView === mode}
+              onClick={() => onViewChange(mode)}
+            >
+              <ViewIcon size={13} /><span>{label}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="action-button-group">
         {onSave && (

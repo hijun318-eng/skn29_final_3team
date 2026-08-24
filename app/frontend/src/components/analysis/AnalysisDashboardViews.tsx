@@ -48,9 +48,10 @@ export function AnalysisArtifactReuseNotice({
 /** 요청한 표현에 필요한 승인 데이터가 없을 때 임의 생성 없이 다음 행동을 안내한다. */
 export function AnalysisUnavailableView({ view }: { view: "KPI" | "CHART" | "TABLE" }) {
   const label = { KPI: "KPI", CHART: "그래프", TABLE: "상세 표" }[view];
+  const Icon = { KPI: Target, CHART: BarChart3, TABLE: TableProperties }[view];
   return (
-    <section className="analysis-view-unavailable" role="status">
-      <AlertTriangle size={17} aria-hidden="true" />
+    <section className="analysis-view-unavailable" role="status" data-view={view.toLowerCase()}>
+      <Icon size={17} aria-hidden="true" />
       <div>
         <b>현재 분석 결과로는 {label} 보기를 만들 수 없습니다.</b>
         <p>기존 Artifact에 필요한 데이터가 없어 값을 임의로 생성하지 않았습니다.</p>

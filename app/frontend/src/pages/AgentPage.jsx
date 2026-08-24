@@ -44,6 +44,13 @@ export function AgentPage({ onNavigate }) {
   const activeCommandAbortController = useRef(null);
   const threadEndRef = useRef(null);
 
+  const scrollToLatestTurn = () => window.requestAnimationFrame(() => {
+    threadEndRef.current?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "end",
+    });
+  });
+
   const activeEvidenceRun = selectedEvidenceRun || turns.at(-1)?.run || transientRun("");
 
   const filteredDefinitions = useMemo(() => {
@@ -74,6 +81,7 @@ export function AgentPage({ onNavigate }) {
         .then((serverTurns) => {
           if (Array.isArray(serverTurns) && serverTurns.length > 0) {
             setTurns(hydrateTurnsFromServer(serverTurns));
+            scrollToLatestTurn();
           }
         })
         .catch((err) => {
@@ -185,7 +193,7 @@ export function AgentPage({ onNavigate }) {
         viewSpecId: null,
       };
       setTurns((prev) => [...prev, unavailableTurn]);
-      window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+      scrollToLatestTurn();
       return;
     }
     const generation = requestGeneration.current + 1;
@@ -216,7 +224,7 @@ export function AgentPage({ onNavigate }) {
       viewSpecId: null,
     };
     setTurns((prev) => [...prev, optimisticTurn]);
-    window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+    scrollToLatestTurn();
 
     const commandOptions = {
       traceId,
@@ -388,7 +396,7 @@ export function AgentPage({ onNavigate }) {
         if (activeTraceId.current === traceId) activeTraceId.current = "";
         requestInFlight.current = false;
         setSubmitting(false);
-        window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+        scrollToLatestTurn();
       }
     }
   };
@@ -535,7 +543,7 @@ export function AgentPage({ onNavigate }) {
                 </div>
               </div>
             ))}
-            <div ref={threadEndRef} />
+            <div ref={threadEndRef} className="conversation-end" aria-hidden="true" />
           </div>
         )}
 

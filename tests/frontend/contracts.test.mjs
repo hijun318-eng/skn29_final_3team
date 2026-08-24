@@ -239,6 +239,7 @@ assert.match(reportSources.controller, /focusReportBlock/);
 assert.match(reportSources.controllerSupport, /pageCanvasRefs\.current\.values\(\)/);
 assert.match(reportSources.controllerSupport, /canvas\.querySelector\("\[data-block-id\]"\)/);
 assert.match(reportSources.listView, /enterprise-reports-list/);
+assert.match(source("styles.css"), /@media\(max-width:700px\)\{[^\n]*\.enterprise-reports-list \.legacy-report-row\{min-width:0/);
 assert.match(reportSources.documentView, /legacy-report-document generated-preview/);
 assert.match(reportSources.lifecycle, /createNextDraft/);
 assert.match(reportSources.lifecycle, /const blocks: ReportBlockRequest\[\] = initialContent \? \[\{/);
@@ -528,8 +529,10 @@ assert.equal(hydratedSuccess[1].run.summary, hydratedSuccess[0].run.summary);
 assert.equal(hydratedSuccess[1].isArtifactReuse, true);
 assert.equal(hydratedSuccess[1].viewSpecId, "view-spec-table");
 assert.equal(hydratedSuccess.length, 2);
-assert.equal(hydratedSuccess[0].turnId, "turn-success");
+assert.deepEqual(hydratedSuccess.map((turn) => turn.turnId), ["turn-success", "turn-table-view"]);
+assert.deepEqual(hydratedSuccess.map((turn) => turn.question), ["임의 지표를 보여줘", "표로 보여줘"]);
 assert.equal(hydratedSuccess[0].viewType, "CHART");
+assert.equal(hydratedSuccess[1].viewType, "TABLE");
 assert.match(source("pages/AgentPage.jsx"), /serverTurn\?\.view_type \|\| serverTurn\?\.resolved_slots\?\.target_chart_type \|\| "SUMMARY"/);
 
 const mismatchedPresentation = hydrateTurnsFromServer([{
@@ -601,6 +604,8 @@ assert.match(source("contracts/analysis.ts"), /interface ConversationCommandProg
 assert.match(source("pages/AgentPage.jsx"), /activeCommandAbortController\.current\?\.abort\(\)/);
 assert.match(source("pages/AgentPage.jsx"), /progress\?\.traceId !== traceId/);
 assert.match(source("pages/AgentPage.jsx"), /submitTurnCommand\(activeConvId,[\s\S]*?commandOptions\)/);
+assert.match(source("components/layout/AppSidebar.jsx"), /inert=\{!open\}/);
+assert.match(source("components/layout/AppSidebar.jsx"), /aria-hidden=\{!open\}/);
 
 let analysisRequest;
 const analysisClient = createHttpAnalysisClient("http://backend.test/", async (url, init) => {

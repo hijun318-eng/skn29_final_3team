@@ -46,6 +46,20 @@
     grid-template-columns: none !important;
   }
 
+  body:has([data-report-render-root="screen-editor"] .answer-report-canvas[data-report-mode])
+    [data-report-builder="v2"],
+  body:has([data-report-render-root="screen-editor"] .answer-report-canvas[data-report-mode])
+    .report-builder-v2-layout,
+  body:has([data-report-render-root="screen-editor"] .answer-report-canvas[data-report-mode])
+    .builder-workspace {
+    inline-size: 100% !important;
+    block-size: auto !important;
+    max-inline-size: none !important;
+    display: block !important;
+    grid-template-columns: none !important;
+    overflow: visible !important;
+  }
+
   .answer-report-canvas[data-report-mode] {
     display: block;
     inline-size: 100%;

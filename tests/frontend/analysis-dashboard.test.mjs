@@ -11,6 +11,7 @@ const response = JSON.parse(readFileSync(new URL("./fixtures/analysis-rich-succe
 const processViewModels = JSON.parse(readFileSync(new URL("./fixtures/analysis-process-view-models.json", import.meta.url), "utf8"));
 const stylesSource = readFileSync(new URL("../../app/frontend/src/styles.css", import.meta.url), "utf8");
 const agentSource = readFileSync(new URL("../../app/frontend/src/pages/AgentPage.jsx", import.meta.url), "utf8");
+const appSource = readFileSync(new URL("../../app/frontend/src/App.jsx", import.meta.url), "utf8");
 const server = await createServer({
   appType: "custom",
   cacheDir: "node_modules/.vite-analysis-dashboard-test",
@@ -135,6 +136,7 @@ try {
   }));
   assert.match(unavailableHtml, /현재 분석 결과로는 KPI 보기를 만들 수 없습니다/);
   assert.match(unavailableHtml, /값을 임의로 생성하지 않았습니다/);
+  assert.match(unavailableHtml, /data-view="kpi"/);
 
   const emptyTableHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
     run: { ...run, table: { columns: [], rows: [] }, rowCount: 0 },
@@ -160,11 +162,67 @@ try {
   }));
   assert.match(networkFailureHtml, /현재 분석 서비스를 사용할 수 없습니다/);
   assert.match(networkFailureHtml, /데이터 서비스가 준비되지 않았거나 연결되지 않았습니다/);
+  assert.match(networkFailureHtml, /data-tone="service"/);
   assert.doesNotMatch(networkFailureHtml, /현재 분석 결과로는 KPI 보기를 만들 수 없습니다/);
+
+  const chartMismatchHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run: { ...run, chart: { ...run.chart, xField: "missing_dimension" } },
+    viewType: "CHART",
+  }));
+  assert.match(chartMismatchHtml, /enterprise-chart-fallback/);
+  assert.match(chartMismatchHtml, /원본 필드 이름을 임의로 해석하지 않고 데이터 표를 유지합니다/);
+  assert.doesNotMatch(chartMismatchHtml, /recharts-wrapper|enterprise-chart--horizontal-bar/);
+
+  const actionHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run,
+    onSave: () => {},
+    onCreateReportDraft: () => {},
+    onOpenEvidence: () => {},
+  }));
+  for (const label of ["분석 저장", "보고서에 담기", "분석 근거"]) {
+    assert.match(actionHtml, new RegExp(label));
+  }
+
+  const cancelledHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {
+    run: {
+      ...run,
+      status: "cancelled",
+      artifact: undefined,
+      error: { code: "REQUEST_CANCELLED", message: "사용자가 분석을 취소했습니다.", retryable: false },
+    },
+  }));
+  assert.match(cancelledHtml, /data-tone="cancelled"/);
+  assert.match(cancelledHtml, /분석을 취소했습니다/);
 
   // 실제 렌더 트리가 쓰는 KPI·차트·표 카드 선택자만 검증한다(죽은 ".analysis-dashboard" 조상 선택자는 삭제됨).
   assert.match(stylesSource, /\.analysis-metrics\{/);
   assert.match(stylesSource, /\.analysis-result-section \.analysis-table thead th\{/);
+  assert.match(stylesSource, /\.app-shell\{--workspace-inline-offset:var\(--sidebar\);/);
+  assert.match(stylesSource, /\.sidebar-collapsed\{--workspace-inline-offset:0px\}/);
+  assert.match(appSource, /\$\{menuOpen \? "" : "sidebar-collapsed"\}/);
+  assert.match(stylesSource, /@media\(max-width:900px\)\{[^\n]*\.topbar>div>span\{overflow:hidden;text-overflow:ellipsis;white-space:nowrap\}/);
+  // 데스크톱에서는 좌측 이력과 우측 근거 패널 사이에, 768px에서는 180px 이력 옆에 입력창을 맞춘다.
+  assert.match(stylesSource, /\.chat-layout\{[^}]*grid-template-columns:205px minmax\(400px,1fr\) 285px/);
+  assert.match(stylesSource, /\.chat-input\{[^}]*left:calc\(var\(--workspace-inline-offset\) \+ 205px\)[^}]*transition:left \.2s,right \.2s/);
+  assert.match(stylesSource, /@media\(max-width:1200px\)\{[^\n]*\.chat-layout\{grid-template-columns:180px 1fr\}[^\n]*\.chat-input\{left:calc\(var\(--workspace-inline-offset\) \+ 180px\);right:0\}/);
+  // 390px 모바일에서는 이력 패널을 접고 composer를 viewport 양쪽에 맞춘다.
+  assert.match(stylesSource, /@media\(max-width:650px\)\{[^\n]*\.chat-layout\{height:auto;display:block\}[^\n]*\.chat-history\{display:none\}[^\n]*\.chat-input\{left:0;padding-inline:12px\}/);
+  assert.match(stylesSource, /@media\(max-width:650px\)\{\.chat-main\{[^}]*padding-bottom:calc\(110px \+ env\(safe-area-inset-bottom\)\)[^}]*\}\.chat-input\{right:0;max-width:100vw\}/);
+  assert.match(stylesSource, /\.chat-main\{padding-bottom:calc\(118px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(stylesSource, /\.conversation-end\{height:1px;scroll-margin-block-end:/);
+  assert.match(stylesSource, /\.turn-user-bubble \.user-text,[^\n]*overflow-wrap:anywhere/);
+  assert.match(stylesSource, /@media\(prefers-reduced-motion:reduce\)\{[^\n]*\.sidebar,\.workspace,\.chat-input\{transition:none\}/);
+  assert.match(agentSource, /prefers-reduced-motion: reduce/);
+  assert.match(agentSource, /scrollIntoView\(\{[\s\S]*?block: "end"/);
+  assert.match(agentSource, /className="conversation-end"/);
+  assert.match(agentSource, /<form className="chat-input" onSubmit=\{submitQuestion\}>/);
+  assert.match(agentSource, /<input[\s\S]*?aria-describedby="question-help"[\s\S]*?required/);
+  assert.match(agentSource, /<button aria-label="질문 전송"/);
+  assert.match(stylesSource, /:where\(button,input,textarea,select,summary,\[tabindex\]\):focus-visible/);
+  assert.match(stylesSource, /\.question-field input::placeholder,[^{]*\{color:#91a4ba;opacity:1\}/);
+  assert.match(stylesSource, /\.theme-light \.question-field input::placeholder,[^{]*\{color:#5f7288;opacity:1\}/);
+  assert.match(stylesSource, /\.unified-action-btn:disabled\{[^}]*opacity:1[^}]*background:#0b121d/);
+  assert.match(stylesSource, /\.analysis-artifact-reuse code\{[^}]*max-width:28ch[^}]*overflow-wrap:anywhere/);
 
   // 서버 unit이 "KRW"여도 화면 표기는 보고서와 같은 한국어 배율 라벨로 통일한다(KRW 노출 회귀 방지).
   const krwHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {

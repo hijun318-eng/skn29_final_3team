@@ -137,11 +137,11 @@ export function App() {
     if (route.page === "notFound") return <NotFoundPage onNavigate={navigate} />;
     if (route.page === "reports") {
       if (!canUseReports) return <RoleAccessPage canUseReports={false} onNavigate={navigate} />;
-      return <ReportsPage role={role} isAdmin={canManageReports} onEditorMode={handleReportEditorMode} />;
+      return <ReportsPage role={role} isAdmin={canManageReports} onEditorMode={handleReportEditorMode} theme={theme} onToggleTheme={toggleTheme} />;
     }
     if (!canRunAnalysis) return <RoleAccessPage canUseReports={canUseReports} onNavigate={navigate} />;
     return <AgentPage onNavigate={navigate} />;
-  }, [canManageReports, canRunAnalysis, canUseReports, handleReportEditorMode, navigate, role, route.page]);
+  }, [canManageReports, canRunAnalysis, canUseReports, handleReportEditorMode, navigate, role, route.page, theme, toggleTheme]);
 
   if (session === undefined) return <main className={`session-login ${themeClass}`}><div className="page-loading" role="status"><i /><b>세션을 확인하고 있습니다.</b></div></main>;
   if (!session) return <SessionLogin theme={theme} onToggleTheme={toggleTheme} notice={sessionNotice} onAuthenticated={(nextSession) => { setSession(nextSession); setSessionNotice(""); }} />;

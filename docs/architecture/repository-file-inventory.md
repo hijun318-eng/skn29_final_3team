@@ -9,7 +9,7 @@
 |---|---:|
 | archive | 130 |
 | documentation | 148 |
-| production | 307 |
+| production | 308 |
 | project-config | 38 |
 | runtime-config | 66 |
 | runtime-contract | 10 |
@@ -296,6 +296,7 @@
 | `app/frontend/src/features/reports/v2/ReportPresentation.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/v2/ReportShortcutHelp.jsx` | production | REVIEWED |
 | `app/frontend/src/main.jsx` | production | REVIEWED |
+| `app/frontend/src/pages/AdminPage.jsx` | production | REVIEWED |
 | `app/frontend/src/pages/AgentPage.jsx` | production | REVIEWED |
 | `app/frontend/src/pages/agentPageHelpers.js` | production | REVIEWED |
 | `app/frontend/src/pages/ReportsPage.jsx` | production | REVIEWED |

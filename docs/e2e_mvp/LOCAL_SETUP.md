@@ -94,7 +94,7 @@ Set-Location app/frontend
 npm.cmd run dev:compose
 ```
 
-이 모드는 `http://127.0.0.1:5173`의 `/api` 요청을 Backend로 proxy하므로 브라우저 코드에 Backend 주소를 넣지 않는다. 정식 `13000` 컨테이너도 `/api`를 Nginx가 내부 `backend:8000`으로 전달한다. 5173은 소스 변경이 즉시 반영되지만 13000은 `docker compose ... up -d --build frontend`로 image를 다시 만들어야 반영된다.
+이 모드는 `http://localhost:5173`의 `/api` 요청을 Backend로 proxy하므로 브라우저 코드에 Backend 주소를 넣지 않는다. 정식 `13000` 컨테이너도 `/api`를 Nginx가 내부 `backend:8000`으로 전달한다. 5173은 소스 변경이 즉시 반영되지만 13000은 `docker compose ... up -d --build frontend`로 image를 다시 만들어야 반영된다.
 
 Backend가 `healthy`여도 dependency별 readiness가 `ready`인지 확인한다. 실제 E2E 성공은 화면 접속만으로 판정하지 않는다.
 

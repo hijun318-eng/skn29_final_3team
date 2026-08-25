@@ -8,7 +8,7 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 134 |
-| documentation | 119 |
+| documentation | 120 |
 | production | 324 |
 | project-config | 44 |
 | runtime-config | 83 |
@@ -428,6 +428,7 @@
 | `docs/Report_Assistant_고도화_현황_및_반응_정의_20260825.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_실연동_인프라_복구_실행_프롬프트_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_실화면_독립검증_프롬프트_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/report_builder/BACKEND_EVOLUTION_ROADMAP.md` | documentation | REFERENCE_NON_RUNTIME |
 | `evals/__init__.py` | runtime-config | REVIEWED |
 | `evals/base_comparison.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/catalog_regression.py` | archive | ARCHIVE_NON_RUNTIME |

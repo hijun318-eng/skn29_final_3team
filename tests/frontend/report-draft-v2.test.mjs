@@ -32,6 +32,7 @@ import {
   saveFrontendDraft,
 } from "../../app/frontend/src/features/reports/reportDraftV2.js";
 import { reportEvidenceReady } from "../../app/frontend/src/features/reports/reportArtifactEvidence.ts";
+import { resizeDraftBlocks } from "../../app/frontend/src/features/reports/reportDraftMutations.ts";
 import { reportFeatureSource, reportSources } from "./report-source-contract.mjs";
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
@@ -68,8 +69,13 @@ const beforeMove = structuredClone(side.blocks);
 const moved = moveFrontendBlock(side.blocks, "whole-b", { type: "before", targetBlockId: "summary" }, report);
 assert.equal(moved.ok, true);
 assert.equal(moved.blocks[0].id, "whole-b");
+assert.equal(moved.blocks[0].artifactId, sourceB.artifactId);
+assert.equal(moved.blocks[0].queryId, sourceB.queryId);
 assert.equal(moved.blocks.find((block) => block.id === "whole-a").w, 12);
 assert.deepEqual(side.blocks, beforeMove, "valid operations must not mutate their input");
+const resizedArtifact = resizeDraftBlocks(moved.blocks, "whole-b", 8, 12, "portrait");
+assert.equal(resizedArtifact.blocks.find((block) => block.id === "whole-b").artifactId, sourceB.artifactId);
+assert.equal(resizedArtifact.blocks.find((block) => block.id === "whole-b").queryId, sourceB.queryId);
 
 const deleted = deleteFrontendBlock(moved.blocks, "whole-a", report);
 assert.equal(deleted.ok, true);

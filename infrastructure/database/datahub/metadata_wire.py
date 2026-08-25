@@ -17,6 +17,7 @@ ENTITY_PATHS = {
     "domain": "domain",
     "tag": "tag",
     "lifecycleStageType": "lifecyclestagetype",
+    "corpGroup": "corpgroup",
 }
 _SUPPORTED_ASPECTS = frozenset(
     {
@@ -51,6 +52,8 @@ _SUPPORTED_ASPECTS = frozenset(
         "tagProperties",
         "lifecycleStageTypeKey",
         "lifecycleStageTypeInfo",
+        "corpGroupKey",
+        "corpGroupInfo",
     }
 )
 _TECHNICAL_OWNER_TYPE = "urn:li:ownershipType:__system__technical_owner"

@@ -94,6 +94,9 @@ ALLOWED_RUNTIME_JSON = {
     "src/ai/contracts/model_release.v1.json": "provider response schema manifest",
     "src/ai/contracts/node_io.v0.1.json": "versioned node I/O schema",
     "src/modelops/model_runtime_manifest.v1.json": "validated model capacity manifest",
+    "src/modelops/releases/node2_pilot800_20260824.json": (
+        "validated Node2 pilot release evidence referenced by the runtime manifest"
+    ),
     "src/modelops/model_candidate.instruct2507.v0.1.json": "historical model evidence",
     "src/modelops/model_decision.v0.1.json": "non-ready model decision record",
     "src/modelops/release_candidate.v1.json": "non-ready release evidence",

@@ -15,8 +15,10 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
 from catalog_governance import (  # noqa: E402
+    RUNTIME_OWNER_URN,
     build_plan,
     discover_catalog,
+    ensure_runtime_owner_group,
     publish_plan,
     runtime_scopes,
 )
@@ -63,7 +65,7 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
             datasets,
             scopes,
             args.release_version,
-            settings.actor_urn,
+            RUNTIME_OWNER_URN,
             args.release_directory.resolve(),
         )
         counts = {
@@ -77,7 +79,13 @@ async def run(args: argparse.Namespace) -> dict[str, object]:
         if args.verify:
             counts = await verify_plan(client, plan, args.release_version)
         elif not args.check:
-            counts = await publish_plan(client, plan, args.release_version)
+            await ensure_runtime_owner_group(client, settings.actor_urn)
+            counts = await publish_plan(
+                client,
+                plan,
+                args.release_version,
+                actor_urn=settings.actor_urn,
+            )
     status = "VERIFIED" if args.verify else "READY" if args.check else "PUBLISHED"
     return {"status": status, **counts}
 

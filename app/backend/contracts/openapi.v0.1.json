@@ -2171,6 +2171,7 @@
         "type": "object"
       },
       "RagQueryRequest": {
+        "description": "내부 문서 질의와 선택 모드, 저장 대상 대화 식별자를 제한한다.",
         "properties": {
           "conversation_id": {
             "anyOf": [
@@ -2183,6 +2184,18 @@
               }
             ],
             "title": "Conversation Id"
+          },
+          "expected_head_turn_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Head Turn Id"
           },
           "mode": {
             "default": "AUTO",
@@ -6671,6 +6684,7 @@
     },
     "/mcp": {
       "get": {
+        "description": "인증은 확인하되 MCP 전송은 POST만 허용한다는 405 계약을 반환한다.",
         "operationId": "mcpGet",
         "responses": {
           "200": {
@@ -6690,7 +6704,7 @@
         "summary": "Mcp Get"
       },
       "post": {
-        "description": "Validate MCP wire data and execute only registry-approved tools.",
+        "description": "JSON-RPC 헤더와 clientInfo를 검증한 뒤 권한이 승인된 Tool만 실행한다.",
         "operationId": "mcpPost",
         "parameters": [
           {
@@ -6836,6 +6850,7 @@
     },
     "/rag/documents/{manual_id}/source.pdf": {
       "get": {
+        "description": "문서 식별자와 열람 권한을 검증해 원본 PDF를 캐시 금지 응답으로 전달한다.",
         "operationId": "getInternalManualPdf",
         "parameters": [
           {
@@ -6878,6 +6893,7 @@
     },
     "/rag/query": {
       "post": {
+        "description": "세션 권한과 RAG Registry를 확인해 근거 답변을 생성하고 선택적으로 Turn을 저장한다.",
         "operationId": "queryInternalManual",
         "requestBody": {
           "content": {

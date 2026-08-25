@@ -25,6 +25,7 @@ class RagQueryRequest(BaseModel):
     question: str = Field(min_length=2, max_length=500)
     mode: Literal["AUTO", "DOCUMENT_ONLY"] = "AUTO"
     conversation_id: UUID | None = None
+    expected_head_turn_id: UUID | None = None
 
 
 rag_router = APIRouter()
@@ -108,12 +109,17 @@ async def query_internal_manual(
         result["trace_id"] = context.trace_id
         if payload.conversation_id is not None:
             repository = ConversationRepository(get_sessionmaker(database_url))
-            turn_id = await repository.append_rag_turn(
-                payload.conversation_id,
-                context.user_id,
-                payload.question,
-                result,
-            )
+            try:
+                turn_id = await repository.append_rag_turn(
+                    payload.conversation_id,
+                    context.user_id,
+                    payload.question,
+                    result,
+                    payload.expected_head_turn_id,
+                    "expected_head_turn_id" in payload.model_fields_set,
+                )
+            except ValueError as error:
+                raise HTTPException(status_code=409, detail=str(error)) from error
             if turn_id is None:
                 raise HTTPException(status_code=404, detail="대화방을 찾을 수 없습니다.")
             result["turn_id"] = str(turn_id)
@@ -159,12 +165,17 @@ async def query_internal_manual(
     result["route"] = decision.route.value
     result["routing"] = {"domains": list(decision.domains), "intent": decision.intent.value, "confidence": decision.confidence, "requires_context": decision.requires_context}
     if payload.conversation_id is not None:
-        turn_id = await repository.append_rag_turn(
-            payload.conversation_id,
-            context.user_id,
-            payload.question,
-            result,
-        )
+        try:
+            turn_id = await repository.append_rag_turn(
+                payload.conversation_id,
+                context.user_id,
+                payload.question,
+                result,
+                payload.expected_head_turn_id,
+                "expected_head_turn_id" in payload.model_fields_set,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
         if turn_id is None:
             raise HTTPException(status_code=404, detail="대화방을 찾을 수 없습니다.")
         result["turn_id"] = str(turn_id)

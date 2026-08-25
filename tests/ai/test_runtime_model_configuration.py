@@ -46,6 +46,10 @@ def test_dedicated_sql_route_resolves_served_alias_and_exact_capacity() -> None:
     assert sql_route.capacity.base_model == "Qwen/Qwen3.5-4B"
     assert sql_route.capacity.context_window_tokens == 5120
     assert sql_route.capacity.runtime_max_output_tokens == 1280
+    assert (
+        "src/modelops/releases/node2_pilot800_20260824.json"
+        in sql_route.capacity.sources
+    )
 
 
 @pytest.mark.parametrize("missing", tuple(NODE2))

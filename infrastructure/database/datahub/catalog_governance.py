@@ -20,6 +20,9 @@ from release_scope import ReleaseScope, load_release_scopes_with_serving
 
 
 TECHNICAL_OWNER = "urn:li:ownershipType:__system__technical_owner"
+RUNTIME_OWNER_URN = "urn:li:corpGroup:answervice_runtime_stewards"
+RUNTIME_OWNER_NAME = "Answervice Runtime Stewards"
+RUNTIME_OWNER_DESCRIPTION = "Approved owners of the Answervice runtime catalog."
 SEARCH_QUERY = """
 query CatalogDatasets($input: SearchAcrossEntitiesInput!) {
   searchAcrossEntities(input: $input) {
@@ -61,9 +64,6 @@ query CatalogDataset($urn: String!) {
   }
 }
 """.strip()
-ADD_OWNER = """
-mutation AddCatalogOwner($input: AddOwnerInput!) { addOwner(input: $input) }
-""".strip()
 SET_DOMAIN = """
 mutation SetCatalogDomain($entityUrn: String!, $domainUrn: String!) {
   setDomain(entityUrn: $entityUrn, domainUrn: $domainUrn)
@@ -71,9 +71,6 @@ mutation SetCatalogDomain($entityUrn: String!, $domainUrn: String!) {
 """.strip()
 ADD_TAG = """
 mutation AddCatalogTag($input: TagAssociationInput!) { addTag(input: $input) }
-""".strip()
-ADD_TERM = """
-mutation AddCatalogTerm($input: TermAssociationInput!) { addTerm(input: $input) }
 """.strip()
 UPDATE_LINEAGE = """
 mutation UpdateCatalogLineage($input: UpdateLineageInput!) { updateLineage(input: $input) }
@@ -155,24 +152,43 @@ async def discover_catalog(
         raw = _mapping(graph.get("dataset"), "dataset")
         if raw.get("exists") is False or _mapping(raw.get("status"), "status").get("removed") is not False:
             raise ValueError("active search returned a removed or missing dataset")
-        schema = _mapping(raw.get("schemaMetadata"), "schema metadata")
-        scope, table = _dataset_scope(urn, _text(schema.get("name"), "schema name"), scopes)
-        properties = _mapping(raw.get("properties"), "dataset properties")
-        fields = tuple(
-            CatalogField(
-                _text(_mapping(field, "schema field").get("fieldPath"), "field path"),
-                _text(_mapping(field, "schema field").get("description"), "field description"),
-            )
-            for field in _list(schema.get("fields"), "schema fields")
+        raw_schema = raw.get("schemaMetadata")
+        if not isinstance(raw_schema, dict):
+            continue
+        schema = raw_schema
+        resolved_scope = _dataset_scope(
+            urn, _text(schema.get("name"), "schema name"), scopes
         )
+        if resolved_scope is None:
+            continue
+        scope, table = resolved_scope
+        properties = _mapping(raw.get("properties"), "dataset properties")
+        logical_fqn = f"{scope.catalog}.{scope.schema}.{table}"
+        fields = []
+        for raw_field in _list(schema.get("fields"), "schema fields"):
+            field = _mapping(raw_field, "schema field")
+            field_name = _text(field.get("fieldPath"), "field path")
+            fields.append(
+                CatalogField(
+                    field_name,
+                    _description(
+                        field.get("description"),
+                        f"Governed column {logical_fqn}.{field_name}.",
+                    ),
+                )
+            )
+        fields = tuple(fields)
         if len({field.name for field in fields}) != len(fields):
             raise ValueError("DataHub schema contains duplicate field paths")
         datasets.append(
             CatalogDataset(
                 urn=urn,
-                logical_fqn=f"{scope.catalog}.{scope.schema}.{table}",
+                logical_fqn=logical_fqn,
                 display_name=_text(properties.get("name"), "dataset name"),
-                description=_text(properties.get("description"), "dataset description"),
+                description=_description(
+                    properties.get("description"),
+                    f"Governed dataset {logical_fqn}.",
+                ),
                 scope=scope,
                 fields=fields,
             )
@@ -189,8 +205,8 @@ def build_plan(
 ) -> GovernancePlan:
     """live 설명을 그대로 사용해 domain·tag·용어·lineage 기대값을 구성한다."""
 
-    if not owner_urn.startswith("urn:li:corpuser:"):
-        raise ValueError("catalog owner must be an explicit DataHub corp user")
+    if not owner_urn.startswith(("urn:li:corpuser:", "urn:li:corpGroup:")):
+        raise ValueError("catalog owner must be an explicit DataHub user or group")
     version = _text(release_version, "release version")
     if {dataset.scope for dataset in datasets} != set(scopes):
         raise ValueError("every release scope must contain at least one dataset")
@@ -243,10 +259,14 @@ async def publish_plan(
     client: DataHubMetadataAdminClient,
     plan: GovernancePlan,
     release_version: str,
+    actor_urn: str | None = None,
 ) -> dict[str, int]:
     """참조 엔터티를 먼저 생성한 뒤 dataset 연결과 lineage를 발행한다."""
 
-    stamp = {"actor": plan.owner_urn, "time": time.time_ns() // 1_000_000}
+    actor = actor_urn or plan.owner_urn
+    if not actor.startswith("urn:li:corpuser:"):
+        raise ValueError("catalog publication actor must be a DataHub corp user")
+    stamp = {"actor": actor, "time": time.time_ns() // 1_000_000}
     for scope, urn in sorted(plan.domains.items(), key=lambda item: item[0]):
         await client.upsert_entity(
             "domain",
@@ -299,19 +319,15 @@ async def publish_plan(
         plan.owner_urn,
         stamp,
     )
+    await _publish_dataset_descriptions(client, plan, stamp)
     await _publish_field_term_associations(client, plan, stamp)
     mutation_groups: list[list[tuple[str, Mapping[str, Any]]]] = []
     for dataset in plan.datasets:
         dataset_mutations: list[tuple[str, Mapping[str, Any]]] = [
-                (
-                    ADD_OWNER,
-                    {"input": {"ownerUrn": plan.owner_urn, "ownerEntityType": "CORP_USER", "ownershipTypeUrn": TECHNICAL_OWNER, "resourceUrn": dataset.urn}},
-                ),
                 (SET_DOMAIN, {"entityUrn": dataset.urn, "domainUrn": plan.domains[dataset.scope]}),
                 (ADD_TAG, {"input": {"tagUrn": tag_urns["synthetic"], "resourceUrn": dataset.urn}}),
                 (ADD_TAG, {"input": {"tagUrn": tag_urns[f"release_{_slug(release_version)}"], "resourceUrn": dataset.urn}}),
                 (ADD_TAG, {"input": {"tagUrn": tag_urns[f"scope_{_slug(dataset.scope.catalog)}"], "resourceUrn": dataset.urn}}),
-                (ADD_TERM, {"input": {"termUrn": plan.dataset_terms[dataset.urn], "resourceUrn": dataset.urn}}),
             ]
         mutation_groups.append(dataset_mutations)
     await _run_mutation_groups(client, mutation_groups)
@@ -327,6 +343,93 @@ async def publish_plan(
         "glossary_terms": len(plan.dataset_terms) + len(plan.field_terms),
         "lineage_edges": len(plan.lineage_edges),
     }
+
+
+async def ensure_runtime_owner_group(
+    client: DataHubMetadataAdminClient,
+    actor_urn: str,
+) -> None:
+    """운영 카탈로그의 CorpGroup owner와 필수 native aspect를 멱등 생성한다."""
+
+    if not actor_urn.startswith("urn:li:corpuser:"):
+        raise ValueError("runtime owner group actor must be a DataHub corp user")
+    existing = await client.graphql(
+        "query RuntimeOwner($urn: String!) { corpGroup(urn: $urn) { urn } }",
+        {"urn": RUNTIME_OWNER_URN},
+    )
+    data = _mapping(existing.get("data"), "runtime owner GraphQL data")
+    group = data.get("corpGroup")
+    if not isinstance(group, Mapping) or group.get("urn") != RUNTIME_OWNER_URN:
+        created = await client.graphql(
+            "mutation CreateRuntimeOwner($input: CreateGroupInput!) { "
+            "createGroup(input: $input) }",
+            {
+                "input": {
+                    "id": RUNTIME_OWNER_URN.removeprefix("urn:li:corpGroup:"),
+                    "name": RUNTIME_OWNER_NAME,
+                    "description": RUNTIME_OWNER_DESCRIPTION,
+                }
+            },
+        )
+        created_data = _mapping(created.get("data"), "runtime owner mutation data")
+        if created_data.get("createGroup") != RUNTIME_OWNER_URN:
+            raise ValueError("runtime owner group creation returned an unexpected URN")
+    stamp = {"actor": actor_urn, "time": time.time_ns() // 1_000_000}
+    await client.upsert_entity(
+        "corpGroup",
+        RUNTIME_OWNER_URN,
+        {
+            "corpGroupInfo": {
+                "displayName": RUNTIME_OWNER_NAME,
+                "description": RUNTIME_OWNER_DESCRIPTION,
+                "admins": [],
+                "members": [],
+                "groups": [],
+            }
+        },
+        stamp,
+    )
+
+
+async def _publish_dataset_descriptions(
+    client: DataHubMetadataAdminClient,
+    plan: GovernancePlan,
+    stamp: Mapping[str, Any],
+    concurrency: int = 12,
+) -> None:
+    """기존 datasetProperties를 보존하면서 누락된 표준 설명을 발행한다."""
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def run(dataset: CatalogDataset) -> None:
+        async with semaphore:
+            entity = await client.get_entity(dataset.urn, ("datasetProperties",))
+            aspects = _mapping(entity.get("aspects"), "dataset aspects")
+            wrapper = _mapping(
+                aspects.get("datasetProperties"), "dataset properties wrapper"
+            )
+            properties = dict(
+                _mapping(wrapper.get("value"), "dataset properties aspect")
+            )
+            properties["description"] = dataset.description
+            await client.upsert_entity(
+                "dataset",
+                dataset.urn,
+                {
+                    "datasetProperties": properties,
+                    "ownership": {
+                        "owners": [
+                            {"owner": plan.owner_urn, "type": "TECHNICAL_OWNER"}
+                        ]
+                    },
+                    "glossaryTerms": {
+                        "terms": [{"urn": plan.dataset_terms[dataset.urn]}]
+                    },
+                },
+                stamp,
+            )
+
+    await asyncio.gather(*(run(dataset) for dataset in plan.datasets))
 
 
 async def _publish_term(
@@ -503,7 +606,7 @@ def _dataset_scope(
     urn: str,
     schema_name: str,
     scopes: tuple[ReleaseScope, ...],
-) -> tuple[ReleaseScope, str]:
+) -> tuple[ReleaseScope, str] | None:
     decoded = unquote(urn)
     match = re.fullmatch(r"urn:li:dataset:\(urn:li:dataPlatform:[^,]+,(.+),[^,]+\)", decoded)
     if match is None:
@@ -515,8 +618,13 @@ def _dataset_scope(
         if key_name.startswith(f"{scope.platform_instance}.")
         and schema_name.startswith(f"{scope.datahub_namespace}.")
     ]
+    if not matches:
+        return None
     if len(matches) != 1:
-        raise ValueError("dataset does not resolve to exactly one runtime scope")
+        raise ValueError(
+            "dataset does not resolve to exactly one runtime scope: "
+            f"urn={urn}, schema={schema_name}"
+        )
     scope = matches[0]
     return scope, schema_name.removeprefix(f"{scope.datahub_namespace}.")
 
@@ -554,6 +662,14 @@ def _text(value: object, context: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{context} must be non-empty text")
     return value.strip()
+
+
+def _description(value: object, fallback: str) -> str:
+    """수집 설명이 없을 때만 안정적인 physical identity 설명을 사용한다."""
+
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return fallback
 
 
 def _integer(value: object, context: str) -> int:

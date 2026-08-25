@@ -1,0 +1,988 @@
+{
+  "measured_at": "2026-08-24 17:55:30 +09:00",
+  "measurement_contract": "same OpenAI E2E question set as prior 2026-08-24 run",
+  "model": "OpenAI text-embedding-3-small",
+  "dimensions": 1024,
+  "documents": 17,
+  "chunks_vectors": 363,
+  "mode": "DOCUMENT_ONLY warm-state sequential E2E",
+  "warmup_count": 3,
+  "sample_count": 50,
+  "single_samples": 40,
+  "success_rate": 100.0,
+  "citation_rate": 100.0,
+  "single_document_hit_rate": 100.0,
+  "comparison_context_pass": 5,
+  "comparison_samples": 5,
+  "followup_context_pass": 5,
+  "followup_samples": 5,
+  "semantic_completeness": "MANUAL_REVIEW_REQUIRED",
+  "latency_ms": {
+    "min": 563.46,
+    "mean": 870.68,
+    "p50": 867.64,
+    "p95": 1075.46,
+    "p99": 1610.04,
+    "max": 1863.7
+  },
+  "sequential_rps": 1.149,
+  "health_ms": {
+    "mean": 5.05,
+    "p95": 7.55,
+    "max": 7.68,
+    "samples": 30
+  },
+  "records_sha256": "21452add03da5c2fd35881234262a8966941a8fb4b0ab416e5dfa7cacf1bfd80",
+  "records": [
+    {
+      "kind": "single",
+      "repeat": 1,
+      "question": "개인정보가 잘못 전달됐을 때 어떻게 해야 해?",
+      "expected_documents": [
+        "02 개인정보"
+      ],
+      "latency_ms": 725.0,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "02 개인정보"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 204,
+      "answer_text": "개인정보 노출·유출 의심 대응 개인정보가 잘못 전달되거나 노출된 것으로 의심되면 확산을 먼저 막고, 관련 기록을 보존한 뒤 개인정보 보호 책임자가 영향 과 후속 조치를 판단하도록 한다.\n\n잘못된 수신자에게 전송\n\n권한 없는 열람 또는 화면 노출\n\n예약 고객의견 연결주소가 제3 자에게 전달됨\n\n개인정보 문서·기기 분실\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 1,
+      "question": "보고서 작성 시 반드시 확인할 기준을 알려줘",
+      "expected_documents": [
+        "03 보고서"
+      ],
+      "latency_ms": 650.19,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "03 보고서"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 29,
+      "answer_text": "중복·빈 구성 항목과 확인되지 않은 문장을 제거한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 1,
+      "question": "고객 불만을 접수한 뒤 처리 절차를 알려줘",
+      "expected_documents": [
+        "06 고객응대",
+        "15 고객의견"
+      ],
+      "latency_ms": 701.12,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "06 고객응대",
+        "15 고객의견",
+        "07 외부 후기"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 164,
+      "answer_text": "직원 안내·응대 불만 처리 직원 응대 불만을 고객 경험 존중, 사실 확인, 개인정보 보호, 서비스 개선의 순서로 처리한다.\n\n불친절·무시·설명 부족 신고\n\n직원별 안내 내용 불일치\n\n차별·모욕으로 느껴졌다는 신고\n\n동일 직원·부서 관련 불만 반복\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 1,
+      "question": "객실에 문제가 생겼을 때 대응 절차를 알려줘",
+      "expected_documents": [
+        "13 객실"
+      ],
+      "latency_ms": 707.71,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "13 객실"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 150,
+      "answer_text": "객실 비품·편의용품 요청 대응 수건·침구·편의용품 요청을 운영 문제이 아니라 추적 가능한 서비스 요청으로 처리한다.\n\n비품 누락·추가 요청\n\n오염·파손 비품 교체\n\n같은 요청 반복\n\n요청 품목·수량·교체 여부를 확인한다.\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 1,
+      "question": "예약 불일치가 발생하면 어떻게 처리해?",
+      "expected_documents": [
+        "09 입실 퇴실 예약 결제"
+      ],
+      "latency_ms": 1863.7,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "09 입실 퇴실 예약 결제"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 33,
+      "answer_text": "예약 불일치라면 예약 조건·객실 유형·변경 이력을 확인한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 1,
+      "question": "시설 고장이 발생하면 먼저 무엇을 해야 해?",
+      "expected_documents": [
+        "11 시설"
+      ],
+      "latency_ms": 989.25,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 206,
+      "answer_text": "공용시설 설비 이상 및 운영 영향 대응 공용시설 고장이 발생하면 위험구역을 먼저 통제하고, 시설 담당자가 점검·복구한 뒤 안전 확인과 운영 재개 승인까지 확인 한다.\n\n시설 담당자에게 전달할 현상과 최초 발견 시각을 확인한다.\n\n설비 정지·오작동 신고\n\n누수·이상 소음·냄새·과열 발견\n\n고객 이동 또는 영업장 운영 방해\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 1,
+      "question": "안전사고 발생 시 대응 절차를 알려줘",
+      "expected_documents": [
+        "14 안전"
+      ],
+      "latency_ms": 836.36,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "14 안전"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 35,
+      "answer_text": "안전한 경우에만 경보·초기 대응 장비를 교육 범위에서 사용한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 1,
+      "question": "예약 취소와 환불 기준을 알려줘",
+      "expected_documents": [
+        "16 취소"
+      ],
+      "latency_ms": 950.99,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "16 취소",
+        "09 입실 퇴실 예약 결제"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 33,
+      "answer_text": "예약 불일치라면 예약 조건·객실 유형·변경 이력을 확인한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 2,
+      "question": "개인정보가 잘못 전달됐을 때 어떻게 해야 해?",
+      "expected_documents": [
+        "02 개인정보"
+      ],
+      "latency_ms": 1006.85,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "02 개인정보"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 204,
+      "answer_text": "개인정보 노출·유출 의심 대응 개인정보가 잘못 전달되거나 노출된 것으로 의심되면 확산을 먼저 막고, 관련 기록을 보존한 뒤 개인정보 보호 책임자가 영향 과 후속 조치를 판단하도록 한다.\n\n잘못된 수신자에게 전송\n\n권한 없는 열람 또는 화면 노출\n\n예약 고객의견 연결주소가 제3 자에게 전달됨\n\n개인정보 문서·기기 분실\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 2,
+      "question": "보고서 작성 시 반드시 확인할 기준을 알려줘",
+      "expected_documents": [
+        "03 보고서"
+      ],
+      "latency_ms": 878.17,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "03 보고서"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 29,
+      "answer_text": "중복·빈 구성 항목과 확인되지 않은 문장을 제거한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 2,
+      "question": "고객 불만을 접수한 뒤 처리 절차를 알려줘",
+      "expected_documents": [
+        "06 고객응대",
+        "15 고객의견"
+      ],
+      "latency_ms": 976.97,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "06 고객응대",
+        "15 고객의견",
+        "07 외부 후기"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 164,
+      "answer_text": "직원 안내·응대 불만 처리 직원 응대 불만을 고객 경험 존중, 사실 확인, 개인정보 보호, 서비스 개선의 순서로 처리한다.\n\n불친절·무시·설명 부족 신고\n\n직원별 안내 내용 불일치\n\n차별·모욕으로 느껴졌다는 신고\n\n동일 직원·부서 관련 불만 반복\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 2,
+      "question": "객실에 문제가 생겼을 때 대응 절차를 알려줘",
+      "expected_documents": [
+        "13 객실"
+      ],
+      "latency_ms": 723.24,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "13 객실"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 150,
+      "answer_text": "객실 비품·편의용품 요청 대응 수건·침구·편의용품 요청을 운영 문제이 아니라 추적 가능한 서비스 요청으로 처리한다.\n\n비품 누락·추가 요청\n\n오염·파손 비품 교체\n\n같은 요청 반복\n\n요청 품목·수량·교체 여부를 확인한다.\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 2,
+      "question": "예약 불일치가 발생하면 어떻게 처리해?",
+      "expected_documents": [
+        "09 입실 퇴실 예약 결제"
+      ],
+      "latency_ms": 826.9,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "09 입실 퇴실 예약 결제"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 33,
+      "answer_text": "예약 불일치라면 예약 조건·객실 유형·변경 이력을 확인한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 2,
+      "question": "시설 고장이 발생하면 먼저 무엇을 해야 해?",
+      "expected_documents": [
+        "11 시설"
+      ],
+      "latency_ms": 619.97,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 206,
+      "answer_text": "공용시설 설비 이상 및 운영 영향 대응 공용시설 고장이 발생하면 위험구역을 먼저 통제하고, 시설 담당자가 점검·복구한 뒤 안전 확인과 운영 재개 승인까지 확인 한다.\n\n시설 담당자에게 전달할 현상과 최초 발견 시각을 확인한다.\n\n설비 정지·오작동 신고\n\n누수·이상 소음·냄새·과열 발견\n\n고객 이동 또는 영업장 운영 방해\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 2,
+      "question": "안전사고 발생 시 대응 절차를 알려줘",
+      "expected_documents": [
+        "14 안전"
+      ],
+      "latency_ms": 889.08,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "14 안전"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 35,
+      "answer_text": "안전한 경우에만 경보·초기 대응 장비를 교육 범위에서 사용한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 2,
+      "question": "예약 취소와 환불 기준을 알려줘",
+      "expected_documents": [
+        "16 취소"
+      ],
+      "latency_ms": 841.57,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "16 취소",
+        "09 입실 퇴실 예약 결제"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 33,
+      "answer_text": "예약 불일치라면 예약 조건·객실 유형·변경 이력을 확인한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 3,
+      "question": "개인정보가 잘못 전달됐을 때 어떻게 해야 해?",
+      "expected_documents": [
+        "02 개인정보"
+      ],
+      "latency_ms": 873.83,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "02 개인정보"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 204,
+      "answer_text": "개인정보 노출·유출 의심 대응 개인정보가 잘못 전달되거나 노출된 것으로 의심되면 확산을 먼저 막고, 관련 기록을 보존한 뒤 개인정보 보호 책임자가 영향 과 후속 조치를 판단하도록 한다.\n\n잘못된 수신자에게 전송\n\n권한 없는 열람 또는 화면 노출\n\n예약 고객의견 연결주소가 제3 자에게 전달됨\n\n개인정보 문서·기기 분실\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 3,
+      "question": "보고서 작성 시 반드시 확인할 기준을 알려줘",
+      "expected_documents": [
+        "03 보고서"
+      ],
+      "latency_ms": 882.0,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "03 보고서"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 29,
+      "answer_text": "중복·빈 구성 항목과 확인되지 않은 문장을 제거한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 3,
+      "question": "고객 불만을 접수한 뒤 처리 절차를 알려줘",
+      "expected_documents": [
+        "06 고객응대",
+        "15 고객의견"
+      ],
+      "latency_ms": 871.26,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "06 고객응대",
+        "15 고객의견",
+        "07 외부 후기"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 164,
+      "answer_text": "직원 안내·응대 불만 처리 직원 응대 불만을 고객 경험 존중, 사실 확인, 개인정보 보호, 서비스 개선의 순서로 처리한다.\n\n불친절·무시·설명 부족 신고\n\n직원별 안내 내용 불일치\n\n차별·모욕으로 느껴졌다는 신고\n\n동일 직원·부서 관련 불만 반복\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 3,
+      "question": "객실에 문제가 생겼을 때 대응 절차를 알려줘",
+      "expected_documents": [
+        "13 객실"
+      ],
+      "latency_ms": 840.92,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "13 객실"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 150,
+      "answer_text": "객실 비품·편의용품 요청 대응 수건·침구·편의용품 요청을 운영 문제이 아니라 추적 가능한 서비스 요청으로 처리한다.\n\n비품 누락·추가 요청\n\n오염·파손 비품 교체\n\n같은 요청 반복\n\n요청 품목·수량·교체 여부를 확인한다.\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 3,
+      "question": "예약 불일치가 발생하면 어떻게 처리해?",
+      "expected_documents": [
+        "09 입실 퇴실 예약 결제"
+      ],
+      "latency_ms": 772.23,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "09 입실 퇴실 예약 결제"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 33,
+      "answer_text": "예약 불일치라면 예약 조건·객실 유형·변경 이력을 확인한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 3,
+      "question": "시설 고장이 발생하면 먼저 무엇을 해야 해?",
+      "expected_documents": [
+        "11 시설"
+      ],
+      "latency_ms": 1346.02,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 206,
+      "answer_text": "공용시설 설비 이상 및 운영 영향 대응 공용시설 고장이 발생하면 위험구역을 먼저 통제하고, 시설 담당자가 점검·복구한 뒤 안전 확인과 운영 재개 승인까지 확인 한다.\n\n시설 담당자에게 전달할 현상과 최초 발견 시각을 확인한다.\n\n설비 정지·오작동 신고\n\n누수·이상 소음·냄새·과열 발견\n\n고객 이동 또는 영업장 운영 방해\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 3,
+      "question": "안전사고 발생 시 대응 절차를 알려줘",
+      "expected_documents": [
+        "14 안전"
+      ],
+      "latency_ms": 971.74,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "14 안전"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 35,
+      "answer_text": "안전한 경우에만 경보·초기 대응 장비를 교육 범위에서 사용한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 3,
+      "question": "예약 취소와 환불 기준을 알려줘",
+      "expected_documents": [
+        "16 취소"
+      ],
+      "latency_ms": 832.56,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "16 취소",
+        "09 입실 퇴실 예약 결제"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 33,
+      "answer_text": "예약 불일치라면 예약 조건·객실 유형·변경 이력을 확인한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 4,
+      "question": "개인정보가 잘못 전달됐을 때 어떻게 해야 해?",
+      "expected_documents": [
+        "02 개인정보"
+      ],
+      "latency_ms": 703.53,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "02 개인정보"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 204,
+      "answer_text": "개인정보 노출·유출 의심 대응 개인정보가 잘못 전달되거나 노출된 것으로 의심되면 확산을 먼저 막고, 관련 기록을 보존한 뒤 개인정보 보호 책임자가 영향 과 후속 조치를 판단하도록 한다.\n\n잘못된 수신자에게 전송\n\n권한 없는 열람 또는 화면 노출\n\n예약 고객의견 연결주소가 제3 자에게 전달됨\n\n개인정보 문서·기기 분실\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 4,
+      "question": "보고서 작성 시 반드시 확인할 기준을 알려줘",
+      "expected_documents": [
+        "03 보고서"
+      ],
+      "latency_ms": 594.0,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "03 보고서"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 29,
+      "answer_text": "중복·빈 구성 항목과 확인되지 않은 문장을 제거한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 4,
+      "question": "고객 불만을 접수한 뒤 처리 절차를 알려줘",
+      "expected_documents": [
+        "06 고객응대",
+        "15 고객의견"
+      ],
+      "latency_ms": 852.43,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "06 고객응대",
+        "15 고객의견",
+        "07 외부 후기"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 164,
+      "answer_text": "직원 안내·응대 불만 처리 직원 응대 불만을 고객 경험 존중, 사실 확인, 개인정보 보호, 서비스 개선의 순서로 처리한다.\n\n불친절·무시·설명 부족 신고\n\n직원별 안내 내용 불일치\n\n차별·모욕으로 느껴졌다는 신고\n\n동일 직원·부서 관련 불만 반복\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 4,
+      "question": "객실에 문제가 생겼을 때 대응 절차를 알려줘",
+      "expected_documents": [
+        "13 객실"
+      ],
+      "latency_ms": 807.21,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "13 객실"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 150,
+      "answer_text": "객실 비품·편의용품 요청 대응 수건·침구·편의용품 요청을 운영 문제이 아니라 추적 가능한 서비스 요청으로 처리한다.\n\n비품 누락·추가 요청\n\n오염·파손 비품 교체\n\n같은 요청 반복\n\n요청 품목·수량·교체 여부를 확인한다.\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 4,
+      "question": "예약 불일치가 발생하면 어떻게 처리해?",
+      "expected_documents": [
+        "09 입실 퇴실 예약 결제"
+      ],
+      "latency_ms": 887.81,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "09 입실 퇴실 예약 결제"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 33,
+      "answer_text": "예약 불일치라면 예약 조건·객실 유형·변경 이력을 확인한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 4,
+      "question": "시설 고장이 발생하면 먼저 무엇을 해야 해?",
+      "expected_documents": [
+        "11 시설"
+      ],
+      "latency_ms": 870.07,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 206,
+      "answer_text": "공용시설 설비 이상 및 운영 영향 대응 공용시설 고장이 발생하면 위험구역을 먼저 통제하고, 시설 담당자가 점검·복구한 뒤 안전 확인과 운영 재개 승인까지 확인 한다.\n\n시설 담당자에게 전달할 현상과 최초 발견 시각을 확인한다.\n\n설비 정지·오작동 신고\n\n누수·이상 소음·냄새·과열 발견\n\n고객 이동 또는 영업장 운영 방해\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 4,
+      "question": "안전사고 발생 시 대응 절차를 알려줘",
+      "expected_documents": [
+        "14 안전"
+      ],
+      "latency_ms": 918.12,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "14 안전"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 35,
+      "answer_text": "안전한 경우에만 경보·초기 대응 장비를 교육 범위에서 사용한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 4,
+      "question": "예약 취소와 환불 기준을 알려줘",
+      "expected_documents": [
+        "16 취소"
+      ],
+      "latency_ms": 997.59,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "16 취소",
+        "09 입실 퇴실 예약 결제"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 33,
+      "answer_text": "예약 불일치라면 예약 조건·객실 유형·변경 이력을 확인한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 5,
+      "question": "개인정보가 잘못 전달됐을 때 어떻게 해야 해?",
+      "expected_documents": [
+        "02 개인정보"
+      ],
+      "latency_ms": 898.01,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "02 개인정보"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 204,
+      "answer_text": "개인정보 노출·유출 의심 대응 개인정보가 잘못 전달되거나 노출된 것으로 의심되면 확산을 먼저 막고, 관련 기록을 보존한 뒤 개인정보 보호 책임자가 영향 과 후속 조치를 판단하도록 한다.\n\n잘못된 수신자에게 전송\n\n권한 없는 열람 또는 화면 노출\n\n예약 고객의견 연결주소가 제3 자에게 전달됨\n\n개인정보 문서·기기 분실\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 5,
+      "question": "보고서 작성 시 반드시 확인할 기준을 알려줘",
+      "expected_documents": [
+        "03 보고서"
+      ],
+      "latency_ms": 941.64,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "03 보고서"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 29,
+      "answer_text": "중복·빈 구성 항목과 확인되지 않은 문장을 제거한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 5,
+      "question": "고객 불만을 접수한 뒤 처리 절차를 알려줘",
+      "expected_documents": [
+        "06 고객응대",
+        "15 고객의견"
+      ],
+      "latency_ms": 885.82,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "06 고객응대",
+        "15 고객의견",
+        "07 외부 후기"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 164,
+      "answer_text": "직원 안내·응대 불만 처리 직원 응대 불만을 고객 경험 존중, 사실 확인, 개인정보 보호, 서비스 개선의 순서로 처리한다.\n\n불친절·무시·설명 부족 신고\n\n직원별 안내 내용 불일치\n\n차별·모욕으로 느껴졌다는 신고\n\n동일 직원·부서 관련 불만 반복\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 5,
+      "question": "객실에 문제가 생겼을 때 대응 절차를 알려줘",
+      "expected_documents": [
+        "13 객실"
+      ],
+      "latency_ms": 904.92,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "13 객실"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 150,
+      "answer_text": "객실 비품·편의용품 요청 대응 수건·침구·편의용품 요청을 운영 문제이 아니라 추적 가능한 서비스 요청으로 처리한다.\n\n비품 누락·추가 요청\n\n오염·파손 비품 교체\n\n같은 요청 반복\n\n요청 품목·수량·교체 여부를 확인한다.\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 5,
+      "question": "예약 불일치가 발생하면 어떻게 처리해?",
+      "expected_documents": [
+        "09 입실 퇴실 예약 결제"
+      ],
+      "latency_ms": 760.63,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "09 입실 퇴실 예약 결제"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 33,
+      "answer_text": "예약 불일치라면 예약 조건·객실 유형·변경 이력을 확인한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 5,
+      "question": "시설 고장이 발생하면 먼저 무엇을 해야 해?",
+      "expected_documents": [
+        "11 시설"
+      ],
+      "latency_ms": 563.46,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 206,
+      "answer_text": "공용시설 설비 이상 및 운영 영향 대응 공용시설 고장이 발생하면 위험구역을 먼저 통제하고, 시설 담당자가 점검·복구한 뒤 안전 확인과 운영 재개 승인까지 확인 한다.\n\n시설 담당자에게 전달할 현상과 최초 발견 시각을 확인한다.\n\n설비 정지·오작동 신고\n\n누수·이상 소음·냄새·과열 발견\n\n고객 이동 또는 영업장 운영 방해\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 5,
+      "question": "안전사고 발생 시 대응 절차를 알려줘",
+      "expected_documents": [
+        "14 안전"
+      ],
+      "latency_ms": 811.58,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "14 안전"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 35,
+      "answer_text": "안전한 경우에만 경보·초기 대응 장비를 교육 범위에서 사용한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "single",
+      "repeat": 5,
+      "question": "예약 취소와 환불 기준을 알려줘",
+      "expected_documents": [
+        "16 취소"
+      ],
+      "latency_ms": 888.38,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "16 취소",
+        "09 입실 퇴실 예약 결제"
+      ],
+      "final_document_hit": true,
+      "citations": 1,
+      "answer_characters": 33,
+      "answer_text": "예약 불일치라면 예약 조건·객실 유형·변경 이력을 확인한다.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "compare",
+      "repeat": 1,
+      "question": "시설 문제와 안전사고 대응은 어떻게 달라?",
+      "latency_ms": 1034.86,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설",
+        "14 안전"
+      ],
+      "context_pass": true,
+      "citations": 2,
+      "answer_characters": 310,
+      "answer_text": "[11 시설]\n공용시설 설비 이상 및 운영 영향 대응 공용시설 고장이 발생하면 위험구역을 먼저 통제하고, 시설 담당자가 점검·복구한 뒤 안전 확인과 운영 재개 승인까지 확인 한다.\n\n시설 담당자에게 전달할 현상과 최초 발견 시각을 확인한다.\n\n설비 정지·오작동 신고\n\n자세한 내용은 PDF 원문 보기를 확인하세요.\n\n[14 안전]\n안전한 대피 경로와 비상구·소방 통로를 확보한다.\n\n방재·안전 책임자와 긴급기관에 전달할 정보를 정리한다.\n\n위험구역 재입장과 영업 재개는 안전 책임자의 확인 전에는 금지한다.\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "followup",
+      "repeat": 1,
+      "question": "즉시 보고 기준을 알려줘",
+      "latency_ms": 865.21,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설",
+        "14 안전"
+      ],
+      "context_pass": true,
+      "citations": 2,
+      "answer_characters": 157,
+      "answer_text": "[11 시설]\n고객 고립 또는 인명 위험\n\n화재·감전·가스·대규모 누수 가능성\n\n복수 구역 운영 중단\n\n자세한 내용은 PDF 원문 보기를 확인하세요.\n\n[14 안전]\n모든 화재·연기·가스 누출 의심\n\n인명 고립·부상\n\n다수 구역 경보\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "compare",
+      "repeat": 2,
+      "question": "시설 문제와 안전사고 대응은 어떻게 달라?",
+      "latency_ms": 858.02,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설",
+        "14 안전"
+      ],
+      "context_pass": true,
+      "citations": 2,
+      "answer_characters": 310,
+      "answer_text": "[11 시설]\n공용시설 설비 이상 및 운영 영향 대응 공용시설 고장이 발생하면 위험구역을 먼저 통제하고, 시설 담당자가 점검·복구한 뒤 안전 확인과 운영 재개 승인까지 확인 한다.\n\n시설 담당자에게 전달할 현상과 최초 발견 시각을 확인한다.\n\n설비 정지·오작동 신고\n\n자세한 내용은 PDF 원문 보기를 확인하세요.\n\n[14 안전]\n안전한 대피 경로와 비상구·소방 통로를 확보한다.\n\n방재·안전 책임자와 긴급기관에 전달할 정보를 정리한다.\n\n위험구역 재입장과 영업 재개는 안전 책임자의 확인 전에는 금지한다.\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "followup",
+      "repeat": 2,
+      "question": "즉시 보고 기준을 알려줘",
+      "latency_ms": 845.44,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설",
+        "14 안전"
+      ],
+      "context_pass": true,
+      "citations": 2,
+      "answer_characters": 157,
+      "answer_text": "[11 시설]\n고객 고립 또는 인명 위험\n\n화재·감전·가스·대규모 누수 가능성\n\n복수 구역 운영 중단\n\n자세한 내용은 PDF 원문 보기를 확인하세요.\n\n[14 안전]\n모든 화재·연기·가스 누출 의심\n\n인명 고립·부상\n\n다수 구역 경보\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "compare",
+      "repeat": 3,
+      "question": "시설 문제와 안전사고 대응은 어떻게 달라?",
+      "latency_ms": 873.64,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설",
+        "14 안전"
+      ],
+      "context_pass": true,
+      "citations": 2,
+      "answer_characters": 310,
+      "answer_text": "[11 시설]\n공용시설 설비 이상 및 운영 영향 대응 공용시설 고장이 발생하면 위험구역을 먼저 통제하고, 시설 담당자가 점검·복구한 뒤 안전 확인과 운영 재개 승인까지 확인 한다.\n\n시설 담당자에게 전달할 현상과 최초 발견 시각을 확인한다.\n\n설비 정지·오작동 신고\n\n자세한 내용은 PDF 원문 보기를 확인하세요.\n\n[14 안전]\n안전한 대피 경로와 비상구·소방 통로를 확보한다.\n\n방재·안전 책임자와 긴급기관에 전달할 정보를 정리한다.\n\n위험구역 재입장과 영업 재개는 안전 책임자의 확인 전에는 금지한다.\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "followup",
+      "repeat": 3,
+      "question": "즉시 보고 기준을 알려줘",
+      "latency_ms": 842.98,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설",
+        "14 안전"
+      ],
+      "context_pass": true,
+      "citations": 2,
+      "answer_characters": 157,
+      "answer_text": "[11 시설]\n고객 고립 또는 인명 위험\n\n화재·감전·가스·대규모 누수 가능성\n\n복수 구역 운영 중단\n\n자세한 내용은 PDF 원문 보기를 확인하세요.\n\n[14 안전]\n모든 화재·연기·가스 누출 의심\n\n인명 고립·부상\n\n다수 구역 경보\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "compare",
+      "repeat": 4,
+      "question": "시설 문제와 안전사고 대응은 어떻게 달라?",
+      "latency_ms": 1108.67,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설",
+        "14 안전"
+      ],
+      "context_pass": true,
+      "citations": 2,
+      "answer_characters": 310,
+      "answer_text": "[11 시설]\n공용시설 설비 이상 및 운영 영향 대응 공용시설 고장이 발생하면 위험구역을 먼저 통제하고, 시설 담당자가 점검·복구한 뒤 안전 확인과 운영 재개 승인까지 확인 한다.\n\n시설 담당자에게 전달할 현상과 최초 발견 시각을 확인한다.\n\n설비 정지·오작동 신고\n\n자세한 내용은 PDF 원문 보기를 확인하세요.\n\n[14 안전]\n안전한 대피 경로와 비상구·소방 통로를 확보한다.\n\n방재·안전 책임자와 긴급기관에 전달할 정보를 정리한다.\n\n위험구역 재입장과 영업 재개는 안전 책임자의 확인 전에는 금지한다.\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "followup",
+      "repeat": 4,
+      "question": "즉시 보고 기준을 알려줘",
+      "latency_ms": 924.28,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설",
+        "14 안전"
+      ],
+      "context_pass": true,
+      "citations": 2,
+      "answer_characters": 157,
+      "answer_text": "[11 시설]\n고객 고립 또는 인명 위험\n\n화재·감전·가스·대규모 누수 가능성\n\n복수 구역 운영 중단\n\n자세한 내용은 PDF 원문 보기를 확인하세요.\n\n[14 안전]\n모든 화재·연기·가스 누출 의심\n\n인명 고립·부상\n\n다수 구역 경보\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "compare",
+      "repeat": 5,
+      "question": "시설 문제와 안전사고 대응은 어떻게 달라?",
+      "latency_ms": 644.15,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설",
+        "14 안전"
+      ],
+      "context_pass": true,
+      "citations": 2,
+      "answer_characters": 310,
+      "answer_text": "[11 시설]\n공용시설 설비 이상 및 운영 영향 대응 공용시설 고장이 발생하면 위험구역을 먼저 통제하고, 시설 담당자가 점검·복구한 뒤 안전 확인과 운영 재개 승인까지 확인 한다.\n\n시설 담당자에게 전달할 현상과 최초 발견 시각을 확인한다.\n\n설비 정지·오작동 신고\n\n자세한 내용은 PDF 원문 보기를 확인하세요.\n\n[14 안전]\n안전한 대피 경로와 비상구·소방 통로를 확보한다.\n\n방재·안전 책임자와 긴급기관에 전달할 정보를 정리한다.\n\n위험구역 재입장과 영업 재개는 안전 책임자의 확인 전에는 금지한다.\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    },
+    {
+      "kind": "followup",
+      "repeat": 5,
+      "question": "즉시 보고 기준을 알려줘",
+      "latency_ms": 673.74,
+      "http": 200,
+      "status": "ANSWER",
+      "ranked_documents": [
+        "11 시설",
+        "14 안전"
+      ],
+      "context_pass": true,
+      "citations": 2,
+      "answer_characters": 157,
+      "answer_text": "[11 시설]\n고객 고립 또는 인명 위험\n\n화재·감전·가스·대규모 누수 가능성\n\n복수 구역 운영 중단\n\n자세한 내용은 PDF 원문 보기를 확인하세요.\n\n[14 안전]\n모든 화재·연기·가스 누출 의심\n\n인명 고립·부상\n\n다수 구역 경보\n\n자세한 내용은 PDF 원문 보기를 확인하세요.",
+      "manual_semantic_review_required": true
+    }
+  ]
+}

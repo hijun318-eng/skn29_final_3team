@@ -1,0 +1,41 @@
+{
+  "release_id": "node2-pilot800-qwen35-20260824",
+  "status": "READY_TO_CONNECT",
+  "training_scope": "pilot800_plus_smoke_corrections",
+  "package": {
+    "local_path": "models/cache/node2/pilot800/Node2_sLLM_Pilot800_Adapters_2B_4B_20260824",
+    "zip_name": "Node2_sLLM_Pilot800_Adapters_2B_4B_20260824.zip",
+    "zip_sha256": "f799570ff4d203ab6a14800b61b00b640dbd5c8c2023e4b4c472bcca6421eff3"
+  },
+  "active_serving_model": {
+    "served_model_name": "answervice-sql",
+    "base_model": "Qwen/Qwen3.5-4B",
+    "base_revision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+    "adapter_path": "adapters/4b-dayalias-step20",
+    "adapter_sha256": "8928612f9de20adf563468af804a9365a06e17ecd9747e622aebdf89a93d73ed",
+    "context_window_tokens": 5120
+  },
+  "secondary_model": {
+    "base_model": "Qwen/Qwen3.5-2B",
+    "base_revision": "15852e8c16360a2fea060d615a32b45270f8a8fc",
+    "adapter_path": "adapters/2b-pilot800-e2-smoketune18",
+    "adapter_sha256": "575dc5f018acfc150d49df19dff5465bb5141b977f7e50492cd921be472fc0db"
+  },
+  "validation": {
+    "vllm_smoke_total": 20,
+    "valid_json": 20,
+    "g2_pass": 20,
+    "trino_pass": 20,
+    "result_hash_match": 20,
+    "sql_exact_match": 19
+  },
+  "service_connection": {
+    "provider": "qwen",
+    "endpoint_env": "NODE2_MODEL_ENDPOINT",
+    "token_env": "NODE2_MODEL_API_TOKEN",
+    "model_env": "NODE2_MODEL",
+    "provider_env": "NODE2_MODEL_PROVIDER",
+    "live_endpoint_verified": false
+  },
+  "full3000_gpu_training_status": "NOT_RUN"
+}

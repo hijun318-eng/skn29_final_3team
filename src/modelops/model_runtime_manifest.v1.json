@@ -28,7 +28,8 @@
       "runtime_max_output_tokens": 1280,
       "safety_margin_tokens": 256,
       "sources": [
-        "app/backend/app/adapters/model_schemas.py"
+        "app/backend/app/adapters/model_schemas.py",
+        "src/modelops/releases/node2_pilot800_20260824.json"
       ]
     }
   },

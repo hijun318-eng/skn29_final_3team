@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
 from sqlglot import exp, parse
 from sqlglot.errors import ErrorLevel
+
+
+_DECIMAL_TYPED_LITERAL = re.compile(
+    r"\bDECIMAL\s*'([+-]?(?:\d+(?:\.\d*)?|\.\d+))'",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -76,6 +83,21 @@ def load_coercions(path: Path | None) -> tuple[ViewCoercion, ...]:
         identities.add(identity)
         rules.append(ViewCoercion(view, column, source_type, target_type))
     return tuple(rules)
+
+
+def _preserve_decimal_typed_literals(text: str) -> str:
+    """SQLGlot 직렬화 전에 DECIMAL 리터럴의 precision과 scale을 고정한다."""
+
+    def replace(match: re.Match[str]) -> str:
+        value = match.group(1)
+        unsigned = value.lstrip("+-")
+        integer, dot, fraction = unsigned.partition(".")
+        scale = len(fraction) if dot else 0
+        integer_digits = len(integer.lstrip("0"))
+        precision = max(1, integer_digits + scale)
+        return f"CAST('{value}' AS DECIMAL({precision}, {scale}))"
+
+    return _DECIMAL_TYPED_LITERAL.sub(replace, text)
 
 
 def _view_identity(statement: exp.Expression) -> tuple[str, str, str] | None:
@@ -169,7 +191,11 @@ def render(
     target = _namespace(target_schema)
     statements = tuple(
         statement
-        for statement in parse(text, read="trino", error_level=ErrorLevel.RAISE)
+        for statement in parse(
+            _preserve_decimal_typed_literals(text),
+            read="trino",
+            error_level=ErrorLevel.RAISE,
+        )
         if statement is not None
     )
     if not statements:

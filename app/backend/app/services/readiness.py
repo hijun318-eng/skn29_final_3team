@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import ssl
 from pathlib import Path
 from time import monotonic
 from typing import Any, Callable
@@ -37,10 +38,15 @@ class AppDatabaseReadiness:
     async def check(self) -> dict[str, str]:
         """APP database 준비 상태 계약과 도메인 불변식을 검사하고 위반 시 명시적 오류를 발생시킨다."""
         timeout = httpx.Timeout(self._probe_timeout())
+        model_tls = ssl.create_default_context()
+        node2_ca_file = os.getenv("NODE2_MODEL_TLS_CA_FILE", "").strip()
+        if node2_ca_file:
+            model_tls.load_verify_locations(cafile=node2_ca_file)
         async with httpx.AsyncClient(
             timeout=timeout,
             headers={"Accept": "application/json", "User-Agent": "answervice-readiness/1.0"},
             trust_env=False,
+            verify=model_tls,
         ) as client:
             database, trino, datahub, release, model, auth = await asyncio.gather(
                 self._database_probe(),

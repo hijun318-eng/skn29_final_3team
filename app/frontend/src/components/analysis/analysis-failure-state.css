@@ -1,6 +1,6 @@
 /* 책임: 분석 실패 원인과 다음 행동을 한 화면에서 구분해 보여 주는 전용 상태 레이아웃을 정의한다. */
 .analysis-diagnostic{--diagnostic-accent:#d39a38;--diagnostic-accent-soft:rgba(211,154,56,.13);--diagnostic-accent-line:rgba(211,154,56,.4);position:relative;overflow:hidden;color:var(--av-text,#e8edf5);border:1px solid var(--av-line,#202d40);border-radius:12px;background:linear-gradient(135deg,rgba(17,27,42,.98),rgba(8,14,23,.98));box-shadow:0 18px 48px rgba(0,0,0,.18)}
-.analysis-diagnostic::before{position:absolute;inset:0 auto 0 0;width:4px;content:"";background:var(--diagnostic-accent);box-shadow:14px 0 42px var(--diagnostic-accent-soft)}
+.analysis-diagnostic::before{display:none}
 .analysis-diagnostic[data-tone="restricted"]{--diagnostic-accent:#d66b65;--diagnostic-accent-soft:rgba(214,107,101,.12);--diagnostic-accent-line:rgba(214,107,101,.4)}
 .analysis-diagnostic[data-tone="empty"]{--diagnostic-accent:#718fb7;--diagnostic-accent-soft:rgba(113,143,183,.13);--diagnostic-accent-line:rgba(113,143,183,.4)}
 .analysis-diagnostic[data-tone="service"]{--diagnostic-accent:#609bf0;--diagnostic-accent-soft:rgba(96,155,240,.13);--diagnostic-accent-line:rgba(96,155,240,.42)}
@@ -28,3 +28,5 @@
 .theme-light .analysis-diagnostic__choices{background:#f6f9fc}.theme-light .analysis-diagnostic__options button:disabled{color:#718298;border-color:#d8e2ed;background:#f1f5f9}
 @media(max-width:900px){.analysis-diagnostic__header{padding:18px 18px 15px 21px;grid-template-columns:36px minmax(0,1fr)}.analysis-diagnostic__icon{width:36px;height:36px}.analysis-diagnostic h3{font-size:17px}.analysis-diagnostic__body{padding:16px 18px 17px 21px;grid-template-columns:1fr;gap:16px}.analysis-diagnostic__body>section{padding-right:0}.analysis-diagnostic__body>section+section{padding-top:16px;padding-left:0;border-top:1px solid var(--av-line,#202d40);border-left:0}.analysis-diagnostic__choices{padding:16px 18px 18px 21px}.analysis-diagnostic__options{grid-template-columns:1fr}.analysis-diagnostic__actions{padding:0 18px 18px 21px}.analysis-diagnostic__action{width:100%;justify-content:center}}
 @media(prefers-reduced-motion:reduce){.analysis-diagnostic__options button{transition:none}.analysis-diagnostic__options button:hover:not(:disabled){transform:none}}
+.analysis-diagnostic__header,.analysis-diagnostic__body,.analysis-diagnostic__choices{padding-left:24px}.analysis-diagnostic__actions{padding-left:24px}
+@media(max-width:900px){.analysis-diagnostic__header,.analysis-diagnostic__body,.analysis-diagnostic__choices{padding-left:18px}.analysis-diagnostic__actions{padding-left:18px}}

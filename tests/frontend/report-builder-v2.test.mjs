@@ -6,6 +6,7 @@ function source(relativePath) {
 }
 
 const app = source("app/frontend/src/App.jsx");
+const appStyles = source("app/frontend/src/styles.css");
 const flags = source("app/frontend/src/features/reports/reportBuilderFlags.js");
 const controller = source("app/frontend/src/features/reports/useReportsPageController.jsx");
 const page = source("app/frontend/src/pages/ReportsPage.jsx");
@@ -25,6 +26,8 @@ const normalization = source("app/frontend/src/contracts/reportNormalization.ts"
 
 assert.match(flags, /VITE_REPORT_BUILDER_V2 !== "false"/);
 assert.match(app, /reportEditorMode && REPORT_BUILDER_V2 \? "report-builder-v2-mode"/);
+assert.match(appStyles, /\.report-builder-v2-mode\{height:100dvh;min-height:0;overflow:hidden\}/);
+assert.match(appStyles, /\.report-builder-v2-mode>\.workspace,\.report-builder-v2-mode>\.workspace>\.page-stage\{height:100%;min-height:0;overflow:hidden\}/);
 assert.match(app, /<ReportsPage[^>]*theme=\{theme\}[^>]*onToggleTheme=\{toggleTheme\}/);
 assert.doesNotMatch(controller, /REPORT_REVIEW_MODE|reviewDefinition|mockReport/i);
 assert.match(page, /page\.builderV2 \? <ReportBuilderV2/);
@@ -62,7 +65,10 @@ assert.match(page, /<ReportPresentation/);
 assert.match(page, /<ReportPresentation[\s\S]*theme=\{theme\}/);
 assert.match(page, /renderBlock=\{page\.renderPreviewBlock\}/);
 assert.match(shortcutHelp, /현재 draft를 서버에 저장/);
-assert.doesNotMatch(shortcutHelp, /Alt\+휠|목업|Mock/);
+assert.match(shortcutHelp, /Ctrl \+ Y \/ Ctrl \+ Shift \+ Z/);
+assert.match(shortcutHelp, /Alt \+ 휠/);
+assert.doesNotMatch(shortcutHelp, /Cmd|목업|Mock/);
+assert.match(controller, /if \(textField\) return;/);
 assert.match(presentation, /createPortal\(overlay, document\.body\)/);
 assert.match(presentation, /pageCountOverride=\{pageCount\}/);
 assert.doesNotMatch(presentation, /mock|월간 경영|호텔 매출/i);
@@ -99,6 +105,10 @@ assert.match(builderStyles, /\.report-api-state,[^\n]*overflow-wrap:anywhere/);
 assert.match(builderStyles, /\.report-property-evidence code\{[^}]*white-space:normal[^}]*overflow-wrap:anywhere/);
 assert.match(editorBlock, /aria-label=\{`\$\{block\.title\} 블록 이동`\}/);
 assert.match(editorBlock, /aria-label=\{`\$\{block\.title\} 블록 크기 조절`\}/);
+assert.match(editorBlock, /!event\.altKey \|\| event\.deltaY === 0 \|\| block\.type !== "table" \|\| !isDraft \|\| locked/);
+assert.match(editorBlock, /const step = event\.deltaY < 0 \? 1 : -1/);
+assert.match(editorBlock, /addEventListener\("wheel", resizeTableWithWheel, \{ passive: false \}\)/);
+assert.match(editorBlock, /ref=\{setBlockNodeRef\}/);
 assert.match(blockControls, /aria-label=\{`\$\{block\.title\} 블록 메뉴`\}/);
 assert.match(builderStyles, /@media\(max-width:1179px\)\{[\s\S]*grid-template-columns:minmax\(0,1fr\)/);
 assert.match(builderStyles, /width:min\(286px,calc\(100vw - 64px\)\)/);

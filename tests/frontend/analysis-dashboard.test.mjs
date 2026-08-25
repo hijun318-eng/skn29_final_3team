@@ -10,6 +10,7 @@ const frontendRoot = fileURLToPath(new URL("../../app/frontend", import.meta.url
 const response = JSON.parse(readFileSync(new URL("./fixtures/analysis-rich-success.json", import.meta.url), "utf8"));
 const processViewModels = JSON.parse(readFileSync(new URL("./fixtures/analysis-process-view-models.json", import.meta.url), "utf8"));
 const stylesSource = readFileSync(new URL("../../app/frontend/src/styles.css", import.meta.url), "utf8");
+const failureStylesSource = readFileSync(new URL("../../app/frontend/src/components/analysis/analysis-failure-state.css", import.meta.url), "utf8");
 const agentSource = readFileSync(new URL("../../app/frontend/src/pages/AgentPage.jsx", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../../app/frontend/src/App.jsx", import.meta.url), "utf8");
 const server = await createServer({
@@ -219,10 +220,28 @@ try {
   assert.match(agentSource, /<input[\s\S]*?aria-describedby="question-help"[\s\S]*?required/);
   assert.match(agentSource, /<button aria-label="질문 전송"/);
   assert.match(stylesSource, /:where\(button,input,textarea,select,summary,\[tabindex\]\):focus-visible/);
+  // 입력 중 포커스 링은 input 오른쪽 경계에 생기지 않고 전송 버튼을 포함한 composer 전체를 감싼다.
+  assert.match(stylesSource, /\.question-field:has\(input:focus\)\{box-shadow:0 0 0 2px #78adf4\}/);
+  assert.match(stylesSource, /\.question-field input:focus,\.question-field input:focus-visible\{outline:0!important;box-shadow:none!important\}/);
+  assert.match(stylesSource, /\.question-field input\{border-right:0\}/);
+  // 상태 카드는 아이콘과 전체 테두리로 구분하고 왼쪽에만 굵은 장식선을 만들지 않는다.
+  assert.match(failureStylesSource, /\.analysis-diagnostic::before\{display:none\}/);
+  assert.doesNotMatch(failureStylesSource, /\.analysis-diagnostic::before\{[^}]*width:4px/);
+  assert.match(stylesSource, /\.analysis-artifact-reuse,\.theme-light \.analysis-artifact-reuse\{box-shadow:none\}/);
+  assert.match(stylesSource, /\.agent-conversational-bubble\{border-left-width:1px\}/);
+  assert.match(stylesSource, /\.notion-block\{border-left:0!important\}/);
   assert.match(stylesSource, /\.question-field input::placeholder,[^{]*\{color:#91a4ba;opacity:1\}/);
   assert.match(stylesSource, /\.theme-light \.question-field input::placeholder,[^{]*\{color:#5f7288;opacity:1\}/);
   assert.match(stylesSource, /\.unified-action-btn:disabled\{[^}]*opacity:1[^}]*background:#0b121d/);
   assert.match(stylesSource, /\.analysis-artifact-reuse code\{[^}]*max-width:28ch[^}]*overflow-wrap:anywhere/);
+  // 버튼·아이콘·이미지에는 번지는 그림자나 그라데이션을 다시 넣지 않고 포커스 외곽선은 유지한다.
+  assert.match(stylesSource, /button,\[role="button"\],img\{box-shadow:none!important;filter:none!important\}/);
+  assert.match(stylesSource, /button,\[role="button"\]\{background-image:none!important\}/);
+  assert.match(stylesSource, /\.agent-avatar\{background:var\(--gold\)!important;box-shadow:none!important;filter:none!important\}/);
+  assert.match(stylesSource, /button:focus-visible,\[role="button"\]:focus-visible\{outline:2px solid #78adf4;outline-offset:2px\}/);
+  assert.match(stylesSource, /\.theme-light \.question-field button\{color:#176fe5;[^}]*border-left:0;background:#f3f7fc\}/);
+  assert.match(stylesSource, /\.theme-light \.question-field:focus-within button,[^{]*\{color:#0f56b8;[^}]*background:#e6f0fc\}/);
+  assert.match(stylesSource, /\.theme-light \.question-field button:disabled\{color:#708196;[^}]*border-left:0;background:#e6edf5\}/);
 
   // 서버 unit이 "KRW"여도 화면 표기는 보고서와 같은 한국어 배율 라벨로 통일한다(KRW 노출 회귀 방지).
   const krwHtml = renderToStaticMarkup(createElement(AnalysisStatePanel, {

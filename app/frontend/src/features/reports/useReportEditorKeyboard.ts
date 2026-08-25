@@ -28,7 +28,7 @@ export function useReportEditorKeyboard(options: ReportEditorKeyboardOptions) {
       void options.saveDraft();
       return;
     }
-    if (textField && !target.closest?.(".notion-block")) return;
+    if (textField) return;
     if (key === "c") { event.preventDefault(); options.copySelected(); }
     else if (key === "v" && options.canEdit) { event.preventDefault(); options.pasteBlocks(); }
     else if (key === "z" && event.shiftKey) { event.preventDefault(); options.redo(); }

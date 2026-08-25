@@ -3,14 +3,15 @@ import { useEffect, useRef } from "react";
 import { Keyboard, X } from "lucide-react";
 
 const SHORTCUTS = [
-  ["Ctrl / Cmd + S", "현재 draft를 서버에 저장"],
-  ["Ctrl / Cmd + Z", "실행 취소"],
-  ["Ctrl / Cmd + Shift + Z", "다시 실행"],
-  ["Ctrl / Cmd + C / V", "선택 블록 복사 / 붙여넣기"],
+  ["Ctrl + S", "현재 draft를 서버에 저장"],
+  ["Ctrl + Z", "실행 취소"],
+  ["Ctrl + Y / Ctrl + Shift + Z", "다시 실행"],
+  ["Ctrl + C / Ctrl + V", "선택 블록 복사 / 붙여넣기"],
   ["Delete / Backspace", "선택 블록 삭제"],
   ["Shift + 클릭", "블록 다중 선택 추가 / 제거"],
   ["Space / Enter", "이동 손잡이의 키보드 이동 시작"],
   ["방향키", "이동·크기 조절 중 12열 격자 단위 조정"],
+  ["Alt + 휠", "표 블록의 너비·높이를 한 단계 확대 / 축소"],
   ["Esc", "이동·크기 조절 또는 이 안내 닫기"],
 ];
 

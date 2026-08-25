@@ -516,7 +516,7 @@ html{scrollbar-gutter:stable}body{line-height:1.45;text-rendering:optimizeLegibi
 .report-editor-mode .sidebar{transform:translateX(-100%)}
 .report-editor-mode .workspace{margin-left:0}
 .report-editor-mode .scrim{display:none}
-.report-builder-v2-mode>.workspace>.topbar{display:none}.report-builder-v2-mode>.workspace>.page-stage{min-height:100vh;padding:0}.report-block-menu-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
+.report-builder-v2-mode{height:100dvh;min-height:0;overflow:hidden}.report-builder-v2-mode>.workspace,.report-builder-v2-mode>.workspace>.page-stage{height:100%;min-height:0;overflow:hidden}.report-builder-v2-mode>.workspace>.topbar{display:none}.report-builder-v2-mode>.workspace>.page-stage{padding:0}.report-block-menu-actions{grid-template-columns:repeat(3,minmax(0,1fr))}
 .notion-editor-workspace{min-width:0}
 .notion-editor-topbar>div:last-child{min-width:0;flex-wrap:wrap;justify-content:flex-end}
 .editor-view-actions{display:flex;align-items:center;gap:3px;padding-right:7px;border-right:1px solid #263348}
@@ -890,7 +890,7 @@ html[data-theme="light"] body{color:#18263a;background:#f4f7fb}html[data-theme="
 /* 분석 composer와 대화 끝 여백은 고정 입력창 높이를 공유해 누적 turn의 마지막 카드를 가리지 않는다. */
 .chat-main{padding-bottom:calc(118px + env(safe-area-inset-bottom));scroll-padding-bottom:calc(118px + env(safe-area-inset-bottom));overscroll-behavior:contain}
 .chat-input{min-width:0;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
-.question-field{max-width:100%}.conversation-end{height:1px;scroll-margin-block-end:calc(118px + env(safe-area-inset-bottom))}
+.question-field{max-width:100%;border-radius:10px}.question-field input{border-right:0}.question-field:has(input:focus){box-shadow:0 0 0 2px #78adf4}.question-field input:focus,.question-field input:focus-visible{outline:0!important;box-shadow:none!important}.question-field button:disabled{border-left:0}.conversation-end{height:1px;scroll-margin-block-end:calc(118px + env(safe-area-inset-bottom))}
 
 /* 서버 문구·질문·지표명이 공백 없는 긴 문자열이어도 카드 경계를 밀어내지 않는다. */
 .turn-user-bubble .user-text,.agent-narrative-text,.analysis-state h3,.analysis-state p,.analysis-state small,.analysis-result-section h3,.analysis-chart-fallback,.analysis-view-unavailable,.analysis-input-error,.analysis-notice{min-width:0;overflow-wrap:anywhere}
@@ -913,3 +913,35 @@ html[data-theme="light"] body{color:#18263a;background:#f4f7fb}html[data-theme="
 /* Artifact 식별자는 카드 폭을 넓히지 않으면서 생략 없이 확인할 수 있다. */
 .analysis-artifact-reuse code{max-width:28ch;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere}
 @media(max-width:720px){.analysis-artifact-reuse code{max-width:100%}}
+
+/* 카드 상태는 색·아이콘·전체 테두리로 전달하고 한쪽에만 굵은 장식선을 두지 않는다. */
+.editor-block textarea.block-quote{border-left-width:1px;border-left-color:#e3ddd5}
+.legacy-conclusion article{border:1px solid #e0d4c4;border-radius:9px}
+.generated-report-block blockquote{border:1px solid #e5d7c5;border-radius:7px}
+.ppt-theme .sidebar nav button.active,.theme-light .sidebar nav button.active{box-shadow:none}
+.ppt-theme .message b em,.ppt-theme .analysis-state>header span,.ppt-theme .analysis-state>footer code{box-shadow:none}
+.report-command-receipt{border:1px solid var(--primary);border-radius:10px}
+.notion-data-embed{padding-left:15px}.notion-data-embed-live{padding-left:16px}.notion-data-embed::before{display:none}
+.markdown-copy blockquote{border:1px solid #2a3a50;border-radius:6px}
+.report-evidence{padding-left:0}.report-evidence::before{display:none}
+.analysis-notice{border:1px solid #2d4f7b;border-radius:8px}
+.notion-block{border-left:0!important}.notion-block:hover{box-shadow:inset 0 0 0 1px #29496f}.notion-block.selected,.notion-block.dragging{box-shadow:inset 0 0 0 1px #4f99f5}
+.analysis-next-action{border:1px solid #355e92;border-radius:7px}
+.report-finalization-panel,.report-finalization-panel.is-final{border:1px solid #2b4463}
+.turn-summary-box{border:1px solid #1a273c}
+.analysis-artifact-reuse,.theme-light .analysis-artifact-reuse{box-shadow:none}
+.agent-conversational-bubble{border-left-width:1px}
+.analysis-metric-card--total{border-left:1px solid var(--av-paper-line)!important}
+.theme-light .turn-summary-box{border-left-color:#d7e3f1}
+.theme-light [data-report-render-root="screen-preview"] .report-finalization-panel{border-left-color:#cbd9e7}
+
+/* 버튼·아이콘·이미지는 번지는 광택 없이 단색 면과 테두리로 구분한다. */
+button,[role="button"],img{box-shadow:none!important;filter:none!important}
+button,[role="button"]{background-image:none!important}
+.agent-avatar{background:var(--gold)!important;box-shadow:none!important;filter:none!important}
+button:focus-visible,[role="button"]:focus-visible{outline:2px solid #78adf4;outline-offset:2px}
+
+/* 라이트 모드의 질문 전송 버튼은 작성 중에도 입력창과 이어지는 밝은 색을 유지한다. */
+.theme-light .question-field button{color:#176fe5;border:1px solid #cbd9e5;border-left:0;background:#f3f7fc}
+.theme-light .question-field:focus-within button,.theme-light .question-field button:hover:not(:disabled){color:#0f56b8;border-color:#78adf4;background:#e6f0fc}
+.theme-light .question-field button:disabled{color:#708196;border-color:#ced9e5;border-left:0;background:#e6edf5}

@@ -16,6 +16,8 @@ const styleFiles = [
 const styleSources = Object.fromEntries(styleFiles.map((file) => [file, source(file)]));
 const styles = styleFiles.map((file) => styleSources[file]).join("\n");
 
+assert.doesNotMatch(styleSources["report-a4-content.css"], /border-left:\s*0\.65mm/);
+
 assert.match(component, /import "\.\/report-a4-paper\.css";\s*import "\.\/report-a4-content\.css";\s*import "\.\/report-a4-artifact\.css";\s*import "\.\/report-a4-print\.css";/);
 assert.doesNotMatch(component, /report-a4\.css/);
 assert.match(component, /new ResizeObserver\(resize\)/);

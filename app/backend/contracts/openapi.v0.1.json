@@ -1802,6 +1802,84 @@
         "title": "LoginResponse",
         "type": "object"
       },
+      "MLAnalysisRequest": {
+        "additionalProperties": false,
+        "description": "대화형 ML 통합 실행 입력이다.",
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "expected_head_turn_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Head Turn Id"
+          },
+          "query": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "MLAnalysisRequest",
+        "type": "object"
+      },
+      "MLPredictionRequest": {
+        "additionalProperties": false,
+        "description": "승인된 객실 점유율 모델이 허용하는 요청 scope를 검증한다.",
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "horizon": {
+            "maximum": 7.0,
+            "minimum": 1.0,
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "hotel_scope": {
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[A-Z0-9_]+$",
+            "title": "Hotel Scope",
+            "type": "string"
+          },
+          "metric": {
+            "const": "OCCUPANCY_RATE",
+            "title": "Metric",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "hotel_scope",
+          "horizon",
+          "as_of"
+        ],
+        "title": "MLPredictionRequest",
+        "type": "object"
+      },
       "ManualRunCommandResponse": {
         "additionalProperties": false,
         "description": "수동 실행 명령의 멱등 키, 대상 정의, 기준 시각, 상태와 생성된 실행 ID를 반환한다.",
@@ -2090,6 +2168,42 @@
           }
         },
         "title": "QueryExecutionEvidence",
+        "type": "object"
+      },
+      "RagQueryRequest": {
+        "properties": {
+          "conversation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id"
+          },
+          "mode": {
+            "default": "AUTO",
+            "enum": [
+              "AUTO",
+              "DOCUMENT_ONLY"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "question": {
+            "maxLength": 500,
+            "minLength": 2,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "RagQueryRequest",
         "type": "object"
       },
       "ReadinessData": {
@@ -5856,6 +5970,51 @@
         "summary": "Replay Analysis Definition"
       }
     },
+    "/analysis/ml": {
+      "post": {
+        "description": "자연어 요청을 권한 검증된 실제 ML 예측과 Backend 집계 응답으로 변환한다.",
+        "operationId": "createMLAnalysis",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MLAnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Ml Analysis",
+        "tags": [
+          "ml"
+        ]
+      }
+    },
     "/analysis/progress/{trace_id}": {
       "get": {
         "description": "인증 사용자의 유일한 trace 실행 snapshot을 API metadata와 함께 반환한다.\n\ntrace 재사용으로 실행이 모호하면 request ID 사용을 요구하는 409를, 소유 실행이 없거나\n만료됐으면 자원 존재를 노출하지 않는 404를 반환한다.",
@@ -6512,7 +6671,6 @@
     },
     "/mcp": {
       "get": {
-        "description": "인증은 확인하되 MCP transport를 POST로만 제한하는 405 응답을 반환한다.",
         "operationId": "mcpGet",
         "responses": {
           "200": {
@@ -6532,7 +6690,7 @@
         "summary": "Mcp Get"
       },
       "post": {
-        "description": "MCP JSON-RPC 요청의 origin·버전·header·도구 권한을 검증해 한 건을 실행한다.\n\n현재 주체가 소유한 분석 run만 조회하며 성공·거부·실패를 모두 tool audit에 남긴다.\n프로토콜 위반은 JSON-RPC 오류로, 저장소 장애는 도구 실행 오류로 닫힌다.",
+        "description": "Validate MCP wire data and execute only registry-approved tools.",
         "operationId": "mcpPost",
         "parameters": [
           {
@@ -6596,6 +6754,171 @@
           }
         ],
         "summary": "Mcp Post"
+      }
+    },
+    "/ml/capability": {
+      "get": {
+        "description": "현재 READY인 승인 모델의 서버 검증 scope를 채팅 화면에 제공한다.",
+        "operationId": "getMLPredictionCapability",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Getmlpredictioncapability",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Ml Prediction Capability",
+        "tags": [
+          "ml"
+        ]
+      }
+    },
+    "/ml/predictions": {
+      "post": {
+        "description": "실제 ML runtime 예측을 실행하고 모델 provenance를 audit event로 영속화한다.",
+        "operationId": "createMLPrediction",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MLPredictionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Createmlprediction",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Ml Prediction",
+        "tags": [
+          "ml"
+        ]
+      }
+    },
+    "/rag/documents/{manual_id}/source.pdf": {
+      "get": {
+        "operationId": "getInternalManualPdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "manual_id",
+            "required": true,
+            "schema": {
+              "title": "Manual Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Internal Manual Pdf"
+      }
+    },
+    "/rag/query": {
+      "post": {
+        "operationId": "queryInternalManual",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Queryinternalmanual",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Query Internal Manual"
       }
     },
     "/readiness": {

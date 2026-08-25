@@ -193,6 +193,90 @@ class ConversationRepository:
                 )
                 return dict(row)
 
+    async def append_rag_turn(
+        self,
+        conversation_id: UUID,
+        user_id: UUID,
+        user_message: str,
+        rag_result: dict[str, Any],
+    ) -> UUID | None:
+        """RAG 답변을 현재 release receipt를 유지한 불변 턴으로 저장한다."""
+        turn_id = uuid4()
+        now = datetime.now(timezone.utc)
+        async with self._sessionmaker() as session:
+            async with session.begin():
+                conversation = (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT turn_count, head_turn_id, active_command_id,
+                                   product_release_id, permission_snapshot_id,
+                                   semantic_release_id
+                            FROM chat.conversations
+                            WHERE conversation_id = :conv_id
+                              AND owner_user_id = :user_id
+                              AND status = 'ACTIVE'
+                            FOR UPDATE
+                            """
+                        ),
+                        {"conv_id": conversation_id, "user_id": user_id},
+                    )
+                ).mappings().one_or_none()
+                if conversation is None:
+                    return None
+                if conversation["active_command_id"] is not None:
+                    raise ValueError("실행 중인 대화 명령이 있어 RAG 턴을 저장할 수 없습니다.")
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO chat.turns (
+                            turn_id, conversation_id, turn_index, user_message, route,
+                            source_turn_ids, resolved_slots, product_release_id,
+                            permission_snapshot_id, semantic_release_id, reply_to_turn_id,
+                            terminal_status, created_at
+                        ) VALUES (
+                            :turn_id, :conv_id, :idx, :msg, 'ANALYSIS',
+                            '[]'::jsonb, CAST(:slots AS jsonb), :product_release_id,
+                            :permission_snapshot_id, :semantic_release_id, :reply_to_turn_id,
+                            'SUCCEEDED', :now
+                        )
+                        """
+                    ),
+                    {
+                        "turn_id": turn_id,
+                        "conv_id": conversation_id,
+                        "idx": int(conversation["turn_count"]),
+                        "msg": user_message,
+                        "slots": json.dumps({"rag": rag_result}, ensure_ascii=False, default=str),
+                        "product_release_id": conversation["product_release_id"],
+                        "permission_snapshot_id": conversation["permission_snapshot_id"],
+                        "semantic_release_id": conversation["semantic_release_id"],
+                        "reply_to_turn_id": conversation["head_turn_id"],
+                        "now": now,
+                    },
+                )
+                await self._insert_release_binding(
+                    session,
+                    object_kind="TURN",
+                    object_id=turn_id,
+                    product_release_id=conversation["product_release_id"],
+                    permission_snapshot_id=conversation["permission_snapshot_id"],
+                    semantic_release_id=conversation["semantic_release_id"],
+                )
+                await session.execute(
+                    text(
+                        """
+                        UPDATE chat.conversations
+                        SET head_turn_id = :turn_id,
+                            turn_count = turn_count + 1,
+                            updated_at = :now
+                        WHERE conversation_id = :conv_id
+                        """
+                    ),
+                    {"turn_id": turn_id, "now": now, "conv_id": conversation_id},
+                )
+        return turn_id
+
     async def list_turns(self, conversation_id: UUID) -> list[dict[str, Any]]:
         """대화방의 모든 불변 턴 목록을 순서대로 조회한다."""
         stmt = text("""

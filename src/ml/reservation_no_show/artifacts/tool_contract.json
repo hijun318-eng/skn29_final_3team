@@ -1,0 +1,67 @@
+{
+  "tool_name": "predict_reservation_no_show",
+  "registry_status": "INACTIVE",
+  "activation_reason": "Source PMS has zero NO_SHOW labels; UI/audit/MCP integration not yet verified.",
+  "activation_gate": "All readiness_gate.json checks must be PASS.",
+  "input": {
+    "required": [
+      "reservation_id",
+      "feature_as_of",
+      "feature_set_version",
+      "input_schema_version"
+    ],
+    "schema": {
+      "reservation_id": "string",
+      "feature_as_of": "RFC3339 timestamp with timezone",
+      "feature_set_version": {
+        "const": "reservation-no-show-feature-v1.0"
+      },
+      "input_schema_version": {
+        "const": "reservation-no-show-input-v1.0"
+      }
+    }
+  },
+  "output": {
+    "required": [
+      "reservation_id",
+      "no_show_probability",
+      "risk_level",
+      "prediction_status",
+      "is_synthetic",
+      "model_name",
+      "model_version",
+      "feature_set_version",
+      "input_schema_version",
+      "feature_as_of",
+      "execution_id"
+    ],
+    "risk_levels": {
+      "LOW": "daily cohort score rank below Top 15%",
+      "HIGH": "daily cohort score rank within Top 15%"
+    },
+    "ranking_policy": "TOP_15_PERCENT_DAILY_COHORT",
+    "validation_reference_threshold": 0.015165358285366045,
+    "error_status": [
+      "SUCCESS",
+      "INVALID_INPUT",
+      "FEATURE_NOT_FOUND",
+      "SCHEMA_MISMATCH",
+      "TIMEOUT",
+      "MODEL_ERROR"
+    ]
+  },
+  "runtime": {
+    "format": "ONNX",
+    "engine": "ONNX Runtime CPU",
+    "timeout_ms": 2000,
+    "fallback": "Return prediction_status error; do not substitute an observed fact.",
+    "local_runner": "no_show_ml.service.NoShowToolService"
+  },
+  "model": {
+    "name": "LogisticRegression",
+    "version": "reservation-no-show-v1.0",
+    "feature_set_version": "reservation-no-show-feature-v1.0",
+    "threshold": 0.015165358285366045
+  },
+  "ui_policy": "Display as 모델 예측 and 합성 데이터 기반 예측; never as confirmed fact."
+}

@@ -1,0 +1,50 @@
+{
+  "train": {
+    "rows": 2192,
+    "columns": 33,
+    "target_date_min": "2022-01-01 00:00:00",
+    "target_date_max": "2024-12-31 00:00:00",
+    "max_feature_null_rate": 0.0,
+    "room_type_count": 2,
+    "horizon_count": 1
+  },
+  "validation": {
+    "rows": 730,
+    "columns": 33,
+    "target_date_min": "2025-01-01 00:00:00",
+    "target_date_max": "2025-12-31 00:00:00",
+    "max_feature_null_rate": 0.0,
+    "room_type_count": 2,
+    "horizon_count": 1
+  },
+  "test": {
+    "rows": 418,
+    "columns": 33,
+    "target_date_min": "2026-01-01 00:00:00",
+    "target_date_max": "2026-07-28 00:00:00",
+    "max_feature_null_rate": 0.0,
+    "room_type_count": 2,
+    "horizon_count": 1
+  },
+  "forecast": {
+    "rows": 312,
+    "columns": 33,
+    "target_date_min": "2026-07-29 00:00:00",
+    "target_date_max": "2026-12-31 00:00:00",
+    "max_feature_null_rate": 0.0,
+    "room_type_count": 2,
+    "horizon_count": 1
+  },
+  "hidden_qa": {
+    "rows": 50,
+    "columns": 5
+  },
+  "manifest": {
+    "rows": 5,
+    "columns": 9
+  },
+  "quality": {
+    "pass": 56,
+    "fail": 0
+  }
+}

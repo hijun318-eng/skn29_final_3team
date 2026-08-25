@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "answervice-no-show-ml": {
+      "command": "${PROJECT_DIR}/.venv/Scripts/python.exe",
+      "args": ["${PROJECT_DIR}/mcp_server.py"],
+      "env": {
+        "ANSWERVICE_ML_TOOL_MODE": "local_demo",
+        "ANSWERVICE_ML_TOOL_ROLE": "hotel_analyst"
+      }
+    }
+  }
+}

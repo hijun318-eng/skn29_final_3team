@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "profiles": {
+    "qwen3_06b": {
+      "model_id": "Qwen/Qwen3-Embedding-0.6B",
+      "revision": "4000000000000000000000000000000000000000",
+      "local_path": "models/Qwen3-Embedding-0.6B",
+      "dimension": 1024,
+      "max_sequence_length": 2048,
+      "query_prompt_name": "query",
+      "query_prefix": "",
+      "document_prefix": "",
+      "normalize_embeddings": true
+    },
+    "bge_m3": {
+      "model_id": "BAAI/bge-m3",
+      "revision": "4000000000000000000000000000000000000000",
+      "local_path": "models/bge-m3",
+      "dimension": 1024,
+      "max_sequence_length": 2048,
+      "query_prompt_name": null,
+      "query_prefix": "",
+      "document_prefix": "",
+      "normalize_embeddings": true
+    },
+    "multilingual_e5_large": {
+      "model_id": "intfloat/multilingual-e5-large",
+      "revision": "4000000000000000000000000000000000000000",
+      "local_path": "models/multilingual-e5-large",
+      "dimension": 1024,
+      "max_sequence_length": 512,
+      "query_prompt_name": null,
+      "query_prefix": "query: ",
+      "document_prefix": "passage: ",
+      "normalize_embeddings": true
+    }
+  }
+}

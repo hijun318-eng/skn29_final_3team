@@ -45,7 +45,15 @@ ARCHIVE_PREFIXES = (
     "evals/",
     "infrastructure/database/releases/",
     "infrastructure/database/sql/data/",
+    "src/ml/reservation_no_show/",
+    "src/ml/room_demand_forecast/",
 )
+ARCHIVE_FILES = {
+    "src/ml/artifacts/final_local_verification.json",
+    "src/ml/artifacts/official_metric_manifest.json",
+    "src/ml/artifacts/operational_gate_verification.json",
+    "src/ml/artifacts/source_lineage_verification.json",
+}
 LOCAL_CACHE_PREFIXES = (
     ".codex-",
     ".pytest-",
@@ -99,6 +107,18 @@ ALLOWED_RUNTIME_JSON = {
     ),
     "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json": (
         "sealed backend deployment retrieval Gate contract"
+    ),
+    "config/rag/access_policy.json": "validated RAG role policy",
+    "config/rag/answer.json": "validated RAG answer provider configuration",
+    "config/rag/benchmark.json": "versioned RAG benchmark configuration",
+    "config/rag/embedding.json": "validated RAG embedding configuration",
+    "config/rag/embedding_models.json": "versioned embedding candidate registry",
+    "config/rag/vector_retrieval.json": "validated vector retrieval configuration",
+    "src/ml/artifacts/live_room_demand.approval.json": (
+        "hash-bound approved live PMS model manifest"
+    ),
+    "src/ml/config/mcp_servers.template.json": (
+        "explicitly disabled local MCP registry template"
     ),
 }
 PROHIBITED_RUNTIME_REFERENCES = {
@@ -215,7 +235,7 @@ def _classify(relative: str) -> str:
         return "local-cache"
     if relative.startswith("tests/"):
         return "test"
-    if relative in HISTORICAL_JSON:
+    if relative in HISTORICAL_JSON or relative in ARCHIVE_FILES:
         return "archive"
     if relative in ALLOWED_RUNTIME_JSON:
         return "runtime-contract"

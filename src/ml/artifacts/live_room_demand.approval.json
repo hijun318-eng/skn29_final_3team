@@ -1,0 +1,51 @@
+{
+  "schema_version": "room-demand-artifact-v1",
+  "approval_status": "APPROVED",
+  "metric": "OCCUPANCY_RATE",
+  "property_id": "GRAND",
+  "feature_as_of": "2026-08-19",
+  "model_name": "live-pms-hist-gradient-boosting",
+  "model_version": "pms-grand-2026-08-19",
+  "selected_strategy": "HIST_GRADIENT_BOOSTING",
+  "feature_source": "LIVE_TRINO_PMS",
+  "training_source": "LIVE_TRINO_PMS",
+  "training_row_count": 11361,
+  "validation_row_count": 609,
+  "training_start": "2025-02-25",
+  "training_end": "2026-08-19",
+  "validation_start": "2026-07-22",
+  "validation_end": "2026-08-19",
+  "baseline_metrics": {
+    "rooms_mae": 7.022989,
+    "rooms_rmse": 9.960266,
+    "occupancy_mae": 0.05501501,
+    "occupancy_rmse": 0.07100139
+  },
+  "candidate_metrics": {
+    "rooms_mae": 0.999026,
+    "rooms_rmse": 1.475511,
+    "occupancy_mae": 0.00811525,
+    "occupancy_rmse": 0.01138732
+  },
+  "features": [
+    "horizon_days",
+    "available_room_nights",
+    "booking_on_hand",
+    "booking_on_hand_ratio",
+    "rooms_sold_lag_1",
+    "rooms_sold_lag_7",
+    "rooms_sold_lag_14",
+    "rooms_sold_mean_7",
+    "rooms_sold_mean_28",
+    "cancellation_rate_28",
+    "target_day_of_week",
+    "target_month",
+    "target_is_weekend",
+    "target_is_month_start",
+    "target_is_month_end",
+    "target_is_public_holiday",
+    "room_type_code",
+    "target_season_code"
+  ],
+  "artifact_hash": "sha256:aed4619281e94036546e7d4847d2ef4e5d60b1d3b1ae613d61837b94b66c65ea"
+}

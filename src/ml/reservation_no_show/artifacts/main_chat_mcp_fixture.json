@@ -1,0 +1,196 @@
+{
+  "status": "PASS",
+  "checks": {
+    "production_hidden": true,
+    "production_call_blocked": true,
+    "demo_listed": true,
+    "demo_call_success": true,
+    "ml_route": true,
+    "combined_route": true,
+    "rag_route": true,
+    "stdio_initialize": true,
+    "stdio_list": true,
+    "stdio_call": true,
+    "response_timeout": true
+  },
+  "routes": {
+    "ml_only": {
+      "route": "ML_ONLY",
+      "decision_id": "a78a38cbc63e1315f09f90d4",
+      "use_sql": false,
+      "use_rag": false,
+      "use_ml": true,
+      "ml_tool_code": "predict-reservation-no-show",
+      "reason": "예약 No-show 미래 위험 예측"
+    },
+    "rag_only": {
+      "route": "RAG_ONLY",
+      "decision_id": "31dd3746266c85079f240217",
+      "use_sql": false,
+      "use_rag": true,
+      "use_ml": false,
+      "ml_tool_code": null,
+      "reason": "정책·매뉴얼 질문"
+    },
+    "ml_and_rag": {
+      "route": "ML_AND_RAG",
+      "decision_id": "e300060176ff45cdd330f8d5",
+      "use_sql": false,
+      "use_rag": true,
+      "use_ml": true,
+      "ml_tool_code": "predict-reservation-no-show",
+      "reason": "No-show 모델 예측과 운영 문서가 모두 필요"
+    },
+    "sql_only": {
+      "route": "SQL_ONLY",
+      "decision_id": "e36e7095cbae8433c3d3b63a",
+      "use_sql": true,
+      "use_rag": false,
+      "use_ml": false,
+      "ml_tool_code": null,
+      "reason": "정형 수치 질문"
+    }
+  },
+  "production_list": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "tools": []
+    }
+  },
+  "production_call": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "TOOL_NOT_APPROVED_OR_ACCESS_DENIED"
+        }
+      ],
+      "isError": true
+    }
+  },
+  "demo_list": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+      "tools": [
+        {
+          "name": "predict-reservation-no-show",
+          "title": "예약 No-show 위험 예측",
+          "description": "합성 Feature snapshot과 ONNX 모델로 예약 No-show 위험순위를 반환합니다. 확정 사실이 아닙니다.",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "reservation_id",
+              "feature_as_of",
+              "feature_set_version",
+              "input_schema_version"
+            ],
+            "properties": {
+              "reservation_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "feature_as_of": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "feature_set_version": {
+                "const": "reservation-no-show-feature-v1.0"
+              },
+              "input_schema_version": {
+                "const": "reservation-no-show-input-v1.0"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "demo_call": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"evidence_type\":\"MODEL_PREDICTION\",\"fact_status\":\"PREDICTION_NOT_OBSERVED\",\"request_id\":\"main-chat-1\",\"trace_id\":\"trace-main-chat-1\",\"prediction\":{\"reservation_id\":\"RES-088e5da786c1b1dd3989a748e1d3f785\",\"feature_as_of\":\"2026-09-26T18:00:00+09:00\",\"model_name\":\"LogisticRegression\",\"model_version\":\"reservation-no-show-v1.0\",\"feature_set_version\":\"reservation-no-show-feature-v1.0\",\"input_schema_version\":\"reservation-no-show-input-v1.0\",\"execution_id\":\"mlrun-fixture\",\"no_show_probability\":0.006651702712003438,\"risk_level\":\"LOW\",\"risk_rank\":18,\"cohort_size\":29,\"ranking_policy\":\"TOP_15_PERCENT_DAILY_COHORT\",\"threshold\":0.015165358285366045,\"prediction_status\":\"SUCCESS\",\"error_message\":null,\"is_synthetic\":true,\"display_label\":\"모델 예측 · 합성 데이터 기반 예측\",\"duration_ms\":0.0}}"
+        }
+      ],
+      "isError": false
+    }
+  },
+  "stdio_responses": [
+    {
+      "jsonrpc": "2.0",
+      "id": 11,
+      "result": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {
+          "tools": {
+            "listChanged": false
+          }
+        },
+        "serverInfo": {
+          "name": "answervice-no-show-ml",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 12,
+      "result": {
+        "tools": [
+          {
+            "name": "predict-reservation-no-show",
+            "title": "예약 No-show 위험 예측",
+            "description": "합성 Feature snapshot과 ONNX 모델로 예약 No-show 위험순위를 반환합니다. 확정 사실이 아닙니다.",
+            "inputSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "reservation_id",
+                "feature_as_of",
+                "feature_set_version",
+                "input_schema_version"
+              ],
+              "properties": {
+                "reservation_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "feature_as_of": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "feature_set_version": {
+                  "const": "reservation-no-show-feature-v1.0"
+                },
+                "input_schema_version": {
+                  "const": "reservation-no-show-input-v1.0"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 13,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"evidence_type\":\"MODEL_PREDICTION\",\"fact_status\":\"PREDICTION_NOT_OBSERVED\",\"request_id\":\"13\",\"trace_id\":\"trace-13\",\"prediction\":{\"reservation_id\":\"RES-088e5da786c1b1dd3989a748e1d3f785\",\"feature_as_of\":\"2026-09-26T18:00:00+09:00\",\"model_name\":\"LogisticRegression\",\"model_version\":\"reservation-no-show-v1.0\",\"feature_set_version\":\"reservation-no-show-feature-v1.0\",\"input_schema_version\":\"reservation-no-show-input-v1.0\",\"execution_id\":\"mlrun-fixture\",\"no_show_probability\":0.006651702712003438,\"risk_level\":\"LOW\",\"risk_rank\":18,\"cohort_size\":29,\"ranking_policy\":\"TOP_15_PERCENT_DAILY_COHORT\",\"threshold\":0.015165358285366045,\"prediction_status\":\"SUCCESS\",\"error_message\":null,\"is_synthetic\":true,\"display_label\":\"모델 예측 · 합성 데이터 기반 예측\",\"duration_ms\":0.0}}"
+          }
+        ],
+        "isError": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schema_version": "1.0",
+  "known_roles": ["STAFF", "MANAGER", "SYSTEM_ADMIN"],
+  "unresolved_validity_roles": ["STAFF", "MANAGER", "SYSTEM_ADMIN"],
+  "default_minimum_score": 0.45,
+  "candidate_minimum_score": 0.25,
+  "maximum_top_k": 10
+}

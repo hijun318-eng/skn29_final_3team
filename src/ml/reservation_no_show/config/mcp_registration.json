@@ -1,0 +1,38 @@
+{
+  "tool_code": "predict-reservation-no-show",
+  "semantic_version": "1.0.0",
+  "evidence_type": "MODEL_PREDICTION",
+  "enabled": true,
+  "approval_status": "APPROVED",
+  "required_roles": ["hotel_analyst", "data_admin"],
+  "timeout_seconds": 2,
+  "maximum_retries": 0,
+  "title": "예약 No-show 위험 예측",
+  "description": "실제 Trino Feature 조회와 ONNX 추론을 사용하는 No-show P2 후보 모델",
+  "input_schema_json": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "reservation_id",
+      "feature_as_of",
+      "feature_set_version",
+      "input_schema_version"
+    ],
+    "properties": {
+      "reservation_id": {"type": "string", "minLength": 1},
+      "feature_as_of": {"type": "string", "format": "date-time"},
+      "feature_set_version": {"const": "reservation-no-show-feature-v1.0"},
+      "input_schema_version": {"const": "reservation-no-show-input-v1.0"}
+    }
+  },
+  "output_schema_json": {
+    "type": "object",
+    "required": ["evidence_type", "fact_status", "prediction"],
+    "properties": {
+      "evidence_type": {"const": "MODEL_PREDICTION"},
+      "fact_status": {"const": "PREDICTION_NOT_OBSERVED"},
+      "prediction": {"type": "object"}
+    }
+  },
+  "health_status": "HEALTHY"
+}

@@ -60,6 +60,7 @@ from app.api.analysis_router_runtime import (
     repository_call as _repository_call,
     routing_service as _routing_service,
 )
+from app.api.ml_router import analysis_router as ml_analysis_router, router as ml_router
 from app.api.analysis_router_support import (
     analysis_support_router,
     cancel_analysis_progress,
@@ -628,3 +629,5 @@ async def execute_conversation_command(
 
 
 router.include_router(analysis_support_router)
+router.include_router(ml_router)
+router.include_router(ml_analysis_router)

@@ -1,0 +1,8 @@
+{
+  "status": "PASS",
+  "baseline": "Seasonal Naive",
+  "baseline_validation_clipped_wape": 0.10198733990872957,
+  "selected_ml_candidate": "XGBRegressor",
+  "selected_validation_clipped_wape": 0.01964627452629808,
+  "relative_wape_improvement": 0.8073655559221379
+}

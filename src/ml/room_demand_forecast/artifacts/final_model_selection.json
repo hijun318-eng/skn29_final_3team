@@ -1,0 +1,9 @@
+{
+  "final_model": "HistGradientBoostingRegressor",
+  "selection_reason": "Selected by lowest VALIDATION clipped WAPE",
+  "selection_time": "2026-08-19T00:44:44.208075+00:00",
+  "best_trial_id": "HistGradientBoostingRegressor:tuned_1",
+  "validation_clipped_wape": 0.0,
+  "validation_clipped_mae": 0.0,
+  "validation_clipped_r2": 1.0
+}

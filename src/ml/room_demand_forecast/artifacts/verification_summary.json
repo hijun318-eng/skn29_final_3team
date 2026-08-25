@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "quality_checks": 56,
+  "selected_model": "XGBRegressor",
+  "test_rows": 5852,
+  "forecast_rows": 28,
+  "feature_count": 26,
+  "model_load": "PASS",
+  "prediction_interval_coverage": 0.9866712235133288,
+  "hidden_qa_wape": 0.013828238719068414,
+  "risk_status": "PASS_WITH_LIMITATIONS"
+}

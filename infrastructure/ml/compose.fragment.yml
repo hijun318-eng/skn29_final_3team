@@ -1,0 +1,19 @@
+services:
+  ml-runtime:
+    profiles: [ml-e2e]
+    container_name: answervice-ml-runtime
+    build:
+      context: ../..
+      dockerfile: infrastructure/ml/Dockerfile
+    environment:
+      ML_FEATURE_SOURCE: trino
+      ML_MODEL_ARTIFACT: /workspace/src/ml/artifacts/live_room_demand.joblib
+      TRINO_URL: ${TRINO_URL:-https://trino:8443}
+      TRINO_RUNTIME_USER: ${TRINO_RUNTIME_USER:?TRINO_RUNTIME_USER is required}
+      TRINO_RUNTIME_PASSWORD: ${TRINO_RUNTIME_PASSWORD:?TRINO_RUNTIME_PASSWORD is required}
+      TRINO_TLS_CA_FILE: /run/secrets/trino-ca.pem
+    volumes:
+      - ${TRINO_TLS_CA_HOST_FILE:?TRINO_TLS_CA_HOST_FILE is required}:/run/secrets/trino-ca.pem:ro
+    networks:
+      - database-network
+    restart: unless-stopped

@@ -1,0 +1,6 @@
+{
+  "top2_names": [
+    "HistGradientBoostingRegressor"
+  ],
+  "selection_reason": "Top 2 models evaluated from trainer"
+}

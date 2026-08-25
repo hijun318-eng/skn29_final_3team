@@ -78,6 +78,14 @@ services:
       REPORT_ASSISTANT_REQUESTS_PER_HOUR: ${REPORT_ASSISTANT_REQUESTS_PER_HOUR:-30}
       REPORT_ASSISTANT_INPUT_USD_PER_MILLION: ${REPORT_ASSISTANT_INPUT_USD_PER_MILLION:-}
       REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION: ${REPORT_ASSISTANT_OUTPUT_USD_PER_MILLION:-}
+      ML_RUNTIME_URL: ${ML_RUNTIME_URL:-http://ml-runtime:8000}
+      ML_RUNTIME_TIMEOUT_SECONDS: ${ML_RUNTIME_TIMEOUT_SECONDS:-30}
+      MCP_ROLE_ENFORCEMENT_ENABLED: ${MCP_ROLE_ENFORCEMENT_ENABLED:-true}
+      RAG_API_URL: ${RAG_API_URL:-http://rag-api:8000}
+      RAG_GATEWAY_HMAC_SECRET: ${RAG_GATEWAY_HMAC_SECRET:-}
+      RAG_TOOL_TIMEOUT_SECONDS: ${RAG_TOOL_TIMEOUT_SECONDS:-30}
+      RAG_FEATURE_ENABLED: ${RAG_FEATURE_ENABLED:-1}
+      RAG_MANUALS_DIR: /workspace/data/rag/manuals
       AUTH_PRINCIPALS_FILE: /run/secrets/answervice_auth_principals.json
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?AUTH_SESSION_SECRET is required}
       AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-86400}
@@ -91,6 +99,7 @@ services:
       - ${AUTH_PRINCIPALS_HOST_FILE:?AUTH_PRINCIPALS_HOST_FILE is required}:/run/secrets/answervice_auth_principals.json:ro
       - ${TRINO_TLS_CA_HOST_FILE:?TRINO_TLS_CA_HOST_FILE is required}:/run/secrets/trino-ca.pem:ro
       - ${DATAHUB_TLS_CA_HOST_FILE:?DATAHUB_TLS_CA_HOST_FILE is required}:/run/secrets/datahub-ca.pem:ro
+      - ${RAG_MANUALS_HOST_DIR:-../../data/rag/manuals}:/workspace/data/rag/manuals:ro
     ports:
       - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:18000:8000"
     networks:

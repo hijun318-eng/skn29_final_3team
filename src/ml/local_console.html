@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Answervice RAG·ML 질문 화면</title>
+  <style>
+    :root{--navy:#12213a;--blue:#2463eb;--teal:#0f8b8d;--bg:#f3f6fa;--line:#dce3ec;--muted:#657287;--danger:#b42318}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--navy);font-family:Pretendard,"Noto Sans KR","Malgun Gothic",sans-serif}header{background:linear-gradient(125deg,#12213a,#1e4070);color:#fff;padding:28px max(24px,calc((100% - 1120px)/2))}header p{margin:8px 0 0;color:#cbd7e8}.wrap{max-width:1120px;margin:0 auto;padding:24px}.notice{background:#fff8e6;border:1px solid #f1cc71;border-radius:12px;padding:13px 16px;margin-bottom:18px;font-size:14px}.layout{display:grid;grid-template-columns:310px 1fr;gap:18px}.panel,.chat{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 24px #20314d12}.panel{padding:18px;height:max-content}.tool{display:block;width:100%;border:1px solid var(--line);border-radius:12px;padding:14px;margin:0 0 10px;background:#fff;text-align:left;color:var(--navy);cursor:pointer}.tool.active{border-color:var(--blue);background:#eef4ff}.tool strong,.tool small{display:block}.tool small{margin-top:5px;color:var(--muted)}label{display:block;font-size:13px;font-weight:700;margin:14px 0 6px}input,select,textarea{width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:11px;font:inherit;background:#fff}textarea{min-height:92px;resize:vertical}.ask{width:100%;border:0;border-radius:10px;margin-top:14px;padding:12px;background:var(--blue);color:#fff;font-weight:700;cursor:pointer}.ask:disabled{opacity:.55}.chat{min-height:620px;display:flex;flex-direction:column}.chat-head{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}.status{font-size:13px;color:var(--teal)}#messages{padding:20px;display:flex;flex:1;flex-direction:column;gap:14px;overflow:auto}.message{max-width:88%;border-radius:14px;padding:14px 16px;line-height:1.55}.user{align-self:flex-end;background:var(--blue);color:#fff}.assistant{align-self:flex-start;background:#f5f7fb;border:1px solid var(--line)}.assistant h3{margin:0 0 10px;font-size:16px}.meta{font-size:12px;color:var(--muted);margin-top:10px}.result{border-top:1px solid var(--line);padding:10px 0}.result:first-of-type{border-top:0}.score{color:var(--teal);font-weight:700}.error{color:var(--danger)}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left}th{color:var(--muted)}@media(max-width:760px){.layout{grid-template-columns:1fr}.chat{min-height:520px}.message{max-width:96%}}
+  </style>
+</head>
+<body>
+  <header><h1>Answervice RAG·ML 질문 화면</h1><p>로컬 pgvector 검색과 저장된 ML 모델을 요청 시점에 직접 실행합니다.</p></header>
+  <main class="wrap">
+    <div class="notice">현재는 합성 데이터 기반 로컬 PoC입니다. 검색 근거와 모델 예측은 확정 사실이 아니며, 운영 Tool Registry·메인 챗·UI에 등록된 상태가 아닙니다.</div>
+    <div class="layout">
+      <aside class="panel">
+        <button class="tool active" data-tool="rag"><strong>RAG 업무 매뉴얼</strong><small>자유 질문 → Qwen3 → pgvector</small></button>
+        <button class="tool" data-tool="documents"><strong>매뉴얼 문서 찾기</strong><small>문서 ID·제목 → 원문 PDF</small></button>
+        <button class="tool" data-tool="no-show"><strong>ML 예약 No-show</strong><small>예약 1건 → ONNX 확률 예측</small></button>
+        <button class="tool" data-tool="demand"><strong>ML 7일 객실 수요</strong><small>기준일 → 28행 수요 예측</small></button>
+        <form id="form">
+          <div id="rag-fields">
+            <label for="question">질문</label><textarea id="question" maxlength="500">객실 소음 민원 대응 절차를 알려줘</textarea>
+            <label for="role">조회 역할</label><select id="role"><option>MANAGER</option><option>STAFF</option><option>SYSTEM_ADMIN</option></select>
+          </div>
+          <div id="documents-fields" hidden>
+            <label for="document-query">문서 ID 또는 제목</label><input id="document-query" maxlength="100" placeholder="예: SOP-ROOM 또는 소음">
+          </div>
+          <div id="no-show-fields" hidden>
+            <label for="reservation">예약</label><select id="reservation"></select>
+            <label for="cutoff">Feature 기준 시점</label><input id="cutoff" readonly>
+          </div>
+          <div id="demand-fields" hidden>
+            <label for="property">호텔</label><input id="property" readonly>
+            <label for="demand-date">Feature 기준일</label><input id="demand-date" readonly>
+          </div>
+          <button class="ask" id="ask">질문 실행</button>
+        </form>
+      </aside>
+      <section class="chat">
+        <div class="chat-head"><strong id="title">RAG 업무 매뉴얼</strong><span class="status" id="status">연결 확인 중</span></div>
+        <div id="messages"><div class="message assistant">왼쪽에서 기능과 입력값을 선택한 뒤 질문을 실행하세요. 결과에는 근거·모델 버전·기준 시점·합성 여부가 함께 표시됩니다.</div></div>
+      </section>
+    </div>
+  </main>
+  <script>
+    const $=id=>document.getElementById(id), state={tool:'rag',examples:null};
+    const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const add=(kind,html)=>{const node=document.createElement('div');node.className=`message ${kind}`;node.innerHTML=html;$('messages').append(node);node.scrollIntoView({behavior:'smooth'});};
+    async function load(){try{const [health,examples]=await Promise.all([fetch('/api/health').then(r=>r.json()),fetch('/api/examples').then(r=>r.json())]);state.examples=examples;$('status').textContent=health.status==='READY'?'로컬 실행 준비':'연결 실패';$('reservation').innerHTML=examples.reservations.map(x=>`<option value="${escapeHtml(x.reservation_id)}" data-cutoff="${escapeHtml(x.feature_as_of)}">${escapeHtml(x.reservation_id)}</option>`).join('');setReservation();$('property').value=examples.demand.property_id;$('demand-date').value=examples.demand.feature_as_of;}catch(e){$('status').textContent='연결 실패';add('assistant',`<span class="error">초기화 실패: ${escapeHtml(e.message)}</span>`);}}
+    function setReservation(){$('cutoff').value=$('reservation').selectedOptions[0]?.dataset.cutoff||'';}
+    function selectTool(tool){state.tool=tool;document.querySelectorAll('.tool').forEach(x=>x.classList.toggle('active',x.dataset.tool===tool));['rag','documents','no-show','demand'].forEach(x=>$(x+'-fields').hidden=x!==tool);$('title').textContent={rag:'RAG 업무 매뉴얼',documents:'매뉴얼 문서 찾기','no-show':'ML 예약 No-show',demand:'ML 7일 객실 수요'}[tool];}
+    function manualLink(id){return `<a target="_blank" rel="noopener" href="/api/manuals/${encodeURIComponent(id)}">원문 PDF 열기</a>`;}
+    function ragView(data){if(data.no_evidence)return '<h3>검색 근거 없음</h3><p>현재 문서에서 기준 점수 이상 근거를 찾지 못했습니다.</p>';return `<h3>검색 근거 ${data.results.length}건</h3>${data.results.map((r,i)=>`<div class="result"><b>${i+1}. ${escapeHtml(r.title)}</b> <span class="score">${(r.score*100).toFixed(1)}점</span><br><small>${escapeHtml(r.citation)}</small><p>${escapeHtml(r.snippet)}</p>${manualLink(r.manual_id)}${r.warning?`<div class="meta">${escapeHtml(r.warning)}</div>`:''}</div>`).join('')}<div class="meta">검색 ${data.latency_ms}ms · ${escapeHtml(data.search_mode)} · 문서 검색 결과이며 생성형 답변은 아님</div>`;}
+    function documentsView(data){if(!data.documents.length)return '<h3>문서 없음</h3><p>입력한 ID 또는 제목과 일치하는 PDF가 없습니다.</p>';return `<h3>매뉴얼 ${data.count}건</h3>${data.documents.map((d,i)=>`<div class="result"><b>${i+1}. ${escapeHtml(d.title)}</b><div class="meta">${escapeHtml(d.manual_id)} · v${escapeHtml(d.version)}</div>${manualLink(d.manual_id)}</div>`).join('')}`;}
+    function noShowView(data){if(data.prediction_status!=='SUCCESS')return `<h3 class="error">예측 실패</h3><p>${escapeHtml(data.error_message)}</p>`;return `<h3>No-show 가능성 ${(data.no_show_probability*100).toFixed(3)}%</h3><p>위험등급 <b>${escapeHtml(data.risk_level)}</b> · 당일 순위 ${data.risk_rank}/${data.cohort_size}</p><div class="meta">모델 예측 · 합성 데이터 ${data.is_synthetic?'사용':'미사용'} · ${escapeHtml(data.model_name)} / ${escapeHtml(data.model_version)}<br>Feature 기준시점 ${escapeHtml(data.feature_as_of)} · 실행 ${data.duration_ms}ms · ${escapeHtml(data.execution_id)}</div>`;}
+    function demandView(data){if(data.forecast_status!=='SUCCESS')return `<h3 class="error">예측 실패</h3><p>${escapeHtml(data.error_message)}</p>`;const first=data.predictions.filter(x=>x.horizon_days===1);return `<h3>7일 객실 수요 ${data.forecast_row_count}행</h3><table><thead><tr><th>첫 예측일 객실</th><th>예측</th><th>구간</th><th>가용</th></tr></thead><tbody>${first.map(x=>`<tr><td>${escapeHtml(x.room_type_code)}</td><td>${x.predicted_rooms_sold}</td><td>${x.prediction_lower_rooms_sold}–${x.prediction_upper_rooms_sold}</td><td>${x.available_room_nights}</td></tr>`).join('')}</tbody></table><div class="meta">모델 예측 · 합성 데이터 ${data.is_synthetic?'사용':'미사용'} · ${escapeHtml(data.model_name)} / ${escapeHtml(data.model_version)}<br>Feature 기준일 ${escapeHtml(data.feature_as_of)} · 입력범위 경고 ${data.predictions.filter(x=>x.input_range_warning).length}행 · 실행 ${data.duration_ms}ms</div>`;}
+    async function submit(event){event.preventDefault();$('ask').disabled=true;$('status').textContent='실행 중';let path,body,label,method='POST';if(state.tool==='rag'){path='/api/rag';body={query:$('question').value,role:$('role').value};label=$('question').value;}else if(state.tool==='documents'){const query=$('document-query').value.trim();path=`/api/manuals?query=${encodeURIComponent(query)}`;body=null;method='GET';label=query?`매뉴얼에서 “${query}” 찾아줘`:'전체 매뉴얼을 보여줘';}else if(state.tool==='no-show'){path='/api/no-show';body={reservation_id:$('reservation').value,feature_as_of:$('cutoff').value};label=`${body.reservation_id} 예약의 No-show 위험을 예측해줘`;}else{path='/api/demand';body={property_id:$('property').value,feature_as_of:$('demand-date').value};label=`${body.feature_as_of} 기준 7일 객실 수요를 예측해줘`;}add('user',escapeHtml(label));try{const options=method==='POST'?{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{};const response=await fetch(path,options);const data=await response.json();if(!response.ok)throw new Error(data.message||data.error);add('assistant',state.tool==='rag'?ragView(data):state.tool==='documents'?documentsView(data):state.tool==='no-show'?noShowView(data):demandView(data));$('status').textContent='실행 완료';}catch(e){add('assistant',`<h3 class="error">실행 오류</h3><p>${escapeHtml(e.message)}</p>`);$('status').textContent='실행 실패';}finally{$('ask').disabled=false;}}
+    document.querySelectorAll('.tool').forEach(x=>x.addEventListener('click',()=>selectTool(x.dataset.tool)));$('reservation').addEventListener('change',setReservation);$('form').addEventListener('submit',submit);load();
+  </script>
+</body>
+</html>

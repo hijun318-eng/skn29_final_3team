@@ -40,6 +40,7 @@ export function App() {
   const [theme, setTheme] = useState(() => readTheme());
   const [reportEditorMode, setReportEditorMode] = useState(false);
   const [reportDirty, setReportDirty] = useState(false);
+  const [agentMode, setAgentMode] = useState("AUTO");
   const role = session?.role || "";
   const capabilities = session?.capabilities;
   const canRunAnalysis = hasCapability(capabilities, CAPABILITY.runAnalysis);
@@ -57,7 +58,9 @@ export function App() {
     ? reportEditorMode
       ? ["보고서 편집", "근거가 연결된 분석 결과와 설명을 블록으로 구성하고 저장합니다."]
       : ["보고서", "분석 결과를 보고서로 구성하고 편집·검토합니다."]
-    : PAGE_META[route.page];
+    : route.path === PAGE_PATHS.chat && agentMode === "INTERNAL_GUIDELINE"
+      ? ["내부 문서 검색", "업무 매뉴얼과 내부 지침을 기준으로 답변합니다."]
+      : PAGE_META[route.page];
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -153,7 +156,7 @@ export function App() {
       return <AdminPage role={role} capabilities={capabilities} onNavigate={navigate} />;
     }
     if (!canRunAnalysis) return <RoleAccessPage canUseReports={canUseReports} canUseAdmin={canUseAdmin} onNavigate={navigate} />;
-    return <AgentPage onNavigate={navigate} />;
+    return <AgentPage onNavigate={navigate} onAgentModeChange={setAgentMode} />;
   }, [canManageReports, canRunAnalysis, canUseAdmin, canUseReports, capabilities, handleReportEditorMode, navigate, role, route.page, theme, toggleTheme]);
 
   if (session === undefined) return <main className={`session-login ${themeClass}`}><div className="page-loading" role="status"><i /><b>세션을 확인하고 있습니다.</b></div></main>;

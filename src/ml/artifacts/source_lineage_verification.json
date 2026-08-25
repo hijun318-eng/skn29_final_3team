@@ -1,0 +1,19 @@
+{
+  "verified_at": "2026-08-04T18:00:00+09:00",
+  "status": "INCOMPLETE",
+  "approved_common_source_snapshot_id": null,
+  "reason": "The official No-show candidate has no approved source snapshot ID, extraction timestamp, or point-in-time outcome timestamp.",
+  "candidate_source": {
+    "schema_version": "schema-v4.6-websql",
+    "ddl_sha256": "96ac7fd0dc72b738b1881e869cf4fb7fc8c9ed356b559cb9644a338832244dc2",
+    "seed_sha256": "b07d0819c3ab9e6aef338f6fda2eed7758e70a5195c112921309fd99f80a2f5e",
+    "no_show_feature_sql_sha256": "b6ee5e0ff4835daa0d4050a770bfd3b0f0f9ef5665bdf8526223c63eb91ff4ec",
+    "usable_for_training": false,
+    "blocking_reasons": [
+      "NO_SHOW outcome timing cannot be proven because outcome_recorded_at is absent",
+      "candidate outcome is visible before the prediction cutoff",
+      "yearly NO_SHOW rate is 11.24% to 13.96%"
+    ]
+  },
+  "completion_rule": "Regenerate the official No-show Feature Set from one approved PMS snapshot and record source_snapshot_id, extraction timestamp, outcome_recorded_at, and SHA-256 for every exported source file. Room-demand lineage is managed separately because it is an offline reference analysis."
+}

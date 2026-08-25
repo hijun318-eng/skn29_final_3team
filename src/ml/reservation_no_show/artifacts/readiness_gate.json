@@ -1,0 +1,68 @@
+{
+  "registry_status": "INACTIVE",
+  "checks": [
+    {
+      "gate": "feature_time_and_leakage",
+      "status": "HISTORICAL_FIXTURE_ONLY"
+    },
+    {
+      "gate": "source_pms_no_show_label",
+      "status": "FAIL",
+      "reason": "current export has zero NO_SHOW; candidate source has no reliable outcome_recorded_at, exposes results before cutoff, and has abnormal 11.24%-13.96% yearly rates"
+    },
+    {
+      "gate": "onnx_runtime_parity",
+      "status": "HISTORICAL_FIXTURE_ONLY"
+    },
+    {
+      "gate": "local_tool_fixture",
+      "status": "PASS"
+    },
+    {
+      "gate": "local_audit_fixture",
+      "status": "PASS"
+    },
+    {
+      "gate": "main_chat_router_fixture",
+      "status": "NOT_RUN_CURRENT_SCOPE"
+    },
+    {
+      "gate": "mcp_jsonrpc_fixture",
+      "status": "NOT_RUN_CURRENT_SCOPE"
+    },
+    {
+      "gate": "mcp_stdio_fixture",
+      "status": "NOT_RUN_CURRENT_SCOPE"
+    },
+    {
+      "gate": "local_hard_timeout_fixture",
+      "status": "HISTORICAL_FIXTURE_ONLY"
+    },
+    {
+      "gate": "live_rdb_feature_query",
+      "status": "LOCAL_REAL_DB_PASS",
+      "reason": "Running Trino/PMS query PASS; production service adapter not connected"
+    },
+    {
+      "gate": "ui_prediction_disclosure",
+      "status": "CONTRACT_ONLY",
+      "reason": "response contract contains disclosure fields; frontend rendering is not implemented"
+    },
+    {
+      "gate": "audit_log",
+      "status": "SCHEMA_PASS",
+      "reason": "governance.audit_events rollback insert PASS; ML service repository is not connected"
+    },
+    {
+      "gate": "hard_timeout",
+      "status": "LOCAL_ONLY",
+      "reason": "TOOL_TIMEOUT contract PASS; deployed API/MCP hard cancellation is not verified"
+    },
+    {
+      "gate": "mcp_end_to_end",
+      "status": "NOT_IN_CURRENT_SCOPE",
+      "reason": "MCP is not introduced before I5 and R1 P2 approval; historical local fixture is not activation evidence"
+    }
+  ],
+  "activation_rule": "All gates must be PASS before activation."
+}

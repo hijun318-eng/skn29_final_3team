@@ -1,0 +1,57 @@
+check,status,evidence,severity
+train.required_columns,PASS,missing=[],Critical
+train.grain_unique,PASS,duplicates=0,Critical
+train.horizon,PASS,invalid=0,Critical
+train.split,PASS,expected=TRAIN; actual=['TRAIN'],Critical
+train.date_range,PASS,expected=2022-01-01..2024-12-31; actual=2022-01-01..2024-12-31,Critical
+train.point_in_time,PASS,invalid=0,Critical
+train.feature_population,PASS,all_null=[],High
+train.finite_numeric,PASS,infinite=0,High
+validation.required_columns,PASS,missing=[],Critical
+validation.grain_unique,PASS,duplicates=0,Critical
+validation.horizon,PASS,invalid=0,Critical
+validation.split,PASS,expected=VALIDATION; actual=['VALIDATION'],Critical
+validation.date_range,PASS,expected=2025-01-01..2025-12-31; actual=2025-01-01..2025-12-31,Critical
+validation.point_in_time,PASS,invalid=0,Critical
+validation.feature_population,PASS,all_null=[],High
+validation.finite_numeric,PASS,infinite=0,High
+test.required_columns,PASS,missing=[],Critical
+test.grain_unique,PASS,duplicates=0,Critical
+test.horizon,PASS,invalid=0,Critical
+test.split,PASS,expected=TEST; actual=['TEST'],Critical
+test.date_range,PASS,expected=2026-01-01..2026-07-28; actual=2026-01-01..2026-07-28,Critical
+test.point_in_time,PASS,invalid=0,Critical
+test.feature_population,PASS,all_null=[],High
+test.finite_numeric,PASS,infinite=0,High
+forecast.required_columns,PASS,missing=[],Critical
+forecast.grain_unique,PASS,duplicates=0,Critical
+forecast.horizon,PASS,invalid=0,Critical
+forecast.split,PASS,expected=FORECAST; actual=['FORECAST'],Critical
+forecast.date_range,PASS,expected=2026-07-29..2026-12-31; actual=2026-07-29..2026-12-31,Critical
+forecast.point_in_time,PASS,invalid=0,Critical
+forecast.feature_population,PASS,all_null=[],High
+forecast.finite_numeric,PASS,infinite=0,High
+train.label_valid,PASS,null=0; negative=0; over_capacity=0; fractional=0,Critical
+validation.label_valid,PASS,null=0; negative=0; over_capacity=0; fractional=0,Critical
+test.label_valid,PASS,null=0; negative=0; over_capacity=0; fractional=0,Critical
+forecast.label_hidden,PASS,non_null=0,Critical
+train.synthetic,PASS,values=['true'],Critical
+train.seed,PASS,values=[20260803],Critical
+validation.synthetic,PASS,values=['true'],Critical
+validation.seed,PASS,values=[20260803],Critical
+test.synthetic,PASS,values=['true'],Critical
+test.seed,PASS,values=[20260803],Critical
+forecast.synthetic,PASS,values=['true'],Critical
+forecast.seed,PASS,values=[20260803],Critical
+manifest.seed,PASS,columns=['seed']; values=[20260803],Critical
+manifest.required_columns,PASS,missing=[],Critical
+manifest.train,PASS,object=room_demand_train; manifest_rows=1; csv_rows=2192; dates=2022-01-01..2024-12-31,Critical
+manifest.validation,PASS,object=room_demand_validation; manifest_rows=1; csv_rows=730; dates=2025-01-01..2025-12-31,Critical
+manifest.test,PASS,object=room_demand_test; manifest_rows=1; csv_rows=418; dates=2026-01-01..2026-07-28,Critical
+manifest.forecast,PASS,object=room_demand_forecast_features; manifest_rows=1; csv_rows=312; dates=2026-07-29..2026-12-31,Critical
+manifest.hidden_qa,PASS,object=room_demand_hidden_label_qa; manifest_rows=1; csv_rows=50; dates=2026-07-29..2026-09-16,Critical
+manifest.checksum_format,PASS,rows=5,High
+manifest.schema_version,PASS,values=['v1'],High
+manifest.scenario_version,PASS,values=['v1'],High
+manifest.fixture_version,PASS,values=['v1'],High
+hidden_qa.separate_file,PASS,rows=50; label_column=hidden_simulated_rooms_sold; qa_purpose=True,High

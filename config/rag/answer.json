@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "maximum_context_tokens": 4096,
+  "reserved_system_tokens": 700,
+  "reserved_question_tokens": 512,
+  "maximum_output_tokens": 700,
+  "generation_timeout_seconds": 20,
+  "maximum_retries": 1
+}

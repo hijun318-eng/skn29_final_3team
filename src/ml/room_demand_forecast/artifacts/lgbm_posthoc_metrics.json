@@ -1,0 +1,44 @@
+{
+  "status": "POSTHOC_COMPARISON_PASS",
+  "purpose": "LGBMRegressor의 TRAIN·TEST 비교 증빙",
+  "model_selection_use": false,
+  "selected_model_before_audit": "XGBRegressor",
+  "seed": 20260803,
+  "best_iteration": 1381,
+  "environment": {
+    "python": "3.10.20",
+    "pandas": "2.3.3",
+    "numpy": "2.2.6",
+    "scipy": "1.15.3",
+    "scikit-learn": "1.7.2",
+    "xgboost": "3.2.0",
+    "lightgbm": "4.6.0",
+    "joblib": "1.5.3"
+  },
+  "metrics": {
+    "train_comparable": {
+      "row_count": 30492,
+      "mae": 0.5025580480125935,
+      "rmse": 0.8150090800742266,
+      "wape": 0.01148794530406621,
+      "r2": 0.9994166597200936
+    },
+    "validation": {
+      "row_count": 10220,
+      "mae": 0.9253424657534246,
+      "rmse": 1.4847232506819108,
+      "wape": 0.019888120123656705,
+      "r2": 0.998253411180093
+    },
+    "test_posthoc": {
+      "row_count": 5852,
+      "mae": 0.8038277511961722,
+      "rmse": 1.3172445816039124,
+      "wape": 0.017512769727926612,
+      "r2": 0.9985687611162513
+    }
+  },
+  "validation_metric_max_absolute_difference": 3.469446951953614e-18,
+  "test_wape_difference_vs_xgb_percentage_points": 0.0096796771455375,
+  "conclusion": "사후 TEST 비교에서도 XGBRegressor의 WAPE가 더 낮아 기존 선정이 유지됨"
+}

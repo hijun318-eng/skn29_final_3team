@@ -1,0 +1,11 @@
+{
+  "status": "REAL_DOCUMENT_SMOKE",
+  "queries": [
+    {"query": "고객의 카드 전체번호와 비밀번호를 받아 기록해도 되는가?", "expected_manual_id": "MANUAL-6FF666F09446"},
+    {"query": "관리자 보고서의 사실과 해석을 구분해 작성하는 기준은 무엇인가?", "expected_manual_id": "MANUAL-1F729EDE31A5"},
+    {"query": "예약 안내와 실제 예약이 다르고 결제 금액도 이상할 때 어떻게 처리하는가?", "expected_manual_id": "MANUAL-F1F7CA18F02E"},
+    {"query": "예약 취소 시 환불과 보상 승인 기준을 알려줘.", "expected_manual_id": "MANUAL-451E4E48F8B0"},
+    {"query": "시설 누수나 정전이 발생했을 때 현장 조치와 보고 절차는 무엇인가?", "expected_manual_id": "MANUAL-26808F2E8638"},
+    {"query": "고객이 실신하거나 호흡 곤란을 보일 때 즉시 어떻게 대응해야 하는가?", "expected_manual_id": "MANUAL-EB0224E8A037"}
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "source_rows": 220000,
+  "source_status_counts": {
+    "CHECKED_OUT": 167070,
+    "CANCELLED": 48570,
+    "BOOKED": 4359,
+    "CHECKED_IN": 1
+  },
+  "source_no_show_rows": 0,
+  "eligible_labeled_rows": 167071,
+  "excluded_cancelled_rows": 48570,
+  "label_rule_version": "SYNTHETIC_RULE_V1",
+  "split_rows": {
+    "TRAIN": 109770,
+    "VALIDATION": 36600,
+    "TEST": 20701,
+    "INFERENCE": 4359
+  },
+  "positive_rates": {
+    "TRAIN": 0.008335610822629133,
+    "VALIDATION": 0.008224043715846995,
+    "TEST": 0.007680788367711705
+  }
+}

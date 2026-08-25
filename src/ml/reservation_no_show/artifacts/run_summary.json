@@ -1,0 +1,52 @@
+{
+  "status": "COMPLETED_WITH_INACTIVE_TOOL_GATE",
+  "selected_model": "LogisticRegression",
+  "selection_reason": "No challenger met validation gain, Top15, calibration, and stability gates",
+  "threshold": 0.015165358285366045,
+  "test_metrics": {
+    "split": "TEST",
+    "model": "LogisticRegression",
+    "rows": 20701,
+    "positive_rate": 0.007680788367711705,
+    "threshold": 0.015165358285366045,
+    "pr_auc": 0.01356105647215191,
+    "roc_auc": 0.6827463169490456,
+    "precision": 0.01446708001180986,
+    "recall": 0.3081761006289308,
+    "f1": 0.02763677382966723,
+    "brier_score": 0.007600288428762339,
+    "tn": 17204,
+    "fp": 3338,
+    "fn": 110,
+    "tp": 49,
+    "alert_rate": 0.16361528428578329,
+    "top_fraction": 0.15,
+    "selected_rows": 3106,
+    "recall_at_15": 0.2893081761006289,
+    "precision_at_15": 0.014810045074050225,
+    "lift_at_15": 1.9281933526912811,
+    "score_cutoff_at_15": 0.015391550112058143
+  },
+  "onnx_parity": {
+    "rows": 1000,
+    "max_absolute_probability_difference": 1.6479873021779667e-16,
+    "class_mismatch_count": 0,
+    "tolerance": 1e-05,
+    "status": "PASS"
+  },
+  "tool_registry_status": "INACTIVE",
+  "local_tool_status": "PASS",
+  "python_version": "3.10.20",
+  "local_tool_verification": {
+    "success_count": 2,
+    "error_statuses": [
+      "FEATURE_NOT_FOUND",
+      "SCHEMA_MISMATCH"
+    ],
+    "same_input_probability_match": true,
+    "unique_execution_ids": true,
+    "audit_rows": 4,
+    "status": "PASS"
+  },
+  "main_chat_mcp_status": "PASS"
+}

@@ -1,0 +1,11 @@
+{
+  "policy_code": "NO_SHOW_CONTACT_TOP_FRACTION",
+  "policy_version": "v1.0",
+  "selection_mode": "DAILY_TOP_FRACTION",
+  "top_fraction": 0.15,
+  "maximum_daily_contacts": null,
+  "status": "LOCAL_ONLY",
+  "business_approval": "PENDING",
+  "approval_required_from": "hotel_operations_owner",
+  "activation_rule": "Approve both top_fraction and maximum_daily_contacts before production activation."
+}

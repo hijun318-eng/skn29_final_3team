@@ -1,0 +1,13 @@
+{
+  "status": "LOCAL_REAL_DB_PASS",
+  "production_status": "NOT_VERIFIED",
+  "container": "answervice-r4-local-trino-1",
+  "catalog": "pms",
+  "schema": "public",
+  "row_count": 1,
+  "feature_column_count": 19,
+  "reservation_id": "RES-02eedc3f21116d08e72ff9909dbb28ed",
+  "feature_as_of": "2026-07-28 18:00:00.000 +09:00",
+  "is_synthetic": true,
+  "service_adapter_connected": false
+}

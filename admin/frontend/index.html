@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Answervice Control Room</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <main id="login-view" class="login-view">
+    <section class="login-card">
+      <p class="eyebrow">ANSWERVICE / ADMIN SYSTEM</p>
+      <h1>Control<br>Room</h1>
+      <p class="login-copy">사용자 서비스와 완전히 분리된 운영 관리 콘솔입니다.</p>
+      <form id="login-form">
+        <label>이메일<input id="login-email" type="email" autocomplete="username" required></label>
+        <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" minlength="8" required></label>
+        <button class="primary" type="submit">관리자 로그인</button>
+        <p id="login-error" class="form-error" role="alert"></p>
+      </form>
+    </section>
+    <aside class="login-aside">
+      <span>01</span><p>권한 관리</p><span>02</span><p>연결 상태</p><span>03</span><p>감사 로그</p>
+    </aside>
+  </main>
+
+  <div id="app-view" class="app-view hidden">
+    <aside class="sidebar">
+      <div class="brand"><b>A</b><span>Answervice<br><small>CONTROL ROOM</small></span></div>
+      <nav aria-label="관리자 메뉴">
+        <button data-page="connections" class="nav-item active"><span>01</span>연결 상태</button>
+        <button data-page="permissions" class="nav-item"><span>02</span>권한 관리</button>
+        <button data-page="audit" class="nav-item"><span>03</span>감사 로그</button>
+      </nav>
+      <div class="identity"><strong id="identity-name"></strong><small id="identity-role"></small><button id="logout">로그아웃</button></div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar"><p id="today"></p><div class="live-dot"><i></i> ADMIN SYSTEM ONLINE</div></header>
+
+      <section id="page-connections" class="page active">
+        <div class="page-heading"><div><p class="eyebrow">READ ONLY INFRASTRUCTURE</p><h2>데이터 연결 상태</h2></div><button id="refresh-connections" class="outline">상태 새로고침</button></div>
+        <p class="lede">관리자 시스템이 각 서비스에 읽기 전용 상태 확인을 수행합니다.</p>
+        <div id="connection-grid" class="connection-grid"></div>
+        <p id="connection-time" class="checked-time"></p>
+      </section>
+
+      <section id="page-permissions" class="page">
+        <div class="page-heading"><div><p class="eyebrow">ADMIN SYSTEM ACCOUNTS</p><h2>권한 관리</h2></div><button id="add-user" class="primary">관리자 추가</button></div>
+        <p class="lede">이 화면은 관리자 시스템 계정만 관리하며 기존 분석 사용자의 G1 권한은 변경하지 않습니다.</p>
+        <div class="table-wrap"><table><thead><tr><th>이름</th><th>이메일</th><th>Role</th><th>상태</th><th>등록일</th><th class="actions">관리</th></tr></thead><tbody id="user-rows"></tbody></table></div>
+      </section>
+
+      <section id="page-audit" class="page">
+        <div class="page-heading"><div><p class="eyebrow">IMMUTABLE EVENT HISTORY</p><h2>감사 로그</h2></div></div>
+        <div class="filters"><input id="audit-search" type="search" placeholder="Actor, Action, 대상 검색"><select id="audit-result"><option value="">전체 결과</option><option>SUCCESS</option><option>BLOCKED</option><option>FAILED</option></select><button id="audit-filter" class="outline">조회</button></div>
+        <div class="table-wrap"><table><thead><tr><th>시간</th><th>Actor</th><th>Action</th><th>대상</th><th>결과</th><th>상세</th></tr></thead><tbody id="audit-rows"></tbody></table></div>
+        <div class="pagination"><button id="audit-prev">이전</button><span id="audit-page"></span><button id="audit-next">다음</button></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="user-dialog">
+    <form id="user-form" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow">ADMIN ACCOUNT</p><h3 id="dialog-title">관리자 추가</h3></div><button type="button" id="close-dialog" aria-label="닫기">×</button></div>
+      <input id="user-id" type="hidden">
+      <label>이름<input id="user-name" maxlength="100" required></label>
+      <label>이메일<input id="user-email" type="email" maxlength="255" required></label>
+      <label>비밀번호<input id="user-password" type="password" minlength="12" maxlength="128"><small>수정할 때 비워두면 기존 비밀번호를 유지합니다.</small></label>
+      <label>Role<select id="user-role"><option>ADMIN</option><option>VIEWER</option></select></label>
+      <label class="switch-row"><span>계정 활성화</span><input id="user-active" type="checkbox" checked></label>
+      <p id="user-error" class="form-error" role="alert"></p>
+      <div class="dialog-actions"><button type="button" id="cancel-dialog" class="ghost">취소</button><button type="submit" class="primary">저장</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="./app.js" defer></script>
+</body>
+</html>

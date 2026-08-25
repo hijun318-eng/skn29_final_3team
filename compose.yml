@@ -10,4 +10,7 @@ include:
       - app/frontend/compose.fragment.yml
       - infrastructure/database/datahub/compose.consumer.yml
       - infrastructure/database/datahub/compose.ingestion.yml
+      - infrastructure/rag/compose.fragment.yml
+      - infrastructure/rag/compose.api.fragment.yml
+      - infrastructure/ml/compose.fragment.yml
       - compose.app-postgres.override.yml

@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+artifacts/models/*.joblib
+artifacts/generated/
+artifacts/mcp_server_config.local.json
+artifacts/mcp_tool_runs.jsonl

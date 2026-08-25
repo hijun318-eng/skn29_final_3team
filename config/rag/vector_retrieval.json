@@ -1,0 +1,12 @@
+{
+  "top_k": 5,
+  "minimum_score": 0.35,
+  "allow_unresolved_validity": true,
+  "default_role": "STAFF",
+  "chunk_max_tokens": 384,
+  "chunk_overlap_tokens": 64,
+  "minimum_chunk_tokens": 24,
+  "maximum_empty_page_ratio": 0.05,
+  "maximum_chunks_per_document": 2,
+  "retrieval_mode": "HYBRID"
+}

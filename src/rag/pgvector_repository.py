@@ -1,0 +1,336 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import os
+from pathlib import Path
+from uuid import UUID
+
+import numpy as np
+import psycopg
+
+from .vector_models import PdfChunk, PdfDocument, VectorSearchResult
+from .vector_result_mapper import to_vector_search_result
+from .pgvector_observability import PgVectorObservabilityMixin
+
+
+class PgVectorRepository(PgVectorObservabilityMixin):
+    def __init__(self, database_url: str) -> None:
+        self._database_url = database_url
+
+    def migrate(self, migration_path: Path) -> None:
+        sql = migration_path.read_text(encoding="utf-8")
+        with psycopg.connect(self._database_url, autocommit=True) as connection:
+            connection.execute(sql)
+
+    def start_run(self, run_id: UUID, metadata: dict[str, object]) -> None:
+        with psycopg.connect(self._database_url) as connection:
+            connection.execute(
+                """INSERT INTO ingestion_runs(
+                       run_id, started_at, status, embedding_provider, embedding_model,
+                       embedding_dimensions, embedding_version
+                   ) VALUES (%s, %s, 'RUNNING', %s, %s, %s, %s)""",
+                (run_id, datetime.now(timezone.utc), metadata["provider"], metadata["model"], metadata["dimensions"], metadata["version"]),
+            )
+
+    def finish_run(
+        self, run_id: UUID, status: str, document_count: int, chunk_count: int, error: str | None = None
+    ) -> None:
+        with psycopg.connect(self._database_url) as connection:
+            connection.execute(
+                """
+                UPDATE ingestion_runs
+                SET finished_at=%s, status=%s, document_count=%s, chunk_count=%s, error_text=%s
+                WHERE run_id=%s
+                """,
+                (datetime.now(timezone.utc), status, document_count, chunk_count, error, run_id),
+            )
+
+    def unchanged(self, document: PdfDocument, metadata: dict[str, object]) -> bool:
+        with psycopg.connect(self._database_url) as connection:
+            row = connection.execute(
+                """
+                SELECT d.content_checksum, d.title, d.version, d.source_path,
+                       MIN(c.embedding_provider), MIN(c.embedding_model), MIN(c.embedding_dimensions),
+                       MIN(c.embedding_version), COUNT(DISTINCT c.embedding_provider), COUNT(DISTINCT c.embedding_version)
+                FROM documents d JOIN document_chunks c ON c.manual_id=d.manual_id
+                WHERE d.manual_id=%s AND d.deleted_at IS NULL AND c.deleted_at IS NULL
+                GROUP BY d.content_checksum, d.title, d.version, d.source_path
+                """,
+                (document.manual_id,),
+            ).fetchone()
+        return bool(
+            row
+            and row[0] == document.checksum
+            and row[1] == document.title
+            and row[2] == document.version
+            and row[3] == document.source_path
+            and row[4] == metadata["provider"]
+            and row[5] == metadata["model"]
+            and row[6] == metadata["dimensions"]
+            and row[7] == metadata["version"]
+            and row[8] == 1
+            and row[9] == 1
+        )
+
+    def replace_document(
+        self, document: PdfDocument, chunks: list[PdfChunk], embeddings: np.ndarray, metadata: dict[str, object]
+    ) -> int:
+        if len(chunks) != len(embeddings):
+            raise ValueError("Chunk and embedding counts differ")
+        with psycopg.connect(self._database_url) as connection:
+            archived = connection.execute(
+                """
+                INSERT INTO document_versions(
+                    manual_id, title, version, source_path, content_checksum,
+                    document_status, authority_level, validity_status, role_scope,
+                    document_type, owner_team, effective_from, expires_at,
+                    approval_status, archive_reason
+                )
+                SELECT manual_id, title, version, source_path, content_checksum,
+                       document_status, authority_level, validity_status, role_scope,
+                       document_type, owner_team, effective_from, expires_at,
+                       approval_status, 'CONTENT_REPLACED'
+                FROM documents
+                WHERE manual_id=%s AND deleted_at IS NULL
+                ON CONFLICT(manual_id, content_checksum) DO NOTHING
+                RETURNING version_id
+                """,
+                (document.manual_id,),
+            ).fetchone()
+            if archived:
+                connection.execute(
+                    """
+                    INSERT INTO document_chunk_versions(
+                        version_id, chunk_id, page_start, page_end, section_title,
+                        content, content_checksum, embedding
+                    )
+                    SELECT %s, chunk_id, page_start, page_end, section_title,
+                           content, content_checksum, embedding
+                    FROM document_chunks WHERE manual_id=%s AND deleted_at IS NULL
+                    """,
+                    (archived[0], document.manual_id),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO document_lifecycle_logs(manual_id, action, actor_role, reason)
+                    VALUES (%s, 'VERSION_ARCHIVED', 'SYSTEM_ADMIN', 'CONTENT_REPLACED')
+                    """,
+                    (document.manual_id,),
+                )
+            connection.execute(
+                """
+                INSERT INTO documents(
+                    manual_id, title, version, source_path, content_checksum, role_scope,
+                    document_type, owner_team, effective_from, expires_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(manual_id) DO UPDATE SET
+                    title=EXCLUDED.title, version=EXCLUDED.version,
+                    source_path=EXCLUDED.source_path, content_checksum=EXCLUDED.content_checksum,
+                    role_scope=EXCLUDED.role_scope, document_type=EXCLUDED.document_type,
+                    owner_team=EXCLUDED.owner_team, effective_from=EXCLUDED.effective_from,
+                    expires_at=EXCLUDED.expires_at, deleted_at=NULL,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (
+                    document.manual_id,
+                    document.title,
+                    document.version,
+                    document.source_path,
+                    document.checksum,
+                    list(document.role_scope),
+                    document.document_type,
+                    document.owner_team,
+                    document.effective_from,
+                    document.expires_at,
+                ),
+            )
+            connection.execute("DELETE FROM document_chunks WHERE manual_id=%s", (document.manual_id,))
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    """
+                    INSERT INTO document_chunks(
+                        chunk_id, manual_id, page_start, page_end, section_title,
+                        content, content_checksum, embedding, embedding_provider,
+                        embedding_model, embedding_dimensions, embedding_version,
+                        source_document_hash, embedded_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    """,
+                    [
+                        (
+                            chunk.chunk_id,
+                            chunk.manual_id,
+                            chunk.page_start,
+                            chunk.page_end,
+                            chunk.section_title,
+                            chunk.content,
+                            chunk.checksum,
+                            self._vector_literal(vector),
+                            metadata["provider"],
+                            metadata["model"],
+                            metadata["dimensions"],
+                            metadata["version"],
+                            document.checksum,
+                        )
+                        for chunk, vector in zip(chunks, embeddings, strict=True)
+                    ],
+                )
+            connection.execute(
+                """
+                INSERT INTO document_lifecycle_logs(manual_id, action, actor_role, reason)
+                VALUES (%s, 'UPSERT', 'SYSTEM_ADMIN', 'INGESTION')
+                """,
+                (document.manual_id,),
+            )
+        return len(chunks)
+
+    def search(
+        self,
+        vector: np.ndarray,
+        query_text: str,
+        role: str,
+        top_k: int,
+        minimum_vector_score: float,
+        allow_unresolved: bool,
+        selected_manual_ids: tuple[str, ...] = (),
+        retrieval_mode: str = "HYBRID",
+        maximum_chunks_per_document: int = 1,
+    ) -> list[VectorSearchResult]:
+        query_vector = self._vector_literal(vector)
+
+        # Build SQL condition based on retrieval mode
+        score_calc = "GREATEST(vector_score, 0.7 * vector_score + 0.3 * lexical_score)"
+        where_cond = f"(1 - (c.embedding <=> %s::vector) >= %s OR word_similarity(%s, d.title) >= 0.15 OR word_similarity(%s, c.content) >= 0.15)"
+        params = [query_vector, query_text, query_text, role, allow_unresolved, list(selected_manual_ids), list(selected_manual_ids), query_vector, minimum_vector_score, query_text, query_text]
+
+        if retrieval_mode == "LEXICAL_ONLY":
+            score_calc = "lexical_score"
+            where_cond = f"(word_similarity(%s, d.title) >= 0.15 OR word_similarity(%s, c.content) >= 0.15)"
+            # Adjust params for LEXICAL_ONLY
+            params = [query_vector, query_text, query_text, role, allow_unresolved, list(selected_manual_ids), list(selected_manual_ids), query_text, query_text]
+        elif retrieval_mode == "VECTOR_ONLY":
+            score_calc = "vector_score"
+            where_cond = f"(1 - (c.embedding <=> %s::vector) >= %s)"
+            # Adjust params for VECTOR_ONLY
+            params = [query_vector, query_text, query_text, role, allow_unresolved, list(selected_manual_ids), list(selected_manual_ids), query_vector, minimum_vector_score]
+
+        sql = f"""
+                WITH candidates AS (
+                    SELECT d.manual_id, d.title, d.version, c.page_start, c.page_end,
+                           c.section_title, c.content, d.document_status, c.chunk_id,
+                           d.authority_level, d.validity_status, d.document_type,
+                           d.owner_team, d.effective_from, d.expires_at,
+                           1 - (c.embedding <=> %s::vector) AS vector_score,
+                           GREATEST(
+                               word_similarity(%s, d.title),
+                               word_similarity(%s, c.content)
+                           ) AS lexical_score
+                    FROM document_chunks c
+                    JOIN documents d ON d.manual_id = c.manual_id
+                    WHERE c.deleted_at IS NULL AND d.deleted_at IS NULL
+                      AND d.document_status = 'WORKING_KNOWLEDGE'
+                      AND %s = ANY(d.role_scope)
+                      AND (%s OR d.validity_status != 'UNRESOLVED')
+                      AND (
+                          cardinality(%s::text[]) = 0
+                          OR d.manual_id = ANY(%s::text[])
+                      )
+                      AND (d.effective_from IS NULL OR d.effective_from <= CURRENT_DATE)
+                      AND (d.expires_at IS NULL OR d.expires_at >= CURRENT_DATE)
+                      AND {where_cond}
+                ), ranked AS (
+                    SELECT *,
+                           {score_calc} AS score,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY manual_id
+                               ORDER BY {score_calc} DESC
+                           ) AS document_rank
+                    FROM candidates
+                )
+                SELECT manual_id, title, version, page_start, page_end, section_title,
+                       content, score, vector_score, lexical_score, chunk_id,
+                       document_status, authority_level, validity_status, document_type,
+                       owner_team, effective_from, expires_at
+                FROM ranked WHERE document_rank <= %s
+                ORDER BY score DESC LIMIT %s
+        """
+        params.append(maximum_chunks_per_document)
+        params.append(top_k)
+
+        with psycopg.connect(self._database_url) as connection:
+            rows = connection.execute(sql, params).fetchall()
+
+        results = []
+        for row in rows:
+            # row: 0:manual_id, 1:title, 2:version, 3:page_start, 4:page_end, 5:section_title, 6:content, 7:score, 8:vector_score, 9:lexical_score, 10:chunk_id, 11:document_status, 12:authority_level, 13:validity_status, 14:document_type, 15:owner_team, 16:effective_from, 17:expires_at
+
+            # Since to_vector_search_result was used previously, we'll build it here or modify vector_result_mapper.py
+            # But it's easier to build VectorSearchResult here to avoid modifying vector_result_mapper.py unnecessarily
+            manual_id = row[0]
+            title = row[1]
+            version = row[2]
+            page_start = row[3]
+            page_end = row[4]
+            section_title = row[5]
+            content = row[6]
+            score = row[7]
+            vector_score = row[8]
+            lexical_score = row[9]
+            chunk_id = row[10]
+
+            evidence_id = f"{manual_id}:{version}:{page_start}:{chunk_id}"
+
+            # basic snippet logic from old mapper
+            snippet_limit_raw = os.getenv("RAG_SNIPPET_MAX_CHARS", "1800").strip()
+            try:
+                snippet_limit = max(200, int(snippet_limit_raw))
+            except ValueError:
+                snippet_limit = 1800
+            snippet = content[:snippet_limit] + "..." if len(content) > snippet_limit else content
+            citation = f"[{title} v{version} p.{page_start} {section_title}]"
+
+            results.append(
+                VectorSearchResult(
+                    manual_id=manual_id,
+                    title=title,
+                    version=version,
+                    page_start=page_start,
+                    page_end=page_end,
+                    section_title=section_title,
+                    score=float(score),
+                    vector_score=float(vector_score),
+                    lexical_score=float(lexical_score),
+                    snippet=snippet,
+                    content=content,
+                    citation=citation,
+                    evidence_id=evidence_id,
+                    ranking_stage="retrieval",
+                    reranker_score=None,
+                    document_status=row[11],
+                    authority_level=row[12],
+                    validity_status=row[13],
+                    warning=None,
+                    document_type=row[14],
+                    owner_team=row[15],
+                    effective_from=str(row[16]) if row[16] else None,
+                    expires_at=str(row[17]) if row[17] else None,
+                )
+            )
+        return results
+
+    def catalog(self) -> list[dict[str, object]]:
+        with psycopg.connect(self._database_url) as connection:
+            rows = connection.execute(
+                """SELECT manual_id, title, version, document_type, owner_team
+                   FROM documents WHERE deleted_at IS NULL ORDER BY title, manual_id"""
+            ).fetchall()
+        return [{"manual_id": row[0], "title": row[1], "version": row[2], "document_type": row[3], "owner_team": row[4]} for row in rows]
+
+    def source_path(self, manual_id: str) -> Path:
+        with psycopg.connect(self._database_url) as connection:
+            row = connection.execute("SELECT source_path FROM documents WHERE manual_id=%s AND deleted_at IS NULL", (manual_id,)).fetchone()
+        if row is None:
+            raise FileNotFoundError(manual_id)
+        return Path(row[0])
+
+    def _vector_literal(self, vector: np.ndarray) -> str:
+        return "[" + ",".join(f"{float(value):.8f}" for value in vector) + "]"

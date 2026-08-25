@@ -1,0 +1,9 @@
+risk_id,risk,status,evidence,control
+R1,Point-in-time 누수,PASS,예측기준일=목표일-예측시차 전 행 확인,운영 API도 같은 cutoff 계약 강제
+R2,예약잔량 의존,WARN,예약정보 제거 시 TEST WAPE 1.74%→6.74%,예약 스냅샷 누락·지연 시 예측 중단
+R3,학습범위 이탈,WARN,inbound_travel_index,범위 이탈을 API 경고와 모니터링에 노출
+R4,점 예측 불확실성,MITIGATED,TEST 95% 구간 포함률 98.67%,하한·상한을 예측값과 함께 표시
+R5,미래 QA 일반화,MITIGATED,사후 28행 WAPE 1.38%,모델 선정에는 사용하지 않고 감시만 유지
+R6,단일 합성 seed,OPEN,seed 20260803 한 세트,5개 seed 재생성 후 동일 검증
+R7,실데이터 부재,OPEN,단일 합성 호텔,비식별 실데이터로 운영 기준 재승인
+R8,모델 파일 로컬 전용,CONTROLLED,joblib은 Git 제외,배포 환경에서 검증 후 재학습·등록

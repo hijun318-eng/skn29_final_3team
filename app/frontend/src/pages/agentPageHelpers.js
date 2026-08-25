@@ -155,10 +155,27 @@ export function hydrateTurnsFromServer(serverTurns) {
     for (const st of serverTurns) {
       const isPresentation = st.route === "PRESENTATION";
       const isReportAction = st.route === "REPORT_ACTION";
+      const ragResult = st.resolved_slots?.rag;
       const userMessage = st.user_message || "";
       let run;
 
-      if (isPresentation && st.terminal_status === "SUCCEEDED") {
+      if (ragResult) {
+        run = {
+          ...transientRun(userMessage, "success"),
+          requestId: ragResult.request_id || "",
+          traceId: ragResult.trace_id || "",
+          summary: ragResult.answer?.text || ragResult.document?.body || "",
+          rag: {
+            ...(ragResult.document || {}),
+            response_status: ragResult.response_status || "ANSWERED",
+            answer_id: ragResult.answer_id || ragResult.request_id || "",
+            answer_text: ragResult.answer?.text || "",
+            processing_steps: ragResult.processing_steps || [],
+            evidence_bundle: ragResult.evidence_bundle || [],
+            citations: ragResult.citations || [],
+          },
+        };
+      } else if (isPresentation && st.terminal_status === "SUCCEEDED") {
         const sourceArtifactId = lastAnalysisRun?.artifact?.artifactId;
         if (!hasReusablePresentationArtifact(lastAnalysisRun) || !st.artifact_id || st.artifact_id !== sourceArtifactId) {
           run = commandErrorRun(userMessage, {
@@ -271,9 +288,11 @@ export function hydrateTurnsFromServer(serverTurns) {
         question: userMessage,
         run,
         resolvedSlots: st.resolved_slots || null,
-        viewType: isPresentation
-          ? (st.view_type || "TABLE")
-          : (st.view_type || st.resolved_slots?.target_chart_type || null),
+        viewType: ragResult
+          ? "RAG"
+          : isPresentation
+            ? (st.view_type || "TABLE")
+            : (st.view_type || st.resolved_slots?.target_chart_type || null),
         isArtifactReuse: isPresentation && hasReusablePresentationArtifact(run),
         reusePending: false,
         viewSpecId: isPresentation ? st.view_spec_id : null,

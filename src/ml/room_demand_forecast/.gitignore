@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+.venv/
+.cache/
+artifacts/mcp_server_config.local.json
+artifacts/mcp_tool_runs.jsonl

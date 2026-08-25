@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Answervice RAG·ML 임시 동작 연결 검증</title>
+  <style>
+    :root{--ink:#142033;--muted:#617087;--paper:#fff;--canvas:#f3f6f9;--line:#dce4ed;--navy:#122440;--blue:#315fd6;--blue-soft:#eaf0ff;--teal:#087f72;--teal-soft:#e8f7f4;--amber:#9b5b05;--amber-soft:#fff3da;--red:#b44740;--red-soft:#fff0ee;--shadow:0 15px 40px rgba(21,36,57,.08);--radius:22px}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--canvas);color:var(--ink);font-family:Pretendard,"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;line-height:1.62;word-break:keep-all}.skip{position:absolute;left:-9999px}.skip:focus{left:12px;top:12px;z-index:10;background:#fff;padding:10px;border:2px solid var(--blue)}
+    .hero{background:linear-gradient(135deg,var(--navy),#244b86);color:#fff;padding:72px max(24px,calc((100% - 1120px)/2)) 64px}.eyebrow{font-size:.78rem;font-weight:800;letter-spacing:.14em;color:#bcd0ff}.hero h1{max-width:820px;margin:12px 0 18px;font-size:clamp(2.2rem,5vw,4.2rem);line-height:1.12;letter-spacing:-.04em}.hero p{max-width:780px;margin:0;color:#dce7fb;font-size:1.08rem}.stamp{display:inline-flex;margin-top:26px;padding:9px 14px;border:1px solid #ffffff45;border-radius:999px;color:#eaf1ff;font-size:.9rem}
+    nav{position:sticky;top:0;z-index:5;background:#ffffffed;border-bottom:1px solid var(--line);backdrop-filter:blur(12px)}nav div{max-width:1120px;margin:auto;padding:11px 24px;display:flex;gap:18px;overflow:auto}nav a{color:var(--muted);font-size:.9rem;font-weight:700;text-decoration:none;white-space:nowrap}nav a:hover,nav a:focus{color:var(--blue)}
+    main{max-width:1120px;margin:auto;padding:46px 24px 80px}section{margin:0 0 54px}h2{margin:0 0 8px;font-size:clamp(1.6rem,3vw,2.2rem);letter-spacing:-.03em}.lead{margin:0 0 22px;color:var(--muted)}
+    .verdict{display:grid;grid-template-columns:1.35fr .65fr;gap:18px}.card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px}.verdict-main{border-top:5px solid var(--teal)}.verdict-main h3{font-size:1.45rem;margin:8px 0}.verdict-main p{margin:0;color:var(--muted)}.verdict-side{border-top:5px solid var(--amber)}
+    .badge{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;font-size:.78rem;font-weight:800}.pass{background:var(--teal-soft);color:var(--teal)}.limited{background:var(--amber-soft);color:var(--amber)}.blocked{background:var(--red-soft);color:var(--red)}.info{background:var(--blue-soft);color:var(--blue)}
+    .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:18px}.metric{background:#f8fafc;border:1px solid var(--line);border-radius:16px;padding:16px}.metric b{display:block;font-size:1.55rem;line-height:1.2}.metric span{color:var(--muted);font-size:.85rem}
+    .systems{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.system{position:relative;overflow:hidden}.system:before{content:"";position:absolute;inset:0 auto 0 0;width:5px;background:var(--blue)}.system.rag:before{background:var(--teal)}.system.demand:before{background:var(--amber)}.system h3{margin:10px 0 6px;font-size:1.25rem}.system p{margin:0 0 16px;color:var(--muted)}.facts{display:grid;gap:8px}.fact{display:flex;justify-content:space-between;gap:12px;padding-top:8px;border-top:1px solid var(--line);font-size:.9rem}.fact span{color:var(--muted)}.fact b{text-align:right}
+    .flow{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;align-items:stretch}.step{min-height:112px;padding:15px 10px;border:1px solid var(--line);border-radius:15px;background:var(--paper);text-align:center}.step b{display:block;margin:5px 0}.step small{color:var(--muted)}.step.ok{border-color:#91d7cb;background:var(--teal-soft)}.step.stop{border-color:#efb6b1;background:var(--red-soft)}.arrow{display:none}
+    table{width:100%;border-collapse:separate;border-spacing:0;background:var(--paper);border:1px solid var(--line);border-radius:16px;overflow:hidden}th,td{padding:13px 14px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}th{background:#f7f9fc;font-size:.82rem;color:var(--muted)}tr:last-child td{border-bottom:0}.state{font-weight:800;white-space:nowrap}.state.yes{color:var(--teal)}.state.no{color:var(--red)}.state.partial{color:var(--amber)}
+    .search-box{display:grid;grid-template-columns:.9fr 1.1fr;gap:18px}.query{background:var(--navy);color:#fff}.query code{display:block;margin:16px 0;padding:14px;border-radius:12px;background:#ffffff12;color:#fff;font-family:inherit;font-size:1.08rem}.query dl{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;margin:0}.query dt{color:#a9bee3}.query dd{margin:0;font-weight:700}.results{display:grid;gap:10px}.result{border:1px solid var(--line);border-radius:15px;padding:14px}.result:first-child{border-color:#8bcfc5;background:var(--teal-soft)}.result header{display:flex;justify-content:space-between;gap:12px}.result h4{margin:0}.result p{margin:6px 0 0;color:var(--muted);font-size:.9rem}
+    .prediction-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:18px}.probability{display:flex;align-items:center;gap:18px}.ring{width:120px;height:120px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--teal) 0 2.4deg,#e7edf3 2.4deg 360deg);position:relative}.ring:after{content:"";position:absolute;width:88px;height:88px;border-radius:50%;background:white}.ring b{position:relative;z-index:1;font-size:1.2rem}.demand-rows{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.room{padding:14px;border-radius:14px;background:#f7f9fc;border:1px solid var(--line)}.room b{display:block;font-size:1.35rem}.room small{color:var(--muted)}
+    .warning{background:var(--amber-soft);border:1px solid #efd59c;border-radius:16px;padding:18px}.warning h3{margin:0 0 8px;color:var(--amber)}.warning ul{margin:0;padding-left:20px}.footer{color:var(--muted);font-size:.86rem;border-top:1px solid var(--line);padding-top:20px}
+    @media(max-width:900px){.systems,.summary{grid-template-columns:repeat(2,1fr)}.flow{grid-template-columns:repeat(3,1fr)}.search-box,.prediction-grid,.verdict{grid-template-columns:1fr}}@media(max-width:560px){.systems,.summary,.demand-rows,.flow{grid-template-columns:1fr}.hero{padding-top:52px}th,td{padding:10px;font-size:.82rem}.probability{align-items:flex-start;flex-direction:column}}@media print{nav{display:none}.hero{padding:34px;color:#111;background:#fff;border-bottom:2px solid #111}.hero p,.eyebrow{color:#333}.card{box-shadow:none}body{background:#fff}section{break-inside:avoid}}
+  </style>
+</head>
+<body>
+<a class="skip" href="#content">본문 바로가기</a>
+<header class="hero">
+  <div class="eyebrow">LOCAL VERIFICATION · EVIDENCE OVER APPEARANCE</div>
+  <h1>RAG는 검색되고,<br>ML은 예측된다</h1>
+  <p>현재 MLnRAG 작업트리에서 실제 실행한 결과를 사람이 빠르게 확인할 수 있도록 정리했습니다. 임시 로컬 동작과 운영 연결 완료는 구분합니다.</p>
+  <div class="stamp">검증 시각 2026-08-10 KST · branch MLnRAG · 합성 데이터 전용</div>
+</header>
+<nav aria-label="문서 목차"><div><a href="#verdict">한눈에 보기</a><a href="#systems">세 기능</a><a href="#connection">연결 상태</a><a href="#rag">RAG 검색</a><a href="#ml">ML 예측</a><a href="#limits">제한사항</a></div></nav>
+<main id="content">
+  <section id="verdict">
+    <h2>1. 한눈에 보는 판정</h2><p class="lead">로컬 기술검증은 성공했습니다. 운영 메인챗에 등록되어 있다는 뜻은 아닙니다.</p>
+    <div class="verdict">
+      <article class="card verdict-main"><span class="badge pass">임시 로컬 동작 정상</span><h3>검색 1건과 예측 2종을 실제 실행했습니다.</h3><p>RAG는 Qwen3 Embedding과 pgvector에서 관련 문서를 찾았고, No-show ONNX와 객실수요 XGB 저장 모델은 합성 입력으로 예측을 반환했습니다.</p></article>
+      <article class="card verdict-side"><span class="badge limited">운영 연결 아님</span><h3>메인챗·UI·Registry는 비활성</h3><p>실제 배포 인증, 영구 감사, 화면 표시, hard timeout을 포함한 운영 E2E는 아직 통과하지 않았습니다.</p></article>
+    </div>
+    <div class="summary"><div class="metric"><b>37</b><span>RAG 문서</span></div><div class="metric"><b>259</b><span>pgvector chunk</span></div><div class="metric"><b>0.665%</b><span>No-show 예측 확률</span></div><div class="metric"><b>28행</b><span>7일 수요 예측</span></div></div>
+  </section>
+
+  <section id="systems">
+    <h2>2. 세 기능의 현재 상태</h2><p class="lead">같은 “PASS”라도 실제 연결 범위가 다릅니다.</p>
+    <div class="systems">
+      <article class="card system rag"><span class="badge pass">실제 로컬 DB 검색 PASS</span><h3>내부 문서 RAG</h3><p>Qwen3-Embedding-0.6B가 만든 1024차원 query를 pgvector에서 검색했습니다.</p><div class="facts"><div class="fact"><span>검색 결과</span><b>3건</b></div><div class="fact"><span>Top1</span><b>SOP-ROOM-003</b></div><div class="fact"><span>응답 시간</span><b>3,708.8 ms</b></div></div></article>
+      <article class="card system"><span class="badge limited">저장 ONNX + fixture PASS</span><h3>예약 No-show</h3><p>실제 로컬 Trino Feature 조회는 통과했고, 저장 ONNX 예측은 합성 CSV fixture로 실행했습니다.</p><div class="facts"><div class="fact"><span>확률</span><b>0.006652</b></div><div class="fact"><span>등급·순위</span><b>LOW · 18/29</b></div><div class="fact"><span>응답 시간</span><b>20.36 ms</b></div></div></article>
+      <article class="card system demand"><span class="badge limited">저장 XGB 로컬 예측 PASS</span><h3>7일 객실수요</h3><p>joblib SHA-256을 확인한 뒤 기준일 2026-07-28의 7일×4객실유형을 예측했습니다.</p><div class="facts"><div class="fact"><span>결과</span><b>SUCCESS · 28행</b></div><div class="fact"><span>모델</span><b>XGBRegressor</b></div><div class="fact"><span>응답 시간</span><b>202.45 ms</b></div></div></article>
+    </div>
+  </section>
+
+  <section id="connection">
+    <h2>3. 실제 연결은 어디까지인가</h2><p class="lead">초록은 이번 실행에서 실제 통과, 빨강은 정책 또는 미구현으로 중단된 경계입니다.</p>
+    <div class="flow" aria-label="연결 단계"><div class="step ok"><span class="badge pass">PASS</span><b>합성 원천</b><small>PMS·문서·예측 Feature</small></div><div class="step ok"><span class="badge pass">PASS</span><b>조회·검색</b><small>Trino·pgvector</small></div><div class="step ok"><span class="badge pass">PASS</span><b>모델 실행</b><small>Qwen·ONNX·XGB</small></div><div class="step ok"><span class="badge pass">PASS</span><b>로컬 계약</b><small>schema·hash·오류</small></div><div class="step stop"><span class="badge blocked">STOP</span><b>Tool Registry</b><small>P2 미승인·비활성</small></div><div class="step stop"><span class="badge blocked">STOP</span><b>메인챗·UI</b><small>운영 adapter 미연결</small></div><div class="step stop"><span class="badge blocked">STOP</span><b>운영 배포</b><small>인증·감사·timeout 미검증</small></div></div>
+    <table style="margin-top:18px"><thead><tr><th>연결 항목</th><th>상태</th><th>이번 검증에서 확인한 사실</th></tr></thead><tbody>
+      <tr><td>RAG → pgvector</td><td class="state yes">실제 로컬 연결</td><td>문서 37개·chunk 259개, 검색 결과 3건 반환</td></tr>
+      <tr><td>No-show Feature → Trino/PMS</td><td class="state yes">실제 로컬 조회</td><td>예약 1건, 모델 입력 포함 19컬럼, null 없음</td></tr>
+      <tr><td>No-show 모델 입력</td><td class="state partial">합성 fixture</td><td>저장 ONNX 실행 성공, 실제 DB row가 서비스 adapter로 직접 전달되지는 않음</td></tr>
+      <tr><td>7일 수요 모델 입력</td><td class="state partial">합성 CSV</td><td>저장 XGB 모델이 28행 반환, Registry 등록은 의도적으로 차단</td></tr>
+      <tr><td>메인챗·UI·영구 Audit</td><td class="state no">미연결</td><td>계약과 로컬 fixture만 있으며 운영 제품 경계 E2E는 없음</td></tr>
+    </tbody></table>
+  </section>
+
+  <section id="rag">
+    <h2>4. RAG 검색 결과</h2><p class="lead">질문과 기대 문서가 일치했는지 문서 ID와 점수로 확인합니다.</p>
+    <div class="search-box">
+      <article class="card query"><span class="badge info">실제 실행 질의</span><code>객실 소음 민원 대응 절차</code><dl><dt>권한</dt><dd>MANAGER</dd><dt>검색 방식</dt><dd>Hybrid vector + lexical</dd><dt>최소 점수</dt><dd>0.45</dd><dt>결과</dt><dd>no_evidence=false</dd></dl></article>
+      <div class="results">
+        <article class="result"><header><h4>1. SOP-ROOM-003</h4><b>0.6944</b></header><p>객실 소음·냉난방·시설 고장 대응 매뉴얼 · 기대 Top1과 일치</p></article>
+        <article class="result"><header><h4>2. SOP-ROOM-001</h4><b>0.6002</b></header><p>객실 청결·욕실·냄새 불만 대응 매뉴얼 · 관련 보조 문서</p></article>
+        <article class="result"><header><h4>3. SOP-CS-001</h4><b>0.5636</b></header><p>직원 안내·응대 불만 처리 · 고객 응대 관련 보조 문서</p></article>
+      </div>
+    </div>
+    <div class="warning" style="margin-top:16px"><h3>검색 결과 해석</h3><ul><li>검색 자체와 citation metadata 반환은 정상입니다.</li><li>문서 상태는 <b>WORKING_KNOWLEDGE</b>, 유효기간은 <b>UNRESOLVED</b>이므로 확정 운영 지침으로 표시하면 안 됩니다.</li><li>근거 기반 최종 답변 생성 LLM은 아직 연결되지 않았습니다.</li></ul></div>
+  </section>
+
+  <section id="ml">
+    <h2>5. ML 예측 결과</h2><p class="lead">두 모델 모두 “관측 사실”이 아니라 합성 데이터 기반 모델 예측입니다.</p>
+    <div class="prediction-grid">
+      <article class="card"><span class="badge limited">No-show · fixture</span><h3>예약 1건 위험 예측</h3><div class="probability"><div class="ring"><b>0.665%</b></div><div><b>LOW</b><br><span>일별 cohort 순위 18 / 29</span><br><small>LogisticRegression · ONNX</small></div></div><p style="color:var(--muted)">동일 입력 2회 확률이 일치했고, 존재하지 않는 예약은 FEATURE_NOT_FOUND, schema 불일치는 SCHEMA_MISMATCH로 차단됐습니다.</p></article>
+      <article class="card"><span class="badge limited">7일 수요 · 로컬 저장 모델</span><h3>첫날 객실유형별 예측</h3><div class="demand-rows"><div class="room"><small>DELUXE</small><b>55실</b><small>53~57 / 가용 89</small></div><div class="room"><small>RESIDENCE</small><b>11실</b><small>10~12 / 가용 20</small></div><div class="room"><small>STANDARD</small><b>104실</b><small>100~108 / 가용 149</small></div><div class="room"><small>SUITE</small><b>21실</b><small>20~22 / 가용 40</small></div></div><p style="color:var(--muted)">전체 28행을 반환했습니다. 현재 입력의 <code>inbound_travel_index</code>가 학습 범위를 벗어나 모든 예측에 경고가 표시됩니다.</p></article>
+    </div>
+  </section>
+
+  <section id="limits">
+    <h2>6. 사람이 반드시 알아야 할 제한사항</h2><p class="lead">이 항목이 해결되기 전에는 운영 연결 완료라고 말하지 않습니다.</p>
+    <table><thead><tr><th>항목</th><th>현재 상태</th><th>영향</th></tr></thead><tbody>
+      <tr><td>No-show 원천 라벨</td><td class="state no">BLOCKED</td><td>현재 PMS에 NO_SHOW가 0건이라 실제 원천 재학습 불가</td></tr>
+      <tr><td>공통 snapshot 계보</td><td class="state no">미확보</td><td>No-show와 수요 데이터는 독립 합성 데이터이며 동일 원천 증명 불가</td></tr>
+      <tr><td>RAG 운영 권한·유효기간</td><td class="state partial">PoC</td><td>미확정 문서는 경고와 함께 검색되며 확정 정책 답변으로 사용 불가</td></tr>
+      <tr><td>Tool Registry</td><td class="state no">비활성</td><td>P2 승인 전 메인챗에서 호출할 수 없음</td></tr>
+      <tr><td>UI·영구 Audit·인증</td><td class="state no">미검증</td><td>실제 사용자 경로와 실행 이력이 연결되지 않음</td></tr>
+      <tr><td>배포 hard timeout</td><td class="state no">미검증</td><td>실제 API·worker 경계의 2초 강제 중단 근거 없음</td></tr>
+    </tbody></table>
+  </section>
+
+  <section><div class="warning"><h3>최종 판정</h3><ul><li><b>RAG 검색:</b> 로컬 pgvector에서 정상 동작</li><li><b>No-show 예측:</b> 저장 ONNX와 합성 fixture에서 정상 동작</li><li><b>7일 수요 예측:</b> 저장 XGB 모델과 합성 CSV에서 정상 동작</li><li><b>통합 서비스:</b> 운영 메인챗·UI·Registry 연결은 아직 완료되지 않음</li></ul></div></section>
+  <footer class="footer">검증 근거: 로컬 Docker pgvector·Trino/PMS, Qwen/Qwen3-Embedding-0.6B, reservation-no-show-v1.0 ONNX, room-demand-xgb-v1.0 joblib. 첨부 HTML 5개는 색상과 카드형 정보 구조만 참고했으며 내용 근거로 사용하지 않았습니다.</footer>
+</main>
+</body>
+</html>

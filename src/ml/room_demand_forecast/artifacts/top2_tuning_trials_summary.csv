@@ -1,0 +1,3 @@
+trial_id,model,configuration,fit_seconds,best_iteration,seed,trial_seed,split,model_version,status,validation_clipped_wape,validation_clipped_mae,validation_clipped_rmse,validation_clipped_r2
+HistGradientBoostingRegressor:tuned_1,HistGradientBoostingRegressor,"{""learning_rate"": 0.1, ""max_iter"": 200}",0.205027,0,20260803,20260803,VALIDATION,room-demand-regression-v1,success,0.0,0.0,0.0,1.0
+HistGradientBoostingRegressor:tuned_2,HistGradientBoostingRegressor,"{""learning_rate"": 0.08, ""max_iter"": 400}",0.362474,0,20260803,20260803,VALIDATION,room-demand-regression-v1,success,0.0,0.0,0.0,1.0

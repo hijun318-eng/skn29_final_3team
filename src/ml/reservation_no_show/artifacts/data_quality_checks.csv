@@ -1,0 +1,12 @@
+check_id,status,observed,rule
+DQ-01,PASS,0,reservation_id duplicate = 0
+DQ-02,PASS,0,target missing = 0
+DQ-03,PASS,0,"target in {0,1}"
+DQ-04,PASS,0,cutoff date is one day before arrival
+DQ-05,PASS,none,banned outcome columns absent
+DQ-05A,PASS,0,feature missing = 0
+DQ-06,PASS,True,time splits do not overlap
+DQ-07,PASS,True,all rows explicitly synthetic
+DQ-08,PASS,True,positive rate between 0.2% and 4.0%
+DQ-09,FAIL,0,source PMS must contain outcome NO_SHOW labels
+DQ-10,WARN,3/9,channel-segment combinations should not be structurally coupled

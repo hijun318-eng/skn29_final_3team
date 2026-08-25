@@ -36,6 +36,8 @@ export interface AnalysisClient {
     parameters?: Record<string, AnalysisValue>,
     options?: AnalysisOptions,
   ): Promise<AnalysisRun>;
+  queryManual(question: string, mode?: "AUTO" | "DOCUMENT_ONLY", conversationId?: string): Promise<RagQueryResult>;
+  manualPdfUrl(documentId: string): string;
   cancelAnalysis(traceId: string): Promise<AnalysisProgress>;
   createDefinition(title: string, sourceRequestId: string): Promise<SavedAnalysisDefinition>;
   listDefinitions(): Promise<SavedAnalysisDefinition[]>;
@@ -54,6 +56,70 @@ export interface AnalysisClient {
     payload: ConversationCommandPayload,
     options?: SubmitTurnCommandOptions | string,
   ): Promise<any>;
+  createMLAnalysis(payload: MLAnalysisRequest): Promise<MLAnalysisResult>;
+}
+
+/** 내부 문서 답변이 인용하는 문서 위치와 검색 신뢰도를 표현한다. */
+export interface RagEvidenceSource {
+  evidence_id: string;
+  document_id: string;
+  document_name: string;
+  document_version: string;
+  page_start: number | null;
+  page_end: number | null;
+  section: string;
+  snippet: string;
+  score: number;
+  confidence: "HIGH" | "MEDIUM" | "LOW";
+}
+
+/** RAG 질의의 답변·무근거·충돌 상태와 검증 근거를 화면에 전달한다. */
+export interface RagQueryResult {
+  turn_id?: string;
+  status: "ANSWER" | "NO_EVIDENCE" | "CONFLICT";
+  response_status?: "ANSWERED";
+  answer_id?: string;
+  answer_type?: string | string[];
+  answer?: { text: string };
+  request_id?: string;
+  trace_id: string;
+  document?: Record<string, AnalysisValue> & { body?: string; document_id?: string };
+  processing_steps?: string[];
+  evidence_bundle?: RagEvidenceSource[];
+  citations?: Array<{ evidence_id: string; citation: string }>;
+  conflicts?: string[];
+}
+
+/** 대화형 ML 예측 요청의 질의와 낙관적 동시성 식별자를 제한한다. */
+export interface MLAnalysisRequest {
+  query: string;
+  conversation_id?: string;
+  expected_head_turn_id?: string;
+}
+
+/** 승인 모델의 예측 집계·세부 결과·실행 근거를 한 응답으로 표현한다. */
+export interface MLAnalysisResult {
+  status: "SUCCESS";
+  request_id: string;
+  trace_id: string;
+  request: {
+    hotel_scope: string;
+    metric: string;
+    horizon: number;
+    as_of: string;
+  };
+  summary: {
+    total_available_room_nights: number;
+    predicted_sold_room_nights: number;
+    remaining_room_nights: number;
+    daily_average_predicted_rooms: number;
+    weighted_occupancy_rate: number;
+  };
+  daily: Array<Record<string, AnalysisValue>>;
+  room_type_details: Array<Record<string, AnalysisValue>>;
+  trend: { description: string; cause_analysis_available: false };
+  limitations: string[];
+  evidence: Record<string, AnalysisValue>;
 }
 
 /**
@@ -363,6 +429,21 @@ export function createHttpAnalysisClient(
         if (poll !== undefined) window.clearInterval(poll);
       }
     },
+    async queryManual(question, mode = "AUTO", conversationId = "") {
+      const payload = await parse<{ status: "SUCCESS"; data: RagQueryResult }>(await request(endpoint("/rag/query"), {
+        method: "POST",
+        credentials: "include",
+        headers: headers(true),
+        body: JSON.stringify({ question, mode, conversation_id: conversationId || null }),
+      }));
+      if (!payload?.data || !["ANSWER", "NO_EVIDENCE", "CONFLICT"].includes(payload.data.status)) {
+        throw new Error("RAG API가 올바르지 않은 응답을 반환했습니다.");
+      }
+      return payload.data;
+    },
+    manualPdfUrl(documentId) {
+      return endpoint(`/rag/documents/${encodeURIComponent(documentId)}/source.pdf`);
+    },
     async cancelAnalysis(traceId) {
       const payload = await parse<{ data: AnalysisProgress }>(await request(
         endpoint(`/analysis/progress/${encodeURIComponent(traceId)}/cancel`),
@@ -457,6 +538,16 @@ export function createHttpAnalysisClient(
     async submitTurnCommand(conversationId, cmdPayload, options = {}) {
       // 백엔드 command progress transport가 확정되기 전에는 onProgress를 호출하거나 polling하지 않는다.
       return this.executeTurnCommand(conversationId, cmdPayload, options);
+    },
+    async createMLAnalysis(analysisRequest) {
+      return parse<MLAnalysisResult>(
+        await request(endpoint("/analysis/ml"), {
+          method: "POST",
+          credentials: "include",
+          headers: headers(true),
+          body: JSON.stringify(analysisRequest),
+        }),
+      );
     },
   };
 }

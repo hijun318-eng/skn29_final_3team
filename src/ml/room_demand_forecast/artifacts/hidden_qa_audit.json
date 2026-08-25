@@ -1,0 +1,11 @@
+{
+  "purpose": "posthoc_only",
+  "model_selection_use": false,
+  "row_count": 28,
+  "mae": 0.6785714285714286,
+  "rmse": 1.2100767390069582,
+  "wape": 0.013828238719068414,
+  "bias": 0.10714285714285714,
+  "within_3_rooms": 0.9642857142857143,
+  "interval_coverage": 1.0
+}

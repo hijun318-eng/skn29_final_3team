@@ -1,0 +1,112 @@
+{
+  "feature_set_name": "reservation_no_show_features",
+  "feature_set_version": "reservation-no-show-feature-v1.0",
+  "owner": "Answervice ML",
+  "entity_key": "reservation_id",
+  "event_time": "checkin_date",
+  "feature_as_of": "checkin_date - 1 day at 18:00 Asia/Seoul",
+  "source_asset_urns": [
+    "urn:answervice:pms:pms_reservations",
+    "urn:answervice:pms:pms_guests"
+  ],
+  "query_asset": "sql/reservation_no_show_feature_set_v1.sql",
+  "query_policy_version": "reservation-no-show-query-v1.0",
+  "label": {
+    "name": "is_no_show",
+    "positive": "NO_SHOW",
+    "negative": "CHECKED_IN or COMPLETED",
+    "excluded": [
+      "CANCELLED",
+      "unresolved future reservation"
+    ],
+    "current_source": "SYNTHETIC_RULE_V1"
+  },
+  "features": [
+    {
+      "name": "lead_time_days",
+      "type": "number",
+      "missing": "reject"
+    },
+    {
+      "name": "length_of_stay",
+      "type": "number",
+      "missing": "reject"
+    },
+    {
+      "name": "adult_count",
+      "type": "number",
+      "missing": "reject"
+    },
+    {
+      "name": "child_count",
+      "type": "number",
+      "missing": "reject"
+    },
+    {
+      "name": "quoted_room_rate",
+      "type": "number",
+      "missing": "reject"
+    },
+    {
+      "name": "booked_amount",
+      "type": "number",
+      "missing": "reject"
+    },
+    {
+      "name": "discount_ratio",
+      "type": "number",
+      "missing": "reject"
+    },
+    {
+      "name": "previous_booking_count",
+      "type": "number",
+      "missing": "reject"
+    },
+    {
+      "name": "arrival_month",
+      "type": "number",
+      "missing": "reject"
+    },
+    {
+      "name": "arrival_day_of_week",
+      "type": "number",
+      "missing": "reject"
+    },
+    {
+      "name": "arrival_weekend_flag",
+      "type": "number",
+      "missing": "reject"
+    },
+    {
+      "name": "room_type_code",
+      "type": "string",
+      "missing": "reject",
+      "unknown": "ignore"
+    },
+    {
+      "name": "rate_plan_code",
+      "type": "string",
+      "missing": "reject",
+      "unknown": "ignore"
+    },
+    {
+      "name": "market_segment",
+      "type": "string",
+      "missing": "reject",
+      "unknown": "ignore"
+    },
+    {
+      "name": "booking_channel",
+      "type": "string",
+      "missing": "reject",
+      "unknown": "ignore"
+    },
+    {
+      "name": "country_group",
+      "type": "string",
+      "missing": "reject",
+      "unknown": "ignore"
+    }
+  ],
+  "leakage_policy": "Only values known at feature_as_of; outcome/status fields are banned."
+}

@@ -1,0 +1,68 @@
+{
+  "verified_at": "2026-08-19T00:00:00+09:00",
+  "workspace": "D:/bootcamp/dev_worktree",
+  "overall_status": "LOCAL_RUNTIME_READY_FOR_E2E",
+  "checks": [
+    {
+      "gate": "no_show_source_retraining",
+      "status": "BLOCKED",
+      "evidence": {
+        "current_pms_rows": 220000,
+        "current_pms_no_show_rows": 0,
+        "v2_3_seed_no_show_rows": 25226,
+        "v2_3_no_show_with_stay_rows": 0,
+        "v2_3_no_show_resolved_before_cutoff_rows": 25226,
+        "v2_3_yearly_no_show_rate_range": [0.112422, 0.139598]
+      },
+      "reason": "The current export has zero NO_SHOW outcomes. The candidate has no reliable outcome_recorded_at, exposes outcomes before the cutoff, and has an abnormal rate. Retraining is still fail-closed."
+    },
+    {
+      "gate": "official_no_show_source_lineage",
+      "status": "INCOMPLETE",
+      "reason": "The official No-show candidate has no approved source_snapshot_id, extraction timestamp, or point-in-time outcome timestamp."
+    },
+    {
+      "gate": "live_rdb_feature",
+      "status": "LOCAL_PASS",
+      "evidence": "Trino pms.public query returned one 19-column feature row with feature_as_of and is_synthetic.",
+      "production_status": "SERVICE_ADAPTER_NOT_CONNECTED"
+    },
+    {
+      "gate": "ui_prediction_disclosure",
+      "status": "CONTRACT_ONLY",
+      "evidence": "ML responses contain display_label, is_synthetic, feature_as_of, model version, and execution_id.",
+      "production_status": "FRONTEND_RENDERING_NOT_IMPLEMENTED"
+    },
+    {
+      "gate": "persistent_audit_log",
+      "status": "SCHEMA_PASS",
+      "evidence": "governance.audit_events accepted an ML metadata row inside a transaction and contained zero rows after rollback.",
+      "production_status": "ML_SERVICE_REPOSITORY_NOT_CONNECTED"
+    },
+    {
+      "gate": "deployed_hard_timeout",
+      "status": "LOCAL_HANDLER_ONLY",
+      "evidence": "The local handler returns TOOL_TIMEOUT, but no deployed API/MCP process boundary was available to prove 2-second hard cancellation.",
+      "production_status": "NOT_VERIFIED"
+    },
+    {
+      "gate": "operational_mcp_end_to_end",
+      "status": "NOT_IN_CURRENT_SCOPE",
+      "evidence": "MCP is not introduced in the current P0/P1 scope. Historical local fixtures are not activation evidence.",
+      "production_status": "WAIT_I5_AND_R1_P2_APPROVAL"
+    },
+    {
+      "gate": "rag_full_regression",
+      "status": "NOT_RUN_THIS_CHANGE",
+      "evidence": {
+        "evidence_type": "HISTORICAL_2026-08-04",
+        "environment": ".venv",
+        "tests_run": 48,
+        "failures": 0,
+        "errors": 0,
+        "sentence_transformers_available": true
+      }
+    }
+  ],
+  "activation_decision": "LOCAL_RUNTIME_E2E_ALLOW_ACTIVE_MODELS"
+}

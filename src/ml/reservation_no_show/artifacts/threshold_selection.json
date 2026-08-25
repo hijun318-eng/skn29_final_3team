@@ -1,0 +1,18 @@
+{
+  "PriorProbability": {
+    "threshold": 0.008335610822629133,
+    "rule": "validation 예측점수 상위 15%의 최저 점수"
+  },
+  "LogisticRegression": {
+    "threshold": 0.015165358285366045,
+    "rule": "validation 예측점수 상위 15%의 최저 점수"
+  },
+  "LogisticRegressionBalanced": {
+    "threshold": 0.6734150668371921,
+    "rule": "validation 예측점수 상위 15%의 최저 점수"
+  },
+  "HistGradientBoostingClassifier": {
+    "threshold": 0.014911442734051573,
+    "rule": "validation 예측점수 상위 15%의 최저 점수"
+  }
+}

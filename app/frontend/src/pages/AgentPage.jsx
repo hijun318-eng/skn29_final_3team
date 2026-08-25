@@ -4,6 +4,9 @@ import { Eye, FilePlus2, History, MessageSquareText, Plus, Save, Send, Sparkles,
 import { AnalysisApiError, createAnalysisClient } from "../api/analysisClient";
 import { createReportClient } from "../api/reportClient";
 import { AnalysisStatePanel } from "../components/analysis/AnalysisStatePanel";
+import { MLPredictionCard } from "../components/ml/MLPredictionCard";
+import { RagAnswerCard } from "../components/rag/RagAnswerCard";
+import RagEmptyState from "../components/rag/RagEmptyState";
 import { MetaStrip } from "../components/common/EnterpriseUi";
 import { TurnEvidenceDrawer } from "../components/TurnEvidenceDrawer";
 import { TurnReportModal } from "../components/TurnReportModal";
@@ -11,14 +14,91 @@ import { normalizeApiResponse } from "../contracts/analysis";
 import { createUuid } from "../utils/createUuid";
 import { reportTitleForAnalysis } from "../utils/presentation";
 import { analysisError, clarifiedQuestion, commandClarificationMessage, commandClarificationType, commandErrorRun, exampleQuestionsFromDefinitions, formatSeoulDateTime, hasReusablePresentationArtifact, hydrateTurnsFromServer, quickViewAction, savedRunStatus, transientRun } from "./agentPageHelpers";
+import "./AgentPageAgents.css";
 
 const RUN_HISTORY_PAGE_SIZE = 20;
 const MAX_QUESTION_LENGTH = 1000;
 const QUESTION_DRAFT_KEY = "answervice.questionDraft";
 const CONVERSATION_KEY = "answervice.activeConversationId";
+const AGENT_MODES = [
+  ["AUTO", "자동 선택"],
+  ["DATA_ANALYSIS", "데이터 분석"],
+  ["INTERNAL_GUIDELINE", "내부지침"],
+];
+
+function mlPendingRun(question) {
+  return {
+    ...transientRun(question, "running"),
+    mlPrediction: {
+      status: "RUNNING",
+      request: { query: question },
+      completedStages: 1,
+    },
+  };
+}
+
+function predictionRun(question, result) {
+  const request = result.request;
+  const summary = result.summary;
+  const rows = result.daily || [];
+  const weightedPercent = Number(summary.weighted_occupancy_rate || 0) * 100;
+  return {
+    ...transientRun(question, "success"),
+    requestId: result.request_id,
+    traceId: result.trace_id,
+    summary: `${request.hotel_scope}는 향후 ${request.horizon}일 동안 전체 ${Number(summary.total_available_room_nights).toFixed(0)}객실박 중 ${Number(summary.predicted_sold_room_nights).toFixed(0)}객실박이 판매될 것으로 예측됩니다.`,
+    rowCount: rows.length,
+    evidenceReady: true,
+    metrics: [
+      { metricId: "PREDICTED_ROOMS_SOLD", resultField: "predicted_rooms_sold", label: "예측 판매 객실박", definition: "Backend 검증 완료 예측 판매 객실박", value: summary.predicted_sold_room_nights, unit: "객실박" },
+      { metricId: "AVAILABLE_ROOM_NIGHTS", resultField: "available_rooms", label: "전체 공급 객실박", definition: "Backend 검증 완료 전체 공급 객실박", value: summary.total_available_room_nights, unit: "객실박" },
+      { metricId: "REMAINING_ROOM_NIGHTS", resultField: "remaining_rooms", label: "잔여 예상 객실박", definition: "Backend 검증 완료 잔여 객실박", value: summary.remaining_room_nights, unit: "객실박" },
+      { metricId: request.metric, resultField: "predicted_occupancy_rate", label: "가중 예측 점유율", definition: "Backend 가중 집계 점유율", value: weightedPercent, unit: "%" },
+    ],
+    table: { columns: ["target_date", "available_rooms", "booking_on_hand", "predicted_rooms_sold", "remaining_rooms", "predicted_occupancy_rate"], rows },
+    chart: rows.length ? { chartType: "LINE", xField: "target_date", yFields: ["available_rooms", "booking_on_hand", "predicted_rooms_sold"] } : null,
+    sources: [{ name: String(result.evidence.feature_source || ""), urn: "urn:answervice:source:live_trino_pms", status: "success" }],
+    trace: [
+      { stage: "ML_AUTHORIZATION", outcome: result.evidence.authorization, detail: request.hotel_scope },
+      { stage: "ML_CAPABILITY", outcome: result.evidence.capability, detail: String(result.evidence.model_version || "") },
+      { stage: "ML_VALIDATION", outcome: "PASSED", detail: String(result.evidence.prediction_rows || 0) },
+    ],
+    meta: { asOf: request.as_of, timezone: "Asia/Seoul", seed: String(result.evidence.model_version || ""), schemaVersion: "ml-analysis-v1", contractVersion: "OPENAPI-v1.0.0" },
+    mlPrediction: {
+      status: "SUCCESS",
+      completedStages: 5,
+      request: { hotelScope: request.hotel_scope, metric: request.metric, horizon: request.horizon, asOf: request.as_of },
+      summary: {
+        totalAvailable: summary.total_available_room_nights,
+        totalPredicted: summary.predicted_sold_room_nights,
+        totalRemaining: summary.remaining_room_nights,
+        dailyAverage: summary.daily_average_predicted_rooms,
+        weightedOccupancy: weightedPercent,
+      },
+      daily: rows,
+      roomTypes: result.room_type_details || [],
+      trendDescription: result.trend.description,
+      limitations: result.limitations || [],
+      evidence: {
+        requestId: result.request_id,
+        traceId: result.trace_id,
+        modelName: result.evidence.model_name,
+        modelVersion: result.evidence.model_version,
+        artifactHash: result.evidence.artifact_hash,
+        featureSource: result.evidence.feature_source,
+        trainingSource: result.evidence.training_source,
+        featureAsOf: result.evidence.feature_as_of,
+        predictionRows: result.evidence.prediction_rows,
+        executionId: result.evidence.execution_id,
+        trinoQueryIds: result.evidence.trino_query_ids || [],
+        ragCalled: result.evidence.rag_called,
+      },
+    },
+  };
+}
 
 /** 대화형 분석 워크스페이스 최상위 화면을 렌더링한다. */
-export function AgentPage({ onNavigate }) {
+export function AgentPage({ onNavigate, onAgentModeChange }) {
   const analysisClient = useMemo(() => createAnalysisClient(fetch), []);
   const reportClient = useMemo(() => createReportClient(undefined, fetch), []);
   const [question, setQuestion] = useState(() => window.sessionStorage.getItem(QUESTION_DRAFT_KEY) || "");
@@ -28,6 +108,7 @@ export function AgentPage({ onNavigate }) {
   const [submitting, setSubmitting] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [selectedEvidenceRun, setSelectedEvidenceRun] = useState(null);
+  const [agentMode, setAgentMode] = useState("AUTO");
   const [reportModal, setReportModal] = useState("");
   const [reportModalRun, setReportModalRun] = useState(null);
   const [reportTitle, setReportTitle] = useState("");
@@ -242,6 +323,63 @@ export function AgentPage({ onNavigate }) {
       let activeConvId = conversationId;
       if (!activeConvId) activeConvId = await initConversation(generation);
       if (!activeConvId || requestGeneration.current !== generation) return;
+      if (agentMode !== "DATA_ANALYSIS") {
+        try {
+          const ragResult = await analysisClient.queryManual(
+            normalized,
+            agentMode === "INTERNAL_GUIDELINE" ? "DOCUMENT_ONLY" : "AUTO",
+            activeConvId,
+          );
+          if (ragResult.status === "ANSWER") {
+            const document = ragResult.document || { body: ragResult.answer?.text || "" };
+            setTurns((prev) => prev.map((turn) => turn.turnId === optimisticTurn.turnId ? {
+              ...turn,
+              turnId: ragResult.turn_id || turn.turnId,
+              run: {
+                ...transientRun(normalized, "success"),
+                requestId: ragResult.request_id || "",
+                traceId: ragResult.trace_id || traceId,
+                summary: document.body || ragResult.answer?.text || "",
+                rag: {
+                  ...document,
+                  answer_type: ragResult.answer_type,
+                  response_status: ragResult.response_status || "ANSWERED",
+                  answer_id: ragResult.answer_id || ragResult.request_id || "",
+                  answer_text: ragResult.answer?.text || "",
+                  processing_steps: ragResult.processing_steps || [],
+                  evidence_bundle: ragResult.evidence_bundle || [],
+                  citations: ragResult.citations || [],
+                },
+              },
+              viewType: "RAG",
+            } : turn));
+            return;
+          }
+          if (ragResult.status === "CONFLICT" || (ragResult.status === "NO_EVIDENCE" && agentMode === "INTERNAL_GUIDELINE")) {
+            const summary = ragResult.status === "CONFLICT"
+              ? "문서 기준 충돌이 확인되었습니다."
+              : "관련 내부지침 근거를 찾지 못했습니다.";
+            setTurns((prev) => prev.map((turn) => turn.turnId === optimisticTurn.turnId ? {
+              ...turn,
+              run: {
+                ...transientRun(normalized, "success"),
+                summary,
+                rag: {
+                  status: ragResult.status,
+                  answer_id: ragResult.answer_id || "",
+                  processing_steps: ragResult.processing_steps || [],
+                  evidence_bundle: ragResult.evidence_bundle || [],
+                  conflicts: ragResult.conflicts || [],
+                },
+              },
+              viewType: "RAG",
+            } : turn));
+            return;
+          }
+        } catch (ragError) {
+          if (agentMode === "INTERNAL_GUIDELINE") throw ragError;
+        }
+      }
       const headTurnId = turns.length > 0 ? turns.at(-1)?.turnId : undefined;
       let cmdResponse;
       try {
@@ -407,6 +545,46 @@ export function AgentPage({ onNavigate }) {
     void analyzeQuestion(String(form.get("question") || question).trim());
   };
 
+  const runApprovedPrediction = async (requestedQuestion) => {
+    const label = String(requestedQuestion || "").trim();
+    if (!label || submitting || requestInFlight.current) return;
+    requestInFlight.current = true;
+    setSubmitting(true);
+    setMessage("");
+    setQuestion("");
+    const turnId = `ml-${createUuid()}`;
+    setTurns((prev) => [
+      ...prev,
+      { turnId, question: label, run: mlPendingRun(label), viewType: "SUMMARY" },
+    ]);
+    try {
+      let activeConversationId = conversationId;
+      if (!activeConversationId) activeConversationId = await initConversation();
+      const result = await analysisClient.createMLAnalysis({
+        query: label,
+        conversation_id: activeConversationId,
+      });
+      setTurns((prev) => prev.map((turn) => turn.turnId === turnId
+        ? { ...turn, run: predictionRun(label, result) }
+        : turn));
+    } catch (error) {
+      const errorMessage = analysisError(error);
+      setTurns((prev) => prev.map((turn) => turn.turnId === turnId
+        ? {
+            ...turn,
+            run: {
+              ...commandErrorRun(label, { message: errorMessage, retryable: true, required_action: "RETRY" }),
+              mlPrediction: { status: "FAILED", request: { query: label }, completedStages: 1, error: errorMessage },
+            },
+          }
+        : turn));
+    } finally {
+      requestInFlight.current = false;
+      setSubmitting(false);
+      window.requestAnimationFrame(() => threadEndRef.current?.scrollIntoView({ behavior: "smooth" }));
+    }
+  };
+
   const saveAnalysis = async (targetRun) => {
     if (!["success", "partial"].includes(targetRun.status) || !targetRun.requestId || savedBusy) return;
     setSavedBusy(true);
@@ -474,6 +652,10 @@ export function AgentPage({ onNavigate }) {
     }
   };
 
+  useEffect(() => {
+    onAgentModeChange?.(agentMode);
+  }, [agentMode, onAgentModeChange]);
+
   return (
     <div className={`chat-layout ${evidenceOpen ? "evidence-open" : ""}`}>
       {/* 좌측: 저장된 분석 및 대화방 */}
@@ -497,9 +679,18 @@ export function AgentPage({ onNavigate }) {
 
       {/* 중앙: 대화 스레드 메인 */}
       <main className="chat-main" inert={Boolean(reportModal)}>
+        <nav className="agent-mode-selector" aria-label="질의 에이전트 선택">
+          {AGENT_MODES.map(([value, label]) => (
+            <button key={value} type="button" aria-pressed={agentMode === value} onClick={() => setAgentMode(value)}>
+              {label}
+            </button>
+          ))}
+        </nav>
         {activeEvidenceRun.meta?.asOf && <MetaStrip meta={activeEvidenceRun.meta} verified={Boolean(activeEvidenceRun.artifact && ["success", "partial"].includes(activeEvidenceRun.status))} />}
         
-        {turns.length === 0 && !submitting && (
+        {turns.length === 0 && !submitting && (agentMode === "INTERNAL_GUIDELINE" ? (
+          <RagEmptyState onAsk={analyzeQuestion} />
+        ) : (
           <section className="chat-empty-state" aria-labelledby="chat-empty-title">
             <small>대화형 데이터 분석</small>
             <h2 id="chat-empty-title">무엇을 분석할까요?</h2>
@@ -510,7 +701,7 @@ export function AgentPage({ onNavigate }) {
               </div>
             )}
           </section>
-        )}
+        ))}
 
         {turns.length > 0 && (
           <div className="conversation">
@@ -529,6 +720,23 @@ export function AgentPage({ onNavigate }) {
                   <span className="agent-avatar"><Sparkles size={16} /></span>
                   <div className="agent-response-container">
 
+                    {turnItem.run.rag ? (
+                      <RagAnswerCard
+                        rag={turnItem.run.rag}
+                        onFollowUp={analyzeQuestion}
+                        pdfUrl={turnItem.run.rag.document_id ? analysisClient.manualPdfUrl(turnItem.run.rag.document_id) : ""}
+                        pdfSources={(turnItem.run.rag.evidence_bundle || []).map((source) => ({
+                          label: source.document_name || source.document_id,
+                          url: source.document_id ? analysisClient.manualPdfUrl(source.document_id) : "",
+                        }))}
+                      />
+                    ) : turnItem.run.mlPrediction ? (
+                      <MLPredictionCard
+                        run={turnItem.run}
+                        disabled={submitting}
+                        onRetry={() => void runApprovedPrediction(turnItem.question)}
+                      />
+                    ) : (
                     <AnalysisStatePanel
                       run={turnItem.run}
                       viewType={turnItem.viewType || turnItem.resolvedSlots?.target_chart_type || "SUMMARY"}
@@ -561,6 +769,7 @@ export function AgentPage({ onNavigate }) {
                         setEvidenceOpen(true);
                       } : undefined}
                     />
+                    )}
                     {turnItem.run.reportDefinitionId && (
                       <div className="report-action-direct-nav" style={{ marginTop: "8px", display: "flex", justifyContent: "flex-end" }}>
                         <button
@@ -591,12 +800,15 @@ export function AgentPage({ onNavigate }) {
               value={question}
               maxLength={MAX_QUESTION_LENGTH}
               onChange={(e) => { setQuestion(e.target.value); setInputError(""); }}
-              placeholder="분석할 지표와 기간을 자연어로 입력하세요"
+              placeholder={agentMode === "INTERNAL_GUIDELINE"
+                ? "내부 업무 기준을 질문하세요"
+                : "분석할 지표와 기간을 자연어로 입력하세요"}
               aria-describedby="question-help"
               aria-invalid={Boolean(inputError)}
               disabled={submitting}
               required
             />
+            <button type="button" aria-label="ML 예측 실행" title="승인된 ML 모델로 예측" disabled={submitting || !question.trim()} onClick={() => void runApprovedPrediction(question)}><Sparkles size={16} /></button>
             <button aria-label="질문 전송" disabled={submitting || !question.trim()}><Send size={16} /></button>
           </div>
           <small id="question-help">{question.length.toLocaleString("ko-KR")}/{MAX_QUESTION_LENGTH.toLocaleString("ko-KR")}자</small>

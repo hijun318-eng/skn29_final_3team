@@ -1,0 +1,192 @@
+{
+  "label": "rooms_sold",
+  "grain": [
+    "property_id",
+    "target_date",
+    "room_type_code",
+    "horizon_days"
+  ],
+  "feature_count": 26,
+  "features": [
+    "horizon_days",
+    "available_room_nights",
+    "inventory_plan_known",
+    "booking_on_hand",
+    "cancelled_on_hand",
+    "booking_on_hand_ratio",
+    "rooms_sold_cutoff_lag_1",
+    "rooms_sold_cutoff_lag_7",
+    "rooms_sold_cutoff_lag_14",
+    "rooms_sold_cutoff_rolling_mean_7",
+    "rooms_sold_cutoff_rolling_mean_28",
+    "adr_cutoff_lag_7",
+    "cancellation_rate_cutoff_lag_28",
+    "target_day_of_week",
+    "target_month",
+    "target_is_weekend",
+    "target_is_month_start",
+    "target_is_month_end",
+    "target_is_public_holiday",
+    "target_is_holiday_eve",
+    "domestic_travel_index",
+    "inbound_travel_index",
+    "event_demand_index",
+    "room_type_code",
+    "target_season_code",
+    "weather_scenario_code"
+  ],
+  "numeric_features": [
+    "horizon_days",
+    "available_room_nights",
+    "inventory_plan_known",
+    "booking_on_hand",
+    "cancelled_on_hand",
+    "booking_on_hand_ratio",
+    "rooms_sold_cutoff_lag_1",
+    "rooms_sold_cutoff_lag_7",
+    "rooms_sold_cutoff_lag_14",
+    "rooms_sold_cutoff_rolling_mean_7",
+    "rooms_sold_cutoff_rolling_mean_28",
+    "adr_cutoff_lag_7",
+    "cancellation_rate_cutoff_lag_28",
+    "target_day_of_week",
+    "target_month",
+    "target_is_weekend",
+    "target_is_month_start",
+    "target_is_month_end",
+    "target_is_public_holiday",
+    "target_is_holiday_eve",
+    "domestic_travel_index",
+    "inbound_travel_index",
+    "event_demand_index"
+  ],
+  "categorical_features": [
+    "room_type_code",
+    "target_season_code",
+    "weather_scenario_code"
+  ],
+  "hidden_qa_used": false,
+  "critical_runtime_features": [
+    "booking_on_hand",
+    "booking_on_hand_ratio",
+    "cancelled_on_hand"
+  ],
+  "numeric_training_ranges": {
+    "horizon_days": {
+      "min": 1.0,
+      "max": 1.0
+    },
+    "available_room_nights": {
+      "min": 30.0,
+      "max": 31.0
+    },
+    "inventory_plan_known": {
+      "min": 1.0,
+      "max": 1.0
+    },
+    "booking_on_hand": {
+      "min": 4.0,
+      "max": 5.0
+    },
+    "cancelled_on_hand": {
+      "min": 1.0,
+      "max": 1.0
+    },
+    "booking_on_hand_ratio": {
+      "min": 0.8,
+      "max": 0.8
+    },
+    "rooms_sold_cutoff_lag_1": {
+      "min": 4.0,
+      "max": 14.0
+    },
+    "rooms_sold_cutoff_lag_7": {
+      "min": 3.0,
+      "max": 13.0
+    },
+    "rooms_sold_cutoff_lag_14": {
+      "min": 2.0,
+      "max": 12.0
+    },
+    "rooms_sold_cutoff_rolling_mean_7": {
+      "min": 10.0,
+      "max": 10.0
+    },
+    "rooms_sold_cutoff_rolling_mean_28": {
+      "min": 10.0,
+      "max": 10.0
+    },
+    "adr_cutoff_lag_7": {
+      "min": 120.0,
+      "max": 120.0
+    },
+    "cancellation_rate_cutoff_lag_28": {
+      "min": 0.1,
+      "max": 0.1
+    },
+    "target_day_of_week": {
+      "min": 1.0,
+      "max": 7.0
+    },
+    "target_month": {
+      "min": 1.0,
+      "max": 12.0
+    },
+    "target_is_weekend": {
+      "min": 0.0,
+      "max": 1.0
+    },
+    "target_is_month_start": {
+      "min": 0.0,
+      "max": 1.0
+    },
+    "target_is_month_end": {
+      "min": 0.0,
+      "max": 1.0
+    },
+    "target_is_public_holiday": {
+      "min": 0.0,
+      "max": 1.0
+    },
+    "target_is_holiday_eve": {
+      "min": 0.0,
+      "max": 1.0
+    },
+    "domestic_travel_index": {
+      "min": 100.0,
+      "max": 101.0
+    },
+    "inbound_travel_index": {
+      "min": 100.0,
+      "max": 101.0
+    },
+    "event_demand_index": {
+      "min": 1.0,
+      "max": 1.0
+    }
+  },
+  "categorical_training_values": {
+    "room_type_code": [
+      "DLX",
+      "STD"
+    ],
+    "target_season_code": [
+      "SUM",
+      "WIN"
+    ],
+    "weather_scenario_code": [
+      "A"
+    ]
+  },
+  "dataset_versions": {
+    "schema_version": [
+      "v1"
+    ],
+    "scenario_version": [
+      "v1"
+    ],
+    "fixture_version": [
+      "v1"
+    ]
+  }
+}

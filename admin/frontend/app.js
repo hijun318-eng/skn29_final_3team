@@ -1,0 +1,33 @@
+const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
+const state={me:null,users:[],auditPage:1,auditPages:1};
+const esc=v=>String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+const date=v=>new Intl.DateTimeFormat("ko-KR",{dateStyle:"medium",timeStyle:"short"}).format(new Date(v));
+const toast=message=>{const el=$("#toast");el.textContent=message;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2400)};
+
+async function api(path,options={}){
+  const response=await fetch(path,{credentials:"include",headers:{"Content-Type":"application/json",...(options.headers||{})},...options});
+  if(response.status===401){showLogin();throw new Error("관리자 로그인이 필요합니다.")}
+  if(!response.ok){const body=await response.json().catch(()=>({}));throw new Error(body.detail||"요청을 처리하지 못했습니다.")}
+  return response.status===204?null:response.json();
+}
+
+function showLogin(){state.me=null;$("#app-view").classList.add("hidden");$("#login-view").classList.remove("hidden")}
+function showApp(me){state.me=me;$("#login-view").classList.add("hidden");$("#app-view").classList.remove("hidden");$("#identity-name").textContent=me.name;$("#identity-role").textContent=me.role;$("#add-user").hidden=me.role!=="ADMIN";$("#today").textContent=new Intl.DateTimeFormat("ko-KR",{dateStyle:"full"}).format(new Date());navigate("connections")}
+
+async function login(event){event.preventDefault();$("#login-error").textContent="";try{const me=await api("/admin-api/auth/login",{method:"POST",body:JSON.stringify({email:$("#login-email").value,password:$("#login-password").value})});$("#login-form").reset();showApp(me)}catch(error){$("#login-error").textContent=error.message}}
+async function logout(){try{await api("/admin-api/auth/logout",{method:"POST"})}finally{showLogin()}}
+
+function navigate(page){$$('.nav-item').forEach(button=>button.classList.toggle("active",button.dataset.page===page));$$('.page').forEach(section=>section.classList.toggle("active",section.id===`page-${page}`));if(page==="connections")loadConnections();if(page==="permissions")loadUsers();if(page==="audit"){state.auditPage=1;loadAudit()}}
+
+async function loadConnections(){const grid=$("#connection-grid");grid.innerHTML='<p class="lede">연결 상태를 확인하고 있습니다.</p>';try{const data=await api("/admin-api/connections");grid.innerHTML=data.items.map((item,index)=>`<article class="connection-card"><span class="number">${String(index+1).padStart(2,"0")}</span><h3>${esc(item.name)}</h3><p>${esc(item.type)} · ${item.latency_ms===null?"미설정":`${item.latency_ms} ms`}</p><span class="status ${esc(item.status)}">${esc(item.status)}</span></article>`).join("");$("#connection-time").textContent=`마지막 확인 ${date(data.checked_at)}`}catch(error){grid.innerHTML=`<p class="form-error">${esc(error.message)}</p>`}}
+
+async function loadUsers(){try{state.users=await api("/admin-api/users");$("#user-rows").innerHTML=state.users.map(user=>`<tr><td><strong>${esc(user.name)}</strong></td><td>${esc(user.email)}</td><td><span class="role-tag">${esc(user.role)}</span></td><td><span class="status ${user.is_active?"READY":"UNKNOWN"}">${user.is_active?"활성":"비활성"}</span></td><td>${date(user.created_at)}</td><td class="actions">${state.me.role==="ADMIN"?`<div class="row-actions"><button data-edit="${user.id}">수정</button><button class="danger" data-delete="${user.id}">삭제</button></div>`:"조회 전용"}</td></tr>`).join("")}catch(error){toast(error.message)}}
+
+function openUser(user=null){$("#user-form").reset();$("#user-error").textContent="";$("#user-id").value=user?.id||"";$("#user-name").value=user?.name||"";$("#user-email").value=user?.email||"";$("#user-role").value=user?.role||"VIEWER";$("#user-active").checked=user?.is_active??true;$("#user-password").required=!user;$("#dialog-title").textContent=user?"관리자 수정":"관리자 추가";$("#user-dialog").showModal()}
+async function saveUser(event){event.preventDefault();const id=$("#user-id").value;const payload={name:$("#user-name").value,email:$("#user-email").value,role:$("#user-role").value,is_active:$("#user-active").checked};const password=$("#user-password").value;if(password)payload.password=password;try{await api(id?`/admin-api/users/${id}`:"/admin-api/users",{method:id?"PATCH":"POST",body:JSON.stringify(payload)});$("#user-dialog").close();toast(id?"관리자 정보가 수정되었습니다.":"관리자가 생성되었습니다.");loadUsers()}catch(error){$("#user-error").textContent=error.message}}
+async function deleteUser(id){const user=state.users.find(item=>item.id===id);if(!user||!confirm(`${user.name} 계정을 삭제하시겠습니까?`))return;try{await api(`/admin-api/users/${id}`,{method:"DELETE"});toast("관리자 계정이 삭제되었습니다.");loadUsers()}catch(error){toast(error.message)}}
+
+async function loadAudit(){const query=new URLSearchParams({page:state.auditPage,search:$("#audit-search").value,result:$("#audit-result").value});try{const data=await api(`/admin-api/audit-events?${query}`);state.auditPages=data.total_pages;$("#audit-page").textContent=`${data.page} / ${data.total_pages} · 총 ${data.total}건`;$("#audit-prev").disabled=data.page<=1;$("#audit-next").disabled=data.page>=data.total_pages;$("#audit-rows").innerHTML=data.items.map(item=>`<tr><td>${date(item.occurred_at)}</td><td>${esc(item.actor_email||"SYSTEM")}</td><td><strong>${esc(item.action)}</strong></td><td>${esc(item.target_type||"-")}<br><small>${esc(item.target_id||"")}</small></td><td><span class="result-tag ${esc(item.result)}">${esc(item.result)}</span></td><td title="${esc(JSON.stringify(item.detail))}">${esc(JSON.stringify(item.detail)).slice(0,70)}</td></tr>`).join("")||'<tr><td colspan="6">감사 이벤트가 없습니다.</td></tr>'}catch(error){toast(error.message)}}
+
+$("#login-form").addEventListener("submit",login);$("#logout").addEventListener("click",logout);$$('.nav-item').forEach(button=>button.addEventListener("click",()=>navigate(button.dataset.page)));$("#refresh-connections").addEventListener("click",loadConnections);$("#add-user").addEventListener("click",()=>openUser());$("#user-form").addEventListener("submit",saveUser);$("#close-dialog").addEventListener("click",()=>$("#user-dialog").close());$("#cancel-dialog").addEventListener("click",()=>$("#user-dialog").close());$("#user-rows").addEventListener("click",event=>{const edit=event.target.dataset.edit,remove=event.target.dataset.delete;if(edit)openUser(state.users.find(user=>user.id===edit));if(remove)deleteUser(remove)});$("#audit-filter").addEventListener("click",()=>{state.auditPage=1;loadAudit()});$("#audit-prev").addEventListener("click",()=>{if(state.auditPage>1){state.auditPage--;loadAudit()}});$("#audit-next").addEventListener("click",()=>{if(state.auditPage<state.auditPages){state.auditPage++;loadAudit()}});
+api("/admin-api/auth/me").then(showApp).catch(showLogin);

@@ -1,0 +1,97 @@
+name: answervice
+
+services:
+  admin-db:
+    image: postgres:16.13-bookworm
+    container_name: answervice-admin-db
+    environment:
+      POSTGRES_DB: answervice_admin
+      POSTGRES_USER: ${ADMIN_DB_USER:-admin_app}
+      POSTGRES_PASSWORD: ${ADMIN_DB_PASSWORD:?ADMIN_DB_PASSWORD is required}
+      TZ: Asia/Seoul
+    volumes:
+      - admin-postgres-data:/var/lib/postgresql/data
+      - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+    ports:
+      - "127.0.0.1:${ADMIN_DB_PORT:-35432}:5432"
+    networks: [admin-network]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  admin-api:
+    build: ./backend
+    container_name: answervice-admin-api
+    environment:
+      ADMIN_DATABASE_URL: postgresql://${ADMIN_DB_USER:-admin_app}:${ADMIN_DB_PASSWORD}@admin-db:5432/answervice_admin
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:?ADMIN_SESSION_SECRET is required}
+      ADMIN_BOOTSTRAP_NAME: ${ADMIN_BOOTSTRAP_NAME:-System Administrator}
+      ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:?ADMIN_BOOTSTRAP_EMAIL is required}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:?ADMIN_BOOTSTRAP_PASSWORD is required}
+      ADMIN_FRONTEND_ORIGIN: ${ADMIN_FRONTEND_ORIGIN:-http://localhost:28080}
+      ADMIN_COOKIE_SECURE: ${ADMIN_COOKIE_SECURE:-false}
+      ADMIN_SESSION_TTL_SECONDS: ${ADMIN_SESSION_TTL_SECONDS:-28800}
+      ADMIN_PROBE_TIMEOUT_SECONDS: ${ADMIN_PROBE_TIMEOUT_SECONDS:-8}
+      EXISTING_READINESS_URL: ${EXISTING_READINESS_URL:-}
+      PMS_HEALTH_DSN: ${PMS_HEALTH_DSN:-}
+      POS_HEALTH_DSN: ${POS_HEALTH_DSN:-}
+      CRM_HEALTH_DSN: ${CRM_HEALTH_DSN:-}
+      FACILITY_HEALTH_DSN: ${FACILITY_HEALTH_DSN:-}
+      BANQUET_HEALTH_DSN: ${BANQUET_HEALTH_DSN:-}
+      APP_POSTGRES_HEALTH_DSN: ${APP_POSTGRES_HEALTH_DSN:-}
+      TRINO_HEALTH_URL: ${TRINO_HEALTH_URL:-}
+      DATAHUB_HEALTH_URL: ${DATAHUB_HEALTH_URL:-}
+      MODEL_HEALTH_URL: ${MODEL_HEALTH_URL:-}
+      TZ: Asia/Seoul
+    ports:
+      - "127.0.0.1:${ADMIN_API_PORT:-28081}:8000"
+    networks:
+      - admin-network
+      - node2-validation-network
+      - database-network
+      - datahub-network
+    depends_on:
+      admin-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/health', timeout=2).close()\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  admin-web:
+    build: ./frontend
+    container_name: answervice-admin-web
+    ports:
+      - "127.0.0.1:${ADMIN_WEB_PORT:-28080}:8080"
+    networks: [admin-network]
+    depends_on:
+      admin-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+networks:
+  admin-network:
+    name: answervice-admin-network
+  node2-validation-network:
+    external: true
+    name: answervice-node2-validation-network
+  database-network:
+    external: true
+    name: answervice-network
+  datahub-network:
+    external: true
+    name: answervice_datahub-network
+
+volumes:
+  admin-postgres-data:
+    name: answervice-admin-postgres-data

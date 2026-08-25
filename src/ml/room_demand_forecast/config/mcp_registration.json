@@ -1,0 +1,33 @@
+{
+  "tool_code": "forecast-room-demand-7d",
+  "semantic_version": "1.0.0",
+  "evidence_type": "MODEL_PREDICTION",
+  "enabled": false,
+  "approval_status": "REFERENCE_ONLY",
+  "required_roles": ["hotel_analyst", "data_admin"],
+  "timeout_seconds": 2,
+  "maximum_retries": 0,
+  "title": "7일 객실수요 예측",
+  "description": "실제 DB Feature adapter 연결 전까지 비활성인 room-demand 참조 모델",
+  "input_schema_json": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["property_id", "feature_as_of", "feature_set_version", "input_schema_version"],
+    "properties": {
+      "property_id": {"type": "string", "minLength": 1},
+      "feature_as_of": {"type": "string", "format": "date"},
+      "feature_set_version": {"const": "room-demand-feature-v1.0"},
+      "input_schema_version": {"const": "room-demand-forecast-input-v1.0"}
+    }
+  },
+  "output_schema_json": {
+    "type": "object",
+    "required": ["evidence_type", "fact_status", "prediction"],
+    "properties": {
+      "evidence_type": {"const": "MODEL_PREDICTION"},
+      "fact_status": {"const": "PREDICTION_NOT_OBSERVED"},
+      "prediction": {"type": "object"}
+    }
+  },
+  "health_status": "BLOCKED"
+}

@@ -1,0 +1,57 @@
+{
+  "model_name": "LogisticRegression",
+  "model_version": "reservation-no-show-v1.0",
+  "feature_set_version": "reservation-no-show-feature-v1.0",
+  "input_schema_version": "reservation-no-show-input-v1.0",
+  "label_rule_version": "SYNTHETIC_RULE_V1",
+  "threshold": 0.015165358285366045,
+  "selection_metric": "VALIDATION PR-AUC gain >= 0.005 plus Top15, Brier, monthly stability gates",
+  "selection_reason": "No challenger met validation gain, Top15, calibration, and stability gates",
+  "decision_policy": "daily score ranking Top 15%; stored threshold is validation reference cutoff",
+  "candidate_trials": 16,
+  "candidate_validation": {
+    "PriorProbability": {
+      "pr_auc": 0.008224043715846995,
+      "gain_vs_logistic": -0.006074287528172186,
+      "selection_eligible": false
+    },
+    "LogisticRegression": {
+      "pr_auc": 0.01429833124401918,
+      "gain_vs_logistic": 0.0,
+      "selection_eligible": false
+    },
+    "LogisticRegressionBalanced": {
+      "pr_auc": 0.014362452555012003,
+      "gain_vs_logistic": 6.412131099282209e-05,
+      "selection_eligible": false
+    },
+    "HistGradientBoostingClassifier": {
+      "pr_auc": 0.016186900099400225,
+      "gain_vs_logistic": 0.001888568855381044,
+      "selection_eligible": false
+    },
+    "LightGBM": {
+      "pr_auc": 0.01640632472781753,
+      "gain_vs_logistic": 0.0021079934837983476,
+      "selection_eligible": false
+    },
+    "RandomForest": {
+      "pr_auc": 0.014604847747366964,
+      "gain_vs_logistic": 0.0003065165033477833,
+      "selection_eligible": false
+    },
+    "XGBoost": {
+      "pr_auc": 0.014628744471148005,
+      "gain_vs_logistic": 0.0003304132271288243,
+      "selection_eligible": false
+    }
+  },
+  "training_seed": 20260804,
+  "trained_at_utc": "2026-08-04T03:07:40.457804+00:00",
+  "python": "3.10.20",
+  "scikit_learn": "1.7.2",
+  "lightgbm": "4.6.0",
+  "xgboost": "3.2.0",
+  "joblib_sha256": "91ee8187ce58682c5d86c1de81411f41310c80a08d4f544b6c03bab83b9c74ea",
+  "onnx_sha256": "e903624bbe9ff0cb665a99741269dbb0fd03ab15fc209681adc502ccc65994e0"
+}

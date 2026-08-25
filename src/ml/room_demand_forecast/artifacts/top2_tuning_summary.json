@@ -1,0 +1,8 @@
+{
+  "generated_at_utc": "2026-08-19T00:44:44.196457+00:00",
+  "candidate_count": 2,
+  "top2_candidates": [
+    "HistGradientBoostingRegressor"
+  ],
+  "best_trial_id": "HistGradientBoostingRegressor:tuned_1"
+}

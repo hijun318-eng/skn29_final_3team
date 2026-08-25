@@ -1,0 +1,176 @@
+{
+  "status": "PASS",
+  "checks": {
+    "production_hidden": true,
+    "production_call_blocked": true,
+    "demo_listed": true,
+    "demo_call_success": true,
+    "room_demand_route": true,
+    "no_show_route_separate": true,
+    "stdio_initialize": true,
+    "stdio_list": true,
+    "stdio_call": true
+  },
+  "routes": {
+    "room_demand": {
+      "route": "ML_ONLY",
+      "decision_id": "f9926668d85919bc30a62d4e",
+      "use_sql": false,
+      "use_rag": false,
+      "use_ml": true,
+      "ml_tool_code": "forecast-room-demand-7d",
+      "reason": "7일 객실수요 미래 예측"
+    },
+    "no_show": {
+      "route": "ML_ONLY",
+      "decision_id": "a78a38cbc63e1315f09f90d4",
+      "use_sql": false,
+      "use_rag": false,
+      "use_ml": true,
+      "ml_tool_code": "predict-reservation-no-show",
+      "reason": "예약 No-show 미래 위험 예측"
+    }
+  },
+  "production_list": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "tools": []
+    }
+  },
+  "production_call": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "TOOL_NOT_APPROVED_OR_ACCESS_DENIED"
+        }
+      ],
+      "isError": true
+    }
+  },
+  "demo_list": {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "result": {
+      "tools": [
+        {
+          "name": "forecast-room-demand-7d",
+          "title": "7일 객실수요 예측",
+          "description": "합성 Feature snapshot과 XGBRegressor 산출물로 향후 7일 객실수요를 반환합니다. 확정 사실이 아닙니다.",
+          "inputSchema": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "property_id",
+              "feature_as_of",
+              "feature_set_version",
+              "input_schema_version"
+            ],
+            "properties": {
+              "property_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "feature_as_of": {
+                "type": "string",
+                "format": "date"
+              },
+              "feature_set_version": {
+                "const": "room-demand-feature-v1.0"
+              },
+              "input_schema_version": {
+                "const": "room-demand-forecast-input-v1.0"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "demo_call": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"evidence_type\":\"MODEL_PREDICTION\",\"fact_status\":\"PREDICTION_NOT_OBSERVED\",\"request_id\":\"room-demand-fixture\",\"trace_id\":\"trace-room-demand-fixture\",\"prediction\":{\"property_id\":\"SYNTHETIC_HOTEL_001\",\"feature_as_of\":\"2026-07-28\",\"model_name\":\"XGBRegressor\",\"model_version\":\"room-demand-xgb-v1.0\",\"feature_set_version\":\"room-demand-feature-v1.0\",\"input_schema_version\":\"room-demand-forecast-input-v1.0\",\"execution_id\":\"mlrun-fixture\",\"forecast_status\":\"SUCCESS\",\"forecast_days\":7,\"forecast_row_count\":28,\"predictions\":[{\"target_date\":\"2026-07-29T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":1,\"available_room_nights\":89,\"predicted_rooms_sold\":55,\"prediction_lower_rooms_sold\":53,\"prediction_upper_rooms_sold\":57,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-29T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":1,\"available_room_nights\":20,\"predicted_rooms_sold\":11,\"prediction_lower_rooms_sold\":10,\"prediction_upper_rooms_sold\":12,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-29T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":1,\"available_room_nights\":149,\"predicted_rooms_sold\":104,\"prediction_lower_rooms_sold\":100,\"prediction_upper_rooms_sold\":108,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-29T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":1,\"available_room_nights\":40,\"predicted_rooms_sold\":21,\"prediction_lower_rooms_sold\":20,\"prediction_upper_rooms_sold\":22,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-30T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":2,\"available_room_nights\":88,\"predicted_rooms_sold\":51,\"prediction_lower_rooms_sold\":48,\"prediction_upper_rooms_sold\":54,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-30T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":2,\"available_room_nights\":19,\"predicted_rooms_sold\":11,\"prediction_lower_rooms_sold\":10,\"prediction_upper_rooms_sold\":12,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-30T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":2,\"available_room_nights\":150,\"predicted_rooms_sold\":112,\"prediction_lower_rooms_sold\":108,\"prediction_upper_rooms_sold\":116,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-30T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":2,\"available_room_nights\":39,\"predicted_rooms_sold\":20,\"prediction_lower_rooms_sold\":19,\"prediction_upper_rooms_sold\":21,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-31T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":3,\"available_room_nights\":90,\"predicted_rooms_sold\":61,\"prediction_lower_rooms_sold\":59,\"prediction_upper_rooms_sold\":63,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-31T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":3,\"available_room_nights\":20,\"predicted_rooms_sold\":12,\"prediction_lower_rooms_sold\":11,\"prediction_upper_rooms_sold\":13,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-31T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":3,\"available_room_nights\":150,\"predicted_rooms_sold\":96,\"prediction_lower_rooms_sold\":92,\"prediction_upper_rooms_sold\":100,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-31T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":3,\"available_room_nights\":40,\"predicted_rooms_sold\":20,\"prediction_lower_rooms_sold\":19,\"prediction_upper_rooms_sold\":21,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-01T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":4,\"available_room_nights\":90,\"predicted_rooms_sold\":65,\"prediction_lower_rooms_sold\":62,\"prediction_upper_rooms_sold\":68,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-01T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":4,\"available_room_nights\":17,\"predicted_rooms_sold\":12,\"prediction_lower_rooms_sold\":11,\"prediction_upper_rooms_sold\":13,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-01T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":4,\"available_room_nights\":150,\"predicted_rooms_sold\":115,\"prediction_lower_rooms_sold\":111,\"prediction_upper_rooms_sold\":119,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-01T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":4,\"available_room_nights\":40,\"predicted_rooms_sold\":27,\"prediction_lower_rooms_sold\":26,\"prediction_upper_rooms_sold\":28,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-02T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":5,\"available_room_nights\":90,\"predicted_rooms_sold\":63,\"prediction_lower_rooms_sold\":60,\"prediction_upper_rooms_sold\":66,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-02T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":5,\"available_room_nights\":19,\"predicted_rooms_sold\":11,\"prediction_lower_rooms_sold\":10,\"prediction_upper_rooms_sold\":12,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-02T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":5,\"available_room_nights\":150,\"predicted_rooms_sold\":117,\"prediction_lower_rooms_sold\":112,\"prediction_upper_rooms_sold\":122,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-02T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":5,\"available_room_nights\":40,\"predicted_rooms_sold\":24,\"prediction_lower_rooms_sold\":22,\"prediction_upper_rooms_sold\":26,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-03T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":6,\"available_room_nights\":90,\"predicted_rooms_sold\":56,\"prediction_lower_rooms_sold\":53,\"prediction_upper_rooms_sold\":59,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-03T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":6,\"available_room_nights\":20,\"predicted_rooms_sold\":12,\"prediction_lower_rooms_sold\":11,\"prediction_upper_rooms_sold\":13,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-03T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":6,\"available_room_nights\":150,\"predicted_rooms_sold\":97,\"prediction_lower_rooms_sold\":92,\"prediction_upper_rooms_sold\":102,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-03T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":6,\"available_room_nights\":40,\"predicted_rooms_sold\":21,\"prediction_lower_rooms_sold\":19,\"prediction_upper_rooms_sold\":23,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-04T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":7,\"available_room_nights\":89,\"predicted_rooms_sold\":57,\"prediction_lower_rooms_sold\":54,\"prediction_upper_rooms_sold\":60,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-04T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":7,\"available_room_nights\":20,\"predicted_rooms_sold\":10,\"prediction_lower_rooms_sold\":9,\"prediction_upper_rooms_sold\":11,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-04T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":7,\"available_room_nights\":150,\"predicted_rooms_sold\":97,\"prediction_lower_rooms_sold\":92,\"prediction_upper_rooms_sold\":102,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-04T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":7,\"available_room_nights\":39,\"predicted_rooms_sold\":19,\"prediction_lower_rooms_sold\":17,\"prediction_upper_rooms_sold\":21,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"}],\"error_message\":null,\"is_synthetic\":true,\"display_label\":\"모델 예측 · 합성 데이터 기반 예측\",\"duration_ms\":0.0}}"
+        }
+      ],
+      "isError": false
+    }
+  },
+  "stdio_responses": [
+    {
+      "jsonrpc": "2.0",
+      "id": 11,
+      "result": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {
+          "tools": {
+            "listChanged": false
+          }
+        },
+        "serverInfo": {
+          "name": "answervice-room-demand-ml",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 12,
+      "result": {
+        "tools": [
+          {
+            "name": "forecast-room-demand-7d",
+            "title": "7일 객실수요 예측",
+            "description": "합성 Feature snapshot과 XGBRegressor 산출물로 향후 7일 객실수요를 반환합니다. 확정 사실이 아닙니다.",
+            "inputSchema": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "property_id",
+                "feature_as_of",
+                "feature_set_version",
+                "input_schema_version"
+              ],
+              "properties": {
+                "property_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "feature_as_of": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "feature_set_version": {
+                  "const": "room-demand-feature-v1.0"
+                },
+                "input_schema_version": {
+                  "const": "room-demand-forecast-input-v1.0"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 13,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"evidence_type\":\"MODEL_PREDICTION\",\"fact_status\":\"PREDICTION_NOT_OBSERVED\",\"request_id\":\"13\",\"trace_id\":\"trace-13\",\"prediction\":{\"property_id\":\"SYNTHETIC_HOTEL_001\",\"feature_as_of\":\"2026-07-28\",\"model_name\":\"XGBRegressor\",\"model_version\":\"room-demand-xgb-v1.0\",\"feature_set_version\":\"room-demand-feature-v1.0\",\"input_schema_version\":\"room-demand-forecast-input-v1.0\",\"execution_id\":\"mlrun-fixture\",\"forecast_status\":\"SUCCESS\",\"forecast_days\":7,\"forecast_row_count\":28,\"predictions\":[{\"target_date\":\"2026-07-29T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":1,\"available_room_nights\":89,\"predicted_rooms_sold\":55,\"prediction_lower_rooms_sold\":53,\"prediction_upper_rooms_sold\":57,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-29T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":1,\"available_room_nights\":20,\"predicted_rooms_sold\":11,\"prediction_lower_rooms_sold\":10,\"prediction_upper_rooms_sold\":12,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-29T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":1,\"available_room_nights\":149,\"predicted_rooms_sold\":104,\"prediction_lower_rooms_sold\":100,\"prediction_upper_rooms_sold\":108,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-29T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":1,\"available_room_nights\":40,\"predicted_rooms_sold\":21,\"prediction_lower_rooms_sold\":20,\"prediction_upper_rooms_sold\":22,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-30T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":2,\"available_room_nights\":88,\"predicted_rooms_sold\":51,\"prediction_lower_rooms_sold\":48,\"prediction_upper_rooms_sold\":54,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-30T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":2,\"available_room_nights\":19,\"predicted_rooms_sold\":11,\"prediction_lower_rooms_sold\":10,\"prediction_upper_rooms_sold\":12,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-30T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":2,\"available_room_nights\":150,\"predicted_rooms_sold\":112,\"prediction_lower_rooms_sold\":108,\"prediction_upper_rooms_sold\":116,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-30T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":2,\"available_room_nights\":39,\"predicted_rooms_sold\":20,\"prediction_lower_rooms_sold\":19,\"prediction_upper_rooms_sold\":21,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-31T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":3,\"available_room_nights\":90,\"predicted_rooms_sold\":61,\"prediction_lower_rooms_sold\":59,\"prediction_upper_rooms_sold\":63,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-31T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":3,\"available_room_nights\":20,\"predicted_rooms_sold\":12,\"prediction_lower_rooms_sold\":11,\"prediction_upper_rooms_sold\":13,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-31T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":3,\"available_room_nights\":150,\"predicted_rooms_sold\":96,\"prediction_lower_rooms_sold\":92,\"prediction_upper_rooms_sold\":100,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-07-31T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":3,\"available_room_nights\":40,\"predicted_rooms_sold\":20,\"prediction_lower_rooms_sold\":19,\"prediction_upper_rooms_sold\":21,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-01T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":4,\"available_room_nights\":90,\"predicted_rooms_sold\":65,\"prediction_lower_rooms_sold\":62,\"prediction_upper_rooms_sold\":68,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-01T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":4,\"available_room_nights\":17,\"predicted_rooms_sold\":12,\"prediction_lower_rooms_sold\":11,\"prediction_upper_rooms_sold\":13,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-01T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":4,\"available_room_nights\":150,\"predicted_rooms_sold\":115,\"prediction_lower_rooms_sold\":111,\"prediction_upper_rooms_sold\":119,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-01T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":4,\"available_room_nights\":40,\"predicted_rooms_sold\":27,\"prediction_lower_rooms_sold\":26,\"prediction_upper_rooms_sold\":28,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-02T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":5,\"available_room_nights\":90,\"predicted_rooms_sold\":63,\"prediction_lower_rooms_sold\":60,\"prediction_upper_rooms_sold\":66,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-02T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":5,\"available_room_nights\":19,\"predicted_rooms_sold\":11,\"prediction_lower_rooms_sold\":10,\"prediction_upper_rooms_sold\":12,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-02T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":5,\"available_room_nights\":150,\"predicted_rooms_sold\":117,\"prediction_lower_rooms_sold\":112,\"prediction_upper_rooms_sold\":122,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-02T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":5,\"available_room_nights\":40,\"predicted_rooms_sold\":24,\"prediction_lower_rooms_sold\":22,\"prediction_upper_rooms_sold\":26,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-03T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":6,\"available_room_nights\":90,\"predicted_rooms_sold\":56,\"prediction_lower_rooms_sold\":53,\"prediction_upper_rooms_sold\":59,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-03T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":6,\"available_room_nights\":20,\"predicted_rooms_sold\":12,\"prediction_lower_rooms_sold\":11,\"prediction_upper_rooms_sold\":13,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-03T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":6,\"available_room_nights\":150,\"predicted_rooms_sold\":97,\"prediction_lower_rooms_sold\":92,\"prediction_upper_rooms_sold\":102,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-03T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":6,\"available_room_nights\":40,\"predicted_rooms_sold\":21,\"prediction_lower_rooms_sold\":19,\"prediction_upper_rooms_sold\":23,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-04T00:00:00.000\",\"room_type_code\":\"DELUXE\",\"horizon_days\":7,\"available_room_nights\":89,\"predicted_rooms_sold\":57,\"prediction_lower_rooms_sold\":54,\"prediction_upper_rooms_sold\":60,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-04T00:00:00.000\",\"room_type_code\":\"RESIDENCE\",\"horizon_days\":7,\"available_room_nights\":20,\"predicted_rooms_sold\":10,\"prediction_lower_rooms_sold\":9,\"prediction_upper_rooms_sold\":11,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-04T00:00:00.000\",\"room_type_code\":\"STANDARD\",\"horizon_days\":7,\"available_room_nights\":150,\"predicted_rooms_sold\":97,\"prediction_lower_rooms_sold\":92,\"prediction_upper_rooms_sold\":102,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"},{\"target_date\":\"2026-08-04T00:00:00.000\",\"room_type_code\":\"SUITE\",\"horizon_days\":7,\"available_room_nights\":39,\"predicted_rooms_sold\":19,\"prediction_lower_rooms_sold\":17,\"prediction_upper_rooms_sold\":21,\"input_range_warning\":true,\"out_of_range_features\":\"inbound_travel_index\"}],\"error_message\":null,\"is_synthetic\":true,\"display_label\":\"모델 예측 · 합성 데이터 기반 예측\",\"duration_ms\":0.0}}"
+          }
+        ],
+        "isError": false
+      }
+    }
+  ]
+}

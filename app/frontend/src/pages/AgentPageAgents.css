@@ -1,0 +1,97 @@
+/* 분석·내부지침·ML Agent 모드 선택 영역과 전환 상태의 시각 규칙을 정의한다. */
+
+.agent-mode-selector {
+  display: flex;
+  gap: 0.35rem;
+  margin: 0.75rem auto 0;
+  padding: 0.3rem;
+  width: fit-content;
+  border: 1px solid #dbe2ea;
+  border-radius: 999px;
+  background: #f5f7f9;
+}
+
+.agent-mode-selector button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.55rem 0.9rem;
+  background: transparent;
+  color: #52606d;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.agent-mode-selector button[aria-pressed="true"] {
+  background: #143d35;
+  color: #fff;
+  box-shadow: 0 4px 12px rgb(20 61 53 / 18%);
+}
+
+.rag-processing-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.8rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rag-processing-steps li {
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: #e8f3ef;
+  color: #185848;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.rag-answer-body dd p {
+  margin: 0 0 0.65rem;
+  line-height: 1.65;
+}
+
+.rag-source-reference {
+  padding: 0.65rem 0.8rem;
+  border-left: 3px solid #b7791f;
+  background: #fff8e8;
+  color: #744210;
+  font-weight: 700;
+}
+
+@media (max-width: 640px) {
+  .agent-mode-selector {
+    width: calc(100% - 1rem);
+  }
+
+  .agent-mode-selector button {
+    flex: 1;
+    padding-inline: 0.45rem;
+  }
+}
+.rag-empty-state { max-width: 760px; }
+.rag-help-actions, .rag-area-list, .rag-recommended { display: flex; flex-wrap: wrap; gap: 10px; }
+.rag-help-actions button, .rag-area-list button, .rag-recommended button, .rag-example-list button {
+  border: 1px solid #274461; border-radius: 999px; background: #0c1b2d;
+  color: #d9e9f8; padding: 9px 13px; cursor: pointer;
+}
+.rag-help-actions button:hover, .rag-area-list button:hover,
+.rag-recommended button:hover, .rag-example-list button:hover {
+  border-color: #75c7d3; background: #112a40;
+}
+.rag-help-panel, .rag-recommended { margin-top: 20px; }
+.rag-help-panel > strong, .rag-recommended > strong {
+  display: block; color: #9ec7ea; margin-bottom: 10px; width: 100%;
+}
+.rag-area-note {
+  margin-top: 14px; padding: 14px; border-left: 3px solid #75c7d3;
+  background: #0a1726; text-align: left;
+}
+.rag-example-list { display: grid; gap: 10px; }
+.rag-example-list button {
+  border-radius: 12px; display: grid; grid-template-columns: 90px 1fr;
+  gap: 12px; text-align: left;
+}
+.rag-example-list span { color: #b8c9da; }
+@media (max-width: 640px) {
+  .rag-example-list button { grid-template-columns: 1fr; }
+}

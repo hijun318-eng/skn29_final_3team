@@ -14,6 +14,15 @@ def test_classifies_tests_archives_and_runtime_contracts_separately() -> None:
 
     assert _classify("tests/support/fakes.py") == "test"
     assert _classify("infrastructure/database/releases/r1/manifest.json") == "archive"
+    assert _classify(
+        "src/ml/room_demand_forecast/artifacts/model_selection.json"
+    ) == "archive"
+    assert _classify(
+        "src/ml/artifacts/final_local_verification.json"
+    ) == "archive"
+    assert _classify(
+        "src/ml/artifacts/live_room_demand.approval.json"
+    ) == "runtime-contract"
     assert _classify("src/ai/contracts/node_io.v0.1.json") == "runtime-contract"
     assert _classify(
         "app/backend/contracts/analysis_capability.single_asset.v1.json"

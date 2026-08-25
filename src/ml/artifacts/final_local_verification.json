@@ -1,0 +1,112 @@
+{
+  "status": "LIVE_TRINO_DYNAMIC_E2E_SUCCEEDED",
+  "repository_root": ".",
+  "validated_worktree": "mlnrag_rag_ml_only_worktree",
+  "python_executable": "src/ml/.venv/Scripts/python.exe",
+  "package_versions": {
+    "numpy": "2.2.6",
+    "pandas": "2.3.3",
+    "scipy": "1.15.3",
+    "scikit-learn": "1.7.2",
+    "joblib": "1.5.3",
+    "lightgbm": "4.6.0",
+    "xgboost": "3.2.0",
+    "skl2onnx": "1.19.1",
+    "onnx": "1.18.0",
+    "onnxruntime": "1.22.1"
+  },
+  "checks": [
+    {
+      "name": "repository_local_virtualenv",
+      "status": "PASS"
+    },
+    {
+      "name": "pinned_dependency_versions",
+      "status": "PASS"
+    },
+    {
+      "name": "no_show_archived_model_and_gate_tests",
+      "status": "PASS"
+    },
+    {
+      "name": "no_show_artifacts",
+      "status": "PASS"
+    },
+    {
+      "name": "room_demand_data_contract",
+      "status": "PASS"
+    },
+    {
+      "name": "room_demand_reference_tests",
+      "status": "PASS"
+    },
+    {
+      "name": "room_demand_risk_audit",
+      "status": "PASS"
+    },
+    {
+      "name": "room_demand_artifacts",
+      "status": "PASS"
+    },
+    {
+      "name": "official_metric_tables",
+      "status": "PASS"
+    },
+    {
+      "name": "ml_main_chat_contract",
+      "status": "PASS"
+    },
+    {
+      "name": "shared_tool_contract",
+      "status": "PASS"
+    },
+    {
+      "name": "validate_only_preserves_run_summary",
+      "status": "PASS"
+    },
+    {
+      "name": "mcp_server_not_introduced",
+      "status": "PASS"
+    },
+    {
+      "name": "single_candidate_registry_policy",
+      "status": "PASS"
+    },
+    {
+      "name": "live_trino_pms_analysis_rag_ml_dynamic_e2e",
+      "status": "PASS",
+      "evidence": "evals/runs/rag/e2e/dynamic-e2e-e48fdca8-9ab7-4071-8680-a20eff5c0905.json"
+    }
+  ],
+  "metrics": {
+    "no_show": {
+      "test_rows": 20701,
+      "pr_auc": 0.01356105647215191,
+      "top15_lift": 1.9281933526912811
+    },
+    "room_demand": {
+      "training_rows": 11361,
+      "validation_rows": 609,
+      "validation_mae_rooms": 0.999,
+      "forecast_rows": 21,
+      "feature_source": "LIVE_TRINO_PMS",
+      "training_source": "LIVE_TRINO_PMS"
+    }
+  },
+  "scope": {
+    "official_p2_candidate": "forecast-room-demand-7d",
+    "inactive_schema_incompatible_model": "predict-reservation-no-show",
+    "active_analysis": "room_demand_forecast",
+    "mcp_server": "NOT_INTRODUCED"
+  },
+  "registries": {
+    "predict-reservation-no-show": "INACTIVE_SCHEMA_INCOMPATIBLE",
+    "forecast-room-demand-7d": "ACTIVE_APPROVED_LIVE_TRINO"
+  },
+  "operational_gate_status": "DYNAMIC_E2E_SUCCEEDED",
+  "limitations": [
+    "PMS V4.3에는 NO_SHOW 양성 라벨과 기존 no-show 모델 필수 특성이 없어 no-show 모델은 비활성",
+    "room-demand 모델은 CSV가 아니라 실제 PMS V4.3 데이터를 Trino로 조회해 학습·검증·예측",
+    "RAG 상태 메타데이터의 P2 승인 표시는 별도 거버넌스 대상이며 이번 동적 실행 성공과 구분"
+  ]
+}

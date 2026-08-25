@@ -1,0 +1,14 @@
+{
+  "VALIDATION": {
+    "ece_10_quantile": 0.0015005794172072108,
+    "predicted_rate": 0.008238480844689663,
+    "actual_rate": 0.008224043715846995
+  },
+  "TEST": {
+    "ece_10_quantile": 0.0017854082714649409,
+    "predicted_rate": 0.008327708253301312,
+    "actual_rate": 0.007680788367711705
+  },
+  "post_calibration": "NOT_APPLIED",
+  "reason": "Selected unweighted LogisticRegression already has near-base-rate Brier; preserve independent TEST."
+}

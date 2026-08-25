@@ -1,0 +1,81 @@
+{
+  "status": "PASS",
+  "metric_policy": {
+    "classification_primary": "average_precision_score",
+    "classification_secondary": [
+      "roc_auc_score",
+      "precision_score",
+      "recall_score",
+      "f1_score",
+      "brier_score_loss",
+      "confusion_matrix"
+    ],
+    "regression_primary": "mean_absolute_error",
+    "regression_secondary": [
+      "sqrt(mean_squared_error)",
+      "r2_score"
+    ],
+    "business_secondary": [
+      "recall_at_15",
+      "precision_at_15",
+      "lift_at_15",
+      "wape"
+    ]
+  },
+  "official_reference": "https://scikit-learn.org/stable/modules/model_evaluation.html",
+  "selection_rule": "Tune and select on VALIDATION; TEST is post-selection reporting only.",
+  "data_basis": {
+    "shared_training_dataset": false,
+    "common_source_lineage": "BLOCKED_NOT_PROVEN",
+    "reservation_no_show": {
+      "grain": "reservation_id",
+      "target": "is_no_show",
+      "label_rule_version": "SYNTHETIC_RULE_V1",
+      "source_no_show_rows": 0,
+      "split_rows": {
+        "TRAIN": 109770,
+        "VALIDATION": 36600,
+        "TEST": 20701,
+        "INFERENCE": 4359
+      },
+      "activation_status": "BLOCKED_SOURCE_LABEL_REQUIRED"
+    },
+    "room_demand_forecast": {
+      "grain": "property_id,target_date,room_type_code,horizon_days",
+      "target": "rooms_sold",
+      "split_rows": {
+        "TRAIN": 30688,
+        "VALIDATION": 10220,
+        "TEST": 5852,
+        "FORECAST": 4368
+      },
+      "forecast_max_feature_null_rate": 0.9294871794871795,
+      "activation_status": "LOCAL_TECHNICAL_VALIDATION_ONLY"
+    }
+  },
+  "unmeasured_gates": [
+    "no_show_metric_confidence_intervals",
+    "multi_seed_variance",
+    "shared_source_snapshot_lineage",
+    "deployed_latency_and_hard_timeout",
+    "production_drift_baseline",
+    "real_deidentified_external_validation"
+  ],
+  "outputs": [
+    {
+      "path": "src/ml/reservation_no_show/artifacts/official_model_comparison.csv",
+      "rows": 9,
+      "sha256": "10414ca78ff315bef00c71b5ba25f9d83bb0714a146fd75a4da6b1dd387a7534"
+    },
+    {
+      "path": "src/ml/reservation_no_show/artifacts/official_tuning_comparison.csv",
+      "rows": 16,
+      "sha256": "a8cc57525b4e6103b2b4b6c7b69e7068195ee18baf81be30719a209c213e709b"
+    },
+    {
+      "path": "src/ml/room_demand_forecast/artifacts/official_model_comparison.csv",
+      "rows": 9,
+      "sha256": "5cf3e880b77ec0e5d7e52dd87dd0d19c8f12bb482a04ae14bbb3445ce1fc17e8"
+    }
+  ]
+}

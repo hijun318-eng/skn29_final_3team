@@ -16,7 +16,7 @@ class LiveModelContractTests(unittest.TestCase):
     def test_release_manifest_has_one_active_v1_contract_for_every_live_node(self):
         manifest = model_release_manifest()
 
-        self.assertEqual("MODEL-RELEASE-v1.36.0", manifest["manifest_version"])
+        self.assertEqual("MODEL-RELEASE-v1.37.0", manifest["manifest_version"])
         self.assertEqual("ACTIVE", manifest["state"])
         self.assertEqual("v1", manifest["schema_contract"])
         self.assertEqual(schema_version(), manifest["schema_version"])
@@ -31,7 +31,14 @@ class LiveModelContractTests(unittest.TestCase):
             set(manifest["compatible_runtime"]),
         )
         self.assertEqual(
-            {"node1", "node2", "node2_repair", "node3", "report_assistant"},
+            {
+                "node1",
+                "node2",
+                "node2_repair",
+                "node3",
+                "report_assistant",
+                "report_assistant_turn",
+            },
             set(manifest["nodes"]),
         )
         for forbidden in ("candidate", "cutover_gates", "rollback"):

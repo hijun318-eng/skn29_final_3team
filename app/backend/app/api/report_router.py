@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 from inspect import isawaitable
+import json
+import os
 from typing import Annotated, Any, Awaitable, Callable
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -24,9 +28,17 @@ from app.api.report_router_support import (
     report_admin_context,
     report_draft_context,
 )
-from app.contracts import RequestContext
+from app.authorization import has_capability
+from app.contracts import (
+    AnalysisRequest,
+    AnalysisResponse,
+    AnalysisStatus,
+    Capability,
+    RequestContext,
+)
 from app.report_contracts import (
     ApproveReportVersionRequest,
+    CreateReportAssistantSessionRequest,
     CreateManualRunRequest,
     CreateReportAssistantDraftRequest,
     CreateReportDefinitionRequest,
@@ -41,6 +53,12 @@ from app.report_contracts import (
     ReportRunListResponse,
     ReportRunResponse,
     ReportAssistantDraftResponse,
+    ReportAssistantAnalysisPlan,
+    ReportAssistantApprovalRequest,
+    ReportAssistantMessageRequest,
+    ReportAssistantPatch,
+    ReportAssistantProposalResponse,
+    ReportAssistantSessionResponse,
     ReportScheduleListResponse,
     ReportScheduleResponse,
     RunDueReportScheduleResponse,
@@ -49,6 +67,23 @@ from app.report_contracts import (
 
 
 report_router = APIRouter()
+
+
+def _assistant_session_response(session: dict[str, Any]) -> dict[str, Any]:
+    """저장소 column 이름을 공개 Assistant 세션 계약으로 변환한다."""
+
+    return {
+        "assistant_request_id": session["assistant_request_id"],
+        "phase": session["phase"],
+        "definition_id": session["session_definition_id"],
+        "definition_version": session["session_definition_version"],
+        "base_revision": session["base_revision"],
+        "artifact_id": session["artifact_id"],
+        "analysis_plan": session.get("analysis_plan_json"),
+        "result_artifact_id": session.get("result_artifact_id"),
+        "result_revision": session.get("result_revision"),
+        "error_code": session.get("error_code"),
+    }
 
 
 def _router(context: RequestContext):
@@ -76,6 +111,153 @@ async def _repository_call(action: Callable[[], Awaitable[Any]]) -> Any:
         raise HTTPException(status_code=404, detail=str(error.args[0])) from error
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+async def _execute_assistant_analysis(
+    payload: AnalysisRequest,
+    context: RequestContext,
+) -> AnalysisResponse | Response:
+    """기존 분석 API의 권한·gate·영속화 경계를 Assistant 승인 실행에서도 그대로 사용한다."""
+
+    from app.api.router import analysis
+
+    return await analysis(payload, context)
+
+
+async def _recover_and_get_assistant_session(
+    repository: Any,
+    assistant_request_id: str,
+) -> dict[str, Any]:
+    """bounded timeout으로 중단된 분석을 실패 처리한 뒤 owner 범위의 최신 세션을 반환한다."""
+
+    raw_timeout = os.getenv("REPORT_ASSISTANT_STALE_SECONDS", "900")
+    try:
+        timeout = int(raw_timeout)
+    except ValueError as error:
+        raise HTTPException(status_code=500, detail="Assistant timeout 설정이 유효하지 않습니다.") from error
+    if not 60 <= timeout <= 86400:
+        raise HTTPException(status_code=500, detail="Assistant timeout 설정이 유효하지 않습니다.")
+    await repository.recover_stale_assistant_session(assistant_request_id, timeout)
+    return await repository.get_assistant_session(assistant_request_id)
+
+
+def _report_turn_payload(
+    definition: Any,
+    artifact: dict[str, Any],
+    instruction: str,
+    history: tuple[dict[str, str], ...] = (),
+) -> dict[str, Any]:
+    """현재 draft와 검증 Artifact를 실제 ID 대신 서버 별칭으로 모델 입력에 직렬화한다."""
+
+    return {
+        "instruction": instruction,
+        "history": list(history[-12:]),
+        "artifact": {
+            "artifact_id": "source_artifact",
+            "query_id": "source_query",
+            "title": artifact["title"],
+            "narrative": artifact["narrative_markdown"],
+            "evidence": artifact["evidence_json"],
+            "chart_spec": artifact["chart_spec_json"],
+            "checksum": artifact["artifact_checksum"],
+        },
+        "report": {
+            "title": definition.title,
+            "orientation": definition.orientation,
+            "currency_display_unit": definition.currency_display_unit,
+            "blocks": [
+                {
+                    "block_id": block.block_id,
+                    "title": block.title,
+                    "type": block.type.value,
+                    "content": block.content,
+                    "artifact_ref": (
+                        "source_artifact"
+                        if block.artifact_id == str(artifact["artifact_id"])
+                        else None
+                    ),
+                    "x": block.x,
+                    "y": block.y,
+                    "w": block.w,
+                    "h": block.h,
+                }
+                for block in definition.blocks
+            ],
+        },
+    }
+
+
+async def _compose_assistant_revision(
+    repository: Any,
+    assistant_request_id: str,
+    data_request_id: str,
+    session: dict[str, Any],
+    plan: ReportAssistantAnalysisPlan,
+) -> dict[str, Any]:
+    """새 분석 Artifact를 strict 모델 patch로 합성하고 동일 CAS 저장 경계에서 완료한다.
+
+    이 함수는 분석을 실행하지 않는다. ``saving_revision``에 이미 고정된 Artifact만 다시 읽고,
+    모델이 새 분석을 재요청하거나 허용되지 않은 patch를 반환하면 저장 없이 실패한다.
+    """
+
+    from app.adapters.report_assistant import (
+        ReportAssistantModelError,
+        generate_report_change_proposal,
+    )
+    from app.report_patch import VerifiedArtifactBinding, apply_report_assistant_patch
+
+    if session.get("phase") != "saving_revision" or not session.get("result_artifact_id"):
+        raise ValueError("ASSISTANT_STATE_CONFLICT")
+    try:
+        definition = await repository.get_version(
+            str(session["session_definition_id"]),
+            int(session["session_definition_version"]),
+        )
+    except KeyError as error:
+        raise ValueError("REPORT_REVISION_CONFLICT") from error
+    artifact = await repository.get_assistant_artifact(str(session["result_artifact_id"]))
+    history = await repository.get_assistant_turn_history(assistant_request_id)
+    proposal, trace = await generate_report_change_proposal(
+        _report_turn_payload(definition, artifact, plan.question, history)
+    )
+    if proposal["change_kind"] != "existing_artifact" or proposal["analysis_plan"] is not None:
+        raise ReportAssistantModelError("새 분석 Artifact 합성 모델이 추가 분석을 요청했습니다.")
+    patch = ReportAssistantPatch.model_validate(proposal["patch"])
+    if patch.operations[0].op == "restore_previous_revision":
+        raise ReportAssistantModelError("새 분석 Artifact 합성에서는 이전 revision을 복원할 수 없습니다.")
+    patched = apply_report_assistant_patch(
+        definition,
+        patch,
+        {
+            "source_artifact": VerifiedArtifactBinding(
+                str(artifact["artifact_id"]),
+                str(artifact["trino_query_id"]),
+                str(artifact["artifact_checksum"]),
+            )
+        },
+    )
+    decision = {
+        "change_kind": "existing_artifact",
+        "message": proposal["message"],
+        "analysis_plan": plan.model_dump(mode="json"),
+        "patch": patch.model_dump(mode="json"),
+    }
+    decision_hash = hashlib.sha256(
+        json.dumps(decision, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    return await repository.finalize_existing_assistant_patch(
+        assistant_request_id,
+        None,
+        decision_hash,
+        str(trace["model_version"]),
+        str(trace["prompt_id"]),
+        str(trace["prompt_version"]),
+        str(trace["prompt_hash"]),
+        patch.model_dump(mode="json"),
+        patched,
+        data_request_id=data_request_id,
+        expected_phase="saving_revision",
+    )
 
 
 @report_router.post(
@@ -441,6 +623,388 @@ async def run_due_schedule(
         "executed": run is not None,
         "run": router._run_response(run) if run is not None else None,
     }
+
+
+@report_router.post(
+    "/reports/assistant/sessions",
+    operation_id="reportAssistantCreateSession",
+    response_model=ReportAssistantSessionResponse,
+)
+async def create_assistant_session(
+    payload: CreateReportAssistantSessionRequest,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> dict[str, Any]:
+    """현재 draft와 그 안의 승인 artifact를 검증해 복구 가능한 Assistant 세션을 연다."""
+
+    repository = _router(context).repository
+    assistant_request_id = str(uuid4())
+    from src.ai.prompt_registry import get_prompt
+
+    prompt = get_prompt("report.assistant")
+    binding = (
+        f"{payload.definition_id}:{payload.definition_version}:{payload.artifact_id}"
+    )
+    session = await _repository_call(
+        lambda: repository.start_assistant_session(
+            assistant_request_id,
+            str(payload.definition_id),
+            payload.definition_version,
+            str(payload.artifact_id),
+            hashlib.sha256(binding.encode("utf-8")).hexdigest(),
+            prompt.prompt_id,
+            prompt.version,
+            str(prompt.metadata()["hash"]),
+        )
+    )
+    return _assistant_session_response(session)
+
+
+@report_router.get(
+    "/reports/assistant/sessions/{assistant_request_id}",
+    operation_id="reportAssistantGetSession",
+    response_model=ReportAssistantSessionResponse,
+)
+async def get_assistant_session(
+    assistant_request_id: str,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> dict[str, Any]:
+    """새로고침 후에도 서버에 저장된 현재 Assistant phase와 승인 계획을 복구한다."""
+
+    repository = _router(context).repository
+    session = await _repository_call(
+        lambda: _recover_and_get_assistant_session(repository, assistant_request_id)
+    )
+    return _assistant_session_response(session)
+
+
+@report_router.post(
+    "/reports/assistant/sessions/{assistant_request_id}/messages",
+    operation_id="reportAssistantSubmitMessage",
+    response_model=ReportAssistantProposalResponse,
+)
+async def submit_assistant_message(
+    assistant_request_id: str,
+    payload: ReportAssistantMessageRequest,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> dict[str, Any]:
+    """ready 세션의 지시를 strict 모델 계약으로 분류하고 새 분석 계획만 승인 대기로 저장한다.
+
+    모델 호출 전 세션과 artifact 소유권을 확인하며, 이 경계에서는 분석 controller나 데이터
+    platform을 호출하지 않는다. 동시 요청으로 phase가 바뀌면 기존 계획을 덮지 않고 409다.
+    """
+
+    from app.adapters.report_assistant import (
+        ReportAssistantModelError,
+        generate_report_change_proposal,
+    )
+
+    repository = _router(context).repository
+    session = await _repository_call(
+        lambda: repository.get_assistant_session(assistant_request_id)
+    )
+    if session["phase"] != "ready":
+        raise HTTPException(status_code=409, detail="ready Assistant 세션만 지시를 받을 수 있습니다.")
+    artifact = await _repository_call(
+        lambda: repository.get_assistant_artifact(str(session["artifact_id"]))
+    )
+    definition = await _repository_call(
+        lambda: repository.get_version(
+            str(session["session_definition_id"]),
+            int(session["session_definition_version"]),
+        )
+    )
+    history = await _repository_call(
+        lambda: repository.get_assistant_turn_history(assistant_request_id)
+    )
+    model_payload = _report_turn_payload(
+        definition, artifact, payload.instruction, history
+    )
+    try:
+        proposal, trace = await generate_report_change_proposal(model_payload)
+    except ReportAssistantModelError as error:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "REPORT_ASSISTANT_TURN_MODEL_FAILED",
+                "assistant_request_id": assistant_request_id,
+            },
+        ) from error
+
+    plan = None
+    if proposal["change_kind"] == "new_data":
+        try:
+            plan = ReportAssistantAnalysisPlan.model_validate(
+                {"request_id": uuid4(), **dict(proposal["analysis_plan"])}
+            ).model_dump(mode="json")
+        except (TypeError, ValueError) as error:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "code": "REPORT_ASSISTANT_TURN_MODEL_INVALID",
+                    "assistant_request_id": assistant_request_id,
+                },
+            ) from error
+    decision = {
+        "change_kind": proposal["change_kind"],
+        "message": proposal["message"],
+        "analysis_plan": plan,
+        "patch": proposal["patch"],
+    }
+    decision_hash = hashlib.sha256(
+        json.dumps(decision, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    instruction_hash = hashlib.sha256(payload.instruction.encode("utf-8")).hexdigest()
+    try:
+        if proposal["change_kind"] in {"clarification", "new_data"}:
+            saved = await repository.record_assistant_proposal(
+                assistant_request_id,
+                instruction_hash,
+                decision_hash,
+                str(trace["model_version"]),
+                str(trace["prompt_id"]),
+                str(trace["prompt_version"]),
+                str(trace["prompt_hash"]),
+                plan,
+                payload.instruction,
+                str(proposal["message"]),
+                str(proposal["change_kind"]),
+            )
+        else:
+            from app.report_patch import VerifiedArtifactBinding, apply_report_assistant_patch
+
+            patch = ReportAssistantPatch.model_validate(proposal["patch"])
+            previous_definition = None
+            if patch.operations[0].op == "restore_previous_revision":
+                if definition.version <= 1:
+                    raise ValueError("복원할 직전 Report revision을 찾을 수 없습니다.")
+                try:
+                    previous_definition = await repository.get_version(
+                        definition.definition_id,
+                        definition.version - 1,
+                    )
+                except KeyError as error:
+                    raise ValueError(
+                        "복원할 직전 Report revision을 찾을 수 없습니다."
+                    ) from error
+            patched = apply_report_assistant_patch(
+                definition,
+                patch,
+                {
+                    "source_artifact": VerifiedArtifactBinding(
+                        str(artifact["artifact_id"]),
+                        str(artifact["trino_query_id"]),
+                        str(artifact["artifact_checksum"]),
+                    )
+                },
+                previous_definition,
+            )
+            saved = await repository.finalize_existing_assistant_patch(
+                assistant_request_id,
+                instruction_hash,
+                decision_hash,
+                str(trace["model_version"]),
+                str(trace["prompt_id"]),
+                str(trace["prompt_version"]),
+                str(trace["prompt_hash"]),
+                patch.model_dump(mode="json"),
+                patched,
+                instruction_text=payload.instruction,
+                assistant_message=str(proposal["message"]),
+            )
+    except ValueError as error:
+        if str(error) == "REPORT_REVISION_CONFLICT":
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "REPORT_ASSISTANT_PATCH_INVALID",
+                "assistant_request_id": assistant_request_id,
+            },
+        ) from error
+    return {
+        "change_kind": proposal["change_kind"],
+        "message": proposal["message"],
+        "session": _assistant_session_response(saved),
+    }
+
+
+@report_router.post(
+    "/reports/assistant/sessions/{assistant_request_id}/approval",
+    operation_id="reportAssistantDecidePlan",
+    response_model=ReportAssistantSessionResponse,
+)
+async def decide_assistant_plan(
+    assistant_request_id: str,
+    payload: ReportAssistantApprovalRequest,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> dict[str, Any]:
+    """대기 계획을 멱등 승인·거절하고 최초 승인만 기존 분석 경계에서 Artifact까지 실행한다.
+
+    승인 전 owner·request·phase·권한을 검증한다. 거절은 분석을 호출하지 않고 ready로 돌아가며,
+    승인 성공은 반환 Artifact lineage를 재검증해 CAS 기반 새 draft revision까지 완료한다.
+    """
+
+    router = _router(context)
+    repository = router.repository
+    session = await _repository_call(
+        lambda: _recover_and_get_assistant_session(repository, assistant_request_id)
+    )
+    if not has_capability(context.role, Capability.RUN_ANALYSIS):
+        raise HTTPException(status_code=403, detail="분석 실행 권한이 없습니다.")
+    try:
+        plan = ReportAssistantAnalysisPlan.model_validate(session.get("analysis_plan_json"))
+    except (TypeError, ValueError) as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        ) from error
+    if plan.request_id != payload.request_id:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        )
+    if session.get("status") != "running":
+        decided_at = session.get("approved_at") if payload.approved else session.get("rejected_at")
+        if decided_at is not None and session["phase"] in {"completed", "failed", "cancelled"}:
+            return _assistant_session_response(session)
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        )
+    try:
+        decided, claimed = await repository.decide_assistant_plan(
+            assistant_request_id,
+            str(payload.request_id),
+            payload.approved,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "ASSISTANT_STATE_CONFLICT", "assistant_request_id": assistant_request_id},
+        ) from error
+    if not payload.approved:
+        return _assistant_session_response(decided)
+    saved = decided
+    if claimed:
+        analysis_context = context.model_copy(update={"request_id": payload.request_id})
+        try:
+            analysis_response = await _execute_assistant_analysis(
+                AnalysisRequest(question=plan.question),
+                analysis_context,
+            )
+        except Exception as error:
+            await repository.fail_assistant_request(
+                assistant_request_id, "ANALYSIS_FAILED", str(payload.request_id)
+            )
+            raise HTTPException(
+                status_code=502,
+                detail={"code": "ANALYSIS_FAILED", "assistant_request_id": assistant_request_id},
+            ) from error
+        if not isinstance(analysis_response, AnalysisResponse):
+            code = "ANALYSIS_RATE_LIMITED" if analysis_response.status_code == 429 else "ANALYSIS_FAILED"
+            await repository.fail_assistant_request(
+                assistant_request_id, code, str(payload.request_id)
+            )
+            raise HTTPException(
+                status_code=analysis_response.status_code,
+                detail={"code": code, "assistant_request_id": assistant_request_id},
+            )
+        artifact_reference = analysis_response.data.artifact
+        if (
+            analysis_response.data.status not in {AnalysisStatus.SUCCEEDED, AnalysisStatus.PARTIAL}
+            or artifact_reference is None
+        ):
+            error_code = (
+                "ANALYSIS_ACCESS_DENIED"
+                if analysis_response.error is not None
+                and analysis_response.error.code.value == "ACCESS_DENIED"
+                else "ANALYSIS_FAILED"
+            )
+            await repository.fail_assistant_request(
+                assistant_request_id, error_code, str(payload.request_id)
+            )
+            raise HTTPException(
+                status_code=502,
+                detail={"code": error_code, "assistant_request_id": assistant_request_id},
+            )
+
+        try:
+            await repository.mark_assistant_waiting_artifact(
+                assistant_request_id, str(payload.request_id)
+            )
+            artifact = await repository.get_assistant_result_artifact(
+                str(artifact_reference.artifact_id),
+                str(payload.request_id),
+                artifact_reference.query_id,
+            )
+            saved = await repository.save_assistant_result_artifact(
+                assistant_request_id, str(payload.request_id), artifact
+            )
+        except KeyError as error:
+            await repository.fail_assistant_request(
+                assistant_request_id, "ARTIFACT_NOT_FOUND", str(payload.request_id)
+            )
+            raise HTTPException(
+                status_code=502,
+                detail={"code": "ARTIFACT_NOT_FOUND", "assistant_request_id": assistant_request_id},
+            ) from error
+        except ValueError as error:
+            code = (
+                "ARTIFACT_CHECKSUM_INVALID"
+                if "checksum" in str(error).lower()
+                else "ARTIFACT_LINEAGE_MISMATCH"
+            )
+            await repository.fail_assistant_request(
+                assistant_request_id, code, str(payload.request_id)
+            )
+            raise HTTPException(
+                status_code=409,
+                detail={"code": code, "assistant_request_id": assistant_request_id},
+            ) from error
+    elif saved["phase"] != "saving_revision":
+        return _assistant_session_response(saved)
+
+    try:
+        completed = await _compose_assistant_revision(
+            repository,
+            assistant_request_id,
+            str(payload.request_id),
+            saved,
+            plan,
+        )
+    except KeyError as error:
+        await repository.fail_assistant_request(
+            assistant_request_id, "ARTIFACT_NOT_FOUND", str(payload.request_id)
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={"code": "ARTIFACT_NOT_FOUND", "assistant_request_id": assistant_request_id},
+        ) from error
+    except ValueError as error:
+        code = (
+            "REPORT_REVISION_CONFLICT"
+            if str(error) == "REPORT_REVISION_CONFLICT"
+            else "REPORT_ASSISTANT_PATCH_INVALID"
+        )
+        await repository.fail_assistant_request(
+            assistant_request_id, code, str(payload.request_id)
+        )
+        raise HTTPException(
+            status_code=409 if code == "REPORT_REVISION_CONFLICT" else 502,
+            detail={"code": code, "assistant_request_id": assistant_request_id},
+        ) from error
+    except Exception as error:
+        await repository.fail_assistant_request(
+            assistant_request_id, "REPORT_ASSISTANT_COMPOSE_FAILED", str(payload.request_id)
+        )
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "REPORT_ASSISTANT_COMPOSE_FAILED",
+                "assistant_request_id": assistant_request_id,
+            },
+        ) from error
+    return _assistant_session_response(completed)
 
 
 @report_router.post(

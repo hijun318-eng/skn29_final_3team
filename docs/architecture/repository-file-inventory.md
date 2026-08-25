@@ -8,12 +8,12 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 134 |
-| documentation | 110 |
-| production | 323 |
-| project-config | 40 |
-| runtime-config | 78 |
+| documentation | 119 |
+| production | 324 |
+| project-config | 44 |
+| runtime-config | 83 |
 | runtime-contract | 14 |
-| test | 156 |
+| test | 158 |
 
 운영 무결성 위반: **0건**
 
@@ -110,6 +110,7 @@
 | `app/backend/app/ports/model.py` | production | REVIEWED |
 | `app/backend/app/query_capability.py` | production | REVIEWED |
 | `app/backend/app/report_contracts.py` | production | REVIEWED |
+| `app/backend/app/report_patch.py` | production | REVIEWED |
 | `app/backend/app/runtime_release.py` | production | REVIEWED |
 | `app/backend/app/services/__init__.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/__init__.py` | production | REVIEWED |
@@ -225,6 +226,11 @@
 | `app/backend/migrations/versions/20260823_35_phase10_runtime_audit_grants.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260825_36_catalog_publisher_role.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260826_37_progressive_presentation_views.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260826_38_report_assistant_sessions.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260826_39_report_assistant_result_lineage.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260826_40_report_assistant_revision_cas.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260826_41_report_assistant_patch.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260826_42_report_assistant_turns.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -326,6 +332,7 @@
 | `app/frontend/vite.config.js` | runtime-config | REVIEWED |
 | `CLAUDE.md` | documentation | REFERENCE_NON_RUNTIME |
 | `compose.app-postgres.override.yml` | runtime-config | REVIEWED |
+| `compose.report-assistant-stage5.yml` | project-config | REVIEWED |
 | `compose.yml` | runtime-config | REVIEWED |
 | `data/node2_sft/verified/walkerhill_smoke.trino_pass.jsonl` | project-config | REVIEWED |
 | `docs/Answervice_기획서.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -414,6 +421,13 @@
 | `docs/reference/DataHub_네이티브_시맨틱_모델_중심_제안_객관적_평가_2026-08-20.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/DataHub_사용_방식_객관적_재평가_및_실사용_사례_2026-08-20.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/목업_하드코딩_감사_2026-08-19.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Agent_실구현_계획_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_V2_5단계_로컬배포_검증보고서_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_V2_구현_진행_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_V2_다음_작업_계획서_20260824.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_고도화_현황_및_반응_정의_20260825.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_실연동_인프라_복구_실행_프롬프트_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_실화면_독립검증_프롬프트_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
 | `evals/__init__.py` | runtime-config | REVIEWED |
 | `evals/base_comparison.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/catalog_regression.py` | archive | ARCHIVE_NON_RUNTIME |
@@ -640,6 +654,7 @@
 | `infrastructure/database/security/provision-crm-mssql.sh` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-crm-mssql.sql` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-facility-clickhouse.sh` | project-config | REVIEWED |
+| `infrastructure/database/security/provision-local-core.ps1` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-local-platform-admin.ps1` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-pos-mysql.sh` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-release-principals.ps1` | project-config | REVIEWED |
@@ -678,6 +693,10 @@
 | `infrastructure/handoff/Install-HandoffConfig.ps1` | project-config | REVIEWED |
 | `infrastructure/handoff/New-HandoffBundle.ps1` | project-config | REVIEWED |
 | `infrastructure/handoff/README.md` | documentation | REFERENCE_NON_RUNTIME |
+| `prototypes/report_assistant_v2/NEXT_IMPLEMENTATION_PROMPT.md` | documentation | REFERENCE_NON_RUNTIME |
+| `prototypes/report_assistant_v2/README.md` | documentation | REFERENCE_NON_RUNTIME |
+| `prototypes/report_assistant_v2/test_workflow.py` | project-config | REVIEWED |
+| `prototypes/report_assistant_v2/workflow.py` | project-config | REVIEWED |
 | `README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `scripts/audit_repository_integrity.py` | production | REVIEWED |
 | `scripts/check_code_documentation.py` | production | REVIEWED |
@@ -801,6 +820,8 @@
 | `tests/backend/test_pipeline_sql_guard.py` | test | TEST_ONLY |
 | `tests/backend/test_production_model.py` | test | TEST_ONLY |
 | `tests/backend/test_readiness.py` | test | TEST_ONLY |
+| `tests/backend/test_report_assistant_patch.py` | test | TEST_ONLY |
+| `tests/backend/test_report_assistant_session.py` | test | TEST_ONLY |
 | `tests/backend/test_report_document.py` | test | TEST_ONLY |
 | `tests/backend/test_report_execution.py` | test | TEST_ONLY |
 | `tests/backend/test_report_migration.py` | test | TEST_ONLY |

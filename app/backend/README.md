@@ -44,6 +44,15 @@ $env:OPENAI_MODEL = "gpt-5.4-mini"
 $env:MODEL_TIMEOUT_SECONDS = "15"
 ```
 
+로컬 Docker 배포에서는 위 secret을 저장소에 복사하지 않고 외부 env 파일로 주입한다.
+`REPORT_ASSISTANT_MODEL_ENV_FILE`에는 `OPENAI_ENDPOINT`, `OPENAI_API_KEY`, `OPENAI_MODEL`이
+들어 있는 파일의 절대 경로를 지정한다. Compose는 이 값이 없으면 backend 구성을 거부한다.
+
+```powershell
+$env:REPORT_ASSISTANT_MODEL_ENV_FILE = "C:\Users\<사용자>\외부-secret\openai.env"
+docker compose --env-file <DB 환경 파일> -f compose.report-assistant-stage5.yml up -d --build
+```
+
 Node2 전용 설정 네 개를 모두 비우면 Node2·Repair도 위 primary route를 공유한다.
 RunPod Qwen route를 사용할 때는 `NODE2_MODEL_PROVIDER`, `NODE2_MODEL_ENDPOINT`,
 `NODE2_MODEL_API_TOKEN`, `NODE2_MODEL`을 모두 선언해야 한다. provider·model alias와

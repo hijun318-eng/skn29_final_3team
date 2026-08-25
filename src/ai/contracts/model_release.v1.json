@@ -1,9 +1,9 @@
 {
-  "manifest_version": "MODEL-RELEASE-v1.36.0",
+  "manifest_version": "MODEL-RELEASE-v1.37.0",
   "state": "ACTIVE",
   "schema_contract": "v1",
-  "schema_version": "MODEL-v1.23.0",
-  "schema_sha256": "6fea8942ae3ea0f332625c32b86a69c4c0abbecd7718b5fc8fdff22f8b4d498a",
+  "schema_version": "MODEL-v1.24.0",
+  "schema_sha256": "d99ee33068d5e59fa46bbbe1e2f0f5b43257b6e1b81e7de7e34673027656d56d",
   "compatible_runtime": {
     "analysis_plan_version": "ANSWERVICE-ANALYSIS-PLAN-v4",
     "typed_sql_compiler_version": "ANSWERVICE-TYPED-SQL-v1.3.1",
@@ -45,6 +45,13 @@
       "prompt_sha256": "c9c6f1b34e57ed40830670a5107a66fd096544b92662de88cc28b98142b7b6a3",
       "request_definition": "report_assistant_request",
       "response_definition": "report_assistant_response"
+    },
+    "report_assistant_turn": {
+      "prompt_id": "report.assistant.turn",
+      "prompt_version": "PROMPT-v1.4.0",
+      "prompt_sha256": "6f8aa5d138cf5122a60ff136366a26e26fb504d78f17472a679a7e53b4cffc9a",
+      "request_definition": "report_assistant_turn_request",
+      "response_definition": "report_assistant_turn_response"
     }
   }
 }

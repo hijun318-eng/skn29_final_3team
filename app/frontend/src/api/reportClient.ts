@@ -23,11 +23,34 @@ import {
   type ReportScheduleResponse,
   type RunDueReportScheduleResponse,
   type ReportAssistantDraftResponse,
+  type ReportAssistantPhase,
+  type ReportAssistantProposalResponse,
+  type ReportAssistantSessionResponse,
 } from "../contracts/report.ts";
 import { createUuid } from "../utils/createUuid.ts";
 
 type Fetch = typeof fetch;
 const env = import.meta.env ?? {};
+const ASSISTANT_PHASES: readonly ReportAssistantPhase[] = [
+  "ready", "waiting_approval", "running_data_agent", "waiting_artifact",
+  "saving_revision", "completed", "failed", "cancelled",
+];
+
+function assertAssistantSession(
+  session: ReportAssistantSessionResponse,
+): ReportAssistantSessionResponse {
+  if (!ASSISTANT_PHASES.includes(session.phase)) {
+    throw new Error(`지원하지 않는 Report Assistant phase입니다: ${session.phase}`);
+  }
+  if (session.definition_version < 1 || session.base_revision < 1) {
+    throw new Error("Report Assistant revision은 1 이상이어야 합니다.");
+  }
+  if (["waiting_approval", "running_data_agent", "waiting_artifact", "saving_revision"].includes(session.phase)
+    && !session.analysis_plan) {
+    throw new Error("데이터 실행 phase에는 승인 계획이 필요합니다.");
+  }
+  return session;
+}
 
 /** 초안 블록 교체와 함께 원자적으로 저장할 문서 표시 옵션이다. */
 export interface ReplaceDraftBlocksOptions {
@@ -253,6 +276,64 @@ export function createReportClient(
         definition: normalizeReportDefinition(response.definition),
         trace: response.trace,
       };
+    },
+    async createAssistantSession(definitionId: string, definitionVersion: number, artifactId: string) {
+      return assertAssistantSession(await parse<ReportAssistantSessionResponse>(await send(
+        "/reports/assistant/sessions",
+        "POST",
+        {
+          definition_id: definitionId,
+          definition_version: definitionVersion,
+          artifact_id: artifactId,
+        },
+      )));
+    },
+    async getAssistantSession(assistantRequestId: string) {
+      return assertAssistantSession(await parse<ReportAssistantSessionResponse>(await send(
+        `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}`,
+      )));
+    },
+    async submitAssistantMessage(assistantRequestId: string, instruction: string) {
+      const proposal = await parse<ReportAssistantProposalResponse>(await send(
+        `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/messages`,
+        "POST",
+        { instruction },
+      ));
+      if (!["clarification", "existing_artifact", "new_data"].includes(proposal.change_kind)) {
+        throw new Error(`지원하지 않는 Report Assistant 변경 종류입니다: ${proposal.change_kind}`);
+      }
+      if (!proposal.message.trim()) throw new Error("Report Assistant 메시지는 비어 있을 수 없습니다.");
+      const session = assertAssistantSession(proposal.session);
+      if (proposal.change_kind === "clarification" && (session.phase !== "ready" || session.analysis_plan)) {
+        throw new Error("명확화 응답은 실행 계획 없는 ready 세션이어야 합니다.");
+      }
+      if (proposal.change_kind === "new_data" && session.phase !== "waiting_approval") {
+        throw new Error("새 데이터 응답은 승인 대기 세션이어야 합니다.");
+      }
+      if (proposal.change_kind === "existing_artifact" && session.phase !== "completed") {
+        throw new Error("기존 Artifact 변경은 완료된 revision이어야 합니다.");
+      }
+      return { ...proposal, session };
+    },
+    async approveAssistantPlan(assistantRequestId: string, requestId: string) {
+      const session = assertAssistantSession(await parse<ReportAssistantSessionResponse>(await send(
+        `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/approval`,
+        "POST",
+        { request_id: requestId, approved: true },
+      )));
+      if (["ready", "waiting_approval"].includes(session.phase)) {
+        throw new Error("승인된 Report Assistant 계획이 실행 phase로 전이되지 않았습니다.");
+      }
+      return session;
+    },
+    async rejectAssistantPlan(assistantRequestId: string, requestId: string) {
+      const session = assertAssistantSession(await parse<ReportAssistantSessionResponse>(await send(
+        `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/approval`,
+        "POST",
+        { request_id: requestId, approved: false },
+      )));
+      if (session.phase !== "ready") throw new Error("거절된 Report Assistant 계획은 ready여야 합니다.");
+      return session;
     },
   };
 }

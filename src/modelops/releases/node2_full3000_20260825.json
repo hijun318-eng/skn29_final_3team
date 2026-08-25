@@ -1,0 +1,54 @@
+{
+  "release_id": "node2-full3000-qwen35-20260825",
+  "status": "READY_TO_CONNECT",
+  "training_scope": "full3000",
+  "active_serving_model": {
+    "served_model_name": "answervice-sql",
+    "base_model": "Qwen/Qwen3.5-4B",
+    "base_revision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+    "release_url": "https://github.com/hijun318-eng/skn29_final_3team/releases/tag/node2-sllm-full3000-4b-20260825",
+    "asset_url": "https://github.com/hijun318-eng/skn29_final_3team/releases/download/node2-sllm-full3000-4b-20260825/Node2_sLLM_Qwen3.5-4B_Full3000_Release_20260825.zip",
+    "asset_sha256": "9765a96d030eb31423177f27053fa371c8a1297031769213edc8ba73b49ba0a0",
+    "adapter_sha256": "5c04cb3c45736f118a6a2f06244b412a0f2f1a729e9570042422c98f7beb35b8",
+    "context_window_tokens": 5120
+  },
+  "secondary_model": {
+    "base_model": "Qwen/Qwen3.5-2B",
+    "base_revision": "15852e8c16360a2fea060d615a32b45270f8a8fc",
+    "release_url": "https://github.com/hijun318-eng/skn29_final_3team/releases/tag/node2-sllm-full3000-2b-20260825",
+    "asset_url": "https://github.com/hijun318-eng/skn29_final_3team/releases/download/node2-sllm-full3000-2b-20260825/Node2_sLLM_Qwen3.5-2B_Full3000_Release_20260825.zip",
+    "asset_sha256": "455fb403359c1a1bc37a6bff04c91e88fad014ac85b9ea9548bea66df6d611b1",
+    "adapter_sha256": "e3dc3f5e79ebc5326904b1112a8406e42e0c901c4bf444549dfdd1f4695f72d8",
+    "context_window_tokens": 5120
+  },
+  "validation": {
+    "dataset_records": 300,
+    "contract_version": "MODEL-v1.21.0",
+    "qwen35_2b": {
+      "valid_json": 300,
+      "g2_pass": 300,
+      "binder_pass": 300,
+      "trino_pass": 300,
+      "result_hash_valid": 300,
+      "result_match": 300,
+      "sql_exact_match": 299
+    },
+    "qwen35_4b": {
+      "valid_json": 300,
+      "g2_pass": 300,
+      "binder_pass": 300,
+      "trino_pass": 300,
+      "result_hash_valid": 300,
+      "result_match": 300,
+      "sql_exact_match": 299
+    }
+  },
+  "service_connection": {
+    "provider": "qwen",
+    "endpoint_env": "NODE2_MODEL_ENDPOINT",
+    "token_env": "NODE2_MODEL_API_TOKEN",
+    "model_env": "NODE2_MODEL",
+    "provider_env": "NODE2_MODEL_PROVIDER",
+    "live_endpoint_verified": false
+  }
+}

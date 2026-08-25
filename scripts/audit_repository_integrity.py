@@ -97,6 +97,9 @@ ALLOWED_RUNTIME_JSON = {
     "src/modelops/releases/node2_pilot800_20260824.json": (
         "validated Node2 pilot release evidence referenced by the runtime manifest"
     ),
+    "src/modelops/releases/node2_full3000_20260825.json": (
+        "validated Node2 Full3000 release evidence referenced by the runtime manifest"
+    ),
     "src/modelops/model_candidate.instruct2507.v0.1.json": "historical model evidence",
     "src/modelops/model_decision.v0.1.json": "non-ready model decision record",
     "src/modelops/release_candidate.v1.json": "non-ready release evidence",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -47,9 +48,36 @@ def test_dedicated_sql_route_resolves_served_alias_and_exact_capacity() -> None:
     assert sql_route.capacity.context_window_tokens == 5120
     assert sql_route.capacity.runtime_max_output_tokens == 1280
     assert (
-        "src/modelops/releases/node2_pilot800_20260824.json"
+        "src/modelops/releases/node2_full3000_20260825.json"
         in sql_route.capacity.sources
     )
+
+
+def test_active_sql_release_records_full3000_validation_receipt() -> None:
+    release = json.loads(
+        (ROOT / "src/modelops/releases/node2_full3000_20260825.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert release["release_id"] == "node2-full3000-qwen35-20260825"
+    assert release["status"] == "READY_TO_CONNECT"
+    assert release["validation"]["dataset_records"] == 300
+    assert release["service_connection"]["live_endpoint_verified"] is False
+    assert release["active_serving_model"]["asset_sha256"] == (
+        "9765a96d030eb31423177f27053fa371c8a1297031769213edc8ba73b49ba0a0"
+    )
+    assert release["secondary_model"]["asset_sha256"] == (
+        "455fb403359c1a1bc37a6bff04c91e88fad014ac85b9ea9548bea66df6d611b1"
+    )
+    for model in ("qwen35_2b", "qwen35_4b"):
+        validation = release["validation"][model]
+        assert validation["valid_json"] == 300
+        assert validation["g2_pass"] == 300
+        assert validation["binder_pass"] == 300
+        assert validation["trino_pass"] == 300
+        assert validation["result_match"] == 300
+        assert validation["sql_exact_match"] == 299
 
 
 @pytest.mark.parametrize("missing", tuple(NODE2))

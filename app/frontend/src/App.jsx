@@ -12,10 +12,12 @@ import { nextTheme, readTheme, saveTheme } from "./themePreference";
 
 const AgentPage = lazy(() => import("./pages/AgentPage").then((module) => ({ default: module.AgentPage })));
 const ReportsPage = lazy(() => import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })));
+const AdminPage = lazy(() => import("./pages/AdminPage").then((module) => ({ default: module.AdminPage })));
 
 const PAGE_META = {
   chat: ["데이터 분석", "자연어로 질문하면 지표와 기간을 해석해 데이터를 분석합니다."],
   reports: ["보고서", "분석 결과를 보고서로 구성하고 편집·검토합니다."],
+  admin: ["관리자", "현재 계정의 운영 권한과 연결된 관리 기능을 확인합니다."],
   notFound: ["페이지를 찾을 수 없습니다", "현재 제공되는 경로를 확인해 주세요."],
 };
 
@@ -25,8 +27,10 @@ function NotFoundPage({ onNavigate }) {
 }
 
 /** 세션 역할에 허용되지 않은 화면을 차단하고 가능한 허용 경로만 안내한다. */
-function RoleAccessPage({ canUseReports, onNavigate }) {
-  return <section className="not-found" aria-labelledby="role-access-title"><span>403</span><h2 id="role-access-title">이 화면에 접근할 권한이 없습니다.</h2><p>{canUseReports ? "현재 계정은 보고서 기능만 사용할 수 있습니다." : "현재 계정에 허용된 서비스 메뉴가 없습니다."}</p>{canUseReports && <button className="primary" onClick={() => onNavigate(PAGE_PATHS.reports)}>보고서로 이동</button>}</section>;
+function RoleAccessPage({ canUseReports, canUseAdmin, onNavigate }) {
+  const allowedPath = canUseReports ? PAGE_PATHS.reports : canUseAdmin ? PAGE_PATHS.admin : "";
+  const allowedLabel = canUseReports ? "보고서로 이동" : "관리자로 이동";
+  return <section className="not-found" aria-labelledby="role-access-title"><span>403</span><h2 id="role-access-title">이 화면에 접근할 권한이 없습니다.</h2><p>{allowedPath ? "현재 계정에서 사용할 수 있는 화면으로 이동해 주세요." : "현재 계정에 허용된 서비스 메뉴가 없습니다."}</p>{allowedPath && <button className="primary" onClick={() => onNavigate(allowedPath)}>{allowedLabel}</button>}</section>;
 }
 
 /** 세션·권한·라우팅 경계를 소유하며, 인증 확인 전에는 보호된 화면을 렌더링하지 않는다. */
@@ -41,7 +45,9 @@ export function App() {
   const canRunAnalysis = hasCapability(capabilities, CAPABILITY.runAnalysis);
   const canDraftReport = hasCapability(capabilities, CAPABILITY.draftReport);
   const canManageReports = hasCapability(capabilities, CAPABILITY.manageReport);
+  const canManageData = hasCapability(capabilities, CAPABILITY.manageData);
   const canUseReports = canDraftReport || canManageReports;
+  const canUseAdmin = canManageReports || canManageData;
   const [route, setRoute] = useState(() => resolveRoute(window.location.pathname));
   const [menuOpen, setMenuOpen] = useState(() => window.matchMedia("(min-width: 1101px)").matches);
   const [isPending, startTransition] = useTransition();
@@ -130,18 +136,25 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!canRunAnalysis && canUseReports && route.page === "chat") navigate(PAGE_PATHS.reports);
-  }, [canRunAnalysis, canUseReports, navigate, route.page]);
+    if (!canRunAnalysis && route.page === "chat") {
+      if (canUseReports) navigate(PAGE_PATHS.reports);
+      else if (canUseAdmin) navigate(PAGE_PATHS.admin);
+    }
+  }, [canRunAnalysis, canUseAdmin, canUseReports, navigate, route.page]);
 
   const content = useMemo(() => {
     if (route.page === "notFound") return <NotFoundPage onNavigate={navigate} />;
     if (route.page === "reports") {
-      if (!canUseReports) return <RoleAccessPage canUseReports={false} onNavigate={navigate} />;
+      if (!canUseReports) return <RoleAccessPage canUseReports={false} canUseAdmin={canUseAdmin} onNavigate={navigate} />;
       return <ReportsPage role={role} isAdmin={canManageReports} onEditorMode={handleReportEditorMode} theme={theme} onToggleTheme={toggleTheme} />;
     }
-    if (!canRunAnalysis) return <RoleAccessPage canUseReports={canUseReports} onNavigate={navigate} />;
+    if (route.page === "admin") {
+      if (!canUseAdmin) return <RoleAccessPage canUseReports={canUseReports} canUseAdmin={false} onNavigate={navigate} />;
+      return <AdminPage role={role} capabilities={capabilities} onNavigate={navigate} />;
+    }
+    if (!canRunAnalysis) return <RoleAccessPage canUseReports={canUseReports} canUseAdmin={canUseAdmin} onNavigate={navigate} />;
     return <AgentPage onNavigate={navigate} />;
-  }, [canManageReports, canRunAnalysis, canUseReports, handleReportEditorMode, navigate, role, route.page, theme, toggleTheme]);
+  }, [canManageReports, canRunAnalysis, canUseAdmin, canUseReports, capabilities, handleReportEditorMode, navigate, role, route.page, theme, toggleTheme]);
 
   if (session === undefined) return <main className={`session-login ${themeClass}`}><div className="page-loading" role="status"><i /><b>세션을 확인하고 있습니다.</b></div></main>;
   if (!session) return <SessionLogin theme={theme} onToggleTheme={toggleTheme} notice={sessionNotice} onAuthenticated={(nextSession) => { setSession(nextSession); setSessionNotice(""); }} />;

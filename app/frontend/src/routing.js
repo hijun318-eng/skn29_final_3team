@@ -1,8 +1,8 @@
 /** 브라우저 pathname을 허용된 화면으로 해석하는 routing 계약 모듈이다. */
 /** 브라우저와 사이드바가 공유하는 공개 페이지 경로 계약이다. */
-export const PAGE_PATHS = { chat: "/agent", reports: "/reports" };
+export const PAGE_PATHS = { chat: "/agent", reports: "/reports", admin: "/admin" };
 
-const ROUTES = { "/agent": { page: "chat" }, "/reports": { page: "reports" } };
+const ROUTES = { "/agent": { page: "chat" }, "/reports": { page: "reports" }, "/admin": { page: "admin" } };
 
 function normalizePath(pathname) {
   if (!pathname || pathname === "/") return "/";

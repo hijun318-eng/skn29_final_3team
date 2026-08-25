@@ -26,7 +26,8 @@ const normalization = source("app/frontend/src/contracts/reportNormalization.ts"
 
 assert.match(flags, /VITE_REPORT_BUILDER_V2 !== "false"/);
 assert.match(app, /reportEditorMode && REPORT_BUILDER_V2 \? "report-builder-v2-mode"/);
-assert.match(appStyles, /\.report-builder-v2-mode\{height:100dvh;min-height:0;overflow:hidden\}/);
+assert.match(appStyles, /\.report-builder-v2-mode\{position:fixed;inset:0;width:100%;height:100dvh;min-height:0;overflow:hidden\}/);
+assert.match(appStyles, /html:has\(\.report-builder-v2-mode\),body:has\(\.report-builder-v2-mode\)\{overflow:hidden\}/);
 assert.match(appStyles, /\.report-builder-v2-mode>\.workspace,\.report-builder-v2-mode>\.workspace>\.page-stage\{height:100%;min-height:0;overflow:hidden\}/);
 assert.match(app, /<ReportsPage[^>]*theme=\{theme\}[^>]*onToggleTheme=\{toggleTheme\}/);
 assert.doesNotMatch(controller, /REPORT_REVIEW_MODE|reviewDefinition|mockReport/i);
@@ -44,6 +45,9 @@ assert.match(builder, /className="builder-inspector"/);
 assert.match(builder, /className="builder-inspector-dismiss"/);
 assert.match(builder, /aria-label="오른쪽 패널 닫기"/);
 assert.match(builderStyles, /\[data-report-builder="v2"\] \.report-builder-v2-layout/);
+assert.match(builderStyles, /\[data-report-builder="v2"\]\{[\s\S]*?height:100%;\s+min-height:0;\s+display:flex;\s+flex-direction:column;/);
+assert.match(builderStyles, /\.report-builder-v2-layout\{[\s\S]*?min-height:0;\s+flex:1;/);
+assert.doesNotMatch(builderStyles, /height:calc\(100vh - var\(--builder-header\)\)/);
 assert.match(builderStyles, /grid-template-columns:var\(--builder-library\) minmax\(620px,1fr\) var\(--builder-properties\)/);
 assert.match(builderStyles, /\[data-report-builder="v2"\] \.report-properties-panel\{[^}]*display:block/);
 assert.match(builderStyles, /@media\(max-width:1179px\)/);

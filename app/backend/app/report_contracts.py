@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -264,6 +265,7 @@ class ReportAssistantDraftResponse(ReportContractModel):
 
 ReportAssistantPhase = Literal[
     "ready",
+    "waiting_patch_approval",
     "waiting_approval",
     "running_data_agent",
     "waiting_artifact",
@@ -354,6 +356,15 @@ class ReportAssistantSessionResponse(ReportContractModel):
     base_revision: int
     artifact_id: UUID
     analysis_plan: ReportAssistantAnalysisPlan | None = None
+    patch_request_id: UUID | None = None
+    patch_summary: str | None = Field(default=None, min_length=1, max_length=1000)
+    patch_operations: tuple[
+        Literal[
+            "set_report_title", "add_text", "update_text", "add_artifact_view",
+            "reposition_block", "remove_block", "duplicate_block",
+            "restore_previous_revision",
+        ], ...
+    ] = ()
     result_artifact_id: UUID | None = None
     result_revision: int | None = None
     error_code: str | None = None
@@ -366,9 +377,13 @@ class ReportAssistantSessionResponse(ReportContractModel):
             "waiting_approval",
             "running_data_agent",
             "waiting_artifact",
-            "saving_revision",
         } and self.analysis_plan is None:
             raise ValueError("데이터 실행 phase에는 analysis_plan이 필요합니다.")
+        has_patch = bool(self.patch_request_id and self.patch_summary and self.patch_operations)
+        if self.phase == "waiting_patch_approval" and not has_patch:
+            raise ValueError("patch 승인 대기 phase에는 변경 미리보기가 필요합니다.")
+        if self.phase == "saving_revision" and self.analysis_plan is None and not has_patch:
+            raise ValueError("revision 저장 phase에는 분석 계획 또는 patch 미리보기가 필요합니다.")
         return self
 
 
@@ -385,6 +400,66 @@ class ReportAssistantProposalResponse(ReportContractModel):
     change_kind: Literal["clarification", "existing_artifact", "new_data"]
     message: str = Field(min_length=1, max_length=1000)
     session: ReportAssistantSessionResponse
+
+
+class ReportAssistantEvaluationResponse(ReportContractModel):
+    """원문 prompt·SQL 없이 한 Assistant 요청의 모델·승인·Revision 결과를 연결한다."""
+
+    evaluation_id: UUID
+    assistant_request_id: UUID
+    data_request_id: UUID | None = None
+    patch_request_id: UUID | None = None
+    definition_id: UUID | None = None
+    definition_version: int | None = None
+    artifact_id: UUID | None = None
+    prompt_id: str | None = None
+    prompt_version: str | None = None
+    model_version: str | None = None
+    route: Literal["existing_artifact", "new_data"] | None = None
+    operation_types: tuple[str, ...] = ()
+    contract_valid: bool
+    approval_decision: Literal["approved", "rejected", "pending"]
+    final_phase: str
+    revision_created: bool
+    duplicate_revision_prevented: bool
+    model_attempts: int | None = None
+    latency_ms: float | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    estimated_cost: Decimal | None = None
+    cost_is_estimate: bool
+    error_code: str | None = None
+    evaluated_at: datetime
+
+
+class ReportAssistantOperationsSummaryResponse(ReportContractModel):
+    """관리자용 기간·분모와 nullable 품질·비용 집계를 반환한다."""
+
+    period_start: datetime
+    period_end: datetime
+    denominator: int
+    total_requests: int
+    contract_success_rate: float | None = None
+    patch_validation_success_rate: float | None = None
+    approval_rate: float | None = None
+    rejection_rate: float | None = None
+    revision_success_rate: float | None = None
+    duplicate_revision_prevention_rate: float | None = None
+    failure_rate_by_error_code: dict[str, float]
+    average_model_latency_ms: float | None = None
+    p95_model_latency_ms: float | None = None
+    average_model_attempts: float | None = None
+    total_input_tokens: int | None = None
+    total_output_tokens: int | None = None
+    estimated_cost_total: Decimal | None = None
+
+
+class ReportAssistantFailureListResponse(ReportContractModel):
+    """관리자에게 bounded 기간의 안전한 실패 평가만 반환한다."""
+
+    period_start: datetime
+    period_end: datetime
+    items: tuple[ReportAssistantEvaluationResponse, ...]
 
 
 class ReportAssistantPatchPlacement(ReportContractModel):

@@ -7,13 +7,13 @@
 
 | 분류 | 파일 수 |
 |---|---:|
-| archive | 130 |
-| documentation | 155 |
-| production | 308 |
-| project-config | 41 |
-| runtime-config | 70 |
+| archive | 132 |
+| documentation | 163 |
+| production | 311 |
+| project-config | 42 |
+| runtime-config | 72 |
 | runtime-contract | 10 |
-| test | 142 |
+| test | 145 |
 
 운영 무결성 위반: **0건**
 
@@ -73,6 +73,7 @@
 | `app/backend/app/adapters/release_manifest.py` | production | REVIEWED |
 | `app/backend/app/adapters/report_artifact_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/report_assistant.py` | production | REVIEWED |
+| `app/backend/app/adapters/report_assistant_operations_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/report_definition_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/report_document_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/report_execution_repository.py` | production | REVIEWED |
@@ -160,6 +161,7 @@
 | `app/backend/app/services/report/scheduler.py` | production | REVIEWED |
 | `app/backend/app/services/report/types.py` | production | REVIEWED |
 | `app/backend/app/services/report/values.py` | production | REVIEWED |
+| `app/backend/app/services/report_assistant_operations.py` | production | REVIEWED |
 | `app/backend/app/services/routing_service.py` | production | REVIEWED |
 | `app/backend/app/services/sql_guard/__init__.py` | production | REVIEWED |
 | `app/backend/app/services/sql_guard/guard.py` | production | REVIEWED |
@@ -210,6 +212,8 @@
 | `app/backend/migrations/versions/20260824_31_report_assistant_revision_cas.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260824_32_report_assistant_patch.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260824_33_report_assistant_turns.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260825_34_report_assistant_patch_approval.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260825_35_report_assistant_evaluations.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -249,6 +253,7 @@
 | `app/frontend/src/features/reports/components/index.js` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/MarkdownBlockEditor.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportArtifactContent.jsx` | production | REVIEWED |
+| `app/frontend/src/features/reports/components/ReportAssistantOperationsPanel.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportAssistantPanel.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportBlockControls.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportDocumentView.jsx` | production | REVIEWED |
@@ -444,7 +449,15 @@
 | `docs/Report_Assistant_V2_5단계_로컬배포_검증보고서_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_구현_진행_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_다음_작업_계획서_20260824.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_V2_다음단계_인수인계_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_고도화_현황_및_반응_정의_20260825.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_실연동_인프라_복구_실행_프롬프트_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_실화면_독립검증_프롬프트_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/report_builder/BACKEND_DEVELOPER_HANDOFF.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/report_builder/BACKEND_EVOLUTION_ROADMAP.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/report_builder/FRONTEND_ENHANCEMENT_HANDOFF.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/report_builder/MOCK_REPORT_BUILDER_FUNCTIONAL_SPEC.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/report_builder/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `evals/.gitkeep` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/__init__.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/base_comparison.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
@@ -463,6 +476,8 @@
 | `evals/p0_gold/answervice_v4_3.p0.draft.v1.manifest.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/p0_gold_runner.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/p0_gold_scoring.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/report_assistant_quality.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/report_assistant_quality_cases.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/runner.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/semantic_review/answervice_bi_coverage.v1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/semantic_review/answervice_d2_metrics.v1.json` | archive | ARCHIVE_NON_RUNTIME |
@@ -653,6 +668,7 @@
 | `infrastructure/database/security/provision-crm-mssql.sh` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-crm-mssql.sql` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-facility-clickhouse.sh` | project-config | REVIEWED |
+| `infrastructure/database/security/provision-local-core.ps1` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-local-platform-admin.ps1` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-pos-mysql.sh` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-release-principals.ps1` | project-config | REVIEWED |
@@ -806,6 +822,7 @@
 | `tests/backend/test_pipeline_sql_guard.py` | test | TEST_ONLY |
 | `tests/backend/test_production_model.py` | test | TEST_ONLY |
 | `tests/backend/test_readiness.py` | test | TEST_ONLY |
+| `tests/backend/test_report_assistant_operations.py` | test | TEST_ONLY |
 | `tests/backend/test_report_assistant_patch.py` | test | TEST_ONLY |
 | `tests/backend/test_report_assistant_session.py` | test | TEST_ONLY |
 | `tests/backend/test_report_document.py` | test | TEST_ONLY |
@@ -837,6 +854,8 @@
 | `tests/data/test_semantic_authoring.py` | test | TEST_ONLY |
 | `tests/data/test_semantic_search_profile.py` | test | TEST_ONLY |
 | `tests/data/test_serving_catalog_persistence.py` | test | TEST_ONLY |
+| `tests/e2e/prepare_report_assistant_e2e.py` | test | TEST_ONLY |
+| `tests/e2e/run_local_backend.py` | test | TEST_ONLY |
 | `tests/frontend/analysis-dashboard.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/analysis-failure-state.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/authenticated-browser-state.test.mjs` | test | TEST_ONLY |

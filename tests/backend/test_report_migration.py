@@ -163,6 +163,33 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("REFERENCES report_v1.report_assistant_requests", source)
         self.assertIn("change_kind IN ('clarification', 'existing_artifact', 'new_data')", source)
 
+    def test_report_assistant_patch_approval_adds_phase_without_rewriting_history(self):
+        """새 migration은 patch 요청 ID를 추가하고 완료 phase의 잘못된 계획 제약을 수정한다."""
+
+        source = (MIGRATIONS / "20260825_34_report_assistant_patch_approval.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260824_33"', source)
+        self.assertIn("ADD COLUMN patch_request_id uuid", source)
+        self.assertIn("'waiting_patch_approval'", source)
+        self.assertIn("phase IN ('ready', 'completed', 'failed', 'cancelled')", source)
+        self.assertNotIn("DROP TABLE report_v1.report_assistant_requests", source)
+
+    def test_report_assistant_evaluation_is_additive_and_excludes_sensitive_payloads(self):
+        """품질 migration은 요청별 한 건만 저장하고 raw prompt·SQL column을 만들지 않는다."""
+
+        source = (MIGRATIONS / "20260825_35_report_assistant_evaluations.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260825_34"', source)
+        self.assertIn("CREATE TABLE report_v1.report_assistant_evaluations", source)
+        self.assertIn("assistant_request_id uuid NOT NULL UNIQUE", source)
+        self.assertIn("input_tokens integer", source)
+        self.assertIn("estimated_cost numeric", source)
+        self.assertNotIn("raw_prompt", source)
+        self.assertNotIn("raw_model_response", source)
+        self.assertNotIn("sql_text", source)
+
     def test_query_generation_mode_records_llm_without_fallback(self):
         source = (MIGRATIONS / "20260813_14_query_generation_mode_llm.py").read_text(
             encoding="utf-8"

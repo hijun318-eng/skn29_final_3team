@@ -171,3 +171,124 @@
 
 세부 증빙과 재실행 명령은
 `docs/Report_Assistant_V2_5단계_로컬배포_검증보고서_20260824.md`에 기록했다.
+
+## 2026-08-25 변경안 사전 승인 고도화
+
+- 기존 Artifact 변경을 모델 응답 직후 저장하지 않고 서버 patch 적용기로 먼저 dry-run
+- 검증된 patch만 `waiting_patch_approval`에 저장하고 요약·허용 연산 종류를 사용자에게 공개
+- 사용자가 취소하면 Report definition/block 저장 없이 `ready`로 복귀
+- 사용자가 적용하면 owner·session·patch request ID·phase를 단일 DB CAS로 claim한 뒤
+  `saving_revision`에서 기존 revision 저장 경계를 재사용
+- 중복 적용은 동일 patch request ID에 한해 현재 상태를 반환하고 Revision을 중복 생성하지 않음
+- 새 migration `20260825_34`에서 `patch_request_id`와 승인 phase를 추가하고, 기존 Artifact
+  patch의 `completed` 상태를 잘못 막던 analysis plan 제약을 수정
+- Frontend Assistant 카드에서 변경 요약과 작업 종류를 확인한 뒤 `변경안 적용` 또는 `취소`
+- Backend 관련 단위·계약 테스트 54개, Frontend 24개 및 production build 통과
+- OpenAPI·state mapping과 repository inventory 갱신
+- 실제 App DB migration 적용과 Browser live E2E는 아직 수행하지 않았으며 완료로 판정하지 않음
+
+## 2026-08-25 실제 모델·격리 App DB API E2E
+
+- 기존 App DB와 volume은 유지하고 `app_db_report_assistant_e2e` 격리 DB에 migration head
+  `20260825_34` 적용
+- `tests/e2e/prepare_report_assistant_e2e.py`가 현재 분석 응답 계약의 metric ID·결과 필드·정의·
+  기준일을 포함한 승인 Artifact를 멱등 준비하도록 수정
+- OpenAI strict 변환 결과에 남던 미지원 `allOf`를 제거하고 provider HTTP 400을 해소
+- 실제 `report.assistant.turn` 호출이 1회 시도에서 `existing_artifact`를 반환하는 것을 확인
+- 모델 제안은 `set_report_title`, `add_text` 두 연산과 `waiting_patch_approval` phase로 저장
+- patch 승인 CAS에서 nullable UUID parameter의 PostgreSQL 타입 추론 실패를 명시적 UUID cast로 수정
+- process 중단 뒤 `saving_revision` 세션을 같은 patch request ID로 재개하여 `completed` 도달
+- 결과 Report Revision `2`, 제목 변경, 기존 Artifact block을 포함한 block 2개를 API로 재조회
+- 동일 승인을 다시 호출했을 때 새 version을 만들지 않고 동일 Revision `2`를 반환
+- 관련 Backend·AI 단위/계약 테스트 41개 통과 및 `git diff --check` 통과
+
+이번 검증은 실제 OpenAI 모델과 실제 PostgreSQL transaction을 사용한 로컬 API E2E다. Trino와
+DataHub는 호출하지 않았으므로 새 데이터 분석 E2E가 아니며, in-app Browser 연결이 중간에
+종료되어 Revision 2의 화면 새로고침 복구 검증은 아직 남아 있다.
+
+## 2026-08-25 Browser UI E2E 완료
+
+- Docker Desktop 중단으로 `auth_session_store`가 503을 반환하던 로그인 장애를 확인하고 기존
+  volume 삭제 없이 Docker를 재기동해 `app_postgres`, `auth_session_store` ready 복구
+- 격리 E2E Artifact의 화면 근거 계약에 누락됐던 artifact/query identity, 기간, 합성 source,
+  G1~G3 gate를 `tests/e2e/prepare_report_assistant_e2e.py`에만 보강
+- production mock·질문별 응답·고정 SQL은 추가하지 않았으며 migration head는 `20260825_34` 유지
+- 실제 로그인 화면에서 승인 Artifact가 라이브러리와 Canvas에 표시되는 것을 확인
+- 실제 OpenAI가 보고서 제목 변경안을 생성하고 승인 카드에 변경 요약·작업 종류 표시
+- 승인 전 제목 `8월 승인 매출 현황`, Revision 2, block 2개가 유지됨을 확인
+- `변경안 적용` 뒤 CAS Revision 3, 제목 `8월 승인 매출 요약`, block 2개 및 `completed` 확인
+- 보고서 목록 재진입·새로고침 뒤 같은 Revision 3·제목·block·Artifact 화면 복구 확인
+- Browser console warning/error 0건, 관련 Assistant·Report API 500 0건
+- 동일 patch 승인 재호출 멱등성은 완료 UI가 승인 버튼을 다시 노출하지 않아 Browser에서 재전송하지
+  않았고, 기존 실제 API E2E의 동일 Revision 반환과 Backend 회귀 테스트로 검증 유지
+- Backend·AI 회귀 테스트 55개, Frontend 테스트 24개, production build, 코드 문서화 검사,
+  architectural invariants, `git diff --check` 통과
+
+이 검증은 실제 OpenAI와 격리 PostgreSQL을 연결한 기존 Artifact 편집 Browser E2E다. Trino,
+DataHub, semantic release가 아직 not ready이므로 `new_data` 실데이터 E2E 완료로 표현하지 않는다.
+
+### Browser 편집 상태 후속 보강
+
+- Artifact hydration의 자동 차트·표 높이 맞춤을 사용자 편집 history로 기록하지 않고 현재 draft와
+  저장 기준선에 동일 적용해, 보고서를 열기만 해도 `저장되지 않은 변경`이 되던 문제를 수정
+- Report Assistant에는 Artifact payload에 없는 표시 제목 대신 검증된 Artifact source 제목을 전달
+- 최신 v4 Browser 재진입에서 `저장됨`, block 2개, Artifact 제목 표시를 확인
+- 별도 대기 세션이 없는 v3에서 Artifact 라이브러리를 클릭하지 않아도 Assistant 입력 활성화 확인
+- v4에 이미 존재하던 다른 `waiting_patch_approval` 변경안은 사용자 작업으로 간주해 승인·취소하지
+  않고 그대로 보존
+- Frontend 전체 테스트 24개와 production build 통과
+
+## 2026-08-25 후속 고도화 4단계: Agent 품질·운영
+
+- 새 migration `20260825_35`로 Assistant request ID당 평가 한 건을 멱등 저장하는
+  `report_v1.report_assistant_evaluations` 추가
+- 평가에는 model/prompt release, route, 허용 patch operation, 계약 성공, 승인 결정, 최종 phase,
+  Revision 생성·중복 방지, 시도·지연·token·추정 비용·안전한 error code만 저장
+- 사용자 지시는 기존 SHA-256 hash만 유지하며 SQL, raw prompt, raw model response, credential은 평가
+  table과 운영 API 계약에서 제외
+- 모델 transport의 실제 token usage가 있으면 기록하고, provider usage나 단가가 없으면 `null` 유지
+- 평가 저장 transaction을 핵심 Report Revision transaction과 분리해 관측 장애가 성공한 Revision을
+  rollback하지 않도록 best-effort 경계 적용
+- 관리자 전용 기간 summary·실패 API와 owner/admin 평가 상세 API 추가. 조회 기간은 timezone 포함
+  최대 31일, 실패 목록은 100건으로 제한
+- 계약·patch·승인·거절·Revision·중복 방지·error code·평균/p95 latency·token·추정 비용 지표 추가.
+  표본 또는 usage가 없으면 0으로 가장하지 않고 `null` 반환
+- 관리자 Report 목록에 품질·비용·최근 실패 code 패널을 추가하고 analyst 화면에는 전체 사용자
+  집계와 비용을 노출하지 않음
+- 기존 분석 execution gate를 모델 제안 동시 실행 제한에도 재사용하고, 환경 설정 기반 모델 시도,
+  시간당 요청, input/output token, 추정 비용 상한을 fail-closed로 적용
+- production 응답을 고정하지 않는 deterministic 평가 시나리오 16개를 `evals`에 추가
+- Backend·AI·migration·운영 지표 테스트 60개, Frontend 테스트 24개와 production build 통과
+
+실제 OpenAI 반복 평가는 비용 발생 승인을 받지 않아 실행하지 않았다. 이번 검증은 deterministic
+fake와 정적·단위 회귀 검증이며 live E2E로 표현하지 않는다. 기존 Artifact 편집 Browser E2E는
+이전 단계의 실제 OpenAI+PostgreSQL 결과가 유지된다. Trino·DataHub·semantic release가 not ready라
+`new_data` live E2E는 여전히 미완료다. process가 `running_data_agent` claim 직후 종료되는 경우의
+완전한 exactly-once 복구 위험도 queue/outbox 없이 남아 있다.
+
+## 2026-08-25 실구현 1~4단계 통합 재검증
+
+- 기존 dirty 변경을 삭제하거나 다른 Agent framework로 교체하지 않고 1~4단계 흐름을 기존
+  router·repository·AnalysisController·Report Revision 경계로 통합 점검
+- migration `20260824_29 → 30 → 31 → 32 → 33 → 20260825_34 → 20260825_35`가
+  단일 head임을 확인하고, 기존 App DB·volume을 보존한 채 격리 DB
+  `app_db_report_assistant_e2e`만 head 35로 적용
+- 평가 upsert가 이전 transient error를 성공 재시도 뒤 남기던 문제를 수정하고, 관리자 summary가
+  임의 1,000건이 아니라 요청한 최대 31일 전체 표본을 정확한 분모로 계산하도록 수정
+- 모델이 반환한 patch가 서버 dry-run에서 거부되거나 new_data 계획이 손상된 경우에도 안전한
+  error code와 계약·route 관측치를 request ID 한 건에 기록하도록 보강
+- 실제 입력 token·동시 실행 제한이 모델 호출 전에 차단되고, 비용 제한은 Report Revision 저장
+  전에 안전 실패하는 회귀 테스트 추가
+- 1~4단계 관련 Backend·AI·migration·patch 테스트 82개 통과, Frontend 24개 통과,
+  production build·OpenAPI·문서화·아키텍처·repository 감사·compileall·`git diff --check` 통과
+- 로컬 Python에는 `pytest`가 설치되어 있지 않아 전체 pytest suite는 미실행이며 PASS로 계산하지 않음
+- 최신 Backend를 `127.0.0.1:18002`에 외부 env 값 노출 없이 재기동하고 `app_postgres`,
+  `migration`, `analysis_template_registry`, `model`, `auth_session_store` ready 확인
+- Browser에서 analyst 로그인 유지, 최신 Revision 7, 제목·차트·텍스트·Artifact hydration과
+  새로고침 복구, console error 0건, Backend 500 0건 확인
+
+이번 통합 재검증에서는 비용이 발생하는 새 OpenAI 호출을 실행하지 않았다. 기존 문서화된 실제
+OpenAI+PostgreSQL 편집 E2E 증거는 유지되지만, 이번 실행의 Browser 검증은 저장된 Revision 복구
+회귀다. `trino`, `datahub_transport`, `semantic_release`, `catalog_manifest`, `trino_schema`는
+여전히 not ready이므로 `new_data` live E2E는 완료되지 않았다. 관리자 계정으로 운영 패널을 실제
+화면에서 여는 검증도 사용자 비밀번호 입력 전까지 남아 있다.

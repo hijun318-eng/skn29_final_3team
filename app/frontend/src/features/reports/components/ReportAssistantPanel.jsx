@@ -18,12 +18,24 @@ function AssistantReceipt({ trace }) {
 }
 
 const WORKFLOW_COPY = {
+  waiting_patch_approval: ["AI 변경안 검토 필요", "적용 전에는 보고서 Revision을 저장하지 않습니다."],
   running_data_agent: ["Data Agent 실행 중", "승인된 계획으로만 새 Artifact를 생성합니다."],
   waiting_artifact: ["새 Artifact 대기", "승인된 분석 계획과 일치하는 Artifact를 기다립니다."],
   saving_revision: ["Revision 저장 중", "기존 lineage와 새 Artifact를 함께 저장합니다."],
   completed: ["Revision 저장 완료", "검증된 새 보고서 버전을 Canvas에 반영했습니다."],
   failed: ["Assistant 실행 실패", "안전하게 중단했습니다. 새 요청으로 다시 시도해 주세요."],
   cancelled: ["Assistant 실행 취소", "보고서와 Artifact는 변경되지 않았습니다."],
+};
+
+const PATCH_OPERATION_LABEL = {
+  set_report_title: "보고서 제목 변경",
+  add_text: "텍스트 블록 추가",
+  update_text: "텍스트 블록 수정",
+  add_artifact_view: "Artifact 보기 추가",
+  reposition_block: "블록 위치 변경",
+  remove_block: "블록 삭제",
+  duplicate_block: "블록 복제",
+  restore_previous_revision: "직전 Revision 복원",
 };
 
 /** 승인 카드가 닫힌 뒤에도 서버 terminal phase와 안전한 오류 code를 사용자에게 보여준다. */
@@ -55,17 +67,38 @@ function AssistantApproval({ request, status, onApprove, onReject, pending }) {
   </section>;
 }
 
+/** 서버가 검증·dry-run한 제한 patch의 요약과 연산을 적용 전에 표시한다. */
+function AssistantPatchApproval({ preview, status, onApprove, onReject, pending }) {
+  if (!preview) return null;
+  const waiting = status === "waiting_patch_approval";
+  return <section className={`report-assistant-approval ${waiting ? "waiting" : "active"}`} aria-label="AI 보고서 변경안">
+    <header><ShieldCheck size={15} aria-hidden="true" /><span><b>{waiting ? "AI 변경안 검토 필요" : "Revision 저장 재개"}</b><small>승인 전에는 현재 보고서를 변경하지 않습니다.</small></span></header>
+    <dl>
+      <div><dt>변경 요약</dt><dd>{preview.summary}</dd></div>
+      <div><dt>적용 작업</dt><dd>{preview.operations.map((operation) => PATCH_OPERATION_LABEL[operation] || operation).join(" · ")}</dd></div>
+    </dl>
+    <nav aria-label="AI 변경안 결정">
+      {waiting && <button type="button" onClick={onReject} disabled={pending}><X size={12} />취소</button>}
+      <button type="button" className="primary" onClick={onApprove} disabled={pending}><Check size={12} />{waiting ? "변경안 적용" : "Revision 저장 재개"}</button>
+    </nav>
+  </section>;
+}
+
 /** 실제 assistant API 성공 여부만 대화 이력에 반영하고 입력·빠른 요청·처리 근거를 함께 제공한다. */
 export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   approvalRequest = null,
   artifact,
+  artifactTitle = "",
   canEdit,
   instruction,
   onApproveDataRequest,
+  onApprovePatch,
   onInstructionChange,
   onRejectDataRequest,
+  onRejectPatch,
   onSubmit,
   pending,
+  patchPreview = null,
   quickRequests = QUICK_REQUESTS,
   selectedBlock,
   trace,
@@ -74,7 +107,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
 }) {
   const [messages, setMessages] = useState([]);
   const waiting = pending === "assistant";
-  const workflowActive = Boolean(approvalRequest);
+  const workflowActive = Boolean(approvalRequest || patchPreview);
   const disabled = !canEdit || !artifact || !instruction.trim() || Boolean(pending) || workflowActive;
 
   const submitInstruction = useCallback(async (event) => {
@@ -86,6 +119,8 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
     setMessages((current) => [...current, result
       ? result.status === "approval_required"
         ? { role: "assistant", text: "현재 Artifact만으로는 요청을 완료할 수 없어 분석 계획을 준비했습니다." }
+        : result.status === "patch_approval_required"
+          ? { role: "assistant", text: "현재 Artifact 근거로 만들 수 있는 변경안을 준비했습니다. 적용 전에 검토해 주세요." }
         : result.message
           ? { role: "assistant", text: result.message }
           : { role: "assistant", trace: { requestId: result.requestId, ...result.trace } }
@@ -100,7 +135,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
 
     <div className="report-assistant-context">
       <Database size={14} aria-hidden="true" />
-      <span><b>{artifact?.title || "분석 Artifact를 선택해 주세요"}</b><small>{artifact ? "승인된 분석 결과를 근거로 초안을 다시 구성합니다." : "블록 라이브러리에서 분석 결과를 먼저 선택하세요."}</small></span>
+      <span><b>{artifactTitle || "분석 Artifact를 선택해 주세요"}</b><small>{artifact ? "승인된 분석 결과를 근거로 초안을 다시 구성합니다." : "블록 라이브러리에서 분석 결과를 먼저 선택하세요."}</small></span>
     </div>
 
     <div className="report-assistant-thread" aria-live="polite">
@@ -121,6 +156,13 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
         status={workflowStatus}
         onApprove={onApproveDataRequest}
         onReject={onRejectDataRequest}
+        pending={Boolean(pending)}
+      />
+      <AssistantPatchApproval
+        preview={patchPreview}
+        status={workflowStatus}
+        onApprove={onApprovePatch}
+        onReject={onRejectPatch}
         pending={Boolean(pending)}
       />
       <AssistantWorkflowStatus status={workflowStatus} errorCode={workflowError} />

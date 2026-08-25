@@ -319,6 +319,10 @@ assert.match(reportSources.dragAndDrop, /wholeArtifactTemplateFor\(libraryArtifa
 assert.match(reportSources.draftMutations, /sizeMode: "manual"/);
 assert.match(reportSources.blockControls, /내용에 맞춤/);
 assert.match(reportSources.controller, /draftBridgeRef\.current\?\.fitHydratedArtifactViews\(artifactMap\)/);
+const hydratedFit = reportSources.draftState.match(/const fitHydratedArtifactViews[\s\S]*?const changeOrientation/)?.[0] || "";
+assert.match(hydratedFit, /savedBlocksRef\.current = copyDraftBlocks\(fittedSaved\)/);
+assert.match(hydratedFit, /setIsDirty\(draftChanged\(blocksRef\.current\)\)/);
+assert.doesNotMatch(hydratedFit, /commitBlocks\(/, "artifact hydration must not create user history or dirty state");
 assert.match(reportSources.draftState, /fitAutoArtifactViewLayout\(reflowed\.blocks, artifacts, orientation\)/);
 assert.match(reportSources.draftMutations, /const compacted = compactDraftLayout\(inputBlocks\)/);
 assert.match(reportSources.draftMutations, /fitFrontendArtifactViewBlock\(block, artifacts\[block\.artifactId\], \{ orientation \}\)/);

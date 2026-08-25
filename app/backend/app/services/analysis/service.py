@@ -83,7 +83,7 @@ class AnalysisService:
         execution_sink: Callable[[dict[str, Any]], None] | None = None,
         progress_sink: Callable[[PipelineStage, StageOutcome], None] | None = None,
         cancel_check: Callable[[], bool] | None = None,
-        run_admission_sink: Callable[[], Awaitable[None]] | None = None,
+        run_admission_sink: Callable[[RequestContext], Awaitable[None]] | None = None,
         model_budget: ModelCallBudget | None = None,
     ) -> AnalysisResponse:
         """분석 요청을 새 AnalysisPipeline 인스턴스에 위임하여 실행합니다."""

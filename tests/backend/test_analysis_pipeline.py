@@ -447,8 +447,13 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         progress = []
         admissions = []
 
-        async def admit_run():
-            admissions.append(tuple(stage for stage, _outcome in progress))
+        async def admit_run(admission_context):
+            admissions.append(
+                (
+                    tuple(stage for stage, _outcome in progress),
+                    admission_context,
+                )
+            )
 
         response, adapter, model, _service = await self.run_pipeline(
             execution_sink=execution.update,
@@ -481,9 +486,16 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({"plan", "query", "package"}, set(execution))
         self.assertTrue(progress)
         self.assertEqual(1, len(admissions))
-        self.assertNotIn(PipelineStage.CONTEXT, admissions[0])
-        self.assertNotIn(PipelineStage.G1, admissions[0])
-        self.assertNotIn(PipelineStage.G2, admissions[0])
+        self.assertNotIn(PipelineStage.CONTEXT, admissions[0][0])
+        self.assertNotIn(PipelineStage.G1, admissions[0][0])
+        self.assertNotIn(PipelineStage.G2, admissions[0][0])
+        admitted_context = admissions[0][1]
+        self.assertEqual(
+            "pipeline-test-product-release",
+            admitted_context.product_release_id,
+        )
+        self.assertEqual("context-v3", admitted_context.semantic_release_id)
+        self.assertTrue(admitted_context.permission_snapshot_id)
 
     async def test_empty_result_is_blocked_without_artifact(self):
         execution = {}
@@ -837,7 +849,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         )
         admissions = []
 
-        async def admit_run():
+        async def admit_run(_admission_context):
             admissions.append(True)
 
         response, adapter, model, _service = await self.run_pipeline(
@@ -852,6 +864,40 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["node1"], [node for node, _ in model.calls])
         self.assertEqual(0, adapter.execute_count)
         self.assertEqual([True], admissions)
+
+    async def test_pre_resolved_request_cannot_overwrite_its_pinned_release(self):
+        """Node 1 fast-path도 고정된 릴리스와 다른 후보 영수증으로 재결속하지 않는다."""
+
+        self.payload = AnalysisRequest(
+            question=REQUEST_TEXT,
+            resolved_slots=ResolvedSlots(
+                metric_id=METRIC_ID,
+                period_start="2042-06-01",
+                period_end_exclusive="2042-07-01",
+            ),
+        )
+        pinned_context = self.context.model_copy(
+            update={
+                "product_release_id": "different-product-release",
+                "semantic_release_id": "context-v3",
+            }
+        )
+        admissions = []
+
+        async def admit_run(_admission_context):
+            admissions.append(True)
+
+        response, adapter, model, _service = await self.run_pipeline(
+            context=pinned_context,
+            run_admission_sink=admit_run,
+        )
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.CONTEXT_SOURCE_FAILED, response.error.code)
+        self.assertTrue(response.error.retryable)
+        self.assertEqual([], model.calls)
+        self.assertEqual(0, adapter.resolve_count)
+        self.assertEqual([], admissions)
 
     async def test_execution_graph_gap_is_a_semantic_contract_failure(self):
         """승인 JOIN·grain 부재를 모델 장애나 사용자 기간 누락으로 오분류하지 않는다."""
@@ -874,7 +920,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         )
         admissions = []
 
-        async def admit_run():
+        async def admit_run(_admission_context):
             admissions.append(True)
 
         response, adapter, model, _service = await self.run_pipeline(

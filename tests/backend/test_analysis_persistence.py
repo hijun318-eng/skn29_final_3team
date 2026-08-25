@@ -105,6 +105,7 @@ class FakeAnalysisRepository:
         self.question = question
         self.parameters = parameters
         self.request_id = request_context.request_id
+        self.run_context = request_context
         return self.request_id
 
     async def create_definition_from_run(self, source_request_id, title):
@@ -369,6 +370,10 @@ async def test_direct_analysis_persists_request_query_and_artifact_when_database
 
     assert response.data.status.value == "SUCCEEDED"
     assert repository.request_id == request_context.request_id
+    assert repository.run_context is not None
+    assert repository.run_context.product_release_id == "fixture-product-release"
+    assert repository.run_context.semantic_release_id == "fixture-context-v1"
+    assert repository.run_context.permission_snapshot_id
     assert repository.finished[0] is response
     assert set(repository.finished[1]) == {"plan", "query", "package"}
 

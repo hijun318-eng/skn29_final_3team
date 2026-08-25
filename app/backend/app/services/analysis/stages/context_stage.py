@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 
+from app.authorization import permission_snapshot_id
 from app.contracts import (
     AnalysisResponse,
     AnalysisStatus,
@@ -192,6 +193,15 @@ class AnalysisContextStage:
 
         # 2. 지표/차원/기간 해석 및 ContextPackage 빌드
         try:
+            if (
+                context.product_release_id
+                not in {None, candidates.product_release_id}
+                or context.semantic_release_id
+                not in {None, candidates.context_release}
+            ):
+                raise ReleaseReceiptChangedError(
+                    "candidate release differs from the pinned request receipt"
+                )
             _candidate_scope, normalized_question, structured_request = (
                 await self._support.select_metric(
                     payload,
@@ -202,12 +212,23 @@ class AnalysisContextStage:
             )
             if getattr(self._model, "last_trace", {}).get("node") == "node1":
                 state.record(PipelineStage.MODEL, model_trace_detail(self._model))
+            context = context.model_copy(
+                update={
+                    "permission_snapshot_id": (
+                        context.permission_snapshot_id
+                        or permission_snapshot_id(context.user_id, context.role)
+                    ),
+                    "product_release_id": candidates.product_release_id,
+                    "semantic_release_id": candidates.context_release,
+                }
+            )
+            state.context = context
             # Node 1 후보가 entitlement/release/period 규칙에 exact rebind되어
             # 하나의 typed request로 확정된 뒤에만 durable Run을 만든다. 이후의
             # RuntimeContextPackage/schema/G1 실패는 이미 생성된 Run의 terminal
             # 상태로 남겨야 하므로 이 경계는 asset resolution보다 앞선다.
             if state.run_admission_sink is not None:
-                await state.run_admission_sink()
+                await state.run_admission_sink(context)
             assets = await self._support.resolve_execution_assets(
                 payload,
                 context,

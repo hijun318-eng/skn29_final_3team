@@ -996,7 +996,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             run_admission_sink,
         ):
             self.submitted_requests.append(req)
-            await run_admission_sink()
+            await run_admission_sink(_context)
             sink = self.data_platform.query_lifecycle_sink
             self.assertIsNotNone(sink)
             await sink(

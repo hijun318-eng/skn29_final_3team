@@ -34,7 +34,7 @@ class AnalysisController:
         execution_sink: Callable[[dict[str, Any]], None] | None = None,
         progress_sink: Callable[[object, object], None] | None = None,
         cancel_check: Callable[[], bool] | None = None,
-        run_admission_sink: Callable[[], Awaitable[None]] | None = None,
+        run_admission_sink: Callable[[RequestContext], Awaitable[None]] | None = None,
         model_budget: ModelCallBudget | None = None,
     ) -> AnalysisResponse:
         """권한별 route 결정을 먼저 확정한 뒤 동일 결정을 분석 pipeline에 전달한다.

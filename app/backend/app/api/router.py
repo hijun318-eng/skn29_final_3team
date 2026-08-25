@@ -314,13 +314,13 @@ async def analysis(
         if os.getenv("APP_RUNTIME_DATABASE_URL"):
             repository = _analysis_repository(context)
 
-        async def _admit_analysis_run() -> None:
+        async def _admit_analysis_run(admission_context: RequestContext) -> None:
             nonlocal run_admitted
             if repository is None or run_admitted:
                 return
             await _repository_call(
                 lambda: repository.begin_request(
-                    payload.question, payload.parameters, context
+                    payload.question, payload.parameters, admission_context
                 )
             )
             run_admitted = True

@@ -1281,18 +1281,24 @@ class ConversationOrchestrator:
                         await _commit_command_failure(rate_limited)
                         return rate_limited
 
-                async def _admit_analysis_run() -> None:
+                async def _admit_analysis_run(
+                    admission_context: RequestContext,
+                ) -> None:
                     nonlocal analysis_started, lifecycle_bound
                     if analysis_repo is None or analysis_started:
                         return
-                    await analysis_repo.begin_request(user_message, {}, context)
+                    await analysis_repo.begin_request(
+                        user_message,
+                        {},
+                        admission_context,
+                    )
                     analysis_started = True
                     if not callable(bind_query_lifecycle):
                         return
 
                     async def _record_query_lifecycle(event: dict[str, Any]) -> None:
                         await analysis_repo.record_query_lifecycle(
-                            context.request_id,
+                            admission_context.request_id,
                             event,
                         )
 

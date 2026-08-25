@@ -64,7 +64,7 @@ class AnalysisPipeline:
         execution_sink: Callable[[dict[str, Any]], None] | None = None,
         progress_sink: Callable[[PipelineStage, StageOutcome], None] | None = None,
         cancel_check: Callable[[], bool] | None = None,
-        run_admission_sink: Callable[[], Awaitable[None]] | None = None,
+        run_admission_sink: Callable[[RequestContext], Awaitable[None]] | None = None,
         model_budget: ModelCallBudget | None = None,
     ) -> AnalysisResponse:
         """분석 요청을 받아 전체 파이프라인을 구동하고 최종 AnalysisResponse를 반환합니다."""

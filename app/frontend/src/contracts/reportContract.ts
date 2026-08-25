@@ -267,6 +267,15 @@ export type ReportAssistantPhase =
   | "failed"
   | "cancelled";
 
+/** 서버가 실패 원인에 따라 결정한 사용자 후속 조치다. */
+export type ReportAssistantRequiredAction =
+  | "NONE"
+  | "RETRY"
+  | "REFRESH"
+  | "REAUTHENTICATE"
+  | "REOPEN_LATEST_REPORT"
+  | "CONTACT_ADMIN";
+
 /** 사용자 승인 전에 질문·이유·조회 범위를 공개하는 분석 계획이다. */
 export interface ReportAssistantAnalysisPlan {
   readonly request_id: string;
@@ -298,6 +307,9 @@ export interface ReportAssistantSessionResponse {
   readonly result_artifact_id: string | null;
   readonly result_revision: number | null;
   readonly error_code: string | null;
+  readonly retryable: boolean;
+  readonly required_action: ReportAssistantRequiredAction;
+  readonly retry_of_assistant_request_id: string | null;
 }
 
 /** 변경 제안과 그 결과로 저장된 서버 phase를 함께 반환하는 계약이다. */

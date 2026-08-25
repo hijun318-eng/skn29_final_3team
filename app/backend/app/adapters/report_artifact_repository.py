@@ -285,7 +285,7 @@ class ReportArtifactRepositoryMixin:
                     RETURNING assistant_request_id, phase, session_definition_id,
                               session_definition_version, base_revision, artifact_id,
                               analysis_plan_json, result_artifact_id, result_revision,
-                              error_code
+                              error_code, retry_of_assistant_request_id
                     """
                 ),
                 {
@@ -303,6 +303,99 @@ class ReportArtifactRepositoryMixin:
             )).mappings().one()
         return dict(row)
 
+    async def retry_assistant_session(
+        self,
+        assistant_request_id: str,
+        retry_request_id: str,
+        instruction_hash: str,
+        prompt_id: str,
+        prompt_version: str,
+        prompt_hash: str,
+    ) -> dict[str, object]:
+        """실패 원본을 보존하고 검증된 동일 Report·Artifact에 새 ``ready`` 세션을 만든다.
+
+        원본 owner·failed 상태, 기준 revision, block 결속, 승인 Artifact와 query/checksum
+        lineage를 같은 INSERT 조건에서 다시 확인한다. 원본별 unique index와
+        ``ON CONFLICT``로 중복 호출은 먼저 만들어진 자식 세션을 반환한다.
+        """
+
+        source_uuid = _uuid(assistant_request_id, "assistant_request_id")
+        retry_uuid = _uuid(retry_request_id, "retry_request_id")
+        async with self._sessionmaker.begin() as session:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO report_v1.report_assistant_requests
+                        (assistant_request_id, owner_id, artifact_id, instruction_hash,
+                         status, prompt_id, prompt_version, prompt_hash, phase,
+                         session_definition_id, session_definition_version, base_revision,
+                         retry_of_assistant_request_id, retry_created_at)
+                    SELECT :retry_request_id, source.owner_id, source.artifact_id,
+                           :instruction_hash, 'running', :prompt_id, :prompt_version,
+                           :prompt_hash, 'ready', source.session_definition_id,
+                           source.session_definition_version, source.base_revision,
+                           source.assistant_request_id, now()
+                    FROM report_v1.report_assistant_requests source
+                    JOIN report_v1.report_definition_versions v
+                      ON v.definition_id = source.session_definition_id
+                     AND v.version = source.session_definition_version
+                     AND v.status = 'draft' AND v.revision = source.base_revision
+                    JOIN report_v1.report_definitions d
+                      ON d.definition_id = v.definition_id AND d.owner_id = source.owner_id
+                    JOIN artifact.analysis_artifacts a
+                      ON a.artifact_id = source.artifact_id AND a.status = 'APPROVED'
+                     AND a.artifact_checksum ~ '^[0-9a-f]{64}$'
+                    JOIN query.query_executions q
+                      ON q.query_execution_id = a.query_execution_id
+                     AND q.trino_query_id IS NOT NULL
+                    JOIN chat.analysis_requests r
+                      ON r.request_id = a.request_id AND r.user_id = source.owner_id
+                     AND r.status IN ('SUCCEEDED', 'PARTIAL')
+                    WHERE source.assistant_request_id = :source_request_id
+                      AND source.owner_id = :owner_id
+                      AND source.phase = 'failed' AND source.status = 'failed'
+                      AND EXISTS (
+                          SELECT 1 FROM report_v1.report_blocks b
+                          WHERE b.definition_id = v.definition_id
+                            AND b.definition_version = v.version
+                            AND b.artifact_id = source.artifact_id
+                      )
+                    ON CONFLICT (retry_of_assistant_request_id)
+                        WHERE retry_of_assistant_request_id IS NOT NULL DO NOTHING
+                    """
+                ),
+                {
+                    "retry_request_id": retry_uuid,
+                    "source_request_id": source_uuid,
+                    "owner_id": self._owner_id,
+                    "instruction_hash": instruction_hash,
+                    "prompt_id": prompt_id,
+                    "prompt_version": prompt_version,
+                    "prompt_hash": prompt_hash,
+                },
+            )
+            row = (await session.execute(
+                text(
+                    """
+                    SELECT assistant_request_id, phase, session_definition_id,
+                           session_definition_version, base_revision, artifact_id,
+                           analysis_plan_json, result_artifact_id, result_revision,
+                           error_code, data_request_id, patch_request_id,
+                           report_patch_json, status, instruction_hash,
+                           decision_hash, model_version, prompt_id,
+                           prompt_version, prompt_hash, approved_at, rejected_at,
+                           retry_of_assistant_request_id, retry_created_at
+                    FROM report_v1.report_assistant_requests
+                    WHERE retry_of_assistant_request_id = :source_request_id
+                      AND owner_id = :owner_id
+                    """
+                ),
+                {"source_request_id": source_uuid, "owner_id": self._owner_id},
+            )).mappings().one_or_none()
+        if row is None:
+            raise ValueError("ASSISTANT_RETRY_VALIDATION_FAILED")
+        return dict(row)
+
     async def get_assistant_session(self, assistant_request_id: str) -> dict[str, object]:
         """현재 소유자의 대화형 Assistant 세션을 조회하고 타인·미존재 대상은 숨긴다."""
 
@@ -317,7 +410,8 @@ class ReportArtifactRepositoryMixin:
                            report_patch_json, status, instruction_hash,
                            decision_hash, model_version, prompt_id,
                            prompt_version, prompt_hash,
-                           approved_at, rejected_at
+                           approved_at, rejected_at,
+                           retry_of_assistant_request_id, retry_created_at
                     FROM report_v1.report_assistant_requests
                     WHERE assistant_request_id = :request_id AND owner_id = :owner_id
                       AND phase IS NOT NULL

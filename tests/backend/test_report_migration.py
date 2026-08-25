@@ -190,6 +190,18 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertNotIn("raw_model_response", source)
         self.assertNotIn("sql_text", source)
 
+    def test_report_assistant_retry_lineage_is_additive_and_idempotent(self):
+        """재시도 migration은 원본을 보존하고 실패 요청별 자식 하나만 허용한다."""
+
+        source = (MIGRATIONS / "20260825_36_report_assistant_retry_lineage.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260825_35"', source)
+        self.assertIn("ADD COLUMN retry_of_assistant_request_id uuid", source)
+        self.assertIn("ADD COLUMN retry_created_at timestamptz", source)
+        self.assertIn("CREATE UNIQUE INDEX report_assistant_retry_source_idx", source)
+        self.assertNotIn("DROP TABLE report_v1.report_assistant_requests", source)
+
     def test_query_generation_mode_records_llm_without_fallback(self):
         source = (MIGRATIONS / "20260813_14_query_generation_mode_llm.py").read_text(
             encoding="utf-8"

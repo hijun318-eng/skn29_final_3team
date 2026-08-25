@@ -18,6 +18,7 @@ from app.api.report_router import (
     report_router,
     decide_assistant_patch,
     decide_assistant_plan,
+    retry_assistant_session,
     submit_assistant_message,
 )
 from app.adapters.report_artifact_repository import ReportArtifactRepositoryMixin
@@ -36,6 +37,8 @@ from app.report_contracts import (
     ReportAssistantMessageRequest,
     ReportAssistantApprovalRequest,
     ReportAssistantSessionResponse,
+    ReportAssistantRequiredAction,
+    report_assistant_retry_policy,
 )
 from src.report.domain import BlockType, DefinitionStatus, ReportBlock, ReportDefinitionVersion
 
@@ -90,6 +93,10 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
         )
         self.assertIn(
             ("/reports/assistant/sessions/{assistant_request_id}/patch-approval", ("POST",)),
+            routes,
+        )
+        self.assertIn(
+            ("/reports/assistant/sessions/{assistant_request_id}/retry", ("POST",)),
             routes,
         )
 
@@ -202,6 +209,168 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
         )
         self.assertIn("r.owner_id = :owner_id", append)
         self.assertIn("COALESCE(MAX(t.turn_number), 0) + 1", append)
+
+        retry = inspect.getsource(ReportArtifactRepositoryMixin.retry_assistant_session)
+        for condition in (
+            "source.owner_id = :owner_id",
+            "source.phase = 'failed' AND source.status = 'failed'",
+            "v.revision = source.base_revision",
+            "AND EXISTS",
+            "a.status = 'APPROVED'",
+            "a.artifact_checksum ~ '^[0-9a-f]{64}$'",
+            "q.trino_query_id IS NOT NULL",
+            "retry_of_assistant_request_id",
+            "ON CONFLICT",
+        ):
+            self.assertIn(condition, retry)
+        self.assertNotIn("UPDATE report_v1.report_assistant_requests", retry)
+
+
+class ReportAssistantRetryTest(unittest.IsolatedAsyncioTestCase):
+    """실패 세션을 보존한 채 검증된 새 ready 세션만 만드는 정책을 확인한다."""
+
+    def setUp(self) -> None:
+        """동일 owner·draft·승인 Artifact를 가진 재시도 가능한 실패 세션을 준비한다."""
+
+        self.source_id = uuid4()
+        self.retry_id = uuid4()
+        self.definition_id = uuid4()
+        self.artifact_id = uuid4()
+        self.context = RequestContext(user_id=uuid4(), role=Role.ANALYST)
+        self.failed = {
+            "assistant_request_id": self.source_id,
+            "phase": "failed",
+            "status": "failed",
+            "session_definition_id": self.definition_id,
+            "session_definition_version": 2,
+            "base_revision": 4,
+            "artifact_id": self.artifact_id,
+            "analysis_plan_json": None,
+            "result_artifact_id": None,
+            "result_revision": None,
+            "error_code": "ANALYSIS_FAILED",
+        }
+        self.ready = {
+            **self.failed,
+            "assistant_request_id": self.retry_id,
+            "phase": "ready",
+            "status": "running",
+            "error_code": None,
+            "retry_of_assistant_request_id": self.source_id,
+        }
+
+    def _repository(self) -> SimpleNamespace:
+        """모델·분석·Revision 경계가 없는 재시도 repository fake를 반환한다."""
+
+        return SimpleNamespace(
+            get_assistant_session=AsyncMock(return_value=self.failed),
+            get_version=AsyncMock(return_value=SimpleNamespace(
+                status=DefinitionStatus.DRAFT,
+                revision=4,
+            )),
+            get_assistant_artifact=AsyncMock(return_value={
+                "artifact_checksum": "a" * 64,
+                "trino_query_id": "query-1",
+            }),
+            retry_assistant_session=AsyncMock(return_value=self.ready),
+        )
+
+    async def test_retry_creates_new_ready_session_without_execution(self) -> None:
+        """일시적 실패는 원본 ID를 lineage로 가진 새 세션만 생성한다."""
+
+        repository = self._repository()
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch("app.api.report_router.uuid4", return_value=self.retry_id),
+            patch("app.api.report_router._execute_assistant_analysis", new=AsyncMock()) as execute,
+            patch("app.api.report_router._compose_assistant_revision", new=AsyncMock()) as compose,
+        ):
+            response = await retry_assistant_session(str(self.source_id), self.context)
+
+        self.assertEqual(self.retry_id, response["assistant_request_id"])
+        self.assertEqual("ready", response["phase"])
+        self.assertEqual(self.source_id, response["retry_of_assistant_request_id"])
+        self.assertFalse(response["retryable"])
+        repository.retry_assistant_session.assert_awaited_once()
+        execute.assert_not_awaited()
+        compose.assert_not_awaited()
+
+    async def test_duplicate_retry_returns_same_child_session(self) -> None:
+        """원본 실패를 다시 재시도해도 repository의 동일 자식 세션을 그대로 반환한다."""
+
+        repository = self._repository()
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch("app.api.report_router.uuid4", side_effect=(uuid4(), uuid4())),
+        ):
+            first = await retry_assistant_session(str(self.source_id), self.context)
+            second = await retry_assistant_session(str(self.source_id), self.context)
+        self.assertEqual(first["assistant_request_id"], second["assistant_request_id"])
+        self.assertEqual(2, repository.retry_assistant_session.await_count)
+
+    async def test_retry_policy_blocks_non_retryable_and_non_failed_sessions(self) -> None:
+        """권한·checksum 오류와 failed가 아닌 phase는 새 세션 생성 전에 차단한다."""
+
+        cases = (
+            ("failed", "ANALYSIS_ACCESS_DENIED", ReportAssistantRequiredAction.REAUTHENTICATE),
+            ("failed", "ARTIFACT_CHECKSUM_INVALID", ReportAssistantRequiredAction.CONTACT_ADMIN),
+            ("ready", "ANALYSIS_FAILED", ReportAssistantRequiredAction.REFRESH),
+        )
+        for phase, error_code, action in cases:
+            with self.subTest(phase=phase, error_code=error_code):
+                repository = self._repository()
+                repository.get_assistant_session.return_value = {
+                    **self.failed,
+                    "phase": phase,
+                    "status": "failed" if phase == "failed" else "running",
+                    "error_code": error_code,
+                }
+                with patch(
+                    "app.api.report_router._router",
+                    return_value=SimpleNamespace(repository=repository),
+                ):
+                    with self.assertRaises(HTTPException) as raised:
+                        await retry_assistant_session(str(self.source_id), self.context)
+                self.assertEqual(409, raised.exception.status_code)
+                self.assertEqual(action.value, raised.exception.detail["required_action"])
+                repository.retry_assistant_session.assert_not_awaited()
+
+    async def test_retry_revalidates_revision_and_artifact(self) -> None:
+        """변경된 Revision과 손상 Artifact는 각각 최신 보고서 열기와 관리자 문의로 닫는다."""
+
+        repository = self._repository()
+        repository.get_version.return_value = SimpleNamespace(
+            status=DefinitionStatus.DRAFT,
+            revision=5,
+        )
+        with patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)):
+            with self.assertRaises(HTTPException) as stale:
+                await retry_assistant_session(str(self.source_id), self.context)
+        self.assertEqual("REOPEN_LATEST_REPORT", stale.exception.detail["required_action"])
+
+        repository = self._repository()
+        repository.get_assistant_artifact.return_value = {
+            "artifact_checksum": "invalid",
+            "trino_query_id": "query-1",
+        }
+        with patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)):
+            with self.assertRaises(HTTPException) as artifact:
+                await retry_assistant_session(str(self.source_id), self.context)
+        self.assertEqual("CONTACT_ADMIN", artifact.exception.detail["required_action"])
+        repository.retry_assistant_session.assert_not_awaited()
+
+    async def test_hidden_session_is_404_and_policy_fails_closed(self) -> None:
+        """타인 세션은 숨기고 알 수 없는 오류는 재시도 불가로 유지한다."""
+
+        repository = self._repository()
+        repository.get_assistant_session.side_effect = KeyError("hidden")
+        with patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)):
+            with self.assertRaises(HTTPException) as hidden:
+                await retry_assistant_session(str(self.source_id), self.context)
+        self.assertEqual(404, hidden.exception.status_code)
+        unknown = report_assistant_retry_policy("UNKNOWN_FAILURE")
+        self.assertFalse(unknown.retryable)
+        self.assertEqual(ReportAssistantRequiredAction.NONE, unknown.required_action)
 
 
 class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):

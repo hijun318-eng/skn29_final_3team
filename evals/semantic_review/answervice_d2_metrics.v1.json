@@ -43,7 +43,7 @@
         "VIEW_REUSE"
       ],
       "result_field": "available_room_nights",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
         "column": "available_room_nights",
@@ -98,7 +98,7 @@
         "VIEW_REUSE"
       ],
       "result_field": "occupied_room_nights",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
         "column": "occupied_room_nights",
@@ -153,7 +153,7 @@
         "VIEW_REUSE"
       ],
       "result_field": "room_revenue_krw",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
         "column": "room_revenue_krw",
@@ -211,7 +211,7 @@
         "VIEW_REUSE"
       ],
       "result_field": "occupancy_rate",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "kind": "METRIC_OPERANDS",
         "metric_ids": [
@@ -270,7 +270,7 @@
         "VIEW_REUSE"
       ],
       "result_field": "adr_krw",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "kind": "METRIC_OPERANDS",
         "metric_ids": [
@@ -329,7 +329,7 @@
         "VIEW_REUSE"
       ],
       "result_field": "revpar_krw",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "kind": "METRIC_OPERANDS",
         "metric_ids": [
@@ -387,7 +387,7 @@
         "VIEW_REUSE"
       ],
       "result_field": "fnb_revenue_krw",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
         "column": "fnb_revenue_krw",
@@ -442,7 +442,7 @@
         "VIEW_REUSE"
       ],
       "result_field": "banquet_revenue_krw",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
         "column": "banquet_revenue_krw",
@@ -497,7 +497,7 @@
         "VIEW_REUSE"
       ],
       "result_field": "facility_revenue_krw",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
         "column": "facility_revenue_krw",
@@ -557,7 +557,7 @@
         "VIEW_REUSE"
       ],
       "result_field": "total_operating_revenue_krw",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
         "column": "total_operating_revenue_krw",
@@ -613,7 +613,7 @@
         "VIEW_REUSE"
       ],
       "result_field": "overtime_hours",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "asset_fqn": "serving.analytics_v4_3.hotel_operations_daily",
         "column": "overtime_hours",
@@ -651,7 +651,7 @@
         "keys": [
           "voc_review_id"
         ],
-        "kind": "event"
+        "kind": "row"
       },
       "id": "voc_rating_points",
       "join": {
@@ -670,7 +670,7 @@
         "RAW_APPROVED_DETAIL"
       ],
       "result_field": "voc_rating_points",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "asset_fqn": "serving.analytics_v4_3.voc_review_detail",
         "column": "rating_overall",
@@ -708,7 +708,7 @@
         "keys": [
           "voc_review_id"
         ],
-        "kind": "event"
+        "kind": "row"
       },
       "id": "voc_average_rating_review_count",
       "join": {
@@ -727,7 +727,7 @@
         "RAW_APPROVED_DETAIL"
       ],
       "result_field": "voc_average_rating_review_count",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "asset_fqn": "serving.analytics_v4_3.voc_review_detail",
         "column": "voc_review_id",
@@ -767,7 +767,7 @@
         "keys": [
           "voc_review_id"
         ],
-        "kind": "event"
+        "kind": "row"
       },
       "id": "voc_average_rating",
       "join": {
@@ -786,7 +786,7 @@
         "RAW_APPROVED_DETAIL"
       ],
       "result_field": "voc_average_rating",
-      "review_status": "REVIEW_REQUIRED",
+      "review_status": "APPROVED",
       "source": {
         "kind": "METRIC_OPERANDS",
         "metric_ids": [
@@ -808,7 +808,9 @@
   ],
   "release_id": "walkerhill-v4.3-sql-20260815-derived.1",
   "review_owner_candidate_urn": "urn:li:corpGroup:answervice_runtime_stewards",
-  "review_status": "REVIEW_REQUIRED",
+  "review_status": "APPROVED",
+  "reviewed_at": "2026-08-23T15:34:19+09:00",
+  "reviewer": "urn:li:corpGroup:answervice_runtime_stewards",
   "serving_schema": "serving.analytics_v4_3",
   "source_sql_sha256": "60e96f2002178e9b903024a96f0be33430afa08f61dcfc9ed6f44ca2d8483460"
 }

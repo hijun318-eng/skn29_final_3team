@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,7 +78,7 @@ class MLPredictionService:
                 "metric": normalized["metric"],
                 "hotel_scope": normalized["hotel_scope"],
                 "horizon": normalized["horizon"],
-                "as_of": capability["feature_as_of"],
+                "as_of": self._inference_as_of(),
             }
             try:
                 result = await self._client.predict(request, context.trace_id, str(context.request_id))
@@ -87,7 +89,7 @@ class MLPredictionService:
             events.extend(["ML_FEATURE_QUERY_SUCCEEDED", "ML_PREDICTION_SUCCEEDED"])
             daily, room_types = self._validate_and_aggregate(result, request)
             events.append("ML_VALIDATION_SUCCEEDED")
-            response = self._response(context, request, capability, result, daily, room_types)
+            response = self._response(context, request, result, daily, room_types)
             events.append("ML_RESPONSE_RETURNED")
             await self._save_audit(session, context, conversation_id, events, request, response)
             return response
@@ -127,13 +129,28 @@ class MLPredictionService:
         )
 
     @staticmethod
+    def _inference_as_of() -> str:
+        """명시된 추론 기준일 또는 Asia/Seoul 현재 날짜를 ISO 형식으로 반환한다."""
+
+        configured = os.getenv("ML_INFERENCE_AS_OF", "").strip()
+        return (
+            date.fromisoformat(configured).isoformat()
+            if configured
+            else datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
+        )
+
+    @staticmethod
     def _normalize_approved_request(request: dict[str, Any]) -> dict[str, Any]:
-        hotel_scope = str(request.get("hotel_scope") or "").strip().upper()
+        hotel_scope = str(request.get("hotel_scope") or "GRAND").strip().upper()
         metric = str(request.get("metric") or "").strip().upper()
         horizon = request.get("horizon")
-        if not re.fullmatch(r"[A-Z0-9_]{1,32}", hotel_scope):
+        if hotel_scope != "GRAND":
             raise MLAnalysisError(
-                422, "ML_HOTEL_REQUIRED", "An approved hotel code is required."
+                422,
+                "ML_HOTEL_UNSUPPORTED",
+                "현재 객실 수요예측은 GRAND 호텔만 지원합니다. 다른 호텔은 예측할 수 없습니다.",
+                False,
+                "USE_GRAND_HOTEL",
             )
         if metric != "OCCUPANCY_RATE":
             raise MLAnalysisError(
@@ -159,16 +176,16 @@ class MLPredictionService:
         upper = query.upper()
         candidates = re.findall(r"\b[A-Z][A-Z0-9_]{2,31}\b", upper)
         ignored = {"ML", "PMS", "OCCUPANCY_RATE"}
-        hotel = next((item for item in candidates if item not in ignored), None)
-        if hotel is None and re.match(r"^\s*\d+\s*일만", query):
-            hotel = previous_hotel
-        if not hotel:
+        explicit_hotel = next((item for item in candidates if item not in ignored), None)
+        if explicit_hotel in {None, "GRAND"}:
+            hotel = "GRAND"
+        else:
             raise MLAnalysisError(
                 422,
-                "ML_HOTEL_REQUIRED",
-                "예측할 호텔 코드가 필요합니다. 승인된 모델의 호텔 코드를 입력해 주세요.",
+                "ML_HOTEL_UNSUPPORTED",
+                "현재 객실 수요예측은 GRAND 호텔만 지원합니다. 다른 호텔은 예측할 수 없습니다.",
                 False,
-                "PROVIDE_HOTEL_SCOPE",
+                "USE_GRAND_HOTEL",
             )
         match = re.search(r"(\d+)\s*일", query)
         horizon = (
@@ -284,7 +301,6 @@ class MLPredictionService:
     def _response(
         context: RequestContext,
         request: dict[str, Any],
-        capability: dict[str, Any],
         result: dict[str, Any],
         daily: list[dict[str, Any]],
         room_types: list[dict[str, Any]],
@@ -304,7 +320,7 @@ class MLPredictionService:
             "status": "SUCCESS",
             "request_id": str(context.request_id),
             "trace_id": context.trace_id,
-            "request": {**request, "as_of": capability["feature_as_of"]},
+            "request": dict(request),
             "summary": {
                 "total_available_room_nights": available,
                 "predicted_sold_room_nights": predicted,
@@ -337,7 +353,7 @@ class MLPredictionService:
     def _failure_event(code: str) -> str:
         if code == "ML_ACCESS_DENIED":
             return "ML_AUTHORIZATION_FAILED"
-        if code in {"ML_CAPABILITY_NOT_FOUND", "ML_CAPABILITY_NOT_READY", "ML_HORIZON_INVALID", "ML_HOTEL_REQUIRED"}:
+        if code in {"ML_CAPABILITY_NOT_FOUND", "ML_CAPABILITY_NOT_READY", "ML_HORIZON_INVALID", "ML_HOTEL_REQUIRED", "ML_HOTEL_UNSUPPORTED"}:
             return "ML_CAPABILITY_FAILED"
         if code == "ML_PREDICTION_INVALID":
             return "ML_VALIDATION_FAILED"

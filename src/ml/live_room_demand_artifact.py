@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import hashlib
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -149,8 +149,9 @@ class ApprovedRoomDemandRuntime:
             raise ValueError(f"metric must be {METRIC}")
         if request.property_id != self.artifact["property_id"]:
             raise ValueError("hotel_scope is outside the approved model artifact")
-        if request.feature_as_of.isoformat() != self.artifact["feature_as_of"]:
-            raise ValueError("as_of must match the approved model artifact")
+        training_end = date.fromisoformat(self.artifact["feature_as_of"])
+        if request.feature_as_of < training_end:
+            raise ValueError("as_of must not precede the approved model training cutoff")
         if horizon < 1 or horizon > 7:
             raise ValueError("horizon must be between 1 and 7 days")
 

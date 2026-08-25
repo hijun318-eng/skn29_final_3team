@@ -27,7 +27,7 @@ class MLPredictionRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     metric: Literal["OCCUPANCY_RATE"]
-    hotel_scope: str = Field(pattern=r"^[A-Z0-9_]+$", min_length=1, max_length=32)
+    hotel_scope: Literal["GRAND"] = "GRAND"
     horizon: int = Field(ge=1, le=7)
     as_of: date
 

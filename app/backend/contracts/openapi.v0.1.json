@@ -1859,9 +1859,8 @@
             "type": "integer"
           },
           "hotel_scope": {
-            "maxLength": 32,
-            "minLength": 1,
-            "pattern": "^[A-Z0-9_]+$",
+            "const": "GRAND",
+            "default": "GRAND",
             "title": "Hotel Scope",
             "type": "string"
           },
@@ -1873,7 +1872,6 @@
         },
         "required": [
           "metric",
-          "hotel_scope",
           "horizon",
           "as_of"
         ],

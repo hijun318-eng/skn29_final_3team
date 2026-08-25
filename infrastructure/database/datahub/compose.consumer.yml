@@ -216,10 +216,12 @@ services:
       DATAHUB_GMS_HOST: datahub-gms
       DATAHUB_GMS_PORT: "8443"
       DATAHUB_GMS_PROTOCOL: https
+      KAFKA_BOOTSTRAP_SERVER: broker:29092
       DATAHUB_SYSTEM_CLIENT_ID: ${DATAHUB_SYSTEM_CLIENT_ID:-__datahub_system}
       DATAHUB_SYSTEM_CLIENT_SECRET: ${DATAHUB_SYSTEM_CLIENT_SECRET:?DATAHUB_SYSTEM_CLIENT_SECRET is required}
       METADATA_SERVICE_AUTH_ENABLED: "true"
       REQUESTS_CA_BUNDLE: /run/secrets/datahub-ca.pem
+      CURL_CA_BUNDLE: /run/secrets/datahub-ca.pem
       DATAHUB_VERSION: v1.7.0
     volumes:
       - ${DATAHUB_TLS_CA_HOST_FILE:?DATAHUB_TLS_CA_HOST_FILE is required}:/run/secrets/datahub-ca.pem:ro

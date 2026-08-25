@@ -8,12 +8,12 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 130 |
-| documentation | 146 |
+| documentation | 148 |
 | production | 307 |
 | project-config | 38 |
-| runtime-config | 65 |
+| runtime-config | 66 |
 | runtime-contract | 10 |
-| test | 140 |
+| test | 141 |
 
 운영 무결성 위반: **0건**
 
@@ -204,6 +204,7 @@
 | `app/backend/migrations/versions/20260819_26_platform_admin_capability.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260820_27_canonical_analyst_role.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260820_28_analysis_transition_status_width.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260825_29_bounded_multi_turn_persistence.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -353,6 +354,8 @@
 | `docs/daily_reports/team_summaries/5주차/20260814.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/team_summaries/5주차/주간보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/team_summaries/6주차/20260818.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/daily_reports/team_summaries/6주차/20260819.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/daily_reports/team_summaries/6주차/주간보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/01_요구사항 정의서_29기_3팀.xlsx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/02_WBS_29기_3팀.xlsm` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/03_프로젝트기획서_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
@@ -822,6 +825,7 @@
 | `tests/frontend/authenticated-browser-state.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/chart-renderer.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/contracts.test.mjs` | test | TEST_ONLY |
+| `tests/frontend/fixtures/analysis-process-view-models.json` | test | TEST_ONLY |
 | `tests/frontend/fixtures/analysis-report-library.json` | test | TEST_ONLY |
 | `tests/frontend/fixtures/analysis-rich-success.json` | test | TEST_ONLY |
 | `tests/frontend/fixtures/artifact-channel-mix.json` | test | TEST_ONLY |

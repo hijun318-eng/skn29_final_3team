@@ -8,10 +8,10 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 136 |
-| documentation | 123 |
+| documentation | 122 |
 | production | 327 |
 | project-config | 44 |
-| runtime-config | 85 |
+| runtime-config | 86 |
 | runtime-contract | 14 |
 | test | 161 |
 
@@ -235,6 +235,7 @@
 | `app/backend/migrations/versions/20260826_42_report_assistant_turns.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260826_43_report_assistant_patch_approval.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260826_44_report_assistant_evaluations.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260826_45_report_assistant_retry_lineage.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -352,8 +353,6 @@
 | `docs/architecture/canonical-semantic-release-migration.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
-| `docs/architecture/repository-file-inventory.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/daesung/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/jaehong/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/junhee/일일보고.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -430,6 +429,7 @@
 | `docs/reference/목업_하드코딩_감사_2026-08-19.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Agent_실구현_계획_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_5단계_로컬배포_검증보고서_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_V2_개발자_가이드_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_구현_진행_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_다음_작업_계획서_20260824.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/Report_Assistant_V2_다음단계_인수인계_20260825.md` | documentation | REFERENCE_NON_RUNTIME |

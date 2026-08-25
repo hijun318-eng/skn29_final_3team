@@ -19,6 +19,7 @@ New-Item -ItemType Directory -Force -Path $deploymentDirectory,$secretDirectory 
 $deploymentEnv = Join-Path $deploymentDirectory 'answervice.env'
 Copy-Item .env.example $deploymentEnv
 # $deploymentEnv의 CHANGE_ME_/REQUIRED_ 값을 교체하고 TLS PKI 파일의 절대 경로를 설정한다.
+python security/provision-app-catalog-publisher.py --env-file $deploymentEnv
 powershell -NoProfile -ExecutionPolicy Bypass `
   -File security/provision-release-principals.ps1 `
   -EnvPath $deploymentEnv `
@@ -47,6 +48,9 @@ Core 기동은 object store와 Polaris를 먼저 준비하고, management API에
 principal·role·grant를 멱등 구성해 exact read-back한 뒤 Trino를 만든다. bootstrap admin
 credential을 Trino에 재사용하지 않는다. 저장소 로컬 `.env`와 secret은 개발 중에만
 `-AllowRepositoryLocalDevelopment`로 명시할 수 있으며 모두 `.gitignore` 대상이어야 한다.
+`provision-app-catalog-publisher.py`는 publisher key가 없거나 placeholder일 때만 내부
+CSPRNG로 비밀번호를 생성해 외부 env에 원자적으로 기록한다. 기존 유효 credential은
+보존하며 명시적 회전은 `--rotate-credential`로만 수행하고 secret 값은 출력하지 않는다.
 
 ## D0/D1 release 검증과 영속 serving 발행
 

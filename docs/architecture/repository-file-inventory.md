@@ -633,6 +633,7 @@
 | `infrastructure/database/scripts/verify.ps1` | runtime-config | REVIEWED |
 | `infrastructure/database/scripts/verify_readonly_sql.py` | runtime-config | REVIEWED |
 | `infrastructure/database/scripts/verify_trino_release.py` | runtime-config | REVIEWED |
+| `infrastructure/database/security/provision-app-catalog-publisher.py` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-app-postgres.sh` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-crm-mssql.sh` | project-config | REVIEWED |
 | `infrastructure/database/security/provision-crm-mssql.sql` | project-config | REVIEWED |

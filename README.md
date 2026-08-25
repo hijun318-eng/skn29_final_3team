@@ -92,6 +92,8 @@ principal은 운영에서는 저장소 밖의 명시적 경로에 생성한다. 
 명시적 switch와 `.gitignore` 검증을 통과해야 하며 정적 principal JSON으로 fallback하지 않는다.
 
 ```powershell
+python infrastructure/database/security/provision-app-catalog-publisher.py `
+  --env-file $deploymentEnv
 powershell -ExecutionPolicy Bypass `
   -File infrastructure/database/security/provision-release-principals.ps1 `
   -EnvPath $deploymentEnv `

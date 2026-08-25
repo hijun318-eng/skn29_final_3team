@@ -817,6 +817,10 @@ html[data-theme="light"] body{color:#18263a;background:#f4f7fb}html[data-theme="
 .analysis-artifact-reuse code{max-width:28ch;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere}
 @media(max-width:720px){.analysis-artifact-reuse code{max-width:100%}}
 
+/* 추천 질문 제목은 질문 카드와 같은 grid 안에서 한 행 전체를 차지한다. */
+.chat-empty-state>.recommended-questions h3{grid-column:1/-1;margin:0;color:#8f9caf;font-size:14px;text-align:left}
+.theme-light .chat-empty-state>.recommended-questions h3{color:#68788d}
+
 /* 카드 상태는 색·아이콘·전체 테두리로 전달하고 한쪽에만 굵은 장식선을 두지 않는다. */
 .editor-block textarea.block-quote{border-left-width:1px;border-left-color:#e3ddd5}
 .legacy-conclusion article{border:1px solid #e0d4c4;border-radius:9px}

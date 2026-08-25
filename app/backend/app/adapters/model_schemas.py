@@ -230,6 +230,7 @@ _UNSUPPORTED_OPENAI_STRICT_KEYWORDS = frozenset({
     "if",
     "then",
     "else",
+    "allOf",
     "default",
     "$id",
     "$schema",
@@ -285,7 +286,7 @@ def to_openai_strict_schema(raw_schema: dict[str, Any]) -> dict[str, Any]:
                 result["properties"] = {pk: sanitize(pv) for pk, pv in v.items()}
             elif k == "items":
                 result["items"] = sanitize(v)
-            elif k in {"anyOf", "oneOf", "allOf"} and isinstance(v, list):
+            elif k in {"anyOf", "oneOf"} and isinstance(v, list):
                 result[k] = [sanitize(item) for item in v]
             else:
                 result[k] = sanitize(v)

@@ -83,7 +83,7 @@ python app/backend/scripts/export_openapi.py --check
 - 명세 파일과 fixture는 직접 수정하지 않고 exporter로 다시 생성한다.
 - pagination·sorting·filter·idempotency는 현재 세 endpoint에 적용되지 않으며, 이를 사용하는 endpoint 구현 시 별도 version으로 추가한다.
 
-`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 단일 migration chain이 application schema를 최신 head까지 적용한다. root는 `20260729_01`, 현재 tracked head는 `20260820_28` 하나씩이다. Report와 Analysis endpoint는 application PostgreSQL에 정의·실행·Artifact·예약 이력을 영속화하며 공개 요청·응답은 strict Pydantic schema와 고정 operation ID를 사용한다.
+`APP_DATABASE_URL`을 지정한 뒤 `alembic upgrade head`를 실행하면 단일 migration chain이 application schema를 최신 head까지 적용한다. root는 `20260729_01`, 현재 tracked head는 `20260826_44` 하나씩이다. Report와 Analysis endpoint는 application PostgreSQL에 정의·실행·Artifact·예약·Assistant 평가 이력을 영속화하며 공개 요청·응답은 strict Pydantic schema와 고정 operation ID를 사용한다.
 
 `CONTEXT-REGISTRY-v1.0.0-DRAFT`는 내부 service-only 계약이다. Context record, immutable release, request package binding을 application PostgreSQL에 저장하며 checksum은 정렬된 canonical JSON을 서버에서 SHA-256으로 계산한다. 같은 idempotency key와 같은 payload는 기존 결과를 반환하고, 다른 payload·중복 version·승인되지 않은 record·배포되지 않은 release는 도메인 충돌로 차단한다. 승인·배포 이후 payload와 package는 DB trigger로 변경을 거부한다. 이 단계에는 public router, OpenAPI, live DataHub 조립, Analysis 저장 연결을 추가하지 않는다.
 

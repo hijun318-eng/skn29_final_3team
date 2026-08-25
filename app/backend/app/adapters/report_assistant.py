@@ -48,7 +48,14 @@ async def generate_report_draft(
     timeout = float(os.getenv("MODEL_TIMEOUT_SECONDS", "60"))
     started = perf_counter()
     last_error: Exception | None = None
-    for attempt in (1, 2):
+    raw_attempts = os.getenv("REPORT_ASSISTANT_MAX_MODEL_ATTEMPTS", "2")
+    try:
+        max_attempts = int(raw_attempts)
+    except ValueError as error:
+        raise ReportAssistantModelError("Report Assistant attempt limit is invalid") from error
+    if not 1 <= max_attempts <= 4:
+        raise ReportAssistantModelError("Report Assistant attempt limit is invalid")
+    for attempt in range(1, max_attempts + 1):
         try:
             result = await openai_transport(
                 route.endpoint,
@@ -75,6 +82,8 @@ async def generate_report_draft(
                     "prompt_hash": prompt.metadata()["hash"],
                     "attempts": attempt,
                     "duration_ms": round((perf_counter() - started) * 1000, 3),
+                    "input_tokens": transport_meta.get("input_tokens"),
+                    "output_tokens": transport_meta.get("output_tokens"),
                 },
             )
         except (OSError, TimeoutError, TypeError, ValueError) as error:
@@ -102,7 +111,14 @@ async def generate_report_change_proposal(
     timeout = float(os.getenv("MODEL_TIMEOUT_SECONDS", "60"))
     started = perf_counter()
     last_error: Exception | None = None
-    for attempt in (1, 2):
+    raw_attempts = os.getenv("REPORT_ASSISTANT_MAX_MODEL_ATTEMPTS", "2")
+    try:
+        max_attempts = int(raw_attempts)
+    except ValueError as error:
+        raise ReportAssistantModelError("Report Assistant attempt limit is invalid") from error
+    if not 1 <= max_attempts <= 4:
+        raise ReportAssistantModelError("Report Assistant attempt limit is invalid")
+    for attempt in range(1, max_attempts + 1):
         try:
             result = await openai_transport(
                 route.endpoint,
@@ -163,6 +179,8 @@ async def generate_report_change_proposal(
                     "prompt_hash": prompt.metadata()["hash"],
                     "attempts": attempt,
                     "duration_ms": round((perf_counter() - started) * 1000, 3),
+                    "input_tokens": transport_meta.get("input_tokens"),
+                    "output_tokens": transport_meta.get("output_tokens"),
                 },
             )
         except (ContractError, OSError, TimeoutError, TypeError, ValueError) as error:

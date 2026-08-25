@@ -184,6 +184,11 @@ assert.doesNotMatch(source("pages/AdminPage.jsx"), /admin@gmail\.com|SUCCESS.*CO
 assert.match(source("authorization.ts"), /platform_admin/);
 assert.match(source("App.jsx"), /\["보고서 편집", "근거가 연결된 분석 결과와 설명을 블록으로 구성하고 저장합니다\."\]/);
 assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadSchedules\(\)/);
+assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadAssistantOperations\(\)/);
+assert.match(source("api/reportClient.ts"), /getAssistantOperationsSummary/);
+assert.match(source("api/reportClient.ts"), /\/reports\/assistant\/operations\/summary/);
+assert.match(source("api/reportClient.ts"), /getAssistantOperationFailures/);
+assert.doesNotMatch(source("api/reportClient.ts"), /raw_model_response|sql_text/);
 assert.match(reportSources.operationsPanel, /브라우저 위치와 관계없이 서울 현지 시각으로 저장합니다/);
 assert.match(reportSources.lifecycle, /seoulWallClockToIso\(values\.scheduleAt\)/);
 assert.match(reportSources.operationsPanel, /onSetScheduleEnabled\(schedule\.schedule_id, !schedule\.enabled\)/);
@@ -796,10 +801,12 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
   const session = {
     assistant_request_id: "assistant-1", phase: "ready",
     definition_id: "definition-1", definition_version: 2, base_revision: 2,
-    artifact_id: "artifact-1", analysis_plan: null, result_artifact_id: null,
+    artifact_id: "artifact-1", analysis_plan: null,
+    patch_request_id: null, patch_summary: null, patch_operations: [], result_artifact_id: null,
     result_revision: null, error_code: null,
   };
-  const approval = url.endsWith("/approval") ? JSON.parse(init.body) : null;
+  const patchApproval = url.endsWith("/patch-approval") ? JSON.parse(init.body) : null;
+  const approval = url.endsWith("/approval") && !patchApproval ? JSON.parse(init.body) : null;
   const approvalSession = approval ? {
     ...session,
     phase: approval.approved ? "completed" : "ready",
@@ -812,12 +819,22 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
       scope: { period: "현재 기간과 직전 월", metrics: ["승인 지표"], dimensions: [] },
     },
   } : null;
+  const patchSession = patchApproval ? {
+    ...session,
+    phase: patchApproval.approved ? "completed" : "ready",
+    patch_request_id: patchApproval.request_id,
+    patch_summary: "표 제목 변경",
+    patch_operations: ["set_report_title"],
+    result_revision: patchApproval.approved ? 3 : null,
+  } : null;
   const instruction = url.endsWith("/messages") ? JSON.parse(init.body).instruction : "";
-  return new Response(JSON.stringify(approvalSession || (url.endsWith("/messages") ? {
+  return new Response(JSON.stringify(patchSession || approvalSession || (url.endsWith("/messages") ? {
     change_kind: instruction === "모호한 요청" ? "clarification" : "existing_artifact",
     message: instruction === "모호한 요청" ? "어느 기간을 기준으로 할까요?" : "기존 근거로 수정할 수 있습니다.",
     session: instruction === "모호한 요청" ? session : {
-      ...session, phase: "completed", result_revision: 3,
+      ...session, phase: "waiting_patch_approval",
+      patch_request_id: "patch-1", patch_summary: "표 제목 변경",
+      patch_operations: ["set_report_title"],
     },
   } : session)), { status: 200, headers: { "Content-Type": "application/json" } });
 }, "runtime-token");
@@ -846,6 +863,26 @@ assert.equal(
 );
 assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), { instruction: "표 제목을 바꿔 줘" });
 
+const approvedPatch = await assistantSessionClient.approveAssistantPatch(
+  "assistant/1", "patch-1",
+);
+assert.equal(approvedPatch.phase, "completed");
+assert.equal(
+  assistantSessionRequest.url,
+  "http://backend.test/reports/assistant/sessions/assistant%2F1/patch-approval",
+);
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  request_id: "patch-1", approved: true,
+});
+
+const rejectedPatch = await assistantSessionClient.rejectAssistantPatch(
+  "assistant/1", "patch-1",
+);
+assert.equal(rejectedPatch.phase, "ready");
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  request_id: "patch-1", approved: false,
+});
+
 const clarificationProposal = await assistantSessionClient.submitAssistantMessage(
   "assistant/1", "모호한 요청",
 );
@@ -872,7 +909,8 @@ assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
 const staleApprovalClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({
   assistant_request_id: "assistant-1", phase: "ready",
   definition_id: "definition-1", definition_version: 2, base_revision: 2,
-  artifact_id: "artifact-1", analysis_plan: null, result_artifact_id: null,
+  artifact_id: "artifact-1", analysis_plan: null,
+  patch_request_id: null, patch_summary: null, patch_operations: [], result_artifact_id: null,
   result_revision: null, error_code: null,
 }), { status: 200, headers: { "Content-Type": "application/json" } }), "runtime-token");
 await assert.rejects(

@@ -364,10 +364,14 @@ export function useReportDraftState(
     const current = blocksRef.current;
     const fitted = fitAutoArtifactViewLayout(current, artifactMap, orientationRef.current);
     if (JSON.stringify(fitted) === JSON.stringify(current)) return false;
-    const committed = commitBlocks(fitted);
-    if (committed) announce("차트와 표 높이를 실제 데이터에 맞춰 조정했습니다.");
-    return committed;
-  }, [announce, commitBlocks]);
+    const fittedSaved = fitAutoArtifactViewLayout(savedBlocksRef.current, artifactMap, savedOrientationRef.current);
+    blocksRef.current = copyDraftBlocks(fitted);
+    savedBlocksRef.current = copyDraftBlocks(fittedSaved);
+    setBlocks(blocksRef.current);
+    setIsDirty(draftChanged(blocksRef.current));
+    announce("차트와 표 높이를 실제 데이터에 맞춰 조정했습니다.");
+    return true;
+  }, [announce, draftChanged]);
 
   const changeOrientation = useCallback((orientation: "portrait" | "landscape"): boolean => {
     if (!optionsRef.current.editable || orientation === orientationRef.current) return false;

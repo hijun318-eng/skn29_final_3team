@@ -335,6 +335,19 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     [lifecycle],
   );
 
+  const approveAssistantPatch = useCallback(async () => {
+    const result = await lifecycle.approveAssistantPatch();
+    if (!result?.definition) return result;
+    applyDefinition(result.definition);
+    await artifacts.loadArtifacts(result.definition, true);
+    return result;
+  }, [applyDefinition, artifacts, lifecycle]);
+
+  const rejectAssistantPatch = useCallback(
+    () => lifecycle.rejectAssistantPatch(),
+    [lifecycle],
+  );
+
   const assistantStorageKey = lifecycle.selectedDefinition && selectedArtifactSource?.artifactId
     ? `answervice.report-assistant:${lifecycle.selectedDefinition.definitionId}:${lifecycle.selectedDefinition.version}:${selectedArtifactSource.artifactId}`
     : "";
@@ -503,6 +516,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     activeInsert,
     approveDefinition,
     approveAssistantDataRequest,
+    approveAssistantPatch,
     artifacts,
     builderV2: REPORT_BUILDER_V2, canEdit,
     createAssistantDraft,
@@ -526,6 +540,7 @@ export function useReportsPageController({ role, isAdmin: suppliedIsAdmin, onEdi
     renderHeader,
     renderPreviewBlock,
     rejectAssistantDataRequest,
+    rejectAssistantPatch,
     reportCurrency,
     reportPages,
     reloadFinalDocument,

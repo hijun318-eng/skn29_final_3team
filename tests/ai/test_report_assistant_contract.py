@@ -252,6 +252,20 @@ class ReportAssistantContractTests(unittest.TestCase):
 
         self.assertEqual(["object", "null"], plan_schema["type"])
 
+    def test_turn_serving_schema_removes_openai_unsupported_composition(self):
+        """Pydantic 조건식의 allOf가 OpenAI strict response_format에 남지 않아야 한다."""
+
+        from app.adapters.model_schemas import openai_serving_schema
+
+        def contains_all_of(value):
+            if isinstance(value, dict):
+                return "allOf" in value or any(contains_all_of(item) for item in value.values())
+            if isinstance(value, list):
+                return any(contains_all_of(item) for item in value)
+            return False
+
+        self.assertFalse(contains_all_of(openai_serving_schema("report_assistant_turn")))
+
     def test_artifact_shape_and_checksum_are_fail_closed(self):
         missing_artifact_field = copy.deepcopy(REPORT_ASSISTANT_REQUEST)
         missing_artifact_field["artifact"].pop("evidence")

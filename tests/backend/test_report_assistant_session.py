@@ -21,6 +21,7 @@ from app.api.report_router import (
     _compose_assistant_revision,
     _recover_and_get_assistant_session,
     report_router,
+    decide_assistant_patch,
     decide_assistant_plan,
     submit_assistant_message,
 )
@@ -92,6 +93,10 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
             ("/reports/assistant/sessions/{assistant_request_id}/approval", ("POST",)),
             routes,
         )
+        self.assertIn(
+            ("/reports/assistant/sessions/{assistant_request_id}/patch-approval", ("POST",)),
+            routes,
+        )
 
     def test_session_creation_rejects_unknown_client_fields(self) -> None:
         """클라이언트가 phase나 실행 권한을 주입하면 요청 계약이 거부한다."""
@@ -120,6 +125,18 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
             "approved_at = CASE",
         ):
             self.assertIn(condition, claim)
+
+        patch_claim = inspect.getsource(
+            ReportArtifactRepositoryMixin.decide_existing_assistant_patch
+        )
+        for condition in (
+            "assistant_request_id = :request_id",
+            "owner_id = :owner_id",
+            "patch_request_id = :patch_request_id",
+            "phase = 'waiting_patch_approval'",
+            "status = 'running'",
+        ):
+            self.assertIn(condition, patch_claim)
 
         artifact = inspect.getsource(
             ReportArtifactRepositoryMixin.get_assistant_result_artifact
@@ -156,7 +173,7 @@ class ReportAssistantSessionContractTest(unittest.TestCase):
         for condition in (
             "assistant_request_id = :request_id AND owner_id = :owner_id",
             "phase = :expected_phase AND status = 'running'",
-            "data_request_id = :data_request_id",
+            "data_request_id = CAST(:data_request_id AS uuid)",
             "v.revision = :base_revision",
             "NOT EXISTS",
             "INSERT INTO report_v1.report_definition_versions",
@@ -353,8 +370,8 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("clarification", saved[10])
         repository.finalize_existing_assistant_patch.assert_not_awaited()
 
-    async def test_existing_artifact_patch_creates_completed_revision(self) -> None:
-        """기존 근거 요청은 모델 patch를 서버에서 적용하고 CAS 저장 결과를 반환한다."""
+    async def test_existing_artifact_patch_stops_for_user_approval(self) -> None:
+        """기존 근거 요청은 서버 dry-run 뒤 Revision 저장 없이 patch 승인 대기에서 멈춘다."""
 
         assistant_request_id = uuid4()
         artifact_id = uuid4()
@@ -379,7 +396,19 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
                 BlockType.CHART, 0, 0, 12, 7,
             ),),
         )
-        completed = {**session, "phase": "completed", "result_revision": 3}
+        waiting = {
+            **session,
+            "phase": "waiting_patch_approval",
+            "patch_request_id": uuid4(),
+            "report_patch_json": {
+                "summary": "기존 근거 요약 추가",
+                "operations": [{
+                    "op": "add_text", "title": "경영 요약",
+                    "content": "현재 승인 근거의 요약입니다.",
+                    "placement": {"after_block_id": str(block_id), "width": "full"},
+                }],
+            },
+        }
         repository = SimpleNamespace(
             get_assistant_session=AsyncMock(return_value=session),
             get_assistant_turn_history=AsyncMock(return_value=()),
@@ -394,7 +423,8 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
             }),
             get_version=AsyncMock(return_value=definition),
             record_assistant_proposal=AsyncMock(),
-            finalize_existing_assistant_patch=AsyncMock(return_value=completed),
+            record_existing_assistant_patch_proposal=AsyncMock(return_value=waiting),
+            finalize_existing_assistant_patch=AsyncMock(),
         )
         model_result = ({
             "change_kind": "existing_artifact",
@@ -428,16 +458,15 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
                 object(),
             )
 
-        self.assertEqual("completed", response["session"]["phase"])
-        self.assertEqual(3, response["session"]["result_revision"])
+        self.assertEqual("waiting_patch_approval", response["session"]["phase"])
+        self.assertEqual("기존 근거 요약 추가", response["session"]["patch_summary"])
+        self.assertEqual(("add_text",), response["session"]["patch_operations"])
         repository.record_assistant_proposal.assert_not_awaited()
-        repository.finalize_existing_assistant_patch.assert_awaited_once()
-        patched = repository.finalize_existing_assistant_patch.await_args.args[-1]
-        self.assertEqual(2, len(patched.blocks))
-        self.assertEqual(BlockType.TEXT, patched.blocks[-1].type)
+        repository.record_existing_assistant_patch_proposal.assert_awaited_once()
+        repository.finalize_existing_assistant_patch.assert_not_awaited()
 
-    async def test_restore_previous_revision_is_saved_as_a_new_completed_revision(self) -> None:
-        """직전 version을 읽어 현재 source를 CAS 기준으로 유지한 새 revision을 완료한다."""
+    async def test_restore_previous_revision_is_dry_run_before_approval(self) -> None:
+        """직전 version 복원도 현재 source를 바꾸지 않고 승인 가능한 patch로만 저장한다."""
 
         assistant_request_id = uuid4()
         artifact_id = uuid4()
@@ -471,7 +500,15 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
             ),),
             orientation="landscape",
         )
-        completed = {**session, "phase": "completed", "result_revision": 3}
+        waiting = {
+            **session,
+            "phase": "waiting_patch_approval",
+            "patch_request_id": uuid4(),
+            "report_patch_json": {
+                "summary": "직전 revision 복원",
+                "operations": [{"op": "restore_previous_revision"}],
+            },
+        }
         repository = SimpleNamespace(
             get_assistant_session=AsyncMock(return_value=session),
             get_assistant_turn_history=AsyncMock(return_value=()),
@@ -486,7 +523,8 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
             }),
             get_version=AsyncMock(side_effect=(current, previous)),
             record_assistant_proposal=AsyncMock(),
-            finalize_existing_assistant_patch=AsyncMock(return_value=completed),
+            record_existing_assistant_patch_proposal=AsyncMock(return_value=waiting),
+            finalize_existing_assistant_patch=AsyncMock(),
         )
         model_result = ({
             "change_kind": "existing_artifact",
@@ -515,15 +553,109 @@ class ReportAssistantMessageTest(unittest.IsolatedAsyncioTestCase):
                 object(),
             )
 
-        self.assertEqual("completed", response["session"]["phase"])
-        self.assertEqual(3, response["session"]["result_revision"])
+        self.assertEqual("waiting_patch_approval", response["session"]["phase"])
         self.assertEqual(2, repository.get_version.await_count)
         repository.get_version.assert_any_await(str(definition_id), 1)
-        patched = repository.finalize_existing_assistant_patch.await_args.args[-1]
-        self.assertEqual(2, patched.version)
-        self.assertEqual("직전 보고서", patched.title)
-        self.assertEqual("landscape", patched.orientation)
-        self.assertEqual((str(previous_block_id),), tuple(block.block_id for block in patched.blocks))
+        repository.record_existing_assistant_patch_proposal.assert_awaited_once()
+        repository.finalize_existing_assistant_patch.assert_not_awaited()
+
+
+class ReportAssistantPatchApprovalTest(unittest.IsolatedAsyncioTestCase):
+    """기존 Artifact patch가 승인 전 무저장이고 최초 승인만 Revision을 만드는지 검증한다."""
+
+    def _session(self) -> dict[str, object]:
+        patch_request_id = uuid4()
+        definition_id = uuid4()
+        artifact_id = uuid4()
+        return {
+            "assistant_request_id": uuid4(),
+            "phase": "waiting_patch_approval",
+            "session_definition_id": definition_id,
+            "session_definition_version": 2,
+            "base_revision": 1,
+            "artifact_id": artifact_id,
+            "analysis_plan_json": None,
+            "patch_request_id": patch_request_id,
+            "report_patch_json": {
+                "summary": "요약 블록 추가",
+                "operations": [{
+                    "op": "add_text", "title": "요약", "content": "승인 근거 요약",
+                    "placement": {"width": "full"},
+                }],
+            },
+            "instruction_hash": "a" * 64,
+            "decision_hash": "b" * 64,
+            "model_version": "report-model",
+            "prompt_id": "report.assistant.turn",
+            "prompt_version": "PROMPT-v1.4.0",
+            "prompt_hash": "c" * 64,
+            "status": "running",
+            "approved_at": None,
+            "rejected_at": None,
+            "result_artifact_id": None,
+            "result_revision": None,
+            "error_code": None,
+        }
+
+    async def test_approval_creates_revision_and_rejection_does_not(self) -> None:
+        """같은 patch 요청의 승인만 저장기를 호출하고 거절은 ready로 돌아간다."""
+
+        waiting = self._session()
+        definition = ReportDefinitionVersion(
+            str(waiting["session_definition_id"]), 2, DefinitionStatus.DRAFT, "보고서",
+            (ReportBlock(
+                str(uuid4()), "차트", str(waiting["artifact_id"]), 12, "query-1",
+                BlockType.CHART, 0, 0, 12, 7,
+            ),),
+        )
+        saving = {**waiting, "phase": "saving_revision", "approved_at": object()}
+        completed = {**saving, "phase": "completed", "status": "success", "result_revision": 3}
+        repository = SimpleNamespace(
+            decide_existing_assistant_patch=AsyncMock(return_value=(saving, True)),
+            get_version=AsyncMock(return_value=definition),
+            get_assistant_artifact=AsyncMock(return_value={
+                "artifact_id": waiting["artifact_id"], "trino_query_id": "query-1",
+                "artifact_checksum": "d" * 64,
+            }),
+            finalize_existing_assistant_patch=AsyncMock(return_value=completed),
+            fail_assistant_request=AsyncMock(),
+        )
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=repository)),
+            patch("app.api.report_router._recover_and_get_assistant_session", new=AsyncMock(return_value=waiting)),
+        ):
+            response = await decide_assistant_patch(
+                str(waiting["assistant_request_id"]),
+                ReportAssistantApprovalRequest(
+                    request_id=waiting["patch_request_id"], approved=True
+                ),
+                object(),
+            )
+
+        self.assertEqual("completed", response["phase"])
+        self.assertEqual(3, response["result_revision"])
+        repository.finalize_existing_assistant_patch.assert_awaited_once()
+        repository.fail_assistant_request.assert_not_awaited()
+
+        rejected = {**waiting, "phase": "ready", "rejected_at": object()}
+        reject_repository = SimpleNamespace(
+            decide_existing_assistant_patch=AsyncMock(return_value=(rejected, True)),
+            finalize_existing_assistant_patch=AsyncMock(),
+        )
+        with (
+            patch("app.api.report_router._router", return_value=SimpleNamespace(repository=reject_repository)),
+            patch("app.api.report_router._recover_and_get_assistant_session", new=AsyncMock(return_value=waiting)),
+        ):
+            response = await decide_assistant_patch(
+                str(waiting["assistant_request_id"]),
+                ReportAssistantApprovalRequest(
+                    request_id=waiting["patch_request_id"], approved=False
+                ),
+                object(),
+            )
+
+        self.assertEqual("ready", response["phase"])
+        reject_repository.finalize_existing_assistant_patch.assert_not_awaited()
 
 
 class ReportAssistantComposeTest(unittest.IsolatedAsyncioTestCase):

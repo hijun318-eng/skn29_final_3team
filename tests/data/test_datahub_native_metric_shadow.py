@@ -32,6 +32,7 @@ from native_metric_shadow import (  # noqa: E402
     NativeMetricShadowError,
     iter_native_metric_aspects,
     native_metric_expression,
+    native_metric_runtime_records,
     native_metric_shadow_projection,
     native_metric_urn,
     schema_field_urn,
@@ -173,6 +174,28 @@ def test_native_shadow_uses_metric_entities_and_real_upstream_edges() -> None:
     serialized = json.dumps(grouped, ensure_ascii=False, sort_keys=True)
     for forbidden in ("metric_rules", "join_graph", "customProperties"):
         assert forbidden not in serialized
+
+
+def test_runtime_records_are_derived_from_the_verified_native_projection() -> None:
+    """Runtime source manifest는 같은 native aspect projection의 공개 Metric만 사용한다."""
+
+    bundle = arbitrary_ratio_bundle()
+    records = native_metric_runtime_records(bundle)
+
+    assert set(records) == {
+        "account_count",
+        "amount_per_event",
+        "amount_total",
+        "event_count",
+    }
+    for metric_id, record in records.items():
+        aspects = _metric_by_id(bundle, metric_id)
+        assert record == {
+            "urn": native_metric_urn(bundle, metric_id),
+            "metricInfo": aspects["metricInfo"],
+            "aiContext": aspects["aiContext"],
+            "status": aspects["status"],
+        }
 
 
 def test_support_operands_remain_internal_while_business_ratio_keeps_lineage() -> None:

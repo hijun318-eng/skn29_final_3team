@@ -311,6 +311,30 @@ Native reader parity, permission/fan-out policy coverage, release approval, and 
 same-release Backend/Trino/browser gates are still required before changing the
 runtime source.
 
+## Read-only RuntimeCatalogProjection candidate compile
+
+After the governed Dataset/Glossary and native Metric read-backs converge, compile a
+fresh inactive runtime candidate with the DataHub read identity and the actual Trino
+runtime principal. The command performs a new full DataHub scroll, verifies all
+native Metric aspects and graph edges, checks every governed Trino relation, and
+prints only a checksum receipt. It neither stores a projection nor changes the active
+pointer.
+
+```powershell
+$candidate = python `
+  infrastructure/database/datahub/compile_runtime_catalog_projection.py `
+  --expected-release <catalog-release-id> | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $candidate.status -ne 'CHECKED_NOT_PUBLISHED') {
+  throw 'Runtime catalog candidate compile failed.'
+}
+```
+
+This command requires `DATAHUB_GMS_URL`, the read-only DataHub token/actor and CA,
+plus `TRINO_URL`, `TRINO_RUNTIME_USER`, `TRINO_RUNTIME_PASSWORD`, and an absolute
+Trino CA path. The returned `field_term_edge_count` is derived from the exact snapshot
+sealed into `projection_sha256`; an empty or stale editable field association is not
+filled from the semantic bundle.
+
 The Backend keeps the verified catalog snapshot and readiness receipt for the shared
 `86400` second operational TTL. After a new semantic release reaches
 `PUBLISHED_AND_VERIFIED`, recreate the Backend before routing analysis traffic to that

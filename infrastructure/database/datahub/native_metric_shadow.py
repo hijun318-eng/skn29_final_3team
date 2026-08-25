@@ -9,6 +9,7 @@ policy는 canonical release가 계속 소유하며, 발행과 재조회는 별�
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
+from copy import deepcopy
 from typing import Any
 from urllib.parse import quote
 import unicodedata
@@ -258,6 +259,31 @@ def native_metric_shadow_projection(bundle: Mapping[str, Any]) -> dict[str, Any]
             }
         ),
     }
+
+
+def native_metric_runtime_records(
+    bundle: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    """Exact native read-back 뒤 runtime source manifest에 봉인할 Metric record를 만든다."""
+
+    grouped: dict[str, dict[str, Mapping[str, Any]]] = {}
+    for entity_type, urn, name, value in iter_native_metric_aspects(bundle):
+        if entity_type == "metric":
+            grouped.setdefault(urn, {})[name] = value
+    records: dict[str, dict[str, Any]] = {}
+    for term in bundle["metric_terms"]:
+        metric_id = str(term["id"])
+        urn = native_metric_urn(bundle, metric_id)
+        aspects = grouped.get(urn, {})
+        if not {"metricInfo", "aiContext", "status"}.issubset(aspects):
+            raise NativeMetricShadowError("native Metric source record is incomplete")
+        records[metric_id] = {
+            "urn": urn,
+            "metricInfo": deepcopy(aspects["metricInfo"]),
+            "aiContext": deepcopy(aspects["aiContext"]),
+            "status": deepcopy(aspects["status"]),
+        }
+    return dict(sorted(records.items()))
 
 
 def native_metric_expression(

@@ -459,6 +459,7 @@
 | `infrastructure/database/datahub/compose.consumer.yml` | production | REVIEWED |
 | `infrastructure/database/datahub/compose.ingestion.yml` | production | REVIEWED |
 | `infrastructure/database/datahub/compose.semantic-search.yml` | production | REVIEWED |
+| `infrastructure/database/datahub/compile_runtime_catalog_projection.py` | production | REVIEWED |
 | `infrastructure/database/datahub/dataset_semantic_clients.py` | production | REVIEWED |
 | `infrastructure/database/datahub/dataset_semantic_contract.py` | production | REVIEWED |
 | `infrastructure/database/datahub/dataset_semantic_index.py` | production | REVIEWED |

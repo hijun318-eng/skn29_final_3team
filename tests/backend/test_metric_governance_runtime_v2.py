@@ -27,6 +27,7 @@ from app.adapters.catalog_snapshot import (  # noqa: E402
 from app.adapters.datahub_metric_governance import runtime_metric_permitted  # noqa: E402
 from app.adapters.datahub_metadata import parse_dataset, parse_glossary_term  # noqa: E402
 from app.adapters.datahub_metadata_values import GovernedMetadataError  # noqa: E402
+from app.adapters.legacy_semantic_release import compile_legacy_semantic_release  # noqa: E402
 from app.adapters.query_governance import QueryGovernanceEngine  # noqa: E402
 from app.adapters.model_context import execution_time, metric_selection  # noqa: E402
 from app.contracts import (  # noqa: E402
@@ -61,6 +62,12 @@ from app.services.context.builder import (  # noqa: E402
 from app.services.context.service import PipelineContextService  # noqa: E402
 from metadata_aspects import iter_aspects  # noqa: E402
 from metadata_contract import validate_bundle  # noqa: E402
+from compile_runtime_catalog_projection import (  # noqa: E402
+    RuntimeCatalogCandidateError,
+    candidate_receipt,
+    compile_verified_runtime_catalog_candidate,
+)
+from native_metric_shadow import native_metric_shadow_projection  # noqa: E402
 from test_datahub_metadata_publication import (  # noqa: E402
     _graphql_dataset,
     _graphql_term,
@@ -120,6 +127,54 @@ def _snapshot(bundle: dict) -> CatalogSnapshot:
             for name, values in bundle["governance_entities"].items()
         },
     )
+
+
+def test_verified_native_readback_seals_exact_field_term_snapshot() -> None:
+    """Candidate compiler는 field Term을 포함한 snapshot과 exact native receipt를 봉인한다."""
+
+    snapshot = _snapshot(_runtime_bundle())
+    release = compile_legacy_semantic_release(snapshot)
+    fingerprints = tuple(
+        {
+            "fqn": asset.fqn,
+            "table_type": snapshot.datasets_by_fqn[asset.fqn].table_type,
+            "column_count": len(
+                snapshot.datasets_by_fqn[asset.fqn].trino_schema_columns
+            ),
+            "relation_sha256": snapshot.datasets_by_fqn[
+                asset.fqn
+            ].trino_schema_checksum,
+        }
+        for asset in release.assets
+    )
+    native = {
+        **native_metric_shadow_projection(release.as_bundle()),
+        "status": "SHADOW_READBACK_VERIFIED_NOT_ACTIVE",
+    }
+
+    projection = compile_verified_runtime_catalog_candidate(
+        snapshot,
+        release,
+        fingerprints,
+        native,
+    )
+    receipt = candidate_receipt(projection, native)
+
+    assert receipt["authority_mode"] == "NATIVE_PRIORITY"
+    assert receipt["field_term_edge_count"] > 0
+    assert receipt["native_projection_sha256"] == native["projection_sha256"]
+    assert receipt["native_membership_sha256"] == native[
+        "release_membership_sha256"
+    ]
+    assert projection.matches_snapshot(snapshot)
+
+    with pytest.raises(RuntimeCatalogCandidateError, match="differs"):
+        compile_verified_runtime_catalog_candidate(
+            snapshot,
+            release,
+            fingerprints,
+            {**native, "projection_sha256": "0" * 64},
+        )
 
 
 class _Loader:

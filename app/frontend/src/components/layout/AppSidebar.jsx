@@ -1,11 +1,12 @@
 /** 세션 역할별 허용 메뉴와 반응형 navigation 셸을 제공하는 모듈이다. */
-import { Building2, FileBarChart, MessageSquareText, PanelLeftClose } from "lucide-react";
+import { Building2, FileBarChart, MessageSquareText, PanelLeftClose, ShieldCheck } from "lucide-react";
 import { CAPABILITY, hasCapability, roleLabel } from "../../authorization.ts";
 import { PAGE_PATHS } from "../../routing";
 
 const NAVIGATION = [
   { id: "chat", path: PAGE_PATHS.chat, label: "데이터 분석", icon: MessageSquareText, capability: CAPABILITY.runAnalysis },
   { id: "reports", path: PAGE_PATHS.reports, label: "보고서", icon: FileBarChart, capability: CAPABILITY.draftReport, alternative: CAPABILITY.manageReport },
+  { id: "admin", path: PAGE_PATHS.admin, label: "관리자", icon: ShieldCheck, capability: CAPABILITY.manageReport, alternative: CAPABILITY.manageData },
 ];
 
 /** 서버 세션 역할에 허용된 경로만 노출하고 선택된 페이지를 접근성 상태로 표시한다. */

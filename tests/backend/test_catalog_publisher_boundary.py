@@ -67,6 +67,20 @@ def test_role_grants_exclude_pointer_and_revoke_runtime_manifest_insert() -> Non
     assert "roles must differ" in start
 
 
+def test_publisher_only_upgrade_stops_before_runtime_grant_reconciliation() -> None:
+    provision = PROVISION.read_text(encoding="utf-8")
+    branch = provision.index("if [ \"$provision_mode\" = 'publisher-only' ]")
+    branch_exit = provision.index("exit 0", branch)
+    runtime_revoke = provision.index("REVOKE ALL PRIVILEGES ON ALL TABLES", branch)
+
+    assert branch < branch_exit < runtime_revoke
+    assert "APP_CATALOG_PUBLISHER_ROLE_PROVISIONED" in provision[branch:branch_exit]
+    assert (
+        '\\set publisher_password `printf %s "$APP_CATALOG_PUBLISHER_PASSWORD"`'
+        in provision[branch:branch_exit]
+    )
+
+
 def test_publisher_credential_provisioning_is_idempotent_and_secret_safe(
     tmp_path: Path,
 ) -> None:

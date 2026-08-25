@@ -51,6 +51,9 @@ credential을 Trino에 재사용하지 않는다. 저장소 로컬 `.env`와 sec
 `provision-app-catalog-publisher.py`는 publisher key가 없거나 placeholder일 때만 내부
 CSPRNG로 비밀번호를 생성해 외부 env에 원자적으로 기록한다. 기존 유효 credential은
 보존하며 명시적 회전은 `--rotate-credential`로만 수행하고 secret 값은 출력하지 않는다.
+기존 volume에 이 역할을 처음 추가할 때는 publisher 두 환경변수의 값이 process에 있는
+상태에서 `provision-app-postgres.sh publisher-only`를 실행한다. 이 mode는 기존 runtime
+grant를 건드리지 않고 역할과 DB 연결만 준비하며, relation 권한은 Alembic이 적용한다.
 
 ## D0/D1 release 검증과 영속 serving 발행
 

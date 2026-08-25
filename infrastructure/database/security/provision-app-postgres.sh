@@ -3,11 +3,47 @@
 # 필요한 table 권한만 부여한다. identifier·secret 처리나 grant 조정 실패는 즉시 중단한다.
 set -eu
 
+provision_mode="${1:-full}"
+case "$provision_mode" in
+  full|publisher-only) ;;
+  *)
+    echo 'Usage: provision-app-postgres.sh [full|publisher-only]' >&2
+    exit 1
+    ;;
+esac
+
 if [ "$APP_DB_USER" = "$APP_MIGRATION_USER" ] || \
    [ "$APP_DB_USER" = "$APP_CATALOG_PUBLISHER_USER" ] || \
    [ "$APP_MIGRATION_USER" = "$APP_CATALOG_PUBLISHER_USER" ]; then
   echo 'App PostgreSQL runtime, migration, and catalog publisher roles must differ.' >&2
   exit 1
+fi
+
+# 기존 volume에 publisher 경계만 추가하는 upgrade는 runtime grant를 재조정하지 않는다.
+# 비밀번호 값은 psql argv가 아니라 상속된 child environment에서만 읽는다. 이 mode는
+# role/password/CONNECT까지만 맡고 table 권한은 해당 Alembic migration이 부여한다.
+if [ "$provision_mode" = 'publisher-only' ]; then
+  if [ "${#APP_CATALOG_PUBLISHER_PASSWORD}" -lt 12 ]; then
+    echo 'App catalog publisher password must contain at least 12 characters.' >&2
+    exit 1
+  fi
+  psql -v ON_ERROR_STOP=1 \
+    --username "$POSTGRES_USER" \
+    --dbname "$POSTGRES_DB" \
+    --set=publisher_user="$APP_CATALOG_PUBLISHER_USER" <<'SQL'
+\set publisher_password `printf %s "$APP_CATALOG_PUBLISHER_PASSWORD"`
+SELECT format('CREATE ROLE %I LOGIN', :'publisher_user')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname=:'publisher_user')
+\gexec
+ALTER ROLE :"publisher_user" PASSWORD :'publisher_password';
+SELECT format(
+  'GRANT CONNECT ON DATABASE %I TO %I',
+  current_database(),
+  :'publisher_user'
+) \gexec
+SQL
+  echo 'APP_CATALOG_PUBLISHER_ROLE_PROVISIONED'
+  exit 0
 fi
 
 # psql variables distinguish identifiers (%I) from secret literals (%L); this

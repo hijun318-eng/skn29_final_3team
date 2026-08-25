@@ -408,7 +408,14 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
       session.assistant_request_id,
       normalized,
     ));
-    if (!proposal) return null;
+    if (!proposal) {
+      const recovered = await mutate(
+        "assistant-recover",
+        () => reportClient.getAssistantSession(session.assistant_request_id),
+      );
+      if (recovered) setAssistantSession(recovered);
+      return null;
+    }
     setAssistantSession(proposal.session);
     setAssistantInstruction("");
     setNotice(proposal.change_kind === "new_data"

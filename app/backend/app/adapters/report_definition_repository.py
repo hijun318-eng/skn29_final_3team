@@ -413,6 +413,37 @@ class ReportDefinitionRepositoryMixin:
                 semantic_release_id=row["semantic_release_id"],
             )
 
+    async def get_draft_revision(self, definition_id: str, version: int) -> int:
+        """현재 소유 범위의 draft CAS revision을 반환한다.
+
+        Report 도메인 값 객체에는 저장소 CAS counter가 포함되지 않으므로 재시도·저장 전
+        검증은 이 조회를 사용한다. 누락·비소유·draft가 아닌 version은 모두 ``KeyError``로
+        감춰 호출자가 최신 draft를 다시 열도록 한다.
+        """
+
+        definition_uuid = _uuid(definition_id, "definition_id")
+        async with self._sessionmaker() as session:
+            revision = (await session.execute(
+                text(
+                    """
+                    SELECT v.revision
+                    FROM report_v1.report_definition_versions v
+                    JOIN report_v1.report_definitions d USING (definition_id)
+                    WHERE v.definition_id = :definition_id AND v.version = :version
+                      AND v.status = 'draft'
+                      AND (:manage_all OR d.owner_id = :owner_id)
+                    """
+                ),
+                {
+                    **self._scope_params(),
+                    "definition_id": definition_uuid,
+                    "version": version,
+                },
+            )).scalar_one_or_none()
+        if revision is None:
+            raise KeyError("접근 가능한 draft Report version을 찾을 수 없습니다.")
+        return int(revision)
+
     async def list_definitions(self) -> tuple[ReportDefinitionVersion, ...]:
         """owner scope를 적용한 모든 report version을 생성 시각·ID·version 순서로 복원한다."""
         async with self._sessionmaker() as session:

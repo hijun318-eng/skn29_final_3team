@@ -7,7 +7,8 @@ API, migration, 테스트 증거와 미완료 범위를 다른 개발자가 한 
 
 - 저장소: `report-assistant-advanced`
 - 공유 브랜치: `seung`
-- 통합 기준 커밋: `2da6d88` (`feat(report): complete assistant v2 stages 1-4`)
+- 이전 통합 기준 커밋: `2da6d88` (`feat(report): complete assistant v2 stages 1-4`)
+- 현재 문서 기준: migration 36과 실패 복구 실제 DB·Browser 검증을 포함한 `seung` 최신 push
 - 문서 기준일: 2026-08-25
 - 현재 migration code head: `20260825_36`
 
@@ -30,7 +31,7 @@ Report Assistant는 별도 Agent framework나 microservice가 아니다. 기존 
 | 품질·token·비용 평가 | 구현 | request ID별 평가 한 건을 멱등 저장한다. usage나 가격이 없으면 `null`이다. |
 | 사용자 실행 영수증 | 구현 | 사용자는 자신의 route·계약·Revision·지연·안전한 오류만 확인한다. |
 | 관리자 운영 API | 구현 | 기간 summary, 실패 목록, session evaluation API가 있다. |
-| 실패 복구·안전 재시도 | 구현·unit/contract 확인 | 실패 원본을 보존하고 검증된 새 `ready` session을 멱등 생성한다. |
+| 실패 복구·안전 재시도 | 구현·실제 DB·Browser 확인 | 모델 실패를 typed `failed`로 종결하고 원본을 보존한 새 `ready` session을 멱등 생성한다. |
 
 ## 3. 전체 구조
 
@@ -49,6 +50,8 @@ app/api/report_router.py
         └── ReportRepository
               ├── report_artifact_repository.py
               │     session·승인·Artifact·Revision·retry
+              ├── report_definition_repository.py
+              │     owner 범위 Report 조회·draft CAS revision
               └── report_assistant_operations_repository.py
                     평가·품질·비용 관측
 ```
@@ -217,6 +220,11 @@ index로 원본 실패 session당 자식 session 하나만 만든다. 중복 HTT
 - `AnalysisController`
 - Report Revision 저장
 
+모델 transport 또는 strict turn 계약이 실패하면 Backend는 평가만 기록하고 세션을 남겨두지 않는다.
+`REPORT_ASSISTANT_TURN_MODEL_FAILED` 또는 `REPORT_ASSISTANT_TURN_MODEL_INVALID`로 원본 session을
+`failed`에 종결한다. Frontend는 실패 HTTP 응답 직후 같은 session을 서버에서 다시 조회해
+`retryable`·`required_action`을 반영하므로 새로고침 없이도 안전한 실패 카드가 표시된다.
+
 서버가 반환하는 `required_action`:
 
 | Action | 사용자 조치 |
@@ -260,6 +268,7 @@ Revision conflict와 알 수 없는 오류는 fail-closed로 자동 재시도하
 | `app/backend/app/adapters/report_assistant.py` | `report.assistant`와 `report.assistant.turn` strict 모델 호출 |
 | `app/backend/app/adapters/model_schemas.py` | 모델 request/response schema 등록 |
 | `app/backend/app/adapters/report_artifact_repository.py` | Artifact 검증, session 상태, 승인 claim, Revision CAS, retry lineage |
+| `app/backend/app/adapters/report_definition_repository.py` | owner 범위 Report 값 객체와 retry 전 draft CAS revision 조회 |
 | `app/backend/app/adapters/report_assistant_operations_repository.py` | 평가 upsert와 기간 조회 |
 | `app/backend/app/services/report_assistant_operations.py` | 품질·승인·Revision·latency·token·비용 지표 집계 |
 | `app/backend/app/controllers/analysis_controller.py` | 새 분석에서 재사용하는 기존 분석 pipeline |
@@ -295,9 +304,9 @@ Revision conflict와 알 수 없는 오류는 fail-closed로 자동 재시도하
 | `20260825_35` | request ID별 품질·비용 평가 |
 | `20260825_36` | 실패 session retry lineage와 원본별 unique child |
 
-`20260825_36`은 기존 migration을 수정하지 않는 additive migration이다. 코드 graph는 단일 head를
-확인했지만 이 문서 작성 시점의 실제 App DB에는 아직 적용하지 않았다. 적용 전 대상 DB와 현재
-revision을 확인하고 기존 volume이나 데이터를 삭제하지 않아야 한다.
+`20260825_36`은 기존 migration을 수정하지 않는 additive migration이다. 코드 graph는 단일 head이며
+격리 DB `app_db_report_assistant_e2e`에 실제 적용했다. 공용·운영 App DB에는 적용하지 않았고 기존
+volume이나 데이터를 삭제하지 않았다.
 
 ## 10. 테스트와 평가 위치
 
@@ -315,7 +324,7 @@ revision을 확인하고 기존 volume이나 데이터를 삭제하지 않아야
 
 2026-08-25 최종 회귀 결과:
 
-- Backend·AI·migration 관련 `unittest` 88개 통과
+- Backend·AI·migration 관련 `unittest` 89개 통과
 - Frontend test 24개 통과
 - Frontend production build 통과
 - OpenAPI contract 검증 통과
@@ -337,11 +346,13 @@ unit/contract 증거이며 live 데이터 E2E로 표현하지 않는다.
 - 같은 승인 요청의 중복 Revision 방지
 - Browser에서 승인 카드, completed, Canvas 반영과 새로고침 복구
 - Browser console error와 관련 Backend 500 부재 확인
+- migration 36을 적용한 실제 PostgreSQL에서 retry API 중복 호출이 동일 자식 session을 반환
+- 원본 실패 phase·error code·완료 시각 보존과 Report Revision 무변경 확인
+- Browser에서 모델 장애의 typed 실패 카드, `새 세션으로 다시 시도` 버튼과 새 `ready` session 전환 확인
+- 실패·retry 동작 동안 모델 재호출, AnalysisController, Report Revision 저장이 실행되지 않음
 
 ### 아직 완료되지 않은 범위
 
-- migration `20260825_36` 실제 DB 적용
-- 실패 session retry의 실제 DB·Browser E2E
 - Trino, DataHub, semantic release, catalog manifest, Trino schema readiness
 - `new_data`의 DataHub → SQL Guard → Trino → Artifact → Revision live E2E
 - `running_data_agent` claim 직후 process가 종료될 때의 완전한 exactly-once 보장
@@ -378,14 +389,11 @@ queue/outbox/worker를 추가하지 않았기 때문에 분석 실행 직전·�
 
 1. `AGENTS.md`, `docs/README.md`와 이 문서를 읽는다.
 2. `git status --short --branch`로 다른 개발자의 dirty 변경을 확인하고 보존한다.
-3. 대상이 격리/local App DB인지 확인한 뒤 migration 36을 적용한다.
-4. 최신 Backend와 Frontend를 재기동한다.
-5. retryable error fixture 또는 안전한 격리 시나리오에서 실패 session을 만든다.
-6. retry API가 새 ID와 `retry_of_assistant_request_id`를 반환하는지 확인한다.
-7. 원본 실패 phase, error code, completed timestamp가 바뀌지 않았는지 확인한다.
-8. retry 버튼만으로 모델·분석·Revision 호출이 발생하지 않는지 확인한다.
-9. 새 session에 사용자가 지시를 입력한 뒤 기존 승인 흐름이 정상인지 회귀 확인한다.
-10. Trino·DataHub가 ready가 된 후에만 `new_data` live E2E를 별도 수행한다.
+3. 대상 DB의 migration 36 적용 여부를 확인하고 공용·운영 DB에는 별도 승인 없이 적용하지 않는다.
+4. 최신 Backend와 Frontend를 재기동하고 model·App DB·auth readiness를 확인한다.
+5. 실패 복구 회귀 시 기존 원본 불변·retry child uniqueness·Revision 무변경을 다시 확인한다.
+6. 새 session에 사용자가 지시를 입력한 뒤 기존 승인 흐름이 정상인지 회귀 확인한다.
+7. Trino·DataHub가 ready가 된 후에만 `new_data` live E2E를 별도 수행한다.
 
 ## 14. 팀 공유 시 핵심 설명
 

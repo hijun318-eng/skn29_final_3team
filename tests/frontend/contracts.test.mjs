@@ -192,6 +192,8 @@ assert.match(source("api/reportClient.ts"), /getAssistantOperationFailures/);
 assert.doesNotMatch(source("api/reportClient.ts"), /raw_model_response|sql_text/);
 assert.match(reportSources.lifecycle, /reportClient\.getAssistantEvaluation\(session\.assistant_request_id\)/);
 assert.match(reportSources.lifecycle, /reportClient\.retryAssistantSession\(current\.assistant_request_id\)/);
+assert.match(reportSources.lifecycle, /reportClient\.getAssistantSession\(session\.assistant_request_id\)/);
+assert.match(reportSources.lifecycle, /if \(recovered\) setAssistantSession\(recovered\)/);
 assert.match(reportSources.lifecycle, /setAssistantEvaluation\(null\)/);
 assert.match(reportSources.page, /evaluation=\{lifecycle\.assistantEvaluation\}/);
 assert.match(reportSources.page, /onRetry=\{lifecycle\.retryAssistantSession\}/);

@@ -879,12 +879,14 @@
               {
                 "enum": [
                   "SUMMARY",
+                  "KPI",
                   "TABLE",
                   "BAR",
                   "LINE",
                   "PIE",
                   "HORIZONTAL_BAR",
-                  "DONUT"
+                  "DONUT",
+                  "FULL"
                 ],
                 "type": "string"
               },

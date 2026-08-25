@@ -69,7 +69,17 @@ class ConversationRepository:
     ) -> None:
         """Insert an immutable View and its release binding in the caller transaction."""
 
-        if view_type not in {"TABLE", "BAR", "LINE", "PIE", "AREA", "SCATTER", "KPI"}:
+        if view_type not in {
+            "SUMMARY",
+            "KPI",
+            "TABLE",
+            "BAR",
+            "LINE",
+            "PIE",
+            "AREA",
+            "SCATTER",
+            "FULL",
+        }:
             raise ValueError("지원하지 않는 View type입니다.")
         canonical = json.dumps(
             spec_json,

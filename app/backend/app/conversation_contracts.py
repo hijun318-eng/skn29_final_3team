@@ -28,7 +28,15 @@ class ConversationCommandRequest(ContractModel):
     expected_head_turn_id: UUID | None
     requested_route: Literal["ANALYSIS", "PRESENTATION", "REPORT_ACTION"] | None = None
     presentation_type: Literal[
-        "SUMMARY", "TABLE", "BAR", "LINE", "PIE", "HORIZONTAL_BAR", "DONUT"
+        "SUMMARY",
+        "KPI",
+        "TABLE",
+        "BAR",
+        "LINE",
+        "PIE",
+        "HORIZONTAL_BAR",
+        "DONUT",
+        "FULL",
     ] | None = None
 
     @field_validator("user_message", "idempotency_key", mode="before")

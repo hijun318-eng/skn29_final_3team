@@ -210,11 +210,7 @@ def _presentation_view_contract(
     artifact_id = source_turn.get("artifact_id")
     snapshot = source_turn.get("data_snapshot_json")
     chart = source_turn.get("chart_spec_json")
-    if (
-        not artifact_id
-        or not isinstance(snapshot, dict)
-        or not isinstance(chart, dict)
-    ):
+    if not artifact_id or not isinstance(snapshot, dict):
         raise ValueError("표현 전환에 필요한 Safe Artifact schema가 없습니다.")
     raw_columns = snapshot.get("columns")
     if not isinstance(raw_columns, list) or any(
@@ -225,13 +221,27 @@ def _presentation_view_contract(
     if len(columns) != len(raw_columns) or not columns:
         raise ValueError("Artifact column schema가 중복되었거나 비어 있습니다.")
 
+    requested_view = requested_type.upper()
+    if requested_view in {"SUMMARY", "KPI", "FULL"}:
+        return {
+            "view_type": requested_view,
+            "spec_json": {
+                "presentation_type": requested_view,
+                "source_artifact_id": str(artifact_id),
+                "columns": list(columns),
+                "sort": [],
+                "format": {},
+            },
+        }
+
     view_type = {
         "HORIZONTAL_BAR": "BAR",
         "DONUT": "PIE",
-        "SUMMARY": "TABLE",
-    }.get(requested_type.upper(), requested_type.upper())
+    }.get(requested_view, requested_view)
     if view_type not in {"TABLE", "BAR", "LINE", "PIE", "AREA"}:
         raise ValueError("요청한 표현은 현재 renderer allowlist 밖입니다.")
+    if not isinstance(chart, dict):
+        raise ValueError("차트 표현에 필요한 Safe Artifact schema가 없습니다.")
     spec: dict[str, Any] = {
         "chart_type": view_type.lower(),
         "source_artifact_id": str(artifact_id),

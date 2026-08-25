@@ -9,11 +9,11 @@
 |---|---:|
 | archive | 134 |
 | documentation | 110 |
-| production | 319 |
-| project-config | 39 |
-| runtime-config | 76 |
+| production | 323 |
+| project-config | 40 |
+| runtime-config | 78 |
 | runtime-contract | 14 |
-| test | 154 |
+| test | 156 |
 
 운영 무결성 위반: **0건**
 
@@ -224,6 +224,7 @@
 | `app/backend/migrations/versions/20260823_34_phase10_runtime_query_terminal_grants.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260823_35_phase10_runtime_audit_grants.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260825_36_catalog_publisher_role.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260826_37_progressive_presentation_views.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -313,6 +314,7 @@
 | `app/frontend/src/features/reports/v2/ReportPresentation.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/v2/ReportShortcutHelp.jsx` | production | REVIEWED |
 | `app/frontend/src/main.jsx` | production | REVIEWED |
+| `app/frontend/src/pages/AdminPage.jsx` | production | REVIEWED |
 | `app/frontend/src/pages/AgentPage.jsx` | production | REVIEWED |
 | `app/frontend/src/pages/agentPageHelpers.js` | production | REVIEWED |
 | `app/frontend/src/pages/ReportsPage.jsx` | production | REVIEWED |
@@ -458,10 +460,10 @@
 | `infrastructure/database/datahub/catalog_governance_verify.py` | production | REVIEWED |
 | `infrastructure/database/datahub/check_metric_review.py` | production | REVIEWED |
 | `infrastructure/database/datahub/check_metric_review_transition.py` | production | REVIEWED |
+| `infrastructure/database/datahub/compile_runtime_catalog_projection.py` | production | REVIEWED |
 | `infrastructure/database/datahub/compose.consumer.yml` | production | REVIEWED |
 | `infrastructure/database/datahub/compose.ingestion.yml` | production | REVIEWED |
 | `infrastructure/database/datahub/compose.semantic-search.yml` | production | REVIEWED |
-| `infrastructure/database/datahub/compile_runtime_catalog_projection.py` | production | REVIEWED |
 | `infrastructure/database/datahub/dataset_semantic_clients.py` | production | REVIEWED |
 | `infrastructure/database/datahub/dataset_semantic_contract.py` | production | REVIEWED |
 | `infrastructure/database/datahub/dataset_semantic_index.py` | production | REVIEWED |
@@ -470,7 +472,6 @@
 | `infrastructure/database/datahub/http_client.py` | production | REVIEWED |
 | `infrastructure/database/datahub/ingest_runtime_catalog.ps1` | production | REVIEWED |
 | `infrastructure/database/datahub/metadata_aspects.py` | production | REVIEWED |
-| `infrastructure/database/datahub/publish_runtime_catalog_candidate.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metadata_contract.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metadata_contract_primitives.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metadata_graphql.py` | production | REVIEWED |
@@ -492,6 +493,7 @@
 | `infrastructure/database/datahub/publication_check.py` | production | REVIEWED |
 | `infrastructure/database/datahub/publish_catalog_governance.py` | production | REVIEWED |
 | `infrastructure/database/datahub/publish_dataset_semantic_content.py` | production | REVIEWED |
+| `infrastructure/database/datahub/publish_runtime_catalog_candidate.py` | production | REVIEWED |
 | `infrastructure/database/datahub/publish_semantic_catalog.py` | production | REVIEWED |
 | `infrastructure/database/datahub/recipes/banquet.runtime.yml` | production | REVIEWED |
 | `infrastructure/database/datahub/recipes/crm.runtime.yml` | production | REVIEWED |
@@ -769,8 +771,8 @@
 | `tests/backend/test_authorization.py` | test | TEST_ONLY |
 | `tests/backend/test_canonical_semantic_release.py` | test | TEST_ONLY |
 | `tests/backend/test_capability_contracts.py` | test | TEST_ONLY |
-| `tests/backend/test_catalog_snapshot.py` | test | TEST_ONLY |
 | `tests/backend/test_catalog_publisher_boundary.py` | test | TEST_ONLY |
+| `tests/backend/test_catalog_snapshot.py` | test | TEST_ONLY |
 | `tests/backend/test_context_builder.py` | test | TEST_ONLY |
 | `tests/backend/test_context_registry.py` | test | TEST_ONLY |
 | `tests/backend/test_control_plane_contract.py` | test | TEST_ONLY |
@@ -838,6 +840,7 @@
 | `tests/frontend/authenticated-browser-state.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/chart-renderer.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/contracts.test.mjs` | test | TEST_ONLY |
+| `tests/frontend/fixtures/analysis-process-view-models.json` | test | TEST_ONLY |
 | `tests/frontend/fixtures/analysis-report-library.json` | test | TEST_ONLY |
 | `tests/frontend/fixtures/analysis-rich-success.json` | test | TEST_ONLY |
 | `tests/frontend/fixtures/artifact-channel-mix.json` | test | TEST_ONLY |

@@ -848,6 +848,23 @@ def test_presentation_type_outside_allowlist_is_rejected():
     assert slots.target_chart_type != "AREA"
 
 
+def test_progressive_result_views_reuse_the_existing_artifact_contract():
+    """KPI와 전체 보기는 새 측정 없이 기존 Artifact를 표현하는 PRESENTATION으로 확정한다."""
+    for presentation_type in ("KPI", "FULL"):
+        slots = ConversationSlotResolver.resolve(
+            user_message="기존 결과를 다른 보기로 보여줘",
+            node1_output={
+                "requested_route": "PRESENTATION",
+                "presentation_type": presentation_type,
+            },
+            previous_turns=[_prior_analysis_turn()],
+            as_of=date(2026, 8, 18),
+        )
+
+        assert slots.route == "PRESENTATION"
+        assert slots.target_chart_type == presentation_type
+
+
 def test_slot_inheritance_requires_an_explicit_elliptical_signal():
     """생략문 신호가 없으면 직전 슬롯을 상속하지 않는지 검증.
 

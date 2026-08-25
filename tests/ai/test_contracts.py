@@ -408,12 +408,20 @@ VALID_PAYLOADS = {
 
 class ContractTests(unittest.TestCase):
     def test_schema_version_is_explicit(self):
-        self.assertEqual(schema_version(), "MODEL-v1.22.0")
+        self.assertEqual(schema_version(), "MODEL-v1.23.0")
 
     def test_valid_examples(self):
         for definition, payload in VALID_PAYLOADS.items():
             with self.subTest(definition=definition):
                 validate_payload(definition, payload)
+
+    def test_node1_accepts_progressive_kpi_and_full_presentation_types(self):
+        for presentation_type in ("KPI", "FULL"):
+            payload = copy.deepcopy(VALID_PAYLOADS["node1_response"])
+            payload["requested_route"] = "PRESENTATION"
+            payload["presentation_type"] = presentation_type
+            with self.subTest(presentation_type=presentation_type):
+                validate_payload("node1_response", payload)
 
     def test_node1_selected_metric_is_required_and_nullable(self):
         missing = copy.deepcopy(VALID_PAYLOADS["node1_response"])

@@ -12,7 +12,7 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertEqual(len(first), 6)
         self.assertEqual(
             {
-                "node1.normalize": "PROMPT-v1.27.0",
+                "node1.normalize": "PROMPT-v1.28.0",
                 "node2.repair": "PROMPT-v1.4.0",
                 "node2.sql": "PROMPT-v1.8.0",
                 "node2.sql_only": "PROMPT-v1.2.0",
@@ -92,6 +92,8 @@ class PromptRegistryTests(unittest.TestCase):
         self.assertIn("mandatory result-shape pass", prompts["node1.normalize"])
         self.assertIn("interpretation_recheck", prompts["node1.normalize"])
         self.assertIn("directional predecessor", prompts["node1.normalize"])
+        self.assertIn("KPI for governed metric cards only", prompts["node1.normalize"])
+        self.assertIn("FULL for every available summary", prompts["node1.normalize"])
         self.assertIn("'전부터'라고 쓰지 않는다", get_prompt("node3.explain").text)
 
     def test_unreleased_candidate_prompts_are_not_registered(self):

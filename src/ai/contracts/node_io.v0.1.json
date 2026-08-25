@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:answervice:ai:node-io:v0.1",
-  "version": "MODEL-v1.22.0",
+  "version": "MODEL-v1.23.0",
   "$defs": {
     "execution_time": {
       "type": "object",
@@ -826,12 +826,14 @@
           "type": ["string", "null"],
           "enum": [
             "SUMMARY",
+            "KPI",
             "TABLE",
             "BAR",
             "LINE",
             "PIE",
             "HORIZONTAL_BAR",
             "DONUT",
+            "FULL",
             null
           ]
         },

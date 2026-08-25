@@ -892,6 +892,34 @@
         "title": "CreateReportAssistantDraftRequest",
         "type": "object"
       },
+      "CreateReportAssistantSessionRequest": {
+        "additionalProperties": false,
+        "description": "보고서 초안 버전과 현재 승인 artifact를 대화형 Assistant 세션에 결속한다.",
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "definition_id": {
+            "format": "uuid",
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "definition_version": {
+            "minimum": 1.0,
+            "title": "Definition Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "definition_id",
+          "definition_version",
+          "artifact_id"
+        ],
+        "title": "CreateReportAssistantSessionRequest",
+        "type": "object"
+      },
       "CreateReportDefinitionRequest": {
         "additionalProperties": false,
         "description": "새 보고서 정의의 식별자·제목·블록과 페이지 방향·통화 표시 단위를 입력받는다.",
@@ -2155,6 +2183,97 @@
         "title": "ReportArtifactVersionResponse",
         "type": "object"
       },
+      "ReportAssistantAnalysisPlan": {
+        "additionalProperties": false,
+        "description": "새 데이터 실행 전에 질문·이유·범위를 request ID와 함께 고정한다.",
+        "properties": {
+          "question": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ReportAssistantAnalysisScope"
+          }
+        },
+        "required": [
+          "request_id",
+          "question",
+          "reason",
+          "scope"
+        ],
+        "title": "ReportAssistantAnalysisPlan",
+        "type": "object"
+      },
+      "ReportAssistantAnalysisScope": {
+        "additionalProperties": false,
+        "description": "승인 전에 사용자에게 공개할 조회 기간·지표·분석 범위를 제한된 문자열로 표현한다.",
+        "properties": {
+          "dimensions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "metrics": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "minItems": 1,
+            "title": "Metrics",
+            "type": "array"
+          },
+          "period": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Period",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "metrics"
+        ],
+        "title": "ReportAssistantAnalysisScope",
+        "type": "object"
+      },
+      "ReportAssistantApprovalRequest": {
+        "additionalProperties": false,
+        "description": "현재 승인 대기 계획에 대한 사용자의 승인 또는 거절 한 번만 입력받는다.",
+        "properties": {
+          "approved": {
+            "title": "Approved",
+            "type": "boolean"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "approved"
+        ],
+        "title": "ReportAssistantApprovalRequest",
+        "type": "object"
+      },
       "ReportAssistantDraftResponse": {
         "additionalProperties": false,
         "description": "AI 요청 ID, 성공 상태, 생성된 보고서 정의와 모델 호출 추적을 한 응답으로 반환한다.",
@@ -2183,6 +2302,151 @@
           "trace"
         ],
         "title": "ReportAssistantDraftResponse",
+        "type": "object"
+      },
+      "ReportAssistantMessageRequest": {
+        "additionalProperties": false,
+        "description": "ready 세션에 500자 이하의 보고서 변경 지시를 제출한다.",
+        "properties": {
+          "instruction": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Instruction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instruction"
+        ],
+        "title": "ReportAssistantMessageRequest",
+        "type": "object"
+      },
+      "ReportAssistantProposalResponse": {
+        "additionalProperties": false,
+        "description": "검증된 변경 종류·사용자 메시지와 저장된 서버 세션 상태를 함께 반환한다.",
+        "properties": {
+          "change_kind": {
+            "enum": [
+              "clarification",
+              "existing_artifact",
+              "new_data"
+            ],
+            "title": "Change Kind",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "session": {
+            "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+          }
+        },
+        "required": [
+          "change_kind",
+          "message",
+          "session"
+        ],
+        "title": "ReportAssistantProposalResponse",
+        "type": "object"
+      },
+      "ReportAssistantSessionResponse": {
+        "additionalProperties": false,
+        "description": "서버가 소유하는 Assistant phase와 승인 대기 계획 및 revision 결과를 반환한다.",
+        "properties": {
+          "analysis_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReportAssistantAnalysisPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "assistant_request_id": {
+            "format": "uuid",
+            "title": "Assistant Request Id",
+            "type": "string"
+          },
+          "base_revision": {
+            "title": "Base Revision",
+            "type": "integer"
+          },
+          "definition_id": {
+            "format": "uuid",
+            "title": "Definition Id",
+            "type": "string"
+          },
+          "definition_version": {
+            "title": "Definition Version",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "phase": {
+            "enum": [
+              "ready",
+              "waiting_approval",
+              "running_data_agent",
+              "waiting_artifact",
+              "saving_revision",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "result_artifact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Artifact Id"
+          },
+          "result_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Revision"
+          }
+        },
+        "required": [
+          "assistant_request_id",
+          "phase",
+          "definition_id",
+          "definition_version",
+          "base_revision",
+          "artifact_id"
+        ],
+        "title": "ReportAssistantSessionResponse",
         "type": "object"
       },
       "ReportAssistantTraceResponse": {
@@ -5677,6 +5941,315 @@
           }
         ],
         "summary": "Create Assistant Draft"
+      }
+    },
+    "/reports/assistant/sessions": {
+      "post": {
+        "description": "현재 draft와 그 안의 승인 artifact를 검증해 복구 가능한 Assistant 세션을 연다.",
+        "operationId": "reportAssistantCreateSession",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReportAssistantSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Create Assistant Session"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}": {
+      "get": {
+        "description": "새로고침 후에도 서버에 저장된 현재 Assistant phase와 승인 계획을 복구한다.",
+        "operationId": "reportAssistantGetSession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Get Assistant Session"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/approval": {
+      "post": {
+        "description": "대기 계획을 멱등 승인·거절하고 최초 승인만 기존 분석 경계에서 Artifact까지 실행한다.\n\n승인 전 owner·request·phase·권한을 검증한다. 거절은 분석을 호출하지 않고 ready로 돌아가며,\n승인 성공은 반환 Artifact lineage를 재검증해 CAS 기반 새 draft revision까지 완료한다.",
+        "operationId": "reportAssistantDecidePlan",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportAssistantApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Decide Assistant Plan"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/messages": {
+      "post": {
+        "description": "ready 세션의 지시를 strict 모델 계약으로 분류하고 새 분석 계획만 승인 대기로 저장한다.\n\n모델 호출 전 세션과 artifact 소유권을 확인하며, 이 경계에서는 분석 controller나 데이터\nplatform을 호출하지 않는다. 동시 요청으로 phase가 바뀌면 기존 계획을 덮지 않고 409다.",
+        "operationId": "reportAssistantSubmitMessage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportAssistantMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantProposalResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Submit Assistant Message"
       }
     },
     "/reports/definitions": {

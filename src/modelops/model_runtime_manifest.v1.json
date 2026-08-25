@@ -38,7 +38,8 @@
       "nodes": [
         "node1",
         "node3",
-        "report_assistant"
+        "report_assistant",
+        "report_assistant_turn"
       ],
       "provider_env": null,
       "default_provider": "openai",

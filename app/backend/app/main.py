@@ -25,6 +25,7 @@ from app.contracts import (
     OPENAPI_DOCUMENT_VERSION,
     response_meta,
 )
+from app.services.report.scheduler import _enabled as report_scheduler_enabled
 from app.services.report.scheduler import report_scheduler
 
 
@@ -62,15 +63,19 @@ async def lifespan(_app: FastAPI):
     scheduler 중지, model/data transport 종료, controller cache 해제, DB pool 폐기를 중첩된
     ``finally``로 보장해 앞선 cleanup 실패가 뒤 자원 누수로 번지지 않게 한다.
     """
+    controller = None
     try:
-        await report_scheduler.start(_controller(), execution_gate)
+        if report_scheduler_enabled():
+            controller = _controller()
+        await report_scheduler.start(controller, execution_gate)
         yield
     finally:
         try:
             await report_scheduler.stop()
         finally:
             try:
-                await _controller().aclose()
+                if controller is not None:
+                    await controller.aclose()
             finally:
                 _controller.cache_clear()
                 await dispose_database()

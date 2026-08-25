@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from sys import path
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 BACKEND = Path(__file__).resolve().parents[2] / "app" / "backend"
 path.insert(0, str(BACKEND))
@@ -34,6 +34,7 @@ class RuntimeLifecycleTests(unittest.IsolatedAsyncioTestCase):
 
         _controller.cache_clear()
         with (
+            patch.dict("os.environ", {"REPORT_SCHEDULER_ENABLED": "1"}),
             patch(
                 "app.api.router._data_platform",
                 side_effect=(first_platform, second_platform),
@@ -61,3 +62,21 @@ class RuntimeLifecycleTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(2, dispose.await_count)
 
         _controller.cache_clear()
+
+    async def test_disabled_scheduler_does_not_initialize_analysis_runtime(self) -> None:
+        scheduler = AsyncMock()
+        controller_factory = Mock(side_effect=AssertionError("runtime must stay lazy"))
+
+        with (
+            patch.dict("os.environ", {"REPORT_SCHEDULER_ENABLED": "0"}),
+            patch("app.main._controller", controller_factory),
+            patch("app.main.report_scheduler", scheduler),
+            patch("app.main.dispose_database", AsyncMock()) as dispose,
+        ):
+            async with lifespan(None):
+                pass
+
+        controller_factory.assert_not_called()
+        scheduler.start.assert_awaited_once_with(None, ANY)
+        scheduler.stop.assert_awaited_once()
+        dispose.assert_awaited_once()

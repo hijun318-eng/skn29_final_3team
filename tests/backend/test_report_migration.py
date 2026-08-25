@@ -105,6 +105,64 @@ class ReportMigrationTest(unittest.TestCase):
         self.assertIn("status IN ('running', 'success', 'failed')", source)
         self.assertNotIn("instruction text", source)
 
+    def test_report_assistant_session_extension_preserves_legacy_status(self):
+        """새 migration은 기존 표를 재생성하지 않고 phase·승인 계획·owner index만 추가한다."""
+
+        source = (MIGRATIONS / "20260824_29_report_assistant_sessions.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('down_revision = "20260820_28"', source)
+        self.assertIn("ADD COLUMN phase varchar(24)", source)
+        self.assertIn("ADD COLUMN analysis_plan_json jsonb", source)
+        self.assertIn("report_assistant_owner_phase_idx", source)
+        self.assertNotIn("DROP TABLE report_v1.report_assistant_requests", source)
+
+    def test_report_assistant_result_lineage_is_additive(self):
+        """3단계 migration은 query·checksum lineage를 새 revision으로만 추가한다."""
+
+        source = (MIGRATIONS / "20260824_30_report_assistant_result_lineage.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('down_revision = "20260824_29"', source)
+        self.assertIn("ADD COLUMN result_query_id", source)
+        self.assertIn("ADD COLUMN result_artifact_checksum", source)
+        self.assertIn("report_assistant_result_lineage_check", source)
+
+    def test_report_assistant_revision_cas_is_additive(self):
+        """4단계 migration은 기존 version을 바꾸지 않고 revision token만 추가한다."""
+
+        source = (MIGRATIONS / "20260824_31_report_assistant_revision_cas.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('down_revision = "20260824_30"', source)
+        self.assertIn("ADD COLUMN revision bigint NOT NULL DEFAULT 1", source)
+        self.assertNotIn("DROP TABLE report_v1.report_definition_versions", source)
+
+    def test_report_assistant_patch_audit_is_additive(self):
+        """실구현 2단계 migration은 기존 요청을 보존하고 검증 patch 감사값만 추가한다."""
+
+        source = (MIGRATIONS / "20260824_32_report_assistant_patch.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260824_31"', source)
+        self.assertIn("ADD COLUMN report_patch_json jsonb", source)
+        self.assertNotIn("DROP TABLE report_v1.report_assistant_requests", source)
+
+    def test_report_assistant_turn_history_is_owner_session_bound(self):
+        """실구현 4단계 migration은 세션별 순번과 bounded 대화 원문을 별도 표에 둔다."""
+
+        source = (MIGRATIONS / "20260824_33_report_assistant_turns.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('down_revision = "20260824_32"', source)
+        self.assertIn("CREATE TABLE report_v1.report_assistant_turns", source)
+        self.assertIn("PRIMARY KEY (assistant_request_id, turn_number)", source)
+        self.assertIn("REFERENCES report_v1.report_assistant_requests", source)
+        self.assertIn("change_kind IN ('clarification', 'existing_artifact', 'new_data')", source)
+
     def test_query_generation_mode_records_llm_without_fallback(self):
         source = (MIGRATIONS / "20260813_14_query_generation_mode_llm.py").read_text(
             encoding="utf-8"

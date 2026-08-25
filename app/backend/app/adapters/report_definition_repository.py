@@ -351,7 +351,8 @@ class ReportDefinitionRepositoryMixin:
                         orientation = COALESCE(:orientation, orientation),
                         currency_display_unit = COALESCE(
                             :currency_display_unit, currency_display_unit
-                        )
+                        ),
+                        revision = revision + 1
                     WHERE definition_id = :definition_id AND version = :version
                       AND status = 'draft'
                     """

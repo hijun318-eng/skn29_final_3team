@@ -255,6 +255,50 @@ export function assertReportCurrencyDisplayUnit(value: unknown): asserts value i
   };
 }
 
+/** 서버가 소유하며 새로고침 후 복구할 수 있는 Report Assistant 단계다. */
+export type ReportAssistantPhase =
+  | "ready"
+  | "waiting_approval"
+  | "running_data_agent"
+  | "waiting_artifact"
+  | "saving_revision"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+/** 사용자 승인 전에 질문·이유·조회 범위를 공개하는 분석 계획이다. */
+export interface ReportAssistantAnalysisPlan {
+  readonly request_id: string;
+  readonly question: string;
+  readonly reason: string;
+  readonly scope: {
+    readonly period: string;
+    readonly metrics: readonly string[];
+    readonly dimensions: readonly string[];
+  };
+}
+
+/** 대화형 Assistant 세션의 서버 권위 상태 계약이다. */
+export interface ReportAssistantSessionResponse {
+  readonly assistant_request_id: string;
+  readonly phase: ReportAssistantPhase;
+  readonly definition_id: string;
+  readonly definition_version: number;
+  readonly base_revision: number;
+  readonly artifact_id: string;
+  readonly analysis_plan: ReportAssistantAnalysisPlan | null;
+  readonly result_artifact_id: string | null;
+  readonly result_revision: number | null;
+  readonly error_code: string | null;
+}
+
+/** 변경 제안과 그 결과로 저장된 서버 phase를 함께 반환하는 계약이다. */
+export interface ReportAssistantProposalResponse {
+  readonly change_kind: "clarification" | "existing_artifact" | "new_data";
+  readonly message: string;
+  readonly session: ReportAssistantSessionResponse;
+}
+
 /** 보고서 블록 저장 명령의 wire 입력 계약이다. */ export interface ReportBlockRequest {
   readonly block_id: string;
   readonly title: string;

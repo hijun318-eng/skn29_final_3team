@@ -290,8 +290,13 @@ def to_openai_strict_schema(raw_schema: dict[str, Any]) -> dict[str, Any]:
             else:
                 result[k] = sanitize(v)
 
-        if result.get("type") == "object" or "properties" in result:
-            result["type"] = "object"
+        object_type = result.get("type")
+        if object_type == "object" or "properties" in result:
+            result["type"] = (
+                ["object", "null"]
+                if isinstance(object_type, list) and "null" in object_type
+                else "object"
+            )
             result["additionalProperties"] = False
             props = result.get("properties")
             if isinstance(props, dict):
@@ -347,6 +352,7 @@ _NODE_OUTPUT_LIMITS: MappingProxyType[str, int] = MappingProxyType(
         "node2_repair": 1280,
         "node3": 500,
         "report_assistant": 1280,
+        "report_assistant_turn": 700,
     }
 )
 

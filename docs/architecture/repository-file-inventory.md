@@ -8,12 +8,12 @@
 | 분류 | 파일 수 |
 |---|---:|
 | archive | 130 |
-| documentation | 145 |
-| production | 304 |
-| project-config | 38 |
-| runtime-config | 65 |
+| documentation | 155 |
+| production | 308 |
+| project-config | 41 |
+| runtime-config | 70 |
 | runtime-contract | 10 |
-| test | 139 |
+| test | 142 |
 
 운영 무결성 위반: **0건**
 
@@ -104,6 +104,7 @@
 | `app/backend/app/ports/model.py` | production | REVIEWED |
 | `app/backend/app/query_capability.py` | production | REVIEWED |
 | `app/backend/app/report_contracts.py` | production | REVIEWED |
+| `app/backend/app/report_patch.py` | production | REVIEWED |
 | `app/backend/app/services/__init__.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/__init__.py` | production | REVIEWED |
 | `app/backend/app/services/analysis/evidence.py` | production | REVIEWED |
@@ -204,6 +205,11 @@
 | `app/backend/migrations/versions/20260819_26_platform_admin_capability.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260820_27_canonical_analyst_role.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260820_28_analysis_transition_status_width.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260824_29_report_assistant_sessions.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260824_30_report_assistant_result_lineage.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260824_31_report_assistant_revision_cas.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260824_32_report_assistant_patch.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260824_33_report_assistant_turns.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -229,6 +235,7 @@
 | `app/frontend/src/components/auth/SessionLogin.jsx` | production | REVIEWED |
 | `app/frontend/src/components/charts/EnterpriseChart.jsx` | production | REVIEWED |
 | `app/frontend/src/components/common/EnterpriseUi.jsx` | production | REVIEWED |
+| `app/frontend/src/components/common/ThemeToggle.jsx` | production | REVIEWED |
 | `app/frontend/src/components/layout/AppHeader.jsx` | production | REVIEWED |
 | `app/frontend/src/components/layout/AppSidebar.jsx` | production | REVIEWED |
 | `app/frontend/src/components/TurnCard.jsx` | production | REVIEWED |
@@ -242,6 +249,7 @@
 | `app/frontend/src/features/reports/components/index.js` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/MarkdownBlockEditor.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportArtifactContent.jsx` | production | REVIEWED |
+| `app/frontend/src/features/reports/components/ReportAssistantPanel.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportBlockControls.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportDocumentView.jsx` | production | REVIEWED |
 | `app/frontend/src/features/reports/components/ReportEditorBlock.jsx` | production | REVIEWED |
@@ -298,11 +306,13 @@
 | `app/frontend/src/pages/ReportsPage.jsx` | production | REVIEWED |
 | `app/frontend/src/routing.js` | production | REVIEWED |
 | `app/frontend/src/styles.css` | production | REVIEWED |
+| `app/frontend/src/themePreference.js` | production | REVIEWED |
 | `app/frontend/src/utils/createUuid.ts` | production | REVIEWED |
 | `app/frontend/src/utils/presentation.ts` | production | REVIEWED |
 | `app/frontend/vite.config.js` | runtime-config | REVIEWED |
 | `CLAUDE.md` | documentation | REFERENCE_NON_RUNTIME |
 | `compose.app-postgres.override.yml` | runtime-config | REVIEWED |
+| `compose.report-assistant-stage5.yml` | project-config | REVIEWED |
 | `compose.yml` | runtime-config | REVIEWED |
 | `docs/architecture/answervice_v3_4_agent_architecture.html` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/architecture/answervice_v3_4_agent_architecture.json` | documentation | REFERENCE_NON_RUNTIME |
@@ -350,6 +360,8 @@
 | `docs/daily_reports/team_summaries/5주차/20260814.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/team_summaries/5주차/주간보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/daily_reports/team_summaries/6주차/20260818.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/daily_reports/team_summaries/6주차/20260819.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/daily_reports/team_summaries/6주차/주간보고.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/01_요구사항 정의서_29기_3팀.xlsx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/02_WBS_29기_3팀.xlsm` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/03_프로젝트기획서_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
@@ -366,6 +378,7 @@
 | `docs/deliverables/12_AI시스템아키텍처_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/13_LLM활용소프트웨어_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/14_자체sLLM인공지능_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/deliverables/15_시스템구성도_29기_3팀.docx` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/ANTIGRAVITY_DOCKER_RUNTIME_HANDOFF.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/DEVELOPMENT_CHANGELOG_AND_ARCHITECTURE_RECORD.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/deliverables/Qwen3.5-2B_Node2_학습_실행가이드.md` | documentation | REFERENCE_NON_RUNTIME |
@@ -427,6 +440,11 @@
 | `docs/reference/Walkerhill_V4.3_교체_검토_및_실행_보고서.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/멀티턴_발화이해_BP_벤치마크.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/목업_하드코딩_감사_2026-08-19.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Agent_실구현_계획_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_V2_5단계_로컬배포_검증보고서_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_V2_구현_진행_20260824.md` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_V2_다음_작업_계획서_20260824.docx` | documentation | REFERENCE_NON_RUNTIME |
+| `docs/Report_Assistant_실화면_독립검증_프롬프트_20260825.md` | documentation | REFERENCE_NON_RUNTIME |
 | `evals/.gitkeep` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/__init__.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/base_comparison.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
@@ -670,6 +688,10 @@
 | `infrastructure/database/trino/etc/node.properties` | runtime-config | REVIEWED |
 | `infrastructure/database/trino/etc/password-authenticator.properties` | runtime-config | REVIEWED |
 | `notebooks/.gitkeep` | project-config | REVIEWED |
+| `prototypes/report_assistant_v2/NEXT_IMPLEMENTATION_PROMPT.md` | documentation | REFERENCE_NON_RUNTIME |
+| `prototypes/report_assistant_v2/README.md` | documentation | REFERENCE_NON_RUNTIME |
+| `prototypes/report_assistant_v2/test_workflow.py` | project-config | REVIEWED |
+| `prototypes/report_assistant_v2/workflow.py` | project-config | REVIEWED |
 | `README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `scripts/audit_repository_integrity.py` | production | REVIEWED |
 | `scripts/check_code_documentation.py` | production | REVIEWED |
@@ -784,6 +806,8 @@
 | `tests/backend/test_pipeline_sql_guard.py` | test | TEST_ONLY |
 | `tests/backend/test_production_model.py` | test | TEST_ONLY |
 | `tests/backend/test_readiness.py` | test | TEST_ONLY |
+| `tests/backend/test_report_assistant_patch.py` | test | TEST_ONLY |
+| `tests/backend/test_report_assistant_session.py` | test | TEST_ONLY |
 | `tests/backend/test_report_document.py` | test | TEST_ONLY |
 | `tests/backend/test_report_execution.py` | test | TEST_ONLY |
 | `tests/backend/test_report_migration.py` | test | TEST_ONLY |
@@ -839,6 +863,7 @@
 | `tests/frontend/report-page-architecture.test.mjs` | test | TEST_ONLY |
 | `tests/frontend/report-source-contract.mjs` | test | TEST_ONLY |
 | `tests/frontend/run.mjs` | test | TEST_ONLY |
+| `tests/frontend/theme.test.mjs` | test | TEST_ONLY |
 | `tests/integration/test_answervice_runtime.py` | test | TEST_ONLY |
 | `tests/integration/test_app_postgres_compose_override.py` | test | TEST_ONLY |
 | `tests/integration/test_ci_workflow.py` | test | TEST_ONLY |

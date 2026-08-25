@@ -22,6 +22,8 @@ const viewport = source("app/frontend/src/features/reports/reportEditorViewport.
 const normalization = source("app/frontend/src/contracts/reportNormalization.ts");
 
 assert.match(flags, /VITE_REPORT_BUILDER_V2 !== "false"/);
+assert.doesNotMatch(flags, /SHOWCASE/);
+assert.doesNotMatch(app, /ReportAssistantShowcase|REPORT_ASSISTANT_SHOWCASE/);
 assert.match(app, /reportEditorMode && REPORT_BUILDER_V2 \? "report-builder-v2-mode"/);
 assert.doesNotMatch(controller, /REPORT_REVIEW_MODE|reviewDefinition|mockReport/i);
 assert.match(page, /page\.builderV2 \? <ReportBuilderV2/);
@@ -79,6 +81,17 @@ assert.match(properties, /disabled=\{!canEdit \|\| blockLocked\}/);
 assert.match(assistant, /onSubmit\(text\)/);
 assert.match(assistant, /AI 초안 반영 완료/);
 assert.match(assistant, /trace\.model_version/);
+assert.match(assistant, /request_user_approval|새 데이터 분석 승인 필요/);
+assert.match(assistant, /onApproveDataRequest/);
+assert.match(assistant, /Revision 저장 재개/);
+assert.match(assistant, /Assistant 실행 실패/);
+assert.match(assistant, /workflowError/);
+assert.match(controller, /submitAssistantInstruction/);
+assert.match(controller, /approveAssistantRequest/);
+assert.match(controller, /artifacts\.loadArtifacts\(result\.definition, true\)/);
+assert.match(controller, /answervice\.report-assistant:/);
+assert.match(page, /approvalRequest=/);
+assert.match(page, /workflowStatus=/);
 assert.doesNotMatch(assistant, /데이터 재조회 0건|mock|fixture/i);
 assert.match(normalization, /artifact_id: block\.artifactId/);
 assert.match(normalization, /query_id: block\.queryId/);

@@ -75,7 +75,7 @@ def model_release_manifest() -> Mapping[str, Any]:
     }:
         raise ContractError("model release manifest fields are invalid")
     if (
-        payload["manifest_version"] != "MODEL-RELEASE-v1.22.0"
+        payload["manifest_version"] != "MODEL-RELEASE-v1.27.0"
         or payload["state"] != "ACTIVE"
         or payload["schema_contract"] != "v1"
         or payload["schema_version"] != schema_version()

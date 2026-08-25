@@ -573,4 +573,94 @@ assert.equal(scheduleRequest.init.method, "PUT");
 assert.equal(scheduleRequest.init.headers["X-As-Of"], undefined);
 assert.deepEqual(JSON.parse(scheduleRequest.init.body), { enabled: false });
 
+let assistantSessionRequest;
+const assistantSessionClient = createReportClient("http://backend.test", async (url, init) => {
+  assistantSessionRequest = { url, init };
+  const session = {
+    assistant_request_id: "assistant-1", phase: "ready",
+    definition_id: "definition-1", definition_version: 2, base_revision: 2,
+    artifact_id: "artifact-1", analysis_plan: null, result_artifact_id: null,
+    result_revision: null, error_code: null,
+  };
+  const approval = url.endsWith("/approval") ? JSON.parse(init.body) : null;
+  const approvalSession = approval ? {
+    ...session,
+    phase: approval.approved ? "completed" : "ready",
+    result_artifact_id: approval.approved ? "artifact-2" : null,
+    result_revision: approval.approved ? 3 : null,
+    analysis_plan: {
+      request_id: approval.request_id,
+      question: "현재 지표를 직전 월과 비교해 줘",
+      reason: "직전 월 값이 필요합니다.",
+      scope: { period: "현재 기간과 직전 월", metrics: ["승인 지표"], dimensions: [] },
+    },
+  } : null;
+  const instruction = url.endsWith("/messages") ? JSON.parse(init.body).instruction : "";
+  return new Response(JSON.stringify(approvalSession || (url.endsWith("/messages") ? {
+    change_kind: instruction === "모호한 요청" ? "clarification" : "existing_artifact",
+    message: instruction === "모호한 요청" ? "어느 기간을 기준으로 할까요?" : "기존 근거로 수정할 수 있습니다.",
+    session: instruction === "모호한 요청" ? session : {
+      ...session, phase: "completed", result_revision: 3,
+    },
+  } : session)), { status: 200, headers: { "Content-Type": "application/json" } });
+}, "runtime-token");
+const assistantSession = await assistantSessionClient.createAssistantSession(
+  "definition-1", 2, "artifact-1",
+);
+assert.equal(assistantSession.phase, "ready");
+assert.equal(assistantSessionRequest.url, "http://backend.test/reports/assistant/sessions");
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  definition_id: "definition-1", definition_version: 2, artifact_id: "artifact-1",
+});
+
+await assistantSessionClient.getAssistantSession("assistant/1");
+assert.equal(
+  assistantSessionRequest.url,
+  "http://backend.test/reports/assistant/sessions/assistant%2F1",
+);
+
+const assistantProposal = await assistantSessionClient.submitAssistantMessage(
+  "assistant/1", "표 제목을 바꿔 줘",
+);
+assert.equal(assistantProposal.change_kind, "existing_artifact");
+assert.equal(
+  assistantSessionRequest.url,
+  "http://backend.test/reports/assistant/sessions/assistant%2F1/messages",
+);
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), { instruction: "표 제목을 바꿔 줘" });
+
+const clarificationProposal = await assistantSessionClient.submitAssistantMessage(
+  "assistant/1", "모호한 요청",
+);
+assert.equal(clarificationProposal.change_kind, "clarification");
+assert.equal(clarificationProposal.session.phase, "ready");
+
+const approvedAssistant = await assistantSessionClient.approveAssistantPlan(
+  "assistant/1", "request-1",
+);
+assert.equal(approvedAssistant.phase, "completed");
+assert.equal(approvedAssistant.result_revision, 3);
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  request_id: "request-1", approved: true,
+});
+
+const rejectedAssistant = await assistantSessionClient.rejectAssistantPlan(
+  "assistant/1", "request-1",
+);
+assert.equal(rejectedAssistant.phase, "ready");
+assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
+  request_id: "request-1", approved: false,
+});
+
+const staleApprovalClient = createReportClient("http://backend.test", async () => new Response(JSON.stringify({
+  assistant_request_id: "assistant-1", phase: "ready",
+  definition_id: "definition-1", definition_version: 2, base_revision: 2,
+  artifact_id: "artifact-1", analysis_plan: null, result_artifact_id: null,
+  result_revision: null, error_code: null,
+}), { status: 200, headers: { "Content-Type": "application/json" } }), "runtime-token");
+await assert.rejects(
+  () => staleApprovalClient.approveAssistantPlan("assistant-1", "request-1"),
+  /실행 phase로 전이되지 않았습니다/,
+);
+
 console.log("frontend contract tests passed");

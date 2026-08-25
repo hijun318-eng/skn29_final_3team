@@ -44,6 +44,8 @@ def test_canonical_env_example_covers_datahub_runtime_secrets():
     }
 
     assert {
+        "APP_CATALOG_PUBLISHER_USER",
+        "APP_CATALOG_PUBLISHER_PASSWORD",
         "DATAHUB_MYSQL_PASSWORD",
         "DATAHUB_MYSQL_ROOT_PASSWORD",
         "DATAHUB_SECRET",
@@ -92,6 +94,22 @@ def test_resolved_backend_uses_an_isolated_host_port_only():
     assert service["ports"] == [
         {"mode": "ingress", "target": 8000, "published": "28000", "protocol": "tcp", "host_ip": "127.0.0.1"}
     ]
+
+
+def test_catalog_publisher_credentials_are_confined_to_the_out_of_band_boundary():
+    services = _config()["services"]
+    postgres = services["app-postgres"]["environment"]
+    migrations = services["app-migrations"]["environment"]
+    backend = services["backend"]["environment"]
+
+    assert postgres["APP_CATALOG_PUBLISHER_USER"] == "app_catalog_publisher"
+    assert postgres["APP_CATALOG_PUBLISHER_PASSWORD"] == (
+        "CHANGE_ME_AppCatalogPublisher"
+    )
+    assert migrations["APP_CATALOG_PUBLISHER_USER"] == "app_catalog_publisher"
+    assert "APP_CATALOG_PUBLISHER_PASSWORD" not in migrations
+    assert "APP_CATALOG_PUBLISHER_USER" not in backend
+    assert "APP_CATALOG_PUBLISHER_PASSWORD" not in backend
 
 
 def test_backend_verifier_uses_the_resolved_port_and_all_readiness_dependencies():

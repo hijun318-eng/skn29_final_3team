@@ -127,7 +127,7 @@ catalog read는 `DATAHUB_READ_API_TOKEN`, ingestion·authoring·semantic mutatio
 `DATAHUB_PUBLISH_API_TOKEN`을 전송한다. 두 PAT의 actor도 달라야 하며 Backend에는
 publish credential을 주입하지 않는다.
 
-업무 DB는 `*_READONLY_USER` 계정으로 DataHub와 Trino에 연결한다. 이 계정은 `SELECT` 및 시스템 메타데이터 조회만 허용하며 DML·DDL은 거부한다. `app-postgres`의 `APP_DB_USER`는 앱 읽기·쓰기, `APP_MIGRATION_USER`는 migration 전용이다.
+업무 DB는 `*_READONLY_USER` 계정으로 DataHub와 Trino에 연결한다. 이 계정은 `SELECT` 및 시스템 메타데이터 조회만 허용하며 DML·DDL은 거부한다. `app-postgres`의 `APP_DB_USER`는 앱 runtime, `APP_MIGRATION_USER`는 schema migration, `APP_CATALOG_PUBLISHER_USER`는 비활성 catalog projection과 product manifest의 append-only 게시 전용이다. publisher에는 active pointer 변경 권한을 부여하지 않는다.
 
 실행 원본은 `sql/ddl`, `sql/app`, App DB migration, DataHub runtime recipe다.
 `security` script는 외부 principal secret을 생성하지만 저장소 안에 인증 JSON을 만들지

@@ -17,6 +17,7 @@ services:
       # with the schema-changing identity and never carries superuser credentials.
       APP_DATABASE_URL: postgresql+psycopg://${APP_MIGRATION_USER}:${APP_MIGRATION_PASSWORD}@app-postgres:5432/${APP_DB_NAME:-app_db}
       APP_DB_USER: ${APP_DB_USER}
+      APP_CATALOG_PUBLISHER_USER: ${APP_CATALOG_PUBLISHER_USER}
       TZ: Asia/Seoul
     networks:
       - database-network

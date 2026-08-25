@@ -106,6 +106,7 @@ class PostgresContextRegistryTest(unittest.IsolatedAsyncioTestCase):
         environment = os.environ.copy()
         environment["APP_DATABASE_URL"] = cls.url
         environment["APP_DB_USER"] = cls.base_url.username or "migration_test"
+        environment["APP_CATALOG_PUBLISHER_USER"] = environment["APP_DB_USER"]
         result = subprocess.run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],
             cwd=BACKEND,

@@ -339,6 +339,7 @@ def replay_database():
     environment = os.environ.copy()
     environment["APP_DATABASE_URL"] = url
     environment["APP_DB_USER"] = base.username or "postgres"
+    environment["APP_CATALOG_PUBLISHER_USER"] = environment["APP_DB_USER"]
     migrated = subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=BACKEND,

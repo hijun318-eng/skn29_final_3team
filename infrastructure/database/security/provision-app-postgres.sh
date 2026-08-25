@@ -1,7 +1,14 @@
 #!/usr/bin/env sh
-# 책임: application migration/runtime role을 분리하고 runtime에는 현재 API가 쓰는
-# table 권한만 부여한다. identifier·secret 처리나 grant 조정 실패는 즉시 중단한다.
+# 책임: application migration/runtime/catalog publisher role을 분리하고 각 identity에
+# 필요한 table 권한만 부여한다. identifier·secret 처리나 grant 조정 실패는 즉시 중단한다.
 set -eu
+
+if [ "$APP_DB_USER" = "$APP_MIGRATION_USER" ] || \
+   [ "$APP_DB_USER" = "$APP_CATALOG_PUBLISHER_USER" ] || \
+   [ "$APP_MIGRATION_USER" = "$APP_CATALOG_PUBLISHER_USER" ]; then
+  echo 'App PostgreSQL runtime, migration, and catalog publisher roles must differ.' >&2
+  exit 1
+fi
 
 # psql variables distinguish identifiers (%I) from secret literals (%L); this
 # prevents environment-provided role names or passwords from changing the SQL
@@ -11,23 +18,30 @@ psql -v ON_ERROR_STOP=1 \
   --dbname "$POSTGRES_DB" \
   --set=runtime_user="$APP_DB_USER" \
   --set=migration_user="$APP_MIGRATION_USER" \
+  --set=publisher_user="$APP_CATALOG_PUBLISHER_USER" \
   --set=runtime_password="$APP_DB_PASSWORD" \
-  --set=migration_password="$APP_MIGRATION_PASSWORD" <<'SQL'
+  --set=migration_password="$APP_MIGRATION_PASSWORD" \
+  --set=publisher_password="$APP_CATALOG_PUBLISHER_PASSWORD" <<'SQL'
 SELECT format('CREATE ROLE %I LOGIN', :'runtime_user')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname=:'runtime_user')
 \gexec
 SELECT format('CREATE ROLE %I LOGIN', :'migration_user')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname=:'migration_user')
 \gexec
+SELECT format('CREATE ROLE %I LOGIN', :'publisher_user')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname=:'publisher_user')
+\gexec
 
 ALTER ROLE :"runtime_user" PASSWORD :'runtime_password';
 ALTER ROLE :"migration_user" PASSWORD :'migration_password';
+ALTER ROLE :"publisher_user" PASSWORD :'publisher_password';
 
 SELECT format(
-  'GRANT CONNECT ON DATABASE %I TO %I, %I',
+  'GRANT CONNECT ON DATABASE %I TO %I, %I, %I',
   current_database(),
   :'runtime_user',
-  :'migration_user'
+  :'migration_user',
+  :'publisher_user'
 ) \gexec
 
 -- 과거 bootstrap이 runtime role에 부여한 schema-wide DML을 매 실행마다 회수한다.
@@ -43,11 +57,24 @@ REVOKE USAGE ON SCHEMA
   analytics,artifact,chat,connection,context,governance,model,query,reference,report,tooling,rag,ml
   FROM :"runtime_user";
 
+-- Publisher는 과거 또는 수동 grant를 모두 회수한 뒤 두 immutable relation에만
+-- append/read 권한을 복원한다. pointer와 activation receipt에는 접근하지 않는다.
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA
+  analytics,artifact,chat,connection,context,governance,model,query,reference,report,tooling,rag,ml
+  FROM :"publisher_user";
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA
+  analytics,artifact,chat,connection,context,governance,model,query,reference,report,tooling,rag,ml
+  FROM :"publisher_user";
+REVOKE USAGE ON SCHEMA
+  analytics,artifact,chat,connection,context,governance,model,query,reference,report,tooling,rag,ml
+  FROM :"publisher_user";
+
 -- Runtime API가 실제로 접근하는 base relation만 operation 단위로 복원한다.
 -- connection/model/reference/legacy report schema는 application code가 사용하지
 -- 않으므로 권한이 없고, 새 기능은 migration에서 명시 grant를 추가해야 한다.
 GRANT USAGE ON SCHEMA artifact,chat,context,governance,query,tooling
   TO :"runtime_user";
+GRANT USAGE ON SCHEMA governance TO :"publisher_user";
 GRANT SELECT,INSERT,UPDATE ON chat.analysis_requests TO :"runtime_user";
 GRANT SELECT,INSERT ON query.query_executions TO :"runtime_user";
 GRANT SELECT,INSERT ON artifact.analysis_artifacts TO :"runtime_user";
@@ -74,6 +101,21 @@ WHERE to_regclass('tooling.tool_registry') IS NOT NULL
 \gexec
 SELECT format('GRANT SELECT, INSERT ON tooling.tool_runs TO %I', :'runtime_user')
 WHERE to_regclass('tooling.tool_runs') IS NOT NULL
+\gexec
+SELECT format('GRANT SELECT ON governance.alembic_version TO %I', :'publisher_user')
+WHERE to_regclass('governance.alembic_version') IS NOT NULL
+\gexec
+SELECT format(
+  'GRANT SELECT, INSERT ON governance.runtime_catalog_projections TO %I',
+  :'publisher_user'
+)
+WHERE to_regclass('governance.runtime_catalog_projections') IS NOT NULL
+\gexec
+SELECT format(
+  'GRANT SELECT, INSERT ON governance.product_release_manifests TO %I',
+  :'publisher_user'
+)
+WHERE to_regclass('governance.product_release_manifests') IS NOT NULL
 \gexec
 
 SELECT format(

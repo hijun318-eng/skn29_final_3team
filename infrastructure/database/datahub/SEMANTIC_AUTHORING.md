@@ -335,6 +335,37 @@ Trino CA path. The returned `field_term_edge_count` is derived from the exact sn
 sealed into `projection_sha256`; an empty or stale editable field association is not
 filled from the semantic bundle.
 
+## Publish the checked inactive candidate
+
+Publication is a separate command and requires the exact `projection_sha256` returned
+by the read-only check. Run it only from a clean source tree with an external
+`APP_CATALOG_PUBLISHER_DATABASE_URL` and explicit content digests for the deployed
+images. The publisher recompiles every live receipt, seals a clean product evidence
+manifest, and appends the projection/manifest pair in one transaction.
+
+```powershell
+$published = python `
+  infrastructure/database/datahub/publish_runtime_catalog_candidate.py `
+  --expected-release <catalog-release-id> `
+  --expected-projection-sha256 $candidate.projection_sha256 `
+  --backend-image-ref answervice-backend:latest `
+  --image-receipt app-db=sha256:<digest> `
+  --image-receipt datahub-gms=sha256:<digest> `
+  --image-receipt frontend=sha256:<digest> `
+  --image-receipt trino=sha256:<digest> | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0 -or $published.status -ne 'PUBLISHED_WITHOUT_ACTIVATION') {
+  throw 'Runtime catalog candidate publication failed.'
+}
+```
+
+`APP_CATALOG_PUBLISHER_USER` has `SELECT/INSERT` only on the immutable runtime
+projection and product manifest tables, plus read access to the Alembic revision. It
+has no active pointer or activation receipt privilege, and its credentials are never
+injected into the Backend. The Backend image digest is read from the local OCI image
+and accepted only when its revision/dirty labels match the clean Git source. A
+`PUBLISHED_WITHOUT_ACTIVATION` receipt therefore permits only a
+subsequent explicit canary; it is not cutover approval.
+
 The Backend keeps the verified catalog snapshot and readiness receipt for the shared
 `86400` second operational TTL. After a new semantic release reaches
 `PUBLISHED_AND_VERIFIED`, recreate the Backend before routing analysis traffic to that

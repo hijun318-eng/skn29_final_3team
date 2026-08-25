@@ -81,6 +81,7 @@
 | `app/backend/app/adapters/report_repository_common.py` | production | REVIEWED |
 | `app/backend/app/adapters/report_run_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/report_schedule_repository.py` | production | REVIEWED |
+| `app/backend/app/adapters/runtime_catalog_candidate_publisher.py` | production | REVIEWED |
 | `app/backend/app/adapters/runtime_catalog_projection.py` | production | REVIEWED |
 | `app/backend/app/adapters/runtime_catalog_repository.py` | production | REVIEWED |
 | `app/backend/app/adapters/trino_async.py` | production | REVIEWED |
@@ -222,6 +223,7 @@
 | `app/backend/migrations/versions/20260822_33_bounded_multi_turn_focus.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260823_34_phase10_runtime_query_terminal_grants.py` | runtime-config | REVIEWED |
 | `app/backend/migrations/versions/20260823_35_phase10_runtime_audit_grants.py` | runtime-config | REVIEWED |
+| `app/backend/migrations/versions/20260825_36_catalog_publisher_role.py` | runtime-config | REVIEWED |
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
@@ -468,6 +470,7 @@
 | `infrastructure/database/datahub/http_client.py` | production | REVIEWED |
 | `infrastructure/database/datahub/ingest_runtime_catalog.ps1` | production | REVIEWED |
 | `infrastructure/database/datahub/metadata_aspects.py` | production | REVIEWED |
+| `infrastructure/database/datahub/publish_runtime_catalog_candidate.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metadata_contract.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metadata_contract_primitives.py` | production | REVIEWED |
 | `infrastructure/database/datahub/metadata_graphql.py` | production | REVIEWED |
@@ -766,6 +769,7 @@
 | `tests/backend/test_canonical_semantic_release.py` | test | TEST_ONLY |
 | `tests/backend/test_capability_contracts.py` | test | TEST_ONLY |
 | `tests/backend/test_catalog_snapshot.py` | test | TEST_ONLY |
+| `tests/backend/test_catalog_publisher_boundary.py` | test | TEST_ONLY |
 | `tests/backend/test_context_builder.py` | test | TEST_ONLY |
 | `tests/backend/test_context_registry.py` | test | TEST_ONLY |
 | `tests/backend/test_control_plane_contract.py` | test | TEST_ONLY |

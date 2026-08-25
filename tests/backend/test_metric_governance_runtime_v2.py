@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import subprocess
 import sys
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import UUID
 
@@ -28,6 +30,12 @@ from app.adapters.datahub_metric_governance import runtime_metric_permitted  # n
 from app.adapters.datahub_metadata import parse_dataset, parse_glossary_term  # noqa: E402
 from app.adapters.datahub_metadata_values import GovernedMetadataError  # noqa: E402
 from app.adapters.legacy_semantic_release import compile_legacy_semantic_release  # noqa: E402
+from app.adapters.runtime_catalog_candidate_publisher import (  # noqa: E402
+    PostgresRuntimeCatalogCandidatePublisher,
+    RuntimeCatalogCandidatePublishError,
+    product_release_id_for,
+    validate_runtime_catalog_candidate_pair,
+)
 from app.adapters.query_governance import QueryGovernanceEngine  # noqa: E402
 from app.adapters.model_context import execution_time, metric_selection  # noqa: E402
 from app.contracts import (  # noqa: E402
@@ -38,6 +46,11 @@ from app.contracts import (  # noqa: E402
     ResolvedSlots,
     Role,
     SnapshotEvidence,
+)
+from app.capability_contracts import (  # noqa: E402
+    ImageReceipt,
+    MigrationReceipt,
+    SourceReceipt,
 )
 from app.ports.data_platform import (  # noqa: E402
     ExecutionAssetSelection,
@@ -66,6 +79,12 @@ from compile_runtime_catalog_projection import (  # noqa: E402
     RuntimeCatalogCandidateError,
     candidate_receipt,
     compile_verified_runtime_catalog_candidate,
+)
+from publish_runtime_catalog_candidate import (  # noqa: E402
+    RuntimeCatalogCandidateCommandError,
+    build_product_manifest,
+    parse_image_receipts,
+    verified_backend_image_receipt,
 )
 from native_metric_shadow import native_metric_shadow_projection  # noqa: E402
 from test_datahub_metadata_publication import (  # noqa: E402
@@ -129,9 +148,7 @@ def _snapshot(bundle: dict) -> CatalogSnapshot:
     )
 
 
-def test_verified_native_readback_seals_exact_field_term_snapshot() -> None:
-    """Candidate compiler는 field Term을 포함한 snapshot과 exact native receipt를 봉인한다."""
-
+def _verified_candidate():
     snapshot = _snapshot(_runtime_bundle())
     release = compile_legacy_semantic_release(snapshot)
     fingerprints = tuple(
@@ -151,13 +168,22 @@ def test_verified_native_readback_seals_exact_field_term_snapshot() -> None:
         **native_metric_shadow_projection(release.as_bundle()),
         "status": "SHADOW_READBACK_VERIFIED_NOT_ACTIVE",
     }
-
-    projection = compile_verified_runtime_catalog_candidate(
-        snapshot,
-        release,
-        fingerprints,
+    return (
+        compile_verified_runtime_catalog_candidate(
+            snapshot,
+            release,
+            fingerprints,
+            native,
+        ),
         native,
+        snapshot,
     )
+
+
+def test_verified_native_readback_seals_exact_field_term_snapshot() -> None:
+    """Candidate compiler는 field Term을 포함한 snapshot과 exact native receipt를 봉인한다."""
+
+    projection, native, snapshot = _verified_candidate()
     receipt = candidate_receipt(projection, native)
 
     assert receipt["authority_mode"] == "NATIVE_PRIORITY"
@@ -170,11 +196,103 @@ def test_verified_native_readback_seals_exact_field_term_snapshot() -> None:
 
     with pytest.raises(RuntimeCatalogCandidateError, match="differs"):
         compile_verified_runtime_catalog_candidate(
-            snapshot,
-            release,
-            fingerprints,
+            projection.snapshot,
+            projection.release,
+            projection.trino_fingerprints,
             {**native, "projection_sha256": "0" * 64},
         )
+
+
+def test_product_manifest_is_clean_and_exactly_bound_to_inactive_candidate() -> None:
+    """Publisher product evidence는 clean source·backend image·exact projection만 허용한다."""
+
+    projection, _native, _snapshot_value = _verified_candidate()
+    migration = MigrationReceipt(
+        revision="20260825_36",
+        chain_sha256="b" * 64,
+    )
+    images = tuple(
+        ImageReceipt(component=component, digest=f"sha256:{index * 64}")
+        for index, component in zip(
+            "12345",
+            ("app-db", "backend", "datahub-gms", "frontend", "trino"),
+            strict=True,
+        )
+    )
+    created_at = datetime(2026, 8, 25, tzinfo=timezone.utc)
+    manifest = build_product_manifest(
+        projection,
+        source=SourceReceipt(commit_sha="a" * 40, dirty=False),
+        images=images,
+        migration=migration,
+        created_at=created_at,
+    )
+
+    validate_runtime_catalog_candidate_pair(projection, manifest)
+    assert manifest.product_release_id == product_release_id_for(manifest.evidence)
+    assert manifest.evidence.catalog.projection_sha256 == projection.projection_sha256
+
+    dirty = build_product_manifest(
+        projection,
+        source=SourceReceipt(
+            commit_sha="a" * 40,
+            dirty=True,
+            dirty_patch_sha256="d" * 64,
+        ),
+        images=images,
+        migration=migration,
+        created_at=created_at,
+    )
+    with pytest.raises(RuntimeCatalogCandidatePublishError, match="clean source"):
+        validate_runtime_catalog_candidate_pair(projection, dirty)
+
+    with pytest.raises(RuntimeCatalogCandidatePublishError, match="migration revision"):
+        asyncio.run(
+            PostgresRuntimeCatalogCandidatePublisher(None).publish_candidate(  # type: ignore[arg-type]
+                projection,
+                manifest,
+                expected_migration_revision="20260825_99",
+            )
+        )
+
+
+def test_backend_image_receipt_is_derived_from_clean_source_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Publisher는 사람이 입력한 backend digest 대신 OCI provenance를 직접 검증한다."""
+
+    source = SourceReceipt(commit_sha="a" * 40, dirty=False)
+    document = [
+        {
+            "Id": f"sha256:{'b' * 64}",
+            "Config": {
+                "Labels": {
+                    "org.opencontainers.image.revision": source.commit_sha,
+                    "io.answervice.source.dirty": "false",
+                    "io.answervice.source.fingerprint": "c" * 64,
+                }
+            },
+        }
+    ]
+    monkeypatch.setattr(
+        "publish_runtime_catalog_candidate.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=json.dumps(document).encode("utf-8"),
+            stderr=b"",
+        ),
+    )
+
+    backend = verified_backend_image_receipt("answervice-backend:latest", source)
+    assert backend.digest == f"sha256:{'b' * 64}"
+    assert parse_image_receipts([], backend) == (backend,)
+    with pytest.raises(RuntimeCatalogCandidateCommandError, match="duplicate"):
+        parse_image_receipts([f"backend=sha256:{'d' * 64}"], backend)
+
+    document[0]["Config"]["Labels"]["io.answervice.source.dirty"] = "true"
+    with pytest.raises(RuntimeCatalogCandidateCommandError, match="provenance"):
+        verified_backend_image_receipt("answervice-backend:latest", source)
 
 
 class _Loader:

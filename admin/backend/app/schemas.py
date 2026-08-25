@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+import re
 from typing import Any
 from uuid import UUID
 
@@ -15,8 +16,17 @@ class AdminRole(StrEnum):
 
 def _email(value: str) -> str:
     normalized = value.strip().lower()
-    if len(normalized) > 255 or "@" not in normalized or normalized.startswith("@"):
-        raise ValueError("유효한 이메일을 입력하세요.")
+    is_login_id = re.fullmatch(r"[a-z0-9][a-z0-9._-]{2,63}", normalized)
+    local, separator, domain = normalized.partition("@")
+    is_email = bool(
+        separator
+        and local
+        and domain
+        and "@" not in domain
+        and not any(character.isspace() for character in normalized)
+    )
+    if len(normalized) > 255 or not (is_login_id or is_email):
+        raise ValueError("유효한 계정 ID 또는 이메일을 입력하세요.")
     return normalized
 
 

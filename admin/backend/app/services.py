@@ -69,7 +69,7 @@ class AuthService:
                 await self.audit.record(
                     connection, "AUTH.LOGIN.FAIL", "FAILED", request_id, actor_email=email
                 )
-                raise ServiceError(401, "이메일 또는 비밀번호가 올바르지 않습니다.")
+                raise ServiceError(401, "계정 또는 비밀번호가 올바르지 않습니다.")
             token = secrets.token_urlsafe(32)
             expires = datetime.now(timezone.utc) + timedelta(seconds=self.settings.session_ttl_seconds)
             await self.sessions.create(connection, user["id"], self.token_hash(token), expires)
@@ -108,7 +108,7 @@ class UserService:
                 )
                 return user
         except UniqueViolation as error:
-            raise ServiceError(409, "이미 등록된 이메일입니다.") from error
+            raise ServiceError(409, "이미 등록된 계정입니다.") from error
 
     async def update(
         self, user_id: UUID, payload: UserPatch, actor: dict[str, Any], request_id: str
@@ -132,7 +132,7 @@ class UserService:
                 )
                 return user
         except UniqueViolation as error:
-            raise ServiceError(409, "이미 등록된 이메일입니다.") from error
+            raise ServiceError(409, "이미 등록된 계정입니다.") from error
 
     async def delete(self, user_id: UUID, actor: dict[str, Any], request_id: str) -> None:
         async with self.db.connection() as connection, connection.transaction():

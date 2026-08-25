@@ -14,7 +14,7 @@
       <h1>Control<br>Room</h1>
       <p class="login-copy">사용자 서비스와 완전히 분리된 운영 관리 콘솔입니다.</p>
       <form id="login-form">
-        <label>이메일<input id="login-email" type="email" autocomplete="username" required></label>
+        <label>계정 ID 또는 이메일<input id="login-email" type="text" maxlength="255" autocomplete="username" required></label>
         <label>비밀번호<input id="login-password" type="password" autocomplete="current-password" minlength="8" required></label>
         <button class="primary" type="submit">관리자 로그인</button>
         <p id="login-error" class="form-error" role="alert"></p>
@@ -49,7 +49,7 @@
       <section id="page-permissions" class="page">
         <div class="page-heading"><div><p class="eyebrow">ADMIN SYSTEM ACCOUNTS</p><h2>권한 관리</h2></div><button id="add-user" class="primary">관리자 추가</button></div>
         <p class="lede">이 화면은 관리자 시스템 계정만 관리하며 기존 분석 사용자의 G1 권한은 변경하지 않습니다.</p>
-        <div class="table-wrap"><table><thead><tr><th>이름</th><th>이메일</th><th>Role</th><th>상태</th><th>등록일</th><th class="actions">관리</th></tr></thead><tbody id="user-rows"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>이름</th><th>계정</th><th>Role</th><th>상태</th><th>등록일</th><th class="actions">관리</th></tr></thead><tbody id="user-rows"></tbody></table></div>
       </section>
 
       <section id="page-audit" class="page">
@@ -66,7 +66,7 @@
       <div class="dialog-head"><div><p class="eyebrow">ADMIN ACCOUNT</p><h3 id="dialog-title">관리자 추가</h3></div><button type="button" id="close-dialog" aria-label="닫기">×</button></div>
       <input id="user-id" type="hidden">
       <label>이름<input id="user-name" maxlength="100" required></label>
-      <label>이메일<input id="user-email" type="email" maxlength="255" required></label>
+      <label>계정 ID 또는 이메일<input id="user-email" type="text" maxlength="255" required></label>
       <label>비밀번호<input id="user-password" type="password" minlength="12" maxlength="128"><small>수정할 때 비워두면 기존 비밀번호를 유지합니다.</small></label>
       <label>Role<select id="user-role"><option>ADMIN</option><option>VIEWER</option></select></label>
       <label class="switch-row"><span>계정 활성화</span><input id="user-active" type="checkbox" checked></label>

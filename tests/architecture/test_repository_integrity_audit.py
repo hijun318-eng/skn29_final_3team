@@ -20,7 +20,7 @@ def test_classifies_tests_archives_and_runtime_contracts_separately() -> None:
     ) == "runtime-contract"
     assert _classify("evals/metric_retrieval.py") == "runtime-config"
     assert _classify(
-        "evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json"
+        "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json"
     ) == "runtime-contract"
     assert _classify("infrastructure/database/trino/etc/iceberg-view-coercions.json") == "runtime-contract"
     assert _classify("app/backend/app/main.py") == "production"

@@ -136,7 +136,7 @@ P0 멀티턴은 각 Analysis Run을 이어서 수정하는 Agent memory가 아�
 | DATA-005 | 기존 저장 Analysis Definition·승인 Report Version은 새 catalog에 조용히 재해석하지 않고 version mismatch로 차단하거나 명시적 새 version을 만든다. | `PARTIAL` |
 | DATA-006 | code/image·data·DataHub governed context·RuntimeCatalogProjection·prompt/model/policy·migration을 한 `product_release_id`로 고정한 candidate에 대해 canary와 rollback rehearsal을 수행한 뒤에만 활성 pointer를 전환한다. | `NOT_STARTED` |
 
-2026-08-25 current host의 deployed Backend는 `datahub_lexical`이며 12개 readiness dependency와 image에 봉인된 Phase 2A retrieval Gate를 통과했다. image의 Git revision·dirty 여부·source fingerprint label도 현재 source tree와 대조한다. 다만 semantic/hybrid Gate S1, Search freshness·failure threshold, lexical rollback receipt와 동일 release evidence bundle은 남아 있으므로 DATA-004는 계속 `PARTIAL`이다.
+2026-08-25 current host의 deployed Backend는 `datahub_lexical`이며 12개 readiness dependency와 image에 봉인된 Phase 2A v2 retrieval Gate를 통과했다. 같은 active release의 Search coverage 1.0, 90개 probe의 실패율 0.0, candidate p95를 봉인 threshold와 비교해 `PROMOTE`를 기록했고, 실제 process를 `datahub_lexical → lexical → datahub_lexical`로 재생성한 세 단계도 각각 180초 상한 안에서 동일 release/checksum과 전체 readiness를 통과했다. 이 receipt는 `P0-DATAHUB-SEARCH_PROCESS_MODE_ONLY` 범위다. 이미 기본 경로가 전환된 뒤의 리허설이므로 사전 candidate canary→default 순서를 소급해 증명하지 않으며, 전체 `product_release_id` evidence bundle도 아니어서 DATA-004는 계속 `PARTIAL`이다. semantic/hybrid는 별도 Gate S1 전까지 비활성 범위다.
 
 ### GOV — DataHub 중심 의미 거버넌스
 

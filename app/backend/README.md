@@ -93,7 +93,16 @@ powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps
   -EnvFilePath C:\absolute\external\answervice.env
 ```
 
-성공 출력은 `BACKEND_CONTAINER_READY`, `BACKEND_DATABASE_READY`, `BACKEND_IMAGE_PROVENANCE_READY`, `BACKEND_METRIC_RETRIEVAL_READY`다. provenance 신호는 실행 image의 Git revision·dirty 상태·source fingerprint label이 현재 source tree와 일치한다는 뜻이며, 마지막 신호는 image에 봉인된 Phase 2A retrieval Gate가 현재 live dependency를 상대로 통과했다는 뜻이다. 검증 후 container까지 제거하려면 `-RemoveAfterVerification`을 추가한다.
+성공 출력은 `BACKEND_CONTAINER_READY`, `BACKEND_DATABASE_READY`, `BACKEND_IMAGE_PROVENANCE_READY`, `BACKEND_METRIC_RETRIEVAL_READY`다. provenance 신호는 실행 image의 Git revision·dirty 상태·source fingerprint label이 현재 source tree와 일치한다는 뜻이며, 마지막 신호는 image에 봉인된 Phase 2A v2 retrieval Gate가 현재 live dependency의 active-release Search coverage·실패율·품질·권한·p95 threshold를 모두 통과해 `PROMOTE`를 기록했다는 뜻이다. 검증 후 container까지 제거하려면 `-RemoveAfterVerification`을 추가한다.
+
+Search process 전환의 rollback을 리허설할 때는 새 gitignored JSON 경로와 사전 복구시간 상한을 지정한다. 검증기는 실제 Backend를 `datahub_lexical → lexical → datahub_lexical`로 재생성하고 각 단계의 전체 readiness, image provenance, 동일 release/Gold identity와 Phase 2A v2 `PROMOTE`를 하나의 append-only receipt로 기록한다. 이 receipt의 범위는 `P0-DATAHUB-SEARCH_PROCESS_MODE_ONLY`이며 DB·데이터 release rollback 증거를 대신하지 않는다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1 `
+  -EnvFilePath C:\absolute\external\answervice.env `
+  -SearchRollbackReceiptPath .tmp\search-rollback-receipt.json `
+  -MaxSearchTransitionSeconds 180
+```
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1 `

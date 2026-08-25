@@ -13,7 +13,7 @@ from typing import Any
 
 
 METRIC_RETRIEVAL_VERSION = "answervice.metric_retrieval.v3"
-METRIC_RETRIEVAL_GOLD_VERSION = "answervice.metric_retrieval_gold.v1"
+METRIC_RETRIEVAL_GOLD_VERSION = "answervice.metric_retrieval_gold.v2"
 POSITIVE_EXACT = "positive_catalog_exact"
 POSITIVE_DEFINITION = "positive_definition_overlap"
 POSITIVE_HELDOUT_KOREAN = "positive_heldout_korean"
@@ -548,6 +548,8 @@ def _gold_thresholds(value: object) -> dict[str, float | int]:
         "min_baseline_heldout_top1",
         "min_baseline_heldout_recall_at_k",
         "min_baseline_heldout_mrr",
+        "min_active_release_search_coverage",
+        "max_candidate_failed_probe_rate",
         "max_unauthorized_exposure_count",
         "max_production_diff_count",
         "max_candidate_warm_p95_ms",
@@ -559,6 +561,8 @@ def _gold_thresholds(value: object) -> dict[str, float | int]:
         "min_baseline_heldout_top1",
         "min_baseline_heldout_recall_at_k",
         "min_baseline_heldout_mrr",
+        "min_active_release_search_coverage",
+        "max_candidate_failed_probe_rate",
     ):
         score = value[name]
         if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0 <= score <= 1:

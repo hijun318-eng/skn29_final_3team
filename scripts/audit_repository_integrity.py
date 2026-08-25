@@ -97,7 +97,7 @@ ALLOWED_RUNTIME_JSON = {
     "infrastructure/database/datahub/decisions/metric_retirement_20260820.v1.json": (
         "validated product-scope retirement decision"
     ),
-    "evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json": (
+    "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json": (
         "sealed backend deployment retrieval Gate contract"
     ),
 }

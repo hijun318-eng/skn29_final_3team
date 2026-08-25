@@ -24,7 +24,7 @@ COPY --chown=appuser:appuser infrastructure/database/sql/ddl/00_answervice_app_p
 COPY --chown=appuser:appuser src/ ./src/
 COPY --chown=appuser:appuser docs/ ./docs/
 COPY --chown=appuser:appuser evals/__init__.py evals/metric_retrieval.py evals/metric_retrieval_runner.py evals/
-COPY --chown=appuser:appuser evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json evals/metric_retrieval_gold/
+COPY --chown=appuser:appuser evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json evals/metric_retrieval_gold/
 
 ARG ANSWERVICE_SOURCE_REVISION
 ARG ANSWERVICE_SOURCE_DIRTY

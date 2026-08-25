@@ -196,5 +196,5 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
 
 ```powershell
 python evals/metric_retrieval_runner.py `
-  --phase2a-gold-manifest evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json
+  --phase2a-gold-manifest evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json
 ```

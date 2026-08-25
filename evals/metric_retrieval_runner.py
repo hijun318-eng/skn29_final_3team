@@ -44,6 +44,9 @@ from evals.metric_retrieval import (  # noqa: E402
 )
 
 
+PHASE2A_CONTRACT_VERSION = "answervice.metric_retrieval_phase2a.v2"
+
+
 class _RejectSchemaInspection:
     """후보 retrieval Gate가 Trino schema를 조회하면 즉시 실패시키는 sentinel이다."""
 
@@ -321,6 +324,16 @@ async def _run_phase2a(arguments: argparse.Namespace) -> dict[str, Any]:
         observation.error_type == "MetadataUnavailableError"
         for observation in raw_observations["datahub_lexical"]
     )
+    candidate_probe_count = len(raw_observations["datahub_lexical"])
+    candidate_failed_probe_rate = round(
+        candidate_infrastructure_error_count / candidate_probe_count,
+        6,
+    )
+    active_release_search_coverage = float(
+        measurements["datahub_lexical"]["catalog_exact_self_consistency"][
+            "recall_at_k"
+        ]
+    )
     candidate_latency = latency_by_mode["datahub_lexical"]
     candidate_p95 = _percentile(candidate_latency, 0.95)
     thresholds = gold.thresholds
@@ -330,17 +343,25 @@ async def _run_phase2a(arguments: argparse.Namespace) -> dict[str, Any]:
         <= thresholds["max_production_diff_count"],
         "unauthorized_metadata_exposure": unauthorized_exposure_count
         <= thresholds["max_unauthorized_exposure_count"],
-        "candidate_search_measured": candidate_infrastructure_error_count == 0,
+        "active_release_search_freshness": active_release_search_coverage
+        >= thresholds["min_active_release_search_coverage"],
+        "candidate_failure_bound": candidate_failed_probe_rate
+        <= thresholds["max_candidate_failed_probe_rate"],
         "candidate_latency_bound": candidate_p95
         <= thresholds["max_candidate_warm_p95_ms"],
     }
-    passed = all(checks.values())
+    decision = _phase2a_decision(checks)
+    passed = decision == "PROMOTE"
     for result in measurements.values():
         if not arguments.include_cases:
             result.pop("cases", None)
     return {
-        "contract_version": "answervice.metric_retrieval_phase2a.v1",
+        "contract_version": PHASE2A_CONTRACT_VERSION,
         "status": "PASSED" if passed else "FAILED",
+        "decision": decision,
+        "decision_reasons": sorted(
+            name for name, succeeded in checks.items() if not succeeded
+        ),
         "gate": "2A",
         "context_release": release.catalog_version,
         "catalog_checksum": release.catalog_checksum,
@@ -370,6 +391,13 @@ async def _run_phase2a(arguments: argparse.Namespace) -> dict[str, Any]:
         "production_diff_count": production_diff_count,
         "unauthorized_exposure_count": unauthorized_exposure_count,
         "candidate_infrastructure_error_count": candidate_infrastructure_error_count,
+        "search_reliability": {
+            "freshness_basis": "active_release_catalog_exact_recall_at_k",
+            "active_release_coverage": active_release_search_coverage,
+            "candidate_probe_count": candidate_probe_count,
+            "failed_probe_count": candidate_infrastructure_error_count,
+            "failed_probe_rate": candidate_failed_probe_rate,
+        },
         "thresholds": dict(thresholds),
         "checks": checks,
     }
@@ -425,6 +453,44 @@ def _phase2a_quality_checks(
         "candidate_catalog_contract": catalog_contract(candidate),
         "candidate_heldout_quality": heldout_quality(candidate),
     }
+
+
+def _phase2a_decision(checks: Mapping[str, bool]) -> str:
+    """품질·보안 결함과 관측 불충분을 구분해 전환 결정을 반환한다."""
+
+    required = {
+        "catalog_baseline_contract",
+        "baseline_heldout_quality",
+        "candidate_catalog_contract",
+        "candidate_heldout_quality",
+        "production_non_regression",
+        "unauthorized_metadata_exposure",
+        "active_release_search_freshness",
+        "candidate_failure_bound",
+        "candidate_latency_bound",
+    }
+    if set(checks) != required or any(
+        type(value) is not bool for value in checks.values()
+    ):
+        raise MetricRetrievalError("Phase 2A decision checks are invalid")
+    failed = {name for name, succeeded in checks.items() if not succeeded}
+    if not failed:
+        return "PROMOTE"
+    if failed.intersection(
+        {"production_non_regression", "unauthorized_metadata_exposure"}
+    ):
+        return "REJECT"
+    if failed.intersection(
+        {
+            "catalog_baseline_contract",
+            "baseline_heldout_quality",
+            "active_release_search_freshness",
+            "candidate_failure_bound",
+            "candidate_latency_bound",
+        }
+    ):
+        return "HOLD"
+    return "REJECT"
 
 
 async def _observe(

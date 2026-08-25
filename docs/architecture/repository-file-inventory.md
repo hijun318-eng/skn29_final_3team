@@ -422,7 +422,7 @@
 | `evals/instruct2507.smoke20.jsonl` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.v2.manifest.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/metric_retrieval.py` | runtime-config | REVIEWED |
-| `evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json` | runtime-contract | REVIEWED |
+| `evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json` | runtime-contract | REVIEWED |
 | `evals/metric_retrieval_runner.py` | runtime-config | REVIEWED |
 | `evals/multi_asset_join_gold/answervice_ko_multi_asset_join.v1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/nlu_live_node1.py` | archive | ARCHIVE_NON_RUNTIME |

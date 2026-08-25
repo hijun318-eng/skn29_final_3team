@@ -23,7 +23,11 @@ from evals.metric_retrieval import (
     load_metric_retrieval_gold,
     normalize_retrieval_query,
 )
-from evals.metric_retrieval_runner import _percentile, _phase2a_quality_checks
+from evals.metric_retrieval_runner import (
+    _percentile,
+    _phase2a_decision,
+    _phase2a_quality_checks,
+)
 
 
 def _probe(
@@ -233,11 +237,33 @@ def test_phase2a_gate_rejects_wrong_datahub_candidate_quality() -> None:
     }
 
 
+def test_phase2a_decision_separates_promotion_hold_and_rejection() -> None:
+    checks = {
+        "catalog_baseline_contract": True,
+        "baseline_heldout_quality": True,
+        "candidate_catalog_contract": True,
+        "candidate_heldout_quality": True,
+        "production_non_regression": True,
+        "unauthorized_metadata_exposure": True,
+        "active_release_search_freshness": True,
+        "candidate_failure_bound": True,
+        "candidate_latency_bound": True,
+    }
+
+    assert _phase2a_decision(checks) == "PROMOTE"
+    assert _phase2a_decision({**checks, "candidate_failure_bound": False}) == "HOLD"
+    assert _phase2a_decision({**checks, "candidate_latency_bound": False}) == "HOLD"
+    assert _phase2a_decision({**checks, "candidate_heldout_quality": False}) == "REJECT"
+    assert _phase2a_decision(
+        {**checks, "unauthorized_metadata_exposure": False}
+    ) == "REJECT"
+
+
 def test_sealed_korean_gold_loads_and_scores_only_heldout_split() -> None:
     gold = load_metric_retrieval_gold(
-        "evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json"
+        "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json"
     )
-    assert gold.dataset_id == "answervice_ko_retrieval.v1"
+    assert gold.dataset_id == "answervice_ko_retrieval.v2"
     assert len(gold.probes) == 19
     assert {probe.split for probe in gold.probes} == {"calibration", "heldout"}
 
@@ -284,7 +310,7 @@ def test_sealed_korean_gold_loads_and_scores_only_heldout_split() -> None:
 
 
 def test_sealed_korean_gold_rejects_tampered_content(tmp_path) -> None:
-    source = "evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json"
+    source = "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json"
     document = json.loads(open(source, encoding="utf-8").read())
     document["cases"][0]["query"] = "변조된 한국어 질의"
     target = tmp_path / "tampered.json"

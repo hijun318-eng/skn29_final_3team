@@ -115,13 +115,32 @@ def test_backend_image_and_verifier_include_the_sealed_phase2a_gate():
     for artifact in (
         "evals/metric_retrieval.py",
         "evals/metric_retrieval_runner.py",
-        "evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json",
+        "evals/metric_retrieval_gold/answervice_ko_retrieval.v2.json",
     ):
         assert artifact in dockerfile
     assert "/workspace/evals/metric_retrieval_runner.py" in verifier
     assert "--phase2a-gold-manifest" in verifier
-    assert "answervice.metric_retrieval_phase2a.v1" in verifier
+    assert "answervice.metric_retrieval_phase2a.v2" in verifier
+    assert "$retrievalGate.decision -ne 'PROMOTE'" in verifier
     assert "BACKEND_METRIC_RETRIEVAL_READY" in verifier
+
+
+def test_backend_verifier_rehearses_search_rollback_as_one_scoped_receipt():
+    verifier = BACKEND_VERIFIER.read_text(encoding="utf-8")
+
+    stages = (
+        "candidate_baseline",
+        "lexical_rollback",
+        "candidate_restore",
+    )
+    assert [verifier.index(stage) for stage in stages] == sorted(
+        verifier.index(stage) for stage in stages
+    )
+    assert "answervice.search-rollback-receipt.v1" in verifier
+    assert "P0-DATAHUB-SEARCH_PROCESS_MODE_ONLY" in verifier
+    assert "Search rollback receipt path must be covered by .gitignore." in verifier
+    assert "Search rollback rehearsal crossed a release or Gold identity." in verifier
+    assert "BACKEND_SEARCH_ROLLBACK_VERIFIED=" in verifier
 
 
 def test_backend_build_fails_closed_and_verifier_matches_source_provenance():

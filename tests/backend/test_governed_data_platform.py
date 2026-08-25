@@ -26,6 +26,7 @@ from app.adapters.catalog_snapshot import (  # noqa: E402
     DEFAULT_CATALOG_RELEASE_TTL_SECONDS,
 )
 from app.adapters.datahub_catalog import DataHubCatalogClient  # noqa: E402
+from app.adapters.datahub_metadata_values import GovernedMetadataError  # noqa: E402
 from app.adapters.governed_data_platform import (  # noqa: E402
     GovernedDataPlatformAdapter,
 )
@@ -557,14 +558,20 @@ def _graphql_entities(bundle: dict) -> tuple[dict[str, dict], dict[str, dict]]:
             for key, value in properties["customProperties"].items()
         ]
         editable = aspects[("dataset", urn, "editableSchemaMetadata")]
-        by_name = {
-            item["fieldPath"]: item
-            for item in editable["editableSchemaFieldInfo"]
-        }
+        editable_fields = []
+        for raw in editable["editableSchemaFieldInfo"]:
+            value = copy.deepcopy(raw)
+            raw_terms = value.get("glossaryTerms")
+            if raw_terms is not None:
+                value["glossaryTerms"] = {
+                    "terms": [
+                        {"term": {"urn": item["urn"]}}
+                        for item in raw_terms.get("terms", [])
+                    ]
+                }
+            editable_fields.append(value)
         fields = []
         for column in asset["columns"]:
-            editable_field = by_name[column["name"]]
-            associations = editable_field.get("glossaryTerms", {}).get("terms", [])
             fields.append(
                 {
                     "fieldPath": column["name"],
@@ -572,9 +579,8 @@ def _graphql_entities(bundle: dict) -> tuple[dict[str, dict], dict[str, dict]]:
                     "nullable": column["nullable"],
                     "isPartOfKey": column["is_part_of_key"],
                     "description": column["description"],
-                    "glossaryTerms": {
-                        "terms": [{"term": {"urn": item["urn"]}} for item in associations]
-                    },
+                    # Pinned DataHub v1.7 does not project editable terms here.
+                    "glossaryTerms": None,
                 }
             )
         term_urns = aspects[("dataset", urn, "glossaryTerms")]["terms"]
@@ -606,9 +612,7 @@ def _graphql_entities(bundle: dict) -> tuple[dict[str, dict], dict[str, dict]]:
                 "fields": fields,
             },
             "editableSchemaMetadata": {
-                "editableSchemaFieldInfo": copy.deepcopy(
-                    editable["editableSchemaFieldInfo"]
-                )
+                "editableSchemaFieldInfo": editable_fields
             },
         }
     terms = {}
@@ -1073,6 +1077,39 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         await self.datahub_http.aclose()
         await self.trino_http.aclose()
 
+    async def test_runtime_reads_v17_editable_field_glossary_associations(self) -> None:
+        """Pinned v1.7의 editable field aspect를 runtime association으로 보존한다."""
+
+        snapshot = await self.adapter._governance._loader.load()
+
+        self.assertEqual(
+            frozenset({"urn:li:glossaryTerm:helium_yield"}),
+            snapshot.datasets_by_fqn["orbit.lake.helium_fact"].field_terms[
+                "measure_value"
+            ],
+        )
+        self.assertEqual(
+            frozenset({"urn:li:glossaryTerm:argon_yield"}),
+            snapshot.datasets_by_fqn["orbit.lake.argon_fact"].field_terms[
+                "measure_value"
+            ],
+        )
+
+    async def test_v2_runtime_rejects_missing_editable_field_glossary_association(self) -> None:
+        """Dataset Term만 남고 BUSINESS column 연결이 사라진 release는 닫는다."""
+
+        urn = self.transport.bundle["schema_context"]["assets"][0]["urn"]
+        editable = self.transport.datasets[urn]["editableSchemaMetadata"]
+        field = next(
+            item
+            for item in editable["editableSchemaFieldInfo"]
+            if item["fieldPath"] == "measure_value"
+        )
+        field["glossaryTerms"] = {"terms": []}
+
+        with self.assertRaises(GovernedMetadataError):
+            await self.adapter._governance._loader.load()
+
     async def test_runtime_catalog_projection_round_trips_exact_snapshot_and_receipts(self) -> None:
         snapshot = await self.adapter._governance._loader.load()
         release = compile_legacy_semantic_release(snapshot)
@@ -1291,6 +1328,62 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("not_ready", stages["trino_schema"])
             self.assertIsNone(receipt)
             self.assertTrue(self.transport.scroll_cursors["DATASET"])
+        finally:
+            await governance.aclose()
+
+    async def test_runtime_projection_readiness_rejects_association_snapshot_drift(self) -> None:
+        """Canonical bundle이 같아도 live field association이 다르면 readiness를 닫는다."""
+
+        snapshot = await self.adapter._governance._loader.load()
+        release = compile_legacy_semantic_release(snapshot)
+        datasets = tuple(
+            snapshot.datasets_by_fqn[item.fqn] for item in release.assets
+        )
+        fingerprints = await self.adapter._governance._schema.fingerprints(datasets)
+        projection = RuntimeCatalogProjection.compile(
+            snapshot,
+            release,
+            source_selection=build_source_selection_manifest(
+                release,
+                authority_mode=LEGACY_SHADOW,
+            ),
+            trino_fingerprints=fingerprints,
+        )
+        repository = MutableProjectionRepository(
+            ActiveRuntimeCatalogProjection(
+                projection=projection,
+                product_release_id="phase4-product-a",
+                generation=1,
+            )
+        )
+        urn = self.transport.bundle["schema_context"]["assets"][0]["urn"]
+        editable = self.transport.datasets[urn]["editableSchemaMetadata"]
+        field = next(
+            item
+            for item in editable["editableSchemaFieldInfo"]
+            if item["fieldPath"] == "event_id"
+        )
+        field["glossaryTerms"] = {
+            "terms": [
+                {"term": {"urn": "urn:li:glossaryTerm:unrelated"}}
+            ]
+        }
+        for values in self.transport.scroll_cursors.values():
+            values.clear()
+        governance = QueryGovernanceEngine(
+            self.adapter._datahub,
+            self.adapter._governance._schema,
+            expected_context_release=release.catalog_version,
+            search_mode="lexical",
+            projection_repository=repository,
+        )
+        try:
+            stages, receipt = await governance.catalog_readiness()
+
+            self.assertEqual("ready", stages["catalog_manifest"])
+            self.assertEqual("not_ready", stages["semantic_release"])
+            self.assertEqual("not_ready", stages["trino_schema"])
+            self.assertIsNone(receipt)
         finally:
             await governance.aclose()
 

@@ -112,6 +112,11 @@ class RuntimeCatalogProjection:
             raise RuntimeCatalogProjectionError("runtime projection document is unavailable")
         return value
 
+    def matches_snapshot(self, snapshot: CatalogSnapshot) -> bool:
+        """Live snapshot이 projection에 봉인된 canonical 문서와 정확히 같은지 판정한다."""
+
+        return self.as_document()["snapshot"] == _serialize_snapshot(snapshot)
+
     @classmethod
     def compile(
         cls,

@@ -310,7 +310,7 @@ def _schema_fields(value, editable_value, typed_columns, column_roles):
     trino_columns = []
     datahub_columns = []
     associations = {}
-    editable_descriptions = _editable_descriptions(
+    editable_descriptions, editable_associations = _editable_fields(
         editable_value,
         set(expected),
     )
@@ -331,7 +331,16 @@ def _schema_fields(value, editable_value, typed_columns, column_roles):
             ) != governed["description"]
         ):
             raise GovernedMetadataError("DataHub native and governed column metadata differ")
-        associations[name] = term_urns(field.get("glossaryTerms"))
+        schema_associations = term_urns(field.get("glossaryTerms"))
+        if name in editable_associations:
+            editable_terms = editable_associations[name]
+            if schema_associations and schema_associations != editable_terms:
+                raise GovernedMetadataError(
+                    "DataHub schema and editable field glossary terms differ"
+                )
+            associations[name] = editable_terms
+        else:
+            associations[name] = schema_associations
         datahub_columns.append(
             {
                 "ordinal_position": len(datahub_columns) + 1,
@@ -369,30 +378,34 @@ def _schema_fields(value, editable_value, typed_columns, column_roles):
     return tuple(columns), associations, schema_hash, tuple(trino_columns)
 
 
-def _editable_descriptions(value, native_names):
+def _editable_fields(value, native_names):
     if value is None:
-        return {}
+        return {}, {}
     if not isinstance(value, dict):
         raise GovernedMetadataError("DataHub editable schema metadata is invalid")
     fields = value.get("editableSchemaFieldInfo") or []
     if not isinstance(fields, list):
         raise GovernedMetadataError("DataHub editable schema fields are invalid")
-    result = {}
+    descriptions = {}
+    associations = {}
     for field in fields:
         if not isinstance(field, dict):
             raise GovernedMetadataError("DataHub editable schema field is invalid")
         name = required_text(field.get("fieldPath"), "editable schema field path")
         description = field.get("description")
         if (
-            name in result
+            name in descriptions
             or name not in native_names
             or (description is not None and not isinstance(description, str))
         ):
             raise GovernedMetadataError(
                 "DataHub editable schema field identity is invalid"
             )
-        result[name] = description.strip() if isinstance(description, str) else None
-    return result
+        descriptions[name] = (
+            description.strip() if isinstance(description, str) else None
+        )
+        associations[name] = term_urns(field.get("glossaryTerms"))
+    return descriptions, associations
 
 
 def _manifest_dataset_entry(manifest, urn):

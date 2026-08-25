@@ -419,7 +419,12 @@ def _bind_v2_policy(
     term_urn = metric["term_urn"]
     visibility = governance["visibility"]
     if visibility == "BUSINESS":
-        _validate_v1_term(metric, scope["dataset_terms"], scope["visible_field_terms"])
+        _validate_v1_term(
+            metric,
+            scope["dataset_terms"],
+            scope["visible_field_terms"],
+            require_field_term=True,
+        )
     elif term_urn is not None:
         raise GovernedMetadataError("DataHub support metric cannot have a Glossary term")
     edge_index = {
@@ -455,12 +460,18 @@ def _validate_v1_term(
     metric: Mapping[str, Any],
     dataset_terms: frozenset[str],
     visible_field_terms: frozenset[str],
+    *,
+    require_field_term: bool = False,
 ) -> None:
     term_urn = metric.get("term_urn")
     if (
         not isinstance(term_urn, str)
         or term_urn not in dataset_terms
-        or (visible_field_terms and term_urn not in visible_field_terms)
+        or (
+            term_urn not in visible_field_terms
+            if require_field_term
+            else visible_field_terms and term_urn not in visible_field_terms
+        )
     ):
         raise GovernedMetadataError("DataHub metric governance is inconsistent")
 

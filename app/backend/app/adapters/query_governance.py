@@ -935,6 +935,11 @@ class QueryGovernanceEngine:
                     raise RuntimeCatalogRepositoryError(
                         "runtime projection snapshot is unavailable"
                     )
+                if (
+                    active_projection is None
+                    or not active_projection.projection.matches_snapshot(snapshot)
+                ):
+                    return stages, None
                 release = projection_release
                 datasets = self._datasets_for_release(
                     projection_snapshot,

@@ -384,6 +384,20 @@ def _native(entity, definition):
 def _graphql_dataset(asset, bundle, aspects):
     properties = aspects[asset["urn"]]["datasetProperties"]
     dataset_terms = aspects[asset["urn"]]["glossaryTerms"]["terms"]
+    editable_fields = []
+    for raw in aspects[asset["urn"]]["editableSchemaMetadata"][
+        "editableSchemaFieldInfo"
+    ]:
+        value = deepcopy(raw)
+        raw_terms = value.get("glossaryTerms")
+        if raw_terms is not None:
+            value["glossaryTerms"] = {
+                "terms": [
+                    {"term": {"urn": item["urn"]}}
+                    for item in raw_terms.get("terms", [])
+                ]
+            }
+        editable_fields.append(value)
     entity = {
         "urn": asset["urn"],
         "name": asset["fqn"],
@@ -416,11 +430,7 @@ def _graphql_dataset(asset, bundle, aspects):
             ],
         },
         "editableSchemaMetadata": {
-            "editableSchemaFieldInfo": deepcopy(
-                aspects[asset["urn"]]["editableSchemaMetadata"][
-                    "editableSchemaFieldInfo"
-                ]
-            )
+            "editableSchemaFieldInfo": editable_fields
         },
         "glossaryTerms": {
             "terms": [

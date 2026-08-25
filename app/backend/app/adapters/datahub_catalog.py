@@ -94,7 +94,10 @@ query GovernedDataset($urn: String!) {
       }
     }
     editableSchemaMetadata {
-      editableSchemaFieldInfo { fieldPath description }
+      editableSchemaFieldInfo {
+        fieldPath description
+        glossaryTerms { terms { term { urn } } }
+      }
     }
   }
 }

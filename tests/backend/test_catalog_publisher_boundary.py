@@ -81,6 +81,18 @@ def test_publisher_only_upgrade_stops_before_runtime_grant_reconciliation() -> N
     )
 
 
+def test_ownership_only_upgrade_reuses_owner_contract_without_runtime_revoke() -> None:
+    provision = PROVISION.read_text(encoding="utf-8")
+    branch = provision.index("if [ \"$provision_mode\" = 'ownership-only' ]")
+    branch_exit = provision.index("exit 0", branch)
+    runtime_revoke = provision.index("REVOKE ALL PRIVILEGES ON ALL TABLES", branch)
+    owner_contract = provision.index("reconcile_migration_ownership()")
+
+    assert owner_contract < branch < branch_exit < runtime_revoke
+    assert "APP_MIGRATION_OWNERSHIP_RECONCILED" in provision[branch:branch_exit]
+    assert "reconcile_migration_ownership" in provision[branch:branch_exit]
+
+
 def test_publisher_credential_provisioning_is_idempotent_and_secret_safe(
     tmp_path: Path,
 ) -> None:

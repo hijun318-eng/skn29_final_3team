@@ -54,6 +54,9 @@ CSPRNG로 비밀번호를 생성해 외부 env에 원자적으로 기록한다. 
 기존 volume에 이 역할을 처음 추가할 때는 publisher 두 환경변수의 값이 process에 있는
 상태에서 `provision-app-postgres.sh publisher-only`를 실행한다. 이 mode는 기존 runtime
 grant를 건드리지 않고 역할과 DB 연결만 준비하며, relation 권한은 Alembic이 적용한다.
+과거 admin-owned application relation이 남은 upgrade 환경은 migration 전에
+`provision-app-postgres.sh ownership-only`를 실행한다. 이 mode는 기존 ACL을 보존하면서
+application schema/table/sequence owner만 전용 migration role로 정규화한다.
 
 ## D0/D1 release 검증과 영속 serving 발행
 

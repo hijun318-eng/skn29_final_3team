@@ -5,12 +5,69 @@ set -eu
 
 provision_mode="${1:-full}"
 case "$provision_mode" in
-  full|publisher-only) ;;
+  full|publisher-only|ownership-only) ;;
   *)
-    echo 'Usage: provision-app-postgres.sh [full|publisher-only]' >&2
+    echo 'Usage: provision-app-postgres.sh [full|publisher-only|ownership-only]' >&2
     exit 1
     ;;
 esac
+
+reconcile_migration_ownership() {
+  psql -v ON_ERROR_STOP=1 \
+    --username "$POSTGRES_USER" \
+    --dbname "$POSTGRES_DB" \
+    --set=migration_user="$APP_MIGRATION_USER" <<'SQL'
+SELECT format(
+  'GRANT CREATE ON DATABASE %I TO %I',
+  current_database(),
+  :'migration_user'
+) \gexec
+
+-- Base DDL은 bootstrap admin으로 실행되지만 이후 ALTER/constraint migration은
+-- 전용 role이 소유해야 한다. application schema와 현재 table/sequence만 이관하고
+-- database/public schema/pgcrypto extension 소유권은 admin에 남긴다.
+SELECT format('ALTER SCHEMA %I OWNER TO %I', namespace.nspname, :'migration_user')
+FROM pg_namespace AS namespace
+WHERE namespace.nspname IN (
+  'analytics','artifact','chat','connection','context','governance','model',
+  'query','reference','report','tooling','rag','ml'
+)
+\gexec
+SELECT format(
+  'ALTER TABLE %I.%I OWNER TO %I', namespace.nspname, relation.relname,
+  :'migration_user'
+)
+FROM pg_class AS relation
+JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+WHERE namespace.nspname IN (
+  'analytics','artifact','chat','connection','context','governance','model',
+  'query','reference','report','tooling','rag','ml'
+)
+  AND relation.relkind IN ('r','p')
+\gexec
+SELECT format(
+  'ALTER SEQUENCE %I.%I OWNER TO %I', namespace.nspname, relation.relname,
+  :'migration_user'
+)
+FROM pg_class AS relation
+JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+WHERE namespace.nspname IN (
+  'analytics','artifact','chat','connection','context','governance','model',
+  'query','reference','report','tooling','rag','ml'
+)
+  AND relation.relkind = 'S'
+\gexec
+GRANT USAGE,CREATE ON SCHEMA
+  analytics,artifact,chat,connection,context,governance,model,query,reference,report,tooling,rag,ml
+  TO :"migration_user" WITH GRANT OPTION;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA
+  analytics,artifact,chat,connection,context,governance,model,query,reference,report,tooling,rag,ml
+  TO :"migration_user" WITH GRANT OPTION;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA
+  analytics,artifact,chat,connection,context,governance,model,query,reference,report,tooling,rag,ml
+  TO :"migration_user" WITH GRANT OPTION;
+SQL
+}
 
 if [ "$APP_DB_USER" = "$APP_MIGRATION_USER" ] || \
    [ "$APP_DB_USER" = "$APP_CATALOG_PUBLISHER_USER" ] || \
@@ -43,6 +100,14 @@ SELECT format(
 ) \gexec
 SQL
   echo 'APP_CATALOG_PUBLISHER_ROLE_PROVISIONED'
+  exit 0
+fi
+
+# 기존 runtime ACL을 보존한 채 과거 admin-owned relation만 migration owner 계약으로
+# 정규화한다. migration 재시도 전용이며 role credential이나 application grant는 바꾸지 않는다.
+if [ "$provision_mode" = 'ownership-only' ]; then
+  reconcile_migration_ownership
+  echo 'APP_MIGRATION_OWNERSHIP_RECONCILED'
   exit 0
 fi
 
@@ -153,54 +218,5 @@ SELECT format(
 )
 WHERE to_regclass('governance.product_release_manifests') IS NOT NULL
 \gexec
-
-SELECT format(
-  'GRANT CREATE ON DATABASE %I TO %I',
-  current_database(),
-  :'migration_user'
-) \gexec
-
--- Base DDL은 bootstrap admin으로 실행되지만 이후 ALTER/constraint migration은
--- 전용 role이 소유해야 한다. application schema와 현재 table/sequence만 이관하고
--- database/public schema/pgcrypto extension 소유권은 admin에 남긴다.
-SELECT format('ALTER SCHEMA %I OWNER TO %I', namespace.nspname, :'migration_user')
-FROM pg_namespace AS namespace
-WHERE namespace.nspname IN (
-  'analytics','artifact','chat','connection','context','governance','model',
-  'query','reference','report','tooling','rag','ml'
-)
-\gexec
-SELECT format(
-  'ALTER TABLE %I.%I OWNER TO %I', namespace.nspname, relation.relname,
-  :'migration_user'
-)
-FROM pg_class AS relation
-JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
-WHERE namespace.nspname IN (
-  'analytics','artifact','chat','connection','context','governance','model',
-  'query','reference','report','tooling','rag','ml'
-)
-  AND relation.relkind IN ('r','p')
-\gexec
-SELECT format(
-  'ALTER SEQUENCE %I.%I OWNER TO %I', namespace.nspname, relation.relname,
-  :'migration_user'
-)
-FROM pg_class AS relation
-JOIN pg_namespace AS namespace ON namespace.oid = relation.relnamespace
-WHERE namespace.nspname IN (
-  'analytics','artifact','chat','connection','context','governance','model',
-  'query','reference','report','tooling','rag','ml'
-)
-  AND relation.relkind = 'S'
-\gexec
-GRANT USAGE,CREATE ON SCHEMA
-  analytics,artifact,chat,connection,context,governance,model,query,reference,report,tooling,rag,ml
-  TO :"migration_user" WITH GRANT OPTION;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA
-  analytics,artifact,chat,connection,context,governance,model,query,reference,report,tooling,rag,ml
-  TO :"migration_user" WITH GRANT OPTION;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA
-  analytics,artifact,chat,connection,context,governance,model,query,reference,report,tooling,rag,ml
-  TO :"migration_user" WITH GRANT OPTION;
 SQL
+reconcile_migration_ownership

@@ -111,6 +111,9 @@ export function TurnEvidenceDrawer({ open, run, onClose, onCopy }) {
               <div><dt>Query</dt><dd>{run.artifact?.queryId || run.artifact?.query_id || "없음"}</dd></div>
               <div><dt>Product Release</dt><dd>{run.evidence?.productReleaseId || "없음"}</dd></div>
               <div><dt>Evidence Cutoff</dt><dd>{run.evidence?.evidenceCutoff || "없음"}</dd></div>
+              <div><dt>Trino 처리 행</dt><dd>{run.evidence?.execution?.processedRows ?? 0}</dd></div>
+              <div><dt>Trino 스캔</dt><dd>{run.evidence?.execution?.scanBytes ?? 0} bytes</dd></div>
+              <div><dt>실행 주의</dt><dd>{run.evidence?.execution?.warningCount ?? 0}건</dd></div>
             </dl>
           </details>
         </div>

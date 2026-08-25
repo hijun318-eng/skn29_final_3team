@@ -9,7 +9,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -323,46 +323,9 @@ async def _run_phase2a(arguments: argparse.Namespace) -> dict[str, Any]:
     )
     candidate_latency = latency_by_mode["datahub_lexical"]
     candidate_p95 = _percentile(candidate_latency, 0.95)
-    baseline = measurements["lexical"]
-    baseline_exact = baseline["catalog_exact_self_consistency"]
-    baseline_definition = baseline["definition_overlap_retrieval"]
-    baseline_negative = baseline["negative_closure"]
-    baseline_heldout = baseline["natural_language_paraphrase"]
     thresholds = gold.thresholds
     checks = {
-        "catalog_baseline_contract": bool(
-            baseline_exact["scorable"]
-            and baseline_exact["top1_accuracy"]
-            >= arguments.min_catalog_exact_top1
-            and baseline_exact["retrieval_error_count"] == 0
-            and baseline_definition["scorable"]
-            and baseline_definition["top1_accuracy"]
-            >= arguments.min_definition_top1
-            and baseline_definition["recall_at_k"]
-            >= arguments.min_definition_recall_at_k
-            and baseline_definition["retrieval_error_count"] == 0
-            and baseline_negative["closure_rate"]
-            >= arguments.min_negative_closure
-            and baseline_negative["contamination_rate"]
-            <= arguments.max_negative_contamination
-            and baseline_negative["infrastructure_error_count"] == 0
-        ),
-        "baseline_heldout_quality": bool(
-            baseline_heldout["scorable"]
-            and baseline_heldout["top1_accuracy"]
-            >= thresholds["min_baseline_heldout_top1"]
-            and baseline_heldout["recall_at_k"]
-            >= thresholds["min_baseline_heldout_recall_at_k"]
-            and baseline_heldout["mean_reciprocal_rank"]
-            >= thresholds["min_baseline_heldout_mrr"]
-            and baseline_heldout["retrieval_error_count"] == 0
-            and baseline_heldout["negative_closure"]["scorable"]
-            and baseline_heldout["negative_closure"]["closure_rate"] == 1.0
-            and baseline_heldout["negative_closure"][
-                "infrastructure_error_count"
-            ]
-            == 0
-        ),
+        **_phase2a_quality_checks(measurements, arguments, thresholds),
         "production_non_regression": production_diff_count
         <= thresholds["max_production_diff_count"],
         "unauthorized_metadata_exposure": unauthorized_exposure_count
@@ -409,6 +372,58 @@ async def _run_phase2a(arguments: argparse.Namespace) -> dict[str, Any]:
         "candidate_infrastructure_error_count": candidate_infrastructure_error_count,
         "thresholds": dict(thresholds),
         "checks": checks,
+    }
+
+
+def _phase2a_quality_checks(
+    measurements: dict[str, dict[str, Any]],
+    arguments: argparse.Namespace,
+    thresholds: Mapping[str, float | int],
+) -> dict[str, bool]:
+    """baseline과 실제 후보 경로에 같은 catalog·heldout 품질 하한을 적용한다."""
+
+    def catalog_contract(measurement: dict[str, Any]) -> bool:
+        exact = measurement["catalog_exact_self_consistency"]
+        definition = measurement["definition_overlap_retrieval"]
+        negative = measurement["negative_closure"]
+        return bool(
+            exact["scorable"]
+            and exact["top1_accuracy"] >= arguments.min_catalog_exact_top1
+            and exact["retrieval_error_count"] == 0
+            and definition["scorable"]
+            and definition["top1_accuracy"] >= arguments.min_definition_top1
+            and definition["recall_at_k"]
+            >= arguments.min_definition_recall_at_k
+            and definition["retrieval_error_count"] == 0
+            and negative["closure_rate"] >= arguments.min_negative_closure
+            and negative["contamination_rate"]
+            <= arguments.max_negative_contamination
+            and negative["infrastructure_error_count"] == 0
+        )
+
+    def heldout_quality(measurement: dict[str, Any]) -> bool:
+        heldout = measurement["natural_language_paraphrase"]
+        return bool(
+            heldout["scorable"]
+            and heldout["top1_accuracy"]
+            >= thresholds["min_baseline_heldout_top1"]
+            and heldout["recall_at_k"]
+            >= thresholds["min_baseline_heldout_recall_at_k"]
+            and heldout["mean_reciprocal_rank"]
+            >= thresholds["min_baseline_heldout_mrr"]
+            and heldout["retrieval_error_count"] == 0
+            and heldout["negative_closure"]["scorable"]
+            and heldout["negative_closure"]["closure_rate"] == 1.0
+            and heldout["negative_closure"]["infrastructure_error_count"] == 0
+        )
+
+    baseline = measurements["lexical"]
+    candidate = measurements["datahub_lexical"]
+    return {
+        "catalog_baseline_contract": catalog_contract(baseline),
+        "baseline_heldout_quality": heldout_quality(baseline),
+        "candidate_catalog_contract": catalog_contract(candidate),
+        "candidate_heldout_quality": heldout_quality(candidate),
     }
 
 

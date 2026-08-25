@@ -61,6 +61,11 @@ RUNTIME_CONFIG_FILES = {
     "app/frontend/vite.config.js",
     "infrastructure/database/compose.yml",
 }
+RUNTIME_GATE_FILES = {
+    "evals/__init__.py",
+    "evals/metric_retrieval.py",
+    "evals/metric_retrieval_runner.py",
+}
 
 # 이 목록은 운영 데이터가 아니라 정적 감사 정책이다. 새 항목은 소유자·생성 절차·
 # validator가 있는 versioned schema/config/manifest일 때만 추가한다.
@@ -92,10 +97,16 @@ ALLOWED_RUNTIME_JSON = {
     "infrastructure/database/datahub/decisions/metric_retirement_20260820.v1.json": (
         "validated product-scope retirement decision"
     ),
+    "evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json": (
+        "sealed backend deployment retrieval Gate contract"
+    ),
 }
 PROHIBITED_RUNTIME_REFERENCES = {
     "docs/e2e_mvp/derived/service_demo_v3": "과거 demo seed",
     "infrastructure/database/releases/": "불변 과거 release archive",
+    "evals/semantic_review/answervice_bi_coverage.v1.json": (
+        "승인되지 않은 BI coverage review candidate"
+    ),
     "r1-service-fragment.v1.json": "삭제된 service fixture manifest",
     "candidate_context": "요청 전용 context snapshot",
     "pms_crm_pos_context": "요청 전용 context snapshot",
@@ -208,6 +219,8 @@ def _classify(relative: str) -> str:
         return "archive"
     if relative in ALLOWED_RUNTIME_JSON:
         return "runtime-contract"
+    if relative in RUNTIME_GATE_FILES:
+        return "runtime-config"
     if relative.startswith(ARCHIVE_PREFIXES):
         return "archive"
     if (

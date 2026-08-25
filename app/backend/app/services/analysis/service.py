@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from app.contracts import (
     AnalysisRequest,
@@ -30,7 +30,7 @@ from app.services.analysis.pipeline import AnalysisPipeline
 from app.services.analysis.responses import AnalysisResponseFactory
 from app.services.analysis.pipeline_support import PipelineSupport
 from app.services.context.builder import ContextPackageBuilder
-from app.services.execution_control import IsolatedExecutionCache
+from app.services.execution_control import IsolatedExecutionCache, ModelCallBudget
 from app.services.routing_service import RouteDecision
 
 
@@ -83,6 +83,8 @@ class AnalysisService:
         execution_sink: Callable[[dict[str, Any]], None] | None = None,
         progress_sink: Callable[[PipelineStage, StageOutcome], None] | None = None,
         cancel_check: Callable[[], bool] | None = None,
+        run_admission_sink: Callable[[], Awaitable[None]] | None = None,
+        model_budget: ModelCallBudget | None = None,
     ) -> AnalysisResponse:
         """분석 요청을 새 AnalysisPipeline 인스턴스에 위임하여 실행합니다."""
         pipeline = AnalysisPipeline(
@@ -96,9 +98,11 @@ class AnalysisService:
             payload,
             context,
             decision,
-            execution_sink,
-            progress_sink,
-            cancel_check,
+            execution_sink=execution_sink,
+            progress_sink=progress_sink,
+            cancel_check=cancel_check,
+            run_admission_sink=run_admission_sink,
+            model_budget=model_budget,
         )
 
     _is_numeric = staticmethod(is_numeric)

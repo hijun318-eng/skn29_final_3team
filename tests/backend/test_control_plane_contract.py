@@ -126,6 +126,7 @@ class ControlPlaneContractTest(unittest.TestCase):
             "TRINO_CONNECTION_FAILED",
             "QUERY_TIMEOUT",
             "QUERY_SOURCE_FAILED",
+            "EMPTY_RESULT",
             "RESULT_VALIDATION_FAILED",
             "RESULT_EVIDENCE_MISSING",
             "ARTIFACT_PERSIST_FAILED",

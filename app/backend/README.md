@@ -93,7 +93,7 @@ powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps
   -EnvFilePath C:\absolute\external\answervice.env
 ```
 
-성공 출력은 `BACKEND_CONTAINER_READY`, `BACKEND_DATABASE_READY`다. 검증 후 container까지 제거하려면 `-RemoveAfterVerification`을 추가한다.
+성공 출력은 `BACKEND_CONTAINER_READY`, `BACKEND_DATABASE_READY`, `BACKEND_IMAGE_PROVENANCE_READY`, `BACKEND_METRIC_RETRIEVAL_READY`다. provenance 신호는 실행 image의 Git revision·dirty 상태·source fingerprint label이 현재 source tree와 일치한다는 뜻이며, 마지막 신호는 image에 봉인된 Phase 2A retrieval Gate가 현재 live dependency를 상대로 통과했다는 뜻이다. 검증 후 container까지 제거하려면 `-RemoveAfterVerification`을 추가한다.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps1 `
@@ -101,6 +101,10 @@ powershell -ExecutionPolicy Bypass -File app/backend/scripts/verify-container.ps
 ```
 
 backend는 root Compose 기준 `http://127.0.0.1:28000`에서 접근한다.
+
+로컬 개발에서만 repository 내부의 gitignored env를 사용해야 하면 `-AllowRepositoryLocalDevelopment`를 명시한다. 이 switch 없이 repository 내부 env를 전달하면 검증기는 거부하며, 운영 기본값은 계속 repository 외부 env다.
+
+검증기를 우회해 backend image를 직접 build해야 하는 배포 도구는 먼저 `source-provenance.ps1`을 dot-source하고 `Set-AnswerviceSourceProvenanceEnvironment`를 호출해야 한다. 세 build argument가 없거나 형식이 잘못되면 Dockerfile은 label 없는 image 생성을 거부한다.
 
 ## Backend 계약 변경
 

@@ -38,6 +38,39 @@ class QueryPage:
     rows: tuple[tuple[Any, ...], ...]
     next_uri: str | None
     warnings: tuple[str, ...] = ()
+    processed_rows: int = 0
+    processed_bytes: int = 0
+    physical_input_bytes: int = 0
+
+
+def _nonnegative_stat(stats: dict[str, Any], name: str) -> int:
+    """Trino 누적 통계의 누락은 0으로, 잘못된 타입·음수는 protocol 오류로 처리한다."""
+
+    value = stats.get(name)
+    if value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise TypeError(f"Trino stat {name} is invalid")
+    return value
+
+
+def _warning_messages(payload: dict[str, Any]) -> tuple[str, ...]:
+    """warning 객체에서 비어 있지 않은 메시지만 안정 순서로 추출한다."""
+
+    raw = payload.get("warnings") or ()
+    if not isinstance(raw, (list, tuple)):
+        raise TypeError("Trino warnings are invalid")
+    messages: list[str] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise TypeError("Trino warning is invalid")
+        message = item.get("message")
+        if message is not None and not isinstance(message, str):
+            raise TypeError("Trino warning message is invalid")
+        normalized = (message or "").strip()
+        if normalized:
+            messages.append(normalized)
+    return tuple(messages)
 
 
 class TrinoAsyncClient:
@@ -183,6 +216,11 @@ class TrinoAsyncClient:
                 str(error.get("message") or "query failed"),
             )
         stats = payload.get("stats") or {}
+        if not isinstance(stats, dict):
+            raise AdapterError(
+                AdapterErrorCode.UPSTREAM,
+                "Trino returned invalid query stats",
+            )
         state = str(stats.get("state") or "QUEUED")
         if state == "CANCELED":
             raise AdapterError(AdapterErrorCode.CANCELLED, "query was cancelled")
@@ -195,9 +233,12 @@ class TrinoAsyncClient:
                 columns=tuple(item["name"] for item in payload.get("columns") or ()),
                 rows=tuple(tuple(row) for row in payload.get("data") or ()),
                 next_uri=payload.get("nextUri"),
-                warnings=tuple(
-                    str(item.get("message") or "")
-                    for item in payload.get("warnings") or ()
+                warnings=_warning_messages(payload),
+                processed_rows=_nonnegative_stat(stats, "processedRows"),
+                processed_bytes=_nonnegative_stat(stats, "processedBytes"),
+                physical_input_bytes=_nonnegative_stat(
+                    stats,
+                    "physicalInputBytes",
                 ),
             )
         except (KeyError, TypeError) as error:

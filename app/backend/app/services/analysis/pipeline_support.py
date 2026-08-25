@@ -68,6 +68,8 @@ class PipelineSupport:
         payload: AnalysisRequest,
         context: RequestContext,
         candidates: AssetCandidateSet,
+        *,
+        budget: Any = None,
     ) -> tuple[list[dict[str, object]], str, dict[str, object]]:
         """질문과 자산 메타데이터를 대조하여 단일 지표 및 구조화 요청 객체를 확정합니다."""
         if (
@@ -84,6 +86,7 @@ class PipelineSupport:
             context,
             list(candidates.assets),
             candidate_set=candidates,
+            budget=budget,
         )
 
     async def resolve_execution_assets(

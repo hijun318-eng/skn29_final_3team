@@ -2,6 +2,7 @@
   "data": {
     "artifact": null,
     "disambiguation_options": [],
+    "evidence": null,
     "gates": {
       "g1_required": true,
       "g2_required": true

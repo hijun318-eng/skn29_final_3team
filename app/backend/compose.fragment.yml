@@ -6,6 +6,10 @@ services:
     build:
       context: ../..
       dockerfile: app/backend/Dockerfile
+      args:
+        ANSWERVICE_SOURCE_REVISION: ${ANSWERVICE_SOURCE_REVISION:-}
+        ANSWERVICE_SOURCE_DIRTY: ${ANSWERVICE_SOURCE_DIRTY:-}
+        ANSWERVICE_SOURCE_FINGERPRINT: ${ANSWERVICE_SOURCE_FINGERPRINT:-}
     entrypoint: ["alembic"]
     command: ["upgrade", "head"]
     environment:
@@ -27,6 +31,10 @@ services:
     build:
       context: ../..
       dockerfile: app/backend/Dockerfile
+      args:
+        ANSWERVICE_SOURCE_REVISION: ${ANSWERVICE_SOURCE_REVISION:-}
+        ANSWERVICE_SOURCE_DIRTY: ${ANSWERVICE_SOURCE_DIRTY:-}
+        ANSWERVICE_SOURCE_FINGERPRINT: ${ANSWERVICE_SOURCE_FINGERPRINT:-}
     environment:
       # Runtime receives only its table-scoped account. Migration credentials
       # are confined to the one-shot app-migrations service above.

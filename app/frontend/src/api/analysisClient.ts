@@ -36,6 +36,7 @@ export interface AnalysisClient {
       requested_route?: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
       presentation_type?: "SUMMARY" | "TABLE" | "BAR" | "LINE" | "PIE" | "HORIZONTAL_BAR" | "DONUT";
     },
+    traceId?: string,
   ): Promise<any>;
   submitTurnCommand(
     conversationId: string,
@@ -46,6 +47,7 @@ export interface AnalysisClient {
       requested_route?: "ANALYSIS" | "PRESENTATION" | "REPORT_ACTION";
       presentation_type?: "SUMMARY" | "TABLE" | "BAR" | "LINE" | "PIE" | "HORIZONTAL_BAR" | "DONUT";
     },
+    traceId?: string,
   ): Promise<any>;
 }
 
@@ -435,18 +437,18 @@ export function createHttpAnalysisClient(
       );
       return payload.data?.turns || [];
     },
-    async executeTurnCommand(conversationId, cmdPayload) {
+    async executeTurnCommand(conversationId, cmdPayload, traceId) {
       return parse<any>(
         await request(endpoint(`/conversations/${encodeURIComponent(conversationId)}/commands`), {
           method: "POST",
           credentials: "include",
-          headers: headers(true),
+          headers: headers(true, traceId),
           body: JSON.stringify(cmdPayload),
         }),
       );
     },
-    async submitTurnCommand(conversationId, cmdPayload) {
-      return this.executeTurnCommand(conversationId, cmdPayload);
+    async submitTurnCommand(conversationId, cmdPayload, traceId) {
+      return this.executeTurnCommand(conversationId, cmdPayload, traceId);
     },
   };
 }

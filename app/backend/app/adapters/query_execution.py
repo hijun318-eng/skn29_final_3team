@@ -247,6 +247,8 @@ class QueryExecutionService:
         columns = first.columns
         rows = list(first.rows)
         warnings = list(first.warnings)
+        processed_rows = first.processed_rows
+        scan_bytes = max(first.processed_bytes, first.physical_input_bytes)
         self._validate_page(page, query_id, columns)
         if self._cancel_requested():
             await self._cancel_uri_strict(page.next_uri)
@@ -283,6 +285,12 @@ class QueryExecutionService:
             columns = page.columns or columns
             rows.extend(page.rows)
             warnings.extend(page.warnings)
+            processed_rows = max(processed_rows, page.processed_rows)
+            scan_bytes = max(
+                scan_bytes,
+                page.processed_bytes,
+                page.physical_input_bytes,
+            )
             if len(rows) > self._max_result_rows:
                 await self._cancel_uri_strict(page.next_uri)
                 raise AdapterError(
@@ -294,17 +302,22 @@ class QueryExecutionService:
         if len(columns) != len(set(columns)):
             raise AdapterError(AdapterErrorCode.QUERY, "query columns are duplicate")
         shaped = [dict(zip(columns, row, strict=True)) for row in rows]
-        critical_warnings = [
-            w for w in warnings
-            if not ("exceeds the soft limit" in w.lower() or "distinct_aggregations_strategy" in w.lower())
-        ]
+        warning_messages = tuple(dict.fromkeys(w for w in warnings if w))
+        # Trino warning은 진단 정보이며 결과 coverage가 불완전하다는 계약이 아니다.
+        # nextUri를 끝까지 소비하고 FINISHED를 확인한 query는 warning 문구와 무관하게
+        # 성공으로 유지한다. PARTIAL은 별도의 typed coverage 근거가 생길 때만 허용한다.
         return {
             "query_id": query_id,
-            "status": "PARTIAL" if critical_warnings else "SUCCEEDED",
+            "status": "SUCCEEDED",
             "rows": shaped,
+            "processed_rows": processed_rows,
+            "scan_bytes": scan_bytes,
+            "warnings": warning_messages,
+            "warning_count": len(warning_messages),
+            "critical_warning_count": 0,
             "result_metadata": result_metadata(shaped, columns),
             "evidence_complete": True,
-            "zero_result_suspicious": False,
+            "zero_result_suspicious": not shaped,
             "filters": {},
             "sampling": {
                 "applied": False,

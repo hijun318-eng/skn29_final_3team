@@ -116,13 +116,16 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
   연산/time mode snapshot을 결합해 자연어·정답 SQL 없는 구조 회귀 행렬을 생성한다.
   현재 BUSINESS Metric 44개의 단일 조합 1,179건과 모든 Metric pair 946건, 총 2,125건이다.
   cross-asset pair 888건은 관계를 추측하지 않고 `JOIN_GRAPH_REQUIRED`로 차단한다.
-- `evals/metric_retrieval_runner.py`는 active release의 BUSINESS Glossary label·alias 전체를
-  질문 fixture 없이 probe로 만들고 후보 rank의 top-1·recall@K·precision@K·MRR을 측정한다.
-  승인 label·alias의 exact match는 definition token overlap보다 우선하지만, 부분 일치는 기존
-  Unicode lexical score를 유지한다. 2026-08-21 analyst live release의 10개 Metric·42개 probe에서
-  top-1, recall@5, MRR은 모두 1.0이고 retrieval 오류는 0이었다. precision@5 0.505159는 공유
-  `Revenue` 용어로 여러 합법 후보가 남는 값을 포함하므로 사람 검토 Gold 없이 release 차단
-  임계값으로 고정하지 않는다.
+- `evals/metric_retrieval_runner.py`는 active release의 BUSINESS Glossary label·alias·definition과
+  SUPPORT·Dimension 폐쇄 probe를 만들고, 별도로 봉인한 한국어 Gold를 같은 release receipt의
+  `lexical`·`lexical_shadow`·`datahub_lexical` 경로에서 함께 측정한다. 전체 식별자 일치, 질문
+  전체의 definition 포함, 승인 문구 힌트, 일반 Unicode token overlap을 서로 다른 강도의 증거로
+  판정한다. Phase 2A는 baseline뿐 아니라 실제 후보 `datahub_lexical`에도 catalog 계약과
+  heldout 품질 하한을 적용하므로, 응답 성공과 지연시간만으로 오답 후보가 통과할 수 없다.
+  2026-08-25 analyst live release의 경로별 90개 probe에서 exact·definition·한국어 heldout의
+  top-1·recall@5·MRR과 negative closure가 모두 1.0이었고, 후보 p95는 76.953ms,
+  infrastructure 오류와 권한 밖 Metric 노출은 0이었다. precision@5는 공유 용어 때문에 여러
+  합법 후보가 남을 수 있으므로 사람 검토 Gold 없이 release 차단 임계값으로 고정하지 않는다.
 - review-only 후보는 관측 파일이 있어도 채점하지 않는다. 업무 승인, `runtime_source=true`,
   동일 candidate checksum의 active release read-back 증거가 모두 있어야 scorer가 열린다.
 
@@ -192,5 +195,6 @@ v1.7 native Metric shadow adapter는 같은 검증 bundle에서 공개 BUSINESS 
 인자에 복사하지 않고 배포 secret 또는 gitignored 운영 `.env`에서 실행 시점에만 전달한다.
 
 ```powershell
-python evals/metric_retrieval_runner.py
+python evals/metric_retrieval_runner.py `
+  --phase2a-gold-manifest evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json
 ```

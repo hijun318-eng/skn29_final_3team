@@ -4,7 +4,7 @@
 1. LLM(Node 3)을 통한 실데이터 근거 기반의 자연어 요약(Summary) 생성 (Template 라우트는 자동 요약)
 2. 테이블 데이터를 분석하여 지표 컬럼에 맞는 시각화 차트 규격(`ChartSpec`) 자동 구성
 3. 결정론적 아티팩트 참조(`ArtifactReference`) 발급 및 최종 성공 응답(`AnalysisResponse`) 조립
-4. 백그라운드 감사 로그/실행 기록 sink에 성공 데이터 전달
+4. G3 승인 결과를 최종 응답으로 조립
 """
 
 from __future__ import annotations
@@ -191,8 +191,5 @@ class AnalysisResultStage:
             )
             if chart is not None:
                 response.data.result.chart = chart
-
-        if state.execution_sink is not None:
-            state.execution_sink({"plan": plan, "query": query, "package": package})
 
         return response

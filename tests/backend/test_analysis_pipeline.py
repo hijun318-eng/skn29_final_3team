@@ -32,6 +32,7 @@ from app.services.analysis import AnalysisService
 from app.services.analysis.pipeline_support import PipelineSupport
 from app.services.analysis.result_validator import PipelineResultValidator
 from app.services.context.builder import ContextPackageBuilder
+from app.services.execution_control import ModelCallBudget
 from app.services.routing_service import RoutingService
 from src.ai.schema import validate_payload
 from src.data.metric_governance import RUNTIME_GOVERNANCE_VERSION_V2
@@ -444,9 +445,15 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
     async def test_success_preserves_orchestration_gates_and_artifact_evidence(self):
         execution = {}
         progress = []
+        admissions = []
+
+        async def admit_run():
+            admissions.append(tuple(stage for stage, _outcome in progress))
+
         response, adapter, model, _service = await self.run_pipeline(
             execution_sink=execution.update,
             progress_sink=lambda stage, outcome: progress.append((stage, outcome)),
+            run_admission_sink=admit_run,
         )
 
         self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
@@ -473,6 +480,102 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["node1", "node2", "node3"], [node for node, _ in model.calls])
         self.assertEqual({"plan", "query", "package"}, set(execution))
         self.assertTrue(progress)
+        self.assertEqual(1, len(admissions))
+        self.assertNotIn(PipelineStage.CONTEXT, admissions[0])
+        self.assertNotIn(PipelineStage.G1, admissions[0])
+        self.assertNotIn(PipelineStage.G2, admissions[0])
+
+    async def test_empty_result_is_blocked_without_artifact(self):
+        execution = {}
+        empty_result = copy.deepcopy(QUERY_RESULT)
+        empty_result["rows"] = []
+        empty_result["result_metadata"] = PipelineResultValidator.result_metadata(
+            [],
+            (RESULT_FIELD,),
+        )
+        empty_result["sampling"] = {
+            "applied": False,
+            "returned_rows": 0,
+            "total_rows": 0,
+        }
+        asset_filter = copy.deepcopy(ASSET)
+        asset_filter["required_filters"] = copy.deepcopy(
+            asset_filter["metrics"][0]["required_filters"]
+        )
+        asset_filter["metrics"][0]["required_filters"] = []
+        adapter = AsyncRuntimeDataPlatform(
+            result=empty_result,
+            asset=asset_filter,
+        )
+
+        response, _adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            execution_sink=execution.update,
+        )
+
+        self.assertEqual(AnalysisStatus.BLOCKED, response.data.status)
+        self.assertEqual(ErrorCode.EMPTY_RESULT, response.error.code)
+        self.assertIsNone(response.data.result)
+        self.assertIsNone(response.data.artifact)
+        self.assertIsNotNone(response.data.evidence)
+        self.assertEqual("query-arbitrary-1", response.data.evidence.query_id)
+        self.assertEqual("2042-06-01", response.data.evidence.period.start.isoformat())
+        self.assertEqual("2042-06-15", response.data.evidence.period.end_exclusive.isoformat())
+        self.assertEqual(
+            {f"{ASSET_FQN}.state_code": "accepted"},
+            response.data.evidence.filters,
+        )
+        self.assertEqual(ASSET_URN, response.data.evidence.sources[0].urn)
+        self.assertEqual({"plan", "query", "package"}, set(execution))
+        self.assertEqual([], execution["query"]["rows"])
+        self.assertNotIn("node3", [node for node, _ in model.calls])
+
+    async def test_unproven_partial_query_does_not_create_artifact(self):
+        partial_result = copy.deepcopy(QUERY_RESULT)
+        partial_result["status"] = "PARTIAL"
+        partial_result["warning_count"] = 1
+        partial_result["critical_warning_count"] = 1
+
+        response, _adapter, model, _service = await self.run_pipeline(
+            adapter=AsyncRuntimeDataPlatform(result=partial_result),
+        )
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.RESULT_EVIDENCE_MISSING, response.error.code)
+        self.assertIsNone(response.data.result)
+        self.assertIsNone(response.data.artifact)
+        self.assertNotIn("node3", [node for node, _ in model.calls])
+
+    async def test_completed_query_warning_is_evidence_not_partial_status(self):
+        warned_result = copy.deepcopy(QUERY_RESULT)
+        warned_result["warnings"] = ("planner notice",)
+        warned_result["warning_count"] = 1
+        warned_result["critical_warning_count"] = 0
+
+        response, _adapter, _model, _service = await self.run_pipeline(
+            adapter=AsyncRuntimeDataPlatform(result=warned_result),
+        )
+
+        self.assertEqual(AnalysisStatus.SUCCEEDED, response.data.status)
+        self.assertIsNone(response.error)
+        self.assertEqual(1, response.data.result.evidence.execution.warning_count)
+        self.assertEqual(
+            0,
+            response.data.result.evidence.execution.critical_warning_count,
+        )
+
+    async def test_node1_is_counted_by_the_shared_model_budget(self):
+        budget = ModelCallBudget()
+        budget.count = budget.MAX_CALLS
+
+        response, adapter, model, _service = await self.run_pipeline(
+            model_budget=budget,
+        )
+
+        self.assertEqual(AnalysisStatus.FAILED, response.data.status)
+        self.assertEqual(ErrorCode.MODEL_CONTRACT_INVALID, response.error.code)
+        self.assertEqual([], model.calls)
+        self.assertEqual(0, adapter.execute_count)
 
     async def test_view_reuse_uses_typed_sql_without_calling_node2(self):
         """승인 단일 Serving View는 Node 1 결과를 다시 추측하지 않고 AST로 실행한다."""
@@ -618,7 +721,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(["node1", "node2", "node3"], [node for node, _ in model.calls])
 
     async def test_grounded_node3_numbers_are_preserved(self):
-        summary = "The governed total is 17 for the requested period."
+        summary = "Observed measure is 17 for the requested period."
         response, _adapter, _model, _service = await self.run_pipeline(
             model=model_with(
                 node3={"summary": summary, "model_version": "programmable-v1"}
@@ -628,6 +731,24 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(summary, response.data.result.summary)
         self.assertEqual(
             "programmable-v1",
+            response.data.result.evidence.model_version,
+        )
+
+    async def test_grounded_number_with_unsupported_cause_uses_safe_summary(self):
+        response, _adapter, _model, _service = await self.run_pipeline(
+            model=model_with(
+                node3={
+                    "summary": (
+                        "Observed measure is 17 because a local event increased demand."
+                    ),
+                    "model_version": "programmable-v1",
+                }
+            )
+        )
+
+        self.assertNotIn("local event", response.data.result.summary)
+        self.assertEqual(
+            "GROUNDED-NARRATIVE-v1.0.0",
             response.data.result.evidence.model_version,
         )
 
@@ -714,8 +835,15 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         adapter = AsyncRuntimeDataPlatform(
             resolve_error=ReleaseReceiptChangedError("release receipt changed")
         )
+        admissions = []
 
-        response, adapter, model, _service = await self.run_pipeline(adapter=adapter)
+        async def admit_run():
+            admissions.append(True)
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            run_admission_sink=admit_run,
+        )
 
         self.assertEqual(AnalysisStatus.FAILED, response.data.status)
         self.assertEqual(ErrorCode.CONTEXT_SOURCE_FAILED, response.error.code)
@@ -723,6 +851,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("카탈로그가 갱신", response.error.message)
         self.assertEqual(["node1"], [node for node, _ in model.calls])
         self.assertEqual(0, adapter.execute_count)
+        self.assertEqual([True], admissions)
 
     async def test_execution_graph_gap_is_a_semantic_contract_failure(self):
         """승인 JOIN·grain 부재를 모델 장애나 사용자 기간 누락으로 오분류하지 않는다."""
@@ -743,8 +872,15 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         adapter = AsyncRuntimeDataPlatform(
             search_error=NoMetricMatchError("no governed metric matches the request")
         )
+        admissions = []
 
-        response, adapter, model, _service = await self.run_pipeline(adapter=adapter)
+        async def admit_run():
+            admissions.append(True)
+
+        response, adapter, model, _service = await self.run_pipeline(
+            adapter=adapter,
+            run_admission_sink=admit_run,
+        )
 
         self.assertEqual(AnalysisStatus.CLARIFICATION_REQUIRED, response.data.status)
         self.assertEqual(ErrorCode.CONTEXT_INCOMPLETE, response.error.code)
@@ -754,6 +890,7 @@ class AnalysisPipelineTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([], adapter.search_contexts[0]["preferred_metric_ids"])
         self.assertEqual([], model.calls)
         self.assertEqual(0, adapter.execute_count)
+        self.assertEqual([], admissions)
 
     async def test_partial_conversation_slots_return_exact_clarification_cause(self):
         """지표 누락은 즉시, range 기간 누락은 선택 자산의 시간 계약 확인 후 구분한다."""

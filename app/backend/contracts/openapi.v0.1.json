@@ -23,6 +23,16 @@
             "title": "Disambiguation Options",
             "type": "array"
           },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Evidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "gates": {
             "anyOf": [
               {
@@ -1287,6 +1297,7 @@
           "TRINO_CONNECTION_FAILED",
           "QUERY_TIMEOUT",
           "QUERY_SOURCE_FAILED",
+          "EMPTY_RESULT",
           "RESULT_VALIDATION_FAILED",
           "RESULT_EVIDENCE_MISSING",
           "ARTIFACT_PERSIST_FAILED",
@@ -1378,6 +1389,9 @@
               }
             ],
             "title": "Evidence Cutoff"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/QueryExecutionEvidence"
           },
           "filters": {
             "additionalProperties": {
@@ -2015,6 +2029,38 @@
         ],
         "title": "PipelineStage",
         "type": "string"
+      },
+      "QueryExecutionEvidence": {
+        "additionalProperties": false,
+        "description": "Trino가 보고한 누적 처리량과 공개 가능한 warning 건수를 실행 근거로 남긴다.",
+        "properties": {
+          "critical_warning_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Critical Warning Count",
+            "type": "integer"
+          },
+          "processed_rows": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Processed Rows",
+            "type": "integer"
+          },
+          "scan_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Scan Bytes",
+            "type": "integer"
+          },
+          "warning_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Warning Count",
+            "type": "integer"
+          }
+        },
+        "title": "QueryExecutionEvidence",
+        "type": "object"
       },
       "ReadinessData": {
         "additionalProperties": false,
@@ -3620,6 +3666,12 @@
                             "as_of": "2041-04-02",
                             "cached": true,
                             "context_release": "context-v1",
+                            "execution": {
+                              "critical_warning_count": 0,
+                              "processed_rows": 0,
+                              "scan_bytes": 0,
+                              "warning_count": 0
+                            },
                             "filters": {
                               "scope_code": "example"
                             },
@@ -3822,6 +3874,12 @@
                             "as_of": "2041-04-02",
                             "cached": false,
                             "context_release": "context-v1",
+                            "execution": {
+                              "critical_warning_count": 0,
+                              "processed_rows": 0,
+                              "scan_bytes": 0,
+                              "warning_count": 0
+                            },
                             "filters": {
                               "scope_code": "example"
                             },
@@ -4173,6 +4231,12 @@
                             "as_of": "2041-04-02",
                             "cached": false,
                             "context_release": "context-v1",
+                            "execution": {
+                              "critical_warning_count": 0,
+                              "processed_rows": 0,
+                              "scan_bytes": 0,
+                              "warning_count": 0
+                            },
                             "filters": {
                               "scope_code": "example"
                             },
@@ -4310,6 +4374,12 @@
                             "as_of": "2041-04-02",
                             "cached": false,
                             "context_release": "context-v1",
+                            "execution": {
+                              "critical_warning_count": 0,
+                              "processed_rows": 0,
+                              "scan_bytes": 0,
+                              "warning_count": 0
+                            },
                             "filters": {
                               "scope_code": "example"
                             },
@@ -4450,6 +4520,12 @@
                             "as_of": "2041-04-02",
                             "cached": false,
                             "context_release": "context-v1",
+                            "execution": {
+                              "critical_warning_count": 0,
+                              "processed_rows": 0,
+                              "scan_bytes": 0,
+                              "warning_count": 0
+                            },
                             "filters": {
                               "scope_code": "example"
                             },

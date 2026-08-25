@@ -150,8 +150,9 @@ def compact_candidate_assets(
     preferred_metric_ids: tuple[str, ...] = (),
     search_metric_ranks: Mapping[str, int] | None = None,
     require_search_metric: bool = False,
+    governed_phrases: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
-    """DataHub 용어 증거가 강한 Metric만 선택 후보로 남기고 계산 의존성은 비선택 실행 항목으로 보존한다."""
+    """release Glossary·DataHub 검색 증거가 강한 Metric만 선택 후보로 남긴다."""
 
     metric_records = [
         (asset, metric)
@@ -161,7 +162,13 @@ def compact_candidate_assets(
     ]
     metrics_by_id = {str(metric["id"]): metric for _asset, metric in metric_records}
     normalized_query = _normalized_phrase(query_text)
+    governed_phrase_forms = frozenset(
+        normalized.replace(" ", "")
+        for value in governed_phrases
+        if (normalized := _normalized_phrase(value))
+    )
     dimension_tokens = _candidate_dimension_tokens(assets)
+    exact_dimension_query = normalized_query in _candidate_dimension_phrases(assets)
     metric_query_tokens = frozenset(
         token
         for token in query_tokens
@@ -170,11 +177,20 @@ def compact_candidate_assets(
     unranked = tuple(
         (
             (
+                int(normalized_query in exact_phrases),
                 int(
-                    normalized_query
-                    in _metric_exact_phrases(
-                        metric,
-                        terms.get(str(metric["id"])),
+                    bool(metric_query_tokens)
+                    and metric_query_tokens.issubset(
+                        _metric_definition_tokens(
+                            metric,
+                            terms.get(str(metric["id"])),
+                        )
+                    )
+                ),
+                int(
+                    any(
+                        phrase.replace(" ", "") in governed_phrase_forms
+                        for phrase in exact_phrases
                     )
                 ),
                 len(
@@ -185,6 +201,12 @@ def compact_candidate_assets(
                 str(metric["id"]),
             )
             for asset, metric in metric_records
+            for exact_phrases in (
+                _metric_exact_phrases(
+                    metric,
+                    terms.get(str(metric["id"])),
+                ),
+            )
         )
     )
     external_ranks = search_metric_ranks or {}
@@ -194,16 +216,18 @@ def compact_candidate_assets(
             lambda item: (
                 -item[0],
                 -item[1],
-                item[3] not in external_ranks,
-                external_ranks.get(item[3], 0),
                 -item[2],
-                item[3],
+                -item[3],
+                item[5] not in external_ranks,
+                external_ranks.get(item[5], 0),
+                -item[4],
+                item[5],
             )
             if require_search_metric
-            else (-item[0], -item[1], -item[2], item[3])
+            else (-item[0], -item[1], -item[2], -item[3], -item[4], item[5])
         ),
     )
-    direct = [item for item in ranked if item[0] > 0 or item[1] > 0]
+    direct = [item for item in ranked if any(item[:4])]
     preferred = tuple(
         dict.fromkeys(
             metric_id
@@ -215,28 +239,37 @@ def compact_candidate_assets(
     )
     strongest_business_score = max(
         (
-            (exact, overlap)
-            for exact, overlap, _priority, metric_id in direct
+            (exact, definition, hint, overlap)
+            for exact, definition, hint, overlap, _priority, metric_id in direct
             if metrics_by_id[metric_id].get("visibility", "BUSINESS")
             == "BUSINESS"
         ),
-        default=(0, 0),
+        default=(0, 0, 0, 0),
     )
     strongest_support_score = max(
         (
-            (exact, overlap)
-            for exact, overlap, _priority, metric_id in direct
+            (exact, definition, hint, overlap)
+            for exact, definition, hint, overlap, _priority, metric_id in direct
             if metrics_by_id[metric_id].get("visibility") == "SUPPORT"
         ),
-        default=(0, 0),
+        default=(0, 0, 0, 0),
+    )
+    exact_business_query = any(
+        exact
+        and metrics_by_id[metric_id].get("visibility", "BUSINESS") == "BUSINESS"
+        for exact, _definition, _hint, _overlap, _priority, metric_id in direct
     )
     ranked_business_ids = [
         metric_id
-        for exact, overlap, priority, metric_id in (
+        for exact, definition, hint, overlap, priority, metric_id in (
             ranked if require_search_metric else direct
         )
         if metrics_by_id[metric_id].get("visibility", "BUSINESS") == "BUSINESS"
         and metric_id not in preferred
+        # Dimension 식별자만 정확히 요청한 경우, 부분 문구·정의 overlap이 같은
+        # Dataset의 BUSINESS Metric으로 의미를 바꾸지 못한다. BUSINESS 식별자와
+        # 정확히 충돌하는 승인 문구만 모호성 후보로 남긴다.
+        and (not exact_dimension_query or exact_business_query)
         # DataHub mode는 반드시 Search가 찾은 Term 또는 Dataset 안에서만 움직인다.
         # Dataset hit 안에서는 승인된 local Glossary evidence로 Metric을 구분한다.
         # 이는 전체 snapshot fallback이 아니며 join으로 확장된 미검색 asset(priority=0)은
@@ -244,9 +277,9 @@ def compact_candidate_assets(
         and (
             not require_search_metric
             or metric_id in external_ranks
-            or (priority > 0 and (exact > 0 or overlap > 0))
+            or (priority > 0 and any((exact, definition, hint, overlap)))
         )
-        and (exact, overlap) >= strongest_support_score
+        and (exact, definition, hint, overlap) >= strongest_support_score
     ]
     selectable_ids = set(preferred)
     selectable_ids.update(
@@ -254,9 +287,9 @@ def compact_candidate_assets(
     )
     directly_matched_support_ids = [
         metric_id
-        for exact, overlap, _priority, metric_id in direct
+        for exact, definition, hint, overlap, _priority, metric_id in direct
         if metrics_by_id[metric_id].get("visibility") == "SUPPORT"
-        and (exact, overlap) >= strongest_business_score
+        and (exact, definition, hint, overlap) >= strongest_business_score
     ]
     selectable_ids.update(
         directly_matched_support_ids[:max_candidate_metrics]
@@ -268,7 +301,14 @@ def compact_candidate_assets(
                 *preferred,
                 *(
                     metric_id
-                    for _exact, _overlap, _priority, metric_id in ranked
+                    for (
+                        _exact,
+                        _definition,
+                        _hint,
+                        _overlap,
+                        _priority,
+                        metric_id,
+                    ) in ranked
                     if metric_id in selectable_ids and metric_id not in preferred
                 ),
             )
@@ -357,6 +397,32 @@ def _candidate_dimension_tokens(assets: list[dict[str, Any]]) -> frozenset[str]:
             if isinstance(aliases, (list, tuple)):
                 values.extend(map(str, aliases))
     return unicode_tokens(" ".join(values))
+
+
+def _candidate_dimension_phrases(
+    assets: list[dict[str, Any]],
+) -> frozenset[str]:
+    """승인된 전역 Dimension 식별 문구를 exact closure 경계로 만든다."""
+
+    values: list[str] = []
+    for asset in assets:
+        for dimension in asset.get("dimensions", ()):
+            if not isinstance(dimension, Mapping) or str(
+                dimension.get("id") or ""
+            ).startswith(DERIVED_DIMENSION_ID_PREFIX):
+                continue
+            values.extend(
+                str(dimension.get(name) or "")
+                for name in ("id", "name", "column", "field")
+            )
+            aliases = dimension.get("aliases")
+            if isinstance(aliases, (list, tuple)):
+                values.extend(map(str, aliases))
+    return frozenset(
+        normalized
+        for value in values
+        if (normalized := _normalized_phrase(value))
+    )
 
 
 def unicode_tokens(value: str) -> frozenset[str]:
@@ -458,6 +524,21 @@ def _metric_exact_phrases(
         for value in values
         if (normalized := _normalized_phrase(value))
     )
+
+
+def _metric_definition_tokens(
+    metric: Mapping[str, Any],
+    term: GlossaryMetricTerm | None,
+) -> frozenset[str]:
+    """승인 definition만 추출해 질문 전체가 정의 안에 포함되는 강한 증거를 만든다."""
+
+    values: list[str] = []
+    if term is not None:
+        values.append(term.definition)
+    semantic = metric.get("semantic")
+    if isinstance(semantic, Mapping):
+        values.append(str(semantic.get("definition") or ""))
+    return unicode_tokens(" ".join(values))
 
 
 def _normalized_phrase(value: str) -> str:

@@ -1132,7 +1132,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeCatalogProjectionError):
             RuntimeCatalogProjection.from_document(tampered)
 
-    async def test_runtime_projection_path_avoids_full_scroll_and_preserves_pinned_release(self) -> None:
+    async def test_runtime_projection_requests_avoid_scroll_and_readiness_checks_parity(self) -> None:
         snapshot = await self.adapter._governance._loader.load()
         release = compile_legacy_semantic_release(snapshot)
         datasets = tuple(
@@ -1178,6 +1178,15 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             stages, receipt = await governance.catalog_readiness()
             self.assertEqual("phase4-product-a", receipt)
             self.assertTrue(all(value == "ready" for value in stages.values()))
+            self.assertEqual(
+                [None, "1"],
+                self.transport.scroll_cursors["DATASET"],
+            )
+            self.assertEqual(
+                [None, "1"],
+                self.transport.scroll_cursors["GLOSSARY_TERM"],
+            )
+            parity_scrolls = copy.deepcopy(self.transport.scroll_cursors)
             verified_statement_count = len(self.transport.trino_statements)
             self.assertEqual(
                 release.catalog_version,
@@ -1186,6 +1195,7 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
             cached_stages, cached_receipt = await governance.catalog_readiness()
             self.assertEqual(stages, cached_stages)
             self.assertEqual(receipt, cached_receipt)
+            self.assertEqual(parity_scrolls, self.transport.scroll_cursors)
             self.assertEqual(
                 verified_statement_count,
                 len(self.transport.trino_statements),
@@ -1233,8 +1243,54 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 {"phase4-product-a"},
                 {asset.get("product_release_id") for asset in rebound_assets},
             )
-            self.assertEqual([], self.transport.scroll_cursors["DATASET"])
-            self.assertEqual([], self.transport.scroll_cursors["GLOSSARY_TERM"])
+            self.assertEqual(parity_scrolls, self.transport.scroll_cursors)
+        finally:
+            await governance.aclose()
+
+    async def test_runtime_projection_readiness_rejects_live_datahub_checksum_drift(self) -> None:
+        snapshot = await self.adapter._governance._loader.load()
+        release = compile_legacy_semantic_release(snapshot)
+        datasets = tuple(
+            snapshot.datasets_by_fqn[item.fqn] for item in release.assets
+        )
+        fingerprints = await self.adapter._governance._schema.fingerprints(datasets)
+        projection = RuntimeCatalogProjection.compile(
+            snapshot,
+            release,
+            source_selection=build_source_selection_manifest(
+                release,
+                authority_mode=LEGACY_SHADOW,
+            ),
+            trino_fingerprints=fingerprints,
+        )
+        repository = MutableProjectionRepository(
+            ActiveRuntimeCatalogProjection(
+                projection=projection,
+                product_release_id="phase4-product-a",
+                generation=1,
+            )
+        )
+        drifted = _bundle()
+        drifted["policy_version"] = "policy-drifted-after-activation"
+        self.transport.bundle = drifted
+        self.transport.datasets, self.transport.terms = _graphql_entities(drifted)
+        for values in self.transport.scroll_cursors.values():
+            values.clear()
+        governance = QueryGovernanceEngine(
+            self.adapter._datahub,
+            self.adapter._governance._schema,
+            expected_context_release=release.catalog_version,
+            search_mode="lexical",
+            projection_repository=repository,
+        )
+        try:
+            stages, receipt = await governance.catalog_readiness()
+
+            self.assertEqual("ready", stages["catalog_manifest"])
+            self.assertEqual("not_ready", stages["semantic_release"])
+            self.assertEqual("not_ready", stages["trino_schema"])
+            self.assertIsNone(receipt)
+            self.assertTrue(self.transport.scroll_cursors["DATASET"])
         finally:
             await governance.aclose()
 

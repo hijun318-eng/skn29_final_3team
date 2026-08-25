@@ -24,6 +24,7 @@ from app.contracts import (
     MetricReference,
     MetricValue,
     PeriodEvidence,
+    QueryExecutionEvidence,
     SnapshotEvidence,
     PipelineStage,
     RequestContext,
@@ -208,13 +209,21 @@ class AnalysisResponseFactory:
                 masking=MaskingEvidence.model_validate(
                     query.get("masking", {})
                 ),
+                execution=QueryExecutionEvidence(
+                    processed_rows=int(query.get("processed_rows", 0)),
+                    scan_bytes=int(query.get("scan_bytes", 0)),
+                    warning_count=int(query.get("warning_count", 0)),
+                    critical_warning_count=int(
+                        query.get("critical_warning_count", 0)
+                    ),
+                ),
                 cached=cached,
             ),
         )
         error = (
             ErrorBody(
                 code=ErrorCode.PARTIAL_FAILURE,
-                message="일부 원천 결과만 반환했습니다.",
+                message="조회 엔진이 결과 주의사항을 반환해 일부 완료로 표시했습니다.",
                 retryable=True,
             )
             if status == AnalysisStatus.PARTIAL
@@ -273,6 +282,7 @@ class AnalysisResponseFactory:
         suggestions: tuple[str, ...] = (),
         disambiguation_options: tuple[DisambiguationOption, ...] = (),
         clarification_type: ClarificationType | None = None,
+        evidence: Evidence | None = None,
     ) -> AnalysisResponse:
         """파이프라인 실행 도중 발생한 에러를 기록하고 표준 실패/차단 응답을 반환합니다."""
         AnalysisResponseFactory.record(
@@ -291,6 +301,7 @@ class AnalysisResponseFactory:
                 route=decision.route_type,
                 template_id=decision.template_id,
                 gates=AnalysisResponseFactory.gates(decision),
+                evidence=evidence,
                 trace=tuple(trace),
                 repair_count=repair_count,
                 disambiguation_options=disambiguation_options,
@@ -304,6 +315,76 @@ class AnalysisResponseFactory:
                 disambiguation_options=disambiguation_options,
                 clarification_type=clarification_type,
             ),
+        )
+
+    @staticmethod
+    def empty_result(
+        *,
+        support: Any,
+        context: RequestContext,
+        machine: AnalysisStateMachine,
+        trace: list[TraceStep],
+        decision: RouteDecision,
+        package: ContextPackage,
+        assets: list[dict[str, object]],
+        query: dict[str, object],
+        repair_count: int,
+    ) -> AnalysisResponse:
+        """빈 결과에 실제 적용된 기간·필터·출처를 Run 수준 실행 근거로 남긴다."""
+
+        period_payload = query.get("period")
+        snapshot_payload = query.get("snapshot")
+        evidence = Evidence(
+            as_of=context.as_of,
+            timezone=context.timezone,
+            period=(
+                PeriodEvidence.model_validate(period_payload)
+                if isinstance(period_payload, dict) and period_payload.get("start")
+                else None
+            ),
+            snapshot=(
+                SnapshotEvidence.model_validate(snapshot_payload)
+                if isinstance(snapshot_payload, dict) and snapshot_payload.get("cutoff")
+                else None
+            ),
+            filters=_evidence_filters(query.get("filters", {}), package),
+            sources=support.sources(assets),
+            query_id=str(query["query_id"]),
+            context_release=package.context_release,
+            product_release_id=package.product_release_id,
+            evidence_cutoff=package.evidence_cutoff,
+            policy_version=package.policy_version,
+            sampling=SamplingEvidence.model_validate(
+                query.get(
+                    "sampling",
+                    {
+                        "returned_rows": 0,
+                        "total_rows": 0,
+                    },
+                )
+            ),
+            masking=MaskingEvidence.model_validate(query.get("masking", {})),
+            execution=QueryExecutionEvidence(
+                processed_rows=int(query.get("processed_rows", 0)),
+                scan_bytes=int(query.get("scan_bytes", 0)),
+                warning_count=int(query.get("warning_count", 0)),
+                critical_warning_count=int(
+                    query.get("critical_warning_count", 0)
+                ),
+            ),
+        )
+        return AnalysisResponseFactory.error(
+            context,
+            machine,
+            trace,
+            PipelineStage.G3,
+            AnalysisStatus.BLOCKED,
+            ErrorCode.EMPTY_RESULT,
+            "요청한 기간과 조건에 해당하는 결과가 없습니다.",
+            decision,
+            repair_count,
+            detail=ErrorCode.EMPTY_RESULT.value,
+            evidence=evidence,
         )
 
     @staticmethod

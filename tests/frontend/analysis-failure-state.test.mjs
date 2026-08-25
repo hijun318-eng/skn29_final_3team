@@ -147,6 +147,33 @@ try {
   assert.match(emptyHtml, /조건에 맞는 결과가 없습니다/);
   assert.doesNotMatch(emptyHtml, /analysis-diagnostic__action/);
 
+  const blockedEmptyHtml = render({
+    ...baseRun,
+    status: "blocked",
+    evidence: {
+      asOf: "2026-08-18",
+      timezone: "Asia/Seoul",
+      period: { start: "2025-08-01", endExclusive: "2025-09-01" },
+      filters: { "analytics.room_daily.hotel_name": "비스타 호텔" },
+    },
+    sources: [{
+      name: "객실 일별 실적",
+      urn: "urn:li:dataset:room_daily",
+      status: "success",
+    }],
+    error: {
+      code: "EMPTY_RESULT",
+      message: "요청한 기간과 조건에 해당하는 결과가 없습니다.",
+      retryable: false,
+      required_action: "MODIFY_REQUEST",
+    },
+  }, "EMPTY");
+  assert.match(blockedEmptyHtml, /data-tone="empty"/);
+  assert.match(blockedEmptyHtml, /조건에 맞는 결과가 없습니다/);
+  assert.match(blockedEmptyHtml, /2025-08-01 ~ 2025-09-01 미포함/);
+  assert.match(blockedEmptyHtml, /hotel name: 비스타 호텔/);
+  assert.match(blockedEmptyHtml, /객실 일별 실적/);
+
   assert.match(styles, /grid-template-columns:minmax\(0,1\.4fr\) minmax\(220px,\.8fr\)/);
   assert.match(styles, /@media\(max-width:720px\)/);
   assert.match(styles, /@media\(prefers-reduced-motion:reduce\)/);

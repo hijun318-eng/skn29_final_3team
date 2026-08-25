@@ -280,7 +280,12 @@ class TrinoAsyncClientTests(unittest.IsolatedAsyncioTestCase):
                     200,
                     json={
                         "id": "query-1",
-                        "stats": {"state": "RUNNING"},
+                        "stats": {
+                            "state": "RUNNING",
+                            "processedRows": 1,
+                            "processedBytes": 64,
+                            "physicalInputBytes": 32,
+                        },
                         "columns": [{"name": "value"}],
                         "data": [[1]],
                         "nextUri": "https://trino:8443/next/query-1",
@@ -292,8 +297,14 @@ class TrinoAsyncClientTests(unittest.IsolatedAsyncioTestCase):
                 200,
                 json={
                     "id": "query-1",
-                    "stats": {"state": "FINISHED"},
+                    "stats": {
+                        "state": "FINISHED",
+                        "processedRows": 2,
+                        "processedBytes": 128,
+                        "physicalInputBytes": 96,
+                    },
                     "data": [[2]],
+                    "warnings": [{"message": "planner notice"}],
                 },
             )
 
@@ -333,6 +344,10 @@ class TrinoAsyncClientTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(first.rows, ((1,),))
         self.assertEqual(second.rows, ((2,),))
+        self.assertEqual(1, first.processed_rows)
+        self.assertEqual(64, first.processed_bytes)
+        self.assertEqual(96, second.physical_input_bytes)
+        self.assertEqual(("planner notice",), second.warnings)
         self.assertEqual(raised.exception.code, AdapterErrorCode.UPSTREAM)
         self.assertEqual(
             [item.method for item in requests],
@@ -514,6 +529,8 @@ class GovernedAdapterAsyncBoundaryTests(unittest.IsolatedAsyncioTestCase):
                     ("value",),
                     ((1,),),
                     "https://trino:8443/next/query-1",
+                    processed_rows=1,
+                    processed_bytes=64,
                 )
 
             async def next_page(
@@ -529,6 +546,9 @@ class GovernedAdapterAsyncBoundaryTests(unittest.IsolatedAsyncioTestCase):
                     (),
                     ((2,),),
                     None,
+                    warnings=("synthetic partial source",),
+                    processed_rows=2,
+                    processed_bytes=128,
                 )
 
             async def cancel(
@@ -582,6 +602,11 @@ class GovernedAdapterAsyncBoundaryTests(unittest.IsolatedAsyncioTestCase):
         await adapter.aclose()
 
         self.assertEqual(result["rows"], [{"value": 1}, {"value": 2}])
+        self.assertEqual(2, result["processed_rows"])
+        self.assertEqual(128, result["scan_bytes"])
+        self.assertEqual(1, result["warning_count"])
+        self.assertEqual(0, result["critical_warning_count"])
+        self.assertEqual("SUCCEEDED", result["status"])
         self.assertEqual(cached["status"], "SUCCEEDED")
         self.assertEqual(cached, repeated)
         self.assertEqual(durable_cancel["status"], "CANCELLED")

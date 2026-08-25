@@ -7,6 +7,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 
@@ -32,6 +33,10 @@ from app.adapters.datahub_query_plan import (  # noqa: E402
 from app.adapters.query_governance import (  # noqa: E402
     DEFAULT_CANDIDATE_SEARCH_COUNT,
     QueryGovernanceEngine,
+)
+from app.adapters.query_search_evidence import (  # noqa: E402
+    compact_candidate_assets,
+    unicode_tokens,
 )
 from app.adapters.trino_async import TrinoAsyncClient  # noqa: E402
 from app.adapters.governed_data_platform import GovernedDataPlatformAdapter  # noqa: E402
@@ -142,6 +147,197 @@ class KoreanQueryPlanTests(unittest.TestCase):
             plan_search_queries("!!!")
         with self.assertRaises(DataHubQueryPlanError):
             plan_search_queries("질문" * 1025)
+
+
+class CandidateRankingTests(unittest.TestCase):
+    def test_release_phrase_evidence_outranks_definition_token_density(self) -> None:
+        """승인 alias hit을 긴 질문의 공통 definition token보다 강하게 보존한다."""
+
+        asset_fqn = "approved.analytics.observations"
+        assets = [
+            {
+                "fqn": asset_fqn,
+                "metrics": [
+                    {
+                        "id": "target_rate",
+                        "result_field": "target_rate",
+                        "visibility": "BUSINESS",
+                        "dimensions": [],
+                    },
+                    {
+                        "id": "generic_count",
+                        "result_field": "generic_count",
+                        "visibility": "BUSINESS",
+                        "dimensions": [],
+                    },
+                ],
+                "dimensions": [],
+            }
+        ]
+        column_rule = {"source": {"kind": "column"}}
+        terms = {
+            "target_rate": SimpleNamespace(
+                label="Alpha rate",
+                aliases=("Alpha rate",),
+                definition="approved measure",
+                searchable_text="Alpha rate approved measure",
+                metric_rule=column_rule,
+            ),
+            "generic_count": SimpleNamespace(
+                label="Generic count",
+                aliases=("Generic count",),
+                definition="governed alpha observation count context",
+                searchable_text="governed alpha observation count context",
+                metric_rule=column_rule,
+            ),
+        }
+        question = "Show governed alpha observation count context for Alpha rate"
+
+        ranked_assets = compact_candidate_assets(
+            assets,
+            terms,
+            question,
+            unicode_tokens(question),
+            {asset_fqn: 1},
+            2,
+            require_search_metric=True,
+            governed_phrases=("alpha rate",),
+        )
+        ranked = sorted(
+            (
+                int(metric["candidate_rank"]),
+                str(metric["id"]),
+            )
+            for asset in ranked_assets
+            for metric in asset["metrics"]
+            if metric["candidate_selectable"] is True
+        )
+
+        self.assertEqual(
+            ["target_rate", "generic_count"],
+            [metric_id for _rank, metric_id in ranked],
+        )
+
+    def test_full_definition_evidence_outranks_component_phrase_hint(self) -> None:
+        """복합 지표 정의 전체가 맞으면 질문 속 구성 지표 이름에 선점되지 않는다."""
+
+        asset_fqn = "approved.analytics.revenue"
+        assets = [
+            {
+                "fqn": asset_fqn,
+                "metrics": [
+                    {
+                        "id": "combined_total",
+                        "result_field": "combined_total",
+                        "visibility": "BUSINESS",
+                        "dimensions": [],
+                    },
+                    {
+                        "id": "component_amount",
+                        "result_field": "component_amount",
+                        "visibility": "BUSINESS",
+                        "dimensions": [],
+                    },
+                ],
+                "dimensions": [],
+            }
+        ]
+        column_rule = {"source": {"kind": "column"}}
+        terms = {
+            "combined_total": SimpleNamespace(
+                label="Combined total",
+                aliases=("Combined total",),
+                definition="component amount plus combined total",
+                searchable_text="Combined total component amount plus combined total",
+                metric_rule=column_rule,
+            ),
+            "component_amount": SimpleNamespace(
+                label="Component amount",
+                aliases=("Component amount",),
+                definition="component amount",
+                searchable_text="Component amount component amount",
+                metric_rule=column_rule,
+            ),
+        }
+        question = "component amount plus combined total"
+
+        ranked_assets = compact_candidate_assets(
+            assets,
+            terms,
+            question,
+            unicode_tokens(question),
+            {asset_fqn: 1},
+            2,
+            governed_phrases=("component amount",),
+        )
+        ranked = sorted(
+            (
+                int(metric["candidate_rank"]),
+                str(metric["id"]),
+            )
+            for asset in ranked_assets
+            for metric in asset["metrics"]
+            if metric["candidate_selectable"] is True
+        )
+
+        self.assertEqual(
+            ["combined_total", "component_amount"],
+            [metric_id for _rank, metric_id in ranked],
+        )
+
+    def test_exact_dimension_query_is_not_promoted_by_metric_phrase_hint(self) -> None:
+        """Dimension-only 질의는 유사 BUSINESS 문구 힌트가 있어도 Metric으로 바뀌지 않는다."""
+
+        asset_fqn = "approved.analytics.feedback"
+        assets = [
+            {
+                "fqn": asset_fqn,
+                "metrics": [
+                    {
+                        "id": "average_rating",
+                        "result_field": "average_rating",
+                        "visibility": "BUSINESS",
+                        "dimensions": [],
+                    }
+                ],
+                "dimensions": [
+                    {
+                        "id": "sentiment_label",
+                        "name": "Sentiment",
+                        "asset_fqn": asset_fqn,
+                        "column": "sentiment_label",
+                        "aliases": ["VOC sentiment"],
+                    }
+                ],
+            }
+        ]
+        terms = {
+            "average_rating": SimpleNamespace(
+                label="Average rating",
+                aliases=("VOC average sentiment rating",),
+                definition="average feedback rating by sentiment",
+                searchable_text="Average rating VOC average sentiment rating",
+                metric_rule={"source": {"kind": "column"}},
+            )
+        }
+
+        ranked_assets = compact_candidate_assets(
+            assets,
+            terms,
+            "VOC sentiment",
+            unicode_tokens("VOC sentiment"),
+            {asset_fqn: 1},
+            2,
+            governed_phrases=("VOC average sentiment rating",),
+        )
+
+        self.assertFalse(
+            any(
+                metric.get("candidate_selectable") is True
+                for asset in ranked_assets
+                for metric in asset["metrics"]
+            )
+        )
 
 
 class CandidateSearchRequestTests(unittest.IsolatedAsyncioTestCase):

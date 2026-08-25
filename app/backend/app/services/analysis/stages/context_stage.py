@@ -197,10 +197,17 @@ class AnalysisContextStage:
                     payload,
                     context,
                     candidates,
+                    budget=state.budget,
                 )
             )
             if getattr(self._model, "last_trace", {}).get("node") == "node1":
                 state.record(PipelineStage.MODEL, model_trace_detail(self._model))
+            # Node 1 후보가 entitlement/release/period 규칙에 exact rebind되어
+            # 하나의 typed request로 확정된 뒤에만 durable Run을 만든다. 이후의
+            # RuntimeContextPackage/schema/G1 실패는 이미 생성된 Run의 terminal
+            # 상태로 남겨야 하므로 이 경계는 asset resolution보다 앞선다.
+            if state.run_admission_sink is not None:
+                await state.run_admission_sink()
             assets = await self._support.resolve_execution_assets(
                 payload,
                 context,

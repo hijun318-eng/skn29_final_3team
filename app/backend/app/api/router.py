@@ -19,7 +19,14 @@ from app.analysis_contracts import (
     AnalysisRunResponse,
     ReplayAnalysisRequest,
 )
-from app.context import SESSION_COOKIE, ContextValidationError, analysis_context, optional_session_context, request_context, session_context
+from app.context import (
+    SESSION_COOKIE,
+    ContextValidationError,
+    analysis_context,
+    optional_session_context,
+    request_context,
+    session_context,
+)
 from app.contracts import (
     AnalysisRequest,
     AnalysisResponse,
@@ -45,7 +52,6 @@ from app.contracts import (
 from app.auth import AuthenticationError, authenticate_credentials, issue_session_token, register_session, revoke_session
 from app.authorization import capabilities_for, has_capability, permission_snapshot_id
 from app.conversation_contracts import ConversationCommandRequest
-from app.context import ContextValidationError
 from app.api.analysis_router_runtime import (
     active_analytics_context_release as _active_analytics_context_release,
     analysis_repository as _analysis_repository,
@@ -301,27 +307,38 @@ async def analysis(
         context.trace_id, context.user_id, context.role, context.request_id
     )
     repository = None
+    run_admitted = False
     execution: dict[str, Any] = {}
     final_status = AnalysisStatus.FAILED
     try:
         if os.getenv("APP_RUNTIME_DATABASE_URL"):
             repository = _analysis_repository(context)
+
+        async def _admit_analysis_run() -> None:
+            nonlocal run_admitted
+            if repository is None or run_admitted:
+                return
             await _repository_call(
                 lambda: repository.begin_request(
                     payload.question, payload.parameters, context
                 )
             )
+            run_admitted = True
+
         response = await _controller().submit(
             payload,
             context,
-            execution.update,
-            lambda stage, outcome: analysis_progress.record(
+            execution_sink=execution.update,
+            progress_sink=lambda stage, outcome: analysis_progress.record(
                 context.request_id, stage, outcome
             ),
-            lambda: analysis_progress.cancelled(context.request_id),
+            cancel_check=lambda: analysis_progress.cancelled(context.request_id),
+            run_admission_sink=(
+                _admit_analysis_run if repository is not None else None
+            ),
         )
         final_status = response.data.status
-        if repository is not None:
+        if repository is not None and run_admitted:
             try:
                 await _repository_call(
                     lambda: repository.finish_run(context.request_id, response, execution)
@@ -352,7 +369,7 @@ async def analysis(
                 )
         return response
     except Exception:
-        if repository is not None:
+        if repository is not None and run_admitted:
             await _repository_call(lambda: repository.fail_run(context.request_id))
         raise
     finally:
@@ -520,33 +537,94 @@ async def execute_conversation_command(
             "아카이브된 대화방에서는 새 명령을 실행할 수 없습니다.",
             409,
         )
-
-    result = await orch.execute_command(
-        conversation_id,
-        payload.model_dump(mode="python"),
-        context,
+    final_status = AnalysisStatus.FAILED
+    analysis_progress.start(
+        context.trace_id,
+        context.user_id,
+        context.role,
+        context.request_id,
     )
-    if result.get("status") in {"CONFLICT", "BUSY"}:
-        raw_code = str(result.get("code") or "")
-        code_map = {
-            "CONVERSATION_CONFLICT": ErrorCode.CONVERSATION_CONFLICT,
-            "CONVERSATION_BUSY": ErrorCode.CONVERSATION_BUSY,
-            "CONVERSATION_ARCHIVED": ErrorCode.CONVERSATION_ARCHIVED,
-            "IDEMPOTENCY_CONFLICT": ErrorCode.IDEMPOTENCY_CONFLICT,
-            "IDEMPOTENCY_PAYLOAD_MISMATCH": ErrorCode.IDEMPOTENCY_CONFLICT,
-            "RESOURCE_CONFLICT": ErrorCode.RESOURCE_CONFLICT,
-            "PRODUCT_RELEASE_MISMATCH": ErrorCode.RESOURCE_CONFLICT,
-            "ACCESS_DENIED": ErrorCode.ACCESS_DENIED,
-            "PERMISSION_SNAPSHOT_MISMATCH": ErrorCode.ACCESS_DENIED,
-        }
-        public_code = code_map.get(raw_code, ErrorCode.RESOURCE_CONFLICT)
-        status_code = 403 if public_code is ErrorCode.ACCESS_DENIED else 409
-        raise ContextValidationError(
-            public_code,
-            str(result.get("message") or "현재 대화 상태와 요청이 충돌합니다."),
-            status_code,
+    try:
+        configured_timeout = float(
+            os.getenv("CONVERSATION_COMMAND_TIMEOUT_SECONDS", "90")
         )
-    return {"status": "SUCCESS", "data": result}
+        recovery_stale = float(
+            os.getenv("CONVERSATION_RECOVERY_STALE_SECONDS", "120")
+        )
+        command_timeout = max(
+            1.0,
+            min(configured_timeout, max(1.0, recovery_stale - 5.0)),
+        )
+        try:
+            async with asyncio.timeout(command_timeout):
+                result = await orch.execute_command(
+                    conversation_id,
+                    payload.model_dump(mode="python"),
+                    context,
+                    progress_sink=lambda stage, outcome: analysis_progress.record(
+                        context.request_id,
+                        stage,
+                        outcome,
+                    ),
+                    cancel_check=lambda: analysis_progress.cancelled(
+                        context.request_id
+                    ),
+                    analysis_gate=execution_gate,
+                    analysis_queue_wait_seconds=float(
+                        os.getenv("ANALYSIS_QUEUE_WAIT_SECONDS", "0")
+                    ),
+                )
+        except TimeoutError:
+            response = ErrorResponse(
+                data=EmptyData(),
+                meta=response_meta(context),
+                error=ErrorBody(
+                    code=ErrorCode.QUERY_TIMEOUT,
+                    message="분석 명령의 전체 실행 시간이 초과되었습니다.",
+                    retryable=True,
+                ),
+            )
+            return JSONResponse(
+                status_code=504,
+                content=response.model_dump(mode="json"),
+            )
+        final_status = {
+            "SUCCESS": AnalysisStatus.SUCCEEDED,
+            "PARTIAL": AnalysisStatus.PARTIAL,
+            "BLOCKED": AnalysisStatus.BLOCKED,
+            "CLARIFICATION_REQUIRED": AnalysisStatus.BLOCKED,
+            "CANCELLED": AnalysisStatus.CANCELLED,
+        }.get(str(result.get("status")), AnalysisStatus.FAILED)
+        if result.get("status") in {"CONFLICT", "BUSY"}:
+            raw_code = str(result.get("code") or "")
+            code_map = {
+                "CONVERSATION_CONFLICT": ErrorCode.CONVERSATION_CONFLICT,
+                "CONVERSATION_BUSY": ErrorCode.CONVERSATION_BUSY,
+                "CONVERSATION_ARCHIVED": ErrorCode.CONVERSATION_ARCHIVED,
+                "IDEMPOTENCY_CONFLICT": ErrorCode.IDEMPOTENCY_CONFLICT,
+                "IDEMPOTENCY_PAYLOAD_MISMATCH": ErrorCode.IDEMPOTENCY_CONFLICT,
+                "RESOURCE_CONFLICT": ErrorCode.RESOURCE_CONFLICT,
+                "PRODUCT_RELEASE_MISMATCH": ErrorCode.RESOURCE_CONFLICT,
+                "ACCESS_DENIED": ErrorCode.ACCESS_DENIED,
+                "PERMISSION_SNAPSHOT_MISMATCH": ErrorCode.ACCESS_DENIED,
+                "RATE_LIMITED": ErrorCode.RATE_LIMITED,
+            }
+            public_code = code_map.get(raw_code, ErrorCode.RESOURCE_CONFLICT)
+            status_code = (
+                403
+                if public_code is ErrorCode.ACCESS_DENIED
+                else 429
+                if public_code is ErrorCode.RATE_LIMITED
+                else 409
+            )
+            raise ContextValidationError(
+                public_code,
+                str(result.get("message") or "현재 대화 상태와 요청이 충돌합니다."),
+                status_code,
+            )
+        return {"status": "SUCCESS", "data": result}
+    finally:
+        analysis_progress.finish(context.request_id, final_status)
 
 
 router.include_router(analysis_support_router)

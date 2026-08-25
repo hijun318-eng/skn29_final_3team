@@ -2,6 +2,7 @@
 # 함께 검증한다. cached 응답이나 일부 dependency 성공으로 READY를 만들지 않는다.
 param(
     [switch]$RemoveAfterVerification,
+    [switch]$AllowRepositoryLocalDevelopment,
     [string]$BackendBaseUrl = $env:ANSWERVICE_BACKEND_BASE_URL,
     [string]$EnvFilePath
 )
@@ -12,12 +13,19 @@ $backendPath = Split-Path -Parent $PSScriptRoot
 $repositoryRoot = (Resolve-Path (Join-Path $backendPath '..\..')).Path
 $composeFile = Join-Path $repositoryRoot 'compose.yml'
 . (Join-Path $repositoryRoot 'infrastructure\database\scripts\deployment-environment.ps1')
+. (Join-Path $PSScriptRoot 'source-provenance.ps1')
 Disable-ImplicitComposeEnvironment
-$environmentFile = Resolve-ExternalDeploymentEnvFile `
-    -Path $EnvFilePath -RepositoryRoot $repositoryRoot
+$environmentFile = Resolve-ExplicitDeploymentEnvFile `
+    -Path $EnvFilePath `
+    -RepositoryRoot $repositoryRoot `
+    -AllowRepositoryLocalDevelopment:$AllowRepositoryLocalDevelopment
+$sourceProvenance = Set-AnswerviceSourceProvenanceEnvironment `
+    -RepositoryRoot $repositoryRoot
 $composeEnvArguments = @(Get-ComposeEnvironmentArguments $environmentFile)
 $containerName = 'answervice-backend'
-if (-not $BackendBaseUrl) { $BackendBaseUrl = 'http://127.0.0.1:18000' }
+$retrievalGateRunner = '/workspace/evals/metric_retrieval_runner.py'
+$retrievalGateGold = '/workspace/evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json'
+if (-not $BackendBaseUrl) { $BackendBaseUrl = 'http://127.0.0.1:28000' }
 $BackendBaseUrl = $BackendBaseUrl.TrimEnd('/')
 $composeArguments = @('compose') + $composeEnvArguments + @(
     '-f', $composeFile,
@@ -47,19 +55,67 @@ try {
             if ($healthResponse.data.status -ne 'healthy') {
                 throw 'Backend /health response is not healthy.'
             }
+            $readinessDependencies = @(
+                $readinessResponse.data.dependencies.PSObject.Properties
+            )
+            $notReadyDependencies = @(
+                $readinessDependencies | Where-Object { $_.Value -ne 'ready' }
+            )
             if (
                 $readinessResponse.data.status -ne 'ready' -or
-                $readinessResponse.data.dependencies.app_postgres -ne 'ready' -or
-                $readinessResponse.data.dependencies.migration -ne 'ready' -or
-                $readinessResponse.data.dependencies.analysis_template_registry -ne 'ready' -or
-                $readinessResponse.data.dependencies.trino -ne 'ready' -or
-                $readinessResponse.data.dependencies.datahub -ne 'ready' -or
-                $readinessResponse.data.dependencies.model -ne 'ready'
+                $readinessDependencies.Count -eq 0 -or
+                $notReadyDependencies.Count -gt 0
             ) {
                 throw 'Backend /readiness did not confirm all product dependencies.'
             }
+            $imageLabelsOutput = @(
+                docker inspect --format '{{json .Config.Labels}}' $containerName
+            )
+            $imageLabelsExitCode = $LASTEXITCODE
+            try {
+                $imageLabels = ($imageLabelsOutput -join '') | ConvertFrom-Json
+            }
+            catch {
+                throw "Backend image provenance labels are invalid (exit $imageLabelsExitCode)."
+            }
+            if (
+                $imageLabelsExitCode -ne 0 -or
+                $imageLabels.'org.opencontainers.image.revision' -ne $sourceProvenance.Revision -or
+                $imageLabels.'io.answervice.source.dirty' -ne $sourceProvenance.Dirty -or
+                $imageLabels.'io.answervice.source.fingerprint' -ne $sourceProvenance.Fingerprint
+            ) {
+                throw 'Backend image provenance labels do not match the verified source tree.'
+            }
+            $retrievalGateOutput = @(
+                docker exec $containerName python $retrievalGateRunner `
+                    --phase2a-gold-manifest $retrievalGateGold
+            )
+            $retrievalGateExitCode = $LASTEXITCODE
+            try {
+                $retrievalGate = (
+                    $retrievalGateOutput -join [Environment]::NewLine
+                ) | ConvertFrom-Json
+            }
+            catch {
+                throw "Backend Phase 2A retrieval Gate returned invalid JSON (exit $retrievalGateExitCode)."
+            }
+            if (
+                $retrievalGateExitCode -ne 0 -or
+                $retrievalGate.contract_version -ne 'answervice.metric_retrieval_phase2a.v1' -or
+                $retrievalGate.gate -ne '2A' -or
+                $retrievalGate.status -ne 'PASSED'
+            ) {
+                $failedChecks = @(
+                    $retrievalGate.checks.PSObject.Properties |
+                        Where-Object { -not [bool]$_.Value } |
+                        ForEach-Object { $_.Name }
+                )
+                throw "Backend Phase 2A retrieval Gate failed: $($failedChecks -join ', ')."
+            }
             Write-Output 'BACKEND_CONTAINER_READY'
             Write-Output 'BACKEND_DATABASE_READY'
+            Write-Output 'BACKEND_IMAGE_PROVENANCE_READY'
+            Write-Output 'BACKEND_METRIC_RETRIEVAL_READY'
             exit 0
         }
         if ($health -eq 'unhealthy') {

@@ -35,6 +35,8 @@ from app.contracts import (  # noqa: E402
     AnalysisStatus,
     ArtifactReference,
     Evidence,
+    ErrorBody,
+    ErrorCode,
     RequestContext,
     Role,
     TableResult,
@@ -563,6 +565,157 @@ async def test_success_commit_has_complete_turn_run_artifact_release_lineage(
         assert presentation["artifact_id"] == artifact_id
         assert presentation["view_spec_id"] == bar_view_id
         assert presentation["terminal_status"] == "SUCCEEDED"
+    finally:
+        await engine.dispose()
+
+
+@async_test
+async def test_empty_result_persists_query_and_run_evidence_without_artifact(
+    phase1_database: str,
+) -> None:
+    engine, factory = _runtime(phase1_database)
+    try:
+        _repository, analysis, _conversation, _command_id, context = (
+            await _admit_analysis(factory, phase1_database)
+        )
+        query_id = "phase1-query-empty"
+        executable_sql = "SELECT 1 AS value WHERE false"
+        source_urn = "urn:li:dataset:(phase1,isolated,PROD)"
+        response = AnalysisResponse(
+            data=AnalysisData(
+                status=AnalysisStatus.BLOCKED,
+                transitions=(
+                    AnalysisStatus.RECEIVED,
+                    AnalysisStatus.ROUTED,
+                    AnalysisStatus.BLOCKED,
+                ),
+                evidence=Evidence.model_validate(
+                    {
+                        "as_of": context.as_of,
+                        "timezone": context.timezone,
+                        "period": {
+                            "start": "2026-08-01",
+                            "end_exclusive": "2026-08-22",
+                        },
+                        "filters": {"phase1.is_open": False},
+                        "sources": [
+                            {
+                                "urn": source_urn,
+                                "fqn": "phase1.isolated",
+                                "name": "isolated",
+                                "schema_version": "schema-v1",
+                                "seed_version": "seed-v1",
+                            }
+                        ],
+                        "query_id": query_id,
+                        "product_release_id": PRODUCT_RELEASE,
+                        "context_release": SEMANTIC_RELEASE,
+                        "policy_version": "policy-v1",
+                        "sampling": {
+                            "applied": False,
+                            "returned_rows": 0,
+                            "total_rows": 0,
+                        },
+                        "execution": {"processed_rows": 0, "scan_bytes": 17},
+                    }
+                ),
+            ),
+            meta=response_meta(context),
+            error=ErrorBody(
+                code=ErrorCode.EMPTY_RESULT,
+                message="요청 조건에 해당하는 결과가 없습니다.",
+            ),
+        )
+        execution = {
+            "plan": {
+                "executable_sql": executable_sql,
+                "model_version": "MODEL-v1",
+            },
+            "query": {
+                "query_id": query_id,
+                "rows": [],
+                "scan_bytes": 17,
+            },
+            "package": SimpleNamespace(
+                assets=(SimpleNamespace(urn=source_urn),)
+            ),
+        }
+        await analysis.record_query_lifecycle(
+            context.request_id,
+            {
+                "event_type": "SUBMITTED",
+                "query_id": query_id,
+                "cancel_uri": f"https://trino:8443/v1/statement/{query_id}/1",
+                "sql_hash": _hash(executable_sql),
+                "status": "RUNNING",
+            },
+        )
+        await analysis.record_query_lifecycle(
+            context.request_id,
+            {
+                "event_type": "TERMINAL",
+                "query_id": query_id,
+                "status": "SUCCEEDED",
+                "row_count": 0,
+                "scan_bytes": 17,
+            },
+        )
+
+        await analysis.finish_run(context.request_id, response, execution)
+
+        async with factory() as session:
+            stored = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT r.status, q.trino_query_id, q.execution_status,
+                               q.row_count, q.scan_bytes, q.result_checksum,
+                               q.source_urns_json, q.source_cutoff_json,
+                               audit.action_code, audit.query_execution_id,
+                               audit.artifact_id, audit.details_json_redacted,
+                               (SELECT count(*) FROM artifact.analysis_artifacts a
+                                WHERE a.request_id = r.request_id) AS artifact_count
+                        FROM chat.analysis_requests r
+                        JOIN query.query_executions q ON q.request_id = r.request_id
+                        JOIN LATERAL (
+                            SELECT action_code, query_execution_id, artifact_id,
+                                   details_json_redacted
+                            FROM governance.audit_events
+                            WHERE request_id = r.request_id
+                              AND action_code = 'ANALYSIS_BLOCKED'
+                            ORDER BY created_at DESC LIMIT 1
+                        ) audit ON true
+                        WHERE r.request_id = :request_id
+                        """
+                    ),
+                    {"request_id": context.request_id},
+                )
+            ).mappings().one()
+        run = await analysis.get_run(context.request_id)
+
+        assert stored["status"] == "DENIED"
+        assert stored["trino_query_id"] == query_id
+        assert stored["execution_status"] == "SUCCEEDED"
+        assert stored["row_count"] == 0
+        assert stored["scan_bytes"] == 17
+        assert len(stored["result_checksum"]) == 64
+        assert stored["source_urns_json"] == [source_urn]
+        assert stored["source_cutoff_json"] == {
+            "start": "2026-08-01",
+            "end_exclusive": "2026-08-22",
+        }
+        assert stored["query_execution_id"] is not None
+        assert stored["artifact_id"] is None
+        assert stored["artifact_count"] == 0
+        assert stored["details_json_redacted"]["error_code"] == "EMPTY_RESULT"
+        assert stored["details_json_redacted"]["run_evidence"]["filters"] == {
+            "phase1.is_open": False
+        }
+        assert run["status"] == "BLOCKED"
+        assert run["query_id"] == query_id
+        assert run["artifact_id"] is None
+        assert run["period_start"] == "2026-08-01"
+        assert run["period_end_exclusive"] == "2026-08-22"
     finally:
         await engine.dispose()
 

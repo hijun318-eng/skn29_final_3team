@@ -154,13 +154,11 @@ class QueryGovernanceEngine:
                 )
             )
         )
-        # Production runtime은 active DB projection만 읽는다. Legacy loader는 명시적으로
-        # projection repository를 주입하지 않은 compiler/test 호환 경로에만 남긴다.
-        self._loader = (
-            CatalogSnapshotLoader(catalog, ttl_seconds=ttl)
-            if projection_repository is None
-            else None
-        )
+        loader = CatalogSnapshotLoader(catalog, ttl_seconds=ttl)
+        # Production request는 active DB projection만 읽고, live 전체 read-back은
+        # readiness parity에만 사용한다. Legacy runtime은 같은 loader를 요청에 사용한다.
+        self._loader = loader if projection_repository is None else None
+        self._parity_loader = loader if projection_repository is not None else None
         self._projection_repository = projection_repository
         self._analysis_capability = analysis_capability
         self._schema = schema_inspector
@@ -174,6 +172,7 @@ class QueryGovernanceEngine:
         self._shadow_tasks: set[asyncio.Task[tuple[DataHubSearchHit, ...]]] = set()
         self._compiled_snapshot: CatalogSnapshot | None = None
         self._compiled_release: CanonicalSemanticRelease | None = None
+        self._compiled_expected_release: str | None = None
         self._phrase_index_snapshot: CatalogSnapshot | None = None
         self._phrase_index: GovernedPhraseIndex | None = None
         self._verified_projection_key: tuple[str, str] | None = None
@@ -198,6 +197,7 @@ class QueryGovernanceEngine:
             terms,
             asset_priorities,
             search_metric_ranks,
+            governed_phrases,
             active_projection,
         ) = await self._search_selection(query, context, for_interpretation=True)
         preferred_metric_ids = self._preferred_metric_ids(context)
@@ -229,6 +229,7 @@ class QueryGovernanceEngine:
                 preferred_metric_ids,
                 search_metric_ranks,
                 self._search_mode == "datahub_lexical",
+                governed_phrases=governed_phrases,
             )
             if active_projection is not None:
                 source_by_metric = {
@@ -402,6 +403,7 @@ class QueryGovernanceEngine:
         dict[str, GlossaryMetricTerm],
         dict[str, int],
         dict[str, int],
+        tuple[str, ...],
         ActiveRuntimeCatalogProjection | None,
     ]:
         """질문 증거로 bounded 후보 scope를 고르고 검증된 release 객체와 함께 반환한다."""
@@ -415,10 +417,13 @@ class QueryGovernanceEngine:
             )
             datasets = self._datasets_for_release(snapshot, release)
             terms = self._required_terms(snapshot, datasets)
-            governed_phrases = (
-                self._governed_query_hints(snapshot, terms, query)
-                if self._search_mode in {"lexical_shadow", "datahub_lexical"}
-                else ()
+            # 모든 retrieval mode가 동일 active release의 승인 label·alias 문구를
+            # Metric ranking 증거로 사용한다. DataHub 호출 여부만 mode가 결정하며,
+            # lexical rollback도 Glossary 의미를 token 개수로 축소하지 않는다.
+            governed_phrases = self._governed_query_hints(
+                snapshot,
+                terms,
+                query,
             )
             semantic_hits = await self._load_search_evidence(
                 query,
@@ -524,6 +529,7 @@ class QueryGovernanceEngine:
             terms,
             asset_priorities,
             search_metric_ranks,
+            governed_phrases,
             active_projection,
         )
 
@@ -872,11 +878,17 @@ class QueryGovernanceEngine:
         }
         try:
             if self._projection_repository is not None:
-                snapshot, release, active_projection = (
+                projection_snapshot, projection_release, active_projection = (
                     await self._load_runtime_catalog(
                         product_release_id=product_release_id
                     )
                 )
+                if self._parity_loader is None:  # pragma: no cover - 생성자가 보장한다.
+                    raise RuntimeCatalogRepositoryError(
+                        "runtime catalog parity loader is unavailable"
+                    )
+                snapshot = await self._parity_loader.load()
+                expected_release = projection_release.catalog_version
             else:
                 if self._loader is None:  # pragma: no cover - 생성자가 보장한다.
                     raise RuntimeCatalogRepositoryError(
@@ -884,8 +896,10 @@ class QueryGovernanceEngine:
                     )
                 active_projection = None
                 snapshot = await self._loader.load()
-                release = None
-            datasets = coherent_release_datasets(snapshot, self._expected_release)
+                projection_snapshot = None
+                projection_release = None
+                expected_release = self._expected_release
+            datasets = coherent_release_datasets(snapshot, expected_release)
         except (
             DataHubCatalogError,
             GovernedMetadataError,
@@ -899,10 +913,37 @@ class QueryGovernanceEngine:
             return stages, None
         stages["catalog_manifest"] = "ready"
         try:
-            if release is None:
-                release = self._active_release(snapshot)
-            datasets = self._datasets_for_release(snapshot, release)
-        except GovernedMetadataError:
+            live_release = (
+                self._compiled_catalog_release(snapshot, expected_release)
+                if projection_release is not None
+                else self._active_release(snapshot)
+            )
+            if projection_release is not None:
+                if (
+                    live_release.catalog_version,
+                    live_release.catalog_checksum,
+                    live_release.canonical_checksum,
+                    live_release.manifest_checksum,
+                ) != (
+                    projection_release.catalog_version,
+                    projection_release.catalog_checksum,
+                    projection_release.canonical_checksum,
+                    projection_release.manifest_checksum,
+                ):
+                    return stages, None
+                if projection_snapshot is None:  # pragma: no cover - 생성자가 보장한다.
+                    raise RuntimeCatalogRepositoryError(
+                        "runtime projection snapshot is unavailable"
+                    )
+                release = projection_release
+                datasets = self._datasets_for_release(
+                    projection_snapshot,
+                    projection_release,
+                )
+            else:
+                release = live_release
+                datasets = self._datasets_for_release(snapshot, live_release)
+        except (GovernedMetadataError, RuntimeCatalogRepositoryError):
             # manifest와 canonical compiler는 독립 단계다. manifest가 유효해도 실제
             # 요청과 같은 canonical compile 경계가 실패하면 semantic 단계만 닫는다.
             return stages, None
@@ -960,10 +1001,12 @@ class QueryGovernanceEngine:
         terms: dict[str, GlossaryMetricTerm],
         query: str,
     ) -> tuple[str, ...]:
-        """active release label·alias trie에서 질문에 실제 포함된 exact 힌트만 찾는다.
+        """active release label·alias trie에서 bounded 승인 문구 증거를 찾는다.
 
         trie는 snapshot identity마다 한 번만 만들며 질문별 전체 Glossary scan을 하지 않는다.
-        이 결과는 DataHub query formulation일 뿐 metric rank나 후보 승인을 결정하지 않는다.
+        모든 mode의 Metric rank가 이 증거를 보존하고, DataHub lexical mode는 같은 값을
+        query formulation에도 사용한다. 최종 후보 승인은 검색 hit·권한·release 검증을
+        별도로 통과해야 한다.
         """
 
         if self._phrase_index_snapshot is not snapshot or self._phrase_index is None:
@@ -1225,17 +1268,31 @@ class QueryGovernanceEngine:
         self,
         snapshot: CatalogSnapshot,
     ) -> CanonicalSemanticRelease:
-        """같은 cached snapshot은 한 번만 canonical typed graph로 컴파일해 원자적으로 재사용한다."""
+        """구성된 release 선택값으로 cached snapshot을 canonical graph로 컴파일한다."""
 
-        if self._compiled_snapshot is snapshot and self._compiled_release is not None:
+        return self._compiled_catalog_release(snapshot, self._expected_release)
+
+    def _compiled_catalog_release(
+        self,
+        snapshot: CatalogSnapshot,
+        expected_release: str | None,
+    ) -> CanonicalSemanticRelease:
+        """같은 snapshot·release 선택은 한 번만 컴파일해 원자적으로 재사용한다."""
+
+        if (
+            self._compiled_snapshot is snapshot
+            and self._compiled_expected_release == expected_release
+            and self._compiled_release is not None
+        ):
             return self._compiled_release
         release = compile_legacy_semantic_release(
             snapshot,
-            self._expected_release,
+            expected_release,
         )
         # 완성된 불변 projection만 게시한다. 컴파일 도중 실패하면 직전 release로
         # fallback하지 않고 예외를 전파해 요청을 fail-closed한다.
         self._compiled_snapshot = snapshot
+        self._compiled_expected_release = expected_release
         self._compiled_release = release
         return release
 

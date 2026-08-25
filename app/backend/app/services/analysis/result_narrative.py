@@ -12,6 +12,12 @@ from app.services.analysis.evidence import _reduce_context_metric
 
 
 _NUMBER = re.compile(r"(?<![A-Za-z0-9_])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?")
+_UNSUPPORTED_INFERENCE = re.compile(
+    r"(?:때문|원인|기인|영향으로|덕분|로\s*인해|추정|예상|전망|예측|권장|제안|"
+    r"\bbecause\b|\bdue\s+to\b|\bdriven\s+by\b|\bcaused\s+by\b|"
+    r"\blikely\b|\bsuggests?\b|\bforecast\w*\b|\brecommend\w*\b)",
+    re.IGNORECASE,
+)
 
 
 def _decimal(value: object) -> Decimal | None:
@@ -117,10 +123,21 @@ def explanation_is_grounded(
         return False
     if package is not None:
         metrics = _business_metrics(package)
+        terms = tuple(getattr(package, "metric_terms", ()))
+        if terms:
+            terms_by_id = {term.id: term for term in terms}
+            summary_key = summary.casefold()
+            if any(
+                terms_by_id[metric.id].label.casefold() not in summary_key
+                for metric in metrics
+            ):
+                return False
         if any((metric.unit or "").casefold() == "ratio" for metric in metrics) and (
             "%" not in summary or "ratio" in summary.casefold()
         ):
             return False
+    if _UNSUPPORTED_INFERENCE.search(summary):
+        return False
     if not mentioned or any(value not in allowed for value in mentioned):
         return False
     return not result_numbers or any(value in result_numbers for value in mentioned)

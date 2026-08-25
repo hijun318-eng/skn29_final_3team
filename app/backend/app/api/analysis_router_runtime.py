@@ -28,8 +28,9 @@ def data_platform():
     """Active RuntimeCatalogProjection, DataHub Search와 TLS Trino 어댑터를 구성한다.
 
     Trino 사용자·비밀번호·CA가 비어 있거나 HTTPS 검증을 구성할 수 없으면 어댑터 생성이
-    실패한다. 전체 catalog는 DB active pointer에서만 읽고 DataHub는 질문별 bounded Search와
-    health에만 사용하므로 projection 부재를 live full read-back으로 숨기지 않는다.
+    실패한다. 요청 catalog는 DB active pointer에서만 읽고 DataHub 전체 read-back은
+    readiness parity에만 사용한다. 질문 경로는 bounded Search만 수행하며 projection 부재를
+    live catalog fallback으로 숨기지 않는다.
     """
     from app.adapters.governed_data_platform import GovernedDataPlatformAdapter
     from app.adapters.runtime_catalog_repository import (

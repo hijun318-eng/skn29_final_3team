@@ -136,7 +136,7 @@ P0 멀티턴은 각 Analysis Run을 이어서 수정하는 Agent memory가 아�
 | DATA-005 | 기존 저장 Analysis Definition·승인 Report Version은 새 catalog에 조용히 재해석하지 않고 version mismatch로 차단하거나 명시적 새 version을 만든다. | `PARTIAL` |
 | DATA-006 | code/image·data·DataHub governed context·RuntimeCatalogProjection·prompt/model/policy·migration을 한 `product_release_id`로 고정한 candidate에 대해 canary와 rollback rehearsal을 수행한 뒤에만 활성 pointer를 전환한다. | `NOT_STARTED` |
 
-현재 host에는 Search/Scroll 분리와 네 Search mode 코드가 있으나 deployed Backend와 hash가 다르다. live 기본값은 `lexical`이고 semantic overlay는 실행되지 않으며, image에 현재 source commit provenance가 없다. 따라서 DATA-004는 `PARTIAL`이고 현재 변경의 positive 전환 증거는 없다.
+2026-08-25 current host의 deployed Backend는 `datahub_lexical`이며 12개 readiness dependency와 image에 봉인된 Phase 2A retrieval Gate를 통과했다. image의 Git revision·dirty 여부·source fingerprint label도 현재 source tree와 대조한다. 다만 semantic/hybrid Gate S1, Search freshness·failure threshold, lexical rollback receipt와 동일 release evidence bundle은 남아 있으므로 DATA-004는 계속 `PARTIAL`이다.
 
 ### GOV — DataHub 중심 의미 거버넌스
 
@@ -267,15 +267,17 @@ Turn을 commit하기 전의 precondition 실패는 위 `run_status` 표에 넣�
 | Gate | 통과 조건 | 현재 |
 |---|---|---|
 | `P0-DATA-CUTOVER` | DATA-001~006과 OPS-003을 `DATA-G0~G7`, DataHub full read-back·projection equality, candidate canary, backup/restore·rollback rehearsal, cutover 승인, 전환 후 readiness·Golden smoke evidence로 검증 | `BLOCKED` |
-| `P0-DATAHUB-SEARCH` | Phase 0B provenance와 Phase 1 Conversation Safety를 선행한 뒤 DATA-004의 bounded Search→entitlement/release filter를 shadow에서 실제 관측하고 품질·negative closure·p95·freshness·failure threshold에 따라 `PROMOTE`·`HOLD`·`REJECT`를 승인한다. promote면 candidate canary, default 전환과 이전 lexical rollback을 같은 receipt로 검증한다. semantic/hybrid는 별도 Gate S1이다. | `BLOCKED` |
+| `P0-DATAHUB-SEARCH` | Phase 0B provenance와 Phase 1 Conversation Safety를 선행한 뒤 DATA-004의 bounded Search→entitlement/release filter를 shadow에서 실제 관측하고 품질·negative closure·p95·freshness·failure threshold에 따라 `PROMOTE`·`HOLD`·`REJECT`를 승인한다. promote면 candidate canary, default 전환과 이전 lexical rollback을 같은 receipt로 검증한다. semantic/hybrid는 별도 Gate S1이다. | `PARTIAL` |
 | `P0-GLOSSARY` | GOV-001~009의 live DataHub L2/L3 증거, out-of-place candidate 전체 read-back·RuntimeCatalogProjection equality와 최종 activation/rollback | `PARTIAL` |
 | `P0-GOLD` | DATA-001~004·GOV-001~008 candidate readiness 통과 후, GOV-009 activation 전에 승인한 product Gold manifest·oracle·tolerance·held-out checksum | `BLOCKED` |
 | `P0-E2E-REAL` | mock·fixture·하드코딩·result cache 없이 UF-02 `cached=false` L3 | `BLOCKED` |
 | `P0-REPORT-RERUN` | 실제 새 Analysis Run을 만드는 UF-06 L3 | `BLOCKED` |
-| `P0-GOLDEN-DIALOGUE` | GD-01~03을 인증 Conversation에서 실제 browser→HTTP→Backend→DataHub/Trino→App DB로 실행한다. 새로고침 복원, Run/View/query 수, 상대기간 범위 초과, lineage, idempotency·동시성·권한·release negative case가 모두 계약과 일치한다. | `NOT_STARTED` |
+| `P0-GOLDEN-DIALOGUE` | GD-01~03을 인증 Conversation에서 실제 browser→HTTP→Backend→DataHub/Trino→App DB로 실행한다. 새로고침 복원, Run/View/query 수, 상대기간 범위 초과, lineage, idempotency·동시성·권한·release negative case가 모두 계약과 일치한다. | `PARTIAL` |
 | `P0-SECURITY` | 허용·거부·마스킹·Trino 인증·write 0건 L4 | `BLOCKED` |
 | `P0-FAILURE` | UF-03~05 실패 행렬 L3/L4 | `BLOCKED` |
 | `P0-EVIDENCE` | 동일 릴리스 증거 manifest 재현 | `BLOCKED` |
+
+2026-08-25 browser evidence는 GD-01의 첫 Turn 한 건만 포함한다. 로그인, Conversation 생성, command와 결과 렌더링은 실제 경로에서 확인했지만 후속 두 Turn, 새로고침 복원, query·lineage 수 검증, GD-02·GD-03과 negative case는 실행하지 않았다. 또한 이 질문은 UF-02의 고정 multi-metric 후보가 아니므로 `P0-E2E-REAL`은 계속 `BLOCKED`다.
 | `P0-QUANT` | held-out 실행 전에 봉인한 표본·metric·threshold·반복·승인 계약과 최신 결과 | `NOT_STARTED` |
 
 ### Requirement→Gate 추적

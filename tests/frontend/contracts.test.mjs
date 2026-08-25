@@ -342,6 +342,7 @@ const apiResponse = {
         gate_history: { g1: ["PASSED"], g2: ["BLOCKED", "PASSED"], g3: ["PASSED"] },
         sampling: { applied: false, returned_rows: 1, total_rows: 1 },
         masking: { applied: true, fields: ["guest_id"] },
+        execution: { processed_rows: 4, scan_bytes: 128, warning_count: 1, critical_warning_count: 0 },
         sources: [{ name: "source", urn: "urn:source", fqn: "catalog.schema.table", schema_version: "1", seed_version: "2", synthetic: true }],
       },
     },
@@ -368,6 +369,12 @@ assert.equal(normalized.evidence.models[0].promptId, "node3-prompt");
 assert.equal(normalized.evidence.gates.g3, "PASSED");
 assert.deepEqual(normalized.evidence.gateHistory.g2, ["BLOCKED", "PASSED"]);
 assert.deepEqual(normalized.evidence.masking.fields, ["guest_id"]);
+assert.deepEqual(normalized.evidence.execution, {
+  processedRows: 4,
+  scanBytes: 128,
+  warningCount: 1,
+  criticalWarningCount: 0,
+});
 assert.equal(normalized.meta.synthetic, undefined);
 
 const snapshotResponse = structuredClone(apiResponse);
@@ -409,6 +416,38 @@ assert.equal(incompletePartial.artifact, undefined);
 assert.equal(incompletePartial.summary, undefined);
 assert.deepEqual(incompletePartial.metrics, []);
 assert.equal(incompletePartial.table, undefined);
+
+const emptyResultResponse = {
+  data: {
+    status: "BLOCKED",
+    result: null,
+    evidence: {
+      query_id: "query-empty-1",
+      as_of: "2030-01-02",
+      timezone: "Asia/Seoul",
+      period: { start: "2030-01-01", end_exclusive: "2030-01-03" },
+      filters: { "catalog.schema.table.hotel_name": "비스타 호텔" },
+      sampling: { applied: false, returned_rows: 0, total_rows: 0 },
+      sources: [{ name: "source", urn: "urn:source", fqn: "catalog.schema.table", schema_version: "1", seed_version: "2" }],
+    },
+  },
+  meta: apiResponse.meta,
+  error: {
+    code: "EMPTY_RESULT",
+    message: "요청한 기간과 조건에 해당하는 결과가 없습니다.",
+    retryable: false,
+    required_action: "MODIFY_REQUEST",
+  },
+};
+const emptyResult = normalizeApiResponse(emptyResultResponse, "question");
+assert.equal(resolveViewState(emptyResult), "EMPTY");
+assert.equal(emptyResult.evidence.queryId, "query-empty-1");
+assert.deepEqual(emptyResult.evidence.period, {
+  start: "2030-01-01",
+  endExclusive: "2030-01-03",
+});
+assert.equal(emptyResult.evidence.filters["catalog.schema.table.hotel_name"], "비스타 호텔");
+assert.equal(emptyResult.sources[0].name, "source");
 
 const rateLimitedClient = createHttpAnalysisClient("http://backend.test", async () => new Response(JSON.stringify({ error: { code: "RATE_LIMITED", message: "잠시 후 다시 시도해 주세요.", retryable: true, required_action: "RETRY", trace_id: "server-trace" } }), { status: 429 }), "runtime-token");
 await assert.rejects(
@@ -543,6 +582,14 @@ assert.throws(() => seoulWallClockToIso("2030-02-30T09:30"), /유효한 서울 �
 await analysisClient.cancelAnalysis("client-trace");
 assert.equal(analysisRequest.url, "http://backend.test/analysis/progress/client-trace/cancel");
 assert.equal(analysisRequest.init.method, "POST");
+
+await analysisClient.submitTurnCommand("conversation-1", {
+  user_message: "question",
+  expected_head_turn_id: null,
+  idempotency_key: "command-1",
+}, "conversation-trace");
+assert.equal(analysisRequest.url, "http://backend.test/conversations/conversation-1/commands");
+assert.equal(analysisRequest.init.headers["X-Trace-Id"], "conversation-trace");
 
 const sessionClient = createHttpAnalysisClient("http://backend.test", async (url, init) => {
   assert.equal(url, "http://backend.test/auth/session");

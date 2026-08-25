@@ -7,12 +7,12 @@
 
 | 분류 | 파일 수 |
 |---|---:|
-| archive | 138 |
+| archive | 134 |
 | documentation | 110 |
 | production | 319 |
 | project-config | 39 |
-| runtime-config | 72 |
-| runtime-contract | 13 |
+| runtime-config | 76 |
+| runtime-contract | 14 |
 | test | 154 |
 
 운영 무결성 위반: **0건**
@@ -225,6 +225,7 @@
 | `app/backend/README.md` | documentation | REFERENCE_NON_RUNTIME |
 | `app/backend/requirements.txt` | project-config | REVIEWED |
 | `app/backend/scripts/export_openapi.py` | runtime-config | REVIEWED |
+| `app/backend/scripts/source-provenance.ps1` | runtime-config | REVIEWED |
 | `app/backend/scripts/verify-container.ps1` | runtime-config | REVIEWED |
 | `app/frontend/.dockerignore` | project-config | REVIEWED |
 | `app/frontend/compose.fragment.yml` | project-config | REVIEWED |
@@ -409,7 +410,7 @@
 | `docs/reference/DataHub_네이티브_시맨틱_모델_중심_제안_객관적_평가_2026-08-20.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/DataHub_사용_방식_객관적_재평가_및_실사용_사례_2026-08-20.md` | documentation | REFERENCE_NON_RUNTIME |
 | `docs/reference/목업_하드코딩_감사_2026-08-19.md` | documentation | REFERENCE_NON_RUNTIME |
-| `evals/__init__.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/__init__.py` | runtime-config | REVIEWED |
 | `evals/base_comparison.v0.1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/catalog_regression.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/catalog_regression_runner.py` | archive | ARCHIVE_NON_RUNTIME |
@@ -420,9 +421,9 @@
 | `evals/instruct2507.smoke20.f4.jsonl` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.jsonl` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/instruct2507.smoke20.v2.manifest.json` | archive | ARCHIVE_NON_RUNTIME |
-| `evals/metric_retrieval.py` | archive | ARCHIVE_NON_RUNTIME |
-| `evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json` | archive | ARCHIVE_NON_RUNTIME |
-| `evals/metric_retrieval_runner.py` | archive | ARCHIVE_NON_RUNTIME |
+| `evals/metric_retrieval.py` | runtime-config | REVIEWED |
+| `evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json` | runtime-contract | REVIEWED |
+| `evals/metric_retrieval_runner.py` | runtime-config | REVIEWED |
 | `evals/multi_asset_join_gold/answervice_ko_multi_asset_join.v1.json` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/nlu_live_node1.py` | archive | ARCHIVE_NON_RUNTIME |
 | `evals/nlu_route_accuracy.py` | archive | ARCHIVE_NON_RUNTIME |

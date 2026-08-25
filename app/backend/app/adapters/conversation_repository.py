@@ -344,6 +344,45 @@ class ConversationRepository:
                 })
                 return True, None
 
+    async def renew_lease(
+        self,
+        conversation_id: UUID,
+        command_id: UUID,
+        lease_seconds: int = 60,
+    ) -> bool:
+        """현재 RUNNING command가 소유한 Conversation lease만 연장한다."""
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds는 양수여야 합니다.")
+        now = datetime.now(timezone.utc)
+        expires_at = now + timedelta(seconds=lease_seconds)
+        async with self._sessionmaker() as session:
+            async with session.begin():
+                result = await session.execute(
+                    text(
+                        """
+                        UPDATE chat.conversations conversation
+                        SET lease_expires_at = :expires_at, updated_at = :now
+                        WHERE conversation.conversation_id = :conversation_id
+                          AND conversation.active_command_id = :command_id
+                          AND EXISTS (
+                              SELECT 1
+                              FROM chat.turn_commands command
+                              WHERE command.command_id = :command_id
+                                AND command.conversation_id = conversation.conversation_id
+                                AND command.status = 'RUNNING'
+                          )
+                        RETURNING conversation.conversation_id
+                        """
+                    ),
+                    {
+                        "conversation_id": conversation_id,
+                        "command_id": command_id,
+                        "expires_at": expires_at,
+                        "now": now,
+                    },
+                )
+                return result.scalar_one_or_none() is not None
+
     async def commit_turn(
         self,
         conversation_id: UUID,

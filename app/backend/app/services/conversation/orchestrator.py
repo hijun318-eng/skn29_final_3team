@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import logging
 import os
 import re
@@ -45,6 +47,7 @@ from app.services.conversation.report_actions import (
 )
 from app.services.conversation.slot_resolver import ConversationSlotResolver, ResolvedTurnSlots
 from app.services.analysis.pipeline_support import PipelineSupport
+from app.services.execution_control import ConcurrentExecutionGate, ModelCallBudget
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -453,6 +456,40 @@ class ConversationOrchestrator:
         self._report_repository_factory = report_repository_factory
         self._analysis_repository_factory = analysis_repository_factory
 
+    async def _renew_command_lease(
+        self,
+        conversation_id: UUID,
+        command_id: UUID,
+        stop: asyncio.Event,
+        lost: asyncio.Event,
+    ) -> None:
+        """실행 중인 command의 lease를 갱신하고 소유권 상실을 취소 신호로 바꾼다."""
+        renew = getattr(self._repo, "renew_lease", None)
+        if not callable(renew):
+            return
+        try:
+            interval = int(os.getenv("CONVERSATION_LEASE_HEARTBEAT_SECONDS", "20"))
+        except ValueError:
+            interval = 20
+        interval = max(1, min(interval, 30))
+        while not stop.is_set():
+            try:
+                if not await renew(conversation_id, command_id):
+                    lost.set()
+                    logger.error(
+                        "Conversation lease heartbeat lost command ownership"
+                    )
+                    return
+                await asyncio.wait_for(stop.wait(), timeout=interval)
+            except TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                lost.set()
+                logger.exception("Conversation lease heartbeat failed")
+                return
+
     def _get_analysis_repository(self, context: RequestContext) -> Any:
         """요청 사용자의 권한과 격리 범위가 적용된 AnalysisRepository 인스턴스를 반환합니다."""
         if self._analysis_repository_factory is not None:
@@ -607,9 +644,14 @@ class ConversationOrchestrator:
             ),
             None,
         )
+        error_code = error.get("code", ErrorCode.CONTEXT_SOURCE_FAILED.value)
         return {
-            "status": "FAILED",
-            "code": error.get("code", ErrorCode.CONTEXT_SOURCE_FAILED.value),
+            "status": (
+                "BUSY"
+                if error_code == ErrorCode.RATE_LIMITED.value
+                else "FAILED"
+            ),
+            "code": error_code,
             "message": error.get(
                 "message",
                 "질문 해석에 필요한 데이터 카탈로그를 검증하지 못했습니다.",
@@ -625,6 +667,11 @@ class ConversationOrchestrator:
         conversation_id: UUID,
         payload: dict[str, Any],
         context: RequestContext,
+        *,
+        progress_sink: Callable[[object, object], None] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+        analysis_gate: ConcurrentExecutionGate | None = None,
+        analysis_queue_wait_seconds: float = 0.0,
     ) -> dict[str, Any]:
         """사용자의 멀티턴 명령을 멱등성 및 거버넌스 규칙에 따라 안전하게 실행합니다.
 
@@ -732,6 +779,63 @@ class ConversationOrchestrator:
         previous_turns: list[dict[str, Any]] = []
         analysis_repo: Any = None
         analysis_started = False
+        model_budget = ModelCallBudget()
+        lease_stop = asyncio.Event()
+        lease_lost = asyncio.Event()
+        renew_lease = getattr(self._repo, "renew_lease", None)
+        lease_task = (
+            asyncio.create_task(
+                self._renew_command_lease(
+                    conversation_id,
+                    command_id,
+                    lease_stop,
+                    lease_lost,
+                ),
+                name=f"conversation-lease-{command_id}",
+            )
+            if callable(renew_lease)
+            else None
+        )
+        pipeline_cancel_check = cancel_check
+        if lease_task is not None:
+            pipeline_cancel_check = lambda: lease_lost.is_set() or bool(
+                cancel_check and cancel_check()
+            )
+
+        async def _commit_command_failure(error_data: dict[str, Any]) -> None:
+            failure_committed = False
+            if analysis_started and analysis_repo is not None:
+                async def _write_analysis_failure(session: Any) -> None:
+                    await analysis_repo.fail_run_in_session(
+                        session,
+                        context.request_id,
+                        str(error_data["code"]),
+                    )
+
+                try:
+                    await self._repo.commit_failed_turn(
+                        conversation_id,
+                        command_id,
+                        uuid4(),
+                        len(previous_turns),
+                        user_message,
+                        error_data,
+                        request_id=context.request_id,
+                        terminal_writer=_write_analysis_failure,
+                    )
+                    failure_committed = True
+                except Exception as terminal_error:
+                    logger.error(
+                        "atomic conversation failure commit failed: type=%s",
+                        type(terminal_error).__name__,
+                    )
+            if not failure_committed:
+                await self._repo.release_lease_on_failure(
+                    conversation_id,
+                    command_id,
+                    error_data,
+                )
+
         try:
             # 4. 이전 불변 턴 목록 조회
             previous_turns = await self._repo.list_turns(conversation_id)
@@ -962,10 +1066,16 @@ class ConversationOrchestrator:
                     # 직전 Metric 결합은 짧은 후속 발화의 자산 recall을 높이는 검색 전용 힌트다.
                     # 의도·생략 여부·새 주제 판정은 사용자가 실제로 쓴 원문을 기준으로 해야
                     # 하므로 모델 입력까지 보강 문자열로 바꾸지 않는다.
+                    select_options: dict[str, Any] = {}
+                    if "budget" in inspect.signature(
+                        self._support.select_metric
+                    ).parameters:
+                        select_options["budget"] = model_budget
                     _, _nq, structured = await self._support.select_metric(
                         AnalysisRequest(question=user_message, resolved_slots=preflight_slots),
                         context,
                         candidate_set,
+                        **select_options,
                     )
                     node1_res = structured
             except NoEntitledAssetsError:
@@ -1151,18 +1261,35 @@ class ConversationOrchestrator:
             # 7. 3대 라우트 분기 실행
             if slots.route == "ANALYSIS" and preflight_clarification is None:
                 # 라우트 1: ANALYSIS (실제 데이터 쿼리 파이프라인 실행)
-                analysis_req = build_structured_analysis_request(user_message, slots)
-                analysis_repo = self._get_analysis_repository(context)
-                if analysis_repo is not None:
+                analysis_gate_acquired = False
+                lifecycle_bound = False
+                bind_query_lifecycle = None
+
+                if analysis_gate is not None:
+                    analysis_gate_acquired = await analysis_gate.acquire(
+                        analysis_queue_wait_seconds
+                    )
+                    if not analysis_gate_acquired:
+                        rate_limited = {
+                            "type": "RateLimited",
+                            "status": "BUSY",
+                            "code": ErrorCode.RATE_LIMITED.value,
+                            "message": "동시 분석은 최대 2건까지 실행할 수 있습니다.",
+                            "retryable": True,
+                            "required_action": "RETRY",
+                        }
+                        await _commit_command_failure(rate_limited)
+                        return rate_limited
+
+                async def _admit_analysis_run() -> None:
+                    nonlocal analysis_started, lifecycle_bound
+                    if analysis_repo is None or analysis_started:
+                        return
                     await analysis_repo.begin_request(user_message, {}, context)
                     analysis_started = True
-                bind_query_lifecycle = getattr(
-                    self._data_platform,
-                    "bind_query_lifecycle",
-                    None,
-                )
-                lifecycle_bound = False
-                if analysis_repo is not None and callable(bind_query_lifecycle):
+                    if not callable(bind_query_lifecycle):
+                        return
+
                     async def _record_query_lifecycle(event: dict[str, Any]) -> None:
                         await analysis_repo.record_query_lifecycle(
                             context.request_id,
@@ -1171,27 +1298,50 @@ class ConversationOrchestrator:
 
                     bind_query_lifecycle(_record_query_lifecycle)
                     lifecycle_bound = True
+
                 try:
-                    import inspect
-                    if callable(self._submit_analysis):
-                        sig = inspect.signature(self._submit_analysis)
-                        if "execution_sink" in sig.parameters or len(sig.parameters) >= 3:
-                            analysis_resp = await self._submit_analysis(
-                                analysis_req,
-                                context,
-                                execution.update,
+                    analysis_req = build_structured_analysis_request(
+                        user_message,
+                        slots,
+                    )
+                    analysis_repo = self._get_analysis_repository(context)
+                    bind_query_lifecycle = getattr(
+                        self._data_platform,
+                        "bind_query_lifecycle",
+                        None,
+                    )
+                    submit_parameters = inspect.signature(
+                        self._submit_analysis
+                    ).parameters
+                    submit_options: dict[str, Any] = {}
+                    if "execution_sink" in submit_parameters:
+                        submit_options["execution_sink"] = execution.update
+                    if "progress_sink" in submit_parameters:
+                        submit_options["progress_sink"] = progress_sink
+                    if "cancel_check" in submit_parameters:
+                        submit_options["cancel_check"] = pipeline_cancel_check
+                    if "model_budget" in submit_parameters:
+                        submit_options["model_budget"] = model_budget
+                    if analysis_repo is not None:
+                        if "run_admission_sink" not in submit_parameters:
+                            raise RuntimeError(
+                                "analysis submitter must support deferred Run admission"
                             )
-                        else:
-                            analysis_resp = await self._submit_analysis(analysis_req, context)
-                    else:
-                        analysis_resp = await self._submit_analysis(analysis_req, context)
+                        submit_options["run_admission_sink"] = _admit_analysis_run
+                    analysis_resp = await self._submit_analysis(
+                        analysis_req,
+                        context,
+                        **submit_options,
+                    )
                 finally:
-                    if lifecycle_bound:
+                    if lifecycle_bound and callable(bind_query_lifecycle):
                         bind_query_lifecycle(None)
+                    if analysis_gate_acquired:
+                        analysis_gate.release()
 
                 artifact_id = extract_artifact_id(analysis_resp)
-                request_id = context.request_id
-                if analysis_repo is not None and analysis_resp is not None:
+                request_id = context.request_id if analysis_started else None
+                if analysis_started and analysis_repo is not None and analysis_resp is not None:
                     async def _write_analysis_terminal(session: Any) -> None:
                         await analysis_repo.finish_run_in_session(
                             session,
@@ -1434,6 +1584,16 @@ class ConversationOrchestrator:
                 "analysis_response": analysis_resp.model_dump(mode="json") if analysis_resp and hasattr(analysis_resp, "model_dump") else None,
             }
 
+        except asyncio.CancelledError:
+            await _commit_command_failure(
+                {
+                    "type": "TimeoutError",
+                    "code": ErrorCode.QUERY_TIMEOUT.value,
+                    "message": "분석 명령의 전체 실행 시간이 초과되었습니다.",
+                    "retryable": True,
+                }
+            )
+            raise
         except Exception as error:
             error_data = {
                 "type": type(error).__name__,
@@ -1441,36 +1601,13 @@ class ConversationOrchestrator:
                 "message": "대화 명령 실행을 안전하게 종료했습니다.",
                 "retryable": True,
             }
-            failure_committed = False
-            if analysis_started and analysis_repo is not None:
-                async def _write_analysis_failure(session: Any) -> None:
-                    await analysis_repo.fail_run_in_session(
-                        session,
-                        context.request_id,
-                        "UNSUPPORTED",
-                    )
-
-                try:
-                    await self._repo.commit_failed_turn(
-                        conversation_id,
-                        command_id,
-                        uuid4(),
-                        len(previous_turns),
-                        user_message,
-                        error_data,
-                        request_id=context.request_id,
-                        terminal_writer=_write_analysis_failure,
-                    )
-                    failure_committed = True
-                except Exception as terminal_error:
-                    logger.error(
-                        "atomic conversation failure commit failed: type=%s",
-                        type(terminal_error).__name__,
-                    )
-            if not failure_committed:
-                await self._repo.release_lease_on_failure(
-                    conversation_id,
-                    command_id,
-                    error_data,
-                )
+            await _commit_command_failure(error_data)
             raise
+        finally:
+            lease_stop.set()
+            if lease_task is not None:
+                lease_task.cancel()
+                try:
+                    await lease_task
+                except asyncio.CancelledError:
+                    pass

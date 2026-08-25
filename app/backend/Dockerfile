@@ -23,6 +23,20 @@ COPY --chown=appuser:appuser app/backend/ app/backend/
 COPY --chown=appuser:appuser infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql infrastructure/database/sql/ddl/00_answervice_app_postgresql.sql
 COPY --chown=appuser:appuser src/ ./src/
 COPY --chown=appuser:appuser docs/ ./docs/
+COPY --chown=appuser:appuser evals/__init__.py evals/metric_retrieval.py evals/metric_retrieval_runner.py evals/
+COPY --chown=appuser:appuser evals/metric_retrieval_gold/answervice_ko_retrieval.v1.json evals/metric_retrieval_gold/
+
+ARG ANSWERVICE_SOURCE_REVISION
+ARG ANSWERVICE_SOURCE_DIRTY
+ARG ANSWERVICE_SOURCE_FINGERPRINT
+
+RUN printf '%s\n' "$ANSWERVICE_SOURCE_REVISION" | grep -Eq '^[0-9a-f]{40}$' \
+    && printf '%s\n' "$ANSWERVICE_SOURCE_DIRTY" | grep -Eq '^(true|false)$' \
+    && printf '%s\n' "$ANSWERVICE_SOURCE_FINGERPRINT" | grep -Eq '^[0-9a-f]{64}$'
+
+LABEL org.opencontainers.image.revision="${ANSWERVICE_SOURCE_REVISION}" \
+    io.answervice.source.dirty="${ANSWERVICE_SOURCE_DIRTY}" \
+    io.answervice.source.fingerprint="${ANSWERVICE_SOURCE_FINGERPRINT}"
 
 WORKDIR /workspace/app/backend
 USER appuser

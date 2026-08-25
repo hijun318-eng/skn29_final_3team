@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from metadata_contract_primitives import SemanticMetadataError, exact_keys, text
+from native_semantic_shadow import native_semantic_shadow_projection
 from src.data.governance_contract import canonical_sha256, catalog_hash
 
 
@@ -21,6 +22,7 @@ _CHECK_KEYS = {
     "physical_scope_sha256",
     "previous_catalog_sha256",
     "catalog_sha256",
+    "native_semantic_projection_sha256",
 }
 
 
@@ -42,6 +44,9 @@ def publication_check(
             previous_catalog_sha256, "previous catalog checksum"
         ),
         "catalog_sha256": catalog_hash(bundle),
+        "native_semantic_projection_sha256": native_semantic_shadow_projection(
+            bundle
+        )["projection_sha256"],
     }
     exact_keys(check, _CHECK_KEYS, "semantic publication check")
     return check

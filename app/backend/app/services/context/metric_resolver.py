@@ -699,6 +699,7 @@ class MetricResolver:
         assets: list[dict[str, object]],
         *,
         candidate_set: AssetCandidateSet | None = None,
+        budget: Any = None,
     ) -> tuple[list[dict[str, object]], str, dict[str, object]]:
         """사용자 요청으로부터 지표, 차원, 기간, 의도를 확정하고 구조화된 요청 객체를 생성합니다."""
         calendar_ids = {
@@ -1084,7 +1085,16 @@ class MetricResolver:
         prior_shape = previous_result_shape(payload.resolved_slots)
         if prior_shape is not None:
             node1_input["previous_result_shape"] = prior_shape
-        normalized = await normalizer(node1_input)
+
+        async def normalize() -> dict[str, Any]:
+            if budget is not None:
+                consume_budget = getattr(budget, "consume", None)
+                if not callable(consume_budget):
+                    raise TypeError("model call budget is invalid")
+                consume_budget()
+            return await normalizer(node1_input)
+
+        normalized = await normalize()
         if not isinstance(normalized, dict):
             raise ValueError("Node1 응답은 객체여야 합니다.")
 
@@ -1133,7 +1143,7 @@ class MetricResolver:
                 if not raw_values.issubset({value.casefold() for value in values}):
                     should_reinterpret = True
         if should_reinterpret:
-            normalized = await normalizer(node1_input)
+            normalized = await normalize()
             if not isinstance(normalized, dict):
                 raise ValueError("Node1 재해석 응답은 객체여야 합니다.")
         interpretation_rechecked = False
@@ -1149,7 +1159,7 @@ class MetricResolver:
                 "target": "period_candidates",
                 "attempt": 1,
             }
-            normalized = await normalizer(node1_input)
+            normalized = await normalize()
             if not isinstance(normalized, dict):
                 raise ValueError("Node1 기간 재검토 응답은 객체여야 합니다.")
             interpretation_rechecked = True
@@ -1161,7 +1171,7 @@ class MetricResolver:
                 "target": "analysis_operation",
                 "attempt": 1,
             }
-            normalized = await normalizer(node1_input)
+            normalized = await normalize()
             if not isinstance(normalized, dict):
                 raise ValueError("Node1 결과 형태 재검토 응답은 객체여야 합니다.")
         normalized = _reconcile_analysis_bucket_signal(normalized)

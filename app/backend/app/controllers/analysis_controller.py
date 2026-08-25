@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 from app.context import ContextValidationError
 from app.contracts import AnalysisRequest, AnalysisResponse, ErrorCode, RequestContext
 from app.services.analysis import AnalysisService
+from app.services.execution_control import ModelCallBudget
 from app.services.routing_service import RoutingError, RoutingService
 
 
@@ -33,11 +34,13 @@ class AnalysisController:
         execution_sink: Callable[[dict[str, Any]], None] | None = None,
         progress_sink: Callable[[object, object], None] | None = None,
         cancel_check: Callable[[], bool] | None = None,
+        run_admission_sink: Callable[[], Awaitable[None]] | None = None,
+        model_budget: ModelCallBudget | None = None,
     ) -> AnalysisResponse:
         """권한별 route 결정을 먼저 확정한 뒤 동일 결정을 분석 pipeline에 전달한다.
 
         라우팅의 접근 거부와 입력 모호성은 각각 403·422 Context 오류로 변환하며,
-        실행 근거·진행 상태·취소 callback은 변경하지 않고 service 경계까지 전달한다.
+        실행 근거·진행 상태·취소·Run admission callback은 변경하지 않고 service 경계까지 전달한다.
         """
         try:
             decision = await self._routing.decide(payload, context.role)
@@ -48,7 +51,14 @@ class AnalysisController:
                 403 if exc.code == ErrorCode.ACCESS_DENIED else 422,
             ) from exc
         return await self._service.analyze(
-            payload, context, decision, execution_sink, progress_sink, cancel_check
+            payload,
+            context,
+            decision,
+            execution_sink=execution_sink,
+            progress_sink=progress_sink,
+            cancel_check=cancel_check,
+            run_admission_sink=run_admission_sink,
+            model_budget=model_budget,
         )
 
     async def aclose(self) -> None:

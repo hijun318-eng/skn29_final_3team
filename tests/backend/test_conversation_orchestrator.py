@@ -6,6 +6,7 @@ CAS(expected_head_turn_id) 검사, 동시성 Lease, Idempotency 보장,
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 import sys
 import unittest
@@ -609,6 +610,7 @@ class FakePipelineSupport:
     def __init__(self, structured: dict[str, Any] | None = None) -> None:
         self.structured: dict[str, Any] = dict(structured or {"selected_metric_id": "room_revenue"})
         self.questions: list[str] = []
+        self.budgets: list[Any] = []
         # 발화별로 Node1이 낼 신호(route, presentation_type 등)를 프로그래밍한다. 운영에서
         # route는 Node1 응답 계약으로만 전달되므로, 테스트도 문장이 아니라 이 신호로 라우팅한다.
         self.signals_by_message: dict[str, dict[str, Any]] = {}
@@ -626,8 +628,11 @@ class FakePipelineSupport:
         req: AnalysisRequest,
         context: RequestContext,
         candidates: AssetCandidateSet,
+        *,
+        budget=None,
     ):
         self.questions.append(req.question)
+        self.budgets.append(budget)
         if req.question in self.errors_by_message:
             raise self.errors_by_message[req.question]
         structured = dict(self.structured)
@@ -661,9 +666,23 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             timezone="Asia/Seoul",
         )
 
-        async def mock_submit_analysis(req: AnalysisRequest, ctx: RequestContext):
+        self.submitted_controls: list[tuple[Any, Any, Any]] = []
+        self.submitted_budgets: list[Any] = []
+
+        async def mock_submit_analysis(
+            req: AnalysisRequest,
+            ctx: RequestContext,
+            execution_sink=None,
+            progress_sink=None,
+            cancel_check=None,
+            model_budget=None,
+        ):
             self.submitted_requests.append(req)
             self.submitted_contexts.append(ctx)
+            self.submitted_controls.append(
+                (execution_sink, progress_sink, cancel_check)
+            )
+            self.submitted_budgets.append(model_budget)
             artifact_id = uuid4()
             self.repo.existing_artifacts.add(artifact_id)
             self.report_repo.register_artifact(
@@ -714,6 +733,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         conversation_id: UUID,
         payload: dict[str, Any],
         context: RequestContext,
+        analysis_gate: Any = None,
     ) -> dict[str, Any]:
         """기존 시나리오를 새 mandatory admission 필드로 명시적으로 감싼다."""
 
@@ -724,6 +744,7 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
             conversation_id=conversation_id,
             payload=command,
             context=context,
+            analysis_gate=analysis_gate,
         )
 
     async def test_analysis_route_passes_untampered_question_and_slots(self) -> None:
@@ -744,6 +765,174 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["turn"]["user_message"], "2025년 8월 1일 ~ 8월 15일 객실 매출 보여줘")
         self.assertEqual(len(self.submitted_requests), 1)
         self.assertEqual(self.submitted_requests[0].question, "2025년 8월 1일 ~ 8월 15일 객실 매출 보여줘")
+
+    async def test_analysis_gate_rejection_is_retryable_and_idempotent(self) -> None:
+        class RejectingGate:
+            def __init__(self) -> None:
+                self.acquire_count = 0
+
+            async def acquire(self, _wait_seconds: float) -> bool:
+                self.acquire_count += 1
+                return False
+
+            def release(self) -> None:
+                raise AssertionError("획득하지 못한 gate를 반환하면 안 됩니다.")
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "gate admission",
+        )
+        gate = RejectingGate()
+        payload = {
+            "user_message": "2025년 8월 객실 매출 보여줘",
+            "idempotency_key": "rate-limited-command",
+        }
+
+        first = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload=payload,
+            context=self.context,
+            analysis_gate=gate,
+        )
+        replay = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload=payload,
+            context=self.context,
+            analysis_gate=gate,
+        )
+
+        self.assertEqual("BUSY", first["status"])
+        self.assertEqual(ErrorCode.RATE_LIMITED.value, first["code"])
+        self.assertTrue(first["retryable"])
+        self.assertEqual("BUSY", replay["status"])
+        self.assertTrue(replay["is_idempotent_replay"])
+        self.assertEqual(1, gate.acquire_count)
+        self.assertEqual([], self.submitted_requests)
+        self.assertEqual([], await self.repo.list_turns(conversation["conversation_id"]))
+
+    async def test_analysis_gate_does_not_block_resolved_presentation(self) -> None:
+        class RejectingGate:
+            def __init__(self) -> None:
+                self.acquire_count = 0
+
+            async def acquire(self, _wait_seconds: float) -> bool:
+                self.acquire_count += 1
+                return False
+
+            def release(self) -> None:
+                raise AssertionError("PRESENTATION은 analysis gate를 사용하면 안 됩니다.")
+
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "presentation gate bypass",
+        )
+        analysis = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={"user_message": "2025년 8월 객실 매출 보여줘"},
+            context=self.context,
+        )
+        gate = RejectingGate()
+
+        presentation = await self.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": "표로 보여줘",
+                "expected_head_turn_id": str(analysis["turn"]["turn_id"]),
+            },
+            context=self.context,
+            analysis_gate=gate,
+        )
+
+        self.assertEqual("SUCCESS", presentation["status"])
+        self.assertEqual("PRESENTATION", presentation["turn"]["route"])
+        self.assertEqual(0, gate.acquire_count)
+
+    async def test_analysis_route_forwards_progress_and_cancel_controls(self) -> None:
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "분석 실행 제어",
+        )
+        progress_sink = lambda _stage, _outcome: None
+        cancel_check = lambda: False
+
+        result = await self.orchestrator.execute_command(
+            conversation_id=conversation["conversation_id"],
+            payload={
+                "user_message": "2025년 8월 객실 매출 보여줘",
+                "idempotency_key": "execution-controls",
+                "expected_head_turn_id": None,
+            },
+            context=self.context,
+            progress_sink=progress_sink,
+            cancel_check=cancel_check,
+        )
+
+        self.assertEqual("SUCCESS", result["status"])
+        execution_sink, forwarded_progress, forwarded_cancel = self.submitted_controls[-1]
+        self.assertTrue(callable(execution_sink))
+        self.assertIs(progress_sink, forwarded_progress)
+        self.assertIs(cancel_check, forwarded_cancel)
+        self.assertIs(self.support.budgets[-1], self.submitted_budgets[-1])
+
+    async def test_cancelled_command_releases_lease_with_timeout_reason(self) -> None:
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "전체 deadline",
+        )
+        submitted = asyncio.Event()
+
+        async def slow_submit(_request, _context):
+            submitted.set()
+            await asyncio.Event().wait()
+
+        self.orchestrator._submit_analysis = slow_submit
+        task = asyncio.create_task(
+            self.execute_command(
+                conversation_id=conversation["conversation_id"],
+                payload={"user_message": "2025년 8월 객실 매출 보여줘"},
+                context=self.context,
+            )
+        )
+        await asyncio.wait_for(submitted.wait(), timeout=1)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+
+        command = next(iter(self.repo.commands.values()))
+        self.assertEqual("FAILED", command["status"])
+        self.assertEqual(
+            ErrorCode.QUERY_TIMEOUT.value,
+            command["error_response"]["code"],
+        )
+        self.assertIsNone(conversation["active_command_id"])
+        self.assertIsNone(conversation["lease_expires_at"])
+
+    async def test_lease_heartbeat_renews_current_command(self) -> None:
+        renewed: list[tuple[UUID, UUID]] = []
+
+        async def renew_lease(conversation_id, command_id):
+            renewed.append((conversation_id, command_id))
+            return True
+
+        self.repo.renew_lease = renew_lease
+        conversation_id = uuid4()
+        command_id = uuid4()
+        stop = asyncio.Event()
+        lost = asyncio.Event()
+        task = asyncio.create_task(
+            self.orchestrator._renew_command_lease(
+                conversation_id,
+                command_id,
+                stop,
+                lost,
+            )
+        )
+        await asyncio.sleep(0)
+        stop.set()
+        await asyncio.wait_for(task, timeout=1)
+
+        self.assertEqual([(conversation_id, command_id)], renewed)
+        self.assertFalse(lost.is_set())
 
     async def test_explicit_write_sql_is_blocked_before_model_and_query_pipeline(self) -> None:
         conversation = await self.repo.create_conversation(
@@ -800,8 +989,14 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
 
         analysis_repository = AnalysisRepositoryStub()
 
-        async def submit_with_lifecycle(req, _context, execution_sink):
+        async def submit_with_lifecycle(
+            req,
+            _context,
+            execution_sink,
+            run_admission_sink,
+        ):
             self.submitted_requests.append(req)
+            await run_admission_sink()
             sink = self.data_platform.query_lifecycle_sink
             self.assertIsNotNone(sink)
             await sink(
@@ -864,6 +1059,81 @@ class ConversationOrchestratorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(analysis_repository.finished, 1)
         self.assertEqual(self.data_platform.lifecycle_bindings[-2:], [True, False])
         self.assertIsNone(self.data_platform.query_lifecycle_sink)
+
+    async def test_pipeline_clarification_does_not_create_analysis_run(self) -> None:
+        """Context 명확화 응답은 durable Run이나 query lifecycle을 만들지 않는다."""
+
+        class AnalysisRepositoryStub:
+            def __init__(self) -> None:
+                self.begun: list[UUID] = []
+
+            async def begin_request(self, _question, _parameters, context) -> None:
+                self.begun.append(context.request_id)
+
+            async def finish_run_in_session(self, *_args) -> None:
+                raise AssertionError("clarification must not finish a Run")
+
+            async def fail_run_in_session(self, *_args) -> None:
+                raise AssertionError("clarification must not fail a Run")
+
+        analysis_repository = AnalysisRepositoryStub()
+
+        async def submit_clarification(
+            _request,
+            _context,
+            run_admission_sink,
+        ):
+            self.assertTrue(callable(run_admission_sink))
+
+            class FakeClarificationResp:
+                data = AnalysisData(
+                    status=AnalysisStatus.CLARIFICATION_REQUIRED,
+                    transitions=(
+                        AnalysisStatus.RECEIVED,
+                        AnalysisStatus.ROUTED,
+                        AnalysisStatus.CLARIFICATION_REQUIRED,
+                    ),
+                )
+                error = ErrorBody(
+                    code=ErrorCode.CONTEXT_INCOMPLETE,
+                    message="분석할 지표를 선택해 주세요.",
+                    clarification_type=ClarificationType.METRIC,
+                )
+
+                def model_dump(self, **_kwargs):
+                    return {
+                        "data": {"status": "CLARIFICATION_REQUIRED"},
+                        "error": {"code": ErrorCode.CONTEXT_INCOMPLETE.value},
+                    }
+
+            return FakeClarificationResp()
+
+        orchestrator = ConversationOrchestrator(
+            repository=self.repo,
+            data_platform=self.data_platform,
+            support=self.support,
+            submit_analysis=submit_clarification,
+            analysis_repository_factory=analysis_repository,
+        )
+        conversation = await self.repo.create_conversation(
+            self.user_id,
+            "Run 없는 명확화",
+        )
+
+        result = await orchestrator.execute_command(
+            conversation["conversation_id"],
+            {
+                "user_message": "2025년 8월 객실 매출 보여줘",
+                "idempotency_key": "clarification-without-run",
+                "expected_head_turn_id": None,
+            },
+            self.context,
+        )
+
+        self.assertEqual("CLARIFICATION_REQUIRED", result["status"])
+        self.assertEqual([], analysis_repository.begun)
+        self.assertIsNone(result["turn"]["request_id"])
+        self.assertEqual([], self.data_platform.lifecycle_bindings)
 
     async def test_existing_conversation_uses_immutable_wall_clock_anchor(self) -> None:
         """새 요청의 clock이 달라도 기존 Conversation의 서버 anchor만 하류에 전달한다."""

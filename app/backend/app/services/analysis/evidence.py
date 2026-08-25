@@ -37,6 +37,14 @@ def _evidence_filters(
         for metric in contracts.get("metric_rules", ())
         for item in metric.get("required_filters", ())
     }
+    approved.update(
+        {
+            item["parameter"]: (
+                f"{item['field']['asset_fqn']}.{item['field']['column']}"
+            )
+            for item in (contracts.get("filter_rules", ()) or ())
+        }
+    )
     displayed = {}
     for name, value in filters.items():
         field = approved.get(str(name), str(name))

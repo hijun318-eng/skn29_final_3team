@@ -21,15 +21,22 @@ ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(HERE))
 
-from publish_semantic_catalog import publish_bundle  # noqa: E402
-from release_builder import inspect_release  # noqa: E402
-from release_datahub import DataHubDiscoveryClient, DataHubDiscoveryError  # noqa: E402
-from release_scope import load_release_scopes_with_serving  # noqa: E402
-from release_trino import TrinoDiscoveryError, TrinoMetadataClient  # noqa: E402
+from http_client import DataHubMetadataAdminClient  # noqa: E402
+from native_semantic_publication import (  # noqa: E402
+    publish_native_semantic_shadow,
+    verify_native_semantic_shadow,
+)
+from native_semantic_shadow import native_semantic_shadow_projection  # noqa: E402
 from publication_check import (  # noqa: E402
     publication_check,
     verify_expected_release,
 )
+from publish_semantic_catalog import publish_bundle  # noqa: E402
+from release_builder import build_active_release_bundle  # noqa: E402
+from release_bundle import SemanticBundleError  # noqa: E402
+from release_datahub import DataHubDiscoveryClient, DataHubDiscoveryError  # noqa: E402
+from release_scope import load_release_scopes_with_serving  # noqa: E402
+from release_trino import TrinoDiscoveryError, TrinoMetadataClient  # noqa: E402
 from semantic_authoring import build_authoring_candidate  # noqa: E402
 from src.data.governance_contract import canonical_json, catalog_hash  # noqa: E402
 from src.data.datahub_connection import DataHubConnectionSettings  # noqa: E402
@@ -167,14 +174,12 @@ async def author_and_verify(
         ) as datahub,
     ):
         async def publisher(bundle):
-            """Publish only the bundle validated in the surrounding live session."""
+            """검증된 bundle의 legacy/native surface를 하나의 운영 경로로 발행한다."""
 
-            return await publish_bundle(
-                datahub_settings.base_url,
+            return await _publish_datahub_release(
                 bundle,
+                datahub_settings,
                 actor_urn=args.actor,
-                token=datahub_settings.token,
-                ca_file=datahub_settings.ca_file,
                 timeout=args.timeout,
             )
 
@@ -192,6 +197,56 @@ async def author_and_verify(
                 args.expected_previous_catalog_sha256
             ),
         )
+
+
+async def _publish_datahub_release(
+    bundle: dict[str, object],
+    settings: DataHubConnectionSettings,
+    *,
+    actor_urn: str,
+    timeout: float,
+) -> dict[str, object]:
+    """canonical bundle에서 legacy와 native semantic surface를 함께 발행·검증한다."""
+
+    projection = native_semantic_shadow_projection(bundle)
+    legacy = await publish_bundle(
+        settings.base_url,
+        bundle,
+        actor_urn=actor_urn,
+        token=settings.token,
+        ca_file=settings.ca_file,
+        timeout=timeout,
+    )
+    async with DataHubMetadataAdminClient(
+        settings.base_url,
+        token=settings.token,
+        ca_file=settings.ca_file,
+        timeout_seconds=timeout,
+    ) as client:
+        native_published = await publish_native_semantic_shadow(
+            client,
+            bundle,
+            actor_urn=actor_urn,
+            expected_projection_sha256=projection["projection_sha256"],
+        )
+        native_verified = await verify_native_semantic_shadow(
+            client,
+            bundle,
+            expected_projection_sha256=projection["projection_sha256"],
+        )
+    return {
+        **legacy,
+        "native_semantic_projection_sha256": projection["projection_sha256"],
+        "native_semantic_readback_sha256": native_verified[
+            "readback_projection_sha256"
+        ],
+        "native_semantic_published_entity_count": native_published[
+            "published_entity_count"
+        ],
+        "native_semantic_rest_aspect_equality": native_verified[
+            "rest_aspect_equality"
+        ],
+    }
 
 
 async def apply_authoring_release(
@@ -260,10 +315,15 @@ async def _verify_convergence(
     last_error = None
     while True:
         try:
-            result = await inspect_release(scopes, trino, datahub)
-            if result.bundle is not None and catalog_hash(result.bundle) == expected:
+            active = await build_active_release_bundle(scopes, trino, datahub)
+            if catalog_hash(active) == expected:
                 return
-        except (DataHubDiscoveryError, TrinoDiscoveryError, OSError) as error:
+        except (
+            DataHubDiscoveryError,
+            SemanticBundleError,
+            TrinoDiscoveryError,
+            OSError,
+        ) as error:
             last_error = error
         remaining = deadline - monotonic()
         if remaining <= 0:

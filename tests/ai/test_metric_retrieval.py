@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from argparse import Namespace
 
 import pytest
 
@@ -22,7 +23,7 @@ from evals.metric_retrieval import (
     load_metric_retrieval_gold,
     normalize_retrieval_query,
 )
-from evals.metric_retrieval_runner import _percentile
+from evals.metric_retrieval_runner import _percentile, _phase2a_quality_checks
 
 
 def _probe(
@@ -168,6 +169,68 @@ def test_candidate_latency_percentile_uses_bounded_linear_interpolation() -> Non
     assert _percentile([1.0, 2.0, 3.0, 4.0], 0.95) == 3.85
     with pytest.raises(MetricRetrievalError, match="percentile input"):
         _percentile([], 0.50)
+
+
+def test_phase2a_gate_rejects_wrong_datahub_candidate_quality() -> None:
+    """정상 응답·낮은 지연만으로 오답인 운영 후보 경로가 통과하지 못한다."""
+
+    measurement = {
+        "catalog_exact_self_consistency": {
+            "scorable": True,
+            "top1_accuracy": 1.0,
+            "retrieval_error_count": 0,
+        },
+        "definition_overlap_retrieval": {
+            "scorable": True,
+            "top1_accuracy": 1.0,
+            "recall_at_k": 1.0,
+            "retrieval_error_count": 0,
+        },
+        "negative_closure": {
+            "closure_rate": 1.0,
+            "contamination_rate": 0.0,
+            "infrastructure_error_count": 0,
+        },
+        "natural_language_paraphrase": {
+            "scorable": True,
+            "top1_accuracy": 1.0,
+            "recall_at_k": 1.0,
+            "mean_reciprocal_rank": 1.0,
+            "retrieval_error_count": 0,
+            "negative_closure": {
+                "scorable": True,
+                "closure_rate": 1.0,
+                "infrastructure_error_count": 0,
+            },
+        },
+    }
+    degraded_candidate = json.loads(json.dumps(measurement))
+    degraded_candidate["natural_language_paraphrase"]["top1_accuracy"] = 0.0
+    checks = _phase2a_quality_checks(
+        {
+            "lexical": measurement,
+            "datahub_lexical": degraded_candidate,
+        },
+        Namespace(
+            min_catalog_exact_top1=1.0,
+            min_definition_top1=1.0,
+            min_definition_recall_at_k=1.0,
+            min_negative_closure=1.0,
+            max_negative_contamination=0.0,
+        ),
+        {
+            "min_baseline_heldout_top1": 0.8,
+            "min_baseline_heldout_recall_at_k": 0.9,
+            "min_baseline_heldout_mrr": 0.85,
+        },
+    )
+
+    assert checks == {
+        "catalog_baseline_contract": True,
+        "baseline_heldout_quality": True,
+        "candidate_catalog_contract": True,
+        "candidate_heldout_quality": False,
+    }
 
 
 def test_sealed_korean_gold_loads_and_scores_only_heldout_split() -> None:

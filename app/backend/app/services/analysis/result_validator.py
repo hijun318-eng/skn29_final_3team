@@ -7,7 +7,7 @@ Trino 등 실행 엔진에서 반환된 쿼리 결과(행, 컬럼, 셀)에 대�
 3. 마스킹되지 않은 민감 식별자(Unmasked Identifier) 노출 차단
 4. 의심스러운 빈 집계 결과 정규화(`normalize_empty_aggregate`)
 5. 결정론적 아티팩트 ID(`uuid5`) 및 실행 Capability 토큰 발급
-을 수행하여 안전성과 결과 신뢰성을 100% 보장합니다.
+을 수행하여 계약으로 확인 가능한 결과 범위를 검증합니다.
 """
 
 from __future__ import annotations
@@ -153,8 +153,8 @@ class PipelineResultValidator:
             or masking_applied != bool(masking_fields)
         ):
             return "MASKING_EVIDENCE_INVALID"
-        if query.get("zero_result_suspicious"):
-            return "SUSPICIOUS_EMPTY_RESULT"
+        if not rows or query.get("zero_result_suspicious"):
+            return "EMPTY_RESULT"
         if cls._ratio_value_violation(rows, package):
             return "EVIDENCE_MISMATCH"
         column_count = max((len(row) for row in rows), default=0)
@@ -223,6 +223,7 @@ class PipelineResultValidator:
             return query
         normalized = dict(query)
         normalized["rows"] = []
+        normalized["zero_result_suspicious"] = True
         metadata = query.get("result_metadata")
         columns = tuple(
             str(item["name"])
@@ -321,11 +322,13 @@ class PipelineResultValidator:
             }
         else:
             raise ValueError("지원되지 않는 런타임 시간 선택 mode입니다.")
-        filter_names = {
-            item["parameter"]
+        filter_rules = [
+            item
             for metric in contracts.get("metric_rules", ())
             for item in metric.get("required_filters", ())
-        }
+        ]
+        filter_rules.extend(contracts.get("filter_rules", ()) or ())
+        filter_names = {item["parameter"] for item in filter_rules}
         if not filter_names.issubset(bindings):
             raise ValueError("런타임 필터 파라미터 바인딩이 불완전합니다.")
         return {

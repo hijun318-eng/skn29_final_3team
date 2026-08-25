@@ -23,8 +23,8 @@ logger = logging.getLogger("uvicorn.error")
 class AnalysisEvidenceRepositoryMixin:
     """분석 run의 terminal 상태와 query·artifact·audit evidence를 원자적으로 기록한다.
 
-    response에 실행 근거와 결과 artifact가 있을 때만 query와 artifact 행을 만들고 audit에
-    그 식별자를 연결한다. 모든 SQL 쓰기는 한 transaction이며 DB 오류는
+    response에 실행 근거가 있으면 query 행을 만들고, 승인 결과가 있을 때만 artifact를
+    추가해 audit에 식별자를 연결한다. 모든 SQL 쓰기는 한 transaction이며 DB 오류는
     :class:`AnalysisRepositoryUnavailable`로 변환한다.
     """
     async def finish_run(
@@ -35,8 +35,8 @@ class AnalysisEvidenceRepositoryMixin:
     ) -> None:
         """검증된 ``response``와 선택적 ``execution`` 근거로 분석 run을 종결한다.
 
-        request 상태·오류 유형·전이 이력을 갱신하고, 결과가 있으면 query 및 승인 artifact를
-        저장한 뒤 같은 transaction에서 audit event를 연결한다. 어느 SQL 단계든 실패하면
+        request 상태·오류 유형·전이 이력을 갱신하고, 실행 근거가 있으면 query를, 승인 결과가
+        있으면 artifact를 저장한 뒤 같은 transaction에서 audit event를 연결한다. 어느 SQL 단계든 실패하면
         전체 쓰기를 rollback하고 :class:`AnalysisRepositoryUnavailable`을 발생시키며, 성공
         반환값은 ``None``이다.
         """
@@ -105,7 +105,12 @@ class AnalysisEvidenceRepositoryMixin:
                 },
             )
             previous = transition.value
-        if execution and response.data.artifact and response.data.result:
+        terminal_evidence = (
+            response.data.result.evidence
+            if response.data.result is not None
+            else response.data.evidence
+        )
+        if execution and terminal_evidence is not None:
             query_execution_id, artifact_id = await self._save_evidence(
                 session, request_id, response, execution
             )
@@ -378,7 +383,7 @@ class AnalysisEvidenceRepositoryMixin:
     @staticmethod
     async def _save_evidence(
         session: AsyncSession, request_id, response, execution
-    ) -> tuple[UUID, UUID]:
+    ) -> tuple[UUID, UUID | None]:
         plan = execution["plan"]
         query = execution["query"]
         package = execution["package"]
@@ -391,9 +396,23 @@ class AnalysisEvidenceRepositoryMixin:
         # 서로 다른 submission으로 오인한다.
         sql_hash = _hash(executable_sql)
         result = response.data.result
-        snapshot = result.table.model_dump(mode="json") if result.table else {}
-        chart = result.chart.model_dump(mode="json") if result.chart else {}
-        evidence = result.evidence.model_dump(mode="json")
+        artifact = response.data.artifact
+        if (result is None) != (artifact is None):
+            raise ValueError("Analysis 결과와 Artifact 참조는 함께 있어야 합니다.")
+        terminal_evidence = result.evidence if result is not None else response.data.evidence
+        if terminal_evidence is None:
+            raise ValueError("terminal query 실행 근거가 없습니다.")
+        snapshot = (
+            result.table.model_dump(mode="json")
+            if result is not None and result.table is not None
+            else {}
+        )
+        chart = (
+            result.chart.model_dump(mode="json")
+            if result is not None and result.chart is not None
+            else {}
+        )
+        evidence = terminal_evidence.model_dump(mode="json")
         receipt = (
             await session.execute(
                 text(
@@ -409,7 +428,7 @@ class AnalysisEvidenceRepositoryMixin:
             receipt["product_release_id"] is not None
             and evidence.get("product_release_id") != receipt["product_release_id"]
         ):
-            raise ValueError("Artifact product release가 admitted run과 일치하지 않습니다.")
+            raise ValueError("실행 근거의 product release가 admitted run과 일치하지 않습니다.")
         existing_queries = (
             await session.execute(
                 text(
@@ -435,7 +454,9 @@ class AnalysisEvidenceRepositoryMixin:
             "query_id": query_id,
             "row_count": len(query.get("rows", ())),
             "scan_bytes": int(query.get("scan_bytes", 0)),
-            "result_checksum": _hash(snapshot),
+            "result_checksum": _hash(
+                snapshot if result is not None else {"rows": query.get("rows", ())}
+            ),
             "sources": json.dumps([item.urn for item in package.assets]),
             "cutoff": json.dumps(evidence.get("period") or evidence.get("snapshot") or {}),
         }
@@ -444,7 +465,7 @@ class AnalysisEvidenceRepositoryMixin:
             if existing["trino_query_id"] != query_id or existing["sql_hash"] != sql_hash:
                 raise ValueError("terminal query evidence가 durable submission과 다릅니다.")
             if existing["execution_status"] not in {"RUNNING", "SUCCEEDED"}:
-                raise ValueError("실패 또는 취소된 query로 Artifact를 만들 수 없습니다.")
+                raise ValueError("실패 또는 취소된 query에 terminal evidence를 연결할 수 없습니다.")
             query_execution_id = UUID(str(existing["query_execution_id"]))
             await session.execute(
                 text(
@@ -487,7 +508,9 @@ class AnalysisEvidenceRepositoryMixin:
                 ),
                 {**query_values, "query_execution_id": query_execution_id},
             )
-        artifact = response.data.artifact
+        if result is None:
+            return query_execution_id, None
+
         await session.execute(
             text(
                 """
@@ -553,7 +576,7 @@ class AnalysisEvidenceRepositoryMixin:
         artifact_id: UUID | None,
     ) -> None:
         result = response.data.result
-        evidence = result.evidence if result else None
+        evidence = result.evidence if result else response.data.evidence
         details = {
             "status": response.data.status.value,
             "transitions": [item.value for item in response.data.transitions],
@@ -568,6 +591,8 @@ class AnalysisEvidenceRepositoryMixin:
             "model_version": evidence.model_version if evidence else None,
             "persistence_version": ANALYSIS_PERSISTENCE_VERSION,
         }
+        if response.data.evidence is not None:
+            details["run_evidence"] = response.data.evidence.model_dump(mode="json")
         action = f"ANALYSIS_{response.data.status.value}"
         object_type = "ANALYSIS_ARTIFACT" if artifact_id else "ANALYSIS_REQUEST"
         object_id = artifact_id or request_id

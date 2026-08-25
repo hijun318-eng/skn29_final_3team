@@ -15,15 +15,19 @@ The authoring transaction performs these gates in order:
 1. Discover the complete physical scope from environment-backed ingestion recipes.
 2. Read matching dataset identities and fields from DataHub and table metadata from
    Trino.
-3. Require the approved policy to cover that live scope exactly. Unknown or missing
-   assets and columns fail closed.
+3. Require every approved policy asset to exist in the live scope and retain every
+   asset in the active governed manifest. Newly ingested but ungoverned assets are
+   not inferred or added to the release; unknown assets, governed removals, and
+   missing columns fail closed.
 4. Take URNs, platform identity, table type, ordinals, native types, and nullability
    only from the live systems. The policy cannot supply or override those fields.
 5. Validate all governed metrics, terms, joins, time rules, entitlements, and schema
    links with the shared publication contract.
-6. Publish the in-memory canonical bundle to DataHub.
-7. Re-read DataHub and Trino until the exact catalog hash converges within the bounded
-   timeout. Partial or drifting publication returns a non-zero result.
+6. Publish the legacy and native semantic surfaces derived from the same in-memory
+   canonical bundle to DataHub.
+7. Re-read the active DataHub manifest, native semantic aspects, and live Trino until
+   their exact checksums converge within the bounded timeout. Partial or drifting
+   publication returns a non-zero result.
 
 New publications use `answervice.semantic_authoring.v3` for the all-public metric
 contract or `answervice.semantic_authoring.v4` for the visibility- and
@@ -202,7 +206,8 @@ before the first network request.
 
 First, pipe the reviewed policy to `--check`. This read-only operation discovers the
 live physical scope and emits the policy hash, physical-scope hash, current
-predecessor catalog hash, target catalog hash, actor, and subject.
+predecessor catalog hash, target catalog hash, native semantic projection hash,
+actor, and subject.
 
 When the approval system stores only business decisions rather than 578 copied
 physical fields, pipe the compact `answervice.policy_decisions.v1` or matching v2
@@ -249,17 +254,19 @@ future deployment needs two-person or regulated approval, that control belongs i
 separate change-management system rather than a development-only bypass in this CLI.
 
 `PUBLISHED_AND_VERIFIED` means the same content-derived catalog hash was rebuilt from
-live DataHub and Trino after publication. Unit tests using `MockTransport` prove only
-wire and validation contracts; they are not live publication evidence.
+the active DataHub manifest and Trino, and the native semantic projection passed
+exact Rest.li aspect read-back. Unit tests using `MockTransport` prove only wire and
+validation contracts; they are not live publication evidence.
 
-## DataHub v1.7 native Metric shadow Gate
+## Standalone DataHub v1.7 native Metric maintenance Gate
 
-The canonical Dataset/Glossary release remains the runtime authority. A separate
-out-of-place shadow projects only approved `BUSINESS` Metrics into DataHub's native
-`metric` entity and its `metricUpstreams` / `metricRelationships` edges. It does not
-copy the complete capability, permission, grain, fan-out, or query-policy JSON into
-another DataHub custom property. `SUPPORT` operands remain checksum-bound execution
-facts and are not searchable native Metric entities.
+The main authoring command publishes the complete legacy and native semantic
+surfaces. This narrower standalone command remains available for independently
+checking or repairing only approved `BUSINESS` Metrics in DataHub's native `metric`
+entity and its `metricUpstreams` / `metricRelationships` edges. It does not copy the
+complete capability, permission, grain, fan-out, or query-policy JSON into another
+DataHub custom property. `SUPPORT` operands remain checksum-bound execution facts
+and are not searchable native Metric entities.
 
 The workflow always rediscovers the current active manifest from the complete scoped
 catalog. Completely ungoverned, base-ingested candidates may coexist outside that

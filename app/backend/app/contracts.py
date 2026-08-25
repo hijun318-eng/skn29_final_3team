@@ -91,6 +91,15 @@ class MaskingEvidence(ContractModel):
     fields: tuple[str, ...] = ()
 
 
+class QueryExecutionEvidence(ContractModel):
+    """Trino가 보고한 누적 처리량과 공개 가능한 warning 건수를 실행 근거로 남긴다."""
+
+    processed_rows: int = Field(default=0, ge=0)
+    scan_bytes: int = Field(default=0, ge=0)
+    warning_count: int = Field(default=0, ge=0)
+    critical_warning_count: int = Field(default=0, ge=0)
+
+
 class ModelInvocationEvidence(ContractModel):
     """각 AI 노드가 사용한 모델과 프롬프트의 식별자·버전을 실행 증거로 고정한다."""
     node: str
@@ -148,6 +157,7 @@ class Evidence(ContractModel):
     gate_history: GateHistoryEvidence | None = None
     sampling: SamplingEvidence = Field(default_factory=SamplingEvidence)
     masking: MaskingEvidence = Field(default_factory=MaskingEvidence)
+    execution: QueryExecutionEvidence = Field(default_factory=QueryExecutionEvidence)
     cached: bool = False
 
     @model_validator(mode="after")
@@ -196,6 +206,7 @@ class AnalysisData(ContractModel):
     template_id: str | None = None
     gates: GateRequirements | None = None
     result: AnalysisResult | None = None
+    evidence: Evidence | None = None
     trace: tuple[TraceStep, ...] = ()
     repair_count: int = Field(default=0, ge=0, le=1)
     artifact: ArtifactReference | None = None

@@ -6,6 +6,7 @@
       "query_id": "fixture-query-success"
     },
     "disambiguation_options": [],
+    "evidence": null,
     "gates": {
       "g1_required": true,
       "g2_required": true
@@ -25,6 +26,12 @@
         "cached": false,
         "context_release": "context-v1",
         "evidence_cutoff": null,
+        "execution": {
+          "critical_warning_count": 0,
+          "processed_rows": 0,
+          "scan_bytes": 0,
+          "warning_count": 0
+        },
         "filters": {
           "scope_code": "example"
         },

@@ -175,7 +175,7 @@ export function AgentPage({ onNavigate }) {
           user_message: normalized,
           expected_head_turn_id: headTurnId && !headTurnId.startsWith("temp-") ? headTurnId : null,
           idempotency_key: commandIdempotencyKey,
-        });
+        }, traceId);
       } catch (cmdErr) {
         if (cmdErr instanceof AnalysisApiError && cmdErr.status === 409) {
           // stale head는 서버 이력으로 복원만 한다. 새 head에 같은 명령을 자동
@@ -192,7 +192,7 @@ export function AgentPage({ onNavigate }) {
             user_message: normalized,
             expected_head_turn_id: null,
             idempotency_key: commandIdempotencyKey,
-          });
+          }, traceId);
         } else {
           throw cmdErr;
         }

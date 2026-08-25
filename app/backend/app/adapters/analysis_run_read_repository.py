@@ -28,8 +28,15 @@ class AnalysisRunReadRepositoryMixin:
         status = {"DENIED": "BLOCKED"}.get(
             row["status"], row["status"]
         )
-        period = dict(row["artifact_period"] or {})
-        snapshot = dict(row.get("artifact_snapshot") or {})
+        query_cutoff = dict(row.get("query_cutoff") or {})
+        period = dict(
+            row["artifact_period"]
+            or (query_cutoff if query_cutoff.get("start") else {})
+        )
+        snapshot = dict(
+            row.get("artifact_snapshot")
+            or (query_cutoff if query_cutoff.get("cutoff") else {})
+        )
         parameters = dict(row["parameters"] or {})
         return {
             "contract_version": ANALYSIS_PERSISTENCE_VERSION,
@@ -68,7 +75,8 @@ class AnalysisRunReadRepositoryMixin:
                                l.as_of, l.timezone_name, l.parameters_json AS parameters,
                                d.question_text_redacted AS question, r.status, r.error_type,
                                r.trace_id, r.started_at, r.completed_at,
-                               q.trino_query_id AS query_id, a.artifact_id,
+                               q.trino_query_id AS query_id,
+                               q.source_cutoff_json AS query_cutoff, a.artifact_id,
                                a.evidence_json->'period' AS artifact_period,
                                a.evidence_json->'snapshot' AS artifact_snapshot
                         FROM analysis_v1.analysis_run_links l
@@ -77,7 +85,8 @@ class AnalysisRunReadRepositoryMixin:
                          AND d.version = l.definition_version
                         JOIN chat.analysis_requests r ON r.request_id = l.request_id
                         LEFT JOIN LATERAL (
-                            SELECT trino_query_id FROM query.query_executions
+                            SELECT trino_query_id, source_cutoff_json
+                            FROM query.query_executions
                             WHERE request_id = r.request_id
                             ORDER BY attempt_no DESC LIMIT 1
                         ) q ON true
@@ -110,7 +119,8 @@ class AnalysisRunReadRepositoryMixin:
                                l.as_of, l.timezone_name, l.parameters_json AS parameters,
                                d.question_text_redacted AS question, r.status, r.error_type,
                                r.trace_id, r.started_at, r.completed_at,
-                               q.trino_query_id AS query_id, a.artifact_id,
+                               q.trino_query_id AS query_id,
+                               q.source_cutoff_json AS query_cutoff, a.artifact_id,
                                a.evidence_json->'period' AS artifact_period,
                                a.evidence_json->'snapshot' AS artifact_snapshot
                         FROM analysis_v1.analysis_run_links l
@@ -119,7 +129,8 @@ class AnalysisRunReadRepositoryMixin:
                          AND d.version = l.definition_version
                         JOIN chat.analysis_requests r ON r.request_id = l.request_id
                         LEFT JOIN LATERAL (
-                            SELECT trino_query_id FROM query.query_executions
+                            SELECT trino_query_id, source_cutoff_json
+                            FROM query.query_executions
                             WHERE request_id = r.request_id
                             ORDER BY attempt_no DESC LIMIT 1
                         ) q ON true

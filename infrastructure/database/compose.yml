@@ -272,7 +272,9 @@ services:
       QUARKUS_DATASOURCE_USERNAME: ${SERVING_CATALOG_DB_USER:?SERVING_CATALOG_DB_USER is required}
       QUARKUS_DATASOURCE_PASSWORD: ${SERVING_CATALOG_DB_PASSWORD:?SERVING_CATALOG_DB_PASSWORD is required}
       POLARIS_REALM_CONTEXT_REALMS: ANSWERVICE
-      polaris.realm-context.require-header: "true"
+      # Trino 483의 Iceberg OAuth2 token exchange는 REST catalog custom header를
+      # token endpoint까지 전달하지 않는다. 단일 허용 realm을 token 요청의 기본값으로 쓴다.
+      polaris.realm-context.require-header: "false"
       QUARKUS_OTEL_SDK_DISABLED: "true"
       polaris.features."SUPPORTED_CATALOG_STORAGE_TYPES": '["S3"]'
       polaris.authentication.token-broker.type: rsa-key-pair

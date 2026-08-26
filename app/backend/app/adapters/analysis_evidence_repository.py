@@ -442,6 +442,11 @@ class AnalysisEvidenceRepositoryMixin:
         ).mappings().all()
         if len(existing_queries) > 1:
             raise ValueError("한 Conversation command에서 query가 중복 실행되었습니다.")
+        source_cutoff = dict(
+            evidence.get("period") or evidence.get("snapshot") or {}
+        )
+        if evidence.get("comparison_period") is not None:
+            source_cutoff["comparison_period"] = evidence["comparison_period"]
         query_values = {
             "request_id": request_id,
             "generation_mode": (
@@ -459,7 +464,7 @@ class AnalysisEvidenceRepositoryMixin:
                 snapshot if result is not None else {"rows": query.get("rows", ())}
             ),
             "sources": json.dumps([item.urn for item in package.assets]),
-            "cutoff": json.dumps(evidence.get("period") or evidence.get("snapshot") or {}),
+            "cutoff": json.dumps(source_cutoff),
         }
         if existing_queries:
             existing = existing_queries[0]

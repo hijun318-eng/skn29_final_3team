@@ -105,10 +105,12 @@ def explanation_is_grounded(
     allowed = (
         result_numbers
         | _period_numbers(query.get("period"))
+        | _period_numbers(query.get("comparison_period"))
         | _snapshot_numbers(query.get("snapshot"))
     )
-    period = query.get("period")
-    if isinstance(period, dict):
+    for period in (query.get("period"), query.get("comparison_period")):
+        if not isinstance(period, dict):
+            continue
         compact = summary.replace(" ", "")
         start = str(period.get("start") or "")[:10]
         end = str(period.get("end_exclusive") or "")[:10]
@@ -169,8 +171,9 @@ def _metric_value(
     metric: ContextMetric,
     package: ContextPackage,
     rows: list[dict[str, Any]],
+    result_suffix: str = "",
 ) -> Decimal | None:
-    return _reduce_context_metric(metric, package, rows)
+    return _reduce_context_metric(metric, package, rows, result_suffix)
 
 
 def _period_label(period: object) -> str:
@@ -223,6 +226,39 @@ def grounded_summary(query: dict[str, Any], package: ContextPackage) -> str:
     period = _time_label(query)
     metrics = _business_metrics(package)
     terms = {term.id: term for term in package.metric_terms}
+    comparison_period = query.get("comparison_period")
+    if isinstance(comparison_period, dict):
+        def period_clause(period_value: object, result_suffix: str) -> str:
+            label = _period_label(period_value)
+            values = [
+                (
+                    terms[metric.id].label,
+                    _metric_value(metric, package, rows, result_suffix),
+                    metric.unit or terms[metric.id].unit,
+                )
+                for metric in metrics
+            ]
+            available = [
+                f"{metric_label} {_format_value(value, unit)}"
+                for metric_label, value, unit in values
+                if value is not None
+            ]
+            missing = [
+                metric_label
+                for metric_label, value, _unit in values
+                if value is None
+            ]
+            if not available:
+                return f"{label}에는 요청 지표의 표시 가능한 관측값이 없습니다"
+            clause = f"{label} 기준 계산 결과는 {', '.join(available)}"
+            if missing:
+                clause += f"이며 {', '.join(missing)}에는 표시 가능한 관측값이 없습니다"
+            return clause
+
+        return (
+            f"{period_clause(query.get('period'), '')}. "
+            f"{period_clause(comparison_period, '__comparison')}."
+        )
     if len(metrics) > 1:
         values = [
             (

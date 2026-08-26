@@ -12,6 +12,7 @@ from app.services.analysis.evidence import _reduce_context_metric, _reduce_metri
 from app.services.analysis.responses import _presentation_rows
 from app.services.analysis.result_narrative import _format_value, explanation_is_grounded
 from app.services.analysis.result_validator import PipelineResultValidator
+from app.contracts import PeriodEvidence
 from app.services.context.builder import ContextMetric
 
 
@@ -107,6 +108,39 @@ class MetricReductionTests(unittest.TestCase):
             _presentation_rows(package, source_rows),
         )
         self.assertIn("internal_numerator", source_rows[0])
+
+    def test_period_comparison_is_presented_as_period_rows_without_internal_suffixes(self):
+        package = SimpleNamespace(
+            metrics=(
+                SimpleNamespace(id="alpha", result_field="alpha_value"),
+                SimpleNamespace(id="beta", result_field="beta_value"),
+            ),
+            metric_terms=(SimpleNamespace(id="alpha"), SimpleNamespace(id="beta")),
+        )
+        source_rows = (
+            {
+                "alpha_value": 17,
+                "alpha_value__comparison": 11,
+                "beta_value": 29,
+                "beta_value__comparison": 23,
+            },
+        )
+
+        rows = _presentation_rows(
+            package,
+            source_rows,
+            PeriodEvidence(start="2042-06-01", end_exclusive="2042-07-01"),
+            PeriodEvidence(start="2042-05-01", end_exclusive="2042-06-01"),
+        )
+
+        self.assertEqual(
+            (
+                {"period": "2042-06-01", "alpha_value": 17, "beta_value": 29},
+                {"period": "2042-05-01", "alpha_value": 11, "beta_value": 23},
+            ),
+            rows,
+        )
+        self.assertNotIn("alpha_value__comparison", rows[1])
 
     def test_narrative_rejects_inclusive_wording_for_exclusive_period_end(self):
         query = {

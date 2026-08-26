@@ -52,6 +52,16 @@ def _chart_spec(
         if field in numeric_fields
     )
     if y_fields:
+        non_series_fields = tuple(
+            column for column in columns if column not in y_fields
+        )
+        if "period" in non_series_fields and len(non_series_fields) != 1:
+            return None
+        if any(
+            f"{field}__comparison" in columns
+            for field in governed_result_fields
+        ):
+            return None
         x_candidates = tuple(
             column
             for column in columns

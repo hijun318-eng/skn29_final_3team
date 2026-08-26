@@ -386,6 +386,7 @@ const apiResponse = {
       evidence: {
         artifact_id: "artifact-1", query_id: "query-1", as_of: "2030-01-02", timezone: "Asia/Seoul",
         period: { start: "2030-01-01", end_exclusive: "2030-01-03" }, filters: {}, cached: false,
+        comparison_period: { start: "2029-12-01", end_exclusive: "2030-01-01" },
         context_release: "context-v1",
         product_release_id: "walkerhill-v4.3-sql-20260815-derived.1",
         evidence_cutoff: "2026-08-15",
@@ -418,6 +419,10 @@ assert.equal(normalized.metrics[0].definition, "Metric definition");
 assert.equal(normalized.metrics[0].resultField, "metric");
 assert.equal(normalized.evidence.metrics[0].definition, "Metric definition");
 assert.equal(normalized.evidence.productReleaseId, "walkerhill-v4.3-sql-20260815-derived.1");
+assert.deepEqual(normalized.evidence.comparisonPeriod, {
+  start: "2029-12-01",
+  endExclusive: "2030-01-01",
+});
 assert.equal(normalized.evidence.evidenceCutoff, "2026-08-15");
 assert.equal(normalized.evidence.models[0].promptId, "node3-prompt");
 assert.equal(normalized.evidence.gates.g3, "PASSED");
@@ -433,6 +438,7 @@ assert.equal(normalized.meta.synthetic, undefined);
 
 const snapshotResponse = structuredClone(apiResponse);
 delete snapshotResponse.data.result.evidence.period;
+delete snapshotResponse.data.result.evidence.comparison_period;
 snapshotResponse.data.result.evidence.snapshot = {
   cutoff: "2030-01-02",
   selection: "max_source_value_lt_as_of",

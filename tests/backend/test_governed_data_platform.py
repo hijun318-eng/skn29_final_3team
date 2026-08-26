@@ -20,6 +20,7 @@ sys.path.insert(0, str(BACKEND))
 sys.path.insert(0, str(PUBLISHER))
 from metadata_aspects import iter_aspects  # noqa: E402
 from metadata_contract import validate_bundle  # noqa: E402
+from src.data.analysis_capability_contract import AnalysisCapabilityError  # noqa: E402
 from src.data.governance_contract import datahub_schema_sha1  # noqa: E402
 
 from app.adapters.catalog_snapshot import (  # noqa: E402
@@ -1866,6 +1867,19 @@ class GovernedDataPlatformRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual("ready", stages["semantic_release"])
         self.assertEqual("ready", stages["catalog_manifest"])
+        self.assertEqual("not_ready", stages["trino_schema"])
+        self.assertIsNone(receipt)
+
+    async def test_catalog_readiness_rejects_capability_release_mismatch(self) -> None:
+        with patch.object(
+            self.adapter._governance,
+            "_analysis_capability_for_release",
+            side_effect=AnalysisCapabilityError("release differs"),
+        ):
+            stages, receipt = await self.adapter.get_catalog_readiness()
+
+        self.assertEqual("ready", stages["catalog_manifest"])
+        self.assertEqual("not_ready", stages["semantic_release"])
         self.assertEqual("not_ready", stages["trino_schema"])
         self.assertIsNone(receipt)
 

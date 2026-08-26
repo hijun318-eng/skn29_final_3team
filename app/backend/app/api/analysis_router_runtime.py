@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
@@ -37,10 +38,20 @@ def data_platform():
         PostgresRuntimeCatalogProjectionRepository,
     )
     from app.database import get_sessionmaker
+    from src.data.analysis_capability_contract import (
+        load_analysis_capability_release,
+    )
 
     database_url = os.getenv("APP_RUNTIME_DATABASE_URL", "")
     if not database_url:
         raise RuntimeError("RuntimeCatalogProjection 저장소가 구성되지 않았습니다.")
+    expected_release = os.getenv("ANALYTICS_CONTEXT_RELEASE") or None
+    analysis_capability = load_analysis_capability_release(
+        Path(__file__).resolve().parents[2]
+        / "contracts"
+        / "analysis_capability.product.v1.json",
+        expected_catalog_release=expected_release,
+    )
     projection_repository = PostgresRuntimeCatalogProjectionRepository(
         get_sessionmaker(database_url)
     )
@@ -50,8 +61,9 @@ def data_platform():
         os.getenv("TRINO_RUNTIME_USER", ""),
         trino_password=os.getenv("TRINO_RUNTIME_PASSWORD", ""),
         trino_ca_file=os.getenv("TRINO_TLS_CA_FILE", "/run/secrets/trino-ca.pem"),
-        expected_context_release=os.getenv("ANALYTICS_CONTEXT_RELEASE") or None,
+        expected_context_release=expected_release,
         projection_repository=projection_repository,
+        analysis_capability=analysis_capability,
     )
 
 

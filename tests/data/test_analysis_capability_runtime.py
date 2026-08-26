@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
@@ -10,10 +12,15 @@ from src.data.analysis_capability_contract import (
     AnalysisCapabilityError,
     apply_analysis_capability_contract,
     compile_analysis_capability_contract,
+    load_analysis_capability_release,
 )
 
 
 FQN = "serving.example.daily"
+PRODUCT_CAPABILITY = (
+    Path(__file__).resolve().parents[2]
+    / "app/backend/contracts/analysis_capability.product.v1.json"
+)
 
 
 def _contract(
@@ -133,3 +140,33 @@ def test_sealed_conversation_default_is_explicit_and_cannot_be_overridden() -> N
             _contract(conversation_default=True),
             [{**_asset(), "conversation_default_operation": "aggregate"}],
         )
+
+
+def test_product_capability_is_sealed_and_exact_catalog_bound() -> None:
+    release = load_analysis_capability_release(PRODUCT_CAPABILITY)
+
+    assert release.contract.asset(
+        "serving.analytics_v4_3.hotel_operations_daily"
+    ) is not None
+    assert "period_comparison" in release.contract.operations
+    assert release.contract_for_catalog(
+        release.catalog_release_id,
+        release.catalog_sha256,
+        release.canonical_sha256,
+    ) is release.contract
+    with pytest.raises(AnalysisCapabilityError, match="differs"):
+        release.contract_for_catalog(
+            release.catalog_release_id + "-other",
+            release.catalog_sha256,
+            release.canonical_sha256,
+        )
+
+
+def test_product_capability_rejects_content_tampering(tmp_path: Path) -> None:
+    document = json.loads(PRODUCT_CAPABILITY.read_text(encoding="utf-8"))
+    document["contract"]["max_metrics_per_plan"] = 3
+    tampered = tmp_path / "analysis-capability.json"
+    tampered.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(AnalysisCapabilityError, match="checksum differs"):
+        load_analysis_capability_release(tampered)

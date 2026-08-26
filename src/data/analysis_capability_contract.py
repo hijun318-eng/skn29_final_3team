@@ -7,12 +7,17 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Mapping
+
+from src.data.governance_contract import canonical_sha256
 
 
 ANALYSIS_CAPABILITY_VERSION = "ANSWERVICE-ANALYSIS-CAPABILITY-v1"
+ANALYSIS_CAPABILITY_RELEASE_VERSION = "AnswerviceAnalysisCapabilityRelease.v1"
 ANALYSIS_OPERATIONS = frozenset(
     {
         "aggregate",
@@ -71,6 +76,111 @@ class AnalysisCapabilityContract:
         """FQN이 일치하는 asset capability를 반환한다."""
 
         return next((item for item in self.assets if item.asset_fqn == fqn), None)
+
+
+@dataclass(frozen=True)
+class AnalysisCapabilityRelease:
+    """봉인 checksum과 catalog identity에 결속된 런타임 capability sidecar다."""
+
+    catalog_release_id: str
+    catalog_sha256: str
+    canonical_sha256: str
+    content_sha256: str
+    contract: AnalysisCapabilityContract
+
+    def contract_for_catalog(
+        self,
+        catalog_release_id: str,
+        catalog_sha256: str,
+        canonical_sha256: str,
+    ) -> AnalysisCapabilityContract:
+        """현재 canonical catalog와 exact identity가 같은 계약만 반환한다."""
+
+        if (
+            self.catalog_release_id != catalog_release_id
+            or self.catalog_sha256 != catalog_sha256
+            or self.canonical_sha256 != canonical_sha256
+        ):
+            raise AnalysisCapabilityError(
+                "analysis capability release differs from the runtime catalog"
+            )
+        return self.contract
+
+
+def load_analysis_capability_release(
+    path: str | Path,
+    *,
+    expected_catalog_release: str | None = None,
+) -> AnalysisCapabilityRelease:
+    """봉인 sidecar의 구조·checksum을 검증하고 runtime catalog 결속 정보를 보존한다.
+
+    파일 안의 field 선언은 컴파일러의 구조 검증에만 사용한다. 요청 시점에는
+    ``apply_analysis_capability_contract``가 DataHub runtime asset의 실제 time/dimension
+    binding을 다시 대조하고, ``contract_for_catalog``가 active catalog receipt를 확인한다.
+    """
+
+    try:
+        document = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise AnalysisCapabilityError(
+            "analysis capability release is unreadable"
+        ) from error
+    root = _mapping(document, "analysis capability release")
+    _exact_keys(
+        root,
+        {
+            "schema_version",
+            "status",
+            "catalog_release_id",
+            "catalog_sha256",
+            "canonical_sha256",
+            "contract",
+            "content_sha256",
+        },
+        "analysis capability release",
+    )
+    catalog_release_id = _text(
+        root["catalog_release_id"], "analysis capability catalog release"
+    )
+    if (
+        root["schema_version"] != ANALYSIS_CAPABILITY_RELEASE_VERSION
+        or root["status"] != "SEALED"
+        or (
+            expected_catalog_release is not None
+            and catalog_release_id != expected_catalog_release
+        )
+    ):
+        raise AnalysisCapabilityError(
+            "analysis capability release identity is invalid"
+        )
+    catalog_checksum = _sha256(
+        root["catalog_sha256"], "analysis capability catalog checksum"
+    )
+    canonical_checksum = _sha256(
+        root["canonical_sha256"], "analysis capability canonical checksum"
+    )
+    content_checksum = _sha256(
+        root["content_sha256"], "analysis capability content checksum"
+    )
+    payload = {key: value for key, value in root.items() if key != "content_sha256"}
+    if canonical_sha256(payload) != content_checksum:
+        raise AnalysisCapabilityError(
+            "analysis capability release checksum differs"
+        )
+
+    available_fields, dimension_columns = _declared_bindings(root["contract"])
+    contract = compile_analysis_capability_contract(
+        root["contract"],
+        available_fields_by_asset=available_fields,
+        dimension_family_columns=dimension_columns,
+    )
+    return AnalysisCapabilityRelease(
+        catalog_release_id=catalog_release_id,
+        catalog_sha256=catalog_checksum,
+        canonical_sha256=canonical_checksum,
+        content_sha256=content_checksum,
+        contract=contract,
+    )
 
 
 def apply_analysis_capability_contract(
@@ -383,6 +493,52 @@ def _unique_texts(value: object, context: str) -> tuple[str, ...]:
     if len(values) != len(set(values)):
         raise AnalysisCapabilityError(f"{context} must contain unique values")
     return values
+
+
+def _sha256(value: object, context: str) -> str:
+    checksum = _text(value, context)
+    if len(checksum) != 64 or any(
+        character not in "0123456789abcdef" for character in checksum
+    ):
+        raise AnalysisCapabilityError(f"{context} must be a lowercase SHA-256")
+    return checksum
+
+
+def _declared_bindings(
+    value: object,
+) -> tuple[dict[str, frozenset[str]], dict[str, frozenset[str]]]:
+    """sidecar 자체의 선언을 구조 컴파일 입력으로 투영한다."""
+
+    root = _mapping(value, "analysis capability")
+    available: dict[str, set[str]] = {}
+    dimensions: dict[str, set[str]] = {}
+    for index, raw_asset in enumerate(_list(root.get("assets"), "analysis assets")):
+        asset = _mapping(raw_asset, f"analysis asset[{index}]")
+        fqn = _text(asset.get("fqn"), f"analysis asset[{index}].fqn")
+        time = _mapping(asset.get("time"), f"{fqn}.time")
+        available.setdefault(fqn, set()).add(
+            _text(time.get("field"), f"{fqn}.time.field")
+        )
+        for dimension_index, raw_dimension in enumerate(
+            _list(asset.get("dimensions"), f"{fqn}.dimensions")
+        ):
+            dimension = _mapping(
+                raw_dimension,
+                f"{fqn}.dimensions[{dimension_index}]",
+            )
+            dimension_id = _text(
+                dimension.get("id"), f"{fqn}.dimensions[{dimension_index}].id"
+            )
+            columns = _unique_texts(
+                dimension.get("columns"),
+                f"{fqn}.dimensions[{dimension_index}].columns",
+            )
+            available[fqn].update(columns)
+            dimensions.setdefault(dimension_id, set()).update(columns)
+    return (
+        {fqn: frozenset(fields) for fqn, fields in available.items()},
+        {name: frozenset(columns) for name, columns in dimensions.items()},
+    )
 
 
 def _exact_keys(

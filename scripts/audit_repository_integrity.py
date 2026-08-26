@@ -83,6 +83,9 @@ ALLOWED_RUNTIME_JSON = {
     "app/backend/contracts/analysis_capability.multi_asset_join.v1.json": (
         "sealed catalog-bound multi-asset JOIN analysis capability contract"
     ),
+    "app/backend/contracts/analysis_capability.product.v1.json": (
+        "sealed catalog-bound product analysis capability contract"
+    ),
     "src/ai/contracts/model_release.v1.json": "provider response schema manifest",
     "src/ai/contracts/node_io.v0.1.json": "versioned node I/O schema",
     "src/modelops/model_runtime_manifest.v1.json": "validated model capacity manifest",

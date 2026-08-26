@@ -14,6 +14,10 @@ from app.adapters.runtime_catalog_repository import (
 from app.adapters.trino_async import TrinoAsyncClient
 from app.adapters.trino_schema import TrinoSchemaInspector
 from app.ports.data_platform import AssetCandidateSet, ExecutionAssetSelection
+from src.data.analysis_capability_contract import (
+    AnalysisCapabilityContract,
+    AnalysisCapabilityRelease,
+)
 
 
 class GovernedDataPlatformAdapter:
@@ -41,6 +45,9 @@ class GovernedDataPlatformAdapter:
         governance: QueryGovernanceEngine | None = None,
         execution: QueryExecutionService | None = None,
         projection_repository: PostgresRuntimeCatalogProjectionRepository | None = None,
+        analysis_capability: (
+            AnalysisCapabilityContract | AnalysisCapabilityRelease | None
+        ) = None,
     ) -> None:
         if datahub_client is None and any(
             value is not None
@@ -66,6 +73,7 @@ class GovernedDataPlatformAdapter:
             # QueryGovernanceEngine 하나가 환경 기본값을 소유해야 adapter별 TTL drift가 없다.
             catalog_ttl_seconds=catalog_ttl_seconds,
             projection_repository=projection_repository,
+            analysis_capability=analysis_capability,
         )
         self._execution = execution or QueryExecutionService(
             self._trino,

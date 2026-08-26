@@ -75,6 +75,7 @@ from src.data.governance_contract import (
 from src.data.analysis_capability_contract import (
     AnalysisCapabilityContract,
     AnalysisCapabilityError,
+    AnalysisCapabilityRelease,
     apply_analysis_capability_contract,
 )
 from src.data.metric_governance import business_metric_ids
@@ -122,7 +123,9 @@ class QueryGovernanceEngine:
         candidate_search_variants: int = DEFAULT_CANDIDATE_SEARCH_VARIANTS,
         max_shadow_searches: int = DEFAULT_MAX_SHADOW_SEARCHES,
         projection_repository: PostgresRuntimeCatalogProjectionRepository | None = None,
-        analysis_capability: AnalysisCapabilityContract | None = None,
+        analysis_capability: (
+            AnalysisCapabilityContract | AnalysisCapabilityRelease | None
+        ) = None,
     ) -> None:
         if expected_context_release is not None and not expected_context_release.strip():
             raise ValueError("expected context release cannot be blank")
@@ -214,11 +217,10 @@ class QueryGovernanceEngine:
                     asset["product_release_id"] = (
                         active_projection.product_release_id
                     )
-            if self._analysis_capability is not None:
-                projected_assets = apply_analysis_capability_contract(
-                    self._analysis_capability,
-                    projected_assets,
-                )
+            projected_assets = self._apply_analysis_capability(
+                release,
+                projected_assets,
+            )
             assets = _compact_candidate_assets(
                 projected_assets,
                 terms,
@@ -356,11 +358,7 @@ class QueryGovernanceEngine:
                 # 재검증한 active pointer의 제품 release만 실행 자산에 결속한다.
                 for asset in assets:
                     asset["product_release_id"] = active_projection.product_release_id
-            if self._analysis_capability is not None:
-                assets = apply_analysis_capability_contract(
-                    self._analysis_capability,
-                    assets,
-                )
+            assets = self._apply_analysis_capability(release, assets)
             projected_metric_ids = {
                 str(metric.get("id") or "")
                 for asset in assets
@@ -389,6 +387,37 @@ class QueryGovernanceEngine:
             TrinoSchemaDriftError,
         ) as error:
             raise MetadataUnavailableError(str(error)) from error
+
+    def _apply_analysis_capability(
+        self,
+        release: CanonicalSemanticRelease,
+        assets: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """봉인 capability가 현재 canonical catalog와 같을 때만 runtime 자산에 결속한다."""
+
+        capability = self._analysis_capability_for_release(release)
+        return (
+            assets
+            if capability is None
+            else apply_analysis_capability_contract(capability, assets)
+        )
+
+    def _analysis_capability_for_release(
+        self,
+        release: CanonicalSemanticRelease,
+    ) -> AnalysisCapabilityContract | None:
+        """현재 canonical catalog receipt와 일치하는 capability 계약만 선택한다."""
+
+        capability = self._analysis_capability
+        if capability is None:
+            return None
+        if isinstance(capability, AnalysisCapabilityRelease):
+            capability = capability.contract_for_catalog(
+                release.catalog_version,
+                release.catalog_checksum,
+                release.canonical_checksum,
+            )
+        return capability
 
     async def _search_selection(
         self,
@@ -948,7 +977,12 @@ class QueryGovernanceEngine:
             else:
                 release = live_release
                 datasets = self._datasets_for_release(snapshot, live_release)
-        except (GovernedMetadataError, RuntimeCatalogRepositoryError):
+            self._analysis_capability_for_release(release)
+        except (
+            AnalysisCapabilityError,
+            GovernedMetadataError,
+            RuntimeCatalogRepositoryError,
+        ):
             # manifest와 canonical compiler는 독립 단계다. manifest가 유효해도 실제
             # 요청과 같은 canonical compile 경계가 실패하면 semantic 단계만 닫는다.
             return stages, None

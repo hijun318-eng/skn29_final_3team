@@ -8,6 +8,7 @@ from inspect import isawaitable
 import json
 import logging
 import os
+import re
 from typing import Annotated, Any, Awaitable, Callable
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -63,10 +64,12 @@ from app.report_contracts import (
     ReportAssistantEvaluationResponse,
     ReportAssistantFailureListResponse,
     ReportAssistantOperationsSummaryResponse,
+    ReportAssistantRequiredAction,
     ReportScheduleListResponse,
     ReportScheduleResponse,
     RunDueReportScheduleResponse,
     UpdateReportScheduleRequest,
+    report_assistant_retry_policy,
 )
 
 
@@ -79,6 +82,9 @@ def _assistant_session_response(session: dict[str, Any]) -> dict[str, Any]:
 
     raw_patch = session.get("report_patch_json")
     patch = ReportAssistantPatch.model_validate(raw_patch) if raw_patch else None
+    retry_policy = report_assistant_retry_policy(
+        session.get("error_code") if session.get("phase") == "failed" else None
+    )
     return {
         "assistant_request_id": session["assistant_request_id"],
         "phase": session["phase"],
@@ -93,7 +99,29 @@ def _assistant_session_response(session: dict[str, Any]) -> dict[str, Any]:
         "result_artifact_id": session.get("result_artifact_id"),
         "result_revision": session.get("result_revision"),
         "error_code": session.get("error_code"),
+        "retryable": retry_policy.retryable,
+        "required_action": retry_policy.required_action,
+        "retry_of_assistant_request_id": session.get("retry_of_assistant_request_id"),
     }
+
+
+def _assistant_retry_error(
+    assistant_request_id: str,
+    code: str,
+    required_action: ReportAssistantRequiredAction,
+    status_code: int = 409,
+) -> HTTPException:
+    """재시도 거부 사유를 원문·내부 식별자 없이 typed 사용자 조치로 반환한다."""
+
+    return HTTPException(
+        status_code=status_code,
+        detail={
+            "code": code,
+            "assistant_request_id": assistant_request_id,
+            "retryable": False,
+            "required_action": required_action.value,
+        },
+    )
 
 
 def _router(context: RequestContext):
@@ -766,6 +794,104 @@ async def get_assistant_session(
         lambda: _recover_and_get_assistant_session(repository, assistant_request_id)
     )
     return _assistant_session_response(session)
+
+
+@report_router.post(
+    "/reports/assistant/sessions/{assistant_request_id}/retry",
+    operation_id="reportAssistantRetrySession",
+    response_model=ReportAssistantSessionResponse,
+)
+async def retry_assistant_session(
+    assistant_request_id: str,
+    context: Annotated[RequestContext, Depends(report_draft_context)],
+) -> dict[str, Any]:
+    """재시도 가능한 실패를 동일 근거의 새 ``ready`` 세션으로만 이어 간다.
+
+    원본 실패·승인·요청 ID를 변경하거나 복사하지 않으며 Report revision과 승인 Artifact
+    lineage를 다시 확인한다. 이 요청은 모델, 분석 controller, Revision 저장을 호출하지 않는다.
+    """
+
+    repository = _router(context).repository
+    session = await _repository_call(
+        lambda: repository.get_assistant_session(assistant_request_id)
+    )
+    if session["phase"] != "failed" or session.get("status") != "failed":
+        raise _assistant_retry_error(
+            assistant_request_id,
+            "ASSISTANT_STATE_CONFLICT",
+            ReportAssistantRequiredAction.REFRESH,
+        )
+    policy = report_assistant_retry_policy(session.get("error_code"))
+    if not policy.retryable:
+        raise _assistant_retry_error(
+            assistant_request_id,
+            str(session.get("error_code") or "ASSISTANT_RETRY_NOT_ALLOWED"),
+            policy.required_action,
+        )
+
+    try:
+        definition = await repository.get_version(
+            str(session["session_definition_id"]),
+            int(session["session_definition_version"]),
+        )
+    except (KeyError, ValueError):
+        raise _assistant_retry_error(
+            assistant_request_id,
+            "REPORT_REVISION_CONFLICT",
+            ReportAssistantRequiredAction.REOPEN_LATEST_REPORT,
+        ) from None
+    if (
+        definition.status.value != "draft"
+        or definition.revision != int(session["base_revision"])
+    ):
+        raise _assistant_retry_error(
+            assistant_request_id,
+            "REPORT_REVISION_CONFLICT",
+            ReportAssistantRequiredAction.REOPEN_LATEST_REPORT,
+        )
+
+    try:
+        artifact = await repository.get_assistant_artifact(str(session["artifact_id"]))
+    except (KeyError, ValueError):
+        raise _assistant_retry_error(
+            assistant_request_id,
+            "ARTIFACT_LINEAGE_MISMATCH",
+            ReportAssistantRequiredAction.CONTACT_ADMIN,
+        ) from None
+    if (
+        not re.fullmatch(r"[0-9a-f]{64}", str(artifact.get("artifact_checksum") or ""))
+        or not artifact.get("trino_query_id")
+    ):
+        raise _assistant_retry_error(
+            assistant_request_id,
+            "ARTIFACT_LINEAGE_MISMATCH",
+            ReportAssistantRequiredAction.CONTACT_ADMIN,
+        )
+
+    from src.ai.prompt_registry import get_prompt
+
+    prompt = get_prompt("report.assistant")
+    retry_request_id = str(uuid4())
+    binding = (
+        f"{session['session_definition_id']}:{session['session_definition_version']}:"
+        f"{session['artifact_id']}:retry:{assistant_request_id}"
+    )
+    try:
+        retried = await repository.retry_assistant_session(
+            assistant_request_id,
+            retry_request_id,
+            hashlib.sha256(binding.encode("utf-8")).hexdigest(),
+            prompt.prompt_id,
+            prompt.version,
+            str(prompt.metadata()["hash"]),
+        )
+    except ValueError:
+        raise _assistant_retry_error(
+            assistant_request_id,
+            "ASSISTANT_STATE_CONFLICT",
+            ReportAssistantRequiredAction.REFRESH,
+        ) from None
+    return _assistant_session_response(retried)
 
 
 @report_router.post(

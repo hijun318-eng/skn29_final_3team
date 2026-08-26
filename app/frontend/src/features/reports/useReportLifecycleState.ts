@@ -67,6 +67,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
   const [assistantInstruction, setAssistantInstruction] = useState("");
   const [assistantTrace, setAssistantTrace] = useState<AssistantTrace | null>(null);
   const [assistantSession, setAssistantSession] = useState<ReportAssistantSessionResponse | null>(null);
+  const [assistantEvaluation, setAssistantEvaluation] = useState<ReportAssistantEvaluationResponse | null>(null);
   const [assistantOperations, setAssistantOperations] = useState<ReportAssistantOperationsSummaryResponse | null>(null);
   const [assistantFailures, setAssistantFailures] = useState<readonly ReportAssistantEvaluationResponse[]>([]);
 
@@ -118,7 +119,10 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     setError("");
     setNotice("");
   }, []);
-  const clearAssistantTrace = useCallback(() => setAssistantTrace(null), []);
+  const clearAssistantTrace = useCallback(() => {
+    setAssistantTrace(null);
+    setAssistantEvaluation(null);
+  }, []);
 
   const selectDefinition = useCallback((definition: ReportDefinitionVersion | null) => {
     setSelectedDefinition(definition);
@@ -435,6 +439,21 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     return session;
   }, [mutate, reportClient]);
 
+  const retryAssistantSession = useCallback(async () => {
+    const current = assistantSessionRef.current;
+    if (!current?.retryable || current.phase !== "failed") return null;
+    const session = await mutate(
+      "assistant-retry",
+      () => reportClient.retryAssistantSession(current.assistant_request_id),
+    );
+    if (!session) return null;
+    setAssistantSession(session);
+    setAssistantEvaluation(null);
+    setAssistantInstruction("");
+    setNotice("새 Assistant 세션을 열었습니다. 지시를 다시 입력해 주세요.");
+    return session;
+  }, [mutate, reportClient]);
+
   const approveAssistantRequest = useCallback(async () => {
     const current = assistantSessionRef.current;
     const requestId = current?.analysis_plan?.request_id;
@@ -512,6 +531,19 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     if (isAdmin) void loadAssistantOperations();
   }, [autoLoad, isAdmin, loadAssistantOperations, loadDefinitions, loadSchedules]);
 
+  useEffect(() => {
+    const session = assistantSession;
+    if (!session || !["completed", "failed", "cancelled"].includes(session.phase)) {
+      setAssistantEvaluation(null);
+      return undefined;
+    }
+    let active = true;
+    void reportClient.getAssistantEvaluation(session.assistant_request_id)
+      .then((evaluation) => { if (active) setAssistantEvaluation(evaluation); })
+      .catch(() => { if (active) setAssistantEvaluation(null); });
+    return () => { active = false; };
+  }, [assistantSession, reportClient]);
+
   const visibleDefinitions = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("ko-KR");
     return definitions.filter((definition) => (
@@ -577,6 +609,7 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     assistantInstruction,
     assistantTrace,
     assistantSession,
+    assistantEvaluation,
     assistantOperations,
     assistantFailures,
     setQuery,
@@ -618,15 +651,16 @@ export function useReportLifecycleState(options: UseReportLifecycleStateOptions 
     rejectAssistantRequest,
     approveAssistantPatch,
     rejectAssistantPatch,
+    retryAssistantSession,
   }), [
     analysisClient, approveAssistantPatch, approveAssistantRequest, approveDefinition, assistantInstruction,
-    assistantFailures, assistantOperations, assistantSession, assistantTrace, cadence,
+    assistantEvaluation, assistantFailures, assistantOperations, assistantSession, assistantTrace, cadence,
     clearAssistantTrace, clearFeedback, createDefinition, createNextDraft, createOpen, createSchedule,
     definitionState, definitions, error, fetchDefinition, filteredRuns, finalDocument,
     finalDocumentState, findLatestDraft, loadAssistantOperations, loadDefinitions, loadFinalDocument, loadRuns,
     loadSchedules, mutate, newContent, newTitle, notice, openFinalAsset, pending,
     pendingOperations, query, rejectAssistantPatch, rejectAssistantRequest, reportClient, requestAssistantDraft,
-    restoreAssistantSession, runDefinition, runQuery,
+    restoreAssistantSession, retryAssistantSession, runDefinition, runQuery,
     runs, scheduleAt, schedules, selectedDefinition, selectedRun, selectedSchedules,
     selectDefinition, setScheduleEnabled, showMoreRuns, statusFilter, upsertDefinition,
     submitAssistantInstruction, visibleDefinitions, visibleRunCount, visibleRuns,

@@ -136,6 +136,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
     artifacts={artifacts.artifacts}
     assistantInstruction={lifecycle.assistantInstruction}
     canEdit={page.canEdit}
+    evaluation={lifecycle.assistantEvaluation}
     isDraft={page.isDraft}
     onAddChart={addChartBlock}
     onAddTemplate={draft.addTemplateBlock}
@@ -233,6 +234,7 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
     onApprovePatch={page.approveAssistantPatch}
     onRejectDataRequest={page.rejectAssistantDataRequest}
     onRejectPatch={page.rejectAssistantPatch}
+    onRetry={lifecycle.retryAssistantSession}
     onSubmit={page.createAssistantDraft}
     patchPreview={lifecycle.assistantSession?.patch_request_id
       && ["waiting_patch_approval", "saving_revision"].includes(lifecycle.assistantSession.phase)
@@ -246,6 +248,8 @@ export function ReportsPage({ role, isAdmin, onEditorMode }) {
     trace={lifecycle.assistantTrace}
     workflowStatus={lifecycle.assistantSession?.phase || ""}
     workflowError={lifecycle.assistantSession?.error_code || ""}
+    workflowRequiredAction={lifecycle.assistantSession?.required_action || "NONE"}
+    workflowRetryable={Boolean(lifecycle.assistantSession?.retryable)}
   />;
   const editor = page.builderV2 ? <ReportBuilderV2
     assistant={assistant}

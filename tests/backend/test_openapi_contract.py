@@ -78,6 +78,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "/reports/assistant/sessions/{assistant_request_id}/evaluation",
                 "/reports/assistant/sessions/{assistant_request_id}/messages",
                 "/reports/assistant/sessions/{assistant_request_id}/patch-approval",
+                "/reports/assistant/sessions/{assistant_request_id}/retry",
             },
             set(committed["paths"]),
         )
@@ -135,6 +136,7 @@ class OpenApiContractTest(unittest.TestCase):
                 "reportAssistantGetEvaluation",
                 "reportAssistantSubmitMessage",
                 "reportAssistantDecidePatch",
+                "reportAssistantRetrySession",
                 "mcpGet",
                 "mcpPost",
             },

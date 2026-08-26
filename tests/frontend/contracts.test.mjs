@@ -28,6 +28,7 @@ const reportA4Styles = [
   "features/reports/report-a4-artifact.css",
   "features/reports/report-a4-print.css",
 ].map(source).join("\n");
+const reportAssistantPanelSource = source("features/reports/components/ReportAssistantPanel.jsx");
 
 assert.equal(UI_CONTRACT_VERSION, "UI-v1.0.0");
 assert.equal(OPENAPI_VERSION, "OPENAPI-v1.0.0");
@@ -144,6 +145,15 @@ assert.match(source("api/reportClient.ts"), /getAssistantOperationsSummary/);
 assert.match(source("api/reportClient.ts"), /\/reports\/assistant\/operations\/summary/);
 assert.match(source("api/reportClient.ts"), /getAssistantOperationFailures/);
 assert.doesNotMatch(source("api/reportClient.ts"), /raw_model_response|sql_text/);
+assert.match(reportSources.lifecycle, /reportClient\.getAssistantEvaluation\(session\.assistant_request_id\)/);
+assert.match(reportSources.lifecycle, /reportClient\.retryAssistantSession\(current\.assistant_request_id\)/);
+assert.match(reportSources.lifecycle, /setAssistantEvaluation\(null\)/);
+assert.match(reportSources.page, /evaluation=\{lifecycle\.assistantEvaluation\}/);
+assert.match(reportSources.page, /onRetry=\{lifecycle\.retryAssistantSession\}/);
+assert.match(reportAssistantPanelSource, /실행 검증 완료/);
+assert.match(reportAssistantPanelSource, /failed" && retryable/);
+assert.match(reportAssistantPanelSource, /새 세션으로 다시 시도/);
+assert.doesNotMatch(reportAssistantPanelSource, /estimated_cost|raw_model_response|sql_text/);
 assert.match(reportSources.operationsPanel, /브라우저 위치와 관계없이 서울 현지 시각으로 저장합니다/);
 assert.match(reportSources.lifecycle, /seoulWallClockToIso\(values\.scheduleAt\)/);
 assert.match(reportSources.operationsPanel, /onSetScheduleEnabled\(schedule\.schedule_id, !schedule\.enabled\)/);
@@ -664,8 +674,13 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
     definition_id: "definition-1", definition_version: 2, base_revision: 2,
     artifact_id: "artifact-1", analysis_plan: null,
     patch_request_id: null, patch_summary: null, patch_operations: [], result_artifact_id: null,
-    result_revision: null, error_code: null,
+    result_revision: null, error_code: null, retryable: false, required_action: "NONE",
+    retry_of_assistant_request_id: null,
   };
+  const retrySession = url.endsWith("/retry") ? {
+    ...session, assistant_request_id: "assistant-2",
+    retry_of_assistant_request_id: "assistant/1",
+  } : null;
   const patchApproval = url.endsWith("/patch-approval") ? JSON.parse(init.body) : null;
   const approval = url.endsWith("/approval") && !patchApproval ? JSON.parse(init.body) : null;
   const approvalSession = approval ? {
@@ -689,7 +704,7 @@ const assistantSessionClient = createReportClient("http://backend.test", async (
     result_revision: patchApproval.approved ? 3 : null,
   } : null;
   const instruction = url.endsWith("/messages") ? JSON.parse(init.body).instruction : "";
-  return new Response(JSON.stringify(patchSession || approvalSession || (url.endsWith("/messages") ? {
+  return new Response(JSON.stringify(retrySession || patchSession || approvalSession || (url.endsWith("/messages") ? {
     change_kind: instruction === "모호한 요청" ? "clarification" : "existing_artifact",
     message: instruction === "모호한 요청" ? "어느 기간을 기준으로 할까요?" : "기존 근거로 수정할 수 있습니다.",
     session: instruction === "모호한 요청" ? session : {
@@ -707,6 +722,12 @@ assert.equal(assistantSessionRequest.url, "http://backend.test/reports/assistant
 assert.deepEqual(JSON.parse(assistantSessionRequest.init.body), {
   definition_id: "definition-1", definition_version: 2, artifact_id: "artifact-1",
 });
+
+const retriedAssistant = await assistantSessionClient.retryAssistantSession("assistant/1");
+assert.equal(retriedAssistant.phase, "ready");
+assert.equal(retriedAssistant.retry_of_assistant_request_id, "assistant/1");
+assert.equal(assistantSessionRequest.url, "http://backend.test/reports/assistant/sessions/assistant%2F1/retry");
+assert.equal(assistantSessionRequest.init.method, "POST");
 
 await assistantSessionClient.getAssistantSession("assistant/1");
 assert.equal(
@@ -772,7 +793,8 @@ const staleApprovalClient = createReportClient("http://backend.test", async () =
   definition_id: "definition-1", definition_version: 2, base_revision: 2,
   artifact_id: "artifact-1", analysis_plan: null,
   patch_request_id: null, patch_summary: null, patch_operations: [], result_artifact_id: null,
-  result_revision: null, error_code: null,
+  result_revision: null, error_code: null, retryable: false, required_action: "NONE",
+  retry_of_assistant_request_id: null,
 }), { status: 200, headers: { "Content-Type": "application/json" } }), "runtime-token");
 await assert.rejects(
   () => staleApprovalClient.approveAssistantPlan("assistant-1", "request-1"),

@@ -2958,6 +2958,19 @@
         "title": "ReportAssistantProposalResponse",
         "type": "object"
       },
+      "ReportAssistantRequiredAction": {
+        "description": "실패한 Assistant 세션에서 사용자가 수행할 수 있는 안전한 다음 조치다.",
+        "enum": [
+          "NONE",
+          "RETRY",
+          "REFRESH",
+          "REAUTHENTICATE",
+          "REOPEN_LATEST_REPORT",
+          "CONTACT_ADMIN"
+        ],
+        "title": "ReportAssistantRequiredAction",
+        "type": "string"
+      },
       "ReportAssistantSessionResponse": {
         "additionalProperties": false,
         "description": "서버가 소유하는 Assistant phase와 승인 대기 계획 및 revision 결과를 반환한다.",
@@ -3064,6 +3077,10 @@
             "title": "Phase",
             "type": "string"
           },
+          "required_action": {
+            "$ref": "#/components/schemas/ReportAssistantRequiredAction",
+            "default": "NONE"
+          },
           "result_artifact_id": {
             "anyOf": [
               {
@@ -3086,6 +3103,23 @@
               }
             ],
             "title": "Result Revision"
+          },
+          "retry_of_assistant_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of Assistant Request Id"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7309,6 +7343,78 @@
           }
         ],
         "summary": "Decide Assistant Patch"
+      }
+    },
+    "/reports/assistant/sessions/{assistant_request_id}/retry": {
+      "post": {
+        "description": "재시도 가능한 실패를 동일 근거의 새 ``ready`` 세션으로만 이어 간다.\n\n원본 실패·승인·요청 ID를 변경하거나 복사하지 않으며 Report revision과 승인 Artifact\nlineage를 다시 확인한다. 이 요청은 모델, 분석 controller, Revision 저장을 호출하지 않는다.",
+        "operationId": "reportAssistantRetrySession",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "assistant_request_id",
+            "required": true,
+            "schema": {
+              "title": "Assistant Request Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Trace-Id",
+            "required": true,
+            "schema": {
+              "title": "X-Trace-Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Timezone",
+            "required": true,
+            "schema": {
+              "title": "X-Timezone",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Contract-Version",
+            "required": true,
+            "schema": {
+              "title": "X-Contract-Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportAssistantSessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "summary": "Retry Assistant Session"
       }
     },
     "/reports/definitions": {

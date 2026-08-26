@@ -27,6 +27,15 @@ const WORKFLOW_COPY = {
   cancelled: ["Assistant 실행 취소", "보고서와 Artifact는 변경되지 않았습니다."],
 };
 
+const REQUIRED_ACTION_COPY = {
+  NONE: "요청을 다시 확인해 주세요.",
+  RETRY: "새 세션에서 지시를 다시 입력할 수 있습니다.",
+  REFRESH: "페이지를 새로고침해 최신 상태를 확인해 주세요.",
+  REAUTHENTICATE: "다시 로그인한 뒤 권한을 확인해 주세요.",
+  REOPEN_LATEST_REPORT: "최신 보고서 Revision을 다시 열어 주세요.",
+  CONTACT_ADMIN: "Artifact 또는 권한 확인을 위해 관리자에게 문의해 주세요.",
+};
+
 const PATCH_OPERATION_LABEL = {
   set_report_title: "보고서 제목 변경",
   add_text: "텍스트 블록 추가",
@@ -39,12 +48,32 @@ const PATCH_OPERATION_LABEL = {
 };
 
 /** 승인 카드가 닫힌 뒤에도 서버 terminal phase와 안전한 오류 code를 사용자에게 보여준다. */
-function AssistantWorkflowStatus({ status, errorCode }) {
+function AssistantWorkflowStatus({ status, errorCode, requiredAction, retryable, onRetry, pending }) {
   if (!WORKFLOW_COPY[status] || !["completed", "failed", "cancelled"].includes(status)) return null;
   const [title, detail] = WORKFLOW_COPY[status];
   return <article className={`report-assistant-message assistant workflow-${status}`}>
     <ShieldCheck size={15} aria-hidden="true" />
-    <p><b>{title}</b><br />{detail}{errorCode ? <small> · {errorCode}</small> : null}</p>
+    <p><b>{title}</b><br />{detail}{errorCode ? <small> · {errorCode}</small> : null}
+      {status === "failed" ? <small> · {REQUIRED_ACTION_COPY[requiredAction] || REQUIRED_ACTION_COPY.NONE}</small> : null}
+      {status === "failed" && retryable
+        ? <button type="button" onClick={onRetry} disabled={pending}>새 세션으로 다시 시도</button>
+        : null}
+    </p>
+  </article>;
+}
+
+/** 현재 사용자 요청의 안전한 서버 평가만 표시하고 전체 사용자 비용·원문 trace는 노출하지 않는다. */
+function AssistantEvaluationReceipt({ evaluation }) {
+  if (!evaluation) return null;
+  const route = evaluation.route === "new_data"
+    ? "신규 데이터 분석"
+    : evaluation.route === "existing_artifact" ? "기존 Artifact 편집" : "분류 없음";
+  return <article className="report-assistant-message assistant">
+    <ShieldCheck size={15} aria-hidden="true" />
+    <p><b>실행 검증 완료</b><br />{route} · 계약 {evaluation.contract_valid ? "통과" : "실패"} · Revision {evaluation.revision_created ? "생성" : "미생성"}
+      {evaluation.latency_ms == null ? null : <small> · {Math.round(evaluation.latency_ms)}ms</small>}
+      {evaluation.error_code ? <small> · {evaluation.error_code}</small> : null}
+    </p>
   </article>;
 }
 
@@ -90,12 +119,14 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   artifact,
   artifactTitle = "",
   canEdit,
+  evaluation = null,
   instruction,
   onApproveDataRequest,
   onApprovePatch,
   onInstructionChange,
   onRejectDataRequest,
   onRejectPatch,
+  onRetry,
   onSubmit,
   pending,
   patchPreview = null,
@@ -104,6 +135,8 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
   trace,
   workflowStatus = "",
   workflowError = "",
+  workflowRequiredAction = "NONE",
+  workflowRetryable = false,
 }) {
   const [messages, setMessages] = useState([]);
   const waiting = pending === "assistant";
@@ -165,7 +198,15 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
         onReject={onRejectPatch}
         pending={Boolean(pending)}
       />
-      <AssistantWorkflowStatus status={workflowStatus} errorCode={workflowError} />
+      <AssistantWorkflowStatus
+        status={workflowStatus}
+        errorCode={workflowError}
+        requiredAction={workflowRequiredAction}
+        retryable={workflowRetryable}
+        onRetry={onRetry}
+        pending={Boolean(pending)}
+      />
+      <AssistantEvaluationReceipt evaluation={evaluation} />
       {waiting && <article className="report-assistant-message assistant pending"><LoaderCircle size={15} aria-hidden="true" /><p>근거를 유지하며 초안을 구성하고 있습니다.</p></article>}
     </div>
 

@@ -38,6 +38,9 @@ const ASSISTANT_PHASES: readonly ReportAssistantPhase[] = [
   "ready", "waiting_patch_approval", "waiting_approval", "running_data_agent", "waiting_artifact",
   "saving_revision", "completed", "failed", "cancelled",
 ];
+const ASSISTANT_REQUIRED_ACTIONS = [
+  "NONE", "RETRY", "REFRESH", "REAUTHENTICATE", "REOPEN_LATEST_REPORT", "CONTACT_ADMIN",
+] as const;
 
 function assertAssistantSession(
   session: ReportAssistantSessionResponse,
@@ -55,6 +58,12 @@ function assertAssistantSession(
   if (session.phase === "waiting_patch_approval"
     && (!session.patch_request_id || !session.patch_summary || !session.patch_operations?.length)) {
     throw new Error("patch 승인 대기 세션에는 변경 미리보기가 필요합니다.");
+  }
+  if (!ASSISTANT_REQUIRED_ACTIONS.includes(session.required_action)) {
+    throw new Error(`지원하지 않는 Report Assistant 조치입니다: ${session.required_action}`);
+  }
+  if (session.retryable && (session.phase !== "failed" || session.required_action !== "RETRY")) {
+    throw new Error("재시도 가능한 Report Assistant 세션 계약이 올바르지 않습니다.");
   }
   return session;
 }
@@ -299,6 +308,17 @@ export function createReportClient(
       return assertAssistantSession(await parse<ReportAssistantSessionResponse>(await send(
         `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}`,
       )));
+    },
+    async retryAssistantSession(assistantRequestId: string) {
+      const session = assertAssistantSession(await parse<ReportAssistantSessionResponse>(await send(
+        `/reports/assistant/sessions/${encodeURIComponent(assistantRequestId)}/retry`,
+        "POST",
+      )));
+      if (session.retry_of_assistant_request_id !== assistantRequestId
+        || session.assistant_request_id === assistantRequestId) {
+        throw new Error("재시도 결과는 원본 lineage를 가진 새 세션이어야 합니다.");
+      }
+      return session;
     },
     async submitAssistantMessage(assistantRequestId: string, instruction: string) {
       const proposal = await parse<ReportAssistantProposalResponse>(await send(

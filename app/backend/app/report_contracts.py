@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from enum import Enum
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -276,6 +277,59 @@ ReportAssistantPhase = Literal[
 ]
 
 
+class ReportAssistantRequiredAction(str, Enum):
+    """실패한 Assistant 세션에서 사용자가 수행할 수 있는 안전한 다음 조치다."""
+
+    NONE = "NONE"
+    RETRY = "RETRY"
+    REFRESH = "REFRESH"
+    REAUTHENTICATE = "REAUTHENTICATE"
+    REOPEN_LATEST_REPORT = "REOPEN_LATEST_REPORT"
+    CONTACT_ADMIN = "CONTACT_ADMIN"
+
+
+class ReportAssistantRetryPolicy(ReportContractModel):
+    """오류 code를 자동 실행 없는 재시도 가능 여부와 사용자 조치로 변환한다."""
+
+    retryable: bool
+    required_action: ReportAssistantRequiredAction
+
+
+def report_assistant_retry_policy(error_code: str | None) -> ReportAssistantRetryPolicy:
+    """서버 오류 code 하나에 대해 fail-closed 재시도 정책을 반환한다."""
+
+    retryable = {
+        "ANALYSIS_FAILED",
+        "ANALYSIS_RATE_LIMITED",
+        "ASSISTANT_CONCURRENCY_LIMITED",
+        "ASSISTANT_EXECUTION_INTERRUPTED",
+        "ASSISTANT_RATE_LIMITED",
+        "REPORT_ASSISTANT_COMPOSE_FAILED",
+        "REPORT_ASSISTANT_TURN_MODEL_FAILED",
+        "REPORT_ASSISTANT_TURN_MODEL_INVALID",
+    }
+    actions = {
+        "ACCESS_DENIED": ReportAssistantRequiredAction.REAUTHENTICATE,
+        "ANALYSIS_ACCESS_DENIED": ReportAssistantRequiredAction.REAUTHENTICATE,
+        "ARTIFACT_CHECKSUM_INVALID": ReportAssistantRequiredAction.CONTACT_ADMIN,
+        "ARTIFACT_LINEAGE_MISMATCH": ReportAssistantRequiredAction.CONTACT_ADMIN,
+        "ARTIFACT_NOT_FOUND": ReportAssistantRequiredAction.CONTACT_ADMIN,
+        "ASSISTANT_COST_BUDGET_EXCEEDED": ReportAssistantRequiredAction.CONTACT_ADMIN,
+        "ASSISTANT_STATE_CONFLICT": ReportAssistantRequiredAction.REFRESH,
+        "ASSISTANT_TOKEN_BUDGET_EXCEEDED": ReportAssistantRequiredAction.CONTACT_ADMIN,
+        "REPORT_REVISION_CONFLICT": ReportAssistantRequiredAction.REOPEN_LATEST_REPORT,
+    }
+    if error_code in retryable:
+        return ReportAssistantRetryPolicy(
+            retryable=True,
+            required_action=ReportAssistantRequiredAction.RETRY,
+        )
+    return ReportAssistantRetryPolicy(
+        retryable=False,
+        required_action=actions.get(error_code, ReportAssistantRequiredAction.NONE),
+    )
+
+
 class CreateReportAssistantSessionRequest(ReportContractModel):
     """보고서 초안 버전과 현재 승인 artifact를 대화형 Assistant 세션에 결속한다."""
 
@@ -368,6 +422,9 @@ class ReportAssistantSessionResponse(ReportContractModel):
     result_artifact_id: UUID | None = None
     result_revision: int | None = None
     error_code: str | None = None
+    retryable: bool = False
+    required_action: ReportAssistantRequiredAction = ReportAssistantRequiredAction.NONE
+    retry_of_assistant_request_id: UUID | None = None
 
     @model_validator(mode="after")
     def require_plan_during_data_flow(self) -> "ReportAssistantSessionResponse":

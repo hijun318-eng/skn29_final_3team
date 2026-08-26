@@ -1,5 +1,5 @@
 /** 선택한 Artifact를 근거로 보고서 AI 초안 요청과 승인 가능한 새 분석 계획을 표시한다. */
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
 import { Bot, Check, Database, LoaderCircle, Send, ShieldCheck, Sparkles, X } from "lucide-react";
 import { reportEvidenceLabel } from "../../../contracts/report";
 
@@ -127,9 +127,23 @@ function AssistantApproval({ request, status, onApprove, onReject, pending }) {
   </section>;
 }
 
+const PATCH_VALUE_PREVIEW_LENGTH = 160;
+
+/** 긴 변경 내용은 네이티브 details로 접어 승인 카드와 작은 화면의 가독성을 유지한다. */
+function PatchValue({ label, value }) {
+  if (value.length <= PATCH_VALUE_PREVIEW_LENGTH) return <small><em>{label}</em>{value}</small>;
+  const summary = `${value.slice(0, PATCH_VALUE_PREVIEW_LENGTH - 1).trimEnd()}…`;
+  return <details className="report-assistant-patch-detail">
+    <summary><em>{label}</em><span>{summary}</span><b>내용 펼치기</b></summary>
+    <small>{value}</small>
+  </details>;
+}
+
 /** 서버가 검증·dry-run한 제한 patch의 요약과 연산을 적용 전에 표시한다. */
-function AssistantPatchApproval({ preview, status, onApprove, onReject, pending }) {
+function AssistantPatchApproval({ preview, status, errorCode, onApprove, onReject, pending }) {
   const [selectedIndexes, setSelectedIndexes] = useState([]);
+  const approvalRef = useRef(null);
+  const operationIdPrefix = useId();
   useEffect(() => {
     if (!preview) {
       setSelectedIndexes([]);
@@ -141,14 +155,18 @@ function AssistantPatchApproval({ preview, status, onApprove, onReject, pending 
         : preview.items.map((item) => item.index),
     );
   }, [preview?.requestId]);
+  useEffect(() => {
+    if (preview && errorCode) approvalRef.current?.focus();
+  }, [errorCode, preview?.requestId]);
   if (!preview) return null;
   const waiting = status === "waiting_patch_approval";
+  const allIndexes = preview.items.map((item) => item.index);
   const toggleOperation = (index) => setSelectedIndexes((current) => (
     current.includes(index)
       ? current.filter((item) => item !== index)
       : [...current, index].sort((left, right) => left - right)
   ));
-  return <section className={`report-assistant-approval ${waiting ? "waiting" : "active"}`} aria-label="AI 보고서 변경안">
+  return <section ref={approvalRef} tabIndex={-1} className={`report-assistant-approval ${waiting ? "waiting" : "active"}`} aria-label="AI 보고서 변경안">
     <header><ShieldCheck size={15} aria-hidden="true" /><span><b>{waiting ? "AI 변경안 검토 필요" : "Revision 저장 재개"}</b><small>승인 전에는 현재 보고서를 변경하지 않습니다.</small></span></header>
     <dl>
       <div><dt>변경 요약</dt><dd>{preview.summary}</dd></div>
@@ -157,19 +175,29 @@ function AssistantPatchApproval({ preview, status, onApprove, onReject, pending 
         ? <div><dt>사용 근거</dt><dd>{preview.evidenceRefs.map(reportEvidenceLabel).join(" · ")}</dd></div>
         : null}
     </dl>
+    <div className="report-assistant-patch-selection" role="group" aria-label="변경 선택 도구">
+      <span aria-live="polite">{selectedIndexes.length} / {preview.items.length}개 선택</span>
+      <button type="button" onClick={() => setSelectedIndexes(allIndexes)} disabled={!waiting || pending || selectedIndexes.length === allIndexes.length}>전체 선택</button>
+      <button type="button" onClick={() => setSelectedIndexes([])} disabled={!waiting || pending || !selectedIndexes.length}>전체 해제</button>
+    </div>
     <div className="report-assistant-patch-items" aria-label="적용할 변경 선택">
-      {preview.items.map((item) => <label key={`${preview.requestId}-${item.index}`}>
+      {preview.items.map((item) => {
+        const inputId = `${operationIdPrefix}-operation-${item.index}`;
+        return <div className="report-assistant-patch-item" key={`${preview.requestId}-${item.index}`}>
         <input
+          id={inputId}
           type="checkbox"
           checked={selectedIndexes.includes(item.index)}
           disabled={!waiting || pending}
           onChange={() => toggleOperation(item.index)}
         />
-        <span><b>{PATCH_OPERATION_LABEL[item.operation] || item.operation} · {item.target}</b>
-          {item.before == null ? null : <small><em>변경 전</em>{item.before}</small>}
-          {item.after == null ? null : <small><em>변경 후</em>{item.after}</small>}
+        <label htmlFor={inputId}><span><b>{PATCH_OPERATION_LABEL[item.operation] || item.operation} · {item.target}</b>
+          {item.before == null ? null : <PatchValue label="변경 전" value={item.before} />}
+          {item.after == null ? null : <PatchValue label="변경 후" value={item.after} />}
         </span>
-      </label>)}
+        </label>
+      </div>;
+      })}
     </div>
     <nav aria-label="AI 변경안 결정">
       {waiting && <button type="button" onClick={onReject} disabled={pending}><X size={12} />취소</button>}
@@ -283,6 +311,7 @@ export const ReportAssistantPanel = memo(function ReportAssistantPanel({
       <AssistantPatchApproval
         preview={patchPreview}
         status={workflowStatus}
+        errorCode={workflowError}
         onApprove={onApprovePatch}
         onReject={onRejectPatch}
         pending={Boolean(pending)}

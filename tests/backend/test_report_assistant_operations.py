@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
+import json
 import os
 from pathlib import Path
 import unittest
@@ -79,6 +80,69 @@ class ReportAssistantOperationsTest(unittest.TestCase):
         )
         self.assertEqual(1, result["failed"])
         self.assertEqual("deterministic_fake", result["mode"])
+
+    def test_report_assistant_quality_dataset_covers_safe_gpt_workflows(self):
+        cases = json.loads(
+            Path("evals/report_assistant_quality_cases.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(10, len(cases))
+        self.assertEqual(10, len({case["id"] for case in cases}))
+        self.assertTrue(all(case.get("instruction") for case in cases))
+        self.assertIn("prompt-injection", {case["id"] for case in cases})
+        self.assertIn("refinement-removes-old-operation", {case["id"] for case in cases})
+
+        outputs = {}
+        for case in cases:
+            refs = case.get("allowed_evidence_refs", []) if case.get("evidence_required") else []
+            outputs[case["id"]] = {
+                "route": case["route"],
+                "contract_valid": True,
+                "operations": [
+                    {"op": operation, "evidence_refs": refs}
+                    for operation in case.get("required", [])
+                ],
+                "dry_run_valid": case.get("dry_run_expected"),
+                "approval": case.get("approval"),
+                "error_code": case.get("error_code"),
+                "attempts": 1,
+                "latency_ms": 25,
+                "input_tokens": None,
+                "output_tokens": None,
+                "estimated_cost": None,
+                "prompt_version": "PROMPT-test",
+                "model_version": "fake-model",
+            }
+        result = evaluate_report_assistant_quality(cases, outputs)
+        self.assertEqual(10, result["passed"])
+        self.assertEqual(1.0, result["metrics"]["strict_contract_success_rate"])
+        self.assertEqual(1.0, result["metrics"]["route_accuracy"])
+        self.assertEqual(0.0, result["metrics"]["unnecessary_operation_rate"])
+        self.assertIsNone(result["metrics"]["total_input_tokens"])
+        self.assertIsNone(result["metrics"]["estimated_cost_total"])
+        self.assertEqual(["PROMPT-test"], result["prompt_versions"])
+        self.assertEqual(["fake-model"], result["model_versions"])
+
+    def test_report_assistant_quality_reports_invalid_evidence_and_observations(self):
+        result = evaluate_report_assistant_quality(
+            [{
+                "id": "summary", "route": "existing_artifact",
+                "allowed": ["update_text"], "required": ["update_text"],
+                "allowed_evidence_refs": ["artifact_narrative"],
+                "evidence_required": True,
+            }],
+            {"summary": {
+                "route": "existing_artifact", "contract_valid": True,
+                "operations": [{"op": "update_text", "evidence_refs": ["unknown_ref"]}],
+                "attempts": 2, "latency_ms": 40,
+                "input_tokens": 100, "output_tokens": 20,
+                "estimated_cost": "0.001",
+            }},
+        )
+        self.assertEqual(1, result["failed"])
+        self.assertEqual(0.0, result["metrics"]["evidence_ref_validity_rate"])
+        self.assertEqual(2.0, result["metrics"]["average_model_attempts"])
+        self.assertEqual(120, result["metrics"]["total_input_tokens"] + result["metrics"]["total_output_tokens"])
+        self.assertEqual("0.001", result["metrics"]["estimated_cost_total"])
 
     def test_operations_period_rejects_naive_or_more_than_31_days(self):
         end = datetime.now(timezone.utc)

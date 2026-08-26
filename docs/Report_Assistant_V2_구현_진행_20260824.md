@@ -499,3 +499,44 @@ Frontend 24개 전부 통과, production build·OpenAPI·문서화·아키텍처
 production build·OpenAPI·문서화·아키텍처·repository 감사·compileall·`git diff --check` 통과다.
 이번 결과는 기존 승인 Artifact 편집 E2E이며 Trino·DataHub와 Analysis Agent를 사용하는
 `new_data` live E2E는 실행하지 않았다.
+
+## 2026-08-26 GPT 고도화 13차: 승인 카드 접근성·작은 화면 대응
+
+- patch operation 체크박스와 제목을 고유한 `id`/`htmlFor`로 명시적으로 연결해 제목 클릭과
+  보조기기 탐색이 같은 선택 동작을 사용하도록 했다.
+- 전체 선택·전체 해제와 `선택 수 / 전체 수` 안내를 추가하되 승인 API에는 기존 서버 operation
+  index 계약만 전달한다.
+- 긴 변경 전·후 본문은 네이티브 `details`로 접어 기본 카드 높이를 제한하고, 펼쳤을 때만 전체
+  내용을 표시한다. 변경 전·후 텍스트 표시는 색상과 무관하게 유지한다.
+- 승인 오류가 발생하면 해당 카드로 키보드 포커스를 되돌리고, 버튼·체크박스·접기 요약에
+  `focus-visible` 윤곽선을 제공한다.
+- 360px 폭과 확대 환경에서 버튼과 본문이 겹치지 않도록 승인 동작을 자동 줄바꿈하고 inspector
+  폭과 긴 본문 overflow를 제한했다. 모션 감소 설정에서는 대기 spinner 애니메이션을 중지한다.
+- 관리자 운영 UI, Backend 계약, migration, AnalysisController, Trino와 DataHub는 변경하지 않았다.
+
+Frontend 테스트 24개와 production build, `git diff --check`가 통과했다. 로컬 Browser에서 360px
+viewport의 document 폭이 viewport를 넘지 않고 console error가 없음을 확인했다. 새 실제 GPT
+요청은 실행하지 않았으므로 이번 검증에서 승인 대기 카드의 live 모델 E2E를 새로 수행했다고
+표현하지 않는다.
+
+## 2026-08-26 GPT 고도화 14차: 품질 평가 기반 준비
+
+- 기존 단순 route·operation 목록을 제목 단독 변경, 근거 유지 요약, 최소 operation, 근거 부족,
+  존재하지 않는 block, 모호한 범위, 다중 Artifact, 재수정, 품질 finding 전환, prompt injection의
+  10개 명시적 지시 시나리오로 교체했다.
+- 동일 평가기가 deterministic fake와 명시적으로 캡처한 live 결과를 구분해 채점하며, 결과에는
+  사용자 지시나 raw model response를 포함하지 않는다.
+- strict 계약 성공률, route 일치율, operation 정확도, server dry-run 성공률, 불필요 operation
+  비율, evidence ref 유효률, 재수정 반영률을 계산한다.
+- 모델 시도 횟수·latency·input/output token·추정 비용과 prompt/model version을 연결한다. provider
+  usage나 가격이 없으면 token·비용을 0으로 만들지 않고 `null`로 유지한다.
+- 현재 활성 model release는 `MODEL-RELEASE-v1.33.0`인데 이전 값을 기대하던 release 결속 테스트를
+  실제 manifest와 맞춰 복구했다.
+
+관련 Backend·AI 테스트 124개, 별도 model release·평가기 테스트 23개, Frontend 24개와 production
+build, OpenAPI·문서화·아키텍처·repository integrity·compileall·`git diff --check`가 통과했다.
+
+14차는 아직 **부분 완료**다. 실제 OpenAI 기준 결과와 후보 prompt 결과를 같은 10개 평가셋으로
+비교하지 않았으므로 prompt version과 model release는 올리지 않았다. 별도 비용 승인 후 bounded
+baseline/candidate 평가가 개선 기준을 만족할 때만 prompt release를 변경한다. 이 미실행 항목을
+fake 평가 통과 또는 live GPT 품질 개선 완료로 표현하지 않는다.

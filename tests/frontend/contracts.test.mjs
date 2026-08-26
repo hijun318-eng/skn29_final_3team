@@ -161,6 +161,7 @@ assert.match(source("App.jsx"), /reportDirty && !window\.confirm\("저장하지 
 assert.match(source("App.jsx"), /현재 계정에 허용된 서비스 메뉴가 없습니다/);
 assert.match(source("App.jsx"), /<AppSidebar page=\{route\.page\} role=\{role\} capabilities=\{capabilities\}/);
 assert.match(source("components/layout/AppSidebar.jsx"), /hasCapability\(capabilities, item\.capability\)/);
+assert.match(source("components/layout/AppSidebar.jsx"), /inert=\{!open\} aria-hidden=\{!open\}/);
 assert.match(source("authorization.ts"), /platform_admin/);
 assert.match(source("App.jsx"), /\["보고서 편집", "근거가 연결된 분석 결과와 설명을 블록으로 구성하고 저장합니다\."\]/);
 assert.match(reportSources.lifecycle, /if \(isAdmin\) void loadSchedules\(\)/);
